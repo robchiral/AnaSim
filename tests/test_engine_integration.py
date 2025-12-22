@@ -1,0 +1,295 @@
+
+import pytest
+import unittest
+import numpy as np
+from patient.patient import Patient
+from core.state import SimulationConfig, AirwayType
+from core.engine import SimulationEngine
+from physiology.hemodynamics import HemoState
+from physiology.respiration import RespState
+
+
+# --- Fixtures ---
+
+@pytest.fixture
+def engine(patient):
+    config = SimulationConfig(mode="awake", dt=0.5)
+    sim = SimulationEngine(patient, config)
+    return sim
+
+# --- Tests from test_backend_sanity.py ---
+
+class TestPhysiologicalSanity:
+    """Verifies that the simulation produces physiologically reasonable values."""
+    
+    def test_awake_baselines(self, engine):
+        """Check vital signs for a resting, awake patient."""
+        engine.start()
+        # Connect mask for monitoring (default is now NONE)
+        engine.set_airway_mode("Mask")
+        
+        # Settle for a few seconds
+        for _ in range(50): 
+            engine.step(0.1)
+            
+        state = engine.state
+        
+        # 1. Heart Rate: 50-100 bpm
+        assert 50 <= state.hr <= 100, f"HR {state.hr} out of awake range"
+        
+        # 2. MAP: 70-110 mmHg
+        assert 70 <= state.map <= 110, f"MAP {state.map} out of awake range"
+        
+        # 3. SpO2: > 95% on Room Air (healthy)
+        assert state.spo2 > 95, f"SpO2 {state.spo2} too low for healthy awake patient"
+        
+        # 4. EtCO2: 30-45 mmHg (if breathing)
+        # Note: Awake breathing might be spontaneous.
+        # Check if breathing detected.
+        if state.rr > 0:
+            assert 30 <= state.etco2 <= 45, f"EtCO2 {state.etco2} abnormal"
+            
+    def test_svr_units(self, engine):
+        """
+        REGRESSION TEST: SVR should be in Wood Units (mmHg*min/L), ~10-30.
+        Previously was 1200 (dynes).
+        """
+        assert 10.0 <= engine.state.svr <= 30.0, \
+            f"SVR {engine.state.svr} is not in Wood Units! (Expected 10-30)"
+
+class TestPathologyResponse:
+    """Verifies physiological responses to adverse events."""
+    
+    def test_hemorrhage_shock(self, engine):
+        """
+        REGRESSION TEST: Verify 'Unstressed Volume' fix.
+        Massive hemorrhage should cause severe hypotension (Shock).
+        """
+        engine.start()
+        # Run baseline
+        for _ in range(10): engine.step(0.1)
+        base_map = engine.state.map
+        
+        # Start Massive Hemorrhage (2L/min)
+        engine.start_hemorrhage(2000.0)
+        
+        # Run for 60s
+        for _ in range(600):
+            engine.step(0.1)
+            
+        final_map = engine.state.map
+        final_sv = engine.state.sv
+        
+        # Expect MAP to drop by at least 40%
+        assert final_map < base_map * 0.6, "MAP did not drop significantly (<40%) during massive hemorrhage!"
+        # SV should be critically low; allow slight tolerance for model variability.
+        assert final_sv < 22.0, "Stroke Volume is unrealistically preserved during massive volume loss!"
+
+class TestMonitorStability:
+    """Verifies monitors do not crash the engine."""
+    
+    def test_bis_integration(self, engine):
+        """
+        REGRESSION TEST: BIS Monitor `step` method existence.
+        """
+        engine.start()
+        try:
+            # Run simulation which calls bis.step() internally
+            for _ in range(20):
+                engine.step(0.1)
+            assert engine.state.bis > 0
+        except AttributeError as e:
+            pytest.fail(f"BIS Monitor caused crash: {e}")
+
+class TestPharmacologyBasics:
+    """Verifies PK/PD basics."""
+    
+    def test_propofol_bolus(self, engine):
+        """Verify bolus increases concentration."""
+        engine.start()
+        engine.step(0.1)
+        base_cp = engine.state.propofol_cp
+        
+        # Give 200mg Propofol
+        engine.give_drug_bolus("Propofol", 200.0)
+        engine.step(0.1)
+        
+        peak_cp = engine.state.propofol_cp
+        assert peak_cp > base_cp + 1.0, f"Propofol Cp did not rise significantly after bolus (Got {peak_cp})"
+
+
+# --- Tests from test_simulation.py (Merged/Condensed) ---
+
+def test_engine_init_and_run(engine):
+    """Verifies engine initialization and basic stepping."""
+    # Check fixtures setup
+    assert engine.patient.weight == 70
+    assert engine.tci_prop is None
+    assert engine.disturbances is not None
+
+    engine.start()
+    
+    # Run 10 steps
+    for _ in range(10):
+        engine.step(1.0)
+        
+    state = engine.state
+    assert state.hr > 0
+    assert state.map > 0
+    
+    # Check buffer
+    assert len(engine.output_buffer) == 10
+
+def test_tci_enable_logic(engine):
+    """Verifies TCI enabling logic."""
+    engine.enable_tci('propofol', 3.0, 'effect_site')
+    assert engine.tci_prop is not None
+    assert engine.tci_prop.target == 3.0
+    
+    engine.start()
+    engine.step(1.0)
+    
+    # Rate should be set
+    assert engine.propofol_rate_mg_sec > 0
+
+@pytest.mark.parametrize(
+    "drug,mode,pk_attr,controller_attr,state_values,max_rate",
+    [
+        ("propofol", "effect_site", "pk_prop", "tci_prop", {"c1": 1.0, "c2": 2.0, "c3": 3.0, "ce": 4.0}, "prop"),
+        ("remi", "effect_site", "pk_remi", "tci_remi", {"c1": 1.5, "c2": 2.5, "c3": 3.5, "ce": 4.5}, "remi"),
+        ("nore", "plasma", "pk_nore", "tci_nore", {"c1": 5.0, "c2": 2.0, "ce": 4.0}, "nore"),
+        ("epi", "plasma", "pk_epi", "tci_epi", {"c1": 3.0, "ce": 2.0}, "epi"),
+        ("phenyl", "plasma", "pk_phenyl", "tci_phenyl", {"c1": 6.0, "c2": 1.0, "ce": 2.5}, "phenyl"),
+        ("roc", "effect_site", "pk_roc", "tci_roc", {"c1": 2.0, "c2": 2.0, "c3": 2.0, "ce": 2.0}, "roc"),
+    ],
+)
+def test_tci_seeds_state_and_caps_rate(engine, drug, mode, pk_attr, controller_attr, state_values, max_rate):
+    """TCI should seed from PK state and use a realistic max rate for each drug."""
+    weight = engine.patient.weight
+    pk_model = getattr(engine, pk_attr)
+    for key, val in state_values.items():
+        setattr(pk_model.state, key, val)
+
+    engine.enable_tci(drug, 2.0, mode)
+    controller = getattr(engine, controller_attr)
+    assert controller is not None
+
+    c1 = getattr(pk_model.state, "c1", 0.0)
+    c2 = getattr(pk_model.state, "c2", 0.0)
+    c3 = getattr(pk_model.state, "c3", 0.0)
+    ce = getattr(pk_model.state, "ce", 0.0)
+
+    assert controller.x[0, 0] == pytest.approx(c1)
+    if controller.n_state >= 2:
+        assert controller.x[1, 0] == pytest.approx(c2)
+    if controller.n_state == 3:
+        assert controller.x[2, 0] == pytest.approx(ce)
+    if controller.n_state >= 4:
+        assert controller.x[2, 0] == pytest.approx(c3)
+        assert controller.x[3, 0] == pytest.approx(ce)
+
+    if max_rate == "prop":
+        expected = weight * 0.3 / 60.0
+    elif max_rate == "remi":
+        expected = weight * 0.5 / 60.0
+    elif max_rate == "nore":
+        expected = weight * 1.0 / 60.0
+    elif max_rate == "epi":
+        expected = weight * 0.5 / 60.0
+    elif max_rate == "phenyl":
+        expected = weight * 2.0 / 60.0
+    else:
+        expected = weight * 1.0 / 3600.0
+    assert controller.max_rate == pytest.approx(expected)
+
+def test_hr_disturbance_not_double_applied():
+    """HR disturbance should be applied only once (physiology, not display)."""
+    patient = Patient(age=40, weight=70, height=170, sex="male")
+    config = SimulationConfig(mode="awake", dt=0.5)
+
+    def build_engine():
+        eng = SimulationEngine(patient, config)
+        eng.state.time = 0.0
+        eng._next_nibp_time = 1e9
+        eng.state.airway_mode = AirwayType.MASK
+        eng.rng = np.random.default_rng(123)
+        return eng
+
+    engine1 = build_engine()
+    engine2 = build_engine()
+
+    hemo_state = HemoState(map=80.0, hr=85.0, sv=70.0, svr=16.0, co=5.0)
+    resp_state = RespState(
+        rr=12.0,
+        vt=500.0,
+        mv=6.0,
+        va=4.0,
+        apnea=False,
+        p_alveolar_co2=40.0,
+        etco2=40.0,
+        p_arterial_o2=95.0,
+        drive_central=1.0,
+        muscle_factor=1.0,
+    )
+    engine1.smooth_hr = hemo_state.hr
+    engine2.smooth_hr = hemo_state.hr
+
+    engine1._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    engine2._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0, 0.0, 10.0))
+
+    assert engine1.state.hr == pytest.approx(engine2.state.hr, rel=1e-6)
+
+def test_lbm_fallback_for_extreme_bmi():
+    """LBM should remain positive for extreme BMI values."""
+    patient = Patient(age=40, weight=300.0, height=160.0, sex="male")
+    assert patient.lbm > 0.0
+
+def test_pk_hemodynamic_scaling_applies_to_propofol():
+    """PK central volume should scale with blood volume ratio."""
+    patient = Patient(age=40, weight=70, height=170, sex="male")
+    config = SimulationConfig(mode="awake", dt=0.5)
+    engine = SimulationEngine(patient, config)
+    base_v1 = engine.pk_prop.v1
+    engine.hemo.blood_volume = engine.hemo.blood_volume_0 * 0.5
+    engine.state.co = engine.hemo.base_co_l_min * 0.5
+
+    engine._step_pk(0.5, 0.0, engine.state.co)
+
+    assert engine.pk_prop.v1 == pytest.approx(base_v1 * 0.5, rel=0.05)
+
+# --- Tests from test_steady_state.py ---
+
+class TestSteadyStateMode(unittest.TestCase):
+    def setUp(self):
+        self.patient = Patient(age=40, weight=70, height=170, sex="male")
+
+    def test_steady_state_tiva_init(self):
+        config = SimulationConfig(mode='steady_state', maint_type='tiva')
+        engine = SimulationEngine(self.patient, config)
+        
+        # Check Propofol Pre-fill (engine uses 3.0 for steady state)
+        self.assertAlmostEqual(engine.pk_prop.state.c1, 3.0, delta=0.2)
+        
+        # Check Remi (engine uses 2.0 for steady state)
+        self.assertAlmostEqual(engine.pk_remi.state.c1, 2.0, delta=0.2)
+        
+        # Check TCI Enabled
+        self.assertTrue(engine.tci_prop is not None)
+        self.assertEqual(engine.tci_prop.target, 3.0)
+        
+        engine.start() # Start simulation loop
+        
+        # Check Hemodynamic Init
+        # MAP should be lower than baseline (usually ~80-90) due to Propofol 3.5
+        self.assertLess(engine.state.map, 95.0)
+        self.assertGreater(engine.state.map, 50.0) # Not crashed
+        
+        # Run for 2 seconds (200 steps at 0.01) and ensure MAP stays stable
+        initial_map = engine.state.map
+        
+        for _ in range(200):
+            engine.step(0.01)
+            
+        self.assertAlmostEqual(engine.state.map, initial_map, delta=10.0)
+        # BIS settles to steady-state value for Prop 3.0 + Remi 2.0 (~45-60)
+        self.assertAlmostEqual(engine.state.bis, 55.0, delta=8.0)
