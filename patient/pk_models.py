@@ -650,11 +650,12 @@ class NorepinephrinePK:
         # Update Li model parameters based on Propofol
         if self.model == "Li":
             # Propofol effect on NN clearance (Li Y et al. 2024)
-            # The formula exp(-3.57 * (Cp - 3.53)) causes massive values at Cp=0.
-            # We clamp current_cl1 to a physiological ceiling (e.g. 30 L/min) -> t1/2 ~ seconds.
+            # The formula exp(-3.57 * (Cp - 3.53)) causes massive values at Cp=0 (Awake).
+            # We clamp current_cl1 to a physiological ceiling (5.0 L/min) to prevent instant elimination.
+            # 5.0 L/min is approx 2.5x baseline clearance, providing t1/2 ~0.5 min instead of 0.05s.
             prop_effect = np.exp(-3.57 * (propofol_conc_ug_ml - self.c_prop_base))
             current_cl1 = self.cl1 * prop_effect
-            if current_cl1 > 30.0: current_cl1 = 30.0
+            if current_cl1 > 5.0: current_cl1 = 5.0
             
             current_k10 = current_cl1 / self.v1
         else:

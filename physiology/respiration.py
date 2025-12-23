@@ -192,17 +192,18 @@ class RespiratoryModel:
         # - Dahan A et al. 1996: Volatile depression of CO2 response
         # - Nunn's Respiratory Physiology: Normal HCVR ~2-4 L/min/mmHg
         
-        # Calculate drug-induced HCVR depression (weighted by fractional effect)
-        # Use eff_prop_hcvr (not eff_prop_mech) for HCVR slope depression
-        hcvr_depression = (
-            self.hcvr_depression_remi * eff_remi +
-            self.hcvr_depression_prop * eff_prop_hcvr +
-            self.hcvr_depression_sevo * eff_sevo
-        )
-        hcvr_depression = min(0.95, hcvr_depression)  # Cap at 95% depression
+        # Calculate drug-induced HCVR depression
+        # Use multiplicative interaction to avoid saturation artifacts
+        # Slope factor = Product of (1 - drug_effect * potency)
         
-        # Current HCVR slope (reduced by anesthetics)
-        hcvr_slope = self.hcvr_slope_baseline * (1.0 - hcvr_depression)
+        factor_remi = max(0.0, 1.0 - self.hcvr_depression_remi * eff_remi)
+        factor_prop = max(0.0, 1.0 - self.hcvr_depression_prop * eff_prop_hcvr)
+        factor_sevo = max(0.0, 1.0 - self.hcvr_depression_sevo * eff_sevo)
+
+        slope_factor = factor_remi * factor_prop * factor_sevo
+
+        # Current HCVR slope
+        hcvr_slope = self.hcvr_slope_baseline * slope_factor
         
         # CO2-driven ventilatory boost (only when PaCO2 > setpoint)
         # Opioids shift setpoint rightward (require higher CO2 to trigger breathing)

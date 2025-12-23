@@ -90,9 +90,8 @@ class HemodynamicModel:
         # =====================================================================
         
         # Speed of hemodynamic autoregulation (tuned for simulator responsiveness)
-        # Note: Su et al. (2023) use 0.072 min^-1. We use 0.5 for faster equilibration
-        # in a real-time simulator context. This is a heuristic deviation.
-        self.kout = 0.5  # min^-1 (slower/more physiologic than 2.0)
+        # Note: Su et al. (2023) use 0.072 min^-1.
+        self.kout = 0.072  # min^-1
         
         # Hemoglobin / hematocrit baselines
         self.baseline_hb = getattr(patient, 'baseline_hb', 13.5)
@@ -449,9 +448,9 @@ class HemodynamicModel:
         # Apply inotropy
         result = inotropy * normalized
         
-        # Clinical floor: minimum SV = 25% of baseline even in severe hypovolemia
+        # Clinical floor: minimum SV = 5% of baseline even in severe hypovolemia
         # This accounts for compensatory mechanisms not fully modeled
-        return max(0.25, result)
+        return max(0.05, result)
     
     def _calc_hemorrhage_response(self) -> tuple:
         """
