@@ -254,6 +254,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             else:
                 self.state.temp_c = 37.0
 
+            # Sync PK state to Engine state so initial values are consistent
+            self._sync_pk_state()
+
         self._seed_nibp_reading()
 
     def _seed_nibp_reading(self):

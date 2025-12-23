@@ -366,6 +366,7 @@ class TestEmergenceScenario:
         
         # Track emergence milestones
         mv_3_time = None
+        bis_60_time = None
         bis_80_time = None
         
         for t in range(1800):  # 30 minutes max
@@ -374,6 +375,9 @@ class TestEmergenceScenario:
             if engine.resp.state.mv > 3.0 and mv_3_time is None:
                 mv_3_time = t
             
+            if engine.state.bis > 60 and bis_60_time is None:
+                bis_60_time = t
+
             if engine.state.bis > 80 and bis_80_time is None:
                 bis_80_time = t
         
@@ -385,7 +389,13 @@ class TestEmergenceScenario:
         assert mv_3_time < 1200, \
             f"MV > 3 L/min at {mv_3_time}s - expected within 1200s (~20 min)"
         
-        # BIS should reach 80 within ~26 min (depends on propofol PK, not HCVR)
+        # BIS should reach 60 (awakening/eye opening) within 15 min
+        assert bis_60_time is not None, \
+            "BIS never reached 60 (awakening) during 30-min observation"
+        assert bis_60_time < 900, \
+            f"BIS > 60 at {bis_60_time}s - expected within 900s (15 min)"
+
+        # BIS should reach 80 within 26 min (depends on propofol PK, not HCVR)
         assert bis_80_time is not None, \
             "BIS never reached 80 during 30-min observation"
         assert bis_80_time < 1600, \
