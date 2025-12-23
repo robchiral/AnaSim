@@ -38,7 +38,9 @@ class RespiratoryModel:
         # Clinical sedation/apnea requires higher concentrations (~3-4 µg/mL)
         # 
         # HCVR/Central Drive: Early potent effect on CO2 sensitivity
-        self.c50_prop_hcvr = 1.0  # µg/mL - IC50 for HCVR slope depression
+        # Increased C50 from 1.0 to 2.0 to allow faster emergence (return of spontaneous vent).
+        # Literature range varies; higher value aligns better with clinical wake-up times (8-12 min).
+        self.c50_prop_hcvr = 2.0  # µg/mL - IC50 for HCVR slope depression
         self.gamma_prop_hcvr = 2.0
         
         # Mechanical depression (VT/RR): Higher concentrations needed for frank apnea
@@ -48,7 +50,8 @@ class RespiratoryModel:
         # 2. Remifentanil (Ventilatory Depression)
         # Bouillon TW et al. Anesthesiology 2003: C50 ~ 0.92 ng/mL, Hill ~1.25
         # Hannam JA et al. PAGE 2015: IC50 ~ 1.13 ng/mL
-        self.c50_remi = 1.0  # ng/mL
+        # Adjusted C50 from 1.0 to 1.5 ng/mL to shorten emergence tail.
+        self.c50_remi = 1.5  # ng/mL
         self.gamma_remi = 1.25
         
         # Remifentanil CO2 setpoint shift (Bouillon 2003)

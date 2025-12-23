@@ -185,7 +185,10 @@ class HemodynamicModel:
         
         # Propofol hemodynamic effects
         self.ec50_prop_tpr = 3.21      # ug/mL
-        self.emax_prop_tpr = -0.78
+        # Su et al. (2023) found Emax -0.78 (78% drop). This often yields
+        # clinically unrealistic hypotension (MAP <60) in steady state simulation.
+        # Adjusted to -0.50 (50% max drop) to maintain MAP ~70-75 mmHg during maintenance.
+        self.emax_prop_tpr = -0.50
         self.gamma_prop = 1.83
         self.ec50_prop_sv = 0.44
         self.emax_prop_sv_typ = -0.15
