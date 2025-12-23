@@ -138,7 +138,7 @@ class SimulationSetupDialog(QDialog):
         h_scenario.addWidget(lbl_scenario)
         self.cb_scenario = QComboBox()
         self.cb_scenario.addItems([
-            "Use starting scenario (induction/emergence)",
+            "Starting scenario (induction/emergence)",
             "Hemorrhage response",
             "Anaphylaxis response"
         ])
