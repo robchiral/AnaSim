@@ -377,12 +377,13 @@ class TestEmergenceScenario:
             if engine.state.bis > 80 and bis_80_time is None:
                 bis_80_time = t
         
-        # HCVR should enable spontaneous MV > 3 L/min within ~17 min
-        # (Slightly longer due to increased propofol RR depression, w_prop_rr=0.6)
+        # HCVR should enable spontaneous MV > 3 L/min within ~20 min
+        # Multiplicative interaction (1 - d1)*(1 - d2) removes the artificial 5% drive floor,
+        # causing physiologically correct prolonged apnea compared to additive models.
         assert mv_3_time is not None, \
             "Spontaneous MV never reached 3 L/min during 30-min observation"
-        assert mv_3_time < 1000, \
-            f"MV > 3 L/min at {mv_3_time}s - expected within 1000s (~17 min)"
+        assert mv_3_time < 1200, \
+            f"MV > 3 L/min at {mv_3_time}s - expected within 1200s (~20 min)"
         
         # BIS should reach 80 within 25 min (depends on propofol PK, not HCVR)
         assert bis_80_time is not None, \
