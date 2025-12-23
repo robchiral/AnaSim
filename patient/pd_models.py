@@ -542,10 +542,12 @@ class TOFModel:
     MW_ROCURONIUM = 609.7   # g/mol
     MW_SUGAMMADEX = 2178.0  # g/mol
     
-    def __init__(self, patient: Patient, model_name: str = "Wierda", anesthesia_type: str = "TIVA"):
+    def __init__(self, patient: Patient, model_name: str = "Wierda", anesthesia_type: str = "TIVA",
+                 fidelity_mode: str = "clinical"):
         self.patient = patient
         self.model_name = model_name
         self.anesthesia_type = anesthesia_type
+        use_literature = (fidelity_mode == "literature")
         
         age = patient.age
         # sex: 0 male, 1 female
@@ -594,7 +596,7 @@ class TOFModel:
         # Recovery ke0: determines spontaneous recovery time
         # Literature: ke0 = 0.07 min^-1 (t1/2 ~10 min) for pure modeling
         # Tuned: 0.12 min^-1 (t1/2 ~6 min) to achieve clinical 40-70 min recovery
-        self.recovery_ke0 = 0.12    # min^-1, tuned for 50-60 min spontaneous recovery
+        self.recovery_ke0 = 0.07 if use_literature else 0.12    # min^-1 (literature 0.07, tuned 0.12)
         
         # Sigmoid Emax model parameters
         # Plaud B et al. Clin Pharmacol Ther 1995: Ce50 = 823 µg/L = 0.823 mg/L

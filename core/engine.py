@@ -301,7 +301,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.pk_sevo = VolatilePK(self.patient, "Sevoflurane", lambda_b_g=0.65, mac_40=2.1)
 
         # Hemodynamics - Integrated hemodynamic model
-        self.hemo = HemodynamicModel(self.patient)
+        self.hemo = HemodynamicModel(self.patient, fidelity_mode=self.config.fidelity_mode)
         if self.config.hemo_model not in ["Su2023", "Su", "Advanced", None, ""]:
             print(f"Note: hemo_model '{self.config.hemo_model}' not recognized, using default")
             
@@ -312,7 +312,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         }
         c50, emax, gamma = nore_pd_params.get(self.config.pk_model_nore, (7.04, 98.7, 1.8))
         self.hemo.set_nore_pd(c50=c50, emax=emax, gamma=gamma)
-        self.resp = RespiratoryModel(self.patient)
+        self.resp = RespiratoryModel(self.patient, fidelity_mode=self.config.fidelity_mode)
         self.resp_mech = RespiratoryMechanics()
         
         # Monitors
@@ -320,7 +320,11 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.capno = Capnograph()
         self.loc_pd = LOCModel(model_name=self.config.loc_model)
         self.tol_pd = TOLModel()
-        self.tof_pd = TOFModel(self.patient, model_name="Wierda") # Default Rocuronium Model
+        self.tof_pd = TOFModel(
+            self.patient,
+            model_name="Wierda",
+            fidelity_mode=self.config.fidelity_mode
+        ) # Default Rocuronium Model
         
         self.ecg = ECGMonitor()
         self.spo2_mon = SpO2Monitor()

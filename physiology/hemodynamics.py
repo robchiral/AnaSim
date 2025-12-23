@@ -82,8 +82,9 @@ class HemodynamicModel:
         - SVR: Wood Units (mmHg×min/L)
         - TPR: mmHg×min/mL (internal)
     """
-    def __init__(self, patient: Patient):
+    def __init__(self, patient: Patient, fidelity_mode: str = "clinical"):
         self.patient = patient
+        use_literature = (fidelity_mode == "literature")
         
         # =====================================================================
         # Core Model Parameters (Su et al. 2023 BJA)
@@ -187,8 +188,8 @@ class HemodynamicModel:
         self.ec50_prop_tpr = 3.21      # ug/mL
         # Su et al. (2023) found Emax -0.78 (78% drop). This often yields
         # clinically unrealistic hypotension (MAP <60) in steady state simulation.
-        # Adjusted to -0.50 (50% max drop) to maintain MAP ~70-75 mmHg during maintenance.
-        self.emax_prop_tpr = -0.50
+        # Clinical realism uses -0.50 (50% max drop) to maintain MAP ~70-75 mmHg during maintenance.
+        self.emax_prop_tpr = -0.78 if use_literature else -0.50
         self.gamma_prop = 1.83
         self.ec50_prop_sv = 0.44
         self.emax_prop_sv_typ = -0.15

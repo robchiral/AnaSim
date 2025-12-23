@@ -24,11 +24,12 @@ class RespiratoryModel:
     Respiratory depression model based on Propofol and Remifentanil.
     Models suppression of Respiratory Drive.
     """
-    def __init__(self, patient: Patient):
+    def __init__(self, patient: Patient, fidelity_mode: str = "clinical"):
         self.patient = patient
         self.rr_0 = patient.baseline_rr
         self.vt_0 = patient.baseline_vt
         self.baseline_hb = getattr(patient, 'baseline_hb', 13.5)
+        use_literature = (fidelity_mode == "literature")
         
         # Drug Effect Parameters (literature-based values)
         # 
@@ -40,7 +41,7 @@ class RespiratoryModel:
         # HCVR/Central Drive: Early potent effect on CO2 sensitivity
         # Increased C50 from 1.0 to 2.0 to allow faster emergence (return of spontaneous vent).
         # Literature range varies; higher value aligns better with clinical wake-up times (8-12 min).
-        self.c50_prop_hcvr = 2.0  # µg/mL - IC50 for HCVR slope depression
+        self.c50_prop_hcvr = 1.0 if use_literature else 2.0  # µg/mL - IC50 for HCVR slope depression
         self.gamma_prop_hcvr = 2.0
         
         # Mechanical depression (VT/RR): Higher concentrations needed for frank apnea
@@ -51,7 +52,7 @@ class RespiratoryModel:
         # Bouillon TW et al. Anesthesiology 2003: C50 ~ 0.92 ng/mL, Hill ~1.25
         # Hannam JA et al. PAGE 2015: IC50 ~ 1.13 ng/mL
         # Adjusted C50 from 1.0 to 1.5 ng/mL to shorten emergence tail.
-        self.c50_remi = 1.5  # ng/mL
+        self.c50_remi = 1.0 if use_literature else 1.5  # ng/mL
         self.gamma_remi = 1.25
         
         # Remifentanil CO2 setpoint shift (Bouillon 2003)
@@ -62,7 +63,7 @@ class RespiratoryModel:
         # Van den Elsen BJA 1998, Pandit BJA 1999: Even 0.1 MAC reduces HCVR
         # Dahan: ~50% depression at ~1 MAC for halogenated volatiles
         # Adjusted to 0.75 MAC for better alignment with human data
-        self.c50_sevo_mac = 0.75
+        self.c50_sevo_mac = 1.0 if use_literature else 0.75
         self.gamma_sevo = 2.0
         
         # 4. NMBA (Muscle Strength Only)
@@ -98,7 +99,7 @@ class RespiratoryModel:
         # Differential Effects Weights (0.0 - 1.0)
         # Propofol: VT falls more than RR
         # Increased w_prop_rr from 0.3 to 0.6 for more realistic RR depression at surgical depth
-        self.w_prop_rr = 0.6
+        self.w_prop_rr = 0.3 if use_literature else 0.6
         self.w_prop_vt = 1.0
         
         # Remifentanil: RR falls steeply, VT less so

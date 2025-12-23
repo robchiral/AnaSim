@@ -177,6 +177,14 @@ class SimulationSetupDialog(QDialog):
         self.cb_loc_model.addItems(["Kern", "Mertens", "Johnson"])
         self.cb_loc_model.setCurrentText("Kern")
         model_layout.addRow("LOC model:", self.cb_loc_model)
+
+        self.cb_fidelity = QComboBox()
+        self.cb_fidelity.addItem("Clinical realism (tuned)", "clinical")
+        self.cb_fidelity.addItem("Literature fidelity", "literature")
+        self.cb_fidelity.setToolTip(
+            "Toggle tuned parameters vs literature-derived values where noted in the models."
+        )
+        model_layout.addRow("Model fidelity:", self.cb_fidelity)
         
         # 5. Simulation Rules
         gb_rules = QGroupBox("Simulation rules")
@@ -239,6 +247,7 @@ class SimulationSetupDialog(QDialog):
             'pk_model_nore': self.cb_nore_model.currentText(),
             'bis_model': self.cb_bis_model.currentText(),
             'loc_model': self.cb_loc_model.currentText(),
+            'fidelity_mode': self.cb_fidelity.currentData(),
             'enable_death_detector': self.cb_death_detector.isChecked(),
             'arterial_line_enabled': self.cb_art_line.isChecked()
         }

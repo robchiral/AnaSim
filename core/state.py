@@ -20,6 +20,7 @@ class SimulationConfig:
     maint_type: str = "tiva" # 'tiva' or 'balanced'
     disturbance_profile: str = None # 'stim_intubation_pulse', 'stim_sustained_surgery'
     baseline_hb: float = 13.5
+    fidelity_mode: str = "clinical"  # "clinical" (tuned realism) or "literature"
     
     # Agents
     volatile_agents: List[str] = field(default_factory=lambda: ["sevoflurane"])

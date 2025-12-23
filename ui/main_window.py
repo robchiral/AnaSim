@@ -78,6 +78,7 @@ class MainWindow(QMainWindow):
             mode=p.get('mode', 'awake'),
             maint_type=p.get('maint_type', 'tiva'),
             baseline_hb=p.get('baseline_hb', 13.5),
+            fidelity_mode=p.get('fidelity_mode', 'clinical'),
             enable_death_detector=p.get('enable_death_detector', False)
         )
         self.engine = SimulationEngine(self.patient, self.config)
