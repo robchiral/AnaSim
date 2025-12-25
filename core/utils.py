@@ -45,6 +45,13 @@ def hill_function(c: float, c50: float, gamma: float) -> float:
     if c <= 0 or c50 <= 0 or gamma <= 0:
         return 0.0
     
+    # Optimization: if gamma is exactly 1.0, skip exponentiation
+    if gamma == 1.0:
+        ratio = c / c50
+        if ratio > CONCENTRATION_RATIO_SATURATION:
+            return 1.0 - 1e-6
+        return ratio / (1.0 + ratio + HILL_EPSILON)
+
     # Cap gamma to prevent overflow with very steep curves
     gamma = min(gamma, GAMMA_MAX)
     
