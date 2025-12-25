@@ -511,6 +511,7 @@ class ControlPanelWidget(QWidget):
             sb_bolus.setValue(def_bolus)
                 
             btn_give = QPushButton("Bolus")
+            btn_give.setToolTip("Administer immediate bolus dose")
             btn_give.setStyleSheet(get_button_style(bg_color=color, padding="6px 14px"))
             btn_give.clicked.connect(lambda: self.engine.give_drug_bolus(name, sb_bolus.value()))
             
@@ -595,6 +596,7 @@ class ControlPanelWidget(QWidget):
             btn = QPushButton(label)
             btn.setStyleSheet(get_button_style(bg_color=COLORS['info'], padding="6px 14px"))
             dose_mg = dose_mg_kg * self.engine.patient.weight
+            btn.setToolTip(f"Administer {int(dose_mg)} mg Sugammadex")
             btn.clicked.connect(lambda checked, d=dose_mg: self.engine.give_drug_bolus("sugammadex", d))
             h_sug.addWidget(btn)
         
@@ -768,12 +770,14 @@ class ControlPanelWidget(QWidget):
         h_hemo.addWidget(self.cb_hemo_severity)
         
         self.b_hem = QPushButton("Start bleeding")
+        self.b_hem.setToolTip("Simulate massive hemorrhage event")
         self.b_hem.setCheckable(True)
         self.b_hem.setStyleSheet(get_toggle_button_style(COLORS['danger'], text_color=COLORS['danger']))
         h_hemo.addWidget(self.b_hem)
         l_cr.addLayout(h_hemo)
         
         self.b_anaph = QPushButton("Start anaphylaxis")
+        self.b_anaph.setToolTip("Simulate anaphylactic shock")
         self.b_anaph.setCheckable(True)
         self.b_anaph.setStyleSheet(get_toggle_button_style(COLORS['warning'], text_color=COLORS['warning']))
         l_cr.addWidget(self.b_anaph)
