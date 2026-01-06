@@ -1,0 +1,61 @@
+# === Python Core ===
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+**/*.pyd
+**/*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# === Virtual Environments ===
+.env
+.venv
+env/
+venv/
+ENV/
+*.bak/
+
+# === Testing & Quality ===
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.cache
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# === IDEs & Editors ===
+.vscode/
+.idea/
+*.swp
+*.swo
+.spyderproject
+.spyproject
+.ropeproject
+
+# === macOS ===
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+
+# === Project Specific ===
+comparisons/
+docs/TODO.md
+.claude/
+
+# === Scripts ===
+reset_history.sh
+

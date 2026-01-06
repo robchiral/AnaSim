@@ -1,0 +1,710 @@
+"""
+Step Helper Methods Mixin for SimulationEngine.
+
+This module contains the private _step_* methods that implement the core
+simulation update logic. They are extracted here for maintainability while
+preserving the SimulationEngine API.
+"""
+
+from typing import TYPE_CHECKING
+import numpy as np
+
+from .state import AirwayType
+from anasim.core.constants import TEMP_METABOLIC_COEFFICIENT
+from anasim.core.utils import pao2_to_sao2, clamp, clamp01, hill_function
+from anasim.monitors.capno import Capnograph
+
+if TYPE_CHECKING:
+    from .engine import SimulationEngine
+
+
+class StepHelpersMixin:
+    """
+    Mixin providing step helper methods for SimulationEngine.
+    
+    These methods implement the per-step update logic for various subsystems:
+    - Temperature model
+    - Disturbances and events
+    - TCI controllers
+    - Machine state
+    - Pharmacokinetics
+    - Physiology (hemodynamics, respiration)
+    - Monitors
+    - Patient viability checks
+    """
+    
+    def _phase_from_rr(self: "SimulationEngine", rr: float) -> str:
+        """Calculate respiratory phase from rate."""
+        if rr <= 0:
+            return "EXP"
+        cycle_time = 60.0 / rr
+        insp_time = cycle_time / 3.0
+        t_cycle = self.state.time % cycle_time
+        return "INSP" if t_cycle < insp_time else "EXP"
+    
+    def _step_temperature(self: "SimulationEngine", dt: float):
+        """
+        Update patient temperature based on metabolic heat production and heat loss.
+        """
+        # Metabolic heat production (reduced by anesthetic depth).
+        depth_index = self.state.mac + (self.state.propofol_ce / 4.0)
+        depth_factor = min(1.0, depth_index)
+        
+        metabolic_reduction = 0.3 * depth_factor
+        current_production = self.heat_production_basal * (1.0 - metabolic_reduction)
+        
+        # Heat loss: linear transfer vs ambient.
+        t_ambient = 20.0
+        
+        # Base conductance tuned for ~80-100W loss at steady state (37C vs 20C).
+        base_conductance = 3.0 
+        
+        # Vasodilation under anesthesia increases conductance (up to +50%).
+        anest_conductance_boost = 0.5 * depth_factor
+        total_conductance = base_conductance * (1.0 + anest_conductance_boost) * (self.surface_area / 1.9)
+        
+        heat_loss = total_conductance * (self.state.temp_c - t_ambient)
+        
+        # Redistribution: rapid deepening adds transient heat loss.
+        d_depth = (depth_index - self._last_depth_index) / dt
+        self._last_depth_index = depth_index
+        
+        if d_depth > 0:
+            k_redist = self.K_REDIST
+            redistribution_flux = k_redist * d_depth
+            heat_loss += redistribution_flux
+        
+        # Active warming (Bair Hugger) via convection.
+        warming_input = 0.0
+        if self.state.bair_hugger_target > 0:
+             k_bair = 7.0 
+             dt_warming = max(0.0, self.state.bair_hugger_target - self.state.temp_c)
+             warming_input = k_bair * dt_warming
+        
+        net_heat_flux = current_production + warming_input - heat_loss
+        
+        # dT = Q * dt / (mass * specific_heat).
+        heat_capacity = self.patient.weight * self.specific_heat
+        
+        d_temp = (net_heat_flux * dt) / heat_capacity
+        
+        self.state.temp_c += d_temp
+        
+        # Clamp to physiologic bounds.
+        self.state.temp_c = clamp(self.state.temp_c, 25.0, 42.0)
+
+    def _step_disturbances(self: "SimulationEngine", dt: float) -> tuple:
+        """Calculate disturbances and handle events."""
+        disturbance_active = getattr(self, "disturbance_active", False)
+        disturbances = self.disturbances
+        if not disturbance_active or not disturbances:
+            dist_vec = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        else:
+            t_rel = max(0.0, self.state.time - getattr(self, "disturbance_start_time", 0.0))
+            dist_vec = disturbances.compute_dist(t_rel)
+        if hasattr(dist_vec, "as_tuple"):
+            dist_vec = dist_vec.as_tuple()
+        d_bis, d_map, d_co, d_svr, d_sv, d_hr = dist_vec
+
+        # Attenuate stimulus with anesthetic depth (deeper = less response).
+        # Use cached depth_index from step()
+        depth_factor = min(1.0, self._depth_index)
+        stim_gain = max(0.3, 1.0 - 0.6 * depth_factor)
+        d_bis *= stim_gain
+        d_svr *= stim_gain
+        d_sv *= stim_gain
+        d_hr *= stim_gain
+        
+        if self.active_hemorrhage:
+            # Bleed rate (mL/s). Default 500 mL/min = 8.33 mL/s
+            rate_sec = self.hemorrhage_rate_ml_min / 60.0
+            hemo = self.hemo
+            if hemo:
+                hemo.add_volume(-rate_sec * dt)
+        
+        # Infusions (fluids / blood) with realistic rates.
+        if self.pending_infusions:
+            finished = []
+            for infusion in self.pending_infusions:
+                rate_sec = infusion['rate'] / 60.0
+                amount_this_step = min(infusion['remaining'], rate_sec * dt)
+                infusion['remaining'] -= amount_this_step
+                if amount_this_step > 0:
+                    hemo = self.hemo
+                    if hemo:
+                        hemo.add_volume(amount_this_step, hematocrit=infusion['hematocrit'])
+                if infusion['remaining'] <= 1e-3:
+                    finished.append(infusion)
+            for infusion in finished:
+                self.pending_infusions.remove(infusion)
+            
+        # Anaphylaxis: ramp on/off for realistic hemodynamic changes.
+        if self.active_anaphylaxis:
+            # Ramp up severity
+            self.anaphylaxis_severity = min(1.0, self.anaphylaxis_severity + self.anaphylaxis_onset_rate * dt)
+        else:
+            # Decay severity when not active (simulates treatment effect)
+            self.anaphylaxis_severity = max(0.0, self.anaphylaxis_severity - self.anaphylaxis_decay_rate * dt)
+        
+        if self.anaphylaxis_severity > 0.01:
+            # Bronchospasm handled in airway model (see _update_airway_complications)
+            pass
+
+        # Sepsis / distributive shock: gradual onset/offset.
+        if getattr(self, "active_sepsis", False):
+            self.sepsis_severity = min(1.0, self.sepsis_severity + self.sepsis_onset_rate * dt)
+        else:
+            self.sepsis_severity = max(0.0, self.sepsis_severity - self.sepsis_decay_rate * dt)
+        hemo = self.hemo
+        if hemo:
+            self.hemo.anaphylaxis_severity = self.anaphylaxis_severity
+            self.hemo.sepsis_severity = self.sepsis_severity
+            if hasattr(hemo, "invalidate_state_cache"):
+                hemo.invalidate_state_cache()
+        
+        dist_vec = (d_bis, d_map, d_co, d_svr, d_sv, d_hr)
+        return dist_vec
+
+    def _step_tci(self: "SimulationEngine", dt: float):
+        """Update TCI controllers."""
+        tci_targets = (
+            ("tci_prop", "propofol_rate_mg_sec"),
+            ("tci_remi", "remi_rate_ug_sec"),
+            ("tci_nore", "nore_rate_ug_sec"),
+            ("tci_epi", "epi_rate_ug_sec"),
+            ("tci_phenyl", "phenyl_rate_ug_sec"),
+            ("tci_roc", "roc_rate_mg_sec"),
+        )
+        for tci_attr, rate_attr in tci_targets:
+            controller = getattr(self, tci_attr, None)
+            if controller:
+                rate = controller.step(controller.target, sim_time=self.state.time)
+                setattr(self, rate_attr, rate)
+
+    def _step_machine(self: "SimulationEngine", dt: float) -> float:
+        """
+        Update Machine State (Circuit -> Composition).
+        Returns: fi_sevo
+        """
+        # Use prior-step VA from state (spontaneous + mechanical).
+        connected = (self.state.airway_mode != AirwayType.NONE)
+        total_va = self.state.va if (connected and self.state.va > 0) else 0.0
+        
+        if not connected:
+            fi_sevo = 0.0
+            self.state.fio2 = 0.21
+        else:
+            fi_vapor_circuit = self.circuit.composition.fi_agent 
+            fi_sevo = fi_vapor_circuit if self.active_agent == "Sevoflurane" else 0.0
+            # Update state FiO2 from circuit
+            self.state.fio2 = self.circuit.composition.fio2
+
+        self.state.fi_sevo = fi_sevo * 100.0
+        
+        p_alv_prev = self.pk_sevo.state.p_alv
+        uptake_sevo = (fi_sevo - p_alv_prev) * total_va
+
+        # O2 uptake tied to metabolic rate and temperature
+        uptake_o2 = 0.25
+        if self.resp:
+            metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - self.state.temp_c)
+            vco2_ml_min = self.resp.vco2 * metabolic_factor
+            uptake_o2 = (vco2_ml_min / 1000.0) / max(self.resp.rq, 0.1)
+        
+        self.circuit.step(dt, uptake_o2, uptake_sevo)
+        
+        return fi_sevo
+
+    def _step_pk(self: "SimulationEngine", dt: float, fi_sevo: float, co_curr: float):
+        """Update Pharmacokinetics."""
+        self._update_pk_hemodynamics(co_curr)
+
+        self.pk_sevo.step(dt, fi_sevo, self.state.va, co_curr, temp_c=self.state.temp_c)
+        self.state.et_sevo = self.pk_sevo.state.p_alv * 100.0
+        self.state.mac = self.pk_sevo.state.mac
+        
+        self.pk_prop.step(dt, self.propofol_rate_mg_sec)
+        self.pk_remi.step(dt, self.remi_rate_ug_sec) 
+        self.pk_nore.step(dt, self.nore_rate_ug_sec, propofol_conc_ug_ml=self.pk_prop.state.c1)
+        self.pk_roc.step(dt, self.roc_rate_mg_sec)
+        self.pk_epi.step(dt, self.epi_rate_ug_sec)
+        self.pk_phenyl.step(dt, self.phenyl_rate_ug_sec)
+        
+        # Single point of truth for PK sync to public state.
+        self._sync_pk_state()
+
+    def _sync_pk_state(self: "SimulationEngine"):
+        """Synchronize PK concentrations from subsystem states to public state.
+        
+        This is the only place where PK subsystem → engine state copying occurs.
+        Called at the end of _step_pk after all PK models have been updated.
+        
+        All vasopressors now use effect-site concentration (.ce) for hemodynamic
+        effects, providing realistic 1-2 minute delays after bolus administration.
+        """
+        self.state.propofol_ce = self.pk_prop.state.ce
+        self.state.propofol_cp = self.pk_prop.state.c1
+        self.state.remi_ce = self.pk_remi.state.ce
+        self.state.remi_cp = self.pk_remi.state.c1
+        self.state.nore_ce = self.pk_nore.state.ce  # Effect-site (ke0 modeled)
+        self.state.roc_ce = self.pk_roc.state.ce
+        self.state.roc_cp = self.pk_roc.state.c1
+        self.state.epi_ce = self.pk_epi.state.ce    # Effect-site (ke0 modeled)
+        self.state.phenyl_ce = self.pk_phenyl.state.ce  # Effect-site (ke0 modeled)
+
+    def _update_pk_hemodynamics(self: "SimulationEngine", co_curr: float):
+        """Scale PK parameters based on current blood volume and CO."""
+        if not self.hemo:
+            return
+        base_bv = getattr(self.hemo, "blood_volume_0", 0.0)
+        base_co = getattr(self.hemo, "base_co_l_min", 0.0)
+        if base_bv <= 0.0 or base_co <= 0.0:
+            return
+        v_ratio = self.hemo.blood_volume / base_bv
+        co_ratio = co_curr / base_co
+        v_ratio = clamp(v_ratio, 0.1, 2.0)
+        co_ratio = clamp(co_ratio, 0.1, 2.0)
+        for model in (
+            self.pk_prop,
+            self.pk_remi,
+            self.pk_nore,
+            self.pk_roc,
+            self.pk_epi,
+            self.pk_phenyl,
+        ):
+            if model and hasattr(model, "update_hemodynamics"):
+                model.update_hemodynamics(v_ratio, co_ratio)
+
+    def _update_airway_complications(self: "SimulationEngine", dt: float):
+        """
+        Update airway obstruction/bronchospasm and apply to mechanics.
+
+        Integrates manual controls, anaphylaxis bronchospasm, and
+        auto-triggered laryngospasm from light anesthesia + stimulation.
+        """
+        # Tolerance of airway stimulation (0-1). Higher = more tolerant.
+        if self.tol_pd:
+            tol = self.tol_pd.compute_probability(
+                self.state.propofol_ce, self.state.remi_ce, mac=self.state.mac
+            )
+        else:
+            tol = getattr(self.state, "tol", 0.0)
+        tol = clamp01(tol)
+
+        # Airway stimulation signal (use intubation profile as proxy)
+        stim_profile = self.disturbance_profile or ""
+        stim_active = bool(
+            self.auto_laryngospasm_enabled and
+            getattr(self, "disturbance_active", False) and
+            ("intubation" in stim_profile)
+        )
+        stim_scale = 1.0
+
+        # NMBA reduces laryngospasm reflexes
+        nmba_effect = 0.0
+        if self.resp:
+            nmba_effect = hill_function(self.state.roc_ce, self.resp.c50_nmba, self.resp.gamma_nmba)
+        muscle_factor = clamp01(1.0 - nmba_effect)
+
+        # Auto laryngospasm target (upper airway) only if not intubated
+        laryng_target = 0.0
+        if self.state.airway_mode != AirwayType.ETT and stim_active:
+            light_factor = clamp01(1.0 - tol)
+            laryng_target = clamp01(light_factor * muscle_factor * stim_scale)
+
+        # First-order approach to target with separate on/off time constants
+        tau = self.laryngospasm_tau_on if laryng_target > self.laryngospasm_severity else self.laryngospasm_tau_off
+        if tau > 0:
+            self.laryngospasm_severity += (laryng_target - self.laryngospasm_severity) * (dt / tau)
+        self.laryngospasm_severity = clamp01(self.laryngospasm_severity)
+
+        # Upper airway obstruction (manual + auto)
+        upper_obstruction = self.airway_obstruction_manual
+        if self.state.airway_mode != AirwayType.ETT:
+            upper_obstruction = max(upper_obstruction, self.laryngospasm_severity)
+        upper_obstruction = clamp01(upper_obstruction)
+
+        # Bronchospasm (manual + anaphylaxis)
+        bronch = 1.0 - (1.0 - self.bronchospasm_manual) * (1.0 - self.anaphylaxis_severity)
+        bronch = clamp01(bronch)
+
+        # Apply to mechanics (resistance in cmH2O/(L/s))
+        base_r = getattr(self, "_base_airway_resistance", 10.0)
+        r_upper = 40.0 * upper_obstruction
+        r_bronch = 20.0 * bronch
+        if self.resp_mech:
+            self.resp_mech.resistance = base_r + r_upper + r_bronch
+
+        # Patency: upper airway affects delivered volume; bronchospasm affects efficiency
+        self._airway_patency = clamp(1.0 - upper_obstruction, 0.0, 1.0)
+        self._ventilation_efficiency = clamp(1.0 - 0.5 * bronch - 0.2 * upper_obstruction, 0.1, 1.0)
+        self._capno_obstruction = clamp01(upper_obstruction + 0.7 * bronch)
+        self._vq_mismatch = clamp01(0.85 * bronch + 0.25 * upper_obstruction)
+
+        # Publish to public state
+        self._tol_current = tol
+        self.state.airway_obstruction = upper_obstruction
+        self.state.bronchospasm = bronch
+        self.state.laryngospasm = self.laryngospasm_severity
+
+    def _step_physiology(self: "SimulationEngine", dt: float, dist_vec: tuple):
+        """Update Hemo and Respiration with enhanced ventilator dynamics."""
+        d_bis, d_map, d_co, d_svr, d_sv, d_hr = dist_vec
+        state = self.state
+        resp_mech = self.resp_mech
+        resp = self.resp
+        hemo = self.hemo
+        
+        self._update_airway_complications(dt)
+
+        connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
+        vent_active = connected and self.vent.is_on
+        bag_mask_active = self.bag_mask_active and connected and not vent_active
+
+        # Mechanical lung step (assisted ventilation only).
+        if vent_active:
+            mech_state = resp_mech.step(dt)
+            total_peep_effect = resp_mech.get_total_peep()
+        elif bag_mask_active:
+            # Save current vent settings, apply bag-mask settings, then restore.
+            saved_settings = (
+                resp_mech.set_rr,
+                resp_mech.set_vt,
+                resp_mech.set_peep,
+                resp_mech.mode,
+                resp_mech.set_p_insp,
+                resp_mech.insp_time_fraction,
+            )
+            resp_mech.set_settings(self.bag_mask_rr, self.bag_mask_vt, 0.0, ie="1:2", mode="VCV")
+            mech_state = resp_mech.step(dt)
+            total_peep_effect = resp_mech.get_total_peep()
+            (
+                resp_mech.set_rr,
+                resp_mech.set_vt,
+                resp_mech.set_peep,
+                resp_mech.mode,
+                resp_mech.set_p_insp,
+                resp_mech.insp_time_fraction,
+            ) = saved_settings
+        else:
+            # No assisted ventilation: decay residual volume without applying PEEP.
+            saved_settings = (
+                resp_mech.set_rr,
+                resp_mech.set_peep,
+            )
+            resp_mech.set_rr = 0.0
+            resp_mech.set_peep = 0.0
+            mech_state = resp_mech.step(dt)
+            total_peep_effect = 0.0
+            mech_state.paw_mean = 0.0
+            mech_state.auto_peep = 0.0
+            resp_mech.set_rr, resp_mech.set_peep = saved_settings
+        
+        # Intrathoracic pressure from smoothed mean Paw.
+        alpha_paw = 0.05  # Faster tracking of mean Paw changes
+        if mech_state.paw_mean > 0:
+            self.current_mean_paw = (1 - alpha_paw) * self.current_mean_paw + alpha_paw * mech_state.paw_mean
+        else:
+            self.current_mean_paw = (1 - alpha_paw) * self.current_mean_paw + alpha_paw * mech_state.paw
+        
+        # Higher mean Paw and auto-PEEP increase Pit, reducing venous return.
+        pit_estimate = -2.0 + 0.4 * (self.current_mean_paw - 5.0) + 0.3 * mech_state.auto_peep
+
+        # Mechanical ventilator MV calculation.
+        mech_rr = resp_mech.set_rr if vent_active else 0.0
+        delivered_vt_raw_l = 0.0
+        delivered_vt_display_l = 0.0
+        if vent_active:
+            if mech_state.delivered_vt > 0:
+                delivered_vt_raw_l = mech_state.delivered_vt / 1000.0
+            else:
+                delivered_vt_raw_l = resp_mech.set_vt
+            delivered_vt_display_l = delivered_vt_raw_l * self._airway_patency
+            mech_state.delivered_vt = delivered_vt_display_l * 1000.0
+        mech_vent_mv = mech_rr * delivered_vt_raw_l if vent_active else 0.0
+        
+        # Bag-mask ventilation (separate from mechanical vent).
+        bag_mask_mv = 0.0
+        bag_mask_rr_for_resp = 0.0
+        bag_mask_vt_for_resp = 0.0
+        bag_mask_vt_display = 0.0
+        if bag_mask_active:
+            bag_mask_mv = self.bag_mask_rr * self.bag_mask_vt
+            bag_mask_rr_for_resp = self.bag_mask_rr
+            bag_mask_vt_for_resp = self.bag_mask_vt
+            bag_mask_vt_display = self.bag_mask_vt * self._airway_patency
+        
+        # Total assisted MV = mechanical vent + bag-mask (mutually exclusive in practice).
+        total_assisted_mv = mech_vent_mv + bag_mask_mv
+        
+        # Bag-mask takes precedence if active (typically when vent is off).
+        assisted_rr_for_resp = bag_mask_rr_for_resp if bag_mask_rr_for_resp > 0 else mech_rr
+        assisted_vt_for_resp = bag_mask_vt_for_resp if bag_mask_vt_for_resp > 0 else delivered_vt_raw_l
+
+        # Respiration step with PEEP for oxygenation.
+        resp_state = resp.step(
+            dt, 
+            ce_prop=state.propofol_ce, 
+            ce_remi=state.remi_ce, 
+            mech_vent_mv=total_assisted_mv,  # Use combined assisted MV
+            fio2=state.fio2,
+            ce_roc=state.roc_ce, 
+            et_sevo=state.et_sevo,
+            mac_sevo=state.mac,
+            peep=total_peep_effect,  # Pass total PEEP for oxygenation
+            mean_paw=self.current_mean_paw,
+            temp_c=state.temp_c,
+            mech_rr=assisted_rr_for_resp,
+            mech_vt_l=assisted_vt_for_resp,
+            airway_patency=self._airway_patency,
+            ventilation_efficiency=self._ventilation_efficiency,
+            vq_mismatch=self._vq_mismatch,
+            hb_g_dl=hemo.hb_conc,
+            oxygen_delivery_ratio=self._do2_ratio,
+            cardiac_output=state.co
+        )
+        
+        spont_rr = resp_state.rr
+        spont_vt_l = resp_state.vt / 1000.0
+        
+        # Calculate synchronized MV (prevent double counting).
+        if vent_active or bag_mask_active:
+             eff_rr = max(assisted_rr_for_resp, spont_rr)
+             assisted_vt_display = bag_mask_vt_display if bag_mask_active else delivered_vt_display_l
+             eff_vt = max(assisted_vt_display, spont_vt_l)
+             total_patient_mv = eff_rr * eff_vt
+        else:
+             total_patient_mv = spont_rr * spont_vt_l
+        
+        assisted_rr = 0.0
+        if vent_active:
+            assisted_rr = mech_rr
+        elif bag_mask_active:
+            assisted_rr = self.bag_mask_rr
+        
+        phase = mech_state.phase
+        assisted_active = vent_active or bag_mask_active
+        if not assisted_active:
+            phase = self._phase_from_rr(spont_rr)
+        elif bag_mask_active and not vent_active:
+            phase = self._phase_from_rr(self.bag_mask_rr)
+        
+        # Displayed RR matches clinical capnography/flow-based detection.
+        if vent_active:
+            state.rr = max(assisted_rr, spont_rr)
+        elif bag_mask_active:
+            state.rr = max(self.bag_mask_rr, spont_rr)
+        else:
+            state.rr = spont_rr
+
+        mac_sevo = state.mac
+        hemo_state = hemo.step(
+            dt,
+            state.propofol_ce,
+            state.remi_ce,
+            state.nore_ce,
+            pit=pit_estimate,
+            paco2=resp_state.p_alveolar_co2,
+            pao2=resp_state.p_arterial_o2,
+            dist_hr=d_hr,
+            dist_sv=d_sv,
+            dist_svr=d_svr,
+            mac=state.mac,
+            mac_sevo=mac_sevo,
+            ce_epi=state.epi_ce,
+            ce_phenyl=state.phenyl_ce,
+            temp_c=state.temp_c,
+        )
+        
+        self.vent.step(dt, mech_state)
+                                    
+        state.map = hemo_state.map # Raw
+        state.hr = hemo_state.hr   # Raw
+        state.sv = hemo_state.sv
+        state.svr = hemo_state.svr 
+        state.co = hemo_state.co
+        
+        # New hemodynamic fields
+        state.sbp = getattr(hemo_state, 'sbp', state.map + 20)
+        state.dbp = getattr(hemo_state, 'dbp', state.map - 20)
+        state.blood_volume = getattr(hemo, 'blood_volume', 5000.0)
+        state.hb_g_dl = getattr(hemo, 'hb_conc', state.hb_g_dl)
+        if hasattr(hemo, 'get_hematocrit'):
+            state.hct = hemo.get_hematocrit()
+
+        state.pit = pit_estimate
+        
+        state.paco2 = resp_state.p_alveolar_co2
+        state.pao2 = resp_state.p_arterial_o2
+        
+        # Use delivered Vt from mechanics (important for PCV mode).
+        if vent_active and mech_state.delivered_vt > 0:
+            state.vt = mech_state.delivered_vt
+        elif vent_active:
+            state.vt = resp_mech.set_vt * 1000.0
+        else:
+            state.vt = resp_state.vt
+            
+        state.mv = total_patient_mv
+        state.va = resp_state.va
+        state.apnea = resp_state.apnea
+        state.paw = mech_state.paw
+        state.flow = mech_state.flow
+        state.volume = mech_state.volume
+        self._vent_active = vent_active
+        pao2_est = max(0.0, resp_state.p_arterial_o2)
+        sao2_est = pao2_to_sao2(pao2_est)
+        co_for_do2 = max(0.1, state.co)
+        self._do2_ratio = hemo.compute_do2_ratio(sao2_est / 100.0, pao2_est, co_for_do2)
+        state.oxygen_delivery_ratio = self._do2_ratio
+        
+        return hemo_state, resp_state, phase
+
+    def _step_monitors(self: "SimulationEngine", dt: float, phase: str, hemo_state, resp_state, dist_vec):
+        """Update Monitors and calculate smoothed state."""
+        d_bis, d_map, d_co, d_svr, d_sv, d_hr = dist_vec
+        
+        remi_rate_ug_kg_min = self.remi_rate_ug_sec * 60.0 / self.patient.weight
+
+        bis_val = self.bis.step(dt, self.state.propofol_ce, self.state.remi_ce,
+                                mac_sevo=self.pk_sevo.state.mac,
+                                remi_rate_ug_kg_min=remi_rate_ug_kg_min)
+                                
+        # Capnography context is computed in monitors/capno to avoid duplication.
+        bag_mask_active = self.bag_mask_active and self.state.airway_mode != AirwayType.NONE and not self._vent_active
+        vent_rr = self.resp_mech.set_rr if self._vent_active else (self.bag_mask_rr if bag_mask_active else 0.0)
+        insp_fraction = self.resp_mech.insp_time_fraction
+        if bag_mask_active and not self._vent_active:
+            insp_fraction = 1.0 / 3.0
+        capno_context = Capnograph.build_context(
+            resp_state,
+            vent_rr=vent_rr,
+            insp_fraction=insp_fraction,
+            vent_active=(self._vent_active or bag_mask_active)
+        )
+
+        if self.state.airway_mode == AirwayType.NONE:
+            capno_val = 0.0
+        elif self._airway_patency < 0.05:
+            # Near-complete upper airway obstruction: no measurable waveform.
+            capno_val = 0.0
+            self.capno.state.co2 = 0.0
+        elif self.state.rr == 0:
+            # Apneic: no gas flow, no waveform.
+            capno_val = 0.0
+            self.capno.state.co2 = 0.0  # Reset capnograph
+        else:
+            capno_p_alv = resp_state.p_alveolar_co2 * self._airway_patency
+            capno_val = self.capno.step(dt, phase, capno_p_alv, 
+                                        is_spontaneous=capno_context.is_spontaneous,
+                                        curare_cleft=capno_context.curare_active,
+                                        exp_duration=capno_context.exp_duration,
+                                        effort_scale=capno_context.effort_scale,
+                                        airway_obstruction=self._capno_obstruction)
+        
+        # Neuromuscular PD uses step_recovery for effect-site & sugammadex binding.
+        tof_val = self.tof_pd.step_recovery(dt, self.state.roc_cp, mac_sevo=self.pk_sevo.state.mac)
+        loc_val = self.loc_pd.compute_probability(self.state.propofol_ce, self.state.remi_ce)
+        if getattr(self, "_tol_current", None) is not None:
+            tol_val = self._tol_current
+        else:
+            tol_val = self.tol_pd.compute_probability(self.state.propofol_ce, self.state.remi_ce)
+
+        rhythm = getattr(hemo_state, 'rhythm_type', None)
+        self.state.ecg_voltage = self.ecg.step(dt, state_hr=hemo_state.hr, rhythm_type=rhythm)
+        
+        sao2 = resp_state.sao2        
+        pleth, spo2_val = self.spo2_mon.step(dt, hr=hemo_state.hr, saturation=sao2)
+        self.state.pleth_voltage = pleth
+        
+        if self.state.time >= self._next_nibp_time and not self.nibp.is_cycling:
+            self.nibp.trigger()
+            self._next_nibp_time = self.state.time + self.nibp.interval
+
+        prev_ts = self.state.nibp_timestamp
+        cuff_p = self.nibp.step(dt, self.state.time, hemo_state.map, true_sys=getattr(hemo_state, "sbp", None))
+        
+        self.state.nibp_is_cycling = self.nibp.is_cycling
+        self.state.nibp_cuff_pressure = cuff_p
+        
+        if self.nibp.latest_reading.timestamp > 0.0 and self.nibp.latest_reading.timestamp != prev_ts:
+            self.state.nibp_sys = self.nibp.latest_reading.systolic
+            self.state.nibp_dia = self.nibp.latest_reading.diastolic
+            self.state.nibp_map = self.nibp.latest_reading.map
+            self.state.nibp_timestamp = self.nibp.latest_reading.timestamp
+
+        # Smoothing & final state updates.
+        noise_std = np.array([0.5, 0.5, 0.2])  # MAP, HR, BIS standard deviations
+        noise = self.rng.normal(0, 1, 3) * noise_std
+        
+        raw_map = hemo_state.map + d_map + noise[0]
+        raw_hr = hemo_state.hr + noise[1]
+        raw_bis = bis_val + d_bis + noise[2]
+        
+        alpha = 0.1
+        self.smooth_map = (1 - alpha) * self.smooth_map + alpha * raw_map
+        self.smooth_hr = (1 - alpha) * self.smooth_hr + alpha * raw_hr
+        self.smooth_bis = (1 - alpha) * self.smooth_bis + alpha * raw_bis
+        
+        self.state.map = self.smooth_map
+        self.state.hr = self.smooth_hr
+        self.state.bis = clamp(self.smooth_bis, 0.0, 100.0)
+        self.state.capno_co2 = capno_val
+        self.state.etco2 = resp_state.etco2 if self.state.airway_mode != AirwayType.NONE else 0.0
+        self.state.tof = tof_val
+        self.state.loc = loc_val
+        self.state.tol = tol_val
+        self.state.spo2 = spo2_val
+        
+        monitor_vals = {
+            'BIS': self.state.bis,
+            'MAP': self.state.map,
+            'HR': self.state.hr,
+            'EtCO2': self.state.etco2,
+            'SpO2': self.state.spo2
+        }
+        self.state.alarms = self.alarms.update(monitor_vals)
+
+    def _check_patient_viability(self: "SimulationEngine", dt: float):
+        """
+        Check if patient vitals are compatible with life.
+        Only runs if enabled in config.
+        """
+        if not self.config.enable_death_detector:
+            return
+            
+        if self.state.is_dead:
+            return
+            
+        # Thresholds.
+        MAP_CRITICAL_LOW = 20.0  # mmHg (Raised from 15 to ensure detection)
+        HR_CRITICAL_LOW = 10.0   # bpm
+        HR_CRITICAL_HIGH = 220.0 # bpm (matches HR clamp)
+        
+        if self.state.map < MAP_CRITICAL_LOW:
+            self.time_hypotension += dt
+        else:
+            self.time_hypotension = max(0, self.time_hypotension - dt) # Decay accumulator
+            
+        if self.state.hr < HR_CRITICAL_LOW:
+            self.time_brady += dt
+        else:
+            self.time_brady = max(0, self.time_brady - dt)
+            
+        if self.state.hr > HR_CRITICAL_HIGH:
+            self.time_tachy += dt
+        else:
+             self.time_tachy = max(0, self.time_tachy - dt)
+             
+        if self.time_hypotension > self.DEATH_GRACE_PERIOD:
+            self.state.is_dead = True
+            self.state.death_reason = "Extreme Hypotension / Cardiac Arrest (MAP < 20 mmHg)"
+            print(f"DEATH TRIGGERED: Hypotension ({self.state.map:.1f} mmHg)")
+        elif self.time_brady > self.DEATH_GRACE_PERIOD:
+            self.state.is_dead = True
+            self.state.death_reason = "Asystole / Extreme Bradycardia (HR < 10 bpm)"
+            print(f"DEATH TRIGGERED: Bradycardia ({self.state.hr:.1f} bpm)")
+        elif self.time_tachy > self.DEATH_GRACE_PERIOD:
+            self.state.is_dead = True
+            self.state.death_reason = "Extreme Tachycardia / VFib (HR > 250 bpm)"
+            print(f"DEATH TRIGGERED: Tachycardia ({self.state.hr:.1f} bpm)")
