@@ -122,6 +122,7 @@ class SimulationState:
     temp_c: float = 37.0
     bair_hugger_target: float = 0.0 # 0.0 means OFF. Otherwise target temp (32, 38, 43)
     oxygen_delivery_ratio: float = 1.0
+    shivering: float = 0.0
 
     # Waveform snapshots (instantaneous values; history lives elsewhere).
     ecg_voltage: float = 0.0

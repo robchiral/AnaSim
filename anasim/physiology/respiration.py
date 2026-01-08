@@ -1,7 +1,8 @@
 import math
 from dataclasses import dataclass
 from anasim.core.constants import (
-    RR_APNEA_THRESHOLD, RR_BRADYPNEA_THRESHOLD, VT_MIN, TEMP_METABOLIC_COEFFICIENT
+    RR_APNEA_THRESHOLD, RR_BRADYPNEA_THRESHOLD, VT_MIN, TEMP_METABOLIC_COEFFICIENT,
+    SHIVER_MAX_MULTIPLIER
 )
 from anasim.patient.patient import Patient
 from anasim.core.utils import hill_function, clamp01
@@ -152,6 +153,7 @@ class RespiratoryModel:
              airway_patency: float = 1.0, ventilation_efficiency: float = 1.0,
              vq_mismatch: float = 0.0,
              hb_g_dl: float = None, oxygen_delivery_ratio: float = 1.0,
+             shiver_level: float = 0.0,
              cardiac_output: float = 5.0) -> RespState:
         """
         Step respiration.
@@ -170,6 +172,7 @@ class RespiratoryModel:
             airway_patency: 0-1 upper airway patency (upper obstruction)
             ventilation_efficiency: 0-1 gas exchange efficiency (bronchospasm)
             vq_mismatch: 0-1 V/Q mismatch severity (affects A-a gradient)
+            shiver_level: 0-1 shivering intensity (metabolic multiplier)
         """
         state = self.state
         hill = hill_function
@@ -381,6 +384,8 @@ class RespiratoryModel:
             self._cached_temp = temp_c
             self._cached_metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
         metabolic_factor = self._cached_metabolic_factor
+        shiver_mult = 1.0 + SHIVER_MAX_MULTIPLIER * clamp01_local(shiver_level)
+        metabolic_factor *= shiver_mult
         
         paco2_base = 40.0
         paco2_eq = paco2_base * metabolic_factor * (va_baseline / effective_va)

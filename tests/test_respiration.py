@@ -301,3 +301,45 @@ class TestHypercapnicVentilatoryResponse:
         # Minute ventilation should be adequate for emergence
         assert state.mv > 3.0, \
             f"MV {state.mv:.1f} L/min too low for adequate emergence ventilation"
+
+
+class TestShiveringMetabolicEffect:
+    def test_shivering_raises_paco2(self, patient):
+        """Shivering should increase CO2 production at fixed ventilation."""
+        dt = 1.0
+        mech_rr = 12.0
+        mech_vt_l = 0.5
+        mech_mv = mech_rr * mech_vt_l
+
+        model_low = RespiratoryModel(patient)
+        for _ in range(600):
+            model_low.step(
+                dt,
+                ce_prop=0.0,
+                ce_remi=0.0,
+                ce_roc=0.0,
+                mech_vent_mv=mech_mv,
+                mech_rr=mech_rr,
+                mech_vt_l=mech_vt_l,
+                temp_c=35.0,
+                shiver_level=0.0,
+            )
+        paco2_low = model_low.state.p_alveolar_co2
+
+        model_high = RespiratoryModel(patient)
+        for _ in range(600):
+            model_high.step(
+                dt,
+                ce_prop=0.0,
+                ce_remi=0.0,
+                ce_roc=0.0,
+                mech_vent_mv=mech_mv,
+                mech_rr=mech_rr,
+                mech_vt_l=mech_vt_l,
+                temp_c=35.0,
+                shiver_level=1.0,
+            )
+        paco2_high = model_high.state.p_alveolar_co2
+
+        assert paco2_high > paco2_low + 10.0, \
+            f"Shivering PaCO2 {paco2_high:.1f} not sufficiently above baseline {paco2_low:.1f}"

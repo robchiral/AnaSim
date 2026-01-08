@@ -39,6 +39,7 @@ See [docs/CLI_USAGE.md](docs/CLI_USAGE.md) for detailed CLI instructions.
 - **Pharmacology:** PK/PD models for propofol, remifentanil, sevoflurane, rocuronium, and vasoactive agents.
 - **Patient monitoring:** Simulated ECG, SpO2, capnography, NIBP, and depth of anesthesia.
 - **Clinical scenarios/events:** Rapid sequence induction, hemorrhage, anaphylaxis, septic shock, and emergence.
+- **Thermoregulation:** Core temperature dynamics with vasoconstriction and shivering.
 
 ## Model Fidelity
 
