@@ -24,6 +24,32 @@ from anasim.core.tci import TCIController
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp
 
+AIRWAY_MODE_MAP = {
+    "None": AirwayType.NONE,
+    "Mask": AirwayType.MASK,
+    "ETT": AirwayType.ETT,
+}
+
+BOLUS_TARGETS = (
+    ("prop", "pk_prop"),
+    ("remi", "pk_remi"),
+    ("nore", "pk_nore"),
+    ("epi", "pk_epi"),
+    ("phenyl", "pk_phenyl"),
+    ("roc", "pk_roc"),
+)
+
+PROPOFOL_MODELS = {
+    "Marsh": PropofolPKMarsh,
+    "Schnider": PropofolPKSchnider,
+    "Eleveld": PropofolPKEleveld,
+}
+
+NORE_PD_PARAMS = {
+    "Li": (5.4, 98.7, 1.8),
+    "Oualha": (7.04, 98.7, 1.8),
+}
+
 # Machine modules
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.volatile import Vaporizer
@@ -165,6 +191,16 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         
         # Random number generator for noise.
         self.rng = np.random.default_rng()
+        self._monitor_noise_std = np.array([0.5, 0.5, 0.2])
+        self._monitor_values = {
+            "BIS": 0.0,
+            "MAP": 0.0,
+            "HR": 0.0,
+            "EtCO2": 0.0,
+            "SpO2": 0.0,
+        }
+        self._remi_rate_weight = self.patient.weight
+        self._remi_rate_scale = 60.0 / self._remi_rate_weight
         
         # Thermal model state.
         self.heat_production_basal = 0.0 # W
@@ -288,12 +324,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
     def initialize_models(self):
         """Initialize PK/PD models based on config."""
         # Propofol PK
-        propofol_models = {
-            "Marsh": PropofolPKMarsh,
-            "Schnider": PropofolPKSchnider,
-            "Eleveld": PropofolPKEleveld,
-        }
-        propofol_model = propofol_models.get(self.config.pk_model_propofol, PropofolPKMarsh)
+        propofol_model = PROPOFOL_MODELS.get(self.config.pk_model_propofol, PropofolPKMarsh)
         self.pk_prop = propofol_model(self.patient)
             
         # Remi PK
@@ -314,11 +345,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             print(f"Note: hemo_model '{self.config.hemo_model}' not recognized, using default")
             
         # Configure norepinephrine PD.
-        nore_pd_params = {
-            "Li": (5.4, 98.7, 1.8),
-            "Oualha": (7.04, 98.7, 1.8),
-        }
-        c50, emax, gamma = nore_pd_params.get(self.config.pk_model_nore, (7.04, 98.7, 1.8))
+        c50, emax, gamma = NORE_PD_PARAMS.get(self.config.pk_model_nore, (7.04, 98.7, 1.8))
         self.hemo.set_nore_pd(c50=c50, emax=emax, gamma=gamma)
         self.resp = RespiratoryModel(self.patient, fidelity_mode=self.config.fidelity_mode)
         self.resp_mech = RespiratoryMechanics()
@@ -416,15 +443,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
                 self.tof_pd.give_sugammadex(amount)
             return
 
-        bolus_targets = (
-            ("prop", "pk_prop"),
-            ("remi", "pk_remi"),
-            ("nore", "pk_nore"),
-            ("epi", "pk_epi"),
-            ("phenyl", "pk_phenyl"),
-            ("roc", "pk_roc"),
-        )
-        for token, pk_attr in bolus_targets:
+        for token, pk_attr in BOLUS_TARGETS:
             if token in drug:
                 model = getattr(self, pk_attr, None)
                 if model:
@@ -470,33 +489,25 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         if profile:
             self.disturbances = Disturbances(profile)
             self.disturbance_profile = profile
-            if hasattr(self, "config"):
-                self.config.disturbance_profile = profile
+            self.config.disturbance_profile = profile
         else:
             self.disturbances = Disturbances(None)
             self.disturbance_profile = None
-            if hasattr(self, "config"):
-                self.config.disturbance_profile = None
+            self.config.disturbance_profile = None
 
     def stop_disturbance(self, clear_profile: bool = False):
         """Stop any active disturbance profile."""
         self.disturbance_active = False
         if clear_profile:
             self.disturbance_profile = None
-            if hasattr(self, "config"):
-                self.config.disturbance_profile = None
+            self.config.disturbance_profile = None
         
     def set_bair_hugger(self, target_c: float):
         """Set Bair Hugger target temperature (0 to disable)."""
         self.state.bair_hugger_target = target_c
         
     def set_airway_mode(self, mode_str: str):
-        mode_map = {
-            "None": AirwayType.NONE,
-            "Mask": AirwayType.MASK,
-            "ETT": AirwayType.ETT,
-        }
-        self.state.airway_mode = mode_map.get(mode_str, AirwayType.NONE)
+        self.state.airway_mode = AIRWAY_MODE_MAP.get(mode_str, AirwayType.NONE)
         if self.state.airway_mode == AirwayType.NONE:
             self.bag_mask_active = False
 
