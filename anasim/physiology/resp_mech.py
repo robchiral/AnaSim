@@ -133,6 +133,28 @@ class RespiratoryMechanics:
             # ValueError: bad number format; AttributeError: ie not a string
             self.insp_time_fraction = 1.0 / 3.0
 
+    def snapshot_settings(self) -> tuple:
+        """Return a tuple snapshot of ventilator settings for temporary overrides."""
+        return (
+            self.set_rr,
+            self.set_vt,
+            self.set_peep,
+            self.mode,
+            self.set_p_insp,
+            self.insp_time_fraction,
+        )
+
+    def restore_settings(self, snapshot: tuple) -> None:
+        """Restore ventilator settings from a snapshot."""
+        (
+            self.set_rr,
+            self.set_vt,
+            self.set_peep,
+            self.mode,
+            self.set_p_insp,
+            self.insp_time_fraction,
+        ) = snapshot
+
     def step(self, dt: float) -> MechState:
         """
         Advance respiratory mechanics by dt seconds.

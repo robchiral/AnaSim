@@ -65,16 +65,14 @@ class AlarmSystem:
             is_high = False
             
             if len(buf) >= window_len:
-                vals = list(buf)
-                
                 if thresh_max is not None:
                     # High alarm: All values > max
-                    if all(v > thresh_max for v in vals):
+                    if all(v > thresh_max for v in buf):
                         is_high = True
                         
                 if thresh_min is not None:
                     # Low alarm: All values < min
-                    if all(v < thresh_min for v in vals):
+                    if all(v < thresh_min for v in buf):
                         is_low = True
                     
             if is_low or is_high:
@@ -82,4 +80,3 @@ class AlarmSystem:
         
         self.active_alarms = current_alarms
         return self.active_alarms
-
