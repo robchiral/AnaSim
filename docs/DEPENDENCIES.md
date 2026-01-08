@@ -5,14 +5,15 @@
 Each simulation step executes subsystems in this order:
 
 ```
-1. Disturbances    → Surgical stimulation, user events
-2. TCI Controllers → Drug target → infusion rate calculation (synced to sim time)  
-3. Machine         → Vaporizer, circuit → inspired agent concentration
-4. PK Models       → Drug concentrations (Ce, Cp) updated
-5. Physiology      → Resp Mechanics (assisted only) → Respiration → Hemodynamics
-6. Monitors        → Waveforms, displayed values
-7. Temperature     → Core temp, redistribution
-8. Death Detector  → Viability check
+1. Shivering       → Thermoregulatory heat/metabolic load
+2. Disturbances    → Surgical stimulation, user events
+3. TCI Controllers → Drug target → infusion rate calculation (synced to sim time)  
+4. Machine         → Vaporizer, circuit → inspired agent concentration
+5. PK Models       → Drug concentrations (Ce, Cp) updated
+6. Physiology      → Resp Mechanics (assisted only) → Respiration → Hemodynamics
+7. Monitors        → Waveforms, displayed values
+8. Temperature     → Core temp, redistribution
+9. Death Detector  → Viability check
 ```
 
 ## Data Flow Diagram
@@ -121,6 +122,7 @@ flowchart TD
 | PK Rocuronium | Ce | Muscle paralysis |
 | Volatile PK | MAC | Respiratory depression |
 | Mechanics | Paw, delivered VT | Assisted ventilation only (ventilator or bag-mask) |
+| Shivering | Intensity | Raises metabolic load (CO2/O2) |
 
 ### BIS receives from:
 | Source | Data | Notes |

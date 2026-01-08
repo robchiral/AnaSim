@@ -62,3 +62,17 @@ TEMP_METABOLIC_COEFFICIENT = 0.93
 # TPR increases ~10% per °C below normal (vasoconstriction)
 # Reference: Frank et al. JAMA. 1997.
 TEMP_TPR_COEFFICIENT = 0.10
+
+# Shivering model constants (used in step_helpers.py, respiration.py).
+# Clinically, shivering appears near 36.5°C in awake patients and is
+# suppressed by anesthetics/opioids; maximal shivering can raise
+# metabolic rate ~3-5x baseline.
+SHIVER_BASE_THRESHOLD = 36.5
+SHIVER_DEPTH_DROP_MAX = 2.0
+SHIVER_REMI_DROP_MAX = 0.8
+SHIVER_DELTA_FULL = 1.5
+SHIVER_BIS_ON = 60.0
+SHIVER_BIS_FULL = 80.0
+SHIVER_MAX_MULTIPLIER = 3.0
+SHIVER_TAU_ON = 30.0
+SHIVER_TAU_OFF = 90.0

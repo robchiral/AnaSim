@@ -207,6 +207,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.specific_heat = 3470.0 # J/(kg K)
         self.surface_area = 1.9 # m^2 (default, updated in init)
         self._last_depth_index = 0.0 # For temperature redistribution calculation
+        self._shiver_level = 0.0
+        self._cached_temp_metabolic = 37.0
+        self._cached_temp_metabolic_factor = 1.0
         self._vent_active = False
         self._do2_ratio = 1.0
         
@@ -589,7 +592,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         hemo_state, resp_state, phase = self._step_physiology(dt, dist_vec)
         
         self._step_monitors(dt, phase, hemo_state, resp_state, dist_vec)
-        
+
+        self._update_shivering(dt)
+
         self._step_temperature(dt)
 
         self._check_patient_viability(dt)

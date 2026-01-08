@@ -9,7 +9,18 @@ preserving the SimulationEngine API.
 from typing import TYPE_CHECKING
 
 from .state import AirwayType
-from anasim.core.constants import TEMP_METABOLIC_COEFFICIENT
+from anasim.core.constants import (
+    TEMP_METABOLIC_COEFFICIENT,
+    SHIVER_BASE_THRESHOLD,
+    SHIVER_DEPTH_DROP_MAX,
+    SHIVER_REMI_DROP_MAX,
+    SHIVER_DELTA_FULL,
+    SHIVER_BIS_ON,
+    SHIVER_BIS_FULL,
+    SHIVER_MAX_MULTIPLIER,
+    SHIVER_TAU_ON,
+    SHIVER_TAU_OFF,
+)
 from anasim.core.utils import pao2_to_sao2, clamp, clamp01, hill_function
 from anasim.monitors.capno import Capnograph
 
@@ -93,6 +104,50 @@ class StepHelpersMixin:
             state.nibp_dia = latest.diastolic
             state.nibp_map = latest.map
             state.nibp_timestamp = latest.timestamp
+
+    def _update_shivering(self: "SimulationEngine", dt: float) -> float:
+        """
+        Update shivering intensity based on temperature and anesthetic state.
+        Returns shivering level (0-1).
+        """
+        state = self.state
+
+        depth_metric = state.mac + (state.propofol_ce / 4.0)
+        depth_factor = clamp01(depth_metric)
+
+        remi_effect = 0.0
+        if self.resp:
+            remi_effect = hill_function(state.remi_ce, self.resp.c50_remi, self.resp.gamma_remi)
+
+        threshold = (
+            SHIVER_BASE_THRESHOLD
+            - SHIVER_DEPTH_DROP_MAX * depth_factor
+            - SHIVER_REMI_DROP_MAX * remi_effect
+        )
+
+        temp_deficit = max(0.0, threshold - state.temp_c)
+        cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
+
+        if SHIVER_BIS_FULL <= SHIVER_BIS_ON:
+            emergence = 1.0 if state.bis >= SHIVER_BIS_ON else 0.0
+        else:
+            emergence = clamp01((state.bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
+
+        muscle_factor = 1.0
+        if self.resp:
+            nmba_effect = hill_function(state.roc_ce, self.resp.c50_nmba, self.resp.gamma_nmba)
+            muscle_factor = clamp01(1.0 - nmba_effect)
+
+        target = cold_drive * emergence * muscle_factor
+
+        tau = SHIVER_TAU_ON if target > self._shiver_level else SHIVER_TAU_OFF
+        if tau > 0:
+            self._shiver_level += (target - self._shiver_level) * (dt / tau)
+        else:
+            self._shiver_level = target
+        self._shiver_level = clamp01(self._shiver_level)
+        state.shivering = self._shiver_level
+        return self._shiver_level
     
     def _step_temperature(self: "SimulationEngine", dt: float):
         """
@@ -105,6 +160,8 @@ class StepHelpersMixin:
         
         metabolic_reduction = 0.3 * depth_factor
         current_production = self.heat_production_basal * (1.0 - metabolic_reduction)
+        shiver_heat = self.heat_production_basal * SHIVER_MAX_MULTIPLIER * self._shiver_level
+        current_production += shiver_heat
         
         # Heat loss: linear transfer vs ambient.
         t_ambient = 20.0
@@ -252,8 +309,12 @@ class StepHelpersMixin:
         # O2 uptake tied to metabolic rate and temperature
         uptake_o2 = 0.25
         if self.resp:
-            metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - state.temp_c)
-            vco2_ml_min = self.resp.vco2 * metabolic_factor
+            if abs(state.temp_c - self._cached_temp_metabolic) > 0.01:
+                self._cached_temp_metabolic = state.temp_c
+                self._cached_temp_metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - state.temp_c)
+            metabolic_factor = self._cached_temp_metabolic_factor
+            shiver_mult = 1.0 + SHIVER_MAX_MULTIPLIER * self._shiver_level
+            vco2_ml_min = self.resp.vco2 * metabolic_factor * shiver_mult
             uptake_o2 = (vco2_ml_min / 1000.0) / max(self.resp.rq, 0.1)
         
         self.circuit.step(dt, uptake_o2, uptake_sevo)
@@ -475,6 +536,7 @@ class StepHelpersMixin:
             vq_mismatch=self._vq_mismatch,
             hb_g_dl=hemo.hb_conc,
             oxygen_delivery_ratio=self._do2_ratio,
+            shiver_level=self._shiver_level,
             cardiac_output=state.co
         )
         
