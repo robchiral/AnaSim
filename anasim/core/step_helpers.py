@@ -666,8 +666,13 @@ class StepHelpersMixin:
                 insp_fraction=insp_fraction,
                 vent_active=(self._vent_active or bag_mask_active)
             )
-            capno_p_alv = resp_state.p_alveolar_co2 * self._airway_patency
-            capno_val = self.capno.step(dt, phase, capno_p_alv, 
+            capno_p_alv = resp_state.etco2 * self._airway_patency
+            capno_phase = phase
+            if (self._vent_active or bag_mask_active) and capno_context.spontaneous_weight > 0.2:
+                capno_phase = self._phase_from_rr(capno_context.effective_rr)
+            elif capno_context.is_spontaneous and not (self._vent_active or bag_mask_active):
+                capno_phase = self._phase_from_rr(resp_state.rr)
+            capno_val = self.capno.step(dt, capno_phase, capno_p_alv, 
                                         is_spontaneous=capno_context.is_spontaneous,
                                         curare_cleft=capno_context.curare_active,
                                         exp_duration=capno_context.exp_duration,

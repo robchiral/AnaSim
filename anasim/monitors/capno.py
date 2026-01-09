@@ -13,6 +13,8 @@ class CapnoContext:
     is_spontaneous: bool
     curare_active: bool
     effort_scale: float
+    spontaneous_weight: float
+    effective_rr: float
 
 class Capnograph:
     """
@@ -38,9 +40,6 @@ class Capnograph:
         """
         insp_fraction = float(np.clip(insp_fraction, 0.05, 0.8))
         if vent_active and vent_rr > 0.1:
-            cycle_time = 60.0 / vent_rr
-            exp_fraction = max(0.1, 1.0 - insp_fraction)
-            exp_duration = cycle_time * exp_fraction
             drive = max(0.0, getattr(resp_state, 'drive_central', 0.0))
             muscle = max(0.0, getattr(resp_state, 'muscle_factor', 0.0))
             spont_rr = max(0.0, getattr(resp_state, 'rr', 0.0))
@@ -66,15 +65,33 @@ class Capnograph:
                                    0.2 * delta_rr +
                                    1.5 * effort_signal +
                                    0.3 * (drive - 0.3))  # Bonus for higher drive
-            
-            return CapnoContext(exp_duration, False, curare_active, effort_scale)
+
+            # Blend between controlled and spontaneous timing to avoid abrupt switches.
+            rr_ratio = 0.0
+            if vent_rr > 0.1:
+                rr_ratio = max(0.0, (spont_rr - vent_rr) / max(vent_rr, 1.0))
+            rr_weight = np.clip(rr_ratio / 0.5, 0.0, 1.0)
+            effort_weight = np.clip((effort_signal - 0.2) / 0.6, 0.0, 1.0)
+            spontaneous_weight = float(np.clip(0.6 * rr_weight + 0.4 * effort_weight, 0.0, 1.0))
+
+            effective_rr = (1.0 - spontaneous_weight) * vent_rr + spontaneous_weight * spont_rr
+            exp_fraction = (1.0 - spontaneous_weight) * max(0.1, 1.0 - insp_fraction) + spontaneous_weight * 0.65
+            cycle_time = 60.0 / max(effective_rr, 0.1)
+            exp_duration = cycle_time * exp_fraction
+
+            is_spontaneous = spontaneous_weight >= 0.6
+            if spontaneous_weight >= 0.5:
+                curare_active = False
+                effort_scale = 0.0
+
+            return CapnoContext(exp_duration, is_spontaneous, curare_active, effort_scale, spontaneous_weight, effective_rr)
         else:
             spont_rr = getattr(resp_state, 'rr', 0.0)
             if spont_rr <= 0.5:
                 spont_rr = 12.0
             cycle_time = 60.0 / spont_rr
             exp_duration = cycle_time * 0.65
-            return CapnoContext(exp_duration, True, False, 0.0)
+            return CapnoContext(exp_duration, True, False, 0.0, 1.0, spont_rr)
         
     def step(self, dt: float, phase: str, p_alv: float, is_spontaneous: bool = False, curare_cleft: bool = False,
              exp_duration: float = 3.0, effort_scale: float = 1.0, airway_obstruction: float = 0.0) -> float:
@@ -113,8 +130,9 @@ class Capnograph:
             
             # Adjust for obstruction (Shark Fin effect)
             # obstruction ranges 0.0 to 1.0+
-            tau = base_tau * (1 + 4 * airway_obstruction) 
-            plateau_slope = base_slope * (1 + 5 * airway_obstruction)
+            tau = base_tau * (1 + 4 * airway_obstruction)
+            slope_scale = 2.0 / max(exp_duration, 0.5)
+            plateau_slope = base_slope * slope_scale * (1 + 5 * airway_obstruction)
             
             # Variability for spontaneous breaths
             if is_spontaneous:
@@ -148,20 +166,19 @@ class Capnograph:
                      noise = self.rng.normal(0, 0.2) * rise_component # little noise on plateau
                      co2 += noise
                  
-                 # Curare Cleft Logic
-                 # Ideally acts at end of plateau.
-                 # Relative timing: 70% of expiratory duration
+                 # Curare Cleft Logic (partial NMBA with diaphragmatic efforts).
+                 # Render mid-late plateau to match typical clinical appearance
+                 # (Bissinger et al. 1993).
                  if curare_cleft and not is_spontaneous:
                      
-                     # Calculate relative target time
-                     # Ensure it's at least 0.8s so it doesn't merge with rise
-                     rel_cleft = 0.5 * exp_duration
-                     t_cleft = max(0.8, rel_cleft)
+                     exp_effective = max(0.2, exp_duration - deadspace_time)
+                     rel_cleft = exp_effective * (0.55 + 0.1 * min(1.0, effort_scale / 2.0))
+                     t_cleft = min(exp_effective * 0.85, max(exp_effective * 0.30, rel_cleft))
                      
                      # Render only after reaching the cleft point.
                      # Dip parameters
-                     depth = 10.0 * effort_scale # Scale with intensity
-                     width = 0.15 # Width of the notch (std dev)
+                     depth = min(p_alv * 0.6, 4.0 + 8.0 * effort_scale)
+                     width = max(0.08, 0.12 * (exp_effective / 2.0))
                      
                      dist = abs(t_exp - t_cleft)
                      
@@ -170,6 +187,10 @@ class Capnograph:
                          dynamic_depth = min(p_alv * 0.7, depth + 12.0 * effort_scale)
                          dip = dynamic_depth * np.exp(-(dist**2) / (2 * width**2))
                          co2 -= dip
+
+                 # Avoid unphysiologically high plateaus.
+                 plateau_cap = p_alv + 5.0 + 10.0 * airway_obstruction
+                 co2 = min(co2, plateau_cap)
                 
                  if co2 < 0: co2 = 0
                  

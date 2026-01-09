@@ -31,33 +31,34 @@ class RespiratoryModel:
         self.rr_0 = patient.baseline_rr
         self.vt_0 = patient.baseline_vt
         self.baseline_hb = getattr(patient, 'baseline_hb', 13.5)
-        use_literature = (fidelity_mode == "literature")
-        
-        # Drug Effect Parameters (literature-based values)
+        # Drug Effect Parameters (literature-anchored where available, otherwise heuristic)
         # 
         # 1. Propofol - Separated effects for HCVR vs mechanical depression
         # Propofol depresses ventilatory drive (Blouin et al. Anesthesiology. 1993);
-        # HCVR EC50 is not well established, so use a heuristic proxy.
-        self.c50_prop_hcvr = 1.5 if use_literature else 2.0
+        # HCVR EC50 is not well established; use a proxy aligned to
+        # Nieuwenhuijs et al. Anesthesiology. 2001.
+        self.c50_prop_hcvr = 2.0
         self.gamma_prop_hcvr = 2.0
         
-        # Mechanical depression (VT/RR): Higher concentrations needed
-        self.c50_prop_mech = 3.5
+        # Mechanical depression (VT/RR): Higher concentrations needed.
+        # Effect-site EC50 ~4.0 mcg/mL for respiratory depression (Lee et al. 2011).
+        self.c50_prop_mech = 4.0
         self.gamma_prop_mech = 2.0
 
         # 2. Remifentanil (Ventilatory Depression)
-        # Remifentanil ventilatory depression: EC50 ~1.17 ng/mL (7.5% CO2 response; Glass et al. 1999).
-        self.c50_remi = 1.2 if use_literature else 1.5
-        self.gamma_remi = 1.25
+        # Remifentanil ventilatory depression: EC50 ~1.1-1.2 ng/mL with steep slope
+        # in CO2 response studies (Glass et al. 1999; Babenco et al. 2000).
+        self.c50_remi = 1.2
+        self.gamma_remi = 1.7
         
         # Remifentanil CO2 setpoint shift (Babenco et al. Anesthesiology. 2000)
         self.remi_setpoint_shift_max = 8.0  # mmHg
         
         # 3. Sevoflurane (Central Drive)
-        # Elsen et al. Br J Anaesth. 1998: low-dose (0.1 MAC) effects on CO2 response.
+        # Low-dose (0.1 MAC) sevo shows minimal CO2-response change (Pandit et al. 1999, BJA).
         # Doi & Ikeda. Anesth Analg. 1987: CO2 response depressed at 1.1-1.4 MAC.
-        # Magnitude at 1 MAC is heuristic.
-        self.c50_sevo_mac = 1.1 if use_literature else 0.75
+        # Magnitude at 1 MAC is heuristic (interpolated between low-MAC and 1.1-1.4 MAC).
+        self.c50_sevo_mac = 1.1
         self.gamma_sevo = 2.0
         
         # 4. NMBA (Muscle Strength Only)
@@ -68,11 +69,11 @@ class RespiratoryModel:
         # =====================================================
         # Hypercapnic Ventilatory Response (HCVR) Parameters
         # =====================================================
-        # Normal HCVR: Ventilation increases ~2-4 L/min per mmHg rise in PaCO2
-        # Reference: Duffin. Respir Physiol Neurobiol. 2011.
+        # Normal HCVR: Ventilation increases ~2-3 L/min per mmHg rise in PaCO2
+        # (dynamic end-tidal forcing studies: Nieuwenhuijs 2001; Pandit 1999).
         
         # Baseline HCVR slope (L/min per mmHg above setpoint)
-        self.hcvr_slope_baseline = 2.5
+        self.hcvr_slope_baseline = 2.2
         
         # CO2 setpoint for ventilatory response (mmHg)
         self.paco2_setpoint = 40.0
@@ -87,19 +88,19 @@ class RespiratoryModel:
         self.hcvr_depression_prop = 0.40
         
         # Sevoflurane: Moderate-strong HCVR depression
-        # Elsen et al. Br J Anaesth. 1998 (low-dose volatile effects on CO2 response);
-        # 1 MAC slope reduction is treated as heuristic.
+        # Low-MAC effect is small (Pandit 1999); 1 MAC slope reduction remains heuristic
+        # using Doi & Ikeda 1987 (1.1-1.4 MAC) as an upper anchor.
         self.hcvr_depression_sevo = 0.50
 
         # Differential Effects Weights (0.0 - 1.0)
         # Propofol: VT falls more than RR
-        # Increased w_prop_rr from 0.3 to 0.6 for more realistic RR depression at surgical depth
-        self.w_prop_rr = 0.3 if use_literature else 0.6
-        self.w_prop_vt = 1.0
+        # Increased w_prop_rr for more realistic RR depression at surgical depth (heuristic).
+        self.w_prop_rr = 0.6
+        self.w_prop_vt = 0.8
         
         # Remifentanil: RR falls steeply, VT less so
         self.w_remi_rr = 1.0
-        self.w_remi_vt = 0.5
+        self.w_remi_vt = 0.35
         
         # Sevoflurane: Moderate on RR, Strong on VT
         self.w_sevo_rr = 0.4
@@ -107,8 +108,14 @@ class RespiratoryModel:
         
         self.state = RespState(self.rr_0, self.vt_0, (self.rr_0 * self.vt_0)/1000.0)
         
+        # Respiratory quotient for gas exchange coupling.
+        self.rq = 0.8
+
         # CO2 Params
-        self.vco2 = 200.0 # mL/min - Metabolic production
+        # Resting VO2 ~3.6 mL/kg/min in large adult CPET cohorts; VCO2 ≈ VO2 * RQ.
+        # (Thorax 2021; CPET reference values).
+        self.vo2_ml_kg_min = 3.6
+        self.vco2 = self.vo2_ml_kg_min * patient.weight * self.rq  # mL/min
         self.frc = 2.5 # L - Functional Residual Capacity (Alveolar volume buffer)
         
         # Initialize PACO2 at 40 mmHg
@@ -127,10 +134,10 @@ class RespiratoryModel:
         # Tau = 3 min gives realistic apnea CO2 rise rate
         self.tau_co2 = 180.0 # Time constant for CO2 (s) - was 45s, too fast
         self.tau_o2 = 15.0 # Time constant for O2 (s) - small O2 stores equilibrate quickly
-        self.rq = 0.8
         self.atm_p = 760.0
         self.vapor_p = 47.0
-        self.aa_grad = 10.0 # A-a gradient (mmHg)
+        # Age-adjusted A-a gradient (mmHg): ~age/4 + 4 (PIOPED/Chest 1995).
+        self.aa_grad_base = max(5.0, (self.patient.age / 4.0) + 4.0)
 
         # Age-adjusted MAC for Sevo (MapTanner formula)
         # MAC_40 ~ 2.1%
@@ -207,7 +214,8 @@ class RespiratoryModel:
         #        HCVR_slope = baseline × (1 - drug_depression)
         #
         # Reference: Babenco et al. Anesthesiology. 2000 (opioids),
-        # Dahan et al. Br J Anaesth. 1998 (0.1 MAC),
+        # Nieuwenhuijs et al. Anesthesiology. 2001 (propofol CO2 response),
+        # Pandit et al. Br J Anaesth. 1999 (0.1 MAC sevo),
         # Doi & Ikeda. Anesth Analg. 1987 (1.1-1.4 MAC).
         
         # Calculate drug-induced HCVR depression
@@ -374,8 +382,9 @@ class RespiratoryModel:
             va_baseline = 4.2  # Fallback baseline VA (L/min)
             self.va_baseline = va_baseline
         
-        # Prevent division by zero
-        effective_va = max(0.1, total_va_l_min)
+        # Prevent division by zero; V/Q mismatch reduces effective CO2 elimination.
+        vq_mismatch = clamp01_local(vq_mismatch)
+        effective_va = max(0.1, total_va_l_min * (1.0 - 0.6 * vq_mismatch))
         
         # PaCO2 Equilibrium: PaCO2_eq = PaCO2_base * (VA_base / VA) * metabolic_factor
         # Temperature effect: VCO2 decreases ~7% per °C below 37°C (Q10 ≈ 2.0)
@@ -396,17 +405,27 @@ class RespiratoryModel:
         # Exponential approach to equilibrium: dPaCO2 = (Target - Current) / Tau
         d_paco2 = (paco2_eq - state.p_alveolar_co2) / self.tau_co2 * dt
         
-        # Apneic rise rate clamp: clinical rate is 3-5 mmHg/min during anesthesia
-        # (Brain-death testing / anesthesia literature supports 3 mmHg/min)
+        # Apneic rise rate clamp: clinical rate is ~3-4.5 mmHg/min during anesthesia
+        # (Respiratory Acidosis tests; Anesthesiology 2011 apnea studies).
         # Only clamp rising values - CO2 washout during hyperventilation can be rapid
         if d_paco2 > 0:
-            max_rise_rate = 0.05 * dt  # 3 mmHg/min
+            max_rise_rate = 0.06 * dt  # 3.6 mmHg/min
             d_paco2 = min(d_paco2, max_rise_rate)
             
         state.p_alveolar_co2 += d_paco2
         
-        # EtCO2 approximates PaCO2 (small gradient in healthy lungs)
-        state.etco2 = state.p_alveolar_co2
+        # EtCO2 is slightly lower than PaCO2; gradient increases with deadspace and
+        # obstructive physiology (Russell 1990; Lujan 2008).
+        if mech_rr > 0:
+            vt_for_gradient_l = max(mech_vt_l, current_vt / 1000.0)
+        else:
+            vt_for_gradient_l = current_vt / 1000.0
+        vt_l = max(0.05, vt_for_gradient_l)
+        vd_vt = min(0.95, self.vd_deadspace / vt_l)
+        vd_vt_excess = max(0.0, vd_vt - 0.30)
+        etco2_gradient = 4.0 + 15.0 * vd_vt_excess + 8.0 * vq_mismatch + 6.0 * (1.0 - ventilation_efficiency)
+        etco2_gradient = min(20.0, etco2_gradient)
+        state.etco2 = max(0.0, state.p_alveolar_co2 - etco2_gradient)
         
         # 10. O2 Dynamics (Alveolar Gas Equation)
         # PAO2 = FiO2 * (Patm - PH2O) - PaCO2 / RQ
@@ -416,7 +435,7 @@ class RespiratoryModel:
         # PEEP recruits alveoli, improving V/Q matching and reducing A-a gradient
         # Effect: A-a_eff = A-a_base / (1 + k * PEEP), floor at 3 mmHg
         k_peep_recruit = 0.08
-        aa_grad_effective = self.aa_grad / (1.0 + k_peep_recruit * peep)
+        aa_grad_effective = self.aa_grad_base / (1.0 + k_peep_recruit * peep)
         aa_grad_effective = max(3.0, aa_grad_effective)
 
         # V/Q mismatch (bronchospasm/obstruction) increases A-a gradient

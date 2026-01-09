@@ -8,6 +8,7 @@ Tests verify:
 
 import pytest
 import numpy as np
+from types import SimpleNamespace
 from anasim.core.state import SimulationConfig
 from anasim.monitors.capno import Capnograph, CapnoContext
 
@@ -91,7 +92,7 @@ class TestCapnographyWaveform:
         """Plateau phase CO2 should approach EtCO2 value."""
         capno = setup_capno
         
-        p_alv = 38.0  # Alveolar CO2
+        p_alv = 38.0  # End-tidal CO2 target
         
         # Run through expiration to plateau
         max_co2 = 0.0
@@ -100,7 +101,7 @@ class TestCapnographyWaveform:
             max_co2 = max(max_co2, capno.state.co2)
         
         # Max CO2 should be close to alveolar
-        assert max_co2 > p_alv * 0.7, f"Plateau CO2 {max_co2:.1f} too far from alveolar {p_alv}"
+        assert max_co2 > p_alv * 0.7, f"Plateau CO2 {max_co2:.1f} too far from target {p_alv}"
     
     def test_inspiration_drops_co2(self, setup_capno):
         """CO2 should drop during inspiration (fresh gas)."""
@@ -123,3 +124,43 @@ class TestCapnographyWaveform:
         # CO2 should drop during inspiration
         assert final_co2 < peak_co2, \
             f"CO2 should drop during inspiration: {peak_co2:.1f} -> {final_co2:.1f}"
+
+    def test_context_prefers_spontaneous_when_rate_dominant(self):
+        """Capno timing should follow patient-triggered breaths when spont RR dominates."""
+        resp_state = SimpleNamespace(rr=12.0, drive_central=0.6, muscle_factor=1.0)
+        ctx = Capnograph.build_context(resp_state, vent_rr=2.0, insp_fraction=0.33, vent_active=True)
+        assert ctx.spontaneous_weight > 0.6, "Expected spontaneous timing when patient RR dominates"
+        expected_exp = (60.0 / ctx.effective_rr) * 0.65
+        assert abs(ctx.exp_duration - expected_exp) < 0.3
+
+    def test_curare_cleft_dip_present(self):
+        """Curare cleft should create a notch in the plateau during partial NMBA."""
+        resp_state = SimpleNamespace(rr=2.0, drive_central=0.6, muscle_factor=0.5)
+        ctx = Capnograph.build_context(resp_state, vent_rr=12.0, insp_fraction=0.33, vent_active=True)
+        assert ctx.curare_active, "Expected curare cleft to be active in partial NMBA"
+
+        capno_with = Capnograph(rng=np.random.default_rng(0))
+        capno_without = Capnograph(rng=np.random.default_rng(0))
+        p_alv = 40.0
+
+        dips = []
+        for _ in np.arange(0, ctx.exp_duration, 0.02):
+            co2_with = capno_with.step(
+                0.02, "EXP", p_alv,
+                is_spontaneous=ctx.is_spontaneous,
+                curare_cleft=ctx.curare_active,
+                exp_duration=ctx.exp_duration,
+                effort_scale=ctx.effort_scale,
+                airway_obstruction=0.0,
+            )
+            co2_without = capno_without.step(
+                0.02, "EXP", p_alv,
+                is_spontaneous=ctx.is_spontaneous,
+                curare_cleft=False,
+                exp_duration=ctx.exp_duration,
+                effort_scale=0.0,
+                airway_obstruction=0.0,
+            )
+            dips.append(co2_without - co2_with)
+
+        assert max(dips) > 1.0, "Curare cleft notch not evident in plateau"

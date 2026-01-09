@@ -129,7 +129,8 @@ class TestEmergenceScenario:
     
     def test_bis_recovery_rate(self, anesthetized_engine):
         """
-        After stopping propofol, BIS should rise at ~1-3 points/min.
+        After stopping TIVA (propofol + remi), BIS should rise at a clinically
+        realistic rate during the first 15 minutes of emergence.
         """
         engine = anesthetized_engine
         
@@ -137,24 +138,26 @@ class TestEmergenceScenario:
         initial_bis = engine.state.bis
         assert initial_bis < 55, "Should start deeply anesthetized"
         
-        # Stop propofol infusion
+        # Stop TIVA
         engine.disable_tci("propofol")
+        engine.disable_tci("remi")
         engine.set_propofol_rate(0)
+        engine.set_remi_rate(0)
         
-        # Track BIS over 20 minutes
+        # Track BIS over 15 minutes
         bis_history = []
-        for _ in range(1200):  # 20 min
+        for _ in range(900):  # 15 min
             engine.step(1.0)
             bis_history.append(engine.state.bis)
         
         # Calculate average rise rate
         final_bis = bis_history[-1]
         rise_total = final_bis - initial_bis
-        rise_rate = rise_total / 20.0  # points per minute
+        rise_rate = rise_total / 15.0  # points per minute
         
-        # Should rise, although not instantaneously (realistic: 1-3 pt/min)
-        assert rise_rate > 0.8, f"BIS rise rate {rise_rate:.2f}/min - too slow"
-        assert rise_rate < 4.0, f"BIS rise rate {rise_rate:.2f}/min - unrealistically fast"
+        # Typical eye-opening ~9-10 min implies ~1-2+ points/min from BIS ~50s.
+        assert rise_rate > 0.9, f"BIS rise rate {rise_rate:.2f}/min - too slow"
+        assert rise_rate < 2.6, f"BIS rise rate {rise_rate:.2f}/min - unrealistically fast"
     
     def test_no_bis_oscillations(self, anesthetized_engine):
         """
@@ -179,13 +182,10 @@ class TestEmergenceScenario:
     
     def test_spontaneous_breathing_returns(self, anesthetized_engine, advance_time):
         """
-        As anesthesia lightens, respiratory drive should increase from baseline.
-        Test: BIS should rise >5 points after stopping propofol for 20 min.
+        As anesthesia lightens, spontaneous ventilation should return within
+        a realistic time window after stopping TIVA.
         """
         engine = anesthetized_engine
-        
-        # Record initial BIS (should be low ~45)
-        initial_bis = engine.state.bis
         
         # Stop drugs
         engine.disable_tci("propofol")
@@ -193,15 +193,25 @@ class TestEmergenceScenario:
         engine.set_propofol_rate(0)
         engine.set_remi_rate(0)
         
-        # Wait 30 minutes for drugs to clear
-        advance_time(engine, 1800)
+        # Track spontaneous MV over 12 minutes
+        mv_3_time = None
+        peak_mv_early = 0.0
+        for t in range(720):
+            engine.step(1.0)
+            if t < 240:
+                peak_mv_early = max(peak_mv_early, engine.resp.state.mv)
+            if engine.resp.state.mv > 3.0 and mv_3_time is None:
+                mv_3_time = t
+
+        # Early phase should remain suppressed
+        assert peak_mv_early < 2.0, \
+            f"Spontaneous MV rose too early (peak {peak_mv_early:.2f} L/min in first 4 min)"
         
-        final_bis = engine.state.bis
-        
-        # BIS should rise as patient lightens
-        bis_rise = final_bis - initial_bis
-        assert bis_rise > 5, \
-            f"BIS did not rise during emergence ({initial_bis:.1f} -> {final_bis:.1f})"
+        # Spontaneous MV should recover within ~6-12 min
+        assert mv_3_time is not None, \
+            "Spontaneous MV never reached 3 L/min during 12-min observation"
+        assert 360 <= mv_3_time <= 720, \
+            f"MV > 3 L/min at {mv_3_time}s - expected 6-12 min"
 
     def test_etco2_stable_with_ventilator_support(self, anesthetized_engine, advance_time):
         """
@@ -250,14 +260,19 @@ class TestEmergenceScenario:
         engine.set_propofol_rate(0)
         engine.set_remi_rate(0)
         engine.vent.is_on = False
+        baseline_etco2 = engine.state.etco2
+        baseline_paco2 = engine.state.paco2
         
         # Wait for EtCO2 to rise (no ventilatory support)
         advance_time(engine, 120)  # 2 minutes
         elevated_etco2 = engine.state.etco2
+        elevated_paco2 = engine.state.paco2
         
-        # EtCO2 should have risen
-        assert elevated_etco2 > 45, \
-            f"EtCO2 {elevated_etco2:.1f} should rise when vent is off"
+        # PaCO2 should rise with hypoventilation; EtCO2 may rise less due to gradient.
+        assert elevated_paco2 - baseline_paco2 > 4.0, \
+            f"PaCO2 {elevated_paco2:.1f} should rise when vent is off"
+        assert elevated_etco2 >= baseline_etco2 - 0.5, \
+            f"EtCO2 {elevated_etco2:.1f} should not drop when vent is off"
         
         # Now apply bag-mask ventilation
         from anasim.core.state import AirwayType
@@ -270,10 +285,14 @@ class TestEmergenceScenario:
         advance_time(engine, 180)
         
         final_etco2 = engine.state.etco2
+        final_paco2 = engine.state.paco2
         
-        # EtCO2 should decrease with bag-mask ventilation
+        # Bag-mask should reduce PaCO2 (and EtCO2) with ventilation
         etco2_decrease = elevated_etco2 - final_etco2
-        assert etco2_decrease > 3, \
+        paco2_decrease = elevated_paco2 - final_paco2
+        assert paco2_decrease > 3, \
+            f"Bag-mask did not reduce PaCO2: {elevated_paco2:.1f} -> {final_paco2:.1f}"
+        assert etco2_decrease > 1, \
             f"Bag-mask did not reduce EtCO2: {elevated_etco2:.1f} -> {final_etco2:.1f}"
 
     def test_emergence_respiratory_depression_realistic(self, anesthetized_engine, advance_time):
@@ -318,7 +337,7 @@ class TestEmergenceScenario:
         """
         HCVR should shorten emergence time.
         With HCVR, rising CO2 stimulates ventilation, accelerating emergence.
-        Clinical expectation: Spontaneous MV > 3 L/min within 15 min of drug cessation.
+        Clinical expectation: BIS ~70 (eye opening) around 9-10 min after propofol stop.
         """
         engine = anesthetized_engine
         
@@ -340,7 +359,7 @@ class TestEmergenceScenario:
         
         # Track emergence milestones
         mv_3_time = None
-        bis_60_time = None
+        bis_70_time = None
         bis_80_time = None
         
         for t in range(1800):  # 30 minutes max
@@ -349,25 +368,25 @@ class TestEmergenceScenario:
             if engine.resp.state.mv > 3.0 and mv_3_time is None:
                 mv_3_time = t
             
-            if engine.state.bis > 60 and bis_60_time is None:
-                bis_60_time = t
+            if engine.state.bis > 70 and bis_70_time is None:
+                bis_70_time = t
 
             if engine.state.bis > 80 and bis_80_time is None:
                 bis_80_time = t
         
-        # HCVR should enable spontaneous MV > 3 L/min within ~20 min
+        # HCVR should enable spontaneous MV > 3 L/min within ~12 min
         # Multiplicative interaction (1 - d1)*(1 - d2) removes the artificial 5% drive floor,
         # causing physiologically correct prolonged apnea compared to additive models.
         assert mv_3_time is not None, \
             "Spontaneous MV never reached 3 L/min during 30-min observation"
-        assert mv_3_time < 1200, \
-            f"MV > 3 L/min at {mv_3_time}s - expected within 1200s (~20 min)"
+        assert mv_3_time < 720, \
+            f"MV > 3 L/min at {mv_3_time}s - expected within 720s (~12 min)"
         
-        # BIS should reach 60 (awakening/eye opening) within 15 min
-        assert bis_60_time is not None, \
-            "BIS never reached 60 (awakening) during 30-min observation"
-        assert bis_60_time < 900, \
-            f"BIS > 60 at {bis_60_time}s - expected within 900s (15 min)"
+        # BIS should reach ~70 (eye opening) within ~7-14 min
+        assert bis_70_time is not None, \
+            "BIS never reached 70 (eye opening range) during 30-min observation"
+        assert 420 <= bis_70_time <= 840, \
+            f"BIS > 70 at {bis_70_time}s - expected 7-14 min"
 
         # BIS should reach 80 within 26 min (depends on propofol PK, not HCVR)
         assert bis_80_time is not None, \
