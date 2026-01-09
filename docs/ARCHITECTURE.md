@@ -71,10 +71,12 @@ AnaSim/
 - **Muscle Factor**: Mechanical ability inhibited by NMBA (rocuronium).
 - **HCVR (Hypercapnic Ventilatory Response)**:
   - Negative feedback loop: rising PaCO2 stimulates respiratory drive.
-  - Baseline slope: ~2.5 L/min/mmHg above 40 mmHg setpoint.
-  - **Drug Depression**: remifentanil strongly depresses slope (C50 ~1.2-1.5 ng/mL), propofol uses a heuristic proxy (C50 ~1.5-2 µg/mL), and sevoflurane depresses HCVR with C50 ~0.75-1.1 MAC.
+  - Baseline slope: ~2.2 L/min/mmHg above 40 mmHg setpoint (dynamic end-tidal forcing studies).
+  - **Drug Depression**: remifentanil strongly depresses slope (C50 ~1.1-1.2 ng/mL), propofol uses a proxy aligned to CO2-response studies (~2 µg/mL), and sevoflurane depresses HCVR with C50 ~1.1 MAC.
   - Critical for realistic emergence timing (accelerates CO2 elimination as drugs fade).
 - **Gas Exchange**: Deadspace mixing and alveolar ventilation calculations.
+  - EtCO2 is derived from PaCO2 with a small gradient that increases with V/Q mismatch and obstruction.
+  - Baseline VCO2 scales with patient size (resting VO2 ~3.6 mL/kg/min, RQ ~0.8).
 
 ### Pharmacokinetics (`patient/pk_models.py`)
 - 3-compartment models (central, peripheral, effect-site)
