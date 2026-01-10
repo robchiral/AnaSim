@@ -84,6 +84,7 @@ class TCIController:
         self.time = 0.0  # Deprecated: use sim_time parameter instead
         self._last_target_change_time = -999.0  # For rate-limiting target changes
         self._min_target_change_interval = TCI_MIN_TARGET_CHANGE_INTERVAL
+        self._last_control_update = -1e9
         
         # Endogenous input (for norepinephrine support if needed, typically 0 for TCI).
         self.u_endo = 0.0 
@@ -145,7 +146,8 @@ class TCIController:
         
         # Check if it's time to update control (every control_time).
         update_control = False
-        if abs(self.time % self.control_time) < (self.sampling_time / 2.0):
+        time_since_update = self.time - self._last_control_update
+        if time_since_update >= (self.control_time - (self.sampling_time / 2.0)):
             update_control = True
         
         # Rate-limit target changes (zero target bypasses for safety).
@@ -163,6 +165,7 @@ class TCIController:
                 # If too soon, ignore the change this step (will be picked up later)
              
         if update_control:
+            self._last_control_update = self.time
             if target != self.target:
                 self.tpeak_0 = self.t_peak
                 self.target = target

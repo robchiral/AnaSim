@@ -106,13 +106,13 @@ class TestVasopressorPK:
         """
         Li et al. Clin Pharmacokinet. 2024 model: Propofol concentration affects norepinephrine clearance.
         
-        The Li model uses: clearance_factor = exp(-3.57 * (Cp - 3.53))
-        At Cp=0: exp(+12.6) → massive clearance (clamped to 30 L/min)
-        At Cp=3.53: exp(0) = 1 → baseline clearance
-        At Cp=4: exp(-1.68) ≈ 0.19 → reduced clearance
+        The Li model uses: clearance_factor = exp(-3.57 * (Cp / 100)).
+        At Cp=0: exp(0) = 1 → baseline clearance.
+        At Cp=4: exp(-0.143) ≈ 0.87 → modestly reduced clearance.
+        At Cp=6: exp(-0.214) ≈ 0.81 → modestly reduced clearance.
         
-        So at typical anesthesia doses (Cp > 3.53), propofol REDUCES clearance,
-        leading to HIGHER norepinephrine concentrations.
+        So at typical anesthesia doses (Cp > 0), propofol reduces clearance,
+        leading to higher norepinephrine concentrations.
         """
         # Without propofol (Cp=0 → very high clearance)
         model_no_prop = NorepinephrinePK(patient, model="Li")

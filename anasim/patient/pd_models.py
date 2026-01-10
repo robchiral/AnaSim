@@ -34,7 +34,7 @@ from anasim.core.utils import hill_function, clamp, clamp01
 # -----------------------------------------------------------------------------
 #
 # Core relationship: BIS as a function of effective MAC (M_eff)
-# BIS_base(M_eff) = 35 + 60 / (1 + (M_eff / 0.31)^1.45)
+# BIS_base(M_eff) = 25 + 70 / (1 + (M_eff / 0.694)^3.326)
 #
 # Key validation points (Sevoflurane; Kanazawa 2017, Ryu 2018, Paraskeva 2005):
 # - M_eff = 0.0  → BIS ≈ 95 (awake)
@@ -145,9 +145,10 @@ class BISModel:
         self.model_name = model_name
         self.patient = patient
 
-        # Smoothing
+        # Smoothing (dt-aware)
         self.bis_smoothed = 98.0
-        self.alpha_smooth = 0.1 # Exponential moving average factor
+        self.tau_smooth = 10.0  # seconds
+        self.alpha_smooth = 0.1 # Legacy fixed factor (unused when dt provided)
 
         # Default Params (Bouillon for IV agents)
         self.params = BISModelParams(
@@ -246,8 +247,12 @@ class BISModel:
             # Use traditional IV-only model
             bis_raw = self._compute_bis_iv_only(ce_prop, ce_remi)
 
-        # Smoothing
-        self.bis_smoothed = (1.0 - self.alpha_smooth) * self.bis_smoothed + self.alpha_smooth * bis_raw
+        # Smoothing (dt-aware EMA)
+        if dt <= 0:
+            alpha = 1.0
+        else:
+            alpha = 1.0 - np.exp(-dt / self.tau_smooth)
+        self.bis_smoothed = (1.0 - alpha) * self.bis_smoothed + alpha * bis_raw
 
         bis_out = self.bis_smoothed
 
