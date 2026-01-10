@@ -14,7 +14,7 @@ from anasim.monitors.capno import Capnograph
 from anasim.patient.pk_models import (
     PropofolPKMarsh, PropofolPKSchnider, PropofolPKEleveld,
     RemifentanilPKMinto, NorepinephrinePK, RocuroniumPK,
-    EpinephrinePK, PhenylephrinePK
+    EpinephrinePK, PhenylephrinePK, VasopressinPK, DobutaminePK, MilrinonePK
 )
 from anasim.patient.pd_models import TOFModel, LOCModel, TOLModel, BISModel
 from anasim.physiology.disturbances import Disturbances
@@ -35,6 +35,9 @@ BOLUS_TARGETS = (
     ("nore", "pk_nore"),
     ("epi", "pk_epi"),
     ("phenyl", "pk_phenyl"),
+    ("vaso", "pk_vaso"),
+    ("dobu", "pk_dobu"),
+    ("milri", "pk_mil"),
     ("roc", "pk_roc"),
 )
 
@@ -49,7 +52,18 @@ NORE_PD_PARAMS = {
     "Oualha": (7.04, 98.7, 1.8),
 }
 
-PK_MODEL_ATTRS = ("pk_prop", "pk_remi", "pk_nore", "pk_roc", "pk_sevo", "pk_epi", "pk_phenyl")
+PK_MODEL_ATTRS = (
+    "pk_prop",
+    "pk_remi",
+    "pk_nore",
+    "pk_roc",
+    "pk_sevo",
+    "pk_epi",
+    "pk_phenyl",
+    "pk_vaso",
+    "pk_dobu",
+    "pk_mil",
+)
 PHYSIO_MODEL_ATTRS = ("hemo", "resp", "resp_mech")
 MACHINE_ATTRS = ("circuit", "vaporizer", "vent")
 MONITOR_ATTRS = ("bis", "capno", "loc_pd", "tol_pd", "tof_pd", "ecg", "spo2_mon", "nibp")
@@ -60,8 +74,21 @@ RATE_ATTRS = (
     "roc_rate_mg_sec",
     "epi_rate_ug_sec",
     "phenyl_rate_ug_sec",
+    "vaso_rate_mu_sec",
+    "dobu_rate_ug_sec",
+    "mil_rate_ug_sec",
 )
-TCI_ATTRS = ("tci_prop", "tci_remi", "tci_nore", "tci_epi", "tci_phenyl", "tci_roc")
+TCI_ATTRS = (
+    "tci_prop",
+    "tci_remi",
+    "tci_nore",
+    "tci_epi",
+    "tci_phenyl",
+    "tci_roc",
+    "tci_vaso",
+    "tci_dobu",
+    "tci_mil",
+)
 
 # Machine modules
 from anasim.machine.circuit import CircleSystem
@@ -120,6 +147,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.tci_epi: Optional[TCIController]
         self.tci_phenyl: Optional[TCIController]
         self.tci_roc: Optional[TCIController]
+        self.tci_vaso: Optional[TCIController]
+        self.tci_dobu: Optional[TCIController]
+        self.tci_mil: Optional[TCIController]
         for attr in TCI_ATTRS:
             setattr(self, attr, None)
         
@@ -376,6 +406,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.pk_epi = EpinephrinePK(self.patient, model=self.config.pk_model_epi)
 
         self.pk_phenyl = PhenylephrinePK(self.patient)
+        self.pk_vaso = VasopressinPK(self.patient)
+        self.pk_dobu = DobutaminePK(self.patient)
+        self.pk_mil = MilrinonePK(self.patient)
         
         # Init thermal params.
         self.heat_production_basal = self.patient.weight * 1.0
@@ -436,6 +469,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         - Norepinephrine: mcg
         - Epinephrine: mcg
         - Phenylephrine: mcg
+        - Vasopressin: units (U)
+        - Dobutamine: mcg
+        - Milrinone: mcg
         - Rocuronium: mg
         """
         drug = drug_name.lower()
@@ -450,7 +486,10 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             if token in drug:
                 model = getattr(self, pk_attr, None)
                 if model:
-                    conc_delta = amount / model.v1
+                    dose = amount
+                    if hasattr(model, "bolus_unit_scale"):
+                        dose *= model.bolus_unit_scale
+                    conc_delta = dose / model.v1
                     model.state.c1 += conc_delta
                 break
 

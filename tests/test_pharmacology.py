@@ -5,9 +5,13 @@ from anasim.patient.pk_models import (
     PhenylephrinePK,
     RocuroniumPK,
     EpinephrinePK,
+    VasopressinPK,
+    DobutaminePK,
+    MilrinonePK,
 )
 from anasim.patient.patient import Patient
 from anasim.patient.pd_models import TOFModel
+import numpy as np
 
 # --- Rigorous Pharmacology Validity & Sanity Checks ---
 
@@ -141,12 +145,18 @@ class TestVasopressorPK:
         for VasopressorClass, name, equil_time in [
             (EpinephrinePK, "Epinephrine", 120),     # 2 min equilibration
             (PhenylephrinePK, "Phenylephrine", 180), # 3 min equilibration (slower ke0)
+            (VasopressinPK, "Vasopressin", 300),     # 5 min equilibration (slower ke0)
+            (DobutaminePK, "Dobutamine", 120),       # 2 min equilibration
+            (MilrinonePK, "Milrinone", 600),         # 10 min equilibration (slower ke0)
         ]:
             model = VasopressorClass(patient)
             
-            # Simulate 100 mcg bolus
-            bolus_ug = 100.0
-            model.state.c1 = bolus_ug / model.v1  # Instant plasma rise
+            # Simulate a bolus (units vary by drug)
+            if name == "Vasopressin":
+                bolus_amount = 1000.0  # 1 U = 1000 mU
+            else:
+                bolus_amount = 1000.0  # 1000 mcg
+            model.state.c1 = bolus_amount / model.v1  # Instant plasma rise
             
             # Track Ce lag
             c1_initial = model.state.c1
@@ -174,6 +184,58 @@ class TestVasopressorPK:
             if c1_final > 0.1:  # Only check if meaningful concentration
                 ratio = ce_final / c1_final
                 assert 0.65 < ratio < 1.35, f"{name}: Ce should equilibrate with C1 by {equil_time}s (ratio={ratio:.2f})"
+
+    def test_vasopressin_pk_steady_state(self, patient):
+        """
+        Vasopressin 0.03 U/min should approach steady state within ~30 min.
+        Analytical check: Css = Rin/Cl.
+        """
+        model = VasopressinPK(patient)
+        infusion_u_min = 0.03
+        infusion_mU_sec = (infusion_u_min * 1000.0) / 60.0
+
+        for _ in range(1800):  # 30 min
+            model.step(1.0, infusion_mU_sec)
+
+        expected_css = (infusion_u_min * 1000.0) / model.cl1  # mU/L
+        assert expected_css > 0
+        rel_err = abs(model.state.c1 - expected_css) / expected_css
+        assert rel_err < 0.2, f"Vasopressin Css off by {rel_err:.1%}"
+
+    def test_dobutamine_pk_half_life(self, patient):
+        """
+        Dobutamine plasma half-life ~2 min. Simulated decay should match k10.
+        """
+        model = DobutaminePK(patient)
+        model.state.c1 = 1000.0 / model.v1  # 1000 mcg bolus
+        initial = model.state.c1
+
+        for _ in range(120):  # 2 minutes
+            model.step(1.0, 0.0)
+
+        expected_ratio = float(np.exp(-model.k10 * 2.0))
+        actual_ratio = model.state.c1 / initial if initial > 0 else 1.0
+        assert abs(actual_ratio - expected_ratio) < 0.15, \
+            f"Dobutamine decay mismatch (actual={actual_ratio:.2f}, expected={expected_ratio:.2f})"
+
+    def test_milrinone_renal_impairment_scaling(self):
+        """
+        Milrinone clearance should scale with renal function.
+        """
+        normal = Patient(age=40, weight=70, height=170, sex="male")
+        impaired = Patient(
+            age=40,
+            weight=70,
+            height=170,
+            sex="male",
+            renal_function=0.3,
+        )
+
+        pk_normal = MilrinonePK(normal)
+        pk_imp = MilrinonePK(impaired)
+
+        assert pk_imp.k10 < pk_normal.k10 * 0.6, \
+            "Renal impairment should substantially reduce milrinone clearance"
     
     def test_norepinephrine_effect_site_delay(self, patient):
         """

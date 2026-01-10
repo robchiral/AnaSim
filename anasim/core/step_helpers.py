@@ -400,6 +400,9 @@ class StepHelpersMixin:
         pk_roc = self.pk_roc
         pk_epi = self.pk_epi
         pk_phenyl = self.pk_phenyl
+        pk_vaso = self.pk_vaso
+        pk_dobu = self.pk_dobu
+        pk_mil = self.pk_mil
         self._update_pk_hemodynamics(co_curr)
 
         pk_sevo.step(dt, fi_sevo, state.va, co_curr, temp_c=state.temp_c)
@@ -413,6 +416,12 @@ class StepHelpersMixin:
         pk_roc.step(dt, self.roc_rate_mg_sec)
         pk_epi.step(dt, self.epi_rate_ug_sec)
         pk_phenyl.step(dt, self.phenyl_rate_ug_sec)
+        if pk_vaso:
+            pk_vaso.step(dt, self.vaso_rate_mu_sec)
+        if pk_dobu:
+            pk_dobu.step(dt, self.dobu_rate_ug_sec)
+        if pk_mil:
+            pk_mil.step(dt, self.mil_rate_ug_sec)
         
         # Single point of truth for PK sync to public state.
         self._sync_pk_state()
@@ -436,6 +445,12 @@ class StepHelpersMixin:
         state.roc_cp = self.pk_roc.state.c1
         state.epi_ce = self.pk_epi.state.ce    # Effect-site (ke0 modeled)
         state.phenyl_ce = self.pk_phenyl.state.ce  # Effect-site (ke0 modeled)
+        if getattr(self, "pk_vaso", None):
+            state.vaso_ce = self.pk_vaso.state.ce
+        if getattr(self, "pk_dobu", None):
+            state.dobu_ce = self.pk_dobu.state.ce
+        if getattr(self, "pk_mil", None):
+            state.mil_ce = self.pk_mil.state.ce
 
     def _update_pk_hemodynamics(self: "SimulationEngine", co_curr: float):
         """Scale PK parameters based on current blood volume and CO."""
@@ -456,6 +471,9 @@ class StepHelpersMixin:
             self.pk_roc,
             self.pk_epi,
             self.pk_phenyl,
+            getattr(self, "pk_vaso", None),
+            getattr(self, "pk_dobu", None),
+            getattr(self, "pk_mil", None),
         ):
             if model and hasattr(model, "update_hemodynamics"):
                 model.update_hemodynamics(v_ratio, co_ratio)
@@ -655,6 +673,9 @@ class StepHelpersMixin:
             mac_sevo=mac_sevo,
             ce_epi=state.epi_ce,
             ce_phenyl=state.phenyl_ce,
+            ce_vaso=getattr(state, "vaso_ce", 0.0),
+            ce_dobu=getattr(state, "dobu_ce", 0.0),
+            ce_mil=getattr(state, "mil_ce", 0.0),
             temp_c=state.temp_c,
             peep_cmH2O=total_peep_effect,
         )
