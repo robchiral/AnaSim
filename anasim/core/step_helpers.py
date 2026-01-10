@@ -669,14 +669,24 @@ class StepHelpersMixin:
             )
             capno_p_alv = resp_state.etco2 * self._airway_patency
             capno_phase = phase
-            if (self._vent_active or bag_mask_active) and capno_context.spontaneous_weight > 0.2:
-                capno_phase = self._phase_from_rr(capno_context.effective_rr)
-            elif capno_context.is_spontaneous and not (self._vent_active or bag_mask_active):
+            capno_exp_duration = capno_context.exp_duration
+            if self._vent_active or bag_mask_active:
+                # If spontaneous effort dominates, treat capno timing as patient-driven (AC-like).
+                # Otherwise lock to driven ventilation timing.
+                if capno_context.spontaneous_weight >= 0.6:
+                    capno_phase = self._phase_from_rr(capno_context.effective_rr)
+                    capno_exp_duration = capno_context.exp_duration
+                else:
+                    driven_rr = vent_rr if vent_rr > 0.1 else capno_context.effective_rr
+                    cycle_time = 60.0 / max(driven_rr, 0.1)
+                    exp_fraction = max(0.1, 1.0 - insp_fraction)
+                    capno_exp_duration = cycle_time * exp_fraction
+            elif capno_context.is_spontaneous:
                 capno_phase = self._phase_from_rr(resp_state.rr)
             capno_val = self.capno.step(dt, capno_phase, capno_p_alv, 
                                         is_spontaneous=capno_context.is_spontaneous,
                                         curare_cleft=capno_context.curare_active,
-                                        exp_duration=capno_context.exp_duration,
+                                        exp_duration=capno_exp_duration,
                                         effort_scale=capno_context.effort_scale,
                                         airway_obstruction=self._capno_obstruction)
         

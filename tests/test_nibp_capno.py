@@ -164,3 +164,47 @@ class TestCapnographyWaveform:
             dips.append(co2_without - co2_with)
 
         assert max(dips) > 1.0, "Curare cleft notch not evident in plateau"
+
+
+class TestCapnographyVentSwitch:
+    """Ensure capnography timing follows the active ventilation source."""
+
+    def _count_insp_transitions(self, engine, seconds=20.0, dt=0.1):
+        prev_phase = engine.capno.last_phase
+        transitions = 0
+        steps = int(seconds / dt)
+        for _ in range(steps):
+            engine.step(dt)
+            phase = engine.capno.last_phase
+            if phase == "INSP" and prev_phase != "INSP":
+                transitions += 1
+            prev_phase = phase
+        return transitions / (seconds / 60.0)
+
+    def test_capno_follows_vent_on_off_with_spontaneous(self, engine_factory):
+        config = SimulationConfig(mode="awake")
+        engine = engine_factory(config=config, start=True)
+        engine.set_airway_mode("ETT")
+
+        # Let spontaneous breathing stabilize.
+        for _ in range(50):
+            engine.step(0.1)
+
+        # Vent on at low rate while spontaneous drive remains higher.
+        engine.set_vent_settings(rr=6.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        for _ in range(20):
+            engine.step(0.1)
+        assert engine.state.rr > 8.0, "Spontaneous breathing should be present during vent support"
+
+        vent_rr = self._count_insp_transitions(engine, seconds=20.0, dt=0.1)
+        spont_rr_on = engine.state.rr
+        assert abs(vent_rr - spont_rr_on) < 2.0, \
+            f"Capno RR {vent_rr:.1f} should follow spontaneous rate {spont_rr_on:.1f}"
+        assert abs(vent_rr - 6.0) > 1.5, "Capno should not lock to low set rate when spont dominates"
+
+        # Vent off -> capnogram should return toward spontaneous rate.
+        engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="VCV")
+        off_rr = self._count_insp_transitions(engine, seconds=20.0, dt=0.1)
+        spont_rr_off = engine.state.rr
+        assert abs(off_rr - spont_rr_off) < 2.0, \
+            f"Capno RR {off_rr:.1f} should match spontaneous rate {spont_rr_off:.1f}"
