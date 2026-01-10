@@ -47,6 +47,16 @@ class TestHemodynamicSanity:
         m.tde_hr = 0.0
         m.tde_sv = 0.0
         return m
+
+    def _run_drug(self, model, seconds: int = 60, **kwargs):
+        """
+        Run a short steady exposure for vasoactive effects.
+        Keeps drug tests consistent despite HR smoothing.
+        """
+        state = None
+        for _ in range(seconds):
+            state = model.step(1.0, 0, 0, 0, -2, 40, 95, **kwargs)
+        return state
         
     def test_baseline_values(self, model):
         """Values should be within normal adult physiological ranges."""
@@ -56,6 +66,16 @@ class TestHemodynamicSanity:
         assert 3.5 < state.co < 8.0, f"CO {state.co} out of range"
         # SVR: 800-1200 dyn or 10-30 Wood units
         assert 8.0 < state.svr < 30.0, f"SVR {state.svr} out of range"
+
+    def test_pit_bidirectional_preload(self, model):
+        """Pit should reduce preload when positive and augment when negative."""
+        pit_0 = model.pit_0
+        base = model.step(1.0, 0, 0, 0, pit_0, 40, 95)
+        high = model.step(1.0, 0, 0, 0, pit_0 + 6.0, 40, 95)
+        low = model.step(1.0, 0, 0, 0, pit_0 - 6.0, 40, 95)
+
+        assert high.preload_factor < base.preload_factor, "Positive Pit should reduce preload"
+        assert low.preload_factor > base.preload_factor, "Negative Pit should increase preload"
 
     def test_add_volume_invalidates_cache(self, model):
         state_before = model.step(1.0, 0,0,0, -2, 40, 95)
@@ -101,13 +121,13 @@ class TestHemodynamicSanity:
         base = model.step(1.0, 0,0,0, -2, 40, 95)
         
         # --- Low Dose ---
-        low = model.step(1.0, 0,0,0, -2, 40, 95, ce_epi=1.0)
+        low = self._run_drug(model, ce_epi=1.0)
         assert low.hr > base.hr + 1.0, "Low dose epi should raise HR"
         # SVR should not rise significantly (vasodilation offsets alpha)
         assert low.svr < base.svr * 1.05
         
         # --- High Dose ---
-        high = model.step(1.0, 0,0,0, -2, 40, 95, ce_epi=20.0)
+        high = self._run_drug(model, ce_epi=20.0)
         assert high.map > base.map + 20.0, "High dose epi should raise MAP significantly"
         assert high.svr > base.svr * 1.10, "High dose epi should raise SVR (Alpha)"
         
@@ -119,7 +139,7 @@ class TestHemodynamicSanity:
         base = model.step(1.0, 0,0,0, -2, 40, 95)
         
         # High dose phenyl
-        phenyl = model.step(1.0, 0,0,0, -2, 40, 95, ce_phenyl=100.0) # High dose for clarity
+        phenyl = self._run_drug(model, ce_phenyl=100.0) # High dose for clarity
         
         assert phenyl.map > base.map + 10.0, "Phenyl should raise MAP"
         assert phenyl.svr > base.svr + 4.0, "Phenyl should raise SVR"
@@ -129,6 +149,37 @@ class TestHemodynamicSanity:
         # SVR increase usually lowers SV due to afterload, unless inotropy increases.
         # SV is expected to decrease or remain stable; it should not increase significantly.
         assert phenyl.sv <= base.sv * 1.1, "Phenyl should not cause large SV increase (no beta)"
+
+    def test_vasopressin_pressor_effect(self, model):
+        """
+        Vasopressin -> SVR/MAP increase with mild HR reduction.
+        """
+        base = model.step(1.0, 0, 0, 0, -2, 40, 95)
+        vaso = self._run_drug(model, ce_vaso=40.0)
+
+        assert vaso.map > base.map + 5.0, "Vasopressin should raise MAP"
+        assert vaso.svr > base.svr * 1.1, "Vasopressin should raise SVR"
+        assert vaso.hr <= base.hr + 5.0, "Vasopressin should not markedly increase HR"
+
+    def test_dobutamine_inotropy(self, model):
+        """
+        Dobutamine -> CO increase with SVR reduction.
+        """
+        base = model.step(1.0, 0, 0, 0, -2, 40, 95)
+        dobu = self._run_drug(model, ce_dobu=200.0)
+
+        assert dobu.co > base.co * 1.1, "Dobutamine should raise CO"
+        assert dobu.svr < base.svr * 0.9, "Dobutamine should reduce SVR"
+
+    def test_milrinone_inotropy(self, model):
+        """
+        Milrinone -> CO increase with SVR reduction.
+        """
+        base = model.step(1.0, 0, 0, 0, -2, 40, 95)
+        mil = self._run_drug(model, ce_mil=200.0)
+
+        assert mil.co > base.co * 1.05, "Milrinone should raise CO"
+        assert mil.svr < base.svr * 0.9, "Milrinone should reduce SVR"
         
     def test_hemorrhage_shock_class_iii(self, model):
         """

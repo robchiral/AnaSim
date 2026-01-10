@@ -220,6 +220,53 @@ def test_pk_hemodynamic_scaling_applies_to_propofol():
 
     assert engine.pk_prop.v1 == pytest.approx(base_v1 * 0.5, rel=0.05)
 
+# --- Coupling / Integration Tests ---
+
+def _run_for(engine, seconds: float, dt: float = 0.1) -> None:
+    steps = max(1, int(seconds / dt))
+    for _ in range(steps):
+        engine.step(dt)
+
+def test_peep_increases_pit_and_reduces_preload():
+    """Higher PEEP should raise Pit and reduce preload via coupling."""
+    patient = Patient(age=40, weight=70, height=170, sex="male")
+    config = SimulationConfig(mode="awake", dt=0.5)
+    engine = SimulationEngine(patient, config)
+    engine.start()
+    engine.set_airway_mode("Mask")
+
+    engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    _run_for(engine, 20.0)
+    pit_low = engine.state.pit
+    preload_low = engine.hemo.state.preload_factor
+
+    engine.set_vent_settings(rr=12, vt=0.5, peep=15.0, ie="1:2", mode="VCV")
+    _run_for(engine, 20.0)
+    pit_high = engine.state.pit
+    preload_high = engine.hemo.state.preload_factor
+
+    assert pit_high > pit_low + 0.5, "Higher PEEP should increase Pit"
+    assert preload_high < preload_low, "Higher PEEP should reduce preload factor"
+
+def test_positive_pressure_reduces_preload_vs_spontaneous():
+    """Positive pressure ventilation should reduce preload vs spontaneous breathing."""
+    patient = Patient(age=40, weight=70, height=170, sex="male")
+    config = SimulationConfig(mode="awake", dt=0.5)
+    engine = SimulationEngine(patient, config)
+    engine.start()
+    engine.set_airway_mode("Mask")
+
+    engine.vent.is_on = False
+    engine.bag_mask_active = False
+    _run_for(engine, 20.0)
+    preload_spont = engine.hemo.state.preload_factor
+
+    engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    _run_for(engine, 20.0)
+    preload_vent = engine.hemo.state.preload_factor
+
+    assert preload_vent < preload_spont, "Positive pressure should reduce preload vs spontaneous"
+
 # --- Tests from test_steady_state.py ---
 
 class TestSteadyStateMode(unittest.TestCase):

@@ -59,6 +59,15 @@ class SimulationState:
     
     # Phenylephrine (ng/mL)
     phenyl_ce: float = 0.0
+
+    # Vasopressin (mU/L)
+    vaso_ce: float = 0.0
+
+    # Dobutamine (ng/mL)
+    dobu_ce: float = 0.0
+
+    # Milrinone (ng/mL)
+    mil_ce: float = 0.0
     
     # Volatile agent (sevoflurane).
     fi_sevo: float = 0.0

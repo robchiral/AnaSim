@@ -21,22 +21,32 @@ from anasim.core.utils import clamp
 # Rocuronium:
 #   - Wierda JM: Wierda et al. Can J Anaesth. 1991; Standard PK parameters
 #
-# Vasopressors:
+# Vasopressors / Inotropes:
 #   - Norepinephrine:
 #       - Beloeil et al. Br J Anaesth. 2005;95:782-788 (septic shock/trauma, 1-comp PK-PD)
 #       - Oualha et al. Br J Clin Pharmacol. 2014;78:886-897 (critically ill children, popPK-PD)
 #       - Li et al. Clin Pharmacokinet. 2024;63:1597-1608 (healthy volunteers, 2-comp with propofol interaction)
-#   - Epinephrine: Heuristic 1-compartment model calibrated to t1/2 ~2.5 min, Vd ~0.15 L/kg;
-#       not a direct implementation of a specific population PK publication.
-#   - Phenylephrine: Heuristic 1-compartment model calibrated to t1/2 ~7 min, Vd ~0.20 L/kg;
-#       loosely based on clinical time course from historical hemodynamic studies, not a
-#       published population PK model.
+#   - Epinephrine:
+#       - Clutter et al. J Clin Invest. 1980 (healthy adults, clearance range)
+#       - Abboud et al. Crit Care. 2009 (adult septic shock, PK covariates)
+#       - Oualha et al. Br J Clin Pharmacol. 2014 (peds, popPK)
+#   - Phenylephrine:
+#       - FDA NDA 203826 Clinical Pharmacology Review. 2012 (2-comp PK)
+#       - Hengstmann & Goronzy. Eur J Clin Pharmacol. 1982 (legacy IV PK data)
+#   - Vasopressin:
+#       - Vasopressin injection label (DailyMed): Vd ~0.14 L/kg; CL 9-25 mL/min/kg; t1/2 <=10 min
+#   - Dobutamine:
+#       - Kates & Leier. Clin Pharmacol Ther. 1978 (severe CHF; CL 2.35 L/min/m^2; Vd 0.20 L/kg; t1/2 ~2 min)
+#       - Daly et al. Am J Cardiol. 1997 (plasma concentrations vs infusion rate)
+#   - Milrinone:
+#       - Milrinone lactate injection label (DailyMed): Vd 0.38-0.45 L/kg; t1/2 ~2.3-2.4 h; CL ~0.13 L/kg/hr
 #
 # Units:
 #   - Compartment volumes: L
 #   - Rate constants (k10, k12, etc.): min^-1
 #   - Effect-site equilibration (ke0): min^-1
-#   - Concentrations: µg/mL (propofol), ng/mL (remi, vasopressors)
+#   - Concentrations: µg/mL (propofol), ng/mL (remi, catecholamines/inotropes),
+#     mU/L (vasopressin)
 # =============================================================================
 
 @dataclass
@@ -674,11 +684,81 @@ class VasopressorState:
     """
     Unified state for vasopressor PK models.
     
-    All vasopressors use this common state to ensure consistent interface.
+    All vasoactive agents use this common state to ensure consistent interface.
+    Concentration units are drug-specific (e.g., ng/mL for catecholamines,
+    mU/L for vasopressin).
     """
     c1: float = 0.0   # Central/plasma concentration (ng/mL)
     c2: float = 0.0   # Peripheral compartment (if 2-compartment model)
     ce: float = 0.0   # Effect-site concentration (ng/mL)
+
+
+class OneCompEffectPK:
+    """
+    Shared 1-compartment + effect-site PK model for vasoactive agents.
+
+    Units are drug-specific; caller supplies v1 (L), cl1 (L/min), and ke0 (min^-1).
+    """
+    def __init__(self, patient: Patient, v1: float, cl1: float, ke0: float, cl1_co_exponent: float = 1.0):
+        self.patient = patient
+        self.v1 = v1
+        self.cl1 = cl1
+        self.k10 = self.cl1 / self.v1 if self.v1 > 0 else 0.0
+        self.ke0 = ke0
+        self.cl1_co_exponent = cl1_co_exponent
+        self._inv_v1 = (1.0 / self.v1) if self.v1 > 0 else 0.0
+
+        # Store baselines for hemodynamic scaling
+        self.v1_base = self.v1
+        self.cl1_base = self.cl1
+        self.k10_base = self.k10
+
+        self.state = VasopressorState()
+
+    def update_hemodynamics(self, v_ratio: float, co_ratio: float):
+        """Scale PK parameters based on hemodynamic changes."""
+        self.v1 = self.v1_base * v_ratio
+        if self.cl1_co_exponent <= 0:
+            co_scale = 1.0
+        else:
+            co_scale = co_ratio ** self.cl1_co_exponent
+        self.cl1 = self.cl1_base * co_scale
+        self.k10 = self.cl1 / self.v1 if self.v1 > 0 else 0.0
+        self._inv_v1 = (1.0 / self.v1) if self.v1 > 0 else 0.0
+
+    def step(self, dt_sec: float, infusion_rate_per_sec: float) -> VasopressorState:
+        """
+        Args:
+            dt_sec: time step (s)
+            infusion_rate_per_sec: drug input rate in model units per second
+        """
+        dt_min = dt_sec / 60.0
+        rin_per_min = infusion_rate_per_sec * 60.0
+
+        state = self.state
+        c1 = state.c1
+        ce = state.ce
+
+        # dC1/dt = -k10*C1 + Rin/V1
+        gradient_c1 = -self.k10 * c1 + (rin_per_min * self._inv_v1)
+        state.c1 += gradient_c1 * dt_min
+        state.c1 = max(0.0, state.c1)
+
+        # Effect-site equilibration
+        gradient_ce = self.ke0 * (state.c1 - ce)
+        state.ce += gradient_ce * dt_min
+        state.ce = max(0.0, state.ce)
+
+        return state
+
+    def get_ss_matrices(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Return state-space matrices (A, B) for TCI control."""
+        A = np.array([[-self.k10]])
+        B = np.array([[1.0 / self.v1]])
+        return A, B
+
+    def reset(self):
+        self.state = VasopressorState()
 
 
 # -----------------------------------------------------------------------------
@@ -844,9 +924,6 @@ class NorepinephrinePK:
             
         return state
 
-    def reset(self):
-        self.state = VasopressorState()
-
     def get_ss_matrices(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Return continuous A, B matrices (units 1/min).
@@ -854,19 +931,19 @@ class NorepinephrinePK:
         """
         # For TCI, use baseline k10 (Li model has dynamic k10 based on Propofol)
         k10 = self.k10
-        
+
         if self._is_li:
             # 2-compartment state-space model
             a11 = -(k10 + self.k12)
             a12 = self.k21
             a21 = self.k12
             a22 = -self.k21
-            
+
             A = np.array([
                 [a11, a12],
                 [a21, a22]
             ])
-            
+
             B = np.array([
                 [1.0 / self.v1],
                 [0.0]
@@ -875,15 +952,118 @@ class NorepinephrinePK:
             # 1-compartment model
             A = np.array([[-k10]])
             B = np.array([[1.0 / self.v1]])
-            
+
         return A, B
+
+    def reset(self):
+        self.state = VasopressorState()
+
+
+# -----------------------------------------------------------------------------
+# Vasopressin PK Model
+# -----------------------------------------------------------------------------
+
+class VasopressinPK(OneCompEffectPK):
+    """
+    Vasopressin Pharmacokinetic Model (1-compartment + effect site).
+
+    References:
+    - Vasopressin injection label (DailyMed): Vd ~0.14 L/kg, CL 9-25 mL/min/kg,
+      t1/2 <= 10 min (pressors peak within ~15 min, offset within ~20 min).
+
+    Units:
+    - Concentration: mU/L
+    - Infusion input: mU/sec (UI typically in U/min)
+    """
+    def __init__(self, patient: Patient):
+        w = patient.weight
+
+        # DailyMed label: Vd ~0.14 L/kg; CL 9-25 mL/min/kg.
+        # Use midpoint CL ~17 mL/min/kg for adult baseline.
+        v1 = 0.14 * w  # L
+        cl1 = 0.017 * w  # L/min
+
+        # Effect-site equilibration (pressors peak within ~15 min).
+        ke0 = 0.25  # min^-1 (t1/2 ~2.8 min)
+
+        # Clearance is partly flow-dependent; use sublinear CO scaling.
+        super().__init__(patient, v1=v1, cl1=cl1, ke0=ke0, cl1_co_exponent=0.5)
+
+        # Bolus conversion: input units (U) -> model units (mU)
+        self.bolus_unit_scale = 1000.0
+
+
+# -----------------------------------------------------------------------------
+# Dobutamine PK Model
+# -----------------------------------------------------------------------------
+
+class DobutaminePK(OneCompEffectPK):
+    """
+    Dobutamine Pharmacokinetic Model (1-compartment + effect site).
+
+    References:
+    - Kates & Leier. Clin Pharmacol Ther. 1978 (severe CHF):
+      CL ~2.35 L/min/m^2, Vd ~0.20 L/kg, t1/2 ~2 min.
+    - Daly et al. Am J Cardiol. 1997 (plasma concentrations vs infusion rate).
+    - Dobutamine injection label (Clinical Pharmacology): plasma half-life ~2 min.
+
+    Units:
+    - Concentration: ng/mL (µg/L)
+    - Infusion input: µg/sec
+    """
+    def __init__(self, patient: Patient):
+        w = patient.weight
+        bsa = patient.bsa if patient.bsa > 0 else 1.9
+
+        # Distribution volume and clearance from Leier et al. (CPT 1978).
+        v1 = 0.20 * w  # L
+        cl1 = 2.35 * bsa  # L/min (per m^2)
+
+        # Fast effect-site equilibration (rapid onset)
+        ke0 = 0.7  # min^-1 (t1/2 ~1 min)
+
+        # Clearance is primarily renal; use mild CO dependence to mimic renal perfusion changes.
+        super().__init__(patient, v1=v1, cl1=cl1, ke0=ke0, cl1_co_exponent=0.3)
+
+
+# -----------------------------------------------------------------------------
+# Milrinone PK Model
+# -----------------------------------------------------------------------------
+
+class MilrinonePK(OneCompEffectPK):
+    """
+    Milrinone Pharmacokinetic Model (1-compartment + effect site).
+
+    References:
+    - Milrinone lactate injection label (DailyMed): Vd ~0.38-0.45 L/kg,
+      CL ~0.13 L/kg/hr, t1/2 ~2.3-2.4 h (normal renal function).
+
+    Units:
+    - Concentration: ng/mL (µg/L)
+    - Infusion input: µg/sec
+    """
+    def __init__(self, patient: Patient):
+        w = patient.weight
+
+        v1 = 0.45 * w  # L
+        cl_l_hr = 0.13 * w  # L/hr
+        cl1 = cl_l_hr / 60.0  # L/min
+
+        # Renal elimination predominates; scale with renal function.
+        cl1 *= organ_clearance_scaler(patient, renal_fraction=0.9)
+
+        # Effect-site equilibration (minutes)
+        # DailyMed label: hemodynamic improvement within ~5-15 minutes.
+        ke0 = 0.12  # min^-1
+
+        super().__init__(patient, v1=v1, cl1=cl1, ke0=ke0)
 
 
 # -----------------------------------------------------------------------------
 # Epinephrine PK Model
 # -----------------------------------------------------------------------------
 
-class EpinephrinePK:
+class EpinephrinePK(OneCompEffectPK):
     """
     Epinephrine (Adrenaline) Pharmacokinetic Model.
     
@@ -893,39 +1073,32 @@ class EpinephrinePK:
     Optional pediatric model: Oualha et al.
     """
     def __init__(self, patient: Patient, model: str = "Clutter", sapsii: float = None):
-        self.patient = patient
         self.model = model
         w = patient.weight
 
         if model == "Oualha":
             # Oualha et al. 2014 (peds): V = 0.08 * BW; CL = 2.00 * BW^0.75 (L/hr)
-            self.v1 = 0.08 * w
+            v1 = 0.08 * w
             cl_l_hr = 2.00 * (w ** 0.75)
         elif model == "Abboud":
             # Abboud et al. 2009 (adult septic shock): CL = 127*(BW/70)^0.60*(SAPSII/50)^(-0.67); V ~ 7.9 L
-            self.v1 = 7.9
+            v1 = 7.9
             if sapsii is None:
                 sapsii = self._estimate_sapsii(patient)
             cl_l_hr = 127.0 * (w / 70.0) ** 0.60 * (sapsii / 50.0) ** (-0.67)
         else:
             # Clutter et al. 1980 (healthy adults): clearance ~52-89 mL/min/kg
             # Use 70 mL/min/kg as a representative baseline.
-            self.v1 = 0.15 * w
+            v1 = 0.15 * w
             cl_l_hr = 0.07 * w * 60.0
         
-        self.cl1 = cl_l_hr / 60.0  # L/min
-        self.k10 = self.cl1 / self.v1
+        cl1 = cl_l_hr / 60.0  # L/min
         
         # Effect-site equilibration rate constant
         # Epinephrine effects peak within ~1 min of IV bolus
-        self.ke0 = 0.5  # min^-1 (t_peak ~1.4 min)
-        
-        # Store baselines
-        self.v1_base = self.v1
-        self.cl1_base = self.cl1
-        self.k10_base = self.k10
-        
-        self.state = VasopressorState()
+        ke0 = 0.5  # min^-1 (t_peak ~1.4 min)
+
+        super().__init__(patient, v1=v1, cl1=cl1, ke0=ke0)
 
     @staticmethod
     def _estimate_sapsii(patient: Patient) -> float:
@@ -989,58 +1162,6 @@ class EpinephrinePK:
 
         return float(score)
     
-    def update_hemodynamics(self, v_ratio: float, co_ratio: float):
-        """Scale PK parameters based on hemodynamic changes."""
-        self.v1 = self.v1_base * v_ratio
-        self.cl1 = self.cl1_base * co_ratio
-        self.k10 = self.cl1 / self.v1
-    
-    def step(self, dt_sec: float, infusion_rate_ug_sec: float) -> VasopressorState:
-        """
-        Advance PK state by dt_sec.
-        
-        Args:
-            dt_sec: Time step in seconds
-            infusion_rate_ug_sec: Infusion rate in µg/sec
-        """
-        dt_min = dt_sec / 60.0
-        rin_ug_min = infusion_rate_ug_sec * 60.0
-        state = self.state
-        c1 = state.c1
-        ce = state.ce
-        
-        # dC1/dt = -k10 * C1 + Rin/V1
-        # Units: ng/mL (µg/L)
-        gradient_c1 = -self.k10 * c1 + (rin_ug_min / self.v1)
-        state.c1 += gradient_c1 * dt_min
-        state.c1 = max(0.0, state.c1)
-        
-        # Effect-site equilibration
-        gradient_ce = self.ke0 * (state.c1 - ce)
-        state.ce += gradient_ce * dt_min
-        state.ce = max(0.0, state.ce)
-        
-        return state
-    
-    
-    def get_ss_matrices(self) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Return state-space matrices (A, B) for TCI control.
-        1-Compartment Model:
-        dX/dt = -k10*X + Rin
-        dC/dt = -k10*C + Rin/V1
-        
-        State vector x = [C1]
-        A = [-k10] (units: min^-1)
-        B = [1/V1] (units: L^-1) -> if Rin is mass/min, B*Rin = conc/min
-        """
-        A = np.array([[-self.k10]])
-        B = np.array([[1.0 / self.v1]])
-        return A, B
-    
-    def reset(self):
-        self.state = VasopressorState()
-
 
 # -----------------------------------------------------------------------------
 # Phenylephrine PK Model

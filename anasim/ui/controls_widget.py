@@ -504,7 +504,7 @@ class ControlPanelWidget(QWidget):
         
         self.add_tutorial_label(layout, "TCI (Target Controlled Infusion) uses pharmacokinetic models to target a specific concentration in the blood or brain. Manual mode sets a fixed rate.")
          
-        def create_drug_box(name, unit_rate, tci_unit, set_rate_cb, set_tci_cb, key_name, def_bolus, color):
+        def create_drug_box(name, unit_rate, tci_unit, tci_range, set_rate_cb, set_tci_cb, key_name, def_bolus, bolus_unit, color):
             gb = QGroupBox(name)
             gb.setStyleSheet(get_groupbox_style(color))
             l = QVBoxLayout(gb)
@@ -530,7 +530,10 @@ class ControlPanelWidget(QWidget):
             sb_rate.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             
             sb_target = QDoubleSpinBox()
-            sb_target.setRange(0, 20)
+            if tci_range:
+                sb_target.setRange(float(tci_range[0]), float(tci_range[1]))
+            else:
+                sb_target.setRange(0, 20)
             sb_target.setSuffix(f" {tci_unit}")
             sb_target.setEnabled(False)
             sb_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -573,9 +576,11 @@ class ControlPanelWidget(QWidget):
             sb_bolus = QDoubleSpinBox()
             sb_bolus.setRange(0, 1000)
             
-            if "mg" in unit_rate: 
+            if bolus_unit:
+                sb_bolus.setSuffix(f" {bolus_unit}")
+            elif "mg" in unit_rate:
                 sb_bolus.setSuffix(" mg")
-            else: 
+            else:
                 sb_bolus.setSuffix(" mcg")
                 
             sb_bolus.setValue(def_bolus)
@@ -623,6 +628,9 @@ class ControlPanelWidget(QWidget):
             'nore': COLORS['drug_pressor'],
             'epi': COLORS['drug_inotrope'],
             'phenyl': COLORS['drug_vasoconstrictor'],
+            'vaso': COLORS['drug_vasoconstrictor'],
+            'dobu': COLORS['drug_inotrope'],
+            'milri': COLORS['drug_inotrope'],
         }
         
         for d in drugs:
@@ -639,10 +647,12 @@ class ControlPanelWidget(QWidget):
                 d['name'], 
                 d['rate_unit'], 
                 d['tci_unit'],
+                d.get('tci_range'),
                 make_set_rate(key),
                 make_set_tci(key),
                 key,
                 d['default_bolus'],
+                d.get('bolus_unit'),
                 color
             )
             layout.addWidget(gb)
