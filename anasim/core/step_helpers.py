@@ -74,14 +74,29 @@ class StepHelpersMixin:
                 saved_settings = resp_mech.snapshot_settings()
                 spont_rr = max(0.0, self.resp.state.rr)
                 spont_vt_l = max(0.0, self.resp.state.vt / 1000.0)
-                if spont_rr < RR_APNEA_THRESHOLD:
-                    spont_rr = max(0.0, resp_mech.set_rr)
+                is_apneic = spont_rr < RR_APNEA_THRESHOLD or self.resp.state.apnea
+                if resp_mech.mode == VentMode.PSV:
+                    if is_apneic:
+                        self._psv_apnea_timer += dt
+                    else:
+                        self._psv_apnea_timer = 0.0
+                    backup_rr = resp_mech.set_rr if resp_mech.set_rr > 0.0 else 0.0
+                    use_backup = (
+                        is_apneic
+                        and backup_rr > 0.0
+                        and self._psv_apnea_timer >= self.psv_apnea_backup_delay
+                    )
+                    if use_backup:
+                        spont_rr = backup_rr
+                else:
+                    self._psv_apnea_timer = 0.0
                 mech_rr_for_resp = spont_rr
 
                 effort_cm_h2o = 0.0
                 if spont_vt_l > 0 and resp_mech.compliance > 0:
                     effort_cm_h2o = spont_vt_l / resp_mech.compliance
                 effort_cm_h2o = clamp(effort_cm_h2o, 0.0, 20.0)
+                self._last_patient_effort_cmH2O = effort_cm_h2o
 
                 support_cm_h2o = resp_mech.set_p_insp if resp_mech.mode == VentMode.PSV else 0.0
                 resp_mech.set_rr = mech_rr_for_resp
@@ -94,10 +109,14 @@ class StepHelpersMixin:
                 resp_mech.restore_settings(saved_settings)
                 resp_mech.patient_effort_cmH2O = 0.0
             else:
+                self._psv_apnea_timer = 0.0
+                self._last_patient_effort_cmH2O = 0.0
                 resp_mech.patient_effort_cmH2O = 0.0
                 mech_state = resp_mech.step(dt)
                 total_peep_effect = resp_mech.get_total_peep()
         elif bag_mask_active:
+            self._psv_apnea_timer = 0.0
+            self._last_patient_effort_cmH2O = 0.0
             saved_settings = resp_mech.snapshot_settings()
             resp_mech.set_settings(self.bag_mask_rr, self.bag_mask_vt, 0.0, ie="1:2", mode="VCV")
             resp_mech.patient_effort_cmH2O = 0.0
@@ -106,6 +125,8 @@ class StepHelpersMixin:
             resp_mech.restore_settings(saved_settings)
             mech_rr_for_resp = self.bag_mask_rr
         else:
+            self._psv_apnea_timer = 0.0
+            self._last_patient_effort_cmH2O = 0.0
             saved_settings = resp_mech.snapshot_settings()
             resp_mech.set_rr = 0.0
             resp_mech.set_peep = 0.0
@@ -187,6 +208,7 @@ class StepHelpersMixin:
         Update patient temperature based on metabolic heat production and heat loss.
         """
         state = self.state
+        temp_c = state.temp_c
         # Metabolic heat production (reduced by anesthetic depth).
         depth_index = state.mac + (state.propofol_ce / 4.0)
         depth_factor = min(1.0, depth_index)
@@ -206,7 +228,7 @@ class StepHelpersMixin:
         anest_conductance_boost = 0.5 * depth_factor
         total_conductance = base_conductance * (1.0 + anest_conductance_boost) * (self.surface_area / 1.9)
         
-        heat_loss = total_conductance * (state.temp_c - t_ambient)
+        heat_loss = total_conductance * (temp_c - t_ambient)
         
         # Redistribution: rapid deepening adds transient heat loss.
         d_depth = (depth_index - self._last_depth_index) / dt
@@ -221,7 +243,7 @@ class StepHelpersMixin:
         warming_input = 0.0
         if state.bair_hugger_target > 0:
              k_bair = 7.0 
-             dt_warming = max(0.0, state.bair_hugger_target - state.temp_c)
+             dt_warming = max(0.0, state.bair_hugger_target - temp_c)
              warming_input = k_bair * dt_warming
         
         net_heat_flux = current_production + warming_input - heat_loss
@@ -231,10 +253,9 @@ class StepHelpersMixin:
         
         d_temp = (net_heat_flux * dt) / heat_capacity
         
-        state.temp_c += d_temp
-        
+        temp_c += d_temp
         # Clamp to physiologic bounds.
-        state.temp_c = clamp(state.temp_c, 25.0, 42.0)
+        state.temp_c = clamp(temp_c, 25.0, 42.0)
 
     def _step_disturbances(self: "SimulationEngine", dt: float) -> tuple:
         """Calculate disturbances and handle events."""
@@ -321,6 +342,8 @@ class StepHelpersMixin:
         """
         state = self.state
         pk_sevo = self.pk_sevo
+        circuit = self.circuit
+        composition = circuit.composition
         # Use prior-step VA from state (spontaneous + mechanical).
         connected = (state.airway_mode != AirwayType.NONE)
         total_va = state.va if (connected and state.va > 0) else 0.0
@@ -329,14 +352,15 @@ class StepHelpersMixin:
             fi_sevo = 0.0
             state.fio2 = 0.21
         else:
-            fi_vapor_circuit = self.circuit.composition.fi_agent 
+            fi_vapor_circuit = composition.fi_agent 
             fi_sevo = fi_vapor_circuit if self.active_agent == "Sevoflurane" else 0.0
             # Update state FiO2 from circuit
-            state.fio2 = self.circuit.composition.fio2
+            state.fio2 = composition.fio2
 
         state.fi_sevo = fi_sevo * 100.0
         
-        p_alv_prev = pk_sevo.state.p_alv
+        pk_sevo_state = pk_sevo.state
+        p_alv_prev = pk_sevo_state.p_alv
         uptake_sevo = (fi_sevo - p_alv_prev) * total_va
 
         # O2 uptake tied to metabolic rate and temperature
@@ -350,7 +374,7 @@ class StepHelpersMixin:
             vco2_ml_min = self.resp.vco2 * metabolic_factor * shiver_mult
             uptake_o2 = (vco2_ml_min / 1000.0) / max(self.resp.rq, 0.1)
         
-        self.circuit.step(dt, uptake_o2, uptake_sevo)
+        circuit.step(dt, uptake_o2, uptake_sevo)
         
         return fi_sevo
 
@@ -367,8 +391,9 @@ class StepHelpersMixin:
         self._update_pk_hemodynamics(co_curr)
 
         pk_sevo.step(dt, fi_sevo, state.va, co_curr, temp_c=state.temp_c)
-        state.et_sevo = pk_sevo.state.p_alv * 100.0
-        state.mac = pk_sevo.state.mac
+        pk_sevo_state = pk_sevo.state
+        state.et_sevo = pk_sevo_state.p_alv * 100.0
+        state.mac = pk_sevo_state.mac
         
         pk_prop.step(dt, self.propofol_rate_mg_sec)
         pk_remi.step(dt, self.remi_rate_ug_sec) 
@@ -522,7 +547,10 @@ class StepHelpersMixin:
             self.current_mean_paw = (1 - alpha_paw) * self.current_mean_paw + alpha_paw * mech_state.paw
         
         # Higher mean Paw and auto-PEEP increase Pit, reducing venous return.
+        # Spontaneous inspiratory effort makes Pit more negative (improves venous return).
         pit_estimate = -2.0 + 0.4 * (self.current_mean_paw - 5.0) + 0.3 * mech_state.auto_peep
+        effort_mmHg = self._last_patient_effort_cmH2O * 0.74
+        pit_estimate -= 0.3 * effort_mmHg
 
         # Mechanical ventilator MV calculation.
         mech_rr = mech_rr_for_resp if vent_active else 0.0
@@ -662,80 +690,87 @@ class StepHelpersMixin:
         
         return hemo_state, resp_state, phase
 
+    def _compute_capno_value(self: "SimulationEngine", dt: float, phase: str, resp_state):
+        """Compute capnography waveform value for the current step."""
+        state = self.state
+        if state.airway_mode == AirwayType.NONE:
+            return 0.0
+        if self._airway_patency < 0.05 or state.rr == 0:
+            # Near-complete obstruction or apnea: no measurable waveform.
+            self.capno.state.co2 = 0.0
+            return 0.0
+
+        resp_mech = self.resp_mech
+        bag_mask_active = self.bag_mask_active and not self._vent_active
+        vent_rr = resp_mech.set_rr if self._vent_active else (self.bag_mask_rr if bag_mask_active else 0.0)
+        insp_fraction = resp_mech.insp_time_fraction
+        if bag_mask_active and not self._vent_active:
+            insp_fraction = 1.0 / 3.0
+
+        capno_context = Capnograph.build_context(
+            resp_state,
+            vent_rr=vent_rr,
+            insp_fraction=insp_fraction,
+            vent_active=(self._vent_active or bag_mask_active),
+        )
+        capno_phase = phase
+        capno_exp_duration = capno_context.exp_duration
+        capno_is_spontaneous = capno_context.is_spontaneous
+        capno_curare = capno_context.curare_active
+
+        if self._vent_active or bag_mask_active:
+            support_mode = self._vent_active and resp_mech.mode in (VentMode.PSV, VentMode.CPAP)
+            if support_mode:
+                # PSV/CPAP are patient-driven; always render spontaneous timing.
+                capno_is_spontaneous = True
+                capno_curare = False
+                capno_phase = self._phase_from_rr(resp_state.rr)
+                if resp_state.rr > 0:
+                    capno_exp_duration = (60.0 / resp_state.rr) * 0.65
+            else:
+                # If spontaneous effort dominates, treat capno timing as patient-driven (AC-like).
+                # Otherwise lock to driven ventilation timing.
+                if capno_context.spontaneous_weight >= 0.6:
+                    capno_phase = self._phase_from_rr(capno_context.effective_rr)
+                    capno_exp_duration = capno_context.exp_duration
+                else:
+                    driven_rr = vent_rr if vent_rr > 0.1 else capno_context.effective_rr
+                    cycle_time = 60.0 / max(driven_rr, 0.1)
+                    exp_fraction = max(0.1, 1.0 - insp_fraction)
+                    capno_exp_duration = cycle_time * exp_fraction
+        elif capno_is_spontaneous:
+            capno_phase = self._phase_from_rr(resp_state.rr)
+
+        capno_p_alv = resp_state.etco2 * self._airway_patency
+        return self.capno.step(
+            dt,
+            capno_phase,
+            capno_p_alv,
+            is_spontaneous=capno_is_spontaneous,
+            curare_cleft=capno_curare,
+            exp_duration=capno_exp_duration,
+            effort_scale=capno_context.effort_scale,
+            airway_obstruction=self._capno_obstruction,
+        )
+
     def _step_monitors(self: "SimulationEngine", dt: float, phase: str, hemo_state, resp_state, dist_vec):
         """Update Monitors and calculate smoothed state."""
         d_bis, d_map, _d_co, _d_svr, _d_sv, _d_hr = dist_vec
         state = self.state
-        resp_mech = self.resp_mech
         
         if self.patient.weight != self._remi_rate_weight:
             self._remi_rate_weight = self.patient.weight
             self._remi_rate_scale = 60.0 / self._remi_rate_weight
         remi_rate_ug_kg_min = self.remi_rate_ug_sec * self._remi_rate_scale
 
+        mac_sevo = self.pk_sevo.state.mac
         bis_val = self.bis.step(dt, state.propofol_ce, state.remi_ce,
-                                mac_sevo=self.pk_sevo.state.mac,
+                                mac_sevo=mac_sevo,
                                 remi_rate_ug_kg_min=remi_rate_ug_kg_min)
-                                
-        if state.airway_mode == AirwayType.NONE:
-            capno_val = 0.0
-        elif self._airway_patency < 0.05:
-            # Near-complete upper airway obstruction: no measurable waveform.
-            capno_val = 0.0
-            self.capno.state.co2 = 0.0
-        elif state.rr == 0:
-            # Apneic: no gas flow, no waveform.
-            capno_val = 0.0
-            self.capno.state.co2 = 0.0  # Reset capnograph
-        else:
-            # Capnography context is computed in monitors/capno to avoid duplication.
-            bag_mask_active = self.bag_mask_active and state.airway_mode != AirwayType.NONE and not self._vent_active
-            vent_rr = resp_mech.set_rr if self._vent_active else (self.bag_mask_rr if bag_mask_active else 0.0)
-            insp_fraction = resp_mech.insp_time_fraction
-            if bag_mask_active and not self._vent_active:
-                insp_fraction = 1.0 / 3.0
-            capno_context = Capnograph.build_context(
-                resp_state,
-                vent_rr=vent_rr,
-                insp_fraction=insp_fraction,
-                vent_active=(self._vent_active or bag_mask_active)
-            )
-            capno_p_alv = resp_state.etco2 * self._airway_patency
-            capno_phase = phase
-            capno_exp_duration = capno_context.exp_duration
-            capno_is_spontaneous = capno_context.is_spontaneous
-            capno_curare = capno_context.curare_active
-            support_mode = self._vent_active and resp_mech.mode in (VentMode.PSV, VentMode.CPAP)
-            if self._vent_active or bag_mask_active:
-                if support_mode:
-                    # PSV/CPAP are patient-driven; always render spontaneous timing.
-                    capno_is_spontaneous = True
-                    capno_curare = False
-                    capno_phase = self._phase_from_rr(resp_state.rr)
-                    if resp_state.rr > 0:
-                        capno_exp_duration = (60.0 / resp_state.rr) * 0.65
-                else:
-                    # If spontaneous effort dominates, treat capno timing as patient-driven (AC-like).
-                    # Otherwise lock to driven ventilation timing.
-                    if capno_context.spontaneous_weight >= 0.6:
-                        capno_phase = self._phase_from_rr(capno_context.effective_rr)
-                        capno_exp_duration = capno_context.exp_duration
-                    else:
-                        driven_rr = vent_rr if vent_rr > 0.1 else capno_context.effective_rr
-                        cycle_time = 60.0 / max(driven_rr, 0.1)
-                        exp_fraction = max(0.1, 1.0 - insp_fraction)
-                        capno_exp_duration = cycle_time * exp_fraction
-            elif capno_is_spontaneous:
-                capno_phase = self._phase_from_rr(resp_state.rr)
-            capno_val = self.capno.step(dt, capno_phase, capno_p_alv, 
-                                        is_spontaneous=capno_is_spontaneous,
-                                        curare_cleft=capno_curare,
-                                        exp_duration=capno_exp_duration,
-                                        effort_scale=capno_context.effort_scale,
-                                        airway_obstruction=self._capno_obstruction)
+        capno_val = self._compute_capno_value(dt, phase, resp_state)
         
         # Neuromuscular PD uses step_recovery for effect-site & sugammadex binding.
-        tof_val = self.tof_pd.step_recovery(dt, state.roc_cp, mac_sevo=self.pk_sevo.state.mac)
+        tof_val = self.tof_pd.step_recovery(dt, state.roc_cp, mac_sevo=mac_sevo)
         loc_val = self.loc_pd.compute_probability(state.propofol_ce, state.remi_ce)
         if getattr(self, "_tol_current", None) is not None:
             tol_val = self._tol_current
@@ -752,7 +787,7 @@ class StepHelpersMixin:
         self._update_nibp(dt, hemo_state)
 
         # Smoothing & final state updates.
-        noise = self.rng.normal(0, 1, 3) * self._monitor_noise_std
+        noise = self.rng.normal(0.0, self._monitor_noise_std)
         
         raw_map = hemo_state.map + d_map + noise[0]
         raw_hr = hemo_state.hr + noise[1]

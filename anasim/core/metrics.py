@@ -1,4 +1,3 @@
-
 import numpy as np
 
 def compute_performance_error(measured: np.array, target: np.array) -> np.array:

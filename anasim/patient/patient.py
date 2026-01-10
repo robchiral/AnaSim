@@ -43,7 +43,8 @@ class Patient:
         
         # LBM (James formula, with Janmahasatian fallback for extreme BMI)
         # Verify valid formulas for male/female
-        if self.sex.lower() == "male":
+        sex = self.sex.lower()
+        if sex == "male":
             lbm = 1.1 * self.weight - 128 * ((self.weight / self.height) ** 2)
         else:
             lbm = 1.07 * self.weight - 148 * ((self.weight / self.height) ** 2)
@@ -72,7 +73,8 @@ class Patient:
         """Compute Janmahasatian LBM as a fallback for high-BMI cases."""
         if self.bmi <= 0:
             return 0.0
-        if self.sex.lower() == "male":
+        sex = self.sex.lower()
+        if sex == "male":
             return (9270.0 * self.weight) / (6680.0 + 216.0 * self.bmi)
         return (9270.0 * self.weight) / (8780.0 + 244.0 * self.bmi)
 
@@ -87,7 +89,8 @@ class Patient:
         
         h_m = self.height / 100.0
         
-        if self.sex.lower() == "male":
+        sex = self.sex.lower()
+        if sex == "male":
              vol_l = 0.3669 * (h_m**3) + 0.03219 * self.weight + 0.6041
         else:
              vol_l = 0.3561 * (h_m**3) + 0.03308 * self.weight + 0.1833

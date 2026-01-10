@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 import numpy as np
 
+_PROFILE_COL_TIME = 0
+_PROFILE_COL_BIS = 1
+_PROFILE_COL_HR = 2
+_PROFILE_COL_SVR = 3
+_PROFILE_COL_SV = 4
 
 @dataclass(frozen=True)
 class DisturbanceVector:
@@ -73,10 +78,18 @@ class Disturbances:
     def __init__(
         self,
         dist_profil: str = None,
+        dist_profile: str = None,
         **_kwargs,  # Ignore extra args for compatibility
     ):
+        if dist_profile is not None and dist_profil is None:
+            dist_profil = dist_profile
         self.dist_profil = dist_profil
         self.disturb_point = PROFILE_TABLES.get(dist_profil)
+        self._profile_time = None
+        self._profile_bis = None
+        self._profile_hr = None
+        self._profile_svr = None
+        self._profile_sv = None
 
         if dist_profil is None:
             return
@@ -84,6 +97,11 @@ class Disturbances:
             raise ValueError(
                 "dist_profil should be: stim_intubation_pulse, stim_sustained_surgery or None"
             )
+        self._profile_time = self.disturb_point[:, _PROFILE_COL_TIME]
+        self._profile_bis = self.disturb_point[:, _PROFILE_COL_BIS]
+        self._profile_hr = self.disturb_point[:, _PROFILE_COL_HR]
+        self._profile_svr = self.disturb_point[:, _PROFILE_COL_SVR]
+        self._profile_sv = self.disturb_point[:, _PROFILE_COL_SV]
 
     def compute_dist(self, time: float) -> DisturbanceVector:
         """
@@ -94,8 +112,8 @@ class Disturbances:
         if self.disturb_point is None:
             return DisturbanceVector()
 
-        dist_bis = np.interp(time, self.disturb_point[:, 0], self.disturb_point[:, 1])
-        dist_hr = np.interp(time, self.disturb_point[:, 0], self.disturb_point[:, 2])
-        dist_svr = np.interp(time, self.disturb_point[:, 0], self.disturb_point[:, 3])
-        dist_sv = np.interp(time, self.disturb_point[:, 0], self.disturb_point[:, 4])
+        dist_bis = np.interp(time, self._profile_time, self._profile_bis)
+        dist_hr = np.interp(time, self._profile_time, self._profile_hr)
+        dist_svr = np.interp(time, self._profile_time, self._profile_svr)
+        dist_sv = np.interp(time, self._profile_time, self._profile_sv)
         return DisturbanceVector(dist_bis, 0.0, 0.0, dist_svr, dist_sv, dist_hr)

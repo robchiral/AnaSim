@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Optional
-import numpy as np
+from typing import List, Dict
 
 @dataclass
 class SimulationConfig:
