@@ -43,6 +43,8 @@ class AnesthesiaVentilator:
     Supports:
     - VCV (Volume Control Ventilation): Set Vt, Paw varies
     - PCV (Pressure Control Ventilation): Set P_insp, Vt varies
+    - PSV (Pressure Support Ventilation): Patient-triggered, pressure-targeted
+    - CPAP (Continuous Positive Airway Pressure): PEEP with spontaneous breaths
     """
     
     def __init__(self):
@@ -56,9 +58,9 @@ class AnesthesiaVentilator:
         self._breath_count = 0
         
     def set_mode(self, mode: str):
-        """Set ventilator mode (VCV or PCV)."""
+        """Set ventilator mode (VCV, PCV, PSV, CPAP)."""
         mode_upper = mode.upper()
-        if mode_upper in ["VCV", "PCV"]:
+        if mode_upper in ["VCV", "PCV", "PSV", "CPAP"]:
             self.settings.mode = mode_upper
         
     def update_settings(self, rr=None, tv=None, peep=None, fio2=None, 
@@ -100,7 +102,7 @@ class AnesthesiaVentilator:
             except:
                 pass
 
-    def step(self, dt: float, mech_state):
+    def step(self, dt: float, mech_state, rr_total: float = None):
         """
         Update monitors based on respiratory mechanics state.
         
@@ -115,9 +117,10 @@ class AnesthesiaVentilator:
         self.monitors.auto_peep = mech_state.auto_peep
         self.monitors.tv_exp = mech_state.delivered_vt
         
-        # Calculate minute ventilation
-        if self.settings.rr > 0:
-            self.monitors.mv_exp = (self.monitors.tv_exp / 1000.0) * self.settings.rr
+        # Calculate minute ventilation (use effective RR if provided)
+        rr_eff = rr_total if rr_total is not None else self.settings.rr
+        if rr_eff > 0:
+            self.monitors.mv_exp = (self.monitors.tv_exp / 1000.0) * rr_eff
         else:
             self.monitors.mv_exp = 0.0
             
@@ -131,17 +134,20 @@ class AnesthesiaVentilator:
                 self.monitors.compliance = 50.0  # Default
         else:
             # Infer compliance from delivered Vt in PCV mode
-            if self.settings.p_insp > 0:
+            if self.settings.p_insp and self.settings.p_insp > 0:
                 self.monitors.compliance = self.monitors.tv_exp / self.settings.p_insp
                 
-        self.monitors.rr_total = self.settings.rr
+        self.monitors.rr_total = rr_total if rr_total is not None else self.settings.rr
         
     def get_mode_display(self) -> str:
         """Return human-readable mode string."""
         if self.settings.mode == "VCV":
             return f"VCV - Vt {int(self.settings.tv)} mL"
-        else:
+        if self.settings.mode == "PCV":
             return f"PCV - P {int(self.settings.p_insp)} cmH2O"
+        if self.settings.mode == "PSV":
+            return f"PSV - PS {int(self.settings.p_insp)} cmH2O"
+        return f"CPAP - PEEP {int(self.settings.peep)} cmH2O"
             
     def get_alarm_status(self) -> dict:
         """

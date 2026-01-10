@@ -208,3 +208,24 @@ class TestCapnographyVentSwitch:
         spont_rr_off = engine.state.rr
         assert abs(off_rr - spont_rr_off) < 2.0, \
             f"Capno RR {off_rr:.1f} should match spontaneous rate {spont_rr_off:.1f}"
+
+    @pytest.mark.parametrize("mode,p_insp", [("PSV", 10.0), ("CPAP", 0.0)])
+    def test_capno_support_modes_follow_spontaneous(self, engine_factory, mode, p_insp):
+        config = SimulationConfig(mode="awake")
+        engine = engine_factory(config=config, start=True)
+        engine.set_airway_mode("ETT")
+
+        # Let spontaneous breathing stabilize.
+        for _ in range(50):
+            engine.step(0.1)
+
+        # Enable support mode with a low backup rate.
+        engine.set_vent_settings(rr=6.0, vt=0.5, peep=5.0, ie="1:2", mode=mode, p_insp=p_insp)
+        for _ in range(20):
+            engine.step(0.1)
+
+        cap_rr = self._count_insp_transitions(engine, seconds=20.0, dt=0.1)
+        spont_rr = engine.state.rr
+        assert abs(cap_rr - spont_rr) < 2.0, \
+            f"{mode} capno RR {cap_rr:.1f} should follow spontaneous {spont_rr:.1f}"
+        assert abs(cap_rr - 6.0) > 1.5, "Capno should not lock to backup rate in support modes"

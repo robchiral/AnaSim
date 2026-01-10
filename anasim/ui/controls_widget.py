@@ -421,7 +421,7 @@ class ControlPanelWidget(QWidget):
         h_mode = QHBoxLayout()
         h_mode.addWidget(QLabel("Mode:"))
         self.cb_vent_mode = QComboBox()
-        self.cb_vent_mode.addItems(["VCV (Volume)", "PCV (Pressure)"])
+        self.cb_vent_mode.addItems(["VCV (Volume)", "PCV (Pressure)", "PSV (Support)", "CPAP"])
         self.cb_vent_mode.currentIndexChanged.connect(self.on_vent_mode_changed)
         h_mode.addWidget(self.cb_vent_mode)
         h_mode.addStretch()
@@ -454,7 +454,7 @@ class ControlPanelWidget(QWidget):
         # Inspiratory Pressure (PCV mode) - initially hidden
         self.lbl_pinsp = QLabel("Pinsp:")
         self.sb_pinsp = QSpinBox()
-        self.sb_pinsp.setRange(5, 40)
+        self.sb_pinsp.setRange(0, 40)
         self.sb_pinsp.setValue(15)
         self.sb_pinsp.setSuffix(" cmH₂O")
         self.sb_pinsp.setSingleStep(1)
@@ -690,7 +690,6 @@ class ControlPanelWidget(QWidget):
 
     def toggle_vent_power(self, checked):
         if checked:
-            mode_text = "VCV" if self.cb_vent_mode.currentIndex() == 0 else "PCV"
             self.btn_vent_power.setText("Ventilator ON")
             # Turn off bag-mask when switching to mechanical vent (mutually exclusive)
             if hasattr(self, 'btn_bag_mask') and self.btn_bag_mask.isChecked():
@@ -712,8 +711,11 @@ class ControlPanelWidget(QWidget):
             self.engine.set_vent_settings(0, 0, self.sb_peep.value(), "1:2")
     
     def on_vent_mode_changed(self, index):
-        """Handle VCV/PCV mode switch."""
+        """Handle ventilator mode switch."""
         is_vcv = (index == 0)
+        is_pcv = (index == 1)
+        is_psv = (index == 2)
+        is_cpap = (index == 3)
         
         if is_vcv:
             self.lbl_tv.show()
@@ -730,7 +732,10 @@ class ControlPanelWidget(QWidget):
             self.sb_pinsp.show()
             if self.btn_vent_power.isChecked():
                 self.sb_tv.setEnabled(False)
-                self.sb_pinsp.setEnabled(True)
+                self.sb_pinsp.setEnabled(is_pcv or is_psv)
+                if is_cpap:
+                    self.sb_pinsp.setValue(0)
+                    self.sb_pinsp.setEnabled(False)
         
         if self.btn_vent_power.isChecked():
             self.btn_vent_power.setText("Ventilator ON")
@@ -738,7 +743,16 @@ class ControlPanelWidget(QWidget):
 
     def update_vent(self):
         if self.btn_vent_power.isChecked():
-            mode = "VCV" if self.cb_vent_mode.currentIndex() == 0 else "PCV"
+            mode_index = self.cb_vent_mode.currentIndex()
+            if mode_index == 0:
+                mode = "VCV"
+            elif mode_index == 1:
+                mode = "PCV"
+            elif mode_index == 2:
+                mode = "PSV"
+            else:
+                mode = "CPAP"
+            p_insp = self.sb_pinsp.value() if mode in ("PCV", "PSV") else 0.0
             
             self.engine.set_vent_settings(
                 self.sb_rr.value(),
@@ -746,7 +760,7 @@ class ControlPanelWidget(QWidget):
                 self.sb_peep.value(),
                 self.cb_ie.currentText(),
                 mode=mode,
-                p_insp=self.sb_pinsp.value()
+                p_insp=p_insp
             )
             
     def toggle_bag_mask(self, checked):
