@@ -54,6 +54,7 @@ dmypy.json
 # === Project Specific ===
 comparisons/
 docs/TODO.md
+docs/papers/
 .claude/
 
 # === Scripts ===

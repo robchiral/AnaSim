@@ -92,12 +92,19 @@ class ThreeCompartmentPK:
         # Cached volume ratios (avoids repeated division in step())
         self._update_volume_ratios()
         
+    @staticmethod
+    def _safe_ratio(numerator: float, denominator: float) -> float:
+        """Avoid division by zero for degenerate compartment volumes."""
+        if denominator <= 0.0:
+            return 0.0
+        return numerator / denominator
+        
     def _update_volume_ratios(self):
         """Cache volume ratios for ODE calculations."""
-        self._v2_v1 = self.v2 / self.v1
-        self._v3_v1 = self.v3 / self.v1
-        self._v1_v2 = self.v1 / self.v2
-        self._v1_v3 = self.v1 / self.v3
+        self._v2_v1 = self._safe_ratio(self.v2, self.v1)
+        self._v3_v1 = self._safe_ratio(self.v3, self.v1)
+        self._v1_v2 = self._safe_ratio(self.v1, self.v2)
+        self._v1_v3 = self._safe_ratio(self.v1, self.v3)
         
     def update_hemodynamics(self, v_ratio: float, co_ratio: float):
         """
@@ -105,8 +112,10 @@ class ThreeCompartmentPK:
         v_ratio = current_blood_vol / initial_blood_vol
         co_ratio = current_CO / initial_CO
         """
-        # Update V1
+        # Update volumes
         self.v1 = self.v1_base * v_ratio
+        self.v2 = self.v2_base * v_ratio
+        self.v3 = self.v3_base * v_ratio
         
         # Infer Flows (Cl) from baselines
         # Cl = k * V_source
@@ -120,11 +129,11 @@ class ThreeCompartmentPK:
         cl3 = cl3_base * co_ratio
         
         # Recalculate k constants
-        self.k10 = cl1 / self.v1
-        self.k12 = cl2 / self.v1
-        self.k21 = cl2 / self.v2
-        self.k13 = cl3 / self.v1
-        self.k31 = cl3 / self.v3
+        self.k10 = cl1 / self.v1 if self.v1 > 0 else 0.0
+        self.k12 = cl2 / self.v1 if self.v1 > 0 else 0.0
+        self.k21 = cl2 / self.v2 if self.v2 > 0 else 0.0
+        self.k13 = cl3 / self.v1 if self.v1 > 0 else 0.0
+        self.k31 = cl3 / self.v3 if self.v3 > 0 else 0.0
         
         # Update cached volume ratios
         self._update_volume_ratios()
@@ -156,7 +165,7 @@ class ThreeCompartmentPK:
         v1_v2 = self._v1_v2
         v1_v3 = self._v1_v3
         k_sum = k10 + k12 + k13
-        rin_term = rin_mg_min / v1
+        rin_term = rin_mg_min / v1 if v1 > 0 else 0.0
         
         # 3-Compartment Mammillary Model ODE (Mass-Conserving Formulation)
         # ------------------------------------------------------------------
@@ -191,6 +200,12 @@ class ThreeCompartmentPK:
         self.state.c3 += gradient_c3 * dt_min
         self.state.ce += gradient_ce * dt_min
         
+        # Concentrations should not be negative
+        self.state.c1 = max(0.0, self.state.c1)
+        self.state.c2 = max(0.0, self.state.c2)
+        self.state.c3 = max(0.0, self.state.c3)
+        self.state.ce = max(0.0, self.state.ce)
+        
         return self.state
 
     def reset(self):
@@ -211,7 +226,7 @@ class ThreeCompartmentPK:
             Time in minutes to reach target, or max_seconds/60 if not reached
         """
         ce_current = self.state.ce
-        if ce_current < 0.5:  # Below clinically relevant threshold
+        if ce_current <= 0.0:
             return 0.0
             
         target_ce = ce_current * target_fraction
@@ -310,6 +325,9 @@ class ThreeCompartmentPK:
 # Helper Functions
 # -----------------------------------------------------------------------------
 
+def _positive(value: float, min_value: float = 1e-6) -> float:
+    """Ensure parameter is strictly positive to avoid invalid PK rates."""
+    return max(min_value, value)
 
 def _organ_function(patient: Patient, attr: str) -> float:
     try:
@@ -415,13 +433,13 @@ class PropofolPKSchnider(ThreeCompartmentPK):
         
         # Volumes [L]
         v1 = 4.27
-        v2 = 18.9 - 0.391 * (age - 53)
+        v2 = _positive(18.9 - 0.391 * (age - 53), 0.5)
         v3 = 238.0
         
         # Clearances [L/min]
-        cl1 = 1.89 + 0.0456 * (w - 77) - 0.0681 * (lbm - 59) + 0.0264 * (h - 177)
-        cl2 = 1.29 - 0.024 * (age - 53)
-        cl3 = 0.836
+        cl1 = _positive(1.89 + 0.0456 * (w - 77) - 0.0681 * (lbm - 59) + 0.0264 * (h - 177), 0.01)
+        cl2 = _positive(1.29 - 0.024 * (age - 53), 0.01)
+        cl3 = _positive(0.836, 0.01)
 
         # Hepatic impairment: increase Vd with preserved clearances
         v_scale = hepatic_vd_multiplier(patient, severe_multiplier=1.6)
@@ -560,17 +578,17 @@ class RemifentanilPKMinto(ThreeCompartmentPK):
         lbm = patient.lbm
         
         # Clearances [L/min]
-        cl1 = 2.6 - 0.0162 * (age - 40) + 0.0191 * (lbm - 55)
-        cl2 = 2.05 - 0.0301 * (age - 40)
-        cl3 = 0.076 - 0.00113 * (age - 40)
+        cl1 = _positive(2.6 - 0.0162 * (age - 40) + 0.0191 * (lbm - 55), 0.01)
+        cl2 = _positive(2.05 - 0.0301 * (age - 40), 0.01)
+        cl3 = _positive(0.076 - 0.00113 * (age - 40), 0.005)
         
         # Volumes [L]
-        v1 = 5.1 - 0.0201 * (age - 40) + 0.072 * (lbm - 55)
-        v2 = 9.82 - 0.0811 * (age - 40) + 0.108 * (lbm - 55)
-        v3 = 5.42
+        v1 = _positive(5.1 - 0.0201 * (age - 40) + 0.072 * (lbm - 55), 1.0)
+        v2 = _positive(9.82 - 0.0811 * (age - 40) + 0.108 * (lbm - 55), 1.0)
+        v3 = _positive(5.42, 0.5)
         
         # Ke0 [min^-1]
-        ke0 = 0.595 - 0.007 * (age - 40)
+        ke0 = _positive(0.595 - 0.007 * (age - 40), 0.01)
         
         # Rate constants
         k10 = cl1 / v1
@@ -688,9 +706,9 @@ class VasopressorState:
     Concentration units are drug-specific (e.g., ng/mL for catecholamines,
     mU/L for vasopressin).
     """
-    c1: float = 0.0   # Central/plasma concentration (ng/mL)
+    c1: float = 0.0   # Central/plasma concentration (drug-specific units)
     c2: float = 0.0   # Peripheral compartment (if 2-compartment model)
-    ce: float = 0.0   # Effect-site concentration (ng/mL)
+    ce: float = 0.0   # Effect-site concentration (drug-specific units)
 
 
 class OneCompEffectPK:
@@ -745,7 +763,7 @@ class OneCompEffectPK:
         state.c1 = max(0.0, state.c1)
 
         # Effect-site equilibration
-        gradient_ce = self.ke0 * (state.c1 - ce)
+        gradient_ce = self.ke0 * (c1 - ce)
         state.ce += gradient_ce * dt_min
         state.ce = max(0.0, state.ce)
 
@@ -780,7 +798,9 @@ class NorepinephrinePK:
         
         self.u_endo = 0.0 # Endogenous production (ug/min)
         self.u_endo_ug_min = 0.0
-        self.c_prop_base = 3.53 # for Li model
+        # Li 2024: propofol covariate on CL (scaled by 1/100 to match reported ~12% drop at 3.53 µg/mL)
+        self.theta_prop_cl = -3.57
+        self.propofol_covariate_scale = 100.0
         self.k12_base = 0.0
         self.v2 = 0.0
         self.cl2 = 0.0
@@ -881,6 +901,8 @@ class NorepinephrinePK:
         dt_min = dt_sec / 60.0
         rin_ug_min = infusion_rate_ug_sec * 60.0
         state = self.state
+        c1_prev = state.c1
+        c2_prev = state.c2
         
         # Add endogenous
         if self._is_oualha:
@@ -891,34 +913,31 @@ class NorepinephrinePK:
         # Update Li model parameters based on Propofol
         if self._is_li:
             # Propofol effect on NE clearance (Li et al. Clin Pharmacokinet. 2024)
-            # The formula exp(-3.57 * (Cp - 3.53)) causes massive values at Cp=0 (Awake).
-            # Clamp current_cl1 to a physiological ceiling (5.0 L/min) to prevent instant elimination.
-            # 5.0 L/min is approx 2.5x baseline clearance, providing t1/2 ~0.5 min instead of 0.05s.
-            prop_effect = np.exp(-3.57 * (propofol_conc_ug_ml - self.c_prop_base))
+            # Reported covariate: exp(theta * (Cp / 100)) with theta ≈ -3.57.
+            prop_scaled = max(0.0, propofol_conc_ug_ml) / self.propofol_covariate_scale
+            prop_effect = np.exp(self.theta_prop_cl * prop_scaled)
             current_cl1 = self.cl1 * prop_effect
-            if current_cl1 > 5.0: current_cl1 = 5.0
-            
-            current_k10 = current_cl1 / self.v1
+            current_k10 = current_cl1 / self.v1 if self.v1 > 0 else 0.0
         else:
             current_k10 = self.k10
-        c1 = state.c1 # ng/mL
-        rin_term = rin_ug_min / self.v1
+        rin_term = rin_ug_min / self.v1 if self.v1 > 0 else 0.0
         
         if self._is_li:
-            c2 = state.c2
-            
-            gradient_c1 = -(current_k10 + self.k12) * c1 + self.k21 * c2 + rin_term
-            gradient_c2 = self.k12 * c1 - self.k21 * c2
+            gradient_c1 = -(current_k10 + self.k12) * c1_prev + self.k21 * c2_prev + rin_term
+            gradient_c2 = self.k12 * c1_prev - self.k21 * c2_prev
             
             state.c1 += gradient_c1 * dt_min
             state.c2 += gradient_c2 * dt_min
         else:
             # dC1 = -k10 C1 + Rin/V1
-            gradient_c1 = -current_k10 * c1 + rin_term
+            gradient_c1 = -current_k10 * c1_prev + rin_term
             state.c1 += gradient_c1 * dt_min
+
+        state.c1 = max(0.0, state.c1)
+        state.c2 = max(0.0, state.c2)
         
         # Effect-site equilibration (all models)
-        gradient_ce = self.ke0 * (state.c1 - state.ce)
+        gradient_ce = self.ke0 * (c1_prev - state.ce)
         state.ce += gradient_ce * dt_min
         state.ce = max(0.0, state.ce)
             
