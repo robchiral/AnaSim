@@ -1,6 +1,4 @@
-
 from collections import deque
-import numpy as np
 
 class AlarmSystem:
     """
@@ -28,9 +26,16 @@ class AlarmSystem:
         self.dt = dt
         
         # Buffers for delay logic (recent values)
-        self.buffers = {k: deque() for k in self.delays.keys()}
+        self.buffers = {
+            name: deque(maxlen=self._window_len(delay))
+            for name, delay in self.delays.items()
+        }
         
         self.active_alarms = {}
+
+    def _window_len(self, delay_sec: float) -> int:
+        """Window length in samples for a given delay."""
+        return max(1, int(delay_sec / self.dt))
         
     def update(self, state_dict: dict):
         """
@@ -47,12 +52,11 @@ class AlarmSystem:
             
             # Update buffer
             # Window size is approximately delay_sec / dt.
-            window_len = max(1, int(delay_sec / self.dt))
-            
-            buf = self.buffers[name]
+            window_len = self._window_len(delay_sec)
+            buf = self.buffers.get(name)
+            if buf is None or buf.maxlen != window_len:
+                buf = self.buffers[name] = deque(maxlen=window_len)
             buf.append(val)
-            while len(buf) > window_len:
-                buf.popleft()
                 
             # Check thresholds
             # Condition must be true for the ENTIRE window (meaning sustained for delay)

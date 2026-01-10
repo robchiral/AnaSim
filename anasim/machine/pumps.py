@@ -1,6 +1,4 @@
-
 from dataclasses import dataclass
-from typing import Optional
 
 @dataclass
 class PumpStatus:
@@ -45,35 +43,27 @@ class InfusionPump:
             return 0.0
             
         # Volumetrics and rate unit handling
-        
-        amount = 0.0
-        rate_sec = 0.0
-        
-        if self.status.rate_unit == "ml/hr":
+        unit = self.status.rate_unit
+        rate = self.status.rate
+        conc = self.status.concentration
+
+        if unit == "ml/hr":
             # amount (mg or ug) = rate (ml/hr) * conc (mg/ml) / 3600 * dt
-            rate_ml_sec = self.status.rate / 3600.0
-            vol = rate_ml_sec * dt
-            amount = vol * self.status.concentration
-            self.status.volume_infused += vol
-        
-        elif self.status.rate_unit == "mg/hr":
-             # amount (mg) = rate (mg/hr) / 3600 * dt
-             # vol = amount / conc
-             rate_mg_sec = self.status.rate / 3600.0
-             amount = rate_mg_sec * dt
-             if self.status.concentration > 0:
-                 self.status.volume_infused += amount / self.status.concentration
-                 
-        elif self.status.rate_unit == "ug/min":
-             # amount (ug) = rate (ug/min) / 60 * dt
-             rate_ug_sec = self.status.rate / 60.0
-             amount = rate_ug_sec * dt
-             if self.status.concentration > 0:
-                 # vol (ml) = amount (ug) / (conc (ug/ml))
-                 self.status.volume_infused += amount / self.status.concentration
-                 
-        elif self.status.rate_unit == "ug/kg/min":
-             # Weight-based rate calculation is handled by the caller
-             pass
-             
+            vol = (rate / 3600.0) * dt
+            amount = vol * conc
+        elif unit == "mg/hr":
+            # amount (mg) = rate (mg/hr) / 3600 * dt
+            amount = (rate / 3600.0) * dt
+            vol = amount / conc if conc > 0 else 0.0
+        elif unit == "ug/min":
+            # amount (ug) = rate (ug/min) / 60 * dt
+            amount = (rate / 60.0) * dt
+            vol = amount / conc if conc > 0 else 0.0
+        elif unit == "ug/kg/min":
+            # Weight-based rate calculation is handled by the caller
+            return 0.0
+        else:
+            return 0.0
+
+        self.status.volume_infused += vol
         return amount

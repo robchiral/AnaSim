@@ -1,6 +1,5 @@
 import numpy as np
 from dataclasses import dataclass
-from typing import Optional, List, Tuple
 from .patient import Patient
 from anasim.core.utils import hill_function, clamp, clamp01
 

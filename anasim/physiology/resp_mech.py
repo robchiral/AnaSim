@@ -98,7 +98,6 @@ class RespiratoryMechanics:
         self._paw_samples = 0
         self._breath_peak = 0.0         # Peak Paw this breath
         self._breath_peak_volume = 0.0  # Peak absolute lung volume this breath
-        self._last_insp_volume = 0.0    # Volume at end of inspiration
         
     def set_mode(self, mode: str):
         """Set ventilator mode (VCV, PCV, PSV, CPAP)."""
@@ -232,7 +231,6 @@ class RespiratoryMechanics:
         if phase_changed and state.phase == "INSP":
             # End of inspiration - record plateau pressure and volume
             state.paw_plat = state.volume / self.compliance + self.set_peep
-            self._last_insp_volume = state.volume
         
         # 2. Calculate Flow and Pressure based on Mode
         target_flow = 0.0
