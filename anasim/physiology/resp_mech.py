@@ -1,9 +1,11 @@
 """
-Respiratory Mechanics Model with VCV/PCV Mode Support.
+Respiratory Mechanics Model with VCV/PCV/PSV/CPAP Mode Support.
 
-Implements single-compartment lung model with realistic ventilator dynamics:
-- Volume Control Ventilation (VCV): Constant flow, variable pressure
-- Pressure Control Ventilation (PCV): Constant pressure, variable flow/volume
+    Implements single-compartment lung model with realistic ventilator dynamics:
+    - Volume Control Ventilation (VCV): Constant flow, variable pressure
+    - Pressure Control Ventilation (PCV): Constant pressure, variable flow/volume
+    - Pressure Support Ventilation (PSV): Patient-triggered, pressure-limited
+    - CPAP: PEEP with spontaneous timing
 - Auto-PEEP calculation for incomplete exhalation
 - PEEP effects on lung mechanics
 """
@@ -17,7 +19,8 @@ class VentMode(Enum):
     """Ventilator mode enumeration."""
     VCV = "VCV"  # Volume Control Ventilation
     PCV = "PCV"  # Pressure Control Ventilation
-    # PSV = "PSV"  # Pressure Support (future)
+    PSV = "PSV"  # Pressure Support Ventilation
+    CPAP = "CPAP"  # Continuous Positive Airway Pressure
 
 
 @dataclass
@@ -46,12 +49,12 @@ class MechState:
 
 class RespiratoryMechanics:
     """
-    Single Compartment Lung Model with VCV/PCV Mode Support.
+    Single Compartment Lung Model with VCV/PCV/PSV/CPAP Mode Support.
     
     Equation of Motion: Paw = Volume/Compliance + Flow*Resistance + PEEP
     
     VCV Mode: Flow is controlled (square wave), Paw is calculated
-    PCV Mode: Paw is controlled (set P_insp above PEEP), Flow/Vt are calculated
+    PCV/PSV/CPAP Mode: Paw is controlled (P_insp above PEEP), Flow/Vt are calculated
     
     Physiological interactions:
     - Higher PEEP increases mean Paw → impairs venous return
@@ -87,6 +90,8 @@ class RespiratoryMechanics:
         # State
         self.state = MechState()
         self.cycle_time = 0.0           # Time within breath cycle
+        # Patient effort (cmH2O) for PSV/CPAP support
+        self.patient_effort_cmH2O = 0.0
         
         # Monitoring accumulators
         self._paw_accumulator = 0.0     # For mean Paw calculation
@@ -96,11 +101,16 @@ class RespiratoryMechanics:
         self._last_insp_volume = 0.0    # Volume at end of inspiration
         
     def set_mode(self, mode: str):
-        """Set ventilator mode (VCV or PCV)."""
-        if mode.upper() == "VCV":
+        """Set ventilator mode (VCV, PCV, PSV, CPAP)."""
+        mode_upper = mode.upper()
+        if mode_upper == "VCV":
             self.mode = VentMode.VCV
-        elif mode.upper() == "PCV":
+        elif mode_upper == "PCV":
             self.mode = VentMode.PCV
+        elif mode_upper == "PSV":
+            self.mode = VentMode.PSV
+        elif mode_upper == "CPAP":
+            self.mode = VentMode.CPAP
         
     def set_settings(self, rr: float, vt: float, peep: float, ie: str = "1:2", 
                      mode: str = None, p_insp: float = None):
@@ -142,6 +152,7 @@ class RespiratoryMechanics:
             self.mode,
             self.set_p_insp,
             self.insp_time_fraction,
+            self.patient_effort_cmH2O,
         )
 
     def restore_settings(self, snapshot: tuple) -> None:
@@ -153,6 +164,7 @@ class RespiratoryMechanics:
             self.mode,
             self.set_p_insp,
             self.insp_time_fraction,
+            self.patient_effort_cmH2O,
         ) = snapshot
 
     def step(self, dt: float) -> MechState:
@@ -230,7 +242,7 @@ class RespiratoryMechanics:
             
             if self.mode == VentMode.VCV:
                 target_flow = self._step_vcv_insp(insp_duration)
-            else:  # PCV
+            else:  # PCV / PSV / CPAP
                 target_flow = self._step_pcv_insp(dt)
         else:
             state.phase = "EXP"
@@ -285,8 +297,8 @@ class RespiratoryMechanics:
         total_peep = self.set_peep + self.state.auto_peep
         p_insp_total = self.set_p_insp + self.set_peep
         
-        # Alveolar pressure (elastic recoil + PEEP)
-        p_alv = self.state.volume / self.compliance + total_peep
+        # Alveolar pressure (elastic recoil + PEEP - patient effort)
+        p_alv = self.state.volume / self.compliance + total_peep - self.patient_effort_cmH2O
         
         # Pressure gradient drives flow
         pressure_gradient = p_insp_total - p_alv
@@ -334,8 +346,8 @@ class RespiratoryMechanics:
             return total_peep
         else:
             # During inspiration
-            if self.mode == VentMode.PCV:
-                # In PCV, Paw is controlled (set value)
+            if self.mode in (VentMode.PCV, VentMode.PSV, VentMode.CPAP):
+                # In pressure-controlled/support/CPAP, Paw is controlled (set value)
                 return self.set_p_insp + self.set_peep
             else:
                 # In VCV, Paw is calculated from equation of motion

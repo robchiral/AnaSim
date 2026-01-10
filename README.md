@@ -35,7 +35,8 @@ See [docs/CLI_USAGE.md](docs/CLI_USAGE.md) for detailed CLI instructions.
 
 ## Features
 
-- **Physiological modelßing:** Cardiovascular and respiratory systems responding to drugs, ventilation, and surgical stimulation at 60Hz.
+- **Physiological modeling:** Cardiovascular and respiratory systems responding to drugs, ventilation, and surgical stimulation at 60Hz.
+- **Ventilation modes:** VCV, PCV, PSV, CPAP, and manual bag-mask support.
 - **Pharmacology:** PK/PD models for propofol, remifentanil, sevoflurane, rocuronium, and vasoactive agents.
 - **Patient monitoring:** Simulated ECG, SpO2, capnography, NIBP, and depth of anesthesia.
 - **Clinical scenarios/events:** Rapid sequence induction, hemorrhage, anaphylaxis, septic shock, and emergence.
