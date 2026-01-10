@@ -5,7 +5,6 @@ Handles ventilator settings and monitoring for both VCV and PCV modes.
 """
 
 from dataclasses import dataclass
-from anasim.physiology.resp_mech import VentMode
 
 
 @dataclass
@@ -51,11 +50,6 @@ class AnesthesiaVentilator:
         self.settings = VentSettings()
         self.monitors = VentMonitors()
         self.is_on = True
-        
-        # Internal tracking for rolling averages
-        self._paw_peak_history = []
-        self._tv_exp_history = []
-        self._breath_count = 0
         
     def set_mode(self, mode: str):
         """Set ventilator mode (VCV, PCV, PSV, CPAP)."""

@@ -1,4 +1,3 @@
-
 from collections import deque
 from typing import Optional
 import numpy as np
@@ -50,6 +49,20 @@ NORE_PD_PARAMS = {
     "Oualha": (7.04, 98.7, 1.8),
 }
 
+PK_MODEL_ATTRS = ("pk_prop", "pk_remi", "pk_nore", "pk_roc", "pk_sevo", "pk_epi", "pk_phenyl")
+PHYSIO_MODEL_ATTRS = ("hemo", "resp", "resp_mech")
+MACHINE_ATTRS = ("circuit", "vaporizer", "vent")
+MONITOR_ATTRS = ("bis", "capno", "loc_pd", "tol_pd", "tof_pd", "ecg", "spo2_mon", "nibp")
+RATE_ATTRS = (
+    "propofol_rate_mg_sec",
+    "remi_rate_ug_sec",
+    "nore_rate_ug_sec",
+    "roc_rate_mg_sec",
+    "epi_rate_ug_sec",
+    "phenyl_rate_ug_sec",
+)
+TCI_ATTRS = ("tci_prop", "tci_remi", "tci_nore", "tci_epi", "tci_phenyl", "tci_roc")
+
 # Machine modules
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.volatile import Vaporizer
@@ -81,52 +94,34 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.K_REDIST = 50000.0 # Heat loss flux (W) per unit depth/sec increase
         
         # Subsystems.
-        self.pk_prop = None
-        self.pk_remi = None
-        self.pk_nore = None
-        self.pk_roc = None
-        self.pk_sevo = None
-        self.pk_epi = None
-        self.pk_phenyl = None
-
+        for attr in PK_MODEL_ATTRS:
+            setattr(self, attr, None)
         self.active_agent = "Sevoflurane"
-
-        self.hemo = None
-        self.resp = None
-        self.resp_mech = None
+        for attr in PHYSIO_MODEL_ATTRS:
+            setattr(self, attr, None)
         
         # Machine.
-        self.circuit = None
-        self.vaporizer = None
-        self.vent = None
+        for attr in MACHINE_ATTRS:
+            setattr(self, attr, None)
         
         # Monitors.
-        self.bis = None
-        self.capno = None
-        self.loc_pd = None
-        self.tol_pd = None
-        self.tof_pd = None
-        
-        self.ecg = None
-        self.spo2_mon = None
-        self.nibp = None
+        for attr in MONITOR_ATTRS:
+            setattr(self, attr, None)
         self._next_nibp_time = 0.0
         
         # Controls (basic TIVA).
-        self.propofol_rate_mg_sec = 0.0
-        self.remi_rate_ug_sec = 0.0
-        self.nore_rate_ug_sec = 0.0
-        self.roc_rate_mg_sec = 0.0
-        self.epi_rate_ug_sec = 0.0
-        self.phenyl_rate_ug_sec = 0.0
+        for attr in RATE_ATTRS:
+            setattr(self, attr, 0.0)
         
         # TCI controllers.
-        self.tci_prop: Optional[TCIController] = None
-        self.tci_remi: Optional[TCIController] = None
-        self.tci_nore: Optional[TCIController] = None
-        self.tci_epi: Optional[TCIController] = None
-        self.tci_phenyl: Optional[TCIController] = None
-        self.tci_roc: Optional[TCIController] = None
+        self.tci_prop: Optional[TCIController]
+        self.tci_remi: Optional[TCIController]
+        self.tci_nore: Optional[TCIController]
+        self.tci_epi: Optional[TCIController]
+        self.tci_phenyl: Optional[TCIController]
+        self.tci_roc: Optional[TCIController]
+        for attr in TCI_ATTRS:
+            setattr(self, attr, None)
         
         # Disturbances & alarms.
         self.disturbances = Disturbances(config.disturbance_profile)
@@ -145,6 +140,10 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.bag_mask_active = False
         self.bag_mask_rr = 12.0   # breaths per min (typical for manual PPV)
         self.bag_mask_vt = 0.5    # Liters (~500mL)
+
+        # PSV/CPAP apnea backup (if RR configured).
+        self.psv_apnea_backup_delay = 20.0  # seconds before backup activates
+        self._psv_apnea_timer = 0.0
         
         # Event flags.
         self.active_hemorrhage = False
@@ -188,6 +187,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         
         # Helpers.
         self.current_mean_paw = 5.0
+        self._last_patient_effort_cmH2O = 0.0
         
         # Random number generator for noise.
         self.rng = np.random.default_rng()

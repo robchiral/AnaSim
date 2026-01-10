@@ -1,8 +1,14 @@
 import math
 from dataclasses import dataclass
 from anasim.core.constants import (
-    RR_APNEA_THRESHOLD, RR_BRADYPNEA_THRESHOLD, VT_MIN, TEMP_METABOLIC_COEFFICIENT,
-    SHIVER_MAX_MULTIPLIER
+    RR_APNEA_THRESHOLD,
+    RR_BRADYPNEA_THRESHOLD,
+    VT_MIN,
+    TEMP_METABOLIC_COEFFICIENT,
+    SHIVER_MAX_MULTIPLIER,
+    APNEA_PACO2_RISE_FAST_MMHG_MIN,
+    APNEA_PACO2_RISE_SLOW_MMHG_MIN,
+    APNEA_PACO2_RISE_FAST_DURATION_SEC,
 )
 from anasim.patient.patient import Patient
 from anasim.core.utils import hill_function, clamp01
@@ -154,6 +160,7 @@ class RespiratoryModel:
         self._p50 = 26.6
         self._n_hill = 2.7
         self._p50_pow = self._p50 ** self._n_hill
+        self._apnea_timer = 0.0
 
     def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0, 
              fio2: float = 0.21, ce_roc: float = 0.0, et_sevo: float = 0.0, mac_sevo: float = None,
@@ -337,7 +344,6 @@ class RespiratoryModel:
         
         # Spontaneous Alveolar Ventilation: VA = RR * (VT - VD)
         vt_eff_spont = max(0.0, current_vt / 1000.0 - vd)
-        va_spont = current_rr * vt_eff_spont  # L/min
         
         # Mechanical Alveolar Ventilation
         # Use delivered Vt from ventilator mechanics if available.
@@ -347,7 +353,6 @@ class RespiratoryModel:
         if mech_vt_l <= 0 and mech_vent_mv > 0 and mech_rr > 0:
             inferred_vt = mech_vent_mv / mech_rr
             alveolar_vt_mech = max(0.0, inferred_vt - vd)
-        va_mech_eff = max(0.0, mech_rr) * alveolar_vt_mech
         
         # Total VA = synchronized mechanical + spontaneous
         # Fix: Prevent double counting in AC/SIMV modes.
@@ -387,6 +392,12 @@ class RespiratoryModel:
         # Prevent division by zero; V/Q mismatch reduces effective CO2 elimination.
         vq_mismatch = clamp01_local(vq_mismatch)
         effective_va = max(0.1, total_va_l_min * (1.0 - 0.6 * vq_mismatch))
+
+        apnea_like = state.apnea or effective_va <= 0.1
+        if apnea_like:
+            self._apnea_timer += dt
+        else:
+            self._apnea_timer = 0.0
         
         # PaCO2 Equilibrium: PaCO2_eq = PaCO2_base * (VA_base / VA) * metabolic_factor
         # Temperature effect: VCO2 decreases ~7% per °C below 37°C (Q10 ≈ 2.0)
@@ -407,11 +418,16 @@ class RespiratoryModel:
         # Exponential approach to equilibrium: dPaCO2 = (Target - Current) / Tau
         d_paco2 = (paco2_eq - state.p_alveolar_co2) / self.tau_co2 * dt
         
-        # Apneic rise rate clamp: clinical rate is ~3-4.5 mmHg/min during anesthesia
-        # (Respiratory Acidosis tests; Anesthesiology 2011 apnea studies).
-        # Only clamp rising values - CO2 washout during hyperventilation can be rapid
+        # Apneic rise rate clamp: first minute is rapid, then slower (mmHg/min).
+        # Only clamp rising values - CO2 washout during hyperventilation can be rapid.
         if d_paco2 > 0:
-            max_rise_rate = 0.06 * dt  # 3.6 mmHg/min
+            if self._apnea_timer > 0:
+                rise_rate = APNEA_PACO2_RISE_SLOW_MMHG_MIN
+                if self._apnea_timer <= APNEA_PACO2_RISE_FAST_DURATION_SEC:
+                    rise_rate = APNEA_PACO2_RISE_FAST_MMHG_MIN
+            else:
+                rise_rate = APNEA_PACO2_RISE_SLOW_MMHG_MIN
+            max_rise_rate = (rise_rate / 60.0) * dt
             d_paco2 = min(d_paco2, max_rise_rate)
             
         state.p_alveolar_co2 += d_paco2
@@ -441,7 +457,6 @@ class RespiratoryModel:
         aa_grad_effective = max(3.0, aa_grad_effective)
 
         # V/Q mismatch (bronchospasm/obstruction) increases A-a gradient
-        vq_mismatch = clamp01_local(vq_mismatch)
         aa_grad_effective *= (1.0 + 2.5 * vq_mismatch)
         aa_grad_effective = min(80.0, aa_grad_effective)
         

@@ -1,5 +1,3 @@
-
-import numpy as np
 from dataclasses import dataclass
 from .patient import Patient
 
@@ -64,7 +62,9 @@ class VolatilePK:
         cardiac_output_l: L/min
         temp_c: Patient temperature (deg C)
         """
-        
+        state = self.state
+        dt_min = dt / 60.0
+
         # Flows L/min
         q_co = cardiac_output_l
         q_vrg = q_co * self.f_vrg_frac
@@ -80,18 +80,18 @@ class VolatilePK:
         lambda_q = q_co * self.lambda_b_g
         
         # Current Pressures
-        p_alv = self.state.p_alv
-        p_ven = self.state.p_ven
+        p_alv = state.p_alv
+        p_ven = state.p_ven
         
         # Derivative
         dP_dt = (alveolar_vent * (fi_agent - p_alv) + lambda_q * (p_ven - p_alv)) / v_frc
         
         # Update Alveolar
-        p_alv_new = p_alv + dP_dt * (dt / 60.0) # dt in sec, flow in min
-        self.state.p_alv = max(0.0, p_alv_new)
+        p_alv_new = max(0.0, p_alv + dP_dt * dt_min) # dt in sec, flow in min
+        state.p_alv = p_alv_new
         
         # Arterial Partial Pressure equilibrates with Alveolar
-        self.state.p_art = self.state.p_alv
+        state.p_art = p_alv_new
         
         # --- Tissue Uptake (PBPK Model) ---
         # Tissue uptake model:
@@ -101,21 +101,21 @@ class VolatilePK:
         #
         # Reference: Yasuda et al. Anesth Analg. 1991 (sevo vs iso uptake);
         # Davis & Mapleson. Br J Anaesth. 1981 (physiological model).
-        def update_tissue(p_t, q, v, lambda_tb):
-            # Rate constant: k = (flow/volume) × (1/partition_coefficient)
-            # Units: (L/min / L) × (1/unitless) = 1/min
-            k = (q / v) * (1.0 / lambda_tb)
-            dp = k * (self.state.p_art - p_t) * (dt / 60.0)  # dt in sec → convert to min
-            return p_t + dp
+        # Rate constant: k = (flow/volume) × (1/partition_coefficient)
+        # Units: (L/min / L) × (1/unitless) = 1/min
+        p_art = p_alv_new
+        k_vrg = (q_vrg / self.v_vrg) / self.lambda_t_b_vrg
+        k_mus = (q_mus / self.v_mus) / self.lambda_t_b_mus
+        k_fat = (q_fat / self.v_fat) / self.lambda_t_b_fat
         
         # Update each tissue compartment
-        p_vrg_new = update_tissue(self.state.p_vrg, q_vrg, self.v_vrg, self.lambda_t_b_vrg)
-        p_mus_new = update_tissue(self.state.p_mus, q_mus, self.v_mus, self.lambda_t_b_mus)
-        p_fat_new = update_tissue(self.state.p_fat, q_fat, self.v_fat, self.lambda_t_b_fat)
+        p_vrg_new = state.p_vrg + k_vrg * (p_art - state.p_vrg) * dt_min
+        p_mus_new = state.p_mus + k_mus * (p_art - state.p_mus) * dt_min
+        p_fat_new = state.p_fat + k_fat * (p_art - state.p_fat) * dt_min
         
-        self.state.p_vrg = p_vrg_new
-        self.state.p_mus = p_mus_new
-        self.state.p_fat = p_fat_new
+        state.p_vrg = p_vrg_new
+        state.p_mus = p_mus_new
+        state.p_fat = p_fat_new
         
         # --- Mixed Venous Pressure ---
         # Blood leaving each tissue equilibrates with tissue pressure.
@@ -123,8 +123,8 @@ class VolatilePK:
         if q_co > 1e-6:
             p_ven_new = (q_vrg * p_vrg_new + q_mus * p_mus_new + q_fat * p_fat_new) / q_co
         else:
-            p_ven_new = self.state.p_ven
-        self.state.p_ven = p_ven_new
+            p_ven_new = state.p_ven
+        state.p_ven = p_ven_new
         
         # MAC Fraction (using VRG/brain pressure)
         
@@ -138,4 +138,4 @@ class VolatilePK:
         
         # MAC = VRG pressure (as %) / age-corrected MAC requirement
         # Example: VRG at 0.021 (2.1%) / MAC_age 2.0% = 1.05 MAC
-        self.state.mac = (self.state.p_vrg * 100.0) / corrected_mac_age
+        state.mac = (state.p_vrg * 100.0) / corrected_mac_age

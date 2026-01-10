@@ -301,7 +301,7 @@ class HemodynamicModel:
         self.blood_volume += amount_ml
         
         # Prevent nonsensical volumes
-        self.blood_volume = max(500.0, self.blood_volume)  # Minimum ~500mL
+        self.blood_volume = max(BLOOD_VOLUME_MIN, self.blood_volume)  # Minimum ~500mL
 
         if amount_ml < 0:
             hb_loss = self.hb_conc * (-amount_ml) / 100.0

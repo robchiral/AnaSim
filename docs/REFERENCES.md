@@ -75,6 +75,10 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Stein et al. Chest. 1995 Jan;107(1):139-43. (A–a gradient age adjustment formula in PE assessment). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7632205/)
 - Stock et al. J Clin Anesth. 1989;1(5):328-32. (PaCO2 rise in anesthetized patients with airway obstruction). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2516732/)
 - Kobayashi et al. Masui. 1994 Aug;43(8):1130-4. (Arterial blood gas changes during apnea under anesthesia). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7933492/)
+- Miyamura et al. Jpn J Physiol. 1980. (Ventilatory response to CO2 by rebreathing; HCVR slope variability). [PubMed](https://pubmed.ncbi.nlm.nih.gov/6790801/)
+- Christie et al. Anesth Analg. 1992. (PSV decreases inspiratory work during GA with spontaneous ventilation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1632530/)
+- Lim et al. Paediatr Anaesth. 2012. (PSV vs spontaneous ventilation via ProSeal LMA in children; improved ventilation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/22380745/)
+- Capdevila et al. PLoS One. 2014. (PSV vs CMV/SB with LMA; emergence time/ventilatory function). [PubMed](https://pubmed.ncbi.nlm.nih.gov/25536515/)
 
 ## Timing / Performance Metrics
 - Hughes et al. Anesthesiology. 1992. (propofol CSHT). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1539843/)
