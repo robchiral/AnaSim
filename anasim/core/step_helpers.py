@@ -582,6 +582,7 @@ class StepHelpersMixin:
             ce_epi=state.epi_ce,
             ce_phenyl=state.phenyl_ce,
             temp_c=state.temp_c,
+            peep_cmH2O=total_peep_effect,
         )
         
         self.vent.step(dt, mech_state)

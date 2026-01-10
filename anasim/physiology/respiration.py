@@ -136,6 +136,7 @@ class RespiratoryModel:
         self.tau_o2 = 15.0 # Time constant for O2 (s) - small O2 stores equilibrate quickly
         self.atm_p = 760.0
         self.vapor_p = 47.0
+        self._atm_dry = self.atm_p - self.vapor_p
         # Age-adjusted A-a gradient (mmHg): ~age/4 + 4 (PIOPED/Chest 1995).
         self.aa_grad_base = max(5.0, (self.patient.age / 4.0) + 4.0)
 
@@ -152,6 +153,7 @@ class RespiratoryModel:
         # Cached SaO2 curve constants (Hill equation)
         self._p50 = 26.6
         self._n_hill = 2.7
+        self._p50_pow = self._p50 ** self._n_hill
 
     def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0, 
              fio2: float = 0.21, ce_roc: float = 0.0, et_sevo: float = 0.0, mac_sevo: float = None,
@@ -429,7 +431,7 @@ class RespiratoryModel:
         
         # 10. O2 Dynamics (Alveolar Gas Equation)
         # PAO2 = FiO2 * (Patm - PH2O) - PaCO2 / RQ
-        p_ideal_alveolar_o2 = fio2 * (self.atm_p - self.vapor_p) - (state.p_alveolar_co2 / self.rq)
+        p_ideal_alveolar_o2 = fio2 * self._atm_dry - (state.p_alveolar_co2 / self.rq)
         
         # A-a gradient with PEEP recruitment effect
         # PEEP recruits alveoli, improving V/Q matching and reducing A-a gradient
@@ -465,9 +467,9 @@ class RespiratoryModel:
         # PaO2-based SaO2 (Hill equation for oxyhemoglobin dissociation)
         # SaO2 = PaO2^n / (PaO2^n + P50^n), P50 ~ 26.6 mmHg, n ~ 2.7
         pao2_safe = max(0.1, state.p_arterial_o2)
-        p50 = self._p50
         n_hill = self._n_hill
-        base_sao2 = 100.0 * (pao2_safe ** n_hill) / (pao2_safe ** n_hill + p50 ** n_hill)
+        pao2_pow = pao2_safe ** n_hill
+        base_sao2 = 100.0 * pao2_pow / (pao2_pow + self._p50_pow)
         
         # Cardiac arrest desaturation: When CO < 0.5 L/min, tissue O2 stores deplete
         # Clinical: SpO2 drops from ~100% to 60% in 60-90 seconds during arrest

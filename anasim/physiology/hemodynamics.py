@@ -43,6 +43,14 @@ class HemoStateExtended(HemoState):
     # Volatile effect site concentration (MAC units)
     ce_sevo: float = 0.0
 
+    # Right heart / pulmonary coupling (diagnostic outputs)
+    mcfp: float = 0.0            # Mean circulatory filling pressure (mmHg)
+    rap: float = 0.0             # Right atrial pressure estimate (mmHg)
+    pvr: float = 0.0             # Pulmonary vascular resistance (Wood units)
+    rv_co: float = 0.0           # Right ventricular output (L/min)
+    lv_inflow: float = 0.0       # Pulmonary venous return / LV inflow (L/min)
+    preload_factor: float = 1.0  # Dimensionless preload factor (pre-Frank-Starling)
+
 
 class HemodynamicModel:
     """
@@ -66,6 +74,12 @@ class HemodynamicModel:
     Volatile Agents:
         Davis & Mapleson. Br J Anaesth. 1981 (physiological model of inhaled agents).
         Ebert et al. Anesthesiology. 1995.
+
+    Pulmonary Coupling:
+        - ESC/ERS Task Force. Eur Heart J. 2022 (normal RHC ranges, PVR).
+        - Segeroth et al. Eur Heart J Cardiovasc Imaging. 2023 (pulmonary transit time).
+        - Koganov et al. Crit Care Med. 1997 (PEEP increases PVR).
+        - Carlsson et al. Acta Anaesthesiol Scand. 1985 (HPV response).
         
     Units:
         - MAP, SBP, DBP: mmHg
@@ -83,6 +97,7 @@ class HemodynamicModel:
         # Caches should exist before any config-driven invalidation.
         self._cached_state: Optional[HemoStateExtended] = None
         self._hill_cache = {}
+        self._base_values_final = False
         self._apply_config(self.config)
 
         # =====================================================================
@@ -107,6 +122,8 @@ class HemodynamicModel:
         self.base_co_l_min = flow_ml_min / 1000.0
         self.baseline_caO2 = self.calc_oxygen_content(self.baseline_hb, 0.98, 95.0)
         self.baseline_do2 = self.baseline_caO2 * self.base_co_l_min * 10.0
+        self._base_values_final = True
+        self._refresh_cached_constants()
 
         # Arterial Compliance (age-dependent model)
         # Decreases with age -> wider pulse pressure in elderly
@@ -194,6 +211,26 @@ class HemodynamicModel:
         # Values are heuristics to match standard physiology (~10-15 mmHg)
         stressed_vol_0 = max(0.0, self.blood_volume - self.unstressed_volume)
         self.mcfp_0 = max(self.mcfp_floor, stressed_vol_0 / self.cv)  # ~10-15 mmHg normally
+
+        # -----------------------------------------------------------------
+        # Right Heart / Pulmonary Circulation (lightweight coupling)
+        # -----------------------------------------------------------------
+        # Venous return resistance (Wood units) calibrated to baseline CO.
+        delta_p_vr = max(0.1, self.mcfp_0 - self.rap_baseline)
+        self.venous_return_resistance = delta_p_vr / max(0.1, self.base_co_l_min)
+        # Pulmonary transit dynamics (dimensionless flow factor).
+        self._pulm_flow_factor = 1.0
+        # Cached diagnostic outputs
+        self._last_mcfp = self.mcfp_0
+        self._last_rap = self.rap_baseline
+        self._last_pvr_factor = 1.0
+        self._last_pvr = self.pvr_wood_baseline
+        self._last_rv_co = self.base_co_l_min
+        self._last_lv_inflow = self.base_co_l_min
+        self._last_preload_factor = 1.0
+        self._last_preload_sv_factor = 1.0
+        self._last_pao2 = 95.0
+        self._last_peep_cmH2O = self.pvr_peep_ref
         
         self.cumulative_fluid_given = 0.0
         
@@ -212,6 +249,18 @@ class HemodynamicModel:
         for name, value in vars(config).items():
             setattr(self, name, value)
         self._hill_cache.clear()
+        if getattr(self, "_base_values_final", False):
+            self._refresh_cached_constants()
+
+    def _refresh_cached_constants(self) -> None:
+        """Cache invariant calculations to reduce per-step overhead."""
+        self._emax_prop_sv_age = self.emax_prop_sv_typ * math.exp(
+            self.age_emax_sv * (self.patient.age - 35.0)
+        )
+        self._base_rmap_denom = self.base_hr * self.base_sv * self.base_tpr
+        self._inv_base_rmap_denom = (1.0 / self._base_rmap_denom) if self._base_rmap_denom > 0 else 0.0
+        self._inv_base_co_l_min = 1.0 / max(0.1, self.base_co_l_min)
+        self._sepsis_hr_gain = self.sepsis_hr_increase / max(self.base_hr, 1.0)
 
     def invalidate_state_cache(self) -> None:
         """Public cache invalidation for external state mutations."""
@@ -415,6 +464,81 @@ class HemodynamicModel:
         """Phenylephrine SVR effect (pure alpha-1)."""
         if ce_phenyl <= 0: return 1.0
         return 1.0 + self.phenyl_emax_svr * hill_function(ce_phenyl, self.phenyl_c50, self.phenyl_gamma)
+
+    def _calc_pvr_factor(self, pao2: float, peep_cmH2O: Optional[float] = None) -> float:
+        """
+        Compute pulmonary vascular resistance multiplier.
+
+        Hypoxia increases PVR (HPV). PEEP/positive pressure also raises PVR.
+        """
+        pvr_factor = 1.0
+
+        # Hypoxic pulmonary vasoconstriction
+        if pao2 > 0 and pao2 < self.pvr_o2_threshold:
+            denom = max(1.0, self.pvr_o2_threshold - self.pvr_o2_floor)
+            frac = clamp01((self.pvr_o2_threshold - pao2) / denom)
+            pvr_factor *= 1.0 + (self.pvr_o2_max_factor - 1.0) * frac
+
+        # PEEP / positive pressure effect (cmH2O)
+        if peep_cmH2O is not None:
+            peep_excess = max(0.0, peep_cmH2O - self.pvr_peep_ref)
+            pvr_factor *= 1.0 + self.pvr_peep_slope * peep_excess
+
+        return clamp(pvr_factor, 0.2, self.pvr_max_factor)
+
+    def _update_pulmonary_coupling(
+        self,
+        dt: float,
+        pao2: float,
+        peep_cmH2O: Optional[float],
+        f_preload_pit: float,
+        sepsis_sev: float,
+    ) -> float:
+        """
+        Update right-heart / pulmonary transit coupling and return Frank-Starling factor.
+
+        Uses venous return based on MCFP and baseline RAP, then applies a
+        PVR-dependent attenuation and a first-order pulmonary transit delay.
+        """
+        stressed_vol = self._calc_stressed_volume(sepsis_sev)
+        mcfp = stressed_vol / self.cv if self.cv > 0 else self.mcfp_0
+
+        rap = self.rap_baseline
+        delta_p = max(0.0, mcfp - rap)
+        vr_flow_l_min = delta_p / max(0.1, self.venous_return_resistance)
+        vr_flow_factor = vr_flow_l_min * self._inv_base_co_l_min
+
+        pvr_factor = self._calc_pvr_factor(pao2, peep_cmH2O)
+        rv_out_target_factor = vr_flow_factor * (pvr_factor ** (-self.pvr_flow_exponent))
+
+        # Pulmonary transit delay (first-order lag)
+        if self.pulmonary_transit_time_s > 0 and dt > 0:
+            alpha = min(1.0, dt / self.pulmonary_transit_time_s)
+            self._pulm_flow_factor += (rv_out_target_factor - self._pulm_flow_factor) * alpha
+        else:
+            # No time advance; keep prior pulmonary flow factor
+            if self._pulm_flow_factor <= 0:
+                self._pulm_flow_factor = rv_out_target_factor
+
+        self._pulm_flow_factor = clamp(self._pulm_flow_factor, 0.05, 3.0)
+
+        f_preload = self._pulm_flow_factor * f_preload_pit
+        f_frank_starling = self._frank_starling(f_preload)
+
+        # Cache diagnostics for state reporting
+        self._last_mcfp = mcfp
+        self._last_rap = rap
+        self._last_pvr_factor = pvr_factor
+        self._last_pvr = self.pvr_wood_baseline * pvr_factor
+        self._last_rv_co = rv_out_target_factor * self.base_co_l_min
+        self._last_lv_inflow = self._pulm_flow_factor * self.base_co_l_min
+        self._last_preload_factor = f_preload
+        self._last_preload_sv_factor = f_frank_starling
+        self._last_pao2 = pao2
+        if peep_cmH2O is not None:
+            self._last_peep_cmH2O = peep_cmH2O
+
+        return f_frank_starling
     
     def _calc_nore_effects(self, ce_nore: float) -> tuple:
         """
@@ -462,8 +586,8 @@ class HemodynamicModel:
         cr = max(0.0, ce_remi)
         
         # --- Propofol Effects ---
-        # Age effect on Propofol SV Emax
-        emax_prop_sv = self.emax_prop_sv_typ * math.exp(self.age_emax_sv * (self.patient.age - 35.0))
+        # Age effect on Propofol SV Emax (precomputed)
+        emax_prop_sv = self._emax_prop_sv_age
         
         # 1. On TPR (with Remi interaction)
         remi_int_term = self.int_tpr * (cr / (self.ec50_remi_tpr + cr + 1e-9))
@@ -550,14 +674,10 @@ class HemodynamicModel:
         term = 1.0 - self.hr_sv_coupling * math.log(max(1.0, current_hr / self.base_hr))
         raw_sv = (self.sv_star + self.tde_sv) * term + self.dist_sv
 
-        # Apply preload factor (MCFP-dependent via Frank-Starling)
-        # This provides immediate SV reduction when blood volume drops
+        # Apply preload factor (right heart / pulmonary coupling + Frank-Starling)
+        # Uses cached preload factor from the most recent step if available.
         if preload_sv_factor is None:
-            stressed_vol = self._calc_stressed_volume(sepsis_sev)
-            mcfp = stressed_vol / self.cv if self.cv > 0 else self.mcfp_0
-            preload_ratio = mcfp / self.mcfp_0 if self.mcfp_0 > 0 else 1.0
-            total_preload = preload_ratio * self.f_preload_pit
-            preload_sv_factor = self._frank_starling(total_preload)
+            preload_sv_factor = self._last_preload_sv_factor if self._last_preload_sv_factor > 0 else 1.0
 
         # Apply preload and vasopressor inotropy for immediate visibility
         current_sv = raw_sv * preload_sv_factor * self.vasopressor_sv_factor
@@ -632,6 +752,12 @@ class HemodynamicModel:
             tde_sv=self.tde_sv,
             tde_hr=self.tde_hr,
             ce_sevo=self.ce_sevo,
+            mcfp=self._last_mcfp,
+            rap=self._last_rap,
+            pvr=self._last_pvr,
+            rv_co=self._last_rv_co,
+            lv_inflow=self._last_lv_inflow,
+            preload_factor=self._last_preload_factor,
             rhythm_type=self.rhythm_type
         )
 
@@ -697,7 +823,8 @@ class HemodynamicModel:
         
     def step(self, dt: float, ce_prop: float, ce_remi: float, ce_nore: float, pit: float, paco2: float, pao2: float,
              dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0, mac: float = 0.0,
-             mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0, temp_c: float = 37.0) -> HemoState:
+             mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0, temp_c: float = 37.0,
+             peep_cmH2O: Optional[float] = None) -> HemoState:
         """
         Advance hemodynamic model by dt seconds.
         
@@ -717,6 +844,7 @@ class HemodynamicModel:
             ce_epi: Epinephrine plasma concentration (ng/mL)
             ce_phenyl: Phenylephrine plasma concentration (ng/mL)
             temp_c: Patient temperature (deg C)
+            peep_cmH2O: Total PEEP (cmH2O) for pulmonary vascular effects
             
         Returns:
             HemoState: Current hemodynamic state (MAP, HR, SV, SVR, CO)
@@ -754,24 +882,19 @@ class HemodynamicModel:
         # Physiological State Calculations
         # =====================================================================
         
-        # --- 4.1 Blood Volume / MCFP / Preload ---
-        # Calculate current MCFP from blood volume
-        stressed_vol = self._calc_stressed_volume(sepsis_sev)
-        mcfp = stressed_vol / self.cv
-        
-        # Preload factor from volume status
-        f_preload_vol = mcfp / self.mcfp_0 if self.mcfp_0 > 0 else 1.0
-        
-        # --- 4.2 Intrathoracic Pressure (Pit) Effect on Preload ---
+        # --- 4.1 Intrathoracic Pressure (Pit) Effect on Preload ---
         # PEEP/PPV increases Pit, reducing venous return and preload
         delta_pit = pit - self.pit_0
         self.f_preload_pit = 1.0 / (1.0 + self.alpha_peep * max(0.0, delta_pit))
-        
-        # Combined preload factor; f_preload_pit is also reused in the state property.
-        f_preload = f_preload_vol * self.f_preload_pit
-        
-        # Apply Frank-Starling curve
-        f_frank_starling = self._frank_starling(f_preload)
+
+        # --- 4.2 Right-heart / pulmonary coupling ---
+        f_frank_starling = self._update_pulmonary_coupling(
+            dt=dt,
+            pao2=pao2,
+            peep_cmH2O=peep_cmH2O,
+            f_preload_pit=self.f_preload_pit,
+            sepsis_sev=sepsis_sev,
+        )
         
         # --- 4.3 CO2/O2 Chemoreflex ---
         if self.chemoreflex_active:
@@ -791,7 +914,7 @@ class HemodynamicModel:
         self.hemorrhage_hr_mult, self.hemorrhage_tpr_mult = self._calc_hemorrhage_response()
 
         # --- 4.5 Sepsis / Distributive Shock ---
-        sepsis_hr_mult = 1.0 + (self.sepsis_hr_increase / max(self.base_hr, 1.0)) * sepsis_sev
+        sepsis_hr_mult = 1.0 + self._sepsis_hr_gain * sepsis_sev
         sepsis_tpr_mult = 1.0 - (1.0 - self.sepsis_tpr_floor) * sepsis_sev
         
         # --- 4.6 Unified Vasopressor Effects ---
@@ -837,7 +960,7 @@ class HemodynamicModel:
         effective_tpr = self.tpr + self.delta_tpr_vasopressors + (dist_svr / 1000.0) + distributive_tpr_offset
         effective_tpr = max(0.006, effective_tpr)
         
-        rmap = (current_hr * current_sv * effective_tpr) / (self.base_hr * self.base_sv * self.base_tpr)
+        rmap = (current_hr * current_sv * effective_tpr) * self._inv_base_rmap_denom
         rmap = clamp(rmap, 0.1, 5.0)  # Clamp to prevent NaN from negative exponent
         rmap_fb = rmap ** self.fb
         
