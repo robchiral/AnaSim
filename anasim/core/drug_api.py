@@ -22,7 +22,17 @@ class DrugControllerMixin:
     - Getting drug metadata and state for UI
     """
 
-    _DRUG_ORDER = ("propofol", "remi", "nore", "epi", "phenyl", "roc")
+    _DRUG_ORDER = (
+        "propofol",
+        "remi",
+        "nore",
+        "vaso",
+        "phenyl",
+        "epi",
+        "dobu",
+        "milri",
+        "roc",
+    )
     _DRUG_SPECS = {
         "propofol": {
             "name": "Propofol 1%",
@@ -33,9 +43,11 @@ class DrugControllerMixin:
             "tci_name": "Propofol",
             "tci_unit": "ug/mL",
             "tci_mode": None,
+            "tci_range": (0.0, 10.0),
             "pk_attr": "pk_prop",
             "max_rate": ("mg_kg_min", 0.3),
             "default_bolus": 150,
+            "bolus_unit": "mg",
         },
         "remi": {
             "name": "Remifentanil 50mcg/mL",
@@ -46,9 +58,11 @@ class DrugControllerMixin:
             "tci_name": "Remifentanil",
             "tci_unit": "ng/mL",
             "tci_mode": None,
+            "tci_range": (0.0, 10.0),
             "pk_attr": "pk_remi",
             "max_rate": ("ug_kg_min", 0.5),
             "default_bolus": 10,
+            "bolus_unit": "mcg",
         },
         "nore": {
             "name": "Norepinephrine 16mcg/mL",
@@ -59,9 +73,26 @@ class DrugControllerMixin:
             "tci_name": "Norepinephrine",
             "tci_unit": "ng/mL",
             "tci_mode": "plasma",
+            "tci_range": (0.0, 30.0),
             "pk_attr": "pk_nore",
             "max_rate": ("ug_kg_min", 1.0),
             "default_bolus": 10,
+            "bolus_unit": "mcg",
+        },
+        "vaso": {
+            "name": "Vasopressin 20U/mL",
+            "rate_attr": "vaso_rate_mu_sec",
+            "rate_unit": "U/min",
+            "rate_scale": 0.06,  # U/min -> mU/sec (x1000/60)
+            "tci_attr": "tci_vaso",
+            "tci_name": "Vasopressin",
+            "tci_unit": "mU/L",
+            "tci_mode": "plasma",
+            "tci_range": (0.0, 80.0),
+            "pk_attr": "pk_vaso",
+            "max_rate": ("u_min", 0.1),
+            "default_bolus": 1.0,
+            "bolus_unit": "U",
         },
         "epi": {
             "name": "Epinephrine 100mcg/mL",
@@ -72,9 +103,11 @@ class DrugControllerMixin:
             "tci_name": "Epinephrine",
             "tci_unit": "ng/mL",
             "tci_mode": "plasma",
+            "tci_range": (0.0, 20.0),
             "pk_attr": "pk_epi",
             "max_rate": ("ug_kg_min", 0.5),
             "default_bolus": 10,
+            "bolus_unit": "mcg",
         },
         "phenyl": {
             "name": "Phenylephrine 100mcg/mL",
@@ -85,9 +118,41 @@ class DrugControllerMixin:
             "tci_name": "Phenylephrine",
             "tci_unit": "ng/mL",
             "tci_mode": "plasma",
+            "tci_range": (0.0, 120.0),
             "pk_attr": "pk_phenyl",
             "max_rate": ("ug_kg_min", 2.0),
             "default_bolus": 100,
+            "bolus_unit": "mcg",
+        },
+        "dobu": {
+            "name": "Dobutamine 1mg/mL",
+            "rate_attr": "dobu_rate_ug_sec",
+            "rate_unit": "ug/min",
+            "rate_scale": 60.0,
+            "tci_attr": "tci_dobu",
+            "tci_name": "Dobutamine",
+            "tci_unit": "ng/mL",
+            "tci_mode": "plasma",
+            "tci_range": (0.0, 500.0),
+            "pk_attr": "pk_dobu",
+            "max_rate": ("ug_kg_min", 20.0),
+            "default_bolus": 0.0,
+            "bolus_unit": "mcg",
+        },
+        "milri": {
+            "name": "Milrinone 200mcg/mL",
+            "rate_attr": "mil_rate_ug_sec",
+            "rate_unit": "ug/min",
+            "rate_scale": 60.0,
+            "tci_attr": "tci_mil",
+            "tci_name": "Milrinone",
+            "tci_unit": "ng/mL",
+            "tci_mode": "plasma",
+            "tci_range": (0.0, 500.0),
+            "pk_attr": "pk_mil",
+            "max_rate": ("ug_kg_min", 0.75),
+            "default_bolus": 0.0,
+            "bolus_unit": "mcg",
         },
         "roc": {
             "name": "Rocuronium 10mg/mL",
@@ -98,9 +163,11 @@ class DrugControllerMixin:
             "tci_name": "Rocuronium",
             "tci_unit": "ug/mL",
             "tci_mode": None,
+            "tci_range": (0.0, 10.0),
             "pk_attr": "pk_roc",
             "max_rate": ("mg_kg_hr", 1.0),
             "default_bolus": 50,
+            "bolus_unit": "mg",
         },
     }
     
@@ -118,6 +185,15 @@ class DrugControllerMixin:
     
     def set_phenyl_rate(self: "SimulationEngine", ug_per_min: float):
         self._set_rate_from_user("phenyl", ug_per_min)
+
+    def set_vaso_rate(self: "SimulationEngine", u_per_min: float):
+        self._set_rate_from_user("vaso", u_per_min)
+
+    def set_dobu_rate(self: "SimulationEngine", ug_per_min: float):
+        self._set_rate_from_user("dobu", ug_per_min)
+
+    def set_milri_rate(self: "SimulationEngine", ug_per_min: float):
+        self._set_rate_from_user("milri", ug_per_min)
         
     def set_rocuronium_rate(self: "SimulationEngine", mg_per_hr: float):
         self._set_rate_from_user("roc", mg_per_hr)
@@ -127,7 +203,7 @@ class DrugControllerMixin:
         Enable TCI for a drug.
         
         Args:
-            drug: 'propofol', 'remi', 'nore', 'epi', 'phenyl', 'roc'
+            drug: 'propofol', 'remi', 'nore', 'vaso', 'epi', 'dobu', 'milri', 'phenyl', 'roc'
             target: Target concentration
             mode: 'plasma' or 'effect_site' (ignored for nore/epi/phenyl which use plasma)
         """
@@ -192,6 +268,9 @@ class DrugControllerMixin:
             return weight * value / 60.0
         if unit == "mg_kg_hr":
             return weight * value / 3600.0
+        if unit == "u_min":
+            # Vasopressin: return mU/sec (model units)
+            return (value * 1000.0) / 60.0
         return 0.0
 
     def disable_tci(self: "SimulationEngine", drug: str):
@@ -218,6 +297,8 @@ class DrugControllerMixin:
                 "tci_unit": spec["tci_unit"],
                 "can_tci": True,
                 "default_bolus": spec["default_bolus"],
+                "bolus_unit": spec.get("bolus_unit"),
+                "tci_range": spec.get("tci_range"),
             })
         return drugs
 

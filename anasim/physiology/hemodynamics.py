@@ -70,6 +70,9 @@ class HemodynamicModel:
         - Norepinephrine: Beloeil et al. Br J Anaesth. 2005.
         - Epinephrine: Clutter et al. J Clin Invest. 1980.
         - Phenylephrine: Anderson et al. Paediatr Anaesth. 2017 (population PK in children; PD here is heuristic).
+        - Vasopressin: Vasopressin injection label (DailyMed) (pressor effect; HR/CO decrease).
+        - Dobutamine: Magnani et al. J Int Med Res. 1977 (↑CO, low-dose SV increase, minimal HR change).
+        - Milrinone: Baim et al. N Engl J Med. 1983 (↑CI, ↓SVR).
     
     Volatile Agents:
         Davis & Mapleson. Br J Anaesth. 1981 (physiological model of inhaled agents).
@@ -465,6 +468,65 @@ class HemodynamicModel:
         if ce_phenyl <= 0: return 1.0
         return 1.0 + self.phenyl_emax_svr * hill_function(ce_phenyl, self.phenyl_c50, self.phenyl_gamma)
 
+    @staticmethod
+    def _calc_hr_svr_effects(ce: float, c50: float, gamma: float,
+                             emax_hr: float, emax_svr: float) -> tuple:
+        """Shared HR/SVR Hill-effects helper."""
+        if ce <= 0:
+            return 0.0, 1.0
+        hill = hill_function(ce, c50, gamma)
+        delta_hr = emax_hr * hill
+        svr_factor = 1.0 + emax_svr * hill
+        return delta_hr, max(0.5, svr_factor)
+
+    @staticmethod
+    def _calc_hr_sv_svr_effects(ce: float, c50: float, gamma: float,
+                                emax_hr: float, emax_sv: float, emax_svr: float) -> tuple:
+        """Shared HR/SV/SVR Hill-effects helper."""
+        if ce <= 0:
+            return 0.0, 1.0, 1.0
+        hill = hill_function(ce, c50, gamma)
+        delta_hr = emax_hr * hill
+        sv_factor = 1.0 + emax_sv * hill
+        svr_factor = 1.0 + emax_svr * hill
+        return delta_hr, sv_factor, max(0.5, svr_factor)
+
+    def _calc_vasopressin_effects(self, ce_vaso: float) -> tuple:
+        """
+        Vasopressin effects on HR and SVR (V1-mediated vasoconstriction).
+
+        Returns:
+            (delta_hr, svr_factor)
+        """
+        return self._calc_hr_svr_effects(
+            ce_vaso, self.vaso_c50, self.vaso_gamma,
+            self.vaso_emax_hr, self.vaso_emax_svr,
+        )
+
+    def _calc_dobutamine_effects(self, ce_dobu: float) -> tuple:
+        """
+        Dobutamine effects on HR, SV, and SVR.
+
+        Returns:
+            (delta_hr, sv_factor, svr_factor)
+        """
+        return self._calc_hr_sv_svr_effects(
+            ce_dobu, self.dobu_c50, self.dobu_gamma,
+            self.dobu_emax_hr, self.dobu_emax_sv, self.dobu_emax_svr,
+        )
+
+    def _calc_milrinone_effects(self, ce_mil: float) -> tuple:
+        """
+        Milrinone effects on HR, SV, and SVR.
+
+        Returns:
+            (delta_hr, sv_factor, svr_factor)
+        """
+        return self._calc_hr_sv_svr_effects(
+            ce_mil, self.mil_c50, self.mil_gamma,
+            self.mil_emax_hr, self.mil_emax_sv, self.mil_emax_svr,
+        )
+
     def _calc_pvr_factor(self, pao2: float, peep_cmH2O: Optional[float] = None) -> float:
         """
         Compute pulmonary vascular resistance multiplier.
@@ -823,8 +885,9 @@ class HemodynamicModel:
         
     def step(self, dt: float, ce_prop: float, ce_remi: float, ce_nore: float, pit: float, paco2: float, pao2: float,
              dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0, mac: float = 0.0,
-             mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0, temp_c: float = 37.0,
-             peep_cmH2O: Optional[float] = None) -> HemoState:
+             mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0,
+             ce_vaso: float = 0.0, ce_dobu: float = 0.0, ce_mil: float = 0.0,
+             temp_c: float = 37.0, peep_cmH2O: Optional[float] = None) -> HemoState:
         """
         Advance hemodynamic model by dt seconds.
         
@@ -843,6 +906,9 @@ class HemodynamicModel:
             mac_sevo: Sevoflurane end-tidal MAC fraction (0.0-2.0+)
             ce_epi: Epinephrine plasma concentration (ng/mL)
             ce_phenyl: Phenylephrine plasma concentration (ng/mL)
+            ce_vaso: Vasopressin plasma concentration (mU/L)
+            ce_dobu: Dobutamine plasma concentration (ng/mL)
+            ce_mil: Milrinone plasma concentration (ng/mL)
             temp_c: Patient temperature (deg C)
             peep_cmH2O: Total PEEP (cmH2O) for pulmonary vascular effects
             
@@ -927,17 +993,27 @@ class HemodynamicModel:
         epi_delta_hr, epi_sv_factor, epi_svr_factor = self._calc_epi_effects(ce_epi)
         nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(ce_nore)
         phenyl_svr_factor = self._calc_phenyl_effects(ce_phenyl)
+        vaso_delta_hr, vaso_svr_factor = self._calc_vasopressin_effects(ce_vaso)
+        dobu_delta_hr, dobu_sv_factor, dobu_svr_factor = self._calc_dobutamine_effects(ce_dobu)
+        mil_delta_hr, mil_sv_factor, mil_svr_factor = self._calc_milrinone_effects(ce_mil)
         
         # Combine vasopressor effects
         # SVR: Multiplicative (each drug independently increases vascular resistance)
-        combined_svr_factor = epi_svr_factor * nore_svr_factor * phenyl_svr_factor
+        catechol_svr_factor = epi_svr_factor * nore_svr_factor * phenyl_svr_factor
         pressor_resistance = clamp01(self.sepsis_pressor_resistance * sepsis_sev)
         if pressor_resistance > 0:
-            combined_svr_factor = 1.0 + (combined_svr_factor - 1.0) * (1.0 - pressor_resistance)
+            catechol_svr_factor = 1.0 + (catechol_svr_factor - 1.0) * (1.0 - pressor_resistance)
+
+        combined_svr_factor = (
+            catechol_svr_factor *
+            vaso_svr_factor *
+            dobu_svr_factor *
+            mil_svr_factor
+        )
         # SV: Multiplicative (inotropy effects stack)
-        combined_sv_factor = epi_sv_factor * nore_sv_factor
+        combined_sv_factor = epi_sv_factor * nore_sv_factor * dobu_sv_factor * mil_sv_factor
         # HR: Additive (chronotropy effects sum)
-        combined_delta_hr = epi_delta_hr + nore_delta_hr
+        combined_delta_hr = epi_delta_hr + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr
         
         # Store for inotropy application in ODE
         self.vasopressor_sv_factor = combined_sv_factor

@@ -14,6 +14,8 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Sessler. Anesthesiology. 2000. (perioperative heat balance). [PubMed](https://pubmed.ncbi.nlm.nih.gov/10691247/)
 - Frank et al. JAMA. 1997. (perioperative thermoregulation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9087467/)
 - Anderson et al. Paediatr Anaesth. 2017. (phenylephrine PK; PD here is heuristic). [PubMed](https://pubmed.ncbi.nlm.nih.gov/28868789/)
+- Magnani et al. J Int Med Res. 1977. (dobutamine dose-response; ↑CO, low-dose SV increase without HR change). [PubMed](https://pubmed.ncbi.nlm.nih.gov/838109/)
+- Baim et al. N Engl J Med. 1983. (milrinone hemodynamics; ↑CI, ↓SVR). [PubMed](https://pubmed.ncbi.nlm.nih.gov/6888453/)
 - Martin et al. Acta Anaesthesiol Scand. 1990. (hyperdynamic septic shock: SVR <= 600; target 700-800 dyn·s/cm^5). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2389659/)
 - Melo et al. Crit Care. 1999. (septic shock low SVR cohort: mean SVR ~445 dyn·s/cm^5). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11056727/)
 - Bellissant et al. Clin Pharmacol Ther. 2000. (septic shock pressor hyporesponsiveness: phenylephrine Emax ~39 vs 84 mmHg controls). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11014411/)
@@ -52,6 +54,11 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Kern et al. Anesthesiology. 2004. (response surface analysis of propofol-remifentanil interaction). [PubMed](https://pubmed.ncbi.nlm.nih.gov/15166554/)
 - FDA NDA 203826 Clinical Pharmacology Review. 2012. (phenylephrine PK). [Drugs@FDA](https://www.accessdata.fda.gov/drugsatfda_docs/nda/2012/203826_phenylephrine_toc.cfm)
 - Hengstmann and Goronzy. Eur J Clin Pharmacol. 1982. (phenylephrine PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7056280/)
+- Vasopressin injection label (DailyMed). (Vd 0.14 L/kg; CL 9–25 mL/min/kg; t1/2 ≤10 min). [DailyMed](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=971f9b1c-6094-4f80-920b-cb5d7e62950a)
+- Kates and Leier. Clin Pharmacol Ther. 1978. (dobutamine PK in severe CHF; CL 2.35 L/min/m^2; Vd 0.20 L/kg; t1/2 ~2 min). [PubMed](https://pubmed.ncbi.nlm.nih.gov/699477/)
+- Daly et al. Am J Cardiol. 1997. (dobutamine plasma concentrations vs dose, 5–30 µg/kg/min). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9165162/)
+- Dobutamine injection label (Clinical Pharmacology). (rapid onset/offset; t1/2 ~2 min). [Pfizer Medical Information](https://www.pfizermedicalinformation.com/patient/dobutamine/clinical-pharmacology)
+- Milrinone lactate injection label (DailyMed). (Vd 0.38–0.45 L/kg; CL ~0.13 L/kg/hr; t1/2 2.3–2.4 h; hemodynamic improvement within ~5–15 min). [DailyMed](https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=88f78780-399f-4780-be19-205739db1682&version=21)
 
 ## Respiratory Control and BIS
 - Kanazawa et al. J Anesth. 2017. (BIS at age-adjusted 1 MAC desflurane vs sevoflurane). [PubMed](https://pubmed.ncbi.nlm.nih.gov/28791477/)

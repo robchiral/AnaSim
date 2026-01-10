@@ -149,5 +149,28 @@ class HemodynamicConfig:
     phenyl_gamma: float = 1.5
     phenyl_emax_svr: float = 0.60
 
+    # Vasopressin PD (units: mU/L)
+    # Derived from clinical dosing (0.01–0.07 U/min) and DailyMed label PK.
+    vaso_c50: float = 20.0
+    vaso_gamma: float = 1.5
+    vaso_emax_svr: float = 0.60
+    vaso_emax_hr: float = -6.0
+
+    # Dobutamine PD (units: ng/mL)
+    # C50 anchored to plasma concentrations during DSE (≈27–403 ng/mL; Daly et al. 1997).
+    dobu_c50: float = 80.0
+    dobu_gamma: float = 1.3
+    dobu_emax_hr: float = 15.0
+    dobu_emax_sv: float = 0.35
+    dobu_emax_svr: float = -0.25
+
+    # Milrinone PD (units: ng/mL)
+    # C50 anchored to therapeutic plasma range (~100–300 ng/mL; DailyMed label).
+    mil_c50: float = 150.0
+    mil_gamma: float = 1.2
+    mil_emax_hr: float = 6.0
+    mil_emax_sv: float = 0.45
+    mil_emax_svr: float = -0.35
+
     # Hill cache tolerance
     cache_tolerance: float = 0.01
