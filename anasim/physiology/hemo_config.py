@@ -87,6 +87,26 @@ class HemodynamicConfig:
     alpha_peep: float = 0.04
     f_preload_pit: float = 1.0
 
+    # Right heart / pulmonary circulation (lightweight coupling)
+    # ESC/ERS RHC normal ranges: RAP 2–6 mmHg, PVR 0.3–2.0 WU.
+    rap_baseline: float = 5.0
+    # Baseline pulmonary vascular resistance (Wood units).
+    # ESC/ERS normal: 0.3–2.0 WU.
+    pvr_wood_baseline: float = 1.2
+    # Pulmonary transit time (seconds). CMR median ~6.8 s in preserved EF cohort.
+    pulmonary_transit_time_s: float = 6.8
+    # Hypoxic pulmonary vasoconstriction (HPV) effect on PVR.
+    pvr_o2_threshold: float = 60.0  # mmHg: below this, HPV begins to rise
+    pvr_o2_floor: float = 30.0      # mmHg: severe hypoxia reference
+    pvr_o2_max_factor: float = 2.0  # Max PVR multiplier at/under floor
+    # PEEP effect on PVR (cmH2O above baseline).
+    pvr_peep_ref: float = 5.0       # cmH2O baseline PEEP
+    pvr_peep_slope: float = 0.03    # Fractional PVR increase per cmH2O above ref
+    # Flow sensitivity to PVR (higher = more RV afterload sensitivity).
+    pvr_flow_exponent: float = 0.7
+    # Safety clamp
+    pvr_max_factor: float = 3.0
+
     # Chemoreflex setpoints/gains
     paco2_set: float = 40.0
     pao2_set: float = 85.0

@@ -147,6 +147,30 @@ class TestHemodynamicSanity:
         assert state.hr > base.hr + 20, "Hemorrhage should cause tachycardia > 20 bpm"
         assert state.map < base.map - 10, "Hemorrhage should cause hypotension"
 
+    def test_hypoxia_increases_pvr(self, model):
+        """Hypoxia should increase PVR via HPV coupling."""
+        base = model.step(1.0, 0, 0, 0, -2, 40, 95)
+        # Allow pulmonary transit to settle under hypoxia
+        for _ in range(30):
+            state = model.step(1.0, 0, 0, 0, -2, 40, 50)
+        assert state.pvr > base.pvr * 1.1, "Hypoxia should increase PVR"
+
+    def test_high_peep_reduces_lv_inflow(self, model):
+        """Higher PEEP should reduce pulmonary venous return via PVR effects."""
+        base = model.step(1.0, 0, 0, 0, -2, 40, 95, peep_cmH2O=5.0)
+        for _ in range(30):
+            state = model.step(1.0, 0, 0, 0, -2, 40, 95, peep_cmH2O=15.0)
+        assert state.pvr > base.pvr, "Higher PEEP should raise PVR"
+        assert state.lv_inflow < base.lv_inflow, "Higher PEEP should reduce LV inflow"
+
+    def test_pulmonary_transit_lag(self, model):
+        """Pulmonary transit should delay LV inflow relative to acute RV outflow changes."""
+        base = model.step(1.0, 0, 0, 0, -2, 40, 95, peep_cmH2O=5.0)
+        # Acute hypoxia + high PEEP increases PVR, dropping RV output immediately.
+        state = model.step(1.0, 0, 0, 0, -2, 40, 30, peep_cmH2O=20.0)
+        assert state.lv_inflow < base.lv_inflow, "LV inflow should drop after acute PVR rise"
+        assert state.lv_inflow > state.rv_co, "LV inflow should lag behind RV output"
+
 
 class TestAnemiaHandling:
     @pytest.fixture

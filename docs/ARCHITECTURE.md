@@ -63,6 +63,7 @@ AnaSim/
 - Three state variables: TPR, SV*, HR* with TDE regulators
 - Drug effects: Propofol, Remifentanil, Vasopressors, Volatiles
 - Frank-Starling preload dependence, baroreflex-like feedback
+- Lightweight right-heart / pulmonary coupling: MCFP→venous return, PVR effects from hypoxia/PEEP, and pulmonary transit delay
 - Septic shock: vasoplegia, capillary leak, pressor resistance
 - Anaphylaxis: rapid-onset vasoplegia plus airway effects (bronchospasm/laryngospasm), no capillary leak model
 
