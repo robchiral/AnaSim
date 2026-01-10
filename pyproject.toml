@@ -23,6 +23,11 @@ dependencies = [
     "pandas",
 ]
 
+[project.urls]
+"Homepage" = "https://github.com/robchiral/AnaSim"
+"Bug Tracker" = "https://github.com/robchiral/AnaSim/issues"
+"Source" = "https://github.com/robchiral/AnaSim"
+
 [project.scripts]
 anasim = "anasim.cli:main"
 

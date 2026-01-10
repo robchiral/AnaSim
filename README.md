@@ -2,7 +2,7 @@
 
 Real-time anesthesia simulation engine for medical education.
 
-![AnaSim Induction Window](docs/images/induction_full_window.png)
+![AnaSim Induction Window](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/induction_full_window.png)
 
 > [!WARNING]
 > **For educational use only**
