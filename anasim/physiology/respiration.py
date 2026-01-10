@@ -393,7 +393,11 @@ class RespiratoryModel:
         vq_mismatch = clamp01_local(vq_mismatch)
         effective_va = max(0.1, total_va_l_min * (1.0 - 0.6 * vq_mismatch))
 
-        apnea_like = state.apnea or effective_va <= 0.1
+        assisted_active = mech_rr > 0.1 or mech_vent_mv > 0.1
+        if assisted_active:
+            apnea_like = effective_va <= 0.1
+        else:
+            apnea_like = state.apnea or effective_va <= 0.1
         if apnea_like:
             self._apnea_timer += dt
         else:

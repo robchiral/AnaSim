@@ -67,6 +67,12 @@ class StepHelpersMixin:
     def _step_mechanics(self: "SimulationEngine", dt: float, vent_active: bool, bag_mask_active: bool):
         """Advance respiratory mechanics and return (mech_state, total_peep_effect, mech_rr_for_resp)."""
         resp_mech = self.resp_mech
+        def estimate_effort(vt_l: float) -> float:
+            """Estimate patient inspiratory effort (cmH2O) from tidal volume and compliance."""
+            if resp_mech.compliance <= 0:
+                return 0.0
+            return clamp(vt_l / resp_mech.compliance, 0.0, 20.0)
+
         if vent_active:
             mech_rr_for_resp = resp_mech.set_rr
             if resp_mech.mode in (VentMode.PSV, VentMode.CPAP):
@@ -90,17 +96,18 @@ class StepHelpersMixin:
                         spont_rr = backup_rr
                 else:
                     self._psv_apnea_timer = 0.0
+                    use_backup = False
+                if is_apneic:
+                    spont_vt_l = 0.0
                 mech_rr_for_resp = spont_rr
 
-                effort_cm_h2o = 0.0
-                if spont_vt_l > 0 and resp_mech.compliance > 0:
-                    effort_cm_h2o = spont_vt_l / resp_mech.compliance
-                effort_cm_h2o = clamp(effort_cm_h2o, 0.0, 20.0)
+                effort_cm_h2o = estimate_effort(spont_vt_l)
+                if use_backup:
+                    effort_cm_h2o = 0.0
                 self._last_patient_effort_cmH2O = effort_cm_h2o
 
                 support_cm_h2o = resp_mech.set_p_insp if resp_mech.mode == VentMode.PSV else 0.0
                 resp_mech.set_rr = mech_rr_for_resp
-                resp_mech.insp_time_fraction = 1.0 / 3.0
                 resp_mech.set_p_insp = clamp(support_cm_h2o, 0.0, 40.0)
                 resp_mech.patient_effort_cmH2O = effort_cm_h2o
 
@@ -126,7 +133,12 @@ class StepHelpersMixin:
             mech_rr_for_resp = self.bag_mask_rr
         else:
             self._psv_apnea_timer = 0.0
-            self._last_patient_effort_cmH2O = 0.0
+            spont_rr = max(0.0, self.resp.state.rr)
+            spont_vt_l = max(0.0, self.resp.state.vt / 1000.0)
+            is_apneic = spont_rr < RR_APNEA_THRESHOLD or self.resp.state.apnea
+            if is_apneic:
+                spont_vt_l = 0.0
+            self._last_patient_effort_cmH2O = estimate_effort(spont_vt_l)
             saved_settings = resp_mech.snapshot_settings()
             resp_mech.set_rr = 0.0
             resp_mech.set_peep = 0.0
@@ -546,9 +558,10 @@ class StepHelpersMixin:
         else:
             self.current_mean_paw = (1 - alpha_paw) * self.current_mean_paw + alpha_paw * mech_state.paw
         
-        # Higher mean Paw and auto-PEEP increase Pit, reducing venous return.
+        # Higher mean Paw increases Pit, reducing venous return.
         # Spontaneous inspiratory effort makes Pit more negative (improves venous return).
-        pit_estimate = -2.0 + 0.4 * (self.current_mean_paw - 5.0) + 0.3 * mech_state.auto_peep
+        pit_base = getattr(hemo, "pit_0", -2.0)
+        pit_estimate = pit_base + 0.4 * (self.current_mean_paw - 5.0)
         effort_mmHg = self._last_patient_effort_cmH2O * 0.74
         pit_estimate -= 0.3 * effort_mmHg
 

@@ -883,9 +883,14 @@ class HemodynamicModel:
         # =====================================================================
         
         # --- 4.1 Intrathoracic Pressure (Pit) Effect on Preload ---
-        # PEEP/PPV increases Pit, reducing venous return and preload
+        # PEEP/PPV increases Pit, reducing venous return and preload.
+        # Negative Pit from spontaneous effort can modestly augment preload.
         delta_pit = pit - self.pit_0
-        self.f_preload_pit = 1.0 / (1.0 + self.alpha_peep * max(0.0, delta_pit))
+        if delta_pit >= 0.0:
+            f_preload_pit = 1.0 / (1.0 + self.alpha_peep * delta_pit)
+        else:
+            f_preload_pit = 1.0 + self.alpha_peep * (-delta_pit)
+        self.f_preload_pit = clamp(f_preload_pit, 0.4, 1.4)
 
         # --- 4.2 Right-heart / pulmonary coupling ---
         f_frank_starling = self._update_pulmonary_coupling(
