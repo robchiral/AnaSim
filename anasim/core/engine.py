@@ -639,7 +639,19 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             mode: Optional ventilator mode ("VCV" or "PCV")
             p_insp: Optional inspiratory pressure above PEEP (cmH2O) - for PCV
         """
-        self.vent.is_on = rr > 0 and (vt > 0 or (mode == "PCV" and p_insp and p_insp > 0))
+        mode_upper = mode.upper() if mode else None
+        if mode_upper == "VCV":
+            self.vent.is_on = rr > 0 and vt > 0
+        elif mode_upper == "PCV":
+            self.vent.is_on = rr > 0 and p_insp and p_insp > 0
+        elif mode_upper in ("PSV", "CPAP"):
+            has_support = (p_insp is not None and p_insp > 0)
+            has_peep = (peep is not None and peep > 0)
+            has_backup = rr > 0
+            self.vent.is_on = has_support or has_peep or has_backup
+        else:
+            # Fallback for legacy callers (mode not specified).
+            self.vent.is_on = rr > 0 and vt > 0
             
         self.resp_mech.set_settings(rr, vt, peep, ie, mode=mode, p_insp=p_insp)
         self.vent.update_settings(rr=rr, tv=vt*1000, peep=peep, ie=ie, 

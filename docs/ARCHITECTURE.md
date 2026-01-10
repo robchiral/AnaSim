@@ -3,7 +3,7 @@
 ## Overview
 
 AnaSim is a real-time anesthesia simulation engine that models patient physiology, pharmacokinetics, pharmacodynamics, and monitoring equipment. This document describes the core architecture and data flow.
-Assisted ventilation (ventilator or bag-mask) is simulated through the respiratory mechanics model, while purely spontaneous breathing bypasses mechanics and is handled by the respiratory drive model.
+Assisted ventilation (VCV/PCV/PSV/CPAP or bag-mask) is simulated through the respiratory mechanics model, while purely spontaneous breathing bypasses mechanics and is handled by the respiratory drive model.
 The UI can toggle whether an arterial line is enabled: when enabled, ABP waveforms and continuous SBP/DBP/MAP are displayed; when disabled, the ABP panel is hidden and intermittent NIBP values are displayed.
 
 ## Module Structure
@@ -78,6 +78,10 @@ AnaSim/
 - **Gas Exchange**: Deadspace mixing and alveolar ventilation calculations.
   - EtCO2 is derived from PaCO2 with a small gradient that increases with V/Q mismatch and obstruction.
   - Baseline VCO2 scales with patient size (resting VO2 ~3.6 mL/kg/min, RQ ~0.8).
+
+### Ventilation (`physiology/resp_mech.py`, `machine/ventilator.py`)
+- Modes: VCV, PCV, PSV, CPAP, plus manual bag-mask ventilation.
+- PSV/CPAP use patient-driven timing with estimated effort; PSV adds pressure support, CPAP maintains PEEP only.
 
 ### Pharmacokinetics (`patient/pk_models.py`)
 - 3-compartment models (central, peripheral, effect-site)

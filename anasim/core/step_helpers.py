@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from .state import AirwayType
 from anasim.core.constants import (
     TEMP_METABOLIC_COEFFICIENT,
+    RR_APNEA_THRESHOLD,
     SHIVER_BASE_THRESHOLD,
     SHIVER_DEPTH_DROP_MAX,
     SHIVER_REMI_DROP_MAX,
@@ -23,6 +24,7 @@ from anasim.core.constants import (
 )
 from anasim.core.utils import pao2_to_sao2, clamp, clamp01, hill_function
 from anasim.monitors.capno import Capnograph
+from anasim.physiology.resp_mech import VentMode
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine
@@ -63,27 +65,58 @@ class StepHelpersMixin:
         return "INSP" if t_cycle < insp_time else "EXP"
 
     def _step_mechanics(self: "SimulationEngine", dt: float, vent_active: bool, bag_mask_active: bool):
-        """Advance respiratory mechanics and return (mech_state, total_peep_effect)."""
+        """Advance respiratory mechanics and return (mech_state, total_peep_effect, mech_rr_for_resp)."""
         resp_mech = self.resp_mech
         if vent_active:
-            mech_state = resp_mech.step(dt)
-            total_peep_effect = resp_mech.get_total_peep()
+            mech_rr_for_resp = resp_mech.set_rr
+            if resp_mech.mode in (VentMode.PSV, VentMode.CPAP):
+                # Patient-triggered support: use spontaneous RR/VT to derive timing and effort.
+                saved_settings = resp_mech.snapshot_settings()
+                spont_rr = max(0.0, self.resp.state.rr)
+                spont_vt_l = max(0.0, self.resp.state.vt / 1000.0)
+                if spont_rr < RR_APNEA_THRESHOLD:
+                    spont_rr = max(0.0, resp_mech.set_rr)
+                mech_rr_for_resp = spont_rr
+
+                effort_cm_h2o = 0.0
+                if spont_vt_l > 0 and resp_mech.compliance > 0:
+                    effort_cm_h2o = spont_vt_l / resp_mech.compliance
+                effort_cm_h2o = clamp(effort_cm_h2o, 0.0, 20.0)
+
+                support_cm_h2o = resp_mech.set_p_insp if resp_mech.mode == VentMode.PSV else 0.0
+                resp_mech.set_rr = mech_rr_for_resp
+                resp_mech.insp_time_fraction = 1.0 / 3.0
+                resp_mech.set_p_insp = clamp(support_cm_h2o, 0.0, 40.0)
+                resp_mech.patient_effort_cmH2O = effort_cm_h2o
+
+                mech_state = resp_mech.step(dt)
+                total_peep_effect = resp_mech.get_total_peep()
+                resp_mech.restore_settings(saved_settings)
+                resp_mech.patient_effort_cmH2O = 0.0
+            else:
+                resp_mech.patient_effort_cmH2O = 0.0
+                mech_state = resp_mech.step(dt)
+                total_peep_effect = resp_mech.get_total_peep()
         elif bag_mask_active:
             saved_settings = resp_mech.snapshot_settings()
             resp_mech.set_settings(self.bag_mask_rr, self.bag_mask_vt, 0.0, ie="1:2", mode="VCV")
+            resp_mech.patient_effort_cmH2O = 0.0
             mech_state = resp_mech.step(dt)
             total_peep_effect = resp_mech.get_total_peep()
             resp_mech.restore_settings(saved_settings)
+            mech_rr_for_resp = self.bag_mask_rr
         else:
             saved_settings = resp_mech.snapshot_settings()
             resp_mech.set_rr = 0.0
             resp_mech.set_peep = 0.0
+            resp_mech.patient_effort_cmH2O = 0.0
             mech_state = resp_mech.step(dt)
             total_peep_effect = 0.0
             mech_state.paw_mean = 0.0
             mech_state.auto_peep = 0.0
             resp_mech.restore_settings(saved_settings)
-        return mech_state, total_peep_effect
+            mech_rr_for_resp = 0.0
+        return mech_state, total_peep_effect, mech_rr_for_resp
 
     def _update_nibp(self: "SimulationEngine", dt: float, hemo_state) -> None:
         """Update NIBP state and trigger cycles when appropriate."""
@@ -479,7 +512,7 @@ class StepHelpersMixin:
         assisted_active = vent_active or bag_mask_active
 
         # Mechanical lung step (assisted ventilation only).
-        mech_state, total_peep_effect = self._step_mechanics(dt, vent_active, bag_mask_active)
+        mech_state, total_peep_effect, mech_rr_for_resp = self._step_mechanics(dt, vent_active, bag_mask_active)
         
         # Intrathoracic pressure from smoothed mean Paw.
         alpha_paw = 0.05  # Faster tracking of mean Paw changes
@@ -492,7 +525,7 @@ class StepHelpersMixin:
         pit_estimate = -2.0 + 0.4 * (self.current_mean_paw - 5.0) + 0.3 * mech_state.auto_peep
 
         # Mechanical ventilator MV calculation.
-        mech_rr = resp_mech.set_rr if vent_active else 0.0
+        mech_rr = mech_rr_for_resp if vent_active else 0.0
         delivered_vt_raw_l = resp_mech.set_vt if vent_active else 0.0
         delivered_vt_display_l = 0.0
         if vent_active:
@@ -585,7 +618,7 @@ class StepHelpersMixin:
             peep_cmH2O=total_peep_effect,
         )
         
-        self.vent.step(dt, mech_state)
+        self.vent.step(dt, mech_state, rr_total=mech_rr)
                                     
         state.map = hemo_state.map # Raw
         state.hr = hemo_state.hr   # Raw
@@ -670,22 +703,33 @@ class StepHelpersMixin:
             capno_p_alv = resp_state.etco2 * self._airway_patency
             capno_phase = phase
             capno_exp_duration = capno_context.exp_duration
+            capno_is_spontaneous = capno_context.is_spontaneous
+            capno_curare = capno_context.curare_active
+            support_mode = self._vent_active and resp_mech.mode in (VentMode.PSV, VentMode.CPAP)
             if self._vent_active or bag_mask_active:
-                # If spontaneous effort dominates, treat capno timing as patient-driven (AC-like).
-                # Otherwise lock to driven ventilation timing.
-                if capno_context.spontaneous_weight >= 0.6:
-                    capno_phase = self._phase_from_rr(capno_context.effective_rr)
-                    capno_exp_duration = capno_context.exp_duration
+                if support_mode:
+                    # PSV/CPAP are patient-driven; always render spontaneous timing.
+                    capno_is_spontaneous = True
+                    capno_curare = False
+                    capno_phase = self._phase_from_rr(resp_state.rr)
+                    if resp_state.rr > 0:
+                        capno_exp_duration = (60.0 / resp_state.rr) * 0.65
                 else:
-                    driven_rr = vent_rr if vent_rr > 0.1 else capno_context.effective_rr
-                    cycle_time = 60.0 / max(driven_rr, 0.1)
-                    exp_fraction = max(0.1, 1.0 - insp_fraction)
-                    capno_exp_duration = cycle_time * exp_fraction
-            elif capno_context.is_spontaneous:
+                    # If spontaneous effort dominates, treat capno timing as patient-driven (AC-like).
+                    # Otherwise lock to driven ventilation timing.
+                    if capno_context.spontaneous_weight >= 0.6:
+                        capno_phase = self._phase_from_rr(capno_context.effective_rr)
+                        capno_exp_duration = capno_context.exp_duration
+                    else:
+                        driven_rr = vent_rr if vent_rr > 0.1 else capno_context.effective_rr
+                        cycle_time = 60.0 / max(driven_rr, 0.1)
+                        exp_fraction = max(0.1, 1.0 - insp_fraction)
+                        capno_exp_duration = cycle_time * exp_fraction
+            elif capno_is_spontaneous:
                 capno_phase = self._phase_from_rr(resp_state.rr)
             capno_val = self.capno.step(dt, capno_phase, capno_p_alv, 
-                                        is_spontaneous=capno_context.is_spontaneous,
-                                        curare_cleft=capno_context.curare_active,
+                                        is_spontaneous=capno_is_spontaneous,
+                                        curare_cleft=capno_curare,
                                         exp_duration=capno_exp_duration,
                                         effort_scale=capno_context.effort_scale,
                                         airway_obstruction=self._capno_obstruction)

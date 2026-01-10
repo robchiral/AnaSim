@@ -294,6 +294,46 @@ class TestVentilatorHemodynamics(unittest.TestCase):
         self.assertLess(high_peep_map, baseline_map)
 
 
+class TestPSVCPAPIntegration(unittest.TestCase):
+    """Validate PSV/CPAP provide spontaneous support without fixed Vt targets."""
+
+    def setUp(self):
+        patient = Patient(age=40, weight=70, height=170, sex="male")
+        config = SimulationConfig(mode='awake', maint_type='tiva')
+        self.engine = SimulationEngine(patient, config)
+        self.engine.start()
+        self.engine.set_airway_mode("ETT")
+
+    def tearDown(self):
+        self.engine.stop()
+
+    def _advance(self, seconds, dt=0.1):
+        for _ in range(int(seconds / dt)):
+            self.engine.step(dt)
+
+    def test_psv_increases_vt_over_cpap(self):
+        """PSV should augment tidal volume compared with CPAP alone."""
+        # CPAP baseline (PEEP only)
+        self.engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="CPAP", p_insp=0.0)
+        self._advance(20.0)
+        vt_cpap = self.engine.state.vt
+        assert vt_cpap > 200.0, f"CPAP should preserve spontaneous VT, got {vt_cpap:.0f} mL"
+
+        # PSV support
+        self.engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="PSV", p_insp=10.0)
+        self._advance(20.0)
+        vt_psv = self.engine.state.vt
+        assert vt_psv > vt_cpap + 50.0, \
+            f"PSV should increase VT vs CPAP (CPAP={vt_cpap:.0f}, PSV={vt_psv:.0f})"
+
+    def test_cpap_paw_stays_near_peep(self):
+        """CPAP should not generate inspiratory pressures above set PEEP."""
+        self.engine.set_vent_settings(rr=0.0, vt=0.0, peep=8.0, ie="1:2", mode="CPAP", p_insp=0.0)
+        self._advance(10.0)
+        paw_peak = self.engine.resp_mech.state.paw_peak
+        assert paw_peak <= 10.0, f"CPAP Paw peak {paw_peak:.1f} too high for PEEP 8"
+
+
 class TestBagMaskVentilation(unittest.TestCase):
     """Test bag-mask ventilation functionality (separate from mechanical vent)."""
     
