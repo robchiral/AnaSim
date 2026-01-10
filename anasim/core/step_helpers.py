@@ -35,6 +35,9 @@ TCI_TARGETS = (
     ("tci_nore", "nore_rate_ug_sec"),
     ("tci_epi", "epi_rate_ug_sec"),
     ("tci_phenyl", "phenyl_rate_ug_sec"),
+    ("tci_vaso", "vaso_rate_mu_sec"),
+    ("tci_dobu", "dobu_rate_ug_sec"),
+    ("tci_mil", "mil_rate_ug_sec"),
     ("tci_roc", "roc_rate_mg_sec"),
 )
 
