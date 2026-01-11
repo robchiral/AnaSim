@@ -24,21 +24,29 @@ You can provide a JSON file to customize the patient and simulation parameters.
     "age": 40,
     "weight": 70,
     "height": 170,
-    "sex": "Male",
+    "sex": "male",
     "mode": "awake",
     "maint_type": "tiva",
     "pk_model_propofol": "Eleveld",
     "pk_model_remi": "Minto",
+    "volatile_agents": ["sevoflurane"],
+    "baseline_hb": 13.5,
+    "fidelity_mode": "clinical",
+    "rng_seed": 123,
     "maintenance_fluid_ml_hr": null
 }
 ```
 
 ### Options
 
-- **mode**: `awake`, `steady_state`, `induction`
+- **mode**: `awake`, `steady_state`
 - **maint_type**: `tiva`, `balanced`
 - **pk_model_propofol**: `Marsh`, `Schnider`, `Eleveld`
 - **pk_model_remi**: `Minto`
+- **volatile_agents**: list of enabled volatile agents (e.g., `["sevoflurane"]`)
+- **baseline_hb**: baseline hemoglobin in g/dL
+- **fidelity_mode**: `clinical` or `literature`
+- **rng_seed**: integer seed for deterministic noise
 - **maintenance_fluid_ml_hr**: continuous IV fluid rate in mL/hr. `null` (or omitted) uses the default 1 mL/kg/hr.
 
 ## Examples

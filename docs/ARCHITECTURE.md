@@ -4,6 +4,7 @@
 
 AnaSim is a real-time anesthesia simulation engine that models patient physiology, pharmacokinetics, pharmacodynamics, and monitoring equipment. This document describes the core architecture and data flow.
 Assisted ventilation (VCV/PCV/PSV/CPAP or bag-mask) is simulated through the respiratory mechanics model, while purely spontaneous breathing bypasses mechanics and is handled by the respiratory drive model.
+Fresh gas flow includes O2/Air and optional N2O; N2O is delivered via the circuit (not the vaporizer) and contributes to total MAC but has minimal BIS effect.
 The UI can toggle whether an arterial line is enabled: when enabled, ABP waveforms and continuous SBP/DBP/MAP are displayed; when disabled, the ABP panel is hidden and intermittent NIBP values are displayed.
 
 ## Module Structure
@@ -45,14 +46,15 @@ AnaSim/
 ├─────────────────────────────────────────────────────────────────┤
 │  1. Disturbances (surgical stimulation, user events)            │
 │  2. TCI Controllers → drug infusion rates                       │
-│  3. Machine (ventilator, bag-mask, vaporizer)                   │
+│  3. Machine (ventilator, bag-mask, vaporizer, circuit/FGF)      │
 │  4. PK Models → drug concentrations (Ce, Cp)                    │
 │  5. Physiology:                                                 │
 │     a. Respiration → RR, VT, PaCO2, PaO2                        │
 │     b. Hemodynamics → HR, MAP, SBP, DBP, CO                     │
 │  6. Monitors → waveforms, displayed values                      │
-│  7. Temperature model                                           │
-│  8. Death detector                                              │
+│  7. Shivering model                                             │
+│  8. Temperature model                                           │
+│  9. Death detector                                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -61,7 +63,7 @@ AnaSim/
 ### Hemodynamics (`physiology/hemodynamics.py`)
 - Based on Su et al. Br J Anaesth. 2023 comprehensive cardiovascular model (see `docs/REFERENCES.md`)
 - Three state variables: TPR, SV*, HR* with TDE regulators
-- Drug effects: Propofol, Remifentanil, Vasopressors, Volatiles
+- Drug effects: Propofol, Remifentanil, Vasopressors, Sevoflurane
 - Frank-Starling preload dependence, baroreflex-like feedback
 - Lightweight right-heart / pulmonary coupling: MCFP→venous return, PVR effects from hypoxia/PEEP, and pulmonary transit delay
 - Septic shock: vasoplegia, capillary leak, pressor resistance
@@ -69,7 +71,7 @@ AnaSim/
 - Fluids: crystalloids/colloids/blood enter intravascular volume with retention fractions; third-spacing accumulates and refills slowly back into circulation; urine output scales with MAP and renal function; I/O display reflects charted totals (crystalloid + colloid + blood in; urine + blood out) and excludes internal third-space/leak
 
 ### Respiration (`physiology/respiration.py`)
-- **Central Drive**: Neural output inhibited by propofol, remifentanil, and sevoflurane.
+- **Central Drive**: Neural output inhibited by propofol, remifentanil, and sevoflurane (N₂O not modeled for drive).
 - **Muscle Factor**: Mechanical ability inhibited by NMBA (rocuronium).
 - **HCVR (Hypercapnic Ventilatory Response)**:
   - Negative feedback loop: rising PaCO2 stimulates respiratory drive.
@@ -95,6 +97,7 @@ AnaSim/
 - 4-compartment PBPK: Lungs, VRG (brain), Muscle, Fat
 - Partial pressure-based equilibration
 - Age-corrected MAC calculation
+- N2O is modeled as an inhaled gas via fresh gas flow; MAC is tracked separately and combined with sevo for total MAC.
 
 ### TCI Controller (`core/tci.py`)
 - Shafer/Gregg algorithm implementation
@@ -113,6 +116,7 @@ AnaSim/
 | Cardiac output                     | L/min   |
 | Temperature                        | °C      |
 | Time step                          | seconds |
+| Fresh gas flow                     | L/min   |
 
 ## Testing
 
@@ -121,6 +125,8 @@ AnaSim/
 python3 -m pytest tests/ -v
 
 # Run specific test file
+python3 -m pytest tests/test_engine_integration.py -v
+```
 
 ## Benchmarking
 

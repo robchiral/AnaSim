@@ -5,13 +5,13 @@
 Each simulation step executes subsystems in this order:
 
 ```
-1. Shivering       → Thermoregulatory heat/metabolic load
-2. Disturbances    → Surgical stimulation, user events
-3. TCI Controllers → Drug target → infusion rate calculation (synced to sim time)  
-4. Machine         → Vaporizer, circuit → inspired agent concentration
-5. PK Models       → Drug concentrations (Ce, Cp) updated
-6. Physiology      → Resp Mechanics (assisted only) → Respiration → Hemodynamics
-7. Monitors        → Waveforms, displayed values
+1. Disturbances    → Surgical stimulation, user events
+2. TCI Controllers → Drug target → infusion rate calculation (synced to sim time)
+3. Machine         → Ventilator, bag-mask, vaporizer, circuit (O2/Air/N2O)
+4. PK Models       → Drug concentrations (Ce, Cp) updated
+5. Physiology      → Resp Mechanics (assisted only) → Respiration → Hemodynamics
+6. Monitors        → Waveforms, displayed values
+7. Shivering       → Thermoregulatory heat/metabolic load
 8. Temperature     → Core temp, redistribution
 9. Death Detector  → Viability check
 ```
@@ -36,7 +36,7 @@ flowchart TD
         VAP[Vaporizer]
         VENT[Ventilator]
         BAG[Bag-mask]
-        CIRC[Circuit]
+        CIRC[Circuit / FGF Blender]
     end
 
     subgraph PK["Pharmacokinetics"]
@@ -45,6 +45,7 @@ flowchart TD
         PK_ROC[Rocuronium PK]
         PK_VASO[Vasopressor PK]
         PK_SEVO[Volatile PK]
+        PK_N2O[N2O PK]
     end
 
     subgraph Physiology
@@ -59,11 +60,13 @@ flowchart TD
         CAPNO[Capnograph]
         SPO2[SpO2 Monitor]
         NIBP[NIBP Monitor]
+        LOC[LOC Probability]
+        TOF[TOF Monitor]
     end
 
     %% User inputs
     USER --> TCI_P & TCI_R & TCI_V & TCI_NMBA
-    USER --> VENT & VAP & BAG
+    USER --> VENT & VAP & BAG & CIRC
     DIST --> HEMO
 
     %% TCI to infusion
@@ -74,6 +77,8 @@ flowchart TD
 
     %% Machine
     VAP --> PK_SEVO
+    CIRC --> PK_SEVO
+    CIRC --> PK_N2O
     VENT --> MECH
     BAG --> MECH
 
@@ -86,12 +91,17 @@ flowchart TD
     PK_VASO -->|Ce| HEMO
     PK_SEVO -->|MAC| HEMO
     PK_SEVO -->|MAC| BIS
+    PK_SEVO -->|MAC| LOC
+    PK_SEVO -->|MAC| TOF
+    PK_N2O -->|MACawake| LOC
+    PK_N2O -->|MAC| TOF
 
     %% Physiology interactions
     MECH -->|Paw, Pit| HEMO
     MECH -->|delivered VT| RESP
     RESP -->|PaCO2, PaO2| HEMO
     HEMO -->|CO| PK_SEVO
+    HEMO -->|CO| PK_N2O
     HEMO -->|HR, MAP| ECG
 
     %% Monitor inputs
@@ -109,7 +119,7 @@ flowchart TD
 | PK Propofol | Ce | Vasodilation, cardiac depression |
 | PK Remifentanil | Ce | Bradycardia, vasodilation |
 | PK Vasopressors | Ce (Nore, Epi, Phenyl) | Vasoconstriction, inotropy |
-| Volatile PK | MAC | Vasodilation, cardiac depression |
+| Volatile PK | Sevo MAC | Vasodilation, cardiac depression (N2O not modeled in hemo) |
 | Resp Mechanics | Pit (intrathoracic) | Preload reduction with assisted ventilation/PEEP |
 | Respiration | PaCO2, PaO2 | Chemoreflex effects |
 | Disturbances | d_hr, d_sv, d_tpr | Surgical stimulation |
@@ -120,7 +130,7 @@ flowchart TD
 | PK Propofol | Ce | Respiratory depression |
 | PK Remifentanil | Ce | Respiratory depression |
 | PK Rocuronium | Ce | Muscle paralysis |
-| Volatile PK | MAC | Respiratory depression |
+| Volatile PK | Sevo MAC | Respiratory depression (N2O not modeled in drive) |
 | Mechanics | Paw, delivered VT | Assisted ventilation only (ventilator or bag-mask) |
 | Shivering | Intensity | Raises metabolic load (CO2/O2) |
 
@@ -129,7 +139,20 @@ flowchart TD
 |--------|------|-------|
 | PK Propofol | Ce | Primary hypnotic |
 | PK Remifentanil | Ce | Synergistic interaction |
-| Volatile PK | MAC | Volatile contribution |
+| Volatile PK | Sevo MAC | Volatile contribution (N2O has minimal BIS effect) |
+
+### LOC receives from:
+| Source | Data | Notes |
+|--------|------|-------|
+| PK Propofol | Ce | Primary hypnotic |
+| PK Remifentanil | Ce | Synergistic interaction |
+| Volatile PK | Sevo MAC + N2O MACawake | Inhaled contribution |
+
+### TOF receives from:
+| Source | Data | Notes |
+|--------|------|-------|
+| PK Rocuronium | Ce | NMBA effect |
+| Volatile PK | Sevo MAC + N2O MAC | Potentiation of NMBA |
 
 ## Monitoring Modes
 
