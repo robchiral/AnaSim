@@ -75,27 +75,20 @@ class Disturbances:
     the effect is immediate (no long delays).
     """
 
-    def __init__(
-        self,
-        dist_profil: str = None,
-        dist_profile: str = None,
-        **_kwargs,  # Ignore extra args for compatibility
-    ):
-        if dist_profile is not None and dist_profil is None:
-            dist_profil = dist_profile
-        self.dist_profil = dist_profil
-        self.disturb_point = PROFILE_TABLES.get(dist_profil)
+    def __init__(self, dist_profile: str = None):
+        self.dist_profile = dist_profile
+        self.disturb_point = PROFILE_TABLES.get(dist_profile)
         self._profile_time = None
         self._profile_bis = None
         self._profile_hr = None
         self._profile_svr = None
         self._profile_sv = None
 
-        if dist_profil is None:
+        if dist_profile is None:
             return
         if self.disturb_point is None:
             raise ValueError(
-                "dist_profil should be: stim_intubation_pulse, stim_sustained_surgery or None"
+                "dist_profile should be: stim_intubation_pulse, stim_sustained_surgery or None"
             )
         self._profile_time = self.disturb_point[:, _PROFILE_COL_TIME]
         self._profile_bis = self.disturb_point[:, _PROFILE_COL_BIS]

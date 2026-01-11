@@ -89,11 +89,6 @@ class ScenarioOverlay(QFrame):
         self._update_progress()
         self._update_instruction()
         
-    @property
-    def steps(self):
-        """Compatibility property for tests that access steps list."""
-        return [step.id for step in self.scenario.steps]
-        
     def _update_progress(self):
         """Update progress indicator."""
         total = len(self.scenario)
@@ -128,16 +123,6 @@ class ScenarioOverlay(QFrame):
             # Call on_enter callback if present
             if step.on_enter:
                 pass 
-
-    def get_instruction_text(self, step_id):
-        """Get instruction text for a step by ID. For backward compatibility."""
-        if not step_id:
-            return "<b>Tutorial complete!</b><br>You have successfully completed the anesthesia sequence."
-        
-        for step in self.scenario.steps:
-            if step.id == step_id:
-                return step.instruction
-        return f"Unknown step: {step_id}"
 
     def check_requirements(self, engine):
         """Check if current step requirements are met. Returns True/False and status message."""
@@ -197,28 +182,3 @@ class ScenarioOverlay(QFrame):
         if self.requirements_met:
             self.on_next_clicked()
 
-
-# Factory function for backward compatibility
-def TutorialOverlay(mode="awake", maint_type="tiva", parent=None):
-    """
-    Factory function for backward compatibility.
-    
-    Creates the appropriate scenario based on mode and maint_type.
-    
-    Args:
-        mode: "awake" for induction, "steady_state" for emergence
-        maint_type: "balanced" or "tiva"
-        parent: Qt parent widget
-    """
-    # Simple heuristic mapping; expand if config passes specific IDs.
-    if mode in SCENARIO_BUILDERS:
-        scenario = SCENARIO_BUILDERS[mode]()
-    elif mode == "awake":
-        if "balanced" in maint_type.lower():
-            scenario = create_induction_balanced()
-        else:
-            scenario = create_induction_tiva()
-    else:
-        scenario = create_emergence(maint_type)
-    
-    return ScenarioOverlay(scenario, parent)

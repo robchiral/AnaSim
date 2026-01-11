@@ -961,7 +961,7 @@ class HemodynamicModel:
         return self._calc_hr() * self._calc_sv() / 1000.0 # L/min
         
     def step(self, dt: float, ce_prop: float, ce_remi: float, ce_nore: float, pit: float, paco2: float, pao2: float,
-             dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0, mac: float = 0.0,
+             dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0,
              mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0,
              ce_vaso: float = 0.0, ce_dobu: float = 0.0, ce_mil: float = 0.0,
              temp_c: float = 37.0, peep_cmH2O: Optional[float] = None) -> HemoState:
@@ -979,7 +979,6 @@ class HemodynamicModel:
             dist_hr: External HR disturbance (bpm) - e.g., surgical stimulation
             dist_sv: External SV disturbance (mL)
             dist_svr: External SVR disturbance (Wood Units)
-            mac: Generic MAC (legacy support)
             mac_sevo: Sevoflurane end-tidal MAC fraction (0.0-2.0+)
             ce_epi: Epinephrine plasma concentration (ng/mL)
             ce_phenyl: Phenylephrine plasma concentration (ng/mL)
@@ -1231,7 +1230,7 @@ class HemodynamicModel:
         self._prev_map = computed_state.map
         return computed_state
 
-    def calculate_steady_state(self, ce_prop: float, ce_remi: float, ce_nore: float, mac: float = 0.0) -> HemoState:
+    def calculate_steady_state(self, ce_prop: float, ce_remi: float, ce_nore: float, mac_sevo: float = 0.0) -> HemoState:
         """
         Run simulation for a long time to find steady state.
         Analytical solution is hard due to feedback loops.
@@ -1255,9 +1254,11 @@ class HemodynamicModel:
         cn = max(0.0, ce_nore)
         
         # Use helper for combined anesthetic effects
-        # For steady state, we assume ce_sevo = mac (equilibrium)
+        # For steady state, we assume ce_sevo = mac_sevo (equilibrium)
         (total_eff_tpr, total_eff_sv, total_eff_hr_prod, 
-         eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(ce_prop, ce_remi, mac)
+         eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(
+            ce_prop, ce_remi, mac_sevo
+        )
 
         
         # Norepinephrine effects (HR/SV/SVR)
@@ -1301,7 +1302,7 @@ class HemodynamicModel:
         self.tde_sv = 0
         
         # Set Internal Volatile State
-        self.ce_sevo = mac
+        self.ce_sevo = mac_sevo
 
         # Final Output
         saved_pressor = (self.smoothed_epi_hr, self.vasopressor_sv_factor, self.delta_tpr_vasopressors)
@@ -1309,7 +1310,7 @@ class HemodynamicModel:
         self.vasopressor_sv_factor = nore_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (nore_svr_factor - 1.0)
 
-        ret = self.step(0.0, ce_prop, ce_remi, ce_nore, -2.0, 40.0, 95.0, 0,0,0, 0.0, mac_sevo=mac)
+        ret = self.step(0.0, ce_prop, ce_remi, ce_nore, -2.0, 40.0, 95.0, 0, 0, 0, mac_sevo=mac_sevo)
         
         # Revert internal state
         self.tpr = saved_tpr

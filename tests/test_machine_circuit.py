@@ -116,3 +116,18 @@ def test_engine_n2o_washin_washout(engine_factory):
 
     assert engine.state.fi_n2o < fi_n2o * 0.4, "FiN2O should decrease with washout/high FGF"
     assert engine.state.mac_n2o < mac_n2o * 0.5, "N2O MAC should decrease with washout/high FGF"
+
+
+def test_fio2_blender_with_n2o(engine_factory):
+    """FiO2 blender should hit target even with fixed N2O flow."""
+    config = SimulationConfig(mode="awake")
+    engine = engine_factory(config=config, start=False)
+    engine.set_fgf(1.0, 1.0, n2o_l_min=2.0)
+    engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.5)
+
+    o2 = engine.circuit.fgf_o2
+    air = engine.circuit.fgf_air
+    n2o = engine.circuit.fgf_n2o
+    total = o2 + air + n2o
+    fio2 = (o2 + 0.21 * air) / total if total > 0 else 0.21
+    assert abs(fio2 - 0.5) < 0.05
