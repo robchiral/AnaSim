@@ -28,7 +28,8 @@ You can provide a JSON file to customize the patient and simulation parameters.
     "mode": "awake",
     "maint_type": "tiva",
     "pk_model_propofol": "Eleveld",
-    "pk_model_remi": "Minto"
+    "pk_model_remi": "Minto",
+    "maintenance_fluid_ml_hr": null
 }
 ```
 
@@ -38,6 +39,7 @@ You can provide a JSON file to customize the patient and simulation parameters.
 - **maint_type**: `tiva`, `balanced`
 - **pk_model_propofol**: `Marsh`, `Schnider`, `Eleveld`
 - **pk_model_remi**: `Minto`
+- **maintenance_fluid_ml_hr**: continuous IV fluid rate in mL/hr. `null` (or omitted) uses the default 1 mL/kg/hr.
 
 ## Examples
 

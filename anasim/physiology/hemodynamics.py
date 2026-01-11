@@ -237,6 +237,7 @@ class HemodynamicModel:
         
         self.cumulative_fluid_given = 0.0
         self.total_crystalloid_in_ml = 0.0
+        self.total_colloid_in_ml = 0.0
         self.total_blood_in_ml = 0.0
         self.total_urine_out_ml = 0.0
         self.total_blood_out_ml = 0.0
@@ -246,6 +247,7 @@ class HemodynamicModel:
         self.rhythm_type = RhythmType.SINUS
         self.f_preload_pit = 1.0
         self.vasopressor_sv_factor = 1.0
+        self._prev_map = getattr(patient, "baseline_map", 90.0)
 
         # Hill function parameters cache
         self._hill_params = {
@@ -300,7 +302,14 @@ class HemodynamicModel:
         eff_ec50 = ec50_base * vol_ec50_mult if use_shift else ec50_base
         return emax * hill_function(ce, eff_ec50, gamma)
         
-    def add_volume(self, amount_ml: float, hematocrit: float = 0.0):
+    def add_volume(
+        self,
+        amount_ml: float,
+        hematocrit: float = 0.0,
+        retention_fraction: Optional[float] = None,
+        label: str = "crystalloid",
+        count_as_bolus: bool = True,
+    ):
         """
         Simulate fluid bolus or hemorrhage.
         Updates blood_volume directly for MCFP-based preload calculation.
@@ -329,13 +338,23 @@ class HemodynamicModel:
                 hb_gain = self.baseline_hb * (hematocrit / hct_ref) * retained_ml / 100.0
                 self.hb_mass += hb_gain
             else:
-                self.total_crystalloid_in_ml += amount_ml
-                retained_ml = amount_ml * self.crystalloid_retention_fraction
+                is_colloid = (label == "colloid")
+                if is_colloid:
+                    self.total_colloid_in_ml += amount_ml
+                    retention = self.colloid_retention_fraction
+                else:
+                    self.total_crystalloid_in_ml += amount_ml
+                    retention = self.crystalloid_retention_fraction
+                if retention_fraction is not None:
+                    retention = retention_fraction
+                retention = clamp01(retention)
+                retained_ml = amount_ml * retention
                 self.total_third_space_ml += max(0.0, amount_ml - retained_ml)
 
             self.blood_volume += retained_ml
-            # Track cumulative fluid given (for scenario requirements)
-            self.cumulative_fluid_given += amount_ml
+            # Track cumulative bolus volume for scenario requirements (non-blood only).
+            if count_as_bolus and hematocrit <= 0:
+                self.cumulative_fluid_given += amount_ml
 
             # Transient SV effect (Frank-Starling response to acute volume change)
             # Gain scaled to baseline SV for patient-specific response
@@ -786,6 +805,40 @@ class HemodynamicModel:
             # HR-SV coupling gives ~0.80x. Additional penalty: 0.50x
             current_sv *= 0.50
 
+        # Arrest handling: no effective pressure generation.
+        if self.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE) or current_hr <= 0.0 or current_sv <= 0.0:
+            current_hr = 0.0
+            current_sv = 0.0
+            co = 0.0
+            map_val = 0.0
+            svr_val = 0.0
+            sbp = 0.0
+            dbp = 0.0
+            computed_state = HemoStateExtended(
+                map=map_val,
+                hr=current_hr,
+                sv=current_sv,
+                svr=svr_val,
+                co=co,
+                sbp=sbp,
+                dbp=dbp,
+                tpr=self.tpr,
+                sv_star=self.sv_star,
+                hr_star=self.hr_star,
+                tde_sv=self.tde_sv,
+                tde_hr=self.tde_hr,
+                ce_sevo=self.ce_sevo,
+                mcfp=self._last_mcfp,
+                rap=self._last_rap,
+                pvr=self._last_pvr,
+                rv_co=self._last_rv_co,
+                lv_inflow=self._last_lv_inflow,
+                preload_factor=self._last_preload_factor,
+                rhythm_type=self.rhythm_type
+            )
+            self._cached_state = computed_state
+            return computed_state
+
         co = current_hr * current_sv / 1000.0
 
         if distributive_tpr_offset is None:
@@ -952,8 +1005,21 @@ class HemodynamicModel:
         self.ce_sevo += self.ke0_sevo * (mac_sevo - self.ce_sevo) * dt_min
         
         # --- 0.1 Volume Clearance ---
-        # Reduce blood volume by clearance (urine, etc.)
-        urine_out_ml = min(self.vol_clearance * dt_min, max(0.0, self.blood_volume - BLOOD_VOLUME_MIN))
+        # Reduce blood volume by clearance (urine, etc.), scaled by perfusion.
+        map_prev = self._prev_map if self._prev_map > 0 else getattr(self.patient, "baseline_map", 90.0)
+        map_denom = max(1e-3, self.renal_map_norm - self.renal_map_min)
+        renal_factor = clamp01((map_prev - self.renal_map_min) / map_denom)
+        renal_factor *= max(0.0, getattr(self.patient, "renal_function", 1.0))
+        base_clearance_ml_min = 0.0
+        if self.vol_clearance is not None:
+            base_clearance_ml_min = max(0.0, float(self.vol_clearance))
+        else:
+            weight = max(0.0, float(getattr(self.patient, "weight", 0.0)))
+            base_clearance_ml_min = max(0.0, self.uop_ml_kg_hr * weight / 60.0)
+        urine_out_ml = min(
+            base_clearance_ml_min * renal_factor * dt_min,
+            max(0.0, self.blood_volume - BLOOD_VOLUME_MIN),
+        )
         blood_volume = self.blood_volume - urine_out_ml
         if urine_out_ml > 0:
             self.total_urine_out_ml += urine_out_ml
@@ -968,6 +1034,13 @@ class HemodynamicModel:
                 blood_volume -= actual_leak
                 self.total_leak_out_ml += actual_leak
                 self.total_third_space_ml += actual_leak
+        if self.total_third_space_ml > 0 and self.third_space_refill_tau_hr > 0:
+            tau_s = self.third_space_refill_tau_hr * 3600.0
+            frac = 1.0 - math.exp(-dt / max(tau_s, 1e-6))
+            refill_ml = self.total_third_space_ml * frac
+            if refill_ml > 0:
+                self.total_third_space_ml -= refill_ml
+                blood_volume += refill_ml
         self.blood_volume = max(BLOOD_VOLUME_MIN, blood_volume) # Safety floor
         self._update_hb_conc()
 
@@ -1102,7 +1175,7 @@ class HemodynamicModel:
 
         # dTPR/dt
         # Apply chemoreflex TPR boost, hemorrhage TPR compensation, and thermoregulation
-        tpr_production = self.kin_tpr * rmap_fb * (1.0 + total_eff_tpr) * chemo_tpr_factor * self.hemorrhage_tpr_mult * thermo_tpr_mult * sepsis_tpr_mult
+        tpr_production = self.kin_tpr * rmap_fb * (1.0 + total_eff_tpr) * chemo_tpr_factor * self.hemorrhage_tpr_mult * thermo_tpr_mult
         tpr_dissipation = self.kout * self.tpr * (1.0 - eff_remi_tpr)
         d_tpr = tpr_production - tpr_dissipation
         
@@ -1148,13 +1221,15 @@ class HemodynamicModel:
         self.dist_svr = dist_svr
 
         hr_base_for_state = self._calc_hr()
-        return self._compute_state(
+        computed_state = self._compute_state(
             preload_sv_factor=f_frank_starling,
             sepsis_sev=sepsis_sev,
             anaph_sev=anaph_sev,
             distributive_tpr_offset=distributive_tpr_offset,
             hr_base=hr_base_for_state,
         )
+        self._prev_map = computed_state.map
+        return computed_state
 
     def calculate_steady_state(self, ce_prop: float, ce_remi: float, ce_nore: float, mac: float = 0.0) -> HemoState:
         """
@@ -1185,13 +1260,8 @@ class HemodynamicModel:
          eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(ce_prop, ce_remi, mac)
 
         
-        # Norepinephrine effects
-        nore_hill = hill_function(cn, self.nore_c50, self.nore_gamma)
-        delta_map_nore = self.nore_emax_map * nore_hill
-        
-        # Delta TPR from Norepi
-        base_co_ml = self.base_hr * self.base_sv
-        delta_tpr_nore = delta_map_nore / base_co_ml
+        # Norepinephrine effects (HR/SV/SVR)
+        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(cn)
         
         def residual(z):
             if z <= 0.01: z = 0.01
@@ -1200,15 +1270,16 @@ class HemodynamicModel:
             # HR = Base * RMAP^FB * (1+EffVolHR) / (1 - EffRemiHR)
             # Using (1 - eff) for dissipation to match step() function
             hr_z = self.base_hr * z_fb * (1.0 + total_eff_hr_prod) / (1.0 - eff_remi_hr)
+            hr_z += nore_delta_hr
             sv_star_z = self.base_sv * z_fb * (1.0 + total_eff_sv) / (1.0 - eff_remi_sv)
             tpr_z = self.base_tpr * z_fb * (1.0 + total_eff_tpr) / (1.0 - eff_remi_tpr)
             
             # Coupling
             term = 1.0 - self.hr_sv_coupling * math.log(max(1.0, hr_z / self.base_hr))
-            sv_z = sv_star_z * term
+            sv_z = sv_star_z * term * nore_sv_factor
             
             # Effective TPR (Norepi)
-            eff_tpr_z = tpr_z + delta_tpr_nore
+            eff_tpr_z = tpr_z + self.base_tpr * (nore_svr_factor - 1.0)
             
             # Recalc Z
             z_new = (hr_z * sv_z * eff_tpr_z) / (self.base_hr * self.base_sv * self.base_tpr)
@@ -1233,6 +1304,11 @@ class HemodynamicModel:
         self.ce_sevo = mac
 
         # Final Output
+        saved_pressor = (self.smoothed_epi_hr, self.vasopressor_sv_factor, self.delta_tpr_vasopressors)
+        self.smoothed_epi_hr = nore_delta_hr
+        self.vasopressor_sv_factor = nore_sv_factor
+        self.delta_tpr_vasopressors = self.base_tpr * (nore_svr_factor - 1.0)
+
         ret = self.step(0.0, ce_prop, ce_remi, ce_nore, -2.0, 40.0, 95.0, 0,0,0, 0.0, mac_sevo=mac)
         
         # Revert internal state
@@ -1241,6 +1317,7 @@ class HemodynamicModel:
         self.hr_star = saved_hr
         self.tde_sv = saved_dist[0]
         self.tde_hr = saved_dist[1]
+        self.smoothed_epi_hr, self.vasopressor_sv_factor, self.delta_tpr_vasopressors = saved_pressor
         self._cached_state = None
         
         return ret

@@ -44,7 +44,7 @@ class SpO2Monitor:
         self._template = _PPG_TEMPLATE
         self._template_max_index = _PPG_TEMPLATE.size - 1
         
-    def step(self, dt: float, hr: float, saturation: float) -> tuple[float, float]:
+    def step(self, dt: float, hr: float, saturation: float, perfusion: float = 1.0) -> tuple[float, float]:
         """
         Return (Pleth Voltage, Saturation Display Value).
         Uses pre-computed smooth template for realistic waveform.
@@ -54,6 +54,14 @@ class SpO2Monitor:
         
         # Look up value from smooth template
         idx = int(self.phase * self._template_max_index)
-        pleth_voltage = self._template[idx]
-        
-        return pleth_voltage, saturation
+        perf = max(0.0, min(1.0, perfusion))
+        pleth_voltage = self._template[idx] * (0.2 + 0.8 * perf)
+
+        # Low perfusion degrades display accuracy (pulse-ox artifact).
+        spo2_display = saturation
+        if perf < 0.6:
+            drop_frac = (0.6 - perf) / 0.6
+            spo2_display = saturation * (1.0 - 0.15 * drop_frac)
+
+        spo2_display = max(40.0, min(100.0, spo2_display))
+        return pleth_voltage, spo2_display

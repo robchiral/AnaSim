@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -80,9 +81,17 @@ class HemodynamicConfig:
     unstressed_volume_fraction: float = 0.70
     venous_compliance: float = 100.0
     mcfp_floor: float = 1.0
-    vol_clearance: float = 1.0
+    # Legacy absolute clearance (mL/min). If set, overrides uop_ml_kg_hr.
+    vol_clearance: Optional[float] = None
+    # Baseline urine output (mL/kg/hr), scaled by MAP and renal function.
+    uop_ml_kg_hr: float = 0.5
     crystalloid_retention_fraction: float = 0.30
+    colloid_retention_fraction: float = 0.80
     blood_retention_fraction: float = 1.0
+    renal_map_min: float = 50.0
+    renal_map_norm: float = 80.0
+    # Interstitial refill time constant (hours) for third-space fluid.
+    third_space_refill_tau_hr: float = 6.0
 
     # Intrathoracic pressure coupling
     pit_0: float = -2.0

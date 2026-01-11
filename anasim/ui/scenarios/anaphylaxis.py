@@ -36,7 +36,7 @@ def create_anaphylaxis_scenario():
             id="ana_fluids",
             instruction="<b>Volume resuscitation:</b><br>Administer IV fluids (at least 500 mL) to support circulation.",
             requirements=lambda e: (
-                getattr(getattr(e, "hemo", None), "total_crystalloid_in_ml", 0.0) +
+                getattr(getattr(e, "hemo", None), "cumulative_fluid_given", 0.0) +
                 getattr(getattr(e, "hemo", None), "total_blood_in_ml", 0.0)
             ) >= 500,
             status_success="Fluids administered",

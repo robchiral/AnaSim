@@ -2,6 +2,7 @@
 import csv
 import os
 import time
+from enum import Enum
 from typing import List, Any
 from .state import SimulationState
 
@@ -46,8 +47,13 @@ class DataRecorder:
             
         from dataclasses import asdict
         row = list(asdict(state).values())
-        # Convert complex objects (dict/list) to strings for CSV.
-        row = [str(x) if isinstance(x, (dict, list)) else x for x in row]
+        # Convert complex objects (dict/list/Enum) to strings for CSV.
+        row = [
+            (x.value if isinstance(x, Enum) else str(x))
+            if isinstance(x, (dict, list, Enum))
+            else x
+            for x in row
+        ]
         self.writer.writerow(row)
         
     def stop(self):

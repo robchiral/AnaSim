@@ -153,6 +153,40 @@ class TestPEEPOxygenation(unittest.TestCase):
         # PaO2 should be higher with PEEP
         self.assertGreater(pao2_with_peep, pao2_no_peep)
 
+    def test_low_cardiac_output_reduces_etco2(self):
+        """Low perfusion should reduce EtCO2 despite similar ventilation."""
+        baseline_co = getattr(self.resp, "baseline_co_l_min", 5.0)
+        # Stabilize at baseline CO
+        for _ in range(500):
+            self.resp.step(
+                0.01,
+                ce_prop=0,
+                ce_remi=0,
+                mech_vent_mv=6.0,
+                fio2=0.5,
+                peep=5.0,
+                cardiac_output=baseline_co,
+            )
+        etco2_norm = self.resp.state.etco2
+        paco2_norm = self.resp.state.p_alveolar_co2
+
+        # Drop CO substantially
+        for _ in range(300):
+            self.resp.step(
+                0.01,
+                ce_prop=0,
+                ce_remi=0,
+                mech_vent_mv=6.0,
+                fio2=0.5,
+                peep=5.0,
+                cardiac_output=0.5,
+            )
+        etco2_low = self.resp.state.etco2
+        paco2_low = self.resp.state.p_alveolar_co2
+
+        self.assertLess(etco2_low, etco2_norm - 2.0)
+        self.assertGreaterEqual(paco2_low + 2.0, paco2_norm)
+
 
 class TestHemodynamicCoupling(unittest.TestCase):
     """Test ventilator-hemodynamic interactions."""

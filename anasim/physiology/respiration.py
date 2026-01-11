@@ -11,7 +11,7 @@ from anasim.core.constants import (
     APNEA_PACO2_RISE_FAST_DURATION_SEC,
 )
 from anasim.patient.patient import Patient
-from anasim.core.utils import hill_function, clamp01
+from anasim.core.utils import hill_function, clamp01, clamp
 
 @dataclass
 class RespState:
@@ -37,6 +37,12 @@ class RespiratoryModel:
         self.rr_0 = patient.baseline_rr
         self.vt_0 = patient.baseline_vt
         self.baseline_hb = getattr(patient, 'baseline_hb', 13.5)
+        # Baseline CO estimate for perfusion effects (aligned with hemodynamic defaults).
+        ci_adult = 3.0
+        ci_elderly = 2.5
+        ci = ci_elderly if patient.age > 70 else ci_adult
+        bsa = patient.bsa if patient.bsa > 0 else 1.9
+        self.baseline_co_l_min = max(0.1, ci * bsa)
         # Drug Effect Parameters (literature-anchored where available, otherwise heuristic)
         # 
         # 1. Propofol - Separated effects for HCVR vs mechanical depression
@@ -161,6 +167,8 @@ class RespiratoryModel:
         self._n_hill = 2.7
         self._p50_pow = self._p50 ** self._n_hill
         self._apnea_timer = 0.0
+        # Perfusion effect on deadspace fraction (low flow increases VD/VT).
+        self.perfusion_deadspace_gain = 0.25
 
     def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0, 
              fio2: float = 0.21, ce_roc: float = 0.0, et_sevo: float = 0.0, mac_sevo: float = None,
@@ -170,7 +178,8 @@ class RespiratoryModel:
              vq_mismatch: float = 0.0,
              hb_g_dl: float = None, oxygen_delivery_ratio: float = 1.0,
              shiver_level: float = 0.0,
-             cardiac_output: float = 5.0) -> RespState:
+             cardiac_output: float = 5.0,
+             metabolic_factor: float = None) -> RespState:
         """
         Step respiration.
         
@@ -406,12 +415,18 @@ class RespiratoryModel:
         # PaCO2 Equilibrium: PaCO2_eq = PaCO2_base * (VA_base / VA) * metabolic_factor
         # Temperature effect: VCO2 decreases ~7% per °C below 37°C (Q10 ≈ 2.0)
         # Use cached value - temperature changes slowly (thermal time constants ~minutes)
-        if abs(temp_c - self._cached_temp) > 0.01:
-            self._cached_temp = temp_c
-            self._cached_metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
-        metabolic_factor = self._cached_metabolic_factor
-        shiver_mult = 1.0 + SHIVER_MAX_MULTIPLIER * clamp01_local(shiver_level)
-        metabolic_factor *= shiver_mult
+        if metabolic_factor is None:
+            if abs(temp_c - self._cached_temp) > 0.01:
+                self._cached_temp = temp_c
+                self._cached_metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
+            metabolic_factor = 1.0
+            if abs(temp_c - 37.0) >= 0.5:
+                metabolic_factor *= self._cached_metabolic_factor
+            metabolic_factor = max(0.5, metabolic_factor)
+            shiver_mult = 1.0 + SHIVER_MAX_MULTIPLIER * clamp01_local(shiver_level)
+            metabolic_factor *= shiver_mult
+        else:
+            metabolic_factor = max(0.1, float(metabolic_factor))
         
         paco2_base = 40.0
         paco2_eq = paco2_base * metabolic_factor * (va_baseline / effective_va)
@@ -438,16 +453,24 @@ class RespiratoryModel:
         
         # EtCO2 is slightly lower than PaCO2; gradient increases with deadspace and
         # obstructive physiology (Russell 1990; Lujan 2008).
+        # Low cardiac output reduces CO2 delivery to the lungs, widening the gradient
+        # and lowering measured EtCO2 even if PaCO2 rises.
+        perfusion_ratio = 1.0
+        if self.baseline_co_l_min > 0:
+            perfusion_ratio = clamp(cardiac_output / self.baseline_co_l_min, 0.05, 1.2)
         if mech_rr > 0:
             vt_for_gradient_l = max(mech_vt_l, current_vt / 1000.0)
         else:
             vt_for_gradient_l = current_vt / 1000.0
         vt_l = max(0.05, vt_for_gradient_l)
         vd_vt = min(0.95, self.vd_deadspace / vt_l)
-        vd_vt_excess = max(0.0, vd_vt - 0.30)
-        etco2_gradient = 4.0 + 15.0 * vd_vt_excess + 8.0 * vq_mismatch + 6.0 * (1.0 - ventilation_efficiency)
+        perfusion_excess = self.perfusion_deadspace_gain * clamp01(1.0 - perfusion_ratio)
+        vd_vt_excess = max(0.0, vd_vt - 0.30 + perfusion_excess)
+        vq_for_etco2 = clamp01(vq_mismatch)
+        etco2_gradient = 4.0 + 15.0 * vd_vt_excess + 8.0 * vq_for_etco2 + 6.0 * (1.0 - ventilation_efficiency)
         etco2_gradient = min(20.0, etco2_gradient)
-        state.etco2 = max(0.0, state.p_alveolar_co2 - etco2_gradient)
+        etco2_raw = max(0.0, state.p_alveolar_co2 - etco2_gradient)
+        state.etco2 = etco2_raw
         
         # 10. O2 Dynamics (Alveolar Gas Equation)
         # PAO2 = FiO2 * (Patm - PH2O) - PaCO2 / RQ
