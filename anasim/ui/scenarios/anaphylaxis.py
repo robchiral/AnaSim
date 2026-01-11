@@ -17,7 +17,7 @@ def create_anaphylaxis_scenario():
         ScenarioStep(
             id="ana_recognize",
             instruction="<b>Anaphylaxis suspected!</b><br>Patient has sudden hypotension and tachycardia.<br><b>Action:</b> acknowledge the crisis state.",
-            requirements=lambda e: e.disturbance_active and "anaphylaxis" in str(e.disturbance_profile).lower(),
+            requirements=lambda e: bool(getattr(e, "active_anaphylaxis", False)),
             status_success="Crisis active",
             status_fail="Start anaphylaxis in events tab"
         ),

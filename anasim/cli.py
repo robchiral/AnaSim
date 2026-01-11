@@ -44,6 +44,8 @@ def run_headless(args):
     )
     
     engine = SimulationEngine(patient, sim_config)
+    if args.record:
+        engine.start_recording(output_dir=args.record_dir, sample_interval_sec=args.record_interval)
     engine.start()
     
     # Run loop
@@ -78,6 +80,9 @@ def main():
     parser.add_argument("--mode", choices=["ui", "headless"], default="ui", help="Run mode (default: ui)")
     parser.add_argument("--duration", type=float, default=10.0, help="Duration for headless mode in seconds")
     parser.add_argument("--config", type=str, help="Path to JSON configuration file")
+    parser.add_argument("--record", action="store_true", help="Enable CSV recording (headless only)")
+    parser.add_argument("--record-dir", type=str, default="recordings", help="Output directory for recordings")
+    parser.add_argument("--record-interval", type=float, default=1.0, help="Sample interval in seconds for CSV")
     
     args = parser.parse_args()
     
