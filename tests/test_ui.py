@@ -7,7 +7,8 @@ from PySide6.QtWidgets import QApplication
 # Ensure src path is in sys.path if not running from root with module (pytest typically handles this).
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from anasim.ui.tutorial_overlay import TutorialOverlay
+from anasim.ui.tutorial_overlay import ScenarioOverlay
+from anasim.ui.scenarios import create_induction_balanced
 from anasim.core.engine import SimulationEngine, SimulationConfig, Patient
 
 # Helper to get QApp
@@ -29,7 +30,7 @@ class TestTutorialOverlay(unittest.TestCase):
         
     def test_next_button_disabled_until_requirements_met(self):
         """Test that Next button is disabled until step requirements are met."""
-        overlay = TutorialOverlay(mode="awake", maint_type="balanced")
+        overlay = ScenarioOverlay(create_induction_balanced())
         
         # Start with no airway so first step is not already met
         self.engine.set_airway_mode("None")

@@ -191,6 +191,18 @@ class RespiratoryMechanics:
                     state.volume += decay_flow * dt
                     state.volume = max(0, state.volume)
                     state.flow = decay_flow * 60.0
+            # Reset breath-cycle monitors to avoid stale values.
+            state.auto_peep = 0.0
+            state.eelv = state.volume
+            state.delivered_vt = 0.0
+            state.paw_peak = state.paw
+            state.paw_plat = state.paw
+            state.paw_mean = state.paw
+            self._breath_peak = 0.0
+            self._breath_peak_volume = state.volume
+            self._paw_accumulator = 0.0
+            self._paw_samples = 0
+            self.cycle_time = 0.0
             return state
             
         # 1. Determine Cycle Phase
