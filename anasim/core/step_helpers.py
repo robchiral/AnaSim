@@ -7,10 +7,13 @@ preserving the SimulationEngine API.
 """
 
 from typing import TYPE_CHECKING
+import math
 
 from .state import AirwayType
 from anasim.core.constants import (
     TEMP_METABOLIC_COEFFICIENT,
+    AirwayTuning,
+    ThermalTuning,
     RR_APNEA_THRESHOLD,
     SHIVER_BASE_THRESHOLD,
     SHIVER_DEPTH_DROP_MAX,
@@ -224,23 +227,24 @@ class StepHelpersMixin:
         """
         state = self.state
         temp_c = state.temp_c
+        thermal_tuning = getattr(self, "thermal_tuning", None)
+        if thermal_tuning is None:
+            thermal_tuning = ThermalTuning()
         # Metabolic heat production (reduced by anesthetic depth).
-        depth_index = state.mac + (state.propofol_ce / 4.0)
+        depth_index = state.mac + (state.propofol_ce / thermal_tuning.depth_propofol_scale)
         depth_factor = min(1.0, depth_index)
         
-        metabolic_reduction = 0.3 * depth_factor
-        current_production = self.heat_production_basal * (1.0 - metabolic_reduction)
-        shiver_heat = self.heat_production_basal * SHIVER_MAX_MULTIPLIER * self._shiver_level
-        current_production += shiver_heat
+        metabolic_factor = max(0.5, getattr(self, "_metabolic_factor", 1.0))
+        current_production = self.heat_production_basal * metabolic_factor
         
         # Heat loss: linear transfer vs ambient.
-        t_ambient = 20.0
+        t_ambient = thermal_tuning.ambient_temp_c
         
         # Base conductance tuned for ~80-100W loss at steady state (37C vs 20C).
-        base_conductance = 3.0 
+        base_conductance = thermal_tuning.base_conductance_w_per_c 
         
         # Vasodilation under anesthesia increases conductance (up to +50%).
-        anest_conductance_boost = 0.5 * depth_factor
+        anest_conductance_boost = thermal_tuning.anesthetic_conductance_gain * depth_factor
         total_conductance = base_conductance * (1.0 + anest_conductance_boost) * (self.surface_area / 1.9)
         
         heat_loss = total_conductance * (temp_c - t_ambient)
@@ -250,14 +254,14 @@ class StepHelpersMixin:
         self._last_depth_index = depth_index
         
         if d_depth > 0:
-            k_redist = self.K_REDIST
+            k_redist = thermal_tuning.redistribution_gain_w_per_depth
             redistribution_flux = k_redist * d_depth
             heat_loss += redistribution_flux
         
         # Active warming (Bair Hugger) via convection.
         warming_input = 0.0
         if state.bair_hugger_target > 0:
-             k_bair = 7.0 
+             k_bair = thermal_tuning.bair_hugger_gain_w_per_c 
              dt_warming = max(0.0, state.bair_hugger_target - temp_c)
              warming_input = k_bair * dt_warming
         
@@ -270,7 +274,7 @@ class StepHelpersMixin:
         
         temp_c += d_temp
         # Clamp to physiologic bounds.
-        state.temp_c = clamp(temp_c, 25.0, 42.0)
+        state.temp_c = clamp(temp_c, thermal_tuning.temp_min_c, thermal_tuning.temp_max_c)
 
     def _step_disturbances(self: "SimulationEngine", dt: float) -> tuple:
         """Calculate disturbances and handle events."""
@@ -310,10 +314,21 @@ class StepHelpersMixin:
                 infusion['remaining'] -= amount_this_step
                 if amount_this_step > 0:
                     if hemo:
-                        hemo.add_volume(amount_this_step, hematocrit=infusion['hematocrit'])
+                        hemo.add_volume(
+                            amount_this_step,
+                            hematocrit=infusion['hematocrit'],
+                            retention_fraction=infusion.get('retention_fraction'),
+                            label=infusion.get('label', 'crystalloid'),
+                            count_as_bolus=infusion.get('count_as_bolus', True),
+                        )
                 if infusion['remaining'] > 1e-3:
                     remaining.append(infusion)
             self.pending_infusions[:] = remaining
+
+        # Maintenance fluids (baseline IVF).
+        if hemo and self.maintenance_fluid_rate_ml_min > 0:
+            rate_sec = self.maintenance_fluid_rate_ml_min / 60.0
+            hemo.add_volume(rate_sec * dt, hematocrit=0.0, label="crystalloid", count_as_bolus=False)
             
         # Anaphylaxis: ramp on/off for realistic hemodynamic changes.
         if self.active_anaphylaxis:
@@ -343,12 +358,31 @@ class StepHelpersMixin:
 
     def _step_tci(self: "SimulationEngine", dt: float):
         """Update TCI controllers."""
+        if dt <= 0:
+            return
         sim_time = self.state.time
+        if not hasattr(self, "_tci_accumulators") or self._tci_accumulators is None:
+            self._tci_accumulators = {}
+
         for tci_attr, rate_attr in TCI_TARGETS:
             controller = getattr(self, tci_attr, None)
-            if controller:
-                rate = controller.step(controller.target, sim_time=sim_time)
-                setattr(self, rate_attr, rate)
+            if not controller:
+                continue
+
+            sampling_time = max(getattr(controller, "sampling_time", dt), 1e-6)
+            acc = self._tci_accumulators.get(tci_attr, 0.0) + dt
+            steps = int(acc / sampling_time)
+            last_rate = getattr(self, rate_attr, 0.0)
+
+            # Advance controller in fixed sampling_time increments.
+            for i in range(steps):
+                step_time = sim_time + (i + 1) * sampling_time
+                last_rate = controller.step(controller.target, sim_time=step_time)
+
+            if steps > 0:
+                setattr(self, rate_attr, last_rate)
+
+            self._tci_accumulators[tci_attr] = acc - steps * sampling_time
 
     def _step_machine(self: "SimulationEngine", dt: float) -> float:
         """
@@ -359,16 +393,31 @@ class StepHelpersMixin:
         pk_sevo = self.pk_sevo
         circuit = self.circuit
         composition = circuit.composition
+        vaporizer = getattr(self, "vaporizer", None)
+        volatile_enabled = getattr(self, "_volatile_enabled", True)
         # Use prior-step VA from state (spontaneous + mechanical).
         connected = (state.airway_mode != AirwayType.NONE)
         total_va = state.va if (connected and state.va > 0) else 0.0
+
+        if vaporizer and circuit:
+            if volatile_enabled:
+                vaporizer.step(dt, circuit.fgf_total())
+            else:
+                vaporizer.set_concentration(0.0)
+            circuit.vaporizer_agent = vaporizer.state.agent
+            circuit.vaporizer_setting = vaporizer.state.setting if volatile_enabled else 0.0
+            circuit.vaporizer_on = vaporizer.state.is_on if volatile_enabled else False
         
         if not connected:
             fi_sevo = 0.0
             state.fio2 = 0.21
         else:
             fi_vapor_circuit = composition.fi_agent 
-            fi_sevo = fi_vapor_circuit if self.active_agent == "Sevoflurane" else 0.0
+            fi_sevo = (
+                fi_vapor_circuit
+                if volatile_enabled and self.active_agent == "Sevoflurane"
+                else 0.0
+            )
             # Update state FiO2 from circuit
             state.fio2 = composition.fio2
 
@@ -381,13 +430,11 @@ class StepHelpersMixin:
         # O2 uptake tied to metabolic rate and temperature
         uptake_o2 = 0.25
         if self.resp:
-            if abs(state.temp_c - self._cached_temp_metabolic) > 0.01:
-                self._cached_temp_metabolic = state.temp_c
-                self._cached_temp_metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - state.temp_c)
-            metabolic_factor = self._cached_temp_metabolic_factor
-            shiver_mult = 1.0 + SHIVER_MAX_MULTIPLIER * self._shiver_level
-            vco2_ml_min = self.resp.vco2 * metabolic_factor * shiver_mult
+            metabolic_factor = max(0.5, getattr(self, "_metabolic_factor", 1.0))
+            vco2_ml_min = self.resp.vco2 * metabolic_factor
             uptake_o2 = (vco2_ml_min / 1000.0) / max(self.resp.rq, 0.1)
+        else:
+            self._metabolic_factor = 1.0
         
         circuit.step(dt, uptake_o2, uptake_sevo)
         
@@ -513,6 +560,10 @@ class StepHelpersMixin:
             nmba_effect = hill_function(state.roc_ce, self.resp.c50_nmba, self.resp.gamma_nmba)
         muscle_factor = clamp01(1.0 - nmba_effect)
 
+        airway_tuning = getattr(self, "airway_tuning", None)
+        if airway_tuning is None:
+            airway_tuning = AirwayTuning()
+
         # Auto laryngospasm target (upper airway) only if not intubated
         laryng_target = 0.0
         if state.airway_mode != AirwayType.ETT and stim_active:
@@ -520,7 +571,11 @@ class StepHelpersMixin:
             laryng_target = clamp01(light_factor * muscle_factor * stim_scale)
 
         # First-order approach to target with separate on/off time constants
-        tau = self.laryngospasm_tau_on if laryng_target > self.laryngospasm_severity else self.laryngospasm_tau_off
+        tau = (
+            airway_tuning.laryngospasm_tau_on
+            if laryng_target > self.laryngospasm_severity
+            else airway_tuning.laryngospasm_tau_off
+        )
         if tau > 0:
             self.laryngospasm_severity += (laryng_target - self.laryngospasm_severity) * (dt / tau)
         self.laryngospasm_severity = clamp01(self.laryngospasm_severity)
@@ -537,16 +592,28 @@ class StepHelpersMixin:
 
         # Apply to mechanics (resistance in cmH2O/(L/s))
         base_r = getattr(self, "_base_airway_resistance", 10.0)
-        r_upper = 40.0 * upper_obstruction
-        r_bronch = 20.0 * bronch
+        r_upper = airway_tuning.upper_resistance_gain * upper_obstruction
+        r_bronch = airway_tuning.bronch_resistance_gain * bronch
         if self.resp_mech:
             self.resp_mech.resistance = base_r + r_upper + r_bronch
 
         # Patency: upper airway affects delivered volume; bronchospasm affects efficiency
         self._airway_patency = clamp(1.0 - upper_obstruction, 0.0, 1.0)
-        self._ventilation_efficiency = clamp(1.0 - 0.5 * bronch - 0.2 * upper_obstruction, 0.1, 1.0)
-        self._capno_obstruction = clamp01(upper_obstruction + 0.7 * bronch)
-        self._vq_mismatch = clamp01(0.85 * bronch + 0.25 * upper_obstruction)
+        self._ventilation_efficiency = clamp(
+            1.0
+            - airway_tuning.vent_efficiency_bronch_weight * bronch
+            - airway_tuning.vent_efficiency_upper_weight * upper_obstruction,
+            airway_tuning.vent_efficiency_min,
+            1.0,
+        )
+        self._capno_obstruction = clamp01(
+            airway_tuning.capno_obstruction_upper_weight * upper_obstruction
+            + airway_tuning.capno_obstruction_bronch_weight * bronch
+        )
+        self._vq_mismatch = clamp01(
+            airway_tuning.vq_mismatch_bronch_weight * bronch
+            + airway_tuning.vq_mismatch_upper_weight * upper_obstruction
+        )
 
         # Publish to public state
         self._tol_current = tol
@@ -591,9 +658,15 @@ class StepHelpersMixin:
         delivered_vt_raw_l = resp_mech.set_vt if vent_active else 0.0
         delivered_vt_display_l = 0.0
         if vent_active:
-            if mech_state.delivered_vt > 0:
-                delivered_vt_raw_l = mech_state.delivered_vt / 1000.0
-            delivered_vt_display_l = delivered_vt_raw_l * self._airway_patency
+            delivered_vt_display_l = (
+                mech_state.delivered_vt / 1000.0
+                if mech_state.delivered_vt > 0
+                else delivered_vt_raw_l
+            )
+            # Use set Vt for gas exchange in VCV to avoid drift at coarse dt.
+            if resp_mech.mode != VentMode.VCV and mech_state.delivered_vt > 0:
+                delivered_vt_raw_l = delivered_vt_display_l
+            delivered_vt_display_l = delivered_vt_display_l * self._airway_patency
             mech_state.delivered_vt = delivered_vt_display_l * 1000.0
         mech_vent_mv = mech_rr * delivered_vt_raw_l if vent_active else 0.0
         
@@ -632,7 +705,8 @@ class StepHelpersMixin:
             hb_g_dl=hemo.hb_conc,
             oxygen_delivery_ratio=self._do2_ratio,
             shiver_level=self._shiver_level,
-            cardiac_output=state.co
+            cardiac_output=state.co,
+            metabolic_factor=getattr(self, "_metabolic_factor", None),
         )
         
         spont_rr = resp_state.rr
@@ -698,7 +772,10 @@ class StepHelpersMixin:
         state.hb_g_dl = getattr(hemo, 'hb_conc', state.hb_g_dl)
         if hasattr(hemo, 'get_hematocrit'):
             state.hct = hemo.get_hematocrit()
-        state.fluid_in_ml = getattr(hemo, 'total_crystalloid_in_ml', 0.0)
+        total_crystalloid = getattr(hemo, 'total_crystalloid_in_ml', 0.0)
+        total_colloid = getattr(hemo, 'total_colloid_in_ml', 0.0)
+        state.colloid_in_ml = total_colloid
+        state.fluid_in_ml = total_crystalloid + total_colloid
         state.blood_in_ml = getattr(hemo, 'total_blood_in_ml', 0.0)
         state.urine_out_ml = getattr(hemo, 'total_urine_out_ml', 0.0)
         state.blood_out_ml = getattr(hemo, 'total_blood_out_ml', 0.0)
@@ -720,9 +797,36 @@ class StepHelpersMixin:
         state.mv = total_patient_mv
         state.va = resp_state.va
         state.apnea = resp_state.apnea
-        state.paw = mech_state.paw
-        state.flow = mech_state.flow
-        state.volume = mech_state.volume
+        paw_display = mech_state.paw
+        flow_display = mech_state.flow
+        volume_display = mech_state.volume
+
+        # Display-only spontaneous waveform synthesis (avoid flatlines when vent is off).
+        if not assisted_active and not resp_state.apnea and spont_rr > 0 and resp_state.vt > 0:
+            vt_l = resp_state.vt / 1000.0
+            cycle_time = 60.0 / max(spont_rr, 0.1)
+            insp_fraction = 1.0 / 3.0
+            insp_duration = cycle_time * insp_fraction
+            exp_duration = max(1e-3, cycle_time - insp_duration)
+            t_cycle = state.time % cycle_time
+            comp = max(getattr(resp_mech, "compliance", 0.05), 1e-3)
+
+            if t_cycle < insp_duration:
+                phase = t_cycle / max(insp_duration, 1e-6)
+                flow_l_s = (vt_l * math.pi / max(insp_duration, 1e-6)) * math.sin(math.pi * phase)
+                volume_l = 0.5 * vt_l * (1.0 - math.cos(math.pi * phase))
+            else:
+                phase = (t_cycle - insp_duration) / exp_duration
+                flow_l_s = -(vt_l * math.pi / exp_duration) * math.sin(math.pi * phase)
+                volume_l = 0.5 * vt_l * (1.0 + math.cos(math.pi * phase))
+
+            paw_display = clamp((volume_l / comp) - 2.0, -10.0, 40.0)
+            flow_display = flow_l_s * 60.0  # L/min
+            volume_display = volume_l
+
+        state.paw = paw_display
+        state.flow = flow_display
+        state.volume = volume_display
         self._vent_active = vent_active
         pao2_est = max(0.0, resp_state.p_arterial_o2)
         sao2_est = pao2_to_sao2(pao2_est)
@@ -822,8 +926,10 @@ class StepHelpersMixin:
         rhythm = getattr(hemo_state, 'rhythm_type', None)
         state.ecg_voltage = self.ecg.step(dt, state_hr=hemo_state.hr, rhythm_type=rhythm)
         
-        sao2 = resp_state.sao2        
-        pleth, spo2_val = self.spo2_mon.step(dt, hr=hemo_state.hr, saturation=sao2)
+        sao2 = resp_state.sao2
+        state.sao2 = sao2
+        perfusion = clamp(state.oxygen_delivery_ratio, 0.0, 1.0)
+        pleth, spo2_val = self.spo2_mon.step(dt, hr=hemo_state.hr, saturation=sao2, perfusion=perfusion)
         state.pleth_voltage = pleth
         
         self._update_nibp(dt, hemo_state)
@@ -843,6 +949,16 @@ class StepHelpersMixin:
         state.map = self.smooth_map
         state.hr = self.smooth_hr
         state.bis = clamp(self.smooth_bis, 0.0, 100.0)
+        # Align SBP/DBP with smoothed MAP using current pulse pressure.
+        if state.map <= 0.5 and state.sbp <= 1.0 and state.dbp <= 1.0:
+            state.sbp = 0.0
+            state.dbp = 0.0
+        else:
+            pulse_pressure = max(5.0, state.sbp - state.dbp)
+            state.sbp = max(0.0, state.map + (2.0 / 3.0) * pulse_pressure)
+            state.dbp = max(0.0, state.map - (1.0 / 3.0) * pulse_pressure)
+            if state.sbp <= state.dbp:
+                state.sbp = state.dbp + 5.0
         state.capno_co2 = capno_val
         state.etco2 = resp_state.etco2 if state.airway_mode != AirwayType.NONE else 0.0
         state.tof = tof_val
@@ -856,7 +972,7 @@ class StepHelpersMixin:
         monitor_vals["HR"] = state.hr
         monitor_vals["EtCO2"] = state.etco2
         monitor_vals["SpO2"] = state.spo2
-        state.alarms = self.alarms.update(monitor_vals)
+        state.alarms = self.alarms.update(monitor_vals, dt=dt)
 
     def _check_patient_viability(self: "SimulationEngine", dt: float):
         """
@@ -884,7 +1000,7 @@ class StepHelpersMixin:
         else:
             self.time_brady = max(0, self.time_brady - dt)
             
-        if self.state.hr > HR_CRITICAL_HIGH:
+        if self.state.hr >= HR_CRITICAL_HIGH:
             self.time_tachy += dt
         else:
              self.time_tachy = max(0, self.time_tachy - dt)
@@ -899,5 +1015,5 @@ class StepHelpersMixin:
             print(f"DEATH TRIGGERED: Bradycardia ({self.state.hr:.1f} bpm)")
         elif self.time_tachy > self.DEATH_GRACE_PERIOD:
             self.state.is_dead = True
-            self.state.death_reason = "Extreme Tachycardia / VFib (HR > 250 bpm)"
+            self.state.death_reason = "Extreme Tachycardia / VFib (HR ≥ 220 bpm)"
             print(f"DEATH TRIGGERED: Tachycardia ({self.state.hr:.1f} bpm)")

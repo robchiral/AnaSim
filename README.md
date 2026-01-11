@@ -41,6 +41,7 @@ See [docs/CLI_USAGE.md](docs/CLI_USAGE.md) for detailed CLI instructions.
 - **Patient monitoring:** Simulated ECG, SpO2, capnography, NIBP, and depth of anesthesia.
 - **Clinical scenarios/events:** Rapid sequence induction, hemorrhage, anaphylaxis, septic shock, and emergence.
 - **Thermoregulation:** Core temperature dynamics with vasoconstriction and shivering.
+- **Fluids:** Continuous IV fluids (default 1 mL/kg/hr; configurable) plus bolus crystalloids/albumin/PRBCs.
 
 ## Model Fidelity
 

@@ -109,6 +109,7 @@ class ControlPanelWidget(QWidget):
             sync_hash = hash((
                 getattr(self.engine.circuit, 'vaporizer_setting', 0) if self.engine.circuit else 0,
                 getattr(self.engine.vent, 'is_on', False) if hasattr(self.engine, 'vent') else False,
+                getattr(self.engine, 'maintenance_fluid_rate_ml_min', 0.0),
                 getattr(self.engine, 'disturbance_profile', None),
                 getattr(self.engine, 'disturbance_active', False),
                 getattr(self.engine, 'airway_obstruction_manual', 0),
@@ -209,6 +210,12 @@ class ControlPanelWidget(QWidget):
             self.sb_rr.blockSignals(False)
             self.sb_tv.blockSignals(False)
             self.sb_peep.blockSignals(False)
+
+        # 3b. Continuous fluids
+        if hasattr(self, "sb_cont_fluid") and hasattr(self.engine, "get_continuous_fluid_rate"):
+            self.sb_cont_fluid.blockSignals(True)
+            self.sb_cont_fluid.setValue(self.engine.get_continuous_fluid_rate())
+            self.sb_cont_fluid.blockSignals(False)
 
         # 4. Disturbances
         if hasattr(self, "cb_disturbance"):
@@ -812,24 +819,55 @@ class ControlPanelWidget(QWidget):
         # Fluids
         gp_fluids = QGroupBox("Fluid administration")
         gp_fluids.setStyleSheet(STYLE_GROUPBOX)
-        l_fl = QHBoxLayout(gp_fluids)
-        
+        l_fl = QVBoxLayout(gp_fluids)
+        l_fl.setSpacing(6)
+
         b_250 = QPushButton("250 mL")
-        b_250.setStyleSheet(get_button_style(variant="info"))
+        b_250.setStyleSheet(get_button_style(variant="info", padding="6px 10px", min_width=90))
         b_250.clicked.connect(lambda: self.engine.give_fluid(250))
         
         b_500 = QPushButton("500 mL")
-        b_500.setStyleSheet(get_button_style(variant="info"))
+        b_500.setStyleSheet(get_button_style(variant="info", padding="6px 10px", min_width=90))
         b_500.clicked.connect(lambda: self.engine.give_fluid(500))
-        
+
+        b_albumin = QPushButton("Albumin 250 mL")
+        b_albumin.setStyleSheet(get_button_style(variant="success", padding="6px 10px", min_width=120))
+        if hasattr(self.engine, "give_albumin"):
+            b_albumin.clicked.connect(lambda: self.engine.give_albumin(250))
+        else:
+            b_albumin.setEnabled(False)
+
         b_prbc = QPushButton("PRBC 300 mL")
-        b_prbc.setStyleSheet(get_button_style(variant="primary"))
+        b_prbc.setStyleSheet(get_button_style(variant="primary", padding="6px 10px", min_width=120))
         b_prbc.clicked.connect(lambda: self.engine.give_blood(300))
-        
-        l_fl.addWidget(b_250)
-        l_fl.addWidget(b_500)
-        l_fl.addWidget(b_prbc)
-        l_fl.addStretch()
+
+        l_fl_grid = QGridLayout()
+        l_fl_grid.setHorizontalSpacing(8)
+        l_fl_grid.setVerticalSpacing(6)
+        l_fl_grid.addWidget(b_250, 0, 0)
+        l_fl_grid.addWidget(b_500, 0, 1)
+        l_fl_grid.addWidget(b_albumin, 1, 0)
+        l_fl_grid.addWidget(b_prbc, 1, 1)
+
+        # Continuous fluids
+        l_fl_cont = QHBoxLayout()
+        l_fl_cont.addWidget(QLabel("Continuous IV:"))
+        self.sb_cont_fluid = QDoubleSpinBox()
+        self.sb_cont_fluid.setRange(0, 5000)
+        self.sb_cont_fluid.setSingleStep(25)
+        self.sb_cont_fluid.setSuffix(" mL/hr")
+        self.sb_cont_fluid.setToolTip("Continuous IV fluids (mL/hr)")
+        self.sb_cont_fluid.setMaximumWidth(140)
+        if hasattr(self.engine, "get_continuous_fluid_rate"):
+            self.sb_cont_fluid.setValue(self.engine.get_continuous_fluid_rate())
+        self.sb_cont_fluid.valueChanged.connect(
+            lambda v: self.engine.set_continuous_fluid_rate(v)
+        )
+        l_fl_cont.addWidget(self.sb_cont_fluid)
+        l_fl_cont.addStretch()
+
+        l_fl.addLayout(l_fl_grid)
+        l_fl.addLayout(l_fl_cont)
         layout.addWidget(gp_fluids)
 
         # Scripted stimulation / disturbances

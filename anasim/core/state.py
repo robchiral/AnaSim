@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 @dataclass
 class SimulationConfig:
@@ -22,8 +22,11 @@ class SimulationConfig:
     baseline_hb: float = 13.5
     fidelity_mode: str = "clinical"  # "clinical" (tuned realism) or "literature"
     
-    # Enabled agents.
+    # Enabled agents (empty list disables volatiles). Supported: "sevoflurane".
     volatile_agents: List[str] = field(default_factory=lambda: ["sevoflurane"])
+
+    # Baseline continuous IV fluids (mL/hr). None -> default 1 mL/kg/hr.
+    maintenance_fluid_ml_hr: Optional[float] = None
     
     # Runtime settings.
     simulation_speed: float = 1.0  # Real-time multiplier
@@ -103,6 +106,7 @@ class SimulationState:
     volume: float = 0.0
     
     spo2: float = 99.0 # Saturation
+    sao2: float = 98.0 # Physiologic arterial saturation (separate from pulse-ox display)
     
     # NIBP.
     nibp_sys: float = 120.0
@@ -125,6 +129,7 @@ class SimulationState:
 
     # Fluid balance (cumulative totals).
     fluid_in_ml: float = 0.0
+    colloid_in_ml: float = 0.0
     blood_in_ml: float = 0.0
     urine_out_ml: float = 0.0
     blood_out_ml: float = 0.0

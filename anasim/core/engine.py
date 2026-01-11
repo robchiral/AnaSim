@@ -22,6 +22,12 @@ from anasim.monitors.alarms import AlarmSystem
 from anasim.core.tci import TCIController
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp
+from anasim.core.constants import (
+    AirwayTuning,
+    ThermalTuning,
+    TEMP_METABOLIC_COEFFICIENT,
+    SHIVER_MAX_MULTIPLIER,
+)
 from anasim.core.recorder import DataRecorder
 
 AIRWAY_MODE_MAP = {
@@ -48,10 +54,41 @@ PROPOFOL_MODELS = {
     "Eleveld": PropofolPKEleveld,
 }
 
+REMI_MODELS = {
+    "minto": RemifentanilPKMinto,
+}
+
+RESP_MODELS = {
+    "singlecompartment": RespiratoryModel,
+    "single_compartment": RespiratoryModel,
+}
+
+VOLATILE_AGENT_PARAMS = {
+    "sevoflurane": {"name": "Sevoflurane", "lambda_b_g": 0.65, "mac_40": 2.1},
+}
+
+VOLATILE_AGENT_ALIASES = {
+    "sevoflurane": "sevoflurane",
+    "sevo": "sevoflurane",
+}
+
 NORE_PD_PARAMS = {
     "Li": (5.4, 98.7, 1.8),
     "Oualha": (7.04, 98.7, 1.8),
 }
+
+
+def _normalize_model_key(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    return str(value).strip().lower()
+
+
+def _resolve_volatile_agent(agent: Optional[str]) -> Optional[str]:
+    if not agent:
+        return None
+    key = _normalize_model_key(agent)
+    return VOLATILE_AGENT_ALIASES.get(key)
 
 PK_MODEL_ATTRS = (
     "pk_prop",
@@ -117,14 +154,19 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.patient = patient
         self.config = config
         self.state = SimulationState()
-        
-        # Physics constants.
-        self.K_REDIST = 50000.0 # Heat loss flux (W) per unit depth/sec increase
+
+        # Tuning knobs (centralized defaults).
+        self.airway_tuning = AirwayTuning()
+        self.thermal_tuning = ThermalTuning()
+        # Backward-compatible alias (used by legacy code/tests).
+        self.K_REDIST = self.thermal_tuning.redistribution_gain_w_per_depth
         
         # Subsystems.
         for attr in PK_MODEL_ATTRS:
             setattr(self, attr, None)
         self.active_agent = "Sevoflurane"
+        self._volatile_enabled = True
+        self._volatile_agent_key = "sevoflurane"
         for attr in PHYSIO_MODEL_ATTRS:
             setattr(self, attr, None)
         
@@ -166,6 +208,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
 
         # Optional CSV recorder.
         self.recorder = None
+
+        # TCI timing accumulators (per-controller).
+        self._tci_accumulators = {}
         
         # Control flags.
         self.running = False
@@ -188,6 +233,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.pending_infusions = []
         self.fluid_infusion_rate_ml_min = 150.0  # mL/min (moderate rate with pressure)
         self.blood_infusion_rate_ml_min = 75.0   # mL/min slower for PRBCs
+        self._maintenance_override_ml_hr = getattr(self.config, "maintenance_fluid_ml_hr", None)
+        self.maintenance_fluid_rate_ml_min = 0.0
         
         # Anaphylaxis (gradual onset/offset).
         self.anaphylaxis_severity = 0.0  # 0 to 1 (1 = full severity)
@@ -205,8 +252,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.airway_obstruction_manual = 0.0
         self.bronchospasm_manual = 0.0
         self.laryngospasm_severity = 0.0
-        self.laryngospasm_tau_on = 1.0   # seconds (fast onset)
-        self.laryngospasm_tau_off = 8.0  # seconds (slower relief)
+        self.laryngospasm_tau_on = self.airway_tuning.laryngospasm_tau_on   # seconds (fast onset)
+        self.laryngospasm_tau_off = self.airway_tuning.laryngospasm_tau_off  # seconds (slower relief)
         self._airway_patency = 1.0
         self._ventilation_efficiency = 1.0
         self._capno_obstruction = 0.0
@@ -238,12 +285,13 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         
         # Thermal model state.
         self.heat_production_basal = 0.0 # W
-        self.specific_heat = 3470.0 # J/(kg K)
+        self.specific_heat = self.thermal_tuning.specific_heat_j_kg_k # J/(kg K)
         self.surface_area = 1.9 # m^2 (default, updated in init)
         self._last_depth_index = 0.0 # For temperature redistribution calculation
         self._shiver_level = 0.0
         self._cached_temp_metabolic = 37.0
         self._cached_temp_metabolic_factor = 1.0
+        self._metabolic_factor = 1.0
         self._vent_active = False
         self._do2_ratio = 1.0
         
@@ -254,13 +302,13 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.DEATH_GRACE_PERIOD = 15.0 # seconds
         
         self.initialize_models()
+        self._configure_maintenance_fluids()
         self.initialize_state()
         
     def initialize_state(self):
         """Set initial state based on config (Steady State)."""
         if self.config.mode == 'steady_state':
             self.state.airway_mode = AirwayType.ETT  # Default to intubated for steady state
-            self.vent.is_on = True  # Ventilator ON for steady state
             
             # Initialize patient physiology for steady state (MAC 1.0).
             ce_prop = 0.0
@@ -280,8 +328,11 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
                 self._prime_tci_drug("remi", self.pk_remi, r_target)
                 
             elif "balanced" in self.config.maint_type:
-                # Sevo ~2.0% (target MAC 1.0).
-                target_pct = 2.0
+                # Sevo target for MAC 1.0 (age-adjusted MAC).
+                if self.pk_sevo and hasattr(self.pk_sevo, "mac_age"):
+                    target_pct = float(self.pk_sevo.mac_age)
+                else:
+                    target_pct = 2.0
                 target_frac = target_pct / 100.0
                 
                 self.set_vaporizer("Sevoflurane", target_pct)
@@ -296,11 +347,24 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
                 ce_remi = r_target
                 self._prime_tci_drug("remi", self.pk_remi, r_target)
             
-            # Ventilator setup.
+            # Ventilator setup (source of truth through setter).
             self.resp.state.apnea = True
-            self.resp_mech.set_rr = 12
-            self.resp_mech.set_vt = 0.5 # L
-            self.resp_mech.peep = 5.0
+            baseline_rr = max(1.0, getattr(self.patient, "baseline_rr", 12.0))
+            baseline_vt_l = max(0.1, getattr(self.patient, "baseline_vt", 500.0) / 1000.0)
+            baseline_mv = baseline_rr * baseline_vt_l
+            temp_c = getattr(self.patient, "baseline_temp", 37.0)
+            depth_index = mac + (ce_prop / self.thermal_tuning.depth_propofol_scale)
+            depth_factor = min(1.0, depth_index)
+            metabolic_factor = 1.0
+            if abs(temp_c - 37.0) >= self.thermal_tuning.metabolic_temp_threshold_c:
+                metabolic_factor *= TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
+            metabolic_factor *= (1.0 - self.thermal_tuning.metabolic_reduction_max * depth_factor)
+            metabolic_factor = max(0.5, metabolic_factor)
+            target_mv = baseline_mv * metabolic_factor
+            vent_rr = baseline_rr
+            vent_vt = target_mv / vent_rr if vent_rr > 0 else baseline_vt_l
+            vent_vt = clamp(vent_vt, 0.25, 0.8)
+            self.set_vent_settings(rr=vent_rr, vt=vent_vt, peep=5.0, ie="1:2", mode="VCV")
             
             # Force monitors to show "asleep" values initially.
             self.state.bis = 45.0
@@ -357,24 +421,94 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.state.nibp_timestamp = ts
         self._next_nibp_time = self.state.time + self.nibp.interval
         self.nibp.trigger()
+
+    def _configure_maintenance_fluids(self):
+        """Set continuous IV fluids to 1 mL/kg/hr unless overridden."""
+        override = self._maintenance_override_ml_hr
+        if override is None:
+            weight = max(0.0, float(getattr(self.patient, "weight", 0.0)))
+            self.maintenance_fluid_rate_ml_min = (weight / 60.0) if weight > 0 else 0.0
+        else:
+            try:
+                override_val = float(override)
+            except (TypeError, ValueError):
+                override_val = 0.0
+            self.maintenance_fluid_rate_ml_min = max(0.0, override_val / 60.0)
+
+    def set_continuous_fluid_rate(self, ml_hr: Optional[float]):
+        """
+        Set continuous IV fluid rate (mL/hr).
+        Pass None to revert to default (1 mL/kg/hr).
+        """
+        if ml_hr is None:
+            self._maintenance_override_ml_hr = None
+            self._configure_maintenance_fluids()
+            return
+        try:
+            val = float(ml_hr)
+        except (TypeError, ValueError):
+            val = 0.0
+        self._maintenance_override_ml_hr = max(0.0, val)
+        self.maintenance_fluid_rate_ml_min = self._maintenance_override_ml_hr / 60.0
+
+    def get_continuous_fluid_rate(self) -> float:
+        """Return current continuous IV fluid rate in mL/hr."""
+        return max(0.0, self.maintenance_fluid_rate_ml_min * 60.0)
         
     def initialize_models(self):
         """Initialize PK/PD models based on config."""
         # Propofol PK
+        if self.config.pk_model_propofol not in PROPOFOL_MODELS:
+            print(f"Note: pk_model_propofol '{self.config.pk_model_propofol}' not recognized, using default")
         propofol_model = PROPOFOL_MODELS.get(self.config.pk_model_propofol, PropofolPKMarsh)
         self.pk_prop = propofol_model(self.patient)
             
         # Remi PK
-        self.pk_remi = RemifentanilPKMinto(self.patient)
+        remi_key = _normalize_model_key(self.config.pk_model_remi)
+        if not remi_key:
+            remi_key = "minto"
+        remi_model = REMI_MODELS.get(remi_key)
+        if not remi_model:
+            print(f"Note: pk_model_remi '{self.config.pk_model_remi}' not recognized, using Minto")
+            remi_model = REMI_MODELS["minto"]
+        self.pk_remi = remi_model(self.patient)
         
         # Machine
         self.circuit = CircleSystem()
-        self.vaporizer = Vaporizer()
         self.vent = AnesthesiaVentilator()
-        self.vent.is_on = False # Default OFF for induction/awake
 
-        
-        self.pk_sevo = VolatilePK(self.patient, "Sevoflurane", lambda_b_g=0.65, mac_40=2.1)
+        requested_agents = self.config.volatile_agents or []
+        resolved_agents = [_resolve_volatile_agent(agent) for agent in requested_agents]
+        resolved_agents = [agent for agent in resolved_agents if agent]
+
+        if not requested_agents:
+            self._volatile_enabled = False
+            agent_key = "sevoflurane"
+        elif resolved_agents:
+            self._volatile_enabled = True
+            agent_key = resolved_agents[0]
+        else:
+            print(f"Note: volatile_agents {self.config.volatile_agents} not supported; using Sevoflurane")
+            self._volatile_enabled = True
+            agent_key = "sevoflurane"
+
+        agent_params = VOLATILE_AGENT_PARAMS.get(agent_key, VOLATILE_AGENT_PARAMS["sevoflurane"])
+        self._volatile_agent_key = agent_key
+        self.active_agent = agent_params["name"]
+        self.vaporizer = Vaporizer(agent=agent_params["name"])
+        self.pk_sevo = VolatilePK(
+            self.patient,
+            agent_params["name"],
+            lambda_b_g=agent_params["lambda_b_g"],
+            mac_40=agent_params["mac_40"],
+        )
+
+        if self.circuit:
+            self.circuit.vaporizer_agent = agent_params["name"]
+            self.circuit.vaporizer_setting = 0.0
+            self.circuit.vaporizer_on = False
+        if not self._volatile_enabled and self.vaporizer:
+            self.vaporizer.set_concentration(0.0)
 
         # Hemodynamics.
         self.hemo = HemodynamicModel(self.patient, fidelity_mode=self.config.fidelity_mode)
@@ -384,9 +518,21 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         # Configure norepinephrine PD.
         c50, emax, gamma = NORE_PD_PARAMS.get(self.config.pk_model_nore, (7.04, 98.7, 1.8))
         self.hemo.set_nore_pd(c50=c50, emax=emax, gamma=gamma)
-        self.resp = RespiratoryModel(self.patient, fidelity_mode=self.config.fidelity_mode)
+        resp_key = _normalize_model_key(self.config.resp_model)
+        if not resp_key:
+            resp_key = "singlecompartment"
+        resp_model = RESP_MODELS.get(resp_key)
+        if not resp_model:
+            print(f"Note: resp_model '{self.config.resp_model}' not recognized, using default")
+            resp_model = RespiratoryModel
+        self.resp = resp_model(self.patient, fidelity_mode=self.config.fidelity_mode)
         self.resp_mech = RespiratoryMechanics()
         self._base_airway_resistance = self.resp_mech.resistance
+        # Keep ventilator settings and is_on state consistent on init.
+        self.set_vent_settings(rr=0.0, vt=0.0, peep=0.0, ie="1:2", mode="VCV")
+        # Align respiratory baseline CO with hemodynamic baseline to avoid perfusion bias.
+        if self.hemo and self.resp:
+            self.resp.baseline_co_l_min = self.hemo.base_co_l_min
         
         # Monitors.
         self.bis = BISModel(self.patient, model_name=self.config.bis_model)
@@ -429,10 +575,37 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             
     def set_vaporizer(self, agent: str, percent: float):
         """Set Vaporizer Agent and Dial."""
-        self.active_agent = agent
+        if not getattr(self, "_volatile_enabled", True):
+            if self.vaporizer:
+                self.vaporizer.set_concentration(0.0)
+            if self.circuit:
+                self.circuit.vaporizer_setting = 0.0
+                self.circuit.vaporizer_on = False
+            return
+
+        resolved = _resolve_volatile_agent(agent)
+        if resolved:
+            agent_params = VOLATILE_AGENT_PARAMS.get(resolved, VOLATILE_AGENT_PARAMS["sevoflurane"])
+            self._volatile_agent_key = resolved
+            self.active_agent = agent_params["name"]
+            if self.vaporizer:
+                self.vaporizer.state.agent = agent_params["name"]
+                self.vaporizer.set_concentration(percent)
+            if self.circuit:
+                self.circuit.vaporizer_agent = agent_params["name"]
+        else:
+            if agent:
+                print(f"Note: volatile agent '{agent}' not supported; keeping {self.active_agent}")
+            if self.vaporizer:
+                self.vaporizer.set_concentration(percent)
+
         if self.circuit:
-            self.circuit.vaporizer_setting = percent
-            self.circuit.vaporizer_on = (percent > 0)
+            if self.vaporizer:
+                self.circuit.vaporizer_setting = self.vaporizer.state.setting
+                self.circuit.vaporizer_on = self.vaporizer.state.is_on
+            else:
+                self.circuit.vaporizer_setting = percent
+                self.circuit.vaporizer_on = (percent > 0)
 
     def give_fluid(self, volume_ml: float):
         """
@@ -453,13 +626,40 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         """
         self._queue_infusion(volume_ml, self.blood_infusion_rate_ml_min, hematocrit=hematocrit)
 
-    def _queue_infusion(self, volume_ml: float, rate_ml_min: float, hematocrit: float):
+    def give_albumin(self, volume_ml: float):
+        """
+        Queue albumin (colloid) infusion.
+        Retention is higher than crystalloid.
+        """
+        retention = 0.8
+        if self.hemo and hasattr(self.hemo, "colloid_retention_fraction"):
+            retention = self.hemo.colloid_retention_fraction
+        self._queue_infusion(
+            volume_ml,
+            self.fluid_infusion_rate_ml_min,
+            hematocrit=0.0,
+            retention_fraction=retention,
+            label="colloid",
+        )
+
+    def _queue_infusion(
+        self,
+        volume_ml: float,
+        rate_ml_min: float,
+        hematocrit: float,
+        retention_fraction: float = None,
+        label: str = "crystalloid",
+        count_as_bolus: bool = True,
+    ):
         if volume_ml <= 0 or rate_ml_min <= 0:
             return
         self.pending_infusions.append({
             'remaining': volume_ml,
             'rate': rate_ml_min,
-            'hematocrit': hematocrit
+            'hematocrit': hematocrit,
+            'retention_fraction': retention_fraction,
+            'label': label,
+            'count_as_bolus': count_as_bolus,
         })
 
     def give_drug_bolus(self, drug_name: str, amount: float):
@@ -633,8 +833,18 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         if not self.running:
             return
 
-        # Cache depth_index for use in temperature and disturbances.
-        self._depth_index = self.state.mac + (self.state.propofol_ce / 4.0)
+        # Cache depth_index and metabolic factor for use in temperature and respiration.
+        depth_scale = self.thermal_tuning.depth_propofol_scale
+        self._depth_index = self.state.mac + (self.state.propofol_ce / depth_scale)
+        temp_c = self.state.temp_c
+        metabolic_factor = 1.0
+        if abs(temp_c - 37.0) >= self.thermal_tuning.metabolic_temp_threshold_c:
+            metabolic_factor *= TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
+        depth_factor = clamp(self._depth_index, 0.0, 1.0)
+        metabolic_factor *= (1.0 - self.thermal_tuning.metabolic_reduction_max * depth_factor)
+        metabolic_factor = max(0.5, metabolic_factor)
+        metabolic_factor *= (1.0 + SHIVER_MAX_MULTIPLIER * self._shiver_level)
+        self._metabolic_factor = metabolic_factor
 
         dist_vec = self._step_disturbances(dt)
 
@@ -710,6 +920,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             # Fallback for legacy callers (mode not specified).
             self.vent.is_on = rr > 0 and vt > 0
             
+        if mode_upper == "CPAP":
+            p_insp = 0.0
         self.resp_mech.set_settings(rr, vt, peep, ie, mode=mode, p_insp=p_insp)
         self.vent.update_settings(rr=rr, tv=vt*1000, peep=peep, ie=ie, 
                                   mode=mode, p_insp=p_insp)  # vt in mL for vent

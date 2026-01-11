@@ -43,16 +43,40 @@ class TestPhysiologicalSanity:
         # 3. SpO2: > 95% on Room Air (healthy)
         assert state.spo2 > 95, f"SpO2 {state.spo2} too low for healthy awake patient"
         
-        # 4. EtCO2: 30-45 mmHg (if breathing)
-        # Note: Awake breathing might be spontaneous.
-        # Check if breathing detected.
+        # 4. EtCO2: allow broader range with perfusion coupling.
         if state.rr > 0:
-            assert 30 <= state.etco2 <= 45, f"EtCO2 {state.etco2} abnormal"
+            assert 25 <= state.etco2 <= 50, f"EtCO2 {state.etco2} abnormal"
             
     def test_svr_units(self, engine):
         """SVR should be in Wood Units (mmHg*min/L), ~10-30."""
         assert 10.0 <= engine.state.svr <= 30.0, \
             f"SVR {engine.state.svr} is not in Wood Units! (Expected 10-30)"
+
+    def test_default_continuous_fluids(self, patient):
+        """Default continuous IV fluids should be 1 mL/kg/hr."""
+        config = SimulationConfig(mode="steady_state", maint_type="tiva", dt=1.0)
+        engine = SimulationEngine(patient, config)
+        engine.start()
+
+        expected_ml_hr = max(0.0, float(getattr(patient, "weight", 0.0)))
+        assert engine.get_continuous_fluid_rate() == pytest.approx(expected_ml_hr, rel=0, abs=1e-6)
+
+    def test_albumin_infusion_increases_volume(self, patient):
+        """Albumin bolus should increase colloid totals and blood volume."""
+        config = SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5)
+        engine = SimulationEngine(patient, config)
+        engine.start()
+
+        assert engine.hemo is not None
+        base_bv = engine.hemo.blood_volume
+
+        engine.give_albumin(250)
+        # Infuse for ~2 minutes of simulated time (rate = 150 mL/min).
+        for _ in range(240):  # 120s at 0.5s step
+            engine.step(0.5)
+
+        assert engine.hemo.total_colloid_in_ml == pytest.approx(250.0, rel=0, abs=1e-2)
+        assert engine.hemo.blood_volume > base_bv + 100.0
 
 class TestPathologyResponse:
     """Verifies physiological responses to adverse events."""

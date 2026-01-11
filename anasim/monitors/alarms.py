@@ -37,11 +37,13 @@ class AlarmSystem:
         """Window length in samples for a given delay."""
         return max(1, int(delay_sec / self.dt))
         
-    def update(self, state_dict: dict):
+    def update(self, state_dict: dict, dt: float = None):
         """
         Update the alarm system with a dictionary of current values.
         e.g. {'HR': 60, 'MAP': 80, ...}
         """
+        if dt is not None and dt > 0 and dt != self.dt:
+            self.dt = dt
         current_alarms = {}
         
         for name, delay_sec in self.delays.items():
