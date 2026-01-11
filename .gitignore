@@ -55,6 +55,7 @@ dmypy.json
 comparisons/
 docs/TODO.md
 docs/papers/
+recordings/
 .claude/
 
 # === Scripts ===

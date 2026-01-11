@@ -22,6 +22,7 @@ from anasim.monitors.alarms import AlarmSystem
 from anasim.core.tci import TCIController
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp
+from anasim.core.recorder import DataRecorder
 
 AIRWAY_MODE_MAP = {
     "None": AirwayType.NONE,
@@ -162,6 +163,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         
         # Output buffer (ring buffer for UI).
         self.output_buffer = deque(maxlen=1000)
+
+        # Optional CSV recorder.
+        self.recorder = None
         
         # Control flags.
         self.running = False
@@ -608,6 +612,18 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         """Stop the simulation."""
         self.running = False
 
+    def start_recording(self, output_dir: str = ".", sample_interval_sec: float = 1.0):
+        """Start CSV recording to the specified output directory."""
+        if self.recorder and self.recorder.is_recording:
+            return
+        self.recorder = DataRecorder(output_dir=output_dir, sample_interval_sec=sample_interval_sec)
+        self.recorder.start()
+
+    def stop_recording(self):
+        """Stop CSV recording."""
+        if self.recorder:
+            self.recorder.stop()
+
     def step(self, dt: float):
         """
         Advance simulation by dt seconds.
@@ -640,6 +656,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         
         self.state.time += dt
         self.output_buffer.append(copy.copy(self.state))
+        if self.recorder and self.recorder.is_recording:
+            self.recorder.log(self.state)
 
     def get_latest_state(self) -> SimulationState:
         """Return the most recent state snapshot."""

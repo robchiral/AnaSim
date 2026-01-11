@@ -9,6 +9,9 @@ This document details advanced configuration options for the AnaSim command-line
 | `--mode` | Run mode: `ui` or `headless` | `ui` |
 | `--duration` | Simulation duration in seconds (Headless only) | `10.0` |
 | `--config` | Path to a JSON configuration file | None |
+| `--record` | Enable CSV recording (Headless only) | `false` |
+| `--record-dir` | Output directory for recordings | `recordings` |
+| `--record-interval` | Sample interval in seconds for CSV | `1.0` |
 
 ## Configuration file
 

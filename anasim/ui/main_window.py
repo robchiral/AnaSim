@@ -27,6 +27,7 @@ from anasim.ui.styles import (
     get_base_widget_style,
     get_bar_style,
     get_button_style,
+    get_toggle_button_style,
 )
 
 class MainWindow(QMainWindow):
@@ -62,6 +63,8 @@ class MainWindow(QMainWindow):
 
     def init_simulation(self):
         """Initialize the simulation engine with configured parameters."""
+        if hasattr(self, "engine") and getattr(self.engine, "recorder", None):
+            self.engine.stop_recording()
         p = self.sim_params
         self.arterial_line_enabled = p.get('arterial_line_enabled', True)
         self.patient = Patient(
@@ -158,6 +161,13 @@ class MainWindow(QMainWindow):
         )
         self.btn_start.clicked.connect(self.toggle_simulation)
         ctrl_layout.addWidget(self.btn_start)
+
+        # Record Toggle
+        self.btn_record = QPushButton("Record")
+        self.btn_record.setCheckable(True)
+        self.btn_record.setStyleSheet(get_toggle_button_style(COLORS['danger']))
+        self.btn_record.toggled.connect(self.toggle_recording)
+        ctrl_layout.addWidget(self.btn_record)
         
         # Speed Control
         speed_container = QHBoxLayout()
@@ -249,6 +259,14 @@ class MainWindow(QMainWindow):
             self.last_real_time = time.time()
         self.time_accumulator = 0.0
         self.death_dialog_shown = False # Prevent multiple popups
+
+    def toggle_recording(self, checked: bool):
+        if checked:
+            self.engine.start_recording(output_dir="recordings")
+            self.btn_record.setText("Recording")
+        else:
+            self.engine.stop_recording()
+            self.btn_record.setText("Record")
         
     def game_loop(self):
         # Time Management
