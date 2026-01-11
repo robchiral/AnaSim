@@ -31,6 +31,7 @@ class SimulationConfig:
     # Runtime settings.
     simulation_speed: float = 1.0  # Real-time multiplier
     enable_death_detector: bool = False
+    rng_seed: Optional[int] = None
 
 class AirwayType(Enum):
     NONE = "None"
@@ -75,6 +76,14 @@ class SimulationState:
     # Volatile agent (sevoflurane).
     fi_sevo: float = 0.0
     et_sevo: float = 0.0
+    mac_sevo: float = 0.0
+
+    # Nitrous oxide.
+    fi_n2o: float = 0.0
+    et_n2o: float = 0.0
+    mac_n2o: float = 0.0
+
+    # Total MAC (additive across inhaled agents).
     mac: float = 0.0
 
     # Rocuronium (ug/mL)

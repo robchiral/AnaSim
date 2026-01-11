@@ -240,7 +240,7 @@ def test_pk_hemodynamic_scaling_applies_to_propofol():
     engine.hemo.blood_volume = engine.hemo.blood_volume_0 * 0.5
     engine.state.co = engine.hemo.base_co_l_min * 0.5
 
-    engine._step_pk(0.5, 0.0, engine.state.co)
+    engine._step_pk(0.5, 0.0, 0.0, engine.state.co)
 
     assert engine.pk_prop.v1 == pytest.approx(base_v1 * 0.5, rel=0.05)
 

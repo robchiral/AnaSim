@@ -184,7 +184,11 @@ class StepHelpersMixin:
         """
         state = self.state
 
-        depth_metric = state.mac + (state.propofol_ce / 4.0)
+        thermal_tuning = getattr(self, "thermal_tuning", None)
+        if thermal_tuning is None:
+            thermal_tuning = ThermalTuning()
+        depth_scale = thermal_tuning.depth_propofol_scale
+        depth_metric = state.mac + (state.propofol_ce / depth_scale)
         depth_factor = clamp01(depth_metric)
 
         remi_effect = 0.0
@@ -384,10 +388,10 @@ class StepHelpersMixin:
 
             self._tci_accumulators[tci_attr] = acc - steps * sampling_time
 
-    def _step_machine(self: "SimulationEngine", dt: float) -> float:
+    def _step_machine(self: "SimulationEngine", dt: float) -> tuple[float, float]:
         """
         Update Machine State (Circuit -> Composition).
-        Returns: fi_sevo
+        Returns: (fi_sevo, fi_n2o)
         """
         state = self.state
         pk_sevo = self.pk_sevo
@@ -410,40 +414,50 @@ class StepHelpersMixin:
         
         if not connected:
             fi_sevo = 0.0
+            fi_n2o = 0.0
             state.fio2 = 0.21
         else:
-            fi_vapor_circuit = composition.fi_agent 
+            fi_vapor_circuit = composition.fi_agent
             fi_sevo = (
                 fi_vapor_circuit
                 if volatile_enabled and self.active_agent == "Sevoflurane"
                 else 0.0
             )
+            fi_n2o = composition.fin2o
             # Update state FiO2 from circuit
             state.fio2 = composition.fio2
 
         state.fi_sevo = fi_sevo * 100.0
+        state.fi_n2o = fi_n2o * 100.0
         
         pk_sevo_state = pk_sevo.state
         p_alv_prev = pk_sevo_state.p_alv
-        uptake_sevo = (fi_sevo - p_alv_prev) * total_va
+        uptake_sevo = (fi_sevo - p_alv_prev) * total_va if connected else 0.0
+        uptake_n2o = 0.0
+        if connected and getattr(self, "pk_n2o", None):
+            p_alv_prev_n2o = self.pk_n2o.state.p_alv
+            uptake_n2o = (fi_n2o - p_alv_prev_n2o) * total_va
 
-        # O2 uptake tied to metabolic rate and temperature
-        uptake_o2 = 0.25
-        if self.resp:
-            metabolic_factor = max(0.5, getattr(self, "_metabolic_factor", 1.0))
-            vco2_ml_min = self.resp.vco2 * metabolic_factor
-            uptake_o2 = (vco2_ml_min / 1000.0) / max(self.resp.rq, 0.1)
-        else:
-            self._metabolic_factor = 1.0
+        # O2 uptake tied to metabolic rate and temperature (only when connected)
+        uptake_o2 = 0.0
+        if connected:
+            uptake_o2 = 0.25
+            if self.resp:
+                metabolic_factor = max(0.5, getattr(self, "_metabolic_factor", 1.0))
+                vco2_ml_min = self.resp.vco2 * metabolic_factor
+                uptake_o2 = (vco2_ml_min / 1000.0) / max(self.resp.rq, 0.1)
+            else:
+                self._metabolic_factor = 1.0
         
-        circuit.step(dt, uptake_o2, uptake_sevo)
+        circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o)
         
-        return fi_sevo
+        return fi_sevo, fi_n2o
 
-    def _step_pk(self: "SimulationEngine", dt: float, fi_sevo: float, co_curr: float):
+    def _step_pk(self: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float, co_curr: float):
         """Update Pharmacokinetics."""
         state = self.state
         pk_sevo = self.pk_sevo
+        pk_n2o = getattr(self, "pk_n2o", None)
         pk_prop = self.pk_prop
         pk_remi = self.pk_remi
         pk_nore = self.pk_nore
@@ -458,7 +472,17 @@ class StepHelpersMixin:
         pk_sevo.step(dt, fi_sevo, state.va, co_curr, temp_c=state.temp_c)
         pk_sevo_state = pk_sevo.state
         state.et_sevo = pk_sevo_state.p_alv * 100.0
-        state.mac = pk_sevo_state.mac
+        state.mac_sevo = pk_sevo_state.mac
+
+        mac_n2o = 0.0
+        if pk_n2o is not None:
+            pk_n2o.step(dt, fi_n2o, state.va, co_curr, temp_c=state.temp_c)
+            pk_n2o_state = pk_n2o.state
+            state.et_n2o = pk_n2o_state.p_alv * 100.0
+            mac_n2o = pk_n2o_state.mac
+        state.mac_n2o = mac_n2o
+        # Total MAC is additive across inhaled agents.
+        state.mac = state.mac_sevo + state.mac_n2o
         
         pk_prop.step(dt, self.propofol_rate_mg_sec)
         pk_remi.step(dt, self.remi_rate_ug_sec) 
@@ -649,9 +673,12 @@ class StepHelpersMixin:
         # Higher mean Paw increases Pit, reducing venous return.
         # Spontaneous inspiratory effort makes Pit more negative (improves venous return).
         pit_base = getattr(hemo, "pit_0", -2.0)
-        pit_estimate = pit_base + 0.4 * (self.current_mean_paw - 5.0)
-        effort_mmHg = self._last_patient_effort_cmH2O * 0.74
-        pit_estimate -= 0.3 * effort_mmHg
+        paw_to_mmhg = 0.74
+        paw_transmission = 0.54  # Fraction of airway pressure transmitted to pleura
+        effort_transmission = 0.30  # Fraction of patient effort transmitted to pleura
+        pit_estimate = pit_base + paw_to_mmhg * paw_transmission * (self.current_mean_paw - 5.0)
+        effort_mmhg = self._last_patient_effort_cmH2O * paw_to_mmhg * effort_transmission
+        pit_estimate -= effort_mmhg
 
         # Mechanical ventilator MV calculation.
         mech_rr = mech_rr_for_resp if vent_active else 0.0
@@ -683,6 +710,9 @@ class StepHelpersMixin:
         
         # Total assisted MV = mechanical vent + bag-mask (mutually exclusive in practice).
         total_assisted_mv = mech_vent_mv + bag_mask_mv
+
+        # Sevo-only MAC for respiratory depression effects.
+        mac_sevo = getattr(state, "mac_sevo", state.mac)
         
         # Respiration step with PEEP for oxygenation.
         resp_state = resp.step(
@@ -693,7 +723,7 @@ class StepHelpersMixin:
             fio2=state.fio2,
             ce_roc=state.roc_ce, 
             et_sevo=state.et_sevo,
-            mac_sevo=state.mac,
+            mac_sevo=mac_sevo,
             peep=total_peep_effect,  # Pass total PEEP for oxygenation
             mean_paw=self.current_mean_paw,
             temp_c=state.temp_c,
@@ -734,7 +764,8 @@ class StepHelpersMixin:
         else:
             state.rr = spont_rr
 
-        mac_sevo = state.mac
+        mac_sevo = getattr(state, "mac_sevo", state.mac)
+        mac_total = state.mac
         hemo_state = hemo.step(
             dt,
             state.propofol_ce,
@@ -746,7 +777,7 @@ class StepHelpersMixin:
             dist_hr=d_hr,
             dist_sv=d_sv,
             dist_svr=d_svr,
-            mac=state.mac,
+            mac=mac_total,
             mac_sevo=mac_sevo,
             ce_epi=state.epi_ce,
             ce_phenyl=state.phenyl_ce,
@@ -756,6 +787,10 @@ class StepHelpersMixin:
             temp_c=state.temp_c,
             peep_cmH2O=total_peep_effect,
         )
+
+        # Cache raw hemodynamics for internal safety checks (avoid monitor smoothing delays).
+        self._raw_map = hemo_state.map
+        self._raw_hr = hemo_state.hr
         
         self.vent.step(dt, mech_state, rr_total=mech_rr)
                                     
@@ -928,7 +963,12 @@ class StepHelpersMixin:
         
         sao2 = resp_state.sao2
         state.sao2 = sao2
-        perfusion = clamp(state.oxygen_delivery_ratio, 0.0, 1.0)
+        base_co = getattr(self.hemo, "base_co_l_min", None)
+        if base_co and base_co > 0:
+            co_ratio = hemo_state.co / base_co
+        else:
+            co_ratio = 1.0
+        perfusion = clamp(co_ratio, 0.05, 1.0)
         pleth, spo2_val = self.spo2_mon.step(dt, hr=hemo_state.hr, saturation=sao2, perfusion=perfusion)
         state.pleth_voltage = pleth
         
@@ -990,17 +1030,20 @@ class StepHelpersMixin:
         HR_CRITICAL_LOW = 10.0   # bpm
         HR_CRITICAL_HIGH = 220.0 # bpm (matches HR clamp)
         
-        if self.state.map < MAP_CRITICAL_LOW:
+        raw_map = getattr(self, "_raw_map", self.state.map)
+        raw_hr = getattr(self, "_raw_hr", self.state.hr)
+
+        if raw_map < MAP_CRITICAL_LOW:
             self.time_hypotension += dt
         else:
             self.time_hypotension = max(0, self.time_hypotension - dt) # Decay accumulator
             
-        if self.state.hr < HR_CRITICAL_LOW:
+        if raw_hr < HR_CRITICAL_LOW:
             self.time_brady += dt
         else:
             self.time_brady = max(0, self.time_brady - dt)
             
-        if self.state.hr >= HR_CRITICAL_HIGH:
+        if raw_hr >= HR_CRITICAL_HIGH:
             self.time_tachy += dt
         else:
              self.time_tachy = max(0, self.time_tachy - dt)

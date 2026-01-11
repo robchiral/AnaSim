@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 
 from anasim.core.utils import clamp
@@ -7,7 +6,7 @@ from anasim.core.utils import clamp
 class VaporizerState:
     agent: str = "Sevo"
     setting: float = 0.0 # %
-    is_on: float = False
+    is_on: bool = False
     level: float = 250.0 # mL liquid remaining
 
 class Vaporizer:

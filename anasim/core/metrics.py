@@ -20,7 +20,6 @@ def compute_wobble(pe: np.array, mdpe: float = None) -> float:
         mdpe = np.median(pe)
     return np.median(np.abs(pe - mdpe))
 
-
 def compute_control_metrics(time: list, measured: list, target: list, 
                             start_time: float = 0.0, end_time: float = None) -> dict:
     """

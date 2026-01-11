@@ -30,28 +30,33 @@ class CircleSystem:
     def fgf_total(self) -> float:
         return self.fgf_o2 + self.fgf_air + self.fgf_n2o
 
-    def step(self, dt: float, uptake_o2: float, uptake_agent: float):
+    def step(self, dt: float, uptake_o2: float, uptake_agent: float, uptake_n2o: float = 0.0):
         """
         dt: seconds
         uptake_o2: L/min (Metabolic)
         uptake_agent: L/min (Volatile uptake, can be negative if excreting)
+        uptake_n2o: L/min (Nitrous uptake, can be negative if excreting)
         """
         # 1. Total FGF
-        total_fgf = self.fgf_o2 + self.fgf_air + self.fgf_n2o
-        if total_fgf < 0.1:
-            total_fgf = 0.1  # Min flow check
+        total_fgf = max(0.0, self.fgf_o2 + self.fgf_air + self.fgf_n2o)
         
         # 2. Fresh Gas Composition
         # Air is 21% O2, 79% N2
-        fg_o2 = (self.fgf_o2 + 0.21 * self.fgf_air) / total_fgf
-        fg_n2o = self.fgf_n2o / total_fgf
-        
-        # Vaporizer output
-        fg_agent = (self.vaporizer_setting / 100.0) if self.vaporizer_on else 0.0
-        
-        # Dilution effect of agent on other gases
-        fg_o2 *= (1.0 - fg_agent)
-        fg_n2o *= (1.0 - fg_agent)
+        if total_fgf > 0.0:
+            fg_o2 = (self.fgf_o2 + 0.21 * self.fgf_air) / total_fgf
+            fg_n2o = self.fgf_n2o / total_fgf
+
+            # Vaporizer output (only meaningful with flow)
+            fg_agent = (self.vaporizer_setting / 100.0) if self.vaporizer_on else 0.0
+
+            # Dilution effect of agent on other gases
+            fg_o2 *= (1.0 - fg_agent)
+            fg_n2o *= (1.0 - fg_agent)
+        else:
+            # Closed/zero-flow: no fresh gas contribution
+            fg_o2 = self.composition.fio2
+            fg_n2o = self.composition.fin2o
+            fg_agent = 0.0
         
         # 3. Mixing in Circuit (1-compartment model)
         # V dF/dt = FGF*(F_fg - F_circ) - Uptake
@@ -67,7 +72,7 @@ class CircleSystem:
         self.composition.fi_agent += d_fiagent
         
         # N2O
-        d_fin2o = (total_fgf * (fg_n2o - self.composition.fin2o)) / self.volume * dt_min
+        d_fin2o = (total_fgf * (fg_n2o - self.composition.fin2o) - uptake_n2o) / self.volume * dt_min
         self.composition.fin2o += d_fin2o
 
         # Normalize fractions and recompute N2 balance

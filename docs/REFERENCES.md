@@ -27,6 +27,8 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Mapleson. Br J Anaesth. 1996. (age-related MAC formula). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8777094/)
 - Yasuda et al. Anesth Analg. 1991. (sevoflurane vs isoflurane uptake/washout). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1994760/)
 - Carpenter et al. Anesth Analg. 1986. (inhaled anesthetic kinetics in humans). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3706798/)
+- Eger et al. Anesthesiology. 1980. (MAC of nitrous oxide in humans; ~1.04 atm absolute). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7201254/)
+- Schuh. Side effects of nitrous oxide (author's transl). 1975. (blood:gas partition coefficient of N2O ~0.47). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1190419/)
 
 ## PK / PD Models (IV Agents, Vasopressors)
 - Marsh et al. Br J Anaesth. 1991. (propofol PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1859758/)

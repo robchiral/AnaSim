@@ -146,6 +146,8 @@ class RespiratoryModel:
         # Tau = 3 min gives realistic apnea CO2 rise rate
         self.tau_co2 = 180.0 # Time constant for CO2 (s) - was 45s, too fast
         self.tau_o2 = 15.0 # Time constant for O2 (s) - small O2 stores equilibrate quickly
+        # Mean airway pressure recruitment gain (reduces A-a gradient)
+        self.mean_paw_recruit_gain = 0.03
         self.atm_p = 760.0
         self.vapor_p = 47.0
         self._atm_dry = self.atm_p - self.vapor_p
@@ -197,6 +199,8 @@ class RespiratoryModel:
             airway_patency: 0-1 upper airway patency (upper obstruction)
             ventilation_efficiency: 0-1 gas exchange efficiency (bronchospasm)
             vq_mismatch: 0-1 V/Q mismatch severity (affects A-a gradient)
+            hb_g_dl: Hemoglobin (g/dL) for oxygen reserve effects
+            oxygen_delivery_ratio: 0-2 (baseline = 1.0), used to modulate desaturation during apnea
             shiver_level: 0-1 shivering intensity (metabolic multiplier)
         """
         state = self.state
@@ -476,12 +480,15 @@ class RespiratoryModel:
         # PAO2 = FiO2 * (Patm - PH2O) - PaCO2 / RQ
         p_ideal_alveolar_o2 = fio2 * self._atm_dry - (state.p_alveolar_co2 / self.rq)
         
-        # A-a gradient with PEEP recruitment effect
+        # A-a gradient with PEEP and mean Paw recruitment effects
         # PEEP recruits alveoli, improving V/Q matching and reducing A-a gradient
         # Effect: A-a_eff = A-a_base / (1 + k * PEEP), floor at 3 mmHg
         k_peep_recruit = 0.08
         aa_grad_effective = self.aa_grad_base / (1.0 + k_peep_recruit * peep)
         aa_grad_effective = max(3.0, aa_grad_effective)
+        # Additional recruitment from mean Paw above PEEP (lower influence than PEEP)
+        mean_paw_effect = max(0.0, mean_paw - peep)
+        aa_grad_effective = aa_grad_effective / (1.0 + self.mean_paw_recruit_gain * mean_paw_effect)
 
         # V/Q mismatch (bronchospasm/obstruction) increases A-a gradient
         aa_grad_effective *= (1.0 + 2.5 * vq_mismatch)
@@ -495,7 +502,19 @@ class RespiratoryModel:
         # FiO2, PaCO2, V/Q matching, and A-a gradient.
         
         # Exponential approach to equilibrium
-        d_pao2 = (pao2_target - state.p_arterial_o2) / self.tau_o2 * dt
+        tau_o2_eff = self.tau_o2
+        # Lower oxygen reserve (anemia / low delivery) accelerates desaturation in apnea-like states.
+        if apnea_like:
+            reserve_factor = 1.0
+            if hb_g_dl is not None and self.baseline_hb > 0:
+                hb_factor = clamp(hb_g_dl / self.baseline_hb, 0.5, 1.2)
+                reserve_factor *= hb_factor
+            if oxygen_delivery_ratio is not None:
+                do2_factor = clamp(oxygen_delivery_ratio, 0.6, 1.2)
+                reserve_factor *= do2_factor
+            reserve_factor = clamp(reserve_factor, 0.4, 1.3)
+            tau_o2_eff *= reserve_factor
+        d_pao2 = (pao2_target - state.p_arterial_o2) / tau_o2_eff * dt
         state.p_arterial_o2 += d_pao2
         
         state.drive_central = drive_central
