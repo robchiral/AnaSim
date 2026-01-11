@@ -464,8 +464,28 @@ class LOCModel:
             self.gamma = 5.00
             self.beta = 3.60
 
-    def compute_probability(self, ce_prop: float, ce_remi: float) -> float:
-        up = ce_prop / self.c50p
+        # MAC-awake fractions (hypnosis/LOC proxy) for inhaled agents.
+        # Sevo: MAC-awake ~0.30 MAC in adults.
+        # N2O: MAC-awake ~0.61 MAC (≈63% N2O at 1 atm).
+        # When combined with sevo, N2O shows less-than-additive hypnosis; scale modestly.
+        self.mac_awake_sevo = 0.30
+        self.mac_awake_n2o = 0.61
+        self.n2o_sevo_awake_interaction = 0.7  # dampen N2O contribution when sevo present
+
+    def compute_probability(self, ce_prop: float, ce_remi: float,
+                            mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
+        # Convert inhaled agents to MAC-awake equivalents.
+        awake_units = 0.0
+        if mac_sevo > 0:
+            awake_units += mac_sevo / self.mac_awake_sevo
+        if mac_n2o > 0:
+            n2o_units = mac_n2o / self.mac_awake_n2o
+            if mac_sevo > 0:
+                n2o_units *= self.n2o_sevo_awake_interaction
+            awake_units += n2o_units
+
+        ce_effective = ce_prop + awake_units * self.c50p
+        up = ce_effective / self.c50p
         ur = ce_remi / self.c50r
 
         interaction = up + ur + self.beta * up * ur
@@ -610,6 +630,9 @@ class TOFModel:
         # 3. Volatile Potentiation Factors (f_anesth)
         # Iso/Sevo/Des ~ 0.7-0.75 (Ce50 reduced -> more potent)
         self.f_sevo = 0.75
+        # N2O potentiation is modest but present in human NMBA studies.
+        # Calibrated so ~70% N2O (~0.67 MAC) yields ~25-30% ED95 reduction.
+        self.f_n2o = 0.6
         
         # 4. Sugammadex PK parameters
         # Sugammadex PK parameters are based on literature averages; primary source not verified.
@@ -627,7 +650,7 @@ class TOFModel:
         self.prev_cp = 0.0         # Previous plasma concentration for onset/recovery detection
         self.sugammadex_amount_umol = 0.0  # Sugammadex amount in central compartment (µmol)
         
-    def step_recovery(self, dt_sec: float, cp_roc_mg_l: float, mac_sevo: float = 0.0) -> float:
+    def step_recovery(self, dt_sec: float, cp_roc_mg_l: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """
         Update effect-site concentration and compute TOF ratio.
         
@@ -642,6 +665,7 @@ class TOFModel:
             dt_sec: Time step in seconds
             cp_roc_mg_l: Total rocuronium plasma concentration (mg/L)
             mac_sevo: Sevoflurane MAC fraction for potentiation
+            mac_n2o: Nitrous oxide MAC fraction for potentiation
             
         Returns:
             TOF ratio as percentage (0-100)
@@ -684,7 +708,7 @@ class TOFModel:
         self.ce = max(0.0, self.ce)
         
         # 5. Compute TOF with volatile potentiation
-        return self._compute_tof_from_ce(self.ce, mac_sevo)
+        return self._compute_tof_from_ce(self.ce, mac_sevo, mac_n2o)
     
     def _compute_free_rocuronium(self, cp_total_mg_l: float) -> float:
         """
@@ -734,7 +758,7 @@ class TOFModel:
         # Convert back to mg/L
         return R_free * self.MW_ROCURONIUM * 1000.0
     
-    def _compute_tof_from_ce(self, ce: float, mac_sevo: float = 0.0) -> float:
+    def _compute_tof_from_ce(self, ce: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """
         Compute TOF ratio from effect-site concentration.
         
@@ -743,18 +767,20 @@ class TOFModel:
         Args:
             ce: Effect-site rocuronium concentration (mg/L)
             mac_sevo: Sevoflurane MAC fraction
+            mac_n2o: Nitrous oxide MAC fraction
             
         Returns:
             TOF ratio as percentage (0-100)
         """
-        # Volatile potentiation - reduce Ce50 (increase potency)
-        total_mac_vol = mac_sevo
+        # Volatile potentiation - reduce Ce50 (increase potency).
         f_effective = 1.0  # Default TIVA (no potentiation)
-        
-        if total_mac_vol > 0.1:
-            # Interpolate: f = 1.0 at MAC=0, f = f_sevo at MAC≥1
-            target_f = self.f_sevo
-            f_effective = 1.0 - (1.0 - target_f) * min(total_mac_vol, 1.0)
+        mac_sevo = max(0.0, mac_sevo)
+        mac_n2o = max(0.0, mac_n2o)
+        if mac_sevo > 0.0:
+            f_effective -= (1.0 - self.f_sevo) * min(mac_sevo, 1.0)
+        if mac_n2o > 0.0:
+            f_effective -= (1.0 - self.f_n2o) * min(mac_n2o, 1.0)
+        f_effective = clamp(f_effective, 0.2, 1.0)
             
         Ce50_eff = self.Ce50_T1 * f_effective
         
@@ -794,22 +820,22 @@ class TOFModel:
         
         self.sugammadex_amount_umol += dose_umol
         
-    def compute_tof(self, ce_roc: float, mac_sevo: float = 0.0) -> float:
+    def compute_tof_from_ce(self, ce_roc: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """
-        Compute TOF Ratio % (0-100) - simplified interface for backward compatibility.
+        Compute TOF Ratio % (0-100) from effect-site concentration.
         
-        Note: For full recovery dynamics, use step_recovery() instead.
-        This method uses the original Ce50/gamma formulation for compatibility.
+        Note: For recovery dynamics, use step_recovery().
         
         Args:
             ce_roc: Effect site concentration (µg/mL = mg/L)
-            mac_sevo: MAC fraction of volatiles (used for potentiation)
+            mac_sevo: Sevoflurane MAC fraction (used for potentiation)
+            mac_n2o: Nitrous oxide MAC fraction (used for potentiation)
             
         Returns:
             TOF ratio as percentage (0-100)
         """
         # Use the new effect-site based computation
-        return self._compute_tof_from_ce(ce_roc, mac_sevo)
+        return self._compute_tof_from_ce(ce_roc, mac_sevo, mac_n2o)
     
     def reset(self):
         """Reset model state to initial conditions."""

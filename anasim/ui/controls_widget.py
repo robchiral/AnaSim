@@ -108,6 +108,9 @@ class ControlPanelWidget(QWidget):
         try:
             sync_hash = hash((
                 getattr(self.engine.circuit, 'vaporizer_setting', 0) if self.engine.circuit else 0,
+                getattr(self.engine.circuit, 'fgf_o2', 0.0) if self.engine.circuit else 0.0,
+                getattr(self.engine.circuit, 'fgf_air', 0.0) if self.engine.circuit else 0.0,
+                getattr(self.engine.circuit, 'fgf_n2o', 0.0) if self.engine.circuit else 0.0,
                 getattr(self.engine.vent, 'is_on', False) if hasattr(self.engine, 'vent') else False,
                 getattr(self.engine, 'maintenance_fluid_rate_ml_min', 0.0),
                 getattr(self.engine, 'disturbance_profile', None),
@@ -130,6 +133,28 @@ class ControlPanelWidget(QWidget):
             self.sb_vap.blockSignals(True)
             self.sb_vap.setValue(self.engine.circuit.vaporizer_setting)
             self.sb_vap.blockSignals(False)
+
+            # Sync fresh gas flows (O2/Air/N2O)
+            if hasattr(self, "sb_o2"):
+                self.sb_o2.blockSignals(True)
+                self.sb_o2.setValue(getattr(self.engine.circuit, "fgf_o2", 0.0))
+                self.sb_o2.blockSignals(False)
+            if hasattr(self, "sb_air"):
+                self.sb_air.blockSignals(True)
+                self.sb_air.setValue(getattr(self.engine.circuit, "fgf_air", 0.0))
+                self.sb_air.blockSignals(False)
+            if hasattr(self, "sb_n2o"):
+                self.sb_n2o.blockSignals(True)
+                self.sb_n2o.setValue(getattr(self.engine.circuit, "fgf_n2o", 0.0))
+                self.sb_n2o.blockSignals(False)
+
+            # Update displayed FiO2 based on total fresh gas.
+            o2 = getattr(self.engine.circuit, "fgf_o2", 0.0)
+            air = getattr(self.engine.circuit, "fgf_air", 0.0)
+            n2o = getattr(self.engine.circuit, "fgf_n2o", 0.0)
+            total = o2 + air + n2o
+            fio2 = (o2 + 0.21 * air) / total if total > 0 else 0.21
+            self.lbl_fio2.setText(f"{int(fio2*100)}%")
             
         if hasattr(self.engine.state, 'airway_mode'):
             mode = self.engine.state.airway_mode
@@ -271,7 +296,8 @@ class ControlPanelWidget(QWidget):
     def update_fgf(self):
         o2 = self.sb_o2.value()
         air = self.sb_air.value()
-        total = o2 + air
+        n2o = self.sb_n2o.value() if hasattr(self, "sb_n2o") else 0.0
+        total = o2 + air + n2o
         if total > 0:
             fio2 = (o2 + 0.21 * air) / total
         else:
@@ -279,7 +305,7 @@ class ControlPanelWidget(QWidget):
         self.lbl_fio2.setText(f"{int(fio2*100)}%")
         
         if hasattr(self.engine, 'set_fgf'):
-            self.engine.set_fgf(o2, air)
+            self.engine.set_fgf(o2, air, n2o)
             
     def update_vaporizer(self):
         val = self.sb_vap.value()
@@ -361,13 +387,23 @@ class ControlPanelWidget(QWidget):
         self.sb_air.valueChanged.connect(self.update_fgf)
         l_fgf.addWidget(lbl_air, 1, 0)
         l_fgf.addWidget(self.sb_air, 1, 1)
+
+        lbl_n2o = QLabel("N₂O (L/min)")
+        lbl_n2o.setStyleSheet(f"color: {COLORS['warning']}; background: transparent;")
+        self.sb_n2o = QDoubleSpinBox()
+        self.sb_n2o.setRange(0, 15)
+        self.sb_n2o.setValue(0.0)
+        self.sb_n2o.setSingleStep(0.5)
+        self.sb_n2o.valueChanged.connect(self.update_fgf)
+        l_fgf.addWidget(lbl_n2o, 2, 0)
+        l_fgf.addWidget(self.sb_n2o, 2, 1)
         
         lbl_fio2_title = QLabel("FiO₂:")
         lbl_fio2_title.setStyleSheet(f"color: {COLORS['text_dim']}; background: transparent;")
         self.lbl_fio2 = QLabel("100%")
         self.lbl_fio2.setStyleSheet(f"font-weight: bold; color: {COLORS['success']}; font-size: 16px; background: transparent;")
-        l_fgf.addWidget(lbl_fio2_title, 2, 0)
-        l_fgf.addWidget(self.lbl_fio2, 2, 1)
+        l_fgf.addWidget(lbl_fio2_title, 3, 0)
+        l_fgf.addWidget(self.lbl_fio2, 3, 1)
         
         h_gases.addWidget(gp_fgf)
         
@@ -725,7 +761,16 @@ class ControlPanelWidget(QWidget):
             self.cb_ie.setEnabled(False)
             self.cb_vent_mode.setEnabled(False)
             self.sb_pinsp.setEnabled(False)
-            self.engine.set_vent_settings(0, 0, self.sb_peep.value(), "1:2")
+            mode_index = self.cb_vent_mode.currentIndex()
+            if mode_index == 0:
+                mode = "VCV"
+            elif mode_index == 1:
+                mode = "PCV"
+            elif mode_index == 2:
+                mode = "PSV"
+            else:
+                mode = "CPAP"
+            self.engine.set_vent_settings(0, 0, 0.0, "1:2", mode=mode, p_insp=0.0)
     
     def on_vent_mode_changed(self, index):
         """Handle ventilator mode switch."""

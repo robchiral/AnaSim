@@ -174,8 +174,6 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         # Tuning knobs (centralized defaults).
         self.airway_tuning = AirwayTuning()
         self.thermal_tuning = ThermalTuning()
-        # Backward-compatible alias (used by legacy code/tests).
-        self.K_REDIST = self.thermal_tuning.redistribution_gain_w_per_depth
         
         # Subsystems.
         for attr in PK_MODEL_ATTRS:
@@ -394,7 +392,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
                 self.bis.initialize(45.0)
             
             # Calculate and apply hemodynamic steady state.
-            hemo_ss = self.hemo.calculate_steady_state(ce_prop, ce_remi, ce_nore, mac)
+            hemo_ss = self.hemo.calculate_steady_state(ce_prop, ce_remi, ce_nore, mac_sevo=mac)
             self.hemo.state = hemo_ss
             
             # Sync engine state.
@@ -936,7 +934,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
 
 
     def set_vent_settings(self, rr: float, vt: float, peep: float, ie: str, 
-                          mode: str = None, p_insp: float = None, fio2: float = None):
+                          mode: str, p_insp: float = None, fio2: float = None):
         """
         Update mechanical ventilator settings.
         
@@ -945,38 +943,27 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             vt: Tidal volume (L)
             peep: PEEP (cmH2O)
             ie: I:E ratio string (e.g., "1:2")
-            mode: Optional ventilator mode ("VCV" or "PCV")
+        mode: Ventilator mode ("VCV", "PCV", "PSV", "CPAP")
             p_insp: Optional inspiratory pressure above PEEP (cmH2O) - for PCV
             fio2: Optional FiO2 target (0.21-1.0). If set, adjusts fresh gas blender.
         """
-        mode_upper = mode.upper() if mode else None
-        force_off = (
-            mode is None
-            and rr <= 0
-            and vt <= 0
-            and (p_insp is None or p_insp <= 0)
-        )
-        effective_mode = mode_upper or getattr(self.vent.settings, "mode", "VCV")
+        mode_upper = mode.upper()
         p_insp_effective = p_insp if p_insp is not None else getattr(self.vent.settings, "p_insp", 0.0)
-        if force_off:
+        if rr <= 0 and vt <= 0 and (p_insp_effective is None or p_insp_effective <= 0) and peep <= 0:
             self.vent.is_on = False
+        elif mode_upper == "VCV":
+            self.vent.is_on = rr > 0 and vt > 0
+        elif mode_upper == "PCV":
+            self.vent.is_on = rr > 0 and p_insp_effective > 0
+        elif mode_upper in ("PSV", "CPAP"):
+            has_support = p_insp_effective > 0 if mode_upper == "PSV" else False
+            has_peep = peep > 0
+            has_backup = rr > 0
+            self.vent.is_on = has_support or has_peep or has_backup
         else:
-            if effective_mode == "VCV":
-                self.vent.is_on = rr > 0 and vt > 0
-            elif effective_mode == "PCV":
-                self.vent.is_on = rr > 0 and p_insp_effective and p_insp_effective > 0
-            elif effective_mode in ("PSV", "CPAP"):
-                has_support = (p_insp_effective is not None and p_insp_effective > 0)
-                if effective_mode == "CPAP":
-                    has_support = False
-                has_peep = (peep is not None and peep > 0)
-                has_backup = rr > 0
-                self.vent.is_on = has_support or has_peep or has_backup
-            else:
-                # Fallback for legacy callers (mode not specified).
-                self.vent.is_on = rr > 0 and vt > 0
+            raise ValueError(f"Unsupported ventilator mode '{mode}'")
             
-        if effective_mode == "CPAP":
+        if mode_upper == "CPAP":
             p_insp = 0.0
         self.resp_mech.set_settings(rr, vt, peep, ie, mode=mode, p_insp=p_insp)
         self.vent.update_settings(rr=rr, tv=vt*1000, peep=peep, ie=ie, 
@@ -986,11 +973,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             self._apply_fio2_blender(fio2)
 
     def _apply_fio2_blender(self, fio2: float):
-        """Blend fresh gas flows to achieve target FiO2 (O2/air only)."""
+        """Blend fresh gas flows to achieve target FiO2 (O2/air only, N2O preserved)."""
         if not self.circuit:
-            return
-        # Avoid interfering with N2O until explicitly modeled.
-        if self.circuit.fgf_n2o > 0:
             return
         total_fgf = self.circuit.fgf_total()
         if total_fgf <= 0:
@@ -999,8 +983,10 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         if total_non_n2o <= 0:
             return
         target = clamp(fio2, 0.21, 1.0)
-        # FiO2 = 0.21 + 0.79*(O2_flow/total_non_n2o)
-        o2_flow = total_non_n2o * (target - 0.21) / 0.79
+        # FiO2 = (O2 + 0.21*Air) / (O2 + Air + N2O)
+        # Solve for O2 flow while keeping N2O fixed.
+        n2o_flow = max(0.0, self.circuit.fgf_n2o)
+        o2_flow = ((target * (total_non_n2o + n2o_flow)) - 0.21 * total_non_n2o) / 0.79
         o2_flow = clamp(o2_flow, 0.0, total_non_n2o)
         air_flow = total_non_n2o - o2_flow
         self.circuit.fgf_o2 = o2_flow

@@ -98,7 +98,7 @@ class EquilibriumSolver:
         def error_func(ce_nore):
             if ce_nore < 0:
                 return -100
-            state = hemo_model.calculate_steady_state(ce_prop, ce_remi, ce_nore, mac)
+            state = hemo_model.calculate_steady_state(ce_prop, ce_remi, ce_nore, mac_sevo=mac)
             return state.map - map_target
             
         try:

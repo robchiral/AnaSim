@@ -18,8 +18,13 @@ from anasim.core.engine import SimulationEngine, SimulationConfig, Patient
 from anasim.ui.monitor_widget import PatientMonitorWidget
 from anasim.ui.controls_widget import ControlPanelWidget
 from anasim.ui.config_dialog import SimulationSetupDialog
-from anasim.ui.tutorial_overlay import TutorialOverlay, ScenarioOverlay
-from anasim.ui.scenarios import SCENARIO_BUILDERS
+from anasim.ui.tutorial_overlay import ScenarioOverlay
+from anasim.ui.scenarios import (
+    SCENARIO_BUILDERS,
+    create_induction_balanced,
+    create_induction_tiva,
+    create_emergence,
+)
 from anasim.ui.styles import (
     COLORS,
     FONTS,
@@ -110,13 +115,19 @@ class MainWindow(QMainWindow):
             scenario_id = self.sim_params.get('scenario_id')
             if scenario_id and scenario_id in SCENARIO_BUILDERS:
                 scenario = SCENARIO_BUILDERS[scenario_id]()
-                self.overlay = ScenarioOverlay(scenario)
             else:
-                # Use legacy TutorialOverlay factory for induction/emergence
-                self.overlay = TutorialOverlay(
-                    mode=self.sim_params.get('mode', 'awake'),
-                    maint_type=self.sim_params.get('maint_type', 'tiva')
-                )
+                mode = self.sim_params.get('mode', 'awake')
+                maint_type = self.sim_params.get('maint_type', 'tiva')
+                if mode in SCENARIO_BUILDERS:
+                    scenario = SCENARIO_BUILDERS[mode]()
+                elif mode == "awake":
+                    if "balanced" in maint_type.lower():
+                        scenario = create_induction_balanced()
+                    else:
+                        scenario = create_induction_tiva()
+                else:
+                    scenario = create_emergence(maint_type)
+            self.overlay = ScenarioOverlay(scenario)
             base_layout.addWidget(self.overlay)
         
         # Main Layout: Monitor (Left) + Controls (Right)

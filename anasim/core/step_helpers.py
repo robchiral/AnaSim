@@ -764,8 +764,6 @@ class StepHelpersMixin:
         else:
             state.rr = spont_rr
 
-        mac_sevo = getattr(state, "mac_sevo", state.mac)
-        mac_total = state.mac
         hemo_state = hemo.step(
             dt,
             state.propofol_ce,
@@ -777,7 +775,6 @@ class StepHelpersMixin:
             dist_hr=d_hr,
             dist_sv=d_sv,
             dist_svr=d_svr,
-            mac=mac_total,
             mac_sevo=mac_sevo,
             ce_epi=state.epi_ce,
             ce_phenyl=state.phenyl_ce,
@@ -944,6 +941,8 @@ class StepHelpersMixin:
             self._remi_rate_scale = 60.0 / self._remi_rate_weight
         remi_rate_ug_kg_min = self.remi_rate_ug_sec * self._remi_rate_scale
 
+        # BIS is primarily sensitive to volatile hypnotics like sevo;
+        # N2O has minimal/variable BIS effect, so exclude it.
         mac_sevo = self.pk_sevo.state.mac
         bis_val = self.bis.step(dt, state.propofol_ce, state.remi_ce,
                                 mac_sevo=mac_sevo,
@@ -951,8 +950,18 @@ class StepHelpersMixin:
         capno_val = self._compute_capno_value(dt, phase, resp_state)
         
         # Neuromuscular PD uses step_recovery for effect-site & sugammadex binding.
-        tof_val = self.tof_pd.step_recovery(dt, state.roc_cp, mac_sevo=mac_sevo)
-        loc_val = self.loc_pd.compute_probability(state.propofol_ce, state.remi_ce)
+        tof_val = self.tof_pd.step_recovery(
+            dt,
+            state.roc_cp,
+            mac_sevo=mac_sevo,
+            mac_n2o=getattr(state, "mac_n2o", 0.0),
+        )
+        loc_val = self.loc_pd.compute_probability(
+            state.propofol_ce,
+            state.remi_ce,
+            mac_sevo=mac_sevo,
+            mac_n2o=getattr(state, "mac_n2o", 0.0),
+        )
         if getattr(self, "_tol_current", None) is not None:
             tol_val = self._tol_current
         else:

@@ -194,7 +194,7 @@ class TestRocuroniumTiming:
         onset_time = None
         for t in range(300):  # Max 5 min
             pk.step(1.0, 0.0)
-            tof = pd.compute_tof(pk.state.ce)
+            tof = pd.compute_tof_from_ce(pk.state.ce)
             if tof < 5.0 and onset_time is None:
                 onset_time = t
                 break
@@ -219,14 +219,14 @@ class TestRocuroniumTiming:
             pk.step(1.0, 0.0)
         
         # Verify block developed
-        tof_onset = pd.compute_tof(pk.state.ce)
+        tof_onset = pd.compute_tof_from_ce(pk.state.ce)
         assert tof_onset < 20, f"Block did not develop adequately: TOF {tof_onset:.1f}%"
         
         # Find TOF 25% recovery time (from onset, not from bolus)
         recovery_time = None
         for t in range(3600):  # Max 60 min
             pk.step(1.0, 0.0)
-            tof = pd.compute_tof(pk.state.ce)
+            tof = pd.compute_tof_from_ce(pk.state.ce)
             if tof > 25.0 and recovery_time is None:
                 recovery_time = t
                 break
