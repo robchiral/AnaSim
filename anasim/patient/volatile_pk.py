@@ -23,7 +23,16 @@ class VolatilePK:
     Physiologically Based PK (PBPK) model for Volatile Agents.
     4 Compartments: Lungs, VRG, Muscle, Fat.
     """
-    def __init__(self, patient: Patient, name: str, lambda_b_g: float, lambda_t_b_vrg: float = 1.6, mac_40: float = 2.0):
+    def __init__(
+        self,
+        patient: Patient,
+        name: str,
+        lambda_b_g: float,
+        lambda_t_b_vrg: float = 1.6,
+        mac_40: float = 2.0,
+        lambda_t_b_mus: float = None,
+        lambda_t_b_fat: float = None,
+    ):
         self.patient = patient
         self.name = name
         
@@ -31,8 +40,8 @@ class VolatilePK:
         self.lambda_b_g = lambda_b_g  # Blood:Gas partition coef
         self.lambda_t_b_vrg = lambda_t_b_vrg # Tissue:Blood VRG
         # Generic defaults for others if not specified
-        self.lambda_t_b_mus = 2.5 
-        self.lambda_t_b_fat = 50.0 
+        self.lambda_t_b_mus = 2.5 if lambda_t_b_mus is None else lambda_t_b_mus
+        self.lambda_t_b_fat = 50.0 if lambda_t_b_fat is None else lambda_t_b_fat
         
         # MAC (Age corrected)
         # Mapleson age correction for MAC.

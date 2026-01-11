@@ -1,4 +1,3 @@
-
 import numpy as np
 from scipy.signal import cont2discrete
 from typing import Optional

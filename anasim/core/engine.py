@@ -72,6 +72,21 @@ VOLATILE_AGENT_ALIASES = {
     "sevo": "sevoflurane",
 }
 
+# Nitrous oxide (N2O) parameters (inhaled gas, not vaporizer-controlled).
+# References:
+# - Table of partition coefficients at 37C: blood:gas 0.47, brain:blood 1.1,
+#   muscle:blood 1.2, fat:blood 2.3.
+# - Human MAC reported ~1.04 atm (104%) at 1 atm absolute.
+N2O_PARAMS = {
+    "name": "Nitrous Oxide",
+    "lambda_b_g": 0.47,
+    "mac_40": 104.0,
+    # Tissue:blood partition coefficients are near unity; use conservative defaults.
+    "lambda_t_b_vrg": 1.1,
+    "lambda_t_b_mus": 1.2,
+    "lambda_t_b_fat": 2.3,
+}
+
 NORE_PD_PARAMS = {
     "Li": (5.4, 98.7, 1.8),
     "Oualha": (7.04, 98.7, 1.8),
@@ -96,6 +111,7 @@ PK_MODEL_ATTRS = (
     "pk_nore",
     "pk_roc",
     "pk_sevo",
+    "pk_n2o",
     "pk_epi",
     "pk_phenyl",
     "pk_vaso",
@@ -271,7 +287,11 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self._last_patient_effort_cmH2O = 0.0
         
         # Random number generator for noise.
-        self.rng = np.random.default_rng()
+        rng_seed = getattr(self.config, "rng_seed", None)
+        self.rng = np.random.default_rng(rng_seed)
+        # Dedicated RNG for capnography to keep output reproducible without
+        # coupling to monitor noise draws.
+        self._capno_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._monitor_noise_std = np.array([0.5, 0.5, 0.2])
         self._monitor_values = {
             "BIS": 0.0,
@@ -383,6 +403,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             self.state.sv = hemo_ss.sv
             self.state.svr = hemo_ss.svr
             self.state.co = hemo_ss.co
+            self.state.mac_sevo = mac
+            self.state.mac_n2o = 0.0
             self.state.mac = mac
             
             # Sync smoothers.
@@ -502,6 +524,16 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             lambda_b_g=agent_params["lambda_b_g"],
             mac_40=agent_params["mac_40"],
         )
+        # N2O is delivered via fresh gas (not vaporizer); always initialize PK.
+        self.pk_n2o = VolatilePK(
+            self.patient,
+            N2O_PARAMS["name"],
+            lambda_b_g=N2O_PARAMS["lambda_b_g"],
+            lambda_t_b_vrg=N2O_PARAMS["lambda_t_b_vrg"],
+            mac_40=N2O_PARAMS["mac_40"],
+            lambda_t_b_mus=N2O_PARAMS["lambda_t_b_mus"],
+            lambda_t_b_fat=N2O_PARAMS["lambda_t_b_fat"],
+        )
 
         if self.circuit:
             self.circuit.vaporizer_agent = agent_params["name"]
@@ -536,7 +568,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         
         # Monitors.
         self.bis = BISModel(self.patient, model_name=self.config.bis_model)
-        self.capno = Capnograph()
+        capno_rng = getattr(self, "_capno_rng", None)
+        self.capno = Capnograph(rng=capno_rng)
         self.loc_pd = LOCModel(model_name=self.config.loc_model)
         self.tol_pd = TOLModel()
         self.tof_pd = TOFModel(
@@ -567,11 +600,12 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         else:
             self.surface_area = 1.9
 
-    def set_fgf(self, o2_l_min: float, air_l_min: float):
+    def set_fgf(self, o2_l_min: float, air_l_min: float, n2o_l_min: float = 0.0):
         """Set Fresh Gas Flow."""
         if self.circuit:
-            self.circuit.fgf_o2 = o2_l_min
-            self.circuit.fgf_air = air_l_min
+            self.circuit.fgf_o2 = max(0.0, o2_l_min)
+            self.circuit.fgf_air = max(0.0, air_l_min)
+            self.circuit.fgf_n2o = max(0.0, n2o_l_min)
             
     def set_vaporizer(self, agent: str, percent: float):
         """Set Vaporizer Agent and Dial."""
@@ -678,6 +712,14 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         - Milrinone: mcg
         - Rocuronium: mg
         """
+        if not drug_name:
+            return
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            return
+        if amount <= 0:
+            return
         drug = drug_name.lower()
         
         if "sug" in drug:
@@ -850,9 +892,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
 
         self._step_tci(dt)
         
-        fi_sevo = self._step_machine(dt)
+        fi_sevo, fi_n2o = self._step_machine(dt)
         
-        self._step_pk(dt, fi_sevo, self.state.co)
+        self._step_pk(dt, fi_sevo, fi_n2o, self.state.co)
         
         hemo_state, resp_state, phase = self._step_physiology(dt, dist_vec)
         
@@ -894,7 +936,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
 
 
     def set_vent_settings(self, rr: float, vt: float, peep: float, ie: str, 
-                          mode: str = None, p_insp: float = None):
+                          mode: str = None, p_insp: float = None, fio2: float = None):
         """
         Update mechanical ventilator settings.
         
@@ -905,26 +947,64 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             ie: I:E ratio string (e.g., "1:2")
             mode: Optional ventilator mode ("VCV" or "PCV")
             p_insp: Optional inspiratory pressure above PEEP (cmH2O) - for PCV
+            fio2: Optional FiO2 target (0.21-1.0). If set, adjusts fresh gas blender.
         """
         mode_upper = mode.upper() if mode else None
-        if mode_upper == "VCV":
-            self.vent.is_on = rr > 0 and vt > 0
-        elif mode_upper == "PCV":
-            self.vent.is_on = rr > 0 and p_insp and p_insp > 0
-        elif mode_upper in ("PSV", "CPAP"):
-            has_support = (p_insp is not None and p_insp > 0)
-            has_peep = (peep is not None and peep > 0)
-            has_backup = rr > 0
-            self.vent.is_on = has_support or has_peep or has_backup
+        force_off = (
+            mode is None
+            and rr <= 0
+            and vt <= 0
+            and (p_insp is None or p_insp <= 0)
+        )
+        effective_mode = mode_upper or getattr(self.vent.settings, "mode", "VCV")
+        p_insp_effective = p_insp if p_insp is not None else getattr(self.vent.settings, "p_insp", 0.0)
+        if force_off:
+            self.vent.is_on = False
         else:
-            # Fallback for legacy callers (mode not specified).
-            self.vent.is_on = rr > 0 and vt > 0
+            if effective_mode == "VCV":
+                self.vent.is_on = rr > 0 and vt > 0
+            elif effective_mode == "PCV":
+                self.vent.is_on = rr > 0 and p_insp_effective and p_insp_effective > 0
+            elif effective_mode in ("PSV", "CPAP"):
+                has_support = (p_insp_effective is not None and p_insp_effective > 0)
+                if effective_mode == "CPAP":
+                    has_support = False
+                has_peep = (peep is not None and peep > 0)
+                has_backup = rr > 0
+                self.vent.is_on = has_support or has_peep or has_backup
+            else:
+                # Fallback for legacy callers (mode not specified).
+                self.vent.is_on = rr > 0 and vt > 0
             
-        if mode_upper == "CPAP":
+        if effective_mode == "CPAP":
             p_insp = 0.0
         self.resp_mech.set_settings(rr, vt, peep, ie, mode=mode, p_insp=p_insp)
         self.vent.update_settings(rr=rr, tv=vt*1000, peep=peep, ie=ie, 
-                                  mode=mode, p_insp=p_insp)  # vt in mL for vent
+                                  mode=mode, p_insp=p_insp, fio2=fio2)  # vt in mL for vent
+
+        if fio2 is not None:
+            self._apply_fio2_blender(fio2)
+
+    def _apply_fio2_blender(self, fio2: float):
+        """Blend fresh gas flows to achieve target FiO2 (O2/air only)."""
+        if not self.circuit:
+            return
+        # Avoid interfering with N2O until explicitly modeled.
+        if self.circuit.fgf_n2o > 0:
+            return
+        total_fgf = self.circuit.fgf_total()
+        if total_fgf <= 0:
+            return
+        total_non_n2o = max(0.0, total_fgf - self.circuit.fgf_n2o)
+        if total_non_n2o <= 0:
+            return
+        target = clamp(fio2, 0.21, 1.0)
+        # FiO2 = 0.21 + 0.79*(O2_flow/total_non_n2o)
+        o2_flow = total_non_n2o * (target - 0.21) / 0.79
+        o2_flow = clamp(o2_flow, 0.0, total_non_n2o)
+        air_flow = total_non_n2o - o2_flow
+        self.circuit.fgf_o2 = o2_flow
+        self.circuit.fgf_air = air_flow
 
     def _prime_pk_state(self, pk_model, target: float):
         """Initialize PK compartments to a target concentration."""

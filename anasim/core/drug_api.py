@@ -335,7 +335,10 @@ class DrugControllerMixin:
         spec = self._DRUG_SPECS.get(key)
         if not spec:
             return
+        if rate_user_unit is None:
+            return
         rate_internal = convert_rate(rate_user_unit, spec["rate_unit"], spec["rate_unit_internal"])
+        rate_internal = max(0.0, rate_internal)
         setattr(self, spec["rate_attr"], rate_internal)
 
     def _get_rate_to_user(self: "SimulationEngine", key: str) -> float:
