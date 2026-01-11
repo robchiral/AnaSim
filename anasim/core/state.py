@@ -122,6 +122,13 @@ class SimulationState:
     blood_volume: float = 5000.0 # Blood volume (mL)
     hb_g_dl: float = 13.5
     hct: float = 0.42
+
+    # Fluid balance (cumulative totals).
+    fluid_in_ml: float = 0.0
+    blood_in_ml: float = 0.0
+    urine_out_ml: float = 0.0
+    blood_out_ml: float = 0.0
+    net_fluid_ml: float = 0.0
     
     # Ventilator settings (snapshot).
     fio2: float = 0.21
