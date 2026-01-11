@@ -7,6 +7,8 @@ for better maintainability while preserving the SimulationEngine API.
 
 from typing import TYPE_CHECKING
 
+from .units import convert_rate
+
 if TYPE_CHECKING:
     from .engine import SimulationEngine
     from .tci import TCIController
@@ -38,7 +40,7 @@ class DrugControllerMixin:
             "name": "Propofol 1%",
             "rate_attr": "propofol_rate_mg_sec",
             "rate_unit": "mg/hr",
-            "rate_scale": 3600.0,
+            "rate_unit_internal": "mg/sec",
             "tci_attr": "tci_prop",
             "tci_name": "Propofol",
             "tci_unit": "ug/mL",
@@ -53,7 +55,7 @@ class DrugControllerMixin:
             "name": "Remifentanil 50mcg/mL",
             "rate_attr": "remi_rate_ug_sec",
             "rate_unit": "ug/min",
-            "rate_scale": 60.0,
+            "rate_unit_internal": "ug/sec",
             "tci_attr": "tci_remi",
             "tci_name": "Remifentanil",
             "tci_unit": "ng/mL",
@@ -68,7 +70,7 @@ class DrugControllerMixin:
             "name": "Norepinephrine 16mcg/mL",
             "rate_attr": "nore_rate_ug_sec",
             "rate_unit": "ug/min",
-            "rate_scale": 60.0,
+            "rate_unit_internal": "ug/sec",
             "tci_attr": "tci_nore",
             "tci_name": "Norepinephrine",
             "tci_unit": "ng/mL",
@@ -83,7 +85,7 @@ class DrugControllerMixin:
             "name": "Vasopressin 20U/mL",
             "rate_attr": "vaso_rate_mu_sec",
             "rate_unit": "U/min",
-            "rate_scale": 0.06,  # U/min -> mU/sec (x1000/60)
+            "rate_unit_internal": "mU/sec",
             "tci_attr": "tci_vaso",
             "tci_name": "Vasopressin",
             "tci_unit": "mU/L",
@@ -98,7 +100,7 @@ class DrugControllerMixin:
             "name": "Epinephrine 100mcg/mL",
             "rate_attr": "epi_rate_ug_sec",
             "rate_unit": "ug/min",
-            "rate_scale": 60.0,
+            "rate_unit_internal": "ug/sec",
             "tci_attr": "tci_epi",
             "tci_name": "Epinephrine",
             "tci_unit": "ng/mL",
@@ -113,7 +115,7 @@ class DrugControllerMixin:
             "name": "Phenylephrine 100mcg/mL",
             "rate_attr": "phenyl_rate_ug_sec",
             "rate_unit": "ug/min",
-            "rate_scale": 60.0,
+            "rate_unit_internal": "ug/sec",
             "tci_attr": "tci_phenyl",
             "tci_name": "Phenylephrine",
             "tci_unit": "ng/mL",
@@ -128,7 +130,7 @@ class DrugControllerMixin:
             "name": "Dobutamine 1mg/mL",
             "rate_attr": "dobu_rate_ug_sec",
             "rate_unit": "ug/min",
-            "rate_scale": 60.0,
+            "rate_unit_internal": "ug/sec",
             "tci_attr": "tci_dobu",
             "tci_name": "Dobutamine",
             "tci_unit": "ng/mL",
@@ -143,7 +145,7 @@ class DrugControllerMixin:
             "name": "Milrinone 200mcg/mL",
             "rate_attr": "mil_rate_ug_sec",
             "rate_unit": "ug/min",
-            "rate_scale": 60.0,
+            "rate_unit_internal": "ug/sec",
             "tci_attr": "tci_mil",
             "tci_name": "Milrinone",
             "tci_unit": "ng/mL",
@@ -158,7 +160,7 @@ class DrugControllerMixin:
             "name": "Rocuronium 10mg/mL",
             "rate_attr": "roc_rate_mg_sec",
             "rate_unit": "mg/hr",
-            "rate_scale": 3600.0,
+            "rate_unit_internal": "mg/sec",
             "tci_attr": "tci_roc",
             "tci_name": "Rocuronium",
             "tci_unit": "ug/mL",
@@ -333,10 +335,12 @@ class DrugControllerMixin:
         spec = self._DRUG_SPECS.get(key)
         if not spec:
             return
-        setattr(self, spec["rate_attr"], rate_user_unit / spec["rate_scale"])
+        rate_internal = convert_rate(rate_user_unit, spec["rate_unit"], spec["rate_unit_internal"])
+        setattr(self, spec["rate_attr"], rate_internal)
 
     def _get_rate_to_user(self: "SimulationEngine", key: str) -> float:
         spec = self._DRUG_SPECS.get(key)
         if not spec:
             return 0.0
-        return getattr(self, spec["rate_attr"], 0.0) * spec["rate_scale"]
+        rate_internal = getattr(self, spec["rate_attr"], 0.0)
+        return convert_rate(rate_internal, spec["rate_unit_internal"], spec["rate_unit"])

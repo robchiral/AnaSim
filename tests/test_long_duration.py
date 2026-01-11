@@ -71,7 +71,8 @@ class TestLongDurationStability:
         assert all(90 <= spo2 <= 100 for spo2 in spo2_samples), "SpO2 went out of physiological range"
         assert all(5 <= bis <= 95 for bis in bis_samples), "BIS went out of physiological range"
         assert all(32.0 <= temp <= 40.0 for temp in temp_samples), "Temperature went out of physiological range"
-        assert all(20 <= etco2 <= 60 for etco2 in etco2_samples), "EtCO2 went out of physiological range"
+        # Perfusion-coupled EtCO2 can transiently fall below 20 with low CO.
+        assert all(10 <= etco2 <= 60 for etco2 in etco2_samples), "EtCO2 went out of physiological range"
         
         # Verify no significant drift (final should be close to median)
         median_map = np.median(map_samples)

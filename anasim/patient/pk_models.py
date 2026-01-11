@@ -47,6 +47,8 @@ from anasim.core.utils import clamp
 #   - Effect-site equilibration (ke0): min^-1
 #   - Concentrations: µg/mL (propofol), ng/mL (remi, catecholamines/inotropes),
 #     mU/L (vasopressin)
+#   - Infusion rates: mg/sec (propofol/roc), ug/sec (remi/catecholamines/inotropes),
+#     mU/sec (vasopressin)
 # =============================================================================
 
 @dataclass

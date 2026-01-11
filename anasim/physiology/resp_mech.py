@@ -110,6 +110,8 @@ class RespiratoryMechanics:
             self.mode = VentMode.PSV
         elif mode_upper == "CPAP":
             self.mode = VentMode.CPAP
+            # CPAP is PEEP-only; ensure no inspiratory pressure support.
+            self.set_p_insp = 0.0
         
     def set_settings(self, rr: float, vt: float, peep: float, ie: str = "1:2", 
                      mode: str = None, p_insp: float = None):
@@ -133,6 +135,9 @@ class RespiratoryMechanics:
             
         if p_insp is not None:
             self.set_p_insp = p_insp
+        elif self.mode == VentMode.CPAP:
+            # CPAP should not retain prior inspiratory support.
+            self.set_p_insp = 0.0
         
         # Parse I:E ratio
         try:
@@ -345,7 +350,10 @@ class RespiratoryMechanics:
         else:
             # During inspiration
             if self.mode in (VentMode.PCV, VentMode.PSV, VentMode.CPAP):
-                # In pressure-controlled/support/CPAP, Paw is controlled (set value)
+                # In pressure-controlled/support, Paw is controlled (set value).
+                # CPAP is PEEP-only.
+                if self.mode == VentMode.CPAP:
+                    return self.set_peep
                 return self.set_p_insp + self.set_peep
             else:
                 # In VCV, Paw is calculated from equation of motion
