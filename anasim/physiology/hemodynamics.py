@@ -236,6 +236,12 @@ class HemodynamicModel:
         self._last_peep_cmH2O = self.pvr_peep_ref
         
         self.cumulative_fluid_given = 0.0
+        self.total_crystalloid_in_ml = 0.0
+        self.total_blood_in_ml = 0.0
+        self.total_urine_out_ml = 0.0
+        self.total_blood_out_ml = 0.0
+        self.total_leak_out_ml = 0.0
+        self.total_third_space_ml = 0.0
         
         self.rhythm_type = RhythmType.SINUS
         self.f_preload_pit = 1.0
@@ -301,27 +307,45 @@ class HemodynamicModel:
         Also applies transient SV boost via tde_sv (Frank-Starling).
         """
         self._cached_state = None
-        self.blood_volume += amount_ml
-        
-        # Prevent nonsensical volumes
-        self.blood_volume = max(BLOOD_VOLUME_MIN, self.blood_volume)  # Minimum ~500mL
+        if amount_ml == 0:
+            return
 
+        retained_ml = 0.0
         if amount_ml < 0:
-            hb_loss = self.hb_conc * (-amount_ml) / 100.0
-            self.hb_mass = max(0.0, self.hb_mass - hb_loss)
-        elif amount_ml > 0 and hematocrit > 0:
-            hb_gain = self.baseline_hb * hematocrit * amount_ml / 100.0
-            self.hb_mass += hb_gain
+            loss_ml = -amount_ml
+            available = max(0.0, self.blood_volume - BLOOD_VOLUME_MIN)
+            actual_loss = min(loss_ml, available)
+            if actual_loss > 0:
+                self.blood_volume -= actual_loss
+                self.total_blood_out_ml += actual_loss
+                hb_loss = self.hb_conc * actual_loss / 100.0
+                self.hb_mass = max(0.0, self.hb_mass - hb_loss)
+        else:
+            if hematocrit > 0:
+                self.total_blood_in_ml += amount_ml
+                retained_ml = amount_ml * self.blood_retention_fraction
+                self.total_third_space_ml += max(0.0, amount_ml - retained_ml)
+                hct_ref = max(self.baseline_hct, 0.01)
+                hb_gain = self.baseline_hb * (hematocrit / hct_ref) * retained_ml / 100.0
+                self.hb_mass += hb_gain
+            else:
+                self.total_crystalloid_in_ml += amount_ml
+                retained_ml = amount_ml * self.crystalloid_retention_fraction
+                self.total_third_space_ml += max(0.0, amount_ml - retained_ml)
 
-        self._update_hb_conc()
-        
-        # Transient SV effect (Frank-Starling response to acute volume change)
-        # Gain scaled to baseline SV for patient-specific response
-        if amount_ml > 0:
-            gain = 0.02 * (self.base_sv / 80.0)
-            self.tde_sv += amount_ml * gain
+            self.blood_volume += retained_ml
             # Track cumulative fluid given (for scenario requirements)
             self.cumulative_fluid_given += amount_ml
+
+            # Transient SV effect (Frank-Starling response to acute volume change)
+            # Gain scaled to baseline SV for patient-specific response
+            if retained_ml > 0:
+                gain = 0.02 * (self.base_sv / 80.0)
+                self.tde_sv += retained_ml * gain
+
+        # Prevent nonsensical volumes
+        self.blood_volume = max(BLOOD_VOLUME_MIN, self.blood_volume)  # Minimum ~500mL
+        self._update_hb_conc()
 
     def _update_hb_conc(self):
         if self.blood_volume <= 0:
@@ -929,14 +953,22 @@ class HemodynamicModel:
         
         # --- 0.1 Volume Clearance ---
         # Reduce blood volume by clearance (urine, etc.)
-        blood_volume = self.blood_volume - (self.vol_clearance * dt_min)
+        urine_out_ml = min(self.vol_clearance * dt_min, max(0.0, self.blood_volume - BLOOD_VOLUME_MIN))
+        blood_volume = self.blood_volume - urine_out_ml
+        if urine_out_ml > 0:
+            self.total_urine_out_ml += urine_out_ml
         if sepsis_sev > 0.0:
             # Capillary leak: plasma loss without direct RBC loss
             dt_hr = dt / 3600.0
             leak_fraction = self.sepsis_leak_fraction_per_hr * sepsis_sev
             leak_ml = blood_volume * leak_fraction * dt_hr
-            blood_volume -= leak_ml
-        self.blood_volume = max(500.0, blood_volume) # Safety floor
+            available = max(0.0, blood_volume - BLOOD_VOLUME_MIN)
+            actual_leak = min(leak_ml, available)
+            if actual_leak > 0:
+                blood_volume -= actual_leak
+                self.total_leak_out_ml += actual_leak
+                self.total_third_space_ml += actual_leak
+        self.blood_volume = max(BLOOD_VOLUME_MIN, blood_volume) # Safety floor
         self._update_hb_conc()
 
         # --- 1. Calculate Effects ---

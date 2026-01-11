@@ -253,6 +253,10 @@ class PatientMonitorWidget(QWidget):
         # Temp
         self.num_temp = NumericDisplay("Core temp", "°C", COLORS['temp'], "37.0", size_variant="compact")
         num_layout.addWidget(self.num_temp)
+
+        # I/O panel
+        self.io_panel = self._create_io_panel()
+        num_layout.addWidget(self.io_panel)
         
         # Gas Panel (Sevo)
         self.gas_panel = self._create_gas_panel()
@@ -261,6 +265,40 @@ class PatientMonitorWidget(QWidget):
         num_layout.addStretch()
         
         self._apply_bp_mode()
+
+    def _create_io_panel(self):
+        frame = QFrame()
+        frame.setStyleSheet(get_tinted_frame_style(COLORS['info'], alpha=0.05, radius=6))
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(4)
+
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(6)
+        header_layout.addStretch()
+        self.lbl_io_title = QLabel("I/O (mL)")
+        self.lbl_io_title.setStyleSheet(
+            f"color: {COLORS['text_dim']}; font-weight: 700; font-size: 10px; font-family: Arial;"
+        )
+        self.lbl_io_title.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        header_layout.addWidget(self.lbl_io_title)
+
+        self.lbl_io_net = QLabel("--")
+        self.lbl_io_net.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_io_net.setStyleSheet(
+            f"color: {COLORS['info']}; font-size: 16px; font-weight: 700; font-family: Arial;"
+        )
+        header_layout.addWidget(self.lbl_io_net)
+        layout.addLayout(header_layout)
+
+        self.lbl_io_detail = QLabel("In F-- B-- | Out U-- B--")
+        self.lbl_io_detail.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.lbl_io_detail.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: 11px; font-family: Arial;"
+        )
+        layout.addWidget(self.lbl_io_detail)
+
+        return frame
 
     def _create_gas_panel(self):
         frame = QFrame()
@@ -391,6 +429,20 @@ class PatientMonitorWidget(QWidget):
         self.num_bis.set_value(f"{int(state.bis)}")
         self.num_tof.set_value(f"{int(state.tof)}%")
         self.num_temp.set_value(f"{state.temp_c:.1f}")
+
+        fluid_in = getattr(state, 'fluid_in_ml', 0.0)
+        blood_in = getattr(state, 'blood_in_ml', 0.0)
+        urine_out = getattr(state, 'urine_out_ml', 0.0)
+        blood_out = getattr(state, 'blood_out_ml', 0.0)
+        net = getattr(state, 'net_fluid_ml', fluid_in + blood_in - urine_out - blood_out)
+        self.lbl_io_detail.setText(
+            f"In F{fluid_in:.0f} B{blood_in:.0f} | Out U{urine_out:.0f} B{blood_out:.0f}"
+        )
+        self.lbl_io_net.setText(f"{net:+.0f}")
+        net_color = COLORS['danger'] if net < 0 else COLORS['success']
+        self.lbl_io_net.setStyleSheet(
+            f"color: {net_color}; font-size: 16px; font-weight: 700; font-family: Arial;"
+        )
         
         # Gas
         self.lbl_fi_val.setText(f"{state.fi_sevo:.1f}")

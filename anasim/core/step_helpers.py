@@ -698,6 +698,11 @@ class StepHelpersMixin:
         state.hb_g_dl = getattr(hemo, 'hb_conc', state.hb_g_dl)
         if hasattr(hemo, 'get_hematocrit'):
             state.hct = hemo.get_hematocrit()
+        state.fluid_in_ml = getattr(hemo, 'total_crystalloid_in_ml', 0.0)
+        state.blood_in_ml = getattr(hemo, 'total_blood_in_ml', 0.0)
+        state.urine_out_ml = getattr(hemo, 'total_urine_out_ml', 0.0)
+        state.blood_out_ml = getattr(hemo, 'total_blood_out_ml', 0.0)
+        state.net_fluid_ml = state.fluid_in_ml + state.blood_in_ml - state.urine_out_ml - state.blood_out_ml
 
         state.pit = pit_estimate
         

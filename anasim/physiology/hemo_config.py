@@ -81,6 +81,8 @@ class HemodynamicConfig:
     venous_compliance: float = 100.0
     mcfp_floor: float = 1.0
     vol_clearance: float = 1.0
+    crystalloid_retention_fraction: float = 0.30
+    blood_retention_fraction: float = 1.0
 
     # Intrathoracic pressure coupling
     pit_0: float = -2.0
