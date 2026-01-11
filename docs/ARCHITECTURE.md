@@ -66,6 +66,7 @@ AnaSim/
 - Lightweight right-heart / pulmonary coupling: MCFP→venous return, PVR effects from hypoxia/PEEP, and pulmonary transit delay
 - Septic shock: vasoplegia, capillary leak, pressor resistance
 - Anaphylaxis: rapid-onset vasoplegia plus airway effects (bronchospasm/laryngospasm), no capillary leak model
+- Fluid I/O display reflects charted totals (crystalloid + blood in; urine + blood out). Capillary leak/third-spacing is tracked internally and not included in net I/O.
 
 ### Respiration (`physiology/respiration.py`)
 - **Central Drive**: Neural output inhibited by propofol, remifentanil, and sevoflurane.
