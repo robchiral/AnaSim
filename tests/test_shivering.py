@@ -1,4 +1,5 @@
 from anasim.core.state import SimulationConfig
+from anasim.core import projection as projection_core
 
 
 class TestShivering:
@@ -18,7 +19,7 @@ class TestShivering:
 
         engine.pk_roc.state.ce = 10.0
         engine.pk_roc.state.c1 = 10.0
-        engine._sync_pk_state()
+        projection_core.sync_pk_state(engine)
 
         advance_time(engine, 90, dt=1.0)
         assert engine.state.shivering < 0.1, \

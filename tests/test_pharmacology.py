@@ -11,7 +11,7 @@ from anasim.patient.pk_models import (
     MilrinonePK,
 )
 from anasim.patient.patient import Patient
-from anasim.patient.pd_models import TOFModel
+from anasim.patient.pd.nmba import TOFModel
 import numpy as np
 
 # --- Rigorous Pharmacology Validity & Sanity Checks ---

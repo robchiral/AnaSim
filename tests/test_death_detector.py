@@ -1,6 +1,7 @@
 
 import unittest
 from anasim.core.engine import SimulationEngine, SimulationConfig
+from anasim.core import runtime as runtime_core
 from anasim.patient.patient import Patient
 
 class TestDeathDetector(unittest.TestCase):
@@ -42,7 +43,7 @@ class TestDeathDetector(unittest.TestCase):
             engine.state.hr = 0 # Sustain the insult (engine reset might fight it)
             engine._raw_hr = 0
             engine.smooth_hr = 0
-            engine._check_patient_viability(0.1)
+            runtime_core.check_patient_viability(engine, 0.1)
             
         self.assertFalse(engine.state.is_dead)
         
@@ -51,7 +52,7 @@ class TestDeathDetector(unittest.TestCase):
             engine.state.hr = 0
             engine._raw_hr = 0
             engine.smooth_hr = 0
-            engine._check_patient_viability(0.1)
+            runtime_core.check_patient_viability(engine, 0.1)
             
         self.assertTrue(engine.state.is_dead)
         self.assertIn("Bradycardia", engine.state.death_reason)
@@ -71,7 +72,7 @@ class TestDeathDetector(unittest.TestCase):
             engine.state.map = 5.0
             engine._raw_map = 5.0
             engine.smooth_map = 5.0
-            engine._check_patient_viability(0.1)
+            runtime_core.check_patient_viability(engine, 0.1)
             
         self.assertTrue(engine.state.is_dead)
         self.assertIn("Hypotension", engine.state.death_reason)

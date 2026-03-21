@@ -1,5 +1,4 @@
 import math
-from dataclasses import dataclass
 from typing import Optional
 from scipy.optimize import root_scalar
 from anasim.patient.patient import Patient
@@ -9,47 +8,7 @@ from anasim.core.constants import (
 from anasim.core.utils import hill_function, clamp, clamp01
 from anasim.core.enums import RhythmType
 from .hemo_config import HemodynamicConfig
-
-
-@dataclass
-class HemoState:
-    """
-    Hemodynamic state snapshot representing typical adult baselines.
-
-    These are overridden at runtime by model calculations.
-    """
-    map: float = 80.0   # Mean Arterial Pressure (mmHg)
-    hr: float = 75.0    # Heart Rate (bpm)
-    sv: float = 70.0    # Stroke Volume (mL)
-    svr: float = 16.0   # SVR (mmHg*min/L) ~ Wood Units
-    co: float = 5.25    # Cardiac Output (L/min)
-    sbp: float = 115.0  # Systolic Blood Pressure (mmHg)
-    dbp: float = 70.0   # Diastolic Blood Pressure (mmHg)
-    rhythm_type: RhythmType = RhythmType.SINUS
-
-
-@dataclass
-class HemoStateExtended(HemoState):
-    """
-    Extended hemodynamic state with internal model variables.
-    """
-    # Internal state variables
-    tpr: float = 0.016      # Total Peripheral Resistance (mmHg*min/mL)
-    sv_star: float = 82.2   # Stroke Volume state variable
-    hr_star: float = 56.0   # Heart Rate state variable  
-    tde_sv: float = 7.4     # Time-dependent error for SV
-    tde_hr: float = 6.7     # Time-dependent error for HR
-    
-    # Volatile effect site concentration (MAC units)
-    ce_sevo: float = 0.0
-
-    # Right heart / pulmonary coupling (diagnostic outputs)
-    mcfp: float = 0.0            # Mean circulatory filling pressure (mmHg)
-    rap: float = 0.0             # Right atrial pressure estimate (mmHg)
-    pvr: float = 0.0             # Pulmonary vascular resistance (Wood units)
-    rv_co: float = 0.0           # Right ventricular output (L/min)
-    lv_inflow: float = 0.0       # Pulmonary venous return / LV inflow (L/min)
-    preload_factor: float = 1.0  # Dimensionless preload factor (pre-Frank-Starling)
+from .hemo_types import HemoState, HemoStateExtended
 
 
 class HemodynamicModel:

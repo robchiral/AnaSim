@@ -10,7 +10,7 @@ from anasim.patient.pk_models import (
     PropofolPKMarsh, PropofolPKSchnider, RemifentanilPKMinto,
     RocuroniumPK, EpinephrinePK, PhenylephrinePK
 )
-from anasim.patient.pd_models import TOFModel
+from anasim.patient.pd.nmba import TOFModel
 from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.physiology.respiration import RespiratoryModel
 

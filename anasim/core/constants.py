@@ -65,7 +65,7 @@ TEMP_METABOLIC_COEFFICIENT = 0.93
 # Reference: Frank et al. JAMA. 1997.
 TEMP_TPR_COEFFICIENT = 0.10
 
-# Shivering model constants (used in step_helpers.py, respiration.py).
+# Shivering model constants (used in runtime.py, respiration.py).
 # Clinically, shivering appears near 36.5°C in awake patients and is
 # suppressed by anesthetics/opioids; maximal shivering can raise
 # metabolic rate ~3-5x baseline.

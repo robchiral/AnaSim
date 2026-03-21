@@ -23,8 +23,11 @@ Important implications:
 ```text
 AnaSim/
 ├── core/               # Simulation engine and control
-│   ├── engine.py       # Main simulation orchestrator
-│   ├── step_helpers.py # Step pipeline helpers
+│   ├── engine.py       # Facade/state container
+│   ├── initialization.py # Startup target solving and subsystem seeding
+│   ├── runtime.py      # Step orchestration
+│   ├── projection.py   # Subsystem -> SimulationState projection
+│   ├── monitors.py     # Display smoothing, NIBP, capno, alarms
 │   ├── tci.py          # Target-Controlled Infusion controllers
 │   ├── state.py        # Simulation state dataclasses
 │   ├── recorder.py     # CSV recorder
@@ -32,7 +35,9 @@ AnaSim/
 ├── patient/            # Patient demographics and PK/PD models
 │   ├── patient.py
 │   ├── pk_models.py
-│   ├── pd_models.py
+│   ├── pd/
+│   │   ├── anesthesia.py
+│   │   └── nmba.py
 │   └── volatile_pk.py
 ├── physiology/         # Hemodynamics, respiration, disturbances
 │   ├── hemodynamics.py
@@ -70,8 +75,8 @@ SimulationEngine.step()
 ```
 
 The key rule is:
-- `_step_physiology()` writes raw physiologic fields only.
-- `_step_monitors()` writes display fields and waveforms only.
+- `runtime.step_physiology()` writes raw physiologic fields only.
+- `monitors.step_monitors()` writes display fields and waveforms only.
 
 ## Initialization
 

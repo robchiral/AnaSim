@@ -22,9 +22,9 @@ Each `SimulationEngine.step()` executes subsystems in this order:
 
 | Writer | Fields owned | Primary consumers |
 |-------|--------------|-------------------|
-| `_sync_pk_state()` | `propofol_ce/cp`, `remi_ce/cp`, vasoactive `*_ce` | Physiology, PD models, recorder |
-| `_step_physiology()` | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `rr`, `vt`, `mv`, `va`, `etco2`, `pa_co2`, `alveolar_co2`, `pao2`, `sao2` | Recorder, internal logic, analytics, physiology tests |
-| `_step_monitors()` | `display_map`, `display_hr`, `display_sbp`, `display_dbp`, `display_bis`, `display_etco2`, `display_spo2`, waveforms, alarms | UI, CLI, tutorial/scenario checks |
+| `projection.sync_pk_state()` | `propofol_ce/cp`, `remi_ce/cp`, vasoactive `*_ce` | Physiology, PD models, recorder |
+| `runtime.step_physiology()` | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `rr`, `vt`, `mv`, `va`, `etco2`, `pa_co2`, `alveolar_co2`, `pao2`, `sao2` | Recorder, internal logic, analytics, physiology tests |
+| `monitors.step_monitors()` | `display_map`, `display_hr`, `display_sbp`, `display_dbp`, `display_bis`, `display_etco2`, `display_spo2`, waveforms, alarms | UI, CLI, tutorial/scenario checks |
 
 The monitor layer must not overwrite raw arterial pressure or heart rate.
 

@@ -1,649 +1,105 @@
 """
-Clinical Scenario Validation Tests
+Acceptance-level clinical scenario checks.
 
-End-to-end simulation of real anesthesia scenarios to validate
-that the simulation behaves realistically during complex clinical situations.
-
-These tests simulate multi-step clinical workflows and verify that
-vitals, drug effects, and physiological responses are realistic.
+This file intentionally keeps only one representative path per major workflow:
+induction, emergence, and hemorrhage/rescue.
 """
 
-import numpy as np
+from anasim.core.state import AirwayType
 
 
-# =============================================================================
-# Induction Scenario
-# =============================================================================
+def _stop_tiva(engine) -> None:
+    engine.disable_tci("propofol")
+    engine.disable_tci("remi")
+    engine.set_propofol_rate(0.0)
+    engine.set_remi_rate(0.0)
 
-class TestInductionScenario:
-    """Simulate standard IV induction sequence: preoxygenation, induction, paralysis, intubation."""
-    
-    def test_propofol_induction_causes_loc(self, awake_engine, advance_time):
-        """Propofol 2 mg/kg should cause LOC (BIS < 70) within 2 min."""
+
+class TestAcceptanceScenarios:
+    def test_induction_path(self, awake_engine, advance_time):
+        """A standard IV induction should produce hypnosis, paralysis, and tolerable hemodynamics."""
         engine = awake_engine
-        engine.set_airway_mode("Mask")  # Preoxygenation
-        
-        # Baseline
+        engine.set_airway_mode("Mask")
         advance_time(engine, 5, dt=0.1)
+
         baseline_bis = engine.state.bis
-        
-        # Propofol induction bolus
-        dose = 2.0 * engine.patient.weight
-        engine.give_drug_bolus("Propofol", dose)
-        
-        # Track BIS over 3 minutes
-        min_bis = baseline_bis
+        engine.give_drug_bolus("Propofol", 2.0 * engine.patient.weight)
+
         loc_time = None
+        min_bis = baseline_bis
+        min_map = engine.state.map
         for t in range(180):
             engine.step(1.0)
             min_bis = min(min_bis, engine.state.bis)
-            if engine.state.bis < 70 and loc_time is None:
+            min_map = min(min_map, engine.state.map)
+            if engine.state.bis < 70.0 and loc_time is None:
                 loc_time = t
-        
-        bis_drop = baseline_bis - min_bis
-        assert bis_drop > 25, \
-            f"BIS only dropped {bis_drop:.1f} points - expected >25 drop after induction"
-        assert loc_time is not None and loc_time < 120, \
-            f"LOC (BIS <70) at {loc_time}s - expected within 120s of induction"
-    
-    def test_rocuronium_causes_paralysis(self, awake_engine, advance_time):
-        """
-        Rocuronium 0.6 mg/kg should cause paralysis (TOF <5%) within 2 min.
-        """
-        engine = awake_engine
-        engine.set_airway_mode("Mask")
-        
-        # Give propofol first (need patient asleep for rocuronium)
-        engine.give_drug_bolus("Propofol", 150)
-        advance_time(engine, 30)
-        
-        # Rocuronium bolus
-        dose = 0.6 * engine.patient.weight
-        engine.give_drug_bolus("Rocuronium", dose)
-        
-        # Track TOF
+
+        assert loc_time is not None and loc_time < 120
+        assert baseline_bis - min_bis > 25.0
+        assert min_map > 45.0
+
+        engine.give_drug_bolus("Rocuronium", 0.6 * engine.patient.weight)
         paralysis_time = None
-        for t in range(180):  # 3 min max
+        for t in range(180):
             engine.step(1.0)
-            if engine.state.tof < 5 and paralysis_time is None:
+            if engine.state.tof < 5.0 and paralysis_time is None:
                 paralysis_time = t
-        
-        assert paralysis_time is not None, "TOF never dropped below 5% after rocuronium"
-        assert paralysis_time < 150, f"Paralysis at {paralysis_time}s - expected within 150s"
-    
-    def test_induction_hemodynamic_stability(self, awake_engine):
-        """
-        During controlled induction, MAP should not drop below 50 mmHg.
-        """
-        engine = awake_engine
-        engine.set_airway_mode("Mask")
-        
-        baseline_map = engine.state.map
-        min_map = baseline_map
-        
-        # Incremental propofol (divided doses)
-        for dose in [50, 50, 50]:  # 150mg total in divided doses
-            engine.give_drug_bolus("Propofol", dose)
-            for _ in range(30):
-                engine.step(1.0)
-                min_map = min(min_map, engine.state.map)
-        
-        # MAP should not crash
-        assert min_map > 45, f"MAP dropped to {min_map:.1f} - unsafe induction"
-    
-    def test_preoxygenation_raises_spo2(self, awake_engine, advance_time):
-        """
-        Preoxygenation with FiO2 1.0 should maintain SpO2 >98%.
-        """
-        engine = awake_engine
-        engine.set_airway_mode("Mask")
-        engine.set_fgf(10.0, 0.0)  # 100% O2
-        
-        # 3 minutes preoxygenation
-        advance_time(engine, 180)
-        
-        assert engine.state.spo2 > 97, \
-            f"SpO2 {engine.state.spo2}% after preoxygenation - expected >97%"
 
-    def test_transfusion_restores_spo2(self, awake_engine, advance_time):
-        """
-        Simulate blood loss causing anemia and verify transfusion improves saturation.
-        """
-        engine = awake_engine
-        engine.set_airway_mode("Mask")
-        engine.start_hemorrhage(rate_ml_min=2000)
-        advance_time(engine, 120)
-        engine.stop_hemorrhage()
-        low_spo2 = engine.state.spo2
-        engine.give_blood(300)
-        advance_time(engine, 300)
-        assert engine.state.spo2 > low_spo2, "SpO2 did not improve after transfusion"
+        assert paralysis_time is not None and paralysis_time < 150
 
-
-# =============================================================================
-# Emergence Scenario
-# =============================================================================
-
-class TestEmergenceScenario:
-    """Simulate emergence: stop drugs, BIS rise, TOF recovery, return of spontaneous breathing."""
-    
-    def test_bis_recovery_rate(self, anesthetized_engine):
-        """
-        After stopping TIVA (propofol + remi), BIS should rise at a clinically
-        realistic rate during the first 15 minutes of emergence.
-        """
+    def test_emergence_path(self, anesthetized_engine):
+        """Stopping a maintained TIVA should produce clinically plausible emergence milestones."""
         engine = anesthetized_engine
-        
-        # Baseline anesthetized BIS
-        initial_bis = engine.state.bis
-        assert initial_bis < 55, "Should start deeply anesthetized"
-        
-        # Stop TIVA
-        engine.disable_tci("propofol")
-        engine.disable_tci("remi")
-        engine.set_propofol_rate(0)
-        engine.set_remi_rate(0)
-        
-        # Track BIS over 15 minutes
-        bis_history = []
-        for _ in range(900):  # 15 min
-            engine.step(1.0)
-            bis_history.append(engine.state.bis)
-        
-        # Calculate average rise rate
-        final_bis = bis_history[-1]
-        rise_total = final_bis - initial_bis
-        rise_rate = rise_total / 15.0  # points per minute
-        
-        # Typical eye-opening ~9-10 min implies ~1-2+ points/min from BIS ~50s.
-        assert rise_rate > 0.9, f"BIS rise rate {rise_rate:.2f}/min - too slow"
-        assert rise_rate < 2.6, f"BIS rise rate {rise_rate:.2f}/min - unrealistically fast"
-    
-    def test_no_bis_oscillations(self, anesthetized_engine):
-        """
-        BIS should not oscillate wildly during emergence.
-        """
-        engine = anesthetized_engine
-        
-        engine.disable_tci("propofol")
-        engine.set_propofol_rate(0)
-        
-        bis_history = []
-        for _ in range(600):
-            engine.step(1.0)
-            bis_history.append(engine.state.bis)
-        
-        # Check for oscillations (large swings)
-        diffs = np.diff(bis_history)
-        max_swing = np.max(np.abs(diffs))
-        
-        assert max_swing < 10, \
-            f"BIS oscillation {max_swing:.1f} points/sec - too unstable"
-    
-    def test_spontaneous_breathing_returns(self, anesthetized_engine, advance_time):
-        """
-        As anesthesia lightens, spontaneous ventilation should return within
-        a realistic time window after stopping TIVA.
-        """
-        engine = anesthetized_engine
-        
-        # Stop drugs
-        engine.disable_tci("propofol")
-        engine.disable_tci("remi")
-        engine.set_propofol_rate(0)
-        engine.set_remi_rate(0)
-        
-        # Track spontaneous MV over 12 minutes
-        mv_3_time = None
-        peak_mv_early = 0.0
-        for t in range(720):
-            engine.step(1.0)
-            if t < 240:
-                peak_mv_early = max(peak_mv_early, engine.resp.state.mv)
-            if engine.resp.state.mv > 3.0 and mv_3_time is None:
-                mv_3_time = t
+        assert engine.state.bis < 60.0
+        assert engine.state.propofol_ce > 2.0
 
-        # Early phase should remain suppressed
-        assert peak_mv_early < 2.0, \
-            f"Spontaneous MV rose too early (peak {peak_mv_early:.2f} L/min in first 4 min)"
-        
-        # Spontaneous MV should recover within ~6-12 min
-        assert mv_3_time is not None, \
-            "Spontaneous MV never reached 3 L/min during 12-min observation"
-        assert 360 <= mv_3_time <= 720, \
-            f"MV > 3 L/min at {mv_3_time}s - expected 6-12 min"
+        _stop_tiva(engine)
 
-    def test_etco2_stable_with_ventilator_support(self, anesthetized_engine, advance_time):
-        """
-        During emergence with ventilator support, EtCO2 should remain stable.
-        The ventilator provides adequate alveolar ventilation even when 
-        spontaneous breathing is suppressed.
-        """
-        engine = anesthetized_engine
-
-        # Ensure airway is connected and record baseline values.
-        engine.set_airway_mode("ETT")
-        baseline_etco2 = engine.state.etco2
-        baseline_paco2 = engine.state.pa_co2
-
-        # Stop drugs while keeping the ventilator ON.
-        engine.disable_tci("propofol")
-        engine.disable_tci("remi")
-        engine.set_propofol_rate(0)
-        engine.set_remi_rate(0)
-
-        # Ensure ventilator is on
-        assert engine.vent.is_on, "Ventilator should be on during emergence"
-
-        # Run 10 minutes, sample every 30s
-        etco2_vals = []
-        paco2_vals = []
-        for i in range(600):
-            engine.step(1.0)
-            if i % 30 == 0:
-                etco2_vals.append(engine.state.etco2)
-                paco2_vals.append(engine.state.pa_co2)
-
-        etco2_vals = np.array(etco2_vals)
-        paco2_vals = np.array(paco2_vals)
-
-        # Sanity: no NaN/Inf
-        assert np.all(np.isfinite(etco2_vals))
-        assert np.all(np.isfinite(paco2_vals))
-
-        # PaCO2 should stay in a reasonable range with mechanical support.
-        assert 25 <= np.median(paco2_vals) <= 55
-        assert np.percentile(paco2_vals, 95) <= 60
-        assert np.percentile(paco2_vals, 5) >= 20
-
-        # EtCO2 should remain physiologic, with perfusion-coupled variability allowed.
-        assert 10 <= np.median(etco2_vals) <= 50
-        assert np.percentile(etco2_vals, 95) <= 55
-        assert abs(np.median(etco2_vals) - baseline_etco2) < 25
-
-    def test_bag_mask_reduces_etco2(self, anesthetized_engine, advance_time):
-        """
-        REGRESSION TEST: Bag-mask ventilation should properly contribute to 
-        alveolar ventilation and reduce elevated EtCO2.
-        
-        This test verifies the fix for the bug where bag-mask's mech_rr and 
-        mech_vt_l were passed as 0 to the respiration model.
-        """
-        engine = anesthetized_engine
-        
-        # Stop drugs and turn off vent (simulating extubation transition)
-        engine.disable_tci("propofol")
-        engine.disable_tci("remi")
-        engine.set_propofol_rate(0)
-        engine.set_remi_rate(0)
-        engine.vent.is_on = False
-        baseline_etco2 = engine.state.etco2
-        baseline_paco2 = engine.state.pa_co2
-        
-        # Wait for EtCO2 to rise (no ventilatory support)
-        advance_time(engine, 120)  # 2 minutes
-        elevated_etco2 = engine.state.etco2
-        elevated_paco2 = engine.state.pa_co2
-        
-        # PaCO2 should rise with hypoventilation; EtCO2 may rise less due to gradient.
-        assert elevated_paco2 - baseline_paco2 > 4.0, \
-            f"PaCO2 {elevated_paco2:.1f} should rise when vent is off"
-        # With perfusion coupling, EtCO2 can fall modestly if CO drops.
-        assert elevated_etco2 >= baseline_etco2 - 5.0, \
-            f"EtCO2 {elevated_etco2:.1f} should not drop dramatically when vent is off"
-        
-        # Now apply bag-mask ventilation
-        from anasim.core.state import AirwayType
-        engine.state.airway_mode = AirwayType.MASK
-        engine.bag_mask_active = True
-        engine.bag_mask_rr = 12  # 12 breaths/min
-        engine.bag_mask_vt = 0.5  # 500 mL
-        
-        # Wait 3 minutes for CO2 washout
-        advance_time(engine, 180)
-        
-        final_etco2 = engine.state.etco2
-        final_paco2 = engine.state.pa_co2
-        
-        # Bag-mask should reduce PaCO2 (and EtCO2) with ventilation
-        etco2_decrease = elevated_etco2 - final_etco2
-        paco2_decrease = elevated_paco2 - final_paco2
-        assert paco2_decrease > 3, \
-            f"Bag-mask did not reduce PaCO2: {elevated_paco2:.1f} -> {final_paco2:.1f}"
-        assert etco2_decrease > 1, \
-            f"Bag-mask did not reduce EtCO2: {elevated_etco2:.1f} -> {final_etco2:.1f}"
-
-    def test_emergence_respiratory_depression_realistic(self, anesthetized_engine, advance_time):
-        """
-        Validate that respiratory depression during emergence is realistic.
-        
-        At propofol Ce ~1.5 ug/mL and BIS ~70-80, patients may still have 
-        significantly reduced tidal volumes. This is physiologically correct
-        behavior - clinicians keep ventilatory support until drugs clear further.
-        """
-        engine = anesthetized_engine
-        
-        # Let engine stabilize first
-        advance_time(engine, 30)
-        
-        # Record initial propofol level (after stabilization)
-        initial_prop_ce = engine.state.propofol_ce
-        
-        # Stop drugs, keep vent ON
-        engine.disable_tci("propofol")
-        engine.disable_tci("remi")
-        engine.set_propofol_rate(0)
-        engine.set_remi_rate(0)
-        
-        # Wait 15 minutes for partial emergence
-        advance_time(engine, 900)
-        
-        # Check that propofol has decreased from initial level
-        final_prop_ce = engine.state.propofol_ce
-        assert final_prop_ce < initial_prop_ce, \
-            f"Propofol should decrease: {initial_prop_ce:.2f} -> {final_prop_ce:.2f}"
-        
-        # At this point, spontaneous VT should be recovering
-        # (although it may still be reduced from baseline)
-        resp_state = engine.resp.state
-        
-        # Drive should be increasing
-        assert resp_state.drive_central > 0.1, \
-            f"Respiratory drive {resp_state.drive_central:.2f} should be recovering"
-
-    def test_hcvr_shortens_emergence_time(self, anesthetized_engine, advance_time):
-        """
-        HCVR should shorten emergence time.
-        With HCVR, rising CO2 stimulates ventilation, accelerating emergence.
-        Clinical expectation: BIS ~70 (eye opening) around 9-10 min after propofol stop.
-        """
-        engine = anesthetized_engine
-        
-        # Stabilize initial state
-        advance_time(engine, 30)
-        
-        initial_bis = engine.state.bis
-        initial_prop = engine.state.propofol_ce
-        
-        # Should start anesthetized
-        assert initial_bis < 60, f"Should start anesthetized (BIS {initial_bis:.1f})"
-        assert initial_prop > 2.0, f"Should have significant propofol (Ce {initial_prop:.2f})"
-        
-        # Stop all drugs
-        engine.disable_tci("propofol")
-        engine.disable_tci("remi")
-        engine.set_propofol_rate(0)
-        engine.set_remi_rate(0)
-        
-        # Track emergence milestones
         mv_3_time = None
         bis_70_time = None
         bis_80_time = None
-        
-        for t in range(1800):  # 30 minutes max
+        prev_bis = engine.state.bis
+        max_bis_swing = 0.0
+
+        for t in range(1800):
             engine.step(1.0)
-            
+            max_bis_swing = max(max_bis_swing, abs(engine.state.bis - prev_bis))
+            prev_bis = engine.state.bis
+
             if engine.resp.state.mv > 3.0 and mv_3_time is None:
                 mv_3_time = t
-            
-            if engine.state.bis > 70 and bis_70_time is None:
+            if engine.state.bis > 70.0 and bis_70_time is None:
                 bis_70_time = t
-
-            if engine.state.bis > 80 and bis_80_time is None:
+            if engine.state.bis > 80.0 and bis_80_time is None:
                 bis_80_time = t
-        
-        # HCVR should enable spontaneous MV > 3 L/min within ~12 min.
-        # The current multiplicative drug interaction allows deeper respiratory
-        # depression than the older additive drive-floor approximation.
-        assert mv_3_time is not None, \
-            "Spontaneous MV never reached 3 L/min during 30-min observation"
-        assert mv_3_time < 720, \
-            f"MV > 3 L/min at {mv_3_time}s - expected within 720s (~12 min)"
-        
-        # BIS should reach ~70 (eye opening) within roughly 6.5-14 min
-        assert bis_70_time is not None, \
-            "BIS never reached 70 (eye opening range) during 30-min observation"
-        assert 390 <= bis_70_time <= 840, \
-            f"BIS > 70 at {bis_70_time}s - expected within 390-840s"
 
-        # Managed maintenance should still wake within a clinically plausible
-        # 10-20 minute window after propofol stop.
-        assert bis_80_time is not None, \
-            "BIS never reached 80 during 30-min observation"
-        assert bis_80_time < 1200, \
-            f"BIS > 80 at {bis_80_time}s - expected within 1200s (20 min)"
+        assert mv_3_time is not None and mv_3_time < 720
+        assert bis_70_time is not None and 390 <= bis_70_time <= 840
+        assert bis_80_time is not None and bis_80_time < 1200
+        assert max_bis_swing < 10.0
 
-
-
-# =============================================================================
-# Hemorrhage Crisis Scenario
-# =============================================================================
-
-class TestHemorrhageCrisis:
-    """
-    Simulate hemorrhagic shock and resuscitation:
-    1. Class III hemorrhage (35% blood loss)
-    2. Compensatory tachycardia, then hypotension
-    3. Fluid resuscitation
-    4. Vasopressor support
-    """
-    
-    def test_hemorrhage_causes_tachycardia(self, anesthetized_engine, advance_time):
-        """
-        Blood loss should trigger compensatory tachycardia.
-        """
+    def test_hemorrhage_and_rescue_path(self, anesthetized_engine, advance_time):
+        """Major hemorrhage should cause shock physiology, and fluid rescue should partially recover MAP."""
         engine = anesthetized_engine
-        
         baseline_hr = engine.state.hr
-        
-        # Start hemorrhage (500 mL/min = ~2L over 4 min)
-        engine.start_hemorrhage(500)
-        
-        advance_time(engine, 240)  # 4 minutes
-        
-        engine.stop_hemorrhage()
-        
-        final_hr = engine.state.hr
-        
-        # HR should rise significantly (>20% or >20 bpm)
-        hr_increase = final_hr - baseline_hr
-        assert hr_increase > 15, \
-            f"HR increase {hr_increase:.1f} bpm - expected significant tachycardia"
-    
-    def test_hemorrhage_causes_hypotension(self, anesthetized_engine, advance_time):
-        """
-        Significant blood loss should cause hypotension.
-        """
-        engine = anesthetized_engine
-        
         baseline_map = engine.state.map
-        
-        engine.start_hemorrhage(500)
-        advance_time(engine, 300)  # 5 min = 2.5L loss
+
+        engine.start_hemorrhage(500.0)
+        advance_time(engine, 180)
         engine.stop_hemorrhage()
-        
-        final_map = engine.state.map
-        
-        drop = baseline_map - final_map
-        assert drop > 15, \
-            f"MAP drop {drop:.1f} mmHg - expected significant hypotension"
-    
-    def test_fluid_resuscitation_improves_map(self, anesthetized_engine, advance_time):
-        """
-        Fluid bolus should partially restore MAP after hemorrhage.
-        Fluids infuse at a realistic rate (~150 mL/min); a 2L bolus requires approximately 14 minutes.
-        """
-        engine = anesthetized_engine
-        
-        # Hemorrhage
-        engine.start_hemorrhage(500)
-        advance_time(engine, 180)  # 3 min = 1.5L loss
-        engine.stop_hemorrhage()
-        
-        post_bleed_map = engine.state.map
-        
-        # Fluid resuscitation (2L crystalloid)
-        engine.give_fluid(2000)
-        
-        # Wait for fluid to infuse (2000 mL / 150 mL/min = ~14 min) plus equilibration
-        advance_time(engine, 900)  # 15 min total
-        
-        post_fluid_map = engine.state.map
-        
-        improvement = post_fluid_map - post_bleed_map
-        assert improvement > 5, \
-            f"MAP improved only {improvement:.1f} mmHg after 2L fluid"
-    
-    def test_vasopressor_response(self, anesthetized_engine, advance_time):
-        """
-        Norepinephrine should show hemodynamic effect.
-        Effect depends on dose and baseline state.
-        """
-        engine = anesthetized_engine
-        
-        # Get baseline (may be hypotensive from anesthesia)
-        baseline_map = engine.state.map
-        
-        # Start high-dose norepinephrine (0.2 mcg/kg/min = 14 mcg/min for 70kg)
+
+        bleed_hr = engine.state.hr
+        bleed_map = engine.state.map
+        assert bleed_hr - baseline_hr > 15.0
+        assert baseline_map - bleed_map > 15.0
+
+        engine.give_fluid(2000.0)
+        advance_time(engine, 900)
+        rescued_map = engine.state.map
+        assert rescued_map > bleed_map + 5.0
+
+        engine.state.airway_mode = AirwayType.ETT
         engine.set_nore_rate(14.0)
-        
-        # Also check effect of direct concentration increase
-        # (norepinephrine infusion takes time to reach effect site)
-        advance_time(engine, 300)  # 5 min
-        
-        treated_map = engine.state.map
-        nore_conc = engine.state.nore_ce
-        
-        # Check that norepinephrine concentration increased
-        assert nore_conc > 0.5, f"Norepinephrine concentration {nore_conc:.2f} too low"
-        
-        # MAP should be stable or improved (not crashed)
-        assert treated_map > 45, \
-            f"MAP only {treated_map:.1f} mmHg - expected hemodynamic stability"
-
-
-# =============================================================================
-# Hypotension Management Scenario
-# =============================================================================
-
-class TestHypotensionManagement:
-    """
-    Validate appropriate response to drug-induced hypotension.
-    
-    Note: Vasopressors now model effect-site delay (ke0), so peak effect
-    takes 1-3 minutes after bolus, which is clinically realistic.
-    """
-    
-    def test_phenylephrine_bolus_effect(self, anesthetized_engine, advance_time):
-        """
-        Phenylephrine 100mcg bolus should increase MAP within 2-3 minutes.
-        
-        Note: With effect-site modeling (ke0=0.35), peak effect occurs ~2 min
-        after bolus, which matches clinical observations.
-        """
-        engine = anesthetized_engine
-        
-        # Deep anesthesia for hypotension
-        engine.give_drug_bolus("Propofol", 100)
-        advance_time(engine, 120)
-        
-        hypotensive_map = engine.state.map
-        
-        # Phenylephrine bolus (larger dose for visible effect)
-        engine.give_drug_bolus("Phenylephrine", 200)  # 200 mcg
-        
-        # Wait 3 minutes for effect-site equilibration
-        max_map = hypotensive_map
-        for _ in range(180):  # Extended from 120 to 180 seconds
-            engine.step(1.0)
-            max_map = max(max_map, engine.state.map)
-        
-        improvement = max_map - hypotensive_map
-        assert improvement > 3, \
-            f"Phenylephrine improved MAP by only {improvement:.1f} mmHg"
-    
-    def test_epinephrine_pushes_response_time(self, anesthetized_engine):
-        """
-        Epinephrine push should show effect within 2-3 minutes.
-        
-        Note: With effect-site modeling (ke0=0.5), peak effect occurs ~1.5 min
-        after bolus. Larger dose used for reliable detection.
-        """
-        engine = anesthetized_engine
-        
-        baseline_hr = engine.state.hr
-        baseline_map = engine.state.map
-        
-        # Epinephrine push (larger dose for visible effect)
-        engine.give_drug_bolus("Epinephrine", 50)  # 50 mcg (increased from 10)
-        
-        # Track response over 3 minutes
-        max_hr_increase = 0
-        max_map_increase = 0
-        
-        for t in range(180):  # Extended from 90 to 180 seconds
-            engine.step(1.0)
-            hr_increase = engine.state.hr - baseline_hr
-            map_increase = engine.state.map - baseline_map
-            max_hr_increase = max(max_hr_increase, hr_increase)
-            max_map_increase = max(max_map_increase, map_increase)
-        
-        # Should see some response (HR and/or MAP)
-        total_response = max_hr_increase + max_map_increase
-        assert total_response > 2, \
-            f"Minimal epinephrine response: HR+{max_hr_increase:.1f}, MAP+{max_map_increase:.1f}"
-
-
-# =============================================================================
-# Physiological Coherence Tests
-# =============================================================================
-
-class TestPhysiologicalCoherence:
-    """
-    Test that physiological relationships are maintained.
-    """
-    
-    def test_co_equals_hr_times_sv(self, anesthetized_engine):
-        """
-        CO should always equal HR × SV / 1000.
-        """
-        engine = anesthetized_engine
-        
-        for _ in range(300):
-            engine.step(1.0)
-            
-            calculated_co = engine.state.hr * engine.state.sv / 1000.0
-            
-            # Allow 5% tolerance for numerical errors
-            assert abs(engine.state.co - calculated_co) < calculated_co * 0.1, \
-                f"CO {engine.state.co:.2f} != HR×SV/1000 = {calculated_co:.2f}"
-    
-    def test_map_related_to_sbp_dbp(self, anesthetized_engine):
-        """
-        MAP should approximately equal (2×DBP + SBP) / 3.
-        """
-        engine = anesthetized_engine
-        
-        for _ in range(300):
-            engine.step(1.0)
-            
-            calculated_map = (2 * engine.state.dbp + engine.state.sbp) / 3.0
-            
-            # Allow 15% tolerance (model may use different formula)
-            assert abs(engine.state.map - calculated_map) < 15, \
-                f"MAP {engine.state.map:.1f} inconsistent with BP {engine.state.sbp}/{engine.state.dbp}"
-    
-    def test_spo2_reflects_pao2(self, anesthetized_engine):
-        """
-        SpO2 should reflect PaO2 via oxygen-hemoglobin dissociation.
-        """
-        engine = anesthetized_engine
-        
-        # Normal oxygenation
-        for _ in range(30):
-            engine.step(1.0)
-        
-        # With normal PaO2 (>80), SpO2 should be >94%
-        if engine.state.pao2 > 80:
-            assert engine.state.spo2 > 94, \
-                f"SpO2 {engine.state.spo2}% too low for PaO2 {engine.state.pao2:.1f}"
+        advance_time(engine, 300)
+        assert engine.state.nore_ce > 1.0

@@ -8,30 +8,11 @@ _PROFILE_COL_SVR = 3
 _PROFILE_COL_SV = 4
 
 @dataclass(frozen=True)
-class DisturbanceVector:
+class DisturbanceEffects:
     bis: float = 0.0
     svr: float = 0.0
     sv: float = 0.0
     hr: float = 0.0
-
-    def as_tuple(self) -> tuple:
-        return (self.bis, self.svr, self.sv, self.hr)
-
-    def __iter__(self):
-        return iter(self.as_tuple())
-
-    def __len__(self) -> int:
-        return 4
-
-    def __getitem__(self, idx: int) -> float:
-        return self.as_tuple()[idx]
-
-    def __eq__(self, other) -> bool:
-        if isinstance(other, (list, tuple)):
-            return tuple(other) == self.as_tuple()
-        if isinstance(other, DisturbanceVector):
-            return other.as_tuple() == self.as_tuple()
-        return False
 
 
 PROFILE_META = [
@@ -94,17 +75,17 @@ class Disturbances:
         self._profile_svr = self.disturb_point[:, _PROFILE_COL_SVR]
         self._profile_sv = self.disturb_point[:, _PROFILE_COL_SV]
 
-    def compute_dist(self, time: float) -> DisturbanceVector:
+    def compute_dist(self, time: float) -> DisturbanceEffects:
         """
         Interpolate the disturbance profile for the given time (seconds).
 
-        Returns DisturbanceVector with BIS/HR/SVR/SV deltas.
+        Returns DisturbanceEffects with BIS/HR/SVR/SV deltas.
         """
         if self.disturb_point is None:
-            return DisturbanceVector()
+            return DisturbanceEffects()
 
         dist_bis = np.interp(time, self._profile_time, self._profile_bis)
         dist_hr = np.interp(time, self._profile_time, self._profile_hr)
         dist_svr = np.interp(time, self._profile_time, self._profile_svr)
         dist_sv = np.interp(time, self._profile_time, self._profile_sv)
-        return DisturbanceVector(dist_bis, dist_svr, dist_sv, dist_hr)
+        return DisturbanceEffects(dist_bis, dist_svr, dist_sv, dist_hr)
