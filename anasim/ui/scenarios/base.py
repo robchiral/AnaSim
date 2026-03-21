@@ -58,7 +58,7 @@ def require_fgf_preox() -> Callable:
         msgs = []
         if not o2_ok: msgs.append(f"O₂: {engine.circuit.fgf_o2:.1f}/8+ L/min")
         if not air_ok: msgs.append(f"Air: {engine.circuit.fgf_air:.1f}/0 L/min")
-        return False, "" + ", ".join(msgs)
+        return False, join_messages(msgs)
     return check
 
 
@@ -73,6 +73,65 @@ def require_propofol_cp(threshold: float = 2.0) -> Callable:
 def monitor_value(engine, attr: str):
     """Return the learner-facing monitor value for a vital sign."""
     return engine.state.display_value(attr)
+
+
+def join_messages(messages) -> str:
+    """Join non-empty requirement messages consistently."""
+    return ", ".join(message for message in messages if message)
+
+
+def cumulative_fluid_given(engine) -> float:
+    """Return tracked cumulative fluid resuscitation, if available."""
+    hemo = getattr(engine, "hemo", None)
+    return float(getattr(hemo, "cumulative_fluid_given", 0.0)) if hemo else 0.0
+
+
+def any_vasopressor_running(engine) -> bool:
+    """Return True when a supported vasopressor is active."""
+    return any((
+        getattr(engine, "nore_rate_ug_sec", 0.0) > 0
+        or (getattr(engine, "tci_nore", None) and engine.tci_nore.target > 0),
+        getattr(engine, "phenyl_rate_ug_sec", 0.0) > 0
+        or (getattr(engine, "tci_phenyl", None) and engine.tci_phenyl.target > 0),
+        getattr(engine, "epi_rate_ug_sec", 0.0) > 0
+        or (getattr(engine, "tci_epi", None) and engine.tci_epi.target > 0),
+    ))
+
+
+def require_stable_baseline_vitals(
+    hr_min: float = 60.0,
+    hr_max: float = 100.0,
+    map_min: float = 60.0,
+    spo2_min: float = 94.0,
+    fail_message: str = "Wait for stable baseline vitals",
+) -> Callable:
+    """Check that monitor-facing baseline vitals are in a reasonable range."""
+    def check(engine) -> Tuple[bool, str]:
+        hr = monitor_value(engine, "hr")
+        map_val = monitor_value(engine, "map")
+        spo2 = monitor_value(engine, "spo2")
+        stable = hr_min < hr < hr_max and map_val > map_min and spo2 > spo2_min
+        return (True, "") if stable else (False, fail_message)
+    return check
+
+
+def require_fluid_given(min_ml: float = 500.0, fail_prefix: str = "Give fluid bolus") -> Callable:
+    """Check that a minimum tracked fluid bolus has been given."""
+    def check(engine) -> Tuple[bool, str]:
+        fluid_given = cumulative_fluid_given(engine)
+        if fluid_given >= min_ml:
+            return True, ""
+        if fluid_given > 0.0:
+            return False, f"{fail_prefix} ({fluid_given:.0f}/{min_ml:.0f} mL given)"
+        return False, f"{fail_prefix} ({min_ml:.0f} mL via Events tab)"
+    return check
+
+
+def require_vasopressor_running(fail_message: str) -> Callable:
+    """Check that norepinephrine, phenylephrine, or epinephrine is active."""
+    def check(engine) -> Tuple[bool, str]:
+        return (True, "") if any_vasopressor_running(engine) else (False, fail_message)
+    return check
 
 
 def require_bis_below(threshold: float) -> Callable:
@@ -160,10 +219,10 @@ def require_all(*checks) -> Callable:
             if not met:
                 all_met = False
                 if msg:
-                    all_msgs.append(msg.replace("", ""))
+                    all_msgs.append(msg)
         if all_met:
             return True, ""
-        return False, "" + ", ".join(all_msgs)
+        return False, join_messages(all_msgs)
     return combined
 
 

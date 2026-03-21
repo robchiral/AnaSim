@@ -5,25 +5,20 @@ Teaches recognition and management of intraoperative hemorrhage/hypovolemic shoc
 """
 
 from typing import Tuple
-from .base import Scenario, ScenarioStep, always_pass, monitor_value
+from .base import (
+    Scenario,
+    ScenarioStep,
+    join_messages,
+    monitor_value,
+    require_fluid_given,
+    require_stable_baseline_vitals,
+    require_vasopressor_running,
+)
 
 
 def _require_simulation_running() -> callable:
     """Check simulation is running with stable vitals."""
-    def check(engine) -> Tuple[bool, str]:
-        # Check for reasonable baseline vitals
-        hr = monitor_value(engine, "hr")
-        map_val = monitor_value(engine, "map")
-        spo2 = monitor_value(engine, "spo2")
-        stable = (
-            60 < hr < 100 and
-            map_val > 60 and
-            spo2 > 94
-        )
-        if stable:
-            return True, ""
-        return False, "Wait for stable baseline vitals"
-    return check
+    return require_stable_baseline_vitals()
 
 
 def _require_hemorrhage_active() -> callable:
@@ -53,40 +48,15 @@ def _require_shock_recognition() -> callable:
         msgs = []
         if not tachycardia: msgs.append(f"HR: {hr:.0f} (watch for ↑)")
         if not hypotension: msgs.append(f"MAP: {map_val:.0f} (watch for ↓)")
-        return False, "" + ", ".join(msgs)
-    return check
-
-
-def _require_fluid_given(min_ml: float = 500) -> callable:
-    """Check that fluid resuscitation has been given."""
-    def check(engine) -> Tuple[bool, str]:
-        # Track if user has given any fluid boluses during this session
-        # Check for cumulative fluid given (tracked in hemodynamics model)
-        # Note: engine uses 'hemo' not 'hemodynamics'
-        if hasattr(engine, 'hemo') and hasattr(engine.hemo, 'cumulative_fluid_given'):
-            fluid_given = engine.hemo.cumulative_fluid_given
-            if fluid_given >= min_ml:
-                return True, ""
-            return False, f"Give fluid bolus ({fluid_given:.0f}/{min_ml:.0f} mL given)"
-        
-        # Fallback: check if any fluid bolus was given recently (via blood volume increase)
-        # This is less reliable but works as backup
-        return False, f"Give fluid bolus ({min_ml:.0f} mL via Events tab)"
+        return False, join_messages(msgs)
     return check
 
 
 def _require_vasopressor() -> callable:
     """Check that vasopressor support started."""
-    def check(engine) -> Tuple[bool, str]:
-        # Check norepinephrine or phenylephrine running
-        nore_on = engine.nore_rate_ug_sec > 0 or (engine.tci_nore and engine.tci_nore.target > 0)
-        phenyl_on = engine.phenyl_rate_ug_sec > 0 or (engine.tci_phenyl and engine.tci_phenyl.target > 0)
-        epi_on = engine.epi_rate_ug_sec > 0 or (engine.tci_epi and engine.tci_epi.target > 0)
-        
-        if nore_on or phenyl_on or epi_on:
-            return True, ""
-        return False, "Start vasopressor (norepinephrine, phenylephrine, or epinephrine)"
-    return check
+    return require_vasopressor_running(
+        "Start vasopressor (norepinephrine, phenylephrine, or epinephrine)"
+    )
 
 
 def _require_hemorrhage_stopped() -> callable:
@@ -113,7 +83,7 @@ def _require_hemodynamic_stability() -> callable:
         msgs = []
         if not map_ok: msgs.append(f"MAP: {map_val:.0f}/65+ mmHg")
         if not hemorrhage_stopped: msgs.append("Stop hemorrhage first")
-        return False, "" + ", ".join(msgs)
+        return False, join_messages(msgs)
     return check
 
 
@@ -168,7 +138,7 @@ def create_hemorrhage_response() -> Scenario:
                 "In practice: use blood products for Class III-IV hemorrhage.<br><br>"
                 "<i>Goal: restore intravascular volume while awaiting surgical hemostasis.</i>"
             ),
-            check_requirements=_require_fluid_given(500),
+                check_requirements=require_fluid_given(500),
         ),
         ScenarioStep(
             id="START_VASOPRESSOR",

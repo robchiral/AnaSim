@@ -3,7 +3,7 @@ Emergence scenario definitions (Balanced and TIVA variants).
 """
 
 from typing import Tuple
-from .base import Scenario, ScenarioStep, monitor_value
+from .base import Scenario, ScenarioStep, join_messages, monitor_value
 
 
 def _require_assess() -> callable:
@@ -18,7 +18,7 @@ def _require_assess() -> callable:
         msgs = []
         if not bis_ok: msgs.append(f"BIS: {bis:.0f}")
         if not map_ok: msgs.append(f"MAP: {map_val:.0f}")
-        return False, "" + ", ".join(msgs)
+        return False, join_messages(msgs)
     return check
 
 
@@ -32,7 +32,7 @@ def _require_agents_stopped_balanced() -> callable:
         msgs = []
         if not gas_off: msgs.append("Vaporizer still on")
         if not high_flow: msgs.append(f"FGF: {engine.circuit.fgf_total():.1f}/6+ L/min")
-        return False, "" + ", ".join(msgs)
+        return False, join_messages(msgs)
     return check
 
 
@@ -46,7 +46,7 @@ def _require_agents_stopped_tiva() -> callable:
         msgs = []
         if not prop_off: msgs.append("Propofol running")
         if not remi_off: msgs.append("Remi running")
-        return False, "" + ", ".join(msgs)
+        return False, join_messages(msgs)
     return check
 
 
@@ -61,7 +61,7 @@ def _require_awakening() -> callable:
         msgs = []
         if not bis_ok: msgs.append(f"BIS: {bis:.0f}/70+")
         if not rr_ok: msgs.append(f"RR: {engine.state.rr:.0f}/6+")
-        return False, "" + ", ".join(msgs)
+        return False, join_messages(msgs)
     return check
 
 
@@ -79,7 +79,7 @@ def _require_extubation_criteria() -> callable:
         if not awake: msgs.append(f"BIS: {bis:.0f}/80+")
         if not breathing: msgs.append(f"RR: {engine.state.rr:.0f}/8+")
         if not extubated: msgs.append("Still intubated")
-        return False, "" + ", ".join(msgs)
+        return False, join_messages(msgs)
     return check
 
 
@@ -95,7 +95,7 @@ def _require_recovery() -> callable:
         msgs = []
         if not spo2_ok: msgs.append(f"SpO₂: {spo2:.0f}/95+")
         if not rr_ok: msgs.append(f"RR: {engine.state.rr:.0f}/10+")
-        return False, "" + ", ".join(msgs)
+        return False, join_messages(msgs)
     return check
 
 
