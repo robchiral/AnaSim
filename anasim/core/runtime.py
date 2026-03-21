@@ -25,7 +25,7 @@ from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resp_mech import VentMode
 
 from .monitors import phase_from_rr, step_monitors
-from .projection import PhysiologyStepState, project_runtime_physiology, sync_pk_state
+from .projection import PhysiologyStepState, project_runtime_physiology, set_state_float_fields, sync_pk_state
 from .state import AirwayType
 
 if TYPE_CHECKING:
@@ -233,7 +233,7 @@ def update_shivering(engine: "SimulationEngine", dt: float) -> float:
     else:
         engine._shiver_level = target
     engine._shiver_level = clamp01(engine._shiver_level)
-    state.shivering = engine._shiver_level
+    set_state_float_fields(state, shivering=engine._shiver_level)
     return engine._shiver_level
 
 
@@ -266,7 +266,10 @@ def step_temperature(engine: "SimulationEngine", dt: float) -> None:
     net_heat_flux = current_production + warming_input - heat_loss
     heat_capacity = engine.patient.weight * engine.specific_heat
     d_temp = (net_heat_flux * dt) / heat_capacity
-    state.temp_c = clamp(temp_c + d_temp, thermal_tuning.temp_min_c, thermal_tuning.temp_max_c)
+    set_state_float_fields(
+        state,
+        temp_c=clamp(temp_c + d_temp, thermal_tuning.temp_min_c, thermal_tuning.temp_max_c),
+    )
 
 
 def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffects:
@@ -381,15 +384,19 @@ def step_machine(engine: "SimulationEngine", dt: float) -> tuple[float, float]:
     if not connected:
         fi_sevo = 0.0
         fi_n2o = 0.0
-        state.fio2 = 0.21
+        fio2 = 0.21
     else:
         fi_vapor_circuit = composition.fi_agent
         fi_sevo = fi_vapor_circuit if volatile_enabled and engine.active_agent == "Sevoflurane" else 0.0
         fi_n2o = composition.fin2o
-        state.fio2 = composition.fio2
+        fio2 = composition.fio2
 
-    state.fi_sevo = fi_sevo * 100.0
-    state.fi_n2o = fi_n2o * 100.0
+    set_state_float_fields(
+        state,
+        fio2=fio2,
+        fi_sevo=fi_sevo * 100.0,
+        fi_n2o=fi_n2o * 100.0,
+    )
 
     p_alv_prev = engine.pk_sevo.state.p_alv
     uptake_sevo = (fi_sevo - p_alv_prev) * total_va if connected else 0.0
@@ -418,16 +425,23 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
     update_pk_hemodynamics(engine, co_curr)
 
     engine.pk_sevo.step(dt, fi_sevo, state.va, co_curr, temp_c=state.temp_c)
-    state.et_sevo = engine.pk_sevo.state.p_alv * 100.0
-    state.mac_sevo = engine.pk_sevo.state.mac
+    et_sevo = engine.pk_sevo.state.p_alv * 100.0
+    mac_sevo = engine.pk_sevo.state.mac
 
     mac_n2o = 0.0
+    et_n2o = 0.0
     if getattr(engine, "pk_n2o", None) is not None:
         engine.pk_n2o.step(dt, fi_n2o, state.va, co_curr, temp_c=state.temp_c)
-        state.et_n2o = engine.pk_n2o.state.p_alv * 100.0
+        et_n2o = engine.pk_n2o.state.p_alv * 100.0
         mac_n2o = engine.pk_n2o.state.mac
-    state.mac_n2o = mac_n2o
-    state.mac = state.mac_sevo + state.mac_n2o
+    set_state_float_fields(
+        state,
+        et_sevo=et_sevo,
+        mac_sevo=mac_sevo,
+        et_n2o=et_n2o,
+        mac_n2o=mac_n2o,
+        mac=mac_sevo + mac_n2o,
+    )
 
     engine.pk_prop.step(dt, engine.propofol_rate_mg_sec)
     engine.pk_remi.step(dt, engine.remi_rate_ug_sec)

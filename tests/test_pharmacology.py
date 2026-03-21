@@ -16,6 +16,12 @@ import numpy as np
 
 # --- Rigorous Pharmacology Validity & Sanity Checks ---
 
+
+def _advance_model(model, seconds: int, infusion_rate: float = 0.0, **kwargs) -> None:
+    for _ in range(seconds):
+        model.step(1.0, infusion_rate, **kwargs)
+
+
 class TestPharmacologySanity:
     """
     Comprehensive tests validating PK models against literature values (sanity checks)
@@ -146,7 +152,17 @@ class TestVasopressorPK:
         assert c1_with_prop > c1_no_prop, \
             f"Propofol (Cp>3.53) should reduce NE clearance → higher [NE] (with: {c1_with_prop:.2f}, without: {c1_no_prop:.2f})"
     
-    def test_vasopressor_effect_site_delay(self, patient):
+    @pytest.mark.parametrize(
+        ("vasopressor_cls", "name", "equil_time"),
+        [
+            (EpinephrinePK, "Epinephrine", 120),
+            (PhenylephrinePK, "Phenylephrine", 180),
+            (VasopressinPK, "Vasopressin", 300),
+            (DobutaminePK, "Dobutamine", 120),
+            (MilrinonePK, "Milrinone", 600),
+        ],
+    )
+    def test_vasopressor_effect_site_delay(self, patient, vasopressor_cls, name, equil_time):
         """
         All vasopressors should show effect-site lag behind plasma after bolus.
         This tests the ke0 modeling for realistic clinical response timing.
@@ -154,49 +170,25 @@ class TestVasopressorPK:
         Note: Phenylephrine has slower ke0 (0.35) vs epinephrine (0.5), so it
         equilibrates more slowly; 3 minutes are allowed for equilibration.
         """
-        # Test each vasopressor
-        for VasopressorClass, name, equil_time in [
-            (EpinephrinePK, "Epinephrine", 120),     # 2 min equilibration
-            (PhenylephrinePK, "Phenylephrine", 180), # 3 min equilibration (slower ke0)
-            (VasopressinPK, "Vasopressin", 300),     # 5 min equilibration (slower ke0)
-            (DobutaminePK, "Dobutamine", 120),       # 2 min equilibration
-            (MilrinonePK, "Milrinone", 600),         # 10 min equilibration (slower ke0)
-        ]:
-            model = VasopressorClass(patient)
-            
-            # Simulate a bolus (units vary by drug)
-            if name == "Vasopressin":
-                bolus_amount = 1000.0  # 1 U = 1000 mU
-            else:
-                bolus_amount = 1000.0  # 1000 mcg
-            model.state.c1 = bolus_amount / model.v1  # Instant plasma rise
-            
-            # Track Ce lag
-            c1_initial = model.state.c1
-            ce_initial = model.state.ce  # Should be 0
-            
-            # Step for 30 seconds
-            for _ in range(30):
-                model.step(1.0, 0.0)
-            
-            ce_30s = model.state.ce
-            c1_30s = model.state.c1
-            
-            # Ce should have risen but still be below C1 (lag effect)
-            assert ce_30s > ce_initial, f"{name}: Ce should rise after bolus"
-            assert ce_30s < c1_initial * 0.9, f"{name}: Ce should lag behind C1 peak"
-            
-            # Step to equilibration time - Ce should approach C1
-            for _ in range(equil_time - 30):
-                model.step(1.0, 0.0)
-            
-            ce_final = model.state.ce
-            c1_final = model.state.c1
-            
-            # At equilibration time, Ce should be within ~30% of C1
-            if c1_final > 0.1:  # Only check if meaningful concentration
-                ratio = ce_final / c1_final
-                assert 0.65 < ratio < 1.35, f"{name}: Ce should equilibrate with C1 by {equil_time}s (ratio={ratio:.2f})"
+        model = vasopressor_cls(patient)
+
+        bolus_amount = 1000.0  # 1000 mcg, or 1 U = 1000 mU for vasopressin.
+        model.state.c1 = bolus_amount / model.v1
+
+        c1_initial = model.state.c1
+        ce_initial = model.state.ce
+        _advance_model(model, 30)
+
+        ce_30s = model.state.ce
+        assert ce_30s > ce_initial, f"{name}: Ce should rise after bolus"
+        assert ce_30s < c1_initial * 0.9, f"{name}: Ce should lag behind C1 peak"
+
+        _advance_model(model, equil_time - 30)
+        c1_final = model.state.c1
+        ce_final = model.state.ce
+        if c1_final > 0.1:
+            ratio = ce_final / c1_final
+            assert 0.65 < ratio < 1.35, f"{name}: Ce should equilibrate with C1 by {equil_time}s (ratio={ratio:.2f})"
 
     def test_vasopressin_pk_steady_state(self, patient):
         """

@@ -12,10 +12,11 @@ Each `SimulationEngine.step()` executes subsystems in this order:
 5. Machine         -> Ventilator, bag-mask, vaporizer, circuit (O2/Air/N2O)
 6. PK models       -> Drug concentrations (Ce, Cp) updated
 7. Physiology      -> Resp mechanics -> Respiration -> Hemodynamics
-8. Monitors        -> Waveforms, display_* numerics, alarms, NIBP
-9. Shivering       -> Thermoregulatory metabolic load
-10. Temperature    -> Core temperature and redistribution
-11. Death detector -> Viability check using raw hemodynamics
+8. Projection      -> Live subsystem state copied into SimulationState
+9. Monitors        -> Waveforms, display_* numerics, alarms, NIBP
+10. Shivering      -> Thermoregulatory metabolic load
+11. Temperature    -> Core temperature and redistribution
+12. Death detector -> Viability check using raw hemodynamics
 ```
 
 ## Raw vs Display Ownership
@@ -23,7 +24,7 @@ Each `SimulationEngine.step()` executes subsystems in this order:
 | Writer | Fields owned | Primary consumers |
 |-------|--------------|-------------------|
 | `projection.sync_pk_state()` | `propofol_ce/cp`, `remi_ce/cp`, vasoactive `*_ce` | Physiology, PD models, recorder |
-| `runtime.step_physiology()` | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `rr`, `vt`, `mv`, `va`, `etco2`, `pa_co2`, `alveolar_co2`, `pao2`, `sao2` | Recorder, internal logic, analytics, physiology tests |
+| `projection.project_runtime_physiology()` | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `rr`, `vt`, `mv`, `va`, `etco2`, `pa_co2`, `alveolar_co2`, `pao2`, `sao2` | Recorder, internal logic, analytics, physiology tests |
 | `monitors.step_monitors()` | `display_map`, `display_hr`, `display_sbp`, `display_dbp`, `display_bis`, `display_etco2`, `display_spo2`, waveforms, alarms | UI, CLI, tutorial/scenario checks |
 
 The monitor layer must not overwrite raw arterial pressure or heart rate.

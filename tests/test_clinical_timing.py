@@ -15,6 +15,15 @@ from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.physiology.respiration import RespiratoryModel
 
 
+def _infuse(model, seconds: int, infusion_rate: float, **step_kwargs) -> None:
+    for _ in range(seconds):
+        model.step(1.0, infusion_rate, **step_kwargs)
+
+
+def _effect_site_half_time_minutes(model, max_seconds: int = 3600) -> float:
+    return model.simulate_decay(target_fraction=0.5, max_seconds=max_seconds)
+
+
 # =============================================================================
 # PK Timing Tests - Effect Site Kinetics
 # =============================================================================
@@ -70,22 +79,8 @@ class TestPropofolTiming:
         
         # 2 hour infusion at 10 mg/kg/hr
         infusion_rate = 10.0 * patient.weight / 3600.0  # mg/s
-        
-        for _ in range(7200):  # 2 hours
-            model.step(1.0, infusion_rate)
-        
-        peak_c1 = model.state.c1
-        
-        # Stop infusion, measure CSHT (time to 50% decay)
-        csht_seconds = None
-        for t in range(3600):  # Max 60 min
-            model.step(1.0, 0.0)
-            if model.state.c1 < peak_c1 * 0.5:
-                csht_seconds = t
-                break
-        
-        assert csht_seconds is not None, "Did not reach 50% decay in 60 minutes"
-        csht_minutes = csht_seconds / 60.0
+        _infuse(model, 7200, infusion_rate)
+        csht_minutes = _effect_site_half_time_minutes(model)
         
         # Model runs slightly faster than literature CSHT; keep a realistic lower bound.
         assert 6 < csht_minutes < 45, \
@@ -100,16 +95,8 @@ class TestPropofolTiming:
         def measure_csht(duration_hours):
             model = PropofolPKMarsh(patient)
             infusion_rate = 10.0 * patient.weight / 3600.0  # mg/s
-            # Infuse
-            for _ in range(int(duration_hours * 3600)):
-                model.step(1.0, infusion_rate)
-            peak_ce = model.state.ce
-            # Measure decay to 50%
-            for t in range(3600):
-                model.step(1.0, 0.0)
-                if model.state.ce < peak_ce * 0.5:
-                    return t / 60.0
-            return 60.0
+            _infuse(model, int(duration_hours * 3600), infusion_rate)
+            return _effect_site_half_time_minutes(model)
         
         csht_1h = measure_csht(1)
         csht_4h = measure_csht(4)
@@ -132,22 +119,8 @@ class TestRemifentanilTiming:
         
         # 4 hour infusion (extreme case to test context insensitivity)
         infusion_rate = 0.2 * patient.weight / 60.0 / 1000.0  # 0.2 mcg/kg/min -> mg/s
-        
-        for _ in range(14400):  # 4 hours
-            model.step(1.0, infusion_rate)
-        
-        peak = model.state.c1
-        
-        # Stop and measure CSHT
-        csht_seconds = None
-        for t in range(1200):  # Max 20 min
-            model.step(1.0, 0.0)
-            if model.state.c1 < peak * 0.5:
-                csht_seconds = t
-                break
-        
-        assert csht_seconds is not None, "Remi did not decay to 50% within 20 min"
-        csht_minutes = csht_seconds / 60.0
+        _infuse(model, 14400, infusion_rate)
+        csht_minutes = _effect_site_half_time_minutes(model, max_seconds=1200)
         
         # Should be <8 min even after 4h infusion (context insensitive)
         assert csht_minutes < 9, \
@@ -161,8 +134,7 @@ class TestRemifentanilTiming:
         
         # 30 min infusion
         infusion_rate = 0.2 * patient.weight / 60.0 / 1000.0
-        for _ in range(1800):
-            model.step(1.0, infusion_rate)
+        _infuse(model, 1800, infusion_rate)
         
         peak = model.state.c1
         

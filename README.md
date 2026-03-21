@@ -35,7 +35,7 @@ See [docs/CLI_USAGE.md](docs/CLI_USAGE.md) for detailed CLI instructions.
 
 ## Features
 
-- **Physiological modeling:** Cardiovascular and respiratory systems responding to drugs, ventilation, and surgical stimulation at 60Hz.
+- **Physiological modeling:** Cardiovascular and respiratory systems responding to drugs, ventilation, and surgical stimulation with a configurable simulation timestep (`dt`, default `0.01 s`).
 - **Ventilation modes:** VCV, PCV, PSV, CPAP, and manual bag-mask support.
 - **Pharmacology:** PK/PD models for propofol, remifentanil, sevoflurane, rocuronium, and vasoactive agents.
 - **Patient monitoring:** Simulated ECG, SpO2, capnography, NIBP, and depth of anesthesia.
@@ -51,7 +51,7 @@ Examples of deliberate deviations are documented inline in the code and preserve
 - propofol hemodynamic vasodilation is capped less aggressively than the published Su et al. 2023 Emax so treated maintenance states do not default into hypotension
 - rocuronium spontaneous recovery uses a faster runtime `ke0` than pure literature modeling so recovery timing stays in the clinical range
 
-Steady-state startup is also calibrated as a managed-maintenance history rather than a pure mathematical equilibrium fill. That means the opening frame is intended to resemble a patient already under controlled anesthesia, not an untreated compartment equilibrium.
+Steady-state startup is also calibrated as a managed-maintenance history rather than a pure mathematical equilibrium fill. That means the opening frame is intended to resemble a patient already under controlled anesthesia.
 
 ## Comparison
 

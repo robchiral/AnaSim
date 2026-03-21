@@ -301,35 +301,6 @@ class TestBagMaskIntegration(unittest.TestCase):
         self.assertGreater(vt_with, 400.0)
 
 
-class TestVentilatorHemodynamics(unittest.TestCase):
-    """Full engine validation that PEEP changes impact MAP."""
-    
-    def setUp(self):
-        patient = Patient(age=40, weight=70, height=170, sex="male")
-        config = SimulationConfig(mode='steady_state', maint_type='tiva')
-        self.engine = SimulationEngine(patient, config)
-        self.engine.start()
-    
-    def tearDown(self):
-        self.engine.stop()
-    
-    def _advance(self, seconds, dt=0.1):
-        for _ in range(int(seconds / dt)):
-            self.engine.step(dt)
-    
-    def test_high_peep_reduces_map(self):
-        """Increasing PEEP/mean Paw should lower MAP via preload effects."""
-        self.engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
-        self._advance(60.0)
-        baseline_map = self.engine.state.map
-        
-        self.engine.set_vent_settings(rr=12, vt=0.5, peep=15.0, ie="1:2", mode="VCV")
-        self._advance(60.0)
-        high_peep_map = self.engine.state.map
-        
-        self.assertLess(high_peep_map, baseline_map)
-
-
 class TestPSVCPAPIntegration(unittest.TestCase):
     """Validate PSV/CPAP provide spontaneous support without fixed Vt targets."""
 

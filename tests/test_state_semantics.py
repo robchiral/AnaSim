@@ -12,6 +12,34 @@ from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.respiration import RespState, RespiratoryModel
 
 
+FLOAT_CONTRACT_FIELDS = (
+    "time",
+    "propofol_ce",
+    "remi_ce",
+    "map",
+    "hr",
+    "co",
+    "sbp",
+    "dbp",
+    "bis",
+    "display_bis",
+    "fio2",
+    "fi_sevo",
+    "et_sevo",
+    "mac",
+    "rr",
+    "vt",
+    "mv",
+    "etco2",
+    "spo2",
+    "nibp_map",
+    "hb_g_dl",
+    "hct",
+    "temp_c",
+    "oxygen_delivery_ratio",
+)
+
+
 def _build_engine(dt: float = 0.5) -> SimulationEngine:
     patient = Patient(age=40, weight=70, height=170, sex="male")
     engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=dt, rng_seed=123))
@@ -36,6 +64,12 @@ def _steady_resp_state() -> RespState:
         drive_central=1.0,
         muscle_factor=1.0,
     )
+
+
+def _assert_builtin_float_contract(state) -> None:
+    for field_name in FLOAT_CONTRACT_FIELDS:
+        value = getattr(state, field_name)
+        assert type(value) is float, f"{field_name} should be built-in float, got {type(value).__name__}"
 
 
 def test_raw_hemodynamics_are_not_overwritten_by_display_smoothing():
@@ -205,6 +239,26 @@ def test_engine_snapshots_preserve_core_physiologic_invariants(mode: str, maint_
     assert engine.state.map == pytest.approx((engine.state.sbp + 2.0 * engine.state.dbp) / 3.0, abs=8.0)
     assert 0.0 <= engine.state.hct <= 0.7
     assert engine.state.hb_g_dl >= 0.0
+
+
+@pytest.mark.parametrize(
+    ("mode", "maint_type"),
+    [
+        ("awake", None),
+        ("steady_state", "tiva"),
+        ("steady_state", "balanced"),
+    ],
+)
+def test_public_state_numeric_fields_use_builtin_floats(mode: str, maint_type: str | None):
+    patient = Patient(age=40, weight=70, height=170, sex="male")
+    config = SimulationConfig(mode=mode, maint_type=maint_type, rng_seed=123) if maint_type else SimulationConfig(mode=mode, rng_seed=123)
+    engine = SimulationEngine(patient, config)
+
+    _assert_builtin_float_contract(engine.state)
+
+    engine.start()
+    engine.step(0.5)
+    _assert_builtin_float_contract(engine.state)
 
 
 def test_tci_controller_resyncs_after_bolus_and_pk_scaling():
