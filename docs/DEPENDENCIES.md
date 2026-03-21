@@ -1,186 +1,122 @@
 # Dependencies
 
-## Execution Order (engine.step)
+## Execution Order
 
-Each simulation step executes subsystems in this order:
+Each `SimulationEngine.step()` executes subsystems in this order:
 
+```text
+1. Disturbances    -> Surgical stimulation, bleeding, fluids, sepsis, anaphylaxis
+2. PK scaling      -> Live PK volumes/clearances updated from blood volume + CO
+3. TCI sync        -> Active controllers resynced/rebuilt against the live PK model
+4. TCI controllers -> Drug target -> infusion rate calculation
+5. Machine         -> Ventilator, bag-mask, vaporizer, circuit (O2/Air/N2O)
+6. PK models       -> Drug concentrations (Ce, Cp) updated
+7. Physiology      -> Resp mechanics -> Respiration -> Hemodynamics
+8. Monitors        -> Waveforms, display_* numerics, alarms, NIBP
+9. Shivering       -> Thermoregulatory metabolic load
+10. Temperature    -> Core temperature and redistribution
+11. Death detector -> Viability check using raw hemodynamics
 ```
-1. Disturbances    → Surgical stimulation, user events
-2. TCI Controllers → Drug target → infusion rate calculation (synced to sim time)
-3. Machine         → Ventilator, bag-mask, vaporizer, circuit (O2/Air/N2O)
-4. PK Models       → Drug concentrations (Ce, Cp) updated
-5. Physiology      → Resp Mechanics (assisted only) → Respiration → Hemodynamics
-6. Monitors        → Waveforms, displayed values
-7. Shivering       → Thermoregulatory heat/metabolic load
-8. Temperature     → Core temp, redistribution
-9. Death Detector  → Viability check
-```
 
-## Data Flow Diagram
+## Raw vs Display Ownership
+
+| Writer | Fields owned | Primary consumers |
+|-------|--------------|-------------------|
+| `_sync_pk_state()` | `propofol_ce/cp`, `remi_ce/cp`, vasoactive `*_ce` | Physiology, PD models, recorder |
+| `_step_physiology()` | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `rr`, `vt`, `mv`, `va`, `etco2`, `pa_co2`, `alveolar_co2`, `pao2`, `sao2` | Recorder, internal logic, analytics, physiology tests |
+| `_step_monitors()` | `display_map`, `display_hr`, `display_sbp`, `display_dbp`, `display_bis`, `display_etco2`, `display_spo2`, waveforms, alarms | UI, CLI, tutorial/scenario checks |
+
+The monitor layer must not overwrite raw arterial pressure or heart rate.
+
+## Dependency Graph
 
 ```mermaid
 flowchart TD
-    subgraph Inputs
-        USER[User Controls]
-        DIST[Disturbances]
-    end
+    USER[User controls] --> DIST[Disturbances / events]
+    USER --> TCI[TCI targets]
+    USER --> MACHINE[Ventilator / circuit / vaporizer]
 
-    subgraph Controllers
-        TCI_P[TCI Propofol]
-        TCI_R[TCI Remifentanil]
-        TCI_V[TCI Vasopressors]
-        TCI_NMBA[TCI Rocuronium]
-    end
+    DIST --> PKSCALE[PK hemodynamic scaling]
+    PKSCALE --> TCISYNC[TCI resync]
+    TCISYNC --> TCI
 
-    subgraph Machine
-        VAP[Vaporizer]
-        VENT[Ventilator]
-        BAG[Bag-mask]
-        CIRC[Circuit / FGF Blender]
-    end
+    TCI --> PKIV[IV PK models]
+    MACHINE --> PKVOL[Volatile PK]
+    MACHINE --> MECH[Respiratory mechanics]
 
-    subgraph PK["Pharmacokinetics"]
-        PK_PROP[Propofol PK]
-        PK_REMI[Remifentanil PK]
-        PK_ROC[Rocuronium PK]
-        PK_VASO[Vasopressor PK]
-        PK_SEVO[Volatile PK]
-        PK_N2O[N2O PK]
-    end
+    PKIV --> RESP[Respiration]
+    PKIV --> HEMO[Hemodynamics]
+    PKIV --> BIS[BIS / PD models]
+    PKVOL --> RESP
+    PKVOL --> HEMO
+    PKVOL --> BIS
 
-    subgraph Physiology
-        RESP[Respiration Model]
-        HEMO[Hemodynamics Model]
-        MECH[Resp Mechanics]
-    end
+    MECH --> RESP
+    MECH --> HEMO
+    RESP -->|pa_co2, pao2| HEMO
+    HEMO -->|co| PKVOL
 
-    subgraph Monitors
-        BIS[BIS Monitor]
-        ECG[ECG Monitor]
-        CAPNO[Capnograph]
-        SPO2[SpO2 Monitor]
-        NIBP[NIBP Monitor]
-        LOC[LOC Probability]
-        TOF[TOF Monitor]
-    end
-
-    %% User inputs
-    USER --> TCI_P & TCI_R & TCI_V & TCI_NMBA
-    USER --> VENT & VAP & BAG & CIRC
-    DIST --> HEMO
-
-    %% TCI to infusion
-    TCI_P --> PK_PROP
-    TCI_R --> PK_REMI
-    TCI_V --> PK_VASO
-    TCI_NMBA --> PK_ROC
-
-    %% Machine
-    VAP --> PK_SEVO
-    CIRC --> PK_SEVO
-    CIRC --> PK_N2O
-    VENT --> MECH
-    BAG --> MECH
-
-    %% PK outputs
-    PK_PROP -->|Ce| HEMO
-    PK_PROP -->|Ce| BIS
-    PK_REMI -->|Ce| HEMO
-    PK_REMI -->|Ce| BIS
-    PK_ROC -->|Ce| RESP
-    PK_VASO -->|Ce| HEMO
-    PK_SEVO -->|MAC| HEMO
-    PK_SEVO -->|MAC| BIS
-    PK_SEVO -->|MAC| LOC
-    PK_SEVO -->|MAC| TOF
-    PK_N2O -->|MACawake| LOC
-    PK_N2O -->|MAC| TOF
-
-    %% Physiology interactions
-    MECH -->|Paw, Pit| HEMO
-    MECH -->|delivered VT| RESP
-    RESP -->|PaCO2, PaO2| HEMO
-    HEMO -->|CO| PK_SEVO
-    HEMO -->|CO| PK_N2O
-    HEMO -->|HR, MAP| ECG
-
-    %% Monitor inputs
-    RESP --> CAPNO
-    RESP --> SPO2
-    HEMO --> ECG
-    HEMO --> NIBP
+    RESP --> MON[Monitor layer]
+    HEMO --> MON
+    BIS --> MON
+    MON --> UI[UI / CLI / scenarios]
 ```
 
-## Key Dependencies
+## Key Inputs Per Subsystem
 
-### Hemodynamics receives from:
+### Hemodynamics receives
+
 | Source | Data | Notes |
 |--------|------|-------|
-| PK Propofol | Ce | Vasodilation, cardiac depression |
-| PK Remifentanil | Ce | Bradycardia, vasodilation |
-| PK Vasopressors | Ce (Nore, Epi, Phenyl) | Vasoconstriction, inotropy |
-| Volatile PK | Sevo MAC | Vasodilation, cardiac depression (N2O not modeled in hemo) |
-| Resp Mechanics | Pit (intrathoracic) | Preload reduction with assisted ventilation/PEEP |
-| Respiration | PaCO2, PaO2 | Chemoreflex effects |
-| Disturbances | d_hr, d_sv, d_tpr | Surgical stimulation |
+| PK Propofol | `propofol_ce` | Vasodilation, cardiac depression |
+| PK Remifentanil | `remi_ce` | Bradycardia, vasodilation |
+| Vasopressor PK | `nore_ce`, `epi_ce`, `phenyl_ce`, `vaso_ce`, `dobu_ce`, `mil_ce` | Vasoconstriction, inotropy, lusitropy |
+| Volatile PK | `mac_sevo` | Cardiovascular depression |
+| Resp mechanics | `pit`, `peep_cmH2O` | Preload and pulmonary coupling |
+| Respiration | `pa_co2`, `pao2` | Chemoreflex and hypoxia effects |
+| Disturbances | `d_hr`, `d_sv`, `d_svr` | Surgical stimulation |
 
-### Respiration receives from:
+### Respiration receives
+
 | Source | Data | Notes |
 |--------|------|-------|
-| PK Propofol | Ce | Respiratory depression |
-| PK Remifentanil | Ce | Respiratory depression |
-| PK Rocuronium | Ce | Muscle paralysis |
-| Volatile PK | Sevo MAC | Respiratory depression (N2O not modeled in drive) |
-| Mechanics | Paw, delivered VT | Assisted ventilation only (ventilator or bag-mask) |
-| Shivering | Intensity | Raises metabolic load (CO2/O2) |
+| PK Propofol | `propofol_ce` | Depresses central drive |
+| PK Remifentanil | `remi_ce` | Depresses drive and CO2 response |
+| PK Rocuronium | `roc_ce` | Reduces muscle factor |
+| Volatile PK | `mac_sevo` | Depresses ventilatory control |
+| Resp mechanics | delivered VT, mean Paw, PEEP | Assisted ventilation and oxygenation |
+| Hemodynamics | `co` (from prior step) | Influences perfusion-sensitive EtCO2 behavior |
+| Thermal/shivering | metabolic factor, shiver level | Alters VCO2 and O2 demand |
 
-### BIS receives from:
+### Monitor layer receives
+
 | Source | Data | Notes |
 |--------|------|-------|
-| PK Propofol | Ce | Primary hypnotic |
-| PK Remifentanil | Ce | Synergistic interaction |
-| Volatile PK | Sevo MAC | Volatile contribution (N2O has minimal BIS effect) |
+| Hemodynamics | raw `map/hr/sbp/dbp` | Used to synthesize display numerics |
+| Respiration | raw `etco2`, `sao2` | Used to synthesize capno and pulse-ox behavior |
+| BIS / TOF / LOC | raw model outputs | Displayed and alarmed values |
+| Monitor settings | arterial line enabled, NIBP interval | Changes presentation mode |
 
-### LOC receives from:
-| Source | Data | Notes |
-|--------|------|-------|
-| PK Propofol | Ce | Primary hypnotic |
-| PK Remifentanil | Ce | Synergistic interaction |
-| Volatile PK | Sevo MAC + N2O MACawake | Inhaled contribution |
+## Remaining One-Step Lag Cases
 
-### TOF receives from:
-| Source | Data | Notes |
-|--------|------|-------|
-| PK Rocuronium | Ce | NMBA effect |
-| Volatile PK | Sevo MAC + N2O MAC | Potentiation of NMBA |
+The raw/display refactor removed step-size-dependent monitor lag as a semantic issue, but a few execution-order lags remain:
 
-## Monitoring Modes
+| Value | Used by | Updated by | Reason |
+|------|---------|------------|--------|
+| `state.co` | Volatile PK scaling and respiration perfusion effects | Hemodynamics | CO is updated after PK and respiration in the same step |
+| `state.va` | Volatile PK | Respiration | Alveolar ventilation is computed after machine and PK setup |
+| `state.mv` | Circuit / machine context | Physiology | Minute ventilation is finalized after mechanics and respiration |
 
-- Arterial line enabled: ABP waveform and continuous SBP/DBP/MAP are displayed.
-- Arterial line disabled: ABP panel is hidden and NIBP cuff values are displayed instead.
+These lags are small at the intended simulation time steps and are preferable to reordering core physiology for now.
 
-## One-Step Lag Cases
+## State Synchronization Examples
 
-The following values have a one-step lag due to execution order:
-
-| Value | Used By | Updated By | Lag Reason |
-|-------|---------|------------|------------|
-| `state.co` | Volatile PK | Hemodynamics | CO affects uptake, but hemo runs after PK |
-| `state.mv` | Circuit mixing | Physiology | MV is computed after machine step |
-| `state.va` | Volatile PK | Respiration | VA is computed after PK |
-| `hemo.dist_svr` | Hemodynamics | Calculated at step start | Disturbance applied before hemo calculation |
-
-These lags are acceptable at typical dt (0.5s) as physiological changes are slower than simulation steps.
-
-## State Synchronization
-
-State flows: **Subsystems → Engine State** (see `_sync_pk_state()`)
-
+```text
+pk_prop.state.ce      -> state.propofol_ce
+resp_state.pa_co2     -> state.pa_co2
+resp_state.p_alveolar_co2 -> state.alveolar_co2
+hemo_state.map        -> state.map
+hemo_state.map        -> state.display_map   (via monitor layer)
+spo2_monitor output   -> state.spo2
+spo2_monitor output   -> state.display_spo2
 ```
-pk_prop.state.ce  ──→  engine.state.propofol_ce
-pk_remi.state.ce  ──→  engine.state.remi_ce
-hemo.state.map    ──→  engine.state.map
-resp.state.rr     ──→  engine.state.rr
-```
-
-This happens at fixed points in `step()`, documented in `SimulationEngine` class docstring.

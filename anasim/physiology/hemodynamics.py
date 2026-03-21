@@ -147,8 +147,8 @@ class HemodynamicModel:
         self.dist_hr = 0.0
         self.dist_sv = 0.0
         self.chemoreflex_active = True
-        self.sepsis_severity = 0.0
-        self.anaphylaxis_severity = 0.0
+        self._sepsis_severity = 0.0
+        self._anaphylaxis_severity = 0.0
         
         # Instantaneous effects with rate limiting (exponential smoothing)
         # Target values (calculated each step)
@@ -244,24 +244,28 @@ class HemodynamicModel:
         self.total_leak_out_ml = 0.0
         self.total_third_space_ml = 0.0
         
-        self.rhythm_type = RhythmType.SINUS
+        self._rhythm_type = RhythmType.SINUS
         self.f_preload_pit = 1.0
         self.vasopressor_sv_factor = 1.0
         self._prev_map = getattr(patient, "baseline_map", 90.0)
 
-        # Hill function parameters cache
-        self._hill_params = {
-            "prop_tpr": (self.ec50_prop_tpr ** self.gamma_prop, self.gamma_prop),
-            "prop_sv": (self.ec50_prop_sv, 1.0),
-            "remi_tpr": (self.ec50_remi_tpr, 1.0),
-        }
+        self._refresh_hill_params()
 
     def _apply_config(self, config: HemodynamicConfig) -> None:
         for name, value in vars(config).items():
             setattr(self, name, value)
         self._hill_cache.clear()
+        self._refresh_hill_params()
         if getattr(self, "_base_values_final", False):
             self._refresh_cached_constants()
+
+    def _refresh_hill_params(self) -> None:
+        """Refresh cached Hill parameters after configuration changes."""
+        self._hill_params = {
+            "prop_tpr": (self.ec50_prop_tpr ** self.gamma_prop, self.gamma_prop),
+            "prop_sv": (self.ec50_prop_sv ** 1.0, 1.0),
+            "remi_tpr": (self.ec50_remi_tpr ** self.gamma_remi_tpr, self.gamma_remi_tpr),
+        }
 
     def _refresh_cached_constants(self) -> None:
         """Cache invariant calculations to reduce per-step overhead."""
@@ -276,6 +280,38 @@ class HemodynamicModel:
     def invalidate_state_cache(self) -> None:
         """Public cache invalidation for external state mutations."""
         self._cached_state = None
+
+    @property
+    def sepsis_severity(self) -> float:
+        return self._sepsis_severity
+
+    @sepsis_severity.setter
+    def sepsis_severity(self, value: float) -> None:
+        value = clamp01(value)
+        if value != getattr(self, "_sepsis_severity", None):
+            self._sepsis_severity = value
+            self.invalidate_state_cache()
+
+    @property
+    def anaphylaxis_severity(self) -> float:
+        return self._anaphylaxis_severity
+
+    @anaphylaxis_severity.setter
+    def anaphylaxis_severity(self, value: float) -> None:
+        value = clamp01(value)
+        if value != getattr(self, "_anaphylaxis_severity", None):
+            self._anaphylaxis_severity = value
+            self.invalidate_state_cache()
+
+    @property
+    def rhythm_type(self) -> RhythmType:
+        return self._rhythm_type
+
+    @rhythm_type.setter
+    def rhythm_type(self, value: RhythmType) -> None:
+        if value != getattr(self, "_rhythm_type", None):
+            self._rhythm_type = value
+            self.invalidate_state_cache()
 
     def set_nore_pd(self, c50: float, emax: float = 98.7, gamma: float = 1.8):
         self.nore_c50 = c50

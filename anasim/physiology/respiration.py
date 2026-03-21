@@ -21,6 +21,7 @@ class RespState:
     va: float = 4.0 # Alveolar ventilation (L/min)
     apnea: bool = False
     p_alveolar_co2: float = 40.0 # mmHg
+    pa_co2: float = 40.0 # mmHg
     etco2: float = 40.0 # mmHg
     p_arterial_o2: float = 95.0 # mmHg (PaO2)
     sao2: float = 98.0 # Arterial oxygen saturation (%), perfusion-adjusted
@@ -132,6 +133,7 @@ class RespiratoryModel:
         
         # Initialize PACO2 at 40 mmHg
         self.state.p_alveolar_co2 = 40.0
+        self.state.pa_co2 = 40.0
         self.state.etco2 = 40.0
         self.state.p_arterial_o2 = 95.0
         
@@ -455,6 +457,17 @@ class RespiratoryModel:
             
         state.p_alveolar_co2 += d_paco2
         
+        # EtCO2 is lower than arterial PaCO2; the gap widens with deadspace,
+        # low flow, and obstructive/VQ abnormalities.
+        #
+        # The model tracks alveolar CO2 as the core gas-exchange state, then
+        # derives both arterial PaCO2 and ETCO2 from it.
+        #
+        # References:
+        # - Russell et al. Can J Anaesth. 1990.
+        # - Falk et al. Ann Emerg Med. 1994. (PETCO2 falls with very low flow)
+        # - Kim et al. Am J Emerg Med. 2019. (post-arrest PaCO2-ETCO2 gap)
+        #
         # EtCO2 is slightly lower than PaCO2; gradient increases with deadspace and
         # obstructive physiology (Russell 1990; Lujan 2008).
         # Low cardiac output reduces CO2 delivery to the lungs, widening the gradient
@@ -473,6 +486,14 @@ class RespiratoryModel:
         vq_for_etco2 = clamp01(vq_mismatch)
         etco2_gradient = 4.0 + 15.0 * vd_vt_excess + 8.0 * vq_for_etco2 + 6.0 * (1.0 - ventilation_efficiency)
         etco2_gradient = min(20.0, etco2_gradient)
+        pa_co2_gap = (
+            0.5
+            + 2.5 * vq_for_etco2
+            + 2.5 * clamp01(1.0 - perfusion_ratio)
+            + 1.5 * (1.0 - ventilation_efficiency)
+        )
+        pa_co2_gap = min(8.0, pa_co2_gap)
+        state.pa_co2 = state.p_alveolar_co2 + pa_co2_gap
         etco2_raw = max(0.0, state.p_alveolar_co2 - etco2_gradient)
         state.etco2 = etco2_raw
         
@@ -524,31 +545,13 @@ class RespiratoryModel:
         state.vt = current_vt
         state.mv = (current_rr * current_vt) / 1000.0
         
-        # 11. Perfusion-Adjusted SaO2
+        # 11. Arterial saturation from oxygen tension
         # PaO2-based SaO2 (Hill equation for oxyhemoglobin dissociation)
         # SaO2 = PaO2^n / (PaO2^n + P50^n), P50 ~ 26.6 mmHg, n ~ 2.7
         pao2_safe = max(0.1, state.p_arterial_o2)
         n_hill = self._n_hill
         pao2_pow = pao2_safe ** n_hill
         base_sao2 = 100.0 * pao2_pow / (pao2_pow + self._p50_pow)
-        
-        # Cardiac arrest desaturation: When CO < 0.5 L/min, tissue O2 stores deplete
-        # Clinical: SpO2 drops from ~100% to 60% in 60-90 seconds during arrest
-        if cardiac_output < 0.5:
-            # Track cumulative arrest time
-            self._arrest_desat_time += dt
-            
-            # Desaturation: exponential decay toward severe hypoxia
-            # Time constant ~30s means 63% drop in 30s, ~95% drop in 90s
-            tau_desat = 30.0
-            desat_fraction = 1.0 - (1.0 - 0.4) * (1.0 - math.exp(-self._arrest_desat_time / tau_desat))
-            state.sao2 = base_sao2 * desat_fraction
-        else:
-            # Reset arrest timer and use normal SaO2
-            self._arrest_desat_time = 0.0
-            state.sao2 = base_sao2
-        
-        # Floor at 40% (pulse ox artifact threshold)
-        state.sao2 = max(40.0, state.sao2)
+        state.sao2 = clamp(base_sao2, 0.0, 100.0)
         
         return state

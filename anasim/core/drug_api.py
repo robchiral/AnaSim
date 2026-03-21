@@ -246,6 +246,9 @@ class DrugControllerMixin:
         """Seed TCI state from current PK concentrations to avoid bolus overshoot."""
         if not controller or not pk_model or not hasattr(pk_model, "state"):
             return
+        if hasattr(controller, "sync_state_estimate"):
+            controller.sync_state_estimate(pk_model)
+            return
         state = pk_model.state
         c1 = getattr(state, "c1", 0.0)
         c2 = getattr(state, "c2", 0.0)
@@ -259,6 +262,22 @@ class DrugControllerMixin:
             controller.set_state(c1, c2, ce)
         else:
             controller.set_state(c1, c2, c3, ce)
+
+    def sync_active_tci_from_pk(self: "SimulationEngine", *drug_keys: str):
+        """Resynchronize active TCI controllers with the live PK model state."""
+        keys = drug_keys or tuple(self._DRUG_ORDER)
+        for key in keys:
+            spec = self._DRUG_SPECS.get(key)
+            if not spec:
+                continue
+            controller = getattr(self, spec["tci_attr"], None)
+            pk_model = getattr(self, spec["pk_attr"], None)
+            if not controller or not pk_model:
+                continue
+            if hasattr(controller, "sync_from_pk_model"):
+                controller.sync_from_pk_model(pk_model)
+            else:
+                self._seed_tci_state(controller, pk_model)
 
     def _tci_max_rate(self: "SimulationEngine", spec: dict) -> float:
         """Return a clinically realistic max infusion rate for a drug."""

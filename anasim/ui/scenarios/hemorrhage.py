@@ -5,17 +5,20 @@ Teaches recognition and management of intraoperative hemorrhage/hypovolemic shoc
 """
 
 from typing import Tuple
-from .base import Scenario, ScenarioStep, always_pass
+from .base import Scenario, ScenarioStep, always_pass, monitor_value
 
 
 def _require_simulation_running() -> callable:
     """Check simulation is running with stable vitals."""
     def check(engine) -> Tuple[bool, str]:
         # Check for reasonable baseline vitals
+        hr = monitor_value(engine, "hr")
+        map_val = monitor_value(engine, "map")
+        spo2 = monitor_value(engine, "spo2")
         stable = (
-            60 < engine.state.hr < 100 and
-            engine.state.map > 60 and
-            engine.state.spo2 > 94
+            60 < hr < 100 and
+            map_val > 60 and
+            spo2 > 94
         )
         if stable:
             return True, ""
@@ -39,15 +42,17 @@ def _require_shock_recognition() -> callable:
     """
     def check(engine) -> Tuple[bool, str]:
         # Look for shock signs
-        tachycardia = engine.state.hr > 100
-        hypotension = engine.state.map < 65
+        hr = monitor_value(engine, "hr")
+        map_val = monitor_value(engine, "map")
+        tachycardia = hr > 100
+        hypotension = map_val < 65
         
         if tachycardia and hypotension:
             return True, ""
         
         msgs = []
-        if not tachycardia: msgs.append(f"HR: {engine.state.hr:.0f} (watch for ↑)")
-        if not hypotension: msgs.append(f"MAP: {engine.state.map:.0f} (watch for ↓)")
+        if not tachycardia: msgs.append(f"HR: {hr:.0f} (watch for ↑)")
+        if not hypotension: msgs.append(f"MAP: {map_val:.0f} (watch for ↓)")
         return False, "" + ", ".join(msgs)
     return check
 
@@ -98,14 +103,15 @@ def _require_hemodynamic_stability() -> callable:
     def check(engine) -> Tuple[bool, str]:
         # Focus on MAP restoration as primary goal of resuscitation
         # HR recovery takes time even with successful treatment
-        map_ok = engine.state.map > 65
+        map_val = monitor_value(engine, "map")
+        map_ok = map_val > 65
         hemorrhage_stopped = not getattr(engine, 'active_hemorrhage', True)
         
         if map_ok and hemorrhage_stopped:
             return True, ""
         
         msgs = []
-        if not map_ok: msgs.append(f"MAP: {engine.state.map:.0f}/65+ mmHg")
+        if not map_ok: msgs.append(f"MAP: {map_val:.0f}/65+ mmHg")
         if not hemorrhage_stopped: msgs.append("Stop hemorrhage first")
         return False, "" + ", ".join(msgs)
     return check

@@ -48,6 +48,17 @@ TCI_TARGETS = (
 )
 
 ZERO_DIST = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+PK_HEMODYNAMIC_MODEL_ATTRS = (
+    ("propofol", "pk_prop"),
+    ("remi", "pk_remi"),
+    ("nore", "pk_nore"),
+    ("roc", "pk_roc"),
+    ("epi", "pk_epi"),
+    ("phenyl", "pk_phenyl"),
+    ("vaso", "pk_vaso"),
+    ("dobu", "pk_dobu"),
+    ("milri", "pk_mil"),
+)
 
 class StepHelpersMixin:
     """
@@ -72,6 +83,23 @@ class StepHelpersMixin:
         insp_time = cycle_time / 3.0
         t_cycle = self.state.time % cycle_time
         return "INSP" if t_cycle < insp_time else "EXP"
+
+    def _exp_smoothing_alpha(self: "SimulationEngine", dt: float, tau_s: float) -> float:
+        """Convert a time constant into a dt-invariant exponential smoothing gain."""
+        if dt <= 0:
+            return 0.0
+        if tau_s <= 0:
+            return 1.0
+        return 1.0 - math.exp(-dt / max(tau_s, 1e-6))
+
+    def _monitor_collapse_active(self: "SimulationEngine", raw_map: float, raw_hr: float, rhythm) -> bool:
+        """Collapse display lag when circulation is critically low or arrest rhythms occur."""
+        return (
+            self.state.is_dead
+            or raw_map <= 25.0
+            or raw_hr <= 20.0
+            or rhythm in (self._rhythm_vfib, self._rhythm_vtach, self._rhythm_asystole)
+        )
 
     def _step_mechanics(self: "SimulationEngine", dt: float, vent_active: bool, bag_mask_active: bool):
         """Advance respiratory mechanics and return (mech_state, total_peep_effect, mech_rr_for_resp)."""
@@ -357,8 +385,6 @@ class StepHelpersMixin:
         if hemo:
             self.hemo.anaphylaxis_severity = self.anaphylaxis_severity
             self.hemo.sepsis_severity = self.sepsis_severity
-            if hasattr(hemo, "invalidate_state_cache"):
-                hemo.invalidate_state_cache()
         
         dist_vec = (d_bis, d_map, d_co, d_svr, d_sv, d_hr)
         return dist_vec
@@ -470,6 +496,7 @@ class StepHelpersMixin:
         pk_vaso = self.pk_vaso
         pk_dobu = self.pk_dobu
         pk_mil = self.pk_mil
+        # Keep direct _step_pk callers consistent with the live hemodynamic-scaled PK state.
         self._update_pk_hemodynamics(co_curr)
 
         pk_sevo.step(dt, fi_sevo, state.va, co_curr, temp_c=state.temp_c)
@@ -529,31 +556,36 @@ class StepHelpersMixin:
         if getattr(self, "pk_mil", None):
             state.mil_ce = self.pk_mil.state.ce
 
-    def _update_pk_hemodynamics(self: "SimulationEngine", co_curr: float):
+    def _update_pk_hemodynamics(self: "SimulationEngine", co_curr: float) -> tuple[str, ...]:
         """Scale PK parameters based on current blood volume and CO."""
         if not self.hemo:
-            return
+            return ()
         base_bv = getattr(self.hemo, "blood_volume_0", 0.0)
         base_co = getattr(self.hemo, "base_co_l_min", 0.0)
         if base_bv <= 0.0 or base_co <= 0.0:
-            return
+            return ()
         v_ratio = self.hemo.blood_volume / base_bv
         co_ratio = co_curr / base_co
         v_ratio = clamp(v_ratio, 0.1, 2.0)
         co_ratio = clamp(co_ratio, 0.1, 2.0)
-        for model in (
-            self.pk_prop,
-            self.pk_remi,
-            self.pk_nore,
-            self.pk_roc,
-            self.pk_epi,
-            self.pk_phenyl,
-            getattr(self, "pk_vaso", None),
-            getattr(self, "pk_dobu", None),
-            getattr(self, "pk_mil", None),
-        ):
+
+        last_scale = getattr(self, "_pk_hemo_scale_cache", None)
+        if last_scale is not None:
+            last_v_ratio, last_co_ratio = last_scale
+            if (
+                math.isclose(v_ratio, last_v_ratio, rel_tol=1e-4, abs_tol=1e-4)
+                and math.isclose(co_ratio, last_co_ratio, rel_tol=1e-4, abs_tol=1e-4)
+            ):
+                return ()
+
+        updated = []
+        for drug_key, attr in PK_HEMODYNAMIC_MODEL_ATTRS:
+            model = getattr(self, attr, None)
             if model and hasattr(model, "update_hemodynamics"):
                 model.update_hemodynamics(v_ratio, co_ratio)
+                updated.append(drug_key)
+        self._pk_hemo_scale_cache = (v_ratio, co_ratio)
+        return tuple(updated)
 
     def _update_airway_complications(self: "SimulationEngine", dt: float):
         """
@@ -666,8 +698,8 @@ class StepHelpersMixin:
         # Mechanical lung step (assisted ventilation only).
         mech_state, total_peep_effect, mech_rr_for_resp = self._step_mechanics(dt, vent_active, bag_mask_active)
         
-        # Intrathoracic pressure from smoothed mean Paw.
-        alpha_paw = 0.05  # Faster tracking of mean Paw changes
+        # Intrathoracic pressure from dt-aware smoothed mean Paw.
+        alpha_paw = self._exp_smoothing_alpha(dt, getattr(self, "_mean_paw_tau_s", 0.25))
         if mech_state.paw_mean > 0:
             self.current_mean_paw = (1 - alpha_paw) * self.current_mean_paw + alpha_paw * mech_state.paw_mean
         else:
@@ -771,7 +803,7 @@ class StepHelpersMixin:
             state.remi_ce,
             state.nore_ce,
             pit=pit_estimate,
-            paco2=resp_state.p_alveolar_co2,
+            paco2=resp_state.pa_co2,
             pao2=resp_state.p_arterial_o2,
             dist_hr=d_hr,
             dist_sv=d_sv,
@@ -816,8 +848,11 @@ class StepHelpersMixin:
 
         state.pit = pit_estimate
         
-        state.paco2 = resp_state.p_alveolar_co2
+        state.pa_co2 = resp_state.pa_co2
+        state.alveolar_co2 = resp_state.p_alveolar_co2
         state.pao2 = resp_state.p_arterial_o2
+        state.sao2 = resp_state.sao2
+        state.etco2 = resp_state.etco2 if state.airway_mode != AirwayType.NONE else 0.0
         
         # Use delivered Vt from mechanics (important for PCV mode and bag-mask).
         if assisted_active and mech_state.delivered_vt > 0:
@@ -973,8 +1008,7 @@ class StepHelpersMixin:
         rhythm = getattr(hemo_state, 'rhythm_type', None)
         state.ecg_voltage = self.ecg.step(dt, state_hr=hemo_state.hr, rhythm_type=rhythm)
         
-        sao2 = resp_state.sao2
-        state.sao2 = sao2
+        sao2 = state.sao2
         base_co = getattr(self.hemo, "base_co_l_min", None)
         if base_co and base_co > 0:
             co_ratio = hemo_state.co / base_co
@@ -986,44 +1020,56 @@ class StepHelpersMixin:
         
         self._update_nibp(dt, hemo_state)
 
-        # Smoothing & final state updates.
+        # Raw monitor-model outputs.
+        state.bis = clamp(bis_val + d_bis, 0.0, 100.0)
+        state.spo2 = spo2_val
+
+        # dt-aware display smoothing and noise.
         noise = self.rng.normal(0.0, self._monitor_noise_std)
         
         raw_map = hemo_state.map + d_map + noise[0]
         raw_hr = hemo_state.hr + noise[1]
-        raw_bis = bis_val + d_bis + noise[2]
-        
-        alpha = 0.1
-        self.smooth_map = (1 - alpha) * self.smooth_map + alpha * raw_map
-        self.smooth_hr = (1 - alpha) * self.smooth_hr + alpha * raw_hr
-        self.smooth_bis = (1 - alpha) * self.smooth_bis + alpha * raw_bis
-        
-        state.map = self.smooth_map
-        state.hr = self.smooth_hr
-        state.bis = clamp(self.smooth_bis, 0.0, 100.0)
-        # Align SBP/DBP with smoothed MAP using current pulse pressure.
-        if state.map <= 0.5 and state.sbp <= 1.0 and state.dbp <= 1.0:
-            state.sbp = 0.0
-            state.dbp = 0.0
+        raw_bis = state.bis + noise[2]
+
+        alpha_map = self._exp_smoothing_alpha(dt, getattr(self, "_monitor_tau_map_s", 1.5))
+        alpha_hr = self._exp_smoothing_alpha(dt, getattr(self, "_monitor_tau_hr_s", 1.0))
+        alpha_bis = self._exp_smoothing_alpha(dt, getattr(self, "_monitor_tau_bis_s", 2.0))
+
+        if self._monitor_collapse_active(hemo_state.map, hemo_state.hr, rhythm):
+            self.smooth_map = max(0.0, hemo_state.map)
+            self.smooth_hr = max(0.0, hemo_state.hr)
+        else:
+            self.smooth_map = (1 - alpha_map) * self.smooth_map + alpha_map * raw_map
+            self.smooth_hr = (1 - alpha_hr) * self.smooth_hr + alpha_hr * raw_hr
+        self.smooth_bis = (1 - alpha_bis) * self.smooth_bis + alpha_bis * raw_bis
+
+        state.display_map = max(0.0, self.smooth_map)
+        state.display_hr = max(0.0, self.smooth_hr)
+        state.display_bis = clamp(self.smooth_bis, 0.0, 100.0)
+
+        # Align display SBP/DBP with display MAP using the current raw pulse pressure.
+        if state.display_map <= 0.5 and state.sbp <= 1.0 and state.dbp <= 1.0:
+            state.display_sbp = 0.0
+            state.display_dbp = 0.0
         else:
             pulse_pressure = max(5.0, state.sbp - state.dbp)
-            state.sbp = max(0.0, state.map + (2.0 / 3.0) * pulse_pressure)
-            state.dbp = max(0.0, state.map - (1.0 / 3.0) * pulse_pressure)
-            if state.sbp <= state.dbp:
-                state.sbp = state.dbp + 5.0
+            state.display_sbp = max(0.0, state.display_map + (2.0 / 3.0) * pulse_pressure)
+            state.display_dbp = max(0.0, state.display_map - (1.0 / 3.0) * pulse_pressure)
+            if state.display_sbp <= state.display_dbp:
+                state.display_sbp = state.display_dbp + 5.0
         state.capno_co2 = capno_val
-        state.etco2 = resp_state.etco2 if state.airway_mode != AirwayType.NONE else 0.0
+        state.display_etco2 = state.etco2
         state.tof = tof_val
         state.loc = loc_val
         state.tol = tol_val
-        state.spo2 = spo2_val
+        state.display_spo2 = state.spo2
         
         monitor_vals = self._monitor_values
-        monitor_vals["BIS"] = state.bis
-        monitor_vals["MAP"] = state.map
-        monitor_vals["HR"] = state.hr
-        monitor_vals["EtCO2"] = state.etco2
-        monitor_vals["SpO2"] = state.spo2
+        monitor_vals["BIS"] = state.display_bis
+        monitor_vals["MAP"] = state.display_map
+        monitor_vals["HR"] = state.display_hr
+        monitor_vals["EtCO2"] = state.display_etco2
+        monitor_vals["SpO2"] = state.display_spo2
         state.alarms = self.alarms.update(monitor_vals, dt=dt)
 
     def _check_patient_viability(self: "SimulationEngine", dt: float):

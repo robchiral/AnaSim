@@ -15,7 +15,9 @@ class TestDeathDetector(unittest.TestCase):
         
         # Force lethal state
         engine.state.hr = 0
+        engine._raw_hr = 0
         engine.state.map = 0
+        engine._raw_map = 0
         
         # Step for 20s (longer than 15s grace)
         for _ in range(200): # 20s
@@ -30,12 +32,15 @@ class TestDeathDetector(unittest.TestCase):
         
         # Force lethal state
         engine.state.hr = 0
+        engine._raw_hr = 0
         engine.smooth_hr = 0 # To prevent smoothing from restoring it immediately
         engine.state.map = 80 # Normal MAP
+        engine._raw_map = 80
         
         # Step for 10s (should be alive)
         for _ in range(100):
             engine.state.hr = 0 # Sustain the insult (engine reset might fight it)
+            engine._raw_hr = 0
             engine.smooth_hr = 0
             engine._check_patient_viability(0.1)
             
@@ -44,6 +49,7 @@ class TestDeathDetector(unittest.TestCase):
         # Step for another 10s (total 20s > 15s)
         for _ in range(100):
             engine.state.hr = 0
+            engine._raw_hr = 0
             engine.smooth_hr = 0
             engine._check_patient_viability(0.1)
             
@@ -57,11 +63,13 @@ class TestDeathDetector(unittest.TestCase):
         
         # Force lethal state
         engine.state.map = 5.0
+        engine._raw_map = 5.0
         engine.smooth_map = 5.0
         
         # Step for 20s
         for _ in range(200):
             engine.state.map = 5.0
+            engine._raw_map = 5.0
             engine.smooth_map = 5.0
             engine._check_patient_viability(0.1)
             

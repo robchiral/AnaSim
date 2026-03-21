@@ -90,21 +90,27 @@ class SimulationState:
     roc_ce: float = 0.0
     roc_cp: float = 0.0
     
-    # Monitor values.
+    # Monitor-model outputs / raw displayed physiologic values.
+    # These are the authoritative backend values, not UI-smoothed numerics.
     bis: float = 98.0
+    display_bis: float = 98.0
     tof: float = 100.0
     loc: float = 0.0 # Probability
     tol: float = 0.0 # Probability
     map: float = 90.0  # Mean Arterial Pressure
+    display_map: float = 90.0
     hr: float = 70.0   # Heart Rate
+    display_hr: float = 70.0
     rr: float = 12.0   # Respiratory Rate
     vt: float = 500.0  # Tidal Volume (mL)
     mv: float = 6.0    # Minute Ventilation (L/min)
     va: float = 4.0    # Alveolar ventilation (L/min)
     apnea: bool = False
     
-    etco2: float = 38.0 # End-tidal CO2
-    paco2: float = 40.0 # Alveolar CO2 (using paco2 name for clarity with arterial/alveolar)
+    etco2: float = 38.0 # Physiologic end-tidal CO2
+    display_etco2: float = 38.0
+    pa_co2: float = 40.0 # Arterial CO2 (mmHg)
+    alveolar_co2: float = 40.0 # Alveolar CO2 (mmHg)
     pao2: float = 95.0 # Arterial Oxygen (mmHg)
     capno_co2: float = 0.0 # Instantaneous CO2 for waveform
     
@@ -114,7 +120,8 @@ class SimulationState:
     flow: float = 0.0
     volume: float = 0.0
     
-    spo2: float = 99.0 # Saturation
+    spo2: float = 99.0 # Raw pulse-ox saturation estimate / physiologic saturation
+    display_spo2: float = 99.0
     sao2: float = 98.0 # Physiologic arterial saturation (separate from pulse-ox display)
     
     # NIBP.
@@ -131,7 +138,9 @@ class SimulationState:
     svr: float = 16.0 # Systemic Vascular Resistance (Wood Units: mmHg*min/L). Normal ~16-20.
     co: float = 5.0 # Cardiac Output (L/min)
     sbp: float = 120.0 # Systolic Blood Pressure (mmHg)
+    display_sbp: float = 120.0
     dbp: float = 80.0 # Diastolic Blood Pressure (mmHg)
+    display_dbp: float = 80.0
     blood_volume: float = 5000.0 # Blood volume (mL)
     hb_g_dl: float = 13.5
     hct: float = 0.42
@@ -165,3 +174,7 @@ class SimulationState:
     airway_obstruction: float = 0.0  # 0.0-1.0 (upper airway/laryngospasm)
     bronchospasm: float = 0.0        # 0.0-1.0 (lower airway)
     laryngospasm: float = 0.0        # 0.0-1.0 (auto-triggered component)
+
+    def display_value(self, attr: str):
+        """Return the learner-facing value for a raw/display field pair."""
+        return getattr(self, f"display_{attr}", getattr(self, attr))

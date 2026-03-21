@@ -77,11 +77,11 @@ class TestTemperature:
     
         engine.state.temp_c = 37.0
         for _ in range(300): engine.step(0.1)
-        paco2_37 = engine.state.paco2
+        paco2_37 = engine.state.pa_co2
     
         engine.state.temp_c = 30.0
         
         # Step enough to equilibrate CO2 (tau ~3 min).
         for _ in range(6000): engine.step(0.1) # 10 mins
-        paco2_30 = engine.state.paco2
+        paco2_30 = engine.state.pa_co2
         assert paco2_30 < paco2_37, "PaCO2 should drop with hypothermia (reduced production)"

@@ -5,16 +5,19 @@ Teaches recognition and initial management of distributive (warm) septic shock.
 """
 
 from typing import Tuple
-from .base import Scenario, ScenarioStep
+from .base import Scenario, ScenarioStep, monitor_value
 
 
 def _require_simulation_running() -> callable:
     """Check simulation is running with stable vitals."""
     def check(engine) -> Tuple[bool, str]:
+        hr = monitor_value(engine, "hr")
+        map_val = monitor_value(engine, "map")
+        spo2 = monitor_value(engine, "spo2")
         stable = (
-            60 < engine.state.hr < 100 and
-            engine.state.map > 60 and
-            engine.state.spo2 > 94
+            60 < hr < 100 and
+            map_val > 60 and
+            spo2 > 94
         )
         if stable:
             return True, ""
@@ -34,8 +37,10 @@ def _require_sepsis_active() -> callable:
 def _require_warm_shock_recognition() -> callable:
     """Check for septic shock pattern (vasoplegia/hypotension ± tachycardia)."""
     def check(engine) -> Tuple[bool, str]:
-        tachycardia = engine.state.hr > 90
-        hypotension = engine.state.map < 65
+        hr = monitor_value(engine, "hr")
+        map_val = monitor_value(engine, "map")
+        tachycardia = hr > 90
+        hypotension = map_val < 65
         low_svr = engine.state.svr < 12
 
         if (hypotension and low_svr) or (tachycardia and (hypotension or low_svr)):
@@ -43,9 +48,9 @@ def _require_warm_shock_recognition() -> callable:
 
         msgs = []
         if not tachycardia:
-            msgs.append(f"HR: {engine.state.hr:.0f} (watch for ↑)")
+            msgs.append(f"HR: {hr:.0f} (watch for ↑)")
         if not hypotension and not low_svr:
-            msgs.append(f"MAP: {engine.state.map:.0f} or SVR: {engine.state.svr:.0f} (watch for ↓)")
+            msgs.append(f"MAP: {map_val:.0f} or SVR: {engine.state.svr:.0f} (watch for ↓)")
         return False, ", ".join(msgs)
     return check
 
@@ -87,10 +92,11 @@ def _require_source_control() -> callable:
 def _require_hemodynamic_stability() -> callable:
     """Check that MAP has been restored to a safe range."""
     def check(engine) -> Tuple[bool, str]:
-        map_ok = engine.state.map >= 65
+        map_val = monitor_value(engine, "map")
+        map_ok = map_val >= 65
         if map_ok:
             return True, ""
-        return False, f"MAP: {engine.state.map:.0f}/65+ mmHg"
+        return False, f"MAP: {map_val:.0f}/65+ mmHg"
     return check
 
 

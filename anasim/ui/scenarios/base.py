@@ -70,19 +70,26 @@ def require_propofol_cp(threshold: float = 2.0) -> Callable:
     return check
 
 
+def monitor_value(engine, attr: str):
+    """Return the learner-facing monitor value for a vital sign."""
+    return engine.state.display_value(attr)
+
+
 def require_bis_below(threshold: float) -> Callable:
     """Check BIS below threshold."""
     def check(engine) -> Tuple[bool, str]:
-        met = engine.state.bis < threshold
-        return met, "" if met else f"BIS: {engine.state.bis:.0f}/<{threshold:.0f}"
+        bis = monitor_value(engine, "bis")
+        met = bis < threshold
+        return met, "" if met else f"BIS: {bis:.0f}/<{threshold:.0f}"
     return check
 
 
 def require_bis_above(threshold: float) -> Callable:
     """Check BIS above threshold."""
     def check(engine) -> Tuple[bool, str]:
-        met = engine.state.bis > threshold
-        return met, "" if met else f"BIS: {engine.state.bis:.0f}/{threshold:.0f}+"
+        bis = monitor_value(engine, "bis")
+        met = bis > threshold
+        return met, "" if met else f"BIS: {bis:.0f}/{threshold:.0f}+"
     return check
 
 
@@ -113,8 +120,9 @@ def require_tof_below(threshold: float = 25) -> Callable:
 def require_etco2_above(threshold: float = 20) -> Callable:
     """Check EtCO2 above threshold."""
     def check(engine) -> Tuple[bool, str]:
-        met = engine.state.etco2 > threshold
-        return met, "" if met else f"EtCO₂: {engine.state.etco2:.0f}/>{threshold:.0f} mmHg"
+        etco2 = monitor_value(engine, "etco2")
+        met = etco2 > threshold
+        return met, "" if met else f"EtCO₂: {etco2:.0f}/>{threshold:.0f} mmHg"
     return check
 
 

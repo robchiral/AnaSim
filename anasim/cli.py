@@ -88,7 +88,10 @@ def run_headless(args):
         engine.step(sim_config.dt)
         if i % 100 == 0:
             state = engine.get_latest_state()
-            print(f"Time: {state.time:.2f}s | HR: {state.hr:.1f} | MAP: {state.map:.1f} | SpO2: {state.spo2:.1f}")
+            hr = state.display_value("hr")
+            map_val = state.display_value("map")
+            spo2 = state.display_value("spo2")
+            print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_val:.1f} | SpO2: {spo2:.1f}")
             
     end_real = time.time()
     print(f"Simulation completed in {end_real - start_real:.2f}s real time.")
