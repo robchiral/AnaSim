@@ -1,7 +1,9 @@
 from collections import deque
 from typing import Optional
-import numpy as np
 import copy
+import logging
+
+import numpy as np
 
 from .state import SimulationState, SimulationConfig, AirwayType
 from .step_helpers import StepHelpersMixin
@@ -154,6 +156,8 @@ from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.spo2 import SpO2Monitor
 from anasim.monitors.nibp import NIBPMonitor, NIBPReading
 
+logger = logging.getLogger(__name__)
+
 class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
     """
     Main simulation orchestrator.
@@ -290,6 +294,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         # Dedicated RNG for capnography to keep output reproducible without
         # coupling to monitor noise draws.
         self._capno_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
+        # Dedicated RNG for ECG to keep rhythm noise reproducible.
+        self._ecg_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._monitor_noise_std = np.array([0.5, 0.5, 0.2])
         self._monitor_values = {
             "BIS": 0.0,
@@ -479,7 +485,10 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         """Initialize PK/PD models based on config."""
         # Propofol PK
         if self.config.pk_model_propofol not in PROPOFOL_MODELS:
-            print(f"Note: pk_model_propofol '{self.config.pk_model_propofol}' not recognized, using default")
+            logger.warning(
+                "pk_model_propofol '%s' not recognized; using default",
+                self.config.pk_model_propofol,
+            )
         propofol_model = PROPOFOL_MODELS.get(self.config.pk_model_propofol, PropofolPKMarsh)
         self.pk_prop = propofol_model(self.patient)
             
@@ -489,7 +498,10 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             remi_key = "minto"
         remi_model = REMI_MODELS.get(remi_key)
         if not remi_model:
-            print(f"Note: pk_model_remi '{self.config.pk_model_remi}' not recognized, using Minto")
+            logger.warning(
+                "pk_model_remi '%s' not recognized; using Minto",
+                self.config.pk_model_remi,
+            )
             remi_model = REMI_MODELS["minto"]
         self.pk_remi = remi_model(self.patient)
         
@@ -508,7 +520,10 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             self._volatile_enabled = True
             agent_key = resolved_agents[0]
         else:
-            print(f"Note: volatile_agents {self.config.volatile_agents} not supported; using Sevoflurane")
+            logger.warning(
+                "volatile_agents %s not supported; using Sevoflurane",
+                self.config.volatile_agents,
+            )
             self._volatile_enabled = True
             agent_key = "sevoflurane"
 
@@ -543,7 +558,10 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         # Hemodynamics.
         self.hemo = HemodynamicModel(self.patient, fidelity_mode=self.config.fidelity_mode)
         if self.config.hemo_model not in ["Su2023", "Su", "Advanced", None, ""]:
-            print(f"Note: hemo_model '{self.config.hemo_model}' not recognized, using default")
+            logger.warning(
+                "hemo_model '%s' not recognized; using default",
+                self.config.hemo_model,
+            )
             
         # Configure norepinephrine PD.
         c50, emax, gamma = NORE_PD_PARAMS.get(self.config.pk_model_nore, (7.04, 98.7, 1.8))
@@ -576,7 +594,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             fidelity_mode=self.config.fidelity_mode
         ) # Default Rocuronium Model
         
-        self.ecg = ECGMonitor()
+        self.ecg = ECGMonitor(rng=getattr(self, "_ecg_rng", None))
         self.spo2_mon = SpO2Monitor()
         self.nibp = NIBPMonitor(interval_min=5.0)
         self.state.nibp_interval_sec = self.nibp.interval
@@ -627,7 +645,11 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
                 self.circuit.vaporizer_agent = agent_params["name"]
         else:
             if agent:
-                print(f"Note: volatile agent '{agent}' not supported; keeping {self.active_agent}")
+                logger.warning(
+                    "volatile agent '%s' not supported; keeping %s",
+                    agent,
+                    self.active_agent,
+                )
             if self.vaporizer:
                 self.vaporizer.set_concentration(percent)
 
@@ -809,22 +831,22 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
     def set_rhythm(self, rhythm_name: str):
         """Set cardiac rhythm."""
         try:
-             # Search by value (e.g. "Sinus Rhythm") or name (e.g. "SINUS")
-             found = False
-             for r in RhythmType:
-                 if r.value == rhythm_name or r.name == rhythm_name.upper():
-                     if self.hemo:
-                         self.hemo.rhythm_type = r
-                         if hasattr(self.hemo, "invalidate_state_cache"):
-                             self.hemo.invalidate_state_cache()
-                         found = True
-                     break
-             
-             if not found:
-                 print(f"Unknown rhythm: {rhythm_name}")
-                 
+            # Search by value (e.g. "Sinus Rhythm") or name (e.g. "SINUS")
+            found = False
+            for r in RhythmType:
+                if r.value == rhythm_name or r.name == rhythm_name.upper():
+                    if self.hemo:
+                        self.hemo.rhythm_type = r
+                        if hasattr(self.hemo, "invalidate_state_cache"):
+                            self.hemo.invalidate_state_cache()
+                        found = True
+                    break
+
+            if not found:
+                logger.warning("Unknown rhythm: %s", rhythm_name)
+
         except Exception as e:
-             print(f"Error setting rhythm: {e}")
+            logger.exception("Error setting rhythm: %s", e)
     
     def set_bag_mask_ventilation(self, active: bool, rr: float = 12.0, vt: float = 0.5):
         """
@@ -841,8 +863,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         """
         self.bag_mask_active = active
         if active:
-            self.bag_mask_rr = rr
-            self.bag_mask_vt = vt 
+            self.bag_mask_rr = clamp(rr, 0.0, 40.0)
+            self.bag_mask_vt = clamp(vt, 0.05, 1.2)
 
     def start(self):
         """Start the simulation loop."""

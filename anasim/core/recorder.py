@@ -1,6 +1,7 @@
 import csv
 import os
 import time
+from pathlib import Path
 from enum import Enum
 from typing import List, Any
 from .state import SimulationState
@@ -12,7 +13,7 @@ class DataRecorder:
     def __init__(self, output_dir: str = ".", sample_interval_sec: float = 1.0):
         self.output_dir = output_dir
         self.filename = f"anasim_log_{int(time.time())}.csv"
-        self.file_path = f"{output_dir}/{self.filename}"
+        self.file_path = str(Path(output_dir) / self.filename)
         self.file = None
         self.writer = None
         self.is_recording = False
@@ -53,7 +54,10 @@ class DataRecorder:
             else x
             for x in row
         ]
-        self.writer.writerow(row)
+        try:
+            self.writer.writerow(row)
+        except Exception as e:
+            print(f"Failed to write record: {e}")
         
     def stop(self):
         if self.file:

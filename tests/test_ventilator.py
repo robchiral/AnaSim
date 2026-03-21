@@ -294,9 +294,11 @@ class TestBagMaskIntegration(unittest.TestCase):
         
         mv_with = self.engine.state.mv
         pao2_with = self.engine.state.pao2
+        vt_with = self.engine.state.vt
         
         self.assertGreater(mv_with, mv_without + 2.0)
         self.assertGreater(pao2_with, pao2_without + 20.0)
+        self.assertGreater(vt_with, 400.0)
 
 
 class TestVentilatorHemodynamics(unittest.TestCase):

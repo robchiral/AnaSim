@@ -7,6 +7,7 @@ preserving the SimulationEngine API.
 """
 
 from typing import TYPE_CHECKING
+import logging
 import math
 
 from .state import AirwayType
@@ -31,6 +32,8 @@ from anasim.physiology.resp_mech import VentMode
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine
+
+logger = logging.getLogger(__name__)
 
 TCI_TARGETS = (
     ("tci_prop", "propofol_rate_mg_sec"),
@@ -693,20 +696,18 @@ class StepHelpersMixin:
             # Use set Vt for gas exchange in VCV to avoid drift at coarse dt.
             if resp_mech.mode != VentMode.VCV and mech_state.delivered_vt > 0:
                 delivered_vt_raw_l = delivered_vt_display_l
-            delivered_vt_display_l = delivered_vt_display_l * self._airway_patency
-            mech_state.delivered_vt = delivered_vt_display_l * 1000.0
         mech_vent_mv = mech_rr * delivered_vt_raw_l if vent_active else 0.0
         
         # Bag-mask ventilation (separate from mechanical vent).
         bag_mask_mv = 0.0
         assisted_rr_for_resp = mech_rr
         assisted_vt_for_resp = delivered_vt_raw_l
-        assisted_vt_display = delivered_vt_display_l
+        assisted_vt_effective = delivered_vt_display_l * self._airway_patency
         if bag_mask_active:
             bag_mask_mv = self.bag_mask_rr * self.bag_mask_vt
             assisted_rr_for_resp = self.bag_mask_rr
             assisted_vt_for_resp = self.bag_mask_vt
-            assisted_vt_display = self.bag_mask_vt * self._airway_patency
+            assisted_vt_effective = self.bag_mask_vt * self._airway_patency
         
         # Total assisted MV = mechanical vent + bag-mask (mutually exclusive in practice).
         total_assisted_mv = mech_vent_mv + bag_mask_mv
@@ -745,7 +746,7 @@ class StepHelpersMixin:
         # Calculate synchronized MV (prevent double counting).
         if assisted_active:
              eff_rr = max(assisted_rr_for_resp, spont_rr)
-             eff_vt = max(assisted_vt_display, spont_vt_l)
+             eff_vt = max(assisted_vt_effective, spont_vt_l)
              total_patient_mv = eff_rr * eff_vt
         else:
              total_patient_mv = spont_rr * spont_vt_l
@@ -818,11 +819,13 @@ class StepHelpersMixin:
         state.paco2 = resp_state.p_alveolar_co2
         state.pao2 = resp_state.p_arterial_o2
         
-        # Use delivered Vt from mechanics (important for PCV mode).
-        if vent_active and mech_state.delivered_vt > 0:
+        # Use delivered Vt from mechanics (important for PCV mode and bag-mask).
+        if assisted_active and mech_state.delivered_vt > 0:
             state.vt = mech_state.delivered_vt
         elif vent_active:
             state.vt = resp_mech.set_vt * 1000.0
+        elif bag_mask_active:
+            state.vt = self.bag_mask_vt * 1000.0
         else:
             state.vt = resp_state.vt
             
@@ -1060,12 +1063,12 @@ class StepHelpersMixin:
         if self.time_hypotension > self.DEATH_GRACE_PERIOD:
             self.state.is_dead = True
             self.state.death_reason = "Extreme Hypotension / Cardiac Arrest (MAP < 20 mmHg)"
-            print(f"DEATH TRIGGERED: Hypotension ({self.state.map:.1f} mmHg)")
+            logger.warning("DEATH TRIGGERED: Hypotension (MAP=%.1f mmHg)", self.state.map)
         elif self.time_brady > self.DEATH_GRACE_PERIOD:
             self.state.is_dead = True
             self.state.death_reason = "Asystole / Extreme Bradycardia (HR < 10 bpm)"
-            print(f"DEATH TRIGGERED: Bradycardia ({self.state.hr:.1f} bpm)")
+            logger.warning("DEATH TRIGGERED: Bradycardia (HR=%.1f bpm)", self.state.hr)
         elif self.time_tachy > self.DEATH_GRACE_PERIOD:
             self.state.is_dead = True
             self.state.death_reason = "Extreme Tachycardia / VFib (HR ≥ 220 bpm)"
-            print(f"DEATH TRIGGERED: Tachycardia ({self.state.hr:.1f} bpm)")
+            logger.warning("DEATH TRIGGERED: Tachycardia (HR=%.1f bpm)", self.state.hr)

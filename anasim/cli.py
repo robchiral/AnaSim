@@ -28,19 +28,51 @@ def run_headless(args):
             print(f"Error loading config: {e}")
             sys.exit(1)
 
-    # Patient default
+    # Patient
     patient = Patient(
         age=config_data.get('age', 40),
         weight=config_data.get('weight', 70),
         height=config_data.get('height', 170),
-        sex=config_data.get('sex', 'Male')
+        sex=config_data.get('sex', 'male'),
+        asa=config_data.get('asa', 1),
+        baseline_temp=config_data.get('baseline_temp', 37.0),
+        baseline_hb=config_data.get('baseline_hb', 13.5),
+        baseline_hct=config_data.get('baseline_hct', 0.42),
+        renal_function=config_data.get('renal_function', 1.0),
+        hepatic_function=config_data.get('hepatic_function', 1.0),
+        baseline_hr=config_data.get('baseline_hr', 70.0),
+        baseline_map=config_data.get('baseline_map', 90.0),
+        baseline_rr=config_data.get('baseline_rr', 12.0),
+        baseline_vt=config_data.get('baseline_vt', 500.0),
     )
     
     # Engine Config
+    try:
+        dt_val = float(config_data.get('dt', 0.01))
+    except (TypeError, ValueError):
+        dt_val = 0.01
+    if dt_val <= 0:
+        dt_val = 0.01
     sim_config = SimulationConfig(
+        dt=dt_val,
+        pk_model_propofol=config_data.get('pk_model_propofol', 'Eleveld'),
+        pk_model_remi=config_data.get('pk_model_remi', 'Minto'),
+        bis_model=config_data.get('bis_model', 'GrecoBouillon'),
+        hemo_model=config_data.get('hemo_model', 'Su2023'),
+        resp_model=config_data.get('resp_model', 'SingleCompartment'),
+        pk_model_nore=config_data.get('pk_model_nore', 'Li'),
+        pk_model_epi=config_data.get('pk_model_epi', 'Clutter'),
+        loc_model=config_data.get('loc_model', 'Kern'),
         mode=config_data.get('mode', 'awake'),
         maint_type=config_data.get('maint_type', 'tiva'),
-        dt=0.01
+        disturbance_profile=config_data.get('disturbance_profile', None),
+        baseline_hb=config_data.get('baseline_hb', 13.5),
+        fidelity_mode=config_data.get('fidelity_mode', 'clinical'),
+        volatile_agents=config_data.get('volatile_agents', ['sevoflurane']),
+        maintenance_fluid_ml_hr=config_data.get('maintenance_fluid_ml_hr', None),
+        simulation_speed=config_data.get('simulation_speed', 1.0),
+        enable_death_detector=config_data.get('enable_death_detector', False),
+        rng_seed=config_data.get('rng_seed', None),
     )
     
     engine = SimulationEngine(patient, sim_config)
