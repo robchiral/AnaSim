@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from .projection import set_state_float_fields
 from .state import AirwayType
 from .utils import clamp
 from anasim.monitors.capno import Capnograph
@@ -55,10 +56,13 @@ def seed_nibp_reading(engine: "SimulationEngine") -> None:
     dbp_val = getattr(hemo_state, "dbp", map_val - 20.0)
     ts = engine.state.time if engine.state.time > 0.0 else 1e-3
     engine.nibp.latest_reading = NIBPReading(sbp_val, dbp_val, map_val, ts)
-    engine.state.nibp_sys = sbp_val
-    engine.state.nibp_dia = dbp_val
-    engine.state.nibp_map = map_val
-    engine.state.nibp_timestamp = ts
+    set_state_float_fields(
+        engine.state,
+        nibp_sys=sbp_val,
+        nibp_dia=dbp_val,
+        nibp_map=map_val,
+        nibp_timestamp=ts,
+    )
     engine._next_nibp_time = engine.state.time + engine.nibp.interval
     engine.nibp.trigger()
 
@@ -80,14 +84,17 @@ def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
     )
 
     state.nibp_is_cycling = engine.nibp.is_cycling
-    state.nibp_cuff_pressure = cuff_p
+    set_state_float_fields(state, nibp_cuff_pressure=cuff_p)
 
     latest = engine.nibp.latest_reading
     if latest.timestamp > 0.0 and latest.timestamp != prev_ts:
-        state.nibp_sys = latest.systolic
-        state.nibp_dia = latest.diastolic
-        state.nibp_map = latest.map
-        state.nibp_timestamp = latest.timestamp
+        set_state_float_fields(
+            state,
+            nibp_sys=latest.systolic,
+            nibp_dia=latest.diastolic,
+            nibp_map=latest.map,
+            nibp_timestamp=latest.timestamp,
+        )
 
 
 def compute_capno_value(engine: "SimulationEngine", dt: float, phase: str, resp_state) -> float:
@@ -194,7 +201,7 @@ def step_monitors(
         tol_val = engine.tol_pd.compute_probability(state.propofol_ce, state.remi_ce)
 
     rhythm = getattr(hemo_state, "rhythm_type", None)
-    state.ecg_voltage = engine.ecg.step(dt, state_hr=hemo_state.hr, rhythm_type=rhythm)
+    ecg_voltage = engine.ecg.step(dt, state_hr=hemo_state.hr, rhythm_type=rhythm)
 
     sao2 = state.sao2
     base_co = getattr(engine.hemo, "base_co_l_min", None)
@@ -204,12 +211,12 @@ def step_monitors(
         co_ratio = 1.0
     perfusion = clamp(co_ratio, 0.05, 1.0)
     pleth, spo2_val = engine.spo2_mon.step(dt, hr=hemo_state.hr, saturation=sao2, perfusion=perfusion)
-    state.pleth_voltage = pleth
+    set_state_float_fields(state, ecg_voltage=ecg_voltage, pleth_voltage=pleth)
 
     update_nibp(engine, dt, hemo_state)
 
-    state.bis = clamp(bis_val + disturbances.bis, 0.0, 100.0)
-    state.spo2 = spo2_val
+    bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
+    set_state_float_fields(state, bis=bis_display_source, spo2=spo2_val)
 
     noise = engine.rng.normal(0.0, engine._monitor_noise_std)
     raw_map = hemo_state.map + noise[0]
@@ -221,32 +228,40 @@ def step_monitors(
     alpha_bis = exp_smoothing_alpha(dt, getattr(engine, "_monitor_tau_bis_s", 2.0))
 
     if monitor_collapse_active(engine, hemo_state.map, hemo_state.hr, rhythm):
-        engine.smooth_map = max(0.0, hemo_state.map)
-        engine.smooth_hr = max(0.0, hemo_state.hr)
+        engine.smooth_map = float(max(0.0, hemo_state.map))
+        engine.smooth_hr = float(max(0.0, hemo_state.hr))
     else:
-        engine.smooth_map = (1 - alpha_map) * engine.smooth_map + alpha_map * raw_map
-        engine.smooth_hr = (1 - alpha_hr) * engine.smooth_hr + alpha_hr * raw_hr
-    engine.smooth_bis = (1 - alpha_bis) * engine.smooth_bis + alpha_bis * raw_bis
+        engine.smooth_map = float((1 - alpha_map) * engine.smooth_map + alpha_map * raw_map)
+        engine.smooth_hr = float((1 - alpha_hr) * engine.smooth_hr + alpha_hr * raw_hr)
+    engine.smooth_bis = float((1 - alpha_bis) * engine.smooth_bis + alpha_bis * raw_bis)
 
-    state.display_map = max(0.0, engine.smooth_map)
-    state.display_hr = max(0.0, engine.smooth_hr)
-    state.display_bis = clamp(engine.smooth_bis, 0.0, 100.0)
+    display_map = max(0.0, engine.smooth_map)
+    display_hr = max(0.0, engine.smooth_hr)
+    display_bis = clamp(engine.smooth_bis, 0.0, 100.0)
 
-    if state.display_map <= 0.5 and state.sbp <= 1.0 and state.dbp <= 1.0:
-        state.display_sbp = 0.0
-        state.display_dbp = 0.0
+    if display_map <= 0.5 and state.sbp <= 1.0 and state.dbp <= 1.0:
+        display_sbp = 0.0
+        display_dbp = 0.0
     else:
         pulse_pressure = max(5.0, state.sbp - state.dbp)
-        state.display_sbp = max(0.0, state.display_map + (2.0 / 3.0) * pulse_pressure)
-        state.display_dbp = max(0.0, state.display_map - (1.0 / 3.0) * pulse_pressure)
-        if state.display_sbp <= state.display_dbp:
-            state.display_sbp = state.display_dbp + 5.0
-    state.capno_co2 = capno_val
-    state.display_etco2 = state.etco2
-    state.tof = tof_val
-    state.loc = loc_val
-    state.tol = tol_val
-    state.display_spo2 = state.spo2
+        display_sbp = max(0.0, display_map + (2.0 / 3.0) * pulse_pressure)
+        display_dbp = max(0.0, display_map - (1.0 / 3.0) * pulse_pressure)
+        if display_sbp <= display_dbp:
+            display_sbp = display_dbp + 5.0
+    set_state_float_fields(
+        state,
+        display_map=display_map,
+        display_hr=display_hr,
+        display_bis=display_bis,
+        display_sbp=display_sbp,
+        display_dbp=display_dbp,
+        capno_co2=capno_val,
+        display_etco2=state.etco2,
+        tof=tof_val,
+        loc=loc_val,
+        tol=tol_val,
+        display_spo2=state.spo2,
+    )
 
     monitor_vals = engine._monitor_values
     monitor_vals["BIS"] = state.display_bis

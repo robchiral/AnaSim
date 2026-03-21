@@ -15,6 +15,14 @@ import numpy as np
 from anasim.core.state import SimulationConfig
 
 
+PERTURBATION_EVENTS = {
+    120: lambda engine: engine.give_drug_bolus("Propofol", 200),
+    300: lambda engine: engine.start_hemorrhage(500),
+    420: lambda engine: (engine.stop_hemorrhage(), engine.give_fluid(1000)),
+    540: lambda engine: engine.give_blood(300),
+}
+
+
 class TestLongDurationStability:
     """Verify stability over extended simulation runs."""
     
@@ -25,7 +33,7 @@ class TestLongDurationStability:
         return engine_factory(config=config, start=True, age=45, sex="Male")
     
     def test_four_hour_stability(self, long_running_engine):
-        """Run equivalent of 4-hour case and verify stability."""
+        """Run equivalent of 4-hour case and verify stability under routine perturbations."""
         engine = long_running_engine
         
         # 4 hours = 14400 seconds, simulate at 2x speed with 0.5s steps
@@ -44,6 +52,7 @@ class TestLongDurationStability:
         bis_samples = []
         temp_samples = []
         etco2_samples = []
+        co_samples = []
         
         for i in range(steps):
             engine.step(step_size)
@@ -56,6 +65,7 @@ class TestLongDurationStability:
                 bis_samples.append(state.bis)
                 temp_samples.append(state.temp_c)
                 etco2_samples.append(state.etco2)
+                co_samples.append(state.co)
                 
                 # Check for NaN/Inf
                 assert np.isfinite(state.hr), f"HR is NaN/Inf at step {i}"
@@ -64,6 +74,7 @@ class TestLongDurationStability:
                 assert np.isfinite(state.bis), f"BIS is NaN/Inf at step {i}"
                 assert np.isfinite(state.temp_c), f"Temp is NaN/Inf at step {i}"
                 assert np.isfinite(state.etco2), f"EtCO2 is NaN/Inf at step {i}"
+                assert np.isfinite(state.co), f"CO is NaN/Inf at step {i}"
         
         # Verify values stayed in physiological range throughout
         assert all(30 <= hr <= 180 for hr in hr_samples), "HR went out of physiological range"
@@ -73,46 +84,23 @@ class TestLongDurationStability:
         assert all(32.0 <= temp <= 40.0 for temp in temp_samples), "Temperature went out of physiological range"
         # Perfusion-coupled EtCO2 can transiently fall below 20 with low CO.
         assert all(10 <= etco2 <= 60 for etco2 in etco2_samples), "EtCO2 went out of physiological range"
+        assert all(co > 0.5 for co in co_samples), "CO dropped below viable range"
         
         # Verify no significant drift (final should be close to median)
         median_map = np.median(map_samples)
         final_map = map_samples[-1]
         assert abs(final_map - median_map) < 20, \
             f"MAP drifted significantly: median {median_map:.1f}, final {final_map:.1f}"
-    
-    def test_no_nan_propagation(self, long_running_engine):
-        """Verify NaN doesn't propagate through extended simulation with perturbations."""
-        engine = long_running_engine
-        
-        # Run for 30 simulated minutes with perturbations
+
         for i in range(1800):
-            if i == 120:
-                engine.give_drug_bolus("Propofol", 200)
-            if i == 300:
-                engine.start_hemorrhage(500)
-            if i == 420:
-                engine.stop_hemorrhage()
-                engine.give_fluid(1000)
-            if i == 540:
-                engine.give_blood(300)
+            event = PERTURBATION_EVENTS.get(i)
+            if event:
+                event(engine)
             engine.step(1.0)
-        
-        state = engine.state
-        
-        # Check critical state values
-        critical_values = [
-            ("hr", state.hr),
-            ("map", state.map),
-            ("spo2", state.spo2),
-            ("etco2", state.etco2),
-            ("bis", state.bis),
-            ("temp_c", state.temp_c),
-            ("co", state.co),
-        ]
-        
-        for name, value in critical_values:
-            assert not np.isnan(value), f"{name} is NaN after 30 min"
-            assert not np.isinf(value), f"{name} is Inf after 30 min"
+
+        for name in ("hr", "map", "spo2", "etco2", "bis", "temp_c", "co"):
+            value = getattr(engine.state, name)
+            assert np.isfinite(value), f"{name} is not finite after perturbation sequence"
     
     def test_temperature_drift_reasonable(self, long_running_engine):
         """Temperature should drift slowly and reasonably over time."""

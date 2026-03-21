@@ -17,6 +17,7 @@ Important implications:
 - `state.map/hr/sbp/dbp` are raw arterial physiology every step.
 - UI, CLI, and tutorial/scenario code that represents what the learner sees should read `display_*`.
 - Recorder output includes both layers so logs remain useful for analysis and for reproducing monitor output.
+- Public numeric state fields are normalized to built-in Python `float` values at the projection/monitor boundary for UI and serialization consistency.
 
 ## Module Structure
 
@@ -51,7 +52,7 @@ AnaSim/
 │   ├── spo2.py
 │   └── alarms.py
 ├── ui/                 # PySide UI
-└── scripts/            # Benchmarks and utilities
+└── scripts/            # Utilities, including run_benchmarks.py
 ```
 
 ## Step Pipeline
@@ -68,14 +69,16 @@ SimulationEngine.step()
    a. Respiratory mechanics
    b. Respiration / gas exchange
    c. Hemodynamics
-8. Monitor synthesis -> waveforms, display_* values, alarms
-9. Shivering update
-10. Temperature update
-11. Death detector
+8. Projection -> raw subsystem state copied into `SimulationState`
+9. Monitor synthesis -> waveforms, display_* values, alarms
+10. Shivering update
+11. Temperature update
+12. Death detector
 ```
 
 The key rule is:
-- `runtime.step_physiology()` writes raw physiologic fields only.
+- `runtime.step_physiology()` computes the live physiology snapshot.
+- `projection.project_runtime_physiology()` writes raw physiologic fields into `SimulationState`.
 - `monitors.step_monitors()` writes display fields and waveforms only.
 
 ## Initialization
@@ -120,7 +123,7 @@ Important implications:
 | Subsystem | Writes | Does not write |
 |----------|--------|----------------|
 | PK sync | Drug concentrations (`*_ce`, `*_cp`) | Raw hemodynamics, display numerics |
-| Physiology | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `etco2`, `pa_co2`, `alveolar_co2`, `pao2`, `sao2` | `display_*` |
+| Projection layer | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `rr`, `vt`, `mv`, `va`, `etco2`, `pa_co2`, `alveolar_co2`, `pao2`, `sao2`, volatile state, fluid balance | `display_*` |
 | Monitor layer | `display_*`, waveforms, alarms, NIBP updates | Raw arterial pressure / heart rate |
 | UI / CLI | Reads `display_*` | Mutates backend physiology |
 
@@ -136,8 +139,9 @@ python3 -m pytest tests/test_ui.py -v
 
 ## Benchmarking
 
+Micro-benchmarks live in `scripts/run_benchmarks.py`.
+
 ```bash
 python3 scripts/run_benchmarks.py
-python3 scripts/run_benchmarks.py --bench hemo --steps 5000
-python3 scripts/run_benchmarks.py --bench hemo --profile
+python3 scripts/run_benchmarks.py --bench mixed --steps 5000
 ```

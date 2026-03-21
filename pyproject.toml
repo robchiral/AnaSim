@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anasim"
-version = "0.1.0"
+version = "0.2.0"
 description = "A comprehensive physiology and anesthesia simulation engine"
 readme = "README.md"
+license = "MIT"
 authors = [
   { name = "Robert Chen", email = "robert.chen@icahn.mssm.edu" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 requires-python = ">=3.10"

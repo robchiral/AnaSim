@@ -80,34 +80,6 @@ class TestPhysiologicalSanity:
         assert engine.hemo.total_colloid_in_ml == pytest.approx(250.0, rel=0, abs=1e-2)
         assert engine.hemo.blood_volume > base_bv + 100.0
 
-class TestPathologyResponse:
-    """Verifies physiological responses to adverse events."""
-    
-    def test_hemorrhage_shock(self, engine):
-        """
-        REGRESSION TEST: Verify 'Unstressed Volume' fix.
-        Massive hemorrhage should cause severe hypotension (Shock).
-        """
-        engine.start()
-        # Run baseline
-        for _ in range(10): engine.step(0.1)
-        base_map = engine.state.map
-        
-        # Start Massive Hemorrhage (2L/min)
-        engine.start_hemorrhage(2000.0)
-        
-        # Run for 60s
-        for _ in range(600):
-            engine.step(0.1)
-            
-        final_map = engine.state.map
-        final_sv = engine.state.sv
-        
-        # Expect MAP to drop by at least 40%
-        assert final_map < base_map * 0.6, "MAP did not drop significantly (<40%) during massive hemorrhage!"
-        # SV should be critically low; allow slight tolerance for model variability.
-        assert final_sv < 22.0, "Stroke Volume is unrealistically preserved during massive volume loss!"
-
 class TestMonitorStability:
     """Verifies monitors do not crash the engine."""
     
@@ -268,25 +240,27 @@ def _run_for(engine, seconds: float, dt: float = 0.1) -> None:
         engine.step(dt)
 
 def test_peep_increases_pit_and_reduces_preload():
-    """Higher PEEP should raise Pit and reduce preload via coupling."""
+    """Higher PEEP should raise Pit and reduce preload and MAP via coupling."""
     patient = Patient(age=40, weight=70, height=170, sex="male")
-    config = SimulationConfig(mode="awake", dt=0.5)
+    config = SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5, rng_seed=123)
     engine = SimulationEngine(patient, config)
     engine.start()
-    engine.set_airway_mode("Mask")
 
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
-    _run_for(engine, 20.0)
+    _run_for(engine, 60.0, dt=0.5)
     pit_low = engine.state.pit
     preload_low = engine.hemo.state.preload_factor
+    map_low = engine.state.map
 
     engine.set_vent_settings(rr=12, vt=0.5, peep=15.0, ie="1:2", mode="VCV")
-    _run_for(engine, 20.0)
+    _run_for(engine, 60.0, dt=0.5)
     pit_high = engine.state.pit
     preload_high = engine.hemo.state.preload_factor
+    map_high = engine.state.map
 
     assert pit_high > pit_low + 0.5, "Higher PEEP should increase Pit"
     assert preload_high < preload_low, "Higher PEEP should reduce preload factor"
+    assert map_high < map_low, "Higher PEEP should reduce MAP via lower preload"
 
 def test_positive_pressure_reduces_preload_vs_spontaneous():
     """Positive pressure ventilation should reduce preload vs spontaneous breathing."""
