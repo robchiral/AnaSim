@@ -37,25 +37,8 @@ class TCIController:
         if sampling_time > control_time:
             raise ValueError("Sampling time cannot be larger than control time")
             
-        A_min, B_min = pk_model.get_ss_matrices()
-        
-        # Convert to 1/sec.
-        A_sec = A_min / 60.0
-        B_sec = B_min # B matrix (1/V1) is invariant to time unit if input is Mass/Time
-        
-        n_states = A_sec.shape[0]
-        C_dummy = np.eye(n_states)
-        D_dummy = np.zeros((n_states, 1))
-        
-        # Discretize for simulation step.
-        sys_sim = cont2discrete((A_sec, B_sec, C_dummy, D_dummy), sampling_time, method='bilinear')
-        self.Ad = sys_sim[0]
-        self.Bd = sys_sim[1]
-        
-        # Discretize for control step.
-        sys_ctrl = cont2discrete((A_sec, B_sec, C_dummy, D_dummy), control_time, method='bilinear')
-        self.Ad_control = sys_ctrl[0]
-        self.Bd_control = sys_ctrl[1]
+        self._model_signature = ()
+        self._load_pk_model(pk_model)
         
         # Target index: plasma=0, effect site=last (except norepi defaults to plasma).
         if target_compartment == 'plasma':
@@ -65,15 +48,13 @@ class TCIController:
             if drug_name == 'Norepinephrine':
                  self.target_id = 0 # No effect site model usually
             else:
-                 self.target_id = n_states - 1 # Assume last state is effect site
-                 
-        self.n_state = n_states
+                 self.target_id = self.n_state - 1 # Assume last state is effect site
         
         # Precompute peak time.
         self._compute_peak_time()
         
         # State variables.
-        self.x = np.zeros((n_states, 1)) # Estimated patient state
+        self.x = np.zeros((self.n_state, 1)) # Estimated patient state
         self.infusion_rate = 0.0
         self.target = 0.0
         
@@ -87,6 +68,83 @@ class TCIController:
         
         # Endogenous input (for norepinephrine support if needed, typically 0 for TCI).
         self.u_endo = 0.0 
+
+    @staticmethod
+    def _pk_signature(pk_model) -> tuple:
+        fields = ("v1", "v2", "v3", "k10", "k12", "k21", "k13", "k31", "ke0")
+        values = []
+        for name in fields:
+            if hasattr(pk_model, name):
+                values.append(float(getattr(pk_model, name)))
+        return tuple(values)
+
+    def _load_pk_model(self, pk_model) -> None:
+        """Discretize the current PK model parameters."""
+        self.pk_model = pk_model
+        A_min, B_min = pk_model.get_ss_matrices()
+
+        # Convert to 1/sec.
+        A_sec = A_min / 60.0
+        B_sec = B_min
+
+        n_states = A_sec.shape[0]
+        C_dummy = np.eye(n_states)
+        D_dummy = np.zeros((n_states, 1))
+
+        sys_sim = cont2discrete((A_sec, B_sec, C_dummy, D_dummy), self.sampling_time, method='bilinear')
+        self.Ad = sys_sim[0]
+        self.Bd = sys_sim[1]
+
+        sys_ctrl = cont2discrete((A_sec, B_sec, C_dummy, D_dummy), self.control_time, method='bilinear')
+        self.Ad_control = sys_ctrl[0]
+        self.Bd_control = sys_ctrl[1]
+        self.n_state = n_states
+        self._model_signature = self._pk_signature(pk_model)
+
+    def sync_from_pk_model(self, pk_model, rel_tol: float = 0.05, abs_tol: float = 1e-3) -> bool:
+        """
+        Rebuild controller dynamics if the live PK model has drifted materially,
+        then seed the controller state from the live PK compartments.
+        Returns True when the discretized model was rebuilt.
+        """
+        rebuilt = False
+        new_signature = self._pk_signature(pk_model)
+
+        if len(new_signature) != len(self._model_signature):
+            rebuilt = True
+        else:
+            for prev, curr in zip(self._model_signature, new_signature):
+                limit = max(abs(prev) * rel_tol, abs_tol)
+                if abs(curr - prev) > limit:
+                    rebuilt = True
+                    break
+
+        if rebuilt:
+            self._load_pk_model(pk_model)
+            self._compute_peak_time()
+
+        self.sync_state_estimate(pk_model)
+        return rebuilt
+
+    def sync_state_estimate(self, pk_model) -> None:
+        """Seed the internal state estimate from the live PK compartments."""
+        state = getattr(pk_model, "state", None)
+        if state is None:
+            return
+
+        c1 = getattr(state, "c1", 0.0)
+        c2 = getattr(state, "c2", 0.0)
+        c3 = getattr(state, "c3", 0.0)
+        ce = getattr(state, "ce", 0.0)
+
+        if self.n_state == 1:
+            self.set_state(c1)
+        elif self.n_state == 2:
+            self.set_state(c1, c2)
+        elif self.n_state == 3:
+            self.set_state(c1, c2, ce)
+        else:
+            self.set_state(c1, c2, c3, ce)
 
     def _compute_peak_time(self):
         """Simulate a bolus to find time to peak at effect site."""

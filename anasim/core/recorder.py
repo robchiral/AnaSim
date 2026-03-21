@@ -1,10 +1,14 @@
 import csv
 import os
 import time
+import logging
 from pathlib import Path
+from dataclasses import fields
 from enum import Enum
-from typing import List, Any
 from .state import SimulationState
+
+logger = logging.getLogger(__name__)
+STATE_FIELD_NAMES = tuple(field.name for field in fields(SimulationState))
 
 class DataRecorder:
     """
@@ -19,6 +23,15 @@ class DataRecorder:
         self.is_recording = False
         self.sample_interval_sec = max(0.0, sample_interval_sec)
         self._last_sample_time = None
+
+    @staticmethod
+    def _serialize_value(value):
+        """Convert non-scalar state values into CSV-safe cells."""
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, (dict, list)):
+            return str(value)
+        return value
         
     def start(self):
         try:
@@ -26,12 +39,9 @@ class DataRecorder:
              self.file = open(self.file_path, 'w', newline='')
              self.writer = csv.writer(self.file)
              self.is_recording = True
-             # Header based on SimulationState dataclass fields.
-             from dataclasses import fields
-             header = [f.name for f in fields(SimulationState)]
-             self.writer.writerow(header)
-        except Exception as e:
-             print(f"Failed to start recording: {e}")
+             self.writer.writerow(STATE_FIELD_NAMES)
+        except Exception:
+             logger.exception("Failed to start recording")
              self.is_recording = False
              
     def log(self, state: SimulationState):
@@ -45,19 +55,11 @@ class DataRecorder:
                     return
                 self._last_sample_time = now
             
-        from dataclasses import asdict
-        row = list(asdict(state).values())
-        # Convert complex objects (dict/list/Enum) to strings for CSV.
-        row = [
-            (x.value if isinstance(x, Enum) else str(x))
-            if isinstance(x, (dict, list, Enum))
-            else x
-            for x in row
-        ]
+        row = [self._serialize_value(getattr(state, name)) for name in STATE_FIELD_NAMES]
         try:
             self.writer.writerow(row)
-        except Exception as e:
-            print(f"Failed to write record: {e}")
+        except Exception:
+            logger.exception("Failed to write record")
         
     def stop(self):
         if self.file:

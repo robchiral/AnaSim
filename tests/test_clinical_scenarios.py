@@ -224,7 +224,7 @@ class TestEmergenceScenario:
         # Ensure airway is connected and record baseline values.
         engine.set_airway_mode("ETT")
         baseline_etco2 = engine.state.etco2
-        baseline_paco2 = engine.state.paco2
+        baseline_paco2 = engine.state.pa_co2
 
         # Stop drugs while keeping the ventilator ON.
         engine.disable_tci("propofol")
@@ -242,7 +242,7 @@ class TestEmergenceScenario:
             engine.step(1.0)
             if i % 30 == 0:
                 etco2_vals.append(engine.state.etco2)
-                paco2_vals.append(engine.state.paco2)
+                paco2_vals.append(engine.state.pa_co2)
 
         etco2_vals = np.array(etco2_vals)
         paco2_vals = np.array(paco2_vals)
@@ -278,12 +278,12 @@ class TestEmergenceScenario:
         engine.set_remi_rate(0)
         engine.vent.is_on = False
         baseline_etco2 = engine.state.etco2
-        baseline_paco2 = engine.state.paco2
+        baseline_paco2 = engine.state.pa_co2
         
         # Wait for EtCO2 to rise (no ventilatory support)
         advance_time(engine, 120)  # 2 minutes
         elevated_etco2 = engine.state.etco2
-        elevated_paco2 = engine.state.paco2
+        elevated_paco2 = engine.state.pa_co2
         
         # PaCO2 should rise with hypoventilation; EtCO2 may rise less due to gradient.
         assert elevated_paco2 - baseline_paco2 > 4.0, \
@@ -303,7 +303,7 @@ class TestEmergenceScenario:
         advance_time(engine, 180)
         
         final_etco2 = engine.state.etco2
-        final_paco2 = engine.state.paco2
+        final_paco2 = engine.state.pa_co2
         
         # Bag-mask should reduce PaCO2 (and EtCO2) with ventilation
         etco2_decrease = elevated_etco2 - final_etco2

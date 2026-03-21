@@ -3,19 +3,21 @@ Emergence scenario definitions (Balanced and TIVA variants).
 """
 
 from typing import Tuple
-from .base import Scenario, ScenarioStep, require_bis_above, require_all
+from .base import Scenario, ScenarioStep, monitor_value
 
 
 def _require_assess() -> callable:
     """Check stable maintenance conditions."""
     def check(engine) -> Tuple[bool, str]:
-        bis_ok = 35 < engine.state.bis < 65
-        map_ok = engine.state.map > 60
+        bis = monitor_value(engine, "bis")
+        map_val = monitor_value(engine, "map")
+        bis_ok = 35 < bis < 65
+        map_ok = map_val > 60
         if bis_ok and map_ok:
             return True, ""
         msgs = []
-        if not bis_ok: msgs.append(f"BIS: {engine.state.bis:.0f}")
-        if not map_ok: msgs.append(f"MAP: {engine.state.map:.0f}")
+        if not bis_ok: msgs.append(f"BIS: {bis:.0f}")
+        if not map_ok: msgs.append(f"MAP: {map_val:.0f}")
         return False, "" + ", ".join(msgs)
     return check
 
@@ -51,12 +53,13 @@ def _require_agents_stopped_tiva() -> callable:
 def _require_awakening() -> callable:
     """Check patient emerging (BIS > 70, spontaneous breathing)."""
     def check(engine) -> Tuple[bool, str]:
-        bis_ok = engine.state.bis > 70
+        bis = monitor_value(engine, "bis")
+        bis_ok = bis > 70
         rr_ok = engine.state.rr > 6
         if bis_ok and rr_ok:
             return True, ""
         msgs = []
-        if not bis_ok: msgs.append(f"BIS: {engine.state.bis:.0f}/70+")
+        if not bis_ok: msgs.append(f"BIS: {bis:.0f}/70+")
         if not rr_ok: msgs.append(f"RR: {engine.state.rr:.0f}/6+")
         return False, "" + ", ".join(msgs)
     return check
@@ -67,12 +70,13 @@ def _require_extubation_criteria() -> callable:
     from anasim.core.state import AirwayType
     def check(engine) -> Tuple[bool, str]:
         breathing = engine.state.rr > 8 and not engine.state.apnea
-        awake = engine.state.bis > 80
+        bis = monitor_value(engine, "bis")
+        awake = bis > 80
         extubated = engine.state.airway_mode != AirwayType.ETT
         if breathing and awake and extubated:
             return True, ""
         msgs = []
-        if not awake: msgs.append(f"BIS: {engine.state.bis:.0f}/80+")
+        if not awake: msgs.append(f"BIS: {bis:.0f}/80+")
         if not breathing: msgs.append(f"RR: {engine.state.rr:.0f}/8+")
         if not extubated: msgs.append("Still intubated")
         return False, "" + ", ".join(msgs)
@@ -82,13 +86,14 @@ def _require_extubation_criteria() -> callable:
 def _require_recovery() -> callable:
     """Check recovery room criteria."""
     def check(engine) -> Tuple[bool, str]:
-        spo2_ok = engine.state.spo2 > 95
+        spo2 = monitor_value(engine, "spo2")
+        spo2_ok = spo2 > 95
         rr_ok = engine.state.rr > 10
         not_apneic = not engine.state.apnea
         if spo2_ok and rr_ok and not_apneic:
             return True, ""
         msgs = []
-        if not spo2_ok: msgs.append(f"SpO₂: {engine.state.spo2:.0f}/95+")
+        if not spo2_ok: msgs.append(f"SpO₂: {spo2:.0f}/95+")
         if not rr_ok: msgs.append(f"RR: {engine.state.rr:.0f}/10+")
         return False, "" + ", ".join(msgs)
     return check

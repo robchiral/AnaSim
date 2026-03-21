@@ -49,6 +49,26 @@ BOLUS_TARGETS = (
     ("milri", "pk_mil"),
     ("roc", "pk_roc"),
 )
+BOLUS_DRUG_KEYS = {
+    "prop": "propofol",
+    "remi": "remi",
+    "nore": "nore",
+    "epi": "epi",
+    "phenyl": "phenyl",
+    "vaso": "vaso",
+    "dobu": "dobu",
+    "milri": "milri",
+    "roc": "roc",
+}
+DISPLAY_FIELD_PAIRS = (
+    ("map", "display_map"),
+    ("hr", "display_hr"),
+    ("bis", "display_bis"),
+    ("etco2", "display_etco2"),
+    ("spo2", "display_spo2"),
+    ("sbp", "display_sbp"),
+    ("dbp", "display_dbp"),
+)
 
 PROPOFOL_MODELS = {
     "Marsh": PropofolPKMarsh,
@@ -282,7 +302,17 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.smooth_map = 80.0
         self.smooth_hr = 75.0
         self.smooth_bis = 98.0
+        self._monitor_tau_map_s = 1.5
+        self._monitor_tau_hr_s = 1.0
+        self._monitor_tau_bis_s = 2.0
+        self._mean_paw_tau_s = 0.25
         self._tol_current = None
+        self._raw_map = self.state.map
+        self._raw_hr = self.state.hr
+        self._rhythm_vfib = RhythmType.VFIB
+        self._rhythm_vtach = RhythmType.VTACH
+        self._rhythm_asystole = RhythmType.ASYSTOLE
+        self._pk_hemo_scale_cache = None
         
         # Helpers.
         self.current_mean_paw = 5.0
@@ -328,6 +358,16 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.initialize_models()
         self._configure_maintenance_fluids()
         self.initialize_state()
+
+    def _sync_display_state_from_raw(self):
+        """Mirror raw numerics into learner-facing display fields."""
+        for raw_attr, display_attr in DISPLAY_FIELD_PAIRS:
+            setattr(self.state, display_attr, getattr(self.state, raw_attr))
+
+    def _sync_raw_vital_cache(self):
+        """Update cached raw vitals used by internal safety checks."""
+        self._raw_map = self.state.map
+        self._raw_hr = self.state.hr
         
     def initialize_state(self):
         """Set initial state based on config (Steady State)."""
@@ -392,6 +432,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             
             # Force monitors to show "asleep" values initially.
             self.state.bis = 45.0
+            self.state.display_bis = 45.0
             self.smooth_bis = 45.0
             if self.bis:
                 # Initialize BIS with target (no longer needs volatile Et percentages)
@@ -410,6 +451,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             self.state.mac_sevo = mac
             self.state.mac_n2o = 0.0
             self.state.mac = mac
+            self.state.sbp = getattr(hemo_ss, "sbp", hemo_ss.map + 20.0)
+            self.state.dbp = getattr(hemo_ss, "dbp", hemo_ss.map - 20.0)
             
             # Sync smoothers.
             self.smooth_map = hemo_ss.map
@@ -429,6 +472,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             # Sync PK state to engine state for consistency.
             self._sync_pk_state()
 
+        self._sync_display_state_from_raw()
+        self._sync_raw_vital_cache()
         self._seed_nibp_reading()
 
     def _seed_nibp_reading(self):
@@ -571,7 +616,10 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             resp_key = "singlecompartment"
         resp_model = RESP_MODELS.get(resp_key)
         if not resp_model:
-            print(f"Note: resp_model '{self.config.resp_model}' not recognized, using default")
+            logger.warning(
+                "resp_model '%s' not recognized; using default",
+                self.config.resp_model,
+            )
             resp_model = RespiratoryModel
         self.resp = resp_model(self.patient, fidelity_mode=self.config.fidelity_mode)
         self.resp_mech = RespiratoryMechanics()
@@ -757,6 +805,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
                         dose *= model.bolus_unit_scale
                     conc_delta = dose / model.v1
                     model.state.c1 += conc_delta
+                    drug_key = BOLUS_DRUG_KEYS.get(token)
+                    if drug_key:
+                        self.sync_active_tci_from_pk(drug_key)
                 break
 
     def start_hemorrhage(self, rate_ml_min: float = 500.0):
@@ -909,6 +960,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self._metabolic_factor = metabolic_factor
 
         dist_vec = self._step_disturbances(dt)
+        updated_pk_models = self._update_pk_hemodynamics(self.state.co)
+        if updated_pk_models:
+            self.sync_active_tci_from_pk(*updated_pk_models)
 
         self._step_tci(dt)
         

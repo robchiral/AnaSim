@@ -47,7 +47,7 @@ def create_anaphylaxis_scenario():
         ScenarioStep(
             id="ana_stable",
             instruction="<b>Stabilization:</b><br>Ensure MAP is stable > 65 mmHg.",
-            requirements=lambda e: e.state.map > 65,
+            requirements=lambda e: getattr(e.state, "display_map", e.state.map) > 65,
             status_success="Hemodynamics stable",
             status_fail="BP still low"
         )

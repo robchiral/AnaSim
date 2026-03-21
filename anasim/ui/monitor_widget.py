@@ -401,13 +401,19 @@ class PatientMonitorWidget(QWidget):
         self.num_nibp.setVisible(not self.arterial_line_enabled)
 
     def update_numerics(self, state):
-        self.num_hr.set_value(f"{int(state.hr)}")
-        self.num_spo2.set_value(f"{int(state.spo2)}")
+        display_hr = state.display_value("hr")
+        display_spo2 = state.display_value("spo2")
+        display_map = state.display_value("map")
+        display_sbp = state.display_value("sbp")
+        display_dbp = state.display_value("dbp")
+        display_etco2 = state.display_value("etco2")
+        display_bis = state.display_value("bis")
+
+        self.num_hr.set_value(f"{int(display_hr)}")
+        self.num_spo2.set_value(f"{int(display_spo2)}")
         
         if self.arterial_line_enabled:
-            sys = getattr(state, 'sbp', state.map + 27)
-            dia = getattr(state, 'dbp', state.map - 13)
-            self.num_map.set_value(f"{int(sys)}/{int(dia)} ({int(state.map)})")
+            self.num_map.set_value(f"{int(display_sbp)}/{int(display_dbp)} ({int(display_map)})")
         else:
             ts = getattr(state, 'nibp_timestamp', 0.0)
             is_cycling = getattr(state, 'nibp_is_cycling', False)
@@ -423,10 +429,10 @@ class PatientMonitorWidget(QWidget):
                 mean = getattr(state, 'nibp_map', 0)
                 self.num_nibp.set_value(f"{int(sys)}/{int(dia)} ({int(mean)})")
 
-        self.num_etco2.set_value(f"{int(state.etco2)}")
+        self.num_etco2.set_value(f"{int(display_etco2)}")
         self.num_rr.set_value(f"{int(state.rr)}")
         
-        self.num_bis.set_value(f"{int(state.bis)}")
+        self.num_bis.set_value(f"{int(display_bis)}")
         self.num_tof.set_value(f"{int(state.tof)}%")
         self.num_temp.set_value(f"{state.temp_c:.1f}")
 
@@ -504,7 +510,7 @@ class PatientMonitorWidget(QWidget):
         self.capno_curve.setData(self.capno_data)
         
         if self.arterial_line_enabled:
-            map_c = np.array([s.map for s in new_states])
+            map_c = np.array([s.display_value("map") for s in new_states])
             # Synthetic art line: Pleth * 40 + (MAP - 13)
             art_c = spo2_c * 40 + (map_c - 13)
             self.art_data = shift_append(self.art_data, art_c)

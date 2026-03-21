@@ -224,7 +224,7 @@ def test_hr_disturbance_not_double_applied():
     engine1._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
     engine2._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0, 0.0, 10.0))
 
-    assert engine1.state.hr == pytest.approx(engine2.state.hr, rel=1e-6)
+    assert engine1.state.display_hr == pytest.approx(engine2.state.display_hr, rel=1e-6)
 
 def test_lbm_fallback_for_extreme_bmi():
     """LBM should remain positive for extreme BMI values."""
