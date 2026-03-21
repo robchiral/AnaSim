@@ -9,10 +9,8 @@ from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from anasim.core.engine import SimulationEngine, SimulationConfig
+from anasim.core.state import validate_config_payload
 from anasim.patient.patient import Patient
-
-
-
 
 def run_headless(args):
     """Run simulation in headless mode."""
@@ -27,6 +25,11 @@ def run_headless(args):
         except Exception as e:
             print(f"Error loading config: {e}")
             sys.exit(1)
+    try:
+        validate_config_payload(config_data, source="CLI config")
+    except ValueError as e:
+        print(f"Error loading config: {e}")
+        sys.exit(1)
 
     # Patient
     patient = Patient(
@@ -57,7 +60,7 @@ def run_headless(args):
         dt=dt_val,
         pk_model_propofol=config_data.get('pk_model_propofol', 'Eleveld'),
         pk_model_remi=config_data.get('pk_model_remi', 'Minto'),
-        bis_model=config_data.get('bis_model', 'GrecoBouillon'),
+        bis_model=config_data.get('bis_model', 'Bouillon'),
         hemo_model=config_data.get('hemo_model', 'Su2023'),
         resp_model=config_data.get('resp_model', 'SingleCompartment'),
         pk_model_nore=config_data.get('pk_model_nore', 'Li'),
@@ -67,7 +70,7 @@ def run_headless(args):
         maint_type=config_data.get('maint_type', 'tiva'),
         disturbance_profile=config_data.get('disturbance_profile', None),
         baseline_hb=config_data.get('baseline_hb', 13.5),
-        fidelity_mode=config_data.get('fidelity_mode', 'clinical'),
+        baseline_hct=config_data.get('baseline_hct', None),
         volatile_agents=config_data.get('volatile_agents', ['sevoflurane']),
         maintenance_fluid_ml_hr=config_data.get('maintenance_fluid_ml_hr', None),
         simulation_speed=config_data.get('simulation_speed', 1.0),

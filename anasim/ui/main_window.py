@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QTimer
 
 from anasim.core.engine import SimulationEngine, SimulationConfig, Patient
+from anasim.core.state import validate_config_payload
 from anasim.ui.monitor_widget import PatientMonitorWidget
 from anasim.ui.controls_widget import ControlPanelWidget
 from anasim.ui.config_dialog import SimulationSetupDialog
@@ -71,6 +72,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "engine") and getattr(self.engine, "recorder", None):
             self.engine.stop_recording()
         p = self.sim_params
+        try:
+            validate_config_payload(p, source="UI session payload")
+        except ValueError as e:
+            QMessageBox.critical(self, "Unsupported Session Payload", str(e))
+            raise
         self.arterial_line_enabled = p.get('arterial_line_enabled', True)
         self.patient = Patient(
             age=p['age'], 
@@ -92,7 +98,6 @@ class MainWindow(QMainWindow):
             mode=p.get('mode', 'awake'),
             maint_type=p.get('maint_type', 'tiva'),
             baseline_hb=p.get('baseline_hb', 13.5),
-            fidelity_mode=p.get('fidelity_mode', 'clinical'),
             enable_death_detector=p.get('enable_death_detector', False)
         )
         self.engine = SimulationEngine(self.patient, self.config)

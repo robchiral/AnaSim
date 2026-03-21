@@ -1,6 +1,7 @@
-
+import pytest
 from anasim.patient.pk_models import (
     PropofolPKMarsh,
+    PropofolPKEleveld,
     NorepinephrinePK,
     PhenylephrinePK,
     RocuroniumPK,
@@ -66,6 +67,18 @@ class TestPharmacologySanity:
         # Mass should decrease strictly (closed system check)
         mass = model.v1*model.state.c1 + model.v2*model.state.c2 + model.v3*model.state.c3
         assert mass < dose_mg, "Total mass must decrease over time"
+
+    def test_eleveld_reference_adult_matches_publication_reference_case(self):
+        patient = Patient(age=35, weight=70, height=170, sex="male")
+        model = PropofolPKEleveld(patient)
+
+        assert model.v1 == pytest.approx(6.283, rel=0.0, abs=0.02)
+        assert model.v2 == pytest.approx(25.501, rel=0.0, abs=0.05)
+        assert model.v3 == pytest.approx(272.817, rel=0.0, abs=0.6)
+        assert model.k10 * model.v1 == pytest.approx(1.790, rel=0.0, abs=0.03)
+        assert model.k12 * model.v1 == pytest.approx(1.750, rel=0.0, abs=0.03)
+        assert model.k13 * model.v1 == pytest.approx(1.109, rel=0.0, abs=0.03)
+        assert model.ke0 == pytest.approx(0.146, rel=0.0, abs=0.002)
 
 
 # --- Vasopressor PK Specific Tests ---

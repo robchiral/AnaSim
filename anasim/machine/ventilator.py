@@ -143,28 +143,3 @@ class AnesthesiaVentilator:
             return f"PSV - PS {int(self.settings.p_insp)} cmH2O"
         return f"CPAP - PEEP {int(self.settings.peep)} cmH2O"
             
-    def get_alarm_status(self) -> dict:
-        """
-        Check for ventilator alarms.
-        
-        Returns dict with alarm conditions.
-        """
-        alarms = {}
-        
-        # High peak pressure alarm (> 40 cmH2O)
-        if self.monitors.paw_peak > 40:
-            alarms['high_paw'] = self.monitors.paw_peak
-            
-        # Low tidal volume alarm (< 80% of set in VCV, or < 200mL in PCV)
-        if self.settings.mode == "VCV":
-            if self.monitors.tv_exp < 0.8 * self.settings.tv:
-                alarms['low_tv'] = self.monitors.tv_exp
-        else:
-            if self.monitors.tv_exp < 200:
-                alarms['low_tv'] = self.monitors.tv_exp
-                
-        # Auto-PEEP warning (> 5 cmH2O)
-        if self.monitors.auto_peep > 5:
-            alarms['auto_peep'] = self.monitors.auto_peep
-            
-        return alarms

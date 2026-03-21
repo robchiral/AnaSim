@@ -92,10 +92,8 @@ class HemodynamicModel:
         - SVR: Wood Units (mmHg×min/L)
         - TPR: mmHg×min/mL (internal)
     """
-    def __init__(self, patient: Patient, fidelity_mode: str = "clinical",
-                 config: Optional[HemodynamicConfig] = None):
+    def __init__(self, patient: Patient, config: Optional[HemodynamicConfig] = None):
         self.patient = patient
-        use_literature = (fidelity_mode == "literature")
         self.config = config or HemodynamicConfig()
         # Caches should exist before any config-driven invalidation.
         self._cached_state: Optional[HemoStateExtended] = None
@@ -180,10 +178,9 @@ class HemodynamicModel:
         # =====================================================================
         # Drug Effect Parameters (Su et al. Br J Anaesth. 2023 + literature extensions)
         # =====================================================================
-        # Su et al. Br J Anaesth. 2023 found Emax -0.78 (78% drop). This often yields
-        # clinically unrealistic hypotension (MAP <60) in steady state simulation.
-        # Clinical realism uses -0.50 (50% max drop) to maintain MAP ~70-75 mmHg during maintenance.
-        self.emax_prop_tpr = self.emax_prop_tpr_literature if use_literature else self.emax_prop_tpr_clinical
+        # Su et al. 2023 report propofol TPR Emax about -0.78.
+        # AnaSim keeps the runtime value at -0.50 to hold default treated
+        # maintenance states in a realistic MAP range at startup and during scenarios.
 
         # State init
         self.ce_sevo = 0.0
@@ -318,6 +315,7 @@ class HemodynamicModel:
         self.nore_emax_map = emax
         self.nore_gamma = gamma
         self._hill_cache.clear()
+        self.invalidate_state_cache()
     
     def _hill_cached(self, key: str, ce: float) -> float:
         if ce <= 0:

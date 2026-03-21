@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from anasim.core.engine import SimulationEngine
-from anasim.core.state import AirwayType, SimulationConfig
+from anasim.core.state import AirwayType, SimulationConfig, validate_config_payload
 from anasim.core.enums import RhythmType
 from anasim.patient.patient import Patient
 from anasim.physiology.hemodynamics import HemoState
@@ -48,7 +48,7 @@ def test_raw_hemodynamics_are_not_overwritten_by_display_smoothing():
     hemo_state = HemoState(map=45.0, hr=42.0, sv=55.0, svr=14.0, co=2.3, sbp=62.0, dbp=34.0)
     resp_state = _steady_resp_state()
 
-    engine._step_monitors(0.5, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    engine._step_monitors(0.5, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0))
 
     assert engine.state.map == pytest.approx(45.0)
     assert engine.state.hr == pytest.approx(42.0)
@@ -80,7 +80,7 @@ def test_arrest_display_bypass_collapses_without_coarse_dt_lag():
     )
     resp_state = _steady_resp_state()
 
-    engine._step_monitors(0.5, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    engine._step_monitors(0.5, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0))
 
     assert engine.state.display_map == pytest.approx(0.0)
     assert engine.state.display_hr == pytest.approx(0.0)
@@ -104,7 +104,7 @@ def test_display_map_response_depends_on_time_not_step_count(dt: float):
 
     elapsed = 0.0
     while elapsed < 2.0 - 1e-9:
-        engine._step_monitors(dt, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+        engine._step_monitors(dt, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0))
         elapsed += dt
 
     assert engine.state.display_map == pytest.approx(60.5, abs=1.0)
@@ -202,3 +202,182 @@ def test_tci_controller_resyncs_after_bolus_and_pk_scaling():
     engine.sync_active_tci_from_pk("propofol")
 
     assert controller._model_signature != baseline_signature
+
+
+def test_awake_initial_snapshot_uses_patient_baselines():
+    patient = Patient(
+        age=40,
+        weight=70,
+        height=170,
+        sex="male",
+        baseline_hr=95.0,
+        baseline_map=105.0,
+        baseline_rr=16.0,
+        baseline_vt=620.0,
+    )
+    engine = SimulationEngine(
+        patient,
+        SimulationConfig(mode="awake", baseline_hb=8.0, rng_seed=123),
+    )
+
+    assert engine.state.hr == pytest.approx(95.0, abs=1e-3)
+    assert engine.state.map == pytest.approx(105.0, abs=1e-3)
+    assert engine.state.display_hr == pytest.approx(engine.state.hr, abs=1e-3)
+    assert engine.state.display_map == pytest.approx(engine.state.map, abs=1e-3)
+    assert engine.state.rr == pytest.approx(16.0, abs=1e-3)
+    assert engine.state.vt == pytest.approx(620.0, abs=1e-3)
+    assert engine.state.hb_g_dl == pytest.approx(8.0, abs=1e-6)
+    assert engine.state.hct == pytest.approx(0.24, abs=1e-6)
+    assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
+
+
+def test_steady_state_tiva_snapshot_uses_live_model_state():
+    engine = SimulationEngine(
+        Patient(age=40, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=123),
+    )
+
+    expected_bis = engine.bis.compute_bis(
+        engine.state.propofol_ce,
+        engine.state.remi_ce,
+        u_volatile=engine.state.mac_sevo,
+    )
+
+    assert engine.state.bis == pytest.approx(expected_bis, abs=1e-3)
+    assert engine.state.bis < 55.0
+    assert 65.0 <= engine.state.map <= 85.0
+    assert engine.state.nore_ce > 1.0
+    assert engine.state.bis != pytest.approx(45.0, abs=1e-3)
+    assert engine.state.fi_sevo == pytest.approx(0.0, abs=1e-6)
+    assert engine.state.et_sevo == pytest.approx(0.0, abs=1e-6)
+    assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
+    assert engine.state.fluid_in_ml == pytest.approx(0.0, abs=1e-6)
+    assert engine.state.urine_out_ml == pytest.approx(0.0, abs=1e-6)
+    assert engine.state.temp_c == pytest.approx(37.0, abs=1e-6)
+
+
+def test_steady_state_balanced_snapshot_syncs_volatile_state():
+    engine = SimulationEngine(
+        Patient(age=40, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=123),
+    )
+
+    expected_bis = engine.bis.compute_bis(
+        engine.state.propofol_ce,
+        engine.state.remi_ce,
+        u_volatile=engine.state.mac_sevo,
+    )
+
+    assert engine.state.fi_sevo > 0.0
+    assert engine.state.et_sevo > 0.0
+    assert engine.state.mac_sevo == pytest.approx(1.0, abs=0.05)
+    assert 38.0 <= engine.state.bis <= 50.0
+    assert 70.0 <= engine.state.map <= 85.0
+    assert engine.state.bis == pytest.approx(expected_bis, abs=1e-3)
+    assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
+    assert engine.state.fluid_in_ml == pytest.approx(0.0, abs=1e-6)
+    assert engine.state.urine_out_ml == pytest.approx(0.0, abs=1e-6)
+    assert engine.state.temp_c == pytest.approx(37.0, abs=1e-6)
+
+
+@pytest.mark.parametrize(
+    ("maint_type", "bis_band", "map_band", "max_bis_drift", "max_map_drift"),
+    [
+        ("tiva", (50.0, 58.0), (70.0, 85.0), 1.0, 3.0),
+        ("balanced", (38.0, 50.0), (70.0, 82.0), 1.5, 3.0),
+    ],
+)
+def test_steady_state_profiles_do_not_rebound_in_first_minute(
+    maint_type,
+    bis_band,
+    map_band,
+    max_bis_drift,
+    max_map_drift,
+):
+    engine = SimulationEngine(
+        Patient(age=40, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="steady_state", maint_type=maint_type, rng_seed=123),
+    )
+    engine.start()
+
+    start_bis = float(engine.state.bis)
+    start_map = float(engine.state.map)
+
+    for _ in range(60):
+        engine.step(1.0)
+
+    assert bis_band[0] <= engine.state.bis <= bis_band[1]
+    assert map_band[0] <= engine.state.map <= map_band[1]
+    assert abs(engine.state.bis - start_bis) <= max_bis_drift
+    assert abs(engine.state.map - start_map) <= max_map_drift
+
+
+@pytest.mark.parametrize(
+    ("maint_type", "bis_band", "map_band", "max_bis_drift", "max_map_drift"),
+    [
+        ("tiva", (50.0, 58.0), (70.0, 85.0), 2.0, 4.0),
+        ("balanced", (38.0, 50.0), (70.0, 82.0), 5.0, 4.0),
+    ],
+)
+def test_steady_state_profiles_remain_stable_for_first_15_minutes(
+    maint_type,
+    bis_band,
+    map_band,
+    max_bis_drift,
+    max_map_drift,
+):
+    engine = SimulationEngine(
+        Patient(age=40, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="steady_state", maint_type=maint_type, rng_seed=123),
+    )
+    engine.start()
+
+    start_bis = float(engine.state.bis)
+    start_map = float(engine.state.map)
+
+    for _ in range(900):
+        engine.step(1.0)
+
+    assert bis_band[0] <= engine.state.bis <= bis_band[1]
+    assert map_band[0] <= engine.state.map <= map_band[1]
+    assert abs(engine.state.bis - start_bis) <= max_bis_drift
+    assert abs(engine.state.map - start_map) <= max_map_drift
+
+
+def test_baseline_hct_is_derived_from_hb_when_omitted():
+    engine = SimulationEngine(
+        Patient(age=40, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="awake", baseline_hb=8.0),
+    )
+
+    assert engine.patient.baseline_hct == pytest.approx(0.24, abs=1e-6)
+    assert engine.state.hct == pytest.approx(0.24, abs=1e-6)
+
+
+def test_explicit_baseline_hct_is_preserved_when_consistent():
+    engine = SimulationEngine(
+        Patient(age=40, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="awake", baseline_hb=8.0, baseline_hct=0.27),
+    )
+
+    assert engine.patient.baseline_hct == pytest.approx(0.27, abs=1e-6)
+    assert engine.state.hct == pytest.approx(0.27, abs=1e-6)
+
+
+def test_grossly_inconsistent_hb_hct_pair_is_rejected():
+    with pytest.raises(ValueError, match="grossly inconsistent"):
+        SimulationEngine(
+            Patient(age=40, weight=70, height=170, sex="male"),
+            SimulationConfig(mode="awake", baseline_hb=8.0, baseline_hct=0.42),
+        )
+
+
+def test_grecobouillon_alias_canonicalizes_to_bouillon():
+    config = SimulationConfig(mode="awake", bis_model="GrecoBouillon")
+    assert config.bis_model == "Bouillon"
+
+
+@pytest.mark.parametrize("source", ["CLI config", "UI session payload"])
+def test_legacy_fidelity_mode_payload_is_rejected(source: str):
+    with pytest.raises(ValueError, match="fidelity_mode"):
+        validate_config_payload({"fidelity_mode": "literature"}, source=source)

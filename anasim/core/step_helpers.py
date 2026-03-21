@@ -47,7 +47,7 @@ TCI_TARGETS = (
     ("tci_roc", "roc_rate_mg_sec"),
 )
 
-ZERO_DIST = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+ZERO_DIST = (0.0, 0.0, 0.0, 0.0)
 PK_HEMODYNAMIC_MODEL_ATTRS = (
     ("propofol", "pk_prop"),
     ("remi", "pk_remi"),
@@ -196,7 +196,13 @@ class StepHelpersMixin:
             self._next_nibp_time = state.time + self.nibp.interval
 
         prev_ts = state.nibp_timestamp
-        cuff_p = self.nibp.step(dt, state.time, hemo_state.map, true_sys=getattr(hemo_state, "sbp", None))
+        cuff_p = self.nibp.step(
+            dt,
+            state.time,
+            hemo_state.map,
+            true_sys=getattr(hemo_state, "sbp", None),
+            rhythm_type=getattr(hemo_state, "rhythm_type", None),
+        )
 
         state.nibp_is_cycling = self.nibp.is_cycling
         state.nibp_cuff_pressure = cuff_p
@@ -323,7 +329,7 @@ class StepHelpersMixin:
             dist_vec = disturbances.compute_dist(t_rel)
         if hasattr(dist_vec, "as_tuple"):
             dist_vec = dist_vec.as_tuple()
-        d_bis, d_map, d_co, d_svr, d_sv, d_hr = dist_vec
+        d_bis, d_svr, d_sv, d_hr = dist_vec
         hemo = self.hemo
 
         # Attenuate stimulus with anesthetic depth (deeper = less response).
@@ -344,19 +350,19 @@ class StepHelpersMixin:
         if self.pending_infusions:
             remaining = []
             for infusion in self.pending_infusions:
-                rate_sec = infusion['rate'] / 60.0
-                amount_this_step = min(infusion['remaining'], rate_sec * dt)
-                infusion['remaining'] -= amount_this_step
+                rate_sec = infusion.rate_ml_min / 60.0
+                amount_this_step = min(infusion.remaining_ml, rate_sec * dt)
+                infusion.remaining_ml -= amount_this_step
                 if amount_this_step > 0:
                     if hemo:
                         hemo.add_volume(
                             amount_this_step,
-                            hematocrit=infusion['hematocrit'],
-                            retention_fraction=infusion.get('retention_fraction'),
-                            label=infusion.get('label', 'crystalloid'),
-                            count_as_bolus=infusion.get('count_as_bolus', True),
+                            hematocrit=infusion.hematocrit,
+                            retention_fraction=infusion.retention_fraction,
+                            label=infusion.label,
+                            count_as_bolus=infusion.count_as_bolus,
                         )
-                if infusion['remaining'] > 1e-3:
+                if infusion.remaining_ml > 1e-3:
                     remaining.append(infusion)
             self.pending_infusions[:] = remaining
 
@@ -386,7 +392,7 @@ class StepHelpersMixin:
             self.hemo.anaphylaxis_severity = self.anaphylaxis_severity
             self.hemo.sepsis_severity = self.sepsis_severity
         
-        dist_vec = (d_bis, d_map, d_co, d_svr, d_sv, d_hr)
+        dist_vec = (d_bis, d_svr, d_sv, d_hr)
         return dist_vec
 
     def _step_tci(self: "SimulationEngine", dt: float):
@@ -682,7 +688,7 @@ class StepHelpersMixin:
 
     def _step_physiology(self: "SimulationEngine", dt: float, dist_vec: tuple):
         """Update Hemo and Respiration with enhanced ventilator dynamics."""
-        _d_bis, _d_map, _d_co, d_svr, d_sv, d_hr = dist_vec
+        _d_bis, d_svr, d_sv, d_hr = dist_vec
         state = self.state
         resp_mech = self.resp_mech
         resp = self.resp
@@ -968,7 +974,7 @@ class StepHelpersMixin:
 
     def _step_monitors(self: "SimulationEngine", dt: float, phase: str, hemo_state, resp_state, dist_vec):
         """Update Monitors and calculate smoothed state."""
-        d_bis, d_map, _d_co, _d_svr, _d_sv, _d_hr = dist_vec
+        d_bis, _d_svr, _d_sv, _d_hr = dist_vec
         state = self.state
         
         if self.patient.weight != self._remi_rate_weight:
@@ -1024,7 +1030,7 @@ class StepHelpersMixin:
         # dt-aware display smoothing and noise.
         noise = self.rng.normal(0.0, self._monitor_noise_std)
         
-        raw_map = hemo_state.map + d_map + noise[0]
+        raw_map = hemo_state.map + noise[0]
         raw_hr = hemo_state.hr + noise[1]
         raw_bis = state.bis + noise[2]
 

@@ -32,7 +32,7 @@ You can provide a JSON file to customize the patient and simulation parameters.
     "baseline_vt": 500,
     "baseline_temp": 37.0,
     "baseline_hb": 13.5,
-    "baseline_hct": 0.42,
+    "baseline_hct": null,
     "renal_function": 1.0,
     "hepatic_function": 1.0,
     "dt": 0.01,
@@ -40,7 +40,7 @@ You can provide a JSON file to customize the patient and simulation parameters.
     "maint_type": "tiva",
     "pk_model_propofol": "Eleveld",
     "pk_model_remi": "Minto",
-    "bis_model": "GrecoBouillon",
+    "bis_model": "Bouillon",
     "hemo_model": "Su2023",
     "resp_model": "SingleCompartment",
     "pk_model_nore": "Li",
@@ -48,7 +48,6 @@ You can provide a JSON file to customize the patient and simulation parameters.
     "loc_model": "Kern",
     "disturbance_profile": null,
     "volatile_agents": ["sevoflurane"],
-    "fidelity_mode": "clinical",
     "rng_seed": 123,
     "maintenance_fluid_ml_hr": null,
     "simulation_speed": 1.0,
@@ -60,14 +59,15 @@ You can provide a JSON file to customize the patient and simulation parameters.
 
 - **age/weight/height/sex/asa**: patient demographics.
 - **baseline_hr/baseline_map/baseline_rr/baseline_vt**: patient baseline vitals (bpm, mmHg, bpm, mL).
-- **baseline_temp/baseline_hb/baseline_hct**: baseline temperature (°C), hemoglobin (g/dL), hematocrit (fraction).
+- **baseline_temp/baseline_hb/baseline_hct**: baseline temperature (°C), hemoglobin (g/dL), hematocrit (fraction). If `baseline_hct` is omitted or `null`, the engine derives it from hemoglobin.
 - **renal_function/hepatic_function**: organ function fractions (0.1–1.0).
 - **dt**: simulation time step (seconds).
 - **mode**: `awake`, `steady_state`
 - **maint_type**: `tiva`, `balanced`
+  `steady_state` uses an internal managed-maintenance bootstrap before visible time starts; it is not a pure compartment equilibrium preset.
 - **pk_model_propofol**: `Marsh`, `Schnider`, `Eleveld`
 - **pk_model_remi**: `Minto`
-- **bis_model**: `Bouillon`, `Eleveld`, `Fuentes`, `Yumuk`, `GrecoBouillon`
+- **bis_model**: `Bouillon`, `Eleveld`, `Fuentes`, `Yumuk`. `GrecoBouillon` is still accepted as a backward-compatible alias.
 - **hemo_model**: `Su2023`, `Su`, `Advanced` (others fall back to default)
 - **resp_model**: `SingleCompartment`
 - **pk_model_nore**: `Li`, `Oualha`, `Beloeil`
@@ -75,11 +75,13 @@ You can provide a JSON file to customize the patient and simulation parameters.
 - **loc_model**: `Kern`
 - **disturbance_profile**: `stim_intubation_pulse`, `stim_sustained_surgery`, or `null`
 - **volatile_agents**: list of enabled volatile agents (e.g., `["sevoflurane"]`)
-- **fidelity_mode**: `clinical` or `literature`
 - **rng_seed**: integer seed for deterministic noise
 - **maintenance_fluid_ml_hr**: continuous IV fluid rate in mL/hr. `null` (or omitted) uses the default 1 mL/kg/hr.
 - **simulation_speed**: real-time multiplier (UI only, informational in headless).
 - **enable_death_detector**: `true`/`false` to enable viability checks.
+
+Legacy note:
+- Configs that still contain `fidelity_mode` now fail to load. AnaSim no longer exposes a literature/runtime toggle and uses one realism-calibrated profile.
 
 ## Examples
 

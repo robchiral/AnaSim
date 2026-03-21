@@ -73,6 +73,18 @@ The key rule is:
 - `_step_physiology()` writes raw physiologic fields only.
 - `_step_monitors()` writes display fields and waveforms only.
 
+## Initialization
+
+Startup is handled separately from the visible runtime loop:
+- `awake` initializes directly from patient baselines with no hidden history.
+- `steady_state` computes internal maintenance targets, applies controlled ventilation, and runs a hidden managed-maintenance bootstrap before visible time begins.
+- Visible simulation always starts at `state.time == 0.0` after the hidden bootstrap is complete.
+
+Important implications:
+- steady-state startup is not a pure mathematical equilibrium fill
+- hidden bootstrap advances machine/PK/physiology state but skips recorder output, display-history accumulation, death checks, and visible fluid/temperature bookkeeping
+- the public snapshot is derived from live subsystem state only after bootstrap completes
+
 ## Model Notes
 
 ### Hemodynamics

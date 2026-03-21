@@ -392,25 +392,26 @@ class TestEmergenceScenario:
             if engine.state.bis > 80 and bis_80_time is None:
                 bis_80_time = t
         
-        # HCVR should enable spontaneous MV > 3 L/min within ~12 min
-        # Multiplicative interaction (1 - d1)*(1 - d2) removes the artificial 5% drive floor,
-        # causing physiologically correct prolonged apnea compared to additive models.
+        # HCVR should enable spontaneous MV > 3 L/min within ~12 min.
+        # The current multiplicative drug interaction allows deeper respiratory
+        # depression than the older additive drive-floor approximation.
         assert mv_3_time is not None, \
             "Spontaneous MV never reached 3 L/min during 30-min observation"
         assert mv_3_time < 720, \
             f"MV > 3 L/min at {mv_3_time}s - expected within 720s (~12 min)"
         
-        # BIS should reach ~70 (eye opening) within ~7-14 min
+        # BIS should reach ~70 (eye opening) within roughly 6.5-14 min
         assert bis_70_time is not None, \
             "BIS never reached 70 (eye opening range) during 30-min observation"
-        assert 420 <= bis_70_time <= 840, \
-            f"BIS > 70 at {bis_70_time}s - expected 7-14 min"
+        assert 390 <= bis_70_time <= 840, \
+            f"BIS > 70 at {bis_70_time}s - expected within 390-840s"
 
-        # BIS should reach 80 within 26 min (depends on propofol PK, not HCVR)
+        # Managed maintenance should still wake within a clinically plausible
+        # 10-20 minute window after propofol stop.
         assert bis_80_time is not None, \
             "BIS never reached 80 during 30-min observation"
-        assert bis_80_time < 1600, \
-            f"BIS > 80 at {bis_80_time}s - expected within 1600s (26 min)"
+        assert bis_80_time < 1200, \
+            f"BIS > 80 at {bis_80_time}s - expected within 1200s (20 min)"
 
 
 
