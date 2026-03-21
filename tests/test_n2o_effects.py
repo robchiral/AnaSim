@@ -1,5 +1,6 @@
 from anasim.core.state import SimulationConfig
-from anasim.patient.pd_models import LOCModel, TOFModel
+from anasim.patient.pd.anesthesia import LOCModel
+from anasim.patient.pd.nmba import TOFModel
 
 
 def test_loc_model_n2o_increases_probability():

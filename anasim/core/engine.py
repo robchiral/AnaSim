@@ -8,8 +8,10 @@ import numpy as np
 
 from .state import SimulationState, SimulationConfig, AirwayType
 from .initialization import initialize_engine_state
-from .step_helpers import StepHelpersMixin
 from .drug_api import DrugControllerMixin
+from . import runtime as runtime_core
+from . import projection as projection_core
+from . import monitors as monitor_core
 from anasim.patient.patient import Patient
 from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.physiology.respiration import RespiratoryModel
@@ -20,7 +22,7 @@ from anasim.patient.pk_models import (
     RemifentanilPKMinto, NorepinephrinePK, RocuroniumPK,
     EpinephrinePK, PhenylephrinePK, VasopressinPK, DobutaminePK, MilrinonePK
 )
-from anasim.patient.pd_models import TOFModel, LOCModel, TOLModel, BISModel
+from anasim.patient.pd import TOFModel, LOCModel, TOLModel, BISModel
 from anasim.physiology.disturbances import Disturbances
 from anasim.monitors.alarms import AlarmSystem
 from anasim.core.tci import TCIController
@@ -29,8 +31,6 @@ from anasim.core.utils import clamp
 from anasim.core.constants import (
     AirwayTuning,
     ThermalTuning,
-    TEMP_METABOLIC_COEFFICIENT,
-    SHIVER_MAX_MULTIPLIER,
 )
 from anasim.core.recorder import DataRecorder
 
@@ -199,19 +199,19 @@ from anasim.patient.volatile_pk import VolatilePK
 
 from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.spo2 import SpO2Monitor
-from anasim.monitors.nibp import NIBPMonitor, NIBPReading
+from anasim.monitors.nibp import NIBPMonitor
 
 logger = logging.getLogger(__name__)
 
-class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
+class SimulationEngine(DrugControllerMixin):
     """
     Main simulation orchestrator.
     Manages time, updates subsystems, and produces state snapshots.
     
     State management:
     - `self.state` is the public snapshot for UI/tests.
-    - Subsystems keep their own internal state and sync into `self.state`
-      via _sync_pk_state() and inline updates in _step_physiology().
+    - Subsystems keep their own internal state and project into `self.state`
+      through the projection and monitor modules.
     """
     def __init__(self, patient: Patient, config: SimulationConfig):
         self._configure_patient_baseline_hematology(patient, config)
@@ -414,233 +414,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self._vq_mismatch = 0.0
 
         initialize_engine_state(self)
-        self._sync_state_from_models()
-        self._seed_nibp_reading()
-
-    def _sync_state_from_models(self):
-        """Derive the public SimulationState from current subsystem state."""
-        state = self.state
-        state.blood_volume = getattr(self.hemo, "blood_volume", state.blood_volume)
-        state.temp_c = getattr(self.patient, "baseline_temp", state.temp_c)
-        self._sync_pk_state()
-        self._sync_machine_state()
-        hemo_state = self.hemo.state if self.hemo else None
-        if hemo_state:
-            self._sync_hemodynamics_from_model(hemo_state)
-        resp_state = self._snapshot_respiratory_state(hemo_state)
-        if resp_state is not None:
-            self._sync_respiration_from_model(resp_state)
-        self._sync_monitor_baselines()
-        self._sync_display_state_from_raw()
-        self._sync_raw_vital_cache()
-
-    def _sync_machine_state(self):
-        """Copy volatile/circuit state into the public snapshot without advancing time."""
-        state = self.state
-        connected = state.airway_mode != AirwayType.NONE
-        composition = getattr(self.circuit, "composition", None)
-        if connected and composition is not None:
-            fi_sevo = composition.fi_agent if getattr(self, "_volatile_enabled", True) else 0.0
-            fi_n2o = composition.fin2o
-            state.fio2 = composition.fio2
-        else:
-            fi_sevo = 0.0
-            fi_n2o = 0.0
-            state.fio2 = 0.21
-
-        state.fi_sevo = fi_sevo * 100.0
-        state.fi_n2o = fi_n2o * 100.0
-        state.et_sevo = self.pk_sevo.state.p_alv * 100.0 if self.pk_sevo else 0.0
-        state.et_n2o = self.pk_n2o.state.p_alv * 100.0 if getattr(self, "pk_n2o", None) else 0.0
-        state.mac_sevo = self.pk_sevo.state.mac if self.pk_sevo else 0.0
-        state.mac_n2o = self.pk_n2o.state.mac if getattr(self, "pk_n2o", None) else 0.0
-        state.mac = state.mac_sevo + state.mac_n2o
-
-    def _sync_hemodynamics_from_model(self, hemo_state):
-        """Copy hemodynamic model state into the public snapshot."""
-        state = self.state
-        state.map = hemo_state.map
-        state.hr = hemo_state.hr
-        state.sv = hemo_state.sv
-        state.svr = hemo_state.svr
-        state.co = hemo_state.co
-        state.sbp = getattr(hemo_state, "sbp", hemo_state.map + 20.0)
-        state.dbp = getattr(hemo_state, "dbp", hemo_state.map - 20.0)
-        state.blood_volume = getattr(self.hemo, "blood_volume", state.blood_volume)
-        state.hb_g_dl = getattr(self.hemo, "hb_conc", state.hb_g_dl)
-        state.hct = self.hemo.get_hematocrit() if hasattr(self.hemo, "get_hematocrit") else state.hct
-        total_crystalloid = getattr(self.hemo, "total_crystalloid_in_ml", 0.0)
-        total_colloid = getattr(self.hemo, "total_colloid_in_ml", 0.0)
-        state.colloid_in_ml = total_colloid
-        state.fluid_in_ml = total_crystalloid + total_colloid
-        state.blood_in_ml = getattr(self.hemo, "total_blood_in_ml", 0.0)
-        state.urine_out_ml = getattr(self.hemo, "total_urine_out_ml", 0.0)
-        state.blood_out_ml = getattr(self.hemo, "total_blood_out_ml", 0.0)
-        state.net_fluid_ml = state.fluid_in_ml + state.blood_in_ml - state.urine_out_ml - state.blood_out_ml
-        self.smooth_map = hemo_state.map
-        self.smooth_hr = hemo_state.hr
-
-    def _snapshot_respiratory_state(self, hemo_state):
-        """Evaluate the respiratory model at the current subsystem state without advancing time."""
-        if not self.resp:
-            return None
-
-        state = self.state
-        connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
-        vent_active = connected and self.vent.is_on
-        bag_mask_active = self.bag_mask_active and connected and not vent_active
-
-        if vent_active:
-            mech_rr = self.resp_mech.set_rr
-            mech_vt_l = self.resp_mech.set_vt
-            total_assisted_mv = mech_rr * mech_vt_l
-            peep = self.resp_mech.get_total_peep()
-            mean_paw = max(self.current_mean_paw, peep)
-        elif bag_mask_active:
-            mech_rr = self.bag_mask_rr
-            mech_vt_l = self.bag_mask_vt
-            total_assisted_mv = mech_rr * mech_vt_l
-            peep = 0.0
-            mean_paw = 0.0
-        else:
-            mech_rr = 0.0
-            mech_vt_l = 0.0
-            total_assisted_mv = 0.0
-            peep = 0.0
-            mean_paw = 0.0
-
-        if hemo_state and hemo_state.co > 0.0:
-            cardiac_output = hemo_state.co
-        else:
-            cardiac_output = getattr(self.hemo, "base_co_l_min", 5.0)
-
-        return self.resp.step(
-            0.0,
-            ce_prop=state.propofol_ce,
-            ce_remi=state.remi_ce,
-            mech_vent_mv=total_assisted_mv,
-            fio2=state.fio2,
-            ce_roc=state.roc_ce,
-            et_sevo=state.et_sevo,
-            mac_sevo=state.mac_sevo,
-            peep=peep,
-            mean_paw=mean_paw,
-            temp_c=state.temp_c,
-            mech_rr=mech_rr,
-            mech_vt_l=mech_vt_l,
-            airway_patency=self._airway_patency,
-            ventilation_efficiency=self._ventilation_efficiency,
-            vq_mismatch=self._vq_mismatch,
-            hb_g_dl=getattr(self.hemo, "hb_conc", state.hb_g_dl),
-            oxygen_delivery_ratio=getattr(self, "_do2_ratio", 1.0),
-            shiver_level=self._shiver_level,
-            cardiac_output=cardiac_output,
-            metabolic_factor=max(0.5, getattr(self, "_metabolic_factor", 1.0)),
-        )
-
-    def _sync_respiration_from_model(self, resp_state):
-        """Copy respiratory model state into the public snapshot."""
-        state = self.state
-        connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
-        vent_active = connected and self.vent.is_on
-        bag_mask_active = self.bag_mask_active and connected and not vent_active
-        assisted_active = vent_active or bag_mask_active
-        spontaneous_rr = resp_state.rr
-        spontaneous_vt_l = resp_state.vt / 1000.0
-        assisted_rr = 0.0
-        assisted_vt_l = 0.0
-
-        if vent_active:
-            assisted_rr = self.resp_mech.set_rr
-            assisted_vt_l = self.resp_mech.set_vt
-            state.vt = max(0.0, assisted_vt_l) * 1000.0
-            state.paw = max(0.0, self.resp_mech.set_peep)
-        elif bag_mask_active:
-            assisted_rr = self.bag_mask_rr
-            assisted_vt_l = self.bag_mask_vt
-            state.vt = max(0.0, assisted_vt_l) * 1000.0
-            state.paw = 0.0
-        else:
-            state.vt = resp_state.vt
-            state.paw = 0.0
-
-        if assisted_active:
-            effective_rr = max(assisted_rr, spontaneous_rr)
-            effective_vt_l = max(assisted_vt_l * self._airway_patency, spontaneous_vt_l)
-            state.rr = effective_rr
-            state.mv = effective_rr * effective_vt_l
-        else:
-            state.rr = spontaneous_rr
-            state.mv = spontaneous_rr * spontaneous_vt_l
-
-        state.va = resp_state.va
-        state.apnea = resp_state.apnea
-        state.pa_co2 = resp_state.pa_co2
-        state.alveolar_co2 = resp_state.p_alveolar_co2
-        state.pao2 = resp_state.p_arterial_o2
-        state.sao2 = resp_state.sao2
-        state.spo2 = resp_state.sao2
-        state.etco2 = resp_state.etco2 if connected else 0.0
-        state.pit = getattr(self.hemo, "pit_0", -2.0)
-        state.flow = 0.0
-        state.volume = 0.0
-
-    def _sync_monitor_baselines(self):
-        """Derive monitor baselines from the current physiologic snapshot."""
-        state = self.state
-        state.bis = clamp(
-            self.bis.compute_bis(
-                state.propofol_ce,
-                state.remi_ce,
-                u_volatile=state.mac_sevo,
-            ),
-            0.0,
-            100.0,
-        )
-        if self.bis:
-            self.bis.initialize(state.bis, dt=max(self.config.dt, 1e-6))
-        self.smooth_bis = state.bis
-        state.tof = self.tof_pd.compute_tof_from_ce(
-            state.roc_ce,
-            mac_sevo=state.mac_sevo,
-            mac_n2o=state.mac_n2o,
-        )
-        state.loc = self.loc_pd.compute_probability(
-            state.propofol_ce,
-            state.remi_ce,
-            mac_sevo=state.mac_sevo,
-            mac_n2o=state.mac_n2o,
-        )
-        state.tol = self.tol_pd.compute_probability(
-            state.propofol_ce,
-            state.remi_ce,
-            mac=state.mac,
-        )
-        state.capno_co2 = 0.0
-        state.ecg_voltage = 0.0
-        state.pleth_voltage = 0.0
-        self._monitor_values["BIS"] = state.bis
-        self._monitor_values["MAP"] = state.map
-        self._monitor_values["HR"] = state.hr
-        self._monitor_values["EtCO2"] = state.etco2
-        self._monitor_values["SpO2"] = state.spo2
-
-    def _seed_nibp_reading(self):
-        """Seed NIBP with an initial reading and start cycling immediately."""
-        if not self.nibp or not self.hemo:
-            return
-        hemo_state = self.hemo.state
-        map_val = hemo_state.map
-        sbp_val = getattr(hemo_state, "sbp", map_val + 20.0)
-        dbp_val = getattr(hemo_state, "dbp", map_val - 20.0)
-        ts = self.state.time if self.state.time > 0.0 else 1e-3
-        self.nibp.latest_reading = NIBPReading(sbp_val, dbp_val, map_val, ts)
-        self.state.nibp_sys = sbp_val
-        self.state.nibp_dia = dbp_val
-        self.state.nibp_map = map_val
-        self.state.nibp_timestamp = ts
-        self._next_nibp_time = self.state.time + self.nibp.interval
-        self.nibp.trigger()
+        projection_core.sync_state_from_models(self)
+        monitor_core.seed_nibp_reading(self)
+        self.output_buffer.append(copy.copy(self.state))
 
     def _configure_maintenance_fluids(self):
         """Set continuous IV fluids to 1 mL/kg/hr unless overridden."""
@@ -1091,45 +867,9 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         """
         Advance simulation by dt seconds.
         """
-        if dt <= 0:
+        if dt <= 0 or not self.running:
             return
-        if not self.running:
-            return
-
-        # Cache depth_index and metabolic factor for use in temperature and respiration.
-        depth_scale = self.thermal_tuning.depth_propofol_scale
-        self._depth_index = self.state.mac + (self.state.propofol_ce / depth_scale)
-        temp_c = self.state.temp_c
-        metabolic_factor = 1.0
-        if abs(temp_c - 37.0) >= self.thermal_tuning.metabolic_temp_threshold_c:
-            metabolic_factor *= TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
-        depth_factor = clamp(self._depth_index, 0.0, 1.0)
-        metabolic_factor *= (1.0 - self.thermal_tuning.metabolic_reduction_max * depth_factor)
-        metabolic_factor = max(0.5, metabolic_factor)
-        metabolic_factor *= (1.0 + SHIVER_MAX_MULTIPLIER * self._shiver_level)
-        self._metabolic_factor = metabolic_factor
-
-        dist_vec = self._step_disturbances(dt)
-        updated_pk_models = self._update_pk_hemodynamics(self.state.co)
-        if updated_pk_models:
-            self.sync_active_tci_from_pk(*updated_pk_models)
-
-        self._step_tci(dt)
-        
-        fi_sevo, fi_n2o = self._step_machine(dt)
-        
-        self._step_pk(dt, fi_sevo, fi_n2o, self.state.co)
-        
-        hemo_state, resp_state, phase = self._step_physiology(dt, dist_vec)
-        
-        self._step_monitors(dt, phase, hemo_state, resp_state, dist_vec)
-
-        self._update_shivering(dt)
-
-        self._step_temperature(dt)
-
-        self._check_patient_viability(dt)
-        
+        runtime_core.step_simulation(self, dt)
         self.state.time += dt
         self.output_buffer.append(copy.copy(self.state))
         if self.recorder and self.recorder.is_recording:

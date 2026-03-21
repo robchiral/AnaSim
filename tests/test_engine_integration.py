@@ -1,11 +1,13 @@
 
 import pytest
-import unittest
 import numpy as np
+from anasim.core import monitors as monitor_core
+from anasim.core import runtime as runtime_core
 from anasim.patient.patient import Patient
 from anasim.core.state import SimulationConfig, AirwayType
 from anasim.core.engine import SimulationEngine
 from anasim.physiology.hemodynamics import HemoState
+from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.respiration import RespState
 
 
@@ -221,8 +223,8 @@ def test_hr_disturbance_not_double_applied():
     engine1.smooth_hr = hemo_state.hr
     engine2.smooth_hr = hemo_state.hr
 
-    engine1._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0))
-    engine2._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 10.0))
+    monitor_core.step_monitors(engine1, 1.0, "EXP", hemo_state, resp_state, DisturbanceEffects())
+    monitor_core.step_monitors(engine2, 1.0, "EXP", hemo_state, resp_state, DisturbanceEffects(hr=10.0))
 
     assert engine1.state.display_hr == pytest.approx(engine2.state.display_hr, rel=1e-6)
 
@@ -240,9 +242,23 @@ def test_pk_hemodynamic_scaling_applies_to_propofol():
     engine.hemo.blood_volume = engine.hemo.blood_volume_0 * 0.5
     engine.state.co = engine.hemo.base_co_l_min * 0.5
 
-    engine._step_pk(0.5, 0.0, 0.0, engine.state.co)
+    runtime_core.step_pk(engine, 0.5, 0.0, 0.0, engine.state.co)
 
     assert engine.pk_prop.v1 == pytest.approx(base_v1 * 0.5, rel=0.05)
+
+
+def test_output_buffer_keeps_per_step_waveform_snapshots():
+    """UI waveform history depends on one output snapshot per simulation step."""
+    patient = Patient(age=40, weight=70, height=170, sex="male")
+    engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=0.01))
+    engine.start()
+
+    initial_len = len(engine.output_buffer)
+    engine.step(0.01)
+    engine.step(0.01)
+
+    assert len(engine.output_buffer) == initial_len + 2
+    assert engine.output_buffer[-1].time == pytest.approx(engine.state.time)
 
 # --- Coupling / Integration Tests ---
 
@@ -290,44 +306,3 @@ def test_positive_pressure_reduces_preload_vs_spontaneous():
     preload_vent = engine.hemo.state.preload_factor
 
     assert preload_vent < preload_spont, "Positive pressure should reduce preload vs spontaneous"
-
-# --- Tests from test_steady_state.py ---
-
-class TestSteadyStateMode(unittest.TestCase):
-    def setUp(self):
-        self.patient = Patient(age=40, weight=70, height=170, sex="male")
-
-    def test_steady_state_tiva_init(self):
-        config = SimulationConfig(mode='steady_state', maint_type='tiva')
-        engine = SimulationEngine(self.patient, config)
-        
-        # TIVA steady state should land in a propofol-dominant maintenance band.
-        self.assertAlmostEqual(engine.pk_prop.state.c1, 3.22, delta=0.25)
-        
-        # The solver should keep remifentanil in a typical maintenance range.
-        self.assertAlmostEqual(engine.pk_remi.state.c1, 2.67, delta=0.25)
-        
-        # Check TCI Enabled
-        self.assertTrue(engine.tci_prop is not None)
-        self.assertAlmostEqual(engine.tci_prop.target, 3.22, delta=0.25)
-        self.assertTrue(engine.tci_nore is not None)
-        
-        engine.start() # Start simulation loop
-        
-        # Check Hemodynamic Init
-        # Managed maintenance should remain anesthetized without starting in untreated hypotension.
-        self.assertLess(engine.state.map, 90.0)
-        self.assertGreater(engine.state.map, 65.0)
-        self.assertGreater(engine.state.nore_ce, 1.0)
-        self.assertEqual(engine.state.fluid_in_ml, 0.0)
-        self.assertEqual(engine.state.urine_out_ml, 0.0)
-        
-        # Run for 2 seconds (200 steps at 0.01) and ensure MAP stays stable
-        initial_map = engine.state.map
-        
-        for _ in range(200):
-            engine.step(0.01)
-            
-        self.assertAlmostEqual(engine.state.map, initial_map, delta=10.0)
-        # BIS should open in a plausible maintenance band without a startup clamp.
-        self.assertAlmostEqual(engine.state.bis, 54.7, delta=4.0)

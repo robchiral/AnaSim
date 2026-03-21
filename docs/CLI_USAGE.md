@@ -67,7 +67,7 @@ You can provide a JSON file to customize the patient and simulation parameters.
   `steady_state` uses an internal managed-maintenance bootstrap before visible time starts; it is not a pure compartment equilibrium preset.
 - **pk_model_propofol**: `Marsh`, `Schnider`, `Eleveld`
 - **pk_model_remi**: `Minto`
-- **bis_model**: `Bouillon`, `Eleveld`, `Fuentes`, `Yumuk`. `GrecoBouillon` is still accepted as a backward-compatible alias.
+- **bis_model**: `Bouillon`, `Eleveld`, `Fuentes`, `Yumuk`
 - **hemo_model**: `Su2023`, `Su`, `Advanced` (others fall back to default)
 - **resp_model**: `SingleCompartment`
 - **pk_model_nore**: `Li`, `Oualha`, `Beloeil`

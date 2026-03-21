@@ -1,4 +1,5 @@
 from anasim.monitors.alarms import AlarmSystem
+from anasim.core import runtime as runtime_core
 
 
 class DummyTCI:
@@ -20,13 +21,13 @@ def test_tci_accumulator_uses_sampling_time(engine_factory):
     dummy = DummyTCI(0.25)
     engine.tci_prop = dummy
 
-    engine._step_tci(1.0)
+    runtime_core.step_tci(engine, 1.0)
     assert len(dummy.calls) == 4
     assert abs(engine.propofol_rate_mg_sec - 1.0) < 1e-9
     assert abs(engine._tci_accumulators["tci_prop"]) < 1e-9
 
     dummy.calls.clear()
-    engine._step_tci(0.3)
+    runtime_core.step_tci(engine, 0.3)
     assert len(dummy.calls) == 1
     assert abs(engine._tci_accumulators["tci_prop"] - 0.05) < 1e-9
 

@@ -19,7 +19,7 @@ def validate_config_payload(config_data: Mapping[str, Any], source: str) -> None
 
 
 def canonicalize_bis_model_name(value: Optional[str]) -> str:
-    """Normalize BIS model names while preserving backward compatibility."""
+    """Normalize BIS model names."""
     if value is None:
         return "Bouillon"
     normalized = str(value).strip()
@@ -28,7 +28,6 @@ def canonicalize_bis_model_name(value: Optional[str]) -> str:
 
     aliases = {
         "bouillon": "Bouillon",
-        "grecobouillon": "Bouillon",
         "eleveld": "Eleveld",
         "fuentes": "Fuentes",
         "yumuk": "Yumuk",

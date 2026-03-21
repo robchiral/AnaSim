@@ -54,20 +54,25 @@ def test_alarm_delay():
 def test_disturbance_none():
     dist = Disturbances(None)
     vals = dist.compute_dist(100.0)
-    assert vals == [0.0] * 4
+    assert vals.bis == 0.0
+    assert vals.svr == 0.0
+    assert vals.sv == 0.0
+    assert vals.hr == 0.0
 
 def test_disturbance_step():
     dist = Disturbances("stim_intubation_pulse")
     
     # Before step
     vals0 = dist.compute_dist(0.0)
-    assert vals0[0] == 0.0 # BIS
+    assert vals0.bis == 0.0
     
     # in step
     vals1 = dist.compute_dist(15.0) 
-    assert vals1[0] > 0
+    assert vals1.bis > 0
     
 def test_disturbance_vitaldb():
     dist = Disturbances("stim_sustained_surgery")
     vals = dist.compute_dist(100.0)
-    assert len(vals) == 4
+    assert vals.bis > 0.0
+    assert vals.svr > 0.0
+    assert vals.hr > 0.0

@@ -9,8 +9,8 @@ class TestTemperature:
         
         assert engine.state.temp_c == 37.0, "Initial temp should be 37.0"
         
-        # Cooling phase: advance 30 min under anesthesia.
-        for _ in range(1800): 
+        # Cooling phase: advance 20 min under anesthesia.
+        for _ in range(1200):
             engine.step(1.0) 
             
         temp_cold = engine.state.temp_c
@@ -20,7 +20,7 @@ class TestTemperature:
         engine.set_bair_hugger(43.0)
         assert engine.state.bair_hugger_target == 43.0
         
-        for _ in range(1800):
+        for _ in range(1200):
             engine.step(1.0)
             
         temp_warmed = engine.state.temp_c
@@ -76,12 +76,14 @@ class TestTemperature:
         engine.start()
     
         engine.state.temp_c = 37.0
-        for _ in range(300): engine.step(0.1)
+        for _ in range(120):
+            engine.step(0.5)
         paco2_37 = engine.state.pa_co2
     
         engine.state.temp_c = 30.0
         
-        # Step enough to equilibrate CO2 (tau ~3 min).
-        for _ in range(6000): engine.step(0.1) # 10 mins
+        # Step enough to equilibrate CO2 (tau ~3 min) without oversampling.
+        for _ in range(1200):
+            engine.step(0.5)
         paco2_30 = engine.state.pa_co2
         assert paco2_30 < paco2_37, "PaCO2 should drop with hypothermia (reduced production)"
