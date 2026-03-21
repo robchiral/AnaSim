@@ -49,7 +49,7 @@ AnaSim combines published models with heuristics where real-time computational m
 
 **Literature-derived:** hemodynamics, propofol/remifentanil/norepinephrine PK, volatile agent PBPK, rocuronium effect-site dynamics.
 
-**(Heuristic):** epinephrine/phenylephrine PK, respiratory control overrides, thermoregulation.
+**Heuristic:** epinephrine/phenylephrine PK, respiratory control overrides, thermoregulation.
 
 ## Comparison
 

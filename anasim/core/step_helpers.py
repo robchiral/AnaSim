@@ -818,14 +818,11 @@ class StepHelpersMixin:
             peep_cmH2O=total_peep_effect,
         )
 
-        # Cache raw hemodynamics for internal safety checks (avoid monitor smoothing delays).
-        self._raw_map = hemo_state.map
-        self._raw_hr = hemo_state.hr
-        
         self.vent.step(dt, mech_state, rr_total=mech_rr)
                                     
         state.map = hemo_state.map # Raw
         state.hr = hemo_state.hr   # Raw
+        self._sync_raw_vital_cache()
         state.sv = hemo_state.sv
         state.svr = hemo_state.svr 
         state.co = hemo_state.co
