@@ -10,7 +10,9 @@ import pytest
 import numpy as np
 from types import SimpleNamespace
 from anasim.core.state import SimulationConfig
+from anasim.core.enums import RhythmType
 from anasim.monitors.capno import Capnograph, CapnoContext
+from anasim.monitors.nibp import NIBPMonitor
 
 
 class TestNIBPCycling:
@@ -59,6 +61,52 @@ class TestNIBPCycling:
                 assert abs(nibp - current_map) / max(current_map, 1) < 0.60, \
                     f"NIBP {nibp} differs too much from MAP {current_map}"
                 break
+
+    def test_nibp_can_fail_in_shock(self):
+        class StaticRng:
+            def __init__(self, value):
+                self.value = value
+
+            def random(self):
+                return self.value
+
+        monitor = NIBPMonitor(rng=StaticRng(0.0))
+        monitor.trigger()
+        t = 0.0
+        while monitor.is_cycling:
+            t += 0.5
+            monitor.step(0.5, t, true_map=35.0, true_sys=55.0, rhythm_type=RhythmType.SINUS)
+
+        assert monitor.latest_reading.timestamp == pytest.approx(0.0)
+
+    def test_nibp_successful_shock_reading_overestimates_map(self):
+        class StaticRng:
+            def __init__(self, value):
+                self.value = value
+
+            def random(self):
+                return self.value
+
+        monitor = NIBPMonitor(rng=StaticRng(0.99))
+        monitor.trigger()
+        t = 0.0
+        while monitor.is_cycling:
+            t += 0.5
+            monitor.step(0.5, t, true_map=40.0, true_sys=60.0, rhythm_type=RhythmType.SINUS)
+
+        assert monitor.latest_reading.timestamp > 0.0
+        assert monitor.latest_reading.map > 40.0
+        assert monitor.latest_reading.systolic > 60.0
+
+    def test_nibp_produces_no_new_reading_in_arrest(self):
+        monitor = NIBPMonitor(rng=np.random.default_rng(0))
+        monitor.trigger()
+        t = 0.0
+        while monitor.is_cycling:
+            t += 0.5
+            monitor.step(0.5, t, true_map=0.0, true_sys=0.0, rhythm_type=RhythmType.ASYSTOLE)
+
+        assert monitor.latest_reading.timestamp == pytest.approx(0.0)
 
 
 class TestCapnographyWaveform:

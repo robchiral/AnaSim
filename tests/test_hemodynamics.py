@@ -310,6 +310,18 @@ class TestDrugInteractions:
             "Norepinephrine should raise MAP even in hypovolemia (vasoconstriction)"
 
 
+def test_set_nore_pd_invalidates_cached_state(patient):
+    model = HemodynamicModel(patient)
+    _ = model.state
+    cached_map = model.state.map
+
+    model.delta_tpr_vasopressors = model.base_tpr * 0.5
+    model.set_nore_pd(c50=2.5, emax=98.7, gamma=1.8)
+
+    assert model._cached_state is None
+    assert model.state.map > cached_map
+
+
 class TestSepsisDistributiveShock:
     @pytest.fixture
     def model(self):

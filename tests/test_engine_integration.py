@@ -221,8 +221,8 @@ def test_hr_disturbance_not_double_applied():
     engine1.smooth_hr = hemo_state.hr
     engine2.smooth_hr = hemo_state.hr
 
-    engine1._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
-    engine2._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0, 0.0, 10.0))
+    engine1._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 0.0))
+    engine2._step_monitors(1.0, "EXP", hemo_state, resp_state, (0.0, 0.0, 0.0, 10.0))
 
     assert engine1.state.display_hr == pytest.approx(engine2.state.display_hr, rel=1e-6)
 
@@ -301,22 +301,26 @@ class TestSteadyStateMode(unittest.TestCase):
         config = SimulationConfig(mode='steady_state', maint_type='tiva')
         engine = SimulationEngine(self.patient, config)
         
-        # Check Propofol Pre-fill (engine uses 3.0 for steady state)
-        self.assertAlmostEqual(engine.pk_prop.state.c1, 3.0, delta=0.2)
+        # TIVA steady state should land in a propofol-dominant maintenance band.
+        self.assertAlmostEqual(engine.pk_prop.state.c1, 3.22, delta=0.25)
         
-        # Check Remi (engine uses 2.0 for steady state)
-        self.assertAlmostEqual(engine.pk_remi.state.c1, 2.0, delta=0.2)
+        # The solver should keep remifentanil in a typical maintenance range.
+        self.assertAlmostEqual(engine.pk_remi.state.c1, 2.67, delta=0.25)
         
         # Check TCI Enabled
         self.assertTrue(engine.tci_prop is not None)
-        self.assertEqual(engine.tci_prop.target, 3.0)
+        self.assertAlmostEqual(engine.tci_prop.target, 3.22, delta=0.25)
+        self.assertTrue(engine.tci_nore is not None)
         
         engine.start() # Start simulation loop
         
         # Check Hemodynamic Init
-        # MAP should be lower than baseline (usually ~80-90) due to Propofol 3.5
-        self.assertLess(engine.state.map, 95.0)
-        self.assertGreater(engine.state.map, 50.0) # Not crashed
+        # Managed maintenance should remain anesthetized without starting in untreated hypotension.
+        self.assertLess(engine.state.map, 90.0)
+        self.assertGreater(engine.state.map, 65.0)
+        self.assertGreater(engine.state.nore_ce, 1.0)
+        self.assertEqual(engine.state.fluid_in_ml, 0.0)
+        self.assertEqual(engine.state.urine_out_ml, 0.0)
         
         # Run for 2 seconds (200 steps at 0.01) and ensure MAP stays stable
         initial_map = engine.state.map
@@ -325,5 +329,5 @@ class TestSteadyStateMode(unittest.TestCase):
             engine.step(0.01)
             
         self.assertAlmostEqual(engine.state.map, initial_map, delta=10.0)
-        # BIS settles to steady-state value for Prop 3.0 + Remi 2.0 (~45-60)
-        self.assertAlmostEqual(engine.state.bis, 55.0, delta=8.0)
+        # BIS should open in a plausible maintenance band without a startup clamp.
+        self.assertAlmostEqual(engine.state.bis, 54.7, delta=4.0)

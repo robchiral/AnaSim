@@ -247,15 +247,6 @@ class SimulationSetupDialog(QDialog):
         model_layout.addWidget(QLabel("LOC model:"), 1, 2)
         model_layout.addWidget(self.cb_loc_model, 1, 3)
 
-        self.cb_fidelity = QComboBox()
-        self.cb_fidelity.addItem("Clinical realism (tuned)", "clinical")
-        self.cb_fidelity.addItem("Literature fidelity", "literature")
-        self.cb_fidelity.setToolTip(
-            "Toggle tuned parameters vs literature-derived values where noted in the models."
-        )
-        model_layout.addWidget(QLabel("Model fidelity:"), 2, 2)
-        model_layout.addWidget(self.cb_fidelity, 2, 3)
-        
         # 5. Simulation Rules
         gb_rules = QGroupBox("Simulation rules")
         rules_layout = QVBoxLayout(gb_rules)
@@ -344,7 +335,6 @@ class SimulationSetupDialog(QDialog):
             'pk_model_epi': self.cb_epi_model.currentText(),
             'bis_model': self.cb_bis_model.currentText(),
             'loc_model': self.cb_loc_model.currentText(),
-            'fidelity_mode': self.cb_fidelity.currentData(),
             'enable_death_detector': self.cb_death_detector.isChecked(),
             'arterial_line_enabled': self.cb_art_line.isChecked()
         }

@@ -520,26 +520,24 @@ class PropofolPKEleveld(ThreeCompartmentPK):
         ffm = fal_sallami(sex_is_male, w, age, bmi)
         ffm_ref = fal_sallami(True, WGT_ref, AGE_ref, BMI_ref) # Reference is male
         
-        # Opiate co-administration factor (assume True/present for typical anaesthesia, or make configurable)
-        # PAS assumes True by default for Eleveld
-        fopiate_v3 = np.exp(theta[13] * age) # if opiate present
-        fopiate_cl = np.exp(theta[11] * age) # PAS code line 325: fopiate(theta[11]) where fopiate(x) returns exp(x*age) if opiate
-        
         # Volumes
         v1 = theta[1] * fcentral(w) / fcentral(WGT_ref)
         
         v2 = theta[2] * (w / WGT_ref) * faging(theta[10]) # theta[10] = V2 age slope
         v2_ref = theta[2]
         
-        v3 = theta[3] * (ffm / ffm_ref) * fopiate_v3
+        v3 = theta[3] * (ffm / ffm_ref)
         v3_ref = theta[3]
         
         # Clearances
         # theta[4] is male Cl, theta[15] is female Cl
         cl_base = theta[4] if sex_is_male else theta[15]
-        cl1 = cl_base * (w / WGT_ref)**0.75 * (fCLmat / fCLmat_ref) * fopiate_cl
+        cl1 = cl_base * (w / WGT_ref)**0.75 * (fCLmat / fCLmat_ref)
         
-        cl2 = theta[5] * (v2 / v2_ref)**0.75 * (1 + theta[16] * (1 - fQ3mat))
+        # Normalize the maturation boost to the published 35-year/70-kg reference adult.
+        q2_mat = 1.0 + theta[16] * (1.0 - fQ3mat)
+        q2_mat_ref = 1.0 + theta[16] * (1.0 - fQ3mat_ref)
+        cl2 = theta[5] * (v2 / v2_ref)**0.75 * (q2_mat / q2_mat_ref)
         
         cl3 = theta[6] * (v3 / v3_ref)**0.75 * (fQ3mat / fQ3mat_ref)
 
@@ -1043,7 +1041,7 @@ class DobutaminePK(OneCompEffectPK):
         # Fast effect-site equilibration (rapid onset)
         ke0 = 0.7  # min^-1 (t1/2 ~1 min)
 
-        # Clearance is primarily renal; use mild CO dependence to mimic renal perfusion changes.
+        # Clearance is primarily metabolic/conjugative; keep only mild CO dependence for perfusion effects.
         super().__init__(patient, v1=v1, cl1=cl1, ke0=ke0, cl1_co_exponent=0.3)
 
 

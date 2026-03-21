@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from .patient import Patient
+from anasim.core.state import canonicalize_bis_model_name
 from anasim.core.utils import hill_function, clamp, clamp01
 
 # =============================================================================
@@ -142,7 +143,7 @@ class BISModel:
     converted to MAC-equivalents.
     """
     def __init__(self, patient: Patient, model_name: str = "Bouillon"):
-        self.model_name = model_name
+        self.model_name = canonicalize_bis_model_name(model_name)
         self.patient = patient
 
         # Smoothing (dt-aware)
@@ -155,11 +156,11 @@ class BISModel:
             c50p=4.47, c50r=19.3, gamma=1.43, beta=0.0, e0=97.4, emax=97.4, delay=0.0
         )
 
-        if model_name == "Bouillon":
+        if self.model_name == "Bouillon":
             # Minto-type interaction with default parameters
             pass
 
-        elif model_name == "Eleveld":
+        elif self.model_name == "Eleveld":
         # Eleveld et al. Br J Anaesth. 2018 with age-dependent parameters
             age = patient.age
             # Functions
@@ -177,7 +178,7 @@ class BISModel:
             self.params.emax = 93.0
             self.params.delay = fdelay(0.0517)
 
-        elif model_name == "Fuentes":
+        elif self.model_name == "Fuentes":
             # Greco-type
             self.params.c50p = 2.99
             self.params.c50r = 21.0
@@ -186,7 +187,7 @@ class BISModel:
             self.params.e0 = 94.0
             self.params.emax = 94.0 * 0.81
 
-        elif model_name == "Yumuk":
+        elif self.model_name == "Yumuk":
             # Greco-type with synergy
             self.params.c50p = 7.66
             self.params.c50r = 149.62
@@ -194,9 +195,6 @@ class BISModel:
             self.params.beta = 15.03 # Synergy!
             self.params.e0 = 93.97
             self.params.emax = 93.97
-
-        # Store initial c50p for blood loss mechanics
-        self.c50p_init = self.params.c50p
 
         # Delay buffer
         # dt_buffer removed (unused)
@@ -209,16 +207,6 @@ class BISModel:
         # Fill buffer
         steps_delay = int(np.ceil(self.params.delay / dt)) if self.params.delay > 0 else 10
         self.output_buffer = [bis_target] * steps_delay
-
-    def update_param_blood_loss(self, v_ratio: float):
-        """
-        Update c50p based on blood loss (heuristic; source not verified).
-        v_ratio = current_vol / init_vol
-        """
-        # Decrease C50 (increase sensitivity) with blood loss
-        # Linear sensitivity increase with blood loss.
-        new_c50 = self.c50p_init - 6.0 * (1.0 - v_ratio)
-        self.params.c50p = max(0.1, new_c50) # Safety floor
 
     def step(self, dt: float, ce_prop: float, ce_remi: float = 0.0,
              mac_sevo: float = 0.0,
@@ -558,12 +546,10 @@ class TOFModel:
     MW_ROCURONIUM = 609.7   # g/mol
     MW_SUGAMMADEX = 2178.0  # g/mol
     
-    def __init__(self, patient: Patient, model_name: str = "Wierda", anesthesia_type: str = "TIVA",
-                 fidelity_mode: str = "clinical"):
+    def __init__(self, patient: Patient, model_name: str = "Wierda", anesthesia_type: str = "TIVA"):
         self.patient = patient
         self.model_name = model_name
         self.anesthesia_type = anesthesia_type
-        use_literature = (fidelity_mode == "literature")
         
         age = patient.age
         # sex: 0 male, 1 female
@@ -609,10 +595,9 @@ class TOFModel:
         # Plaud et al. Clin Pharmacol Ther. 1995 (vocal cords vs adductor pollicis).
         self.ke0_onset = 0.16       # min^-1, t1/2 = 4.4 min at AP
         
-        # Recovery ke0: determines spontaneous recovery time
-        # Literature: ke0 = 0.07 min^-1 (t1/2 ~10 min) for pure modeling
-        # Tuned: 0.12 min^-1 (t1/2 ~6 min) to achieve clinical 40-70 min recovery
-        self.recovery_ke0 = 0.07 if use_literature else 0.12    # min^-1 (literature 0.07, tuned 0.12)
+        # Literature modeling often uses recovery ke0 about 0.07 min^-1.
+        # AnaSim uses 0.12 min^-1 to match clinical 40-70 min spontaneous recovery.
+        self.recovery_ke0 = 0.12    # min^-1
         
         # Sigmoid Emax model parameters
         # Plaud et al. Clin Pharmacol Ther. 1995: Ce50 ~823 µg/L at adductor pollicis.

@@ -33,7 +33,7 @@ class RespiratoryModel:
     Respiratory depression model based on Propofol and Remifentanil.
     Models suppression of Respiratory Drive.
     """
-    def __init__(self, patient: Patient, fidelity_mode: str = "clinical"):
+    def __init__(self, patient: Patient):
         self.patient = patient
         self.rr_0 = patient.baseline_rr
         self.vt_0 = patient.baseline_vt

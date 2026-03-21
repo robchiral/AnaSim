@@ -197,7 +197,10 @@ class ControlPanelWidget(QWidget):
                 if 'csht_label' in w and w['csht_label'] is not None and hasattr(self.engine, 'get_predicted_csht'):
                     csht = self.engine.get_predicted_csht(key)
                     if csht > 0:
-                        w['csht_label'].setText(f"Wake-up t\u00bd: ~{csht:.0f} min")
+                        w['csht_label'].setText(f"Predicted Ce t\u00bd: ~{csht:.0f} min")
+                        w['csht_label'].setToolTip(
+                            "Estimated PK effect-site half-time from the current model state; not a guaranteed wake-up time."
+                        )
                         w['csht_label'].show()
                     else:
                         w['csht_label'].hide()
@@ -637,7 +640,7 @@ class ControlPanelWidget(QWidget):
             
             l.addLayout(h_bolus)
             
-            # CSHT label for propofol and remi (clinical wake-up time prediction)
+            # PK effect-site half-time estimate for propofol and remi.
             lbl_csht = None
             if key_name in ('propofol', 'remi'):
                 lbl_csht = QLabel()

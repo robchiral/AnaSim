@@ -10,20 +10,18 @@ _PROFILE_COL_SV = 4
 @dataclass(frozen=True)
 class DisturbanceVector:
     bis: float = 0.0
-    map: float = 0.0
-    co: float = 0.0
     svr: float = 0.0
     sv: float = 0.0
     hr: float = 0.0
 
     def as_tuple(self) -> tuple:
-        return (self.bis, self.map, self.co, self.svr, self.sv, self.hr)
+        return (self.bis, self.svr, self.sv, self.hr)
 
     def __iter__(self):
         return iter(self.as_tuple())
 
     def __len__(self) -> int:
-        return 6
+        return 4
 
     def __getitem__(self, idx: int) -> float:
         return self.as_tuple()[idx]
@@ -109,4 +107,4 @@ class Disturbances:
         dist_hr = np.interp(time, self._profile_time, self._profile_hr)
         dist_svr = np.interp(time, self._profile_time, self._profile_svr)
         dist_sv = np.interp(time, self._profile_time, self._profile_sv)
-        return DisturbanceVector(dist_bis, 0.0, 0.0, dist_svr, dist_sv, dist_hr)
+        return DisturbanceVector(dist_bis, dist_svr, dist_sv, dist_hr)

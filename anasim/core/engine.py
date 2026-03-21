@@ -1,4 +1,5 @@
 from collections import deque
+from dataclasses import dataclass
 from typing import Optional
 import copy
 import logging
@@ -6,6 +7,7 @@ import logging
 import numpy as np
 
 from .state import SimulationState, SimulationConfig, AirwayType
+from .initialization import initialize_engine_state
 from .step_helpers import StepHelpersMixin
 from .drug_api import DrugControllerMixin
 from anasim.patient.patient import Patient
@@ -69,6 +71,29 @@ DISPLAY_FIELD_PAIRS = (
     ("sbp", "display_sbp"),
     ("dbp", "display_dbp"),
 )
+@dataclass(slots=True)
+class PendingInfusion:
+    remaining_ml: float
+    rate_ml_min: float
+    hematocrit: float = 0.0
+    retention_fraction: Optional[float] = None
+    label: str = "crystalloid"
+    count_as_bolus: bool = True
+
+
+def _normalize_baseline_hct(baseline_hb: float, baseline_hct: Optional[float]) -> float:
+    """Derive or validate hematocrit from hemoglobin before model construction."""
+    hb = max(1.0, float(baseline_hb))
+    expected_hct = clamp(0.03 * hb, 0.10, 0.70)
+    if baseline_hct is None:
+        return expected_hct
+
+    hct = clamp(float(baseline_hct), 0.10, 0.70)
+    if abs(hct - expected_hct) > 0.12:
+        raise ValueError(
+            f"baseline_hb={hb:.1f} g/dL and baseline_hct={hct:.2f} are grossly inconsistent"
+        )
+    return hct
 
 PROPOFOL_MODELS = {
     "Marsh": PropofolPKMarsh,
@@ -189,8 +214,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
       via _sync_pk_state() and inline updates in _step_physiology().
     """
     def __init__(self, patient: Patient, config: SimulationConfig):
-        if hasattr(config, 'baseline_hb'):
-            patient.baseline_hb = config.baseline_hb
+        self._configure_patient_baseline_hematology(patient, config)
         self.patient = patient
         self.config = config
         self.state = SimulationState()
@@ -326,6 +350,8 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self._capno_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         # Dedicated RNG for ECG to keep rhythm noise reproducible.
         self._ecg_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
+        # Dedicated RNG for NIBP cycling/failure behavior.
+        self._nibp_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._monitor_noise_std = np.array([0.5, 0.5, 0.2])
         self._monitor_values = {
             "BIS": 0.0,
@@ -359,6 +385,15 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self._configure_maintenance_fluids()
         self.initialize_state()
 
+    @staticmethod
+    def _configure_patient_baseline_hematology(patient: Patient, config: SimulationConfig) -> None:
+        baseline_hb = max(1.0, float(getattr(config, "baseline_hb", getattr(patient, "baseline_hb", 13.5))))
+        baseline_hct = _normalize_baseline_hct(baseline_hb, getattr(config, "baseline_hct", None))
+        patient.baseline_hb = baseline_hb
+        patient.baseline_hct = baseline_hct
+        config.baseline_hb = baseline_hb
+        config.baseline_hct = baseline_hct
+
     def _sync_display_state_from_raw(self):
         """Mirror raw numerics into learner-facing display fields."""
         for raw_attr, display_attr in DISPLAY_FIELD_PAIRS:
@@ -370,111 +405,225 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self._raw_hr = self.state.hr
         
     def initialize_state(self):
-        """Set initial state based on config (Steady State)."""
-        if self.config.mode == 'steady_state':
-            self.state.airway_mode = AirwayType.ETT  # Default to intubated for steady state
-            
-            # Initialize patient physiology for steady state (MAC 1.0).
-            ce_prop = 0.0
-            ce_remi = 0.0
-            ce_nore = 0.0
-            mac = 0.0
-            
-            if "tiva" in self.config.maint_type:
-                # Propofol ~3.0 ug/mL.
-                p_target = 3.0
-                ce_prop = p_target
-                self._prime_tci_drug("propofol", self.pk_prop, p_target)
-                
-                # Remi ~2.0 ng/mL.
-                r_target = 2.0
-                ce_remi = r_target
-                self._prime_tci_drug("remi", self.pk_remi, r_target)
-                
-            elif "balanced" in self.config.maint_type:
-                # Sevo target for MAC 1.0 (age-adjusted MAC).
-                if self.pk_sevo and hasattr(self.pk_sevo, "mac_age"):
-                    target_pct = float(self.pk_sevo.mac_age)
-                else:
-                    target_pct = 2.0
-                target_frac = target_pct / 100.0
-                
-                self.set_vaporizer("Sevoflurane", target_pct)
-                mac = 1.0
-                
-                # Pre-fill volatile PK (fraction 0-1).
-                if self.pk_sevo:
-                    self._prime_volatile_state(target_frac)
-                
-                # Remi ~2.0 ng/mL (analgesia).
-                r_target = 2.0
-                ce_remi = r_target
-                self._prime_tci_drug("remi", self.pk_remi, r_target)
-            
-            # Ventilator setup (source of truth through setter).
-            self.resp.state.apnea = True
-            baseline_rr = max(1.0, getattr(self.patient, "baseline_rr", 12.0))
-            baseline_vt_l = max(0.1, getattr(self.patient, "baseline_vt", 500.0) / 1000.0)
-            baseline_mv = baseline_rr * baseline_vt_l
-            temp_c = getattr(self.patient, "baseline_temp", 37.0)
-            depth_index = mac + (ce_prop / self.thermal_tuning.depth_propofol_scale)
-            depth_factor = min(1.0, depth_index)
-            metabolic_factor = 1.0
-            if abs(temp_c - 37.0) >= self.thermal_tuning.metabolic_temp_threshold_c:
-                metabolic_factor *= TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
-            metabolic_factor *= (1.0 - self.thermal_tuning.metabolic_reduction_max * depth_factor)
-            metabolic_factor = max(0.5, metabolic_factor)
-            target_mv = baseline_mv * metabolic_factor
-            vent_rr = baseline_rr
-            vent_vt = target_mv / vent_rr if vent_rr > 0 else baseline_vt_l
-            vent_vt = clamp(vent_vt, 0.25, 0.8)
-            self.set_vent_settings(rr=vent_rr, vt=vent_vt, peep=5.0, ie="1:2", mode="VCV")
-            
-            # Force monitors to show "asleep" values initially.
-            self.state.bis = 45.0
-            self.state.display_bis = 45.0
-            self.smooth_bis = 45.0
-            if self.bis:
-                # Initialize BIS with target (no longer needs volatile Et percentages)
-                self.bis.initialize(45.0)
-            
-            # Calculate and apply hemodynamic steady state.
-            hemo_ss = self.hemo.calculate_steady_state(ce_prop, ce_remi, ce_nore, mac_sevo=mac)
-            self.hemo.state = hemo_ss
-            
-            # Sync engine state.
-            self.state.map = hemo_ss.map
-            self.state.hr = hemo_ss.hr
-            self.state.sv = hemo_ss.sv
-            self.state.svr = hemo_ss.svr
-            self.state.co = hemo_ss.co
-            self.state.mac_sevo = mac
-            self.state.mac_n2o = 0.0
-            self.state.mac = mac
-            self.state.sbp = getattr(hemo_ss, "sbp", hemo_ss.map + 20.0)
-            self.state.dbp = getattr(hemo_ss, "dbp", hemo_ss.map - 20.0)
-            
-            # Sync smoothers.
-            self.smooth_map = hemo_ss.map
-            self.smooth_hr = hemo_ss.hr
-            
-            # Seed NIBP.
-            self.state.nibp_map = hemo_ss.map
-            self.state.nibp_sys = hemo_ss.map + 15
-            self.state.nibp_dia = hemo_ss.map - 10
-            
-            # Initialize temperature.
-            if hasattr(self.patient, 'baseline_temp'):
-                self.state.temp_c = self.patient.baseline_temp
-            else:
-                self.state.temp_c = 37.0
+        """Set initial state from live subsystem state instead of placeholder defaults."""
+        self.state.temp_c = getattr(self.patient, "baseline_temp", 37.0)
+        self._tol_current = None
+        self._airway_patency = 1.0
+        self._ventilation_efficiency = 1.0
+        self._capno_obstruction = 0.0
+        self._vq_mismatch = 0.0
 
-            # Sync PK state to engine state for consistency.
-            self._sync_pk_state()
+        initialize_engine_state(self)
+        self._sync_state_from_models()
+        self._seed_nibp_reading()
 
+    def _sync_state_from_models(self):
+        """Derive the public SimulationState from current subsystem state."""
+        state = self.state
+        state.blood_volume = getattr(self.hemo, "blood_volume", state.blood_volume)
+        state.temp_c = getattr(self.patient, "baseline_temp", state.temp_c)
+        self._sync_pk_state()
+        self._sync_machine_state()
+        hemo_state = self.hemo.state if self.hemo else None
+        if hemo_state:
+            self._sync_hemodynamics_from_model(hemo_state)
+        resp_state = self._snapshot_respiratory_state(hemo_state)
+        if resp_state is not None:
+            self._sync_respiration_from_model(resp_state)
+        self._sync_monitor_baselines()
         self._sync_display_state_from_raw()
         self._sync_raw_vital_cache()
-        self._seed_nibp_reading()
+
+    def _sync_machine_state(self):
+        """Copy volatile/circuit state into the public snapshot without advancing time."""
+        state = self.state
+        connected = state.airway_mode != AirwayType.NONE
+        composition = getattr(self.circuit, "composition", None)
+        if connected and composition is not None:
+            fi_sevo = composition.fi_agent if getattr(self, "_volatile_enabled", True) else 0.0
+            fi_n2o = composition.fin2o
+            state.fio2 = composition.fio2
+        else:
+            fi_sevo = 0.0
+            fi_n2o = 0.0
+            state.fio2 = 0.21
+
+        state.fi_sevo = fi_sevo * 100.0
+        state.fi_n2o = fi_n2o * 100.0
+        state.et_sevo = self.pk_sevo.state.p_alv * 100.0 if self.pk_sevo else 0.0
+        state.et_n2o = self.pk_n2o.state.p_alv * 100.0 if getattr(self, "pk_n2o", None) else 0.0
+        state.mac_sevo = self.pk_sevo.state.mac if self.pk_sevo else 0.0
+        state.mac_n2o = self.pk_n2o.state.mac if getattr(self, "pk_n2o", None) else 0.0
+        state.mac = state.mac_sevo + state.mac_n2o
+
+    def _sync_hemodynamics_from_model(self, hemo_state):
+        """Copy hemodynamic model state into the public snapshot."""
+        state = self.state
+        state.map = hemo_state.map
+        state.hr = hemo_state.hr
+        state.sv = hemo_state.sv
+        state.svr = hemo_state.svr
+        state.co = hemo_state.co
+        state.sbp = getattr(hemo_state, "sbp", hemo_state.map + 20.0)
+        state.dbp = getattr(hemo_state, "dbp", hemo_state.map - 20.0)
+        state.blood_volume = getattr(self.hemo, "blood_volume", state.blood_volume)
+        state.hb_g_dl = getattr(self.hemo, "hb_conc", state.hb_g_dl)
+        state.hct = self.hemo.get_hematocrit() if hasattr(self.hemo, "get_hematocrit") else state.hct
+        total_crystalloid = getattr(self.hemo, "total_crystalloid_in_ml", 0.0)
+        total_colloid = getattr(self.hemo, "total_colloid_in_ml", 0.0)
+        state.colloid_in_ml = total_colloid
+        state.fluid_in_ml = total_crystalloid + total_colloid
+        state.blood_in_ml = getattr(self.hemo, "total_blood_in_ml", 0.0)
+        state.urine_out_ml = getattr(self.hemo, "total_urine_out_ml", 0.0)
+        state.blood_out_ml = getattr(self.hemo, "total_blood_out_ml", 0.0)
+        state.net_fluid_ml = state.fluid_in_ml + state.blood_in_ml - state.urine_out_ml - state.blood_out_ml
+        self.smooth_map = hemo_state.map
+        self.smooth_hr = hemo_state.hr
+
+    def _snapshot_respiratory_state(self, hemo_state):
+        """Evaluate the respiratory model at the current subsystem state without advancing time."""
+        if not self.resp:
+            return None
+
+        state = self.state
+        connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
+        vent_active = connected and self.vent.is_on
+        bag_mask_active = self.bag_mask_active and connected and not vent_active
+
+        if vent_active:
+            mech_rr = self.resp_mech.set_rr
+            mech_vt_l = self.resp_mech.set_vt
+            total_assisted_mv = mech_rr * mech_vt_l
+            peep = self.resp_mech.get_total_peep()
+            mean_paw = max(self.current_mean_paw, peep)
+        elif bag_mask_active:
+            mech_rr = self.bag_mask_rr
+            mech_vt_l = self.bag_mask_vt
+            total_assisted_mv = mech_rr * mech_vt_l
+            peep = 0.0
+            mean_paw = 0.0
+        else:
+            mech_rr = 0.0
+            mech_vt_l = 0.0
+            total_assisted_mv = 0.0
+            peep = 0.0
+            mean_paw = 0.0
+
+        if hemo_state and hemo_state.co > 0.0:
+            cardiac_output = hemo_state.co
+        else:
+            cardiac_output = getattr(self.hemo, "base_co_l_min", 5.0)
+
+        return self.resp.step(
+            0.0,
+            ce_prop=state.propofol_ce,
+            ce_remi=state.remi_ce,
+            mech_vent_mv=total_assisted_mv,
+            fio2=state.fio2,
+            ce_roc=state.roc_ce,
+            et_sevo=state.et_sevo,
+            mac_sevo=state.mac_sevo,
+            peep=peep,
+            mean_paw=mean_paw,
+            temp_c=state.temp_c,
+            mech_rr=mech_rr,
+            mech_vt_l=mech_vt_l,
+            airway_patency=self._airway_patency,
+            ventilation_efficiency=self._ventilation_efficiency,
+            vq_mismatch=self._vq_mismatch,
+            hb_g_dl=getattr(self.hemo, "hb_conc", state.hb_g_dl),
+            oxygen_delivery_ratio=getattr(self, "_do2_ratio", 1.0),
+            shiver_level=self._shiver_level,
+            cardiac_output=cardiac_output,
+            metabolic_factor=max(0.5, getattr(self, "_metabolic_factor", 1.0)),
+        )
+
+    def _sync_respiration_from_model(self, resp_state):
+        """Copy respiratory model state into the public snapshot."""
+        state = self.state
+        connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
+        vent_active = connected and self.vent.is_on
+        bag_mask_active = self.bag_mask_active and connected and not vent_active
+        assisted_active = vent_active or bag_mask_active
+        spontaneous_rr = resp_state.rr
+        spontaneous_vt_l = resp_state.vt / 1000.0
+        assisted_rr = 0.0
+        assisted_vt_l = 0.0
+
+        if vent_active:
+            assisted_rr = self.resp_mech.set_rr
+            assisted_vt_l = self.resp_mech.set_vt
+            state.vt = max(0.0, assisted_vt_l) * 1000.0
+            state.paw = max(0.0, self.resp_mech.set_peep)
+        elif bag_mask_active:
+            assisted_rr = self.bag_mask_rr
+            assisted_vt_l = self.bag_mask_vt
+            state.vt = max(0.0, assisted_vt_l) * 1000.0
+            state.paw = 0.0
+        else:
+            state.vt = resp_state.vt
+            state.paw = 0.0
+
+        if assisted_active:
+            effective_rr = max(assisted_rr, spontaneous_rr)
+            effective_vt_l = max(assisted_vt_l * self._airway_patency, spontaneous_vt_l)
+            state.rr = effective_rr
+            state.mv = effective_rr * effective_vt_l
+        else:
+            state.rr = spontaneous_rr
+            state.mv = spontaneous_rr * spontaneous_vt_l
+
+        state.va = resp_state.va
+        state.apnea = resp_state.apnea
+        state.pa_co2 = resp_state.pa_co2
+        state.alveolar_co2 = resp_state.p_alveolar_co2
+        state.pao2 = resp_state.p_arterial_o2
+        state.sao2 = resp_state.sao2
+        state.spo2 = resp_state.sao2
+        state.etco2 = resp_state.etco2 if connected else 0.0
+        state.pit = getattr(self.hemo, "pit_0", -2.0)
+        state.flow = 0.0
+        state.volume = 0.0
+
+    def _sync_monitor_baselines(self):
+        """Derive monitor baselines from the current physiologic snapshot."""
+        state = self.state
+        state.bis = clamp(
+            self.bis.compute_bis(
+                state.propofol_ce,
+                state.remi_ce,
+                u_volatile=state.mac_sevo,
+            ),
+            0.0,
+            100.0,
+        )
+        if self.bis:
+            self.bis.initialize(state.bis, dt=max(self.config.dt, 1e-6))
+        self.smooth_bis = state.bis
+        state.tof = self.tof_pd.compute_tof_from_ce(
+            state.roc_ce,
+            mac_sevo=state.mac_sevo,
+            mac_n2o=state.mac_n2o,
+        )
+        state.loc = self.loc_pd.compute_probability(
+            state.propofol_ce,
+            state.remi_ce,
+            mac_sevo=state.mac_sevo,
+            mac_n2o=state.mac_n2o,
+        )
+        state.tol = self.tol_pd.compute_probability(
+            state.propofol_ce,
+            state.remi_ce,
+            mac=state.mac,
+        )
+        state.capno_co2 = 0.0
+        state.ecg_voltage = 0.0
+        state.pleth_voltage = 0.0
+        self._monitor_values["BIS"] = state.bis
+        self._monitor_values["MAP"] = state.map
+        self._monitor_values["HR"] = state.hr
+        self._monitor_values["EtCO2"] = state.etco2
+        self._monitor_values["SpO2"] = state.spo2
 
     def _seed_nibp_reading(self):
         """Seed NIBP with an initial reading and start cycling immediately."""
@@ -601,7 +750,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
             self.vaporizer.set_concentration(0.0)
 
         # Hemodynamics.
-        self.hemo = HemodynamicModel(self.patient, fidelity_mode=self.config.fidelity_mode)
+        self.hemo = HemodynamicModel(self.patient)
         if self.config.hemo_model not in ["Su2023", "Su", "Advanced", None, ""]:
             logger.warning(
                 "hemo_model '%s' not recognized; using default",
@@ -621,7 +770,7 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
                 self.config.resp_model,
             )
             resp_model = RespiratoryModel
-        self.resp = resp_model(self.patient, fidelity_mode=self.config.fidelity_mode)
+        self.resp = resp_model(self.patient)
         self.resp_mech = RespiratoryMechanics()
         self._base_airway_resistance = self.resp_mech.resistance
         # Keep ventilator settings and is_on state consistent on init.
@@ -639,12 +788,11 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         self.tof_pd = TOFModel(
             self.patient,
             model_name="Wierda",
-            fidelity_mode=self.config.fidelity_mode
         ) # Default Rocuronium Model
         
         self.ecg = ECGMonitor(rng=getattr(self, "_ecg_rng", None))
         self.spo2_mon = SpO2Monitor()
-        self.nibp = NIBPMonitor(interval_min=5.0)
+        self.nibp = NIBPMonitor(interval_min=5.0, rng=getattr(self, "_nibp_rng", None))
         self.state.nibp_interval_sec = self.nibp.interval
         
         # Additional PK models.
@@ -755,14 +903,16 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
     ):
         if volume_ml <= 0 or rate_ml_min <= 0:
             return
-        self.pending_infusions.append({
-            'remaining': volume_ml,
-            'rate': rate_ml_min,
-            'hematocrit': hematocrit,
-            'retention_fraction': retention_fraction,
-            'label': label,
-            'count_as_bolus': count_as_bolus,
-        })
+        self.pending_infusions.append(
+            PendingInfusion(
+                remaining_ml=volume_ml,
+                rate_ml_min=rate_ml_min,
+                hematocrit=hematocrit,
+                retention_fraction=retention_fraction,
+                label=label,
+                count_as_bolus=count_as_bolus,
+            )
+        )
 
     def give_drug_bolus(self, drug_name: str, amount: float):
         """
@@ -1067,32 +1217,3 @@ class SimulationEngine(StepHelpersMixin, DrugControllerMixin):
         air_flow = total_non_n2o - o2_flow
         self.circuit.fgf_o2 = o2_flow
         self.circuit.fgf_air = air_flow
-
-    def _prime_pk_state(self, pk_model, target: float):
-        """Initialize PK compartments to a target concentration."""
-        if not pk_model or not hasattr(pk_model, "state"):
-            return
-        for attr in ("c1", "c2", "c3"):
-            if hasattr(pk_model.state, attr):
-                setattr(pk_model.state, attr, target)
-        for attr in ("ce", "ce2"):
-            if hasattr(pk_model.state, attr):
-                setattr(pk_model.state, attr, target)
-
-    def _prime_tci_drug(self, drug: str, pk_model, target: float):
-        """Seed PK state and enable TCI at the given target."""
-        if not pk_model:
-            return
-        self._prime_pk_state(pk_model, target)
-        self.enable_tci(drug, target)
-
-    def _prime_volatile_state(self, target_frac: float):
-        """Seed volatile circuit and tissue compartments to a target fraction."""
-        if self.circuit:
-            self.circuit.composition.fi_agent = target_frac
-        if not self.pk_sevo:
-            return
-        for attr in ("p_alv", "p_art", "p_ven", "p_vrg", "p_mus", "p_fat"):
-            if hasattr(self.pk_sevo.state, attr):
-                setattr(self.pk_sevo.state, attr, target_frac)
-        self.pk_sevo.state.mac = 1.0

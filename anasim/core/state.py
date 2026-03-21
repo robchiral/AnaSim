@@ -1,6 +1,40 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Optional
+from typing import Any, List, Mapping, Dict, Optional
+
+
+REMOVED_CONFIG_KEYS = {
+    "fidelity_mode": (
+        "`fidelity_mode` was removed. AnaSim now ships a single realism-calibrated "
+        "profile, and the legacy literature/runtime toggle is no longer supported."
+    ),
+}
+
+
+def validate_config_payload(config_data: Mapping[str, Any], source: str) -> None:
+    """Reject legacy config keys with explicit migration guidance."""
+    for key, message in REMOVED_CONFIG_KEYS.items():
+        if key in config_data:
+            raise ValueError(f"{source}: {message}")
+
+
+def canonicalize_bis_model_name(value: Optional[str]) -> str:
+    """Normalize BIS model names while preserving backward compatibility."""
+    if value is None:
+        return "Bouillon"
+    normalized = str(value).strip()
+    if not normalized:
+        return "Bouillon"
+
+    aliases = {
+        "bouillon": "Bouillon",
+        "grecobouillon": "Bouillon",
+        "eleveld": "Eleveld",
+        "fuentes": "Fuentes",
+        "yumuk": "Yumuk",
+    }
+    return aliases.get(normalized.lower(), normalized)
+
 
 @dataclass
 class SimulationConfig:
@@ -10,7 +44,7 @@ class SimulationConfig:
     # Model selections.
     pk_model_propofol: str = "Eleveld"
     pk_model_remi: str = "Minto"
-    bis_model: str = "GrecoBouillon"
+    bis_model: str = "Bouillon"
     hemo_model: str = "Su2023"
     resp_model: str = "SingleCompartment"
     pk_model_nore: str = "Li"
@@ -20,8 +54,7 @@ class SimulationConfig:
     maint_type: str = "tiva" # 'tiva' or 'balanced'
     disturbance_profile: str = None # 'stim_intubation_pulse', 'stim_sustained_surgery'
     baseline_hb: float = 13.5
-    fidelity_mode: str = "clinical"  # "clinical" (tuned realism) or "literature"
-    
+    baseline_hct: Optional[float] = None
     # Enabled agents (empty list disables volatiles). Supported: "sevoflurane".
     volatile_agents: List[str] = field(default_factory=lambda: ["sevoflurane"])
 
@@ -32,6 +65,9 @@ class SimulationConfig:
     simulation_speed: float = 1.0  # Real-time multiplier
     enable_death_detector: bool = False
     rng_seed: Optional[int] = None
+
+    def __post_init__(self):
+        self.bis_model = canonicalize_bis_model_name(self.bis_model)
 
 class AirwayType(Enum):
     NONE = "None"

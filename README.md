@@ -43,13 +43,15 @@ See [docs/CLI_USAGE.md](docs/CLI_USAGE.md) for detailed CLI instructions.
 - **Thermoregulation:** Core temperature dynamics with vasoconstriction and shivering.
 - **Fluids:** Continuous IV fluids (default 1 mL/kg/hr; configurable) plus bolus crystalloids/albumin/PRBCs.
 
-## Model Fidelity
+## Calibration and Deviations
 
-AnaSim combines published models with heuristics where real-time computational models are sparse. See [docs/REFERENCES.md](docs/REFERENCES.md) for the full bibliography.
+AnaSim ships one realism-calibrated runtime profile. It uses published models where they behave well end-to-end, and applies explicit tuned deviations where a literal parameter value produces implausible managed intraoperative states in the integrated simulator. See [docs/REFERENCES.md](docs/REFERENCES.md) for the bibliography.
 
-**Literature-derived:** hemodynamics, propofol/remifentanil/norepinephrine PK, volatile agent PBPK, rocuronium effect-site dynamics.
+Examples of deliberate deviations are documented inline in the code and preserved in comments with the original literature values:
+- propofol hemodynamic vasodilation is capped less aggressively than the published Su et al. 2023 Emax so treated maintenance states do not default into hypotension
+- rocuronium spontaneous recovery uses a faster runtime `ke0` than pure literature modeling so recovery timing stays in the clinical range
 
-**Heuristic:** epinephrine/phenylephrine PK, respiratory control overrides, thermoregulation.
+Steady-state startup is also calibrated as a managed-maintenance history rather than a pure mathematical equilibrium fill. That means the opening frame is intended to resemble a patient already under controlled anesthesia, not an untreated compartment equilibrium.
 
 ## Comparison
 

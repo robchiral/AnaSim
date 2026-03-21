@@ -31,7 +31,7 @@ class ScreenshotMainWindow(MainWindow):
             'tutorial_mode': False, 'scenario_id': None,
             'pk_model_propofol': 'Eleveld', 'pk_model_nore': 'Li',
             'pk_model_epi': 'Clutter', 'bis_model': 'Bouillon', 
-            'loc_model': 'Kern', 'fidelity_mode': 'clinical',
+            'loc_model': 'Kern',
             'enable_death_detector': False, 'arterial_line_enabled': True
         }
         return True
@@ -91,7 +91,7 @@ def run_capture(target, output_dir, run_duration=0):
                 'scenario_id': None, # Standard induction tutorial
                 'pk_model_propofol': 'Eleveld', 'pk_model_nore': 'Li',
                 'pk_model_epi': 'Clutter', 'bis_model': 'Bouillon', 
-                'loc_model': 'Kern', 'fidelity_mode': 'clinical',
+                'loc_model': 'Kern',
                 'enable_death_detector': False, 'arterial_line_enabled': True
             }
         elif target == 'maintenance':
@@ -105,7 +105,7 @@ def run_capture(target, output_dir, run_duration=0):
                 'scenario_id': None,
                 'pk_model_propofol': 'Eleveld', 'pk_model_nore': 'Li',
                 'pk_model_epi': 'Clutter', 'bis_model': 'Bouillon', 
-                'loc_model': 'Kern', 'fidelity_mode': 'clinical',
+                'loc_model': 'Kern',
                 'enable_death_detector': False, 'arterial_line_enabled': True
              }
 

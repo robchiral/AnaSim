@@ -39,8 +39,7 @@ class HemodynamicConfig:
 
     # Propofol hemodynamic effects
     ec50_prop_tpr: float = 3.21
-    emax_prop_tpr_clinical: float = -0.50
-    emax_prop_tpr_literature: float = -0.78
+    emax_prop_tpr: float = -0.50
     gamma_prop: float = 1.83
     ec50_prop_sv: float = 0.44
     emax_prop_sv_typ: float = -0.15
@@ -144,7 +143,7 @@ class HemodynamicConfig:
     sepsis_pooling_fraction: float = 0.06     # Fraction of baseline volume shifted to unstressed
 
     # Anaphylaxis (acute distributive shock)
-    anaphylaxis_svr_drop_wood: float = 10.0   # Legacy heuristic (matches prior -10 Wood units)
+    anaphylaxis_svr_drop_wood: float = 10.0   # Heuristic default for severe distributive vasodilation
 
     # Epinephrine PD
     epi_c50: float = 1.5
