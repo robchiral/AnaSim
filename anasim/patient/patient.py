@@ -30,8 +30,39 @@ class Patient:
     bsa: float = 0.0 # Body Surface Area
 
     def __post_init__(self):
+        self._sanitize_demographics()
         self._calculate_metric()
         self._sanitize_organ_function()
+
+    def _sanitize_demographics(self):
+        """Clamp demographic inputs to safe physiological ranges."""
+        def _as_float(value, default):
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return float(default)
+
+        self.age = max(0.0, _as_float(self.age, 40.0))
+        self.weight = max(1.0, _as_float(self.weight, 70.0))
+        self.height = max(30.0, _as_float(self.height, 170.0))
+        self.sex = (self.sex or "male").strip().lower()
+        if self.sex not in ("male", "female"):
+            self.sex = "male"
+        try:
+            self.asa = int(self.asa)
+        except (TypeError, ValueError):
+            self.asa = 1
+        self.asa = max(1, min(5, self.asa))
+
+        self.baseline_hr = max(10.0, _as_float(self.baseline_hr, 70.0))
+        self.baseline_map = max(20.0, _as_float(self.baseline_map, 90.0))
+        self.baseline_rr = max(0.0, _as_float(self.baseline_rr, 12.0))
+        self.baseline_vt = max(50.0, _as_float(self.baseline_vt, 500.0))
+        self.baseline_temp = _as_float(self.baseline_temp, 37.0)
+        self.baseline_temp = max(25.0, min(42.0, self.baseline_temp))
+        self.baseline_hb = max(1.0, _as_float(self.baseline_hb, 13.5))
+        self.baseline_hct = _as_float(self.baseline_hct, 0.42)
+        self.baseline_hct = max(0.1, min(0.7, self.baseline_hct))
 
     def _calculate_metric(self):
         """Calculate BMI, LBM, BSA based on demographics."""

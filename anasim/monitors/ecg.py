@@ -1,5 +1,4 @@
 import numpy as np
-import random
 from anasim.core.enums import RhythmType
 
 _ECG_TEMPLATE_RESOLUTION = 500
@@ -68,10 +67,11 @@ class ECGMonitor:
     ECG Monitor using Gaussian-based PQRST synthesis.
     Now supports multiple rhythm types with distinct waveforms.
     """
-    def __init__(self, sampling_rate=100):
+    def __init__(self, sampling_rate=100, rng: np.random.Generator = None):
         self.sampling_rate = sampling_rate 
         self.phase = 0.0
         self.vfib_phase = 0.0
+        self.rng = rng if rng is not None else np.random.default_rng()
         
         self._templates = _ECG_TEMPLATES
         self._template_max_index = _ECG_TEMPLATE_RESOLUTION - 1
@@ -82,7 +82,7 @@ class ECGMonitor:
         """
         # 1. Asystole
         if rhythm_type == RhythmType.ASYSTOLE:
-            return random.uniform(-0.01, 0.01)
+            return float(self.rng.uniform(-0.01, 0.01))
             
         # 2. VFib (Chaotic)
         if rhythm_type == RhythmType.VFIB:
@@ -91,7 +91,7 @@ class ECGMonitor:
             val = 0.2 * np.sin(self.vfib_phase * 20) + \
                   0.15 * np.sin(self.vfib_phase * 35) + \
                   0.1 * np.sin(self.vfib_phase * 12)
-            val += random.uniform(-0.05, 0.05)
+            val += float(self.rng.uniform(-0.05, 0.05))
             return val
 
         # 3. Structured Rhythms
@@ -103,7 +103,7 @@ class ECGMonitor:
             # We use a noise walk or just random noise per step?
             # Per step noise makes it jittery. We want beat-to-beat.
             # But simple approximation: High freq noise on phase speed.
-            freq *= random.uniform(0.7, 1.4) 
+            freq *= float(self.rng.uniform(0.7, 1.4))
             
         self.phase += dt * freq
         self.phase = self.phase % 1.0
@@ -119,8 +119,8 @@ class ECGMonitor:
         if rhythm_type == RhythmType.AFIB:
             # Coarse f-waves
             val += 0.02 * np.sin(self.phase * 50) 
-            val += random.uniform(-0.02, 0.02)
+            val += float(self.rng.uniform(-0.02, 0.02))
         else:
-            val += random.uniform(-0.015, 0.015)
+            val += float(self.rng.uniform(-0.015, 0.015))
             
         return val

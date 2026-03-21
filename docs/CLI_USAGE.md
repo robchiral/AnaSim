@@ -25,29 +25,61 @@ You can provide a JSON file to customize the patient and simulation parameters.
     "weight": 70,
     "height": 170,
     "sex": "male",
+    "asa": 1,
+    "baseline_hr": 70,
+    "baseline_map": 90,
+    "baseline_rr": 12,
+    "baseline_vt": 500,
+    "baseline_temp": 37.0,
+    "baseline_hb": 13.5,
+    "baseline_hct": 0.42,
+    "renal_function": 1.0,
+    "hepatic_function": 1.0,
+    "dt": 0.01,
     "mode": "awake",
     "maint_type": "tiva",
     "pk_model_propofol": "Eleveld",
     "pk_model_remi": "Minto",
+    "bis_model": "GrecoBouillon",
+    "hemo_model": "Su2023",
+    "resp_model": "SingleCompartment",
+    "pk_model_nore": "Li",
+    "pk_model_epi": "Clutter",
+    "loc_model": "Kern",
+    "disturbance_profile": null,
     "volatile_agents": ["sevoflurane"],
-    "baseline_hb": 13.5,
     "fidelity_mode": "clinical",
     "rng_seed": 123,
-    "maintenance_fluid_ml_hr": null
+    "maintenance_fluid_ml_hr": null,
+    "simulation_speed": 1.0,
+    "enable_death_detector": false
 }
 ```
 
 ### Options
 
+- **age/weight/height/sex/asa**: patient demographics.
+- **baseline_hr/baseline_map/baseline_rr/baseline_vt**: patient baseline vitals (bpm, mmHg, bpm, mL).
+- **baseline_temp/baseline_hb/baseline_hct**: baseline temperature (°C), hemoglobin (g/dL), hematocrit (fraction).
+- **renal_function/hepatic_function**: organ function fractions (0.1–1.0).
+- **dt**: simulation time step (seconds).
 - **mode**: `awake`, `steady_state`
 - **maint_type**: `tiva`, `balanced`
 - **pk_model_propofol**: `Marsh`, `Schnider`, `Eleveld`
 - **pk_model_remi**: `Minto`
+- **bis_model**: `Bouillon`, `Eleveld`, `Fuentes`, `Yumuk`, `GrecoBouillon`
+- **hemo_model**: `Su2023`, `Su`, `Advanced` (others fall back to default)
+- **resp_model**: `SingleCompartment`
+- **pk_model_nore**: `Li`, `Oualha`, `Beloeil`
+- **pk_model_epi**: `Clutter`
+- **loc_model**: `Kern`
+- **disturbance_profile**: `stim_intubation_pulse`, `stim_sustained_surgery`, or `null`
 - **volatile_agents**: list of enabled volatile agents (e.g., `["sevoflurane"]`)
-- **baseline_hb**: baseline hemoglobin in g/dL
 - **fidelity_mode**: `clinical` or `literature`
 - **rng_seed**: integer seed for deterministic noise
 - **maintenance_fluid_ml_hr**: continuous IV fluid rate in mL/hr. `null` (or omitted) uses the default 1 mL/kg/hr.
+- **simulation_speed**: real-time multiplier (UI only, informational in headless).
+- **enable_death_detector**: `true`/`false` to enable viability checks.
 
 ## Examples
 

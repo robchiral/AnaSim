@@ -439,28 +439,23 @@ class HemodynamicModel:
         
         if vol_deficit < 0.15:
             # Class I: Minimal compensation
-            # Target: HR <100 (up to 1.4× at 15% loss, combined with baroreflex)
-            hr_mult = 1.0 + 0.10 * (vol_deficit / 0.15)
-            tpr_mult = 1.0 + 0.10 * (vol_deficit / 0.15)
+            hr_mult = 1.0 + 0.15 * (vol_deficit / 0.15)
+            tpr_mult = 1.0 + 0.08 * (vol_deficit / 0.15)
         elif vol_deficit < 0.30:
             # Class II: Moderate compensation
-            # Target: HR 100-120 (combined effect)
             progress = (vol_deficit - 0.15) / 0.15
-            hr_mult = 1.10 + 0.10 * progress  # Up to 20% direct HR boost
-            tpr_mult = 1.10 + 0.20 * progress  # Up to 30% TPR increase
-        elif vol_deficit < 0.40:
+            hr_mult = 1.15 + 0.20 * progress  # Up to +35% direct HR boost
+            tpr_mult = 1.08 + 0.12 * progress  # Up to +20% TPR increase
+        elif vol_deficit < 0.45:
             # Class III: Peak compensation, SV dropping due to preload loss
-            # Target: HR 120-140 (combined with baroreflex)
-            # Direct multiplier to achieve peak sympathetic response
-            progress = (vol_deficit - 0.30) / 0.10
-            hr_mult = 1.25 + 0.15 * progress  # Up to 40% direct boost
-            tpr_mult = 1.30 + 0.10 * progress  # TPR peaks at +40%
+            progress = (vol_deficit - 0.30) / 0.15
+            hr_mult = 1.35 + 0.25 * progress  # Up to +60% direct boost
+            tpr_mult = 1.20 + 0.10 * progress  # TPR peaks at +30%
         else:
             # Class IV: Decompensation - sympathetic exhaustion
-            # HR initially high then fails; TPR collapses
-            progress = min(1.0, (vol_deficit - 0.40) / 0.20)
-            hr_mult = max(0.7, 1.30 - 0.60 * progress)  # HR fails to 70% of boost
-            tpr_mult = max(0.4, 1.40 - 1.00 * progress)  # TPR collapses
+            progress = min(1.0, (vol_deficit - 0.45) / 0.25)
+            hr_mult = max(0.8, 1.60 - 0.80 * progress)
+            tpr_mult = max(0.5, 1.30 - 0.80 * progress)
             
         return hr_mult, tpr_mult
     
