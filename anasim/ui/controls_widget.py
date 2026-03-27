@@ -29,7 +29,6 @@ from .styles import (
     STYLE_LABEL,
     STYLE_TAB_WIDGET,
     STYLE_SCROLLAREA,
-    get_groupbox_style,
     get_button_style,
     get_toggle_button_style,
     get_radiobutton_style,
@@ -87,7 +86,7 @@ class ControlPanelWidget(QWidget):
             lbl = QLabel(text)
             lbl.setWordWrap(True)
             lbl.setStyleSheet(
-                f"color: {COLORS['text_secondary']}; font-size: 11px; margin-bottom: 6px; padding: 4px; background: transparent;"
+                f"color: {COLORS['text_secondary']}; font-size: 11px; margin-bottom: 6px; padding: 4px;"
             )
             layout.addWidget(lbl)
 
@@ -101,6 +100,13 @@ class ControlPanelWidget(QWidget):
         scroll.setWidget(content)
         return scroll, layout
         
+    def _silent_update(self, widget, setter_name, value):
+        """Silently update a widget without triggering its signals."""
+        if widget is None or not hasattr(widget, setter_name): return
+        widget.blockSignals(True)
+        getattr(widget, setter_name)(value)
+        widget.blockSignals(False)
+
     def sync_with_engine(self):
         """Update UI controls to match Engine state."""
         # Compute hash of key state values to skip redundant syncs
@@ -130,23 +136,15 @@ class ControlPanelWidget(QWidget):
             if idx >= 0:
                 self.cb_agent.setCurrentIndex(idx)
             
-            self.sb_vap.blockSignals(True)
-            self.sb_vap.setValue(self.engine.circuit.vaporizer_setting)
-            self.sb_vap.blockSignals(False)
+            self._silent_update(self.sb_vap, 'setValue', self.engine.circuit.vaporizer_setting)
 
             # Sync fresh gas flows (O2/Air/N2O)
             if hasattr(self, "sb_o2"):
-                self.sb_o2.blockSignals(True)
-                self.sb_o2.setValue(getattr(self.engine.circuit, "fgf_o2", 0.0))
-                self.sb_o2.blockSignals(False)
+                self._silent_update(self.sb_o2, 'setValue', getattr(self.engine.circuit, "fgf_o2", 0.0))
             if hasattr(self, "sb_air"):
-                self.sb_air.blockSignals(True)
-                self.sb_air.setValue(getattr(self.engine.circuit, "fgf_air", 0.0))
-                self.sb_air.blockSignals(False)
+                self._silent_update(self.sb_air, 'setValue', getattr(self.engine.circuit, "fgf_air", 0.0))
             if hasattr(self, "sb_n2o"):
-                self.sb_n2o.blockSignals(True)
-                self.sb_n2o.setValue(getattr(self.engine.circuit, "fgf_n2o", 0.0))
-                self.sb_n2o.blockSignals(False)
+                self._silent_update(self.sb_n2o, 'setValue', getattr(self.engine.circuit, "fgf_n2o", 0.0))
 
             # Update displayed FiO2 based on total fresh gas.
             o2 = getattr(self.engine.circuit, "fgf_o2", 0.0)
@@ -172,26 +170,17 @@ class ControlPanelWidget(QWidget):
             if hasattr(self.engine, 'get_drug_state'):
                 dstate = self.engine.get_drug_state(key)
                 
-                w['rb_tci'].blockSignals(True)
-                w['rb_man'].blockSignals(True)
-                w['rate'].blockSignals(True)
-                w['target'].blockSignals(True)
+                self._silent_update(w['rb_tci'], 'setChecked', dstate['is_tci'])
+                self._silent_update(w['rb_man'], 'setChecked', not dstate['is_tci'])
+                self._silent_update(w['target'], 'setValue', dstate['target'])
+                self._silent_update(w['rate'], 'setValue', dstate['rate'])
                 
                 if dstate['is_tci']:
-                    w['rb_tci'].setChecked(True)
-                    w['target'].setValue(dstate['target'])
                     w['target'].setEnabled(True)
                     w['rate'].setEnabled(False)
                 else:
-                    w['rb_man'].setChecked(True)
-                    w['rate'].setValue(dstate['rate'])
                     w['rate'].setEnabled(True)
                     w['target'].setEnabled(False)
-                    
-                w['rb_tci'].blockSignals(False)
-                w['rb_man'].blockSignals(False)
-                w['rate'].blockSignals(False)
-                w['target'].blockSignals(False)
                 
                 # Update CSHT display for propofol and remi
                 if 'csht_label' in w and w['csht_label'] is not None and hasattr(self.engine, 'get_predicted_csht'):
@@ -207,13 +196,8 @@ class ControlPanelWidget(QWidget):
         
         # 3. Ventilator Sync
         if hasattr(self.engine, 'vent'):
-            self.btn_vent_power.blockSignals(True)
-            self.sb_rr.blockSignals(True)
-            self.sb_tv.blockSignals(True)
-            self.sb_peep.blockSignals(True)
-            
             is_on = self.engine.vent.is_on
-            self.btn_vent_power.setChecked(is_on)
+            self._silent_update(self.btn_vent_power, 'setChecked', is_on)
             
             if is_on:
                 self.btn_vent_power.setText("Ventilator ON")
@@ -221,60 +205,40 @@ class ControlPanelWidget(QWidget):
                 self.sb_tv.setEnabled(True)
                 self.sb_peep.setEnabled(True)
                 self.cb_ie.setEnabled(True)
+                if hasattr(self.engine.vent, 'settings'):
+                    s = self.engine.vent.settings
+                    self._silent_update(self.sb_rr, 'setValue', int(s.rr))
+                    self._silent_update(self.sb_tv, 'setValue', int(s.tv))
+                    self._silent_update(self.sb_peep, 'setValue', int(s.peep))
             else:
                 self.btn_vent_power.setText("Spontaneous / Manual")
                 self.sb_rr.setEnabled(False)
                 self.sb_tv.setEnabled(False)
                 self.sb_peep.setEnabled(False)
                 self.cb_ie.setEnabled(False)
-            
-            if is_on and hasattr(self.engine.vent, 'settings'):
-                s = self.engine.vent.settings
-                self.sb_rr.setValue(int(s.rr))
-                self.sb_tv.setValue(int(s.tv))
-                self.sb_peep.setValue(int(s.peep))
-                
-            self.btn_vent_power.blockSignals(False)
-            self.sb_rr.blockSignals(False)
-            self.sb_tv.blockSignals(False)
-            self.sb_peep.blockSignals(False)
 
         # 3b. Continuous fluids
         if hasattr(self, "sb_cont_fluid") and hasattr(self.engine, "get_continuous_fluid_rate"):
-            self.sb_cont_fluid.blockSignals(True)
-            self.sb_cont_fluid.setValue(self.engine.get_continuous_fluid_rate())
-            self.sb_cont_fluid.blockSignals(False)
+            self._silent_update(self.sb_cont_fluid, 'setValue', self.engine.get_continuous_fluid_rate())
 
         # 4. Disturbances
         if hasattr(self, "cb_disturbance"):
             profile = getattr(self.engine, "disturbance_profile", None)
-            idx = 0
-            for i, (_, key) in enumerate(self._disturbance_profiles):
-                if key == profile:
-                    idx = i
-                    break
-            self.cb_disturbance.blockSignals(True)
-            self.cb_disturbance.setCurrentIndex(idx)
-            self.cb_disturbance.blockSignals(False)
+            idx = next((i for i, (_, key) in enumerate(self._disturbance_profiles) if key == profile), 0)
+            self._silent_update(self.cb_disturbance, 'setCurrentIndex', idx)
 
             active = bool(getattr(self.engine, "disturbance_active", False) and profile)
-            self.b_disturb.blockSignals(True)
-            self.b_disturb.setChecked(active)
+            self._silent_update(self.b_disturb, 'setChecked', active)
             self.b_disturb.setText("Stop stimulation" if active else "Start stimulation")
             self.b_disturb.setEnabled(profile is not None)
-            self.b_disturb.blockSignals(False)
             self.cb_disturbance.setEnabled(not active)
 
         # 5. Airway complications
         if hasattr(self, "sb_obstruction"):
             obs = getattr(self.engine, "airway_obstruction_manual", 0.0) * 100.0
             bron = getattr(self.engine, "bronchospasm_manual", 0.0) * 100.0
-            self.sb_obstruction.blockSignals(True)
-            self.sb_bronchospasm.blockSignals(True)
-            self.sb_obstruction.setValue(obs)
-            self.sb_bronchospasm.setValue(bron)
-            self.sb_obstruction.blockSignals(False)
-            self.sb_bronchospasm.blockSignals(False)
+            self._silent_update(self.sb_obstruction, 'setValue', obs)
+            self._silent_update(self.sb_bronchospasm, 'setValue', bron)
 
             laryng = getattr(self.engine, "laryngospasm_severity", 0.0)
             if laryng < 0.05:
@@ -289,12 +253,10 @@ class ControlPanelWidget(QWidget):
 
             auto_on = bool(getattr(self.engine, "auto_laryngospasm_enabled", True))
             if hasattr(self, "btn_auto_laryngo"):
-                self.btn_auto_laryngo.blockSignals(True)
-                self.btn_auto_laryngo.setChecked(auto_on)
+                self._silent_update(self.btn_auto_laryngo, 'setChecked', auto_on)
                 self.btn_auto_laryngo.setText(
                     "Auto laryngospasm: ON" if auto_on else "Auto laryngospasm: OFF"
                 )
-                self.btn_auto_laryngo.blockSignals(False)
         
     def update_fgf(self):
         o2 = self.sb_o2.value()
@@ -373,7 +335,7 @@ class ControlPanelWidget(QWidget):
         l_fgf.setSpacing(8)
         
         lbl_o2 = QLabel("O₂ (L/min)")
-        lbl_o2.setStyleSheet(f"color: {COLORS['info']}; background: transparent;")
+        lbl_o2.setStyleSheet(f"color: {COLORS['info']};")
         self.sb_o2 = QDoubleSpinBox()
         self.sb_o2.setRange(0, 15)
         self.sb_o2.setValue(2.0)
@@ -392,7 +354,7 @@ class ControlPanelWidget(QWidget):
         l_fgf.addWidget(self.sb_air, 1, 1)
 
         lbl_n2o = QLabel("N₂O (L/min)")
-        lbl_n2o.setStyleSheet(f"color: {COLORS['warning']}; background: transparent;")
+        lbl_n2o.setStyleSheet(f"color: {COLORS['warning']};")
         self.sb_n2o = QDoubleSpinBox()
         self.sb_n2o.setRange(0, 15)
         self.sb_n2o.setValue(0.0)
@@ -402,9 +364,9 @@ class ControlPanelWidget(QWidget):
         l_fgf.addWidget(self.sb_n2o, 2, 1)
         
         lbl_fio2_title = QLabel("FiO₂:")
-        lbl_fio2_title.setStyleSheet(f"color: {COLORS['text_dim']}; background: transparent;")
+        lbl_fio2_title.setStyleSheet(f"color: {COLORS['text_dim']};")
         self.lbl_fio2 = QLabel("100%")
-        self.lbl_fio2.setStyleSheet(f"font-weight: bold; color: {COLORS['success']}; font-size: 16px; background: transparent;")
+        self.lbl_fio2.setStyleSheet(f"font-weight: bold; color: {COLORS['success']}; font-size: 16px;")
         l_fgf.addWidget(lbl_fio2_title, 3, 0)
         l_fgf.addWidget(self.lbl_fio2, 3, 1)
         
@@ -442,7 +404,7 @@ class ControlPanelWidget(QWidget):
         self.btn_bag_mask.toggled.connect(self.toggle_bag_mask)
         l_bag.addWidget(self.btn_bag_mask)
         lbl_bag_info = QLabel("Simulates ~12 bpm, 500mL")
-        lbl_bag_info.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 11px; background: transparent;")
+        lbl_bag_info.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 11px;")
         l_bag.addWidget(lbl_bag_info)
         l_bag.addStretch()
         layout.addWidget(gp_bag)
@@ -505,8 +467,9 @@ class ControlPanelWidget(QWidget):
         self.sb_pinsp.setSuffix(" cmH₂O")
         self.sb_pinsp.setSingleStep(1)
         self.sb_pinsp.valueChanged.connect(self.update_vent)
-        g_vent.addWidget(self.lbl_pinsp, 0, 4)
-        g_vent.addWidget(self.sb_pinsp, 0, 5)
+        # They swap with Tidal Volume, so they can occupy the same cells
+        g_vent.addWidget(self.lbl_pinsp, 0, 2)
+        g_vent.addWidget(self.sb_pinsp, 0, 3)
         self.lbl_pinsp.hide()
         self.sb_pinsp.hide()
         
@@ -552,7 +515,7 @@ class ControlPanelWidget(QWidget):
          
         def create_drug_box(name, unit_rate, tci_unit, tci_range, set_rate_cb, set_tci_cb, key_name, def_bolus, bolus_unit, color):
             gb = QGroupBox(name)
-            gb.setStyleSheet(get_groupbox_style(color))
+            gb.setStyleSheet(STYLE_GROUPBOX)
             l = QVBoxLayout(gb)
             l.setSpacing(8)
             
@@ -589,9 +552,9 @@ class ControlPanelWidget(QWidget):
             controls_grid.setVerticalSpacing(4)
 
             lbl_rate = QLabel("Infusion rate")
-            lbl_rate.setStyleSheet("background: transparent;")
+            lbl_rate.setStyleSheet("")
             lbl_target = QLabel("Target conc.")
-            lbl_target.setStyleSheet("background: transparent;")
+            lbl_target.setStyleSheet("")
 
             controls_grid.addWidget(lbl_rate, 0, 0)
             controls_grid.addWidget(lbl_target, 0, 1)
@@ -644,7 +607,7 @@ class ControlPanelWidget(QWidget):
             lbl_csht = None
             if key_name in ('propofol', 'remi'):
                 lbl_csht = QLabel()
-                lbl_csht.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px; font-style: italic; background: transparent;")
+                lbl_csht.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px; font-style: italic;")
                 lbl_csht.hide()  # Hidden until drug active
                 l.addWidget(lbl_csht)
             
@@ -705,16 +668,16 @@ class ControlPanelWidget(QWidget):
 
         # --- Reversal Agents (Bolus-only) ---
         gp_reversal = QGroupBox("Reversal agents")
-        gp_reversal.setStyleSheet(get_groupbox_style(COLORS['info']))
+        gp_reversal.setStyleSheet(STYLE_GROUPBOX)
         l_rev = QVBoxLayout(gp_reversal)
         l_rev.setSpacing(8)
         
         lbl_sug = QLabel("Sugammadex (NMB reversal)")
-        lbl_sug.setStyleSheet(f"color: {COLORS['text']}; font-weight: bold; background: transparent;")
+        lbl_sug.setStyleSheet(f"color: {COLORS['text']}; font-weight: bold;")
         l_rev.addWidget(lbl_sug)
         
         lbl_sug_info = QLabel("2 mg/kg: moderate block  |  4 mg/kg: deep block  |  16 mg/kg: immediate")
-        lbl_sug_info.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px; background: transparent;")
+        lbl_sug_info.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px;")
         l_rev.addWidget(lbl_sug_info)
         
         h_sug = QHBoxLayout()
@@ -946,7 +909,7 @@ class ControlPanelWidget(QWidget):
         l_airway.setSpacing(8)
 
         lbl_obstruction = QLabel("Upper obstruction")
-        lbl_obstruction.setStyleSheet("background: transparent;")
+        lbl_obstruction.setStyleSheet("")
         self.sb_obstruction = QDoubleSpinBox()
         self.sb_obstruction.setRange(0, 100)
         self.sb_obstruction.setSuffix(" %")
@@ -956,7 +919,7 @@ class ControlPanelWidget(QWidget):
         l_airway.addWidget(self.sb_obstruction, 0, 1)
 
         lbl_bronch = QLabel("Bronchospasm")
-        lbl_bronch.setStyleSheet("background: transparent;")
+        lbl_bronch.setStyleSheet("")
         self.sb_bronchospasm = QDoubleSpinBox()
         self.sb_bronchospasm.setRange(0, 100)
         self.sb_bronchospasm.setSuffix(" %")
@@ -967,7 +930,7 @@ class ControlPanelWidget(QWidget):
 
         self.lbl_laryngo_status = QLabel("Laryngospasm: none")
         self.lbl_laryngo_status.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 11px; background: transparent;"
+            f"color: {COLORS['text_secondary']}; font-size: 11px;"
         )
         l_airway.addWidget(self.lbl_laryngo_status, 2, 0, 1, 2)
 
@@ -981,7 +944,7 @@ class ControlPanelWidget(QWidget):
         
         # Crisis Events
         gp_crisis = QGroupBox("Critical events")
-        gp_crisis.setStyleSheet(get_groupbox_style(COLORS['danger']))
+        gp_crisis.setStyleSheet(STYLE_GROUPBOX)
         l_cr = QVBoxLayout(gp_crisis)
         l_cr.setSpacing(10)
         
@@ -1003,7 +966,7 @@ class ControlPanelWidget(QWidget):
         # Arrhythmia Controls
         h_arr = QHBoxLayout()
         lbl_arr = QLabel("Cardiac rhythm:")
-        lbl_arr.setStyleSheet("background: transparent;")
+        lbl_arr.setStyleSheet("")
         h_arr.addWidget(lbl_arr)
         
         self.cb_rhythm = QComboBox()

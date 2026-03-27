@@ -11,7 +11,7 @@ from .styles import (
     get_base_widget_style,
     get_frame_style,
     get_tinted_frame_style,
-    hex_to_rgb,
+    get_rgba,
 )
 
 
@@ -25,45 +25,39 @@ class NumericDisplay(QFrame):
         super().__init__()
         self.base_color = color
         self.label_text = label
-        self.current_alarm_state = None  # None, 'low', 'high'
+        self.current_alarm_state = None
         self.embedded = embedded
         
-        # Configure layout
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(0)
         
-        # Style configuration based on variant
         if size_variant == "small":
             self.layout.setContentsMargins(6, 2, 6, 4)
-            val_size = "18px"
-            lbl_size = "11px"
+            self._val_size = "18px"
+            self._lbl_size = "11px"
         elif size_variant == "compact":
             self.layout.setContentsMargins(8, 4, 8, 6)
-            val_size = "24px"
-            lbl_size = "11px"
-        else:  # normal
+            self._val_size = "24px"
+            self._lbl_size = "11px"
+        else:
             self.layout.setContentsMargins(10, 6, 10, 8)
-            val_size = "38px"
-            lbl_size = "12px"
+            self._val_size = "38px"
+            self._lbl_size = "12px"
 
-        # Label Component
         self.lbl_title = QLabel(label)
-        self.lbl_title.setStyleSheet(f"color: {color}; font-size: {lbl_size}; font-weight: 600; font-family: Arial;")
+        self.lbl_title.setStyleSheet(f"color: {color}; font-size: {self._lbl_size}; font-weight: 600;")
         self.layout.addWidget(self.lbl_title, alignment=Qt.AlignRight)
         
-        # Value Component
         self.lbl_val = QLabel(initial_value)
-        self.lbl_val.setStyleSheet(f"color: {color}; font-size: {val_size}; font-weight: 700; font-family: Arial;")
+        self.lbl_val.setStyleSheet(f"color: {color}; font-size: {self._val_size}; font-weight: 700;")
         self.lbl_val.setAlignment(Qt.AlignRight)
         self.layout.addWidget(self.lbl_val)
         
-        # Unit Component
         if unit:
             self.lbl_unit = QLabel(unit)
-            self.lbl_unit.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 11px; font-family: Arial;")
+            self.lbl_unit.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 11px;")
             self.layout.addWidget(self.lbl_unit, alignment=Qt.AlignRight)
             
-        # Initial Style
         self._apply_base_style()
         
         if tooltip:
@@ -75,13 +69,13 @@ class NumericDisplay(QFrame):
         else:
             self.setStyleSheet(f"""
                 QFrame {{
-                    background-color: {self._get_rgba(self.base_color, 0.05)};
-                    border: 1px solid {self._get_rgba(COLORS['border'], 0.5)};
+                    background-color: {get_rgba(self.base_color, 0.05)};
+                    border: 1px solid {get_rgba(COLORS['border'], 0.5)};
                     border-radius: 6px;
                 }}
             """)
         self.lbl_title.setText(self.label_text)
-        self.lbl_title.setStyleSheet(f"color: {self.base_color}; font-size: {self._get_font_size(title=True)}; font-weight: 600; font-family: Arial;")
+        self.lbl_title.setStyleSheet(f"color: {self.base_color}; font-size: {self._lbl_size}; font-weight: 600;")
 
     def _apply_alarm_style(self, is_low):
         color = COLORS['danger'] if is_low else COLORS['warning']
@@ -89,13 +83,13 @@ class NumericDisplay(QFrame):
         
         self.setStyleSheet(f"""
             QFrame {{
-                background-color: {self._get_rgba(color, 0.15)};
+                background-color: {get_rgba(color, 0.15)};
                 border: 2px solid {color};
                 border-radius: 6px;
             }}
         """)
         self.lbl_title.setText(f"{self.label_text} {indicator}")
-        self.lbl_title.setStyleSheet(f"color: {color}; font-size: {self._get_font_size(title=True)}; font-weight: 700; font-family: Arial;")
+        self.lbl_title.setStyleSheet(f"color: {color}; font-size: {self._lbl_size}; font-weight: 700;")
 
     def set_value(self, text):
         self.lbl_val.setText(text)
@@ -109,17 +103,7 @@ class NumericDisplay(QFrame):
             else:
                 self._apply_base_style()
 
-    def _get_rgba(self, hex_color, alpha):
-        hc = hex_color.lstrip('#')
-        r, g, b = tuple(int(hc[i:i+2], 16) for i in (0, 2, 4))
-        return f"rgba({r}, {g}, {b}, {alpha})"
-    
-    def _get_font_size(self, title=False):
-        # Uses the init-time size variants embedded in the stylesheet.
-        style = self.lbl_val.styleSheet()
-        if "18px" in style: return "11px" if title else "18px"
-        if "24px" in style: return "11px" if title else "24px"
-        return "12px" if title else "38px"
+
 
 
 class PatientMonitorWidget(QWidget):
@@ -153,13 +137,13 @@ class PatientMonitorWidget(QWidget):
         header_layout.setContentsMargins(12, 0, 12, 0)
         
         self.lbl_patient = QLabel("")
-        self.lbl_patient.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 12px; font-weight: 500; font-family: Arial;")
+        self.lbl_patient.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 12px; font-weight: 500;")
         header_layout.addWidget(self.lbl_patient)
         
         header_layout.addStretch()
         
         lbl_brand = QLabel("AnaSim Monitor")
-        lbl_brand.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 11px; font-family: Arial;")
+        lbl_brand.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 11px;")
         header_layout.addWidget(lbl_brand)
         self.layout.addWidget(header)
         
@@ -228,7 +212,7 @@ class PatientMonitorWidget(QWidget):
         
         # EtCO2 & RR container
         co2_frame = QFrame()
-        co2_frame.setStyleSheet(f"background-color: {self._get_rgba(COLORS['co2'], 0.05)}; border-radius: 6px;")
+        co2_frame.setStyleSheet(f"background-color: {get_rgba(COLORS['co2'], 0.05)}; border-radius: 6px;")
         co2_layout = QVBoxLayout(co2_frame)
         co2_layout.setContentsMargins(2, 2, 2, 2)
         co2_layout.setSpacing(0)
@@ -278,7 +262,7 @@ class PatientMonitorWidget(QWidget):
         header_layout.addStretch()
         self.lbl_io_title = QLabel("I/O (mL)")
         self.lbl_io_title.setStyleSheet(
-            f"color: {COLORS['text_dim']}; font-weight: 700; font-size: 10px; font-family: Arial;"
+            f"color: {COLORS['text_dim']}; font-weight: 700; font-size: 10px;"
         )
         self.lbl_io_title.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         header_layout.addWidget(self.lbl_io_title)
@@ -286,7 +270,7 @@ class PatientMonitorWidget(QWidget):
         self.lbl_io_net = QLabel("--")
         self.lbl_io_net.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.lbl_io_net.setStyleSheet(
-            f"color: {COLORS['info']}; font-size: 16px; font-weight: 700; font-family: Arial;"
+            f"color: {COLORS['info']}; font-size: 18px; font-weight: 700;"
         )
         header_layout.addWidget(self.lbl_io_net)
         layout.addLayout(header_layout)
@@ -294,7 +278,7 @@ class PatientMonitorWidget(QWidget):
         self.lbl_io_detail = QLabel("In F-- B-- | Out U-- B--")
         self.lbl_io_detail.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.lbl_io_detail.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 11px; font-family: Arial;"
+            f"color: {COLORS['text_secondary']}; font-size: 11px;"
         )
         layout.addWidget(self.lbl_io_detail)
 
@@ -304,8 +288,8 @@ class PatientMonitorWidget(QWidget):
         frame = QFrame()
         frame.setStyleSheet(f"""
             QFrame {{
-                background-color: {self._get_rgba(COLORS['gas'], 0.05)};
-                border: 1px solid {self._get_rgba(COLORS['border'], 0.3)};
+                background-color: {get_rgba(COLORS['gas'], 0.05)};
+                border: 1px solid {get_rgba(COLORS['border'], 0.3)};
                 border-radius: 6px;
             }}
         """)
@@ -316,9 +300,9 @@ class PatientMonitorWidget(QWidget):
         # Header
         h_layout = QHBoxLayout()
         lbl_gas = QLabel("SEVO")
-        lbl_gas.setStyleSheet(f"color: {COLORS['gas']}; font-weight: 700; font-size: 11px; font-family: Arial;")
+        lbl_gas.setStyleSheet(f"color: {COLORS['gas']}; font-weight: 700; font-size: 11px;")
         self.lbl_mac = QLabel("MAC: 0.0")
-        self.lbl_mac.setStyleSheet(f"color: {COLORS['gas']}; font-weight: 600; font-size: 12px; font-family: Arial;")
+        self.lbl_mac.setStyleSheet(f"color: {COLORS['gas']}; font-weight: 600; font-size: 12px;")
         h_layout.addWidget(lbl_gas)
         h_layout.addStretch()
         h_layout.addWidget(self.lbl_mac)
@@ -331,9 +315,9 @@ class PatientMonitorWidget(QWidget):
             vbox = QVBoxLayout()
             vbox.setSpacing(0)
             l = QLabel(label)
-            l.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px; font-family: Arial;")
+            l.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
             v = QLabel("0.0")
-            v.setStyleSheet(f"color: {COLORS['gas']}; font-size: 20px; font-weight: 700; font-family: Arial;")
+            v.setStyleSheet(f"color: {COLORS['gas']}; font-size: 20px; font-weight: 700;")
             setattr(self, val_label_attr, v)
             vbox.addWidget(l, alignment=Qt.AlignCenter)
             vbox.addWidget(v, alignment=Qt.AlignCenter)
@@ -382,7 +366,7 @@ class PatientMonitorWidget(QWidget):
         
         # Title as Item
         text = pg.TextItem(text=title, color=color, anchor=(0, 1))
-        text.setFont(QFont('Arial', 9, QFont.Weight.Medium))
+        text.setFont(QFont("Arial", 9, QFont.Weight.Medium))
         plot.addItem(text)
         
         # Position title slightly inset
@@ -447,7 +431,7 @@ class PatientMonitorWidget(QWidget):
         self.lbl_io_net.setText(f"{net:+.0f}")
         net_color = COLORS['danger'] if net < 0 else COLORS['success']
         self.lbl_io_net.setStyleSheet(
-            f"color: {net_color}; font-size: 16px; font-weight: 700; font-family: Arial;"
+            f"color: {net_color}; font-size: 18px; font-weight: 700;"
         )
         
         # Gas
@@ -547,7 +531,4 @@ class PatientMonitorWidget(QWidget):
             
             widget.set_alarm(False)
 
-    def _get_rgba(self, hex_color, alpha):
-        hc = hex_color.lstrip('#')
-        r, g, b = tuple(int(hc[i:i+2], 16) for i in (0, 2, 4))
-        return f"rgba({r}, {g}, {b}, {alpha})"
+

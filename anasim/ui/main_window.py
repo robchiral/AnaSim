@@ -34,6 +34,7 @@ from anasim.ui.styles import (
     get_bar_style,
     get_button_style,
     get_toggle_button_style,
+    get_status_label_style,
 )
 
 class MainWindow(QMainWindow):
@@ -220,11 +221,11 @@ class MainWindow(QMainWindow):
         ctrl_layout.addWidget(self.lbl_time)
         
         mon_layout.addWidget(ctrl_bar)
-        main_layout.addWidget(monitor_container, stretch=7)
+        main_layout.addWidget(monitor_container, stretch=13)
         
         # Right Side: Controls
         self.controls = ControlPanelWidget(self.engine, tutorial_mode=self.tutorial_mode)
-        main_layout.addWidget(self.controls, stretch=3)
+        main_layout.addWidget(self.controls, stretch=7)
         
         # Initial Sync
         self.controls.sync_with_engine()
@@ -232,9 +233,7 @@ class MainWindow(QMainWindow):
 
     def _set_status(self, text, color):
         self.lbl_status.setText(text)
-        self.lbl_status.setStyleSheet(
-            f"color: {color}; font-size: {FONTS['size_small']}; font-weight: 600;"
-        )
+        self.lbl_status.setStyleSheet(get_status_label_style(color))
 
     def _set_run_state(self, state):
         if state == "running":
