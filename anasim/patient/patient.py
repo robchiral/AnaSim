@@ -110,14 +110,7 @@ class Patient:
         return (9270.0 * self.weight) / (8780.0 + 244.0 * self.bmi)
 
     def estimate_blood_volume(self) -> float:
-        """Estimate Total Blood Volume in mL."""
-        # Nadler's formula or simple 70ml/kg
-        # Men: 75 ml/kg, Women: 65 ml/kg approximate
-        # Or Nadler:
-        # Men: 0.3669 * H^3 + 0.03219 * W + 0.6041
-        # Women: 0.3561 * H^3 + 0.03308 * W + 0.1833
-        # (H in meters). Result in Liters.
-        
+        """Estimate Total Blood Volume in mL using Nadler's formula."""        
         h_m = self.height / 100.0
         
         sex = self.sex.lower()

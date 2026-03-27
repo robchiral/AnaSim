@@ -16,6 +16,8 @@ from .base import (
     require_fluid_given,
     require_stable_baseline_vitals,
     require_vasopressor_running,
+    create_observe_baseline_step,
+    create_reassess_step,
 )
 
 
@@ -43,19 +45,7 @@ def _require_warm_shock_recognition() -> callable:
 def create_sepsis_response() -> Scenario:
     """Create septic shock response scenario."""
     steps = [
-        ScenarioStep(
-            id="OBSERVE_BASELINE",
-            title="Observe baseline",
-            instruction=(
-                "<b>Step 1/7: Observe baseline vitals</b><br>"
-                "Confirm stable baseline values before sepsis begins:<br>"
-                "• HR 60–90 bpm<br>"
-                "• MAP > 65 mmHg<br>"
-                "• SpO₂ > 94%<br><br>"
-                "<i>Baseline is essential for recognizing distributive changes.</i>"
-            ),
-            check_requirements=require_stable_baseline_vitals(),
-        ),
+        create_observe_baseline_step(1, 7, "sepsis", hr_range="60-90 bpm"),
         ScenarioStep(
             id="START_SEPSIS",
             title="Sepsis begins",
@@ -112,18 +102,13 @@ def create_sepsis_response() -> Scenario:
             ),
             check_requirements=require_crisis_stopped("active_sepsis", "Stop sepsis (source control + antibiotics)"),
         ),
-        ScenarioStep(
-            id="REASSESS",
-            title="Reassess hemodynamics",
-            instruction=(
-                "<b>Step 7/7: Reassess and stabilize</b><br>"
-                "Confirm stabilization:<br>"
-                "• <b>MAP ≥ 65 mmHg</b><br>"
-                "• Sepsis controlled<br><br>"
-                "Wean vasopressors as perfusion improves.<br>"
-                "<i>Monitor closely for relapse or ongoing fluid needs.</i>"
-            ),
-            check_requirements=require_crisis_resolved_with_map("active_sepsis", fail_crisis="Stop sepsis (source control + antibiotics)"),
+        create_reassess_step(
+            7, 7,
+            "active_sepsis",
+            "Stop sepsis (source control + antibiotics)",
+            "Sepsis controlled",
+            "Wean vasopressors as perfusion improves.<br>"
+            "<i>Monitor closely for relapse or ongoing fluid needs.</i>"
         ),
     ]
 

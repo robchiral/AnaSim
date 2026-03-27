@@ -267,3 +267,48 @@ def always_pass() -> Callable:
     def check(engine) -> Tuple[bool, str]:
         return True, ""
     return check
+
+
+def create_observe_baseline_step(
+    step_number: int,
+    total_steps: int,
+    crisis_name: str,
+    hr_range: str = "60-80 bpm"
+) -> ScenarioStep:
+    """Create a standard baseline observation step."""
+    return ScenarioStep(
+        id="OBSERVE_BASELINE",
+        title="Observe baseline",
+        instruction=(
+            f"<b>Step {step_number}/{total_steps}: Observe baseline vitals</b><br>"
+            f"Before the {crisis_name} begins, note the patient's baseline vitals:<br>"
+            f"• Heart rate: {hr_range}<br>"
+            "• MAP: > 65 mmHg<br>"
+            "• SpO₂: > 94%<br><br>"
+            "<i>Recognition of abnormal values requires knowing normal baseline.</i>"
+        ),
+        check_requirements=require_stable_baseline_vitals(),
+    )
+
+
+def create_reassess_step(
+    step_number: int,
+    total_steps: int,
+    crisis_attr: str,
+    fail_crisis_msg: str,
+    controlled_text: str,
+    extra_text: str,
+) -> ScenarioStep:
+    """Create a standard reassessment step."""
+    return ScenarioStep(
+        id="REASSESS",
+        title="Reassess hemodynamics",
+        instruction=(
+            f"<b>Step {step_number}/{total_steps}: Reassess and stabilize</b><br>"
+            "Confirm stabilization:<br>"
+            "• <b>MAP > 65 mmHg</b> (primary resuscitation goal)<br>"
+            f"• {controlled_text}<br><br>"
+            f"{extra_text}"
+        ),
+        check_requirements=require_crisis_resolved_with_map(crisis_attr, fail_crisis=fail_crisis_msg),
+    )

@@ -18,6 +18,7 @@ from anasim.core.constants import (
     SHIVER_MAX_MULTIPLIER,
     SHIVER_TAU_ON,
     SHIVER_TAU_OFF,
+    PK_HEMODYNAMIC_MODEL_ATTRS,
 )
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
@@ -45,17 +46,7 @@ TCI_TARGETS = (
     ("tci_roc", "roc_rate_mg_sec"),
 )
 
-PK_HEMODYNAMIC_MODEL_ATTRS = (
-    ("propofol", "pk_prop"),
-    ("remi", "pk_remi"),
-    ("nore", "pk_nore"),
-    ("roc", "pk_roc"),
-    ("epi", "pk_epi"),
-    ("phenyl", "pk_phenyl"),
-    ("vaso", "pk_vaso"),
-    ("dobu", "pk_dobu"),
-    ("milri", "pk_mil"),
-)
+
 
 
 def zero_disturbance() -> DisturbanceEffects:
@@ -602,29 +593,19 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
 
     total_assisted_mv = mech_vent_mv + bag_mask_mv
     mac_sevo = getattr(state, "mac_sevo", state.mac)
-    resp_state = engine.resp.step(
-        dt,
-        ce_prop=state.propofol_ce,
-        ce_remi=state.remi_ce,
-        mech_vent_mv=total_assisted_mv,
-        fio2=state.fio2,
-        ce_roc=state.roc_ce,
-        et_sevo=state.et_sevo,
-        mac_sevo=mac_sevo,
+    kwargs = engine.get_resp_step_kwargs(
+        total_assisted_mv=total_assisted_mv,
         peep=total_peep_effect,
         mean_paw=engine.current_mean_paw,
-        temp_c=state.temp_c,
         mech_rr=assisted_rr_for_resp,
         mech_vt_l=assisted_vt_for_resp,
-        airway_patency=engine._airway_patency,
-        ventilation_efficiency=engine._ventilation_efficiency,
-        vq_mismatch=engine._vq_mismatch,
-        hb_g_dl=engine.hemo.hb_conc,
-        oxygen_delivery_ratio=engine._do2_ratio,
-        shiver_level=engine._shiver_level,
         cardiac_output=state.co,
-        metabolic_factor=getattr(engine, "_metabolic_factor", None),
+        mac_sevo=mac_sevo,
     )
+    if "metabolic_factor" in kwargs:
+        kwargs["metabolic_factor"] = getattr(engine, "_metabolic_factor", None)
+    
+    resp_state = engine.resp.step(dt, **kwargs)
 
     spont_rr = resp_state.rr
     spont_vt_l = resp_state.vt / 1000.0

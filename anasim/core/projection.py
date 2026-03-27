@@ -192,29 +192,16 @@ def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> A
     else:
         cardiac_output = getattr(engine.hemo, "base_co_l_min", 5.0)
 
-    return engine.resp.step(
-        0.0,
-        ce_prop=state.propofol_ce,
-        ce_remi=state.remi_ce,
-        mech_vent_mv=total_assisted_mv,
-        fio2=state.fio2,
-        ce_roc=state.roc_ce,
-        et_sevo=state.et_sevo,
-        mac_sevo=state.mac_sevo,
+    kwargs = engine.get_resp_step_kwargs(
+        total_assisted_mv=total_assisted_mv,
         peep=peep,
         mean_paw=mean_paw,
-        temp_c=state.temp_c,
         mech_rr=mech_rr,
         mech_vt_l=mech_vt_l,
-        airway_patency=engine._airway_patency,
-        ventilation_efficiency=engine._ventilation_efficiency,
-        vq_mismatch=engine._vq_mismatch,
-        hb_g_dl=getattr(engine.hemo, "hb_conc", state.hb_g_dl),
-        oxygen_delivery_ratio=getattr(engine, "_do2_ratio", 1.0),
-        shiver_level=engine._shiver_level,
         cardiac_output=cardiac_output,
-        metabolic_factor=max(0.5, getattr(engine, "_metabolic_factor", 1.0)),
+        mac_sevo=state.mac_sevo,
     )
+    return engine.resp.step(0.0, **kwargs)
 
 
 def project_respiration(engine: "SimulationEngine", resp_state: Any) -> None:

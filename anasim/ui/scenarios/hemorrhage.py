@@ -16,6 +16,8 @@ from .base import (
     require_fluid_given,
     require_stable_baseline_vitals,
     require_vasopressor_running,
+    create_observe_baseline_step,
+    create_reassess_step,
 )
 
 
@@ -44,19 +46,7 @@ def create_hemorrhage_response() -> Scenario:
     """Create hemorrhage response scenario."""
     
     steps = [
-        ScenarioStep(
-            id="OBSERVE_BASELINE",
-            title="Observe baseline",
-            instruction=(
-                "<b>Step 1/7: Observe baseline vitals</b><br>"
-                "Before the hemorrhage begins, note the patient's baseline vitals:<br>"
-                "• Heart rate: 60-80 bpm<br>"
-                "• MAP: > 65 mmHg<br>"
-                "• SpO₂: > 94%<br><br>"
-                "<i>Recognition of abnormal values requires knowing normal baseline.</i>"
-            ),
-            check_requirements=require_stable_baseline_vitals(),
-        ),
+        create_observe_baseline_step(1, 7, "hemorrhage"),
         ScenarioStep(
             id="START_HEMORRHAGE",
             title="Hemorrhage begins",
@@ -119,18 +109,13 @@ def create_hemorrhage_response() -> Scenario:
             ),
             check_requirements=require_crisis_stopped("active_hemorrhage", "Stop hemorrhage (simulate surgical hemostasis)"),
         ),
-        ScenarioStep(
-            id="REASSESS",
-            title="Reassess hemodynamics",
-            instruction=(
-                "<b>Step 7/7: Reassess and stabilize</b><br>"
-                "Confirm hemodynamic improvement:<br>"
-                "• <b>MAP > 65 mmHg</b> (primary resuscitation goal)<br>"
-                "• Hemorrhage controlled<br><br>"
-                "HR may remain elevated initially - this is normal after volume loss.<br><br>"
-                "<i>Post-hemorrhage: watch for coagulopathy, acidosis, hypothermia.</i>"
-            ),
-            check_requirements=require_crisis_resolved_with_map("active_hemorrhage", fail_crisis="Stop hemorrhage first"),
+        create_reassess_step(
+            7, 7,
+            "active_hemorrhage",
+            "Stop hemorrhage first",
+            "Hemorrhage controlled",
+            "HR may remain elevated initially - this is normal after volume loss.<br><br>"
+            "<i>Post-hemorrhage: watch for coagulopathy, acidosis, hypothermia.</i>"
         ),
     ]
     
