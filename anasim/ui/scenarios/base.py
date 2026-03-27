@@ -134,6 +134,42 @@ def require_vasopressor_running(fail_message: str) -> Callable:
     return check
 
 
+def require_crisis_active(attr: str, fail_message: str) -> Callable:
+    """Check that a crisis event flag is True on the engine."""
+    def check(engine) -> Tuple[bool, str]:
+        if getattr(engine, attr, False):
+            return True, ""
+        return False, fail_message
+    return check
+
+
+def require_crisis_stopped(attr: str, fail_message: str) -> Callable:
+    """Check that a crisis event flag is False on the engine."""
+    def check(engine) -> Tuple[bool, str]:
+        if not getattr(engine, attr, False):
+            return True, ""
+        return False, fail_message
+    return check
+
+
+def require_crisis_resolved_with_map(
+    attr: str, map_threshold: float = 65, fail_crisis: str = "Stop crisis event",
+) -> Callable:
+    """Check that a crisis flag is False and MAP exceeds a threshold."""
+    def check(engine) -> Tuple[bool, str]:
+        map_val = monitor_value(engine, "map")
+        resolved = not getattr(engine, attr, False)
+        if resolved and map_val > map_threshold:
+            return True, ""
+        msgs = []
+        if map_val <= map_threshold:
+            msgs.append(f"MAP: {map_val:.0f}/{map_threshold:.0f}+")
+        if not resolved:
+            msgs.append(fail_crisis)
+        return False, join_messages(msgs)
+    return check
+
+
 def require_bis_below(threshold: float) -> Callable:
     """Check BIS below threshold."""
     def check(engine) -> Tuple[bool, str]:

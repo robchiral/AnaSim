@@ -10,24 +10,13 @@ from .base import (
     ScenarioStep,
     join_messages,
     monitor_value,
+    require_crisis_active,
+    require_crisis_resolved_with_map,
+    require_crisis_stopped,
     require_fluid_given,
     require_stable_baseline_vitals,
     require_vasopressor_running,
 )
-
-
-def _require_simulation_running() -> callable:
-    """Check simulation is running with stable vitals."""
-    return require_stable_baseline_vitals()
-
-
-def _require_hemorrhage_active() -> callable:
-    """Check that hemorrhage event is active."""
-    def check(engine) -> Tuple[bool, str]:
-        if hasattr(engine, 'active_hemorrhage') and engine.active_hemorrhage:
-            return True, ""
-        return False, "Start hemorrhage event (Events tab)"
-    return check
 
 
 def _require_shock_recognition() -> callable:
@@ -36,53 +25,17 @@ def _require_shock_recognition() -> callable:
     User should recognize these signs.
     """
     def check(engine) -> Tuple[bool, str]:
-        # Look for shock signs
         hr = monitor_value(engine, "hr")
         map_val = monitor_value(engine, "map")
         tachycardia = hr > 100
         hypotension = map_val < 65
-        
+
         if tachycardia and hypotension:
             return True, ""
-        
+
         msgs = []
         if not tachycardia: msgs.append(f"HR: {hr:.0f} (watch for ↑)")
         if not hypotension: msgs.append(f"MAP: {map_val:.0f} (watch for ↓)")
-        return False, join_messages(msgs)
-    return check
-
-
-def _require_vasopressor() -> callable:
-    """Check that vasopressor support started."""
-    return require_vasopressor_running(
-        "Start vasopressor (norepinephrine, phenylephrine, or epinephrine)"
-    )
-
-
-def _require_hemorrhage_stopped() -> callable:
-    """Check that hemorrhage event has been stopped."""
-    def check(engine) -> Tuple[bool, str]:
-        if hasattr(engine, 'active_hemorrhage') and not engine.active_hemorrhage:
-            return True, ""
-        return False, "Stop hemorrhage (simulate surgical hemostasis)"
-    return check
-
-
-def _require_hemodynamic_stability() -> callable:
-    """Check that hemodynamics have stabilized post-resuscitation."""
-    def check(engine) -> Tuple[bool, str]:
-        # Focus on MAP restoration as primary goal of resuscitation
-        # HR recovery takes time even with successful treatment
-        map_val = monitor_value(engine, "map")
-        map_ok = map_val > 65
-        hemorrhage_stopped = not getattr(engine, 'active_hemorrhage', True)
-        
-        if map_ok and hemorrhage_stopped:
-            return True, ""
-        
-        msgs = []
-        if not map_ok: msgs.append(f"MAP: {map_val:.0f}/65+ mmHg")
-        if not hemorrhage_stopped: msgs.append("Stop hemorrhage first")
         return False, join_messages(msgs)
     return check
 
@@ -102,7 +55,7 @@ def create_hemorrhage_response() -> Scenario:
                 "• SpO₂: > 94%<br><br>"
                 "<i>Recognition of abnormal values requires knowing normal baseline.</i>"
             ),
-            check_requirements=_require_simulation_running(),
+            check_requirements=require_stable_baseline_vitals(),
         ),
         ScenarioStep(
             id="START_HEMORRHAGE",
@@ -113,7 +66,7 @@ def create_hemorrhage_response() -> Scenario:
                 "Select severity (500-2000 mL/min simulates Class II-IV hemorrhage).<br><br>"
                 "<i>Intraoperative hemorrhage can occur suddenly during surgery.</i>"
             ),
-            check_requirements=_require_hemorrhage_active(),
+            check_requirements=require_crisis_active("active_hemorrhage", "Start hemorrhage event (Events tab)"),
         ),
         ScenarioStep(
             id="RECOGNIZE_SHOCK",
@@ -150,7 +103,7 @@ def create_hemorrhage_response() -> Scenario:
                 "• <b>Phenylephrine</b>: 50-100 mcg/min<br><br>"
                 "<i>Vasopressors bridge until volume is restored; not a substitute for blood.</i>"
             ),
-            check_requirements=_require_vasopressor(),
+            check_requirements=require_vasopressor_running("Start vasopressor (norepinephrine, phenylephrine, or epinephrine)"),
         ),
         ScenarioStep(
             id="STOP_BLEEDING",
@@ -164,7 +117,7 @@ def create_hemorrhage_response() -> Scenario:
                 "• Possible interventional radiology<br><br>"
                 "<i>Definitive hemorrhage control is the priority over resuscitation.</i>"
             ),
-            check_requirements=_require_hemorrhage_stopped(),
+            check_requirements=require_crisis_stopped("active_hemorrhage", "Stop hemorrhage (simulate surgical hemostasis)"),
         ),
         ScenarioStep(
             id="REASSESS",
@@ -177,7 +130,7 @@ def create_hemorrhage_response() -> Scenario:
                 "HR may remain elevated initially - this is normal after volume loss.<br><br>"
                 "<i>Post-hemorrhage: watch for coagulopathy, acidosis, hypothermia.</i>"
             ),
-            check_requirements=_require_hemodynamic_stability(),
+            check_requirements=require_crisis_resolved_with_map("active_hemorrhage", fail_crisis="Stop hemorrhage first"),
         ),
     ]
     
