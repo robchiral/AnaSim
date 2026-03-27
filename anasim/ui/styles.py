@@ -117,6 +117,9 @@ def get_groupbox_style(accent_color=None):
             background-color: {COLORS['card']};
             {accent}
         }}
+        QGroupBox:hover {{
+            border-color: {COLORS['border_light']};
+        }}
         QGroupBox::title {{
             subcontrol-origin: margin;
             subcontrol-position: top left;
@@ -163,6 +166,9 @@ def get_combobox_style():
         QComboBox:focus {{
             border-color: {COLORS['primary']};
         }}
+        QComboBox:hover {{
+            border-color: {COLORS['border_light']};
+        }}
         QComboBox::drop-down {{
             border: none;
             width: 24px;
@@ -172,6 +178,8 @@ def get_combobox_style():
             color: {COLORS['text']};
             selection-background-color: {COLORS['primary']};
             border: 1px solid {COLORS['border']};
+            border-radius: 4px;
+            outline: none;
         }}
         QComboBox:disabled {{
             color: {COLORS['text_dim']};
@@ -283,7 +291,11 @@ def get_toggle_button_style(active_color, text_color=None, inactive_bg=None):
         QPushButton:checked {{
             background-color: {active_color};
             color: white;
-            border-color: {active_color};
+            border-color: {get_rgba(active_color, 0.7)};
+            border-width: 1px;
+        }}
+        QPushButton:checked:hover {{
+            background-color: {get_rgba(active_color, 0.85)};
         }}
     """
 
@@ -366,6 +378,22 @@ def get_scrollarea_style():
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             height: 0px;
         }}
+        QScrollBar:horizontal {{
+            background-color: {COLORS['panel']};
+            height: 10px;
+            border-radius: 5px;
+        }}
+        QScrollBar::handle:horizontal {{
+            background-color: {COLORS['border']};
+            border-radius: 5px;
+            min-width: 30px;
+        }}
+        QScrollBar::handle:horizontal:hover {{
+            background-color: {COLORS['border_light']};
+        }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+            width: 0px;
+        }}
     """
 
 def get_frame_style(bg_color=None, border_color=None, radius=8, border_width=1):
@@ -400,19 +428,9 @@ def get_tinted_frame_style(color, alpha=0.06, radius=8):
         }}
     """
 
-def get_dialog_style():
-    """Style for QDialog."""
+def get_checkbox_style():
+    """Style for QCheckBox."""
     return f"""
-        QDialog {{
-            background-color: {COLORS['background']};
-            color: {COLORS['text']};
-            font-family: {FONTS['family']};
-        }}
-        {get_groupbox_style()}
-        {get_spinbox_style()}
-        {get_combobox_style()}
-        {get_label_style()}
-        {get_radiobutton_style(COLORS['text'], indicator_color=COLORS['primary'])}
         QCheckBox {{
             color: {COLORS['text']};
             font-size: {FONTS['size_normal']};
@@ -426,6 +444,9 @@ def get_dialog_style():
             border: 1px solid {COLORS['border']};
             background-color: {COLORS['control']};
         }}
+        QCheckBox::indicator:hover {{
+            border-color: {COLORS['border_light']};
+        }}
         QCheckBox::indicator:checked {{
             background-color: {COLORS['primary']};
             border-color: {COLORS['primary']};
@@ -434,6 +455,26 @@ def get_dialog_style():
             background-color: {COLORS['background_alt']};
             border-color: {COLORS['border']};
         }}
+    """
+
+def get_status_label_style(color):
+    """Style for status indicator labels (READY/RUNNING/PAUSED)."""
+    return f"color: {color}; font-size: {FONTS['size_small']}; font-weight: 600;"
+
+def get_dialog_style():
+    """Style for QDialog."""
+    return f"""
+        QDialog {{
+            background-color: {COLORS['background']};
+            color: {COLORS['text']};
+            font-family: {FONTS['family']};
+        }}
+        {get_groupbox_style()}
+        {get_spinbox_style()}
+        {get_combobox_style()}
+        {get_label_style()}
+        {get_radiobutton_style(COLORS['text'], indicator_color=COLORS['primary'])}
+        {get_checkbox_style()}
         QPushButton {{
             background-color: {COLORS['control']};
             color: {COLORS['text']};
@@ -508,3 +549,4 @@ STYLE_LABEL = get_label_style()
 STYLE_TAB_WIDGET = get_tab_widget_style()
 STYLE_SCROLLAREA = get_scrollarea_style()
 STYLE_PROGRESSBAR = get_progressbar_style()
+STYLE_CHECKBOX = get_checkbox_style()

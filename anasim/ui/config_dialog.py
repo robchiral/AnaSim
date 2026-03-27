@@ -29,10 +29,10 @@ class SimulationSetupDialog(QDialog):
         header = QFrame()
         header.setStyleSheet(get_frame_style(bg_color=COLORS['card'], border_color=COLORS['border']))
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(12, 8, 12, 8)
+        header_layout.setContentsMargins(14, 10, 12, 10)
         
         lbl_title = QLabel("AnaSim")
-        lbl_title.setStyleSheet(f"font-size: 18px; font-weight: 700; color: {COLORS['primary']};")
+        lbl_title.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {COLORS['primary']};")
         header_layout.addWidget(lbl_title)
         
         lbl_subtitle = QLabel("Anesthesia Simulator")
