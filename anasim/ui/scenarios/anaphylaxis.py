@@ -8,18 +8,10 @@ from .base import (
     Scenario,
     ScenarioStep,
     cumulative_fluid_given,
-    join_messages,
     monitor_value,
+    require_crisis_active,
+    require_crisis_resolved_with_map,
 )
-
-
-def _require_anaphylaxis_active() -> callable:
-    """Check that the crisis event has started."""
-    def check(engine) -> Tuple[bool, str]:
-        if getattr(engine, "active_anaphylaxis", False):
-            return True, ""
-        return False, "Start anaphylaxis in Events"
-    return check
 
 
 def _require_epinephrine_started() -> callable:
@@ -42,22 +34,6 @@ def _require_fluids_given(min_ml: float = 500.0) -> callable:
     return check
 
 
-def _require_stability() -> callable:
-    """Check that MAP has recovered and the crisis is no longer active."""
-    def check(engine) -> Tuple[bool, str]:
-        map_val = monitor_value(engine, "map")
-        crisis_resolved = not getattr(engine, "active_anaphylaxis", False)
-        if map_val > 65 and crisis_resolved:
-            return True, ""
-        msgs = []
-        if map_val <= 65:
-            msgs.append(f"MAP: {map_val:.0f}/65+")
-        if not crisis_resolved:
-            msgs.append("Stop anaphylaxis event")
-        return False, join_messages(msgs)
-    return check
-
-
 def create_anaphylaxis_scenario() -> Scenario:
     """Create a guided scenario for managing intraoperative anaphylaxis."""
     steps = [
@@ -69,7 +45,7 @@ def create_anaphylaxis_scenario() -> Scenario:
                 "Start the event and identify the pattern of sudden hypotension, tachycardia, and bronchospasm.<br><br>"
                 "<i>Think distributive shock with airway involvement.</i>"
             ),
-            check_requirements=_require_anaphylaxis_active(),
+            check_requirements=require_crisis_active("active_anaphylaxis", "Start anaphylaxis in Events"),
         ),
         ScenarioStep(
             id="EPINEPHRINE",
@@ -97,9 +73,9 @@ def create_anaphylaxis_scenario() -> Scenario:
             instruction=(
                 "<b>Step 4/4: Reassess hemodynamics</b><br>"
                 "Stop the event after treatment and confirm <b>MAP > 65 mmHg</b>.<br><br>"
-                "<i>Ongoing hypotension after epinephrine and fluids should prompt escalation.</i>"
+                "<i>Ongoing hypotension after epinephrine and fluids should prompt escalation. Consider H1/H2 blockers and steroids as adjuncts.</i>"
             ),
-            check_requirements=_require_stability(),
+            check_requirements=require_crisis_resolved_with_map("active_anaphylaxis", fail_crisis="Stop anaphylaxis event"),
         ),
     ]
 

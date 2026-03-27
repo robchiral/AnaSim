@@ -10,24 +10,13 @@ from .base import (
     ScenarioStep,
     join_messages,
     monitor_value,
+    require_crisis_active,
+    require_crisis_resolved_with_map,
+    require_crisis_stopped,
     require_fluid_given,
     require_stable_baseline_vitals,
     require_vasopressor_running,
 )
-
-
-def _require_simulation_running() -> callable:
-    """Check simulation is running with stable vitals."""
-    return require_stable_baseline_vitals()
-
-
-def _require_sepsis_active() -> callable:
-    """Check that sepsis event is active."""
-    def check(engine) -> Tuple[bool, str]:
-        if getattr(engine, "active_sepsis", False):
-            return True, ""
-        return False, "Start sepsis event (Events tab)"
-    return check
 
 
 def _require_warm_shock_recognition() -> callable:
@@ -51,31 +40,6 @@ def _require_warm_shock_recognition() -> callable:
     return check
 
 
-def _require_vasopressor() -> callable:
-    """Check that vasopressor support started."""
-    return require_vasopressor_running("Start vasopressor (norepinephrine preferred)")
-
-
-def _require_source_control() -> callable:
-    """Check that sepsis event has been stopped (source control)."""
-    def check(engine) -> Tuple[bool, str]:
-        if getattr(engine, "active_sepsis", False):
-            return False, "Stop sepsis (source control + antibiotics)"
-        return True, ""
-    return check
-
-
-def _require_hemodynamic_stability() -> callable:
-    """Check that MAP has been restored to a safe range."""
-    def check(engine) -> Tuple[bool, str]:
-        map_val = monitor_value(engine, "map")
-        map_ok = map_val >= 65
-        if map_ok:
-            return True, ""
-        return False, f"MAP: {map_val:.0f}/65+ mmHg"
-    return check
-
-
 def create_sepsis_response() -> Scenario:
     """Create septic shock response scenario."""
     steps = [
@@ -90,7 +54,7 @@ def create_sepsis_response() -> Scenario:
                 "• SpO₂ > 94%<br><br>"
                 "<i>Baseline is essential for recognizing distributive changes.</i>"
             ),
-            check_requirements=_require_simulation_running(),
+            check_requirements=require_stable_baseline_vitals(),
         ),
         ScenarioStep(
             id="START_SEPSIS",
@@ -100,7 +64,7 @@ def create_sepsis_response() -> Scenario:
                 "Go to the <b>Events</b> tab and click <b>'Start sepsis'</b>.<br><br>"
                 "<i>Sepsis can evolve rapidly from infection or intra-abdominal sources.</i>"
             ),
-            check_requirements=_require_sepsis_active(),
+            check_requirements=require_crisis_active("active_sepsis", "Start sepsis event (Events tab)"),
         ),
         ScenarioStep(
             id="RECOGNIZE_WARM_SHOCK",
@@ -135,7 +99,7 @@ def create_sepsis_response() -> Scenario:
                 "• <b>Norepinephrine</b> is first-line (0.05–0.1 mcg/kg/min).<br><br>"
                 "<i>Pressor resistance may require higher doses.</i>"
             ),
-            check_requirements=_require_vasopressor(),
+            check_requirements=require_vasopressor_running("Start vasopressor (norepinephrine preferred)"),
         ),
         ScenarioStep(
             id="SOURCE_CONTROL",
@@ -146,7 +110,7 @@ def create_sepsis_response() -> Scenario:
                 "Click <b>'Stop sepsis'</b> in the <b>Events</b> tab.<br><br>"
                 "<i>Without source control, shock will persist.</i>"
             ),
-            check_requirements=_require_source_control(),
+            check_requirements=require_crisis_stopped("active_sepsis", "Stop sepsis (source control + antibiotics)"),
         ),
         ScenarioStep(
             id="REASSESS",
@@ -159,7 +123,7 @@ def create_sepsis_response() -> Scenario:
                 "Wean vasopressors as perfusion improves.<br>"
                 "<i>Monitor closely for relapse or ongoing fluid needs.</i>"
             ),
-            check_requirements=_require_hemodynamic_stability(),
+            check_requirements=require_crisis_resolved_with_map("active_sepsis", fail_crisis="Stop sepsis (source control + antibiotics)"),
         ),
     ]
 
