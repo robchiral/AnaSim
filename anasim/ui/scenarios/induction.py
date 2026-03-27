@@ -8,7 +8,7 @@ from .base import (
     require_bis_below, require_ventilation_on, require_rocuronium_cp,
     require_tof_below, require_etco2_above, require_mac_above,
     require_remi_running, require_propofol_infusion_running,
-    require_all, always_pass
+    require_all
 )
 
 

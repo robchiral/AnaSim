@@ -130,7 +130,15 @@ class ControlPanelWidget(QWidget):
         except (TypeError, AttributeError):
             pass  # If hashing fails, proceed with full sync
 
-        # 1. Gases & Airway
+        self._sync_gases_and_airway()
+        self._sync_drugs()
+        self._sync_ventilator()
+        self._sync_fluids()
+        self._sync_disturbances()
+        self._sync_airway_complications()
+
+    def _sync_gases_and_airway(self):
+        """Sync gases, vaporizer, and airway choices."""
         if self.engine.circuit and hasattr(self.engine.circuit, 'vaporizer_setting'):
             idx = self.cb_agent.findText(self.engine.active_agent)
             if idx >= 0:
@@ -138,7 +146,6 @@ class ControlPanelWidget(QWidget):
             
             self._silent_update(self.sb_vap, 'setValue', self.engine.circuit.vaporizer_setting)
 
-            # Sync fresh gas flows (O2/Air/N2O)
             if hasattr(self, "sb_o2"):
                 self._silent_update(self.sb_o2, 'setValue', getattr(self.engine.circuit, "fgf_o2", 0.0))
             if hasattr(self, "sb_air"):
@@ -146,7 +153,6 @@ class ControlPanelWidget(QWidget):
             if hasattr(self, "sb_n2o"):
                 self._silent_update(self.sb_n2o, 'setValue', getattr(self.engine.circuit, "fgf_n2o", 0.0))
 
-            # Update displayed FiO2 based on total fresh gas.
             o2 = getattr(self.engine.circuit, "fgf_o2", 0.0)
             air = getattr(self.engine.circuit, "fgf_air", 0.0)
             n2o = getattr(self.engine.circuit, "fgf_n2o", 0.0)
@@ -165,7 +171,8 @@ class ControlPanelWidget(QWidget):
                 self.rb_ett.setChecked(True)
             self.abg_air.blockSignals(False)
 
-        # 2. Drugs
+    def _sync_drugs(self):
+        """Sync TIVA and programmed bolus states."""
         for key, w in self.drug_widgets.items():
             if hasattr(self.engine, 'get_drug_state'):
                 dstate = self.engine.get_drug_state(key)
@@ -182,7 +189,6 @@ class ControlPanelWidget(QWidget):
                     w['rate'].setEnabled(True)
                     w['target'].setEnabled(False)
                 
-                # Update CSHT display for propofol and remi
                 if 'csht_label' in w and w['csht_label'] is not None and hasattr(self.engine, 'get_predicted_csht'):
                     csht = self.engine.get_predicted_csht(key)
                     if csht > 0:
@@ -193,8 +199,9 @@ class ControlPanelWidget(QWidget):
                         w['csht_label'].show()
                     else:
                         w['csht_label'].hide()
-        
-        # 3. Ventilator Sync
+
+    def _sync_ventilator(self):
+        """Sync ventilator settings."""
         if hasattr(self.engine, 'vent'):
             is_on = self.engine.vent.is_on
             self._silent_update(self.btn_vent_power, 'setChecked', is_on)
@@ -217,11 +224,13 @@ class ControlPanelWidget(QWidget):
                 self.sb_peep.setEnabled(False)
                 self.cb_ie.setEnabled(False)
 
-        # 3b. Continuous fluids
+    def _sync_fluids(self):
+        """Sync continuous fluid rate."""
         if hasattr(self, "sb_cont_fluid") and hasattr(self.engine, "get_continuous_fluid_rate"):
             self._silent_update(self.sb_cont_fluid, 'setValue', self.engine.get_continuous_fluid_rate())
 
-        # 4. Disturbances
+    def _sync_disturbances(self):
+        """Sync programmed disturbance states."""
         if hasattr(self, "cb_disturbance"):
             profile = getattr(self.engine, "disturbance_profile", None)
             idx = next((i for i, (_, key) in enumerate(self._disturbance_profiles) if key == profile), 0)
@@ -233,7 +242,8 @@ class ControlPanelWidget(QWidget):
             self.b_disturb.setEnabled(profile is not None)
             self.cb_disturbance.setEnabled(not active)
 
-        # 5. Airway complications
+    def _sync_airway_complications(self):
+        """Sync airway obstruction and laryngospasm."""
         if hasattr(self, "sb_obstruction"):
             obs = getattr(self.engine, "airway_obstruction_manual", 0.0) * 100.0
             bron = getattr(self.engine, "bronchospasm_manual", 0.0) * 100.0

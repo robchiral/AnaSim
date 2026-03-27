@@ -31,6 +31,7 @@ from anasim.core.utils import clamp
 from anasim.core.constants import (
     AirwayTuning,
     ThermalTuning,
+    BOLUS_TARGETS,
 )
 from anasim.core.recorder import DataRecorder
 
@@ -40,17 +41,6 @@ AIRWAY_MODE_MAP = {
     "ETT": AirwayType.ETT,
 }
 
-BOLUS_TARGETS = (
-    ("prop", "pk_prop"),
-    ("remi", "pk_remi"),
-    ("nore", "pk_nore"),
-    ("epi", "pk_epi"),
-    ("phenyl", "pk_phenyl"),
-    ("vaso", "pk_vaso"),
-    ("dobu", "pk_dobu"),
-    ("milri", "pk_mil"),
-    ("roc", "pk_roc"),
-)
 BOLUS_DRUG_KEYS = {
     "prop": "propofol",
     "remi": "remi",
@@ -798,6 +788,32 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_airway_obstruction(self, severity: float):
         self.airway_obstruction_manual = clamp(severity, 0.0, 1.0)
+
+    def get_resp_step_kwargs(self, total_assisted_mv, peep, mean_paw, mech_rr, mech_vt_l, cardiac_output, mac_sevo=None):
+        """Construct commonly duplicated arguments for respiratory step."""
+        return {
+            "ce_prop": self.state.propofol_ce,
+            "ce_remi": self.state.remi_ce,
+            "mech_vent_mv": total_assisted_mv,
+            "fio2": self.state.fio2,
+            "ce_roc": self.state.roc_ce,
+            "et_sevo": self.state.et_sevo,
+            "mac_sevo": mac_sevo if mac_sevo is not None else self.state.mac_sevo,
+            "peep": peep,
+            "mean_paw": mean_paw,
+            "temp_c": self.state.temp_c,
+            "mech_rr": mech_rr,
+            "mech_vt_l": mech_vt_l,
+            "airway_patency": self._airway_patency,
+            "ventilation_efficiency": self._ventilation_efficiency,
+            "vq_mismatch": self._vq_mismatch,
+            "hb_g_dl": getattr(self.hemo, "hb_conc", self.state.hb_g_dl) if self.hemo else self.state.hb_g_dl,
+            "oxygen_delivery_ratio": getattr(self, "_do2_ratio", 1.0),
+            "shiver_level": self._shiver_level,
+            "cardiac_output": cardiac_output,
+            "metabolic_factor": max(0.5, getattr(self, "_metabolic_factor", 1.0)),
+        }
+
 
     def set_bronchospasm(self, severity: float):
         self.bronchospasm_manual = clamp(severity, 0.0, 1.0)

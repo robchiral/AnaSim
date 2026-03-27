@@ -3,7 +3,7 @@ from typing import Optional
 from scipy.optimize import root_scalar
 from anasim.patient.patient import Patient
 from anasim.core.constants import (
-    HR_MIN, HR_MAX, MAP_MAX, SBP_MAX, DBP_MAX, TPR_MIN, BLOOD_VOLUME_MIN, TEMP_TPR_COEFFICIENT
+    HR_MIN, HR_MAX, BLOOD_VOLUME_MIN, TEMP_TPR_COEFFICIENT
 )
 from anasim.core.utils import hill_function, clamp, clamp01
 from anasim.core.enums import RhythmType
