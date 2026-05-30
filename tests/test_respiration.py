@@ -302,6 +302,24 @@ class TestHypercapnicVentilatoryResponse:
         assert state.mv > 3.0, \
             f"MV {state.mv:.1f} L/min too low for adequate emergence ventilation"
 
+    def test_deep_drug_hypercapnia_does_not_normalize_ventilation(self, patient):
+        """Hypercapnia may restore some drive but should not overcome deep propofol/opioid depression."""
+        baseline_model = RespiratoryModel(patient)
+        baseline_model.state.p_alveolar_co2 = 40.0
+        baseline_state = baseline_model.step(1.0, ce_prop=0.0, ce_remi=0.0)
+
+        normocap_drug = RespiratoryModel(patient)
+        normocap_drug.state.p_alveolar_co2 = 40.0
+        normocap_state = normocap_drug.step(1.0, ce_prop=3.5, ce_remi=4.0)
+
+        hypercap_drug = RespiratoryModel(patient)
+        hypercap_drug.state.p_alveolar_co2 = 70.0
+        hypercap_state = hypercap_drug.step(1.0, ce_prop=3.5, ce_remi=4.0)
+
+        assert hypercap_state.mv > normocap_state.mv
+        assert hypercap_state.mv < baseline_state.mv * 0.6
+        assert hypercap_state.mv < 4.0
+
 
 class TestShiveringMetabolicEffect:
     def test_shivering_raises_paco2(self, patient):

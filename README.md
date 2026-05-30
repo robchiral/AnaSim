@@ -11,11 +11,18 @@ Real-time anesthesia simulation engine for medical education.
 
 ## Installation
 
-Requires Python 3.10+.
+Requires Python 3.10+ and `pip`. A virtual environment is recommended so AnaSim's dependencies stay separate from your system Python.
 
 ```bash
+git clone https://github.com/robchiral/AnaSim.git
+cd AnaSim
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -e .
 ```
+
+On Windows, activate the environment with `.venv\Scripts\activate` instead of the `source` command.
 
 ## Usage
 
@@ -47,11 +54,9 @@ See [docs/CLI_USAGE.md](docs/CLI_USAGE.md) for detailed CLI instructions.
 
 AnaSim ships one realism-calibrated runtime profile. It uses published models where they behave well end-to-end, and applies explicit tuned deviations where a literal parameter value produces implausible managed intraoperative states in the integrated simulator. See [docs/REFERENCES.md](docs/REFERENCES.md) for the bibliography.
 
-Examples of deliberate deviations are documented inline in the code and preserved in comments with the original literature values:
-- propofol hemodynamic vasodilation is capped less aggressively than the published Su et al. 2023 Emax so treated maintenance states do not default into hypotension
+Examples of calibration choices and deliberate deviations:
+- hemodynamics uses plasma propofol/remifentanil concentrations in line with Su et al. 2023, while CNS depth, tolerance, BIS, and respiratory depression use effect-site concentrations
 - rocuronium spontaneous recovery uses a faster runtime `ke0` than pure literature modeling so recovery timing stays in the clinical range
-
-Steady-state startup is also calibrated as a managed-maintenance history rather than a pure mathematical equilibrium fill. That means the opening frame is intended to resemble a patient already under controlled anesthesia.
 
 ## Comparison
 

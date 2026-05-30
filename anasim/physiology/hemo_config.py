@@ -39,7 +39,7 @@ class HemodynamicConfig:
 
     # Propofol hemodynamic effects
     ec50_prop_tpr: float = 3.21
-    emax_prop_tpr: float = -0.50
+    emax_prop_tpr: float = -0.778
     gamma_prop: float = 1.83
     ec50_prop_sv: float = 0.44
     emax_prop_sv_typ: float = -0.15

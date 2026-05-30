@@ -80,7 +80,7 @@ You can provide a JSON file to customize the patient and simulation parameters.
 - **enable_death_detector**: `true`/`false` to enable viability checks.
 
 Legacy note:
-- Configs that still contain `fidelity_mode` now fail to load. AnaSim no longer exposes a literature/runtime toggle and uses one realism-calibrated profile.
+- `fidelity_mode` is unsupported. AnaSim uses one realism-calibrated profile rather than a literature/runtime toggle.
 
 ## Examples
 

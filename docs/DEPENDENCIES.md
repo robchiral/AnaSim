@@ -6,11 +6,11 @@ Each `SimulationEngine.step()` executes subsystems in this order:
 
 ```text
 1. Disturbances    -> Surgical stimulation, bleeding, fluids, sepsis, anaphylaxis
-2. PK scaling      -> Live PK volumes/clearances updated from blood volume + CO
+2. PK scaling      -> Live PK volumes/clearances from blood volume + CO
 3. TCI sync        -> Active controllers resynced/rebuilt against the live PK model
 4. TCI controllers -> Drug target -> infusion rate calculation
 5. Machine         -> Ventilator, bag-mask, vaporizer, circuit (O2/Air/N2O)
-6. PK models       -> Drug concentrations (Ce, Cp) updated
+6. PK models       -> Drug concentrations (Ce, Cp)
 7. Physiology      -> Resp mechanics -> Respiration -> Hemodynamics
 8. Projection      -> Live subsystem state copied into SimulationState
 9. Monitors        -> Waveforms, display_* numerics, alarms, NIBP
@@ -69,8 +69,8 @@ flowchart TD
 
 | Source | Data | Notes |
 |--------|------|-------|
-| PK Propofol | `propofol_ce` | Vasodilation, cardiac depression |
-| PK Remifentanil | `remi_ce` | Bradycardia, vasodilation |
+| PK Propofol | `propofol_cp` | Vasodilation, cardiac depression |
+| PK Remifentanil | `remi_cp` | Bradycardia, vasodilation |
 | Vasopressor PK | `nore_ce`, `epi_ce`, `phenyl_ce`, `vaso_ce`, `dobu_ce`, `mil_ce` | Vasoconstriction, inotropy, lusitropy |
 | Volatile PK | `mac_sevo` | Cardiovascular depression |
 | Resp mechanics | `pit`, `peep_cmH2O` | Preload and pulmonary coupling |
@@ -98,22 +98,25 @@ flowchart TD
 | BIS / TOF / LOC | raw model outputs | Displayed and alarmed values |
 | Monitor settings | arterial line enabled, NIBP interval | Changes presentation mode |
 
-## Remaining One-Step Lag Cases
+## One-Step Lag Cases
 
-The raw/display refactor removed step-size-dependent monitor lag as a semantic issue, but a few execution-order lags remain:
+A few execution-order lags are part of the model contract:
 
 | Value | Used by | Updated by | Reason |
 |------|---------|------------|--------|
-| `state.co` | Volatile PK scaling and respiration perfusion effects | Hemodynamics | CO is updated after PK and respiration in the same step |
+| `state.co` | Volatile PK scaling and respiration perfusion effects | Hemodynamics | CO is computed after PK and respiration in the same step |
 | `state.va` | Volatile PK | Respiration | Alveolar ventilation is computed after machine and PK setup |
 | `state.mv` | Circuit / machine context | Physiology | Minute ventilation is finalized after mechanics and respiration |
 
-These lags are small at the intended simulation time steps and are preferable to reordering core physiology for now.
+These lags are small at the intended simulation time steps and preserve the intended physiology execution order.
 
 ## State Synchronization Examples
 
 ```text
 pk_prop.state.ce      -> state.propofol_ce
+pk_prop.state.c1      -> state.propofol_cp
+pk_remi.state.ce      -> state.remi_ce
+pk_remi.state.c1      -> state.remi_cp
 resp_state.pa_co2     -> state.pa_co2
 resp_state.p_alveolar_co2 -> state.alveolar_co2
 hemo_state.map        -> state.map
