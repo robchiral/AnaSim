@@ -158,34 +158,49 @@ def _project_respiratory_observables(
     state.apnea = bool(resp_state.apnea)
 
 
-def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> Any:
-    """Evaluate the respiratory model at the current subsystem state without advancing time."""
-    if not engine.resp:
-        return None
-
+def _current_respiratory_support(engine: "SimulationEngine") -> dict[str, Any]:
+    """Return current assisted-ventilation settings used for state projection."""
     state = engine.state
     connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
     vent_active = connected and engine.vent.is_on
     bag_mask_active = engine.bag_mask_active and connected and not vent_active
 
     if vent_active:
-        mech_rr = engine.resp_mech.set_rr
-        mech_vt_l = engine.resp_mech.set_vt
-        total_assisted_mv = mech_rr * mech_vt_l
+        assisted_rr = engine.resp_mech.set_rr
+        assisted_vt_l = engine.resp_mech.set_vt
         peep = engine.resp_mech.get_total_peep()
         mean_paw = max(engine.current_mean_paw, peep)
     elif bag_mask_active:
-        mech_rr = engine.bag_mask_rr
-        mech_vt_l = engine.bag_mask_vt
-        total_assisted_mv = mech_rr * mech_vt_l
+        assisted_rr = engine.bag_mask_rr
+        assisted_vt_l = engine.bag_mask_vt
         peep = 0.0
         mean_paw = 0.0
     else:
-        mech_rr = 0.0
-        mech_vt_l = 0.0
-        total_assisted_mv = 0.0
+        assisted_rr = 0.0
+        assisted_vt_l = 0.0
         peep = 0.0
         mean_paw = 0.0
+
+    return {
+        "connected": connected,
+        "vent_active": vent_active,
+        "bag_mask_active": bag_mask_active,
+        "assisted_active": vent_active or bag_mask_active,
+        "assisted_rr": assisted_rr,
+        "assisted_vt_l": assisted_vt_l,
+        "total_assisted_mv": assisted_rr * assisted_vt_l,
+        "peep": peep,
+        "mean_paw": mean_paw,
+    }
+
+
+def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> Any:
+    """Evaluate the respiratory model at the current subsystem state without advancing time."""
+    if not engine.resp:
+        return None
+
+    state = engine.state
+    support = _current_respiratory_support(engine)
 
     if hemo_state and hemo_state.co > 0.0:
         cardiac_output = hemo_state.co
@@ -193,44 +208,36 @@ def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> A
         cardiac_output = getattr(engine.hemo, "base_co_l_min", 5.0)
 
     kwargs = engine.get_resp_step_kwargs(
-        total_assisted_mv=total_assisted_mv,
-        peep=peep,
-        mean_paw=mean_paw,
-        mech_rr=mech_rr,
-        mech_vt_l=mech_vt_l,
+        total_assisted_mv=support["total_assisted_mv"],
+        peep=support["peep"],
+        mean_paw=support["mean_paw"],
+        mech_rr=support["assisted_rr"],
+        mech_vt_l=support["assisted_vt_l"],
         cardiac_output=cardiac_output,
         mac_sevo=state.mac_sevo,
     )
     return engine.resp.step(0.0, **kwargs)
 
 
-def project_respiration(engine: "SimulationEngine", resp_state: Any) -> None:
-    """Copy respiratory model state into the public snapshot."""
-    state = engine.state
-    connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
-    vent_active = connected and engine.vent.is_on
-    bag_mask_active = engine.bag_mask_active and connected and not vent_active
-    assisted_active = vent_active or bag_mask_active
+def build_snapshot_from_models(engine: "SimulationEngine", hemo_state: Any, resp_state: Any) -> PhysiologyStepState:
+    """Build a projection snapshot from current model state without advancing runtime."""
+    support = _current_respiratory_support(engine)
     spontaneous_rr = resp_state.rr
     spontaneous_vt_l = resp_state.vt / 1000.0
-    assisted_rr = 0.0
-    assisted_vt_l = 0.0
+    assisted_rr = support["assisted_rr"]
+    assisted_vt_l = support["assisted_vt_l"]
 
-    if vent_active:
-        assisted_rr = engine.resp_mech.set_rr
-        assisted_vt_l = engine.resp_mech.set_vt
+    if support["vent_active"]:
         vt_display_ml = max(0.0, assisted_vt_l) * 1000.0
         paw_display = max(0.0, engine.resp_mech.set_peep)
-    elif bag_mask_active:
-        assisted_rr = engine.bag_mask_rr
-        assisted_vt_l = engine.bag_mask_vt
+    elif support["bag_mask_active"]:
         vt_display_ml = max(0.0, assisted_vt_l) * 1000.0
         paw_display = 0.0
     else:
         vt_display_ml = resp_state.vt
         paw_display = 0.0
 
-    if assisted_active:
+    if support["assisted_active"]:
         effective_rr = max(assisted_rr, spontaneous_rr)
         effective_vt_l = max(assisted_vt_l * engine._airway_patency, spontaneous_vt_l)
         rr_display = effective_rr
@@ -239,16 +246,18 @@ def project_respiration(engine: "SimulationEngine", resp_state: Any) -> None:
         rr_display = spontaneous_rr
         mv_display_l_min = spontaneous_rr * spontaneous_vt_l
 
-    _project_respiratory_observables(
-        engine,
-        resp_state,
+    return PhysiologyStepState(
+        hemo_state=hemo_state,
+        resp_state=resp_state,
+        phase=getattr(engine.resp_mech.state, "phase", "EXP"),
+        pit_estimate=getattr(engine.hemo, "pit_0", -2.0),
         rr_display=rr_display,
         vt_display_ml=vt_display_ml,
         mv_display_l_min=mv_display_l_min,
         paw_display=paw_display,
         flow_display=0.0,
         volume_display=0.0,
-        pit_display=getattr(engine.hemo, "pit_0", -2.0),
+        vent_active=support["vent_active"],
     )
 
 
@@ -336,11 +345,11 @@ def sync_state_from_models(engine: "SimulationEngine") -> None:
     sync_pk_state(engine)
     sync_machine_state(engine)
     hemo_state = engine.hemo.state if engine.hemo else None
-    if hemo_state:
-        project_hemodynamics(engine, hemo_state)
     resp_state = snapshot_respiratory_state(engine, hemo_state)
-    if resp_state is not None:
-        project_respiration(engine, resp_state)
+    if hemo_state and resp_state is not None:
+        project_runtime_physiology(engine, build_snapshot_from_models(engine, hemo_state, resp_state))
+    elif hemo_state:
+        project_hemodynamics(engine, hemo_state)
     sync_monitor_baselines(engine)
     engine._sync_display_state_from_raw()
     engine._sync_raw_vital_cache()

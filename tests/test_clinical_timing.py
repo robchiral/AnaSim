@@ -118,7 +118,7 @@ class TestRemifentanilTiming:
         model = RemifentanilPKMinto(patient)
         
         # 4 hour infusion (extreme case to test context insensitivity)
-        infusion_rate = 0.2 * patient.weight / 60.0 / 1000.0  # 0.2 mcg/kg/min -> mg/s
+        infusion_rate = 0.2 * patient.weight / 60.0  # 0.2 mcg/kg/min -> ug/s
         _infuse(model, 14400, infusion_rate)
         csht_minutes = _effect_site_half_time_minutes(model, max_seconds=1200)
         
@@ -133,7 +133,7 @@ class TestRemifentanilTiming:
         model = RemifentanilPKMinto(patient)
         
         # 30 min infusion
-        infusion_rate = 0.2 * patient.weight / 60.0 / 1000.0
+        infusion_rate = 0.2 * patient.weight / 60.0  # ug/s
         _infuse(model, 1800, infusion_rate)
         
         peak = model.state.c1
@@ -220,7 +220,7 @@ class TestVasopressorTiming:
         """
         model = EpinephrinePK(patient)
         
-        infusion = 0.1 * patient.weight / 60.0 / 1000.0  # 0.1 mcg/kg/min -> mg/s
+        infusion = 0.1 * patient.weight / 60.0  # 0.1 mcg/kg/min -> ug/s
         
         c1_history = []
         for t in range(900):  # 15 min

@@ -141,19 +141,21 @@ class ThreeCompartmentPK:
         self._update_volume_ratios()
 
 
-    def step(self, dt_sec: float, infusion_rate_mg_sec: float) -> PKState:
+    def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
         """
         Advance the PK state by dt_sec.
         
         Args:
             dt_sec: Time step in seconds.
-            infusion_rate_mg_sec: Infusion rate in mg/sec (or units consistent with V1).
+            input_rate_per_sec: Input rate in model units/sec. For current
+                subclasses this is mg/sec for propofol and rocuronium, and
+                ug/sec for remifentanil.
         """
         # Convert dt to minutes for rate constants (which are usually 1/min)
         dt_min = dt_sec / 60.0
         
-        # Rin(t)/V1 term: (mg/min) / L = mg/L/min
-        rin_mg_min = infusion_rate_mg_sec * 60.0
+        # Rin(t)/V1 term: model_units/min/L = concentration_units/min.
+        rin_per_min = input_rate_per_sec * 60.0
         
         c1, c2, c3, ce = self.state.c1, self.state.c2, self.state.c3, self.state.ce
         k10 = self.k10
@@ -167,7 +169,7 @@ class ThreeCompartmentPK:
         v1_v2 = self._v1_v2
         v1_v3 = self._v1_v3
         k_sum = k10 + k12 + k13
-        rin_term = rin_mg_min / v1 if v1 > 0 else 0.0
+        rin_term = rin_per_min / v1 if v1 > 0 else 0.0
         
         # 3-Compartment Mammillary Model ODE (Mass-Conserving Formulation)
         # ------------------------------------------------------------------
@@ -409,10 +411,6 @@ class PropofolPKMarsh(ThreeCompartmentPK):
             k13 = cl3 / v1
             k31 = cl3 / v3
 
-        # Renal impairment: propofol clearance includes significant renal extraction
-        clearance_scale = organ_clearance_scaler(patient, hepatic_fraction=0.0, renal_fraction=0.3)
-        k10 *= clearance_scale
-        
         # Ke0:
         # Original Marsh et al. Br J Anaesth. 1991 PK paper does not specify ke0.
         # "Marsh modified" for effect-site TCI commonly uses ke0 = 1.2 min^-1.
@@ -450,9 +448,6 @@ class PropofolPKSchnider(ThreeCompartmentPK):
             v2 *= v_scale
             v3 *= v_scale
 
-        # Renal impairment: propofol clearance includes significant renal extraction
-        cl1 *= organ_clearance_scaler(patient, hepatic_fraction=0.0, renal_fraction=0.3)
-        
         # Rate constants
         k10 = cl1 / v1
         k12 = cl2 / v1
@@ -548,9 +543,6 @@ class PropofolPKEleveld(ThreeCompartmentPK):
             v2 *= v_scale
             v3 *= v_scale
 
-        # Renal impairment: propofol clearance includes significant renal extraction
-        cl1 *= organ_clearance_scaler(patient, hepatic_fraction=0.0, renal_fraction=0.3)
-        
         # Arterial ke0
         ke0 = 0.146 * (w / 70)**(-0.25)
         
