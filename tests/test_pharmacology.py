@@ -291,7 +291,16 @@ class TestOrganImpairmentPK:
         pk_imp = PropofolPKMarsh(impaired)
 
         assert pk_imp.v1 > pk_normal.v1 * 1.5, "Hepatic impairment should expand propofol Vd"
-        assert pk_imp.k10 < pk_normal.k10 * 0.7, "Renal impairment should reduce propofol clearance"
+
+        renal_only = Patient(
+            age=40,
+            weight=70,
+            height=170,
+            sex="male",
+            renal_function=0.4,
+        )
+        pk_renal = PropofolPKMarsh(renal_only)
+        assert pk_renal.k10 == pytest.approx(pk_normal.k10), "Renal impairment should not directly scale propofol clearance"
 
     def test_rocuronium_impairment_scaling(self):
         normal = Patient(age=40, weight=70, height=170, sex="male")

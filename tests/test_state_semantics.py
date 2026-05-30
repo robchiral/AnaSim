@@ -3,6 +3,7 @@ import pytest
 
 from anasim.core.engine import SimulationEngine
 from anasim.core import monitors as monitor_core
+from anasim.core import projection as projection_core
 from anasim.core import runtime as runtime_core
 from anasim.core.state import AirwayType, SimulationConfig, validate_config_payload
 from anasim.core.enums import RhythmType
@@ -305,6 +306,26 @@ def test_awake_initial_snapshot_uses_patient_baselines():
     assert engine.state.hb_g_dl == pytest.approx(8.0, abs=1e-6)
     assert engine.state.hct == pytest.approx(0.24, abs=1e-6)
     assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
+
+
+def test_startup_projection_matches_runtime_projection_path():
+    patient_a = Patient(age=40, weight=70, height=170, sex="male")
+    patient_b = Patient(age=40, weight=70, height=170, sex="male")
+    config_a = SimulationConfig(mode="awake", rng_seed=123)
+    config_b = SimulationConfig(mode="awake", rng_seed=123)
+    engine_sync = SimulationEngine(patient_a, config_a)
+    engine_runtime = SimulationEngine(patient_b, config_b)
+
+    projection_core.sync_state_from_models(engine_sync)
+    hemo_state = engine_runtime.hemo.state
+    resp_state = projection_core.snapshot_respiratory_state(engine_runtime, hemo_state)
+    snapshot = projection_core.build_snapshot_from_models(engine_runtime, hemo_state, resp_state)
+    projection_core.project_runtime_physiology(engine_runtime, snapshot)
+    projection_core.sync_monitor_baselines(engine_runtime)
+    engine_runtime._sync_display_state_from_raw()
+
+    for field_name in ("map", "hr", "rr", "vt", "mv", "etco2", "pa_co2", "pao2", "sao2", "spo2"):
+        assert getattr(engine_sync.state, field_name) == pytest.approx(getattr(engine_runtime.state, field_name))
 
 
 def test_steady_state_tiva_snapshot_uses_live_model_state():
