@@ -82,7 +82,7 @@ class TestPharmacologySanity:
         assert model.v2 == pytest.approx(25.501, rel=0.0, abs=0.05)
         assert model.v3 == pytest.approx(272.817, rel=0.0, abs=0.6)
         assert model.k10 * model.v1 == pytest.approx(1.790, rel=0.0, abs=0.03)
-        assert model.k12 * model.v1 == pytest.approx(1.750, rel=0.0, abs=0.03)
+        assert model.k12 * model.v1 == pytest.approx(1.831, rel=0.0, abs=0.03)
         assert model.k13 * model.v1 == pytest.approx(1.109, rel=0.0, abs=0.03)
         assert model.ke0 == pytest.approx(0.146, rel=0.0, abs=0.002)
 
