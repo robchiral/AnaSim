@@ -464,6 +464,8 @@ class PropofolPKSchnider(ThreeCompartmentPK):
 class PropofolPKEleveld(ThreeCompartmentPK):
     """
     Eleveld et al. Br J Anaesth. 2018 (General Purpose PK-PD Model for Propofol).
+    Implements arterial population fixed effects without IIV/ETA, venous mode,
+    residual error, or concomitant-technique covariates.
     """
     def __init__(self, patient: Patient):
         # Eleveld et al. Br J Anaesth. 2018
@@ -529,10 +531,8 @@ class PropofolPKEleveld(ThreeCompartmentPK):
         cl_base = theta[4] if sex_is_male else theta[15]
         cl1 = cl_base * (w / WGT_ref)**0.75 * (fCLmat / fCLmat_ref)
         
-        # Normalize the maturation boost to the published 35-year/70-kg reference adult.
         q2_mat = 1.0 + theta[16] * (1.0 - fQ3mat)
-        q2_mat_ref = 1.0 + theta[16] * (1.0 - fQ3mat_ref)
-        cl2 = theta[5] * (v2 / v2_ref)**0.75 * (q2_mat / q2_mat_ref)
+        cl2 = theta[5] * (v2 / v2_ref)**0.75 * q2_mat
         
         cl3 = theta[6] * (v3 / v3_ref)**0.75 * (fQ3mat / fQ3mat_ref)
 
