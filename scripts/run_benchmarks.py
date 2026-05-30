@@ -433,7 +433,7 @@ def bench_mixed_baseline(steps: int, warmup: int) -> BenchmarkResult:
     def run_step(i: int) -> None:
         idx = i & 3
         pk_state = pk.step(dt, infusion_vals[idx])
-        hemo_state = hemo.step(dt, pk_state.ce, remi_vals[idx], 0.0, -2.0, 40.0, 95.0)
+        hemo_state = hemo.step(dt, pk_state.c1, remi_vals[idx], 0.0, -2.0, 40.0, 95.0)
         resp.step(dt, pk_state.ce, remi_vals[idx], mac_sevo=0.0, cardiac_output=hemo_state.co)
         mech.step(0.05)
 
@@ -466,7 +466,7 @@ def bench_mixed_sepsis(steps: int, warmup: int) -> BenchmarkResult:
         pk_state = pk.step(dt, infusion_vals[idx])
         hemo_state = hemo.step(
             dt,
-            pk_state.ce,
+            pk_state.c1,
             remi_vals[idx],
             nore_vals[idx],
             -2.0,

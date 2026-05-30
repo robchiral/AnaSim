@@ -329,6 +329,10 @@ def test_startup_projection_matches_runtime_projection_path():
 
 
 def test_steady_state_tiva_snapshot_uses_live_model_state():
+    awake = SimulationEngine(
+        Patient(age=40, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="awake", rng_seed=123),
+    )
     engine = SimulationEngine(
         Patient(age=40, weight=70, height=170, sex="male"),
         SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=123),
@@ -342,8 +346,10 @@ def test_steady_state_tiva_snapshot_uses_live_model_state():
 
     assert engine.state.bis == pytest.approx(expected_bis, abs=1e-3)
     assert engine.state.bis < 55.0
-    assert 65.0 <= engine.state.map <= 85.0
-    assert engine.state.nore_ce > 1.0
+    assert 60.0 <= engine.state.map <= 85.0
+    assert engine.tci_nore is None
+    assert engine.nore_rate_ug_sec == pytest.approx(0.0, abs=1e-9)
+    assert engine.state.nore_ce <= awake.state.nore_ce + 0.05
     assert engine.state.bis != pytest.approx(45.0, abs=1e-3)
     assert engine.state.fi_sevo == pytest.approx(0.0, abs=1e-6)
     assert engine.state.et_sevo == pytest.approx(0.0, abs=1e-6)
@@ -380,7 +386,7 @@ def test_steady_state_balanced_snapshot_syncs_volatile_state():
 @pytest.mark.parametrize(
     ("maint_type", "bis_band", "map_band"),
     [
-        ("tiva", (50.0, 58.0), (72.0, 86.0)),
+        ("tiva", (50.0, 58.0), (60.0, 86.0)),
         ("balanced", (38.0, 50.0), (70.0, 82.0)),
     ],
 )
@@ -402,6 +408,7 @@ def test_steady_state_profiles_remain_in_band_for_first_15_minutes(maint_type, b
     assert max(bis_values) <= bis_band[1]
     assert min(map_values) >= map_band[0]
     assert max(map_values) <= map_band[1]
+    assert max(map_values) - min(map_values) < 5.0
 
 
 def test_baseline_hct_is_derived_from_hb_when_omitted():

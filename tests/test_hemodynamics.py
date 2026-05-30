@@ -102,15 +102,14 @@ class TestHemodynamicSanity:
         assert state_2.map < state_1.map - 5.0, "Cache should be invalidated when PD params change"
         
     def test_propofol_hypotension(self, model):
-        """Propofol 4 ug/mL -> 15-45% MAP drop."""
+        """Propofol plasma 4 ug/mL -> clinically meaningful MAP drop."""
         base_state = model.step(1.0, 0,0,0, -2, 40, 95)
         
         # 10 min infusion effect (steady state approx)
         for _ in range(600): state = model.step(1.0, 4.0, 0,0, -2, 40, 95)
             
         drop = (base_state.map - state.map) / base_state.map
-        # Lower bound relaxed from 0.15 to 0.14 for numerical robustness (14.8% is clinically equivalent to 15%)
-        assert 0.14 < drop < 0.45, f"Propofol drop {drop:.1%} expected 14-45%"
+        assert 0.18 < drop < 0.45, f"Propofol drop {drop:.1%} expected 18-45%"
 
         
     def test_epinephrine_biphasic(self, model):

@@ -134,13 +134,6 @@ class HemodynamicModel:
         self.kin_sv = self.kout * self.base_sv
         self.kin_hr = self.kout * self.base_hr
         
-        # =====================================================================
-        # Drug Effect Parameters (Su et al. Br J Anaesth. 2023 + literature extensions)
-        # =====================================================================
-        # Su et al. 2023 report propofol TPR Emax about -0.78.
-        # AnaSim keeps the runtime value at -0.50 to hold default treated
-        # maintenance states in a realistic MAP range at startup and during scenarios.
-
         # State init
         self.ce_sevo = 0.0
 
@@ -670,13 +663,17 @@ class HemodynamicModel:
         
         return delta_hr, sv_factor, svr_factor
     
-    def _calc_anesthetic_effects(self, ce_prop: float, ce_remi: float, ce_sevo: float) -> tuple:
+    def _calc_anesthetic_effects(self, cp_prop: float, cp_remi: float, ce_sevo: float) -> tuple:
         """
         Calculate combined anesthetic effects on TPR, SV, and HR.
+
+        Propofol and remifentanil cardiovascular effects use central/plasma
+        concentrations, matching the Su et al. 2023 model inputs.
+
         Returns: (total_eff_tpr, total_eff_sv, total_eff_hr, eff_remi_tpr, eff_remi_sv, eff_remi_hr)
         """
-        cp = max(0.0, ce_prop)
-        cr = max(0.0, ce_remi)
+        cp = max(0.0, cp_prop)
+        cr = max(0.0, cp_remi)
         
         # --- Propofol Effects ---
         # Age effect on Propofol SV Emax (precomputed)
@@ -948,7 +945,7 @@ class HemodynamicModel:
     def _calc_co(self):
         return self._calc_hr() * self._calc_sv() / 1000.0 # L/min
         
-    def step(self, dt: float, ce_prop: float, ce_remi: float, ce_nore: float, pit: float, paco2: float, pao2: float,
+    def step(self, dt: float, cp_prop: float, cp_remi: float, ce_nore: float, pit: float, paco2: float, pao2: float,
              dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0,
              mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0,
              ce_vaso: float = 0.0, ce_dobu: float = 0.0, ce_mil: float = 0.0,
@@ -958,8 +955,8 @@ class HemodynamicModel:
         
         Args:
             dt: Time step in seconds
-            ce_prop: Propofol effect-site concentration (µg/mL)
-            ce_remi: Remifentanil effect-site concentration (ng/mL)
+            cp_prop: Propofol plasma concentration (µg/mL)
+            cp_remi: Remifentanil plasma concentration (ng/mL)
             ce_nore: Norepinephrine plasma concentration (ng/mL)
             pit: Intrathoracic pressure (mmHg) - from ventilator coupling
             paco2: Arterial CO2 partial pressure (mmHg) - for chemoreflex
@@ -1033,7 +1030,7 @@ class HemodynamicModel:
 
         # --- 1. Calculate Effects ---
         (total_eff_tpr, total_eff_sv, total_eff_hr_prod, 
-         eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(ce_prop, ce_remi, self.ce_sevo)
+         eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(cp_prop, cp_remi, self.ce_sevo)
 
         
         # =====================================================================
@@ -1147,7 +1144,7 @@ class HemodynamicModel:
         
         # Calculate anesthetic depth effect on threshold
         # Approx 1 MAC or 4ug/mL Prop -> Threshold drops by ~2.5 C
-        depth_metric = mac_sevo + (ce_prop / 4.0)
+        depth_metric = mac_sevo + (cp_prop / 4.0)
         threshold_drop = 2.5 * min(1.0, depth_metric)
         vasoconstriction_threshold = 36.5 - threshold_drop
         
@@ -1218,10 +1215,12 @@ class HemodynamicModel:
         self._prev_map = computed_state.map
         return computed_state
 
-    def calculate_steady_state(self, ce_prop: float, ce_remi: float, ce_nore: float, mac_sevo: float = 0.0) -> HemoState:
+    def calculate_steady_state(self, cp_prop: float, cp_remi: float, ce_nore: float, mac_sevo: float = 0.0) -> HemoState:
         """
         Run simulation for a long time to find steady state.
         Analytical solution is hard due to feedback loops.
+
+        Propofol and remifentanil inputs are plasma concentrations.
         """
         # Save state
         saved_tpr = self.tpr
@@ -1245,7 +1244,7 @@ class HemodynamicModel:
         # For steady state, we assume ce_sevo = mac_sevo (equilibrium)
         (total_eff_tpr, total_eff_sv, total_eff_hr_prod, 
          eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(
-            ce_prop, ce_remi, mac_sevo
+            cp_prop, cp_remi, mac_sevo
         )
 
         
@@ -1298,7 +1297,7 @@ class HemodynamicModel:
         self.vasopressor_sv_factor = nore_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (nore_svr_factor - 1.0)
 
-        ret = self.step(0.0, ce_prop, ce_remi, ce_nore, -2.0, 40.0, 95.0, 0, 0, 0, mac_sevo=mac_sevo)
+        ret = self.step(0.0, cp_prop, cp_remi, ce_nore, -2.0, 40.0, 95.0, 0, 0, 0, mac_sevo=mac_sevo)
         
         # Revert internal state
         self.tpr = saved_tpr

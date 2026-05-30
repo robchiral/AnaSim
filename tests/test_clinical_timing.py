@@ -287,12 +287,11 @@ class TestHemodynamicRateLimits:
             state = hemo_model.step(1.0, 0, 0, 0, -2, 40, 95)
         last_map = state.map
         
-        # Apply gradual drug increase (not instant bolus)
+        # Apply gradual plasma-concentration increase (not instant bolus)
         rates = []
         for i in range(120):  # 2 minutes
-            # Gradual propofol increase (simulating infusion)
-            ce_prop = min(6.0, i * 0.05)  # Ramp up over 2 min
-            state = hemo_model.step(1.0, ce_prop, 0, 0, -2, 40, 95)
+            cp_prop = min(6.0, i * 0.05)  # Ramp up over 2 min
+            state = hemo_model.step(1.0, cp_prop, 0, 0, -2, 40, 95)
             rate = abs(state.map - last_map) * 60  # Per minute
             if i > 5:  # Skip initial transient
                 rates.append(rate)
@@ -340,9 +339,9 @@ class TestHemodynamicRateLimits:
             (0, 0, 0, 0, 0, 50.0),    # High phenylephrine
         ]
         
-        for ce_prop, ce_remi, ce_nore, d, ce_epi, ce_phen in test_conditions:
+        for cp_prop, cp_remi, ce_nore, d, ce_epi, ce_phen in test_conditions:
             state = hemo_model.step(
-                1.0, ce_prop, ce_remi, ce_nore, -2, 40, 95,
+                1.0, cp_prop, cp_remi, ce_nore, -2, 40, 95,
                 ce_epi=ce_epi, ce_phenyl=ce_phen
             )
             

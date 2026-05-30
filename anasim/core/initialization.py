@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.linalg import expm
-from scipy.optimize import minimize, root_scalar
+from scipy.optimize import minimize
 
 from .state import AirwayType
 from .utils import clamp
@@ -26,7 +26,6 @@ class StartupProfile:
     name: str
     bis_target: float
     tol_target: float
-    map_target: float
     primary_hypnotic: str
     history_minutes: float = 30.0
     settle_seconds: float = 60.0
@@ -42,30 +41,24 @@ class StartupProfile:
 class StartupTargets:
     prop_ce: float = 0.0
     remi_ce: float = 0.0
-    nore_ce: float = 0.0
     mac: float = 0.0
-    prop_rate_sec: float = 0.0
-    remi_rate_sec: float = 0.0
-    nore_rate_sec: float = 0.0
     volatile_target_pct: float = 0.0
 
 
 TIVA_PROFILE = StartupProfile(
     name="steady_state_tiva",
     bis_target=55.0,
-    tol_target=0.9,
-    map_target=75.0,
+    tol_target=0.6,
     primary_hypnotic="propofol",
     primary_bounds=(2.8, 4.2),
-    remi_bounds=(1.0, 2.8),
-    remi_soft_cap=2.5,
+    remi_bounds=(1.0, 2.0),
+    remi_soft_cap=2.0,
 )
 
 BALANCED_PROFILE = StartupProfile(
     name="steady_state_balanced",
     bis_target=45.0,
     tol_target=0.9,
-    map_target=75.0,
     primary_hypnotic="volatile",
     primary_bounds=(0.8, 1.2),
     remi_bounds=(0.0, 3.0),
@@ -113,7 +106,6 @@ def _select_profile(engine: "SimulationEngine") -> StartupProfile:
 def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) -> StartupTargets:
     bis_model = engine.bis
     tol_model = engine.tol_pd
-    hemo_model = engine.hemo
 
     def objective(x):
         primary_load = x[0]
@@ -152,33 +144,15 @@ def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) 
         prop_ce = float(primary_load)
         mac = 0.0
 
-    nore_ce = _solve_nore_target(hemo_model, prop_ce, float(remi_ce), mac, profile.map_target)
     volatile_target_pct = 0.0
     if profile.primary_hypnotic == "volatile" and engine.pk_sevo:
         volatile_target_pct = float(engine.pk_sevo.mac_age) * mac * profile.maintenance_dial_multiplier
     return StartupTargets(
         prop_ce=prop_ce,
         remi_ce=float(remi_ce),
-        nore_ce=nore_ce,
         mac=mac,
         volatile_target_pct=volatile_target_pct,
     )
-
-
-def _solve_nore_target(hemo_model, prop_ce: float, remi_ce: float, mac: float, map_target: float) -> float:
-    def error_func(ce_nore: float) -> float:
-        if ce_nore < 0.0:
-            return -100.0
-        state = hemo_model.calculate_steady_state(prop_ce, remi_ce, ce_nore, mac_sevo=mac)
-        return state.map - map_target
-
-    if error_func(0.0) >= 0.0:
-        return 0.0
-    try:
-        result = root_scalar(error_func, bracket=[0.0, 50.0], method="brentq")
-    except ValueError:
-        return 50.0
-    return float(result.root)
 
 
 def _configure_controlled_ventilation(engine: "SimulationEngine", targets: StartupTargets) -> None:
@@ -211,9 +185,6 @@ def _seed_steady_state_subsystems(engine: "SimulationEngine", profile: StartupPr
     if targets.remi_ce > 0.0:
         remi_rate_min = _seed_linear_history(engine.pk_remi, targets.remi_ce, profile.history_minutes, target_compartment="effect_site")
         engine.remi_rate_ug_sec = remi_rate_min / 60.0
-    if targets.nore_ce > 0.0:
-        nore_rate_min = _seed_linear_history(engine.pk_nore, targets.nore_ce, profile.history_minutes, target_compartment="plasma")
-        engine.nore_rate_ug_sec = nore_rate_min / 60.0
     if profile.primary_hypnotic == "volatile" and engine.pk_sevo:
         _seed_volatile_history(engine, targets.mac, profile.history_minutes)
         engine.set_vaporizer("Sevoflurane", targets.volatile_target_pct)
@@ -221,9 +192,9 @@ def _seed_steady_state_subsystems(engine: "SimulationEngine", profile: StartupPr
     # Seed the hemodynamic stars near the solved maintenance point so the
     # short hidden settle only handles monitor/circuit transients.
     engine.hemo.state = engine.hemo.calculate_steady_state(
-        targets.prop_ce,
-        targets.remi_ce,
-        targets.nore_ce,
+        getattr(engine.pk_prop.state, "c1", 0.0),
+        getattr(engine.pk_remi.state, "c1", 0.0),
+        getattr(engine.pk_nore.state, "ce", 0.0),
         mac_sevo=targets.mac,
     )
 
@@ -366,6 +337,3 @@ def _attach_startup_controllers(engine: "SimulationEngine", targets: StartupTarg
     if targets.remi_ce > 0.0:
         engine.enable_tci("remi", engine.pk_remi.state.ce, mode="effect_site")
         engine.remi_rate_ug_sec = 0.0
-    if targets.nore_ce > 0.0:
-        engine.enable_tci("nore", engine.pk_nore.state.c1, mode="plasma")
-        engine.nore_rate_ug_sec = 0.0

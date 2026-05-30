@@ -627,8 +627,8 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
 
     hemo_state = engine.hemo.step(
         dt,
-        state.propofol_ce,
-        state.remi_ce,
+        state.propofol_cp,
+        state.remi_cp,
         state.nore_ce,
         pit=pit_estimate,
         paco2=resp_state.pa_co2,
