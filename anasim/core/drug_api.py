@@ -213,7 +213,10 @@ class DrugControllerMixin:
 
         sampling_time = 1.0
         if hasattr(self, "config") and getattr(self.config, "dt", None):
-            sampling_time = self.config.dt
+            # TCI control does not benefit from waveform-rate updates. A 100 ms
+            # floor avoids excessive controller iterations and coarse-step
+            # oscillation while remaining much faster than infusion-pump updates.
+            sampling_time = max(self.config.dt, 0.1)
         control_time = max(10.0, sampling_time)
         
         drug = drug.lower()

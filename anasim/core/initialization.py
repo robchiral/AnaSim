@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.linalg import expm
-from scipy.optimize import minimize
+from scipy.optimize import brentq, minimize
 
 from .state import AirwayType
 from .utils import clamp
@@ -35,6 +35,7 @@ class StartupProfile:
     remi_soft_cap: float | None = None
     maintenance_dial_multiplier: float = 1.0
     fgf_o2_l_min: float = 2.0
+    minimum_map: float = 65.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +44,7 @@ class StartupTargets:
     remi_ce: float = 0.0
     mac: float = 0.0
     volatile_target_pct: float = 0.0
+    nore_ce: float = 0.0
 
 
 TIVA_PROFILE = StartupProfile(
@@ -89,7 +91,7 @@ def _initialize_steady_state(engine: "SimulationEngine") -> None:
     engine.state.airway_mode = AirwayType.ETT
     engine.resp.state.apnea = True
     _configure_controlled_ventilation(engine, targets)
-    _seed_steady_state_subsystems(engine, profile, targets)
+    targets = _seed_steady_state_subsystems(engine, profile, targets)
     projection_core.sync_state_from_models(engine)
     _run_hidden_settle(engine, profile)
     _attach_startup_controllers(engine, targets)
@@ -172,7 +174,11 @@ def _configure_controlled_ventilation(engine: "SimulationEngine", targets: Start
     engine.set_vent_settings(rr=baseline_rr, vt=vent_vt, peep=5.0, ie="1:2", mode="VCV")
 
 
-def _seed_steady_state_subsystems(engine: "SimulationEngine", profile: StartupProfile, targets: StartupTargets) -> None:
+def _seed_steady_state_subsystems(
+    engine: "SimulationEngine",
+    profile: StartupProfile,
+    targets: StartupTargets,
+) -> StartupTargets:
     engine.set_vaporizer(engine.active_agent, 0.0)
     engine.set_fgf(profile.fgf_o2_l_min, 0.0, 0.0)
     engine.propofol_rate_mg_sec = 0.0
@@ -189,14 +195,61 @@ def _seed_steady_state_subsystems(engine: "SimulationEngine", profile: StartupPr
         _seed_volatile_history(engine, targets.mac, profile.history_minutes)
         engine.set_vaporizer("Sevoflurane", targets.volatile_target_pct)
 
-    # Seed the hemodynamic stars near the solved maintenance point so the
-    # short hidden settle only handles monitor/circuit transients.
+    prop_cp = getattr(engine.pk_prop.state, "c1", 0.0)
+    remi_cp = getattr(engine.pk_remi.state, "c1", 0.0)
+    nore_target = _solve_visible_pressor_support(
+        engine,
+        prop_cp=prop_cp,
+        remi_cp=remi_cp,
+        mac=targets.mac,
+        minimum_map=profile.minimum_map,
+    )
+    if nore_target > 0.0:
+        nore_rate_min = _seed_linear_history(
+            engine.pk_nore,
+            nore_target,
+            profile.history_minutes,
+            target_compartment="effect_site",
+        )
+        engine.nore_rate_ug_sec = nore_rate_min / 60.0
+        targets = replace(targets, nore_ce=nore_target)
+
+    # Seed hemodynamics near the managed point so the short hidden settle only
+    # handles monitor and circuit transients. Pressor support remains visible
+    # in the public drug state and attached controller.
     engine.hemo.state = engine.hemo.calculate_steady_state(
-        getattr(engine.pk_prop.state, "c1", 0.0),
-        getattr(engine.pk_remi.state, "c1", 0.0),
+        prop_cp,
+        remi_cp,
         getattr(engine.pk_nore.state, "ce", 0.0),
         mac_sevo=targets.mac,
     )
+    return targets
+
+
+def _solve_visible_pressor_support(
+    engine: "SimulationEngine",
+    *,
+    prop_cp: float,
+    remi_cp: float,
+    mac: float,
+    minimum_map: float,
+) -> float:
+    """Find the least norepinephrine concentration needed for a managed MAP floor."""
+    def map_at(nore_ce: float) -> float:
+        return engine.hemo.calculate_steady_state(
+            prop_cp,
+            remi_cp,
+            nore_ce,
+            mac_sevo=mac,
+        ).map
+
+    if map_at(0.0) >= minimum_map:
+        return 0.0
+
+    upper = 30.0
+    if map_at(upper) < minimum_map:
+        raise ValueError("Unable to initialize maintenance above the MAP safety floor")
+    return float(brentq(lambda value: map_at(value) - minimum_map, 0.0, upper))
 
 
 def _seed_linear_history(pk_model, target: float, duration_min: float, target_compartment: str) -> float:
@@ -337,3 +390,7 @@ def _attach_startup_controllers(engine: "SimulationEngine", targets: StartupTarg
     if targets.remi_ce > 0.0:
         engine.enable_tci("remi", engine.pk_remi.state.ce, mode="effect_site")
         engine.remi_rate_ug_sec = 0.0
+    if targets.nore_ce > 0.0:
+        maintenance_rate = engine.nore_rate_ug_sec
+        engine.enable_tci("nore", targets.nore_ce, mode="plasma")
+        engine.nore_rate_ug_sec = maintenance_rate

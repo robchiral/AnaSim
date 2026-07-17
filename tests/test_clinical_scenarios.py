@@ -111,27 +111,24 @@ class TestAcceptanceScenarios:
         advance_time(engine, 300)
         assert engine.state.nore_ce > 1.0
 
-    def test_maintenance_startup_has_no_hidden_pressor(self, engine_factory):
-        """Managed-maintenance startup should not hide norepinephrine support."""
-        awake = engine_factory(config=SimulationConfig(mode="awake"), start=True)
-        endogenous_nore = awake.state.nore_ce
-
+    def test_maintenance_startup_exposes_any_required_pressor(self, engine_factory):
+        """Managed maintenance must avoid severe hypotension and expose support."""
         for maint_type in ("tiva", "balanced"):
             engine = engine_factory(
                 config=SimulationConfig(mode="steady_state", maint_type=maint_type),
                 start=True,
             )
 
-            assert engine.tci_nore is None
-            assert engine.nore_rate_ug_sec == pytest.approx(0.0, abs=1e-9)
-            assert engine.state.nore_ce <= endogenous_nore + 0.05
-            assert engine.state.map > 60.0
+            assert engine.state.map >= 65.0
+            if engine.state.nore_ce > 0.5:
+                assert engine.tci_nore is not None
+                assert engine.get_drug_state("nore")["is_tci"]
 
             min_map = engine.state.map
             for _ in range(300):
                 engine.step(1.0)
                 min_map = min(min_map, engine.state.map)
-            assert min_map > 60.0
+            assert min_map >= 64.0
 
     def test_propofol_remifentanil_respiratory_depression_and_bag_mask_rescue(self, awake_engine):
         """Propofol plus remifentanil should depress ventilation; bag-mask ventilation should reverse gas trends."""

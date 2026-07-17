@@ -101,15 +101,12 @@ class RespiratoryMechanics:
         
     def set_mode(self, mode: str):
         """Set ventilator mode (VCV, PCV, PSV, CPAP)."""
-        mode_upper = mode.upper()
-        if mode_upper == "VCV":
-            self.mode = VentMode.VCV
-        elif mode_upper == "PCV":
-            self.mode = VentMode.PCV
-        elif mode_upper == "PSV":
-            self.mode = VentMode.PSV
-        elif mode_upper == "CPAP":
-            self.mode = VentMode.CPAP
+        try:
+            self.mode = VentMode(mode.upper())
+        except (AttributeError, ValueError) as exc:
+            choices = ", ".join(mode.value for mode in VentMode)
+            raise ValueError(f"Unsupported ventilator mode {mode!r}; choose one of: {choices}") from exc
+        if self.mode == VentMode.CPAP:
             # CPAP is PEEP-only; ensure no inspiratory pressure support.
             self.set_p_insp = 0.0
         
@@ -139,13 +136,13 @@ class RespiratoryMechanics:
             # CPAP should not retain prior inspiratory support.
             self.set_p_insp = 0.0
         
-        # Parse I:E ratio
         try:
             i, e = map(float, ie.split(':'))
-            self.insp_time_fraction = i / (i + e)
-        except (ValueError, AttributeError):
-            # ValueError: bad number format; AttributeError: ie not a string
-            self.insp_time_fraction = 1.0 / 3.0
+        except (ValueError, AttributeError) as exc:
+            raise ValueError(f"Invalid I:E ratio {ie!r}; expected a ratio such as '1:2'") from exc
+        if i <= 0.0 or e <= 0.0:
+            raise ValueError("I:E ratio components must be greater than zero")
+        self.insp_time_fraction = i / (i + e)
 
     def snapshot_settings(self) -> tuple:
         """Return a tuple snapshot of ventilator settings for temporary overrides."""

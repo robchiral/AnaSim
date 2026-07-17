@@ -1,16 +1,39 @@
 import argparse
+import json
 import sys
 import time
-import json
-import os
+from dataclasses import fields
 from pathlib import Path
 
-# Adjust path to find modules if running locally without install
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from anasim.core.engine import SimulationEngine, SimulationConfig
-from anasim.core.state import validate_config_payload
 from anasim.patient.patient import Patient
+
+
+PATIENT_CONFIG_FIELDS = {
+    field.name for field in fields(Patient)
+    if field.name not in {"lbm", "bmi", "bsa"}
+}
+SIMULATION_CONFIG_FIELDS = {field.name for field in fields(SimulationConfig)}
+CONFIG_FIELDS = PATIENT_CONFIG_FIELDS | SIMULATION_CONFIG_FIELDS
+
+
+def build_models_from_config(config_data: dict) -> tuple[Patient, SimulationConfig]:
+    """Build typed inputs and reject misspelled or obsolete keys."""
+    unknown = set(config_data) - CONFIG_FIELDS
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise ValueError(f"Unknown configuration key(s): {names}")
+
+    patient_kwargs = {
+        key: value for key, value in config_data.items()
+        if key in PATIENT_CONFIG_FIELDS
+    }
+    simulation_kwargs = {
+        key: value for key, value in config_data.items()
+        if key in SIMULATION_CONFIG_FIELDS
+    }
+    return Patient(**patient_kwargs), SimulationConfig(**simulation_kwargs)
+
 
 def run_headless(args):
     """Run simulation in headless mode."""
@@ -20,63 +43,15 @@ def run_headless(args):
     config_data = {}
     if args.config:
         try:
-            with open(args.config, 'r') as f:
-                config_data = json.load(f)
-        except Exception as e:
+            config_data = json.loads(Path(args.config).read_text())
+        except (OSError, json.JSONDecodeError) as e:
             print(f"Error loading config: {e}")
-            sys.exit(1)
+            raise SystemExit(1) from e
     try:
-        validate_config_payload(config_data, source="CLI config")
+        patient, sim_config = build_models_from_config(config_data)
     except ValueError as e:
         print(f"Error loading config: {e}")
-        sys.exit(1)
-
-    # Patient
-    patient = Patient(
-        age=config_data.get('age', 40),
-        weight=config_data.get('weight', 70),
-        height=config_data.get('height', 170),
-        sex=config_data.get('sex', 'male'),
-        asa=config_data.get('asa', 1),
-        baseline_temp=config_data.get('baseline_temp', 37.0),
-        baseline_hb=config_data.get('baseline_hb', 13.5),
-        baseline_hct=config_data.get('baseline_hct', 0.42),
-        renal_function=config_data.get('renal_function', 1.0),
-        hepatic_function=config_data.get('hepatic_function', 1.0),
-        baseline_hr=config_data.get('baseline_hr', 70.0),
-        baseline_map=config_data.get('baseline_map', 90.0),
-        baseline_rr=config_data.get('baseline_rr', 12.0),
-        baseline_vt=config_data.get('baseline_vt', 500.0),
-    )
-    
-    # Engine Config
-    try:
-        dt_val = float(config_data.get('dt', 0.01))
-    except (TypeError, ValueError):
-        dt_val = 0.01
-    if dt_val <= 0:
-        dt_val = 0.01
-    sim_config = SimulationConfig(
-        dt=dt_val,
-        pk_model_propofol=config_data.get('pk_model_propofol', 'Eleveld'),
-        pk_model_remi=config_data.get('pk_model_remi', 'Minto'),
-        bis_model=config_data.get('bis_model', 'Bouillon'),
-        hemo_model=config_data.get('hemo_model', 'Su2023'),
-        resp_model=config_data.get('resp_model', 'SingleCompartment'),
-        pk_model_nore=config_data.get('pk_model_nore', 'Li'),
-        pk_model_epi=config_data.get('pk_model_epi', 'Clutter'),
-        loc_model=config_data.get('loc_model', 'Kern'),
-        mode=config_data.get('mode', 'awake'),
-        maint_type=config_data.get('maint_type', 'tiva'),
-        disturbance_profile=config_data.get('disturbance_profile', None),
-        baseline_hb=config_data.get('baseline_hb', 13.5),
-        baseline_hct=config_data.get('baseline_hct', None),
-        volatile_agents=config_data.get('volatile_agents', ['sevoflurane']),
-        maintenance_fluid_ml_hr=config_data.get('maintenance_fluid_ml_hr', None),
-        simulation_speed=config_data.get('simulation_speed', 1.0),
-        enable_death_detector=config_data.get('enable_death_detector', False),
-        rng_seed=config_data.get('rng_seed', None),
-    )
+        raise SystemExit(1) from e
     
     engine = SimulationEngine(patient, sim_config)
     if args.record:
@@ -84,7 +59,7 @@ def run_headless(args):
     engine.start()
     
     # Run loop
-    start_real = time.time()
+    start_real = time.perf_counter()
     steps = int(args.duration / sim_config.dt)
     
     for i in range(steps):
@@ -96,7 +71,7 @@ def run_headless(args):
             spo2 = state.display_value("spo2")
             print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_val:.1f} | SpO2: {spo2:.1f}")
             
-    end_real = time.time()
+    end_real = time.perf_counter()
     print(f"Simulation completed in {end_real - start_real:.2f}s real time.")
 
 def run_ui():
@@ -104,9 +79,8 @@ def run_ui():
     from PySide6.QtWidgets import QApplication
     from anasim.ui.main_window import MainWindow
 
-    # Check for existing QApplication (unlikely in main, but good practice)
     app = QApplication.instance()
-    if not app:
+    if app is None:
         app = QApplication(sys.argv)
         
     window = MainWindow()

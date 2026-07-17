@@ -359,15 +359,6 @@ def hepatic_vd_multiplier(patient: Patient, severe_multiplier: float) -> float:
     severity = clamp((1.0 - hepatic) / 0.5, 0.0, 1.0)
     return 1.0 + (severe_multiplier - 1.0) * severity
 
-def james_lbm(weight_kg: float, height_cm: float, sex: str) -> float:
-    """
-    James formula for Lean Body Mass.
-    """
-    if sex.lower() == "male":
-        return 1.1 * weight_kg - 128 * ((weight_kg / height_cm) ** 2)
-    else:
-        return 1.07 * weight_kg - 148 * ((weight_kg / height_cm) ** 2)
-
 # -----------------------------------------------------------------------------
 # Propofol Models
 # -----------------------------------------------------------------------------

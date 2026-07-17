@@ -14,7 +14,6 @@ class HemodynamicConfig:
     base_hr: float = 56.0
     base_sv: float = 82.2
     base_tpr: float = 0.016
-    bsa_fallback: float = 1.9
     ci_adult: float = 3.0
     ci_elderly: float = 2.5
     ci_elderly_age: float = 70.0

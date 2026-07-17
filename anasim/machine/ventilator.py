@@ -85,16 +85,17 @@ class AnesthesiaVentilator:
             self.set_mode(mode)
         
         if ie is not None:
-            # Parse "1:2" format
-            try:
-                if isinstance(ie, str) and ':' in ie:
-                    parts = ie.split(':')
-                    i, e = float(parts[0]), float(parts[1])
-                    self.settings.ie_ratio = i / e
-                else:
-                    self.settings.ie_ratio = float(ie)
-            except:
-                pass
+            if isinstance(ie, str) and ':' in ie:
+                parts = ie.split(':')
+                i, e = float(parts[0]), float(parts[1])
+                if i <= 0.0 or e <= 0.0:
+                    raise ValueError("I:E ratio components must be greater than zero")
+                self.settings.ie_ratio = i / e
+            else:
+                ratio = float(ie)
+                if ratio <= 0.0:
+                    raise ValueError("I:E ratio must be greater than zero")
+                self.settings.ie_ratio = ratio
 
     def step(self, dt: float, mech_state, rr_total: float = None):
         """

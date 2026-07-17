@@ -1,39 +1,20 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, List, Mapping, Dict, Optional
+from typing import List, Dict, Optional
 
-
-REMOVED_CONFIG_KEYS = {
-    "fidelity_mode": (
-        "`fidelity_mode` was removed. AnaSim now ships a single realism-calibrated "
-        "profile, and the legacy literature/runtime toggle is no longer supported."
-    ),
+SUPPORTED_MODEL_OPTIONS = {
+    "pk_model_propofol": {"Marsh", "Schnider", "Eleveld"},
+    "pk_model_remi": {"Minto"},
+    "bis_model": {"Bouillon", "Eleveld", "Fuentes", "Yumuk"},
+    "hemo_model": {"Su2023"},
+    "resp_model": {"SingleCompartment"},
+    "pk_model_nore": {"Beloeil", "Oualha", "Li"},
+    "pk_model_epi": {"Clutter", "Abboud", "Oualha"},
+    "loc_model": {"Kern", "Mertens", "Johnson"},
+    "mode": {"awake", "steady_state"},
+    "maint_type": {"tiva", "balanced"},
 }
-
-
-def validate_config_payload(config_data: Mapping[str, Any], source: str) -> None:
-    """Reject legacy config keys with explicit migration guidance."""
-    for key, message in REMOVED_CONFIG_KEYS.items():
-        if key in config_data:
-            raise ValueError(f"{source}: {message}")
-
-
-def canonicalize_bis_model_name(value: Optional[str]) -> str:
-    """Normalize BIS model names."""
-    if value is None:
-        return "Bouillon"
-    normalized = str(value).strip()
-    if not normalized:
-        return "Bouillon"
-
-    aliases = {
-        "bouillon": "Bouillon",
-        "eleveld": "Eleveld",
-        "fuentes": "Fuentes",
-        "yumuk": "Yumuk",
-    }
-    return aliases.get(normalized.lower(), normalized)
-
+SUPPORTED_VOLATILE_AGENTS = {"sevoflurane"}
 
 @dataclass
 class SimulationConfig:
@@ -66,7 +47,17 @@ class SimulationConfig:
     rng_seed: Optional[int] = None
 
     def __post_init__(self):
-        self.bis_model = canonicalize_bis_model_name(self.bis_model)
+        if self.dt <= 0:
+            raise ValueError("dt must be greater than zero")
+        for field_name, supported in SUPPORTED_MODEL_OPTIONS.items():
+            value = getattr(self, field_name)
+            if value not in supported:
+                choices = ", ".join(sorted(supported))
+                raise ValueError(f"{field_name}={value!r} is unsupported; choose one of: {choices}")
+        unsupported_agents = set(self.volatile_agents) - SUPPORTED_VOLATILE_AGENTS
+        if unsupported_agents:
+            names = ", ".join(sorted(unsupported_agents))
+            raise ValueError(f"Unsupported volatile agent(s): {names}")
 
 class AirwayType(Enum):
     NONE = "None"
@@ -144,6 +135,7 @@ class SimulationState:
     
     etco2: float = 38.0 # Physiologic end-tidal CO2
     display_etco2: float = 38.0
+    etco2_signal_valid: bool = False
     pa_co2: float = 40.0 # Arterial CO2 (mmHg)
     alveolar_co2: float = 40.0 # Alveolar CO2 (mmHg)
     pao2: float = 95.0 # Arterial Oxygen (mmHg)
@@ -157,6 +149,7 @@ class SimulationState:
     
     spo2: float = 99.0 # Raw pulse-ox saturation estimate / physiologic saturation
     display_spo2: float = 99.0
+    spo2_signal_valid: bool = True
     sao2: float = 98.0 # Physiologic arterial saturation (separate from pulse-ox display)
     
     # NIBP.

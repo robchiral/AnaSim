@@ -93,7 +93,7 @@ Startup is handled separately from the visible runtime loop:
 Startup contract:
 - steady-state startup is not a pure mathematical equilibrium fill
 - hidden bootstrap advances machine/PK/physiology state but skips recorder output, display-history accumulation, death checks, and visible fluid/temperature bookkeeping
-- steady-state startup solves anesthetic and ventilation targets only; vasopressors are not synthesized to satisfy a MAP target
+- steady-state startup adds the minimum visible norepinephrine support needed to avoid beginning below MAP 65 mmHg; the active controller and rate are exposed like any learner-selected infusion
 - small early maintenance drift can occur as live PK controllers, endogenous norepinephrine PK, ventilation gases, and fluid balance continue from the managed-maintenance bootstrap
 - the public snapshot is derived from live subsystem state only after bootstrap completes
 
@@ -113,6 +113,8 @@ Startup contract:
 
 ### Monitors
 - MAP/HR/BIS display numerics use dt-aware exponential smoothing rather than fixed per-step alphas.
+- Finger SpO2 uses a perfusion-dependent response lag; poor perfusion slows the reading and reduces pleth amplitude rather than deterministically creating hypoxemia.
+- EtCO2 numerics update from completed capnogram breaths and become unavailable after 15 seconds without a valid exhaled sample.
 - Arrest and near-arrest states bypass display smoothing so coarse `dt` does not leave falsely reassuring vital signs on screen.
 - Poor perfusion affects pulse-ox display reliability and pleth amplitude, not raw arterial saturation.
 - ABP waveform rendering in the UI uses a synthetic display waveform rather than a dedicated arterial pressure waveform model.

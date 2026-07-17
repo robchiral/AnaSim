@@ -394,7 +394,9 @@ class PatientMonitorWidget(QWidget):
         display_bis = state.display_value("bis")
 
         self.num_hr.set_value(f"{int(display_hr)}")
-        self.num_spo2.set_value(f"{int(display_spo2)}")
+        self.num_spo2.set_value(
+            f"{int(display_spo2)}" if getattr(state, "spo2_signal_valid", True) else "--"
+        )
         
         if self.arterial_line_enabled:
             self.num_map.set_value(f"{int(display_sbp)}/{int(display_dbp)} ({int(display_map)})")
@@ -413,7 +415,9 @@ class PatientMonitorWidget(QWidget):
                 mean = getattr(state, 'nibp_map', 0)
                 self.num_nibp.set_value(f"{int(sys)}/{int(dia)} ({int(mean)})")
 
-        self.num_etco2.set_value(f"{int(display_etco2)}")
+        self.num_etco2.set_value(
+            f"{int(display_etco2)}" if getattr(state, "etco2_signal_valid", False) else "--"
+        )
         self.num_rr.set_value(f"{int(state.rr)}")
         
         self.num_bis.set_value(f"{int(display_bis)}")
@@ -530,5 +534,4 @@ class PatientMonitorWidget(QWidget):
                     continue
             
             widget.set_alarm(False)
-
 

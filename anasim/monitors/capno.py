@@ -134,11 +134,6 @@ class Capnograph:
             slope_scale = 2.0 / max(exp_duration, 0.5)
             plateau_slope = base_slope * slope_scale * (1 + 5 * airway_obstruction)
             
-            # Variability for spontaneous breaths
-            if is_spontaneous:
-                # Spontaneous breaths have natural flow variability from diaphragm effort
-                pass
-
             # Deadspace as fraction of expiratory time
             deadspace_time = self.deadspace_fraction * exp_duration
             

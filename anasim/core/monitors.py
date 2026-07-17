@@ -157,6 +157,37 @@ def compute_capno_value(engine: "SimulationEngine", dt: float, phase: str, resp_
     )
 
 
+def update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, capno_value: float) -> tuple[float, bool]:
+    """Hold breath-derived EtCO2 and invalidate it when exhaled gas is absent."""
+    state = engine.state
+    sampling_possible = (
+        state.airway_mode != AirwayType.NONE
+        and engine._airway_patency >= 0.05
+        and state.rr > 0.0
+    )
+    engine._capno_numeric_age_s += dt
+
+    if sampling_possible and phase == "EXP":
+        engine._capno_numeric_peak = max(engine._capno_numeric_peak, capno_value)
+
+    completed_breath = engine._capno_last_phase == "EXP" and phase == "INSP"
+    if sampling_possible and completed_breath and engine._capno_numeric_peak > 1.0:
+        display_value = engine._capno_numeric_peak
+        engine._capno_numeric_age_s = 0.0
+        engine._capno_numeric_peak = 0.0
+        engine._capno_has_sample = True
+    else:
+        display_value = state.display_etco2
+
+    engine._capno_last_phase = phase
+    valid = (
+        sampling_possible
+        and engine._capno_has_sample
+        and engine._capno_numeric_age_s <= engine._capno_numeric_timeout_s
+    )
+    return (float(display_value) if valid else 0.0), valid
+
+
 def step_monitors(
     engine: "SimulationEngine",
     dt: float,
@@ -211,12 +242,20 @@ def step_monitors(
         co_ratio = 1.0
     perfusion = clamp(co_ratio, 0.05, 1.0)
     pleth, spo2_val = engine.spo2_mon.step(dt, hr=hemo_state.hr, saturation=sao2, perfusion=perfusion)
+    state.spo2_signal_valid = engine.spo2_mon.signal_valid
     set_state_float_fields(state, ecg_voltage=ecg_voltage, pleth_voltage=pleth)
 
     update_nibp(engine, dt, hemo_state)
 
     bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
     set_state_float_fields(state, bis=bis_display_source, spo2=spo2_val)
+    display_etco2, etco2_signal_valid = update_capno_numeric(
+        engine,
+        dt,
+        engine.capno.last_phase,
+        capno_val,
+    )
+    state.etco2_signal_valid = etco2_signal_valid
 
     noise = engine.rng.normal(0.0, engine._monitor_noise_std)
     raw_map = hemo_state.map + noise[0]
@@ -256,7 +295,7 @@ def step_monitors(
         display_sbp=display_sbp,
         display_dbp=display_dbp,
         capno_co2=capno_val,
-        display_etco2=state.etco2,
+        display_etco2=display_etco2,
         tof=tof_val,
         loc=loc_val,
         tol=tol_val,

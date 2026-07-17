@@ -33,6 +33,7 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Katoh et al. Br J Anaesth. 1997. (Sevo MACawake ~0.63%; N2O 45% reduces MACawake ~50%, less than additive). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9389264/)
 
 ## PK / PD Models (IV Agents, Vasopressors)
+- Janmahasatian et al. Clin Pharmacokinet. 2005. (lean bodyweight equation robust across body size). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16176118/)
 - Marsh et al. Br J Anaesth. 1991. (propofol PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1859758/)
 - Schnider et al. Anesthesiology. 1998. (propofol PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9605675/)
 - Eleveld et al. Br J Anaesth. 2018. (propofol PK/PD). [PubMed](https://pubmed.ncbi.nlm.nih.gov/29661412/)
@@ -90,6 +91,8 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Kim et al. Am J Emerg Med. 2019. (post-arrest PaCO2–EtCO2 gap). [PubMed](https://pubmed.ncbi.nlm.nih.gov/29685358/)
 - Poorzargar et al. J Clin Monit Comput. 2022. (pulse oximeter accuracy in poor peripheral perfusion). [PubMed](https://pubmed.ncbi.nlm.nih.gov/35119597/)
 - Sinex. Am J Emerg Med. 1999. (pulse oximetry principles and limitations). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9928703/)
+- Broome et al. Anaesthesia. 1992. (finger pulse-ox response delay during anesthesia). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1536395/)
+- Tanaka et al. J Clin Monit Comput. 2014. (capnographic detection of respiratory pauses during sedation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/24420342/)
 - Byrne et al. J Appl Physiol (1985). 2005 Sep;99(3):1112-9. (Resting VO2/MET reference values; large cohort). [PubMed](https://pubmed.ncbi.nlm.nih.gov/15831804/)
 - Stein et al. Chest. 1995 Jan;107(1):139-43. (A–a gradient age adjustment formula in PE assessment). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7632205/)
 - Stock et al. J Clin Anesth. 1989;1(5):328-32. (PaCO2 rise in anesthetized patients with airway obstruction). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2516732/)

@@ -73,7 +73,7 @@ class HemodynamicModel:
 
         # Baseline SV derived from cardiac index and BSA
         ci_0 = self.ci_elderly if patient.age > self.ci_elderly_age else self.ci_adult
-        co_0 = ci_0 * patient.bsa if patient.bsa > 0 else ci_0 * self.bsa_fallback
+        co_0 = ci_0 * patient.bsa
         self.base_sv = (co_0 * 1000.0) / self.base_hr if self.base_hr > 0 else self.base_sv
 
         # Baseline TPR from MAP and flow
@@ -1275,9 +1275,11 @@ class HemodynamicModel:
             
         try:
             sol = root_scalar(residual, bracket=[0.01, 5.0], method='brentq')
-            z_ss = sol.root
-        except (ValueError, RuntimeError):
-            z_ss = 1.0  # fallback to baseline
+        except (ValueError, RuntimeError) as exc:
+            raise RuntimeError("Unable to solve hemodynamic steady state") from exc
+        if not sol.converged:
+            raise RuntimeError("Hemodynamic steady-state solver did not converge")
+        z_ss = sol.root
             
         # Set State
         z_fb = z_ss ** self.fb

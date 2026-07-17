@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from anasim.core.state import canonicalize_bis_model_name
+from anasim.core.state import SUPPORTED_MODEL_OPTIONS
 from anasim.core.utils import clamp
 from anasim.patient.patient import Patient
 
@@ -40,7 +40,9 @@ class BISModel:
     """BIS PD model for IV agents and volatile anesthetics."""
 
     def __init__(self, patient: Patient, model_name: str = "Bouillon"):
-        self.model_name = canonicalize_bis_model_name(model_name)
+        if model_name not in SUPPORTED_MODEL_OPTIONS["bis_model"]:
+            raise ValueError(f"Unsupported BIS model: {model_name!r}")
+        self.model_name = model_name
         self.patient = patient
         self.bis_smoothed = 98.0
         self.tau_smooth = 10.0
@@ -188,6 +190,8 @@ class LOCModel:
     """Loss-of-consciousness probability model."""
 
     def __init__(self, model_name: str = "Kern"):
+        if model_name not in SUPPORTED_MODEL_OPTIONS["loc_model"]:
+            raise ValueError(f"Unsupported LOC model: {model_name!r}")
         self.model_name = model_name
         self.c50p = 1.80
         self.c50r = 12.5
@@ -236,7 +240,7 @@ class LOCModel:
 class TOLModel:
     """Tolerance-of-laryngoscopy probability model."""
 
-    def __init__(self, model_name: str = "Bouillon"):
+    def __init__(self):
         self.c50p = 8.04
         self.c50r = 1.07
         self.gamma_p = 5.1

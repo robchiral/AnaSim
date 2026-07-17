@@ -119,10 +119,6 @@ class ScenarioOverlay(QFrame):
         else:
             step = self.scenario[self.current_step]
             self.lbl_instruction.setText(step.instruction)
-            
-            # Call on_enter callback if present
-            if step.on_enter:
-                pass 
 
     def check_requirements(self, engine):
         """Check if current step requirements are met. Returns True/False and status message."""
@@ -181,4 +177,3 @@ class ScenarioOverlay(QFrame):
         """Programmatic click for testing."""
         if self.requirements_met:
             self.on_next_clicked()
-
