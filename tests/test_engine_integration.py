@@ -200,8 +200,8 @@ def test_hr_disturbance_not_double_applied():
 
     assert engine1.state.display_hr == pytest.approx(engine2.state.display_hr, rel=1e-6)
 
-def test_lbm_fallback_for_extreme_bmi():
-    """LBM should remain positive for extreme BMI values."""
+def test_janmahasatian_lbm_remains_positive_at_extreme_bmi():
+    """The selected LBM equation should remain positive at extreme BMI."""
     patient = Patient(age=40, weight=300.0, height=160.0, sex="male")
     assert patient.lbm > 0.0
 

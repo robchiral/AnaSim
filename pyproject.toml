@@ -1,31 +1,59 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "anasim"
-version = "0.2.0"
-description = "A comprehensive physiology and anesthesia simulation engine"
+name = "anasim-simulator"
+dynamic = ["version"]
+description = "Real-time anesthesia and physiology simulator for medical education"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [
   { name = "Robert Chen", email = "robert.chen@icahn.mssm.edu" },
 ]
+keywords = [
+    "anesthesia",
+    "medical education",
+    "physiology",
+    "pharmacokinetics",
+    "simulation",
+]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Education",
+    "Intended Audience :: Healthcare Industry",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Education",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
     "Operating System :: OS Independent",
 ]
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "PySide6",
+    "pyqtgraph",
     "scipy",
     "pandas",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "build",
+    "pytest",
+    "twine",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/robchiral/AnaSim"
-"Bug Tracker" = "https://github.com/robchiral/AnaSim/issues"
+"Changelog" = "https://github.com/robchiral/AnaSim/blob/main/CHANGELOG.md"
+"Documentation" = "https://github.com/robchiral/AnaSim#readme"
+"Issues" = "https://github.com/robchiral/AnaSim/issues"
+"Releases" = "https://github.com/robchiral/AnaSim/releases"
 "Source" = "https://github.com/robchiral/AnaSim"
 
 [project.scripts]
@@ -34,3 +62,6 @@ anasim = "anasim.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["anasim*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "anasim.__version__" }

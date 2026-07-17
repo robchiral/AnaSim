@@ -36,9 +36,6 @@ class TestLongDurationStability:
         """Run equivalent of 4-hour case and verify stability under routine perturbations."""
         engine = long_running_engine
         
-        # 4 hours = 14400 seconds, simulate at 2x speed with 0.5s steps
-        # For test efficiency, run 7200 steps of 0.5s each = 1 hour simulated
-        # Use larger step to simulate 4 hours more quickly
         target_duration = 4 * 3600  # 4 hours in seconds
         step_size = 1.0  # 1 second steps
         steps = int(target_duration / step_size)

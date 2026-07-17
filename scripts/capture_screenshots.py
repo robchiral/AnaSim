@@ -2,11 +2,8 @@
 import sys
 import os
 import argparse
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
-
-# Ensure project root is in path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from anasim.ui.main_window import MainWindow
 from anasim.ui.config_dialog import SimulationSetupDialog
@@ -22,7 +19,6 @@ class ScreenshotMainWindow(MainWindow):
             self.sim_params = self.preset_params
             return True
             
-        # Default fallback
         self.sim_params = {
             'age': 40, 'weight': 70.0, 'height': 170.0, 'sex': 'male',
             'baseline_hb': 13.5, 'renal_function': 1.0, 'hepatic_function': 1.0,

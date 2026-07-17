@@ -6,7 +6,7 @@ Each scenario contains a list of steps with instructions and requirements.
 """
 
 from dataclasses import dataclass, field
-from typing import Callable, Optional, List, Tuple
+from typing import Callable, List, Tuple
 
 
 @dataclass
@@ -16,7 +16,6 @@ class ScenarioStep:
     title: str
     instruction: str
     check_requirements: Callable[[object], Tuple[bool, str]]
-    on_enter: Optional[Callable[[object], None]] = None
 
 
 @dataclass

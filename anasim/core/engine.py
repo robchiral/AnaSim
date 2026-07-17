@@ -95,11 +95,6 @@ REMI_MODELS = {
     "minto": RemifentanilPKMinto,
 }
 
-RESP_MODELS = {
-    "singlecompartment": RespiratoryModel,
-    "single_compartment": RespiratoryModel,
-}
-
 VOLATILE_AGENT_PARAMS = {
     "sevoflurane": {"name": "Sevoflurane", "lambda_b_g": 0.65, "mac_40": 2.1},
 }
@@ -319,6 +314,11 @@ class SimulationEngine(DrugControllerMixin):
         self._monitor_tau_map_s = 1.5
         self._monitor_tau_hr_s = 1.0
         self._monitor_tau_bis_s = 2.0
+        self._capno_numeric_peak = 0.0
+        self._capno_numeric_age_s = 0.0
+        self._capno_numeric_timeout_s = 15.0
+        self._capno_last_phase = "EXP"
+        self._capno_has_sample = False
         self._mean_paw_tau_s = 0.25
         self._tol_current = None
         self._raw_map = self.state.map
@@ -443,49 +443,22 @@ class SimulationEngine(DrugControllerMixin):
         
     def initialize_models(self):
         """Initialize PK/PD models based on config."""
-        # Propofol PK
-        if self.config.pk_model_propofol not in PROPOFOL_MODELS:
-            logger.warning(
-                "pk_model_propofol '%s' not recognized; using default",
-                self.config.pk_model_propofol,
-            )
-        propofol_model = PROPOFOL_MODELS.get(self.config.pk_model_propofol, PropofolPKMarsh)
-        self.pk_prop = propofol_model(self.patient)
+        self.pk_prop = PROPOFOL_MODELS[self.config.pk_model_propofol](self.patient)
             
-        # Remi PK
         remi_key = _normalize_model_key(self.config.pk_model_remi)
-        if not remi_key:
-            remi_key = "minto"
-        remi_model = REMI_MODELS.get(remi_key)
-        if not remi_model:
-            logger.warning(
-                "pk_model_remi '%s' not recognized; using Minto",
-                self.config.pk_model_remi,
-            )
-            remi_model = REMI_MODELS["minto"]
-        self.pk_remi = remi_model(self.patient)
+        self.pk_remi = REMI_MODELS[remi_key](self.patient)
         
         # Machine
         self.circuit = CircleSystem()
         self.vent = AnesthesiaVentilator()
 
         requested_agents = self.config.volatile_agents or []
-        resolved_agents = [_resolve_volatile_agent(agent) for agent in requested_agents]
-        resolved_agents = [agent for agent in resolved_agents if agent]
-
         if not requested_agents:
             self._volatile_enabled = False
             agent_key = "sevoflurane"
-        elif resolved_agents:
-            self._volatile_enabled = True
-            agent_key = resolved_agents[0]
         else:
-            logger.warning(
-                "volatile_agents %s not supported; using Sevoflurane",
-                self.config.volatile_agents,
-            )
             self._volatile_enabled = True
-            agent_key = "sevoflurane"
+            agent_key = requested_agents[0]
 
         agent_params = VOLATILE_AGENT_PARAMS.get(agent_key, VOLATILE_AGENT_PARAMS["sevoflurane"])
         self._volatile_agent_key = agent_key
@@ -517,26 +490,10 @@ class SimulationEngine(DrugControllerMixin):
 
         # Hemodynamics.
         self.hemo = HemodynamicModel(self.patient)
-        if self.config.hemo_model not in ["Su2023", "Su", "Advanced", None, ""]:
-            logger.warning(
-                "hemo_model '%s' not recognized; using default",
-                self.config.hemo_model,
-            )
-            
         # Configure norepinephrine PD.
         c50, emax, gamma = NORE_PD_PARAMS.get(self.config.pk_model_nore, (7.04, 98.7, 1.8))
         self.hemo.set_nore_pd(c50=c50, emax=emax, gamma=gamma)
-        resp_key = _normalize_model_key(self.config.resp_model)
-        if not resp_key:
-            resp_key = "singlecompartment"
-        resp_model = RESP_MODELS.get(resp_key)
-        if not resp_model:
-            logger.warning(
-                "resp_model '%s' not recognized; using default",
-                self.config.resp_model,
-            )
-            resp_model = RespiratoryModel
-        self.resp = resp_model(self.patient)
+        self.resp = RespiratoryModel(self.patient)
         self.resp_mech = RespiratoryMechanics()
         self._base_airway_resistance = self.resp_mech.resistance
         # Keep ventilator settings and is_on state consistent on init.
@@ -823,23 +780,15 @@ class SimulationEngine(DrugControllerMixin):
             
     def set_rhythm(self, rhythm_name: str):
         """Set cardiac rhythm."""
-        try:
-            # Search by value (e.g. "Sinus Rhythm") or name (e.g. "SINUS")
-            found = False
-            for r in RhythmType:
-                if r.value == rhythm_name or r.name == rhythm_name.upper():
-                    if self.hemo:
-                        self.hemo.rhythm_type = r
-                        if hasattr(self.hemo, "invalidate_state_cache"):
-                            self.hemo.invalidate_state_cache()
-                        found = True
-                    break
-
-            if not found:
-                logger.warning("Unknown rhythm: %s", rhythm_name)
-
-        except Exception as e:
-            logger.exception("Error setting rhythm: %s", e)
+        normalized = str(rhythm_name).upper()
+        rhythm = next(
+            (item for item in RhythmType if item.value == rhythm_name or item.name == normalized),
+            None,
+        )
+        if rhythm is None:
+            raise ValueError(f"Unknown rhythm: {rhythm_name!r}")
+        self.hemo.rhythm_type = rhythm
+        self.hemo.invalidate_state_cache()
     
     def set_bag_mask_ventilation(self, active: bool, rr: float = 12.0, vt: float = 0.5):
         """

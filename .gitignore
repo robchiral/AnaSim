@@ -55,9 +55,9 @@ dmypy.json
 comparisons/
 docs/TODO.md
 docs/papers/
+docs/RELEASING.md
 recordings/
 .claude/
 
 # === Scripts ===
 reset_history.sh
-

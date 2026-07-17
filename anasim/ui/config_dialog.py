@@ -60,7 +60,7 @@ class SimulationSetupDialog(QDialog):
         form.setContentsMargins(12, 16, 12, 12)
         
         self.sb_age = QSpinBox()
-        self.sb_age.setRange(1, 100)
+        self.sb_age.setRange(18, 70)
         self.sb_age.setValue(40)
         self.sb_age.setSuffix(" years")
         form.addRow("Age:", self.sb_age)

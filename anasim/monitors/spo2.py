@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 _PPG_TEMPLATE_RESOLUTION = 200
@@ -35,9 +37,12 @@ class SpO2Monitor:
     SpO2 Monitor using landmark-based waveform synthesis.
     Inspired by neurokit2's PPG simulation approach.
     """
-    def __init__(self, sampling_rate=100):
+    def __init__(self, sampling_rate=100, response_tau_s: float = 4.0):
         self.sampling_rate = sampling_rate 
         self.phase = 0.0
+        self.response_tau_s = response_tau_s
+        self.display_saturation = None
+        self.signal_valid = True
         
         # Pre-compute a smooth PPG/pleth template using landmarks
         # This avoids scipy dependency while achieving smooth curves
@@ -57,11 +62,14 @@ class SpO2Monitor:
         perf = max(0.0, min(1.0, perfusion))
         pleth_voltage = self._template[idx] * (0.2 + 0.8 * perf)
 
-        # Low perfusion degrades display accuracy (pulse-ox artifact).
-        spo2_display = saturation
-        if perf < 0.6:
-            drop_frac = (0.6 - perf) / 0.6
-            spo2_display = saturation * (1.0 - 0.15 * drop_frac)
+        target = max(40.0, min(100.0, saturation))
+        if self.display_saturation is None:
+            self.display_saturation = target
 
-        spo2_display = max(40.0, min(100.0, spo2_display))
-        return pleth_voltage, spo2_display
+        # Finger probes trail arterial saturation, and low perfusion slows the
+        # response instead of deterministically manufacturing hypoxaemia.
+        tau = self.response_tau_s * (1.0 + 2.0 * (1.0 - perf))
+        alpha = 1.0 - math.exp(-dt / max(tau, 1e-6)) if dt > 0 else 0.0
+        self.display_saturation += alpha * (target - self.display_saturation)
+        self.signal_valid = perf >= 0.08
+        return pleth_voltage, self.display_saturation

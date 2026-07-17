@@ -257,7 +257,9 @@ class TCIController:
             else:
                 if target == 0:
                     self.infusion_rate = 0.0
-                elif Ce_pred[int(self.control_time / self.sampling_time)] > self.target:
+                elif Ce_pred[
+                    min(len(Ce_pred) - 1, int(self.control_time / self.sampling_time))
+                ] > self.target:
                     # Overshoot -> stop infusion
                     self.infusion_rate = 0.0
                 else:

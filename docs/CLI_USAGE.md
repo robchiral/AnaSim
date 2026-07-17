@@ -67,10 +67,10 @@ You can provide a JSON file to customize the patient and simulation parameters.
 - **pk_model_propofol**: `Marsh`, `Schnider`, `Eleveld`
 - **pk_model_remi**: `Minto`
 - **bis_model**: `Bouillon`, `Eleveld`, `Fuentes`, `Yumuk`
-- **hemo_model**: `Su2023`, `Su`, `Advanced` (others fall back to default)
+- **hemo_model**: `Su2023`
 - **resp_model**: `SingleCompartment`
 - **pk_model_nore**: `Li`, `Oualha`, `Beloeil`
-- **pk_model_epi**: `Clutter`
+- **pk_model_epi**: `Clutter`, `Abboud`, `Oualha`
 - **loc_model**: `Kern`
 - **disturbance_profile**: `stim_intubation_pulse`, `stim_sustained_surgery`, or `null`
 - **volatile_agents**: list of enabled volatile agents (e.g., `["sevoflurane"]`)
@@ -79,8 +79,7 @@ You can provide a JSON file to customize the patient and simulation parameters.
 - **simulation_speed**: real-time multiplier (UI only, informational in headless).
 - **enable_death_detector**: `true`/`false` to enable viability checks.
 
-Legacy note:
-- `fidelity_mode` is unsupported. AnaSim uses one realism-calibrated profile rather than a literature/runtime toggle.
+Unknown configuration keys and unsupported model names are rejected with an error.
 
 ## Examples
 

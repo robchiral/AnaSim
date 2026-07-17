@@ -35,14 +35,19 @@ class Patient:
         self._sanitize_organ_function()
 
     def _sanitize_demographics(self):
-        """Clamp demographic inputs to safe physiological ranges."""
+        """Normalize demographics and reject ages outside the adult model domain."""
         def _as_float(value, default):
             try:
                 return float(value)
             except (TypeError, ValueError):
                 return float(default)
 
-        self.age = max(0.0, _as_float(self.age, 40.0))
+        try:
+            self.age = float(self.age)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("age must be a number between 18 and 70 years") from exc
+        if not 18.0 <= self.age <= 70.0:
+            raise ValueError("age must be between 18 and 70 years for the validated adult model domain")
         self.weight = max(1.0, _as_float(self.weight, 70.0))
         self.height = max(30.0, _as_float(self.height, 170.0))
         self.sex = (self.sex or "male").strip().lower()
@@ -72,16 +77,9 @@ class Patient:
         # BSA (DuBois)
         self.bsa = 0.007184 * (self.weight ** 0.425) * (self.height ** 0.725)
         
-        # LBM (James formula, with Janmahasatian fallback for extreme BMI)
-        # Verify valid formulas for male/female
-        sex = self.sex.lower()
-        if sex == "male":
-            lbm = 1.1 * self.weight - 128 * ((self.weight / self.height) ** 2)
-        else:
-            lbm = 1.07 * self.weight - 148 * ((self.weight / self.height) ** 2)
-        if lbm <= 0:
-            lbm = self._janmahasatian_lbm()
-        self.lbm = max(0.1, lbm)
+        # Janmahasatian et al. 2005 remains well behaved at high BMI, unlike
+        # switching formulas only after the James equation becomes negative.
+        self.lbm = self._janmahasatian_lbm()
 
     def _sanitize_organ_function(self):
         """Clamp organ function inputs to [0.1, 1.0] and set default labels."""
@@ -101,9 +99,7 @@ class Patient:
             self.hepatic_status = "Normal" if self.hepatic_function >= 0.95 else "Impaired"
 
     def _janmahasatian_lbm(self) -> float:
-        """Compute Janmahasatian LBM as a fallback for high-BMI cases."""
-        if self.bmi <= 0:
-            return 0.0
+        """Compute Janmahasatian lean body mass."""
         sex = self.sex.lower()
         if sex == "male":
             return (9270.0 * self.weight) / (6680.0 + 216.0 * self.bmi)

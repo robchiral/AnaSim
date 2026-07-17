@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use AnaSim in educational work, please cite the software and the exact release."
+title: "AnaSim: Anesthesia and Physiology Simulator"
+type: software
+authors:
+  - family-names: "Chen"
+    given-names: "Robert"
+version: 1.0
+date-released: 2026-07-17
+repository-code: "https://github.com/robchiral/AnaSim"
+url: "https://github.com/robchiral/AnaSim"
+license: MIT

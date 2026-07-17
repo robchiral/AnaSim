@@ -111,24 +111,21 @@ class ControlPanelWidget(QWidget):
         """Update UI controls to match Engine state."""
         # Compute hash of key state values to skip redundant syncs
         # Most frames have no control changes, so this skips 90%+ of sync work
-        try:
-            sync_hash = hash((
-                getattr(self.engine.circuit, 'vaporizer_setting', 0) if self.engine.circuit else 0,
-                getattr(self.engine.circuit, 'fgf_o2', 0.0) if self.engine.circuit else 0.0,
-                getattr(self.engine.circuit, 'fgf_air', 0.0) if self.engine.circuit else 0.0,
-                getattr(self.engine.circuit, 'fgf_n2o', 0.0) if self.engine.circuit else 0.0,
-                getattr(self.engine.vent, 'is_on', False) if hasattr(self.engine, 'vent') else False,
-                getattr(self.engine, 'maintenance_fluid_rate_ml_min', 0.0),
-                getattr(self.engine, 'disturbance_profile', None),
-                getattr(self.engine, 'disturbance_active', False),
-                getattr(self.engine, 'airway_obstruction_manual', 0),
-                getattr(self.engine.state, 'airway_mode', None),
-            ))
-            if sync_hash == self._last_sync_hash:
-                return  # No changes, skip sync
-            self._last_sync_hash = sync_hash
-        except (TypeError, AttributeError):
-            pass  # If hashing fails, proceed with full sync
+        sync_hash = hash((
+            getattr(self.engine.circuit, 'vaporizer_setting', 0) if self.engine.circuit else 0,
+            getattr(self.engine.circuit, 'fgf_o2', 0.0) if self.engine.circuit else 0.0,
+            getattr(self.engine.circuit, 'fgf_air', 0.0) if self.engine.circuit else 0.0,
+            getattr(self.engine.circuit, 'fgf_n2o', 0.0) if self.engine.circuit else 0.0,
+            getattr(self.engine.vent, 'is_on', False),
+            getattr(self.engine, 'maintenance_fluid_rate_ml_min', 0.0),
+            getattr(self.engine, 'disturbance_profile', None),
+            getattr(self.engine, 'disturbance_active', False),
+            getattr(self.engine, 'airway_obstruction_manual', 0),
+            getattr(self.engine.state, 'airway_mode', None),
+        ))
+        if sync_hash == self._last_sync_hash:
+            return
+        self._last_sync_hash = sync_hash
 
         self._sync_gases_and_airway()
         self._sync_drugs()

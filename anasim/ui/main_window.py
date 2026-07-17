@@ -1,5 +1,6 @@
 import sys
 import time
+import math
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -15,7 +16,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QTimer
 
 from anasim.core.engine import SimulationEngine, SimulationConfig, Patient
-from anasim.core.state import validate_config_payload
 from anasim.ui.monitor_widget import PatientMonitorWidget
 from anasim.ui.controls_widget import ControlPanelWidget
 from anasim.ui.config_dialog import SimulationSetupDialog
@@ -73,11 +73,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, "engine") and getattr(self.engine, "recorder", None):
             self.engine.stop_recording()
         p = self.sim_params
-        try:
-            validate_config_payload(p, source="UI session payload")
-        except ValueError as e:
-            QMessageBox.critical(self, "Unsupported Session Payload", str(e))
-            raise
         self.arterial_line_enabled = p.get('arterial_line_enabled', True)
         self.patient = Patient(
             age=p['age'], 
@@ -229,6 +224,9 @@ class MainWindow(QMainWindow):
         
         # Initial Sync
         self.controls.sync_with_engine()
+        initial_state = self.engine.get_latest_state()
+        self.monitor.update_numerics(initial_state)
+        self.monitor.update_alarms(initial_state)
         self._set_run_state("ready")
 
     def _set_status(self, text, color):
@@ -271,7 +269,7 @@ class MainWindow(QMainWindow):
             self.engine.start()
             self._set_run_state("running")
             self.timer.start()
-            self.last_real_time = time.time()
+            self.last_real_time = time.perf_counter()
         self.time_accumulator = 0.0
         self.death_dialog_shown = False # Prevent multiple popups
 
@@ -285,11 +283,11 @@ class MainWindow(QMainWindow):
         
     def game_loop(self):
         # Time Management
-        now = time.time()
+        now = time.perf_counter()
         dt_real = now - self.last_real_time
         self.last_real_time = now
         
-        if dt_real > 0.2: dt_real = 0.2
+        dt_real = min(dt_real, 0.2)
         
         # Apply Speed Factor
         speed = self.sb_speed.value()
@@ -299,16 +297,17 @@ class MainWindow(QMainWindow):
         
         # Run Engine Steps
         sim_step = getattr(self.engine.config, "dt", 0.01)
-        max_steps = 100 
+        # Budget enough work for the fastest selectable speed. A fixed
+        # 100-step cap silently discarded simulated time above roughly 20x.
+        max_steps = max(100, math.ceil(0.2 * self.sb_speed.maximum() / sim_step))
         steps_taken = 0
         
         while self.time_accumulator >= sim_step:
-             self.engine.step(sim_step)
-             self.time_accumulator -= sim_step
-             steps_taken += 1
-             if steps_taken >= max_steps:
-                 self.time_accumulator = 0 
-                 break
+            self.engine.step(sim_step)
+            self.time_accumulator -= sim_step
+            steps_taken += 1
+            if steps_taken >= max_steps:
+                break
              
         # Update UI
         state = self.engine.get_latest_state()

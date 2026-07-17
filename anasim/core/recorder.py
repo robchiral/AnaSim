@@ -40,7 +40,7 @@ class DataRecorder:
              self.writer = csv.writer(self.file)
              self.is_recording = True
              self.writer.writerow(STATE_FIELD_NAMES)
-        except Exception:
+        except (OSError, csv.Error, ValueError):
              logger.exception("Failed to start recording")
              self.is_recording = False
              
@@ -58,7 +58,7 @@ class DataRecorder:
         row = [self._serialize_value(getattr(state, name)) for name in STATE_FIELD_NAMES]
         try:
             self.writer.writerow(row)
-        except Exception:
+        except (OSError, csv.Error, ValueError):
             logger.exception("Failed to write record")
         
     def stop(self):

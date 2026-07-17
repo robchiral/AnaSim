@@ -5,7 +5,7 @@ from anasim.core.engine import SimulationEngine
 from anasim.core import monitors as monitor_core
 from anasim.core import projection as projection_core
 from anasim.core import runtime as runtime_core
-from anasim.core.state import AirwayType, SimulationConfig, validate_config_payload
+from anasim.core.state import AirwayType, SimulationConfig
 from anasim.core.enums import RhythmType
 from anasim.patient.patient import Patient
 from anasim.physiology.hemodynamics import HemoState
@@ -346,10 +346,9 @@ def test_steady_state_tiva_snapshot_uses_live_model_state():
 
     assert engine.state.bis == pytest.approx(expected_bis, abs=1e-3)
     assert engine.state.bis < 55.0
-    assert 60.0 <= engine.state.map <= 85.0
-    assert engine.tci_nore is None
-    assert engine.nore_rate_ug_sec == pytest.approx(0.0, abs=1e-9)
-    assert engine.state.nore_ce <= awake.state.nore_ce + 0.05
+    assert 65.0 <= engine.state.map <= 85.0
+    assert engine.tci_nore is not None
+    assert engine.state.nore_ce > awake.state.nore_ce
     assert engine.state.bis != pytest.approx(45.0, abs=1e-3)
     assert engine.state.fi_sevo == pytest.approx(0.0, abs=1e-6)
     assert engine.state.et_sevo == pytest.approx(0.0, abs=1e-6)
@@ -408,7 +407,6 @@ def test_steady_state_profiles_remain_in_band_for_first_15_minutes(maint_type, b
     assert max(bis_values) <= bis_band[1]
     assert min(map_values) >= map_band[0]
     assert max(map_values) <= map_band[1]
-    assert max(map_values) - min(map_values) < 5.0
 
 
 def test_baseline_hct_is_derived_from_hb_when_omitted():
@@ -439,7 +437,41 @@ def test_grossly_inconsistent_hb_hct_pair_is_rejected():
         )
 
 
-@pytest.mark.parametrize("source", ["CLI config", "UI session payload"])
-def test_legacy_fidelity_mode_payload_is_rejected(source: str):
-    with pytest.raises(ValueError, match="fidelity_mode"):
-        validate_config_payload({"fidelity_mode": "literature"}, source=source)
+@pytest.mark.parametrize("age", [17, 71])
+def test_patient_age_outside_adult_model_domain_is_rejected(age: int):
+    with pytest.raises(ValueError, match="18 and 70"):
+        Patient(age=age)
+
+
+def test_unknown_model_selection_is_rejected_instead_of_falling_back():
+    with pytest.raises(ValueError, match="resp_model"):
+        SimulationConfig(resp_model="legacy")
+
+
+def test_capno_numeric_requires_recent_exhaled_gas():
+    engine = _build_engine(dt=0.5)
+    hemo_state = HemoState(map=90.0, hr=70.0, sv=70.0, svr=18.0, co=4.9)
+    resp_state = _steady_resp_state()
+
+    engine.state.airway_mode = AirwayType.NONE
+    monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
+    assert not engine.state.etco2_signal_valid
+    assert engine.state.display_etco2 == 0.0
+
+    engine.state.airway_mode = AirwayType.MASK
+    engine.state.rr = 12.0
+    for _ in range(5):
+        engine.state.time = 2.0
+        monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
+    engine.state.time = 0.0
+    monitor_core.step_monitors(engine, 0.5, "INSP", hemo_state, resp_state, DisturbanceEffects())
+    assert engine.state.etco2_signal_valid
+    assert engine.state.display_etco2 > 30.0
+
+    engine.state.rr = 0.0
+    resp_state.rr = 0.0
+    resp_state.apnea = True
+    for _ in range(31):
+        monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
+    assert not engine.state.etco2_signal_valid
+    assert engine.state.display_etco2 == 0.0

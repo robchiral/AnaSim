@@ -206,7 +206,7 @@ class TestHemodynamicCoupling(unittest.TestCase):
 
 
 class TestVentilatorEdgeCases(unittest.TestCase):
-    """Validate safety fallbacks and parsing edge cases."""
+    """Validate ventilator edge cases and input rejection."""
     
     def setUp(self):
         self.mech = RespiratoryMechanics(compliance=0.05, resistance=10.0)
@@ -223,14 +223,10 @@ class TestVentilatorEdgeCases(unittest.TestCase):
         self.assertLessEqual(result.flow, 0.0)
         self.assertAlmostEqual(result.paw, self.mech.set_peep, delta=0.5)
     
-    def test_invalid_ie_ratio_defaults_to_safe_fraction(self):
-        """Malformed I:E strings should revert to default 1:2 timing."""
-        self.mech.set_settings(rr=12.0, vt=0.5, peep=5.0, ie="bad_format", mode="VCV")
-        
-        self.assertAlmostEqual(self.mech.insp_time_fraction, 1.0 / 3.0, places=3)
-        
-        # Ensure stepping still works without raising errors
-        self.mech.step(0.1)
+    def test_invalid_ie_ratio_is_rejected(self):
+        """Malformed I:E strings should not silently change ventilator timing."""
+        with self.assertRaisesRegex(ValueError, "Invalid I:E ratio"):
+            self.mech.set_settings(rr=12.0, vt=0.5, peep=5.0, ie="bad_format", mode="VCV")
 
 
 class TestEngineIntegration(unittest.TestCase):
