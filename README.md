@@ -3,6 +3,7 @@
 Real-time anesthesia and physiology simulation for medical education.
 
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/anasim-simulator.svg)](https://pypi.org/project/anasim-simulator/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/robchiral/AnaSim/blob/main/LICENSE)
 
@@ -16,8 +17,9 @@ Real-time anesthesia and physiology simulation for medical education.
 
 ## Installation
 
-AnaSim requires Python 3.10 or newer. Install the published package in a virtual
-environment:
+AnaSim requires Python 3.10 or newer. Install
+[`anasim-simulator` from PyPI](https://pypi.org/project/anasim-simulator/) in a
+virtual environment:
 
 ```bash
 python3 -m venv .venv
