@@ -61,7 +61,7 @@ class TCIController:
         # Peak finding helpers.
         self.tpeak_0 = 0.0
         self.tpeak_1 = 0.0
-        self.time = 0.0  # Deprecated: use sim_time parameter instead
+        self._time = 0.0
         self._last_target_change_time = -999.0  # For rate-limiting target changes
         self._min_target_change_interval = TCI_MIN_TARGET_CHANGE_INTERVAL
         self._last_control_update = -1e9
@@ -128,10 +128,7 @@ class TCIController:
 
     def sync_state_estimate(self, pk_model) -> None:
         """Seed the internal state estimate from the live PK compartments."""
-        state = getattr(pk_model, "state", None)
-        if state is None:
-            return
-
+        state = pk_model.state
         c1 = getattr(state, "c1", 0.0)
         c2 = getattr(state, "c2", 0.0)
         c3 = getattr(state, "c3", 0.0)
@@ -180,11 +177,8 @@ class TCIController:
         self.Ce_response = np.array(self.Ce_response)
         
         if self.t_peak == 0.0:
-            # If logic fails (e.g. plasma target), peak is immediate or at end of infusion.
-            if self.target_id == 0:
-                self.t_peak = self.control_time
-            else:
-                self.t_peak = self.control_time # Fallback
+            # Plasma targeting peaks at the end of the control interval.
+            self.t_peak = self.control_time
 
     def step(self, target: float, sim_time: float = None) -> float:
         """
@@ -199,11 +193,11 @@ class TCIController:
         """
         # Use provided sim_time or fall back to internal tracking
         if sim_time is not None:
-            self.time = sim_time
+            self._time = sim_time
         
         # Check if it's time to update control (every control_time).
         update_control = False
-        time_since_update = self.time - self._last_control_update
+        time_since_update = self._time - self._last_control_update
         if time_since_update >= (self.control_time - (self.sampling_time / 2.0)):
             update_control = True
         
@@ -213,16 +207,16 @@ class TCIController:
             if target == 0.0:
                 # Always allow immediate stop
                 update_control = True
-                self._last_target_change_time = self.time
+                self._last_target_change_time = self._time
             else:
-                time_since_last_change = self.time - self._last_target_change_time
+                time_since_last_change = self._time - self._last_target_change_time
                 if time_since_last_change >= self._min_target_change_interval:
                     update_control = True
-                    self._last_target_change_time = self.time
+                    self._last_target_change_time = self._time
                 # If too soon, ignore the change this step (will be picked up later)
              
         if update_control:
-            self._last_control_update = self.time
+            self._last_control_update = self._time
             if target != self.target:
                 self.tpeak_0 = self.t_peak
                 self.target = target
@@ -285,7 +279,7 @@ class TCIController:
         self.x = self.Ad @ self.x + self.Bd * self.infusion_rate
         
         if sim_time is None:
-            self.time += self.sampling_time
+            self._time += self.sampling_time
         
         self.infusion_rate = clamp(self.infusion_rate, 0.0, self.max_rate)
         

@@ -124,28 +124,3 @@ class ThermalTuning:
     specific_heat_j_kg_k: float = 3470.0
     temp_min_c: float = 25.0
     temp_max_c: float = 42.0
-
-# Centralized tuple configurations for Engine state models
-PK_HEMODYNAMIC_MODEL_ATTRS = (
-    ("propofol", "pk_prop"),
-    ("remi", "pk_remi"),
-    ("nore", "pk_nore"),
-    ("roc", "pk_roc"),
-    ("epi", "pk_epi"),
-    ("phenyl", "pk_phenyl"),
-    ("vaso", "pk_vaso"),
-    ("dobu", "pk_dobu"),
-    ("milri", "pk_mil"),
-)
-
-BOLUS_TARGETS = (
-    ("prop", "pk_prop"),
-    ("remi", "pk_remi"),
-    ("nore", "pk_nore"),
-    ("epi", "pk_epi"),
-    ("phenyl", "pk_phenyl"),
-    ("vaso", "pk_vaso"),
-    ("dobu", "pk_dobu"),
-    ("milri", "pk_mil"),
-    ("roc", "pk_roc"),
-)

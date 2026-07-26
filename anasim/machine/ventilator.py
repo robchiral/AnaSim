@@ -134,13 +134,3 @@ class AnesthesiaVentilator:
                 
         self.monitors.rr_total = rr_total if rr_total is not None else self.settings.rr
         
-    def get_mode_display(self) -> str:
-        """Return human-readable mode string."""
-        if self.settings.mode == "VCV":
-            return f"VCV - Vt {int(self.settings.tv)} mL"
-        if self.settings.mode == "PCV":
-            return f"PCV - P {int(self.settings.p_insp)} cmH2O"
-        if self.settings.mode == "PSV":
-            return f"PSV - PS {int(self.settings.p_insp)} cmH2O"
-        return f"CPAP - PEEP {int(self.settings.peep)} cmH2O"
-            

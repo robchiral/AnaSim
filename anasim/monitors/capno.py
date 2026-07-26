@@ -40,9 +40,9 @@ class Capnograph:
         """
         insp_fraction = float(np.clip(insp_fraction, 0.05, 0.8))
         if vent_active and vent_rr > 0.1:
-            drive = max(0.0, getattr(resp_state, 'drive_central', 0.0))
-            muscle = max(0.0, getattr(resp_state, 'muscle_factor', 0.0))
-            spont_rr = max(0.0, getattr(resp_state, 'rr', 0.0))
+            drive = max(0.0, resp_state.drive_central)
+            muscle = max(0.0, resp_state.muscle_factor)
+            spont_rr = max(0.0, resp_state.rr)
             delta_rr = max(0.0, spont_rr - vent_rr)
             effort_signal = drive * muscle
             
@@ -86,7 +86,7 @@ class Capnograph:
 
             return CapnoContext(exp_duration, is_spontaneous, curare_active, effort_scale, spontaneous_weight, effective_rr)
         else:
-            spont_rr = getattr(resp_state, 'rr', 0.0)
+            spont_rr = resp_state.rr
             if spont_rr <= 0.5:
                 spont_rr = 12.0
             cycle_time = 60.0 / spont_rr

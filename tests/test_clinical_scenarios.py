@@ -13,8 +13,8 @@ from anasim.core.state import AirwayType, SimulationConfig
 def _stop_tiva(engine) -> None:
     engine.disable_tci("propofol")
     engine.disable_tci("remi")
-    engine.set_propofol_rate(0.0)
-    engine.set_remi_rate(0.0)
+    engine.set_drug_rate("propofol", 0.0)
+    engine.set_drug_rate("remi", 0.0)
 
 
 class TestAcceptanceScenarios:
@@ -107,7 +107,7 @@ class TestAcceptanceScenarios:
         assert rescued_map > bleed_map + 5.0
 
         engine.state.airway_mode = AirwayType.ETT
-        engine.set_nore_rate(14.0)
+        engine.set_drug_rate("nore", 14.0)
         advance_time(engine, 300)
         assert engine.state.nore_ce > 1.0
 
