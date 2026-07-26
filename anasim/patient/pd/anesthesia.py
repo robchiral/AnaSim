@@ -151,41 +151,6 @@ class BISModel:
         effect = p.emax * (term / (1 + term))
         return max(0.0, p.e0 - effect)
 
-    def inverse_hill(self, bis: float, ce_remi: float = 0.0) -> float:
-        p = self.params
-        if bis >= p.e0:
-            return 0.0
-        if bis <= (p.e0 - p.emax):
-            return 999.0
-
-        effect = p.e0 - bis
-        term = effect / (p.emax - effect)
-        term = max(0.0, term)
-        gamma = p.gamma
-        if self.model_name == "Eleveld" and bis < (p.e0 - (p.emax / 2)) and hasattr(p, "gamma2"):
-            gamma = p.gamma2
-
-        interaction = term ** (1.0 / gamma)
-        ur = ce_remi / p.c50r if (p.c50r > 0 and ce_remi > 0) else 0.0
-
-        if p.c50r == 0 or ur == 0:
-            up = interaction
-        elif self.model_name == "Bouillon":
-            b = 3 * ur - interaction
-            c = 3 * ur**2 - (2 - p.beta) * ur * interaction
-            d = ur**3 - ur**2 * interaction
-            up = 0.0
-            for root in np.roots([1, b, c, d]):
-                if np.isreal(root) and np.real(root) > 0:
-                    up = np.real(root)
-                    break
-        else:
-            denom = 1 + p.beta * ur
-            up = (interaction - ur) / denom if denom != 0 else 0.0
-
-        return max(0.0, up) * p.c50p
-
-
 class LOCModel:
     """Loss-of-consciousness probability model."""
 

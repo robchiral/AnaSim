@@ -49,11 +49,10 @@ class DataRecorder:
             return
 
         if self.sample_interval_sec > 0.0:
-            now = getattr(state, "time", None)
-            if now is not None:
-                if self._last_sample_time is not None and (now - self._last_sample_time) < self.sample_interval_sec:
-                    return
-                self._last_sample_time = now
+            now = state.time
+            if self._last_sample_time is not None and (now - self._last_sample_time) < self.sample_interval_sec:
+                return
+            self._last_sample_time = now
             
         row = [self._serialize_value(getattr(state, name)) for name in STATE_FIELD_NAMES]
         try:

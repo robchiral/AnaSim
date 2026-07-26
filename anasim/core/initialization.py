@@ -158,12 +158,12 @@ def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) 
 
 
 def _configure_controlled_ventilation(engine: "SimulationEngine", targets: StartupTargets) -> None:
-    baseline_rr = max(1.0, getattr(engine.patient, "baseline_rr", 12.0))
-    baseline_vt_l = max(0.1, getattr(engine.patient, "baseline_vt", 500.0) / 1000.0)
+    baseline_rr = max(1.0, engine.patient.baseline_rr)
+    baseline_vt_l = max(0.1, engine.patient.baseline_vt / 1000.0)
     baseline_mv = baseline_rr * baseline_vt_l
     _depth_index, metabolic_factor = runtime_core.compute_depth_metabolic_context(
         engine,
-        getattr(engine.patient, "baseline_temp", 37.0),
+        engine.patient.baseline_temp,
         targets.prop_ce,
         targets.mac,
         shiver_level=0.0,
@@ -195,8 +195,8 @@ def _seed_steady_state_subsystems(
         _seed_volatile_history(engine, targets.mac, profile.history_minutes)
         engine.set_vaporizer("Sevoflurane", targets.volatile_target_pct)
 
-    prop_cp = getattr(engine.pk_prop.state, "c1", 0.0)
-    remi_cp = getattr(engine.pk_remi.state, "c1", 0.0)
+    prop_cp = engine.pk_prop.state.c1
+    remi_cp = engine.pk_remi.state.c1
     nore_target = _solve_visible_pressor_support(
         engine,
         prop_cp=prop_cp,
@@ -220,7 +220,7 @@ def _seed_steady_state_subsystems(
     engine.hemo.state = engine.hemo.calculate_steady_state(
         prop_cp,
         remi_cp,
-        getattr(engine.pk_nore.state, "ce", 0.0),
+        engine.pk_nore.state.ce,
         mac_sevo=targets.mac,
     )
     return targets
@@ -281,8 +281,6 @@ def _augment_effect_site_state(pk_model, A: np.ndarray, B: np.ndarray) -> tuple[
         return A, B
     if A.shape[0] >= 4:
         return A, B
-    if getattr(pk_model.state, "c3", None) not in (None, 0.0) and A.shape[0] == 4:
-        return A, B
     if A.shape[0] == 3 and hasattr(pk_model.state, "c3"):
         return A, B
 
@@ -322,7 +320,7 @@ def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, durati
     pk = engine.pk_sevo
     state = pk.state
     p_art = max(0.0, float(target_frac))
-    q_co = max(getattr(engine.hemo, "base_co_l_min", 5.0), 0.1)
+    q_co = max(engine.hemo.base_co_l_min, 0.1)
     q_vrg = q_co * pk.f_vrg_frac
     q_mus = q_co * pk.f_mus_frac
     q_fat = q_co * pk.f_fat_frac
@@ -344,7 +342,7 @@ def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, durati
 
 def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> None:
     """Run a short settle for circuit and physiology transients without visible side effects."""
-    saved_vol_clearance = getattr(engine.hemo, "vol_clearance", None)
+    saved_vol_clearance = engine.hemo.vol_clearance
     saved_maintenance_rate = engine.maintenance_fluid_rate_ml_min
     saved_time = engine.state.time
     engine.hemo.vol_clearance = 0.0
@@ -354,7 +352,7 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
     for _ in range(steps):
         depth_index, metabolic_factor = runtime_core.compute_depth_metabolic_context(
             engine,
-            getattr(engine.patient, "baseline_temp", 37.0),
+            engine.patient.baseline_temp,
             engine.state.propofol_ce,
             engine.state.mac,
             shiver_level=0.0,
@@ -369,12 +367,12 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
 
     engine.hemo.vol_clearance = saved_vol_clearance
     engine.maintenance_fluid_rate_ml_min = saved_maintenance_rate
-    engine.state.temp_c = getattr(engine.patient, "baseline_temp", 37.0)
+    engine.state.temp_c = engine.patient.baseline_temp
     engine._cached_temp_metabolic = engine.state.temp_c
     engine._cached_temp_metabolic_factor = 1.0
     engine._metabolic_factor = 1.0
     engine._shiver_level = 0.0
-    engine._do2_ratio = max(0.0, getattr(engine.state, "oxygen_delivery_ratio", 1.0))
+    engine._do2_ratio = max(0.0, engine.state.oxygen_delivery_ratio)
     engine.time_brady = 0.0
     engine.time_hypotension = 0.0
     engine.time_tachy = 0.0

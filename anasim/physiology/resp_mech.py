@@ -370,14 +370,6 @@ class RespiratoryMechanics:
                 resistive_p = self.resistance * flow
                 return elastic_p + resistive_p + total_peep
     
-    def get_mean_paw(self) -> float:
-        """Return current mean airway pressure."""
-        return self.state.paw_mean
-    
-    def get_auto_peep(self) -> float:
-        """Return current auto-PEEP."""
-        return self.state.auto_peep
-    
     def get_total_peep(self) -> float:
         """Return total PEEP (set + auto)."""
         return self.set_peep + self.state.auto_peep

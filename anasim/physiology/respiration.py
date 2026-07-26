@@ -37,13 +37,12 @@ class RespiratoryModel:
         self.patient = patient
         self.rr_0 = patient.baseline_rr
         self.vt_0 = patient.baseline_vt
-        self.baseline_hb = getattr(patient, 'baseline_hb', 13.5)
+        self.baseline_hb = patient.baseline_hb
         # Baseline CO estimate for perfusion effects (aligned with hemodynamic defaults).
         ci_adult = 3.0
         ci_elderly = 2.5
         ci = ci_elderly if patient.age > 70 else ci_adult
-        bsa = patient.bsa if patient.bsa > 0 else 1.9
-        self.baseline_co_l_min = max(0.1, ci * bsa)
+        self.baseline_co_l_min = max(0.1, ci * patient.bsa)
         # Drug Effect Parameters (literature-anchored where available, otherwise heuristic)
         # 
         # 1. Propofol - Separated effects for HCVR vs mechanical depression
@@ -399,11 +398,6 @@ class RespiratoryModel:
         
         # 9. CO2 Dynamics
         # PaCO2 approaches equilibrium based on VA and metabolic rate
-        va_baseline = self.va_baseline
-        if va_baseline <= 0:
-            va_baseline = 4.2  # Fallback baseline VA (L/min)
-            self.va_baseline = va_baseline
-        
         # Prevent division by zero; V/Q mismatch reduces effective CO2 elimination.
         vq_mismatch = clamp01_local(vq_mismatch)
         effective_va = max(0.1, total_va_l_min * (1.0 - 0.6 * vq_mismatch))
@@ -435,7 +429,7 @@ class RespiratoryModel:
             metabolic_factor = max(0.1, float(metabolic_factor))
         
         paco2_base = 40.0
-        paco2_eq = paco2_base * metabolic_factor * (va_baseline / effective_va)
+        paco2_eq = paco2_base * metabolic_factor * (self.va_baseline / effective_va)
         
         # Physiological ceiling (severe respiratory failure)
         paco2_eq = min(150.0, paco2_eq)

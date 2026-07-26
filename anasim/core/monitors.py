@@ -48,12 +48,10 @@ def monitor_collapse_active(engine: "SimulationEngine", raw_map: float, raw_hr: 
 
 def seed_nibp_reading(engine: "SimulationEngine") -> None:
     """Seed NIBP with an initial reading and start cycling immediately."""
-    if not engine.nibp or not engine.hemo:
-        return
     hemo_state = engine.hemo.state
     map_val = hemo_state.map
-    sbp_val = getattr(hemo_state, "sbp", map_val + 20.0)
-    dbp_val = getattr(hemo_state, "dbp", map_val - 20.0)
+    sbp_val = hemo_state.sbp
+    dbp_val = hemo_state.dbp
     ts = engine.state.time if engine.state.time > 0.0 else 1e-3
     engine.nibp.latest_reading = NIBPReading(sbp_val, dbp_val, map_val, ts)
     set_state_float_fields(
@@ -79,8 +77,8 @@ def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
         dt,
         state.time,
         hemo_state.map,
-        true_sys=getattr(hemo_state, "sbp", None),
-        rhythm_type=getattr(hemo_state, "rhythm_type", None),
+        true_sys=hemo_state.sbp,
+        rhythm_type=hemo_state.rhythm_type,
     )
 
     state.nibp_is_cycling = engine.nibp.is_cycling
@@ -218,28 +216,24 @@ def step_monitors(
         dt,
         state.roc_cp,
         mac_sevo=mac_sevo,
-        mac_n2o=getattr(state, "mac_n2o", 0.0),
+        mac_n2o=state.mac_n2o,
     )
     loc_val = engine.loc_pd.compute_probability(
         state.propofol_ce,
         state.remi_ce,
         mac_sevo=mac_sevo,
-        mac_n2o=getattr(state, "mac_n2o", 0.0),
+        mac_n2o=state.mac_n2o,
     )
-    if getattr(engine, "_tol_current", None) is not None:
+    if engine._tol_current is not None:
         tol_val = engine._tol_current
     else:
         tol_val = engine.tol_pd.compute_probability(state.propofol_ce, state.remi_ce)
 
-    rhythm = getattr(hemo_state, "rhythm_type", None)
+    rhythm = hemo_state.rhythm_type
     ecg_voltage = engine.ecg.step(dt, state_hr=hemo_state.hr, rhythm_type=rhythm)
 
     sao2 = state.sao2
-    base_co = getattr(engine.hemo, "base_co_l_min", None)
-    if base_co and base_co > 0:
-        co_ratio = hemo_state.co / base_co
-    else:
-        co_ratio = 1.0
+    co_ratio = hemo_state.co / engine.hemo.base_co_l_min
     perfusion = clamp(co_ratio, 0.05, 1.0)
     pleth, spo2_val = engine.spo2_mon.step(dt, hr=hemo_state.hr, saturation=sao2, perfusion=perfusion)
     state.spo2_signal_valid = engine.spo2_mon.signal_valid
@@ -262,9 +256,9 @@ def step_monitors(
     raw_hr = hemo_state.hr + noise[1]
     raw_bis = state.bis + noise[2]
 
-    alpha_map = exp_smoothing_alpha(dt, getattr(engine, "_monitor_tau_map_s", 1.5))
-    alpha_hr = exp_smoothing_alpha(dt, getattr(engine, "_monitor_tau_hr_s", 1.0))
-    alpha_bis = exp_smoothing_alpha(dt, getattr(engine, "_monitor_tau_bis_s", 2.0))
+    alpha_map = exp_smoothing_alpha(dt, engine._monitor_tau_map_s)
+    alpha_hr = exp_smoothing_alpha(dt, engine._monitor_tau_hr_s)
+    alpha_bis = exp_smoothing_alpha(dt, engine._monitor_tau_bis_s)
 
     if monitor_collapse_active(engine, hemo_state.map, hemo_state.hr, rhythm):
         engine.smooth_map = float(max(0.0, hemo_state.map))

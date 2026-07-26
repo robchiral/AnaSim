@@ -102,7 +102,6 @@ class ControlPanelWidget(QWidget):
         
     def _silent_update(self, widget, setter_name, value):
         """Silently update a widget without triggering its signals."""
-        if widget is None or not hasattr(widget, setter_name): return
         widget.blockSignals(True)
         getattr(widget, setter_name)(value)
         widget.blockSignals(False)
@@ -112,16 +111,16 @@ class ControlPanelWidget(QWidget):
         # Compute hash of key state values to skip redundant syncs
         # Most frames have no control changes, so this skips 90%+ of sync work
         sync_hash = hash((
-            getattr(self.engine.circuit, 'vaporizer_setting', 0) if self.engine.circuit else 0,
-            getattr(self.engine.circuit, 'fgf_o2', 0.0) if self.engine.circuit else 0.0,
-            getattr(self.engine.circuit, 'fgf_air', 0.0) if self.engine.circuit else 0.0,
-            getattr(self.engine.circuit, 'fgf_n2o', 0.0) if self.engine.circuit else 0.0,
-            getattr(self.engine.vent, 'is_on', False),
-            getattr(self.engine, 'maintenance_fluid_rate_ml_min', 0.0),
-            getattr(self.engine, 'disturbance_profile', None),
-            getattr(self.engine, 'disturbance_active', False),
-            getattr(self.engine, 'airway_obstruction_manual', 0),
-            getattr(self.engine.state, 'airway_mode', None),
+            self.engine.circuit.vaporizer_setting,
+            self.engine.circuit.fgf_o2,
+            self.engine.circuit.fgf_air,
+            self.engine.circuit.fgf_n2o,
+            self.engine.vent.is_on,
+            self.engine.maintenance_fluid_rate_ml_min,
+            self.engine.disturbance_profile,
+            self.engine.disturbance_active,
+            self.engine.airway_obstruction_manual,
+            self.engine.state.airway_mode,
         ))
         if sync_hash == self._last_sync_hash:
             return
@@ -136,139 +135,130 @@ class ControlPanelWidget(QWidget):
 
     def _sync_gases_and_airway(self):
         """Sync gases, vaporizer, and airway choices."""
-        if self.engine.circuit and hasattr(self.engine.circuit, 'vaporizer_setting'):
-            idx = self.cb_agent.findText(self.engine.active_agent)
-            if idx >= 0:
-                self.cb_agent.setCurrentIndex(idx)
-            
-            self._silent_update(self.sb_vap, 'setValue', self.engine.circuit.vaporizer_setting)
+        idx = self.cb_agent.findText(self.engine.active_agent)
+        if idx >= 0:
+            self.cb_agent.setCurrentIndex(idx)
 
-            if hasattr(self, "sb_o2"):
-                self._silent_update(self.sb_o2, 'setValue', getattr(self.engine.circuit, "fgf_o2", 0.0))
-            if hasattr(self, "sb_air"):
-                self._silent_update(self.sb_air, 'setValue', getattr(self.engine.circuit, "fgf_air", 0.0))
-            if hasattr(self, "sb_n2o"):
-                self._silent_update(self.sb_n2o, 'setValue', getattr(self.engine.circuit, "fgf_n2o", 0.0))
+        circuit = self.engine.circuit
+        self._silent_update(self.sb_vap, 'setValue', circuit.vaporizer_setting)
+        self._silent_update(self.sb_o2, 'setValue', circuit.fgf_o2)
+        self._silent_update(self.sb_air, 'setValue', circuit.fgf_air)
+        self._silent_update(self.sb_n2o, 'setValue', circuit.fgf_n2o)
 
-            o2 = getattr(self.engine.circuit, "fgf_o2", 0.0)
-            air = getattr(self.engine.circuit, "fgf_air", 0.0)
-            n2o = getattr(self.engine.circuit, "fgf_n2o", 0.0)
-            total = o2 + air + n2o
-            fio2 = (o2 + 0.21 * air) / total if total > 0 else 0.21
-            self.lbl_fio2.setText(f"{int(fio2*100)}%")
-            
-        if hasattr(self.engine.state, 'airway_mode'):
-            mode = self.engine.state.airway_mode
-            self.abg_air.blockSignals(True)
-            if mode == AirwayType.NONE:
-                self.rb_none.setChecked(True)
-            elif mode == AirwayType.MASK:
-                self.rb_mask.setChecked(True)
-            elif mode == AirwayType.ETT:
-                self.rb_ett.setChecked(True)
-            self.abg_air.blockSignals(False)
+        total = circuit.fgf_total()
+        fio2 = (circuit.fgf_o2 + 0.21 * circuit.fgf_air) / total if total > 0 else 0.21
+        self.lbl_fio2.setText(f"{int(fio2*100)}%")
+
+        mode = self.engine.state.airway_mode
+        self.abg_air.blockSignals(True)
+        if mode == AirwayType.NONE:
+            self.rb_none.setChecked(True)
+        elif mode == AirwayType.MASK:
+            self.rb_mask.setChecked(True)
+        elif mode == AirwayType.ETT:
+            self.rb_ett.setChecked(True)
+        self.abg_air.blockSignals(False)
 
     def _sync_drugs(self):
         """Sync TIVA and programmed bolus states."""
         for key, w in self.drug_widgets.items():
-            if hasattr(self.engine, 'get_drug_state'):
-                dstate = self.engine.get_drug_state(key)
-                
-                self._silent_update(w['rb_tci'], 'setChecked', dstate['is_tci'])
-                self._silent_update(w['rb_man'], 'setChecked', not dstate['is_tci'])
-                self._silent_update(w['target'], 'setValue', dstate['target'])
-                self._silent_update(w['rate'], 'setValue', dstate['rate'])
-                
-                if dstate['is_tci']:
-                    w['target'].setEnabled(True)
-                    w['rate'].setEnabled(False)
+            dstate = self.engine.get_drug_state(key)
+
+            self._silent_update(w['rb_tci'], 'setChecked', dstate['is_tci'])
+            self._silent_update(w['rb_man'], 'setChecked', not dstate['is_tci'])
+            self._silent_update(w['target'], 'setValue', dstate['target'])
+            self._silent_update(w['rate'], 'setValue', dstate['rate'])
+
+            if dstate['is_tci']:
+                w['target'].setEnabled(True)
+                w['rate'].setEnabled(False)
+            else:
+                w['rate'].setEnabled(True)
+                w['target'].setEnabled(False)
+
+            if w['csht_label'] is not None:
+                csht = self.engine.get_predicted_csht(key)
+                if csht > 0:
+                    w['csht_label'].setText(f"Predicted Ce t\u00bd: ~{csht:.0f} min")
+                    w['csht_label'].setToolTip(
+                        "Estimated PK effect-site half-time from the current model state; not a guaranteed wake-up time."
+                    )
+                    w['csht_label'].show()
                 else:
-                    w['rate'].setEnabled(True)
-                    w['target'].setEnabled(False)
-                
-                if 'csht_label' in w and w['csht_label'] is not None and hasattr(self.engine, 'get_predicted_csht'):
-                    csht = self.engine.get_predicted_csht(key)
-                    if csht > 0:
-                        w['csht_label'].setText(f"Predicted Ce t\u00bd: ~{csht:.0f} min")
-                        w['csht_label'].setToolTip(
-                            "Estimated PK effect-site half-time from the current model state; not a guaranteed wake-up time."
-                        )
-                        w['csht_label'].show()
-                    else:
-                        w['csht_label'].hide()
+                    w['csht_label'].hide()
 
     def _sync_ventilator(self):
         """Sync ventilator settings."""
-        if hasattr(self.engine, 'vent'):
-            is_on = self.engine.vent.is_on
-            self._silent_update(self.btn_vent_power, 'setChecked', is_on)
-            
-            if is_on:
-                self.btn_vent_power.setText("Ventilator ON")
-                self.sb_rr.setEnabled(True)
-                self.sb_tv.setEnabled(True)
-                self.sb_peep.setEnabled(True)
-                self.cb_ie.setEnabled(True)
-                if hasattr(self.engine.vent, 'settings'):
-                    s = self.engine.vent.settings
-                    self._silent_update(self.sb_rr, 'setValue', int(s.rr))
-                    self._silent_update(self.sb_tv, 'setValue', int(s.tv))
-                    self._silent_update(self.sb_peep, 'setValue', int(s.peep))
-            else:
-                self.btn_vent_power.setText("Spontaneous / Manual")
-                self.sb_rr.setEnabled(False)
-                self.sb_tv.setEnabled(False)
-                self.sb_peep.setEnabled(False)
-                self.cb_ie.setEnabled(False)
+        is_on = self.engine.vent.is_on
+        self._silent_update(self.btn_vent_power, 'setChecked', is_on)
+
+        if is_on:
+            self.btn_vent_power.setText("Ventilator ON")
+            self.sb_rr.setEnabled(True)
+            self.sb_tv.setEnabled(True)
+            self.sb_peep.setEnabled(True)
+            self.cb_ie.setEnabled(True)
+            settings = self.engine.vent.settings
+            self._silent_update(self.sb_rr, 'setValue', int(settings.rr))
+            self._silent_update(self.sb_tv, 'setValue', int(settings.tv))
+            self._silent_update(self.sb_peep, 'setValue', int(settings.peep))
+        else:
+            self.btn_vent_power.setText("Spontaneous / Manual")
+            self.sb_rr.setEnabled(False)
+            self.sb_tv.setEnabled(False)
+            self.sb_peep.setEnabled(False)
+            self.cb_ie.setEnabled(False)
 
     def _sync_fluids(self):
         """Sync continuous fluid rate."""
-        if hasattr(self, "sb_cont_fluid") and hasattr(self.engine, "get_continuous_fluid_rate"):
-            self._silent_update(self.sb_cont_fluid, 'setValue', self.engine.get_continuous_fluid_rate())
+        self._silent_update(self.sb_cont_fluid, 'setValue', self.engine.get_continuous_fluid_rate())
 
     def _sync_disturbances(self):
         """Sync programmed disturbance states."""
-        if hasattr(self, "cb_disturbance"):
-            profile = getattr(self.engine, "disturbance_profile", None)
-            idx = next((i for i, (_, key) in enumerate(self._disturbance_profiles) if key == profile), 0)
-            self._silent_update(self.cb_disturbance, 'setCurrentIndex', idx)
+        profile = self.engine.disturbance_profile
+        idx = next((i for i, (_, key) in enumerate(self._disturbance_profiles) if key == profile), 0)
+        self._silent_update(self.cb_disturbance, 'setCurrentIndex', idx)
 
-            active = bool(getattr(self.engine, "disturbance_active", False) and profile)
-            self._silent_update(self.b_disturb, 'setChecked', active)
-            self.b_disturb.setText("Stop stimulation" if active else "Start stimulation")
-            self.b_disturb.setEnabled(profile is not None)
-            self.cb_disturbance.setEnabled(not active)
+        active = bool(self.engine.disturbance_active and profile)
+        self._silent_update(self.b_disturb, 'setChecked', active)
+        self.b_disturb.setText("Stop stimulation" if active else "Start stimulation")
+        self.b_disturb.setEnabled(profile is not None)
+        self.cb_disturbance.setEnabled(not active)
 
     def _sync_airway_complications(self):
         """Sync airway obstruction and laryngospasm."""
-        if hasattr(self, "sb_obstruction"):
-            obs = getattr(self.engine, "airway_obstruction_manual", 0.0) * 100.0
-            bron = getattr(self.engine, "bronchospasm_manual", 0.0) * 100.0
-            self._silent_update(self.sb_obstruction, 'setValue', obs)
-            self._silent_update(self.sb_bronchospasm, 'setValue', bron)
+        self._silent_update(
+            self.sb_obstruction,
+            'setValue',
+            self.engine.airway_obstruction_manual * 100.0,
+        )
+        self._silent_update(
+            self.sb_bronchospasm,
+            'setValue',
+            self.engine.bronchospasm_manual * 100.0,
+        )
 
-            laryng = getattr(self.engine, "laryngospasm_severity", 0.0)
-            if laryng < 0.05:
-                level = "none"
-            elif laryng < 0.3:
-                level = "mild"
-            elif laryng < 0.6:
-                level = "moderate"
-            else:
-                level = "severe"
-            self.lbl_laryngo_status.setText(f"Laryngospasm: {level}")
+        laryng = self.engine.laryngospasm_severity
+        if laryng < 0.05:
+            level = "none"
+        elif laryng < 0.3:
+            level = "mild"
+        elif laryng < 0.6:
+            level = "moderate"
+        else:
+            level = "severe"
+        self.lbl_laryngo_status.setText(f"Laryngospasm: {level}")
 
-            auto_on = bool(getattr(self.engine, "auto_laryngospasm_enabled", True))
-            if hasattr(self, "btn_auto_laryngo"):
-                self._silent_update(self.btn_auto_laryngo, 'setChecked', auto_on)
-                self.btn_auto_laryngo.setText(
-                    "Auto laryngospasm: ON" if auto_on else "Auto laryngospasm: OFF"
-                )
+        auto_on = self.engine.auto_laryngospasm_enabled
+        self._silent_update(self.btn_auto_laryngo, 'setChecked', auto_on)
+        self.btn_auto_laryngo.setText(
+            "Auto laryngospasm: ON" if auto_on else "Auto laryngospasm: OFF"
+        )
         
     def update_fgf(self):
         o2 = self.sb_o2.value()
         air = self.sb_air.value()
-        n2o = self.sb_n2o.value() if hasattr(self, "sb_n2o") else 0.0
+        n2o = self.sb_n2o.value()
         total = o2 + air + n2o
         if total > 0:
             fio2 = (o2 + 0.21 * air) / total
@@ -276,23 +266,20 @@ class ControlPanelWidget(QWidget):
             fio2 = 0.21
         self.lbl_fio2.setText(f"{int(fio2*100)}%")
         
-        if hasattr(self.engine, 'set_fgf'):
-            self.engine.set_fgf(o2, air, n2o)
+        self.engine.set_fgf(o2, air, n2o)
             
     def update_vaporizer(self):
         val = self.sb_vap.value()
         agent = self.cb_agent.currentText()
-        if hasattr(self.engine, 'set_vaporizer'):
-            self.engine.set_vaporizer(agent, val)
+        self.engine.set_vaporizer(agent, val)
 
     def update_airway(self, btn):
         mode = btn.property("airway_mode") or "None"
         
-        if mode == "ETT" and hasattr(self, 'btn_bag_mask') and self.btn_bag_mask.isChecked():
+        if mode == "ETT" and self.btn_bag_mask.isChecked():
             self.btn_bag_mask.setChecked(False)
-        
-        if hasattr(self.engine, 'set_airway_mode'):
-            self.engine.set_airway_mode(mode)
+
+        self.engine.set_airway_mode(mode)
         
     def setup_machine_tab(self):
         """Combined Airway, Gases, and Ventilator controls."""
@@ -520,8 +507,8 @@ class ControlPanelWidget(QWidget):
         
         self.add_tutorial_label(layout, "TCI (Target Controlled Infusion) uses pharmacokinetic models to target a specific concentration in the blood or brain. Manual mode sets a fixed rate.")
          
-        def create_drug_box(name, unit_rate, tci_unit, tci_range, set_rate_cb, set_tci_cb, key_name, def_bolus, bolus_unit, color):
-            gb = QGroupBox(name)
+        def create_drug_box(spec, set_rate_cb, set_tci_cb, color):
+            gb = QGroupBox(spec.name)
             gb.setStyleSheet(STYLE_GROUPBOX)
             l = QVBoxLayout(gb)
             l.setSpacing(8)
@@ -542,15 +529,12 @@ class ControlPanelWidget(QWidget):
             # Controls
             sb_rate = QDoubleSpinBox()
             sb_rate.setRange(0, 2000)
-            sb_rate.setSuffix(f" {unit_rate}")
+            sb_rate.setSuffix(f" {spec.rate_unit}")
             sb_rate.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             
             sb_target = QDoubleSpinBox()
-            if tci_range:
-                sb_target.setRange(float(tci_range[0]), float(tci_range[1]))
-            else:
-                sb_target.setRange(0, 20)
-            sb_target.setSuffix(f" {tci_unit}")
+            sb_target.setRange(*spec.tci_range)
+            sb_target.setSuffix(f" {spec.tci_unit}")
             sb_target.setEnabled(False)
             sb_target.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
@@ -592,18 +576,12 @@ class ControlPanelWidget(QWidget):
             sb_bolus = QDoubleSpinBox()
             sb_bolus.setRange(0, 1000)
             
-            if bolus_unit:
-                sb_bolus.setSuffix(f" {bolus_unit}")
-            elif "mg" in unit_rate:
-                sb_bolus.setSuffix(" mg")
-            else:
-                sb_bolus.setSuffix(" mcg")
-                
-            sb_bolus.setValue(def_bolus)
+            sb_bolus.setSuffix(f" {spec.bolus_unit}")
+            sb_bolus.setValue(spec.default_bolus)
                 
             btn_give = QPushButton("Bolus")
             btn_give.setStyleSheet(get_button_style(bg_color=color, padding="6px 14px"))
-            btn_give.clicked.connect(lambda: self.engine.give_drug_bolus(name, sb_bolus.value()))
+            btn_give.clicked.connect(lambda: self.engine.give_drug_bolus(spec.key, sb_bolus.value()))
             
             h_bolus.addWidget(sb_bolus)
             h_bolus.addWidget(btn_give)
@@ -612,13 +590,13 @@ class ControlPanelWidget(QWidget):
             
             # PK effect-site half-time estimate for propofol and remi.
             lbl_csht = None
-            if key_name in ('propofol', 'remi'):
+            if spec.key in ('propofol', 'remi'):
                 lbl_csht = QLabel()
                 lbl_csht.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px; font-style: italic;")
                 lbl_csht.hide()  # Hidden until drug active
                 l.addWidget(lbl_csht)
             
-            self.drug_widgets[key_name] = {
+            self.drug_widgets[spec.key] = {
                 'rb_man': rb_man,
                 'rb_tci': rb_tci,
                 'rate': sb_rate,
@@ -628,11 +606,6 @@ class ControlPanelWidget(QWidget):
             }
             
             return gb
-
-        if not hasattr(self.engine, 'get_controllable_drugs'):
-            layout.addWidget(QLabel("Error: Engine does not support drug interface."))
-            layout.addStretch()
-            return
 
         drugs = self.engine.get_controllable_drugs()
         
@@ -649,8 +622,8 @@ class ControlPanelWidget(QWidget):
             'milri': COLORS['drug_inotrope'],
         }
         
-        for d in drugs:
-            key = d['key']
+        for spec in drugs:
+            key = spec.key
             color = drug_colors.get(key, COLORS['primary'])
             
             def make_set_rate(k):
@@ -660,16 +633,10 @@ class ControlPanelWidget(QWidget):
                 return lambda v: self.engine.set_drug_target(k, v)
 
             gb = create_drug_box(
-                d['name'], 
-                d['rate_unit'], 
-                d['tci_unit'],
-                d.get('tci_range'),
+                spec,
                 make_set_rate(key),
                 make_set_tci(key),
-                key,
-                d['default_bolus'],
-                d.get('bolus_unit'),
-                color
+                color,
             )
             layout.addWidget(gb)
 
@@ -718,7 +685,7 @@ class ControlPanelWidget(QWidget):
         if checked:
             self.btn_vent_power.setText("Ventilator ON")
             # Turn off bag-mask when switching to mechanical vent (mutually exclusive)
-            if hasattr(self, 'btn_bag_mask') and self.btn_bag_mask.isChecked():
+            if self.btn_bag_mask.isChecked():
                 self.btn_bag_mask.setChecked(False)
             self.sb_rr.setEnabled(True)
             self.sb_peep.setEnabled(True)
@@ -850,10 +817,7 @@ class ControlPanelWidget(QWidget):
 
         b_albumin = QPushButton("Albumin 250 mL")
         b_albumin.setStyleSheet(get_button_style(variant="success", padding="6px 10px", min_width=120))
-        if hasattr(self.engine, "give_albumin"):
-            b_albumin.clicked.connect(lambda: self.engine.give_albumin(250))
-        else:
-            b_albumin.setEnabled(False)
+        b_albumin.clicked.connect(lambda: self.engine.give_albumin(250))
 
         b_prbc = QPushButton("PRBC 300 mL")
         b_prbc.setStyleSheet(get_button_style(variant="primary", padding="6px 10px", min_width=120))
@@ -876,8 +840,7 @@ class ControlPanelWidget(QWidget):
         self.sb_cont_fluid.setSuffix(" mL/hr")
         self.sb_cont_fluid.setToolTip("Continuous IV fluids (mL/hr)")
         self.sb_cont_fluid.setMaximumWidth(140)
-        if hasattr(self.engine, "get_continuous_fluid_rate"):
-            self.sb_cont_fluid.setValue(self.engine.get_continuous_fluid_rate())
+        self.sb_cont_fluid.setValue(self.engine.get_continuous_fluid_rate())
         self.sb_cont_fluid.valueChanged.connect(
             lambda v: self.engine.set_continuous_fluid_rate(v)
         )
@@ -1014,14 +977,12 @@ class ControlPanelWidget(QWidget):
             self.b_disturb.setEnabled(False)
             if self.b_disturb.isChecked():
                 self.b_disturb.setChecked(False)
-            if hasattr(self.engine, "stop_disturbance"):
-                self.engine.stop_disturbance(clear_profile=True)
+            self.engine.stop_disturbance(clear_profile=True)
             return
 
         self.b_disturb.setEnabled(True)
-        if hasattr(self.engine, "set_disturbance_profile"):
-            self.engine.set_disturbance_profile(profile)
-        if self.b_disturb.isChecked() and hasattr(self.engine, "start_disturbance"):
+        self.engine.set_disturbance_profile(profile)
+        if self.b_disturb.isChecked():
             self.engine.start_disturbance(profile)
 
     def toggle_disturbance(self, checked):
@@ -1032,13 +993,11 @@ class ControlPanelWidget(QWidget):
                 return
             self.b_disturb.setText("Stop Stimulation")
             self.cb_disturbance.setEnabled(False)
-            if hasattr(self.engine, "start_disturbance"):
-                self.engine.start_disturbance(profile)
+            self.engine.start_disturbance(profile)
         else:
             self.b_disturb.setText("Start Stimulation")
             self.cb_disturbance.setEnabled(True)
-            if hasattr(self.engine, "stop_disturbance"):
-                self.engine.stop_disturbance()
+            self.engine.stop_disturbance()
 
     def _toggle_simple_event(self, button, checked, start_fn, stop_fn, label):
         """Shared toggle behavior for simple on/off events."""
@@ -1084,35 +1043,28 @@ class ControlPanelWidget(QWidget):
 
     def update_airway_obstruction(self, value):
         """Manual upper airway obstruction (0-100%)."""
-        if hasattr(self.engine, "set_airway_obstruction"):
-            self.engine.set_airway_obstruction(value / 100.0)
+        self.engine.set_airway_obstruction(value / 100.0)
 
     def update_bronchospasm(self, value):
         """Manual bronchospasm severity (0-100%)."""
-        if hasattr(self.engine, "set_bronchospasm"):
-            self.engine.set_bronchospasm(value / 100.0)
+        self.engine.set_bronchospasm(value / 100.0)
 
     def update_auto_laryngospasm(self, checked):
         """Toggle auto-triggered laryngospasm."""
-        if hasattr(self, "btn_auto_laryngo"):
-            self.btn_auto_laryngo.setText(
-                "Auto laryngospasm: ON" if checked else "Auto laryngospasm: OFF"
-            )
-        if hasattr(self.engine, "set_auto_laryngospasm"):
-            self.engine.set_auto_laryngospasm(checked)
+        self.btn_auto_laryngo.setText(
+            "Auto laryngospasm: ON" if checked else "Auto laryngospasm: OFF"
+        )
+        self.engine.set_auto_laryngospasm(checked)
             
     def stop_all_events(self):
         for button in (self.b_hem, self.b_anaph, self.b_sepsis):
             button.setChecked(False)
-        if hasattr(self, "b_disturb"):
-            self.b_disturb.setChecked(False)
-        if hasattr(self.engine, 'stop_events'):
-            self.engine.stop_events()
+        self.b_disturb.setChecked(False)
+        self.engine.stop_events()
             
     def change_bair_hugger(self, index):
         """Handle Bair Hugger setting change."""
         targets = {1: 32.0, 2: 38.0, 3: 43.0}
         target = targets.get(index, 0.0)
         
-        if hasattr(self.engine, 'set_bair_hugger'):
-            self.engine.set_bair_hugger(target)
+        self.engine.set_bair_hugger(target)

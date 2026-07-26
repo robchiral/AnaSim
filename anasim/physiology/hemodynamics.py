@@ -65,8 +65,8 @@ class HemodynamicModel:
         # =====================================================================
 
         # Hemoglobin / hematocrit baselines
-        self.baseline_hb = getattr(patient, 'baseline_hb', self.baseline_hb)
-        self.baseline_hct = getattr(patient, 'baseline_hct', self.baseline_hct)
+        self.baseline_hb = patient.baseline_hb
+        self.baseline_hct = patient.baseline_hct
 
         # Baseline HR from anasim.patient or default
         self.base_hr = patient.baseline_hr if patient.baseline_hr > 0 else self.base_hr
@@ -142,10 +142,7 @@ class HemodynamicModel:
         # =========================================================================
         
         # --- Blood Volume Tracking (MCFP / Stressed Volume) ---
-        if hasattr(patient, 'estimate_blood_volume'):
-            self.blood_volume = patient.estimate_blood_volume()
-        else:
-            self.blood_volume = self.default_blood_volume  # Default 5L
+        self.blood_volume = patient.estimate_blood_volume()
         self.blood_volume_0 = self.blood_volume  # Save baseline for hemorrhage calc
         self.hb_mass = self.baseline_hb * (self.blood_volume / 100.0)  # grams
         self.hb_conc = self.baseline_hb
@@ -196,7 +193,7 @@ class HemodynamicModel:
         self._rhythm_type = RhythmType.SINUS
         self.f_preload_pit = 1.0
         self.vasopressor_sv_factor = 1.0
-        self._prev_map = getattr(patient, "baseline_map", 90.0)
+        self._prev_map = patient.baseline_map
 
         self._refresh_hill_params()
 
@@ -205,7 +202,7 @@ class HemodynamicModel:
             setattr(self, name, value)
         self._hill_cache.clear()
         self._refresh_hill_params()
-        if getattr(self, "_base_values_final", False):
+        if self._base_values_final:
             self._refresh_cached_constants()
 
     def _refresh_hill_params(self) -> None:
@@ -237,7 +234,7 @@ class HemodynamicModel:
     @sepsis_severity.setter
     def sepsis_severity(self, value: float) -> None:
         value = clamp01(value)
-        if value != getattr(self, "_sepsis_severity", None):
+        if value != self._sepsis_severity:
             self._sepsis_severity = value
             self.invalidate_state_cache()
 
@@ -248,7 +245,7 @@ class HemodynamicModel:
     @anaphylaxis_severity.setter
     def anaphylaxis_severity(self, value: float) -> None:
         value = clamp01(value)
-        if value != getattr(self, "_anaphylaxis_severity", None):
+        if value != self._anaphylaxis_severity:
             self._anaphylaxis_severity = value
             self.invalidate_state_cache()
 
@@ -258,7 +255,7 @@ class HemodynamicModel:
 
     @rhythm_type.setter
     def rhythm_type(self, value: RhythmType) -> None:
-        if value != getattr(self, "_rhythm_type", None):
+        if value != self._rhythm_type:
             self._rhythm_type = value
             self.invalidate_state_cache()
 
@@ -897,35 +894,16 @@ class HemodynamicModel:
     @state.setter
     def state(self, new_state: HemoState):
         self._cached_state = None
-        
-        if isinstance(new_state, HemoStateExtended):
-            self.tpr = new_state.tpr
-            self.sv_star = new_state.sv_star
-            self.hr_star = new_state.hr_star
-            self.tde_sv = new_state.tde_sv
-            self.tde_hr = new_state.tde_hr
-            self.ce_sevo = new_state.ce_sevo
-            self.rhythm_type = new_state.rhythm_type
 
-        else:
-            # Fallback for vanilla HemoState (approximation)
-            # Assuming TDEs are 0 (steady state forced)
-            self.tde_sv = 0.0
-            self.tde_hr = 0.0
-            
-            self.hr_star = new_state.hr
-            
-            # SV = SV_star * (1 - k * ln(HR/Base))
-            term = 1.0 - self.hr_sv_coupling * math.log(max(1.0, self.hr_star / self.base_hr))
-            if term < 0.1: term = 0.1
-            self.sv_star = new_state.sv / term
-            
-            # TPR = MAP / (HR * SV)
-            denom = new_state.hr * new_state.sv
-            if denom > 0:
-                self.tpr = new_state.map / denom
-            else:
-                self.tpr = self.base_tpr
+        if not isinstance(new_state, HemoStateExtended):
+            raise TypeError("Hemodynamic state must be HemoStateExtended")
+        self.tpr = new_state.tpr
+        self.sv_star = new_state.sv_star
+        self.hr_star = new_state.hr_star
+        self.tde_sv = new_state.tde_sv
+        self.tde_hr = new_state.tde_hr
+        self.ce_sevo = new_state.ce_sevo
+        self.rhythm_type = new_state.rhythm_type
                 
     def _calc_hr(self):
         # Includes base HR star, slow drifts, and rate-limited fast effects
@@ -937,13 +915,6 @@ class HemodynamicModel:
         term = 1.0 - self.hr_sv_coupling * math.log(max(1.0, hr / self.base_hr))
         term = max(0.1, term)  # Prevent negative SV at extreme HR
         return (self.sv_star + self.tde_sv) * term
-        
-    def _calc_map(self):
-        # MAP proxy (mmHg) from current HR/SV/TPR state
-        return self._calc_hr() * self._calc_sv() * self.tpr
-        
-    def _calc_co(self):
-        return self._calc_hr() * self._calc_sv() / 1000.0 # L/min
         
     def step(self, dt: float, cp_prop: float, cp_remi: float, ce_nore: float, pit: float, paco2: float, pao2: float,
              dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0,
@@ -990,16 +961,18 @@ class HemodynamicModel:
         
         # --- 0.1 Volume Clearance ---
         # Reduce blood volume by clearance (urine, etc.), scaled by perfusion.
-        map_prev = self._prev_map if self._prev_map > 0 else getattr(self.patient, "baseline_map", 90.0)
+        map_prev = self._prev_map if self._prev_map > 0 else self.patient.baseline_map
         map_denom = max(1e-3, self.renal_map_norm - self.renal_map_min)
         renal_factor = clamp01((map_prev - self.renal_map_min) / map_denom)
-        renal_factor *= max(0.0, getattr(self.patient, "renal_function", 1.0))
+        renal_factor *= max(0.0, self.patient.renal_function)
         base_clearance_ml_min = 0.0
         if self.vol_clearance is not None:
             base_clearance_ml_min = max(0.0, float(self.vol_clearance))
         else:
-            weight = max(0.0, float(getattr(self.patient, "weight", 0.0)))
-            base_clearance_ml_min = max(0.0, self.uop_ml_kg_hr * weight / 60.0)
+            base_clearance_ml_min = max(
+                0.0,
+                self.uop_ml_kg_hr * self.patient.weight / 60.0,
+            )
         urine_out_ml = min(
             base_clearance_ml_min * renal_factor * dt_min,
             max(0.0, self.blood_volume - BLOOD_VOLUME_MIN),

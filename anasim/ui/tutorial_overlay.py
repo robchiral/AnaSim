@@ -8,13 +8,7 @@ Scenarios are defined in ui/scenarios/ as data classes.
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QProgressBar
 from PySide6.QtCore import Qt
 
-from .scenarios import (
-    Scenario,
-    SCENARIO_BUILDERS,
-    create_induction_balanced,
-    create_induction_tiva,
-    create_emergence,
-)
+from .scenarios import Scenario
 from .styles import COLORS, get_overlay_style, get_button_style, STYLE_PROGRESSBAR
 
 
@@ -172,8 +166,3 @@ class ScenarioOverlay(QFrame):
             self.btn_next.setEnabled(False)
             self.btn_next.setText("Complete")
             self.lbl_status.setText("")
-            
-    def click_next(self):
-        """Programmatic click for testing."""
-        if self.requirements_met:
-            self.on_next_clicked()

@@ -395,28 +395,27 @@ class PatientMonitorWidget(QWidget):
 
         self.num_hr.set_value(f"{int(display_hr)}")
         self.num_spo2.set_value(
-            f"{int(display_spo2)}" if getattr(state, "spo2_signal_valid", True) else "--"
+            f"{int(display_spo2)}" if state.spo2_signal_valid else "--"
         )
         
         if self.arterial_line_enabled:
             self.num_map.set_value(f"{int(display_sbp)}/{int(display_dbp)} ({int(display_map)})")
         else:
-            ts = getattr(state, 'nibp_timestamp', 0.0)
-            is_cycling = getattr(state, 'nibp_is_cycling', False)
-            cuff = getattr(state, 'nibp_cuff_pressure', 0.0)
+            ts = state.nibp_timestamp
+            is_cycling = state.nibp_is_cycling
+            cuff = state.nibp_cuff_pressure
             
             if is_cycling:
                 self.num_nibp.set_value(f"Cuff: {int(cuff)}")
             elif ts <= 0.0:
                 self.num_nibp.set_value("--/-- (--)")
             else:
-                sys = getattr(state, 'nibp_sys', 0)
-                dia = getattr(state, 'nibp_dia', 0)
-                mean = getattr(state, 'nibp_map', 0)
-                self.num_nibp.set_value(f"{int(sys)}/{int(dia)} ({int(mean)})")
+                self.num_nibp.set_value(
+                    f"{int(state.nibp_sys)}/{int(state.nibp_dia)} ({int(state.nibp_map)})"
+                )
 
         self.num_etco2.set_value(
-            f"{int(display_etco2)}" if getattr(state, "etco2_signal_valid", False) else "--"
+            f"{int(display_etco2)}" if state.etco2_signal_valid else "--"
         )
         self.num_rr.set_value(f"{int(state.rr)}")
         
@@ -424,11 +423,11 @@ class PatientMonitorWidget(QWidget):
         self.num_tof.set_value(f"{int(state.tof)}%")
         self.num_temp.set_value(f"{state.temp_c:.1f}")
 
-        fluid_in = getattr(state, 'fluid_in_ml', 0.0)
-        blood_in = getattr(state, 'blood_in_ml', 0.0)
-        urine_out = getattr(state, 'urine_out_ml', 0.0)
-        blood_out = getattr(state, 'blood_out_ml', 0.0)
-        net = getattr(state, 'net_fluid_ml', fluid_in + blood_in - urine_out - blood_out)
+        fluid_in = state.fluid_in_ml
+        blood_in = state.blood_in_ml
+        urine_out = state.urine_out_ml
+        blood_out = state.blood_out_ml
+        net = state.net_fluid_ml
         self.lbl_io_detail.setText(
             f"In F{fluid_in:.0f} B{blood_in:.0f} | Out U{urine_out:.0f} B{blood_out:.0f}"
         )
@@ -505,13 +504,13 @@ class PatientMonitorWidget(QWidget):
             self.art_curve.setData(self.art_data)
 
     def update_alarms(self, state):
-        alarms = getattr(state, 'alarms', {}) or {}
+        alarms = state.alarms
         
         # Handle NIBP auto-alarm logic if Art line is off
         if not self.arterial_line_enabled:
             # Check for NIBP MAP alarm if not provided
-            if getattr(state, 'nibp_timestamp', 0) > 0:
-                nmap = getattr(state, 'nibp_map', 0)
+            if state.nibp_timestamp > 0:
+                nmap = state.nibp_map
                 if nmap < 60: alarms['MAP'] = {'low': True}
                 elif nmap > 110: alarms['MAP'] = {'high': True}
         
@@ -534,4 +533,3 @@ class PatientMonitorWidget(QWidget):
                     continue
             
             widget.set_alarm(False)
-

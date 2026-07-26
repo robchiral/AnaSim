@@ -80,20 +80,19 @@ def join_messages(messages) -> str:
 
 
 def cumulative_fluid_given(engine) -> float:
-    """Return tracked cumulative fluid resuscitation, if available."""
-    hemo = getattr(engine, "hemo", None)
-    return float(getattr(hemo, "cumulative_fluid_given", 0.0)) if hemo else 0.0
+    """Return tracked cumulative fluid resuscitation."""
+    return float(engine.hemo.cumulative_fluid_given)
 
 
 def any_vasopressor_running(engine) -> bool:
     """Return True when a supported vasopressor is active."""
     return any((
-        getattr(engine, "nore_rate_ug_sec", 0.0) > 0
-        or (getattr(engine, "tci_nore", None) and engine.tci_nore.target > 0),
-        getattr(engine, "phenyl_rate_ug_sec", 0.0) > 0
-        or (getattr(engine, "tci_phenyl", None) and engine.tci_phenyl.target > 0),
-        getattr(engine, "epi_rate_ug_sec", 0.0) > 0
-        or (getattr(engine, "tci_epi", None) and engine.tci_epi.target > 0),
+        engine.nore_rate_ug_sec > 0
+        or (engine.tci_nore and engine.tci_nore.target > 0),
+        engine.phenyl_rate_ug_sec > 0
+        or (engine.tci_phenyl and engine.tci_phenyl.target > 0),
+        engine.epi_rate_ug_sec > 0
+        or (engine.tci_epi and engine.tci_epi.target > 0),
     ))
 
 
@@ -136,7 +135,7 @@ def require_vasopressor_running(fail_message: str) -> Callable:
 def require_crisis_active(attr: str, fail_message: str) -> Callable:
     """Check that a crisis event flag is True on the engine."""
     def check(engine) -> Tuple[bool, str]:
-        if getattr(engine, attr, False):
+        if getattr(engine, attr):
             return True, ""
         return False, fail_message
     return check
@@ -145,7 +144,7 @@ def require_crisis_active(attr: str, fail_message: str) -> Callable:
 def require_crisis_stopped(attr: str, fail_message: str) -> Callable:
     """Check that a crisis event flag is False on the engine."""
     def check(engine) -> Tuple[bool, str]:
-        if not getattr(engine, attr, False):
+        if not getattr(engine, attr):
             return True, ""
         return False, fail_message
     return check
@@ -157,7 +156,7 @@ def require_crisis_resolved_with_map(
     """Check that a crisis flag is False and MAP exceeds a threshold."""
     def check(engine) -> Tuple[bool, str]:
         map_val = monitor_value(engine, "map")
-        resolved = not getattr(engine, attr, False)
+        resolved = not getattr(engine, attr)
         if resolved and map_val > map_threshold:
             return True, ""
         msgs = []
@@ -175,15 +174,6 @@ def require_bis_below(threshold: float) -> Callable:
         bis = monitor_value(engine, "bis")
         met = bis < threshold
         return met, "" if met else f"BIS: {bis:.0f}/<{threshold:.0f}"
-    return check
-
-
-def require_bis_above(threshold: float) -> Callable:
-    """Check BIS above threshold."""
-    def check(engine) -> Tuple[bool, str]:
-        bis = monitor_value(engine, "bis")
-        met = bis > threshold
-        return met, "" if met else f"BIS: {bis:.0f}/{threshold:.0f}+"
     return check
 
 
@@ -259,13 +249,6 @@ def require_all(*checks) -> Callable:
             return True, ""
         return False, join_messages(all_msgs)
     return combined
-
-
-def always_pass() -> Callable:
-    """Requirement that always passes (for manual advance steps)."""
-    def check(engine) -> Tuple[bool, str]:
-        return True, ""
-    return check
 
 
 def create_observe_baseline_step(

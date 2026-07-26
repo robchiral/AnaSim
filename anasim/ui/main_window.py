@@ -153,8 +153,8 @@ class MainWindow(QMainWindow):
             age=self.patient.age,
             gender=self.patient.sex,
             weight=self.patient.weight,
-            renal_status=getattr(self.patient, "renal_status", None),
-            hepatic_status=getattr(self.patient, "hepatic_status", None),
+            renal_status=self.patient.renal_status,
+            hepatic_status=self.patient.hepatic_status,
         )
         mon_layout.addWidget(self.monitor, stretch=1)
         
@@ -296,7 +296,7 @@ class MainWindow(QMainWindow):
         self.time_accumulator += dt_sim_needed
         
         # Run Engine Steps
-        sim_step = getattr(self.engine.config, "dt", 0.01)
+        sim_step = self.engine.config.dt
         # Budget enough work for the fastest selectable speed. A fixed
         # 100-step cap silently discarded simulated time above roughly 20x.
         max_steps = max(100, math.ceil(0.2 * self.sb_speed.maximum() / sim_step))

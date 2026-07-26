@@ -45,22 +45,19 @@ def sync_pk_state(engine: "SimulationEngine") -> None:
         roc_cp=engine.pk_roc.state.c1,
         epi_ce=engine.pk_epi.state.ce,
         phenyl_ce=engine.pk_phenyl.state.ce,
+        vaso_ce=engine.pk_vaso.state.ce,
+        dobu_ce=engine.pk_dobu.state.ce,
+        mil_ce=engine.pk_mil.state.ce,
     )
-    if getattr(engine, "pk_vaso", None):
-        set_state_float_fields(state, vaso_ce=engine.pk_vaso.state.ce)
-    if getattr(engine, "pk_dobu", None):
-        set_state_float_fields(state, dobu_ce=engine.pk_dobu.state.ce)
-    if getattr(engine, "pk_mil", None):
-        set_state_float_fields(state, mil_ce=engine.pk_mil.state.ce)
 
 
 def sync_machine_state(engine: "SimulationEngine") -> None:
     """Copy volatile/circuit state into the public snapshot without advancing time."""
     state = engine.state
     connected = state.airway_mode != AirwayType.NONE
-    composition = getattr(engine.circuit, "composition", None)
-    if connected and composition is not None:
-        fi_sevo = composition.fi_agent if getattr(engine, "_volatile_enabled", True) else 0.0
+    composition = engine.circuit.composition
+    if connected:
+        fi_sevo = composition.fi_agent if engine._volatile_enabled else 0.0
         fi_n2o = composition.fin2o
         fio2 = composition.fio2
     else:
@@ -68,15 +65,15 @@ def sync_machine_state(engine: "SimulationEngine") -> None:
         fi_n2o = 0.0
         fio2 = 0.21
 
-    mac_sevo = engine.pk_sevo.state.mac if engine.pk_sevo else 0.0
-    mac_n2o = engine.pk_n2o.state.mac if getattr(engine, "pk_n2o", None) else 0.0
+    mac_sevo = engine.pk_sevo.state.mac
+    mac_n2o = engine.pk_n2o.state.mac
     set_state_float_fields(
         state,
         fio2=fio2,
         fi_sevo=fi_sevo * 100.0,
         fi_n2o=fi_n2o * 100.0,
-        et_sevo=(engine.pk_sevo.state.p_alv * 100.0) if engine.pk_sevo else 0.0,
-        et_n2o=(engine.pk_n2o.state.p_alv * 100.0) if getattr(engine, "pk_n2o", None) else 0.0,
+        et_sevo=engine.pk_sevo.state.p_alv * 100.0,
+        et_n2o=engine.pk_n2o.state.p_alv * 100.0,
         mac_sevo=mac_sevo,
         mac_n2o=mac_n2o,
         mac=mac_sevo + mac_n2o,
@@ -91,14 +88,14 @@ def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
     sv_val = hemo_state.sv
     svr_val = hemo_state.svr
     co_val = hemo_state.co
-    sbp_val = getattr(hemo_state, "sbp", map_val + 20.0)
-    dbp_val = getattr(hemo_state, "dbp", map_val - 20.0)
-    hct_val = engine.hemo.get_hematocrit() if hasattr(engine.hemo, "get_hematocrit") else state.hct
-    total_crystalloid = getattr(engine.hemo, "total_crystalloid_in_ml", 0.0)
-    total_colloid = getattr(engine.hemo, "total_colloid_in_ml", 0.0)
-    blood_in_ml = getattr(engine.hemo, "total_blood_in_ml", 0.0)
-    urine_out_ml = getattr(engine.hemo, "total_urine_out_ml", 0.0)
-    blood_out_ml = getattr(engine.hemo, "total_blood_out_ml", 0.0)
+    sbp_val = hemo_state.sbp
+    dbp_val = hemo_state.dbp
+    hct_val = engine.hemo.get_hematocrit()
+    total_crystalloid = engine.hemo.total_crystalloid_in_ml
+    total_colloid = engine.hemo.total_colloid_in_ml
+    blood_in_ml = engine.hemo.total_blood_in_ml
+    urine_out_ml = engine.hemo.total_urine_out_ml
+    blood_out_ml = engine.hemo.total_blood_out_ml
     fluid_in_ml = total_crystalloid + total_colloid
     set_state_float_fields(
         state,
@@ -109,8 +106,8 @@ def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
         co=co_val,
         sbp=sbp_val,
         dbp=dbp_val,
-        blood_volume=getattr(engine.hemo, "blood_volume", state.blood_volume),
-        hb_g_dl=getattr(engine.hemo, "hb_conc", state.hb_g_dl),
+        blood_volume=engine.hemo.blood_volume,
+        hb_g_dl=engine.hemo.hb_conc,
         hct=hct_val,
         colloid_in_ml=total_colloid,
         fluid_in_ml=fluid_in_ml,
@@ -196,16 +193,13 @@ def _current_respiratory_support(engine: "SimulationEngine") -> dict[str, Any]:
 
 def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> Any:
     """Evaluate the respiratory model at the current subsystem state without advancing time."""
-    if not engine.resp:
-        return None
-
     state = engine.state
     support = _current_respiratory_support(engine)
 
-    if hemo_state and hemo_state.co > 0.0:
+    if hemo_state.co > 0.0:
         cardiac_output = hemo_state.co
     else:
-        cardiac_output = getattr(engine.hemo, "base_co_l_min", 5.0)
+        cardiac_output = engine.hemo.base_co_l_min
 
     kwargs = engine.get_resp_step_kwargs(
         total_assisted_mv=support["total_assisted_mv"],
@@ -249,8 +243,8 @@ def build_snapshot_from_models(engine: "SimulationEngine", hemo_state: Any, resp
     return PhysiologyStepState(
         hemo_state=hemo_state,
         resp_state=resp_state,
-        phase=getattr(engine.resp_mech.state, "phase", "EXP"),
-        pit_estimate=getattr(engine.hemo, "pit_0", -2.0),
+        phase=engine.resp_mech.state.phase,
+        pit_estimate=engine.hemo.pit_0,
         rr_display=rr_display,
         vt_display_ml=vt_display_ml,
         mv_display_l_min=mv_display_l_min,
@@ -339,17 +333,14 @@ def sync_state_from_models(engine: "SimulationEngine") -> None:
     state = engine.state
     set_state_float_fields(
         state,
-        blood_volume=getattr(engine.hemo, "blood_volume", state.blood_volume),
-        temp_c=getattr(engine.patient, "baseline_temp", state.temp_c),
+        blood_volume=engine.hemo.blood_volume,
+        temp_c=engine.patient.baseline_temp,
     )
     sync_pk_state(engine)
     sync_machine_state(engine)
-    hemo_state = engine.hemo.state if engine.hemo else None
+    hemo_state = engine.hemo.state
     resp_state = snapshot_respiratory_state(engine, hemo_state)
-    if hemo_state and resp_state is not None:
-        project_runtime_physiology(engine, build_snapshot_from_models(engine, hemo_state, resp_state))
-    elif hemo_state:
-        project_hemodynamics(engine, hemo_state)
+    project_runtime_physiology(engine, build_snapshot_from_models(engine, hemo_state, resp_state))
     sync_monitor_baselines(engine)
     engine._sync_display_state_from_raw()
     engine._sync_raw_vital_cache()

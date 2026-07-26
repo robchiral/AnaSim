@@ -56,12 +56,3 @@ def hill_function(c: float, c50: float, gamma: float) -> float:
     ratio_g = ratio ** gamma
     
     return ratio_g / (1.0 + ratio_g + HILL_EPSILON)
-
-
-def pao2_to_sao2(pao2: float) -> float:
-    """
-    Convert PaO2 (mmHg) to SaO2 (%) using a Severinghaus-style fit.
-    """
-    pao2 = max(0.0, pao2)
-    p3 = pao2 ** 3
-    return 100.0 * (p3 + 150.0 * pao2) / (p3 + 150.0 * pao2 + 23400.0)

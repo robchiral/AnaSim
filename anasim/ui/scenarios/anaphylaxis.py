@@ -27,7 +27,7 @@ def _require_epinephrine_started() -> callable:
 def _require_fluids_given(min_ml: float = 500.0) -> callable:
     """Check that at least a modest fluid bolus has been given."""
     def check(engine) -> Tuple[bool, str]:
-        total = cumulative_fluid_given(engine) + getattr(getattr(engine, "hemo", None), "total_blood_in_ml", 0.0)
+        total = cumulative_fluid_given(engine) + engine.hemo.total_blood_in_ml
         if total >= min_ml:
             return True, ""
         return False, f"Give fluids ({total:.0f}/{min_ml:.0f} mL)"

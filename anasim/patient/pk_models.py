@@ -334,11 +334,7 @@ def _positive(value: float, min_value: float = 1e-6) -> float:
     return max(min_value, value)
 
 def _organ_function(patient: Patient, attr: str) -> float:
-    try:
-        value = float(getattr(patient, attr, 1.0))
-    except (TypeError, ValueError):
-        value = 1.0
-    return clamp(value, 0.1, 1.0)
+    return clamp(float(getattr(patient, attr)), 0.1, 1.0)
 
 def organ_clearance_scaler(patient: Patient, hepatic_fraction: float = 0.0, renal_fraction: float = 0.0) -> float:
     """
@@ -462,7 +458,7 @@ class PropofolPKEleveld(ThreeCompartmentPK):
         # Eleveld et al. Br J Anaesth. 2018
         age = patient.age
         w = patient.weight
-        h = patient.height_m if hasattr(patient, "height_m") else patient.height / 100.0
+        h = patient.height / 100.0
         sex_is_male = (patient.sex.lower() == "male")
         bmi = w / (h**2)
         
@@ -990,10 +986,6 @@ class VasopressinPK(OneCompEffectPK):
 
         # Clearance is partly flow-dependent; use sublinear CO scaling.
         super().__init__(patient, v1=v1, cl1=cl1, ke0=ke0, cl1_co_exponent=0.5)
-
-        # Bolus conversion: input units (U) -> model units (mU)
-        self.bolus_unit_scale = 1000.0
-
 
 # -----------------------------------------------------------------------------
 # Dobutamine PK Model
