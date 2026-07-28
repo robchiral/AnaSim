@@ -41,41 +41,42 @@ def create_anaphylaxis_scenario() -> Scenario:
             id="RECOGNIZE",
             title="Recognize anaphylaxis",
             instruction=(
-                "<b>Step 1/4: Recognize anaphylaxis</b><br>"
-                "Start the event and identify the pattern of sudden hypotension, tachycardia, and bronchospasm.<br><br>"
+                "Start the event and identify sudden hypotension, tachycardia, "
+                "and bronchospasm.<br><br>"
                 "<i>Think distributive shock with airway involvement.</i>"
             ),
             check_requirements=require_crisis_active("active_anaphylaxis", "Start anaphylaxis in Events"),
+            target_tab="Events",
         ),
         ScenarioStep(
             id="EPINEPHRINE",
             title="Give epinephrine",
             instruction=(
-                "<b>Step 2/4: Treat with epinephrine</b><br>"
                 "Start epinephrine support promptly.<br><br>"
                 "<i>Epinephrine is first-line because it treats vasoplegia, bronchospasm, and cardiovascular collapse.</i>"
             ),
             check_requirements=_require_epinephrine_started(),
+            target_tab="Medications",
         ),
         ScenarioStep(
             id="FLUIDS",
             title="Give fluids",
             instruction=(
-                "<b>Step 3/4: Give IV fluids</b><br>"
                 "Administer at least <b>500 mL</b> of fluid to support circulation.<br><br>"
                 "<i>Capillary leak and vasodilation often require aggressive volume support.</i>"
             ),
             check_requirements=_require_fluids_given(500.0),
+            target_tab="Events",
         ),
         ScenarioStep(
             id="STABILIZE",
             title="Stabilize and reassess",
             instruction=(
-                "<b>Step 4/4: Reassess hemodynamics</b><br>"
                 "Stop the event after treatment and confirm <b>MAP > 65 mmHg</b>.<br><br>"
-                "<i>Ongoing hypotension after epinephrine and fluids should prompt escalation. Consider H1/H2 blockers and steroids as adjuncts.</i>"
+                "<i>Persistent hypotension after epinephrine and fluids should prompt escalation.</i>"
             ),
             check_requirements=require_crisis_resolved_with_map("active_anaphylaxis", fail_crisis="Stop anaphylaxis event"),
+            target_tab="Events",
         ),
     ]
 

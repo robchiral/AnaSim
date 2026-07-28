@@ -13,19 +13,14 @@ from PySide6.QtWidgets import (
     QFrame,
     QMessageBox,
 )
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 
 from anasim.core.engine import SimulationEngine, SimulationConfig, Patient
 from anasim.ui.monitor_widget import PatientMonitorWidget
 from anasim.ui.controls_widget import ControlPanelWidget
 from anasim.ui.config_dialog import SimulationSetupDialog
 from anasim.ui.tutorial_overlay import ScenarioOverlay
-from anasim.ui.scenarios import (
-    SCENARIO_BUILDERS,
-    create_induction_balanced,
-    create_induction_tiva,
-    create_emergence,
-)
+from anasim.ui.scenarios import SCENARIO_BUILDERS
 from anasim.ui.styles import (
     COLORS,
     FONTS,
@@ -112,22 +107,9 @@ class MainWindow(QMainWindow):
         # Tutorial Overlay
         self.overlay = None
         if self.tutorial_mode:
-            # Check if a specific scenario was selected
-            scenario_id = self.sim_params.get('scenario_id')
-            if scenario_id and scenario_id in SCENARIO_BUILDERS:
-                scenario = SCENARIO_BUILDERS[scenario_id]()
-            else:
-                mode = self.sim_params.get('mode', 'awake')
-                maint_type = self.sim_params.get('maint_type', 'tiva')
-                if mode in SCENARIO_BUILDERS:
-                    scenario = SCENARIO_BUILDERS[mode]()
-                elif mode == "awake":
-                    if "balanced" in maint_type.lower():
-                        scenario = create_induction_balanced()
-                    else:
-                        scenario = create_induction_tiva()
-                else:
-                    scenario = create_emergence(maint_type)
+            scenario_id = self.sim_params['scenario_id']
+            scenario = SCENARIO_BUILDERS[scenario_id]()
+            scenario.prepare(self.engine)
             self.overlay = ScenarioOverlay(scenario)
             base_layout.addWidget(self.overlay)
         
@@ -135,7 +117,7 @@ class MainWindow(QMainWindow):
         main_layout = QHBoxLayout()
         base_layout.addLayout(main_layout)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        main_layout.setSpacing(1)
         
         # Left Side: Monitor + Control Bar
         monitor_container = QWidget()
@@ -160,24 +142,27 @@ class MainWindow(QMainWindow):
         
         # Bottom Control Bar
         ctrl_bar = QFrame()
+        ctrl_bar.setObjectName("controlBar")
         ctrl_bar.setStyleSheet(get_bar_style("top"))
-        ctrl_bar.setFixedHeight(56)
+        ctrl_bar.setFixedHeight(62)
         ctrl_layout = QHBoxLayout(ctrl_bar)
-        ctrl_layout.setContentsMargins(16, 8, 16, 8)
-        ctrl_layout.setSpacing(16)
+        ctrl_layout.setContentsMargins(14, 9, 14, 9)
+        ctrl_layout.setSpacing(12)
         
         # Start/Pause Button
-        self.btn_start = QPushButton("Start")
+        self.btn_start = QPushButton("Start simulation")
         self.btn_start.setStyleSheet(
-            get_button_style(variant="primary", padding="8px 20px", min_width=110)
+            get_button_style(variant="primary", padding="8px 18px", min_width=126)
         )
         self.btn_start.clicked.connect(self.toggle_simulation)
         ctrl_layout.addWidget(self.btn_start)
 
         # Record Toggle
-        self.btn_record = QPushButton("Record")
+        self.btn_record = QPushButton("Record data")
         self.btn_record.setCheckable(True)
-        self.btn_record.setStyleSheet(get_toggle_button_style(COLORS['danger']))
+        self.btn_record.setStyleSheet(
+            get_toggle_button_style(COLORS['danger'], text_color=COLORS['text_secondary'])
+        )
         self.btn_record.toggled.connect(self.toggle_recording)
         ctrl_layout.addWidget(self.btn_record)
         
@@ -185,41 +170,55 @@ class MainWindow(QMainWindow):
         speed_container = QHBoxLayout()
         speed_container.setSpacing(8)
         
-        lbl_speed = QLabel("Speed:")
-        lbl_speed.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: {FONTS['size_small']};")
+        lbl_speed = QLabel("Simulation speed")
+        lbl_speed.setStyleSheet(
+            f"color: {COLORS['text_dim']}; font-size: 10px; font-weight: 600;"
+        )
         speed_container.addWidget(lbl_speed)
         
         self.sb_speed = QDoubleSpinBox()
         self.sb_speed.setRange(0.1, 50.0)
         self.sb_speed.setValue(1.0)
         self.sb_speed.setSingleStep(0.5)
-        self.sb_speed.setSuffix("x")
+        self.sb_speed.setSuffix(" ×")
         self.sb_speed.setStyleSheet(STYLE_SPINBOX)
         self.sb_speed.setMinimumWidth(80)
         speed_container.addWidget(self.sb_speed)
         ctrl_layout.addLayout(speed_container)
         
         # Status Indicator
-        self.lbl_status = QLabel("READY")
-        self._set_status("READY", COLORS['text_dim'])
+        self.lbl_status = QLabel("● Ready")
+        self._set_status("Ready", COLORS['text_dim'])
         ctrl_layout.addWidget(self.lbl_status)
         
         ctrl_layout.addStretch()
         
         # Time Display
+        time_layout = QVBoxLayout()
+        time_layout.setSpacing(0)
+        lbl_time_title = QLabel("Simulation time")
+        lbl_time_title.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        lbl_time_title.setStyleSheet(
+            f"color: {COLORS['text_dim']}; font-size: 10px; font-weight: 600;"
+        )
+        time_layout.addWidget(lbl_time_title)
         self.lbl_time = QLabel("00:00:00")
+        self.lbl_time.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.lbl_time.setStyleSheet(f"""
             color: {COLORS['text']};
             font-size: {FONTS['size_display']};
-            font-weight: 600;
+            font-weight: 700;
         """)
-        ctrl_layout.addWidget(self.lbl_time)
+        time_layout.addWidget(self.lbl_time)
+        ctrl_layout.addLayout(time_layout)
         
         mon_layout.addWidget(ctrl_bar)
         main_layout.addWidget(monitor_container, stretch=13)
         
         # Right Side: Controls
-        self.controls = ControlPanelWidget(self.engine, tutorial_mode=self.tutorial_mode)
+        self.controls = ControlPanelWidget(self.engine)
+        if self.overlay is not None:
+            self.overlay.navigate_requested.connect(self.controls.open_tab)
         main_layout.addWidget(self.controls, stretch=7)
         
         # Initial Sync
@@ -230,34 +229,34 @@ class MainWindow(QMainWindow):
         self._set_run_state("ready")
 
     def _set_status(self, text, color):
-        self.lbl_status.setText(text)
+        self.lbl_status.setText(f"● {text}")
         self.lbl_status.setStyleSheet(get_status_label_style(color))
 
     def _set_run_state(self, state):
         if state == "running":
-            self.btn_start.setText("Pause")
+            self.btn_start.setText("Pause simulation")
             self.btn_start.setStyleSheet(
-                get_button_style(variant="warning", padding="8px 20px", min_width=110)
+                get_button_style(variant="warning", padding="8px 18px", min_width=126)
             )
-            self._set_status("RUNNING", COLORS['success'])
+            self._set_status("Running", COLORS['success'])
             return
         if state == "paused":
-            self.btn_start.setText("Resume")
+            self.btn_start.setText("Resume simulation")
             self.btn_start.setStyleSheet(
                 get_button_style(
                     variant="primary",
                     outlined=True,
-                    padding="8px 20px",
-                    min_width=110,
+                    padding="8px 18px",
+                    min_width=126,
                 )
             )
-            self._set_status("PAUSED", COLORS['warning'])
+            self._set_status("Paused", COLORS['warning'])
             return
-        self.btn_start.setText("Start")
+        self.btn_start.setText("Start simulation")
         self.btn_start.setStyleSheet(
-            get_button_style(variant="primary", padding="8px 20px", min_width=110)
+            get_button_style(variant="primary", padding="8px 18px", min_width=126)
         )
-        self._set_status("READY", COLORS['text_dim'])
+        self._set_status("Ready", COLORS['text_dim'])
 
     def toggle_simulation(self):
         if self.engine.running:
@@ -276,10 +275,10 @@ class MainWindow(QMainWindow):
     def toggle_recording(self, checked: bool):
         if checked:
             self.engine.start_recording(output_dir="recordings")
-            self.btn_record.setText("Recording")
+            self.btn_record.setText("Stop recording")
         else:
             self.engine.stop_recording()
-            self.btn_record.setText("Record")
+            self.btn_record.setText("Record data")
         
     def game_loop(self):
         # Time Management

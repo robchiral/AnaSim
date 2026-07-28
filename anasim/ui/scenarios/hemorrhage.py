@@ -14,7 +14,6 @@ from .base import (
     require_crisis_resolved_with_map,
     require_crisis_stopped,
     require_fluid_given,
-    require_stable_baseline_vitals,
     require_vasopressor_running,
     create_observe_baseline_step,
     create_reassess_step,
@@ -46,23 +45,21 @@ def create_hemorrhage_response() -> Scenario:
     """Create hemorrhage response scenario."""
     
     steps = [
-        create_observe_baseline_step(1, 7, "hemorrhage"),
+        create_observe_baseline_step("hemorrhage"),
         ScenarioStep(
             id="START_HEMORRHAGE",
             title="Hemorrhage begins",
             instruction=(
-                "<b>Step 2/7: Initiate hemorrhage event</b><br>"
-                "Go to the <b>Events</b> tab and click <b>'Start bleeding'</b>.<br>"
-                "Select severity (500-2000 mL/min simulates Class II-IV hemorrhage).<br><br>"
+                "Select a severity, then choose <b>Start bleeding</b> on the Events tab.<br><br>"
                 "<i>Intraoperative hemorrhage can occur suddenly during surgery.</i>"
             ),
             check_requirements=require_crisis_active("active_hemorrhage", "Start hemorrhage event (Events tab)"),
+            target_tab="Events",
         ),
         ScenarioStep(
             id="RECOGNIZE_SHOCK",
             title="Recognize hypovolemic shock",
             instruction=(
-                "<b>Step 3/7: Recognize shock signs</b><br>"
                 "Observe the developing shock state:<br>"
                 "• <b>Tachycardia</b> (HR > 100) - compensatory response<br>"
                 "• <b>Hypotension</b> (MAP < 65) - volume depletion<br>"
@@ -75,42 +72,36 @@ def create_hemorrhage_response() -> Scenario:
             id="GIVE_FLUIDS",
             title="Fluid resuscitation",
             instruction=(
-                "<b>Step 4/7: Administer IV fluids</b><br>"
-                "Give crystalloid bolus: <b>500-1000 mL</b> rapidly.<br>"
-                "Use the <b>Events</b> tab -> <b>Fluid bolus</b>.<br><br>"
-                "In practice: use blood products for Class III-IV hemorrhage.<br><br>"
+                "Give <b>500-1000 mL</b> crystalloid from the Events tab. "
+                "Use blood products for major ongoing hemorrhage.<br><br>"
                 "<i>Goal: restore intravascular volume while awaiting surgical hemostasis.</i>"
             ),
-                check_requirements=require_fluid_given(500),
+            check_requirements=require_fluid_given(500),
+            target_tab="Events",
         ),
         ScenarioStep(
             id="START_VASOPRESSOR",
             title="Vasopressor support",
             instruction=(
-                "<b>Step 5/7: Start vasopressor</b><br>"
                 "If MAP remains low despite fluids, start vasopressor:<br>"
                 "• <b>Norepinephrine</b>: 0.05-0.1 mcg/kg/min<br>"
                 "• <b>Phenylephrine</b>: 50-100 mcg/min<br><br>"
                 "<i>Vasopressors bridge until volume is restored; not a substitute for blood.</i>"
             ),
             check_requirements=require_vasopressor_running("Start vasopressor (norepinephrine, phenylephrine, or epinephrine)"),
+            target_tab="Medications",
         ),
         ScenarioStep(
             id="STOP_BLEEDING",
             title="Surgical hemostasis",
             instruction=(
-                "<b>Step 6/7: Achieve hemostasis</b><br>"
-                "Click <b>'Stop bleeding'</b> to simulate surgical control.<br><br>"
-                "In reality, this requires:<br>"
-                "• Communication with surgical team<br>"
-                "• Pressure, cautery, sutures, clips<br>"
-                "• Possible interventional radiology<br><br>"
+                "Select <b>Stop bleeding</b> to simulate definitive surgical control.<br><br>"
                 "<i>Definitive hemorrhage control is the priority over resuscitation.</i>"
             ),
             check_requirements=require_crisis_stopped("active_hemorrhage", "Stop hemorrhage (simulate surgical hemostasis)"),
+            target_tab="Events",
         ),
         create_reassess_step(
-            7, 7,
             "active_hemorrhage",
             "Stop hemorrhage first",
             "Hemorrhage controlled",

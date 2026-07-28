@@ -1,168 +1,228 @@
-"""
-ScenarioOverlay - Data-driven tutorial/scenario overlay widget.
+"""Guided scenario workflow shown above the simulator."""
 
-Refactored from the original TutorialOverlay to use the scenario system.
-Scenarios are defined in ui/scenarios/ as data classes.
-"""
-
-from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QProgressBar
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from .scenarios import Scenario
-from .styles import COLORS, get_overlay_style, get_button_style, STYLE_PROGRESSBAR
+from .styles import (
+    COLORS,
+    STYLE_PROGRESSBAR,
+    get_button_style,
+    get_overlay_style,
+)
 
 
 class ScenarioOverlay(QFrame):
-    """
-    Overlay widget to guide user through scenario steps.
-    
-    This is a generic overlay that works with any Scenario object.
-    The scenario defines the steps, instructions, and requirements.
-    """
-    
+    """Present one scenario objective at a time and track completion."""
+
+    navigate_requested = Signal(str)
+
     def __init__(self, scenario: Scenario, parent=None):
         super().__init__(parent)
         self.scenario = scenario
-        self.requirements_met = False
         self.current_step = 0
-        
+        self.requirements_met = False
+
+        self.setObjectName("scenarioOverlay")
         self.setStyleSheet(get_overlay_style())
-        # Give the instruction text enough vertical space to avoid truncation.
-        self.setFixedHeight(260)
-        
+        self.setFixedHeight(178)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
-        
-        # Header with step and progress
+        layout.setContentsMargins(16, 10, 16, 10)
+        layout.setSpacing(8)
+
         header = QHBoxLayout()
-        header.setSpacing(16)
-        
-        title = f"Tutorial: {self.scenario.name}"
-        self.lbl_step = QLabel(title)
-        self.lbl_step.setStyleSheet(f"font-weight: 700; font-size: 14px; color: {COLORS['primary']}; font-family: Arial;")
-        header.addWidget(self.lbl_step)
-        
+        header.setSpacing(12)
+
+        self.lbl_scenario = QLabel(scenario.name)
+        self.lbl_scenario.setStyleSheet(
+            f"color: {COLORS['primary']}; font-size: 11px; font-weight: 650;"
+        )
+        header.addWidget(self.lbl_scenario)
+
         self.progress = QProgressBar()
         self.progress.setStyleSheet(STYLE_PROGRESSBAR)
         self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(8)
+        self.progress.setFixedHeight(6)
         header.addWidget(self.progress, stretch=1)
-        
-        self.lbl_progress_text = QLabel("")
-        self.lbl_progress_text.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 11px; font-family: Arial;")
-        header.addWidget(self.lbl_progress_text)
-        
+
+        self.lbl_progress = QLabel("")
+        self.lbl_progress.setStyleSheet(
+            f"color: {COLORS['text_dim']}; font-size: 10px;"
+        )
+        header.addWidget(self.lbl_progress)
         layout.addLayout(header)
-        
-        # Instruction text area
+
+        objective = QHBoxLayout()
+        objective.setSpacing(12)
+
+        self.lbl_step_number = QLabel("")
+        self.lbl_step_number.setAlignment(Qt.AlignCenter)
+        self.lbl_step_number.setFixedSize(38, 38)
+        self.lbl_step_number.setStyleSheet(
+            f"color: {COLORS['primary']}; background-color: {COLORS['control']}; "
+            f"border: 1px solid {COLORS['border']}; border-radius: 5px; "
+            "font-size: 15px; font-weight: 700;"
+        )
+        objective.addWidget(self.lbl_step_number, alignment=Qt.AlignTop)
+
+        copy = QVBoxLayout()
+        copy.setSpacing(3)
+        self.lbl_title = QLabel("")
+        self.lbl_title.setStyleSheet(
+            f"color: {COLORS['text']}; font-size: 15px; font-weight: 650;"
+        )
+        copy.addWidget(self.lbl_title)
+
         self.lbl_instruction = QLabel("")
-        self.lbl_instruction.setStyleSheet(f"font-size: 14px; line-height: 1.4; color: {COLORS['text']}; font-family: Arial;")
+        self.lbl_instruction.setTextFormat(Qt.RichText)
         self.lbl_instruction.setWordWrap(True)
         self.lbl_instruction.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        layout.addWidget(self.lbl_instruction, stretch=1)
-        
-        # Bottom bar with status and Next button
-        bottom_bar = QHBoxLayout()
-        
+        self.lbl_instruction.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: 11px;"
+        )
+        copy.addWidget(self.lbl_instruction)
+        objective.addLayout(copy, stretch=1)
+        layout.addLayout(objective, stretch=1)
+
+        footer = QHBoxLayout()
+        footer.setSpacing(8)
+
+        self.lbl_status_icon = QLabel("●")
+        self.lbl_status_icon.setFixedWidth(12)
+        footer.addWidget(self.lbl_status_icon)
+
         self.lbl_status = QLabel("")
-        self.lbl_status.setStyleSheet(f"font-size: 12px; color: {COLORS['warning']}; font-weight: 600; font-family: Arial;")
-        bottom_bar.addWidget(self.lbl_status)
-        
-        bottom_bar.addStretch()
-        
-        self.btn_next = QPushButton("Next step")
-        self.btn_next.setStyleSheet(get_button_style(variant="success", padding="8px 24px"))
+        self.lbl_status.setStyleSheet(
+            f"color: {COLORS['warning']}; font-size: 11px; font-weight: 600;"
+        )
+        footer.addWidget(self.lbl_status, stretch=1)
+
+        self.btn_target = QPushButton("")
+        self.btn_target.setStyleSheet(
+            get_button_style(
+                variant="neutral",
+                outlined=True,
+                padding="6px 12px",
+                min_width=94,
+            )
+        )
+        self.btn_target.clicked.connect(self._navigate_to_target)
+        footer.addWidget(self.btn_target)
+
+        self.btn_next = QPushButton("Continue")
+        self.btn_next.setStyleSheet(
+            get_button_style(
+                variant="success",
+                padding="6px 16px",
+                min_width=104,
+            )
+        )
         self.btn_next.setEnabled(False)
         self.btn_next.clicked.connect(self.on_next_clicked)
-        bottom_bar.addWidget(self.btn_next)
-        
-        layout.addLayout(bottom_bar)
-        
-        # Display initial step
-        self._update_progress()
-        self._update_instruction()
-        
+        footer.addWidget(self.btn_next)
+        layout.addLayout(footer)
+
+        self._show_current_step()
+
+    def _show_current_step(self):
+        """Refresh labels and actions for the current objective."""
+        if self.current_step >= len(self.scenario):
+            self._show_completion()
+            return
+
+        step = self.scenario[self.current_step]
+        self.lbl_step_number.setText(str(self.current_step + 1))
+        self.lbl_title.setText(step.title)
+        self.lbl_instruction.setText(step.instruction)
+        self.lbl_progress.setText(
+            f"{self.current_step + 1} of {len(self.scenario)}"
+        )
+        self.btn_target.setVisible(step.target_tab is not None)
+        if step.target_tab is not None:
+            self.btn_target.setText(f"Open {step.target_tab.lower()}")
+        self.requirements_met = False
+        self._set_requirement_state(False, "Complete the objective to continue")
+
+    def _show_completion(self):
+        self.lbl_step_number.setText("✓")
+        self.lbl_title.setText("Scenario complete")
+        self.lbl_instruction.setText(self.scenario.description)
+        self.lbl_progress.setText(f"{len(self.scenario)} of {len(self.scenario)}")
+        self.progress.setValue(100)
+        self.lbl_status_icon.setText("✓")
+        self.lbl_status_icon.setStyleSheet(f"color: {COLORS['success']};")
+        self.lbl_status.setText("All objectives complete")
+        self.lbl_status.setStyleSheet(
+            f"color: {COLORS['success']}; font-size: 11px; font-weight: 600;"
+        )
+        self.btn_target.hide()
+        self.btn_next.setText("Complete")
+        self.btn_next.setEnabled(False)
+
     def _update_progress(self):
-        """Update progress indicator."""
         total = len(self.scenario)
         if total == 0:
-            self.progress.setValue(0)
+            self.progress.setValue(100)
             return
+        completed = self.current_step + int(self.requirements_met)
+        self.progress.setValue(round(100 * completed / total))
 
-        current = min(self.current_step + 1, total)
-        
-        # Update progress bar
-        # If current_step == total, display 100% progress.
-        if self.current_step >= total:
-            percent = 100
-        else:
-            # Show progress to next step
-            percent = int((self.current_step / total) * 100)
-            
-        self.progress.setValue(percent)
-        self.lbl_progress_text.setText(f"Step {current} of {total}")
-    
-    def _update_instruction(self):
-        """Update instruction text for current step."""
-        if self.current_step >= len(self.scenario):
-            self.lbl_instruction.setText(
-                "<b>Tutorial complete!</b><br>"
-                "You have successfully completed the scenario."
+    def _set_requirement_state(self, met: bool, status: str):
+        self.requirements_met = met
+        if met:
+            self.lbl_status_icon.setText("✓")
+            self.lbl_status_icon.setStyleSheet(f"color: {COLORS['success']};")
+            self.lbl_status.setText("Objective complete")
+            self.lbl_status.setStyleSheet(
+                f"color: {COLORS['success']}; font-size: 11px; font-weight: 600;"
             )
+            is_last = self.current_step == len(self.scenario) - 1
+            self.btn_next.setText("Finish scenario" if is_last else "Continue")
+            self.btn_next.setEnabled(True)
         else:
-            step = self.scenario[self.current_step]
-            self.lbl_instruction.setText(step.instruction)
+            self.lbl_status_icon.setText("●")
+            self.lbl_status_icon.setStyleSheet(f"color: {COLORS['warning']};")
+            self.lbl_status.setText(status or "Complete the objective to continue")
+            self.lbl_status.setStyleSheet(
+                f"color: {COLORS['warning']}; font-size: 11px; font-weight: 600;"
+            )
+            self.btn_next.setText("Continue")
+            self.btn_next.setEnabled(False)
+        self._update_progress()
 
     def check_requirements(self, engine):
-        """Check if current step requirements are met. Returns True/False and status message."""
+        """Return the current objective's completion state and feedback."""
         if self.current_step >= len(self.scenario):
             return True, ""
-            
-        step = self.scenario[self.current_step]
-        return step.check_requirements(engine)
+        return self.scenario[self.current_step].check_requirements(engine)
 
     def update_state(self, engine):
-        """Called each frame. Check requirements and update UI."""
+        """Update objective feedback from the latest simulation state."""
         if self.current_step >= len(self.scenario):
-            self.lbl_instruction.setText(
-                "<b>Tutorial complete!</b><br>"
-                "You have successfully completed the scenario."
-            )
-            self.btn_next.setEnabled(False)
-            self.btn_next.setText("Complete")
-            self.lbl_status.setText("")
             return
+        met, status = self.check_requirements(engine)
+        self._set_requirement_state(bool(met), status)
 
-        step = self.scenario[self.current_step]
-        
-        self.lbl_instruction.setText(step.instruction)
-        
-        met, status_msg = step.check_requirements(engine)
-        self.requirements_met = bool(met)
-        
-        self.btn_next.setEnabled(self.requirements_met)
-        self.lbl_status.setText(status_msg)
-        
+    def _navigate_to_target(self):
+        if self.current_step >= len(self.scenario):
+            return
+        target = self.scenario[self.current_step].target_tab
+        if target is not None:
+            self.navigate_requested.emit(target)
+
     def on_next_clicked(self):
-        """Handle Next button click."""
         if self.requirements_met:
             self.advance_step()
-            
+
     def advance_step(self):
-        """Move to next step."""
+        """Advance after the current objective has been completed."""
         self.current_step += 1
-        self._update_progress()
-        if self.current_step < len(self.scenario):
-            self._update_instruction()
-            self.requirements_met = False
-            self.btn_next.setEnabled(False)
-            self.lbl_status.setText("")
-        else:
-            self.lbl_instruction.setText(
-                "<b>Tutorial complete!</b><br>"
-                "You have successfully completed the scenario."
-            )
-            self.btn_next.setEnabled(False)
-            self.btn_next.setText("Complete")
-            self.lbl_status.setText("")
+        self._show_current_step()

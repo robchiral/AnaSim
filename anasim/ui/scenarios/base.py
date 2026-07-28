@@ -6,7 +6,10 @@ Each scenario contains a list of steps with instructions and requirements.
 """
 
 from dataclasses import dataclass, field
-from typing import Callable, List, Tuple
+from typing import Callable, List, Literal, Tuple
+
+
+ControlTab = Literal["Machine", "Medications", "Events"]
 
 
 @dataclass
@@ -16,6 +19,7 @@ class ScenarioStep:
     title: str
     instruction: str
     check_requirements: Callable[[object], Tuple[bool, str]]
+    target_tab: ControlTab | None = None
 
 
 @dataclass
@@ -26,6 +30,7 @@ class Scenario:
     icon: str
     description: str
     steps: List[ScenarioStep] = field(default_factory=list)
+    setup_engine: Callable[[object], None] | None = None
     
     def __len__(self) -> int:
         return len(self.steps)
@@ -33,17 +38,25 @@ class Scenario:
     def __getitem__(self, idx: int) -> ScenarioStep:
         return self.steps[idx]
 
+    def prepare(self, engine) -> None:
+        """Apply scenario-specific starting conditions."""
+        if self.setup_engine is not None:
+            self.setup_engine(engine)
+
 
 # Requirement check helper functions
 def require_airway(airway_type: str) -> Callable:
     """Create a requirement checker for airway type."""
     from anasim.core.state import AirwayType
-    type_map = {"None": AirwayType.NONE, "Mask": AirwayType.MASK, "ETT": AirwayType.ETT}
+    target, label = {
+        "None": (AirwayType.NONE, "No airway"),
+        "Mask": (AirwayType.MASK, "Facemask"),
+        "ETT": (AirwayType.ETT, "ET tube"),
+    }[airway_type]
     
     def check(engine) -> Tuple[bool, str]:
-        target = type_map.get(airway_type, AirwayType.NONE)
         met = engine.state.airway_mode == target
-        return met, "" if met else f"Select '{airway_type}' airway device"
+        return met, "" if met else f"Select {label}"
     return check
 
 
@@ -252,8 +265,6 @@ def require_all(*checks) -> Callable:
 
 
 def create_observe_baseline_step(
-    step_number: int,
-    total_steps: int,
     crisis_name: str,
     hr_range: str = "60-80 bpm"
 ) -> ScenarioStep:
@@ -262,7 +273,6 @@ def create_observe_baseline_step(
         id="OBSERVE_BASELINE",
         title="Observe baseline",
         instruction=(
-            f"<b>Step {step_number}/{total_steps}: Observe baseline vitals</b><br>"
             f"Before the {crisis_name} begins, note the patient's baseline vitals:<br>"
             f"• Heart rate: {hr_range}<br>"
             "• MAP: > 65 mmHg<br>"
@@ -274,8 +284,6 @@ def create_observe_baseline_step(
 
 
 def create_reassess_step(
-    step_number: int,
-    total_steps: int,
     crisis_attr: str,
     fail_crisis_msg: str,
     controlled_text: str,
@@ -286,7 +294,6 @@ def create_reassess_step(
         id="REASSESS",
         title="Reassess hemodynamics",
         instruction=(
-            f"<b>Step {step_number}/{total_steps}: Reassess and stabilize</b><br>"
             "Confirm stabilization:<br>"
             "• <b>MAP > 65 mmHg</b> (primary resuscitation goal)<br>"
             f"• {controlled_text}<br><br>"

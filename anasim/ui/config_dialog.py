@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QDialogButtonB
                                QCheckBox, QGridLayout)
 from PySide6.QtCore import Qt
 
+from .scenarios import SCENARIO_REGISTRY
 from .styles import COLORS, get_dialog_style, get_button_style, get_frame_style
 
 class SimulationSetupDialog(QDialog):
@@ -27,6 +28,7 @@ class SimulationSetupDialog(QDialog):
         
         # Header
         header = QFrame()
+        header.setObjectName("styledSurface")
         header.setStyleSheet(get_frame_style(bg_color=COLORS['card'], border_color=COLORS['border']))
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(14, 10, 12, 10)
@@ -177,26 +179,15 @@ class SimulationSetupDialog(QDialog):
         lbl_scenario.setStyleSheet(f"color: {COLORS['text_secondary']};")
         h_scenario.addWidget(lbl_scenario)
         self.cb_scenario = QComboBox()
-        self.cb_scenario.addItem(
-            "Induction tutorial (awake start)",
-            {"scenario_id": None, "mode": "awake"},
-        )
-        self.cb_scenario.addItem(
-            "Emergence tutorial (maintenance start)",
-            {"scenario_id": None, "mode": "steady_state"},
-        )
-        self.cb_scenario.addItem(
-            "Hemorrhage response",
-            {"scenario_id": "hemorrhage_response", "mode": "steady_state"},
-        )
-        self.cb_scenario.addItem(
-            "Anaphylaxis response",
-            {"scenario_id": "anaphylaxis_response", "mode": "steady_state"},
-        )
-        self.cb_scenario.addItem(
-            "Septic shock response",
-            {"scenario_id": "sepsis_response", "mode": "steady_state"},
-        )
+        for spec in SCENARIO_REGISTRY:
+            self.cb_scenario.addItem(
+                spec.label,
+                {
+                    "scenario_id": spec.id,
+                    "mode": spec.start_mode,
+                    "maint_type": spec.maint_type,
+                },
+            )
         h_scenario.addWidget(self.cb_scenario, stretch=1)
         self.scenario_container.setVisible(False)
         l_ui.addWidget(self.scenario_container)
@@ -209,8 +200,8 @@ class SimulationSetupDialog(QDialog):
         right_col.addWidget(gb_ui)
         right_col.addWidget(self.gb_scenario)
 
-        # 4. Model Configuration (Collapsible-style)
-        gb_models = QGroupBox("Advanced settings")
+        # 4. Model Configuration
+        gb_models = QGroupBox("Model settings")
         model_layout = QGridLayout(gb_models)
         model_layout.setSpacing(8)
         model_layout.setContentsMargins(12, 16, 12, 12)
@@ -264,7 +255,15 @@ class SimulationSetupDialog(QDialog):
         right_col.addWidget(gb_rules)
         right_col.addStretch()
 
+        self.cb_show_models = QCheckBox("Show model settings")
+        self.cb_show_models.setToolTip(
+            "Choose alternate pharmacokinetic and pharmacodynamic models."
+        )
+        self.gb_models = gb_models
+        self.cb_show_models.toggled.connect(self._on_show_models_toggled)
+        layout.addWidget(self.cb_show_models)
         layout.addWidget(gb_models)
+        gb_models.setVisible(False)
         
         # Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -287,10 +286,12 @@ class SimulationSetupDialog(QDialog):
         if hasattr(self, "gb_scenario"):
             self.gb_scenario.setEnabled(not checked)
         if checked:
-            # Align induction/emergence tutorial with the current start mode
-            if self.cb_scenario.currentIndex() in (0, 1):
-                self.cb_scenario.setCurrentIndex(1 if self.rb_maint.isChecked() else 0)
             self._sync_start_mode_from_tutorial()
+
+    def _on_show_models_toggled(self, checked):
+        """Reveal optional model choices without crowding the default workflow."""
+        self.gb_models.setVisible(checked)
+        self.adjustSize()
 
     def _sync_start_mode_from_tutorial(self):
         """Align disabled start mode with selected tutorial scenario."""
@@ -302,6 +303,10 @@ class SimulationSetupDialog(QDialog):
             self.rb_maint.setChecked(True)
         else:
             self.rb_awake.setChecked(True)
+        if data.get("maint_type") == "balanced":
+            self.cb_maint_type.setCurrentText("Inhalational (sevoflurane)")
+        else:
+            self.cb_maint_type.setCurrentText("TIVA (propofol)")
     
     def accept(self):
         # Determine selected scenario
@@ -313,6 +318,10 @@ class SimulationSetupDialog(QDialog):
                 self.rb_maint.setChecked(True)
             elif scenario_data.get("mode") == "awake":
                 self.rb_awake.setChecked(True)
+            if scenario_data.get("maint_type") == "balanced":
+                self.cb_maint_type.setCurrentText("Inhalational (sevoflurane)")
+            else:
+                self.cb_maint_type.setCurrentText("TIVA (propofol)")
         
         renal_text = self.cb_renal.currentText()
         hepatic_text = self.cb_hepatic.currentText()

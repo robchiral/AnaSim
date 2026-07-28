@@ -110,25 +110,24 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
     
     if is_balanced:
         stop_agents_instruction = (
-            "<b>Step 2/5: Discontinue anesthetics</b><br>"
             "Turn vaporizer <b>OFF</b>. Increase FGF to <b>8-10 L/min</b>.<br><br>"
             "<i>High flow accelerates volatile agent washout.</i>"
         )
         stop_agents_check = _require_agents_stopped_balanced()
+        stop_agents_tab = "Machine"
     else:
         stop_agents_instruction = (
-            "<b>Step 2/5: Stop infusions</b><br>"
             "Turn <b>OFF</b> propofol and remifentanil infusions.<br><br>"
             "<i>Remi t½ is ~3-4 min. Propofol emergence in 5-10 min.</i>"
         )
         stop_agents_check = _require_agents_stopped_tiva()
+        stop_agents_tab = "Medications"
     
     steps = [
         ScenarioStep(
             id="ASSESS",
             title="Assess hemodynamic stability",
             instruction=(
-                "<b>Step 1/5: Assess hemodynamic stability</b><br>"
                 "Verify: <b>BIS 40-60</b>, <b>MAP > 65</b>, <b>EtCO₂ 35-45</b>.<br><br>"
                 "<i>Ensure surgery complete and patient is warm before emergence.</i>"
             ),
@@ -139,12 +138,12 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
             title="Discontinue anesthetics" if is_balanced else "Stop infusions",
             instruction=stop_agents_instruction,
             check_requirements=stop_agents_check,
+            target_tab=stop_agents_tab,
         ),
         ScenarioStep(
             id="AWAIT_EMERGENCE",
             title="Await emergence",
             instruction=(
-                "<b>Step 3/5: Await emergence</b><br>"
                 "Monitor <b>BIS rising</b> toward >70. Patient will start breathing.<br>"
                 "Watch for: movement, coughing, eye opening.<br><br>"
                 "<i>Avoid premature stimulation at BIS 60-70 (risk of laryngospasm).</i>"
@@ -155,22 +154,22 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
             id="EXTUBATE",
             title="Extubation",
             instruction=(
-                "<b>Step 4/5: Extubation</b><br>"
                 "Criteria: <b>BIS > 80</b>, following commands, <b>RR > 8</b>, <b>Vt > 5 mL/kg</b>.<br>"
                 "Remove ETT -> select 'Mask' or 'None'.<br><br>"
                 "<i>Suction oropharynx, deflate cuff, remove on inspiration/expiration.</i>"
             ),
             check_requirements=_require_extubation_criteria(),
+            target_tab="Machine",
         ),
         ScenarioStep(
             id="RECOVERY",
             title="Post-anesthesia care",
             instruction=(
-                "<b>Step 5/5: Post-anesthesia care</b><br>"
                 "Apply supplemental O₂. Monitor: <b>SpO₂ > 95%</b>, hemodynamic stability.<br><br>"
                 "<i>PACU handoff: procedure, anesthetics, airway, blood loss, concerns.</i>"
             ),
             check_requirements=_require_recovery(),
+            target_tab="Machine",
         ),
     ]
     

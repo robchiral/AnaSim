@@ -21,14 +21,24 @@ class CircleSystem:
         self.fgf_o2 = 2.0
         self.fgf_air = 0.0
         self.fgf_n2o = 0.0
+        self.oxygen_supply_connected = True
         
         # Vaporizer
         self.vaporizer_agent = "Sevo"
         self.vaporizer_setting = 0.0  # %
         self.vaporizer_on = False
         
+    def delivered_o2_flow(self) -> float:
+        """Return oxygen flow reaching the circuit from the supply."""
+        return self.fgf_o2 if self.oxygen_supply_connected else 0.0
+
+    def delivered_n2o_flow(self) -> float:
+        """Return nitrous flow after the oxygen-pressure fail-safe."""
+        return self.fgf_n2o if self.oxygen_supply_connected else 0.0
+
     def fgf_total(self) -> float:
-        return self.fgf_o2 + self.fgf_air + self.fgf_n2o
+        """Return total fresh gas flow actually reaching the circuit."""
+        return self.delivered_o2_flow() + self.fgf_air + self.delivered_n2o_flow()
 
     def step(self, dt: float, uptake_o2: float, uptake_agent: float, uptake_n2o: float = 0.0):
         """
@@ -38,13 +48,15 @@ class CircleSystem:
         uptake_n2o: L/min (Nitrous uptake, can be negative if excreting)
         """
         # 1. Total FGF
-        total_fgf = max(0.0, self.fgf_o2 + self.fgf_air + self.fgf_n2o)
+        delivered_o2 = self.delivered_o2_flow()
+        delivered_n2o = self.delivered_n2o_flow()
+        total_fgf = max(0.0, delivered_o2 + self.fgf_air + delivered_n2o)
         
         # 2. Fresh Gas Composition
         # Air is 21% O2, 79% N2
         if total_fgf > 0.0:
-            fg_o2 = (self.fgf_o2 + 0.21 * self.fgf_air) / total_fgf
-            fg_n2o = self.fgf_n2o / total_fgf
+            fg_o2 = (delivered_o2 + 0.21 * self.fgf_air) / total_fgf
+            fg_n2o = delivered_n2o / total_fgf
 
             # Vaporizer output (only meaningful with flow)
             fg_agent = (self.vaporizer_setting / 100.0) if self.vaporizer_on else 0.0

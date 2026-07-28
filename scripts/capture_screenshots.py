@@ -75,7 +75,7 @@ def run_capture(target, output_dir, run_duration=0):
         QTimer.singleShot(500, capture_dialog)
         sys.exit(app.exec())
 
-    elif target in ['main', 'induction', 'maintenance']:
+    elif target in ['main', 'induction', 'maintenance', 'oxygen']:
         params = None
         if target == 'induction':
             params = {
@@ -84,7 +84,7 @@ def run_capture(target, output_dir, run_duration=0):
                 'renal_status': 'Normal', 'hepatic_status': 'Normal',
                 'mode': 'awake', 'maint_type': 'tiva',
                 'tutorial_mode': True, 
-                'scenario_id': None, # Standard induction tutorial
+                'scenario_id': 'induction_tiva',
                 'pk_model_propofol': 'Eleveld', 'pk_model_nore': 'Li',
                 'pk_model_epi': 'Clutter', 'bis_model': 'Bouillon', 
                 'loc_model': 'Kern',
@@ -104,6 +104,19 @@ def run_capture(target, output_dir, run_duration=0):
                 'loc_model': 'Kern',
                 'enable_death_detector': False, 'arterial_line_enabled': True
              }
+        elif target == 'oxygen':
+            params = {
+                'age': 40, 'weight': 70.0, 'height': 170.0, 'sex': 'male',
+                'baseline_hb': 13.5, 'renal_function': 1.0, 'hepatic_function': 1.0,
+                'renal_status': 'Normal', 'hepatic_status': 'Normal',
+                'mode': 'steady_state', 'maint_type': 'tiva',
+                'tutorial_mode': True,
+                'scenario_id': 'oxygen_supply_failure',
+                'pk_model_propofol': 'Eleveld', 'pk_model_nore': 'Li',
+                'pk_model_epi': 'Clutter', 'bis_model': 'Bouillon',
+                'loc_model': 'Kern',
+                'enable_death_detector': False, 'arterial_line_enabled': True
+            }
 
         window = ScreenshotMainWindow(sim_params=params)
         # Wider window to ensure machine tab fits without scrolling
@@ -128,7 +141,13 @@ def run_capture(target, output_dir, run_duration=0):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Capture screenshots of AnaSim")
     parser.add_argument("--output", "-o", default="screenshots", help="Output directory")
-    parser.add_argument("--target", "-t", choices=['config', 'main', 'induction', 'maintenance'], default='main', help="Target screen to capture")
+    parser.add_argument(
+        "--target",
+        "-t",
+        choices=['config', 'main', 'induction', 'maintenance', 'oxygen'],
+        default='main',
+        help="Target screen to capture",
+    )
     parser.add_argument("--run", "-r", type=float, default=0, help="Run simulation for N seconds before capture")
     
     args = parser.parse_args()
