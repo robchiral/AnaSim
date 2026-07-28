@@ -14,7 +14,6 @@ from .base import (
     require_crisis_resolved_with_map,
     require_crisis_stopped,
     require_fluid_given,
-    require_stable_baseline_vitals,
     require_vasopressor_running,
     create_observe_baseline_step,
     create_reassess_step,
@@ -45,22 +44,21 @@ def _require_warm_shock_recognition() -> callable:
 def create_sepsis_response() -> Scenario:
     """Create septic shock response scenario."""
     steps = [
-        create_observe_baseline_step(1, 7, "sepsis", hr_range="60-90 bpm"),
+        create_observe_baseline_step("sepsis", hr_range="60-90 bpm"),
         ScenarioStep(
             id="START_SEPSIS",
             title="Sepsis begins",
             instruction=(
-                "<b>Step 2/7: Initiate sepsis event</b><br>"
-                "Go to the <b>Events</b> tab and click <b>'Start sepsis'</b>.<br><br>"
+                "Select <b>Start sepsis</b> on the Events tab.<br><br>"
                 "<i>Sepsis can evolve rapidly from infection or intra-abdominal sources.</i>"
             ),
             check_requirements=require_crisis_active("active_sepsis", "Start sepsis event (Events tab)"),
+            target_tab="Events",
         ),
         ScenarioStep(
             id="RECOGNIZE_WARM_SHOCK",
             title="Recognize septic shock",
             instruction=(
-                "<b>Step 3/7: Recognize warm septic shock</b><br>"
                 "Look for the classic pattern:<br>"
                 "• <b>Tachycardia</b> (HR > 90) – may lag under anesthesia<br>"
                 "• <b>Low SVR</b> and/or <b>MAP < 65</b><br>"
@@ -73,37 +71,36 @@ def create_sepsis_response() -> Scenario:
             id="GIVE_FLUIDS",
             title="Initial fluid resuscitation",
             instruction=(
-                "<b>Step 4/7: Give fluids</b><br>"
                 "Administer a <b>500–1000 mL</b> crystalloid bolus.<br>"
-                "Use the <b>Events</b> tab -> <b>Fluid bolus</b>.<br><br>"
+                "Use the fluid controls on the Events tab.<br><br>"
                 "<i>Goal: improve preload and support perfusion.</i>"
             ),
             check_requirements=require_fluid_given(500),
+            target_tab="Events",
         ),
         ScenarioStep(
             id="START_VASOPRESSOR",
             title="Start vasopressor",
             instruction=(
-                "<b>Step 5/7: Start norepinephrine</b><br>"
                 "If MAP remains low after fluids, start a vasopressor.<br>"
                 "• <b>Norepinephrine</b> is first-line (0.05–0.1 mcg/kg/min).<br><br>"
                 "<i>Pressor resistance may require higher doses.</i>"
             ),
             check_requirements=require_vasopressor_running("Start vasopressor (norepinephrine preferred)"),
+            target_tab="Medications",
         ),
         ScenarioStep(
             id="SOURCE_CONTROL",
             title="Source control",
             instruction=(
-                "<b>Step 6/7: Source control</b><br>"
                 "Stop the sepsis event to simulate antibiotics and source control.<br>"
-                "Click <b>'Stop sepsis'</b> in the <b>Events</b> tab.<br><br>"
+                "Select <b>Stop sepsis</b> on the Events tab.<br><br>"
                 "<i>Without source control, shock will persist.</i>"
             ),
             check_requirements=require_crisis_stopped("active_sepsis", "Stop sepsis (source control + antibiotics)"),
+            target_tab="Events",
         ),
         create_reassess_step(
-            7, 7,
             "active_sepsis",
             "Stop sepsis (source control + antibiotics)",
             "Sepsis controlled",

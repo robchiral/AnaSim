@@ -23,6 +23,28 @@ def test_circuit_oxygen_washin_and_washout():
     assert circuit.composition.fio2 < 0.5, "Air washout should reduce FiO2 toward room air"
 
 
+def test_oxygen_supply_failure_stops_o2_and_n2o_delivery():
+    circuit = CircleSystem(volume_l=6.0)
+    circuit.fgf_o2 = 2.0
+    circuit.fgf_air = 8.0
+    circuit.fgf_n2o = 4.0
+    circuit.composition.fio2 = 0.37
+    circuit.composition.fin2 = 0.63
+
+    circuit.oxygen_supply_connected = False
+
+    assert circuit.delivered_o2_flow() == 0.0
+    assert circuit.delivered_n2o_flow() == 0.0
+    assert circuit.fgf_total() == 8.0
+
+    for _ in range(60):
+        circuit.step(1.0, uptake_o2=0.25, uptake_agent=0.0)
+
+    assert circuit.composition.fio2 < 0.30
+    assert circuit.fgf_o2 == 2.0
+    assert circuit.fgf_n2o == 4.0
+
+
 def test_circuit_agent_washin_and_washout():
     """Volatile agent should wash in with vaporizer and wash out when off."""
     circuit = CircleSystem(volume_l=6.0)

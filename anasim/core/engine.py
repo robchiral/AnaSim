@@ -473,7 +473,11 @@ class SimulationEngine(DrugControllerMixin):
         self.circuit.fgf_o2 = max(0.0, o2_l_min)
         self.circuit.fgf_air = max(0.0, air_l_min)
         self.circuit.fgf_n2o = max(0.0, n2o_l_min)
-            
+
+    def set_oxygen_supply_connected(self, connected: bool):
+        """Connect or isolate the oxygen source feeding the flowmeter."""
+        self.circuit.oxygen_supply_connected = bool(connected)
+
     def set_vaporizer(self, agent: str, percent: float):
         """Set Vaporizer Agent and Dial."""
         if not self._volatile_enabled:
