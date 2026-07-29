@@ -83,6 +83,32 @@ def test_controls_are_generated_from_typed_registry(qapp, engine_factory):
         assert widgets["bolus"].value() == spec.default_bolus
 
 
+def test_controls_sync_external_engine_changes(qapp, engine_factory):
+    engine = engine_factory()
+    panel = ControlPanelWidget(engine)
+
+    engine.set_airway_mode("ETT")
+    engine.set_vent_settings(
+        rr=10,
+        vt=0.45,
+        peep=8,
+        ie="1:2",
+        mode="PCV",
+        p_insp=18,
+    )
+    engine.set_bronchospasm(0.4)
+    engine.set_drug_rate("nore", 3.0)
+    panel.sync_with_engine()
+
+    assert panel.rb_ett.isChecked()
+    assert panel.cb_vent_mode.currentData() == "PCV"
+    assert panel.sb_rr.value() == 10
+    assert panel.sb_peep.value() == 8
+    assert panel.sb_pinsp.value() == 18
+    assert panel.sb_bronchospasm.value() == 40
+    assert panel.drug_widgets["nore"]["rate"].value() == 3.0
+
+
 def test_hemorrhage_scenario_creation():
     scenario = create_hemorrhage_response()
 

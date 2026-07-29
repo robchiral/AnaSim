@@ -62,14 +62,20 @@ def run_headless(args):
     start_real = time.perf_counter()
     steps = int(args.duration / sim_config.dt)
     
-    for i in range(steps):
-        engine.step(sim_config.dt)
-        if i % 100 == 0:
-            state = engine.get_latest_state()
-            hr = state.display_value("hr")
-            map_val = state.display_value("map")
-            spo2 = state.display_value("spo2")
-            print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_val:.1f} | SpO2: {spo2:.1f}")
+    try:
+        for i in range(steps):
+            engine.step(sim_config.dt)
+            if i % 100 == 0:
+                state = engine.get_latest_state()
+                hr = state.display_value("hr")
+                map_val = state.display_value("map")
+                spo2 = state.display_value("spo2")
+                print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_val:.1f} | SpO2: {spo2:.1f}")
+        remainder = args.duration - steps * sim_config.dt
+        if remainder > 1e-12:
+            engine.step(remainder)
+    finally:
+        engine.stop_recording()
             
     end_real = time.perf_counter()
     print(f"Simulation completed in {end_real - start_real:.2f}s real time.")

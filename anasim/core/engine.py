@@ -632,7 +632,13 @@ class SimulationEngine(DrugControllerMixin):
         self.state.bair_hugger_target = target_c
         
     def set_airway_mode(self, mode_str: str):
-        self.state.airway_mode = AIRWAY_MODE_MAP.get(mode_str, AirwayType.NONE)
+        try:
+            self.state.airway_mode = AIRWAY_MODE_MAP[mode_str]
+        except (KeyError, TypeError) as exc:
+            choices = ", ".join(AIRWAY_MODE_MAP)
+            raise ValueError(
+                f"Unsupported airway mode {mode_str!r}; choose one of: {choices}"
+            ) from exc
         if self.state.airway_mode == AirwayType.NONE:
             self.bag_mask_active = False
 
@@ -798,12 +804,7 @@ class SimulationEngine(DrugControllerMixin):
 
     def _apply_fio2_blender(self, fio2: float):
         """Blend fresh gas flows to achieve target FiO2 (O2/air only, N2O preserved)."""
-        if not self.circuit:
-            return
-        total_fgf = self.circuit.fgf_total()
-        if total_fgf <= 0:
-            return
-        total_non_n2o = max(0.0, total_fgf - self.circuit.fgf_n2o)
+        total_non_n2o = self.circuit.fgf_o2 + self.circuit.fgf_air
         if total_non_n2o <= 0:
             return
         target = clamp(fio2, 0.21, 1.0)

@@ -1,4 +1,3 @@
-import math
 from dataclasses import dataclass
 from anasim.core.constants import (
     RR_APNEA_THRESHOLD,

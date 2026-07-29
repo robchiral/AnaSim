@@ -1,5 +1,5 @@
 import numpy as np
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Tuple
 from .patient import Patient
 from anasim.core.utils import clamp

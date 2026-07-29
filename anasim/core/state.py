@@ -66,7 +66,7 @@ class AirwayType(Enum):
 
 @dataclass(slots=True)
 class SimulationState:
-    """Immutable snapshot of the simulation state at a specific time."""
+    """Mutable snapshot of the simulation state at a specific time."""
     time: float = 0.0
     
     # Drug concentrations (effect site Ce, plasma Cp).
@@ -205,4 +205,7 @@ class SimulationState:
 
     def display_value(self, attr: str):
         """Return the learner-facing value for a raw/display field pair."""
-        return getattr(self, f"display_{attr}", getattr(self, attr))
+        try:
+            return getattr(self, f"display_{attr}")
+        except AttributeError:
+            return getattr(self, attr)

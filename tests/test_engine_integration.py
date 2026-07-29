@@ -232,6 +232,14 @@ def test_output_buffer_keeps_per_step_waveform_snapshots():
     assert len(engine.output_buffer) == initial_len + 2
     assert engine.output_buffer[-1].time == pytest.approx(engine.state.time)
 
+
+def test_invalid_airway_mode_is_rejected(engine_factory):
+    engine = engine_factory()
+
+    with pytest.raises(ValueError, match="Unsupported airway mode"):
+        engine.set_airway_mode("nasal cannula")
+
+
 # --- Coupling / Integration Tests ---
 
 def _run_for(engine, seconds: float, dt: float = 0.1) -> None:
