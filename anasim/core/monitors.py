@@ -3,8 +3,6 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from .projection import set_state_float_fields
 from .state import AirwayType
 from .utils import clamp

@@ -18,7 +18,6 @@ from anasim.core.constants import (
     SHIVER_TAU_OFF,
 )
 from anasim.core.drug_registry import PK_HEMODYNAMIC_TARGETS, TCI_TARGET_CONFIG
-from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resp_mech import VentMode

@@ -16,7 +16,7 @@ class DataRecorder:
     """
     def __init__(self, output_dir: str = ".", sample_interval_sec: float = 1.0):
         self.output_dir = output_dir
-        self.filename = f"anasim_log_{int(time.time())}.csv"
+        self.filename = f"anasim_log_{time.time_ns()}.csv"
         self.file_path = str(Path(output_dir) / self.filename)
         self.file = None
         self.writer = None
@@ -35,14 +35,14 @@ class DataRecorder:
         
     def start(self):
         try:
-             os.makedirs(self.output_dir, exist_ok=True)
-             self.file = open(self.file_path, 'w', newline='')
-             self.writer = csv.writer(self.file)
-             self.is_recording = True
-             self.writer.writerow(STATE_FIELD_NAMES)
+            os.makedirs(self.output_dir, exist_ok=True)
+            self.file = open(self.file_path, 'w', newline='')
+            self.writer = csv.writer(self.file)
+            self.writer.writerow(STATE_FIELD_NAMES)
+            self.is_recording = True
         except (OSError, csv.Error, ValueError):
-             logger.exception("Failed to start recording")
-             self.is_recording = False
+            logger.exception("Failed to start recording")
+            self.stop()
              
     def log(self, state: SimulationState):
         if not self.is_recording or not self.writer:
@@ -59,8 +59,12 @@ class DataRecorder:
             self.writer.writerow(row)
         except (OSError, csv.Error, ValueError):
             logger.exception("Failed to write record")
+            self.stop()
         
     def stop(self):
-        if self.file:
-            self.file.close()
+        file = self.file
+        self.file = None
+        self.writer = None
         self.is_recording = False
+        if file:
+            file.close()

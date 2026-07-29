@@ -11,7 +11,6 @@ from .base import (
     join_messages,
     monitor_value,
     require_crisis_active,
-    require_crisis_resolved_with_map,
     require_crisis_stopped,
     require_fluid_given,
     require_vasopressor_running,

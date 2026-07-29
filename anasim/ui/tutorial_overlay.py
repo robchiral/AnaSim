@@ -29,6 +29,7 @@ class ScenarioOverlay(QFrame):
         self.scenario = scenario
         self.current_step = 0
         self.requirements_met = False
+        self._last_requirement_display = None
 
         self.setObjectName("scenarioOverlay")
         self.setStyleSheet(get_overlay_style())
@@ -149,6 +150,7 @@ class ScenarioOverlay(QFrame):
         if step.target_tab is not None:
             self.btn_target.setText(f"Open {step.target_tab.lower()}")
         self.requirements_met = False
+        self._last_requirement_display = None
         self._set_requirement_state(False, "Complete the objective to continue")
 
     def _show_completion(self):
@@ -177,6 +179,10 @@ class ScenarioOverlay(QFrame):
 
     def _set_requirement_state(self, met: bool, status: str):
         self.requirements_met = met
+        display_state = (self.current_step, met, status)
+        if display_state == self._last_requirement_display:
+            return
+        self._last_requirement_display = display_state
         if met:
             self.lbl_status_icon.setText("✓")
             self.lbl_status_icon.setStyleSheet(f"color: {COLORS['success']};")

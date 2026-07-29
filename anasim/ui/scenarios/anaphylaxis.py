@@ -8,7 +8,6 @@ from .base import (
     Scenario,
     ScenarioStep,
     cumulative_fluid_given,
-    monitor_value,
     require_crisis_active,
     require_crisis_resolved_with_map,
 )

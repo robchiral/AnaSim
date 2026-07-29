@@ -5,10 +5,6 @@ Tests VCV/PCV modes, auto-PEEP, PEEP effects, and hemodynamic coupling.
 """
 
 import unittest
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from anasim.physiology.resp_mech import RespiratoryMechanics, VentMode
 from anasim.physiology.respiration import RespiratoryModel

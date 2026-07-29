@@ -1,3 +1,5 @@
+import pytest
+
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.volatile import Vaporizer
 from anasim.core.state import SimulationConfig
@@ -153,3 +155,23 @@ def test_fio2_blender_with_n2o(engine_factory):
     total = o2 + air + n2o
     fio2 = (o2 + 0.21 * air) / total if total > 0 else 0.21
     assert abs(fio2 - 0.5) < 0.05
+
+    engine.set_oxygen_supply_connected(False)
+    engine.set_vent_settings(
+        rr=12,
+        vt=0.5,
+        peep=5.0,
+        ie="1:2",
+        mode="VCV",
+        fio2=0.3,
+    )
+    configured_total = (
+        engine.circuit.fgf_o2
+        + engine.circuit.fgf_air
+        + engine.circuit.fgf_n2o
+    )
+    configured_fio2 = (
+        engine.circuit.fgf_o2 + 0.21 * engine.circuit.fgf_air
+    ) / configured_total
+    assert configured_total == pytest.approx(total)
+    assert configured_fio2 == pytest.approx(0.3)

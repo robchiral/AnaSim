@@ -68,31 +68,31 @@ class MainWindow(QMainWindow):
         if hasattr(self, "engine") and getattr(self.engine, "recorder", None):
             self.engine.stop_recording()
         p = self.sim_params
-        self.arterial_line_enabled = p.get('arterial_line_enabled', True)
+        self.arterial_line_enabled = p['arterial_line_enabled']
         self.patient = Patient(
             age=p['age'], 
             weight=p['weight'], 
             height=p['height'], 
             sex=p['sex'],
-            baseline_hb=p.get('baseline_hb', 13.5),
-            renal_function=p.get('renal_function', 1.0),
-            hepatic_function=p.get('hepatic_function', 1.0),
-            renal_status=p.get('renal_status', 'Normal'),
-            hepatic_status=p.get('hepatic_status', 'Normal'),
+            baseline_hb=p['baseline_hb'],
+            renal_function=p['renal_function'],
+            hepatic_function=p['hepatic_function'],
+            renal_status=p['renal_status'],
+            hepatic_status=p['hepatic_status'],
         )
         self.config = SimulationConfig(
-            pk_model_propofol=p.get('pk_model_propofol', 'Eleveld'),
-            pk_model_nore=p.get('pk_model_nore', 'Beloeil'),
-            pk_model_epi=p.get('pk_model_epi', 'Clutter'),
-            bis_model=p.get('bis_model', 'Bouillon'),
-            loc_model=p.get('loc_model', 'Kern'),
-            mode=p.get('mode', 'awake'),
-            maint_type=p.get('maint_type', 'tiva'),
-            baseline_hb=p.get('baseline_hb', 13.5),
-            enable_death_detector=p.get('enable_death_detector', False)
+            pk_model_propofol=p['pk_model_propofol'],
+            pk_model_nore=p['pk_model_nore'],
+            pk_model_epi=p['pk_model_epi'],
+            bis_model=p['bis_model'],
+            loc_model=p['loc_model'],
+            mode=p['mode'],
+            maint_type=p['maint_type'],
+            baseline_hb=p['baseline_hb'],
+            enable_death_detector=p['enable_death_detector'],
         )
         self.engine = SimulationEngine(self.patient, self.config)
-        self.tutorial_mode = p.get('tutorial_mode', False)
+        self.tutorial_mode = p['tutorial_mode']
         self.death_dialog_shown = False # Reset for new session
         
     def setup_ui(self):
@@ -126,7 +126,6 @@ class MainWindow(QMainWindow):
         mon_layout.setSpacing(0)
         
         self.monitor = PatientMonitorWidget(
-            tutorial_mode=self.tutorial_mode,
             arterial_line_enabled=self.arterial_line_enabled
         )
         # Update patient label with simulation config

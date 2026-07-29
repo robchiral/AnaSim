@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.signal import cont2discrete
-from typing import Optional
 from anasim.core.constants import TCI_MIN_TARGET_CHANGE_INTERVAL
 from anasim.core.utils import clamp
 

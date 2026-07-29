@@ -1,6 +1,6 @@
 import pyqtgraph as pg
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                               QGridLayout, QFrame)
+                               QFrame)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 import numpy as np
@@ -115,15 +115,10 @@ class NumericDisplay(QFrame):
                 self._apply_alarm_style(is_low)
             else:
                 self._apply_base_style()
-
-
-
-
 class PatientMonitorWidget(QWidget):
     """Real-time patient monitor showing waveforms (ECG, SpO2, Art, CO2) and numerics."""
-    def __init__(self, tutorial_mode=False, arterial_line_enabled=True):
+    def __init__(self, arterial_line_enabled=True):
         super().__init__()
-        self.tutorial_mode = tutorial_mode
         self.arterial_line_enabled = arterial_line_enabled
         self.setStyleSheet(get_base_widget_style())
         

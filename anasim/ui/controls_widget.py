@@ -1,3 +1,4 @@
+import time
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -45,7 +46,10 @@ class ControlPanelWidget(QWidget):
         self.engine = engine
         self._disturbance_profiles = [("Off", None)]
         self._disturbance_profiles.extend(list_disturbance_profiles())
-        self._last_sync_hash = None  # For dirty tracking to skip redundant syncs
+        self._last_sync_state = None
+        self._last_drug_state = None
+        self._last_circuit_readout = None
+        self._next_csht_update = 0.0
         self.setStyleSheet(f"""
             {get_base_widget_style()}
             {STYLE_SPINBOX}
@@ -106,35 +110,67 @@ class ControlPanelWidget(QWidget):
         
     def _silent_update(self, widget, setter_name, value):
         """Silently update a widget without triggering its signals."""
-        widget.blockSignals(True)
-        getattr(widget, setter_name)(value)
-        widget.blockSignals(False)
+        signals_were_blocked = widget.blockSignals(True)
+        try:
+            getattr(widget, setter_name)(value)
+        finally:
+            widget.blockSignals(signals_were_blocked)
 
     def sync_with_engine(self):
         """Update UI controls to match Engine state."""
         self._update_circuit_readout()
 
-        # Compute hash of key state values to skip redundant syncs
-        # Most frames have no control changes, so this skips 90%+ of sync work
-        sync_hash = hash((
+        settings = self.engine.vent.settings
+        drug_state = []
+        for spec in self.engine.get_controllable_drugs():
+            controller = getattr(self.engine, spec.tci_attr)
+            drug_state.append((
+                spec.key,
+                getattr(self.engine, spec.rate_attr),
+                controller.target if controller is not None else None,
+            ))
+        drug_state = tuple(drug_state)
+        if drug_state != self._last_drug_state:
+            self._last_drug_state = drug_state
+            self._sync_drug_controls()
+
+        now = time.monotonic()
+        if self.tabs.currentWidget() is self.tab_drugs and now >= self._next_csht_update:
+            self._sync_csht()
+            self._next_csht_update = now + 5.0
+
+        laryngospasm_level = sum(
+            self.engine.laryngospasm_severity >= threshold
+            for threshold in (0.05, 0.3, 0.6)
+        )
+        sync_state = (
             self.engine.circuit.vaporizer_setting,
             self.engine.circuit.fgf_o2,
             self.engine.circuit.fgf_air,
             self.engine.circuit.fgf_n2o,
             self.engine.circuit.oxygen_supply_connected,
             self.engine.vent.is_on,
+            settings.mode,
+            settings.rr,
+            settings.tv,
+            settings.peep,
+            settings.ie_ratio,
+            settings.p_insp,
+            self.engine.bag_mask_active,
             self.engine.maintenance_fluid_rate_ml_min,
             self.engine.disturbance_profile,
             self.engine.disturbance_active,
             self.engine.airway_obstruction_manual,
+            self.engine.bronchospasm_manual,
+            laryngospasm_level,
+            self.engine.auto_laryngospasm_enabled,
             self.engine.state.airway_mode,
-        ))
-        if sync_hash == self._last_sync_hash:
+        )
+        if sync_state == self._last_sync_state:
             return
-        self._last_sync_hash = sync_hash
+        self._last_sync_state = sync_state
 
         self._sync_gases_and_airway()
-        self._sync_drugs()
         self._sync_ventilator()
         self._sync_fluids()
         self._sync_disturbances()
@@ -154,23 +190,25 @@ class ControlPanelWidget(QWidget):
         )
 
         mode = self.engine.state.airway_mode
-        self.abg_air.blockSignals(True)
-        if mode == AirwayType.NONE:
-            self.rb_none.setChecked(True)
-            self.lbl_airway_status.setText("Circuit disconnected")
-            self.lbl_airway_status.setStyleSheet(f"color: {COLORS['text_dim']};")
-        elif mode == AirwayType.MASK:
-            self.rb_mask.setChecked(True)
-            self.lbl_airway_status.setText("Facemask connected")
-            self.lbl_airway_status.setStyleSheet(f"color: {COLORS['info']};")
-        elif mode == AirwayType.ETT:
-            self.rb_ett.setChecked(True)
-            self.lbl_airway_status.setText("Tracheal tube connected")
-            self.lbl_airway_status.setStyleSheet(f"color: {COLORS['success']};")
-        self.abg_air.blockSignals(False)
+        signals_were_blocked = self.abg_air.blockSignals(True)
+        try:
+            if mode == AirwayType.NONE:
+                self.rb_none.setChecked(True)
+                self.lbl_airway_status.setText("Circuit disconnected")
+                self.lbl_airway_status.setStyleSheet(f"color: {COLORS['text_dim']};")
+            elif mode == AirwayType.MASK:
+                self.rb_mask.setChecked(True)
+                self.lbl_airway_status.setText("Facemask connected")
+                self.lbl_airway_status.setStyleSheet(f"color: {COLORS['info']};")
+            elif mode == AirwayType.ETT:
+                self.rb_ett.setChecked(True)
+                self.lbl_airway_status.setText("Tracheal tube connected")
+                self.lbl_airway_status.setStyleSheet(f"color: {COLORS['success']};")
+        finally:
+            self.abg_air.blockSignals(signals_were_blocked)
 
-    def _sync_drugs(self):
-        """Sync TIVA and programmed bolus states."""
+    def _sync_drug_controls(self):
+        """Sync infusion mode, rate, and target controls."""
         for key, w in self.drug_widgets.items():
             dstate = self.engine.get_drug_state(key)
 
@@ -186,6 +224,9 @@ class ControlPanelWidget(QWidget):
                 w['rate'].setEnabled(True)
                 w['target'].setEnabled(False)
 
+    def _sync_csht(self):
+        """Refresh expensive context-sensitive half-time estimates."""
+        for key, w in self.drug_widgets.items():
             if w['csht_label'] is not None:
                 csht = self.engine.get_predicted_csht(key)
                 if csht > 0:
@@ -201,6 +242,19 @@ class ControlPanelWidget(QWidget):
         """Sync ventilator settings."""
         is_on = self.engine.vent.is_on
         self._silent_update(self.btn_vent_power, 'setChecked', is_on)
+        settings = self.engine.vent.settings
+        mode_index = self.cb_vent_mode.findData(settings.mode)
+        self._silent_update(self.cb_vent_mode, 'setCurrentIndex', mode_index)
+        self._silent_update(self.sb_rr, 'setValue', int(settings.rr))
+        self._silent_update(self.sb_tv, 'setValue', int(settings.tv))
+        self._silent_update(self.sb_peep, 'setValue', int(settings.peep))
+        self._silent_update(self.sb_pinsp, 'setValue', int(settings.p_insp))
+        self._silent_update(self.btn_bag_mask, 'setChecked', self.engine.bag_mask_active)
+        self.btn_bag_mask.setText(
+            "Stop bag-mask ventilation"
+            if self.engine.bag_mask_active
+            else "Start bag-mask ventilation"
+        )
 
         if is_on:
             self.btn_vent_power.setText("Stop ventilator")
@@ -208,16 +262,13 @@ class ControlPanelWidget(QWidget):
             self.sb_tv.setEnabled(True)
             self.sb_peep.setEnabled(True)
             self.cb_ie.setEnabled(True)
-            settings = self.engine.vent.settings
-            self._silent_update(self.sb_rr, 'setValue', int(settings.rr))
-            self._silent_update(self.sb_tv, 'setValue', int(settings.tv))
-            self._silent_update(self.sb_peep, 'setValue', int(settings.peep))
         else:
             self.btn_vent_power.setText("Start ventilator")
             self.sb_rr.setEnabled(False)
             self.sb_tv.setEnabled(False)
             self.sb_peep.setEnabled(False)
             self.cb_ie.setEnabled(False)
+        self._apply_vent_mode_controls(settings.mode)
 
     def _sync_fluids(self):
         """Sync continuous fluid rate."""
@@ -278,7 +329,7 @@ class ControlPanelWidget(QWidget):
         self.btn_o2_supply.setText(
             "Connect backup O₂" if disconnected else "Disconnect O₂ supply"
         )
-        self._last_sync_hash = None
+        self._last_sync_state = None
         self._update_circuit_readout()
 
     def _update_circuit_readout(self):
@@ -290,7 +341,12 @@ class ControlPanelWidget(QWidget):
             color = COLORS['warning']
         else:
             color = COLORS['success']
-        self.lbl_fio2.setText(f"{fio2 * 100:.0f}%")
+        percent = round(fio2 * 100)
+        readout = (percent, color)
+        if readout == self._last_circuit_readout:
+            return
+        self._last_circuit_readout = readout
+        self.lbl_fio2.setText(f"{percent}%")
         self.lbl_fio2.setStyleSheet(
             f"font-weight: 700; color: {color}; font-size: 16px;"
         )
@@ -300,7 +356,7 @@ class ControlPanelWidget(QWidget):
         self.engine.set_vaporizer(self.engine.active_agent, val)
 
     def update_airway(self, btn):
-        mode = btn.property("airway_mode") or "None"
+        mode = btn.property("airway_mode")
         
         if mode == "ETT" and self.btn_bag_mask.isChecked():
             self.btn_bag_mask.setChecked(False)
@@ -466,7 +522,13 @@ class ControlPanelWidget(QWidget):
         h_mode = QHBoxLayout()
         h_mode.addWidget(QLabel("Mode:"))
         self.cb_vent_mode = QComboBox()
-        self.cb_vent_mode.addItems(["VCV (Volume)", "PCV (Pressure)", "PSV (Support)", "CPAP"])
+        for label, mode in (
+            ("VCV (Volume)", "VCV"),
+            ("PCV (Pressure)", "PCV"),
+            ("PSV (Support)", "PSV"),
+            ("CPAP", "CPAP"),
+        ):
+            self.cb_vent_mode.addItem(label, mode)
         self.cb_vent_mode.currentIndexChanged.connect(self.on_vent_mode_changed)
         h_mode.addWidget(self.cb_vent_mode)
         h_mode.addStretch()
@@ -670,7 +732,7 @@ class ControlPanelWidget(QWidget):
         
         for spec in drugs:
             key = spec.key
-            color = drug_colors.get(key, COLORS['primary'])
+            color = drug_colors[key]
             
             def make_set_rate(k):
                 return lambda v: self.engine.set_drug_rate(k, v)
@@ -747,23 +809,23 @@ class ControlPanelWidget(QWidget):
             self.cb_ie.setEnabled(False)
             self.cb_vent_mode.setEnabled(False)
             self.sb_pinsp.setEnabled(False)
-            mode_index = self.cb_vent_mode.currentIndex()
-            if mode_index == 0:
-                mode = "VCV"
-            elif mode_index == 1:
-                mode = "PCV"
-            elif mode_index == 2:
-                mode = "PSV"
-            else:
-                mode = "CPAP"
+            mode = self.cb_vent_mode.currentData()
             self.engine.set_vent_settings(0, 0, 0.0, "1:2", mode=mode, p_insp=0.0)
     
     def on_vent_mode_changed(self, index):
         """Handle ventilator mode switch."""
-        is_vcv = (index == 0)
-        is_pcv = (index == 1)
-        is_psv = (index == 2)
-        is_cpap = (index == 3)
+        self._apply_vent_mode_controls(self.cb_vent_mode.itemData(index))
+
+        if self.btn_vent_power.isChecked():
+            self.btn_vent_power.setText("Stop ventilator")
+            self.update_vent()
+
+    def _apply_vent_mode_controls(self, mode):
+        """Show and enable only the settings relevant to a ventilator mode."""
+        is_vcv = mode == "VCV"
+        is_pcv = mode == "PCV"
+        is_psv = mode == "PSV"
+        is_cpap = mode == "CPAP"
         
         if is_vcv:
             self.lbl_tv.show()
@@ -785,21 +847,9 @@ class ControlPanelWidget(QWidget):
                     self.sb_pinsp.setValue(0)
                     self.sb_pinsp.setEnabled(False)
         
-        if self.btn_vent_power.isChecked():
-            self.btn_vent_power.setText("Stop ventilator")
-            self.update_vent()
-
     def update_vent(self):
         if self.btn_vent_power.isChecked():
-            mode_index = self.cb_vent_mode.currentIndex()
-            if mode_index == 0:
-                mode = "VCV"
-            elif mode_index == 1:
-                mode = "PCV"
-            elif mode_index == 2:
-                mode = "PSV"
-            else:
-                mode = "CPAP"
+            mode = self.cb_vent_mode.currentData()
             p_insp = self.sb_pinsp.value() if mode in ("PCV", "PSV") else 0.0
             
             self.engine.set_vent_settings(
@@ -838,7 +888,13 @@ class ControlPanelWidget(QWidget):
         l_temp = QHBoxLayout(gp_temp)
         
         self.combo_bair = QComboBox()
-        self.combo_bair.addItems(["Off", "Low (32°C)", "Medium (38°C)", "High (43°C)"])
+        for label, target in (
+            ("Off", 0.0),
+            ("Low (32°C)", 32.0),
+            ("Medium (38°C)", 38.0),
+            ("High (43°C)", 43.0),
+        ):
+            self.combo_bair.addItem(label, target)
         self.combo_bair.currentIndexChanged.connect(self.change_bair_hugger)
         
         l_temp.addWidget(QLabel("Forced-air warmer"))
@@ -1057,8 +1113,7 @@ class ControlPanelWidget(QWidget):
             stop_fn()
 
     def _hemorrhage_rate_from_ui(self) -> float:
-        rate = self.cb_hemo_severity.currentData()
-        return float(rate) if rate is not None else 500.0
+        return float(self.cb_hemo_severity.currentData())
 
     def toggle_hemorrhage(self, checked):
         if checked:
@@ -1112,7 +1167,4 @@ class ControlPanelWidget(QWidget):
             
     def change_bair_hugger(self, index):
         """Handle Bair Hugger setting change."""
-        targets = {1: 32.0, 2: 38.0, 3: 43.0}
-        target = targets.get(index, 0.0)
-        
-        self.engine.set_bair_hugger(target)
+        self.engine.set_bair_hugger(self.combo_bair.itemData(index))

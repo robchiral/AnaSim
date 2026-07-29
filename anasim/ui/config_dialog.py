@@ -3,7 +3,6 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QDialogButtonB
                                QSpinBox, QDoubleSpinBox, QComboBox, QRadioButton, 
                                QGroupBox, QButtonGroup, QHBoxLayout, QLabel, QFrame,
                                QCheckBox, QGridLayout)
-from PySide6.QtCore import Qt
 
 from .scenarios import SCENARIO_REGISTRY
 from .styles import COLORS, get_dialog_style, get_button_style, get_frame_style
@@ -283,8 +282,7 @@ class SimulationSetupDialog(QDialog):
     def _on_tutorial_toggled(self, checked):
         """Show/hide scenario selection when tutorial mode is toggled."""
         self.scenario_container.setVisible(checked)
-        if hasattr(self, "gb_scenario"):
-            self.gb_scenario.setEnabled(not checked)
+        self.gb_scenario.setEnabled(not checked)
         if checked:
             self._sync_start_mode_from_tutorial()
 
@@ -295,15 +293,12 @@ class SimulationSetupDialog(QDialog):
 
     def _sync_start_mode_from_tutorial(self):
         """Align disabled start mode with selected tutorial scenario."""
-        if not hasattr(self, "cb_scenario"):
-            return
-        text = self.cb_scenario.currentText()
-        data = self.cb_scenario.currentData() or {}
-        if data.get("mode") == "steady_state":
+        data = self.cb_scenario.currentData()
+        if data["mode"] == "steady_state":
             self.rb_maint.setChecked(True)
         else:
             self.rb_awake.setChecked(True)
-        if data.get("maint_type") == "balanced":
+        if data["maint_type"] == "balanced":
             self.cb_maint_type.setCurrentText("Inhalational (sevoflurane)")
         else:
             self.cb_maint_type.setCurrentText("TIVA (propofol)")
@@ -312,16 +307,8 @@ class SimulationSetupDialog(QDialog):
         # Determine selected scenario
         scenario_id = None
         if self.rb_tutorial.isChecked():
-            scenario_data = self.cb_scenario.currentData() or {}
-            scenario_id = scenario_data.get("scenario_id")
-            if scenario_data.get("mode") == "steady_state":
-                self.rb_maint.setChecked(True)
-            elif scenario_data.get("mode") == "awake":
-                self.rb_awake.setChecked(True)
-            if scenario_data.get("maint_type") == "balanced":
-                self.cb_maint_type.setCurrentText("Inhalational (sevoflurane)")
-            else:
-                self.cb_maint_type.setCurrentText("TIVA (propofol)")
+            self._sync_start_mode_from_tutorial()
+            scenario_id = self.cb_scenario.currentData()["scenario_id"]
         
         renal_text = self.cb_renal.currentText()
         hepatic_text = self.cb_hepatic.currentText()

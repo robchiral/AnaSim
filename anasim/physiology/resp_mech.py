@@ -12,7 +12,6 @@ Respiratory Mechanics Model with VCV/PCV/PSV/CPAP Mode Support.
 
 from dataclasses import dataclass
 from enum import Enum
-import numpy as np
 
 
 class VentMode(Enum):
