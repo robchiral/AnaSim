@@ -5,6 +5,18 @@ import copy
 
 import numpy as np
 
+from .action_log import (
+    ACTION_AIRWAY,
+    ACTION_BAG_MASK,
+    ACTION_DRUG_BOLUS,
+    ACTION_EVENT_START,
+    ACTION_EVENT_STOP,
+    ACTION_FGF,
+    ACTION_FLUID,
+    ACTION_OXYGEN_SUPPLY,
+    ACTION_VAPORIZER,
+    ActionLog,
+)
 from .state import SimulationState, SimulationConfig, AirwayType
 from .initialization import initialize_engine_state
 from .drug_api import DrugControllerMixin
@@ -55,7 +67,6 @@ class PendingInfusion:
     hematocrit: float = 0.0
     retention_fraction: Optional[float] = None
     label: str = "crystalloid"
-    count_as_bolus: bool = True
 
 
 def _normalize_baseline_hct(baseline_hb: float, baseline_hct: Optional[float]) -> float:
@@ -160,6 +171,9 @@ class SimulationEngine(DrugControllerMixin):
         self.patient = patient
         self.config = config
         self.state = SimulationState()
+
+        # Timestamped control actions (scenario objectives, debrief).
+        self.actions = ActionLog()
 
         # Tuning knobs (centralized defaults).
         self.airway_tuning = AirwayTuning()
@@ -470,13 +484,26 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_fgf(self, o2_l_min: float, air_l_min: float, n2o_l_min: float = 0.0):
         """Set Fresh Gas Flow."""
-        self.circuit.fgf_o2 = max(0.0, o2_l_min)
-        self.circuit.fgf_air = max(0.0, air_l_min)
-        self.circuit.fgf_n2o = max(0.0, n2o_l_min)
+        for gas, requested in (
+            ("o2", o2_l_min),
+            ("air", air_l_min),
+            ("n2o", n2o_l_min),
+        ):
+            attr = f"fgf_{gas}"
+            flow = max(0.0, requested)
+            if getattr(self.circuit, attr) != flow:
+                self.actions.record(self.state.time, ACTION_FGF, label=gas, amount=flow)
+            setattr(self.circuit, attr, flow)
 
     def set_oxygen_supply_connected(self, connected: bool):
         """Connect or isolate the oxygen source feeding the flowmeter."""
-        self.circuit.oxygen_supply_connected = bool(connected)
+        connected = bool(connected)
+        self.circuit.oxygen_supply_connected = connected
+        self.actions.record(
+            self.state.time,
+            ACTION_OXYGEN_SUPPLY,
+            label="connected" if connected else "disconnected",
+        )
 
     def set_vaporizer(self, agent: str, percent: float):
         """Set Vaporizer Agent and Dial."""
@@ -498,6 +525,12 @@ class SimulationEngine(DrugControllerMixin):
         self.circuit.vaporizer_agent = agent_params["name"]
         self.circuit.vaporizer_setting = self.vaporizer.state.setting
         self.circuit.vaporizer_on = self.vaporizer.state.is_on
+        self.actions.record(
+            self.state.time,
+            ACTION_VAPORIZER,
+            label=self.active_agent,
+            amount=self.circuit.vaporizer_setting,
+        )
 
     def give_fluid(self, volume_ml: float):
         """
@@ -516,7 +549,12 @@ class SimulationEngine(DrugControllerMixin):
         Queue packed RBC transfusion.
         Delivered over several minutes similar to rapid infuser.
         """
-        self._queue_infusion(volume_ml, self.blood_infusion_rate_ml_min, hematocrit=hematocrit)
+        self._queue_infusion(
+            volume_ml,
+            self.blood_infusion_rate_ml_min,
+            hematocrit=hematocrit,
+            label="blood",
+        )
 
     def give_albumin(self, volume_ml: float):
         """
@@ -538,7 +576,6 @@ class SimulationEngine(DrugControllerMixin):
         hematocrit: float,
         retention_fraction: float = None,
         label: str = "crystalloid",
-        count_as_bolus: bool = True,
     ):
         if volume_ml <= 0 or rate_ml_min <= 0:
             return
@@ -549,9 +586,9 @@ class SimulationEngine(DrugControllerMixin):
                 hematocrit=hematocrit,
                 retention_fraction=retention_fraction,
                 label=label,
-                count_as_bolus=count_as_bolus,
             )
         )
+        self.actions.record(self.state.time, ACTION_FLUID, label=label, amount=volume_ml)
 
     def give_drug_bolus(self, drug_name: str, amount: float):
         """
@@ -568,6 +605,9 @@ class SimulationEngine(DrugControllerMixin):
             # Sugammadex bolus (mg) routes to TOF model for binding.
             if self.tof_pd:
                 self.tof_pd.give_sugammadex(amount)
+            self.actions.record(
+                self.state.time, ACTION_DRUG_BOLUS, label="sugammadex", amount=amount
+            )
             return
 
         spec = resolve_bolus_drug(drug_name)
@@ -575,26 +615,36 @@ class SimulationEngine(DrugControllerMixin):
         dose = amount * spec.bolus_model_scale
         model.state.c1 += dose / model.v1
         self.sync_active_tci_from_pk(spec.key)
+        self.actions.record(
+            self.state.time, ACTION_DRUG_BOLUS, label=spec.key, amount=amount
+        )
+
+    def _set_event(self, name: str, attr: str, active: bool, amount: float = 0.0):
+        """Set a clinical event flag and log learner-triggered transitions."""
+        if getattr(self, attr) != active:
+            action = ACTION_EVENT_START if active else ACTION_EVENT_STOP
+            self.actions.record(self.state.time, action, label=name, amount=amount)
+        setattr(self, attr, active)
 
     def start_hemorrhage(self, rate_ml_min: float = 500.0):
-        self.active_hemorrhage = True
         self.hemorrhage_rate_ml_min = rate_ml_min
+        self._set_event("hemorrhage", "active_hemorrhage", True, amount=rate_ml_min)
 
     def stop_hemorrhage(self):
-        self.active_hemorrhage = False
-        
+        self._set_event("hemorrhage", "active_hemorrhage", False)
+
     def start_anaphylaxis(self):
-        self.active_anaphylaxis = True
+        self._set_event("anaphylaxis", "active_anaphylaxis", True)
 
     def stop_anaphylaxis(self):
-        self.active_anaphylaxis = False
+        self._set_event("anaphylaxis", "active_anaphylaxis", False)
 
     def start_sepsis(self):
-        self.active_sepsis = True
+        self._set_event("sepsis", "active_sepsis", True)
 
     def stop_sepsis(self):
-        self.active_sepsis = False
-        
+        self._set_event("sepsis", "active_sepsis", False)
+
     def stop_events(self):
         self.stop_hemorrhage()
         self.stop_anaphylaxis()
@@ -639,6 +689,9 @@ class SimulationEngine(DrugControllerMixin):
             raise ValueError(
                 f"Unsupported airway mode {mode_str!r}; choose one of: {choices}"
             ) from exc
+        self.actions.record(
+            self.state.time, ACTION_AIRWAY, label=self.state.airway_mode.value
+        )
         if self.state.airway_mode == AirwayType.NONE:
             self.bag_mask_active = False
 
@@ -706,6 +759,9 @@ class SimulationEngine(DrugControllerMixin):
         if active:
             self.bag_mask_rr = clamp(rr, 0.0, 40.0)
             self.bag_mask_vt = clamp(vt, 0.05, 1.2)
+        self.actions.record(
+            self.state.time, ACTION_BAG_MASK, label="on" if active else "off"
+        )
 
     def start(self):
         """Start the simulation loop."""

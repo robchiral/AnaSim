@@ -278,7 +278,6 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
                     hematocrit=infusion.hematocrit,
                     retention_fraction=infusion.retention_fraction,
                     label=infusion.label,
-                    count_as_bolus=infusion.count_as_bolus,
                 )
             if infusion.remaining_ml > 1e-3:
                 remaining.append(infusion)
@@ -286,7 +285,7 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
 
     if hemo and engine.maintenance_fluid_rate_ml_min > 0:
         rate_sec = engine.maintenance_fluid_rate_ml_min / 60.0
-        hemo.add_volume(rate_sec * dt, hematocrit=0.0, label="crystalloid", count_as_bolus=False)
+        hemo.add_volume(rate_sec * dt, hematocrit=0.0, label="crystalloid")
 
     if engine.active_anaphylaxis:
         engine.anaphylaxis_severity = min(1.0, engine.anaphylaxis_severity + engine.anaphylaxis_onset_rate * dt)

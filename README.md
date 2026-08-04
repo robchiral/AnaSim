@@ -7,7 +7,7 @@ Real-time anesthesia and physiology simulation for medical education.
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/robchiral/AnaSim/blob/main/LICENSE)
 
-![AnaSim Induction Window](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/induction_full_window.png)
+![AnaSim guided induction demo](docs/images/anasim_demo.gif)
 
 > [!WARNING]
 > **For educational use only**
@@ -86,6 +86,8 @@ source .venv/bin/activate
 python -m pip install -e ".[dev]"
 QT_QPA_PLATFORM=offscreen python -m pytest -q
 ```
+
+Regenerate the animated README demo with `python scripts/capture_demo.py`.
 
 See the [contribution guide](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md)
 and [changelog](https://github.com/robchiral/AnaSim/blob/main/CHANGELOG.md).

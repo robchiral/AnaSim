@@ -181,7 +181,6 @@ class HemodynamicModel:
         self._last_pao2 = 95.0
         self._last_peep_cmH2O = self.pvr_peep_ref
         
-        self.cumulative_fluid_given = 0.0
         self.total_crystalloid_in_ml = 0.0
         self.total_colloid_in_ml = 0.0
         self.total_blood_in_ml = 0.0
@@ -291,7 +290,6 @@ class HemodynamicModel:
         hematocrit: float = 0.0,
         retention_fraction: Optional[float] = None,
         label: str = "crystalloid",
-        count_as_bolus: bool = True,
     ):
         """
         Simulate fluid bolus or hemorrhage.
@@ -335,9 +333,6 @@ class HemodynamicModel:
                 self.total_third_space_ml += max(0.0, amount_ml - retained_ml)
 
             self.blood_volume += retained_ml
-            # Track cumulative bolus volume for scenario requirements (non-blood only).
-            if count_as_bolus and hematocrit <= 0:
-                self.cumulative_fluid_given += amount_ml
 
             # Transient SV effect (Frank-Starling response to acute volume change)
             # Gain scaled to baseline SV for patient-specific response

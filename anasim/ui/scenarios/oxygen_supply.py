@@ -2,7 +2,16 @@
 
 from typing import Tuple
 
-from .base import Scenario, ScenarioStep, join_messages, monitor_value
+from anasim.core.action_log import ACTION_FGF
+
+from .base import (
+    Scenario,
+    ScenarioStep,
+    action_taken_this_step,
+    join_messages,
+    monitor_value,
+    require_oxygen_supply_action,
+)
 
 
 def _prepare_oxygen_supply_failure(engine) -> None:
@@ -44,12 +53,10 @@ def _require_safe_baseline(engine) -> Tuple[bool, str]:
 
 
 def _require_supply_failure(engine) -> Tuple[bool, str]:
-    disconnected = not engine.circuit.oxygen_supply_connected
-    return (
-        (True, "")
-        if disconnected
-        else (False, "Disconnect the O₂ supply on the Machine tab")
-    )
+    return require_oxygen_supply_action(
+        False,
+        "Disconnect the O₂ supply on the Machine tab",
+    )(engine)
 
 
 def _require_analyzer_warning(engine) -> Tuple[bool, str]:
@@ -62,16 +69,22 @@ def _require_analyzer_warning(engine) -> Tuple[bool, str]:
 
 def _require_backup_oxygen(engine) -> Tuple[bool, str]:
     circuit = engine.circuit
-    source_ok = circuit.oxygen_supply_connected
+    source_ok = require_oxygen_supply_action(
+        True,
+        "Connect backup O₂",
+    )(engine)[0]
+    flow_set = action_taken_this_step(engine, ACTION_FGF)
     oxygen_ok = circuit.delivered_o2_flow() >= 8.0
     air_off = circuit.fgf_air <= 0.1
     n2o_off = circuit.fgf_n2o <= 0.1
-    if source_ok and oxygen_ok and air_off and n2o_off:
+    if source_ok and flow_set and oxygen_ok and air_off and n2o_off:
         return True, ""
 
     messages = []
     if not source_ok:
         messages.append("Connect backup O₂")
+    if not flow_set:
+        messages.append("Set fresh gas flow for this objective")
     if not oxygen_ok:
         messages.append(f"O₂ flow: {circuit.delivered_o2_flow():.1f}/8+ L/min")
     if not air_off:
