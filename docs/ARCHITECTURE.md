@@ -33,6 +33,7 @@ AnaSim/
 │   ├── monitors.py     # Display smoothing, NIBP, capno, alarms
 │   ├── tci.py          # Target-Controlled Infusion controllers
 │   ├── state.py        # Simulation state dataclasses
+│   ├── action_log.py   # Timestamped control actions and scenario step activations
 │   ├── recorder.py     # CSV recorder
 │   └── utils.py        # Shared utility functions
 ├── patient/            # Patient demographics and PK/PD models
@@ -122,6 +123,21 @@ Startup contract:
 ### TCI
 - Controllers can rebuild their discretized dynamics when the live PK model drifts materially because of hemorrhage or other hemodynamic changes.
 - Controllers reseed their internal state estimate after external boluses so the controller state does not drift away from the live PK compartments.
+
+## Scenario objectives
+
+`engine.actions` (`ActionLog`) records scenario-relevant control actions, including fluids, drug boluses, infusion rates and TCI targets, event transitions, airway, fresh gas flow, vaporizer, oxygen supply, and bag-mask ventilation, with the simulation time at which each action occurred. The scenario overlay calls `begin_step()` as each objective becomes active. This records the activation and scopes later queries to that objective.
+
+Objectives fall into two kinds:
+
+| Kind | Example | Check reads |
+|------|---------|-------------|
+| Action | "Give 500 mL", "start the vasopressor", "select the ETT" | `engine.actions` since the objective activated, plus current state when relevant |
+| State / physiologic | "MAP > 65", "TOF below 25%", "circuit FiO2 below 30%" | Current engine state |
+
+Action objectives are satisfied only by an action taken while the objective is active, so an intervention performed before the objective appeared cannot complete it. State objectives stay on current state because they describe a condition to reach or hold and are not meaningfully repeatable.
+
+Step scoping uses log positions rather than timestamps. A paused simulation holds `state.time` constant, so timestamps alone cannot separate actions taken before an objective from actions taken during it. Step-scoped queries raise an error when no objective is active, which exposes missing activation instead of falling back to cumulative history.
 
 ## Data Ownership
 

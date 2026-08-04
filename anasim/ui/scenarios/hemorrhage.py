@@ -8,12 +8,13 @@ from typing import Tuple
 from .base import (
     Scenario,
     ScenarioStep,
+    VASOPRESSOR_KEYS,
     join_messages,
     monitor_value,
-    require_crisis_active,
+    require_crisis_started,
     require_crisis_stopped,
     require_fluid_given,
-    require_vasopressor_running,
+    require_infusion_started,
     create_observe_baseline_step,
     create_reassess_step,
 )
@@ -52,7 +53,11 @@ def create_hemorrhage_response() -> Scenario:
                 "Select a severity, then choose <b>Start bleeding</b> on the Events tab.<br><br>"
                 "<i>Intraoperative hemorrhage can occur suddenly during surgery.</i>"
             ),
-            check_requirements=require_crisis_active("active_hemorrhage", "Start hemorrhage event (Events tab)"),
+            check_requirements=require_crisis_started(
+                "hemorrhage",
+                "active_hemorrhage",
+                "Start hemorrhage event (Events tab)",
+            ),
             target_tab="Events",
         ),
         ScenarioStep(
@@ -75,7 +80,10 @@ def create_hemorrhage_response() -> Scenario:
                 "Use blood products for major ongoing hemorrhage.<br><br>"
                 "<i>Goal: restore intravascular volume while awaiting surgical hemostasis.</i>"
             ),
-            check_requirements=require_fluid_given(500),
+            check_requirements=require_fluid_given(
+                500,
+                labels=("crystalloid", "colloid", "blood"),
+            ),
             target_tab="Events",
         ),
         ScenarioStep(
@@ -87,7 +95,10 @@ def create_hemorrhage_response() -> Scenario:
                 "• <b>Phenylephrine</b>: 50-100 mcg/min<br><br>"
                 "<i>Vasopressors bridge until volume is restored; not a substitute for blood.</i>"
             ),
-            check_requirements=require_vasopressor_running("Start vasopressor (norepinephrine, phenylephrine, or epinephrine)"),
+            check_requirements=require_infusion_started(
+                *VASOPRESSOR_KEYS,
+                fail_message="Start vasopressor (norepinephrine, phenylephrine, or epinephrine)",
+            ),
             target_tab="Medications",
         ),
         ScenarioStep(
@@ -97,7 +108,11 @@ def create_hemorrhage_response() -> Scenario:
                 "Select <b>Stop bleeding</b> to simulate definitive surgical control.<br><br>"
                 "<i>Definitive hemorrhage control is the priority over resuscitation.</i>"
             ),
-            check_requirements=require_crisis_stopped("active_hemorrhage", "Stop hemorrhage (simulate surgical hemostasis)"),
+            check_requirements=require_crisis_stopped(
+                "hemorrhage",
+                "active_hemorrhage",
+                "Stop hemorrhage (simulate surgical hemostasis)",
+            ),
             target_tab="Events",
         ),
         create_reassess_step(

@@ -3,7 +3,17 @@ Emergence scenario definitions (Balanced and TIVA variants).
 """
 
 from typing import Tuple
-from .base import Scenario, ScenarioStep, join_messages, monitor_value
+
+from anasim.core.action_log import ACTION_AIRWAY, ACTION_FGF, ACTION_VAPORIZER
+
+from .base import (
+    Scenario,
+    ScenarioStep,
+    action_taken_this_step,
+    join_messages,
+    monitor_value,
+    require_infusions_stopped,
+)
 
 
 def _require_assess() -> callable:
@@ -27,27 +37,27 @@ def _require_agents_stopped_balanced() -> callable:
     def check(engine) -> Tuple[bool, str]:
         gas_off = not engine.circuit.vaporizer_on or engine.circuit.vaporizer_setting < 0.1
         high_flow = engine.circuit.fgf_total() > 6.0
-        if gas_off and high_flow:
+        vaporizer_records = engine.actions.since_step(ACTION_VAPORIZER)
+        vaporizer_stopped = any(record.amount < 0.1 for record in vaporizer_records)
+        flow_changed = action_taken_this_step(engine, ACTION_FGF)
+        if gas_off and high_flow and vaporizer_stopped and flow_changed:
             return True, ""
         msgs = []
-        if not gas_off: msgs.append("Vaporizer still on")
-        if not high_flow: msgs.append(f"FGF: {engine.circuit.fgf_total():.1f}/6+ L/min")
+        if not gas_off or not vaporizer_stopped:
+            msgs.append("Turn vaporizer off for this objective")
+        if not high_flow or not flow_changed:
+            msgs.append("Set FGF above 6 L/min for this objective")
         return False, join_messages(msgs)
     return check
 
 
 def _require_agents_stopped_tiva() -> callable:
     """Check TIVA infusions stopped."""
-    def check(engine) -> Tuple[bool, str]:
-        prop_off = (engine.propofol_rate_mg_sec == 0) and (not engine.tci_prop or engine.tci_prop.target == 0)
-        remi_off = (engine.remi_rate_ug_sec == 0) and (not engine.tci_remi or engine.tci_remi.target == 0)
-        if prop_off and remi_off:
-            return True, ""
-        msgs = []
-        if not prop_off: msgs.append("Propofol running")
-        if not remi_off: msgs.append("Remi running")
-        return False, join_messages(msgs)
-    return check
+    return require_infusions_stopped(
+        "propofol",
+        "remi",
+        fail_message="Stop propofol and remifentanil for this objective",
+    )
 
 
 def _require_awakening() -> callable:
@@ -73,12 +83,19 @@ def _require_extubation_criteria() -> callable:
         bis = monitor_value(engine, "bis")
         awake = bis > 80
         extubated = engine.state.airway_mode != AirwayType.ETT
-        if breathing and awake and extubated:
+        airway_action = action_taken_this_step(
+            engine,
+            ACTION_AIRWAY,
+            AirwayType.MASK.value,
+            AirwayType.NONE.value,
+        )
+        if breathing and awake and extubated and airway_action:
             return True, ""
         msgs = []
         if not awake: msgs.append(f"BIS: {bis:.0f}/80+")
         if not breathing: msgs.append(f"RR: {engine.state.rr:.0f}/8+")
-        if not extubated: msgs.append("Still intubated")
+        if not extubated or not airway_action:
+            msgs.append("Select Mask or No airway for this objective")
         return False, join_messages(msgs)
     return check
 

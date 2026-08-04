@@ -110,7 +110,7 @@ class MainWindow(QMainWindow):
             scenario_id = self.sim_params['scenario_id']
             scenario = SCENARIO_BUILDERS[scenario_id]()
             scenario.prepare(self.engine)
-            self.overlay = ScenarioOverlay(scenario)
+            self.overlay = ScenarioOverlay(scenario, self.engine)
             base_layout.addWidget(self.overlay)
         
         # Main Layout: Monitor (Left) + Controls (Right)
@@ -324,7 +324,7 @@ class MainWindow(QMainWindow):
         self.controls.sync_with_engine()
         
         if self.overlay:
-            self.overlay.update_state(self.engine)
+            self.overlay.update_state()
 
         # Check for death
         if state.is_dead and not self.death_dialog_shown:

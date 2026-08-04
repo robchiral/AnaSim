@@ -8,12 +8,13 @@ from typing import Tuple
 from .base import (
     Scenario,
     ScenarioStep,
+    VASOPRESSOR_KEYS,
     join_messages,
     monitor_value,
-    require_crisis_active,
+    require_crisis_started,
     require_crisis_stopped,
     require_fluid_given,
-    require_vasopressor_running,
+    require_infusion_started,
     create_observe_baseline_step,
     create_reassess_step,
 )
@@ -51,7 +52,11 @@ def create_sepsis_response() -> Scenario:
                 "Select <b>Start sepsis</b> on the Events tab.<br><br>"
                 "<i>Sepsis can evolve rapidly from infection or intra-abdominal sources.</i>"
             ),
-            check_requirements=require_crisis_active("active_sepsis", "Start sepsis event (Events tab)"),
+            check_requirements=require_crisis_started(
+                "sepsis",
+                "active_sepsis",
+                "Start sepsis event (Events tab)",
+            ),
             target_tab="Events",
         ),
         ScenarioStep(
@@ -74,7 +79,10 @@ def create_sepsis_response() -> Scenario:
                 "Use the fluid controls on the Events tab.<br><br>"
                 "<i>Goal: improve preload and support perfusion.</i>"
             ),
-            check_requirements=require_fluid_given(500),
+            check_requirements=require_fluid_given(
+                500,
+                labels=("crystalloid",),
+            ),
             target_tab="Events",
         ),
         ScenarioStep(
@@ -85,7 +93,10 @@ def create_sepsis_response() -> Scenario:
                 "• <b>Norepinephrine</b> is first-line (0.05–0.1 mcg/kg/min).<br><br>"
                 "<i>Pressor resistance may require higher doses.</i>"
             ),
-            check_requirements=require_vasopressor_running("Start vasopressor (norepinephrine preferred)"),
+            check_requirements=require_infusion_started(
+                *VASOPRESSOR_KEYS,
+                fail_message="Start vasopressor (norepinephrine preferred)",
+            ),
             target_tab="Medications",
         ),
         ScenarioStep(
@@ -96,7 +107,11 @@ def create_sepsis_response() -> Scenario:
                 "Select <b>Stop sepsis</b> on the Events tab.<br><br>"
                 "<i>Without source control, shock will persist.</i>"
             ),
-            check_requirements=require_crisis_stopped("active_sepsis", "Stop sepsis (source control + antibiotics)"),
+            check_requirements=require_crisis_stopped(
+                "sepsis",
+                "active_sepsis",
+                "Stop sepsis (source control + antibiotics)",
+            ),
             target_tab="Events",
         ),
         create_reassess_step(

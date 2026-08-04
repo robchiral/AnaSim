@@ -24,9 +24,10 @@ class ScenarioOverlay(QFrame):
 
     navigate_requested = Signal(str)
 
-    def __init__(self, scenario: Scenario, parent=None):
+    def __init__(self, scenario: Scenario, engine, parent=None):
         super().__init__(parent)
         self.scenario = scenario
+        self.engine = engine
         self.current_step = 0
         self.requirements_met = False
         self._last_requirement_display = None
@@ -140,6 +141,9 @@ class ScenarioOverlay(QFrame):
             return
 
         step = self.scenario[self.current_step]
+        # Scope action requirements to this objective: only what the learner
+        # does from now on can complete it.
+        self.engine.actions.begin_step(step.id, self.engine.state.time)
         self.lbl_step_number.setText(str(self.current_step + 1))
         self.lbl_title.setText(step.title)
         self.lbl_instruction.setText(step.instruction)
@@ -204,17 +208,17 @@ class ScenarioOverlay(QFrame):
             self.btn_next.setEnabled(False)
         self._update_progress()
 
-    def check_requirements(self, engine):
+    def check_requirements(self):
         """Return the current objective's completion state and feedback."""
         if self.current_step >= len(self.scenario):
             return True, ""
-        return self.scenario[self.current_step].check_requirements(engine)
+        return self.scenario[self.current_step].check_requirements(self.engine)
 
-    def update_state(self, engine):
+    def update_state(self):
         """Update objective feedback from the latest simulation state."""
         if self.current_step >= len(self.scenario):
             return
-        met, status = self.check_requirements(engine)
+        met, status = self.check_requirements()
         self._set_requirement_state(bool(met), status)
 
     def _navigate_to_target(self):

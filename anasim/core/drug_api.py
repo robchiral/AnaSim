@@ -7,6 +7,7 @@ for better maintainability while preserving the SimulationEngine API.
 
 from typing import TYPE_CHECKING, Optional
 
+from .action_log import ACTION_INFUSION_RATE, ACTION_TCI_TARGET
 from .drug_registry import DRUG_REGISTRY, DrugSpec, TCIMode, get_drug_spec
 from .units import convert_rate
 
@@ -69,6 +70,9 @@ class DrugControllerMixin:
         controller.max_rate = max_rate
         controller.sync_state_estimate(getattr(self, pk_attr))
         controller.target = target
+        self.actions.record(
+            self.state.time, ACTION_TCI_TARGET, label=spec.key, amount=target
+        )
 
     def sync_active_tci_from_pk(self: "SimulationEngine", *drug_keys: str):
         """Resynchronize active TCI controllers with the live PK model state."""
@@ -90,6 +94,7 @@ class DrugControllerMixin:
         spec = get_drug_spec(drug)
         setattr(self, spec.tci_attr, None)
         setattr(self, spec.rate_attr, 0.0)
+        self.actions.record(self.state.time, ACTION_TCI_TARGET, label=spec.key)
 
     def get_controllable_drugs(self: "SimulationEngine") -> tuple[DrugSpec, ...]:
         """Return the typed registry in UI display order."""
@@ -125,6 +130,12 @@ class DrugControllerMixin:
         rate_internal = convert_rate(rate_user_unit, spec.rate_unit, spec.internal_rate_unit)
         rate_internal = max(0.0, rate_internal)
         setattr(self, spec.rate_attr, rate_internal)
+        self.actions.record(
+            self.state.time,
+            ACTION_INFUSION_RATE,
+            label=spec.key,
+            amount=max(0.0, rate_user_unit),
+        )
 
     def _get_rate_to_user(self: "SimulationEngine", key: str) -> float:
         spec = get_drug_spec(key)
