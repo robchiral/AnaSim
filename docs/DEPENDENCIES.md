@@ -1,35 +1,10 @@
 # Dependencies
 
-## Execution Order
+See [Architecture](ARCHITECTURE.md#step-pipeline) for execution order and
+[data ownership](ARCHITECTURE.md#data-ownership) for raw and displayed state.
+This document covers dependencies that are less apparent from the runtime order.
 
-Each `SimulationEngine.step()` executes subsystems in this order:
-
-```text
-1. Disturbances    -> Surgical stimulation, bleeding, fluids, sepsis, anaphylaxis
-2. PK scaling      -> Live PK volumes/clearances from blood volume + CO
-3. TCI sync        -> Active controllers resynced/rebuilt against the live PK model
-4. TCI controllers -> Drug target -> infusion rate calculation
-5. Machine         -> Ventilator, bag-mask, vaporizer, circuit (O2/Air/N2O)
-6. PK models       -> Drug concentrations (Ce, Cp)
-7. Physiology      -> Resp mechanics -> Respiration -> Hemodynamics
-8. Projection      -> Live subsystem state copied into SimulationState
-9. Monitors        -> Waveforms, display_* numerics, alarms, NIBP
-10. Shivering      -> Thermoregulatory metabolic load
-11. Temperature    -> Core temperature and redistribution
-12. Death detector -> Viability check using raw hemodynamics
-```
-
-## Raw vs Display Ownership
-
-| Writer | Fields owned | Primary consumers |
-|-------|--------------|-------------------|
-| `projection.sync_pk_state()` | `propofol_ce/cp`, `remi_ce/cp`, vasoactive `*_ce` | Physiology, PD models, recorder |
-| `projection.project_runtime_physiology()` | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `rr`, `vt`, `mv`, `va`, `etco2`, `pa_co2`, `alveolar_co2`, `pao2`, `sao2` | Recorder, internal logic, analytics, physiology tests |
-| `monitors.step_monitors()` | `display_map`, `display_hr`, `display_sbp`, `display_dbp`, `display_bis`, `display_etco2`, `display_spo2`, waveforms, alarms | UI, CLI, tutorial/scenario checks |
-
-The monitor layer must not overwrite raw arterial pressure or heart rate.
-
-## Dependency Graph
+## Dependency graph
 
 ```mermaid
 flowchart TD
@@ -63,9 +38,9 @@ flowchart TD
     MON --> UI[UI / CLI / scenarios]
 ```
 
-## Key Inputs Per Subsystem
+## Inputs by subsystem
 
-### Hemodynamics receives
+### Hemodynamics
 
 | Source | Data | Notes |
 |--------|------|-------|
@@ -77,7 +52,7 @@ flowchart TD
 | Respiration | `pa_co2`, `pao2` | Chemoreflex and hypoxia effects |
 | Disturbances | `d_hr`, `d_sv`, `d_svr` | Surgical stimulation |
 
-### Respiration receives
+### Respiration
 
 | Source | Data | Notes |
 |--------|------|-------|
@@ -98,7 +73,7 @@ flowchart TD
 | BIS / TOF / LOC | raw model outputs | Displayed and alarmed values |
 | Monitor settings | arterial line enabled, NIBP interval | Changes presentation mode |
 
-## One-Step Lag Cases
+## One-step lag cases
 
 A few execution-order lags are part of the model contract:
 
@@ -110,7 +85,7 @@ A few execution-order lags are part of the model contract:
 
 These lags are small at the intended simulation time steps and preserve the intended physiology execution order.
 
-## State Synchronization Examples
+## State synchronization examples
 
 ```text
 pk_prop.state.ce      -> state.propofol_ce

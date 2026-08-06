@@ -1,12 +1,13 @@
-# AnaSim Architecture
+# AnaSim architecture
 
 ## Overview
 
-AnaSim is a real-time anesthesia simulation engine that couples pharmacology, cardiorespiratory physiology, mechanical ventilation, and simulated monitors.
+AnaSim couples pharmacology, cardiorespiratory physiology, ventilation, and
+simulated monitors. It models respiratory drive, mechanics, gas exchange, and
+hemodynamics separately so assisted and spontaneous ventilation use the
+appropriate paths.
 
-The runtime separates respiratory drive, respiratory mechanics, gas exchange, hemodynamics, pharmacokinetics, and monitor display behavior. Assisted ventilation (VCV/PCV/PSV/CPAP or bag-mask) flows through the respiratory mechanics model; purely spontaneous breathing is handled by the respiratory drive model. Fresh gas flow includes O2/Air and optional N2O. N2O is delivered through the circuit rather than the vaporizer and contributes to total MAC with minimal BIS effect.
-
-## State Contract
+## State contract
 
 `SimulationState` has two explicit layers:
 
@@ -16,12 +17,13 @@ The runtime separates respiratory drive, respiratory mechanics, gas exchange, he
 | Display / learner-facing numerics | `display_map`, `display_hr`, `display_sbp`, `display_dbp`, `display_bis`, `display_etco2`, `display_spo2` | Values shown to the learner after monitor-specific smoothing or display behavior |
 
 State access rules:
+
 - `state.map/hr/sbp/dbp` are raw arterial physiology every step.
 - UI, CLI, and tutorial/scenario code that represents what the learner sees should read `display_*`.
 - Recorder output includes both layers so logs remain useful for analysis and for reproducing monitor output.
-- Public numeric state fields are normalized to built-in Python `float` values at the projection/monitor boundary for UI and serialization consistency.
+- Projection and monitor boundaries normalize public numeric fields to Python `float` values.
 
-## Module Structure
+## Module structure
 
 ```text
 AnaSim/
@@ -58,7 +60,7 @@ AnaSim/
 └── scripts/            # Utilities, including run_benchmarks.py
 ```
 
-## Step Pipeline
+## Step pipeline
 
 ```text
 SimulationEngine.step()
@@ -80,53 +82,54 @@ SimulationEngine.step()
 ```
 
 Pipeline ownership:
+
 - `runtime.step_physiology()` computes the live physiology snapshot.
 - `projection.project_runtime_physiology()` writes raw physiologic fields into `SimulationState`.
 - `monitors.step_monitors()` writes display fields and waveforms only.
 
 ## Initialization
 
-Startup is handled separately from the visible runtime loop:
+Startup runs separately from the visible loop:
+
 - `awake` initializes directly from patient baselines with no hidden history.
-- `steady_state` computes internal maintenance targets, applies controlled ventilation, and runs a hidden managed-maintenance bootstrap before visible time begins.
-- Visible simulation always starts at `state.time == 0.0` after the hidden bootstrap is complete.
+- `steady_state` runs a hidden, controlled-maintenance bootstrap rather than
+  filling a mathematical equilibrium. It skips recording, display history,
+  death checks, and visible fluid or temperature bookkeeping.
+- Visible time starts at zero from live subsystem state. Any norepinephrine
+  needed to start at MAP 65 mmHg or higher remains visible and active.
+- Early drift can occur as controllers, gases, and fluid balance continue from
+  the bootstrap.
 
-Startup contract:
-- steady-state startup is not a pure mathematical equilibrium fill
-- hidden bootstrap advances machine/PK/physiology state but skips recorder output, display-history accumulation, death checks, and visible fluid/temperature bookkeeping
-- steady-state startup adds the minimum visible norepinephrine support needed to avoid beginning below MAP 65 mmHg; the active controller and rate are exposed like any learner-selected infusion
-- small early maintenance drift can occur as live PK controllers, endogenous norepinephrine PK, ventilation gases, and fluid balance continue from the managed-maintenance bootstrap
-- the public snapshot is derived from live subsystem state only after bootstrap completes
-
-## Model Notes
+## Model notes
 
 ### Hemodynamics
-- Based on the Su et al. 2023 mechanistic interaction model with additional volume, pulmonary, and vasoactive support.
+
+- Based on Su et al. 2023 with added volume, pulmonary, vasoactive, septic shock, and anaphylaxis effects.
 - Propofol and remifentanil cardiovascular effects consume plasma concentrations (`propofol_cp`, `remi_cp`); CNS depth, tolerance, BIS, and respiratory depression consume effect-site values (`propofol_ce`, `remi_ce`).
-- Septic shock and anaphylaxis are represented as explicit modifiers of vascular tone and related responses.
 
 ### Respiration
+
 - Central drive is depressed by propofol, remifentanil, and sevoflurane.
 - Neuromuscular weakness is handled through rocuronium-dependent muscle factor.
 - `alveolar_co2`, `pa_co2`, and `etco2` are modeled separately.
-- Low cardiac output depresses EtCO2 by widening the PaCO2-EtCO2 gap instead of forcing arterial saturation to fall.
-- Arterial `sao2` remains tied to PaO2 and the hemoglobin dissociation relationship.
+- Low cardiac output widens the PaCO2-EtCO2 gap; arterial `sao2` remains tied to PaO2 and hemoglobin dissociation.
 
 ### Monitors
+
 - MAP/HR/BIS display numerics use dt-aware exponential smoothing rather than fixed per-step alphas.
-- Finger SpO2 uses a perfusion-dependent response lag; poor perfusion slows the reading and reduces pleth amplitude rather than deterministically creating hypoxemia.
+- Poor perfusion slows finger SpO2 and reduces pleth amplitude without changing raw arterial saturation.
 - EtCO2 numerics update from completed capnogram breaths and become unavailable after 15 seconds without a valid exhaled sample.
-- Arrest and near-arrest states bypass display smoothing so coarse `dt` does not leave falsely reassuring vital signs on screen.
-- Poor perfusion affects pulse-ox display reliability and pleth amplitude, not raw arterial saturation.
+- Arrest and near-arrest states bypass display smoothing.
 - ABP waveform rendering in the UI uses a synthetic display waveform rather than a dedicated arterial pressure waveform model.
 
 ### TCI
-- Controllers can rebuild their discretized dynamics when the live PK model drifts materially because of hemorrhage or other hemodynamic changes.
-- Controllers reseed their internal state estimate after external boluses so the controller state does not drift away from the live PK compartments.
+
+Controllers can rebuild after material PK changes and reseed after external boluses.
 
 ## Scenario objectives
 
-`engine.actions` (`ActionLog`) records scenario-relevant control actions, including fluids, drug boluses, infusion rates and TCI targets, event transitions, airway, fresh gas flow, vaporizer, oxygen supply, and bag-mask ventilation, with the simulation time at which each action occurred. The scenario overlay calls `begin_step()` as each objective becomes active. This records the activation and scopes later queries to that objective.
+`engine.actions` records controls and event transitions with simulation times.
+The scenario overlay calls `begin_step()` when an objective becomes active.
 
 Objectives fall into two kinds:
 
@@ -135,34 +138,8 @@ Objectives fall into two kinds:
 | Action | "Give 500 mL", "start the vasopressor", "select the ETT" | `engine.actions` since the objective activated, plus current state when relevant |
 | State / physiologic | "MAP > 65", "TOF below 25%", "circuit FiO2 below 30%" | Current engine state |
 
-Action objectives are satisfied only by an action taken while the objective is active, so an intervention performed before the objective appeared cannot complete it. State objectives stay on current state because they describe a condition to reach or hold and are not meaningfully repeatable.
+Action objectives require an action after activation. State objectives read the
+current state.
 
-Step scoping uses log positions rather than timestamps. A paused simulation holds `state.time` constant, so timestamps alone cannot separate actions taken before an objective from actions taken during it. Step-scoped queries raise an error when no objective is active, which exposes missing activation instead of falling back to cumulative history.
-
-## Data Ownership
-
-| Subsystem | Writes | Does not write |
-|----------|--------|----------------|
-| PK sync | Drug concentrations (`*_ce`, `*_cp`) | Raw hemodynamics, display numerics |
-| Projection layer | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `rr`, `vt`, `mv`, `va`, `etco2`, `pa_co2`, `alveolar_co2`, `pao2`, `sao2`, volatile state, fluid balance | `display_*` |
-| Monitor layer | `display_*`, waveforms, alarms, NIBP updates | Raw arterial pressure / heart rate |
-| UI / CLI | Reads `display_*` | Mutates backend physiology |
-
-## Testing
-
-```bash
-python3 -m pytest tests/ -v
-python3 -m pytest tests/test_state_semantics.py -v
-python3 -m pytest tests/test_ui.py -v
-```
-
-`tests/conftest.py` forces `QT_QPA_PLATFORM=offscreen`, so UI tests run headlessly by default.
-
-## Benchmarking
-
-Micro-benchmarks live in `scripts/run_benchmarks.py`.
-
-```bash
-python3 scripts/run_benchmarks.py
-python3 scripts/run_benchmarks.py --bench mixed --steps 5000
-```
+Step scoping uses log positions because paused actions can share a timestamp.
+Step-scoped queries require an active objective.
