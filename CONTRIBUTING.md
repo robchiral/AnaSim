@@ -2,15 +2,7 @@
 
 ## Local setup
 
-```bash
-git clone https://github.com/robchiral/AnaSim.git
-cd AnaSim
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev]"
-```
-
-Run the test suite:
+Follow the development setup in the [README](README.md#development), then run:
 
 ```bash
 QT_QPA_PLATFORM=offscreen python -m pytest -q
