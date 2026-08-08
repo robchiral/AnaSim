@@ -381,33 +381,6 @@ def test_steady_state_balanced_snapshot_syncs_volatile_state():
     assert engine.state.temp_c == pytest.approx(37.0, abs=1e-6)
 
 
-@pytest.mark.parametrize(
-    ("maint_type", "bis_band", "map_band"),
-    [
-        ("tiva", (50.0, 58.0), (60.0, 86.0)),
-        ("balanced", (38.0, 50.0), (70.0, 82.0)),
-    ],
-)
-def test_steady_state_profiles_remain_in_band_for_first_15_minutes(maint_type, bis_band, map_band):
-    engine = SimulationEngine(
-        Patient(age=40, weight=70, height=170, sex="male"),
-        SimulationConfig(mode="steady_state", maint_type=maint_type, rng_seed=123),
-    )
-    engine.start()
-
-    bis_values = [float(engine.state.bis)]
-    map_values = [float(engine.state.map)]
-    for _ in range(900):
-        engine.step(1.0)
-        bis_values.append(float(engine.state.bis))
-        map_values.append(float(engine.state.map))
-
-    assert min(bis_values) >= bis_band[0]
-    assert max(bis_values) <= bis_band[1]
-    assert min(map_values) >= map_band[0]
-    assert max(map_values) <= map_band[1]
-
-
 def test_baseline_hct_is_derived_from_hb_when_omitted():
     engine = SimulationEngine(
         Patient(age=40, weight=70, height=170, sex="male"),

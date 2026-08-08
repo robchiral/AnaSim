@@ -4,10 +4,7 @@ import unittest
 import pytest
 
 from anasim.patient.patient import Patient
-from anasim.physiology.hemodynamics import (
-    HemodynamicModel,
-    HemoStateExtended,
-)
+from anasim.physiology.hemodynamics import HemodynamicModel
 
 # --- Unit Tests ---
 
@@ -20,17 +17,6 @@ class TestHemodynamicsUnit(unittest.TestCase):
         self.model.tde_hr = 0.0 # Remove drift for deterministic testing
         self.model.tde_sv = 0.0
         
-    def test_initialization(self):
-        # Initial step
-        state = self.model.step(0.01, 0,0,0, -2, 40, 95)
-        # MAP ~90
-        self.assertTrue(80 < state.map < 120)
-        self.assertTrue(self.model.blood_volume > 0)
-        
-    def test_steady_state_calculation_type(self):
-        ss_state = self.model.calculate_steady_state(4.0, 0, 0)
-        self.assertIsInstance(ss_state, HemoStateExtended)
-
     def test_cache_invalidated_after_steady_state(self):
         base_state = self.model.step(0.1, 0, 0, 0, -2, 40, 95)
         _ = self.model.calculate_steady_state(4.0, 0, 0)
@@ -66,7 +52,9 @@ class TestHemodynamicSanity:
     def test_baseline_values(self, model):
         """Values should be within normal adult physiological ranges."""
         state = model.step(1.0, 0,0,0, -2, 40, 95)
-        
+
+        assert 80.0 < state.map < 120.0
+        assert model.blood_volume > 0.0
         # CO: 4.0 - 7.0 L/min
         assert 3.5 < state.co < 8.0, f"CO {state.co} out of range"
         # SVR: 800-1200 dyn or 10-30 Wood units

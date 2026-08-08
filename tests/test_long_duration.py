@@ -35,6 +35,7 @@ class TestLongDurationStability:
     def test_four_hour_stability(self, long_running_engine):
         """Run equivalent of 4-hour case and verify stability under routine perturbations."""
         engine = long_running_engine
+        initial_temp = engine.state.temp_c
         
         target_duration = 4 * 3600  # 4 hours in seconds
         step_size = 1.0  # 1 second steps
@@ -79,6 +80,7 @@ class TestLongDurationStability:
         assert all(90 <= spo2 <= 100 for spo2 in spo2_samples), "SpO2 went out of physiological range"
         assert all(5 <= bis <= 95 for bis in bis_samples), "BIS went out of physiological range"
         assert all(32.0 <= temp <= 40.0 for temp in temp_samples), "Temperature went out of physiological range"
+        assert abs(temp_samples[120] - initial_temp) < 2.0, "Temperature changed too rapidly over two hours"
         # Perfusion-coupled EtCO2 can transiently fall below 20 with low CO.
         assert all(10 <= etco2 <= 60 for etco2 in etco2_samples), "EtCO2 went out of physiological range"
         assert all(co > 0.5 for co in co_samples), "CO dropped below viable range"
@@ -98,23 +100,3 @@ class TestLongDurationStability:
         for name in ("hr", "map", "spo2", "etco2", "bis", "temp_c", "co"):
             value = getattr(engine.state, name)
             assert np.isfinite(value), f"{name} is not finite after perturbation sequence"
-    
-    def test_temperature_drift_reasonable(self, long_running_engine):
-        """Temperature should drift slowly and reasonably over time."""
-        engine = long_running_engine
-        
-        initial_temp = engine.state.temp_c
-        
-        # Run for 2 simulated hours
-        for _ in range(7200):
-            engine.step(1.0)
-        
-        final_temp = engine.state.temp_c
-        
-        # Temperature change should be gradual (< 2°C over 2 hours)
-        temp_change = abs(final_temp - initial_temp)
-        assert temp_change < 2.0, \
-            f"Temperature changed too rapidly: {initial_temp:.1f} -> {final_temp:.1f}°C"
-        
-        # Should still be in viable range
-        assert 33.0 <= final_temp <= 40.0, f"Temperature {final_temp:.1f}°C out of range"
