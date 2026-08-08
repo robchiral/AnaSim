@@ -1,6 +1,20 @@
-# References
+# References and implementation choices
 
-This list standardizes citations used across the repository. Format: FirstAuthor et al. Journal. Year. (Notes).
+This list collects the citations used across the repository. Each one names the
+source or clinical anchor behind a model; the implementation may simplify or
+adapt what that source published.
+
+## Material model adaptations
+
+In three areas the cited literature offers no compatible joint model, so AnaSim
+uses a calibrated synthesis instead. Regression tests hold that behavior in
+place, but they are internal checks rather than external clinical validation.
+
+| Area | Adaptation |
+|------|------------|
+| Respiratory drug effects | [`RespiratoryModel`](../anasim/physiology/respiration.py) combines separate published effects on ventilation and hypercapnic response. Its joint drug-response parameters are heuristic. See the [respiratory tests](../tests/test_respiration.py). |
+| Neuromuscular block and reversal | [`TOFModel`](../anasim/patient/pd/nmba.py) combines rocuronium effect-site kinetics with simplified sugammadex binding. Its onset and recovery constants are calibrated for this simulator rather than taken from study estimates. See the [pharmacology tests](../tests/test_pharmacology.py). |
+| Vasoactive drug effects | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) uses heuristic concentration-response models for epinephrine, phenylephrine, vasopressin, dobutamine, and milrinone. These models preserve expected response direction but have not been fitted or externally validated together. See the [hemodynamic tests](../tests/test_hemodynamics.py). |
 
 ## Hemodynamics and physiology
 - Su et al. Br J Anaesth. 2023. (mechanistic hemodynamic interaction model). [PubMed](https://pubmed.ncbi.nlm.nih.gov/37355412/)
@@ -35,6 +49,7 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 ## PK and PD models (IV agents and vasoactive drugs)
 - Janmahasatian et al. Clin Pharmacokinet. 2005. (lean bodyweight equation robust across body size). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16176118/)
 - Marsh et al. Br J Anaesth. 1991. (propofol PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1859758/)
+- Thomson et al. Anaesthesia. 2014. (effect-site TCI with Marsh `ke0` values of 0.6 and 1.2 min⁻¹). [Journal](https://associationofanaesthetists-publications.onlinelibrary.wiley.com/doi/10.1111/anae.12597)
 - Schnider et al. Anesthesiology. 1998. (propofol PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9605675/)
 - Eleveld et al. Br J Anaesth. 2018. (propofol PK/PD). [PubMed](https://pubmed.ncbi.nlm.nih.gov/29661412/)
 - Servin et al. Br J Anaesth. 1990. (propofol PK in cirrhosis; Vd increases, clearance not significantly reduced). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2223333/)

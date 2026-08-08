@@ -3,9 +3,9 @@
 ## Overview
 
 AnaSim couples pharmacology, cardiorespiratory physiology, ventilation, and
-simulated monitors. It models respiratory drive, mechanics, gas exchange, and
-hemodynamics separately so assisted and spontaneous ventilation use the
-appropriate paths.
+simulated monitors. Respiratory drive, mechanics, gas exchange, and hemodynamics
+are modeled separately so that assisted and spontaneous ventilation each follow
+their own path.
 
 ## State contract
 
@@ -189,9 +189,10 @@ spo2_monitor output   -> state.display_spo2
 Startup runs separately from the visible loop:
 
 - `awake` initializes directly from patient baselines with no hidden history.
-- `steady_state` runs a hidden, controlled-maintenance bootstrap rather than
-  filling a mathematical equilibrium. It skips recording, display history,
-  death checks, and visible fluid or temperature bookkeeping.
+- `steady_state` reaches its starting point by running a hidden bootstrap under
+  controlled maintenance instead of solving for a mathematical equilibrium. The
+  bootstrap skips recording, display history, death checks, and visible fluid or
+  temperature bookkeeping.
 - Visible time starts at zero from live subsystem state. Any norepinephrine
   needed to start at MAP 65 mmHg or higher remains visible and active.
 - Early drift can occur as controllers, gases, and fluid balance continue from
@@ -213,11 +214,11 @@ Startup runs separately from the visible loop:
 
 ### Monitors
 
-- MAP/HR/BIS display numerics use dt-aware exponential smoothing rather than fixed per-step alphas.
+- MAP/HR/BIS display numerics use exponential smoothing with dt-aware time constants.
 - Poor perfusion slows finger SpO2 and reduces pleth amplitude without changing raw arterial saturation.
 - EtCO2 numerics update from completed capnogram breaths and become unavailable after 15 seconds without a valid exhaled sample.
 - Arrest and near-arrest states bypass display smoothing.
-- ABP waveform rendering in the UI uses a synthetic display waveform rather than a dedicated arterial pressure waveform model.
+- The UI draws the ABP waveform from a synthetic display trace; there is no dedicated arterial pressure waveform model.
 
 ### TCI
 
@@ -235,8 +236,8 @@ Objectives fall into two kinds:
 | Action | "Give 500 mL", "start the vasopressor", "select the ETT" | `engine.actions` since the objective activated, plus current state when relevant |
 | State / physiologic | "MAP > 65", "TOF below 25%", "circuit FiO2 below 30%" | Current engine state |
 
-Action objectives require an action after activation. State objectives read the
-current state.
+An action objective is satisfied only by an action taken after it activated, so
+an intervention performed earlier in the case cannot complete it.
 
 Step scoping uses log positions because paused actions can share a timestamp.
 Step-scoped queries require an active objective.
