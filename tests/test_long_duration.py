@@ -10,10 +10,10 @@ Validation criteria:
 - Hemodynamic state doesn't drift unrealistically
 """
 
-import pytest
 import numpy as np
-from anasim.core.state import SimulationConfig
+import pytest
 
+from anasim.core.state import SimulationConfig
 
 PERTURBATION_EVENTS = {
     120: lambda engine: engine.give_drug_bolus("Propofol", 200),

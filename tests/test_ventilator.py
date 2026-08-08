@@ -6,11 +6,11 @@ Tests VCV/PCV modes, auto-PEEP, PEEP effects, and hemodynamic coupling.
 
 import unittest
 
-from anasim.physiology.resp_mech import RespiratoryMechanics, VentMode
-from anasim.physiology.respiration import RespiratoryModel
-from anasim.patient.patient import Patient
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
+from anasim.patient.patient import Patient
+from anasim.physiology.resp_mech import RespiratoryMechanics, VentMode
+from anasim.physiology.respiration import RespiratoryModel
 
 
 class TestVCVMode(unittest.TestCase):

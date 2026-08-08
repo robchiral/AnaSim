@@ -55,6 +55,7 @@ dmypy.json
 comparisons/
 docs/papers/
 docs/RELEASING.md
+docs/TODO.md
 recordings/
 .claude/
 

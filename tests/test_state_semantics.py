@@ -1,17 +1,16 @@
 import numpy as np
 import pytest
 
-from anasim.core.engine import SimulationEngine
 from anasim.core import monitors as monitor_core
 from anasim.core import projection as projection_core
 from anasim.core import runtime as runtime_core
-from anasim.core.state import AirwayType, SimulationConfig
+from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
+from anasim.core.state import AirwayType, SimulationConfig
 from anasim.patient.patient import Patient
-from anasim.physiology.hemodynamics import HemoState
 from anasim.physiology.disturbances import DisturbanceEffects
-from anasim.physiology.respiration import RespState, RespiratoryModel
-
+from anasim.physiology.hemodynamics import HemoState
+from anasim.physiology.respiration import RespiratoryModel, RespState
 
 FLOAT_CONTRACT_FIELDS = (
     "time",

@@ -1,4 +1,5 @@
 import numpy as np
+
 from anasim.core.enums import RhythmType
 
 _ECG_TEMPLATE_RESOLUTION = 500

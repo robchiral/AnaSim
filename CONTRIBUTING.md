@@ -5,6 +5,7 @@
 Follow the development setup in the [README](README.md#development), then run:
 
 ```bash
+ruff check .
 QT_QPA_PLATFORM=offscreen python -m pytest -q
 ```
 
@@ -19,3 +20,5 @@ interactively.
 - Document deliberate model deviations and their clinical rationale.
 - Update `docs/REFERENCES.md` when model sources or calibrated deviations change.
 - Update `CHANGELOG.md` for user-visible changes.
+- Use direct technical language in user-facing text. Define unfamiliar terms and
+  state model limits without promotional wording.

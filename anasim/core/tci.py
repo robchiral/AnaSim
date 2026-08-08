@@ -1,7 +1,9 @@
 import numpy as np
 from scipy.signal import cont2discrete
+
 from anasim.core.constants import TCI_MIN_TARGET_CHANGE_INTERVAL
 from anasim.core.utils import clamp
+
 
 class TCIController:
     """
@@ -290,7 +292,11 @@ class TCIController:
         """
         Manually set the internal state estimate.
         """
-        if self.n_state >= 1: self.x[0, 0] = c1
-        if self.n_state >= 2: self.x[1, 0] = c2
-        if self.n_state >= 3: self.x[2, 0] = c3
-        if self.n_state >= 4: self.x[3, 0] = ce
+        if self.n_state >= 1:
+            self.x[0, 0] = c1
+        if self.n_state >= 2:
+            self.x[1, 0] = c2
+        if self.n_state >= 3:
+            self.x[2, 0] = c3
+        if self.n_state >= 4:
+            self.x[3, 0] = ce

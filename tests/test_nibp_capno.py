@@ -6,12 +6,14 @@ Tests verify:
 - Capnography waveform shape characteristics (dead space, plateau, etc.)
 """
 
-import pytest
-import numpy as np
 from types import SimpleNamespace
-from anasim.core.state import SimulationConfig
+
+import numpy as np
+import pytest
+
 from anasim.core.enums import RhythmType
-from anasim.monitors.capno import Capnograph, CapnoContext
+from anasim.core.state import SimulationConfig
+from anasim.monitors.capno import Capnograph
 from anasim.monitors.nibp import NIBPMonitor
 
 
@@ -130,7 +132,7 @@ class TestCapnographyWaveform:
         # Run through one breath cycle - correct API: (dt, phase, p_alv, ...)
         for t in np.arange(0, 4.0, 0.05):
             phase = "INSP" if t > 2.0 else "EXP"
-            result = capno.step(0.05, phase, p_alv, is_spontaneous=False, exp_duration=2.0)
+            capno.step(0.05, phase, p_alv, is_spontaneous=False, exp_duration=2.0)
             phases_seen.add(capno.state.phase)
         
         # Should have seen multiple phases
@@ -145,7 +147,7 @@ class TestCapnographyWaveform:
         # Run through expiration to plateau
         max_co2 = 0.0
         for t in np.arange(0, 2.5, 0.02):
-            result = capno.step(0.02, "EXP", p_alv, is_spontaneous=False, exp_duration=2.5)
+            capno.step(0.02, "EXP", p_alv, is_spontaneous=False, exp_duration=2.5)
             max_co2 = max(max_co2, capno.state.co2)
         
         # Max CO2 should be close to alveolar

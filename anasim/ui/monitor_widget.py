@@ -1,23 +1,20 @@
+import numpy as np
 import pyqtgraph as pg
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                               QFrame)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-import numpy as np
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from .styles import (
     COLORS,
     get_base_widget_style,
-    get_tinted_frame_style,
     get_rgba,
+    get_tinted_frame_style,
 )
 
 
 class NumericDisplay(QFrame):
-    """
-    A unified widget for displaying a single vital sign numeric value.
-    Handles styling, layout, and alarm states internally.
-    """
+    """Display one vital sign numeric and its alarm state."""
+
     def __init__(self, label, unit="", color=COLORS['text'], initial_value="--", 
                  tooltip="", size_variant="normal", embedded=False):
         super().__init__()
@@ -116,7 +113,8 @@ class NumericDisplay(QFrame):
             else:
                 self._apply_base_style()
 class PatientMonitorWidget(QWidget):
-    """Real-time patient monitor showing waveforms (ECG, SpO2, Art, CO2) and numerics."""
+    """Show real-time waveforms, numerics, gases, and fluid balance."""
+
     def __init__(self, arterial_line_enabled=True):
         super().__init__()
         self.arterial_line_enabled = arterial_line_enabled
@@ -305,7 +303,9 @@ class PatientMonitorWidget(QWidget):
         header_layout.addWidget(self.lbl_io_net)
         layout.addLayout(header_layout)
 
-        self.lbl_io_detail = QLabel("IV --  Blood --  |  Urine --  Loss --")
+        self.lbl_io_detail = QLabel(
+            "IV --  PRBC --  ·  Urine --  Loss --"
+        )
         self.lbl_io_detail.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.lbl_io_detail.setStyleSheet(
             f"color: {COLORS['text_secondary']}; font-size: 11px;"
@@ -330,7 +330,7 @@ class PatientMonitorWidget(QWidget):
         
         # Header
         h_layout = QHBoxLayout()
-        lbl_gas = QLabel("Sevo")
+        lbl_gas = QLabel("Sevoflurane")
         lbl_gas.setStyleSheet(f"color: {COLORS['gas']}; font-weight: 700; font-size: 11px;")
         self.lbl_mac = QLabel("MAC: 0.0")
         self.lbl_mac.setStyleSheet(f"color: {COLORS['gas']}; font-weight: 600; font-size: 12px;")
@@ -345,12 +345,14 @@ class PatientMonitorWidget(QWidget):
         def make_col(label, val_label_attr):
             vbox = QVBoxLayout()
             vbox.setSpacing(0)
-            l = QLabel(label)
-            l.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
+            label_widget = QLabel(label)
+            label_widget.setStyleSheet(
+                f"color: {COLORS['text_dim']}; font-size: 10px;"
+            )
             v = QLabel("0.0")
             v.setStyleSheet(f"color: {COLORS['gas']}; font-size: 20px; font-weight: 700;")
             setattr(self, val_label_attr, v)
-            vbox.addWidget(l, alignment=Qt.AlignCenter)
+            vbox.addWidget(label_widget, alignment=Qt.AlignCenter)
             vbox.addWidget(v, alignment=Qt.AlignCenter)
             return vbox
 
@@ -466,10 +468,10 @@ class PatientMonitorWidget(QWidget):
         blood_out = state.blood_out_ml
         net = state.net_fluid_ml
         self.lbl_io_detail.setText(
-            f"IV {fluid_in:.0f}  Blood {blood_in:.0f}  |  "
+            f"IV {fluid_in:.0f}  PRBC {blood_in:.0f}  ·  "
             f"Urine {urine_out:.0f}  Loss {blood_out:.0f}"
         )
-        self.lbl_io_net.setText(f"{net:+.0f}")
+        self.lbl_io_net.setText(f"{net:+.0f} mL")
         net_color = COLORS['danger'] if net < 0 else COLORS['success']
         self.lbl_io_net.setStyleSheet(
             f"color: {net_color}; font-size: 18px; font-weight: 700;"
@@ -562,8 +564,10 @@ class PatientMonitorWidget(QWidget):
             # Check for NIBP MAP alarm if not provided
             if state.nibp_timestamp > 0:
                 nmap = state.nibp_map
-                if nmap < 60: alarms['MAP'] = {'low': True}
-                elif nmap > 110: alarms['MAP'] = {'high': True}
+                if nmap < 60:
+                    alarms['MAP'] = {'low': True}
+                elif nmap > 110:
+                    alarms['MAP'] = {'high': True}
         
         # Map keys to widgets
         mapping = {

@@ -1,12 +1,13 @@
 import math
 from typing import Optional
+
 from scipy.optimize import root_scalar
-from anasim.patient.patient import Patient
-from anasim.core.constants import (
-    HR_MIN, HR_MAX, BLOOD_VOLUME_MIN, TEMP_TPR_COEFFICIENT
-)
-from anasim.core.utils import hill_function, clamp, clamp01
+
+from anasim.core.constants import BLOOD_VOLUME_MIN, HR_MAX, HR_MIN, TEMP_TPR_COEFFICIENT
 from anasim.core.enums import RhythmType
+from anasim.core.utils import clamp, clamp01, hill_function
+from anasim.patient.patient import Patient
+
 from .hemo_config import HemodynamicConfig
 from .hemo_types import HemoState, HemoStateExtended
 
@@ -481,7 +482,8 @@ class HemodynamicModel:
     
     def _calc_phenyl_effects(self, ce_phenyl: float) -> float:
         """Phenylephrine SVR effect (pure alpha-1)."""
-        if ce_phenyl <= 0: return 1.0
+        if ce_phenyl <= 0:
+            return 1.0
         return 1.0 + self.phenyl_emax_svr * hill_function(ce_phenyl, self.phenyl_c50, self.phenyl_gamma)
 
     @staticmethod
@@ -1043,7 +1045,6 @@ class HemodynamicModel:
 
         # --- 4.5 Sepsis / Distributive Shock ---
         sepsis_hr_mult = 1.0 + self._sepsis_hr_gain * sepsis_sev
-        sepsis_tpr_mult = 1.0 - (1.0 - self.sepsis_tpr_floor) * sepsis_sev
         
         # --- 4.6 Unified Vasopressor Effects ---
         # All vasopressors now use consistent helper architecture
@@ -1220,7 +1221,8 @@ class HemodynamicModel:
         nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(cn)
         
         def residual(z):
-            if z <= 0.01: z = 0.01
+            if z <= 0.01:
+                z = 0.01
             z_fb = z ** self.fb
             
             # HR = Base * RMAP^FB * (1+EffVolHR) / (1 - EffRemiHR)

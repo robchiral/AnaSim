@@ -17,7 +17,6 @@ from anasim.ui.scenarios import (
 )
 from anasim.ui.tutorial_overlay import ScenarioOverlay
 
-
 # Clinically reasonable responses for each objective of a scenario, used to
 # confirm that every objective is still reachable through learner action.
 SCENARIO_WALKTHROUGHS = {

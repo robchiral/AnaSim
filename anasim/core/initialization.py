@@ -7,10 +7,10 @@ import numpy as np
 from scipy.linalg import expm
 from scipy.optimize import brentq, minimize
 
-from .state import AirwayType
-from .utils import clamp
 from . import projection as projection_core
 from . import runtime as runtime_core
+from .state import AirwayType
+from .utils import clamp
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine

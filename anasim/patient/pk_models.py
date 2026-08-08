@@ -1,8 +1,11 @@
-import numpy as np
 from dataclasses import dataclass
 from typing import Tuple
-from .patient import Patient
+
+import numpy as np
+
 from anasim.core.utils import clamp
+
+from .patient import Patient
 
 # =============================================================================
 # PHARMACOKINETIC MODELS - LITERATURE REFERENCES
@@ -594,8 +597,6 @@ class RocuroniumPK(ThreeCompartmentPK):
         
         age = patient.age
         weight = patient.weight
-        # sex: 0 male, 1 female
-        sex_code = 0 if patient.sex.lower() == "male" else 1
         age_term = age - 50.0
         
         # 1. Select Base PK Parameters (Adult)
@@ -610,20 +611,22 @@ class RocuroniumPK(ThreeCompartmentPK):
         # ---------------------------------------------------------
         
         if model_name == "Szenohradszky":
-            v1_bw = 0.0769; k10 = 0.0376; k12 = 0.1143; k21 = 0.1748; k13 = 0.0196; k31 = 0.0189
-            theta4 = 0.247; theta8 = -0.00343
+            v1_bw, k10, k12, k21, k13, k31 = 0.0769, 0.0376, 0.1143, 0.1748, 0.0196, 0.0189
+            theta4, theta8 = 0.247, -0.00343
         elif model_name == "Cooper":
-            v1_bw = 0.0385; k10 = 0.119; k12 = 0.259; k21 = 0.163; k13 = 0.060; k31 = 0.012
-            theta4 = 0.0820; theta8 = -0.00109
+            v1_bw, k10, k12, k21, k13, k31 = 0.0385, 0.119, 0.259, 0.163, 0.060, 0.012
+            theta4, theta8 = 0.0820, -0.00109
         elif model_name == "Alvarez-Gomez":
-            v1_bw = 0.0570; k10 = 0.0952; k12 = 0.2807; k21 = 0.2149; k13 = 0.0322; k31 = 0.0166
-            theta4 = 0.110; theta8 = -0.00158
+            v1_bw, k10, k12, k21, k13, k31 = 0.0570, 0.0952, 0.2807, 0.2149, 0.0322, 0.0166
+            theta4, theta8 = 0.110, -0.00158
         elif model_name == "McCoy":
-            v1_bw = 0.0622; k10 = 0.0530; k12 = 0.0334; k21 = 0.0141; k13 = 0.0; k31 = 0.0
-            theta4 = 0.113; theta8 = None
-        else: # Wierda (Default)
-            v1_bw = 0.0440; k10 = 0.100; k12 = 0.210; k21 = 0.130; k13 = 0.028; k31 = 0.010
-            theta4 = 0.100; theta8 = -0.00138
+            v1_bw, k10, k12, k21, k13, k31 = 0.0622, 0.0530, 0.0334, 0.0141, 0.0, 0.0
+            theta4, theta8 = 0.113, None
+        elif model_name == "Wierda":
+            v1_bw, k10, k12, k21, k13, k31 = 0.0440, 0.100, 0.210, 0.130, 0.028, 0.010
+            theta4, theta8 = 0.100, -0.00138
+        else:
+            raise ValueError(f"Unsupported rocuronium PK model: {model_name}")
             
         # 2. Calculate Real Parameters
         v1 = v1_bw * weight

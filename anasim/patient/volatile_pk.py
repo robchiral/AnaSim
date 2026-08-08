@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+
 from .patient import Patient
+
 
 @dataclass
 class VolatileState:

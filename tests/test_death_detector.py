@@ -1,8 +1,10 @@
 
 import unittest
-from anasim.core.engine import SimulationEngine, SimulationConfig
+
 from anasim.core import runtime as runtime_core
+from anasim.core.engine import SimulationConfig, SimulationEngine
 from anasim.patient.patient import Patient
+
 
 class TestDeathDetector(unittest.TestCase):
     def setUp(self):

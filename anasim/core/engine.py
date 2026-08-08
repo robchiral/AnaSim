@@ -1,10 +1,49 @@
+import copy
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
-import copy
 
 import numpy as np
 
+from anasim.core.constants import (
+    AirwayTuning,
+    ThermalTuning,
+)
+from anasim.core.enums import RhythmType
+from anasim.core.recorder import DataRecorder
+from anasim.core.utils import clamp
+from anasim.machine.circuit import CircleSystem
+from anasim.machine.ventilator import AnesthesiaVentilator
+from anasim.machine.volatile import Vaporizer
+from anasim.monitors.alarms import AlarmSystem
+from anasim.monitors.capno import Capnograph
+from anasim.monitors.ecg import ECGMonitor
+from anasim.monitors.nibp import NIBPMonitor
+from anasim.monitors.spo2 import SpO2Monitor
+from anasim.patient.patient import Patient
+from anasim.patient.pd import BISModel, LOCModel, TOFModel, TOLModel
+from anasim.patient.pk_models import (
+    DobutaminePK,
+    EpinephrinePK,
+    MilrinonePK,
+    NorepinephrinePK,
+    PhenylephrinePK,
+    PropofolPKEleveld,
+    PropofolPKMarsh,
+    PropofolPKSchnider,
+    RemifentanilPKMinto,
+    RocuroniumPK,
+    VasopressinPK,
+)
+from anasim.patient.volatile_pk import VolatilePK
+from anasim.physiology.disturbances import Disturbances
+from anasim.physiology.hemodynamics import HemodynamicModel
+from anasim.physiology.resp_mech import RespiratoryMechanics
+from anasim.physiology.respiration import RespiratoryModel
+
+from . import monitors as monitor_core
+from . import projection as projection_core
+from . import runtime as runtime_core
 from .action_log import (
     ACTION_AIRWAY,
     ACTION_BAG_MASK,
@@ -17,33 +56,10 @@ from .action_log import (
     ACTION_VAPORIZER,
     ActionLog,
 )
-from .state import SimulationState, SimulationConfig, AirwayType
-from .initialization import initialize_engine_state
 from .drug_api import DrugControllerMixin
 from .drug_registry import DRUG_REGISTRY, resolve_bolus_drug
-from . import runtime as runtime_core
-from . import projection as projection_core
-from . import monitors as monitor_core
-from anasim.patient.patient import Patient
-from anasim.physiology.hemodynamics import HemodynamicModel
-from anasim.physiology.respiration import RespiratoryModel
-from anasim.physiology.resp_mech import RespiratoryMechanics
-from anasim.monitors.capno import Capnograph
-from anasim.patient.pk_models import (
-    PropofolPKMarsh, PropofolPKSchnider, PropofolPKEleveld,
-    RemifentanilPKMinto, NorepinephrinePK, RocuroniumPK,
-    EpinephrinePK, PhenylephrinePK, VasopressinPK, DobutaminePK, MilrinonePK
-)
-from anasim.patient.pd import TOFModel, LOCModel, TOLModel, BISModel
-from anasim.physiology.disturbances import Disturbances
-from anasim.monitors.alarms import AlarmSystem
-from anasim.core.enums import RhythmType
-from anasim.core.utils import clamp
-from anasim.core.constants import (
-    AirwayTuning,
-    ThermalTuning,
-)
-from anasim.core.recorder import DataRecorder
+from .initialization import initialize_engine_state
+from .state import AirwayType, SimulationConfig, SimulationState
 
 AIRWAY_MODE_MAP = {
     "None": AirwayType.NONE,
@@ -60,6 +76,8 @@ DISPLAY_FIELD_PAIRS = (
     ("sbp", "display_sbp"),
     ("dbp", "display_dbp"),
 )
+
+
 @dataclass(slots=True)
 class PendingInfusion:
     remaining_ml: float
@@ -146,15 +164,6 @@ MONITOR_ATTRS = ("bis", "capno", "loc_pd", "tol_pd", "tof_pd", "ecg", "spo2_mon"
 RATE_ATTRS = tuple(spec.rate_attr for spec in DRUG_REGISTRY)
 TCI_ATTRS = tuple(spec.tci_attr for spec in DRUG_REGISTRY)
 
-# Machine modules
-from anasim.machine.circuit import CircleSystem
-from anasim.machine.volatile import Vaporizer
-from anasim.machine.ventilator import AnesthesiaVentilator
-from anasim.patient.volatile_pk import VolatilePK
-
-from anasim.monitors.ecg import ECGMonitor
-from anasim.monitors.spo2 import SpO2Monitor
-from anasim.monitors.nibp import NIBPMonitor
 
 class SimulationEngine(DrugControllerMixin):
     """

@@ -1,8 +1,13 @@
 
-import pytest
 import unittest
-from anasim.physiology.hemodynamics import HemodynamicModel, HemoStateExtended, HemoState
+
+import pytest
+
 from anasim.patient.patient import Patient
+from anasim.physiology.hemodynamics import (
+    HemodynamicModel,
+    HemoStateExtended,
+)
 
 # --- Unit Tests ---
 
@@ -106,7 +111,8 @@ class TestHemodynamicSanity:
         base_state = model.step(1.0, 0,0,0, -2, 40, 95)
         
         # 10 min infusion effect (steady state approx)
-        for _ in range(600): state = model.step(1.0, 4.0, 0,0, -2, 40, 95)
+        for _ in range(600):
+            state = model.step(1.0, 4.0, 0,0, -2, 40, 95)
             
         drop = (base_state.map - state.map) / base_state.map
         assert 0.18 < drop < 0.45, f"Propofol drop {drop:.1%} expected 18-45%"
@@ -259,7 +265,8 @@ class TestDrugInteractions:
     def model(self):
         p = Patient(age=40, weight=70, sex="male")
         m = HemodynamicModel(p)
-        m.tde_hr = 0.0; m.tde_sv = 0.0
+        m.tde_hr = 0.0
+        m.tde_sv = 0.0
         return m
         
     def test_propofol_phenylephrine_interaction(self, model):

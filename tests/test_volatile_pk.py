@@ -13,8 +13,8 @@ Yasuda et al. Anesth Analg. 1991):
 """
 
 import pytest
-import numpy as np
-from anasim.patient.volatile_pk import VolatilePK, VolatileState
+
+from anasim.patient.volatile_pk import VolatilePK
 
 
 class TestVolatilePKWashIn:

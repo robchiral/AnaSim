@@ -1,8 +1,8 @@
 import pytest
 
+from anasim.core.state import SimulationConfig
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.volatile import Vaporizer
-from anasim.core.state import SimulationConfig
 
 
 def test_circuit_oxygen_washin_and_washout():

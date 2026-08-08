@@ -5,17 +5,17 @@ import math
 from typing import TYPE_CHECKING
 
 from anasim.core.constants import (
-    TEMP_METABOLIC_COEFFICIENT,
     RR_APNEA_THRESHOLD,
     SHIVER_BASE_THRESHOLD,
-    SHIVER_DEPTH_DROP_MAX,
-    SHIVER_REMI_DROP_MAX,
-    SHIVER_DELTA_FULL,
-    SHIVER_BIS_ON,
     SHIVER_BIS_FULL,
+    SHIVER_BIS_ON,
+    SHIVER_DELTA_FULL,
+    SHIVER_DEPTH_DROP_MAX,
     SHIVER_MAX_MULTIPLIER,
-    SHIVER_TAU_ON,
+    SHIVER_REMI_DROP_MAX,
     SHIVER_TAU_OFF,
+    SHIVER_TAU_ON,
+    TEMP_METABOLIC_COEFFICIENT,
 )
 from anasim.core.drug_registry import PK_HEMODYNAMIC_TARGETS, TCI_TARGET_CONFIG
 from anasim.core.utils import clamp, clamp01, hill_function
@@ -23,7 +23,12 @@ from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resp_mech import VentMode
 
 from .monitors import phase_from_rr, step_monitors
-from .projection import PhysiologyStepState, project_runtime_physiology, set_state_float_fields, sync_pk_state
+from .projection import (
+    PhysiologyStepState,
+    project_runtime_physiology,
+    set_state_float_fields,
+    sync_pk_state,
+)
 from .state import AirwayType
 
 if TYPE_CHECKING:

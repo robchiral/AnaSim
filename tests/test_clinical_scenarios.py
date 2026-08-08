@@ -5,7 +5,6 @@ This file intentionally keeps only one representative path per major workflow:
 induction, emergence, and hemorrhage/rescue.
 """
 
-import pytest
 
 from anasim.core.state import AirwayType, SimulationConfig
 

@@ -13,8 +13,7 @@ from PySide6.QtCore import QObject, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QImage, QPainter, QPen
 from PySide6.QtWidgets import QApplication, QScrollArea
 
-from capture_screenshots import ScreenshotMainWindow
-
+from anasim.ui.main_window import MainWindow
 
 DEMO_PARAMS = {
     "age": 25,
@@ -296,7 +295,7 @@ def save_gif(frames, output_path: Path, fps: int):
 
 def record_demo(output_path: Path, width: int, height: int, fps: int, max_duration: float):
     app = QApplication(sys.argv)
-    window = ScreenshotMainWindow(sim_params=DEMO_PARAMS)
+    window = MainWindow(DEMO_PARAMS)
     window.resize(1800, 900)
     window.show()
 

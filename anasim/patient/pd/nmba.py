@@ -11,6 +11,13 @@ class TOFModel:
 
     MW_ROCURONIUM = 609.7
     MW_SUGAMMADEX = 2178.0
+    MODEL_PARAMS = {
+        "Wierda": (1.08, 6.41, -0.00605, -0.0494, -1.24),
+        "Szenohradszky": (1.44, 8.30, -0.00862, -0.0981, None),
+        "Cooper": (0.980, 6.18, -0.00557, -0.0341, -1.32),
+        "Alvarez-Gomez": (0.900, 5.99, -0.00539, -0.0443, -1.14),
+        "McCoy": (1.08, 4.20, -0.00770, -0.0283, None),
+    }
 
     def __init__(self, patient: Patient, model_name: str = "Wierda", anesthesia_type: str = "TIVA"):
         self.patient = patient
@@ -20,36 +27,10 @@ class TOFModel:
         age = patient.age
         sex = 1 if patient.sex.lower() == "female" else 0
         age_term = age - 50.0
-        theta7 = None
-
-        if model_name == "Szenohradszky":
-            theta2 = 1.44
-            theta3 = 8.30
-            theta5 = -0.00862
-            theta6 = -0.0981
-        elif model_name == "Cooper":
-            theta2 = 0.980
-            theta3 = 6.18
-            theta5 = -0.00557
-            theta6 = -0.0341
-            theta7 = -1.32
-        elif model_name == "Alvarez-Gomez":
-            theta2 = 0.900
-            theta3 = 5.99
-            theta5 = -0.00539
-            theta6 = -0.0443
-            theta7 = -1.14
-        elif model_name == "McCoy":
-            theta2 = 1.08
-            theta3 = 4.20
-            theta5 = -0.00770
-            theta6 = -0.0283
-        else:
-            theta2 = 1.08
-            theta3 = 6.41
-            theta5 = -0.00605
-            theta6 = -0.0494
-            theta7 = -1.24
+        try:
+            theta2, theta3, theta5, theta6, theta7 = self.MODEL_PARAMS[model_name]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported TOF model: {model_name}") from exc
 
         self.ce50_base = max(theta2 + theta5 * age_term, 0.01)
         self.gamma = max(theta3 + theta6 * age_term + ((theta7 or 0.0) * sex), 0.5)

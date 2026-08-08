@@ -1,5 +1,5 @@
-from anasim.monitors.alarms import AlarmSystem
 from anasim.core import runtime as runtime_core
+from anasim.monitors.alarms import AlarmSystem
 
 
 class DummyTCI:

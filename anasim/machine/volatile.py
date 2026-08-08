@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from anasim.core.utils import clamp
 
+
 @dataclass
 class VaporizerState:
     agent: str = "Sevo"

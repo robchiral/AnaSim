@@ -2,7 +2,7 @@
 
 This list standardizes citations used across the repository. Format: FirstAuthor et al. Journal. Year. (Notes).
 
-## Hemodynamics and Physiology
+## Hemodynamics and physiology
 - Su et al. Br J Anaesth. 2023. (mechanistic hemodynamic interaction model). [PubMed](https://pubmed.ncbi.nlm.nih.gov/37355412/)
 - Beloeil et al. Br J Anaesth. 2005. (norepinephrine PK/PD in septic shock/trauma). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16227334/)
 - Clutter et al. J Clin Invest. 1980. (epinephrine cardiovascular effects). [PubMed](https://pubmed.ncbi.nlm.nih.gov/6995479/)
@@ -22,7 +22,7 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Margarson et al. J Appl Physiol (1985). 2002. (septic shock TER of albumin ~6.7%/h). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11960967/)
 - Persichini et al. Crit Care Med. 2012. (mean systemic pressure decreases with reduced norepinephrine in septic shock). [PubMed](https://pubmed.ncbi.nlm.nih.gov/22926333/)
 
-## Volatile Anesthetics (PBPK and MAC)
+## Volatile anesthetics (PBPK and MAC)
 - Davis and Mapleson. Br J Anaesth. 1981. (physiological model of inhaled anesthetics). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7225273/)
 - Mapleson. Br J Anaesth. 1996. (age-related MAC formula). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8777094/)
 - Yasuda et al. Anesth Analg. 1991. (sevoflurane vs isoflurane uptake/washout). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1994760/)
@@ -32,7 +32,7 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Goto et al. Anesthesiology. 2000. (MACawake of nitrous oxide ~63% at 1 atm). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11046204/)
 - Katoh et al. Br J Anaesth. 1997. (Sevo MACawake ~0.63%; N2O 45% reduces MACawake ~50%, less than additive). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9389264/)
 
-## PK / PD Models (IV Agents, Vasopressors)
+## PK and PD models (IV agents and vasoactive drugs)
 - Janmahasatian et al. Clin Pharmacokinet. 2005. (lean bodyweight equation robust across body size). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16176118/)
 - Marsh et al. Br J Anaesth. 1991. (propofol PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1859758/)
 - Schnider et al. Anesthesiology. 1998. (propofol PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9605675/)
@@ -66,7 +66,7 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Dobutamine injection label (Clinical Pharmacology). (rapid onset/offset; t1/2 ~2 min). [Pfizer Medical Information](https://www.pfizermedicalinformation.com/patient/dobutamine/clinical-pharmacology)
 - Milrinone lactate injection label (DailyMed). (Vd 0.38–0.45 L/kg; CL ~0.13 L/kg/hr; t1/2 2.3–2.4 h; hemodynamic improvement within ~5–15 min). [DailyMed](https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=88f78780-399f-4780-be19-205739db1682&version=21)
 
-## Respiratory Control and BIS
+## Respiratory control and BIS
 - Kanazawa et al. J Anesth. 2017. (BIS at age-adjusted 1 MAC desflurane vs sevoflurane). [PubMed](https://pubmed.ncbi.nlm.nih.gov/28791477/)
 - Ryu et al. Anesthesiology. 2018. (BIS and SPI at 1 MAC desflurane vs sevoflurane under tetanic stimulation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/29509579/)
 - Ryu et al. Br J Anaesth. 2018. (remifentanil requirements at 1 MAC desflurane vs sevoflurane). [PubMed](https://pubmed.ncbi.nlm.nih.gov/30336856/)
@@ -102,7 +102,7 @@ This list standardizes citations used across the repository. Format: FirstAuthor
 - Lim et al. Paediatr Anaesth. 2012. (PSV vs spontaneous ventilation via ProSeal LMA in children; improved ventilation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/22380745/)
 - Capdevila et al. PLoS One. 2014. (PSV vs CMV/SB with LMA; emergence time/ventilatory function). [PubMed](https://pubmed.ncbi.nlm.nih.gov/25536515/)
 
-## Timing / Performance Metrics
+## Timing and performance metrics
 - Hughes et al. Anesthesiology. 1992. (propofol CSHT). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1539843/)
 - Egan et al. Anesthesiology. 1993. (remifentanil CSHT). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7902032/)
 - Kapila et al. Anesthesiology. 1995. (remifentanil CSHT; PD offset to MV recovery). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7486182/)

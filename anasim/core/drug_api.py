@@ -13,7 +13,6 @@ from .units import convert_rate
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine
-    from .tci import TCIController
 
 
 class DrugControllerMixin:

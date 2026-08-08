@@ -3,13 +3,14 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from .projection import set_state_float_fields
-from .state import AirwayType
-from .utils import clamp
 from anasim.monitors.capno import Capnograph
 from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resp_mech import VentMode
+
+from .projection import set_state_float_fields
+from .state import AirwayType
+from .utils import clamp
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine
