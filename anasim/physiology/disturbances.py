@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 import numpy as np
 
 _PROFILE_COL_TIME = 0

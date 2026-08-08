@@ -204,8 +204,6 @@ class RespiratoryMechanics:
         # 1. Determine Cycle Phase
         breath_period = 60.0 / self.set_rr
         insp_duration = breath_period * self.insp_time_fraction
-        exp_duration = breath_period - insp_duration
-        
         self.cycle_time += dt
         
         # Check for new breath

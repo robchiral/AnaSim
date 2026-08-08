@@ -5,10 +5,11 @@ Verifies that the TCI controller correctly achieves and maintains target concent
 Criteria: 10% tolerance for tracking, 5% for steady state, <25% overshoot.
 """
 
-import pytest
 import numpy as np
-from anasim.patient.pk_models import PropofolPKSchnider, RemifentanilPKMinto
+import pytest
+
 from anasim.core.tci import TCIController
+from anasim.patient.pk_models import PropofolPKSchnider, RemifentanilPKMinto
 
 
 class TestTCIPropofol:
@@ -41,8 +42,6 @@ class TestTCIPropofol:
             rate = tci.step(target_ce)
             pk.step(1.0, rate)  # 1 second step
             ce_history.append(pk.state.ce)
-        
-        ce_final = ce_history[-1]
         
         # Should reach within 10% of target by 60s
         ce_at_60s = ce_history[59]

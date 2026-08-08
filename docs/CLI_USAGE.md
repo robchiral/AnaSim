@@ -1,15 +1,15 @@
-# Advanced CLI usage
+# CLI usage
 
-For installation and basic use, see the [README](../README.md).
+For installation and the desktop workflow, see the [README](../README.md).
 
 ## Arguments
 
 | Argument | Description | Default |
 |----------|-------------|---------|
 | `--mode` | Run mode: `ui` or `headless` | `ui` |
-| `--duration` | Simulation duration in seconds (Headless only) | `10.0` |
-| `--config` | Path to a JSON configuration file | None |
-| `--record` | Enable CSV recording (Headless only) | `false` |
+| `--duration` | Simulation duration in seconds (headless only) | `10.0` |
+| `--config` | Path to a JSON configuration file | Not set |
+| `--record` | Enable CSV recording (headless only) | `false` |
 | `--record-dir` | Output directory for recordings | `recordings` |
 | `--record-interval` | Sample interval in seconds for CSV | `1.0` |
 
@@ -17,7 +17,7 @@ For installation and basic use, see the [README](../README.md).
 
 You can provide a JSON file to customize the patient and simulation parameters.
 
-### Example
+### Minimal example
 
 JSON files can include any patient or simulation field. Omitted fields use their
 defaults. A minimal custom configuration might be:

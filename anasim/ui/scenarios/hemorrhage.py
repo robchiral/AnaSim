@@ -5,18 +5,19 @@ Teaches recognition and management of intraoperative hemorrhage/hypovolemic shoc
 """
 
 from typing import Tuple
+
 from .base import (
+    VASOPRESSOR_KEYS,
     Scenario,
     ScenarioStep,
-    VASOPRESSOR_KEYS,
+    create_observe_baseline_step,
+    create_reassess_step,
     join_messages,
     monitor_value,
     require_crisis_started,
     require_crisis_stopped,
     require_fluid_given,
     require_infusion_started,
-    create_observe_baseline_step,
-    create_reassess_step,
 )
 
 
@@ -35,8 +36,10 @@ def _require_shock_recognition() -> callable:
             return True, ""
 
         msgs = []
-        if not tachycardia: msgs.append(f"HR: {hr:.0f} (watch for ↑)")
-        if not hypotension: msgs.append(f"MAP: {map_val:.0f} (watch for ↓)")
+        if not tachycardia:
+            msgs.append(f"HR: {hr:.0f} (watch for ↑)")
+        if not hypotension:
+            msgs.append(f"MAP: {map_val:.0f} (watch for ↓)")
         return False, join_messages(msgs)
     return check
 

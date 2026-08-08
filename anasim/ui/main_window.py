@@ -1,71 +1,62 @@
+import math
 import sys
 import time
-import math
+
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
-    QMainWindow,
-    QWidget,
-    QHBoxLayout,
-    QVBoxLayout,
-    QPushButton,
-    QLabel,
+    QDialog,
     QDoubleSpinBox,
     QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
     QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QTimer
 
-from anasim.core.engine import SimulationEngine, SimulationConfig, Patient
-from anasim.ui.monitor_widget import PatientMonitorWidget
-from anasim.ui.controls_widget import ControlPanelWidget
+from anasim.core.engine import Patient, SimulationConfig, SimulationEngine
 from anasim.ui.config_dialog import SimulationSetupDialog
-from anasim.ui.tutorial_overlay import ScenarioOverlay
+from anasim.ui.controls_widget import ControlPanelWidget
+from anasim.ui.monitor_widget import PatientMonitorWidget
 from anasim.ui.scenarios import SCENARIO_BUILDERS
 from anasim.ui.styles import (
     COLORS,
     FONTS,
     STYLE_SPINBOX,
-    get_base_widget_style,
     get_bar_style,
+    get_base_widget_style,
     get_button_style,
-    get_toggle_button_style,
     get_status_label_style,
+    get_toggle_button_style,
 )
+from anasim.ui.tutorial_overlay import ScenarioOverlay
+
 
 class MainWindow(QMainWindow):
-    """Main application window container integrating Monitor and Controls."""
-    def __init__(self):
+    """Display the patient monitor and simulation controls."""
+
+    def __init__(self, sim_params):
         super().__init__()
-        self.setWindowTitle("AnaSim - Anesthesia Simulator")
+        self.setWindowTitle("AnaSim | Anesthesia simulator")
         self.resize(1600, 900)
-        
         self.setStyleSheet(get_base_widget_style())
-        
-        # Show Setup Dialog
-        if not self.show_setup_dialog():
-            sys.exit(0)
-            
+        self.sim_params = sim_params
+        self.engine = None
+
         self.init_simulation()
         self.setup_ui()
-        
-        # Game Loop
-        self.timer = QTimer()
-        self.timer.setInterval(50)  # 20 FPS UI Update
-        self.timer.timeout.connect(self.game_loop)
-        
-        self.last_real_time = 0.0
 
-    def show_setup_dialog(self) -> bool:
-        """Show config dialog and store params."""
-        dlg = SimulationSetupDialog(self)
-        if dlg.exec():
-            self.sim_params = dlg.result_data
-            return True
-        return False
+        self.timer = QTimer()
+        self.timer.setInterval(50)
+        self.timer.timeout.connect(self.game_loop)
+        self.last_real_time = 0.0
 
     def init_simulation(self):
         """Initialize the simulation engine with configured parameters."""
-        if hasattr(self, "engine") and getattr(self.engine, "recorder", None):
+        if self.engine is not None:
             self.engine.stop_recording()
         p = self.sim_params
         self.arterial_line_enabled = p['arterial_line_enabled']
@@ -80,7 +71,7 @@ class MainWindow(QMainWindow):
             renal_status=p['renal_status'],
             hepatic_status=p['hepatic_status'],
         )
-        self.config = SimulationConfig(
+        config = SimulationConfig(
             pk_model_propofol=p['pk_model_propofol'],
             pk_model_nore=p['pk_model_nore'],
             pk_model_epi=p['pk_model_epi'],
@@ -91,20 +82,18 @@ class MainWindow(QMainWindow):
             baseline_hb=p['baseline_hb'],
             enable_death_detector=p['enable_death_detector'],
         )
-        self.engine = SimulationEngine(self.patient, self.config)
+        self.engine = SimulationEngine(self.patient, config)
         self.tutorial_mode = p['tutorial_mode']
-        self.death_dialog_shown = False # Reset for new session
+        self.death_dialog_shown = False
         
     def setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
         
-        # Base Layout
         base_layout = QVBoxLayout(central)
         base_layout.setContentsMargins(0, 0, 0, 0)
         base_layout.setSpacing(0)
         
-        # Tutorial Overlay
         self.overlay = None
         if self.tutorial_mode:
             scenario_id = self.sim_params['scenario_id']
@@ -113,13 +102,11 @@ class MainWindow(QMainWindow):
             self.overlay = ScenarioOverlay(scenario, self.engine)
             base_layout.addWidget(self.overlay)
         
-        # Main Layout: Monitor (Left) + Controls (Right)
         main_layout = QHBoxLayout()
         base_layout.addLayout(main_layout)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(1)
         
-        # Left Side: Monitor + Control Bar
         monitor_container = QWidget()
         mon_layout = QVBoxLayout(monitor_container)
         mon_layout.setContentsMargins(0, 0, 0, 0)
@@ -128,9 +115,8 @@ class MainWindow(QMainWindow):
         self.monitor = PatientMonitorWidget(
             arterial_line_enabled=self.arterial_line_enabled
         )
-        # Update patient label with simulation config
         self.monitor.update_patient_info(
-            name="Simulated patient",  # or from p['name'] if added later
+            name="Simulated patient",
             age=self.patient.age,
             gender=self.patient.sex,
             weight=self.patient.weight,
@@ -139,7 +125,6 @@ class MainWindow(QMainWindow):
         )
         mon_layout.addWidget(self.monitor, stretch=1)
         
-        # Bottom Control Bar
         ctrl_bar = QFrame()
         ctrl_bar.setObjectName("controlBar")
         ctrl_bar.setStyleSheet(get_bar_style("top"))
@@ -148,7 +133,6 @@ class MainWindow(QMainWindow):
         ctrl_layout.setContentsMargins(14, 9, 14, 9)
         ctrl_layout.setSpacing(12)
         
-        # Start/Pause Button
         self.btn_start = QPushButton("Start simulation")
         self.btn_start.setStyleSheet(
             get_button_style(variant="primary", padding="8px 18px", min_width=126)
@@ -156,16 +140,15 @@ class MainWindow(QMainWindow):
         self.btn_start.clicked.connect(self.toggle_simulation)
         ctrl_layout.addWidget(self.btn_start)
 
-        # Record Toggle
-        self.btn_record = QPushButton("Record data")
+        self.btn_record = QPushButton("Record CSV")
         self.btn_record.setCheckable(True)
         self.btn_record.setStyleSheet(
             get_toggle_button_style(COLORS['danger'], text_color=COLORS['text_secondary'])
         )
         self.btn_record.toggled.connect(self.toggle_recording)
+        self.btn_record.setToolTip("Write time-series data to the recordings directory.")
         ctrl_layout.addWidget(self.btn_record)
         
-        # Speed Control
         speed_container = QHBoxLayout()
         speed_container.setSpacing(8)
         
@@ -185,14 +168,12 @@ class MainWindow(QMainWindow):
         speed_container.addWidget(self.sb_speed)
         ctrl_layout.addLayout(speed_container)
         
-        # Status Indicator
         self.lbl_status = QLabel("● Ready")
         self._set_status("Ready", COLORS['text_dim'])
         ctrl_layout.addWidget(self.lbl_status)
         
         ctrl_layout.addStretch()
         
-        # Time Display
         time_layout = QVBoxLayout()
         time_layout.setSpacing(0)
         lbl_time_title = QLabel("Simulation time")
@@ -214,13 +195,11 @@ class MainWindow(QMainWindow):
         mon_layout.addWidget(ctrl_bar)
         main_layout.addWidget(monitor_container, stretch=13)
         
-        # Right Side: Controls
         self.controls = ControlPanelWidget(self.engine)
         if self.overlay is not None:
             self.overlay.navigate_requested.connect(self.controls.open_tab)
         main_layout.addWidget(self.controls, stretch=7)
         
-        # Initial Sync
         self.controls.sync_with_engine()
         initial_state = self.engine.get_latest_state()
         self.monitor.update_numerics(initial_state)
@@ -269,7 +248,7 @@ class MainWindow(QMainWindow):
             self.timer.start()
             self.last_real_time = time.perf_counter()
         self.time_accumulator = 0.0
-        self.death_dialog_shown = False # Prevent multiple popups
+        self.death_dialog_shown = False
 
     def toggle_recording(self, checked: bool):
         if checked:
@@ -277,23 +256,20 @@ class MainWindow(QMainWindow):
             self.btn_record.setText("Stop recording")
         else:
             self.engine.stop_recording()
-            self.btn_record.setText("Record data")
+            self.btn_record.setText("Record CSV")
         
     def game_loop(self):
-        # Time Management
         now = time.perf_counter()
         dt_real = now - self.last_real_time
         self.last_real_time = now
         
         dt_real = min(dt_real, 0.2)
         
-        # Apply Speed Factor
         speed = self.sb_speed.value()
         dt_sim_needed = dt_real * speed
         
         self.time_accumulator += dt_sim_needed
         
-        # Run Engine Steps
         sim_step = self.engine.config.dt
         # Budget enough work for the fastest selectable speed. A fixed
         # 100-step cap silently discarded simulated time above roughly 20x.
@@ -307,10 +283,8 @@ class MainWindow(QMainWindow):
             if steps_taken >= max_steps:
                 break
              
-        # Update UI
         state = self.engine.get_latest_state()
-        
-        # Update Time Label
+
         total_seconds = int(state.time)
         hours = total_seconds // 3600
         minutes = (total_seconds % 3600) // 60
@@ -326,48 +300,54 @@ class MainWindow(QMainWindow):
         if self.overlay:
             self.overlay.update_state()
 
-        # Check for death
         if state.is_dead and not self.death_dialog_shown:
             self.handle_patient_death(state.death_reason)
 
     def handle_patient_death(self, reason: str):
         """Handle patient death event."""
-        self.death_dialog_shown = True # Mark as shown immediately
-        
-        # Stop engine properly without triggering toggle logic (which might restart it)
+        self.death_dialog_shown = True
+
         was_running = self.engine.running
         self.engine.stop()
 
         if was_running:
-             # Toggle_simulation updates UI text based on engine state.
-             # Forcing a UI update:
-             self.timer.stop()
-             self.btn_start.setChecked(False)
-             self._set_run_state("ready")
+            self.timer.stop()
+            self.btn_start.setChecked(False)
+            self._set_run_state("ready")
         
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Critical)
-        msg.setWindowTitle("Patient Deceased")
+        msg.setWindowTitle("Simulation endpoint reached")
         msg.setText(f"The patient has died.\n\nReason: {reason}")
         msg.setStandardButtons(QMessageBox.Retry | QMessageBox.Close)
-        msg.button(QMessageBox.Retry).setText("Restart Simulation")
-        msg.button(QMessageBox.Close).setText("Keep Viewing State")
+        msg.button(QMessageBox.Retry).setText("Start a new session")
+        msg.button(QMessageBox.Close).setText("Review final state")
         
         ret = msg.exec()
-        
+
         if ret == QMessageBox.Retry:
-            # Restart triggers setup dialog again
-            if self.show_setup_dialog():
+            dialog = SimulationSetupDialog(self)
+            if dialog.exec() == QDialog.Accepted:
+                self.sim_params = dialog.result_data
                 self.init_simulation()
                 self.setup_ui()
                 self.controls.sync_with_engine()
-        # If Close, do nothing (simulation remains paused, user can inspect graphs)
+
+
+def run() -> int:
+    """Open setup, then run the desktop application."""
+    app = QApplication.instance() or QApplication(sys.argv)
+    dialog = SimulationSetupDialog()
+    if dialog.exec() != QDialog.Accepted:
+        return 0
+
+    window = MainWindow(dialog.result_data)
+    window.show()
+    return app.exec()
+
 
 def main():
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+    raise SystemExit(run())
 
 if __name__ == "__main__":
     main()

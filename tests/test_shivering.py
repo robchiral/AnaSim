@@ -1,5 +1,5 @@
-from anasim.core.state import SimulationConfig
 from anasim.core import projection as projection_core
+from anasim.core.state import SimulationConfig
 
 
 class TestShivering:

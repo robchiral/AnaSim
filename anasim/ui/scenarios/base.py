@@ -31,7 +31,6 @@ from anasim.core.action_log import (
     ACTION_VAPORIZER,
 )
 
-
 ControlTab = Literal["Machine", "Medications", "Events"]
 
 VASOPRESSOR_KEYS = ("nore", "phenyl", "epi")

@@ -1,46 +1,46 @@
 import time
 
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QButtonGroup,
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QGroupBox,
-    QDoubleSpinBox,
     QPushButton,
-    QFormLayout,
-    QComboBox,
-    QSpinBox,
-    QTabWidget,
-    QGridLayout,
-    QButtonGroup,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from anasim.core.state import AirwayType
+
 from anasim.core.enums import RhythmType
+from anasim.core.state import AirwayType
+from anasim.physiology.disturbances import list_disturbance_profiles
 
 from .styles import (
     COLORS,
-    STYLE_SPINBOX,
     STYLE_COMBOBOX,
     STYLE_LABEL,
-    STYLE_TAB_WIDGET,
     STYLE_SCROLLAREA,
-    get_button_style,
-    get_toggle_button_style,
-    get_segment_button_style,
-    get_section_group_style,
-    get_drug_card_style,
+    STYLE_SPINBOX,
+    STYLE_TAB_WIDGET,
     get_base_widget_style,
+    get_button_style,
+    get_drug_card_style,
+    get_section_group_style,
+    get_segment_button_style,
+    get_toggle_button_style,
 )
-from anasim.physiology.disturbances import list_disturbance_profiles
+
 
 class ControlPanelWidget(QWidget):
-    """
-    Control Panel for Anesthesia Delivery.
-    Tabs: Machine, Drugs & Infusions, Events & Fluids.
-    """
+    """Controls for anesthesia delivery, interventions, and simulated events."""
+
     def __init__(self, engine):
         super().__init__()
         self.engine = engine
@@ -58,31 +58,28 @@ class ControlPanelWidget(QWidget):
         """)
         self.setMinimumWidth(480)
         self.init_ui()
-        
+
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
+
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet(STYLE_TAB_WIDGET)
         layout.addWidget(self.tabs)
-        
-        # 1. Anesthesia Machine (Airway, Gases, Vent)
+
         self.tab_machine = QWidget()
         self.setup_machine_tab()
         self.tabs.addTab(self.tab_machine, "Machine")
-        
-        # 2. Infusions (TIVA/TCI)
+
         self.tab_drugs = QWidget()
-        self.drug_widgets = {} 
+        self.drug_widgets = {}
         self.setup_drugs_tab()
         self.tabs.addTab(self.tab_drugs, "Medications")
 
-        # 4. Events / Fluids
         self.tab_events = QWidget()
         self.setup_events_tab()
-        self.tabs.addTab(self.tab_events, "Events")
+        self.tabs.addTab(self.tab_events, "Events and fluids")
 
     def open_tab(self, name: str):
         """Open a named control area requested by a tutorial objective."""
@@ -107,7 +104,7 @@ class ControlPanelWidget(QWidget):
         layout.setSpacing(8)
         scroll.setWidget(content)
         return scroll, layout
-        
+
     def _silent_update(self, widget, setter_name, value):
         """Silently update a widget without triggering its signals."""
         signals_were_blocked = widget.blockSignals(True)
@@ -124,18 +121,23 @@ class ControlPanelWidget(QWidget):
         drug_state = []
         for spec in self.engine.get_controllable_drugs():
             controller = getattr(self.engine, spec.tci_attr)
-            drug_state.append((
-                spec.key,
-                getattr(self.engine, spec.rate_attr),
-                controller.target if controller is not None else None,
-            ))
+            drug_state.append(
+                (
+                    spec.key,
+                    getattr(self.engine, spec.rate_attr),
+                    controller.target if controller is not None else None,
+                )
+            )
         drug_state = tuple(drug_state)
         if drug_state != self._last_drug_state:
             self._last_drug_state = drug_state
             self._sync_drug_controls()
 
         now = time.monotonic()
-        if self.tabs.currentWidget() is self.tab_drugs and now >= self._next_csht_update:
+        if (
+            self.tabs.currentWidget() is self.tab_drugs
+            and now >= self._next_csht_update
+        ):
             self._sync_csht()
             self._next_csht_update = now + 5.0
 
@@ -179,12 +181,12 @@ class ControlPanelWidget(QWidget):
     def _sync_gases_and_airway(self):
         """Sync gases, vaporizer, and airway choices."""
         circuit = self.engine.circuit
-        self._silent_update(self.sb_vap, 'setValue', circuit.vaporizer_setting)
-        self._silent_update(self.sb_o2, 'setValue', circuit.fgf_o2)
-        self._silent_update(self.sb_air, 'setValue', circuit.fgf_air)
-        self._silent_update(self.sb_n2o, 'setValue', circuit.fgf_n2o)
+        self._silent_update(self.sb_vap, "setValue", circuit.vaporizer_setting)
+        self._silent_update(self.sb_o2, "setValue", circuit.fgf_o2)
+        self._silent_update(self.sb_air, "setValue", circuit.fgf_air)
+        self._silent_update(self.sb_n2o, "setValue", circuit.fgf_n2o)
         disconnected = not circuit.oxygen_supply_connected
-        self._silent_update(self.btn_o2_supply, 'setChecked', disconnected)
+        self._silent_update(self.btn_o2_supply, "setChecked", disconnected)
         self.btn_o2_supply.setText(
             "Connect backup O₂" if disconnected else "Disconnect O₂ supply"
         )
@@ -194,16 +196,10 @@ class ControlPanelWidget(QWidget):
         try:
             if mode == AirwayType.NONE:
                 self.rb_none.setChecked(True)
-                self.lbl_airway_status.setText("Circuit disconnected")
-                self.lbl_airway_status.setStyleSheet(f"color: {COLORS['text_dim']};")
             elif mode == AirwayType.MASK:
                 self.rb_mask.setChecked(True)
-                self.lbl_airway_status.setText("Facemask connected")
-                self.lbl_airway_status.setStyleSheet(f"color: {COLORS['info']};")
             elif mode == AirwayType.ETT:
                 self.rb_ett.setChecked(True)
-                self.lbl_airway_status.setText("Tracheal tube connected")
-                self.lbl_airway_status.setStyleSheet(f"color: {COLORS['success']};")
         finally:
             self.abg_air.blockSignals(signals_were_blocked)
 
@@ -212,44 +208,48 @@ class ControlPanelWidget(QWidget):
         for key, w in self.drug_widgets.items():
             dstate = self.engine.get_drug_state(key)
 
-            self._silent_update(w['rb_tci'], 'setChecked', dstate['is_tci'])
-            self._silent_update(w['rb_man'], 'setChecked', not dstate['is_tci'])
-            self._silent_update(w['target'], 'setValue', dstate['target'])
-            self._silent_update(w['rate'], 'setValue', dstate['rate'])
+            self._silent_update(w["rb_tci"], "setChecked", dstate["is_tci"])
+            self._silent_update(w["rb_man"], "setChecked", not dstate["is_tci"])
+            self._silent_update(w["target"], "setValue", dstate["target"])
+            self._silent_update(w["rate"], "setValue", dstate["rate"])
 
-            if dstate['is_tci']:
-                w['target'].setEnabled(True)
-                w['rate'].setEnabled(False)
+            if dstate["is_tci"]:
+                w["target"].setEnabled(True)
+                w["rate"].setEnabled(False)
             else:
-                w['rate'].setEnabled(True)
-                w['target'].setEnabled(False)
+                w["rate"].setEnabled(True)
+                w["target"].setEnabled(False)
 
     def _sync_csht(self):
         """Refresh expensive context-sensitive half-time estimates."""
         for key, w in self.drug_widgets.items():
-            if w['csht_label'] is not None:
+            if w["csht_label"] is not None:
                 csht = self.engine.get_predicted_csht(key)
                 if csht > 0:
-                    w['csht_label'].setText(f"Predicted Ce t\u00bd: ~{csht:.0f} min")
-                    w['csht_label'].setToolTip(
+                    w["csht_label"].setText(
+                        f"Estimated context-sensitive half-time: {csht:.0f} min"
+                    )
+                    w["csht_label"].setToolTip(
                         "Estimated PK effect-site half-time from the current model state; not a guaranteed wake-up time."
                     )
-                    w['csht_label'].show()
+                    w["csht_label"].show()
                 else:
-                    w['csht_label'].hide()
+                    w["csht_label"].hide()
 
     def _sync_ventilator(self):
         """Sync ventilator settings."""
         is_on = self.engine.vent.is_on
-        self._silent_update(self.btn_vent_power, 'setChecked', is_on)
+        self._silent_update(self.btn_vent_power, "setChecked", is_on)
         settings = self.engine.vent.settings
         mode_index = self.cb_vent_mode.findData(settings.mode)
-        self._silent_update(self.cb_vent_mode, 'setCurrentIndex', mode_index)
-        self._silent_update(self.sb_rr, 'setValue', int(settings.rr))
-        self._silent_update(self.sb_tv, 'setValue', int(settings.tv))
-        self._silent_update(self.sb_peep, 'setValue', int(settings.peep))
-        self._silent_update(self.sb_pinsp, 'setValue', int(settings.p_insp))
-        self._silent_update(self.btn_bag_mask, 'setChecked', self.engine.bag_mask_active)
+        self._silent_update(self.cb_vent_mode, "setCurrentIndex", mode_index)
+        self._silent_update(self.sb_rr, "setValue", int(settings.rr))
+        self._silent_update(self.sb_tv, "setValue", int(settings.tv))
+        self._silent_update(self.sb_peep, "setValue", int(settings.peep))
+        self._silent_update(self.sb_pinsp, "setValue", int(settings.p_insp))
+        self._silent_update(
+            self.btn_bag_mask, "setChecked", self.engine.bag_mask_active
+        )
         self.btn_bag_mask.setText(
             "Stop bag-mask ventilation"
             if self.engine.bag_mask_active
@@ -272,16 +272,25 @@ class ControlPanelWidget(QWidget):
 
     def _sync_fluids(self):
         """Sync continuous fluid rate."""
-        self._silent_update(self.sb_cont_fluid, 'setValue', self.engine.get_continuous_fluid_rate())
+        self._silent_update(
+            self.sb_cont_fluid, "setValue", self.engine.get_continuous_fluid_rate()
+        )
 
     def _sync_disturbances(self):
         """Sync programmed disturbance states."""
         profile = self.engine.disturbance_profile
-        idx = next((i for i, (_, key) in enumerate(self._disturbance_profiles) if key == profile), 0)
-        self._silent_update(self.cb_disturbance, 'setCurrentIndex', idx)
+        idx = next(
+            (
+                i
+                for i, (_, key) in enumerate(self._disturbance_profiles)
+                if key == profile
+            ),
+            0,
+        )
+        self._silent_update(self.cb_disturbance, "setCurrentIndex", idx)
 
         active = bool(self.engine.disturbance_active and profile)
-        self._silent_update(self.b_disturb, 'setChecked', active)
+        self._silent_update(self.b_disturb, "setChecked", active)
         self.b_disturb.setText("Stop stimulation" if active else "Start stimulation")
         self.b_disturb.setEnabled(profile is not None)
         self.cb_disturbance.setEnabled(not active)
@@ -290,12 +299,12 @@ class ControlPanelWidget(QWidget):
         """Sync airway obstruction and laryngospasm."""
         self._silent_update(
             self.sb_obstruction,
-            'setValue',
+            "setValue",
             self.engine.airway_obstruction_manual * 100.0,
         )
         self._silent_update(
             self.sb_bronchospasm,
-            'setValue',
+            "setValue",
             self.engine.bronchospasm_manual * 100.0,
         )
 
@@ -311,11 +320,11 @@ class ControlPanelWidget(QWidget):
         self.lbl_laryngo_status.setText(f"Laryngospasm: {level}")
 
         auto_on = self.engine.auto_laryngospasm_enabled
-        self._silent_update(self.btn_auto_laryngo, 'setChecked', auto_on)
+        self._silent_update(self.btn_auto_laryngo, "setChecked", auto_on)
         self.btn_auto_laryngo.setText(
             "Automatic laryngospasm on" if auto_on else "Automatic laryngospasm off"
         )
-        
+
     def update_fgf(self):
         o2 = self.sb_o2.value()
         air = self.sb_air.value()
@@ -336,11 +345,11 @@ class ControlPanelWidget(QWidget):
         """Refresh the measured oxygen concentration in the breathing circuit."""
         fio2 = self.engine.circuit.composition.fio2
         if not self.engine.circuit.oxygen_supply_connected or fio2 < 0.21:
-            color = COLORS['danger']
+            color = COLORS["danger"]
         elif fio2 < 0.30:
-            color = COLORS['warning']
+            color = COLORS["warning"]
         else:
-            color = COLORS['success']
+            color = COLORS["success"]
         percent = round(fio2 * 100)
         readout = (percent, color)
         if readout == self._last_circuit_readout:
@@ -357,17 +366,17 @@ class ControlPanelWidget(QWidget):
 
     def update_airway(self, btn):
         mode = btn.property("airway_mode")
-        
+
         if mode == "ETT" and self.btn_bag_mask.isChecked():
             self.btn_bag_mask.setChecked(False)
 
         self.engine.set_airway_mode(mode)
-        
+
     def setup_machine_tab(self):
         """Combined Airway, Gases, and Ventilator controls."""
         main_layout = QVBoxLayout(self.tab_machine)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         scroll, layout = self._create_scroll_area()
         main_layout.addWidget(scroll)
 
@@ -376,45 +385,40 @@ class ControlPanelWidget(QWidget):
         gp_air.setStyleSheet(get_section_group_style())
         l_air = QVBoxLayout(gp_air)
         l_air.setSpacing(8)
-        
+
         self.abg_air = QButtonGroup(self)
-        
-        self.rb_none = self._create_segment_button("No airway", COLORS['text_dim'])
-        self.rb_mask = self._create_segment_button("Facemask", COLORS['info'])
-        self.rb_ett = self._create_segment_button("ET tube", COLORS['success'])
+
+        self.rb_none = self._create_segment_button("Disconnected", COLORS["text_dim"])
+        self.rb_mask = self._create_segment_button("Facemask", COLORS["info"])
+        self.rb_ett = self._create_segment_button("Tracheal tube", COLORS["success"])
         self.rb_none.setProperty("airway_mode", "None")
         self.rb_mask.setProperty("airway_mode", "Mask")
         self.rb_ett.setProperty("airway_mode", "ETT")
-        
+
         self.abg_air.addButton(self.rb_none)
         self.abg_air.addButton(self.rb_mask)
         self.abg_air.addButton(self.rb_ett)
         self.rb_none.setChecked(True)
         self.abg_air.buttonClicked.connect(self.update_airway)
-        
+
         airway_buttons = QHBoxLayout()
         airway_buttons.setSpacing(6)
         airway_buttons.addWidget(self.rb_none)
         airway_buttons.addWidget(self.rb_mask)
         airway_buttons.addWidget(self.rb_ett)
         l_air.addLayout(airway_buttons)
-        self.lbl_airway_status = QLabel("Circuit disconnected")
-        self.lbl_airway_status.setStyleSheet(
-            f"color: {COLORS['text_dim']}; font-size: 10px;"
-        )
-        l_air.addWidget(self.lbl_airway_status)
         layout.addWidget(gp_air)
-        
+
         # --- Section 2: Gas Flow & Vaporizer ---
         h_gases = QHBoxLayout()
         h_gases.setSpacing(12)
-        
+
         # FGF
         gp_fgf = QGroupBox("Fresh gas flow")
         gp_fgf.setStyleSheet(get_section_group_style())
         l_fgf = QGridLayout(gp_fgf)
         l_fgf.setSpacing(8)
-        
+
         lbl_o2 = QLabel("O₂")
         lbl_o2.setStyleSheet(f"color: {COLORS['info']};")
         self.sb_o2 = QDoubleSpinBox()
@@ -425,7 +429,7 @@ class ControlPanelWidget(QWidget):
         self.sb_o2.valueChanged.connect(self.update_fgf)
         l_fgf.addWidget(lbl_o2, 0, 0)
         l_fgf.addWidget(self.sb_o2, 0, 1)
-        
+
         lbl_air = QLabel("Air")
         self.sb_air = QDoubleSpinBox()
         self.sb_air.setRange(0, 15)
@@ -446,78 +450,76 @@ class ControlPanelWidget(QWidget):
         self.sb_n2o.valueChanged.connect(self.update_fgf)
         l_fgf.addWidget(lbl_n2o, 2, 0)
         l_fgf.addWidget(self.sb_n2o, 2, 1)
-        
+
         lbl_fio2_title = QLabel("Circuit FiO₂")
         lbl_fio2_title.setStyleSheet(f"color: {COLORS['text_dim']};")
         self.lbl_fio2 = QLabel("21%")
-        self.lbl_fio2.setStyleSheet(f"font-weight: bold; color: {COLORS['success']}; font-size: 16px;")
+        self.lbl_fio2.setStyleSheet(
+            f"font-weight: bold; color: {COLORS['success']}; font-size: 16px;"
+        )
         l_fgf.addWidget(lbl_fio2_title, 3, 0)
         l_fgf.addWidget(self.lbl_fio2, 3, 1)
 
         self.btn_o2_supply = QPushButton("Disconnect O₂ supply")
         self.btn_o2_supply.setCheckable(True)
         self.btn_o2_supply.setStyleSheet(
-            get_toggle_button_style(COLORS['danger'], text_color=COLORS['danger'])
+            get_toggle_button_style(COLORS["danger"], text_color=COLORS["danger"])
         )
         self.btn_o2_supply.toggled.connect(self.toggle_oxygen_supply)
         l_fgf.addWidget(self.btn_o2_supply, 4, 0, 1, 2)
-        
+
         h_gases.addWidget(gp_fgf)
-        
+
         # Vaporizer
-        gp_vap = QGroupBox("Vaporizer")
+        gp_vap = QGroupBox("Sevoflurane vaporizer")
         gp_vap.setStyleSheet(get_section_group_style())
         l_vap = QFormLayout(gp_vap)
         l_vap.setSpacing(8)
-        
-        lbl_agent = QLabel("Sevoflurane")
-        lbl_agent.setStyleSheet(
-            f"color: {COLORS['gas']}; font-weight: 650;"
-        )
-        l_vap.addRow("Agent", lbl_agent)
-        
+
         self.sb_vap = QDoubleSpinBox()
         self.sb_vap.setRange(0, 8)
         self.sb_vap.setSuffix(" %")
         self.sb_vap.setSingleStep(0.2)
         self.sb_vap.valueChanged.connect(self.update_vaporizer)
-        l_vap.addRow("Dial", self.sb_vap)
-        
+        l_vap.addRow("Setting", self.sb_vap)
+
         h_gases.addWidget(gp_vap)
         layout.addLayout(h_gases)
-        
+
         # --- Section 3: Bag-Mask Ventilation ---
         gp_bag = QGroupBox("Manual ventilation")
         gp_bag.setStyleSheet(get_section_group_style())
         l_bag = QHBoxLayout(gp_bag)
-        
+
         self.btn_bag_mask = QPushButton("Start bag-mask ventilation")
         self.btn_bag_mask.setCheckable(True)
-        self.btn_bag_mask.setStyleSheet(get_toggle_button_style(COLORS['success']))
+        self.btn_bag_mask.setStyleSheet(get_toggle_button_style(COLORS["success"]))
         self.btn_bag_mask.toggled.connect(self.toggle_bag_mask)
         l_bag.addWidget(self.btn_bag_mask)
         lbl_bag_info = QLabel("12 breaths/min · 500 mL")
-        lbl_bag_info.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 11px;")
+        lbl_bag_info.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: 11px;"
+        )
         l_bag.addWidget(lbl_bag_info)
         l_bag.addStretch()
         layout.addWidget(gp_bag)
-        
+
         # --- Section 4: Mechanical Ventilator ---
         gp_vent = QGroupBox("Mechanical ventilation")
         gp_vent.setStyleSheet(get_section_group_style())
         l_vent = QVBoxLayout(gp_vent)
         l_vent.setSpacing(10)
-        
+
         # Header: Mode/Power
         h_vent_top = QHBoxLayout()
         self.btn_vent_power = QPushButton("Start ventilator")
         self.btn_vent_power.setCheckable(True)
-        self.btn_vent_power.setStyleSheet(get_toggle_button_style(COLORS['primary']))
+        self.btn_vent_power.setStyleSheet(get_toggle_button_style(COLORS["primary"]))
         self.btn_vent_power.toggled.connect(self.toggle_vent_power)
         h_vent_top.addWidget(self.btn_vent_power)
         h_vent_top.addStretch()
         l_vent.addLayout(h_vent_top)
-        
+
         # Vent Mode Selection (VCV / PCV)
         h_mode = QHBoxLayout()
         h_mode.addWidget(QLabel("Mode:"))
@@ -533,11 +535,11 @@ class ControlPanelWidget(QWidget):
         h_mode.addWidget(self.cb_vent_mode)
         h_mode.addStretch()
         l_vent.addLayout(h_mode)
-        
+
         # Settings Grid
         g_vent = QGridLayout()
         g_vent.setSpacing(8)
-        
+
         lbl_rr = QLabel("RR:")
         self.sb_rr = QSpinBox()
         self.sb_rr.setRange(0, 60)
@@ -546,7 +548,7 @@ class ControlPanelWidget(QWidget):
         self.sb_rr.valueChanged.connect(self.update_vent)
         g_vent.addWidget(lbl_rr, 0, 0)
         g_vent.addWidget(self.sb_rr, 0, 1)
-        
+
         # Tidal Volume (VCV mode)
         self.lbl_tv = QLabel("Vt:")
         self.sb_tv = QSpinBox()
@@ -557,7 +559,7 @@ class ControlPanelWidget(QWidget):
         self.sb_tv.valueChanged.connect(self.update_vent)
         g_vent.addWidget(self.lbl_tv, 0, 2)
         g_vent.addWidget(self.sb_tv, 0, 3)
-        
+
         # Inspiratory Pressure (PCV mode) - initially hidden
         self.lbl_pinsp = QLabel("Pinsp:")
         self.sb_pinsp = QSpinBox()
@@ -571,7 +573,7 @@ class ControlPanelWidget(QWidget):
         g_vent.addWidget(self.sb_pinsp, 0, 3)
         self.lbl_pinsp.hide()
         self.sb_pinsp.hide()
-        
+
         lbl_peep = QLabel("PEEP:")
         self.sb_peep = QSpinBox()
         self.sb_peep.setRange(0, 20)
@@ -580,19 +582,19 @@ class ControlPanelWidget(QWidget):
         self.sb_peep.valueChanged.connect(self.update_vent)
         g_vent.addWidget(lbl_peep, 1, 0)
         g_vent.addWidget(self.sb_peep, 1, 1)
-        
+
         lbl_ie = QLabel("I:E:")
         self.cb_ie = QComboBox()
         self.cb_ie.addItems(["1:2", "1:1", "1:3", "1:4"])
         self.cb_ie.currentIndexChanged.connect(self.update_vent)
         g_vent.addWidget(lbl_ie, 1, 2)
         g_vent.addWidget(self.cb_ie, 1, 3)
-        
+
         l_vent.addLayout(g_vent)
         layout.addWidget(gp_vent)
-        
+
         layout.addStretch()
-        
+
         # Initial State
         self.sb_rr.setEnabled(False)
         self.sb_tv.setEnabled(False)
@@ -601,7 +603,7 @@ class ControlPanelWidget(QWidget):
         self.cb_vent_mode.setEnabled(False)
         self.sb_pinsp.setEnabled(False)
 
-    def _create_segment_button(self, text, color=COLORS['primary'], compact=False):
+    def _create_segment_button(self, text, color=COLORS["primary"], compact=False):
         """Create an exclusive, checkable state button."""
         button = QPushButton(text)
         button.setCheckable(True)
@@ -610,17 +612,19 @@ class ControlPanelWidget(QWidget):
 
     def setup_drugs_tab(self):
         scroll, layout = self._create_scroll_area()
-        
-        def create_drug_box(spec, set_rate_cb, set_tci_cb, color):
+
+        def create_drug_box(spec, set_rate_cb, set_tci_cb):
             gb = QGroupBox(spec.name)
-            gb.setStyleSheet(get_drug_card_style(color))
-            l = QVBoxLayout(gb)
-            l.setSpacing(8)
-            
+            gb.setStyleSheet(get_drug_card_style())
+            drug_layout = QVBoxLayout(gb)
+            drug_layout.setSpacing(8)
+
             # Mode Switch
             h_mode = QHBoxLayout()
-            rb_man = self._create_segment_button("Rate", COLORS['text_secondary'], compact=True)
-            rb_tci = self._create_segment_button("TCI", COLORS['primary'], compact=True)
+            rb_man = self._create_segment_button(
+                "Rate", COLORS["text_secondary"], compact=True
+            )
+            rb_tci = self._create_segment_button("TCI", COLORS["primary"], compact=True)
             rb_man.setChecked(True)
             grp = QButtonGroup(gb)
             grp.addButton(rb_man)
@@ -628,14 +632,14 @@ class ControlPanelWidget(QWidget):
             h_mode.addWidget(rb_man)
             h_mode.addWidget(rb_tci)
             h_mode.addStretch()
-            l.addLayout(h_mode)
-            
+            drug_layout.addLayout(h_mode)
+
             # Controls
             sb_rate = QDoubleSpinBox()
             sb_rate.setRange(0, 2000)
             sb_rate.setSuffix(f" {spec.rate_unit}")
             sb_rate.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            
+
             sb_target = QDoubleSpinBox()
             sb_target.setRange(*spec.tci_range)
             sb_target.setSuffix(f" {spec.tci_unit}")
@@ -647,14 +651,18 @@ class ControlPanelWidget(QWidget):
             controls_grid.setVerticalSpacing(4)
 
             lbl_rate = QLabel("Infusion rate")
-            lbl_rate.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px;")
+            lbl_rate.setStyleSheet(
+                f"color: {COLORS['text_secondary']}; font-size: 10px;"
+            )
             target_compartment = (
                 spec.fixed_tci_mode.value.replace("_", " ")
                 if spec.fixed_tci_mode
                 else "effect site"
             )
-            lbl_target = QLabel(f"{target_compartment.title()} target")
-            lbl_target.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px;")
+            lbl_target = QLabel(f"{target_compartment.capitalize()} target")
+            lbl_target.setStyleSheet(
+                f"color: {COLORS['text_secondary']}; font-size: 10px;"
+            )
 
             controls_grid.addWidget(lbl_rate, 0, 0)
             controls_grid.addWidget(lbl_target, 0, 1)
@@ -662,8 +670,8 @@ class ControlPanelWidget(QWidget):
             controls_grid.addWidget(sb_target, 1, 1)
             controls_grid.setColumnStretch(0, 1)
             controls_grid.setColumnStretch(1, 1)
-            l.addLayout(controls_grid)
-            
+            drug_layout.addLayout(controls_grid)
+
             def mode_changed():
                 is_tci = rb_tci.isChecked()
                 sb_rate.setEnabled(not is_tci)
@@ -673,70 +681,66 @@ class ControlPanelWidget(QWidget):
                     set_rate_cb(sb_rate.value())
                 else:
                     set_tci_cb(sb_target.value())
-                    
+
             rb_tci.toggled.connect(mode_changed)
-            
-            sb_rate.valueChanged.connect(lambda v: set_rate_cb(v) if rb_man.isChecked() else None)
-            sb_target.valueChanged.connect(lambda v: set_tci_cb(v) if rb_tci.isChecked() else None)
-            
+
+            sb_rate.valueChanged.connect(
+                lambda v: set_rate_cb(v) if rb_man.isChecked() else None
+            )
+            sb_target.valueChanged.connect(
+                lambda v: set_tci_cb(v) if rb_tci.isChecked() else None
+            )
+
             # Bolus Controls
             h_bolus = QHBoxLayout()
             sb_bolus = QDoubleSpinBox()
             sb_bolus.setRange(0, 1000)
-            
+
             sb_bolus.setSuffix(f" {spec.bolus_unit}")
             sb_bolus.setValue(spec.default_bolus)
-                
+
             btn_give = QPushButton("Give bolus")
-            btn_give.setStyleSheet(get_button_style(bg_color=color, padding="6px 14px"))
-            btn_give.clicked.connect(lambda: self.engine.give_drug_bolus(spec.key, sb_bolus.value()))
-            
+            btn_give.setStyleSheet(
+                get_button_style(variant="neutral", outlined=True, padding="6px 14px")
+            )
+            btn_give.clicked.connect(
+                lambda: self.engine.give_drug_bolus(spec.key, sb_bolus.value())
+            )
+
             h_bolus.addWidget(sb_bolus)
             h_bolus.addWidget(btn_give)
-            
-            l.addLayout(h_bolus)
-            
+
+            drug_layout.addLayout(h_bolus)
+
             # PK effect-site half-time estimate for propofol and remi.
             lbl_csht = None
-            if spec.key in ('propofol', 'remi'):
+            if spec.key in ("propofol", "remi"):
                 lbl_csht = QLabel()
-                lbl_csht.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px; font-style: italic;")
+                lbl_csht.setStyleSheet(
+                    f"color: {COLORS['text_secondary']}; font-size: 10px; font-style: italic;"
+                )
                 lbl_csht.hide()  # Hidden until drug active
-                l.addWidget(lbl_csht)
-            
+                drug_layout.addWidget(lbl_csht)
+
             self.drug_widgets[spec.key] = {
-                'rb_man': rb_man,
-                'rb_tci': rb_tci,
-                'rate': sb_rate,
-                'target': sb_target,
-                'bolus': sb_bolus,
-                'csht_label': lbl_csht
+                "rb_man": rb_man,
+                "rb_tci": rb_tci,
+                "rate": sb_rate,
+                "target": sb_target,
+                "bolus": sb_bolus,
+                "csht_label": lbl_csht,
             }
-            
+
             return gb
 
         drugs = self.engine.get_controllable_drugs()
-        
-        # Color assignments for different drug types
-        drug_colors = {
-            'propofol': COLORS['drug_hypnotic'],
-            'remi': COLORS['drug_opioid'],
-            'roc': COLORS['drug_nmb'],
-            'nore': COLORS['drug_pressor'],
-            'epi': COLORS['drug_inotrope'],
-            'phenyl': COLORS['drug_vasoconstrictor'],
-            'vaso': COLORS['drug_vasoconstrictor'],
-            'dobu': COLORS['drug_inotrope'],
-            'milri': COLORS['drug_inotrope'],
-        }
-        
+
         for spec in drugs:
             key = spec.key
-            color = drug_colors[key]
-            
+
             def make_set_rate(k):
                 return lambda v: self.engine.set_drug_rate(k, v)
-                
+
             def make_set_tci(k):
                 return lambda v: self.engine.set_drug_target(k, v)
 
@@ -744,47 +748,45 @@ class ControlPanelWidget(QWidget):
                 spec,
                 make_set_rate(key),
                 make_set_tci(key),
-                color,
             )
             layout.addWidget(gb)
 
-        # --- Reversal Agents (Bolus-only) ---
-        gp_reversal = QGroupBox("Reversal agents")
-        gp_reversal.setStyleSheet(get_section_group_style())
+        gp_reversal = QGroupBox("Sugammadex")
+        gp_reversal.setStyleSheet(get_drug_card_style())
         l_rev = QVBoxLayout(gp_reversal)
         l_rev.setSpacing(8)
-        
-        lbl_sug = QLabel("Sugammadex (NMB reversal)")
-        lbl_sug.setStyleSheet(f"color: {COLORS['text']}; font-weight: bold;")
-        l_rev.addWidget(lbl_sug)
-        
-        lbl_sug_info = QLabel("2 mg/kg: moderate block  |  4 mg/kg: deep block  |  16 mg/kg: immediate")
-        lbl_sug_info.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px;")
+
+        lbl_sug_info = QLabel(
+            "Moderate block 2 mg/kg  •  Deep block 4 mg/kg  •  Immediate reversal 16 mg/kg"
+        )
+        lbl_sug_info.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: 10px;"
+        )
         l_rev.addWidget(lbl_sug_info)
-        
+
         h_sug = QHBoxLayout()
         h_sug.setSpacing(8)
-        
-        sug_doses = [
-            ("2 mg/kg", 2.0),
-            ("4 mg/kg", 4.0),
-            ("16 mg/kg", 16.0)
-        ]
-        
+
+        sug_doses = [("2 mg/kg", 2.0), ("4 mg/kg", 4.0), ("16 mg/kg", 16.0)]
+
         for label, dose_mg_kg in sug_doses:
             btn = QPushButton(label)
-            btn.setStyleSheet(get_button_style(bg_color=COLORS['info'], padding="6px 14px"))
+            btn.setStyleSheet(
+                get_button_style(variant="neutral", outlined=True, padding="6px 14px")
+            )
             dose_mg = dose_mg_kg * self.engine.patient.weight
-            btn.clicked.connect(lambda checked, d=dose_mg: self.engine.give_drug_bolus("sugammadex", d))
+            btn.clicked.connect(
+                lambda checked, d=dose_mg: self.engine.give_drug_bolus("sugammadex", d)
+            )
             h_sug.addWidget(btn)
-        
+
         h_sug.addStretch()
         l_rev.addLayout(h_sug)
-        
+
         layout.addWidget(gp_reversal)
 
         layout.addStretch()
-        
+
         main_l = QVBoxLayout(self.tab_drugs)
         main_l.setContentsMargins(0, 0, 0, 0)
         main_l.addWidget(scroll)
@@ -811,7 +813,7 @@ class ControlPanelWidget(QWidget):
             self.sb_pinsp.setEnabled(False)
             mode = self.cb_vent_mode.currentData()
             self.engine.set_vent_settings(0, 0, 0.0, "1:2", mode=mode, p_insp=0.0)
-    
+
     def on_vent_mode_changed(self, index):
         """Handle ventilator mode switch."""
         self._apply_vent_mode_controls(self.cb_vent_mode.itemData(index))
@@ -826,7 +828,7 @@ class ControlPanelWidget(QWidget):
         is_pcv = mode == "PCV"
         is_psv = mode == "PSV"
         is_cpap = mode == "CPAP"
-        
+
         if is_vcv:
             self.lbl_tv.show()
             self.sb_tv.show()
@@ -846,21 +848,21 @@ class ControlPanelWidget(QWidget):
                 if is_cpap:
                     self.sb_pinsp.setValue(0)
                     self.sb_pinsp.setEnabled(False)
-        
+
     def update_vent(self):
         if self.btn_vent_power.isChecked():
             mode = self.cb_vent_mode.currentData()
             p_insp = self.sb_pinsp.value() if mode in ("PCV", "PSV") else 0.0
-            
+
             self.engine.set_vent_settings(
                 self.sb_rr.value(),
                 self.sb_tv.value() / 1000.0,
                 self.sb_peep.value(),
                 self.cb_ie.currentText(),
                 mode=mode,
-                p_insp=p_insp
+                p_insp=p_insp,
             )
-            
+
     def toggle_bag_mask(self, checked):
         """Toggle manual bag-mask ventilation (separate from mechanical vent)."""
         if checked:
@@ -877,16 +879,16 @@ class ControlPanelWidget(QWidget):
     def setup_events_tab(self):
         main_layout = QVBoxLayout(self.tab_events)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Scroll area wrapper for consistent padding with other tabs
         scroll, layout = self._create_scroll_area()
         main_layout.addWidget(scroll)
-        
+
         # Temperature Management
         gp_temp = QGroupBox("Temperature management")
         gp_temp.setStyleSheet(get_section_group_style())
         l_temp = QHBoxLayout(gp_temp)
-        
+
         self.combo_bair = QComboBox()
         for label, target in (
             ("Off", 0.0),
@@ -896,13 +898,13 @@ class ControlPanelWidget(QWidget):
         ):
             self.combo_bair.addItem(label, target)
         self.combo_bair.currentIndexChanged.connect(self.change_bair_hugger)
-        
+
         l_temp.addWidget(QLabel("Forced-air warmer"))
         l_temp.addWidget(self.combo_bair)
         l_temp.addStretch()
-        
+
         layout.addWidget(gp_temp)
-        
+
         # Fluids
         gp_fluids = QGroupBox("Fluid administration")
         gp_fluids.setStyleSheet(get_section_group_style())
@@ -910,19 +912,27 @@ class ControlPanelWidget(QWidget):
         l_fl.setSpacing(6)
 
         b_250 = QPushButton("Crystalloid 250 mL")
-        b_250.setStyleSheet(get_button_style(variant="info", padding="6px 10px", min_width=90))
+        b_250.setStyleSheet(
+            get_button_style(variant="info", padding="6px 10px", min_width=90)
+        )
         b_250.clicked.connect(lambda: self.engine.give_fluid(250))
-        
+
         b_500 = QPushButton("Crystalloid 500 mL")
-        b_500.setStyleSheet(get_button_style(variant="info", padding="6px 10px", min_width=90))
+        b_500.setStyleSheet(
+            get_button_style(variant="info", padding="6px 10px", min_width=90)
+        )
         b_500.clicked.connect(lambda: self.engine.give_fluid(500))
 
         b_albumin = QPushButton("Albumin 250 mL")
-        b_albumin.setStyleSheet(get_button_style(variant="success", padding="6px 10px", min_width=120))
+        b_albumin.setStyleSheet(
+            get_button_style(variant="success", padding="6px 10px", min_width=120)
+        )
         b_albumin.clicked.connect(lambda: self.engine.give_albumin(250))
 
         b_prbc = QPushButton("PRBC 300 mL")
-        b_prbc.setStyleSheet(get_button_style(variant="primary", padding="6px 10px", min_width=120))
+        b_prbc.setStyleSheet(
+            get_button_style(variant="primary", padding="6px 10px", min_width=120)
+        )
         b_prbc.clicked.connect(lambda: self.engine.give_blood(300))
 
         l_fl_grid = QGridLayout()
@@ -961,11 +971,15 @@ class ControlPanelWidget(QWidget):
         self.cb_disturbance = QComboBox()
         for label, _ in self._disturbance_profiles:
             self.cb_disturbance.addItem(label)
-        self.cb_disturbance.currentIndexChanged.connect(self.on_disturbance_profile_changed)
+        self.cb_disturbance.currentIndexChanged.connect(
+            self.on_disturbance_profile_changed
+        )
 
         self.b_disturb = QPushButton("Start stimulation")
         self.b_disturb.setCheckable(True)
-        self.b_disturb.setStyleSheet(get_toggle_button_style(COLORS['warning'], text_color=COLORS['warning']))
+        self.b_disturb.setStyleSheet(
+            get_toggle_button_style(COLORS["warning"], text_color=COLORS["warning"])
+        )
         self.b_disturb.toggled.connect(self.toggle_disturbance)
         self.b_disturb.setEnabled(False)
 
@@ -980,7 +994,7 @@ class ControlPanelWidget(QWidget):
         l_airway = QGridLayout(gp_airway_events)
         l_airway.setSpacing(8)
 
-        lbl_obstruction = QLabel("Upper obstruction")
+        lbl_obstruction = QLabel("Upper airway obstruction")
         lbl_obstruction.setStyleSheet("")
         self.sb_obstruction = QDoubleSpinBox()
         self.sb_obstruction.setRange(0, 100)
@@ -1009,19 +1023,17 @@ class ControlPanelWidget(QWidget):
         self.btn_auto_laryngo = QPushButton("Automatic laryngospasm on")
         self.btn_auto_laryngo.setCheckable(True)
         self.btn_auto_laryngo.setChecked(True)
-        self.btn_auto_laryngo.setStyleSheet(
-            get_segment_button_style(COLORS['warning'])
-        )
+        self.btn_auto_laryngo.setStyleSheet(get_segment_button_style(COLORS["warning"]))
         self.btn_auto_laryngo.toggled.connect(self.update_auto_laryngospasm)
         l_airway.addWidget(self.btn_auto_laryngo, 3, 0, 1, 2)
         layout.addWidget(gp_airway_events)
-        
+
         # Crisis Events
         gp_crisis = QGroupBox("Critical events")
         gp_crisis.setStyleSheet(get_section_group_style())
         l_cr = QVBoxLayout(gp_crisis)
         l_cr.setSpacing(10)
-        
+
         # Hemorrhage Controls
         h_hemo = QHBoxLayout()
         self.cb_hemo_severity = QComboBox()
@@ -1030,48 +1042,54 @@ class ControlPanelWidget(QWidget):
         self.cb_hemo_severity.addItem("Severe (2000 mL/min)", 2000.0)
         self.cb_hemo_severity.addItem("Massive (4000 mL/min)", 4000.0)
         h_hemo.addWidget(self.cb_hemo_severity)
-        
+
         self.b_hem = QPushButton("Start bleeding")
         self.b_hem.setCheckable(True)
-        self.b_hem.setStyleSheet(get_toggle_button_style(COLORS['danger'], text_color=COLORS['danger']))
+        self.b_hem.setStyleSheet(
+            get_toggle_button_style(COLORS["danger"], text_color=COLORS["danger"])
+        )
         h_hemo.addWidget(self.b_hem)
         l_cr.addLayout(h_hemo)
-        
+
         # Arrhythmia Controls
         h_arr = QHBoxLayout()
         lbl_arr = QLabel("Cardiac rhythm:")
         lbl_arr.setStyleSheet("")
         h_arr.addWidget(lbl_arr)
-        
+
         self.cb_rhythm = QComboBox()
         self.cb_rhythm.addItems([r.value for r in RhythmType])
         # Set default to Sinus
         idx = self.cb_rhythm.findText(RhythmType.SINUS.value)
-        if idx >= 0: self.cb_rhythm.setCurrentIndex(idx)
-        
+        self.cb_rhythm.setCurrentIndex(idx)
+
         self.cb_rhythm.currentTextChanged.connect(lambda t: self.engine.set_rhythm(t))
         h_arr.addWidget(self.cb_rhythm)
         l_cr.addLayout(h_arr)
-        
+
         self.b_anaph = QPushButton("Start anaphylaxis")
         self.b_anaph.setCheckable(True)
-        self.b_anaph.setStyleSheet(get_toggle_button_style(COLORS['warning'], text_color=COLORS['warning']))
+        self.b_anaph.setStyleSheet(
+            get_toggle_button_style(COLORS["warning"], text_color=COLORS["warning"])
+        )
         l_cr.addWidget(self.b_anaph)
 
         self.b_sepsis = QPushButton("Start sepsis")
         self.b_sepsis.setCheckable(True)
-        self.b_sepsis.setStyleSheet(get_toggle_button_style(COLORS['danger'], text_color=COLORS['danger']))
+        self.b_sepsis.setStyleSheet(
+            get_toggle_button_style(COLORS["danger"], text_color=COLORS["danger"])
+        )
         l_cr.addWidget(self.b_sepsis)
-        
+
         b_stop = QPushButton("Stop all events")
         b_stop.setStyleSheet(get_button_style(outlined=True, variant="neutral"))
         l_cr.addWidget(b_stop)
-        
+
         self.b_hem.toggled.connect(self.toggle_hemorrhage)
         self.b_anaph.toggled.connect(self.toggle_anaphylaxis)
         self.b_sepsis.toggled.connect(self.toggle_sepsis)
         b_stop.clicked.connect(self.stop_all_events)
-        
+
         layout.addWidget(gp_crisis)
         layout.addStretch()
 
@@ -1125,7 +1143,7 @@ class ControlPanelWidget(QWidget):
             self.b_hem.setText("Start bleeding")
             self.engine.stop_hemorrhage()
             self.cb_hemo_severity.setEnabled(True)
-            
+
     def toggle_anaphylaxis(self, checked):
         self._toggle_simple_event(
             self.b_anaph,
@@ -1158,13 +1176,13 @@ class ControlPanelWidget(QWidget):
             "Automatic laryngospasm on" if checked else "Automatic laryngospasm off"
         )
         self.engine.set_auto_laryngospasm(checked)
-            
+
     def stop_all_events(self):
         for button in (self.b_hem, self.b_anaph, self.b_sepsis):
             button.setChecked(False)
         self.b_disturb.setChecked(False)
         self.engine.stop_events()
-            
+
     def change_bair_hugger(self, index):
         """Handle Bair Hugger setting change."""
         self.engine.set_bair_hugger(self.combo_bair.itemData(index))

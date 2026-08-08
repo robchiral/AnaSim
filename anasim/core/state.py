@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 SUPPORTED_MODEL_OPTIONS = {
     "pk_model_propofol": {"Marsh", "Schnider", "Eleveld"},

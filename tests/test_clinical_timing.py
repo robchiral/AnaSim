@@ -5,12 +5,15 @@ Validates pharmacokinetic and pharmacodynamic timing against clinical literature
 """
 
 import pytest
-from anasim.patient.patient import Patient
-from anasim.patient.pk_models import (
-    PropofolPKMarsh, PropofolPKSchnider, RemifentanilPKMinto,
-    RocuroniumPK, EpinephrinePK, PhenylephrinePK
-)
+
 from anasim.patient.pd.nmba import TOFModel
+from anasim.patient.pk_models import (
+    EpinephrinePK,
+    PhenylephrinePK,
+    PropofolPKMarsh,
+    RemifentanilPKMinto,
+    RocuroniumPK,
+)
 from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.physiology.respiration import RespiratoryModel
 
@@ -310,8 +313,7 @@ class TestHemodynamicRateLimits:
         """
         # Stabilize
         for _ in range(60):
-            state = hemo_model.step(1.0, 0, 0, 0, -2, 40, 95)
-        baseline_hr = state.hr
+            hemo_model.step(1.0, 0, 0, 0, -2, 40, 95)
         
         # Apply epinephrine and track HR changes
         hr_history = []

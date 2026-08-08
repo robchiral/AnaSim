@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class RhythmType(Enum):
     """Cardiac Rhythm Types"""
     SINUS = "Sinus rhythm"

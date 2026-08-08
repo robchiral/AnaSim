@@ -1,16 +1,18 @@
 from dataclasses import dataclass
+
 from anasim.core.constants import (
-    RR_APNEA_THRESHOLD,
-    RR_BRADYPNEA_THRESHOLD,
-    VT_MIN,
-    TEMP_METABOLIC_COEFFICIENT,
-    SHIVER_MAX_MULTIPLIER,
+    APNEA_PACO2_RISE_FAST_DURATION_SEC,
     APNEA_PACO2_RISE_FAST_MMHG_MIN,
     APNEA_PACO2_RISE_SLOW_MMHG_MIN,
-    APNEA_PACO2_RISE_FAST_DURATION_SEC,
+    RR_APNEA_THRESHOLD,
+    RR_BRADYPNEA_THRESHOLD,
+    SHIVER_MAX_MULTIPLIER,
+    TEMP_METABOLIC_COEFFICIENT,
+    VT_MIN,
 )
+from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.patient import Patient
-from anasim.core.utils import hill_function, clamp01, clamp
+
 
 @dataclass
 class RespState:
@@ -333,7 +335,8 @@ class RespiratoryModel:
             state.apnea = False
             
         current_vt = self.vt_0 * vt_fraction
-        if current_vt < VT_MIN: current_vt = 0.0
+        if current_vt < VT_MIN:
+            current_vt = 0.0
 
         # Apply airway obstruction / ventilation efficiency to spontaneous VT
         airway_patency = clamp01_local(airway_patency)

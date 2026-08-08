@@ -1,5 +1,4 @@
 
-import pytest
 from anasim.monitors.alarms import AlarmSystem
 from anasim.physiology.disturbances import Disturbances
 
@@ -17,12 +16,12 @@ def test_alarm_bounds():
     state = {'HR': 30, 'MAP': 80, 'BIS': 50}
     res = alarms.update(state)
     # Delay is 0 by default for HR
-    assert res['HR']['low'] == True
+    assert res['HR']['low']
     
     # High MAP
     state = {'HR': 60, 'MAP': 150, 'BIS': 50}
     res = alarms.update(state)
-    assert res['MAP']['high'] == True
+    assert res['MAP']['high']
 
 def test_alarm_delay():
     # Delay 2 seconds, dt 1s
@@ -35,7 +34,7 @@ def test_alarm_delay():
     # Buffer needs 2 samples (max(1, 2/1) = 2).
     # Step 2: Low
     res = alarms.update({'HR': 30})
-    assert res['HR']['low'] == True # Full window low
+    assert res['HR']['low']  # Full window low
     
     # If Intermittent
     alarms = AlarmSystem(delays={'HR': 3}, dt=1.0) # Size 3
@@ -47,7 +46,7 @@ def test_alarm_delay():
     alarms.update({'HR': 30}) # [100, 30, 30]
     alarms.update({'HR': 30}) # [30, 30, 30] -> All low
     res = alarms.update({'HR':30})
-    assert res['HR']['low'] == True
+    assert res['HR']['low']
 
 # --- Disturbance Tests ---
 

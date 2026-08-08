@@ -66,7 +66,7 @@ class DrugSpec:
 DRUG_REGISTRY = (
     DrugSpec(
         key="propofol",
-        name="Propofol 1%",
+        name="Propofol 10 mg/mL",
         rate_attr="propofol_rate_mg_sec",
         rate_unit="mg/hr",
         internal_rate_unit="mg/sec",
@@ -76,16 +76,16 @@ DRUG_REGISTRY = (
         pk_attr="pk_prop",
         tci_attr="tci_prop",
         tci_name="Propofol",
-        tci_unit="ug/mL",
+        tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),
         fixed_tci_mode=None,
         max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 0.3),
     ),
     DrugSpec(
         key="remi",
-        name="Remifentanil 50mcg/mL",
+        name="Remifentanil 50 mcg/mL",
         rate_attr="remi_rate_ug_sec",
-        rate_unit="ug/min",
+        rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=10.0,
@@ -100,9 +100,9 @@ DRUG_REGISTRY = (
     ),
     DrugSpec(
         key="nore",
-        name="Norepinephrine 16mcg/mL",
+        name="Norepinephrine 16 mcg/mL",
         rate_attr="nore_rate_ug_sec",
-        rate_unit="ug/min",
+        rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=10.0,
@@ -117,7 +117,7 @@ DRUG_REGISTRY = (
     ),
     DrugSpec(
         key="vaso",
-        name="Vasopressin 20U/mL",
+        name="Vasopressin 20 U/mL",
         rate_attr="vaso_rate_mu_sec",
         rate_unit="U/min",
         internal_rate_unit="mU/sec",
@@ -138,9 +138,9 @@ DRUG_REGISTRY = (
     ),
     DrugSpec(
         key="phenyl",
-        name="Phenylephrine 100mcg/mL",
+        name="Phenylephrine 100 mcg/mL",
         rate_attr="phenyl_rate_ug_sec",
-        rate_unit="ug/min",
+        rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=100.0,
@@ -155,9 +155,9 @@ DRUG_REGISTRY = (
     ),
     DrugSpec(
         key="epi",
-        name="Epinephrine 100mcg/mL",
+        name="Epinephrine 100 mcg/mL",
         rate_attr="epi_rate_ug_sec",
-        rate_unit="ug/min",
+        rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=10.0,
@@ -172,9 +172,9 @@ DRUG_REGISTRY = (
     ),
     DrugSpec(
         key="dobu",
-        name="Dobutamine 1mg/mL",
+        name="Dobutamine 1 mg/mL",
         rate_attr="dobu_rate_ug_sec",
-        rate_unit="ug/min",
+        rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=0.0,
@@ -189,9 +189,9 @@ DRUG_REGISTRY = (
     ),
     DrugSpec(
         key="milri",
-        name="Milrinone 200mcg/mL",
+        name="Milrinone 200 mcg/mL",
         rate_attr="mil_rate_ug_sec",
-        rate_unit="ug/min",
+        rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=0.0,
@@ -206,7 +206,7 @@ DRUG_REGISTRY = (
     ),
     DrugSpec(
         key="roc",
-        name="Rocuronium 10mg/mL",
+        name="Rocuronium 10 mg/mL",
         rate_attr="roc_rate_mg_sec",
         rate_unit="mg/hr",
         internal_rate_unit="mg/sec",
@@ -216,7 +216,7 @@ DRUG_REGISTRY = (
         pk_attr="pk_roc",
         tci_attr="tci_roc",
         tci_name="Rocuronium",
-        tci_unit="ug/mL",
+        tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),
         fixed_tci_mode=None,
         max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_HOUR, 1.0),
@@ -240,7 +240,9 @@ def _bolus_index() -> dict[str, DrugSpec]:
             normalized = alias.strip().casefold()
             existing = index.get(normalized)
             if existing is not None and existing is not spec:
-                raise ValueError(f"Drug registry contains duplicate bolus alias: {alias!r}")
+                raise ValueError(
+                    f"Drug registry contains duplicate bolus alias: {alias!r}"
+                )
             index[normalized] = spec
     return index
 

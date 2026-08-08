@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from anasim.core.utils import clamp01
 
+
 @dataclass
 class GasComposition:
     fio2: float = 0.21

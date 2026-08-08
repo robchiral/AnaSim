@@ -9,7 +9,6 @@ Internal convention:
 
 from typing import Dict, Tuple
 
-
 _RATE_UNIT_ALIASES: Dict[str, str] = {
     "mg/s": "mg/sec",
     "mg/second": "mg/sec",

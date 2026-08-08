@@ -5,7 +5,6 @@ from pathlib import Path
 from time import perf_counter
 from typing import Optional
 
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -158,9 +157,9 @@ def bench_hemo_hemorrhage(steps: int, warmup: int) -> BenchmarkResult:
 
 
 def bench_hemo_arrhythmia(steps: int, warmup: int) -> BenchmarkResult:
+    from anasim.core.enums import RhythmType
     from anasim.patient.patient import Patient
     from anasim.physiology.hemodynamics import HemodynamicModel
-    from anasim.core.enums import RhythmType
 
     model = HemodynamicModel(Patient())
     model.rhythm_type = RhythmType.VTACH
@@ -415,10 +414,10 @@ def bench_pk_norepi(steps: int, warmup: int) -> BenchmarkResult:
 
 def bench_mixed_baseline(steps: int, warmup: int) -> BenchmarkResult:
     from anasim.patient.patient import Patient
-    from anasim.physiology.hemodynamics import HemodynamicModel
-    from anasim.physiology.respiration import RespiratoryModel
-    from anasim.physiology.resp_mech import RespiratoryMechanics
     from anasim.patient.pk_models import PropofolPKEleveld
+    from anasim.physiology.hemodynamics import HemodynamicModel
+    from anasim.physiology.resp_mech import RespiratoryMechanics
+    from anasim.physiology.respiration import RespiratoryModel
 
     patient = Patient()
     hemo = HemodynamicModel(patient)
@@ -443,10 +442,10 @@ def bench_mixed_baseline(steps: int, warmup: int) -> BenchmarkResult:
 
 def bench_mixed_sepsis(steps: int, warmup: int) -> BenchmarkResult:
     from anasim.patient.patient import Patient
-    from anasim.physiology.hemodynamics import HemodynamicModel
-    from anasim.physiology.respiration import RespiratoryModel
-    from anasim.physiology.resp_mech import RespiratoryMechanics
     from anasim.patient.pk_models import PropofolPKEleveld
+    from anasim.physiology.hemodynamics import HemodynamicModel
+    from anasim.physiology.resp_mech import RespiratoryMechanics
+    from anasim.physiology.respiration import RespiratoryModel
 
     patient = Patient()
     hemo = HemodynamicModel(patient)

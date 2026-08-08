@@ -1,18 +1,19 @@
+import numpy as np
 import pytest
-from anasim.patient.pk_models import (
-    PropofolPKMarsh,
-    PropofolPKEleveld,
-    NorepinephrinePK,
-    PhenylephrinePK,
-    RocuroniumPK,
-    EpinephrinePK,
-    VasopressinPK,
-    DobutaminePK,
-    MilrinonePK,
-)
+
 from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import TOFModel
-import numpy as np
+from anasim.patient.pk_models import (
+    DobutaminePK,
+    EpinephrinePK,
+    MilrinonePK,
+    NorepinephrinePK,
+    PhenylephrinePK,
+    PropofolPKEleveld,
+    PropofolPKMarsh,
+    RocuroniumPK,
+    VasopressinPK,
+)
 
 # --- Rigorous Pharmacology Validity & Sanity Checks ---
 
@@ -62,7 +63,8 @@ class TestPharmacologySanity:
         
         # Redistribution phase (2 min)
         dt = 1.0
-        for _ in range(120): model.step(dt, 0.0)
+        for _ in range(120):
+            model.step(dt, 0.0)
         c1_2min = model.state.c1
         
         drop_pct_2min = (initial_c1 - c1_2min) / initial_c1 * 100
@@ -318,6 +320,14 @@ class TestOrganImpairmentPK:
 
         assert pk_imp.v1 > pk_normal.v1 * 1.3, "Hepatic impairment should expand rocuronium Vd"
         assert pk_imp.k10 < pk_normal.k10 * 0.7, "Renal impairment should reduce rocuronium clearance"
+
+    def test_rocuronium_models_reject_unknown_names(self):
+        patient = Patient(age=40, weight=70, height=170, sex="male")
+
+        with pytest.raises(ValueError, match="Unsupported rocuronium PK model"):
+            RocuroniumPK(patient, model_name="Wierdaa")
+        with pytest.raises(ValueError, match="Unsupported TOF model"):
+            TOFModel(patient, model_name="Wierdaa")
 
 # --- Neuromuscular Recovery & Reversal Tests ---
 

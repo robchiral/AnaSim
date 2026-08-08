@@ -1,6 +1,8 @@
 import pytest
-from anasim.physiology.respiration import RespiratoryModel
+
 from anasim.patient.patient import Patient
+from anasim.physiology.respiration import RespiratoryModel
+
 
 @pytest.fixture
 def model(patient):
@@ -154,11 +156,11 @@ class TestRespiratoryLiteratureValidation:
         baseline_state = model.step(1.0, ce_prop=0, ce_remi=0, ce_roc=0)
         
         # Propofol alone at C50 (4.5 µg/mL)
-        prop_state = model.step(1.0, ce_prop=4.5, ce_remi=0, ce_roc=0)
+        model.step(1.0, ce_prop=4.5, ce_remi=0, ce_roc=0)
         
         # Reset and try remi alone
         model_remi = RespiratoryModel(Patient(age=40, weight=70, height=170, sex="Male"))
-        remi_state = model_remi.step(1.0, ce_prop=0, ce_remi=1.0, ce_roc=0)
+        model_remi.step(1.0, ce_prop=0, ce_remi=1.0, ce_roc=0)
         
         # Combined at mechanical C50 for propofol, remi C50
         model_combined = RespiratoryModel(Patient(age=40, weight=70, height=170, sex="Male"))

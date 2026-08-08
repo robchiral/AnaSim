@@ -3,15 +3,26 @@ Induction scenario definitions (Balanced and TIVA variants).
 """
 
 from .base import (
-    Scenario, ScenarioStep,
-    require_airway_selected, require_fgf_set_for_preox,
-    require_preoxygenation_flow, require_propofol_cp,
-    require_bis_below, require_bag_mask_started, require_rocuronium_cp,
-    require_tof_below, require_etco2_above, require_mac_above,
-    require_drug_bolus, require_infusion_running, require_infusion_started,
-    require_fgf_reduced, require_vaporizer_started,
-    require_all
+    Scenario,
+    ScenarioStep,
+    require_airway_selected,
+    require_all,
+    require_bag_mask_started,
+    require_bis_below,
+    require_drug_bolus,
+    require_etco2_above,
+    require_fgf_reduced,
+    require_fgf_set_for_preox,
+    require_infusion_running,
+    require_infusion_started,
+    require_mac_above,
+    require_preoxygenation_flow,
+    require_propofol_cp,
+    require_rocuronium_cp,
+    require_tof_below,
+    require_vaporizer_started,
 )
+
 
 def create_induction_balanced() -> Scenario:
     """Create balanced anesthesia induction scenario."""

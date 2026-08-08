@@ -26,8 +26,10 @@ def _require_assess() -> callable:
         if bis_ok and map_ok:
             return True, ""
         msgs = []
-        if not bis_ok: msgs.append(f"BIS: {bis:.0f}")
-        if not map_ok: msgs.append(f"MAP: {map_val:.0f}")
+        if not bis_ok:
+            msgs.append(f"BIS: {bis:.0f}")
+        if not map_ok:
+            msgs.append(f"MAP: {map_val:.0f}")
         return False, join_messages(msgs)
     return check
 
@@ -69,8 +71,10 @@ def _require_awakening() -> callable:
         if bis_ok and rr_ok:
             return True, ""
         msgs = []
-        if not bis_ok: msgs.append(f"BIS: {bis:.0f}/70+")
-        if not rr_ok: msgs.append(f"RR: {engine.state.rr:.0f}/6+")
+        if not bis_ok:
+            msgs.append(f"BIS: {bis:.0f}/70+")
+        if not rr_ok:
+            msgs.append(f"RR: {engine.state.rr:.0f}/6+")
         return False, join_messages(msgs)
     return check
 
@@ -92,8 +96,10 @@ def _require_extubation_criteria() -> callable:
         if breathing and awake and extubated and airway_action:
             return True, ""
         msgs = []
-        if not awake: msgs.append(f"BIS: {bis:.0f}/80+")
-        if not breathing: msgs.append(f"RR: {engine.state.rr:.0f}/8+")
+        if not awake:
+            msgs.append(f"BIS: {bis:.0f}/80+")
+        if not breathing:
+            msgs.append(f"RR: {engine.state.rr:.0f}/8+")
         if not extubated or not airway_action:
             msgs.append("Select Mask or No airway for this objective")
         return False, join_messages(msgs)
@@ -110,8 +116,10 @@ def _require_recovery() -> callable:
         if spo2_ok and rr_ok and not_apneic:
             return True, ""
         msgs = []
-        if not spo2_ok: msgs.append(f"SpO₂: {spo2:.0f}/95+")
-        if not rr_ok: msgs.append(f"RR: {engine.state.rr:.0f}/10+")
+        if not spo2_ok:
+            msgs.append(f"SpO₂: {spo2:.0f}/95+")
+        if not rr_ok:
+            msgs.append(f"RR: {engine.state.rr:.0f}/10+")
         return False, join_messages(msgs)
     return check
 

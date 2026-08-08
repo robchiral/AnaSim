@@ -2,7 +2,11 @@
 Shared utility functions for AnaSim.
 """
 
-from anasim.core.constants import GAMMA_MAX, HILL_EPSILON, CONCENTRATION_RATIO_SATURATION
+from anasim.core.constants import (
+    CONCENTRATION_RATIO_SATURATION,
+    GAMMA_MAX,
+    HILL_EPSILON,
+)
 
 
 def clamp(value: float, low: float, high: float) -> float:

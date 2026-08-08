@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+
 import numpy as np
 
 from anasim.core.enums import RhythmType
+
 
 @dataclass
 class NIBPReading:

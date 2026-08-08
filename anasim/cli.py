@@ -1,13 +1,11 @@
 import argparse
 import json
-import sys
 import time
 from dataclasses import fields
 from pathlib import Path
 
-from anasim.core.engine import SimulationEngine, SimulationConfig
+from anasim.core.engine import SimulationConfig, SimulationEngine
 from anasim.patient.patient import Patient
-
 
 PATIENT_CONFIG_FIELDS = {
     field.name for field in fields(Patient)
@@ -37,9 +35,8 @@ def build_models_from_config(config_data: dict) -> tuple[Patient, SimulationConf
 
 def run_headless(args):
     """Run simulation in headless mode."""
-    print(f"Starting Headless Simulation (Duration: {args.duration}s)...")
-    
-    # Simple default config or load from file
+    print(f"Starting headless simulation for {args.duration:g} seconds")
+
     config_data = {}
     if args.config:
         try:
@@ -58,7 +55,6 @@ def run_headless(args):
         engine.start_recording(output_dir=args.record_dir, sample_interval_sec=args.record_interval)
     engine.start()
     
-    # Run loop
     start_real = time.perf_counter()
     steps = int(args.duration / sim_config.dt)
     
@@ -78,23 +74,17 @@ def run_headless(args):
         engine.stop_recording()
             
     end_real = time.perf_counter()
-    print(f"Simulation completed in {end_real - start_real:.2f}s real time.")
+    print(f"Simulation completed in {end_real - start_real:.2f} seconds of real time")
 
-def run_ui():
+
+def run_ui() -> int:
     """Run simulation with UI."""
-    from PySide6.QtWidgets import QApplication
-    from anasim.ui.main_window import MainWindow
+    from anasim.ui.main_window import run
 
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv)
-        
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+    return run()
 
 def main():
-    parser = argparse.ArgumentParser(description="AnaSim - Anesthesia Simulator")
+    parser = argparse.ArgumentParser(description="AnaSim anesthesia simulator")
     parser.add_argument("--mode", choices=["ui", "headless"], default="ui", help="Run mode (default: ui)")
     parser.add_argument("--duration", type=float, default=10.0, help="Duration for headless mode in seconds")
     parser.add_argument("--config", type=str, help="Path to JSON configuration file")
@@ -107,7 +97,7 @@ def main():
     if args.mode == "headless":
         run_headless(args)
     else:
-        run_ui()
+        raise SystemExit(run_ui())
 
 if __name__ == "__main__":
     main()

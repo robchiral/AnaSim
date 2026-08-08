@@ -1,10 +1,11 @@
 import csv
+import logging
 import os
 import time
-import logging
-from pathlib import Path
 from dataclasses import fields
 from enum import Enum
+from pathlib import Path
+
 from .state import SimulationState
 
 logger = logging.getLogger(__name__)

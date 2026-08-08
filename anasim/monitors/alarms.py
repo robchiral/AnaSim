@@ -1,5 +1,6 @@
 from collections import deque
 
+
 class AlarmSystem:
     """
     Real-time alarm system for patient monitors.

@@ -5,18 +5,19 @@ Teaches recognition and initial management of distributive (warm) septic shock.
 """
 
 from typing import Tuple
+
 from .base import (
+    VASOPRESSOR_KEYS,
     Scenario,
     ScenarioStep,
-    VASOPRESSOR_KEYS,
+    create_observe_baseline_step,
+    create_reassess_step,
     join_messages,
     monitor_value,
     require_crisis_started,
     require_crisis_stopped,
     require_fluid_given,
     require_infusion_started,
-    create_observe_baseline_step,
-    create_reassess_step,
 )
 
 

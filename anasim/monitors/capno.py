@@ -1,5 +1,7 @@
-import numpy as np
 from dataclasses import dataclass
+
+import numpy as np
+
 
 @dataclass
 class CapnoState:
@@ -138,7 +140,8 @@ class Capnograph:
             deadspace_time = self.deadspace_fraction * exp_duration
             
             # Safety clamp for very short expirations
-            if deadspace_time < 0.05: deadspace_time = 0.05
+            if deadspace_time < 0.05:
+                deadspace_time = 0.05
                 
             if self.time_in_phase < deadspace_time:
                  self.state.phase = 1
@@ -187,14 +190,16 @@ class Capnograph:
                  plateau_cap = p_alv + 5.0 + 10.0 * airway_obstruction
                  co2 = min(co2, plateau_cap)
                 
-                 if co2 < 0: co2 = 0
+                 if co2 < 0:
+                     co2 = 0
                  
                  if rise_component < 0.95:
                      self.state.phase = 2
                  else:
                      self.state.phase = 3
                 
-        if co2 < 0: co2 = 0
+        if co2 < 0:
+            co2 = 0
             
         self.state.co2 = co2
         return co2
