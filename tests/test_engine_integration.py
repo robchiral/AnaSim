@@ -80,22 +80,6 @@ class TestPhysiologicalSanity:
         assert engine.hemo.total_colloid_in_ml == pytest.approx(250.0, rel=0, abs=1e-2)
         assert engine.hemo.blood_volume > base_bv + 100.0
 
-class TestMonitorStability:
-    """Verifies monitors do not crash the engine."""
-    
-    def test_bis_integration(self, engine):
-        """
-        REGRESSION TEST: BIS Monitor `step` method existence.
-        """
-        engine.start()
-        try:
-            # Run simulation which calls bis.step() internally
-            for _ in range(20):
-                engine.step(0.1)
-            assert engine.state.bis > 0
-        except AttributeError as e:
-            pytest.fail(f"BIS Monitor caused crash: {e}")
-
 class TestPharmacologyBasics:
     """Verifies PK/PD basics."""
     

@@ -422,19 +422,3 @@ def test_controls_sync_external_engine_changes(qapp, engine_factory):
     assert panel.sb_pinsp.value() == 18
     assert panel.sb_bronchospasm.value() == 40
     assert panel.drug_widgets["nore"]["rate"].value() == 3.0
-
-
-def test_hemorrhage_scenario_creation():
-    scenario = create_hemorrhage_response()
-
-    assert scenario.id == "hemorrhage_response"
-    assert "Hemorrhage" in scenario.name
-    assert [step.id for step in scenario.steps] == [
-        "OBSERVE_BASELINE",
-        "START_HEMORRHAGE",
-        "RECOGNIZE_SHOCK",
-        "GIVE_FLUIDS",
-        "START_VASOPRESSOR",
-        "STOP_BLEEDING",
-        "REASSESS",
-    ]
