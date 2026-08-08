@@ -15,12 +15,10 @@ For installation and the desktop workflow, see the [README](../README.md).
 
 ## Configuration file
 
-You can provide a JSON file to customize the patient and simulation parameters.
+A JSON file can set any patient or simulation field. Omitted fields keep their
+defaults.
 
 ### Minimal example
-
-JSON files can include any patient or simulation field. Omitted fields use their
-defaults. A minimal custom configuration might be:
 
 ```json
 {
@@ -52,7 +50,8 @@ defaults. A minimal custom configuration might be:
   `stim_sustained_surgery`, or `null`. `volatile_agents` accepts
   `["sevoflurane"]` or an empty list.
 
-Unknown configuration keys and unsupported model names are rejected with an error.
+AnaSim rejects unknown configuration keys and unsupported model names with an
+error.
 
 ## Examples
 

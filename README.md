@@ -1,7 +1,7 @@
 # AnaSim
 
-Interactive adult anesthesia and physiology simulation for education, teaching,
-and model exploration.
+Interactive adult anesthesia and physiology simulation for teaching and model
+exploration.
 
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/anasim-simulator.svg)](https://pypi.org/project/anasim-simulator/)
@@ -18,11 +18,11 @@ and model exploration.
 
 ## What AnaSim models
 
-AnaSim couples drug delivery, pharmacokinetics, pharmacodynamics,
-cardiorespiratory physiology, ventilation, fluids, temperature, and common
-perioperative disturbances in one real-time simulation. The desktop interface
-uses familiar monitor and anesthesia machine conventions. A headless interface
-supports scripted experiments and CSV recording.
+AnaSim runs drug delivery, pharmacokinetics, pharmacodynamics, cardiorespiratory
+physiology, ventilation, fluids, temperature, and common perioperative
+disturbances together in real time. The desktop interface follows familiar
+monitor and anesthesia machine conventions. A headless mode runs scripted
+experiments and records to CSV.
 
 The current drug set includes propofol, remifentanil, sevoflurane, rocuronium,
 sugammadex, norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine,
@@ -67,25 +67,25 @@ For a short guided review of the interface:
 | Events and fluids | Fluids, blood products, surgical stimulation, airway events, hemorrhage, anaphylaxis, and sepsis |
 
 Guided scenarios cover TIVA and inhalational induction, emergence, hemorrhage,
-anaphylaxis, septic shock, and oxygen supply failure. Open simulation mode allows
-free control of the same environment.
+anaphylaxis, septic shock, and oxygen supply failure. Open simulation mode gives
+direct control of the same environment.
 
 ## Model scope and limits
 
-AnaSim accepts adult patients aged 18 to 70 years. The age limit avoids
-unsupported extrapolation of the strongly age-dependent Su et al. hemodynamic
-term beyond the population used to develop and illustrate that model.
+AnaSim accepts adult patients aged 18 to 70 years. That is the population behind
+the Su et al. hemodynamic model, whose age term is strong, so ages outside the
+range would be extrapolation the source does not support.
 
-The simulator uses published models when they remain coherent after integration.
-Some parameters are calibrated so that managed intraoperative states and recovery
-times remain clinically recognizable. These choices are documented in
-[references and model deviations](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md).
+AnaSim uses published models wherever they still hold together once combined.
+Where the literature offers no compatible joint model, it falls back on stated
+heuristic parameters and regression ranges, listed in
+[references and implementation choices](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md).
 
 Important limits include:
 
 - The integrated simulator has not been validated for clinical prediction.
-- Display values include modeled monitor behavior and can differ from raw
-  physiologic state.
+- Displayed values pass through modeled monitor behavior, so they can differ
+  from the underlying physiologic state.
 - The arterial pressure trace is synthesized for display.
 - The model does not currently represent acid-base balance, lactate, tissue
   oxygen debt, or a full anesthesia machine pneumatic system.
@@ -106,7 +106,7 @@ the full schema and examples.
 ## Documentation
 
 - [CLI usage](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md)
-- [References and model deviations](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md)
+- [References and implementation choices](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md)
 - [Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md)
 - [Contribution guide](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md)
 - [Changelog](https://github.com/robchiral/AnaSim/blob/main/CHANGELOG.md)

@@ -25,7 +25,7 @@ class HemodynamicConfig:
     arterial_age_min: float = 0.5
     arterial_age_max: float = 1.2
 
-    # Feedback
+    # Signed RMAP exponent. Su et al. report FB = 0.66 and apply -FB.
     fb: float = -0.66
     hr_sv_coupling: float = 0.312
     k_drift: float = 0.067

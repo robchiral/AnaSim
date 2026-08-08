@@ -94,11 +94,6 @@ class HemodynamicModel:
         age_factor = clamp(age_factor, self.arterial_age_min, self.arterial_age_max)
         self.arterial_compliance = self.arterial_compliance_ref * age_factor
 
-        # Feedback parameters
-        # Su et al. Br J Anaesth. 2023 define FB = 0.66 in Table 2.
-        # Implementing self.fb = -0.66 ensures stable negative feedback
-        # given the structure of our ODE implementation (Production ~ RMAP^FB).
-        # This sign flip is a deviation for numerical stability/correctness in this solver.
         # External Modifiers (Persistence for property access)
         self.delta_tpr_vasopressors = 0.0
         self.dist_svr = 0.0

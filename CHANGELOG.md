@@ -15,7 +15,8 @@
   temperature simulation.
 - Interactive operating-room monitor, guided clinical scenarios, headless runner,
   and CSV recording.
-- Literature-based models with documented clinical calibration.
+- Literature-anchored models with documented implementation choices and
+  regression ranges.
 - Realistic pulse-oximeter lag and monitor sample validity.
 - Validated adult patient domain of 18–70 years.
 - Simplified configuration, simulation state, UI, and tests.
