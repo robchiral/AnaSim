@@ -14,8 +14,6 @@ class HemoState:
     sv: float = 70.0
     svr: float = 16.0
     co: float = 5.25
-    sbp: float = 115.0
-    dbp: float = 70.0
     rhythm_type: RhythmType = RhythmType.SINUS
 
 

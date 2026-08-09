@@ -23,9 +23,6 @@ class HemodynamicModel:
     Core Model:
         Su et al. Br J Anaesth. 2023.
     
-    Arterial Compliance:
-        Age-dependent compliance: C(age) = 1.5 × (1 - 0.008×(age-40)) mL/mmHg
-    
     Vasopressors:
         - Norepinephrine: Beloeil et al. Br J Anaesth. 2005.
         - Epinephrine: Clutter et al. J Clin Invest. 1980.
@@ -85,14 +82,6 @@ class HemodynamicModel:
         self.baseline_do2 = self.baseline_caO2 * self.base_co_l_min * 10.0
         self._base_values_final = True
         self._refresh_cached_constants()
-
-        # Arterial Compliance (age-dependent model)
-        # Decreases with age -> wider pulse pressure in elderly
-        # C(age) ≈ 1.5 * (1 - 0.008 * (age - 40))
-        age = patient.age
-        age_factor = 1.0 - self.arterial_age_slope * (age - self.arterial_age_ref)
-        age_factor = clamp(age_factor, self.arterial_age_min, self.arterial_age_max)
-        self.arterial_compliance = self.arterial_compliance_ref * age_factor
 
         # External Modifiers (Persistence for property access)
         self.delta_tpr_vasopressors = 0.0
@@ -786,16 +775,12 @@ class HemodynamicModel:
             co = 0.0
             map_val = 0.0
             svr_val = 0.0
-            sbp = 0.0
-            dbp = 0.0
             computed_state = HemoStateExtended(
                 map=map_val,
                 hr=current_hr,
                 sv=current_sv,
                 svr=svr_val,
                 co=co,
-                sbp=sbp,
-                dbp=dbp,
                 tpr=self.tpr,
                 sv_star=self.sv_star,
                 hr_star=self.hr_star,
@@ -832,33 +817,12 @@ class HemodynamicModel:
         # SVR output
         svr_val = map_val / co if co > 0 else 0.0
 
-        # SBP/DBP calculation with age-dependent arterial compliance
-        # Pulse Pressure (PP) = SV / Arterial_Compliance
-        # Distributed around MAP: DBP = MAP - 1/3*PP, SBP = MAP + 2/3*PP
-        pulse_pressure = current_sv / self.arterial_compliance
-
-        # Clamp pulse pressure to physiological range
-        # Normal: 30-60 mmHg, Wide: up to 100 in elderly/atherosclerotic
-        pulse_pressure = clamp(pulse_pressure, 10.0, 120.0)
-
-        # Distribute around MAP (diastole = 2/3 of cardiac cycle in duration;
-        # however, pressure is time-weighted toward diastole, making MAP closer to DBP)
-        dbp = map_val - (1.0 / 3.0) * pulse_pressure
-        sbp = map_val + (2.0 / 3.0) * pulse_pressure
-
-        dbp = clamp(dbp, 5.0, 200.0)
-        sbp = clamp(sbp, 10.0, 300.0)
-        if sbp <= dbp:
-            sbp = dbp + 15.0
-
         computed_state = HemoStateExtended(
             map=map_val,
             hr=current_hr,
             sv=current_sv,
             svr=svr_val,
             co=co,
-            sbp=sbp,
-            dbp=dbp,
             tpr=self.tpr,
             sv_star=self.sv_star,
             hr_star=self.hr_star,

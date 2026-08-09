@@ -115,9 +115,13 @@ class NumericDisplay(QFrame):
 class PatientMonitorWidget(QWidget):
     """Show real-time waveforms, numerics, gases, and fluid balance."""
 
-    def __init__(self, arterial_line_enabled=True):
+    def __init__(self, arterial_line_enabled=True, sample_interval_s: float = 0.01):
         super().__init__()
         self.arterial_line_enabled = arterial_line_enabled
+        self.sample_interval_s = float(sample_interval_s)
+        if self.sample_interval_s <= 0.0:
+            raise ValueError("sample_interval_s must be greater than zero")
+        self.sample_rate_hz = 1.0 / self.sample_interval_s
         self.setStyleSheet(get_base_widget_style())
         
         self.layout = QVBoxLayout(self)
@@ -126,13 +130,16 @@ class PatientMonitorWidget(QWidget):
         
         # Fixed-screen sweep buffers. A moving gap separates the newest sample
         # from the previous sweep, while already-drawn samples remain stationary.
-        self.buffer_size = 1000  # 10s at 100Hz
+        self.buffer_size = max(2, round(10.0 * self.sample_rate_hz))
         self.ecg_data = np.full(self.buffer_size, np.nan)
         self.spo2_data = np.full(self.buffer_size, np.nan)
         self.art_data = np.full(self.buffer_size, np.nan)
         self.capno_data = np.full(self.buffer_size, np.nan)
         self.wave_write_index = 0
-        self.sweep_gap_samples = 14
+        self.sweep_gap_samples = min(
+            self.buffer_size - 1,
+            max(1, round(0.14 * self.sample_rate_hz)),
+        )
         self.last_plot_time = 0.0
         
         self.setup_ui()
@@ -225,13 +232,13 @@ class PatientMonitorWidget(QWidget):
         num_layout.addWidget(self.num_spo2)
         
         # BP (ABP or NIBP)
-        self.num_map = NumericDisplay(
+        self.num_art = NumericDisplay(
             "ART", "mmHg", COLORS['abp'], "120/80 (93)"
         )
         self.num_nibp = NumericDisplay(
             "NIBP", "mmHg", COLORS['abp'], "--/-- (--)"
         )
-        num_layout.addWidget(self.num_map)
+        num_layout.addWidget(self.num_art)
         num_layout.addWidget(self.num_nibp)
         
         # EtCO2 & RR container
@@ -420,17 +427,14 @@ class PatientMonitorWidget(QWidget):
     
     def _apply_bp_mode(self):
         self.art_plot.setVisible(self.arterial_line_enabled)
-        self.num_map.setVisible(self.arterial_line_enabled)
+        self.num_art.setVisible(self.arterial_line_enabled)
         self.num_nibp.setVisible(not self.arterial_line_enabled)
 
     def update_numerics(self, state):
-        display_hr = state.display_value("hr")
-        display_spo2 = state.display_value("spo2")
-        display_map = state.display_value("map")
-        display_sbp = state.display_value("sbp")
-        display_dbp = state.display_value("dbp")
-        display_etco2 = state.display_value("etco2")
-        display_bis = state.display_value("bis")
+        display_hr = state.display_hr
+        display_spo2 = state.display_spo2
+        display_etco2 = state.display_etco2
+        display_bis = state.display_bis
 
         self.num_hr.set_value(f"{int(display_hr)}")
         self.num_spo2.set_value(
@@ -438,7 +442,9 @@ class PatientMonitorWidget(QWidget):
         )
         
         if self.arterial_line_enabled:
-            self.num_map.set_value(f"{int(display_sbp)}/{int(display_dbp)} ({int(display_map)})")
+            self.num_art.set_value(
+                f"{int(state.art_sbp)}/{int(state.art_dbp)} ({int(state.art_map)})"
+            )
         else:
             ts = state.nibp_timestamp
             is_cycling = state.nibp_is_cycling
@@ -446,7 +452,7 @@ class PatientMonitorWidget(QWidget):
             
             if is_cycling:
                 self.num_nibp.set_value(f"Cuff: {int(cuff)}")
-            elif ts <= 0.0:
+            elif ts is None:
                 self.num_nibp.set_value("--/-- (--)")
             else:
                 self.num_nibp.set_value(
@@ -492,16 +498,9 @@ class PatientMonitorWidget(QWidget):
         if latest_time <= self.last_plot_time:
             return  # No new data
 
-        # Estimate how many new states based on time difference
-        # Typical frame has ~5-10 new states at 20 FPS with 100 steps/sec
-        # Only search the tail of the buffer for efficiency
-        time_diff = latest_time - self.last_plot_time
-        estimated_new = max(5, min(int(time_diff * 100) + 5, len(buffer)))
-
-        # Search backwards from end, but only through estimated_new entries
+        # Search backward by timestamp so step-size overrides cannot drop samples.
         new_states = []
-        search_start = max(0, len(buffer) - estimated_new)
-        for i in range(len(buffer) - 1, search_start - 1, -1):
+        for i in range(len(buffer) - 1, -1, -1):
             s = buffer[i]
             if s.time <= self.last_plot_time:
                 break
@@ -516,19 +515,17 @@ class PatientMonitorWidget(QWidget):
 
         # Extract columns
         ecg_c = np.array([s.ecg_voltage for s in new_states])
-        spo2_c = np.array([s.pleth_voltage for s in new_states])
+        pleth_c = np.array([s.pleth_voltage for s in new_states])
         capno_c = np.array([s.capno_co2 for s in new_states])
 
         count = len(ecg_c)
         start = self.wave_write_index
         self._write_sweep_chunk(self.ecg_data, ecg_c, start)
-        self._write_sweep_chunk(self.spo2_data, spo2_c, start)
+        self._write_sweep_chunk(self.spo2_data, pleth_c, start)
         self._write_sweep_chunk(self.capno_data, capno_c, start)
 
         if self.arterial_line_enabled:
-            map_c = np.array([s.display_value("map") for s in new_states])
-            # Synthetic art line: Pleth * 40 + (MAP - 13)
-            art_c = spo2_c * 40 + (map_c - 13)
+            art_c = np.array([s.art_pressure for s in new_states])
             self._write_sweep_chunk(self.art_data, art_c, start)
 
         self.wave_write_index = (start + count) % self.buffer_size
@@ -559,21 +556,11 @@ class PatientMonitorWidget(QWidget):
     def update_alarms(self, state):
         alarms = state.alarms
         
-        # Handle NIBP auto-alarm logic if Art line is off
-        if not self.arterial_line_enabled:
-            # Check for NIBP MAP alarm if not provided
-            if state.nibp_timestamp > 0:
-                nmap = state.nibp_map
-                if nmap < 60:
-                    alarms['MAP'] = {'low': True}
-                elif nmap > 110:
-                    alarms['MAP'] = {'high': True}
-        
         # Map keys to widgets
         mapping = {
             'HR': self.num_hr,
             'SpO2': self.num_spo2,
-            'MAP': self.num_map if self.arterial_line_enabled else self.num_nibp,
+            'MAP': self.num_art if self.arterial_line_enabled else self.num_nibp,
             'EtCO2': self.num_etco2,
             'BIS': self.num_bis
         }

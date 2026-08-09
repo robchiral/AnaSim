@@ -59,7 +59,6 @@ class MainWindow(QMainWindow):
         if self.engine is not None:
             self.engine.stop_recording()
         p = self.sim_params
-        self.arterial_line_enabled = p['arterial_line_enabled']
         self.patient = Patient(
             age=p['age'], 
             weight=p['weight'], 
@@ -81,6 +80,7 @@ class MainWindow(QMainWindow):
             maint_type=p['maint_type'],
             baseline_hb=p['baseline_hb'],
             enable_death_detector=p['enable_death_detector'],
+            arterial_line_enabled=p['arterial_line_enabled'],
         )
         self.engine = SimulationEngine(self.patient, config)
         self.tutorial_mode = p['tutorial_mode']
@@ -113,7 +113,8 @@ class MainWindow(QMainWindow):
         mon_layout.setSpacing(0)
         
         self.monitor = PatientMonitorWidget(
-            arterial_line_enabled=self.arterial_line_enabled
+            arterial_line_enabled=self.engine.config.arterial_line_enabled,
+            sample_interval_s=self.engine.config.dt,
         )
         self.monitor.update_patient_info(
             name="Simulated patient",

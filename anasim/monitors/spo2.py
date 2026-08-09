@@ -2,6 +2,8 @@ import math
 
 import numpy as np
 
+from .cardiac_cycle import CardiacCycleSample
+
 _PPG_TEMPLATE_RESOLUTION = 200
 _PPG_LANDMARKS_X = np.array([0.0, 0.175, 0.40, 0.45, 1.0])
 _PPG_LANDMARKS_Y = np.array([0.0, 1.0, 0.49, 0.51, 0.0])
@@ -37,10 +39,13 @@ class SpO2Monitor:
     SpO2 Monitor using landmark-based waveform synthesis.
     Inspired by neurokit2's PPG simulation approach.
     """
-    def __init__(self, sampling_rate=100, response_tau_s: float = 4.0):
-        self.sampling_rate = sampling_rate 
-        self.phase = 0.0
+    def __init__(self, response_tau_s: float = 4.0, peripheral_delay_s: float = 0.18):
         self.response_tau_s = response_tau_s
+        self.peripheral_delay_s = peripheral_delay_s
+        if self.response_tau_s <= 0.0:
+            raise ValueError("response_tau_s must be greater than zero")
+        if self.peripheral_delay_s < 0.0:
+            raise ValueError("peripheral_delay_s cannot be negative")
         self.display_saturation = None
         self.signal_valid = True
         
@@ -49,18 +54,27 @@ class SpO2Monitor:
         self._template = _PPG_TEMPLATE
         self._template_max_index = _PPG_TEMPLATE.size - 1
         
-    def step(self, dt: float, hr: float, saturation: float, perfusion: float = 1.0) -> tuple[float, float]:
+    def step(
+        self,
+        dt: float,
+        cycle: CardiacCycleSample,
+        saturation: float,
+        perfusion: float = 1.0,
+    ) -> tuple[float, float]:
         """
         Return (Pleth Voltage, Saturation Display Value).
         Uses pre-computed smooth template for realistic waveform.
         """
-        freq = hr / 60.0
-        self.phase = (self.phase + dt * freq) % 1.0
-        
-        # Look up value from smooth template
-        idx = int(self.phase * self._template_max_index)
+        if dt <= 0.0:
+            raise ValueError("SpO2 monitor dt must be greater than zero")
+
         perf = max(0.0, min(1.0, perfusion))
-        pleth_voltage = self._template[idx] * (0.2 + 0.8 * perf)
+        if cycle.organized:
+            phase = cycle.delayed_phase(self.peripheral_delay_s)
+            idx = int(phase * self._template_max_index)
+            pleth_voltage = self._template[idx] * (0.2 + 0.8 * perf)
+        else:
+            pleth_voltage = 0.0
 
         target = max(40.0, min(100.0, saturation))
         if self.display_saturation is None:
@@ -69,7 +83,7 @@ class SpO2Monitor:
         # Finger probes trail arterial saturation, and low perfusion slows the
         # response instead of deterministically manufacturing hypoxaemia.
         tau = self.response_tau_s * (1.0 + 2.0 * (1.0 - perf))
-        alpha = 1.0 - math.exp(-dt / max(tau, 1e-6)) if dt > 0 else 0.0
+        alpha = 1.0 - math.exp(-dt / tau)
         self.display_saturation += alpha * (target - self.display_saturation)
         self.signal_valid = perf >= 0.08
         return pleth_voltage, self.display_saturation

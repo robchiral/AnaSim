@@ -16,7 +16,9 @@ from anasim.machine.circuit import CircleSystem
 from anasim.machine.ventilator import AnesthesiaVentilator
 from anasim.machine.volatile import Vaporizer
 from anasim.monitors.alarms import AlarmSystem
+from anasim.monitors.arterial import ArterialLineMonitor, ArterialWaveformRenderer
 from anasim.monitors.capno import Capnograph
+from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.nibp import NIBPMonitor
 from anasim.monitors.spo2 import SpO2Monitor
@@ -66,17 +68,6 @@ AIRWAY_MODE_MAP = {
     "Mask": AirwayType.MASK,
     "ETT": AirwayType.ETT,
 }
-
-DISPLAY_FIELD_PAIRS = (
-    ("map", "display_map"),
-    ("hr", "display_hr"),
-    ("bis", "display_bis"),
-    ("etco2", "display_etco2"),
-    ("spo2", "display_spo2"),
-    ("sbp", "display_sbp"),
-    ("dbp", "display_dbp"),
-)
-
 
 @dataclass(slots=True)
 class PendingInfusion:
@@ -160,7 +151,19 @@ PK_MODEL_ATTRS = tuple(spec.pk_attr for spec in DRUG_REGISTRY) + (
 )
 PHYSIO_MODEL_ATTRS = ("hemo", "resp", "resp_mech")
 MACHINE_ATTRS = ("circuit", "vaporizer", "vent")
-MONITOR_ATTRS = ("bis", "capno", "loc_pd", "tol_pd", "tof_pd", "ecg", "spo2_mon", "nibp")
+MONITOR_ATTRS = (
+    "bis",
+    "capno",
+    "loc_pd",
+    "tol_pd",
+    "tof_pd",
+    "cardiac_cycle",
+    "arterial_waveform",
+    "art_line",
+    "ecg",
+    "spo2_mon",
+    "nibp",
+)
 RATE_ATTRS = tuple(spec.rate_attr for spec in DRUG_REGISTRY)
 TCI_ATTRS = tuple(spec.tci_attr for spec in DRUG_REGISTRY)
 
@@ -221,8 +224,9 @@ class SimulationEngine(DrugControllerMixin):
         self.disturbance_start_time = 0.0
         self.alarms = AlarmSystem(dt=config.dt)
         
-        # Output buffer (ring buffer for UI).
-        self.output_buffer = deque(maxlen=1000)
+        # Output history for the ten-second monitor sweep.
+        self._output_window_s = 10.0
+        self.output_buffer = deque()
 
         # Optional CSV recorder.
         self.recorder = None
@@ -278,12 +282,8 @@ class SimulationEngine(DrugControllerMixin):
         self._vq_mismatch = 0.0
         self._base_airway_resistance = 10.0
         
-        # Filtering/smoothing state.
-        self.smooth_map = 80.0
-        self.smooth_hr = 75.0
+        # Monitor state.
         self.smooth_bis = 98.0
-        self._monitor_tau_map_s = 1.5
-        self._monitor_tau_hr_s = 1.0
         self._monitor_tau_bis_s = 2.0
         self._capno_numeric_peak = 0.0
         self._capno_numeric_age_s = 0.0
@@ -292,11 +292,6 @@ class SimulationEngine(DrugControllerMixin):
         self._capno_has_sample = False
         self._mean_paw_tau_s = 0.25
         self._tol_current = None
-        self._raw_map = self.state.map
-        self._raw_hr = self.state.hr
-        self._rhythm_vfib = RhythmType.VFIB
-        self._rhythm_vtach = RhythmType.VTACH
-        self._rhythm_asystole = RhythmType.ASYSTOLE
         self._pk_hemo_scale_cache = None
         
         # Helpers.
@@ -312,7 +307,9 @@ class SimulationEngine(DrugControllerMixin):
         self._ecg_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         # Dedicated RNG for NIBP cycling/failure behavior.
         self._nibp_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
-        self._monitor_noise_std = np.array([0.5, 0.5, 0.2])
+        # Dedicated RNG for beat-level rhythm variability.
+        self._cardiac_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
+        self._bis_noise_std = 0.2
         self._monitor_values = {
             "BIS": 0.0,
             "MAP": 0.0,
@@ -354,16 +351,13 @@ class SimulationEngine(DrugControllerMixin):
         config.baseline_hb = baseline_hb
         config.baseline_hct = baseline_hct
 
-    def _sync_display_state_from_raw(self):
-        """Mirror raw numerics into learner-facing display fields."""
-        for raw_attr, display_attr in DISPLAY_FIELD_PAIRS:
-            setattr(self.state, display_attr, getattr(self.state, raw_attr))
+    def _append_output_snapshot(self) -> None:
+        """Append public state and retain ten seconds by timestamp."""
+        self.output_buffer.append(copy.copy(self.state))
+        cutoff = self.state.time - self._output_window_s
+        while len(self.output_buffer) > 1 and self.output_buffer[0].time < cutoff:
+            self.output_buffer.popleft()
 
-    def _sync_raw_vital_cache(self):
-        """Update cached raw vitals used by internal safety checks."""
-        self._raw_map = self.state.map
-        self._raw_hr = self.state.hr
-        
     def initialize_state(self):
         """Set initial state from live subsystem state instead of placeholder defaults."""
         self.state.temp_c = self.patient.baseline_temp
@@ -376,7 +370,7 @@ class SimulationEngine(DrugControllerMixin):
         initialize_engine_state(self)
         projection_core.sync_state_from_models(self)
         monitor_core.seed_nibp_reading(self)
-        self.output_buffer.append(copy.copy(self.state))
+        self._append_output_snapshot()
 
     def _configure_maintenance_fluids(self):
         """Set continuous IV fluids to 1 mL/kg/hr unless overridden."""
@@ -471,7 +465,10 @@ class SimulationEngine(DrugControllerMixin):
             self.patient,
             model_name="Wierda",
         ) # Default Rocuronium Model
-        
+
+        self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)
+        self.arterial_waveform = ArterialWaveformRenderer(self.patient.age)
+        self.art_line = ArterialLineMonitor()
         self.ecg = ECGMonitor(rng=self._ecg_rng)
         self.spo2_mon = SpO2Monitor()
         self.nibp = NIBPMonitor(interval_min=5.0, rng=self._nibp_rng)
@@ -800,7 +797,7 @@ class SimulationEngine(DrugControllerMixin):
             return
         runtime_core.step_simulation(self, dt)
         self.state.time += dt
-        self.output_buffer.append(copy.copy(self.state))
+        self._append_output_snapshot()
         if self.recorder and self.recorder.is_recording:
             self.recorder.log(self.state)
 

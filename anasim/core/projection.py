@@ -88,8 +88,6 @@ def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
     sv_val = hemo_state.sv
     svr_val = hemo_state.svr
     co_val = hemo_state.co
-    sbp_val = hemo_state.sbp
-    dbp_val = hemo_state.dbp
     hct_val = engine.hemo.get_hematocrit()
     total_crystalloid = engine.hemo.total_crystalloid_in_ml
     total_colloid = engine.hemo.total_colloid_in_ml
@@ -104,8 +102,6 @@ def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
         sv=sv_val,
         svr=svr_val,
         co=co_val,
-        sbp=sbp_val,
-        dbp=dbp_val,
         blood_volume=engine.hemo.blood_volume,
         hb_g_dl=engine.hemo.hb_conc,
         hct=hct_val,
@@ -116,8 +112,6 @@ def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
         blood_out_ml=blood_out_ml,
         net_fluid_ml=fluid_in_ml + blood_in_ml - urine_out_ml - blood_out_ml,
     )
-    engine.smooth_map = float(map_val)
-    engine.smooth_hr = float(hr_val)
 
 
 def _project_respiratory_observables(
@@ -277,7 +271,6 @@ def project_runtime_physiology(engine: "SimulationEngine", snapshot: PhysiologyS
     co_for_do2 = max(0.1, state.co)
     engine._do2_ratio = float(engine.hemo.compute_do2_ratio(sao2_est / 100.0, pao2_est, co_for_do2))
     set_state_float_fields(state, oxygen_delivery_ratio=engine._do2_ratio)
-    engine._sync_raw_vital_cache()
 
 
 def sync_monitor_baselines(engine: "SimulationEngine") -> None:
@@ -308,6 +301,13 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
         state.remi_ce,
         mac=state.mac,
     )
+    cardiac_sample = engine.cardiac_cycle.seed(state.hr, engine.hemo.state.rhythm_type)
+    arterial_sample = engine.arterial_waveform.step(
+        cardiac_sample,
+        state.map,
+        state.sv,
+    )
+    art_reading = engine.art_line.seed(arterial_sample)
     set_state_float_fields(
         state,
         bis=bis_val,
@@ -317,13 +317,24 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
         capno_co2=0.0,
         ecg_voltage=0.0,
         pleth_voltage=0.0,
+        sbp=arterial_sample.systolic,
+        dbp=arterial_sample.diastolic,
+        art_pressure=art_reading.pressure,
+        art_sbp=art_reading.systolic,
+        art_dbp=art_reading.diastolic,
+        art_map=art_reading.mean,
+        display_hr=cardiac_sample.measured_hr,
+        display_bis=bis_val,
+        display_etco2=state.etco2,
+        display_spo2=state.spo2,
     )
-    if engine.bis:
-        engine.bis.initialize(state.bis, dt=max(engine.config.dt, 1e-6))
+    engine.bis.initialize(state.bis, dt=engine.config.dt)
     engine.smooth_bis = state.bis
     engine._monitor_values["BIS"] = state.bis
-    engine._monitor_values["MAP"] = state.map
-    engine._monitor_values["HR"] = state.hr
+    engine._monitor_values["MAP"] = state.monitored_blood_pressure(
+        engine.config.arterial_line_enabled
+    )[2]
+    engine._monitor_values["HR"] = state.display_hr
     engine._monitor_values["EtCO2"] = state.etco2
     engine._monitor_values["SpO2"] = state.spo2
 
@@ -342,5 +353,3 @@ def sync_state_from_models(engine: "SimulationEngine") -> None:
     resp_state = snapshot_respiratory_state(engine, hemo_state)
     project_runtime_physiology(engine, build_snapshot_from_models(engine, hemo_state, resp_state))
     sync_monitor_baselines(engine)
-    engine._sync_display_state_from_raw()
-    engine._sync_raw_vital_cache()

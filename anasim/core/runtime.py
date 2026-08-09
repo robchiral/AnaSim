@@ -671,8 +671,8 @@ def check_patient_viability(engine: "SimulationEngine", dt: float) -> None:
     hr_critical_low = 10.0
     hr_critical_high = 220.0
 
-    raw_map = engine._raw_map
-    raw_hr = engine._raw_hr
+    raw_map = engine.state.map
+    raw_hr = engine.state.hr
 
     if raw_map < map_critical_low:
         engine.time_hypotension += dt
