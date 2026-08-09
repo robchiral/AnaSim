@@ -1,11 +1,14 @@
 import sys
+from collections import deque
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtWidgets import QApplication
 
 from anasim.core.drug_registry import DRUG_REGISTRY
-from anasim.core.state import SimulationConfig
+from anasim.core.state import SimulationConfig, SimulationState
 from anasim.ui.controls_widget import ControlPanelWidget
+from anasim.ui.monitor_widget import PatientMonitorWidget
 from anasim.ui.scenarios import (
     SCENARIO_BUILDERS,
     SCENARIO_REGISTRY,
@@ -83,6 +86,28 @@ def _step(scenario, step_id):
 def _activate(engine, step):
     """Activate a step the way the overlay does, without building the widget."""
     engine.actions.begin_step(step.id, engine.state.time)
+
+
+def test_patient_monitor_uses_art_fields_and_timestamp_history(qapp):
+    widget = PatientMonitorWidget(arterial_line_enabled=True, sample_interval_s=0.5)
+    states = deque(
+        SimulationState(
+            time=index / 100.0,
+            art_pressure=float(index),
+            art_sbp=126.0,
+            art_dbp=74.0,
+            art_map=91.0,
+            pleth_voltage=0.25,
+        )
+        for index in range(1, 11)
+    )
+
+    widget.update_numerics(states[-1])
+    widget.update_waveforms(SimpleNamespace(output_buffer=states))
+
+    assert widget.num_art.lbl_val.text() == "126/74 (91)"
+    assert widget.wave_write_index == 10
+    assert widget.art_data[:10] == pytest.approx(range(1, 11))
 
 
 def test_next_button_disabled_until_requirements_met(qapp, engine_factory):

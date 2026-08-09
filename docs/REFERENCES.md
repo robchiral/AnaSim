@@ -15,6 +15,7 @@ place, but they are internal checks rather than external clinical validation.
 | Respiratory drug effects | [`RespiratoryModel`](../anasim/physiology/respiration.py) combines separate published effects on ventilation and hypercapnic response. Its joint drug-response parameters are heuristic. See the [respiratory tests](../tests/test_respiration.py). |
 | Neuromuscular block and reversal | [`TOFModel`](../anasim/patient/pd/nmba.py) combines rocuronium effect-site kinetics with simplified sugammadex binding. Its onset and recovery constants are calibrated for this simulator rather than taken from study estimates. See the [pharmacology tests](../tests/test_pharmacology.py). |
 | Vasoactive drug effects | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) uses heuristic concentration-response models for epinephrine, phenylephrine, vasopressin, dobutamine, and milrinone. These models preserve expected response direction but have not been fitted or externally validated together. See the [hemodynamic tests](../tests/test_hemodynamics.py). |
+| Arterial pressure waveform | [`ArterialWaveformRenderer`](../anasim/monitors/arterial.py) uses the four pressure landmarks described by Mahdi et al. as a waveform structure, then constrains each beat to Su MAP and stroke volume. It does not implement the paper's stochastic controllers, baroreflex, or Windkessel time constant. [`ArterialLineMonitor`](../anasim/monitors/arterial.py) adds separate catheter-transducer dynamics. See the [waveform](../tests/test_arterial_waveform.py) and [arterial line](../tests/test_arterial_line.py) tests. |
 
 ## Hemodynamics and physiology
 - Su et al. Br J Anaesth. 2023. (mechanistic hemodynamic interaction model). [PubMed](https://pubmed.ncbi.nlm.nih.gov/37355412/)
@@ -35,6 +36,11 @@ place, but they are internal checks rather than external clinical validation.
 - Bellissant et al. Clin Pharmacol Ther. 2000. (septic shock pressor hyporesponsiveness: phenylephrine Emax ~39 vs 84 mmHg controls). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11014411/)
 - Margarson et al. J Appl Physiol (1985). 2002. (septic shock TER of albumin ~6.7%/h). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11960967/)
 - Persichini et al. Crit Care Med. 2012. (mean systemic pressure decreases with reduced norepinephrine in septic shock). [PubMed](https://pubmed.ncbi.nlm.nih.gov/22926333/)
+
+## Cardiovascular monitor models
+
+- Mahdi, Clifford, and Payne. Physiol Meas. 2017;38:477-488. (synthetic ABP model based on systolic, diastolic, dicrotic-notch, and dicrotic-peak pressure points). [PubMed](https://pubmed.ncbi.nlm.nih.gov/28176674/) [DOI](https://doi.org/10.1088/1361-6579/aa51b8)
+- Saugel et al. Crit Care. 2020;24:172. (arterial catheter waveform quality, natural frequency, and damping). [Full text](https://pmc.ncbi.nlm.nih.gov/articles/PMC7183114/)
 
 ## Volatile anesthetics (PBPK and MAC)
 - Davis and Mapleson. Br J Anaesth. 1981. (physiological model of inhaled anesthetics). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7225273/)

@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 from anasim.core import monitors as monitor_core
@@ -6,7 +5,7 @@ from anasim.core import projection as projection_core
 from anasim.core import runtime as runtime_core
 from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
-from anasim.core.state import AirwayType, SimulationConfig
+from anasim.core.state import AirwayType, SimulationConfig, SimulationState
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.hemodynamics import HemoState
@@ -21,6 +20,10 @@ FLOAT_CONTRACT_FIELDS = (
     "co",
     "sbp",
     "dbp",
+    "art_pressure",
+    "art_sbp",
+    "art_dbp",
+    "art_map",
     "bis",
     "display_bis",
     "fio2",
@@ -45,7 +48,7 @@ def _build_engine(dt: float = 0.5) -> SimulationEngine:
     engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=dt, rng_seed=123))
     engine.state.airway_mode = AirwayType.MASK
     engine._next_nibp_time = 1e9
-    engine._monitor_noise_std = np.zeros(3)
+    engine._bis_noise_std = 0.0
     return engine
 
 
@@ -72,38 +75,30 @@ def _assert_builtin_float_contract(state) -> None:
         assert type(value) is float, f"{field_name} should be built-in float, got {type(value).__name__}"
 
 
-def test_raw_hemodynamics_are_not_overwritten_by_display_smoothing():
+def test_arterial_renderer_does_not_overwrite_su_mean_state():
     engine = _build_engine(dt=0.5)
     engine.state.map = 45.0
     engine.state.hr = 42.0
-    engine.state.sbp = 62.0
-    engine.state.dbp = 34.0
     engine.state.sao2 = 98.0
-    engine.smooth_map = 90.0
-    engine.smooth_hr = 80.0
 
-    hemo_state = HemoState(map=45.0, hr=42.0, sv=55.0, svr=14.0, co=2.3, sbp=62.0, dbp=34.0)
+    hemo_state = HemoState(map=45.0, hr=42.0, sv=55.0, svr=14.0, co=2.3)
     resp_state = _steady_resp_state()
 
     monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
 
     assert engine.state.map == pytest.approx(45.0)
     assert engine.state.hr == pytest.approx(42.0)
-    assert engine.state.sbp == pytest.approx(62.0)
-    assert engine.state.dbp == pytest.approx(34.0)
-    assert engine.state.display_map != engine.state.map
-    assert engine.state.display_hr != engine.state.hr
+    assert engine.state.sbp > engine.state.dbp
+    assert engine.state.art_sbp >= engine.state.art_dbp
 
 
-def test_arrest_display_bypass_collapses_without_coarse_dt_lag():
+def test_arrest_removes_organized_arterial_and_pleth_pulses():
     engine = _build_engine(dt=0.5)
     engine.state.map = 0.0
     engine.state.hr = 0.0
     engine.state.sbp = 0.0
     engine.state.dbp = 0.0
     engine.state.sao2 = 98.0
-    engine.smooth_map = 88.0
-    engine.smooth_hr = 76.0
 
     hemo_state = HemoState(
         map=0.0,
@@ -111,40 +106,20 @@ def test_arrest_display_bypass_collapses_without_coarse_dt_lag():
         sv=0.0,
         svr=0.0,
         co=0.0,
-        sbp=0.0,
-        dbp=0.0,
         rhythm_type=RhythmType.ASYSTOLE,
     )
     resp_state = _steady_resp_state()
 
     monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
 
-    assert engine.state.display_map == pytest.approx(0.0)
     assert engine.state.display_hr == pytest.approx(0.0)
-    assert engine.state.display_sbp == pytest.approx(0.0)
-    assert engine.state.display_dbp == pytest.approx(0.0)
-
-
-@pytest.mark.parametrize("dt", [0.01, 0.1, 0.5])
-def test_display_map_response_depends_on_time_not_step_count(dt: float):
-    engine = _build_engine(dt=dt)
-    engine.state.map = 50.0
-    engine.state.hr = 80.0
-    engine.state.sbp = 70.0
-    engine.state.dbp = 40.0
-    engine.state.sao2 = 98.0
-    engine.smooth_map = 90.0
-    engine.smooth_hr = 80.0
-
-    hemo_state = HemoState(map=50.0, hr=80.0, sv=65.0, svr=16.0, co=5.2, sbp=70.0, dbp=40.0)
-    resp_state = _steady_resp_state()
-
-    elapsed = 0.0
-    while elapsed < 2.0 - 1e-9:
-        monitor_core.step_monitors(engine, dt, "EXP", hemo_state, resp_state, DisturbanceEffects())
-        elapsed += dt
-
-    assert engine.state.display_map == pytest.approx(60.5, abs=1.0)
+    assert engine.state.sbp == pytest.approx(0.0)
+    assert engine.state.dbp == pytest.approx(0.0)
+    assert engine.state.art_sbp == pytest.approx(0.0)
+    assert engine.state.art_dbp == pytest.approx(0.0)
+    assert engine.state.art_map == pytest.approx(0.0)
+    assert engine.state.art_pressure == pytest.approx(0.0, abs=0.1)
+    assert engine.state.pleth_voltage == pytest.approx(0.0)
 
 
 def test_low_flow_high_fio2_does_not_force_arterial_desaturation():
@@ -299,12 +274,26 @@ def test_awake_initial_snapshot_uses_patient_baselines():
     assert engine.state.hr == pytest.approx(95.0, abs=1e-3)
     assert engine.state.map == pytest.approx(105.0, abs=1e-3)
     assert engine.state.display_hr == pytest.approx(engine.state.hr, abs=1e-3)
-    assert engine.state.display_map == pytest.approx(engine.state.map, abs=1e-3)
+    assert engine.state.art_map == pytest.approx(engine.state.map, abs=1e-3)
     assert engine.state.rr == pytest.approx(16.0, abs=1e-3)
     assert engine.state.vt == pytest.approx(620.0, abs=1e-3)
     assert engine.state.hb_g_dl == pytest.approx(8.0, abs=1e-6)
     assert engine.state.hct == pytest.approx(0.24, abs=1e-6)
     assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
+
+
+def test_monitored_blood_pressure_selects_art_or_nibp():
+    state = SimulationState(
+        art_sbp=121.0,
+        art_dbp=72.0,
+        art_map=89.0,
+        nibp_sys=116.0,
+        nibp_dia=68.0,
+        nibp_map=84.0,
+    )
+
+    assert state.monitored_blood_pressure(True) == (121.0, 72.0, 89.0)
+    assert state.monitored_blood_pressure(False) == (116.0, 68.0, 84.0)
 
 
 def test_startup_projection_matches_runtime_projection_path():
@@ -321,7 +310,6 @@ def test_startup_projection_matches_runtime_projection_path():
     snapshot = projection_core.build_snapshot_from_models(engine_runtime, hemo_state, resp_state)
     projection_core.project_runtime_physiology(engine_runtime, snapshot)
     projection_core.sync_monitor_baselines(engine_runtime)
-    engine_runtime._sync_display_state_from_raw()
 
     for field_name in ("map", "hr", "rr", "vt", "mv", "etco2", "pa_co2", "pao2", "sao2", "spo2"):
         assert getattr(engine_sync.state, field_name) == pytest.approx(getattr(engine_runtime.state, field_name))

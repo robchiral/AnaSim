@@ -2,6 +2,8 @@ import numpy as np
 
 from anasim.core.enums import RhythmType
 
+from .cardiac_cycle import CardiacCycleSample
+
 _ECG_TEMPLATE_RESOLUTION = 500
 
 
@@ -44,7 +46,7 @@ def _build_ecg_template(mode: str, resolution: int = _ECG_TEMPLATE_RESOLUTION) -
             (0.650, -0.3, 0.08),    # Deep/Wide S/T transition
         ]
     else:
-        waves = []  # Should not happen
+        raise ValueError(f"Unsupported ECG template mode: {mode!r}")
 
     phase_arr = np.linspace(0.0, 1.0, resolution)
     template = np.zeros(resolution)
@@ -68,19 +70,18 @@ class ECGMonitor:
     ECG Monitor using Gaussian-based PQRST synthesis.
     Now supports multiple rhythm types with distinct waveforms.
     """
-    def __init__(self, sampling_rate=100, rng: np.random.Generator = None):
-        self.sampling_rate = sampling_rate 
-        self.phase = 0.0
+    def __init__(self, rng: np.random.Generator = None):
         self.vfib_phase = 0.0
         self.rng = rng if rng is not None else np.random.default_rng()
         
         self._templates = _ECG_TEMPLATES
         self._template_max_index = _ECG_TEMPLATE_RESOLUTION - 1
         
-    def step(self, dt: float, state_hr: float, rhythm_type: RhythmType = RhythmType.SINUS) -> float:
+    def step(self, dt: float, cycle: CardiacCycleSample) -> float:
         """
         Return the next voltage sample logic.
         """
+        rhythm_type = cycle.rhythm_type
         # 1. Asystole
         if rhythm_type == RhythmType.ASYSTOLE:
             return float(self.rng.uniform(-0.01, 0.01))
@@ -95,31 +96,17 @@ class ECGMonitor:
             val += float(self.rng.uniform(-0.05, 0.05))
             return val
 
-        # 3. Structured Rhythms
-        freq = state_hr / 60.0
-        
-        # AFib Irregularity: modulated frequency
-        if rhythm_type == RhythmType.AFIB:
-            # Randomly fluctuate frequency to simulate R-R varying
-            # We use a noise walk or just random noise per step?
-            # Per step noise makes it jittery. We want beat-to-beat.
-            # But simple approximation: High freq noise on phase speed.
-            freq *= float(self.rng.uniform(0.7, 1.4))
-            
-        self.phase += dt * freq
-        self.phase = self.phase % 1.0
-        
-        # Select Template
-        template = self._templates.get(rhythm_type, self._templates[RhythmType.SINUS])
-        
-        # Lookup
-        idx = int(self.phase * self._template_max_index)
+        # Structured rhythms share the central beat clock. The existing ECG
+        # template places the R wave at 0.5, so shift the lookup by half a beat.
+        template_phase = (cycle.phase + 0.5) % 1.0
+        template = self._templates[rhythm_type]
+        idx = int(template_phase * self._template_max_index)
         val = template[idx]
         
         # Add baseline noise (fibrillatory waves for AFib)
         if rhythm_type == RhythmType.AFIB:
             # Coarse f-waves
-            val += 0.02 * np.sin(self.phase * 50) 
+            val += 0.02 * np.sin(cycle.phase * 50)
             val += float(self.rng.uniform(-0.02, 0.02))
         else:
             val += float(self.rng.uniform(-0.015, 0.015))

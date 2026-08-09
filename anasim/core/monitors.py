@@ -4,6 +4,7 @@ import math
 from typing import TYPE_CHECKING
 
 from anasim.monitors.capno import Capnograph
+from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resp_mech import VentMode
@@ -14,6 +15,8 @@ from .utils import clamp
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine
+
+CARDIAC_MONITOR_MAX_STEP_S = 0.01
 
 
 def phase_from_rr(engine: "SimulationEngine", rr: float) -> str:
@@ -26,41 +29,22 @@ def phase_from_rr(engine: "SimulationEngine", rr: float) -> str:
     return "INSP" if t_cycle < insp_time else "EXP"
 
 
-def exp_smoothing_alpha(dt: float, tau_s: float) -> float:
-    """Convert a time constant into a dt-invariant exponential smoothing gain."""
-    if dt <= 0:
-        return 0.0
-    if tau_s <= 0:
-        return 1.0
-    return 1.0 - math.exp(-dt / max(tau_s, 1e-6))
-
-
-def monitor_collapse_active(engine: "SimulationEngine", raw_map: float, raw_hr: float, rhythm) -> bool:
-    """Collapse display lag when circulation is critically low or arrest rhythms occur."""
-    return (
-        engine.state.is_dead
-        or raw_map <= 25.0
-        or raw_hr <= 20.0
-        or rhythm in (engine._rhythm_vfib, engine._rhythm_vtach, engine._rhythm_asystole)
-    )
-
-
 def seed_nibp_reading(engine: "SimulationEngine") -> None:
     """Seed NIBP with an initial reading and start cycling immediately."""
-    hemo_state = engine.hemo.state
-    map_val = hemo_state.map
-    sbp_val = hemo_state.sbp
-    dbp_val = hemo_state.dbp
-    ts = engine.state.time if engine.state.time > 0.0 else 1e-3
+    state = engine.state
+    map_val = state.map
+    sbp_val = state.sbp
+    dbp_val = state.dbp
+    ts = state.time
     engine.nibp.latest_reading = NIBPReading(sbp_val, dbp_val, map_val, ts)
     set_state_float_fields(
-        engine.state,
+        state,
         nibp_sys=sbp_val,
         nibp_dia=dbp_val,
         nibp_map=map_val,
         nibp_timestamp=ts,
     )
-    engine._next_nibp_time = engine.state.time + engine.nibp.interval
+    engine._next_nibp_time = state.time + engine.nibp.interval
     engine.nibp.trigger()
 
 
@@ -75,8 +59,9 @@ def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
     cuff_p = engine.nibp.step(
         dt,
         state.time,
-        hemo_state.map,
-        true_sys=hemo_state.sbp,
+        state.map,
+        true_sys=state.sbp,
+        true_dia=state.dbp,
         rhythm_type=hemo_state.rhythm_type,
     )
 
@@ -84,7 +69,7 @@ def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
     set_state_float_fields(state, nibp_cuff_pressure=cuff_p)
 
     latest = engine.nibp.latest_reading
-    if latest.timestamp > 0.0 and latest.timestamp != prev_ts:
+    if latest.timestamp is not None and latest.timestamp != prev_ts:
         set_state_float_fields(
             state,
             nibp_sys=latest.systolic,
@@ -185,6 +170,62 @@ def update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, capn
     return (float(display_value) if valid else 0.0), valid
 
 
+def step_cardiac_monitors(
+    engine: "SimulationEngine",
+    dt: float,
+    hemo_state,
+    sao2: float,
+) -> CardiacCycleSample:
+    """Advance beat-synchronous monitors at waveform resolution."""
+    if dt <= 0.0:
+        raise ValueError("cardiac monitor dt must be greater than zero")
+    substeps = math.ceil(dt / CARDIAC_MONITOR_MAX_STEP_S)
+    substep_dt = dt / substeps
+    rhythm = hemo_state.rhythm_type
+    co_ratio = hemo_state.co / engine.hemo.base_co_l_min
+    perfusion = clamp(co_ratio, 0.05, 1.0)
+
+    for _ in range(substeps):
+        cardiac_sample = engine.cardiac_cycle.step(
+            substep_dt,
+            hemo_state.hr,
+            rhythm,
+        )
+        arterial_sample = engine.arterial_waveform.step(
+            cardiac_sample,
+            hemo_state.map,
+            hemo_state.sv,
+        )
+        art_reading = engine.art_line.step(
+            substep_dt,
+            cardiac_sample,
+            arterial_sample,
+        )
+        ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample)
+        pleth, spo2_val = engine.spo2_mon.step(
+            substep_dt,
+            cardiac_sample,
+            saturation=sao2,
+            perfusion=perfusion,
+        )
+
+    state = engine.state
+    state.spo2_signal_valid = engine.spo2_mon.signal_valid
+    set_state_float_fields(
+        state,
+        ecg_voltage=ecg_voltage,
+        pleth_voltage=pleth,
+        sbp=arterial_sample.systolic,
+        dbp=arterial_sample.diastolic,
+        art_pressure=art_reading.pressure,
+        art_sbp=art_reading.systolic,
+        art_dbp=art_reading.diastolic,
+        art_map=art_reading.mean,
+        spo2=spo2_val,
+    )
+    return cardiac_sample
+
+
 def step_monitors(
     engine: "SimulationEngine",
     dt: float,
@@ -228,20 +269,18 @@ def step_monitors(
     else:
         tol_val = engine.tol_pd.compute_probability(state.propofol_ce, state.remi_ce)
 
-    rhythm = hemo_state.rhythm_type
-    ecg_voltage = engine.ecg.step(dt, state_hr=hemo_state.hr, rhythm_type=rhythm)
-
     sao2 = state.sao2
-    co_ratio = hemo_state.co / engine.hemo.base_co_l_min
-    perfusion = clamp(co_ratio, 0.05, 1.0)
-    pleth, spo2_val = engine.spo2_mon.step(dt, hr=hemo_state.hr, saturation=sao2, perfusion=perfusion)
-    state.spo2_signal_valid = engine.spo2_mon.signal_valid
-    set_state_float_fields(state, ecg_voltage=ecg_voltage, pleth_voltage=pleth)
+    cardiac_sample = step_cardiac_monitors(
+        engine,
+        dt,
+        hemo_state,
+        sao2,
+    )
 
     update_nibp(engine, dt, hemo_state)
 
     bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
-    set_state_float_fields(state, bis=bis_display_source, spo2=spo2_val)
+    set_state_float_fields(state, bis=bis_display_source)
     display_etco2, etco2_signal_valid = update_capno_numeric(
         engine,
         dt,
@@ -250,43 +289,16 @@ def step_monitors(
     )
     state.etco2_signal_valid = etco2_signal_valid
 
-    noise = engine.rng.normal(0.0, engine._monitor_noise_std)
-    raw_map = hemo_state.map + noise[0]
-    raw_hr = hemo_state.hr + noise[1]
-    raw_bis = state.bis + noise[2]
-
-    alpha_map = exp_smoothing_alpha(dt, engine._monitor_tau_map_s)
-    alpha_hr = exp_smoothing_alpha(dt, engine._monitor_tau_hr_s)
-    alpha_bis = exp_smoothing_alpha(dt, engine._monitor_tau_bis_s)
-
-    if monitor_collapse_active(engine, hemo_state.map, hemo_state.hr, rhythm):
-        engine.smooth_map = float(max(0.0, hemo_state.map))
-        engine.smooth_hr = float(max(0.0, hemo_state.hr))
-    else:
-        engine.smooth_map = float((1 - alpha_map) * engine.smooth_map + alpha_map * raw_map)
-        engine.smooth_hr = float((1 - alpha_hr) * engine.smooth_hr + alpha_hr * raw_hr)
+    raw_bis = state.bis + float(engine.rng.normal(0.0, engine._bis_noise_std))
+    alpha_bis = 1.0 - math.exp(-dt / engine._monitor_tau_bis_s)
     engine.smooth_bis = float((1 - alpha_bis) * engine.smooth_bis + alpha_bis * raw_bis)
 
-    display_map = max(0.0, engine.smooth_map)
-    display_hr = max(0.0, engine.smooth_hr)
+    display_hr = max(0.0, cardiac_sample.measured_hr)
     display_bis = clamp(engine.smooth_bis, 0.0, 100.0)
-
-    if display_map <= 0.5 and state.sbp <= 1.0 and state.dbp <= 1.0:
-        display_sbp = 0.0
-        display_dbp = 0.0
-    else:
-        pulse_pressure = max(5.0, state.sbp - state.dbp)
-        display_sbp = max(0.0, display_map + (2.0 / 3.0) * pulse_pressure)
-        display_dbp = max(0.0, display_map - (1.0 / 3.0) * pulse_pressure)
-        if display_sbp <= display_dbp:
-            display_sbp = display_dbp + 5.0
     set_state_float_fields(
         state,
-        display_map=display_map,
         display_hr=display_hr,
         display_bis=display_bis,
-        display_sbp=display_sbp,
-        display_dbp=display_dbp,
         capno_co2=capno_val,
         display_etco2=display_etco2,
         tof=tof_val,
@@ -297,7 +309,9 @@ def step_monitors(
 
     monitor_vals = engine._monitor_values
     monitor_vals["BIS"] = state.display_bis
-    monitor_vals["MAP"] = state.display_map
+    monitor_vals["MAP"] = state.monitored_blood_pressure(
+        engine.config.arterial_line_enabled
+    )[2]
     monitor_vals["HR"] = state.display_hr
     monitor_vals["EtCO2"] = state.display_etco2
     monitor_vals["SpO2"] = state.display_spo2

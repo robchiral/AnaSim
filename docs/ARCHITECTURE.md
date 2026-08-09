@@ -9,18 +9,22 @@ their own path.
 
 ## State contract
 
-`SimulationState` has two explicit layers:
+`SimulationState` separates physiologic truth, ideal arterial pulse landmarks,
+and monitor measurements:
 
 | Layer | Fields | Meaning |
 |------|--------|---------|
-| Raw physiology / raw monitor-model outputs | `map`, `hr`, `sbp`, `dbp`, `co`, `sv`, `svr`, `bis`, `etco2`, `spo2`, `sao2`, `pa_co2`, `alveolar_co2`, `pao2` | Canonical backend truth used for physiology, recorder export, analytics, and internal safety logic |
-| Display / learner-facing numerics | `display_map`, `display_hr`, `display_sbp`, `display_dbp`, `display_bis`, `display_etco2`, `display_spo2` | Values shown to the learner after monitor-specific smoothing or display behavior |
+| Physiology | `map`, `hr`, `co`, `sv`, `svr`, `sao2`, `pa_co2`, `alveolar_co2`, `pao2` | Canonical backend truth used by physiology, analytics, and safety logic |
+| Ideal arterial pulse | `sbp`, `dbp` | Beat-latched landmark pressures derived from Su MAP and stroke volume |
+| Arterial catheter | `art_pressure`, `art_sbp`, `art_dbp`, `art_map` | Instantaneous and completed-beat values after fluid-filled line dynamics |
+| Other monitor outputs | `nibp_sys`, `nibp_dia`, `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Learner-facing measurements produced by their monitor models |
 
 State access rules:
 
-- `state.map/hr/sbp/dbp` are raw arterial physiology every step.
-- UI, CLI, and tutorial/scenario code that represents what the learner sees should read `display_*`.
-- Recorder output includes both layers so logs remain useful for analysis and for reproducing monitor output.
+- `state.map/hr/sv/co/svr` remain Su outputs. The arterial renderer does not feed pressure back into Su.
+- `state.sbp/dbp` belong to the ideal arterial pulse renderer. Together with `state.map`, they are the direct pressure inputs for NIBP measurement synthesis.
+- UI, CLI, alarms, and scenarios use `art_*` while an arterial line is enabled and `nibp_*` otherwise.
+- Recorder output includes physiology and monitor measurements so logs can reproduce what the learner saw.
 - Projection and monitor boundaries normalize public numeric fields to Python `float` values.
 
 ## Module structure
@@ -32,7 +36,7 @@ AnaSim/
 │   ├── initialization.py # Startup target solving and subsystem seeding
 │   ├── runtime.py      # Step orchestration
 │   ├── projection.py   # Subsystem -> SimulationState projection
-│   ├── monitors.py     # Display smoothing, NIBP, capno, alarms
+│   ├── monitors.py     # Monitor orchestration, NIBP, capno, alarms
 │   ├── tci.py          # Target-Controlled Infusion controllers
 │   ├── state.py        # Simulation state dataclasses
 │   ├── action_log.py   # Timestamped control actions and scenario step activations
@@ -51,6 +55,8 @@ AnaSim/
 │   ├── resp_mech.py
 │   └── disturbances.py
 ├── monitors/           # Monitor waveforms and alarms
+│   ├── cardiac_cycle.py # Shared ECG, ART, and pleth beat clock
+│   ├── arterial.py     # Ideal arterial pulse and catheter dynamics
 │   ├── ecg.py
 │   ├── capno.py
 │   ├── nibp.py
@@ -74,8 +80,12 @@ SimulationEngine.step()
    a. Respiratory mechanics
    b. Respiration / gas exchange
    c. Hemodynamics
-8. Projection -> raw subsystem state copied into `SimulationState`
-9. Monitor synthesis -> waveforms, display_* values, alarms
+8. Projection -> subsystem physiology copied into `SimulationState`
+9. Monitor synthesis
+   a. Shared cardiac cycle
+   b. Ideal arterial pulse from Su MAP and stroke volume
+   c. Arterial catheter dynamics, ECG, and delayed pleth
+   d. NIBP, capnography, other display values, and alarms
 10. Shivering update
 11. Temperature update
 12. Death detector
@@ -85,7 +95,7 @@ Pipeline ownership:
 
 - `runtime.step_physiology()` computes the live physiology snapshot.
 - `projection.project_runtime_physiology()` writes raw physiologic fields into `SimulationState`.
-- `monitors.step_monitors()` writes display fields and waveforms only.
+- `monitors.step_monitors()` advances measurement models and writes waveforms and monitor fields. It does not modify Su state.
 
 ## Dependency graph
 
@@ -115,8 +125,19 @@ flowchart TD
     RESP -->|pa_co2, pao2| HEMO
     HEMO -->|co| PKVOL
 
-    RESP --> MON[Monitor layer]
-    HEMO --> MON
+    RESP --> MON[Other monitor models]
+    HEMO --> CYCLE[Shared cardiac cycle]
+    HEMO --> PULSE[Ideal arterial pulse]
+    CYCLE --> ECG[ECG]
+    CYCLE --> PULSE
+    CYCLE --> PLETH[Delayed pleth]
+    PULSE --> ART[Arterial catheter dynamics]
+    PULSE --> NIBP[NIBP measurement]
+    RESP --> PLETH
+    ART --> MON
+    NIBP --> MON
+    ECG --> MON
+    PLETH --> MON
     BIS --> MON
     MON --> UI[UI / CLI / scenarios]
 ```
@@ -151,7 +172,9 @@ flowchart TD
 
 | Source | Data | Notes |
 |--------|------|-------|
-| Hemodynamics | raw `map/hr/sbp/dbp` | Used to synthesize display numerics |
+| Hemodynamics | `map`, `hr`, `sv` | Drives the shared beat clock and ideal arterial pulse |
+| Ideal arterial pulse | `sbp`, `dbp`, instantaneous pressure | Landmarks feed NIBP; the waveform feeds the arterial catheter |
+| Arterial catheter | filtered pressure and completed-beat `art_*` | Drives the ART trace, numerics, and MAP alarm when enabled |
 | Respiration | raw `etco2`, `sao2` | Used to synthesize capno and pulse oximetry behavior |
 | BIS / TOF / LOC | raw model outputs | Displayed and alarmed values |
 | Monitor settings | arterial line enabled, NIBP interval | Changes presentation mode |
@@ -179,7 +202,9 @@ pk_remi.state.c1      -> state.remi_cp
 resp_state.pa_co2     -> state.pa_co2
 resp_state.p_alveolar_co2 -> state.alveolar_co2
 hemo_state.map        -> state.map
-hemo_state.map        -> state.display_map   (via monitor layer)
+hemo_state.map/sv     -> state.sbp/dbp       (ideal pulse renderer)
+ideal pulse pressure  -> state.art_pressure  (catheter dynamics)
+completed ART beat    -> state.art_sbp/art_dbp/art_map
 spo2_monitor output   -> state.spo2
 spo2_monitor output   -> state.display_spo2
 ```
@@ -214,11 +239,16 @@ Startup runs separately from the visible loop:
 
 ### Monitors
 
-- MAP/HR/BIS display numerics use exponential smoothing with dt-aware time constants.
+- ECG, arterial pressure, and pleth use one beat clock. Arterial ejection follows the QRS, and pleth follows arterial pressure after a peripheral delay.
+- Beat-synchronous monitor models advance internally at intervals of 10 ms or less, independent of the outer physiology step.
+- The arterial pulse renderer uses systolic, diastolic, dicrotic-notch, and dicrotic-peak landmarks inspired by Mahdi et al. Its beat mean equals Su MAP and its pulse pressure derives from Su stroke volume and age-adjusted arterial compliance.
+- The renderer is not the complete Mahdi stochastic pressure-control model. AnaSim keeps Su as the sole hemodynamic controller and does not add a Windkessel state.
+- The arterial catheter applies configurable second-order measurement dynamics. The default natural frequency is 20 Hz and damping ratio is 0.65.
+- ART numerics come from completed filtered beats. NIBP measures the same ideal systolic, diastolic, and mean pressures with cuff timing, bias, and failure behavior.
+- Beat-derived HR replaces a separately smoothed HR signal. BIS retains dt-aware smoothing.
 - Poor perfusion slows finger SpO2 and reduces pleth amplitude without changing raw arterial saturation.
 - EtCO2 numerics update from completed capnogram breaths and become unavailable after 15 seconds without a valid exhaled sample.
-- Arrest and near-arrest states bypass display smoothing.
-- The UI draws the ABP waveform from a synthetic display trace; there is no dedicated arterial pressure waveform model.
+- Unorganized arrest rhythms suppress the arterial pulse and pleth while ECG retains its rhythm-specific trace.
 
 ### TCI
 

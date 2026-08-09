@@ -44,6 +44,7 @@ class SimulationConfig:
     # Runtime settings.
     simulation_speed: float = 1.0  # Real-time multiplier
     enable_death_detector: bool = False
+    arterial_line_enabled: bool = True
     rng_seed: Optional[int] = None
 
     def __post_init__(self):
@@ -116,15 +117,13 @@ class SimulationState:
     roc_ce: float = 0.0
     roc_cp: float = 0.0
     
-    # Monitor-model outputs / raw displayed physiologic values.
-    # These are the authoritative backend values, not UI-smoothed numerics.
+    # Physiology and monitor-model outputs.
     bis: float = 98.0
     display_bis: float = 98.0
     tof: float = 100.0
     loc: float = 0.0 # Probability
     tol: float = 0.0 # Probability
     map: float = 90.0  # Mean Arterial Pressure
-    display_map: float = 90.0
     hr: float = 70.0   # Heart Rate
     display_hr: float = 70.0
     rr: float = 12.0   # Respiratory Rate
@@ -156,19 +155,23 @@ class SimulationState:
     nibp_sys: float = 120.0
     nibp_dia: float = 80.0
     nibp_map: float = 93.3
-    nibp_timestamp: float = 0.0
+    nibp_timestamp: Optional[float] = None
     nibp_interval_sec: float = 300.0
     nibp_is_cycling: bool = False
     nibp_cuff_pressure: float = 0.0
     
-    # Advanced hemodynamics.
+    # Hemodynamics. MAP, HR, SV, SVR, and CO come from Su. SBP and DBP are
+    # unfiltered arterial waveform landmarks derived from Su MAP and SV.
     sv: float = 70.0 # Stroke Volume (mL)
     svr: float = 16.0 # Systemic Vascular Resistance (Wood Units: mmHg*min/L). Normal ~16-20.
     co: float = 5.0 # Cardiac Output (L/min)
     sbp: float = 120.0 # Systolic Blood Pressure (mmHg)
-    display_sbp: float = 120.0
     dbp: float = 80.0 # Diastolic Blood Pressure (mmHg)
-    display_dbp: float = 80.0
+    # Fluid-filled arterial catheter output and completed-beat numerics.
+    art_pressure: float = 80.0 # Instantaneous measured arterial pressure (mmHg)
+    art_sbp: float = 120.0
+    art_dbp: float = 80.0
+    art_map: float = 93.3
     blood_volume: float = 5000.0 # Blood volume (mL)
     hb_g_dl: float = 13.5
     hct: float = 0.42
@@ -203,9 +206,11 @@ class SimulationState:
     bronchospasm: float = 0.0        # 0.0-1.0 (lower airway)
     laryngospasm: float = 0.0        # 0.0-1.0 (auto-triggered component)
 
-    def display_value(self, attr: str):
-        """Return the learner-facing value for a raw/display field pair."""
-        try:
-            return getattr(self, f"display_{attr}")
-        except AttributeError:
-            return getattr(self, attr)
+    def monitored_blood_pressure(
+        self,
+        arterial_line_enabled: bool,
+    ) -> tuple[float, float, float]:
+        """Return systolic, diastolic, and mean pressure from the active monitor."""
+        if arterial_line_enabled:
+            return self.art_sbp, self.art_dbp, self.art_map
+        return self.nibp_sys, self.nibp_dia, self.nibp_map

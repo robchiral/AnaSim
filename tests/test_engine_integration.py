@@ -48,6 +48,17 @@ class TestPhysiologicalSanity:
         # 4. EtCO2: allow broader range with perfusion coupling.
         if state.rr > 0:
             assert 25 <= state.etco2 <= 50, f"EtCO2 {state.etco2} abnormal"
+
+    def test_output_history_uses_actual_timestamps(self, patient):
+        engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=0.5))
+        engine.start()
+
+        for _ in range(120):
+            engine.step(0.1)
+
+        history_span = engine.output_buffer[-1].time - engine.output_buffer[0].time
+        assert history_span <= 10.0 + 1e-9
+        assert history_span >= 9.8
             
     def test_svr_units(self, engine):
         """SVR should be in Wood Units (mmHg*min/L), ~10-30."""
@@ -176,9 +187,6 @@ def test_hr_disturbance_not_double_applied():
         drive_central=1.0,
         muscle_factor=1.0,
     )
-    engine1.smooth_hr = hemo_state.hr
-    engine2.smooth_hr = hemo_state.hr
-
     monitor_core.step_monitors(engine1, 1.0, "EXP", hemo_state, resp_state, DisturbanceEffects())
     monitor_core.step_monitors(engine2, 1.0, "EXP", hemo_state, resp_state, DisturbanceEffects(hr=10.0))
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added a dedicated arterial pressure waveform constrained by Su MAP and stroke
+  volume, with shared ECG and pleth timing and catheter-transducer dynamics.
+- Made cardiac monitor synthesis and waveform history independent of the outer
+  simulation step size.
+- Removed pleth-derived arterial pressure, duplicate pressure reconstruction,
+  separate cardiac phases, and redundant MAP and HR display smoothing.
 - Added a clinician-facing guide and a clearer first-session path in the README.
 - Revised setup, monitor, and control labels for clinical clarity.
 - Fixed clipped content in the setup dialog.

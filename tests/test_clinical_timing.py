@@ -328,29 +328,6 @@ class TestHemodynamicRateLimits:
         assert 40 < final_hr < 160, \
             f"HR {final_hr:.1f} bpm - outside physiological bounds"
     
-    def test_sbp_always_exceeds_dbp(self, hemo_model):
-        """
-        PHYSIOLOGY: SBP must always exceed DBP (pulse pressure > 0).
-        """
-        # Test under various conditions
-        test_conditions = [
-            (0, 0, 0, 0, 0, 0),       # Baseline
-            (6.0, 0, 0, 0, 0, 0),     # High propofol
-            (0, 0, 10.0, 0, 0, 0),    # High norepinephrine
-            (0, 0, 0, 0, 20.0, 0),    # High epinephrine
-            (0, 0, 0, 0, 0, 50.0),    # High phenylephrine
-        ]
-        
-        for cp_prop, cp_remi, ce_nore, d, ce_epi, ce_phen in test_conditions:
-            state = hemo_model.step(
-                1.0, cp_prop, cp_remi, ce_nore, -2, 40, 95,
-                ce_epi=ce_epi, ce_phenyl=ce_phen
-            )
-            
-            pulse_pressure = state.sbp - state.dbp
-            assert pulse_pressure >= 10, \
-                f"Pulse pressure {pulse_pressure:.1f} mmHg - SBP must exceed DBP by ≥10"
-    
     def test_no_negative_cardiac_output(self, hemo_model):
         """
         PHYSIOLOGY: Cardiac output cannot be negative or zero (incompatible with life).

@@ -34,6 +34,13 @@ from anasim.core.action_log import (
 ControlTab = Literal["Machine", "Medications", "Events"]
 
 VASOPRESSOR_KEYS = ("nore", "phenyl", "epi")
+MONITOR_BP_INDEX = {"sbp": 0, "dbp": 1, "map": 2}
+MONITOR_DISPLAY_FIELD = {
+    "hr": "display_hr",
+    "bis": "display_bis",
+    "etco2": "display_etco2",
+    "spo2": "display_spo2",
+}
 
 
 @dataclass
@@ -136,7 +143,16 @@ def require_propofol_cp(threshold: float = 2.0) -> Callable:
 
 def monitor_value(engine, attr: str):
     """Return the learner-facing monitor value for a vital sign."""
-    return engine.state.display_value(attr)
+    bp_index = MONITOR_BP_INDEX.get(attr)
+    if bp_index is not None:
+        pressure = engine.state.monitored_blood_pressure(
+            engine.config.arterial_line_enabled
+        )
+        return pressure[bp_index]
+    try:
+        return getattr(engine.state, MONITOR_DISPLAY_FIELD[attr])
+    except KeyError as exc:
+        raise ValueError(f"Unsupported monitor value: {attr!r}") from exc
 
 
 def join_messages(messages) -> str:

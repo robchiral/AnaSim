@@ -86,7 +86,8 @@ Important limits include:
 - The integrated simulator has not been validated for clinical prediction.
 - Displayed values pass through modeled monitor behavior, so they can differ
   from the underlying physiologic state.
-- The arterial pressure trace is synthesized for display.
+- The arterial pressure trace uses a dedicated Su-constrained landmark waveform
+  and catheter-transducer model. It has not been clinically validated.
 - The model does not currently represent acid-base balance, lactate, tissue
   oxygen debt, or a full anesthesia machine pneumatic system.
 

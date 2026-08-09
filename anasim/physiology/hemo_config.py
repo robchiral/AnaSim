@@ -18,13 +18,6 @@ class HemodynamicConfig:
     ci_elderly: float = 2.5
     ci_elderly_age: float = 70.0
 
-    # Arterial compliance
-    arterial_compliance_ref: float = 1.5
-    arterial_age_ref: float = 40.0
-    arterial_age_slope: float = 0.008
-    arterial_age_min: float = 0.5
-    arterial_age_max: float = 1.2
-
     # Signed RMAP exponent. Su et al. report FB = 0.66 and apply -FB.
     fb: float = -0.66
     hr_sv_coupling: float = 0.312

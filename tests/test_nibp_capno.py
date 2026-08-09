@@ -77,9 +77,16 @@ class TestNIBPCycling:
         t = 0.0
         while monitor.is_cycling:
             t += 0.5
-            monitor.step(0.5, t, true_map=35.0, true_sys=55.0, rhythm_type=RhythmType.SINUS)
+            monitor.step(
+                0.5,
+                t,
+                true_map=35.0,
+                true_sys=55.0,
+                true_dia=25.0,
+                rhythm_type=RhythmType.SINUS,
+            )
 
-        assert monitor.latest_reading.timestamp == pytest.approx(0.0)
+        assert monitor.latest_reading.timestamp is None
 
     def test_nibp_successful_shock_reading_overestimates_map(self):
         class StaticRng:
@@ -94,9 +101,16 @@ class TestNIBPCycling:
         t = 0.0
         while monitor.is_cycling:
             t += 0.5
-            monitor.step(0.5, t, true_map=40.0, true_sys=60.0, rhythm_type=RhythmType.SINUS)
+            monitor.step(
+                0.5,
+                t,
+                true_map=40.0,
+                true_sys=60.0,
+                true_dia=30.0,
+                rhythm_type=RhythmType.SINUS,
+            )
 
-        assert monitor.latest_reading.timestamp > 0.0
+        assert monitor.latest_reading.timestamp is not None
         assert monitor.latest_reading.map > 40.0
         assert monitor.latest_reading.systolic > 60.0
 
@@ -106,9 +120,16 @@ class TestNIBPCycling:
         t = 0.0
         while monitor.is_cycling:
             t += 0.5
-            monitor.step(0.5, t, true_map=0.0, true_sys=0.0, rhythm_type=RhythmType.ASYSTOLE)
+            monitor.step(
+                0.5,
+                t,
+                true_map=0.0,
+                true_sys=0.0,
+                true_dia=0.0,
+                rhythm_type=RhythmType.ASYSTOLE,
+            )
 
-        assert monitor.latest_reading.timestamp == pytest.approx(0.0)
+        assert monitor.latest_reading.timestamp is None
 
 
 class TestCapnographyWaveform:
