@@ -67,8 +67,6 @@ class MainWindow(QMainWindow):
             baseline_hb=p['baseline_hb'],
             renal_function=p['renal_function'],
             hepatic_function=p['hepatic_function'],
-            renal_status=p['renal_status'],
-            hepatic_status=p['hepatic_status'],
         )
         config = SimulationConfig(
             pk_model_propofol=p['pk_model_propofol'],
@@ -78,7 +76,6 @@ class MainWindow(QMainWindow):
             loc_model=p['loc_model'],
             mode=p['mode'],
             maint_type=p['maint_type'],
-            baseline_hb=p['baseline_hb'],
             enable_death_detector=p['enable_death_detector'],
             arterial_line_enabled=p['arterial_line_enabled'],
         )

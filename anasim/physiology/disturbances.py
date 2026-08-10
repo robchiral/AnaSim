@@ -8,6 +8,7 @@ _PROFILE_COL_HR = 2
 _PROFILE_COL_SVR = 3
 _PROFILE_COL_SV = 4
 
+
 @dataclass(frozen=True)
 class DisturbanceEffects:
     bis: float = 0.0
@@ -16,35 +17,53 @@ class DisturbanceEffects:
     hr: float = 0.0
 
 
-PROFILE_META = [
-    ("stim_intubation_pulse", "Intubation / Short Stimulus"),
-    ("stim_sustained_surgery", "Sustained Surgical Stimulation"),
-]
+@dataclass(frozen=True)
+class DisturbanceProfileSpec:
+    """One time-varying stimulus and its lifecycle."""
+
+    label: str
+    points: np.ndarray
+    finite: bool = False
+
+    @property
+    def duration_s(self) -> float | None:
+        """Return the endpoint for a finite profile."""
+        return float(self.points[-1, _PROFILE_COL_TIME]) if self.finite else None
+
+
+PROFILE_SPECS = {
+    "stim_intubation_pulse": DisturbanceProfileSpec(
+        label="Intubation / Short Stimulus",
+        finite=True,
+        points=np.array(
+            [
+                # time, BIS delta, HR delta, SVR delta, SV delta
+                [0.0, 0.0, 0.0, 0.0, 0.0],
+                [8.0, 6.0, 6.0, 1.5, 2.0],
+                [20.0, 12.0, 12.0, 3.0, 3.0],
+                [35.0, 4.0, 4.0, 1.0, 1.0],
+                [50.0, 0.0, 0.0, 0.0, 0.0],
+            ]
+        ),
+    ),
+    "stim_sustained_surgery": DisturbanceProfileSpec(
+        label="Sustained Surgical Stimulation",
+        points=np.array(
+            [
+                # time, BIS delta, HR delta, SVR delta, SV delta
+                [0.0, 0.0, 0.0, 0.0, 0.0],
+                [10.0, 4.0, 4.0, 0.8, 0.5],
+                [60.0, 8.0, 6.0, 1.6, 1.0],
+                [600.0, 8.0, 6.0, 1.6, 1.0],
+            ]
+        ),
+    ),
+}
 
 
 def list_disturbance_profiles() -> list[tuple[str, str]]:
     """Return (label, key) pairs for UI/selection."""
-    return [(label, key) for key, label in PROFILE_META]
-
-
-PROFILE_TABLES = {
-    # Time in seconds from disturbance start.
-    "stim_intubation_pulse": np.array([
-        # time, BIS delta, HR delta (bpm), SVR delta (Wood Units), SV delta (mL)
-        [0.0,  0.0,  0.0, 0.0, 0.0],
-        [8.0,  6.0,  6.0, 1.5, 2.0],
-        [20.0, 12.0, 12.0, 3.0, 3.0],
-        [35.0, 4.0,  4.0, 1.0, 1.0],
-        [50.0, 0.0,  0.0, 0.0, 0.0],
-    ]),
-    "stim_sustained_surgery": np.array([
-        # time, BIS delta, HR delta (bpm), SVR delta (Wood Units), SV delta (mL)
-        [0.0,   0.0, 0.0, 0.0, 0.0],
-        [10.0,  4.0, 4.0, 0.8, 0.5],
-        [60.0,  8.0, 6.0, 1.6, 1.0],
-        [600.0, 8.0, 6.0, 1.6, 1.0],
-    ]),
-}
+    return [(spec.label, key) for key, spec in PROFILE_SPECS.items()]
 
 
 class Disturbances:
@@ -57,24 +76,20 @@ class Disturbances:
 
     def __init__(self, dist_profile: str = None):
         self.dist_profile = dist_profile
-        self.disturb_point = PROFILE_TABLES.get(dist_profile)
-        self._profile_time = None
-        self._profile_bis = None
-        self._profile_hr = None
-        self._profile_svr = None
-        self._profile_sv = None
+        self.spec = None
 
         if dist_profile is None:
             return
-        if self.disturb_point is None:
-            raise ValueError(
-                "dist_profile should be: stim_intubation_pulse, stim_sustained_surgery or None"
-            )
-        self._profile_time = self.disturb_point[:, _PROFILE_COL_TIME]
-        self._profile_bis = self.disturb_point[:, _PROFILE_COL_BIS]
-        self._profile_hr = self.disturb_point[:, _PROFILE_COL_HR]
-        self._profile_svr = self.disturb_point[:, _PROFILE_COL_SVR]
-        self._profile_sv = self.disturb_point[:, _PROFILE_COL_SV]
+        try:
+            self.spec = PROFILE_SPECS[dist_profile]
+        except KeyError as exc:
+            choices = ", ".join(PROFILE_SPECS)
+            raise ValueError(f"dist_profile must be one of {choices} or None") from exc
+
+    def is_complete(self, elapsed_s: float) -> bool:
+        """Return whether a finite profile has reached its configured end."""
+        duration_s = self.spec.duration_s if self.spec else None
+        return duration_s is not None and elapsed_s >= duration_s
 
     def compute_dist(self, time: float) -> DisturbanceEffects:
         """
@@ -82,11 +97,37 @@ class Disturbances:
 
         Returns DisturbanceEffects with BIS/HR/SVR/SV deltas.
         """
-        if self.disturb_point is None:
+        if self.spec is None:
             return DisturbanceEffects()
 
-        dist_bis = np.interp(time, self._profile_time, self._profile_bis)
-        dist_hr = np.interp(time, self._profile_time, self._profile_hr)
-        dist_svr = np.interp(time, self._profile_time, self._profile_svr)
-        dist_sv = np.interp(time, self._profile_time, self._profile_sv)
-        return DisturbanceEffects(dist_bis, dist_svr, dist_sv, dist_hr)
+        points = self.spec.points
+        profile_time = points[:, _PROFILE_COL_TIME]
+        return DisturbanceEffects(
+            bis=float(np.interp(time, profile_time, points[:, _PROFILE_COL_BIS])),
+            svr=float(np.interp(time, profile_time, points[:, _PROFILE_COL_SVR])),
+            sv=float(np.interp(time, profile_time, points[:, _PROFILE_COL_SV])),
+            hr=float(np.interp(time, profile_time, points[:, _PROFILE_COL_HR])),
+        )
+
+    def compute_average(self, start_s: float, end_s: float) -> DisturbanceEffects:
+        """Return the time-weighted average effect over one simulation step."""
+        if self.spec is None or end_s <= start_s:
+            return self.compute_dist(start_s)
+
+        points = self.spec.points
+        profile_time = points[:, _PROFILE_COL_TIME]
+        internal_points = profile_time[(profile_time > start_s) & (profile_time < end_s)]
+        sample_times = np.concatenate(([start_s], internal_points, [end_s]))
+        widths = np.diff(sample_times)
+
+        def average(column: int) -> float:
+            values = np.interp(sample_times, profile_time, points[:, column])
+            area = np.sum((values[:-1] + values[1:]) * widths * 0.5)
+            return float(area / (end_s - start_s))
+
+        return DisturbanceEffects(
+            bis=average(_PROFILE_COL_BIS),
+            svr=average(_PROFILE_COL_SVR),
+            sv=average(_PROFILE_COL_SV),
+            hr=average(_PROFILE_COL_HR),
+        )

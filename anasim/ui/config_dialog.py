@@ -11,10 +11,19 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QRadioButton,
     QSpinBox,
     QVBoxLayout,
 )
+
+from anasim.patient.domain import (
+    AGE_RANGE_YEARS,
+    HEIGHT_RANGE_CM,
+    HEMOGLOBIN_RANGE_G_DL,
+    WEIGHT_RANGE_KG,
+)
+from anasim.patient.patient import Patient
 
 from .scenarios import SCENARIO_REGISTRY
 from .styles import COLORS, get_button_style, get_dialog_style, get_frame_style
@@ -84,19 +93,19 @@ class SimulationSetupDialog(QDialog):
         form.setContentsMargins(12, 16, 12, 12)
 
         self.sb_age = QSpinBox()
-        self.sb_age.setRange(18, 70)
+        self.sb_age.setRange(int(AGE_RANGE_YEARS[0]), int(AGE_RANGE_YEARS[1]))
         self.sb_age.setValue(40)
         self.sb_age.setSuffix(" years")
         form.addRow("Age:", self.sb_age)
 
         self.sb_weight = QDoubleSpinBox()
-        self.sb_weight.setRange(10, 200)
+        self.sb_weight.setRange(*WEIGHT_RANGE_KG)
         self.sb_weight.setValue(70.0)
         self.sb_weight.setSuffix(" kg")
         form.addRow("Weight:", self.sb_weight)
 
         self.sb_height = QDoubleSpinBox()
-        self.sb_height.setRange(50, 250)
+        self.sb_height.setRange(*HEIGHT_RANGE_CM)
         self.sb_height.setValue(170.0)
         self.sb_height.setSuffix(" cm")
         form.addRow("Height:", self.sb_height)
@@ -106,7 +115,7 @@ class SimulationSetupDialog(QDialog):
         form.addRow("Sex:", self.cb_sex)
 
         self.sb_hgb = QDoubleSpinBox()
-        self.sb_hgb.setRange(6.0, 20.0)
+        self.sb_hgb.setRange(*HEMOGLOBIN_RANGE_G_DL)
         self.sb_hgb.setSingleStep(0.1)
         self.sb_hgb.setValue(13.5)
         self.sb_hgb.setSuffix(" g/dL")
@@ -338,9 +347,7 @@ class SimulationSetupDialog(QDialog):
             self._sync_start_mode_from_tutorial()
             scenario_id = self.cb_scenario.currentData()["scenario_id"]
 
-        renal_text = self.cb_renal.currentText()
-        hepatic_text = self.cb_hepatic.currentText()
-        self.result_data = {
+        patient_data = {
             "age": self.sb_age.value(),
             "weight": self.sb_weight.value(),
             "height": self.sb_height.value(),
@@ -348,8 +355,16 @@ class SimulationSetupDialog(QDialog):
             "baseline_hb": self.sb_hgb.value(),
             "renal_function": self.cb_renal.currentData(),
             "hepatic_function": self.cb_hepatic.currentData(),
-            "renal_status": renal_text.split(" (")[0],
-            "hepatic_status": hepatic_text.split(" (")[0],
+        }
+        try:
+            Patient(**patient_data)
+        except ValueError as exc:
+            self.result_data = None
+            QMessageBox.warning(self, "Unsupported patient", str(exc))
+            return
+
+        self.result_data = {
+            **patient_data,
             "mode": "steady_state" if self.rb_maint.isChecked() else "awake",
             "maint_type": "balanced"
             if "Inhalational" in self.cb_maint_type.currentText()

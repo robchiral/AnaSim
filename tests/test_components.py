@@ -58,20 +58,19 @@ def test_disturbance_none():
     assert vals.sv == 0.0
     assert vals.hr == 0.0
 
-def test_disturbance_step():
-    dist = Disturbances("stim_intubation_pulse")
-    
-    # Before step
-    vals0 = dist.compute_dist(0.0)
-    assert vals0.bis == 0.0
-    
-    # in step
-    vals1 = dist.compute_dist(15.0) 
-    assert vals1.bis > 0
-    
-def test_disturbance_vitaldb():
-    dist = Disturbances("stim_sustained_surgery")
-    vals = dist.compute_dist(100.0)
-    assert vals.bis > 0.0
-    assert vals.svr > 0.0
-    assert vals.hr > 0.0
+def test_disturbance_profiles_interpolate_and_report_lifecycle():
+    pulse = Disturbances("stim_intubation_pulse")
+    assert pulse.compute_dist(0.0).bis == 0.0
+    assert pulse.compute_dist(15.0).bis > 0.0
+    assert pulse.compute_average(0.0, 60.0).bis > 0.0
+    assert not pulse.is_complete(49.9)
+    assert pulse.is_complete(50.0)
+
+    sustained = Disturbances("stim_sustained_surgery")
+    effects = sustained.compute_dist(100.0)
+    averaged_effects = sustained.compute_average(90.0, 110.0)
+    assert effects.bis > 0.0
+    assert effects.svr > 0.0
+    assert effects.hr > 0.0
+    assert averaged_effects.bis > 0.0
+    assert not sustained.is_complete(10_000.0)

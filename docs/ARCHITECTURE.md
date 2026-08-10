@@ -2,30 +2,34 @@
 
 ## Overview
 
-AnaSim couples pharmacology, cardiorespiratory physiology, ventilation, and
-simulated monitors. Respiratory drive, mechanics, gas exchange, and hemodynamics
-are modeled separately so that assisted and spontaneous ventilation each follow
-their own path.
+AnaSim separates pharmacology, cardiorespiratory physiology, ventilation, and
+monitor simulation into stateful subsystems. The runtime advances them in a
+fixed order and projects their outputs into `SimulationState`.
 
 ## State contract
 
-`SimulationState` separates physiologic truth, ideal arterial pulse landmarks,
+`SimulationState` separates physiologic state, ideal arterial pulse landmarks,
 and monitor measurements:
 
 | Layer | Fields | Meaning |
 |------|--------|---------|
-| Physiology | `map`, `hr`, `co`, `sv`, `svr`, `sao2`, `pa_co2`, `alveolar_co2`, `pao2` | Canonical backend truth used by physiology, analytics, and safety logic |
+| Physiology | `map`, `hr`, `co`, `sv`, `svr`, `sao2`, `pa_co2`, `alveolar_co2`, `pao2` | Source values used by physiology, analytics, and safety logic |
 | Ideal arterial pulse | `sbp`, `dbp` | Beat-latched landmark pressures derived from Su MAP and stroke volume |
 | Arterial catheter | `art_pressure`, `art_sbp`, `art_dbp`, `art_map` | Instantaneous and completed-beat values after fluid-filled line dynamics |
 | Other monitor outputs | `nibp_sys`, `nibp_dia`, `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Learner-facing measurements produced by their monitor models |
 
 State access rules:
 
-- `state.map/hr/sv/co/svr` remain Su outputs. The arterial renderer does not feed pressure back into Su.
-- `state.sbp/dbp` belong to the ideal arterial pulse renderer. Together with `state.map`, they are the direct pressure inputs for NIBP measurement synthesis.
-- UI, CLI, alarms, and scenarios use `art_*` while an arterial line is enabled and `nibp_*` otherwise.
-- Recorder output includes physiology and monitor measurements so logs can reproduce what the learner saw.
-- Projection and monitor boundaries normalize public numeric fields to Python `float` values.
+- `state.map/hr/sv/co/svr` store Su outputs. The arterial renderer reads these
+  values downstream.
+- `state.sbp/dbp` store ideal pulse landmarks. NIBP synthesis reads them with
+  `state.map`.
+- The UI, CLI, alarms, and scenarios read `art_*` when the arterial line is
+  enabled and `nibp_*` in cuff mode.
+- The recorder writes physiology and monitor measurements to reproduce the
+  displayed state.
+- Projection and monitor boundaries convert public numeric fields to Python
+  `float` values.
 
 ## Module structure
 
@@ -93,9 +97,10 @@ SimulationEngine.step()
 
 Pipeline ownership:
 
-- `runtime.step_physiology()` computes the live physiology snapshot.
+- `runtime.step_physiology()` computes physiologic output.
 - `projection.project_runtime_physiology()` writes raw physiologic fields into `SimulationState`.
-- `monitors.step_monitors()` advances measurement models and writes waveforms and monitor fields. It does not modify Su state.
+- `monitors.step_monitors()` reads projected physiology and writes waveforms and
+  monitor fields.
 
 ## Dependency graph
 
@@ -179,18 +184,17 @@ flowchart TD
 | BIS / TOF / LOC | raw model outputs | Displayed and alarmed values |
 | Monitor settings | arterial line enabled, NIBP interval | Changes presentation mode |
 
-## One-step lag cases
+## Cross-step inputs
 
-A few execution-order lags are part of the model contract:
+The fixed execution order carries these inputs from the preceding step:
 
 | Value | Used by | Updated by | Reason |
 |------|---------|------------|--------|
-| `state.co` | Volatile PK scaling and respiration perfusion effects | Hemodynamics | CO is computed after PK and respiration in the same step |
-| `state.va` | Volatile PK | Respiration | Alveolar ventilation is computed after machine and PK setup |
-| `state.mv` | Circuit / machine context | Physiology | Minute ventilation is finalized after mechanics and respiration |
+| `state.co` | Volatile PK scaling and respiration perfusion effects | Hemodynamics | Hemodynamics runs after PK and respiration |
+| `state.va` | Volatile PK | Respiration | Respiration runs after machine and PK setup |
+| `state.mv` | Circuit and machine context | Physiology | Physiology finalizes minute ventilation after mechanics and respiration |
 
-These lags are small at the intended simulation time steps and preserve the
-physiology execution order.
+Each value is delayed by one configured simulation step.
 
 ## State synchronization examples
 
@@ -211,15 +215,14 @@ spo2_monitor output   -> state.display_spo2
 
 ## Initialization
 
-Startup runs separately from the visible loop:
+Initialization runs before the visible simulation loop:
 
-- `awake` initializes directly from patient baselines with no hidden history.
-- `steady_state` reaches its starting point by running a hidden bootstrap under
-  controlled maintenance instead of solving for a mathematical equilibrium. The
-  bootstrap skips recording, display history, death checks, and visible fluid or
-  temperature bookkeeping.
-- Visible time starts at zero from live subsystem state. Any norepinephrine
-  needed to start at MAP 65 mmHg or higher remains visible and active.
+- `awake` initializes from patient baselines.
+- `steady_state` runs a controlled-maintenance bootstrap to initialize drug,
+  gas, fluid, and physiologic state. Recording, display history, death checks,
+  and visible fluid and temperature accounting begin after the bootstrap.
+- Visible time starts at zero. Norepinephrine used to reach the initial MAP
+  target remains active and visible.
 - Early drift can occur as controllers, gases, and fluid balance continue from
   the bootstrap.
 
@@ -227,32 +230,38 @@ Startup runs separately from the visible loop:
 
 ### Hemodynamics
 
-- Based on Su et al. 2023 with added volume, pulmonary, vasoactive, septic shock, and anaphylaxis effects.
+- The hemodynamic model extends Su et al. 2023 with volume, pulmonary,
+  vasoactive, septic shock, and anaphylaxis effects.
 - Propofol and remifentanil cardiovascular effects consume plasma concentrations (`propofol_cp`, `remi_cp`); CNS depth, tolerance, BIS, and respiratory depression consume effect-site values (`propofol_ce`, `remi_ce`).
 
 ### Respiration
 
 - Central drive is depressed by propofol, remifentanil, and sevoflurane.
-- Neuromuscular weakness is handled through rocuronium-dependent muscle factor.
-- `alveolar_co2`, `pa_co2`, and `etco2` are modeled separately.
+- A rocuronium-dependent muscle factor represents neuromuscular weakness.
+- The respiratory model tracks `alveolar_co2`, `pa_co2`, and `etco2`
+  separately.
 - Low cardiac output widens the PaCO2-EtCO2 gap; arterial `sao2` remains tied to PaO2 and hemoglobin dissociation.
 
 ### Monitors
 
 - ECG, arterial pressure, and pleth use one beat clock. Arterial ejection follows the QRS, and pleth follows arterial pressure after a peripheral delay.
 - Beat-synchronous monitor models advance internally at intervals of 10 ms or less, independent of the outer physiology step.
-- The arterial pulse renderer uses systolic, diastolic, dicrotic-notch, and dicrotic-peak landmarks inspired by Mahdi et al. Its beat mean equals Su MAP and its pulse pressure derives from Su stroke volume and age-adjusted arterial compliance.
-- The renderer is not the complete Mahdi stochastic pressure-control model. AnaSim keeps Su as the sole hemodynamic controller and does not add a Windkessel state.
+- Su controls hemodynamics. The arterial renderer shapes each beat with the
+  systolic, diastolic, dicrotic-notch, and dicrotic-peak landmarks described by
+  Mahdi et al. Beat mean equals Su MAP, and pulse pressure derives from Su stroke
+  volume and age-adjusted arterial compliance.
 - The arterial catheter applies configurable second-order measurement dynamics. The default natural frequency is 20 Hz and damping ratio is 0.65.
 - ART numerics come from completed filtered beats. NIBP measures the same ideal systolic, diastolic, and mean pressures with cuff timing, bias, and failure behavior.
-- Beat-derived HR replaces a separately smoothed HR signal. BIS retains dt-aware smoothing.
-- Poor perfusion slows finger SpO2 and reduces pleth amplitude without changing raw arterial saturation.
-- EtCO2 numerics update from completed capnogram breaths and become unavailable after 15 seconds without a valid exhaled sample.
+- Monitor HR is beat-derived. BIS uses time-step-aware smoothing.
+- Poor perfusion slows finger SpO2 and reduces pleth amplitude. Raw arterial
+  saturation remains tied to PaO2 and hemoglobin dissociation.
+- EtCO2 numerics update from completed capnogram breaths. The display clears 15
+  seconds after the last valid exhaled sample.
 - Unorganized arrest rhythms suppress the arterial pulse and pleth while ECG retains its rhythm-specific trace.
 
 ### TCI
 
-Controllers can rebuild after material PK changes and reseed after external boluses.
+Controllers rebuild after PK parameter changes and reseed after external boluses.
 
 ## Scenario objectives
 
@@ -266,8 +275,8 @@ Objectives fall into two kinds:
 | Action | "Give 500 mL", "start the vasopressor", "select the ETT" | `engine.actions` since the objective activated, plus current state when relevant |
 | State / physiologic | "MAP > 65", "TOF below 25%", "circuit FiO2 below 30%" | Current engine state |
 
-An action objective is satisfied only by an action taken after it activated, so
-an intervention performed earlier in the case cannot complete it.
+An action objective reads actions recorded after its activation. Earlier actions
+remain outside the objective's log range.
 
 Step scoping uses log positions because paused actions can share a timestamp.
 Step-scoped queries require an active objective.

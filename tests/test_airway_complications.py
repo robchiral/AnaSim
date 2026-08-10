@@ -19,7 +19,6 @@ def test_manual_airway_controls_update_state_and_resistance(awake_engine):
 def test_auto_laryngospasm_triggers_with_intubation_stimulus(awake_engine):
     engine = awake_engine
     engine.set_airway_mode("Mask")
-    engine.set_disturbance_profile("stim_intubation_pulse")
     engine.start_disturbance("stim_intubation_pulse")
 
     for _ in range(10):
@@ -33,13 +32,36 @@ def test_auto_laryngospasm_toggle_disables_response(awake_engine):
     engine = awake_engine
     engine.set_airway_mode("Mask")
     engine.set_auto_laryngospasm(False)
-    engine.set_disturbance_profile("stim_intubation_pulse")
     engine.start_disturbance("stim_intubation_pulse")
 
     for _ in range(10):
         engine.step(0.2)
 
     assert engine.state.laryngospasm < 0.01
+
+
+def test_intubation_stimulus_expires_and_laryngospasm_decays(awake_engine):
+    engine = awake_engine
+    engine.set_airway_mode("Mask")
+    engine.start_disturbance("stim_intubation_pulse")
+
+    for _ in range(249):
+        engine.step(0.2)
+
+    assert engine.disturbance_active
+    engine.laryngospasm_severity = 0.0
+    engine.state.laryngospasm = 0.0
+    engine.step(0.2)
+
+    assert engine.state.time == pytest.approx(50.0)
+    assert not engine.disturbance_active
+    severity_at_end = engine.state.laryngospasm
+    assert severity_at_end > 0.05
+
+    for _ in range(100):
+        engine.step(0.2)
+
+    assert engine.state.laryngospasm < severity_at_end * 0.15
 
 
 def test_upper_obstruction_reduces_effective_mv_without_hiding_vt(awake_engine):

@@ -78,6 +78,7 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
     engine._depth_index = depth_index
     engine._metabolic_factor = metabolic_factor
 
+    disturbance_complete = _disturbance_completes_during_step(engine, dt)
     disturbances = step_disturbances(engine, dt)
     updated_pk_models = update_pk_hemodynamics(engine, engine.state.co)
     if updated_pk_models:
@@ -92,6 +93,8 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
     update_shivering(engine, dt)
     step_temperature(engine, dt)
     check_patient_viability(engine, dt)
+    if disturbance_complete and engine.disturbance_active:
+        engine.stop_disturbance()
 
 
 def step_mechanics(engine: "SimulationEngine", dt: float, vent_active: bool, bag_mask_active: bool):
@@ -255,7 +258,7 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
         effects = zero_disturbance()
     else:
         t_rel = max(0.0, state.time - engine.disturbance_start_time)
-        effects = engine.disturbances.compute_dist(t_rel)
+        effects = engine.disturbances.compute_average(t_rel, t_rel + dt)
 
     depth_factor = min(1.0, engine._depth_index)
     stim_gain = max(0.3, 1.0 - 0.6 * depth_factor)
@@ -307,6 +310,13 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
         engine.hemo.sepsis_severity = engine.sepsis_severity
 
     return effects
+
+
+def _disturbance_completes_during_step(engine: "SimulationEngine", dt: float) -> bool:
+    if not engine.disturbance_active or not engine.disturbances:
+        return False
+    t_rel = max(0.0, engine.state.time - engine.disturbance_start_time)
+    return engine.disturbances.is_complete(t_rel + dt)
 
 
 def step_tci(engine: "SimulationEngine", dt: float) -> None:
