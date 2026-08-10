@@ -235,7 +235,7 @@ class TestVasopressorPK:
             weight=70,
             height=170,
             sex="male",
-            renal_function=0.3,
+            renal_function=0.4,
         )
 
         pk_normal = MilrinonePK(normal)

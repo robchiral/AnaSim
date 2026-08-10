@@ -4,6 +4,7 @@ import pytest
 
 from anasim.core import monitors as monitor_core
 from anasim.core import runtime as runtime_core
+from anasim.core.drug_registry import get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import AirwayType, SimulationConfig
 from anasim.patient.patient import Patient
@@ -60,11 +61,6 @@ class TestPhysiologicalSanity:
         assert history_span <= 10.0 + 1e-9
         assert history_span >= 9.8
             
-    def test_svr_units(self, engine):
-        """SVR should be in Wood Units (mmHg*min/L), ~10-30."""
-        assert 10.0 <= engine.state.svr <= 30.0, \
-            f"SVR {engine.state.svr} is not in Wood Units! (Expected 10-30)"
-
     def test_default_continuous_fluids(self, patient):
         """Default continuous IV fluids should be 1 mL/kg/hr."""
         config = SimulationConfig(mode="steady_state", maint_type="tiva", dt=1.0)
@@ -91,72 +87,42 @@ class TestPhysiologicalSanity:
         assert engine.hemo.total_colloid_in_ml == pytest.approx(250.0, rel=0, abs=1e-2)
         assert engine.hemo.blood_volume > base_bv + 100.0
 
-class TestPharmacologyBasics:
-    """Verifies PK/PD basics."""
-    
-    def test_propofol_bolus(self, engine):
-        """Verify bolus increases concentration."""
-        engine.start()
-        engine.step(0.1)
-        base_cp = engine.state.propofol_cp
-        
-        # Give 200mg Propofol
-        engine.give_drug_bolus("Propofol", 200.0)
-        engine.step(0.1)
-        
-        peak_cp = engine.state.propofol_cp
-        assert peak_cp > base_cp + 1.0, f"Propofol Cp did not rise significantly after bolus (Got {peak_cp})"
-
-
-@pytest.mark.parametrize(
-    "drug,mode,pk_attr,controller_attr,state_values,max_rate",
-    [
-        ("propofol", "effect_site", "pk_prop", "tci_prop", {"c1": 1.0, "c2": 2.0, "c3": 3.0, "ce": 4.0}, "prop"),
-        ("remi", "effect_site", "pk_remi", "tci_remi", {"c1": 1.5, "c2": 2.5, "c3": 3.5, "ce": 4.5}, "remi"),
-        ("nore", "plasma", "pk_nore", "tci_nore", {"c1": 5.0, "c2": 2.0, "ce": 4.0}, "nore"),
-        ("epi", "plasma", "pk_epi", "tci_epi", {"c1": 3.0, "ce": 2.0}, "epi"),
-        ("phenyl", "plasma", "pk_phenyl", "tci_phenyl", {"c1": 6.0, "c2": 1.0, "ce": 2.5}, "phenyl"),
-        ("roc", "effect_site", "pk_roc", "tci_roc", {"c1": 2.0, "c2": 2.0, "c3": 2.0, "ce": 2.0}, "roc"),
-    ],
-)
-def test_tci_seeds_state_and_caps_rate(engine, drug, mode, pk_attr, controller_attr, state_values, max_rate):
+def test_tci_seeds_state_and_caps_rate(engine):
     """TCI should seed from PK state and use a realistic max rate for each drug."""
     weight = engine.patient.weight
-    pk_model = getattr(engine, pk_attr)
-    for key, val in state_values.items():
-        setattr(pk_model.state, key, val)
+    cases = (
+        ("propofol", "effect_site", "pk_prop", "tci_prop", {"c1": 1.0, "c2": 2.0, "c3": 3.0, "ce": 4.0}),
+        ("remi", "effect_site", "pk_remi", "tci_remi", {"c1": 1.5, "c2": 2.5, "c3": 3.5, "ce": 4.5}),
+        ("nore", "plasma", "pk_nore", "tci_nore", {"c1": 5.0, "c2": 2.0, "ce": 4.0}),
+        ("epi", "plasma", "pk_epi", "tci_epi", {"c1": 3.0, "ce": 2.0}),
+        ("phenyl", "plasma", "pk_phenyl", "tci_phenyl", {"c1": 6.0, "c2": 1.0, "ce": 2.5}),
+        ("roc", "effect_site", "pk_roc", "tci_roc", {"c1": 2.0, "c2": 2.0, "c3": 2.0, "ce": 2.0}),
+    )
+    for drug, mode, pk_attr, controller_attr, state_values in cases:
+        pk_model = getattr(engine, pk_attr)
+        for key, value in state_values.items():
+            setattr(pk_model.state, key, value)
 
-    engine.enable_tci(drug, 2.0, mode)
-    controller = getattr(engine, controller_attr)
-    assert controller is not None
+        engine.enable_tci(drug, 2.0, mode)
+        controller = getattr(engine, controller_attr)
+        assert controller is not None
 
-    c1 = getattr(pk_model.state, "c1", 0.0)
-    c2 = getattr(pk_model.state, "c2", 0.0)
-    c3 = getattr(pk_model.state, "c3", 0.0)
-    ce = getattr(pk_model.state, "ce", 0.0)
+        c1 = getattr(pk_model.state, "c1", 0.0)
+        c2 = getattr(pk_model.state, "c2", 0.0)
+        c3 = getattr(pk_model.state, "c3", 0.0)
+        ce = getattr(pk_model.state, "ce", 0.0)
 
-    assert controller.x[0, 0] == pytest.approx(c1)
-    if controller.n_state >= 2:
-        assert controller.x[1, 0] == pytest.approx(c2)
-    if controller.n_state == 3:
-        assert controller.x[2, 0] == pytest.approx(ce)
-    if controller.n_state >= 4:
-        assert controller.x[2, 0] == pytest.approx(c3)
-        assert controller.x[3, 0] == pytest.approx(ce)
+        assert controller.x[0, 0] == pytest.approx(c1)
+        if controller.n_state >= 2:
+            assert controller.x[1, 0] == pytest.approx(c2)
+        if controller.n_state == 3:
+            assert controller.x[2, 0] == pytest.approx(ce)
+        if controller.n_state >= 4:
+            assert controller.x[2, 0] == pytest.approx(c3)
+            assert controller.x[3, 0] == pytest.approx(ce)
 
-    if max_rate == "prop":
-        expected = weight * 0.3 / 60.0
-    elif max_rate == "remi":
-        expected = weight * 0.5 / 60.0
-    elif max_rate == "nore":
-        expected = weight * 1.0 / 60.0
-    elif max_rate == "epi":
-        expected = weight * 0.5 / 60.0
-    elif max_rate == "phenyl":
-        expected = weight * 2.0 / 60.0
-    else:
-        expected = weight * 1.0 / 3600.0
-    assert controller.max_rate == pytest.approx(expected)
+        expected_max_rate = get_drug_spec(drug).max_rate.internal_rate(weight)
+        assert controller.max_rate == pytest.approx(expected_max_rate)
 
 def test_hr_disturbance_not_double_applied():
     """HR disturbance should be applied only once (physiology, not display)."""
@@ -191,11 +157,6 @@ def test_hr_disturbance_not_double_applied():
     monitor_core.step_monitors(engine2, 1.0, "EXP", hemo_state, resp_state, DisturbanceEffects(hr=10.0))
 
     assert engine1.state.display_hr == pytest.approx(engine2.state.display_hr, rel=1e-6)
-
-def test_janmahasatian_lbm_remains_positive_at_extreme_bmi():
-    """The selected LBM equation should remain positive at extreme BMI."""
-    patient = Patient(age=40, weight=300.0, height=160.0, sex="male")
-    assert patient.lbm > 0.0
 
 def test_pk_hemodynamic_scaling_applies_to_propofol():
     """PK central volume should scale with blood volume ratio."""

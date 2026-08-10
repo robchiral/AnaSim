@@ -7,16 +7,16 @@ For installation and the desktop workflow, see the [README](../README.md).
 | Argument | Description | Default |
 |----------|-------------|---------|
 | `--mode` | Run mode: `ui` or `headless` | `ui` |
-| `--duration` | Simulation duration in seconds (headless only) | `10.0` |
-| `--config` | Path to a JSON configuration file | Not set |
-| `--record` | Enable CSV recording (headless only) | `false` |
+| `--duration` | Headless run time in seconds | `10.0` |
+| `--config` | JSON configuration path | None |
+| `--record` | Write a CSV recording in headless mode | `false` |
 | `--record-dir` | Output directory for recordings | `recordings` |
 | `--record-interval` | Sample interval in seconds for CSV | `1.0` |
 
 ## Configuration file
 
-A JSON file can set any patient or simulation field. Omitted fields keep their
-defaults.
+A JSON configuration can set patient, model, initialization, and runtime fields.
+Omitted fields use their defaults.
 
 ### Minimal example
 
@@ -30,28 +30,41 @@ defaults.
 }
 ```
 
-### Options
+### Fields
 
-- Patient fields include `age`, `weight`, `height`, `sex`, `asa`, baseline
-  vital signs and hematology, and renal or hepatic function. If `baseline_hct`
-  is omitted or `null`, the engine derives it from hemoglobin.
-- Runtime fields include `dt`, `rng_seed`, `simulation_speed`,
-  `enable_death_detector`, and `maintenance_fluid_ml_hr`. A `null` maintenance
-  fluid rate uses 1 mL/kg/hr.
-- `mode` accepts `awake` or `steady_state`; `maint_type` accepts `tiva` or
-  `balanced`. Steady-state mode runs a managed-maintenance bootstrap before
-  visible time starts.
-- Model fields accept: propofol PK (`Marsh`, `Schnider`, `Eleveld`),
-  remifentanil PK (`Minto`), BIS (`Bouillon`, `Eleveld`, `Fuentes`, `Yumuk`),
-  hemodynamics (`Su2023`), respiration (`SingleCompartment`), norepinephrine PK
-  (`Li`, `Oualha`, `Beloeil`), epinephrine PK (`Clutter`, `Abboud`, `Oualha`),
-  and loss of consciousness (`Kern`, `Mertens`, `Johnson`).
-- `disturbance_profile` accepts `stim_intubation_pulse`,
-  `stim_sustained_surgery`, or `null`. `volatile_agents` accepts
-  `["sevoflurane"]` or an empty list.
+| Group | Fields |
+|-------|--------|
+| Patient | `age`, `weight`, `height`, `sex`, `asa` |
+| Baseline physiology | `baseline_temp`, `baseline_hb`, `baseline_hct`, `baseline_hr`, `baseline_map`, `baseline_rr`, `baseline_vt` |
+| Organ function | `renal_function`, `hepatic_function` |
+| Initialization | `mode`: `awake` or `steady_state`; `maint_type`: `tiva` or `balanced` |
+| Runtime | `dt`, `rng_seed`, `simulation_speed`, `enable_death_detector`, `arterial_line_enabled`, `maintenance_fluid_ml_hr` |
+| Events | `disturbance_profile`: `stim_intubation_pulse`, `stim_sustained_surgery`, or `null` |
+| Volatile agents | `volatile_agents`: `["sevoflurane"]` or `[]` |
 
-AnaSim rejects unknown configuration keys and unsupported model names with an
-error.
+Patient input ranges are age 18 to 70 years, weight 50 to 100 kg, height 150 to
+200 cm, BMI 18 to 32 kg/m², hemoglobin 6 to 20 g/dL, hematocrit 0.18 to 0.60,
+renal function 0.4 to 1.0, and hepatic function 0.5 to 1.0.
+
+`"baseline_hct": null` derives hematocrit from hemoglobin.
+`"maintenance_fluid_ml_hr": null` uses 1 mL/kg/hr. Steady-state mode runs the
+managed-maintenance bootstrap before visible time starts.
+
+Model fields accept these values:
+
+| Field | Values |
+|-------|--------|
+| `pk_model_propofol` | `Marsh`, `Schnider`, `Eleveld` |
+| `pk_model_remi` | `Minto` |
+| `bis_model` | `Bouillon`, `Eleveld`, `Fuentes`, `Yumuk` |
+| `hemo_model` | `Su2023` |
+| `resp_model` | `SingleCompartment` |
+| `pk_model_nore` | `Li`, `Oualha`, `Beloeil` |
+| `pk_model_epi` | `Clutter`, `Abboud`, `Oualha` |
+| `loc_model` | `Kern`, `Mertens`, `Johnson` |
+
+AnaSim reports unknown keys, invalid model names, out-of-range values, and
+non-finite numbers as configuration errors.
 
 ## Examples
 

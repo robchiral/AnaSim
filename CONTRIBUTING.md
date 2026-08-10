@@ -21,4 +21,4 @@ interactively.
 - Update `docs/REFERENCES.md` when model sources or material adaptations change.
 - Update `CHANGELOG.md` for user-visible changes.
 - Use direct technical language in user-facing text. Define unfamiliar terms and
-  state model limits without promotional wording.
+  state model limits explicitly.

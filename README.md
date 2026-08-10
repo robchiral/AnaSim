@@ -1,7 +1,7 @@
 # AnaSim
 
-Interactive adult anesthesia and physiology simulation for teaching and model
-exploration.
+AnaSim is an interactive adult anesthesia and physiology simulator for teaching
+and model exploration.
 
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/anasim-simulator.svg)](https://pypi.org/project/anasim-simulator/)
@@ -11,28 +11,27 @@ exploration.
 ![AnaSim guided induction demo](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/anasim_demo.gif)
 
 > [!WARNING]
-> **For education and research only**
+> **Education and research use**
 >
-> AnaSim is not a medical device or a patient-specific predictor. Do not use it
-> to guide clinical care.
+> AnaSim is simulation software, not a medical device. Do not use its output to
+> guide clinical care.
 
 ## What AnaSim models
 
-AnaSim runs drug delivery, pharmacokinetics, pharmacodynamics, cardiorespiratory
-physiology, ventilation, fluids, temperature, and common perioperative
-disturbances together in real time. The desktop interface follows familiar
-monitor and anesthesia machine conventions. A headless mode runs scripted
-experiments and records to CSV.
+AnaSim simulates drug delivery, pharmacokinetics, pharmacodynamics,
+cardiorespiratory physiology, ventilation, fluids, temperature, and common
+perioperative events in real time. The desktop interface uses standard patient
+monitor and anesthesia machine conventions. Headless mode supports scripted
+runs and CSV recording.
 
-The current drug set includes propofol, remifentanil, sevoflurane, rocuronium,
-sugammadex, norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine,
-and milrinone. Ventilation modes include VCV, PCV, PSV, CPAP, and bag-mask
+AnaSim includes propofol, remifentanil, sevoflurane, rocuronium, sugammadex,
+norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine, and
+milrinone. Ventilation modes include VCV, PCV, PSV, CPAP, and bag-mask
 ventilation.
 
 ## Install and start
 
-AnaSim requires Python 3.10 or newer. Install the published package in a virtual
-environment:
+AnaSim requires Python 3.10 or later. Install it in a virtual environment:
 
 ```bash
 python3 -m venv .venv
@@ -43,18 +42,18 @@ anasim
 
 On Windows, activate the environment with `.venv\Scripts\activate`.
 
-The distribution name is `anasim-simulator`. The command and Python import are
-both `anasim`.
+The package name is `anasim-simulator`. The command and Python module are both
+named `anasim`.
 
 ## First session
 
-For a short guided review of the interface:
+Run the guided TIVA induction to become familiar with the interface:
 
 1. Launch `anasim`.
 2. Select **Guided scenario** and **Induction (TIVA)**.
 3. Confirm the default patient and select **Start simulation**.
 4. Use **Open machine**, **Open medications**, and **Open events** in the
-   objective panel to move between control areas.
+   objective panel to open each control area.
 5. Start the clock when you are ready to observe the physiologic response.
 
 ## Interface
@@ -67,29 +66,38 @@ For a short guided review of the interface:
 | Events and fluids | Fluids, blood products, surgical stimulation, airway events, hemorrhage, anaphylaxis, and sepsis |
 
 Guided scenarios cover TIVA and inhalational induction, emergence, hemorrhage,
-anaphylaxis, septic shock, and oxygen supply failure. Open simulation mode gives
-direct control of the same environment.
+anaphylaxis, septic shock, and oxygen supply failure. Open simulation mode
+provides direct control of the same environment.
 
 ## Model scope and limits
 
-AnaSim accepts adult patients aged 18 to 70 years. That is the population behind
-the Su et al. hemodynamic model, whose age term is strong, so ages outside the
-range would be extrapolation the source does not support.
+AnaSim accepts these patient inputs:
 
-AnaSim uses published models wherever they still hold together once combined.
-Where the literature offers no compatible joint model, it falls back on stated
-heuristic parameters and regression ranges, listed in
-[references and implementation choices](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md).
+| Input | Supported range |
+|-------|-----------------|
+| Age | 18 to 70 years |
+| Weight | 50 to 100 kg |
+| Height | 150 to 200 cm |
+| BMI derived from weight and height | 18 to 32 kg/m² |
+| Hemoglobin | 6 to 20 g/dL |
+| Hematocrit | 0.18 to 0.60 |
+| Renal function factor | 0.4 to 1.0 |
+| Hepatic function factor | 0.5 to 1.0 |
 
-Important limits include:
+The body-size limits enclose the observed ranges in the healthy-adult cohort used
+by the Su hemodynamic and Li norepinephrine models. Weight and height must also
+produce a BMI within the supported range. Renal and hepatic factors are
+dimensionless model inputs.
 
-- The integrated simulator has not been validated for clinical prediction.
-- Displayed values pass through modeled monitor behavior, so they can differ
-  from the underlying physiologic state.
-- The arterial pressure trace uses a dedicated Su-constrained landmark waveform
-  and catheter-transducer model. It has not been clinically validated.
-- The model does not currently represent acid-base balance, lactate, tissue
-  oxygen debt, or a full anesthesia machine pneumatic system.
+AnaSim combines published component models with simulator-specific models for
+respiratory drug interaction, neuromuscular block and reversal, vasoactive drug
+response, and arterial pressure display. See
+[model references](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md)
+for sources and implementation details.
+
+Display values include simulated monitor response and may differ from the
+underlying physiologic state. Acid-base balance, lactate, tissue oxygen debt,
+and complete anesthesia machine pneumatics are outside the current model scope.
 
 ## Headless use
 
@@ -99,15 +107,15 @@ Run a reproducible ten-second simulation:
 anasim --mode headless --duration 10 --config patient.json --record
 ```
 
-Configuration files can set patient characteristics, model choices, initial
-state, random seed, and runtime options. See the
+Configuration files set patient characteristics, model choices, initial state,
+random seed, and runtime options. See the
 [CLI guide](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md) for
-the full schema and examples.
+the available fields.
 
 ## Documentation
 
 - [CLI usage](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md)
-- [References and implementation choices](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md)
+- [Model references](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md)
 - [Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md)
 - [Contribution guide](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md)
 - [Changelog](https://github.com/robchiral/AnaSim/blob/main/CHANGELOG.md)
@@ -131,8 +139,7 @@ Initial TIVA implementations were derived from
 
 ## Citation and license
 
-If you use AnaSim in teaching or research, cite the software and the exact
-release described in
+For teaching or research use, cite the software and release described in
 [`CITATION.cff`](https://github.com/robchiral/AnaSim/blob/main/CITATION.cff).
 AnaSim is available under the
 [MIT License](https://github.com/robchiral/AnaSim/blob/main/LICENSE).

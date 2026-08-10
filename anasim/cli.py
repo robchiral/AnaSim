@@ -8,8 +8,7 @@ from anasim.core.engine import SimulationConfig, SimulationEngine
 from anasim.patient.patient import Patient
 
 PATIENT_CONFIG_FIELDS = {
-    field.name for field in fields(Patient)
-    if field.name not in {"lbm", "bmi", "bsa"}
+    model_field.name for model_field in fields(Patient) if model_field.init
 }
 SIMULATION_CONFIG_FIELDS = {field.name for field in fields(SimulationConfig)}
 CONFIG_FIELDS = PATIENT_CONFIG_FIELDS | SIMULATION_CONFIG_FIELDS
@@ -17,6 +16,8 @@ CONFIG_FIELDS = PATIENT_CONFIG_FIELDS | SIMULATION_CONFIG_FIELDS
 
 def build_models_from_config(config_data: dict) -> tuple[Patient, SimulationConfig]:
     """Build typed inputs and reject misspelled or obsolete keys."""
+    if not isinstance(config_data, dict):
+        raise ValueError("Configuration must be a JSON object")
     unknown = set(config_data) - CONFIG_FIELDS
     if unknown:
         names = ", ".join(sorted(unknown))
@@ -46,11 +47,11 @@ def run_headless(args):
             raise SystemExit(1) from e
     try:
         patient, sim_config = build_models_from_config(config_data)
-    except ValueError as e:
+        engine = SimulationEngine(patient, sim_config)
+    except (TypeError, ValueError) as e:
         print(f"Error loading config: {e}")
         raise SystemExit(1) from e
-    
-    engine = SimulationEngine(patient, sim_config)
+
     if args.record:
         engine.start_recording(output_dir=args.record_dir, sample_interval_sec=args.record_interval)
     engine.start()

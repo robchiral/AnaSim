@@ -78,20 +78,6 @@ class PendingInfusion:
     label: str = "crystalloid"
 
 
-def _normalize_baseline_hct(baseline_hb: float, baseline_hct: Optional[float]) -> float:
-    """Derive or validate hematocrit from hemoglobin before model construction."""
-    hb = max(1.0, float(baseline_hb))
-    expected_hct = clamp(0.03 * hb, 0.10, 0.70)
-    if baseline_hct is None:
-        return expected_hct
-
-    hct = clamp(float(baseline_hct), 0.10, 0.70)
-    if abs(hct - expected_hct) > 0.12:
-        raise ValueError(
-            f"baseline_hb={hb:.1f} g/dL and baseline_hct={hct:.2f} are grossly inconsistent"
-        )
-    return hct
-
 PROPOFOL_MODELS = {
     "Marsh": PropofolPKMarsh,
     "Schnider": PropofolPKSchnider,
@@ -179,7 +165,6 @@ class SimulationEngine(DrugControllerMixin):
       through the projection and monitor modules.
     """
     def __init__(self, patient: Patient, config: SimulationConfig):
-        self._configure_patient_baseline_hematology(patient, config)
         self.patient = patient
         self.config = config
         self.state = SimulationState()
@@ -341,15 +326,6 @@ class SimulationEngine(DrugControllerMixin):
         self.initialize_models()
         self._configure_maintenance_fluids()
         self.initialize_state()
-
-    @staticmethod
-    def _configure_patient_baseline_hematology(patient: Patient, config: SimulationConfig) -> None:
-        baseline_hb = max(1.0, float(config.baseline_hb))
-        baseline_hct = _normalize_baseline_hct(baseline_hb, config.baseline_hct)
-        patient.baseline_hb = baseline_hb
-        patient.baseline_hct = baseline_hct
-        config.baseline_hb = baseline_hb
-        config.baseline_hct = baseline_hct
 
     def _append_output_snapshot(self) -> None:
         """Append public state and retain ten seconds by timestamp."""

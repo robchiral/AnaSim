@@ -7,6 +7,8 @@ from PySide6.QtWidgets import QApplication
 
 from anasim.core.drug_registry import DRUG_REGISTRY
 from anasim.core.state import SimulationConfig, SimulationState
+from anasim.patient.domain import HEIGHT_RANGE_CM, WEIGHT_RANGE_KG
+from anasim.ui.config_dialog import SimulationSetupDialog
 from anasim.ui.controls_widget import ControlPanelWidget
 from anasim.ui.monitor_widget import PatientMonitorWidget
 from anasim.ui.scenarios import (
@@ -76,6 +78,29 @@ SCENARIO_WALKTHROUGHS = {
 @pytest.fixture(scope="module")
 def qapp():
     return QApplication.instance() or QApplication(sys.argv)
+
+
+def test_setup_dialog_enforces_supported_patient_domain(qapp, monkeypatch):
+    dialog = SimulationSetupDialog()
+
+    assert dialog.sb_weight.minimum() == WEIGHT_RANGE_KG[0]
+    assert dialog.sb_weight.maximum() == WEIGHT_RANGE_KG[1]
+    assert dialog.sb_height.minimum() == HEIGHT_RANGE_CM[0]
+    assert dialog.sb_height.maximum() == HEIGHT_RANGE_CM[1]
+    dialog.sb_weight.setValue(WEIGHT_RANGE_KG[0])
+    dialog.sb_height.setValue(HEIGHT_RANGE_CM[1])
+    warning = {}
+    monkeypatch.setattr(
+        "anasim.ui.config_dialog.QMessageBox.warning",
+        lambda _parent, title, message: warning.update(title=title, message=message),
+    )
+
+    dialog.accept()
+
+    assert dialog.result_data is None
+    assert warning["title"] == "Unsupported patient"
+    assert "bmi" in warning["message"]
+    dialog.close()
 
 
 def _step(scenario, step_id):
@@ -447,3 +472,27 @@ def test_controls_sync_external_engine_changes(qapp, engine_factory):
     assert panel.sb_pinsp.value() == 18
     assert panel.sb_bronchospasm.value() == 40
     assert panel.drug_widgets["nore"]["rate"].value() == 3.0
+
+
+def test_controls_clear_finished_disturbance(qapp, engine_factory):
+    engine = engine_factory()
+    panel = ControlPanelWidget(engine)
+    profile_index = next(
+        index
+        for index, (_, key) in enumerate(panel._disturbance_profiles)
+        if key == "stim_intubation_pulse"
+    )
+
+    panel.cb_disturbance.setCurrentIndex(profile_index)
+    panel.b_disturb.setChecked(True)
+    assert engine.disturbance_active
+
+    engine.state.time = engine.disturbance_start_time + 50.0
+    engine.start()
+    engine.step(0.1)
+    panel.sync_with_engine()
+
+    assert not engine.disturbance_active
+    assert not panel.b_disturb.isChecked()
+    assert panel.cb_disturbance.isEnabled()
+    assert panel.cb_disturbance.currentIndex() == profile_index

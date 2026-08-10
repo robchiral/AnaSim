@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
 
+from anasim.patient.domain import finite_number
+
 SUPPORTED_MODEL_OPTIONS = {
     "pk_model_propofol": {"Marsh", "Schnider", "Eleveld"},
     "pk_model_remi": {"Minto"},
@@ -33,8 +35,6 @@ class SimulationConfig:
     mode: str = "awake" # 'awake' or 'steady_state'
     maint_type: str = "tiva" # 'tiva' or 'balanced'
     disturbance_profile: str = None # 'stim_intubation_pulse', 'stim_sustained_surgery'
-    baseline_hb: float = 13.5
-    baseline_hct: Optional[float] = None
     # Enabled agents (empty list disables volatiles). Supported: "sevoflurane".
     volatile_agents: List[str] = field(default_factory=lambda: ["sevoflurane"])
 
@@ -48,13 +48,18 @@ class SimulationConfig:
     rng_seed: Optional[int] = None
 
     def __post_init__(self):
+        self.dt = finite_number("dt", self.dt)
         if self.dt <= 0:
             raise ValueError("dt must be greater than zero")
         for field_name, supported in SUPPORTED_MODEL_OPTIONS.items():
             value = getattr(self, field_name)
-            if value not in supported:
+            if not isinstance(value, str) or value not in supported:
                 choices = ", ".join(sorted(supported))
                 raise ValueError(f"{field_name}={value!r} is unsupported; choose one of: {choices}")
+        if not isinstance(self.volatile_agents, list) or any(
+            not isinstance(agent, str) for agent in self.volatile_agents
+        ):
+            raise ValueError("volatile_agents must be a list of agent names")
         unsupported_agents = set(self.volatile_agents) - SUPPORTED_VOLATILE_AGENTS
         if unsupported_agents:
             names = ", ".join(sorted(unsupported_agents))

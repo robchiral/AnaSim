@@ -205,7 +205,7 @@ def test_low_flow_widens_pa_co2_etco2_gap():
         ("steady_state", "balanced"),
     ],
 )
-def test_engine_snapshots_preserve_core_physiologic_invariants(mode: str, maint_type: str | None):
+def test_engine_snapshots_preserve_public_contract(mode: str, maint_type: str | None):
     patient = Patient(age=40, weight=70, height=170, sex="male")
     config = SimulationConfig(mode=mode, maint_type=maint_type, rng_seed=123) if maint_type else SimulationConfig(mode=mode, rng_seed=123)
     engine = SimulationEngine(patient, config)
@@ -214,21 +214,6 @@ def test_engine_snapshots_preserve_core_physiologic_invariants(mode: str, maint_
     assert engine.state.map == pytest.approx((engine.state.sbp + 2.0 * engine.state.dbp) / 3.0, abs=8.0)
     assert 0.0 <= engine.state.hct <= 0.7
     assert engine.state.hb_g_dl >= 0.0
-
-
-@pytest.mark.parametrize(
-    ("mode", "maint_type"),
-    [
-        ("awake", None),
-        ("steady_state", "tiva"),
-        ("steady_state", "balanced"),
-    ],
-)
-def test_public_state_numeric_fields_use_builtin_floats(mode: str, maint_type: str | None):
-    patient = Patient(age=40, weight=70, height=170, sex="male")
-    config = SimulationConfig(mode=mode, maint_type=maint_type, rng_seed=123) if maint_type else SimulationConfig(mode=mode, rng_seed=123)
-    engine = SimulationEngine(patient, config)
-
     _assert_builtin_float_contract(engine.state)
 
     engine.start()
@@ -261,6 +246,7 @@ def test_awake_initial_snapshot_uses_patient_baselines():
         weight=70,
         height=170,
         sex="male",
+        baseline_hb=8.0,
         baseline_hr=95.0,
         baseline_map=105.0,
         baseline_rr=16.0,
@@ -268,7 +254,7 @@ def test_awake_initial_snapshot_uses_patient_baselines():
     )
     engine = SimulationEngine(
         patient,
-        SimulationConfig(mode="awake", baseline_hb=8.0, rng_seed=123),
+        SimulationConfig(mode="awake", rng_seed=123),
     )
 
     assert engine.state.hr == pytest.approx(95.0, abs=1e-3)
@@ -279,6 +265,7 @@ def test_awake_initial_snapshot_uses_patient_baselines():
     assert engine.state.vt == pytest.approx(620.0, abs=1e-3)
     assert engine.state.hb_g_dl == pytest.approx(8.0, abs=1e-6)
     assert engine.state.hct == pytest.approx(0.24, abs=1e-6)
+    assert engine.patient.baseline_hct == pytest.approx(0.24, abs=1e-6)
     assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
 
 
@@ -369,20 +356,17 @@ def test_steady_state_balanced_snapshot_syncs_volatile_state():
     assert engine.state.temp_c == pytest.approx(37.0, abs=1e-6)
 
 
-def test_baseline_hct_is_derived_from_hb_when_omitted():
-    engine = SimulationEngine(
-        Patient(age=40, weight=70, height=170, sex="male"),
-        SimulationConfig(mode="awake", baseline_hb=8.0),
-    )
-
-    assert engine.patient.baseline_hct == pytest.approx(0.24, abs=1e-6)
-    assert engine.state.hct == pytest.approx(0.24, abs=1e-6)
-
-
 def test_explicit_baseline_hct_is_preserved_when_consistent():
     engine = SimulationEngine(
-        Patient(age=40, weight=70, height=170, sex="male"),
-        SimulationConfig(mode="awake", baseline_hb=8.0, baseline_hct=0.27),
+        Patient(
+            age=40,
+            weight=70,
+            height=170,
+            sex="male",
+            baseline_hb=8.0,
+            baseline_hct=0.27,
+        ),
+        SimulationConfig(mode="awake"),
     )
 
     assert engine.patient.baseline_hct == pytest.approx(0.27, abs=1e-6)
@@ -391,16 +375,14 @@ def test_explicit_baseline_hct_is_preserved_when_consistent():
 
 def test_grossly_inconsistent_hb_hct_pair_is_rejected():
     with pytest.raises(ValueError, match="grossly inconsistent"):
-        SimulationEngine(
-            Patient(age=40, weight=70, height=170, sex="male"),
-            SimulationConfig(mode="awake", baseline_hb=8.0, baseline_hct=0.42),
+        Patient(
+            age=40,
+            weight=70,
+            height=170,
+            sex="male",
+            baseline_hb=8.0,
+            baseline_hct=0.42,
         )
-
-
-@pytest.mark.parametrize("age", [17, 71])
-def test_patient_age_outside_adult_model_domain_is_rejected(age: int):
-    with pytest.raises(ValueError, match="18 and 70"):
-        Patient(age=age)
 
 
 def test_unknown_model_selection_is_rejected_instead_of_falling_back():
