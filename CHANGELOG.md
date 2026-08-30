@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1 - 2026-08-30
 
 - Enforced the supported patient domain across API, CLI, and desktop setup,
   including finite body-size, hematology, and organ-function inputs. Patient
