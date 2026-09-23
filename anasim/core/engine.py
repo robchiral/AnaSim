@@ -61,7 +61,7 @@ from .action_log import (
 from .drug_api import DrugControllerMixin
 from .drug_registry import DRUG_REGISTRY, resolve_bolus_drug
 from .initialization import initialize_engine_state
-from .state import AirwayType, SimulationConfig, SimulationState
+from .state import AirwayType, SimulationConfig, SimulationState, WaveformSample
 
 AIRWAY_MODE_MAP = {
     "None": AirwayType.NONE,
@@ -85,11 +85,12 @@ PROPOFOL_MODELS = {
 }
 
 REMI_MODELS = {
-    "minto": RemifentanilPKMinto,
+    "Minto": RemifentanilPKMinto,
 }
 
+# MAC40 from Mapleson 1996 / Nickalls and Mapleson 2003.
 VOLATILE_AGENT_PARAMS = {
-    "sevoflurane": {"name": "Sevoflurane", "lambda_b_g": 0.65, "mac_40": 2.1},
+    "sevoflurane": {"name": "Sevoflurane", "lambda_b_g": 0.65, "mac_40": 1.80},
 }
 
 VOLATILE_AGENT_ALIASES = {
@@ -119,39 +120,8 @@ NORE_PD_PARAMS = {
 }
 
 
-def _normalize_model_key(value: Optional[str]) -> str:
-    if not value:
-        return ""
-    return str(value).strip().lower()
-
-
 def _resolve_volatile_agent(agent: Optional[str]) -> Optional[str]:
-    if not agent:
-        return None
-    key = _normalize_model_key(agent)
-    return VOLATILE_AGENT_ALIASES.get(key)
-
-PK_MODEL_ATTRS = tuple(spec.pk_attr for spec in DRUG_REGISTRY) + (
-    "pk_sevo",
-    "pk_n2o",
-)
-PHYSIO_MODEL_ATTRS = ("hemo", "resp", "resp_mech")
-MACHINE_ATTRS = ("circuit", "vaporizer", "vent")
-MONITOR_ATTRS = (
-    "bis",
-    "capno",
-    "loc_pd",
-    "tol_pd",
-    "tof_pd",
-    "cardiac_cycle",
-    "arterial_waveform",
-    "art_line",
-    "ecg",
-    "spo2_mon",
-    "nibp",
-)
-RATE_ATTRS = tuple(spec.rate_attr for spec in DRUG_REGISTRY)
-TCI_ATTRS = tuple(spec.tci_attr for spec in DRUG_REGISTRY)
+    return VOLATILE_AGENT_ALIASES.get(str(agent or "").strip().lower())
 
 
 class SimulationEngine(DrugControllerMixin):
@@ -176,31 +146,11 @@ class SimulationEngine(DrugControllerMixin):
         self.airway_tuning = AirwayTuning()
         self.thermal_tuning = ThermalTuning()
         
-        # Subsystems.
-        for attr in PK_MODEL_ATTRS:
-            setattr(self, attr, None)
-        self.active_agent = "Sevoflurane"
-        self._volatile_enabled = True
-        self._volatile_agent_key = "sevoflurane"
-        for attr in PHYSIO_MODEL_ATTRS:
-            setattr(self, attr, None)
-        
-        # Machine.
-        for attr in MACHINE_ATTRS:
-            setattr(self, attr, None)
-        
-        # Monitors.
-        for attr in MONITOR_ATTRS:
-            setattr(self, attr, None)
+        # Manual infusion rates (model units/s) and TCI controllers per drug.
+        for spec in DRUG_REGISTRY:
+            setattr(self, spec.rate_attr, 0.0)
+            setattr(self, spec.tci_attr, None)
         self._next_nibp_time = 0.0
-        
-        # Controls (basic TIVA).
-        for attr in RATE_ATTRS:
-            setattr(self, attr, 0.0)
-        
-        # TCI controllers.
-        for attr in TCI_ATTRS:
-            setattr(self, attr, None)
         
         # Disturbances & alarms.
         self.disturbances = Disturbances(config.disturbance_profile)
@@ -259,8 +209,6 @@ class SimulationEngine(DrugControllerMixin):
         self.airway_obstruction_manual = 0.0
         self.bronchospasm_manual = 0.0
         self.laryngospasm_severity = 0.0
-        self.laryngospasm_tau_on = self.airway_tuning.laryngospasm_tau_on   # seconds (fast onset)
-        self.laryngospasm_tau_off = self.airway_tuning.laryngospasm_tau_off  # seconds (slower relief)
         self._airway_patency = 1.0
         self._ventilation_efficiency = 1.0
         self._capno_obstruction = 0.0
@@ -276,7 +224,7 @@ class SimulationEngine(DrugControllerMixin):
         self._capno_last_phase = "EXP"
         self._capno_has_sample = False
         self._mean_paw_tau_s = 0.25
-        self._tol_current = None
+        self._tol_current = 0.0
         self._pk_hemo_scale_cache = None
         
         # Helpers.
@@ -295,27 +243,16 @@ class SimulationEngine(DrugControllerMixin):
         # Dedicated RNG for beat-level rhythm variability.
         self._cardiac_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._bis_noise_std = 0.2
-        self._monitor_values = {
-            "BIS": 0.0,
-            "MAP": 0.0,
-            "HR": 0.0,
-            "EtCO2": 0.0,
-            "SpO2": 0.0,
-        }
-        self._remi_rate_weight = self.patient.weight
-        self._remi_rate_scale = 60.0 / self._remi_rate_weight
-        
+
         # Thermal model state.
-        self.heat_production_basal = 0.0 # W
-        self.specific_heat = self.thermal_tuning.specific_heat_j_kg_k # J/(kg K)
-        self.surface_area = 1.9 # m^2 (default, updated in init)
-        self._last_depth_index = 0.0 # For temperature redistribution calculation
+        self.heat_production_basal = self.patient.weight * 1.0  # W
+        self.specific_heat = self.thermal_tuning.specific_heat_j_kg_k  # J/(kg K)
+        self.surface_area = self.patient.bsa  # m^2
+        self._redistributed_heat_j = 0.0  # Core heat moved to the periphery
+        self._depth_index = 0.0
         self._shiver_level = 0.0
-        self._cached_temp_metabolic = 37.0
-        self._cached_temp_metabolic_factor = 1.0
         self._metabolic_factor = 1.0
         self._vent_active = False
-        self._do2_ratio = 1.0
         
         # Viability timers (death detector).
         self.time_brady = 0.0
@@ -328,8 +265,11 @@ class SimulationEngine(DrugControllerMixin):
         self.initialize_state()
 
     def _append_output_snapshot(self) -> None:
-        """Append public state and retain ten seconds by timestamp."""
-        self.output_buffer.append(copy.copy(self.state))
+        """Append this step's waveform samples and retain ten seconds by timestamp."""
+        state = self.state
+        self.output_buffer.append(
+            WaveformSample(state.time, state.ecg_voltage, state.pleth_voltage, state.capno_co2, state.art_pressure)
+        )
         cutoff = self.state.time - self._output_window_s
         while len(self.output_buffer) > 1 and self.output_buffer[0].time < cutoff:
             self.output_buffer.popleft()
@@ -337,7 +277,6 @@ class SimulationEngine(DrugControllerMixin):
     def initialize_state(self):
         """Set initial state from live subsystem state instead of placeholder defaults."""
         self.state.temp_c = self.patient.baseline_temp
-        self._tol_current = None
         self._airway_patency = 1.0
         self._ventilation_efficiency = 1.0
         self._capno_obstruction = 0.0
@@ -377,8 +316,7 @@ class SimulationEngine(DrugControllerMixin):
         """Initialize PK/PD models based on config."""
         self.pk_prop = PROPOFOL_MODELS[self.config.pk_model_propofol](self.patient)
             
-        remi_key = _normalize_model_key(self.config.pk_model_remi)
-        self.pk_remi = REMI_MODELS[remi_key](self.patient)
+        self.pk_remi = REMI_MODELS[self.config.pk_model_remi](self.patient)
         
         # Machine
         self.circuit = CircleSystem()
@@ -393,7 +331,6 @@ class SimulationEngine(DrugControllerMixin):
             agent_key = requested_agents[0]
 
         agent_params = VOLATILE_AGENT_PARAMS[agent_key]
-        self._volatile_agent_key = agent_key
         self.active_agent = agent_params["name"]
         self.vaporizer = Vaporizer(agent=agent_params["name"])
         self.pk_sevo = VolatilePK(
@@ -437,10 +374,7 @@ class SimulationEngine(DrugControllerMixin):
         self.capno = Capnograph(rng=self._capno_rng)
         self.loc_pd = LOCModel(model_name=self.config.loc_model)
         self.tol_pd = TOLModel()
-        self.tof_pd = TOFModel(
-            self.patient,
-            model_name="Wierda",
-        ) # Default Rocuronium Model
+        self.tof_pd = TOFModel(self.patient)
 
         self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)
         self.arterial_waveform = ArterialWaveformRenderer(self.patient.age)
@@ -452,17 +386,13 @@ class SimulationEngine(DrugControllerMixin):
         
         # Additional PK models.
         self.pk_nore = NorepinephrinePK(self.patient, model=self.config.pk_model_nore)
-        self.pk_roc = RocuroniumPK(self.patient, model_name="Wierda")
+        self.pk_roc = RocuroniumPK(self.patient)
         self.pk_epi = EpinephrinePK(self.patient, model=self.config.pk_model_epi)
 
         self.pk_phenyl = PhenylephrinePK(self.patient)
         self.pk_vaso = VasopressinPK(self.patient)
         self.pk_dobu = DobutaminePK(self.patient)
         self.pk_mil = MilrinonePK(self.patient)
-        
-        # Init thermal params.
-        self.heat_production_basal = self.patient.weight * 1.0
-        self.surface_area = self.patient.bsa
 
     def set_fgf(self, o2_l_min: float, air_l_min: float, n2o_l_min: float = 0.0):
         """Set Fresh Gas Flow."""
@@ -500,7 +430,6 @@ class SimulationEngine(DrugControllerMixin):
             raise ValueError(f"Unsupported volatile agent: {agent!r}")
 
         agent_params = VOLATILE_AGENT_PARAMS[resolved]
-        self._volatile_agent_key = resolved
         self.active_agent = agent_params["name"]
         self.vaporizer.state.agent = agent_params["name"]
         self.vaporizer.set_concentration(percent)
@@ -680,31 +609,26 @@ class SimulationEngine(DrugControllerMixin):
     def set_airway_obstruction(self, severity: float):
         self.airway_obstruction_manual = clamp(severity, 0.0, 1.0)
 
-    def get_resp_step_kwargs(self, total_assisted_mv, peep, mean_paw, mech_rr, mech_vt_l, cardiac_output, mac_sevo=None):
-        """Construct commonly duplicated arguments for respiratory step."""
+    def get_resp_step_kwargs(self, total_assisted_mv, peep, mean_paw, mech_rr, mech_vt_l, cardiac_output):
+        """Return respiratory-model inputs shared by runtime stepping and startup projection."""
         return {
             "ce_prop": self.state.propofol_ce,
             "ce_remi": self.state.remi_ce,
             "mech_vent_mv": total_assisted_mv,
             "fio2": self.state.fio2,
             "ce_roc": self.state.roc_ce,
-            "et_sevo": self.state.et_sevo,
-            "mac_sevo": mac_sevo if mac_sevo is not None else self.state.mac_sevo,
+            "mac_sevo": self.state.mac_sevo,
             "peep": peep,
             "mean_paw": mean_paw,
-            "temp_c": self.state.temp_c,
             "mech_rr": mech_rr,
             "mech_vt_l": mech_vt_l,
             "airway_patency": self._airway_patency,
             "ventilation_efficiency": self._ventilation_efficiency,
             "vq_mismatch": self._vq_mismatch,
             "hb_g_dl": self.hemo.hb_conc,
-            "oxygen_delivery_ratio": self._do2_ratio,
-            "shiver_level": self._shiver_level,
             "cardiac_output": cardiac_output,
             "metabolic_factor": max(0.5, self._metabolic_factor),
         }
-
 
     def set_bronchospasm(self, severity: float):
         self.bronchospasm_manual = clamp(severity, 0.0, 1.0)

@@ -51,32 +51,29 @@ def sync_pk_state(engine: "SimulationEngine") -> None:
     )
 
 
-def sync_machine_state(engine: "SimulationEngine") -> None:
-    """Copy volatile/circuit state into the public snapshot without advancing time."""
-    state = engine.state
-    connected = state.airway_mode != AirwayType.NONE
+def sync_inspired_gas(engine: "SimulationEngine") -> tuple[float, float]:
+    """Project inspired gas at the airway and return (Fi sevo, Fi N2O) as fractions."""
     composition = engine.circuit.composition
-    if connected:
+    if engine.state.airway_mode == AirwayType.NONE:
+        fio2, fi_sevo, fi_n2o = 0.21, 0.0, 0.0
+    else:
+        fio2 = composition.fio2
         fi_sevo = composition.fi_agent if engine._volatile_enabled else 0.0
         fi_n2o = composition.fin2o
-        fio2 = composition.fio2
-    else:
-        fi_sevo = 0.0
-        fi_n2o = 0.0
-        fio2 = 0.21
+    set_state_float_fields(engine.state, fio2=fio2, fi_sevo=fi_sevo * 100.0, fi_n2o=fi_n2o * 100.0)
+    return fi_sevo, fi_n2o
 
-    mac_sevo = engine.pk_sevo.state.mac
-    mac_n2o = engine.pk_n2o.state.mac
+
+def sync_inhaled_agents(engine: "SimulationEngine") -> None:
+    """Project end-tidal and brain MAC values for sevoflurane and nitrous oxide."""
+    sevo, n2o = engine.pk_sevo.state, engine.pk_n2o.state
     set_state_float_fields(
-        state,
-        fio2=fio2,
-        fi_sevo=fi_sevo * 100.0,
-        fi_n2o=fi_n2o * 100.0,
-        et_sevo=engine.pk_sevo.state.p_alv * 100.0,
-        et_n2o=engine.pk_n2o.state.p_alv * 100.0,
-        mac_sevo=mac_sevo,
-        mac_n2o=mac_n2o,
-        mac=mac_sevo + mac_n2o,
+        engine.state,
+        et_sevo=sevo.p_alv * 100.0,
+        et_n2o=n2o.p_alv * 100.0,
+        mac_sevo=sevo.mac,
+        mac_n2o=n2o.mac,
+        mac=sevo.mac + n2o.mac,
     )
 
 
@@ -187,7 +184,6 @@ def _current_respiratory_support(engine: "SimulationEngine") -> dict[str, Any]:
 
 def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> Any:
     """Evaluate the respiratory model at the current subsystem state without advancing time."""
-    state = engine.state
     support = _current_respiratory_support(engine)
 
     if hemo_state.co > 0.0:
@@ -202,7 +198,6 @@ def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> A
         mech_rr=support["assisted_rr"],
         mech_vt_l=support["assisted_vt_l"],
         cardiac_output=cardiac_output,
-        mac_sevo=state.mac_sevo,
     )
     return engine.resp.step(0.0, **kwargs)
 
@@ -265,26 +260,18 @@ def project_runtime_physiology(engine: "SimulationEngine", snapshot: PhysiologyS
         pit_display=snapshot.pit_estimate,
     )
     engine._vent_active = snapshot.vent_active
-
-    pao2_est = max(0.0, snapshot.resp_state.p_arterial_o2)
-    sao2_est = state.sao2 if state.sao2 > 0.0 else 0.0
-    co_for_do2 = max(0.1, state.co)
-    engine._do2_ratio = float(engine.hemo.compute_do2_ratio(sao2_est / 100.0, pao2_est, co_for_do2))
-    set_state_float_fields(state, oxygen_delivery_ratio=engine._do2_ratio)
+    set_state_float_fields(
+        state,
+        oxygen_delivery_ratio=engine.hemo.compute_do2_ratio(
+            max(0.0, state.sao2) / 100.0, max(0.0, state.pao2), max(0.1, state.co)
+        ),
+    )
 
 
 def sync_monitor_baselines(engine: "SimulationEngine") -> None:
     """Derive monitor baselines from the current physiologic snapshot."""
     state = engine.state
-    bis_val = clamp(
-        engine.bis.compute_bis(
-            state.propofol_ce,
-            state.remi_ce,
-            u_volatile=state.mac_sevo,
-        ),
-        0.0,
-        100.0,
-    )
+    bis_val = clamp(engine.bis.compute_bis(state.propofol_ce, state.remi_ce, state.mac_sevo), 0.0, 100.0)
     tof_val = engine.tof_pd.compute_tof_from_ce(
         state.roc_ce,
         mac_sevo=state.mac_sevo,
@@ -296,11 +283,8 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
         mac_sevo=state.mac_sevo,
         mac_n2o=state.mac_n2o,
     )
-    tol_val = engine.tol_pd.compute_probability(
-        state.propofol_ce,
-        state.remi_ce,
-        mac=state.mac,
-    )
+    tol_val = engine.tol_pd.compute_probability(state.propofol_ce, state.remi_ce, mac=state.mac)
+    engine._tol_current = tol_val
     cardiac_sample = engine.cardiac_cycle.seed(state.hr, engine.hemo.state.rhythm_type)
     arterial_sample = engine.arterial_waveform.step(
         cardiac_sample,
@@ -328,15 +312,8 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
         display_etco2=state.etco2,
         display_spo2=state.spo2,
     )
-    engine.bis.initialize(state.bis, dt=engine.config.dt)
+    engine.bis.initialize(state.bis)
     engine.smooth_bis = state.bis
-    engine._monitor_values["BIS"] = state.bis
-    engine._monitor_values["MAP"] = state.monitored_blood_pressure(
-        engine.config.arterial_line_enabled
-    )[2]
-    engine._monitor_values["HR"] = state.display_hr
-    engine._monitor_values["EtCO2"] = state.etco2
-    engine._monitor_values["SpO2"] = state.spo2
 
 
 def sync_state_from_models(engine: "SimulationEngine") -> None:
@@ -348,7 +325,8 @@ def sync_state_from_models(engine: "SimulationEngine") -> None:
         temp_c=engine.patient.baseline_temp,
     )
     sync_pk_state(engine)
-    sync_machine_state(engine)
+    sync_inspired_gas(engine)
+    sync_inhaled_agents(engine)
     hemo_state = engine.hemo.state
     resp_state = snapshot_respiratory_state(engine, hemo_state)
     project_runtime_physiology(engine, build_snapshot_from_models(engine, hemo_state, resp_state))

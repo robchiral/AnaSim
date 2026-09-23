@@ -1,6 +1,9 @@
+import math
 from dataclasses import dataclass
 
 import numpy as np
+
+from anasim.core.utils import clamp
 
 
 @dataclass
@@ -32,15 +35,13 @@ class Capnograph:
         self.val_at_change = 0.0
         # Waveform Parameters
         self.deadspace_fraction = 0.15 # Phase I fraction of exp time
-        self.rise_time = 0.1 # Phase II duration (s)
-        self.insp_drop_time = 0.1 # Phase IV duration (s)
 
     @staticmethod
     def build_context(resp_state, vent_rr: float, insp_fraction: float, vent_active: bool) -> CapnoContext:
         """
         Normalize all capnogram meta-data in one place so cleft logic is not duplicated.
         """
-        insp_fraction = float(np.clip(insp_fraction, 0.05, 0.8))
+        insp_fraction = clamp(insp_fraction, 0.05, 0.8)
         if vent_active and vent_rr > 0.1:
             drive = max(0.0, resp_state.drive_central)
             muscle = max(0.0, resp_state.muscle_factor)
@@ -72,9 +73,9 @@ class Capnograph:
             rr_ratio = 0.0
             if vent_rr > 0.1:
                 rr_ratio = max(0.0, (spont_rr - vent_rr) / max(vent_rr, 1.0))
-            rr_weight = np.clip(rr_ratio / 0.5, 0.0, 1.0)
-            effort_weight = np.clip((effort_signal - 0.2) / 0.6, 0.0, 1.0)
-            spontaneous_weight = float(np.clip(0.6 * rr_weight + 0.4 * effort_weight, 0.0, 1.0))
+            rr_weight = clamp(rr_ratio / 0.5, 0.0, 1.0)
+            effort_weight = clamp((effort_signal - 0.2) / 0.6, 0.0, 1.0)
+            spontaneous_weight = clamp(0.6 * rr_weight + 0.4 * effort_weight, 0.0, 1.0)
 
             effective_rr = (1.0 - spontaneous_weight) * vent_rr + spontaneous_weight * spont_rr
             exp_fraction = (1.0 - spontaneous_weight) * max(0.1, 1.0 - insp_fraction) + spontaneous_weight * 0.65
@@ -121,7 +122,7 @@ class Capnograph:
             self.state.phase = 4
             # Phase IV: Rapid Exponential Drop
             k = 10.0 
-            co2 = self.val_at_change * np.exp(-k * self.time_in_phase)
+            co2 = self.val_at_change * math.exp(-k * self.time_in_phase)
                 
         else: # EXPIRATION
             
@@ -151,7 +152,7 @@ class Capnograph:
                  t_exp = self.time_in_phase - deadspace_time
                  
                  # Alpha angle (rise)
-                 rise_component = 1.0 - np.exp(-t_exp / tau)
+                 rise_component = 1.0 - math.exp(-t_exp / tau)
                  
                  # Slope component (Phase III)
                  slope_component = plateau_slope * t_exp
@@ -183,7 +184,7 @@ class Capnograph:
                      # Only apply if close enough to matter (optimization)
                      if dist < 0.5:
                          dynamic_depth = min(p_alv * 0.7, depth + 12.0 * effort_scale)
-                         dip = dynamic_depth * np.exp(-(dist**2) / (2 * width**2))
+                         dip = dynamic_depth * math.exp(-(dist**2) / (2 * width**2))
                          co2 -= dip
 
                  # Avoid unphysiologically high plateaus.

@@ -1,302 +1,140 @@
-import numpy as np
-from scipy.signal import cont2discrete
+"""Target-controlled infusion (Shafer and Gregg. J Pharmacokinet Biopharm. 1992)."""
 
-from anasim.core.constants import TCI_MIN_TARGET_CHANGE_INTERVAL
+import numpy as np
+from scipy.linalg import expm
+
 from anasim.core.utils import clamp
+
+PREDICTION_HORIZON_S = 600.0
+PREDICTION_GRID_S = 1.0
+
+
+def _discretize(A: np.ndarray, B: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
+    """Exact zero-order-hold discretization of dx/dt = A x + B u."""
+    n = A.shape[0]
+    augmented = np.zeros((n + 1, n + 1))
+    augmented[:n, :n] = A
+    augmented[:n, n:] = B
+    transition = expm(augmented * dt)
+    return transition[:n, :n], transition[:n, n:]
+
+
+def _pk_signature(pk_model) -> tuple[float, ...]:
+    return tuple(
+        float(getattr(pk_model, name))
+        for name in ("v1", "v2", "v3", "cl1", "cl2", "cl3", "ke0")
+    )
 
 
 class TCIController:
+    """Plasma- or effect-site-targeted TCI with a pump rate limit.
+
+    At each control update the controller predicts the zero-input course of the
+    targeted compartment and picks the largest constant rate for the next control
+    interval that keeps the prediction at or below target over the horizon. From
+    zero this is the effect-site bolus whose peak reaches target; at target it is
+    the maintenance rate; above target it pauses the infusion.
     """
-    TCI Controller implementing the Shafer/Gregg algorithm.
-    """
+
     def __init__(
         self,
         pk_model,
-        drug_name: str,
-        target_compartment: str = 'effect_site',
-        max_rate: float = 1200.0, # mg/hr or similarly high
-        sampling_time: float = 1.0, # sec
-        control_time: float = 10.0, # sec
+        drug_name: str = "",
+        target_compartment: str = "effect_site",
+        max_rate: float = 1200.0,
+        sampling_time: float = 1.0,
+        control_time: float = 10.0,
     ):
         """
         Args:
-            pk_model: Instance of PK model (ThreeCompartmentPK, etc.)
-            drug_name: 'Propofol', 'Remifentanil', etc.
-            target_compartment: 'plasma' or 'effect_site'
-            max_rate: Maximum infusion rate in model units (mg/s or ug/s).
-                      Propofol example: 1200 mL/h at 20 mg/mL -> 24,000 mg/h (~6.6 mg/s).
-                      Remifentanil example: 50 ug/mL.
-            sampling_time: Internal calculation step (s)
-            control_time: Control update interval (s)
+            pk_model: PK model exposing get_ss_matrices(), state_fields, and state_vector().
+            target_compartment: "plasma" or "effect_site".
+            max_rate: Pump limit in model units per second.
+            sampling_time: Internal state-estimate step (s).
+            control_time: Interval between rate updates (s).
         """
-        self.pk_model = pk_model
-        self.drug_name = drug_name
-        self.sampling_time = sampling_time
-        self.control_time = control_time
-        self.max_rate = max_rate
-        
         if sampling_time > control_time:
             raise ValueError("Sampling time cannot be larger than control time")
-            
-        self._model_signature = ()
-        self._load_pk_model(pk_model)
-        
-        # Target index: plasma=0, effect site=last (except norepi defaults to plasma).
-        if target_compartment == 'plasma':
-            self.target_id = 0
-        else:
-            # Effect site
-            if drug_name == 'Norepinephrine':
-                 self.target_id = 0 # No effect site model usually
-            else:
-                 self.target_id = self.n_state - 1 # Assume last state is effect site
-        
-        # Precompute peak time.
-        self._compute_peak_time()
-        
-        # State variables.
-        self.x = np.zeros((self.n_state, 1)) # Estimated patient state
-        self.infusion_rate = 0.0
+        self.drug_name = drug_name
+        self.target_compartment = target_compartment
+        self.max_rate = max_rate
+        self.sampling_time = sampling_time
+        self.control_time = control_time
         self.target = 0.0
-        
-        # Peak finding helpers.
-        self.tpeak_0 = 0.0
-        self.tpeak_1 = 0.0
+        self.infusion_rate = 0.0
         self._time = 0.0
-        self._last_target_change_time = -999.0  # For rate-limiting target changes
-        self._min_target_change_interval = TCI_MIN_TARGET_CHANGE_INTERVAL
-        self._last_control_update = -1e9
-        
-        # Endogenous input (for norepinephrine support if needed, typically 0 for TCI).
-        self.u_endo = 0.0 
-
-    @staticmethod
-    def _pk_signature(pk_model) -> tuple:
-        fields = ("v1", "v2", "v3", "k10", "k12", "k21", "k13", "k31", "ke0")
-        values = []
-        for name in fields:
-            if hasattr(pk_model, name):
-                values.append(float(getattr(pk_model, name)))
-        return tuple(values)
+        self._next_update = 0.0
+        self._load_pk_model(pk_model)
+        self.x = np.zeros((self.n_state, 1))
 
     def _load_pk_model(self, pk_model) -> None:
-        """Discretize the current PK model parameters."""
-        self.pk_model = pk_model
-        A_min, B_min = pk_model.get_ss_matrices()
+        A_min, B = pk_model.get_ss_matrices()
+        A = A_min / 60.0  # B already maps a per-second input to concentration per second.
+        self.state_fields = tuple(pk_model.state_fields)
+        self.n_state = A.shape[0]
+        self.target_id = 0 if self.target_compartment == "plasma" else self.n_state - 1
+        self.Ad, self.Bd = _discretize(A, B, self.sampling_time)
 
-        # Convert to 1/sec.
-        A_sec = A_min / 60.0
-        B_sec = B_min
-
-        n_states = A_sec.shape[0]
-        C_dummy = np.eye(n_states)
-        D_dummy = np.zeros((n_states, 1))
-
-        sys_sim = cont2discrete((A_sec, B_sec, C_dummy, D_dummy), self.sampling_time, method='bilinear')
-        self.Ad = sys_sim[0]
-        self.Bd = sys_sim[1]
-
-        sys_ctrl = cont2discrete((A_sec, B_sec, C_dummy, D_dummy), self.control_time, method='bilinear')
-        self.Ad_control = sys_ctrl[0]
-        self.Bd_control = sys_ctrl[1]
-        self.n_state = n_states
-        self._model_signature = self._pk_signature(pk_model)
+        A_grid, B_grid = _discretize(A, B, PREDICTION_GRID_S)
+        steps = int(PREDICTION_HORIZON_S / PREDICTION_GRID_S)
+        pulse_steps = max(1, round(self.control_time / PREDICTION_GRID_S))
+        self._free_response = np.empty((steps, self.n_state))
+        self._unit_response = np.empty(steps)
+        row = np.eye(self.n_state)[self.target_id]
+        unit_state = np.zeros((self.n_state, 1))
+        for k in range(steps):
+            row = row @ A_grid
+            unit_state = A_grid @ unit_state + B_grid * (1.0 if k < pulse_steps else 0.0)
+            self._free_response[k] = row
+            self._unit_response[k] = unit_state[self.target_id, 0]
+        self._responsive = self._unit_response > 1e-6 * self._unit_response.max()
+        self._signature = _pk_signature(pk_model)
 
     def sync_from_pk_model(self, pk_model, rel_tol: float = 0.05, abs_tol: float = 1e-3) -> bool:
-        """
-        Rebuild controller dynamics if the live PK model has drifted materially,
-        then seed the controller state from the live PK compartments.
-        Returns True when the discretized model was rebuilt.
-        """
-        rebuilt = False
-        new_signature = self._pk_signature(pk_model)
+        """Rebuild the prediction model after material PK drift and reseed the state.
 
-        if len(new_signature) != len(self._model_signature):
-            rebuilt = True
-        else:
-            for prev, curr in zip(self._model_signature, new_signature):
-                limit = max(abs(prev) * rel_tol, abs_tol)
-                if abs(curr - prev) > limit:
-                    rebuilt = True
-                    break
-
+        Returns True when the prediction model was rebuilt.
+        """
+        signature = _pk_signature(pk_model)
+        rebuilt = any(
+            abs(curr - prev) > max(abs(prev) * rel_tol, abs_tol)
+            for prev, curr in zip(self._signature, signature)
+        )
         if rebuilt:
             self._load_pk_model(pk_model)
-            self._compute_peak_time()
-
         self.sync_state_estimate(pk_model)
         return rebuilt
 
     def sync_state_estimate(self, pk_model) -> None:
         """Seed the internal state estimate from the live PK compartments."""
-        state = pk_model.state
-        c1 = getattr(state, "c1", 0.0)
-        c2 = getattr(state, "c2", 0.0)
-        c3 = getattr(state, "c3", 0.0)
-        ce = getattr(state, "ce", 0.0)
+        self.x = pk_model.state_vector().reshape(-1, 1)
 
-        if self.n_state == 1:
-            self.set_state(c1)
-        elif self.n_state == 2:
-            self.set_state(c1, c2)
-        elif self.n_state == 3:
-            self.set_state(c1, c2, ce)
-        else:
-            self.set_state(c1, c2, c3, ce)
+    def set_state(self, **concentrations: float) -> None:
+        """Set the state estimate by compartment name (c1, c2, c3, ce)."""
+        self.x = np.array([[concentrations.get(name, 0.0)] for name in self.state_fields])
 
-    def _compute_peak_time(self):
-        """Simulate a bolus to find time to peak at effect site."""
-        x = np.zeros((self.n_state, 1))
-        x_prev = np.zeros((self.n_state, 1))
-        
-        self.Ce_response = []
-        t = self.sampling_time
-        found_peak = False
-        
-        # Simulate a single control-interval infusion.
-        infusion = 1.0
-        
-        # Simulate until peak found or timeout.
-        max_t = 600.0 # 10 min
-        self.t_peak = 0.0
-         
-        while not found_peak and t < max_t:
-            u = infusion if t <= self.control_time else 0.0
-            
-            x = self.Ad @ x + self.Bd * u
-            
-            ce = float(x[self.target_id, 0])
-            self.Ce_response.append(ce)
-            
-            if t > self.control_time and ce < x_prev[self.target_id, 0] and self.t_peak == 0.0:
-                self.t_peak = t - self.sampling_time
-                found_peak = True
-                
-            x_prev = x.copy()
-            t += self.sampling_time
-            
-        self.Ce_response = np.array(self.Ce_response)
-        
-        if self.t_peak == 0.0:
-            # Plasma targeting peaks at the end of the control interval.
-            self.t_peak = self.control_time
+    def set_target(self, target: float) -> None:
+        """Change the target and recompute the rate at the next step."""
+        self.target = max(0.0, float(target))
+        self._next_update = self._time
 
-    def step(self, target: float, sim_time: float = None) -> float:
-        """
-        Perform one control step.
-        Returns infusion rate (mass/sec).
-        Call this every `sampling_time`.
-        
-        Args:
-            target: Target concentration
-            sim_time: Current simulation time (seconds). If provided, syncs
-                      controller timing with simulation clock to prevent drift.
-        """
-        # Use provided sim_time or fall back to internal tracking
+    def _control_rate(self) -> float:
+        if self.target <= 0.0:
+            return 0.0
+        free = self._free_response[self._responsive] @ self.x[:, 0]
+        unit = self._unit_response[self._responsive]
+        return clamp(float(np.min((self.target - free) / unit)), 0.0, self.max_rate)
+
+    def step(self, target: float | None = None, sim_time: float | None = None) -> float:
+        """Advance one sampling interval and return the infusion rate (model units/s)."""
         if sim_time is not None:
             self._time = sim_time
-        
-        # Check if it's time to update control (every control_time).
-        update_control = False
-        time_since_update = self._time - self._last_control_update
-        if time_since_update >= (self.control_time - (self.sampling_time / 2.0)):
-            update_control = True
-        
-        # Rate-limit target changes (zero target bypasses for safety).
-        target_changed = (target != self.target)
-        if target_changed:
-            if target == 0.0:
-                # Always allow immediate stop
-                update_control = True
-                self._last_target_change_time = self._time
-            else:
-                time_since_last_change = self._time - self._last_target_change_time
-                if time_since_last_change >= self._min_target_change_interval:
-                    update_control = True
-                    self._last_target_change_time = self._time
-                # If too soon, ignore the change this step (will be picked up later)
-             
-        if update_control:
-            self._last_control_update = self._time
-            if target != self.target:
-                self.tpeak_0 = self.t_peak
-                self.target = target
-                
-            # Prediction from current state (zero input response).
-            x_pred = self.x.copy()
-            
-            # Predict ahead to t_peak or next control step.
-            horizon = max(self.control_time + self.sampling_time, self.t_peak)
-            steps = int(horizon / self.sampling_time)
-            
-            Ce_pred = np.zeros(steps)
-            for i in range(steps):
-                x_pred = self.Ad @ x_pred # + Bd * u_endo
-                Ce_pred[i] = x_pred[self.target_id, 0]
-                
-            ce_next = Ce_pred[0] # Next-step estimate
-            
-            # PAS logic: hit target next step if close, else target peak time.
-            tol = 0.05 * target if target > 0 else 0.001
-            
-            if abs(ce_next - target) < tol:
-                # Solve: Target = (Ad_control @ x + Bd_control * rate)[target_id]
-                # rate = (Target - (Ad_control @ x)[target_id]) / Bd_control[target_id]
-                num = target - (self.Ad_control @ self.x)[self.target_id, 0]
-                den = self.Bd_control[self.target_id, 0]
-                if den != 0:
-                    calc_rate = num / den
-                else:
-                    calc_rate = 0.0
-                self.infusion_rate = max(0.0, calc_rate)
-            else:
-                if target == 0:
-                    self.infusion_rate = 0.0
-                elif Ce_pred[
-                    min(len(Ce_pred) - 1, int(self.control_time / self.sampling_time))
-                ] > self.target:
-                    # Overshoot -> stop infusion
-                    self.infusion_rate = 0.0
-                else:
-                    # Iterative search for rate
-                    idx_peak = int(self.tpeak_0 / self.sampling_time) - 1
-                    if idx_peak < 0:
-                        idx_peak = 0
-                    if idx_peak >= len(Ce_pred):
-                        idx_peak = len(Ce_pred) - 1
-
-                    ce_peak_base = Ce_pred[idx_peak]
-                    ce_resp_peak = self.Ce_response[idx_peak]
-
-                    if ce_resp_peak != 0:
-                        rate_guess = (target - ce_peak_base) / ce_resp_peak
-                    else:
-                        rate_guess = 0.0
-
-                    self.infusion_rate = clamp(rate_guess, 0.0, self.max_rate)
-
-                    # PAS optimization loop omitted; use the initial estimate.
-        
+        if target is not None and target != self.target:
+            self.set_target(target)
+        if self._time + 0.5 * self.sampling_time >= self._next_update:
+            self.infusion_rate = self._control_rate()
+            self._next_update = self._time + self.control_time
         self.x = self.Ad @ self.x + self.Bd * self.infusion_rate
-        
         if sim_time is None:
             self._time += self.sampling_time
-        
-        self.infusion_rate = clamp(self.infusion_rate, 0.0, self.max_rate)
-        
-        if isinstance(self.infusion_rate, np.ndarray):
-            return float(self.infusion_rate)
-            
         return self.infusion_rate
-    def set_state(self, c1: float, c2: float = 0.0, c3: float = 0.0, ce: float = 0.0):
-        """
-        Manually set the internal state estimate.
-        """
-        if self.n_state >= 1:
-            self.x[0, 0] = c1
-        if self.n_state >= 2:
-            self.x[1, 0] = c2
-        if self.n_state >= 3:
-            self.x[2, 0] = c3
-        if self.n_state >= 4:
-            self.x[3, 0] = ce

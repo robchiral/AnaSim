@@ -14,14 +14,6 @@ from dataclasses import dataclass
 HR_MIN = 10.0  # Below this, functional asystole
 HR_MAX = 220.0  # Maximum physiological HR 
 
-# Blood Pressure Bounds (mmHg) - imported but available for bounds checking
-MAP_MAX = 200.0  # Severe hypertensive crisis
-SBP_MAX = 260.0  # Extreme hypertension
-DBP_MAX = 160.0  # Extreme diastolic hypertension
-
-# Total Peripheral Resistance minimum (Wood Units)
-TPR_MIN = 0.006  # Minimum physiologically reasonable (severe vasodilation)
-
 # Blood Volume (mL)
 BLOOD_VOLUME_MIN = 500.0  # Below this, effectively exsanguinated
 
@@ -44,14 +36,6 @@ GAMMA_MAX = 20.0
 
 # Concentration ratio above which Hill function returns near-saturation
 CONCENTRATION_RATIO_SATURATION = 100.0
-
-# TCI controller constants (used in tci.py).
-
-# Minimum interval between target changes (seconds)
-TCI_MIN_TARGET_CHANGE_INTERVAL = 5.0
-
-# Maximum TCI peak time search (seconds)
-TCI_PEAK_TIME_MAX = 600.0
 
 # Thermoregulation constants (used in respiration.py, hemodynamics.py).
 
@@ -116,11 +100,13 @@ class ThermalTuning:
     ambient_temp_c: float = 20.0
     base_conductance_w_per_c: float = 3.0
     anesthetic_conductance_gain: float = 0.5
-    redistribution_gain_w_per_depth: float = 50000.0
+    # Redistribution after induction: core falls ~1.3 °C of the 1.6 °C first-hour
+    # drop (81%) in Matsukawa et al. Anesthesiology. 1995.
+    redistribution_core_drop_c: float = 1.3
+    redistribution_tau_s: float = 1200.0
     bair_hugger_gain_w_per_c: float = 7.0
     metabolic_reduction_max: float = 0.2
     depth_propofol_scale: float = 4.0
-    metabolic_temp_threshold_c: float = 0.5
     specific_heat_j_kg_k: float = 3470.0
     temp_min_c: float = 25.0
     temp_max_c: float = 42.0

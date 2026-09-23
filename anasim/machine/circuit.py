@@ -41,6 +41,19 @@ class CircleSystem:
         """Return total fresh gas flow actually reaching the circuit."""
         return self.delivered_o2_flow() + self.fgf_air + self.delivered_n2o_flow()
 
+    def equilibrate(self, uptake_o2: float, fi_agent: float = 0.0) -> None:
+        """Set the steady-state composition for the current fresh gas flows."""
+        total_fgf = self.fgf_total()
+        if total_fgf <= 0.0:
+            return
+        fg_agent = self.vaporizer_setting / 100.0 if self.vaporizer_on else 0.0
+        fg_o2 = (self.delivered_o2_flow() + 0.21 * self.fgf_air) / total_fgf * (1.0 - fg_agent)
+        composition = self.composition
+        composition.fi_agent = fi_agent
+        composition.fin2o = self.delivered_n2o_flow() / total_fgf * (1.0 - fg_agent)
+        composition.fio2 = clamp01(fg_o2 - uptake_o2 / total_fgf)
+        composition.fin2 = max(0.0, 1.0 - fi_agent - composition.fin2o - composition.fio2)
+
     def step(self, dt: float, uptake_o2: float, uptake_agent: float, uptake_n2o: float = 0.0):
         """
         dt: seconds

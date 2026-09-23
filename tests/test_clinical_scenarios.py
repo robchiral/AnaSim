@@ -244,3 +244,34 @@ class TestClinicalAcceptance:
         assert engine.state.pa_co2 < rescue_co2 - 5.0
         assert engine.state.pao2 > rescue_o2 + 5.0
         assert engine.state.sao2 > rescue_spo2 + 5.0
+
+
+def test_remifentanil_blunts_laryngoscopy_response(engine_factory):
+    """Opioid blunts the pressor response to laryngoscopy (Bouillon 2004 TOL surface)."""
+
+    def peak_map_rise(remi_target: float) -> float:
+        engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=5), start=True)
+        engine.enable_tci("remi", remi_target)
+        for _ in range(600):
+            engine.step(1.0)
+        baseline = engine.state.map
+        engine.set_auto_laryngospasm(False)
+        engine.start_disturbance("stim_intubation_pulse")
+        peak = 0.0
+        for _ in range(600):
+            engine.step(0.1)
+            peak = max(peak, engine.state.map - baseline)
+        return peak
+
+    propofol_only = peak_map_rise(0.0)
+    with_remifentanil = peak_map_rise(4.0)
+    assert propofol_only > 15.0
+    assert with_remifentanil < 0.25 * propofol_only
+
+
+def test_balanced_steady_state_holds_depth(engine_factory):
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"), start=True)
+    initial_bis = engine.state.bis
+    for _ in range(1800):
+        engine.step(1.0)
+    assert abs(engine.state.bis - initial_bis) < 5.0

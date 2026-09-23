@@ -52,11 +52,9 @@ class HemodynamicModel:
     def __init__(self, patient: Patient, config: Optional[HemodynamicConfig] = None):
         self.patient = patient
         self.config = config or HemodynamicConfig()
-        # Caches should exist before any config-driven invalidation.
         self._cached_state: Optional[HemoStateExtended] = None
-        self._hill_cache = {}
-        self._base_values_final = False
-        self._apply_config(self.config)
+        for name, value in vars(self.config).items():
+            setattr(self, name, value)
 
         # =====================================================================
         # Core Model Parameters (Su et al. Br J Anaesth. 2023)
@@ -78,29 +76,23 @@ class HemodynamicModel:
         flow_ml_min = self.base_hr * self.base_sv
         self.base_tpr = patient.baseline_map / flow_ml_min if flow_ml_min > 0 else self.base_tpr
         self.base_co_l_min = flow_ml_min / 1000.0
-        self.baseline_caO2 = self.calc_oxygen_content(self.baseline_hb, 0.98, 95.0)
-        self.baseline_do2 = self.baseline_caO2 * self.base_co_l_min * 10.0
-        self._base_values_final = True
-        self._refresh_cached_constants()
+        self.baseline_do2 = self.calc_oxygen_content(self.baseline_hb, 0.98, 95.0) * self.base_co_l_min * 10.0
+        self._emax_prop_sv_age = self.emax_prop_sv_typ * math.exp(self.age_emax_sv * (patient.age - 35.0))
+        self._inv_base_rmap_denom = 1.0 / (self.base_hr * self.base_sv * self.base_tpr)
+        self._inv_base_co_l_min = 1.0 / max(0.1, self.base_co_l_min)
+        self._sepsis_hr_gain = self.sepsis_hr_increase / max(self.base_hr, 1.0)
 
         # External Modifiers (Persistence for property access)
         self.delta_tpr_vasopressors = 0.0
         self.dist_svr = 0.0
         self.dist_hr = 0.0
         self.dist_sv = 0.0
-        self.chemoreflex_active = True
         self._sepsis_severity = 0.0
         self._anaphylaxis_severity = 0.0
-        
-        # Instantaneous effects with rate limiting (exponential smoothing)
-        # Target values (calculated each step)
-        self.current_epi_hr = 0.0
-        self.current_chemo_hr = 0.0
-        # Smoothed values (used in _calc_hr) with time constants
+
+        # Fast HR effects (chemoreflex and vasoactive chronotropy) smoothed with tau_hr_fast.
         self.smoothed_epi_hr = 0.0
         self.smoothed_chemo_hr = 0.0
-        # Time constants: Physiologically fast, although not instantaneous.
-        # tau_hr = 5s: Peak effect within ~15s (3*tau), matches clinical phenylephrine bolus
         
         # Initial Conditions
         self.sv_star = self.base_sv
@@ -163,8 +155,6 @@ class HemodynamicModel:
         self._last_lv_inflow = self.base_co_l_min
         self._last_preload_factor = 1.0
         self._last_preload_sv_factor = 1.0
-        self._last_pao2 = 95.0
-        self._last_peep_cmH2O = self.pvr_peep_ref
         
         self.total_crystalloid_in_ml = 0.0
         self.total_colloid_in_ml = 0.0
@@ -178,34 +168,6 @@ class HemodynamicModel:
         self.f_preload_pit = 1.0
         self.vasopressor_sv_factor = 1.0
         self._prev_map = patient.baseline_map
-
-        self._refresh_hill_params()
-
-    def _apply_config(self, config: HemodynamicConfig) -> None:
-        for name, value in vars(config).items():
-            setattr(self, name, value)
-        self._hill_cache.clear()
-        self._refresh_hill_params()
-        if self._base_values_final:
-            self._refresh_cached_constants()
-
-    def _refresh_hill_params(self) -> None:
-        """Refresh cached Hill parameters after configuration changes."""
-        self._hill_params = {
-            "prop_tpr": (self.ec50_prop_tpr ** self.gamma_prop, self.gamma_prop),
-            "prop_sv": (self.ec50_prop_sv ** 1.0, 1.0),
-            "remi_tpr": (self.ec50_remi_tpr ** self.gamma_remi_tpr, self.gamma_remi_tpr),
-        }
-
-    def _refresh_cached_constants(self) -> None:
-        """Cache invariant calculations to reduce per-step overhead."""
-        self._emax_prop_sv_age = self.emax_prop_sv_typ * math.exp(
-            self.age_emax_sv * (self.patient.age - 35.0)
-        )
-        self._base_rmap_denom = self.base_hr * self.base_sv * self.base_tpr
-        self._inv_base_rmap_denom = (1.0 / self._base_rmap_denom) if self._base_rmap_denom > 0 else 0.0
-        self._inv_base_co_l_min = 1.0 / max(0.1, self.base_co_l_min)
-        self._sepsis_hr_gain = self.sepsis_hr_increase / max(self.base_hr, 1.0)
 
     def invalidate_state_cache(self) -> None:
         """Public cache invalidation for external state mutations."""
@@ -247,28 +209,9 @@ class HemodynamicModel:
         self.nore_c50 = c50
         self.nore_emax_map = emax
         self.nore_gamma = gamma
-        self._hill_cache.clear()
         self.invalidate_state_cache()
-    
-    def _hill_cached(self, key: str, ce: float) -> float:
-        if ce <= 0:
-            return 0.0
-        cached_ce, cached_result = self._hill_cache.get(key, (0.0, 0.0))
-        if cached_ce > 0 and abs(ce - cached_ce) / cached_ce < self.cache_tolerance:
-            return cached_result
-        c50_pow, gamma = self._hill_params[key]
-        ce_pow = ce ** gamma
-        result = ce_pow / (c50_pow + ce_pow)
-        self._hill_cache[key] = (ce, result)
-        return result
 
-    @staticmethod
-    def _vol_hill(ce: float, emax: float, ec50_base: float, gamma: float,
-                  vol_ec50_mult: float = 1.0, use_shift: bool = True) -> float:
-        """Hill function for volatile anesthetic effects with EC50 shift."""
-        eff_ec50 = ec50_base * vol_ec50_mult if use_shift else ec50_base
-        return emax * hill_function(ce, eff_ec50, gamma)
-        
+
     def add_volume(
         self,
         amount_ml: float,
@@ -471,63 +414,13 @@ class HemodynamicModel:
         return 1.0 + self.phenyl_emax_svr * hill_function(ce_phenyl, self.phenyl_c50, self.phenyl_gamma)
 
     @staticmethod
-    def _calc_hr_svr_effects(ce: float, c50: float, gamma: float,
-                             emax_hr: float, emax_svr: float) -> tuple:
-        """Shared HR/SVR Hill-effects helper."""
-        if ce <= 0:
-            return 0.0, 1.0
-        hill = hill_function(ce, c50, gamma)
-        delta_hr = emax_hr * hill
-        svr_factor = 1.0 + emax_svr * hill
-        return delta_hr, max(0.5, svr_factor)
-
-    @staticmethod
     def _calc_hr_sv_svr_effects(ce: float, c50: float, gamma: float,
                                 emax_hr: float, emax_sv: float, emax_svr: float) -> tuple:
-        """Shared HR/SV/SVR Hill-effects helper."""
+        """Return (delta HR, SV factor, SVR factor) from one Hill effect."""
         if ce <= 0:
             return 0.0, 1.0, 1.0
         hill = hill_function(ce, c50, gamma)
-        delta_hr = emax_hr * hill
-        sv_factor = 1.0 + emax_sv * hill
-        svr_factor = 1.0 + emax_svr * hill
-        return delta_hr, sv_factor, max(0.5, svr_factor)
-
-    def _calc_vasopressin_effects(self, ce_vaso: float) -> tuple:
-        """
-        Vasopressin effects on HR and SVR (V1-mediated vasoconstriction).
-
-        Returns:
-            (delta_hr, svr_factor)
-        """
-        return self._calc_hr_svr_effects(
-            ce_vaso, self.vaso_c50, self.vaso_gamma,
-            self.vaso_emax_hr, self.vaso_emax_svr,
-        )
-
-    def _calc_dobutamine_effects(self, ce_dobu: float) -> tuple:
-        """
-        Dobutamine effects on HR, SV, and SVR.
-
-        Returns:
-            (delta_hr, sv_factor, svr_factor)
-        """
-        return self._calc_hr_sv_svr_effects(
-            ce_dobu, self.dobu_c50, self.dobu_gamma,
-            self.dobu_emax_hr, self.dobu_emax_sv, self.dobu_emax_svr,
-        )
-
-    def _calc_milrinone_effects(self, ce_mil: float) -> tuple:
-        """
-        Milrinone effects on HR, SV, and SVR.
-
-        Returns:
-            (delta_hr, sv_factor, svr_factor)
-        """
-        return self._calc_hr_sv_svr_effects(
-            ce_mil, self.mil_c50, self.mil_gamma,
-            self.mil_emax_hr, self.mil_emax_sv, self.mil_emax_svr,
-        )
+        return emax_hr * hill, 1.0 + emax_sv * hill, max(0.5, 1.0 + emax_svr * hill)
 
     def _calc_pvr_factor(self, pao2: float, peep_cmH2O: Optional[float] = None) -> float:
         """
@@ -592,15 +485,11 @@ class HemodynamicModel:
         # Cache diagnostics for state reporting
         self._last_mcfp = mcfp
         self._last_rap = rap
-        self._last_pvr_factor = pvr_factor
         self._last_pvr = self.pvr_wood_baseline * pvr_factor
         self._last_rv_co = rv_out_target_factor * self.base_co_l_min
         self._last_lv_inflow = self._pulm_flow_factor * self.base_co_l_min
         self._last_preload_factor = f_preload
         self._last_preload_sv_factor = f_frank_starling
-        self._last_pao2 = pao2
-        if peep_cmH2O is not None:
-            self._last_peep_cmH2O = peep_cmH2O
 
         return f_frank_starling
     
@@ -659,34 +548,30 @@ class HemodynamicModel:
         
         # 1. On TPR (with Remi interaction)
         remi_int_term = self.int_tpr * (cr / (self.ec50_remi_tpr + cr + 1e-9))
-        prop_hill_tpr = self._hill_cached("prop_tpr", cp)
-        eff_prop_tpr = (self.emax_prop_tpr + remi_int_term) * prop_hill_tpr
-        
+        eff_prop_tpr = (self.emax_prop_tpr + remi_int_term) * hill_function(cp, self.ec50_prop_tpr, self.gamma_prop)
+
         # 2. On SV (no interaction)
-        prop_hill_sv = self._hill_cached("prop_sv", cp)
-        eff_prop_sv = emax_prop_sv * prop_hill_sv
+        eff_prop_sv = emax_prop_sv * hill_function(cp, self.ec50_prop_sv, 1.0)
         
         # --- Volatile Effects (Mechanism-Based) ---
         # Remi Interaction Shift (Shift factor for EC50)
         remi_shift_factor = self.vol_remi_shift_max * (cr / (self.vol_remi_ec50 + cr + 1e-9))
         vol_ec50_mult = 1.0 - remi_shift_factor
         
-        # Sevo
-        eff_sevo_tpr = self._vol_hill(ce_sevo, self.sevo_emax_tpr, self.sevo_ec50_tpr, 
-                                       self.sevo_gamma_tpr, vol_ec50_mult, use_shift=True)
-        eff_sevo_sv = self._vol_hill(ce_sevo, self.sevo_emax_sv, self.sevo_ec50_sv, 
-                                      1.0, vol_ec50_mult, use_shift=False)
-        eff_sevo_hr = 0.0 # No HR effect
-        
+        # Sevoflurane (no HR effect); remifentanil shifts only the TPR EC50.
+        eff_sevo_tpr = self.sevo_emax_tpr * hill_function(
+            ce_sevo, self.sevo_ec50_tpr * vol_ec50_mult, self.sevo_gamma_tpr
+        )
+        eff_sevo_sv = self.sevo_emax_sv * hill_function(ce_sevo, self.sevo_ec50_sv, 1.0)
+
         # --- Combined Main Effects (Additive) ---
         total_eff_tpr = max(-0.95, eff_prop_tpr + eff_sevo_tpr)
         total_eff_sv = max(-0.95, eff_prop_sv + eff_sevo_sv)
-        total_eff_hr = eff_sevo_hr
-        
+        total_eff_hr = 0.0
+
         # --- Remi Effects (Dissipation Modulation) ---
         # 1. On TPR dissipation
-        remi_hill_tpr = self._hill_cached("remi_tpr", cr)
-        eff_remi_tpr = self.emax_remi_tpr * remi_hill_tpr
+        eff_remi_tpr = self.emax_remi_tpr * hill_function(cr, self.ec50_remi_tpr, self.gamma_remi_tpr)
         
         # 2. On SV dissipation (slope modulated by Prop)
         slope_sv = self.sl_remi_sv + self.int_sv * (cp / (self.ec50_prop_sv + cp + 1e-9))
@@ -768,56 +653,24 @@ class HemodynamicModel:
             # HR-SV coupling gives ~0.80x. Additional penalty: 0.50x
             current_sv *= 0.50
 
-        # Arrest handling: no effective pressure generation.
         if self.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE) or current_hr <= 0.0 or current_sv <= 0.0:
-            current_hr = 0.0
-            current_sv = 0.0
-            co = 0.0
-            map_val = 0.0
-            svr_val = 0.0
-            computed_state = HemoStateExtended(
-                map=map_val,
-                hr=current_hr,
-                sv=current_sv,
-                svr=svr_val,
-                co=co,
-                tpr=self.tpr,
-                sv_star=self.sv_star,
-                hr_star=self.hr_star,
-                tde_sv=self.tde_sv,
-                tde_hr=self.tde_hr,
-                ce_sevo=self.ce_sevo,
-                mcfp=self._last_mcfp,
-                rap=self._last_rap,
-                pvr=self._last_pvr,
-                rv_co=self._last_rv_co,
-                lv_inflow=self._last_lv_inflow,
-                preload_factor=self._last_preload_factor,
-                rhythm_type=self.rhythm_type
+            # Arrest: no effective pressure generation.
+            current_hr = current_sv = co = map_val = svr_val = 0.0
+        else:
+            co = current_hr * current_sv / 1000.0
+            if distributive_tpr_offset is None:
+                distributive_tpr_offset = -(
+                    self.sepsis_svr_drop_wood * sepsis_sev + self.anaphylaxis_svr_drop_wood * anaph_sev
+                ) / 1000.0
+            # TPR floor (~6 Wood units) keeps severe vasodilation physiologic.
+            eff_tpr = max(
+                0.006,
+                self.tpr + self.delta_tpr_vasopressors + self.dist_svr / 1000.0 + distributive_tpr_offset,
             )
-            self._cached_state = computed_state
-            return computed_state
+            map_val = clamp(current_hr * current_sv * eff_tpr, 5.0, 300.0)
+            svr_val = map_val / co
 
-        co = current_hr * current_sv / 1000.0
-
-        if distributive_tpr_offset is None:
-            distributive_svr_drop = (self.sepsis_svr_drop_wood * sepsis_sev +
-                                     self.anaphylaxis_svr_drop_wood * anaph_sev)
-            distributive_tpr_offset = -distributive_svr_drop / 1000.0
-        eff_tpr = self.tpr + self.delta_tpr_vasopressors + (self.dist_svr / 1000.0) + distributive_tpr_offset
-        # TPR floor: Minimum physiologically viable resistance
-        # 0.001 is too low - use ~0.006 (equivalent to ~6 Wood Units at normal flow)
-        eff_tpr = max(0.006, eff_tpr)
-
-        map_val = current_hr * current_sv * eff_tpr
-
-        # Clamp MAP for numerical stability and physiological sanity
-        map_val = clamp(map_val, 5.0, 300.0)
-
-        # SVR output
-        svr_val = map_val / co if co > 0 else 0.0
-
-        computed_state = HemoStateExtended(
+        self._cached_state = HemoStateExtended(
             map=map_val,
             hr=current_hr,
             sv=current_sv,
@@ -835,11 +688,9 @@ class HemodynamicModel:
             rv_co=self._last_rv_co,
             lv_inflow=self._last_lv_inflow,
             preload_factor=self._last_preload_factor,
-            rhythm_type=self.rhythm_type
+            rhythm_type=self.rhythm_type,
         )
-
-        self._cached_state = computed_state
-        return computed_state
+        return self._cached_state
 
     @property
     def state(self) -> HemoStateExtended:
@@ -864,14 +715,7 @@ class HemodynamicModel:
     def _calc_hr(self):
         # Includes base HR star, slow drifts, and rate-limited fast effects
         return self.hr_star + self.tde_hr + self.smoothed_chemo_hr + self.smoothed_epi_hr
-        
-    def _calc_sv(self):
-        hr = self._calc_hr()
-        # SV = (SV_* + TDE_{SV}) * (1 - HR_{SV} * ln(HR/BaseHR))
-        term = 1.0 - self.hr_sv_coupling * math.log(max(1.0, hr / self.base_hr))
-        term = max(0.1, term)  # Prevent negative SV at extreme HR
-        return (self.sv_star + self.tde_sv) * term
-        
+
     def step(self, dt: float, cp_prop: float, cp_remi: float, ce_nore: float, pit: float, paco2: float, pao2: float,
              dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0,
              mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0,
@@ -986,19 +830,12 @@ class HemodynamicModel:
         )
         
         # --- 4.3 CO2/O2 Chemoreflex ---
-        if self.chemoreflex_active:
-            # Hypercapnia increases HR and TPR production
-            e_co2 = max(0.0, (paco2 - self.paco2_set) / self.paco2_set) if self.paco2_set > 0 else 0.0
-            # Hypoxia increases HR
-            e_o2 = max(0.0, (self.pao2_set - pao2) / self.pao2_set) if self.pao2_set > 0 else 0.0
-            
-            # Chemoreflex contributions
-            chemo_hr_boost = self.g_hr_co2 * e_co2 + self.g_hr_o2 * e_o2
-            chemo_tpr_factor = 1.0 + self.k_tpr_co2 * e_co2
-        else:
-            chemo_hr_boost = 0.0
-            chemo_tpr_factor = 1.0
-        
+        # Hypercapnia raises HR and TPR production; hypoxemia raises HR.
+        e_co2 = max(0.0, (paco2 - self.paco2_set) / self.paco2_set)
+        e_o2 = max(0.0, (self.pao2_set - pao2) / self.pao2_set)
+        chemo_hr_boost = self.g_hr_co2 * e_co2 + self.g_hr_o2 * e_o2
+        chemo_tpr_factor = 1.0 + self.k_tpr_co2 * e_co2
+
         # --- 4.4 Hemorrhage Response ---
         self.hemorrhage_hr_mult, self.hemorrhage_tpr_mult = self._calc_hemorrhage_response()
 
@@ -1010,9 +847,15 @@ class HemodynamicModel:
         epi_delta_hr, epi_sv_factor, epi_svr_factor = self._calc_epi_effects(ce_epi)
         nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(ce_nore)
         phenyl_svr_factor = self._calc_phenyl_effects(ce_phenyl)
-        vaso_delta_hr, vaso_svr_factor = self._calc_vasopressin_effects(ce_vaso)
-        dobu_delta_hr, dobu_sv_factor, dobu_svr_factor = self._calc_dobutamine_effects(ce_dobu)
-        mil_delta_hr, mil_sv_factor, mil_svr_factor = self._calc_milrinone_effects(ce_mil)
+        vaso_delta_hr, _, vaso_svr_factor = self._calc_hr_sv_svr_effects(
+            ce_vaso, self.vaso_c50, self.vaso_gamma, self.vaso_emax_hr, 0.0, self.vaso_emax_svr
+        )
+        dobu_delta_hr, dobu_sv_factor, dobu_svr_factor = self._calc_hr_sv_svr_effects(
+            ce_dobu, self.dobu_c50, self.dobu_gamma, self.dobu_emax_hr, self.dobu_emax_sv, self.dobu_emax_svr
+        )
+        mil_delta_hr, mil_sv_factor, mil_svr_factor = self._calc_hr_sv_svr_effects(
+            ce_mil, self.mil_c50, self.mil_gamma, self.mil_emax_hr, self.mil_emax_sv, self.mil_emax_svr
+        )
         
         # Combine vasopressor effects
         # SVR: Multiplicative (each drug independently increases vascular resistance)
@@ -1105,16 +948,10 @@ class HemodynamicModel:
         hr_dissipation = self.kout * self.hr_star * (1.0 - eff_remi_hr)
         d_hr_star = hr_production - hr_dissipation
         
-        # Store chemoreflex and combined vasopressor HR effects as targets
-        self.current_chemo_hr = chemo_hr_boost
-        self.current_epi_hr = combined_delta_hr  # Now includes all vasopressor HR effects
-        
-        # Apply rate limiting via exponential smoothing
-        # dx/dt = (target - x) / tau  =>  x_new = x + (target - x) * dt / tau
-        alpha_fast = dt / self.tau_hr_fast if self.tau_hr_fast > 0 else 1.0
-        alpha_fast = min(1.0, alpha_fast)  # Clamp to avoid overshoot
-        self.smoothed_chemo_hr += (self.current_chemo_hr - self.smoothed_chemo_hr) * alpha_fast
-        self.smoothed_epi_hr += (self.current_epi_hr - self.smoothed_epi_hr) * alpha_fast
+        # Rate-limit chemoreflex and vasoactive chronotropy (first-order, tau_hr_fast).
+        alpha_fast = min(1.0, dt / self.tau_hr_fast)
+        self.smoothed_chemo_hr += (chemo_hr_boost - self.smoothed_chemo_hr) * alpha_fast
+        self.smoothed_epi_hr += (combined_delta_hr - self.smoothed_epi_hr) * alpha_fast
         
         # Drifts (Standard decay)
         d_tde_hr = -self.k_drift * self.tde_hr

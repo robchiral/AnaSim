@@ -28,6 +28,8 @@ State access rules:
   enabled and `nibp_*` in cuff mode.
 - The recorder writes physiology and monitor measurements to reproduce the
   displayed state.
+- `engine.output_buffer` holds ten seconds of per-step `WaveformSample`
+  records (ECG, pleth, capnogram, arterial pressure) for the monitor sweep.
 - Projection and monitor boundaries convert public numeric fields to Python
   `float` values.
 
@@ -238,6 +240,11 @@ Initialization runs before the visible simulation loop:
 
 - Central drive is depressed by propofol, remifentanil, and sevoflurane.
 - A rocuronium-dependent muscle factor represents neuromuscular weakness.
+- Alveolar O2 is a mass balance over the FRC gas store and hemoglobin-bound O2
+  in the circulating blood. At steady state it reduces to the alveolar gas
+  equation; during apnea the stores deplete at VO2, so preoxygenation sets the
+  safe apnea time. A patent airway during apnea draws inspired gas in to
+  replace absorbed O2 (apneic oxygenation).
 - The respiratory model tracks `alveolar_co2`, `pa_co2`, and `etco2`
   separately.
 - Low cardiac output widens the PaCO2-EtCO2 gap; arterial `sao2` remains tied to PaO2 and hemoglobin dissociation.
@@ -252,7 +259,9 @@ Initialization runs before the visible simulation loop:
   volume and age-adjusted arterial compliance.
 - The arterial catheter applies configurable second-order measurement dynamics. The default natural frequency is 20 Hz and damping ratio is 0.65.
 - ART numerics come from completed filtered beats. NIBP measures the same ideal systolic, diastolic, and mean pressures with cuff timing, bias, and failure behavior.
-- Monitor HR is beat-derived. BIS uses time-step-aware smoothing.
+- Monitor HR is beat-derived. BIS adds sevoflurane (MAC scaled so 1 MAC gives
+  BIS 41) to the selected propofol-remifentanil surface, then applies 10 s
+  smoothing and the model's processing delay on the simulation clock.
 - Poor perfusion slows finger SpO2 and reduces pleth amplitude. Raw arterial
   saturation remains tied to PaO2 and hemoglobin dissociation.
 - EtCO2 numerics update from completed capnogram breaths. The display clears 15
@@ -261,7 +270,29 @@ Initialization runs before the visible simulation loop:
 
 ### TCI
 
-Controllers rebuild after PK parameter changes and reseed after external boluses.
+Each control interval (10 s) the controller predicts the zero-input course of
+the targeted compartment over ten minutes and picks the largest rate that keeps
+the prediction at or below target (Shafer and Gregg 1992). From zero this is the
+effect-site bolus that peaks at target; at target it is the maintenance rate.
+Propofol and remifentanil use a 1200 mL/h syringe-pump limit. Controllers
+rebuild after PK parameter changes and reseed after external boluses.
+
+### PK models
+
+All intravenous drugs share one mammillary model (`MammillaryPK`) with up to two
+peripheral compartments and an effect site. Its `state_fields`,
+`get_ss_matrices()`, and `state_vector()` share one state order, used by TCI and
+steady-state seeding. Hemodynamic scaling changes V1 with blood volume and
+clearances with cardiac output; peripheral volumes stay fixed so redistribution
+conserves mass.
+
+### Temperature and stimulation
+
+- Induction moves up to 1.3 °C of core heat to the periphery with a 20-minute
+  time constant (Matsukawa 1995); lightening does not return it.
+- Noxious-stimulus responses scale with the probability of responding to
+  laryngoscopy from the Bouillon propofol-remifentanil-MAC surface, so opioids
+  blunt the hemodynamic and BIS response.
 
 ## Scenario objectives
 

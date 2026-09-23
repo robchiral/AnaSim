@@ -159,8 +159,8 @@ class TestRocuroniumTiming:
         LITERATURE: Rocuronium 0.6 mg/kg provides intubating conditions in 60-90s.
         Magorian et al. Anesthesiology. 1993.
         """
-        pk = RocuroniumPK(patient, model_name="Wierda")
-        pd = TOFModel(patient, model_name="Wierda")
+        pk = RocuroniumPK(patient)
+        pd = TOFModel(patient)
         
         dose = 0.6 * patient.weight
         pk.state.c1 = dose / pk.v1  # Instant bolus
@@ -183,8 +183,8 @@ class TestRocuroniumTiming:
         LITERATURE: Rocuronium 0.6 mg/kg clinical duration (TOF 25%) is 30-40 min.
         Wierda et al. Can J Anaesth. 1991.
         """
-        pk = RocuroniumPK(patient, model_name="Wierda")
-        pd = TOFModel(patient, model_name="Wierda")
+        pk = RocuroniumPK(patient)
+        pd = TOFModel(patient)
         
         dose = 0.6 * patient.weight
         pk.state.c1 = dose / pk.v1

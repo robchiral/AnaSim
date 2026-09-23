@@ -214,3 +214,32 @@ class TestTCIInitialization:
         rate = tci.step(0.0)
         
         assert rate == 0.0, f"Zero target should give zero rate, got {rate}"
+
+
+class TestEngineTCI:
+    """Pump-limited TCI inside the engine."""
+
+    def test_effect_site_induction_reaches_target_without_overshoot(self, engine_factory):
+        engine = engine_factory(start=True)
+        engine.set_airway_mode("Mask")
+        engine.set_fgf(6.0, 0.0)
+        engine.enable_tci("propofol", 4.0)
+        peak = 0.0
+        time_to_90 = None
+        for _ in range(3600):
+            engine.step(0.1)
+            peak = max(peak, engine.state.propofol_ce)
+            if time_to_90 is None and engine.state.propofol_ce >= 3.6:
+                time_to_90 = engine.state.time
+        assert time_to_90 is not None and time_to_90 < 240.0
+        assert peak < 4.0 * 1.03
+        assert engine.state.propofol_ce == pytest.approx(4.0, rel=0.03)
+
+    def test_plasma_controller_does_not_bolus_after_resync(self, anesthetized_engine):
+        """Resyncing to live PK state must not trigger max-rate boluses."""
+        target = anesthetized_engine.tci_nore.target
+        peak = 0.0
+        for _ in range(12000):
+            anesthetized_engine.step(0.1)
+            peak = max(peak, anesthetized_engine.pk_nore.state.c1)
+        assert peak < target * 1.4

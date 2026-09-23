@@ -1,31 +1,18 @@
 from __future__ import annotations
 
+import math
 from collections import deque
 from dataclasses import dataclass
 
-import numpy as np
-
 from anasim.core.state import SUPPORTED_MODEL_OPTIONS
-from anasim.core.utils import clamp
 from anasim.patient.patient import Patient
 
-
-def compute_bis_from_mac(m_eff: float, agent_offset: float = 0.0) -> float:
-    """Core BIS-MAC relationship fitted to sevoflurane BIS data."""
-    if m_eff < 0:
-        m_eff = 0.0
-    bis_base = 25.0 + 70.0 / (1.0 + (m_eff / 0.694) ** 3.326)
-    return clamp(bis_base + agent_offset, 30.0, 98.0)
+# Sevoflurane potency on the BIS response surface is anchored to BIS ~41 at
+# 1 MAC (Kanazawa 2017; Ryu 2018), which gives BIS ~30 at 1.5 MAC (Paraskeva 2005).
+SEVO_BIS_AT_1_MAC = 41.0
 
 
-def compute_mac_equivalent_from_drugs(ce_prop: float, remi_rate_ug_kg_min: float) -> float:
-    """Convert IV drug effect to a MAC-equivalent hypnotic contribution."""
-    delta_m_prop = 0.18 * ce_prop
-    delta_m_remi = 0.0
-    return min(delta_m_prop + delta_m_remi, 2.0)
-
-
-@dataclass
+@dataclass(frozen=True)
 class BISModelParams:
     c50p: float
     c50r: float
@@ -33,123 +20,86 @@ class BISModelParams:
     beta: float
     e0: float
     emax: float
-    delay: float
+    delay: float = 0.0
+    gamma_above_c50: float | None = None  # Eleveld uses a second slope above Ce50.
+
+
+BIS_MODEL_PARAMS = {
+    "Bouillon": BISModelParams(c50p=4.47, c50r=19.3, gamma=1.43, beta=0.0, e0=97.4, emax=97.4),
+    "Fuentes": BISModelParams(c50p=2.99, c50r=21.0, gamma=2.69, beta=0.0, e0=94.0, emax=94.0 * 0.81),
+    "Yumuk": BISModelParams(c50p=7.66, c50r=149.62, gamma=4.07, beta=15.03, e0=93.97, emax=93.97),
+}
 
 
 class BISModel:
-    """BIS PD model for IV agents and volatile anesthetics."""
+    """Propofol-remifentanil BIS response surface with additive sevoflurane.
+
+    Sevoflurane adds MAC / mac50 to the model's interaction term, where mac50
+    places 1 MAC at SEVO_BIS_AT_1_MAC. Propofol and sevoflurane therefore add
+    on one continuous surface (Schumacher 2009) for every IV model choice.
+    """
 
     def __init__(self, patient: Patient, model_name: str = "Bouillon"):
         if model_name not in SUPPORTED_MODEL_OPTIONS["bis_model"]:
             raise ValueError(f"Unsupported BIS model: {model_name!r}")
         self.model_name = model_name
-        self.patient = patient
-        self.bis_smoothed = 98.0
+        if model_name == "Eleveld":
+            # Eleveld 2018: arterial Ce50 with age, no opioid term, and age-dependent delay (s).
+            self.params = BISModelParams(
+                c50p=3.08 * math.exp(-0.00635 * (patient.age - 35)),
+                c50r=0.0,
+                gamma=1.89,
+                gamma_above_c50=1.47,
+                beta=0.0,
+                e0=93.0,
+                emax=93.0,
+                delay=15.0 + math.exp(0.0517 * patient.age),
+            )
+        else:
+            self.params = BIS_MODEL_PARAMS[model_name]
+        self.mac50 = 1.0 / self._interaction_for_bis(SEVO_BIS_AT_1_MAC)
+        # Monitor processing: 10 s smoothing plus the model's transport delay.
         self.tau_smooth = 10.0
-        self.alpha_smooth = 0.1
-        self.params = BISModelParams(
-            c50p=4.47, c50r=19.3, gamma=1.43, beta=0.0, e0=97.4, emax=97.4, delay=0.0
-        )
+        self.initialize(self.params.e0)
 
-        if self.model_name == "Eleveld":
-            age = patient.age
-
-            def faging(x):
-                return np.exp(x * (age - 35))
-
-            def fdelay(x):
-                return 15 + np.exp(x * age)
-
-            self.params.c50p = 3.08 * faging(-0.00635)
-            self.params.c50r = 0.0
-            self.params.gamma = 1.89
-            self.params.gamma2 = 1.47
-            self.params.e0 = 93.0
-            self.params.emax = 93.0
-            self.params.delay = fdelay(0.0517)
-        elif self.model_name == "Fuentes":
-            self.params.c50p = 2.99
-            self.params.c50r = 21.0
-            self.params.gamma = 2.69
-            self.params.beta = 0.0
-            self.params.e0 = 94.0
-            self.params.emax = 94.0 * 0.81
-        elif self.model_name == "Yumuk":
-            self.params.c50p = 7.66
-            self.params.c50r = 149.62
-            self.params.gamma = 4.07
-            self.params.beta = 15.03
-            self.params.e0 = 93.97
-            self.params.emax = 93.97
-
-        self.output_buffer = deque([self.params.e0])
-
-    def initialize(self, bis_target: float, dt: float = 0.01):
-        self.bis_smoothed = bis_target
-        steps_delay = int(np.ceil(self.params.delay / dt)) if self.params.delay > 0 else 10
-        self.output_buffer = deque([bis_target] * max(1, steps_delay))
-
-    def step(
-        self,
-        dt: float,
-        ce_prop: float,
-        ce_remi: float = 0.0,
-        mac_sevo: float = 0.0,
-        remi_rate_ug_kg_min: float = 0.0,
-    ) -> float:
-        total_mac = mac_sevo
-        if total_mac > 0.01:
-            bis_raw = self._compute_bis_volatile(ce_prop, mac_sevo, remi_rate_ug_kg_min)
-        else:
-            bis_raw = self._compute_bis_iv_only(ce_prop, ce_remi)
-
-        alpha = 1.0 if dt <= 0 else 1.0 - np.exp(-dt / self.tau_smooth)
-        self.bis_smoothed = (1.0 - alpha) * self.bis_smoothed + alpha * bis_raw
-        bis_out = self.bis_smoothed
-
-        steps_delay = int(np.ceil(self.params.delay / dt)) if self.params.delay > 0 else 0
-        if steps_delay > 0:
-            if len(self.output_buffer) != steps_delay:
-                self.output_buffer = deque([self.bis_smoothed] * steps_delay, maxlen=steps_delay)
-            self.output_buffer.append(bis_out)
-            return self.output_buffer.popleft()
-        return bis_out
-
-    def compute_bis(self, ce_prop: float, ce_remi: float = 0.0, u_volatile: float = 0.0) -> float:
-        if u_volatile > 0.01:
-            remi_rate_ug_kg_min = ce_remi * 0.04
-            return self._compute_bis_volatile(ce_prop, mac_sevo=u_volatile, remi_rate_ug_kg_min=remi_rate_ug_kg_min)
-        return self._compute_bis_iv_only(ce_prop, ce_remi)
-
-    def _compute_bis_volatile(self, ce_prop: float, mac_sevo: float, remi_rate_ug_kg_min: float) -> float:
-        delta_m_iv = compute_mac_equivalent_from_drugs(ce_prop, remi_rate_ug_kg_min)
-        bis_values = []
-        if mac_sevo > 0.01:
-            m_eff_sevo = mac_sevo + delta_m_iv
-            bis_values.append((mac_sevo, compute_bis_from_mac(m_eff_sevo, agent_offset=0.0)))
-        total_mac = sum(mac for mac, _ in bis_values)
-        if total_mac == 0:
-            return 98.0
-        return sum(mac * bis for mac, bis in bis_values) / total_mac
-
-    def _compute_bis_iv_only(self, ce_prop: float, ce_remi: float) -> float:
+    def _gamma(self, interaction: float) -> float:
         p = self.params
-        u_prop = ce_prop / p.c50p if p.c50p > 1e-6 else 0.0
-        u_remi = ce_remi / p.c50r if p.c50r > 1e-6 else 0.0
-        gamma = p.gamma
+        return p.gamma_above_c50 if p.gamma_above_c50 and interaction > 1.0 else p.gamma
 
-        if self.model_name == "Bouillon":
-            phi = u_prop / (u_prop + u_remi) if (u_prop + u_remi) > 0 else 0.0
-            u50 = 1 - p.beta * (phi - phi**2)
-            interaction = (u_prop + u_remi) / u50
-        else:
-            interaction = u_prop + u_remi + p.beta * u_prop * u_remi
-            if self.model_name == "Eleveld" and hasattr(p, "gamma2") and u_prop > 1.0:
-                gamma = p.gamma2
+    def _interaction_for_bis(self, bis: float) -> float:
+        """Invert the Hill surface for a single-drug interaction term."""
+        p = self.params
+        odds = (p.e0 - bis) / (p.emax - p.e0 + bis)
+        if odds <= 0.0:
+            raise ValueError(f"{self.model_name} BIS model cannot reach BIS {bis:g}")
+        return odds ** (1.0 / self._gamma(odds))
 
-        term = interaction ** gamma
-        effect = p.emax * (term / (1 + term))
-        return max(0.0, p.e0 - effect)
+    def initialize(self, bis: float) -> None:
+        self.bis_smoothed = bis
+        self._clock = 0.0
+        self._history = deque([(0.0, bis)])
+
+    def compute_bis(self, ce_prop: float, ce_remi: float = 0.0, mac_sevo: float = 0.0) -> float:
+        p = self.params
+        u_prop = max(0.0, ce_prop) / p.c50p
+        u_remi = max(0.0, ce_remi) / p.c50r if p.c50r > 0 else 0.0
+        interaction = u_prop + u_remi + p.beta * u_prop * u_remi + max(0.0, mac_sevo) / self.mac50
+        term = interaction ** self._gamma(interaction)
+        return max(0.0, p.e0 - p.emax * term / (1.0 + term))
+
+    def step(self, dt: float, ce_prop: float, ce_remi: float = 0.0, mac_sevo: float = 0.0) -> float:
+        """Return the smoothed, delayed BIS after dt seconds."""
+        alpha = 1.0 - math.exp(-dt / self.tau_smooth)
+        self.bis_smoothed += alpha * (self.compute_bis(ce_prop, ce_remi, mac_sevo) - self.bis_smoothed)
+        if self.params.delay <= 0.0:
+            return self.bis_smoothed
+        self._clock += dt
+        history = self._history
+        history.append((self._clock, self.bis_smoothed))
+        while len(history) > 1 and history[1][0] <= self._clock - self.params.delay:
+            history.popleft()
+        return history[0][1]
+
 
 class LOCModel:
     """Loss-of-consciousness probability model."""
@@ -223,11 +173,4 @@ class TOLModel:
         return (ce_effective**self.gamma_p) / (c50p_scaled**self.gamma_p + ce_effective**self.gamma_p)
 
 
-__all__ = [
-    "BISModel",
-    "BISModelParams",
-    "LOCModel",
-    "TOLModel",
-    "compute_bis_from_mac",
-    "compute_mac_equivalent_from_drugs",
-]
+__all__ = ["BISModel", "BISModelParams", "LOCModel", "TOLModel"]

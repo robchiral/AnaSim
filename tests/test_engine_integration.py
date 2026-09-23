@@ -107,19 +107,9 @@ def test_tci_seeds_state_and_caps_rate(engine):
         controller = getattr(engine, controller_attr)
         assert controller is not None
 
-        c1 = getattr(pk_model.state, "c1", 0.0)
-        c2 = getattr(pk_model.state, "c2", 0.0)
-        c3 = getattr(pk_model.state, "c3", 0.0)
-        ce = getattr(pk_model.state, "ce", 0.0)
-
-        assert controller.x[0, 0] == pytest.approx(c1)
-        if controller.n_state >= 2:
-            assert controller.x[1, 0] == pytest.approx(c2)
-        if controller.n_state == 3:
-            assert controller.x[2, 0] == pytest.approx(ce)
-        if controller.n_state >= 4:
-            assert controller.x[2, 0] == pytest.approx(c3)
-            assert controller.x[3, 0] == pytest.approx(ce)
+        expected = [state_values.get(name, 0.0) for name in pk_model.state_fields]
+        assert controller.x[:, 0] == pytest.approx(expected)
+        assert pk_model.state_fields[0] == "c1" and pk_model.state_fields[-1] == "ce"
 
         expected_max_rate = get_drug_spec(drug).max_rate.internal_rate(weight)
         assert controller.max_rate == pytest.approx(expected_max_rate)
@@ -167,7 +157,7 @@ def test_pk_hemodynamic_scaling_applies_to_propofol():
     engine.hemo.blood_volume = engine.hemo.blood_volume_0 * 0.5
     engine.state.co = engine.hemo.base_co_l_min * 0.5
 
-    runtime_core.step_pk(engine, 0.5, 0.0, 0.0, engine.state.co)
+    runtime_core.update_pk_hemodynamics(engine, engine.state.co)
 
     assert engine.pk_prop.v1 == pytest.approx(base_v1 * 0.5, rel=0.05)
 

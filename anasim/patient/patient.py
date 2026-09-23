@@ -131,6 +131,16 @@ class Patient:
         else:
             self.hepatic_status = "Severe"
 
+    def james_lbm(self) -> float:
+        """James (1976) lean body mass, the covariate used by Schnider and Minto.
+
+        It stays monotonic in weight across the supported BMI range (<= 32).
+        """
+        ratio = self.weight / self.height
+        if self.sex == "male":
+            return 1.1 * self.weight - 128.0 * ratio**2
+        return 1.07 * self.weight - 148.0 * ratio**2
+
     def _janmahasatian_lbm(self) -> float:
         """Compute Janmahasatian lean body mass."""
         if self.sex == "male":

@@ -1,5 +1,6 @@
 import pytest
 
+from anasim.core.constants import SHIVER_MAX_MULTIPLIER
 from anasim.patient.patient import Patient
 from anasim.physiology.respiration import RespiratoryModel
 
@@ -341,8 +342,7 @@ class TestShiveringMetabolicEffect:
                 mech_vent_mv=mech_mv,
                 mech_rr=mech_rr,
                 mech_vt_l=mech_vt_l,
-                temp_c=35.0,
-                shiver_level=0.0,
+                metabolic_factor=1.0,
             )
         paco2_low = model_low.state.p_alveolar_co2
 
@@ -356,10 +356,55 @@ class TestShiveringMetabolicEffect:
                 mech_vent_mv=mech_mv,
                 mech_rr=mech_rr,
                 mech_vt_l=mech_vt_l,
-                temp_c=35.0,
-                shiver_level=1.0,
+                metabolic_factor=1.0 + SHIVER_MAX_MULTIPLIER,
             )
         paco2_high = model_high.state.p_alveolar_co2
 
         assert paco2_high > paco2_low + 10.0, \
             f"Shivering PaCO2 {paco2_high:.1f} not sufficiently above baseline {paco2_low:.1f}"
+
+
+class TestOxygenStores:
+    """Apneic desaturation follows lung and blood O2 stores (Benumof 1997)."""
+
+    @staticmethod
+    def _minutes_to_sao2_below_90(engine, max_seconds=900.0, dt=0.1):
+        start = engine.state.time
+        for _ in range(int(max_seconds / dt)):
+            engine.step(dt)
+            if engine.state.sao2 < 90.0:
+                return (engine.state.time - start) / 60.0
+        return None
+
+    @staticmethod
+    def _induce_apnea(engine):
+        engine.give_drug_bolus("propofol", 2.0 * engine.patient.weight)
+        engine.give_drug_bolus("roc", 0.6 * engine.patient.weight)
+
+    def test_preoxygenation_extends_safe_apnea_time(self, awake_engine):
+        awake_engine.set_airway_mode("Mask")
+        awake_engine.set_fgf(10.0, 0.0)
+        for _ in range(1800):
+            awake_engine.step(0.1)
+        assert awake_engine.state.pao2 > 450.0, "Three minutes of tidal breathing should denitrogenate"
+
+        self._induce_apnea(awake_engine)
+        awake_engine.set_airway_obstruction(1.0)
+        minutes = self._minutes_to_sao2_below_90(awake_engine)
+        assert minutes is not None and 5.0 < minutes < 11.0
+
+    def test_room_air_apnea_desaturates_within_two_minutes(self, awake_engine):
+        self._induce_apnea(awake_engine)
+        minutes = self._minutes_to_sao2_below_90(awake_engine)
+        assert minutes is not None and minutes < 2.0
+
+    def test_apneic_oxygenation_through_patent_airway(self, awake_engine):
+        awake_engine.set_airway_mode("Mask")
+        awake_engine.set_fgf(10.0, 0.0)
+        for _ in range(1800):
+            awake_engine.step(0.1)
+        self._induce_apnea(awake_engine)
+        for _ in range(6000):
+            awake_engine.step(0.1)
+        assert awake_engine.state.sao2 > 97.0
+        assert awake_engine.state.pa_co2 > 60.0

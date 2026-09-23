@@ -173,6 +173,3 @@ class HemodynamicConfig:
     mil_emax_hr: float = 6.0
     mil_emax_sv: float = 0.45
     mil_emax_svr: float = -0.35
-
-    # Hill cache tolerance
-    cache_tolerance: float = 0.01

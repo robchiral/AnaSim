@@ -89,52 +89,50 @@ def compute_capno_value(engine: "SimulationEngine", dt: float, phase: str, resp_
         return 0.0
 
     resp_mech = engine.resp_mech
-    bag_mask_active = engine.bag_mask_active and not engine._vent_active
-    vent_rr = resp_mech.set_rr if engine._vent_active else (engine.bag_mask_rr if bag_mask_active else 0.0)
-    insp_fraction = resp_mech.insp_time_fraction
-    if bag_mask_active and not engine._vent_active:
-        insp_fraction = 1.0 / 3.0
+    vent_active = engine._vent_active
+    bag_mask_active = engine.bag_mask_active and not vent_active
+    if vent_active:
+        vent_rr, insp_fraction = resp_mech.set_rr, resp_mech.insp_time_fraction
+    elif bag_mask_active:
+        vent_rr, insp_fraction = engine.bag_mask_rr, 1.0 / 3.0
+    else:
+        vent_rr, insp_fraction = 0.0, resp_mech.insp_time_fraction
 
-    capno_context = Capnograph.build_context(
+    context = Capnograph.build_context(
         resp_state,
         vent_rr=vent_rr,
         insp_fraction=insp_fraction,
-        vent_active=(engine._vent_active or bag_mask_active),
+        vent_active=vent_active or bag_mask_active,
     )
     capno_phase = phase
-    capno_exp_duration = capno_context.exp_duration
-    capno_is_spontaneous = capno_context.is_spontaneous
-    capno_curare = capno_context.curare_active
+    exp_duration = context.exp_duration
+    is_spontaneous = context.is_spontaneous
+    curare_cleft = context.curare_active
 
-    if engine._vent_active or bag_mask_active:
-        support_mode = engine._vent_active and resp_mech.mode in (VentMode.PSV, VentMode.CPAP)
-        if support_mode:
-            capno_is_spontaneous = True
-            capno_curare = False
-            capno_phase = phase_from_rr(engine, resp_state.rr)
-            if resp_state.rr > 0:
-                capno_exp_duration = (60.0 / resp_state.rr) * 0.65
+    if vent_active and resp_mech.mode in (VentMode.PSV, VentMode.CPAP):
+        # Support modes follow the patient's own breathing pattern.
+        is_spontaneous = True
+        curare_cleft = False
+        capno_phase = phase_from_rr(engine, resp_state.rr)
+        if resp_state.rr > 0:
+            exp_duration = (60.0 / resp_state.rr) * 0.65
+    elif vent_active or bag_mask_active:
+        if context.spontaneous_weight >= 0.6:
+            capno_phase = phase_from_rr(engine, context.effective_rr)
         else:
-            if capno_context.spontaneous_weight >= 0.6:
-                capno_phase = phase_from_rr(engine, capno_context.effective_rr)
-                capno_exp_duration = capno_context.exp_duration
-            else:
-                driven_rr = vent_rr if vent_rr > 0.1 else capno_context.effective_rr
-                cycle_time = 60.0 / max(driven_rr, 0.1)
-                exp_fraction = max(0.1, 1.0 - insp_fraction)
-                capno_exp_duration = cycle_time * exp_fraction
-    elif capno_is_spontaneous:
+            driven_rr = vent_rr if vent_rr > 0.1 else context.effective_rr
+            exp_duration = 60.0 / max(driven_rr, 0.1) * max(0.1, 1.0 - insp_fraction)
+    elif is_spontaneous:
         capno_phase = phase_from_rr(engine, resp_state.rr)
 
-    capno_p_alv = resp_state.etco2 * engine._airway_patency
     return engine.capno.step(
         dt,
         capno_phase,
-        capno_p_alv,
-        is_spontaneous=capno_is_spontaneous,
-        curare_cleft=capno_curare,
-        exp_duration=capno_exp_duration,
-        effort_scale=capno_context.effort_scale,
+        resp_state.etco2 * engine._airway_patency,
+        is_spontaneous=is_spontaneous,
+        curare_cleft=curare_cleft,
+        exp_duration=exp_duration,
+        effort_scale=context.effort_scale,
         airway_obstruction=engine._capno_obstruction,
     )
 
@@ -236,20 +234,8 @@ def step_monitors(
 ) -> None:
     """Update monitor models and learner-facing display values."""
     state = engine.state
-
-    if engine.patient.weight != engine._remi_rate_weight:
-        engine._remi_rate_weight = engine.patient.weight
-        engine._remi_rate_scale = 60.0 / engine._remi_rate_weight
-    remi_rate_ug_kg_min = engine.remi_rate_ug_sec * engine._remi_rate_scale
-
     mac_sevo = engine.pk_sevo.state.mac
-    bis_val = engine.bis.step(
-        dt,
-        state.propofol_ce,
-        state.remi_ce,
-        mac_sevo=mac_sevo,
-        remi_rate_ug_kg_min=remi_rate_ug_kg_min,
-    )
+    bis_val = engine.bis.step(dt, state.propofol_ce, state.remi_ce, mac_sevo=mac_sevo)
     capno_val = compute_capno_value(engine, dt, phase, resp_state)
 
     tof_val = engine.tof_pd.step_recovery(
@@ -264,18 +250,7 @@ def step_monitors(
         mac_sevo=mac_sevo,
         mac_n2o=state.mac_n2o,
     )
-    if engine._tol_current is not None:
-        tol_val = engine._tol_current
-    else:
-        tol_val = engine.tol_pd.compute_probability(state.propofol_ce, state.remi_ce)
-
-    sao2 = state.sao2
-    cardiac_sample = step_cardiac_monitors(
-        engine,
-        dt,
-        hemo_state,
-        sao2,
-    )
+    cardiac_sample = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
 
     update_nibp(engine, dt, hemo_state)
 
@@ -303,16 +278,16 @@ def step_monitors(
         display_etco2=display_etco2,
         tof=tof_val,
         loc=loc_val,
-        tol=tol_val,
+        tol=engine._tol_current,
         display_spo2=state.spo2,
     )
-
-    monitor_vals = engine._monitor_values
-    monitor_vals["BIS"] = state.display_bis
-    monitor_vals["MAP"] = state.monitored_blood_pressure(
-        engine.config.arterial_line_enabled
-    )[2]
-    monitor_vals["HR"] = state.display_hr
-    monitor_vals["EtCO2"] = state.display_etco2
-    monitor_vals["SpO2"] = state.display_spo2
-    state.alarms = engine.alarms.update(monitor_vals, dt=dt)
+    state.alarms = engine.alarms.update(
+        {
+            "BIS": state.display_bis,
+            "MAP": state.monitored_blood_pressure(engine.config.arterial_line_enabled)[2],
+            "HR": state.display_hr,
+            "EtCO2": state.display_etco2,
+            "SpO2": state.display_spo2,
+        },
+        dt=dt,
+    )

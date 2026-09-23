@@ -321,13 +321,13 @@ class TestOrganImpairmentPK:
         assert pk_imp.v1 > pk_normal.v1 * 1.3, "Hepatic impairment should expand rocuronium Vd"
         assert pk_imp.k10 < pk_normal.k10 * 0.7, "Renal impairment should reduce rocuronium clearance"
 
-    def test_rocuronium_models_reject_unknown_names(self):
+    def test_vasoactive_models_reject_unknown_names(self):
         patient = Patient(age=40, weight=70, height=170, sex="male")
 
-        with pytest.raises(ValueError, match="Unsupported rocuronium PK model"):
-            RocuroniumPK(patient, model_name="Wierdaa")
-        with pytest.raises(ValueError, match="Unsupported TOF model"):
-            TOFModel(patient, model_name="Wierdaa")
+        with pytest.raises(ValueError, match="Unsupported norepinephrine PK model"):
+            NorepinephrinePK(patient, model="Beloiel")
+        with pytest.raises(ValueError, match="Unsupported epinephrine PK model"):
+            EpinephrinePK(patient, model="Cluter")
 
 # --- Neuromuscular Recovery & Reversal Tests ---
 
@@ -354,8 +354,8 @@ class TestNeuromuscularRecovery:
         Sanity: 0.6 mg/kg rocuronium → spontaneous recovery to TOFR ≥ 90% within 90 min.
         ScienceDirect / SUGAMMADEX.md benchmark (40-70 min typical).
         """
-        pk = RocuroniumPK(patient, model_name="Wierda")
-        pd = TOFModel(patient, model_name="Wierda")
+        pk = RocuroniumPK(patient)
+        pd = TOFModel(patient)
         
         dose_mg = 0.6 * patient.weight
         pk.state.c1 += dose_mg / pk.v1
@@ -388,8 +388,8 @@ class TestNeuromuscularRecovery:
         Pühringer et al. Br J Anaesth. 2010; Kleijn et al. Br J Clin Pharmacol. 2011:
         typical time ~1-3 min (heuristic fit).
         """
-        pk = RocuroniumPK(patient, model_name="Wierda")
-        pd = TOFModel(patient, model_name="Wierda")
+        pk = RocuroniumPK(patient)
+        pd = TOFModel(patient)
         
         dose_mg = 0.6 * patient.weight
         pk.state.c1 += dose_mg / pk.v1
@@ -423,8 +423,8 @@ class TestNeuromuscularRecovery:
         Clinical: 4 mg/kg sugammadex at deep block (PTC 1-2) → TOFR ≥ 90% in ~3 min.
         Pühringer et al. Br J Anaesth. 2010.
         """
-        pk = RocuroniumPK(patient, model_name="Wierda")
-        pd = TOFModel(patient, model_name="Wierda")
+        pk = RocuroniumPK(patient)
+        pd = TOFModel(patient)
         
         dose_mg = 0.6 * patient.weight
         pk.state.c1 += dose_mg / pk.v1
@@ -461,8 +461,8 @@ class TestNeuromuscularRecovery:
         Clinical: 16 mg/kg sugammadex at 3 min post 1.2 mg/kg roc → TOFR ≥ 90% in ~1-1.5 min.
         Kleijn et al. Br J Clin Pharmacol. 2011 (population PK/PD analysis; unverified mapping).
         """
-        pk = RocuroniumPK(patient, model_name="Wierda")
-        pd = TOFModel(patient, model_name="Wierda")
+        pk = RocuroniumPK(patient)
+        pd = TOFModel(patient)
         
         # Higher intubating dose
         dose_mg = 1.2 * patient.weight
@@ -500,7 +500,7 @@ class TestNeuromuscularRecovery:
         Verify asymmetric ke0 behavior: onset faster than recovery.
         Plaud et al. Clin Pharmacol Ther. 1995.
         """
-        pd = TOFModel(patient, model_name="Wierda")
+        pd = TOFModel(patient)
         
         # Check parameters
         assert pd.ke0_onset > pd.recovery_ke0, \

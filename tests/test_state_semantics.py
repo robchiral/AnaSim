@@ -134,19 +134,15 @@ def test_low_flow_high_fio2_does_not_force_arterial_desaturation():
             mech_vent_mv=6.0,
             fio2=1.0,
             ce_roc=0.0,
-            et_sevo=0.0,
             mac_sevo=0.0,
             peep=5.0,
             mean_paw=8.0,
-            temp_c=37.0,
             mech_rr=12.0,
             mech_vt_l=0.5,
             airway_patency=1.0,
             ventilation_efficiency=1.0,
             vq_mismatch=0.0,
             hb_g_dl=13.5,
-            oxygen_delivery_ratio=1.0,
-            shiver_level=0.0,
             cardiac_output=0.1,
             metabolic_factor=1.0,
         )
@@ -169,19 +165,15 @@ def test_low_flow_widens_pa_co2_etco2_gap():
                 mech_vent_mv=6.0,
                 fio2=0.5,
                 ce_roc=0.0,
-                et_sevo=0.0,
                 mac_sevo=0.0,
                 peep=5.0,
                 mean_paw=8.0,
-                temp_c=37.0,
                 mech_rr=12.0,
                 mech_vt_l=0.5,
                 airway_patency=1.0,
                 ventilation_efficiency=1.0,
                 vq_mismatch=0.0,
                 hb_g_dl=13.5,
-                oxygen_delivery_ratio=1.0,
-                shiver_level=0.0,
                 cardiac_output=cardiac_output,
                 metabolic_factor=1.0,
             )
@@ -227,7 +219,7 @@ def test_tci_controller_resyncs_after_bolus_and_pk_scaling():
     controller = engine.tci_prop
     assert controller is not None
 
-    baseline_signature = controller._model_signature
+    baseline_signature = controller._signature
     engine.give_drug_bolus("Propofol", 100.0)
 
     assert controller.x[0, 0] == pytest.approx(engine.pk_prop.state.c1)
@@ -237,7 +229,7 @@ def test_tci_controller_resyncs_after_bolus_and_pk_scaling():
     runtime_core.update_pk_hemodynamics(engine, engine.state.co)
     engine.sync_active_tci_from_pk("propofol")
 
-    assert controller._model_signature != baseline_signature
+    assert controller._signature != baseline_signature
 
 
 def test_awake_initial_snapshot_uses_patient_baselines():
@@ -315,7 +307,7 @@ def test_steady_state_tiva_snapshot_uses_live_model_state():
     expected_bis = engine.bis.compute_bis(
         engine.state.propofol_ce,
         engine.state.remi_ce,
-        u_volatile=engine.state.mac_sevo,
+        mac_sevo=engine.state.mac_sevo,
     )
 
     assert engine.state.bis == pytest.approx(expected_bis, abs=1e-3)
@@ -341,7 +333,7 @@ def test_steady_state_balanced_snapshot_syncs_volatile_state():
     expected_bis = engine.bis.compute_bis(
         engine.state.propofol_ce,
         engine.state.remi_ce,
-        u_volatile=engine.state.mac_sevo,
+        mac_sevo=engine.state.mac_sevo,
     )
 
     assert engine.state.fi_sevo > 0.0
