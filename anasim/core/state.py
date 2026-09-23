@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, NamedTuple, Optional
 
 from anasim.patient.domain import finite_number
 
@@ -64,6 +64,16 @@ class SimulationConfig:
         if unsupported_agents:
             names = ", ".join(sorted(unsupported_agents))
             raise ValueError(f"Unsupported volatile agent(s): {names}")
+
+class WaveformSample(NamedTuple):
+    """One simulation step of the monitor waveforms."""
+
+    time: float
+    ecg_voltage: float
+    pleth_voltage: float
+    capno_co2: float
+    art_pressure: float
+
 
 class AirwayType(Enum):
     NONE = "None"

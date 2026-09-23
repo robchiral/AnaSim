@@ -11,41 +11,21 @@ class TOFModel:
 
     MW_ROCURONIUM = 609.7
     MW_SUGAMMADEX = 2178.0
-    MODEL_PARAMS = {
-        "Wierda": (1.08, 6.41, -0.00605, -0.0494, -1.24),
-        "Szenohradszky": (1.44, 8.30, -0.00862, -0.0981, None),
-        "Cooper": (0.980, 6.18, -0.00557, -0.0341, -1.32),
-        "Alvarez-Gomez": (0.900, 5.99, -0.00539, -0.0443, -1.14),
-        "McCoy": (1.08, 4.20, -0.00770, -0.0283, None),
-    }
 
-    def __init__(self, patient: Patient, model_name: str = "Wierda", anesthesia_type: str = "TIVA"):
-        self.patient = patient
-        self.model_name = model_name
-        self.anesthesia_type = anesthesia_type
-
-        age = patient.age
-        sex = 1 if patient.sex.lower() == "female" else 0
-        age_term = age - 50.0
-        try:
-            theta2, theta3, theta5, theta6, theta7 = self.MODEL_PARAMS[model_name]
-        except KeyError as exc:
-            raise ValueError(f"Unsupported TOF model: {model_name}") from exc
-
-        self.ce50_base = max(theta2 + theta5 * age_term, 0.01)
-        self.gamma = max(theta3 + theta6 * age_term + ((theta7 or 0.0) * sex), 0.5)
+    def __init__(self, patient: Patient):
+        # Adductor pollicis effect site with faster onset than offset.
         self.ke0_onset = 0.16
         self.recovery_ke0 = 0.12
+        self.reversal_ke0 = 1.0
         self.Ce50_T1 = 0.8
         self.gamma_T1 = 3.0
         self.beta_TOF = 1.5
-        self.reversal_ke0 = 1.0
+        # Volatile potentiation: EC50 multiplier at 1 MAC.
         self.f_sevo = 0.75
         self.f_n2o = 0.6
-        self.Vs_L_kg = 0.18
-        self.Cl_s_mL_min = 88.0
-        self.Vs = self.Vs_L_kg * patient.weight
-        self.kel_s = (self.Cl_s_mL_min / 1000.0) / self.Vs
+        # Sugammadex PK (Vd 0.18 L/kg, CL 88 mL/min) and binding constant (M^-1).
+        self.Vs = 0.18 * patient.weight
+        self.kel_s = 0.088 / self.Vs
         self.Ka = 1.79e7
 
         self.ce = 0.0
@@ -68,7 +48,7 @@ class TOFModel:
 
         self.ce += ke0 * (cp_free - self.ce) * dt_min
         self.ce = max(0.0, self.ce)
-        return self._compute_tof_from_ce(self.ce, mac_sevo, mac_n2o)
+        return self.compute_tof_from_ce(self.ce, mac_sevo, mac_n2o)
 
     def _compute_free_rocuronium(self, cp_total_mg_l: float) -> float:
         if self.sugammadex_amount_umol <= 0 or cp_total_mg_l <= 0:
@@ -87,7 +67,7 @@ class TOFModel:
         r_free = max(0.0, r_tot - complex_conc)
         return r_free * self.MW_ROCURONIUM * 1000.0
 
-    def _compute_tof_from_ce(self, ce: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
+    def compute_tof_from_ce(self, ce: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         f_effective = 1.0
         mac_sevo = max(0.0, mac_sevo)
         mac_n2o = max(0.0, mac_n2o)
@@ -106,13 +86,8 @@ class TOFModel:
         twitch = clamp01(1.0 - block)
         return (twitch ** self.beta_TOF) * 100.0
 
-    def give_sugammadex(self, dose_mg: float, weight_kg: float = None):
-        total_dose_mg = dose_mg * weight_kg if weight_kg is not None else dose_mg
-        dose_umol = (total_dose_mg / self.MW_SUGAMMADEX) * 1000.0
-        self.sugammadex_amount_umol += dose_umol
-
-    def compute_tof_from_ce(self, ce_roc: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
-        return self._compute_tof_from_ce(ce_roc, mac_sevo, mac_n2o)
+    def give_sugammadex(self, dose_mg: float) -> None:
+        self.sugammadex_amount_umol += dose_mg / self.MW_SUGAMMADEX * 1000.0
 
     def reset(self):
         self.ce = 0.0

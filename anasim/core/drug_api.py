@@ -1,14 +1,10 @@
-"""
-Drug Controller API Mixin for SimulationEngine.
-
-This module contains drug control interface methods extracted from engine.py
-for better maintainability while preserving the SimulationEngine API.
-"""
+"""Drug infusion and TCI controls for SimulationEngine."""
 
 from typing import TYPE_CHECKING, Optional
 
 from .action_log import ACTION_INFUSION_RATE, ACTION_TCI_TARGET
 from .drug_registry import DRUG_REGISTRY, DrugSpec, TCIMode, get_drug_spec
+from .tci import TCIController
 from .units import convert_rate
 
 if TYPE_CHECKING:
@@ -16,14 +12,7 @@ if TYPE_CHECKING:
 
 
 class DrugControllerMixin:
-    """
-    Mixin providing drug control interface for SimulationEngine.
-    
-    Provides methods for:
-    - Setting drug infusion rates
-    - Enabling/disabling TCI (Target Controlled Infusion)
-    - Getting drug metadata and state for UI
-    """
+    """Infusion-rate and TCI methods shared by SimulationEngine."""
 
     def enable_tci(
         self: "SimulationEngine",
@@ -31,65 +20,37 @@ class DrugControllerMixin:
         target: float,
         mode: str = TCIMode.EFFECT_SITE.value,
     ):
-        """
-        Enable TCI for a drug.
-        
-        Args:
-            drug: Registry key for the controlled drug.
-            target: Target concentration.
-            mode: Requested target compartment; fixed-mode drugs use their registry mode.
-        """
-        from .tci import TCIController
-
-        # TCI control does not benefit from waveform-rate updates. A 100 ms
-        # floor avoids excessive controller iterations and coarse-step
-        # oscillation while remaining much faster than infusion-pump updates.
-        sampling_time = max(self.config.dt, 0.1)
-        control_time = max(10.0, sampling_time)
-        
+        """Start or retarget TCI; fixed-mode drugs ignore the requested compartment."""
         spec = get_drug_spec(drug)
-
-        max_rate = self._tci_max_rate(spec)
-        tci_attr = spec.tci_attr
-        pk_attr = spec.pk_attr
-        controller = getattr(self, tci_attr)
-        tci_mode = spec.fixed_tci_mode.value if spec.fixed_tci_mode else TCIMode(mode).value
-
-        if not controller:
+        pk_model = getattr(self, spec.pk_attr)
+        controller = getattr(self, spec.tci_attr)
+        if controller is None:
+            # Waveform-rate controller updates add cost without improving control.
+            sampling_time = max(self.config.dt, 0.1)
             controller = TCIController(
-                getattr(self, pk_attr),
+                pk_model,
                 spec.tci_name,
-                tci_mode,
-                max_rate=max_rate,
+                (spec.fixed_tci_mode or TCIMode(mode)).value,
                 sampling_time=sampling_time,
-                control_time=control_time,
+                control_time=max(10.0, sampling_time),
             )
-            setattr(self, tci_attr, controller)
+            setattr(self, spec.tci_attr, controller)
 
-        controller.max_rate = max_rate
-        controller.sync_state_estimate(getattr(self, pk_attr))
-        controller.target = target
-        self.actions.record(
-            self.state.time, ACTION_TCI_TARGET, label=spec.key, amount=target
-        )
+        controller.max_rate = spec.max_rate.internal_rate(self.patient.weight)
+        controller.sync_state_estimate(pk_model)
+        controller.set_target(target)
+        self.actions.record(self.state.time, ACTION_TCI_TARGET, label=spec.key, amount=target)
 
     def sync_active_tci_from_pk(self: "SimulationEngine", *drug_keys: str):
         """Resynchronize active TCI controllers with the live PK model state."""
-        keys = drug_keys or tuple(spec.key for spec in DRUG_REGISTRY)
-        for key in keys:
-            spec = get_drug_spec(key)
+        specs = [get_drug_spec(key) for key in drug_keys] if drug_keys else DRUG_REGISTRY
+        for spec in specs:
             controller = getattr(self, spec.tci_attr)
-            pk_model = getattr(self, spec.pk_attr)
-            if not controller:
-                continue
-            controller.sync_from_pk_model(pk_model)
-
-    def _tci_max_rate(self: "SimulationEngine", spec: DrugSpec) -> float:
-        """Return a clinically realistic max infusion rate for a drug."""
-        return spec.max_rate.internal_rate(self.patient.weight)
+            if controller:
+                controller.sync_from_pk_model(getattr(self, spec.pk_attr))
 
     def disable_tci(self: "SimulationEngine", drug: str):
-        """Disable TCI for a drug and reset infusion rate to zero."""
+        """Disable TCI for a drug and stop its infusion."""
         spec = get_drug_spec(drug)
         setattr(self, spec.tci_attr, None)
         setattr(self, spec.rate_attr, 0.0)
@@ -100,43 +61,25 @@ class DrugControllerMixin:
         return DRUG_REGISTRY
 
     def set_drug_rate(self: "SimulationEngine", key: str, rate_user_unit: float):
-        """Generic setter for drug infusion rate."""
-        self._set_rate_from_user(key, rate_user_unit)
+        """Set a manual infusion rate in the registry's user unit."""
+        spec = get_drug_spec(key)
+        rate = max(0.0, rate_user_unit)
+        setattr(self, spec.rate_attr, convert_rate(rate, spec.rate_unit, spec.internal_rate_unit))
+        self.actions.record(self.state.time, ACTION_INFUSION_RATE, label=spec.key, amount=rate)
 
     def set_drug_target(self: "SimulationEngine", key: str, target: Optional[float]):
-        """Generic setter for TCI target. None/Negative disables TCI."""
+        """Set a TCI target; None or a negative target disables TCI."""
         if target is None or target < 0:
             self.disable_tci(key)
         else:
             self.enable_tci(key, target)
 
-    def get_drug_state(self: "SimulationEngine", key: str):
-        """Return current state generic dict."""
-        state = {'rate': 0.0, 'target': 0.0, 'is_tci': False}
-        
+    def get_drug_state(self: "SimulationEngine", key: str) -> dict:
+        """Return the current user-unit rate and TCI target."""
         spec = get_drug_spec(key)
-
-        state["rate"] = self._get_rate_to_user(key)
         controller = getattr(self, spec.tci_attr)
-        if controller:
-            state["is_tci"] = True
-            state["target"] = controller.target
-                 
-        return state
-
-    def _set_rate_from_user(self: "SimulationEngine", key: str, rate_user_unit: float):
-        spec = get_drug_spec(key)
-        rate_internal = convert_rate(rate_user_unit, spec.rate_unit, spec.internal_rate_unit)
-        rate_internal = max(0.0, rate_internal)
-        setattr(self, spec.rate_attr, rate_internal)
-        self.actions.record(
-            self.state.time,
-            ACTION_INFUSION_RATE,
-            label=spec.key,
-            amount=max(0.0, rate_user_unit),
-        )
-
-    def _get_rate_to_user(self: "SimulationEngine", key: str) -> float:
-        spec = get_drug_spec(key)
-        rate_internal = getattr(self, spec.rate_attr)
-        return convert_rate(rate_internal, spec.internal_rate_unit, spec.rate_unit)
+        return {
+            "rate": convert_rate(getattr(self, spec.rate_attr), spec.internal_rate_unit, spec.rate_unit),
+            "target": controller.target if controller else 0.0,
+            "is_tci": controller is not None,
+        }

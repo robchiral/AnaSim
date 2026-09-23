@@ -16,7 +16,7 @@ class TCIMode(str, Enum):
 
 
 class MaxRateBasis(Enum):
-    """Units used to express a clinical maximum infusion rate."""
+    """Units used to express a TCI pump rate limit."""
 
     PER_KG_MINUTE = "per_kg_minute"
     PER_KG_HOUR = "per_kg_hour"
@@ -25,7 +25,7 @@ class MaxRateBasis(Enum):
 
 @dataclass(frozen=True, slots=True)
 class MaxRatePolicy:
-    """Convert a clinical infusion limit to the PK model's per-second units."""
+    """Convert a TCI rate limit to the PK model's per-second units."""
 
     basis: MaxRateBasis
     value: float
@@ -79,7 +79,8 @@ DRUG_REGISTRY = (
         tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),
         fixed_tci_mode=None,
-        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 0.3),
+        # Syringe-pump limit: 1200 mL/h of 10 mg/mL.
+        max_rate=MaxRatePolicy(MaxRateBasis.ABSOLUTE_PER_MINUTE, 200.0),
     ),
     DrugSpec(
         key="remi",
@@ -96,7 +97,8 @@ DRUG_REGISTRY = (
         tci_unit="ng/mL",
         tci_range=(0.0, 10.0),
         fixed_tci_mode=None,
-        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 0.5),
+        # Syringe-pump limit: 1200 mL/h of 50 mcg/mL.
+        max_rate=MaxRatePolicy(MaxRateBasis.ABSOLUTE_PER_MINUTE, 1000.0),
     ),
     DrugSpec(
         key="nore",

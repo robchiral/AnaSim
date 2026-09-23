@@ -6,8 +6,6 @@ from anasim.core.constants import (
     APNEA_PACO2_RISE_SLOW_MMHG_MIN,
     RR_APNEA_THRESHOLD,
     RR_BRADYPNEA_THRESHOLD,
-    SHIVER_MAX_MULTIPLIER,
-    TEMP_METABOLIC_COEFFICIENT,
     VT_MIN,
 )
 from anasim.core.utils import clamp, clamp01, hill_function
@@ -24,6 +22,7 @@ class RespState:
     p_alveolar_co2: float = 40.0 # mmHg
     pa_co2: float = 40.0 # mmHg
     etco2: float = 40.0 # mmHg
+    p_alveolar_o2: float = 100.0 # mmHg (PAO2)
     p_arterial_o2: float = 95.0 # mmHg (PaO2)
     sao2: float = 98.0 # Arterial oxygen saturation (%), perfusion-adjusted
     drive_central: float = 1.0
@@ -130,24 +129,17 @@ class RespiratoryModel:
         self.vo2_ml_kg_min = 3.6
         self.vco2 = self.vo2_ml_kg_min * patient.weight * self.rq  # mL/min
         self.frc = 2.5 # L - Functional Residual Capacity (Alveolar volume buffer)
-        
-        # Initialize PACO2 at 40 mmHg
-        self.state.p_alveolar_co2 = 40.0
-        self.state.pa_co2 = 40.0
-        self.state.etco2 = 40.0
-        self.state.p_arterial_o2 = 95.0
-        
+        # Oxygen bound to hemoglobin in the circulating blood per unit saturation
+        # (L O2 per g/dL Hb): 1.34 mL/g x 10 x blood volume in L.
+        self._blood_o2_per_hb = 1.34 * 10.0 * patient.estimate_blood_volume() / 1e6
+
         # Gas Exchange Parameters
         # Deadspace ~ 2.2 mL/kg
         self.vd_deadspace = 2.2 * patient.weight / 1000.0 # L
         self.va_baseline = max(0.1, (self.vt_0/1000.0 - self.vd_deadspace) * self.rr_0) # Baseline Alveolar Vent (L/min)
 
-        # Time constants for gas equilibration
-        # CO2: Large body stores (~120L) equilibrate slowly
-        # During apnea: PaCO2 rises 3-5 mmHg/min clinically
-        # Tau = 3 min gives realistic apnea CO2 rise rate
-        self.tau_co2 = 180.0 # Time constant for CO2 (s) - was 45s, too fast
-        self.tau_o2 = 15.0 # Time constant for O2 (s) - small O2 stores equilibrate quickly
+        # CO2: large body stores equilibrate slowly (apneic rise 3-5 mmHg/min).
+        self.tau_co2 = 180.0 # s
         # Mean airway pressure recruitment gain (reduces A-a gradient)
         self.mean_paw_recruit_gain = 0.03
         self.atm_p = 760.0
@@ -155,17 +147,7 @@ class RespiratoryModel:
         self._atm_dry = self.atm_p - self.vapor_p
         # Age-adjusted A-a gradient (mmHg): ~age/4 + 4 (PIOPED/Chest 1995).
         self.aa_grad_base = max(5.0, (self.patient.age / 4.0) + 4.0)
-
-        # Age-adjusted MAC for Sevo (MapTanner formula)
-        # MAC_40 ~ 2.1%
-        self._mac_sevo_age = 2.1 * (10 ** (-0.00269 * (self.patient.age - 40)))
-
-        # Cache for temperature-dependent metabolic factor
-        # Temperature changes slowly (thermal time constants ~minutes), so caching
-        # avoids exponential calculation on every step
-        self._cached_temp = 37.0
-        self._cached_metabolic_factor = 1.0
-        self._arrest_desat_time = 0.0
+        self.equilibrate_oxygen(0.21)
         # Cached SaO2 curve constants (Hill equation)
         self._p50 = 26.6
         self._n_hill = 2.7
@@ -174,19 +156,23 @@ class RespiratoryModel:
         # Perfusion effect on deadspace fraction (low flow increases VD/VT).
         self.perfusion_deadspace_gain = 0.25
 
-    def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0, 
-             fio2: float = 0.21, ce_roc: float = 0.0, et_sevo: float = 0.0, mac_sevo: float = None,
-             peep: float = 0.0, mean_paw: float = 5.0, temp_c: float = 37.0,
+    def equilibrate_oxygen(self, fio2: float) -> None:
+        """Set alveolar O2 to its alveolar-gas-equation value at the current PACO2."""
+        self.state.p_alveolar_o2 = max(0.0, fio2 * self._atm_dry - self.state.p_alveolar_co2 / self.rq)
+        self.state.p_arterial_o2 = max(10.0, self.state.p_alveolar_o2 - self.aa_grad_base)
+
+    def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0,
+             fio2: float = 0.21, ce_roc: float = 0.0, mac_sevo: float = 0.0,
+             peep: float = 0.0, mean_paw: float = 5.0,
              mech_rr: float = 0.0, mech_vt_l: float = 0.0,
              airway_patency: float = 1.0, ventilation_efficiency: float = 1.0,
              vq_mismatch: float = 0.0,
-             hb_g_dl: float = None, oxygen_delivery_ratio: float = 1.0,
-             shiver_level: float = 0.0,
+             hb_g_dl: float | None = None,
              cardiac_output: float = 5.0,
-             metabolic_factor: float = None) -> RespState:
+             metabolic_factor: float = 1.0) -> RespState:
         """
         Step respiration.
-        
+
         Args:
             dt: Time step (seconds)
             ce_prop: Propofol effect-site concentration (ug/mL)
@@ -194,25 +180,18 @@ class RespiratoryModel:
             mech_vent_mv: Minute ventilation provided by mechanical ventilator (L/min)
             fio2: Fraction of inspired oxygen (0.0-1.0)
             ce_roc: Rocuronium effect-site concentration (ug/mL)
-            et_sevo: End-tidal sevoflurane (percentage)
+            mac_sevo: Sevoflurane MAC fraction at the brain
             peep: Set PEEP level (cmH2O) - affects oxygenation
             mean_paw: Mean airway pressure (cmH2O) - affects hemodynamics
-            temp_c: Patient body temperature (deg C)
             airway_patency: 0-1 upper airway patency (upper obstruction)
             ventilation_efficiency: 0-1 gas exchange efficiency (bronchospasm)
             vq_mismatch: 0-1 V/Q mismatch severity (affects A-a gradient)
-            hb_g_dl: Hemoglobin (g/dL) for oxygen reserve effects
-            oxygen_delivery_ratio: 0-2 (baseline = 1.0), used to modulate desaturation during apnea
-            shiver_level: 0-1 shivering intensity (metabolic multiplier)
+            hb_g_dl: Hemoglobin (g/dL); sets the blood oxygen store
+            metabolic_factor: VO2/VCO2 multiplier (temperature, depth, shivering)
         """
         state = self.state
         hill = hill_function
         clamp01_local = clamp01
-
-        # 1. Calculate MAC fraction for Sevoflurane
-        # If mac_sevo is supplied (effect-site), use it directly; otherwise derive from ET.
-        if mac_sevo is None:
-            mac_sevo = et_sevo / self._mac_sevo_age
 
         # 2. Calculate fractional inhibition (0 to 1) for each drug
         # Propofol: separate effects for HCVR (central) vs mechanical (RR/VT)
@@ -415,21 +394,7 @@ class RespiratoryModel:
             self._apnea_timer = 0.0
         
         # PaCO2 Equilibrium: PaCO2_eq = PaCO2_base * (VA_base / VA) * metabolic_factor
-        # Temperature effect: VCO2 decreases ~7% per °C below 37°C (Q10 ≈ 2.0)
-        # Use cached value - temperature changes slowly (thermal time constants ~minutes)
-        if metabolic_factor is None:
-            if abs(temp_c - self._cached_temp) > 0.01:
-                self._cached_temp = temp_c
-                self._cached_metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
-            metabolic_factor = 1.0
-            if abs(temp_c - 37.0) >= 0.5:
-                metabolic_factor *= self._cached_metabolic_factor
-            metabolic_factor = max(0.5, metabolic_factor)
-            shiver_mult = 1.0 + SHIVER_MAX_MULTIPLIER * clamp01_local(shiver_level)
-            metabolic_factor *= shiver_mult
-        else:
-            metabolic_factor = max(0.1, float(metabolic_factor))
-        
+        metabolic_factor = max(0.1, float(metabolic_factor))
         paco2_base = 40.0
         paco2_eq = paco2_base * metabolic_factor * (self.va_baseline / effective_va)
         
@@ -493,10 +458,28 @@ class RespiratoryModel:
         etco2_raw = max(0.0, state.p_alveolar_co2 - etco2_gradient)
         state.etco2 = etco2_raw
         
-        # 10. O2 Dynamics (Alveolar Gas Equation)
-        # PAO2 = FiO2 * (Patm - PH2O) - PaCO2 / RQ
-        p_ideal_alveolar_o2 = fio2 * self._atm_dry - (state.p_alveolar_co2 / self.rq)
-        
+        # 10. O2 dynamics: alveolar O2 mass balance over the lung and blood stores.
+        # C dPAO2/dt = VA (PIO2 - PAO2)/Pdry + inflow*FiO2 - VO2, where C is FRC gas
+        # plus hemoglobin-bound O2 (steep on the dissociation curve). At steady
+        # state PAO2 = PIO2 - PACO2/R; in apnea stores deplete at VO2, giving the
+        # preoxygenation-dependent safe apnea time (Benumof 1997; Farmery 1996).
+        # During apnea a patent airway draws gas in to replace absorbed O2
+        # (apneic oxygenation).
+        vo2 = paco2_base * metabolic_factor * self.va_baseline / self.rq / self._atm_dry  # L/min
+        o2_ventilation = max(0.0, total_va_l_min * (1.0 - 0.6 * vq_mismatch))
+        apneic_inflow = vo2 * airway_patency * clamp01_local(1.0 - o2_ventilation)
+        o2_flux = (
+            o2_ventilation * (fio2 * self._atm_dry - state.p_alveolar_o2) / self._atm_dry
+            + apneic_inflow * fio2
+            - vo2
+        )
+        sat = self._saturation(state.p_arterial_o2)
+        dsat_dpo2 = self._n_hill * sat * (1.0 - sat) / max(state.p_arterial_o2, 1.0)
+        hb = self.baseline_hb if hb_g_dl is None else max(0.0, hb_g_dl)
+        o2_capacitance = self.frc / self._atm_dry + self._blood_o2_per_hb * hb * dsat_dpo2
+        state.p_alveolar_o2 += o2_flux / o2_capacitance * dt / 60.0
+        state.p_alveolar_o2 = clamp(state.p_alveolar_o2, 0.0, max(0.0, self._atm_dry - state.p_alveolar_co2))
+
         # A-a gradient with PEEP and mean Paw recruitment effects
         # PEEP recruits alveoli, improving V/Q matching and reducing A-a gradient
         # Effect: A-a_eff = A-a_base / (1 + k * PEEP), floor at 3 mmHg
@@ -510,30 +493,9 @@ class RespiratoryModel:
         # V/Q mismatch (bronchospasm/obstruction) increases A-a gradient
         aa_grad_effective *= (1.0 + 2.5 * vq_mismatch)
         aa_grad_effective = min(80.0, aa_grad_effective)
-        
-        pao2_target = max(20.0, p_ideal_alveolar_o2 - aa_grad_effective)
-        
-        # Note: Anemia and low cardiac output do NOT reduce PaO2 directly.
-        # They reduce oxygen CONTENT (CaO2 = 1.34 × Hb × SaO2 + 0.003 × PaO2)
-        # and delivery (DO2 = CaO2 × CO); however, PaO2 depends only on:
-        # FiO2, PaCO2, V/Q matching, and A-a gradient.
-        
-        # Exponential approach to equilibrium
-        tau_o2_eff = self.tau_o2
-        # Lower oxygen reserve (anemia / low delivery) accelerates desaturation in apnea-like states.
-        if apnea_like:
-            reserve_factor = 1.0
-            if hb_g_dl is not None and self.baseline_hb > 0:
-                hb_factor = clamp(hb_g_dl / self.baseline_hb, 0.5, 1.2)
-                reserve_factor *= hb_factor
-            if oxygen_delivery_ratio is not None:
-                do2_factor = clamp(oxygen_delivery_ratio, 0.6, 1.2)
-                reserve_factor *= do2_factor
-            reserve_factor = clamp(reserve_factor, 0.4, 1.3)
-            tau_o2_eff *= reserve_factor
-        d_pao2 = (pao2_target - state.p_arterial_o2) / tau_o2_eff * dt
-        state.p_arterial_o2 += d_pao2
-        
+        # Anemia and low cardiac output lower O2 content and delivery, not PaO2.
+        state.p_arterial_o2 = max(10.0, state.p_alveolar_o2 - aa_grad_effective)
+
         state.drive_central = drive_central
         state.muscle_factor = muscle_factor
         
@@ -541,13 +503,11 @@ class RespiratoryModel:
         state.vt = current_vt
         state.mv = (current_rr * current_vt) / 1000.0
         
-        # 11. Arterial saturation from oxygen tension
-        # PaO2-based SaO2 (Hill equation for oxyhemoglobin dissociation)
-        # SaO2 = PaO2^n / (PaO2^n + P50^n), P50 ~ 26.6 mmHg, n ~ 2.7
-        pao2_safe = max(0.1, state.p_arterial_o2)
-        n_hill = self._n_hill
-        pao2_pow = pao2_safe ** n_hill
-        base_sao2 = 100.0 * pao2_pow / (pao2_pow + self._p50_pow)
-        state.sao2 = clamp(base_sao2, 0.0, 100.0)
-        
+        state.sao2 = 100.0 * self._saturation(state.p_arterial_o2)
+
         return state
+
+    def _saturation(self, pao2: float) -> float:
+        """Hill oxyhemoglobin dissociation (P50 26.6 mmHg, n 2.7) as a fraction."""
+        pao2_pow = max(0.1, pao2) ** self._n_hill
+        return pao2_pow / (pao2_pow + self._p50_pow)

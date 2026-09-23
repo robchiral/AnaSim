@@ -8,7 +8,7 @@ class DummyTCI:
         self.target = 1.0
         self.calls = []
 
-    def step(self, target: float, sim_time: float = None) -> float:
+    def step(self, target: float = None, sim_time: float = None) -> float:
         self.calls.append(sim_time)
         return 0.0 if sim_time is None else sim_time
 
@@ -22,8 +22,8 @@ def test_tci_accumulator_uses_sampling_time(engine_factory):
     engine.tci_prop = dummy
 
     runtime_core.step_tci(engine, 1.0)
-    assert len(dummy.calls) == 4
-    assert abs(engine.propofol_rate_mg_sec - 1.0) < 1e-9
+    assert dummy.calls == [0.0, 0.25, 0.5, 0.75]
+    assert abs(engine.propofol_rate_mg_sec - 0.75) < 1e-9
     assert abs(engine._tci_accumulators["tci_prop"]) < 1e-9
 
     dummy.calls.clear()

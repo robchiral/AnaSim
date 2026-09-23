@@ -33,7 +33,6 @@ class StartupProfile:
     primary_bounds: tuple[float, float] = (0.0, 1.0)
     remi_bounds: tuple[float, float] = (0.0, 1.0)
     remi_soft_cap: float | None = None
-    maintenance_dial_multiplier: float = 1.0
     fgf_o2_l_min: float = 2.0
     minimum_map: float = 65.0
 
@@ -43,7 +42,6 @@ class StartupTargets:
     prop_ce: float = 0.0
     remi_ce: float = 0.0
     mac: float = 0.0
-    volatile_target_pct: float = 0.0
     nore_ce: float = 0.0
 
 
@@ -64,7 +62,6 @@ BALANCED_PROFILE = StartupProfile(
     primary_hypnotic="volatile",
     primary_bounds=(0.8, 1.2),
     remi_bounds=(0.0, 3.0),
-    maintenance_dial_multiplier=1.55,
     fgf_o2_l_min=6.0,
 )
 
@@ -119,7 +116,7 @@ def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) 
             prop_ce = primary_load
             mac = 0.0
 
-        bis_val = bis_model.compute_bis(prop_ce, remi_ce, u_volatile=mac)
+        bis_val = bis_model.compute_bis(prop_ce, remi_ce, mac_sevo=mac)
         tol_val = tol_model.compute_probability(prop_ce, remi_ce, mac=mac)
         tol_deficit = max(0.0, profile.tol_target - tol_val)
         remi_excess = 0.0
@@ -138,23 +135,10 @@ def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) 
         bounds=(profile.primary_bounds, profile.remi_bounds),
         method="L-BFGS-B",
     )
-    primary_load, remi_ce = result.x
+    primary_load, remi_ce = map(float, result.x)
     if profile.primary_hypnotic == "volatile":
-        prop_ce = 0.0
-        mac = float(primary_load)
-    else:
-        prop_ce = float(primary_load)
-        mac = 0.0
-
-    volatile_target_pct = 0.0
-    if profile.primary_hypnotic == "volatile" and engine.pk_sevo:
-        volatile_target_pct = float(engine.pk_sevo.mac_age) * mac * profile.maintenance_dial_multiplier
-    return StartupTargets(
-        prop_ce=prop_ce,
-        remi_ce=float(remi_ce),
-        mac=mac,
-        volatile_target_pct=volatile_target_pct,
-    )
+        return StartupTargets(remi_ce=remi_ce, mac=primary_load)
+    return StartupTargets(prop_ce=primary_load, remi_ce=remi_ce)
 
 
 def _configure_controlled_ventilation(engine: "SimulationEngine", targets: StartupTargets) -> None:
@@ -186,14 +170,14 @@ def _seed_steady_state_subsystems(
     engine.nore_rate_ug_sec = 0.0
 
     if targets.prop_ce > 0.0:
-        prop_rate_min = _seed_linear_history(engine.pk_prop, targets.prop_ce, profile.history_minutes, target_compartment="effect_site")
-        engine.propofol_rate_mg_sec = prop_rate_min / 60.0
+        engine.propofol_rate_mg_sec = _seed_linear_history(engine.pk_prop, targets.prop_ce, profile.history_minutes) / 60.0
     if targets.remi_ce > 0.0:
-        remi_rate_min = _seed_linear_history(engine.pk_remi, targets.remi_ce, profile.history_minutes, target_compartment="effect_site")
-        engine.remi_rate_ug_sec = remi_rate_min / 60.0
-    if profile.primary_hypnotic == "volatile" and engine.pk_sevo:
-        _seed_volatile_history(engine, targets.mac, profile.history_minutes)
-        engine.set_vaporizer("Sevoflurane", targets.volatile_target_pct)
+        engine.remi_rate_ug_sec = _seed_linear_history(engine.pk_remi, targets.remi_ce, profile.history_minutes) / 60.0
+    fi_agent = 0.0
+    if profile.primary_hypnotic == "volatile":
+        fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
+    engine.circuit.equilibrate(_oxygen_uptake_l_min(engine, targets), fi_agent)
+    engine.resp.equilibrate_oxygen(engine.circuit.composition.fio2)
 
     prop_cp = engine.pk_prop.state.c1
     remi_cp = engine.pk_remi.state.c1
@@ -205,13 +189,7 @@ def _seed_steady_state_subsystems(
         minimum_map=profile.minimum_map,
     )
     if nore_target > 0.0:
-        nore_rate_min = _seed_linear_history(
-            engine.pk_nore,
-            nore_target,
-            profile.history_minutes,
-            target_compartment="effect_site",
-        )
-        engine.nore_rate_ug_sec = nore_rate_min / 60.0
+        engine.nore_rate_ug_sec = _seed_linear_history(engine.pk_nore, nore_target, profile.history_minutes) / 60.0
         targets = replace(targets, nore_ce=nore_target)
 
     # Seed hemodynamics near the managed point so the short hidden settle only
@@ -252,92 +230,51 @@ def _solve_visible_pressor_support(
     return float(brentq(lambda value: map_at(value) - minimum_map, 0.0, upper))
 
 
-def _seed_linear_history(pk_model, target: float, duration_min: float, target_compartment: str) -> float:
-    """Seed a linear PK model from a finite constant-input history using its state-space matrices."""
-    if target <= 0.0:
-        if hasattr(pk_model, "reset"):
-            pk_model.reset()
-        return 0.0
-
+def _seed_linear_history(pk_model, target_ce: float, duration_min: float) -> float:
+    """Seed the state after a constant infusion that reaches target Ce; return the rate per minute."""
     A, B = pk_model.get_ss_matrices()
-    A_aug, B_aug = _augment_effect_site_state(pk_model, A, B)
-
-    target_id = 0 if target_compartment == "plasma" else A_aug.shape[0] - 1
-    exp_term = expm(A_aug * duration_min)
-    finite_horizon_gain = (np.eye(A_aug.shape[0]) - exp_term) @ (-np.linalg.solve(A_aug, B_aug))
-    component_gain = float(finite_horizon_gain[target_id, 0])
-    if component_gain <= 0.0:
-        raise ValueError(f"Invalid steady-state gain for {pk_model.__class__.__name__}")
-
-    input_rate_min = target / component_gain
-    x_t = finite_horizon_gain * input_rate_min
-    _set_linear_model_state(pk_model, x_t[:, 0])
-    return float(input_rate_min)
+    history_gain = (np.eye(A.shape[0]) - expm(A * duration_min)) @ np.linalg.solve(-A, B)
+    rate_per_min = target_ce / float(history_gain[-1, 0])
+    pk_model.set_state_vector(history_gain[:, 0] * rate_per_min)
+    return rate_per_min
 
 
-def _augment_effect_site_state(pk_model, A: np.ndarray, B: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Augment PK state-space matrices with an effect-site state when get_ss_matrices omits it."""
-    if not hasattr(pk_model.state, "ce"):
-        return A, B
-    if A.shape[0] >= 4:
-        return A, B
-    if A.shape[0] == 3 and hasattr(pk_model.state, "c3"):
-        return A, B
-
-    ke0 = getattr(pk_model, "ke0", 0.0)
-    if ke0 <= 0.0:
-        return A, B
-
-    n = A.shape[0]
-    A_aug = np.zeros((n + 1, n + 1))
-    A_aug[:n, :n] = A
-    A_aug[n, 0] = ke0
-    A_aug[n, n] = -ke0
-    B_aug = np.zeros((n + 1, 1))
-    B_aug[:n, :] = B
-    return A_aug, B_aug
+def _oxygen_uptake_l_min(engine: "SimulationEngine", targets: StartupTargets) -> float:
+    _, metabolic_factor = runtime_core.compute_depth_metabolic_context(
+        engine, engine.patient.baseline_temp, targets.prop_ce, targets.mac
+    )
+    return engine.resp.vco2 * metabolic_factor / engine.resp.rq / 1000.0
 
 
-def _set_linear_model_state(pk_model, values: np.ndarray) -> None:
-    state = pk_model.state
-    if len(values) >= 1:
-        state.c1 = max(0.0, float(values[0]))
-    if hasattr(state, "c2") and len(values) >= 2:
-        state.c2 = max(0.0, float(values[1]))
-    if hasattr(state, "c3"):
-        if len(values) >= 4:
-            state.c3 = max(0.0, float(values[2]))
-            state.ce = max(0.0, float(values[3]))
-        elif len(values) >= 3:
-            state.c3 = max(0.0, float(values[2]))
-    if hasattr(state, "ce") and len(values) >= 2:
-        state.ce = max(0.0, float(values[-1]))
+def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, duration_min: float) -> float:
+    """Seed tissue partial pressures after a managed maintenance history.
 
-
-def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, duration_min: float) -> None:
-    """Seed volatile tissue partial pressures from a 30-minute managed maintenance history."""
-    target_frac = (engine.pk_sevo.mac_age * target_mac) / 100.0
+    Sets the vaporizer to the dial that holds alveolar partial pressure constant
+    at the seeded uptake, and returns the inspired fraction.
+    """
     pk = engine.pk_sevo
     state = pk.state
-    p_art = max(0.0, float(target_frac))
+    p_art = pk.mac_age * target_mac / 100.0
     q_co = max(engine.hemo.base_co_l_min, 0.1)
-    q_vrg = q_co * pk.f_vrg_frac
-    q_mus = q_co * pk.f_mus_frac
-    q_fat = q_co * pk.f_fat_frac
-    k_vrg = (q_vrg / pk.v_vrg) / pk.lambda_t_b_vrg
-    k_mus = (q_mus / pk.v_mus) / pk.lambda_t_b_mus
-    k_fat = (q_fat / pk.v_fat) / pk.lambda_t_b_fat
+    flows = {
+        "p_vrg": (q_co * pk.f_vrg_frac, pk.v_vrg, pk.lambda_t_b_vrg),
+        "p_mus": (q_co * pk.f_mus_frac, pk.v_mus, pk.lambda_t_b_mus),
+        "p_fat": (q_co * pk.f_fat_frac, pk.v_fat, pk.lambda_t_b_fat),
+    }
+    state.p_alv = state.p_art = p_art
+    for name, (flow, volume, partition) in flows.items():
+        setattr(state, name, p_art * (1.0 - np.exp(-flow / volume / partition * duration_min)))
+    state.p_ven = sum(flow * getattr(state, name) for name, (flow, _, _) in flows.items()) / q_co
+    state.mac = state.p_vrg * 100.0 / pk.mac_age
 
-    state.p_alv = p_art
-    state.p_art = p_art
-    state.p_vrg = p_art * (1.0 - np.exp(-k_vrg * duration_min))
-    state.p_mus = p_art * (1.0 - np.exp(-k_mus * duration_min))
-    state.p_fat = p_art * (1.0 - np.exp(-k_fat * duration_min))
-    state.p_ven = (
-        q_vrg * state.p_vrg + q_mus * state.p_mus + q_fat * state.p_fat
-    ) / max(q_co, 1e-6)
-    corrected_mac_age = max(pk.mac_age, 1e-6)
-    state.mac = (state.p_vrg * 100.0) / corrected_mac_age
+    # Lung balance VA (Fi - FA) = Q λ (FA - Fv), then circuit balance FGF (dial - Fi) = uptake.
+    resp_mech = engine.resp_mech
+    va = resp_mech.set_rr * max(0.0, resp_mech.set_vt - engine.resp.vd_deadspace)
+    uptake = q_co * pk.lambda_b_g * (state.p_alv - state.p_ven)
+    fi_agent = state.p_alv + uptake / max(va, 0.1)
+    dial_pct = 100.0 * (fi_agent + uptake / max(engine.circuit.fgf_total(), 0.1))
+    engine.set_vaporizer("Sevoflurane", dial_pct)
+    return fi_agent
 
 
 def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> None:
@@ -359,6 +296,7 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
         )
         engine._depth_index = depth_index
         engine._metabolic_factor = metabolic_factor
+        runtime_core.update_pk_hemodynamics(engine, engine.state.co)
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)
         runtime_core.step_pk(engine, profile.settle_dt_seconds, fi_sevo, fi_n2o, engine.state.co)
         physiology = runtime_core.step_physiology(engine, profile.settle_dt_seconds, runtime_core.zero_disturbance())
@@ -368,11 +306,10 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
     engine.hemo.vol_clearance = saved_vol_clearance
     engine.maintenance_fluid_rate_ml_min = saved_maintenance_rate
     engine.state.temp_c = engine.patient.baseline_temp
-    engine._cached_temp_metabolic = engine.state.temp_c
-    engine._cached_temp_metabolic_factor = 1.0
     engine._metabolic_factor = 1.0
     engine._shiver_level = 0.0
-    engine._do2_ratio = max(0.0, engine.state.oxygen_delivery_ratio)
+    # Redistribution belongs to the maintenance history, not the visible start.
+    engine._redistributed_heat_j = runtime_core.redistribution_target_j(engine, engine._depth_index)
     engine.time_brady = 0.0
     engine.time_hypotension = 0.0
     engine.time_tachy = 0.0
