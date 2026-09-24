@@ -86,51 +86,6 @@ SimulationEngine.step()
 - `monitors.step_monitors()` reads the projected physiology and writes
   waveforms and monitor fields.
 
-## Dependency graph
-
-```mermaid
-flowchart TD
-    USER[User controls] --> DIST[Disturbances / events]
-    USER --> TCI[TCI targets]
-    USER --> MACHINE[Ventilator / circuit / vaporizer]
-
-    DIST --> PKSCALE[PK hemodynamic scaling]
-    PKSCALE --> TCISYNC[TCI resync]
-    TCISYNC --> TCI
-
-    TCI --> PKIV[IV PK models]
-    MACHINE --> PKVOL[Volatile PK]
-    MACHINE --> MECH[Respiratory mechanics]
-
-    PKIV --> RESP[Respiration]
-    PKIV --> HEMO[Hemodynamics]
-    PKIV --> BIS[BIS / PD models]
-    PKVOL --> RESP
-    PKVOL --> HEMO
-    PKVOL --> BIS
-
-    MECH --> RESP
-    MECH --> HEMO
-    RESP -->|pa_co2, pao2, sao2| HEMO
-    HEMO -->|co| PKVOL
-
-    RESP --> MON[Other monitor models]
-    HEMO --> CYCLE[Shared cardiac cycle]
-    HEMO --> PULSE[Ideal arterial pulse]
-    CYCLE --> ECG[ECG]
-    CYCLE --> PULSE
-    CYCLE --> PLETH[Delayed pleth]
-    PULSE --> ART[Arterial catheter dynamics]
-    PULSE --> NIBP[NIBP measurement]
-    RESP --> PLETH
-    ART --> MON
-    NIBP --> MON
-    ECG --> MON
-    PLETH --> MON
-    BIS --> MON
-    MON --> UI[UI / CLI / scenarios]
-```
-
 ## Inputs by subsystem
 
 ### Hemodynamics
@@ -178,22 +133,6 @@ These values come from the previous step:
 | `state.co` | Volatile PK scaling, respiration | Hemodynamics | Hemodynamics runs after PK and respiration |
 | `state.va` | Volatile PK | Respiration | Respiration runs after the machine and PK |
 | `state.mv` | Circuit and machine | Physiology | Minute ventilation is final after mechanics and respiration |
-
-## Projection
-
-```text
-pk_prop.state.ce          -> state.propofol_ce
-pk_prop.state.c1          -> state.propofol_cp
-pk_remi.state.ce          -> state.remi_ce
-pk_remi.state.c1          -> state.remi_cp
-resp_state.pa_co2         -> state.pa_co2
-resp_state.p_alveolar_co2 -> state.alveolar_co2
-hemo_state.map            -> state.map
-hemo_state.map, sv        -> state.sbp, dbp            (ideal pulse)
-ideal pulse pressure      -> state.art_pressure        (catheter dynamics)
-completed ART beat        -> state.art_sbp, art_dbp, art_map
-SpO2 monitor              -> state.spo2, display_spo2
-```
 
 ## Initialization
 

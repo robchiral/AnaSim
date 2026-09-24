@@ -1,60 +1,31 @@
 # Changelog
 
-## Unreleased
+## 1.2 - 2026-09-24
 
-- Added a fast cardiac baroreflex, depressed by propofol and sevoflurane, with a
-  30-minute set-point reset. Phenylephrine boluses cause reflex bradycardia.
-- Recalibrated epinephrine to arterial infusion (Freyschuss 1986) and IV bolus
-  (Takahashi 2002) data and stopped applying inotropy twice. Renamed the
-  `Clutter` epinephrine PK option to `HealthyAdult`; update saved configurations.
-- Raised the maintenance-preset MAP seed from 65 to 70 mmHg so sessions do not
-  start below 65 mmHg.
-- Added myocardial hypoxia: SaO2 below 70% depresses the heart and progresses to
-  pulseless electrical activity unless oxygenation is restored.
-- Added a central (diaphragm and larynx) neuromuscular effect site driven by
-  free rocuronium. Breathing returns before the TOF recovers, and sugammadex
-  restores spontaneous breathing.
-- Switched the gas monitor and scenario MAC objectives to end-tidal MAC
-  (`et_mac`).
-- Added partial upper-airway obstruction at loss of consciousness without an
-  ETT; positive pressure splints it open.
-- Replaced the death detector with a cardiac arrest endpoint and dropped the
-  HR >= 220 criterion. Renamed `enable_death_detector` to
-  `end_on_cardiac_arrest`, and the `is_dead` and `death_reason` state fields to
-  `cardiac_arrest` and `arrest_reason`.
-- Removed the pediatric Oualha norepinephrine and epinephrine models;
-  configurations that select them fail validation.
-- Allowed the SpO2 display below 40% and corrected the Li norepinephrine age
-  covariate from -0.377 to -0.344 per 100 years.
-- Modeled alveolar and blood O2 stores. Preoxygenation sets the safe apnea time
-  (SaO2 < 90% after about 7 min preoxygenated, about 1 min on room air), and a
-  patent airway provides apneic oxygenation.
-- Replaced the TCI controller with a peak-constrained Shafer-Gregg controller,
-  which removes max-rate pulses after resynchronization (norepinephrine spikes
-  and 10 mmHg MAP swings in steady-state TIVA). Limited propofol and
-  remifentanil TCI to 1200 mL/h.
-- Made sevoflurane additive with every propofol-remifentanil BIS model; adding
-  it to TIVA had raised BIS by about 12 points. Ran the Eleveld BIS delay on
-  simulation time so it does not depend on step size.
-- Corrected the sevoflurane MAC40 from 2.1% to 1.80% (Mapleson 1996).
-- Scaled noxious-stimulus responses by the Bouillon laryngoscopy-response
-  probability so remifentanil blunts the intubation response.
-- Made redistribution hypothermia first-order (about 1.3 °C), removing a
-  0.17 °C step at steady-state start.
-- Set the balanced-anesthesia vaporizer from lung and circuit mass balance and
-  pre-equilibrated circuit and alveolar gas at steady-state start.
-- Kept peripheral PK volumes fixed during hemodynamic scaling so drug mass is
-  conserved, and unified all intravenous PK models in `MammillaryPK`.
-- Switched Schnider and Minto from Janmahasatian to their published James
-  lean-body-mass covariate, valid across the supported BMI range.
-- Drove sevoflurane cardiovascular effects from end-tidal MAC through the
-  hemodynamic ke0 rather than lagging the brain compartment twice.
-- Set Abboud epinephrine clearance at the cohort reference SAPS II rather than
-  estimating it from awake vital signs.
-- Showed spontaneous-breathing circuit pressure and flow only with a connected
-  airway, with negative inspiratory pressure and correct flow amplitude.
-- Removed unused model variants, parameters, caches, and plumbing (about 1,600
-  lines), stored lightweight waveform samples, and made alarms timer-based.
+- Added a cardiac baroreflex, revised epinephrine responses, and corrected the
+  Li norepinephrine age covariate. Saved configurations must use
+  `HealthyAdult` instead of `Clutter` for epinephrine PK.
+- Added myocardial hypoxia and a cardiac arrest endpoint. The configuration
+  option is now `end_on_cardiac_arrest`; state fields are `cardiac_arrest` and
+  `arrest_reason`.
+- Added a central rocuronium effect site, so respiratory muscle recovery can
+  precede TOF recovery after sugammadex.
+- Added partial upper-airway obstruction after loss of consciousness and
+  modeled alveolar and blood oxygen stores, including preoxygenation and
+  apneic oxygenation.
+- Updated target-controlled infusion to avoid rate spikes after
+  resynchronization and capped propofol and remifentanil TCI at 1200 mL/h.
+- Corrected sevoflurane MAC40 to 1.80%, its cardiovascular effect timing, and
+  its contribution to BIS during TIVA. The gas monitor and scenario objectives
+  now use end-tidal MAC.
+- Improved steady-state startup, ventilator waveforms, temperature changes,
+  and responses to surgical stimulation.
+- Conserved drug mass during hemodynamic PK scaling and used the published
+  James lean-body-mass covariate for Schnider and Minto.
+- Removed the pediatric Oualha norepinephrine and epinephrine models. Saved
+  configurations that select them now fail validation.
+- Simplified subsystem code, expanded alarm and cardiac arrest tests, and
+  shortened the architecture guide.
 
 ## 1.1 - 2026-08-30
 
