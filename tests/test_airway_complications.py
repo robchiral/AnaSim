@@ -16,28 +16,21 @@ def test_manual_airway_controls_update_state_and_resistance(awake_engine):
     assert engine.resp_mech.resistance > base_r
 
 
-def test_auto_laryngospasm_triggers_with_intubation_stimulus(awake_engine):
-    engine = awake_engine
+@pytest.mark.parametrize("enabled", [True, False])
+def test_intubation_stimulus_triggers_laryngospasm_unless_disabled(engine_factory, enabled):
+    engine = engine_factory(start=True)
     engine.set_airway_mode("Mask")
+    engine.set_auto_laryngospasm(enabled)
     engine.start_disturbance("stim_intubation_pulse")
 
     for _ in range(10):
         engine.step(0.2)
 
-    assert engine.state.laryngospasm > 0.1
-    assert engine.state.airway_obstruction >= engine.state.laryngospasm
-
-
-def test_auto_laryngospasm_toggle_disables_response(awake_engine):
-    engine = awake_engine
-    engine.set_airway_mode("Mask")
-    engine.set_auto_laryngospasm(False)
-    engine.start_disturbance("stim_intubation_pulse")
-
-    for _ in range(10):
-        engine.step(0.2)
-
-    assert engine.state.laryngospasm < 0.01
+    if enabled:
+        assert engine.state.laryngospasm > 0.1
+        assert engine.state.airway_obstruction >= engine.state.laryngospasm
+    else:
+        assert engine.state.laryngospasm < 0.01
 
 
 def test_intubation_stimulus_expires_and_laryngospasm_decays(awake_engine):
@@ -87,3 +80,16 @@ def test_upper_obstruction_reduces_effective_mv_without_hiding_vt(awake_engine):
 
     assert mv_obstructed < mv_baseline * 0.5
     assert abs(vt_obstructed - vt_baseline) < 100.0
+
+
+def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
+    engine = engine_factory(start=True)
+    engine.enable_tci("propofol", 3.0)
+    for _ in range(3000):
+        engine.step(0.1)
+    assert engine.state.airway_obstruction > 0.2
+
+    engine.set_airway_mode("Mask")
+    engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="CPAP")
+    engine.step(0.1)
+    assert engine.state.airway_obstruction == 0.0

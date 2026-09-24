@@ -238,12 +238,6 @@ def step_monitors(
     bis_val = engine.bis.step(dt, state.propofol_ce, state.remi_ce, mac_sevo=mac_sevo)
     capno_val = compute_capno_value(engine, dt, phase, resp_state)
 
-    tof_val = engine.tof_pd.step_recovery(
-        dt,
-        state.roc_cp,
-        mac_sevo=mac_sevo,
-        mac_n2o=state.mac_n2o,
-    )
     loc_val = engine.loc_pd.compute_probability(
         state.propofol_ce,
         state.remi_ce,
@@ -276,7 +270,6 @@ def step_monitors(
         display_bis=display_bis,
         capno_co2=capno_val,
         display_etco2=display_etco2,
-        tof=tof_val,
         loc=loc_val,
         tol=engine._tol_current,
         display_spo2=state.spo2,

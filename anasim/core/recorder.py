@@ -12,9 +12,8 @@ logger = logging.getLogger(__name__)
 STATE_FIELD_NAMES = tuple(field.name for field in fields(SimulationState))
 
 class DataRecorder:
-    """
-    Records simulation data to CSV.
-    """
+    """Write SimulationState rows to CSV at a fixed sample interval."""
+
     def __init__(self, output_dir: str = ".", sample_interval_sec: float = 1.0):
         self.output_dir = output_dir
         self.filename = f"anasim_log_{time.time_ns()}.csv"
@@ -33,7 +32,7 @@ class DataRecorder:
         if isinstance(value, (dict, list)):
             return str(value)
         return value
-        
+
     def start(self):
         try:
             os.makedirs(self.output_dir, exist_ok=True)
@@ -44,7 +43,7 @@ class DataRecorder:
         except (OSError, csv.Error, ValueError):
             logger.exception("Failed to start recording")
             self.stop()
-             
+
     def log(self, state: SimulationState):
         if not self.is_recording or not self.writer:
             return
@@ -54,14 +53,14 @@ class DataRecorder:
             if self._last_sample_time is not None and (now - self._last_sample_time) < self.sample_interval_sec:
                 return
             self._last_sample_time = now
-            
+
         row = [self._serialize_value(getattr(state, name)) for name in STATE_FIELD_NAMES]
         try:
             self.writer.writerow(row)
         except (OSError, csv.Error, ValueError):
             logger.exception("Failed to write record")
             self.stop()
-        
+
     def stop(self):
         file = self.file
         self.file = None

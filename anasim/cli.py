@@ -15,7 +15,7 @@ CONFIG_FIELDS = PATIENT_CONFIG_FIELDS | SIMULATION_CONFIG_FIELDS
 
 
 def build_models_from_config(config_data: dict) -> tuple[Patient, SimulationConfig]:
-    """Build typed inputs and reject misspelled or obsolete keys."""
+    """Build typed inputs, rejecting unknown keys."""
     if not isinstance(config_data, dict):
         raise ValueError("Configuration must be a JSON object")
     unknown = set(config_data) - CONFIG_FIELDS
@@ -35,7 +35,7 @@ def build_models_from_config(config_data: dict) -> tuple[Patient, SimulationConf
 
 
 def run_headless(args):
-    """Run simulation in headless mode."""
+    """Run without the UI."""
     print(f"Starting headless simulation for {args.duration:g} seconds")
 
     config_data = {}
@@ -55,10 +55,10 @@ def run_headless(args):
     if args.record:
         engine.start_recording(output_dir=args.record_dir, sample_interval_sec=args.record_interval)
     engine.start()
-    
+
     start_real = time.perf_counter()
     steps = int(args.duration / sim_config.dt)
-    
+
     try:
         for i in range(steps):
             engine.step(sim_config.dt)
@@ -75,13 +75,13 @@ def run_headless(args):
             engine.step(remainder)
     finally:
         engine.stop_recording()
-            
+
     end_real = time.perf_counter()
     print(f"Simulation completed in {end_real - start_real:.2f} seconds of real time")
 
 
 def run_ui() -> int:
-    """Run simulation with UI."""
+    """Run the desktop UI."""
     from anasim.ui.main_window import run
 
     return run()
@@ -94,9 +94,9 @@ def main():
     parser.add_argument("--record", action="store_true", help="Enable CSV recording (headless only)")
     parser.add_argument("--record-dir", type=str, default="recordings", help="Output directory for recordings")
     parser.add_argument("--record-interval", type=float, default=1.0, help="Sample interval in seconds for CSV")
-    
+
     args = parser.parse_args()
-    
+
     if args.mode == "headless":
         run_headless(args)
     else:

@@ -10,10 +10,7 @@ _PPG_LANDMARKS_Y = np.array([0.0, 1.0, 0.49, 0.51, 0.0])
 
 
 def _build_ppg_template(resolution: int = _PPG_TEMPLATE_RESOLUTION) -> np.ndarray:
-    """
-    Generate a smooth PPG waveform template using landmark interpolation.
-    Based on neurokit2's approach with 4 landmarks per cycle.
-    """
+    """One pleth beat by smoothstep interpolation between landmarks (after neurokit2)."""
     phase_hr = np.linspace(0.0, 1.0, resolution)
     template = np.zeros(resolution)
 
@@ -25,7 +22,7 @@ def _build_ppg_template(resolution: int = _PPG_TEMPLATE_RESOLUTION) -> np.ndarra
             continue
 
         t = (phase_hr[mask] - x0) / (x1 - x0)
-        smooth_t = t * t * (3 - 2 * t)  # smoothstep for natural curvature
+        smooth_t = t * t * (3 - 2 * t)
         template[mask] = y0 + (y1 - y0) * smooth_t
 
     return template
@@ -35,10 +32,8 @@ _PPG_TEMPLATE = _build_ppg_template()
 
 
 class SpO2Monitor:
-    """
-    SpO2 Monitor using landmark-based waveform synthesis.
-    Inspired by neurokit2's PPG simulation approach.
-    """
+    """Finger pulse oximeter: delayed pleth and a lagging saturation reading."""
+
     def __init__(self, response_tau_s: float = 4.0, peripheral_delay_s: float = 0.18):
         self.response_tau_s = response_tau_s
         self.peripheral_delay_s = peripheral_delay_s
@@ -48,12 +43,9 @@ class SpO2Monitor:
             raise ValueError("peripheral_delay_s cannot be negative")
         self.display_saturation = None
         self.signal_valid = True
-        
-        # Pre-compute a smooth PPG/pleth template using landmarks
-        # This avoids scipy dependency while achieving smooth curves
         self._template = _PPG_TEMPLATE
         self._template_max_index = _PPG_TEMPLATE.size - 1
-        
+
     def step(
         self,
         dt: float,
@@ -61,10 +53,7 @@ class SpO2Monitor:
         saturation: float,
         perfusion: float = 1.0,
     ) -> tuple[float, float]:
-        """
-        Return (Pleth Voltage, Saturation Display Value).
-        Uses pre-computed smooth template for realistic waveform.
-        """
+        """Return (pleth voltage, displayed saturation %)."""
         if dt <= 0.0:
             raise ValueError("SpO2 monitor dt must be greater than zero")
 
@@ -76,12 +65,11 @@ class SpO2Monitor:
         else:
             pleth_voltage = 0.0
 
-        target = max(40.0, min(100.0, saturation))
+        target = max(0.0, min(100.0, saturation))
         if self.display_saturation is None:
             self.display_saturation = target
 
-        # Finger probes trail arterial saturation, and low perfusion slows the
-        # response instead of deterministically manufacturing hypoxaemia.
+        # The reading trails arterial saturation, more slowly with poor perfusion.
         tau = self.response_tau_s * (1.0 + 2.0 * (1.0 - perf))
         alpha = 1.0 - math.exp(-dt / tau)
         self.display_saturation += alpha * (target - self.display_saturation)

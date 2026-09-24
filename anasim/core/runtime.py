@@ -18,6 +18,7 @@ from anasim.core.constants import (
     TEMP_METABOLIC_COEFFICIENT,
 )
 from anasim.core.drug_registry import PK_HEMODYNAMIC_TARGETS, TCI_TARGET_CONFIG
+from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resp_mech import VentMode
@@ -40,6 +41,11 @@ logger = logging.getLogger(__name__)
 
 # Circle-system resistance seen at the Y-piece during spontaneous breathing (cmH2O/(L/s)).
 SPONTANEOUS_CIRCUIT_RESISTANCE = 2.0
+
+# Cardiac arrest endpoint: no effective circulation for ARREST_CONFIRM_S seconds.
+ARREST_MAP_MMHG = 20.0
+ARREST_HR_BPM = 10.0
+ARREST_CONFIRM_S = 15.0
 
 
 def zero_disturbance() -> DisturbanceEffects:
@@ -97,7 +103,7 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
     step_monitors(engine, dt, physiology.phase, physiology.hemo_state, physiology.resp_state, disturbances)
     update_shivering(engine, dt)
     step_temperature(engine, dt)
-    check_patient_viability(engine, dt)
+    check_cardiac_arrest(engine, dt)
     if disturbance_complete and engine.disturbance_active:
         engine.stop_disturbance()
 
@@ -202,8 +208,8 @@ def update_shivering(engine: "SimulationEngine", dt: float) -> float:
     else:
         emergence = clamp01((state.bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
 
-    nmba_effect = hill_function(state.roc_ce, engine.resp.c50_nmba, engine.resp.gamma_nmba)
-    muscle_factor = clamp01(1.0 - nmba_effect)
+    # Shivering uses peripheral muscle, as sensitive as the adductor pollicis.
+    muscle_factor = 1.0 - engine.tof_pd.twitch_block(state.roc_ce, state.mac_sevo, state.mac_n2o)
 
     target = cold_drive * emergence * muscle_factor
     tau = SHIVER_TAU_ON if target > engine._shiver_level else SHIVER_TAU_OFF
@@ -370,6 +376,12 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
     engine.pk_remi.step(dt, engine.remi_rate_ug_sec)
     engine.pk_nore.step(dt, engine.nore_rate_ug_sec, propofol_conc_ug_ml=engine.pk_prop.state.c1)
     engine.pk_roc.step(dt, engine.roc_rate_mg_sec)
+    # Free (sugammadex-unbound) rocuronium at the neuromuscular junction drives
+    # TOF and every muscle effect.
+    tof = engine.tof_pd.step_recovery(
+        dt, engine.pk_roc.state.c1, mac_sevo=engine.pk_sevo.state.mac, mac_n2o=engine.pk_n2o.state.mac
+    )
+    set_state_float_fields(state, tof=tof)
     engine.pk_epi.step(dt, engine.epi_rate_ug_sec)
     engine.pk_phenyl.step(dt, engine.phenyl_rate_ug_sec)
     engine.pk_vaso.step(dt, engine.vaso_rate_mu_sec)
@@ -410,7 +422,7 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
         engine.auto_laryngospasm_enabled and engine.disturbance_active and ("intubation" in stim_profile)
     )
 
-    nmba_effect = hill_function(state.roc_ce, engine.resp.c50_nmba, engine.resp.gamma_nmba)
+    nmba_effect = hill_function(engine.tof_pd.ce_central, engine.resp.c50_nmba, engine.resp.gamma_nmba)
     muscle_factor = clamp01(1.0 - nmba_effect)
 
     airway_tuning = engine.airway_tuning
@@ -426,7 +438,10 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
 
     upper_obstruction = engine.airway_obstruction_manual
     if state.airway_mode != AirwayType.ETT:
-        upper_obstruction = max(upper_obstruction, engine.laryngospasm_severity)
+        # Loss of consciousness relaxes the pharynx; CPAP or bag-mask pressure splints it open.
+        splinted = state.airway_mode == AirwayType.MASK and (engine.vent.is_on or engine.bag_mask_active)
+        collapse = 0.0 if splinted else airway_tuning.unsupported_collapse_max * state.loc
+        upper_obstruction = max(upper_obstruction, engine.laryngospasm_severity, collapse)
     upper_obstruction = clamp01(upper_obstruction)
 
     bronch = 1.0 - (1.0 - engine.bronchospasm_manual) * (1.0 - engine.anaphylaxis_severity)
@@ -554,6 +569,7 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
         ce_mil=state.mil_ce,
         temp_c=state.temp_c,
         peep_cmH2O=total_peep_effect,
+        sao2=resp_state.sao2,
     )
 
     engine.vent.step(dt, mech_state, rr_total=mech_rr)
@@ -606,42 +622,26 @@ def _spontaneous_breath(time_s: float, rr: float, vt_l: float) -> tuple[float, f
     return -0.5 * vt_l * math.pi / exp_duration * math.sin(phase), 0.5 * vt_l * (1.0 + math.cos(phase))
 
 
-def check_patient_viability(engine: "SimulationEngine", dt: float) -> None:
-    """Check if patient vitals are compatible with life."""
-    if not engine.config.enable_death_detector or engine.state.is_dead:
+def check_cardiac_arrest(engine: "SimulationEngine", dt: float) -> None:
+    """End the session after 15 s without effective circulation (MAP < 20 or HR < 10).
+
+    Resuscitation is not modeled, so a confirmed arrest is a session endpoint.
+    """
+    state = engine.state
+    if not engine.config.end_on_cardiac_arrest or state.cardiac_arrest:
+        return
+    pulseless = state.map < ARREST_MAP_MMHG or state.hr < ARREST_HR_BPM
+    engine._pulseless_s = engine._pulseless_s + dt if pulseless else 0.0
+    if engine._pulseless_s < ARREST_CONFIRM_S:
         return
 
-    map_critical_low = 20.0
-    hr_critical_low = 10.0
-    hr_critical_high = 220.0
-
-    raw_map = engine.state.map
-    raw_hr = engine.state.hr
-
-    if raw_map < map_critical_low:
-        engine.time_hypotension += dt
+    rhythm = engine.hemo.rhythm_type
+    if rhythm in (RhythmType.VFIB, RhythmType.ASYSTOLE):
+        reason = rhythm.value
+    elif state.hr < ARREST_HR_BPM:
+        reason = f"Extreme bradycardia (HR < {ARREST_HR_BPM:g} bpm)"
     else:
-        engine.time_hypotension = max(0, engine.time_hypotension - dt)
-
-    if raw_hr < hr_critical_low:
-        engine.time_brady += dt
-    else:
-        engine.time_brady = max(0, engine.time_brady - dt)
-
-    if raw_hr >= hr_critical_high:
-        engine.time_tachy += dt
-    else:
-        engine.time_tachy = max(0, engine.time_tachy - dt)
-
-    if engine.time_hypotension > engine.DEATH_GRACE_PERIOD:
-        engine.state.is_dead = True
-        engine.state.death_reason = "Extreme Hypotension / Cardiac Arrest (MAP < 20 mmHg)"
-        logger.warning("DEATH TRIGGERED: Hypotension (MAP=%.1f mmHg)", engine.state.map)
-    elif engine.time_brady > engine.DEATH_GRACE_PERIOD:
-        engine.state.is_dead = True
-        engine.state.death_reason = "Asystole / Extreme Bradycardia (HR < 10 bpm)"
-        logger.warning("DEATH TRIGGERED: Bradycardia (HR=%.1f bpm)", engine.state.hr)
-    elif engine.time_tachy > engine.DEATH_GRACE_PERIOD:
-        engine.state.is_dead = True
-        engine.state.death_reason = "Extreme Tachycardia / VFib (HR ≥ 220 bpm)"
-        logger.warning("DEATH TRIGGERED: Tachycardia (HR=%.1f bpm)", engine.state.hr)
+        reason = f"Pulseless electrical activity (MAP < {ARREST_MAP_MMHG:g} mmHg)"
+    state.cardiac_arrest = True
+    state.arrest_reason = reason
+    logger.warning("Cardiac arrest: %s (MAP=%.1f mmHg, HR=%.1f bpm)", reason, state.map, state.hr)

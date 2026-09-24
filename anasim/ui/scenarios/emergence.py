@@ -1,6 +1,4 @@
-"""
-Emergence scenario definitions (Balanced and TIVA variants).
-"""
+"""Emergence scenarios after balanced anesthesia or TIVA."""
 
 from typing import Tuple
 
@@ -125,14 +123,9 @@ def _require_recovery() -> callable:
 
 
 def create_emergence(maint_type: str = "balanced") -> Scenario:
-    """
-    Create emergence scenario.
-    
-    Args:
-        maint_type: "balanced" or "tiva"
-    """
+    """Create the emergence scenario for "balanced" or "tiva" maintenance."""
     is_balanced = "balanced" in maint_type.lower()
-    
+
     if is_balanced:
         stop_agents_instruction = (
             "Turn vaporizer <b>OFF</b>. Increase FGF to <b>8-10 L/min</b>.<br><br>"
@@ -147,7 +140,7 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
         )
         stop_agents_check = _require_agents_stopped_tiva()
         stop_agents_tab = "Medications"
-    
+
     steps = [
         ScenarioStep(
             id="ASSESS",
@@ -197,7 +190,7 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
             target_tab="Machine",
         ),
     ]
-    
+
     scenario_id = "emergence_balanced" if is_balanced else "emergence_tiva"
     return Scenario(
         id=scenario_id,

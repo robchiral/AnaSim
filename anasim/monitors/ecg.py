@@ -8,42 +8,41 @@ _ECG_TEMPLATE_RESOLUTION = 500
 
 
 def _build_ecg_template(mode: str, resolution: int = _ECG_TEMPLATE_RESOLUTION) -> np.ndarray:
+    """One beat as a sum of Gaussian waves (center phase, amplitude, width).
+
+    The R wave sits at phase 0.5.
     """
-    Generate ECG template using Gaussian functions.
-    Waves: (center_phase, amplitude, width)
-    """
-    # Base: P(0.306), Q(0.458), R(0.5), S(0.542), T(0.778)
     if mode == "sinus":
+        # P, Q, R, S, T
         waves = [
-            (0.306, 0.08, 0.035),   # P wave
-            (0.458, -0.12, 0.012),  # Q wave
-            (0.500, 1.0, 0.015),    # R wave
-            (0.542, -0.20, 0.012),  # S wave
-            (0.778, 0.15, 0.055),   # T wave
+            (0.306, 0.08, 0.035),
+            (0.458, -0.12, 0.012),
+            (0.500, 1.0, 0.015),
+            (0.542, -0.20, 0.012),
+            (0.778, 0.15, 0.055),
         ]
     elif mode == "afib":
-        # No P wave, irregular baseline (f-waves) handled in step()
+        # No P wave; step() adds fibrillatory baseline.
         waves = [
-            (0.458, -0.12, 0.012),  # Q wave
-            (0.500, 1.0, 0.015),    # R wave
-            (0.542, -0.20, 0.012),  # S wave
-            (0.778, 0.15, 0.055),   # T wave
+            (0.458, -0.12, 0.012),
+            (0.500, 1.0, 0.015),
+            (0.542, -0.20, 0.012),
+            (0.778, 0.15, 0.055),
         ]
     elif mode == "svt":
-        # Narrow QRS, P wave buried (removed)
+        # Narrow QRS with the P wave buried.
         waves = [
-            (0.458, -0.10, 0.010),  # Q wave (narrower)
-            (0.500, 0.9, 0.012),    # R wave (narrower)
-            (0.542, -0.15, 0.010),  # S wave (narrower)
-            (0.750, 0.12, 0.050),   # T wave
+            (0.458, -0.10, 0.010),
+            (0.500, 0.9, 0.012),
+            (0.542, -0.15, 0.010),
+            (0.750, 0.12, 0.050),
         ]
     elif mode == "vtach":
-        # Wide QRS, T wave often opposite polarity to QRS
-        # "Monomorphic VT" appearance
+        # Wide monomorphic QRS with a discordant ST-T.
         waves = [
-            (0.400, 0.0, 0.1),      # Wide base
-            (0.500, 0.8, 0.06),     # Wide R wave
-            (0.650, -0.3, 0.08),    # Deep/Wide S/T transition
+            (0.400, 0.0, 0.1),
+            (0.500, 0.8, 0.06),
+            (0.650, -0.3, 0.08),
         ]
     else:
         raise ValueError(f"Unsupported ECG template mode: {mode!r}")
@@ -66,49 +65,40 @@ _ECG_TEMPLATES = {
 
 
 class ECGMonitor:
-    """
-    ECG Monitor using Gaussian-based PQRST synthesis.
-    Now supports multiple rhythm types with distinct waveforms.
-    """
+    """ECG from per-rhythm Gaussian beat templates on the shared beat clock."""
+
     def __init__(self, rng: np.random.Generator = None):
         self.vfib_phase = 0.0
         self.rng = rng if rng is not None else np.random.default_rng()
-        
         self._templates = _ECG_TEMPLATES
         self._template_max_index = _ECG_TEMPLATE_RESOLUTION - 1
-        
+
     def step(self, dt: float, cycle: CardiacCycleSample) -> float:
-        """
-        Return the next voltage sample logic.
-        """
+        """Return the next ECG voltage (mV)."""
         rhythm_type = cycle.rhythm_type
-        # 1. Asystole
         if rhythm_type == RhythmType.ASYSTOLE:
             return float(self.rng.uniform(-0.01, 0.01))
-            
-        # 2. VFib (Chaotic)
+
         if rhythm_type == RhythmType.VFIB:
+            # Non-harmonic sines give a chaotic trace.
             self.vfib_phase += dt
-            # Sum of non-harmonic sines
             val = 0.2 * np.sin(self.vfib_phase * 20) + \
                   0.15 * np.sin(self.vfib_phase * 35) + \
                   0.1 * np.sin(self.vfib_phase * 12)
             val += float(self.rng.uniform(-0.05, 0.05))
             return val
 
-        # Structured rhythms share the central beat clock. The existing ECG
-        # template places the R wave at 0.5, so shift the lookup by half a beat.
+        # Beat phase 0 is depolarization; the template R wave is at 0.5.
         template_phase = (cycle.phase + 0.5) % 1.0
         template = self._templates[rhythm_type]
         idx = int(template_phase * self._template_max_index)
         val = template[idx]
-        
-        # Add baseline noise (fibrillatory waves for AFib)
+
         if rhythm_type == RhythmType.AFIB:
-            # Coarse f-waves
+            # Coarse fibrillatory waves.
             val += 0.02 * np.sin(cycle.phase * 50)
             val += float(self.rng.uniform(-0.02, 0.02))
         else:
             val += float(self.rng.uniform(-0.015, 0.015))
-            
+
         return val

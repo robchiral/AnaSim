@@ -17,8 +17,8 @@ class TestShivering:
         engine = engine_factory(config=config, start=True)
         engine.state.temp_c = 35.0
 
-        engine.pk_roc.state.ce = 10.0
         engine.pk_roc.state.c1 = 10.0
+        engine.tof_pd.ce = 10.0
         projection_core.sync_pk_state(engine)
 
         advance_time(engine, 90, dt=1.0)

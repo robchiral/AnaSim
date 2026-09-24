@@ -1,11 +1,3 @@
-"""
-NIBP Cycling and Capnography Waveform Validation Tests.
-
-Tests verify:
-- NIBP intermittent cycling behavior with realistic measurement intervals
-- Capnography waveform shape characteristics (dead space, plateau, etc.)
-"""
-
 from types import SimpleNamespace
 
 import numpy as np
@@ -17,286 +9,135 @@ from anasim.monitors.capno import Capnograph
 from anasim.monitors.nibp import NIBPMonitor
 
 
-class TestNIBPCycling:
-    """Test NIBP intermittent measurement behavior."""
-    
-    @pytest.fixture
-    def setup_engine(self, engine_factory):
-        """Create engine for NIBP testing."""
-        config = SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5)
-        return engine_factory(config=config, start=True, age=45, sex="Male")
-    
-    def test_nibp_intermittent_values(self, setup_engine):
-        """NIBP should show intermittent readings (not every step)."""
-        engine = setup_engine
-        
-        nibp_values = []
-        for _ in range(600):  # 10 minutes
+class _FixedRng:
+    def __init__(self, value):
+        self.value = value
+
+    def random(self):
+        return self.value
+
+
+def _cuff_cycle(rng, true_map, true_sys, true_dia, rhythm=RhythmType.SINUS):
+    monitor = NIBPMonitor(rng=rng)
+    monitor.trigger()
+    t = 0.0
+    while monitor.is_cycling:
+        t += 0.5
+        monitor.step(
+            0.5, t, true_map=true_map, true_sys=true_sys, true_dia=true_dia, rhythm_type=rhythm
+        )
+    return monitor.latest_reading
+
+
+class TestNIBP:
+    def test_cuff_reads_on_its_interval_and_tracks_map(self, engine_factory):
+        engine = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5),
+            start=True,
+        )
+        readings = []
+        last_timestamp = engine.state.nibp_timestamp
+        for _ in range(900):
             engine.step(1.0)
-            nibp_values.append(engine.state.nibp_map)
-        
-        # NIBP should have some valid readings (not all zero or None)
-        valid_readings = [v for v in nibp_values if v and v > 0]
-        assert len(valid_readings) > 0, "No valid NIBP readings in 10 minutes"
-        
-        # Values should be in physiological range
-        for v in valid_readings:
-            assert 30 <= v <= 200, f"NIBP {v} out of physiological range"
-    
-    def test_nibp_correlates_with_map(self, setup_engine):
-        """NIBP should correlate with continuous MAP at time of measurement."""
-        engine = setup_engine
-        
-        # Run for a bit to stabilize
-        for _ in range(120):
-            engine.step(1.0)
-        
-        # Wait for NIBP update and compare to MAP at that moment
-        for _ in range(180):
-            engine.step(1.0)
-            nibp = engine.state.nibp_map
-            if nibp and nibp > 0:
-                # Get MAP at the same moment as NIBP reading
-                current_map = engine.state.map
-                # NIBP should be within 50% of continuous MAP (NIBP has measurement noise)
-                # This is a sanity check, not a precision test
-                assert abs(nibp - current_map) / max(current_map, 1) < 0.60, \
-                    f"NIBP {nibp} differs too much from MAP {current_map}"
-                break
+            if engine.state.nibp_timestamp != last_timestamp:
+                last_timestamp = engine.state.nibp_timestamp
+                readings.append((engine.state.time, engine.state.nibp_map, engine.state.map))
 
-    def test_nibp_can_fail_in_shock(self):
-        class StaticRng:
-            def __init__(self, value):
-                self.value = value
+        assert len(readings) >= 3
+        assert np.diff([time for time, _, _ in readings]) == pytest.approx(300.0, abs=2.0)
+        for _, nibp_map, true_map in readings:
+            assert nibp_map == pytest.approx(true_map, abs=5.0)
 
-            def random(self):
-                return self.value
+    def test_cuff_can_fail_in_shock(self):
+        reading = _cuff_cycle(_FixedRng(0.0), true_map=35.0, true_sys=55.0, true_dia=25.0)
+        assert reading.timestamp is None
 
-        monitor = NIBPMonitor(rng=StaticRng(0.0))
-        monitor.trigger()
-        t = 0.0
-        while monitor.is_cycling:
-            t += 0.5
-            monitor.step(
-                0.5,
-                t,
-                true_map=35.0,
-                true_sys=55.0,
-                true_dia=25.0,
-                rhythm_type=RhythmType.SINUS,
-            )
+    def test_successful_shock_reading_overestimates_pressure(self):
+        reading = _cuff_cycle(_FixedRng(0.99), true_map=40.0, true_sys=60.0, true_dia=30.0)
+        assert reading.timestamp is not None
+        assert reading.map > 40.0
+        assert reading.systolic > 60.0
 
-        assert monitor.latest_reading.timestamp is None
-
-    def test_nibp_successful_shock_reading_overestimates_map(self):
-        class StaticRng:
-            def __init__(self, value):
-                self.value = value
-
-            def random(self):
-                return self.value
-
-        monitor = NIBPMonitor(rng=StaticRng(0.99))
-        monitor.trigger()
-        t = 0.0
-        while monitor.is_cycling:
-            t += 0.5
-            monitor.step(
-                0.5,
-                t,
-                true_map=40.0,
-                true_sys=60.0,
-                true_dia=30.0,
-                rhythm_type=RhythmType.SINUS,
-            )
-
-        assert monitor.latest_reading.timestamp is not None
-        assert monitor.latest_reading.map > 40.0
-        assert monitor.latest_reading.systolic > 60.0
-
-    def test_nibp_produces_no_new_reading_in_arrest(self):
-        monitor = NIBPMonitor(rng=np.random.default_rng(0))
-        monitor.trigger()
-        t = 0.0
-        while monitor.is_cycling:
-            t += 0.5
-            monitor.step(
-                0.5,
-                t,
-                true_map=0.0,
-                true_sys=0.0,
-                true_dia=0.0,
-                rhythm_type=RhythmType.ASYSTOLE,
-            )
-
-        assert monitor.latest_reading.timestamp is None
+    def test_cuff_gives_no_reading_in_arrest(self):
+        reading = _cuff_cycle(
+            np.random.default_rng(0), 0.0, 0.0, 0.0, rhythm=RhythmType.ASYSTOLE
+        )
+        assert reading.timestamp is None
 
 
-class TestCapnographyWaveform:
-    """Test capnography waveform characteristics."""
-    
-    @pytest.fixture
-    def setup_capno(self):
-        """Create capnograph with fixed RNG for reproducibility."""
-        rng = np.random.default_rng(42)
-        capno = Capnograph(rng=rng)
-        return capno
-    
-    def test_phase_transitions(self, setup_capno):
-        """Waveform should transition through all phases."""
-        capno = setup_capno
-        
-        # Simulate a breath cycle
-        phases_seen = set()
-        p_alv = 35.0  # Alveolar CO2 in mmHg
-        
-        # Run through one breath cycle - correct API: (dt, phase, p_alv, ...)
-        for t in np.arange(0, 4.0, 0.05):
-            phase = "INSP" if t > 2.0 else "EXP"
-            capno.step(0.05, phase, p_alv, is_spontaneous=False, exp_duration=2.0)
-            phases_seen.add(capno.state.phase)
-        
-        # Should have seen multiple phases
-        assert len(phases_seen) >= 2, f"Only saw phases {phases_seen}"
-    
-    def test_plateau_near_etco2(self, setup_capno):
-        """Plateau phase CO2 should approach EtCO2 value."""
-        capno = setup_capno
-        
-        p_alv = 38.0  # End-tidal CO2 target
-        
-        # Run through expiration to plateau
-        max_co2 = 0.0
-        for t in np.arange(0, 2.5, 0.02):
-            capno.step(0.02, "EXP", p_alv, is_spontaneous=False, exp_duration=2.5)
-            max_co2 = max(max_co2, capno.state.co2)
-        
-        # Max CO2 should be close to alveolar
-        assert max_co2 > p_alv * 0.7, f"Plateau CO2 {max_co2:.1f} too far from target {p_alv}"
-    
-    def test_inspiration_drops_co2(self, setup_capno):
-        """CO2 should drop during inspiration (fresh gas)."""
-        capno = setup_capno
-        
+class TestCapnography:
+    def test_breath_rises_to_alveolar_plateau_and_clears_on_inspiration(self):
+        capno = Capnograph(rng=np.random.default_rng(42))
         p_alv = 40.0
-        
-        # First, run through expiration to get high CO2
+        for _ in range(125):
+            capno.step(0.02, "EXP", p_alv, is_spontaneous=False, exp_duration=2.5)
+        plateau = capno.state.co2
         for _ in range(50):
-            capno.step(0.04, "EXP", p_alv, is_spontaneous=False, exp_duration=2.0)
-        
-        peak_co2 = capno.state.co2
-        
-        # Now inspiration
-        for _ in range(50):
-            capno.step(0.04, "INSP", p_alv, is_spontaneous=False, exp_duration=2.0)
-        
-        final_co2 = capno.state.co2
-        
-        # CO2 should drop during inspiration
-        assert final_co2 < peak_co2, \
-            f"CO2 should drop during inspiration: {peak_co2:.1f} -> {final_co2:.1f}"
+            capno.step(0.02, "INSP", p_alv, is_spontaneous=False, exp_duration=2.5)
 
-    def test_context_prefers_spontaneous_when_rate_dominant(self):
-        """Capno timing should follow patient-triggered breaths when spont RR dominates."""
-        resp_state = SimpleNamespace(rr=12.0, drive_central=0.6, muscle_factor=1.0)
-        ctx = Capnograph.build_context(resp_state, vent_rr=2.0, insp_fraction=0.33, vent_active=True)
-        assert ctx.spontaneous_weight > 0.6, "Expected spontaneous timing when patient RR dominates"
-        expected_exp = (60.0 / ctx.effective_rr) * 0.65
-        assert abs(ctx.exp_duration - expected_exp) < 0.3
+        assert plateau == pytest.approx(p_alv, abs=2.0)
+        assert capno.state.co2 < 2.0
 
-    def test_curare_cleft_dip_present(self):
-        """Curare cleft should create a notch in the plateau during partial NMBA."""
+    def test_curare_cleft_notches_the_plateau_during_partial_block(self):
         resp_state = SimpleNamespace(rr=2.0, drive_central=0.6, muscle_factor=0.5)
         ctx = Capnograph.build_context(resp_state, vent_rr=12.0, insp_fraction=0.33, vent_active=True)
-        assert ctx.curare_active, "Expected curare cleft to be active in partial NMBA"
+        assert ctx.curare_active
 
         capno_with = Capnograph(rng=np.random.default_rng(0))
         capno_without = Capnograph(rng=np.random.default_rng(0))
-        p_alv = 40.0
-
         dips = []
         for _ in np.arange(0, ctx.exp_duration, 0.02):
-            co2_with = capno_with.step(
-                0.02, "EXP", p_alv,
+            common = dict(
                 is_spontaneous=ctx.is_spontaneous,
-                curare_cleft=ctx.curare_active,
                 exp_duration=ctx.exp_duration,
-                effort_scale=ctx.effort_scale,
                 airway_obstruction=0.0,
             )
+            co2_with = capno_with.step(
+                0.02, "EXP", 40.0, curare_cleft=True, effort_scale=ctx.effort_scale, **common
+            )
             co2_without = capno_without.step(
-                0.02, "EXP", p_alv,
-                is_spontaneous=ctx.is_spontaneous,
-                curare_cleft=False,
-                exp_duration=ctx.exp_duration,
-                effort_scale=0.0,
-                airway_obstruction=0.0,
+                0.02, "EXP", 40.0, curare_cleft=False, effort_scale=0.0, **common
             )
             dips.append(co2_without - co2_with)
 
-        assert max(dips) > 1.0, "Curare cleft notch not evident in plateau"
+        assert max(dips) > 1.0
 
-
-class TestCapnographyVentSwitch:
-    """Ensure capnography timing follows the active ventilation source."""
-
-    def _count_insp_transitions(self, engine, seconds=20.0, dt=0.1):
+    @staticmethod
+    def _capnogram_rate(engine, seconds=20.0, dt=0.1):
         prev_phase = engine.capno.last_phase
-        transitions = 0
-        steps = int(seconds / dt)
-        for _ in range(steps):
+        breaths = 0
+        for _ in range(int(seconds / dt)):
             engine.step(dt)
             phase = engine.capno.last_phase
             if phase == "INSP" and prev_phase != "INSP":
-                transitions += 1
+                breaths += 1
             prev_phase = phase
-        return transitions / (seconds / 60.0)
+        return breaths / (seconds / 60.0)
 
-    def test_capno_follows_vent_on_off_with_spontaneous(self, engine_factory):
-        config = SimulationConfig(mode="awake")
-        engine = engine_factory(config=config, start=True)
+    @pytest.mark.parametrize(("mode", "p_insp"), [("VCV", 0.0), ("PSV", 10.0), ("CPAP", 0.0)])
+    def test_capnogram_follows_spontaneous_breaths_over_a_low_backup_rate(
+        self, engine_factory, mode, p_insp
+    ):
+        engine = engine_factory(config=SimulationConfig(mode="awake"), start=True)
         engine.set_airway_mode("ETT")
-
-        # Let spontaneous breathing stabilize.
         for _ in range(50):
             engine.step(0.1)
 
-        # Vent on at low rate while spontaneous drive remains higher.
-        engine.set_vent_settings(rr=6.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
-        for _ in range(20):
-            engine.step(0.1)
-        assert engine.state.rr > 8.0, "Spontaneous breathing should be present during vent support"
-
-        vent_rr = self._count_insp_transitions(engine, seconds=20.0, dt=0.1)
-        spont_rr_on = engine.state.rr
-        assert abs(vent_rr - spont_rr_on) < 2.0, \
-            f"Capno RR {vent_rr:.1f} should follow spontaneous rate {spont_rr_on:.1f}"
-        assert abs(vent_rr - 6.0) > 1.5, "Capno should not lock to low set rate when spont dominates"
-
-        # Vent off -> capnogram should return toward spontaneous rate.
-        engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="VCV")
-        off_rr = self._count_insp_transitions(engine, seconds=20.0, dt=0.1)
-        spont_rr_off = engine.state.rr
-        assert abs(off_rr - spont_rr_off) < 2.0, \
-            f"Capno RR {off_rr:.1f} should match spontaneous rate {spont_rr_off:.1f}"
-
-    @pytest.mark.parametrize("mode,p_insp", [("PSV", 10.0), ("CPAP", 0.0)])
-    def test_capno_support_modes_follow_spontaneous(self, engine_factory, mode, p_insp):
-        config = SimulationConfig(mode="awake")
-        engine = engine_factory(config=config, start=True)
-        engine.set_airway_mode("ETT")
-
-        # Let spontaneous breathing stabilize.
-        for _ in range(50):
-            engine.step(0.1)
-
-        # Enable support mode with a low backup rate.
         engine.set_vent_settings(rr=6.0, vt=0.5, peep=5.0, ie="1:2", mode=mode, p_insp=p_insp)
         for _ in range(20):
             engine.step(0.1)
+        assert engine.state.rr > 8.0
 
-        cap_rr = self._count_insp_transitions(engine, seconds=20.0, dt=0.1)
-        spont_rr = engine.state.rr
-        assert abs(cap_rr - spont_rr) < 2.0, \
-            f"{mode} capno RR {cap_rr:.1f} should follow spontaneous {spont_rr:.1f}"
-        assert abs(cap_rr - 6.0) > 1.5, "Capno should not lock to backup rate in support modes"
+        capno_rr = self._capnogram_rate(engine)
+        assert capno_rr == pytest.approx(engine.state.rr, abs=2.0)
+        assert abs(capno_rr - 6.0) > 1.5
+
+    def test_capnogram_follows_spontaneous_breaths_after_the_ventilator_stops(self, engine_factory):
+        engine = engine_factory(config=SimulationConfig(mode="awake"), start=True)
+        engine.set_airway_mode("ETT")
+        engine.set_vent_settings(rr=6.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        for _ in range(70):
+            engine.step(0.1)
+
+        engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="VCV")
+        assert self._capnogram_rate(engine) == pytest.approx(engine.state.rr, abs=2.0)

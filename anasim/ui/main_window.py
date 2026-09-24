@@ -60,9 +60,9 @@ class MainWindow(QMainWindow):
             self.engine.stop_recording()
         p = self.sim_params
         self.patient = Patient(
-            age=p['age'], 
-            weight=p['weight'], 
-            height=p['height'], 
+            age=p['age'],
+            weight=p['weight'],
+            height=p['height'],
             sex=p['sex'],
             baseline_hb=p['baseline_hb'],
             renal_function=p['renal_function'],
@@ -76,21 +76,21 @@ class MainWindow(QMainWindow):
             loc_model=p['loc_model'],
             mode=p['mode'],
             maint_type=p['maint_type'],
-            enable_death_detector=p['enable_death_detector'],
+            end_on_cardiac_arrest=p['end_on_cardiac_arrest'],
             arterial_line_enabled=p['arterial_line_enabled'],
         )
         self.engine = SimulationEngine(self.patient, config)
         self.tutorial_mode = p['tutorial_mode']
-        self.death_dialog_shown = False
-        
+        self.arrest_dialog_shown = False
+
     def setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        
+
         base_layout = QVBoxLayout(central)
         base_layout.setContentsMargins(0, 0, 0, 0)
         base_layout.setSpacing(0)
-        
+
         self.overlay = None
         if self.tutorial_mode:
             scenario_id = self.sim_params['scenario_id']
@@ -98,17 +98,17 @@ class MainWindow(QMainWindow):
             scenario.prepare(self.engine)
             self.overlay = ScenarioOverlay(scenario, self.engine)
             base_layout.addWidget(self.overlay)
-        
+
         main_layout = QHBoxLayout()
         base_layout.addLayout(main_layout)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(1)
-        
+
         monitor_container = QWidget()
         mon_layout = QVBoxLayout(monitor_container)
         mon_layout.setContentsMargins(0, 0, 0, 0)
         mon_layout.setSpacing(0)
-        
+
         self.monitor = PatientMonitorWidget(
             arterial_line_enabled=self.engine.config.arterial_line_enabled,
             sample_interval_s=self.engine.config.dt,
@@ -122,7 +122,7 @@ class MainWindow(QMainWindow):
             hepatic_status=self.patient.hepatic_status,
         )
         mon_layout.addWidget(self.monitor, stretch=1)
-        
+
         ctrl_bar = QFrame()
         ctrl_bar.setObjectName("controlBar")
         ctrl_bar.setStyleSheet(get_bar_style("top"))
@@ -130,7 +130,7 @@ class MainWindow(QMainWindow):
         ctrl_layout = QHBoxLayout(ctrl_bar)
         ctrl_layout.setContentsMargins(14, 9, 14, 9)
         ctrl_layout.setSpacing(12)
-        
+
         self.btn_start = QPushButton("Start simulation")
         self.btn_start.setStyleSheet(
             get_button_style(variant="primary", padding="8px 18px", min_width=126)
@@ -146,16 +146,16 @@ class MainWindow(QMainWindow):
         self.btn_record.toggled.connect(self.toggle_recording)
         self.btn_record.setToolTip("Write time-series data to the recordings directory.")
         ctrl_layout.addWidget(self.btn_record)
-        
+
         speed_container = QHBoxLayout()
         speed_container.setSpacing(8)
-        
+
         lbl_speed = QLabel("Simulation speed")
         lbl_speed.setStyleSheet(
             f"color: {COLORS['text_dim']}; font-size: 10px; font-weight: 600;"
         )
         speed_container.addWidget(lbl_speed)
-        
+
         self.sb_speed = QDoubleSpinBox()
         self.sb_speed.setRange(0.1, 50.0)
         self.sb_speed.setValue(1.0)
@@ -165,13 +165,13 @@ class MainWindow(QMainWindow):
         self.sb_speed.setMinimumWidth(80)
         speed_container.addWidget(self.sb_speed)
         ctrl_layout.addLayout(speed_container)
-        
+
         self.lbl_status = QLabel("● Ready")
         self._set_status("Ready", COLORS['text_dim'])
         ctrl_layout.addWidget(self.lbl_status)
-        
+
         ctrl_layout.addStretch()
-        
+
         time_layout = QVBoxLayout()
         time_layout.setSpacing(0)
         lbl_time_title = QLabel("Simulation time")
@@ -189,15 +189,15 @@ class MainWindow(QMainWindow):
         """)
         time_layout.addWidget(self.lbl_time)
         ctrl_layout.addLayout(time_layout)
-        
+
         mon_layout.addWidget(ctrl_bar)
         main_layout.addWidget(monitor_container, stretch=13)
-        
+
         self.controls = ControlPanelWidget(self.engine)
         if self.overlay is not None:
             self.overlay.navigate_requested.connect(self.controls.open_tab)
         main_layout.addWidget(self.controls, stretch=7)
-        
+
         self.controls.sync_with_engine()
         initial_state = self.engine.get_latest_state()
         self.monitor.update_numerics(initial_state)
@@ -246,7 +246,7 @@ class MainWindow(QMainWindow):
             self.timer.start()
             self.last_real_time = time.perf_counter()
         self.time_accumulator = 0.0
-        self.death_dialog_shown = False
+        self.arrest_dialog_shown = False
 
     def toggle_recording(self, checked: bool):
         if checked:
@@ -255,32 +255,31 @@ class MainWindow(QMainWindow):
         else:
             self.engine.stop_recording()
             self.btn_record.setText("Record CSV")
-        
+
     def game_loop(self):
         now = time.perf_counter()
         dt_real = now - self.last_real_time
         self.last_real_time = now
-        
+
         dt_real = min(dt_real, 0.2)
-        
+
         speed = self.sb_speed.value()
         dt_sim_needed = dt_real * speed
-        
+
         self.time_accumulator += dt_sim_needed
-        
+
         sim_step = self.engine.config.dt
-        # Budget enough work for the fastest selectable speed. A fixed
-        # 100-step cap silently discarded simulated time above roughly 20x.
+        # Allow enough steps per tick to keep up at the fastest selectable speed.
         max_steps = max(100, math.ceil(0.2 * self.sb_speed.maximum() / sim_step))
         steps_taken = 0
-        
+
         while self.time_accumulator >= sim_step:
             self.engine.step(sim_step)
             self.time_accumulator -= sim_step
             steps_taken += 1
             if steps_taken >= max_steps:
                 break
-             
+
         state = self.engine.get_latest_state()
 
         total_seconds = int(state.time)
@@ -288,22 +287,22 @@ class MainWindow(QMainWindow):
         minutes = (total_seconds % 3600) // 60
         seconds = total_seconds % 60
         self.lbl_time.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
-        
+
         self.monitor.update_numerics(state)
         self.monitor.update_alarms(state)
         self.monitor.update_waveforms(self.engine)
-        
+
         self.controls.sync_with_engine()
-        
+
         if self.overlay:
             self.overlay.update_state()
 
-        if state.is_dead and not self.death_dialog_shown:
-            self.handle_patient_death(state.death_reason)
+        if state.cardiac_arrest and not self.arrest_dialog_shown:
+            self.handle_cardiac_arrest(state.arrest_reason)
 
-    def handle_patient_death(self, reason: str):
-        """Handle patient death event."""
-        self.death_dialog_shown = True
+    def handle_cardiac_arrest(self, reason: str):
+        """Stop the session at a confirmed cardiac arrest."""
+        self.arrest_dialog_shown = True
 
         was_running = self.engine.running
         self.engine.stop()
@@ -312,15 +311,18 @@ class MainWindow(QMainWindow):
             self.timer.stop()
             self.btn_start.setChecked(False)
             self._set_run_state("ready")
-        
+
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Critical)
         msg.setWindowTitle("Simulation endpoint reached")
-        msg.setText(f"The patient has died.\n\nReason: {reason}")
+        msg.setText(
+            f"Cardiac arrest: {reason}.\n\n"
+            "Resuscitation is not modeled, so the session ends here."
+        )
         msg.setStandardButtons(QMessageBox.Retry | QMessageBox.Close)
         msg.button(QMessageBox.Retry).setText("Start a new session")
         msg.button(QMessageBox.Close).setText("Review final state")
-        
+
         ret = msg.exec()
 
         if ret == QMessageBox.Retry:

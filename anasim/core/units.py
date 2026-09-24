@@ -1,10 +1,7 @@
-"""
-Unit conversion helpers for rate handling.
+"""Infusion rate unit conversion.
 
-Internal convention:
-- Propofol/Rocuronium: mg/sec
-- Remifentanil/Catecholamines/Inotropes: ug/sec
-- Vasopressin: mU/sec
+Model units: mg/sec for propofol and rocuronium, mU/sec for vasopressin, and
+ug/sec for the other drugs.
 """
 
 from typing import Dict, Tuple
@@ -25,7 +22,6 @@ _RATE_UNIT_ALIASES: Dict[str, str] = {
     "mu/hr": "mu/hr",
 }
 
-# Conversion factors between rate units (multiplicative).
 _RATE_CONVERSIONS: Dict[Tuple[str, str], float] = {
     ("mg/hr", "mg/sec"): 1.0 / 3600.0,
     ("mg/min", "mg/sec"): 1.0 / 60.0,
@@ -43,7 +39,7 @@ _RATE_CONVERSIONS: Dict[Tuple[str, str], float] = {
 
 
 def normalize_rate_unit(unit: str) -> str:
-    """Normalize rate unit strings to canonical lowercase form."""
+    """Normalize a rate unit string, e.g. "mcg/min" to "ug/min"."""
     if not unit:
         return ""
     u = unit.strip()
@@ -56,11 +52,7 @@ def normalize_rate_unit(unit: str) -> str:
 
 
 def convert_rate(value: float, from_unit: str, to_unit: str) -> float:
-    """
-    Convert rate value between supported units.
-
-    Raises ValueError if conversion is unsupported.
-    """
+    """Convert a rate between units; raise ValueError if unsupported."""
     from_norm = normalize_rate_unit(from_unit)
     to_norm = normalize_rate_unit(to_unit)
     if from_norm == to_norm:

@@ -25,13 +25,13 @@ class NIBPMonitor:
         self.cuff_pressure = 0.0
         self.latest_reading = NIBPReading()
         self.rng = rng if rng is not None else np.random.default_rng()
-        
+
     def trigger(self) -> None:
         """Start a measurement manually."""
         self.is_cycling = True
         self.is_inflating = True
         self.cuff_pressure = 0.0
-        
+
     def _shock_failure_probability(self, true_map: float) -> float:
         if true_map >= 60.0:
             return 0.0

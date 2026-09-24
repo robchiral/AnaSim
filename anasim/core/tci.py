@@ -45,7 +45,8 @@ class TCIController:
         sampling_time: float = 1.0,
         control_time: float = 10.0,
     ):
-        """
+        """Build a controller for pk_model.
+
         Args:
             pk_model: PK model exposing get_ss_matrices(), state_fields, and state_vector().
             target_compartment: "plasma" or "effect_site".

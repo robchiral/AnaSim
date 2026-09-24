@@ -1,17 +1,6 @@
-"""
-Long-Duration Simulation Stability Tests.
-
-These tests verify numerical stability over extended simulation runs
-(equivalent to 4+ hour anesthesia cases).
-
-Validation criteria:
-- No NaN/Inf values in state
-- Physiological values remain in realistic ranges
-- Hemodynamic state doesn't drift unrealistically
-"""
+"""Four-hour TIVA case followed by routine perturbations."""
 
 import numpy as np
-import pytest
 
 from anasim.core.state import SimulationConfig
 
@@ -21,82 +10,42 @@ PERTURBATION_EVENTS = {
     420: lambda engine: (engine.stop_hemorrhage(), engine.give_fluid(1000)),
     540: lambda engine: engine.give_blood(300),
 }
+MONITORED = ("hr", "map", "spo2", "bis", "temp_c", "etco2", "co")
 
 
-class TestLongDurationStability:
-    """Verify stability over extended simulation runs."""
-    
-    @pytest.fixture
-    def long_running_engine(self, engine_factory):
-        """Create engine for extended simulation."""
-        config = SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5)
-        return engine_factory(config=config, start=True, age=45, sex="Male")
-    
-    def test_four_hour_stability(self, long_running_engine):
-        """Run equivalent of 4-hour case and verify stability under routine perturbations."""
-        engine = long_running_engine
-        initial_temp = engine.state.temp_c
-        
-        target_duration = 4 * 3600  # 4 hours in seconds
-        step_size = 1.0  # 1 second steps
-        steps = int(target_duration / step_size)
-        
-        # For test efficiency, sample every 60 steps (once per simulated minute)
-        sample_interval = 60
-        
-        hr_samples = []
-        map_samples = []
-        spo2_samples = []
-        bis_samples = []
-        temp_samples = []
-        etco2_samples = []
-        co_samples = []
-        
-        for i in range(steps):
-            engine.step(step_size)
-            
-            if i % sample_interval == 0:
-                state = engine.state
-                hr_samples.append(state.hr)
-                map_samples.append(state.map)
-                spo2_samples.append(state.spo2)
-                bis_samples.append(state.bis)
-                temp_samples.append(state.temp_c)
-                etco2_samples.append(state.etco2)
-                co_samples.append(state.co)
-                
-                # Check for NaN/Inf
-                assert np.isfinite(state.hr), f"HR is NaN/Inf at step {i}"
-                assert np.isfinite(state.map), f"MAP is NaN/Inf at step {i}"
-                assert np.isfinite(state.spo2), f"SpO2 is NaN/Inf at step {i}"
-                assert np.isfinite(state.bis), f"BIS is NaN/Inf at step {i}"
-                assert np.isfinite(state.temp_c), f"Temp is NaN/Inf at step {i}"
-                assert np.isfinite(state.etco2), f"EtCO2 is NaN/Inf at step {i}"
-                assert np.isfinite(state.co), f"CO is NaN/Inf at step {i}"
-        
-        # Verify values stayed in physiological range throughout
-        assert all(30 <= hr <= 180 for hr in hr_samples), "HR went out of physiological range"
-        assert all(20 <= map <= 200 for map in map_samples), "MAP went out of physiological range"
-        assert all(90 <= spo2 <= 100 for spo2 in spo2_samples), "SpO2 went out of physiological range"
-        assert all(5 <= bis <= 95 for bis in bis_samples), "BIS went out of physiological range"
-        assert all(32.0 <= temp <= 40.0 for temp in temp_samples), "Temperature went out of physiological range"
-        assert abs(temp_samples[120] - initial_temp) < 2.0, "Temperature changed too rapidly over two hours"
-        # Perfusion-coupled EtCO2 can transiently fall below 20 with low CO.
-        assert all(10 <= etco2 <= 60 for etco2 in etco2_samples), "EtCO2 went out of physiological range"
-        assert all(co > 0.5 for co in co_samples), "CO dropped below viable range"
-        
-        # Verify no significant drift (final should be close to median)
-        median_map = np.median(map_samples)
-        final_map = map_samples[-1]
-        assert abs(final_map - median_map) < 20, \
-            f"MAP drifted significantly: median {median_map:.1f}, final {final_map:.1f}"
+def test_four_hour_case_stays_stable(engine_factory):
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5),
+        start=True,
+        age=45,
+    )
+    initial_temp = engine.state.temp_c
 
-        for i in range(1800):
-            event = PERTURBATION_EVENTS.get(i)
-            if event:
-                event(engine)
-            engine.step(1.0)
+    samples = {name: [] for name in MONITORED}
+    for step in range(4 * 3600):
+        engine.step(1.0)
+        if step % 60 == 0:
+            for name in MONITORED:
+                value = getattr(engine.state, name)
+                assert np.isfinite(value), f"{name} is not finite at {step} s"
+                samples[name].append(value)
 
-        for name in ("hr", "map", "spo2", "etco2", "bis", "temp_c", "co"):
-            value = getattr(engine.state, name)
-            assert np.isfinite(value), f"{name} is not finite after perturbation sequence"
+    assert all(30 <= hr <= 180 for hr in samples["hr"])
+    assert all(20 <= map_ <= 200 for map_ in samples["map"])
+    assert all(90 <= spo2 <= 100 for spo2 in samples["spo2"])
+    assert all(5 <= bis <= 95 for bis in samples["bis"])
+    assert all(32.0 <= temp <= 40.0 for temp in samples["temp_c"])
+    assert abs(samples["temp_c"][120] - initial_temp) < 2.0
+    # Perfusion-coupled EtCO2 can transiently fall below 20 with low CO.
+    assert all(10 <= etco2 <= 60 for etco2 in samples["etco2"])
+    assert all(co > 0.5 for co in samples["co"])
+    assert abs(samples["map"][-1] - np.median(samples["map"])) < 20
+
+    for step in range(1800):
+        event = PERTURBATION_EVENTS.get(step)
+        if event:
+            event(engine)
+        engine.step(1.0)
+
+    for name in MONITORED:
+        assert np.isfinite(getattr(engine.state, name)), f"{name} is not finite after perturbations"

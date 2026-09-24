@@ -1,8 +1,4 @@
-"""
-Septic Shock Response Scenario.
-
-Teaches recognition and initial management of distributive (warm) septic shock.
-"""
+"""Warm septic shock scenario."""
 
 from typing import Tuple
 

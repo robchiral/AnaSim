@@ -12,7 +12,6 @@ from anasim.ui.config_dialog import SimulationSetupDialog
 from anasim.ui.controls_widget import ControlPanelWidget
 from anasim.ui.monitor_widget import PatientMonitorWidget
 from anasim.ui.scenarios import (
-    SCENARIO_BUILDERS,
     SCENARIO_REGISTRY,
     create_emergence,
     create_hemorrhage_response,
@@ -22,8 +21,7 @@ from anasim.ui.scenarios import (
 )
 from anasim.ui.tutorial_overlay import ScenarioOverlay
 
-# Clinically reasonable responses for each objective of a scenario, used to
-# confirm that every objective is still reachable through learner action.
+# Learner actions for each objective of every registered scenario.
 SCENARIO_WALKTHROUGHS = {
     "hemorrhage_response": {
         "START_HEMORRHAGE": lambda e: e.start_hemorrhage(800.0),
@@ -70,6 +68,24 @@ SCENARIO_WALKTHROUGHS = {
         "MAINTENANCE": lambda e: (
             e.set_vaporizer("Sevoflurane", 2.0),
             e.set_fgf(2.0, 0.0, 0.0),
+        ),
+    },
+    "emergence_tiva": {
+        "STOP_AGENTS": lambda e: (e.disable_tci("propofol"), e.disable_tci("remi")),
+        "EXTUBATE": lambda e: e.set_airway_mode("Mask"),
+    },
+    "emergence_balanced": {
+        "STOP_AGENTS": lambda e: (
+            e.set_vaporizer("Sevoflurane", 0.0),
+            e.set_fgf(10.0, 0.0, 0.0),
+        ),
+        "EXTUBATE": lambda e: e.set_airway_mode("Mask"),
+    },
+    "oxygen_supply_failure": {
+        "DISCONNECT_OXYGEN": lambda e: e.set_oxygen_supply_connected(False),
+        "CONNECT_BACKUP_OXYGEN": lambda e: (
+            e.set_oxygen_supply_connected(True),
+            e.set_fgf(10.0, 0.0, 0.0),
         ),
     },
 }
@@ -366,10 +382,10 @@ def test_sepsis_fluid_objective_requires_crystalloid(engine_factory):
     assert step.check_requirements(engine)[0]
 
 
-@pytest.mark.parametrize("scenario_id", sorted(SCENARIO_WALKTHROUGHS))
-def test_scenario_objectives_stay_reachable(qapp, engine_factory, scenario_id):
+@pytest.mark.parametrize("spec", SCENARIO_REGISTRY, ids=lambda spec: spec.id)
+def test_scenario_objectives_stay_reachable(qapp, engine_factory, spec):
     """Every objective must still be completable by acting while it is active."""
-    spec = next(item for item in SCENARIO_REGISTRY if item.id == scenario_id)
+    scenario_id = spec.id
     engine = engine_factory(
         config=SimulationConfig(mode=spec.start_mode, maint_type=spec.maint_type)
     )
@@ -396,43 +412,6 @@ def test_scenario_objectives_stay_reachable(qapp, engine_factory, scenario_id):
         sim_seconds += 1.0
 
     assert overlay.btn_next.text() == "Complete"
-
-
-def test_oxygen_supply_failure_scenario_progression(qapp, engine_factory):
-    engine = engine_factory(
-        config=SimulationConfig(mode="steady_state", maint_type="tiva"),
-        start=True,
-    )
-    scenario = create_oxygen_supply_failure()
-    scenario.prepare(engine)
-
-    assert scenario.id in SCENARIO_BUILDERS
-    assert [step.id for step in scenario.steps] == [
-        "CHECK_BASELINE",
-        "DISCONNECT_OXYGEN",
-        "RECOGNIZE_LOW_FIO2",
-        "CONNECT_BACKUP_OXYGEN",
-        "CONFIRM_RECOVERY",
-    ]
-    _activate(engine, scenario.steps[0])
-    assert scenario.steps[0].check_requirements(engine)[0]
-
-    _activate(engine, scenario.steps[1])
-    engine.set_oxygen_supply_connected(False)
-    assert scenario.steps[1].check_requirements(engine)[0]
-    _activate(engine, scenario.steps[2])
-    for _ in range(60):
-        engine.step(1.0)
-    assert scenario.steps[2].check_requirements(engine)[0]
-
-    _activate(engine, scenario.steps[3])
-    engine.set_oxygen_supply_connected(True)
-    engine.set_fgf(10.0, 0.0, 0.0)
-    assert scenario.steps[3].check_requirements(engine)[0]
-    _activate(engine, scenario.steps[4])
-    for _ in range(120):
-        engine.step(1.0)
-    assert scenario.steps[4].check_requirements(engine)[0]
 
 
 def test_controls_are_generated_from_typed_registry(qapp, engine_factory):

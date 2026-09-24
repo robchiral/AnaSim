@@ -1,8 +1,4 @@
-"""
-Hemorrhage Response Scenario.
-
-Teaches recognition and management of intraoperative hemorrhage/hypovolemic shock.
-"""
+"""Intraoperative hemorrhage and hypovolemic shock scenario."""
 
 from typing import Tuple
 
@@ -22,10 +18,7 @@ from .base import (
 
 
 def _require_shock_recognition() -> callable:
-    """
-    Check that shock signs are present (tachycardia, hypotension).
-    User should recognize these signs.
-    """
+    """Check for tachycardia and hypotension."""
     def check(engine) -> Tuple[bool, str]:
         hr = monitor_value(engine, "hr")
         map_val = monitor_value(engine, "map")
@@ -46,7 +39,7 @@ def _require_shock_recognition() -> callable:
 
 def create_hemorrhage_response() -> Scenario:
     """Create hemorrhage response scenario."""
-    
+
     steps = [
         create_observe_baseline_step("hemorrhage"),
         ScenarioStep(
@@ -126,7 +119,7 @@ def create_hemorrhage_response() -> Scenario:
             "<i>Post-hemorrhage: watch for coagulopathy, acidosis, hypothermia.</i>"
         ),
     ]
-    
+
     return Scenario(
         id="hemorrhage_response",
         name="Hemorrhage response",

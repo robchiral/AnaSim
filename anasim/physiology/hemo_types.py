@@ -7,7 +7,7 @@ from anasim.core.enums import RhythmType
 
 @dataclass
 class HemoState:
-    """User-facing hemodynamic snapshot."""
+    """Hemodynamic outputs."""
 
     map: float = 80.0
     hr: float = 75.0

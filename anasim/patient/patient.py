@@ -88,12 +88,11 @@ class Patient:
                 )
 
     def _calculate_metrics(self):
-        """Calculate BMI, LBM, BSA based on demographics."""
+        """Derive BMI, BSA (Du Bois), and lean body mass."""
         self.bmi = self.weight / ((self.height / 100.0) ** 2)
         self.bsa = 0.007184 * (self.weight**0.425) * (self.height**0.725)
 
-        # Janmahasatian et al. 2005 remains well behaved at high BMI, unlike
-        # switching formulas only after the James equation becomes negative.
+        # Janmahasatian 2005 stays well behaved at high BMI.
         self.lbm = self._janmahasatian_lbm()
 
     def _validate_body_composition(self):

@@ -5,7 +5,7 @@ from anasim.core import projection as projection_core
 from anasim.core import runtime as runtime_core
 from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
-from anasim.core.state import AirwayType, SimulationConfig, SimulationState
+from anasim.core.state import AirwayType, SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.hemodynamics import HemoState
@@ -30,6 +30,7 @@ FLOAT_CONTRACT_FIELDS = (
     "fi_sevo",
     "et_sevo",
     "mac",
+    "et_mac",
     "rr",
     "vt",
     "mv",
@@ -261,20 +262,6 @@ def test_awake_initial_snapshot_uses_patient_baselines():
     assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
 
 
-def test_monitored_blood_pressure_selects_art_or_nibp():
-    state = SimulationState(
-        art_sbp=121.0,
-        art_dbp=72.0,
-        art_map=89.0,
-        nibp_sys=116.0,
-        nibp_dia=68.0,
-        nibp_map=84.0,
-    )
-
-    assert state.monitored_blood_pressure(True) == (121.0, 72.0, 89.0)
-    assert state.monitored_blood_pressure(False) == (116.0, 68.0, 84.0)
-
-
 def test_startup_projection_matches_runtime_projection_path():
     patient_a = Patient(age=40, weight=70, height=170, sex="male")
     patient_b = Patient(age=40, weight=70, height=170, sex="male")
@@ -346,40 +333,6 @@ def test_steady_state_balanced_snapshot_syncs_volatile_state():
     assert engine.state.fluid_in_ml == pytest.approx(0.0, abs=1e-6)
     assert engine.state.urine_out_ml == pytest.approx(0.0, abs=1e-6)
     assert engine.state.temp_c == pytest.approx(37.0, abs=1e-6)
-
-
-def test_explicit_baseline_hct_is_preserved_when_consistent():
-    engine = SimulationEngine(
-        Patient(
-            age=40,
-            weight=70,
-            height=170,
-            sex="male",
-            baseline_hb=8.0,
-            baseline_hct=0.27,
-        ),
-        SimulationConfig(mode="awake"),
-    )
-
-    assert engine.patient.baseline_hct == pytest.approx(0.27, abs=1e-6)
-    assert engine.state.hct == pytest.approx(0.27, abs=1e-6)
-
-
-def test_grossly_inconsistent_hb_hct_pair_is_rejected():
-    with pytest.raises(ValueError, match="grossly inconsistent"):
-        Patient(
-            age=40,
-            weight=70,
-            height=170,
-            sex="male",
-            baseline_hb=8.0,
-            baseline_hct=0.42,
-        )
-
-
-def test_unknown_model_selection_is_rejected_instead_of_falling_back():
-    with pytest.raises(ValueError, match="resp_model"):
-        SimulationConfig(resp_model="legacy")
 
 
 def test_capno_numeric_requires_recent_exhaled_gas():

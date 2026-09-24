@@ -1,6 +1,4 @@
-"""
-Anaphylaxis response scenario.
-"""
+"""Anaphylaxis response scenario."""
 
 from typing import Tuple
 

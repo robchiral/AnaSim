@@ -1,6 +1,4 @@
-"""
-Shared utility functions for AnaSim.
-"""
+"""Shared numeric helpers."""
 
 from anasim.core.constants import (
     CONCENTRATION_RATIO_SATURATION,
@@ -10,53 +8,27 @@ from anasim.core.constants import (
 
 
 def clamp(value: float, low: float, high: float) -> float:
-    """
-    Clamp value to the inclusive range [low, high].
-    """
+    """Clamp value to [low, high]."""
     if low > high:
         low, high = high, low
     return max(low, min(high, value))
 
 
 def clamp01(value: float) -> float:
-    """
-    Clamp value to the inclusive range [0.0, 1.0].
-    """
+    """Clamp value to [0, 1]."""
     return max(0.0, min(1.0, value))
 
 
 def hill_function(c: float, c50: float, gamma: float) -> float:
+    """Fractional effect (c/c50)^gamma / (1 + (c/c50)^gamma), in [0, 1).
+
+    Returns 0 for non-positive inputs and caps gamma and c/c50 to avoid overflow.
     """
-    Generic Hill/sigmoidal Emax function with numerical safeguards.
-    
-    Returns value between 0.0 and 1.0.
-    
-    Args:
-        c: Drug concentration or effect value
-        c50: Half-maximal effect concentration (EC50/IC50)
-        gamma: Hill coefficient (steepness)
-    
-    Returns:
-        Effect fraction (0 to 1)
-        
-    Numerical safeguards:
-        - c <= 0: returns 0.0 (no effect)
-        - c50 <= 0: returns 0.0 (invalid parameter)
-        - gamma <= 0: returns 0.0 (invalid parameter)
-        - Overflow protection: caps gamma at GAMMA_MAX to prevent numerical issues
-    """
-    # Guard against invalid inputs
     if c <= 0 or c50 <= 0 or gamma <= 0:
         return 0.0
-    
-    # Cap gamma to prevent overflow with very steep curves
     gamma = min(gamma, GAMMA_MAX)
-    
-    # Safe exponentiation using ratio to avoid overflow
     ratio = c / c50
-    if ratio > CONCENTRATION_RATIO_SATURATION:  # Very high concentrations - near saturation
+    if ratio > CONCENTRATION_RATIO_SATURATION:
         return 1.0 - 1e-6
-    
     ratio_g = ratio ** gamma
-    
     return ratio_g / (1.0 + ratio_g + HILL_EPSILON)

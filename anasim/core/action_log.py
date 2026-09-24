@@ -1,15 +1,8 @@
-"""
-Timestamped log of learner control actions and scenario step transitions.
+"""Ordered log of learner actions and scenario objective activations.
 
-Scenario objectives must distinguish "the learner did this now" from "this was
-already true", so control actions are stored in order with the simulation time
-at which they were taken.
-
-Step scoping uses record positions rather than timestamps. A paused simulation
-holds `state.time` constant, so timestamps alone cannot separate actions taken
-before an objective from actions taken while it is active. Step-scoped queries
-require an active objective so missing activation cannot silently fall back to
-cumulative behavior.
+Objectives count only actions taken since they started. Scoping uses record
+positions, not timestamps, because time stands still while paused. Step-scoped
+queries raise when no objective is active.
 """
 
 from dataclasses import dataclass

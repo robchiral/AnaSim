@@ -54,6 +54,13 @@ def test_arrest_rhythms_have_no_organized_cycle(rhythm):
     assert sample.measured_hr == pytest.approx(0.0)
 
 
+def test_pulse_oximeter_displays_saturation_below_forty_percent():
+    sample = CardiacCycle(np.random.default_rng(2)).seed(60.0, RhythmType.SINUS)
+    spo2 = SpO2Monitor()
+
+    assert spo2.step(0.1, sample, 25.0, 1.0)[1] == pytest.approx(25.0)
+
+
 def test_shared_cycle_orders_qrs_art_and_pleth():
     cycle = CardiacCycle(np.random.default_rng(4))
     renderer = ArterialWaveformRenderer(age=40)

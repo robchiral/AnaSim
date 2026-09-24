@@ -67,12 +67,7 @@ def list_disturbance_profiles() -> list[tuple[str, str]]:
 
 
 class Disturbances:
-    """
-    Time-dependent disturbance signal to mimic exogenous stimulation.
-
-    Profiles are defined in seconds from the moment stimulation starts so
-    the effect is immediate (no long delays).
-    """
+    """Surgical stimulation profile, timed in seconds from when it starts."""
 
     def __init__(self, dist_profile: str = None):
         self.dist_profile = dist_profile
@@ -92,11 +87,7 @@ class Disturbances:
         return duration_s is not None and elapsed_s >= duration_s
 
     def compute_dist(self, time: float) -> DisturbanceEffects:
-        """
-        Interpolate the disturbance profile for the given time (seconds).
-
-        Returns DisturbanceEffects with BIS/HR/SVR/SV deltas.
-        """
+        """Return the BIS, HR, SVR, and SV deltas `time` seconds into the profile."""
         if self.spec is None:
             return DisturbanceEffects()
 
