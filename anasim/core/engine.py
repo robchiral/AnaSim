@@ -98,16 +98,12 @@ VOLATILE_AGENT_ALIASES = {
     "sevo": "sevoflurane",
 }
 
-# Nitrous oxide (N2O) parameters (inhaled gas, not vaporizer-controlled).
-# References:
-# - Table of partition coefficients at 37C: blood:gas 0.47, brain:blood 1.1,
-#   muscle:blood 1.2, fat:blood 2.3.
-# - Human MAC reported ~1.04 atm (104%) at 1 atm absolute.
+# N2O partition coefficients at 37 °C (blood:gas 0.47; brain, muscle, fat:blood
+# 1.1, 1.2, 2.3) and MAC about 104% at 1 atm (Eger 1980).
 N2O_PARAMS = {
     "name": "Nitrous Oxide",
     "lambda_b_g": 0.47,
     "mac_40": 104.0,
-    # Tissue:blood partition coefficients are near unity; use conservative defaults.
     "lambda_t_b_vrg": 1.1,
     "lambda_t_b_mus": 1.2,
     "lambda_t_b_fat": 2.3,
@@ -116,7 +112,6 @@ N2O_PARAMS = {
 NORE_PD_PARAMS = {
     "Beloeil": (7.04, 98.7, 1.8),
     "Li": (5.4, 98.7, 1.8),
-    "Oualha": (7.04, 98.7, 1.8),
 }
 
 
@@ -125,86 +120,64 @@ def _resolve_volatile_agent(agent: Optional[str]) -> Optional[str]:
 
 
 class SimulationEngine(DrugControllerMixin):
+    """Owns the subsystems and learner controls and advances them in time.
+
+    Subsystems keep their own state; projection and monitor modules copy it
+    into the public `self.state` snapshot.
     """
-    Main simulation orchestrator.
-    Manages time, updates subsystems, and produces state snapshots.
-    
-    State management:
-    - `self.state` is the public snapshot for UI/tests.
-    - Subsystems keep their own internal state and project into `self.state`
-      through the projection and monitor modules.
-    """
+
     def __init__(self, patient: Patient, config: SimulationConfig):
         self.patient = patient
         self.config = config
         self.state = SimulationState()
-
-        # Timestamped control actions (scenario objectives, debrief).
         self.actions = ActionLog()
-
-        # Tuning knobs (centralized defaults).
         self.airway_tuning = AirwayTuning()
         self.thermal_tuning = ThermalTuning()
-        
+
         # Manual infusion rates (model units/s) and TCI controllers per drug.
         for spec in DRUG_REGISTRY:
             setattr(self, spec.rate_attr, 0.0)
             setattr(self, spec.tci_attr, None)
         self._next_nibp_time = 0.0
-        
-        # Disturbances & alarms.
+
         self.disturbances = Disturbances(config.disturbance_profile)
         self.disturbance_profile = config.disturbance_profile
         self.disturbance_active = bool(config.disturbance_profile)
         self.disturbance_start_time = 0.0
         self.alarms = AlarmSystem(dt=config.dt)
-        
-        # Output history for the ten-second monitor sweep.
+
         self._output_window_s = 10.0
         self.output_buffer = deque()
-
-        # Optional CSV recorder.
         self.recorder = None
-
-        # TCI timing accumulators (per-controller).
         self._tci_accumulators = {}
-        
-        # Control flags.
         self.running = False
-        
-        # Bag-mask ventilation (manual PPV, separate from mechanical vent).
-        self.bag_mask_active = False
-        self.bag_mask_rr = 12.0   # breaths per min (typical for manual PPV)
-        self.bag_mask_vt = 0.5    # Liters (~500mL)
 
-        # PSV/CPAP apnea backup (if RR configured).
-        self.psv_apnea_backup_delay = 20.0  # seconds before backup activates
+        self.bag_mask_active = False
+        self.bag_mask_rr = 12.0  # breaths/min
+        self.bag_mask_vt = 0.5  # L
+        self.psv_apnea_backup_delay = 20.0  # s
         self._psv_apnea_timer = 0.0
-        
-        # Event flags.
+
         self.active_hemorrhage = False
         self.active_anaphylaxis = False
         self.hemorrhage_rate_ml_min = 500.0
-        
-        # Pending fluid infusion (realistic timing).
+
+        # Boluses run in over minutes rather than instantly.
         self.pending_infusions = []
-        self.fluid_infusion_rate_ml_min = 150.0  # mL/min (moderate rate with pressure)
-        self.blood_infusion_rate_ml_min = 75.0   # mL/min slower for PRBCs
+        self.fluid_infusion_rate_ml_min = 150.0
+        self.blood_infusion_rate_ml_min = 75.0
         self._maintenance_override_ml_hr = self.config.maintenance_fluid_ml_hr
         self.maintenance_fluid_rate_ml_min = 0.0
-        
-        # Anaphylaxis (gradual onset/offset).
-        self.anaphylaxis_severity = 0.0  # 0 to 1 (1 = full severity)
-        self.anaphylaxis_onset_rate = 0.5 / 60.0  # per second (reaches 1.0 in ~2 min)
-        self.anaphylaxis_decay_rate = 0.1 / 60.0  # per second (decays ~10 min)
 
-        # Sepsis / distributive shock (gradual onset/offset).
+        # Event severities (0-1) ramp at these rates per second.
+        self.anaphylaxis_severity = 0.0
+        self.anaphylaxis_onset_rate = 0.5 / 60.0  # full in about 2 min
+        self.anaphylaxis_decay_rate = 0.1 / 60.0  # resolves in about 10 min
         self.active_sepsis = False
-        self.sepsis_severity = 0.0  # 0 to 1 (1 = full severity)
-        self.sepsis_onset_rate = 0.1 / 60.0  # per second (~10 min to full)
-        self.sepsis_decay_rate = 0.03 / 60.0  # per second (~30+ min recovery)
+        self.sepsis_severity = 0.0
+        self.sepsis_onset_rate = 0.1 / 60.0  # full in about 10 min
+        self.sepsis_decay_rate = 0.03 / 60.0  # resolves in 30+ min
 
-        # Airway complications (manual + auto-triggered).
         self.auto_laryngospasm_enabled = True
         self.airway_obstruction_manual = 0.0
         self.bronchospasm_manual = 0.0
@@ -214,8 +187,7 @@ class SimulationEngine(DrugControllerMixin):
         self._capno_obstruction = 0.0
         self._vq_mismatch = 0.0
         self._base_airway_resistance = 10.0
-        
-        # Monitor state.
+
         self.smooth_bis = 98.0
         self._monitor_tau_bis_s = 2.0
         self._capno_numeric_peak = 0.0
@@ -226,25 +198,18 @@ class SimulationEngine(DrugControllerMixin):
         self._mean_paw_tau_s = 0.25
         self._tol_current = 0.0
         self._pk_hemo_scale_cache = None
-        
-        # Helpers.
         self.current_mean_paw = 5.0
         self._last_patient_effort_cmH2O = 0.0
-        
-        # Random number generator for noise.
+
+        # Separate generators keep each monitor's noise reproducible regardless
+        # of how often the others draw.
         self.rng = np.random.default_rng(self.config.rng_seed)
-        # Dedicated RNG for capnography to keep output reproducible without
-        # coupling to monitor noise draws.
         self._capno_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
-        # Dedicated RNG for ECG to keep rhythm noise reproducible.
         self._ecg_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
-        # Dedicated RNG for NIBP cycling/failure behavior.
         self._nibp_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
-        # Dedicated RNG for beat-level rhythm variability.
         self._cardiac_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._bis_noise_std = 0.2
 
-        # Thermal model state.
         self.heat_production_basal = self.patient.weight * 1.0  # W
         self.specific_heat = self.thermal_tuning.specific_heat_j_kg_k  # J/(kg K)
         self.surface_area = self.patient.bsa  # m^2
@@ -253,13 +218,8 @@ class SimulationEngine(DrugControllerMixin):
         self._shiver_level = 0.0
         self._metabolic_factor = 1.0
         self._vent_active = False
-        
-        # Viability timers (death detector).
-        self.time_brady = 0.0
-        self.time_hypotension = 0.0
-        self.time_tachy = 0.0
-        self.DEATH_GRACE_PERIOD = 15.0 # seconds
-        
+        self._pulseless_s = 0.0
+
         self.initialize_models()
         self._configure_maintenance_fluids()
         self.initialize_state()
@@ -275,7 +235,7 @@ class SimulationEngine(DrugControllerMixin):
             self.output_buffer.popleft()
 
     def initialize_state(self):
-        """Set initial state from live subsystem state instead of placeholder defaults."""
+        """Seed the public state from the initialized subsystems."""
         self.state.temp_c = self.patient.baseline_temp
         self._airway_patency = 1.0
         self._ventilation_efficiency = 1.0
@@ -296,10 +256,7 @@ class SimulationEngine(DrugControllerMixin):
             self.maintenance_fluid_rate_ml_min = max(0.0, float(override) / 60.0)
 
     def set_continuous_fluid_rate(self, ml_hr: Optional[float]):
-        """
-        Set continuous IV fluid rate (mL/hr).
-        Pass None to revert to default (1 mL/kg/hr).
-        """
+        """Set continuous IV fluids in mL/hr; None restores 1 mL/kg/hr."""
         if ml_hr is None:
             self._maintenance_override_ml_hr = None
             self._configure_maintenance_fluids()
@@ -311,14 +268,12 @@ class SimulationEngine(DrugControllerMixin):
     def get_continuous_fluid_rate(self) -> float:
         """Return current continuous IV fluid rate in mL/hr."""
         return max(0.0, self.maintenance_fluid_rate_ml_min * 60.0)
-        
+
     def initialize_models(self):
-        """Initialize PK/PD models based on config."""
+        """Build the subsystem models selected by the configuration."""
         self.pk_prop = PROPOFOL_MODELS[self.config.pk_model_propofol](self.patient)
-            
         self.pk_remi = REMI_MODELS[self.config.pk_model_remi](self.patient)
-        
-        # Machine
+
         self.circuit = CircleSystem()
         self.vent = AnesthesiaVentilator()
 
@@ -339,7 +294,7 @@ class SimulationEngine(DrugControllerMixin):
             lambda_b_g=agent_params["lambda_b_g"],
             mac_40=agent_params["mac_40"],
         )
-        # N2O is delivered via fresh gas (not vaporizer); always initialize PK.
+        # N2O comes from fresh gas, not the vaporizer, so it is always modeled.
         self.pk_n2o = VolatilePK(
             self.patient,
             N2O_PARAMS["name"],
@@ -356,20 +311,15 @@ class SimulationEngine(DrugControllerMixin):
         if not self._volatile_enabled:
             self.vaporizer.set_concentration(0.0)
 
-        # Hemodynamics.
         self.hemo = HemodynamicModel(self.patient)
-        # Configure norepinephrine PD.
         c50, emax, gamma = NORE_PD_PARAMS[self.config.pk_model_nore]
         self.hemo.set_nore_pd(c50=c50, emax=emax, gamma=gamma)
         self.resp = RespiratoryModel(self.patient)
         self.resp_mech = RespiratoryMechanics()
         self._base_airway_resistance = self.resp_mech.resistance
-        # Keep ventilator settings and is_on state consistent on init.
         self.set_vent_settings(rr=0.0, vt=0.0, peep=0.0, ie="1:2", mode="VCV")
-        # Align respiratory baseline CO with hemodynamic baseline to avoid perfusion bias.
         self.resp.baseline_co_l_min = self.hemo.base_co_l_min
-        
-        # Monitors.
+
         self.bis = BISModel(self.patient, model_name=self.config.bis_model)
         self.capno = Capnograph(rng=self._capno_rng)
         self.loc_pd = LOCModel(model_name=self.config.loc_model)
@@ -383,19 +333,17 @@ class SimulationEngine(DrugControllerMixin):
         self.spo2_mon = SpO2Monitor()
         self.nibp = NIBPMonitor(interval_min=5.0, rng=self._nibp_rng)
         self.state.nibp_interval_sec = self.nibp.interval
-        
-        # Additional PK models.
+
         self.pk_nore = NorepinephrinePK(self.patient, model=self.config.pk_model_nore)
         self.pk_roc = RocuroniumPK(self.patient)
         self.pk_epi = EpinephrinePK(self.patient, model=self.config.pk_model_epi)
-
         self.pk_phenyl = PhenylephrinePK(self.patient)
         self.pk_vaso = VasopressinPK(self.patient)
         self.pk_dobu = DobutaminePK(self.patient)
         self.pk_mil = MilrinonePK(self.patient)
 
     def set_fgf(self, o2_l_min: float, air_l_min: float, n2o_l_min: float = 0.0):
-        """Set Fresh Gas Flow."""
+        """Set fresh gas flows in L/min."""
         for gas, requested in (
             ("o2", o2_l_min),
             ("air", air_l_min),
@@ -418,7 +366,7 @@ class SimulationEngine(DrugControllerMixin):
         )
 
     def set_vaporizer(self, agent: str, percent: float):
-        """Set Vaporizer Agent and Dial."""
+        """Set the vaporizer agent and dial (%)."""
         if not self._volatile_enabled:
             self.vaporizer.set_concentration(0.0)
             self.circuit.vaporizer_setting = 0.0
@@ -444,22 +392,11 @@ class SimulationEngine(DrugControllerMixin):
         )
 
     def give_fluid(self, volume_ml: float):
-        """
-        Queue fluid bolus for infusion.
-        
-        Fluids are infused over time at a realistic rate rather than
-        delivered instantly. A 500mL bolus takes ~3-5 minutes.
-        
-        Args:
-            volume_ml: Volume to infuse (mL)
-        """
+        """Queue a crystalloid bolus at 150 mL/min."""
         self._queue_infusion(volume_ml, self.fluid_infusion_rate_ml_min, hematocrit=0.0)
 
     def give_blood(self, volume_ml: float = 300.0, hematocrit: float = 0.55):
-        """
-        Queue packed RBC transfusion.
-        Delivered over several minutes similar to rapid infuser.
-        """
+        """Queue packed red cells at 75 mL/min."""
         self._queue_infusion(
             volume_ml,
             self.blood_infusion_rate_ml_min,
@@ -468,10 +405,7 @@ class SimulationEngine(DrugControllerMixin):
         )
 
     def give_albumin(self, volume_ml: float):
-        """
-        Queue albumin (colloid) infusion.
-        Retention is higher than crystalloid.
-        """
+        """Queue albumin, which stays intravascular longer than crystalloid."""
         self._queue_infusion(
             volume_ml,
             self.fluid_infusion_rate_ml_min,
@@ -502,18 +436,15 @@ class SimulationEngine(DrugControllerMixin):
         self.actions.record(self.state.time, ACTION_FLUID, label=label, amount=volume_ml)
 
     def give_drug_bolus(self, drug_name: str, amount: float):
-        """
-        Administer a drug bolus in the unit declared by its registry entry.
+        """Give a bolus in the drug's registry unit; it adds dose / V1 to C1.
 
-        Updates PK state instantaneously: New_C1 = Old_C1 + Dose/V1.
-        Sugammadex is a separate bolus-only reversal routed to the TOF model.
+        Sugammadex goes to the TOF model for binding.
         """
         amount = float(amount)
         if amount <= 0:
             return
 
         if drug_name.strip().casefold() == "sugammadex":
-            # Sugammadex bolus (mg) routes to TOF model for binding.
             if self.tof_pd:
                 self.tof_pd.give_sugammadex(amount)
             self.actions.record(
@@ -563,7 +494,7 @@ class SimulationEngine(DrugControllerMixin):
         self.stop_disturbance()
 
     def start_disturbance(self, profile: str):
-        """Start a scripted stimulation/disturbance profile."""
+        """Start a stimulation profile."""
         if not profile:
             return
         self.set_disturbance_profile(profile)
@@ -582,16 +513,16 @@ class SimulationEngine(DrugControllerMixin):
             self.config.disturbance_profile = None
 
     def stop_disturbance(self, clear_profile: bool = False):
-        """Stop any active disturbance profile."""
+        """Stop the active stimulation profile."""
         self.disturbance_active = False
         if clear_profile:
             self.disturbance_profile = None
             self.config.disturbance_profile = None
-        
+
     def set_bair_hugger(self, target_c: float):
-        """Set Bair Hugger target temperature (0 to disable)."""
+        """Set the forced-air warmer target (°C); 0 turns it off."""
         self.state.bair_hugger_target = target_c
-        
+
     def set_airway_mode(self, mode_str: str):
         try:
             self.state.airway_mode = AIRWAY_MODE_MAP[mode_str]
@@ -610,13 +541,13 @@ class SimulationEngine(DrugControllerMixin):
         self.airway_obstruction_manual = clamp(severity, 0.0, 1.0)
 
     def get_resp_step_kwargs(self, total_assisted_mv, peep, mean_paw, mech_rr, mech_vt_l, cardiac_output):
-        """Return respiratory-model inputs shared by runtime stepping and startup projection."""
+        """Respiratory-model inputs shared by the runtime and startup projection."""
         return {
             "ce_prop": self.state.propofol_ce,
             "ce_remi": self.state.remi_ce,
             "mech_vent_mv": total_assisted_mv,
             "fio2": self.state.fio2,
-            "ce_roc": self.state.roc_ce,
+            "ce_roc": self.tof_pd.ce_central,
             "mac_sevo": self.state.mac_sevo,
             "peep": peep,
             "mean_paw": mean_paw,
@@ -635,9 +566,8 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_auto_laryngospasm(self, enabled: bool):
         self.auto_laryngospasm_enabled = bool(enabled)
-            
+
     def set_rhythm(self, rhythm_name: str):
-        """Set cardiac rhythm."""
         normalized = str(rhythm_name).upper()
         rhythm = next(
             (item for item in RhythmType if item.value == rhythm_name or item.name == normalized),
@@ -647,19 +577,11 @@ class SimulationEngine(DrugControllerMixin):
             raise ValueError(f"Unknown rhythm: {rhythm_name!r}")
         self.hemo.rhythm_type = rhythm
         self.hemo.invalidate_state_cache()
-    
+
     def set_bag_mask_ventilation(self, active: bool, rr: float = 12.0, vt: float = 0.5):
-        """
-        Enable/disable manual bag-mask ventilation.
-        
-        This is separate from mechanical ventilation. Bag-mask provides
-        positive pressure ventilation via face mask or ETT using a
-        self-inflating bag (Ambu bag).
-        
-        Args:
-            active: True to enable, False to disable
-            rr: Respiratory rate (bpm), default 12
-            vt: Tidal volume (L), default 0.5 (~500mL)
+        """Start or stop manual bag ventilation at rr breaths/min and vt liters.
+
+        It ventilates only through a mask or ETT and yields to the ventilator.
         """
         self.bag_mask_active = active
         if active:
@@ -670,29 +592,24 @@ class SimulationEngine(DrugControllerMixin):
         )
 
     def start(self):
-        """Start the simulation loop."""
         self.running = True
 
     def stop(self):
-        """Stop the simulation."""
         self.running = False
 
     def start_recording(self, output_dir: str = ".", sample_interval_sec: float = 1.0):
-        """Start CSV recording to the specified output directory."""
+        """Start CSV recording in output_dir."""
         if self.recorder and self.recorder.is_recording:
             return
         self.recorder = DataRecorder(output_dir=output_dir, sample_interval_sec=sample_interval_sec)
         self.recorder.start()
 
     def stop_recording(self):
-        """Stop CSV recording."""
         if self.recorder:
             self.recorder.stop()
 
     def step(self, dt: float):
-        """
-        Advance simulation by dt seconds.
-        """
+        """Advance the simulation by dt seconds."""
         if dt <= 0 or not self.running:
             return
         runtime_core.step_simulation(self, dt)
@@ -702,42 +619,29 @@ class SimulationEngine(DrugControllerMixin):
             self.recorder.log(self.state)
 
     def get_latest_state(self) -> SimulationState:
-        """Return the most recent state snapshot."""
+        """Return a copy of the current state."""
         return copy.copy(self.state)
 
     def get_predicted_csht(self, drug: str) -> float:
-        """
-        Predict context-sensitive half-time from current PK state.
-        
-        Simulates drug decay from current effect-site concentration (Ce)
-        and measures time to 50% reduction. Returns time in minutes.
-        
-        Args:
-            drug: "propofol" or "remi"
-            
-        Returns:
-            Predicted CSHT in minutes, or 0.0 if drug inactive
-        """
+        """Minutes for the "propofol" or "remi" effect site to halve if stopped now."""
         if drug == "propofol" and self.pk_prop:
             return self.pk_prop.simulate_decay(target_fraction=0.5, max_seconds=3600)
         elif drug == "remi" and self.pk_remi:
             return self.pk_remi.simulate_decay(target_fraction=0.5, max_seconds=1200)
         return 0.0
 
-
-    def set_vent_settings(self, rr: float, vt: float, peep: float, ie: str, 
+    def set_vent_settings(self, rr: float, vt: float, peep: float, ie: str,
                           mode: str, p_insp: float = None, fio2: float = None):
-        """
-        Update mechanical ventilator settings.
-        
+        """Set the ventilator.
+
         Args:
-            rr: Respiratory rate (bpm)
-            vt: Tidal volume (L)
-            peep: PEEP (cmH2O)
-            ie: I:E ratio string (e.g., "1:2")
-        mode: Ventilator mode ("VCV", "PCV", "PSV", "CPAP")
-            p_insp: Optional inspiratory pressure above PEEP (cmH2O) - for PCV
-            fio2: Optional FiO2 target (0.21-1.0). If set, adjusts fresh gas blender.
+            rr: Rate (breaths/min).
+            vt: Tidal volume (L).
+            peep: PEEP (cmH2O).
+            ie: I:E ratio such as "1:2".
+            mode: "VCV", "PCV", "PSV", or "CPAP".
+            p_insp: Inspiratory pressure above PEEP (cmH2O).
+            fio2: Target FiO2; rebalances O2 and air flows.
         """
         mode_upper = mode.upper()
         p_insp_effective = p_insp if p_insp is not None else self.vent.settings.p_insp
@@ -754,24 +658,25 @@ class SimulationEngine(DrugControllerMixin):
             self.vent.is_on = has_support or has_peep or has_backup
         else:
             raise ValueError(f"Unsupported ventilator mode '{mode}'")
-            
+
         if mode_upper == "CPAP":
             p_insp = 0.0
         self.resp_mech.set_settings(rr, vt, peep, ie, mode=mode, p_insp=p_insp)
-        self.vent.update_settings(rr=rr, tv=vt*1000, peep=peep, ie=ie, 
-                                  mode=mode, p_insp=p_insp, fio2=fio2)  # vt in mL for vent
+        self.vent.update_settings(rr=rr, tv=vt*1000, peep=peep, ie=ie,
+                                  mode=mode, p_insp=p_insp, fio2=fio2)
 
         if fio2 is not None:
             self._apply_fio2_blender(fio2)
 
     def _apply_fio2_blender(self, fio2: float):
-        """Blend fresh gas flows to achieve target FiO2 (O2/air only, N2O preserved)."""
+        """Split the O2 plus air flow to reach the target FiO2, keeping N2O fixed.
+
+        Solves FiO2 = (O2 + 0.21 x air) / (O2 + air + N2O) for O2.
+        """
         total_non_n2o = self.circuit.fgf_o2 + self.circuit.fgf_air
         if total_non_n2o <= 0:
             return
         target = clamp(fio2, 0.21, 1.0)
-        # FiO2 = (O2 + 0.21*Air) / (O2 + Air + N2O)
-        # Solve for O2 flow while keeping N2O fixed.
         n2o_flow = max(0.0, self.circuit.fgf_n2o)
         o2_flow = ((target * (total_non_n2o + n2o_flow)) - 0.21 * total_non_n2o) / 0.79
         o2_flow = clamp(o2_flow, 0.0, total_non_n2o)

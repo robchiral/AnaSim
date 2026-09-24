@@ -380,7 +380,6 @@ class ControlPanelWidget(QWidget):
         scroll, layout = self._create_scroll_area()
         main_layout.addWidget(scroll)
 
-        # --- Section 1: Airway ---
         gp_air = QGroupBox("Airway management")
         gp_air.setStyleSheet(get_section_group_style())
         l_air = QVBoxLayout(gp_air)
@@ -409,11 +408,9 @@ class ControlPanelWidget(QWidget):
         l_air.addLayout(airway_buttons)
         layout.addWidget(gp_air)
 
-        # --- Section 2: Gas Flow & Vaporizer ---
         h_gases = QHBoxLayout()
         h_gases.setSpacing(12)
 
-        # FGF
         gp_fgf = QGroupBox("Fresh gas flow")
         gp_fgf.setStyleSheet(get_section_group_style())
         l_fgf = QGridLayout(gp_fgf)
@@ -470,7 +467,6 @@ class ControlPanelWidget(QWidget):
 
         h_gases.addWidget(gp_fgf)
 
-        # Vaporizer
         gp_vap = QGroupBox("Sevoflurane vaporizer")
         gp_vap.setStyleSheet(get_section_group_style())
         l_vap = QFormLayout(gp_vap)
@@ -486,7 +482,6 @@ class ControlPanelWidget(QWidget):
         h_gases.addWidget(gp_vap)
         layout.addLayout(h_gases)
 
-        # --- Section 3: Bag-Mask Ventilation ---
         gp_bag = QGroupBox("Manual ventilation")
         gp_bag.setStyleSheet(get_section_group_style())
         l_bag = QHBoxLayout(gp_bag)
@@ -504,13 +499,11 @@ class ControlPanelWidget(QWidget):
         l_bag.addStretch()
         layout.addWidget(gp_bag)
 
-        # --- Section 4: Mechanical Ventilator ---
         gp_vent = QGroupBox("Mechanical ventilation")
         gp_vent.setStyleSheet(get_section_group_style())
         l_vent = QVBoxLayout(gp_vent)
         l_vent.setSpacing(10)
 
-        # Header: Mode/Power
         h_vent_top = QHBoxLayout()
         self.btn_vent_power = QPushButton("Start ventilator")
         self.btn_vent_power.setCheckable(True)
@@ -520,7 +513,6 @@ class ControlPanelWidget(QWidget):
         h_vent_top.addStretch()
         l_vent.addLayout(h_vent_top)
 
-        # Vent Mode Selection (VCV / PCV)
         h_mode = QHBoxLayout()
         h_mode.addWidget(QLabel("Mode:"))
         self.cb_vent_mode = QComboBox()
@@ -536,7 +528,6 @@ class ControlPanelWidget(QWidget):
         h_mode.addStretch()
         l_vent.addLayout(h_mode)
 
-        # Settings Grid
         g_vent = QGridLayout()
         g_vent.setSpacing(8)
 
@@ -549,7 +540,6 @@ class ControlPanelWidget(QWidget):
         g_vent.addWidget(lbl_rr, 0, 0)
         g_vent.addWidget(self.sb_rr, 0, 1)
 
-        # Tidal Volume (VCV mode)
         self.lbl_tv = QLabel("Vt:")
         self.sb_tv = QSpinBox()
         self.sb_tv.setRange(0, 1500)
@@ -560,7 +550,7 @@ class ControlPanelWidget(QWidget):
         g_vent.addWidget(self.lbl_tv, 0, 2)
         g_vent.addWidget(self.sb_tv, 0, 3)
 
-        # Inspiratory Pressure (PCV mode) - initially hidden
+        # Pinsp shares the Vt cells and shows only in pressure modes.
         self.lbl_pinsp = QLabel("Pinsp:")
         self.sb_pinsp = QSpinBox()
         self.sb_pinsp.setRange(0, 40)
@@ -568,7 +558,6 @@ class ControlPanelWidget(QWidget):
         self.sb_pinsp.setSuffix(" cmH₂O")
         self.sb_pinsp.setSingleStep(1)
         self.sb_pinsp.valueChanged.connect(self.update_vent)
-        # They swap with Tidal Volume, so they can occupy the same cells
         g_vent.addWidget(self.lbl_pinsp, 0, 2)
         g_vent.addWidget(self.sb_pinsp, 0, 3)
         self.lbl_pinsp.hide()
@@ -595,7 +584,6 @@ class ControlPanelWidget(QWidget):
 
         layout.addStretch()
 
-        # Initial State
         self.sb_rr.setEnabled(False)
         self.sb_tv.setEnabled(False)
         self.sb_peep.setEnabled(False)
@@ -619,7 +607,6 @@ class ControlPanelWidget(QWidget):
             drug_layout = QVBoxLayout(gb)
             drug_layout.setSpacing(8)
 
-            # Mode Switch
             h_mode = QHBoxLayout()
             rb_man = self._create_segment_button(
                 "Rate", COLORS["text_secondary"], compact=True
@@ -634,7 +621,6 @@ class ControlPanelWidget(QWidget):
             h_mode.addStretch()
             drug_layout.addLayout(h_mode)
 
-            # Controls
             sb_rate = QDoubleSpinBox()
             sb_rate.setRange(0, 2000)
             sb_rate.setSuffix(f" {spec.rate_unit}")
@@ -691,7 +677,6 @@ class ControlPanelWidget(QWidget):
                 lambda v: set_tci_cb(v) if rb_tci.isChecked() else None
             )
 
-            # Bolus Controls
             h_bolus = QHBoxLayout()
             sb_bolus = QDoubleSpinBox()
             sb_bolus.setRange(0, 1000)
@@ -712,14 +697,14 @@ class ControlPanelWidget(QWidget):
 
             drug_layout.addLayout(h_bolus)
 
-            # PK effect-site half-time estimate for propofol and remi.
+            # Context-sensitive half-time for propofol and remifentanil.
             lbl_csht = None
             if spec.key in ("propofol", "remi"):
                 lbl_csht = QLabel()
                 lbl_csht.setStyleSheet(
                     f"color: {COLORS['text_secondary']}; font-size: 10px; font-style: italic;"
                 )
-                lbl_csht.hide()  # Hidden until drug active
+                lbl_csht.hide()  # Shown while the drug runs
                 drug_layout.addWidget(lbl_csht)
 
             self.drug_widgets[spec.key] = {
@@ -794,7 +779,7 @@ class ControlPanelWidget(QWidget):
     def toggle_vent_power(self, checked):
         if checked:
             self.btn_vent_power.setText("Stop ventilator")
-            # Turn off bag-mask when switching to mechanical vent (mutually exclusive)
+            # Bag-mask and the ventilator are mutually exclusive.
             if self.btn_bag_mask.isChecked():
                 self.btn_bag_mask.setChecked(False)
             self.sb_rr.setEnabled(True)
@@ -867,10 +852,9 @@ class ControlPanelWidget(QWidget):
         """Toggle manual bag-mask ventilation (separate from mechanical vent)."""
         if checked:
             self.btn_bag_mask.setText("Stop bag-mask ventilation")
-            # Turn off mechanical vent if it's on (mutually exclusive in practice)
+            # Bag-mask and the ventilator are mutually exclusive.
             if self.btn_vent_power.isChecked():
                 self.btn_vent_power.setChecked(False)
-            # Use dedicated bag-mask method (does NOT turn on mechanical vent)
             self.engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.5)
         else:
             self.btn_bag_mask.setText("Start bag-mask ventilation")
@@ -880,11 +864,9 @@ class ControlPanelWidget(QWidget):
         main_layout = QVBoxLayout(self.tab_events)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Scroll area wrapper for consistent padding with other tabs
         scroll, layout = self._create_scroll_area()
         main_layout.addWidget(scroll)
 
-        # Temperature Management
         gp_temp = QGroupBox("Temperature management")
         gp_temp.setStyleSheet(get_section_group_style())
         l_temp = QHBoxLayout(gp_temp)
@@ -905,7 +887,6 @@ class ControlPanelWidget(QWidget):
 
         layout.addWidget(gp_temp)
 
-        # Fluids
         gp_fluids = QGroupBox("Fluid administration")
         gp_fluids.setStyleSheet(get_section_group_style())
         l_fl = QVBoxLayout(gp_fluids)
@@ -943,7 +924,6 @@ class ControlPanelWidget(QWidget):
         l_fl_grid.addWidget(b_albumin, 1, 0)
         l_fl_grid.addWidget(b_prbc, 1, 1)
 
-        # Continuous fluids
         l_fl_cont = QHBoxLayout()
         l_fl_cont.addWidget(QLabel("Maintenance fluid"))
         self.sb_cont_fluid = QDoubleSpinBox()
@@ -963,7 +943,6 @@ class ControlPanelWidget(QWidget):
         l_fl.addLayout(l_fl_cont)
         layout.addWidget(gp_fluids)
 
-        # Scripted stimulation / disturbances
         gp_stim = QGroupBox("Surgical stimulation")
         gp_stim.setStyleSheet(get_section_group_style())
         l_stim = QHBoxLayout(gp_stim)
@@ -988,7 +967,6 @@ class ControlPanelWidget(QWidget):
         l_stim.addStretch()
         layout.addWidget(gp_stim)
 
-        # Airway complications
         gp_airway_events = QGroupBox("Airway complications")
         gp_airway_events.setStyleSheet(get_section_group_style())
         l_airway = QGridLayout(gp_airway_events)
@@ -1028,13 +1006,11 @@ class ControlPanelWidget(QWidget):
         l_airway.addWidget(self.btn_auto_laryngo, 3, 0, 1, 2)
         layout.addWidget(gp_airway_events)
 
-        # Crisis Events
         gp_crisis = QGroupBox("Critical events")
         gp_crisis.setStyleSheet(get_section_group_style())
         l_cr = QVBoxLayout(gp_crisis)
         l_cr.setSpacing(10)
 
-        # Hemorrhage Controls
         h_hemo = QHBoxLayout()
         self.cb_hemo_severity = QComboBox()
         self.cb_hemo_severity.addItem("Mild (500 mL/min)", 500.0)
@@ -1051,7 +1027,6 @@ class ControlPanelWidget(QWidget):
         h_hemo.addWidget(self.b_hem)
         l_cr.addLayout(h_hemo)
 
-        # Arrhythmia Controls
         h_arr = QHBoxLayout()
         lbl_arr = QLabel("Cardiac rhythm:")
         lbl_arr.setStyleSheet("")
@@ -1059,7 +1034,6 @@ class ControlPanelWidget(QWidget):
 
         self.cb_rhythm = QComboBox()
         self.cb_rhythm.addItems([r.value for r in RhythmType])
-        # Set default to Sinus
         idx = self.cb_rhythm.findText(RhythmType.SINUS.value)
         self.cb_rhythm.setCurrentIndex(idx)
 

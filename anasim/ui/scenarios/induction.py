@@ -1,6 +1,4 @@
-"""
-Induction scenario definitions (Balanced and TIVA variants).
-"""
+"""Induction scenarios for balanced anesthesia and TIVA."""
 
 from .base import (
     Scenario,
@@ -26,7 +24,7 @@ from .base import (
 
 def create_induction_balanced() -> Scenario:
     """Create balanced anesthesia induction scenario."""
-    
+
     steps = [
         ScenarioStep(
             id="APPLY_MASK",
@@ -150,7 +148,7 @@ def create_induction_balanced() -> Scenario:
             target_tab="Machine",
         ),
     ]
-    
+
     return Scenario(
         id="induction_balanced",
         name="Induction (Balanced)",
@@ -162,7 +160,7 @@ def create_induction_balanced() -> Scenario:
 
 def create_induction_tiva() -> Scenario:
     """Create TIVA induction scenario."""
-    
+
     steps = [
         ScenarioStep(
             id="APPLY_MASK",
@@ -301,7 +299,7 @@ def create_induction_tiva() -> Scenario:
             target_tab="Medications",
         ),
     ]
-    
+
     return Scenario(
         id="induction_tiva",
         name="Induction (TIVA)",

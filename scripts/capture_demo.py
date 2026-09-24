@@ -31,10 +31,10 @@ DEMO_PARAMS = {
     "scenario_id": "induction_tiva",
     "pk_model_propofol": "Eleveld",
     "pk_model_nore": "Li",
-    "pk_model_epi": "Clutter",
+    "pk_model_epi": "HealthyAdult",
     "bis_model": "Bouillon",
     "loc_model": "Kern",
-    "enable_death_detector": False,
+    "end_on_cardiac_arrest": False,
     "arterial_line_enabled": True,
 }
 

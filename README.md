@@ -13,8 +13,7 @@ and model exploration.
 > [!WARNING]
 > **Education and research use**
 >
-> AnaSim is simulation software, not a medical device. Do not use its output to
-> guide clinical care.
+> AnaSim is simulation software only. Do not use its output to guide clinical care.
 
 ## What AnaSim models
 
@@ -78,26 +77,25 @@ AnaSim accepts these patient inputs:
 | Age | 18 to 70 years |
 | Weight | 50 to 100 kg |
 | Height | 150 to 200 cm |
-| BMI derived from weight and height | 18 to 32 kg/m² |
+| BMI (from weight and height) | 18 to 32 kg/m² |
 | Hemoglobin | 6 to 20 g/dL |
 | Hematocrit | 0.18 to 0.60 |
 | Renal function factor | 0.4 to 1.0 |
 | Hepatic function factor | 0.5 to 1.0 |
 
-The body-size limits enclose the observed ranges in the healthy-adult cohort used
-by the Su hemodynamic and Li norepinephrine models. Weight and height must also
-produce a BMI within the supported range. Renal and hepatic factors are
-dimensionless model inputs.
+The body-size limits cover the healthy-adult cohort behind the Su hemodynamic
+and Li norepinephrine models. Renal and hepatic factors are dimensionless model
+inputs.
 
 AnaSim combines published component models with simulator-specific models for
 respiratory drug interaction, neuromuscular block and reversal, vasoactive drug
 response, and arterial pressure display. See
 [model references](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md)
-for sources and implementation details.
+for sources.
 
-Display values include simulated monitor response and may differ from the
-underlying physiologic state. Acid-base balance, lactate, tissue oxygen debt,
-and complete anesthesia machine pneumatics are outside the current model scope.
+Monitor values include measurement lag and artifact, so they can differ from
+the underlying physiology. Acid-base balance, lactate, tissue oxygen debt, and
+full anesthesia machine pneumatics are not modeled.
 
 ## Headless use
 

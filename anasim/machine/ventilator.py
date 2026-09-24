@@ -1,89 +1,64 @@
-"""
-Anesthesia Ventilator Model.
-
-Handles ventilator settings and monitoring for both VCV and PCV modes.
-"""
+"""Ventilator settings and breath monitors."""
 
 from dataclasses import dataclass
 
 
 @dataclass
 class VentSettings:
-    """Ventilator settings storage."""
-    mode: str = "VCV"         # VCV, PCV
-    tv: float = 500.0         # Target tidal volume (mL) - VCV
-    rr: float = 12.0          # Respiratory rate (bpm)
-    peep: float = 5.0         # PEEP (cmH2O)
-    ie_ratio: float = 0.5     # I:E ratio as I/E (1:2 = 0.5)
-    fio2: float = 0.21        # Fraction inspired O2
-    p_insp: float = 15.0      # Inspiratory pressure above PEEP (cmH2O) - PCV
-    
+    """Settings: VT mL, rate breaths/min, pressures cmH2O above atmosphere."""
+
+    mode: str = "VCV"
+    tv: float = 500.0
+    rr: float = 12.0
+    peep: float = 5.0
+    ie_ratio: float = 0.5  # I / E
+    fio2: float = 0.21
+    p_insp: float = 15.0  # Above PEEP
+
 
 @dataclass
 class VentMonitors:
-    """Ventilator monitoring values."""
-    paw_peak: float = 0.0     # Peak airway pressure (cmH2O)
-    paw_plat: float = 0.0     # Plateau pressure (cmH2O)
-    paw_mean: float = 0.0     # Mean airway pressure (cmH2O)
-    auto_peep: float = 0.0    # Intrinsic PEEP (cmH2O)
-    mv_exp: float = 0.0       # Expired minute ventilation (L/min)
-    tv_exp: float = 0.0       # Expired tidal volume (mL)
-    rr_total: float = 0.0     # Total respiratory rate (bpm)
-    compliance: float = 50.0  # Dynamic compliance (mL/cmH2O)
-    
+    """Last-breath monitors: pressures cmH2O, VT mL, MV L/min, compliance mL/cmH2O."""
+
+    paw_peak: float = 0.0
+    paw_plat: float = 0.0
+    paw_mean: float = 0.0
+    auto_peep: float = 0.0
+    mv_exp: float = 0.0
+    tv_exp: float = 0.0
+    rr_total: float = 0.0
+    compliance: float = 50.0
+
 
 class AnesthesiaVentilator:
-    """
-    Anesthesia Ventilator Model.
-    
-    Controls settings and outputs flow/pressure targets for Respiratory Mechanics.
-    Tracks monitoring values including peak, plateau, and mean Paw.
-    
-    Supports:
-    - VCV (Volume Control Ventilation): Set Vt, Paw varies
-    - PCV (Pressure Control Ventilation): Set P_insp, Vt varies
-    - PSV (Pressure Support Ventilation): Patient-triggered, pressure-targeted
-    - CPAP (Continuous Positive Airway Pressure): PEEP with spontaneous breaths
-    """
-    
+    """Stores settings; RespiratoryMechanics produces the breaths."""
+
     def __init__(self):
         self.settings = VentSettings()
         self.monitors = VentMonitors()
         self.is_on = True
-        
+
     def set_mode(self, mode: str):
-        """Set ventilator mode (VCV, PCV, PSV, CPAP)."""
         mode_upper = mode.upper()
         if mode_upper in ["VCV", "PCV", "PSV", "CPAP"]:
             self.settings.mode = mode_upper
-        
-    def update_settings(self, rr=None, tv=None, peep=None, fio2=None, 
+
+    def update_settings(self, rr=None, tv=None, peep=None, fio2=None,
                        ie=None, p_insp=None, mode=None):
-        """
-        Update ventilator settings.
-        
-        Args:
-            rr: Respiratory rate (bpm)
-            tv: Tidal volume (mL)
-            peep: PEEP (cmH2O)
-            fio2: Fraction inspired O2
-            ie: I:E ratio as string (e.g., "1:2") or float
-            p_insp: Inspiratory pressure above PEEP (cmH2O) - PCV
-            mode: Ventilator mode ("VCV" or "PCV")
-        """
-        if rr is not None: 
+        """Update any given setting; VT in mL, I:E as "1:2" or a float."""
+        if rr is not None:
             self.settings.rr = rr
-        if tv is not None: 
+        if tv is not None:
             self.settings.tv = tv
-        if peep is not None: 
+        if peep is not None:
             self.settings.peep = peep
-        if fio2 is not None: 
+        if fio2 is not None:
             self.settings.fio2 = fio2
-        if p_insp is not None: 
+        if p_insp is not None:
             self.settings.p_insp = p_insp
         if mode is not None:
             self.set_mode(mode)
-        
+
         if ie is not None:
             if isinstance(ie, str) and ':' in ie:
                 parts = ie.split(':')
@@ -98,39 +73,28 @@ class AnesthesiaVentilator:
                 self.settings.ie_ratio = ratio
 
     def step(self, dt: float, mech_state, rr_total: float = None):
-        """
-        Update monitors based on respiratory mechanics state.
-        
-        Args:
-            dt: Time step (seconds)
-            mech_state: MechState from respiratory mechanics model
-        """
-        # Update from mechanics state
+        """Copy breath monitors from the mechanics state."""
         self.monitors.paw_peak = mech_state.paw_peak
         self.monitors.paw_plat = mech_state.paw_plat
         self.monitors.paw_mean = mech_state.paw_mean
         self.monitors.auto_peep = mech_state.auto_peep
         self.monitors.tv_exp = mech_state.delivered_vt
-        
-        # Calculate minute ventilation (use effective RR if provided)
+
         rr_eff = rr_total if rr_total is not None else self.settings.rr
         if rr_eff > 0:
             self.monitors.mv_exp = (self.monitors.tv_exp / 1000.0) * rr_eff
         else:
             self.monitors.mv_exp = 0.0
-            
-        # Calculate dynamic compliance (only meaningful in VCV)
-        # Cdyn = Vt / (Pplat - PEEP)
+
+        # Compliance = VT / driving pressure (plateau - total PEEP in VCV).
         if self.settings.mode == "VCV":
             delta_p = mech_state.paw_plat - self.settings.peep - mech_state.auto_peep
-            if delta_p > 0.5:  # Avoid divide by zero
+            if delta_p > 0.5:
                 self.monitors.compliance = self.monitors.tv_exp / delta_p
             else:
-                self.monitors.compliance = 50.0  # Default
-        else:
-            # Infer compliance from delivered Vt in PCV mode
-            if self.settings.p_insp and self.settings.p_insp > 0:
-                self.monitors.compliance = self.monitors.tv_exp / self.settings.p_insp
-                
+                self.monitors.compliance = 50.0
+        elif self.settings.p_insp and self.settings.p_insp > 0:
+            self.monitors.compliance = self.monitors.tv_exp / self.settings.p_insp
+
         self.monitors.rr_total = rr_total if rr_total is not None else self.settings.rr
-        
+

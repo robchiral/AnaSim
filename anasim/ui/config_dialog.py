@@ -248,14 +248,14 @@ class SimulationSetupDialog(QDialog):
         model_layout.addWidget(self.cb_prop_model, 0, 1)
 
         self.cb_nore_model = QComboBox()
-        self.cb_nore_model.addItems(["Beloeil", "Oualha", "Li"])
+        self.cb_nore_model.addItems(["Beloeil", "Li"])
         self.cb_nore_model.setCurrentText("Li")
         model_layout.addWidget(QLabel("Norepinephrine PK:"), 1, 0)
         model_layout.addWidget(self.cb_nore_model, 1, 1)
 
         self.cb_epi_model = QComboBox()
-        self.cb_epi_model.addItems(["Clutter", "Abboud", "Oualha"])
-        self.cb_epi_model.setCurrentText("Clutter")
+        self.cb_epi_model.addItems(["HealthyAdult", "Abboud"])
+        self.cb_epi_model.setCurrentText("HealthyAdult")
         model_layout.addWidget(QLabel("Epinephrine PK:"), 2, 0)
         model_layout.addWidget(self.cb_epi_model, 2, 1)
 
@@ -282,11 +282,12 @@ class SimulationSetupDialog(QDialog):
         )
         rules_layout.addWidget(self.cb_art_line)
 
-        self.cb_death_detector = QCheckBox("End session when death criteria are met")
-        self.cb_death_detector.setToolTip(
-            "Stop simulation after configured extreme physiology persists."
+        self.cb_arrest_endpoint = QCheckBox("End session at cardiac arrest")
+        self.cb_arrest_endpoint.setToolTip(
+            "Stop when MAP stays below 20 mmHg or HR below 10 bpm for 15 seconds. "
+            "Resuscitation is not modeled."
         )
-        rules_layout.addWidget(self.cb_death_detector)
+        rules_layout.addWidget(self.cb_arrest_endpoint)
 
         right_col.addWidget(gb_rules)
         right_col.addStretch()
@@ -376,7 +377,7 @@ class SimulationSetupDialog(QDialog):
             "pk_model_epi": self.cb_epi_model.currentText(),
             "bis_model": self.cb_bis_model.currentText(),
             "loc_model": self.cb_loc_model.currentText(),
-            "enable_death_detector": self.cb_death_detector.isChecked(),
+            "end_on_cardiac_arrest": self.cb_arrest_endpoint.isChecked(),
             "arterial_line_enabled": self.cb_art_line.isChecked(),
         }
         super().accept()

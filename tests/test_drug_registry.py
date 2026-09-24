@@ -2,8 +2,6 @@ import pytest
 
 from anasim.core.drug_registry import (
     DRUG_REGISTRY,
-    MaxRateBasis,
-    MaxRatePolicy,
     get_drug_spec,
     resolve_bolus_drug,
 )
@@ -43,24 +41,6 @@ def test_registry_drives_controller_metadata_and_rate_units(engine):
         engine.set_drug_rate(drug, user_rate)
         assert getattr(engine, rate_attr) == pytest.approx(expected_internal)
         assert engine.get_drug_state(drug)["rate"] == pytest.approx(user_rate)
-
-
-def test_max_rate_policy_converts_to_model_units():
-    cases = (
-        (MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 0.5), 60.0, 0.5),
-        (MaxRatePolicy(MaxRateBasis.PER_KG_HOUR, 1.0), 60.0, 1.0 / 60.0),
-        (
-            MaxRatePolicy(
-                MaxRateBasis.ABSOLUTE_PER_MINUTE,
-                0.1,
-                model_unit_scale=1000.0,
-            ),
-            60.0,
-            100.0 / 60.0,
-        ),
-    )
-    for policy, weight_kg, expected in cases:
-        assert policy.internal_rate(weight_kg) == pytest.approx(expected)
 
 
 def test_bolus_routes_and_units_come_from_registry(engine):

@@ -41,7 +41,7 @@ def sync_pk_state(engine: "SimulationEngine") -> None:
         remi_ce=engine.pk_remi.state.ce,
         remi_cp=engine.pk_remi.state.c1,
         nore_ce=engine.pk_nore.state.ce,
-        roc_ce=engine.pk_roc.state.ce,
+        roc_ce=engine.tof_pd.ce,
         roc_cp=engine.pk_roc.state.c1,
         epi_ce=engine.pk_epi.state.ce,
         phenyl_ce=engine.pk_phenyl.state.ce,
@@ -74,6 +74,7 @@ def sync_inhaled_agents(engine: "SimulationEngine") -> None:
         mac_sevo=sevo.mac,
         mac_n2o=n2o.mac,
         mac=sevo.mac + n2o.mac,
+        et_mac=sevo.p_alv * 100.0 / engine.pk_sevo.mac_age + n2o.p_alv * 100.0 / engine.pk_n2o.mac_age,
     )
 
 

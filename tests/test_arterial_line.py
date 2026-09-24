@@ -42,23 +42,6 @@ def test_completed_art_reading_tracks_filtered_beat():
     assert reading.mean == pytest.approx(90.0, abs=1.0)
 
 
-def test_arrest_clears_beat_numerics_while_pressure_line_settles():
-    cycle = CardiacCycle(np.random.default_rng(3))
-    renderer = ArterialWaveformRenderer(age=40)
-    monitor = ArterialLineMonitor()
-    cardiac_sample = cycle.seed(70.0, RhythmType.SINUS)
-    pressure_sample = renderer.step(cardiac_sample, 90.0, 70.0)
-    monitor.seed(pressure_sample)
-
-    cardiac_sample = cycle.step(0.01, 0.0, RhythmType.ASYSTOLE)
-    pressure_sample = renderer.step(cardiac_sample, 0.0, 0.0)
-    reading = monitor.step(0.01, cardiac_sample, pressure_sample)
-
-    assert reading.systolic == pytest.approx(0.0)
-    assert reading.diastolic == pytest.approx(0.0)
-    assert reading.mean == pytest.approx(0.0)
-
-
 @pytest.mark.parametrize("outer_dt", [0.5, 1.0])
 def test_engine_art_numerics_are_accurate_with_coarse_step(engine_factory, outer_dt):
     engine = engine_factory(

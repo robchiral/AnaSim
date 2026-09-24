@@ -15,7 +15,7 @@ from .styles import (
 class NumericDisplay(QFrame):
     """Display one vital sign numeric and its alarm state."""
 
-    def __init__(self, label, unit="", color=COLORS['text'], initial_value="--", 
+    def __init__(self, label, unit="", color=COLORS['text'], initial_value="--",
                  tooltip="", size_variant="normal", embedded=False):
         super().__init__()
         self.base_color = color
@@ -23,10 +23,10 @@ class NumericDisplay(QFrame):
         self.current_alarm_state = None
         self.embedded = embedded
         self.setObjectName("numericDisplay")
-        
+
         self.layout = QVBoxLayout(self)
         self.layout.setSpacing(1)
-        
+
         if size_variant == "small":
             self.layout.setContentsMargins(7, 5, 7, 6)
             self._val_size = "22px"
@@ -57,16 +57,16 @@ class NumericDisplay(QFrame):
         self.lbl_unit.setVisible(bool(unit))
         header.addWidget(self.lbl_unit, alignment=Qt.AlignRight | Qt.AlignVCenter)
         self.layout.addLayout(header)
-        
+
         self.lbl_val = QLabel(initial_value)
         self.lbl_val.setStyleSheet(
             f"color: {color}; font-size: {self._val_size}; font-weight: 700;"
         )
         self.lbl_val.setAlignment(Qt.AlignRight)
         self.layout.addWidget(self.lbl_val)
-            
+
         self._apply_base_style()
-        
+
         if tooltip:
             self.setToolTip(tooltip)
 
@@ -89,7 +89,7 @@ class NumericDisplay(QFrame):
     def _apply_alarm_style(self, is_low):
         color = COLORS['danger'] if is_low else COLORS['warning']
         indicator = "low" if is_low else "high"
-        
+
         self.setStyleSheet(f"""
             QFrame#numericDisplay {{
                 background-color: {get_rgba(color, 0.12)};
@@ -123,11 +123,11 @@ class PatientMonitorWidget(QWidget):
             raise ValueError("sample_interval_s must be greater than zero")
         self.sample_rate_hz = 1.0 / self.sample_interval_s
         self.setStyleSheet(get_base_widget_style())
-        
+
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
-        
+
         # Fixed-screen sweep buffers. A moving gap separates the newest sample
         # from the previous sweep, while already-drawn samples remain stationary.
         self.buffer_size = max(2, round(10.0 * self.sample_rate_hz))
@@ -141,11 +141,10 @@ class PatientMonitorWidget(QWidget):
             max(1, round(0.14 * self.sample_rate_hz)),
         )
         self.last_plot_time = 0.0
-        
+
         self.setup_ui()
-        
+
     def setup_ui(self):
-        # --- Top Status Bar ---
         header = QFrame()
         header.setObjectName("monitorHeader")
         header.setStyleSheet(
@@ -155,7 +154,7 @@ class PatientMonitorWidget(QWidget):
         header.setFixedHeight(40)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(14, 0, 14, 0)
-        
+
         self.lbl_patient = QLabel("")
         self.lbl_patient.setStyleSheet(
             f"color: {COLORS['text_secondary']}; font-size: 11px; font-weight: 600;"
@@ -163,8 +162,7 @@ class PatientMonitorWidget(QWidget):
         header_layout.addWidget(self.lbl_patient)
         header_layout.addStretch()
         self.layout.addWidget(header)
-        
-        # --- Main Content ---
+
         content = QFrame()
         content.setObjectName("monitorContent")
         content.setStyleSheet(
@@ -174,8 +172,7 @@ class PatientMonitorWidget(QWidget):
         content_layout.setContentsMargins(6, 6, 0, 6)
         content_layout.setSpacing(6)
         self.layout.addWidget(content, stretch=1)
-        
-        # Left Column: Waveforms
+
         wave_frame = QFrame()
         wave_frame.setObjectName("waveformColumn")
         wave_frame.setStyleSheet(
@@ -185,8 +182,7 @@ class PatientMonitorWidget(QWidget):
         wave_layout.setContentsMargins(0, 0, 0, 0)
         wave_layout.setSpacing(3)
         content_layout.addWidget(wave_frame, stretch=72)
-        
-        # Right Column: Numerics
+
         num_frame = QFrame()
         num_frame.setObjectName("numericColumn")
         num_frame.setStyleSheet(
@@ -198,7 +194,6 @@ class PatientMonitorWidget(QWidget):
         num_layout.setSpacing(2)
         content_layout.addWidget(num_frame, stretch=28)
 
-        # --- Plot Initializers ---
         self.ecg_plot, self.ecg_curve = self.create_plot(
             COLORS['ecg'], "ECG · II", y_range=(-0.5, 1.5)
         )
@@ -217,21 +212,17 @@ class PatientMonitorWidget(QWidget):
         wave_layout.addWidget(self.art_plot)
         wave_layout.addWidget(self.capno_plot)
 
-        # --- Numeric Widgets ---
-        
-        # HR
         self.num_hr = NumericDisplay(
             "HR", "bpm", COLORS['ecg'], "60"
         )
         num_layout.addWidget(self.num_hr)
-        
-        # SpO2
+
         self.num_spo2 = NumericDisplay(
             "SpO₂", "%", COLORS['spo2'], "100"
         )
         num_layout.addWidget(self.num_spo2)
-        
-        # BP (ABP or NIBP)
+
+        # Arterial line or NIBP
         self.num_art = NumericDisplay(
             "ART", "mmHg", COLORS['abp'], "120/80 (93)"
         )
@@ -240,8 +231,7 @@ class PatientMonitorWidget(QWidget):
         )
         num_layout.addWidget(self.num_art)
         num_layout.addWidget(self.num_nibp)
-        
-        # EtCO2 & RR container
+
         co2_frame = QFrame()
         co2_frame.setObjectName("co2Panel")
         co2_frame.setStyleSheet(
@@ -251,7 +241,7 @@ class PatientMonitorWidget(QWidget):
         co2_layout = QHBoxLayout(co2_frame)
         co2_layout.setContentsMargins(0, 0, 0, 0)
         co2_layout.setSpacing(2)
-        
+
         self.num_etco2 = NumericDisplay(
             "EtCO₂", "mmHg", COLORS['co2'], "38", size_variant="normal", embedded=True
         )
@@ -274,14 +264,12 @@ class PatientMonitorWidget(QWidget):
         row_secondary.addWidget(self.num_temp)
         num_layout.addLayout(row_secondary)
 
-        # I/O panel
         self.io_panel = self._create_io_panel()
         num_layout.addWidget(self.io_panel)
-        
-        # Gas Panel (Sevo)
+
         self.gas_panel = self._create_gas_panel()
         num_layout.addWidget(self.gas_panel)
-        
+
         self._apply_bp_mode()
 
     def _create_io_panel(self):
@@ -334,8 +322,7 @@ class PatientMonitorWidget(QWidget):
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(8, 6, 8, 8)
         layout.setSpacing(4)
-        
-        # Header
+
         h_layout = QHBoxLayout()
         lbl_gas = QLabel("Sevoflurane")
         lbl_gas.setStyleSheet(f"color: {COLORS['gas']}; font-weight: 700; font-size: 11px;")
@@ -345,10 +332,9 @@ class PatientMonitorWidget(QWidget):
         h_layout.addStretch()
         h_layout.addWidget(self.lbl_mac)
         layout.addLayout(h_layout)
-        
-        # Values
+
         vals_layout = QHBoxLayout()
-        
+
         def make_col(label, val_label_attr):
             vbox = QVBoxLayout()
             vbox.setSpacing(0)
@@ -366,7 +352,7 @@ class PatientMonitorWidget(QWidget):
         vals_layout.addLayout(make_col("Fi", "lbl_fi_val"))
         vals_layout.addStretch()
         vals_layout.addLayout(make_col("Et", "lbl_et_val"))
-        
+
         layout.addLayout(vals_layout)
         return frame
 
@@ -387,11 +373,10 @@ class PatientMonitorWidget(QWidget):
         plot.setMouseEnabled(x=False, y=False)
         plot.hideAxis('bottom')
         plot.setXRange(0, self.buffer_size, padding=0)
-        
-        # Consistent Axis Width
+
         axis = plot.getAxis('left')
         axis.setWidth(35)
-        
+
         if y_range:
             plot.setYRange(y_range[0], y_range[1], padding=0.03)
 
@@ -403,28 +388,27 @@ class PatientMonitorWidget(QWidget):
                 axis.setTicks([[(v, str(int(v))) for v in y_ticks]])
         else:
             axis.setStyle(showValues=False, tickLength=0)
-            axis.setPen(pg.mkPen(color=COLORS['background_alt']))  # Hide
+            axis.setPen(pg.mkPen(color=COLORS['background_alt']))
 
         plot.setMinimumHeight(80)
-        
-        # Title as Item
+
         text = pg.TextItem(text=title, color=color, anchor=(0, 1))
         text.setFont(QFont("Arial", 9, QFont.Weight.DemiBold))
         plot.addItem(text)
-        
+
         # Keep the channel label stable while the waveform buffer fills.
         title_y = 0.05 if not y_range else y_range[1] - (y_range[1] - y_range[0]) * 0.10
         text.setPos(10, title_y)
-        
+
         # Antialiasing a trace that updates at 20 FPS creates visible edge
         # shimmer. The clinical monitor palette remains crisp without it.
         plot.setAntialiasing(False)
         plot.setClipToView(True)
-        
+
         pen = pg.mkPen(color=color, width=1.6)
         curve = plot.plot(pen=pen)
         return plot, curve
-    
+
     def _apply_bp_mode(self):
         self.art_plot.setVisible(self.arterial_line_enabled)
         self.num_art.setVisible(self.arterial_line_enabled)
@@ -440,7 +424,7 @@ class PatientMonitorWidget(QWidget):
         self.num_spo2.set_value(
             f"{int(display_spo2)}" if state.spo2_signal_valid else "--"
         )
-        
+
         if self.arterial_line_enabled:
             self.num_art.set_value(
                 f"{int(state.art_sbp)}/{int(state.art_dbp)} ({int(state.art_map)})"
@@ -449,7 +433,7 @@ class PatientMonitorWidget(QWidget):
             ts = state.nibp_timestamp
             is_cycling = state.nibp_is_cycling
             cuff = state.nibp_cuff_pressure
-            
+
             if is_cycling:
                 self.num_nibp.set_value(f"Cuff: {int(cuff)}")
             elif ts is None:
@@ -463,7 +447,7 @@ class PatientMonitorWidget(QWidget):
             f"{int(display_etco2)}" if state.etco2_signal_valid else "--"
         )
         self.num_rr.set_value(f"{int(state.rr)}")
-        
+
         self.num_bis.set_value(f"{int(display_bis)}")
         self.num_tof.set_value(f"{int(state.tof)}%")
         self.num_temp.set_value(f"{state.temp_c:.1f}")
@@ -482,21 +466,19 @@ class PatientMonitorWidget(QWidget):
         self.lbl_io_net.setStyleSheet(
             f"color: {net_color}; font-size: 18px; font-weight: 700;"
         )
-        
-        # Gas
+
         self.lbl_fi_val.setText(f"{state.fi_sevo:.1f}")
         self.lbl_et_val.setText(f"{state.et_sevo:.1f}")
-        self.lbl_mac.setText(f"MAC: {state.mac:.2f}")
+        self.lbl_mac.setText(f"MAC: {state.et_mac:.2f}")
 
     def update_waveforms(self, engine):
         buffer = engine.output_buffer
         if not buffer:
             return
 
-        # Check if there's new data by comparing the last state's time
         latest_time = buffer[-1].time
         if latest_time <= self.last_plot_time:
-            return  # No new data
+            return
 
         # Search backward by timestamp so step-size overrides cannot drop samples.
         new_states = []
@@ -513,7 +495,6 @@ class PatientMonitorWidget(QWidget):
         new_states = new_states[-self.buffer_size:]
         self.last_plot_time = latest_time
 
-        # Extract columns
         ecg_c = np.array([s.ecg_voltage for s in new_states])
         pleth_c = np.array([s.pleth_voltage for s in new_states])
         capno_c = np.array([s.capno_co2 for s in new_states])
@@ -535,8 +516,7 @@ class PatientMonitorWidget(QWidget):
         for data in (self.ecg_data, self.spo2_data, self.art_data, self.capno_data):
             data[gap] = np.nan
 
-        # Most of each trace is now unchanged between frames. `finite` prevents
-        # pyqtgraph from bridging the sweep gap.
+        # `finite` keeps pyqtgraph from bridging the sweep gap.
         self.ecg_curve.setData(self.ecg_data, connect="finite")
         self.spo2_curve.setData(self.spo2_data, connect="finite")
         self.capno_curve.setData(self.capno_data, connect="finite")
@@ -555,8 +535,7 @@ class PatientMonitorWidget(QWidget):
 
     def update_alarms(self, state):
         alarms = state.alarms
-        
-        # Map keys to widgets
+
         mapping = {
             'HR': self.num_hr,
             'SpO2': self.num_spo2,
@@ -564,7 +543,7 @@ class PatientMonitorWidget(QWidget):
             'EtCO2': self.num_etco2,
             'BIS': self.num_bis
         }
-        
+
         for name, widget in mapping.items():
             if name in alarms:
                 a_data = alarms[name]
@@ -573,5 +552,5 @@ class PatientMonitorWidget(QWidget):
                 if is_low or is_high:
                     widget.set_alarm(True, is_low)
                     continue
-            
+
             widget.set_alarm(False)

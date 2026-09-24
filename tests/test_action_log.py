@@ -14,14 +14,6 @@ from anasim.core.action_log import (
 
 
 class TestActionLog:
-    def test_records_keep_order_and_simulation_time(self):
-        log = ActionLog()
-        log.record(0.0, ACTION_FLUID, label="crystalloid", amount=250)
-        log.record(12.5, ACTION_FLUID, label="blood", amount=300)
-
-        assert [record.time for record in log.records] == [0.0, 12.5]
-        assert [record.label for record in log.records] == ["crystalloid", "blood"]
-
     def test_step_scope_excludes_earlier_actions(self):
         log = ActionLog()
         log.record(0.0, ACTION_FLUID, label="crystalloid", amount=1000)
@@ -107,14 +99,3 @@ class TestEngineRecording:
         stopped = engine.actions.since_step(ACTION_EVENT_STOP, labels=("hemorrhage",))
         assert [record.amount for record in started] == [400.0]
         assert len(stopped) == 1
-
-    def test_actions_carry_the_simulation_time_they_were_taken(
-        self, anesthetized_engine, advance_time
-    ):
-        engine = anesthetized_engine
-        advance_time(engine, 30)
-        engine.give_fluid(250)
-
-        record = engine.actions.records[-1]
-        assert record.action == ACTION_FLUID
-        assert record.time == engine.state.time

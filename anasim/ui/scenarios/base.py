@@ -1,17 +1,8 @@
-"""
-Base classes for the scenario/tutorial system.
+"""Guided scenarios: ordered steps with instructions and requirement checks.
 
-Scenarios are data-driven definitions of guided learning sequences.
-Each scenario contains a list of steps with instructions and requirements.
-
-Requirement checks come in two kinds:
-
-- Action objectives ("give fluids", "select the ETT") read `engine.actions`
-  and are satisfied only by an action taken while the objective is active, so
-  an intervention performed before the objective appeared cannot complete it.
-- State and physiologic objectives ("confirm EtCO2", "MAP > 65") inspect
-  current engine state, because they describe a condition to reach or hold
-  rather than a dose to give.
+Action objectives ("give fluids", "select the ETT") read `engine.actions` and
+count only actions taken while the objective is active. State objectives
+("MAP > 65") read the current engine state.
 """
 
 from dataclasses import dataclass, field
@@ -62,10 +53,10 @@ class Scenario:
     description: str
     steps: List[ScenarioStep] = field(default_factory=list)
     setup_engine: Callable[[object], None] | None = None
-    
+
     def __len__(self) -> int:
         return len(self.steps)
-    
+
     def __getitem__(self, idx: int) -> ScenarioStep:
         return self.steps[idx]
 
@@ -90,7 +81,7 @@ def require_airway_selected(airway_type: str) -> Callable:
         "Mask": (AirwayType.MASK, "Facemask"),
         "ETT": (AirwayType.ETT, "ET tube"),
     }[airway_type]
-    
+
     def check(engine) -> Tuple[bool, str]:
         selected = action_taken_this_step(engine, ACTION_AIRWAY, target.value)
         met = selected and engine.state.airway_mode == target
@@ -367,10 +358,10 @@ def require_etco2_above(threshold: float = 20) -> Callable:
 
 
 def require_mac_above(threshold: float = 0.5) -> Callable:
-    """Check MAC above threshold."""
+    """Check the gas monitor's end-tidal MAC above threshold."""
     def check(engine) -> Tuple[bool, str]:
-        met = engine.state.mac > threshold
-        return met, "" if met else f"MAC: {engine.state.mac:.2f}/{threshold}+"
+        met = engine.state.et_mac > threshold
+        return met, "" if met else f"MAC: {engine.state.et_mac:.2f}/{threshold}+"
     return check
 
 

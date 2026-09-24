@@ -15,7 +15,9 @@ interactively.
 ## Guidelines
 
 - Keep changes focused and use short imperative commit subjects.
-- Add behavior-level tests for simulation changes.
+- Add behavior-level tests for simulation changes. Prefer driving
+  `SimulationEngine` through a clinical sequence over testing single equations
+  or setters, and anchor bounds to a cited source where one exists.
 - Cite primary literature for physiology or pharmacology changes.
 - Document material model adaptations and their clinical rationale.
 - Update `docs/REFERENCES.md` when model sources or material adaptations change.

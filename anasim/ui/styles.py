@@ -1,9 +1,4 @@
-"""
-Centralized styles module for AnaSim UI.
-
-This module provides a unified theme, colors, fonts, and style builders
-to ensure consistency across all UI components.
-"""
+"""Shared colors, fonts, and Qt stylesheet builders."""
 
 COLORS = {
     # Core UI surfaces
@@ -212,7 +207,7 @@ def get_button_style(
         text = base
     elif outlined and is_neutral:
         text = COLORS["text"]
-        base = COLORS["border_light"]  # Use lighter color for border visibility
+        base = COLORS["border_light"]
     else:
         text = COLORS["text"] if is_neutral or outlined else "white"
 
@@ -599,11 +594,6 @@ def get_progressbar_style():
     """
 
 
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
-
 def hex_to_rgb(hex_color):
     """Convert hex color to r, g, b string for rgba()."""
     hex_color = hex_color.lstrip("#")
@@ -615,10 +605,6 @@ def get_rgba(hex_color, alpha):
     """Get rgba string from hex color and alpha value (0-1)."""
     return f"rgba({hex_to_rgb(hex_color)}, {alpha})"
 
-
-# =============================================================================
-# PRE-BUILT STYLE CONSTANTS for common use
-# =============================================================================
 
 STYLE_GROUPBOX = get_groupbox_style()
 STYLE_SPINBOX = get_spinbox_style()

@@ -1,5 +1,4 @@
-"""
-Linear mammillary pharmacokinetic models.
+"""Linear mammillary pharmacokinetic models.
 
 References:
 - Propofol: Marsh et al. Br J Anaesth. 1991; Schnider et al. Anesthesiology.
@@ -8,11 +7,9 @@ References:
 - Remifentanil: Minto et al. Anesthesiology. 1997.
 - Rocuronium: Wierda et al. Can J Anaesth. 1991, with the Masui age-dependent
   ke0.
-- Norepinephrine: Beloeil et al. Br J Anaesth. 2005; Oualha et al. Br J Clin
-  Pharmacol. 2014 (children); Li et al. Clin Pharmacokinet. 2024 (healthy
-  volunteers, propofol covariate on clearance).
-- Epinephrine: Clutter et al. J Clin Invest. 1980; Abboud et al. Crit Care.
-  2009; Oualha et al. Br J Clin Pharmacol. 2014 (children).
+- Norepinephrine: Beloeil et al. Br J Anaesth. 2005; Li et al. Clin
+  Pharmacokinet. 2024 (healthy volunteers, propofol covariate on clearance).
+- Epinephrine: Ensinger et al. Eur J Anaesthesiol. 1992; Abboud et al. Crit Care. 2009.
 - Phenylephrine: FDA NDA 203826 Clinical Pharmacology Review. 2012.
 - Vasopressin, milrinone: DailyMed labels. Dobutamine: Kates and Leier. Clin
   Pharmacol Ther. 1978.
@@ -317,13 +314,11 @@ class NorepinephrinePK(MammillaryPK):
         if model == "Beloeil":
             # CL = 59.6 / SAPS II with SAPS II = 30 (moderate severity).
             params = {"v1": 8.840, "cl1": 59.6 / 30.0}
-        elif model == "Oualha":
-            params = {"v1": 0.08 * w, "cl1": 0.11 * w**0.75}
-            self.endogenous_ug_min = 0.052 * w**0.75
         elif model == "Li":
             params = {
                 "v1": 2.4 * (w / 70),
-                "cl1": 2.1 * np.exp(-0.377 / 100 * (age - 35)) * (w / 70) ** 0.75,
+                # Li 2024 Eq. 2 and Table 3: age effect theta = -0.344 per 100 years.
+                "cl1": 2.1 * np.exp(-0.344 / 100 * (age - 35)) * (w / 70) ** 0.75,
                 "v2": 3.6 * (w / 70),
                 "cl2": 0.6 * (w / 70) ** 0.75,
             }
@@ -342,24 +337,28 @@ class NorepinephrinePK(MammillaryPK):
 
 
 class EpinephrinePK(MammillaryPK):
-    """Epinephrine one-compartment PK with an effect site (ke0 0.5 min^-1)."""
+    """Exogenous epinephrine, in ng/mL above the patient's endogenous baseline.
 
-    def __init__(self, patient: Patient, model: str = "Clutter"):
+    HealthyAdult uses arterial infusion clearance (Ensinger 1992) with a
+    calibrated mixing volume. Abboud uses adult septic-shock parameters at
+    SAPS II 50.
+    """
+
+    def __init__(self, patient: Patient, model: str = "HealthyAdult"):
         w = patient.weight
         self.model = model
-        if model == "Clutter":
-            # Healthy adults: clearance 52-89 mL/kg/min; use 70 mL/kg/min.
-            v1, cl_l_hr = 0.15 * w, 0.07 * w * 60.0
+        if model == "HealthyAdult":
+            # Ensinger: 0.2 mcg/kg/min / (4.349 - 0.053) ng/mL
+            # gives arterial clearance about 0.046 L/kg/min.
+            v1, cl1 = 0.035 * w, 0.046 * w
         elif model == "Abboud":
-            # Adult septic shock: CL = 127 (BW/70)^0.60 (SAPS II/50)^-0.67 L/h at the
-            # cohort reference SAPS II of 50; V about 7.9 L.
-            v1, cl_l_hr = 7.9, 127.0 * (w / 70.0) ** 0.60
-        elif model == "Oualha":
-            # Children: V = 0.08 L/kg; CL = 2.00 BW^0.75 L/h.
-            v1, cl_l_hr = 0.08 * w, 2.00 * w**0.75
+            # CL = 127 (BW/70)^0.60 (SAPS II/50)^-0.67 L/h.
+            v1, cl1 = 7.9, 127.0 * (w / 70.0) ** 0.60 / 60.0
         else:
             raise ValueError(f"Unsupported epinephrine PK model: {model!r}")
-        super().__init__(v1=v1, cl1=cl_l_hr / 60.0, ke0=0.5)
+        # ke0 is calibrated. Clearance does not scale with simulated CO because
+        # the infusion data fix the dose-concentration relationship.
+        super().__init__(v1=v1, cl1=cl1, ke0=2.2, cl1_co_exponent=0.0)
 
 
 class PhenylephrinePK(MammillaryPK):
@@ -367,8 +366,8 @@ class PhenylephrinePK(MammillaryPK):
 
     def __init__(self, patient: Patient):
         params = _from_rate_constants(20.4 * patient.weight / 70.0, 0.124, 0.155, 0.0314, 0.0, 0.0)
-        # Minimal hysteresis; ke0 gives an effect-site half-time near 1 min.
-        super().__init__(ke0=0.7, **params)
+        # Minimal hysteresis: bolus pressor effect peaks near 1 min.
+        super().__init__(ke0=2.0, **params)
 
 
 class VasopressinPK(MammillaryPK):

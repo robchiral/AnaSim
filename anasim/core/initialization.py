@@ -34,7 +34,9 @@ class StartupProfile:
     remi_bounds: tuple[float, float] = (0.0, 1.0)
     remi_soft_cap: float | None = None
     fgf_o2_l_min: float = 2.0
-    minimum_map: float = 65.0
+    # Seed above the visible 65 mmHg floor because controlled ventilation and
+    # changing anesthetic plasma concentrations act during the hidden settle.
+    minimum_map: float = 70.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,9 +312,7 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
     engine._shiver_level = 0.0
     # Redistribution belongs to the maintenance history, not the visible start.
     engine._redistributed_heat_j = runtime_core.redistribution_target_j(engine, engine._depth_index)
-    engine.time_brady = 0.0
-    engine.time_hypotension = 0.0
-    engine.time_tachy = 0.0
+    engine._pulseless_s = 0.0
     engine.state.time = saved_time
 
 

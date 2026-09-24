@@ -114,9 +114,8 @@ def test_each_propofol_pk_and_pd_choice_runs():
 
 def test_each_vasoactive_pk_choice_runs():
     model_choices = (
-        ("Beloeil", "Clutter"),
-        ("Oualha", "Abboud"),
-        ("Li", "Oualha"),
+        ("Beloeil", "HealthyAdult"),
+        ("Li", "Abboud"),
     )
     for nore_model, epi_model in model_choices:
         patient = Patient()
@@ -161,10 +160,13 @@ def test_invalid_patient_values_are_rejected():
             Patient(**patient_kwargs)
 
 
-def test_invalid_numeric_simulation_values_are_rejected():
+def test_invalid_simulation_config_is_rejected():
     invalid_values = (
         ({"dt": float("nan")}, "dt"),
         ({"pk_model_propofol": []}, "pk_model_propofol"),
+        ({"pk_model_epi": "Clutter"}, "pk_model_epi"),
+        ({"pk_model_nore": "Oualha"}, "pk_model_nore"),
+        ({"resp_model": "legacy"}, "resp_model"),
         ({"volatile_agents": None}, "volatile_agents"),
         ({"volatile_agents": [{}]}, "volatile_agents"),
     )

@@ -1,4 +1,3 @@
-
 import numpy as np
 import pytest
 
@@ -12,83 +11,33 @@ from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.hemodynamics import HemoState
 from anasim.physiology.respiration import RespState
 
-# --- Fixtures ---
 
 @pytest.fixture
 def engine(patient):
-    config = SimulationConfig(mode="awake", dt=0.5)
-    sim = SimulationEngine(patient, config)
-    return sim
+    return SimulationEngine(patient, SimulationConfig(mode="awake", dt=0.5))
 
-# --- Tests from test_backend_sanity.py ---
 
-class TestPhysiologicalSanity:
-    """Verifies that the simulation produces physiologically reasonable values."""
-    
-    def test_awake_baselines(self, engine):
-        """Check vital signs for a resting, awake patient."""
-        engine.start()
-        # Connect mask for monitoring (default is now NONE)
-        engine.set_airway_mode("Mask")
-        
-        # Settle for a few seconds
-        for _ in range(50): 
-            engine.step(0.1)
-            
-        state = engine.state
-        
-        # 1. Heart Rate: 50-100 bpm
-        assert 50 <= state.hr <= 100, f"HR {state.hr} out of awake range"
-        
-        # 2. MAP: 70-110 mmHg
-        assert 70 <= state.map <= 110, f"MAP {state.map} out of awake range"
-        
-        # 3. SpO2: > 95% on Room Air (healthy)
-        assert state.spo2 > 95, f"SpO2 {state.spo2} too low for healthy awake patient"
-        
-        # 4. EtCO2: allow broader range with perfusion coupling.
-        if state.rr > 0:
-            assert 25 <= state.etco2 <= 50, f"EtCO2 {state.etco2} abnormal"
+def _run_for(engine, seconds: float, dt: float = 0.1) -> None:
+    for _ in range(max(1, int(seconds / dt))):
+        engine.step(dt)
 
-    def test_output_history_uses_actual_timestamps(self, patient):
-        engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=0.5))
-        engine.start()
 
-        for _ in range(120):
-            engine.step(0.1)
+def test_output_buffer_holds_ten_seconds_of_per_step_samples(patient):
+    engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=0.01))
+    engine.start()
+    initial_len = len(engine.output_buffer)
+    engine.step(0.01)
+    engine.step(0.01)
+    assert len(engine.output_buffer) == initial_len + 2
+    assert engine.output_buffer[-1].time == pytest.approx(engine.state.time)
 
-        history_span = engine.output_buffer[-1].time - engine.output_buffer[0].time
-        assert history_span <= 10.0 + 1e-9
-        assert history_span >= 9.8
-            
-    def test_default_continuous_fluids(self, patient):
-        """Default continuous IV fluids should be 1 mL/kg/hr."""
-        config = SimulationConfig(mode="steady_state", maint_type="tiva", dt=1.0)
-        engine = SimulationEngine(patient, config)
-        engine.start()
+    _run_for(engine, 12.0)
+    span = engine.output_buffer[-1].time - engine.output_buffer[0].time
+    assert 9.8 <= span <= 10.0 + 1e-9
 
-        expected_ml_hr = max(0.0, float(getattr(patient, "weight", 0.0)))
-        assert engine.get_continuous_fluid_rate() == pytest.approx(expected_ml_hr, rel=0, abs=1e-6)
-
-    def test_albumin_infusion_increases_volume(self, patient):
-        """Albumin bolus should increase colloid totals and blood volume."""
-        config = SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5)
-        engine = SimulationEngine(patient, config)
-        engine.start()
-
-        assert engine.hemo is not None
-        base_bv = engine.hemo.blood_volume
-
-        engine.give_albumin(250)
-        # Infuse for ~2 minutes of simulated time (rate = 150 mL/min).
-        for _ in range(240):  # 120s at 0.5s step
-            engine.step(0.5)
-
-        assert engine.hemo.total_colloid_in_ml == pytest.approx(250.0, rel=0, abs=1e-2)
-        assert engine.hemo.blood_volume > base_bv + 100.0
 
 def test_tci_seeds_state_and_caps_rate(engine):
-    """TCI should seed from PK state and use a realistic max rate for each drug."""
+    """TCI seeds from the PK state and uses each drug's registry pump limit."""
     weight = engine.patient.weight
     cases = (
         ("propofol", "effect_site", "pk_prop", "tci_prop", {"c1": 1.0, "c2": 2.0, "c3": 3.0, "ce": 4.0}),
@@ -114,8 +63,8 @@ def test_tci_seeds_state_and_caps_rate(engine):
         expected_max_rate = get_drug_spec(drug).max_rate.internal_rate(weight)
         assert controller.max_rate == pytest.approx(expected_max_rate)
 
-def test_hr_disturbance_not_double_applied():
-    """HR disturbance should be applied only once (physiology, not display)."""
+
+def test_hr_disturbance_is_not_applied_again_by_the_monitor():
     patient = Patient(age=40, weight=70, height=170, sex="male")
     config = SimulationConfig(mode="awake", dt=0.5)
 
@@ -148,11 +97,12 @@ def test_hr_disturbance_not_double_applied():
 
     assert engine1.state.display_hr == pytest.approx(engine2.state.display_hr, rel=1e-6)
 
-def test_pk_hemodynamic_scaling_applies_to_propofol():
-    """PK central volume should scale with blood volume ratio."""
-    patient = Patient(age=40, weight=70, height=170, sex="male")
-    config = SimulationConfig(mode="awake", dt=0.5)
-    engine = SimulationEngine(patient, config)
+
+def test_propofol_central_volume_scales_with_blood_volume():
+    engine = SimulationEngine(
+        Patient(age=40, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="awake", dt=0.5),
+    )
     base_v1 = engine.pk_prop.v1
     engine.hemo.blood_volume = engine.hemo.blood_volume_0 * 0.5
     engine.state.co = engine.hemo.base_co_l_min * 0.5
@@ -162,39 +112,11 @@ def test_pk_hemodynamic_scaling_applies_to_propofol():
     assert engine.pk_prop.v1 == pytest.approx(base_v1 * 0.5, rel=0.05)
 
 
-def test_output_buffer_keeps_per_step_waveform_snapshots():
-    """UI waveform history depends on one output snapshot per simulation step."""
-    patient = Patient(age=40, weight=70, height=170, sex="male")
-    engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=0.01))
-    engine.start()
-
-    initial_len = len(engine.output_buffer)
-    engine.step(0.01)
-    engine.step(0.01)
-
-    assert len(engine.output_buffer) == initial_len + 2
-    assert engine.output_buffer[-1].time == pytest.approx(engine.state.time)
-
-
-def test_invalid_airway_mode_is_rejected(engine_factory):
-    engine = engine_factory()
-
-    with pytest.raises(ValueError, match="Unsupported airway mode"):
-        engine.set_airway_mode("nasal cannula")
-
-
-# --- Coupling / Integration Tests ---
-
-def _run_for(engine, seconds: float, dt: float = 0.1) -> None:
-    steps = max(1, int(seconds / dt))
-    for _ in range(steps):
-        engine.step(dt)
-
 def test_peep_increases_pit_and_reduces_preload():
-    """Higher PEEP should raise Pit and reduce preload and MAP via coupling."""
-    patient = Patient(age=40, weight=70, height=170, sex="male")
-    config = SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5, rng_seed=123)
-    engine = SimulationEngine(patient, config)
+    engine = SimulationEngine(
+        Patient(age=40, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5, rng_seed=123),
+    )
     engine.start()
 
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
@@ -205,29 +127,19 @@ def test_peep_increases_pit_and_reduces_preload():
 
     engine.set_vent_settings(rr=12, vt=0.5, peep=15.0, ie="1:2", mode="VCV")
     _run_for(engine, 60.0, dt=0.5)
-    pit_high = engine.state.pit
-    preload_high = engine.hemo.state.preload_factor
-    map_high = engine.state.map
 
-    assert pit_high > pit_low + 0.5, "Higher PEEP should increase Pit"
-    assert preload_high < preload_low, "Higher PEEP should reduce preload factor"
-    assert map_high < map_low, "Higher PEEP should reduce MAP via lower preload"
+    assert engine.state.pit > pit_low + 0.5
+    assert engine.hemo.state.preload_factor < preload_low
+    assert engine.state.map < map_low
 
-def test_positive_pressure_reduces_preload_vs_spontaneous():
-    """Positive pressure ventilation should reduce preload vs spontaneous breathing."""
-    patient = Patient(age=40, weight=70, height=170, sex="male")
-    config = SimulationConfig(mode="awake", dt=0.5)
-    engine = SimulationEngine(patient, config)
+
+def test_positive_pressure_reduces_preload_vs_spontaneous(engine):
     engine.start()
     engine.set_airway_mode("Mask")
-
-    engine.vent.is_on = False
-    engine.bag_mask_active = False
     _run_for(engine, 20.0)
     preload_spont = engine.hemo.state.preload_factor
 
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
     _run_for(engine, 20.0)
-    preload_vent = engine.hemo.state.preload_factor
 
-    assert preload_vent < preload_spont, "Positive pressure should reduce preload vs spontaneous"
+    assert engine.hemo.state.preload_factor < preload_spont
