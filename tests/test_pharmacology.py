@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from anasim.core.drug_registry import DRUG_REGISTRY
 from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import TOFModel
 from anasim.patient.pk_models import (
@@ -96,6 +97,27 @@ def test_organ_impairment_scales_pk():
     assert RocuroniumPK(both).v1 > RocuroniumPK(normal).v1 * 1.3
     assert RocuroniumPK(both).k10 < RocuroniumPK(normal).k10 * 0.7
     assert MilrinonePK(renal).k10 < MilrinonePK(normal).k10 * 0.6
+
+
+@pytest.mark.parametrize("volume_ratio", [0.5, 1.5])
+def test_hemodynamic_rescaling_conserves_drug_mass(awake_engine, volume_ratio):
+    """Changing effective V1 must not act as an unlogged drug dose or loss."""
+    for spec in DRUG_REGISTRY:
+        pk = getattr(awake_engine, spec.pk_attr)
+        pk.state.c1, pk.state.c2, pk.state.c3, pk.state.ce = 4.0, 2.0, 1.0, 3.0
+        original_v1 = pk.v1
+        original_mass = pk.v1 * 4.0 + pk.v2 * 2.0 + pk.v3
+        pk.update_hemodynamics(volume_ratio, 0.7)
+        assert pk.v1 * pk.state.c1 + pk.v2 * pk.state.c2 + pk.v3 * pk.state.c3 == pytest.approx(original_mass)
+        assert pk.state.c1 == pytest.approx(4.0 * original_v1 / pk.v1)
+        assert (pk.state.c2, pk.state.c3, pk.state.ce) == (2.0, 1.0, 3.0)
+
+        # A clearance-only change and repeated volume update cannot rescale twice.
+        cp = pk.state.c1
+        pk.update_hemodynamics(volume_ratio, 1.2)
+        assert pk.state.c1 == cp
+        pk.update_hemodynamics(1.0, 1.0)
+        assert pk.state.c1 == pytest.approx(4.0)
 
 
 def test_rocuronium_duration_and_spontaneous_recovery(patient):

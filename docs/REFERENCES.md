@@ -10,6 +10,7 @@ linked tests define their software regression ranges.
 
 | Area | Implementation |
 |------|----------------|
+| Hemodynamic PK scaling | Effective-volume and clearance scaling are simulator adaptations. See [PK assumptions and limits](ARCHITECTURE.md#pk-and-tci). |
 | Respiratory drug effects | [`RespiratoryModel`](../anasim/physiology/respiration.py) combines published effects on ventilation and hypercapnic response. Combined drug-response parameters are calibrated for AnaSim. See the [respiratory tests](../tests/test_respiration.py). |
 | Neuromuscular block and reversal | [`TOFModel`](../anasim/patient/pd/nmba.py) combines adductor pollicis and central (diaphragm and larynx) effect sites, spontaneous recovery, and simplified sugammadex binding. The central site uses laryngeal kinetics for both muscles. Onset and recovery constants are calibrated for AnaSim. See the [pharmacology tests](../tests/test_pharmacology.py). |
 | Baroreflex and myocardial hypoxia | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) takes the direction and scale of anesthetic reflex depression and the hypoxic arrest threshold from published studies. Reflex gains, set-point reset, and hypoxia time constants are calibrated for AnaSim. See the [hemodynamic tests](../tests/test_hemodynamics.py). |

@@ -1,7 +1,10 @@
 import argparse
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
+from statistics import mean
 from time import perf_counter
 from typing import Optional
 
@@ -27,15 +30,6 @@ class BenchmarkResult:
         if self.seconds <= 0:
             return 0.0
         return self.steps / self.seconds
-
-
-def _time_loop(fn, steps: int, warmup: int) -> float:
-    for _ in range(warmup):
-        fn()
-    start = perf_counter()
-    for _ in range(steps):
-        fn()
-    return perf_counter() - start
 
 
 def _time_indexed(fn, steps: int, warmup: int) -> float:
@@ -72,418 +66,127 @@ def _resolve_profile_path(template: Optional[str], bench: str, multi: bool) -> O
     return f"{template}.{bench}.prof"
 
 
-# -----------------------------------------------------------------------------
-# Hemodynamic Benchmarks
-# -----------------------------------------------------------------------------
+BENCHMARKS = {
+    'hemo': ('baseline', 'sepsis', 'hemorrhage', 'arrhythmia', 'pressors', 'hypothermia'),
+    'resp': ('baseline', 'apnea', 'hypercapnia', 'obstruction', 'mech_vent'),
+    'mech': ('vcv', 'pcv', 'autopeep'),
+    'pk': ('propofol_eleveld', 'norepi_li'),
+    'mixed': ('baseline', 'sepsis'),
+    'engine': ('awake', 'steady_state'),
+}
 
 
-def bench_hemo_baseline(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.hemodynamics import HemodynamicModel
-
-    model = HemodynamicModel(Patient())
-    dt = 1.0
-
-    prop_vals = (0.0, 1.0, 2.0, 3.0)
-    remi_vals = (0.0, 1.0, 2.0, 4.0)
-    nore_vals = (0.0, 5.0, 10.0, 20.0)
-    pit_vals = (-2.0, 0.0, 2.0, 4.0)
-    paco2_vals = (35.0, 40.0, 45.0, 55.0)
-    pao2_vals = (90.0, 95.0, 100.0, 75.0)
-    mac_vals = (0.0, 0.5, 1.0, 1.5)
-
-    def run_step(i: int) -> None:
-        idx = i & 3
-        model.step(
-            dt,
-            prop_vals[idx],
-            remi_vals[idx],
-            nore_vals[idx],
-            pit_vals[idx],
-            paco2_vals[idx],
-            pao2_vals[idx],
-            mac_sevo=mac_vals[idx],
-        )
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("hemo.baseline", elapsed, steps)
+def _cycle(step, **parameters):
+    """Prebind four input sets; tuple values cycle, scalar values stay fixed."""
+    calls = [
+        partial(step, **{key: value[i] if isinstance(value, tuple) else value
+                        for key, value in parameters.items()})
+        for i in range(4)
+    ]
+    return lambda i: calls[i % 4]()
 
 
-def bench_hemo_sepsis(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.hemodynamics import HemodynamicModel
-
-    model = HemodynamicModel(Patient())
-    model.sepsis_severity = 0.7
-    model.anaphylaxis_severity = 0.2
-    dt = 1.0
-
-    nore_vals = (10.0, 15.0, 20.0, 25.0)
-    pit_vals = (-2.0, 0.0, 2.0, 4.0)
-    paco2_vals = (40.0, 45.0, 50.0, 55.0)
-    pao2_vals = (95.0, 90.0, 85.0, 80.0)
-
-    def run_step(i: int) -> None:
-        idx = i & 3
-        model.step(
-            dt,
-            1.5,
-            2.0,
-            nore_vals[idx],
-            pit_vals[idx],
-            paco2_vals[idx],
-            pao2_vals[idx],
-            mac_sevo=0.5,
-            temp_c=38.5,
-        )
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("hemo.sepsis", elapsed, steps)
-
-
-def bench_hemo_hemorrhage(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.hemodynamics import HemodynamicModel
-
-    model = HemodynamicModel(Patient())
-    model.add_volume(-1500.0)
-    dt = 1.0
-
-    def run_step(_: int) -> None:
-        model.step(dt, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0)
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("hemo.hemorrhage", elapsed, steps)
-
-
-def bench_hemo_arrhythmia(steps: int, warmup: int) -> BenchmarkResult:
+def build_step(name):
+    """Build a fresh workload outside the timed loop."""
+    from anasim.core.engine import SimulationEngine
     from anasim.core.enums import RhythmType
+    from anasim.core.state import SimulationConfig
     from anasim.patient.patient import Patient
-    from anasim.physiology.hemodynamics import HemodynamicModel
-
-    model = HemodynamicModel(Patient())
-    model.rhythm_type = RhythmType.VTACH
-    dt = 1.0
-
-    def run_step(_: int) -> None:
-        model.step(dt, 0.5, 1.0, 0.0, -2.0, 40.0, 95.0)
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("hemo.arrhythmia", elapsed, steps)
-
-
-def bench_hemo_pressors(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.hemodynamics import HemodynamicModel
-
-    model = HemodynamicModel(Patient())
-    dt = 1.0
-
-    nore_vals = (5.0, 10.0, 15.0, 20.0)
-    epi_vals = (0.0, 1.0, 2.0, 3.0)
-    phenyl_vals = (0.0, 5.0, 10.0, 20.0)
-
-    def run_step(i: int) -> None:
-        idx = i & 3
-        model.step(
-            dt,
-            1.0,
-            1.0,
-            nore_vals[idx],
-            -2.0,
-            40.0,
-            95.0,
-            ce_epi=epi_vals[idx],
-            ce_phenyl=phenyl_vals[idx],
-        )
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("hemo.pressors", elapsed, steps)
-
-
-def bench_hemo_hypothermia(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.hemodynamics import HemodynamicModel
-
-    model = HemodynamicModel(Patient())
-    dt = 1.0
-
-    temp_vals = (34.0, 35.0, 34.5, 35.5)
-
-    def run_step(i: int) -> None:
-        idx = i & 3
-        model.step(dt, 0.5, 0.5, 0.0, -2.0, 40.0, 95.0, temp_c=temp_vals[idx])
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("hemo.hypothermia", elapsed, steps)
-
-
-# -----------------------------------------------------------------------------
-# Respiratory Benchmarks
-# -----------------------------------------------------------------------------
-
-
-def bench_resp_baseline(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.respiration import RespiratoryModel
-
-    model = RespiratoryModel(Patient())
-    dt = 1.0
-
-    prop_vals = (0.0, 1.0, 2.0, 3.0)
-    remi_vals = (0.0, 1.0, 2.0, 4.0)
-    sevo_vals = (0.0, 0.5, 1.0, 1.5)
-    fio2_vals = (0.21, 0.30, 0.50, 0.80)
-
-    def run_step(i: int) -> None:
-        idx = i & 3
-        model.step(
-            dt,
-            prop_vals[idx],
-            remi_vals[idx],
-            fio2=fio2_vals[idx],
-            mac_sevo=sevo_vals[idx],
-        )
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("resp.baseline", elapsed, steps)
-
-
-def bench_resp_apnea(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.respiration import RespiratoryModel
-
-    model = RespiratoryModel(Patient())
-    dt = 1.0
-
-    def run_step(_: int) -> None:
-        model.step(dt, 6.0, 6.0, ce_roc=2.0, fio2=0.3, mac_sevo=1.2)
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("resp.apnea", elapsed, steps)
-
-
-def bench_resp_hypercapnia(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.respiration import RespiratoryModel
-
-    model = RespiratoryModel(Patient())
-    model.state.p_alveolar_co2 = 60.0
-    dt = 1.0
-
-    def run_step(_: int) -> None:
-        model.step(dt, 0.5, 0.5, fio2=0.3, mac_sevo=0.2)
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("resp.hypercapnia", elapsed, steps)
-
-
-def bench_resp_obstruction(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.respiration import RespiratoryModel
-
-    model = RespiratoryModel(Patient())
-    dt = 1.0
-
-    def run_step(_: int) -> None:
-        model.step(
-            dt,
-            0.5,
-            0.5,
-            airway_patency=0.4,
-            ventilation_efficiency=0.6,
-            vq_mismatch=0.5,
-            fio2=0.4,
-        )
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("resp.obstruction", elapsed, steps)
-
-
-def bench_resp_mech_vent(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.physiology.respiration import RespiratoryModel
-
-    model = RespiratoryModel(Patient())
-    dt = 1.0
-
-    def run_step(_: int) -> None:
-        model.step(
-            dt,
-            1.0,
-            1.0,
-            mech_rr=14.0,
-            mech_vt_l=0.5,
-            mech_vent_mv=7.0,
-            fio2=0.5,
-        )
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("resp.mech_vent", elapsed, steps)
-
-
-# -----------------------------------------------------------------------------
-# Respiratory Mechanics Benchmarks
-# -----------------------------------------------------------------------------
-
-
-def bench_mech_vcv(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.physiology.resp_mech import RespiratoryMechanics
-
-    model = RespiratoryMechanics()
-    model.set_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
-    dt = 0.05
-
-    def run_step() -> None:
-        model.step(dt)
-
-    elapsed = _time_loop(run_step, steps, warmup)
-    return BenchmarkResult("mech.vcv", elapsed, steps)
-
-
-def bench_mech_pcv(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.physiology.resp_mech import RespiratoryMechanics
-
-    model = RespiratoryMechanics()
-    model.set_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode="PCV", p_insp=15.0)
-    dt = 0.05
-
-    def run_step() -> None:
-        model.step(dt)
-
-    elapsed = _time_loop(run_step, steps, warmup)
-    return BenchmarkResult("mech.pcv", elapsed, steps)
-
-
-def bench_mech_autopeep(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.physiology.resp_mech import RespiratoryMechanics
-
-    model = RespiratoryMechanics(compliance=0.04, resistance=15.0)
-    model.set_settings(rr=30.0, vt=0.45, peep=8.0, ie="1:1", mode="VCV")
-    dt = 0.05
-
-    def run_step() -> None:
-        model.step(dt)
-
-    elapsed = _time_loop(run_step, steps, warmup)
-    return BenchmarkResult("mech.autopeep", elapsed, steps)
-
-
-# -----------------------------------------------------------------------------
-# PK Benchmarks
-# -----------------------------------------------------------------------------
-
-
-def bench_pk_propofol(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.patient.pk_models import PropofolPKEleveld
-
-    model = PropofolPKEleveld(Patient())
-    dt = 1.0
-    infusion_vals = (0.0, 0.5, 1.0, 2.0)
-
-    def run_step(i: int) -> None:
-        idx = i & 3
-        model.step(dt, infusion_vals[idx])
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("pk.propofol_eleveld", elapsed, steps)
-
-
-def bench_pk_norepi(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.patient.pk_models import NorepinephrinePK
-
-    model = NorepinephrinePK(Patient(), model="Li")
-    dt = 1.0
-    infusion_vals = (0.0, 5.0, 10.0, 20.0)
-    prop_vals = (0.0, 1.0, 2.0, 3.0)
-
-    def run_step(i: int) -> None:
-        idx = i & 3
-        model.step(dt, infusion_vals[idx], propofol_conc_ug_ml=prop_vals[idx])
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("pk.norepi_li", elapsed, steps)
-
-
-# -----------------------------------------------------------------------------
-# Mixed Pipeline Benchmarks
-# -----------------------------------------------------------------------------
-
-
-def bench_mixed_baseline(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.patient.pk_models import PropofolPKEleveld
+    from anasim.patient.pk_models import NorepinephrinePK, PropofolPKEleveld
     from anasim.physiology.hemodynamics import HemodynamicModel
     from anasim.physiology.resp_mech import RespiratoryMechanics
     from anasim.physiology.respiration import RespiratoryModel
 
+    group, case = name.split('.')
+    if case not in BENCHMARKS[group]:
+        raise ValueError(f'Unknown benchmark: {name}')
     patient = Patient()
-    hemo = HemodynamicModel(patient)
-    resp = RespiratoryModel(patient)
-    mech = RespiratoryMechanics()
-    pk = PropofolPKEleveld(patient)
 
-    dt = 1.0
-    infusion_vals = (0.0, 0.5, 1.0, 2.0)
-    remi_vals = (0.0, 1.0, 2.0, 4.0)
+    if group == 'hemo':
+        model = HemodynamicModel(patient)
+        if case == 'sepsis':
+            model.sepsis_severity, model.anaphylaxis_severity = 0.7, 0.2
+        elif case == 'hemorrhage':
+            model.add_volume(-1500.0)
+        elif case == 'arrhythmia':
+            model.rhythm_type = RhythmType.VTACH
+        cases = {
+            'baseline': dict(cp_prop=(0.0, 1.0, 2.0, 3.0), cp_remi=(0.0, 1.0, 2.0, 4.0),
+                             ce_nore=(0.0, 5.0, 10.0, 20.0), pit=(-2.0, 0.0, 2.0, 4.0),
+                             paco2=(35.0, 40.0, 45.0, 55.0), pao2=(90.0, 95.0, 100.0, 75.0),
+                             mac_sevo=(0.0, 0.5, 1.0, 1.5)),
+            'sepsis': dict(cp_prop=1.5, cp_remi=2.0, ce_nore=(10.0, 15.0, 20.0, 25.0),
+                           pit=(-2.0, 0.0, 2.0, 4.0), paco2=(40.0, 45.0, 50.0, 55.0),
+                           pao2=(95.0, 90.0, 85.0, 80.0), mac_sevo=0.5, temp_c=38.5),
+            'hemorrhage': dict(cp_prop=0.0, cp_remi=0.0),
+            'arrhythmia': dict(cp_prop=0.5, cp_remi=1.0),
+            'pressors': dict(cp_prop=1.0, cp_remi=1.0, ce_nore=(5.0, 10.0, 15.0, 20.0),
+                             ce_epi=(0.0, 1.0, 2.0, 3.0), ce_phenyl=(0.0, 5.0, 10.0, 20.0)),
+            'hypothermia': dict(cp_prop=0.5, cp_remi=0.5, temp_c=(34.0, 35.0, 34.5, 35.5)),
+        }
+        inputs = dict(dt=1.0, ce_nore=0.0, pit=-2.0, paco2=40.0, pao2=95.0)
+        return _cycle(model.step, **(inputs | cases[case]))
 
-    def run_step(i: int) -> None:
-        idx = i & 3
-        pk_state = pk.step(dt, infusion_vals[idx])
-        hemo_state = hemo.step(dt, pk_state.c1, remi_vals[idx], 0.0, -2.0, 40.0, 95.0)
-        resp.step(dt, pk_state.ce, remi_vals[idx], mac_sevo=0.0, cardiac_output=hemo_state.co)
-        mech.step(0.05)
+    if group == 'resp':
+        model = RespiratoryModel(patient)
+        if case == 'hypercapnia':
+            model.state.p_alveolar_co2 = 60.0
+        cases = {
+            'baseline': dict(ce_prop=(0.0, 1.0, 2.0, 3.0), ce_remi=(0.0, 1.0, 2.0, 4.0),
+                             mac_sevo=(0.0, 0.5, 1.0, 1.5), fio2=(0.21, 0.3, 0.5, 0.8)),
+            'apnea': dict(ce_prop=6.0, ce_remi=6.0, ce_roc=2.0, fio2=0.3, mac_sevo=1.2),
+            'hypercapnia': dict(ce_prop=0.5, ce_remi=0.5, fio2=0.3, mac_sevo=0.2),
+            'obstruction': dict(ce_prop=0.5, ce_remi=0.5, airway_patency=0.4,
+                                ventilation_efficiency=0.6, vq_mismatch=0.5, fio2=0.4),
+            'mech_vent': dict(ce_prop=1.0, ce_remi=1.0, mech_rr=14.0, mech_vt_l=0.5,
+                              mech_vent_mv=7.0, fio2=0.5),
+        }
+        return _cycle(model.step, dt=1.0, **cases[case])
 
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("mixed.baseline", elapsed, steps)
+    if group == 'mech':
+        model = (RespiratoryMechanics(compliance=0.04, resistance=15.0)
+                 if case == 'autopeep' else RespiratoryMechanics())
+        settings = {
+            'vcv': dict(rr=12.0, vt=0.5, peep=5.0, ie='1:2', mode='VCV'),
+            'pcv': dict(rr=12.0, vt=0.5, peep=5.0, ie='1:2', mode='PCV', p_insp=15.0),
+            'autopeep': dict(rr=30.0, vt=0.45, peep=8.0, ie='1:1', mode='VCV'),
+        }
+        model.set_settings(**settings[case])
+        return lambda i: model.step(0.05)
 
+    if group == 'pk':
+        if case == 'propofol_eleveld':
+            return _cycle(PropofolPKEleveld(patient).step, dt_sec=1.0,
+                          input_rate_per_sec=(0.0, 0.5, 1.0, 2.0))
+        return _cycle(NorepinephrinePK(patient, model='Li').step, dt_sec=1.0,
+                      infusion_rate_ug_sec=(0.0, 5.0, 10.0, 20.0),
+                      propofol_conc_ug_ml=(0.0, 1.0, 2.0, 3.0))
 
-def bench_mixed_sepsis(steps: int, warmup: int) -> BenchmarkResult:
-    from anasim.patient.patient import Patient
-    from anasim.patient.pk_models import PropofolPKEleveld
-    from anasim.physiology.hemodynamics import HemodynamicModel
-    from anasim.physiology.resp_mech import RespiratoryMechanics
-    from anasim.physiology.respiration import RespiratoryModel
+    if group == 'mixed':
+        hemo = HemodynamicModel(patient)
+        resp = RespiratoryModel(patient)
+        mech = RespiratoryMechanics()
+        pk = PropofolPKEleveld(patient)
+        sepsis = case == 'sepsis'
+        if sepsis:
+            hemo.sepsis_severity, hemo.anaphylaxis_severity = 0.7, 0.2
+        infusions = (0.5, 1.0, 1.5, 2.0) if sepsis else (0.0, 0.5, 1.0, 2.0)
+        remi = (1.0, 2.0, 3.0, 4.0) if sepsis else (0.0, 1.0, 2.0, 4.0)
+        nore = (10.0, 15.0, 20.0, 25.0) if sepsis else (0.0, 0.0, 0.0, 0.0)
+        gas = dict(paco2=45.0, pao2=85.0, mac_sevo=0.5, temp_c=38.5) if sepsis else dict(paco2=40.0, pao2=95.0)
 
-    patient = Patient()
-    hemo = HemodynamicModel(patient)
-    hemo.sepsis_severity = 0.7
-    hemo.anaphylaxis_severity = 0.2
-    resp = RespiratoryModel(patient)
-    mech = RespiratoryMechanics()
-    pk = PropofolPKEleveld(patient)
+        def step(i):
+            index = i % 4
+            pk_state = pk.step(1.0, infusions[index])
+            hemo_state = hemo.step(1.0, pk_state.c1, remi[index], nore[index], -2.0, **gas)
+            resp.step(1.0, pk_state.ce, remi[index], mac_sevo=0.5 if sepsis else 0.0,
+                      cardiac_output=hemo_state.co)
+            mech.step(0.05)
+        return step
 
-    dt = 1.0
-    infusion_vals = (0.5, 1.0, 1.5, 2.0)
-    remi_vals = (1.0, 2.0, 3.0, 4.0)
-    nore_vals = (10.0, 15.0, 20.0, 25.0)
-
-    def run_step(i: int) -> None:
-        idx = i & 3
-        pk_state = pk.step(dt, infusion_vals[idx])
-        hemo_state = hemo.step(
-            dt,
-            pk_state.c1,
-            remi_vals[idx],
-            nore_vals[idx],
-            -2.0,
-            45.0,
-            85.0,
-            mac_sevo=0.5,
-            temp_c=38.5,
-        )
-        resp.step(dt, pk_state.ce, remi_vals[idx], mac_sevo=0.5, cardiac_output=hemo_state.co)
-        mech.step(0.05)
-
-    elapsed = _time_indexed(run_step, steps, warmup)
-    return BenchmarkResult("mixed.sepsis", elapsed, steps)
-
-
-# -----------------------------------------------------------------------------
-# Utilities
-# -----------------------------------------------------------------------------
+    engine = SimulationEngine(patient, SimulationConfig(mode=case, rng_seed=123, dt=0.1))
+    engine.start()
+    return lambda i: engine.step(0.1)
 
 
 def _format_results(results: list[BenchmarkResult]) -> str:
@@ -501,23 +204,11 @@ def _format_results(results: list[BenchmarkResult]) -> str:
 
 
 def _aggregate_results(results: list[BenchmarkResult]) -> list[BenchmarkResult]:
-    buckets: dict[str, dict[str, float]] = {}
+    groups = defaultdict(list)
     for result in results:
-        bucket = buckets.setdefault(result.name, {"seconds": 0.0, "steps": 0.0, "runs": 0.0})
-        bucket["seconds"] += result.seconds
-        bucket["steps"] += result.steps
-        bucket["runs"] += 1.0
-    aggregated = []
-    for name, data in buckets.items():
-        runs = data["runs"] or 1.0
-        aggregated.append(
-            BenchmarkResult(
-                name=name,
-                seconds=data["seconds"] / runs,
-                steps=int(data["steps"] / runs),
-            )
-        )
-    return aggregated
+        groups[result.name].append(result)
+    return [BenchmarkResult(name, mean(r.seconds for r in runs), runs[0].steps)
+            for name, runs in groups.items()]
 
 
 def _format_slowest(results: list[BenchmarkResult], limit: int = 5) -> str:
@@ -531,12 +222,12 @@ def _format_slowest(results: list[BenchmarkResult], limit: int = 5) -> str:
     return "\n".join(lines)
 
 
-def _parse_bench_list(value: str, available: dict[str, callable]) -> list[str]:
+def _parse_bench_list(value: str, available: list[str]) -> list[str]:
     if value == "all":
-        return list(available.keys())
+        return list(available)
 
     requested = [item.strip() for item in value.split(",") if item.strip()]
-    available_keys = list(available.keys())
+    available_keys = available
     selected: list[str] = []
     unknown: list[str] = []
 
@@ -562,26 +253,7 @@ def _parse_bench_list(value: str, available: dict[str, callable]) -> list[str]:
 
 
 def main() -> int:
-    benchmarks = {
-        "hemo.baseline": bench_hemo_baseline,
-        "hemo.sepsis": bench_hemo_sepsis,
-        "hemo.hemorrhage": bench_hemo_hemorrhage,
-        "hemo.arrhythmia": bench_hemo_arrhythmia,
-        "hemo.pressors": bench_hemo_pressors,
-        "hemo.hypothermia": bench_hemo_hypothermia,
-        "resp.baseline": bench_resp_baseline,
-        "resp.apnea": bench_resp_apnea,
-        "resp.hypercapnia": bench_resp_hypercapnia,
-        "resp.obstruction": bench_resp_obstruction,
-        "resp.mech_vent": bench_resp_mech_vent,
-        "mech.vcv": bench_mech_vcv,
-        "mech.pcv": bench_mech_pcv,
-        "mech.autopeep": bench_mech_autopeep,
-        "pk.propofol_eleveld": bench_pk_propofol,
-        "pk.norepi_li": bench_pk_norepi,
-        "mixed.baseline": bench_mixed_baseline,
-        "mixed.sepsis": bench_mixed_sepsis,
-    }
+    benchmarks = [f"{group}.{case}" for group, cases in BENCHMARKS.items() for case in cases]
 
     parser = argparse.ArgumentParser(description="AnaSim micro-benchmarks")
     parser.add_argument(
@@ -610,14 +282,15 @@ def main() -> int:
     results = []
 
     for name in selected:
-        bench = benchmarks[name]
         for _ in range(args.repeat):
             profiler = None
             if args.profile:
                 import cProfile
                 profiler = cProfile.Profile()
                 profiler.enable()
-            result = bench(args.steps, args.warmup)
+            step = build_step(name)
+            elapsed = _time_indexed(step, args.steps, args.warmup)
+            result = BenchmarkResult(name, elapsed, args.steps)
             results.append(result)
             if profiler is not None:
                 profiler.disable()

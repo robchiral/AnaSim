@@ -26,41 +26,15 @@ measurements separate:
   (ECG, pleth, capnogram, arterial pressure) for the monitor sweep.
 - Public numeric fields are built-in `float` values.
 
-## Modules
+## Code map
 
-```text
-anasim/
-├── cli.py                  # Desktop and headless entry point
-├── core/
-│   ├── engine.py           # SimulationEngine: subsystems and learner controls
-│   ├── runtime.py          # Step order
-│   ├── initialization.py   # Awake and steady-state startup
-│   ├── projection.py       # Subsystem state -> SimulationState
-│   ├── monitors.py         # Monitor stepping, NIBP, capnography, alarms
-│   ├── state.py            # SimulationConfig and SimulationState
-│   ├── drug_registry.py    # Drug units, rate limits, and UI metadata
-│   ├── drug_api.py         # Infusion and TCI controls
-│   ├── tci.py              # TCI controller
-│   ├── action_log.py       # Learner actions and scenario objectives
-│   └── recorder.py         # CSV recording
-├── patient/
-│   ├── patient.py          # Demographics, hematology, organ function
-│   ├── domain.py           # Supported input ranges
-│   ├── pk_models.py        # Intravenous PK
-│   ├── volatile_pk.py      # Inhaled agent uptake
-│   └── pd/                 # BIS, LOC, tolerance, neuromuscular block
-├── physiology/
-│   ├── hemodynamics.py     # Extended Su model
-│   ├── hemo_config.py      # Hemodynamic parameters
-│   ├── respiration.py      # Ventilatory control and gas exchange
-│   ├── resp_mech.py        # Airway pressure, flow, and volume
-│   └── disturbances.py     # Stimulation profiles
-├── machine/                # Circle system, ventilator, vaporizer
-├── monitors/               # Cardiac cycle, ECG, arterial line, SpO2, NIBP, capnography, alarms
-└── ui/                     # PySide6 interface and guided scenarios
-```
-
-`scripts/` holds the README demo capture and a benchmark runner.
+[`engine.py`](../anasim/core/engine.py) owns subsystems and learner controls.
+[`runtime.py`](../anasim/core/runtime.py) advances them,
+[`projection.py`](../anasim/core/projection.py) writes their outputs to state,
+and [`monitors.py`](../anasim/core/monitors.py) updates measurements and alarms.
+[`initialization.py`](../anasim/core/initialization.py) seeds the starting state.
+Drug units, pump limits, and UI metadata live in
+[`drug_registry.py`](../anasim/core/drug_registry.py).
 
 ## Step order
 
@@ -85,44 +59,6 @@ SimulationEngine.step()
 - `projection.project_runtime_physiology()` writes it into `SimulationState`.
 - `monitors.step_monitors()` reads the projected physiology and writes
   waveforms and monitor fields.
-
-## Inputs by subsystem
-
-### Hemodynamics
-
-| Source | Data | Effect |
-|--------|------|--------|
-| Propofol PK | `propofol_cp` | Vasodilation, cardiac depression |
-| Remifentanil PK | `remi_cp` | Bradycardia, vasodilation |
-| Vasoactive PK | `nore_ce`, `epi_ce`, `phenyl_ce`, `vaso_ce`, `dobu_ce`, `mil_ce` | Vasoconstriction, inotropy, lusitropy |
-| Volatile PK | End-tidal sevoflurane MAC | Cardiovascular depression |
-| Respiratory mechanics | `pit`, PEEP | Preload and pulmonary circulation |
-| Respiration | `pa_co2`, `pao2`, `sao2` | Chemoreflex and myocardial hypoxia |
-| Disturbances | `dist_hr`, `dist_sv`, `dist_svr` | Surgical stimulation |
-| Temperature | `temp_c` | Thermoregulatory vasoconstriction |
-
-### Respiration
-
-| Source | Data | Effect |
-|--------|------|--------|
-| Propofol PK | `propofol_ce` | Depresses central drive |
-| Remifentanil PK | `remi_ce` | Depresses drive and CO2 response |
-| Neuromuscular PD | Free rocuronium at the central effect site | Reduces muscle strength |
-| Volatile PK | `mac_sevo` | Depresses ventilatory control |
-| Respiratory mechanics | Delivered VT, mean Paw, PEEP | Assisted ventilation and oxygenation |
-| Hemodynamics | `co` from the previous step | Perfusion-dependent EtCO2 |
-| Temperature and shivering | Metabolic factor | VCO2 and VO2 |
-
-### Monitors
-
-| Source | Data | Effect |
-|--------|------|--------|
-| Hemodynamics | `map`, `hr`, `sv` | Beat clock and ideal arterial pulse |
-| Ideal arterial pulse | `sbp`, `dbp`, instantaneous pressure | NIBP landmarks and arterial line input |
-| Arterial catheter | Filtered pressure and completed-beat `art_*` | ART trace, numerics, and MAP alarm |
-| Respiration | `etco2`, `sao2` | Capnography and pulse oximetry |
-| BIS, TOF, LOC | Model outputs | Displayed and alarmed values |
-| Monitor settings | Arterial line enabled, NIBP interval | Which pressure source is shown |
 
 ## Cross-step inputs
 
@@ -215,8 +151,11 @@ These values come from the previous step:
   and an effect site. `state_fields`, `get_ss_matrices()`, and `state_vector()`
   share one state order, used by TCI and steady-state seeding.
 - Hemodynamic scaling changes V1 with blood volume and clearances with cardiac
-  output. Peripheral volumes stay fixed so redistribution conserves mass.
-  Epinephrine clearance does not scale with cardiac output.
+  output. Changing V1 rescales central concentration by old V1 / new V1 to
+  preserve drug amount. Peripheral volumes and concentrations and the effect
+  site stay unchanged. This is an effective-volume adaptation; it does not
+  explicitly track drug carried out in shed blood. Epinephrine clearance does
+  not scale with cardiac output.
 - Every 10 s the TCI controller predicts the zero-input course of the target
   compartment over ten minutes and picks the largest rate that keeps it at or
   below target (Shafer and Gregg 1992). From zero this is the bolus whose
@@ -224,6 +163,9 @@ These values come from the previous step:
   Propofol and remifentanil are limited to 1200 mL/h.
 - Controllers rebuild after PK parameter changes and reseed after external
   boluses.
+- Setting a manual rate disables that drug's TCI controller. Changing the target
+  compartment replaces the controller and seeds it from live PK concentrations.
+  A replaced or disabled controller cannot retain a partial sampling interval.
 
 ### Temperature and stimulation
 

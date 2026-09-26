@@ -24,17 +24,19 @@ class DrugControllerMixin:
         spec = get_drug_spec(drug)
         pk_model = getattr(self, spec.pk_attr)
         controller = getattr(self, spec.tci_attr)
-        if controller is None:
+        target_compartment = (spec.fixed_tci_mode or TCIMode(mode)).value
+        if controller is None or controller.target_compartment != target_compartment:
             # Waveform-rate controller updates add cost without improving control.
             sampling_time = max(self.config.dt, 0.1)
             controller = TCIController(
                 pk_model,
                 spec.tci_name,
-                (spec.fixed_tci_mode or TCIMode(mode)).value,
+                target_compartment,
                 sampling_time=sampling_time,
                 control_time=max(10.0, sampling_time),
             )
             setattr(self, spec.tci_attr, controller)
+            self._tci_accumulators.pop(spec.tci_attr, None)
 
         controller.max_rate = spec.max_rate.internal_rate(self.patient.weight)
         controller.sync_state_estimate(pk_model)
@@ -53,6 +55,7 @@ class DrugControllerMixin:
         """Disable TCI for a drug and stop its infusion."""
         spec = get_drug_spec(drug)
         setattr(self, spec.tci_attr, None)
+        self._tci_accumulators.pop(spec.tci_attr, None)
         setattr(self, spec.rate_attr, 0.0)
         self.actions.record(self.state.time, ACTION_TCI_TARGET, label=spec.key)
 
@@ -61,9 +64,11 @@ class DrugControllerMixin:
         return DRUG_REGISTRY
 
     def set_drug_rate(self: "SimulationEngine", key: str, rate_user_unit: float):
-        """Set a manual infusion rate in the registry's user unit."""
+        """Switch to manual infusion at the rate in the registry's user unit."""
         spec = get_drug_spec(key)
         rate = max(0.0, rate_user_unit)
+        if getattr(self, spec.tci_attr) is not None:
+            self.disable_tci(spec.key)
         setattr(self, spec.rate_attr, convert_rate(rate, spec.rate_unit, spec.internal_rate_unit))
         self.actions.record(self.state.time, ACTION_INFUSION_RATE, label=spec.key, amount=rate)
 

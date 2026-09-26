@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Consolidate benchmark workloads and shorten duplicated developer documentation.
+- Make manual infusion rates disable TCI so a stopped infusion stays stopped.
+  Apply target-compartment changes to existing controllers and clear sampling
+  history when controllers are replaced or disabled.
+- Preserve central drug amount when hemodynamic scaling changes PK volume.
+- Reduce arterial-line filtering overhead while retaining the same exact
+  discrete-time equations. Bound its coefficient cache and refresh coefficients
+  when line settings change. Add full-engine performance benchmarks.
+- Report CSV recording failures to API callers and exit headless runs with an
+  error. Pause the desktop simulation and reset the recording button on failure.
+- Flush each recorded sample and close recordings when the desktop window closes.
+
 ## 1.2 - 2026-09-24
 
 - Added a cardiac baroreflex, revised epinephrine responses, and corrected the

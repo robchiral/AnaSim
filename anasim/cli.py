@@ -1,10 +1,12 @@
 import argparse
 import json
+import sys
 import time
 from dataclasses import fields
 from pathlib import Path
 
 from anasim.core.engine import SimulationConfig, SimulationEngine
+from anasim.core.recorder import RecordingError
 from anasim.patient.patient import Patient
 
 PATIENT_CONFIG_FIELDS = {
@@ -38,43 +40,41 @@ def run_headless(args):
     """Run without the UI."""
     print(f"Starting headless simulation for {args.duration:g} seconds")
 
-    config_data = {}
-    if args.config:
-        try:
-            config_data = json.loads(Path(args.config).read_text())
-        except (OSError, json.JSONDecodeError) as e:
-            print(f"Error loading config: {e}")
-            raise SystemExit(1) from e
     try:
+        config_data = json.loads(Path(args.config).read_text()) if args.config else {}
         patient, sim_config = build_models_from_config(config_data)
         engine = SimulationEngine(patient, sim_config)
-    except (TypeError, ValueError) as e:
+    except (OSError, TypeError, ValueError) as e:
         print(f"Error loading config: {e}")
         raise SystemExit(1) from e
-
-    if args.record:
-        engine.start_recording(output_dir=args.record_dir, sample_interval_sec=args.record_interval)
-    engine.start()
 
     start_real = time.perf_counter()
     steps = int(args.duration / sim_config.dt)
 
     try:
-        for i in range(steps):
-            engine.step(sim_config.dt)
-            if i % 100 == 0:
-                state = engine.get_latest_state()
-                hr = state.display_hr
-                _, _, map_val = state.monitored_blood_pressure(
-                    sim_config.arterial_line_enabled
-                )
-                spo2 = state.display_spo2
-                print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_val:.1f} | SpO2: {spo2:.1f}")
-        remainder = args.duration - steps * sim_config.dt
-        if remainder > 1e-12:
-            engine.step(remainder)
-    finally:
-        engine.stop_recording()
+        try:
+            if args.record:
+                engine.start_recording(output_dir=args.record_dir, sample_interval_sec=args.record_interval)
+            engine.start()
+            for i in range(steps):
+                engine.step(sim_config.dt)
+                if i % 100 == 0:
+                    state = engine.get_latest_state()
+                    hr = state.display_hr
+                    _, _, map_val = state.monitored_blood_pressure(
+                        sim_config.arterial_line_enabled
+                    )
+                    spo2 = state.display_spo2
+                    print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_val:.1f} | SpO2: {spo2:.1f}")
+            remainder = args.duration - steps * sim_config.dt
+            if remainder > 1e-12:
+                engine.step(remainder)
+        finally:
+            engine.stop()
+            engine.stop_recording()
+    except RecordingError as error:
+        print(f"Recording failed: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
 
     end_real = time.perf_counter()
     print(f"Simulation completed in {end_real - start_real:.2f} seconds of real time")

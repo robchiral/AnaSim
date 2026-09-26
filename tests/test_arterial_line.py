@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from scipy.integrate import solve_ivp
 
 from anasim.core.enums import RhythmType
 from anasim.core.state import SimulationConfig
@@ -54,3 +55,38 @@ def test_engine_art_numerics_are_accurate_with_coarse_step(engine_factory, outer
 
     assert engine.state.art_sbp > engine.state.art_dbp + 20.0
     assert engine.state.art_map == pytest.approx(engine.state.map, abs=1.0)
+
+
+@pytest.mark.parametrize("damping", [0.1, 0.65, 1.0, 2.0])
+def test_filter_matches_continuous_second_order_system(damping):
+    """Verify the optimized recurrence against an independent ODE solver."""
+    monitor = ArterialLineMonitor(damping_ratio=damping)
+    cycle = CardiacCycle(np.random.default_rng(7))
+    cycle.seed(75.0, RhythmType.SINUS)
+    monitor.seed(ArterialPressureSample(90.0, 120.0, 70.0, 90.0))
+    reference = np.array([90.0, 0.0])
+    omega = 2.0 * np.pi * monitor.natural_frequency_hz
+    for index in range(100):
+        dt = (0.01, 0.007, 0.003)[index % 3]
+        pressure = 90 + 30 * np.sin(index / 9)
+        solution = solve_ivp(
+            lambda t, x: [x[1], omega**2 * (pressure - x[0]) - 2 * damping * omega * x[1]],
+            (0.0, dt), reference, rtol=1e-10, atol=1e-10,
+        )
+        reference = solution.y[:, -1]
+        reading = monitor.step(
+            dt, cycle.step(dt, 75.0, RhythmType.SINUS),
+            ArterialPressureSample(pressure, 120.0, 60.0, 90.0),
+        )
+        assert reading.pressure == pytest.approx(max(0.0, reference[0]), abs=1e-7)
+
+
+def test_filter_cache_is_bounded_and_tracks_line_settings():
+    monitor = ArterialLineMonitor()
+    for dt in np.linspace(0.001, 0.01, 100):
+        monitor._coefficients(dt)
+    assert len(monitor._coefficient_cache) <= 16
+    original = monitor._coefficients(0.01)
+    monitor.damping_ratio = 0.1
+    assert monitor._coefficients(0.01) != original
+    assert monitor._coefficients(0.01) == ArterialLineMonitor(damping_ratio=0.1)._coefficients(0.01)
