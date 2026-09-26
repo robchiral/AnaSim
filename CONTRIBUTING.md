@@ -2,15 +2,19 @@
 
 ## Local setup
 
-Follow the development setup in the [README](README.md#development), then run:
-
-```bash
-ruff check .
-QT_QPA_PLATFORM=offscreen python -m pytest -q
-```
+Use the setup and validation commands in the [README](README.md#development).
 
 For UI changes, also launch `anasim` and inspect the affected workflow
 interactively.
+
+Measure the complete simulation loop, including monitors and TCI, with:
+
+```bash
+python scripts/run_benchmarks.py --bench engine --steps 10000 --repeat 5
+```
+
+These benchmarks use a fixed seed and 0.1-second steps. Initialization and warmup
+are excluded from the elapsed time. Use `--profile` to find where time is spent.
 
 ## Guidelines
 

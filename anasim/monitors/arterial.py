@@ -217,8 +217,9 @@ class ArterialLineMonitor:
             raise ValueError("natural_frequency_hz must be greater than zero")
         if self.damping_ratio < 0.0:
             raise ValueError("damping_ratio cannot be negative")
-        self._state = np.zeros(2, dtype=float)
-        self._coefficient_cache: dict[float, tuple[np.ndarray, np.ndarray]] = {}
+        self._pressure = 0.0
+        self._velocity = 0.0
+        self._coefficient_cache: dict[tuple[float, float, float], tuple[float, ...]] = {}
         self._initialized = False
         self._previous_pressure = 0.0
         self._beat_min = math.inf
@@ -229,8 +230,8 @@ class ArterialLineMonitor:
         self._latest_dbp = 0.0
         self._latest_map = 0.0
 
-    def _coefficients(self, dt: float) -> tuple[np.ndarray, np.ndarray]:
-        cache_key = float(dt)
+    def _coefficients(self, dt: float) -> tuple[float, ...]:
+        cache_key = (float(dt), self.natural_frequency_hz, self.damping_ratio)
         cached = self._coefficient_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -244,13 +245,17 @@ class ArterialLineMonitor:
             ],
             dtype=float,
         )
-        transition = expm(augmented * cache_key)
-        coefficients = (transition[:2, :2], transition[:2, 2])
+        transition = expm(augmented * dt)
+        coefficients = tuple(float(value) for value in transition[:2].flat)
+        # Variable headless step sizes must not grow the cache without bound.
+        if len(self._coefficient_cache) >= 16:
+            self._coefficient_cache.pop(next(iter(self._coefficient_cache)))
         self._coefficient_cache[cache_key] = coefficients
         return coefficients
 
     def seed(self, sample: ArterialPressureSample) -> ArterialPressureSample:
-        self._state[:] = (sample.pressure, 0.0)
+        self._pressure = float(sample.pressure)
+        self._velocity = 0.0
         self._previous_pressure = sample.pressure
         self._beat_min = sample.pressure
         self._beat_max = sample.pressure
@@ -291,9 +296,11 @@ class ArterialLineMonitor:
         if not self._initialized:
             raise RuntimeError("arterial line must be seeded before stepping")
 
-        state_transition, input_transition = self._coefficients(dt)
-        self._state = state_transition @ self._state + input_transition * sample.pressure
-        pressure = float(max(0.0, self._state[0]))
+        a00, a01, b0, a10, a11, b1 = self._coefficients(dt)
+        previous, velocity = self._pressure, self._velocity
+        self._pressure = a00 * previous + a01 * velocity + b0 * sample.pressure
+        self._velocity = a10 * previous + a11 * velocity + b1 * sample.pressure
+        pressure = max(0.0, self._pressure)
 
         if not cycle.organized:
             self._latest_sbp = 0.0

@@ -59,6 +59,7 @@ class MammillaryPK:
         cl1_co_exponent: float = 1.0,
     ):
         self.v1_base = v1
+        self.v1 = v1
         self.cl1_base = cl1
         self.cl2_base = cl2
         self.cl3_base = cl3
@@ -93,8 +94,10 @@ class MammillaryPK:
         return self.cl3 / self.v3 if self.v3 > 0 else 0.0
 
     def update_hemodynamics(self, v_ratio: float, co_ratio: float) -> None:
-        """Scale V1 by blood volume ratio and clearances by cardiac output ratio."""
-        self.v1 = self.v1_base * v_ratio
+        """Rescale effective V1 without creating or removing central drug mass."""
+        new_v1 = self.v1_base * v_ratio
+        self.state.c1 *= self.v1 / new_v1
+        self.v1 = new_v1
         self.cl1 = self.cl1_base * co_ratio ** self.cl1_co_exponent
         self.cl2 = self.cl2_base * co_ratio
         self.cl3 = self.cl3_base * co_ratio

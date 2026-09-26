@@ -69,3 +69,41 @@ class TestEngineTCI:
             anesthetized_engine.step(0.1)
             peak = max(peak, anesthetized_engine.pk_nore.state.c1)
         assert peak < target * 1.4
+
+    @pytest.mark.parametrize("manual_rate", [0.0, 120.0])
+    def test_manual_rate_remains_in_control_after_tci(self, awake_engine, manual_rate):
+        engine = awake_engine
+        engine.enable_tci("propofol", 4.0)
+        engine.step(0.1)
+        assert engine.propofol_rate_mg_sec > 0
+
+        engine.set_drug_rate("propofol", manual_rate)
+        for _ in range(120):
+            engine.step(0.1)
+            assert engine.propofol_rate_mg_sec == pytest.approx(manual_rate / 3600)
+        assert not engine.get_drug_state("propofol")["is_tci"]
+
+    def test_target_mode_switch_uses_live_compartments(self, awake_engine):
+        engine = awake_engine
+        engine.give_drug_bolus("propofol", 100)
+        engine.enable_tci("propofol", 4.0)
+        engine.step(0.05)
+        engine.enable_tci("propofol", 2.0, mode="plasma")
+
+        assert engine.tci_prop.target_compartment == "plasma"
+        np.testing.assert_allclose(engine.tci_prop.x[:, 0], engine.pk_prop.state_vector())
+        for _ in range(20):
+            engine.step(0.1)
+            # Plasma already exceeds the new target after the manual bolus.
+            assert engine.propofol_rate_mg_sec == 0.0
+
+    def test_reenabled_controller_does_not_inherit_partial_sampling_interval(self, awake_engine):
+        engine = awake_engine
+        engine.enable_tci("propofol", 4.0)
+        engine.step(0.05)
+        engine.disable_tci("propofol")
+        engine.enable_tci("propofol", 4.0)
+        engine.step(0.05)
+        assert engine.propofol_rate_mg_sec == 0.0
+        engine.step(0.05)
+        assert engine.propofol_rate_mg_sec > 0.0

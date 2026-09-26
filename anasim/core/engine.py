@@ -598,18 +598,19 @@ class SimulationEngine(DrugControllerMixin):
         self.running = False
 
     def start_recording(self, output_dir: str = ".", sample_interval_sec: float = 1.0):
-        """Start CSV recording in output_dir."""
+        """Start CSV recording, raising RecordingError on file failures."""
         if self.recorder and self.recorder.is_recording:
             return
         self.recorder = DataRecorder(output_dir=output_dir, sample_interval_sec=sample_interval_sec)
         self.recorder.start()
 
     def stop_recording(self):
+        """Flush and close the CSV, raising RecordingError on failure."""
         if self.recorder:
             self.recorder.stop()
 
     def step(self, dt: float):
-        """Advance the simulation by dt seconds."""
+        """Advance by dt; a RecordingError occurs after the state has advanced."""
         if dt <= 0 or not self.running:
             return
         runtime_core.step_simulation(self, dt)

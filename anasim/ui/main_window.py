@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from anasim.core.engine import Patient, SimulationConfig, SimulationEngine
+from anasim.core.recorder import RecordingError
 from anasim.ui.config_dialog import SimulationSetupDialog
 from anasim.ui.controls_widget import ControlPanelWidget
 from anasim.ui.monitor_widget import PatientMonitorWidget
@@ -57,7 +58,7 @@ class MainWindow(QMainWindow):
     def init_simulation(self):
         """Initialize the simulation engine with configured parameters."""
         if self.engine is not None:
-            self.engine.stop_recording()
+            self.toggle_recording(False)
         p = self.sim_params
         self.patient = Patient(
             age=p['age'],
@@ -249,12 +250,39 @@ class MainWindow(QMainWindow):
         self.arrest_dialog_shown = False
 
     def toggle_recording(self, checked: bool):
-        if checked:
-            self.engine.start_recording(output_dir="recordings")
-            self.btn_record.setText("Stop recording")
-        else:
-            self.engine.stop_recording()
-            self.btn_record.setText("Record CSV")
+        try:
+            if checked:
+                self.engine.start_recording(output_dir="recordings")
+            else:
+                self.engine.stop_recording()
+        except RecordingError as error:
+            self._show_recording_error(error)
+        finally:
+            self._sync_recording_button()
+
+    def _sync_recording_button(self):
+        active = bool(self.engine.recorder and self.engine.recorder.is_recording)
+        self.btn_record.blockSignals(True)
+        self.btn_record.setChecked(active)
+        self.btn_record.blockSignals(False)
+        self.btn_record.setText("Stop recording" if active else "Record CSV")
+
+    def _show_recording_error(self, error):
+        self.engine.stop()
+        self.timer.stop()
+        self.time_accumulator = 0.0
+        self._set_run_state("paused")
+        self._sync_recording_button()
+        QMessageBox.warning(
+            self, "Recording failed",
+            f"{error}\n\nThe CSV may be incomplete. The simulation is paused.",
+        )
+
+    def closeEvent(self, event):
+        self.timer.stop()
+        self.engine.stop()
+        self.toggle_recording(False)
+        super().closeEvent(event)
 
     def game_loop(self):
         now = time.perf_counter()
@@ -274,7 +302,11 @@ class MainWindow(QMainWindow):
         steps_taken = 0
 
         while self.time_accumulator >= sim_step:
-            self.engine.step(sim_step)
+            try:
+                self.engine.step(sim_step)
+            except RecordingError as error:
+                self._show_recording_error(error)
+                break
             self.time_accumulator -= sim_step
             steps_taken += 1
             if steps_taken >= max_steps:
