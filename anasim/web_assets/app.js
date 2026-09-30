@@ -4,6 +4,13 @@ import { Monitor } from "./monitor.js";
 import { connect } from "./transport.js";
 
 const $ = (id) => document.getElementById(id);
+
+// Per-tick writes must skip unchanged text: replacing a button's text node
+// mid-press makes Safari drop the click.
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
+}
+
 let transport;
 
 let catalog = null;
@@ -220,7 +227,7 @@ function updateBar(snap) {
   } else {
     [label, variant] = ["Start simulation", "primary"];
   }
-  if (run.textContent !== label) run.textContent = label;
+  setText(run, label);
   run.className = `btn ${variant}`;
   run.disabled = snap.ended;
   if (document.activeElement !== $("speed")) $("speed").value = String(snap.speed);
@@ -228,7 +235,7 @@ function updateBar(snap) {
 
   const record = $("record");
   record.setAttribute("aria-pressed", String(snap.recording));
-  record.textContent = snap.recording ? "Stop recording" : "Record CSV";
+  setText(record, snap.recording ? "Stop recording" : "Record CSV");
 
   const total = Math.floor(snap.time);
   const pad = (n) => String(n).padStart(2, "0");
@@ -260,10 +267,10 @@ function updateScenario(step) {
   }
   $("scenario-count").textContent = `Step ${step.index + 1} of ${total}`;
   target.hidden = !step.target_tab;
-  if (step.target_tab) target.textContent = `Open ${step.target_tab.toLowerCase()}`;
+  if (step.target_tab) setText(target, `Open ${step.target_tab.toLowerCase()}`);
   status.textContent = step.met ? "" : step.status;
   next.disabled = !step.met;
-  next.textContent = step.met && step.index === total - 1 ? "Finish scenario" : "Continue";
+  setText(next, step.met && step.index === total - 1 ? "Finish scenario" : "Continue");
 }
 
 $("step-next").onclick = () => command("scenario_next");
