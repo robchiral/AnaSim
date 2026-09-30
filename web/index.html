@@ -15,10 +15,8 @@
 <section id="loading" class="screen">
   <div class="loading-card">
     <h1 class="brand">AnaSim</h1>
-    <p class="subtitle">Adult anesthesia and physiology simulation</p>
     <div class="loading-bar"><div></div></div>
-    <p id="loading-status" class="loading-status" role="status">Starting…</p>
-    <p class="hint">The first visit downloads about 23 MB (Python, numpy, and scipy). Later visits load from the browser cache.</p>
+    <p id="loading-status" class="loading-status" role="status">Loading…</p>
   </div>
 </section>
 
@@ -68,13 +66,11 @@
           <legend>Session type</legend>
           <label class="choice"><input type="radio" name="session" value="open" checked> Open simulation</label>
           <label class="choice"><input type="radio" name="session" value="guided"> Guided scenario</label>
-          <p class="help">Open simulation gives direct control. Guided scenarios provide ordered objectives.</p>
           <label class="row" id="scenario-row" hidden>Scenario <select name="scenario_id"></select></label>
         </fieldset>
 
         <fieldset id="initial-state">
           <legend>Initial state</legend>
-          <p class="help">Used for open simulation. Guided scenarios define their own initial state.</p>
           <label class="choice"><input type="radio" name="mode" value="awake"> Awake before induction</label>
           <label class="choice"><input type="radio" name="mode" value="steady_state" checked> Anesthetized maintenance</label>
           <label class="row">Maintenance technique
@@ -120,11 +116,9 @@
   <section id="scenario" class="scenario" hidden>
     <div class="scenario-head">
       <span class="scenario-name" id="scenario-name"></span>
-      <div class="progress"><div id="scenario-progress"></div></div>
       <span class="scenario-count" id="scenario-count"></span>
     </div>
     <div class="scenario-body">
-      <span class="step-number" id="step-number"></span>
       <div>
         <h2 id="step-title"></h2>
         <p id="step-instruction"></p>
@@ -133,7 +127,7 @@
     <div class="scenario-foot">
       <span class="step-status" id="step-status"></span>
       <button type="button" class="btn outlined small" id="step-target"></button>
-      <button type="button" class="btn success small" id="step-next" disabled>Continue</button>
+      <button type="button" class="btn outlined small" id="step-next" disabled>Continue</button>
     </div>
   </section>
 
@@ -154,7 +148,7 @@
           <div class="numeric big ecg" data-alarm="HR"><div class="numeric-head"><span class="numeric-title">HR</span><span class="numeric-unit">bpm</span></div><output id="v-hr">--</output></div>
           <div class="numeric big spo2" data-alarm="SpO2"><div class="numeric-head"><span class="numeric-title">SpO₂</span><span class="numeric-unit">%</span></div><output id="v-spo2">--</output></div>
           <div class="numeric big abp" data-alarm="MAP" id="n-art"><div class="numeric-head"><span class="numeric-title">ART</span><span class="numeric-unit">mmHg</span></div><output id="v-art">--/-- (--)</output></div>
-          <div class="numeric big abp" id="n-nibp"><div class="numeric-head"><span class="numeric-title">NIBP</span><span class="numeric-unit">mmHg</span></div><output id="v-nibp">--/-- (--)</output></div>
+          <div class="numeric big abp" id="n-nibp"><div class="numeric-head"><span class="numeric-title">NIBP</span><span class="numeric-unit">mmHg</span></div><output id="v-nibp">--/-- (--)</output><output id="v-nibp-status" class="measurement-status"></output><button type="button" class="btn small" id="measure-nibp">Measure BP</button></div>
           <div class="numeric-pair">
             <div class="numeric big co2" data-alarm="EtCO2"><div class="numeric-head"><span class="numeric-title">EtCO₂</span><span class="numeric-unit">mmHg</span></div><output id="v-etco2">--</output></div>
             <div class="numeric compact co2"><div class="numeric-head"><span class="numeric-title">RR</span><span class="numeric-unit">/min</span></div><output id="v-rr">--</output></div>
@@ -179,11 +173,11 @@
       </div>
       <footer class="sim-bar">
         <button type="button" class="btn primary" id="run">Start simulation</button>
-        <button type="button" class="btn toggle t-danger" id="record" aria-pressed="false" title="Record time-series data and download it as CSV when you stop.">Record CSV</button>
+        <button type="button" class="btn toggle" id="record" aria-pressed="false" title="Record time-series data and download it as CSV when you stop.">Record CSV</button>
         <label class="speed">Simulation speed
           <span class="unit-input"><input type="number" id="speed" min="0.1" max="50" step="0.5" value="1"><span>×</span></span>
         </label>
-        <span class="status" id="status">● Ready</span>
+        <span class="status" id="status"></span>
         <span class="spacer"></span>
         <div class="clock"><span>Simulation time</span><output id="clock">00:00:00</output></div>
       </footer>
@@ -255,7 +249,6 @@
             <label for="c-ie">I:E</label>
             <select id="c-ie"><option>1:2</option><option>1:1</option><option>1:3</option><option>1:4</option></select>
           </div>
-          <p class="help">Settings can be changed before starting and are kept when the ventilator stops.</p>
         </fieldset>
       </div>
 
@@ -288,10 +281,10 @@
         <fieldset class="group">
           <legend>Fluid administration</legend>
           <div class="button-grid">
-            <button type="button" class="btn info" data-fluid="crystalloid" data-volume="250">Crystalloid 250 mL</button>
-            <button type="button" class="btn info" data-fluid="crystalloid" data-volume="500">Crystalloid 500 mL</button>
-            <button type="button" class="btn success" data-fluid="albumin" data-volume="250">Albumin 250 mL</button>
-            <button type="button" class="btn primary" data-fluid="blood" data-volume="300">PRBC 300 mL</button>
+            <button type="button" class="btn" data-fluid="crystalloid" data-volume="250">Crystalloid 250 mL</button>
+            <button type="button" class="btn" data-fluid="crystalloid" data-volume="500">Crystalloid 500 mL</button>
+            <button type="button" class="btn" data-fluid="albumin" data-volume="250">Albumin 250 mL</button>
+            <button type="button" class="btn" data-fluid="blood" data-volume="300">PRBC 300 mL</button>
           </div>
           <label class="inline">Maintenance fluid
             <span class="unit-input"><input id="c-maint" type="number" min="0" max="5000" step="25"><span>mL/hr</span></span>

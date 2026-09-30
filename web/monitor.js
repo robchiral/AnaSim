@@ -145,6 +145,7 @@ export class Monitor {
       this.dirty = true;
     }
     this.updateNumerics(snap.vitals);
+    document.getElementById("measure-nibp").disabled = snap.ended || snap.vitals.nibp_cuff !== null;
     this.updateAlarms(snap.alarms);
   }
 
@@ -173,6 +174,12 @@ export class Monitor {
     } else {
       this.set("v-nibp", `${trunc(v.nibp[0])}/${trunc(v.nibp[1])} (${trunc(v.nibp[2])})`);
     }
+    if (!this.arterialLine) {
+      const age = Math.floor(v.nibp_age);
+      const reading = v.nibp_age === null ? "No reading" :
+        `Last reading ${Math.floor(age / 60)}:${String(age % 60).padStart(2, "0")} ago`;
+      this.set("v-nibp-status", v.nibp_failed ? `Measurement failed · ${reading.toLowerCase()}` : reading);
+    }
     this.set("v-etco2", trunc(v.etco2));
     this.set("v-rr", trunc(v.rr));
     this.set("v-bis", trunc(v.bis));
@@ -181,7 +188,6 @@ export class Monitor {
 
     const net = v.net_fluid ?? 0;
     this.set("v-net", `${net >= 0 ? "+" : "−"}${Math.abs(net).toFixed(0)} mL`);
-    this.fields["v-net"].className = net < 0 ? "negative" : "positive";
     document.getElementById("v-io").textContent =
       `IV ${fixed(v.fluid_in, 0)}  PRBC ${fixed(v.blood_in, 0)}  ·  Urine ${fixed(v.urine_out, 0)}  Loss ${fixed(v.blood_out, 0)}`;
     this.set("v-fi", fixed(v.fi_sevo, 1));

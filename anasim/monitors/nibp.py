@@ -24,10 +24,14 @@ class NIBPMonitor:
         self.is_inflating = False
         self.cuff_pressure = 0.0
         self.latest_reading = NIBPReading()
+        self.measurement_failed = False
         self.rng = rng if rng is not None else np.random.default_rng()
 
     def trigger(self) -> None:
         """Start a measurement manually."""
+        if self.is_cycling:
+            return
+        self.measurement_failed = False
         self.is_cycling = True
         self.is_inflating = True
         self.cuff_pressure = 0.0
@@ -69,9 +73,11 @@ class NIBPMonitor:
                         RhythmType.ASYSTOLE,
                     )
                     if arrest_rhythm or true_map < 30.0:
+                        self.measurement_failed = True
                         return self.cuff_pressure
 
                     if self.rng.random() < self._shock_failure_probability(true_map):
+                        self.measurement_failed = True
                         return self.cuff_pressure
 
                     low_flow_bias = 0.0

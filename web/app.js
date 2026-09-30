@@ -32,9 +32,6 @@ function command(name, args) {
 
 worker.onmessage = ({ data }) => {
   switch (data.type) {
-    case "status":
-      $("loading-status").textContent = data.text;
-      break;
     case "load_error":
       $("loading-status").textContent = `AnaSim could not load: ${data.message}`;
       $("loading-status").classList.add("error");
@@ -158,6 +155,7 @@ function startSession(sessionInfo) {
   monitor?.destroy();
   last = null;
   arrestShown = false;
+  delete $("step-instruction").dataset.instruction;
   $("setup-start").disabled = false;
   $("setup-start").textContent = "Start simulation";
   $("setup-cancel").hidden = false;
@@ -203,22 +201,20 @@ function onTick(snap) {
 function updateBar(snap) {
   const run = $("run");
   const status = $("status");
-  let label, statusText, statusClass, variant;
+  let label, variant;
   if (snap.ended) {
-    [label, statusText, statusClass, variant] = ["Session ended", "Ended", "ended", "primary"];
+    [label, variant] = ["Session ended", "primary"];
   } else if (snap.running) {
-    [label, statusText, statusClass, variant] = ["Pause simulation", "Running", "running", "warning-fill"];
-    if (snap.lagging) statusText = `Running at ${snap.achieved_speed}× (browser cannot keep up)`;
+    [label, variant] = ["Pause simulation", "outlined"];
   } else if (snap.time > 0) {
-    [label, statusText, statusClass, variant] = ["Resume simulation", "Paused", "paused", "primary outlined"];
+    [label, variant] = ["Resume simulation", "primary outlined"];
   } else {
-    [label, statusText, statusClass, variant] = ["Start simulation", "Ready", "", "primary"];
+    [label, variant] = ["Start simulation", "primary"];
   }
   if (run.textContent !== label) run.textContent = label;
   run.className = `btn ${variant}`;
   run.disabled = snap.ended;
-  status.textContent = `● ${statusText}`;
-  status.className = `status ${statusClass}`;
+  status.textContent = snap.running && snap.lagging ? `Actual speed ${snap.achieved_speed}×` : "";
 
   const record = $("record");
   record.setAttribute("aria-pressed", String(snap.recording));
@@ -231,38 +227,31 @@ function updateBar(snap) {
 
 function updateScenario(step) {
   const total = info.scenario.total;
-  const number = $("step-number");
   const status = $("step-status");
   const next = $("step-next");
   const target = $("step-target");
   if (step.complete) {
-    number.textContent = "✓";
     $("step-title").textContent = "Scenario complete";
     $("step-instruction").textContent = info.scenario.description;
-    $("scenario-count").textContent = `${total} of ${total}`;
-    $("scenario-progress").style.width = "100%";
-    status.textContent = "All objectives complete";
-    status.className = "step-status met";
+    $("scenario-count").textContent = "";
+    status.textContent = "";
     target.hidden = true;
     next.textContent = "Complete";
     next.disabled = true;
     return;
   }
-  const key = `${step.index}`;
-  if (number.dataset.step !== key) {
-    number.dataset.step = key;
-    number.textContent = String(step.index + 1);
+  if ($("step-title").textContent !== step.title) {
     $("step-title").textContent = step.title;
-    // Instructions are authored in anasim/ui/scenarios with simple <b>, <i>, and <br> markup.
-    $("step-instruction").innerHTML = step.instruction;
-    $("scenario-count").textContent = `${step.index + 1} of ${total}`;
-    target.hidden = !step.target_tab;
-    if (step.target_tab) target.textContent = `Open ${step.target_tab.toLowerCase()}`;
   }
-  const completed = step.index + (step.met ? 1 : 0);
-  $("scenario-progress").style.width = `${Math.round((100 * completed) / total)}%`;
-  status.textContent = step.status;
-  status.className = `step-status${step.met ? " met" : ""}`;
+  // Instructions are authored in anasim/ui/scenarios with simple <b>, <i>, and <br> markup.
+  if ($("step-instruction").dataset.instruction !== step.instruction) {
+    $("step-instruction").innerHTML = step.instruction;
+    $("step-instruction").dataset.instruction = step.instruction;
+  }
+  $("scenario-count").textContent = `Step ${step.index + 1} of ${total}`;
+  target.hidden = !step.target_tab;
+  if (step.target_tab) target.textContent = `Open ${step.target_tab.toLowerCase()}`;
+  status.textContent = step.met ? "" : step.status;
   next.disabled = !step.met;
   next.textContent = step.met && step.index === total - 1 ? "Finish scenario" : "Continue";
 }
@@ -274,6 +263,7 @@ $("step-target").onclick = () => {
 };
 
 $("run").onclick = () => last && command("run", { running: !last.running });
+$("measure-nibp").onclick = () => command("nibp");
 $("speed").onchange = () => {
   const input = $("speed");
   const value = Math.min(Math.max(Number(input.value) || 1, Number(input.min)), Number(input.max));

@@ -1,12 +1,20 @@
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .styles import (
     COLORS,
     get_base_widget_style,
+    get_button_style,
     get_rgba,
     get_tinted_frame_style,
 )
@@ -114,6 +122,8 @@ class NumericDisplay(QFrame):
                 self._apply_base_style()
 class PatientMonitorWidget(QWidget):
     """Show real-time waveforms, numerics, gases, and fluid balance."""
+
+    nibp_requested = Signal()
 
     def __init__(self, arterial_line_enabled=True, sample_interval_s: float = 0.01):
         super().__init__()
@@ -229,6 +239,14 @@ class PatientMonitorWidget(QWidget):
         self.num_nibp = NumericDisplay(
             "NIBP", "mmHg", COLORS['abp'], "--/-- (--)"
         )
+        self.lbl_nibp_status = QLabel("")
+        self.lbl_nibp_status.setWordWrap(True)
+        self.lbl_nibp_status.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px;")
+        self.num_nibp.layout.addWidget(self.lbl_nibp_status)
+        self.btn_nibp = QPushButton("Measure BP")
+        self.btn_nibp.setStyleSheet(get_button_style(padding="4px 8px", font_size="11px"))
+        self.btn_nibp.clicked.connect(self.nibp_requested)
+        self.num_nibp.layout.addWidget(self.btn_nibp)
         num_layout.addWidget(self.num_art)
         num_layout.addWidget(self.num_nibp)
 
@@ -441,6 +459,12 @@ class PatientMonitorWidget(QWidget):
                 self.num_nibp.set_value(
                     f"{int(state.nibp_sys)}/{int(state.nibp_dia)} ({int(state.nibp_map)})"
                 )
+            age = max(0, int(state.time - ts)) if ts is not None else None
+            reading = f"Last reading {age // 60}:{age % 60:02d} ago" if age is not None else "No reading"
+            if state.nibp_measurement_failed:
+                reading = f"Measurement failed · {reading.lower()}"
+            self.lbl_nibp_status.setText(reading)
+            self.btn_nibp.setEnabled(not is_cycling and not state.cardiac_arrest)
 
         self.num_etco2.set_value(
             f"{int(display_etco2)}" if state.etco2_signal_valid else "--"
@@ -461,9 +485,8 @@ class PatientMonitorWidget(QWidget):
             f"Urine {urine_out:.0f}  Loss {blood_out:.0f}"
         )
         self.lbl_io_net.setText(f"{net:+.0f} mL")
-        net_color = COLORS['danger'] if net < 0 else COLORS['success']
         self.lbl_io_net.setStyleSheet(
-            f"color: {net_color}; font-size: 18px; font-weight: 700;"
+            f"color: {COLORS['text_secondary']}; font-size: 18px; font-weight: 700;"
         )
 
         self.lbl_fi_val.setText(f"{state.fi_sevo:.1f}")
@@ -481,17 +504,17 @@ class PatientMonitorWidget(QWidget):
 
         # Search backward by timestamp so step-size overrides cannot drop samples.
         new_states = []
-        for i in range(len(buffer) - 1, -1, -1):
-            s = buffer[i]
+        for s in reversed(buffer):
             if s.time <= self.last_plot_time:
                 break
             new_states.append(s)
+            if len(new_states) >= self.buffer_size:
+                break
 
         if not new_states:
             return
 
         new_states.reverse()
-        new_states = new_states[-self.buffer_size:]
         self.last_plot_time = latest_time
 
         ecg_c = np.array([s.ecg_voltage for s in new_states])

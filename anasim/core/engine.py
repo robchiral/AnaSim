@@ -609,6 +609,16 @@ class SimulationEngine(DrugControllerMixin):
     def stop(self):
         self.running = False
 
+    def measure_nibp(self):
+        """Start a cuff measurement and schedule the next automatic cycle."""
+        if self.nibp.is_cycling:
+            return
+        self.nibp.trigger()
+        self.state.nibp_is_cycling = True
+        self.state.nibp_measurement_failed = False
+        self.state.nibp_cuff_pressure = 0.0
+        self._next_nibp_time = self.state.time + self.nibp.interval
+
     def start_recording(self, output_dir: str = ".", sample_interval_sec: float = 1.0):
         """Start CSV recording, raising RecordingError on file failures."""
         if self.recorder and self.recorder.is_recording:

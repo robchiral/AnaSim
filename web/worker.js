@@ -1,7 +1,7 @@
 // Runs Pyodide and one anasim.web.WebSession off the main thread. Pyodide
 // requires a module worker.
 // In: create, cmd, close.
-// Out: status, ready, load_error, created, create_error, tick, result, error.
+// Out: ready, load_error, created, create_error, tick, result, error.
 
 const TICK_MS = 50;
 
@@ -21,12 +21,9 @@ function describe(error) {
 
 async function load() {
   const build = await (await fetch("build.json", { cache: "no-cache" })).json();
-  post({ type: "status", text: "Loading the Python runtime…" });
   const { loadPyodide } = await import(`${build.pyodide}pyodide.mjs`);
   pyodide = await loadPyodide({ indexURL: build.pyodide });
-  post({ type: "status", text: "Loading numpy and scipy…" });
   await pyodide.loadPackage(["numpy", "scipy"], { messageCallback: () => {} });
-  post({ type: "status", text: "Loading AnaSim…" });
   const archive = await (await fetch(build.package)).arrayBuffer();
   await pyodide.unpackArchive(archive, "zip");
   webModule = pyodide.pyimport("anasim.web");
@@ -42,11 +39,12 @@ function closeSession() {
   }
 }
 
-// Post a snapshot; on failure end the session and report it. Returns success.
+// Post a snapshot; only running sessions need another timer tick.
 function snapshot(realDt) {
   try {
-    post({ type: "tick", snap: session.advance(realDt) });
-    return true;
+    const snap = session.advance(realDt);
+    post({ type: "tick", snap });
+    return JSON.parse(snap).running;
   } catch (error) {
     closeSession();
     post({ type: "error", message: describe(error) });
@@ -55,6 +53,7 @@ function snapshot(realDt) {
 }
 
 function tick() {
+  timer = null;
   const now = performance.now();
   const realDt = (now - lastTick) / 1000;
   lastTick = now;
@@ -62,14 +61,21 @@ function tick() {
 }
 
 function create(params) {
-  closeSession();
   const pyParams = pyodide.toPy(params);
+  let next;
+  let info;
   try {
-    session = webModule.WebSession(pyParams);
+    next = webModule.WebSession(pyParams);
+    info = JSON.parse(next.info());
+  } catch (error) {
+    next?.destroy();
+    throw error;
   } finally {
     pyParams.destroy();
   }
-  post({ type: "created", info: JSON.parse(session.info()) });
+  closeSession();
+  session = next;
+  post({ type: "created", info });
   lastTick = performance.now();
   tick();
 }
@@ -93,7 +99,14 @@ self.onmessage = ({ data }) => {
       post({ type: "result", id: data.id, error: describe(error) });
       return;
     }
-    snapshot(0);
+    const running = snapshot(0);
+    if (!running) {
+      clearTimeout(timer);
+      timer = null;
+    } else if (timer === null) {
+      lastTick = performance.now();
+      timer = setTimeout(tick, TICK_MS);
+    }
   } else if (data.type === "close") {
     closeSession();
   }

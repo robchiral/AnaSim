@@ -30,7 +30,6 @@ from anasim.ui.styles import (
     get_bar_style,
     get_base_widget_style,
     get_button_style,
-    get_status_label_style,
     get_toggle_button_style,
 )
 from anasim.ui.tutorial_overlay import ScenarioOverlay
@@ -113,6 +112,7 @@ class MainWindow(QMainWindow):
             arterial_line_enabled=self.engine.config.arterial_line_enabled,
             sample_interval_s=self.engine.config.dt,
         )
+        self.monitor.nibp_requested.connect(self.measure_nibp)
         self.monitor.update_patient_info(
             name="Simulated patient",
             age=self.patient.age,
@@ -166,10 +166,6 @@ class MainWindow(QMainWindow):
         speed_container.addWidget(self.sb_speed)
         ctrl_layout.addLayout(speed_container)
 
-        self.lbl_status = QLabel("● Ready")
-        self._set_status("Ready", COLORS['text_dim'])
-        ctrl_layout.addWidget(self.lbl_status)
-
         ctrl_layout.addStretch()
 
         time_layout = QVBoxLayout()
@@ -204,22 +200,16 @@ class MainWindow(QMainWindow):
         self.monitor.update_alarms(initial_state)
         self._set_run_state("ready")
 
-    def _set_status(self, text, color):
-        self.lbl_status.setText(f"● {text}")
-        self.lbl_status.setStyleSheet(get_status_label_style(color))
-
     def _set_run_state(self, state):
         self.btn_start.setEnabled(state != "ended")
         if state == "ended":
             self.btn_start.setText("Session ended")
-            self._set_status("Ended", COLORS['text_dim'])
             return
         if state == "running":
             self.btn_start.setText("Pause simulation")
             self.btn_start.setStyleSheet(
-                get_button_style(variant="warning", padding="8px 18px", min_width=126)
+                get_button_style(variant="neutral", padding="8px 18px", min_width=126)
             )
-            self._set_status("Running", COLORS['success'])
             return
         if state == "paused":
             self.btn_start.setText("Resume simulation")
@@ -231,13 +221,11 @@ class MainWindow(QMainWindow):
                     min_width=126,
                 )
             )
-            self._set_status("Paused", COLORS['warning'])
             return
         self.btn_start.setText("Start simulation")
         self.btn_start.setStyleSheet(
             get_button_style(variant="primary", padding="8px 18px", min_width=126)
         )
-        self._set_status("Ready", COLORS['text_dim'])
 
     def toggle_simulation(self):
         if self.engine.state.cardiac_arrest:
@@ -264,6 +252,10 @@ class MainWindow(QMainWindow):
             self._show_recording_error(error)
         finally:
             self._sync_recording_button()
+
+    def measure_nibp(self):
+        self.engine.measure_nibp()
+        self.monitor.update_numerics(self.engine.state)
 
     def _sync_recording_button(self):
         active = bool(self.engine.recorder and self.engine.recorder.is_recording)

@@ -205,7 +205,7 @@ def get_button_style(
         text = COLORS["text"]
         base = COLORS["border_light"]
     else:
-        text = COLORS["text"] if is_neutral or outlined else "white"
+        text = COLORS["text"] if is_neutral or outlined else COLORS["background"]
 
     if outlined:
         hover_bg = get_rgba(base, 0.12)
@@ -263,13 +263,13 @@ def get_toggle_button_style(active_color, text_color=None, inactive_bg=None):
             border-color: {active_color};
         }}
         QPushButton:checked {{
-            background-color: {active_color};
-            color: white;
+            background-color: {get_rgba(active_color, 0.14)};
+            color: {COLORS["text"]};
             border-color: {get_rgba(active_color, 0.7)};
             border-width: 1px;
         }}
         QPushButton:checked:hover {{
-            background-color: {get_rgba(active_color, 0.85)};
+            background-color: {get_rgba(active_color, 0.22)};
         }}
     """
 
@@ -513,10 +513,6 @@ def get_checkbox_style():
     """
 
 
-def get_status_label_style(color):
-    return f"color: {color}; font-size: {FONTS['size_small']}; font-weight: 600;"
-
-
 def get_dialog_style():
     return f"""
         QDialog {{
@@ -564,22 +560,6 @@ def get_overlay_style():
     """
 
 
-def get_progressbar_style():
-    return f"""
-        QProgressBar {{
-            border: 1px solid {COLORS["border"]};
-            border-radius: 4px;
-            background-color: {COLORS["control"]};
-            text-align: center;
-            color: transparent;
-        }}
-        QProgressBar::chunk {{
-            background-color: {COLORS["primary"]};
-            border-radius: 3px;
-        }}
-    """
-
-
 def hex_to_rgb(hex_color):
     """Convert hex color to r, g, b string for rgba()."""
     hex_color = hex_color.lstrip("#")
@@ -598,5 +578,4 @@ STYLE_COMBOBOX = get_combobox_style()
 STYLE_LABEL = get_label_style()
 STYLE_TAB_WIDGET = get_tab_widget_style()
 STYLE_SCROLLAREA = get_scrollarea_style()
-STYLE_PROGRESSBAR = get_progressbar_style()
 STYLE_CHECKBOX = get_checkbox_style()

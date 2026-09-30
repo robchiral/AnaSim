@@ -160,7 +160,6 @@ def test_overlay_gates_each_objective_and_scopes_the_action_log(qapp, engine_fac
     engine.set_airway_mode("Mask")
     overlay.update_state()
     assert overlay.btn_next.isEnabled()
-    assert overlay.progress.value() > 0
     overlay.btn_next.click()
 
     assert overlay.current_step == 1

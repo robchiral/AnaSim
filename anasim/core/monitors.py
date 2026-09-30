@@ -45,6 +45,7 @@ def seed_nibp_reading(engine: "SimulationEngine") -> None:
     )
     engine._next_nibp_time = state.time + engine.nibp.interval
     engine.nibp.trigger()
+    state.nibp_is_cycling = True
 
 
 def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
@@ -64,6 +65,7 @@ def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
     )
 
     state.nibp_is_cycling = engine.nibp.is_cycling
+    state.nibp_measurement_failed = engine.nibp.measurement_failed
     set_state_float_fields(state, nibp_cuff_pressure=cuff_p)
 
     latest = engine.nibp.latest_reading

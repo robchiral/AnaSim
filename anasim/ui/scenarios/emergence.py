@@ -19,15 +19,19 @@ def _require_assess() -> callable:
     def check(engine) -> Tuple[bool, str]:
         bis = monitor_value(engine, "bis")
         map_val = monitor_value(engine, "map")
-        bis_ok = 35 < bis < 65
-        map_ok = map_val > 60
-        if bis_ok and map_ok:
+        etco2 = monitor_value(engine, "etco2")
+        bis_ok = 40 <= bis <= 60
+        map_ok = map_val > 65
+        co2_ok = engine.state.etco2_signal_valid and 35 <= etco2 <= 45
+        if bis_ok and map_ok and co2_ok:
             return True, ""
         msgs = []
         if not bis_ok:
             msgs.append(f"BIS: {bis:.0f}")
         if not map_ok:
             msgs.append(f"MAP: {map_val:.0f}")
+        if not co2_ok:
+            msgs.append(f"EtCO₂: {etco2:.0f}/35-45 mmHg" if engine.state.etco2_signal_valid else "Awaiting exhaled CO₂")
         return False, join_messages(msgs)
     return check
 
@@ -65,14 +69,15 @@ def _require_awakening() -> callable:
     def check(engine) -> Tuple[bool, str]:
         bis = monitor_value(engine, "bis")
         bis_ok = bis > 70
-        rr_ok = engine.state.rr > 6
+        rr = engine.resp.state.rr
+        rr_ok = rr > 6 and not engine.resp.state.apnea
         if bis_ok and rr_ok:
             return True, ""
         msgs = []
         if not bis_ok:
             msgs.append(f"BIS: {bis:.0f}/70+")
         if not rr_ok:
-            msgs.append(f"RR: {engine.state.rr:.0f}/6+")
+            msgs.append(f"Spontaneous RR: {rr:.0f}/6+")
         return False, join_messages(msgs)
     return check
 
@@ -136,7 +141,7 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
     else:
         stop_agents_instruction = (
             "Turn <b>OFF</b> propofol and remifentanil infusions.<br><br>"
-            "<i>Remi t½ is ~3-4 min. Propofol emergence in 5-10 min.</i>"
+            "Observe the return of spontaneous breathing as the drug effect decreases."
         )
         stop_agents_check = _require_agents_stopped_tiva()
         stop_agents_tab = "Medications"
@@ -162,9 +167,8 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
             id="AWAIT_EMERGENCE",
             title="Await emergence",
             instruction=(
-                "Monitor <b>BIS rising</b> toward >70. Patient will start breathing.<br>"
-                "Watch for: movement, coughing, eye opening.<br><br>"
-                "<i>Avoid premature stimulation at BIS 60-70 (risk of laryngospasm).</i>"
+                "Wait for <b>BIS > 70</b> and <b>spontaneous RR > 6/min</b>.<br>"
+                "Ventilator-delivered breaths do not establish spontaneous breathing."
             ),
             check_requirements=_require_awakening(),
         ),

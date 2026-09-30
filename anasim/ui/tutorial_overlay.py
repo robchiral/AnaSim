@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QProgressBar,
     QPushButton,
     QVBoxLayout,
 )
@@ -13,7 +12,6 @@ from PySide6.QtWidgets import (
 from .scenarios import Scenario
 from .styles import (
     COLORS,
-    STYLE_PROGRESSBAR,
     get_button_style,
     get_overlay_style,
 )
@@ -34,7 +32,7 @@ class ScenarioOverlay(QFrame):
 
         self.setObjectName("scenarioOverlay")
         self.setStyleSheet(get_overlay_style())
-        self.setFixedHeight(178)
+        self.setMinimumHeight(150)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 10, 16, 10)
@@ -45,15 +43,11 @@ class ScenarioOverlay(QFrame):
 
         self.lbl_scenario = QLabel(scenario.name)
         self.lbl_scenario.setStyleSheet(
-            f"color: {COLORS['primary']}; font-size: 11px; font-weight: 650;"
+            f"color: {COLORS['text_secondary']}; font-size: 11px; font-weight: 650;"
         )
         header.addWidget(self.lbl_scenario)
 
-        self.progress = QProgressBar()
-        self.progress.setStyleSheet(STYLE_PROGRESSBAR)
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(6)
-        header.addWidget(self.progress, stretch=1)
+        header.addStretch()
 
         self.lbl_progress = QLabel("")
         self.lbl_progress.setStyleSheet(
@@ -64,16 +58,6 @@ class ScenarioOverlay(QFrame):
 
         objective = QHBoxLayout()
         objective.setSpacing(12)
-
-        self.lbl_step_number = QLabel("")
-        self.lbl_step_number.setAlignment(Qt.AlignCenter)
-        self.lbl_step_number.setFixedSize(38, 38)
-        self.lbl_step_number.setStyleSheet(
-            f"color: {COLORS['primary']}; background-color: {COLORS['control']}; "
-            f"border: 1px solid {COLORS['border']}; border-radius: 5px; "
-            "font-size: 15px; font-weight: 700;"
-        )
-        objective.addWidget(self.lbl_step_number, alignment=Qt.AlignTop)
 
         copy = QVBoxLayout()
         copy.setSpacing(3)
@@ -97,13 +81,9 @@ class ScenarioOverlay(QFrame):
         footer = QHBoxLayout()
         footer.setSpacing(8)
 
-        self.lbl_status_icon = QLabel("●")
-        self.lbl_status_icon.setFixedWidth(12)
-        footer.addWidget(self.lbl_status_icon)
-
         self.lbl_status = QLabel("")
         self.lbl_status.setStyleSheet(
-            f"color: {COLORS['warning']}; font-size: 11px; font-weight: 600;"
+            f"color: {COLORS['text_secondary']}; font-size: 11px; font-weight: 400;"
         )
         footer.addWidget(self.lbl_status, stretch=1)
 
@@ -122,7 +102,7 @@ class ScenarioOverlay(QFrame):
         self.btn_next = QPushButton("Continue")
         self.btn_next.setStyleSheet(
             get_button_style(
-                variant="success",
+                variant="neutral",
                 padding="6px 16px",
                 min_width=104,
             )
@@ -144,11 +124,10 @@ class ScenarioOverlay(QFrame):
         # Scope action requirements to this objective: only what the learner
         # does from now on can complete it.
         self.engine.actions.begin_step(step.id, self.engine.state.time)
-        self.lbl_step_number.setText(str(self.current_step + 1))
         self.lbl_title.setText(step.title)
         self.lbl_instruction.setText(step.instruction)
         self.lbl_progress.setText(
-            f"{self.current_step + 1} of {len(self.scenario)}"
+            f"Step {self.current_step + 1} of {len(self.scenario)}"
         )
         self.btn_target.setVisible(step.target_tab is not None)
         if step.target_tab is not None:
@@ -158,28 +137,13 @@ class ScenarioOverlay(QFrame):
         self._set_requirement_state(False, "Complete the objective to continue")
 
     def _show_completion(self):
-        self.lbl_step_number.setText("✓")
         self.lbl_title.setText("Scenario complete")
         self.lbl_instruction.setText(self.scenario.description)
-        self.lbl_progress.setText(f"{len(self.scenario)} of {len(self.scenario)}")
-        self.progress.setValue(100)
-        self.lbl_status_icon.setText("✓")
-        self.lbl_status_icon.setStyleSheet(f"color: {COLORS['success']};")
-        self.lbl_status.setText("All objectives complete")
-        self.lbl_status.setStyleSheet(
-            f"color: {COLORS['success']}; font-size: 11px; font-weight: 600;"
-        )
+        self.lbl_progress.clear()
+        self.lbl_status.clear()
         self.btn_target.hide()
         self.btn_next.setText("Complete")
         self.btn_next.setEnabled(False)
-
-    def _update_progress(self):
-        total = len(self.scenario)
-        if total == 0:
-            self.progress.setValue(100)
-            return
-        completed = self.current_step + int(self.requirements_met)
-        self.progress.setValue(round(100 * completed / total))
 
     def _set_requirement_state(self, met: bool, status: str):
         self.requirements_met = met
@@ -188,25 +152,14 @@ class ScenarioOverlay(QFrame):
             return
         self._last_requirement_display = display_state
         if met:
-            self.lbl_status_icon.setText("✓")
-            self.lbl_status_icon.setStyleSheet(f"color: {COLORS['success']};")
-            self.lbl_status.setText("Objective complete")
-            self.lbl_status.setStyleSheet(
-                f"color: {COLORS['success']}; font-size: 11px; font-weight: 600;"
-            )
+            self.lbl_status.clear()
             is_last = self.current_step == len(self.scenario) - 1
             self.btn_next.setText("Finish scenario" if is_last else "Continue")
             self.btn_next.setEnabled(True)
         else:
-            self.lbl_status_icon.setText("●")
-            self.lbl_status_icon.setStyleSheet(f"color: {COLORS['warning']};")
             self.lbl_status.setText(status or "Complete the objective to continue")
-            self.lbl_status.setStyleSheet(
-                f"color: {COLORS['warning']}; font-size: 11px; font-weight: 600;"
-            )
             self.btn_next.setText("Continue")
             self.btn_next.setEnabled(False)
-        self._update_progress()
 
     def check_requirements(self):
         """Return the current objective's completion state and feedback."""

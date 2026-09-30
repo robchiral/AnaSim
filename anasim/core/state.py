@@ -157,6 +157,7 @@ class SimulationState:
     nibp_timestamp: Optional[float] = None
     nibp_interval_sec: float = 300.0
     nibp_is_cycling: bool = False
+    nibp_measurement_failed: bool = False
     nibp_cuff_pressure: float = 0.0
 
     # MAP, HR, SV, SVR, and CO come from Su; sbp and dbp are the ideal pulse

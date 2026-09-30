@@ -246,6 +246,8 @@ class WebSession:
                 _num(s.nibp_sys, 1), _num(s.nibp_dia, 1), _num(s.nibp_map, 1)
             ],
             "nibp_cuff": _num(s.nibp_cuff_pressure, 1) if s.nibp_is_cycling else None,
+            "nibp_age": None if s.nibp_timestamp is None else _num(max(0.0, s.time - s.nibp_timestamp), 0),
+            "nibp_failed": s.nibp_measurement_failed,
             "etco2": _num(s.display_etco2, 1) if s.etco2_signal_valid else None,
             "rr": _num(s.rr, 1),
             "bis": _num(s.display_bis, 1),
@@ -269,10 +271,11 @@ class WebSession:
             if sample.time <= self._last_wave_time:
                 break
             samples.append(sample)
+            if len(samples) >= round(WAVE_WINDOW_S / self.engine.config.dt):
+                break
         if samples:
             self._last_wave_time = samples[0].time
         samples.reverse()
-        samples = samples[-round(WAVE_WINDOW_S / self.engine.config.dt):]
         return {
             "ecg": [_num(s.ecg_voltage, 4) for s in samples],
             "pleth": [_num(s.pleth_voltage, 4) for s in samples],
@@ -493,6 +496,9 @@ class WebSession:
     def _cmd_csht(self):
         """Estimated context-sensitive half-times (min) for propofol and remifentanil."""
         return {key: _num(self.engine.get_predicted_csht(key), 1) for key in ("propofol", "remi")}
+
+    def _cmd_nibp(self):
+        self.engine.measure_nibp()
 
     def _cmd_record(self, active: bool):
         """Start recording, or stop and return {"filename", "csv"} for download."""

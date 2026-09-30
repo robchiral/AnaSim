@@ -817,25 +817,25 @@ class ControlPanelWidget(QWidget):
 
         b_250 = QPushButton("Crystalloid 250 mL")
         b_250.setStyleSheet(
-            get_button_style(variant="info", padding="6px 10px", min_width=90)
+            get_button_style(variant="neutral", padding="6px 10px", min_width=90)
         )
         b_250.clicked.connect(lambda: self.engine.give_fluid(250))
 
         b_500 = QPushButton("Crystalloid 500 mL")
         b_500.setStyleSheet(
-            get_button_style(variant="info", padding="6px 10px", min_width=90)
+            get_button_style(variant="neutral", padding="6px 10px", min_width=90)
         )
         b_500.clicked.connect(lambda: self.engine.give_fluid(500))
 
         b_albumin = QPushButton("Albumin 250 mL")
         b_albumin.setStyleSheet(
-            get_button_style(variant="success", padding="6px 10px", min_width=120)
+            get_button_style(variant="neutral", padding="6px 10px", min_width=120)
         )
         b_albumin.clicked.connect(lambda: self.engine.give_albumin(250))
 
         b_prbc = QPushButton("PRBC 300 mL")
         b_prbc.setStyleSheet(
-            get_button_style(variant="primary", padding="6px 10px", min_width=120)
+            get_button_style(variant="neutral", padding="6px 10px", min_width=120)
         )
         b_prbc.clicked.connect(lambda: self.engine.give_blood(300))
 
