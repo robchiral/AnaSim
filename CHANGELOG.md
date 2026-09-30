@@ -1,34 +1,32 @@
 # Changelog
 
-## Unreleased
+## 1.3 - 2026-09-30
 
-- Replace the Qt desktop app with a browser interface. `anasim` serves it from
+- Replaced the Qt desktop app with a browser interface. `anasim` opens it from
   local Python and saves recordings to `recordings/`, and the same interface
   runs at robche.com/AnaSim through Pyodide. PySide6 and pyqtgraph are no
   longer dependencies.
-- Simplify the interface styling. Event buttons are colored only while the
-  event is running, and automatic laryngospasm is a checkbox.
-- Correct NIBP cycle timing across step sizes, show no SpO₂ value without a
-  pulsatile signal, and keep the previous BP reading visible while the cuff
+- Changed `set_vent_settings` so it no longer starts or stops the ventilator;
+  use `set_vent_power`. The ventilator now starts from an awake session and
+  keeps its settings while off.
+- Made ventilator mechanics consistent across step sizes, counted trapped-gas
+  pressure once, based gas exchange on completed exhaled breaths, and showed
+  capnography during PSV apnea backup.
+- Corrected NIBP cycle timing across step sizes. SpO₂ shows a value only with
+  a pulsatile signal, and the previous BP reading stays visible while the cuff
   measures.
-- Make ventilator mechanics consistent across step sizes, count trapped-gas
-  pressure once, and base gas exchange on completed exhaled breaths.
-- Show capnography during PSV apnea backup and require a fresh exhalation after
-  reconnection.
-- The ventilator can start from an awake session and keeps its settings while
-  off. `set_vent_settings` no longer starts or stops it; use `set_vent_power`.
-- Setting a manual infusion rate disables TCI, so a stopped infusion stays
-  stopped.
-- Preserve central drug amount when hemodynamic scaling changes PK volume.
-- Report CSV recording failures, keep the part already recorded, and keep
+- Made a manual infusion rate disable TCI and conserved the central drug
+  amount during hemodynamic PK scaling.
+- Reported CSV recording failures, kept the part already recorded, and kept
   sampling on schedule when steps cross sample deadlines.
-- With `end_on_cardiac_arrest`, a confirmed arrest ends the session at that
-  moment.
-- Induction scenarios require starting the ventilator after intubation, TIVA
-  maintenance checks the fresh gas reduction it asks for, and baseline
-  objectives show the ranges they check.
-- Apply arterial-line setting changes immediately and reduce waveform overhead.
-- Support Python 3.14 and drop the unused pandas dependency.
+- Ended the session at the moment of a confirmed arrest when
+  `end_on_cardiac_arrest` is set.
+- Required starting the ventilator after intubation in induction scenarios,
+  checked the fresh gas reduction in TIVA maintenance, and showed the ranges
+  that baseline objectives check.
+- Applied arterial-line setting changes immediately and reduced waveform
+  overhead.
+- Added Python 3.14 support and dropped the unused pandas dependency.
 
 ## 1.2 - 2026-09-24
 
