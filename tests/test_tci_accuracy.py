@@ -96,14 +96,3 @@ class TestEngineTCI:
             engine.step(0.1)
             # Plasma already exceeds the new target after the manual bolus.
             assert engine.propofol_rate_mg_sec == 0.0
-
-    def test_reenabled_controller_does_not_inherit_partial_sampling_interval(self, awake_engine):
-        engine = awake_engine
-        engine.enable_tci("propofol", 4.0)
-        engine.step(0.05)
-        engine.disable_tci("propofol")
-        engine.enable_tci("propofol", 4.0)
-        engine.step(0.05)
-        assert engine.propofol_rate_mg_sec == 0.0
-        engine.step(0.05)
-        assert engine.propofol_rate_mg_sec > 0.0

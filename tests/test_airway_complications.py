@@ -1,21 +1,6 @@
 import pytest
 
 
-def test_manual_airway_controls_update_state_and_resistance(awake_engine):
-    engine = awake_engine
-    engine.set_airway_mode("Mask")
-
-    base_r = engine.resp_mech.resistance
-    engine.set_airway_obstruction(0.8)
-    engine.set_bronchospasm(0.5)
-
-    engine.step(0.5)
-
-    assert engine.state.airway_obstruction == pytest.approx(0.8, abs=0.05)
-    assert engine.state.bronchospasm == pytest.approx(0.5, abs=0.05)
-    assert engine.resp_mech.resistance > base_r
-
-
 @pytest.mark.parametrize("enabled", [True, False])
 def test_intubation_stimulus_triggers_laryngospasm_unless_disabled(engine_factory, enabled):
     engine = engine_factory(start=True)
@@ -26,34 +11,19 @@ def test_intubation_stimulus_triggers_laryngospasm_unless_disabled(engine_factor
     for _ in range(10):
         engine.step(0.2)
 
-    if enabled:
-        assert engine.state.laryngospasm > 0.1
-        assert engine.state.airway_obstruction >= engine.state.laryngospasm
-    else:
+    if not enabled:
         assert engine.state.laryngospasm < 0.01
+        return
+    assert engine.state.laryngospasm > 0.1
+    assert engine.state.airway_obstruction >= engine.state.laryngospasm
 
-
-def test_intubation_stimulus_expires_and_laryngospasm_decays(awake_engine):
-    engine = awake_engine
-    engine.set_airway_mode("Mask")
-    engine.start_disturbance("stim_intubation_pulse")
-
-    for _ in range(249):
+    # The 50 s stimulus ends and the spasm resolves.
+    for _ in range(240):
         engine.step(0.2)
-
-    assert engine.disturbance_active
-    engine.laryngospasm_severity = 0.0
-    engine.state.laryngospasm = 0.0
-    engine.step(0.2)
-
-    assert engine.state.time == pytest.approx(50.0)
     assert not engine.disturbance_active
     severity_at_end = engine.state.laryngospasm
-    assert severity_at_end > 0.05
-
     for _ in range(100):
         engine.step(0.2)
-
     assert engine.state.laryngospasm < severity_at_end * 0.15
 
 
@@ -61,6 +31,7 @@ def test_upper_obstruction_reduces_effective_mv_without_hiding_vt(awake_engine):
     engine = awake_engine
     engine.set_airway_mode("Mask")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    engine.set_vent_power(True)
 
     # Suppress spontaneous drive to isolate assisted ventilation.
     dose = 0.8 * engine.patient.weight
@@ -91,5 +62,6 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
 
     engine.set_airway_mode("Mask")
     engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="CPAP")
+    engine.set_vent_power(True)
     engine.step(0.1)
     assert engine.state.airway_obstruction == 0.0

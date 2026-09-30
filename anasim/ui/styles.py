@@ -101,7 +101,6 @@ def get_groupbox_style(accent_color=None):
 
 
 def get_spinbox_style():
-    """Style for QSpinBox and QDoubleSpinBox."""
     return f"""
         QSpinBox, QDoubleSpinBox {{
             background-color: {COLORS["control"]};
@@ -127,7 +126,6 @@ def get_spinbox_style():
 
 
 def get_combobox_style():
-    """Style for QComboBox."""
     return f"""
         QComboBox {{
             background-color: {COLORS["control"]};
@@ -165,7 +163,6 @@ def get_combobox_style():
 
 
 def get_label_style():
-    """Style for QLabel."""
     return f"""
         QLabel {{
             color: {COLORS["text"]};
@@ -189,7 +186,6 @@ def get_button_style(
     font_size=None,
     font_weight=600,
 ):
-    """Style for QPushButton with various variants."""
     variant_map = {
         "primary": COLORS["primary"],
         "success": COLORS["success"],
@@ -250,7 +246,6 @@ def get_button_style(
 
 
 def get_toggle_button_style(active_color, text_color=None, inactive_bg=None):
-    """Style for toggle/checkable buttons."""
     text = text_color or COLORS["text"]
     inactive = inactive_bg or COLORS["control"]
     return f"""
@@ -361,7 +356,6 @@ def get_drug_card_style():
 
 
 def get_radiobutton_style(color=None, indicator_color=None):
-    """Style for QRadioButton."""
     c = color or COLORS["text"]
     ic = indicator_color or c
     return f"""
@@ -387,7 +381,6 @@ def get_radiobutton_style(color=None, indicator_color=None):
 
 
 def get_tab_widget_style():
-    """Style for QTabWidget."""
     return f"""
         QTabWidget::pane {{
             border: none;
@@ -419,7 +412,6 @@ def get_tab_widget_style():
 
 
 def get_scrollarea_style():
-    """Style for QScrollArea."""
     return f"""
         QScrollArea {{
             border: none;
@@ -459,7 +451,6 @@ def get_scrollarea_style():
 
 
 def get_frame_style(bg_color=None, border_color=None, radius=8, border_width=1):
-    """Style for QFrame."""
     bg = bg_color or COLORS["panel"]
     bc = border_color or COLORS["border"]
     return f"""
@@ -494,7 +485,6 @@ def get_tinted_frame_style(color, alpha=0.06, radius=8):
 
 
 def get_checkbox_style():
-    """Style for QCheckBox."""
     return f"""
         QCheckBox {{
             color: {COLORS["text"]};
@@ -524,12 +514,10 @@ def get_checkbox_style():
 
 
 def get_status_label_style(color):
-    """Style for simulation status indicator labels."""
     return f"color: {color}; font-size: {FONTS['size_small']}; font-weight: 600;"
 
 
 def get_dialog_style():
-    """Style for QDialog."""
     return f"""
         QDialog {{
             background-color: {COLORS["background"]};
@@ -563,7 +551,6 @@ def get_dialog_style():
 
 
 def get_overlay_style():
-    """Style for tutorial/scenario overlay."""
     return f"""
         QFrame#scenarioOverlay {{
             background-color: {COLORS["panel"]};
@@ -578,7 +565,6 @@ def get_overlay_style():
 
 
 def get_progressbar_style():
-    """Style for QProgressBar."""
     return f"""
         QProgressBar {{
             border: 1px solid {COLORS["border"]};

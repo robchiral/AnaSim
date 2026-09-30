@@ -141,7 +141,6 @@ class Patient:
         return 1.07 * self.weight - 148.0 * ratio**2
 
     def _janmahasatian_lbm(self) -> float:
-        """Compute Janmahasatian lean body mass."""
         if self.sex == "male":
             return (9270.0 * self.weight) / (6680.0 + 216.0 * self.bmi)
         return (9270.0 * self.weight) / (8780.0 + 244.0 * self.bmi)

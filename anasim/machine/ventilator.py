@@ -15,6 +15,11 @@ class VentSettings:
     fio2: float = 0.21
     p_insp: float = 15.0  # Above PEEP
 
+    @property
+    def ie(self) -> str:
+        """I:E ratio as offered by the controls, such as "1:2"."""
+        return f"1:{max(1, round(1.0 / self.ie_ratio))}" if self.ie_ratio > 0 else "1:2"
+
 
 @dataclass
 class VentMonitors:
@@ -31,12 +36,15 @@ class VentMonitors:
 
 
 class AnesthesiaVentilator:
-    """Stores settings; RespiratoryMechanics produces the breaths."""
+    """Stores settings; RespiratoryMechanics produces the breaths.
+
+    Settings persist while the ventilator is off.
+    """
 
     def __init__(self):
         self.settings = VentSettings()
         self.monitors = VentMonitors()
-        self.is_on = True
+        self.is_on = False
 
     def set_mode(self, mode: str):
         mode_upper = mode.upper()
@@ -87,14 +95,15 @@ class AnesthesiaVentilator:
             self.monitors.mv_exp = 0.0
 
         # Compliance = VT / driving pressure (plateau - total PEEP in VCV).
-        if self.settings.mode == "VCV":
-            delta_p = mech_state.paw_plat - self.settings.peep - mech_state.auto_peep
+        settings = self.settings
+        if self.is_on and settings.mode == "VCV":
+            delta_p = mech_state.paw_plat - settings.peep - mech_state.auto_peep
             if delta_p > 0.5:
                 self.monitors.compliance = self.monitors.tv_exp / delta_p
             else:
                 self.monitors.compliance = 50.0
-        elif self.settings.p_insp and self.settings.p_insp > 0:
-            self.monitors.compliance = self.monitors.tv_exp / self.settings.p_insp
+        elif self.is_on and settings.mode in ("PCV", "PSV") and settings.p_insp > 0:
+            self.monitors.compliance = self.monitors.tv_exp / settings.p_insp
 
         self.monitors.rr_total = rr_total if rr_total is not None else self.settings.rr
 

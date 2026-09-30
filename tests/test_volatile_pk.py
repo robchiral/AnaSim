@@ -40,6 +40,7 @@ def test_gas_monitor_mac_follows_end_tidal_during_washin(engine_factory):
     engine = engine_factory(start=True)
     engine.set_airway_mode("Mask")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    engine.set_vent_power(True)
     engine.set_fgf(6.0, 0.0)
     engine.set_vaporizer("sevo", 6.0)
     for _ in range(600):

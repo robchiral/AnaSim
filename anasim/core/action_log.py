@@ -42,7 +42,6 @@ class ActionLog:
 
     @property
     def records(self) -> Tuple[ActionRecord, ...]:
-        """Return every recorded action in order."""
         return tuple(self._records)
 
     @property
@@ -59,7 +58,6 @@ class ActionLog:
         label: str = "",
         amount: float = 0.0,
     ) -> None:
-        """Append one control action to the log."""
         self._records.append(ActionRecord(float(time), action, label, float(amount)))
 
     def begin_step(self, step_id: str, time: float) -> None:

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AnaSim</title>
+  <meta name="description" content="Adult anesthesia and physiology simulator that runs in the browser.">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23080C11'/%3E%3Cpath d='M3 18h7l3-9 5 15 3-6h8' fill='none' stroke='%2337D786' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+
+<section id="loading" class="screen">
+  <div class="loading-card">
+    <h1 class="brand">AnaSim</h1>
+    <p class="subtitle">Adult anesthesia and physiology simulation</p>
+    <div class="loading-bar"><div></div></div>
+    <p id="loading-status" class="loading-status" role="status">Starting…</p>
+    <p class="hint">The first visit downloads about 23 MB (Python, numpy, and scipy). Later visits load from the browser cache.</p>
+  </div>
+</section>
+
+<section id="setup" class="screen" hidden>
+  <form id="setup-form" class="setup-card" novalidate>
+    <header class="setup-header">
+      <h1 class="brand">AnaSim</h1>
+      <span class="subtitle">Adult anesthesia and physiology simulation</span>
+    </header>
+
+    <div class="setup-grid">
+      <div class="setup-col">
+        <fieldset>
+          <legend>Patient</legend>
+          <label class="row">Age <span class="unit-input"><input name="age" type="number" step="1" value="40" required><span>years</span></span></label>
+          <label class="row">Weight <span class="unit-input"><input name="weight" type="number" step="0.1" value="70" required><span>kg</span></span></label>
+          <label class="row">Height <span class="unit-input"><input name="height" type="number" step="0.1" value="170" required><span>cm</span></span></label>
+          <label class="row">Sex
+            <select name="sex"><option value="male">Male</option><option value="female">Female</option></select>
+          </label>
+          <label class="row">Hemoglobin <span class="unit-input"><input name="baseline_hb" type="number" step="0.1" value="13.5" required><span>g/dL</span></span></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Organ function</legend>
+          <label class="row">Renal
+            <select name="renal_function">
+              <option value="1.0">Normal (eGFR ≥ 90)</option>
+              <option value="0.8">Mild (eGFR 60 to 89)</option>
+              <option value="0.6">Moderate (eGFR 30 to 59)</option>
+              <option value="0.4">Severe (eGFR &lt; 30)</option>
+            </select>
+          </label>
+          <label class="row">Hepatic
+            <select name="hepatic_function">
+              <option value="1.0">Normal (no cirrhosis)</option>
+              <option value="0.9">Mild (Child-Pugh A)</option>
+              <option value="0.7">Moderate (Child-Pugh B)</option>
+              <option value="0.5">Severe (Child-Pugh C)</option>
+            </select>
+          </label>
+        </fieldset>
+      </div>
+
+      <div class="setup-col">
+        <fieldset>
+          <legend>Session type</legend>
+          <label class="choice"><input type="radio" name="session" value="open" checked> Open simulation</label>
+          <label class="choice"><input type="radio" name="session" value="guided"> Guided scenario</label>
+          <p class="help">Open simulation gives direct control. Guided scenarios provide ordered objectives.</p>
+          <label class="row" id="scenario-row" hidden>Scenario <select name="scenario_id"></select></label>
+        </fieldset>
+
+        <fieldset id="initial-state">
+          <legend>Initial state</legend>
+          <p class="help">Used for open simulation. Guided scenarios define their own initial state.</p>
+          <label class="choice"><input type="radio" name="mode" value="awake"> Awake before induction</label>
+          <label class="choice"><input type="radio" name="mode" value="steady_state" checked> Anesthetized maintenance</label>
+          <label class="row">Maintenance technique
+            <select name="maint_type">
+              <option value="tiva">TIVA (propofol)</option>
+              <option value="balanced">Inhalational (sevoflurane)</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Monitoring and endpoint</legend>
+          <label class="choice" title="Show the arterial pressure waveform and continuous pressure values.">
+            <input type="checkbox" name="arterial_line_enabled" checked> Display continuous arterial pressure</label>
+          <label class="choice" title="Stop when MAP stays below 20 mmHg or HR below 10 bpm for 15 seconds. Resuscitation is not modeled.">
+            <input type="checkbox" name="end_on_cardiac_arrest"> End session at cardiac arrest</label>
+        </fieldset>
+      </div>
+    </div>
+
+    <details class="models">
+      <summary>Advanced model selection</summary>
+      <div class="models-grid">
+        <label class="row">Propofol PK <select name="pk_model_propofol"></select></label>
+        <label class="row">BIS model <select name="bis_model"></select></label>
+        <label class="row">Norepinephrine PK <select name="pk_model_nore"></select></label>
+        <label class="row">LOC model <select name="loc_model"></select></label>
+        <label class="row">Epinephrine PK <select name="pk_model_epi"></select></label>
+      </div>
+    </details>
+
+    <p id="setup-error" class="setup-error" role="alert" hidden></p>
+
+    <footer class="setup-footer">
+      <span class="version" id="version"></span>
+      <button type="button" class="btn outlined" id="setup-cancel" hidden>Back to session</button>
+      <button type="submit" class="btn primary" id="setup-start">Start simulation</button>
+    </footer>
+  </form>
+</section>
+
+<div id="app" hidden>
+  <section id="scenario" class="scenario" hidden>
+    <div class="scenario-head">
+      <span class="scenario-name" id="scenario-name"></span>
+      <div class="progress"><div id="scenario-progress"></div></div>
+      <span class="scenario-count" id="scenario-count"></span>
+    </div>
+    <div class="scenario-body">
+      <span class="step-number" id="step-number"></span>
+      <div>
+        <h2 id="step-title"></h2>
+        <p id="step-instruction"></p>
+      </div>
+    </div>
+    <div class="scenario-foot">
+      <span class="step-status" id="step-status"></span>
+      <button type="button" class="btn outlined small" id="step-target"></button>
+      <button type="button" class="btn success small" id="step-next" disabled>Continue</button>
+    </div>
+  </section>
+
+  <main class="workspace">
+    <section class="monitor">
+      <header class="monitor-header">
+        <span id="patient-info"></span>
+        <button type="button" class="btn outlined small" id="new-session">New session</button>
+      </header>
+      <div class="monitor-body">
+        <div class="waves">
+          <div class="wave" data-wave="ecg"><canvas></canvas><span class="wave-label ecg">ECG · II</span></div>
+          <div class="wave" data-wave="pleth"><canvas></canvas><span class="wave-label spo2">Pleth</span></div>
+          <div class="wave" data-wave="art"><canvas></canvas><span class="wave-label abp">ART</span></div>
+          <div class="wave" data-wave="co2"><canvas></canvas><span class="wave-label co2">CO₂ · mmHg</span></div>
+        </div>
+        <div class="numerics">
+          <div class="numeric big ecg" data-alarm="HR"><div class="numeric-head"><span class="numeric-title">HR</span><span class="numeric-unit">bpm</span></div><output id="v-hr">--</output></div>
+          <div class="numeric big spo2" data-alarm="SpO2"><div class="numeric-head"><span class="numeric-title">SpO₂</span><span class="numeric-unit">%</span></div><output id="v-spo2">--</output></div>
+          <div class="numeric big abp" data-alarm="MAP" id="n-art"><div class="numeric-head"><span class="numeric-title">ART</span><span class="numeric-unit">mmHg</span></div><output id="v-art">--/-- (--)</output></div>
+          <div class="numeric big abp" id="n-nibp"><div class="numeric-head"><span class="numeric-title">NIBP</span><span class="numeric-unit">mmHg</span></div><output id="v-nibp">--/-- (--)</output></div>
+          <div class="numeric-pair">
+            <div class="numeric big co2" data-alarm="EtCO2"><div class="numeric-head"><span class="numeric-title">EtCO₂</span><span class="numeric-unit">mmHg</span></div><output id="v-etco2">--</output></div>
+            <div class="numeric compact co2"><div class="numeric-head"><span class="numeric-title">RR</span><span class="numeric-unit">/min</span></div><output id="v-rr">--</output></div>
+          </div>
+          <div class="numeric-row">
+            <div class="numeric compact bis" data-alarm="BIS"><div class="numeric-head"><span class="numeric-title">BIS</span></div><output id="v-bis">--</output></div>
+            <div class="numeric compact tof"><div class="numeric-head"><span class="numeric-title">TOF</span></div><output id="v-tof">--</output></div>
+            <div class="numeric compact temp"><div class="numeric-head"><span class="numeric-title">Temp</span><span class="numeric-unit">°C</span></div><output id="v-temp">--</output></div>
+          </div>
+          <div class="panel-io">
+            <div class="io-head"><span>Fluid balance</span><output id="v-net">--</output></div>
+            <div class="io-detail" id="v-io">IV --  PRBC --  ·  Urine --  Loss --</div>
+          </div>
+          <div class="panel-gas">
+            <div class="gas-head"><span>Sevoflurane</span><output id="v-mac">MAC: 0.00</output></div>
+            <div class="gas-values">
+              <div><span>Fi</span><output id="v-fi">0.0</output></div>
+              <div><span>Et</span><output id="v-et">0.0</output></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="sim-bar">
+        <button type="button" class="btn primary" id="run">Start simulation</button>
+        <button type="button" class="btn toggle t-danger" id="record" aria-pressed="false" title="Record time-series data and download it as CSV when you stop.">Record CSV</button>
+        <label class="speed">Simulation speed
+          <span class="unit-input"><input type="number" id="speed" min="0.1" max="50" step="0.5" value="1"><span>×</span></span>
+        </label>
+        <span class="status" id="status">● Ready</span>
+        <span class="spacer"></span>
+        <div class="clock"><span>Simulation time</span><output id="clock">00:00:00</output></div>
+      </footer>
+    </section>
+
+    <aside class="controls">
+      <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="Machine" aria-selected="true">Machine</button>
+        <button type="button" role="tab" data-tab="Medications" aria-selected="false">Medications</button>
+        <button type="button" role="tab" data-tab="Events" aria-selected="false">Events and fluids</button>
+      </nav>
+
+      <div class="tab-panel" data-panel="Machine" role="tabpanel">
+        <fieldset class="group">
+          <legend>Airway management</legend>
+          <div class="segmented" id="c-airway">
+            <button type="button" data-value="None" data-color="dim">Disconnected</button>
+            <button type="button" data-value="Mask" data-color="info">Facemask</button>
+            <button type="button" data-value="ETT" data-color="success">Tracheal tube</button>
+          </div>
+        </fieldset>
+
+        <div class="group-row">
+          <fieldset class="group">
+            <legend>Fresh gas flow</legend>
+            <div class="grid2">
+              <label class="info" for="c-o2">O₂</label><span class="unit-input"><input id="c-o2" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
+              <label for="c-air">Air</label><span class="unit-input"><input id="c-air" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
+              <label class="warning" for="c-n2o">N₂O</label><span class="unit-input"><input id="c-n2o" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
+              <span class="dim">Circuit FiO₂</span><output id="c-fio2" class="fio2">21%</output>
+            </div>
+            <button type="button" class="btn toggle t-danger full" id="c-o2-supply" aria-pressed="false">Disconnect O₂ supply</button>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Sevoflurane vaporizer</legend>
+            <div class="grid2">
+              <label for="c-vap">Setting</label><span class="unit-input"><input id="c-vap" type="number" min="0" max="8" step="0.2"><span>%</span></span>
+            </div>
+          </fieldset>
+        </div>
+
+        <fieldset class="group">
+          <legend>Manual ventilation</legend>
+          <div class="inline">
+            <button type="button" class="btn toggle t-success" id="c-bag" aria-pressed="false">Start bag-mask ventilation</button>
+            <span class="dim small">12 breaths/min · 500 mL</span>
+          </div>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>Mechanical ventilation</legend>
+          <div class="inline">
+            <button type="button" class="btn toggle t-primary" id="c-vent-power" aria-pressed="false">Start ventilator</button>
+          </div>
+          <div class="grid4">
+            <label for="c-vent-mode">Mode</label>
+            <select id="c-vent-mode">
+              <option value="VCV">VCV (Volume)</option>
+              <option value="PCV">PCV (Pressure)</option>
+              <option value="PSV">PSV (Support)</option>
+              <option value="CPAP">CPAP</option>
+            </select>
+            <span></span><span></span>
+            <label for="c-rr">RR</label><span class="unit-input"><input id="c-rr" type="number" min="0" max="60" step="1"><span>/min</span></span>
+            <label for="c-tv" id="c-tv-label">Vt</label><span class="unit-input" id="c-tv-wrap"><input id="c-tv" type="number" min="0" max="1500" step="50"><span>mL</span></span>
+            <label for="c-pinsp" id="c-pinsp-label" hidden>Pinsp</label><span class="unit-input" id="c-pinsp-wrap" hidden><input id="c-pinsp" type="number" min="0" max="40" step="1"><span>cmH₂O</span></span>
+            <label for="c-peep">PEEP</label><span class="unit-input"><input id="c-peep" type="number" min="0" max="20" step="1"><span>cmH₂O</span></span>
+            <label for="c-ie">I:E</label>
+            <select id="c-ie"><option>1:2</option><option>1:1</option><option>1:3</option><option>1:4</option></select>
+          </div>
+          <p class="help">Settings can be changed before starting and are kept when the ventilator stops.</p>
+        </fieldset>
+      </div>
+
+      <div class="tab-panel" data-panel="Medications" role="tabpanel" hidden>
+        <div id="drug-cards"></div>
+        <fieldset class="group card">
+          <legend>Sugammadex</legend>
+          <p class="help">Moderate block 2 mg/kg  •  Deep block 4 mg/kg  •  Immediate reversal 16 mg/kg</p>
+          <div class="inline">
+            <button type="button" class="btn outlined" data-sugammadex="2">2 mg/kg</button>
+            <button type="button" class="btn outlined" data-sugammadex="4">4 mg/kg</button>
+            <button type="button" class="btn outlined" data-sugammadex="16">16 mg/kg</button>
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="tab-panel" data-panel="Events" role="tabpanel" hidden>
+        <fieldset class="group">
+          <legend>Temperature management</legend>
+          <label class="inline">Forced-air warmer
+            <select id="c-bair">
+              <option value="0">Off</option>
+              <option value="32">Low (32°C)</option>
+              <option value="38">Medium (38°C)</option>
+              <option value="43">High (43°C)</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>Fluid administration</legend>
+          <div class="button-grid">
+            <button type="button" class="btn info" data-fluid="crystalloid" data-volume="250">Crystalloid 250 mL</button>
+            <button type="button" class="btn info" data-fluid="crystalloid" data-volume="500">Crystalloid 500 mL</button>
+            <button type="button" class="btn success" data-fluid="albumin" data-volume="250">Albumin 250 mL</button>
+            <button type="button" class="btn primary" data-fluid="blood" data-volume="300">PRBC 300 mL</button>
+          </div>
+          <label class="inline">Maintenance fluid
+            <span class="unit-input"><input id="c-maint" type="number" min="0" max="5000" step="25"><span>mL/hr</span></span>
+          </label>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>Surgical stimulation</legend>
+          <div class="inline">
+            <select id="c-disturbance"><option value="">Off</option></select>
+            <button type="button" class="btn toggle t-warning" id="c-disturb" aria-pressed="false" disabled>Start stimulation</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>Airway complications</legend>
+          <div class="grid2">
+            <label for="c-obstruction">Upper airway obstruction</label><span class="unit-input"><input id="c-obstruction" type="number" min="0" max="100" step="5"><span>%</span></span>
+            <label for="c-bronchospasm">Bronchospasm</label><span class="unit-input"><input id="c-bronchospasm" type="number" min="0" max="100" step="5"><span>%</span></span>
+          </div>
+          <p class="dim small" id="c-laryngo">Laryngospasm: none</p>
+          <button type="button" class="btn toggle t-warning full" id="c-auto-laryngo" aria-pressed="true">Automatic laryngospasm on</button>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>Critical events</legend>
+          <div class="inline">
+            <select id="c-hem-rate">
+              <option value="500">Mild (500 mL/min)</option>
+              <option value="1000">Moderate (1000 mL/min)</option>
+              <option value="2000">Severe (2000 mL/min)</option>
+              <option value="4000">Massive (4000 mL/min)</option>
+            </select>
+            <button type="button" class="btn toggle t-danger" id="c-hemorrhage" aria-pressed="false">Start bleeding</button>
+          </div>
+          <label class="inline">Cardiac rhythm <select id="c-rhythm"></select></label>
+          <button type="button" class="btn toggle t-warning full" id="c-anaphylaxis" aria-pressed="false">Start anaphylaxis</button>
+          <button type="button" class="btn toggle t-danger full" id="c-sepsis" aria-pressed="false">Start sepsis</button>
+          <button type="button" class="btn outlined full" id="c-stop-events">Stop all events</button>
+        </fieldset>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<dialog id="dialog">
+  <h2 id="dialog-title"></h2>
+  <p id="dialog-text"></p>
+  <div class="dialog-buttons" id="dialog-buttons"></div>
+</dialog>
+
+</body>
+</html>

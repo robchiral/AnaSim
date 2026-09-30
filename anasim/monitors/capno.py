@@ -35,6 +35,14 @@ class Capnograph:
         self.val_at_change = 0.0
         self.deadspace_fraction = 0.15  # Phase I share of expiration
 
+    def reset(self) -> None:
+        """Discard the waveform history when exhaled gas is unavailable."""
+        self.state.co2 = 0.0
+        self.state.phase = 1
+        self.last_phase = "EXP"
+        self.time_in_phase = 0.0
+        self.val_at_change = 0.0
+
     @staticmethod
     def build_context(resp_state, vent_rr: float, insp_fraction: float, vent_active: bool) -> CapnoContext:
         """Choose breath timing and whether a curare cleft appears."""

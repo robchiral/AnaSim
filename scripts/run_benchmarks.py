@@ -32,13 +32,18 @@ class BenchmarkResult:
         return self.steps / self.seconds
 
 
-def _time_indexed(fn, steps: int, warmup: int) -> float:
+def _time_indexed(fn, steps: int, warmup: int, profiler=None) -> float:
     for i in range(warmup):
         fn(i)
+    if profiler is not None:
+        profiler.enable()
     start = perf_counter()
     for i in range(steps):
         fn(i)
-    return perf_counter() - start
+    elapsed = perf_counter() - start
+    if profiler is not None:
+        profiler.disable()
+    return elapsed
 
 
 def _print_profile(name: str, profiler, limit: int) -> None:
@@ -244,12 +249,9 @@ def _parse_bench_list(value: str, available: list[str]) -> list[str]:
 
     if unknown:
         raise ValueError(f"Unknown benchmark(s): {', '.join(unknown)}")
+    if not selected:
+        raise ValueError("No benchmarks selected")
     return selected
-
-
-# -----------------------------------------------------------------------------
-# Main
-# -----------------------------------------------------------------------------
 
 
 def main() -> int:
@@ -271,6 +273,8 @@ def main() -> int:
     parser.add_argument("--profile-limit", type=int, default=30)
     parser.add_argument("--profile-out", default=None)
     args = parser.parse_args()
+    if args.steps < 1 or args.repeat < 1:
+        parser.error("--steps and --repeat must be at least 1")
 
     try:
         selected = _parse_bench_list(args.bench, benchmarks)
@@ -287,13 +291,11 @@ def main() -> int:
             if args.profile:
                 import cProfile
                 profiler = cProfile.Profile()
-                profiler.enable()
             step = build_step(name)
-            elapsed = _time_indexed(step, args.steps, args.warmup)
+            elapsed = _time_indexed(step, args.steps, args.warmup, profiler)
             result = BenchmarkResult(name, elapsed, args.steps)
             results.append(result)
             if profiler is not None:
-                profiler.disable()
                 if args.profile_out:
                     profile_path = _resolve_profile_path(args.profile_out, name, multi_profile)
                     if profile_path:

@@ -98,6 +98,8 @@ class DemoDirector(QObject):
         "MASK_VENTILATE": "start_bag_mask_ventilation",
         "GIVE_NMB": "give_rocuronium",
         "INTUBATE": "intubate",
+        "CONFIRM_ETT": "start_ventilator",
+        "MAINTENANCE": "reduce_fresh_gas",
     }
 
     def __init__(self, window, recorder, max_duration: float):
@@ -234,10 +236,17 @@ class DemoDirector(QObject):
     def intubate(self):
         self.show_control(self.controls.rb_ett)
         self.controls.rb_ett.click()
+
+    def start_ventilator(self):
+        self.show_control(self.controls.btn_vent_power)
         self.controls.sb_rr.setValue(12)
         self.controls.sb_tv.setValue(500)
         self.controls.sb_peep.setValue(5)
         self.controls.btn_vent_power.click()
+
+    def reduce_fresh_gas(self):
+        self.show_control(self.controls.sb_o2)
+        self.controls.sb_o2.setValue(2.0)
 
     def finish(self, reason, failed=False):
         print(f"Stopping capture: {reason}")

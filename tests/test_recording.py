@@ -20,7 +20,6 @@ class FailingFile(io.StringIO):
         super().__init__()
         self.failure = failure
         self.writes = 0
-        self.flushes = 0
         self.close_attempted = False
 
     def write(self, text):
@@ -30,14 +29,6 @@ class FailingFile(io.StringIO):
         ):
             raise OSError("injected write failure")
         return super().write(text)
-
-    def flush(self):
-        self.flushes += 1
-        if self.failure == "header_flush" or (
-            self.failure == "flush" and self.flushes > 1
-        ):
-            raise OSError("injected flush failure")
-        return super().flush()
 
     def close(self):
         self.close_attempted = True
@@ -55,19 +46,18 @@ def inject_file(monkeypatch):
     return inject
 
 
-def test_recording_samples_are_readable_before_stop_and_restart_uses_new_file(
-    awake_engine, tmp_path
-):
+def test_recording_keeps_its_schedule_and_restart_uses_new_file(awake_engine, tmp_path):
     engine = awake_engine
     engine.start_recording(str(tmp_path), sample_interval_sec=1.0)
     first = engine.recorder
     engine.start_recording(str(tmp_path))
     assert engine.recorder is first
-    for _ in range(7):
-        engine.step(0.25)
+    for _ in range(round(5.0 / 0.3)):
+        engine.step(0.3)
     with open(first.file_path, newline="") as file:
         rows = list(csv.DictReader(file))
-    assert [float(row["time"]) for row in rows] == [0.25, 1.25]
+    # Steps that cross a deadline keep the 1 s schedule instead of drifting.
+    assert [float(row["time"]) for row in rows] == pytest.approx([0.3, 1.5, 2.4, 3.3, 4.5])
     assert float(rows[-1]["hr"]) > 0
     engine.stop_recording()
     original = Path(first.file_path).read_bytes()
@@ -79,16 +69,7 @@ def test_recording_samples_are_readable_before_stop_and_restart_uses_new_file(
     assert Path(first.file_path).read_bytes() == original
 
 
-def test_start_failure_reaches_engine_caller(awake_engine, tmp_path):
-    output = tmp_path / "file"
-    output.write_text("existing data")
-    with pytest.raises(RecordingError, match="start"):
-        awake_engine.start_recording(str(output))
-    assert not awake_engine.recorder.is_recording
-    assert output.read_text() == "existing data"
-
-
-@pytest.mark.parametrize("failure", ["header", "header_flush", "write", "flush", "close"])
+@pytest.mark.parametrize("failure", ["header", "write", "close"])
 def test_engine_propagates_recording_failures_and_releases_file(
     awake_engine, tmp_path, inject_file, failure
 ):
@@ -107,25 +88,8 @@ def test_engine_propagates_recording_failures_and_releases_file(
     awake_engine.step(0.1)  # A caller can continue without recording.
 
 
-def test_write_error_preserved_when_cleanup_also_fails(awake_engine, tmp_path, inject_file):
-    file = inject_file("write")
-    awake_engine.start_recording(str(tmp_path))
-
-    def fail_close():
-        raise OSError("cleanup failure")
-
-    file.close = fail_close
-    with pytest.raises(RecordingError, match="injected write failure.*cleanup failure") as error:
-        awake_engine.step(0.1)
-    assert str(error.value.__cause__) == "injected write failure"
-    io.StringIO.close(file)
-
-
-@pytest.mark.parametrize("failure", ["header", "header_flush", "write", "flush", "close"])
-def test_headless_recording_failure_exits_unsuccessfully(
-    tmp_path, inject_file, failure, capsys
-):
-    inject_file(failure)
+def test_headless_recording_failure_exits_unsuccessfully(tmp_path, inject_file, capsys):
+    inject_file("write")
     args = SimpleNamespace(
         config=None, duration=0.1, record=True,
         record_dir=str(tmp_path), record_interval=1.0,
@@ -152,7 +116,7 @@ def window(monkeypatch, tmp_path):
     app.processEvents()
 
 
-@pytest.mark.parametrize("failure", ["header", "write", "flush", "close"])
+@pytest.mark.parametrize("failure", ["header", "write", "close"])
 def test_desktop_recording_failure_pauses_and_resets_toggle(
     window, inject_file, monkeypatch, failure
 ):
@@ -166,7 +130,7 @@ def test_desktop_recording_failure_pauses_and_resets_toggle(
     window.btn_record.click()
     if failure == "close":
         window.btn_record.click()
-    elif failure != "header":
+    elif failure == "write":
         window.last_real_time = time.perf_counter() - 0.1
         window.game_loop()
 

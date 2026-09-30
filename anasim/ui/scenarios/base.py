@@ -36,7 +36,6 @@ MONITOR_DISPLAY_FIELD = {
 
 @dataclass
 class ScenarioStep:
-    """A single step definition in a scenario sequence."""
     id: str
     title: str
     instruction: str
@@ -46,7 +45,6 @@ class ScenarioStep:
 
 @dataclass
 class Scenario:
-    """A complete scenario definition containing metadata and ordered steps."""
     id: str
     name: str
     icon: str
@@ -125,7 +123,6 @@ def require_preoxygenation_flow() -> Callable:
 
 
 def require_propofol_cp(threshold: float = 2.0) -> Callable:
-    """Check propofol plasma concentration."""
     def check(engine) -> Tuple[bool, str]:
         met = engine.state.propofol_cp > threshold
         return met, "" if met else f"Propofol Cp: {engine.state.propofol_cp:.1f}/{threshold}+ µg/mL"
@@ -172,10 +169,10 @@ def infusion_running(engine, *drug_keys: str) -> bool:
 
 
 def require_stable_baseline_vitals(
-    hr_min: float = 60.0,
-    hr_max: float = 100.0,
-    map_min: float = 60.0,
-    spo2_min: float = 94.0,
+    hr_min: float,
+    hr_max: float,
+    map_min: float,
+    spo2_min: float,
     fail_message: str = "Wait for stable baseline vitals",
 ) -> Callable:
     """Check that monitor-facing baseline vitals are in a reasonable range."""
@@ -315,7 +312,6 @@ def require_crisis_resolved_with_map(
 
 
 def require_bis_below(threshold: float) -> Callable:
-    """Check BIS below threshold."""
     def check(engine) -> Tuple[bool, str]:
         bis = monitor_value(engine, "bis")
         met = bis < threshold
@@ -333,7 +329,6 @@ def require_bag_mask_started() -> Callable:
 
 
 def require_rocuronium_cp(threshold: float = 0.5) -> Callable:
-    """Check rocuronium plasma concentration."""
     def check(engine) -> Tuple[bool, str]:
         met = engine.state.roc_cp > threshold
         return met, "" if met else f"Rocuronium Cp: {engine.state.roc_cp:.2f}/{threshold}+ µg/mL"
@@ -341,7 +336,6 @@ def require_rocuronium_cp(threshold: float = 0.5) -> Callable:
 
 
 def require_tof_below(threshold: float = 25) -> Callable:
-    """Check TOF below threshold."""
     def check(engine) -> Tuple[bool, str]:
         met = engine.state.tof <= threshold
         return met, "" if met else f"TOF: {engine.state.tof:.0f}%/≤{threshold:.0f}%"
@@ -349,11 +343,17 @@ def require_tof_below(threshold: float = 25) -> Callable:
 
 
 def require_etco2_above(threshold: float = 20) -> Callable:
-    """Check EtCO2 above threshold."""
     def check(engine) -> Tuple[bool, str]:
         etco2 = monitor_value(engine, "etco2")
         met = etco2 > threshold
         return met, "" if met else f"EtCO₂: {etco2:.0f}/>{threshold:.0f} mmHg"
+    return check
+
+
+def require_ventilator_running() -> Callable:
+    def check(engine) -> Tuple[bool, str]:
+        met = engine.vent.is_on
+        return met, "" if met else "Start the ventilator"
     return check
 
 
@@ -397,7 +397,6 @@ def require_oxygen_supply_action(connected: bool, fail_message: str) -> Callable
 
 
 def require_all(*checks) -> Callable:
-    """Combine multiple requirement checks (all must pass)."""
     def combined(engine) -> Tuple[bool, str]:
         all_msgs = []
         all_met = True
@@ -413,22 +412,19 @@ def require_all(*checks) -> Callable:
     return combined
 
 
-def create_observe_baseline_step(
-    crisis_name: str,
-    hr_range: str = "60-80 bpm"
-) -> ScenarioStep:
-    """Create a standard baseline observation step."""
+def create_observe_baseline_step(crisis_name: str) -> ScenarioStep:
+    hr_min, hr_max, map_min, spo2_min = 60, 100, 60, 94
     return ScenarioStep(
         id="OBSERVE_BASELINE",
         title="Observe baseline",
         instruction=(
             f"Before the {crisis_name} begins, note the patient's baseline vitals:<br>"
-            f"• Heart rate: {hr_range}<br>"
-            "• MAP: > 65 mmHg<br>"
-            "• SpO₂: > 94%<br><br>"
+            f"• Heart rate: {hr_min}-{hr_max} bpm<br>"
+            f"• MAP: > {map_min} mmHg<br>"
+            f"• SpO₂: > {spo2_min}%<br><br>"
             "<i>Recognition of abnormal values requires knowing normal baseline.</i>"
         ),
-        check_requirements=require_stable_baseline_vitals(),
+        check_requirements=require_stable_baseline_vitals(hr_min, hr_max, map_min, spo2_min),
     )
 
 
@@ -438,7 +434,6 @@ def create_reassess_step(
     controlled_text: str,
     extra_text: str,
 ) -> ScenarioStep:
-    """Create a standard reassessment step."""
     return ScenarioStep(
         id="REASSESS",
         title="Reassess hemodynamics",

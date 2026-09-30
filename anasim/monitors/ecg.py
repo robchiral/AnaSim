@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 from anasim.core.enums import RhythmType
@@ -7,7 +9,7 @@ from .cardiac_cycle import CardiacCycleSample
 _ECG_TEMPLATE_RESOLUTION = 500
 
 
-def _build_ecg_template(mode: str, resolution: int = _ECG_TEMPLATE_RESOLUTION) -> np.ndarray:
+def _build_ecg_template(mode: str, resolution: int = _ECG_TEMPLATE_RESOLUTION) -> tuple[float, ...]:
     """One beat as a sum of Gaussian waves (center phase, amplitude, width).
 
     The R wave sits at phase 0.5.
@@ -52,7 +54,7 @@ def _build_ecg_template(mode: str, resolution: int = _ECG_TEMPLATE_RESOLUTION) -
     for center, amplitude, width in waves:
         gaussian = amplitude * np.exp(-0.5 * ((phase_arr - center) / width) ** 2)
         template += gaussian
-    return template
+    return tuple(template.tolist())
 
 
 _ECG_TEMPLATES = {
@@ -77,15 +79,15 @@ class ECGMonitor:
         """Return the next ECG voltage (mV)."""
         rhythm_type = cycle.rhythm_type
         if rhythm_type == RhythmType.ASYSTOLE:
-            return float(self.rng.uniform(-0.01, 0.01))
+            return self.rng.random() * 0.02 - 0.01
 
         if rhythm_type == RhythmType.VFIB:
             # Non-harmonic sines give a chaotic trace.
             self.vfib_phase += dt
-            val = 0.2 * np.sin(self.vfib_phase * 20) + \
-                  0.15 * np.sin(self.vfib_phase * 35) + \
-                  0.1 * np.sin(self.vfib_phase * 12)
-            val += float(self.rng.uniform(-0.05, 0.05))
+            val = 0.2 * math.sin(self.vfib_phase * 20) + \
+                  0.15 * math.sin(self.vfib_phase * 35) + \
+                  0.1 * math.sin(self.vfib_phase * 12)
+            val += self.rng.random() * 0.10 - 0.05
             return val
 
         # Beat phase 0 is depolarization; the template R wave is at 0.5.
@@ -96,9 +98,9 @@ class ECGMonitor:
 
         if rhythm_type == RhythmType.AFIB:
             # Coarse fibrillatory waves.
-            val += 0.02 * np.sin(cycle.phase * 50)
-            val += float(self.rng.uniform(-0.02, 0.02))
+            val += 0.02 * math.sin(cycle.phase * 50)
+            val += self.rng.random() * 0.04 - 0.02
         else:
-            val += float(self.rng.uniform(-0.015, 0.015))
+            val += self.rng.random() * 0.03 - 0.015
 
         return val

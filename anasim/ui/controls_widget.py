@@ -141,10 +141,6 @@ class ControlPanelWidget(QWidget):
             self._sync_csht()
             self._next_csht_update = now + 5.0
 
-        laryngospasm_level = sum(
-            self.engine.laryngospasm_severity >= threshold
-            for threshold in (0.05, 0.3, 0.6)
-        )
         sync_state = (
             self.engine.circuit.vaporizer_setting,
             self.engine.circuit.fgf_o2,
@@ -164,7 +160,7 @@ class ControlPanelWidget(QWidget):
             self.engine.disturbance_active,
             self.engine.airway_obstruction_manual,
             self.engine.bronchospasm_manual,
-            laryngospasm_level,
+            self.engine.laryngospasm_level,
             self.engine.auto_laryngospasm_enabled,
             self.engine.state.airway_mode,
         )
@@ -237,16 +233,18 @@ class ControlPanelWidget(QWidget):
                     w["csht_label"].hide()
 
     def _sync_ventilator(self):
-        """Sync ventilator settings."""
         is_on = self.engine.vent.is_on
         self._silent_update(self.btn_vent_power, "setChecked", is_on)
+        self.btn_vent_power.setText("Stop ventilator" if is_on else "Start ventilator")
         settings = self.engine.vent.settings
         mode_index = self.cb_vent_mode.findData(settings.mode)
         self._silent_update(self.cb_vent_mode, "setCurrentIndex", mode_index)
-        self._silent_update(self.sb_rr, "setValue", int(settings.rr))
-        self._silent_update(self.sb_tv, "setValue", int(settings.tv))
-        self._silent_update(self.sb_peep, "setValue", int(settings.peep))
-        self._silent_update(self.sb_pinsp, "setValue", int(settings.p_insp))
+        self._silent_update(self.sb_rr, "setValue", round(settings.rr))
+        self._silent_update(self.sb_tv, "setValue", round(settings.tv))
+        self._silent_update(self.sb_peep, "setValue", round(settings.peep))
+        self._silent_update(self.sb_pinsp, "setValue", round(settings.p_insp))
+        self._silent_update(self.cb_ie, "setCurrentText", settings.ie)
+        self._apply_vent_mode_controls(settings.mode)
         self._silent_update(
             self.btn_bag_mask, "setChecked", self.engine.bag_mask_active
         )
@@ -256,20 +254,6 @@ class ControlPanelWidget(QWidget):
             else "Start bag-mask ventilation"
         )
 
-        if is_on:
-            self.btn_vent_power.setText("Stop ventilator")
-            self.sb_rr.setEnabled(True)
-            self.sb_tv.setEnabled(True)
-            self.sb_peep.setEnabled(True)
-            self.cb_ie.setEnabled(True)
-        else:
-            self.btn_vent_power.setText("Start ventilator")
-            self.sb_rr.setEnabled(False)
-            self.sb_tv.setEnabled(False)
-            self.sb_peep.setEnabled(False)
-            self.cb_ie.setEnabled(False)
-        self._apply_vent_mode_controls(settings.mode)
-
     def _sync_fluids(self):
         """Sync continuous fluid rate."""
         self._silent_update(
@@ -277,7 +261,6 @@ class ControlPanelWidget(QWidget):
         )
 
     def _sync_disturbances(self):
-        """Sync programmed disturbance states."""
         profile = self.engine.disturbance_profile
         idx = next(
             (
@@ -308,16 +291,7 @@ class ControlPanelWidget(QWidget):
             self.engine.bronchospasm_manual * 100.0,
         )
 
-        laryng = self.engine.laryngospasm_severity
-        if laryng < 0.05:
-            level = "none"
-        elif laryng < 0.3:
-            level = "mild"
-        elif laryng < 0.6:
-            level = "moderate"
-        else:
-            level = "severe"
-        self.lbl_laryngo_status.setText(f"Laryngospasm: {level}")
+        self.lbl_laryngo_status.setText(f"Laryngospasm: {self.engine.laryngospasm_level}")
 
         auto_on = self.engine.auto_laryngospasm_enabled
         self._silent_update(self.btn_auto_laryngo, "setChecked", auto_on)
@@ -584,13 +558,6 @@ class ControlPanelWidget(QWidget):
 
         layout.addStretch()
 
-        self.sb_rr.setEnabled(False)
-        self.sb_tv.setEnabled(False)
-        self.sb_peep.setEnabled(False)
-        self.cb_ie.setEnabled(False)
-        self.cb_vent_mode.setEnabled(False)
-        self.sb_pinsp.setEnabled(False)
-
     def _create_segment_button(self, text, color=COLORS["primary"], compact=False):
         """Create an exclusive, checkable state button."""
         button = QPushButton(text)
@@ -777,76 +744,32 @@ class ControlPanelWidget(QWidget):
         main_l.addWidget(scroll)
 
     def toggle_vent_power(self, checked):
-        if checked:
-            self.btn_vent_power.setText("Stop ventilator")
-            # Bag-mask and the ventilator are mutually exclusive.
-            if self.btn_bag_mask.isChecked():
-                self.btn_bag_mask.setChecked(False)
-            self.sb_rr.setEnabled(True)
-            self.sb_peep.setEnabled(True)
-            self.cb_ie.setEnabled(True)
-            self.cb_vent_mode.setEnabled(True)
-            self.on_vent_mode_changed(self.cb_vent_mode.currentIndex())
-            self.update_vent()
-        else:
-            self.btn_vent_power.setText("Start ventilator")
-            self.sb_rr.setEnabled(False)
-            self.sb_tv.setEnabled(False)
-            self.sb_peep.setEnabled(False)
-            self.cb_ie.setEnabled(False)
-            self.cb_vent_mode.setEnabled(False)
-            self.sb_pinsp.setEnabled(False)
-            mode = self.cb_vent_mode.currentData()
-            self.engine.set_vent_settings(0, 0, 0.0, "1:2", mode=mode, p_insp=0.0)
+        self.btn_vent_power.setText("Stop ventilator" if checked else "Start ventilator")
+        # Bag-mask and the ventilator are mutually exclusive.
+        if checked and self.btn_bag_mask.isChecked():
+            self.btn_bag_mask.setChecked(False)
+        self.engine.set_vent_power(checked)
 
     def on_vent_mode_changed(self, index):
-        """Handle ventilator mode switch."""
         self._apply_vent_mode_controls(self.cb_vent_mode.itemData(index))
-
-        if self.btn_vent_power.isChecked():
-            self.btn_vent_power.setText("Stop ventilator")
-            self.update_vent()
+        self.update_vent()
 
     def _apply_vent_mode_controls(self, mode):
-        """Show and enable only the settings relevant to a ventilator mode."""
-        is_vcv = mode == "VCV"
-        is_pcv = mode == "PCV"
-        is_psv = mode == "PSV"
-        is_cpap = mode == "CPAP"
-
-        if is_vcv:
-            self.lbl_tv.show()
-            self.sb_tv.show()
-            self.lbl_pinsp.hide()
-            self.sb_pinsp.hide()
-            if self.btn_vent_power.isChecked():
-                self.sb_tv.setEnabled(True)
-                self.sb_pinsp.setEnabled(False)
-        else:
-            self.lbl_tv.hide()
-            self.sb_tv.hide()
-            self.lbl_pinsp.show()
-            self.sb_pinsp.show()
-            if self.btn_vent_power.isChecked():
-                self.sb_tv.setEnabled(False)
-                self.sb_pinsp.setEnabled(is_pcv or is_psv)
-                if is_cpap:
-                    self.sb_pinsp.setValue(0)
-                    self.sb_pinsp.setEnabled(False)
+        """Show only the settings a ventilator mode uses."""
+        self.lbl_tv.setVisible(mode == "VCV")
+        self.sb_tv.setVisible(mode == "VCV")
+        self.lbl_pinsp.setVisible(mode in ("PCV", "PSV"))
+        self.sb_pinsp.setVisible(mode in ("PCV", "PSV"))
 
     def update_vent(self):
-        if self.btn_vent_power.isChecked():
-            mode = self.cb_vent_mode.currentData()
-            p_insp = self.sb_pinsp.value() if mode in ("PCV", "PSV") else 0.0
-
-            self.engine.set_vent_settings(
-                self.sb_rr.value(),
-                self.sb_tv.value() / 1000.0,
-                self.sb_peep.value(),
-                self.cb_ie.currentText(),
-                mode=mode,
-                p_insp=p_insp,
-            )
+        self.engine.set_vent_settings(
+            self.sb_rr.value(),
+            self.sb_tv.value() / 1000.0,
+            self.sb_peep.value(),
+            self.cb_ie.currentText(),
+            mode=self.cb_vent_mode.currentData(),
+            p_insp=self.sb_pinsp.value(),
+        )
 
     def toggle_bag_mask(self, checked):
         """Toggle manual bag-mask ventilation (separate from mechanical vent)."""
@@ -1145,7 +1068,6 @@ class ControlPanelWidget(QWidget):
         self.engine.set_bronchospasm(value / 100.0)
 
     def update_auto_laryngospasm(self, checked):
-        """Toggle auto-triggered laryngospasm."""
         self.btn_auto_laryngo.setText(
             "Automatic laryngospasm on" if checked else "Automatic laryngospasm off"
         )
@@ -1158,5 +1080,4 @@ class ControlPanelWidget(QWidget):
         self.engine.stop_events()
 
     def change_bair_hugger(self, index):
-        """Handle Bair Hugger setting change."""
         self.engine.set_bair_hugger(self.combo_bair.itemData(index))

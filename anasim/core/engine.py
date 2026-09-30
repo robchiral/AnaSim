@@ -317,7 +317,7 @@ class SimulationEngine(DrugControllerMixin):
         self.resp = RespiratoryModel(self.patient)
         self.resp_mech = RespiratoryMechanics()
         self._base_airway_resistance = self.resp_mech.resistance
-        self.set_vent_settings(rr=0.0, vt=0.0, peep=0.0, ie="1:2", mode="VCV")
+        self.set_vent_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_insp=15.0)
         self.resp.baseline_co_l_min = self.hemo.base_co_l_min
 
         self.bis = BISModel(self.patient, model_name=self.config.bis_model)
@@ -567,6 +567,18 @@ class SimulationEngine(DrugControllerMixin):
     def set_auto_laryngospasm(self, enabled: bool):
         self.auto_laryngospasm_enabled = bool(enabled)
 
+    @property
+    def laryngospasm_level(self) -> str:
+        """Laryngospasm severity as shown to the learner."""
+        severity = self.laryngospasm_severity
+        if severity < 0.05:
+            return "none"
+        if severity < 0.3:
+            return "mild"
+        if severity < 0.6:
+            return "moderate"
+        return "severe"
+
     def set_rhythm(self, rhythm_name: str):
         normalized = str(rhythm_name).upper()
         rhythm = next(
@@ -631,9 +643,13 @@ class SimulationEngine(DrugControllerMixin):
             return self.pk_remi.simulate_decay(target_fraction=0.5, max_seconds=1200)
         return 0.0
 
+    def set_vent_power(self, on: bool):
+        """Start or stop the ventilator; its settings persist while it is off."""
+        self.vent.is_on = bool(on)
+
     def set_vent_settings(self, rr: float, vt: float, peep: float, ie: str,
                           mode: str, p_insp: float = None, fio2: float = None):
-        """Set the ventilator.
+        """Set the ventilator without starting or stopping it.
 
         Args:
             rr: Rate (breaths/min).
@@ -641,28 +657,15 @@ class SimulationEngine(DrugControllerMixin):
             peep: PEEP (cmH2O).
             ie: I:E ratio such as "1:2".
             mode: "VCV", "PCV", "PSV", or "CPAP".
-            p_insp: Inspiratory pressure above PEEP (cmH2O).
+            p_insp: Inspiratory pressure above PEEP (cmH2O), kept but unused in
+                VCV and CPAP.
             fio2: Target FiO2; rebalances O2 and air flows.
         """
         mode_upper = mode.upper()
-        p_insp_effective = p_insp if p_insp is not None else self.vent.settings.p_insp
-        if rr <= 0 and vt <= 0 and (p_insp_effective is None or p_insp_effective <= 0) and peep <= 0:
-            self.vent.is_on = False
-        elif mode_upper == "VCV":
-            self.vent.is_on = rr > 0 and vt > 0
-        elif mode_upper == "PCV":
-            self.vent.is_on = rr > 0 and p_insp_effective > 0
-        elif mode_upper in ("PSV", "CPAP"):
-            has_support = p_insp_effective > 0 if mode_upper == "PSV" else False
-            has_peep = peep > 0
-            has_backup = rr > 0
-            self.vent.is_on = has_support or has_peep or has_backup
-        else:
+        if mode_upper not in ("VCV", "PCV", "PSV", "CPAP"):
             raise ValueError(f"Unsupported ventilator mode '{mode}'")
-
-        if mode_upper == "CPAP":
-            p_insp = 0.0
-        self.resp_mech.set_settings(rr, vt, peep, ie, mode=mode, p_insp=p_insp)
+        mech_p_insp = 0.0 if mode_upper == "CPAP" else p_insp
+        self.resp_mech.set_settings(rr, vt, peep, ie, mode=mode, p_insp=mech_p_insp)
         self.vent.update_settings(rr=rr, tv=vt*1000, peep=peep, ie=ie,
                                   mode=mode, p_insp=p_insp, fio2=fio2)
 

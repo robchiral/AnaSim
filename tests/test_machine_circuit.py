@@ -53,6 +53,7 @@ def test_engine_volatile_washin_washout(engine_factory):
     engine = engine_factory(config=config, start=True)
     engine.set_airway_mode("ETT")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    engine.set_vent_power(True)
     engine.set_fgf(8.0, 0.0)
 
     engine.set_vaporizer("Sevoflurane", 2.0)
@@ -81,6 +82,7 @@ def test_engine_n2o_washin_washout(engine_factory):
     engine = engine_factory(config=config, start=True)
     engine.set_airway_mode("ETT")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    engine.set_vent_power(True)
     engine.set_fgf(2.0, 0.0, n2o_l_min=4.0)
 
     for _ in range(300):  # 5 min wash-in

@@ -79,7 +79,7 @@ def initialize_engine_state(engine: "SimulationEngine") -> None:
 def _initialize_awake(engine: "SimulationEngine") -> None:
     engine.state.airway_mode = AirwayType.NONE
     engine.resp.state.apnea = False
-    engine.set_vent_settings(rr=0.0, vt=0.0, peep=0.0, ie="1:2", mode="VCV")
+    engine.set_vent_power(False)
     engine.set_vaporizer(engine.active_agent, 0.0)
 
 
@@ -158,6 +158,7 @@ def _configure_controlled_ventilation(engine: "SimulationEngine", targets: Start
     vent_vt = target_mv / baseline_rr if baseline_rr > 0 else baseline_vt_l
     vent_vt = clamp(vent_vt, 0.25, 0.8)
     engine.set_vent_settings(rr=baseline_rr, vt=vent_vt, peep=5.0, ie="1:2", mode="VCV")
+    engine.set_vent_power(True)
 
 
 def _seed_steady_state_subsystems(

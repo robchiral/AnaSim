@@ -28,7 +28,13 @@ norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine, and
 milrinone. Ventilation modes include VCV, PCV, PSV, CPAP, and bag-mask
 ventilation.
 
-## Install and start
+## Run in the browser
+
+Open [robche.com/AnaSim](https://robche.com/AnaSim/). The simulator runs on
+your device through [Pyodide](https://pyodide.org). The first visit downloads
+about 23 MB, which the browser then caches.
+
+## Install and run locally
 
 AnaSim requires Python 3.10 or later. Install it in a virtual environment:
 
@@ -129,6 +135,9 @@ python -m pip install -e ".[dev]"
 ruff check .
 QT_QPA_PLATFORM=offscreen python -m pytest -q
 ```
+
+Build and serve the browser app at http://localhost:8000 with
+`python scripts/build_web.py --serve`.
 
 Regenerate the animated demo with `python scripts/capture_demo.py`.
 

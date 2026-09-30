@@ -39,9 +39,8 @@ def _require_warm_shock_recognition() -> callable:
 
 
 def create_sepsis_response() -> Scenario:
-    """Create septic shock response scenario."""
     steps = [
-        create_observe_baseline_step("sepsis", hr_range="60-90 bpm"),
+        create_observe_baseline_step("sepsis"),
         ScenarioStep(
             id="START_SEPSIS",
             title="Sepsis begins",

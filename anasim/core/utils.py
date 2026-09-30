@@ -8,14 +8,12 @@ from anasim.core.constants import (
 
 
 def clamp(value: float, low: float, high: float) -> float:
-    """Clamp value to [low, high]."""
     if low > high:
         low, high = high, low
     return max(low, min(high, value))
 
 
 def clamp01(value: float) -> float:
-    """Clamp value to [0, 1]."""
     return max(0.0, min(1.0, value))
 
 

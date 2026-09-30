@@ -1,4 +1,5 @@
 import csv
+import math
 import os
 import time
 from dataclasses import fields
@@ -25,7 +26,7 @@ class DataRecorder:
         self.writer = None
         self.is_recording = False
         self.sample_interval_sec = max(0.0, sample_interval_sec)
-        self._last_sample_time = None
+        self._next_sample_time = None
 
     def start(self):
         if self.is_recording:
@@ -36,7 +37,7 @@ class DataRecorder:
             self.writer = csv.writer(self.file)
             self.writer.writerow(STATE_FIELD_NAMES)
             self.file.flush()
-            self._last_sample_time = None
+            self._next_sample_time = None
             self.is_recording = True
         except (OSError, csv.Error, ValueError) as error:
             self._fail("start", error)
@@ -53,8 +54,9 @@ class DataRecorder:
         if not self.is_recording or not self.writer:
             return
 
-        if (self.sample_interval_sec > 0.0 and self._last_sample_time is not None
-                and state.time - self._last_sample_time < self.sample_interval_sec):
+        tolerance = 1e-9 * max(1.0, abs(state.time))
+        if (self.sample_interval_sec > 0.0 and self._next_sample_time is not None
+                and state.time + tolerance < self._next_sample_time):
             return
 
         values = (getattr(state, name) for name in STATE_FIELD_NAMES)
@@ -66,7 +68,13 @@ class DataRecorder:
             self.file.flush()
         except (OSError, ValueError) as error:
             self._fail("flush", error)
-        self._last_sample_time = state.time
+        if self._next_sample_time is None or self.sample_interval_sec == 0.0:
+            self._next_sample_time = state.time + self.sample_interval_sec
+        else:
+            # Keep the original schedule when a step crosses a sample deadline.
+            # Skip missed deadlines rather than inventing historical state rows.
+            intervals = math.floor((state.time + tolerance - self._next_sample_time) / self.sample_interval_sec) + 1
+            self._next_sample_time += intervals * self.sample_interval_sec
 
     def stop(self):
         file = self.file

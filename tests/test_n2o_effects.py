@@ -15,6 +15,7 @@ def test_n2o_washin_raises_probability_of_unconsciousness(engine_factory, advanc
     engine = engine_factory(config=SimulationConfig(mode="awake", dt=0.5), start=True)
     engine.set_airway_mode("Mask")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    engine.set_vent_power(True)
 
     engine.set_fgf(2.0, 0.0, n2o_l_min=0.0)
     advance_time(engine, 60.0, dt=0.5)

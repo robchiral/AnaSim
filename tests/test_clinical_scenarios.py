@@ -1,9 +1,4 @@
-"""Reference-backed, integrated clinical acceptance tests.
-
-These tests cross subsystem boundaries. Unit tests own equations and component
-details; this file owns one representative adult path for each clinical
-workflow. Comments identify the source used for each acceptance bound.
-"""
+"""One integrated adult path per clinical workflow; comments cite each bound's source."""
 
 from anasim.core.state import SimulationConfig
 from anasim.ui.scenarios.oxygen_supply import create_oxygen_supply_failure

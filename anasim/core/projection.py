@@ -155,13 +155,13 @@ def _current_respiratory_support(engine: "SimulationEngine") -> dict[str, Any]:
     bag_mask_active = engine.bag_mask_active and connected and not vent_active
 
     if vent_active:
-        assisted_rr = engine.resp_mech.set_rr
-        assisted_vt_l = engine.resp_mech.set_vt
+        assisted_rr = engine.resp_mech.state.rr
+        assisted_vt_l = engine.resp_mech.state.delivered_vt / 1000.0
         peep = engine.resp_mech.get_total_peep()
         mean_paw = max(engine.current_mean_paw, peep)
     elif bag_mask_active:
-        assisted_rr = engine.bag_mask_rr
-        assisted_vt_l = engine.bag_mask_vt
+        assisted_rr = engine.resp_mech.state.rr
+        assisted_vt_l = engine.resp_mech.state.delivered_vt / 1000.0
         peep = 0.0
         mean_paw = 0.0
     else:
@@ -223,7 +223,7 @@ def build_snapshot_from_models(engine: "SimulationEngine", hemo_state: Any, resp
 
     if support["assisted_active"]:
         effective_rr = max(assisted_rr, spontaneous_rr)
-        effective_vt_l = max(assisted_vt_l * engine._airway_patency, spontaneous_vt_l)
+        effective_vt_l = max(assisted_vt_l * engine._airway_patency * engine._ventilation_efficiency, spontaneous_vt_l)
         rr_display = effective_rr
         mv_display_l_min = effective_rr * effective_vt_l
     else:

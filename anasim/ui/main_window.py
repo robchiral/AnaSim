@@ -56,7 +56,6 @@ class MainWindow(QMainWindow):
         self.last_real_time = 0.0
 
     def init_simulation(self):
-        """Initialize the simulation engine with configured parameters."""
         if self.engine is not None:
             self.toggle_recording(False)
         p = self.sim_params
@@ -210,6 +209,11 @@ class MainWindow(QMainWindow):
         self.lbl_status.setStyleSheet(get_status_label_style(color))
 
     def _set_run_state(self, state):
+        self.btn_start.setEnabled(state != "ended")
+        if state == "ended":
+            self.btn_start.setText("Session ended")
+            self._set_status("Ended", COLORS['text_dim'])
+            return
         if state == "running":
             self.btn_start.setText("Pause simulation")
             self.btn_start.setStyleSheet(
@@ -236,6 +240,8 @@ class MainWindow(QMainWindow):
         self._set_status("Ready", COLORS['text_dim'])
 
     def toggle_simulation(self):
+        if self.engine.state.cardiac_arrest:
+            return
         if self.engine.running:
             self.engine.stop()
             self._set_run_state("paused")
@@ -247,7 +253,6 @@ class MainWindow(QMainWindow):
             self.timer.start()
             self.last_real_time = time.perf_counter()
         self.time_accumulator = 0.0
-        self.arrest_dialog_shown = False
 
     def toggle_recording(self, checked: bool):
         try:
@@ -301,7 +306,7 @@ class MainWindow(QMainWindow):
         max_steps = max(100, math.ceil(0.2 * self.sb_speed.maximum() / sim_step))
         steps_taken = 0
 
-        while self.time_accumulator >= sim_step:
+        while self.time_accumulator >= sim_step and not self.engine.state.cardiac_arrest:
             try:
                 self.engine.step(sim_step)
             except RecordingError as error:
@@ -335,14 +340,9 @@ class MainWindow(QMainWindow):
     def handle_cardiac_arrest(self, reason: str):
         """Stop the session at a confirmed cardiac arrest."""
         self.arrest_dialog_shown = True
-
-        was_running = self.engine.running
         self.engine.stop()
-
-        if was_running:
-            self.timer.stop()
-            self.btn_start.setChecked(False)
-            self._set_run_state("ready")
+        self.timer.stop()
+        self._set_run_state("ended")
 
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Critical)

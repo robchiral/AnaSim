@@ -19,12 +19,11 @@ from .base import (
     require_rocuronium_cp,
     require_tof_below,
     require_vaporizer_started,
+    require_ventilator_running,
 )
 
 
 def create_induction_balanced() -> Scenario:
-    """Create balanced anesthesia induction scenario."""
-
     steps = [
         ScenarioStep(
             id="APPLY_MASK",
@@ -127,10 +126,15 @@ def create_induction_balanced() -> Scenario:
             id="CONFIRM_ETT",
             title="Confirm ETT placement",
             instruction=(
+                "Start the ventilator (<b>VCV, RR 12, Vt 500 mL, PEEP 5</b>).<br>"
                 "Verify: <b>EtCO₂ waveform present</b> (gold standard), bilateral breath sounds.<br><br>"
                 "<i>No EtCO₂ = tube not in trachea until proven otherwise.</i>"
             ),
-            check_requirements=require_etco2_above(20),
+            check_requirements=require_all(
+                require_ventilator_running(),
+                require_etco2_above(20),
+            ),
+            target_tab="Machine",
         ),
         ScenarioStep(
             id="MAINTENANCE",
@@ -159,8 +163,6 @@ def create_induction_balanced() -> Scenario:
 
 
 def create_induction_tiva() -> Scenario:
-    """Create TIVA induction scenario."""
-
     steps = [
         ScenarioStep(
             id="APPLY_MASK",
@@ -279,10 +281,15 @@ def create_induction_tiva() -> Scenario:
             id="CONFIRM_ETT",
             title="Confirm ETT placement",
             instruction=(
+                "Start the ventilator (<b>VCV, RR 12, Vt 500 mL, PEEP 5</b>).<br>"
                 "Verify: <b>EtCO₂ waveform present</b> (gold standard), bilateral breath sounds.<br><br>"
                 "<i>No EtCO₂ = tube not in trachea until proven otherwise.</i>"
             ),
-            check_requirements=require_etco2_above(20),
+            check_requirements=require_all(
+                require_ventilator_running(),
+                require_etco2_above(20),
+            ),
+            target_tab="Machine",
         ),
         ScenarioStep(
             id="MAINTENANCE",
@@ -295,6 +302,7 @@ def create_induction_tiva() -> Scenario:
             check_requirements=require_all(
                 require_infusion_running("propofol", "Propofol infusion not running"),
                 require_infusion_running("remi", "Remifentanil infusion not running"),
+                require_fgf_reduced(2.0),
             ),
             target_tab="Medications",
         ),

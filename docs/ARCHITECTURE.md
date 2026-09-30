@@ -120,6 +120,21 @@ These values come from the previous step:
 - `alveolar_co2`, `pa_co2`, and `etco2` are separate. Low cardiac output widens
   the PaCO2-EtCO2 gap.
 
+### Ventilation mechanics
+
+- The lung is a single resistance-compliance compartment.
+  VCV delivers constant flow. Pressure modes and passive expiration use the
+  exact exponential solution, and steps split at breath boundaries.
+- Trapped volume counts toward auto-PEEP once. Mean airway pressure is
+  time-weighted.
+- Gas exchange uses the last completed exhaled VT, including zero-volume
+  breaths, so it lags one breath. Displayed VT is the raw exhaled volume;
+  MV includes modeled airway losses.
+- PSV and CPAP have no patient triggering or flow cycling, and VCV has no
+  pressure limit.
+- `set_vent_power` starts and stops the ventilator. Its settings persist while
+  it is off, and `set_vent_settings` changes them without starting it.
+
 ### Monitors
 
 - ECG, arterial pressure, and pleth share one beat clock. Arterial ejection
@@ -153,9 +168,8 @@ These values come from the previous step:
 - Hemodynamic scaling changes V1 with blood volume and clearances with cardiac
   output. Changing V1 rescales central concentration by old V1 / new V1 to
   preserve drug amount. Peripheral volumes and concentrations and the effect
-  site stay unchanged. This is an effective-volume adaptation; it does not
-  explicitly track drug carried out in shed blood. Epinephrine clearance does
-  not scale with cardiac output.
+  site stay unchanged. Drug lost in shed blood is not tracked separately.
+  Epinephrine clearance does not scale with cardiac output.
 - Every 10 s the TCI controller predicts the zero-input course of the target
   compartment over ten minutes and picks the largest rate that keeps it at or
   below target (Shafer and Gregg 1992). From zero this is the bolus whose
@@ -165,7 +179,6 @@ These values come from the previous step:
   boluses.
 - Setting a manual rate disables that drug's TCI controller. Changing the target
   compartment replaces the controller and seeds it from live PK concentrations.
-  A replaced or disabled controller cannot retain a partial sampling interval.
 
 ### Temperature and stimulation
 
@@ -175,11 +188,21 @@ These values come from the previous step:
   laryngoscopy on the Bouillon propofol-remifentanil-MAC surface, so opioids
   blunt the hemodynamic and BIS response.
 
+## Browser app
+
+`web/` is a static page. A module worker loads Pyodide, numpy, and scipy from
+the Pyodide CDN, unpacks a zip of the `anasim` package, and runs a
+[`WebSession`](../anasim/web.py). Every 50 ms it calls `advance()` with the
+elapsed wall time, which steps the engine as the desktop loop does and returns
+JSON: monitor values, new waveform samples, control state, and the current
+objective. Page controls call `command()`. `scripts/build_web.py` builds the
+site into `build/web`, and `.github/workflows/pages.yml` publishes it.
+
 ## Scenario objectives
 
 `engine.actions` records controls and event transitions with their simulation
-times. The scenario overlay calls `begin_step()` when an objective becomes
-active.
+times. The scenario overlay and `WebSession` call `begin_step()` when an
+objective becomes active.
 
 | Kind | Example | Check reads |
 |------|---------|-------------|

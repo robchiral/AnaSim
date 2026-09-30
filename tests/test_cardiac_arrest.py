@@ -46,7 +46,7 @@ def test_transient_pulselessness_resets(arrest_engine):
     assert not arrest_engine.state.cardiac_arrest
 
 
-def test_ventricular_fibrillation_reports_rhythm(engine_factory):
+def test_ventricular_fibrillation_reports_rhythm_and_removes_pulses(engine_factory):
     engine = engine_factory(
         config=SimulationConfig(end_on_cardiac_arrest=True, dt=0.1), start=True
     )
@@ -55,3 +55,7 @@ def test_ventricular_fibrillation_reports_rhythm(engine_factory):
         engine.step(0.1)
     assert engine.state.cardiac_arrest
     assert engine.state.arrest_reason == RhythmType.VFIB.value
+    # Without organized beats the monitor shows no pulse, arterial pressure, or pleth.
+    assert engine.state.display_hr == 0.0
+    assert engine.state.art_sbp == engine.state.art_dbp == engine.state.art_map == 0.0
+    assert engine.state.pleth_voltage == pytest.approx(0.0)

@@ -38,8 +38,6 @@ def _require_shock_recognition() -> callable:
 
 
 def create_hemorrhage_response() -> Scenario:
-    """Create hemorrhage response scenario."""
-
     steps = [
         create_observe_baseline_step("hemorrhage"),
         ScenarioStep(

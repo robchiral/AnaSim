@@ -1,5 +1,6 @@
+import pytest
+
 from anasim.core.constants import SHIVER_MAX_MULTIPLIER
-from anasim.patient.patient import Patient
 from anasim.physiology.respiration import RespiratoryModel
 
 
@@ -35,15 +36,30 @@ def test_opioid_slows_rate_and_propofol_reduces_depth(patient):
     assert propofol.rr / baseline.rr >= propofol_vt - 0.1
 
 
-def test_anemia_does_not_lower_pao2():
-    patient = Patient(age=40, weight=70, height=170, sex="Male", baseline_hb=13.5)
-    pao2 = []
-    for hb in (13.5, 6.0):
-        model = RespiratoryModel(patient)
-        for _ in range(30):
-            state = model.step(1.0, ce_prop=0, ce_remi=0, ce_roc=0, hb_g_dl=hb)
-        pao2.append(state.p_arterial_o2)
-    assert abs(pao2[1] - pao2[0]) < 2.0
+def _ventilated(patient, seconds, **inputs):
+    model = RespiratoryModel(patient)
+    for _ in range(round(seconds / 0.1)):
+        state = model.step(
+            0.1, ce_prop=0.0, ce_remi=0.0, mech_vent_mv=6.0, mech_rr=12.0, mech_vt_l=0.5,
+            peep=5.0, mean_paw=8.0, **inputs,
+        )
+    return state
+
+
+def test_anemia_and_low_cardiac_output_do_not_lower_pao2(patient):
+    """They reduce O2 content and delivery, not arterial O2 tension."""
+    reference = _ventilated(patient, 60.0)
+    for inputs in ({"hb_g_dl": 6.0}, {"cardiac_output": 0.1}):
+        state = _ventilated(patient, 60.0, **inputs)
+        assert state.p_arterial_o2 == pytest.approx(reference.p_arterial_o2, abs=2.0)
+        assert state.sao2 == pytest.approx(reference.sao2, abs=0.5)
+
+
+def test_low_cardiac_output_widens_the_paco2_etco2_gap(patient):
+    normal = _ventilated(patient, 30.0, fio2=0.5)
+    low_flow = _ventilated(patient, 30.0, fio2=0.5, cardiac_output=0.5)
+    assert low_flow.etco2 < normal.etco2
+    assert low_flow.pa_co2 - low_flow.etco2 > normal.pa_co2 - normal.etco2 + 3.0
 
 
 def test_co2_drives_breathing_and_opioids_blunt_it(patient):

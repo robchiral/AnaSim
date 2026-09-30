@@ -20,7 +20,6 @@ CARDIAC_MONITOR_MAX_STEP_S = 0.01
 
 
 def phase_from_rr(engine: "SimulationEngine", rr: float) -> str:
-    """Calculate respiratory phase from respiratory rate."""
     if rr <= 0:
         return "EXP"
     cycle_time = 60.0 / rr
@@ -49,7 +48,6 @@ def seed_nibp_reading(engine: "SimulationEngine") -> None:
 
 
 def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
-    """Update NIBP state and trigger cycles when appropriate."""
     state = engine.state
     if state.time >= engine._next_nibp_time and not engine.nibp.is_cycling:
         engine.nibp.trigger()
@@ -79,20 +77,26 @@ def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
         )
 
 
-def compute_capno_value(engine: "SimulationEngine", dt: float, phase: str, resp_state) -> float:
-    """Compute capnography waveform value for the current step."""
+def _capno_sampling_possible(engine: "SimulationEngine") -> bool:
     state = engine.state
-    if state.airway_mode == AirwayType.NONE:
-        return 0.0
-    if engine._airway_patency < 0.05 or state.rr == 0:
-        engine.capno.state.co2 = 0.0
+    return (
+        state.airway_mode != AirwayType.NONE
+        and engine._airway_patency >= 0.05
+        and state.rr > 0.0
+        and state.va > 0.0
+    )
+
+
+def compute_capno_value(engine: "SimulationEngine", dt: float, phase: str, resp_state) -> float:
+    if not _capno_sampling_possible(engine):
+        engine.capno.reset()
         return 0.0
 
     resp_mech = engine.resp_mech
     vent_active = engine._vent_active
     bag_mask_active = engine.bag_mask_active and not vent_active
     if vent_active:
-        vent_rr, insp_fraction = resp_mech.set_rr, resp_mech.insp_time_fraction
+        vent_rr, insp_fraction = resp_mech.state.rr, resp_mech.insp_time_fraction
     elif bag_mask_active:
         vent_rr, insp_fraction = engine.bag_mask_rr, 1.0 / 3.0
     else:
@@ -110,12 +114,11 @@ def compute_capno_value(engine: "SimulationEngine", dt: float, phase: str, resp_
     curare_cleft = context.curare_active
 
     if vent_active and resp_mech.mode in (VentMode.PSV, VentMode.CPAP):
-        # Support modes follow the patient's own breathing pattern.
-        is_spontaneous = True
+        # Mechanics follows patient effort or PSV apnea backup. Its active
+        # clock, rather than the configured backup rate, owns these breaths.
+        is_spontaneous = not resp_state.apnea
         curare_cleft = False
-        capno_phase = phase_from_rr(engine, resp_state.rr)
-        if resp_state.rr > 0:
-            exp_duration = (60.0 / resp_state.rr) * 0.65
+        exp_duration = 60.0 / max(vent_rr, 0.1) * (1.0 - insp_fraction)
     elif vent_active or bag_mask_active:
         if context.spontaneous_weight >= 0.6:
             capno_phase = phase_from_rr(engine, context.effective_rr)
@@ -140,18 +143,20 @@ def compute_capno_value(engine: "SimulationEngine", dt: float, phase: str, resp_
 def update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, capno_value: float) -> tuple[float, bool]:
     """Hold breath-derived EtCO2 and invalidate it when exhaled gas is absent."""
     state = engine.state
-    sampling_possible = (
-        state.airway_mode != AirwayType.NONE
-        and engine._airway_patency >= 0.05
-        and state.rr > 0.0
-    )
+    sampling_possible = _capno_sampling_possible(engine)
+    if not sampling_possible:
+        engine._capno_numeric_peak = 0.0
+        engine._capno_numeric_age_s = 0.0
+        engine._capno_has_sample = False
+        engine._capno_last_phase = phase
+        return 0.0, False
     engine._capno_numeric_age_s += dt
 
-    if sampling_possible and phase == "EXP":
+    if phase == "EXP":
         engine._capno_numeric_peak = max(engine._capno_numeric_peak, capno_value)
 
     completed_breath = engine._capno_last_phase == "EXP" and phase == "INSP"
-    if sampling_possible and completed_breath and engine._capno_numeric_peak > 1.0:
+    if completed_breath and engine._capno_numeric_peak > 1.0:
         display_value = engine._capno_numeric_peak
         engine._capno_numeric_age_s = 0.0
         engine._capno_numeric_peak = 0.0
@@ -161,8 +166,7 @@ def update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, capn
 
     engine._capno_last_phase = phase
     valid = (
-        sampling_possible
-        and engine._capno_has_sample
+        engine._capno_has_sample
         and engine._capno_numeric_age_s <= engine._capno_numeric_timeout_s
     )
     return (float(display_value) if valid else 0.0), valid

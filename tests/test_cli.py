@@ -28,11 +28,3 @@ def test_config_builder_rejects_invalid_documents(tmp_path, capsys):
     with pytest.raises(SystemExit, match="1"):
         run_headless(args)
     assert "Error loading config: dist_profile" in capsys.readouterr().out
-
-
-def test_config_builder_preserves_null_hematocrit_derivation():
-    patient, config = build_models_from_config({"baseline_hb": 8.0, "baseline_hct": None})
-
-    assert patient.baseline_hb == pytest.approx(8.0)
-    assert patient.baseline_hct == pytest.approx(0.24)
-    assert not hasattr(config, "baseline_hct")

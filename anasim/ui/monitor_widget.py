@@ -358,7 +358,6 @@ class PatientMonitorWidget(QWidget):
 
     def update_patient_info(self, name="Simulated patient", age=40, gender="M", weight=70,
                             renal_status=None, hepatic_status=None):
-        """Update the patient information label."""
         info = [name, f"{age:.0f} y", str(gender).capitalize(), f"{weight:.1f} kg"]
         if renal_status and str(renal_status).lower() != "normal":
             info.append(f"Renal: {renal_status}")

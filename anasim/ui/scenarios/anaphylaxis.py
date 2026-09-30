@@ -27,7 +27,6 @@ def _require_epinephrine_started() -> callable:
 
 
 def create_anaphylaxis_scenario() -> Scenario:
-    """Create a guided scenario for managing intraoperative anaphylaxis."""
     steps = [
         ScenarioStep(
             id="RECOGNIZE",

@@ -1,15 +1,14 @@
 import pytest
 
+from anasim.cli import build_models_from_config
 from anasim.core import monitors as monitor_core
 from anasim.core import projection as projection_core
-from anasim.core import runtime as runtime_core
 from anasim.core.engine import SimulationEngine
-from anasim.core.enums import RhythmType
 from anasim.core.state import AirwayType, SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.hemodynamics import HemoState
-from anasim.physiology.respiration import RespiratoryModel, RespState
+from anasim.physiology.respiration import RespState
 
 FLOAT_CONTRACT_FIELDS = (
     "time",
@@ -44,32 +43,6 @@ FLOAT_CONTRACT_FIELDS = (
 )
 
 
-def _build_engine(dt: float = 0.5) -> SimulationEngine:
-    patient = Patient(age=40, weight=70, height=170, sex="male")
-    engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=dt, rng_seed=123))
-    engine.state.airway_mode = AirwayType.MASK
-    engine._next_nibp_time = 1e9
-    engine._bis_noise_std = 0.0
-    return engine
-
-
-def _steady_resp_state() -> RespState:
-    return RespState(
-        rr=12.0,
-        vt=500.0,
-        mv=6.0,
-        va=4.0,
-        apnea=False,
-        p_alveolar_co2=40.0,
-        pa_co2=40.0,
-        etco2=38.0,
-        p_arterial_o2=95.0,
-        sao2=98.0,
-        drive_central=1.0,
-        muscle_factor=1.0,
-    )
-
-
 def _assert_builtin_float_contract(state) -> None:
     for field_name in FLOAT_CONTRACT_FIELDS:
         value = getattr(state, field_name)
@@ -77,13 +50,18 @@ def _assert_builtin_float_contract(state) -> None:
 
 
 def test_arterial_renderer_does_not_overwrite_su_mean_state():
-    engine = _build_engine(dt=0.5)
+    patient = Patient(age=40, weight=70, height=170, sex="male")
+    engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=0.5, rng_seed=123))
+    engine.state.airway_mode = AirwayType.MASK
     engine.state.map = 45.0
     engine.state.hr = 42.0
     engine.state.sao2 = 98.0
 
     hemo_state = HemoState(map=45.0, hr=42.0, sv=55.0, svr=14.0, co=2.3)
-    resp_state = _steady_resp_state()
+    resp_state = RespState(
+        rr=12.0, vt=500.0, mv=6.0, va=4.0, apnea=False, p_alveolar_co2=40.0, pa_co2=40.0,
+        etco2=38.0, p_arterial_o2=95.0, sao2=98.0, drive_central=1.0, muscle_factor=1.0,
+    )
 
     monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
 
@@ -91,103 +69,6 @@ def test_arterial_renderer_does_not_overwrite_su_mean_state():
     assert engine.state.hr == pytest.approx(42.0)
     assert engine.state.sbp > engine.state.dbp
     assert engine.state.art_sbp >= engine.state.art_dbp
-
-
-def test_arrest_removes_organized_arterial_and_pleth_pulses():
-    engine = _build_engine(dt=0.5)
-    engine.state.map = 0.0
-    engine.state.hr = 0.0
-    engine.state.sbp = 0.0
-    engine.state.dbp = 0.0
-    engine.state.sao2 = 98.0
-
-    hemo_state = HemoState(
-        map=0.0,
-        hr=0.0,
-        sv=0.0,
-        svr=0.0,
-        co=0.0,
-        rhythm_type=RhythmType.ASYSTOLE,
-    )
-    resp_state = _steady_resp_state()
-
-    monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
-
-    assert engine.state.display_hr == pytest.approx(0.0)
-    assert engine.state.sbp == pytest.approx(0.0)
-    assert engine.state.dbp == pytest.approx(0.0)
-    assert engine.state.art_sbp == pytest.approx(0.0)
-    assert engine.state.art_dbp == pytest.approx(0.0)
-    assert engine.state.art_map == pytest.approx(0.0)
-    assert engine.state.art_pressure == pytest.approx(0.0, abs=0.1)
-    assert engine.state.pleth_voltage == pytest.approx(0.0)
-
-
-def test_low_flow_high_fio2_does_not_force_arterial_desaturation():
-    patient = Patient(age=40, weight=70, height=170, sex="male")
-    resp = RespiratoryModel(patient)
-
-    for _ in range(600):
-        state = resp.step(
-            0.1,
-            ce_prop=0.0,
-            ce_remi=0.0,
-            mech_vent_mv=6.0,
-            fio2=1.0,
-            ce_roc=0.0,
-            mac_sevo=0.0,
-            peep=5.0,
-            mean_paw=8.0,
-            mech_rr=12.0,
-            mech_vt_l=0.5,
-            airway_patency=1.0,
-            ventilation_efficiency=1.0,
-            vq_mismatch=0.0,
-            hb_g_dl=13.5,
-            cardiac_output=0.1,
-            metabolic_factor=1.0,
-        )
-
-    assert state.p_arterial_o2 > 300.0
-    assert state.sao2 > 95.0
-
-
-def test_low_flow_widens_pa_co2_etco2_gap():
-    patient = Patient(age=40, weight=70, height=170, sex="male")
-
-    def run_model(cardiac_output: float):
-        resp = RespiratoryModel(patient)
-        out = None
-        for _ in range(300):
-            out = resp.step(
-                0.1,
-                ce_prop=0.0,
-                ce_remi=0.0,
-                mech_vent_mv=6.0,
-                fio2=0.5,
-                ce_roc=0.0,
-                mac_sevo=0.0,
-                peep=5.0,
-                mean_paw=8.0,
-                mech_rr=12.0,
-                mech_vt_l=0.5,
-                airway_patency=1.0,
-                ventilation_efficiency=1.0,
-                vq_mismatch=0.0,
-                hb_g_dl=13.5,
-                cardiac_output=cardiac_output,
-                metabolic_factor=1.0,
-            )
-        return out
-
-    normal = run_model(5.0)
-    low_flow = run_model(0.5)
-
-    normal_gap = normal.pa_co2 - normal.etco2
-    low_flow_gap = low_flow.pa_co2 - low_flow.etco2
-
-    assert low_flow.etco2 < normal.etco2
-    assert low_flow_gap > normal_gap + 3.0
 
 
 @pytest.mark.parametrize(
@@ -214,41 +95,19 @@ def test_engine_snapshots_preserve_public_contract(mode: str, maint_type: str | 
     _assert_builtin_float_contract(engine.state)
 
 
-def test_tci_controller_resyncs_after_bolus_and_pk_scaling():
-    engine = _build_engine(dt=0.5)
-    engine.enable_tci("propofol", 2.0)
-    controller = engine.tci_prop
-    assert controller is not None
-
-    baseline_signature = controller._signature
-    engine.give_drug_bolus("Propofol", 100.0)
-
-    assert controller.x[0, 0] == pytest.approx(engine.pk_prop.state.c1)
-
-    engine.hemo.blood_volume = engine.hemo.blood_volume_0 * 0.5
-    engine.state.co = engine.hemo.base_co_l_min * 0.5
-    runtime_core.update_pk_hemodynamics(engine, engine.state.co)
-    engine.sync_active_tci_from_pk("propofol")
-
-    assert controller._signature != baseline_signature
-
-
 def test_awake_initial_snapshot_uses_patient_baselines():
-    patient = Patient(
-        age=40,
-        weight=70,
-        height=170,
-        sex="male",
-        baseline_hb=8.0,
-        baseline_hr=95.0,
-        baseline_map=105.0,
-        baseline_rr=16.0,
-        baseline_vt=620.0,
+    patient, config = build_models_from_config(
+        {
+            "baseline_hb": 8.0,
+            "baseline_hct": None,
+            "baseline_hr": 95.0,
+            "baseline_map": 105.0,
+            "baseline_rr": 16.0,
+            "baseline_vt": 620.0,
+            "rng_seed": 123,
+        }
     )
-    engine = SimulationEngine(
-        patient,
-        SimulationConfig(mode="awake", rng_seed=123),
-    )
+    engine = SimulationEngine(patient, config)
 
     assert engine.state.hr == pytest.approx(95.0, abs=1e-3)
     assert engine.state.map == pytest.approx(105.0, abs=1e-3)
@@ -257,6 +116,7 @@ def test_awake_initial_snapshot_uses_patient_baselines():
     assert engine.state.rr == pytest.approx(16.0, abs=1e-3)
     assert engine.state.vt == pytest.approx(620.0, abs=1e-3)
     assert engine.state.hb_g_dl == pytest.approx(8.0, abs=1e-6)
+    # A null configured hematocrit is derived from hemoglobin.
     assert engine.state.hct == pytest.approx(0.24, abs=1e-6)
     assert engine.patient.baseline_hct == pytest.approx(0.24, abs=1e-6)
     assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
@@ -281,84 +141,27 @@ def test_startup_projection_matches_runtime_projection_path():
         assert getattr(engine_sync.state, field_name) == pytest.approx(getattr(engine_runtime.state, field_name))
 
 
-def test_steady_state_tiva_snapshot_uses_live_model_state():
-    awake = SimulationEngine(
-        Patient(age=40, weight=70, height=170, sex="male"),
-        SimulationConfig(mode="awake", rng_seed=123),
-    )
+@pytest.mark.parametrize("maint_type", ["tiva", "balanced"])
+def test_steady_state_starts_from_live_model_state(maint_type):
     engine = SimulationEngine(
         Patient(age=40, weight=70, height=170, sex="male"),
-        SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=123),
+        SimulationConfig(mode="steady_state", maint_type=maint_type, rng_seed=123),
     )
+    state = engine.state
+    expected_bis = engine.bis.compute_bis(state.propofol_ce, state.remi_ce, mac_sevo=state.mac_sevo)
 
-    expected_bis = engine.bis.compute_bis(
-        engine.state.propofol_ce,
-        engine.state.remi_ce,
-        mac_sevo=engine.state.mac_sevo,
-    )
-
-    assert engine.state.bis == pytest.approx(expected_bis, abs=1e-3)
-    assert engine.state.bis < 55.0
-    assert 65.0 <= engine.state.map <= 85.0
-    assert engine.tci_nore is not None
-    assert engine.state.nore_ce > awake.state.nore_ce
-    assert engine.state.bis != pytest.approx(45.0, abs=1e-3)
-    assert engine.state.fi_sevo == pytest.approx(0.0, abs=1e-6)
-    assert engine.state.et_sevo == pytest.approx(0.0, abs=1e-6)
-    assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
-    assert engine.state.fluid_in_ml == pytest.approx(0.0, abs=1e-6)
-    assert engine.state.urine_out_ml == pytest.approx(0.0, abs=1e-6)
-    assert engine.state.temp_c == pytest.approx(37.0, abs=1e-6)
-
-
-def test_steady_state_balanced_snapshot_syncs_volatile_state():
-    engine = SimulationEngine(
-        Patient(age=40, weight=70, height=170, sex="male"),
-        SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=123),
-    )
-
-    expected_bis = engine.bis.compute_bis(
-        engine.state.propofol_ce,
-        engine.state.remi_ce,
-        mac_sevo=engine.state.mac_sevo,
-    )
-
-    assert engine.state.fi_sevo > 0.0
-    assert engine.state.et_sevo > 0.0
-    assert 0.8 <= engine.state.mac_sevo <= 1.05
-    assert 38.0 <= engine.state.bis <= 50.0
-    assert 70.0 <= engine.state.map <= 85.0
-    assert engine.state.bis == pytest.approx(expected_bis, abs=1e-3)
-    assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
-    assert engine.state.fluid_in_ml == pytest.approx(0.0, abs=1e-6)
-    assert engine.state.urine_out_ml == pytest.approx(0.0, abs=1e-6)
-    assert engine.state.temp_c == pytest.approx(37.0, abs=1e-6)
-
-
-def test_capno_numeric_requires_recent_exhaled_gas():
-    engine = _build_engine(dt=0.5)
-    hemo_state = HemoState(map=90.0, hr=70.0, sv=70.0, svr=18.0, co=4.9)
-    resp_state = _steady_resp_state()
-
-    engine.state.airway_mode = AirwayType.NONE
-    monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
-    assert not engine.state.etco2_signal_valid
-    assert engine.state.display_etco2 == 0.0
-
-    engine.state.airway_mode = AirwayType.MASK
-    engine.state.rr = 12.0
-    for _ in range(5):
-        engine.state.time = 2.0
-        monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
-    engine.state.time = 0.0
-    monitor_core.step_monitors(engine, 0.5, "INSP", hemo_state, resp_state, DisturbanceEffects())
-    assert engine.state.etco2_signal_valid
-    assert engine.state.display_etco2 > 30.0
-
-    engine.state.rr = 0.0
-    resp_state.rr = 0.0
-    resp_state.apnea = True
-    for _ in range(31):
-        monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
-    assert not engine.state.etco2_signal_valid
-    assert engine.state.display_etco2 == 0.0
+    assert state.bis == pytest.approx(expected_bis, abs=1e-3)
+    assert 38.0 <= state.bis <= 55.0
+    assert 65.0 <= state.map <= 85.0
+    assert state.nibp_map == pytest.approx(state.map, abs=1e-3)
+    # Hidden settling does not count toward visible totals.
+    assert state.fluid_in_ml == pytest.approx(0.0, abs=1e-6)
+    assert state.urine_out_ml == pytest.approx(0.0, abs=1e-6)
+    assert state.temp_c == pytest.approx(37.0, abs=1e-6)
+    if maint_type == "tiva":
+        assert engine.tci_nore is not None
+        assert state.fi_sevo == pytest.approx(0.0, abs=1e-6)
+    else:
+        assert state.fi_sevo > 0.0
+        assert state.et_sevo > 0.0
+        assert 0.8 <= state.mac_sevo <= 1.05

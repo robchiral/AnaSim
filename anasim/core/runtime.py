@@ -76,7 +76,6 @@ def redistribution_target_j(engine: "SimulationEngine", depth_index: float) -> f
 
 
 def step_simulation(engine: "SimulationEngine", dt: float) -> None:
-    """Advance the simulation by one step."""
     state = engine.state
     engine._depth_index, engine._metabolic_factor = compute_depth_metabolic_context(
         engine,
@@ -500,34 +499,20 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     effort_mmhg = engine._last_patient_effort_cmH2O * paw_to_mmhg * effort_transmission
     pit_estimate -= effort_mmhg
 
-    mech_rr = mech_rr_for_resp if vent_active else 0.0
-    delivered_vt_raw_l = engine.resp_mech.set_vt if vent_active else 0.0
-    delivered_vt_display_l = 0.0
-    if vent_active:
-        delivered_vt_display_l = mech_state.delivered_vt / 1000.0 if mech_state.delivered_vt > 0 else delivered_vt_raw_l
-        if engine.resp_mech.mode != VentMode.VCV and mech_state.delivered_vt > 0:
-            delivered_vt_raw_l = delivered_vt_display_l
-    mech_vent_mv = mech_rr * delivered_vt_raw_l if vent_active else 0.0
-
-    bag_mask_mv = 0.0
-    assisted_rr_for_resp = mech_rr
-    assisted_vt_for_resp = delivered_vt_raw_l
-    assisted_vt_effective = delivered_vt_display_l * engine._airway_patency
-    if bag_mask_active:
-        bag_mask_mv = engine.bag_mask_rr * engine.bag_mask_vt
-        assisted_rr_for_resp = engine.bag_mask_rr
-        assisted_vt_for_resp = engine.bag_mask_vt
-        assisted_vt_effective = engine.bag_mask_vt * engine._airway_patency
-
-    total_assisted_mv = mech_vent_mv + bag_mask_mv
+    assisted_rr = mech_rr_for_resp if assisted_active else 0.0
+    # Use completed exhaled breaths, including a valid zero-volume breath.
+    # The first measurement becomes available after one complete cycle.
+    assisted_vt_l = mech_state.delivered_vt / 1000.0 if assisted_active else 0.0
+    total_assisted_mv = assisted_rr * assisted_vt_l
+    assisted_vt_effective = assisted_vt_l * engine._airway_patency * engine._ventilation_efficiency
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
     kwargs = engine.get_resp_step_kwargs(
         total_assisted_mv=total_assisted_mv,
         peep=total_peep_effect,
         mean_paw=engine.current_mean_paw,
-        mech_rr=assisted_rr_for_resp,
-        mech_vt_l=assisted_vt_for_resp,
+        mech_rr=assisted_rr,
+        mech_vt_l=assisted_vt_l,
         cardiac_output=state.co,
     )
     resp_state = engine.resp.step(dt, **kwargs)
@@ -535,18 +520,15 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     spont_rr = resp_state.rr
     spont_vt_l = resp_state.vt / 1000.0
     if assisted_active:
-        eff_rr = max(assisted_rr_for_resp, spont_rr)
+        eff_rr = max(assisted_rr, spont_rr)
         eff_vt = max(assisted_vt_effective, spont_vt_l)
         total_patient_mv = eff_rr * eff_vt
     else:
         total_patient_mv = spont_rr * spont_vt_l
 
-    assisted_rr = engine.bag_mask_rr if bag_mask_active else mech_rr
     phase = mech_state.phase
     if not assisted_active:
         phase = phase_from_rr(engine, spont_rr)
-    elif bag_mask_active and not vent_active:
-        phase = phase_from_rr(engine, engine.bag_mask_rr)
 
     rr_display = max(assisted_rr, spont_rr) if assisted_active else spont_rr
 
@@ -572,15 +554,9 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
         sao2=resp_state.sao2,
     )
 
-    engine.vent.step(dt, mech_state, rr_total=mech_rr)
+    engine.vent.step(dt, mech_state, rr_total=assisted_rr)
 
-    vt_display_ml = resp_state.vt
-    if assisted_active and mech_state.delivered_vt > 0:
-        vt_display_ml = mech_state.delivered_vt
-    elif vent_active:
-        vt_display_ml = engine.resp_mech.set_vt * 1000.0
-    elif bag_mask_active:
-        vt_display_ml = engine.bag_mask_vt * 1000.0
+    vt_display_ml = mech_state.delivered_vt if assisted_active else resp_state.vt
 
     paw_display = mech_state.paw
     flow_display = mech_state.flow

@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import json
 import sys
 import time
@@ -37,7 +38,6 @@ def build_models_from_config(config_data: dict) -> tuple[Patient, SimulationConf
 
 
 def run_headless(args):
-    """Run without the UI."""
     print(f"Starting headless simulation for {args.duration:g} seconds")
 
     try:
@@ -58,6 +58,8 @@ def run_headless(args):
             engine.start()
             for i in range(steps):
                 engine.step(sim_config.dt)
+                if engine.state.cardiac_arrest:
+                    break
                 if i % 100 == 0:
                     state = engine.get_latest_state()
                     hr = state.display_hr
@@ -66,22 +68,29 @@ def run_headless(args):
                     )
                     spo2 = state.display_spo2
                     print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_val:.1f} | SpO2: {spo2:.1f}")
-            remainder = args.duration - steps * sim_config.dt
-            if remainder > 1e-12:
-                engine.step(remainder)
-        finally:
+            else:
+                remainder = args.duration - steps * sim_config.dt
+                if remainder > 1e-12:
+                    engine.step(remainder)
+        except BaseException:
+            # Report the original error even if closing the CSV also fails.
             engine.stop()
-            engine.stop_recording()
+            with contextlib.suppress(RecordingError):
+                engine.stop_recording()
+            raise
+        engine.stop()
+        engine.stop_recording()
     except RecordingError as error:
         print(f"Recording failed: {error}", file=sys.stderr)
         raise SystemExit(1) from error
 
     end_real = time.perf_counter()
+    if engine.state.cardiac_arrest:
+        print(f"Stopped at {engine.state.time:.1f}s: cardiac arrest ({engine.state.arrest_reason})")
     print(f"Simulation completed in {end_real - start_real:.2f} seconds of real time")
 
 
 def run_ui() -> int:
-    """Run the desktop UI."""
     from anasim.ui.main_window import run
 
     return run()

@@ -52,6 +52,7 @@ dmypy.json
 .LSOverride
 
 # === Project Specific ===
+node_modules/
 comparisons/
 docs/papers/
 docs/RELEASING.md

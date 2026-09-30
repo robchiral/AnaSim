@@ -2,17 +2,30 @@
 
 ## Unreleased
 
-- Consolidate benchmark workloads and shorten duplicated developer documentation.
-- Make manual infusion rates disable TCI so a stopped infusion stays stopped.
-  Apply target-compartment changes to existing controllers and clear sampling
-  history when controllers are replaced or disabled.
+- Add a browser version, which runs locally through Pyodide.
+- Make ventilator mechanics consistent across step sizes, count trapped-gas
+  pressure once, and base gas exchange on completed exhaled breaths.
+- Show capnography during PSV apnea backup and require a fresh exhalation after
+  reconnection.
+- Setting a manual infusion rate disables TCI, so a stopped infusion stays
+  stopped.
 - Preserve central drug amount when hemodynamic scaling changes PK volume.
-- Reduce arterial-line filtering overhead while retaining the same exact
-  discrete-time equations. Bound its coefficient cache and refresh coefficients
-  when line settings change. Add full-engine performance benchmarks.
-- Report CSV recording failures to API callers and exit headless runs with an
-  error. Pause the desktop simulation and reset the recording button on failure.
-- Flush each recorded sample and close recordings when the desktop window closes.
+- Report CSV recording failures and keep sampling on schedule when steps cross
+  sample deadlines.
+- Apply arterial-line setting changes immediately and reduce waveform overhead.
+- Support Python 3.14 and drop the unused pandas dependency.
+- Fix the desktop ventilator, which could not start from an awake session and
+  restarted with zero settings. Settings can be changed before starting and are
+  kept while it is off. `set_vent_settings` no longer starts or stops the
+  ventilator; use `set_vent_power`.
+- Induction scenarios require starting the ventilator after intubation, TIVA
+  maintenance checks the fresh gas reduction it asks for, and baseline
+  objectives show the ranges they check.
+- End the session at the moment of a confirmed cardiac arrest in the desktop,
+  browser, and headless modes. The desktop can no longer resume it.
+- The browser app downloads the recorded part of a CSV when recording fails and
+  reports commands sent after the simulation stops.
+- `build_web.py` refuses to replace a directory that is not a previous build.
 
 ## 1.2 - 2026-09-24
 

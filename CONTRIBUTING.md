@@ -5,7 +5,14 @@
 Use the setup and validation commands in the [README](README.md#development).
 
 For UI changes, also launch `anasim` and inspect the affected workflow
-interactively.
+interactively. The browser app (`web/`, driven by `anasim/web.py`) repeats the
+desktop controls, so change both. Serve it with
+`python scripts/build_web.py --serve`, and run the tests in Pyodide with:
+
+```bash
+npm install --no-save "pyodide@$(python scripts/build_web.py --pyodide-version)"
+node scripts/pyodide_tests.mjs -q
+```
 
 Measure the complete simulation loop, including monitors and TCI, with:
 
