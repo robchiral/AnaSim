@@ -1,6 +1,6 @@
 // Runs Pyodide and one anasim.web.WebSession off the main thread. Pyodide
 // requires a module worker.
-// In: create, cmd, close.
+// In: create, cmd.
 // Out: ready, load_error, created, create_error, tick, result, error.
 
 const TICK_MS = 50;
@@ -107,8 +107,6 @@ self.onmessage = ({ data }) => {
       lastTick = performance.now();
       timer = setTimeout(tick, TICK_MS);
     }
-  } else if (data.type === "close") {
-    closeSession();
   }
 };
 

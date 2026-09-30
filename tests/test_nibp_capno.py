@@ -30,6 +30,18 @@ def _cuff_cycle(rng, true_map, true_sys, true_dia, rhythm=RhythmType.SINUS):
 
 
 class TestNIBP:
+    @pytest.mark.parametrize("dt", [0.01, 0.1, 0.5, 1.0, 15.0])
+    def test_cuff_cycle_timing_does_not_depend_on_step_size(self, dt):
+        monitor = NIBPMonitor(rng=_FixedRng(0.99))
+        monitor.trigger()
+        time = 0.0
+        while monitor.is_cycling:
+            time += dt
+            pressure = monitor.step(dt, time, 90.0, 120.0, 75.0, RhythmType.SINUS)
+            assert 0.0 <= pressure <= 160.0
+        assert monitor.latest_reading.timestamp == pytest.approx(11.4)
+        assert monitor.latest_reading.map == 90.0
+
     def test_cuff_reads_on_its_interval_and_tracks_map(self, engine_factory):
         engine = engine_factory(
             config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5),

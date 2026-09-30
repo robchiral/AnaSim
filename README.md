@@ -1,152 +1,97 @@
 # AnaSim
 
-AnaSim is an interactive adult anesthesia and physiology simulator for teaching
-and model exploration.
+AnaSim is a real-time adult anesthesia simulator for teaching and model
+exploration. It combines published pharmacokinetic, pharmacodynamic, and
+cardiorespiratory models with a patient monitor and anesthesia machine.
 
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/anasim-simulator.svg)](https://pypi.org/project/anasim-simulator/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/robchiral/AnaSim/blob/main/LICENSE)
 
-![AnaSim guided induction demo](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/anasim_demo.gif)
+![AnaSim running the guided TIVA induction](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/anasim_demo.gif)
 
 > [!WARNING]
-> **Education and research use**
->
-> AnaSim is simulation software only. Do not use its output to guide clinical care.
+> AnaSim is for education and research. Do not use it to guide clinical care.
 
-## What AnaSim models
+## Run AnaSim
 
-AnaSim simulates drug delivery, pharmacokinetics, pharmacodynamics,
-cardiorespiratory physiology, ventilation, fluids, temperature, and common
-perioperative events in real time. The desktop interface uses standard patient
-monitor and anesthesia machine conventions. Headless mode supports scripted
-runs and CSV recording.
+**In the browser:** open [robche.com/AnaSim](https://robche.com/AnaSim/). It
+runs on your device through [Pyodide](https://pyodide.org). The first visit
+downloads about 23 MB.
 
-AnaSim includes propofol, remifentanil, sevoflurane, rocuronium, sugammadex,
-norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine, and
-milrinone. Ventilation modes include VCV, PCV, PSV, CPAP, and bag-mask
-ventilation.
-
-## Run in the browser
-
-Open [robche.com/AnaSim](https://robche.com/AnaSim/). The simulator runs on
-your device through [Pyodide](https://pyodide.org). The first visit downloads
-about 23 MB, which the browser then caches.
-
-## Install and run locally
-
-AnaSim requires Python 3.10 or later. Install it in a virtual environment:
+**Locally** (Python 3.10 or later):
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
 python -m pip install anasim-simulator
 anasim
 ```
 
-On Windows, activate the environment with `.venv\Scripts\activate`.
+`anasim` opens the simulator in your browser and runs it in Python on your
+computer. It works offline. Stop it with Ctrl+C.
 
-The package name is `anasim-simulator`. The command and Python module are both
-named `anasim`.
+To begin, choose **Guided scenario** and **TIVA induction**, then **Start
+simulation**. The clock runs once you press **Start simulation** again below
+the monitor. Each objective has a button that opens the controls it needs.
 
-## First session
+## What's included
 
-Run the guided TIVA induction to become familiar with the interface:
+- **Drugs:** propofol, remifentanil, sevoflurane, rocuronium, sugammadex,
+  norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine, and
+  milrinone, given by infusion, bolus, or effect-site TCI.
+- **Machine:** facemask or tracheal tube, fresh gas flow, vaporizer, bag-mask
+  ventilation, and VCV, PCV, PSV, or CPAP.
+- **Monitor:** ECG, SpO₂, arterial line, NIBP, capnography, BIS, TOF,
+  temperature, fluid balance, and alarms.
+- **Events:** fluids and blood, surgical stimulation, airway obstruction,
+  bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias.
+- **Guided scenarios:** TIVA and inhalational induction and emergence,
+  hemorrhage, anaphylaxis, septic shock, and oxygen supply failure.
 
-1. Launch `anasim`.
-2. Select **Guided scenario** and **Induction (TIVA)**.
-3. Confirm the default patient and select **Start simulation**.
-4. Use **Open machine**, **Open medications**, and **Open events** in the
-   objective panel to open each control area.
-5. Start the clock when you are ready to observe the physiologic response.
+**Record CSV** saves the simulation as a time series. The local version writes
+it to `recordings/` in the directory where you ran `anasim`; the browser
+version downloads it.
 
-## Interface
+## Limits
 
-| Area | Purpose |
-|------|---------|
-| Monitor | Waveforms, displayed vital signs, anesthetic gas, temperature, neuromuscular function, and fluid balance |
-| Machine | Airway connection, fresh gas flow, vaporizer, manual ventilation, and mechanical ventilation |
-| Medications | Manual infusions, effect-site TCI, boluses, vasoactive agents, and reversal |
-| Events and fluids | Fluids, blood products, surgical stimulation, airway events, hemorrhage, anaphylaxis, and sepsis |
+Patients must be adults aged 18 to 70 years, weighing 50 to 100 kg, 150 to
+200 cm tall, with a BMI of 18 to 32 kg/m². These are the ranges of the
+volunteer studies used to build the hemodynamic and norepinephrine models.
 
-Guided scenarios cover TIVA and inhalational induction, emergence, hemorrhage,
-anaphylaxis, septic shock, and oxygen supply failure. Open simulation mode
-provides direct control of the same environment.
-
-## Model scope and limits
-
-AnaSim accepts these patient inputs:
-
-| Input | Supported range |
-|-------|-----------------|
-| Age | 18 to 70 years |
-| Weight | 50 to 100 kg |
-| Height | 150 to 200 cm |
-| BMI (from weight and height) | 18 to 32 kg/m² |
-| Hemoglobin | 6 to 20 g/dL |
-| Hematocrit | 0.18 to 0.60 |
-| Renal function factor | 0.4 to 1.0 |
-| Hepatic function factor | 0.5 to 1.0 |
-
-The body-size limits cover the healthy-adult cohort behind the Su hemodynamic
-and Li norepinephrine models. Renal and hepatic factors are dimensionless model
-inputs.
-
-AnaSim combines published component models with simulator-specific models for
-respiratory drug interaction, neuromuscular block and reversal, vasoactive drug
-response, and arterial pressure display. See
+Respiratory drug effects, neuromuscular block, the baroreflex, and vasoactive
+responses use AnaSim calibrations fitted to published data. The
 [model references](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md)
-for sources.
+list the sources.
 
-Monitor values include measurement lag and artifact, so they can differ from
-the underlying physiology. Acid-base balance, lactate, tissue oxygen debt, and
-full anesthesia machine pneumatics are not modeled.
+Displayed values include monitor lag and artifact. Acid-base balance, lactate,
+tissue oxygen debt, machine pneumatics, and resuscitation are not modeled.
 
 ## Headless use
 
-Run a reproducible ten-second simulation:
-
 ```bash
-anasim --mode headless --duration 10 --config patient.json --record
+anasim --mode headless --duration 60 --record
 ```
 
-Configuration files set patient characteristics, model choices, initial state,
-random seed, and runtime options. See the
-[CLI guide](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md) for
-the available fields.
+This runs 60 simulated seconds without the interface and writes a CSV to
+`recordings/`. Use `--config` to set the patient, models, and starting state
+from a JSON file; the
+[CLI guide](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md)
+lists the fields.
 
 ## Documentation
 
 - [CLI usage](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md)
 - [Model references](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md)
 - [Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md)
-- [Contribution guide](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md)
+- [Contributing](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md)
 - [Changelog](https://github.com/robchiral/AnaSim/blob/main/CHANGELOG.md)
-
-## Development
-
-```bash
-git clone https://github.com/robchiral/AnaSim.git
-cd AnaSim
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev]"
-ruff check .
-QT_QPA_PLATFORM=offscreen python -m pytest -q
-```
-
-Build and serve the browser app at http://localhost:8000 with
-`python scripts/build_web.py --serve`.
-
-Regenerate the animated demo with `python scripts/capture_demo.py`.
-
-Initial TIVA implementations were derived from
-[Python Anesthesia Simulator](https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator).
 
 ## Citation and license
 
-For teaching or research use, cite the software and release described in
-[`CITATION.cff`](https://github.com/robchiral/AnaSim/blob/main/CITATION.cff).
-AnaSim is available under the
-[MIT License](https://github.com/robchiral/AnaSim/blob/main/LICENSE).
+Cite AnaSim using [`CITATION.cff`](https://github.com/robchiral/AnaSim/blob/main/CITATION.cff).
+AnaSim is released under the
+[MIT License](https://github.com/robchiral/AnaSim/blob/main/LICENSE). The first
+TIVA implementation was derived from
+[Python Anesthesia Simulator](https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator).

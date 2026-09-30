@@ -3,7 +3,7 @@
     python scripts/build_web.py            # write build/web
     python scripts/build_web.py --serve    # build, then serve http://localhost:8000
 
-The site is web/ plus a zip of the anasim package. Pyodide, numpy, and scipy
+The site is anasim/web_assets/ plus a zip of the anasim package. Pyodide, numpy, and scipy
 load from the Pyodide CDN.
 """
 
@@ -36,9 +36,9 @@ def package_zip() -> bytes:
 
 def check_output_dir(out: Path) -> None:
     """Refuse outputs whose replacement would delete sources or unrelated files."""
-    source = ROOT / "web"
+    source = ROOT / "anasim" / "web_assets"
     if out == source or source in out.parents:
-        raise SystemExit(f"Refusing to build into {out}: it is inside the web/ sources.")
+        raise SystemExit(f"Refusing to build into {out}: it is inside the browser sources.")
     if out.exists() and any(out.iterdir()) and not (out / "build.json").is_file():
         raise SystemExit(f"Refusing to replace {out}: it is not empty and is not a previous build.")
 
@@ -47,7 +47,7 @@ def build(out: Path) -> None:
     check_output_dir(out)
     if out.exists():
         shutil.rmtree(out)
-    shutil.copytree(ROOT / "web", out)
+    shutil.copytree(ROOT / "anasim" / "web_assets", out)
     data = package_zip()
     name = f"anasim-{hashlib.sha256(data).hexdigest()[:12]}.zip"
     (out / name).write_bytes(data)

@@ -1,9 +1,10 @@
 // Page controller: loading, setup, and the running session.
 import { Controls } from "./controls.js";
 import { Monitor } from "./monitor.js";
+import { connect } from "./transport.js";
 
 const $ = (id) => document.getElementById(id);
-const worker = new Worker("worker.js", { type: "module" });
+let transport;
 
 let catalog = null;
 let info = null;
@@ -21,8 +22,10 @@ function show(screen) {
 
 function send(name, args = {}) {
   const id = nextId++;
-  worker.postMessage({ type: "cmd", id, name, args });
-  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    transport.postMessage({ type: "cmd", id, name, args });
+  });
 }
 
 // Commands from controls surface failures in a dialog instead of rejecting silently.
@@ -30,7 +33,7 @@ function command(name, args) {
   return send(name, args).catch((message) => alertDialog("Command failed", message));
 }
 
-worker.onmessage = ({ data }) => {
+function onMessage({ data }) {
   switch (data.type) {
     case "load_error":
       $("loading-status").textContent = `AnaSim could not load: ${data.message}`;
@@ -60,14 +63,17 @@ worker.onmessage = ({ data }) => {
       break;
     }
     case "error":
+      for (const request of pending.values()) request.reject(data.message);
+      pending.clear();
+      clearInterval(cshtTimer);
       if (last) {
         last = { ...last, running: false, ended: true, recording: false };
         updateBar(last);
       }
-      alertDialog("Simulation stopped", `${data.message}\n\nStart a new session to continue.`);
+      alertDialog("Simulation stopped", data.message);
       break;
   }
-};
+}
 
 // --- Setup ------------------------------------------------------------
 
@@ -107,7 +113,7 @@ function buildSetup() {
     $("setup-error").hidden = true;
     $("setup-start").disabled = true;
     $("setup-start").textContent = "Preparing session…";
-    worker.postMessage({ type: "create", params });
+    transport.postMessage({ type: "create", params });
   };
   $("setup-cancel").onclick = () => show("app");
 }
@@ -170,6 +176,9 @@ function startSession(sessionInfo) {
   const speed = $("speed");
   [speed.min, speed.max] = info.speed_range;
   speed.value = "1";
+  $("record").title = info.recordings_dir
+    ? `Record time-series data to a CSV file in ${info.recordings_dir}.`
+    : "Record time-series data and download it as CSV when you stop.";
 
   const scenario = info.scenario;
   $("scenario").hidden = !scenario;
@@ -214,6 +223,7 @@ function updateBar(snap) {
   if (run.textContent !== label) run.textContent = label;
   run.className = `btn ${variant}`;
   run.disabled = snap.ended;
+  if (document.activeElement !== $("speed")) $("speed").value = String(snap.speed);
   status.textContent = snap.running && snap.lagging ? `Actual speed ${snap.achieved_speed}×` : "";
 
   const record = $("record");
@@ -236,14 +246,14 @@ function updateScenario(step) {
     $("scenario-count").textContent = "";
     status.textContent = "";
     target.hidden = true;
-    next.textContent = "Complete";
-    next.disabled = true;
+    next.hidden = true;
     return;
   }
+  next.hidden = false;
   if ($("step-title").textContent !== step.title) {
     $("step-title").textContent = step.title;
   }
-  // Instructions are authored in anasim/ui/scenarios with simple <b>, <i>, and <br> markup.
+  // Instructions are authored in anasim/scenarios with simple <b>, <i>, and <br> markup.
   if ($("step-instruction").dataset.instruction !== step.instruction) {
     $("step-instruction").innerHTML = step.instruction;
     $("step-instruction").dataset.instruction = step.instruction;
@@ -324,4 +334,10 @@ function confirmDialog(title, text, buttons) {
 
 function alertDialog(title, text) {
   return confirmDialog(title, text, [["OK", "primary"]]);
+}
+
+try {
+  transport = await connect(onMessage);
+} catch (error) {
+  onMessage({ data: { type: "load_error", message: error.message } });
 }

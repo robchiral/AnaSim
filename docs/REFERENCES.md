@@ -1,36 +1,30 @@
 # Model references
 
-This page lists the sources used for physiology, pharmacology, monitors, and
-acceptance ranges.
-
 ## Simulator-specific models
 
-These implementations combine published measurements or component models. The
-linked tests define their software regression ranges.
+These parts combine published data or component models with AnaSim
+calibration. The linked tests hold their expected ranges.
 
 | Area | Implementation |
 |------|----------------|
 | Hemodynamic PK scaling | Effective-volume and clearance scaling are simulator adaptations. See [PK assumptions and limits](ARCHITECTURE.md#pk-and-tci). |
-| Respiratory drug effects | [`RespiratoryModel`](../anasim/physiology/respiration.py) combines published effects on ventilation and hypercapnic response. Combined drug-response parameters are calibrated for AnaSim. See the [respiratory tests](../tests/test_respiration.py). |
+| Respiratory drug effects | [`RespiratoryModel`](../anasim/physiology/respiration.py) uses published drug effects on ventilation and the hypercapnic response, with combined parameters calibrated for AnaSim. See the [respiratory tests](../tests/test_respiration.py). |
 | Neuromuscular block and reversal | [`TOFModel`](../anasim/patient/pd/nmba.py) combines adductor pollicis and central (diaphragm and larynx) effect sites, spontaneous recovery, and simplified sugammadex binding. The central site uses laryngeal kinetics for both muscles. Onset and recovery constants are calibrated for AnaSim. See the [pharmacology tests](../tests/test_pharmacology.py). |
 | Baroreflex and myocardial hypoxia | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) takes the direction and scale of anesthetic reflex depression and the hypoxic arrest threshold from published studies. Reflex gains, set-point reset, and hypoxia time constants are calibrated for AnaSim. See the [hemodynamic tests](../tests/test_hemodynamics.py). |
-| Vasoactive drug effects | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) defines concentration-response models for epinephrine, phenylephrine, vasopressin, dobutamine, and milrinone. Published response data set the direction and approximate scale. AnaSim sets the combined calibration. Epinephrine is fitted to arterial infusion (Freyschuss 1986) and IV bolus (Takahashi 2002) responses. See the [epinephrine](../tests/test_epinephrine.py) and [hemodynamic](../tests/test_hemodynamics.py) tests. |
-| Arterial pressure waveform | [`ArterialWaveformRenderer`](../anasim/monitors/arterial.py) maps the pressure landmarks described by Mahdi et al. to Su MAP and stroke volume. Su controls hemodynamics. [`ArterialLineMonitor`](../anasim/monitors/arterial.py) applies catheter and transducer dynamics. See the [waveform](../tests/test_arterial_waveform.py) and [arterial line](../tests/test_arterial_line.py) tests. |
+| Vasoactive drug effects | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) defines concentration-response models for epinephrine, phenylephrine, vasopressin, dobutamine, and milrinone. Published data set the direction and approximate size of each response, and AnaSim calibrates the combination. Epinephrine is fitted to arterial infusion (Freyschuss 1986) and IV bolus (Takahashi 2002) responses. See the [epinephrine](../tests/test_epinephrine.py) and [hemodynamic](../tests/test_hemodynamics.py) tests. |
+| Arterial pressure waveform | [`ArterialWaveformRenderer`](../anasim/monitors/arterial.py) maps the pressure landmarks described by Mahdi et al. to Su MAP and stroke volume. [`ArterialLineMonitor`](../anasim/monitors/arterial.py) applies catheter and transducer dynamics. See the [waveform](../tests/test_arterial_waveform.py) and [arterial line](../tests/test_arterial_line.py) tests. |
 
 ## Supported patient domain
 
-The integrated model accepts age 18 to 70 years, weight 50 to 100 kg, height 150
-to 200 cm, and BMI 18 to 32 kg/m². The body-size limits round outward from the
-observed ranges in the 36-volunteer healthy-adult cohort reported by Li et al.:
-age 18 to 70 years, weight 51.5 to 94.8 kg, height 151 to 196 cm, and BMI 18.0 to
-31.1 kg/m². Su et al. developed the hemodynamic model from the same sized,
-age-stratified healthy-volunteer population and found age to be a strong
-covariate of the propofol effect on stroke volume.
+The body-size limits (age 18 to 70 years, weight 50 to 100 kg, height 150 to
+200 cm, BMI 18 to 32 kg/m²) round outward from the 36-volunteer healthy-adult
+cohort of Li et al.: age 18 to 70 years, weight 51.5 to 94.8 kg, height 151 to
+196 cm, and BMI 18.0 to 31.1 kg/m². Su et al. built the hemodynamic model from a
+cohort of the same size and age strata and found age to be a strong covariate
+of the propofol effect on stroke volume.
 
-Hemoglobin 6 to 20 g/dL, hematocrit 0.18 to 0.60, renal function factor 0.4 to
-1.0, and hepatic function factor 0.5 to 1.0 are simulator input limits. The
-organ-function values are dimensionless model inputs. Boundary and model
-selection tests cover numerical stability and broad physiologic output ranges.
+Hemoglobin, hematocrit, and organ-function limits are simulator choices. See
+the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 
 ## Hemodynamics and physiology
 

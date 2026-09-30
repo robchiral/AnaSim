@@ -57,7 +57,7 @@ def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
     prev_ts = state.nibp_timestamp
     cuff_p = engine.nibp.step(
         dt,
-        state.time,
+        state.time + dt,
         state.map,
         true_sys=state.sbp,
         true_dia=state.dbp,
@@ -187,7 +187,7 @@ def step_cardiac_monitors(
     substep_dt = dt / substeps
     rhythm = hemo_state.rhythm_type
     co_ratio = hemo_state.co / engine.hemo.base_co_l_min
-    perfusion = clamp(co_ratio, 0.05, 1.0)
+    perfusion = clamp(co_ratio, 0.0, 1.0)
 
     for _ in range(substeps):
         cardiac_sample = engine.cardiac_cycle.step(
@@ -286,7 +286,7 @@ def step_monitors(
             "MAP": state.monitored_blood_pressure(engine.config.arterial_line_enabled)[2],
             "HR": state.display_hr,
             "EtCO2": state.display_etco2,
-            "SpO2": state.display_spo2,
+            "SpO2": state.display_spo2 if state.spo2_signal_valid else None,
         },
         dt=dt,
     )

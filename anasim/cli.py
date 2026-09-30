@@ -90,14 +90,16 @@ def run_headless(args):
     print(f"Simulation completed in {end_real - start_real:.2f} seconds of real time")
 
 
-def run_ui() -> int:
-    from anasim.ui.main_window import run
+def run_ui(args) -> int:
+    from anasim.local import run
 
-    return run()
+    return run(port=args.port, open_browser=not args.no_browser, recordings_dir=args.record_dir)
 
 def main():
     parser = argparse.ArgumentParser(description="AnaSim anesthesia simulator")
     parser.add_argument("--mode", choices=["ui", "headless"], default="ui", help="Run mode (default: ui)")
+    parser.add_argument("--port", type=int, default=0, help="Local UI port (default: choose a free port)")
+    parser.add_argument("--no-browser", action="store_true", help="Print the local URL without opening a browser")
     parser.add_argument("--duration", type=float, default=10.0, help="Duration for headless mode in seconds")
     parser.add_argument("--config", type=str, help="Path to JSON configuration file")
     parser.add_argument("--record", action="store_true", help="Enable CSV recording (headless only)")
@@ -105,11 +107,13 @@ def main():
     parser.add_argument("--record-interval", type=float, default=1.0, help="Sample interval in seconds for CSV")
 
     args = parser.parse_args()
+    if not 0 <= args.port <= 65535:
+        parser.error("--port must be between 0 and 65535")
 
     if args.mode == "headless":
         run_headless(args)
     else:
-        raise SystemExit(run_ui())
+        raise SystemExit(run_ui(args))
 
 if __name__ == "__main__":
     main()

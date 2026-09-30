@@ -1,8 +1,19 @@
+import sys
 from types import SimpleNamespace
 
 import pytest
 
-from anasim.cli import build_models_from_config, run_headless
+from anasim.cli import build_models_from_config, main, run_headless
+
+
+def test_default_command_launches_the_local_browser_server(monkeypatch):
+    calls = []
+    monkeypatch.setitem(sys.modules, "anasim.local", SimpleNamespace(run=lambda **kwargs: calls.append(kwargs) or 0))
+    monkeypatch.setattr("sys.argv", ["anasim", "--no-browser", "--port", "8765", "--record-dir", "output"])
+    with pytest.raises(SystemExit) as result:
+        main()
+    assert result.value.code == 0
+    assert calls == [{"port": 8765, "open_browser": False, "recordings_dir": "output"}]
 
 
 def test_config_builder_rejects_invalid_documents(tmp_path, capsys):

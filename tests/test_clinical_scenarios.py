@@ -1,7 +1,7 @@
 """One integrated adult path per clinical workflow; comments cite each bound's source."""
 
 from anasim.core.state import SimulationConfig
-from anasim.ui.scenarios.oxygen_supply import create_oxygen_supply_failure
+from anasim.scenarios.oxygen_supply import create_oxygen_supply_failure
 
 
 def _stop_tiva(engine) -> None:

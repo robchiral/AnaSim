@@ -53,49 +53,51 @@ class NIBPMonitor:
         true_dia: float,
         rhythm_type: RhythmType,
     ) -> float:
-        """Advance a cuff cycle and return its display pressure."""
+        """Advance a cuff cycle; current_time is the end of the step."""
         if dt <= 0.0:
             raise ValueError("NIBP monitor dt must be greater than zero")
 
-        if self.is_cycling:
-            if self.is_inflating:
-                self.cuff_pressure += 400.0 * dt
-                if self.cuff_pressure >= 160.0:
-                    self.is_inflating = False
-            else:
-                self.cuff_pressure -= 10.0 * dt
-                if self.cuff_pressure < 50.0:
-                    self.is_cycling = False
-                    self.cuff_pressure = 0.0
+        if not self.is_cycling:
+            return self.cuff_pressure
 
-                    arrest_rhythm = rhythm_type in (
-                        RhythmType.VFIB,
-                        RhythmType.ASYSTOLE,
-                    )
-                    if arrest_rhythm or true_map < 30.0:
-                        self.measurement_failed = True
-                        return self.cuff_pressure
+        remaining = dt
+        if self.is_inflating:
+            inflation_time = (160.0 - self.cuff_pressure) / 400.0
+            elapsed = min(remaining, inflation_time)
+            self.cuff_pressure = min(160.0, self.cuff_pressure + 400.0 * elapsed)
+            remaining -= elapsed
+            if elapsed < inflation_time:
+                return self.cuff_pressure
+            self.is_inflating = False
 
-                    if self.rng.random() < self._shock_failure_probability(true_map):
-                        self.measurement_failed = True
-                        return self.cuff_pressure
+        # Carry unused time across the phase boundary, without overshooting.
+        deflation_time = (self.cuff_pressure - 50.0) / 10.0
+        if remaining < deflation_time - 1e-9:
+            self.cuff_pressure -= 10.0 * remaining
+            return self.cuff_pressure
 
-                    low_flow_bias = 0.0
-                    if true_map < 60.0:
-                        severity = (60.0 - true_map) / 30.0
-                        low_flow_bias = 4.0 + 10.0 * severity
-                    meas_map = true_map + low_flow_bias
+        completed_at = current_time - max(0.0, remaining - deflation_time)
+        self.is_cycling = False
+        self.cuff_pressure = 0.0
+        arrest_rhythm = rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE)
+        if arrest_rhythm or true_map <= 30.0:
+            self.measurement_failed = True
+            return self.cuff_pressure
 
-                    meas_sys = max(40.0, true_sys + low_flow_bias * 1.15)
-                    meas_dia = max(20.0, true_dia + low_flow_bias * 0.85)
-                    if meas_dia >= meas_sys:
-                        meas_dia = meas_sys - 10.0
+        if self.rng.random() < self._shock_failure_probability(true_map):
+            self.measurement_failed = True
+            return self.cuff_pressure
 
-                    self.latest_reading = NIBPReading(
-                        meas_sys,
-                        meas_dia,
-                        meas_map,
-                        current_time,
-                    )
+        low_flow_bias = 0.0
+        if true_map < 60.0:
+            severity = (60.0 - true_map) / 30.0
+            low_flow_bias = 4.0 + 10.0 * severity
+        meas_map = true_map + low_flow_bias
 
+        meas_sys = max(40.0, true_sys + low_flow_bias * 1.15)
+        meas_dia = max(20.0, true_dia + low_flow_bias * 0.85)
+        if meas_dia >= meas_sys:
+            meas_dia = meas_sys - 10.0
+
+        self.latest_reading = NIBPReading(meas_sys, meas_dia, meas_map, completed_at)
         return self.cuff_pressure

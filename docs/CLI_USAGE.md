@@ -1,16 +1,18 @@
 # CLI usage
 
-For installation and the desktop workflow, see the [README](../README.md).
+For installation and the browser interface, see the [README](../README.md).
 
 ## Arguments
 
 | Argument | Description | Default |
 |----------|-------------|---------|
 | `--mode` | Run mode: `ui` or `headless` | `ui` |
+| `--port` | Local UI port; `0` chooses a free port | `0` |
+| `--no-browser` | Print the local URL without opening it | `false` |
 | `--duration` | Headless run time in seconds | `10.0` |
 | `--config` | JSON configuration path | None |
 | `--record` | Write a CSV recording in headless mode | `false` |
-| `--record-dir` | Output directory for recordings | `recordings` |
+| `--record-dir` | CSV directory for headless runs and the local interface | `recordings` |
 | `--record-interval` | Sample interval in seconds for CSV | `1.0` |
 
 ## Configuration file
@@ -42,11 +44,21 @@ fields use their defaults.
 | Events | `disturbance_profile`: `stim_intubation_pulse`, `stim_sustained_surgery`, or `null` |
 | Volatile agents | `volatile_agents`: `["sevoflurane"]` or `[]` |
 
-Patient values must fall within the
-[supported ranges](../README.md#model-scope-and-limits).
 `"baseline_hct": null` derives hematocrit from hemoglobin, and
 `"maintenance_fluid_ml_hr": null` uses 1 mL/kg/hr. Steady-state mode runs a
 hidden maintenance period before visible time starts.
+
+Patient values must be within these limits:
+
+| Field | Range |
+|-------|-------|
+| `age` | 18 to 70 years |
+| `weight` | 50 to 100 kg |
+| `height` | 150 to 200 cm, with BMI 18 to 32 kg/m² |
+| `baseline_hb` | 6 to 20 g/dL |
+| `baseline_hct` | 0.18 to 0.60 |
+| `renal_function` | 0.4 to 1.0 (dimensionless) |
+| `hepatic_function` | 0.5 to 1.0 (dimensionless) |
 
 Model fields accept these values:
 

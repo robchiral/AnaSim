@@ -90,14 +90,11 @@ SCENARIO_REGISTRY = (
     ),
 )
 
-SCENARIO_BUILDERS = {spec.id: spec.builder for spec in SCENARIO_REGISTRY}
-
 __all__ = [
     "Scenario",
     "ScenarioStep",
     "ScenarioSpec",
     "SCENARIO_REGISTRY",
-    "SCENARIO_BUILDERS",
     "create_induction_balanced",
     "create_induction_tiva",
     "create_emergence",

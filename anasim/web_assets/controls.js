@@ -1,4 +1,4 @@
-// Machine, medication, and event controls, following anasim/ui/controls_widget.py.
+// Machine, medication, and event controls.
 // Inputs send commands on change; snapshots update any input not being edited.
 
 const $ = (id) => document.getElementById(id);
@@ -91,11 +91,11 @@ export class Controls {
     this.drugs = {};
     for (const spec of drugs) {
       const card = document.createElement("fieldset");
-      card.className = "group card drug-card";
+      card.className = "group drug-card";
       card.innerHTML = `
         <legend></legend>
         <div class="segmented compact">
-          <button type="button" data-mode="rate" data-color="secondary">Rate</button>
+          <button type="button" data-mode="rate">Rate</button>
           <button type="button" data-mode="tci">TCI</button>
         </div>
         <div class="inputs">
@@ -162,7 +162,7 @@ export class Controls {
       const minutes = values[key];
       label.hidden = !(minutes > 0);
       if (minutes > 0) {
-        label.textContent = `Estimated context-sensitive half-time: ${minutes.toFixed(0)} min`;
+        label.textContent = `Effect-site half-time ~${minutes.toFixed(0)} min`;
         label.title = "Estimated PK effect-site half-time from the current model state; not a guaranteed wake-up time.";
       }
     }
@@ -185,7 +185,7 @@ export class Controls {
 
     $("c-obstruction").onchange = () => this.send("obstruction", { percent: readNumber($("c-obstruction")) });
     $("c-bronchospasm").onchange = () => this.send("bronchospasm", { percent: readNumber($("c-bronchospasm")) });
-    $("c-auto-laryngo").onclick = () => this.send("auto_laryngospasm", { enabled: !this.state.auto_laryngospasm });
+    $("c-auto-laryngo").onchange = () => this.send("auto_laryngospasm", { enabled: $("c-auto-laryngo").checked });
 
     $("c-hemorrhage").onclick = () => this.send("hemorrhage", {
       active: !this.state.hemorrhage.active,
@@ -247,8 +247,7 @@ export class Controls {
     setValue($("c-obstruction"), round(c.obstruction, 0));
     setValue($("c-bronchospasm"), round(c.bronchospasm, 0));
     $("c-laryngo").textContent = `Laryngospasm: ${c.laryngospasm}`;
-    setPressed($("c-auto-laryngo"), c.auto_laryngospasm,
-      c.auto_laryngospasm ? "Automatic laryngospasm on" : "Automatic laryngospasm off");
+    $("c-auto-laryngo").checked = c.auto_laryngospasm;
 
     setPressed($("c-hemorrhage"), c.hemorrhage.active, c.hemorrhage.active ? "Stop bleeding" : "Start bleeding");
     $("c-hem-rate").disabled = c.hemorrhage.active;

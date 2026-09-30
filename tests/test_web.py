@@ -50,6 +50,9 @@ def test_guided_tiva_induction_completes_through_browser_commands():
     info = parse(session.info())
     assert info["scenario"]["total"] == 12
     cmd(session, "run", running=True)
+    # Continue does nothing until the objective is met.
+    cmd(session, "scenario_next")
+    assert parse(session.advance(0.0))["scenario"]["id"] == "APPLY_MASK"
 
     pending = dict(TIVA_INDUCTION)
     samples = 0

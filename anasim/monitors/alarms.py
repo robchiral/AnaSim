@@ -26,15 +26,13 @@ class AlarmSystem:
             self.dt = dt
         alarms = {}
         for name, delay_s in self.delays.items():
-            if name not in values:
-                continue
-            value = values[name]
+            value = values.get(name)
             limit_low = self.thresholds.get(f"{name}_min")
             limit_high = self.thresholds.get(f"{name}_max")
             flags = {}
             for side, violated in (
-                ("low", limit_low is not None and value < limit_low),
-                ("high", limit_high is not None and value > limit_high),
+                ("low", value is not None and limit_low is not None and value < limit_low),
+                ("high", value is not None and limit_high is not None and value > limit_high),
             ):
                 elapsed = self._violation_s.get((name, side), 0.0) + self.dt if violated else 0.0
                 self._violation_s[(name, side)] = elapsed

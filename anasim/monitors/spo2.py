@@ -61,9 +61,14 @@ class SpO2Monitor:
         if cycle.organized:
             phase = cycle.delayed_phase(self.peripheral_delay_s)
             idx = int(phase * self._template_max_index)
-            pleth_voltage = self._template[idx] * (0.2 + 0.8 * perf)
+            pleth_voltage = self._template[idx] * perf
         else:
             pleth_voltage = 0.0
+
+        self.signal_valid = cycle.organized and perf >= 0.08
+        if not self.signal_valid:
+            # No saturation measurement is available without a pulsatile signal.
+            return pleth_voltage, self.display_saturation if self.display_saturation is not None else 0.0
 
         target = max(0.0, min(100.0, saturation))
         if self.display_saturation is None:
@@ -73,5 +78,4 @@ class SpO2Monitor:
         tau = self.response_tau_s * (1.0 + 2.0 * (1.0 - perf))
         alpha = 1.0 - math.exp(-dt / tau)
         self.display_saturation += alpha * (target - self.display_saturation)
-        self.signal_valid = perf >= 0.08
         return pleth_voltage, self.display_saturation

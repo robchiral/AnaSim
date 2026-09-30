@@ -121,7 +121,6 @@ def create_hemorrhage_response() -> Scenario:
     return Scenario(
         id="hemorrhage_response",
         name="Hemorrhage response",
-        icon="",
         description="Learn to recognize and manage intraoperative hemorrhage and hypovolemic shock.",
         steps=steps,
     )

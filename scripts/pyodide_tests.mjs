@@ -3,7 +3,7 @@
 //   npm install --no-save pyodide@$(python scripts/build_web.py --pyodide-version)
 //   node scripts/pyodide_tests.mjs [pytest arguments]
 //
-// Qt tests are skipped because PySide6 does not run in the browser.
+// Local HTTP server tests run in native Python; browsers use the worker transport.
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPyodide } from "pyodide";
@@ -18,8 +18,7 @@ pyodide.FS.mount(pyodide.FS.filesystems.NODEFS, { root }, "/repo");
 
 pyodide.globals.set("pytest_args", pyodide.toPy([
   "-p", "no:cacheprovider",
-  "--ignore=tests/test_ui.py",
-  "--ignore=tests/test_recording.py",
+  "--ignore=tests/test_local.py",
   ...args,
 ]));
 const code = pyodide.runPython(`

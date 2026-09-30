@@ -1,8 +1,6 @@
-"""Browser bridge: one simulation session for the web app, exchanged as JSON.
+"""One simulation session for the browser interface, with JSON commands and snapshots.
 
-The web worker calls `catalog()` once, then `WebSession.advance()` on a timer
-and `WebSession.command()` for learner controls. The loop and controls follow
-the desktop window and control panel.
+The Pyodide worker and the local server (`anasim.local`) both use `WebSession`.
 """
 
 import json
@@ -18,7 +16,7 @@ from anasim.core.state import SUPPORTED_MODEL_OPTIONS, SimulationConfig
 from anasim.patient import domain
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import list_disturbance_profiles
-from anasim.ui.scenarios import SCENARIO_REGISTRY
+from anasim.scenarios import SCENARIO_REGISTRY
 
 PATIENT_FIELDS = (
     "age",
@@ -88,7 +86,7 @@ def _num(value, digits=None):
 class WebSession:
     """One simulation session driven by the browser UI."""
 
-    def __init__(self, params: dict, recordings_dir: str | None = None):
+    def __init__(self, params: dict, recordings_dir: str | None = None, *, retain_recordings: bool = False):
         params = dict(params)
         unknown = set(params) - set(PATIENT_FIELDS) - set(CONFIG_FIELDS) - {"scenario_id"}
         if unknown:
@@ -112,6 +110,7 @@ class WebSession:
         self._accumulator = 0.0
         self._last_wave_time = -math.inf
         self._recordings_dir = recordings_dir or os.path.join(tempfile.gettempdir(), "anasim-recordings")
+        self.retain_recordings = retain_recordings
 
         self.scenario = None
         self.step_index = 0
@@ -135,6 +134,7 @@ class WebSession:
                 "hepatic_status": patient.hepatic_status,
             },
             "arterial_line": engine.config.arterial_line_enabled,
+            "recordings_dir": self._recordings_dir if self.retain_recordings else None,
             "sample_interval": engine.config.dt,
             "speed_range": SPEED_RANGE,
             "drugs": [
@@ -167,6 +167,11 @@ class WebSession:
 
     def advance(self, real_dt: float) -> str:
         """Step by real_dt seconds of wall time at the current speed; return a snapshot."""
+        self.step(real_dt)
+        return json.dumps(self.snapshot())
+
+    def step(self, real_dt: float) -> None:
+        """Advance without consuming snapshots, for the native server clock."""
         engine = self.engine
         if engine.running:
             start_time = engine.state.time
@@ -197,7 +202,11 @@ class WebSession:
             if engine.state.cardiac_arrest:
                 self.ended = True
                 self._pause()
-        return json.dumps(self.snapshot())
+
+    def close(self) -> None:
+        """Pause and finish any recording before disconnect or shutdown."""
+        self._pause()
+        self.engine.stop_recording()
 
     def _pause(self):
         self.engine.stop()
@@ -263,6 +272,10 @@ class WebSession:
             "et_mac": _num(s.et_mac, 3),
         }
 
+    def replay_waves(self) -> None:
+        """Resend the retained sweep in the next snapshot, for a reloaded page."""
+        self._last_wave_time = -math.inf
+
     def _new_waves(self) -> dict:
         """Return samples newer than the last snapshot, at most one sweep."""
         buffer = self.engine.output_buffer
@@ -324,7 +337,7 @@ class WebSession:
     def _begin_step(self):
         """Scope action objectives to what the learner does from now on."""
         self.step_met = False
-        self.step_status = "Complete the objective to continue"
+        self.step_status = ""
         if self.step_index < len(self.scenario):
             step = self.scenario[self.step_index]
             self.engine.actions.begin_step(step.id, self.engine.state.time)
@@ -334,7 +347,7 @@ class WebSession:
             return
         met, status = self.scenario[self.step_index].check_requirements(self.engine)
         self.step_met = bool(met)
-        self.step_status = status or "Complete the objective to continue"
+        self.step_status = status
 
     def _scenario_state(self):
         if self.scenario is None:
@@ -350,7 +363,7 @@ class WebSession:
             "instruction": step.instruction,
             "target_tab": step.target_tab,
             "met": self.step_met,
-            "status": "Objective complete" if self.step_met else self.step_status,
+            "status": "" if self.step_met else self.step_status,
         }
 
     # --- Commands -------------------------------------------------------
@@ -501,7 +514,7 @@ class WebSession:
         self.engine.measure_nibp()
 
     def _cmd_record(self, active: bool):
-        """Start recording, or stop and return {"filename", "csv"} for download."""
+        """Start recording, or stop it and return {"filename", "csv"} to download, if any."""
         engine = self.engine
         if active:
             try:
@@ -519,9 +532,10 @@ class WebSession:
             self.notice = f"{error}. The CSV may be incomplete."
         return self._take_recording(recorder)
 
-    @staticmethod
-    def _take_recording(recorder):
-        """Read and delete a recording's file; return it for download, or None if absent."""
+    def _take_recording(self, recorder):
+        """Move a finished recording into a download; retained recordings stay on disk."""
+        if self.retain_recordings:
+            return None
         try:
             with open(recorder.file_path, encoding="utf-8") as file:
                 text = file.read()

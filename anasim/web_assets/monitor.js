@@ -1,4 +1,4 @@
-// Waveform sweeps and numerics, following anasim/ui/monitor_widget.py.
+// Waveform sweeps and monitor numerics.
 
 const CHANNELS = {
   ecg: { color: "--ecg", range: [-0.5, 1.5] },
@@ -124,6 +124,7 @@ export class Monitor {
 
     this.fields = {};
     for (const el of document.querySelectorAll(".numerics output")) this.fields[el.id] = el;
+    this.fields["v-spo2-unit"] = document.getElementById("v-spo2-unit");
     this.alarmBoxes = [...document.querySelectorAll(".numeric[data-alarm]")];
     this.frame = requestAnimationFrame(() => this.render());
   }
@@ -165,10 +166,9 @@ export class Monitor {
   updateNumerics(v) {
     this.set("v-hr", trunc(v.hr));
     this.set("v-spo2", trunc(v.spo2));
+    this.set("v-spo2-unit", v.spo2 === null ? "No signal" : "%");
     if (this.arterialLine) {
       this.set("v-art", `${trunc(v.art[0])}/${trunc(v.art[1])} (${trunc(v.art[2])})`);
-    } else if (v.nibp_cuff !== null) {
-      this.set("v-nibp", `Cuff: ${trunc(v.nibp_cuff)}`);
     } else if (v.nibp === null) {
       this.set("v-nibp", "--/-- (--)");
     } else {
@@ -178,7 +178,9 @@ export class Monitor {
       const age = Math.floor(v.nibp_age);
       const reading = v.nibp_age === null ? "No reading" :
         `Last reading ${Math.floor(age / 60)}:${String(age % 60).padStart(2, "0")} ago`;
-      this.set("v-nibp-status", v.nibp_failed ? `Measurement failed · ${reading.toLowerCase()}` : reading);
+      const status = v.nibp_cuff !== null ? `Cuff ${trunc(v.nibp_cuff)} mmHg` :
+        v.nibp_failed ? "Measurement failed" : "";
+      this.set("v-nibp-status", status ? `${status} · ${reading.toLowerCase()}` : reading);
     }
     this.set("v-etco2", trunc(v.etco2));
     this.set("v-rr", trunc(v.rr));

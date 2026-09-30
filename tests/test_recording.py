@@ -1,18 +1,14 @@
-"""CSV lifecycle failures must reach API, CLI, and desktop callers."""
+"""CSV lifecycle failures must reach API and CLI callers."""
 
 import csv
 import io
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication
 
 from anasim.cli import run_headless
 from anasim.core.recorder import RecordingError
-from anasim.ui.config_dialog import SimulationSetupDialog
-from anasim.ui.main_window import MainWindow
 
 
 class FailingFile(io.StringIO):
@@ -101,58 +97,3 @@ def test_headless_recording_failure_exits_unsuccessfully(tmp_path, inject_file, 
     assert "Recording failed:" in output.err
     assert "injected" in output.err
     assert "Simulation completed" not in output.out
-
-
-@pytest.fixture
-def window(monkeypatch, tmp_path):
-    app = QApplication.instance() or QApplication([])
-    monkeypatch.chdir(tmp_path)
-    dialog = SimulationSetupDialog()
-    dialog.accept()
-    params = {**dialog.result_data, "mode": "awake", "tutorial_mode": False}
-    widget = MainWindow(params)
-    yield widget
-    widget.close()
-    app.processEvents()
-
-
-@pytest.mark.parametrize("failure", ["header", "write", "close"])
-def test_desktop_recording_failure_pauses_and_resets_toggle(
-    window, inject_file, monkeypatch, failure
-):
-    file = inject_file(failure)
-    warnings = []
-    monkeypatch.setattr(
-        "anasim.ui.main_window.QMessageBox.warning",
-        lambda *args: warnings.append(args[2]),
-    )
-    window.btn_start.click()
-    window.btn_record.click()
-    if failure == "close":
-        window.btn_record.click()
-    elif failure == "write":
-        window.last_real_time = time.perf_counter() - 0.1
-        window.game_loop()
-
-    assert len(warnings) == 1
-    assert "injected" in warnings[0]
-    assert file.close_attempted
-    assert not window.btn_record.isChecked()
-    assert window.btn_record.text() == "Record CSV"
-    assert not window.engine.running
-    assert not window.timer.isActive()
-    assert window.time_accumulator == 0
-    window.btn_start.click()
-    assert window.engine.running
-
-
-@pytest.mark.parametrize("action", ["close", "reset"])
-def test_desktop_finishes_recording_on_close_or_reset(window, action):
-    window.btn_record.click()
-    file = window.engine.recorder.file
-    if action == "close":
-        window.close()
-    else:
-        window.init_simulation()
-    assert file.closed
-    assert not window.btn_record.isChecked()

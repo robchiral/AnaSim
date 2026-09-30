@@ -122,7 +122,6 @@ def create_sepsis_response() -> Scenario:
     return Scenario(
         id="sepsis_response",
         name="Septic shock response",
-        icon="",
         description="Recognize and manage early distributive septic shock.",
         steps=steps,
     )

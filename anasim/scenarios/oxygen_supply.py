@@ -118,7 +118,6 @@ def create_oxygen_supply_failure() -> Scenario:
     return Scenario(
         id="oxygen_supply_failure",
         name="O₂ supply failure",
-        icon="",
         description=(
             "You recognized falling inspired oxygen before patient desaturation "
             "and moved ventilation to a backup oxygen source."

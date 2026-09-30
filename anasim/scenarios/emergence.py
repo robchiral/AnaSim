@@ -199,7 +199,6 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
     return Scenario(
         id=scenario_id,
         name="Emergence sequence",
-        icon="",
         description="Learn the emergence and extubation sequence.",
         steps=steps,
     )

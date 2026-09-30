@@ -47,7 +47,6 @@ class ScenarioStep:
 class Scenario:
     id: str
     name: str
-    icon: str
     description: str
     steps: List[ScenarioStep] = field(default_factory=list)
     setup_engine: Callable[[object], None] | None = None

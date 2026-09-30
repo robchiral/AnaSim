@@ -2,30 +2,33 @@
 
 ## Unreleased
 
-- Add a browser version, which runs locally through Pyodide.
+- Replace the Qt desktop app with a browser interface. `anasim` serves it from
+  local Python and saves recordings to `recordings/`, and the same interface
+  runs at robche.com/AnaSim through Pyodide. PySide6 and pyqtgraph are no
+  longer dependencies.
+- Simplify the interface styling. Event buttons are colored only while the
+  event is running, and automatic laryngospasm is a checkbox.
+- Correct NIBP cycle timing across step sizes, show no SpO₂ value without a
+  pulsatile signal, and keep the previous BP reading visible while the cuff
+  measures.
 - Make ventilator mechanics consistent across step sizes, count trapped-gas
   pressure once, and base gas exchange on completed exhaled breaths.
 - Show capnography during PSV apnea backup and require a fresh exhalation after
   reconnection.
+- The ventilator can start from an awake session and keeps its settings while
+  off. `set_vent_settings` no longer starts or stops it; use `set_vent_power`.
 - Setting a manual infusion rate disables TCI, so a stopped infusion stays
   stopped.
 - Preserve central drug amount when hemodynamic scaling changes PK volume.
-- Report CSV recording failures and keep sampling on schedule when steps cross
-  sample deadlines.
-- Apply arterial-line setting changes immediately and reduce waveform overhead.
-- Support Python 3.14 and drop the unused pandas dependency.
-- Fix the desktop ventilator, which could not start from an awake session and
-  restarted with zero settings. Settings can be changed before starting and are
-  kept while it is off. `set_vent_settings` no longer starts or stops the
-  ventilator; use `set_vent_power`.
+- Report CSV recording failures, keep the part already recorded, and keep
+  sampling on schedule when steps cross sample deadlines.
+- With `end_on_cardiac_arrest`, a confirmed arrest ends the session at that
+  moment.
 - Induction scenarios require starting the ventilator after intubation, TIVA
   maintenance checks the fresh gas reduction it asks for, and baseline
   objectives show the ranges they check.
-- End the session at the moment of a confirmed cardiac arrest in the desktop,
-  browser, and headless modes. The desktop can no longer resume it.
-- The browser app downloads the recorded part of a CSV when recording fails and
-  reports commands sent after the simulation stops.
-- `build_web.py` refuses to replace a directory that is not a previous build.
+- Apply arterial-line setting changes immediately and reduce waveform overhead.
+- Support Python 3.14 and drop the unused pandas dependency.
 
 ## 1.2 - 2026-09-24
 
@@ -57,12 +60,13 @@
 ## 1.1 - 2026-08-30
 
 - Enforced the supported patient domain across API, CLI, and desktop setup,
-  including finite body-size, hematology, and organ-function inputs. Patient
-  data now owns hematology and derives organ status labels.
-- Applied finite disturbance effects across each simulation interval and ended
-  them after all current-step consumers run.
-- Added a dedicated arterial pressure waveform constrained by Su MAP and stroke
-  volume, with shared ECG and pleth timing and catheter-transducer dynamics.
+  including finite body-size, hematology, and organ-function inputs.
+  Hemoglobin and hematocrit are patient inputs, and organ status labels come
+  from the organ-function factors.
+- Averaged stimulation profiles over each simulation step, and ended
+  time-limited profiles after the step in which they finish.
+- Added an arterial pressure waveform whose mean and pulse pressure come from
+  Su MAP and stroke volume, with shared ECG and pleth timing and catheter-transducer dynamics.
 - Made cardiac monitor synthesis and waveform history independent of the outer
   simulation step size.
 - Removed pleth-derived arterial pressure, duplicate pressure reconstruction,
@@ -81,7 +85,7 @@
 - Interactive operating-room monitor, guided clinical scenarios, headless runner,
   and CSV recording.
 - Published component models with documented simulator-specific adaptations.
-- Realistic pulse-oximeter lag and monitor sample validity.
+- Pulse-oximeter lag and monitor signal validity.
 - Supported adult patient domain of 18 to 70 years.
 - Simplified configuration, simulation state, UI, and tests.
 - Python package, continuous integration, and automated PyPI publishing.

@@ -2,9 +2,9 @@
 
 AnaSim splits pharmacology, cardiorespiratory physiology, the anesthesia
 machine, and monitors into stateful subsystems. The runtime advances them in a
-fixed order and projects their outputs into `SimulationState`.
+fixed order and copies their outputs into `SimulationState`.
 
-## State contract
+## Simulation state
 
 `SimulationState` keeps physiology, ideal arterial pulse landmarks, and monitor
 measurements separate:
@@ -16,8 +16,8 @@ measurements separate:
 | Arterial catheter | `art_pressure`, `art_sbp`, `art_dbp`, `art_map` | Instantaneous and completed-beat values after line dynamics |
 | Other monitors | `nibp_sys`, `nibp_dia`, `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Values shown to the learner |
 
-- `map`, `hr`, `sv`, `co`, and `svr` are Su model outputs. Monitors read them
-  and never write them.
+- `map`, `hr`, `sv`, `co`, and `svr` are Su model outputs. Monitors only read
+  them.
 - NIBP measures `sbp`, `dbp`, and `map`.
 - The UI, CLI, alarms, and scenarios read `art_*` when the arterial line is
   enabled and `nibp_*` otherwise.
@@ -26,14 +26,14 @@ measurements separate:
   (ECG, pleth, capnogram, arterial pressure) for the monitor sweep.
 - Public numeric fields are built-in `float` values.
 
-## Code map
+## Main modules
 
-[`engine.py`](../anasim/core/engine.py) owns subsystems and learner controls.
+[`engine.py`](../anasim/core/engine.py) holds the subsystems and applies learner controls.
 [`runtime.py`](../anasim/core/runtime.py) advances them,
 [`projection.py`](../anasim/core/projection.py) writes their outputs to state,
 and [`monitors.py`](../anasim/core/monitors.py) updates measurements and alarms.
-[`initialization.py`](../anasim/core/initialization.py) seeds the starting state.
-Drug units, pump limits, and UI metadata live in
+[`initialization.py`](../anasim/core/initialization.py) sets the starting state.
+Drug units, pump limits, and UI metadata are defined in
 [`drug_registry.py`](../anasim/core/drug_registry.py).
 
 ## Step order
@@ -47,18 +47,13 @@ SimulationEngine.step()
  5. Machine: ventilator, bag-mask, vaporizer, circuit
  6. PK: plasma and effect-site concentrations, TOF, volatile uptake
  7. Physiology: respiratory mechanics, gas exchange, hemodynamics
- 8. Projection into SimulationState
+ 8. Copy outputs into SimulationState
  9. Monitors: cardiac cycle, arterial pulse and line, ECG, pleth, NIBP,
     capnography, alarms
 10. Shivering
 11. Temperature
 12. Cardiac arrest check
 ```
-
-- `runtime.step_physiology()` computes physiology.
-- `projection.project_runtime_physiology()` writes it into `SimulationState`.
-- `monitors.step_monitors()` reads the projected physiology and writes
-  waveforms and monitor fields.
 
 ## Cross-step inputs
 
@@ -74,7 +69,7 @@ These values come from the previous step:
 
 - `awake` starts from patient baselines.
 - `steady_state` runs a hidden maintenance period to set drug, gas, fluid, and
-  physiologic state, seeded at MAP 70 mmHg. Recording, display history, arrest
+  physiologic state, starting from MAP 70 mmHg. Recording, display history, arrest
   checks, and visible fluid and temperature totals start after it.
 - Visible time starts at zero. Norepinephrine used to reach the initial MAP
   stays running and visible.
@@ -105,14 +100,14 @@ These values come from the previous step:
 ### Respiration
 
 - Propofol, remifentanil, and sevoflurane depress central drive.
-- Free (sugammadex-unbound) rocuronium drives two effect sites. The adductor
+- Free (sugammadex-unbound) rocuronium acts at two effect sites. The adductor
   pollicis site sets TOF and shivering. The central site (diaphragm and larynx)
   sets respiratory muscle strength and laryngospasm; it equilibrates faster but
   needs about 1.8 times the concentration (Plaud 1995; Cantineau 1994), so
   breathing returns before the TOF recovers.
 - Without an ETT or positive pressure, loss of consciousness causes up to 40%
   upper-airway obstruction (Hillman 2009; Eastwood 2005). CPAP or bag-mask
-  ventilation splints it open.
+  ventilation keeps it open.
 - Alveolar O2 is a mass balance over the FRC gas store and hemoglobin-bound O2.
   At steady state it reduces to the alveolar gas equation. During apnea the
   stores deplete at VO2, so preoxygenation sets the safe apnea time, and a
@@ -154,8 +149,9 @@ These values come from the previous step:
   propofol-remifentanil model, then applies 10 s smoothing and the model's
   processing delay.
 - The gas monitor shows end-tidal age-adjusted MAC (`et_mac`). Brain MAC
-  (`mac`) drives drug effects.
-- Poor perfusion slows the finger SpO2 response and shrinks the pleth.
+  (`mac`) sets drug effects.
+- Poor perfusion slows the finger SpO2 response and shrinks the pleth. SpO2
+  shows a value only with an organized rhythm and adequate perfusion.
   Arterial saturation (`sao2`) depends only on PaO2 and hemoglobin.
 - EtCO2 updates from completed capnogram breaths and clears 15 seconds after the
   last valid exhaled sample.
@@ -164,51 +160,57 @@ These values come from the previous step:
 
 - All intravenous drugs use `MammillaryPK`: up to two peripheral compartments
   and an effect site. `state_fields`, `get_ss_matrices()`, and `state_vector()`
-  share one state order, used by TCI and steady-state seeding.
+  share one state order, used by TCI and steady-state initialization.
 - Hemodynamic scaling changes V1 with blood volume and clearances with cardiac
   output. Changing V1 rescales central concentration by old V1 / new V1 to
   preserve drug amount. Peripheral volumes and concentrations and the effect
   site stay unchanged. Drug lost in shed blood is not tracked separately.
-  Epinephrine clearance does not scale with cardiac output.
+  Epinephrine clearance is independent of cardiac output.
 - Every 10 s the TCI controller predicts the zero-input course of the target
   compartment over ten minutes and picks the largest rate that keeps it at or
   below target (Shafer and Gregg 1992). From zero this is the bolus whose
   effect-site peak reaches target; at target it is the maintenance rate.
   Propofol and remifentanil are limited to 1200 mL/h.
-- Controllers rebuild after PK parameter changes and reseed after external
-  boluses.
+- Controllers are rebuilt after PK parameter changes and reset from current
+  concentrations after external boluses.
 - Setting a manual rate disables that drug's TCI controller. Changing the target
-  compartment replaces the controller and seeds it from live PK concentrations.
+  compartment replaces the controller, starting from current PK concentrations.
 
 ### Temperature and stimulation
 
 - Induction moves up to 1.3 °C of core heat to the periphery with a 20-minute
-  time constant (Matsukawa 1995). Lightening does not return it.
+  time constant (Matsukawa 1995). The heat stays peripheral if anesthesia
+  lightens.
 - Noxious-stimulus responses scale with the probability of responding to
   laryngoscopy on the Bouillon propofol-remifentanil-MAC surface, so opioids
   blunt the hemodynamic and BIS response.
 
 ## Browser app
 
-`web/` is a static page. A module worker loads Pyodide, numpy, and scipy from
-the Pyodide CDN, unpacks a zip of the `anasim` package, and runs a
-[`WebSession`](../anasim/web.py). Every 50 ms it calls `advance()` with the
-elapsed wall time, which steps the engine as the desktop loop does and returns
-JSON: monitor values, new waveform samples, control state, and the current
-objective. Page controls call `command()`. `scripts/build_web.py` builds the
-site into `build/web`, and `.github/workflows/pages.yml` publishes it.
+Both versions use the page in `anasim/web_assets/` and a
+[`WebSession`](../anasim/web.py), which applies learner commands and returns
+JSON snapshots of monitor values, new waveform samples, control state, and the
+current objective.
+
+- Local: [`local.py`](../anasim/local.py) serves the page on 127.0.0.1 under a
+  random URL path, accepts only same-origin requests, and steps the session on
+  its own clock while the page polls. A reload reconnects to the paused
+  session. If polling stops for 5 seconds, the session pauses and any recording
+  closes. Recordings stay in the recordings directory.
+- Hosted: a module worker loads Pyodide, numpy, and scipy from the CDN and runs
+  the session in the browser. Stopping a recording downloads it.
+  `scripts/build_web.py` builds the site into `build/web`, and
+  `.github/workflows/pages.yml` publishes it.
 
 ## Scenario objectives
 
 `engine.actions` records controls and event transitions with their simulation
-times. The scenario overlay and `WebSession` call `begin_step()` when an
-objective becomes active.
+times. `WebSession` calls `begin_step()` when an objective becomes active.
 
 | Kind | Example | Check reads |
 |------|---------|-------------|
 | Action | "Give 500 mL", "start the vasopressor", "select the ETT" | `engine.actions` since the objective started, plus current state where relevant |
 | State | "MAP > 65", "TOF below 25%", "circuit FiO2 below 30%" | Current engine state |
 
-Actions taken before an objective started do not count toward it. Scoping uses
-log positions rather than timestamps, because actions taken while paused share
-a timestamp. Step-scoped queries raise an error when no objective is active.
+Only actions taken after an objective starts count toward it. The log marks
+the start by position, because actions taken while paused share a timestamp. Step-scoped queries raise an error when no objective is active.

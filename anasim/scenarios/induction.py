@@ -156,7 +156,6 @@ def create_induction_balanced() -> Scenario:
     return Scenario(
         id="induction_balanced",
         name="Induction (Balanced)",
-        icon="",
         description="Learn the balanced anesthesia induction sequence with volatile maintenance.",
         steps=steps,
     )
@@ -311,7 +310,6 @@ def create_induction_tiva() -> Scenario:
     return Scenario(
         id="induction_tiva",
         name="Induction (TIVA)",
-        icon="",
         description="Learn the TIVA induction sequence with propofol/remifentanil maintenance.",
         steps=steps,
     )

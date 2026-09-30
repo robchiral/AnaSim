@@ -61,6 +61,26 @@ def test_pulse_oximeter_displays_saturation_below_forty_percent():
     assert spo2.step(0.1, sample, 25.0, 1.0)[1] == pytest.approx(25.0)
 
 
+def test_pulse_oximeter_requires_perfusion_and_an_organized_pulse():
+    cycle = CardiacCycle(np.random.default_rng(2))
+    sample = cycle.seed(60.0, RhythmType.SINUS)
+    spo2 = SpO2Monitor()
+    spo2.step(0.1, sample, 98.0, 1.0)
+
+    # Signal loss cannot track unmeasurable saturation or generate a pulse.
+    for rhythm, perfusion in ((RhythmType.SINUS, 0.0), (RhythmType.VFIB, 1.0)):
+        sample = cycle.seed(60.0, rhythm)
+        pleth, saturation = spo2.step(10.0, sample, 50.0, perfusion)
+        assert not spo2.signal_valid
+        assert pleth == 0.0
+        assert saturation == 98.0
+
+    sample = cycle.seed(60.0, RhythmType.SINUS)
+    _, saturation = spo2.step(0.1, sample, 50.0, 1.0)
+    assert spo2.signal_valid
+    assert 50.0 < saturation < 98.0
+
+
 def test_shared_cycle_orders_qrs_art_and_pleth():
     cycle = CardiacCycle(np.random.default_rng(4))
     renderer = ArterialWaveformRenderer(age=40)

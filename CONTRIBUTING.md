@@ -1,37 +1,47 @@
 # Contributing
 
-## Local setup
+## Setup and checks
 
-Use the setup and validation commands in the [README](README.md#development).
+```bash
+git clone https://github.com/robchiral/AnaSim.git
+cd AnaSim
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+ruff check .
+python -m pytest -q
+```
 
-For UI changes, also launch `anasim` and inspect the affected workflow
-interactively. The browser app (`web/`, driven by `anasim/web.py`) repeats the
-desktop controls, so change both. Serve it with
-`python scripts/build_web.py --serve`, and run the tests in Pyodide with:
+The hosted app runs the same code in Pyodide. Test it there too:
 
 ```bash
 npm install --no-save "pyodide@$(python scripts/build_web.py --pyodide-version)"
 node scripts/pyodide_tests.mjs -q
 ```
 
-Measure the complete simulation loop, including monitors and TCI, with:
+For speed, run `python scripts/run_benchmarks.py --bench engine` (add
+`--profile` for a breakdown).
+
+## Interface changes
+
+The local and hosted versions share `anasim/web_assets/` and `anasim/web.py`.
+Try changes with `anasim`, and serve the hosted build with
+`python scripts/build_web.py --serve`.
+
+If the change shows in the README GIF, regenerate it:
 
 ```bash
-python scripts/run_benchmarks.py --bench engine --steps 10000 --repeat 5
+python -m pip install playwright pillow
+playwright install chromium
+python scripts/capture_demo.py
 ```
-
-These benchmarks use a fixed seed and 0.1-second steps. Initialization and warmup
-are excluded from the elapsed time. Use `--profile` to find where time is spent.
 
 ## Guidelines
 
-- Keep changes focused and use short imperative commit subjects.
-- Add behavior-level tests for simulation changes. Prefer driving
-  `SimulationEngine` through a clinical sequence over testing single equations
-  or setters, and anchor bounds to a cited source where one exists.
-- Cite primary literature for physiology or pharmacology changes.
-- Document material model adaptations and their clinical rationale.
-- Update `docs/REFERENCES.md` when model sources or material adaptations change.
-- Update `CHANGELOG.md` for user-visible changes.
-- Use direct technical language in user-facing text. Define unfamiliar terms and
-  state model limits explicitly.
+- Keep changes focused, with short imperative commit subjects.
+- Test simulation changes end to end: run `SimulationEngine` through a
+  clinical sequence and take bounds from a cited source where one exists.
+- Cite sources for model changes in `docs/REFERENCES.md`, noting what AnaSim
+  adapts or calibrates.
+- Add user-visible changes to `CHANGELOG.md`.
+- Write user-facing text plainly and state model limits.

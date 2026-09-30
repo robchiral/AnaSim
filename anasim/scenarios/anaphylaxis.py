@@ -86,7 +86,6 @@ def create_anaphylaxis_scenario() -> Scenario:
     return Scenario(
         id="anaphylaxis_response",
         name="Anaphylaxis management",
-        icon="",
         description="Recognize and manage intraoperative anaphylaxis.",
         steps=steps,
     )

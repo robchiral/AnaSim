@@ -146,7 +146,7 @@
         </div>
         <div class="numerics">
           <div class="numeric big ecg" data-alarm="HR"><div class="numeric-head"><span class="numeric-title">HR</span><span class="numeric-unit">bpm</span></div><output id="v-hr">--</output></div>
-          <div class="numeric big spo2" data-alarm="SpO2"><div class="numeric-head"><span class="numeric-title">SpO₂</span><span class="numeric-unit">%</span></div><output id="v-spo2">--</output></div>
+          <div class="numeric big spo2" data-alarm="SpO2"><div class="numeric-head"><span class="numeric-title">SpO₂</span><span class="numeric-unit" id="v-spo2-unit">%</span></div><output id="v-spo2">--</output></div>
           <div class="numeric big abp" data-alarm="MAP" id="n-art"><div class="numeric-head"><span class="numeric-title">ART</span><span class="numeric-unit">mmHg</span></div><output id="v-art">--/-- (--)</output></div>
           <div class="numeric big abp" id="n-nibp"><div class="numeric-head"><span class="numeric-title">NIBP</span><span class="numeric-unit">mmHg</span></div><output id="v-nibp">--/-- (--)</output><output id="v-nibp-status" class="measurement-status"></output><button type="button" class="btn small" id="measure-nibp">Measure BP</button></div>
           <div class="numeric-pair">
@@ -173,7 +173,7 @@
       </div>
       <footer class="sim-bar">
         <button type="button" class="btn primary" id="run">Start simulation</button>
-        <button type="button" class="btn toggle" id="record" aria-pressed="false" title="Record time-series data and download it as CSV when you stop.">Record CSV</button>
+        <button type="button" class="btn toggle" id="record" aria-pressed="false">Record CSV</button>
         <label class="speed">Simulation speed
           <span class="unit-input"><input type="number" id="speed" min="0.1" max="50" step="0.5" value="1"><span>×</span></span>
         </label>
@@ -194,9 +194,9 @@
         <fieldset class="group">
           <legend>Airway management</legend>
           <div class="segmented" id="c-airway">
-            <button type="button" data-value="None" data-color="dim">Disconnected</button>
-            <button type="button" data-value="Mask" data-color="info">Facemask</button>
-            <button type="button" data-value="ETT" data-color="success">Tracheal tube</button>
+            <button type="button" data-value="None">Disconnected</button>
+            <button type="button" data-value="Mask">Facemask</button>
+            <button type="button" data-value="ETT">Tracheal tube</button>
           </div>
         </fieldset>
 
@@ -204,9 +204,9 @@
           <fieldset class="group">
             <legend>Fresh gas flow</legend>
             <div class="grid2">
-              <label class="info" for="c-o2">O₂</label><span class="unit-input"><input id="c-o2" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
+              <label for="c-o2">O₂</label><span class="unit-input"><input id="c-o2" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
               <label for="c-air">Air</label><span class="unit-input"><input id="c-air" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
-              <label class="warning" for="c-n2o">N₂O</label><span class="unit-input"><input id="c-n2o" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
+              <label for="c-n2o">N₂O</label><span class="unit-input"><input id="c-n2o" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
               <span class="dim">Circuit FiO₂</span><output id="c-fio2" class="fio2">21%</output>
             </div>
             <button type="button" class="btn toggle t-danger full" id="c-o2-supply" aria-pressed="false">Disconnect O₂ supply</button>
@@ -223,7 +223,7 @@
         <fieldset class="group">
           <legend>Manual ventilation</legend>
           <div class="inline">
-            <button type="button" class="btn toggle t-success" id="c-bag" aria-pressed="false">Start bag-mask ventilation</button>
+            <button type="button" class="btn toggle" id="c-bag" aria-pressed="false">Start bag-mask ventilation</button>
             <span class="dim small">12 breaths/min · 500 mL</span>
           </div>
         </fieldset>
@@ -231,7 +231,7 @@
         <fieldset class="group">
           <legend>Mechanical ventilation</legend>
           <div class="inline">
-            <button type="button" class="btn toggle t-primary" id="c-vent-power" aria-pressed="false">Start ventilator</button>
+            <button type="button" class="btn toggle" id="c-vent-power" aria-pressed="false">Start ventilator</button>
           </div>
           <div class="grid4">
             <label for="c-vent-mode">Mode</label>
@@ -254,14 +254,11 @@
 
       <div class="tab-panel" data-panel="Medications" role="tabpanel" hidden>
         <div id="drug-cards"></div>
-        <fieldset class="group card">
+        <fieldset class="group">
           <legend>Sugammadex</legend>
-          <p class="help">Moderate block 2 mg/kg  •  Deep block 4 mg/kg  •  Immediate reversal 16 mg/kg</p>
-          <div class="inline">
-            <button type="button" class="btn outlined" data-sugammadex="2">2 mg/kg</button>
-            <button type="button" class="btn outlined" data-sugammadex="4">4 mg/kg</button>
-            <button type="button" class="btn outlined" data-sugammadex="16">16 mg/kg</button>
-          </div>
+          <button type="button" class="btn outlined full" data-sugammadex="2">Moderate block: 2 mg/kg</button>
+          <button type="button" class="btn outlined full" data-sugammadex="4">Deep block: 4 mg/kg</button>
+          <button type="button" class="btn outlined full" data-sugammadex="16">Immediate reversal: 16 mg/kg</button>
         </fieldset>
       </div>
 
@@ -305,8 +302,8 @@
             <label for="c-obstruction">Upper airway obstruction</label><span class="unit-input"><input id="c-obstruction" type="number" min="0" max="100" step="5"><span>%</span></span>
             <label for="c-bronchospasm">Bronchospasm</label><span class="unit-input"><input id="c-bronchospasm" type="number" min="0" max="100" step="5"><span>%</span></span>
           </div>
+          <label class="choice"><input type="checkbox" id="c-auto-laryngo" checked> Automatic laryngospasm</label>
           <p class="dim small" id="c-laryngo">Laryngospasm: none</p>
-          <button type="button" class="btn toggle t-warning full" id="c-auto-laryngo" aria-pressed="true">Automatic laryngospasm on</button>
         </fieldset>
 
         <fieldset class="group">
