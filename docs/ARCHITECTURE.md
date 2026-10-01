@@ -87,8 +87,9 @@ These values come from the previous step:
   concentrations.
 - A fast baroreflex adjusts HR around a MAP set point that resets over about
   30 minutes. Propofol and sevoflurane blunt it, and noxious stimulation is
-  excluded from the sensed pressure. Su's turnover feedback is the slow
-  component.
+  excluded from the sensed pressure. When a rhythm sets the ventricular rate,
+  the HR change it cannot make acts on TPR instead. Su's turnover feedback is
+  the slow component.
 - Epinephrine has separate curves for chronotropy, inotropy, beta-2 dilation,
   and alpha constriction. The pressor response lags, so a bolus peaks HR
   before SBP.
@@ -137,14 +138,22 @@ These values come from the previous step:
   delay.
 - Beat-synchronous monitors step at 10 ms or less, whatever the outer step.
 - The arterial renderer shapes each beat from the systolic, diastolic,
-  dicrotic-notch, and dicrotic-peak landmarks of Mahdi et al. Beat mean equals
-  Su MAP; pulse pressure comes from Su stroke volume and age-adjusted arterial
-  compliance.
+  dicrotic-notch, and dicrotic-peak landmarks of Mahdi et al. At a regular rate,
+  beat mean equals Su MAP and pulse pressure comes from Su stroke volume and
+  age-adjusted arterial compliance.
+- Each beat's stroke volume follows its preceding filling time, and its
+  diastole runs off for its own R-R with the Windkessel time constant
+  (resistance × compliance). This only changes beats when R-R varies, as in AF.
+  The pleth amplitude follows the same stroke volume.
 - The arterial catheter is a second-order system (default 20 Hz, damping
-  0.65). ART numerics come from completed filtered beats.
+  0.65). ART numerics average completed filtered beats over the last 5 seconds.
 - NIBP measures the ideal pressures with cuff timing, bias, and failure.
-- Monitor HR is beat-derived. Arrest rhythms without organized beats remove the
-  arterial pulse and pleth; the ECG shows the rhythm.
+- Monitor HR averages the last 12 R-R intervals. Arrest rhythms without
+  organized beats remove the arterial pulse and pleth; the ECG shows the rhythm.
+- ECG waves keep fixed durations around each R peak; only QT follows the
+  preceding R-R interval (Fridericia, QTc 400 ms). AF R-R intervals are drawn
+  independently within ±35% of the mean, narrowed at fast rates so none is
+  shorter than 250 ms.
 - BIS adds sevoflurane (1 MAC gives BIS 41) to the selected
   propofol-remifentanil model, then applies 10 s smoothing and the model's
   processing delay.

@@ -434,21 +434,14 @@ class HemodynamicModel:
 
         if hr_base is None:
             hr_base = self._calc_hr()
-        current_hr = hr_base + self.dist_hr
-        current_hr = max(HR_MIN, current_hr)
-        current_hr = min(HR_MAX, current_hr)
-
-        # Rhythm rates: SVT 150-220, VT 150-250, untreated AF with RVR 110-150 bpm.
-        if self.rhythm_type == RhythmType.SVT:
-            current_hr = 160.0
-        elif self.rhythm_type == RhythmType.VTACH:
-            current_hr = 180.0
-        elif self.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE):
-            current_hr = 0.0
-        elif self.rhythm_type == RhythmType.AFIB:
-            current_hr = max(current_hr, 110.0)
-        elif self.rhythm_type == RhythmType.SINUS_BRADY:
-            current_hr = min(current_hr, 50.0)
+        sinus_hr = clamp(hr_base + self.dist_hr, HR_MIN, HR_MAX)
+        current_hr = self._rhythm_rate(sinus_hr)
+        reflex_tpr_factor = 1.0
+        if self.rhythm_type != RhythmType.SINUS:
+            # When the rhythm sets the rate, the baroreflex acts through its vascular limb.
+            reflex_hr = self.smoothed_baro_hr
+            blocked_hr = reflex_hr - (current_hr - self._rhythm_rate(sinus_hr - reflex_hr))
+            reflex_tpr_factor = 1.0 + blocked_hr / max(sinus_hr - reflex_hr, HR_MIN)
         current_hr *= 1.0 - self.hypoxia_hr_depression * self.myocardial_hypoxia
 
         term = 1.0 - self.hr_sv_coupling * math.log(max(1.0, current_hr / self.base_hr))
@@ -460,7 +453,7 @@ class HemodynamicModel:
         current_sv = max(1.0, current_sv) * (1.0 - self.hypoxia_sv_depression * self.myocardial_hypoxia)
 
         if self.rhythm_type == RhythmType.AFIB:
-            current_sv *= 0.80  # Loss of atrial kick
+            current_sv *= 0.68  # Lost atrial kick (~20%) and R-R irregularity (-15% CO; Clark 1997)
         elif self.rhythm_type == RhythmType.VTACH:
             current_sv *= 0.25  # CO about 40% of baseline
         elif self.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE):
@@ -480,7 +473,7 @@ class HemodynamicModel:
             eff_tpr = max(
                 0.006,
                 self.tpr + self.delta_tpr_vasopressors + self.dist_svr / 1000.0 + distributive_tpr_offset,
-            )
+            ) * reflex_tpr_factor
             map_val = clamp(current_hr * current_sv * eff_tpr, 5.0, 300.0)
             svr_val = map_val / co
             # First-order share of MAP from stimulation; nociception resets the baroreflex.
@@ -509,6 +502,23 @@ class HemodynamicModel:
             rhythm_type=self.rhythm_type,
         )
         return self._cached_state
+
+    def _rhythm_rate(self, sinus_hr: float) -> float:
+        """Ventricular rate from the underlying sinus rate.
+
+        SVT 150-220, VT 150-250, untreated AF with RVR 110-150 bpm.
+        """
+        if self.rhythm_type == RhythmType.SVT:
+            return 160.0
+        if self.rhythm_type == RhythmType.VTACH:
+            return 180.0
+        if self.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE):
+            return 0.0
+        if self.rhythm_type == RhythmType.AFIB:
+            return max(sinus_hr, 110.0)
+        if self.rhythm_type == RhythmType.SINUS_BRADY:
+            return min(sinus_hr, 50.0)
+        return sinus_hr
 
     @property
     def state(self) -> HemoStateExtended:

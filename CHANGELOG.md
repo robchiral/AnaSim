@@ -12,6 +12,21 @@
   metabolic rate.
 - Cardiac arrest gives zero O₂ delivery, and volatile agent is conserved
   across large time steps.
+- The HR numeric averages the last 12 R-R intervals, so AF shows a steady
+  rate instead of each beat's rate.
+- ECG QRS and PR durations no longer stretch with the R-R interval, QT follows
+  the preceding interval, and VT is wide. AF shows fibrillatory waves, and VF
+  no longer repeats every 6 seconds.
+- AF lowers stroke volume 32% (lost atrial kick and R-R irregularity), so AF at
+  110 bpm lowers CO and MAP instead of raising them.
+- In AF, arterial and pleth pulses vary beat to beat with the preceding R-R,
+  more at faster rates, and diastolic pressure falls further after long pauses.
+  ART numerics average the last 5 seconds of beats.
+- When a rhythm sets the rate (bradycardia, AF, SVT, VT), the baroreflex
+  constricts vessels instead of changing HR. Awake sinus bradycardia at 50 bpm
+  lowers MAP about 20% instead of 30%; under anesthesia the reflex stays blunted.
+- AF R-R intervals stay at or above 250 ms, so AF faster than about 155 bpm is
+  more regular.
 
 ## 1.3 - 2026-09-30
 

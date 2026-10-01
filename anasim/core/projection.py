@@ -303,7 +303,7 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
         art_sbp=art_reading.systolic,
         art_dbp=art_reading.diastolic,
         art_map=art_reading.mean,
-        display_hr=cardiac_sample.measured_hr,
+        display_hr=cardiac_sample.display_hr,
         display_bis=bis_val,
         display_etco2=state.etco2,
         display_spo2=state.spo2,

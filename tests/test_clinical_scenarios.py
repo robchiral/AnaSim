@@ -1,5 +1,7 @@
 """One integrated adult path per clinical workflow; comments cite each bound's source."""
 
+import pytest
+
 from anasim.core.state import SimulationConfig
 from anasim.scenarios.oxygen_supply import create_oxygen_supply_failure
 
@@ -273,3 +275,46 @@ def test_balanced_steady_state_holds_depth(engine_factory):
     for _ in range(1800):
         engine.step(1.0)
     assert abs(engine.state.bis - initial_bis) < 5.0
+
+
+def test_atrial_fibrillation_then_sinus_bradycardia(engine_factory):
+    """AF: beats stay irregular, but the HR and ART numerics average recent beats.
+
+    An irregular R-R sequence alone lowers CO about 15% at the same rate (Clark 1997),
+    on top of the lost atrial kick, so AF at about 110 bpm should not raise CO or MAP.
+    When AF ends in sinus bradycardia, SV stays about the same (Hogue 1996), so CO
+    falls; awake, reflex vasoconstriction limits the fall in MAP.
+    """
+    engine = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=7, arterial_line_enabled=True), start=True
+    )
+    for _ in range(300):
+        engine.step(0.1)
+    baseline_map, baseline_co, baseline_svr = engine.state.map, engine.hemo.state.co, engine.hemo.state.svr
+
+    engine.set_rhythm("AFIB")
+    for _ in range(300):
+        engine.step(0.1)
+    shown = []
+    art = []
+    for _ in range(600):
+        engine.step(0.1)
+        shown.append(engine.state.display_hr)
+        art.append((engine.state.art_sbp, engine.state.art_map - engine.state.map))
+
+    rate = engine.hemo.state.hr
+    each_second = shown[::10]
+    assert max(abs(value - rate) for value in shown) < 0.2 * rate
+    assert max(abs(b - a) for a, b in zip(each_second, each_second[1:])) < 15.0
+    art_sbp, art_map_error = zip(*art)
+    assert max(art_sbp) - min(art_sbp) < 8.0
+    assert max(abs(error) for error in art_map_error) < 5.0
+    assert engine.hemo.state.co < baseline_co
+    assert engine.state.map < baseline_map
+
+    engine.set_rhythm("SINUS_BRADY")
+    for _ in range(600):
+        engine.step(0.1)
+    assert engine.state.display_hr == pytest.approx(50.0, abs=1.0)
+    assert engine.hemo.state.svr > 1.05 * baseline_svr
+    assert 0.75 * baseline_map < engine.state.map < 0.9 * baseline_map

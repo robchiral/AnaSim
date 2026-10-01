@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 
 import numpy as np
@@ -90,11 +91,20 @@ class ArterialWaveformRenderer:
         )
         self.arterial_compliance = self.config.compliance_ref_ml_mmhg * age_factor
         self._initialized = False
+        # Mean-beat pressures, latched at each R wave.
         self._mean_pressure = 0.0
-        self._pulse_pressure = 0.0
         self._systolic = 0.0
         self._diastolic = 0.0
-        self._shape = self._build_shape(60.0 / 70.0, 70.0)
+        self._reference_pp = 0.0
+        self._runoff_tau_s = 1.0
+        self._next_shape = self._build_shape(60.0 / 70.0, 70.0)
+        # The drawn beat, latched at its pressure upstroke.
+        self._shape = self._next_shape
+        self._beat_rr_s = 60.0 / 70.0
+        self._pulse_pressure = 0.0
+        self._foot_pressure = 0.0
+        self._end_pressure = 0.0
+        self._beat_pending = False
 
     def _diastolic_normalized_integral(self) -> float:
         cfg = self.config
@@ -150,6 +160,14 @@ class ArterialWaveformRenderer:
                 shape.dicrotic_height - shape.notch_height
             ) * _quintic_smoothstep(u)
 
+        return shape.dicrotic_height * self._diastolic_decay(phase)
+
+    def _diastolic_decay(self, phase: float) -> float:
+        """Diastolic pressure above the beat's end value, from 1 at the dicrotic peak to 0."""
+        shape = self._shape
+        phase = phase % 1.0
+        if phase <= shape.dicrotic_phase:
+            return 1.0
         u = (phase - shape.dicrotic_phase) / (1.0 - shape.dicrotic_phase)
         cfg = self.config
         raw = (
@@ -161,27 +179,37 @@ class ArterialWaveformRenderer:
             + (1.0 - cfg.diastolic_fast_weight) * math.exp(-cfg.diastolic_slow_rate)
         )
         normalized = (raw - end_value) / (1.0 - end_value)
-        return shape.dicrotic_height * clamp(normalized, 0.0, 1.0)
+        return clamp(normalized, 0.0, 1.0)
 
-    def _latch_beat(self, map_value: float, stroke_volume_ml: float, sample: CardiacCycleSample) -> None:
+    def _update_reference(self, map_value: float, stroke_volume_ml: float, sample: CardiacCycleSample) -> None:
         mean_pressure = max(0.0, float(map_value))
         if not sample.organized or mean_pressure <= 0.0 or stroke_volume_ml <= 0.0:
-            self._mean_pressure = 0.0
-            self._pulse_pressure = 0.0
-            self._systolic = 0.0
-            self._diastolic = 0.0
-            self._initialized = True
+            self._mean_pressure = self._systolic = self._diastolic = self._reference_pp = 0.0
             return
 
-        self._shape = self._build_shape(sample.rr_interval_s, sample.measured_hr)
+        shape = self._build_shape(sample.rr_interval_s, sample.measured_hr)
         requested_pp = float(stroke_volume_ml) / self.arterial_compliance
-        maximum_pp = mean_pressure / self._shape.mean
-        pulse_pressure = min(requested_pp, maximum_pp)
+        self._reference_pp = min(requested_pp, mean_pressure / shape.mean)
         self._mean_pressure = mean_pressure
-        self._pulse_pressure = pulse_pressure
-        self._diastolic = mean_pressure - pulse_pressure * self._shape.mean
-        self._systolic = self._diastolic + pulse_pressure
-        self._initialized = True
+        self._diastolic = mean_pressure - self._reference_pp * shape.mean
+        self._systolic = self._diastolic + self._reference_pp
+        self._next_shape = shape
+        flow_ml_s = float(stroke_volume_ml) / sample.mean_rr_s
+        self._runoff_tau_s = mean_pressure / flow_ml_s * self.arterial_compliance
+
+    def _start_beat(self, sample: CardiacCycleSample) -> None:
+        """Rise from the previous beat's end pressure by this beat's stroke volume,
+        then run off for this beat's R-R with the Windkessel time constant."""
+        self._shape = self._next_shape
+        self._beat_rr_s = sample.rr_interval_s
+        if self._mean_pressure <= 0.0:
+            self._pulse_pressure = self._foot_pressure = self._end_pressure = 0.0
+            return
+        self._pulse_pressure = self._reference_pp * sample.stroke_fraction
+        self._foot_pressure = self._end_pressure if self._end_pressure > 0.0 else self._diastolic
+        self._end_pressure = self._diastolic * math.exp(
+            -(sample.rr_interval_s - sample.mean_rr_s) / self._runoff_tau_s
+        )
 
     def step(
         self,
@@ -190,15 +218,33 @@ class ArterialWaveformRenderer:
         stroke_volume_ml: float,
     ) -> ArterialPressureSample:
         if not sample.organized:
-            if not self._initialized or self._mean_pressure != 0.0:
-                self._latch_beat(0.0, 0.0, sample)
+            self._update_reference(0.0, 0.0, sample)
+            self._pulse_pressure = self._foot_pressure = self._end_pressure = 0.0
+            self._beat_pending = False
+            self._initialized = True
             return ArterialPressureSample(0.0, 0.0, 0.0, 0.0)
 
+        delay_s = self.config.electromechanical_delay_s
         if not self._initialized or sample.beat_started:
-            self._latch_beat(map_value, stroke_volume_ml, sample)
+            self._update_reference(map_value, stroke_volume_ml, sample)
+            self._beat_pending = True
+        # The drawn beat changes at its upstroke, after the electromechanical delay.
+        if self._beat_pending and (sample.elapsed_s >= delay_s or not self._initialized):
+            self._start_beat(sample)
+            self._beat_pending = False
+        self._initialized = True
 
-        phase = sample.delayed_phase(self.config.electromechanical_delay_s)
-        pressure = self._diastolic + self._pulse_pressure * self._shape_value(phase)
+        if self._beat_pending:
+            phase = (self._beat_rr_s - delay_s + sample.elapsed_s) / self._beat_rr_s
+        else:
+            phase = ((sample.elapsed_s - delay_s) / self._beat_rr_s) % 1.0
+        phase = min(phase, 1.0 - 1e-9)
+        runoff = 1.0 - self._diastolic_decay(phase)
+        pressure = (
+            self._foot_pressure
+            + self._pulse_pressure * self._shape_value(phase)
+            + (self._end_pressure - self._foot_pressure) * runoff
+        )
         return ArterialPressureSample(
             pressure=float(max(0.0, pressure)),
             systolic=float(self._systolic),
@@ -208,11 +254,18 @@ class ArterialWaveformRenderer:
 
 
 class ArterialLineMonitor:
-    """Apply fluid-filled line dynamics and extract completed-beat numerics."""
+    """Apply fluid-filled line dynamics and average completed-beat numerics."""
 
-    def __init__(self, natural_frequency_hz: float = 20.0, damping_ratio: float = 0.65):
+    def __init__(
+        self,
+        natural_frequency_hz: float = 20.0,
+        damping_ratio: float = 0.65,
+        numeric_window_s: float = 5.0,
+    ):
         self.natural_frequency_hz = float(natural_frequency_hz)
         self.damping_ratio = float(damping_ratio)
+        # Bedside monitors average pressure numerics over several seconds of beats.
+        self.numeric_window_s = float(numeric_window_s)
         if self.natural_frequency_hz <= 0.0:
             raise ValueError("natural_frequency_hz must be greater than zero")
         if self.damping_ratio < 0.0:
@@ -226,6 +279,7 @@ class ArterialLineMonitor:
         self._beat_max = -math.inf
         self._beat_integral = 0.0
         self._beat_duration = 0.0
+        self._recent_beats: deque[tuple[float, float, float, float]] = deque()
         self._latest_sbp = 0.0
         self._latest_dbp = 0.0
         self._latest_map = 0.0
@@ -261,6 +315,7 @@ class ArterialLineMonitor:
         self._beat_max = sample.pressure
         self._beat_integral = 0.0
         self._beat_duration = 0.0
+        self._recent_beats.clear()
         self._latest_sbp = sample.systolic
         self._latest_dbp = sample.diastolic
         self._latest_map = sample.mean
@@ -275,9 +330,13 @@ class ArterialLineMonitor:
     def _complete_beat(self) -> None:
         if self._beat_duration <= 0.0:
             return
-        self._latest_sbp = self._beat_max
-        self._latest_dbp = self._beat_min
-        self._latest_map = self._beat_integral / self._beat_duration
+        beats = self._recent_beats
+        beats.append((self._beat_max, self._beat_min, self._beat_integral, self._beat_duration))
+        while len(beats) > 1 and sum(beat[3] for beat in beats) - beats[0][3] >= self.numeric_window_s:
+            beats.popleft()
+        self._latest_sbp = sum(beat[0] for beat in beats) / len(beats)
+        self._latest_dbp = sum(beat[1] for beat in beats) / len(beats)
+        self._latest_map = sum(beat[2] for beat in beats) / sum(beat[3] for beat in beats)
 
     def _reset_beat(self, pressure: float) -> None:
         self._beat_min = pressure
@@ -303,6 +362,7 @@ class ArterialLineMonitor:
         pressure = max(0.0, self._pressure)
 
         if not cycle.organized:
+            self._recent_beats.clear()
             self._latest_sbp = 0.0
             self._latest_dbp = 0.0
             self._latest_map = 0.0

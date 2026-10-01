@@ -39,3 +39,35 @@ def test_nonnegative_constraint_preserves_map_in_extreme_state():
 
     assert float(np.min(values)) >= 0.0
     assert float(np.mean(values)) == pytest.approx(5.0, abs=0.02)
+
+
+def _af_beats(hr: float, sv: float, map_value: float = 85.0, dt: float = 0.002):
+    """Per-beat preceding R-R and pulse pressure over 60 s of AF, plus mean pressure."""
+    cycle = CardiacCycle(np.random.default_rng(1))
+    renderer = ArterialWaveformRenderer(age=40)
+    renderer.step(cycle.seed(hr, RhythmType.AFIB), map_value, sv)
+    beat_steps, pressures = [0], []
+    for index in range(1, round(60.0 / dt)):
+        sample = cycle.step(dt, hr, RhythmType.AFIB)
+        if sample.beat_started:
+            beat_steps.append(index)
+        pressures.append(renderer.step(sample, map_value, sv).pressure)
+    pressures = np.asarray(pressures)
+    upstroke = round(renderer.config.electromechanical_delay_s / dt)
+    preceding_rr, pulse_pressure = [], []
+    for previous, start, end in zip(beat_steps[1:], beat_steps[2:], beat_steps[3:]):
+        preceding_rr.append((start - previous) * dt)
+        pulse_pressure.append(pressures[start:end].max() - pressures[start + upstroke])
+    return np.asarray(preceding_rr), np.asarray(pulse_pressure), float(np.mean(pressures))
+
+
+def test_af_pulse_pressure_follows_filling_time():
+    """AF stroke volume rises with the preceding R-R (Hardman 1998), and its beat-to-beat
+    variability grows with ventricular rate (Kerr 1998). Mean pressure stays at MAP."""
+    slow_rr, slow_pp, slow_mean = _af_beats(hr=80.0, sv=60.0)
+    fast_rr, fast_pp, fast_mean = _af_beats(hr=140.0, sv=40.0)
+
+    assert np.corrcoef(fast_rr, fast_pp)[0, 1] > 0.8
+    assert np.std(fast_pp) / np.mean(fast_pp) > 2.0 * np.std(slow_pp) / np.mean(slow_pp)
+    assert slow_mean == pytest.approx(85.0, abs=1.5)
+    assert fast_mean == pytest.approx(85.0, abs=1.5)

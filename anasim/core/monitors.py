@@ -268,7 +268,7 @@ def step_monitors(
     alpha_bis = 1.0 - math.exp(-dt / engine._monitor_tau_bis_s)
     engine.smooth_bis = float((1 - alpha_bis) * engine.smooth_bis + alpha_bis * raw_bis)
 
-    display_hr = max(0.0, cardiac_sample.measured_hr)
+    display_hr = max(0.0, cardiac_sample.display_hr)
     display_bis = clamp(engine.smooth_bis, 0.0, 100.0)
     set_state_float_fields(
         state,

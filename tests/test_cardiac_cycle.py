@@ -44,6 +44,42 @@ def test_af_variability_is_beatwise_and_reproducible():
     assert np.std(first) > 0.02
 
 
+def _r_wave_width_ms(rhythm: RhythmType, hr: float) -> float:
+    """Mean R-wave width at half height."""
+    dt = 0.001
+    cycle = CardiacCycle(np.random.default_rng(6))
+    ecg = ECGMonitor(rng=np.random.default_rng(7))
+    sample = cycle.seed(hr, rhythm)
+    voltages, beats = [], []
+    for index in range(4000):
+        if index:
+            sample = cycle.step(dt, hr, rhythm)
+        if sample.beat_started:
+            beats.append(index)
+        voltages.append(ecg.step(dt, sample))
+    voltages = np.array(voltages)
+    widths = []
+    for beat in beats[1:-1]:
+        window = voltages[beat - 100:beat + 100]
+        widths.append(np.count_nonzero(window > 0.5 * window.max()) * dt * 1000.0)
+    return float(np.mean(widths))
+
+
+def test_qrs_width_is_rate_independent_and_wide_in_vt():
+    """QRS duration does not scale with R-R; monomorphic VT is wide (QRS > 120 ms)."""
+    narrow = [
+        _r_wave_width_ms(rhythm, hr)
+        for rhythm, hr in (
+            (RhythmType.SINUS_BRADY, 45.0),
+            (RhythmType.SINUS, 120.0),
+            (RhythmType.AFIB, 110.0),
+            (RhythmType.SVT, 160.0),
+        )
+    ]
+    assert max(narrow) - min(narrow) < 3.0
+    assert _r_wave_width_ms(RhythmType.VTACH, 180.0) > 2.0 * max(narrow)
+
+
 @pytest.mark.parametrize("rhythm", [RhythmType.VFIB, RhythmType.ASYSTOLE])
 def test_arrest_rhythms_have_no_organized_cycle(rhythm):
     cycle = CardiacCycle(np.random.default_rng(3))

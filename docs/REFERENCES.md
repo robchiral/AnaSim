@@ -59,6 +59,11 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Bellissant et al. Clin Pharmacol Ther. 2000. (septic shock pressor hyporesponsiveness: phenylephrine Emax ~39 vs 84 mmHg controls). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11014411/)
 - Margarson et al. J Appl Physiol (1985). 2002. (septic shock TER of albumin ~6.7%/h). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11960967/)
 - Persichini et al. Crit Care Med. 2012. (mean systemic pressure decreases with reduced norepinephrine in septic shock). [PubMed](https://pubmed.ncbi.nlm.nih.gov/22926333/)
+- Clark et al. J Am Coll Cardiol. 1997. (irregular AF R-R sequence vs regular pacing at the same rate: CO 4.4 vs 5.2 L/min, higher PCWP). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9316536/)
+- Hardman et al. Cardiovasc Res. 1998. (AF stroke volume rises curvilinearly with the preceding R-R interval). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9683909/)
+- Kerr et al. Am J Cardiol. 1998. (AF beat-to-beat stroke volume variability increases with ventricular rate). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9874054/)
+- Corino et al. J Cardiovasc Electrophysiol. 2015. (permanent AF R-R rMSSD 171 ms at baseline, 226-256 ms on rate control). [PubMed](https://pubmed.ncbi.nlm.nih.gov/25367150/)
+- Hogue et al. Anesthesiology. 1996. (post-induction sinus bradycardia lowered CO and blood pressure with unchanged stroke volume; atrial pacing at 65-80 bpm restored them). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8694384/)
 
 ## Cardiovascular monitor models
 
