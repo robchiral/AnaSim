@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 from .patient import Patient
@@ -72,32 +73,38 @@ class VolatilePK:
         # blood leaves at the alveolar pressure.
         v_frc = 2.5  # L
         lambda_q = q_co * self.lambda_b_g
-        p_alv = state.p_alv
-        p_ven = state.p_ven
-        dP_dt = (alveolar_vent * (fi_agent - p_alv) + lambda_q * (p_ven - p_alv)) / v_frc
-        p_alv_new = max(0.0, p_alv + dP_dt * dt_min)
-        state.p_alv = p_alv_new
-        state.p_art = p_alv_new
-
         # Tissue rate constant k = (flow / volume) / lambda (1/min). A high
         # partition coefficient slows equilibration: VRG in minutes, fat in hours.
-        p_art = p_alv_new
         k_vrg = (q_vrg / self.v_vrg) / self.lambda_t_b_vrg
         k_mus = (q_mus / self.v_mus) / self.lambda_t_b_mus
         k_fat = (q_fat / self.v_fat) / self.lambda_t_b_fat
-        p_vrg_new = state.p_vrg + k_vrg * (p_art - state.p_vrg) * dt_min
-        p_mus_new = state.p_mus + k_mus * (p_art - state.p_mus) * dt_min
-        p_fat_new = state.p_fat + k_fat * (p_art - state.p_fat) * dt_min
-        state.p_vrg = p_vrg_new
-        state.p_mus = p_mus_new
-        state.p_fat = p_fat_new
 
+        # Update all compartments from the same pressures so agent is
+        # conserved; substep so no Euler weight exceeds 1.
+        fastest_rate = max((alveolar_vent + lambda_q) / v_frc, k_vrg, k_mus, k_fat)
+        substeps = max(1, math.ceil(dt_min * fastest_rate))
+        interval = dt_min / substeps
+        for _ in range(substeps):
+            p_alv = state.p_alv
+            p_ven = (
+                self.f_vrg_frac * state.p_vrg
+                + self.f_mus_frac * state.p_mus
+                + self.f_fat_frac * state.p_fat
+            )
+            state.p_alv += (
+                alveolar_vent * (fi_agent - p_alv) + lambda_q * (p_ven - p_alv)
+            ) / v_frc * interval
+            state.p_vrg += k_vrg * (p_alv - state.p_vrg) * interval
+            state.p_mus += k_mus * (p_alv - state.p_mus) * interval
+            state.p_fat += k_fat * (p_alv - state.p_fat) * interval
+
+        state.p_art = state.p_alv
         # Mixed venous pressure is the flow-weighted tissue pressure.
-        if q_co > 1e-6:
-            p_ven_new = (q_vrg * p_vrg_new + q_mus * p_mus_new + q_fat * p_fat_new) / q_co
-        else:
-            p_ven_new = state.p_ven
-        state.p_ven = p_ven_new
+        state.p_ven = (
+            self.f_vrg_frac * state.p_vrg
+            + self.f_mus_frac * state.p_mus
+            + self.f_fat_frac * state.p_fat
+        )
 
         # MAC requirement falls about 5% per °C of hypothermia.
         temp_diff = 37.0 - temp_c

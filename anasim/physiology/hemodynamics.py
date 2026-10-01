@@ -312,7 +312,7 @@ class HemodynamicModel:
     def _calc_pvr_factor(self, pao2: float, peep_cmH2O: Optional[float] = None) -> float:
         """PVR multiplier from hypoxic vasoconstriction and PEEP."""
         pvr_factor = 1.0
-        if pao2 > 0 and pao2 < self.pvr_o2_threshold:
+        if pao2 < self.pvr_o2_threshold:
             denom = max(1.0, self.pvr_o2_threshold - self.pvr_o2_floor)
             frac = clamp01((self.pvr_o2_threshold - pao2) / denom)
             pvr_factor *= 1.0 + (self.pvr_o2_max_factor - 1.0) * frac

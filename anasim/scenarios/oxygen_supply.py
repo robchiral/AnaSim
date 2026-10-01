@@ -37,6 +37,7 @@ def _require_safe_baseline(engine) -> Tuple[bool, str]:
     ready = (
         circuit.oxygen_supply_connected
         and 0.34 <= fio2 <= 0.40
+        and engine.state.spo2_signal_valid
         and spo2 >= 94
     )
     if ready:
@@ -47,7 +48,9 @@ def _require_safe_baseline(engine) -> Tuple[bool, str]:
         messages.append("Connect the O₂ supply")
     if not 0.34 <= fio2 <= 0.40:
         messages.append(f"Circuit FiO₂: {fio2 * 100:.0f}%/34–40%")
-    if spo2 < 94:
+    if not engine.state.spo2_signal_valid:
+        messages.append("Awaiting valid SpO₂")
+    elif spo2 < 94:
         messages.append(f"SpO₂: {spo2:.0f}%/94%+")
     return False, join_messages(messages)
 
@@ -100,6 +103,7 @@ def _require_oxygen_recovery(engine) -> Tuple[bool, str]:
     recovered = (
         engine.circuit.oxygen_supply_connected
         and fio2 >= 0.85
+        and engine.state.spo2_signal_valid
         and spo2 >= 94
     )
     if recovered:
@@ -108,7 +112,9 @@ def _require_oxygen_recovery(engine) -> Tuple[bool, str]:
     messages = []
     if fio2 < 0.85:
         messages.append(f"Circuit FiO₂: {fio2 * 100:.0f}%/85%+")
-    if spo2 < 94:
+    if not engine.state.spo2_signal_valid:
+        messages.append("Awaiting valid SpO₂")
+    elif spo2 < 94:
         messages.append(f"SpO₂: {spo2:.0f}%/94%+")
     return False, join_messages(messages)
 

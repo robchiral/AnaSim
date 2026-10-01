@@ -49,6 +49,9 @@ class AirwayTuning:
     # Added resistance at full severity, cmH2O/(L/s).
     upper_resistance_gain: float = 40.0
     bronch_resistance_gain: float = 20.0
+    # Epinephrine bronchodilation (Larsson 1985); C50 and maximum are calibrated.
+    epi_bronchodilation_c50: float = 1.0  # ng/mL
+    epi_bronchodilation_max: float = 0.9
     vent_efficiency_bronch_weight: float = 0.5
     vent_efficiency_upper_weight: float = 0.2
     vent_efficiency_min: float = 0.1
@@ -62,6 +65,8 @@ class AirwayTuning:
     # there (Hillman 2009); partial because closing pressure reaches only about
     # +1.4 cmH2O at deep propofol (Eastwood 2005).
     unsupported_collapse_max: float = 0.4
+    # Airway pressure that fully relieves this collapse (calibrated).
+    collapse_relief_pressure: float = 5.0  # cmH2O
 
 
 @dataclass(frozen=True)

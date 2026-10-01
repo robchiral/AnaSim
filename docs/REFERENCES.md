@@ -153,6 +153,7 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Hardman et al. Anesth Analg. 2000. (physiological model of the onset and course of hypoxemia during apnea). [PubMed](https://pubmed.ncbi.nlm.nih.gov/10702447/)
 - Eastwood et al. Anesthesiology. 2005. (upper airway critical closing pressure rises with propofol depth: -0.3, +0.5, +1.4 cmH2O at 2.5, 4.0, 6.0 mcg/mL). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16129969/)
 - Hillman et al. Anesthesiology. 2009. (upper airway collapsibility rises abruptly at loss of consciousness). [PubMed](https://pubmed.ncbi.nlm.nih.gov/19512872/)
+- Larsson et al. J Allergy Clin Immunol. 1985. (circulating epinephrine relieves allergen-induced bronchoconstriction; AnaSim calibrates the C50 and maximum relief). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3989143/)
 - Farmery and Roe. Br J Anaesth. 1996. (model of oxyhemoglobin desaturation during apnea). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8777112/)
 - Stock et al. J Clin Anesth. 1989. (PaCO2 rise in anesthetized patients with airway obstruction). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2516732/)
 - Kobayashi et al. Masui. 1994. (arterial blood gas changes during apnea under anesthesia). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7933492/)

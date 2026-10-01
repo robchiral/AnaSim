@@ -39,6 +39,23 @@ def test_hypothermia_lowers_paco2_at_fixed_ventilation(engine_factory):
     assert engine.state.pa_co2 < normothermic
 
 
+def test_hypothermia_slows_apneic_co2_rise(engine_factory):
+    rises = []
+    for temperature in (30.0, 37.0):
+        engine = engine_factory(start=True, baseline_temp=temperature)
+        engine.set_airway_mode("ETT")
+        engine.set_fgf(10.0, 0.0)
+        engine.set_vent_power(True)
+        engine.give_drug_bolus("roc", engine.patient.weight)
+        _advance(engine, 120)
+        # Apneic oxygenation keeps SaO2 up, so only CO2 production differs.
+        engine.set_vent_power(False)
+        start = engine.state.pa_co2
+        _advance(engine, 120)
+        rises.append(engine.state.pa_co2 - start)
+    assert rises[0] < 0.85 * rises[1]
+
+
 def test_first_hour_core_drop_after_induction(engine_factory):
     """Core temperature after induction (Matsukawa et al. Anesthesiology. 1995)."""
     engine = engine_factory(start=True)

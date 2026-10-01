@@ -61,7 +61,11 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     assert engine.state.airway_obstruction > 0.2
 
     engine.set_airway_mode("Mask")
-    engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="CPAP")
+    engine.set_vent_settings(rr=0.0, vt=0.0, peep=0.0, ie="1:2", mode="CPAP")
     engine.set_vent_power(True)
+    engine.step(0.1)
+    assert engine.state.airway_obstruction > 0.2
+
+    engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="CPAP")
     engine.step(0.1)
     assert engine.state.airway_obstruction == 0.0

@@ -59,3 +59,5 @@ def test_ventricular_fibrillation_reports_rhythm_and_removes_pulses(engine_facto
     assert engine.state.display_hr == 0.0
     assert engine.state.art_sbp == engine.state.art_dbp == engine.state.art_map == 0.0
     assert engine.state.pleth_voltage == pytest.approx(0.0)
+    assert engine.state.co == 0.0
+    assert engine.state.oxygen_delivery_ratio == 0.0

@@ -437,13 +437,27 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
 
     upper_obstruction = engine.airway_obstruction_manual
     if state.airway_mode != AirwayType.ETT:
-        # Loss of consciousness relaxes the pharynx; CPAP or bag-mask pressure splints it open.
-        splinted = state.airway_mode == AirwayType.MASK and (engine.vent.is_on or engine.bag_mask_active)
-        collapse = 0.0 if splinted else airway_tuning.unsupported_collapse_max * state.loc
+        # Mask CPAP or positive-pressure breaths hold the pharynx open.
+        splint_pressure = 0.0
+        if state.airway_mode == AirwayType.MASK:
+            mech = engine.resp_mech
+            if engine.vent.is_on:
+                splint_pressure = mech.set_peep
+                if mech.mode != VentMode.CPAP:
+                    splint_pressure = max(splint_pressure, mech.state.paw_mean)
+            elif engine.bag_mask_active:
+                splint_pressure = mech.state.paw_mean
+        relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
+        collapse = airway_tuning.unsupported_collapse_max * state.loc * (1.0 - relief)
         upper_obstruction = max(upper_obstruction, engine.laryngospasm_severity, collapse)
     upper_obstruction = clamp01(upper_obstruction)
 
     bronch = 1.0 - (1.0 - engine.bronchospasm_manual) * (1.0 - engine.anaphylaxis_severity)
+    # Epinephrine relieves bronchospasm but not upper-airway obstruction.
+    bronchodilation = airway_tuning.epi_bronchodilation_max * hill_function(
+        state.epi_ce, airway_tuning.epi_bronchodilation_c50, 1.0
+    )
+    bronch *= 1.0 - bronchodilation
     bronch = clamp01(bronch)
 
     base_r = engine._base_airway_resistance

@@ -14,7 +14,7 @@ from .base import (
     require_infusion_running,
     require_infusion_started,
     require_mac_above,
-    require_preoxygenation_flow,
+    require_preoxygenation,
     require_propofol_cp,
     require_rocuronium_cp,
     require_tof_below,
@@ -49,11 +49,11 @@ def create_induction_balanced() -> Scenario:
             id="PREOXYGENATE",
             title="Preoxygenate",
             instruction=(
-                "Patient breathes spontaneously via mask. Confirm <b>FiO₂ ~100%</b> on monitor.<br>"
+                "Patient breathes 100% O₂ via mask. Continue for <b>about 3 minutes</b>.<br>"
                 "In practice: wait 3-5 min or 8 vital capacity breaths.<br><br>"
                 "<i>Replaces N₂ with O₂, extending safe apnea time to 8-10 minutes.</i>"
             ),
-            check_requirements=require_preoxygenation_flow(),
+            check_requirements=require_preoxygenation(),
             target_tab="Machine",
         ),
         ScenarioStep(
@@ -107,10 +107,10 @@ def create_induction_balanced() -> Scenario:
             id="WAIT_PARALYSIS",
             title="Confirm adequate paralysis",
             instruction=(
-                "Monitor <b>Train of Four (TOF)</b>. Wait for <b>TOF 0-1/4</b> before laryngoscopy.<br><br>"
+                "Monitor <b>TOF</b>. Wait for <b>TOF ≤ 5%</b> before laryngoscopy.<br><br>"
                 "<i>Incomplete paralysis risks vocal cord trauma and poor visualization.</i>"
             ),
-            check_requirements=require_tof_below(25),
+            check_requirements=require_tof_below(5),
         ),
         ScenarioStep(
             id="INTUBATE",
@@ -187,11 +187,11 @@ def create_induction_tiva() -> Scenario:
             id="PREOXYGENATE",
             title="Preoxygenate",
             instruction=(
-                "Patient breathes spontaneously via mask. Confirm <b>FiO₂ ~100%</b> on monitor.<br>"
+                "Patient breathes 100% O₂ via mask. Continue for <b>about 3 minutes</b>.<br>"
                 "In practice: wait 3-5 min or 8 vital capacity breaths.<br><br>"
                 "<i>Replaces N₂ with O₂, extending safe apnea time to 8-10 minutes.</i>"
             ),
-            check_requirements=require_preoxygenation_flow(),
+            check_requirements=require_preoxygenation(),
             target_tab="Machine",
         ),
         ScenarioStep(
@@ -261,10 +261,10 @@ def create_induction_tiva() -> Scenario:
             id="WAIT_PARALYSIS",
             title="Confirm adequate paralysis",
             instruction=(
-                "Monitor <b>Train of Four (TOF)</b>. Wait for <b>TOF 0-1/4</b> before laryngoscopy.<br><br>"
+                "Monitor <b>TOF</b>. Wait for <b>TOF ≤ 5%</b> before laryngoscopy.<br><br>"
                 "<i>Incomplete paralysis risks vocal cord trauma and poor visualization.</i>"
             ),
-            check_requirements=require_tof_below(25),
+            check_requirements=require_tof_below(5),
         ),
         ScenarioStep(
             id="INTUBATE",

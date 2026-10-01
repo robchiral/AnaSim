@@ -86,7 +86,12 @@ def _require_extubation_criteria() -> callable:
     """Check extubation criteria met."""
     from anasim.core.state import AirwayType
     def check(engine) -> Tuple[bool, str]:
-        breathing = engine.state.rr > 8 and not engine.state.apnea
+        resp = engine.resp.state
+        breathing = resp.rr > 8 and not resp.apnea
+        volume_ok = resp.vt > 5.0 * engine.patient.weight
+        block_recovered = engine.state.tof >= 90.0
+        spo2 = monitor_value(engine, "spo2")
+        oxygenated = engine.state.spo2_signal_valid and spo2 > 95.0
         bis = monitor_value(engine, "bis")
         awake = bis > 80
         extubated = engine.state.airway_mode != AirwayType.ETT
@@ -96,13 +101,19 @@ def _require_extubation_criteria() -> callable:
             AirwayType.MASK.value,
             AirwayType.NONE.value,
         )
-        if breathing and awake and extubated and airway_action:
+        if breathing and volume_ok and block_recovered and oxygenated and awake and extubated and airway_action:
             return True, ""
         msgs = []
         if not awake:
             msgs.append(f"BIS: {bis:.0f}/80+")
         if not breathing:
-            msgs.append(f"RR: {engine.state.rr:.0f}/8+")
+            msgs.append(f"Spontaneous RR: {resp.rr:.0f}/8+")
+        if not volume_ok:
+            msgs.append(f"Spontaneous VT: {resp.vt:.0f}/{5.0 * engine.patient.weight:.0f}+ mL")
+        if not block_recovered:
+            msgs.append(f"TOF ratio: {engine.state.tof:.0f}%/90%+")
+        if not oxygenated:
+            msgs.append(f"SpO₂: {spo2:.0f}%/95%+" if engine.state.spo2_signal_valid else "Awaiting valid SpO₂")
         if not extubated or not airway_action:
             msgs.append("Select Mask or No airway for this objective")
         return False, join_messages(msgs)
@@ -112,17 +123,17 @@ def _require_extubation_criteria() -> callable:
 def _require_recovery() -> callable:
     """Check recovery room criteria."""
     def check(engine) -> Tuple[bool, str]:
+        resp = engine.resp.state
         spo2 = monitor_value(engine, "spo2")
-        spo2_ok = spo2 > 95
-        rr_ok = engine.state.rr > 10
-        not_apneic = not engine.state.apnea
-        if spo2_ok and rr_ok and not_apneic:
+        spo2_ok = engine.state.spo2_signal_valid and spo2 > 95
+        breathing = resp.rr > 10 and not resp.apnea
+        if spo2_ok and breathing:
             return True, ""
         msgs = []
         if not spo2_ok:
-            msgs.append(f"SpO₂: {spo2:.0f}/95+")
-        if not rr_ok:
-            msgs.append(f"RR: {engine.state.rr:.0f}/10+")
+            msgs.append(f"SpO₂: {spo2:.0f}%/95%+" if engine.state.spo2_signal_valid else "Awaiting valid SpO₂")
+        if not breathing:
+            msgs.append(f"Spontaneous RR: {resp.rr:.0f}/10+")
         return False, join_messages(msgs)
     return check
 
@@ -176,9 +187,10 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
             id="EXTUBATE",
             title="Extubation",
             instruction=(
-                "Criteria: <b>BIS > 80</b>, following commands, <b>RR > 8</b>, <b>Vt > 5 mL/kg</b>.<br>"
+                "Criteria: <b>BIS > 80</b>, spontaneous <b>RR > 8</b> and <b>VT > 5 mL/kg</b>, "
+                "<b>TOF ratio ≥ 90%</b>, <b>SpO₂ > 95%</b>.<br>"
                 "Remove ETT -> select 'Mask' or 'None'.<br><br>"
-                "<i>Suction oropharynx, deflate cuff, remove on inspiration/expiration.</i>"
+                "<i>Command following and airway reflexes are not modeled; check them in practice.</i>"
             ),
             check_requirements=_require_extubation_criteria(),
             target_tab="Machine",

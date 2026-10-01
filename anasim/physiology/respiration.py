@@ -93,8 +93,7 @@ class RespiratoryModel:
         self.vo2_ml_kg_min = 3.6
         self.vco2 = self.vo2_ml_kg_min * patient.weight * self.rq  # mL/min
         self.frc = 2.5  # L
-        # Hemoglobin-bound O2 per unit saturation, L per g/dL.
-        self._blood_o2_per_hb = 1.34 * 10.0 * patient.estimate_blood_volume() / 1e6
+        self.baseline_blood_volume_ml = patient.estimate_blood_volume()
 
         self.vd_deadspace = 2.2 * patient.weight / 1000.0  # L
         self.va_baseline = max(0.1, (self.vt_0/1000.0 - self.vd_deadspace) * self.rr_0)  # L/min
@@ -118,7 +117,7 @@ class RespiratoryModel:
     def equilibrate_oxygen(self, fio2: float) -> None:
         """Set alveolar O2 to its alveolar-gas-equation value at the current PACO2."""
         self.state.p_alveolar_o2 = max(0.0, fio2 * self._atm_dry - self.state.p_alveolar_co2 / self.rq)
-        self.state.p_arterial_o2 = max(10.0, self.state.p_alveolar_o2 - self.aa_grad_base)
+        self.state.p_arterial_o2 = max(0.0, self.state.p_alveolar_o2 - self.aa_grad_base)
 
     def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0,
              fio2: float = 0.21, ce_roc: float = 0.0, mac_sevo: float = 0.0,
@@ -128,7 +127,8 @@ class RespiratoryModel:
              vq_mismatch: float = 0.0,
              hb_g_dl: float | None = None,
              cardiac_output: float = 5.0,
-             metabolic_factor: float = 1.0) -> RespState:
+             metabolic_factor: float = 1.0,
+             blood_volume_ml: float | None = None) -> RespState:
         """Advance respiration by dt seconds.
 
         Args:
@@ -146,6 +146,7 @@ class RespiratoryModel:
             hb_g_dl: Hemoglobin (g/dL), which sets the blood O2 store.
             cardiac_output: L/min, for the PaCO2-EtCO2 gap.
             metabolic_factor: VO2 and VCO2 multiplier.
+            blood_volume_ml: Blood volume (mL), which with Hb sets the blood O2 store.
         """
         state = self.state
         hill = hill_function
@@ -270,17 +271,17 @@ class RespiratoryModel:
         paco2_eq = min(150.0, paco2_eq)
         d_paco2 = (paco2_eq - state.p_alveolar_co2) / self.tau_co2 * dt
 
-        # Limit the apneic rise: fast for the first minute, then slower. Washout
-        # during hyperventilation is not limited.
+        # Cap the rise at the apneic rate (fast for the first minute, then slow)
+        # scaled by CO2 production. Washout is not limited.
         if d_paco2 > 0:
+            fast_seconds = 0.0
             if self._apnea_timer > 0:
-                rise_rate = APNEA_PACO2_RISE_SLOW_MMHG_MIN
-                if self._apnea_timer <= APNEA_PACO2_RISE_FAST_DURATION_SEC:
-                    rise_rate = APNEA_PACO2_RISE_FAST_MMHG_MIN
-            else:
-                rise_rate = APNEA_PACO2_RISE_SLOW_MMHG_MIN
-            max_rise_rate = (rise_rate / 60.0) * dt
-            d_paco2 = min(d_paco2, max_rise_rate)
+                fast_seconds = min(dt, max(0.0, APNEA_PACO2_RISE_FAST_DURATION_SEC - (self._apnea_timer - dt)))
+            max_rise = metabolic_factor * (
+                APNEA_PACO2_RISE_FAST_MMHG_MIN * fast_seconds
+                + APNEA_PACO2_RISE_SLOW_MMHG_MIN * (dt - fast_seconds)
+            ) / 60.0
+            d_paco2 = min(d_paco2, max_rise)
 
         state.p_alveolar_co2 += d_paco2
 
@@ -330,7 +331,10 @@ class RespiratoryModel:
         sat = self._saturation(state.p_arterial_o2)
         dsat_dpo2 = self._n_hill * sat * (1.0 - sat) / max(state.p_arterial_o2, 1.0)
         hb = self.baseline_hb if hb_g_dl is None else max(0.0, hb_g_dl)
-        o2_capacitance = self.frc / self._atm_dry + self._blood_o2_per_hb * hb * dsat_dpo2
+        blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else max(0.0, blood_volume_ml)
+        # Circulating Hb mass sets the store, so blood loss lowers it before hemodilution.
+        blood_o2_capacity_l = 1.34 * hb * (blood_volume / 100.0) / 1000.0
+        o2_capacitance = self.frc / self._atm_dry + blood_o2_capacity_l * dsat_dpo2
         state.p_alveolar_o2 += o2_flux / o2_capacitance * dt / 60.0
         state.p_alveolar_o2 = clamp(state.p_alveolar_o2, 0.0, max(0.0, self._atm_dry - state.p_alveolar_co2))
 
@@ -343,7 +347,7 @@ class RespiratoryModel:
         aa_grad_effective *= (1.0 + 2.5 * vq_mismatch)
         aa_grad_effective = min(80.0, aa_grad_effective)
         # Anemia and low cardiac output lower O2 content and delivery, not PaO2.
-        state.p_arterial_o2 = max(10.0, state.p_alveolar_o2 - aa_grad_effective)
+        state.p_arterial_o2 = max(0.0, state.p_alveolar_o2 - aa_grad_effective)
 
         state.drive_central = drive_central
         state.muscle_factor = muscle_factor
@@ -356,5 +360,5 @@ class RespiratoryModel:
 
     def _saturation(self, pao2: float) -> float:
         """Hill oxyhemoglobin dissociation (P50 26.6 mmHg, n 2.7) as a fraction."""
-        pao2_pow = max(0.1, pao2) ** self._n_hill
+        pao2_pow = max(0.0, pao2) ** self._n_hill
         return pao2_pow / (pao2_pow + self._p50_pow)

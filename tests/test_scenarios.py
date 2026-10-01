@@ -3,6 +3,7 @@ import pytest
 from anasim.core.state import SimulationConfig
 from anasim.scenarios import (
     SCENARIO_REGISTRY,
+    create_emergence,
     create_hemorrhage_response,
     create_sepsis_response,
 )
@@ -99,8 +100,12 @@ def _early_induction(engine):
 def _early_extubation(engine):
     # Meet the awake criteria so only the airway action is missing.
     engine.state.display_bis = 90.0
-    engine.state.rr = 12.0
-    engine.state.apnea = False
+    engine.resp.state.rr = 12.0
+    engine.resp.state.vt = 500.0
+    engine.resp.state.apnea = False
+    engine.state.tof = 100.0
+    engine.state.display_spo2 = 98.0
+    engine.state.spo2_signal_valid = True
     engine.set_airway_mode("Mask")
 
 
@@ -200,6 +205,37 @@ def test_sepsis_fluid_objective_requires_crystalloid(engine_factory):
     assert step.check_requirements(engine)[0]
 
 
+def test_extubation_waits_for_tof_ratio_90(engine_factory):
+    """Residual block impairs the upper airway after breathing returns (Eikermann 2003)."""
+    engine = engine_factory(start=True)
+    step = _step(create_emergence("tiva"), "EXTUBATE")
+    _activate(engine, step)
+    _early_extubation(engine)
+    engine.state.tof = 89.0
+    assert not step.check_requirements(engine)[0]
+    engine.state.tof = 90.0
+    assert step.check_requirements(engine)[0]
+
+
+def test_preoxygenation_waits_for_lung_washin(engine_factory):
+    spec = next(spec for spec in SCENARIO_REGISTRY if spec.id == "induction_tiva")
+    step = _step(spec.builder(), "PREOXYGENATE")
+    engine = engine_factory(start=True)
+    engine.set_airway_mode("Mask")
+    engine.set_fgf(10.0, 0.0)
+    _activate(engine, step)
+    for _ in range(60):
+        engine.step(1.0)
+    assert not step.check_requirements(engine)[0]
+    for _ in range(180):
+        engine.step(1.0)
+    assert step.check_requirements(engine)[0]
+
+    # The flowmeter stays set, but no O2 is delivered.
+    engine.set_oxygen_supply_connected(False)
+    assert not step.check_requirements(engine)[0]
+
+
 @pytest.mark.parametrize("spec", SCENARIO_REGISTRY, ids=lambda spec: spec.id)
 def test_scenario_objectives_stay_reachable(spec):
     """Every objective must still be completable by acting while it is active."""
@@ -227,5 +263,3 @@ def test_scenario_objectives_stay_reachable(spec):
         sim_seconds += 1.0
 
     assert session.snapshot()["scenario"]["complete"]
-
-

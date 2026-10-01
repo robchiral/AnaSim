@@ -187,18 +187,13 @@ def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> A
     """Evaluate the respiratory model at the current subsystem state without advancing time."""
     support = _current_respiratory_support(engine)
 
-    if hemo_state.co > 0.0:
-        cardiac_output = hemo_state.co
-    else:
-        cardiac_output = engine.hemo.base_co_l_min
-
     kwargs = engine.get_resp_step_kwargs(
         total_assisted_mv=support["total_assisted_mv"],
         peep=support["peep"],
         mean_paw=support["mean_paw"],
         mech_rr=support["assisted_rr"],
         mech_vt_l=support["assisted_vt_l"],
-        cardiac_output=cardiac_output,
+        cardiac_output=hemo_state.co,
     )
     return engine.resp.step(0.0, **kwargs)
 
@@ -264,7 +259,7 @@ def project_runtime_physiology(engine: "SimulationEngine", snapshot: PhysiologyS
     set_state_float_fields(
         state,
         oxygen_delivery_ratio=engine.hemo.compute_do2_ratio(
-            max(0.0, state.sao2) / 100.0, max(0.0, state.pao2), max(0.1, state.co)
+            max(0.0, state.sao2) / 100.0, max(0.0, state.pao2), state.co
         ),
     )
 

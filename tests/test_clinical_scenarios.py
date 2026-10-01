@@ -160,6 +160,7 @@ class TestClinicalAcceptance:
         assert engine.state.sbp <= baseline_sbp * 0.70
         assert engine.state.map < 65.0
         assert engine.state.bronchospasm >= 0.9
+        obstructed_mv = engine.state.mv
 
         # ANZCA/ANZAAG: 50-100 mcg IV epinephrine boluses for severe
         # perioperative anaphylaxis and an initial 1000 mL crystalloid bolus.
@@ -169,6 +170,8 @@ class TestClinicalAcceptance:
         advance_time(engine, 300.0)
 
         assert engine.state.map >= 65.0
+        assert engine.state.bronchospasm < 0.5
+        assert engine.state.mv > obstructed_mv + 1.0
 
     def test_oxygen_analyzer_warns_before_desaturation_and_backup_recovers(
         self, anesthetized_engine

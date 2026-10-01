@@ -103,6 +103,19 @@ def test_shivering_raises_paco2_at_fixed_ventilation(patient):
 class TestOxygenStores:
     """Apneic desaturation follows lung and blood O2 stores (Benumof 1997)."""
 
+    def test_blood_loss_shortens_apneic_desaturation(self, engine_factory):
+        """Blood loss lowers the Hb mass that stores O2 before Hb concentration falls."""
+        times = []
+        for loss_fraction in (0.0, 0.3):
+            engine = engine_factory(start=True)
+            engine.hemo.vol_clearance = 0.0
+            engine.hemo.add_volume(-loss_fraction * engine.hemo.blood_volume)
+            engine.set_airway_obstruction(1.0)
+            while engine.state.sao2 >= 80.0 and engine.state.time < 120.0:
+                engine.step(1.0)
+            times.append(engine.state.time)
+        assert times[1] < times[0] - 5.0
+
     @staticmethod
     def _minutes_to_sao2_below_90(engine, max_seconds=900.0, dt=0.1):
         start = engine.state.time

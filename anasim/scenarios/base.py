@@ -88,14 +88,15 @@ def require_airway_selected(airway_type: str) -> Callable:
 
 def _fgf_preox_state(engine) -> Tuple[bool, str]:
     """Return whether current fresh gas flow is adequate for preoxygenation."""
-    o2_ok = engine.circuit.fgf_o2 >= 8.0
+    delivered_o2 = engine.circuit.delivered_o2_flow()
+    o2_ok = delivered_o2 >= 8.0
     air_ok = engine.circuit.fgf_air < 1.0
     n2o_ok = engine.circuit.fgf_n2o <= 0.1
     if o2_ok and air_ok and n2o_ok:
         return True, ""
     msgs = []
     if not o2_ok:
-        msgs.append(f"O₂: {engine.circuit.fgf_o2:.1f}/8+ L/min")
+        msgs.append(f"Delivered O₂: {delivered_o2:.1f}/8+ L/min")
     if not air_ok:
         msgs.append(f"Air: {engine.circuit.fgf_air:.1f}/0 L/min")
     if not n2o_ok:
@@ -116,9 +117,20 @@ def require_fgf_set_for_preox() -> Callable:
     return check
 
 
-def require_preoxygenation_flow() -> Callable:
-    """Check that current fresh gas flow remains adequate for preoxygenation."""
-    return _fgf_preox_state
+def require_preoxygenation() -> Callable:
+    """Require O₂ flow by mask until alveolar O₂ reaches 85% (about 2.5 min at 10 L/min)."""
+    from anasim.core.state import AirwayType
+
+    def check(engine) -> Tuple[bool, str]:
+        flow_ok, message = _fgf_preox_state(engine)
+        if not flow_ok:
+            return False, message
+        if engine.state.airway_mode != AirwayType.MASK:
+            return False, "Apply the facemask"
+        resp = engine.resp
+        ready = resp.state.p_alveolar_o2 >= 0.85 * resp._atm_dry
+        return (True, "") if ready else (False, "Continue preoxygenation")
+    return check
 
 
 def require_propofol_cp(threshold: float = 2.0) -> Callable:
@@ -179,7 +191,7 @@ def require_stable_baseline_vitals(
         hr = monitor_value(engine, "hr")
         map_val = monitor_value(engine, "map")
         spo2 = monitor_value(engine, "spo2")
-        stable = hr_min < hr < hr_max and map_val > map_min and spo2 > spo2_min
+        stable = engine.state.spo2_signal_valid and hr_min < hr < hr_max and map_val > map_min and spo2 > spo2_min
         return (True, "") if stable else (False, fail_message)
     return check
 

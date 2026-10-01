@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Preoxygenation objectives wait for lung O₂ wash-in (about 3 minutes), and
+  the paralysis objective waits for TOF ≤ 5%.
+- Extubation requires spontaneous VT > 5 mL/kg, TOF ratio ≥ 90%, and SpO₂ >
+  95%. SpO₂ objectives need a valid reading.
+- Epinephrine relieves bronchospasm. Mask CPAP or positive-pressure breaths
+  relieve pharyngeal collapse in proportion to airway pressure.
+- Blood loss shortens safe apnea time, and the apneic CO₂ rise follows
+  metabolic rate.
+- Cardiac arrest gives zero O₂ delivery, and volatile agent is conserved
+  across large time steps.
+
 ## 1.3 - 2026-09-30
 
 - Replaced the Qt desktop app with a browser interface. `anasim` opens it from

@@ -557,6 +557,7 @@ class SimulationEngine(DrugControllerMixin):
             "ventilation_efficiency": self._ventilation_efficiency,
             "vq_mismatch": self._vq_mismatch,
             "hb_g_dl": self.hemo.hb_conc,
+            "blood_volume_ml": self.hemo.blood_volume,
             "cardiac_output": cardiac_output,
             "metabolic_factor": max(0.5, self._metabolic_factor),
         }
