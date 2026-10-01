@@ -184,3 +184,44 @@ class HemodynamicConfig:
     mil_emax_hr: float = 6.0
     mil_emax_sv: float = 0.45
     mil_emax_svr: float = -0.35
+
+    # Adrenoceptor blockade. Competitive antagonists divide the agonist
+    # concentration by the dose ratio 1 + sum(C / Kb), so higher agonist doses
+    # overcome the block. Milrinone and vasopressin act on other receptors.
+    # Occupancy (1 - 1 / dose ratio) reduces resting sympathetic tone and the
+    # reflex, hemorrhage, and stimulation responses.
+    # Esmolol (mcg/mL) blocks isoproterenol tachycardia about 50% at 0.3 and
+    # 80% at 1 mcg/mL (Sum 1983).
+    esmolol_kb: float = 0.3
+    # Labetalol (ng/mL) is about 7 times more potent at beta than alpha
+    # receptors after IV dosing (Hafsa 2022). 50 mg lowered HR for 3 h but
+    # BP for under 30 min (Abernethy 1987).
+    labetalol_kb_beta: float = 40.0
+    labetalol_kb_alpha: float = 276.0
+    # Fractions removed at full block, calibrated for AnaSim. Anesthesia lowers
+    # resting sympathetic tone, so the resting fractions fall with depth.
+    beta_block_hr: float = 0.30  # Resting HR
+    beta_block_sv: float = 0.10
+    beta_block_reflex: float = 0.8  # Reflex and stimulation tachycardia
+    alpha_block_tpr: float = 0.30
+    sympathetic_anesthetic_depression: float = 0.5
+    # Slower AV conduction lowers the AF ventricular rate.
+    beta_block_af_rate: float = 0.3
+
+    # Glycopyrrolate (ng/mL): 11.8 ng/mL prevented the oculocardiac reflex in
+    # 19 of 20 patients, and 3.1 ng/mL was insufficient (Ali-Melkkilä 1993).
+    # Vagal block reduces resting vagal tone and baroreflex and opioid
+    # bradycardia, and raises the sinus bradycardia rate.
+    glyco_c50: float = 4.0
+    glyco_gamma: float = 2.0
+    glyco_emax_hr: float = 20.0
+    glyco_brady_relief: float = 30.0  # bpm added to the 50 bpm sinus bradycardia rate
+
+    # Ketamine (mcg/mL) raises sympathetic outflow: arterial pressure, HR, and
+    # CO rose 15-30% during ketamine-nitrous oxide anesthesia at about 2.2
+    # mcg/mL (Idvall 1979). Anesthetic depth and adrenoceptor block reduce it.
+    ketamine_c50: float = 1.0
+    ketamine_gamma: float = 1.5
+    ketamine_emax_hr: float = 0.40  # Fraction of HR
+    ketamine_emax_sv: float = 0.10
+    ketamine_emax_tpr: float = 0.15

@@ -2,31 +2,26 @@
 
 ## Unreleased
 
-- Preoxygenation objectives wait for lung O₂ wash-in (about 3 minutes), and
-  the paralysis objective waits for TOF ≤ 5%.
-- Extubation requires spontaneous VT > 5 mL/kg, TOF ratio ≥ 90%, and SpO₂ >
-  95%. SpO₂ objectives need a valid reading.
-- Epinephrine relieves bronchospasm. Mask CPAP or positive-pressure breaths
-  relieve pharyngeal collapse in proportion to airway pressure.
-- Blood loss shortens safe apnea time, and the apneic CO₂ rise follows
-  metabolic rate.
-- Cardiac arrest gives zero O₂ delivery, and volatile agent is conserved
-  across large time steps.
-- The HR numeric averages the last 12 R-R intervals, so AF shows a steady
-  rate instead of each beat's rate.
-- ECG QRS and PR durations no longer stretch with the R-R interval, QT follows
-  the preceding interval, and VT is wide. AF shows fibrillatory waves, and VF
-  no longer repeats every 6 seconds.
-- AF lowers stroke volume 32% (lost atrial kick and R-R irregularity), so AF at
-  110 bpm lowers CO and MAP instead of raising them.
-- In AF, arterial and pleth pulses vary beat to beat with the preceding R-R,
-  more at faster rates, and diastolic pressure falls further after long pauses.
-  ART numerics average the last 5 seconds of beats.
-- When a rhythm sets the rate (bradycardia, AF, SVT, VT), the baroreflex
-  constricts vessels instead of changing HR. Awake sinus bradycardia at 50 bpm
-  lowers MAP about 20% instead of 30%; under anesthesia the reflex stays blunted.
-- AF R-R intervals stay at or above 250 ms, so AF faster than about 155 bpm is
-  more regular.
+- Added fentanyl (with TCI), midazolam, etomidate, ketamine, esmolol,
+  labetalol, and glycopyrrolate. Each drug card shows the controls that drug
+  supports.
+- Fentanyl and midazolam add to the propofol and remifentanil effects on BIS,
+  consciousness, laryngoscopy tolerance, and ventilation. Etomidate causes
+  little hypotension or ventilatory depression. Ketamine raises HR and blood
+  pressure and preserves ventilation and airway tone.
+- Esmolol and labetalol reduce reflex, stimulation, and hemorrhage
+  tachycardia, and esmolol slows the ventricular rate in AF. Higher
+  catecholamine doses overcome the block. Glycopyrrolate prevents vagal
+  bradycardia.
+- Preoxygenation, paralysis, and extubation objectives check lung O₂ wash-in,
+  TOF, spontaneous VT, and SpO₂.
+- Epinephrine relieves bronchospasm. Mask CPAP and positive-pressure breaths
+  relieve pharyngeal collapse. Blood loss shortens safe apnea time.
+- AF lowers CO and MAP, and its pulses vary beat to beat. The HR numeric
+  averages recent beats. ECG wave durations are fixed, QT varies with the
+  preceding R-R interval, and VT is wide.
+- When a rhythm fixes the ventricular rate, the baroreflex adjusts vascular
+  resistance.
 
 ## 1.3 - 2026-09-30
 

@@ -1,4 +1,12 @@
-from .anesthesia import BISModel, BISModelParams, LOCModel, TOLModel
+from .anesthesia import (
+    BISModel,
+    BISModelParams,
+    LOCModel,
+    TOLModel,
+    hypnotic_equivalent,
+    midazolam_loss_of_response,
+    opioid_equivalent,
+)
 from .nmba import TOFModel
 
 __all__ = [
@@ -7,4 +15,7 @@ __all__ = [
     "LOCModel",
     "TOLModel",
     "TOFModel",
+    "hypnotic_equivalent",
+    "midazolam_loss_of_response",
+    "opioid_equivalent",
 ]

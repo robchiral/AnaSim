@@ -1,7 +1,7 @@
 """Infusion rate unit conversion.
 
-Model units: mg/sec for propofol and rocuronium, mU/sec for vasopressin, and
-ug/sec for the other drugs.
+Model units: mg/sec for propofol, ketamine, rocuronium, and esmolol, mU/sec
+for vasopressin, and ug/sec for the other drugs.
 """
 
 from typing import Dict, Tuple
@@ -26,6 +26,8 @@ _RATE_CONVERSIONS: Dict[Tuple[str, str], float] = {
     ("mg/hr", "mg/sec"): 1.0 / 3600.0,
     ("mg/min", "mg/sec"): 1.0 / 60.0,
     ("mg/sec", "mg/sec"): 1.0,
+    ("mg/hr", "ug/sec"): 1000.0 / 3600.0,
+    ("mg/min", "ug/sec"): 1000.0 / 60.0,
     ("ug/hr", "ug/sec"): 1.0 / 3600.0,
     ("ug/min", "ug/sec"): 1.0 / 60.0,
     ("ug/sec", "ug/sec"): 1.0,

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
+
 from .state import AirwayType
 from .utils import clamp
 
@@ -40,6 +42,19 @@ def sync_pk_state(engine: "SimulationEngine") -> None:
         propofol_cp=engine.pk_prop.state.c1,
         remi_ce=engine.pk_remi.state.ce,
         remi_cp=engine.pk_remi.state.c1,
+        fentanyl_ce=engine.pk_fentanyl.state.ce,
+        fentanyl_cp=engine.pk_fentanyl.state.c1,
+        midazolam_ce=engine.pk_midazolam.state.ce,
+        etomidate_ce=engine.pk_etomidate.state.ce,
+        ketamine_ce=engine.pk_ketamine.state.ce,
+        opioid_ce=opioid_equivalent(engine.pk_remi.state.ce, engine.pk_fentanyl.state.ce),
+        opioid_cp=opioid_equivalent(engine.pk_remi.state.c1, engine.pk_fentanyl.state.c1),
+        hypnotic_ce=hypnotic_equivalent(
+            engine.pk_prop.state.ce,
+            engine.pk_etomidate.state.ce,
+            engine.pk_midazolam.state.ce,
+            engine.midazolam_c50,
+        ),
         nore_ce=engine.pk_nore.state.ce,
         roc_ce=engine.tof_pd.ce,
         roc_cp=engine.pk_roc.state.c1,
@@ -48,6 +63,9 @@ def sync_pk_state(engine: "SimulationEngine") -> None:
         vaso_ce=engine.pk_vaso.state.ce,
         dobu_ce=engine.pk_dobu.state.ce,
         mil_ce=engine.pk_mil.state.ce,
+        esmolol_ce=engine.pk_esmolol.state.ce,
+        labetalol_ce=engine.pk_labetalol.state.ce,
+        glyco_ce=engine.pk_glyco.state.ce,
     )
 
 
@@ -267,19 +285,22 @@ def project_runtime_physiology(engine: "SimulationEngine", snapshot: PhysiologyS
 def sync_monitor_baselines(engine: "SimulationEngine") -> None:
     """Derive monitor baselines from the current physiologic snapshot."""
     state = engine.state
-    bis_val = clamp(engine.bis.compute_bis(state.propofol_ce, state.remi_ce, state.mac_sevo), 0.0, 100.0)
+    bis_val = clamp(engine.bis.compute_bis(state.hypnotic_ce, state.opioid_ce, state.mac_sevo), 0.0, 100.0)
     tof_val = engine.tof_pd.compute_tof_from_ce(
         state.roc_ce,
         mac_sevo=state.mac_sevo,
         mac_n2o=state.mac_n2o,
     )
     loc_val = engine.loc_pd.compute_probability(
-        state.propofol_ce,
-        state.remi_ce,
+        state.hypnotic_ce,
+        state.opioid_ce,
         mac_sevo=state.mac_sevo,
         mac_n2o=state.mac_n2o,
+        ce_ketamine=state.ketamine_ce,
     )
-    tol_val = engine.tol_pd.compute_probability(state.propofol_ce, state.remi_ce, mac=state.mac)
+    tol_val = engine.tol_pd.compute_probability(
+        state.hypnotic_ce, state.opioid_ce, mac=state.mac, ce_ketamine=state.ketamine_ce
+    )
     engine._tol_current = tol_val
     cardiac_sample = engine.cardiac_cycle.seed(state.hr, engine.hemo.state.rhythm_type)
     arterial_sample = engine.arterial_waveform.step(

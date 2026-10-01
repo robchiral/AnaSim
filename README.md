@@ -38,9 +38,10 @@ the monitor. Each objective has a button that opens the controls it needs.
 
 ## What's included
 
-- **Drugs:** propofol, remifentanil, sevoflurane, rocuronium, sugammadex,
-  norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine, and
-  milrinone, given by infusion, bolus, or effect-site TCI.
+- **Drugs:** propofol, remifentanil, fentanyl, midazolam, etomidate, ketamine,
+  sevoflurane, rocuronium, sugammadex, norepinephrine, epinephrine,
+  phenylephrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, and
+  glycopyrrolate, given by infusion, bolus, or effect-site TCI.
 - **Machine:** facemask or tracheal tube, fresh gas flow, vaporizer, bag-mask
   ventilation, and VCV, PCV, PSV, or CPAP.
 - **Monitor:** ECG, SpO₂, arterial line, NIBP, capnography, BIS, TOF,

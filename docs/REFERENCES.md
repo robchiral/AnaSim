@@ -12,6 +12,8 @@ calibration. The linked tests hold their expected ranges.
 | Neuromuscular block and reversal | [`TOFModel`](../anasim/patient/pd/nmba.py) combines adductor pollicis and central (diaphragm and larynx) effect sites, spontaneous recovery, and simplified sugammadex binding. The central site uses laryngeal kinetics for both muscles. Onset and recovery constants are calibrated for AnaSim. See the [pharmacology tests](../tests/test_pharmacology.py). |
 | Baroreflex and myocardial hypoxia | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) takes the direction and scale of anesthetic reflex depression and the hypoxic arrest threshold from published studies. Reflex gains, set-point reset, and hypoxia time constants are calibrated for AnaSim. See the [hemodynamic tests](../tests/test_hemodynamics.py). |
 | Vasoactive drug effects | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) defines concentration-response models for epinephrine, phenylephrine, vasopressin, dobutamine, and milrinone. Published data set the direction and approximate size of each response, and AnaSim calibrates the combination. Epinephrine is fitted to arterial infusion (Freyschuss 1986) and IV bolus (Takahashi 2002) responses. See the [epinephrine](../tests/test_epinephrine.py) and [hemodynamic](../tests/test_hemodynamics.py) tests. |
+| Fentanyl, midazolam, etomidate, and ketamine | [`anesthesia.py`](../anasim/patient/pd/anesthesia.py) converts fentanyl to remifentanil by isoflurane MAC reduction (McEwan 1993; Lang 1996), and etomidate (Kaneda 2011) and midazolam (Albrecht 1999) to propofol at equal loss-of-response concentrations. Midazolam-propofol synergy is from Short 1992. AnaSim calibrates the etomidate ventilatory share (Valk 2021), the midazolam maximum, and the ketamine laryngoscopy potency and sympathetic response (Idvall 1979). See the [adjunct tests](../tests/test_anesthetic_adjuncts.py). |
+| Adrenergic and muscarinic blockade | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) sets antagonist potencies from Sum 1983 (esmolol), Abernethy 1987 and Hafsa 2022 (labetalol), and Ali-Melkkilä 1993 (glycopyrrolate). AnaSim calibrates the sympathetic and vagal shares of resting tone and reflexes. Abernethy saw BP recover within 30 minutes of labetalol. In AnaSim, part of the BP fall lasts as long as the beta block, because in sinus rhythm the baroreflex adjusts HR only. See the [autonomic drug tests](../tests/test_autonomic_drugs.py). |
 | Arterial pressure waveform | [`ArterialWaveformRenderer`](../anasim/monitors/arterial.py) maps the pressure landmarks described by Mahdi et al. to Su MAP and stroke volume. [`ArterialLineMonitor`](../anasim/monitors/arterial.py) applies catheter and transducer dynamics. See the [waveform](../tests/test_arterial_waveform.py) and [arterial line](../tests/test_arterial_line.py) tests. |
 
 ## Supported patient domain
@@ -31,8 +33,8 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Su et al. Br J Anaesth. 2023. (mechanistic hemodynamic interaction model). [PubMed](https://pubmed.ncbi.nlm.nih.gov/37355412/)
 - Beloeil et al. Br J Anaesth. 2005. (norepinephrine PK/PD in septic shock/trauma). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16227334/)
 - Clutter et al. J Clin Invest. 1980. (epinephrine cardiovascular effects). [PubMed](https://pubmed.ncbi.nlm.nih.gov/6995479/)
-- Ebert et al. Anesthesiology. 1995. (sevoflurane cardiovascular responses). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7486143/)
-- ESC/ERS Task Force. Eur Heart J. 2022. (RHC normal ranges; RAP 2-6 mmHg, PVR 0.3-2.0 WU). [Journal](https://academic.oup.com/eurheartj/article/43/38/3618/6673929)
+- Ebert et al. Anesth Analg. 1995. (sevoflurane cardiovascular responses). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7486143/)
+- ESC/ERS Task Force. Eur Heart J. 2022. (RHC normal ranges; RAP 2-6 mmHg, PVR 0.3-2.0 WU). [PubMed](https://pubmed.ncbi.nlm.nih.gov/36017548/)
 - Segeroth et al. Eur Heart J Cardiovasc Imaging. 2023. (pulmonary transit time; median ~6.8 s with normal biventricular EF). [PubMed](https://pubmed.ncbi.nlm.nih.gov/36662127/)
 - Koganov et al. Crit Care Med. 1997. (PEEP raises pulmonary vascular resistance). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9187594/)
 - Carlsson et al. Acta Anaesthesiol Scand. 1985. (hypoxic pulmonary vasoconstriction; PVR increases with unilateral hypoxia). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3993324/)
@@ -47,7 +49,7 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Melo et al. Crit Care. 1999. (septic shock low SVR cohort: mean SVR ~445 dyn·s/cm^5). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11056727/)
 - Meng et al. Br J Anaesth. 2011. (phenylephrine 100-200 mcg under propofol-remifentanil, first treatment: MAP +29.5 mmHg, HR -17 bpm, CO -1.7 L/min). [PubMed](https://pubmed.ncbi.nlm.nih.gov/21642644/)
 - Ebert et al. Anesth Analg. 1994. (propofol reduces cardiac baroreflex sensitivity to falling pressure by 60%). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8311293/)
-- Sato et al. Br J Anaesth. 2005. (baroreflex control of heart rate during propofol infusion). [Journal](https://academic.oup.com/bja/article/94/5/577/260633)
+- Sato et al. Br J Anaesth. 2005. (baroreflex control of heart rate during propofol infusion). [PubMed](https://pubmed.ncbi.nlm.nih.gov/15722386/)
 - Umehara et al. Anesth Analg. 2006. (sevoflurane depresses carotid-cardiac baroreflex gain). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16368802/)
 - Mort. J Clin Anesth. 2004. (83% of cardiac arrests during emergency intubation were associated with SpO2 < 70%). [PubMed](https://pubmed.ncbi.nlm.nih.gov/15590254/)
 - De Jong et al. Crit Care Med. 2018. (cardiac arrest related to intubation, multicenter cohort). [PubMed](https://pubmed.ncbi.nlm.nih.gov/29261566/)
@@ -67,18 +69,18 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 
 ## Cardiovascular monitor models
 
-- Mahdi, Clifford, and Payne. Physiol Meas. 2017. (synthetic ABP model based on systolic, diastolic, dicrotic-notch, and dicrotic-peak pressure points). [PubMed](https://pubmed.ncbi.nlm.nih.gov/28176674/) [DOI](https://doi.org/10.1088/1361-6579/aa51b8)
-- Saugel et al. Crit Care. 2020. (arterial catheter waveform quality, natural frequency, and damping). [Full text](https://pmc.ncbi.nlm.nih.gov/articles/PMC7183114/)
+- Mahdi, Clifford, and Payne. Physiol Meas. 2017. (synthetic ABP model based on systolic, diastolic, dicrotic-notch, and dicrotic-peak pressure points). [PubMed](https://pubmed.ncbi.nlm.nih.gov/28176674/)
+- Saugel et al. Crit Care. 2020. (arterial catheter waveform quality, natural frequency, and damping). [PubMed](https://pubmed.ncbi.nlm.nih.gov/32331527/)
 
 ## Volatile anesthetics (PBPK and MAC)
 
 - Davis and Mapleson. Br J Anaesth. 1981. (physiological model of inhaled anesthetics). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7225273/)
 - Mapleson. Br J Anaesth. 1996. (age-related MAC formula). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8777094/)
-- Nickalls and Mapleson. Br J Anaesth. 2003. (MAC40 sevoflurane 1.80%). [Journal](https://academic.oup.com/bja/article/91/2/170/371117)
+- Nickalls and Mapleson. Br J Anaesth. 2003. (MAC40 sevoflurane 1.80%). [PubMed](https://pubmed.ncbi.nlm.nih.gov/12878613/)
 - Yasuda et al. Anesth Analg. 1991. (sevoflurane vs isoflurane uptake/washout). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1994760/)
 - Carpenter et al. Anesth Analg. 1986. (inhaled anesthetic kinetics in humans). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3706798/)
-- Eger et al. Anesthesiology. 1980. (MAC of nitrous oxide in humans; ~1.04 atm absolute). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7201254/)
-- Schuh. Side effects of nitrous oxide (author's transl). 1975. (blood:gas partition coefficient of N2O ~0.47). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1190419/)
+- Hornbein et al. Anesth Analg. 1982. (MAC of nitrous oxide in humans; ~1.04 atm absolute). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7201254/)
+- Schuh. Anaesthesist. 1975. (side effects of nitrous oxide; blood:gas partition coefficient of N2O ~0.47). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1190419/)
 - Goto et al. Anesthesiology. 2000. (MACawake of nitrous oxide ~63% at 1 atm). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11046204/)
 - Katoh et al. Br J Anaesth. 1997. (sevoflurane MACawake ~0.63%; N2O 45% reduces MACawake ~50%, less than additive). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9389264/)
 
@@ -87,7 +89,7 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Janmahasatian et al. Clin Pharmacokinet. 2005. (lean bodyweight equation across body sizes). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16176118/)
 - James. Research on Obesity. HMSO. 1976. (lean body mass covariate used by the Schnider and Minto models).
 - Marsh et al. Br J Anaesth. 1991. (propofol PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1859758/)
-- Thomson et al. Anaesthesia. 2014. (effect-site TCI with Marsh `ke0` values of 0.6 and 1.2 min⁻¹). [Journal](https://associationofanaesthetists-publications.onlinelibrary.wiley.com/doi/10.1111/anae.12597)
+- Thomson et al. Anaesthesia. 2014. (effect-site TCI with Marsh `ke0` values of 0.6 and 1.2 min⁻¹). [PubMed](https://pubmed.ncbi.nlm.nih.gov/24738800/)
 - Schnider et al. Anesthesiology. 1998. (propofol PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9605675/)
 - Eleveld et al. Br J Anaesth. 2018. (propofol PK/PD). [PubMed](https://pubmed.ncbi.nlm.nih.gov/29661412/)
 - Servin et al. Br J Anaesth. 1990. (propofol PK in cirrhosis; Vd increases, clearance not significantly reduced). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2223333/)
@@ -95,6 +97,19 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Minto et al. Anesthesiology. 1997. (remifentanil PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9009936/)
 - Dershwitz et al. Anesthesiology. 1996. (remifentanil PK/PD in severe liver disease; PK unchanged). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8638835/)
 - Hoke et al. Anesthesiology. 1997. (remifentanil PK in renal failure; PK unchanged, metabolite accumulates). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9316957/)
+- Bae et al. Br J Anaesth. 2020. (allometric fentanyl PK from 95 adults). [PubMed](https://pubmed.ncbi.nlm.nih.gov/32861508/)
+- Scott and Stanski. J Pharmacol Exp Ther. 1987. (fentanyl ke0 0.147 min⁻¹; lower dose requirements with age). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3100765/)
+- McEwan et al. Anesthesiology. 1993. (fentanyl 1.67 ng/mL halves isoflurane MAC). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8489058/)
+- Lang et al. Anesthesiology. 1996. (remifentanil 1.37 ng/mL halves isoflurane MAC). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8873541/)
+- Albrecht et al. Clin Pharmacol Ther. 1999. (midazolam PK/PD by age; loss-of-response Ce 499 ng/mL at 24-28 years and 210 at 67-81). [PubMed](https://pubmed.ncbi.nlm.nih.gov/10391668/)
+- Short, Plummer, and Chui. Br J Anaesth. 1992. (midazolam-propofol hypnotic synergy; ED50 37% below additive). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1389820/)
+- Arden, Holley, and Stanski. Anesthesiology. 1986. (etomidate PK/PD by age; V1 falls 42% from 22 to 80 years, clearance about 2 mL/kg/min per decade, t1/2 ke0 1.6 min). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3729056/)
+- Van Hamme et al. Anesthesiology. 1978. (etomidate PK after 0.3 mg/kg; hepatic clearance about half of hepatic blood flow). [PubMed](https://pubmed.ncbi.nlm.nih.gov/697083/)
+- Kaneda et al. J Clin Pharmacol. 2011. (etomidate PK/PD; OAA/S Ce50 0.554 and BIS Ce50 0.526 mcg/mL, t1/2 ke0 1.55 min). [PubMed](https://pubmed.ncbi.nlm.nih.gov/20498288/)
+- Valk and Struys. Clin Pharmacokinet. 2021. (etomidate review; 0.3 mg/kg gives 5-10 min of hypnosis with minimal hemodynamic change, brief apnea, and less CO2-response depression). [PubMed](https://pubmed.ncbi.nlm.nih.gov/34060021/)
+- Kamp et al. Anesthesiology. 2020. (ketamine PK meta-analysis and three-compartment model). [PubMed](https://pubmed.ncbi.nlm.nih.gov/32997732/)
+- Idvall et al. Br J Anaesth. 1979. (ketamine-N2O anesthesia at 2.2 mcg/mL, awakening at 0.64 mcg/mL; pressure, HR, and CO up 15-30%). [PubMed](https://pubmed.ncbi.nlm.nih.gov/526385/)
+- Bourke, Malit, and Smith. Anesthesiology. 1987. (ketamine 3 mg/kg shifts the CO2 response 2 mmHg). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3101549/)
 - Wierda et al. Can J Anaesth. 1991. (rocuronium PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1829656/)
 - Masui et al. J Anesth. 2018. (rocuronium PD models; age and sex covariates, age-dependent ke0). [PubMed](https://pubmed.ncbi.nlm.nih.gov/30099599/)
 - Magorian et al. Anesth Analg. 1995. (rocuronium PK in liver disease; Vd increases, clearance unchanged). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7893030/)
@@ -112,7 +127,7 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Eikermann et al. Anesthesiology. 2003. (TOF ratio vs recovery of respiratory function; upper airway obstruction during partial block). [PubMed](https://pubmed.ncbi.nlm.nih.gov/12766640/)
 - Eikermann et al. Am J Respir Crit Care Med. 2007. (predisposition to inspiratory upper airway collapse during partial neuromuscular blockade). [PubMed](https://pubmed.ncbi.nlm.nih.gov/17023729/)
 - Fiset et al. Can J Anaesth. 1991. (N2O potentiates vecuronium neuromuscular blockade; ED95 reduction). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1683819/)
-- Nguyen-Lee et al. Curr Anesthesiol Rep. 2018. (sugammadex PK review). [Springer](https://link.springer.com/article/10.1007/s40140-018-0266-5)
+- Nguyen-Lee et al. Curr Anesthesiol Rep. 2018. (sugammadex PK review). [DOI](https://doi.org/10.1007/s40140-018-0266-5)
 - Bouillon et al. Anesthesiology. 2004. (propofol/remifentanil interaction for tolerance of laryngoscopy). [PubMed](https://pubmed.ncbi.nlm.nih.gov/15166553/)
 - Kern et al. Anesthesiology. 2004. (response surface analysis of propofol-remifentanil interaction). [PubMed](https://pubmed.ncbi.nlm.nih.gov/15166554/)
 - FDA NDA 203826 Clinical Pharmacology Review. 2012. (phenylephrine PK). [Drugs@FDA](https://www.accessdata.fda.gov/drugsatfda_docs/nda/2012/203826_phenylephrine_toc.cfm)
@@ -121,6 +136,12 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Kates and Leier. Clin Pharmacol Ther. 1978. (dobutamine PK in severe CHF; CL 2.35 L/min/m^2; Vd 0.20 L/kg; t1/2 ~2 min). [PubMed](https://pubmed.ncbi.nlm.nih.gov/699477/)
 - Daly et al. Am J Cardiol. 1997. (dobutamine plasma concentrations vs dose, 5-30 µg/kg/min). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9165162/)
 - Dobutamine injection label (Clinical Pharmacology). (rapid onset/offset; t1/2 ~2 min). [Pfizer Medical Information](https://www.pfizermedicalinformation.com/patient/dobutamine/clinical-pharmacology)
+- Sum et al. Clin Pharmacol Ther. 1983. (esmolol two-compartment PK at 400 mcg/kg/min; steady-state 0.569 mcg/mL at 150; isoproterenol tachycardia blocked about 50% at 0.3 and 80% at 1 mcg/mL). [PubMed](https://pubmed.ncbi.nlm.nih.gov/6617063/)
+- Wiest and Haney. Clin Pharmacokinet. 2012. (esmolol review; 90% beta block 5 minutes after a load, recovery 18-30 minutes after stopping). [PubMed](https://pubmed.ncbi.nlm.nih.gov/22515557/)
+- Abernethy et al. Am J Cardiol. 1987. (labetalol 50 mg IV in young and elderly hypertensive adults; clearance 19.4 vs 13.9 mL/min/kg; HR fell for 3 h and BP for less than 30 minutes). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3661438/)
+- Hafsa et al. Pharmaceutics. 2022. (labetalol PBPK; 0.5 mg/kg IV Cmax about 143 ng/mL; IV beta:alpha potency 6.9:1; hepatic glucuronidation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/36365181/)
+- Ali-Melkkilä, Kanto, and Iisalo. Acta Anaesthesiol Scand. 1993. (anticholinergic PK/PD review; glycopyrrolate 11.8 ng/mL prevented the oculocardiac reflex and 3.1 ng/mL was insufficient; 80% excreted unchanged in urine). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8249551/)
+- Du et al. J Drug Deliv Sci Technol. 2025. (glycopyrrolate three-compartment population PK after general anesthesia). [DOI](https://doi.org/10.1016/j.jddst.2025.106692)
 - Milrinone lactate injection label (DailyMed). (Vd 0.38-0.45 L/kg; CL ~0.13 L/kg/hr; t1/2 2.3-2.4 h; hemodynamic improvement within ~5-15 min). [DailyMed](https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=88f78780-399f-4780-be19-205739db1682&version=21)
 
 ## Respiratory control and BIS
@@ -131,7 +152,7 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Paraskeva et al. J Clin Anesth. 2005. (BIS ~30 at 1.5 MAC sevoflurane; physostigmine no effect). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16427526/)
 - Schwab et al. Anesth Analg. 2004. (BIS response to sevoflurane). [PubMed](https://pubmed.ncbi.nlm.nih.gov/15562061/)
 - Olofsen et al. Anesthesiology. 2002. (remifentanil does not change the sevoflurane BIS C50). [PubMed](https://pubmed.ncbi.nlm.nih.gov/11873028/)
-- Schumacher et al. Anesthesiology. 2009. (additive propofol-sevoflurane interaction on BIS). [Journal](https://journals.lww.com/anesthesiology/fulltext/2009/10000/response_surface_modeling_of_the_interaction.21.aspx)
+- Schumacher et al. Anesthesiology. 2009. (additive propofol-sevoflurane interaction on BIS). [PubMed](https://pubmed.ncbi.nlm.nih.gov/19741484/)
 - Barr et al. Br J Anaesth. 1999. (N2O can produce LOC without lowering BIS). [PubMed](https://pubmed.ncbi.nlm.nih.gov/10562773/)
 - Hirota et al. Eur J Anaesthesiol. 1999. (adding N2O to propofol-fentanyl: BIS changes are small/variable). [PubMed](https://pubmed.ncbi.nlm.nih.gov/10713872/)
 - Ozcan et al. J Neurosurg Anesthesiol. 2010. (sevoflurane or propofol + N2O: BIS/entropy effects modest). [PubMed](https://pubmed.ncbi.nlm.nih.gov/20844378/)

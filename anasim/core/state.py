@@ -89,18 +89,31 @@ class SimulationState:
     cardiac_arrest: bool = False
     arrest_reason: str = ""
 
-    # Effect-site (ce) and plasma (cp) concentrations: propofol mcg/mL,
-    # vasopressin mU/L, others ng/mL.
+    # Effect-site (ce) and plasma (cp) concentrations: propofol, etomidate,
+    # ketamine, and esmolol mcg/mL, vasopressin mU/L, others ng/mL.
     propofol_ce: float = 0.0
     propofol_cp: float = 0.0
     remi_ce: float = 0.0
     remi_cp: float = 0.0
+    fentanyl_ce: float = 0.0
+    fentanyl_cp: float = 0.0
+    midazolam_ce: float = 0.0
+    etomidate_ce: float = 0.0
+    ketamine_ce: float = 0.0
+    # Combined drug effects: remifentanil-equivalent opioid (ng/mL) and
+    # propofol-equivalent hypnotic with etomidate and midazolam (mcg/mL).
+    opioid_ce: float = 0.0
+    opioid_cp: float = 0.0
+    hypnotic_ce: float = 0.0
     nore_ce: float = 0.0
     epi_ce: float = 0.0
     phenyl_ce: float = 0.0
     vaso_ce: float = 0.0
     dobu_ce: float = 0.0
     mil_ce: float = 0.0
+    esmolol_ce: float = 0.0
+    labetalol_ce: float = 0.0
+    glyco_ce: float = 0.0
 
     # Inhaled agents: fractions in %, MAC as age-adjusted multiples.
     fi_sevo: float = 0.0

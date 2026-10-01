@@ -83,6 +83,13 @@ def _num(value, digits=None):
     return round(value, digits) if digits is not None else value
 
 
+def _target_label(spec) -> str | None:
+    if not spec.has_tci:
+        return None
+    site = spec.fixed_tci_mode.value.replace("_", " ") if spec.fixed_tci_mode else "effect site"
+    return f"{site.capitalize()} target"
+
+
 class WebSession:
     """One simulation session driven by the browser UI."""
 
@@ -146,9 +153,7 @@ class WebSession:
                     "default_bolus": spec.default_bolus,
                     "tci_unit": spec.tci_unit,
                     "tci_range": spec.tci_range,
-                    "target_label": (
-                        spec.fixed_tci_mode.value.replace("_", " ") if spec.fixed_tci_mode else "effect site"
-                    ).capitalize() + " target",
+                    "target_label": _target_label(spec),
                 }
                 for spec in engine.get_controllable_drugs()
             ],
@@ -507,8 +512,8 @@ class WebSession:
             self._begin_step()
 
     def _cmd_csht(self):
-        """Estimated context-sensitive half-times (min) for propofol and remifentanil."""
-        return {key: _num(self.engine.get_predicted_csht(key), 1) for key in ("propofol", "remi")}
+        """Estimated context-sensitive half-times (min) for propofol, remifentanil, and fentanyl."""
+        return {key: _num(self.engine.get_predicted_csht(key), 1) for key in ("propofol", "remi", "fentanyl")}
 
     def _cmd_nibp(self):
         self.engine.measure_nibp()

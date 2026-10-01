@@ -23,10 +23,24 @@ from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.nibp import NIBPMonitor
 from anasim.monitors.spo2 import SpO2Monitor
 from anasim.patient.patient import Patient
-from anasim.patient.pd import BISModel, LOCModel, TOFModel, TOLModel
+from anasim.patient.pd import (
+    BISModel,
+    LOCModel,
+    TOFModel,
+    TOLModel,
+    hypnotic_equivalent,
+    midazolam_loss_of_response,
+)
 from anasim.patient.pk_models import (
     DobutaminePK,
     EpinephrinePK,
+    EsmololPK,
+    EtomidatePK,
+    FentanylPK,
+    GlycopyrrolatePK,
+    KetaminePK,
+    LabetalolPK,
+    MidazolamPK,
     MilrinonePK,
     NorepinephrinePK,
     PhenylephrinePK,
@@ -99,7 +113,7 @@ VOLATILE_AGENT_ALIASES = {
 }
 
 # N2O partition coefficients at 37 °C (blood:gas 0.47; brain, muscle, fat:blood
-# 1.1, 1.2, 2.3) and MAC about 104% at 1 atm (Eger 1980).
+# 1.1, 1.2, 2.3) and MAC about 104% at 1 atm (Hornbein 1982).
 N2O_PARAMS = {
     "name": "Nitrous Oxide",
     "lambda_b_g": 0.47,
@@ -136,8 +150,10 @@ class SimulationEngine(DrugControllerMixin):
 
         # Manual infusion rates (model units/s) and TCI controllers per drug.
         for spec in DRUG_REGISTRY:
-            setattr(self, spec.rate_attr, 0.0)
-            setattr(self, spec.tci_attr, None)
+            if spec.has_infusion:
+                setattr(self, spec.rate_attr, 0.0)
+            if spec.has_tci:
+                setattr(self, spec.tci_attr, None)
         self._next_nibp_time = 0.0
 
         self.disturbances = Disturbances(config.disturbance_profile)
@@ -273,6 +289,11 @@ class SimulationEngine(DrugControllerMixin):
         """Build the subsystem models selected by the configuration."""
         self.pk_prop = PROPOFOL_MODELS[self.config.pk_model_propofol](self.patient)
         self.pk_remi = REMI_MODELS[self.config.pk_model_remi](self.patient)
+        self.pk_fentanyl = FentanylPK(self.patient)
+        self.pk_midazolam = MidazolamPK(self.patient)
+        self.pk_etomidate = EtomidatePK(self.patient)
+        self.pk_ketamine = KetaminePK(self.patient)
+        self.midazolam_c50 = midazolam_loss_of_response(self.patient.age)
 
         self.circuit = CircleSystem()
         self.vent = AnesthesiaVentilator()
@@ -341,6 +362,9 @@ class SimulationEngine(DrugControllerMixin):
         self.pk_vaso = VasopressinPK(self.patient)
         self.pk_dobu = DobutaminePK(self.patient)
         self.pk_mil = MilrinonePK(self.patient)
+        self.pk_esmolol = EsmololPK(self.patient)
+        self.pk_labetalol = LabetalolPK(self.patient)
+        self.pk_glyco = GlycopyrrolatePK(self.patient)
 
     def set_fgf(self, o2_l_min: float, air_l_min: float, n2o_l_min: float = 0.0):
         """Set fresh gas flows in L/min."""
@@ -543,8 +567,14 @@ class SimulationEngine(DrugControllerMixin):
     def get_resp_step_kwargs(self, total_assisted_mv, peep, mean_paw, mech_rr, mech_vt_l, cardiac_output):
         """Respiratory-model inputs shared by the runtime and startup projection."""
         return {
-            "ce_prop": self.state.propofol_ce,
-            "ce_remi": self.state.remi_ce,
+            "ce_prop": hypnotic_equivalent(
+                self.state.propofol_ce,
+                self.state.etomidate_ce,
+                self.state.midazolam_ce,
+                self.midazolam_c50,
+                ventilation=True,
+            ),
+            "ce_remi": self.state.opioid_ce,
             "mech_vent_mv": total_assisted_mv,
             "fio2": self.state.fio2,
             "ce_roc": self.tof_pd.ce_central,
@@ -647,12 +677,16 @@ class SimulationEngine(DrugControllerMixin):
         return copy.copy(self.state)
 
     def get_predicted_csht(self, drug: str) -> float:
-        """Minutes for the "propofol" or "remi" effect site to halve if stopped now."""
-        if drug == "propofol" and self.pk_prop:
-            return self.pk_prop.simulate_decay(target_fraction=0.5, max_seconds=3600)
-        elif drug == "remi" and self.pk_remi:
-            return self.pk_remi.simulate_decay(target_fraction=0.5, max_seconds=1200)
-        return 0.0
+        """Minutes for the "propofol", "remi", or "fentanyl" effect site to halve if stopped now."""
+        models = {
+            "propofol": (self.pk_prop, 3600),
+            "remi": (self.pk_remi, 1200),
+            "fentanyl": (self.pk_fentanyl, 7200),
+        }
+        if drug not in models:
+            return 0.0
+        model, max_seconds = models[drug]
+        return model.simulate_decay(target_fraction=0.5, max_seconds=max_seconds)
 
     def set_vent_power(self, on: bool):
         """Start or stop the ventilator; its settings persist while it is off."""

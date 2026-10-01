@@ -80,12 +80,14 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
     engine._depth_index, engine._metabolic_factor = compute_depth_metabolic_context(
         engine,
         state.temp_c,
-        state.propofol_ce,
+        state.hypnotic_ce,
         state.mac,
         shiver_level=engine._shiver_level,
     )
     engine._tol_current = clamp01(
-        engine.tol_pd.compute_probability(state.propofol_ce, state.remi_ce, mac=state.mac)
+        engine.tol_pd.compute_probability(
+            state.hypnotic_ce, state.opioid_ce, mac=state.mac, ce_ketamine=state.ketamine_ce
+        )
     )
 
     disturbance_complete = _disturbance_completes_during_step(engine, dt)
@@ -196,7 +198,7 @@ def update_shivering(engine: "SimulationEngine", dt: float) -> float:
     """Update shivering intensity based on temperature and anesthetic state."""
     state = engine.state
     depth_factor = clamp01(engine._depth_index)
-    remi_effect = hill_function(state.remi_ce, engine.resp.c50_remi, engine.resp.gamma_remi)
+    remi_effect = hill_function(state.opioid_ce, engine.resp.c50_remi, engine.resp.gamma_remi)
 
     threshold = SHIVER_BASE_THRESHOLD - SHIVER_DEPTH_DROP_MAX * depth_factor - SHIVER_REMI_DROP_MAX * remi_effect
     temp_deficit = max(0.0, threshold - state.temp_c)
@@ -373,6 +375,10 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
 
     engine.pk_prop.step(dt, engine.propofol_rate_mg_sec)
     engine.pk_remi.step(dt, engine.remi_rate_ug_sec)
+    engine.pk_fentanyl.step(dt, engine.fentanyl_rate_ug_sec)
+    engine.pk_midazolam.step(dt, engine.midazolam_rate_ug_sec)
+    engine.pk_etomidate.step(dt, 0.0)
+    engine.pk_ketamine.step(dt, engine.ketamine_rate_mg_sec)
     engine.pk_nore.step(dt, engine.nore_rate_ug_sec, propofol_conc_ug_ml=engine.pk_prop.state.c1)
     engine.pk_roc.step(dt, engine.roc_rate_mg_sec)
     # Free (sugammadex-unbound) rocuronium at the neuromuscular junction drives
@@ -386,6 +392,9 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
     engine.pk_vaso.step(dt, engine.vaso_rate_mu_sec)
     engine.pk_dobu.step(dt, engine.dobu_rate_ug_sec)
     engine.pk_mil.step(dt, engine.mil_rate_ug_sec)
+    engine.pk_esmolol.step(dt, engine.esmolol_rate_mg_sec)
+    engine.pk_labetalol.step(dt, 0.0)
+    engine.pk_glyco.step(dt, 0.0)
     sync_pk_state(engine)
 
 
@@ -448,7 +457,11 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
             elif engine.bag_mask_active:
                 splint_pressure = mech.state.paw_mean
         relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
-        collapse = airway_tuning.unsupported_collapse_max * state.loc * (1.0 - relief)
+        # Pharyngeal collapse excludes ketamine, which preserves airway tone.
+        unconscious = engine.loc_pd.compute_probability(
+            state.hypnotic_ce, state.opioid_ce, mac_sevo=state.mac_sevo, mac_n2o=state.mac_n2o
+        )
+        collapse = airway_tuning.unsupported_collapse_max * unconscious * (1.0 - relief)
         upper_obstruction = max(upper_obstruction, engine.laryngospasm_severity, collapse)
     upper_obstruction = clamp01(upper_obstruction)
 
@@ -549,7 +562,7 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     hemo_state = engine.hemo.step(
         dt,
         state.propofol_cp,
-        state.remi_cp,
+        state.opioid_cp,
         state.nore_ce,
         pit=pit_estimate,
         paco2=resp_state.pa_co2,
@@ -563,6 +576,10 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
         ce_vaso=state.vaso_ce,
         ce_dobu=state.dobu_ce,
         ce_mil=state.mil_ce,
+        ce_esmolol=state.esmolol_ce,
+        ce_labetalol=state.labetalol_ce,
+        ce_glyco=state.glyco_ce,
+        ce_ketamine=state.ketamine_ce,
         temp_c=state.temp_c,
         peep_cmH2O=total_peep_effect,
         sao2=resp_state.sao2,

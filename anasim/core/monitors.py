@@ -241,14 +241,15 @@ def step_monitors(
     """Update monitor models and learner-facing display values."""
     state = engine.state
     mac_sevo = engine.pk_sevo.state.mac
-    bis_val = engine.bis.step(dt, state.propofol_ce, state.remi_ce, mac_sevo=mac_sevo)
+    bis_val = engine.bis.step(dt, state.hypnotic_ce, state.opioid_ce, mac_sevo=mac_sevo)
     capno_val = compute_capno_value(engine, dt, phase, resp_state)
 
     loc_val = engine.loc_pd.compute_probability(
-        state.propofol_ce,
-        state.remi_ce,
+        state.hypnotic_ce,
+        state.opioid_ce,
         mac_sevo=mac_sevo,
         mac_n2o=state.mac_n2o,
+        ce_ketamine=state.ketamine_ce,
     )
     cardiac_sample = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
 

@@ -23,18 +23,24 @@ def test_registry_drives_controller_metadata_and_rate_units(engine):
 
     for spec in DRUG_REGISTRY:
         assert getattr(engine, spec.pk_attr) is not None
-        assert getattr(engine, spec.rate_attr) == 0.0
-        assert getattr(engine, spec.tci_attr) is None
+        if spec.has_infusion:
+            assert getattr(engine, spec.rate_attr) == 0.0
+        if spec.has_tci:
+            assert getattr(engine, spec.tci_attr) is None
 
     rate_cases = (
         ("propofol", 3600.0, "propofol_rate_mg_sec", 1.0),
         ("remi", 60.0, "remi_rate_ug_sec", 1.0),
+        ("fentanyl", 3600.0, "fentanyl_rate_ug_sec", 1.0),
+        ("midazolam", 3.6, "midazolam_rate_ug_sec", 1.0),
+        ("ketamine", 3600.0, "ketamine_rate_mg_sec", 1.0),
         ("nore", 60.0, "nore_rate_ug_sec", 1.0),
         ("vaso", 0.06, "vaso_rate_mu_sec", 1.0),
         ("phenyl", 60.0, "phenyl_rate_ug_sec", 1.0),
         ("epi", 60.0, "epi_rate_ug_sec", 1.0),
         ("dobu", 60.0, "dobu_rate_ug_sec", 1.0),
         ("milri", 60.0, "mil_rate_ug_sec", 1.0),
+        ("esmolol", 60.0, "esmolol_rate_mg_sec", 1.0),
         ("roc", 3600.0, "roc_rate_mg_sec", 1.0),
     )
     for drug, user_rate, rate_attr, expected_internal in rate_cases:
@@ -48,13 +54,21 @@ def test_bolus_routes_and_units_come_from_registry(engine):
         model = getattr(engine, spec.pk_attr)
         initial_c1 = model.state.c1
 
-        engine.give_drug_bolus(spec.tci_name, 2.0)
+        engine.give_drug_bolus(spec.generic_name, 2.0)
 
         assert model.state.c1 == pytest.approx(
             initial_c1 + 2.0 * spec.bolus_model_scale / model.v1
         )
         assert resolve_bolus_drug(spec.key) is spec
         assert resolve_bolus_drug(spec.name.upper()) is spec
+
+
+def test_controls_a_drug_lacks_fail_explicitly(engine):
+    assert engine.get_drug_state("glyco") == {"rate": 0.0, "target": 0.0, "is_tci": False}
+    with pytest.raises(ValueError, match="Glycopyrrolate has no infusion"):
+        engine.set_drug_rate("glyco", 1.0)
+    with pytest.raises(ValueError, match="Esmolol has no target-controlled infusion"):
+        engine.set_drug_target("esmolol", 1.0)
 
 
 def test_unknown_drug_names_fail_explicitly(engine):

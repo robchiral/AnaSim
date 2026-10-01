@@ -82,17 +82,30 @@ These values come from the previous step:
 
 - The model extends Su et al. 2023 with blood volume, pulmonary circulation,
   vasoactive drugs, septic shock, and anaphylaxis.
-- Propofol and remifentanil cardiovascular effects use plasma concentrations.
+- Cardiovascular effects use propofol and opioid plasma concentrations.
   Hypnosis, tolerance, BIS, and respiratory depression use effect-site
   concentrations.
+- The opioid terms use remifentanil plus 0.82 times fentanyl (`opioid_ce`,
+  `opioid_cp`). The propofol terms of BIS, LOC, tolerance, and ventilation use
+  propofol plus etomidate and midazolam equivalents (`hypnotic_ce`). The
+  midazolam equivalent saturates and is synergistic with propofol, and
+  etomidate counts at half strength for ventilation. Ketamine adds to LOC and
+  tolerance and raises sympathetic tone. BIS, ventilatory drive, and
+  pharyngeal collapse exclude ketamine.
 - A fast baroreflex adjusts HR around a MAP set point that resets over about
-  30 minutes. Propofol and sevoflurane blunt it, and noxious stimulation is
-  excluded from the sensed pressure. When a rhythm sets the ventricular rate,
-  the HR change it cannot make acts on TPR instead. Su's turnover feedback is
-  the slow component.
+  30 minutes. Propofol and sevoflurane reduce its gain, and the sensed pressure
+  excludes noxious stimulation. When a rhythm fixes the ventricular rate, the
+  baroreflex adjusts TPR. Su's turnover feedback is the slow component.
 - Epinephrine has separate curves for chronotropy, inotropy, beta-2 dilation,
   and alpha constriction. The pressor response lags, so a bolus peaks HR
   before SBP.
+- Esmolol and labetalol are competitive antagonists. The agonist
+  concentration at each adrenoceptor is divided by 1 + C/Kb, so higher agonist
+  doses overcome the block. Milrinone and vasopressin act on other receptors.
+  Receptor occupancy reduces resting sympathetic tone (less under anesthesia),
+  the reflex, chemoreflex, hemorrhage, and stimulation responses, and the AF
+  ventricular rate. Glycopyrrolate reduces resting vagal tone, baroreflex and
+  opioid bradycardia, and raises the sinus bradycardia rate.
 - Below SaO2 70% (full effect at 30%), myocardial hypoxia slows the heart and
   reduces contractility, progressing to pulseless electrical activity.
 - With `end_on_cardiac_arrest`, MAP below 20 mmHg or HR below 10 bpm for
@@ -192,7 +205,7 @@ These values come from the previous step:
   lightens.
 - Noxious-stimulus responses scale with the probability of responding to
   laryngoscopy on the Bouillon propofol-remifentanil-MAC surface, so opioids
-  blunt the hemodynamic and BIS response.
+  reduce the hemodynamic and BIS response.
 
 ## Browser app
 

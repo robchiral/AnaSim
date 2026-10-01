@@ -5,6 +5,9 @@ References:
   1998; Eleveld et al. Br J Anaesth. 2018 (arterial fixed effects without
   opiate covariates).
 - Remifentanil: Minto et al. Anesthesiology. 1997.
+- Fentanyl: Bae et al. Br J Anaesth. 2020. Midazolam: Albrecht et al. Clin
+  Pharmacol Ther. 1999. Ketamine: Kamp et al. Anesthesiology. 2020.
+  Etomidate: Arden et al. Anesthesiology. 1986.
 - Rocuronium: Wierda et al. Can J Anaesth. 1991, with the Masui age-dependent
   ke0.
 - Norepinephrine: Beloeil et al. Br J Anaesth. 2005; Li et al. Clin
@@ -13,10 +16,14 @@ References:
 - Phenylephrine: FDA NDA 203826 Clinical Pharmacology Review. 2012.
 - Vasopressin, milrinone: DailyMed labels. Dobutamine: Kates and Leier. Clin
   Pharmacol Ther. 1978.
+- Esmolol: Sum et al. Clin Pharmacol Ther. 1983. Labetalol: Abernethy et al.
+  Am J Cardiol. 1987; Hafsa et al. Pharmaceutics. 2022. Glycopyrrolate: Du et
+  al. J Drug Deliv Sci Technol. 2025.
 
 Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
-second. Concentrations are µg/mL for propofol and rocuronium, ng/mL for
-remifentanil and catecholamines, and mU/L for vasopressin.
+second. Concentrations are µg/mL for propofol, etomidate, ketamine,
+rocuronium, and esmolol, ng/mL for opioids, midazolam, catecholamines,
+labetalol, and glycopyrrolate, and mU/L for vasopressin.
 """
 
 from dataclasses import dataclass
@@ -290,6 +297,99 @@ class RemifentanilPKMinto(MammillaryPK):
         )
 
 
+# Fentanyl, midazolam, etomidate, and ketamine ----------------------------------
+
+class FentanylPK(MammillaryPK):
+    """Bae et al. 2020 allometric three-compartment model (ng/mL).
+
+    Volumes scale with (weight/70)^1.23 and clearances with (weight/70)^0.313;
+    ke0 0.147 min^-1 is from Scott and Stanski 1987.
+    """
+
+    def __init__(self, patient: Patient):
+        volume = (patient.weight / 70.0) ** 1.23
+        flow = (patient.weight / 70.0) ** 0.313
+        super().__init__(
+            v1=10.1 * volume,
+            cl1=0.704 * flow,
+            v2=26.5 * volume,
+            cl2=2.38 * flow,
+            v3=206.0 * volume,
+            cl3=1.49 * flow,
+            ke0=0.147,
+        )
+
+
+class MidazolamPK(MammillaryPK):
+    """Albrecht et al. 1999 three-compartment model (ng/mL).
+
+    Young volunteers (24-28 y, 66-89 kg) gave Vc 7.9 L and CL 399 mL/min;
+    k12 fell from 0.19 to 0.10 min^-1 by 71 years, and ke0 from 0.11 to 0.08
+    min^-1. Volumes scale with weight from 78 kg; clearance is mostly hepatic.
+    """
+
+    def __init__(self, patient: Patient):
+        size = patient.weight / 78.0
+        years = clamp((patient.age - 26.0) / 45.0, 0.0, 1.0)
+        v1 = 7.9 * size
+        k12 = 0.19 - 0.09 * years
+        super().__init__(
+            v1=v1,
+            cl1=0.399 * size**0.75 * organ_clearance_scaler(patient, hepatic_fraction=0.9),
+            v2=v1 * k12 / 0.060,
+            cl2=v1 * k12,
+            v3=v1 * 0.065 / 0.0083,
+            cl3=v1 * 0.065,
+            ke0=0.11 - 0.03 * years,
+        )
+
+
+class EtomidatePK(MammillaryPK):
+    """Arden et al. 1986 three-compartment whole-blood model (mcg/mL).
+
+    At age 57: V1 0.090 L/kg, CL 20.3, Q2 25.5, and Q3 18.8 mL/kg/min. V1
+    falls 42% from 22 to 80 years and CL about 2 mL/kg/min per decade.
+    Peripheral volumes 0.259 and 4.36 L/kg reproduce the reported Vss (4.7
+    L/kg) and half-lives (0.93, 12.1, and 324 min). t1/2 ke0 1.6 min.
+    Clearance is mostly hepatic (Van Hamme 1978).
+    """
+
+    def __init__(self, patient: Patient):
+        w, age = patient.weight, patient.age
+        cl_ml_kg_min = max(8.0, 20.3 - 0.2 * (age - 56.7))
+        super().__init__(
+            v1=0.120 * (1.0 - 0.00724 * (age - 22.0)) * w,
+            cl1=cl_ml_kg_min / 1000.0 * w * organ_clearance_scaler(patient, hepatic_fraction=0.9),
+            v2=0.259 * w,
+            cl2=0.0255 * w,
+            v3=4.36 * w,
+            cl3=0.0188 * w,
+            ke0=0.433,
+        )
+
+
+class KetaminePK(MammillaryPK):
+    """Kamp et al. 2020 meta-analytical three-compartment model (mcg/mL).
+
+    CL 84, Q2 161, and Q3 79 L/h and V1 25, V2 56, and V3 157 L at 70 kg;
+    clearance is hepatic. AnaSim sets ke0 for loss of consciousness within
+    about a minute.
+    """
+
+    def __init__(self, patient: Patient):
+        size = patient.weight / 70.0
+        cl1 = 84.0 / 60.0 * size**0.75 * organ_clearance_scaler(patient, hepatic_fraction=0.9)
+        super().__init__(
+            v1=25.0 * size,
+            cl1=cl1,
+            v2=56.0 * size,
+            cl2=161.0 / 60.0 * size**0.75,
+            v3=157.0 * size,
+            cl3=79.0 / 60.0 * size**0.75,
+            ke0=0.5,
+        )
+
+
 # Rocuronium -------------------------------------------------------------------
 
 class RocuroniumPK(MammillaryPK):
@@ -395,3 +495,56 @@ class MilrinonePK(MammillaryPK):
         w = patient.weight
         cl1 = 0.13 * w / 60.0 * organ_clearance_scaler(patient, renal_fraction=0.9)
         super().__init__(v1=0.45 * w, cl1=cl1, ke0=0.12)
+
+
+# Adrenergic and muscarinic antagonists ----------------------------------------
+
+class EsmololPK(MammillaryPK):
+    """Sum et al. 1983 at 400 mcg/kg/min (concentrations in mcg/mL).
+
+    Vc 0.867 L/kg, distribution and elimination t1/2 2.03 and 9.19 min, and
+    k21/k12 2.66 give CL 258 mL/min/kg and Varea 3.42 L/kg. Blood esterases
+    clear esmolol, so clearance is independent of cardiac output and organ
+    function.
+    """
+
+    def __init__(self, patient: Patient):
+        params = _from_rate_constants(0.867 * patient.weight, 0.2977, 0.0325, 0.0865, 0.0, 0.0)
+        super().__init__(ke0=0.5, cl1_co_exponent=0.0, **params)
+
+
+class LabetalolPK(MammillaryPK):
+    """Two-compartment labetalol PK (concentrations in ng/mL).
+
+    Clearance falls from 19.4 mL/min/kg at age 32 to 13.9 at 67 (Abernethy
+    1987) and is mostly hepatic glucuronidation (Hafsa 2022). Distribution
+    t1/2 is about 2 min, so 0.5 mg/kg gives about 130 ng/mL at 10 min (Hafsa
+    2022), with terminal t1/2 about 3 h at age 32.
+    """
+
+    def __init__(self, patient: Patient):
+        w = patient.weight
+        cl_ml_min_kg = max(8.0, 19.4 - 0.157 * (patient.age - 32.0))
+        cl1 = cl_ml_min_kg / 1000.0 * w * organ_clearance_scaler(patient, hepatic_fraction=0.9)
+        super().__init__(v1=0.4 * w, cl1=cl1, v2=4.0 * w, cl2=0.1 * w, ke0=0.3)
+
+
+class GlycopyrrolatePK(MammillaryPK):
+    """Du et al. 2025 three-compartment model at 61.3 kg (concentrations in ng/mL).
+
+    About 70% of a dose is excreted unchanged in urine (Ali-Melkkilä 1993).
+    The published ke0 had 98.5% shrinkage; AnaSim uses 0.4 min^-1, which
+    puts the HR peak a few minutes after a bolus.
+    """
+
+    def __init__(self, patient: Patient):
+        size = patient.weight / 61.3
+        super().__init__(
+            v1=10.38 * size,
+            cl1=49.76 / 60.0 * size**0.75 * organ_clearance_scaler(patient, renal_fraction=0.7),
+            v2=21.41 * size,
+            cl2=6.54 / 60.0 * size**0.75,
+            v3=11.0 * size,
+            cl3=31.62 / 60.0 * size**0.75,
+            ke0=0.4,
+        )

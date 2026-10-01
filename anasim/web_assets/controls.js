@@ -90,31 +90,29 @@ export class Controls {
     container.replaceChildren();
     this.drugs = {};
     for (const spec of drugs) {
+      const infusion = spec.rate_unit !== null;
+      const tci = spec.tci_unit !== null;
       const card = document.createElement("fieldset");
       card.className = "group drug-card";
       card.innerHTML = `
         <legend></legend>
-        <div class="segmented compact">
+        ${tci ? `<div class="segmented compact">
           <button type="button" data-mode="rate">Rate</button>
           <button type="button" data-mode="tci">TCI</button>
-        </div>
-        <div class="inputs">
+        </div>` : ""}
+        ${infusion ? `<div class="inputs">
           <label>Infusion rate</label>
-          <label class="target-label"></label>
-          <span class="unit-input"><input class="rate" type="number" min="0" max="2000" step="1"><span></span></span>
-          <span class="unit-input"><input class="target" type="number" step="0.1"><span></span></span>
-        </div>
+          ${tci ? '<label class="target-label"></label>' : "<span></span>"}
+          <span class="unit-input"><input class="rate" type="number" min="0" max="2000" step="any"><span class="rate-unit"></span></span>
+          ${tci ? '<span class="unit-input"><input class="target" type="number" step="0.1"><span class="target-unit"></span></span>' : ""}
+        </div>` : ""}
         <div class="bolus">
-          <span class="unit-input"><input class="bolus-amount" type="number" min="0" max="1000" step="1"><span></span></span>
+          <span class="unit-input"><input class="bolus-amount" type="number" min="0" max="1000" step="any"><span class="bolus-unit"></span></span>
           <button type="button" class="btn outlined">Give bolus</button>
         </div>
         <p class="csht" hidden></p>`;
       card.querySelector("legend").textContent = spec.name;
-      card.querySelector(".target-label").textContent = spec.target_label;
-      const [rateUnit, targetUnit, bolusUnit] = card.querySelectorAll(".unit-input > span");
-      rateUnit.textContent = spec.rate_unit;
-      targetUnit.textContent = spec.tci_unit;
-      bolusUnit.textContent = spec.bolus_unit;
+      card.querySelector(".bolus-unit").textContent = spec.bolus_unit;
 
       const w = {
         rateButton: card.querySelector('[data-mode="rate"]'),
@@ -125,27 +123,34 @@ export class Controls {
         give: card.querySelector(".bolus .btn"),
         csht: card.querySelector(".csht"),
       };
-      w.target.min = String(spec.tci_range[0]);
-      w.target.max = String(spec.tci_range[1]);
-      w.target.value = "0";
-      w.rate.value = "0";
       w.bolus.value = String(spec.default_bolus);
 
       const key = spec.key;
-      w.tciButton.onclick = () => {
-        if (!this.state.drugs[key].is_tci) this.send("drug_target", { key, target: readNumber(w.target) });
-      };
-      w.rateButton.onclick = () => {
-        if (!this.state.drugs[key].is_tci) return;
-        this.send("drug_target", { key, target: null });
-        this.send("drug_rate", { key, rate: readNumber(w.rate) });
-      };
-      w.rate.onchange = () => {
-        if (!this.state.drugs[key].is_tci) this.send("drug_rate", { key, rate: readNumber(w.rate) });
-      };
-      w.target.onchange = () => {
-        if (this.state.drugs[key].is_tci) this.send("drug_target", { key, target: readNumber(w.target) });
-      };
+      if (infusion) {
+        card.querySelector(".rate-unit").textContent = spec.rate_unit;
+        w.rate.value = "0";
+        w.rate.onchange = () => {
+          if (!this.state.drugs[key].is_tci) this.send("drug_rate", { key, rate: readNumber(w.rate) });
+        };
+      }
+      if (tci) {
+        card.querySelector(".target-label").textContent = spec.target_label;
+        card.querySelector(".target-unit").textContent = spec.tci_unit;
+        w.target.min = String(spec.tci_range[0]);
+        w.target.max = String(spec.tci_range[1]);
+        w.target.value = "0";
+        w.tciButton.onclick = () => {
+          if (!this.state.drugs[key].is_tci) this.send("drug_target", { key, target: readNumber(w.target) });
+        };
+        w.rateButton.onclick = () => {
+          if (!this.state.drugs[key].is_tci) return;
+          this.send("drug_target", { key, target: null });
+          this.send("drug_rate", { key, rate: readNumber(w.rate) });
+        };
+        w.target.onchange = () => {
+          if (this.state.drugs[key].is_tci) this.send("drug_target", { key, target: readNumber(w.target) });
+        };
+      }
       w.give.onclick = () => this.send("drug_bolus", { key, amount: readNumber(w.bolus) });
       this.drugs[key] = w;
       container.append(card);
@@ -156,7 +161,7 @@ export class Controls {
   }
 
   showCsht(values) {
-    for (const key of ["propofol", "remi"]) {
+    for (const key of ["propofol", "remi", "fentanyl"]) {
       const label = this.drugs[key]?.csht;
       if (!label) continue;
       const minutes = values[key];
@@ -229,12 +234,16 @@ export class Controls {
 
     for (const [key, w] of Object.entries(this.drugs)) {
       const d = c.drugs[key];
-      w.rateButton.setAttribute("aria-pressed", String(!d.is_tci));
-      w.tciButton.setAttribute("aria-pressed", String(d.is_tci));
-      w.rate.disabled = d.is_tci;
-      w.target.disabled = !d.is_tci;
-      setValue(w.rate, round(d.rate));
-      if (d.is_tci) setValue(w.target, round(d.target));
+      if (w.tciButton) {
+        w.rateButton.setAttribute("aria-pressed", String(!d.is_tci));
+        w.tciButton.setAttribute("aria-pressed", String(d.is_tci));
+        w.target.disabled = !d.is_tci;
+        if (d.is_tci) setValue(w.target, round(d.target));
+      }
+      if (w.rate) {
+        w.rate.disabled = d.is_tci;
+        setValue(w.rate, round(d.rate));
+      }
     }
 
     setValue($("c-bair"), String(c.bair_hugger));

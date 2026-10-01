@@ -11,6 +11,69 @@ from anasim.patient.patient import Patient
 # 1 MAC (Kanazawa 2017; Ryu 2018), which gives BIS ~30 at 1.5 MAC (Paraskeva 2005).
 SEVO_BIS_AT_1_MAC = 41.0
 
+# Fentanyl counts as remifentanil at 1.37/1.67 of its concentration: a 50%
+# isoflurane MAC reduction needs 1.37 ng/mL remifentanil (Lang 1996) and 1.67
+# ng/mL fentanyl (McEwan 1993).
+FENTANYL_REMI_POTENCY = 1.37 / 1.67
+
+# Midazolam converts to a saturating propofol equivalent (mcg/mL). At its
+# loss-of-response Ce (Albrecht 1999: 499 ng/mL at 26 years, 210 at 71) it
+# equals 2 mcg/mL propofol, near the LOC model Ce50s of 1.8-2.9 mcg/mL, and
+# half the maximum. AnaSim calibrates the maximum.
+PROPOFOL_LOSS_OF_RESPONSE = 2.0
+MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT = 2.0 * PROPOFOL_LOSS_OF_RESPONSE
+# Short 1992: midazolam with propofol needs 37% less than additive doses for
+# hypnosis, an interaction coefficient of 3.7 at equal shares. The propofol
+# share in the interaction is capped at loss of response, the endpoint Short
+# measured.
+MIDAZOLAM_PROPOFOL_SYNERGY = 3.7
+
+# Etomidate (mcg/mL whole blood) converts to propofol at equal
+# loss-of-response concentrations: the plasma OAA/S Ce50 is 0.554 mcg/mL
+# (Kaneda 2011), about 0.50 in whole blood (Arden 1986 plasma:blood ratio).
+# It counts at half strength for ventilation: apnea after induction lasts
+# about 20 s, and CO2-response depression is smaller than with other
+# hypnotics (Valk 2021).
+ETOMIDATE_LOSS_OF_RESPONSE = 0.50
+ETOMIDATE_RESPIRATORY_SHARE = 0.5
+
+# Ketamine (mcg/mL): patients woke at 0.64 mcg/mL, and 2.2 mcg/mL with about
+# 0.6 MAC nitrous oxide maintained surgical anesthesia (Idvall 1979), so 3.5
+# mcg/mL counts as 1 MAC for laryngoscopy tolerance. BIS excludes ketamine.
+KETAMINE_LOSS_OF_RESPONSE = 0.64
+KETAMINE_MAC_EQUIVALENT = 3.5
+
+
+def midazolam_loss_of_response(age: float) -> float:
+    """Midazolam Ce (ng/mL) for loss of response, falling 1.9% per year (Albrecht 1999)."""
+    return 499.0 * math.exp(-0.0189 * (age - 26.0))
+
+
+def hypnotic_equivalent(
+    ce_prop: float,
+    ce_etomidate: float,
+    ce_midazolam: float,
+    midazolam_c50: float,
+    ventilation: bool = False,
+) -> float:
+    """Propofol-equivalent Ce (mcg/mL) of propofol, etomidate, and midazolam (ng/mL).
+
+    With `ventilation`, etomidate counts at its smaller respiratory share.
+    """
+    etomidate = max(0.0, ce_etomidate) * PROPOFOL_LOSS_OF_RESPONSE / ETOMIDATE_LOSS_OF_RESPONSE
+    if ventilation:
+        etomidate *= ETOMIDATE_RESPIRATORY_SHARE
+    ce_prop = max(0.0, ce_prop) + etomidate
+    ce_midazolam = max(0.0, ce_midazolam)
+    midazolam = MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT * ce_midazolam / (ce_midazolam + midazolam_c50)
+    propofol_share = min(ce_prop / PROPOFOL_LOSS_OF_RESPONSE, 1.0)
+    return ce_prop + midazolam * (1.0 + MIDAZOLAM_PROPOFOL_SYNERGY * propofol_share)
+
+
+def opioid_equivalent(remi: float, fentanyl: float) -> float:
+    """Remifentanil-equivalent concentration (ng/mL)."""
+    return max(0.0, remi) + FENTANYL_REMI_POTENCY * max(0.0, fentanyl)
+
 
 @dataclass(frozen=True)
 class BISModelParams:
@@ -134,8 +197,9 @@ class LOCModel:
         ce_remi: float,
         mac_sevo: float = 0.0,
         mac_n2o: float = 0.0,
+        ce_ketamine: float = 0.0,
     ) -> float:
-        awake_units = 0.0
+        awake_units = max(0.0, ce_ketamine) / KETAMINE_LOSS_OF_RESPONSE
         if mac_sevo > 0:
             awake_units += mac_sevo / self.mac_awake_sevo
         if mac_n2o > 0:
@@ -162,15 +226,24 @@ class TOLModel:
         self.gamma_r = 0.97
         self.pre_intensity = 1.05
 
-    def compute_probability(self, ce_prop: float, ce_remi: float, mac: float = 0.0) -> float:
+    def compute_probability(self, ce_prop: float, ce_remi: float, mac: float = 0.0, ce_ketamine: float = 0.0) -> float:
         c50r_scaled = self.c50r * self.pre_intensity
         fsig_r = 0.0 if c50r_scaled == 0 else (ce_remi**self.gamma_r) / (c50r_scaled**self.gamma_r + ce_remi**self.gamma_r)
         post_opioid = self.pre_intensity * (1.0 - fsig_r)
         c50p_scaled = self.c50p * post_opioid
         if c50p_scaled <= 1e-6:
             return 1.0
+        mac += max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
         ce_effective = ce_prop + (mac * self.c50p)
         return (ce_effective**self.gamma_p) / (c50p_scaled**self.gamma_p + ce_effective**self.gamma_p)
 
 
-__all__ = ["BISModel", "BISModelParams", "LOCModel", "TOLModel"]
+__all__ = [
+    "BISModel",
+    "BISModelParams",
+    "LOCModel",
+    "TOLModel",
+    "hypnotic_equivalent",
+    "midazolam_loss_of_response",
+    "opioid_equivalent",
+]

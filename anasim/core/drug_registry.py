@@ -44,23 +44,35 @@ class MaxRatePolicy:
 
 @dataclass(frozen=True, slots=True)
 class DrugSpec:
-    """Complete controller, PK, bolus, and UI metadata for one drug."""
+    """Complete PK, bolus, infusion, TCI, and UI metadata for one drug.
+
+    Infusion fields are None for bolus-only drugs, and TCI fields are None for
+    drugs given by bolus or manual rate only.
+    """
 
     key: str
     name: str
-    rate_attr: str
-    rate_unit: str
-    internal_rate_unit: str
+    generic_name: str
+    pk_attr: str
     bolus_unit: str
     default_bolus: float
     bolus_model_scale: float
-    pk_attr: str
-    tci_attr: str
-    tci_name: str
-    tci_unit: str
-    tci_range: tuple[float, float]
-    fixed_tci_mode: Optional[TCIMode]
-    max_rate: MaxRatePolicy
+    rate_attr: Optional[str] = None
+    rate_unit: Optional[str] = None
+    internal_rate_unit: Optional[str] = None
+    tci_attr: Optional[str] = None
+    tci_unit: Optional[str] = None
+    tci_range: Optional[tuple[float, float]] = None
+    fixed_tci_mode: Optional[TCIMode] = None
+    max_rate: Optional[MaxRatePolicy] = None
+
+    @property
+    def has_infusion(self) -> bool:
+        return self.rate_attr is not None
+
+    @property
+    def has_tci(self) -> bool:
+        return self.tci_attr is not None
 
 
 DRUG_REGISTRY = (
@@ -75,7 +87,7 @@ DRUG_REGISTRY = (
         bolus_model_scale=1.0,
         pk_attr="pk_prop",
         tci_attr="tci_prop",
-        tci_name="Propofol",
+        generic_name="Propofol",
         tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),
         fixed_tci_mode=None,
@@ -93,12 +105,62 @@ DRUG_REGISTRY = (
         bolus_model_scale=1.0,
         pk_attr="pk_remi",
         tci_attr="tci_remi",
-        tci_name="Remifentanil",
+        generic_name="Remifentanil",
         tci_unit="ng/mL",
         tci_range=(0.0, 10.0),
         fixed_tci_mode=None,
         # Syringe-pump limit: 1200 mL/h of 50 mcg/mL.
         max_rate=MaxRatePolicy(MaxRateBasis.ABSOLUTE_PER_MINUTE, 1000.0),
+    ),
+    DrugSpec(
+        key="fentanyl",
+        name="Fentanyl 50 mcg/mL",
+        rate_attr="fentanyl_rate_ug_sec",
+        rate_unit="mcg/hr",
+        internal_rate_unit="ug/sec",
+        bolus_unit="mcg",
+        default_bolus=50.0,
+        bolus_model_scale=1.0,
+        pk_attr="pk_fentanyl",
+        tci_attr="tci_fentanyl",
+        generic_name="Fentanyl",
+        tci_unit="ng/mL",
+        tci_range=(0.0, 10.0),
+        # Syringe-pump limit: 1200 mL/h of 50 mcg/mL.
+        max_rate=MaxRatePolicy(MaxRateBasis.ABSOLUTE_PER_MINUTE, 1000.0),
+    ),
+    DrugSpec(
+        key="midazolam",
+        name="Midazolam 1 mg/mL",
+        rate_attr="midazolam_rate_ug_sec",
+        rate_unit="mg/hr",
+        internal_rate_unit="ug/sec",
+        bolus_unit="mg",
+        default_bolus=2.0,
+        bolus_model_scale=1000.0,
+        pk_attr="pk_midazolam",
+        generic_name="Midazolam",
+    ),
+    DrugSpec(
+        key="etomidate",
+        name="Etomidate 2 mg/mL",
+        bolus_unit="mg",
+        default_bolus=20.0,
+        bolus_model_scale=1.0,
+        pk_attr="pk_etomidate",
+        generic_name="Etomidate",
+    ),
+    DrugSpec(
+        key="ketamine",
+        name="Ketamine 10 mg/mL",
+        rate_attr="ketamine_rate_mg_sec",
+        rate_unit="mg/hr",
+        internal_rate_unit="mg/sec",
+        bolus_unit="mg",
+        default_bolus=50.0,
+        bolus_model_scale=1.0,
+        pk_attr="pk_ketamine",
+        generic_name="Ketamine",
     ),
     DrugSpec(
         key="nore",
@@ -111,7 +173,7 @@ DRUG_REGISTRY = (
         bolus_model_scale=1.0,
         pk_attr="pk_nore",
         tci_attr="tci_nore",
-        tci_name="Norepinephrine",
+        generic_name="Norepinephrine",
         tci_unit="ng/mL",
         tci_range=(0.0, 30.0),
         fixed_tci_mode=TCIMode.PLASMA,
@@ -128,7 +190,7 @@ DRUG_REGISTRY = (
         bolus_model_scale=1000.0,
         pk_attr="pk_vaso",
         tci_attr="tci_vaso",
-        tci_name="Vasopressin",
+        generic_name="Vasopressin",
         tci_unit="mU/L",
         tci_range=(0.0, 80.0),
         fixed_tci_mode=TCIMode.PLASMA,
@@ -149,7 +211,7 @@ DRUG_REGISTRY = (
         bolus_model_scale=1.0,
         pk_attr="pk_phenyl",
         tci_attr="tci_phenyl",
-        tci_name="Phenylephrine",
+        generic_name="Phenylephrine",
         tci_unit="ng/mL",
         tci_range=(0.0, 120.0),
         fixed_tci_mode=TCIMode.PLASMA,
@@ -166,7 +228,7 @@ DRUG_REGISTRY = (
         bolus_model_scale=1.0,
         pk_attr="pk_epi",
         tci_attr="tci_epi",
-        tci_name="Epinephrine",
+        generic_name="Epinephrine",
         tci_unit="ng/mL",
         tci_range=(0.0, 20.0),
         fixed_tci_mode=TCIMode.PLASMA,
@@ -183,7 +245,7 @@ DRUG_REGISTRY = (
         bolus_model_scale=1.0,
         pk_attr="pk_dobu",
         tci_attr="tci_dobu",
-        tci_name="Dobutamine",
+        generic_name="Dobutamine",
         tci_unit="ng/mL",
         tci_range=(0.0, 500.0),
         fixed_tci_mode=TCIMode.PLASMA,
@@ -200,11 +262,41 @@ DRUG_REGISTRY = (
         bolus_model_scale=1.0,
         pk_attr="pk_mil",
         tci_attr="tci_mil",
-        tci_name="Milrinone",
+        generic_name="Milrinone",
         tci_unit="ng/mL",
         tci_range=(0.0, 500.0),
         fixed_tci_mode=TCIMode.PLASMA,
         max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 0.75),
+    ),
+    DrugSpec(
+        key="esmolol",
+        name="Esmolol 10 mg/mL",
+        rate_attr="esmolol_rate_mg_sec",
+        rate_unit="mg/min",
+        internal_rate_unit="mg/sec",
+        bolus_unit="mg",
+        default_bolus=30.0,
+        bolus_model_scale=1.0,
+        pk_attr="pk_esmolol",
+        generic_name="Esmolol",
+    ),
+    DrugSpec(
+        key="labetalol",
+        name="Labetalol 5 mg/mL",
+        bolus_unit="mg",
+        default_bolus=10.0,
+        bolus_model_scale=1000.0,
+        pk_attr="pk_labetalol",
+        generic_name="Labetalol",
+    ),
+    DrugSpec(
+        key="glyco",
+        name="Glycopyrrolate 0.2 mg/mL",
+        bolus_unit="mg",
+        default_bolus=0.2,
+        bolus_model_scale=1000.0,
+        pk_attr="pk_glyco",
+        generic_name="Glycopyrrolate",
     ),
     DrugSpec(
         key="roc",
@@ -217,7 +309,7 @@ DRUG_REGISTRY = (
         bolus_model_scale=1.0,
         pk_attr="pk_roc",
         tci_attr="tci_roc",
-        tci_name="Rocuronium",
+        generic_name="Rocuronium",
         tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),
         fixed_tci_mode=None,
@@ -230,6 +322,8 @@ def _ensure_unique_attribute(attribute: str) -> None:
     seen = set()
     for spec in DRUG_REGISTRY:
         value = getattr(spec, attribute)
+        if value is None:
+            continue
         if value in seen:
             raise ValueError(f"Drug registry contains duplicate {attribute}: {value!r}")
         seen.add(value)
@@ -238,7 +332,7 @@ def _ensure_unique_attribute(attribute: str) -> None:
 def _bolus_index() -> dict[str, DrugSpec]:
     index: dict[str, DrugSpec] = {}
     for spec in DRUG_REGISTRY:
-        for alias in (spec.key, spec.name, spec.tci_name):
+        for alias in (spec.key, spec.name, spec.generic_name):
             normalized = alias.strip().casefold()
             existing = index.get(normalized)
             if existing is not None and existing is not spec:
@@ -254,8 +348,14 @@ for _attribute in ("key", "rate_attr", "pk_attr", "tci_attr"):
 for _spec in DRUG_REGISTRY:
     if _spec.key != _spec.key.strip().casefold():
         raise ValueError(f"Drug key must be normalized: {_spec.key!r}")
-    if _spec.tci_range[0] < 0.0 or _spec.tci_range[0] >= _spec.tci_range[1]:
-        raise ValueError(f"Invalid TCI range for {_spec.key}: {_spec.tci_range!r}")
+    infusion_fields = (_spec.rate_attr, _spec.rate_unit, _spec.internal_rate_unit)
+    if any(field is None for field in infusion_fields) != all(field is None for field in infusion_fields):
+        raise ValueError(f"Incomplete infusion metadata for {_spec.key}")
+    if _spec.has_tci:
+        if not _spec.has_infusion or _spec.tci_unit is None or _spec.max_rate is None:
+            raise ValueError(f"Incomplete TCI metadata for {_spec.key}")
+        if _spec.tci_range is None or _spec.tci_range[0] < 0.0 or _spec.tci_range[0] >= _spec.tci_range[1]:
+            raise ValueError(f"Invalid TCI range for {_spec.key}: {_spec.tci_range!r}")
     if _spec.default_bolus < 0.0 or _spec.bolus_model_scale <= 0.0:
         raise ValueError(f"Invalid bolus metadata for {_spec.key}")
 
@@ -263,7 +363,7 @@ DRUGS_BY_KEY = MappingProxyType({spec.key: spec for spec in DRUG_REGISTRY})
 DRUGS_BY_BOLUS_NAME = MappingProxyType(_bolus_index())
 
 PK_HEMODYNAMIC_TARGETS = tuple((spec.key, spec.pk_attr) for spec in DRUG_REGISTRY)
-TCI_TARGET_CONFIG = tuple((spec.tci_attr, spec.rate_attr) for spec in DRUG_REGISTRY)
+TCI_TARGET_CONFIG = tuple((spec.tci_attr, spec.rate_attr) for spec in DRUG_REGISTRY if spec.has_tci)
 
 
 def get_drug_spec(key: str) -> DrugSpec:

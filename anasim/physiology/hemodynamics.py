@@ -51,6 +51,9 @@ class HemodynamicModel:
         self.dist_sv = 0.0
         self._sepsis_severity = 0.0
         self._anaphylaxis_severity = 0.0
+        # Adrenoceptor occupancy and muscarinic block, 0-1.
+        self._beta_occupancy = 0.0
+        self._vagal_block = 0.0
 
         # Fast HR effects (chemoreflex, baroreflex, vasoactive chronotropy).
         self.smoothed_epi_hr = 0.0
@@ -279,18 +282,23 @@ class HemodynamicModel:
 
         return hr_mult, tpr_mult
 
-    def _calc_epi_effects(self, ce_epi: float, ce_pressor: float) -> tuple[float, float, float]:
+    def _calc_epi_effects(
+        self, ce_epi: float, ce_pressor: float, beta1_dr: float = 1.0, beta2_dr: float = 1.0, alpha_dr: float = 1.0
+    ) -> tuple[float, float, float]:
         """Return direct chronotropy, SV factor, and baseline-relative SVR factor.
 
         The lagged pressor concentration separates the HR and SBP peaks after a
         bolus; at steady exposure both concentrations are equal. Beta-2 dilation
         scales with current vascular tone; alpha tone adds relative to baseline.
+        Antagonist dose ratios divide the concentration seen by each receptor.
         """
-        delta_hr = self.epi_emax_hr * hill_function(ce_epi, self.epi_c50_hr, self.epi_gamma_hr)
+        delta_hr = self.epi_emax_hr * hill_function(ce_epi / beta1_dr, self.epi_c50_hr, self.epi_gamma_hr)
         delta_hr *= 1.0 - self.epi_volatile_hr_depression * clamp01(self.ce_sevo)
-        sv_factor = 1.0 + self.epi_emax_sv * hill_function(ce_pressor, self.epi_c50_sv, 1.0)
-        beta2 = self.epi_emax_svr_beta * hill_function(ce_epi, self.epi_c50_beta2, 1.0)
-        alpha = self.epi_emax_svr_alpha * hill_function(ce_pressor, self.epi_c50_alpha, self.epi_gamma_alpha)
+        sv_factor = 1.0 + self.epi_emax_sv * hill_function(ce_pressor / beta1_dr, self.epi_c50_sv, 1.0)
+        beta2 = self.epi_emax_svr_beta * hill_function(ce_epi / beta2_dr, self.epi_c50_beta2, 1.0)
+        alpha = self.epi_emax_svr_alpha * hill_function(
+            ce_pressor / alpha_dr, self.epi_c50_alpha, self.epi_gamma_alpha
+        )
         svr_factor = 1.0 + beta2 * self.tpr / self.base_tpr + alpha
         return delta_hr, sv_factor, max(0.2, svr_factor)
 
@@ -367,18 +375,19 @@ class HemodynamicModel:
 
         return f_frank_starling
 
-    def _calc_nore_effects(self, ce_nore: float) -> tuple:
+    def _calc_nore_effects(self, ce_nore: float, beta1_dr: float = 1.0, alpha_dr: float = 1.0) -> tuple:
         """Return (delta HR, SV factor, SVR factor); alpha-1 constriction dominates.
 
         Reflex bradycardia comes from the baroreflex.
         """
         if ce_nore <= 0:
             return 0.0, 1.0, 1.0
-        nore_hill = hill_function(ce_nore, self.nore_c50, self.nore_gamma)
-        delta_hr = self.nore_emax_hr * nore_hill
-        sv_factor = 1.0 + self.nore_emax_sv * nore_hill
+        beta_hill = hill_function(ce_nore / beta1_dr, self.nore_c50, self.nore_gamma)
+        delta_hr = self.nore_emax_hr * beta_hill
+        sv_factor = 1.0 + self.nore_emax_sv * beta_hill
         # Emax is a MAP rise; express it relative to an 80 mmHg baseline.
-        svr_factor = 1.0 + (self.nore_emax_map * nore_hill) / 80.0
+        alpha_hill = hill_function(ce_nore / alpha_dr, self.nore_c50, self.nore_gamma)
+        svr_factor = 1.0 + (self.nore_emax_map * alpha_hill) / 80.0
         return delta_hr, sv_factor, svr_factor
 
     def _calc_anesthetic_effects(self, cp_prop: float, cp_remi: float, ce_sevo: float) -> tuple:
@@ -515,9 +524,9 @@ class HemodynamicModel:
         if self.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE):
             return 0.0
         if self.rhythm_type == RhythmType.AFIB:
-            return max(sinus_hr, 110.0)
+            return max(sinus_hr, 110.0 * (1.0 - self.beta_block_af_rate * self._beta_occupancy))
         if self.rhythm_type == RhythmType.SINUS_BRADY:
-            return min(sinus_hr, 50.0)
+            return min(sinus_hr, 50.0 + self.glyco_brady_relief * self._vagal_block)
         return sinus_hr
 
     @property
@@ -549,6 +558,8 @@ class HemodynamicModel:
              dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0,
              mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0,
              ce_vaso: float = 0.0, ce_dobu: float = 0.0, ce_mil: float = 0.0,
+             ce_esmolol: float = 0.0, ce_labetalol: float = 0.0, ce_glyco: float = 0.0,
+             ce_ketamine: float = 0.0,
              temp_c: float = 37.0, peep_cmH2O: Optional[float] = None, sao2: float = 98.0) -> HemoState:
         """Advance the model by dt seconds and return the new state.
 
@@ -562,6 +573,9 @@ class HemodynamicModel:
             mac_sevo: End-tidal sevoflurane MAC.
             ce_epi, ce_phenyl, ce_dobu, ce_mil: Effect-site concentrations (ng/mL).
             ce_vaso: Vasopressin effect-site concentration (mU/L).
+            ce_esmolol: Esmolol effect-site concentration (mcg/mL).
+            ce_labetalol, ce_glyco: Effect-site concentrations (ng/mL).
+            ce_ketamine: Ketamine effect-site concentration (mcg/mL).
             temp_c: Core temperature (°C).
             peep_cmH2O: Total PEEP (cmH2O).
             sao2: Arterial saturation (%).
@@ -573,6 +587,23 @@ class HemodynamicModel:
 
         # Sevoflurane cardiovascular effect site, driven by end-tidal MAC.
         self.ce_sevo += self.ke0_sevo * (mac_sevo - self.ce_sevo) * dt_min
+        anesthetic_depth = clamp01(self.ce_sevo + cp_prop / 4.0)
+
+        # Antagonist dose ratios; esmolol is beta-1 selective.
+        labetalol_beta = max(0.0, ce_labetalol) / self.labetalol_kb_beta
+        beta1_dr = 1.0 + max(0.0, ce_esmolol) / self.esmolol_kb + labetalol_beta
+        beta2_dr = 1.0 + labetalol_beta
+        alpha_dr = 1.0 + max(0.0, ce_labetalol) / self.labetalol_kb_alpha
+        self._beta_occupancy = beta_occ = 1.0 - 1.0 / beta1_dr
+        alpha_occ = 1.0 - 1.0 / alpha_dr
+        self._vagal_block = vagal = hill_function(max(0.0, ce_glyco), self.glyco_c50, self.glyco_gamma)
+        resting_tone = 1.0 - self.sympathetic_anesthetic_depression * anesthetic_depth
+        # Shares of sympathetic reflex and stimulation responses left after block.
+        beta_response = 1.0 - self.beta_block_reflex * beta_occ
+        alpha_response = 1.0 - alpha_occ
+        dist_hr *= beta_response
+        dist_sv *= beta_response
+        dist_svr *= alpha_response
 
         # Urine output, scaled by renal perfusion and function.
         map_prev = self._prev_map
@@ -616,6 +647,8 @@ class HemodynamicModel:
 
         (total_eff_tpr, total_eff_sv, total_eff_hr_prod,
          eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(cp_prop, cp_remi, self.ce_sevo)
+        if eff_remi_hr < 0.0:
+            eff_remi_hr *= 1.0 - vagal  # Opioid bradycardia is vagal.
 
         # Positive intrathoracic pressure reduces venous return; spontaneous
         # negative pressure modestly augments it.
@@ -637,13 +670,16 @@ class HemodynamicModel:
         # Chemoreflex: hypercapnia raises HR and TPR; hypoxemia raises HR.
         e_co2 = max(0.0, (paco2 - self.paco2_set) / self.paco2_set)
         e_o2 = max(0.0, (self.pao2_set - pao2) / self.pao2_set)
-        chemo_hr_boost = self.g_hr_co2 * e_co2 + self.g_hr_o2 * e_o2
+        chemo_hr_boost = (self.g_hr_co2 * e_co2 + self.g_hr_o2 * e_o2) * beta_response
         chemo_tpr_factor = 1.0 + self.k_tpr_co2 * e_co2
 
         # Fast baroreflex. Propofol depresses both limbs (Sato 2005).
         sensed_error = map_prev - self._stim_map - self._baro_setpoint
-        baro_gain = self.baro_gain_brady if sensed_error > 0.0 else self.baro_gain_tachy
-        baro_gain *= 1.0 - self.baro_anesthetic_depression * clamp01(self.ce_sevo + cp_prop / 4.0)
+        if sensed_error > 0.0:
+            baro_gain = self.baro_gain_brady * (1.0 - vagal)
+        else:
+            baro_gain = self.baro_gain_tachy * beta_response
+        baro_gain *= 1.0 - self.baro_anesthetic_depression * anesthetic_depth
         baro_hr = clamp(-baro_gain * sensed_error, -self.baro_max_hr_change, self.baro_max_hr_change)
         self._baro_setpoint += sensed_error * min(1.0, dt / self.baro_reset_tau_s)
 
@@ -657,23 +693,30 @@ class HemodynamicModel:
             hypoxia_tau = self.hypoxia_tau_off_s / clamp(map_prev / self.patient.baseline_map, 0.1, 1.0)
         self.myocardial_hypoxia += (hypoxia_target - self.myocardial_hypoxia) * min(1.0, dt / hypoxia_tau)
 
-        self.hemorrhage_hr_mult, self.hemorrhage_tpr_mult = self._calc_hemorrhage_response()
+        hemorrhage_hr_mult, hemorrhage_tpr_mult = self._calc_hemorrhage_response()
+        self.hemorrhage_hr_mult = 1.0 + (hemorrhage_hr_mult - 1.0) * beta_response
+        self.hemorrhage_tpr_mult = 1.0 + (hemorrhage_tpr_mult - 1.0) * alpha_response
         sepsis_hr_mult = 1.0 + self._sepsis_hr_gain * sepsis_sev
 
         self._epi_pressor_ce += (max(0.0, ce_epi) - self._epi_pressor_ce) * (
             -math.expm1(-dt / self.epi_tau_pressor_s)
         )
-        epi_delta_hr, epi_sv_factor, epi_svr_factor = self._calc_epi_effects(ce_epi, self._epi_pressor_ce)
+        epi_delta_hr, epi_sv_factor, epi_svr_factor = self._calc_epi_effects(
+            ce_epi, self._epi_pressor_ce, beta1_dr, beta2_dr, alpha_dr
+        )
         self._epi_chrono_effect += (epi_delta_hr - self._epi_chrono_effect) * (
             -math.expm1(-dt / self.epi_tau_hr_s)
         )
-        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(ce_nore)
-        phenyl_svr_factor = self._calc_phenyl_effects(ce_phenyl)
+        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(ce_nore, beta1_dr, alpha_dr)
+        phenyl_svr_factor = self._calc_phenyl_effects(ce_phenyl / alpha_dr)
         vaso_delta_hr, _, vaso_svr_factor = self._calc_hr_sv_svr_effects(
             ce_vaso, self.vaso_c50, self.vaso_gamma, self.vaso_emax_hr, 0.0, self.vaso_emax_svr
         )
-        dobu_delta_hr, dobu_sv_factor, dobu_svr_factor = self._calc_hr_sv_svr_effects(
-            ce_dobu, self.dobu_c50, self.dobu_gamma, self.dobu_emax_hr, self.dobu_emax_sv, self.dobu_emax_svr
+        dobu_delta_hr, dobu_sv_factor, _ = self._calc_hr_sv_svr_effects(
+            ce_dobu / beta1_dr, self.dobu_c50, self.dobu_gamma, self.dobu_emax_hr, self.dobu_emax_sv, 0.0
+        )
+        _, _, dobu_svr_factor = self._calc_hr_sv_svr_effects(
+            ce_dobu / beta2_dr, self.dobu_c50, self.dobu_gamma, 0.0, 0.0, self.dobu_emax_svr
         )
         mil_delta_hr, mil_sv_factor, mil_svr_factor = self._calc_hr_sv_svr_effects(
             ce_mil, self.mil_c50, self.mil_gamma, self.mil_emax_hr, self.mil_emax_sv, self.mil_emax_svr
@@ -685,14 +728,28 @@ class HemodynamicModel:
         if pressor_resistance > 0:
             catechol_svr_factor = 1.0 + (catechol_svr_factor - 1.0) * (1.0 - pressor_resistance)
 
+        # Blockade removes resting sympathetic tone; vagal block removes vagal
+        # tone; ketamine adds sympathetic tone.
+        ketamine = hill_function(max(0.0, ce_ketamine), self.ketamine_c50, self.ketamine_gamma) * resting_tone
         combined_svr_factor = (
             catechol_svr_factor *
             vaso_svr_factor *
             dobu_svr_factor *
-            mil_svr_factor
+            mil_svr_factor *
+            (1.0 - self.alpha_block_tpr * alpha_occ * resting_tone) *
+            (1.0 + self.ketamine_emax_tpr * ketamine * alpha_response)
         )
-        combined_sv_factor = epi_sv_factor * nore_sv_factor * dobu_sv_factor * mil_sv_factor
-        combined_delta_hr = self._epi_chrono_effect + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr
+        combined_sv_factor = (
+            epi_sv_factor * nore_sv_factor * dobu_sv_factor * mil_sv_factor
+            * (1.0 - self.beta_block_sv * beta_occ * resting_tone)
+            * (1.0 + self.ketamine_emax_sv * ketamine * beta_response)
+        )
+        combined_delta_hr = (
+            self._epi_chrono_effect + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr
+            + (self.ketamine_emax_hr * ketamine * beta_response - self.beta_block_hr * beta_occ * resting_tone)
+            * self.hr_star
+            + self.glyco_emax_hr * vagal
+        )
         self.vasopressor_sv_factor = combined_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (combined_svr_factor - 1.0)
 
