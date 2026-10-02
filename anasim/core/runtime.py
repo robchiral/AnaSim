@@ -27,7 +27,6 @@ from .projection import (
     assisted_ventilation,
     measured_ventilation,
     project_runtime_physiology,
-    set_state_float_fields,
     sync_inhaled_agents,
     sync_inspired_gas,
     sync_pk_state,
@@ -148,7 +147,7 @@ def update_shivering(engine: "SimulationEngine", dt: float) -> float:
     else:
         engine._shiver_level = target
     engine._shiver_level = clamp01(engine._shiver_level)
-    set_state_float_fields(state, shivering=engine._shiver_level)
+    state.shivering = float(engine._shiver_level)
     return engine._shiver_level
 
 
@@ -180,10 +179,7 @@ def step_temperature(engine: "SimulationEngine", dt: float) -> None:
 
     net_heat_w = production + warming - heat_loss - redistribution_w
     heat_capacity = engine.patient.weight * engine.specific_heat
-    set_state_float_fields(
-        state,
-        temp_c=clamp(temp_c + net_heat_w * dt / heat_capacity, tuning.temp_min_c, tuning.temp_max_c),
-    )
+    state.temp_c = float(clamp(temp_c + net_heat_w * dt / heat_capacity, tuning.temp_min_c, tuning.temp_max_c))
 
 
 def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffects:
@@ -315,7 +311,7 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
     tof = engine.tof_pd.step_recovery(
         dt, engine.pk_roc.state.c1, mac_sevo=engine.pk_sevo.state.mac, mac_n2o=engine.pk_n2o.state.mac
     )
-    set_state_float_fields(state, tof=tof)
+    state.tof = float(tof)
     engine.pk_epi.step(dt, engine.epi_rate_ug_sec)
     engine.pk_phenyl.step(dt, engine.phenyl_rate_ug_sec)
     engine.pk_vaso.step(dt, engine.vaso_rate_mu_sec)

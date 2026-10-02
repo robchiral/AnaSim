@@ -26,6 +26,7 @@ rocuronium, and esmolol, ng/mL for opioids, midazolam, catecholamines,
 labetalol, and glycopyrrolate, and mU/L for vasopressin.
 """
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -112,6 +113,8 @@ class MammillaryPK:
     def step(self, dt_sec: float, input_rate_per_sec: float, cl1_scale: float = 1.0) -> PKState:
         """Advance concentrations by one explicit Euler step."""
         s = self.state
+        if not input_rate_per_sec and not (s.c1 or s.c2 or s.c3 or s.ce):
+            return s  # Most drugs are never given; skipping their exact zeros saves several percent.
         flux2 = self.cl2 * (s.c1 - s.c2) if self.v2 > 0 else 0.0
         flux3 = self.cl3 * (s.c1 - s.c3) if self.v3 > 0 else 0.0
         elimination = self.cl1 * cl1_scale * s.c1
@@ -435,7 +438,7 @@ class NorepinephrinePK(MammillaryPK):
     def step(self, dt_sec: float, infusion_rate_ug_sec: float, propofol_conc_ug_ml: float = 0.0) -> PKState:
         cl1_scale = 1.0
         if self.model == "Li":
-            cl1_scale = float(np.exp(self.PROPOFOL_CL_THETA * max(0.0, propofol_conc_ug_ml) / 100.0))
+            cl1_scale = math.exp(self.PROPOFOL_CL_THETA * max(0.0, propofol_conc_ug_ml) / 100.0)
         return super().step(dt_sec, infusion_rate_ug_sec + self.endogenous_ug_min / 60.0, cl1_scale)
 
 

@@ -137,10 +137,13 @@ class PressureSegment:
     With x = (V, P2) and drive D = P + Pmus, x' = A x + b D. For a linear
     drive the solution is exp(At)(x0 - p) + p + q t, with the particular
     solution p + q t below. Paw at the airway is P - series resistance x flow.
+    The ventilator queries the same few times repeatedly, so the start and the
+    latest time are kept.
     """
 
     __slots__ = ("lung", "v0", "p20", "p0", "p1", "d0", "d1", "rs", "elastance", "s", "w",
-                 "a11", "a12", "a21", "a22", "y0", "z0", "slope")
+                 "a11", "a12", "a21", "a22", "y0", "z0", "az", "slope", "pv", "pp",
+                 "start", "last_t", "last")
 
     def __init__(self, lung: RespiratoryMechanics, pressure, pmus, series_resistance):
         self.lung = lung
@@ -159,44 +162,49 @@ class PressureSegment:
         self.w = math.sqrt(max(0.0, self.s * self.s - determinant))
         # Slow drive changes leave V lagging by (R + R2) / E behind D/E.
         self.slope = self.d1 / e
-        p_volume = self.d0 / e - (rt + e2 * tau) * self.d1 / (e * e)
-        p_p2 = e2 * tau * self.d1 / e
-        self.y0 = (self.v0 - p_volume, self.p20 - p_p2)
+        self.pv = self.d0 / e - (rt + e2 * tau) * self.d1 / (e * e)
+        self.pp = e2 * tau * self.d1 / e
+        self.y0 = (self.v0 - self.pv, self.p20 - self.pp)
         self.z0 = self._apply(self.y0)
+        self.az = self._apply(self.z0)
+        self.start = (self.v0, self.p20, self.z0[0] + self.slope, self.az[0])
+        self.last_t = self.last = None
 
     def _apply(self, x):
         return self.a11 * x[0] + self.a12 * x[1], self.a21 * x[0] + self.a22 * x[1]
 
-    def _propagate(self, t: float, x):
-        """exp(At) x = e^{st} (cosh(wt) x + sinh(wt)/w (A - sI) x)."""
-        wt = self.w * t
+    def _evaluate(self, t: float):
+        """(V, P2, flow, d flow/dt) at t, using exp(At) x = e^{st} (cosh(wt) x + sinh(wt)/w (A - sI) x)."""
+        if t == 0.0:
+            return self.start
+        if t == self.last_t:
+            return self.last
+        s, wt = self.s, self.w * t
         if wt < 1e-4:
-            decay = math.exp(self.s * t)
+            decay = math.exp(s * t)
             c, g = decay * (1.0 + 0.5 * wt * wt), decay * t * (1.0 + wt * wt / 6.0)
         else:
-            fast, slow = math.exp((self.s + self.w) * t), math.exp((self.s - self.w) * t)
+            fast, slow = math.exp((s + self.w) * t), math.exp((s - self.w) * t)
             c, g = 0.5 * (fast + slow), 0.5 * (fast - slow) / self.w
-        ax = self._apply(x)
-        return c * x[0] + g * (ax[0] - self.s * x[0]), c * x[1] + g * (ax[1] - self.s * x[1])
+        (y1, y2), (z1, z2), (az1, az2) = self.y0, self.z0, self.az
+        self.last_t = t
+        self.last = (c * y1 + g * (z1 - s * y1) + self.pv + self.slope * t,
+                     c * y2 + g * (z2 - s * y2) + self.pp,
+                     c * z1 + g * (az1 - s * z1) + self.slope,
+                     c * az1 + g * (self.a11 * az1 + self.a12 * az2 - s * az1))
+        return self.last
 
     def state(self, t: float):
-        y = self._propagate(t, self.y0)
-        e = self.elastance
-        tau = self.lung.viscoelastic_tau
-        e2 = self.lung.viscoelastic_ratio * e
-        rt = self.lung.resistance + self.rs
-        volume = y[0] + self.d0 / e - (rt + e2 * tau) * self.d1 / (e * e) + self.slope * t
-        p2 = y[1] + e2 * tau * self.d1 / e
-        return volume, p2
+        return self._evaluate(t)[:2]
 
     def volume(self, t: float) -> float:
-        return self.state(t)[0]
+        return self._evaluate(t)[0]
 
     def flow(self, t: float) -> float:
-        return self._propagate(t, self.z0)[0] + self.slope
+        return self._evaluate(t)[2]
 
     def dflow(self, t: float) -> float:
-        return self._propagate(t, self._apply(self.z0))[0]
+        return self._evaluate(t)[3]
 
     def paw(self, t: float) -> float:
         return self.p0 + self.p1 * t - self.rs * self.flow(t)

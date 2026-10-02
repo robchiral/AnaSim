@@ -68,73 +68,66 @@ def measured_ventilation(
     return spontaneous_rr, spontaneous_vt_l * 1000.0, spontaneous_rr * spontaneous_vt_l
 
 
-def set_state_float_fields(state, **values: float) -> None:
-    """Assign numeric SimulationState fields as built-in floats."""
-    for name, value in values.items():
-        setattr(state, name, float(value))
-
-
+# Projections run every step, so they assign public fields directly, as built-in floats.
 def sync_pk_state(engine: "SimulationEngine") -> None:
     """Synchronize PK concentrations from subsystem states to public state."""
     state = engine.state
-    set_state_float_fields(
-        state,
-        propofol_ce=engine.pk_prop.state.ce,
-        propofol_cp=engine.pk_prop.state.c1,
-        remi_ce=engine.pk_remi.state.ce,
-        remi_cp=engine.pk_remi.state.c1,
-        fentanyl_ce=engine.pk_fentanyl.state.ce,
-        fentanyl_cp=engine.pk_fentanyl.state.c1,
-        midazolam_ce=engine.pk_midazolam.state.ce,
-        etomidate_ce=engine.pk_etomidate.state.ce,
-        ketamine_ce=engine.pk_ketamine.state.ce,
-        opioid_ce=opioid_equivalent(engine.pk_remi.state.ce, engine.pk_fentanyl.state.ce),
-        opioid_cp=opioid_equivalent(engine.pk_remi.state.c1, engine.pk_fentanyl.state.c1),
-        hypnotic_ce=hypnotic_equivalent(
-            engine.pk_prop.state.ce,
-            engine.pk_etomidate.state.ce,
-            engine.pk_midazolam.state.ce,
-            engine.midazolam_c50,
-        ),
-        nore_ce=engine.pk_nore.state.ce,
-        roc_ce=engine.tof_pd.ce,
-        roc_cp=engine.pk_roc.state.c1,
-        epi_ce=engine.pk_epi.state.ce,
-        phenyl_ce=engine.pk_phenyl.state.ce,
-        vaso_ce=engine.pk_vaso.state.ce,
-        dobu_ce=engine.pk_dobu.state.ce,
-        mil_ce=engine.pk_mil.state.ce,
-        esmolol_ce=engine.pk_esmolol.state.ce,
-        labetalol_ce=engine.pk_labetalol.state.ce,
-        glyco_ce=engine.pk_glyco.state.ce,
-    )
+    state.propofol_ce = float(engine.pk_prop.state.ce)
+    state.propofol_cp = float(engine.pk_prop.state.c1)
+    state.remi_ce = float(engine.pk_remi.state.ce)
+    state.remi_cp = float(engine.pk_remi.state.c1)
+    state.fentanyl_ce = float(engine.pk_fentanyl.state.ce)
+    state.fentanyl_cp = float(engine.pk_fentanyl.state.c1)
+    state.midazolam_ce = float(engine.pk_midazolam.state.ce)
+    state.etomidate_ce = float(engine.pk_etomidate.state.ce)
+    state.ketamine_ce = float(engine.pk_ketamine.state.ce)
+    state.opioid_ce = float(opioid_equivalent(engine.pk_remi.state.ce, engine.pk_fentanyl.state.ce))
+    state.opioid_cp = float(opioid_equivalent(engine.pk_remi.state.c1, engine.pk_fentanyl.state.c1))
+    state.hypnotic_ce = float(hypnotic_equivalent(
+        engine.pk_prop.state.ce,
+        engine.pk_etomidate.state.ce,
+        engine.pk_midazolam.state.ce,
+        engine.midazolam_c50,
+    ))
+    state.nore_ce = float(engine.pk_nore.state.ce)
+    state.roc_ce = float(engine.tof_pd.ce)
+    state.roc_cp = float(engine.pk_roc.state.c1)
+    state.epi_ce = float(engine.pk_epi.state.ce)
+    state.phenyl_ce = float(engine.pk_phenyl.state.ce)
+    state.vaso_ce = float(engine.pk_vaso.state.ce)
+    state.dobu_ce = float(engine.pk_dobu.state.ce)
+    state.mil_ce = float(engine.pk_mil.state.ce)
+    state.esmolol_ce = float(engine.pk_esmolol.state.ce)
+    state.labetalol_ce = float(engine.pk_labetalol.state.ce)
+    state.glyco_ce = float(engine.pk_glyco.state.ce)
 
 
 def sync_inspired_gas(engine: "SimulationEngine") -> tuple[float, float]:
     """Project inspired gas at the airway and return (Fi sevo, Fi N2O) as fractions."""
+    state = engine.state
     composition = engine.circuit.composition
-    if engine.state.airway_mode == AirwayType.NONE:
+    if state.airway_mode == AirwayType.NONE:
         fio2, fi_sevo, fi_n2o = 0.21, 0.0, 0.0
     else:
         fio2 = composition.fio2
         fi_sevo = composition.fi_agent if engine._volatile_enabled else 0.0
         fi_n2o = composition.fin2o
-    set_state_float_fields(engine.state, fio2=fio2, fi_sevo=fi_sevo * 100.0, fi_n2o=fi_n2o * 100.0)
+    state.fio2 = float(fio2)
+    state.fi_sevo = float(fi_sevo * 100.0)
+    state.fi_n2o = float(fi_n2o * 100.0)
     return fi_sevo, fi_n2o
 
 
 def sync_inhaled_agents(engine: "SimulationEngine") -> None:
     """Project end-tidal and brain MAC values for sevoflurane and nitrous oxide."""
+    state = engine.state
     sevo, n2o = engine.pk_sevo.state, engine.pk_n2o.state
-    set_state_float_fields(
-        engine.state,
-        et_sevo=sevo.p_alv * 100.0,
-        et_n2o=n2o.p_alv * 100.0,
-        mac_sevo=sevo.mac,
-        mac_n2o=n2o.mac,
-        mac=sevo.mac + n2o.mac,
-        et_mac=sevo.p_alv * 100.0 / engine.pk_sevo.mac_age + n2o.p_alv * 100.0 / engine.pk_n2o.mac_age,
-    )
+    state.et_sevo = float(sevo.p_alv * 100.0)
+    state.et_n2o = float(n2o.p_alv * 100.0)
+    state.mac_sevo = float(sevo.mac)
+    state.mac_n2o = float(n2o.mac)
+    state.mac = float(sevo.mac + n2o.mac)
+    state.et_mac = float(sevo.p_alv * 100.0 / engine.pk_sevo.mac_age + n2o.p_alv * 100.0 / engine.pk_n2o.mac_age)
 
 
 def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
@@ -152,23 +145,20 @@ def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
     urine_out_ml = engine.hemo.total_urine_out_ml
     blood_out_ml = engine.hemo.total_blood_out_ml
     fluid_in_ml = total_crystalloid + total_colloid
-    set_state_float_fields(
-        state,
-        map=map_val,
-        hr=hr_val,
-        sv=sv_val,
-        svr=svr_val,
-        co=co_val,
-        blood_volume=engine.hemo.blood_volume,
-        hb_g_dl=engine.hemo.hb_conc,
-        hct=hct_val,
-        colloid_in_ml=total_colloid,
-        fluid_in_ml=fluid_in_ml,
-        blood_in_ml=blood_in_ml,
-        urine_out_ml=urine_out_ml,
-        blood_out_ml=blood_out_ml,
-        net_fluid_ml=fluid_in_ml + blood_in_ml - urine_out_ml - blood_out_ml,
-    )
+    state.map = float(map_val)
+    state.hr = float(hr_val)
+    state.sv = float(sv_val)
+    state.svr = float(svr_val)
+    state.co = float(co_val)
+    state.blood_volume = float(engine.hemo.blood_volume)
+    state.hb_g_dl = float(engine.hemo.hb_conc)
+    state.hct = float(hct_val)
+    state.colloid_in_ml = float(total_colloid)
+    state.fluid_in_ml = float(fluid_in_ml)
+    state.blood_in_ml = float(blood_in_ml)
+    state.urine_out_ml = float(urine_out_ml)
+    state.blood_out_ml = float(blood_out_ml)
+    state.net_fluid_ml = float(fluid_in_ml + blood_in_ml - urine_out_ml - blood_out_ml)
 
 
 def _project_respiratory_observables(engine: "SimulationEngine", snapshot: PhysiologyStepState) -> None:
@@ -176,29 +166,26 @@ def _project_respiratory_observables(engine: "SimulationEngine", snapshot: Physi
     state = engine.state
     resp_state = snapshot.resp_state
     connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
-    set_state_float_fields(
-        state,
-        rr=snapshot.rr_display,
-        vt=snapshot.vt_display_ml,
-        mv=snapshot.mv_display_l_min,
-        va=resp_state.va,
-        pa_co2=resp_state.pa_co2,
-        alveolar_co2=resp_state.p_alveolar_co2,
-        pao2=resp_state.p_arterial_o2,
-        sao2=resp_state.sao2,
-        spo2=resp_state.sao2,
-        etco2=resp_state.etco2 if connected else 0.0,
-        et_o2=resp_state.eto2 if connected else 0.0,
-        pit=snapshot.pit_estimate,
-        paw=snapshot.paw_display,
-        flow=snapshot.flow_display,
-        volume=snapshot.volume_display,
-        paw_peak=snapshot.paw_peak,
-        paw_plat=snapshot.paw_plat,
-        paw_mean=snapshot.paw_mean,
-        peep=snapshot.peep,
-        compliance_dyn=snapshot.compliance_dyn,
-    )
+    state.rr = float(snapshot.rr_display)
+    state.vt = float(snapshot.vt_display_ml)
+    state.mv = float(snapshot.mv_display_l_min)
+    state.va = float(resp_state.va)
+    state.pa_co2 = float(resp_state.pa_co2)
+    state.alveolar_co2 = float(resp_state.p_alveolar_co2)
+    state.pao2 = float(resp_state.p_arterial_o2)
+    state.sao2 = float(resp_state.sao2)
+    state.spo2 = float(resp_state.sao2)
+    state.etco2 = float(resp_state.etco2 if connected else 0.0)
+    state.et_o2 = float(resp_state.eto2 if connected else 0.0)
+    state.pit = float(snapshot.pit_estimate)
+    state.paw = float(snapshot.paw_display)
+    state.flow = float(snapshot.flow_display)
+    state.volume = float(snapshot.volume_display)
+    state.paw_peak = float(snapshot.paw_peak)
+    state.paw_plat = float(snapshot.paw_plat)
+    state.paw_mean = float(snapshot.paw_mean)
+    state.peep = float(snapshot.peep)
+    state.compliance_dyn = float(snapshot.compliance_dyn)
     state.apnea = bool(resp_state.apnea)
 
 
@@ -271,12 +258,9 @@ def project_runtime_physiology(engine: "SimulationEngine", snapshot: PhysiologyS
     project_hemodynamics(engine, snapshot.hemo_state)
     _project_respiratory_observables(engine, snapshot)
     engine._vent_active = snapshot.vent_active
-    set_state_float_fields(
-        state,
-        oxygen_delivery_ratio=engine.hemo.compute_do2_ratio(
-            max(0.0, state.sao2) / 100.0, max(0.0, state.pao2), state.co
-        ),
-    )
+    state.oxygen_delivery_ratio = float(engine.hemo.compute_do2_ratio(
+        max(0.0, state.sao2) / 100.0, max(0.0, state.pao2), state.co
+    ))
 
 
 def sync_monitor_baselines(engine: "SimulationEngine") -> None:
@@ -307,26 +291,23 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
     )
     art_reading = engine.art_line.seed(arterial_sample)
     engine.airway_sensor.seed(state.paw, state.flow, state.volume)
-    set_state_float_fields(
-        state,
-        bis=bis_val,
-        tof=tof_val,
-        loc=loc_val,
-        tol=tol_val,
-        capno_co2=0.0,
-        ecg_voltage=0.0,
-        pleth_voltage=0.0,
-        sbp=arterial_sample.systolic,
-        dbp=arterial_sample.diastolic,
-        art_pressure=art_reading.pressure,
-        art_sbp=art_reading.systolic,
-        art_dbp=art_reading.diastolic,
-        art_map=art_reading.mean,
-        display_hr=cardiac_sample.display_hr,
-        display_bis=bis_val,
-        display_etco2=state.etco2,
-        display_spo2=state.spo2,
-    )
+    state.bis = float(bis_val)
+    state.tof = float(tof_val)
+    state.loc = float(loc_val)
+    state.tol = float(tol_val)
+    state.capno_co2 = float(0.0)
+    state.ecg_voltage = float(0.0)
+    state.pleth_voltage = float(0.0)
+    state.sbp = float(arterial_sample.systolic)
+    state.dbp = float(arterial_sample.diastolic)
+    state.art_pressure = float(art_reading.pressure)
+    state.art_sbp = float(art_reading.systolic)
+    state.art_dbp = float(art_reading.diastolic)
+    state.art_map = float(art_reading.mean)
+    state.display_hr = float(cardiac_sample.display_hr)
+    state.display_bis = float(bis_val)
+    state.display_etco2 = float(state.etco2)
+    state.display_spo2 = float(state.spo2)
     engine.bis.initialize(state.bis)
     engine.smooth_bis = state.bis
 
@@ -334,11 +315,8 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
 def sync_state_from_models(engine: "SimulationEngine") -> None:
     """Derive the public SimulationState from current subsystem state."""
     state = engine.state
-    set_state_float_fields(
-        state,
-        blood_volume=engine.hemo.blood_volume,
-        temp_c=engine.patient.baseline_temp,
-    )
+    state.blood_volume = float(engine.hemo.blood_volume)
+    state.temp_c = float(engine.patient.baseline_temp)
     sync_pk_state(engine)
     sync_inspired_gas(engine)
     sync_inhaled_agents(engine)

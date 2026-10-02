@@ -200,18 +200,12 @@ comparisons informed compliance scaling, monitor response, and ventilator
 defaults; published studies and device specifications supplied the remaining
 parameters.
 
-Compliance scales with predicted body weight and BMI, using a fit at PEEP
-5 cmH2O. The model omits PEEP-dependent compliance and does not reproduce all
-recorded inspiratory pressure shapes. Bronchospasm resistance is calibrated
-against measurements in ventilated patients with severe asthma.
-
 - Lee et al. Sci Data. 2022. (VitalDB: intraoperative waveforms and numerics from 6,388 surgical patients; CC BY-NC-SA 4.0). [PubMed](https://pubmed.ncbi.nlm.nih.gov/35676300/)
 - Jonson et al. J Appl Physiol. 1993. (healthy anesthetized humans: viscoelastic resistance 3.7 cmH2O/(L/s), compliance 4x static, time constant 0.82 s). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8376259/)
 - D'Angelo et al. J Appl Physiol. 1989. (stress adaptation adds viscoelastic resistance in anesthetized paralyzed humans). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2606863/)
 - Pelosi et al. Anesth Analg. 1998. (respiratory system compliance falls exponentially with BMI during general anesthesia). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9728848/)
 - Tobin et al. Chest. 1983. (breathing pattern of normal subjects). [PubMed](https://pubmed.ncbi.nlm.nih.gov/6872603/)
 - Fowler. Am J Physiol. 1948. (anatomic dead space from the exhaled CO2 front). [PubMed](https://pubmed.ncbi.nlm.nih.gov/18101134/)
-- GE Healthcare. Aisys CS2 specifications. DOC1261976 rev3. 2013. (modes, setting ranges, and circuit resistance). [PDF](https://www.oxygen-care.com/wp-content/uploads/2025/05/SPEC-SHEET-Aisys-CS2.pdf)
 - Sydow et al. Intensive Care Med. 1993. (status asthmaticus: inspiratory resistance 22.7 ± 7.0 cmH2O/(L/s), Ppeak 43 cmH2O). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8294630/)
 - Okayama et al. J Asthma. 1991. (status asthmaticus: airway resistance 13-17 mmHg/(L/s) by interruption). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2010425/)
 

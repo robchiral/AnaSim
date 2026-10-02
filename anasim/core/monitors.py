@@ -7,7 +7,7 @@ from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
 
-from .projection import mask_leak, set_state_float_fields
+from .projection import mask_leak
 from .state import AirwayType
 from .utils import clamp
 
@@ -26,13 +26,10 @@ def seed_nibp_reading(engine: "SimulationEngine") -> None:
     dbp_val = state.dbp
     ts = state.time
     engine.nibp.latest_reading = NIBPReading(sbp_val, dbp_val, map_val, ts)
-    set_state_float_fields(
-        state,
-        nibp_sys=sbp_val,
-        nibp_dia=dbp_val,
-        nibp_map=map_val,
-        nibp_timestamp=ts,
-    )
+    state.nibp_sys = float(sbp_val)
+    state.nibp_dia = float(dbp_val)
+    state.nibp_map = float(map_val)
+    state.nibp_timestamp = float(ts)
     engine._next_nibp_time = state.time + engine.nibp.interval
     engine.nibp.trigger()
     state.nibp_is_cycling = True
@@ -56,17 +53,14 @@ def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
 
     state.nibp_is_cycling = engine.nibp.is_cycling
     state.nibp_measurement_failed = engine.nibp.measurement_failed
-    set_state_float_fields(state, nibp_cuff_pressure=cuff_p)
+    state.nibp_cuff_pressure = float(cuff_p)
 
     latest = engine.nibp.latest_reading
     if latest.timestamp is not None and latest.timestamp != prev_ts:
-        set_state_float_fields(
-            state,
-            nibp_sys=latest.systolic,
-            nibp_dia=latest.diastolic,
-            nibp_map=latest.map,
-            nibp_timestamp=latest.timestamp,
-        )
+        state.nibp_sys = float(latest.systolic)
+        state.nibp_dia = float(latest.diastolic)
+        state.nibp_map = float(latest.map)
+        state.nibp_timestamp = float(latest.timestamp)
 
 
 def _capno_sampling_possible(engine: "SimulationEngine") -> bool:
@@ -164,18 +158,15 @@ def step_cardiac_monitors(
 
     state = engine.state
     state.spo2_signal_valid = engine.spo2_mon.signal_valid
-    set_state_float_fields(
-        state,
-        ecg_voltage=ecg_voltage,
-        pleth_voltage=pleth,
-        sbp=arterial_sample.systolic,
-        dbp=arterial_sample.diastolic,
-        art_pressure=art_reading.pressure,
-        art_sbp=art_reading.systolic,
-        art_dbp=art_reading.diastolic,
-        art_map=art_reading.mean,
-        spo2=spo2_val,
-    )
+    state.ecg_voltage = float(ecg_voltage)
+    state.pleth_voltage = float(pleth)
+    state.sbp = float(arterial_sample.systolic)
+    state.dbp = float(arterial_sample.diastolic)
+    state.art_pressure = float(art_reading.pressure)
+    state.art_sbp = float(art_reading.systolic)
+    state.art_dbp = float(art_reading.diastolic)
+    state.art_map = float(art_reading.mean)
+    state.spo2 = float(spo2_val)
     return cardiac_sample
 
 
@@ -205,7 +196,10 @@ def step_monitors(
 
     paw, flow, volume = engine.airway_sensor.step(dt, state.paw, state.flow, state.volume)
     bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
-    set_state_float_fields(state, bis=bis_display_source, paw=paw, flow=flow, volume=volume)
+    state.bis = float(bis_display_source)
+    state.paw = float(paw)
+    state.flow = float(flow)
+    state.volume = float(volume)
     display_etco2, etco2_signal_valid = update_capno_numeric(
         engine,
         dt,
@@ -220,16 +214,13 @@ def step_monitors(
 
     display_hr = max(0.0, cardiac_sample.display_hr)
     display_bis = clamp(engine.smooth_bis, 0.0, 100.0)
-    set_state_float_fields(
-        state,
-        display_hr=display_hr,
-        display_bis=display_bis,
-        capno_co2=capno_val,
-        display_etco2=display_etco2,
-        loc=loc_val,
-        tol=engine._tol_current,
-        display_spo2=state.spo2,
-    )
+    state.display_hr = float(display_hr)
+    state.display_bis = float(display_bis)
+    state.capno_co2 = float(capno_val)
+    state.display_etco2 = float(display_etco2)
+    state.loc = float(loc_val)
+    state.tol = float(engine._tol_current)
+    state.display_spo2 = float(state.spo2)
     connected = state.airway_mode != AirwayType.NONE
     vent = engine.vent
     # Volume-targeted breaths alarm when they deliver less than the set VT.
