@@ -7,8 +7,10 @@ import json
 import math
 import os
 import tempfile
+from collections import deque
 
 from anasim import __version__
+from anasim.core.drug_registry import get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
 from anasim.core.recorder import RecordingError
@@ -118,6 +120,8 @@ class WebSession:
         self._last_wave_time = -math.inf
         self._recordings_dir = recordings_dir or os.path.join(tempfile.gettempdir(), "anasim-recordings")
         self.retain_recordings = retain_recordings
+        self._medication_history = deque(maxlen=50)
+        self._medication_sequence = 0
 
         self.scenario = None
         self.step_index = 0
@@ -157,6 +161,7 @@ class WebSession:
                 }
                 for spec in engine.get_controllable_drugs()
             ],
+            "medication_history": list(self._medication_history),
             "disturbances": [{"key": key, "label": label} for label, key in list_disturbance_profiles()],
             "rhythms": [rhythm.value for rhythm in RhythmType],
             "vent_modes": VENT_MODES,
@@ -443,16 +448,46 @@ class WebSession:
         )
 
     def _cmd_drug_rate(self, key: str, rate: float):
+        if not math.isfinite(float(rate)):
+            raise ValueError("Infusion rate must be finite")
         self.engine.set_drug_rate(key, float(rate))
+        spec = get_drug_spec(key)
+        applied = self.engine.get_drug_state(key)["rate"]
+        text = f"{spec.generic_name} infusion {applied:g} {spec.rate_unit}" if applied else f"{spec.generic_name} infusion stopped"
+        return self._medication_receipt(spec.key, text)
 
     def _cmd_drug_target(self, key: str, target: float | None):
+        if target is not None and not math.isfinite(float(target)):
+            raise ValueError("TCI target must be finite")
         self.engine.set_drug_target(key, None if target is None else float(target))
+        spec = get_drug_spec(key)
+        applied = self.engine.get_drug_state(key)
+        text = (
+            f"{spec.generic_name} {_target_label(spec).lower()} {applied['target']:g} {spec.tci_unit}"
+            if applied["is_tci"] else f"{spec.generic_name} TCI stopped"
+        )
+        return self._medication_receipt(spec.key, text)
 
     def _cmd_drug_bolus(self, key: str, amount: float):
+        if not math.isfinite(float(amount)) or float(amount) <= 0:
+            raise ValueError("Bolus amount must be positive and finite")
+        spec = get_drug_spec(key)
         self.engine.give_drug_bolus(key, float(amount))
+        return self._medication_receipt(spec.key, f"{spec.generic_name} {float(amount):g} {spec.bolus_unit} given")
 
     def _cmd_sugammadex(self, mg_per_kg: float):
-        self.engine.give_drug_bolus("sugammadex", float(mg_per_kg) * self.engine.patient.weight)
+        if not math.isfinite(float(mg_per_kg)) or float(mg_per_kg) <= 0:
+            raise ValueError("Sugammadex dose must be positive and finite")
+        amount = float(mg_per_kg) * self.engine.patient.weight
+        self.engine.give_drug_bolus("sugammadex", amount)
+        return self._medication_receipt("sugammadex", f"Sugammadex {amount:g} mg given ({float(mg_per_kg):g} mg/kg)")
+
+    def _medication_receipt(self, key: str, text: str) -> dict:
+        """Acknowledge a completed action and retain it across local page reloads."""
+        self._medication_sequence += 1
+        entry = {"id": self._medication_sequence, "time": self.engine.state.time, "key": key, "text": text}
+        self._medication_history.append(entry)
+        return {"medication": entry}
 
     def _cmd_fluid(self, kind: str, volume_ml: float):
         getattr(self.engine, FLUIDS[kind])(float(volume_ml))

@@ -100,6 +100,36 @@ def test_ventilator_settings_survive_bag_mask_handover():
     assert 25 <= snap["vitals"]["etco2"] <= 50
 
 
+def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload():
+    session = WebSession(PATIENT)
+    assert parse(session.info())["medication_history"] == []
+    first = cmd(session, "drug_bolus", key="Propofol", amount=50)["medication"]
+    assert first["key"] == "propofol"
+    second = cmd(session, "drug_bolus", key="propofol", amount=50)["medication"]
+    assert first["time"] == second["time"] == 0
+    assert second["id"] == first["id"] + 1
+    assert first["text"] == "Propofol 50 mg given"
+    cmd(session, "drug_target", key="propofol", target=3)
+    stopped = cmd(session, "drug_rate", key="propofol", rate=0)["medication"]
+    assert stopped["text"] == "Propofol infusion stopped"
+    assert not session.engine.get_drug_state("propofol")["is_tci"]
+    reversal = cmd(session, "sugammadex", mg_per_kg=2)["medication"]
+    assert reversal["text"] == "Sugammadex 140 mg given (2 mg/kg)"
+    before = parse(session.info())["medication_history"]
+    concentration = session.engine.pk_prop.state.c1
+    for key, amount in [("missing", 50), ("Propofol 10 mg/mL", 50), ("propofol", 0), ("propofol", float("nan"))]:
+        with pytest.raises(ValueError):
+            cmd(session, "drug_bolus", key=key, amount=amount)
+    assert session.engine.pk_prop.state.c1 == concentration
+    session.replay_waves()
+    assert parse(session.info())["medication_history"] == before
+    for rate in range(55):
+        cmd(session, "drug_rate", key="propofol", rate=rate)
+    history = parse(session.info())["medication_history"]
+    assert len(history) == 50
+    assert history[-1]["text"] == "Propofol infusion 54 mg/hr"
+
+
 def test_recording_returns_the_session_as_csv_even_after_a_failure(tmp_path):
     session = WebSession(PATIENT, recordings_dir=str(tmp_path))
     cmd(session, "run", running=True)

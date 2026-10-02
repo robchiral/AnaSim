@@ -1,9 +1,15 @@
 // Machine, medication, and event controls.
-// Inputs send commands on change; snapshots update any input not being edited.
+// Numeric settings remain drafts until explicitly applied.
+import { SettingsEditor } from "./settings.js";
 
 const $ = (id) => document.getElementById(id);
+const editors = new WeakMap();
 
 function setValue(input, value) {
+  if (editors.has(input)) {
+    editors.get(input).sync(input, value);
+    return;
+  }
   if (document.activeElement === input) return;
   const text = String(value);
   if (input.value !== text) input.value = text;
@@ -15,26 +21,88 @@ function setPressed(button, pressed, text) {
 }
 
 function readNumber(input) {
-  const min = input.min === "" ? -Infinity : Number(input.min);
-  const max = input.max === "" ? Infinity : Number(input.max);
-  let value = Number(input.value);
-  if (!Number.isFinite(value)) value = Math.max(0, min);
-  value = Math.min(Math.max(value, min), max);
-  input.value = String(value);
-  return value;
+  return Number(input.value);
 }
 
 const round = (value, digits = 2) => Number(value.toFixed(digits));
 
+// Presentation order stays fixed while medications are administered.
+const medicationGroups = [
+  { name: "Anesthesia and sedation", keys: ["propofol", "midazolam", "ketamine", "etomidate"] },
+  { name: "Opioids", keys: ["fentanyl", "remi"] },
+  { name: "Vasopressors and inotropes", keys: ["phenyl", "nore", "epi", "vaso", "dobu", "milri"] },
+  { name: "Heart rate and blood pressure", keys: ["glyco", "esmolol", "labetalol"] },
+  { name: "Neuromuscular blockade and reversal", keys: ["roc", "sugammadex"] },
+];
+
 export class Controls {
   constructor(info, send) {
-    this.send = send;
+    this.settingEditors = [];
+    this.destroyed = false;
+    this.history = [...info.medication_history];
+    this.send = async (name, args) => {
+      const result = await send(name, args);
+      if (!this.destroyed && result?.medication) {
+        this.history.push(result.medication);
+        this.history = this.history.slice(-50);
+        this.showMedicationHistory();
+      }
+      return result;
+    };
     this.info = info;
     this.state = null;
     this.bindTabs();
     this.bindMachine();
     this.buildDrugs(info.drugs);
     this.bindEvents(info);
+    this.showMedicationHistory();
+  }
+
+  editSettings(fields, apply, container = fields[0].closest("fieldset"), onChange) {
+    const editor = new SettingsEditor(container, fields, async () => (await apply()) !== undefined, onChange);
+    for (const field of fields) editors.set(field, editor);
+    this.settingEditors.push(editor);
+    return editor;
+  }
+
+  destroy() {
+    this.destroyed = true;
+    for (const editor of this.settingEditors) {
+      for (const field of editor.fields) editors.delete(field);
+      editor.destroy();
+    }
+  }
+
+  async medicationAction(button, name, args) {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      return await this.send(name, args);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  showMedicationHistory() {
+    const list = $("medication-history-list");
+    list.replaceChildren();
+    $("medication-history-empty").hidden = this.history.length > 0;
+    const latest = new Map();
+    for (const entry of this.history) {
+      const seconds = Math.floor(entry.time);
+      const stamp = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+      const row = document.createElement("li");
+      const time = document.createElement("time");
+      time.textContent = stamp;
+      row.append(time, entry.text);
+      list.prepend(row);
+      latest.set(entry.key, `${entry.text} · ${stamp}`);
+    }
+    for (const [key, text] of latest) {
+      const feedback = this.medicationRows.get(key).card.querySelector(".medication-feedback");
+      feedback.hidden = false;
+      if (feedback.textContent !== text) feedback.textContent = text;
+    }
   }
 
   // --- Tabs ---------------------------------------------------------
@@ -59,19 +127,20 @@ export class Controls {
       button.onclick = () => this.send("airway", { mode: button.dataset.value });
     }
     const fgf = () => this.send("fgf", { o2: readNumber($("c-o2")), air: readNumber($("c-air")), n2o: readNumber($("c-n2o")) });
-    for (const id of ["c-o2", "c-air", "c-n2o"]) $(id).onchange = fgf;
+    this.editSettings([$("c-o2"), $("c-air"), $("c-n2o")], fgf);
     $("c-o2-supply").onclick = () => this.send("oxygen_supply", { connected: !this.state.o2_connected });
-    $("c-vap").onchange = () => this.send("vaporizer", { percent: readNumber($("c-vap")) });
+    this.editSettings([$("c-vap")], () => this.send("vaporizer", { percent: readNumber($("c-vap")) }));
     $("c-bag").onclick = () => this.send("bag_mask", { active: !this.state.bag_mask });
     $("c-vent-power").onclick = () => this.send("vent_power", { on: !this.state.vent.on });
-    $("c-vent-mode").onchange = () => {
-      this.applyVentMode($("c-vent-mode").value);
-      this.send("vent", { mode: $("c-vent-mode").value });
-    };
-    for (const [id, field] of [["c-rr", "rr"], ["c-tv", "tv"], ["c-pinsp", "p_insp"], ["c-peep", "peep"]]) {
-      $(id).onchange = () => this.send("vent", { [field]: readNumber($(id)) });
-    }
-    $("c-ie").onchange = () => this.send("vent", { ie: $("c-ie").value });
+    this.editSettings(
+      ["c-vent-mode", "c-rr", "c-tv", "c-pinsp", "c-peep", "c-ie"].map($),
+      () => this.send("vent", {
+        mode: $("c-vent-mode").value, rr: readNumber($("c-rr")), tv: readNumber($("c-tv")),
+        p_insp: readNumber($("c-pinsp")), peep: readNumber($("c-peep")), ie: $("c-ie").value,
+      }),
+      $("c-vent-mode").closest("fieldset"),
+      () => this.applyVentMode($("c-vent-mode").value),
+    );
   }
 
   applyVentMode(mode) {
@@ -88,35 +157,54 @@ export class Controls {
   buildDrugs(drugs) {
     const container = $("drug-cards");
     container.replaceChildren();
+    $("running-infusion-list").replaceChildren();
+    $("running-infusions").hidden = true;
+    $("drug-search").value = "";
+    this.searchGroupState = null;
+    this.medicationRows = new Map();
+    this.medicationGroups = medicationGroups.map(({ name, keys }) => {
+      const section = document.createElement("details");
+      section.className = "medication-group";
+      section.open = true;
+      const heading = document.createElement("summary");
+      heading.textContent = name;
+      section.append(heading);
+      container.append(section);
+      return { section, name, keys };
+    });
     this.drugs = {};
     for (const spec of drugs) {
       const infusion = spec.rate_unit !== null;
       const tci = spec.tci_unit !== null;
-      const card = document.createElement("fieldset");
-      card.className = "group drug-card";
+      const card = document.createElement("details");
+      card.className = "drug-card";
       card.innerHTML = `
-        <legend></legend>
-        ${tci ? `<div class="segmented compact">
-          <button type="button" data-mode="rate">Rate</button>
-          <button type="button" data-mode="tci">TCI</button>
-        </div>` : ""}
+        <summary></summary>
+        <div class="drug-controls">
+        ${tci ? `<label class="inline">Infusion mode
+          <select class="infusion-mode"><option value="rate">Manual rate</option><option value="tci">TCI</option></select>
+        </label>` : ""}
         ${infusion ? `<div class="inputs">
           <label>Infusion rate</label>
           ${tci ? '<label class="target-label"></label>' : "<span></span>"}
           <span class="unit-input"><input class="rate" type="number" min="0" max="2000" step="any"><span class="rate-unit"></span></span>
           ${tci ? '<span class="unit-input"><input class="target" type="number" step="0.1"><span class="target-unit"></span></span>' : ""}
         </div>` : ""}
+        ${infusion ? '<div class="infusion-actions"></div>' : ""}
         <div class="bolus">
           <span class="unit-input"><input class="bolus-amount" type="number" min="0" max="1000" step="any"><span class="bolus-unit"></span></span>
           <button type="button" class="btn outlined">Give bolus</button>
         </div>
-        <p class="csht" hidden></p>`;
-      card.querySelector("legend").textContent = spec.name;
+        <p class="medication-feedback" role="status" hidden></p>
+        <p class="csht" hidden></p>
+        </div>`;
+      card.querySelector("summary").textContent = spec.name;
       card.querySelector(".bolus-unit").textContent = spec.bolus_unit;
 
       const w = {
-        rateButton: card.querySelector('[data-mode="rate"]'),
-        tciButton: card.querySelector('[data-mode="tci"]'),
+        card,
+        spec,
+        mode: card.querySelector(".infusion-mode"),
         rate: card.querySelector(".rate"),
         target: card.querySelector(".target"),
         bolus: card.querySelector(".bolus-amount"),
@@ -124,14 +212,13 @@ export class Controls {
         csht: card.querySelector(".csht"),
       };
       w.bolus.value = String(spec.default_bolus);
+      w.bolus.setAttribute("aria-label", `${spec.name} bolus (${spec.bolus_unit})`);
 
       const key = spec.key;
       if (infusion) {
         card.querySelector(".rate-unit").textContent = spec.rate_unit;
         w.rate.value = "0";
-        w.rate.onchange = () => {
-          if (!this.state.drugs[key].is_tci) this.send("drug_rate", { key, rate: readNumber(w.rate) });
-        };
+        w.rate.setAttribute("aria-label", `${spec.name} infusion rate (${spec.rate_unit})`);
       }
       if (tci) {
         card.querySelector(".target-label").textContent = spec.target_label;
@@ -139,25 +226,109 @@ export class Controls {
         w.target.min = String(spec.tci_range[0]);
         w.target.max = String(spec.tci_range[1]);
         w.target.value = "0";
-        w.tciButton.onclick = () => {
-          if (!this.state.drugs[key].is_tci) this.send("drug_target", { key, target: readNumber(w.target) });
-        };
-        w.rateButton.onclick = () => {
-          if (!this.state.drugs[key].is_tci) return;
-          this.send("drug_target", { key, target: null });
-          this.send("drug_rate", { key, rate: readNumber(w.rate) });
-        };
-        w.target.onchange = () => {
-          if (this.state.drugs[key].is_tci) this.send("drug_target", { key, target: readNumber(w.target) });
-        };
+        w.target.setAttribute("aria-label", `${spec.name} ${spec.target_label} (${spec.tci_unit})`);
       }
-      w.give.onclick = () => this.send("drug_bolus", { key, amount: readNumber(w.bolus) });
+      if (infusion) {
+        const fields = tci ? [w.mode, w.rate, w.target] : [w.rate];
+        w.editor = this.editSettings(fields, () => w.mode?.value === "tci"
+          ? this.send("drug_target", { key, target: readNumber(w.target) })
+          : this.send("drug_rate", { key, rate: readNumber(w.rate) }),
+          card.querySelector(".infusion-actions"), () => {
+            w.rate.disabled = w.editor.pending || w.mode?.value === "tci";
+            if (w.target) w.target.disabled = w.editor.pending || w.mode.value !== "tci";
+          });
+        if (w.mode) w.mode.setAttribute("aria-label", `${spec.name} infusion mode`);
+      }
+      w.bolus.required = true;
+      w.bolus.min = "0.001";
+      w.give.onclick = () => {
+        if (!w.bolus.reportValidity()) return;
+        return this.medicationAction(w.give, "drug_bolus", { key, amount: readNumber(w.bolus) });
+      };
       this.drugs[key] = w;
-      container.append(card);
+      this.medicationRows.set(key, { card, name: spec.name });
+      if (infusion) this.buildRunningInfusion(key, w);
+    }
+    const reversal = document.createElement("details");
+    reversal.className = "drug-card";
+    reversal.innerHTML = `
+      <summary>Sugammadex</summary>
+      <div class="drug-controls">
+        <button type="button" class="btn outlined full" data-sugammadex="2">Moderate block: 2 mg/kg</button>
+        <button type="button" class="btn outlined full" data-sugammadex="4">Deep block: 4 mg/kg</button>
+        <button type="button" class="btn outlined full" data-sugammadex="16">Immediate reversal: 16 mg/kg</button>
+        <p class="medication-feedback" role="status" hidden></p>
+      </div>`;
+    this.medicationRows.set("sugammadex", { card: reversal, name: "Sugammadex" });
+    for (const group of this.medicationGroups) {
+      for (const key of group.keys) group.section.append(this.medicationRows.get(key).card);
     }
     for (const button of document.querySelectorAll("[data-sugammadex]")) {
-      button.onclick = () => this.send("sugammadex", { mg_per_kg: Number(button.dataset.sugammadex) });
+      button.onclick = () => this.medicationAction(button, "sugammadex", { mg_per_kg: Number(button.dataset.sugammadex) });
     }
+    $("drug-search").oninput = () => this.filterMedications();
+    $("drug-search-clear").onclick = () => {
+      $("drug-search").value = "";
+      this.filterMedications();
+      $("drug-search").focus();
+    };
+    this.filterMedications();
+  }
+
+  filterMedications() {
+    const query = $("drug-search").value.trim().toLowerCase();
+    if (query && this.searchGroupState === null) {
+      this.searchGroupState = this.medicationGroups.map(({ section }) => section.open);
+    }
+    let found = false;
+    this.medicationGroups.forEach((group, index) => {
+      let groupMatches = false;
+      for (const key of group.keys) {
+        const row = this.medicationRows.get(key);
+        const matches = `${row.name} ${group.name}`.toLowerCase().includes(query);
+        row.card.hidden = !matches;
+        groupMatches ||= matches;
+      }
+      group.section.hidden = !groupMatches;
+      if (query && groupMatches) group.section.open = true;
+      if (!query && this.searchGroupState !== null) group.section.open = this.searchGroupState[index];
+      found ||= groupMatches;
+    });
+    if (!query) this.searchGroupState = null;
+    $("drug-search-clear").hidden = !$("drug-search").value;
+    $("drug-search-empty").hidden = found;
+  }
+
+  buildRunningInfusion(key, w) {
+    const row = document.createElement("div");
+    row.className = "running-infusion";
+    row.hidden = true;
+    row.innerHTML = `
+      <div><span class="infusion-name"></span><output></output></div>
+      <button type="button" class="btn small outlined infusion-adjust">Adjust</button>
+      <button type="button" class="btn small outlined infusion-stop">Stop</button>`;
+    row.querySelector(".infusion-name").textContent = w.spec.name;
+    const adjust = row.querySelector(".infusion-adjust");
+    adjust.setAttribute("aria-label", `Adjust ${w.spec.name}`);
+    adjust.onclick = () => {
+      $("drug-search").value = "";
+      this.filterMedications();
+      w.card.parentElement.open = true;
+      w.card.open = true;
+      const input = w.mode?.value === "tci" ? w.target : w.rate;
+      input.focus({ preventScroll: true });
+      w.card.scrollIntoView({ block: "nearest" });
+    };
+    const stop = row.querySelector(".infusion-stop");
+    stop.setAttribute("aria-label", `Stop ${w.spec.name}`);
+    // A manual rate command also disables TCI in the shared engine.
+    stop.onclick = async () => {
+      const result = await this.medicationAction(stop, "drug_rate", { key, rate: 0 });
+      if (result !== undefined) w.editor.cancel();
+    };
+    w.runningRow = row;
+    w.runningValue = row.querySelector("output");
+    $("running-infusion-list").append(row);
   }
 
   showCsht(values) {
@@ -180,7 +351,7 @@ export class Controls {
     for (const button of document.querySelectorAll("[data-fluid]")) {
       button.onclick = () => this.send("fluid", { kind: button.dataset.fluid, volume_ml: Number(button.dataset.volume) });
     }
-    $("c-maint").onchange = () => this.send("maintenance_fluid", { ml_hr: readNumber($("c-maint")) });
+    this.editSettings([$("c-maint")], () => this.send("maintenance_fluid", { ml_hr: readNumber($("c-maint")) }));
 
     const profiles = $("c-disturbance");
     profiles.replaceChildren(new Option("Off", ""));
@@ -188,8 +359,9 @@ export class Controls {
     profiles.onchange = () => this.send("disturbance_profile", { profile: profiles.value || null });
     $("c-disturb").onclick = () => this.send("disturbance", { active: !this.state.disturbance.active });
 
-    $("c-obstruction").onchange = () => this.send("obstruction", { percent: readNumber($("c-obstruction")) });
-    $("c-bronchospasm").onchange = () => this.send("bronchospasm", { percent: readNumber($("c-bronchospasm")) });
+    for (const [id, command] of [["c-obstruction", "obstruction"], ["c-bronchospasm", "bronchospasm"]]) {
+      this.editSettings([$(id)], () => this.send(command, { percent: readNumber($(id)) }), $(id).parentElement);
+    }
     $("c-auto-laryngo").onchange = () => this.send("auto_laryngospasm", { enabled: $("c-auto-laryngo").checked });
 
     $("c-hemorrhage").onclick = () => this.send("hemorrhage", {
@@ -225,26 +397,36 @@ export class Controls {
     const vent = c.vent;
     setPressed($("c-vent-power"), vent.on, vent.on ? "Stop ventilator" : "Start ventilator");
     setValue($("c-vent-mode"), vent.mode);
-    this.applyVentMode(vent.mode);
+    this.applyVentMode($("c-vent-mode").value);
     setValue($("c-rr"), vent.rr);
     setValue($("c-tv"), vent.tv);
     setValue($("c-pinsp"), vent.p_insp);
     setValue($("c-peep"), vent.peep);
     setValue($("c-ie"), vent.ie);
 
+    let running = false;
     for (const [key, w] of Object.entries(this.drugs)) {
       const d = c.drugs[key];
-      if (w.tciButton) {
-        w.rateButton.setAttribute("aria-pressed", String(!d.is_tci));
-        w.tciButton.setAttribute("aria-pressed", String(d.is_tci));
-        w.target.disabled = !d.is_tci;
-        if (d.is_tci) setValue(w.target, round(d.target));
+      if (w.mode) {
+        setValue(w.mode, d.is_tci ? "tci" : "rate");
+        setValue(w.target, round(d.target));
+        w.target.disabled = w.editor.pending || w.mode.value !== "tci";
       }
       if (w.rate) {
-        w.rate.disabled = d.is_tci;
+        w.rate.disabled = w.editor.pending || w.mode?.value === "tci";
         setValue(w.rate, round(d.rate));
+        const active = d.rate > 0 || (d.is_tci && d.target > 0);
+        if (!active && w.runningRow.contains(document.activeElement)) $("drug-search").focus();
+        w.runningRow.hidden = !active;
+        if (active) {
+          w.runningValue.textContent = d.is_tci
+            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit} · ${round(d.rate)} ${w.spec.rate_unit}`
+            : `${round(d.rate)} ${w.spec.rate_unit}`;
+        }
+        running ||= active;
       }
     }
+    $("running-infusions").hidden = !running;
 
     setValue($("c-bair"), String(c.bair_hugger));
     setValue($("c-maint"), round(c.maintenance_ml_hr, 0));

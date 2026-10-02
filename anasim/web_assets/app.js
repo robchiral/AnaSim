@@ -37,7 +37,7 @@ function send(name, args = {}) {
 
 // Commands from controls surface failures in a dialog instead of rejecting silently.
 function command(name, args) {
-  return send(name, args).catch((message) => alertDialog("Command failed", message));
+  return send(name, args).catch((message) => { alertDialog("Command failed", message); });
 }
 
 function onMessage({ data }) {
@@ -166,6 +166,7 @@ function setupError(message) {
 function startSession(sessionInfo) {
   info = sessionInfo;
   monitor?.destroy();
+  controls?.destroy();
   last = null;
   arrestShown = false;
   delete $("step-instruction").dataset.instruction;

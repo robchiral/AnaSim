@@ -45,7 +45,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* --- Shared controls ---------------------------------------------- */
 
-input[type="number"], select {
+input[type="number"], input[type="search"], select {
   background: var(--control);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -313,7 +313,30 @@ fieldset:disabled { opacity: 0.5; }
 .fio2.warn { color: var(--warning); }
 .fio2.bad { color: var(--danger); }
 
-.drug-card { gap: 6px; }
+.medication-search { display: flex; gap: 6px; }
+.medication-search input { flex: 1; width: 100%; }
+.medication-group { border-bottom: 1px solid var(--border); padding: 4px 0; }
+.medication-group > summary { padding: 7px 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); cursor: pointer; }
+.drug-card > summary { padding: 8px 4px; cursor: pointer; }
+.drug-card > summary:hover { background: var(--control); }
+.drug-card[open] > summary { color: var(--primary); }
+.drug-controls { display: grid; gap: 8px; padding: 4px 4px 12px; }
+.setting-actions { display: flex; gap: 6px; padding-top: 6px; }
+.unit-input:has(> .setting-actions) { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.unit-input > .setting-actions { grid-column: 1 / -1; }
+.medication-feedback { color: var(--text-secondary); font-size: 12px; }
+.medication-history { border-bottom: 1px solid var(--border); padding: 4px 0 8px; }
+.medication-history > summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; padding: 4px 0; }
+.medication-history ol { list-style: none; padding: 0; margin: 6px 0 0; max-height: 200px; overflow-y: auto; }
+.medication-history li { padding: 5px 0; font-size: 12px; }
+.medication-history time { color: var(--text-dim); margin-right: 8px; font-variant-numeric: tabular-nums; }
+#medication-history-empty { color: var(--text-dim); font-size: 12px; margin-top: 6px; }
+#running-infusions { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+#running-infusions h2 { font-size: 12px; font-weight: 600; color: var(--text-secondary); padding: 4px 0; }
+.running-infusion { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 6px 0; }
+.running-infusion output { display: block; color: var(--text-secondary); font-size: 11px; }
+.infusion-name { font-size: 12px; }
+#drug-search-empty { color: var(--text-dim); padding: 8px 0; }
 .drug-card .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
 .drug-card .inputs label { color: var(--text-secondary); font-size: 10px; }
 .drug-card .bolus { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
@@ -364,10 +387,16 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
 @media (max-width: 720px) {
   .setup-grid, .models-grid, .group-row { grid-template-columns: minmax(0, 1fr); }
   .monitor { height: auto; }
-  .monitor-body { grid-template-columns: minmax(0, 1fr); padding: 6px; }
-  .waves { height: 52vh; min-height: 300px; }
-  .numerics { border-left: none; border-top: 1px solid var(--border); }
-  .numeric.big output { font-size: 30px; }
+  .monitor-body { grid-template-columns: minmax(0, 1fr) 160px; padding: 4px 0 4px 4px; gap: 3px; }
+  .waves { min-height: 440px; }
+  .numerics { padding: 3px; }
+  .numeric { padding: 6px 4px; }
+  .numeric.big output { font-size: 25px; }
+  .numeric.big.abp output { font-size: 21px; }
+  .numeric.compact output { font-size: 18px; }
+  .numeric-row { grid-template-columns: 1fr 1fr; }
+  .panel-io, .panel-gas { padding: 6px 4px; }
+  .io-detail { white-space: normal; }
   .grid4 { grid-template-columns: auto minmax(0, 1fr); }
   .clock output { font-size: 16px; }
   .scenario-body p { font-size: 11px; }

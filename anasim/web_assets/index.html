@@ -253,13 +253,21 @@
       </div>
 
       <div class="tab-panel" data-panel="Medications" role="tabpanel" hidden>
+        <div class="medication-search">
+          <input id="drug-search" type="search" aria-label="Search medications" placeholder="Search medications" autocomplete="off">
+          <button id="drug-search-clear" type="button" class="btn small outlined" hidden>Clear</button>
+        </div>
+        <section id="running-infusions" aria-labelledby="running-infusions-title" hidden>
+          <h2 id="running-infusions-title">Running infusions</h2>
+          <div id="running-infusion-list"></div>
+        </section>
+        <details id="medication-history" class="medication-history">
+          <summary>Recent medication actions</summary>
+          <p id="medication-history-empty">No medication actions yet.</p>
+          <ol id="medication-history-list"></ol>
+        </details>
         <div id="drug-cards"></div>
-        <fieldset class="group">
-          <legend>Sugammadex</legend>
-          <button type="button" class="btn outlined full" data-sugammadex="2">Moderate block: 2 mg/kg</button>
-          <button type="button" class="btn outlined full" data-sugammadex="4">Deep block: 4 mg/kg</button>
-          <button type="button" class="btn outlined full" data-sugammadex="16">Immediate reversal: 16 mg/kg</button>
-        </fieldset>
+        <p id="drug-search-empty" role="status" hidden>No medications found.</p>
       </div>
 
       <div class="tab-panel" data-panel="Events" role="tabpanel" hidden>
