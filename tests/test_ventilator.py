@@ -45,8 +45,10 @@ def test_breath_volumes_and_pressures_match_analytic_steady_state(mode, monkeypa
     VCV holds the delivered volume for its inspiratory pause; a bag breath is a
     half-sine flow whose pressure peaks before flow stops. Exhaled gas crosses
     the expiratory limb, which slows expiration and holds the Y-piece above PEEP.
+    The nonlinear PEEP valve is tested separately.
     """
     monkeypatch.setattr(ventilator, "RISE_TIME", 0.0)
+    monkeypatch.setattr(ventilator, "PEEP_VALVE", 0.0)
     compliance, resistance = 0.05, 30.0
     rr, tidal_volume, pressure = 20.0, 0.5, 15.0
     peep = 0.0 if mode == "MANUAL" else 5.0
@@ -97,8 +99,9 @@ def test_breath_volumes_and_pressures_match_analytic_steady_state(mode, monkeypa
 
 
 @pytest.mark.parametrize("mode", ["VCV", "PCV"])
-def test_viscoelastic_breaths_match_numerical_integration(mode):
+def test_viscoelastic_breaths_match_numerical_integration(mode, monkeypatch):
     """Exact segments with tissue stress relaxation agree with a fine numerical solution."""
+    monkeypatch.setattr(ventilator, "PEEP_VALVE", 0.0)
     lung = RespiratoryMechanics(compliance=0.045, resistance=12.0)
     vent = AnesthesiaVentilator()
     vent.update_settings(rr=15.0, tv=500.0, peep=5.0, ie="1:2", mode=mode, p_insp=14.0, pause=20.0)
@@ -133,6 +136,50 @@ def test_viscoelastic_breaths_match_numerical_integration(mode):
     assert lung.p2 == pytest.approx(x[1], abs=1e-7)
 
 
+@pytest.mark.parametrize("compliance, resistance, rr", [(0.045, 12.0, 15.0), (0.02, 20.0, 20.0)])
+def test_peep_valve_slows_early_exhalation_as_a_quadratic_drop(compliance, resistance, rr):
+    """The linearized valve tracks a numerical solution with drop k Q^2 above PEEP.
+
+    Early in exhalation the valve holds the airway well above PEEP, as Primus
+    recordings show; with PEEP off it adds nothing.
+    """
+    peep, period = 5.0, 60.0 / rr
+    ti = period / 3.0
+    t_flow = ti * 0.8
+    paws = {}
+    for set_peep in (0.0, peep):
+        lung = RespiratoryMechanics(compliance=compliance, resistance=resistance)
+        vent = AnesthesiaVentilator()
+        vent.update_settings(rr=rr, tv=500.0, peep=set_peep, ie="1:2", mode="VCV", pause=20.0)
+        for _ in range(25):
+            vent.step(period, lung, "vent")
+        vent.step(ti + 0.1, lung, "vent")
+        paws[set_peep] = vent.paw - set_peep
+
+    elastance, tau = 1.0 / compliance, lung.viscoelastic_tau
+    e2 = lung.viscoelastic_ratio * elastance
+    r, k = resistance + CIRCUIT_RESISTANCE, ventilator.PEEP_VALVE
+
+    def exhaled_flow(x):
+        recoil = elastance * x[0] + x[1]
+        return 2.0 * recoil / (r + math.sqrt(r * r + 4.0 * k * recoil))
+
+    def rhs(t, x):
+        phase = t % period
+        vdot = -exhaled_flow(x) if phase >= ti else (0.5 / t_flow if phase < t_flow else 0.0)
+        return [vdot, e2 * vdot - x[1] / tau]
+
+    bounds = [b for n in range(25) for b in (n * period, n * period + t_flow, n * period + ti)]
+    bounds += [25 * period, 25 * period + t_flow, 25 * period + ti, 25 * period + ti + 0.1]
+    x = [0.0, 0.0]
+    for start, end in zip(bounds, bounds[1:]):
+        x = solve_ivp(rhs, (start, end), x, method="DOP853", rtol=1e-11, atol=1e-13).y[:, -1]
+    q = exhaled_flow(x)
+    assert lung.volume == pytest.approx(x[0], abs=1e-3)
+    assert paws[peep] == pytest.approx(CIRCUIT_RESISTANCE * q + k * q * q, abs=0.05)
+    assert paws[peep] > paws[0.0] + 1.0
+
+
 def test_short_inspiratory_pause_overestimates_static_recoil():
     """Tissue stress relaxes during an end-inspiratory hold, so a longer pause
     measures a lower plateau, approaching static recoil (Jonson 1993)."""
@@ -158,7 +205,8 @@ def test_pressure_support_follows_patient_triggers(awake_engine, advance_time):
     engine.set_vent_power(True)
     advance_time(engine, 30.0, dt=0.1)
     cpap = engine.get_latest_state()
-    assert cpap.vt > 400.0 and cpap.paw_peak < 10.0
+    # Unsupported: Ppeak comes from exhaling through the PEEP valve.
+    assert cpap.vt > 400.0 and cpap.paw_peak < 12.0
 
     engine.set_vent_settings(rr=0.0, vt=0.0, peep=8.0, ie="1:2", mode="PSV", p_support=10.0)
     advance_time(engine, 30.0, dt=0.1)

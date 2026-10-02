@@ -15,7 +15,7 @@
 - Added tissue viscoelasticity, compliance scaling by body size, and muscle
   pressure for spontaneous and assisted breaths. Patient efforts can produce
   curare clefts in the capnogram.
-- Added airway traces, ventilator measurements and loops, inspired and
+- Added airway traces, ventilator measurements and live loops, inspired and
   end-tidal gas values, and corresponding CSV fields. End-tidal values clear
   when exhaled breath detection stops.
 - Added alarms for high airway pressure, low minute ventilation, low delivered
@@ -23,6 +23,8 @@
 - Corrected exhaled volume measurements, mask leak, and tracheal-tube
   obstruction. Bronchospasm reduces alveolar ventilation without reducing
   displayed MV.
+- Added flow-dependent PEEP-valve resistance during expiration.
+- Labeled chest-impedance respiratory rate as "RR imp".
 - Separated `RespiratoryMechanics` from `AnesthesiaVentilator`.
   `set_vent_settings` accepts the new modes and settings; PSV's apnea delay is
   now `vent.apnea_backup_s`.

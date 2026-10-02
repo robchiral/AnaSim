@@ -107,13 +107,19 @@ class Sweep {
   }
 }
 
-// Loops of the last completed breath: pressure-volume (inspiration runs up and
-// to the right) and flow-volume (inspiratory flow above zero).
+// Pressure-volume (inspiration runs up and to the right) and flow-volume
+// (inspiratory flow above zero) loops. The breath in progress traces over the
+// last completed breath, as on anesthesia workstations.
+const LOOP_KEYS = ["paw", "flow", "volume"];
+const LOOP_MAX_POINTS = 700; // One sweep of an open breath during apnea
+
 class Loops {
   constructor() {
     this.canvases = [document.getElementById("loop-pv"), document.getElementById("loop-fv")];
-    this.loop = null;
-    this.observer = new ResizeObserver(() => this.draw());
+    this.previous = null;
+    this.current = null;
+    this.dirty = true;
+    this.observer = new ResizeObserver(() => { this.dirty = true; });
     for (const canvas of this.canvases) this.observer.observe(canvas);
   }
 
@@ -121,20 +127,34 @@ class Loops {
     this.observer.disconnect();
   }
 
-  update(loop) {
-    if (!loop) return;
-    this.loop = loop;
-    this.draw();
+  update(runs) {
+    for (const run of runs ?? []) {
+      if (run.breath !== this.current?.breath) {
+        if (this.current?.paw.length > 1) this.previous = this.current;
+        this.current = { breath: run.breath, paw: [], flow: [], volume: [] };
+      }
+      for (const key of LOOP_KEYS) {
+        const values = this.current[key];
+        values.push(...run[key]);
+        if (values.length > LOOP_MAX_POINTS) values.splice(0, values.length - LOOP_MAX_POINTS);
+      }
+      this.dirty = true;
+    }
   }
 
   draw() {
     const [pv, fv] = this.canvases;
-    const loop = this.loop ?? { paw: [], flow: [], volume: [] };
-    const maxVolume = niceCeil(Math.max(500, ...loop.volume), 250);
-    const maxPaw = niceCeil(Math.max(20, ...loop.paw), 10);
-    const maxFlow = niceCeil(Math.max(30, ...loop.flow.map(Math.abs)), 30);
-    plotLoop(pv, loop.paw, loop.volume, [-5, maxPaw], [0, maxVolume], "cmH₂O", "mL");
-    plotLoop(fv, loop.volume, loop.flow, [0, maxVolume], [-maxFlow, maxFlow], "mL", "L/min");
+    const loops = [this.previous, this.current].filter(Boolean);
+    const all = (key) => loops.flatMap((loop) => loop[key]);
+    const maxVolume = niceCeil(Math.max(500, ...all("volume")), 250);
+    const maxPaw = niceCeil(Math.max(20, ...all("paw")), 10);
+    const maxFlow = niceCeil(Math.max(30, ...all("flow").map(Math.abs)), 30);
+    const traces = (x, y) => [
+      this.previous && { xs: this.previous[x], ys: this.previous[y], alpha: 0.35 },
+      this.current && { xs: this.current[x], ys: this.current[y], alpha: 1, head: true },
+    ].filter(Boolean);
+    plotLoop(pv, traces("paw", "volume"), [-5, maxPaw], [0, maxVolume], "cmH₂O", "mL");
+    plotLoop(fv, traces("volume", "flow"), [0, maxVolume], [-maxFlow, maxFlow], "mL", "L/min");
   }
 }
 
@@ -142,18 +162,19 @@ function niceCeil(value, step) {
   return Math.ceil(value / step) * step;
 }
 
-function plotLoop(canvas, xs, ys, [x0, x1], [y0, y1], xUnit, yUnit) {
+function plotLoop(canvas, traces, [x0, x1], [y0, y1], xUnit, yUnit) {
   const dpr = window.devicePixelRatio || 1;
   const { clientWidth: w, clientHeight: h } = canvas;
   if (!w || !h) return;
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
+  const width = Math.round(w * dpr), height = Math.round(h * dpr);
+  if (canvas.width !== width || canvas.height !== height) [canvas.width, canvas.height] = [width, height];
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   const pad = 6;
   const px = (x) => pad + (w - 2 * pad) * (x - x0) / (x1 - x0);
   const py = (y) => h - pad - (h - 2 * pad) * (y - y0) / (y1 - y0);
+  ctx.globalAlpha = 1;
   ctx.strokeStyle = "rgba(240, 244, 248, 0.15)";
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -170,13 +191,24 @@ function plotLoop(canvas, xs, ys, [x0, x1], [y0, y1], xUnit, yUnit) {
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillText(`${y1} ${yUnit}`, px(Math.max(x0, 0)) + 3, pad);
-  if (xs.length < 2) return;
-  ctx.strokeStyle = css("--vent");
+  const color = css("--vent");
+  ctx.strokeStyle = ctx.fillStyle = color;
   ctx.lineWidth = 1.6;
   ctx.lineJoin = "round";
-  ctx.beginPath();
-  xs.forEach((x, i) => (i ? ctx.lineTo(px(x), py(ys[i])) : ctx.moveTo(px(x), py(ys[i]))));
-  ctx.stroke();
+  for (const { xs, ys, alpha, head } of traces) {
+    if (xs.length < 2) continue;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    xs.forEach((x, i) => (i ? ctx.lineTo(px(x), py(ys[i])) : ctx.moveTo(px(x), py(ys[i]))));
+    ctx.stroke();
+    if (head) {
+      // Mark the newest point so the trace reads as live.
+      ctx.beginPath();
+      ctx.arc(px(xs.at(-1)), py(ys.at(-1)), 2.5, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 
 export class Monitor {
@@ -203,6 +235,7 @@ export class Monitor {
     this.fields = {};
     for (const el of document.querySelectorAll(".numerics output, .vent-bar output")) this.fields[el.id] = el;
     this.fields["v-spo2-unit"] = document.getElementById("v-spo2-unit");
+    this.fields["v-rr-title"] = document.getElementById("v-rr-title");
     this.alarmBoxes = [...document.querySelectorAll(".numeric[data-alarm]")];
     this.loops = new Loops();
     this.frame = requestAnimationFrame(() => this.render());
@@ -234,6 +267,10 @@ export class Monitor {
       for (const sweep of Object.values(this.sweeps)) sweep.draw();
       this.dirty = false;
     }
+    if (this.loops.dirty) {
+      this.loops.draw();
+      this.loops.dirty = false;
+    }
     this.frame = requestAnimationFrame(() => this.render());
   }
 
@@ -263,6 +300,7 @@ export class Monitor {
     }
     this.set("v-etco2", trunc(v.etco2));
     this.set("v-rr", trunc(v.rr));
+    this.set("v-rr-title", v.rr_source === "impedance" ? "RR imp" : "RR");
     this.set("v-bis", trunc(v.bis));
     this.set("v-tof", `${trunc(v.tof)}%`);
     this.set("v-temp", fixed(v.temp, 1));

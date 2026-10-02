@@ -123,10 +123,22 @@ def test_ventilator_display_and_disconnection_alarm():
     assert (min(paw), max(paw)) == pytest.approx((v["peep"], v["ppeak"]), abs=0.5)
     flow_time = 60 / v["rr"] / 3 * (1 - engine.vent.settings.pause / 100)
     assert max(flow) == pytest.approx(v["vte"] / 1000 / flow_time * 60, abs=0.2)
-    # Each completed breath sends a pressure-volume and flow-volume loop.
-    loop = next(snap["loop"] for snap in reversed(snaps) if snap["loop"])
+    # Loops trace each breath as it happens; a completed one spans VTe and Ppeak.
+    runs = {}
+    for snap in snaps:
+        for run in snap["loop"]:
+            runs.setdefault(run["breath"], []).append(run)
+    completed = runs[sorted(runs)[-2]]
+    assert len(completed) > 1
+    loop = {key: [x for run in completed for x in run[key]] for key in ("paw", "flow", "volume")}
     assert loop["volume"][0] == 0 and max(loop["volume"]) == pytest.approx(v["vte"], rel=0.05)
     assert max(loop["paw"]) == pytest.approx(v["ppeak"], abs=0.5)
+    # A reloaded page gets the previous and current breaths back.
+    session.replay_waves()
+    replayed = parse(session.advance(0.0))["loop"]
+    assert [run["breath"] for run in replayed] == sorted(runs)[-2:]
+    assert replayed[0]["volume"] == loop["volume"]
+    assert v["rr_source"] == "co2"
     # Oxygen uptake keeps end-tidal below inspired O2.
     assert 70 < v["eto2"] < v["fio2"] - 3
     assert snaps[-1]["alarms"] == {}
@@ -138,6 +150,8 @@ def test_ventilator_display_and_disconnection_alarm():
     assert 15 <= alarm_onset <= 16
     v = snaps[-1]["vitals"]
     assert v["vte"] is v["ppeak"] is v["eto2"] is None
+    # RR now counts the apneic patient's chest movement, not ventilator breaths.
+    assert v["rr_source"] == "impedance" and v["rr"] == 0
 
     cmd(session, "airway", mode="ETT")
     assert "MV" not in run_seconds(session, 20)[-1]["alarms"]

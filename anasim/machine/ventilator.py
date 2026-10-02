@@ -1,6 +1,7 @@
 """Anesthesia workstation ventilation and spirometry."""
 
 import math
+from bisect import bisect_right
 from collections import deque
 from dataclasses import dataclass
 
@@ -16,6 +17,15 @@ TRIGGERED = ("SIMV-VC", "SIMV-PC", "SIMV-VG", "PSV", "CPAP")
 # flow; this is its value at 0.3 L/s, and it fits Primus recordings as well as
 # any tested value. See docs/REFERENCES.md#ventilator-waveforms.
 CIRCUIT_RESISTANCE = 2.0
+# Exhaled gas leaves through the PEEP valve, whose pressure drop above PEEP
+# grows with the square of flow, as through an orifice. Fitted to Primus
+# recordings at PEEP 5 cmH2O; recordings at zero PEEP show no added drop, so it
+# is scaled down linearly below 5 cmH2O.
+PEEP_VALVE = 7.0  # cmH2O/(L/s)^2
+PEEP_VALVE_FULL = 5.0  # cmH2O
+# Seconds after exhalation begins at which the valve is linearized about the
+# flow it then carries, keeping segments exact; the last ends its effect.
+VALVE_KNOTS = (0.0, 0.02, 0.04, 0.07, 0.1, 0.15, 0.2, 0.3, 0.4, 0.55, 0.75, 1.0, 1.4, 2.0)
 RISE_TIME = 0.28  # s, pressure ramp of pressure-controlled and supported breaths (Primus recordings)
 TRIGGER_WINDOW = 0.25  # SIMV synchronizes to efforts in the last quarter of each period
 CYCLE_FRACTION = 0.25  # Supported breaths end when flow falls to this share of its peak
@@ -117,6 +127,8 @@ class AnesthesiaVentilator:
         self._current = None  # (segment, time) valid at the end of the step
         self._since_mandatory = 0.0
         self._since_breath = 0.0
+        self._since_exhalation = 0.0
+        self._valve = None  # (knot, offset, resistance) linearizing the PEEP valve
         self._backup = False
         self._vg_pressure = None
         self._armed = False
@@ -204,6 +216,7 @@ class AnesthesiaVentilator:
         self.monitors = VentMonitors()
         self.pressure_limited = False
         self._since_breath = 0.0
+        self._since_exhalation, self._valve = 0.0, None
         self._rebase(lung, self._peep())
         mandatory = self._mandatory_type()
         if mandatory is not None:
@@ -304,7 +317,10 @@ class AnesthesiaVentilator:
     def _segment(self, lung, pmus):
         b = self._breath
         rs = self._series_resistance()
-        if b is None or not b.inspiring or b.kind == "SPONT":
+        if b is None or not b.inspiring:
+            offset, valve = self._valve_tangent(lung, pmus[0])
+            return lung.pressure_segment((offset, 0.0), pmus, rs + valve)
+        if b.kind == "SPONT":
             return lung.pressure_segment((0.0, 0.0), pmus, rs)
         if b.kind == "MANUAL":
             return lung.sine_segment(b.target, b.ti, b.t, pmus)
@@ -318,6 +334,26 @@ class AnesthesiaVentilator:
             slope = b.target / RISE_TIME
             return lung.pressure_segment((slope * b.t, slope), pmus)
         return lung.pressure_segment((b.target, 0.0), pmus)
+
+    def _valve_coefficient(self) -> float:
+        return PEEP_VALVE * min(self._peep(), PEEP_VALVE_FULL) / PEEP_VALVE_FULL
+
+    def _valve_tangent(self, lung, pmus: float) -> tuple[float, float]:
+        """(Pressure offset, resistance) of the PEEP valve's drop k Q^2, linearized at the latest knot.
+
+        Q is the exhaled flow the valve carries at the knot, solved from the
+        lung's recoil and muscle pressure: (R + Rs) Q + k Q^2 = recoil.
+        """
+        k = self._valve_coefficient()
+        knot = bisect_right(VALVE_KNOTS, self._since_exhalation + 1e-12)
+        if k <= 0.0 or knot >= len(VALVE_KNOTS):
+            return 0.0, 0.0
+        if self._valve is None or self._valve[0] != knot:
+            r = lung.resistance + self._series_resistance()
+            recoil = lung.elastic_pressure + lung.p2 - pmus
+            q = 2.0 * recoil / (r + math.sqrt(r * r + 4.0 * k * recoil)) if recoil > 0.0 else 0.0
+            self._valve = (knot, -k * q * q, 2.0 * k * q)
+        return self._valve[1], self._valve[2]
 
     def _boundary(self) -> float:
         """Time to the next scheduled change of segment."""
@@ -338,6 +374,9 @@ class AnesthesiaVentilator:
                 times.append((1.0 - TRIGGER_WINDOW) * period - self._since_mandatory)
         elif self._source == "vent" and mode == "PSV" and self.settings.rr > 0.0:
             times.append(self.apnea_backup_s - self._since_breath)
+        knot = bisect_right(VALVE_KNOTS, self._since_exhalation + 1e-12)
+        if knot < len(VALVE_KNOTS) and self._valve_coefficient() > 0.0:
+            times.append(VALVE_KNOTS[knot] - self._since_exhalation)
         return min((t for t in times if t > 1e-12), default=math.inf)
 
     def _advance(self, available: float, lung) -> float:
@@ -358,6 +397,7 @@ class AnesthesiaVentilator:
         effort.advance(t, lung, self._series_resistance())
         self._since_mandatory += t
         self._since_breath += t
+        self._since_exhalation += t
         if b is not None:
             b.t += t
         # The segment still describes the present unless something changed at its end.
@@ -464,6 +504,7 @@ class AnesthesiaVentilator:
         b = self._breath
         b.inspiring = False
         self.inspiring = False
+        self._since_exhalation, self._valve = 0.0, None
         end_paw = b.peep + segment.paw(t)
         volume = max(0.0, b.v_max - b.v_start)
         if b.kind == "VC":

@@ -145,12 +145,15 @@ analyzer. Inspiratory efforts can produce curare clefts. The gas monitor shows
 end-tidal age-adjusted MAC (`et_mac`); brain MAC (`mac`) determines drug effects.
 End-tidal values clear 15 seconds after the last valid exhaled CO2 sample.
 
-Airway traces include sensor filtering. Plateau pressure requires a mandatory
-breath with no flow at end-inspiration; VCV without a pause leaves it blank.
+Airway traces include sensor filtering. PEEP-valve resistance slows the fall
+in expiratory airway pressure. Plateau pressure requires a mandatory breath
+with no flow at end-inspiration; VCV without a pause leaves it blank.
 Displayed PEEP is airway pressure, while auto-PEEP affects plateau pressure
 and residual expiratory flow. The monitor also shows dynamic compliance and
-pressure-volume and flow-volume loops. Alarms detect high pressure, low minute
-ventilation, low delivered tidal volume, and low inspired O2. See the
+pressure-volume and flow-volume loops of the current and previous breaths.
+RR uses capnography with an airway or chest impedance ("RR imp") without one.
+Alarms detect high pressure, low minute ventilation, low delivered tidal
+volume, and low inspired O2. See the
 [waveform references](REFERENCES.md#ventilator-waveforms).
 
 ### PK and TCI

@@ -50,7 +50,7 @@ SPEED_AVERAGE_S = 2.0
 WAVE_WINDOW_S = 20.0  # The slower respiratory sweep
 VENT_FIELDS = ("mode", "rr", "tv", "peep", "ie", "p_insp", "p_support", "t_insp", "pause", "p_max", "trigger")
 IE_RATIOS = ("1:1", "1:2", "1:3", "1:4")
-LOOP_POINTS = 160  # Most points sent per breath loop
+LOOP_INTERVAL_S = 0.03  # Spacing of loop points, about 170 per 5-second breath
 FLUIDS = {"crystalloid": "give_fluid", "albumin": "give_albumin", "blood": "give_blood"}
 
 SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
@@ -119,9 +119,15 @@ class WebSession:
         self._download = None
         self._accumulator = 0.0
         self._last_wave_time = -math.inf
-        self._breath_samples = []
-        self._loop = None
-        self._loop_pending = False
+        # Loops trace the breath in progress over the last completed one.
+        self._loop_time = -math.inf
+        self._loop_breath = None
+        self._loop_start = 0.0
+        self._loop_index = 0
+        self._loop_current = []
+        self._loop_previous = None
+        self._loop_new = []
+        self._loop_replay = False
         self._recordings_dir = recordings_dir or os.path.join(tempfile.gettempdir(), "anasim-recordings")
         self.retain_recordings = retain_recordings
         self._medication_history = deque(maxlen=50)
@@ -280,6 +286,8 @@ class WebSession:
             "nibp_failed": s.nibp_measurement_failed,
             "etco2": _num(s.display_etco2, 1) if s.etco2_signal_valid else None,
             "rr": _num(s.rr, 1),
+            # Without an airway the monitor counts chest movement by impedance, not CO2.
+            "rr_source": "co2" if connected else "impedance",
             "bis": _num(s.display_bis, 1),
             "tof": _num(s.tof, 1),
             "temp": _num(s.temp_c, 2),
@@ -305,9 +313,9 @@ class WebSession:
         }
 
     def replay_waves(self) -> None:
-        """Resend the retained sweep and last loop in the next snapshot, for a reloaded page."""
+        """Resend the retained sweep and loops in the next snapshot, for a reloaded page."""
         self._last_wave_time = -math.inf
-        self._loop_pending = self._loop is not None
+        self._loop_replay = True
 
     def _new_waves(self) -> dict:
         """Return samples newer than the last snapshot, at most one sweep."""
@@ -333,29 +341,47 @@ class WebSession:
         }
 
     def _collect_loop(self, samples) -> None:
-        """Keep the samples of the breath in progress; a completed breath becomes the loop."""
+        """Add points of the breath in progress; a new breath makes it the previous loop."""
+        stride = max(1, round(LOOP_INTERVAL_S / self.engine.config.dt))
         for sample in samples:
-            current = self._breath_samples
-            if current and sample.breath != current[-1].breath:
-                if len(current) > 2:
-                    stride = math.ceil(len(current) / LOOP_POINTS)
-                    points = current[::stride] + ([current[-1]] if (len(current) - 1) % stride else [])
-                    start = current[0].volume
-                    self._loop = {
-                        "paw": [_num(s.paw, 2) for s in points],
-                        "flow": [_num(s.flow, 1) for s in points],
-                        "volume": [_num((s.volume - start) * 1000.0, 1) for s in points],
-                    }
-                    self._loop_pending = True
-                current = self._breath_samples = []
-            current.append(sample)
-        if len(self._breath_samples) > WAVE_WINDOW_S / self.engine.config.dt:
-            self._breath_samples = self._breath_samples[-round(WAVE_WINDOW_S / self.engine.config.dt):]
+            if sample.time <= self._loop_time:
+                continue  # Replayed for the sweep
+            self._loop_time = sample.time
+            if sample.breath != self._loop_breath:
+                if len(self._loop_current) > 1:
+                    self._loop_previous = (self._loop_breath, self._loop_current)
+                self._loop_breath, self._loop_start = sample.breath, sample.volume
+                self._loop_index, self._loop_current = 0, []
+            if self._loop_index % stride == 0:
+                point = (_num(sample.paw, 2), _num(sample.flow, 1), _num((sample.volume - self._loop_start) * 1000.0, 1))
+                self._loop_current.append(point)
+                self._loop_new.append((sample.breath, point))
+            self._loop_index += 1
+        # Apnea leaves one breath open; keep a sweep of it.
+        limit = round(WAVE_WINDOW_S / LOOP_INTERVAL_S)
+        if len(self._loop_current) > limit:
+            self._loop_current = self._loop_current[-limit:]
 
-    def _take_loop(self):
-        """Return the newest completed breath loop once."""
-        pending, self._loop_pending = self._loop_pending, False
-        return self._loop if pending else None
+    def _take_loop(self) -> list:
+        """Return new loop points as runs of (breath, paw, flow, volume); a replay resends both loops."""
+        if self._loop_replay:
+            self._loop_replay = False
+            runs = [self._loop_previous] if self._loop_previous else []
+            if self._loop_current:
+                runs.append((self._loop_breath, self._loop_current))
+            points = [(breath, point) for breath, loop in runs for point in loop]
+        else:
+            points = self._loop_new
+        self._loop_new = []
+        out = []
+        for breath, (paw, flow, volume) in points:
+            if not out or out[-1]["breath"] != breath:
+                out.append({"breath": breath, "paw": [], "flow": [], "volume": []})
+            run = out[-1]
+            run["paw"].append(paw)
+            run["flow"].append(flow)
+            run["volume"].append(volume)
+        return out
 
     def _controls(self) -> dict:
         engine = self.engine

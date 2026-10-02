@@ -198,7 +198,8 @@ Dräger Primus recordings from VitalDB in adults within the supported range.
 Separate recordings were used to fit and check the parameters. These
 comparisons informed compliance scaling, monitor response, and ventilator
 defaults; published studies and device specifications supplied the remaining
-parameters.
+parameters. PEEP-valve resistance was fitted to expiratory pressure recordings
+with positive PEEP.
 
 - Lee et al. Sci Data. 2022. (VitalDB: intraoperative waveforms and numerics from 6,388 surgical patients; CC BY-NC-SA 4.0). [PubMed](https://pubmed.ncbi.nlm.nih.gov/35676300/)
 - Jonson et al. J Appl Physiol. 1993. (healthy anesthetized humans: viscoelastic resistance 3.7 cmH2O/(L/s), compliance 4x static, time constant 0.82 s). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8376259/)
