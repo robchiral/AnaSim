@@ -14,7 +14,7 @@ from anasim.patient.patient import Patient
 
 @dataclass
 class RespState:
-    """Respiratory outputs. Gas tensions in mmHg, VT in mL, MV and VA in L/min."""
+    """Respiratory outputs. Gas tensions in mmHg, EtO2 in %, VT in mL, MV and VA in L/min."""
 
     rr: float = 12.0
     vt: float = 500.0
@@ -24,6 +24,7 @@ class RespState:
     p_alveolar_co2: float = 40.0
     pa_co2: float = 40.0
     etco2: float = 40.0
+    eto2: float = 14.0
     p_alveolar_o2: float = 100.0
     p_arterial_o2: float = 95.0
     sao2: float = 98.0  # %
@@ -348,6 +349,13 @@ class RespiratoryModel:
         aa_grad_effective = min(80.0, aa_grad_effective)
         # Anemia and low cardiac output lower O2 content and delivery, not PaO2.
         state.p_arterial_o2 = max(0.0, state.p_alveolar_o2 - aa_grad_effective)
+
+        # End-tidal gas is alveolar gas diluted by alveolar dead-space gas of
+        # inspired composition, the dilution that puts EtCO2 below PACO2. Gas
+        # analyzers report dry-gas fractions, like FiO2.
+        dilution = clamp01_local(1.0 - etco2_raw / state.p_alveolar_co2) if state.p_alveolar_co2 > 0.0 else 0.0
+        p_end_tidal_o2 = state.p_alveolar_o2 + dilution * (fio2 * self._atm_dry - state.p_alveolar_o2)
+        state.eto2 = 100.0 * p_end_tidal_o2 / self._atm_dry
 
         state.drive_central = drive_central
         state.muscle_factor = muscle_factor

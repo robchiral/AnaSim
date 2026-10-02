@@ -16,7 +16,7 @@ def _run_for(engine, seconds: float, dt: float = 0.1) -> None:
         engine.step(dt)
 
 
-def test_output_buffer_holds_ten_seconds_of_per_step_samples(patient):
+def test_output_buffer_holds_one_respiratory_sweep_of_per_step_samples(patient):
     engine = SimulationEngine(patient, SimulationConfig(mode="awake", dt=0.01))
     engine.start()
     initial_len = len(engine.output_buffer)
@@ -25,9 +25,9 @@ def test_output_buffer_holds_ten_seconds_of_per_step_samples(patient):
     assert len(engine.output_buffer) == initial_len + 2
     assert engine.output_buffer[-1].time == pytest.approx(engine.state.time)
 
-    _run_for(engine, 12.0)
+    _run_for(engine, 22.0)
     span = engine.output_buffer[-1].time - engine.output_buffer[0].time
-    assert 9.8 <= span <= 10.0 + 1e-9
+    assert 19.8 <= span <= 20.0 + 1e-9
 
 
 def test_propofol_central_volume_scales_with_blood_volume():

@@ -17,8 +17,8 @@ For installation and the browser interface, see the [README](../README.md).
 
 ## Configuration file
 
-A JSON file sets patient, model, initialization, and runtime fields. Omitted
-fields use their defaults.
+A JSON file sets the patient, models, starting state, and runtime options.
+Omitted fields use their defaults.
 
 ### Minimal example
 
@@ -44,9 +44,9 @@ fields use their defaults.
 | Events | `disturbance_profile`: `stim_intubation_pulse`, `stim_sustained_surgery`, or `null` |
 | Volatile agents | `volatile_agents`: `["sevoflurane"]` or `[]` |
 
-`"baseline_hct": null` derives hematocrit from hemoglobin, and
-`"maintenance_fluid_ml_hr": null` uses 1 mL/kg/hr. Steady-state mode runs a
-hidden maintenance period before visible time starts.
+With `"baseline_hct": null`, AnaSim derives hematocrit from hemoglobin.
+With `"maintenance_fluid_ml_hr": null`, maintenance fluid runs at 1 mL/kg/hr.
+Steady-state mode simulates a maintenance period before the session starts.
 
 Patient values must be within these limits:
 
@@ -76,7 +76,7 @@ Model fields accept these values:
 AnaSim reports unknown keys, invalid model names, out-of-range values, and
 non-finite numbers as configuration errors.
 
-## Examples
+## Headless example
 
 Run a 60-second headless simulation with a custom patient:
 

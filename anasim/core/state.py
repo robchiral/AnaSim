@@ -73,6 +73,8 @@ class WaveformSample(NamedTuple):
     pleth_voltage: float
     capno_co2: float
     art_pressure: float
+    paw: float
+    flow: float
 
 
 class AirwayType(Enum):
@@ -151,12 +153,20 @@ class SimulationState:
     alveolar_co2: float = 40.0
     pao2: float = 95.0
     capno_co2: float = 0.0
+    et_o2: float = 0.0  # %
 
     # Airway pressure cmH2O, intrathoracic pressure mmHg, flow L/min, volume L.
     paw: float = 0.0
     pit: float = -2.0
     flow: float = 0.0
     volume: float = 0.0
+    # Last completed breath at the airway (cmH2O). Pplat is static end-inspiratory
+    # pressure; PEEP is end-expiratory airway pressure, so auto-PEEP shows only
+    # in Pplat and the flow trace.
+    paw_peak: float = 0.0
+    paw_plat: float = 0.0
+    paw_mean: float = 0.0
+    peep: float = 0.0
 
     # spo2 is the pulse oximeter reading; sao2 is arterial saturation.
     spo2: float = 99.0

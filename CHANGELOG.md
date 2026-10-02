@@ -16,12 +16,21 @@
 - Preoxygenation, paralysis, and extubation objectives check lung O₂ wash-in,
   TOF, spontaneous VT, and SpO₂.
 - Epinephrine relieves bronchospasm. Mask CPAP and positive-pressure breaths
-  relieve pharyngeal collapse. Blood loss shortens safe apnea time.
-- AF lowers CO and MAP, and its pulses vary beat to beat. The HR numeric
+  relieve pharyngeal collapse. Blood loss shortens the time before desaturation
+  during apnea.
+- AF lowers CO and MAP, and its pulses vary beat to beat. Displayed HR
   averages recent beats. ECG wave durations are fixed, QT varies with the
-  preceding R-R interval, and VT is wide.
+  preceding R-R interval, and ventricular tachycardia has wide QRS complexes.
 - When a rhythm fixes the ventricular rate, the baroreflex adjusts vascular
   resistance.
+- Added airway pressure and flow traces, ventilator measurements, and inspired
+  and end-tidal gas values. End-tidal values clear when exhaled breath detection
+  stops. CSV recordings include the new measurements.
+- Added a VCV inspiratory pause and revised bag-mask and ventilator waveforms.
+- Added alarms for high airway pressure, low minute ventilation while the
+  ventilator is on (including disconnection), and low inspired O₂.
+- Corrected displayed VT and MV to use exhaled volumes. Mask leak reduces
+  both; bronchospasm reduces alveolar ventilation without reducing displayed MV.
 
 ## 1.3 - 2026-09-30
 
@@ -80,7 +89,7 @@
 
 ## 1.1 - 2026-08-30
 
-- Enforced the supported patient domain across API, CLI, and desktop setup,
+- Enforced patient limits across API, CLI, and desktop setup,
   including finite body-size, hematology, and organ-function inputs.
   Hemoglobin and hematocrit are patient inputs, and organ status labels come
   from the organ-function factors.
@@ -88,11 +97,11 @@
   time-limited profiles after the step in which they finish.
 - Added an arterial pressure waveform whose mean and pulse pressure come from
   Su MAP and stroke volume, with shared ECG and pleth timing and catheter-transducer dynamics.
-- Made cardiac monitor synthesis and waveform history independent of the outer
-  simulation step size.
+- Made cardiac waveforms and their history independent of the simulation
+  step size.
 - Removed pleth-derived arterial pressure, duplicate pressure reconstruction,
   separate cardiac phases, and redundant MAP and HR display smoothing.
-- Added a clinician-facing guide and a clearer first-session path in the README.
+- Added a clinical guide and first-session instructions to the README.
 - Revised setup, monitor, and control labels for clinical clarity.
 - Fixed clipped content in the setup dialog.
 - Moved setup cancellation out of the main window constructor and removed the

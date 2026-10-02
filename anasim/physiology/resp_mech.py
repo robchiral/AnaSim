@@ -1,4 +1,4 @@
-"""Single-compartment lung mechanics under VCV, PCV, PSV, and CPAP."""
+"""Single-compartment lung mechanics under VCV, PCV, PSV, CPAP, and bagging."""
 
 import math
 from dataclasses import dataclass
@@ -10,6 +10,7 @@ class VentMode(Enum):
     PCV = "PCV"
     PSV = "PSV"
     CPAP = "CPAP"
+    MANUAL = "MANUAL"  # Bag ventilation; not a ventilator setting
 
 
 @dataclass
@@ -32,7 +33,8 @@ class MechState:
 class RespiratoryMechanics:
     """Equation of motion: Paw = V/C + R x flow + PEEP.
 
-    VCV sets a square-wave flow and computes Paw. PCV, PSV, and CPAP set Paw
+    VCV sets a square-wave flow followed by an inspiratory pause, and computes
+    Paw. Bagging delivers VT as a half-sine flow. PCV, PSV, and CPAP set Paw
     and compute flow, so falling compliance lowers delivered VT.
     """
 
@@ -47,6 +49,8 @@ class RespiratoryMechanics:
         self.set_peep = 5.0  # cmH2O
         self.set_p_insp = 15.0  # cmH2O above PEEP
         self.insp_time_fraction = 1.0 / 3.0
+        # VCV inspiratory pause as a share of inspiratory time (GE Tpause, Dräger Tip:Ti).
+        self.insp_pause_fraction = 0.1
 
         self.state = MechState()
         self.cycle_time = 0.0
@@ -140,6 +144,9 @@ class RespiratoryMechanics:
 
         breath_period = 60.0 / self.set_rr
         insp_duration = breath_period * self.insp_time_fraction
+        flow_end = insp_duration
+        if self.mode == VentMode.VCV:
+            flow_end *= 1.0 - self.insp_pause_fraction
         # A rate change can place the clock beyond the new breath boundary.
         if self.cycle_time >= breath_period:
             self._finish_breath()
@@ -147,11 +154,18 @@ class RespiratoryMechanics:
 
         remaining = dt
         while remaining > 0.0:
-            in_insp = self.cycle_time < insp_duration
-            boundary = insp_duration if in_insp else breath_period
+            if self.cycle_time < flow_end:
+                segment, boundary = "flow", flow_end
+            elif self.cycle_time < insp_duration:
+                segment, boundary = "pause", insp_duration
+            else:
+                segment, boundary = "exp", breath_period
             interval = min(remaining, boundary - self.cycle_time)
-            if in_insp:
-                self._advance_inspiration(interval, insp_duration)
+            if segment == "flow":
+                self._advance_inspiration(interval, flow_end)
+            elif segment == "pause":
+                # No flow, so airway pressure equals alveolar pressure.
+                self._paw_accumulator += (state.volume / self.compliance + self.set_peep) * interval
             else:
                 self._advance_expiration(interval)
                 self._paw_accumulator += self.set_peep * interval
@@ -163,19 +177,26 @@ class RespiratoryMechanics:
             # Snap roundoff at boundaries so an exact endpoint completes a breath.
             if self.cycle_time >= boundary - 1e-12:
                 self.cycle_time = boundary
-                if in_insp:
-                    state.paw_plat = state.volume / self.compliance + self.set_peep
-                else:
+                if segment == "exp":
                     self._finish_breath()
                     self.cycle_time = 0.0
+                elif boundary == insp_duration:
+                    state.paw_plat = state.volume / self.compliance + self.set_peep
 
         # Instantaneous values describe the phase at the end of the interval.
         state.phase = "INSP" if self.cycle_time < insp_duration else "EXP"
         if state.phase == "EXP":
             state.paw = self.set_peep
             state.flow = -state.volume / (self.resistance * self.compliance) * 60.0
+        elif self.cycle_time >= flow_end:
+            state.paw = state.volume / self.compliance + self.set_peep
+            state.flow = 0.0
         elif self.mode == VentMode.VCV:
-            flow = self.set_vt / insp_duration
+            flow = self.set_vt / flow_end
+            state.paw = state.volume / self.compliance + self.resistance * flow + self.set_peep
+            state.flow = flow * 60.0
+        elif self.mode == VentMode.MANUAL:
+            flow = self._manual_flow(self.cycle_time, flow_end)
             state.paw = state.volume / self.compliance + self.resistance * flow + self.set_peep
             state.flow = flow * 60.0
         else:
@@ -205,15 +226,38 @@ class RespiratoryMechanics:
         support = 0.0 if self.mode == VentMode.CPAP else self.set_p_insp
         return support + self.patient_effort_cmH2O
 
-    def _advance_inspiration(self, dt: float, insp_duration: float) -> None:
+    def _manual_flow(self, t: float, flow_duration: float) -> float:
+        """Half-sine bag flow (L/s) that delivers set VT over the inspiration."""
+        return 0.5 * self.set_vt * math.pi / flow_duration * math.sin(math.pi * t / flow_duration)
+
+    def _advance_inspiration(self, dt: float, flow_duration: float) -> None:
         state = self.state
         initial_volume = state.volume
         if self.mode == VentMode.VCV:
-            flow = self.set_vt / insp_duration
+            flow = self.set_vt / flow_duration
             state.volume += flow * dt
             base_pressure = self.set_peep + self.resistance * flow
             peak = base_pressure + state.volume / self.compliance
             pressure_area = (base_pressure + (initial_volume + state.volume) / (2.0 * self.compliance)) * dt
+        elif self.mode == VentMode.MANUAL:
+            # V = V0 + A(1 - cos wt). Paw peaks where tan(wt) = -RCw, before flow stops.
+            w = math.pi / flow_duration
+            amplitude = 0.5 * self.set_vt
+            t0, t1 = self.cycle_time, self.cycle_time + dt
+            start_volume = initial_volume - amplitude * (1.0 - math.cos(w * t0))
+            state.volume = start_volume + amplitude * (1.0 - math.cos(w * t1))
+
+            def pressure(t: float) -> float:
+                volume = start_volume + amplitude * (1.0 - math.cos(w * t))
+                return self.set_peep + volume / self.compliance + self.resistance * self._manual_flow(t, flow_duration)
+
+            t_peak = (math.pi - math.atan(self.resistance * self.compliance * w)) / w
+            peak = max(pressure(t0), pressure(t1), pressure(t_peak) if t0 < t_peak < t1 else 0.0)
+            pressure_area = (
+                (self.set_peep + (start_volume + amplitude) / self.compliance) * dt
+                - amplitude / (self.compliance * w) * (math.sin(w * t1) - math.sin(w * t0))
+                + self.resistance * (state.volume - initial_volume)
+            )
         else:
             # V tends to C*(support + effort) with time constant R*C. Trapped
             # volume is already in V; adding auto-PEEP here would count it twice.

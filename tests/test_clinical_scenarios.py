@@ -155,6 +155,8 @@ class TestClinicalAcceptance:
         """Anaphylaxis should combine airway and circulatory signs and respond to epinephrine."""
         engine = anesthetized_engine
         baseline_sbp = engine.state.sbp
+        baseline_gap = engine.state.paw_peak - engine.state.paw_plat
+        baseline_mv = engine.state.mv
 
         engine.start_anaphylaxis()
         advance_time(engine, 120.0)
@@ -162,7 +164,12 @@ class TestClinicalAcceptance:
         assert engine.state.sbp <= baseline_sbp * 0.70
         assert engine.state.map < 65.0
         assert engine.state.bronchospasm >= 0.9
-        obstructed_mv = engine.state.mv
+        # Bronchospasm widens the resistive Ppeak - Pplat gap and cuts alveolar
+        # ventilation, while volume-controlled breaths keep exhaled MV.
+        gap = engine.state.paw_peak - engine.state.paw_plat
+        assert gap > 2.0 * baseline_gap
+        assert engine.state.mv == pytest.approx(baseline_mv, rel=0.05)
+        obstructed_va = engine.state.va
 
         # ANZCA/ANZAAG: 50-100 mcg IV epinephrine boluses for severe
         # perioperative anaphylaxis and an initial 1000 mL crystalloid bolus.
@@ -173,7 +180,8 @@ class TestClinicalAcceptance:
 
         assert engine.state.map >= 65.0
         assert engine.state.bronchospasm < 0.5
-        assert engine.state.mv > obstructed_mv + 1.0
+        assert engine.state.paw_peak - engine.state.paw_plat < gap - 2.0
+        assert engine.state.va > obstructed_va + 1.0
 
     def test_oxygen_analyzer_warns_before_desaturation_and_backup_recovers(
         self, anesthetized_engine
@@ -196,6 +204,9 @@ class TestClinicalAcceptance:
         # Association of Anaesthetists guidance requires continuous inspired
         # oxygen analysis with a low-concentration alarm during anesthesia.
         assert warning_time is not None
+        assert engine.state.spo2 >= 94.0
+        alarm_time = _first_time(engine, 180, lambda e: "FiO2" in e.state.alarms)
+        assert alarm_time is not None
         assert engine.state.spo2 >= 94.0
 
         engine.set_oxygen_supply_connected(True)

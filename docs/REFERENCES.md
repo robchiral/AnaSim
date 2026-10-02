@@ -2,25 +2,25 @@
 
 ## Simulator-specific models
 
-These parts combine published data or component models with AnaSim
-calibration. The linked tests hold their expected ranges.
+AnaSim adapts or calibrates the following models. The linked tests define
+expected response ranges.
 
 | Area | Implementation |
 |------|----------------|
-| Hemodynamic PK scaling | Effective-volume and clearance scaling are simulator adaptations. See [PK assumptions and limits](ARCHITECTURE.md#pk-and-tci). |
-| Respiratory drug effects | [`RespiratoryModel`](../anasim/physiology/respiration.py) uses published drug effects on ventilation and the hypercapnic response, with combined parameters calibrated for AnaSim. See the [respiratory tests](../tests/test_respiration.py). |
-| Neuromuscular block and reversal | [`TOFModel`](../anasim/patient/pd/nmba.py) combines adductor pollicis and central (diaphragm and larynx) effect sites, spontaneous recovery, and simplified sugammadex binding. The central site uses laryngeal kinetics for both muscles. Onset and recovery constants are calibrated for AnaSim. See the [pharmacology tests](../tests/test_pharmacology.py). |
-| Baroreflex and myocardial hypoxia | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) takes the direction and scale of anesthetic reflex depression and the hypoxic arrest threshold from published studies. Reflex gains, set-point reset, and hypoxia time constants are calibrated for AnaSim. See the [hemodynamic tests](../tests/test_hemodynamics.py). |
-| Vasoactive drug effects | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) defines concentration-response models for epinephrine, phenylephrine, vasopressin, dobutamine, and milrinone. Published data set the direction and approximate size of each response, and AnaSim calibrates the combination. Epinephrine is fitted to arterial infusion (Freyschuss 1986) and IV bolus (Takahashi 2002) responses. See the [epinephrine](../tests/test_epinephrine.py) and [hemodynamic](../tests/test_hemodynamics.py) tests. |
-| Fentanyl, midazolam, etomidate, and ketamine | [`anesthesia.py`](../anasim/patient/pd/anesthesia.py) converts fentanyl to remifentanil by isoflurane MAC reduction (McEwan 1993; Lang 1996), and etomidate (Kaneda 2011) and midazolam (Albrecht 1999) to propofol at equal loss-of-response concentrations. Midazolam-propofol synergy is from Short 1992. AnaSim calibrates the etomidate ventilatory share (Valk 2021), the midazolam maximum, and the ketamine laryngoscopy potency and sympathetic response (Idvall 1979). See the [adjunct tests](../tests/test_anesthetic_adjuncts.py). |
-| Adrenergic and muscarinic blockade | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) sets antagonist potencies from Sum 1983 (esmolol), Abernethy 1987 and Hafsa 2022 (labetalol), and Ali-Melkkilä 1993 (glycopyrrolate). AnaSim calibrates the sympathetic and vagal shares of resting tone and reflexes. Abernethy saw BP recover within 30 minutes of labetalol. In AnaSim, part of the BP fall lasts as long as the beta block, because in sinus rhythm the baroreflex adjusts HR only. See the [autonomic drug tests](../tests/test_autonomic_drugs.py). |
-| Arterial pressure waveform | [`ArterialWaveformRenderer`](../anasim/monitors/arterial.py) maps the pressure landmarks described by Mahdi et al. to Su MAP and stroke volume. [`ArterialLineMonitor`](../anasim/monitors/arterial.py) applies catheter and transducer dynamics. See the [waveform](../tests/test_arterial_waveform.py) and [arterial line](../tests/test_arterial_line.py) tests. |
+| Hemodynamic PK scaling | AnaSim scales volume and clearance with hemodynamics. See [PK assumptions and limits](ARCHITECTURE.md#pk-and-tci). |
+| Respiratory drug effects | [`RespiratoryModel`](../anasim/physiology/respiration.py) combines published effects on ventilation and the hypercapnic response, with parameters calibrated for AnaSim. [Respiratory tests](../tests/test_respiration.py). |
+| Neuromuscular block and reversal | [`TOFModel`](../anasim/patient/pd/nmba.py) uses adductor pollicis and central (diaphragm and larynx) effect sites, spontaneous recovery, and simplified sugammadex binding. Both central muscles use laryngeal kinetics. AnaSim calibrates onset and recovery constants. [Pharmacology tests](../tests/test_pharmacology.py). |
+| Baroreflex and myocardial hypoxia | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) uses published anesthetic effects on reflexes and hypoxic arrest thresholds. AnaSim calibrates reflex gains, set-point reset, and hypoxia time constants. [Hemodynamic tests](../tests/test_hemodynamics.py). |
+| Vasoactive drug effects | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) models concentration-response curves for epinephrine, phenylephrine, vasopressin, dobutamine, and milrinone. Published data set response direction and approximate size; AnaSim calibrates combined effects. Epinephrine fits arterial infusion (Freyschuss 1986) and IV bolus (Takahashi 2002) data. [Epinephrine](../tests/test_epinephrine.py) and [hemodynamic](../tests/test_hemodynamics.py) tests. |
+| Fentanyl, midazolam, etomidate, and ketamine | [`anesthesia.py`](../anasim/patient/pd/anesthesia.py) converts fentanyl to remifentanil equivalents using isoflurane MAC reduction (McEwan 1993; Lang 1996). Etomidate (Kaneda 2011) and midazolam (Albrecht 1999) become propofol equivalents at equal loss-of-response concentrations, with midazolam-propofol synergy from Short 1992. AnaSim calibrates etomidate's ventilatory effect (Valk 2021), the maximum midazolam equivalent, and ketamine's laryngoscopy potency and sympathetic response (Idvall 1979). [Adjunct tests](../tests/test_anesthetic_adjuncts.py). |
+| Adrenergic and muscarinic blockade | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) uses antagonist potencies from Sum 1983 (esmolol), Abernethy 1987 and Hafsa 2022 (labetalol), and Ali-Melkkilä 1993 (glycopyrrolate). AnaSim calibrates sympathetic and vagal contributions to resting tone and reflexes. Unlike the BP recovery within 30 minutes reported by Abernethy, part of AnaSim's labetalol BP reduction persists during beta blockade because the sinus-rhythm baroreflex adjusts only HR. [Autonomic drug tests](../tests/test_autonomic_drugs.py). |
+| Arterial pressure waveform | [`ArterialWaveformRenderer`](../anasim/monitors/arterial.py) uses Mahdi et al.'s pressure landmarks with Su MAP and stroke volume. [`ArterialLineMonitor`](../anasim/monitors/arterial.py) models catheter and transducer dynamics. [Waveform](../tests/test_arterial_waveform.py) and [arterial line](../tests/test_arterial_line.py) tests. |
 
 ## Supported patient domain
 
-The body-size limits (age 18 to 70 years, weight 50 to 100 kg, height 150 to
-200 cm, BMI 18 to 32 kg/m²) round outward from the 36-volunteer healthy-adult
-cohort of Li et al.: age 18 to 70 years, weight 51.5 to 94.8 kg, height 151 to
+The patient limits (age 18 to 70 years, weight 50 to 100 kg, height 150 to
+200 cm, BMI 18 to 32 kg/m²) slightly extend the ranges in Li et al.'s 36-volunteer
+healthy-adult cohort: age 18 to 70 years, weight 51.5 to 94.8 kg, height 151 to
 196 cm, and BMI 18.0 to 31.1 kg/m². Su et al. built the hemodynamic model from a
 cohort of the same size and age strata and found age to be a strong covariate
 of the propofol effect on stroke volume.
@@ -176,6 +176,7 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Byrne et al. J Appl Physiol (1985). 2005. (resting VO2/MET reference values; large cohort). [PubMed](https://pubmed.ncbi.nlm.nih.gov/15831804/)
 - Stein et al. Chest. 1995. (A-a gradient age adjustment formula in PE assessment). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7632205/)
 - Benumof et al. Anesthesiology. 1997. (time to SaO2 < 90% after preoxygenation; about 8 min in healthy adults). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9357902/)
+- Nimmagadda et al. Anesth Analg. 2017. (preoxygenation endpoint: EtO2 90%). [PubMed](https://pubmed.ncbi.nlm.nih.gov/28099321/)
 - Hardman et al. Anesth Analg. 2000. (physiological model of the onset and course of hypoxemia during apnea). [PubMed](https://pubmed.ncbi.nlm.nih.gov/10702447/)
 - Eastwood et al. Anesthesiology. 2005. (upper airway critical closing pressure rises with propofol depth: -0.3, +0.5, +1.4 cmH2O at 2.5, 4.0, 6.0 mcg/mL). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16129969/)
 - Hillman et al. Anesthesiology. 2009. (upper airway collapsibility rises abruptly at loss of consciousness). [PubMed](https://pubmed.ncbi.nlm.nih.gov/19512872/)
@@ -187,6 +188,22 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Christie et al. Anesth Analg. 1992. (PSV decreases inspiratory work during GA with spontaneous ventilation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1632530/)
 - Lim et al. Paediatr Anaesth. 2012. (PSV vs spontaneous ventilation via ProSeal LMA in children; improved ventilation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/22380745/)
 - Capdevila et al. PLoS One. 2014. (PSV vs CMV/SB with LMA; emergence time/ventilatory function). [PubMed](https://pubmed.ncbi.nlm.nih.gov/25536515/)
+
+## Ventilator waveforms
+
+AnaSim's volume-control pressure and flow traces were compared with Dräger
+Primus recordings from VitalDB in adults within the supported patient range.
+These comparisons informed the display filtering. The single-compartment
+lung omits viscoelastic stress adaptation, so it does not fully reproduce the
+recorded pressure rise and decline during the inspiratory pause.
+
+Bronchospasm resistance is calibrated against measurements in ventilated
+patients with severe asthma.
+
+- Lee et al. Sci Data. 2022. (VitalDB: intraoperative waveforms and numerics from 6,388 surgical patients; CC BY-NC-SA 4.0). [PubMed](https://pubmed.ncbi.nlm.nih.gov/35676300/)
+- D'Angelo et al. J Appl Physiol. 1989. (stress adaptation adds viscoelastic resistance in anesthetized paralyzed humans). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2606863/)
+- Sydow et al. Intensive Care Med. 1993. (status asthmaticus: inspiratory resistance 22.7 ± 7.0 cmH2O/(L/s), Ppeak 43 cmH2O). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8294630/)
+- Okayama et al. J Asthma. 1991. (status asthmaticus: airway resistance 13-17 mmHg/(L/s) by interruption). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2010425/)
 
 ## Timing and performance metrics
 

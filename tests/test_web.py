@@ -100,6 +100,40 @@ def test_ventilator_settings_survive_bag_mask_handover():
     assert 25 <= snap["vitals"]["etco2"] <= 50
 
 
+def test_ventilator_display_and_disconnection_alarm():
+    session = WebSession({**PATIENT, "mode": "steady_state"})
+    engine = session.engine
+    cmd(session, "run", running=True)
+    snaps = run_seconds(session, 30)
+    v = snaps[-1]["vitals"]
+    assert all(len(samples) == len(snap["waves"]["ecg"]) for snap in snaps for samples in snap["waves"].values())
+
+    # VCV: static compliance VTe / (Pplat - PEEP), constant inspiratory flow
+    # until the pause, and a Paw trace from PEEP to Ppeak.
+    paw = [p for snap in snaps[-10:] for p in snap["waves"]["paw"]]
+    flow = [f for snap in snaps[-10:] for f in snap["waves"]["flow"]]
+    assert v["peep"] == 5 and v["ppeak"] > v["pplat"] > v["pmean"] > v["peep"]
+    assert v["pplat"] - v["peep"] == pytest.approx(v["vte"] / (engine.resp_mech.compliance * 1000), abs=0.2)
+    assert v["mv"] == pytest.approx(v["vte"] * v["rr"] / 1000, rel=0.01)
+    assert (min(paw), max(paw)) == pytest.approx((v["peep"], v["ppeak"]), abs=0.5)
+    flow_time = 60 / v["rr"] / 3 * (1 - engine.resp_mech.insp_pause_fraction)
+    assert max(flow) == pytest.approx(v["vte"] / 1000 / flow_time * 60, abs=0.2)
+    # Oxygen uptake keeps end-tidal below inspired O2.
+    assert 70 < v["eto2"] < v["fio2"] - 3
+    assert snaps[-1]["alarms"] == {}
+
+    # The circuit then measures no exhaled gas, and the MV alarm sounds after its delay.
+    cmd(session, "airway", mode="None")
+    snaps = run_seconds(session, 20)
+    alarm_onset = next(i for i, snap in enumerate(snaps, 1) if snap["alarms"].get("MV") == "low")
+    assert 15 <= alarm_onset <= 16
+    v = snaps[-1]["vitals"]
+    assert v["vte"] is v["ppeak"] is v["eto2"] is None
+
+    cmd(session, "airway", mode="ETT")
+    assert "MV" not in run_seconds(session, 20)[-1]["alarms"]
+
+
 def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload():
     session = WebSession(PATIENT)
     assert parse(session.info())["medication_history"] == []

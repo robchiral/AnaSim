@@ -255,8 +255,9 @@ def step_monitors(
 
     update_nibp(engine, dt, hemo_state)
 
+    paw, flow = engine.airway_sensor.step(dt, state.paw, state.flow)
     bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
-    set_state_float_fields(state, bis=bis_display_source)
+    set_state_float_fields(state, bis=bis_display_source, paw=paw, flow=flow)
     display_etco2, etco2_signal_valid = update_capno_numeric(
         engine,
         dt,
@@ -281,6 +282,7 @@ def step_monitors(
         tol=engine._tol_current,
         display_spo2=state.spo2,
     )
+    connected = state.airway_mode != AirwayType.NONE
     state.alarms = engine.alarms.update(
         {
             "BIS": state.display_bis,
@@ -288,6 +290,10 @@ def step_monitors(
             "HR": state.display_hr,
             "EtCO2": state.display_etco2,
             "SpO2": state.display_spo2 if state.spo2_signal_valid else None,
+            "Ppeak": state.paw_peak,
+            # The ventilator measures only gas returning through the circuit.
+            "MV": (state.mv if connected else 0.0) if engine.vent.is_on else None,
+            "FiO2": state.fio2 * 100.0,
         },
         dt=dt,
     )

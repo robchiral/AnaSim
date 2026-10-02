@@ -27,7 +27,9 @@ def test_intubation_stimulus_triggers_laryngospasm_unless_disabled(engine_factor
     assert engine.state.laryngospasm < severity_at_end * 0.15
 
 
-def test_upper_obstruction_reduces_effective_mv_without_hiding_vt(awake_engine):
+def test_mask_obstruction_raises_airway_pressure_and_leaks_delivered_breaths(awake_engine):
+    """The ventilator still pushes set VT, so Ppeak rises; gas that cannot enter
+    the lungs leaks at the mask, so exhaled VT and MV fall together."""
     engine = awake_engine
     engine.set_airway_mode("Mask")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
@@ -39,18 +41,16 @@ def test_upper_obstruction_reduces_effective_mv_without_hiding_vt(awake_engine):
     for _ in range(120):
         engine.step(0.5)
 
-    mv_baseline = engine.state.mv
-    vt_baseline = engine.state.vt
+    baseline = engine.get_latest_state()
 
     engine.set_airway_obstruction(0.8)
     for _ in range(60):
         engine.step(0.5)
 
-    mv_obstructed = engine.state.mv
-    vt_obstructed = engine.state.vt
-
-    assert mv_obstructed < mv_baseline * 0.5
-    assert abs(vt_obstructed - vt_baseline) < 100.0
+    obstructed = engine.state
+    assert obstructed.paw_peak > baseline.paw_peak + 5.0
+    assert obstructed.vt < baseline.vt * 0.5
+    assert obstructed.mv == pytest.approx(obstructed.vt * obstructed.rr / 1000.0)
 
 
 def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):

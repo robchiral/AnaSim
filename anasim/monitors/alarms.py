@@ -4,10 +4,15 @@ DEFAULT_THRESHOLDS = {
     "HR_min": 45, "HR_max": 120,
     "SpO2_min": 90, "SpO2_max": 100,
     "EtCO2_min": 30, "EtCO2_max": 45,
+    # Ventilator and gas monitor: cmH2O, L/min, and %.
+    "Ppeak_max": 40,
+    "MV_min": 2.0,
+    "FiO2_min": 21,
 }
 
-# Seconds a limit must stay violated before the alarm sounds.
-DEFAULT_DELAYS = {"BIS": 0, "MAP": 0, "HR": 0, "SpO2": 5, "EtCO2": 0}
+# Seconds a limit must stay violated before the alarm sounds. The MV delay
+# covers the first breath after the ventilator starts.
+DEFAULT_DELAYS = {"BIS": 0, "MAP": 0, "HR": 0, "SpO2": 5, "EtCO2": 0, "Ppeak": 0, "MV": 15, "FiO2": 0}
 
 
 class AlarmSystem:

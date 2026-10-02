@@ -14,7 +14,7 @@ from anasim.core.drug_registry import get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
 from anasim.core.recorder import RecordingError
-from anasim.core.state import SUPPORTED_MODEL_OPTIONS, SimulationConfig
+from anasim.core.state import SUPPORTED_MODEL_OPTIONS, AirwayType, SimulationConfig
 from anasim.patient import domain
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import list_disturbance_profiles
@@ -46,7 +46,7 @@ SPEED_RANGE = (0.1, 50.0)
 MAX_REAL_DT_S = 0.2
 # Averaging window for the achieved speed, so one slow frame does not flag lag.
 SPEED_AVERAGE_S = 2.0
-WAVE_WINDOW_S = 10.0
+WAVE_WINDOW_S = 20.0  # The slower respiratory sweep
 VENT_MODES = ("VCV", "PCV", "PSV", "CPAP")
 VENT_FIELDS = ("mode", "rr", "tv", "peep", "ie", "p_insp")
 IE_RATIOS = ("1:1", "1:2", "1:3", "1:4")
@@ -256,7 +256,13 @@ class WebSession:
         }
 
     def _vitals(self) -> dict:
-        s = self.engine.state
+        engine = self.engine
+        s = engine.state
+        # Spirometry needs gas through the circuit, Pplat a positive-pressure
+        # breath, and end-tidal values an exhaled breath.
+        connected = s.airway_mode != AirwayType.NONE
+        assisted = connected and (engine.vent.is_on or engine.bag_mask_active)
+        exhaled = s.etco2_signal_valid
         return {
             "hr": _num(s.display_hr, 1),
             "spo2": _num(s.display_spo2, 1) if s.spo2_signal_valid else None,
@@ -277,9 +283,19 @@ class WebSession:
             "urine_out": _num(s.urine_out_ml, 1),
             "blood_out": _num(s.blood_out_ml, 1),
             "net_fluid": _num(s.net_fluid_ml, 1),
+            "ppeak": _num(s.paw_peak, 1) if connected else None,
+            "pplat": _num(s.paw_plat, 1) if assisted else None,
+            "peep": _num(s.peep, 1) if connected else None,
+            "pmean": _num(s.paw_mean, 1) if connected else None,
+            "vte": _num(s.vt, 0) if connected else None,
+            "mv": _num(s.mv, 2) if connected else None,
+            "fio2": _num(s.fio2 * 100.0, 1),
+            "eto2": _num(s.et_o2, 1) if exhaled else None,
+            "fi_n2o": _num(s.fi_n2o, 1),
+            "et_n2o": _num(s.et_n2o, 1) if exhaled else None,
             "fi_sevo": _num(s.fi_sevo, 2),
-            "et_sevo": _num(s.et_sevo, 2),
-            "et_mac": _num(s.et_mac, 3),
+            "et_sevo": _num(s.et_sevo, 2) if exhaled else None,
+            "et_mac": _num(s.et_mac, 3) if exhaled else None,
         }
 
     def replay_waves(self) -> None:
@@ -304,6 +320,8 @@ class WebSession:
             "pleth": [_num(s.pleth_voltage, 4) for s in samples],
             "co2": [_num(s.capno_co2, 2) for s in samples],
             "art": [_num(s.art_pressure, 2) for s in samples],
+            "paw": [_num(s.paw, 2) for s in samples],
+            "flow": [_num(s.flow, 1) for s in samples],
         }
 
     def _controls(self) -> dict:

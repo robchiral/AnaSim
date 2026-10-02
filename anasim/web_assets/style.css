@@ -24,6 +24,7 @@
   --bis: #D7A16B;
   --tof: #B7BFCC;
   --temp: #6DA7EA;
+  --vent: #D3DAE1;
   --gas: #B58BDD;
   color-scheme: dark;
 }
@@ -221,6 +222,8 @@ fieldset:disabled { opacity: 0.5; }
 .bis { --c: var(--bis); }
 .tof { --c: var(--tof); }
 .temp { --c: var(--temp); }
+.vent { --c: var(--vent); }
+.gas { --c: var(--gas); }
 .wave-label { color: var(--c); }
 
 .numerics {
@@ -255,17 +258,24 @@ fieldset:disabled { opacity: 0.5; }
 .numeric-pair .numeric { border-bottom: none; }
 .numeric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
 
-.panel-io, .panel-gas { padding: 8px; margin-top: 4px; border-top: 1px solid var(--border); }
+.panel-io { padding: 8px; margin-top: 4px; border-top: 1px solid var(--border); }
 .io-head { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; color: var(--text-dim); font-size: 10px; font-weight: 700; }
 .io-head output { font-size: 18px; color: var(--text-secondary); }
 .io-detail { text-align: right; color: var(--text-secondary); font-size: 11px; white-space: pre; }
-.panel-gas { color: var(--gas); }
-.gas-head { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; }
-.gas-head output { font-size: 12px; font-weight: 600; }
-.gas-values { display: flex; justify-content: space-around; }
-.gas-values div { display: grid; justify-items: center; }
-.gas-values span { color: var(--text-dim); font-size: 10px; }
-.gas-values output { font-size: 20px; font-weight: 700; }
+
+/* Ventilator and gas monitor values under the Paw and flow traces. */
+.vent-bar {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 2px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+/* Compact enough to stay on one row down to an 1110 px window. */
+.vent-bar .numeric { flex: 1 1 auto; padding: 4px 8px 5px; border-bottom: none; }
+.vent-bar .numeric-head { gap: 4px; }
+.vent-bar .numeric.group-start { border-left: 1px solid var(--border); }
+.vent-bar .numeric output { font-size: clamp(16px, 1.5vw, 22px); }
 
 .sim-bar {
   display: flex;
@@ -388,14 +398,16 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
   .setup-grid, .models-grid, .group-row { grid-template-columns: minmax(0, 1fr); }
   .monitor { height: auto; }
   .monitor-body { grid-template-columns: minmax(0, 1fr) 160px; padding: 4px 0 4px 4px; gap: 3px; }
-  .waves { min-height: 440px; }
+  .waves { min-height: 560px; }
   .numerics { padding: 3px; }
   .numeric { padding: 6px 4px; }
   .numeric.big output { font-size: 25px; }
   .numeric.big.abp output { font-size: 21px; }
   .numeric.compact output { font-size: 18px; }
   .numeric-row { grid-template-columns: 1fr 1fr; }
-  .panel-io, .panel-gas { padding: 6px 4px; }
+  .panel-io { padding: 6px 4px; }
+  .vent-bar .numeric { padding: 4px 6px; }
+  .vent-bar .numeric.group-start { border-left: none; }
   .io-detail { white-space: normal; }
   .grid4 { grid-template-columns: auto minmax(0, 1fr); }
   .clock output { font-size: 16px; }

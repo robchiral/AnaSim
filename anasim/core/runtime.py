@@ -26,6 +26,7 @@ from anasim.physiology.resp_mech import VentMode
 from .monitors import phase_from_rr, step_monitors
 from .projection import (
     PhysiologyStepState,
+    measured_ventilation,
     project_runtime_physiology,
     set_state_float_fields,
     sync_inhaled_agents,
@@ -39,8 +40,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Circle-system resistance seen at the Y-piece during spontaneous breathing (cmH2O/(L/s)).
-SPONTANEOUS_CIRCUIT_RESISTANCE = 2.0
+# Circle-system limb and valve resistance between the Y-piece and the bag or
+# expiratory valve (cmH2O/(L/s)); see docs/REFERENCES.md#ventilator-waveforms.
+CIRCUIT_RESISTANCE = 2.0
 
 # Cardiac arrest endpoint: no effective circulation for ARREST_CONFIRM_S seconds.
 ARREST_MAP_MMHG = 20.0
@@ -167,7 +169,7 @@ def step_mechanics(engine: "SimulationEngine", dt: float, vent_active: bool, bag
         engine._psv_apnea_timer = 0.0
         engine._last_patient_effort_cmH2O = 0.0
         saved_settings = resp_mech.snapshot_settings()
-        resp_mech.set_settings(engine.bag_mask_rr, engine.bag_mask_vt, 0.0, ie="1:2", mode="VCV")
+        resp_mech.set_settings(engine.bag_mask_rr, engine.bag_mask_vt, 0.0, ie="1:2", mode="MANUAL")
         resp_mech.patient_effort_cmH2O = 0.0
         mech_state = resp_mech.step(dt)
         total_peep_effect = resp_mech.get_total_peep()
@@ -531,7 +533,6 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     # The first measurement becomes available after one complete cycle.
     assisted_vt_l = mech_state.delivered_vt / 1000.0 if assisted_active else 0.0
     total_assisted_mv = assisted_rr * assisted_vt_l
-    assisted_vt_effective = assisted_vt_l * engine._airway_patency * engine._ventilation_efficiency
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
     kwargs = engine.get_resp_step_kwargs(
@@ -545,19 +546,13 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     resp_state = engine.resp.step(dt, **kwargs)
 
     spont_rr = resp_state.rr
-    spont_vt_l = resp_state.vt / 1000.0
-    if assisted_active:
-        eff_rr = max(assisted_rr, spont_rr)
-        eff_vt = max(assisted_vt_effective, spont_vt_l)
-        total_patient_mv = eff_rr * eff_vt
-    else:
-        total_patient_mv = spont_rr * spont_vt_l
+    rr_display, vt_display_ml, total_patient_mv = measured_ventilation(
+        engine, assisted_active, assisted_rr, assisted_vt_l, spont_rr, resp_state.vt / 1000.0
+    )
 
     phase = mech_state.phase
     if not assisted_active:
         phase = phase_from_rr(engine, spont_rr)
-
-    rr_display = max(assisted_rr, spont_rr) if assisted_active else spont_rr
 
     hemo_state = engine.hemo.step(
         dt,
@@ -587,18 +582,19 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
 
     engine.vent.step(dt, mech_state, rr_total=assisted_rr)
 
-    vt_display_ml = mech_state.delivered_vt if assisted_active else resp_state.vt
-
     paw_display = mech_state.paw
     flow_display = mech_state.flow
     volume_display = mech_state.volume
-    if not assisted_active:
+    if assisted_active and mech_state.phase == "EXP":
+        # Exhaled gas crosses the expiratory limb, so Y-piece pressure falls to PEEP with the flow.
+        paw_display -= CIRCUIT_RESISTANCE * flow_display / 60.0
+    elif not assisted_active:
         # Spontaneous breathing: the machine sensors see flow only through a
         # connected circuit, and inspiration draws Y-piece pressure slightly negative.
         paw_display = flow_display = volume_display = 0.0
         if connected and not resp_state.apnea and spont_rr > 0 and resp_state.vt > 0:
             flow_l_s, volume_display = _spontaneous_breath(state.time, spont_rr, resp_state.vt / 1000.0)
-            paw_display = -SPONTANEOUS_CIRCUIT_RESISTANCE * flow_l_s
+            paw_display = -CIRCUIT_RESISTANCE * flow_l_s
             flow_display = flow_l_s * 60.0
 
     return PhysiologyStepState(
@@ -612,21 +608,31 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
         paw_display=paw_display,
         flow_display=flow_display,
         volume_display=volume_display,
+        # Mechanics reports zero pressures without assisted breaths; bagging has no PEEP.
+        paw_peak=mech_state.paw_peak,
+        paw_plat=mech_state.paw_plat,
+        paw_mean=mech_state.paw_mean,
+        peep=engine.resp_mech.set_peep if vent_active else 0.0,
         vent_active=vent_active,
     )
 
 
 def _spontaneous_breath(time_s: float, rr: float, vt_l: float) -> tuple[float, float]:
-    """Return sinusoidal (flow L/s, volume L) for a spontaneous breath with I:E 1:2."""
+    """Return (flow L/s, volume L) for a spontaneous breath.
+
+    Half-sine inspiration over a third of the cycle. Expiratory flow peaks early
+    and decays as t * exp(-t / tau), leaving an end-expiratory pause.
+    """
     cycle_time = 60.0 / max(rr, 0.1)
     insp_duration = cycle_time / 3.0
-    exp_duration = cycle_time - insp_duration
     t_cycle = time_s % cycle_time
     if t_cycle < insp_duration:
         phase = math.pi * t_cycle / insp_duration
         return 0.5 * vt_l * math.pi / insp_duration * math.sin(phase), 0.5 * vt_l * (1.0 - math.cos(phase))
-    phase = math.pi * (t_cycle - insp_duration) / exp_duration
-    return -0.5 * vt_l * math.pi / exp_duration * math.sin(phase), 0.5 * vt_l * (1.0 + math.cos(phase))
+    t = t_cycle - insp_duration
+    tau = min(0.4, (cycle_time - insp_duration) / 6.0)
+    decay = math.exp(-t / tau)
+    return -vt_l * t / tau**2 * decay, vt_l * (1.0 + t / tau) * decay
 
 
 def check_cardiac_arrest(engine: "SimulationEngine", dt: float) -> None:

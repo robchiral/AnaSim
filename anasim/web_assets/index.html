@@ -143,6 +143,8 @@
           <div class="wave" data-wave="pleth"><canvas></canvas><span class="wave-label spo2">Pleth</span></div>
           <div class="wave" data-wave="art"><canvas></canvas><span class="wave-label abp">ART</span></div>
           <div class="wave" data-wave="co2"><canvas></canvas><span class="wave-label co2">CO₂ · mmHg</span></div>
+          <div class="wave" data-wave="paw"><canvas></canvas><span class="wave-label vent">Paw · cmH₂O</span></div>
+          <div class="wave" data-wave="flow"><canvas></canvas><span class="wave-label vent">Flow · L/min</span></div>
         </div>
         <div class="numerics">
           <div class="numeric big ecg" data-alarm="HR"><div class="numeric-head"><span class="numeric-title">HR</span><span class="numeric-unit">bpm</span></div><output id="v-hr">--</output></div>
@@ -162,14 +164,19 @@
             <div class="io-head"><span>Fluid balance</span><output id="v-net">--</output></div>
             <div class="io-detail" id="v-io">IV --  PRBC --  ·  Urine --  Loss --</div>
           </div>
-          <div class="panel-gas">
-            <div class="gas-head"><span>Sevoflurane</span><output id="v-mac">MAC: 0.00</output></div>
-            <div class="gas-values">
-              <div><span>Fi</span><output id="v-fi">0.0</output></div>
-              <div><span>Et</span><output id="v-et">0.0</output></div>
-            </div>
-          </div>
         </div>
+      </div>
+      <div class="vent-bar">
+        <div class="numeric vent" data-alarm="Ppeak"><div class="numeric-head"><span class="numeric-title">Ppeak</span><span class="numeric-unit">cmH₂O</span></div><output id="v-ppeak">--</output></div>
+        <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">Pplat</span><span class="numeric-unit">cmH₂O</span></div><output id="v-pplat">--</output></div>
+        <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">PEEP</span><span class="numeric-unit">cmH₂O</span></div><output id="v-peep">--</output></div>
+        <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">Pmean</span><span class="numeric-unit">cmH₂O</span></div><output id="v-pmean">--</output></div>
+        <div class="numeric vent group-start"><div class="numeric-head"><span class="numeric-title">VTe</span><span class="numeric-unit">mL</span></div><output id="v-vte">--</output></div>
+        <div class="numeric vent" data-alarm="MV"><div class="numeric-head"><span class="numeric-title">MV</span><span class="numeric-unit">L/min</span></div><output id="v-mv">--</output></div>
+        <div class="numeric gas group-start" data-alarm="FiO2"><div class="numeric-head"><span class="numeric-title">O₂</span><span class="numeric-unit">Fi/Et %</span></div><output id="v-o2">--/--</output></div>
+        <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">N₂O</span><span class="numeric-unit">Fi/Et %</span></div><output id="v-n2o">--/--</output></div>
+        <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">Sevo</span><span class="numeric-unit">Fi/Et %</span></div><output id="v-sevo">--/--</output></div>
+        <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">MAC</span></div><output id="v-mac">--</output></div>
       </div>
       <footer class="sim-bar">
         <button type="button" class="btn primary" id="run">Start simulation</button>

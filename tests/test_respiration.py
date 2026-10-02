@@ -136,6 +136,8 @@ class TestOxygenStores:
         for _ in range(1800):
             awake_engine.step(0.1)
         assert awake_engine.state.pao2 > 450.0, "Three minutes of tidal breathing should denitrogenate"
+        # Near the EtO2 90% preoxygenation endpoint, limited by circuit FiO2 (Nimmagadda 2017).
+        assert 85.0 < awake_engine.state.et_o2 < 100.0 * awake_engine.state.fio2
 
         self._induce_apnea(awake_engine)
         awake_engine.set_airway_obstruction(1.0)

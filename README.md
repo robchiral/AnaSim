@@ -1,8 +1,8 @@
 # AnaSim
 
-AnaSim is a real-time adult anesthesia simulator for teaching and model
-exploration. It combines published pharmacokinetic, pharmacodynamic, and
-cardiorespiratory models with a patient monitor and anesthesia machine.
+AnaSim is an adult anesthesia simulator for teaching and research. It runs
+published drug and cardiorespiratory models in real time, with a patient
+monitor and anesthesia machine interface.
 
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/anasim-simulator.svg)](https://pypi.org/project/anasim-simulator/)
@@ -16,11 +16,9 @@ cardiorespiratory models with a patient monitor and anesthesia machine.
 
 ## Run AnaSim
 
-**In the browser:** open [robche.com/AnaSim](https://robche.com/AnaSim/). It
-runs on your device through [Pyodide](https://pyodide.org). The first visit
-downloads about 23 MB.
+Open [robche.com/AnaSim](https://robche.com/AnaSim/) in your browser.
 
-**Locally** (Python 3.10 or later):
+To run locally, install with Python 3.10 or later:
 
 ```bash
 python3 -m venv .venv
@@ -32,20 +30,22 @@ anasim
 `anasim` opens the simulator in your browser and runs it in Python on your
 computer. It works offline. Stop it with Ctrl+C.
 
-To begin, choose **Guided scenario** and **TIVA induction**, then **Start
-simulation**. The clock runs once you press **Start simulation** again below
-the monitor. Each objective has a button that opens the controls it needs.
+For a first session, choose **Guided scenario**, select **TIVA induction**,
+and press **Start simulation**. Press **Start simulation** below the monitor
+to start the clock. Each objective links to the controls needed to complete it.
 
-## What's included
+## Features
 
 - **Drugs:** propofol, remifentanil, fentanyl, midazolam, etomidate, ketamine,
   sevoflurane, rocuronium, sugammadex, norepinephrine, epinephrine,
   phenylephrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, and
-  glycopyrrolate, given by infusion, bolus, or effect-site TCI.
+  glycopyrrolate. Available delivery methods depend on the drug and include
+  infusion, bolus, and effect-site target-controlled infusion (TCI).
 - **Machine:** facemask or tracheal tube, fresh gas flow, vaporizer, bag-mask
   ventilation, and VCV, PCV, PSV, or CPAP.
-- **Monitor:** ECG, SpO₂, arterial line, NIBP, capnography, BIS, TOF,
-  temperature, fluid balance, and alarms.
+- **Monitor:** ECG, SpO₂, arterial line, NIBP, capnography, airway pressure
+  and flow, ventilator pressures and volumes, O₂, N₂O, and sevoflurane gas
+  monitoring, BIS, TOF, temperature, fluid balance, and alarms.
 - **Events:** fluids and blood, surgical stimulation, airway obstruction,
   bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias.
 - **Guided scenarios:** TIVA and inhalational induction and emergence,
@@ -58,7 +58,7 @@ version downloads it.
 ## Limits
 
 Patients must be adults aged 18 to 70 years, weighing 50 to 100 kg, 150 to
-200 cm tall, with a BMI of 18 to 32 kg/m². These are the ranges of the
+200 cm tall, with a BMI of 18 to 32 kg/m². These limits are based on the
 volunteer studies used to build the hemodynamic and norepinephrine models.
 
 Respiratory drug effects, neuromuscular block, the baroreflex, and vasoactive
@@ -75,9 +75,8 @@ tissue oxygen debt, machine pneumatics, and resuscitation are not modeled.
 anasim --mode headless --duration 60 --record
 ```
 
-This runs 60 simulated seconds without the interface and writes a CSV to
-`recordings/`. Use `--config` to set the patient, models, and starting state
-from a JSON file; the
+This runs 60 simulated seconds and writes a CSV to `recordings/`. Use
+`--config` to load patient, model, and starting-state settings from JSON. The
 [CLI guide](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md)
 lists the fields.
 

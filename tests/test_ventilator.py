@@ -38,29 +38,42 @@ def test_pressure_support_augments_spontaneous_breaths(awake_engine, advance_tim
     assert engine.state.vt > vt_cpap + 50.0
 
 
-@pytest.mark.parametrize("mode", ["VCV", "PCV"])
+@pytest.mark.parametrize("mode", ["VCV", "MANUAL", "PCV"])
 def test_breath_volumes_and_pressures_match_analytic_steady_state(mode):
-    """Exact single-compartment solutions, including substantial trapped gas."""
+    """Exact single-compartment solutions, including substantial trapped gas.
+
+    VCV holds the delivered volume for its inspiratory pause; a bag breath is a
+    half-sine flow whose pressure peaks before flow stops.
+    """
     compliance, resistance = 0.05, 30.0
     rr, tidal_volume, peep, pressure = 20.0, 0.5, 5.0, 15.0
     period = 60.0 / rr
     ti, te = period / 3.0, period * 2.0 / 3.0
     tau = resistance * compliance
     exhalation = math.exp(-te / tau)
-    if mode == "VCV":
+    mech = RespiratoryMechanics(compliance=compliance, resistance=resistance)
+    if mode in ("VCV", "MANUAL"):
         peak_volume = tidal_volume / (1.0 - exhalation)
         end_volume = peak_volume * exhalation
-        expected_peak = peep + peak_volume / compliance + resistance * tidal_volume / ti
-        expected_mean = peep + ti / period * (
-            (end_volume + tidal_volume / 2.0) / compliance + resistance * tidal_volume / ti
-        )
+        # Volume x time over inspiration; both flows put R x VT of resistive pressure-time in.
+        volume_time = ti * (end_volume + tidal_volume / 2.0)
+        if mode == "VCV":
+            t_flow = ti * (1.0 - mech.insp_pause_fraction)
+            volume_time = t_flow * (end_volume + tidal_volume / 2.0) + (ti - t_flow) * peak_volume
+            expected_peak = peep + peak_volume / compliance + resistance * tidal_volume / t_flow
+        else:
+            w = math.pi / ti
+            theta = math.pi - math.atan(resistance * compliance * w)
+            expected_peak = peep + (end_volume + tidal_volume / 2.0 * (1.0 - math.cos(theta))) / compliance + (
+                resistance * tidal_volume / 2.0 * w * math.sin(theta)
+            )
+        expected_mean = peep + (volume_time / compliance + resistance * tidal_volume) / period
     else:
         peak_volume = compliance * pressure * (1.0 - math.exp(-ti / tau)) / (1.0 - math.exp(-period / tau))
         end_volume = peak_volume * exhalation
         expected_peak = peep + pressure
         expected_mean = peep + pressure * ti / period
 
-    mech = RespiratoryMechanics(compliance=compliance, resistance=resistance)
     mech.set_settings(rr=rr, vt=tidal_volume, peep=peep, ie="1:2", mode=mode, p_insp=pressure)
     for _ in range(15):
         state = mech.step(7.0)  # Coarse steps span several breaths.

@@ -1,27 +1,35 @@
 // Waveform sweeps and monitor numerics.
 
+// Respiratory traces sweep at half the cardiac speed, as on anesthesia
+// workstations, so each shows several breaths.
+const CARDIAC_SWEEP_S = 10;
+const RESPIRATORY_SWEEP_S = 20;
 const CHANNELS = {
-  ecg: { color: "--ecg", range: [-0.5, 1.5] },
-  pleth: { color: "--spo2", range: [-0.1, 1.4] },
-  art: { color: "--abp", range: [0, 200], ticks: [0, 50, 100, 150, 200] },
-  co2: { color: "--co2", range: [0, 60], ticks: [0, 20, 40, 60] },
+  ecg: { color: "--ecg", range: [-0.5, 1.5], seconds: CARDIAC_SWEEP_S },
+  pleth: { color: "--spo2", range: [-0.1, 1.4], seconds: CARDIAC_SWEEP_S },
+  art: { color: "--abp", range: [0, 200], ticks: [0, 50, 100, 150, 200], seconds: CARDIAC_SWEEP_S },
+  co2: { color: "--co2", range: [0, 60], ticks: [0, 20, 40, 60], seconds: RESPIRATORY_SWEEP_S },
+  paw: { color: "--vent", range: [-5, 40], ticks: [0, 20, 40], seconds: RESPIRATORY_SWEEP_S },
+  // Wide enough for pressure-control peak flows; zero shows incomplete exhalation.
+  flow: { color: "--vent", range: [-90, 90], ticks: [-60, 0, 60], seconds: RESPIRATORY_SWEEP_S },
 };
 const AXIS_WIDTH = 35;
-const SWEEP_SECONDS = 10;
-const GAP_SECONDS = 0.14;
+const GAP_FRACTION = 0.014;
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const trunc = (value) => (value === null ? "--" : String(Math.trunc(value)));
 const fixed = (value, digits) => (value === null ? "--" : value.toFixed(digits));
 
 class Sweep {
-  constructor(container, channel, size, gap) {
+  constructor(container, channel, sampleInterval) {
     this.canvas = container.querySelector("canvas");
     this.ctx = this.canvas.getContext("2d");
     this.channel = channel;
     this.color = css(channel.color);
+    const size = Math.max(2, Math.round(channel.seconds / sampleInterval));
     this.data = new Float32Array(size).fill(NaN);
-    this.gap = gap;
+    this.gap = Math.min(size - 1, Math.max(1, Math.round(GAP_FRACTION * size)));
+    this.writeIndex = 0;
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(container);
   }
@@ -37,14 +45,16 @@ class Sweep {
     this.draw();
   }
 
-  write(values, start) {
+  write(values) {
     const size = this.data.length;
+    const start = this.writeIndex;
     for (let i = 0; i < values.length; i++) {
       const v = values[i];
       this.data[(start + i) % size] = v === null ? NaN : v;
     }
     const end = start + values.length;
     for (let i = 0; i < this.gap; i++) this.data[(end + i) % size] = NaN;
+    this.writeIndex = end % size;
   }
 
   draw() {
@@ -99,17 +109,13 @@ class Sweep {
 
 export class Monitor {
   constructor(info) {
-    const size = Math.max(2, Math.round(SWEEP_SECONDS / info.sample_interval));
-    const gap = Math.min(size - 1, Math.max(1, Math.round(GAP_SECONDS / info.sample_interval)));
     this.arterialLine = info.arterial_line;
-    this.size = size;
-    this.writeIndex = 0;
     this.dirty = false;
     this.sweeps = {};
     for (const container of document.querySelectorAll(".wave")) {
       const name = container.dataset.wave;
       container.hidden = name === "art" && !this.arterialLine;
-      if (!container.hidden) this.sweeps[name] = new Sweep(container, CHANNELS[name], size, gap);
+      if (!container.hidden) this.sweeps[name] = new Sweep(container, CHANNELS[name], info.sample_interval);
     }
     document.getElementById("n-art").hidden = !this.arterialLine;
     document.getElementById("n-nibp").hidden = this.arterialLine;
@@ -123,7 +129,7 @@ export class Monitor {
     document.getElementById("patient-info").textContent = parts.join("  ·  ");
 
     this.fields = {};
-    for (const el of document.querySelectorAll(".numerics output")) this.fields[el.id] = el;
+    for (const el of document.querySelectorAll(".numerics output, .vent-bar output")) this.fields[el.id] = el;
     this.fields["v-spo2-unit"] = document.getElementById("v-spo2-unit");
     this.alarmBoxes = [...document.querySelectorAll(".numeric[data-alarm]")];
     this.frame = requestAnimationFrame(() => this.render());
@@ -139,10 +145,8 @@ export class Monitor {
 
   update(snap) {
     const waves = snap.waves;
-    const count = waves.ecg.length;
-    if (count) {
-      for (const [name, sweep] of Object.entries(this.sweeps)) sweep.write(waves[name], this.writeIndex);
-      this.writeIndex = (this.writeIndex + count) % this.size;
+    if (waves.ecg.length) {
+      for (const [name, sweep] of Object.entries(this.sweeps)) sweep.write(waves[name]);
       this.dirty = true;
     }
     this.updateNumerics(snap.vitals);
@@ -192,9 +196,17 @@ export class Monitor {
     this.set("v-net", `${net >= 0 ? "+" : "−"}${Math.abs(net).toFixed(0)} mL`);
     document.getElementById("v-io").textContent =
       `IV ${fixed(v.fluid_in, 0)}  PRBC ${fixed(v.blood_in, 0)}  ·  Urine ${fixed(v.urine_out, 0)}  Loss ${fixed(v.blood_out, 0)}`;
-    this.set("v-fi", fixed(v.fi_sevo, 1));
-    this.set("v-et", fixed(v.et_sevo, 1));
-    this.set("v-mac", `MAC: ${fixed(v.et_mac, 2)}`);
+
+    this.set("v-ppeak", trunc(v.ppeak));
+    this.set("v-pplat", trunc(v.pplat));
+    this.set("v-peep", trunc(v.peep));
+    this.set("v-pmean", trunc(v.pmean));
+    this.set("v-vte", trunc(v.vte));
+    this.set("v-mv", fixed(v.mv, 1));
+    this.set("v-o2", `${trunc(v.fio2)}/${trunc(v.eto2)}`);
+    this.set("v-n2o", `${trunc(v.fi_n2o)}/${trunc(v.et_n2o)}`);
+    this.set("v-sevo", `${fixed(v.fi_sevo, 1)}/${fixed(v.et_sevo, 1)}`);
+    this.set("v-mac", fixed(v.et_mac, 2));
   }
 
   updateAlarms(alarms) {

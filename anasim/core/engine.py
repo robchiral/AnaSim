@@ -15,6 +15,7 @@ from anasim.core.utils import clamp
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.ventilator import AnesthesiaVentilator
 from anasim.machine.volatile import Vaporizer
+from anasim.monitors.airway import AirwaySensor
 from anasim.monitors.alarms import AlarmSystem
 from anasim.monitors.arterial import ArterialLineMonitor, ArterialWaveformRenderer
 from anasim.monitors.capno import Capnograph
@@ -162,7 +163,7 @@ class SimulationEngine(DrugControllerMixin):
         self.disturbance_start_time = 0.0
         self.alarms = AlarmSystem(dt=config.dt)
 
-        self._output_window_s = 10.0
+        self._output_window_s = 20.0
         self.output_buffer = deque()
         self.recorder = None
         self._tci_accumulators = {}
@@ -241,10 +242,13 @@ class SimulationEngine(DrugControllerMixin):
         self.initialize_state()
 
     def _append_output_snapshot(self) -> None:
-        """Append this step's waveform samples and retain ten seconds by timestamp."""
+        """Append this step's waveform samples and retain twenty seconds by timestamp."""
         state = self.state
         self.output_buffer.append(
-            WaveformSample(state.time, state.ecg_voltage, state.pleth_voltage, state.capno_co2, state.art_pressure)
+            WaveformSample(
+                state.time, state.ecg_voltage, state.pleth_voltage, state.capno_co2, state.art_pressure,
+                state.paw, state.flow,
+            )
         )
         cutoff = self.state.time - self._output_window_s
         while len(self.output_buffer) > 1 and self.output_buffer[0].time < cutoff:
@@ -343,6 +347,7 @@ class SimulationEngine(DrugControllerMixin):
 
         self.bis = BISModel(self.patient, model_name=self.config.bis_model)
         self.capno = Capnograph(rng=self._capno_rng)
+        self.airway_sensor = AirwaySensor()
         self.loc_pd = LOCModel(model_name=self.config.loc_model)
         self.tol_pd = TOLModel()
         self.tof_pd = TOFModel(self.patient)
