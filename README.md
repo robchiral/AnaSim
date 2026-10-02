@@ -42,10 +42,10 @@ to start the clock. Each objective links to the controls needed to complete it.
   glycopyrrolate. Available delivery methods depend on the drug and include
   infusion, bolus, and effect-site target-controlled infusion (TCI).
 - **Machine:** facemask or tracheal tube, fresh gas flow, vaporizer, bag-mask
-  ventilation, and VCV, PCV, PSV, or CPAP.
+  ventilation, and VCV, PCV, PCV-VG, SIMV, PSV, or CPAP.
 - **Monitor:** ECG, SpO₂, arterial line, NIBP, capnography, airway pressure
-  and flow, ventilator pressures and volumes, O₂, N₂O, and sevoflurane gas
-  monitoring, BIS, TOF, temperature, fluid balance, and alarms.
+  and flow, ventilator pressures, volumes, and loops, O₂, N₂O, and sevoflurane
+  gas monitoring, BIS, TOF, temperature, fluid balance, and alarms.
 - **Events:** fluids and blood, surgical stimulation, airway obstruction,
   bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias.
 - **Guided scenarios:** TIVA and inhalational induction and emergence,

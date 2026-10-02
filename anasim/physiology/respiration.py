@@ -135,12 +135,13 @@ class RespiratoryModel:
         Args:
             ce_prop: Propofol effect-site concentration (mcg/mL).
             ce_remi: Remifentanil effect-site concentration (ng/mL).
-            mech_vent_mv: Assisted minute ventilation (L/min).
+            mech_vent_mv: Assisted minute ventilation reaching the lungs (L/min).
             fio2: Inspired O2 fraction.
             ce_roc: Free rocuronium at the central effect site (mcg/mL).
             mac_sevo: Brain sevoflurane MAC.
             peep, mean_paw: Airway pressures (cmH2O).
-            mech_rr, mech_vt_l: Assisted rate (breaths/min) and tidal volume (L).
+            mech_rr, mech_vt_l: Assisted rate (breaths/min) and tidal volume
+                reaching the lungs (L).
             airway_patency: Upper-airway patency, 0-1.
             ventilation_efficiency: Lower-airway efficiency (bronchospasm), 0-1.
             vq_mismatch: V/Q mismatch severity, 0-1.
@@ -229,8 +230,10 @@ class RespiratoryModel:
 
         vd = self.vd_deadspace
         vt_eff_spont = max(0.0, current_vt / 1000.0 - vd)
-        mech_vt_l *= vent_factor
-        mech_vent_mv *= vent_factor
+        # Assisted volumes arrive net of any mask leak; bronchospasm still
+        # lowers the alveolar share.
+        mech_vt_l *= ventilation_efficiency
+        mech_vent_mv *= ventilation_efficiency
         alveolar_vt_mech = max(0.0, mech_vt_l - vd)
         if mech_vt_l <= 0 and mech_vent_mv > 0 and mech_rr > 0:
             inferred_vt = mech_vent_mv / mech_rr

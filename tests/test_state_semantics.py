@@ -39,6 +39,7 @@ FLOAT_CONTRACT_FIELDS = (
     "paw_plat",
     "paw_mean",
     "peep",
+    "compliance_dyn",
     "spo2",
     "nibp_map",
     "hb_g_dl",
@@ -68,7 +69,7 @@ def test_arterial_renderer_does_not_overwrite_su_mean_state():
         etco2=38.0, p_arterial_o2=95.0, sao2=98.0, drive_central=1.0, muscle_factor=1.0,
     )
 
-    monitor_core.step_monitors(engine, 0.5, "EXP", hemo_state, resp_state, DisturbanceEffects())
+    monitor_core.step_monitors(engine, 0.5, hemo_state, resp_state, DisturbanceEffects())
 
     assert engine.state.map == pytest.approx(45.0)
     assert engine.state.hr == pytest.approx(42.0)

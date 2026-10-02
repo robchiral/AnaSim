@@ -189,7 +189,7 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
             instruction=(
                 "Criteria: <b>BIS > 80</b>, spontaneous <b>RR > 8</b> and <b>VT > 5 mL/kg</b>, "
                 "<b>TOF ratio ≥ 90%</b>, <b>SpO₂ > 95%</b>.<br>"
-                "Remove ETT -> select 'Mask' or 'None'.<br><br>"
+                "Stop the ventilator and remove the ETT: select 'Mask' or 'None'.<br><br>"
                 "<i>Command following and airway reflexes are not modeled; check them in practice.</i>"
             ),
             check_requirements=_require_extubation_criteria(),

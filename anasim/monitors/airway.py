@@ -2,7 +2,7 @@ import math
 
 
 class AirwaySensor:
-    """Airway pressure and flow as the ventilator display shows them.
+    """Airway pressure, flow, and volume as the ventilator display shows them.
 
     Two first-order lags stand in for ventilator and transducer response, so
     step changes rise over about 70 ms. The time constant gave the smallest
@@ -12,16 +12,15 @@ class AirwaySensor:
 
     def __init__(self, tau_s: float = 0.02):
         self.tau_s = tau_s
-        self.seed(0.0, 0.0)
+        self.seed(0.0, 0.0, 0.0)
 
-    def seed(self, paw: float, flow: float) -> None:
-        self._stage1 = [paw, flow]
-        self._stage2 = [paw, flow]
+    def seed(self, paw: float, flow: float, volume: float) -> None:
+        self._stage1 = [paw, flow, volume]
+        self._stage2 = [paw, flow, volume]
 
-    def step(self, dt: float, paw: float, flow: float) -> tuple[float, float]:
-        """Return measured (Paw cmH2O, flow L/min) after dt seconds."""
+    def step(self, dt: float, paw: float, flow: float, volume: float) -> tuple[float, float, float]:
         alpha = -math.expm1(-dt / self.tau_s)
-        for stage, source in ((self._stage1, (paw, flow)), (self._stage2, self._stage1)):
-            stage[0] += alpha * (source[0] - stage[0])
-            stage[1] += alpha * (source[1] - stage[1])
-        return self._stage2[0], self._stage2[1]
+        for stage, source in ((self._stage1, (paw, flow, volume)), (self._stage2, self._stage1)):
+            for i in range(3):
+                stage[i] += alpha * (source[i] - stage[i])
+        return tuple(self._stage2)

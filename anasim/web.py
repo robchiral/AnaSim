@@ -15,6 +15,7 @@ from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
 from anasim.core.recorder import RecordingError
 from anasim.core.state import SUPPORTED_MODEL_OPTIONS, AirwayType, SimulationConfig
+from anasim.machine.ventilator import MODES
 from anasim.patient import domain
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import list_disturbance_profiles
@@ -47,9 +48,9 @@ MAX_REAL_DT_S = 0.2
 # Averaging window for the achieved speed, so one slow frame does not flag lag.
 SPEED_AVERAGE_S = 2.0
 WAVE_WINDOW_S = 20.0  # The slower respiratory sweep
-VENT_MODES = ("VCV", "PCV", "PSV", "CPAP")
-VENT_FIELDS = ("mode", "rr", "tv", "peep", "ie", "p_insp")
+VENT_FIELDS = ("mode", "rr", "tv", "peep", "ie", "p_insp", "p_support", "t_insp", "pause", "p_max", "trigger")
 IE_RATIOS = ("1:1", "1:2", "1:3", "1:4")
+LOOP_POINTS = 160  # Most points sent per breath loop
 FLUIDS = {"crystalloid": "give_fluid", "albumin": "give_albumin", "blood": "give_blood"}
 
 SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
@@ -118,6 +119,9 @@ class WebSession:
         self._download = None
         self._accumulator = 0.0
         self._last_wave_time = -math.inf
+        self._breath_samples = []
+        self._loop = None
+        self._loop_pending = False
         self._recordings_dir = recordings_dir or os.path.join(tempfile.gettempdir(), "anasim-recordings")
         self.retain_recordings = retain_recordings
         self._medication_history = deque(maxlen=50)
@@ -164,7 +168,7 @@ class WebSession:
             "medication_history": list(self._medication_history),
             "disturbances": [{"key": key, "label": label} for label, key in list_disturbance_profiles()],
             "rhythms": [rhythm.value for rhythm in RhythmType],
-            "vent_modes": VENT_MODES,
+            "vent_modes": MODES,
             "ie_ratios": IE_RATIOS,
             "scenario": None if self.scenario is None else {
                 "name": self.scenario.name,
@@ -251,6 +255,7 @@ class WebSession:
                 if flags.get("low") or flags.get("high")
             },
             "waves": self._new_waves(),
+            "loop": self._take_loop(),
             "controls": self._controls(),
             "scenario": self._scenario_state(),
         }
@@ -289,6 +294,7 @@ class WebSession:
             "pmean": _num(s.paw_mean, 1) if connected else None,
             "vte": _num(s.vt, 0) if connected else None,
             "mv": _num(s.mv, 2) if connected else None,
+            "cdyn": _num(s.compliance_dyn, 0) if assisted else None,
             "fio2": _num(s.fio2 * 100.0, 1),
             "eto2": _num(s.et_o2, 1) if exhaled else None,
             "fi_n2o": _num(s.fi_n2o, 1),
@@ -299,8 +305,9 @@ class WebSession:
         }
 
     def replay_waves(self) -> None:
-        """Resend the retained sweep in the next snapshot, for a reloaded page."""
+        """Resend the retained sweep and last loop in the next snapshot, for a reloaded page."""
         self._last_wave_time = -math.inf
+        self._loop_pending = self._loop is not None
 
     def _new_waves(self) -> dict:
         """Return samples newer than the last snapshot, at most one sweep."""
@@ -315,6 +322,7 @@ class WebSession:
         if samples:
             self._last_wave_time = samples[0].time
         samples.reverse()
+        self._collect_loop(samples)
         return {
             "ecg": [_num(s.ecg_voltage, 4) for s in samples],
             "pleth": [_num(s.pleth_voltage, 4) for s in samples],
@@ -323,6 +331,31 @@ class WebSession:
             "paw": [_num(s.paw, 2) for s in samples],
             "flow": [_num(s.flow, 1) for s in samples],
         }
+
+    def _collect_loop(self, samples) -> None:
+        """Keep the samples of the breath in progress; a completed breath becomes the loop."""
+        for sample in samples:
+            current = self._breath_samples
+            if current and sample.breath != current[-1].breath:
+                if len(current) > 2:
+                    stride = math.ceil(len(current) / LOOP_POINTS)
+                    points = current[::stride] + ([current[-1]] if (len(current) - 1) % stride else [])
+                    start = current[0].volume
+                    self._loop = {
+                        "paw": [_num(s.paw, 2) for s in points],
+                        "flow": [_num(s.flow, 1) for s in points],
+                        "volume": [_num((s.volume - start) * 1000.0, 1) for s in points],
+                    }
+                    self._loop_pending = True
+                current = self._breath_samples = []
+            current.append(sample)
+        if len(self._breath_samples) > WAVE_WINDOW_S / self.engine.config.dt:
+            self._breath_samples = self._breath_samples[-round(WAVE_WINDOW_S / self.engine.config.dt):]
+
+    def _take_loop(self):
+        """Return the newest completed breath loop once."""
+        pending, self._loop_pending = self._loop_pending, False
+        return self._loop if pending else None
 
     def _controls(self) -> dict:
         engine = self.engine
@@ -343,6 +376,11 @@ class WebSession:
                 "peep": round(vent.peep),
                 "ie": vent.ie,
                 "p_insp": round(vent.p_insp),
+                "p_support": round(vent.p_support),
+                "t_insp": round(vent.t_insp, 1),
+                "pause": round(vent.pause),
+                "p_max": round(vent.p_max),
+                "trigger": round(vent.trigger, 1),
             },
             "drugs": {spec.key: engine.get_drug_state(spec.key) for spec in engine.get_controllable_drugs()},
             "maintenance_ml_hr": engine.get_continuous_fluid_rate(),
@@ -447,22 +485,22 @@ class WebSession:
         unknown = set(fields) - set(VENT_FIELDS)
         if unknown:
             raise ValueError(f"Unknown ventilator setting(s): {', '.join(sorted(unknown))}")
-        if "mode" in fields and fields["mode"] not in VENT_MODES:
+        if "mode" in fields and fields["mode"] not in MODES:
             raise ValueError(f"Unsupported ventilator mode {fields['mode']!r}")
         if "ie" in fields and fields["ie"] not in IE_RATIOS:
             raise ValueError(f"Unsupported I:E ratio {fields['ie']!r}")
         current = self.engine.vent.settings
-        settings = {
-            "mode": current.mode, "rr": current.rr, "tv": current.tv, "peep": current.peep,
-            "ie": current.ie, "p_insp": current.p_insp, **fields,
-        }
+        settings = {name: getattr(current, name) for name in VENT_FIELDS} | fields
+        numbers = {name: float(settings[name]) for name in VENT_FIELDS if name not in ("mode", "ie")}
+        if not all(map(math.isfinite, numbers.values())):
+            raise ValueError("Ventilator settings must be finite numbers")
         self.engine.set_vent_settings(
-            float(settings["rr"]),
-            float(settings["tv"]) / 1000.0,
-            float(settings["peep"]),
+            numbers.pop("rr"),
+            numbers.pop("tv") / 1000.0,
+            numbers.pop("peep"),
             settings["ie"],
             mode=settings["mode"],
-            p_insp=float(settings["p_insp"]),
+            **numbers,
         )
 
     def _cmd_drug_rate(self, key: str, rate: float):

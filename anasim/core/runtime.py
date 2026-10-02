@@ -5,7 +5,6 @@ import math
 from typing import TYPE_CHECKING
 
 from anasim.core.constants import (
-    RR_APNEA_THRESHOLD,
     SHIVER_BASE_THRESHOLD,
     SHIVER_BIS_FULL,
     SHIVER_BIS_ON,
@@ -21,11 +20,11 @@ from anasim.core.drug_registry import PK_HEMODYNAMIC_TARGETS, TCI_TARGET_CONFIG
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.physiology.disturbances import DisturbanceEffects
-from anasim.physiology.resp_mech import VentMode
 
-from .monitors import phase_from_rr, step_monitors
+from .monitors import step_monitors
 from .projection import (
     PhysiologyStepState,
+    assisted_ventilation,
     measured_ventilation,
     project_runtime_physiology,
     set_state_float_fields,
@@ -39,10 +38,6 @@ if TYPE_CHECKING:
     from .engine import SimulationEngine
 
 logger = logging.getLogger(__name__)
-
-# Circle-system limb and valve resistance between the Y-piece and the bag or
-# expiratory valve (cmH2O/(L/s)); see docs/REFERENCES.md#ventilator-waveforms.
-CIRCUIT_RESISTANCE = 2.0
 
 # Cardiac arrest endpoint: no effective circulation for ARREST_CONFIRM_S seconds.
 ARREST_MAP_MMHG = 20.0
@@ -103,7 +98,7 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
     step_pk(engine, dt, fi_sevo, fi_n2o, engine.state.co)
     physiology = step_physiology(engine, dt, disturbances)
     project_runtime_physiology(engine, physiology)
-    step_monitors(engine, dt, physiology.phase, physiology.hemo_state, physiology.resp_state, disturbances)
+    step_monitors(engine, dt, physiology.hemo_state, physiology.resp_state, disturbances)
     update_shivering(engine, dt)
     step_temperature(engine, dt)
     check_cardiac_arrest(engine, dt)
@@ -111,89 +106,21 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
         engine.stop_disturbance()
 
 
-def step_mechanics(engine: "SimulationEngine", dt: float, vent_active: bool, bag_mask_active: bool):
-    """Advance respiratory mechanics and return (mech_state, total_peep_effect, mech_rr_for_resp)."""
-    resp_mech = engine.resp_mech
-
-    def estimate_effort(vt_l: float) -> float:
-        if resp_mech.compliance <= 0:
-            return 0.0
-        return clamp(vt_l / resp_mech.compliance, 0.0, 20.0)
-
+def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_active: bool,
+                   bag_mask_active: bool) -> None:
+    """Advance breathing through the workstation: ventilator, bag, or the patient's own effort."""
+    resp = engine.resp.state
+    lung = engine.resp_mech
+    # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.
+    lung.effort.set_drive(0.0 if resp.apnea else resp.rr, resp.vt / 1000.0)
     if vent_active:
-        mech_rr_for_resp = resp_mech.set_rr
-        if resp_mech.mode in (VentMode.PSV, VentMode.CPAP):
-            saved_settings = resp_mech.snapshot_settings()
-            spont_rr = max(0.0, engine.resp.state.rr)
-            spont_vt_l = max(0.0, engine.resp.state.vt / 1000.0)
-            is_apneic = spont_rr < RR_APNEA_THRESHOLD or engine.resp.state.apnea
-            if resp_mech.mode == VentMode.PSV:
-                if is_apneic:
-                    engine._psv_apnea_timer += dt
-                else:
-                    engine._psv_apnea_timer = 0.0
-                backup_rr = resp_mech.set_rr if resp_mech.set_rr > 0.0 else 0.0
-                use_backup = (
-                    is_apneic and backup_rr > 0.0 and engine._psv_apnea_timer >= engine.psv_apnea_backup_delay
-                )
-                if use_backup:
-                    spont_rr = backup_rr
-            else:
-                engine._psv_apnea_timer = 0.0
-                use_backup = False
-            if is_apneic:
-                spont_vt_l = 0.0
-            mech_rr_for_resp = spont_rr
-
-            effort_cm_h2o = estimate_effort(spont_vt_l)
-            if use_backup:
-                effort_cm_h2o = 0.0
-            engine._last_patient_effort_cmH2O = effort_cm_h2o
-
-            support_cm_h2o = resp_mech.set_p_insp if resp_mech.mode == VentMode.PSV else 0.0
-            resp_mech.set_rr = mech_rr_for_resp
-            resp_mech.set_p_insp = clamp(support_cm_h2o, 0.0, 40.0)
-            resp_mech.patient_effort_cmH2O = effort_cm_h2o
-
-            mech_state = resp_mech.step(dt)
-            total_peep_effect = resp_mech.get_total_peep()
-            resp_mech.restore_settings(saved_settings)
-            resp_mech.patient_effort_cmH2O = 0.0
-        else:
-            engine._psv_apnea_timer = 0.0
-            engine._last_patient_effort_cmH2O = 0.0
-            resp_mech.patient_effort_cmH2O = 0.0
-            mech_state = resp_mech.step(dt)
-            total_peep_effect = resp_mech.get_total_peep()
+        source = "vent"
     elif bag_mask_active:
-        engine._psv_apnea_timer = 0.0
-        engine._last_patient_effort_cmH2O = 0.0
-        saved_settings = resp_mech.snapshot_settings()
-        resp_mech.set_settings(engine.bag_mask_rr, engine.bag_mask_vt, 0.0, ie="1:2", mode="MANUAL")
-        resp_mech.patient_effort_cmH2O = 0.0
-        mech_state = resp_mech.step(dt)
-        total_peep_effect = resp_mech.get_total_peep()
-        resp_mech.restore_settings(saved_settings)
-        mech_rr_for_resp = engine.bag_mask_rr
+        source = "bag"
     else:
-        engine._psv_apnea_timer = 0.0
-        spont_rr = max(0.0, engine.resp.state.rr)
-        spont_vt_l = max(0.0, engine.resp.state.vt / 1000.0)
-        is_apneic = spont_rr < RR_APNEA_THRESHOLD or engine.resp.state.apnea
-        if is_apneic:
-            spont_vt_l = 0.0
-        engine._last_patient_effort_cmH2O = estimate_effort(spont_vt_l)
-        saved_settings = resp_mech.snapshot_settings()
-        resp_mech.set_rr = 0.0
-        resp_mech.set_peep = 0.0
-        resp_mech.patient_effort_cmH2O = 0.0
-        mech_state = resp_mech.step(dt)
-        total_peep_effect = 0.0
-        mech_state.paw_mean = 0.0
-        mech_state.auto_peep = 0.0
-        resp_mech.restore_settings(saved_settings)
-        mech_rr_for_resp = 0.0
-    return mech_state, total_peep_effect, mech_rr_for_resp
+        source = "spontaneous" if connected else None
+    engine.vent.step(dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt))
+    engine._last_patient_effort_cmH2O = min(lung.effort.amplitude, 20.0)
 
 
 def update_shivering(engine: "SimulationEngine", dt: float) -> float:
@@ -451,13 +378,13 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
         # Mask CPAP or positive-pressure breaths hold the pharynx open.
         splint_pressure = 0.0
         if state.airway_mode == AirwayType.MASK:
-            mech = engine.resp_mech
-            if engine.vent.is_on:
-                splint_pressure = mech.set_peep
-                if mech.mode != VentMode.CPAP:
-                    splint_pressure = max(splint_pressure, mech.state.paw_mean)
+            vent = engine.vent
+            if vent.is_on:
+                splint_pressure = vent.settings.peep
+                if vent.settings.mode != "CPAP":
+                    splint_pressure = max(splint_pressure, vent.monitors.paw_mean)
             elif engine.bag_mask_active:
-                splint_pressure = mech.state.paw_mean
+                splint_pressure = vent.monitors.paw_mean
         relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
         # Pharyngeal collapse excludes ketamine, which preserves airway tone.
         unconscious = engine.loc_pd.compute_probability(
@@ -512,13 +439,13 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     bag_mask_active = engine.bag_mask_active and connected and not vent_active
     assisted_active = vent_active or bag_mask_active
 
-    mech_state, total_peep_effect, mech_rr_for_resp = step_mechanics(engine, dt, vent_active, bag_mask_active)
+    step_mechanics(engine, dt, connected, vent_active, bag_mask_active)
+    vent = engine.vent
+    spirometry = vent.monitors
 
     alpha_paw = 1.0 - math.exp(-dt / max(engine._mean_paw_tau_s, 1e-6))
-    if mech_state.paw_mean > 0:
-        engine.current_mean_paw = (1 - alpha_paw) * engine.current_mean_paw + alpha_paw * mech_state.paw_mean
-    else:
-        engine.current_mean_paw = (1 - alpha_paw) * engine.current_mean_paw + alpha_paw * mech_state.paw
+    mean_paw = spirometry.paw_mean if assisted_active else 0.0
+    engine.current_mean_paw = (1 - alpha_paw) * engine.current_mean_paw + alpha_paw * mean_paw
 
     pit_base = engine.hemo.pit_0
     paw_to_mmhg = 0.74
@@ -528,15 +455,16 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     effort_mmhg = engine._last_patient_effort_cmH2O * paw_to_mmhg * effort_transmission
     pit_estimate -= effort_mmhg
 
-    assisted_rr = mech_rr_for_resp if assisted_active else 0.0
-    # Use completed exhaled breaths, including a valid zero-volume breath.
-    # The first measurement becomes available after one complete cycle.
-    assisted_vt_l = mech_state.delivered_vt / 1000.0 if assisted_active else 0.0
-    total_assisted_mv = assisted_rr * assisted_vt_l
+    # Gas exchange uses recent exhaled breaths, so it lags at least one breath.
+    assisted_rr, assisted_vt_l = assisted_ventilation(engine) if assisted_active else (0.0, 0.0)
+    if vent_active:
+        total_peep_effect = vent.settings.peep + spirometry.auto_peep
+    else:
+        total_peep_effect = spirometry.auto_peep if bag_mask_active else 0.0
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
     kwargs = engine.get_resp_step_kwargs(
-        total_assisted_mv=total_assisted_mv,
+        total_assisted_mv=assisted_rr * assisted_vt_l,
         peep=total_peep_effect,
         mean_paw=engine.current_mean_paw,
         mech_rr=assisted_rr,
@@ -545,14 +473,9 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     )
     resp_state = engine.resp.step(dt, **kwargs)
 
-    spont_rr = resp_state.rr
     rr_display, vt_display_ml, total_patient_mv = measured_ventilation(
-        engine, assisted_active, assisted_rr, assisted_vt_l, spont_rr, resp_state.vt / 1000.0
+        engine, assisted_active, resp_state.rr, resp_state.vt / 1000.0
     )
-
-    phase = mech_state.phase
-    if not assisted_active:
-        phase = phase_from_rr(engine, spont_rr)
 
     hemo_state = engine.hemo.step(
         dt,
@@ -580,27 +503,11 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
         sao2=resp_state.sao2,
     )
 
-    engine.vent.step(dt, mech_state, rr_total=assisted_rr)
-
-    paw_display = mech_state.paw
-    flow_display = mech_state.flow
-    volume_display = mech_state.volume
-    if assisted_active and mech_state.phase == "EXP":
-        # Exhaled gas crosses the expiratory limb, so Y-piece pressure falls to PEEP with the flow.
-        paw_display -= CIRCUIT_RESISTANCE * flow_display / 60.0
-    elif not assisted_active:
-        # Spontaneous breathing: the machine sensors see flow only through a
-        # connected circuit, and inspiration draws Y-piece pressure slightly negative.
-        paw_display = flow_display = volume_display = 0.0
-        if connected and not resp_state.apnea and spont_rr > 0 and resp_state.vt > 0:
-            flow_l_s, volume_display = _spontaneous_breath(state.time, spont_rr, resp_state.vt / 1000.0)
-            paw_display = -CIRCUIT_RESISTANCE * flow_l_s
-            flow_display = flow_l_s * 60.0
-
+    # The machine's sensors see only gas that crosses the Y-piece.
+    paw_display, flow_display, volume_display = (vent.paw, vent.flow, vent.volume) if connected else (0.0, 0.0, 0.0)
     return PhysiologyStepState(
         hemo_state=hemo_state,
         resp_state=resp_state,
-        phase=phase,
         pit_estimate=pit_estimate,
         rr_display=rr_display,
         vt_display_ml=vt_display_ml,
@@ -608,31 +515,13 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
         paw_display=paw_display,
         flow_display=flow_display,
         volume_display=volume_display,
-        # Mechanics reports zero pressures without assisted breaths; bagging has no PEEP.
-        paw_peak=mech_state.paw_peak,
-        paw_plat=mech_state.paw_plat,
-        paw_mean=mech_state.paw_mean,
-        peep=engine.resp_mech.set_peep if vent_active else 0.0,
+        paw_peak=spirometry.paw_peak if connected else 0.0,
+        paw_plat=spirometry.paw_plat if assisted_active else math.nan,
+        paw_mean=spirometry.paw_mean if connected else 0.0,
+        peep=spirometry.peep if assisted_active else 0.0,
+        compliance_dyn=spirometry.compliance_dyn if assisted_active else math.nan,
         vent_active=vent_active,
     )
-
-
-def _spontaneous_breath(time_s: float, rr: float, vt_l: float) -> tuple[float, float]:
-    """Return (flow L/s, volume L) for a spontaneous breath.
-
-    Half-sine inspiration over a third of the cycle. Expiratory flow peaks early
-    and decays as t * exp(-t / tau), leaving an end-expiratory pause.
-    """
-    cycle_time = 60.0 / max(rr, 0.1)
-    insp_duration = cycle_time / 3.0
-    t_cycle = time_s % cycle_time
-    if t_cycle < insp_duration:
-        phase = math.pi * t_cycle / insp_duration
-        return 0.5 * vt_l * math.pi / insp_duration * math.sin(phase), 0.5 * vt_l * (1.0 - math.cos(phase))
-    t = t_cycle - insp_duration
-    tau = min(0.4, (cycle_time - insp_duration) / 6.0)
-    decay = math.exp(-t / tau)
-    return -vt_l * t / tau**2 * decay, vt_l * (1.0 + t / tau) * decay
 
 
 def check_cardiac_arrest(engine: "SimulationEngine", dt: float) -> None:

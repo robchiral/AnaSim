@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass, field
 
 from .domain import (
@@ -144,6 +145,21 @@ class Patient:
         if self.sex == "male":
             return (9270.0 * self.weight) / (6680.0 + 216.0 * self.bmi)
         return (9270.0 * self.weight) / (8780.0 + 244.0 * self.bmi)
+
+    def predicted_body_weight(self) -> float:
+        """Devine predicted body weight (kg), which tracks lung size."""
+        return (50.0 if self.sex == "male" else 45.5) + 0.91 * (self.height - 152.4)
+
+    def respiratory_compliance(self) -> float:
+        """Static respiratory-system compliance (L/cmH2O) anesthetized and supine at PEEP 5.
+
+        It grows with lung size and falls exponentially with BMI (Pelosi 1998).
+        Exponents come from VitalDB recordings; the constant gives the recorded
+        plateau compliance once AnaSim's tissue viscoelasticity is included. See
+        docs/REFERENCES.md#ventilator-waveforms.
+        """
+        apparent = 0.0475 * (self.predicted_body_weight() / 60.0) ** 0.62 * math.exp(-0.0277 * (self.bmi - 23.0))
+        return 1.09 * apparent
 
     def estimate_blood_volume(self) -> float:
         """Estimate total blood volume in mL using Nadler's formula."""

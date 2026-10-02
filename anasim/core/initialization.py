@@ -271,8 +271,8 @@ def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, durati
     state.mac = state.p_vrg * 100.0 / pk.mac_age
 
     # Lung balance VA (Fi - FA) = Q λ (FA - Fv), then circuit balance FGF (dial - Fi) = uptake.
-    resp_mech = engine.resp_mech
-    va = resp_mech.set_rr * max(0.0, resp_mech.set_vt - engine.resp.vd_deadspace)
+    settings = engine.vent.settings
+    va = settings.rr * max(0.0, settings.tv / 1000.0 - engine.resp.vd_deadspace)
     uptake = q_co * pk.lambda_b_g * (state.p_alv - state.p_ven)
     fi_agent = state.p_alv + uptake / max(va, 0.1)
     dial_pct = 100.0 * (fi_agent + uptake / max(engine.circuit.fgf_total(), 0.1))

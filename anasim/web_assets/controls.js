@@ -26,6 +26,23 @@ function readNumber(input) {
 
 const round = (value, digits = 2) => Number(value.toFixed(digits));
 
+// Settings each ventilator mode uses, as on a GE Aisys. PSV uses RR and Pinsp
+// for apnea backup breaths and Tinsp as the longest supported breath.
+const ventFields = {
+  "VCV": ["rr", "tv", "ie", "pause", "p_max"],
+  "PCV": ["rr", "p_insp", "ie"],
+  "PCV-VG": ["rr", "tv", "ie", "p_max"],
+  "SIMV-VC": ["rr", "tv", "t_insp", "pause", "p_max", "p_support", "trigger"],
+  "SIMV-PC": ["rr", "p_insp", "t_insp", "p_support", "trigger"],
+  "SIMV-VG": ["rr", "tv", "t_insp", "p_max", "p_support", "trigger"],
+  "PSV": ["p_support", "trigger", "rr", "p_insp", "t_insp"],
+  "CPAP": ["trigger"],
+};
+const ventInputs = {
+  rr: "c-rr", tv: "c-tv", p_insp: "c-pinsp", p_support: "c-psupport", peep: "c-peep",
+  t_insp: "c-tinsp", pause: "c-pause", p_max: "c-pmax", trigger: "c-trigger",
+};
+
 // Presentation order stays fixed while medications are administered.
 const medicationGroups = [
   { name: "Anesthesia and sedation", keys: ["propofol", "midazolam", "ketamine", "etomidate"] },
@@ -133,10 +150,10 @@ export class Controls {
     $("c-bag").onclick = () => this.send("bag_mask", { active: !this.state.bag_mask });
     $("c-vent-power").onclick = () => this.send("vent_power", { on: !this.state.vent.on });
     this.editSettings(
-      ["c-vent-mode", "c-rr", "c-tv", "c-pinsp", "c-peep", "c-ie"].map($),
+      ["c-vent-mode", "c-ie", ...Object.values(ventInputs)].map($),
       () => this.send("vent", {
-        mode: $("c-vent-mode").value, rr: readNumber($("c-rr")), tv: readNumber($("c-tv")),
-        p_insp: readNumber($("c-pinsp")), peep: readNumber($("c-peep")), ie: $("c-ie").value,
+        mode: $("c-vent-mode").value, ie: $("c-ie").value,
+        ...Object.fromEntries(Object.entries(ventInputs).map(([name, id]) => [name, readNumber($(id))])),
       }),
       $("c-vent-mode").closest("fieldset"),
       () => this.applyVentMode($("c-vent-mode").value),
@@ -144,12 +161,12 @@ export class Controls {
   }
 
   applyVentMode(mode) {
-    const volume = mode === "VCV";
-    $("c-tv-label").hidden = !volume;
-    $("c-tv-wrap").hidden = !volume;
-    const pressure = mode === "PCV" || mode === "PSV";
-    $("c-pinsp-label").hidden = !pressure;
-    $("c-pinsp-wrap").hidden = !pressure;
+    const used = ventFields[mode];
+    for (const el of document.querySelectorAll("#c-vent-settings [data-vent]")) {
+      el.hidden = !used.includes(el.dataset.vent);
+    }
+    $("c-rr-label").textContent = mode === "PSV" ? "Backup RR" : "RR";
+    $("c-pinsp-label").textContent = mode === "PSV" ? "Backup Pinsp" : "Pinsp";
   }
 
   // --- Medications --------------------------------------------------
@@ -398,10 +415,7 @@ export class Controls {
     setPressed($("c-vent-power"), vent.on, vent.on ? "Stop ventilator" : "Start ventilator");
     setValue($("c-vent-mode"), vent.mode);
     this.applyVentMode($("c-vent-mode").value);
-    setValue($("c-rr"), vent.rr);
-    setValue($("c-tv"), vent.tv);
-    setValue($("c-pinsp"), vent.p_insp);
-    setValue($("c-peep"), vent.peep);
+    for (const [name, id] of Object.entries(ventInputs)) setValue($(id), vent[name]);
     setValue($("c-ie"), vent.ie);
 
     let running = false;

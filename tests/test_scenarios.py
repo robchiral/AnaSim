@@ -63,14 +63,14 @@ SCENARIO_WALKTHROUGHS = {
     },
     "emergence_tiva": {
         "STOP_AGENTS": lambda e: (e.disable_tci("propofol"), e.disable_tci("remi")),
-        "EXTUBATE": lambda e: e.set_airway_mode("Mask"),
+        "EXTUBATE": lambda e: (e.set_vent_power(False), e.set_airway_mode("Mask")),
     },
     "emergence_balanced": {
         "STOP_AGENTS": lambda e: (
             e.set_vaporizer("Sevoflurane", 0.0),
             e.set_fgf(10.0, 0.0, 0.0),
         ),
-        "EXTUBATE": lambda e: e.set_airway_mode("Mask"),
+        "EXTUBATE": lambda e: (e.set_vent_power(False), e.set_airway_mode("Mask")),
     },
     "oxygen_supply_failure": {
         "DISCONNECT_OXYGEN": lambda e: e.set_oxygen_supply_connected(False),

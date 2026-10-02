@@ -1,4 +1,5 @@
 import copy
+import math
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
@@ -13,7 +14,7 @@ from anasim.core.enums import RhythmType
 from anasim.core.recorder import DataRecorder
 from anasim.core.utils import clamp
 from anasim.machine.circuit import CircleSystem
-from anasim.machine.ventilator import AnesthesiaVentilator
+from anasim.machine.ventilator import MODES, AnesthesiaVentilator
 from anasim.machine.volatile import Vaporizer
 from anasim.monitors.airway import AirwaySensor
 from anasim.monitors.alarms import AlarmSystem
@@ -172,8 +173,6 @@ class SimulationEngine(DrugControllerMixin):
         self.bag_mask_active = False
         self.bag_mask_rr = 12.0  # breaths/min
         self.bag_mask_vt = 0.5  # L
-        self.psv_apnea_backup_delay = 20.0  # s
-        self._psv_apnea_timer = 0.0
 
         self.active_hemorrhage = False
         self.active_anaphylaxis = False
@@ -212,6 +211,7 @@ class SimulationEngine(DrugControllerMixin):
         self._capno_numeric_timeout_s = 15.0
         self._capno_last_phase = "EXP"
         self._capno_has_sample = False
+        self._capno_volume = 0.0  # Lung volume at the last capnograph step (L)
         self._mean_paw_tau_s = 0.25
         self._tol_current = 0.0
         self._pk_hemo_scale_cache = None
@@ -221,7 +221,6 @@ class SimulationEngine(DrugControllerMixin):
         # Separate generators keep each monitor's noise reproducible regardless
         # of how often the others draw.
         self.rng = np.random.default_rng(self.config.rng_seed)
-        self._capno_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._ecg_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._nibp_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._cardiac_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
@@ -247,7 +246,7 @@ class SimulationEngine(DrugControllerMixin):
         self.output_buffer.append(
             WaveformSample(
                 state.time, state.ecg_voltage, state.pleth_voltage, state.capno_co2, state.art_pressure,
-                state.paw, state.flow,
+                state.paw, state.flow, state.volume, self.vent.breath_count,
             )
         )
         cutoff = self.state.time - self._output_window_s
@@ -340,13 +339,13 @@ class SimulationEngine(DrugControllerMixin):
         c50, emax, gamma = NORE_PD_PARAMS[self.config.pk_model_nore]
         self.hemo.set_nore_pd(c50=c50, emax=emax, gamma=gamma)
         self.resp = RespiratoryModel(self.patient)
-        self.resp_mech = RespiratoryMechanics()
+        self.resp_mech = RespiratoryMechanics(compliance=self.patient.respiratory_compliance())
         self._base_airway_resistance = self.resp_mech.resistance
         self.set_vent_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_insp=15.0)
         self.resp.baseline_co_l_min = self.hemo.base_co_l_min
 
         self.bis = BISModel(self.patient, model_name=self.config.bis_model)
-        self.capno = Capnograph(rng=self._capno_rng)
+        self.capno = Capnograph(self.resp.vd_deadspace)
         self.airway_sensor = AirwaySensor()
         self.loc_pd = LOCModel(model_name=self.config.loc_model)
         self.tol_pd = TOLModel()
@@ -698,26 +697,32 @@ class SimulationEngine(DrugControllerMixin):
         self.vent.is_on = bool(on)
 
     def set_vent_settings(self, rr: float, vt: float, peep: float, ie: str,
-                          mode: str, p_insp: float = None, fio2: float = None):
+                          mode: str, p_insp: float = None, fio2: float = None, **extra):
         """Set the ventilator without starting or stopping it.
 
         Args:
-            rr: Rate (breaths/min).
-            vt: Tidal volume (L).
+            rr: Mandatory rate, or the PSV apnea backup rate (breaths/min).
+            vt: Set or targeted tidal volume (L).
             peep: PEEP (cmH2O).
-            ie: I:E ratio such as "1:2".
-            mode: "VCV", "PCV", "PSV", or "CPAP".
-            p_insp: Inspiratory pressure above PEEP (cmH2O), kept but unused in
-                VCV and CPAP.
+            ie: I:E ratio such as "1:2" for VCV, PCV, and PCV-VG.
+            mode: One of anasim.machine.ventilator.MODES.
+            p_insp: Inspiratory pressure above PEEP (cmH2O) for PCV, SIMV-PC,
+                and PSV backup breaths.
             fio2: Target FiO2; rebalances O2 and air flows.
+            extra: p_support, t_insp, pause, p_max, or trigger; see VentSettings.
         """
-        mode_upper = mode.upper()
-        if mode_upper not in ("VCV", "PCV", "PSV", "CPAP"):
-            raise ValueError(f"Unsupported ventilator mode '{mode}'")
-        mech_p_insp = 0.0 if mode_upper == "CPAP" else p_insp
-        self.resp_mech.set_settings(rr, vt, peep, ie, mode=mode, p_insp=mech_p_insp)
-        self.vent.update_settings(rr=rr, tv=vt*1000, peep=peep, ie=ie,
-                                  mode=mode, p_insp=p_insp, fio2=fio2)
+        if not isinstance(mode, str) or mode.upper() not in MODES:
+            raise ValueError(f"Unsupported ventilator mode {mode!r}; choose one of: {', '.join(MODES)}")
+        if not math.isfinite(rr) or rr < 0.0:
+            raise ValueError("ventilator rate must be finite and not negative")
+        limits = {"t_insp": (0.2, 5.0), "trigger": (0.2, 20.0), "p_support": (0.0, 60.0), "pause": (0.0, 60.0)}
+        for name, (low, high) in limits.items():
+            if name in extra and not low <= extra[name] <= high:
+                raise ValueError(f"{name} must be between {low:g} and {high:g}")
+        if extra.get("p_max", self.vent.settings.p_max) <= peep:
+            raise ValueError("Pmax must exceed PEEP")
+        self.vent.update_settings(rr=rr, tv=vt * 1000, peep=peep, ie=ie, mode=mode, p_insp=p_insp, fio2=fio2,
+                                  **extra)
 
         if fio2 is not None:
             self._apply_fio2_blender(fio2)

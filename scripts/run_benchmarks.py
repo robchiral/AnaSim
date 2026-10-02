@@ -96,6 +96,7 @@ def build_step(name):
     from anasim.core.engine import SimulationEngine
     from anasim.core.enums import RhythmType
     from anasim.core.state import SimulationConfig
+    from anasim.machine.ventilator import AnesthesiaVentilator
     from anasim.patient.patient import Patient
     from anasim.patient.pk_models import NorepinephrinePK, PropofolPKEleveld
     from anasim.physiology.hemodynamics import HemodynamicModel
@@ -152,12 +153,13 @@ def build_step(name):
         model = (RespiratoryMechanics(compliance=0.04, resistance=15.0)
                  if case == 'autopeep' else RespiratoryMechanics())
         settings = {
-            'vcv': dict(rr=12.0, vt=0.5, peep=5.0, ie='1:2', mode='VCV'),
-            'pcv': dict(rr=12.0, vt=0.5, peep=5.0, ie='1:2', mode='PCV', p_insp=15.0),
-            'autopeep': dict(rr=30.0, vt=0.45, peep=8.0, ie='1:1', mode='VCV'),
+            'vcv': dict(rr=12.0, tv=500.0, peep=5.0, ie='1:2', mode='VCV'),
+            'pcv': dict(rr=12.0, tv=500.0, peep=5.0, ie='1:2', mode='PCV', p_insp=15.0),
+            'autopeep': dict(rr=30.0, tv=450.0, peep=8.0, ie='1:1', mode='VCV'),
         }
-        model.set_settings(**settings[case])
-        return lambda i: model.step(0.05)
+        vent = AnesthesiaVentilator()
+        vent.update_settings(**settings[case])
+        return lambda i: vent.step(0.05, model, "vent")
 
     if group == 'pk':
         if case == 'propofol_eleveld':
@@ -171,6 +173,7 @@ def build_step(name):
         hemo = HemodynamicModel(patient)
         resp = RespiratoryModel(patient)
         mech = RespiratoryMechanics()
+        vent = AnesthesiaVentilator()
         pk = PropofolPKEleveld(patient)
         sepsis = case == 'sepsis'
         if sepsis:
@@ -186,7 +189,7 @@ def build_step(name):
             hemo_state = hemo.step(1.0, pk_state.c1, remi[index], nore[index], -2.0, **gas)
             resp.step(1.0, pk_state.ce, remi[index], mac_sevo=0.5 if sepsis else 0.0,
                       cardiac_output=hemo_state.co)
-            mech.step(0.05)
+            vent.step(0.05, mech, "vent")
         return step
 
     engine = SimulationEngine(patient, SimulationConfig(mode=case, rng_seed=123, dt=0.1))

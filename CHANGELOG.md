@@ -2,35 +2,30 @@
 
 ## Unreleased
 
-- Added fentanyl (with TCI), midazolam, etomidate, ketamine, esmolol,
-  labetalol, and glycopyrrolate. Each drug card shows the controls that drug
-  supports.
-- Fentanyl and midazolam add to the propofol and remifentanil effects on BIS,
-  consciousness, laryngoscopy tolerance, and ventilation. Etomidate causes
-  little hypotension or ventilatory depression. Ketamine raises HR and blood
-  pressure and preserves ventilation and airway tone.
-- Esmolol and labetalol reduce reflex, stimulation, and hemorrhage
-  tachycardia, and esmolol slows the ventricular rate in AF. Higher
-  catecholamine doses overcome the block. Glycopyrrolate prevents vagal
-  bradycardia.
-- Preoxygenation, paralysis, and extubation objectives check lung O₂ wash-in,
-  TOF, spontaneous VT, and SpO₂.
-- Epinephrine relieves bronchospasm. Mask CPAP and positive-pressure breaths
-  relieve pharyngeal collapse. Blood loss shortens the time before desaturation
-  during apnea.
-- AF lowers CO and MAP, and its pulses vary beat to beat. Displayed HR
-  averages recent beats. ECG wave durations are fixed, QT varies with the
-  preceding R-R interval, and ventricular tachycardia has wide QRS complexes.
-- When a rhythm fixes the ventricular rate, the baroreflex adjusts vascular
-  resistance.
-- Added airway pressure and flow traces, ventilator measurements, and inspired
-  and end-tidal gas values. End-tidal values clear when exhaled breath detection
-  stops. CSV recordings include the new measurements.
-- Added a VCV inspiratory pause and revised bag-mask and ventilator waveforms.
-- Added alarms for high airway pressure, low minute ventilation while the
-  ventilator is on (including disconnection), and low inspired O₂.
-- Corrected displayed VT and MV to use exhaled volumes. Mask leak reduces
-  both; bronchospasm reduces alveolar ventilation without reducing displayed MV.
+- Added fentanyl with TCI, midazolam, etomidate, ketamine, esmolol, labetalol,
+  and glycopyrrolate, including combined anesthetic and autonomic effects.
+- Updated preoxygenation, paralysis, and extubation objectives. Emergence now
+  requires stopping the ventilator at extubation.
+- Added epinephrine relief of bronchospasm, positive-pressure relief of
+  pharyngeal collapse, and reduced oxygen reserve after blood loss.
+- Revised AF hemodynamics, ECG timing, and displayed HR. The baroreflex adjusts
+  vascular resistance when a rhythm fixes the ventricular rate.
+- Added PCV-VG and SIMV, patient triggering and flow cycling, and adjustable
+  VCV pause and pressure limits.
+- Added tissue viscoelasticity, compliance scaling by body size, and muscle
+  pressure for spontaneous and assisted breaths. Patient efforts can produce
+  curare clefts in the capnogram.
+- Added airway traces, ventilator measurements and loops, inspired and
+  end-tidal gas values, and corresponding CSV fields. End-tidal values clear
+  when exhaled breath detection stops.
+- Added alarms for high airway pressure, low minute ventilation, low delivered
+  tidal volume, and low inspired O₂.
+- Corrected exhaled volume measurements, mask leak, and tracheal-tube
+  obstruction. Bronchospasm reduces alveolar ventilation without reducing
+  displayed MV.
+- Separated `RespiratoryMechanics` from `AnesthesiaVentilator`.
+  `set_vent_settings` accepts the new modes and settings; PSV's apnea delay is
+  now `vent.apnea_backup_s`.
 
 ## 1.3 - 2026-09-30
 

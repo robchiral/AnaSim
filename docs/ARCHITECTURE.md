@@ -14,7 +14,7 @@ their outputs into `SimulationState`.
 | Ideal arterial pulse | `sbp`, `dbp` | Systolic and diastolic pressures derived from Su MAP and stroke volume |
 | Arterial catheter | `art_pressure`, `art_sbp`, `art_dbp`, `art_map` | Instantaneous and completed-beat pressures after catheter filtering |
 | Other monitors | `nibp_sys`, `nibp_dia`, `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Values shown to the learner |
-| Ventilator | `paw_peak`, `paw_plat`, `paw_mean`, `peep`, `et_o2` | Pressures from the last completed breath and end-tidal O2 |
+| Ventilator | `paw_peak`, `paw_plat`, `paw_mean`, `peep`, `compliance_dyn`, `et_o2` | Breath pressures, dynamic compliance, and end-tidal O2 |
 
 - Monitors read model outputs without changing them.
 - NIBP measures `sbp`, `dbp`, and `map`.
@@ -22,8 +22,8 @@ their outputs into `SimulationState`.
   enabled and `nibp_*` otherwise.
 - The recorder writes both physiology and monitor values.
 - `engine.output_buffer` holds 20 seconds of per-step `WaveformSample` records
-  (ECG, pleth, capnogram, arterial pressure, airway pressure, flow) for the
-  monitor sweep.
+  (ECG, pleth, capnogram, arterial pressure, airway pressure, flow, volume, and
+  breath count) for the monitor sweep and loops.
 - Public numeric fields are built-in `float` values.
 
 ## Main modules
@@ -44,9 +44,9 @@ SimulationEngine.step()
  2. Disturbances and clinical events
  3. PK scaling to blood volume and CO; resynchronize active TCI
  4. TCI infusion rates
- 5. Machine: ventilator, bag-mask, vaporizer, circuit
+ 5. Machine: vaporizer, circuit
  6. PK: plasma and effect-site concentrations, TOF, volatile uptake
- 7. Physiology: respiratory mechanics, gas exchange, hemodynamics
+ 7. Physiology: ventilator or bag with lung mechanics, gas exchange, hemodynamics
  8. Copy outputs into SimulationState
  9. Monitors: cardiac cycle, arterial pulse and line, ECG, pleth, NIBP,
     capnography, alarms
@@ -107,19 +107,26 @@ end-tidal CO2 are separate; low cardiac output widens the PaCO2-EtCO2 gap.
 
 ### Ventilation mechanics
 
-The lung is a single resistance-compliance compartment. VCV delivers constant
-flow followed by an inspiratory pause. Pressure modes and passive expiration
-use the exact exponential solution, with steps split at breath phases.
-Trapped volume determines auto-PEEP.
+[`RespiratoryMechanics`](../anasim/physiology/resp_mech.py) models airway
+resistance, compliance, tissue viscoelasticity, and inspiratory muscle
+pressure. Compliance scales with predicted body weight and BMI. Integration
+steps split at breath transitions and pressure limits.
 
-Gas exchange uses the last completed exhaled tidal volume, so it lags one
-breath. Displayed VT is exhaled volume, and MV is RR × VT. Upper-airway
-obstruction reduces VT through mask leak. Bronchospasm reduces alveolar
-ventilation without reducing displayed VT.
+[`AnesthesiaVentilator`](../anasim/machine/ventilator.py) controls VCV, PCV,
+PCV-VG, SIMV, PSV with apnea backup, and CPAP. VCV has an adjustable pause
+and pressure limit. PCV-VG adjusts pressure to meet the target volume;
+SIMV, PSV, and CPAP support patient triggering and flow cycling.
 
-PSV and CPAP have no patient triggering or flow cycling, and VCV has no
-pressure limit. `set_vent_power` starts and stops the ventilator;
-`set_vent_settings` changes its settings without starting it.
+Settings take effect at the next breath. `set_vent_power` starts and stops
+the ventilator; `set_vent_settings` changes settings without starting it.
+PSV's apnea delay is `vent.apnea_backup_s`.
+
+Spirometry includes ventilated, bagged, and unassisted breaths. VTe is the
+last exhaled volume; RR and MV average four breaths and read zero after
+15 seconds without a breath. Gas exchange uses the same completed-breath
+averages. Upper-airway obstruction causes mask leak or, with a tracheal tube,
+increased resistance. Bronchospasm reduces alveolar ventilation without
+reducing displayed VT.
 
 ### Monitors
 
@@ -133,16 +140,18 @@ BIS adds sevoflurane to the selected propofol-remifentanil model, then applies
 smoothing and processing delay. Poor perfusion delays SpO2 readings and reduces
 pleth amplitude. SpO2 requires an organized rhythm and adequate perfusion.
 
-The gas monitor displays end-tidal age-adjusted MAC (`et_mac`); brain MAC
-(`mac`) determines drug effects. End-tidal values clear 15 seconds after the
-last valid exhaled CO2 sample.
+The capnograph models exhaled gas passing through airway dead space and the
+analyzer. Inspiratory efforts can produce curare clefts. The gas monitor shows
+end-tidal age-adjusted MAC (`et_mac`); brain MAC (`mac`) determines drug effects.
+End-tidal values clear 15 seconds after the last valid exhaled CO2 sample.
 
-Airway pressure and flow traces include sensor filtering. Ventilator
-measurements use completed breaths, with plateau pressure measured during
-the inspiratory pause. Displayed PEEP is airway pressure. Incomplete expiration
-causes auto-PEEP, raises plateau pressure, and leaves residual expiratory flow
-when the next breath starts. Alarms detect high airway pressure, low minute ventilation,
-and low inspired O2. See the [waveform references](REFERENCES.md#ventilator-waveforms).
+Airway traces include sensor filtering. Plateau pressure requires a mandatory
+breath with no flow at end-inspiration; VCV without a pause leaves it blank.
+Displayed PEEP is airway pressure, while auto-PEEP affects plateau pressure
+and residual expiratory flow. The monitor also shows dynamic compliance and
+pressure-volume and flow-volume loops. Alarms detect high pressure, low minute
+ventilation, low delivered tidal volume, and low inspired O2. See the
+[waveform references](REFERENCES.md#ventilator-waveforms).
 
 ### PK and TCI
 

@@ -1,173 +1,115 @@
+"""Sidestream capnography at the Y-piece."""
+
 import math
-from dataclasses import dataclass
-
-import numpy as np
-
-from anasim.core.utils import clamp
-
-
-@dataclass
-class CapnoState:
-    co2: float = 0.0  # mmHg
-    phase: int = 4  # 1 dead space, 2 upstroke, 3 plateau, 4 inspiration
-
-
-@dataclass
-class CapnoContext:
-    """Timing and cleft parameters for the next breath."""
-
-    exp_duration: float
-    is_spontaneous: bool
-    curare_active: bool
-    effort_scale: float
-    spontaneous_weight: float
-    effective_rr: float
+from collections import deque
 
 
 class Capnograph:
-    """Capnogram waveform from alveolar CO2 and breath timing."""
+    """CO2 at the Y-piece from the gas that crosses it, then the analyzer response.
 
-    def __init__(self, rng: np.random.Generator = None):
-        self.state = CapnoState()
-        self.last_phase = "EXP"
-        self.time_in_phase = 0.0
-        self.rng = rng if rng is not None else np.random.default_rng()
-        self.val_at_change = 0.0
-        self.deadspace_fraction = 0.15  # Phase I share of expiration
+    Exhaled gas leaves the series dead space (airways, tube, and connectors) as a
+    plug: first the gas inspired last, then alveolar gas whose CO2 rises along
+    phase III. Parallel airway paths of unequal volume spread the transition
+    (phase II), centred on the dead space as Fowler's method defines it. Any
+    inspiration, including a patient effort between machine breaths, draws fresh
+    gas past the sampling port.
+    """
+
+    # Fitted to Dräger Primus recordings; see docs/REFERENCES.md#ventilator-waveforms.
+    ANALYZER_TAU = 0.12  # s, each of two first-order stages
+    PHASE_II_VOLUME = 0.10  # L, spread of path dead spaces
+    PHASE_III_SLOPE = 20.0  # mmHg/L
+
+    def __init__(self, dead_space_l: float):
+        self.dead_space = dead_space_l
+        self.reset()
 
     def reset(self) -> None:
-        """Discard the waveform history when exhaled gas is unavailable."""
-        self.state.co2 = 0.0
-        self.state.phase = 1
-        self.last_phase = "EXP"
-        self.time_in_phase = 0.0
-        self.val_at_change = 0.0
+        """Discard the airway gas and analyzer history when exhaled gas is unavailable."""
+        # (volume L, PCO2 mmHg) slugs from the Y-piece inward; the column is
+        # shorter than the dead space by half the phase II spread.
+        self._column = deque([[max(1e-3, self.dead_space - 0.5 * self.PHASE_II_VOLUME), 0.0]])
+        self._window = deque()  # Recently exhaled gas, Y-piece end first
+        self._window_volume = self._window_co2 = 0.0  # L and L x mmHg
+        self._exhaled_alveolar = 0.0
+        self._last_alveolar = None  # Alveolar volume of the last exhalation; none yet
+        self._inhaled = 0.0
+        self._stages = [0.0, 0.0]
+        self.co2 = 0.0
+        self.exhaling = False
+
+    def step(self, dt: float, volume_change: float, end_tidal: float, obstruction: float = 0.0) -> float:
+        """Advance by dt with net lung volume change volume_change (L); return displayed PCO2.
+
+        end_tidal is the end-tidal PCO2 the alveolar gas reaches at the end of a
+        breath like the last one. Obstruction (0-1) steepens phase III.
+        """
+        exhaled = -volume_change
+        self.exhaling = exhaled > 0.0
+        if exhaled > 0.0:
+            if self._inhaled > self.dead_space:
+                # Fresh gas reached the alveoli, so this is a new exhalation.
+                self._last_alveolar = self._exhaled_alveolar
+                self._exhaled_alveolar = 0.0
+            self._inhaled = 0.0
+            slope = self.PHASE_III_SLOPE * (1.0 + 3.0 * obstruction)
+            # Gas reaching the sampling port left the alveoli, on average, one dead
+            # space of exhalation earlier, so the sample reaches end_tidal at the
+            # end of an exhalation as long as the last. The first has no slope.
+            leaving = self._exhaled_alveolar + 0.5 * exhaled
+            if self._last_alveolar is None:
+                pco2 = end_tidal
+            else:
+                pco2 = max(0.0, end_tidal + slope * (leaving - self._last_alveolar + self.dead_space))
+            self._exhaled_alveolar += exhaled
+            self._push(self._column, exhaled, pco2, right=True)
+            for volume, slug_co2 in self._take(self._column, exhaled, left=True):
+                self._push(self._window, volume, slug_co2, right=True)
+                self._window_volume += volume
+                self._window_co2 += volume * slug_co2
+            excess = self._window_volume - self.PHASE_II_VOLUME
+            if excess > 0.0:
+                for volume, slug_co2 in self._take(self._window, excess, left=True):
+                    self._window_volume -= volume
+                    self._window_co2 -= volume * slug_co2
+            sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
+        elif exhaled < 0.0:
+            inhaled = -exhaled
+            self._inhaled += inhaled
+            # Gas moves into the alveoli and fresh gas refills the column from the Y-piece.
+            moved = sum(part for part, _ in self._take(self._column, inhaled, left=False))
+            self._push(self._column, moved, 0.0, right=False)
+            self._window.clear()
+            self._window_volume = self._window_co2 = 0.0
+            sample = 0.0
+        else:
+            sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else self._stages[0]
+        alpha = -math.expm1(-dt / self.ANALYZER_TAU)
+        self._stages[0] += alpha * (sample - self._stages[0])
+        self._stages[1] += alpha * (self._stages[0] - self._stages[1])
+        self.co2 = self._stages[1]
+        return self.co2
 
     @staticmethod
-    def build_context(resp_state, vent_rr: float, insp_fraction: float, vent_active: bool) -> CapnoContext:
-        """Choose breath timing and whether a curare cleft appears."""
-        insp_fraction = clamp(insp_fraction, 0.05, 0.8)
-        if vent_active and vent_rr > 0.1:
-            drive = max(0.0, resp_state.drive_central)
-            muscle = max(0.0, resp_state.muscle_factor)
-            spont_rr = max(0.0, resp_state.rr)
-            delta_rr = max(0.0, spont_rr - vent_rr)
-            effort_signal = drive * muscle
-
-            # Curare cleft: returning drive with partial block, so the patient
-            # makes efforts against controlled breaths.
-            curare_active = (
-                drive > 0.3 and
-                0.1 < muscle < 0.9 and
-                (effort_signal > 0.15 or delta_rr > 2.0)
-            )
-            effort_scale = 0.0
-            if curare_active:
-                effort_scale = min(3.0,
-                                   0.2 * delta_rr +
-                                   1.5 * effort_signal +
-                                   0.3 * (drive - 0.3))
-
-            # Blend controlled and spontaneous timing as the patient takes over.
-            rr_ratio = 0.0
-            if vent_rr > 0.1:
-                rr_ratio = max(0.0, (spont_rr - vent_rr) / max(vent_rr, 1.0))
-            rr_weight = clamp(rr_ratio / 0.5, 0.0, 1.0)
-            effort_weight = clamp((effort_signal - 0.2) / 0.6, 0.0, 1.0)
-            spontaneous_weight = clamp(0.6 * rr_weight + 0.4 * effort_weight, 0.0, 1.0)
-
-            effective_rr = (1.0 - spontaneous_weight) * vent_rr + spontaneous_weight * spont_rr
-            exp_fraction = (1.0 - spontaneous_weight) * max(0.1, 1.0 - insp_fraction) + spontaneous_weight * 0.65
-            cycle_time = 60.0 / max(effective_rr, 0.1)
-            exp_duration = cycle_time * exp_fraction
-
-            is_spontaneous = spontaneous_weight >= 0.6
-            if spontaneous_weight >= 0.5:
-                curare_active = False
-                effort_scale = 0.0
-
-            return CapnoContext(exp_duration, is_spontaneous, curare_active, effort_scale, spontaneous_weight, effective_rr)
+    def _push(column: deque, volume: float, pco2: float, right: bool) -> None:
+        end = column[-1] if right and column else column[0] if column else None
+        if end is not None and abs(end[1] - pco2) < 0.05:
+            end[0] += volume
+        elif right:
+            column.append([volume, pco2])
         else:
-            spont_rr = resp_state.rr
-            if spont_rr <= 0.5:
-                spont_rr = 12.0
-            cycle_time = 60.0 / spont_rr
-            exp_duration = cycle_time * 0.65
-            return CapnoContext(exp_duration, True, False, 0.0, 1.0, spont_rr)
+            column.appendleft([volume, pco2])
 
-    def step(self, dt: float, phase: str, p_alv: float, is_spontaneous: bool = False, curare_cleft: bool = False,
-             exp_duration: float = 3.0, effort_scale: float = 1.0, airway_obstruction: float = 0.0) -> float:
-        """Return instantaneous CO2 (mmHg).
-
-        Args:
-            phase: "INSP" or "EXP" from the mechanics.
-            p_alv: Alveolar PCO2 (mmHg).
-            is_spontaneous: Spontaneous breathing adds plateau noise.
-            curare_cleft: Draw a cleft in a controlled-breath plateau.
-            exp_duration: Expiratory time (s).
-            effort_scale: Cleft depth multiplier.
-            airway_obstruction: 0-1; slows the upstroke into a shark fin.
-        """
-        if phase != self.last_phase:
-            self.val_at_change = self.state.co2
-            self.time_in_phase = 0.0
-            self.last_phase = phase
-        else:
-            self.time_in_phase += dt
-
-        co2 = 0.0
-
-        if phase == "INSP":
-            self.state.phase = 4
-            k = 10.0
-            co2 = self.val_at_change * math.exp(-k * self.time_in_phase)
-        else:
-            base_tau = 0.08
-            base_slope = 0.1
-            tau = base_tau * (1 + 4 * airway_obstruction)
-            slope_scale = 2.0 / max(exp_duration, 0.5)
-            plateau_slope = base_slope * slope_scale * (1 + 5 * airway_obstruction)
-            deadspace_time = self.deadspace_fraction * exp_duration
-            if deadspace_time < 0.05:
-                deadspace_time = 0.05
-
-            if self.time_in_phase < deadspace_time:
-                self.state.phase = 1
-                co2 = 0.0
-            else:
-                t_exp = self.time_in_phase - deadspace_time
-                rise_component = 1.0 - math.exp(-t_exp / tau)
-                slope_component = plateau_slope * t_exp
-                co2 = (p_alv * rise_component) + (slope_component * rise_component)
-
-                if is_spontaneous:
-                    noise = self.rng.normal(0, 0.2) * rise_component
-                    co2 += noise
-
-                # Curare cleft in the mid-to-late plateau (Bissinger 1993).
-                if curare_cleft and not is_spontaneous:
-                    exp_effective = max(0.2, exp_duration - deadspace_time)
-                    rel_cleft = exp_effective * (0.55 + 0.1 * min(1.0, effort_scale / 2.0))
-                    t_cleft = min(exp_effective * 0.85, max(exp_effective * 0.30, rel_cleft))
-                    depth = min(p_alv * 0.6, 4.0 + 8.0 * effort_scale)
-                    width = max(0.08, 0.12 * (exp_effective / 2.0))
-                    dist = abs(t_exp - t_cleft)
-                    if dist < 0.5:
-                        dynamic_depth = min(p_alv * 0.7, depth + 12.0 * effort_scale)
-                        dip = dynamic_depth * math.exp(-(dist**2) / (2 * width**2))
-                        co2 -= dip
-
-                plateau_cap = p_alv + 5.0 + 10.0 * airway_obstruction
-                co2 = min(co2, plateau_cap)
-                if co2 < 0:
-                    co2 = 0
-                if rise_component < 0.95:
-                    self.state.phase = 2
-                else:
-                    self.state.phase = 3
-
-        if co2 < 0:
-            co2 = 0
-
-        self.state.co2 = co2
-        return co2
+    @staticmethod
+    def _take(column: deque, volume: float, left: bool) -> list:
+        """Remove volume from one end and return the removed slugs in order."""
+        taken = []
+        while volume > 1e-12 and column:
+            slug = column[0] if left else column[-1]
+            part = min(volume, slug[0])
+            taken.append((part, slug[1]))
+            slug[0] -= part
+            volume -= part
+            if slug[0] <= 1e-12:
+                column.popleft() if left else column.pop()
+        return taken

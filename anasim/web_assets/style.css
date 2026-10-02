@@ -263,7 +263,8 @@ fieldset:disabled { opacity: 0.5; }
 .io-head output { font-size: 18px; color: var(--text-secondary); }
 .io-detail { text-align: right; color: var(--text-secondary); font-size: 11px; white-space: pre; }
 
-/* Ventilator and gas monitor values under the Paw and flow traces. */
+/* Ventilator and gas monitor values under the Paw and flow traces. In
+   narrower windows the gas monitor wraps to its own row. */
 .vent-bar {
   display: flex;
   flex-wrap: wrap;
@@ -271,9 +272,10 @@ fieldset:disabled { opacity: 0.5; }
   background: var(--panel);
   border-top: 1px solid var(--border);
 }
-/* Compact enough to stay on one row down to an 1110 px window. */
-.vent-bar .numeric { flex: 1 1 auto; padding: 4px 8px 5px; border-bottom: none; }
-.vent-bar .numeric-head { gap: 4px; }
+.vent-group { display: flex; flex: 1 1 auto; }
+.vent-group + .vent-group { border-left: 1px solid var(--border); }
+.vent-bar .numeric { flex: 1 1 auto; padding: 4px 6px 5px; border-bottom: none; }
+.vent-bar .numeric-head { gap: 3px; }
 .vent-bar .numeric.group-start { border-left: 1px solid var(--border); }
 .vent-bar .numeric output { font-size: clamp(16px, 1.5vw, 22px); }
 
@@ -317,11 +319,17 @@ fieldset:disabled { opacity: 0.5; }
 .group-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .grid2 { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; align-items: center; }
 .grid4 { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px 10px; align-items: center; }
+.grid4 .span3 { grid-column: span 3; }
 .inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .button-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
 .fio2 { font-size: 16px; font-weight: 700; color: var(--text); }
 .fio2.warn { color: var(--warning); }
 .fio2.bad { color: var(--danger); }
+
+.loops { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.loops figure { margin: 0; display: grid; gap: 2px; }
+.loops canvas { width: 100%; aspect-ratio: 4 / 3; background: var(--bg); display: block; }
+.loops figcaption { color: var(--text-dim); font-size: 10px; text-align: center; }
 
 .medication-search { display: flex; gap: 6px; }
 .medication-search input { flex: 1; width: 100%; }
@@ -407,7 +415,8 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
   .numeric-row { grid-template-columns: 1fr 1fr; }
   .panel-io { padding: 6px 4px; }
   .vent-bar .numeric { padding: 4px 6px; }
-  .vent-bar .numeric.group-start { border-left: none; }
+  .vent-bar .numeric.group-start, .vent-group + .vent-group { border-left: none; }
+  .vent-group { flex-wrap: wrap; }
   .io-detail { white-space: normal; }
   .grid4 { grid-template-columns: auto minmax(0, 1fr); }
   .clock output { font-size: 16px; }

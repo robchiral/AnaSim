@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, NamedTuple, Optional
@@ -75,6 +76,8 @@ class WaveformSample(NamedTuple):
     art_pressure: float
     paw: float
     flow: float
+    volume: float
+    breath: int  # Count of completed breaths, so loops can split at breath boundaries
 
 
 class AirwayType(Enum):
@@ -160,13 +163,15 @@ class SimulationState:
     pit: float = -2.0
     flow: float = 0.0
     volume: float = 0.0
-    # Last completed breath at the airway (cmH2O). Pplat is static end-inspiratory
-    # pressure; PEEP is end-expiratory airway pressure, so auto-PEEP shows only
-    # in Pplat and the flow trace.
+    # Last completed breath at the airway (cmH2O). Pplat is end-inspiratory
+    # pressure without flow, NaN when the last mandatory breath had none; PEEP
+    # is end-expiratory airway pressure, so auto-PEEP shows only in Pplat and
+    # the flow trace. Dynamic compliance is VTe / (Ppeak - PEEP), mL/cmH2O.
     paw_peak: float = 0.0
     paw_plat: float = 0.0
     paw_mean: float = 0.0
     peep: float = 0.0
+    compliance_dyn: float = math.nan
 
     # spo2 is the pulse oximeter reading; sao2 is arterial saturation.
     spo2: float = 99.0

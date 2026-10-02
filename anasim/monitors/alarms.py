@@ -7,12 +7,14 @@ DEFAULT_THRESHOLDS = {
     # Ventilator and gas monitor: cmH2O, L/min, and %.
     "Ppeak_max": 40,
     "MV_min": 2.0,
+    "VTe_min": 90,  # % of the set VT in volume-targeted modes
     "FiO2_min": 21,
 }
 
 # Seconds a limit must stay violated before the alarm sounds. The MV delay
-# covers the first breath after the ventilator starts.
-DEFAULT_DELAYS = {"BIS": 0, "MAP": 0, "HR": 0, "SpO2": 5, "EtCO2": 0, "Ppeak": 0, "MV": 15, "FiO2": 0}
+# covers the first breath after the ventilator starts; the VTe delay spans
+# a few breaths.
+DEFAULT_DELAYS = {"BIS": 0, "MAP": 0, "HR": 0, "SpO2": 5, "EtCO2": 0, "Ppeak": 0, "MV": 15, "VTe": 10, "FiO2": 0}
 
 
 class AlarmSystem:

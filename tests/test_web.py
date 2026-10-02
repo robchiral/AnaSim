@@ -85,11 +85,14 @@ def test_ventilator_settings_survive_bag_mask_handover():
     snap = parse(session.advance(0.0))
     assert snap["controls"]["vent"]["on"]
 
-    cmd(session, "vent", mode="PCV", p_insp=18, peep=8)
+    cmd(session, "vent", mode="PCV", p_insp=18, peep=8, p_max=35, trigger=2.5)
     cmd(session, "bag_mask", active=True)
     vent = parse(session.advance(0.0))["controls"]["vent"]
     assert not vent["on"]
-    assert (vent["mode"], vent["p_insp"], vent["peep"]) == ("PCV", 18, 8)
+    assert (vent["mode"], vent["p_insp"], vent["peep"], vent["p_max"], vent["trigger"]) == ("PCV", 18, 8, 35, 2.5)
+    for bad in ({"mode": "SIMV"}, {"p_max": 8}, {"t_insp": 0}):
+        with pytest.raises(ValueError):
+            cmd(session, "vent", **bad)
 
     cmd(session, "vent_power", on=True)
     cmd(session, "run", running=True)
@@ -108,16 +111,22 @@ def test_ventilator_display_and_disconnection_alarm():
     v = snaps[-1]["vitals"]
     assert all(len(samples) == len(snap["waves"]["ecg"]) for snap in snaps for samples in snap["waves"].values())
 
-    # VCV: static compliance VTe / (Pplat - PEEP), constant inspiratory flow
-    # until the pause, and a Paw trace from PEEP to Ppeak.
+    # VCV: constant inspiratory flow until the pause and a Paw trace from PEEP to
+    # Ppeak. Tissue stress has not fully relaxed by the end of a short pause, so
+    # Pplat sits above static recoil.
     paw = [p for snap in snaps[-10:] for p in snap["waves"]["paw"]]
     flow = [f for snap in snaps[-10:] for f in snap["waves"]["flow"]]
     assert v["peep"] == 5 and v["ppeak"] > v["pplat"] > v["pmean"] > v["peep"]
-    assert v["pplat"] - v["peep"] == pytest.approx(v["vte"] / (engine.resp_mech.compliance * 1000), abs=0.2)
+    assert v["pplat"] - v["peep"] > v["vte"] / (engine.resp_mech.compliance * 1000)
+    assert v["cdyn"] == pytest.approx(v["vte"] / (v["ppeak"] - v["peep"]), abs=1)
     assert v["mv"] == pytest.approx(v["vte"] * v["rr"] / 1000, rel=0.01)
     assert (min(paw), max(paw)) == pytest.approx((v["peep"], v["ppeak"]), abs=0.5)
-    flow_time = 60 / v["rr"] / 3 * (1 - engine.resp_mech.insp_pause_fraction)
+    flow_time = 60 / v["rr"] / 3 * (1 - engine.vent.settings.pause / 100)
     assert max(flow) == pytest.approx(v["vte"] / 1000 / flow_time * 60, abs=0.2)
+    # Each completed breath sends a pressure-volume and flow-volume loop.
+    loop = next(snap["loop"] for snap in reversed(snaps) if snap["loop"])
+    assert loop["volume"][0] == 0 and max(loop["volume"]) == pytest.approx(v["vte"], rel=0.05)
+    assert max(loop["paw"]) == pytest.approx(v["ppeak"], abs=0.5)
     # Oxygen uptake keeps end-tidal below inspired O2.
     assert 70 < v["eto2"] < v["fio2"] - 3
     assert snaps[-1]["alarms"] == {}

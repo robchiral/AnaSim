@@ -14,6 +14,8 @@ expected response ranges.
 | Vasoactive drug effects | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) models concentration-response curves for epinephrine, phenylephrine, vasopressin, dobutamine, and milrinone. Published data set response direction and approximate size; AnaSim calibrates combined effects. Epinephrine fits arterial infusion (Freyschuss 1986) and IV bolus (Takahashi 2002) data. [Epinephrine](../tests/test_epinephrine.py) and [hemodynamic](../tests/test_hemodynamics.py) tests. |
 | Fentanyl, midazolam, etomidate, and ketamine | [`anesthesia.py`](../anasim/patient/pd/anesthesia.py) converts fentanyl to remifentanil equivalents using isoflurane MAC reduction (McEwan 1993; Lang 1996). Etomidate (Kaneda 2011) and midazolam (Albrecht 1999) become propofol equivalents at equal loss-of-response concentrations, with midazolam-propofol synergy from Short 1992. AnaSim calibrates etomidate's ventilatory effect (Valk 2021), the maximum midazolam equivalent, and ketamine's laryngoscopy potency and sympathetic response (Idvall 1979). [Adjunct tests](../tests/test_anesthetic_adjuncts.py). |
 | Adrenergic and muscarinic blockade | [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) uses antagonist potencies from Sum 1983 (esmolol), Abernethy 1987 and Hafsa 2022 (labetalol), and Ali-Melkkilä 1993 (glycopyrrolate). AnaSim calibrates sympathetic and vagal contributions to resting tone and reflexes. Unlike the BP recovery within 30 minutes reported by Abernethy, part of AnaSim's labetalol BP reduction persists during beta blockade because the sinus-rhythm baroreflex adjusts only HR. [Autonomic drug tests](../tests/test_autonomic_drugs.py). |
+| Lung mechanics and ventilator | [`RespiratoryMechanics`](../anasim/physiology/resp_mech.py) uses published viscoelastic parameters, compliance fitted to VitalDB data, and a simplified inspiratory muscle-pressure profile. [`AnesthesiaVentilator`](../anasim/machine/ventilator.py) uses GE Aisys CS2 modes and ranges, with defaults informed by Primus recordings and device conventions. See [waveform sources and limits](#ventilator-waveforms) and [ventilator tests](../tests/test_ventilator.py). |
+| Capnography | [`Capnograph`](../anasim/monitors/capno.py) follows exhaled gas through the series dead space (Fowler 1948), with analyzer response, phase II spread, and phase III slope fitted to Primus recordings. [Capnography tests](../tests/test_nibp_capno.py). |
 | Arterial pressure waveform | [`ArterialWaveformRenderer`](../anasim/monitors/arterial.py) uses Mahdi et al.'s pressure landmarks with Su MAP and stroke volume. [`ArterialLineMonitor`](../anasim/monitors/arterial.py) models catheter and transducer dynamics. [Waveform](../tests/test_arterial_waveform.py) and [arterial line](../tests/test_arterial_line.py) tests. |
 
 ## Supported patient domain
@@ -191,17 +193,25 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 
 ## Ventilator waveforms
 
-AnaSim's volume-control pressure and flow traces were compared with Dräger
-Primus recordings from VitalDB in adults within the supported patient range.
-These comparisons informed the display filtering. The single-compartment
-lung omits viscoelastic stress adaptation, so it does not fully reproduce the
-recorded pressure rise and decline during the inspiratory pause.
+Volume-control waveforms, capnography, and compliance were compared with
+Dräger Primus recordings from VitalDB in adults within the supported range.
+Separate recordings were used to fit and check the parameters. These
+comparisons informed compliance scaling, monitor response, and ventilator
+defaults; published studies and device specifications supplied the remaining
+parameters.
 
-Bronchospasm resistance is calibrated against measurements in ventilated
-patients with severe asthma.
+Compliance scales with predicted body weight and BMI, using a fit at PEEP
+5 cmH2O. The model omits PEEP-dependent compliance and does not reproduce all
+recorded inspiratory pressure shapes. Bronchospasm resistance is calibrated
+against measurements in ventilated patients with severe asthma.
 
 - Lee et al. Sci Data. 2022. (VitalDB: intraoperative waveforms and numerics from 6,388 surgical patients; CC BY-NC-SA 4.0). [PubMed](https://pubmed.ncbi.nlm.nih.gov/35676300/)
+- Jonson et al. J Appl Physiol. 1993. (healthy anesthetized humans: viscoelastic resistance 3.7 cmH2O/(L/s), compliance 4x static, time constant 0.82 s). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8376259/)
 - D'Angelo et al. J Appl Physiol. 1989. (stress adaptation adds viscoelastic resistance in anesthetized paralyzed humans). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2606863/)
+- Pelosi et al. Anesth Analg. 1998. (respiratory system compliance falls exponentially with BMI during general anesthesia). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9728848/)
+- Tobin et al. Chest. 1983. (breathing pattern of normal subjects). [PubMed](https://pubmed.ncbi.nlm.nih.gov/6872603/)
+- Fowler. Am J Physiol. 1948. (anatomic dead space from the exhaled CO2 front). [PubMed](https://pubmed.ncbi.nlm.nih.gov/18101134/)
+- GE Healthcare. Aisys CS2 specifications. DOC1261976 rev3. 2013. (modes, setting ranges, and circuit resistance). [PDF](https://www.oxygen-care.com/wp-content/uploads/2025/05/SPEC-SHEET-Aisys-CS2.pdf)
 - Sydow et al. Intensive Care Med. 1993. (status asthmaticus: inspiratory resistance 22.7 ± 7.0 cmH2O/(L/s), Ppeak 43 cmH2O). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8294630/)
 - Okayama et al. J Asthma. 1991. (status asthmaticus: airway resistance 13-17 mmHg/(L/s) by interruption). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2010425/)
 

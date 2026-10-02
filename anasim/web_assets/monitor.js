@@ -107,6 +107,78 @@ class Sweep {
   }
 }
 
+// Loops of the last completed breath: pressure-volume (inspiration runs up and
+// to the right) and flow-volume (inspiratory flow above zero).
+class Loops {
+  constructor() {
+    this.canvases = [document.getElementById("loop-pv"), document.getElementById("loop-fv")];
+    this.loop = null;
+    this.observer = new ResizeObserver(() => this.draw());
+    for (const canvas of this.canvases) this.observer.observe(canvas);
+  }
+
+  destroy() {
+    this.observer.disconnect();
+  }
+
+  update(loop) {
+    if (!loop) return;
+    this.loop = loop;
+    this.draw();
+  }
+
+  draw() {
+    const [pv, fv] = this.canvases;
+    const loop = this.loop ?? { paw: [], flow: [], volume: [] };
+    const maxVolume = niceCeil(Math.max(500, ...loop.volume), 250);
+    const maxPaw = niceCeil(Math.max(20, ...loop.paw), 10);
+    const maxFlow = niceCeil(Math.max(30, ...loop.flow.map(Math.abs)), 30);
+    plotLoop(pv, loop.paw, loop.volume, [-5, maxPaw], [0, maxVolume], "cmH₂O", "mL");
+    plotLoop(fv, loop.volume, loop.flow, [0, maxVolume], [-maxFlow, maxFlow], "mL", "L/min");
+  }
+}
+
+function niceCeil(value, step) {
+  return Math.ceil(value / step) * step;
+}
+
+function plotLoop(canvas, xs, ys, [x0, x1], [y0, y1], xUnit, yUnit) {
+  const dpr = window.devicePixelRatio || 1;
+  const { clientWidth: w, clientHeight: h } = canvas;
+  if (!w || !h) return;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const pad = 6;
+  const px = (x) => pad + (w - 2 * pad) * (x - x0) / (x1 - x0);
+  const py = (y) => h - pad - (h - 2 * pad) * (y - y0) / (y1 - y0);
+  ctx.strokeStyle = "rgba(240, 244, 248, 0.15)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(px(Math.max(x0, 0)), pad);
+  ctx.lineTo(px(Math.max(x0, 0)), h - pad);
+  ctx.moveTo(pad, py(Math.max(y0, 0)));
+  ctx.lineTo(w - pad, py(Math.max(y0, 0)));
+  ctx.stroke();
+  ctx.fillStyle = css("--text-dim");
+  ctx.font = "10px system-ui, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(`${x1} ${xUnit}`, w - pad, py(Math.max(y0, 0)) - 2);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(`${y1} ${yUnit}`, px(Math.max(x0, 0)) + 3, pad);
+  if (xs.length < 2) return;
+  ctx.strokeStyle = css("--vent");
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  xs.forEach((x, i) => (i ? ctx.lineTo(px(x), py(ys[i])) : ctx.moveTo(px(x), py(ys[i]))));
+  ctx.stroke();
+}
+
 export class Monitor {
   constructor(info) {
     this.arterialLine = info.arterial_line;
@@ -132,11 +204,13 @@ export class Monitor {
     for (const el of document.querySelectorAll(".numerics output, .vent-bar output")) this.fields[el.id] = el;
     this.fields["v-spo2-unit"] = document.getElementById("v-spo2-unit");
     this.alarmBoxes = [...document.querySelectorAll(".numeric[data-alarm]")];
+    this.loops = new Loops();
     this.frame = requestAnimationFrame(() => this.render());
   }
 
   destroy() {
     cancelAnimationFrame(this.frame);
+    this.loops.destroy();
     for (const sweep of Object.values(this.sweeps)) {
       sweep.observer.disconnect();
       sweep.ctx.clearRect(0, 0, sweep.width, sweep.height);
@@ -149,6 +223,7 @@ export class Monitor {
       for (const [name, sweep] of Object.entries(this.sweeps)) sweep.write(waves[name]);
       this.dirty = true;
     }
+    this.loops.update(snap.loop);
     this.updateNumerics(snap.vitals);
     document.getElementById("measure-nibp").disabled = snap.ended || snap.vitals.nibp_cuff !== null;
     this.updateAlarms(snap.alarms);
@@ -203,6 +278,7 @@ export class Monitor {
     this.set("v-pmean", trunc(v.pmean));
     this.set("v-vte", trunc(v.vte));
     this.set("v-mv", fixed(v.mv, 1));
+    this.set("v-cdyn", trunc(v.cdyn));
     this.set("v-o2", `${trunc(v.fio2)}/${trunc(v.eto2)}`);
     this.set("v-n2o", `${trunc(v.fi_n2o)}/${trunc(v.et_n2o)}`);
     this.set("v-sevo", `${fixed(v.fi_sevo, 1)}/${fixed(v.et_sevo, 1)}`);

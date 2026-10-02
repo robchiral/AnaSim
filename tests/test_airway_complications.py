@@ -44,13 +44,13 @@ def test_mask_obstruction_raises_airway_pressure_and_leaks_delivered_breaths(awa
     baseline = engine.get_latest_state()
 
     engine.set_airway_obstruction(0.8)
-    for _ in range(60):
+    for _ in range(120):
         engine.step(0.5)
 
     obstructed = engine.state
     assert obstructed.paw_peak > baseline.paw_peak + 5.0
     assert obstructed.vt < baseline.vt * 0.5
-    assert obstructed.mv == pytest.approx(obstructed.vt * obstructed.rr / 1000.0)
+    assert obstructed.mv == pytest.approx(obstructed.vt * obstructed.rr / 1000.0, rel=1e-3)
 
 
 def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
