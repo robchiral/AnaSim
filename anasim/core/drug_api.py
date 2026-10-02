@@ -31,8 +31,8 @@ class DrugControllerMixin:
             sampling_time = max(self.config.dt, 0.1)
             controller = TCIController(
                 pk_model,
-                spec.generic_name,
-                target_compartment,
+                drug_name=spec.generic_name,
+                target_compartment=target_compartment,
                 sampling_time=sampling_time,
                 control_time=max(10.0, sampling_time),
             )

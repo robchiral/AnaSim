@@ -44,10 +44,6 @@ ARREST_HR_BPM = 10.0
 ARREST_CONFIRM_S = 15.0
 
 
-def zero_disturbance() -> DisturbanceEffects:
-    return DisturbanceEffects()
-
-
 def compute_depth_metabolic_context(
     engine: "SimulationEngine",
     temp_c: float,
@@ -132,20 +128,14 @@ def update_shivering(engine: "SimulationEngine", dt: float) -> float:
     temp_deficit = max(0.0, threshold - state.temp_c)
     cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
 
-    if SHIVER_BIS_FULL <= SHIVER_BIS_ON:
-        emergence = 1.0 if state.bis >= SHIVER_BIS_ON else 0.0
-    else:
-        emergence = clamp01((state.bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
+    emergence = clamp01((state.bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
 
     # Shivering uses peripheral muscle, as sensitive as the adductor pollicis.
     muscle_factor = 1.0 - engine.tof_pd.twitch_block(state.roc_ce, state.mac_sevo, state.mac_n2o)
 
     target = cold_drive * emergence * muscle_factor
     tau = SHIVER_TAU_ON if target > engine._shiver_level else SHIVER_TAU_OFF
-    if tau > 0:
-        engine._shiver_level += (target - engine._shiver_level) * (dt / tau)
-    else:
-        engine._shiver_level = target
+    engine._shiver_level += (target - engine._shiver_level) * (dt / tau)
     engine._shiver_level = clamp01(engine._shiver_level)
     state.shivering = float(engine._shiver_level)
     return engine._shiver_level
@@ -185,8 +175,8 @@ def step_temperature(engine: "SimulationEngine", dt: float) -> None:
 def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffects:
     """Calculate disturbances and update event-driven volume state."""
     state = engine.state
-    if not engine.disturbance_active or not engine.disturbances:
-        effects = zero_disturbance()
+    if not engine.disturbance_active:
+        effects = DisturbanceEffects()
     else:
         t_rel = max(0.0, state.time - engine.disturbance_start_time)
         effects = engine.disturbances.compute_average(t_rel, t_rel + dt)
@@ -202,7 +192,7 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
     )
 
     hemo = engine.hemo
-    if engine.active_hemorrhage and hemo:
+    if engine.active_hemorrhage:
         rate_sec = engine.hemorrhage_rate_ml_min / 60.0
         hemo.add_volume(-rate_sec * dt)
 
@@ -212,7 +202,7 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
             rate_sec = infusion.rate_ml_min / 60.0
             amount_this_step = min(infusion.remaining_ml, rate_sec * dt)
             infusion.remaining_ml -= amount_this_step
-            if amount_this_step > 0 and hemo:
+            if amount_this_step > 0:
                 hemo.add_volume(
                     amount_this_step,
                     hematocrit=infusion.hematocrit,
@@ -223,7 +213,7 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
                 remaining.append(infusion)
         engine.pending_infusions[:] = remaining
 
-    if hemo and engine.maintenance_fluid_rate_ml_min > 0:
+    if engine.maintenance_fluid_rate_ml_min > 0:
         rate_sec = engine.maintenance_fluid_rate_ml_min / 60.0
         hemo.add_volume(rate_sec * dt, hematocrit=0.0, label="crystalloid")
 
@@ -237,15 +227,14 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
     else:
         engine.sepsis_severity = max(0.0, engine.sepsis_severity - engine.sepsis_decay_rate * dt)
 
-    if hemo:
-        engine.hemo.anaphylaxis_severity = engine.anaphylaxis_severity
-        engine.hemo.sepsis_severity = engine.sepsis_severity
+    hemo.anaphylaxis_severity = engine.anaphylaxis_severity
+    hemo.sepsis_severity = engine.sepsis_severity
 
     return effects
 
 
 def _disturbance_completes_during_step(engine: "SimulationEngine", dt: float) -> bool:
-    if not engine.disturbance_active or not engine.disturbances:
+    if not engine.disturbance_active:
         return False
     t_rel = max(0.0, engine.state.time - engine.disturbance_start_time)
     return engine.disturbances.is_complete(t_rel + dt)
@@ -516,7 +505,6 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
         paw_mean=spirometry.paw_mean if connected else 0.0,
         peep=spirometry.peep if assisted_active else 0.0,
         compliance_dyn=spirometry.compliance_dyn if assisted_active else math.nan,
-        vent_active=vent_active,
     )
 
 

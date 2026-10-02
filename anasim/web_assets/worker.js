@@ -1,7 +1,4 @@
-// Runs Pyodide and one anasim.web.WebSession off the main thread. Pyodide
-// requires a module worker.
-// In: create, cmd.
-// Out: ready, load_error, created, create_error, tick, result, error.
+// Runs Pyodide and one anasim.web.WebSession in a module worker.
 
 const TICK_MS = 50;
 

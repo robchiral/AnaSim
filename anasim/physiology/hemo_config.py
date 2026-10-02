@@ -9,11 +9,6 @@ class HemodynamicConfig:
     # Su et al. 2023 turnover model.
     kout: float = 0.072
 
-    baseline_hb: float = 13.5
-    baseline_hct: float = 0.42
-    base_hr: float = 56.0
-    base_sv: float = 82.2
-    base_tpr: float = 0.016
     ci_adult: float = 3.0
     ci_elderly: float = 2.5
     ci_elderly_age: float = 70.0
@@ -42,8 +37,6 @@ class HemodynamicConfig:
     hypoxia_tau_off_s: float = 60.0
     hypoxia_hr_depression: float = 0.75
     hypoxia_sv_depression: float = 0.85
-
-    vasopressor_sv_factor: float = 1.0
 
     # Propofol, remifentanil, and their interaction (Su et al. 2023).
     ec50_prop_tpr: float = 3.21
@@ -79,7 +72,6 @@ class HemodynamicConfig:
     vol_remi_ec50: float = 2.0
 
     # Blood volume, preload, and fluid balance.
-    default_blood_volume: float = 5000.0  # mL
     unstressed_volume_fraction: float = 0.70
     venous_compliance: float = 100.0  # mL/mmHg
     mcfp_floor: float = 1.0
@@ -97,7 +89,6 @@ class HemodynamicConfig:
     # Intrathoracic pressure (mmHg) and preload.
     pit_0: float = -2.0
     alpha_peep: float = 0.04
-    f_preload_pit: float = 1.0
 
     # Right heart and pulmonary circulation. ESC/ERS normals: RAP 2-6 mmHg,
     # PVR 0.3-2.0 Wood units. Pulmonary transit median 6.8 s (Segeroth 2023).
@@ -129,8 +120,6 @@ class HemodynamicConfig:
     sepsis_hr_increase: float = 20.0  # bpm
     # Hyperdynamic septic shock SVR <= 600 dyn·s/cm^5 (Martin 1990).
     sepsis_svr_drop_wood: float = 6.0
-    # Severe vasoplegia, SVR about 50-60% of normal (Melo 1999).
-    sepsis_tpr_floor: float = 0.55  # Fraction of baseline TPR production
     # Pressor response about halved (Bellissant 2000).
     sepsis_pressor_resistance: float = 0.50
     # Albumin transcapillary escape about 6.7%/h (Margarson 2002).

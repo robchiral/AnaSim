@@ -29,15 +29,15 @@ class HemodynamicModel:
         self.baseline_hb = patient.baseline_hb
         self.baseline_hct = patient.baseline_hct
 
-        self.base_hr = patient.baseline_hr if patient.baseline_hr > 0 else self.base_hr
+        self.base_hr = patient.baseline_hr
 
         # Baseline SV from cardiac index and BSA.
         ci_0 = self.ci_elderly if patient.age > self.ci_elderly_age else self.ci_adult
         co_0 = ci_0 * patient.bsa
-        self.base_sv = (co_0 * 1000.0) / self.base_hr if self.base_hr > 0 else self.base_sv
+        self.base_sv = (co_0 * 1000.0) / self.base_hr
 
         flow_ml_min = self.base_hr * self.base_sv
-        self.base_tpr = patient.baseline_map / flow_ml_min if flow_ml_min > 0 else self.base_tpr
+        self.base_tpr = patient.baseline_map / flow_ml_min
         self.base_co_l_min = flow_ml_min / 1000.0
         self.baseline_do2 = self.calc_oxygen_content(self.baseline_hb, 0.98, 95.0) * self.base_co_l_min * 10.0
         self._emax_prop_sv_age = self.emax_prop_sv_typ * math.exp(self.age_emax_sv * (patient.age - 35.0))
@@ -94,7 +94,6 @@ class HemodynamicModel:
         self._pulm_flow_factor = 1.0
         self._last_mcfp = self.mcfp_0
         self._last_rap = self.rap_baseline
-        self._last_pvr_factor = 1.0
         self._last_pvr = self.pvr_wood_baseline
         self._last_rv_co = self.base_co_l_min
         self._last_lv_inflow = self.base_co_l_min

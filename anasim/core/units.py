@@ -15,28 +15,21 @@ _RATE_UNIT_ALIASES: Dict[str, str] = {
     "mcg/min": "ug/min",
     "mcg/hr": "ug/hr",
     "u/s": "u/sec",
-    "u/min": "u/min",
-    "u/hr": "u/hr",
     "mu/s": "mu/sec",
-    "mu/min": "mu/min",
-    "mu/hr": "mu/hr",
 }
 
 _RATE_CONVERSIONS: Dict[Tuple[str, str], float] = {
     ("mg/hr", "mg/sec"): 1.0 / 3600.0,
     ("mg/min", "mg/sec"): 1.0 / 60.0,
-    ("mg/sec", "mg/sec"): 1.0,
     ("mg/hr", "ug/sec"): 1000.0 / 3600.0,
     ("mg/min", "ug/sec"): 1000.0 / 60.0,
     ("ug/hr", "ug/sec"): 1.0 / 3600.0,
     ("ug/min", "ug/sec"): 1.0 / 60.0,
-    ("ug/sec", "ug/sec"): 1.0,
     ("u/hr", "mu/sec"): 1000.0 / 3600.0,
     ("u/min", "mu/sec"): 1000.0 / 60.0,
     ("u/sec", "mu/sec"): 1000.0,
     ("mu/hr", "mu/sec"): 1.0 / 3600.0,
     ("mu/min", "mu/sec"): 1.0 / 60.0,
-    ("mu/sec", "mu/sec"): 1.0,
 }
 
 

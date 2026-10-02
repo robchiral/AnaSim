@@ -4,10 +4,8 @@ import math
 class AirwaySensor:
     """Airway pressure, flow, and volume as the ventilator display shows them.
 
-    Two first-order lags stand in for ventilator and transducer response, so
-    step changes rise over about 70 ms. The time constant gave the smallest
-    transition error against Dräger Primus recordings. The lags preserve area,
-    so the flow trace still integrates to the delivered volume.
+    Two first-order lags fit the roughly 70 ms response in Dräger Primus
+    recordings. They preserve area, so flow integrates to delivered volume.
     """
 
     def __init__(self, tau_s: float = 0.02):

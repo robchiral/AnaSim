@@ -26,8 +26,6 @@ def test_anesthetized_patient_cools_and_forced_air_rewarms(engine_factory):
 def test_hypothermia_lowers_paco2_at_fixed_ventilation(engine_factory):
     engine = engine_factory(config=SimulationConfig(mode="steady_state"))
     engine.vent.is_on = True
-    engine.resp_mech.set_rr = 10
-    engine.resp_mech.set_vt = 0.5
     engine.start()
 
     engine.state.temp_c = 37.0

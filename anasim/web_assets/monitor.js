@@ -1,7 +1,6 @@
 // Waveform sweeps and monitor numerics.
 
-// Respiratory traces sweep at half the cardiac speed, as on anesthesia
-// workstations, so each shows several breaths.
+// Slower respiratory sweeps show several breaths.
 const CARDIAC_SWEEP_S = 10;
 const RESPIRATORY_SWEEP_S = 20;
 const CHANNELS = {
@@ -107,9 +106,7 @@ class Sweep {
   }
 }
 
-// Pressure-volume (inspiration runs up and to the right) and flow-volume
-// (inspiratory flow above zero) loops. The breath in progress traces over the
-// last completed breath, as on anesthesia workstations.
+// Pressure-volume and flow-volume loops overlay the current and previous breaths.
 const LOOP_KEYS = ["paw", "flow", "volume"];
 const LOOP_MAX_POINTS = 700; // One sweep of an open breath during apnea
 

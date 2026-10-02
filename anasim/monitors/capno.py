@@ -5,14 +5,11 @@ from collections import deque
 
 
 class Capnograph:
-    """CO2 at the Y-piece from the gas that crosses it, then the analyzer response.
+    """CO2 at the Y-piece after dead-space washout and analyzer lag.
 
-    Exhaled gas leaves the series dead space (airways, tube, and connectors) as a
-    plug: first the gas inspired last, then alveolar gas whose CO2 rises along
-    phase III. Parallel airway paths of unequal volume spread the transition
-    (phase II), centred on the dead space as Fowler's method defines it. Any
-    inspiration, including a patient effort between machine breaths, draws fresh
-    gas past the sampling port.
+    Exhalation displaces inspired gas, then alveolar gas with a phase III slope.
+    Unequal airway paths spread phase II around the Fowler dead space.
+    Inspiration draws fresh gas past the sampling port.
     """
 
     # Fitted to Dräger Primus recordings; see docs/REFERENCES.md#ventilator-waveforms.

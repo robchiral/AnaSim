@@ -29,11 +29,8 @@ def _pk_signature(pk_model) -> tuple[float, ...]:
 class TCIController:
     """Plasma- or effect-site-targeted TCI with a pump rate limit.
 
-    At each control update the controller predicts the zero-input course of the
-    targeted compartment and picks the largest constant rate for the next control
-    interval that keeps the prediction at or below target over the horizon. From
-    zero this is the effect-site bolus whose peak reaches target; at target it is
-    the maintenance rate; above target it pauses the infusion.
+    Each update selects the largest rate that keeps the predicted concentration
+    at or below target over the horizon. Above target, the infusion pauses.
     """
 
     def __init__(
@@ -49,6 +46,7 @@ class TCIController:
 
         Args:
             pk_model: PK model exposing get_ss_matrices(), state_fields, and state_vector().
+            drug_name: Drug label for the controller.
             target_compartment: "plasma" or "effect_site".
             max_rate: Pump limit in model units per second.
             sampling_time: Internal state-estimate step (s).

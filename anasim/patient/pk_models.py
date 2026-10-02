@@ -1,24 +1,6 @@
 """Linear mammillary pharmacokinetic models.
 
-References:
-- Propofol: Marsh et al. Br J Anaesth. 1991; Schnider et al. Anesthesiology.
-  1998; Eleveld et al. Br J Anaesth. 2018 (arterial fixed effects without
-  opiate covariates).
-- Remifentanil: Minto et al. Anesthesiology. 1997.
-- Fentanyl: Bae et al. Br J Anaesth. 2020. Midazolam: Albrecht et al. Clin
-  Pharmacol Ther. 1999. Ketamine: Kamp et al. Anesthesiology. 2020.
-  Etomidate: Arden et al. Anesthesiology. 1986.
-- Rocuronium: Wierda et al. Can J Anaesth. 1991, with the Masui age-dependent
-  ke0.
-- Norepinephrine: Beloeil et al. Br J Anaesth. 2005; Li et al. Clin
-  Pharmacokinet. 2024 (healthy volunteers, propofol covariate on clearance).
-- Epinephrine: Ensinger et al. Eur J Anaesthesiol. 1992; Abboud et al. Crit Care. 2009.
-- Phenylephrine: FDA NDA 203826 Clinical Pharmacology Review. 2012.
-- Vasopressin, milrinone: DailyMed labels. Dobutamine: Kates and Leier. Clin
-  Pharmacol Ther. 1978.
-- Esmolol: Sum et al. Clin Pharmacol Ther. 1983. Labetalol: Abernethy et al.
-  Am J Cardiol. 1987; Hafsa et al. Pharmaceutics. 2022. Glycopyrrolate: Du et
-  al. J Drug Deliv Sci Technol. 2025.
+Sources are cited on each model and in docs/REFERENCES.md.
 
 Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
 second. Concentrations are µg/mL for propofol, etomidate, ketamine,
@@ -114,7 +96,7 @@ class MammillaryPK:
         """Advance concentrations by one explicit Euler step."""
         s = self.state
         if not input_rate_per_sec and not (s.c1 or s.c2 or s.c3 or s.ce):
-            return s  # Most drugs are never given; skipping their exact zeros saves several percent.
+            return s  # Skip drugs with no input or residual concentration.
         flux2 = self.cl2 * (s.c1 - s.c2) if self.v2 > 0 else 0.0
         flux3 = self.cl3 * (s.c1 - s.c3) if self.v3 > 0 else 0.0
         elimination = self.cl1 * cl1_scale * s.c1
@@ -408,7 +390,7 @@ class RocuroniumPK(MammillaryPK):
 # Vasoactive drugs -------------------------------------------------------------
 
 class NorepinephrinePK(MammillaryPK):
-    """Norepinephrine PK with endogenous secretion and the Li propofol covariate."""
+    """Beloeil 2005 or Li 2024 PK; Li includes secretion and propofol-dependent clearance."""
 
     # Li et al. 2024: clearance multiplier exp(theta * Cp / 100), about 12% lower at 3.5 µg/mL.
     PROPOFOL_CL_THETA = -3.57

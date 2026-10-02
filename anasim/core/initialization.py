@@ -7,6 +7,8 @@ import numpy as np
 from scipy.linalg import expm
 from scipy.optimize import brentq, minimize
 
+from anasim.physiology.disturbances import DisturbanceEffects
+
 from . import projection as projection_core
 from . import runtime as runtime_core
 from .state import AirwayType
@@ -69,7 +71,7 @@ BALANCED_PROFILE = StartupProfile(
 
 
 def initialize_engine_state(engine: "SimulationEngine") -> None:
-    """Initialize the engine's startup state without placeholder defaults."""
+    """Initialize the configured awake or maintenance state."""
     if engine.config.mode == "steady_state":
         _initialize_steady_state(engine)
     else:
@@ -155,7 +157,7 @@ def _configure_controlled_ventilation(engine: "SimulationEngine", targets: Start
         shiver_level=0.0,
     )
     target_mv = baseline_mv * metabolic_factor
-    vent_vt = target_mv / baseline_rr if baseline_rr > 0 else baseline_vt_l
+    vent_vt = target_mv / baseline_rr
     vent_vt = clamp(vent_vt, 0.25, 0.8)
     engine.set_vent_settings(rr=baseline_rr, vt=vent_vt, peep=5.0, ie="1:2", mode="VCV")
     engine.set_vent_power(True)
@@ -302,7 +304,7 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
         runtime_core.update_pk_hemodynamics(engine, engine.state.co)
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)
         runtime_core.step_pk(engine, profile.settle_dt_seconds, fi_sevo, fi_n2o, engine.state.co)
-        physiology = runtime_core.step_physiology(engine, profile.settle_dt_seconds, runtime_core.zero_disturbance())
+        physiology = runtime_core.step_physiology(engine, profile.settle_dt_seconds, DisturbanceEffects())
         projection_core.project_runtime_physiology(engine, physiology)
         engine.state.time += profile.settle_dt_seconds
 

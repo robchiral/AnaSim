@@ -202,7 +202,6 @@ class SimulationEngine(DrugControllerMixin):
         self._ventilation_efficiency = 1.0
         self._capno_obstruction = 0.0
         self._vq_mismatch = 0.0
-        self._base_airway_resistance = 10.0
 
         self.smooth_bis = 98.0
         self._monitor_tau_bis_s = 2.0
@@ -233,7 +232,6 @@ class SimulationEngine(DrugControllerMixin):
         self._depth_index = 0.0
         self._shiver_level = 0.0
         self._metabolic_factor = 1.0
-        self._vent_active = False
         self._pulseless_s = 0.0
 
         self.initialize_models()
@@ -301,7 +299,7 @@ class SimulationEngine(DrugControllerMixin):
         self.circuit = CircleSystem()
         self.vent = AnesthesiaVentilator()
 
-        requested_agents = self.config.volatile_agents or []
+        requested_agents = self.config.volatile_agents
         if not requested_agents:
             self._volatile_enabled = False
             agent_key = "sevoflurane"
@@ -330,10 +328,6 @@ class SimulationEngine(DrugControllerMixin):
         )
 
         self.circuit.vaporizer_agent = agent_params["name"]
-        self.circuit.vaporizer_setting = 0.0
-        self.circuit.vaporizer_on = False
-        if not self._volatile_enabled:
-            self.vaporizer.set_concentration(0.0)
 
         self.hemo = HemodynamicModel(self.patient)
         c50, emax, gamma = NORE_PD_PARAMS[self.config.pk_model_nore]
@@ -473,8 +467,7 @@ class SimulationEngine(DrugControllerMixin):
             return
 
         if drug_name.strip().casefold() == "sugammadex":
-            if self.tof_pd:
-                self.tof_pd.give_sugammadex(amount)
+            self.tof_pd.give_sugammadex(amount)
             self.actions.record(
                 self.state.time, ACTION_DRUG_BOLUS, label="sugammadex", amount=amount
             )

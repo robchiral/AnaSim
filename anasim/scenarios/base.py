@@ -63,7 +63,6 @@ class Scenario:
             self.setup_engine(engine)
 
 
-# Requirement check helper functions
 def action_taken_this_step(engine, action: str, *labels: str) -> bool:
     """Return whether a matching control action occurred during this objective."""
     records = engine.actions.since_step(action, labels=labels or None)

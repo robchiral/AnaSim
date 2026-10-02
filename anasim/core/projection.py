@@ -29,7 +29,6 @@ class PhysiologyStepState:
     paw_mean: float
     peep: float
     compliance_dyn: float
-    vent_active: bool
 
 
 def mask_leak(engine: "SimulationEngine") -> float:
@@ -200,7 +199,6 @@ def _current_respiratory_support(engine: "SimulationEngine") -> dict[str, Any]:
     peep = engine.vent.settings.peep + spirometry.auto_peep if vent_active else 0.0
     return {
         "connected": connected,
-        "vent_active": vent_active,
         "assisted_active": vent_active or bag_mask_active,
         "assisted_rr": assisted_rr,
         "assisted_vt_l": assisted_vt_l,
@@ -248,7 +246,6 @@ def build_snapshot_from_models(engine: "SimulationEngine", hemo_state: Any, resp
         paw_mean=spirometry.paw_mean if connected else 0.0,
         peep=spirometry.peep if assisted else 0.0,
         compliance_dyn=spirometry.compliance_dyn if assisted else math.nan,
-        vent_active=support["vent_active"],
     )
 
 
@@ -257,7 +254,6 @@ def project_runtime_physiology(engine: "SimulationEngine", snapshot: PhysiologyS
     state = engine.state
     project_hemodynamics(engine, snapshot.hemo_state)
     _project_respiratory_observables(engine, snapshot)
-    engine._vent_active = snapshot.vent_active
     state.oxygen_delivery_ratio = float(engine.hemo.compute_do2_ratio(
         max(0.0, state.sao2) / 100.0, max(0.0, state.pao2), state.co
     ))

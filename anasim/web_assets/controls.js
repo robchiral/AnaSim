@@ -66,7 +66,6 @@ export class Controls {
       }
       return result;
     };
-    this.info = info;
     this.state = null;
     this.bindTabs();
     this.bindMachine();
