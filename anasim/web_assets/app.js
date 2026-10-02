@@ -222,11 +222,11 @@ function updateBar(snap) {
   if (snap.ended) {
     [label, variant] = ["Session ended", "primary"];
   } else if (snap.running) {
-    [label, variant] = ["Pause simulation", "outlined"];
+    [label, variant] = ["Pause", "outlined"];
   } else if (snap.time > 0) {
-    [label, variant] = ["Resume simulation", "primary outlined"];
+    [label, variant] = ["Resume", "primary outlined"];
   } else {
-    [label, variant] = ["Start simulation", "primary"];
+    [label, variant] = ["Start", "primary"];
   }
   setText(run, label);
   run.className = `btn ${variant}`;

@@ -31,7 +31,7 @@ anasim
 computer. It works offline. Stop it with Ctrl+C.
 
 For a first session, choose **Guided scenario**, select **TIVA induction**,
-and press **Start simulation**. Press **Start simulation** below the monitor
+and press **Start simulation**. Press **Start** below the monitor
 to start the clock. Each objective links to the controls needed to complete it.
 
 ## Features

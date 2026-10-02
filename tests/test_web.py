@@ -133,6 +133,11 @@ def test_ventilator_display_and_disconnection_alarm():
     loop = {key: [x for run in completed for x in run[key]] for key in ("paw", "flow", "volume")}
     assert loop["volume"][0] == 0 and max(loop["volume"]) == pytest.approx(v["vte"], rel=0.05)
     assert max(loop["paw"]) == pytest.approx(v["ppeak"], abs=0.5)
+    # A stable breath includes the zero-flow boundary at both ends, rather than
+    # leaving a gap between the last expiration sample and the next inspiration.
+    assert loop["flow"][0] == loop["flow"][-1] == 0
+    assert loop["volume"][-1] == pytest.approx(0, abs=0.1)
+    assert loop["paw"][-1] == pytest.approx(loop["paw"][0], abs=0.01)
     # A reloaded page gets the previous and current breaths back.
     session.replay_waves()
     replayed = parse(session.advance(0.0))["loop"]

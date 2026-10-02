@@ -82,7 +82,7 @@ def create_induction_balanced() -> Scenario:
             id="MASK_VENTILATE",
             title="Bag-mask ventilation",
             instruction=(
-                "Click <b>'Start bag-mask ventilation'</b>.<br>"
+                "Click <b>'Start bag ventilation'</b>.<br>"
                 "Confirm chest rise and <b>SpO₂ maintained</b>.<br><br>"
                 "<i>Patient is apneic post-induction. Must ventilate to prevent hypoxia.</i>"
             ),
@@ -236,7 +236,7 @@ def create_induction_tiva() -> Scenario:
             id="MASK_VENTILATE",
             title="Bag-mask ventilation",
             instruction=(
-                "Click <b>'Start bag-mask ventilation'</b>.<br>"
+                "Click <b>'Start bag ventilation'</b>.<br>"
                 "Confirm chest rise and <b>SpO₂ maintained</b>.<br><br>"
                 "<i>Patient is apneic post-induction. Must ventilate to prevent hypoxia.</i>"
             ),

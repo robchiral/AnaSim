@@ -120,7 +120,7 @@ class WebSession:
         self._accumulator = 0.0
         self._last_wave_time = -math.inf
         # Loops trace the breath in progress over the last completed one.
-        self._loop_time = -math.inf
+        self._loop_sample = None
         self._loop_breath = None
         self._loop_start = 0.0
         self._loop_index = 0
@@ -344,23 +344,43 @@ class WebSession:
         """Add points of the breath in progress; a new breath makes it the previous loop."""
         stride = max(1, round(LOOP_INTERVAL_S / self.engine.config.dt))
         for sample in samples:
-            if sample.time <= self._loop_time:
+            previous = self._loop_sample
+            if previous is not None and sample.time <= previous.time:
                 continue  # Replayed for the sweep
-            self._loop_time = sample.time
-            if sample.breath != self._loop_breath:
+            # The breath counter changes before the airway sensor finishes its
+            # response. Split the displayed loop at the measured flow crossing.
+            if sample.breath != self._loop_breath and (
+                previous is None or previous.flow >= 0 or sample.flow >= 0
+            ):
+                paw, flow, volume = sample.paw, sample.flow, sample.volume
+                crossing = previous is not None and previous.flow <= 0 < flow
+                if crossing:
+                    fraction = -previous.flow / (flow - previous.flow)
+                    paw = previous.paw + fraction * (paw - previous.paw)
+                    volume = previous.volume + fraction * (volume - previous.volume)
+                    flow = 0.0
                 if len(self._loop_current) > 1:
+                    # The same measured boundary ends one breath and starts the
+                    # next. Keep any real change in end-expiratory volume.
+                    self._append_loop_point(paw, flow, volume)
                     self._loop_previous = (self._loop_breath, self._loop_current)
-                self._loop_breath, self._loop_start = sample.breath, sample.volume
+                self._loop_breath, self._loop_start = sample.breath, volume
                 self._loop_index, self._loop_current = 0, []
+                if crossing:
+                    self._append_loop_point(paw, flow, volume)
             if self._loop_index % stride == 0:
-                point = (_num(sample.paw, 2), _num(sample.flow, 1), _num((sample.volume - self._loop_start) * 1000.0, 1))
-                self._loop_current.append(point)
-                self._loop_new.append((sample.breath, point))
+                self._append_loop_point(sample.paw, sample.flow, sample.volume)
             self._loop_index += 1
+            self._loop_sample = sample
         # Apnea leaves one breath open; keep a sweep of it.
         limit = round(WAVE_WINDOW_S / LOOP_INTERVAL_S)
         if len(self._loop_current) > limit:
             self._loop_current = self._loop_current[-limit:]
+
+    def _append_loop_point(self, paw, flow, volume) -> None:
+        point = (_num(paw, 2), _num(flow, 1), _num((volume - self._loop_start) * 1000.0, 1))
+        self._loop_current.append(point)
+        self._loop_new.append((self._loop_breath, point))
 
     def _take_loop(self) -> list:
         """Return new loop points as runs of (breath, paw, flow, volume); a replay resends both loops."""

@@ -143,7 +143,7 @@ export class Controls {
       button.onclick = () => this.send("airway", { mode: button.dataset.value });
     }
     const fgf = () => this.send("fgf", { o2: readNumber($("c-o2")), air: readNumber($("c-air")), n2o: readNumber($("c-n2o")) });
-    this.editSettings([$("c-o2"), $("c-air"), $("c-n2o")], fgf);
+    this.editSettings([$("c-o2"), $("c-air"), $("c-n2o")], fgf, $("c-o2").closest(".fresh-gas-settings"));
     $("c-o2-supply").onclick = () => this.send("oxygen_supply", { connected: !this.state.o2_connected });
     this.editSettings([$("c-vap")], () => this.send("vaporizer", { percent: readNumber($("c-vap")) }));
     $("c-bag").onclick = () => this.send("bag_mask", { active: !this.state.bag_mask });
@@ -154,7 +154,7 @@ export class Controls {
         mode: $("c-vent-mode").value, ie: $("c-ie").value,
         ...Object.fromEntries(Object.entries(ventInputs).map(([name, id]) => [name, readNumber($(id))])),
       }),
-      $("c-vent-mode").closest("fieldset"),
+      $("c-vent-settings"),
       () => this.applyVentMode($("c-vent-mode").value),
     );
   }
@@ -409,7 +409,7 @@ export class Controls {
     setPressed($("c-o2-supply"), !c.o2_connected, c.o2_connected ? "Disconnect O₂ supply" : "Connect backup O₂");
     setValue($("c-vap"), round(c.vaporizer, 1));
 
-    setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag-mask ventilation" : "Start bag-mask ventilation");
+    setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
     const vent = c.vent;
     setPressed($("c-vent-power"), vent.on, vent.on ? "Stop ventilator" : "Start ventilator");
     setValue($("c-vent-mode"), vent.mode);

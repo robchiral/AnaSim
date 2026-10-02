@@ -7,6 +7,7 @@
 
 import argparse
 import io
+import re
 import sys
 import tempfile
 import threading
@@ -53,13 +54,18 @@ def enter(field, value):
 
 
 def drug_card(page, name):
-    return page.locator(".drug-card").filter(has=page.locator("legend", has_text=name))
+    summary = page.locator("summary").filter(has_text=re.compile(rf"^{re.escape(name)}(?:\s|$)"))
+    card = page.locator(".drug-card").filter(has=summary)
+    if card.get_attribute("open") is None:
+        card.locator("summary").click()
+    return card
 
 
 def start_tci(page, name, target):
     card = drug_card(page, name)
-    card.locator('[data-mode="tci"]').click()
+    card.locator(".infusion-mode").select_option("tci")
     enter(card.locator(".target"), target)
+    card.get_by_role("button", name="Apply", exact=True).click()
 
 
 def give_bolus(page, name, amount):
@@ -77,12 +83,18 @@ def reduce_fresh_gas(page):
     # The objective opens Medications to check the infusions; the flow is on Machine.
     page.click('.tabs [data-tab="Machine"]')
     enter(page.locator("#c-o2"), 2)
+    page.locator(".fresh-gas-settings").get_by_role("button", name="Apply", exact=True).click()
+
+
+def preoxygenate(page):
+    enter(page.locator("#c-o2"), 10)
+    page.locator(".fresh-gas-settings").get_by_role("button", name="Apply", exact=True).click()
 
 
 # Objectives not listed here complete by waiting.
 ACTIONS = {
     "APPLY_MASK": lambda page: page.click('#c-airway [data-value="Mask"]'),
-    "SET_FGF_PREOX": lambda page: enter(page.locator("#c-o2"), 10),
+    "SET_FGF_PREOX": preoxygenate,
     "START_ANALGESIA": lambda page: start_tci(page, "Remifentanil", 4),
     "INDUCE": induce,
     "MASK_VENTILATE": lambda page: page.click("#c-bag"),
@@ -160,7 +172,7 @@ def save_gif(frames, path, fps):
     sheet = Image.new("RGB", (width, height * len(samples)))
     for index, frame in enumerate(samples):
         sheet.paste(frame, (0, height * index))
-    palette = sheet.quantize(colors=192, method=Image.Quantize.MAXCOVERAGE)
+    palette = sheet.quantize(colors=256, method=Image.Quantize.MEDIANCUT)
     indexed = [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames]
     path.parent.mkdir(parents=True, exist_ok=True)
     indexed[0].save(
