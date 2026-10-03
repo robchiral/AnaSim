@@ -6,11 +6,11 @@ const RESPIRATORY_SWEEP_S = 20;
 const CHANNELS = {
   ecg: { color: "--ecg", range: [-0.5, 1.5], seconds: CARDIAC_SWEEP_S },
   pleth: { color: "--spo2", range: [-0.1, 1.4], seconds: CARDIAC_SWEEP_S },
-  art: { color: "--abp", range: [0, 200], ticks: [0, 100, 200], seconds: CARDIAC_SWEEP_S },
-  co2: { color: "--co2", range: [0, 60], ticks: [0, 60], seconds: RESPIRATORY_SWEEP_S },
-  paw: { color: "--vent", range: [-5, 40], ticks: [0, 40], seconds: RESPIRATORY_SWEEP_S },
-  // Wide enough for pressure-control peak flows; zero shows incomplete exhalation.
-  flow: { color: "--vent", range: [-90, 90], ticks: [-60, 0, 60], seconds: RESPIRATORY_SWEEP_S },
+  art: { color: "--abp", range: [0, 200], autoScale: "expand", scaleStep: 50, seconds: CARDIAC_SWEEP_S },
+  co2: { color: "--co2", range: [0, 60], autoScale: "expand", scaleStep: 20, seconds: RESPIRATORY_SWEEP_S },
+  paw: { color: "--vent", range: [-5, 40], autoScale: "pressure", seconds: RESPIRATORY_SWEEP_S },
+  // Symmetric flow bounds keep zero centered and incomplete exhalation visible.
+  flow: { color: "--vent", range: [-90, 90], autoScale: "flow", seconds: RESPIRATORY_SWEEP_S },
 };
 const AXIS_WIDTH = 32;
 const GAP_FRACTION = 0.014;
@@ -24,6 +24,8 @@ class Sweep {
     this.canvas = container.querySelector("canvas");
     this.ctx = this.canvas.getContext("2d");
     this.channel = channel;
+    this.range = [...channel.range];
+    this.shrinkSamples = 0;
     this.color = css(channel.color);
     const size = Math.max(2, Math.round(channel.seconds / sampleInterval));
     this.data = new Float32Array(size).fill(NaN);
@@ -54,23 +56,69 @@ class Sweep {
     const end = start + values.length;
     for (let i = 0; i < this.gap; i++) this.data[(end + i) % size] = NaN;
     this.writeIndex = end % size;
+    this.updateScale(values.length);
+  }
+
+  updateScale(samples) {
+    const { channel, data, range } = this;
+    if (!channel.autoScale || !samples) return;
+    let lo = Infinity, hi = -Infinity;
+    for (const value of data) {
+      if (Number.isFinite(value)) {
+        lo = Math.min(lo, value);
+        hi = Math.max(hi, value);
+      }
+    }
+    if (lo === Infinity) {
+      this.shrinkSamples = 0;
+      return;
+    }
+
+    let desired;
+    if (channel.autoScale === "flow") {
+      const extent = niceCeil(Math.max(20, -lo, hi), 10);
+      desired = [-extent, extent];
+    } else if (channel.autoScale === "pressure") {
+      const extent = Math.max(5, -lo, hi);
+      const step = extent <= 10 ? 1 : extent <= 20 ? 2 : 5;
+      desired = [-niceCeil(Math.max(2, -lo), step), niceCeil(Math.max(5, hi), step)];
+    } else {
+      desired = [Math.min(channel.range[0], -niceCeil(-lo, channel.scaleStep)),
+                 Math.max(channel.range[1], niceCeil(hi, channel.scaleStep))];
+    }
+
+    if (desired[0] < range[0] || desired[1] > range[1]) {
+      // New excursions must fit even while older, larger values remain visible.
+      this.range = [Math.min(range[0], desired[0]), Math.max(range[1], desired[1])];
+      this.shrinkSamples = 0;
+    } else if (channel.autoScale !== "expand" && desired[1] - desired[0] <= 0.75 * (range[1] - range[0])) {
+      // Require a full sweep of headroom; count simulation samples, not wall time.
+      this.shrinkSamples += samples;
+      if (this.shrinkSamples >= data.length) {
+        this.range = desired;
+        this.shrinkSamples = 0;
+      }
+    } else {
+      this.shrinkSamples = 0;
+    }
   }
 
   draw() {
     const { ctx, width, height, channel, data } = this;
     if (!width || !height) return;
     ctx.clearRect(0, 0, width, height);
-    const [lo, hi] = channel.range;
+    const [lo, hi] = this.range;
     const pad = (hi - lo) * 0.03;
     const top = 22;
     const plotH = height - top - 6;
     const y = (v) => top + plotH * (1 - (v - (lo - pad)) / (hi - lo + 2 * pad));
 
-    if (channel.ticks) {
+    if (channel.autoScale) {
+      const ticks = lo < 0 ? [lo, 0, hi] : channel === CHANNELS.art ? [lo, (lo + hi) / 2, hi] : [lo, hi];
       ctx.font = "10px system-ui, sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
-      for (const t of channel.ticks) {
+      for (const t of ticks) {
         const ty = Math.round(y(t)) + 0.5;
         ctx.strokeStyle = "rgba(240, 244, 248, 0.14)";
         ctx.lineWidth = 1;
