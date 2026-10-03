@@ -1,6 +1,7 @@
 """Respiratory system mechanics and inspiratory muscle effort."""
 
 import math
+from bisect import bisect_right
 
 
 class RespiratoryMechanics:
@@ -220,17 +221,29 @@ class PressureSegment:
 
 
 class PatientEffort:
-    """Inspiratory muscle pressure: a linear rise over the neural inspiratory time, then release.
+    """Inspiratory muscle pressure with gradual relaxation and support unloading.
 
     Ti/Ttot is about 0.4 in quiet breathing (Tobin 1983). Opioids slow the rate
-    mainly by lengthening expiration, so Ti stops growing at 1.6 s. The muscles
-    relax over a third of Ti. The amplitude gives the patient's unassisted
-    tidal volume against the current mechanics.
+    mainly by lengthening expiration, so Ti stops growing at 1.6 s. Unassisted,
+    the muscles draw the half-sine flow of quiet breathing, then relax over half
+    of Ti. Pressure support shortens and weakens contraction; the unloading
+    fraction is a teaching approximation based on support relative to the
+    unassisted elastic pressure.
+
+    Inflation acts as the Hering-Breuer reflex does under anesthesia (Polacheck
+    1980): reaching the patient's VT ends contraction, and a breath due while a
+    mechanical breath keeps the lungs inflated waits up to one period for them
+    to deflate, so breathing phase-locks to the ventilator (Graves 1986).
+
+    Fixed knots approximate the curve with linear drives, retaining exact
+    mechanics integration and the same profile at every outer step size.
     """
 
     TI_FRACTION = 0.4
     TI_MAX = 1.6  # s
-    RELEASE_FRACTION = 1.0 / 3.0
+    RELEASE_FRACTION = 0.5
+    PROFILE_POINTS = 64
+    ONSET_FRACTION = 0.1  # Of VT above the lowest volume since the last breath, holding off the next
 
     def __init__(self):
         self.rr = 0.0
@@ -239,58 +252,143 @@ class PatientEffort:
         self.clock = 0.0  # s since this breath began
         self.period = math.inf
         self.ti = self.release = 0.0
+        self.support_pressure = 0.0
+        self._waiting = False  # The next breath is due, but the lungs are still inflated
+        self._wait_end = math.inf  # Clock time at which it begins regardless
+        self._trough = 0.0  # L, lowest lung volume since this breath began
+        self._release_slope = 0.0
+        self._knots = (math.inf,)
+        self._values = (0.0, 0.0)
 
-    def set_drive(self, rr: float, vt_l: float) -> None:
+    def set_drive(self, rr: float, vt_l: float, support_pressure: float = 0.0) -> None:
         """Rate and unassisted volume for the breaths that follow."""
         self.rr, self.target_vt = max(0.0, rr), max(0.0, vt_l)
-
-    def _breakpoints(self):
-        return (self.ti, self.ti + self.release, self.period)
+        self.support_pressure = max(0.0, support_pressure)
 
     def time_to_break(self) -> float:
         """Seconds to the next change of slope, where segments must split."""
-        return min((b - self.clock for b in self._breakpoints() if b > self.clock + 1e-12), default=math.inf)
+        if self._waiting:
+            return self._wait_end - self.clock
+        i = bisect_right(self._knots, self.clock + 1e-12)
+        return self._knots[i] - self.clock if i < len(self._knots) else math.inf
 
     def pmus(self) -> tuple[float, float]:
         """(value, slope) at the current time until the next breakpoint."""
-        a, t = self.amplitude, self.clock
-        if self.ti > 0.0 and t < self.ti:
-            return a * t / self.ti, a / self.ti
-        if self.release > 0.0 and t < self.ti + self.release:
-            return a * (1.0 - (t - self.ti) / self.release), -a / self.release
-        return 0.0, 0.0
+        value, slope = self._unit_drive(self.clock)
+        return self.amplitude * value, self.amplitude * slope
 
     def advance(self, dt: float, lung: RespiratoryMechanics, series_resistance: float) -> None:
         self.clock += dt
-        if self.clock >= self.period - 1e-12:
-            self._begin(lung, series_resistance)
-
-    def _begin(self, lung: RespiratoryMechanics, series_resistance: float) -> None:
-        if self.rr <= 0.0 or self.target_vt <= 0.0:
-            self.clock, self.period, self.amplitude = 0.0, math.inf, 0.0
-            self.ti = self.release = 0.0
-            return
-        self.clock = 0.0
-        self.period = 60.0 / self.rr
-        self.ti = min(self.TI_FRACTION * self.period, self.TI_MAX)
-        self.release = self.RELEASE_FRACTION * self.ti
-        self.amplitude = self.target_vt / self._unit_volume(lung, series_resistance)
+        if self._waiting:
+            if self.clock >= self._wait_end - 1e-12:
+                self.resume(lung, series_resistance)
+        elif self.clock >= self.period - 1e-12:
+            if self.rr > 0.0 and lung.volume > self._onset_threshold():
+                self._waiting, self._wait_end = True, self.clock + self.period
+            else:
+                self._begin(lung, series_resistance)
 
     def start(self, lung: RespiratoryMechanics, series_resistance: float) -> None:
         """Begin a breath now if none is in progress, as when breathing resumes after apnea."""
         if self.period == math.inf:
             self._begin(lung, series_resistance)
 
+    def off_switch_volume(self) -> float | None:
+        """Lung volume (L above relaxed volume) that ends contraction: the patient's VT."""
+        return self.target_vt if self.amplitude > 0.0 and self.clock < self.ti - 1e-12 else None
+
+    def end_contraction(self) -> None:
+        """Relax from the present pressure."""
+        value = self._unit_drive(self.clock)[0]
+        kept = bisect_right(self._knots, self.clock - 1e-12)
+        self.ti = self.clock
+        self._knots = self._knots[:kept] + (self.clock,)
+        self._values = self._values[:kept + 1] + (value,)
+        self._relax(value)
+
+    def onset_volume(self) -> float | None:
+        """Lung volume (L above relaxed volume) below which a waiting breath begins."""
+        return self._onset_threshold() if self._waiting else None
+
+    def note_volume(self, volume: float) -> None:
+        """Record the lowest lung volume reached in the latest interval."""
+        self._trough = min(self._trough, volume)
+
+    def resume(self, lung: RespiratoryMechanics, series_resistance: float) -> None:
+        self._waiting = False
+        self._begin(lung, series_resistance)
+
+    def _onset_threshold(self) -> float:
+        # Filling to a new relaxed volume after PEEP rises is not inflation above it.
+        return max(self._trough, 0.0) + self.ONSET_FRACTION * self.target_vt
+
+    def _unit_drive(self, t: float) -> tuple[float, float]:
+        i = bisect_right(self._knots, t + 1e-12)
+        if i >= len(self._knots) or self._knots[i] == math.inf:
+            return 0.0, 0.0
+        start = self._knots[i - 1] if i else 0.0
+        slope = (self._values[i + 1] - self._values[i]) / (self._knots[i] - start)
+        return self._values[i] + slope * (t - start), slope
+
+    def _begin(self, lung: RespiratoryMechanics, series_resistance: float) -> None:
+        if self.rr <= 0.0 or self.target_vt <= 0.0:
+            self.clock, self.period, self.amplitude = 0.0, math.inf, 0.0
+            self.ti = self.release = 0.0
+            self._knots, self._values = (math.inf,), (0.0, 0.0)
+            return
+        self.clock = 0.0
+        self.period = 60.0 / self.rr
+        self._trough = lung.volume
+        recoil = self.target_vt / lung.compliance
+        unloading = recoil / (recoil + self.support_pressure)
+        self.ti = min(self.TI_FRACTION * self.period, self.TI_MAX) * math.sqrt(unloading)
+        self.release = self.RELEASE_FRACTION * self.ti
+        n = self.PROFILE_POINTS
+        rising = [self._sine_flow_pressure(lung, series_resistance, self.ti * i / n) for i in range(n + 1)]
+        peak = max(rising)
+        self._knots = tuple(self.ti * i / n for i in range(1, n + 1))
+        self._values = tuple(value / peak for value in rising)
+        # Relaxation continues the final slope, so flow reverses smoothly.
+        self._release_slope = max(-3.0, n * self.RELEASE_FRACTION * (rising[-1] - rising[-2]) / rising[-1])
+        self._relax(self._values[-1])
+        self.amplitude = unloading * self.target_vt / self._unit_volume(lung, series_resistance)
+
+    def _relax(self, value: float) -> None:
+        """Append relaxation from a unit value at Ti to zero over the release time.
+
+        A cubic Hermite with the breath's release slope, which levels off at zero
+        and stays positive for normalized slopes above -3.
+        """
+        n, m = self.PROFILE_POINTS, self._release_slope
+        steps = [i / n for i in range(1, n + 1)]
+        self._knots += tuple(self.ti + self.release * s for s in steps) + (self.period,)
+        self._values += tuple(value * (1.0 - s) ** 2 * (1.0 + (2.0 + m) * s) for s in steps) + (0.0,)
+
+    def _sine_flow_pressure(self, lung: RespiratoryMechanics, series_resistance: float, t: float) -> float:
+        """Muscle pressure that draws a unit volume as half-sine flow over Ti, starting at rest."""
+        w = math.pi / self.ti
+        flow = 0.5 * w * math.sin(w * t)
+        volume = 0.5 * (1.0 - math.cos(w * t))
+        elastance = 1.0 / lung.compliance
+        rate = 1.0 / lung.viscoelastic_tau
+        # Tissue stress solves dP2/dt = E2 x flow - P2/tau2 from P2 = 0.
+        gain = lung.viscoelastic_ratio * elastance * 0.5 * w / (rate * rate + w * w)
+        p2 = gain * (rate * math.sin(w * t) - w * math.cos(w * t) + w * math.exp(-rate * t))
+        return (lung.resistance + series_resistance) * flow + elastance * volume + p2
+
     def _unit_volume(self, lung: RespiratoryMechanics, series_resistance: float) -> float:
         """Peak volume from rest for a unit amplitude, breathing at the baseline pressure."""
         scratch = RespiratoryMechanics(lung.compliance, lung.resistance)
         scratch.viscoelastic_ratio, scratch.viscoelastic_tau = lung.viscoelastic_ratio, lung.viscoelastic_tau
-        for duration, pmus in ((self.ti, (0.0, 1.0 / self.ti)), (self.release, (1.0, -1.0 / self.release)),
-                               (10.0 * self.period, (0.0, 0.0))):
+        start = 0.0
+        for end in self._knots:
+            duration = end - start
+            pmus = self._unit_drive(start)
             segment = scratch.pressure_segment((0.0, 0.0), pmus, series_resistance)
-            if segment.flow(duration) <= 0.0:
+            if segment.flow(0.0) > 0.0 >= segment.flow(duration):
                 return segment.volume(find_root(segment.flow, 0.0, duration))
             segment.commit(duration)
+            start = end
         return scratch.volume
 
 

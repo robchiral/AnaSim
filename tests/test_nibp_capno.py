@@ -96,15 +96,29 @@ class TestCapnography:
 
     @staticmethod
     def _capnogram_rate(engine, seconds=20.0, dt=0.1):
-        """Breaths per minute counted as a capnometer does, from rises of the CO2 waveform."""
-        breaths = 0
+        """Rate from intervals between CO2 rises, without partial-window count bias."""
+        rises = []
         above = engine.state.capno_co2 > 15.0
         for _ in range(int(seconds / dt)):
             engine.step(dt)
             now = engine.state.capno_co2 > 15.0
-            breaths += now and not above
+            if now and not above:
+                rises.append(engine.state.time)
             above = now
-        return breaths / (seconds / 60.0)
+        return 60.0 / np.mean(np.diff(rises)) if len(rises) >= 2 else 0.0
+
+    def test_changing_tidal_volumes_preserves_the_current_co2_endpoint(self):
+        capno = Capnograph(0.15)
+        peaks = []
+        for volume in (0.5, 1.0, 0.5, 1.0):
+            for _ in range(150):
+                capno.step(0.01, volume / 150, 38.0)
+            expired = []
+            for i in range(350):
+                change = -volume * (np.exp(-i * 0.01 / 0.6) - np.exp(-(i + 1) * 0.01 / 0.6))
+                expired.append(capno.step(0.01, change, 38.0))
+            peaks.append(max(expired))
+        assert peaks == pytest.approx([38.0] * 4, abs=0.5)
 
     @pytest.mark.parametrize(("mode", "p_insp"), [("VCV", 0.0), ("PSV", 10.0), ("CPAP", 0.0)])
     def test_capnogram_follows_spontaneous_breaths_over_backup_and_after_stop(

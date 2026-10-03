@@ -17,8 +17,10 @@ class AirwaySensor:
         self._stage2 = [paw, flow, volume]
 
     def step(self, dt: float, paw: float, flow: float, volume: float) -> tuple[float, float, float]:
-        alpha = -math.expm1(-dt / self.tau_s)
-        for stage, source in ((self._stage1, (paw, flow, volume)), (self._stage2, self._stage1)):
-            for i in range(3):
-                stage[i] += alpha * (source[i] - stage[i])
+        z = dt / self.tau_s
+        decay = math.exp(-z)
+        for i, source in enumerate((paw, flow, volume)):
+            first, second = self._stage1[i], self._stage2[i]
+            self._stage1[i] = source + (first - source) * decay
+            self._stage2[i] = source + (second - source + z * (first - source)) * decay
         return tuple(self._stage2)

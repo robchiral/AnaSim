@@ -96,7 +96,8 @@ class TestClinicalAcceptance:
 
         # Published propofol-remifentanil recovery studies report spontaneous
         # respiration and eye opening in roughly 4-15 minutes, depending on dose.
-        assert ventilation_time is not None and 180 <= ventilation_time <= 720
+        # Ventilation continues, holding PaCO2 below the patient's own level.
+        assert ventilation_time is not None and 180 <= ventilation_time <= 900
         assert bis_70_time is not None and 180 <= bis_70_time <= 900
         assert bis_80_time is not None and bis_80_time <= 1200
 

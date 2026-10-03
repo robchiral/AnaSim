@@ -71,6 +71,33 @@ def test_co2_drives_breathing_and_opioids_blunt_it(patient):
     )
 
 
+def test_hyperventilation_stops_breathing_under_anesthesia_until_co2_recovers(awake_engine):
+    """Hickey 1971: under anesthesia the apneic threshold lies 4-5 mmHg below the
+    resting PaCO2 at any depth. Ventilation above need stops the patient's efforts;
+    after the ventilator stops, breathing resumes once CO2 rises to the threshold."""
+    engine = awake_engine
+    engine.enable_tci("propofol", 3.0)
+    engine.enable_tci("remi", 1.0)
+    engine.set_airway_mode("ETT")
+    for _ in range(3600):
+        engine.step(0.1)
+    resting = engine.resp.state.p_alveolar_co2
+    assert engine.resp.state.rr > 8.0
+
+    engine.set_vent_settings(rr=14, vt=0.5, peep=5, ie="1:2", mode="PCV", p_insp=14)
+    engine.set_vent_power(True)
+    for _ in range(2400):
+        engine.step(0.1)
+    assert engine.resp.state.apnea and engine.resp_mech.effort.amplitude == 0.0
+
+    engine.set_vent_power(False)
+    for _ in range(6000):
+        engine.step(0.1)
+        if not engine.resp.state.apnea:
+            break
+    assert resting - 5.0 <= engine.resp.state.p_alveolar_co2 <= resting - 4.0
+
+
 def test_hypercapnia_does_not_overcome_deep_drug_depression(patient):
     baseline = _breath(patient, paco2=40.0)
     normocapnic = _breath(patient, paco2=40.0, ce_prop=3.5, ce_remi=4.0)

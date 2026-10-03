@@ -116,6 +116,8 @@ class Loops {
     this.canvases = ["loop-pv", "loop-fv"].map((id) => document.getElementById(id));
     this.previous = null;
     this.current = null;
+    this.ranges = null;
+    this.newBreath = true;
     this.dirty = true;
     this.observer = new ResizeObserver(() => { this.dirty = true; });
     for (const canvas of this.canvases) this.observer.observe(canvas);
@@ -130,6 +132,7 @@ class Loops {
       if (run.breath !== this.current?.breath) {
         if (this.current?.paw.length > 1) this.previous = this.current;
         this.current = { breath: run.breath, paw: [], flow: [], volume: [] };
+        this.newBreath = true;
       }
       for (const key of LOOP_KEYS) {
         const values = this.current[key];
@@ -144,20 +147,33 @@ class Loops {
     const [pv, fv] = this.canvases;
     const loops = [this.previous, this.current].filter(Boolean);
     const all = (key) => loops.flatMap((loop) => loop[key]);
-    const maxVolume = niceCeil(Math.max(500, ...all("volume")), 250);
+    const maxVolume = niceCeil(Math.max(250, ...all("volume")), 250);
     const minVolume = Math.min(0, ...all("volume"));
     // Plot padding covers small excursions below the breath's starting volume.
     // Larger changes, such as an effort during mandatory expiration, need a negative scale.
     const volumeFloor = minVolume >= -LOOP_PADDING * maxVolume ? 0 : -niceCeil(-minVolume, 250);
-    const volumeRange = [volumeFloor, maxVolume];
-    const maxPaw = niceCeil(Math.max(20, ...all("paw")), 10);
-    const maxFlow = niceCeil(Math.max(30, ...all("flow").map(Math.abs)), 30);
+    const pressureExtent = Math.max(2, ...all("paw").map(Math.abs));
+    const pressureStep = pressureExtent <= 5 ? 1 : pressureExtent <= 20 ? 2 : 5;
+    const minPaw = -niceCeil(-Math.min(0, ...all("paw")), pressureStep);
+    const maxPaw = niceCeil(Math.max(2, ...all("paw")), pressureStep);
+    const maxFlow = niceCeil(Math.max(10, ...all("flow").map(Math.abs)), 10);
+    const desired = { pressure: [minPaw, maxPaw], volume: [volumeFloor, maxVolume], flow: [-maxFlow, maxFlow] };
+    // Expand immediately; shrink only on a new breath, using both retained loops.
+    // This keeps a partial inspiration from repeatedly changing the scale.
+    for (const key of Object.keys(desired)) {
+      if (this.ranges && !this.newBreath) {
+        desired[key] = [Math.min(this.ranges[key][0], desired[key][0]),
+                        Math.max(this.ranges[key][1], desired[key][1])];
+      }
+    }
+    this.ranges = desired;
+    this.newBreath = false;
     const traces = (x, y) => [
       this.previous && { xs: this.previous[x], ys: this.previous[y], alpha: 0.35 },
       this.current && { xs: this.current[x], ys: this.current[y], alpha: 1, head: true },
     ].filter(Boolean);
-    plotLoop(pv, traces("paw", "volume"), [-5, maxPaw], volumeRange, "cmH₂O", "mL");
-    plotLoop(fv, traces("volume", "flow"), volumeRange, [-maxFlow, maxFlow], "mL", "L/min");
+    plotLoop(pv, traces("paw", "volume"), desired.pressure, desired.volume, "cmH₂O", "mL");
+    plotLoop(fv, traces("volume", "flow"), desired.volume, desired.flow, "mL", "L/min");
   }
 }
 
@@ -195,7 +211,7 @@ function plotLoop(canvas, traces, [x0, x1], [y0, y1], xUnit, yUnit) {
   ctx.textBaseline = "bottom";
   ctx.fillText(`${x1} ${xUnit}`, px(x1), h - 1);
   ctx.textAlign = "left";
-  if (x0 < 0) ctx.fillText(String(x0), px(x0), h - 1);
+  ctx.fillText(String(x0), px(x0), h - 1);
   ctx.textBaseline = "top";
   ctx.fillText(`${y1} ${yUnit}`, left, 1);
   if (y0 < 0) ctx.fillText(String(y0), 1, bottom - 10);

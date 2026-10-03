@@ -37,20 +37,27 @@ def _require_assess() -> callable:
 
 
 def _require_agents_stopped_balanced() -> callable:
-    """Check volatile agent stopped and high flow gas."""
+    """Check volatile agent and remifentanil stopped, with high fresh gas flow."""
+    opioid_check = require_infusions_stopped(
+        "remi", fail_message="Stop remifentanil for this objective"
+    )
+
     def check(engine) -> Tuple[bool, str]:
         gas_off = not engine.circuit.vaporizer_on or engine.circuit.vaporizer_setting < 0.1
         high_flow = engine.circuit.fgf_total() > 6.0
         vaporizer_records = engine.actions.since_step(ACTION_VAPORIZER)
         vaporizer_stopped = any(record.amount < 0.1 for record in vaporizer_records)
         flow_changed = action_taken_this_step(engine, ACTION_FGF)
-        if gas_off and high_flow and vaporizer_stopped and flow_changed:
+        opioid_stopped, opioid_message = opioid_check(engine)
+        if gas_off and high_flow and vaporizer_stopped and flow_changed and opioid_stopped:
             return True, ""
         msgs = []
         if not gas_off or not vaporizer_stopped:
             msgs.append("Turn vaporizer off for this objective")
         if not high_flow or not flow_changed:
             msgs.append("Set FGF above 6 L/min for this objective")
+        if not opioid_stopped:
+            msgs.append(opioid_message)
         return False, join_messages(msgs)
     return check
 
@@ -144,7 +151,8 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
 
     if is_balanced:
         stop_agents_instruction = (
-            "Turn vaporizer <b>OFF</b>. Increase FGF to <b>8-10 L/min</b>.<br><br>"
+            "Turn vaporizer <b>OFF</b>. Stop remifentanil in Medications. "
+            "Increase FGF to <b>8-10 L/min</b>.<br><br>"
             "<i>High flow accelerates volatile agent washout.</i>"
         )
         stop_agents_check = _require_agents_stopped_balanced()

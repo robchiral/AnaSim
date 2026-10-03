@@ -24,7 +24,7 @@ from anasim.physiology.disturbances import DisturbanceEffects
 from .monitors import step_monitors
 from .projection import (
     PhysiologyStepState,
-    assisted_ventilation,
+    circuit_ventilation,
     measured_ventilation,
     project_runtime_physiology,
     sync_inhaled_agents,
@@ -107,14 +107,16 @@ def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_
     resp = engine.resp.state
     lung = engine.resp_mech
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.
-    lung.effort.set_drive(0.0 if resp.apnea else resp.rr, resp.vt / 1000.0)
+    support = (engine.vent.settings.p_support if vent_active
+               and (engine.vent.settings.mode == "PSV" or engine.vent.settings.mode.startswith("SIMV")) else 0.0)
+    lung.effort.set_drive(0.0 if resp.apnea else resp.rr, resp.vt / 1000.0, support)
     if vent_active:
         source = "vent"
     elif bag_mask_active:
         source = "bag"
     else:
         source = "spontaneous" if connected else None
-    engine.vent.step(dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt))
+    engine.vent.step(dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt), collect_samples=True)
     engine._last_patient_effort_cmH2O = min(lung.effort.amplitude, 20.0)
 
 
@@ -441,7 +443,7 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     pit_estimate -= effort_mmhg
 
     # Gas exchange uses recent exhaled breaths, so it lags at least one breath.
-    assisted_rr, assisted_vt_l = assisted_ventilation(engine) if assisted_active else (0.0, 0.0)
+    assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)
     if vent_active:
         total_peep_effect = vent.settings.peep + spirometry.auto_peep
     else:
@@ -459,7 +461,7 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     resp_state = engine.resp.step(dt, **kwargs)
 
     rr_display, vt_display_ml, total_patient_mv = measured_ventilation(
-        engine, assisted_active, resp_state.rr, resp_state.vt / 1000.0
+        engine, connected, resp_state.rr, resp_state.vt / 1000.0
     )
 
     hemo_state = engine.hemo.step(

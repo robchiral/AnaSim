@@ -165,6 +165,7 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 - Glass et al. Anesthesiology. 1999. (remifentanil ventilatory depression vs CO2). [PubMed](https://pubmed.ncbi.nlm.nih.gov/10360852/)
 - Pandit et al. Br J Anaesth. 1999. (hypercapnic ventilatory response at 0.1 MAC sevoflurane). [PubMed](https://pubmed.ncbi.nlm.nih.gov/10618930/)
 - Doi and Ikeda. Anesth Analg. 1987. (sevoflurane depresses CO2 response at 1.1-1.4 MAC). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3826666/)
+- Hickey et al. Anesthesiology. 1971. (apneic threshold 4-5 mmHg below resting PaCO2 under ether, halothane, and isoflurane, independent of depth). [PubMed](https://pubmed.ncbi.nlm.nih.gov/4932620/)
 - Duffin. Respir Physiol Neurobiol. 2011. (ventilatory response modeling). [PubMed](https://pubmed.ncbi.nlm.nih.gov/21514404/)
 - Bissinger et al. Anasthesiol Intensivmed Notfallmed Schmerzther. 1993. (curare cleft; capnography vs relaxometry). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7902740/)
 - Russell et al. Can J Anaesth. 1990. (PaCO2-EtCO2 gradient during postoperative support). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2115404/)
@@ -195,17 +196,21 @@ the [CLI guide](CLI_USAGE.md#fields) for all input limits.
 
 Volume-control waveforms, capnography, and compliance were compared with
 Dräger Primus recordings from VitalDB in adults within the supported range.
-Separate recordings were used to fit and check the parameters. These
-comparisons informed compliance scaling, monitor response, and ventilator
-defaults; published studies and device specifications supplied the remaining
-parameters. PEEP-valve resistance was fitted to expiratory pressure recordings
-with positive PEEP.
+Separate recordings were used to fit and check compliance, monitor response,
+ventilator defaults, and expiratory resistance.
+
+Spontaneous effort uses published inflation responses (Polacheck 1980;
+Graves 1986), with simplified flow, pressure-support unloading, and breath
+timing. These approximations have not been validated against the recordings.
 
 - Lee et al. Sci Data. 2022. (VitalDB: intraoperative waveforms and numerics from 6,388 surgical patients; CC BY-NC-SA 4.0). [PubMed](https://pubmed.ncbi.nlm.nih.gov/35676300/)
 - Jonson et al. J Appl Physiol. 1993. (healthy anesthetized humans: viscoelastic resistance 3.7 cmH2O/(L/s), compliance 4x static, time constant 0.82 s). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8376259/)
 - D'Angelo et al. J Appl Physiol. 1989. (stress adaptation adds viscoelastic resistance in anesthetized paralyzed humans). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2606863/)
 - Pelosi et al. Anesth Analg. 1998. (respiratory system compliance falls exponentially with BMI during general anesthesia). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9728848/)
 - Tobin et al. Chest. 1983. (breathing pattern of normal subjects). [PubMed](https://pubmed.ncbi.nlm.nih.gov/6872603/)
+- Graves et al. Am J Physiol. 1986. (breathing synchronization with mechanical ventilation in anesthetized humans). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3706575/)
+- Feigenwinter and Zbinden. Anaesthesist. 1991. (resistance of eight circle systems against a proposed limit of 0.6 kPa at 60 L/min). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1952036/)
+- Polacheck et al. J Appl Physiol. 1980. (vagal volume feedback ends inspiration within the tidal range in most anesthetized humans). [PubMed](https://pubmed.ncbi.nlm.nih.gov/7440275/)
 - Fowler. Am J Physiol. 1948. (anatomic dead space from the exhaled CO2 front). [PubMed](https://pubmed.ncbi.nlm.nih.gov/18101134/)
 - Sydow et al. Intensive Care Med. 1993. (status asthmaticus: inspiratory resistance 22.7 ± 7.0 cmH2O/(L/s), Ppeak 43 cmH2O). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8294630/)
 - Okayama et al. J Asthma. 1991. (status asthmaticus: airway resistance 13-17 mmHg/(L/s) by interruption). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2010425/)

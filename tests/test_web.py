@@ -162,6 +162,31 @@ def test_ventilator_display_and_disconnection_alarm():
     assert "MV" not in run_seconds(session, 20)[-1]["alarms"]
 
 
+@pytest.mark.parametrize("mode", [None, "PSV", "PCV", "SIMV-PC"])
+def test_loops_retain_the_flow_boundary_across_modes(mode):
+    session = WebSession({**PATIENT, "mode": "awake"})
+    session.engine.resp.hcvr_slope_baseline = 0.0
+    cmd(session, "airway", mode="ETT")
+    cmd(session, "vent", mode=mode or "VCV", rr=6, peep=5, p_insp=12, p_support=5)
+    cmd(session, "vent_power", on=mode is not None)
+    cmd(session, "run", running=True)
+    runs = {}
+    for snap in run_seconds(session, 35, tick_s=0.1):
+        for run in snap["loop"]:
+            runs.setdefault(run["breath"], []).extend(zip(run["paw"], run["flow"], run["volume"]))
+    for breath in sorted(runs)[-3:-1]:
+        points = runs[breath]
+        assert points[0][1] == points[-1][1] == 0.0
+        assert points[0][2] == 0.0
+        assert min(p[1] for p in points) < 0 < max(p[1] for p in points)
+        assert max(p[2] for p in points) > 350.0
+        if mode in (None, "PSV"):
+            assert points[-1][2] == pytest.approx(0.0, abs=0.1)
+        else:
+            # Mixed breaths preserve changes in end-expiratory volume.
+            assert points[-1][2] != pytest.approx(0.0, abs=0.5)
+
+
 def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload():
     session = WebSession(PATIENT)
     assert parse(session.info())["medication_history"] == []

@@ -205,27 +205,84 @@ def test_pressure_support_follows_patient_triggers(awake_engine, advance_time):
     engine.set_vent_power(True)
     advance_time(engine, 30.0, dt=0.1)
     cpap = engine.get_latest_state()
+    unassisted_effort = engine.resp_mech.effort.amplitude
+    unassisted_ti = engine.resp_mech.effort.ti
     # Unsupported: Ppeak comes from exhaling through the PEEP valve.
     assert cpap.vt > 400.0 and cpap.paw_peak < 12.0
+    # Inspiration is the near-sinusoidal flow of quiet breathing, so it reverses
+    # smoothly at the end of Ti instead of stopping abruptly. Gas left from the
+    # last exhalation ends it slightly early through the inflation reflex.
+    flows = []
+    for _ in range(6000):
+        engine.step(0.001)
+        flows.append(engine.vent.flow)
+    start = next(i for i in range(1, len(flows)) if flows[i - 1] <= 0.0 < flows[i])
+    end = next(i for i in range(start, len(flows)) if flows[i] <= 0.0)
+    ti, peak = (end - start) * 0.001, math.pi / 2.0 * sum(flows[start:end]) / (end - start)
+    half_sine = [peak * math.sin(math.pi * (i - start) / (end - start)) for i in range(start, end)]
+    effort = engine.resp_mech.effort
+    assert ti == pytest.approx(min(effort.TI_FRACTION * effort.period, effort.TI_MAX), rel=0.05)
+    assert max(abs(f - s) for f, s in zip(flows[start:end], half_sine)) < 0.1 * peak
 
     engine.set_vent_settings(rr=0.0, vt=0.0, peep=8.0, ie="1:2", mode="PSV", p_support=10.0)
     advance_time(engine, 30.0, dt=0.1)
     assert engine.state.rr == pytest.approx(engine.resp.state.rr, abs=0.5)
-    assert engine.state.vt > cpap.vt + 200.0
+    # Inflation to the patient's own VT ends their effort, so support raises VT modestly.
+    assert 1.1 * cpap.vt < engine.state.vt < 1.3 * cpap.vt
+    assert engine.resp_mech.effort.amplitude < unassisted_effort
+    assert engine.resp_mech.effort.ti < unassisted_ti
     assert engine.state.paw_peak == pytest.approx(18.0, abs=0.1)
     assert math.isnan(engine.state.paw_plat)
 
     peak = last = 0.0
     ratios = []
-    for _ in range(1500):
+    for _ in range(15000):
         inspiring = engine.vent.inspiring
-        engine.step(0.01)
+        engine.step(0.001)
         if engine.vent.inspiring:
             peak, last = max(peak, engine.vent.flow), engine.vent.flow
         elif inspiring and peak > 0.0:
             ratios.append(last / peak)
             peak = 0.0
     assert ratios and all(0.25 <= ratio < 0.3 for ratio in ratios)
+
+
+@pytest.mark.parametrize("mode", ["VCV", "PCV"])
+@pytest.mark.parametrize("dt", [0.1, 1.0])
+def test_mixed_breaths_use_all_expired_gas(awake_engine, mode, dt):
+    engine = awake_engine
+    # Fix neural frequency while testing gas accounting, independent of CO2 feedback.
+    engine.resp.hcvr_slope_baseline = 0.0
+    engine.set_airway_mode("ETT")
+    engine.set_vent_settings(rr=6, vt=0.5, peep=5, ie="1:2", mode=mode, p_insp=12)
+    engine.set_vent_power(True)
+    for _ in range(round(40 / dt)):
+        engine.step(dt)
+    expired = 0.0
+    mandatory_starts = 0
+    previous = engine.vent._since_mandatory
+    for _ in range(round(20 / dt)):
+        engine.step(dt)
+        expired += sum(max(0.0, -sample[1]) for sample in engine.vent.samples)
+        mandatory_starts += engine.vent._since_mandatory < previous
+        previous = engine.vent._since_mandatory
+    assert mandatory_starts == 2  # Counting spontaneous breaths does not change mandatory timing.
+    assert engine.state.rr == pytest.approx(12.0, abs=0.1)
+    assert engine.state.mv == pytest.approx(expired * 3, rel=0.01)
+    assert engine.state.va == pytest.approx(engine.state.mv - engine.state.rr * engine.resp.vd_deadspace, abs=0.01)
+
+    # At 9/min some inflations start just as a spontaneous inspiration ends.
+    # They join that breath, so no measured breath reports a near-zero VTe.
+    engine.set_vent_settings(rr=9, vt=0.5, peep=5, ie="1:2", mode=mode, p_insp=12)
+    started = breaths(engine, 60.0, dt)
+    assert min(vte for _, _, vte in started) > 50.0
+    # Inflation delays the patient's next breath until the lungs deflate, so
+    # breathing phase-locks 1:1 to a ventilator within 40% of the patient's
+    # rate (Graves 1986): every cycle repeats one spontaneous breath.
+    volumes = [vte for _, _, vte in started[-6:]]
+    for same_phase in (volumes[0::2], volumes[1::2]):
+        assert max(same_phase) - min(same_phase) < 0.02 * min(same_phase)
+    assert engine.state.rr == pytest.approx(18.0, abs=0.1)
 
 
 def test_simv_synchronizes_mandatory_breaths_and_supports_the_rest(awake_engine, advance_time):

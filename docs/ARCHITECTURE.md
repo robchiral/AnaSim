@@ -96,10 +96,11 @@ modeled.
 
 ### Respiration
 
-Anesthetics and opioids reduce respiratory drive. Rocuronium acts at separate
-peripheral and central effect sites, allowing breathing to recover before
-TOF. Loss of consciousness can cause partial upper-airway obstruction;
-positive pressure or an ETT relieves it.
+Anesthetics and opioids reduce respiratory drive. Assisted ventilation can
+suppress breathing in unconscious patients by lowering PaCO2 below the
+apneic threshold; awake patients retain breathing drive. Separate rocuronium
+effect sites allow breathing to recover before TOF. Loss of consciousness can
+cause upper-airway obstruction, relieved by positive pressure or an ETT.
 
 Gas exchange tracks alveolar gas and blood oxygen stores, so preoxygenation,
 apnea, and blood loss affect time to desaturation. Alveolar, arterial, and
@@ -109,8 +110,10 @@ end-tidal CO2 are separate; low cardiac output widens the PaCO2-EtCO2 gap.
 
 [`RespiratoryMechanics`](../anasim/physiology/resp_mech.py) models airway
 resistance, compliance, tissue viscoelasticity, and inspiratory muscle
-pressure. Compliance scales with predicted body weight and BMI. Integration
-steps split at breath transitions and pressure limits.
+pressure. Compliance scales with predicted body weight and BMI. Pressure
+support reduces muscle effort, and lung inflation changes its timing,
+allowing breathing to synchronize with the ventilator. Integration steps
+split at breath transitions and pressure limits.
 
 [`AnesthesiaVentilator`](../anasim/machine/ventilator.py) controls VCV, PCV,
 PCV-VG, SIMV, PSV with apnea backup, and CPAP. VCV has an adjustable pause
@@ -141,9 +144,10 @@ smoothing and processing delay. Poor perfusion delays SpO2 readings and reduces
 pleth amplitude. SpO2 requires an organized rhythm and adequate perfusion.
 
 The capnograph models exhaled gas passing through airway dead space and the
-analyzer. Inspiratory efforts can produce curare clefts. The gas monitor shows
-end-tidal age-adjusted MAC (`et_mac`); brain MAC (`mac`) determines drug effects.
-End-tidal values clear 15 seconds after the last valid exhaled CO2 sample.
+analyzer. Inspiratory efforts can produce curare clefts. The gas monitor
+shows end-tidal age-adjusted MAC (`et_mac`); brain MAC (`mac`) determines drug
+effects. End-tidal values clear 15 seconds after the last valid exhaled CO2
+sample.
 
 Airway traces include sensor filtering. PEEP-valve resistance slows the fall
 in expiratory airway pressure. Plateau pressure requires a mandatory breath

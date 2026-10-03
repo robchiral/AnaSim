@@ -75,14 +75,18 @@ def _capno_sampling_possible(engine: "SimulationEngine") -> bool:
 
 def compute_capno_value(engine: "SimulationEngine", dt: float, resp_state) -> float:
     """Advance the capnograph with the gas that crossed the Y-piece this step."""
-    volume = engine.vent.volume
-    change, engine._capno_volume = volume - engine._capno_volume, volume
     if not _capno_sampling_possible(engine):
         engine.capno.reset()
+        engine.state.display_etco2, engine.state.etco2_signal_valid = update_capno_numeric(engine, dt, "INSP", 0.0)
         return 0.0
-    return engine.capno.step(
-        dt, change, resp_state.etco2 * engine._airway_patency, obstruction=engine._capno_obstruction
-    )
+    for duration, change, _, _, _ in engine.vent.samples:
+        value = engine.capno.step(
+            duration, change, resp_state.etco2 * engine._airway_patency, obstruction=engine._capno_obstruction
+        )
+        engine.state.display_etco2, engine.state.etco2_signal_valid = update_capno_numeric(
+            engine, duration, "EXP" if engine.capno.exhaling else "INSP", value
+        )
+    return engine.capno.co2
 
 
 def update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, capno_value: float) -> tuple[float, bool]:
@@ -194,19 +198,13 @@ def step_monitors(
 
     update_nibp(engine, dt, hemo_state)
 
-    paw, flow, volume = engine.airway_sensor.step(dt, state.paw, state.flow, state.volume)
+    for duration, _, sample_paw, sample_flow, sample_volume in engine.vent.samples:
+        paw, flow, volume = engine.airway_sensor.step(duration, sample_paw, sample_flow, sample_volume)
+        state.paw = float(paw)
+        state.flow = float(flow)
+        state.volume = float(volume)
     bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
     state.bis = float(bis_display_source)
-    state.paw = float(paw)
-    state.flow = float(flow)
-    state.volume = float(volume)
-    display_etco2, etco2_signal_valid = update_capno_numeric(
-        engine,
-        dt,
-        "EXP" if engine.capno.exhaling else "INSP",
-        capno_val,
-    )
-    state.etco2_signal_valid = etco2_signal_valid
 
     raw_bis = state.bis + float(engine.rng.normal(0.0, engine._bis_noise_std))
     alpha_bis = 1.0 - math.exp(-dt / engine._monitor_tau_bis_s)
@@ -217,7 +215,6 @@ def step_monitors(
     state.display_hr = float(display_hr)
     state.display_bis = float(display_bis)
     state.capno_co2 = float(capno_val)
-    state.display_etco2 = float(display_etco2)
     state.loc = float(loc_val)
     state.tol = float(engine._tol_current)
     state.display_spo2 = float(state.spo2)

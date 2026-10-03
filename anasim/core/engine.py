@@ -210,7 +210,6 @@ class SimulationEngine(DrugControllerMixin):
         self._capno_numeric_timeout_s = 15.0
         self._capno_last_phase = "EXP"
         self._capno_has_sample = False
-        self._capno_volume = 0.0  # Lung volume at the last capnograph step (L)
         self._mean_paw_tau_s = 0.25
         self._tol_current = 0.0
         self._pk_hemo_scale_cache = None
@@ -580,6 +579,7 @@ class SimulationEngine(DrugControllerMixin):
             "mean_paw": mean_paw,
             "mech_rr": mech_rr,
             "mech_vt_l": mech_vt_l,
+            "measured_breaths": self.state.airway_mode != AirwayType.NONE and self.vent.has_measured_breath,
             "airway_patency": self._airway_patency,
             "ventilation_efficiency": self._ventilation_efficiency,
             "vq_mismatch": self._vq_mismatch,
@@ -587,6 +587,7 @@ class SimulationEngine(DrugControllerMixin):
             "blood_volume_ml": self.hemo.blood_volume,
             "cardiac_output": cardiac_output,
             "metabolic_factor": max(0.5, self._metabolic_factor),
+            "unconscious": self.state.loc,
         }
 
     def set_bronchospasm(self, severity: float):

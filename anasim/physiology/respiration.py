@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 from anasim.core.constants import (
@@ -34,6 +35,10 @@ class RespState:
 
 class RespiratoryModel:
     """Ventilatory control, anesthetic respiratory depression, and CO2 and O2 exchange."""
+
+    # Under anesthesia the apneic threshold is 4-5 mmHg below resting PaCO2,
+    # independent of agent and depth (Hickey 1971).
+    APNEIC_GAP = 4.5  # mmHg
 
     def __init__(self, patient: Patient):
         self.patient = patient
@@ -114,6 +119,7 @@ class RespiratoryModel:
         self._apnea_timer = 0.0
         # Perfusion effect on deadspace fraction (low flow increases VD/VT).
         self.perfusion_deadspace_gain = 0.25
+        self._own_pco2 = self.state.p_alveolar_co2  # PCO2 the patient's own breathing would hold
 
     def equilibrate_oxygen(self, fio2: float) -> None:
         """Set alveolar O2 to its alveolar-gas-equation value at the current PACO2."""
@@ -129,7 +135,9 @@ class RespiratoryModel:
              hb_g_dl: float | None = None,
              cardiac_output: float = 5.0,
              metabolic_factor: float = 1.0,
-             blood_volume_ml: float | None = None) -> RespState:
+             blood_volume_ml: float | None = None,
+             measured_breaths: bool = False,
+             unconscious: float = 0.0) -> RespState:
         """Advance respiration by dt seconds.
 
         Args:
@@ -149,6 +157,9 @@ class RespiratoryModel:
             cardiac_output: L/min, for the PaCO2-EtCO2 gap.
             metabolic_factor: VO2 and VCO2 multiplier.
             blood_volume_ml: Blood volume (mL), which with Hb sets the blood O2 store.
+            measured_breaths: The supplied rate and volume include all observed
+                breaths, including spontaneous breaths during mechanical ventilation.
+            unconscious: Probability of loss of consciousness, 0-1.
         """
         state = self.state
         hill = hill_function
@@ -161,72 +172,44 @@ class RespiratoryModel:
         eff_nmba = hill(ce_roc, self.c50_nmba, self.gamma_nmba)
 
         # Central drive; multiplicative drug interaction is synergistic.
-        drive_central = (1.0 - eff_prop_hcvr) * (1.0 - eff_remi) * (1.0 - eff_sevo)
+        drug_drive = (1.0 - eff_prop_hcvr) * (1.0 - eff_remi) * (1.0 - eff_sevo)
 
         # HCVR: VA boost = slope x (PACO2 - set point). Drugs flatten the slope
         # multiplicatively, and opioids move the set point right.
         factor_remi = max(0.0, 1.0 - self.hcvr_depression_remi * eff_remi)
         factor_prop = max(0.0, 1.0 - self.hcvr_depression_prop * eff_prop_hcvr)
         factor_sevo = max(0.0, 1.0 - self.hcvr_depression_sevo * eff_sevo)
-
-        slope_factor = factor_remi * factor_prop * factor_sevo
-        hcvr_slope = self.hcvr_slope_baseline * slope_factor
+        hcvr_slope = self.hcvr_slope_baseline * factor_remi * factor_prop * factor_sevo
         effective_setpoint = self.paco2_setpoint + (self.remi_setpoint_shift_max * eff_remi)
-        co2_above_setpoint = max(0.0, state.p_alveolar_co2 - effective_setpoint)
-        va_boost_from_co2 = hcvr_slope * co2_above_setpoint
-        # Express the VA boost as drive relative to baseline VA, capped at 2x.
-        if self.va_baseline > 0:
-            co2_drive_boost = va_boost_from_co2 / self.va_baseline
-        else:
-            co2_drive_boost = 0.0
-        drive_central = min(2.0, drive_central + co2_drive_boost)
 
         # Neuromuscular block weakens the muscles without changing drive.
         muscle_factor = 1.0 - eff_nmba
-
         rr_inhib_base = (self.w_prop_rr * eff_prop_mech +
                          self.w_remi_rr * eff_remi +
                          self.w_sevo_rr * eff_sevo)
-
         vt_inhib_base = (self.w_prop_vt * eff_prop_mech +
                          self.w_remi_vt * eff_remi +
                          self.w_sevo_vt * eff_sevo)
-
-        # Hypercapnia partly overcomes drug depression, by up to 50%.
-        hcvr_counteraction = min(0.5, co2_drive_boost * 0.3)
-        rr_fraction = 1.0 - clamp01_local(rr_inhib_base * (1.0 - hcvr_counteraction))
-        vt_fraction = 1.0 - clamp01_local(vt_inhib_base * (1.0 - hcvr_counteraction))
-        vt_fraction *= muscle_factor
-        rr_fraction *= muscle_factor
-
-        # Drive above baseline raises the rate (60% of the excess).
-        if drive_central > 1.0:
-            rr_fraction *= 1.0 + (drive_central - 1.0) * 0.6
-
-        current_rr = self.rr_0 * rr_fraction
-        # Below the apnea threshold breathing stops; in the bradypnea range
-        # irregular breaths halve the effective rate.
-        if current_rr < RR_APNEA_THRESHOLD:
-            current_rr = 0.0
-            state.apnea = True
-        elif current_rr < RR_BRADYPNEA_THRESHOLD:
-            current_rr = current_rr * 0.5
-            state.apnea = False
-        else:
-            state.apnea = False
-
-        current_vt = self.vt_0 * vt_fraction
-        if current_vt < VT_MIN:
-            current_vt = 0.0
-
         airway_patency = clamp01_local(airway_patency)
         ventilation_efficiency = clamp01_local(ventilation_efficiency)
-        vent_factor = airway_patency * ventilation_efficiency
-        current_vt *= vent_factor
-        # Breaths under 100 mL do not produce a detectable capnogram.
-        if current_vt < 100.0:
-            current_rr = 0.0
-            state.apnea = True
+        pattern = (drug_drive, hcvr_slope, effective_setpoint, rr_inhib_base, vt_inhib_base, muscle_factor,
+                   airway_patency * ventilation_efficiency)
+        current_rr, current_vt, drive_central = self._unassisted(state.p_alveolar_co2, *pattern)
+
+        # Below the PCO2 their own breathing would hold, unconscious patients'
+        # alveolar ventilation falls linearly, through rate and depth, to apnea
+        # APNEIC_GAP lower; awake patients keep breathing.
+        below = self._own_pco2 - state.p_alveolar_co2
+        if below > 0.0 and current_rr > 0.0:
+            kept = 1.0 - clamp01_local(unconscious) * clamp01_local(below / self.APNEIC_GAP)
+            share = math.sqrt(kept)
+            dead_space_ml = 1000.0 * self.vd_deadspace
+            current_rr *= share
+            if current_vt > dead_space_ml:
+                current_vt = dead_space_ml + share * (current_vt - dead_space_ml)
+            if current_rr < RR_APNEA_THRESHOLD:
+                current_rr = current_vt = 0.0
+        state.apnea = current_rr <= 0.0
 
         vd = self.vd_deadspace
         vt_eff_spont = max(0.0, current_vt / 1000.0 - vd)
@@ -247,11 +230,12 @@ class RespiratoryModel:
         vt_mech_avail = max(0.0, alveolar_vt_mech)
         vt_spont_avail = max(0.0, vt_eff_spont)
 
-        if mech_rr > 0:
-            effective_vt_alv = max(vt_mech_avail, vt_spont_avail)
+        if measured_breaths:
+            # Measured ventilation already contains the patient's contribution.
+            # Combining its VT with a separate neural rate invents extra gas.
+            total_va_l_min = ref_rr_mech * vt_mech_avail
         else:
-            effective_vt_alv = vt_spont_avail
-        total_va_l_min = effective_rate * effective_vt_alv
+            total_va_l_min = effective_rate * (max(vt_mech_avail, vt_spont_avail) if mech_rr > 0 else vt_spont_avail)
         state.va = total_va_l_min
 
         # PACO2 relaxes toward 40 x metabolic factor x VA_baseline / VA; V/Q
@@ -288,6 +272,14 @@ class RespiratoryModel:
             d_paco2 = min(d_paco2, max_rise)
 
         state.p_alveolar_co2 += d_paco2
+        # The PCO2 the patient's own breathing would hold follows the same
+        # dynamics; only assistance holds the actual value lower.
+        own_rr, own_vt, _ = self._unassisted(self._own_pco2, *pattern)
+        own_va = max(0.1, own_rr * max(0.0, own_vt / 1000.0 - vd) * (1.0 - 0.6 * vq_mismatch))
+        own_eq = min(150.0, paco2_base * metabolic_factor * (self.va_baseline / own_va))
+        own_change = min((own_eq - self._own_pco2) / self.tau_co2 * dt,
+                         metabolic_factor * APNEA_PACO2_RISE_SLOW_MMHG_MIN * dt / 60.0)
+        self._own_pco2 = max(self._own_pco2 + own_change, state.p_alveolar_co2)
 
         # PaCO2 and EtCO2 derive from alveolar CO2. The PaCO2-EtCO2 gap widens
         # with dead space, V/Q mismatch, obstruction, and low cardiac output
@@ -368,6 +360,36 @@ class RespiratoryModel:
         state.sao2 = 100.0 * self._saturation(state.p_arterial_o2)
 
         return state
+
+    def _unassisted(self, pco2: float, drug_drive: float, hcvr_slope: float, setpoint: float,
+                    rr_inhib: float, vt_inhib: float, muscle_factor: float,
+                    vent_factor: float) -> tuple[float, float, float]:
+        """Unassisted rate (/min), VT (mL), and central drive at an alveolar PCO2."""
+        boost = hcvr_slope * max(0.0, pco2 - setpoint) / self.va_baseline if self.va_baseline > 0 else 0.0
+        # Express the VA boost as drive relative to baseline VA, capped at 2x.
+        drive = min(2.0, drug_drive + boost)
+        # Hypercapnia partly overcomes drug depression, by up to 50%.
+        counteraction = min(0.5, boost * 0.3)
+        rr_fraction = (1.0 - clamp01(rr_inhib * (1.0 - counteraction))) * muscle_factor
+        vt_fraction = (1.0 - clamp01(vt_inhib * (1.0 - counteraction))) * muscle_factor
+        # Drive above baseline raises the rate (60% of the excess).
+        if drive > 1.0:
+            rr_fraction *= 1.0 + (drive - 1.0) * 0.6
+        rr = self.rr_0 * rr_fraction
+        # Below the apnea threshold breathing stops; in the bradypnea range
+        # irregular breaths halve the effective rate.
+        if rr < RR_APNEA_THRESHOLD:
+            rr = 0.0
+        elif rr < RR_BRADYPNEA_THRESHOLD:
+            rr *= 0.5
+        vt = self.vt_0 * vt_fraction
+        if vt < VT_MIN:
+            vt = 0.0
+        vt *= vent_factor
+        # Breaths under 100 mL do not produce a detectable capnogram.
+        if vt < 100.0:
+            rr = 0.0
+        return rr, vt, drive
 
     def _saturation(self, pao2: float) -> float:
         """Hill oxyhemoglobin dissociation (P50 26.6 mmHg, n 2.7) as a fraction."""
