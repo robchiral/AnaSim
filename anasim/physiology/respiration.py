@@ -39,6 +39,8 @@ class RespiratoryModel:
     # Under anesthesia the apneic threshold is 4-5 mmHg below resting PaCO2,
     # independent of agent and depth (Hickey 1971).
     APNEIC_GAP = 4.5  # mmHg
+    AWAKE_HYPOCAPNIC_GAIN = 0.2  # Fraction of HCVR; nonlinear depth response, a teaching estimate
+    RATE_CO2_GAP = 5.0  # mmHg above the set point before hypercapnia raises frequency
 
     def __init__(self, patient: Patient):
         self.patient = patient
@@ -98,7 +100,8 @@ class RespiratoryModel:
         # Resting VO2 about 3.6 mL/kg/min.
         self.vo2_ml_kg_min = 3.6
         self.vco2 = self.vo2_ml_kg_min * patient.weight * self.rq  # mL/min
-        self.frc = 2.5  # L
+        self.frc = patient.functional_residual_capacity()
+        self.shunt_fraction = 0.0
         self.baseline_blood_volume_ml = patient.estimate_blood_volume()
 
         self.vd_deadspace = 2.2 * patient.weight / 1000.0  # L
@@ -106,10 +109,12 @@ class RespiratoryModel:
 
         # Body CO2 stores equilibrate slowly (apneic rise 3-5 mmHg/min).
         self.tau_co2 = 180.0  # s
-        self.mean_paw_recruit_gain = 0.03
         self.atm_p = 760.0
         self.vapor_p = 47.0
         self._atm_dry = self.atm_p - self.vapor_p
+        # Lung ventilation/volume is BTPS; VO2 and Hb-bound O2 are STPD.
+        self._btps_to_stpd = self._atm_dry / 760.0 * 273.15 / 310.15
+        self._gas_capacity_per_l = self._btps_to_stpd / self._atm_dry
         # Age-adjusted A-a gradient, age/4 + 4 mmHg (Stein 1995).
         self.aa_grad_base = max(5.0, (self.patient.age / 4.0) + 4.0)
         self.equilibrate_oxygen(0.21)
@@ -128,7 +133,6 @@ class RespiratoryModel:
 
     def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0,
              fio2: float = 0.21, ce_roc: float = 0.0, mac_sevo: float = 0.0,
-             peep: float = 0.0, mean_paw: float = 5.0,
              mech_rr: float = 0.0, mech_vt_l: float = 0.0,
              airway_patency: float = 1.0, ventilation_efficiency: float = 1.0,
              vq_mismatch: float = 0.0,
@@ -137,7 +141,8 @@ class RespiratoryModel:
              metabolic_factor: float = 1.0,
              blood_volume_ml: float | None = None,
              measured_breaths: bool = False,
-             unconscious: float = 0.0) -> RespState:
+             unconscious: float = 0.0, lung_volume_l: float | None = None,
+             shunt_fraction: float = 0.0) -> RespState:
         """Advance respiration by dt seconds.
 
         Args:
@@ -147,7 +152,6 @@ class RespiratoryModel:
             fio2: Inspired O2 fraction.
             ce_roc: Free rocuronium at the central effect site (mcg/mL).
             mac_sevo: Brain sevoflurane MAC.
-            peep, mean_paw: Airway pressures (cmH2O).
             mech_rr, mech_vt_l: Assisted rate (breaths/min) and tidal volume
                 reaching the lungs (L).
             airway_patency: Upper-airway patency, 0-1.
@@ -160,6 +164,8 @@ class RespiratoryModel:
             measured_breaths: The supplied rate and volume include all observed
                 breaths, including spontaneous breaths during mechanical ventilation.
             unconscious: Probability of loss of consciousness, 0-1.
+            lung_volume_l: Measured end-expiratory gas volume, L.
+            shunt_fraction: Perfusion through closed lung units, 0-1.
         """
         state = self.state
         hill = hill_function
@@ -192,21 +198,24 @@ class RespiratoryModel:
                          self.w_sevo_vt * eff_sevo)
         airway_patency = clamp01_local(airway_patency)
         ventilation_efficiency = clamp01_local(ventilation_efficiency)
+        unconscious = clamp01_local(unconscious)
         pattern = (drug_drive, hcvr_slope, effective_setpoint, rr_inhib_base, vt_inhib_base, muscle_factor,
-                   airway_patency * ventilation_efficiency)
+                   airway_patency * ventilation_efficiency, unconscious)
         current_rr, current_vt, drive_central = self._unassisted(state.p_alveolar_co2, *pattern)
 
-        # Below the PCO2 their own breathing would hold, unconscious patients'
-        # alveolar ventilation falls linearly, through rate and depth, to apnea
-        # APNEIC_GAP lower; awake patients keep breathing.
+        # Awake hypocapnia reduces effort intensity while rhythmic breathing
+        # persists (Patrick 1995). Under anesthesia, rate and depth fall to the
+        # apneic threshold (Hickey 1971).
         below = self._own_pco2 - state.p_alveolar_co2
         if below > 0.0 and current_rr > 0.0:
-            kept = 1.0 - clamp01_local(unconscious) * clamp01_local(below / self.APNEIC_GAP)
+            kept = 1.0 - unconscious * clamp01_local(below / self.APNEIC_GAP)
             share = math.sqrt(kept)
             dead_space_ml = 1000.0 * self.vd_deadspace
             current_rr *= share
             if current_vt > dead_space_ml:
-                current_vt = dead_space_ml + share * (current_vt - dead_space_ml)
+                awake_kept = 1.0 / (1.0 + self.AWAKE_HYPOCAPNIC_GAIN * hcvr_slope * below / self.va_baseline)
+                depth = share * (1.0 - (1.0 - unconscious) * (1.0 - awake_kept))
+                current_vt = dead_space_ml + depth * (current_vt - dead_space_ml)
             if current_rr < RR_APNEA_THRESHOLD:
                 current_rr = current_vt = 0.0
         state.apnea = current_rr <= 0.0
@@ -310,17 +319,17 @@ class RespiratoryModel:
         state.etco2 = etco2_raw
 
         # Alveolar O2 mass balance over the lung and blood stores:
-        # C dPAO2/dt = VA (PIO2 - PAO2)/Pdry + inflow*FiO2 - VO2, where C is FRC gas
+        # C dPAO2/dt = VA_STPD (PIO2 - PAO2)/Pdry + inflow*FiO2 - VO2, where C is FRC gas
         # plus hemoglobin-bound O2 (steep on the dissociation curve). At steady
-        # state PAO2 = PIO2 - PACO2/R; in apnea stores deplete at VO2, giving the
+        # state PAO2 = PIO2 - 863 VO2/VA_BTPS; in apnea stores deplete at VO2, giving the
         # preoxygenation-dependent safe apnea time (Benumof 1997; Farmery 1996).
         # During apnea a patent airway draws gas in to replace absorbed O2
         # (apneic oxygenation).
-        vo2 = paco2_base * metabolic_factor * self.va_baseline / self.rq / self._atm_dry  # L/min
+        vo2 = self.vco2 * metabolic_factor / self.rq / 1000.0  # L/min, same uptake as the circuit
         o2_ventilation = max(0.0, total_va_l_min * (1.0 - 0.6 * vq_mismatch))
         apneic_inflow = vo2 * airway_patency * clamp01_local(1.0 - o2_ventilation)
         o2_flux = (
-            o2_ventilation * (fio2 * self._atm_dry - state.p_alveolar_o2) / self._atm_dry
+            o2_ventilation * self._btps_to_stpd * (fio2 * self._atm_dry - state.p_alveolar_o2) / self._atm_dry
             + apneic_inflow * fio2
             - vo2
         )
@@ -330,20 +339,34 @@ class RespiratoryModel:
         blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else max(0.0, blood_volume_ml)
         # Circulating Hb mass sets the store, so blood loss lowers it before hemodilution.
         blood_o2_capacity_l = 1.34 * hb * (blood_volume / 100.0) / 1000.0
-        o2_capacitance = self.frc / self._atm_dry + blood_o2_capacity_l * dsat_dpo2
+        self.shunt_fraction = clamp(shunt_fraction, 0.0, 0.95)
+        if self.shunt_fraction > 0.0:
+            # The blood store follows arterial saturation as alveolar PO2
+            # changes. Shunt mixing changes that derivative, especially on O2.
+            cap_pressure = max(0.0, state.p_alveolar_o2 - self.aa_grad_base * (1.0 + 2.5 * vq_mismatch))
+            cap_saturation = self._saturation(cap_pressure)
+            cap_derivative = (1.34 * hb * self._n_hill * cap_saturation * (1.0 - cap_saturation)
+                              / max(cap_pressure, 1.0) + 0.0031)
+            art_derivative = 1.34 * hb * dsat_dpo2 + 0.0031
+            dsat_dpo2 *= cap_derivative / art_derivative
+        if lung_volume_l is not None:
+            volume_change = lung_volume_l - self.frc
+            self.frc = lung_volume_l
+            if volume_change > 0.0:
+                # Extra end-expiratory volume came from inspired gas. Loss of
+                # gas at the current alveolar composition leaves PO2 unchanged.
+                capacity = self.frc * self._gas_capacity_per_l + blood_o2_capacity_l * dsat_dpo2
+                state.p_alveolar_o2 += (volume_change * self._gas_capacity_per_l
+                                       * (fio2 * self._atm_dry - state.p_alveolar_o2) / capacity)
+        o2_capacitance = self.frc * self._gas_capacity_per_l + blood_o2_capacity_l * dsat_dpo2
         state.p_alveolar_o2 += o2_flux / o2_capacitance * dt / 60.0
         state.p_alveolar_o2 = clamp(state.p_alveolar_o2, 0.0, max(0.0, self._atm_dry - state.p_alveolar_co2))
 
-        # PEEP, and to a lesser degree mean Paw above PEEP, recruit alveoli and
-        # narrow the A-a gradient; V/Q mismatch widens it.
-        k_peep_recruit = 0.08
-        aa_grad_effective = max(3.0, self.aa_grad_base / (1.0 + k_peep_recruit * peep))
-        mean_paw_effect = max(0.0, mean_paw - peep)
-        aa_grad_effective = aa_grad_effective / (1.0 + self.mean_paw_recruit_gain * mean_paw_effect)
-        aa_grad_effective *= (1.0 + 2.5 * vq_mismatch)
-        aa_grad_effective = min(80.0, aa_grad_effective)
-        # Anemia and low cardiac output lower O2 content and delivery, not PaO2.
-        state.p_arterial_o2 = max(0.0, state.p_alveolar_o2 - aa_grad_effective)
+        # Residual V/Q inequality sets end-capillary PO2. Closed units mix
+        # venous blood into arterial blood by O2 content, not partial pressure.
+        end_capillary = max(0.0, state.p_alveolar_o2 - self.aa_grad_base * (1.0 + 2.5 * vq_mismatch))
+        state.p_arterial_o2 = self._arterial_po2(end_capillary, hb, cardiac_output, vo2,
+                                              state.p_arterial_o2)
 
         # End-tidal gas is alveolar gas diluted by alveolar dead-space gas of
         # inspired composition, the dilution that puts EtCO2 below PACO2. Gas
@@ -363,7 +386,7 @@ class RespiratoryModel:
 
     def _unassisted(self, pco2: float, drug_drive: float, hcvr_slope: float, setpoint: float,
                     rr_inhib: float, vt_inhib: float, muscle_factor: float,
-                    vent_factor: float) -> tuple[float, float, float]:
+                    vent_factor: float, unconscious: float) -> tuple[float, float, float]:
         """Unassisted rate (/min), VT (mL), and central drive at an alveolar PCO2."""
         boost = hcvr_slope * max(0.0, pco2 - setpoint) / self.va_baseline if self.va_baseline > 0 else 0.0
         # Express the VA boost as drive relative to baseline VA, capped at 2x.
@@ -372,9 +395,14 @@ class RespiratoryModel:
         counteraction = min(0.5, boost * 0.3)
         rr_fraction = (1.0 - clamp01(rr_inhib * (1.0 - counteraction))) * muscle_factor
         vt_fraction = (1.0 - clamp01(vt_inhib * (1.0 - counteraction))) * muscle_factor
-        # Drive above baseline raises the rate (60% of the excess).
+        # Modest hypercapnia primarily increases depth; assigning it all to
+        # frequency makes tiny CO2 fluctuations shift every assisted breath.
+        # At larger rises, frequency contributes too (Georgopoulos 1997).
+        frequency = 1.0
         if drive > 1.0:
-            rr_fraction *= 1.0 + (drive - 1.0) * 0.6
+            awake_rate = min(0.6 * (drive - 1.0), 0.06 * max(0.0, pco2 - setpoint - self.RATE_CO2_GAP))
+            frequency += (1.0 - unconscious) * awake_rate + unconscious * 0.6 * (drive - 1.0)
+            rr_fraction *= frequency
         rr = self.rr_0 * rr_fraction
         # Below the apnea threshold breathing stops; in the bradypnea range
         # irregular breaths halve the effective rate.
@@ -383,6 +411,10 @@ class RespiratoryModel:
         elif rr < RR_BRADYPNEA_THRESHOLD:
             rr *= 0.5
         vt = self.vt_0 * vt_fraction
+        dead_space_ml = 1000.0 * self.vd_deadspace
+        if drive > 1.0 and vt > dead_space_ml:
+            depth = 1.0 + (1.0 - unconscious) * (drive / frequency - 1.0)
+            vt = dead_space_ml + (vt - dead_space_ml) * depth
         if vt < VT_MIN:
             vt = 0.0
         vt *= vent_factor
@@ -395,3 +427,34 @@ class RespiratoryModel:
         """Hill oxyhemoglobin dissociation (P50 26.6 mmHg, n 2.7) as a fraction."""
         pao2_pow = max(0.0, pao2) ** self._n_hill
         return pao2_pow / (pao2_pow + self._p50_pow)
+
+    def _arterial_po2(self, end_capillary: float, hb: float, cardiac_output: float,
+                      vo2_l_min: float, previous: float) -> float:
+        """Shunt mixing with venous content determined by Fick O2 extraction.
+
+        Ca = (1-s) Cc + s Cv and Cv = Ca - VO2/Q give
+        Ca = Cc - s/(1-s) VO2/Q. Contents include dissolved O2 (mL/dL).
+        """
+        shunt = self.shunt_fraction
+        if shunt == 0.0:
+            return end_capillary
+        capacity = 1.34 * hb
+        extraction = 100.0 * vo2_l_min / max(0.1, cardiac_output)
+        target = max(0.0, capacity * self._saturation(end_capillary) + 0.0031 * end_capillary
+                     - shunt / (1.0 - shunt) * extraction)
+        lower, upper = 0.0, end_capillary
+        pressure = min(max(previous, lower), upper)
+        for _ in range(16):
+            saturation = self._saturation(pressure)
+            residual = capacity * saturation + 0.0031 * pressure - target
+            if abs(residual) < 1e-8:
+                return pressure
+            if residual > 0.0:
+                upper = pressure
+            else:
+                lower = pressure
+            derivative = (capacity * self._n_hill * saturation * (1.0 - saturation)
+                          / max(pressure, 1e-12) + 0.0031)
+            candidate = pressure - residual / derivative
+            pressure = candidate if lower < candidate < upper else 0.5 * (lower + upper)
+        return pressure

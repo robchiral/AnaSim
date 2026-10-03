@@ -2,6 +2,10 @@
 
 import math
 from bisect import bisect_right
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .lung import LungAeration
 
 
 class RespiratoryMechanics:
@@ -9,14 +13,26 @@ class RespiratoryMechanics:
 
     P2 is tissue stress adaptation, a spring in series with a dashpot that lies
     parallel to the static elastance: dP2/dt = E2 x flow - P2/tau2. Volume is
-    measured from the relaxed volume at the set PEEP. Segments are integrated
-    exactly, so results do not depend on step size.
+    measured from the current reference at the set PEEP. Each segment is
+    integrated exactly; aeration and expiratory coefficients update on fixed
+    physical clocks.
     """
 
-    def __init__(self, compliance: float = 0.05, resistance: float = 10.0):
+    EXPIRATORY_INTERVAL = 0.02  # s; volume-dependent coefficients use a physical clock
+
+    def __init__(self, compliance: float = 0.05, resistance: float = 10.0,
+                 aeration: "LungAeration | None" = None):
         """Static compliance in L/cmH2O; airway and tube resistance in cmH2O/(L/s)."""
         self.compliance = compliance
         self.resistance = resistance
+        self.bronchospasm = 0.0
+        self.bronch_resistance = 0.0
+        self.aeration = aeration
+        self.peep = 0.0
+        self.volume_offset = 0.0  # Shift of the static curve relative to the initial relaxed volume
+        if aeration is not None:
+            self.compliance = aeration.reference_compliance * aeration.recruited / aeration.REFERENCE_RECRUITED
+            self.volume_offset = aeration.relaxed_volume - aeration.reference_volume
         # Healthy anesthetized adults: viscoelastic compliance 4x static
         # compliance, time constant 0.82 s (Jonson 1993).
         self.viscoelastic_ratio = 0.25  # E2 / static elastance
@@ -24,6 +40,42 @@ class RespiratoryMechanics:
         self.volume = 0.0  # L
         self.p2 = 0.0  # cmH2O
         self.effort = PatientEffort()
+
+    def update_aeration(self, dt: float, pressure_area: float, peep: float) -> float:
+        """Return the coordinate shift after updating the static curve, conserving gas volume."""
+        aeration = self.aeration
+        absolute = aeration.reference_volume + self.volume_offset + self.compliance * peep + self.volume
+        aeration.frc = min(aeration.frc, absolute)
+        if not aeration.advance(dt, pressure_area):
+            return 0.0
+        recoil, compliance = aeration.static_mechanics(absolute)
+        volume = compliance * (recoil - peep)
+        shift = volume - self.volume
+        self.compliance, self.volume = compliance, volume
+        self.volume_offset = absolute - aeration.reference_volume - compliance * peep - volume
+        self.effort.shift_volume_reference(shift)
+        return shift
+
+    def note_end_expiration(self, peep: float) -> None:
+        if self.aeration is not None:
+            self.aeration.frc = (self.aeration.reference_volume + self.volume_offset
+                                 + self.compliance * peep + self.volume)
+
+    @property
+    def reference_compliance(self) -> float:
+        """Low-inflation compliance at the reference aeration, L/cmH2O.
+
+        Integrated patients use this to change stiffness; compliance is the
+        current tangent of their changing pressure-volume curve.
+        """
+        return self.compliance if self.aeration is None else self.aeration.reference_compliance
+
+    @reference_compliance.setter
+    def reference_compliance(self, value: float) -> None:
+        if self.aeration is None:
+            self.compliance = value
+        else:
+            self.aeration.reference_compliance = value
 
     @property
     def elastic_pressure(self) -> float:
@@ -43,6 +95,29 @@ class RespiratoryMechanics:
                          series_resistance: float = 0.0) -> "PressureSegment":
         """Pressure p0 + p1 t applied through series_resistance, such as a circuit limb."""
         return PressureSegment(self, pressure, pmus, series_resistance)
+
+    def expiration_parameters(self, pressure, pmus, series_resistance) -> tuple[float, float, bool]:
+        """Expiratory resistance and a recoil-dependent flow ceiling.
+
+        Narrowed airways lose radial traction as the lung empties. A simplified
+        equal-pressure-point model limits flow independently of downstream
+        pressure (Mead 1967). The resistance curve, severity scaling, and 5 cmH2O
+        resting transpulmonary offset are teaching estimates, not patient fits.
+        """
+        inflation = self.volume + self.compliance * self.peep
+        if self.aeration is not None:
+            inflation += self.volume_offset + self.aeration.reference_volume - self.aeration.relaxed_volume
+        scale = 10.0 * self.reference_compliance
+        resistance = self.resistance + 2.0 * self.bronch_resistance / (1.0 + max(0.0, inflation) / scale) ** 2
+        ceiling_resistance = resistance * (1.0 + 0.75 * self.bronchospasm ** 2)
+        recoil = self.elastic_pressure + self.p2
+        free_flow = (pressure[0] + pmus[0] - recoil) / (resistance + series_resistance)
+        if free_flow >= 0.0:
+            # Effort can draw gas through the open circuit before a trigger.
+            return self.resistance, ceiling_resistance, False
+        ceiling = (self.peep + recoil + 5.0) / ceiling_resistance
+        limited = ceiling > 0.0 and free_flow < -ceiling
+        return resistance, ceiling_resistance, limited
 
 
 class FlowSegment:
@@ -86,6 +161,11 @@ class FlowSegment:
         p2_area = self.tau * (self.lung.viscoelastic_ratio * self.elastance * dv - (self.p2(t) - self.p20))
         return (self.lung.resistance * dv + self.elastance * volume_area + p2_area
                 - self.m0 * t - 0.5 * self.m1 * t * t)
+
+    def distending_area(self, t: float) -> float:
+        """Integral of static recoil plus tissue pressure, above PEEP."""
+        return (self.area(t) + self.m0 * t + 0.5 * self.m1 * t * t
+                - self.lung.resistance * (self.volume(t) - self.v0))
 
     def commit(self, t: float) -> None:
         self.lung.volume, self.lung.p2 = self.volume(t), self.p2(t)
@@ -144,7 +224,7 @@ class PressureSegment:
 
     __slots__ = ("lung", "v0", "p20", "p0", "p1", "d0", "d1", "rs", "elastance", "s", "w",
                  "a11", "a12", "a21", "a22", "y0", "z0", "az", "slope", "pv", "pp",
-                 "start", "last_t", "last")
+                 "start", "last_t", "last", "rt")
 
     def __init__(self, lung: RespiratoryMechanics, pressure, pmus, series_resistance):
         self.lung = lung
@@ -155,7 +235,7 @@ class PressureSegment:
         e = self.elastance = 1.0 / lung.compliance
         tau = lung.viscoelastic_tau
         e2 = lung.viscoelastic_ratio * e
-        rt = lung.resistance + series_resistance
+        rt = self.rt = lung.resistance + series_resistance
         self.a11, self.a12 = -e / rt, -1.0 / rt
         self.a21, self.a22 = -e2 * e / rt, -e2 / rt - 1.0 / tau
         self.s = 0.5 * (self.a11 + self.a22)
@@ -216,8 +296,31 @@ class PressureSegment:
     def area(self, t: float) -> float:
         return self.p0 * t + 0.5 * self.p1 * t * t - self.rs * (self.volume(t) - self.v0)
 
+    def distending_area(self, t: float) -> float:
+        return self.d0 * t + 0.5 * self.d1 * t * t - self.rt * (self.volume(t) - self.v0)
+
     def commit(self, t: float) -> None:
         self.lung.volume, self.lung.p2 = self.state(t)
+
+
+class ExpiratorySegment(PressureSegment):
+    """Exact segment with frozen expiratory resistance or an active flow ceiling.
+
+    When limited, recoil rather than downstream pressure drives flow through
+    an upstream resistance. The virtual boundary is 5 cmH2O below the relaxed
+    pressure. Physical Paw still includes the circuit's actual pressure drop.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, lung, pressure, pmus, series_resistance, parameters):
+        resistance, ceiling_resistance, limited = parameters
+        if limited:
+            super().__init__(lung, (-lung.peep - 5.0, 0.0), (0.0, 0.0), ceiling_resistance - lung.resistance)
+        else:
+            super().__init__(lung, pressure, pmus, resistance - lung.resistance + series_resistance)
+        self.p0, self.p1 = pressure
+        self.rs = series_resistance
 
 
 class PatientEffort:
@@ -226,14 +329,15 @@ class PatientEffort:
     Ti/Ttot is about 0.4 in quiet breathing (Tobin 1983). Opioids slow the rate
     mainly by lengthening expiration, so Ti stops growing at 1.6 s. Unassisted,
     the muscles draw the half-sine flow of quiet breathing, then relax over half
-    of Ti. Pressure support shortens and weakens contraction; the unloading
-    fraction is a teaching approximation based on support relative to the
-    unassisted elastic pressure.
+    of Ti. Delivered assistance shortens and weakens contraction; the unloading
+    fraction is a teaching approximation based on delivered pressure during
+    the previous contraction relative to the unassisted elastic pressure.
 
-    Inflation acts as the Hering-Breuer reflex does under anesthesia (Polacheck
-    1980): reaching the patient's VT ends contraction, and a breath due while a
-    mechanical breath keeps the lungs inflated waits up to one period for them
-    to deflate, so breathing phase-locks to the ventilator (Graves 1986).
+    Inflation feedback strengthens with unconsciousness. Its awake threshold
+    is twice resting VT (Clark 1972); under anesthesia, reaching resting VT
+    ends contraction (Polacheck 1980). A breath due while a mechanical breath
+    keeps the lungs inflated can wait up to one period for deflation, allowing
+    synchronization under anesthesia (Graves 1986).
 
     Fixed knots approximate the curve with linear drives, retaining exact
     mechanics integration and the same profile at every outer step size.
@@ -244,6 +348,7 @@ class PatientEffort:
     RELEASE_FRACTION = 0.5
     PROFILE_POINTS = 64
     ONSET_FRACTION = 0.1  # Of VT above the lowest volume since the last breath, holding off the next
+    AWAKE_INFLATION_VT = 2.0
 
     def __init__(self):
         self.rr = 0.0
@@ -252,18 +357,25 @@ class PatientEffort:
         self.clock = 0.0  # s since this breath began
         self.period = math.inf
         self.ti = self.release = 0.0
-        self.support_pressure = 0.0
+        self.support_pressure = 0.0  # Mean delivered pressure above PEEP during the previous contraction
+        self._assistance_area = self._assistance_time = 0.0
+        self.unconscious = 0.0  # 0 awake, 1 unconscious; interpolates inflation feedback
         self._waiting = False  # The next breath is due, but the lungs are still inflated
         self._wait_end = math.inf  # Clock time at which it begins regardless
         self._trough = 0.0  # L, lowest lung volume since this breath began
+        self._reference_shift = 0.0
         self._release_slope = 0.0
         self._knots = (math.inf,)
         self._values = (0.0, 0.0)
 
-    def set_drive(self, rr: float, vt_l: float, support_pressure: float = 0.0) -> None:
+    def set_drive(self, rr: float, vt_l: float) -> None:
         """Rate and unassisted volume for the breaths that follow."""
         self.rr, self.target_vt = max(0.0, rr), max(0.0, vt_l)
-        self.support_pressure = max(0.0, support_pressure)
+
+    def note_assistance(self, dt: float, pressure_area: float) -> None:
+        """Accumulate delivered airway pressure above PEEP during contraction."""
+        self._assistance_area += pressure_area
+        self._assistance_time += dt
 
     def time_to_break(self) -> float:
         """Seconds to the next change of slope, where segments must split."""
@@ -294,8 +406,14 @@ class PatientEffort:
             self._begin(lung, series_resistance)
 
     def off_switch_volume(self) -> float | None:
-        """Lung volume (L above relaxed volume) that ends contraction: the patient's VT."""
-        return self.target_vt if self.amplitude > 0.0 and self.clock < self.ti - 1e-12 else None
+        """Inflation above relaxed volume that ends contraction, with stronger feedback under anesthesia."""
+        fraction = self.AWAKE_INFLATION_VT + (1.0 - self.AWAKE_INFLATION_VT) * self.unconscious
+        return (fraction * self.target_vt + self._reference_shift
+                if self.amplitude > 0.0 and self.clock < self.ti - 1e-12 else None)
+
+    def shift_volume_reference(self, shift: float) -> None:
+        self._trough += shift
+        self._reference_shift += shift
 
     def end_contraction(self) -> None:
         """Relax from the present pressure."""
@@ -320,7 +438,8 @@ class PatientEffort:
 
     def _onset_threshold(self) -> float:
         # Filling to a new relaxed volume after PEEP rises is not inflation above it.
-        return max(self._trough, 0.0) + self.ONSET_FRACTION * self.target_vt
+        fraction = self.AWAKE_INFLATION_VT + (self.ONSET_FRACTION - self.AWAKE_INFLATION_VT) * self.unconscious
+        return max(self._trough, self._reference_shift) + fraction * self.target_vt
 
     def _unit_drive(self, t: float) -> tuple[float, float]:
         i = bisect_right(self._knots, t + 1e-12)
@@ -331,14 +450,20 @@ class PatientEffort:
         return self._values[i] + slope * (t - start), slope
 
     def _begin(self, lung: RespiratoryMechanics, series_resistance: float) -> None:
+        self.support_pressure = (max(0.0, self._assistance_area / self._assistance_time)
+                                 if self._assistance_time > 0.0 else 0.0)
+        self._assistance_area = self._assistance_time = 0.0
         if self.rr <= 0.0 or self.target_vt <= 0.0:
             self.clock, self.period, self.amplitude = 0.0, math.inf, 0.0
             self.ti = self.release = 0.0
             self._knots, self._values = (math.inf,), (0.0, 0.0)
+            self.support_pressure = 0.0
             return
         self.clock = 0.0
         self.period = 60.0 / self.rr
+        lung.note_end_expiration(lung.peep)
         self._trough = lung.volume
+        self._reference_shift = 0.0
         recoil = self.target_vt / lung.compliance
         unloading = recoil / (recoil + self.support_pressure)
         self.ti = min(self.TI_FRACTION * self.period, self.TI_MAX) * math.sqrt(unloading)

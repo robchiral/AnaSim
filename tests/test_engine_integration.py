@@ -1,6 +1,5 @@
 import pytest
 
-from anasim.core import runtime as runtime_core
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
@@ -30,21 +29,7 @@ def test_output_buffer_holds_one_respiratory_sweep_of_per_step_samples(patient):
     assert 19.8 <= span <= 20.0 + 1e-9
 
 
-def test_propofol_central_volume_scales_with_blood_volume():
-    engine = SimulationEngine(
-        Patient(age=40, weight=70, height=170, sex="male"),
-        SimulationConfig(mode="awake", dt=0.5),
-    )
-    base_v1 = engine.pk_prop.v1
-    engine.hemo.blood_volume = engine.hemo.blood_volume_0 * 0.5
-    engine.state.co = engine.hemo.base_co_l_min * 0.5
-
-    runtime_core.update_pk_hemodynamics(engine, engine.state.co)
-
-    assert engine.pk_prop.v1 == pytest.approx(base_v1 * 0.5, rel=0.05)
-
-
-def test_peep_recruits_lung_but_reduces_preload():
+def test_peep_reduces_preload_without_automatically_recruiting_lung():
     engine = SimulationEngine(
         Patient(age=40, weight=70, height=170, sex="male"),
         SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5, rng_seed=123),
@@ -56,7 +41,7 @@ def test_peep_recruits_lung_but_reduces_preload():
     pit_low = engine.state.pit
     preload_low = engine.hemo.state.preload_factor
     map_low = engine.state.map
-    pao2_low = engine.state.pao2
+    aeration_low = engine.resp_mech.aeration.recruited
 
     engine.set_vent_settings(rr=12, vt=0.5, peep=15.0, ie="1:2", mode="VCV")
     _run_for(engine, 60.0, dt=0.5)
@@ -64,7 +49,7 @@ def test_peep_recruits_lung_but_reduces_preload():
     assert engine.state.pit > pit_low + 0.5
     assert engine.hemo.state.preload_factor < preload_low
     assert engine.state.map < map_low
-    assert engine.state.pao2 > pao2_low
+    assert engine.resp_mech.aeration.recruited == pytest.approx(aeration_low, abs=1e-4)
 
 
 def test_positive_pressure_reduces_preload_vs_spontaneous(engine):

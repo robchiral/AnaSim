@@ -106,10 +106,11 @@ def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_
     """Advance breathing through the workstation: ventilator, bag, or the patient's own effort."""
     resp = engine.resp.state
     lung = engine.resp_mech
+    lung.aeration.unconscious = engine.state.loc
+    lung.effort.unconscious = engine.state.loc
+    lung.aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine._airway_patency > 0.5
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.
-    support = (engine.vent.settings.p_support if vent_active
-               and (engine.vent.settings.mode == "PSV" or engine.vent.settings.mode.startswith("SIMV")) else 0.0)
-    lung.effort.set_drive(0.0 if resp.apnea else resp.rr, resp.vt / 1000.0, support)
+    lung.effort.set_drive(0.0 if resp.apnea else resp.rr, resp.vt / 1000.0)
     if vent_active:
         source = "vent"
     elif bag_mask_active:
@@ -285,8 +286,11 @@ def step_machine(engine: "SimulationEngine", dt: float) -> tuple[float, float]:
 def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float, co_curr: float) -> None:
     """Update pharmacokinetic models and synchronize their public state."""
     state = engine.state
-    engine.pk_sevo.step(dt, fi_sevo, state.va, co_curr, temp_c=state.temp_c)
-    engine.pk_n2o.step(dt, fi_n2o, state.va, co_curr, temp_c=state.temp_c)
+    aeration = engine.resp_mech.aeration
+    engine.pk_sevo.step(dt, fi_sevo, state.va, co_curr, temp_c=state.temp_c,
+                        lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction)
+    engine.pk_n2o.step(dt, fi_n2o, state.va, co_curr, temp_c=state.temp_c,
+                       lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction)
     sync_inhaled_agents(engine)
 
     engine.pk_prop.step(dt, engine.propofol_rate_mg_sec)
@@ -393,6 +397,8 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
     r_upper = airway_tuning.upper_resistance_gain * upper_obstruction
     r_bronch = airway_tuning.bronch_resistance_gain * bronch
     engine.resp_mech.resistance = base_r + r_upper + r_bronch
+    engine.resp_mech.bronchospasm = bronch
+    engine.resp_mech.bronch_resistance = r_bronch
 
     engine._airway_patency = clamp(1.0 - upper_obstruction, 0.0, 1.0)
     engine._ventilation_efficiency = clamp(
@@ -452,8 +458,6 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
     kwargs = engine.get_resp_step_kwargs(
         total_assisted_mv=assisted_rr * assisted_vt_l,
-        peep=total_peep_effect,
-        mean_paw=engine.current_mean_paw,
         mech_rr=assisted_rr,
         mech_vt_l=assisted_vt_l,
         cardiac_output=state.co,

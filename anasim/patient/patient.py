@@ -161,6 +161,14 @@ class Patient:
         apparent = 0.0475 * (self.predicted_body_weight() / 60.0) ** 0.62 * math.exp(-0.0277 * (self.bmi - 23.0))
         return 1.09 * apparent
 
+    def functional_residual_capacity(self) -> float:
+        """Supine FRC (L), scaled by lung size and BMI.
+
+        The BMI dependence follows Pelosi 1998; the coefficient and reference
+        volume are teaching estimates within the supported adult domain.
+        """
+        return 2.5 * (self.predicted_body_weight() / 65.0) ** 0.8 * math.exp(-0.04 * (self.bmi - 24.0))
+
     def estimate_blood_volume(self) -> float:
         """Estimate total blood volume in mL using Nadler's formula."""
         h_m = self.height / 100.0

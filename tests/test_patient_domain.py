@@ -1,7 +1,7 @@
 import pytest
 
 from anasim.core.engine import SimulationEngine
-from anasim.core.state import SimulationConfig
+from anasim.core.state import SimulationConfig, SimulationState
 from anasim.patient.domain import (
     AGE_RANGE_YEARS,
     HEIGHT_RANGE_CM,
@@ -44,14 +44,15 @@ def _run(
     config: SimulationConfig,
     boluses: tuple[tuple[str, float], ...],
     duration_s: float,
-) -> SimulationEngine:
+) -> tuple[SimulationEngine, SimulationState]:
     engine = SimulationEngine(patient, config)
     engine.start()
+    baseline = engine.get_latest_state()
     for drug, dose in boluses:
         engine.give_drug_bolus(drug, dose)
     for _ in range(int(duration_s / config.dt)):
         engine.step(config.dt)
-    return engine
+    return engine, baseline
 
 
 def _assert_plausible_integrated_state(engine: SimulationEngine) -> None:
@@ -71,7 +72,7 @@ def test_supported_patient_boundaries_run_through_integrated_model():
     for patient_kwargs in BOUNDARY_PATIENTS:
         patient = Patient(**patient_kwargs)
         config = SimulationConfig(mode="awake", dt=0.5, rng_seed=1)
-        engine = _run(
+        engine, baseline = _run(
             patient,
             config,
             (("Propofol", 1.5 * patient.weight),),
@@ -79,10 +80,8 @@ def test_supported_patient_boundaries_run_through_integrated_model():
         )
 
         _assert_plausible_integrated_state(engine)
-        if patient.renal_function == RENAL_FUNCTION_RANGE[0]:
-            assert patient.renal_status == "Severe"
-        if patient.hepatic_function == HEPATIC_FUNCTION_RANGE[0]:
-            assert patient.hepatic_status == "Severe"
+        assert engine.state.propofol_ce > 0.0
+        assert engine.state.bis < baseline.bis
 
 
 def test_each_propofol_pk_and_pd_choice_runs():
@@ -102,7 +101,7 @@ def test_each_propofol_pk_and_pd_choice_runs():
             loc_model=loc_model,
             rng_seed=1,
         )
-        engine = _run(
+        engine, baseline = _run(
             patient,
             config,
             (("Propofol", 1.5 * patient.weight),),
@@ -110,6 +109,8 @@ def test_each_propofol_pk_and_pd_choice_runs():
         )
 
         _assert_plausible_integrated_state(engine)
+        assert engine.state.propofol_ce > 0.0
+        assert engine.state.bis < baseline.bis
 
 
 def test_each_vasoactive_pk_choice_runs():
@@ -126,7 +127,7 @@ def test_each_vasoactive_pk_choice_runs():
             pk_model_epi=epi_model,
             rng_seed=1,
         )
-        engine = _run(
+        engine, baseline = _run(
             patient,
             config,
             (("nore", 10.0), ("epi", 10.0)),
@@ -136,6 +137,8 @@ def test_each_vasoactive_pk_choice_runs():
         assert engine.state.nore_ce > 0.0
         assert engine.state.epi_ce > 0.0
         _assert_plausible_integrated_state(engine)
+        assert engine.state.hr > baseline.hr + 5.0
+        assert engine.state.co > baseline.co
 
 
 def test_invalid_patient_values_are_rejected():

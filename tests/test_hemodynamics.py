@@ -147,6 +147,11 @@ class TestReflexesAndHypoxia:
         hr_at_60 = engine.state.hr
         assert self._step_until_sao2_below(engine, 35.0)
         assert engine.state.hr < hr_at_60 - 10.0
+        for _ in range(150):
+            engine.step(0.1)
+        assert engine.state.spo2_signal_valid
+        assert engine.state.display_spo2 < 40.0
+        assert engine.state.alarms["SpO2"]["low"]
 
         engine.set_airway_mode("Mask")
         engine.set_fgf(10.0, 0.0)
@@ -155,5 +160,6 @@ class TestReflexesAndHypoxia:
         for _ in range(1800):
             engine.step(0.1)
         assert engine.state.sao2 > 97.0
-        assert engine.hemo.myocardial_hypoxia < 0.1
+        assert engine.state.display_spo2 > 94.0
+        assert "SpO2" not in engine.state.alarms
         assert engine.state.map > depressed_map + 15.0

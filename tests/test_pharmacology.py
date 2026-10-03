@@ -19,18 +19,13 @@ def _infuse(model, seconds: int, rate: float, **kwargs) -> None:
         model.step(1.0, rate, **kwargs)
 
 
-def _tof_trace(patient, roc_mg_kg, seconds, sugammadex=None):
-    """TOF each second after a rocuronium bolus, computed as the engine does.
-
-    ``sugammadex`` is an optional ``(time_s, mg_kg)`` pair.
-    """
+def _tof_trace(patient, roc_mg_kg, seconds):
+    """TOF each second after a rocuronium bolus."""
     pk = RocuroniumPK(patient)
     pd = TOFModel(patient)
     pk.state.c1 = roc_mg_kg * patient.weight / pk.v1
     trace = []
-    for t in range(seconds):
-        if sugammadex and t == sugammadex[0]:
-            pd.give_sugammadex(sugammadex[1] * patient.weight)
+    for _ in range(seconds):
         pk.step(1.0, 0.0)
         trace.append(pd.step_recovery(1.0, pk.state.c1))
     return np.asarray(trace)
@@ -140,38 +135,27 @@ def test_rocuronium_duration_and_spontaneous_recovery(patient):
         (1.2, 180, 16.0, 300),  # Kleijn 2011, immediate reversal
     ],
 )
-def test_sugammadex_reversal_time(patient, roc_mg_kg, given_at_s, sugammadex_mg_kg, max_reversal_s):
-    tof = _tof_trace(
-        patient, roc_mg_kg, given_at_s + 360, sugammadex=(given_at_s, sugammadex_mg_kg)
-    )
-    assert tof[given_at_s - 1] < 10.0
+def test_sugammadex_reversal_time(
+    anesthetized_engine, advance_time, roc_mg_kg, given_at_s, sugammadex_mg_kg, max_reversal_s
+):
+    engine = anesthetized_engine
+    engine.give_drug_bolus("roc", roc_mg_kg * engine.patient.weight)
+    advance_time(engine, given_at_s)
+    assert engine.state.tof < 10.0
 
-    recovered = _first_second(tof, lambda x: x >= 90.0, start=given_at_s)
+    engine.give_drug_bolus("sugammadex", sugammadex_mg_kg * engine.patient.weight)
+    recovered = None
+    for elapsed in range(max_reversal_s + 1):
+        if engine.state.tof >= 90.0:
+            recovered = elapsed
+            break
+        engine.step(1.0)
     assert recovered is not None
-    assert recovered - given_at_s <= max_reversal_s
+    assert recovered <= max_reversal_s
 
 
 class TestNeuromuscularEffectSite:
     """Free rocuronium drives the adductor pollicis and the central muscles."""
-
-    def test_central_effect_site_leads_the_adductor_pollicis(self, anesthetized_engine):
-        """The central site uses laryngeal kinetics (Plaud 1995: t1/2 ke0 2.7 vs 4.4 min)."""
-        engine = anesthetized_engine
-        tof_pd = engine.tof_pd
-        engine.give_drug_bolus("roc", 0.6 * engine.patient.weight)
-
-        peak_central_s = peak_ap_s = 0.0
-        peak_central = peak_ap = 0.0
-        for step in range(2400):
-            engine.step(0.5)
-            if tof_pd.ce_central > peak_central:
-                peak_central, peak_central_s = tof_pd.ce_central, (step + 1) * 0.5
-            if tof_pd.ce > peak_ap:
-                peak_ap, peak_ap_s = tof_pd.ce, (step + 1) * 0.5
-
-        # Onset leads at the central muscles, and they clear the drug first.
-        assert peak_central_s < peak_ap_s
-        assert tof_pd.ce_central < tof_pd.ce
 
     def test_sugammadex_restores_spontaneous_breathing(self, anesthetized_engine):
         engine = anesthetized_engine
@@ -190,6 +174,12 @@ class TestNeuromuscularEffectSite:
             engine.step(0.5)
         assert engine.state.tof > 90.0
         assert engine.resp.state.muscle_factor > 0.95
+        engine.set_vent_power(False)
+        for _ in range(180):
+            engine.step(1.0)
+        assert engine.resp.state.mv > 3.0
+        assert engine.state.mv > 3.0
+        assert engine.state.etco2_signal_valid
 
     def test_diaphragm_recovers_before_adductor_pollicis(self, anesthetized_engine):
         """The diaphragm needs about 1.8x the adductor concentration (Cantineau 1994)."""

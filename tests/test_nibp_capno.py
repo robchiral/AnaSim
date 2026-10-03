@@ -145,7 +145,8 @@ class TestCapnography:
     def test_psv_apnea_backup_restores_ventilation_and_capnography(self, awake_engine):
         engine = awake_engine
         engine.set_airway_mode("ETT")
-        engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="PSV", p_insp=10.0)
+        # This pressure and duration provide adequate ventilation for the backup scenario.
+        engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="PSV", p_insp=10.0, t_insp=1.7)
         engine.set_vent_power(True)
         engine.give_drug_bolus("Rocuronium", 0.8 * engine.patient.weight)
         for _ in range(1000):

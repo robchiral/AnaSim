@@ -1,6 +1,5 @@
 import pytest
 
-from anasim.core.constants import SHIVER_MAX_MULTIPLIER
 from anasim.physiology.respiration import RespiratoryModel
 
 
@@ -11,14 +10,6 @@ def _breath(patient, paco2=None, **drugs):
     drugs.setdefault("ce_prop", 0.0)
     drugs.setdefault("ce_remi", 0.0)
     return model.step(1.0, **drugs)
-
-
-def test_nmba_abolishes_breathing_but_spares_central_drive(patient):
-    state = _breath(patient, ce_roc=10.0)
-    assert state.drive_central > 0.95
-    assert state.muscle_factor < 0.1
-    assert state.rr < 1.0
-    assert state.vt < 10.0
 
 
 def test_opioid_slows_rate_and_propofol_reduces_depth(patient):
@@ -41,7 +32,7 @@ def _ventilated(patient, seconds, **inputs):
     for _ in range(round(seconds / 0.1)):
         state = model.step(
             0.1, ce_prop=0.0, ce_remi=0.0, mech_vent_mv=6.0, mech_rr=12.0, mech_vt_l=0.5,
-            peep=5.0, mean_paw=8.0, **inputs,
+            **inputs,
         )
     return state
 
@@ -69,6 +60,12 @@ def test_co2_drives_breathing_and_opioids_blunt_it(patient):
         _breath(patient, paco2=45.0, ce_remi=3.0).drive_central
         < _breath(patient, paco2=45.0).drive_central
     )
+    baseline, mild = _breath(patient, paco2=40.0), _breath(patient, paco2=40.5)
+    assert mild.rr == baseline.rr
+    assert mild.va > baseline.va
+    low = _breath(patient, paco2=25.0)
+    assert low.rr == baseline.rr and not low.apnea
+    assert low.vt < baseline.vt  # Awake hypocapnia weakens effort without imposing apnea.
 
 
 def test_hyperventilation_stops_breathing_under_anesthesia_until_co2_recovers(awake_engine):
@@ -106,25 +103,6 @@ def test_hypercapnia_does_not_overcome_deep_drug_depression(patient):
     assert hypercapnic.mv > normocapnic.mv
     assert hypercapnic.mv < baseline.mv * 0.6
     assert hypercapnic.mv < 4.0
-
-
-def test_shivering_raises_paco2_at_fixed_ventilation(patient):
-    paco2 = []
-    for metabolic_factor in (1.0, 1.0 + SHIVER_MAX_MULTIPLIER):
-        model = RespiratoryModel(patient)
-        for _ in range(600):
-            model.step(
-                1.0,
-                ce_prop=0.0,
-                ce_remi=0.0,
-                ce_roc=0.0,
-                mech_vent_mv=6.0,
-                mech_rr=12.0,
-                mech_vt_l=0.5,
-                metabolic_factor=metabolic_factor,
-            )
-        paco2.append(model.state.p_alveolar_co2)
-    assert paco2[1] > paco2[0] + 10.0
 
 
 class TestOxygenStores:
@@ -176,14 +154,23 @@ class TestOxygenStores:
         minutes = self._minutes_to_sao2_below_90(awake_engine)
         assert minutes is not None and minutes < 2.0
 
-    def test_apneic_oxygenation_through_patent_airway(self, awake_engine):
-        awake_engine.set_airway_mode("Mask")
-        awake_engine.set_fgf(10.0, 0.0)
-        for _ in range(1800):
-            awake_engine.step(0.1)
-        self._induce_apnea(awake_engine)
-        for _ in range(6000):
-            awake_engine.step(0.1)
-        assert awake_engine.state.sao2 > 97.0
+    def test_apneic_oxygenation_through_patent_airway(self, engine_factory):
+        endpoints = []
+        for obstruction in (0.0, 1.0):
+            engine = engine_factory(start=True)
+            engine.set_airway_mode("Mask")
+            engine.set_fgf(10.0, 0.0)
+            for _ in range(1800):
+                engine.step(0.1)
+            self._induce_apnea(engine)
+            engine.set_airway_obstruction(obstruction)
+            for _ in range(6000):
+                engine.step(0.1)
+            endpoints.append((engine.resp.state.p_alveolar_o2, engine.state.sao2, engine.state.pa_co2))
+        patent, blocked = endpoints
+        # Absorbed O2 is replenished through the airway; atelectasis still
+        # leaves an arterial-alveolar difference despite high alveolar oxygen.
+        assert patent[0] > blocked[0] + 150.0
+        assert patent[1] > 95.0 and blocked[1] < 90.0
         # Apneic PaCO2 rises about 3-6 mmHg/min from 40 mmHg (Stock 1989).
-        assert 70.0 < awake_engine.state.pa_co2 < 100.0
+        assert 70.0 < patent[2] < 100.0

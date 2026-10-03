@@ -1,4 +1,4 @@
-# CLI usage
+# CLI and Python usage
 
 For installation and the browser interface, see the [README](../README.md).
 
@@ -6,21 +6,23 @@ For installation and the browser interface, see the [README](../README.md).
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-| `--mode` | Run mode: `ui` or `headless` | `ui` |
+| `--mode` | Run mode, `ui` or `headless` | `ui` |
 | `--port` | Local UI port; `0` chooses a free port | `0` |
 | `--no-browser` | Print the local URL without opening it | `false` |
-| `--duration` | Headless run time in seconds | `10.0` |
-| `--config` | JSON configuration path | None |
-| `--record` | Write a CSV recording in headless mode | `false` |
-| `--record-dir` | CSV directory for headless runs and the local interface | `recordings` |
-| `--record-interval` | Sample interval in seconds for CSV | `1.0` |
+| `--duration` | Headless duration in simulated seconds | `10.0` |
+| `--config` | Headless JSON configuration path | None |
+| `--record` | Write CSV in headless mode | `false` |
+| `--record-dir` | CSV directory for headless runs and the local UI | `recordings` |
+| `--record-interval` | Headless CSV interval in simulated seconds; `0` records every step | `1.0` |
 
 ## Configuration file
 
-A JSON file sets the patient, models, starting state, and runtime options.
-Omitted fields use their defaults.
+Use a flat JSON object; omitted fields use defaults. CLI `--mode` chooses
+the interface; JSON `mode` chooses the patient's initial state.
 
 ### Minimal example
+
+Save as `patient_config.json`.
 
 ```json
 {
@@ -34,52 +36,107 @@ Omitted fields use their defaults.
 
 ### Fields
 
-| Group | Fields |
-|-------|--------|
-| Patient | `age`, `weight`, `height`, `sex`, `asa` |
-| Baseline physiology | `baseline_temp`, `baseline_hb`, `baseline_hct`, `baseline_hr`, `baseline_map`, `baseline_rr`, `baseline_vt` |
-| Organ function | `renal_function`, `hepatic_function` |
-| Initialization | `mode`: `awake` or `steady_state`; `maint_type`: `tiva` or `balanced` |
-| Runtime | `dt`, `rng_seed`, `simulation_speed`, `end_on_cardiac_arrest`, `arterial_line_enabled`, `maintenance_fluid_ml_hr` |
-| Events | `disturbance_profile`: `stim_intubation_pulse`, `stim_sustained_surgery`, or `null` |
-| Volatile agents | `volatile_agents`: `["sevoflurane"]` or `[]` |
+#### Patient inputs
 
-With `"baseline_hct": null`, AnaSim derives hematocrit from hemoglobin.
-With `"maintenance_fluid_ml_hr": null`, maintenance fluid runs at 1 mL/kg/hr.
-Steady-state mode simulates a maintenance period before the session starts.
+| Field | Default | Units or accepted values |
+|-------|---------|--------------------------|
+| `age` | 40 | 18 to 70 years |
+| `weight` | 70 | 50 to 100 kg |
+| `height` | 170 | 150 to 200 cm; BMI 18 to 32 kg/m² |
+| `sex` | `"male"` | `"male"` or `"female"` |
+| `asa` | 1 | Integer 1 to 5 |
+| `baseline_temp` | 37 | 25 to 42 °C |
+| `baseline_hb` | 13.5 | 6 to 20 g/dL |
+| `baseline_hct` | `null` | 0.18 to 0.60, as a fraction; `null` derives it from Hb |
+| `baseline_hr` | 70 | At least 10 bpm |
+| `baseline_map` | 90 | At least 20 mmHg |
+| `baseline_rr` | 12 | At least 0 breaths/min |
+| `baseline_vt` | 500 | At least 50 mL |
+| `renal_function` | 1.0 | 0.4 to 1.0, as a fraction |
+| `hepatic_function` | 1.0 | 0.5 to 1.0, as a fraction |
 
-Patient values must be within these limits:
+If you set `baseline_hct`, it must be within 0.12 of `0.03 * baseline_hb`.
+See [patient limits and source cohorts](ARCHITECTURE.md#supported-patient-domain).
 
-| Field | Range |
-|-------|-------|
-| `age` | 18 to 70 years |
-| `weight` | 50 to 100 kg |
-| `height` | 150 to 200 cm, with BMI 18 to 32 kg/m² |
-| `baseline_hb` | 6 to 20 g/dL |
-| `baseline_hct` | 0.18 to 0.60 |
-| `renal_function` | 0.4 to 1.0 (dimensionless) |
-| `hepatic_function` | 0.5 to 1.0 (dimensionless) |
+#### Initialization and runtime
 
-Model fields accept these values:
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `mode` | `"awake"` | `"awake"` or `"steady_state"`; see [initialization](ARCHITECTURE.md#initialization) |
+| `maint_type` | `"tiva"` | `"tiva"` or `"balanced"` for steady-state initialization |
+| `dt` | 0.01 | Positive engine step in seconds |
+| `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
+| `simulation_speed` | 1.0 | Real-time multiplier for UI sessions |
+| `arterial_line_enabled` | `true` | Display continuous arterial pressure |
+| `end_on_cardiac_arrest` | `false` | End at modeled [cardiac arrest](ARCHITECTURE.md#hemodynamics) |
+| `maintenance_fluid_ml_hr` | `null` | mL/hr; `null` uses 1 mL/kg/hr |
+| `volatile_agents` | `["sevoflurane"]` | `["sevoflurane"]` or `[]` to disable the vaporizer |
+| `disturbance_profile` | `null` | `"stim_intubation_pulse"`, `"stim_sustained_surgery"`, or `null` |
 
-| Field | Values |
-|-------|--------|
-| `pk_model_propofol` | `Marsh`, `Schnider`, `Eleveld` |
-| `pk_model_remi` | `Minto` |
-| `bis_model` | `Bouillon`, `Eleveld`, `Fuentes`, `Yumuk` |
-| `hemo_model` | `Su2023` |
-| `resp_model` | `SingleCompartment` |
-| `pk_model_nore` | `Li`, `Beloeil` |
-| `pk_model_epi` | `HealthyAdult`, `Abboud` |
-| `loc_model` | `Kern`, `Mertens`, `Johnson` |
+#### Models
 
-AnaSim reports unknown keys, invalid model names, out-of-range values, and
-non-finite numbers as configuration errors.
+| Field | Default | Accepted values |
+|-------|---------|-----------------|
+| `pk_model_propofol` | `"Eleveld"` | `"Marsh"`, `"Schnider"`, `"Eleveld"` |
+| `pk_model_remi` | `"Minto"` | `"Minto"` |
+| `bis_model` | `"Bouillon"` | `"Bouillon"`, `"Eleveld"`, `"Fuentes"`, `"Yumuk"` |
+| `hemo_model` | `"Su2023"` | `"Su2023"` |
+| `resp_model` | `"SingleCompartment"` | `"SingleCompartment"` |
+| `pk_model_nore` | `"Li"` | `"Li"`, `"Beloeil"` |
+| `pk_model_epi` | `"HealthyAdult"` | `"HealthyAdult"`, `"Abboud"` |
+| `loc_model` | `"Kern"` | `"Kern"`, `"Mertens"`, `"Johnson"` |
+
+Patient inputs and `dt` must be finite.
 
 ## Headless example
 
-Run a 60-second headless simulation with a custom patient:
-
 ```bash
-anasim --mode headless --duration 60 --config patient_config.json
+anasim --mode headless --duration 60 --config patient_config.json \
+    --record --record-dir results --record-interval 0.1
 ```
+
+## Recordings
+
+`anasim_log_<timestamp>.csv` contains one [`SimulationState`](../anasim/core/state.py)
+row per sampled step. `time` is elapsed simulation time in seconds; the default
+recording interval is 1 s. Each engine step records at most one row.
+
+`pa_co2` is arterial CO2; `display_etco2` includes sensor effects and has an
+`etco2_signal_valid` flag. `NaN` in `paw_plat` means an unavailable measurement.
+See [field groups](ARCHITECTURE.md#simulation-state) and
+[units](../anasim/core/state.py).
+
+Per-step monitor waveforms are in `engine.output_buffer` (last 20 s).
+Save the configuration, AnaSim version, seed, `dt`, and intervention times
+for replay.
+
+## Python use
+
+This example records a run while introducing and relieving bronchospasm
+in 20-second phases.
+
+```python
+from anasim.core.engine import SimulationEngine
+from anasim.core.state import SimulationConfig
+from anasim.patient.patient import Patient
+
+config = SimulationConfig(mode="steady_state", dt=0.01, rng_seed=123)
+engine = SimulationEngine(Patient(), config)
+engine.start_recording(output_dir="results", sample_interval_sec=0.1)
+engine.start()
+try:
+    for severity in (0.0, 0.7, 0.0):
+        engine.set_bronchospasm(severity)
+        for _ in range(2000):
+            engine.step(config.dt)
+finally:
+    engine.stop()
+    engine.stop_recording()
+
+state = engine.get_latest_state()
+print(state.time, state.pa_co2, state.display_etco2)
+```
+
+`set_vent_settings(vt=...)` takes liters. `Patient.baseline_vt` takes mL.
+Drug dose and rate units are in the [registry](../anasim/core/drug_registry.py).
+Read `engine.state` or `get_latest_state()`; apply changes through engine methods.

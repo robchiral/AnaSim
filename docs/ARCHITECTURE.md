@@ -1,40 +1,35 @@
 # AnaSim architecture
 
-AnaSim has separate modules for pharmacology, physiology, the anesthesia
-machine, and monitors. The runtime updates them in a fixed order and copies
-their outputs into `SimulationState`.
+AnaSim separates pharmacology, physiology, the anesthesia machine, and
+monitors. The runtime advances them in a fixed order and copies outputs into
+`SimulationState`.
 
 ## Simulation state
 
-`SimulationState` stores model outputs separately from monitor measurements.
+`SimulationState` stores physiology separately from monitor measurements.
 
 | Group | Fields | Meaning |
 |-------|--------|---------|
-| Physiology | `map`, `hr`, `co`, `sv`, `svr`, `sao2`, `pa_co2`, `alveolar_co2`, `pao2` | Model values used by physiology, analytics, and endpoints |
-| Ideal arterial pulse | `sbp`, `dbp` | Systolic and diastolic pressures derived from Su MAP and stroke volume |
+| Physiology | `map`, `hr`, `co`, `sv`, `svr`, `sao2`, `pa_co2`, `alveolar_co2`, `pao2` | Values used by physiology, analytics, and endpoints |
+| Ideal arterial pulse | `sbp`, `dbp` | Pressures derived from Su MAP and stroke volume |
 | Arterial catheter | `art_pressure`, `art_sbp`, `art_dbp`, `art_map` | Instantaneous and completed-beat pressures after catheter filtering |
-| Other monitors | `nibp_sys`, `nibp_dia`, `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Values shown to the learner |
+| Other monitors | `nibp_sys`, `nibp_dia`, `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Displayed measurements |
 | Ventilator | `paw_peak`, `paw_plat`, `paw_mean`, `peep`, `compliance_dyn`, `et_o2` | Breath pressures, dynamic compliance, and end-tidal O2 |
 
-- Monitors read model outputs without changing them.
-- NIBP measures `sbp`, `dbp`, and `map`.
-- The UI, CLI, alarms, and scenarios read `art_*` when the arterial line is
-  enabled and `nibp_*` otherwise.
-- The recorder writes both physiology and monitor values.
-- `engine.output_buffer` holds 20 seconds of per-step `WaveformSample` records
-  (ECG, pleth, capnogram, arterial pressure, airway pressure, flow, volume, and
-  breath count) for the monitor sweep and loops.
-- Public numeric fields are built-in `float` values.
+Monitors read physiology without changing it. NIBP measures `sbp`, `dbp`, and
+`map`; displays and clinical checks use `art_*` with an arterial line and
+`nibp_*` otherwise. The recorder writes both sets. `engine.output_buffer`
+holds 20 seconds of waveforms for the sweep and loops.
 
 ## Main modules
 
-[`engine.py`](../anasim/core/engine.py) holds the subsystems and applies learner controls.
+[`engine.py`](../anasim/core/engine.py) holds subsystems and applies controls.
 [`runtime.py`](../anasim/core/runtime.py) advances them,
-[`projection.py`](../anasim/core/projection.py) writes their outputs to state,
-and [`monitors.py`](../anasim/core/monitors.py) updates measurements and alarms.
+[`projection.py`](../anasim/core/projection.py) writes state, and
+[`monitors.py`](../anasim/core/monitors.py) updates measurements and alarms.
 [`initialization.py`](../anasim/core/initialization.py) sets the starting state.
-Drug units, pump limits, and UI metadata are defined in
-[`drug_registry.py`](../anasim/core/drug_registry.py).
+[`drug_registry.py`](../anasim/core/drug_registry.py) defines drug units, pump
+limits, and UI metadata.
 
 ## Step order
 
@@ -57,161 +52,221 @@ SimulationEngine.step()
 
 ## Inputs from the previous step
 
-Update order means that some modules use values from the previous step.
+| Value | Used by | Updated by |
+|-------|---------|------------|
+| `state.co` | Volatile PK scaling, respiration | Hemodynamics |
+| `state.va` | Volatile PK | Respiration |
+| `state.mv` | Circuit and machine | Physiology |
 
-| Value | Used by | Updated by | Reason |
-|-------|---------|------------|--------|
-| `state.co` | Volatile PK scaling, respiration | Hemodynamics | Hemodynamics runs after PK and respiration |
-| `state.va` | Volatile PK | Respiration | Respiration runs after the machine and PK |
-| `state.mv` | Circuit and machine | Physiology | Minute ventilation is final after mechanics and respiration |
+These modules use values from the previous step because the listed updates
+happen later.
 
 ## Initialization
 
-- `awake` starts from patient baselines.
-- `steady_state` simulates a maintenance period starting at MAP 70 mmHg.
-  Controllers, drug concentrations, gases, and fluid balance carry into the
-  visible session and may continue to change early in the run. Any
-  norepinephrine infusion used during initialization remains active and visible.
-- The session clock, recording, display history, arrest checks, and visible
-  fluid and temperature totals start after initialization.
+`awake` starts from patient baselines. `steady_state` simulates maintenance
+starting at MAP 70 mmHg and retains controllers, drugs, gases, and fluid
+balance, including any norepinephrine infusion. The session clock, recording,
+display history, arrest checks, and visible fluid and temperature totals
+start after initialization.
+
+## Supported patient domain
+
+Inputs cover adults aged 18 to 70 years, 50 to 100 kg, 150 to 200 cm, and
+BMI 18 to 32 kg/m². Li et al. 2024 studied 36 healthy volunteers aged 18 to
+70 years, weighing 51.5 to 94.8 kg, 151 to 196 cm tall, with BMI 18.0 to
+31.1 kg/m². AnaSim slightly extends those body-size ranges. Su et al. 2023
+used a cohort of the same size and age groups. In their model, age strongly
+affects the stroke-volume response to propofol. Hemoglobin, hematocrit, and
+organ-function limits are simulator choices. All input limits are in
+[CLI fields](CLI_USAGE.md#fields).
 
 ## Model notes
 
-The [model references](REFERENCES.md) distinguish published models from
-AnaSim calibrations.
+Sources are listed in [Model references](REFERENCES.md). AnaSim adapts published
+models and calibrates additional responses for teaching. Linked tests define
+expected response ranges.
 
 ### Hemodynamics
 
-AnaSim extends the Su et al. 2023 model with blood volume, pulmonary
-circulation, vasoactive drugs, a baroreflex, septic shock, and anaphylaxis.
-Propofol and opioid cardiovascular effects use plasma concentrations.
-Hypnosis, BIS, tolerance of stimulation, and respiratory depression use
-effect-site concentrations.
+AnaSim extends Su et al. 2023 with blood volume, pulmonary circulation,
+vasoactive drugs, a baroreflex, septic shock, and anaphylaxis. Cardiovascular
+propofol and opioid effects use plasma concentrations; hypnosis and respiratory
+depression use effect-site concentrations.
 
-The baroreflex adjusts HR, or vascular resistance when a rhythm fixes the
-ventricular rate. Drug effects modify autonomic responses, and severe hypoxia
-reduces HR and contractility. With `end_on_cardiac_arrest`, MAP below 20 mmHg
-or HR below 10 bpm for 15 seconds ends the session. Resuscitation is not
-modeled.
+[`HemodynamicConfig`](../anasim/physiology/hemo_config.py) combines published
+anesthetic reflex effects and hypoxic arrest thresholds with calibrated reflex
+gains, set-point reset, and hypoxia time constants. The baroreflex adjusts HR,
+or vascular resistance when a rhythm fixes the rate. Severe hypoxia reduces
+HR and contractility.
+
+Epinephrine, phenylephrine, vasopressin, dobutamine, and milrinone use
+concentration-response curves. Published data guide response direction and
+size; combined effects are calibrated. Epinephrine fits arterial infusion
+(Freyschuss 1986) and IV bolus (Takahashi 2002) data.
+Esmolol (Sum 1983), labetalol (Abernethy 1987; Hafsa 2022), and glycopyrrolate
+(Ali-Melkkilä 1993) use published antagonist potencies, with calibrated
+sympathetic and vagal contributions to resting tone and reflexes. In AnaSim,
+part of labetalol's BP reduction persists during beta blockade because the
+sinus baroreflex adjusts only HR. Abernethy's study reported BP recovery
+within 30 minutes.
+Checks cover [hemodynamics](../tests/test_hemodynamics.py),
+[epinephrine](../tests/test_epinephrine.py), and
+[autonomic drugs](../tests/test_autonomic_drugs.py).
+
+With `end_on_cardiac_arrest`, MAP below 20 mmHg or HR below 10 bpm for
+15 seconds ends the session. Resuscitation is not modeled.
+
+### Drug effects
+
+[`anesthesia.py`](../anasim/patient/pd/anesthesia.py) calculates remifentanil
+equivalents for fentanyl using isoflurane MAC reduction (McEwan 1993; Lang
+1996), and propofol equivalents for etomidate and midazolam at equal
+loss-of-response concentrations (Kaneda 2011; Albrecht 1999). Midazolam-propofol
+synergy follows Short 1992. Etomidate's ventilatory effect (Valk 2021), the
+maximum midazolam equivalent, and ketamine's
+laryngoscopy potency and sympathetic response (Idvall 1979) are simulator
+calibrations. See [adjunct tests](../tests/test_anesthetic_adjuncts.py).
+
+[`TOFModel`](../anasim/patient/pd/nmba.py) separates adductor pollicis from
+diaphragm and larynx effects, allowing breathing to recover before TOF. Both
+central muscles share laryngeal kinetics. It models spontaneous recovery and
+simplified sugammadex binding, with calibrated onset and recovery constants.
+See [pharmacology tests](../tests/test_pharmacology.py).
 
 ### Respiration
 
-Anesthetics and opioids reduce respiratory drive. Assisted ventilation can
-suppress breathing in unconscious patients by lowering PaCO2 below the
-apneic threshold; awake patients retain breathing drive. Separate rocuronium
-effect sites allow breathing to recover before TOF. Loss of consciousness can
-cause upper-airway obstruction, relieved by positive pressure or an ETT.
+[`RespiratoryModel`](../anasim/physiology/respiration.py) combines published
+ventilatory and hypercapnic responses with calibrated parameters. Anesthetics
+and opioids reduce drive. Ventilation can suppress breathing in unconscious
+patients below the apneic PaCO2 threshold. Awake CO2 feedback changes depth
+before frequency; hypocapnia preserves rhythmic breathing.
+Awake gains are teaching estimates. Positive pressure or an ETT relieves
+upper-airway obstruction after loss of consciousness.
 
-Gas exchange tracks alveolar gas and blood oxygen stores, so preoxygenation,
-apnea, and blood loss affect time to desaturation. Alveolar, arterial, and
-end-tidal CO2 are separate; low cardiac output widens the PaCO2-EtCO2 gap.
+Gas exchange tracks alveolar gas and blood oxygen stores for preoxygenation,
+apnea, and blood loss. Alveolar, arterial, and end-tidal CO2 are separate;
+low CO widens the PaCO2-EtCO2 gap. Oxygen, sevoflurane, and N2O share lung gas
+volume and shunt from perfused closed units. Oxygen calculations use standard
+gas conditions and hemoglobin stores. See
+[respiratory tests](../tests/test_respiration.py).
 
 ### Ventilation mechanics
 
-[`RespiratoryMechanics`](../anasim/physiology/resp_mech.py) models airway
-resistance, compliance, tissue viscoelasticity, and inspiratory muscle
-pressure. Compliance scales with predicted body weight and BMI. Pressure
-support reduces muscle effort, and lung inflation changes its timing,
-allowing breathing to synchronize with the ventilator. Integration steps
-split at breath transitions and pressure limits.
+[`RespiratoryMechanics`](../anasim/physiology/resp_mech.py) combines resistance,
+published viscoelastic parameters, compliance fitted to VitalDB, and a
+simplified muscle-pressure profile. Delivered assistance reduces
+next-breath effort; inflation ends effort earlier under anesthesia.
+Bronchospasm increases expiratory resistance as volume falls and can limit
+flow, causing trapping and intrinsic PEEP.
 
-[`AnesthesiaVentilator`](../anasim/machine/ventilator.py) controls VCV, PCV,
-PCV-VG, SIMV, PSV with apnea backup, and CPAP. VCV has an adjustable pause
-and pressure limit. PCV-VG adjusts pressure to meet the target volume;
-SIMV, PSV, and CPAP support patient triggering and flow cycling.
+[`LungAeration`](../anasim/physiology/lung.py) shares aeration and gas volume
+with gas exchange and volatile uptake. Recruitment and closure depend on
+pressure history; high inflation stiffens the lung. Compliance scales with
+predicted body weight and BMI. Pressure-volume curve updates conserve gas
+volume. The mechanics solver splits each step at breath events, pressure
+limits, and fixed aeration and expiration update times.
 
-Settings take effect at the next breath. `set_vent_power` starts and stops
-the ventilator; `set_vent_settings` changes settings without starting it.
-PSV's apnea delay is `vent.apnea_backup_s`.
+[`AnesthesiaVentilator`](../anasim/machine/ventilator.py) uses GE Aisys CS2 modes
+and ranges, with defaults informed by Primus recordings and device conventions.
+It supports VCV, PCV, PCV-VG, SIMV, PSV with apnea backup, and CPAP.
+VCV has a pause and pressure limit; PCV-VG adapts pressure to volume.
+SIMV synchronizes with ongoing efforts, includes volume already inspired in
+the same breath, and adjusts timing after early triggers to preserve the set
+rate. Pressure stays continuous when pressure support changes to a mandatory
+pressure breath. Pressure support ends inspiration at 25% of peak flow or
+after 4 seconds; CPAP ends inspiration when flow reverses. Mandatory pressure
+breaths end after the set inspiratory time. SIMV mandatory and PSV backup Ti
+default to 1 second; `vent.apnea_backup_s` sets PSV's backup delay.
 
-Spirometry includes ventilated, bagged, and unassisted breaths. VTe is the
-last exhaled volume; RR and MV average four breaths and read zero after
-15 seconds without a breath. Gas exchange uses the same completed-breath
-averages. Upper-airway obstruction causes mask leak or, with a tracheal tube,
-increased resistance. Bronchospasm reduces alveolar ventilation without
-reducing displayed VT.
+`set_vent_settings` applies changes at the next breath. Use `set_vent_power`
+to start or stop ventilation. Spirometry covers ventilated, bagged, and
+unassisted breaths. VTe is the last expired volume; RR, MV, and
+gas exchange use four-breath averages that clear after 15 seconds without a
+breath. Mask leak reduces delivered gas; ETT obstruction raises resistance.
+See [ventilator tests](../tests/test_ventilator.py).
+
+Primus recordings informed compliance and sensor fits. CT atelectasis data
+informed recruitment pressure and timing, but do not determine gas volume or
+perfusion. Recruitment-to-shunt mapping, assisted effort, and obstructed
+expiration remain teaching estimates; closure is independent of gas composition.
 
 ### Monitors
 
-ECG, arterial pressure, and pleth use the same beat timing and update at
-intervals of 10 ms or less. Arterial pressure depends on model MAP, stroke
-volume, arterial compliance, and catheter filtering. Irregular rhythms alter
-filling time and beat pressures. Displayed HR averages recent R-R intervals;
-NIBP updates after each cuff cycle.
+Airway pressure uses sensor filtering and expiratory PEEP-valve resistance.
+Flow uses gas volume moved during each sampling interval. Volume is the
+filtered integral of that flow. Both loops use signals from the same sample
+and show current and previous breaths. Patient effort can bend loops or reverse
+flow during a mandatory pressure plateau.
+VCV reports plateau pressure after a pause; without one it stays blank.
+PCV and volume guarantee report end-inspiratory airway pressure, which can
+include a resistive component if flow persists. Displayed PEEP is airway
+pressure; auto-PEEP affects plateau pressure and residual flow. Alarms cover
+pressure, minute ventilation, delivered VT, and inspired O2.
 
-BIS adds sevoflurane to the selected propofol-remifentanil model, then applies
-smoothing and processing delay. Poor perfusion delays SpO2 readings and reduces
-pleth amplitude. SpO2 requires an organized rhythm and adequate perfusion.
+ECG, arterial pressure, and pleth share beat timing and sample at intervals
+of 10 ms or less. [`ArterialWaveformRenderer`](../anasim/monitors/arterial.py)
+uses Mahdi 2017 pressure points with Su MAP, stroke volume, and arterial
+compliance; `ArterialLineMonitor` adds catheter and transducer dynamics.
+Rhythms alter filling; HR averages R-R intervals, and NIBP updates after each
+cuff cycle.
+See [waveform](../tests/test_arterial_waveform.py) and
+[arterial line](../tests/test_arterial_line.py) tests.
 
-The capnograph models exhaled gas passing through airway dead space and the
-analyzer. Inspiratory efforts can produce curare clefts. The gas monitor
-shows end-tidal age-adjusted MAC (`et_mac`); brain MAC (`mac`) determines drug
-effects. End-tidal values clear 15 seconds after the last valid exhaled CO2
-sample.
+BIS includes sevoflurane in the selected propofol-remifentanil model, with
+smoothing and delay. Poor perfusion delays SpO2 and reduces pleth amplitude;
+SpO2 requires an organized rhythm and adequate perfusion.
 
-Airway traces include sensor filtering. PEEP-valve resistance slows the fall
-in expiratory airway pressure. Plateau pressure requires a mandatory breath
-with no flow at end-inspiration; VCV without a pause leaves it blank.
-Displayed PEEP is airway pressure, while auto-PEEP affects plateau pressure
-and residual expiratory flow. The monitor also shows dynamic compliance and
-pressure-volume and flow-volume loops of the current and previous breaths.
-RR uses capnography with an airway or chest impedance ("RR imp") without one.
-Alarms detect high pressure, low minute ventilation, low delivered tidal
-volume, and low inspired O2. See the
-[waveform references](REFERENCES.md#ventilator-waveforms).
+[`Capnograph`](../anasim/monitors/capno.py) tracks exhaled gas through series
+dead space (Fowler 1948). Analyzer response, phase II spread, and phase III
+slope are fitted to Primus recordings. Inspiratory efforts can produce curare
+clefts; see [capnography tests](../tests/test_nibp_capno.py). RR uses capnography
+with an airway and chest impedance ("RR imp") without one. End-tidal values
+clear 15 seconds after valid exhaled CO2 stops. The monitor shows end-tidal
+age-adjusted MAC (`et_mac`); anesthetic effects use brain MAC (`mac`).
 
 ### PK and TCI
 
-IV drugs modeled by `MammillaryPK` have up to two peripheral compartments and
-an effect site. `state_fields`, `get_ss_matrices()`, and `state_vector()` use
-the same ordering for TCI and initialization.
+`MammillaryPK` uses up to two peripheral compartments and an effect site,
+with consistent state ordering for TCI and initialization.
 
-Hemodynamic scaling changes central volume with blood volume and most
-clearances with cardiac output. Rescaling central concentration preserves
-drug amount. Peripheral and effect-site concentrations stay unchanged;
-drug lost in shed blood is not tracked separately. Epinephrine clearance is
-independent of cardiac output.
+Hemodynamics scale central volume with blood volume and most clearances with
+CO. Central rescaling preserves drug amount; other concentrations stay
+unchanged. Shed-blood drug loss is not tracked separately. Epinephrine
+clearance is independent of CO.
 
-Every 10 seconds, TCI selects an infusion rate that keeps the predicted peak
-concentration at or below target over the next ten minutes. Propofol and
-remifentanil rates are limited to 1200 mL/h. Controllers are rebuilt after PK
-parameter changes and reset from current concentrations after external
-boluses. A manual rate disables TCI for that drug; changing the target
-compartment replaces its controller.
+TCI recalculates every 10 seconds to keep predicted peaks at or below target
+for ten minutes, within pump limits. PK changes rebuild controllers; boluses
+resynchronize concentrations. Manual rates disable TCI for that drug.
 
 ### Temperature and stimulation
 
-Induction redistributes core heat to the periphery. Responses to noxious
-stimulation scale with the modeled probability of responding to laryngoscopy,
-so opioids reduce hemodynamic and BIS responses.
+Induction redistributes core heat to the periphery. Noxious responses scale
+with laryngoscopy response probability; opioids reduce hemodynamic and BIS
+responses.
 
 ## Browser app
 
-Both versions use the page in `anasim/web_assets/` and a
-[`WebSession`](../anasim/web.py), which applies learner commands and returns
-JSON snapshots of monitor values, new waveform samples, control state, and the
-current objective.
+Both versions use `anasim/web_assets/` and [`WebSession`](../anasim/web.py),
+which applies commands and returns JSON snapshots of measurements, waveforms,
+controls, and the current objective.
 
-- [`local.py`](../anasim/local.py) serves the local app on 127.0.0.1 under a
-  random URL path, accepts only same-origin requests, and steps the session on
-  its own clock while the page polls. A reload reconnects to the paused
-  session. If polling stops for 5 seconds, the session pauses and any recording
-  closes. Recordings stay in the recordings directory.
-- The hosted app uses a module worker to load Pyodide, numpy, and scipy from
-  the CDN and run the session in the browser. Stopping a recording downloads it.
-  `scripts/build_web.py` builds the site into `build/web`, and
+- [`local.py`](../anasim/local.py) serves on 127.0.0.1 under a random path,
+  accepts same-origin requests, and steps on its own clock while the page polls.
+  Reloading reconnects to the paused session. Five seconds without polling
+  pauses simulation and closes recording; files stay in the recording directory.
+- The hosted app runs Python in a Pyodide worker with numpy and scipy.
+  Stopping a recording downloads it. `scripts/build_web.py` builds `build/web`;
   `.github/workflows/pages.yml` publishes it.
 
 ## Scenario objectives
 
-`engine.actions` records controls and event transitions with their simulation
-times. `WebSession` calls `begin_step()` when an objective becomes active.
+`engine.actions` records controls and event transitions with simulation times.
+`WebSession` calls `begin_step()` when an objective becomes active.
 
 | Kind | Example | Check reads |
 |------|---------|-------------|
-| Action | "Give 500 mL", "start the vasopressor", "select the ETT" | `engine.actions` since the objective started, plus current state where relevant |
-| State | "MAP > 65", "TOF below 25%", "circuit FiO2 below 30%" | Current engine state |
+| Action | "Give 500 mL" | Actions since objective activation, plus state where relevant |
+| State | "MAP > 65" | Current state |
 
-Only actions taken after an objective starts count toward it. The log uses
-its entry position to mark the start because actions taken while paused share
-a timestamp. Queries for the current objective raise an error if none is active.
+Action checks use log positions because paused actions share timestamps.
+Queries raise an error when no objective is active.

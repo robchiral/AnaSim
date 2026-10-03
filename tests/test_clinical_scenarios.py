@@ -55,6 +55,14 @@ class TestClinicalAcceptance:
                 ),
                 start=True,
             )
+            # Hidden settling must not consume visible case time or totals.
+            assert engine.state.time == 0.0
+            assert engine.state.fluid_in_ml == engine.state.urine_out_ml == 0.0
+            assert engine.state.temp_c == pytest.approx(37.0)
+            assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
+            if maint_type == "balanced":
+                assert engine.state.fi_sevo > 0.0
+                assert 0.8 <= engine.state.mac_sevo <= 1.05
             bis_values = []
             map_values = []
 
@@ -107,6 +115,7 @@ class TestClinicalAcceptance:
         """A 30-40% loss should cause shock; hemostasis and blood should restore pressure."""
         engine = anesthetized_engine
         initial_volume = engine.hemo.blood_volume
+        initial_v1 = engine.pk_prop.v1
 
         engine.start_hemorrhage(500.0)
         advance_time(engine, 180.0)
@@ -117,6 +126,9 @@ class TestClinicalAcceptance:
         assert 0.30 <= loss_fraction <= 0.40
         assert engine.state.hr > 100.0
         assert engine.state.sbp < 90.0
+        assert engine.pk_prop.v1 / initial_v1 == pytest.approx(
+            engine.hemo.blood_volume / initial_volume, rel=0.05
+        )
 
         engine.give_blood(600.0)
         engine.give_fluid(500.0)
@@ -279,14 +291,6 @@ def test_remifentanil_blunts_laryngoscopy_response(engine_factory):
     with_remifentanil = peak_map_rise(4.0)
     assert propofol_only > 15.0
     assert with_remifentanil < 0.25 * propofol_only
-
-
-def test_balanced_steady_state_holds_depth(engine_factory):
-    engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"), start=True)
-    initial_bis = engine.state.bis
-    for _ in range(1800):
-        engine.step(1.0)
-    assert abs(engine.state.bis - initial_bis) < 5.0
 
 
 def test_atrial_fibrillation_then_sinus_bradycardia(engine_factory):

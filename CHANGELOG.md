@@ -54,7 +54,7 @@
   checked the fresh gas reduction in TIVA maintenance, and showed the ranges
   that baseline objectives check.
 - Applied arterial-line setting changes immediately and reduced waveform
-  overhead.
+  computation time.
 - Added Python 3.14 support and dropped the unused pandas dependency.
 
 ## 1.2 - 2026-09-24

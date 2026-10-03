@@ -199,15 +199,11 @@ def _current_respiratory_support(engine: "SimulationEngine") -> dict[str, Any]:
     vent_active = connected and engine.vent.is_on
     bag_mask_active = engine.bag_mask_active and connected and not vent_active
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)
-    spirometry = engine.vent.monitors
-    peep = engine.vent.settings.peep + spirometry.auto_peep if vent_active else 0.0
     return {
         "connected": connected,
         "assisted_active": vent_active or bag_mask_active,
         "assisted_rr": assisted_rr,
         "assisted_vt_l": assisted_vt_l,
-        "peep": peep,
-        "mean_paw": max(engine.current_mean_paw, peep) if vent_active else 0.0,
     }
 
 
@@ -217,8 +213,6 @@ def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> A
 
     kwargs = engine.get_resp_step_kwargs(
         total_assisted_mv=support["assisted_rr"] * support["assisted_vt_l"],
-        peep=support["peep"],
-        mean_paw=support["mean_paw"],
         mech_rr=support["assisted_rr"],
         mech_vt_l=support["assisted_vt_l"],
         cardiac_output=hemo_state.co,

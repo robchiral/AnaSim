@@ -36,16 +36,17 @@ def test_washout_clears_brain_faster_than_fat(patient_factory):
     assert pk.state.p_fat / fat_start > pk.state.p_vrg / vrg_start
 
 
-def test_apnea_redistributes_volatile_without_losing_agent(patient_factory):
+@pytest.mark.parametrize("shunt", [0.0, 0.3])
+def test_apnea_redistributes_volatile_without_losing_agent(patient_factory, shunt):
     pk = _sevo(patient_factory)
     pk.state.p_alv = pk.state.p_art = 0.02
-    initial_amount = 2.5 * pk.state.p_alv
+    initial_amount = pk.frc * pk.state.p_alv
     for _ in range(10):
-        pk.step(60.0, fi_agent=0.0, alveolar_vent_l=0.0, cardiac_output_l=5.0)
+        pk.step(60.0, fi_agent=0.0, alveolar_vent_l=0.0, cardiac_output_l=5.0, shunt_fraction=shunt)
         state = pk.state
         pressures = (state.p_alv, state.p_vrg, state.p_mus, state.p_fat)
         assert all(0.0 <= value <= 0.02 for value in pressures)
-        amount = 2.5 * state.p_alv + pk.lambda_b_g * (
+        amount = pk.frc * state.p_alv + pk.lambda_b_g * (
             pk.v_vrg * pk.lambda_t_b_vrg * state.p_vrg
             + pk.v_mus * pk.lambda_t_b_mus * state.p_mus
             + pk.v_fat * pk.lambda_t_b_fat * state.p_fat

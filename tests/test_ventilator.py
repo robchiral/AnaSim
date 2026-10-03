@@ -4,6 +4,7 @@ import pytest
 from scipy.integrate import solve_ivp
 
 import anasim.machine.ventilator as ventilator
+from anasim.core.state import SimulationConfig
 from anasim.machine.ventilator import CIRCUIT_RESISTANCE, AnesthesiaVentilator
 from anasim.physiology.resp_mech import RespiratoryMechanics
 
@@ -26,6 +27,8 @@ def test_bag_mask_ventilates_paralysis_only_through_an_airway(awake_engine, adva
     engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.6)
     advance_time(engine, 60.0, dt=0.25)
     assert engine.state.mv < 1.0
+    assert engine.resp.state.apnea
+    assert engine.resp.state.drive_central > 0.95
     apneic_pao2 = engine.state.pao2
 
     engine.set_airway_mode("Mask")
@@ -201,7 +204,7 @@ def test_pressure_support_follows_patient_triggers(awake_engine, advance_time):
     """Each patient effort triggers a breath that ends when flow falls to 25% of its peak."""
     engine = awake_engine
     engine.set_airway_mode("ETT")
-    engine.set_vent_settings(rr=0.0, vt=0.0, peep=8.0, ie="1:2", mode="CPAP")
+    engine.set_vent_settings(rr=0.0, vt=0.0, peep=8.0, ie="1:2", mode="CPAP", t_insp=0.2)
     engine.set_vent_power(True)
     advance_time(engine, 30.0, dt=0.1)
     cpap = engine.get_latest_state()
@@ -224,24 +227,28 @@ def test_pressure_support_follows_patient_triggers(awake_engine, advance_time):
     assert ti == pytest.approx(min(effort.TI_FRACTION * effort.period, effort.TI_MAX), rel=0.05)
     assert max(abs(f - s) for f, s in zip(flows[start:end], half_sine)) < 0.1 * peak
 
-    engine.set_vent_settings(rr=0.0, vt=0.0, peep=8.0, ie="1:2", mode="PSV", p_support=10.0)
+    engine.set_vent_settings(rr=0.0, vt=0.0, peep=8.0, ie="1:2", mode="PSV", p_support=10.0, t_insp=0.2)
     advance_time(engine, 30.0, dt=0.1)
     assert engine.state.rr == pytest.approx(engine.resp.state.rr, abs=0.5)
-    # Inflation to the patient's own VT ends their effort, so support raises VT modestly.
-    assert 1.1 * cpap.vt < engine.state.vt < 1.3 * cpap.vt
+    # Support unloads the muscles and raises VT. An awake patient's inflation
+    # reflex must not cap the assisted breath at their unassisted VT.
+    assert engine.state.vt > 1.1 * cpap.vt
     assert engine.resp_mech.effort.amplitude < unassisted_effort
     assert engine.resp_mech.effort.ti < unassisted_ti
     assert engine.state.paw_peak == pytest.approx(18.0, abs=0.1)
     assert math.isnan(engine.state.paw_plat)
 
     peak = last = 0.0
+    complete = False
     ratios = []
     for _ in range(15000):
         inspiring = engine.vent.inspiring
         engine.step(0.001)
-        if engine.vent.inspiring:
+        if engine.vent.inspiring and not inspiring:
+            complete = True
+        if engine.vent.inspiring and complete:
             peak, last = max(peak, engine.vent.flow), engine.vent.flow
-        elif inspiring and peak > 0.0:
+        elif inspiring and complete and peak > 0.0:
             ratios.append(last / peak)
             peak = 0.0
     assert ratios and all(0.25 <= ratio < 0.3 for ratio in ratios)
@@ -276,13 +283,21 @@ def test_mixed_breaths_use_all_expired_gas(awake_engine, mode, dt):
     engine.set_vent_settings(rr=9, vt=0.5, peep=5, ie="1:2", mode=mode, p_insp=12)
     started = breaths(engine, 60.0, dt)
     assert min(vte for _, _, vte in started) > 50.0
-    # Inflation delays the patient's next breath until the lungs deflate, so
-    # breathing phase-locks 1:1 to a ventilator within 40% of the patient's
-    # rate (Graves 1986): every cycle repeats one spontaneous breath.
-    volumes = [vte for _, _, vte in started[-6:]]
-    for same_phase in (volumes[0::2], volumes[1::2]):
-        assert max(same_phase) - min(same_phase) < 0.02 * min(same_phase)
-    assert engine.state.rr == pytest.approx(18.0, abs=0.1)
+
+
+def test_inflation_ends_effort_at_tidal_volume_under_anesthesia_but_not_awake():
+    durations = []
+    for unconscious in (0.0, 1.0):
+        lung = RespiratoryMechanics()
+        lung.effort.unconscious = unconscious
+        lung.effort.set_drive(12, 0.5)
+        vent = AnesthesiaVentilator()
+        vent.update_settings(mode="VCV", rr=12, tv=500, peep=5, ie="1:6", pause=10)
+        for _ in range(100):
+            vent.step(0.01, lung, "vent")
+        durations.append(lung.effort.ti)
+    assert durations[0] == pytest.approx(1.6)
+    assert durations[1] < 0.7
 
 
 def test_simv_synchronizes_mandatory_breaths_and_supports_the_rest(awake_engine, advance_time):
@@ -294,11 +309,118 @@ def test_simv_synchronizes_mandatory_breaths_and_supports_the_rest(awake_engine,
 
     started = breaths(engine, 60.0)
     kinds = [kind for kind, _, _ in started]
-    # The patient breathes at 12/min; every other effort falls in a trigger window.
-    assert len(started) == pytest.approx(engine.resp.state.rr, abs=1)
+    # Synchronization preserves the set mandatory rate. Timed breaths outside
+    # the trigger window can add to the patient's own breaths.
     assert kinds.count("VC") == pytest.approx(6, abs=1)
     assert set(kinds) == {"VC", "PS"}
     assert engine.state.rr == pytest.approx(engine.resp.state.rr, abs=0.5)
+
+
+@pytest.mark.parametrize("mode", ["SIMV-VC", "SIMV-PC", "SIMV-VG"])
+def test_simv_early_triggers_preserve_the_set_mandatory_rate(mode):
+    lung = RespiratoryMechanics()
+    lung.effort.set_drive(16.0, 0.5)
+    vent = AnesthesiaVentilator()
+    vent.update_settings(mode=mode, rr=12, tv=500, peep=5, p_insp=10, p_support=5, t_insp=1)
+    previous, mandatory = None, []
+    for i in range(1500):
+        vent.step(0.1, lung, "vent")
+        if vent._breath is not previous:
+            previous = vent._breath
+            if previous.mandatory:
+                mandatory.append((i + 1) * 0.1 - previous.t)
+    # A patient breathing faster than RR must not turn SIMV into assist-control.
+    recent = mandatory[-10:]
+    assert 60.0 * (len(recent) - 1) / (recent[-1] - recent[0]) == pytest.approx(12.0, abs=0.05)
+    assert mandatory[1] < 5.0  # The first effort really did advance a mandatory breath.
+
+
+def test_simv_effort_follows_delivered_pressure_and_recovers_when_assistance_stops(engine_factory):
+    endpoints = []
+    for dt in (0.01, 0.1, 1.0):
+        for ps in (0, 20):
+            engine = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=1), start=True)
+            engine.resp.hcvr_slope_baseline = 0.0
+            engine.set_airway_mode("ETT")
+            engine.set_vent_settings(mode="SIMV-PC", rr=12, vt=0.5, ie="1:2", peep=5,
+                                     p_insp=5, p_support=ps, t_insp=1.7)
+            engine.set_vent_power(True)
+            kinds = set()
+            for _ in range(round(80 / dt)):
+                engine.step(dt)
+                kinds.add(engine.vent._breath.kind)
+            assert kinds == {"PC"}  # PS is configured, but never delivered.
+            effort = engine.resp_mech.effort
+            assert 2.0 < effort.support_pressure < 5.0
+            endpoints.append((engine.state.vt, effort.ti, effort.amplitude, effort.support_pressure))
+            support, amplitude = effort.support_pressure, effort.amplitude
+            engine.set_vent_settings(mode="SIMV-PC", rr=12, vt=0.5, ie="1:2", peep=5,
+                                     p_insp=10, p_support=ps, t_insp=1.7)
+            for _ in range(round(20 / dt)):
+                engine.step(dt)
+            assert effort.support_pressure > 1.5 * support
+            assert effort.amplitude < amplitude
+            engine.set_vent_power(False)
+            for _ in range(round(20 / dt)):
+                engine.step(dt)
+            assert effort.support_pressure == pytest.approx(0.0, abs=1e-12)
+            assert effort.ti == pytest.approx(1.6)
+    for endpoint in endpoints[1:]:
+        assert endpoint == pytest.approx(endpoints[0], abs=1e-7)
+
+
+@pytest.mark.parametrize("mode", ["SIMV-VC", "SIMV-PC", "SIMV-VG"])
+@pytest.mark.parametrize("dt", [0.01, 0.1, 1.0])
+def test_awake_simv_synchronizes_existing_efforts_without_adding_a_second_tidal_volume(engine_factory, mode, dt):
+    # Keep normal CO2 feedback: an effort can begin just before the trigger
+    # window, and assistance changes the timing of subsequent efforts.
+    engine = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=1), start=True)
+    engine.set_airway_mode("ETT")
+    engine.set_vent_settings(mode=mode, rr=12, vt=0.5, ie="1:2", peep=5,
+                             p_insp=12, p_support=5)
+    engine.set_vent_power(True)
+    for _ in range(round(60 / dt)):
+        engine.step(dt)
+    expired = 0.0
+    for _ in range(round(20 / dt)):
+        engine.step(dt)
+        expired += sum(max(0.0, -sample[1]) for sample in engine.vent.samples)
+        b = engine.vent._breath
+        if b.inspiring and b.t > 0.5:
+            assert engine.state.paw >= 4.5
+            assert engine.state.flow >= -0.05
+    assert engine.state.rr == pytest.approx(12.0, abs=0.1)
+    if mode != "SIMV-PC":
+        assert engine.state.vt == pytest.approx(500.0, abs=30.0)
+        assert engine.state.mv == pytest.approx(6.0, abs=0.3)
+    assert engine.state.mv == pytest.approx(expired * 3.0, rel=0.02)
+    assert 25.0 < engine.state.etco2 < 40.0
+
+
+@pytest.mark.parametrize("mode", ["SIMV-VC", "SIMV-PC", "SIMV-VG"])
+def test_simv_handover_preserves_an_ongoing_supported_inspiration(engine_factory, mode):
+    engine = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1), start=True, baseline_rr=18.75
+    )
+    # A faster patient starts a supported breath before the mandatory trigger window.
+    engine.resp.hcvr_slope_baseline = 0.0
+    engine.set_airway_mode("ETT")
+    engine.set_vent_settings(mode=mode, rr=12, vt=0.5, peep=5, ie="1:2",
+                             p_insp=12, p_support=5, t_insp=1.7)
+    engine.set_vent_power(True)
+    handover_pressure = []
+    for _ in range(700):
+        engine.step(0.01)
+        if 3.7 <= engine.state.time <= 3.9:
+            handover_pressure.append(engine.state.paw)
+
+    # The first complete synchronized breath includes gas from the patient's effort.
+    assert engine.state.vt > 350.0
+    if mode == "SIMV-VC":
+        assert engine.state.vt <= 550.0  # Adding a second set VT overinflates this breath.
+    else:
+        assert engine.state.vt < 650.0
+        assert min(handover_pressure) > 8.0  # Preserve pressure while changing controllers.
 
 
 def test_volume_guarantee_restores_tidal_volume_three_cmh2o_per_breath(awake_engine, advance_time):
@@ -308,10 +430,10 @@ def test_volume_guarantee_restores_tidal_volume_three_cmh2o_per_breath(awake_eng
     engine.give_drug_bolus("Rocuronium", 0.8 * engine.patient.weight)
     engine.set_vent_settings(rr=12.0, vt=0.45, peep=5.0, ie="1:2", mode="PCV-VG")
     engine.set_vent_power(True)
-    advance_time(engine, 60.0, dt=0.1)
+    advance_time(engine, 75.0, dt=0.1)
     assert engine.state.vt == pytest.approx(450.0, rel=0.02)
 
-    engine.resp_mech.compliance /= 2.0
+    engine.resp_mech.reference_compliance /= 2.0
     started = breaths(engine, 60.0)
     peaks = [peak for _, peak, _ in started]
     assert started[1][2] < 300.0
@@ -345,7 +467,7 @@ def test_engine_uses_measured_tidal_volume_for_gas_exchange(awake_engine, mode):
     engine.set_vent_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode=mode, p_insp=15.0)
     engine.set_vent_power(True)
     engine.give_drug_bolus("Rocuronium", 0.8 * engine.patient.weight)
-    engine.resp_mech.compliance = 0.025
+    engine.resp_mech.reference_compliance = 0.025
     engine.step(0.1)
     assert engine.state.vt == engine.vent.monitors.tv_exp == 0.0
     # Waning efforts vary the first breaths until block is complete.

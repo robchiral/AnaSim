@@ -8,13 +8,18 @@ from anasim.core.constants import (
 
 
 def clamp(value: float, low: float, high: float) -> float:
+    # Ordered comparisons retain min/max behavior for equal or non-finite bounds.
     if low > high:
         low, high = high, low
-    return max(low, min(high, value))
+    if value < high:
+        return value if value > low else low
+    return high if high > low else low
 
 
 def clamp01(value: float) -> float:
-    return max(0.0, min(1.0, value))
+    if value < 1.0:
+        return value if value > 0.0 else 0.0
+    return 1.0
 
 
 def hill_function(c: float, c50: float, gamma: float) -> float:
