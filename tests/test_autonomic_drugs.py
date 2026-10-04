@@ -19,12 +19,9 @@ def _extreme_hr(engine, seconds, pick):
 
 
 def _tiva(engine_factory):
-    engine = engine_factory(
+    return engine_factory(
         config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=3), start=True
     )
-    engine.set_drug_rate("nore", 0.0)
-    _advance(engine, 300)
-    return engine
 
 
 def test_labetalol_lowers_heart_rate_longer_than_blood_pressure(engine_factory):

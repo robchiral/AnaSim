@@ -134,7 +134,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             title="Assess hemodynamic stability",
             instruction=(
                 "Confirm <b>BIS 40-60</b>, <b>MAP ≥ 65 mmHg</b>, and valid <b>EtCO₂ 35-45 mmHg</b>. "
-                "Adjust ventilation if needed. In practice, confirm surgery is complete, "
+                "Treat hypotension and adjust ventilation as needed. In practice, confirm surgery is complete, "
                 "maintain warmth, and arrange postoperative analgesia before stopping remifentanil. "
                 "Its analgesic effect wears off quickly."
             ),

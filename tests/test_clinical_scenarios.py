@@ -43,8 +43,8 @@ class TestClinicalAcceptance:
         assert 60 <= block_time <= 90
 
     @pytest.mark.parametrize("tci_enabled", [False, True], ids=["manual", "tci"])
-    def test_maintenance_stays_within_depth_and_pressure_ranges(self, engine_factory, tci_enabled):
-        """TIVA and balanced maintenance should remain stable for 15 minutes."""
+    def test_maintenance_requires_explicit_vasopressor_treatment(self, engine_factory, tci_enabled):
+        """Maintenance holds depth without automatically treating hypotension."""
         for maint_type in ("tiva", "balanced"):
             engine = engine_factory(
                 config=SimulationConfig(
@@ -60,6 +60,7 @@ class TestClinicalAcceptance:
             assert engine.state.fluid_in_ml == engine.state.urine_out_ml == 0.0
             assert engine.state.temp_c == pytest.approx(37.0)
             assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
+            assert engine.get_drug_state("nore") == {"rate": 0.0, "target": 0.0, "is_tci": False}
             if maint_type == "balanced":
                 assert engine.state.fi_sevo > 0.0
                 assert 0.8 <= engine.state.mac_sevo <= 1.05
@@ -74,13 +75,19 @@ class TestClinicalAcceptance:
             # NICE gives BIS 40-60 as the target range during general anesthesia.
             assert min(bis_values) >= 40.0
             assert max(bis_values) <= 60.0
-            # POQI recommends maintaining intraoperative MAP at or above 60 mmHg.
-            assert min(map_values) >= 60.0
-
-            if engine.state.nore_ce > 0.5:
-                support = engine.get_drug_state("nore")
-                assert support["rate"] > 0.0
-                assert support["is_tci"] is tci_enabled
+            assert max(map_values) - min(map_values) < 5.0
+            assert engine.get_drug_state("nore")["rate"] == 0.0
+            if maint_type == "tiva":
+                # Su predicts hypotension during unstimulated TIVA; the user
+                # treats it.
+                assert 50.0 <= min(map_values) <= max(map_values) < 65.0
+                engine.set_drug_rate("nore", 5.0)
+                for _ in range(300):
+                    engine.step(1.0)
+                assert engine.state.map >= 65.0
+                assert engine.get_drug_state("nore")["rate"] == pytest.approx(5.0)
+            else:
+                assert min(map_values) >= 65.0
 
     def test_tiva_emergence_recovers_ventilation_and_wakefulness(
         self, anesthetized_engine
@@ -138,8 +145,13 @@ class TestClinicalAcceptance:
         # The European major-bleeding guideline uses SBP 80-90 mmHg as the
         # restricted-resuscitation target until bleeding is controlled.
         assert engine.state.map >= 60.0
-        assert engine.state.sbp >= 80.0
         assert engine.state.map > shock_map + 30.0
+        # The same guideline adds norepinephrine if volume replacement leaves
+        # SBP below target.
+        if engine.state.sbp < 80.0:
+            engine.set_drug_rate("nore", 8.0)
+            advance_time(engine, 300.0)
+        assert engine.state.sbp >= 80.0
 
     def test_septic_shock_and_guideline_resuscitation(
         self, anesthetized_engine, advance_time
@@ -189,8 +201,14 @@ class TestClinicalAcceptance:
         # perioperative anaphylaxis and an initial 1000 mL crystalloid bolus.
         engine.give_drug_bolus("epi", 100.0)
         engine.give_fluid(1000.0)
-        engine.set_drug_rate("epi", 6.0)
-        advance_time(engine, 300.0)
+        # Start near 0.1 mcg/kg/min and titrate persistent hypotension.
+        epi_rate = 6.0
+        engine.set_drug_rate("epi", epi_rate)
+        for _ in range(6):
+            advance_time(engine, 60.0)
+            if engine.state.map < 65.0:
+                epi_rate += 2.0
+                engine.set_drug_rate("epi", epi_rate)
 
         assert engine.state.map >= 65.0
         assert engine.state.bronchospasm < 0.5

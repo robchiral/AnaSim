@@ -63,11 +63,11 @@ happen later.
 
 ## Initialization
 
-`awake` starts from patient baselines. `steady_state` simulates maintenance
-starting at MAP 70 mmHg and retains controllers, drugs, gases, and fluid
-balance, including any norepinephrine infusion. The session clock, recording,
-display history, arrest checks, and visible fluid and temperature totals
-start after initialization.
+`awake` starts from patient baselines. `steady_state` seeds a maintenance
+history and settles drugs, gases, and physiology. No vasopressor is running, so
+MAP is the untreated anesthetic response and may need treatment. The session
+clock, recording, display history, arrest checks, and visible fluid and
+temperature totals start after initialization.
 
 ## Supported patient domain
 
@@ -89,9 +89,14 @@ expected response ranges.
 ### Hemodynamics
 
 AnaSim extends Su et al. 2023 with blood volume, pulmonary circulation,
-vasoactive drugs, a baroreflex, septic shock, and anaphylaxis. Cardiovascular
-propofol and opioid effects use plasma concentrations; hypnosis and respiratory
-depression use effect-site concentrations.
+vasoactive drugs, a baroreflex, septic shock, and anaphylaxis. Su drug-effect
+parameters keep their published values, and concentration-step responses match
+an independent integration of the published equations. Baseline HR and MAP are
+resting values, so the study's initial anxiety-related HR and SV transients are
+omitted. Cardiovascular propofol and opioid effects use plasma concentrations;
+hypnosis and respiratory depression use effect-site concentrations. Applying
+fentanyl's remifentanil equivalent to cardiovascular effects is a simulator
+approximation.
 
 [`HemodynamicConfig`](../anasim/physiology/hemo_config.py) combines published
 anesthetic reflex effects and hypoxic arrest thresholds with calibrated reflex
@@ -246,10 +251,13 @@ age-adjusted MAC (`et_mac`); anesthetic effects use brain MAC (`mac`).
 `MammillaryPK` uses up to two peripheral compartments and an effect site,
 with consistent state ordering for TCI and initialization.
 
-Hemodynamics scale central volume with blood volume and most clearances with
-CO. Central rescaling preserves drug amount; other concentrations stay
-unchanged. Shed-blood drug loss is not tracked separately. Epinephrine
-clearance is independent of CO.
+Hemodynamics scale central volume with blood volume, preserving drug amount;
+other concentrations stay unchanged. Clearances scale with CO by per-drug
+exponents. Propofol and remifentanil keep their population clearances, which
+have no CO covariate, so low-output effects on their kinetics are not modeled.
+Epinephrine clearance is also independent of CO. Shed-blood drug loss is not
+tracked separately. Li norepinephrine concentrations include
+endogenous secretion, so they stay above zero without an infusion.
 
 TCI recalculates every 10 seconds to keep predicted peaks at or below target
 for ten minutes, within pump limits. PK changes rebuild controllers; boluses

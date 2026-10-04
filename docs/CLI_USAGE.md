@@ -81,7 +81,7 @@ See [patient limits and source cohorts](ARCHITECTURE.md#supported-patient-domain
 | `pk_model_propofol` | `"Eleveld"` | `"Marsh"`, `"Schnider"`, `"Eleveld"` |
 | `pk_model_remi` | `"Minto"` | `"Minto"` |
 | `bis_model` | `"Bouillon"` | `"Bouillon"`, `"Eleveld"`, `"Fuentes"`, `"Yumuk"` |
-| `hemo_model` | `"Su2023"` | `"Su2023"` |
+| `hemo_model` | `"Su"` | `"Su"` |
 | `resp_model` | `"SingleCompartment"` | `"SingleCompartment"` |
 | `pk_model_nore` | `"Li"` | `"Li"`, `"Beloeil"` |
 | `pk_model_epi` | `"HealthyAdult"` | `"HealthyAdult"`, `"Abboud"` |

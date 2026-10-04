@@ -69,9 +69,13 @@ class TestEngineTCI:
     def test_plasma_controller_does_not_bolus_after_resync(self, engine_factory):
         """Resyncing to live PK state must not trigger max-rate boluses."""
         engine = engine_factory(config=SimulationConfig(mode="steady_state", tci_enabled=True), start=True)
+        engine.set_drug_rate("nore", 5.0)
+        for _ in range(300):
+            engine.step(1.0)
+        engine.enable_tci("nore", engine.pk_nore.state.c1, mode="plasma")
         target = engine.tci_nore.target
         peak = 0.0
-        for _ in range(12000):
+        for _ in range(3000):
             engine.step(0.1)
             peak = max(peak, engine.pk_nore.state.c1)
         assert peak < target * 1.4

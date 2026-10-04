@@ -33,8 +33,8 @@ class MammillaryPK:
     """Central compartment with up to two peripheral compartments and an effect site.
 
     Mass is V1*c1 + V2*c2 + V3*c3. Hemodynamic scaling changes the central
-    volume with blood volume and the clearances with cardiac output; peripheral
-    tissue volumes stay fixed so redistribution conserves drug mass.
+    volume with blood volume and clearances with cardiac output, using per-model
+    exponents. Peripheral volumes stay fixed so redistribution conserves mass.
     """
 
     def __init__(
@@ -47,6 +47,7 @@ class MammillaryPK:
         v3: float = 0.0,
         cl3: float = 0.0,
         cl1_co_exponent: float = 1.0,
+        distribution_co_exponent: float = 1.0,
     ):
         self.v1_base = v1
         self.v1 = v1
@@ -57,6 +58,7 @@ class MammillaryPK:
         self.v3 = v3
         self.ke0 = ke0
         self.cl1_co_exponent = cl1_co_exponent
+        self.distribution_co_exponent = distribution_co_exponent
         self.state_fields = (
             ("c1",) + (("c2",) if v2 > 0 else ()) + (("c3",) if v3 > 0 else ()) + ("ce",)
         )
@@ -89,8 +91,9 @@ class MammillaryPK:
         self.state.c1 *= self.v1 / new_v1
         self.v1 = new_v1
         self.cl1 = self.cl1_base * co_ratio ** self.cl1_co_exponent
-        self.cl2 = self.cl2_base * co_ratio
-        self.cl3 = self.cl3_base * co_ratio
+        distribution_scale = co_ratio ** self.distribution_co_exponent
+        self.cl2 = self.cl2_base * distribution_scale
+        self.cl3 = self.cl3_base * distribution_scale
 
     def step(self, dt_sec: float, input_rate_per_sec: float, cl1_scale: float = 1.0) -> PKState:
         """Advance concentrations by one explicit Euler step."""
@@ -188,6 +191,10 @@ def _scale_volumes(params: dict, factor: float) -> dict:
     return {key: value * factor if key.startswith("v") else value for key, value in params.items()}
 
 
+# Marsh, Schnider, Eleveld, and Minto have no cardiac-output covariate.
+_NO_CO_COVARIATE = {"cl1_co_exponent": 0.0, "distribution_co_exponent": 0.0}
+
+
 # Propofol ---------------------------------------------------------------------
 
 class PropofolPKMarsh(MammillaryPK):
@@ -204,7 +211,7 @@ class PropofolPKMarsh(MammillaryPK):
             "cl3": 0.042 * 0.228 * w,
         }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.6))
-        super().__init__(ke0=1.2, **params)
+        super().__init__(ke0=1.2, **_NO_CO_COVARIATE, **params)
 
 
 class PropofolPKSchnider(MammillaryPK):
@@ -221,7 +228,7 @@ class PropofolPKSchnider(MammillaryPK):
             "cl3": 0.836,
         }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.6))
-        super().__init__(ke0=0.456, **params)
+        super().__init__(ke0=0.456, **_NO_CO_COVARIATE, **params)
 
 
 class PropofolPKEleveld(MammillaryPK):
@@ -261,7 +268,7 @@ class PropofolPKEleveld(MammillaryPK):
             "cl3": 1.1085424008536 * (v3 / v3_ref) ** 0.75 * q3_maturation,
         }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.6))
-        super().__init__(ke0=0.146 * (w / 70.0) ** -0.25, **params)
+        super().__init__(ke0=0.146 * (w / 70.0) ** -0.25, **_NO_CO_COVARIATE, **params)
 
 
 # Remifentanil -----------------------------------------------------------------
@@ -279,6 +286,7 @@ class RemifentanilPKMinto(MammillaryPK):
             v3=5.42,
             cl3=max(0.005, 0.076 - 0.00113 * (age - 40)),
             ke0=max(0.01, 0.595 - 0.007 * (age - 40)),
+            **_NO_CO_COVARIATE,
         )
 
 

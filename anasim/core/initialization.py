@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.linalg import expm
-from scipy.optimize import brentq, minimize
+from scipy.optimize import minimize
 
 from anasim.physiology.disturbances import DisturbanceEffects
 
@@ -20,12 +20,10 @@ if TYPE_CHECKING:
 
 STARTUP_BIS_BAND_SCALE = 8.0
 STARTUP_TOL_WEIGHT = 4.0
-STARTUP_REMI_EXCESS_WEIGHT = 0.5
 
 
 @dataclass(frozen=True, slots=True)
 class StartupProfile:
-    name: str
     bis_target: float
     tol_target: float
     primary_hypnotic: str
@@ -34,11 +32,7 @@ class StartupProfile:
     settle_dt_seconds: float = 1.0
     primary_bounds: tuple[float, float] = (0.0, 1.0)
     remi_bounds: tuple[float, float] = (0.0, 1.0)
-    remi_soft_cap: float | None = None
     fgf_o2_l_min: float = 2.0
-    # Seed above the visible 65 mmHg floor because controlled ventilation and
-    # changing anesthetic plasma concentrations act during the hidden settle.
-    minimum_map: float = 70.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,21 +40,17 @@ class StartupTargets:
     prop_ce: float = 0.0
     remi_ce: float = 0.0
     mac: float = 0.0
-    nore_ce: float = 0.0
 
 
 TIVA_PROFILE = StartupProfile(
-    name="steady_state_tiva",
     bis_target=55.0,
     tol_target=0.6,
     primary_hypnotic="propofol",
     primary_bounds=(2.8, 4.2),
     remi_bounds=(1.0, 2.0),
-    remi_soft_cap=2.0,
 )
 
 BALANCED_PROFILE = StartupProfile(
-    name="steady_state_balanced",
     bis_target=45.0,
     tol_target=0.9,
     primary_hypnotic="volatile",
@@ -92,7 +82,7 @@ def _initialize_steady_state(engine: "SimulationEngine") -> None:
     engine.state.airway_mode = AirwayType.ETT
     engine.resp.state.apnea = True
     _configure_controlled_ventilation(engine, targets)
-    targets = _seed_steady_state_subsystems(engine, profile, targets)
+    _seed_steady_state_subsystems(engine, profile, targets)
     projection_core.sync_state_from_models(engine)
     _run_hidden_settle(engine, profile)
     if engine.config.tci_enabled:
@@ -124,13 +114,9 @@ def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) 
         bis_val = bis_model.compute_bis(prop_ce, remi_ce, mac_sevo=mac)
         tol_val = tol_model.compute_probability(prop_ce, remi_ce, mac=mac)
         tol_deficit = max(0.0, profile.tol_target - tol_val)
-        remi_excess = 0.0
-        if profile.remi_soft_cap is not None:
-            remi_excess = max(0.0, remi_ce - profile.remi_soft_cap)
         return (
             ((bis_val - profile.bis_target) ** 2) / (STARTUP_BIS_BAND_SCALE ** 2)
             + STARTUP_TOL_WEIGHT * (tol_deficit ** 2)
-            + STARTUP_REMI_EXCESS_WEIGHT * (remi_excess ** 2)
         )
 
     x0 = (sum(profile.primary_bounds) / 2.0, sum(profile.remi_bounds) / 2.0)
@@ -168,7 +154,7 @@ def _seed_steady_state_subsystems(
     engine: "SimulationEngine",
     profile: StartupProfile,
     targets: StartupTargets,
-) -> StartupTargets:
+) -> None:
     engine.set_vaporizer(engine.active_agent, 0.0)
     engine.set_fgf(profile.fgf_o2_l_min, 0.0, 0.0)
     engine.propofol_rate_mg_sec = 0.0
@@ -187,53 +173,14 @@ def _seed_steady_state_subsystems(
 
     prop_cp = engine.pk_prop.state.c1
     remi_cp = engine.pk_remi.state.c1
-    nore_target = _solve_visible_pressor_support(
-        engine,
-        prop_cp=prop_cp,
-        remi_cp=remi_cp,
-        mac=targets.mac,
-        minimum_map=profile.minimum_map,
-    )
-    if nore_target > 0.0:
-        engine.nore_rate_ug_sec = _seed_linear_history(engine.pk_nore, nore_target, profile.history_minutes) / 60.0
-        targets = replace(targets, nore_ce=nore_target)
-
-    # Seed hemodynamics near the managed point so the short hidden settle only
-    # handles monitor and circuit transients. Pressor support remains visible
-    # in the public drug state and attached controller.
+    # Start at the untreated anesthetic steady state so the hidden settle
+    # handles only circuit and monitor transients.
     engine.hemo.state = engine.hemo.calculate_steady_state(
         prop_cp,
         remi_cp,
         engine.pk_nore.state.ce,
         mac_sevo=targets.mac,
     )
-    return targets
-
-
-def _solve_visible_pressor_support(
-    engine: "SimulationEngine",
-    *,
-    prop_cp: float,
-    remi_cp: float,
-    mac: float,
-    minimum_map: float,
-) -> float:
-    """Find the least norepinephrine concentration needed for a managed MAP floor."""
-    def map_at(nore_ce: float) -> float:
-        return engine.hemo.calculate_steady_state(
-            prop_cp,
-            remi_cp,
-            nore_ce,
-            mac_sevo=mac,
-        ).map
-
-    if map_at(0.0) >= minimum_map:
-        return 0.0
-
-    upper = 30.0
-    if map_at(upper) < minimum_map:
-        raise ValueError("Unable to initialize maintenance above the MAP safety floor")
-    return float(brentq(lambda value: map_at(value) - minimum_map, 0.0, upper))
 
 
 def _seed_linear_history(pk_model, target_ce: float, duration_min: float) -> float:
@@ -253,7 +200,7 @@ def _oxygen_uptake_l_min(engine: "SimulationEngine", targets: StartupTargets) ->
 
 
 def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, duration_min: float) -> float:
-    """Seed tissue partial pressures after a managed maintenance history.
+    """Seed tissue partial pressures after an anesthetic maintenance history.
 
     Sets the vaporizer to the dial that holds alveolar partial pressure constant
     at the seeded uptake, and returns the inspired fraction.
@@ -329,7 +276,3 @@ def _attach_startup_controllers(engine: "SimulationEngine", targets: StartupTarg
     if targets.remi_ce > 0.0:
         engine.enable_tci("remi", engine.pk_remi.state.ce, mode="effect_site")
         engine.remi_rate_ug_sec = 0.0
-    if targets.nore_ce > 0.0:
-        maintenance_rate = engine.nore_rate_ug_sec
-        engine.enable_tci("nore", targets.nore_ce, mode="plasma")
-        engine.nore_rate_ug_sec = maintenance_rate

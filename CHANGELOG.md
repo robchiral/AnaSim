@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Maintenance starts no longer add norepinephrine to reach a preset MAP;
+  vasopressors start only when the user gives them.
+- Propofol and remifentanil clearances no longer scale with CO. Bradycardia
+  now increases stroke volume (Su Eq. 9).
+- Renamed the `hemo_model` option from `"Su2023"` to `"Su"`.
 - Manual infusion rates are the default. Setup can enable TCI controls,
   maintenance starts, and dosing guidance. Propofol and remifentanil rates
   use mcg/kg/min.

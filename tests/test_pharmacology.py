@@ -68,6 +68,18 @@ def test_remifentanil_half_time_is_context_insensitive(patient):
     assert model.simulate_decay(target_fraction=0.5, max_seconds=1200) < 9
 
 
+def test_minto_manual_infusion_matches_label_concentrations(patient):
+    """Remifentanil SmPC Table 6: 0.1 and 0.25 mcg/kg/min give 2.6 and 6.3 ng/mL.
+
+    The label rounds predictions; allow 10% for its tabulation and the age/LBM
+    equations.
+    """
+    for rate, expected in ((0.1, 2.6), (0.25, 6.3)):
+        model = RemifentanilPKMinto(patient)
+        _infuse(model, 4 * 3600, rate * patient.weight / 60.0)
+        assert model.state.c1 == pytest.approx(expected, rel=0.1)
+
+
 def test_propofol_slows_li_norepinephrine_clearance(patient):
     """Li 2024: propofol plasma concentration is a covariate on clearance."""
     concentrations = []

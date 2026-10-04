@@ -67,6 +67,7 @@ SCENARIO_WALKTHROUGHS = {
         ],
     },
     "emergence_tiva": {
+        "ASSESS": [("drug_bolus", {"key": "phenyl", "amount": 100})],
         "STOP_AGENTS": [
             ("drug_rate", {"key": "propofol", "rate": 0}),
             ("drug_rate", {"key": "remi", "rate": 0}),
@@ -205,7 +206,7 @@ def test_objectives_ignore_actions_taken_before_activation(
     (create_sepsis_response, "sepsis"),
 ])
 def test_vasopressor_objective_tracks_pressure_and_current_support(engine_factory, builder, event):
-    engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva"), start=True)
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"), start=True)
     step = _step(builder(), "START_VASOPRESSOR")
     _activate(engine, step)
     # Recovered pressure does not justify another vasopressor.

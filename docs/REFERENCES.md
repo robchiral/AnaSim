@@ -69,6 +69,7 @@ Model behavior and assumptions are described in [Architecture](ARCHITECTURE.md).
 - Servin et al. Br J Anaesth. 1990. (propofol PK in cirrhosis). [PubMed](https://pubmed.ncbi.nlm.nih.gov/2223333/)
 - Hiraoka et al. Br J Clin Pharmacol. 2005. (renal extraction of propofol). [PubMed](https://pubmed.ncbi.nlm.nih.gov/16042671/)
 - Minto et al. Anesthesiology. 1997. (remifentanil PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9009936/)
+- Remifentanil SmPC. (Minto steady-state infusion concentrations, table 6). [Prescribing information](https://www.medicines.org.uk/emc/product/3333/smpc)
 - Dershwitz et al. Anesthesiology. 1996. (remifentanil PK/PD in liver disease). [PubMed](https://pubmed.ncbi.nlm.nih.gov/8638835/)
 - Hoke et al. Anesthesiology. 1997. (remifentanil PK in renal failure). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9316957/)
 - Bae et al. Br J Anaesth. 2020. (adult fentanyl PK). [PubMed](https://pubmed.ncbi.nlm.nih.gov/32861508/)

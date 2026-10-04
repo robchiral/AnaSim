@@ -1,4 +1,5 @@
 import math
+from copy import copy
 from typing import Optional
 
 from scipy.optimize import root_scalar
@@ -68,6 +69,8 @@ class HemodynamicModel:
         self.sv_star = self.base_sv
         self.hr_star = self.base_hr
         self.tpr = self.base_tpr
+        # Baselines are resting values, so Su's pre-infusion anxiety transient
+        # starts at zero.
         self.tde_sv = 0.0
         self.tde_hr = 0.0
         self._frank_starling_baseline_raw = 1.0 - math.exp(-2.0)
@@ -452,7 +455,7 @@ class HemodynamicModel:
             reflex_tpr_factor = 1.0 + blocked_hr / max(sinus_hr - reflex_hr, HR_MIN)
         current_hr *= 1.0 - self.hypoxia_hr_depression * self.myocardial_hypoxia
 
-        term = 1.0 - self.hr_sv_coupling * math.log(max(1.0, current_hr / self.base_hr))
+        term = self._hr_sv_factor(current_hr)
         raw_sv = (self.sv_star + self.tde_sv) * term + self.dist_sv
 
         if preload_sv_factor is None:
@@ -552,6 +555,10 @@ class HemodynamicModel:
 
     def _calc_hr(self):
         return self.hr_star + self.tde_hr + self.smoothed_chemo_hr + self.smoothed_baro_hr + self.smoothed_epi_hr
+
+    def _hr_sv_factor(self, hr: float) -> float:
+        # Su Eq. 9 also increases filling when HR falls below baseline.
+        return max(0.1, 1.0 - self.hr_sv_coupling * math.log(max(1.0, hr) / self.base_hr))
 
     def step(self, dt: float, cp_prop: float, cp_remi: float, ce_nore: float, pit: float, paco2: float, pao2: float,
              dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0,
@@ -755,7 +762,7 @@ class HemodynamicModel:
         # Su feedback senses RMAP = HR * SV * TPR relative to baseline, including
         # drug, preload, and this step's stimulation effects.
         current_hr = self._calc_hr()
-        term = max(0.1, 1.0 - self.hr_sv_coupling * math.log(max(1.0, current_hr / self.base_hr)))
+        term = self._hr_sv_factor(current_hr)
         raw_sv = (self.sv_star + self.tde_sv) * term
         current_sv = raw_sv * f_frank_starling * combined_sv_factor
         distributive_svr_drop = (self.sepsis_svr_drop_wood * sepsis_sev +
@@ -820,15 +827,11 @@ class HemodynamicModel:
         """Return the steady state for constant plasma propofol and remifentanil.
 
         At steady state the turnover equations reduce to one unknown, RMAP,
-        solved as a root of Z_calc(Z) - Z. The model's own state is restored.
+        solved as a root of Z_calc(Z) - Z on a copy of the model.
         """
-        saved_tpr = self.tpr
-        saved_sv = self.sv_star
-        saved_hr = self.hr_star
-        saved_dist = (self.tde_sv, self.tde_hr)
-        self.tde_sv = 0
-        self.tde_hr = 0
+        return copy(self)._calculate_steady_state(cp_prop, cp_remi, ce_nore, mac_sevo)
 
+    def _calculate_steady_state(self, cp_prop: float, cp_remi: float, ce_nore: float, mac_sevo: float) -> HemoState:
         cn = max(0.0, ce_nore)
         (total_eff_tpr, total_eff_sv, total_eff_hr_prod,
          eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(
@@ -837,14 +840,12 @@ class HemodynamicModel:
         nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(cn)
 
         def residual(z):
-            if z <= 0.01:
-                z = 0.01
             z_fb = z ** self.fb
             hr_z = self.base_hr * z_fb * (1.0 + total_eff_hr_prod) / (1.0 - eff_remi_hr)
             hr_z += nore_delta_hr
             sv_star_z = self.base_sv * z_fb * (1.0 + total_eff_sv) / (1.0 - eff_remi_sv)
             tpr_z = self.base_tpr * z_fb * (1.0 + total_eff_tpr) / (1.0 - eff_remi_tpr)
-            term = 1.0 - self.hr_sv_coupling * math.log(max(1.0, hr_z / self.base_hr))
+            term = self._hr_sv_factor(hr_z)
             sv_z = sv_star_z * term * nore_sv_factor
             eff_tpr_z = tpr_z + self.base_tpr * (nore_svr_factor - 1.0)
             z_new = (hr_z * sv_z * eff_tpr_z) / (self.base_hr * self.base_sv * self.base_tpr)
@@ -866,21 +867,9 @@ class HemodynamicModel:
         self.tde_sv = 0
         self.ce_sevo = mac_sevo
 
-        saved_epi = (self._epi_pressor_ce, self._epi_chrono_effect)
         self._epi_pressor_ce = self._epi_chrono_effect = 0.0
-        saved_pressor = (self.smoothed_epi_hr, self.vasopressor_sv_factor, self.delta_tpr_vasopressors)
         self.smoothed_epi_hr = nore_delta_hr
         self.vasopressor_sv_factor = nore_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (nore_svr_factor - 1.0)
 
-        ret = self.step(0.0, cp_prop, cp_remi, ce_nore, -2.0, 40.0, 95.0, 0, 0, 0, mac_sevo=mac_sevo)
-
-        self.tpr = saved_tpr
-        self.sv_star = saved_sv
-        self.hr_star = saved_hr
-        self.tde_sv = saved_dist[0]
-        self.tde_hr = saved_dist[1]
-        self.smoothed_epi_hr, self.vasopressor_sv_factor, self.delta_tpr_vasopressors = saved_pressor
-        self._epi_pressor_ce, self._epi_chrono_effect = saved_epi
-        self._cached_state = None
-        return ret
+        return self.step(0.0, cp_prop, cp_remi, ce_nore, -2.0, 40.0, 95.0, 0, 0, 0, mac_sevo=mac_sevo)

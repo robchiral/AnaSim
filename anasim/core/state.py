@@ -9,7 +9,7 @@ SUPPORTED_MODEL_OPTIONS = {
     "pk_model_propofol": {"Marsh", "Schnider", "Eleveld"},
     "pk_model_remi": {"Minto"},
     "bis_model": {"Bouillon", "Eleveld", "Fuentes", "Yumuk"},
-    "hemo_model": {"Su2023"},
+    "hemo_model": {"Su"},
     "resp_model": {"SingleCompartment"},
     "pk_model_nore": {"Beloeil", "Li"},
     "pk_model_epi": {"HealthyAdult", "Abboud"},
@@ -29,7 +29,7 @@ class SimulationConfig:
     pk_model_propofol: str = "Eleveld"
     pk_model_remi: str = "Minto"
     bis_model: str = "Bouillon"
-    hemo_model: str = "Su2023"
+    hemo_model: str = "Su"
     resp_model: str = "SingleCompartment"
     pk_model_nore: str = "Li"
     pk_model_epi: str = "HealthyAdult"
