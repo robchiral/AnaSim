@@ -4,8 +4,8 @@ Sources are cited on each model and in docs/REFERENCES.md.
 
 Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
 second. Concentrations are µg/mL for propofol, etomidate, ketamine,
-rocuronium, and esmolol, ng/mL for opioids, midazolam, catecholamines,
-labetalol, and glycopyrrolate, and mU/L for vasopressin.
+lidocaine, rocuronium, and esmolol, ng/mL for opioids, midazolam,
+catecholamines, labetalol, and glycopyrrolate, and mU/L for vasopressin.
 """
 
 import math
@@ -282,7 +282,7 @@ class RemifentanilPKMinto(MammillaryPK):
         )
 
 
-# Fentanyl, midazolam, etomidate, and ketamine ----------------------------------
+# Fentanyl, midazolam, etomidate, ketamine, and lidocaine ----------------------
 
 class FentanylPK(MammillaryPK):
     """Bae et al. 2020 allometric three-compartment model (ng/mL).
@@ -372,6 +372,28 @@ class KetaminePK(MammillaryPK):
             v3=157.0 * size,
             cl3=79.0 / 60.0 * size**0.75,
             ke0=0.5,
+        )
+
+
+class LidocainePK(MammillaryPK):
+    """Foong et al. 2025 three-compartment model from surgical patients (mcg/mL).
+
+    CL 45.9, Q2 142, and Q3 5.81 L/h and V1 25.2, V2 44.4, and V3 29.3 L,
+    scaled from 70 kg; clearance is hepatic. AnaSim sets ke0 so the effect
+    site peaks 3 min after a bolus, the best time to give it before
+    intubation (Tam 1987).
+    """
+
+    def __init__(self, patient: Patient):
+        size = patient.weight / 70.0
+        super().__init__(
+            v1=25.2 * size,
+            cl1=45.9 / 60.0 * size**0.75 * organ_clearance_scaler(patient, hepatic_fraction=0.9),
+            v2=44.4 * size,
+            cl2=142.0 / 60.0 * size**0.75,
+            v3=29.3 * size,
+            cl3=5.81 / 60.0 * size**0.75,
+            ke0=0.6,
         )
 
 

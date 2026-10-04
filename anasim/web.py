@@ -138,6 +138,7 @@ class WebSession:
         self.step_index = 0
         self.step_met = False
         self.step_status = ""
+        self.step_effect_applied = False
         if spec is not None:
             self.scenario = spec.builder()
             self.scenario.prepare(self.engine)
@@ -473,6 +474,7 @@ class WebSession:
         """Scope action objectives to what the learner does from now on."""
         self.step_met = False
         self.step_status = ""
+        self.step_effect_applied = False
         if self.step_index < len(self.scenario):
             step = self.scenario[self.step_index]
             self.engine.actions.begin_step(step.id, self.engine.state.time)
@@ -480,9 +482,13 @@ class WebSession:
     def _update_scenario(self):
         if self.scenario is None or self.step_index >= len(self.scenario):
             return
-        met, status = self.scenario[self.step_index].check_requirements(self.engine)
+        step = self.scenario[self.step_index]
+        met, status = step.check_requirements(self.engine)
         self.step_met = bool(met)
         self.step_status = status
+        if met and step.on_met is not None and not self.step_effect_applied:
+            self.step_effect_applied = True
+            step.on_met(self.engine)
 
     def _scenario_state(self):
         if self.scenario is None:

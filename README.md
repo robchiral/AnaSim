@@ -45,7 +45,7 @@ hosted recordings download when stopped.
 ## Features
 
 - Drugs include propofol, remifentanil, fentanyl, midazolam, etomidate, ketamine,
-  sevoflurane, rocuronium, sugammadex, norepinephrine, epinephrine,
+  lidocaine, sevoflurane, rocuronium, sugammadex, norepinephrine, epinephrine,
   phenylephrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, and
   glycopyrrolate. Delivery includes bolus, infusion, and effect-site
   target-controlled infusion (TCI) where supported.

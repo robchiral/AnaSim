@@ -21,6 +21,7 @@ def test_infusion_rates_convert_the_prescribed_units(engine):
         ("fentanyl", 3600.0, "fentanyl_rate_ug_sec", 1.0),
         ("midazolam", 3.6, "midazolam_rate_ug_sec", 1.0),
         ("ketamine", 3600.0, "ketamine_rate_mg_sec", 1.0),
+        ("lidocaine", 3600.0, "lidocaine_rate_mg_sec", 1.0),
         ("nore", 60.0, "nore_rate_ug_sec", 1.0),
         ("vaso", 0.06, "vaso_rate_mu_sec", 1.0),
         ("phenyl", 60.0, "phenyl_rate_ug_sec", 1.0),

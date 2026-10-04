@@ -1,7 +1,7 @@
 """Infusion rate unit conversion.
 
-Model units: mg/sec for propofol, ketamine, rocuronium, and esmolol, mU/sec
-for vasopressin, and ug/sec for the other drugs.
+Model units: mg/sec for propofol, ketamine, lidocaine, rocuronium, and
+esmolol, mU/sec for vasopressin, and ug/sec for the other drugs.
 """
 
 from typing import Dict, Tuple

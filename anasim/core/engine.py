@@ -42,6 +42,7 @@ from anasim.patient.pk_models import (
     GlycopyrrolatePK,
     KetaminePK,
     LabetalolPK,
+    LidocainePK,
     MidazolamPK,
     MilrinonePK,
     NorepinephrinePK,
@@ -294,6 +295,7 @@ class SimulationEngine(DrugControllerMixin):
         self.pk_midazolam = MidazolamPK(self.patient)
         self.pk_etomidate = EtomidatePK(self.patient)
         self.pk_ketamine = KetaminePK(self.patient)
+        self.pk_lidocaine = LidocainePK(self.patient)
         self.midazolam_c50 = midazolam_loss_of_response(self.patient.age)
 
         self.circuit = CircleSystem()

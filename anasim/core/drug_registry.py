@@ -163,6 +163,18 @@ DRUG_REGISTRY = (
         generic_name="Ketamine",
     ),
     DrugSpec(
+        key="lidocaine",
+        name="Lidocaine 20 mg/mL",
+        rate_attr="lidocaine_rate_mg_sec",
+        rate_unit="mg/hr",
+        internal_rate_unit="mg/sec",
+        bolus_unit="mg",
+        default_bolus=100.0,
+        bolus_model_scale=1.0,
+        pk_attr="pk_lidocaine",
+        generic_name="Lidocaine",
+    ),
+    DrugSpec(
         key="nore",
         name="Norepinephrine 16 mcg/mL",
         rate_attr="nore_rate_ug_sec",

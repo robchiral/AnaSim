@@ -4,6 +4,11 @@
 
 - Added fentanyl with TCI, midazolam, etomidate, ketamine, esmolol, labetalol,
   and glycopyrrolate, including combined anesthetic and autonomic effects.
+- Added lidocaine by bolus or infusion. It slightly blunts the response to
+  intubation and surgical stimulation.
+- Induction scenarios add lidocaine before propofol, a pressor response at
+  laryngoscopy, and a MAP target during maintenance. Balanced induction gives
+  fentanyl during preoxygenation and starts sevoflurane during rocuronium onset.
 - Updated preoxygenation, paralysis, and extubation objectives. Emergence now
   requires stopping the ventilator at extubation.
 - Added epinephrine relief of bronchospasm, positive-pressure relief of

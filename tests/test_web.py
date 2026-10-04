@@ -35,6 +35,7 @@ TIVA_INDUCTION = {
     "SET_FGF_PREOX": [("fgf", {"o2": 10, "air": 0, "n2o": 0})],
     "START_ANALGESIA": [("drug_target", {"key": "remi", "target": 4})],
     "INDUCE": [
+        ("drug_bolus", {"key": "lidocaine", "amount": 100}),
         ("drug_bolus", {"key": "propofol", "amount": 175}),
         ("drug_target", {"key": "propofol", "target": 4}),
     ],

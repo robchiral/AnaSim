@@ -41,6 +41,8 @@ class ScenarioStep:
     instruction: str
     check_requirements: Callable[[object], Tuple[bool, str]]
     target_tab: ControlTab | None = None
+    # Runs once, the first time the requirements are met.
+    on_met: Callable[[object], None] | None = None
 
 
 @dataclass
@@ -318,6 +320,14 @@ def require_crisis_resolved_with_map(
         if not resolved:
             msgs.append(fail_crisis)
         return False, join_messages(msgs)
+    return check
+
+
+def require_map_above(threshold: float = 65) -> Callable:
+    def check(engine) -> Tuple[bool, str]:
+        map_val = monitor_value(engine, "map")
+        met = map_val > threshold
+        return met, "" if met else f"MAP: {map_val:.0f}/{threshold:.0f}+"
     return check
 
 

@@ -78,7 +78,11 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
     )
     engine._tol_current = clamp01(
         engine.tol_pd.compute_probability(
-            state.hypnotic_ce, state.opioid_ce, mac=state.mac, ce_ketamine=state.ketamine_ce
+            state.hypnotic_ce,
+            state.opioid_ce,
+            mac=state.mac,
+            ce_ketamine=state.ketamine_ce,
+            ce_lidocaine=state.lidocaine_ce,
         )
     )
 
@@ -184,8 +188,9 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
         t_rel = max(0.0, state.time - engine.disturbance_start_time)
         effects = engine.disturbances.compute_average(t_rel, t_rel + dt)
 
-    # Hypnotics and especially opioids blunt the response to noxious stimulation;
-    # scale it by the probability of responding to laryngoscopy (Bouillon 2004).
+    # Hypnotics, lidocaine, and especially opioids blunt the response to noxious
+    # stimulation; scale it by the probability of responding to laryngoscopy
+    # (Bouillon 2004).
     stim_gain = 1.0 - engine._tol_current
     effects = DisturbanceEffects(
         bis=effects.bis * stim_gain,
@@ -299,6 +304,7 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
     engine.pk_midazolam.step(dt, engine.midazolam_rate_ug_sec)
     engine.pk_etomidate.step(dt, 0.0)
     engine.pk_ketamine.step(dt, engine.ketamine_rate_mg_sec)
+    engine.pk_lidocaine.step(dt, engine.lidocaine_rate_mg_sec)
     engine.pk_nore.step(dt, engine.nore_rate_ug_sec, propofol_conc_ug_ml=engine.pk_prop.state.c1)
     engine.pk_roc.step(dt, engine.roc_rate_mg_sec)
     # Free (sugammadex-unbound) rocuronium at the neuromuscular junction drives

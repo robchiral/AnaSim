@@ -39,6 +39,7 @@ SCENARIO_WALKTHROUGHS = {
         "SET_FGF_PREOX": lambda e: e.set_fgf(10.0, 0.0, 0.0),
         "START_ANALGESIA": lambda e: e.set_drug_target("remi", 4.0),
         "INDUCE": lambda e: (
+            e.give_drug_bolus("lidocaine", 100),
             e.give_drug_bolus("propofol", 175),
             e.set_drug_target("propofol", 4.0),
         ),
@@ -51,14 +52,16 @@ SCENARIO_WALKTHROUGHS = {
     "induction_balanced": {
         "APPLY_MASK": lambda e: e.set_airway_mode("Mask"),
         "SET_FGF_PREOX": lambda e: e.set_fgf(10.0, 0.0, 0.0),
-        "INDUCE": lambda e: e.give_drug_bolus("propofol", 175),
+        "GIVE_OPIOID": lambda e: e.give_drug_bolus("fentanyl", 100),
+        "INDUCE": lambda e: (e.give_drug_bolus("lidocaine", 100), e.give_drug_bolus("propofol", 150)),
         "MASK_VENTILATE": lambda e: e.set_bag_mask_ventilation(True),
         "GIVE_NMB": lambda e: e.give_drug_bolus("roc", 50),
+        "START_SEVO": lambda e: e.set_vaporizer("Sevoflurane", 3.0),
         "INTUBATE": lambda e: (e.set_bag_mask_ventilation(False), e.set_airway_mode("ETT")),
         "CONFIRM_ETT": lambda e: e.set_vent_power(True),
         "MAINTENANCE": lambda e: (
-            e.set_vaporizer("Sevoflurane", 2.0),
-            e.set_fgf(2.0, 0.0, 0.0),
+            e.set_vaporizer("Sevoflurane", 3.0),
+            e.set_fgf(1.0, 1.0, 0.0),
         ),
     },
     "emergence_tiva": {
@@ -92,6 +95,7 @@ def _activate(engine, step):
 
 
 def _early_induction(engine):
+    engine.give_drug_bolus("lidocaine", 100)
     engine.give_drug_bolus("propofol", 150)
     for _ in range(20):
         engine.step(1.0)
@@ -134,7 +138,7 @@ EARLY_ACTIONS = [
      lambda e: e.set_fgf(9.0, 0.0, 0.0)),
     ("induction_balanced", "INDUCE",
      _early_induction,
-     lambda e: e.give_drug_bolus("propofol", 20)),
+     lambda e: (e.give_drug_bolus("lidocaine", 20), e.give_drug_bolus("propofol", 20))),
     ("induction_balanced", "MASK_VENTILATE",
      lambda e: e.set_bag_mask_ventilation(True),
      lambda e: (e.set_bag_mask_ventilation(False), e.set_bag_mask_ventilation(True))),
@@ -236,6 +240,23 @@ def test_preoxygenation_waits_for_lung_washin(engine_factory):
     # The flowmeter stays set, but no O2 is delivered.
     engine.set_oxygen_supply_connected(False)
     assert not step.check_requirements(engine)[0]
+
+
+def test_intubation_objective_starts_one_laryngoscopy_stimulus():
+    session = WebSession({"scenario_id": "induction_balanced"})
+    engine = session.engine
+    engine.start()
+    session.step_index = next(i for i, step in enumerate(session.scenario) if step.id == "INTUBATE")
+    session._begin_step()
+
+    engine.set_airway_mode("ETT")
+    session.snapshot()
+    assert engine.disturbance_active and engine.disturbance_profile == "stim_intubation_pulse"
+    started = engine.disturbance_start_time
+    for _ in range(10):
+        engine.step(1.0)
+        session.snapshot()
+    assert engine.disturbance_start_time == started
 
 
 @pytest.mark.parametrize("spec", SCENARIO_REGISTRY, ids=lambda spec: spec.id)

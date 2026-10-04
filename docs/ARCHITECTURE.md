@@ -125,7 +125,10 @@ loss-of-response concentrations (Kaneda 2011; Albrecht 1999). Midazolam-propofol
 synergy follows Short 1992. Etomidate's ventilatory effect (Valk 2021), the
 maximum midazolam equivalent, and ketamine's
 laryngoscopy potency and sympathetic response (Idvall 1979) are simulator
-calibrations. See [adjunct tests](../tests/test_anesthetic_adjuncts.py).
+calibrations. Lidocaine blocks part of the response to stimulation, in
+proportion to its reduction of anesthetic requirement (Himes 1977). It has no
+hypnotic, hemodynamic, or antiarrhythmic effect, and toxicity is not modeled.
+See [adjunct tests](../tests/test_anesthetic_adjuncts.py).
 
 [`TOFModel`](../anasim/patient/pd/nmba.py) separates adductor pollicis from
 diaphragm and larynx effects, allowing breathing to recover before TOF. Both
@@ -283,4 +286,6 @@ controls, and the current objective.
 | State | "MAP > 65" | Current state |
 
 Action checks use log positions because paused actions share timestamps.
-Queries raise an error when no objective is active.
+Queries raise an error when no objective is active. A step's `on_met` runs
+once when its check first passes; intubation uses it to start the
+laryngoscopy stimulus.

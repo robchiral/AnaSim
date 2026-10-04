@@ -43,6 +43,11 @@ ETOMIDATE_RESPIRATORY_SHARE = 0.5
 KETAMINE_LOSS_OF_RESPONSE = 0.64
 KETAMINE_MAC_EQUIVALENT = 3.5
 
+# Lidocaine blocks 4.2% of responses to stimulation per mcg/mL, apart from
+# other drugs: 3-6 mcg/mL lowered anesthetic requirement 10-28% (Himes 1977).
+# It has no hypnotic or BIS effect.
+LIDOCAINE_BLOCK_PER_MCG_ML = 0.042
+
 
 def midazolam_loss_of_response(age: float) -> float:
     """Midazolam Ce (ng/mL) for loss of response, falling 1.9% per year (Albrecht 1999)."""
@@ -226,7 +231,14 @@ class TOLModel:
         self.gamma_r = 0.97
         self.pre_intensity = 1.05
 
-    def compute_probability(self, ce_prop: float, ce_remi: float, mac: float = 0.0, ce_ketamine: float = 0.0) -> float:
+    def compute_probability(
+        self,
+        ce_prop: float,
+        ce_remi: float,
+        mac: float = 0.0,
+        ce_ketamine: float = 0.0,
+        ce_lidocaine: float = 0.0,
+    ) -> float:
         c50r_scaled = self.c50r * self.pre_intensity
         fsig_r = 0.0 if c50r_scaled == 0 else (ce_remi**self.gamma_r) / (c50r_scaled**self.gamma_r + ce_remi**self.gamma_r)
         post_opioid = self.pre_intensity * (1.0 - fsig_r)
@@ -235,7 +247,9 @@ class TOLModel:
             return 1.0
         mac += max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
         ce_effective = ce_prop + (mac * self.c50p)
-        return (ce_effective**self.gamma_p) / (c50p_scaled**self.gamma_p + ce_effective**self.gamma_p)
+        tolerance = (ce_effective**self.gamma_p) / (c50p_scaled**self.gamma_p + ce_effective**self.gamma_p)
+        lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
+        return 1.0 - (1.0 - tolerance) * (1.0 - lidocaine_block)
 
 
 __all__ = [

@@ -1,4 +1,4 @@
-"""Fentanyl, midazolam, etomidate, and ketamine through the engine; docstrings cite each bound."""
+"""Fentanyl, midazolam, etomidate, ketamine, and lidocaine through the engine; docstrings cite each bound."""
 
 from anasim.core.state import SimulationConfig
 
@@ -16,14 +16,39 @@ def _awake(engine_factory, **patient):
     return engine
 
 
-def _propofol_induction(engine_factory, fentanyl_mcg=0.0, midazolam_mg=0.0, propofol_mg=140.0):
+def _propofol_induction(engine_factory, midazolam_mg=0.0, propofol_mg=140.0):
     engine = _awake(engine_factory)
-    engine.give_drug_bolus("fentanyl", fentanyl_mcg)
     engine.give_drug_bolus("midazolam", midazolam_mg)
     _advance(engine, 180)
     engine.give_drug_bolus("propofol", propofol_mg)
     _advance(engine, 90)
     return engine
+
+
+def _intubation_response(engine_factory, fentanyl_mcg=0.0, lidocaine_mg=0.0, lidocaine_lead_s=210):
+    """Peak HR and MAP rises, and the tolerance of laryngoscopy, at intubation 210 s after propofol."""
+    engine = _awake(engine_factory)
+    engine.give_drug_bolus("fentanyl", fentanyl_mcg)
+    _advance(engine, 180)
+    for second in range(210):
+        if second == 0:
+            engine.give_drug_bolus("propofol", 140.0)
+        if second == 90:
+            engine.give_drug_bolus("roc", 0.6 * engine.patient.weight)
+        if second == 180:
+            engine.set_airway_mode("ETT")
+            engine.set_vent_power(True)
+        if second == 210 - lidocaine_lead_s:
+            engine.give_drug_bolus("lidocaine", lidocaine_mg)
+        engine.step(1.0)
+    base_hr, base_map, tolerance = engine.state.hr, engine.state.map, engine.state.tol
+    engine.start_disturbance("stim_intubation_pulse")
+    peak_hr, peak_map = base_hr, base_map
+    for _ in range(600):
+        engine.step(0.1)
+        peak_hr = max(peak_hr, engine.state.hr)
+        peak_map = max(peak_map, engine.state.map)
+    return peak_hr - base_hr, peak_map - base_map, tolerance
 
 
 def test_ketamine_induction_keeps_breathing_and_raises_pressure(engine_factory):
@@ -79,7 +104,7 @@ def test_midazolam_sedates_more_with_age_and_potentiates_propofol(engine_factory
     assert with_midazolam.state.loc > full_dose.state.loc
 
 
-def test_fentanyl_depresses_breathing_reduces_intubation_response_and_accumulates(engine_factory):
+def test_fentanyl_depresses_breathing_and_accumulates(engine_factory):
     """Fentanyl acts as 0.82 times its concentration of remifentanil (isoflurane
     MAC reduction: McEwan 1993; Lang 1996). Hughes 1992: the half-time after an
     infusion depends on its duration.
@@ -91,25 +116,6 @@ def test_fentanyl_depresses_breathing_reduces_intubation_response_and_accumulate
     _advance(engine, 300)
     assert engine.state.pa_co2 > base_paco2 + 5.0
 
-    responses = []
-    for fentanyl_mcg in (0.0, 2.0 * engine.patient.weight):
-        engine = _propofol_induction(engine_factory, fentanyl_mcg=fentanyl_mcg)
-        engine.give_drug_bolus("roc", 0.6 * engine.patient.weight)
-        _advance(engine, 90)
-        engine.set_airway_mode("ETT")
-        engine.set_vent_power(True)
-        _advance(engine, 30)
-        base_hr, tolerance = engine.state.hr, engine.state.tol
-        engine.start_disturbance("stim_intubation_pulse")
-        peak = []
-        for _ in range(600):
-            engine.step(0.1)
-            peak.append(engine.state.hr)
-        responses.append((max(peak) - base_hr, tolerance))
-    (hr_alone, tol_alone), (hr_fentanyl, tol_fentanyl) = responses
-    assert tol_fentanyl > tol_alone + 0.2
-    assert hr_fentanyl < 0.7 * hr_alone
-
     half_times = []
     for minutes in (15, 180):
         engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=3), start=True)
@@ -118,6 +124,24 @@ def test_fentanyl_depresses_breathing_reduces_intubation_response_and_accumulate
         half_times.append(engine.get_predicted_csht("fentanyl"))
     assert half_times[1] > 3.0 * half_times[0]
     assert half_times[1] > 60.0
+
+
+def test_fentanyl_blunts_the_intubation_response_more_than_lidocaine(engine_factory):
+    """Qin 2025 (18 trials): lidocaine 1-2 mg/kg lowered the MAP rise at
+    intubation by 3.85 mmHg (95% CI 1.09-6.61), with no significant HR effect in
+    Western trials; Wilson 1991 found HR rose 21-26% with or without it. Okuda
+    1990: intubation 30 s after lidocaine raised MAP and HR, unlike at 1-3 min.
+    """
+    hr_alone, map_alone, tol_alone = _intubation_response(engine_factory)
+    hr_fentanyl, _, tol_fentanyl = _intubation_response(engine_factory, fentanyl_mcg=140.0)
+    hr_lidocaine, map_lidocaine, _ = _intubation_response(engine_factory, lidocaine_mg=105.0)
+    _, map_rushed, _ = _intubation_response(engine_factory, lidocaine_mg=105.0, lidocaine_lead_s=30)
+
+    assert tol_fentanyl > tol_alone + 0.2
+    assert hr_fentanyl < 0.7 * hr_alone
+    assert 1.09 < map_alone - map_lidocaine < 6.61
+    assert hr_lidocaine > 0.8 * hr_alone
+    assert map_alone - map_rushed < 0.7 * (map_alone - map_lidocaine)
 
 
 def test_etomidate_induction_is_brief_and_hemodynamically_stable(engine_factory):

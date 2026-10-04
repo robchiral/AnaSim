@@ -95,7 +95,7 @@ class SimulationState:
     arrest_reason: str = ""
 
     # Effect-site (ce) and plasma (cp) concentrations: propofol, etomidate,
-    # ketamine, and esmolol mcg/mL, vasopressin mU/L, others ng/mL.
+    # ketamine, lidocaine, and esmolol mcg/mL, vasopressin mU/L, others ng/mL.
     propofol_ce: float = 0.0
     propofol_cp: float = 0.0
     remi_ce: float = 0.0
@@ -105,6 +105,7 @@ class SimulationState:
     midazolam_ce: float = 0.0
     etomidate_ce: float = 0.0
     ketamine_ce: float = 0.0
+    lidocaine_ce: float = 0.0
     # Combined drug effects: remifentanil-equivalent opioid (ng/mL) and
     # propofol-equivalent hypnotic with etomidate and midazolam (mcg/mL).
     opioid_ce: float = 0.0

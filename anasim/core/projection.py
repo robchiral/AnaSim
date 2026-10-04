@@ -84,6 +84,7 @@ def sync_pk_state(engine: "SimulationEngine") -> None:
     state.midazolam_ce = float(engine.pk_midazolam.state.ce)
     state.etomidate_ce = float(engine.pk_etomidate.state.ce)
     state.ketamine_ce = float(engine.pk_ketamine.state.ce)
+    state.lidocaine_ce = float(engine.pk_lidocaine.state.ce)
     state.opioid_ce = float(opioid_equivalent(engine.pk_remi.state.ce, engine.pk_fentanyl.state.ce))
     state.opioid_cp = float(opioid_equivalent(engine.pk_remi.state.c1, engine.pk_fentanyl.state.c1))
     state.hypnotic_ce = float(hypnotic_equivalent(
@@ -274,7 +275,11 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
         ce_ketamine=state.ketamine_ce,
     )
     tol_val = engine.tol_pd.compute_probability(
-        state.hypnotic_ce, state.opioid_ce, mac=state.mac, ce_ketamine=state.ketamine_ce
+        state.hypnotic_ce,
+        state.opioid_ce,
+        mac=state.mac,
+        ce_ketamine=state.ketamine_ce,
+        ce_lidocaine=state.lidocaine_ce,
     )
     engine._tol_current = tol_val
     cardiac_sample = engine.cardiac_cycle.seed(state.hr, engine.hemo.state.rhythm_type)

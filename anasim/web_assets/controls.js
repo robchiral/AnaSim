@@ -45,7 +45,7 @@ const ventInputs = {
 
 // Presentation order stays fixed while medications are administered.
 const medicationGroups = [
-  { name: "Anesthesia and sedation", keys: ["propofol", "midazolam", "ketamine", "etomidate"] },
+  { name: "Anesthesia and sedation", keys: ["propofol", "midazolam", "ketamine", "etomidate", "lidocaine"] },
   { name: "Opioids", keys: ["fentanyl", "remi"] },
   { name: "Vasopressors and inotropes", keys: ["phenyl", "nore", "epi", "vaso", "dobu", "milri"] },
   { name: "Heart rate and blood pressure", keys: ["glyco", "esmolol", "labetalol"] },
