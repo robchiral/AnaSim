@@ -113,24 +113,6 @@
 </section>
 
 <div id="app" hidden>
-  <section id="scenario" class="scenario" hidden>
-    <div class="scenario-head">
-      <span class="scenario-name" id="scenario-name"></span>
-      <span class="scenario-count" id="scenario-count"></span>
-    </div>
-    <div class="scenario-body">
-      <div>
-        <h2 id="step-title"></h2>
-        <p id="step-instruction"></p>
-      </div>
-    </div>
-    <div class="scenario-foot">
-      <span class="step-status" id="step-status"></span>
-      <button type="button" class="btn outlined small" id="step-target"></button>
-      <button type="button" class="btn outlined small" id="step-next" disabled>Continue</button>
-    </div>
-  </section>
-
   <main class="workspace">
     <section class="monitor">
       <header class="monitor-header">
@@ -138,64 +120,103 @@
         <button type="button" class="btn outlined small" id="new-session">New session</button>
       </header>
       <div class="monitor-body">
-        <div class="waves">
-          <div class="wave" data-wave="ecg"><canvas></canvas><span class="wave-label ecg">ECG · II</span></div>
-          <div class="wave" data-wave="pleth"><canvas></canvas><span class="wave-label spo2">Pleth</span></div>
-          <div class="wave" data-wave="art"><canvas></canvas><span class="wave-label abp">ART</span></div>
-          <div class="wave" data-wave="co2"><canvas></canvas><span class="wave-label co2">CO₂ · mmHg</span></div>
-          <div class="wave" data-wave="paw"><canvas></canvas><span class="wave-label vent">Paw · cmH₂O</span></div>
-          <div class="wave" data-wave="flow"><canvas></canvas><span class="wave-label vent">Flow · L/min</span></div>
+        <div class="monitor-lane">
+          <div class="wave" data-wave="ecg"><canvas role="img" aria-label="ECG lead II waveform"></canvas><span class="wave-label ecg">ECG · II</span><span class="sweep-label">10 s</span></div>
+          <div class="lane-numerics">
+            <div class="numeric big ecg" data-alarm="HR"><div class="numeric-head"><span class="numeric-title">HR</span><span class="numeric-unit">/min</span></div><output id="v-hr">--</output></div>
+          </div>
         </div>
-        <div class="numerics">
-          <div class="numeric big ecg" data-alarm="HR"><div class="numeric-head"><span class="numeric-title">HR</span><span class="numeric-unit">bpm</span></div><output id="v-hr">--</output></div>
-          <div class="numeric big spo2" data-alarm="SpO2"><div class="numeric-head"><span class="numeric-title">SpO₂</span><span class="numeric-unit" id="v-spo2-unit">%</span></div><output id="v-spo2">--</output></div>
-          <div class="numeric big abp" data-alarm="MAP" id="n-art"><div class="numeric-head"><span class="numeric-title">ART</span><span class="numeric-unit">mmHg</span></div><output id="v-art">--/-- (--)</output></div>
-          <div class="numeric big abp" id="n-nibp"><div class="numeric-head"><span class="numeric-title">NIBP</span><span class="numeric-unit">mmHg</span></div><output id="v-nibp">--/-- (--)</output><output id="v-nibp-status" class="measurement-status"></output><button type="button" class="btn small" id="measure-nibp">Measure BP</button></div>
-          <div class="numeric-pair">
+        <div class="monitor-lane" id="art-lane">
+          <div class="wave" data-wave="art"><canvas role="img" aria-label="Arterial pressure waveform, 10 second sweep"></canvas><span class="wave-label abp">ART · mmHg</span></div>
+          <div class="lane-numerics abp" data-alarm="MAP" id="n-art">
+            <div class="numeric pressure"><div class="numeric-head"><span class="numeric-title">ART</span><span class="numeric-unit">mmHg</span></div><output id="v-art">--/--</output></div>
+            <div class="numeric compact"><div class="numeric-head"><span class="numeric-title">MAP</span></div><output id="v-art-map">--</output></div>
+          </div>
+        </div>
+        <div class="monitor-lane">
+          <div class="wave" data-wave="pleth"><canvas role="img" aria-label="Pulse oximeter plethysmogram, 10 second sweep"></canvas><span class="wave-label spo2">Pleth</span></div>
+          <div class="lane-numerics">
+            <div class="numeric big spo2" data-alarm="SpO2"><div class="numeric-head"><span class="numeric-title">SpO₂</span><span class="numeric-unit" id="v-spo2-unit">%</span></div><output id="v-spo2">--</output></div>
+          </div>
+        </div>
+        <div class="monitor-lane respiratory-lane">
+          <div class="wave" data-wave="co2"><canvas role="img" aria-label="Carbon dioxide waveform"></canvas><span class="wave-label co2">CO₂ · mmHg</span><span class="sweep-label">20 s</span></div>
+          <div class="lane-numerics">
             <div class="numeric big co2" data-alarm="EtCO2"><div class="numeric-head"><span class="numeric-title">EtCO₂</span><span class="numeric-unit">mmHg</span></div><output id="v-etco2">--</output></div>
             <div class="numeric compact co2"><div class="numeric-head"><span class="numeric-title" id="v-rr-title">RR</span><span class="numeric-unit">/min</span></div><output id="v-rr">--</output></div>
           </div>
-          <div class="numeric-row">
-            <div class="numeric compact bis" data-alarm="BIS"><div class="numeric-head"><span class="numeric-title">BIS</span></div><output id="v-bis">--</output></div>
-            <div class="numeric compact tof"><div class="numeric-head"><span class="numeric-title">TOF</span></div><output id="v-tof">--</output></div>
-            <div class="numeric compact temp"><div class="numeric-head"><span class="numeric-title">Temp</span><span class="numeric-unit">°C</span></div><output id="v-temp">--</output></div>
-          </div>
-          <div class="panel-io">
-            <div class="io-head"><span>Fluid balance</span><output id="v-net">--</output></div>
-            <div class="io-detail" id="v-io">IV --  PRBC --  ·  Urine --  Loss --</div>
+        </div>
+        <div class="monitor-lane respiratory-lane">
+          <div class="wave" data-wave="paw"><canvas role="img" aria-label="Airway pressure waveform, 20 second sweep"></canvas><span class="wave-label vent">Paw · cmH₂O</span></div>
+          <div class="lane-numerics">
+            <div class="numeric big vent" data-alarm="Ppeak"><div class="numeric-head"><span class="numeric-title">Ppeak</span><span class="numeric-unit">cmH₂O</span></div><output id="v-ppeak">--</output></div>
+            <div class="numeric-stack vent">
+              <div class="numeric compact"><div class="numeric-head"><span class="numeric-title">Pplat</span></div><output id="v-pplat">--</output></div>
+              <div class="numeric compact"><div class="numeric-head"><span class="numeric-title">PEEP</span></div><output id="v-peep">--</output></div>
+            </div>
           </div>
         </div>
+        <div class="monitor-lane respiratory-lane">
+          <div class="wave" data-wave="flow"><canvas role="img" aria-label="Respiratory flow waveform, 20 second sweep"></canvas><span class="wave-label vent">Flow · L/min</span></div>
+          <div class="lane-numerics">
+            <div class="numeric big vent" data-alarm="VTe"><div class="numeric-head"><span class="numeric-title">VTe</span><span class="numeric-unit">mL</span></div><output id="v-vte">--</output></div>
+            <div class="numeric compact vent" data-alarm="MV"><div class="numeric-head"><span class="numeric-title">MV</span><span class="numeric-unit">L/min</span></div><output id="v-mv">--</output></div>
+          </div>
+        </div>
+        <section class="respiratory-loops" aria-label="Respiratory loops">
+          <figure><figcaption>Pressure-volume</figcaption><canvas id="loop-pv" role="img" aria-label="Pressure-volume loop, current and previous breaths"></canvas></figure>
+          <figure><figcaption>Flow-volume</figcaption><canvas id="loop-fv" role="img" aria-label="Flow-volume loop, current and previous breaths"></canvas></figure>
+        </section>
       </div>
-      <div class="vent-bar">
-        <div class="vent-group">
-          <div class="numeric vent" data-alarm="Ppeak"><div class="numeric-head"><span class="numeric-title">Ppeak</span><span class="numeric-unit">cmH₂O</span></div><output id="v-ppeak">--</output></div>
-          <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">Pplat</span><span class="numeric-unit">cmH₂O</span></div><output id="v-pplat">--</output></div>
-          <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">PEEP</span><span class="numeric-unit">cmH₂O</span></div><output id="v-peep">--</output></div>
-          <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">Pmean</span><span class="numeric-unit">cmH₂O</span></div><output id="v-pmean">--</output></div>
-          <div class="numeric vent group-start" data-alarm="VTe"><div class="numeric-head"><span class="numeric-title">VTe</span><span class="numeric-unit">mL</span></div><output id="v-vte">--</output></div>
-          <div class="numeric vent" data-alarm="MV"><div class="numeric-head"><span class="numeric-title">MV</span><span class="numeric-unit">L/min</span></div><output id="v-mv">--</output></div>
-          <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">Cdyn</span><span class="numeric-unit">mL/cmH₂O</span></div><output id="v-cdyn">--</output></div>
+      <div class="gas-bar">
+        <div class="numeric gas" data-alarm="FiO2"><div class="numeric-head"><span class="numeric-title">O₂</span><span class="numeric-unit">Fi / Et %</span></div><output id="v-o2">-- / --</output></div>
+        <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">N₂O</span><span class="numeric-unit">Fi / Et %</span></div><output id="v-n2o">-- / --</output></div>
+        <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">Sevo</span><span class="numeric-unit">Fi / Et %</span></div><output id="v-sevo">-- / --</output></div>
+        <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">MAC</span></div><output id="v-mac">--</output></div>
+        <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">Pmean</span><span class="numeric-unit">cmH₂O</span></div><output id="v-pmean">--</output></div>
+        <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">Cdyn</span><span class="numeric-unit">mL/cmH₂O</span></div><output id="v-cdyn">--</output></div>
+      </div>
+      <div class="secondary-bar">
+        <div class="numeric compact abp" id="n-nibp">
+          <div class="numeric-head"><span class="numeric-title">NIBP</span><span class="numeric-unit">mmHg</span></div>
+          <div class="nibp-reading"><output id="v-nibp">--/-- (--)</output><button type="button" class="btn outlined small" id="measure-nibp">Measure BP</button></div>
+          <output id="v-nibp-status" class="measurement-status"></output>
         </div>
-        <div class="vent-group">
-          <div class="numeric gas" data-alarm="FiO2"><div class="numeric-head"><span class="numeric-title">O₂</span><span class="numeric-unit">Fi/Et %</span></div><output id="v-o2">--/--</output></div>
-          <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">N₂O</span><span class="numeric-unit">Fi/Et %</span></div><output id="v-n2o">--/--</output></div>
-          <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">Sevo</span><span class="numeric-unit">Fi/Et %</span></div><output id="v-sevo">--/--</output></div>
-          <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">MAC</span></div><output id="v-mac">--</output></div>
-        </div>
+        <div class="numeric compact bis" data-alarm="BIS"><div class="numeric-head"><span class="numeric-title">BIS</span></div><output id="v-bis">--</output></div>
+        <div class="numeric compact tof"><div class="numeric-head"><span class="numeric-title">TOF</span><span class="numeric-unit">%</span></div><output id="v-tof">--</output></div>
+        <div class="numeric compact temp"><div class="numeric-head"><span class="numeric-title">Temp</span><span class="numeric-unit">°C</span></div><output id="v-temp">--</output></div>
+        <div class="panel-io"><div class="io-head"><span>Fluid balance</span><output id="v-net">--</output></div><div class="io-detail" id="v-io">IV -- · PRBC -- · Urine -- · Loss --</div></div>
       </div>
       <footer class="sim-bar">
-        <button type="button" class="btn primary" id="run">Start simulation</button>
+        <button type="button" class="btn primary" id="run">Start</button>
         <button type="button" class="btn toggle" id="record" aria-pressed="false">Record CSV</button>
-        <label class="speed">Simulation speed
+        <label class="speed">Speed
           <span class="unit-input"><input type="number" id="speed" min="0.1" max="50" step="0.5" value="1"><span>×</span></span>
         </label>
         <span class="status" id="status"></span>
         <span class="spacer"></span>
-        <div class="clock"><span>Simulation time</span><output id="clock">00:00:00</output></div>
+        <div class="clock"><output id="clock" aria-label="Elapsed simulation time">00:00:00</output></div>
       </footer>
     </section>
 
     <aside class="controls">
+      <section id="scenario" class="scenario" hidden>
+        <div class="scenario-head">
+          <span class="scenario-name" id="scenario-name"></span>
+          <span class="scenario-count" id="scenario-count"></span>
+        </div>
+        <div class="scenario-body">
+          <div>
+            <h2 id="step-title"></h2>
+            <p id="step-instruction"></p>
+          </div>
+        </div>
+        <div class="scenario-foot">
+          <span class="step-status" id="step-status"></span>
+          <button type="button" class="btn outlined small" id="step-target"></button>
+          <button type="button" class="btn outlined small" id="step-next" disabled>Continue</button>
+        </div>
+      </section>
       <nav class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="Machine" aria-selected="true">Machine</button>
         <button type="button" role="tab" data-tab="Medications" aria-selected="false">Medications</button>
@@ -204,7 +225,7 @@
 
       <div class="tab-panel" data-panel="Machine" role="tabpanel">
         <fieldset class="group">
-          <legend>Airway management</legend>
+          <legend>Airway</legend>
           <div class="segmented" id="c-airway">
             <button type="button" data-value="None">Disconnected</button>
             <button type="button" data-value="Mask">Facemask</button>
@@ -212,72 +233,58 @@
           </div>
         </fieldset>
 
+        <fieldset class="group">
+          <legend>Ventilation</legend>
+          <div class="vent-mode-row">
+            <select id="c-vent-mode" aria-label="Ventilation mode">
+              <option value="VCV">VCV</option>
+              <option value="PCV">PCV</option>
+              <option value="PCV-VG">PCV-VG</option>
+              <option value="SIMV-VC">SIMV-VC</option>
+              <option value="SIMV-PC">SIMV-PC</option>
+              <option value="SIMV-VG">SIMV PCV-VG</option>
+              <option value="PSV">PSV</option>
+              <option value="CPAP">CPAP</option>
+            </select>
+            <button type="button" class="btn toggle" id="c-vent-power" aria-pressed="false">Start ventilator</button>
+          </div>
+          <div class="vent-settings" id="c-vent-settings">
+            <div class="control-setting" data-vent="rr"><div class="control-setting-head"><label for="c-rr" id="c-rr-label">RR</label><span id="c-rr-unit">/min</span></div><input id="c-rr" aria-describedby="c-rr-unit" type="number" min="0" max="60" step="1"></div>
+            <div class="control-setting" data-vent="tv"><div class="control-setting-head"><label for="c-tv">Vt</label><span>mL</span></div><input id="c-tv" aria-label="Tidal volume setting, mL" type="number" min="0" max="1500" step="25"></div>
+            <div class="control-setting" data-vent="p_insp"><div class="control-setting-head"><label for="c-pinsp" id="c-pinsp-label">Pinsp</label><span id="c-pinsp-unit">cmH₂O</span></div><input id="c-pinsp" aria-describedby="c-pinsp-unit" type="number" min="0" max="60" step="1"></div>
+            <div class="control-setting" data-vent="p_support"><div class="control-setting-head"><label for="c-psupport">PS</label><span>cmH₂O</span></div><input id="c-psupport" aria-label="Pressure support setting, cmH₂O" type="number" min="0" max="40" step="1"></div>
+            <div class="control-setting"><div class="control-setting-head"><label for="c-peep">PEEP</label><span>cmH₂O</span></div><input id="c-peep" aria-label="PEEP setting, cmH₂O" type="number" min="0" max="30" step="1"></div>
+            <div class="control-setting" data-vent="ie"><div class="control-setting-head"><label for="c-ie">I:E</label></div><select id="c-ie"><option>1:2</option><option>1:1</option><option>1:3</option><option>1:4</option></select></div>
+            <div class="control-setting" data-vent="t_insp"><div class="control-setting-head"><label for="c-tinsp">Tinsp</label><span>s</span></div><input id="c-tinsp" aria-label="Inspiratory time setting, seconds" type="number" min="0.2" max="5" step="0.1"></div>
+            <div class="control-setting" data-vent="pause"><div class="control-setting-head"><label for="c-pause">Tpause</label><span>% Ti</span></div><input id="c-pause" aria-label="Inspiratory pause setting, percent of inspiratory time" type="number" min="0" max="60" step="5"></div>
+            <div class="control-setting" data-vent="p_max"><div class="control-setting-head"><label for="c-pmax">Pmax</label><span>cmH₂O</span></div><input id="c-pmax" aria-label="Pressure limit setting, cmH₂O" type="number" min="12" max="100" step="1"></div>
+            <div class="control-setting" data-vent="trigger"><div class="control-setting-head"><label for="c-trigger">Trigger</label><span>L/min</span></div><input id="c-trigger" aria-label="Flow trigger setting, L/min" type="number" min="1" max="15" step="0.5"></div>
+          </div>
+          <div class="manual-ventilation">
+            <button type="button" class="btn toggle" id="c-bag" aria-pressed="false">Start bag ventilation</button>
+            <span class="dim small">12 breaths/min · 500 mL</span>
+          </div>
+        </fieldset>
+
         <div class="group-row">
           <fieldset class="group">
-            <legend>Fresh gas flow</legend>
-            <div class="grid2">
-              <label for="c-o2">O₂</label><span class="unit-input"><input id="c-o2" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
-              <label for="c-air">Air</label><span class="unit-input"><input id="c-air" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
-              <label for="c-n2o">N₂O</label><span class="unit-input"><input id="c-n2o" type="number" min="0" max="15" step="0.5"><span>L/min</span></span>
-              <span class="dim">Circuit FiO₂</span><output id="c-fio2" class="fio2">21%</output>
+            <legend>Fresh gas flow <span class="legend-unit">L/min</span></legend>
+            <div class="fresh-gas-settings">
+              <div class="control-setting"><label for="c-o2">O₂</label><input id="c-o2" aria-label="Oxygen flow, L/min" type="number" min="0" max="15" step="0.5"></div>
+              <div class="control-setting"><label for="c-air">Air</label><input id="c-air" aria-label="Air flow, L/min" type="number" min="0" max="15" step="0.5"></div>
+              <div class="control-setting"><label for="c-n2o">N₂O</label><input id="c-n2o" aria-label="Nitrous oxide flow, L/min" type="number" min="0" max="15" step="0.5"></div>
             </div>
+            <div class="circuit-oxygen"><span>Circuit FiO₂</span><output id="c-fio2" class="fio2">21%</output></div>
             <button type="button" class="btn toggle t-danger full" id="c-o2-supply" aria-pressed="false">Disconnect O₂ supply</button>
           </fieldset>
 
           <fieldset class="group">
             <legend>Sevoflurane vaporizer</legend>
-            <div class="grid2">
-              <label for="c-vap">Setting</label><span class="unit-input"><input id="c-vap" type="number" min="0" max="8" step="0.2"><span>%</span></span>
+            <div class="unit-input vaporizer-setting">
+              <input id="c-vap" aria-label="Sevoflurane vaporizer setting, percent" type="number" min="0" max="8" step="0.2"><span>%</span>
             </div>
           </fieldset>
         </div>
-
-        <fieldset class="group">
-          <legend>Manual ventilation</legend>
-          <div class="inline">
-            <button type="button" class="btn toggle" id="c-bag" aria-pressed="false">Start bag-mask ventilation</button>
-            <span class="dim small">12 breaths/min · 500 mL</span>
-          </div>
-        </fieldset>
-
-        <fieldset class="group">
-          <legend>Mechanical ventilation</legend>
-          <div class="inline">
-            <button type="button" class="btn toggle" id="c-vent-power" aria-pressed="false">Start ventilator</button>
-          </div>
-          <div class="grid4" id="c-vent-settings">
-            <label for="c-vent-mode">Mode</label>
-            <select id="c-vent-mode" class="span3">
-              <option value="VCV">VCV (Volume)</option>
-              <option value="PCV">PCV (Pressure)</option>
-              <option value="PCV-VG">PCV-VG (Volume guarantee)</option>
-              <option value="SIMV-VC">SIMV-VC</option>
-              <option value="SIMV-PC">SIMV-PC</option>
-              <option value="SIMV-VG">SIMV PCV-VG</option>
-              <option value="PSV">PSV (Support)</option>
-              <option value="CPAP">CPAP</option>
-            </select>
-            <label for="c-rr" data-vent="rr" id="c-rr-label">RR</label><span class="unit-input" data-vent="rr"><input id="c-rr" type="number" min="0" max="60" step="1"><span>/min</span></span>
-            <label for="c-tv" data-vent="tv">Vt</label><span class="unit-input" data-vent="tv"><input id="c-tv" type="number" min="0" max="1500" step="25"><span>mL</span></span>
-            <label for="c-pinsp" data-vent="p_insp" id="c-pinsp-label">Pinsp</label><span class="unit-input" data-vent="p_insp"><input id="c-pinsp" type="number" min="0" max="60" step="1"><span>cmH₂O</span></span>
-            <label for="c-psupport" data-vent="p_support">PS</label><span class="unit-input" data-vent="p_support"><input id="c-psupport" type="number" min="0" max="40" step="1"><span>cmH₂O</span></span>
-            <label for="c-peep">PEEP</label><span class="unit-input"><input id="c-peep" type="number" min="0" max="30" step="1"><span>cmH₂O</span></span>
-            <label for="c-ie" data-vent="ie">I:E</label>
-            <select id="c-ie" data-vent="ie"><option>1:2</option><option>1:1</option><option>1:3</option><option>1:4</option></select>
-            <label for="c-tinsp" data-vent="t_insp">Tinsp</label><span class="unit-input" data-vent="t_insp"><input id="c-tinsp" type="number" min="0.2" max="5" step="0.1"><span>s</span></span>
-            <label for="c-pause" data-vent="pause">Tpause</label><span class="unit-input" data-vent="pause"><input id="c-pause" type="number" min="0" max="60" step="5"><span>% Ti</span></span>
-            <label for="c-pmax" data-vent="p_max">Pmax</label><span class="unit-input" data-vent="p_max"><input id="c-pmax" type="number" min="12" max="100" step="1"><span>cmH₂O</span></span>
-            <label for="c-trigger" data-vent="trigger">Trigger</label><span class="unit-input" data-vent="trigger"><input id="c-trigger" type="number" min="1" max="15" step="0.5"><span>L/min</span></span>
-          </div>
-        </fieldset>
-
-        <fieldset class="group">
-          <legend>Loops</legend>
-          <div class="loops">
-            <figure><canvas id="loop-pv"></canvas><figcaption>Pressure–volume</figcaption></figure>
-            <figure><canvas id="loop-fv"></canvas><figcaption>Flow–volume</figcaption></figure>
-          </div>
-        </fieldset>
       </div>
 
       <div class="tab-panel" data-panel="Medications" role="tabpanel" hidden>

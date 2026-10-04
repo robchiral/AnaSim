@@ -68,6 +68,7 @@ SCENARIO_WALKTHROUGHS = {
     "emergence_balanced": {
         "STOP_AGENTS": lambda e: (
             e.set_vaporizer("Sevoflurane", 0.0),
+            e.disable_tci("remi"),
             e.set_fgf(10.0, 0.0, 0.0),
         ),
         "EXTUBATE": lambda e: (e.set_vent_power(False), e.set_airway_mode("Mask")),
@@ -141,8 +142,9 @@ EARLY_ACTIONS = [
      lambda e: e.set_airway_mode("ETT"),
      lambda e: (e.set_airway_mode("Mask"), e.set_airway_mode("ETT"))),
     ("emergence_balanced", "STOP_AGENTS",
-     lambda e: (e.set_vaporizer("Sevoflurane", 0.0), e.set_fgf(8.0, 0.0, 0.0)),
-     lambda e: (e.set_vaporizer("Sevoflurane", 0.0), e.set_fgf(9.0, 0.0, 0.0))),
+     lambda e: (e.set_vaporizer("Sevoflurane", 0.0), e.disable_tci("remi"), e.set_fgf(8.0, 0.0, 0.0)),
+     lambda e: (e.set_vaporizer("Sevoflurane", 0.0), e.set_drug_target("remi", 2.0),
+                e.disable_tci("remi"), e.set_fgf(9.0, 0.0, 0.0))),
     ("emergence_balanced", "EXTUBATE",
      _early_extubation,
      lambda e: (e.set_airway_mode("ETT"), e.set_airway_mode("Mask"))),

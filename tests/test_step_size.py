@@ -2,23 +2,7 @@
 
 import pytest
 
-from anasim.core.state import SimulationConfig
 from anasim.patient.pd.anesthesia import BISModel
-
-
-@pytest.mark.parametrize("dt", [0.3, 1.0])
-def test_tci_induction_does_not_depend_on_step_size(engine_factory, dt):
-    def effect_site_after_one_minute(step):
-        engine = engine_factory(config=SimulationConfig(mode="awake", dt=step), start=True)
-        engine.set_airway_mode("Mask")
-        engine.enable_tci("propofol", 4.0)
-        for _ in range(round(60 / step)):
-            engine.step(step)
-        return engine.state.propofol_ce
-
-    assert effect_site_after_one_minute(dt) == pytest.approx(
-        effect_site_after_one_minute(0.1), rel=0.02
-    )
 
 
 def test_bis_processing_delay_runs_on_simulation_time(patient):
@@ -26,10 +10,16 @@ def test_bis_processing_delay_runs_on_simulation_time(patient):
     for dt in (0.01, 0.1):
         bis = BISModel(patient, model_name="Eleveld")
         bis.initialize(93.0)
-        for _ in range(round(10.0 / dt)):
-            output = bis.step(dt, 6.0)
-        outputs.append(output)
-    assert outputs == pytest.approx([93.0, 93.0])
+        trace = []
+        for seconds in (10.0, 35.0, 75.0):
+            for _ in range(round(seconds / dt)):
+                output = bis.step(dt, 6.0)
+            trace.append(output)
+        outputs.append(trace)
+    # The initial reading is delayed, then responds to sustained hypnosis.
+    assert outputs[0][0] == outputs[1][0] == pytest.approx(93.0)
+    assert 20.0 < outputs[0][-1] < 40.0
+    assert outputs[1] == pytest.approx(outputs[0], abs=0.3)
 
 
 def test_pressure_control_gas_exchange_does_not_depend_on_step_size(engine_factory):

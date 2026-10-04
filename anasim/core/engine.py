@@ -56,6 +56,7 @@ from anasim.patient.pk_models import (
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.hemodynamics import HemodynamicModel
+from anasim.physiology.lung import LungAeration
 from anasim.physiology.resp_mech import RespiratoryMechanics
 from anasim.physiology.respiration import RespiratoryModel
 
@@ -210,7 +211,6 @@ class SimulationEngine(DrugControllerMixin):
         self._capno_numeric_timeout_s = 15.0
         self._capno_last_phase = "EXP"
         self._capno_has_sample = False
-        self._capno_volume = 0.0  # Lung volume at the last capnograph step (L)
         self._mean_paw_tau_s = 0.25
         self._tol_current = 0.0
         self._pk_hemo_scale_cache = None
@@ -333,7 +333,8 @@ class SimulationEngine(DrugControllerMixin):
         c50, emax, gamma = NORE_PD_PARAMS[self.config.pk_model_nore]
         self.hemo.set_nore_pd(c50=c50, emax=emax, gamma=gamma)
         self.resp = RespiratoryModel(self.patient)
-        self.resp_mech = RespiratoryMechanics(compliance=self.patient.respiratory_compliance())
+        aeration = LungAeration(self.patient, recruited=0.9 if self.config.mode == "steady_state" else 1.0)
+        self.resp_mech = RespiratoryMechanics(aeration=aeration)
         self._base_airway_resistance = self.resp_mech.resistance
         self.set_vent_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_insp=15.0)
         self.resp.baseline_co_l_min = self.hemo.base_co_l_min
@@ -561,7 +562,7 @@ class SimulationEngine(DrugControllerMixin):
     def set_airway_obstruction(self, severity: float):
         self.airway_obstruction_manual = clamp(severity, 0.0, 1.0)
 
-    def get_resp_step_kwargs(self, total_assisted_mv, peep, mean_paw, mech_rr, mech_vt_l, cardiac_output):
+    def get_resp_step_kwargs(self, total_assisted_mv, mech_rr, mech_vt_l, cardiac_output):
         """Respiratory-model inputs shared by the runtime and startup projection."""
         return {
             "ce_prop": hypnotic_equivalent(
@@ -576,10 +577,9 @@ class SimulationEngine(DrugControllerMixin):
             "fio2": self.state.fio2,
             "ce_roc": self.tof_pd.ce_central,
             "mac_sevo": self.state.mac_sevo,
-            "peep": peep,
-            "mean_paw": mean_paw,
             "mech_rr": mech_rr,
             "mech_vt_l": mech_vt_l,
+            "measured_breaths": self.state.airway_mode != AirwayType.NONE and self.vent.has_measured_breath,
             "airway_patency": self._airway_patency,
             "ventilation_efficiency": self._ventilation_efficiency,
             "vq_mismatch": self._vq_mismatch,
@@ -587,6 +587,9 @@ class SimulationEngine(DrugControllerMixin):
             "blood_volume_ml": self.hemo.blood_volume,
             "cardiac_output": cardiac_output,
             "metabolic_factor": max(0.5, self._metabolic_factor),
+            "unconscious": self.state.loc,
+            "lung_volume_l": self.resp_mech.aeration.frc,
+            "shunt_fraction": self.resp_mech.aeration.shunt_fraction,
         }
 
     def set_bronchospasm(self, severity: float):

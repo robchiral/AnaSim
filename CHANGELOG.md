@@ -13,8 +13,8 @@
 - Added PCV-VG and SIMV, patient triggering and flow cycling, and adjustable
   VCV pause and pressure limits.
 - Added tissue viscoelasticity, compliance scaling by body size, and muscle
-  pressure for spontaneous and assisted breaths. Patient efforts can produce
-  curare clefts in the capnogram.
+  pressure for spontaneous and assisted breaths, including synchronization
+  with the ventilator, curare clefts, and CO₂-dependent apnea under anesthesia.
 - Added airway traces, ventilator measurements and live loops, inspired and
   end-tidal gas values, and corresponding CSV fields. End-tidal values clear
   when exhaled breath detection stops.
@@ -54,7 +54,7 @@
   checked the fresh gas reduction in TIVA maintenance, and showed the ranges
   that baseline objectives check.
 - Applied arterial-line setting changes immediately and reduced waveform
-  overhead.
+  computation time.
 - Added Python 3.14 support and dropped the unused pandas dependency.
 
 ## 1.2 - 2026-09-24

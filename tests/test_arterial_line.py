@@ -8,11 +8,15 @@ from anasim.monitors.arterial import ArterialLineMonitor, ArterialPressureSample
 from anasim.monitors.cardiac_cycle import CardiacCycle
 
 
-def test_engine_art_numerics_are_accurate_with_coarse_step(engine_factory):
-    engine = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=7), start=True)
+@pytest.mark.parametrize("dt", [0.01, 1.0])
+def test_arterial_monitor_tracks_circulation_across_step_sizes(engine_factory, dt):
+    engine = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=7), start=True)
 
-    for _ in range(20):
-        engine.step(1.0)
+    for _ in range(round(20.0 / dt)):
+        engine.step(dt)
+        # Waveform rendering must preserve the circulation's mean pressure and rate.
+        assert engine.state.map == pytest.approx(engine.hemo.state.map)
+        assert engine.state.hr == pytest.approx(engine.hemo.state.hr)
 
     assert engine.state.art_sbp > engine.state.art_dbp + 20.0
     assert engine.state.art_map == pytest.approx(engine.state.map, abs=1.0)

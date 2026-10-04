@@ -73,28 +73,31 @@ def _capno_sampling_possible(engine: "SimulationEngine") -> bool:
     )
 
 
-def compute_capno_value(engine: "SimulationEngine", dt: float, resp_state) -> float:
+def compute_capno_value(engine: "SimulationEngine", resp_state) -> float:
     """Advance the capnograph with the gas that crossed the Y-piece this step."""
-    volume = engine.vent.volume
-    change, engine._capno_volume = volume - engine._capno_volume, volume
+    state = engine.state
     if not _capno_sampling_possible(engine):
         engine.capno.reset()
-        return 0.0
-    return engine.capno.step(
-        dt, change, resp_state.etco2 * engine._airway_patency, obstruction=engine._capno_obstruction
-    )
-
-
-def update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, capno_value: float) -> tuple[float, bool]:
-    """Hold breath-derived EtCO2 and invalidate it when exhaled gas is absent."""
-    state = engine.state
-    sampling_possible = _capno_sampling_possible(engine)
-    if not sampling_possible:
         engine._capno_numeric_peak = 0.0
         engine._capno_numeric_age_s = 0.0
         engine._capno_has_sample = False
-        engine._capno_last_phase = phase
-        return 0.0, False
+        engine._capno_last_phase = "INSP"
+        state.display_etco2, state.etco2_signal_valid = 0.0, False
+        return 0.0
+    capno = engine.capno
+    end_tidal = resp_state.etco2 * engine._airway_patency
+    obstruction = engine._capno_obstruction
+    for duration, change, _, _, _ in engine.vent.samples:
+        value = capno.step(duration, change, end_tidal, obstruction=obstruction)
+        _update_capno_numeric(
+            engine, duration, "EXP" if capno.exhaling else "INSP", value
+        )
+    return capno.co2
+
+
+def _update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, capno_value: float) -> None:
+    """Hold breath-derived EtCO2 during sampling; the caller checks availability."""
+    state = engine.state
     engine._capno_numeric_age_s += dt
 
     if phase == "EXP":
@@ -114,7 +117,8 @@ def update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, capn
         engine._capno_has_sample
         and engine._capno_numeric_age_s <= engine._capno_numeric_timeout_s
     )
-    return (float(display_value) if valid else 0.0), valid
+    state.display_etco2 = float(display_value) if valid else 0.0
+    state.etco2_signal_valid = valid
 
 
 def step_cardiac_monitors(
@@ -181,7 +185,7 @@ def step_monitors(
     state = engine.state
     mac_sevo = engine.pk_sevo.state.mac
     bis_val = engine.bis.step(dt, state.hypnotic_ce, state.opioid_ce, mac_sevo=mac_sevo)
-    capno_val = compute_capno_value(engine, dt, resp_state)
+    capno_val = compute_capno_value(engine, resp_state)
 
     loc_val = engine.loc_pd.compute_probability(
         state.hypnotic_ce,
@@ -194,19 +198,14 @@ def step_monitors(
 
     update_nibp(engine, dt, hemo_state)
 
-    paw, flow, volume = engine.airway_sensor.step(dt, state.paw, state.flow, state.volume)
+    for duration, change, sample_paw, _, sample_volume in engine.vent.samples:
+        paw, flow, volume = engine.airway_sensor.step(duration, sample_paw, sample_volume,
+                                                   change if state.airway_mode != AirwayType.NONE else 0.0)
+        state.paw = float(paw)
+        state.flow = float(flow)
+        state.volume = float(volume)
     bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
     state.bis = float(bis_display_source)
-    state.paw = float(paw)
-    state.flow = float(flow)
-    state.volume = float(volume)
-    display_etco2, etco2_signal_valid = update_capno_numeric(
-        engine,
-        dt,
-        "EXP" if engine.capno.exhaling else "INSP",
-        capno_val,
-    )
-    state.etco2_signal_valid = etco2_signal_valid
 
     raw_bis = state.bis + float(engine.rng.normal(0.0, engine._bis_noise_std))
     alpha_bis = 1.0 - math.exp(-dt / engine._monitor_tau_bis_s)
@@ -217,7 +216,6 @@ def step_monitors(
     state.display_hr = float(display_hr)
     state.display_bis = float(display_bis)
     state.capno_co2 = float(capno_val)
-    state.display_etco2 = float(display_etco2)
     state.loc = float(loc_val)
     state.tol = float(engine._tol_current)
     state.display_spo2 = float(state.spo2)

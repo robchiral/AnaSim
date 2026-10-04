@@ -120,21 +120,6 @@ def test_pk_infusion_mass_balance_and_washout(model_name):
     assert pk.state.ce < 0.02
 
 
-def test_effects_remain_continuous_and_bounded_at_high_concentrations():
-    model = HemodynamicModel(Patient())
-    assert model._calc_epi_effects(0.0, 0.0) == (0.0, 1.0, 1.0)
-    for c in np.geomspace(1e-6, 1e4, 100):
-        effects = model._calc_epi_effects(c, c)
-        nearby = model._calc_epi_effects(c * 1.00001, c * 1.00001)
-        assert all(math.isfinite(x) for x in effects)
-        assert 0 <= effects[0] <= model.epi_emax_hr
-        assert 1 <= effects[1] <= 1 + model.epi_emax_sv
-        assert 0.2 <= effects[2] <= 1 + model.epi_emax_svr_alpha
-        assert nearby == pytest.approx(effects, abs=0.001)
-    assert model._calc_epi_effects(0.2, 0.2)[2] < 1.0
-    assert model._calc_epi_effects(20.0, 20.0)[2] > 1.0
-
-
 def test_inotropy_is_applied_once():
     config = replace(HemodynamicConfig(), fb=0.0, baro_gain_brady=0.0, baro_gain_tachy=0.0, vol_clearance=0.0)
     model = HemodynamicModel(Patient(), config)

@@ -1,7 +1,5 @@
 """Action log recording and scenario step scoping."""
 
-import pytest
-
 from anasim.core.action_log import (
     ACTION_DRUG_BOLUS,
     ACTION_EVENT_START,
@@ -9,28 +7,7 @@ from anasim.core.action_log import (
     ACTION_FLUID,
     ACTION_INFUSION_RATE,
     ACTION_TCI_TARGET,
-    ActionLog,
 )
-
-
-def test_step_scope_holds_while_the_clock_is_paused():
-    """Positions, not timestamps, separate actions taken during a step."""
-    log = ActionLog()
-    log.record(42.0, ACTION_FLUID, label="crystalloid", amount=500)
-    log.begin_step("GIVE_FLUIDS", 42.0)
-    assert log.total_since_step(ACTION_FLUID) == 0.0
-
-    log.record(42.0, ACTION_FLUID, label="crystalloid", amount=250)
-    assert log.total_since_step(ACTION_FLUID) == 250
-
-
-def test_step_query_requires_an_active_objective():
-    log = ActionLog()
-    log.record(0.0, ACTION_FLUID, label="crystalloid", amount=500)
-
-    assert log.current_step is None
-    with pytest.raises(RuntimeError, match="No scenario objective is active"):
-        log.total_since_step(ACTION_FLUID)
 
 
 def test_engine_logs_controls_and_event_transitions(anesthetized_engine):

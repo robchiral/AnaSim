@@ -19,12 +19,6 @@ def arrest_engine(engine_factory):
     return engine_factory(config=SimulationConfig(end_on_cardiac_arrest=True))
 
 
-def test_arrest_endpoint_is_off_by_default(engine_factory):
-    engine = engine_factory(config=SimulationConfig())
-    _hold(engine, 20.0, hr=0.0, map_value=0.0)
-    assert not engine.state.cardiac_arrest
-
-
 def test_extreme_bradycardia_confirms_after_fifteen_seconds(arrest_engine):
     _hold(arrest_engine, 10.0, hr=0.0, map_value=80.0)
     assert not arrest_engine.state.cardiac_arrest
@@ -33,17 +27,14 @@ def test_extreme_bradycardia_confirms_after_fifteen_seconds(arrest_engine):
     assert "bradycardia" in arrest_engine.state.arrest_reason
 
 
-def test_pulseless_electrical_activity(arrest_engine):
-    _hold(arrest_engine, 20.0, map_value=5.0)
-    assert arrest_engine.state.cardiac_arrest
-    assert "Pulseless electrical activity" in arrest_engine.state.arrest_reason
-
-
-def test_transient_pulselessness_resets(arrest_engine):
+def test_pea_requires_sustained_pulselessness_after_a_transient_episode(arrest_engine):
     _hold(arrest_engine, 10.0, map_value=5.0)
     _hold(arrest_engine, 1.0, map_value=70.0)
     _hold(arrest_engine, 10.0, map_value=5.0)
     assert not arrest_engine.state.cardiac_arrest
+    _hold(arrest_engine, 6.0, map_value=5.0)
+    assert arrest_engine.state.cardiac_arrest
+    assert "Pulseless electrical activity" in arrest_engine.state.arrest_reason
 
 
 def test_ventricular_fibrillation_reports_rhythm_and_removes_pulses(engine_factory):
@@ -59,5 +50,6 @@ def test_ventricular_fibrillation_reports_rhythm_and_removes_pulses(engine_facto
     assert engine.state.display_hr == 0.0
     assert engine.state.art_sbp == engine.state.art_dbp == engine.state.art_map == 0.0
     assert engine.state.pleth_voltage == pytest.approx(0.0)
+    assert not engine.state.spo2_signal_valid
     assert engine.state.co == 0.0
     assert engine.state.oxygen_delivery_ratio == 0.0

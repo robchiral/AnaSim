@@ -29,7 +29,7 @@ class Capnograph:
         self._window = deque()  # Recently exhaled gas, Y-piece end first
         self._window_volume = self._window_co2 = 0.0  # L and L x mmHg
         self._exhaled_alveolar = 0.0
-        self._last_alveolar = None  # Alveolar volume of the last exhalation; none yet
+        self._breath_volume = 0.0  # Inspired volume of the current breath, L.
         self._inhaled = 0.0
         self._stages = [0.0, 0.0]
         self.co2 = 0.0
@@ -38,26 +38,27 @@ class Capnograph:
     def step(self, dt: float, volume_change: float, end_tidal: float, obstruction: float = 0.0) -> float:
         """Advance by dt with net lung volume change volume_change (L); return displayed PCO2.
 
-        end_tidal is the end-tidal PCO2 the alveolar gas reaches at the end of a
-        breath like the last one. Obstruction (0-1) steepens phase III.
+        end_tidal is the PCO2 reached by the current breath. Obstruction (0-1)
+        steepens phase III; previous breath sizes do not change its endpoint.
         """
         exhaled = -volume_change
         self.exhaling = exhaled > 0.0
         if exhaled > 0.0:
             if self._inhaled > self.dead_space:
                 # Fresh gas reached the alveoli, so this is a new exhalation.
-                self._last_alveolar = self._exhaled_alveolar
+                self._breath_volume = self._inhaled
                 self._exhaled_alveolar = 0.0
+            else:
+                # A small effort interrupts this expiration. Its returning gas
+                # must not advance the alveolar concentration profile twice.
+                self._exhaled_alveolar = max(0.0, self._exhaled_alveolar - self._inhaled)
             self._inhaled = 0.0
             slope = self.PHASE_III_SLOPE * (1.0 + 3.0 * obstruction)
-            # Gas reaching the sampling port left the alveoli, on average, one dead
-            # space of exhalation earlier, so the sample reaches end_tidal at the
-            # end of an exhalation as long as the last. The first has no slope.
+            # Allow for transit through dead space, using this inspiration's
+            # volume. Bound the source concentration at the current endpoint.
             leaving = self._exhaled_alveolar + 0.5 * exhaled
-            if self._last_alveolar is None:
-                pco2 = end_tidal
-            else:
-                pco2 = max(0.0, end_tidal + slope * (leaving - self._last_alveolar + self.dead_space))
+            remaining = max(0.0, self._breath_volume - leaving - self.dead_space)
+            pco2 = max(0.0, end_tidal - slope * remaining)
             self._exhaled_alveolar += exhaled
             self._push(self._column, exhaled, pco2, right=True)
             for volume, slug_co2 in self._take(self._column, exhaled, left=True):
@@ -81,9 +82,13 @@ class Capnograph:
             sample = 0.0
         else:
             sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else self._stages[0]
-        alpha = -math.expm1(-dt / self.ANALYZER_TAU)
-        self._stages[0] += alpha * (sample - self._stages[0])
-        self._stages[1] += alpha * (self._stages[0] - self._stages[1])
+        # Exact coupled response of two identical first-order stages to a
+        # constant sample, using both stages' values at the interval start.
+        z = dt / self.ANALYZER_TAU
+        decay = math.exp(-z)
+        first, second = self._stages
+        self._stages[0] = sample + (first - sample) * decay
+        self._stages[1] = sample + (second - sample + z * (first - sample)) * decay
         self.co2 = self._stages[1]
         return self.co2
 

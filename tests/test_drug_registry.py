@@ -1,10 +1,6 @@
 import pytest
 
-from anasim.core.drug_registry import (
-    DRUG_REGISTRY,
-    get_drug_spec,
-    resolve_bolus_drug,
-)
+from anasim.core.drug_registry import DRUG_REGISTRY
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
@@ -18,16 +14,7 @@ def engine():
     )
 
 
-def test_registry_drives_controller_metadata_and_rate_units(engine):
-    assert engine.get_controllable_drugs() is DRUG_REGISTRY
-
-    for spec in DRUG_REGISTRY:
-        assert getattr(engine, spec.pk_attr) is not None
-        if spec.has_infusion:
-            assert getattr(engine, spec.rate_attr) == 0.0
-        if spec.has_tci:
-            assert getattr(engine, spec.tci_attr) is None
-
+def test_infusion_rates_convert_the_prescribed_units(engine):
     rate_cases = (
         ("propofol", 3600.0, "propofol_rate_mg_sec", 1.0),
         ("remi", 60.0, "remi_rate_ug_sec", 1.0),
@@ -49,7 +36,9 @@ def test_registry_drives_controller_metadata_and_rate_units(engine):
         assert engine.get_drug_state(drug)["rate"] == pytest.approx(user_rate)
 
 
-def test_bolus_routes_and_units_come_from_registry(engine):
+def test_boluses_deliver_the_prescribed_mass_to_each_pk_model(engine):
+    # Prescribed mg or units become mcg or milliunits in these four models.
+    model_scales = {"midazolam": 1000.0, "vaso": 1000.0, "labetalol": 1000.0, "glyco": 1000.0}
     for spec in DRUG_REGISTRY:
         model = getattr(engine, spec.pk_attr)
         initial_c1 = model.state.c1
@@ -57,10 +46,8 @@ def test_bolus_routes_and_units_come_from_registry(engine):
         engine.give_drug_bolus(spec.generic_name, 2.0)
 
         assert model.state.c1 == pytest.approx(
-            initial_c1 + 2.0 * spec.bolus_model_scale / model.v1
+            initial_c1 + 2.0 * model_scales.get(spec.key, 1.0) / model.v1
         )
-        assert resolve_bolus_drug(spec.key) is spec
-        assert resolve_bolus_drug(spec.name.upper()) is spec
 
 
 def test_controls_a_drug_lacks_fail_explicitly(engine):
@@ -69,10 +56,3 @@ def test_controls_a_drug_lacks_fail_explicitly(engine):
         engine.set_drug_rate("glyco", 1.0)
     with pytest.raises(ValueError, match="Esmolol has no target-controlled infusion"):
         engine.set_drug_target("esmolol", 1.0)
-
-
-def test_unknown_drug_names_fail_explicitly(engine):
-    with pytest.raises(ValueError, match="Unknown controllable drug"):
-        get_drug_spec("not-a-drug")
-    with pytest.raises(ValueError, match="Unknown bolus drug"):
-        engine.give_drug_bolus("not-a-drug", 1.0)

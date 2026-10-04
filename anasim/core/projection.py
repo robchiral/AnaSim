@@ -37,11 +37,12 @@ def mask_leak(engine: "SimulationEngine") -> float:
     The gas cannot reach the lungs, so it leaks around the mask. A tracheal tube
     does not leak; obstruction raises its resistance instead.
     """
-    return 1.0 - engine._airway_patency if engine.state.airway_mode == AirwayType.MASK else 0.0
+    assisted = engine.vent.is_on or engine.bag_mask_active
+    return 1.0 - engine._airway_patency if assisted and engine.state.airway_mode == AirwayType.MASK else 0.0
 
 
-def assisted_ventilation(engine: "SimulationEngine") -> tuple[float, float]:
-    """Return (RR, mean VT L) of recent assisted breaths that reach the lungs."""
+def circuit_ventilation(engine: "SimulationEngine") -> tuple[float, float]:
+    """Return (RR, mean VT L) of all recent measured breaths that reach the lungs."""
     spirometry = engine.vent.monitors
     rr = spirometry.rr_total
     vt_l = spirometry.mv_exp / rr * (1.0 - mask_leak(engine)) if rr > 0.0 else 0.0
@@ -50,7 +51,7 @@ def assisted_ventilation(engine: "SimulationEngine") -> tuple[float, float]:
 
 def measured_ventilation(
     engine: "SimulationEngine",
-    assisted: bool,
+    connected: bool,
     spontaneous_rr: float,
     spontaneous_vt_l: float,
 ) -> tuple[float, float, float]:
@@ -60,10 +61,13 @@ def measured_ventilation(
     recent breaths, less any mask leak. Bronchospasm lowers alveolar
     ventilation in the respiratory model, not the exhaled volume.
     """
-    if assisted:
+    if connected:
         spirometry = engine.vent.monitors
         kept = 1.0 - mask_leak(engine)
-        return max(spirometry.rr_total, spontaneous_rr), spirometry.tv_exp * kept, spirometry.mv_exp * kept
+        # Before the first completed breath, the respiratory model supplies
+        # the baseline rate; no tidal volume has yet been measured.
+        rr = spirometry.rr_total if engine.vent.has_measured_breath else spontaneous_rr
+        return rr, spirometry.tv_exp * kept, spirometry.mv_exp * kept
     return spontaneous_rr, spontaneous_vt_l * 1000.0, spontaneous_rr * spontaneous_vt_l
 
 
@@ -194,16 +198,12 @@ def _current_respiratory_support(engine: "SimulationEngine") -> dict[str, Any]:
     connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
     vent_active = connected and engine.vent.is_on
     bag_mask_active = engine.bag_mask_active and connected and not vent_active
-    assisted_rr, assisted_vt_l = assisted_ventilation(engine) if vent_active or bag_mask_active else (0.0, 0.0)
-    spirometry = engine.vent.monitors
-    peep = engine.vent.settings.peep + spirometry.auto_peep if vent_active else 0.0
+    assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)
     return {
         "connected": connected,
         "assisted_active": vent_active or bag_mask_active,
         "assisted_rr": assisted_rr,
         "assisted_vt_l": assisted_vt_l,
-        "peep": peep,
-        "mean_paw": max(engine.current_mean_paw, peep) if vent_active else 0.0,
     }
 
 
@@ -213,8 +213,6 @@ def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> A
 
     kwargs = engine.get_resp_step_kwargs(
         total_assisted_mv=support["assisted_rr"] * support["assisted_vt_l"],
-        peep=support["peep"],
-        mean_paw=support["mean_paw"],
         mech_rr=support["assisted_rr"],
         mech_vt_l=support["assisted_vt_l"],
         cardiac_output=hemo_state.co,
@@ -227,7 +225,7 @@ def build_snapshot_from_models(engine: "SimulationEngine", hemo_state: Any, resp
     support = _current_respiratory_support(engine)
     assisted, connected = support["assisted_active"], support["connected"]
     rr_display, vt_display_ml, mv_display_l_min = measured_ventilation(
-        engine, assisted, resp_state.rr, resp_state.vt / 1000.0
+        engine, connected, resp_state.rr, resp_state.vt / 1000.0
     )
     vent = engine.vent
     spirometry = vent.monitors

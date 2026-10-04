@@ -55,10 +55,15 @@ class VolatilePK:
         self.f_fat_frac = 0.06
 
         self.state = VolatileState()
+        self.frc = patient.functional_residual_capacity()
 
-    def step(self, dt: float, fi_agent: float, alveolar_vent_l: float, cardiac_output_l: float, temp_c: float = 37.0):
-        """Advance dt seconds with inspired fraction fi_agent, alveolar
-        ventilation and cardiac output in L/min, and core temperature (°C)."""
+    def step(self, dt: float, fi_agent: float, alveolar_vent_l: float, cardiac_output_l: float,
+             temp_c: float = 37.0, lung_volume_l: float | None = None, shunt_fraction: float = 0.0):
+        """Advance with inspired fraction, ventilation/output in L/min, and temperature in °C.
+
+        lung_volume_l is end-expiratory gas volume; shunt_fraction is the
+        fraction of cardiac output bypassing ventilated alveoli.
+        """
         state = self.state
         dt_min = dt / 60.0
 
@@ -69,10 +74,15 @@ class VolatilePK:
 
         alveolar_vent = max(0.0, alveolar_vent_l)
 
-        # FRC dPalv/dt = VA (Fi - Palv) + Q lambda_bg (Pven - Palv); arterial
-        # blood leaves at the alveolar pressure.
-        v_frc = 2.5  # L
-        lambda_q = q_co * self.lambda_b_g
+        # FRC dPalv/dt = VA (Fi - Palv) + (1-s) Q lambda_bg (Pven - Palv).
+        # Arterial blood mixes end-capillary and shunted venous blood.
+        if lung_volume_l is not None:
+            change = lung_volume_l - self.frc
+            if change > 0.0:
+                state.p_alv = (self.frc * state.p_alv + change * fi_agent) / lung_volume_l
+            self.frc = lung_volume_l
+        v_frc = self.frc
+        lambda_q = q_co * (1.0 - shunt_fraction) * self.lambda_b_g
         # Tissue rate constant k = (flow / volume) / lambda (1/min). A high
         # partition coefficient slows equilibration: VRG in minutes, fat in hours.
         k_vrg = (q_vrg / self.v_vrg) / self.lambda_t_b_vrg
@@ -91,20 +101,21 @@ class VolatilePK:
                 + self.f_mus_frac * state.p_mus
                 + self.f_fat_frac * state.p_fat
             )
+            p_art = (1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven
             state.p_alv += (
                 alveolar_vent * (fi_agent - p_alv) + lambda_q * (p_ven - p_alv)
             ) / v_frc * interval
-            state.p_vrg += k_vrg * (p_alv - state.p_vrg) * interval
-            state.p_mus += k_mus * (p_alv - state.p_mus) * interval
-            state.p_fat += k_fat * (p_alv - state.p_fat) * interval
+            state.p_vrg += k_vrg * (p_art - state.p_vrg) * interval
+            state.p_mus += k_mus * (p_art - state.p_mus) * interval
+            state.p_fat += k_fat * (p_art - state.p_fat) * interval
 
-        state.p_art = state.p_alv
         # Mixed venous pressure is the flow-weighted tissue pressure.
         state.p_ven = (
             self.f_vrg_frac * state.p_vrg
             + self.f_mus_frac * state.p_mus
             + self.f_fat_frac * state.p_fat
         )
+        state.p_art = (1.0 - shunt_fraction) * state.p_alv + shunt_fraction * state.p_ven
 
         # MAC requirement falls about 5% per °C of hypothermia.
         temp_diff = 37.0 - temp_c

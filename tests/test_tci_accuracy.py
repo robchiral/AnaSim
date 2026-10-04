@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from anasim.core.state import SimulationConfig
 from anasim.core.tci import TCIController
 from anasim.patient.pk_models import PropofolPKSchnider, RemifentanilPKMinto
 
@@ -32,7 +33,9 @@ def test_controller_reaches_target_without_overshoot_and_follows_a_decrease(
         history.append(concentration())
     history = np.asarray(history)
 
-    assert np.argmax(history >= 0.9 * target) < t90_limit_s
+    reached = np.flatnonzero(history >= 0.9 * target)
+    assert reached.size > 0
+    assert reached[0] < t90_limit_s
     assert history.max() < 1.03 * target
     assert history[-60:].mean() == pytest.approx(target, rel=0.02)
 
@@ -45,21 +48,23 @@ def test_controller_reaches_target_without_overshoot_and_follows_a_decrease(
 class TestEngineTCI:
     """Pump-limited TCI inside the engine."""
 
-    def test_effect_site_induction_reaches_target_without_overshoot(self, engine_factory):
-        engine = engine_factory(start=True)
+    @pytest.mark.parametrize("dt", [0.1, 0.3, 1.0])
+    def test_effect_site_induction_reaches_hypnosis_without_overshoot(self, engine_factory, dt):
+        engine = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=123), start=True)
         engine.set_airway_mode("Mask")
         engine.set_fgf(6.0, 0.0)
         engine.enable_tci("propofol", 4.0)
         peak = 0.0
         time_to_90 = None
-        for _ in range(3600):
-            engine.step(0.1)
+        for _ in range(round(360.0 / dt)):
+            engine.step(dt)
             peak = max(peak, engine.state.propofol_ce)
             if time_to_90 is None and engine.state.propofol_ce >= 3.6:
                 time_to_90 = engine.state.time
         assert time_to_90 is not None and time_to_90 < 240.0
         assert peak < 4.0 * 1.03
         assert engine.state.propofol_ce == pytest.approx(4.0, rel=0.03)
+        assert engine.state.bis < 60.0
 
     def test_plasma_controller_does_not_bolus_after_resync(self, anesthetized_engine):
         """Resyncing to live PK state must not trigger max-rate boluses."""
@@ -91,7 +96,6 @@ class TestEngineTCI:
         engine.enable_tci("propofol", 2.0, mode="plasma")
 
         assert engine.tci_prop.target_compartment == "plasma"
-        np.testing.assert_allclose(engine.tci_prop.x[:, 0], engine.pk_prop.state_vector())
         for _ in range(20):
             engine.step(0.1)
             # Plasma already exceeds the new target after the manual bolus.

@@ -2,7 +2,6 @@ import pytest
 
 from anasim.core.state import SimulationConfig
 from anasim.machine.circuit import CircleSystem
-from anasim.machine.volatile import Vaporizer
 
 
 def test_oxygen_supply_failure_stops_o2_and_n2o_delivery():
@@ -27,26 +26,6 @@ def test_oxygen_supply_failure_stops_o2_and_n2o_delivery():
     assert circuit.fgf_n2o == 4.0
 
 
-def test_vaporizer_consumption_and_empty_shutdown():
-    """Vaporizer should consume agent and shut off when empty."""
-    vap = Vaporizer()
-    vap.set_concentration(2.0)
-    start_level = vap.state.level
-
-    for _ in range(60):  # 1 hour total in 1-minute steps
-        vap.step(60.0, fgf_l_min=5.0)
-
-    assert vap.state.level < start_level, "Vaporizer should consume liquid agent over time"
-
-    vap.state.level = 0.01
-    vap.set_concentration(2.0)
-    vap.step(60.0, fgf_l_min=10.0)
-
-    assert vap.state.level == 0.0
-    assert not vap.state.is_on
-    assert vap.state.setting == 0.0
-
-
 def test_engine_volatile_washin_washout(engine_factory):
     """Circuit + volatile PK integration: vaporizer raises MAC, washout lowers it."""
     config = SimulationConfig(mode="awake")
@@ -57,6 +36,7 @@ def test_engine_volatile_washin_washout(engine_factory):
     engine.set_fgf(8.0, 0.0)
 
     engine.set_vaporizer("Sevoflurane", 2.0)
+    initial_level = engine.vaporizer.state.level
     for _ in range(300):  # 5 min wash-in
         engine.step(1.0)
 
@@ -67,13 +47,20 @@ def test_engine_volatile_washin_washout(engine_factory):
     assert fi_sevo > 1.0, f"FiSevo too low with vaporizer on: {fi_sevo:.2f}%"
     assert fio2 > 0.8, f"FiO2 did not track circuit wash-in: {fio2:.2f}"
     assert mac_on > 0.2, f"MAC did not rise with vaporizer on: {mac_on:.2f}"
+    assert engine.vaporizer.state.level < initial_level
 
-    engine.set_vaporizer("Sevoflurane", 0.0)
+    # Running out of liquid stops delivery and lets the circuit and patient wash out.
+    engine.vaporizer.state.level = 0.01
+    engine.step(1.0)
+    assert engine.vaporizer.state.level == 0.0
+    assert not engine.vaporizer.state.is_on
+    assert engine.vaporizer.state.setting == 0.0
     engine.set_fgf(10.0, 0.0)
     for _ in range(300):  # 5 min washout
         engine.step(1.0)
 
     assert engine.state.mac < mac_on * 0.7, "MAC should decrease with washout/high FGF"
+    assert engine.state.fi_sevo < fi_sevo * 0.1
 
 
 def test_engine_n2o_washin_washout(engine_factory):
