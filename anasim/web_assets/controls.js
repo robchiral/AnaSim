@@ -200,9 +200,9 @@ export class Controls {
         ${tci ? `<label class="inline">Infusion mode
           <select class="infusion-mode"><option value="rate">Manual rate</option><option value="tci">TCI</option></select>
         </label>` : ""}
-        ${infusion ? `<div class="inputs">
+        ${infusion ? `<div class="inputs${tci ? "" : " manual-rate"}">
           <label>Infusion rate</label>
-          ${tci ? '<label class="target-label"></label>' : "<span></span>"}
+          ${tci ? '<label class="target-label"></label>' : ""}
           <span class="unit-input"><input class="rate" type="number" min="0" max="2000" step="any"><span class="rate-unit"></span></span>
           ${tci ? '<span class="unit-input"><input class="target" type="number" step="0.1"><span class="target-unit"></span></span>' : ""}
         </div>` : ""}
@@ -427,14 +427,14 @@ export class Controls {
       }
       if (w.rate) {
         w.rate.disabled = w.editor.pending || w.mode?.value === "tci";
-        setValue(w.rate, round(d.rate));
+        setValue(w.rate, round(d.rate, 3));
         const active = d.rate > 0 || (d.is_tci && d.target > 0);
         if (!active && w.runningRow.contains(document.activeElement)) $("drug-search").focus();
         w.runningRow.hidden = !active;
         if (active) {
           w.runningValue.textContent = d.is_tci
-            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit} · ${round(d.rate)} ${w.spec.rate_unit}`
-            : `${round(d.rate)} ${w.spec.rate_unit}`;
+            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit} · ${round(d.rate, 3)} ${w.spec.rate_unit}`
+            : `${round(d.rate, 3)} ${w.spec.rate_unit}`;
         }
         running ||= active;
       }

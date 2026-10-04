@@ -198,6 +198,15 @@ Model behavior and assumptions are described in [Architecture](ARCHITECTURE.md).
 - Boczkowski et al. Am J Respir Crit Care Med. 1997. (tidal expiratory flow limitation in asthma). [PubMed](https://pubmed.ncbi.nlm.nih.gov/9309989/)
 - Tuxen and Lane. Am Rev Respir Dis. 1987. (expiratory time and obstructive hyperinflation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/3662241/)
 
+## Scenario guidance
+
+- Thilen et al. Anesthesiology. 2023. (ASA quantitative neuromuscular monitoring and TOF ratio ≥ 0.9 before extubation). [PubMed](https://pubmed.ncbi.nlm.nih.gov/36520073/)
+- ANZAAG and ANZCA. 2022. (perioperative anaphylaxis, adult epinephrine doses, oxygen, and crystalloid resuscitation). [Adult immediate management card](https://www.anzca.edu.au/getContentAsset/d38d29ae-74f0-4136-8372-1d342c594e11/80feb437-d24d-46b8-a858-4a2a28b9b970/Anaphylaxis-Card-1-Adult-Immediate-Management-2022.pdf?language=en)
+- Surviving Sepsis Campaign. 2026. (adult fluids, norepinephrine, antibiotics, and source control). [SCCM guideline](https://sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-campaign-international-guidelines-for-management-of-sepsis-and-septic-shock-2026)
+- Kietaibl et al. Eur J Anaesthesiol. 2023. (severe perioperative bleeding, hemostasis, blood products, and reassessment). [PubMed](https://pubmed.ncbi.nlm.nih.gov/36855941/)
+- Xing et al. Pain Med. 2018. (lidocaine pretreatment for propofol injection pain). [PubMed](https://pubmed.ncbi.nlm.nih.gov/28525614/)
+- APSF. 2019. (oxygen pipeline failure, independent ventilation, and cylinder supply). [Case report and response](https://www.apsf.org/article/nitrogen-contamination-of-operating-room-oxygen-pipeline/)
+
 ## Timing and performance metrics
 
 - Hughes et al. Anesthesiology. 1992. (propofol CSHT). [PubMed](https://pubmed.ncbi.nlm.nih.gov/1539843/)

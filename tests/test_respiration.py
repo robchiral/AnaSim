@@ -1,5 +1,6 @@
 import pytest
 
+from anasim.core.state import SimulationConfig
 from anasim.physiology.respiration import RespiratoryModel
 
 
@@ -68,11 +69,11 @@ def test_co2_drives_breathing_and_opioids_blunt_it(patient):
     assert low.vt < baseline.vt  # Awake hypocapnia weakens effort without imposing apnea.
 
 
-def test_hyperventilation_stops_breathing_under_anesthesia_until_co2_recovers(awake_engine):
+def test_hyperventilation_stops_breathing_under_anesthesia_until_co2_recovers(engine_factory):
     """Hickey 1971: under anesthesia the apneic threshold lies 4-5 mmHg below the
     resting PaCO2 at any depth. Ventilation above need stops the patient's efforts;
     after the ventilator stops, breathing resumes once CO2 rises to the threshold."""
-    engine = awake_engine
+    engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
     engine.enable_tci("propofol", 3.0)
     engine.enable_tci("remi", 1.0)
     engine.set_airway_mode("ETT")

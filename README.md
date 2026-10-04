@@ -35,6 +35,10 @@ For a first session, choose Guided scenario and TIVA induction. For open
 practice, choose Open simulation and either Awake before induction or
 Anesthetized maintenance. Choose Start simulation, then Start below the monitor.
 
+Manual infusion rates are the default. Select Allow TCI during setup to use
+target controls and TCI maintenance starts. Scenario instructions follow this
+setting. Propofol and remifentanil rates use mcg/kg/min.
+
 Use Apply or Enter to save settings and Escape to cancel edits. For mechanical
 ventilation, select a facemask or tracheal tube, apply a mode, and choose
 Start ventilator.
@@ -64,7 +68,7 @@ hosted recordings download when stopped.
 AnaSim supports adults aged 18 to 70 years, with [input limits](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md#fields).
 [Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md#supported-patient-domain)
 describes source populations and teaching calibrations. Acid-base balance,
-lactate, tissue oxygen debt, machine pneumatics, and resuscitation are not modeled.
+lactate, tissue oxygen debt, machine pneumatics, and CPR are not modeled.
 
 ## Headless use
 

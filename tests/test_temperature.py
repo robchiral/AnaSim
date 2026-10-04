@@ -56,7 +56,7 @@ def test_hypothermia_slows_apneic_co2_rise(engine_factory):
 
 def test_first_hour_core_drop_after_induction(engine_factory):
     """Core temperature after induction (Matsukawa et al. Anesthesiology. 1995)."""
-    engine = engine_factory(start=True)
+    engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
     engine.set_airway_mode("ETT")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
     engine.set_vent_power(True)

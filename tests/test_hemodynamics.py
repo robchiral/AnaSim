@@ -103,7 +103,7 @@ class TestReflexesAndHypoxia:
             config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.1, rng_seed=3),
             start=True,
         )
-        engine.disable_tci("nore")
+        engine.set_drug_rate("nore", 0.0)
         for _ in range(3000):
             engine.step(0.1)
         return engine

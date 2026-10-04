@@ -2,15 +2,20 @@
 
 ## Unreleased
 
+- Manual infusion rates are the default. Setup can enable TCI controls,
+  maintenance starts, and dosing guidance. Propofol and remifentanil rates
+  use mcg/kg/min.
 - Added fentanyl with TCI, midazolam, etomidate, ketamine, esmolol, labetalol,
   and glycopyrrolate, including combined anesthetic and autonomic effects.
 - Added lidocaine by bolus or infusion. It slightly blunts the response to
   intubation and surgical stimulation.
-- Induction scenarios add lidocaine before propofol, a pressor response at
+- Induction scenarios offer lidocaine before propofol, an airway stimulus at
   laryngoscopy, and a MAP target during maintenance. Balanced induction gives
   fentanyl during preoxygenation and starts sevoflurane during rocuronium onset.
-- Updated preoxygenation, paralysis, and extubation objectives. Emergence now
-  requires stopping the ventilator at extubation.
+- Preoxygenation requires end-tidal O₂ ≥ 90%. Emergence checks unassisted
+  breathing and TOF ratio ≥ 90% before tube removal.
+- Revised crisis instructions, fluid choices, and oxygen supply checks.
+  Vasopressor objectives accept recovered pressure without another infusion.
 - Added epinephrine relief of bronchospasm, positive-pressure relief of
   pharyngeal collapse, and reduced oxygen reserve after blood loss.
 - Revised AF hemodynamics, ECG timing, and displayed HR. The baroreflex adjusts

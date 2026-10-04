@@ -95,7 +95,8 @@ def _initialize_steady_state(engine: "SimulationEngine") -> None:
     targets = _seed_steady_state_subsystems(engine, profile, targets)
     projection_core.sync_state_from_models(engine)
     _run_hidden_settle(engine, profile)
-    _attach_startup_controllers(engine, targets)
+    if engine.config.tci_enabled:
+        _attach_startup_controllers(engine, targets)
     engine.state.time = 0.0
     engine._next_nibp_time = 0.0
 

@@ -8,10 +8,11 @@ from anasim.core.action_log import (
     ACTION_INFUSION_RATE,
     ACTION_TCI_TARGET,
 )
+from anasim.core.state import SimulationConfig
 
 
-def test_engine_logs_controls_and_event_transitions(anesthetized_engine):
-    engine = anesthetized_engine
+def test_engine_logs_controls_and_event_transitions(engine_factory):
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", tci_enabled=True), start=True)
     engine.actions.begin_step("OBJECTIVE", engine.state.time)
 
     engine.give_fluid(500)

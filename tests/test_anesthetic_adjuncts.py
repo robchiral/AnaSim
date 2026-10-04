@@ -118,7 +118,7 @@ def test_fentanyl_depresses_breathing_and_accumulates(engine_factory):
 
     half_times = []
     for minutes in (15, 180):
-        engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=3), start=True)
+        engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=3), start=True)
         engine.enable_tci("fentanyl", 2.0)
         _advance(engine, minutes * 60, dt=2.0)
         half_times.append(engine.get_predicted_csht("fentanyl"))

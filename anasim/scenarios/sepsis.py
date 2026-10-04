@@ -1,41 +1,23 @@
 """Warm septic shock scenario."""
 
-from typing import Tuple
-
 from .base import (
-    VASOPRESSOR_KEYS,
     Scenario,
     ScenarioStep,
     create_observe_baseline_step,
     create_reassess_step,
-    join_messages,
     monitor_value,
     require_crisis_started,
     require_crisis_stopped,
-    require_fluid_given,
-    require_infusion_started,
+    require_fluid_bolus,
+    require_vasopressor_if_hypotensive,
 )
 
 
-def _require_warm_shock_recognition() -> callable:
-    """Check for septic shock pattern (vasoplegia/hypotension ± tachycardia)."""
-    def check(engine) -> Tuple[bool, str]:
-        hr = monitor_value(engine, "hr")
-        map_val = monitor_value(engine, "map")
-        tachycardia = hr > 90
-        hypotension = map_val < 65
-        low_svr = engine.state.svr < 12
-
-        if (hypotension and low_svr) or (tachycardia and (hypotension or low_svr)):
-            return True, ""
-
-        msgs = []
-        if not tachycardia:
-            msgs.append(f"HR: {hr:.0f} (watch for ↑)")
-        if not hypotension and not low_svr:
-            msgs.append(f"MAP: {map_val:.0f} or SVR: {engine.state.svr:.0f} (watch for ↓)")
-        return False, join_messages(msgs)
-    return check
+def _require_warm_shock_recognition(engine) -> tuple[bool, str]:
+    """Recognize hypotension in the infection scenario using the visible monitor."""
+    map_val = monitor_value(engine, "map")
+    met = map_val < 65
+    return met, "" if met else f"MAP: {map_val:.0f} mmHg; observe the developing hypotension"
 
 
 def create_sepsis_response() -> Scenario:
@@ -45,8 +27,9 @@ def create_sepsis_response() -> Scenario:
             id="START_SEPSIS",
             title="Sepsis begins",
             instruction=(
-                "Select <b>Start sepsis</b> on the Events tab.<br><br>"
-                "<i>Sepsis can evolve rapidly from infection or intra-abdominal sources.</i>"
+                "This patient has an intra-abdominal infection. Select <b>Start sepsis</b> "
+                "in Events and fluids to model developing vasodilatory shock. "
+                "In practice, call for help, give prompt antibiotics, and arrange source control while resuscitating."
             ),
             check_requirements=require_crisis_started(
                 "sepsis",
@@ -59,23 +42,22 @@ def create_sepsis_response() -> Scenario:
             id="RECOGNIZE_WARM_SHOCK",
             title="Recognize septic shock",
             instruction=(
-                "Look for the classic pattern:<br>"
-                "• <b>Tachycardia</b> (HR > 90) – may lag under anesthesia<br>"
-                "• <b>Low SVR</b> and/or <b>MAP < 65</b><br>"
-                "• Often normal/high CO early (“warm shock”)<br><br>"
-                "<i>Vasoplegia drives hypotension despite preserved flow.</i>"
+                "Recognize <b>MAP < 65 mmHg</b> in the setting of infection. "
+                "Vasodilation is the main mechanism in this case; HR may rise, but tachycardia is variable. "
+                "In practice, assess perfusion and consider blood loss, anesthetic effects, and other causes of hypotension."
             ),
-            check_requirements=_require_warm_shock_recognition(),
+            check_requirements=_require_warm_shock_recognition,
         ),
         ScenarioStep(
             id="GIVE_FLUIDS",
             title="Initial fluid resuscitation",
             instruction=(
-                "Administer a <b>500–1000 mL</b> crystalloid bolus.<br>"
-                "Use the fluid controls on the Events tab.<br><br>"
-                "<i>Goal: improve preload and support perfusion.</i>"
+                "Start a <b>500 mL crystalloid bolus</b> in Events and fluids and reassess "
+                "the response. Balanced crystalloid is preferred in practice; the simulator uses one crystalloid model. "
+                "An initial 30 mL/kg over the first 3 hours is a guideline starting point, "
+                "with further fluid guided by perfusion and response."
             ),
-            check_requirements=require_fluid_given(
+            check_requirements=require_fluid_bolus(
                 500,
                 labels=("crystalloid",),
             ),
@@ -85,13 +67,13 @@ def create_sepsis_response() -> Scenario:
             id="START_VASOPRESSOR",
             title="Start vasopressor",
             instruction=(
-                "If MAP remains low after fluids, start a vasopressor.<br>"
-                "• <b>Norepinephrine</b> is first-line (0.05–0.1 mcg/kg/min).<br><br>"
-                "<i>Pressor resistance may require higher doses.</i>"
+                "If <b>MAP remains below 65 mmHg</b>, start or adjust norepinephrine. "
+                "A starting rate of 0.05-0.1 mcg/kg/min is 3.5-7 mcg/min for 70 kg; "
+                "enter the absolute rate and titrate to pressure and perfusion. "
+                "Start vasopressors alongside fluids in severe hypotension. If pressure has recovered, continue without adding one."
             ),
-            check_requirements=require_infusion_started(
-                *VASOPRESSOR_KEYS,
-                fail_message="Start vasopressor (norepinephrine preferred)",
+            check_requirements=require_vasopressor_if_hypotensive(
+                "nore", fail_message="Start or adjust norepinephrine for persistent hypotension",
             ),
             target_tab="Medications",
         ),
@@ -99,23 +81,23 @@ def create_sepsis_response() -> Scenario:
             id="SOURCE_CONTROL",
             title="Source control",
             instruction=(
-                "Stop the sepsis event to simulate antibiotics and source control.<br>"
-                "Select <b>Stop sepsis</b> on the Events tab.<br><br>"
-                "<i>Without source control, shock will persist.</i>"
+                "Select <b>Stop sepsis</b> to let the simulated inflammatory effects subside. "
+                "Continue hemodynamic support as the patient recovers. "
+                "This control represents recovery after antibiotics and source control; real shock can persist after both."
             ),
             check_requirements=require_crisis_stopped(
                 "sepsis",
                 "active_sepsis",
-                "Stop sepsis (source control + antibiotics)",
+                "Select Stop sepsis to model recovery after infection treatment",
             ),
             target_tab="Events",
         ),
         create_reassess_step(
             "active_sepsis",
-            "Stop sepsis (source control + antibiotics)",
-            "Sepsis controlled",
-            "Wean vasopressors as perfusion improves.<br>"
-            "<i>Monitor closely for relapse or ongoing fluid needs.</i>"
+            "Select Stop sepsis to model recovery after infection treatment",
+            "Infection treatment underway",
+            "Reassess the response before giving more fluid and wean vasopressors as perfusion improves. "
+            "Lactate, urine output, examination, and bedside ultrasound inform reassessment in practice."
         ),
     ]
 

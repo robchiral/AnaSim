@@ -16,8 +16,8 @@ def engine():
 
 def test_infusion_rates_convert_the_prescribed_units(engine):
     rate_cases = (
-        ("propofol", 3600.0, "propofol_rate_mg_sec", 1.0),
-        ("remi", 60.0, "remi_rate_ug_sec", 1.0),
+        ("propofol", 60000.0 / engine.patient.weight, "propofol_rate_mg_sec", 1.0),
+        ("remi", 60.0 / engine.patient.weight, "remi_rate_ug_sec", 1.0),
         ("fentanyl", 3600.0, "fentanyl_rate_ug_sec", 1.0),
         ("midazolam", 3.6, "midazolam_rate_ug_sec", 1.0),
         ("ketamine", 3600.0, "ketamine_rate_mg_sec", 1.0),

@@ -4,6 +4,7 @@ Model units: mg/sec for propofol, ketamine, lidocaine, rocuronium, and
 esmolol, mU/sec for vasopressin, and ug/sec for the other drugs.
 """
 
+import math
 from typing import Dict, Tuple
 
 _RATE_UNIT_ALIASES: Dict[str, str] = {
@@ -25,6 +26,7 @@ _RATE_CONVERSIONS: Dict[Tuple[str, str], float] = {
     ("mg/min", "ug/sec"): 1000.0 / 60.0,
     ("ug/hr", "ug/sec"): 1.0 / 3600.0,
     ("ug/min", "ug/sec"): 1.0 / 60.0,
+    ("ug/min", "mg/sec"): 1.0 / 60000.0,
     ("u/hr", "mu/sec"): 1000.0 / 3600.0,
     ("u/min", "mu/sec"): 1000.0 / 60.0,
     ("u/sec", "mu/sec"): 1000.0,
@@ -46,12 +48,25 @@ def normalize_rate_unit(unit: str) -> str:
     return _RATE_UNIT_ALIASES.get(u, u)
 
 
-def convert_rate(value: float, from_unit: str, to_unit: str) -> float:
-    """Convert a rate between units; raise ValueError if unsupported."""
+def convert_rate(
+    value: float, from_unit: str, to_unit: str, *, weight_kg: float | None = None,
+) -> float:
+    """Convert rate units using patient weight for per-kg rates."""
     from_norm = normalize_rate_unit(from_unit)
     to_norm = normalize_rate_unit(to_unit)
     if from_norm == to_norm:
         return value
+    if "/kg/" in from_norm or "/kg/" in to_norm:
+        if weight_kg is None or not math.isfinite(weight_kg) or weight_kg <= 0:
+            raise ValueError("Weight-based rate conversion requires a positive finite weight_kg")
+        if "/kg/" in from_norm:
+            value *= weight_kg
+            from_norm = from_norm.replace("/kg/", "/")
+        if "/kg/" in to_norm:
+            value /= weight_kg
+            to_norm = to_norm.replace("/kg/", "/")
+        if from_norm == to_norm:
+            return value
     key = (from_norm, to_norm)
     if key in _RATE_CONVERSIONS:
         return value * _RATE_CONVERSIONS[key]

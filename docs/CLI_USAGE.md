@@ -64,6 +64,7 @@ See [patient limits and source cohorts](ARCHITECTURE.md#supported-patient-domain
 |-------|---------|---------|
 | `mode` | `"awake"` | `"awake"` or `"steady_state"`; see [initialization](ARCHITECTURE.md#initialization) |
 | `maint_type` | `"tiva"` | `"tiva"` or `"balanced"` for steady-state initialization |
+| `tci_enabled` | `false` | Allow TCI controls and attach TCI controllers at maintenance startup |
 | `dt` | 0.01 | Positive engine step in seconds |
 | `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
 | `simulation_speed` | 1.0 | Real-time multiplier for UI sessions |
@@ -138,5 +139,7 @@ print(state.time, state.pa_co2, state.display_etco2)
 ```
 
 `set_vent_settings(vt=...)` takes liters. `Patient.baseline_vt` takes mL.
-Drug dose and rate units are in the [registry](../anasim/core/drug_registry.py).
+`set_drug_rate(key, rate)` uses the [registry's units](../anasim/core/drug_registry.py).
+Propofol and remifentanil rates are in mcg/kg/min using the patient's weight;
+vasopressor rates are absolute. `enable_tci()` requires `tci_enabled=True`.
 Read `engine.state` or `get_latest_state()`; apply changes through engine methods.

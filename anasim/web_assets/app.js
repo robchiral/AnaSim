@@ -145,6 +145,7 @@ function readSetup(form) {
   for (const name of Object.keys(catalog.models)) params[name] = f[name].value;
   params.arterial_line_enabled = f.arterial_line_enabled.checked;
   params.end_on_cardiac_arrest = f.end_on_cardiac_arrest.checked;
+  params.tci_enabled = f.tci_enabled.checked;
   if (f.session.value === "guided") {
     params.scenario_id = f.scenario_id.value;
   } else {

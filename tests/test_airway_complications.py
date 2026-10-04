@@ -1,5 +1,7 @@
 import pytest
 
+from anasim.core.state import SimulationConfig
+
 
 @pytest.mark.parametrize("enabled", [True, False])
 def test_intubation_stimulus_triggers_laryngospasm_unless_disabled(engine_factory, enabled):
@@ -54,7 +56,7 @@ def test_mask_obstruction_raises_airway_pressure_and_leaks_delivered_breaths(awa
 
 
 def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
-    engine = engine_factory(start=True)
+    engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
     engine.enable_tci("propofol", 3.0)
     for _ in range(3000):
         engine.step(0.1)

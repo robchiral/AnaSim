@@ -7,8 +7,6 @@ from anasim.scenarios.oxygen_supply import create_oxygen_supply_failure
 
 
 def _stop_tiva(engine) -> None:
-    engine.disable_tci("propofol")
-    engine.disable_tci("remi")
     engine.set_drug_rate("propofol", 0.0)
     engine.set_drug_rate("remi", 0.0)
 
@@ -44,13 +42,15 @@ class TestClinicalAcceptance:
         assert block_time is not None
         assert 60 <= block_time <= 90
 
-    def test_maintenance_stays_within_depth_and_pressure_ranges(self, engine_factory):
+    @pytest.mark.parametrize("tci_enabled", [False, True], ids=["manual", "tci"])
+    def test_maintenance_stays_within_depth_and_pressure_ranges(self, engine_factory, tci_enabled):
         """TIVA and balanced maintenance should remain stable for 15 minutes."""
         for maint_type in ("tiva", "balanced"):
             engine = engine_factory(
                 config=SimulationConfig(
                     mode="steady_state",
                     maint_type=maint_type,
+                    tci_enabled=tci_enabled,
                     rng_seed=123,
                 ),
                 start=True,
@@ -78,8 +78,9 @@ class TestClinicalAcceptance:
             assert min(map_values) >= 60.0
 
             if engine.state.nore_ce > 0.5:
-                assert engine.tci_nore is not None
-                assert engine.get_drug_state("nore")["is_tci"]
+                support = engine.get_drug_state("nore")
+                assert support["rate"] > 0.0
+                assert support["is_tci"] is tci_enabled
 
     def test_tiva_emergence_recovers_ventilation_and_wakefulness(
         self, anesthetized_engine
@@ -157,7 +158,7 @@ class TestClinicalAcceptance:
         # Surviving Sepsis Campaign: 30 mL/kg crystalloid, norepinephrine first,
         # and an initial MAP target of 65 mmHg.
         engine.give_fluid(30.0 * engine.patient.weight)
-        engine.set_drug_target("nore", 3.0)
+        engine.set_drug_rate("nore", 15.0)
         advance_time(engine, 900.0)
 
         assert engine.state.map >= 65.0
@@ -188,7 +189,7 @@ class TestClinicalAcceptance:
         # perioperative anaphylaxis and an initial 1000 mL crystalloid bolus.
         engine.give_drug_bolus("epi", 100.0)
         engine.give_fluid(1000.0)
-        engine.set_drug_target("epi", 3.0)
+        engine.set_drug_rate("epi", 6.0)
         advance_time(engine, 300.0)
 
         assert engine.state.map >= 65.0
@@ -274,7 +275,7 @@ def test_remifentanil_blunts_laryngoscopy_response(engine_factory):
     """Opioid blunts the pressor response to laryngoscopy (Bouillon 2004 TOL surface)."""
 
     def peak_map_rise(remi_target: float) -> float:
-        engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=5), start=True)
+        engine = engine_factory(config=SimulationConfig(mode="steady_state", tci_enabled=True, rng_seed=5), start=True)
         engine.enable_tci("remi", remi_target)
         for _ in range(600):
             engine.step(1.0)

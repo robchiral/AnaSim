@@ -23,6 +23,8 @@ class DrugControllerMixin:
         """Start or retarget TCI; fixed-mode drugs ignore the requested compartment."""
         spec = get_drug_spec(drug)
         _require(spec, spec.has_tci, "target-controlled infusion")
+        if not self.config.tci_enabled:
+            raise ValueError("TCI is disabled for this session")
         pk_model = getattr(self, spec.pk_attr)
         controller = getattr(self, spec.tci_attr)
         target_compartment = (spec.fixed_tci_mode or TCIMode(mode)).value
@@ -72,7 +74,10 @@ class DrugControllerMixin:
         rate = max(0.0, rate_user_unit)
         if spec.has_tci and getattr(self, spec.tci_attr) is not None:
             self.disable_tci(spec.key)
-        setattr(self, spec.rate_attr, convert_rate(rate, spec.rate_unit, spec.internal_rate_unit))
+        converted = convert_rate(
+            rate, spec.rate_unit, spec.internal_rate_unit, weight_kg=self.patient.weight
+        )
+        setattr(self, spec.rate_attr, converted)
         self.actions.record(self.state.time, ACTION_INFUSION_RATE, label=spec.key, amount=rate)
 
     def set_drug_target(self: "SimulationEngine", key: str, target: Optional[float]):
@@ -88,7 +93,10 @@ class DrugControllerMixin:
         controller = getattr(self, spec.tci_attr) if spec.has_tci else None
         rate = 0.0
         if spec.has_infusion:
-            rate = convert_rate(getattr(self, spec.rate_attr), spec.internal_rate_unit, spec.rate_unit)
+            rate = convert_rate(
+                getattr(self, spec.rate_attr), spec.internal_rate_unit, spec.rate_unit,
+                weight_kg=self.patient.weight,
+            )
         return {
             "rate": rate,
             "target": controller.target if controller else 0.0,

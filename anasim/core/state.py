@@ -36,6 +36,7 @@ class SimulationConfig:
     loc_model: str = "Kern"
     mode: str = "awake"
     maint_type: str = "tiva"
+    tci_enabled: bool = False
     disturbance_profile: str = None
     # An empty list disables the vaporizer.
     volatile_agents: List[str] = field(default_factory=lambda: ["sevoflurane"])
@@ -48,6 +49,8 @@ class SimulationConfig:
     rng_seed: Optional[int] = None
 
     def __post_init__(self):
+        if not isinstance(self.tci_enabled, bool):
+            raise ValueError("tci_enabled must be a boolean")
         self.dt = finite_number("dt", self.dt)
         if self.dt <= 0:
             raise ValueError("dt must be greater than zero")

@@ -48,6 +48,9 @@ mode, and maintenance technique with a `ScenarioSpec` in the
 [registry](anasim/scenarios/__init__.py). See the
 [hemorrhage example](anasim/scenarios/hemorrhage.py) and
 [objective checks](docs/ARCHITECTURE.md#scenario-objectives).
+Use `tci_instruction` for dosing guidance that changes when TCI is enabled.
+The scenario tests complete every registered scenario through browser commands
+with TCI enabled and disabled.
 
 ## Interface changes
 

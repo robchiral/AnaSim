@@ -1,48 +1,40 @@
 """Emergence scenarios after balanced anesthesia or TIVA."""
 
-from typing import Tuple
+from typing import Literal
 
 from anasim.core.action_log import ACTION_AIRWAY, ACTION_FGF, ACTION_VAPORIZER
+from anasim.core.state import AirwayType
 
 from .base import (
+    Requirement,
     Scenario,
     ScenarioStep,
     action_taken_this_step,
     join_messages,
     monitor_value,
+    require_all,
     require_infusions_stopped,
+    require_maintenance_depth,
+    require_map_at_least,
+    require_oxygen_flow,
 )
 
 
-def _require_assess() -> callable:
-    """Check stable maintenance conditions."""
-    def check(engine) -> Tuple[bool, str]:
-        bis = monitor_value(engine, "bis")
-        map_val = monitor_value(engine, "map")
-        etco2 = monitor_value(engine, "etco2")
-        bis_ok = 40 <= bis <= 60
-        map_ok = map_val > 65
-        co2_ok = engine.state.etco2_signal_valid and 35 <= etco2 <= 45
-        if bis_ok and map_ok and co2_ok:
-            return True, ""
-        msgs = []
-        if not bis_ok:
-            msgs.append(f"BIS: {bis:.0f}")
-        if not map_ok:
-            msgs.append(f"MAP: {map_val:.0f}")
-        if not co2_ok:
-            msgs.append(f"EtCO₂: {etco2:.0f}/35-45 mmHg" if engine.state.etco2_signal_valid else "Awaiting exhaled CO₂")
-        return False, join_messages(msgs)
-    return check
+def _require_normocapnia(engine) -> tuple[bool, str]:
+    if not engine.state.etco2_signal_valid:
+        return False, "Awaiting exhaled CO₂"
+    etco2 = monitor_value(engine, "etco2")
+    met = 35 <= etco2 <= 45
+    return met, "" if met else f"EtCO₂: {etco2:.0f}/35-45 mmHg"
 
 
-def _require_agents_stopped_balanced() -> callable:
+def _require_agents_stopped_balanced() -> Requirement:
     """Check volatile agent and remifentanil stopped, with high fresh gas flow."""
     opioid_check = require_infusions_stopped(
         "remi", fail_message="Stop remifentanil for this objective"
     )
 
-    def check(engine) -> Tuple[bool, str]:
+    def check(engine) -> tuple[bool, str]:
         gas_off = not engine.circuit.vaporizer_on or engine.circuit.vaporizer_setting < 0.1
         high_flow = engine.circuit.fgf_total() > 6.0
         vaporizer_records = engine.actions.since_step(ACTION_VAPORIZER)
@@ -62,92 +54,61 @@ def _require_agents_stopped_balanced() -> callable:
     return check
 
 
-def _require_agents_stopped_tiva() -> callable:
-    """Check TIVA infusions stopped."""
-    return require_infusions_stopped(
-        "propofol",
-        "remi",
-        fail_message="Stop propofol and remifentanil for this objective",
-    )
-
-
-def _require_awakening() -> callable:
+def _require_awakening(engine) -> tuple[bool, str]:
     """Check patient emerging (BIS > 70, spontaneous breathing)."""
-    def check(engine) -> Tuple[bool, str]:
-        bis = monitor_value(engine, "bis")
-        bis_ok = bis > 70
-        rr = engine.resp.state.rr
-        rr_ok = rr > 6 and not engine.resp.state.apnea
-        if bis_ok and rr_ok:
-            return True, ""
-        msgs = []
-        if not bis_ok:
-            msgs.append(f"BIS: {bis:.0f}/70+")
-        if not rr_ok:
-            msgs.append(f"Spontaneous RR: {rr:.0f}/6+")
-        return False, join_messages(msgs)
-    return check
+    bis = monitor_value(engine, "bis")
+    rr = engine.resp.state.rr
+    msgs = []
+    if not bis > 70:
+        msgs.append(f"BIS: {bis:.0f}/70+")
+    if not (rr > 6 and not engine.resp.state.apnea):
+        msgs.append(f"Spontaneous RR: {rr:.0f}/6+")
+    return not msgs, join_messages(msgs)
 
 
-def _require_extubation_criteria() -> callable:
-    """Check extubation criteria met."""
-    from anasim.core.state import AirwayType
-    def check(engine) -> Tuple[bool, str]:
-        resp = engine.resp.state
-        breathing = resp.rr > 8 and not resp.apnea
-        volume_ok = resp.vt > 5.0 * engine.patient.weight
-        block_recovered = engine.state.tof >= 90.0
-        spo2 = monitor_value(engine, "spo2")
-        oxygenated = engine.state.spo2_signal_valid and spo2 > 95.0
-        bis = monitor_value(engine, "bis")
-        awake = bis > 80
-        extubated = engine.state.airway_mode != AirwayType.ETT
-        airway_action = action_taken_this_step(
-            engine,
-            ACTION_AIRWAY,
-            AirwayType.MASK.value,
-            AirwayType.NONE.value,
-        )
-        if breathing and volume_ok and block_recovered and oxygenated and awake and extubated and airway_action:
-            return True, ""
-        msgs = []
-        if not awake:
-            msgs.append(f"BIS: {bis:.0f}/80+")
-        if not breathing:
-            msgs.append(f"Spontaneous RR: {resp.rr:.0f}/8+")
-        if not volume_ok:
-            msgs.append(f"Spontaneous VT: {resp.vt:.0f}/{5.0 * engine.patient.weight:.0f}+ mL")
-        if not block_recovered:
-            msgs.append(f"TOF ratio: {engine.state.tof:.0f}%/90%+")
-        if not oxygenated:
-            msgs.append(f"SpO₂: {spo2:.0f}%/95%+" if engine.state.spo2_signal_valid else "Awaiting valid SpO₂")
-        if not extubated or not airway_action:
-            msgs.append("Select Mask or No airway for this objective")
-        return False, join_messages(msgs)
-    return check
+def _require_extubation_readiness(engine) -> tuple[bool, str]:
+    """Check wakefulness, measured breathing, oxygenation, and block recovery."""
+    resp = engine.resp.state
+    rr = engine.state.rr
+    breathing = rr > 8 and resp.rr > 8 and not resp.apnea
+    minimum_vt = 5.0 * engine.patient.predicted_body_weight()
+    volume_ok = engine.state.vt > minimum_vt
+    block_recovered = engine.state.tof >= 90.0
+    spo2 = monitor_value(engine, "spo2")
+    oxygenated = engine.state.spo2_signal_valid and spo2 > 95.0
+    bis = monitor_value(engine, "bis")
+    awake = bis > 80
+    msgs = []
+    if not awake:
+        msgs.append(f"BIS: {bis:.0f}/80+")
+    if not breathing:
+        msgs.append(f"Spontaneous RR: {min(rr, resp.rr):.0f}/8+")
+    if not volume_ok:
+        msgs.append(f"Exhaled VT: {engine.state.vt:.0f}/{minimum_vt:.0f}+ mL")
+    if not block_recovered:
+        msgs.append(f"TOF ratio: {engine.state.tof:.0f}%/90%+")
+    if not oxygenated:
+        msgs.append(f"SpO₂: {spo2:.0f}%/95%+" if engine.state.spo2_signal_valid else "Awaiting valid SpO₂")
+    if engine.vent.is_on or engine.bag_mask_active:
+        msgs.append("Stop assisted ventilation")
+    return not msgs, join_messages(msgs)
 
 
-def _require_recovery() -> callable:
-    """Check recovery room criteria."""
-    def check(engine) -> Tuple[bool, str]:
-        resp = engine.resp.state
-        spo2 = monitor_value(engine, "spo2")
-        spo2_ok = engine.state.spo2_signal_valid and spo2 > 95
-        breathing = resp.rr > 10 and not resp.apnea
-        if spo2_ok and breathing:
-            return True, ""
-        msgs = []
-        if not spo2_ok:
-            msgs.append(f"SpO₂: {spo2:.0f}%/95%+" if engine.state.spo2_signal_valid else "Awaiting valid SpO₂")
-        if not breathing:
-            msgs.append(f"Spontaneous RR: {resp.rr:.0f}/10+")
-        return False, join_messages(msgs)
-    return check
+def _require_tube_removed(engine) -> tuple[bool, str]:
+    """Require tube removal during this objective."""
+    extubated = engine.state.airway_mode in (AirwayType.MASK, AirwayType.NONE)
+    airway_action = action_taken_this_step(
+        engine, ACTION_AIRWAY, AirwayType.MASK.value, AirwayType.NONE.value,
+    )
+    met = extubated and airway_action
+    return met, "" if met else "Select Facemask or Disconnected for this objective"
 
 
-def create_emergence(maint_type: str = "balanced") -> Scenario:
+def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Scenario:
     """Create the emergence scenario for "balanced" or "tiva" maintenance."""
-    is_balanced = "balanced" in maint_type.lower()
+    if maint_type not in ("balanced", "tiva"):
+        raise ValueError(f"Unsupported maintenance type: {maint_type!r}")
+    is_balanced = maint_type == "balanced"
 
     if is_balanced:
         stop_agents_instruction = (
@@ -162,7 +123,9 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
             "Turn <b>OFF</b> propofol and remifentanil infusions.<br><br>"
             "Observe the return of spontaneous breathing as the drug effect decreases."
         )
-        stop_agents_check = _require_agents_stopped_tiva()
+        stop_agents_check = require_infusions_stopped(
+            "propofol", "remi", fail_message="Stop propofol and remifentanil for this objective",
+        )
         stop_agents_tab = "Medications"
 
     steps = [
@@ -170,10 +133,14 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
             id="ASSESS",
             title="Assess hemodynamic stability",
             instruction=(
-                "Verify: <b>BIS 40-60</b>, <b>MAP > 65</b>, <b>EtCO₂ 35-45</b>.<br><br>"
-                "<i>Ensure surgery complete and patient is warm before emergence.</i>"
+                "Confirm <b>BIS 40-60</b>, <b>MAP ≥ 65 mmHg</b>, and valid <b>EtCO₂ 35-45 mmHg</b>. "
+                "Adjust ventilation if needed. In practice, confirm surgery is complete, "
+                "maintain warmth, and arrange postoperative analgesia before stopping remifentanil. "
+                "Its analgesic effect wears off quickly."
             ),
-            check_requirements=_require_assess(),
+            check_requirements=require_all(
+                require_maintenance_depth, require_map_at_least(), _require_normocapnia,
+            ),
         ),
         ScenarioStep(
             id="STOP_AGENTS",
@@ -189,28 +156,58 @@ def create_emergence(maint_type: str = "balanced") -> Scenario:
                 "Wait for <b>BIS > 70</b> and <b>spontaneous RR > 6/min</b>.<br>"
                 "Ventilator-delivered breaths do not establish spontaneous breathing."
             ),
-            check_requirements=_require_awakening(),
+            check_requirements=_require_awakening,
+        ),
+        ScenarioStep(
+            id="EXTUBATION_READINESS",
+            title="Assess readiness for extubation",
+            instruction=(
+                "Stop controlled ventilation, keep the tracheal tube in place, and assess "
+                "spontaneous breathing. Be ready to assist if ventilation is inadequate. "
+                "Wait for <b>BIS > 80</b>, spontaneous "
+                "<b>RR > 8/min</b> and exhaled <b>VT > 5 mL/kg predicted body weight</b>, "
+                "<b>TOF ratio ≥ 90%</b>, and <b>SpO₂ > 95%</b>.<br><br>"
+                "<i>These are simulator criteria. In practice, assess command following, "
+                "airway protection, adequate ventilation, and the airway plan; BIS alone does not establish readiness.</i>"
+            ),
+            check_requirements=require_all(
+                lambda engine: (
+                    engine.state.airway_mode == AirwayType.ETT,
+                    "Keep the tracheal tube in place while assessing readiness",
+                ),
+                _require_extubation_readiness,
+            ),
+            target_tab="Machine",
         ),
         ScenarioStep(
             id="EXTUBATE",
             title="Extubation",
             instruction=(
-                "Criteria: <b>BIS > 80</b>, spontaneous <b>RR > 8</b> and <b>VT > 5 mL/kg</b>, "
-                "<b>TOF ratio ≥ 90%</b>, <b>SpO₂ > 95%</b>.<br>"
-                "Stop the ventilator and remove the ETT: select 'Mask' or 'None'.<br><br>"
-                "<i>Command following and airway reflexes are not modeled; check them in practice.</i>"
+                "With readiness confirmed and the ventilator stopped, select "
+                "<b>Facemask</b> to simulate removing the tracheal tube and applying oxygen. "
+                "Reassess breathing and airway patency immediately."
             ),
-            check_requirements=_require_extubation_criteria(),
+            check_requirements=require_all(_require_extubation_readiness, _require_tube_removed),
             target_tab="Machine",
         ),
         ScenarioStep(
             id="RECOVERY",
             title="Post-anesthesia care",
             instruction=(
-                "Apply supplemental O₂. Monitor: <b>SpO₂ > 95%</b>, hemodynamic stability.<br><br>"
-                "<i>PACU handoff: procedure, anesthetics, airway, blood loss, concerns.</i>"
+                "Select <b>Facemask</b> and set <b>O₂ 5 L/min</b>, air and N₂O 0 L/min "
+                "to represent supplemental oxygen. Confirm adequate spontaneous breathing, "
+                "<b>SpO₂ > 95%</b>, and <b>MAP ≥ 65 mmHg</b>. A separate PACU mask is not modeled.<br><br>"
+                "<i>Handoff should cover the procedure, anesthetics, analgesia, airway, blood loss, and current concerns.</i>"
             ),
-            check_requirements=_require_recovery(),
+            check_requirements=require_all(
+                _require_extubation_readiness,
+                require_map_at_least(),
+                require_oxygen_flow(5.0),
+                lambda engine: (
+                    engine.state.airway_mode == AirwayType.MASK,
+                    "Select Facemask for supplemental oxygen",
+                ),
+            ),
             target_tab="Machine",
         ),
     ]

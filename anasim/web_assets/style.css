@@ -384,6 +384,7 @@ fieldset:disabled { opacity: 0.5; }
 .infusion-name { font-size: 12px; }
 #drug-search-empty { color: var(--text-dim); padding: 8px 0; }
 .drug-card .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+.drug-card .inputs.manual-rate { grid-template-columns: 1fr; }
 .drug-card .inputs label { color: var(--text-secondary); font-size: 10px; }
 .drug-card .bolus { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .drug-card .csht { color: var(--text-secondary); font-size: 10px; font-style: italic; }

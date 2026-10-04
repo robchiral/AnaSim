@@ -1,40 +1,23 @@
 """Intraoperative hemorrhage and hypovolemic shock scenario."""
 
-from typing import Tuple
-
 from .base import (
-    VASOPRESSOR_KEYS,
     Scenario,
     ScenarioStep,
     create_observe_baseline_step,
     create_reassess_step,
-    join_messages,
     monitor_value,
     require_crisis_started,
     require_crisis_stopped,
-    require_fluid_given,
-    require_infusion_started,
+    require_fluid_bolus,
+    require_vasopressor_if_hypotensive,
 )
 
 
-def _require_shock_recognition() -> callable:
-    """Check for tachycardia and hypotension."""
-    def check(engine) -> Tuple[bool, str]:
-        hr = monitor_value(engine, "hr")
-        map_val = monitor_value(engine, "map")
-        tachycardia = hr > 100
-        hypotension = map_val < 65
-
-        if tachycardia and hypotension:
-            return True, ""
-
-        msgs = []
-        if not tachycardia:
-            msgs.append(f"HR: {hr:.0f} (watch for ↑)")
-        if not hypotension:
-            msgs.append(f"MAP: {map_val:.0f} (watch for ↓)")
-        return False, join_messages(msgs)
-    return check
+def _require_shock_recognition(engine) -> tuple[bool, str]:
+    """Recognize hypotension during hemorrhage without requiring tachycardia."""
+    map_val = monitor_value(engine, "map")
+    met = map_val < 65
+    return met, "" if met else f"MAP: {map_val:.0f} mmHg; observe the response to blood loss"
 
 
 def create_hemorrhage_response() -> Scenario:
@@ -44,8 +27,9 @@ def create_hemorrhage_response() -> Scenario:
             id="START_HEMORRHAGE",
             title="Hemorrhage begins",
             instruction=(
-                "Select a severity, then choose <b>Start bleeding</b> on the Events tab.<br><br>"
-                "<i>Intraoperative hemorrhage can occur suddenly during surgery.</i>"
+                "The surgeon reports brisk blood loss. Set the bleeding rate to "
+                "<b>500-800 mL/min</b>, then select Start bleeding in Events and fluids. "
+                "Call for help and ask the surgeon to control the source while resuscitation begins."
             ),
             check_requirements=require_crisis_started(
                 "hemorrhage",
@@ -58,25 +42,36 @@ def create_hemorrhage_response() -> Scenario:
             id="RECOGNIZE_SHOCK",
             title="Recognize hypovolemic shock",
             instruction=(
-                "Observe the developing shock state:<br>"
-                "• <b>Tachycardia</b> (HR > 100) - compensatory response<br>"
-                "• <b>Hypotension</b> (MAP < 65) - volume depletion<br>"
-                "• Narrowed pulse pressure (SBP-DBP)<br><br>"
-                "<i>ATLS Class III hemorrhage (30-40% loss): tachycardia, hypotension, confusion.</i>"
+                "Watch for falling blood pressure during bleeding, including <b>MAP < 65 mmHg</b>. "
+                "HR may rise and pulse pressure may narrow. Anesthesia and beta blockade "
+                "can blunt tachycardia; begin treatment as the situation develops."
             ),
-            check_requirements=_require_shock_recognition(),
+            check_requirements=_require_shock_recognition,
+        ),
+        ScenarioStep(
+            id="STOP_BLEEDING",
+            title="Control the bleeding source",
+            instruction=(
+                "Select <b>Stop bleeding</b> to represent surgical hemostasis. "
+                "In practice, hemorrhage control and resuscitation proceed together."
+            ),
+            check_requirements=require_crisis_stopped(
+                "hemorrhage", "active_hemorrhage", "Stop bleeding to represent surgical hemostasis",
+            ),
+            target_tab="Events",
         ),
         ScenarioStep(
             id="GIVE_FLUIDS",
-            title="Fluid resuscitation",
+            title="Replace circulating volume",
             instruction=(
-                "Give <b>500-1000 mL</b> crystalloid from the Events tab. "
-                "Use blood products for major ongoing hemorrhage.<br><br>"
-                "<i>Goal: restore intravascular volume while awaiting surgical hemostasis.</i>"
+                "Start <b>500 mL crystalloid or blood</b> in Events and fluids, "
+                "then reassess blood loss and perfusion. Use blood products early for major "
+                "hemorrhage and activate the local major hemorrhage protocol when needed. "
+                "Coagulation testing, component therapy, and calcium replacement are clinical actions outside this model."
             ),
-            check_requirements=require_fluid_given(
+            check_requirements=require_fluid_bolus(
                 500,
-                labels=("crystalloid", "colloid", "blood"),
+                labels=("crystalloid", "blood"),
             ),
             target_tab="Events",
         ),
@@ -84,37 +79,24 @@ def create_hemorrhage_response() -> Scenario:
             id="START_VASOPRESSOR",
             title="Vasopressor support",
             instruction=(
-                "If MAP remains low despite fluids, start vasopressor:<br>"
-                "• <b>Norepinephrine</b>: 0.05-0.1 mcg/kg/min<br>"
-                "• <b>Phenylephrine</b>: 50-100 mcg/min<br><br>"
-                "<i>Vasopressors bridge until volume is restored; not a substitute for blood.</i>"
+                "If <b>MAP remains below 65 mmHg</b>, start or adjust norepinephrine "
+                "while replacing volume. A starting rate of 0.05-0.1 mcg/kg/min is "
+                "3.5-7 mcg/min for 70 kg; enter the absolute rate in the drug control and titrate to response. "
+                "Continue without adding a vasopressor if pressure has recovered."
             ),
-            check_requirements=require_infusion_started(
-                *VASOPRESSOR_KEYS,
-                fail_message="Start vasopressor (norepinephrine, phenylephrine, or epinephrine)",
+            check_requirements=require_vasopressor_if_hypotensive(
+                "nore", "phenyl",
+                fail_message="Start or adjust vasopressor support for persistent hypotension",
             ),
             target_tab="Medications",
-        ),
-        ScenarioStep(
-            id="STOP_BLEEDING",
-            title="Surgical hemostasis",
-            instruction=(
-                "Select <b>Stop bleeding</b> to simulate definitive surgical control.<br><br>"
-                "<i>Definitive hemorrhage control is the priority over resuscitation.</i>"
-            ),
-            check_requirements=require_crisis_stopped(
-                "hemorrhage",
-                "active_hemorrhage",
-                "Stop hemorrhage (simulate surgical hemostasis)",
-            ),
-            target_tab="Events",
         ),
         create_reassess_step(
             "active_hemorrhage",
             "Stop hemorrhage first",
             "Hemorrhage controlled",
-            "HR may remain elevated initially - this is normal after volume loss.<br><br>"
-            "<i>Post-hemorrhage: watch for coagulopathy, acidosis, hypothermia.</i>"
+            "Persistent tachycardia or hypotension warrants reassessment for continued bleeding, "
+            "inadequate replacement, or another cause. In practice, also assess hemoglobin, "
+            "coagulation, temperature, calcium, and tissue perfusion."
         ),
     ]
 

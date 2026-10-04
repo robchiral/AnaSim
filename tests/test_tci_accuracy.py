@@ -50,7 +50,7 @@ class TestEngineTCI:
 
     @pytest.mark.parametrize("dt", [0.1, 0.3, 1.0])
     def test_effect_site_induction_reaches_hypnosis_without_overshoot(self, engine_factory, dt):
-        engine = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=123), start=True)
+        engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, dt=dt, rng_seed=123), start=True)
         engine.set_airway_mode("Mask")
         engine.set_fgf(6.0, 0.0)
         engine.enable_tci("propofol", 4.0)
@@ -66,18 +66,19 @@ class TestEngineTCI:
         assert engine.state.propofol_ce == pytest.approx(4.0, rel=0.03)
         assert engine.state.bis < 60.0
 
-    def test_plasma_controller_does_not_bolus_after_resync(self, anesthetized_engine):
+    def test_plasma_controller_does_not_bolus_after_resync(self, engine_factory):
         """Resyncing to live PK state must not trigger max-rate boluses."""
-        target = anesthetized_engine.tci_nore.target
+        engine = engine_factory(config=SimulationConfig(mode="steady_state", tci_enabled=True), start=True)
+        target = engine.tci_nore.target
         peak = 0.0
         for _ in range(12000):
-            anesthetized_engine.step(0.1)
-            peak = max(peak, anesthetized_engine.pk_nore.state.c1)
+            engine.step(0.1)
+            peak = max(peak, engine.pk_nore.state.c1)
         assert peak < target * 1.4
 
     @pytest.mark.parametrize("manual_rate", [0.0, 120.0])
-    def test_manual_rate_remains_in_control_after_tci(self, awake_engine, manual_rate):
-        engine = awake_engine
+    def test_manual_rate_remains_in_control_after_tci(self, engine_factory, manual_rate):
+        engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
         engine.enable_tci("propofol", 4.0)
         engine.step(0.1)
         assert engine.propofol_rate_mg_sec > 0
@@ -85,11 +86,11 @@ class TestEngineTCI:
         engine.set_drug_rate("propofol", manual_rate)
         for _ in range(120):
             engine.step(0.1)
-            assert engine.propofol_rate_mg_sec == pytest.approx(manual_rate / 3600)
+            assert engine.propofol_rate_mg_sec == pytest.approx(manual_rate * engine.patient.weight / 60000)
         assert not engine.get_drug_state("propofol")["is_tci"]
 
-    def test_target_mode_switch_uses_live_compartments(self, awake_engine):
-        engine = awake_engine
+    def test_target_mode_switch_uses_live_compartments(self, engine_factory):
+        engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
         engine.give_drug_bolus("propofol", 100)
         engine.enable_tci("propofol", 4.0)
         engine.step(0.05)

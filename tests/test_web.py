@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from anasim.core.drug_registry import DRUG_REGISTRY
 from anasim.machine.ventilator import MODES
 from anasim.web import WebSession
 
@@ -27,59 +28,6 @@ def run_seconds(session, seconds, tick_s=1.0):
     """Advance simulated seconds at 5x in 0.2 s real ticks; return the snapshots."""
     cmd(session, "speed", value=tick_s / 0.2)
     return [parse(session.advance(0.2)) for _ in range(round(seconds / tick_s))]
-
-
-# Learner commands for each objective of the guided TIVA induction.
-TIVA_INDUCTION = {
-    "APPLY_MASK": [("airway", {"mode": "Mask"})],
-    "SET_FGF_PREOX": [("fgf", {"o2": 10, "air": 0, "n2o": 0})],
-    "START_ANALGESIA": [("drug_target", {"key": "remi", "target": 4})],
-    "INDUCE": [
-        ("drug_bolus", {"key": "lidocaine", "amount": 100}),
-        ("drug_bolus", {"key": "propofol", "amount": 175}),
-        ("drug_target", {"key": "propofol", "target": 4}),
-    ],
-    "MASK_VENTILATE": [("bag_mask", {"active": True})],
-    "GIVE_NMB": [("drug_bolus", {"key": "roc", "amount": 50})],
-    "INTUBATE": [("airway", {"mode": "ETT"})],
-    "CONFIRM_ETT": [("vent_power", {"on": True})],
-    "MAINTENANCE": [("fgf", {"o2": 2, "air": 0, "n2o": 0})],
-}
-
-
-def test_guided_tiva_induction_completes_through_browser_commands():
-    session = WebSession({**PATIENT, "scenario_id": "induction_tiva"})
-    info = parse(session.info())
-    assert info["scenario"]["total"] == 12
-    cmd(session, "run", running=True)
-    # Continue does nothing until the objective is met.
-    cmd(session, "scenario_next")
-    assert parse(session.advance(0.0))["scenario"]["id"] == "APPLY_MASK"
-
-    pending = dict(TIVA_INDUCTION)
-    samples = 0
-    snap = parse(session.advance(0.0))
-    while not snap["scenario"]["complete"]:
-        step = snap["scenario"]
-        for name, args in pending.pop(step["id"], []):
-            cmd(session, name, **args)
-        if parse(session.advance(0.0))["scenario"]["met"]:
-            cmd(session, "scenario_next")
-        else:
-            assert snap["time"] < 1200, f"{step['id']} unreachable: {step['status']}"
-            (snap,) = run_seconds(session, 1.0)
-            samples += len(snap["waves"]["ecg"])
-        snap = parse(session.advance(0.0))
-
-    controls = snap["controls"]
-    # After intubation the ventilator takes over from the bag.
-    assert controls["airway"] == "ETT" and not controls["bag_mask"] and controls["vent"]["on"]
-    assert snap["vitals"]["etco2"] > 25
-    assert controls["drugs"]["propofol"]["is_tci"] and controls["drugs"]["remi"]["is_tci"]
-    assert snap["vitals"]["bis"] < 60
-    assert snap["vitals"]["tof"] < 25
-    # Every simulated step reaches the monitor sweep exactly once.
-    assert samples == round(snap["time"] / info["sample_interval"])
 
 
 def test_ventilator_settings_survive_bag_mask_handover():
@@ -198,7 +146,7 @@ def test_loops_retain_the_flow_boundary_across_modes(mode):
 
 
 def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload():
-    session = WebSession(PATIENT)
+    session = WebSession({**PATIENT, "tci_enabled": True})
     assert parse(session.info())["medication_history"] == []
     first = cmd(session, "drug_bolus", key="Propofol", amount=50)["medication"]
     assert first["key"] == "propofol"
@@ -224,7 +172,40 @@ def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload(
         cmd(session, "drug_rate", key="propofol", rate=rate)
     history = parse(session.info())["medication_history"]
     assert len(history) == 50
-    assert history[-1]["text"] == "Propofol infusion 54 mg/hr"
+    assert history[-1]["text"] == "Propofol infusion 54 mcg/kg/min"
+
+
+def test_manual_session_hides_and_rejects_tci_for_every_supported_drug():
+    session = WebSession({**PATIENT, "mode": "steady_state"})
+    drugs = parse(session.info())["drugs"]
+    assert all(drug["tci_unit"] is drug["tci_range"] is drug["target_label"] is None for drug in drugs)
+    before = session.snapshot()["controls"]["drugs"]
+    for spec in DRUG_REGISTRY:
+        if spec.has_tci:
+            assert not before[spec.key]["is_tci"]
+            with pytest.raises(ValueError, match="TCI is disabled"):
+                cmd(session, "drug_target", key=spec.key, target=3)
+            with pytest.raises(ValueError, match="TCI is disabled"):
+                session.engine.enable_tci(spec.key, 3)
+    assert session.snapshot()["controls"]["drugs"] == before
+
+
+@pytest.mark.parametrize("weight", [60.0, 90.0])
+def test_weight_based_rates_reach_the_engine_and_round_trip_through_browser_commands(weight):
+    session = WebSession({**PATIENT, "weight": weight})
+    specs = {spec["key"]: spec for spec in parse(session.info())["drugs"]}
+    for key, rate in (("propofol", 100.0), ("remi", 0.15)):
+        assert specs[key]["rate_unit"] == "mcg/kg/min"
+        receipt = cmd(session, "drug_rate", key=key, rate=rate)["medication"]
+        assert f"{rate:g} mcg/kg/min" in receipt["text"]
+    assert session.engine.propofol_rate_mg_sec == pytest.approx(100.0 * weight / 60000)
+    assert session.engine.remi_rate_ug_sec == pytest.approx(0.15 * weight / 60)
+    cmd(session, "run", running=True)
+    snap = run_seconds(session, 1)[-1]
+    for key, rate in (("propofol", 100.0), ("remi", 0.15)):
+        assert snap["controls"]["drugs"][key]["rate"] == pytest.approx(rate)
+        assert not snap["controls"]["drugs"][key]["is_tci"]
+    assert session.engine.pk_prop.state.c1 > 0 and session.engine.pk_remi.state.c1 > 0
 
 
 def test_recording_returns_the_session_as_csv_even_after_a_failure(tmp_path):

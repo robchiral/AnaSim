@@ -38,6 +38,7 @@ CONFIG_FIELDS = (
     "loc_model",
     "mode",
     "maint_type",
+    "tci_enabled",
     "end_on_cardiac_arrest",
     "arterial_line_enabled",
 )
@@ -167,9 +168,9 @@ class WebSession:
                     "rate_unit": spec.rate_unit,
                     "bolus_unit": spec.bolus_unit,
                     "default_bolus": spec.default_bolus,
-                    "tci_unit": spec.tci_unit,
-                    "tci_range": spec.tci_range,
-                    "target_label": _target_label(spec),
+                    "tci_unit": spec.tci_unit if engine.config.tci_enabled else None,
+                    "tci_range": spec.tci_range if engine.config.tci_enabled else None,
+                    "target_label": _target_label(spec) if engine.config.tci_enabled else None,
                 }
                 for spec in engine.get_controllable_drugs()
             ],
@@ -501,7 +502,7 @@ class WebSession:
             "complete": False,
             "id": step.id,
             "title": step.title,
-            "instruction": step.instruction,
+            "instruction": step.instruction_for(self.engine),
             "target_tab": step.target_tab,
             "met": self.step_met,
             "status": "" if self.step_met else self.step_status,
@@ -588,6 +589,8 @@ class WebSession:
         return self._medication_receipt(spec.key, text)
 
     def _cmd_drug_target(self, key: str, target: float | None):
+        if not self.engine.config.tci_enabled:
+            raise ValueError("TCI is disabled for this session")
         if target is not None and not math.isfinite(float(target)):
             raise ValueError("TCI target must be finite")
         self.engine.set_drug_target(key, None if target is None else float(target))

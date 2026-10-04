@@ -114,7 +114,7 @@ Checks cover [hemodynamics](../tests/test_hemodynamics.py),
 [autonomic drugs](../tests/test_autonomic_drugs.py).
 
 With `end_on_cardiac_arrest`, MAP below 20 mmHg or HR below 10 bpm for
-15 seconds ends the session. Resuscitation is not modeled.
+15 seconds ends the session. Cardiac arrest resuscitation is not modeled.
 
 ### Drug effects
 
@@ -254,6 +254,9 @@ clearance is independent of CO.
 TCI recalculates every 10 seconds to keep predicted peaks at or below target
 for ten minutes, within pump limits. PK changes rebuild controllers; boluses
 resynchronize concentrations. Manual rates disable TCI for that drug.
+TCI requires `SimulationConfig(tci_enabled=True)`. With the default `False`,
+maintenance retains the manual rates used to seed its drug history.
+[User rates](CLI_USAGE.md#python-use) convert to absolute model units internally.
 
 ### Temperature and stimulation
 
@@ -282,10 +285,13 @@ controls, and the current objective.
 
 | Kind | Example | Check reads |
 |------|---------|-------------|
-| Action | "Give 500 mL" | Actions since objective activation, plus state where relevant |
-| State | "MAP > 65" | Current state |
+| Action | "Start a 500 mL bolus" | Actions since objective activation, plus state where relevant |
+| State | "MAP ≥ 65" | Current monitor values and control state |
 
 Action checks use log positions because paused actions share timestamps.
 Queries raise an error when no objective is active. A step's `on_met` runs
 once when its check first passes; intubation uses it to start the
 laryngoscopy stimulus.
+
+Fluid objectives count requested bolus volume; delivery continues at the pump
+rate. Dosing instructions follow the session's TCI setting.

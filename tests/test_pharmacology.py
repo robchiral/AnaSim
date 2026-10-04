@@ -162,8 +162,8 @@ class TestNeuromuscularEffectSite:
         engine.give_drug_bolus("roc", 0.6 * engine.patient.weight)
         for _ in range(1200):
             engine.step(0.5)
-        engine.disable_tci("propofol")
-        engine.disable_tci("remi")
+        engine.set_drug_rate("propofol", 0.0)
+        engine.set_drug_rate("remi", 0.0)
         for _ in range(1200):
             engine.step(0.5)
         assert engine.state.tof < 5.0

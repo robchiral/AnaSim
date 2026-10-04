@@ -22,7 +22,7 @@ def _tiva(engine_factory):
     engine = engine_factory(
         config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=3), start=True
     )
-    engine.disable_tci("nore")
+    engine.set_drug_rate("nore", 0.0)
     _advance(engine, 300)
     return engine
 
