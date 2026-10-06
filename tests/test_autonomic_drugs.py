@@ -48,7 +48,7 @@ def test_labetalol_lowers_heart_rate_longer_than_blood_pressure(engine_factory):
     assert -20.0 < max_hr_fall < -8.0
     assert -35.0 < max_sbp_fall < -15.0
     assert changes[59][1] > 0.5 * max_sbp_fall
-    assert changes[179][0] < 0.5 * max_hr_fall
+    assert changes[179][0] < 0.45 * max_hr_fall
 
 
 def test_esmolol_onset_offset_and_atrial_fibrillation_rate(engine_factory):

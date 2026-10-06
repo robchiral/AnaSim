@@ -31,7 +31,7 @@ class RespiratoryMechanics:
         self.peep = 0.0
         self.volume_offset = 0.0  # Shift of the static curve relative to the initial relaxed volume
         if aeration is not None:
-            self.compliance = aeration.reference_compliance * aeration.recruited / aeration.REFERENCE_RECRUITED
+            self.compliance = aeration.reference_compliance * aeration.aerated / aeration.REFERENCE_RECRUITED
             self.volume_offset = aeration.relaxed_volume - aeration.reference_volume
         # Healthy anesthetized adults: viscoelastic compliance 4x static
         # compliance, time constant 0.82 s (Jonson 1993).

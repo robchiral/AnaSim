@@ -117,7 +117,7 @@ VOLATILE_AGENT_ALIASES = {
 }
 
 # N2O partition coefficients at 37 °C (blood:gas 0.47; brain, muscle, fat:blood
-# 1.1, 1.2, 2.3) and MAC about 104% at 1 atm (Hornbein 1982).
+# 1.1, 1.2, 2.3) and MAC about 104% at 1 atm.
 N2O_PARAMS = {
     "name": "Nitrous Oxide",
     "lambda_b_g": 0.47,

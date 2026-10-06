@@ -175,6 +175,43 @@ class TestClinicalAcceptance:
 
         assert engine.state.map >= 65.0
 
+    def test_awake_crystalloid_load_is_partly_excreted(self, engine_factory, advance_time):
+        """Reid 2003: 2 L over 1 h gave median 6 h urine of 450 mL (saline) to 1000 mL (Hartmann's)."""
+        engine = engine_factory(start=True, age=25, weight=75, height=178)
+        engine.set_continuous_fluid_rate(2000.0)
+        advance_time(engine, 3600.0)
+        engine.set_continuous_fluid_rate(0.0)
+        advance_time(engine, 5 * 3600.0)
+
+        assert 450.0 <= engine.state.urine_out_ml <= 1000.0
+        assert engine.state.lung_water == 0.0
+
+    def test_fluid_overload_floods_lungs_and_peep_reaerates(self, anesthetized_engine, advance_time):
+        """Massive crystalloid raises LAP into the edema range; PEEP helps oxygenation."""
+        engine = anesthetized_engine
+        base_plat = engine.state.paw_plat
+
+        # A healthy heart tolerates 3 L (43 mL/kg).
+        engine.give_fluid(3000.0)
+        advance_time(engine, 1800.0)
+        assert engine.state.lung_water == 0.0
+
+        engine.give_fluid(4000.0)
+        advance_time(engine, 3600.0)
+
+        # Pulmonary edema: EVLWI above 10 mL/kg (normal about 7).
+        assert engine.state.lap > 20.0
+        assert engine.state.lung_water > 3.0
+        edema_pao2 = engine.state.pao2
+        assert edema_pao2 / engine.state.fio2 < 300.0
+        assert engine.state.paw_plat > base_plat + 1.0
+
+        # Malo 1984: PEEP re-aerates flooded alveoli without removing lung water.
+        engine.vent.update_settings(peep=13.0)
+        advance_time(engine, 300.0)
+        assert engine.state.pao2 > 1.5 * edema_pao2
+        assert engine.state.lung_water > 3.0
+
     def test_anaphylaxis_and_epinephrine_rescue(
         self, anesthetized_engine, advance_time
     ):

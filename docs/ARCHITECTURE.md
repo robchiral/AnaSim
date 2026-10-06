@@ -15,6 +15,7 @@ monitors. The runtime advances them in a fixed order and copies outputs into
 | Arterial catheter | `art_pressure`, `art_sbp`, `art_dbp`, `art_map` | Instantaneous and completed-beat pressures after catheter filtering |
 | Other monitors | `nibp_sys`, `nibp_dia`, `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Displayed measurements |
 | Ventilator | `paw_peak`, `paw_plat`, `paw_mean`, `peep`, `compliance_dyn`, `et_o2` | Breath pressures, dynamic compliance, and end-tidal O2 |
+| Fluids | `blood_volume`, `urine_out_ml`, `net_fluid_ml`, `lap`, `lung_water` | Blood volume, fluid balance, LAP, and lung water above normal |
 
 Monitors read physiology without changing it. NIBP measures `sbp`, `dbp`, and
 `map`; displays and clinical checks use `art_*` with an arterial line and
@@ -117,6 +118,14 @@ within 30 minutes.
 Checks cover [hemodynamics](../tests/test_hemodynamics.py),
 [epinephrine](../tests/test_epinephrine.py), and
 [autonomic drugs](../tests/test_autonomic_drugs.py).
+
+Crystalloid keeps 30% of its volume in the blood and albumin 80%; the rest
+enters an interstitial pool that returns only to replace a blood-volume
+deficit. Volume expansion adds urine, less under anesthesia (Reid 2003; Hahn
+2010). Above LAP 20 mmHg, fluid filters into the lung; beyond 3 mL/kg it
+floods alveoli, which shunt and stiffen the lung until PEEP re-aerates them
+(Malo 1984). Filtration and flooding rates are teaching estimates. Oncotic
+pressure and cardiac dysfunction are not modeled.
 
 With `end_on_cardiac_arrest`, MAP below 20 mmHg or HR below 10 bpm for
 15 seconds ends the session. Cardiac arrest resuscitation is not modeled.
@@ -239,7 +248,7 @@ smoothing and delay. Poor perfusion delays SpO2 and reduces pleth amplitude;
 SpO2 requires an organized rhythm and adequate perfusion.
 
 [`Capnograph`](../anasim/monitors/capno.py) tracks exhaled gas through series
-dead space (Fowler 1948). Analyzer response, phase II spread, and phase III
+dead space. Analyzer response, phase II spread, and phase III
 slope are fitted to Primus recordings. Inspiratory efforts can produce curare
 clefts; see [capnography tests](../tests/test_nibp_capno.py). RR uses capnography
 with an airway and chest impedance ("RR imp") without one. End-tidal values

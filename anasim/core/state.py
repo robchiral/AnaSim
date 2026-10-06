@@ -215,6 +215,9 @@ class SimulationState:
     urine_out_ml: float = 0.0
     blood_out_ml: float = 0.0
     net_fluid_ml: float = 0.0
+    # Left atrial pressure (mmHg); lung water above normal (mL/kg PBW).
+    lap: float = 9.0
+    lung_water: float = 0.0
 
     fio2: float = 0.21
     temp_c: float = 37.0

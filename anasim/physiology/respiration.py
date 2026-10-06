@@ -115,7 +115,7 @@ class RespiratoryModel:
         # Lung ventilation/volume is BTPS; VO2 and Hb-bound O2 are STPD.
         self._btps_to_stpd = self._atm_dry / 760.0 * 273.15 / 310.15
         self._gas_capacity_per_l = self._btps_to_stpd / self._atm_dry
-        # Age-adjusted A-a gradient, age/4 + 4 mmHg (Stein 1995).
+        # Age-adjusted A-a gradient, age/4 + 4 mmHg.
         self.aa_grad_base = max(5.0, (self.patient.age / 4.0) + 4.0)
         self.equilibrate_oxygen(0.21)
         self._p50 = 26.6

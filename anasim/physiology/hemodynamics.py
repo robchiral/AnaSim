@@ -102,6 +102,9 @@ class HemodynamicModel:
         self._last_lv_inflow = self.base_co_l_min
         self._last_preload_factor = 1.0
         self._last_preload_sv_factor = 1.0
+        self._last_lap = self._lap(1.0)
+        self._pbw = patient.predicted_body_weight()
+        self.lung_water_ml = 0.0  # Extravascular lung water above normal
 
         self.total_crystalloid_in_ml = 0.0
         self.total_colloid_in_ml = 0.0
@@ -245,6 +248,15 @@ class HemodynamicModel:
         ratio = do2 / self.baseline_do2
         return clamp(ratio, 0.0, 2.0)
 
+    def _lap(self, preload_factor: float) -> float:
+        """Left atrial pressure (mmHg) from LV filling relative to baseline."""
+        return self.lap_scale * math.expm1(self.lap_preload_gain * preload_factor)
+
+    @property
+    def lung_water_ml_kg(self) -> float:
+        """Extravascular lung water above normal, mL/kg predicted body weight."""
+        return self.lung_water_ml / self._pbw
+
     def _frank_starling(self, preload_factor: float, inotropy: float = 1.0) -> float:
         """SV factor 1 - exp(-2 x preload), normalized to 1 at baseline preload.
 
@@ -367,6 +379,7 @@ class HemodynamicModel:
         f_preload = self._pulm_flow_factor * f_preload_pit
         f_frank_starling = self._frank_starling(f_preload)
 
+        self._last_lap = self._lap(f_preload)
         self._last_mcfp = mcfp
         self._last_rap = rap
         self._last_pvr = self.pvr_wood_baseline * pvr_factor
@@ -506,6 +519,7 @@ class HemodynamicModel:
             ce_sevo=self.ce_sevo,
             mcfp=self._last_mcfp,
             rap=self._last_rap,
+            lap=self._last_lap,
             pvr=self._last_pvr,
             rv_co=self._last_rv_co,
             lv_inflow=self._last_lv_inflow,
@@ -617,14 +631,16 @@ class HemodynamicModel:
         renal_factor = clamp01((map_prev - self.renal_map_min) / map_denom)
         renal_factor *= max(0.0, self.patient.renal_function)
         if self.vol_clearance is not None:
-            base_clearance_ml_min = max(0.0, float(self.vol_clearance))
+            urine_ml_min = max(0.0, float(self.vol_clearance))
         else:
-            base_clearance_ml_min = max(
-                0.0,
-                self.uop_ml_kg_hr * self.patient.weight / 60.0,
+            # Volume expansion adds urine; anesthesia blunts it.
+            expansion = max(0.0, self.blood_volume / self.blood_volume_0 - 1.0)
+            clearance = self.volume_clearance_ml_min * (
+                1.0 - self.anesthetic_clearance_reduction * anesthetic_depth
             )
+            urine_ml_min = self.uop_ml_kg_hr * self.patient.weight / 60.0 + clearance * expansion
         urine_out_ml = min(
-            base_clearance_ml_min * renal_factor * dt_min,
+            urine_ml_min * renal_factor * dt_min,
             max(0.0, self.blood_volume - BLOOD_VOLUME_MIN),
         )
         blood_volume = self.blood_volume - urine_out_ml
@@ -642,12 +658,25 @@ class HemodynamicModel:
                 self.total_leak_out_ml += actual_leak
                 self.total_third_space_ml += actual_leak
         if self.total_third_space_ml > 0 and self.third_space_refill_tau_hr > 0:
-            tau_s = self.third_space_refill_tau_hr * 3600.0
-            frac = 1.0 - math.exp(-dt / max(tau_s, 1e-6))
-            refill_ml = self.total_third_space_ml * frac
+            intravascular_excess = blood_volume - self.blood_volume_0
+            shortfall = self.crystalloid_retention_fraction * (
+                intravascular_excess + self.total_third_space_ml
+            ) - intravascular_excess
+            frac = -math.expm1(-dt / (self.third_space_refill_tau_hr * 3600.0))
+            refill_ml = min(self.total_third_space_ml, shortfall * frac)
             if refill_ml > 0:
                 self.total_third_space_ml -= refill_ml
                 blood_volume += refill_ml
+
+        # Lung water filters from blood above the LAP threshold and returns over hours.
+        lap_excess = max(0.0, self._last_lap - self.lung_water_lap_threshold)
+        filtration_ml = min(
+            self.lung_water_filtration * self._pbw * lap_excess * dt_min,
+            max(0.0, blood_volume - BLOOD_VOLUME_MIN),
+        )
+        lung_clearance_ml = self.lung_water_ml * -math.expm1(-dt / (self.lung_water_clearance_tau_hr * 3600.0))
+        self.lung_water_ml += filtration_ml - lung_clearance_ml
+        blood_volume += lung_clearance_ml - filtration_ml
         self.blood_volume = max(BLOOD_VOLUME_MIN, blood_volume)
         self._update_hb_conc()
 

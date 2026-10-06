@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fluid overload causes pulmonary edema, which lowers oxygenation and
+  compliance; PEEP partly reverses it. Urine rises with volume expansion.
 - Maintenance starts no longer add norepinephrine to reach a preset MAP;
   vasopressors start only when the user gives them.
 - Propofol and remifentanil clearances no longer scale with CO. Bradycardia

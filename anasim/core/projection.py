@@ -163,6 +163,8 @@ def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
     state.urine_out_ml = float(urine_out_ml)
     state.blood_out_ml = float(blood_out_ml)
     state.net_fluid_ml = float(fluid_in_ml + blood_in_ml - urine_out_ml - blood_out_ml)
+    state.lap = float(hemo_state.lap)
+    state.lung_water = float(engine.hemo.lung_water_ml_kg)
 
 
 def _project_respiratory_observables(engine: "SimulationEngine", snapshot: PhysiologyStepState) -> None:

@@ -29,6 +29,7 @@ class HemoStateExtended(HemoState):
     ce_sevo: float = 0.0
     mcfp: float = 0.0
     rap: float = 0.0
+    lap: float = 0.0
     pvr: float = 0.0
     rv_co: float = 0.0
     lv_inflow: float = 0.0

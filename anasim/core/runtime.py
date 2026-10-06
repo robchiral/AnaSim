@@ -111,6 +111,7 @@ def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_
     resp = engine.resp.state
     lung = engine.resp_mech
     lung.aeration.unconscious = engine.state.loc
+    lung.aeration.lung_water = engine.hemo.lung_water_ml_kg
     lung.effort.unconscious = engine.state.loc
     lung.aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine._airway_patency > 0.5
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.

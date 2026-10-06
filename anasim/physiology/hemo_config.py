@@ -79,18 +79,31 @@ class HemodynamicConfig:
     vol_clearance: Optional[float] = None
     # Urine output (mL/kg/hr), scaled by MAP and renal function.
     uop_ml_kg_hr: float = 0.5
+    # Urine (mL/min) per unit fractional blood-volume expansion, awake (fit to
+    # Reid 2003); anesthesia cuts it to 10-20% (Hahn 2010).
+    volume_clearance_ml_min: float = 30.0
+    anesthetic_clearance_reduction: float = 0.7
     crystalloid_retention_fraction: float = 0.30
     colloid_retention_fraction: float = 0.80
     blood_retention_fraction: float = 1.0
     renal_map_min: float = 50.0
     renal_map_norm: float = 80.0
+    # Interstitial fluid returns only while blood volume is below its 30% share.
     third_space_refill_tau_hr: float = 6.0
+
+    # LAP (mmHg) = A (exp(k x preload) - 1): 9 at baseline filling, 20 at double.
+    lap_scale: float = 40.9
+    lap_preload_gain: float = 0.2
+    # Lung water filters above LAP 20 mmHg (mL/kg PBW/min per mmHg).
+    lung_water_lap_threshold: float = 20.0
+    lung_water_filtration: float = 0.02
+    lung_water_clearance_tau_hr: float = 6.0
 
     # Intrathoracic pressure (mmHg) and preload.
     pit_0: float = -2.0
     alpha_peep: float = 0.04
 
-    # Right heart and pulmonary circulation. ESC/ERS normals: RAP 2-6 mmHg,
+    # Right heart and pulmonary circulation. Normal RAP 2-6 mmHg,
     # PVR 0.3-2.0 Wood units. Pulmonary transit median 6.8 s (Segeroth 2023).
     rap_baseline: float = 5.0
     pvr_wood_baseline: float = 1.2
