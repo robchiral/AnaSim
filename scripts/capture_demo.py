@@ -61,10 +61,9 @@ def drug_card(page, name):
     return card
 
 
-def start_tci(page, name, target):
+def start_infusion(page, name, rate):
     card = drug_card(page, name)
-    card.locator(".infusion-mode").select_option("tci")
-    enter(card.locator(".target"), target)
+    enter(card.locator(".rate"), rate)
     card.get_by_role("button", name="Apply", exact=True).click()
 
 
@@ -75,15 +74,18 @@ def give_bolus(page, name, amount):
 
 
 def induce(page):
-    start_tci(page, "Propofol", 4)
     give_bolus(page, "Propofol", 175)
+    start_infusion(page, "Propofol", 150)
 
 
-def reduce_fresh_gas(page):
+def begin_maintenance(page):
     # The objective opens Medications to check the infusions; the flow is on Machine.
     page.click('.tabs [data-tab="Machine"]')
     enter(page.locator("#c-o2"), 2)
     page.locator(".fresh-gas-settings").get_by_role("button", name="Apply", exact=True).click()
+    page.click('.tabs [data-tab="Medications"]')
+    if int(page.text_content("#v-art-map")) < 65:
+        give_bolus(page, "Phenylephrine", 100)
 
 
 def preoxygenate(page):
@@ -95,13 +97,13 @@ def preoxygenate(page):
 ACTIONS = {
     "APPLY_MASK": lambda page: page.click('#c-airway [data-value="Mask"]'),
     "SET_FGF_PREOX": preoxygenate,
-    "START_ANALGESIA": lambda page: start_tci(page, "Remifentanil", 4),
+    "START_ANALGESIA": lambda page: start_infusion(page, "Remifentanil", 0.2),
     "INDUCE": induce,
     "MASK_VENTILATE": lambda page: page.click("#c-bag"),
-    "GIVE_NMB": lambda page: give_bolus(page, "Rocuronium", 50),
+    "GIVE_NMB": lambda page: give_bolus(page, "Rocuronium", 42),
     "INTUBATE": lambda page: page.click('#c-airway [data-value="ETT"]'),
     "CONFIRM_ETT": lambda page: page.click("#c-vent-power"),
-    "MAINTENANCE": reduce_fresh_gas,
+    "MAINTENANCE": begin_maintenance,
 }
 
 
@@ -144,7 +146,9 @@ def record(server, page, fps, max_duration):
 
         step = current_step(server)
         if step is None:
-            done_at = done_at or now
+            if done_at is None:
+                page.click('.tabs [data-tab="Machine"]')
+                done_at = now
             if now - done_at >= END_HOLD_S:
                 return frames
         elif step.id != step_id:

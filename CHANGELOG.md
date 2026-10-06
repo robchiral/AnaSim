@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.4 - 2026-10-06
+
 - Fluid overload causes pulmonary edema, which lowers oxygenation and
   compliance; PEEP partly reverses it. Urine rises with volume expansion.
 - Maintenance starts no longer add norepinephrine to reach a preset MAP;
@@ -110,7 +112,8 @@
 - Averaged stimulation profiles over each simulation step, and ended
   time-limited profiles after the step in which they finish.
 - Added an arterial pressure waveform whose mean and pulse pressure come from
-  Su MAP and stroke volume, with shared ECG and pleth timing and catheter-transducer dynamics.
+  Su MAP and stroke volume, with shared ECG and pleth timing and
+  catheter-transducer dynamics.
 - Made cardiac waveforms and their history independent of the simulation
   step size.
 - Removed pleth-derived arterial pressure, duplicate pressure reconstruction,
@@ -126,10 +129,10 @@
 
 - Integrated cardiovascular, respiratory, pharmacologic, ventilator, fluid, and
   temperature simulation.
-- Interactive operating-room monitor, guided clinical scenarios, headless runner,
-  and CSV recording.
-- Published component models with documented simulator-specific adaptations.
-- Pulse-oximeter lag and monitor signal validity.
-- Supported adult patient domain of 18 to 70 years.
+- Added an interactive operating-room monitor, guided clinical scenarios,
+  a headless runner, and CSV recording.
+- Used published component models with documented simulator-specific adaptations.
+- Modeled pulse-oximeter lag and monitor signal validity.
+- Supported adults aged 18 to 70 years.
 - Simplified configuration, simulation state, UI, and tests.
-- Python package, continuous integration, and automated PyPI publishing.
+- Added a Python package, continuous integration, and automated PyPI publishing.

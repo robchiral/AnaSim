@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="370" height="60" viewBox="0 0 370 60" role="img" aria-labelledby="title">
+  <title id="title">Run AnaSim in your browser</title>
+  <rect x="0.5" y="0.5" width="369" height="59" rx="8" fill="#171C21" stroke="#48515B"/>
+  <path d="M25 20L25 40L41 30Z" fill="#91B4CC"/>
+  <text x="57" y="37" fill="#E9EDF0" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="600">Run AnaSim in your browser</text>
+</svg>
