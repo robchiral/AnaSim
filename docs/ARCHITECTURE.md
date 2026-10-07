@@ -163,8 +163,9 @@ upper-airway obstruction after loss of consciousness.
 Gas exchange tracks alveolar gas and blood oxygen stores for preoxygenation,
 apnea, and blood loss. Alveolar, arterial, and end-tidal CO2 are separate;
 low CO widens the PaCO2-EtCO2 gap. Oxygen, sevoflurane, and N2O share lung gas
-volume and shunt from perfused closed units. Oxygen calculations use standard
-gas conditions and hemoglobin stores. See
+volume and shunt from perfused closed units. Shunt mixing limits extraction
+to available oxygen, keeping venous oxygen content nonnegative. Oxygen
+calculations use standard gas conditions and hemoglobin stores. See
 [respiratory tests](../tests/test_respiration.py).
 
 ### Ventilation mechanics

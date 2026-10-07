@@ -347,6 +347,11 @@ class RespiratoryModel:
             cap_saturation = self._saturation(cap_pressure)
             cap_derivative = (1.34 * hb * self._n_hill * cap_saturation * (1.0 - cap_saturation)
                               / max(cap_pressure, 1.0) + 0.0031)
+            cap_content = 1.34 * hb * cap_saturation + 0.0031 * cap_pressure
+            extraction = 100.0 * vo2 / max(0.1, cardiac_output)
+            if extraction >= (1.0 - self.shunt_fraction) * cap_content:
+                # At zero venous O2, only the ventilated share changes CaO2.
+                cap_derivative *= 1.0 - self.shunt_fraction
             art_derivative = 1.34 * hb * dsat_dpo2 + 0.0031
             dsat_dpo2 *= cap_derivative / art_derivative
         if lung_volume_l is not None:
@@ -434,14 +439,16 @@ class RespiratoryModel:
 
         Ca = (1-s) Cc + s Cv and Cv = Ca - VO2/Q give
         Ca = Cc - s/(1-s) VO2/Q. Contents include dissolved O2 (mL/dL).
+        Extraction stops at Cv = 0, so Ca cannot fall below (1-s) Cc.
         """
         shunt = self.shunt_fraction
         if shunt == 0.0:
             return end_capillary
         capacity = 1.34 * hb
         extraction = 100.0 * vo2_l_min / max(0.1, cardiac_output)
-        target = max(0.0, capacity * self._saturation(end_capillary) + 0.0031 * end_capillary
-                     - shunt / (1.0 - shunt) * extraction)
+        capillary_content = capacity * self._saturation(end_capillary) + 0.0031 * end_capillary
+        target = max((1.0 - shunt) * capillary_content,
+                     capillary_content - shunt / (1.0 - shunt) * extraction)
         lower, upper = 0.0, end_capillary
         pressure = min(max(previous, lower), upper)
         for _ in range(16):

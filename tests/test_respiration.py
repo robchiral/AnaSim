@@ -54,6 +54,23 @@ def test_low_cardiac_output_widens_the_paco2_etco2_gap(patient):
     assert low_flow.pa_co2 - low_flow.etco2 > normal.pa_co2 - normal.etco2 + 3.0
 
 
+def test_hemorrhage_with_atelectasis_retains_oxygen_from_ventilated_lung(engine_factory):
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", end_on_cardiac_arrest=False), start=True,
+    )
+    engine.set_fgf(10.0, 0.0)
+    engine.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=0, ie="1:2")
+    engine.hemo.add_volume(-0.3 * engine.hemo.blood_volume)
+    for _ in range(240):
+        engine.step(1.0)
+    state, resp = engine.state, engine.resp
+    assert state.co < 2.0
+    assert resp.shunt_fraction > 0.25
+    assert state.fio2 > 0.95
+    # Shunt causes hypoxemia, while ventilated lung still oxygenates blood.
+    assert 60.0 < state.sao2 < 90.0
+
+
 def test_co2_drives_breathing_and_opioids_blunt_it(patient):
     """Babenco 2000: opioids shift the CO2 response right and flatten it."""
     assert _breath(patient, paco2=50.0).drive_central > _breath(patient, paco2=40.0).drive_central

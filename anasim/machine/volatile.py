@@ -26,7 +26,8 @@ class Vaporizer:
 
         # 1 mL of liquid sevoflurane gives about 170-180 mL of vapor.
         vapor_to_liquid_expansion = 180.0
-        vapor_vol_l_min = fgf_l_min * (self.state.setting / 100.0)
+        fraction = self.state.setting / 100.0
+        vapor_vol_l_min = fgf_l_min * fraction / (1.0 - fraction)
         liquid_vol_ml_min = (vapor_vol_l_min * 1000.0) / vapor_to_liquid_expansion
 
         self.state.level -= liquid_vol_ml_min * (dt / 60.0)

@@ -2,6 +2,59 @@ import pytest
 
 from anasim.core.state import SimulationConfig
 from anasim.machine.circuit import CircleSystem
+from anasim.machine.volatile import Vaporizer
+
+
+def test_low_flow_mixture_balances_uptake_spill_and_vaporizer_consumption():
+    """Every supplied gas leaves through patient uptake or the spill valve."""
+    circuit = CircleSystem()
+    circuit.fgf_o2, circuit.fgf_air, circuit.fgf_n2o = 0.8, 0.6, 0.6
+    vaporizer = Vaporizer()
+    vaporizer.set_concentration(4.0)
+    circuit.vaporizer_setting, circuit.vaporizer_on = 4.0, True
+    carrier = circuit.fgf_total()
+    vapor = carrier * 0.04 / 0.96
+
+    circuit.equilibrate(uptake_o2=0.25, fi_agent=0.03)
+    initial_spill = (carrier - 0.25) / 0.97
+    gas = circuit.composition
+    assert (gas.fio2, gas.fi_agent, gas.fin2o, gas.fin2) == pytest.approx((
+        (0.8 + 0.21 * 0.6 - 0.25) / initial_spill,
+        0.03,
+        0.6 / initial_spill,
+        0.79 * 0.6 / initial_spill,
+    ))
+
+    uptake = (0.25, 0.01, 0.05)
+    spill = carrier + vapor - sum(uptake)
+    expected = (
+        (0.8 + 0.21 * 0.6 - uptake[0]) / spill,
+        (vapor - uptake[1]) / spill,
+        (0.6 - uptake[2]) / spill,
+        0.79 * 0.6 / spill,
+    )
+    for _ in range(3600):
+        circuit.step(1.0, *uptake)
+    assert (gas.fio2, gas.fi_agent, gas.fin2o, gas.fin2) == pytest.approx(expected, abs=1e-7)
+
+    initial_liquid = vaporizer.state.level
+    vaporizer.step(60.0, carrier)
+    assert initial_liquid - vaporizer.state.level == pytest.approx(vapor * 1000.0 / 180.0)
+
+
+def test_closed_circuit_stays_stable_until_oxygen_supply_fails():
+    circuit = CircleSystem()
+    circuit.fgf_o2 = 0.25
+    circuit.composition.fio2, circuit.composition.fin2 = 0.8, 0.2
+    # Oxygen supply exactly replaces uptake; no gas spills.
+    for _ in range(60):
+        circuit.step(1.0, uptake_o2=0.25, uptake_agent=0.0)
+    assert circuit.composition.fio2 == pytest.approx(0.8)
+
+    circuit.oxygen_supply_connected = False
+    for _ in range(60):
+        circuit.step(1.0, uptake_o2=0.25, uptake_agent=0.0)
+    assert 0.0 < circuit.composition.fio2 < 0.8
 
 
 def test_oxygen_supply_failure_stops_o2_and_n2o_delivery():
@@ -61,6 +114,7 @@ def test_engine_volatile_washin_washout(engine_factory):
 
     assert engine.state.mac < mac_on * 0.7, "MAC should decrease with washout/high FGF"
     assert engine.state.fi_sevo < fi_sevo * 0.1
+    assert engine.state.fio2 > 0.99
 
 
 def test_engine_n2o_washin_washout(engine_factory):
