@@ -1,7 +1,7 @@
 # AnaSim
 
-AnaSim is an adult anesthesia simulator for teaching and research. It runs
-published drug and cardiorespiratory models in real time, with a patient
+AnaSim is an adult anesthesia simulator for education and research. It runs
+published pharmacology and cardiorespiratory models in real time, with a patient
 monitor and anesthesia machine interface.
 
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
@@ -11,7 +11,7 @@ monitor and anesthesia machine interface.
 
 [![Run AnaSim in your browser](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/run_anasim.svg)](https://robche.com/AnaSim/)
 
-![AnaSim running the guided TIVA induction](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/anasim_demo.gif)
+![AnaSim patient monitor and controls during guided induction](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/anasim_demo.gif)
 
 > [!WARNING]
 > AnaSim is for education and research. Do not use it to guide clinical care.
@@ -20,59 +20,67 @@ monitor and anesthesia machine interface.
 
 Open [robche.com/AnaSim](https://robche.com/AnaSim/) in your browser.
 
-To run locally, install with Python 3.10 or later.
+For local use, install with Python 3.10 or later.
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 python -m pip install anasim-simulator
 anasim
 ```
 
-`anasim` opens a local browser session and works offline. Stop the server with Ctrl+C.
+In Windows Command Prompt, use `python` in place of `python3` and activate with
+`.venv\Scripts\activate.bat`.
+`anasim` opens the interface in your browser and works offline after installation.
+Press Ctrl+C in the terminal to stop the server.
 
-## Use a session
+## Start a session
 
-For a first session, choose Guided scenario and TIVA induction. For open
-practice, choose Open simulation and either Awake before induction or
-Anesthetized maintenance. Choose Start simulation, then Start below the monitor.
+For a first session, choose Guided scenario and the total intravenous anesthesia
+(TIVA) induction scenario. Choose Start simulation, then Start below the monitor.
+For open practice, choose Open simulation and either Awake before induction or
+Anesthetized maintenance.
 
-Manual infusion rates are the default. Select Allow TCI during setup to use
-target controls and TCI maintenance starts. Scenario instructions follow this
-setting. Propofol and remifentanil rates use mcg/kg/min.
+Manual infusion rates are the default. To use target-controlled infusion (TCI),
+select Allow TCI during setup. Concentration targets, maintenance starts, and
+guided dosing instructions follow this setting. Propofol and remifentanil
+infusion rates use mcg/kg/min.
 
-Use Apply or Enter to save settings and Escape to cancel edits. For mechanical
+Use Apply or Enter to apply settings and Escape to cancel edits. For mechanical
 ventilation, select a facemask or tracheal tube, apply a mode, and choose
 Start ventilator.
 
-Local CSV recordings go to `recordings/` where you launched `anasim`;
-hosted recordings download when stopped.
+Choose Record CSV to record a session. Local recordings go to `recordings/` in
+the directory where you launched `anasim`. In the hosted app, choose Stop
+recording to download the file.
 
 ## Features
 
-- Drugs include propofol, remifentanil, fentanyl, midazolam, etomidate, ketamine,
-  lidocaine, sevoflurane, rocuronium, sugammadex, norepinephrine, epinephrine,
-  phenylephrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, and
-  glycopyrrolate. Delivery includes bolus, infusion, and effect-site
-  target-controlled infusion (TCI) where supported.
-- Machine options include a facemask or tracheal tube, fresh gas flow, a
-  vaporizer, bag-mask ventilation, and VCV, PCV, PCV-VG, SIMV, PSV, or CPAP.
-- The monitor shows ECG, SpO₂, arterial pressure, NIBP, capnography,
-  ventilation waveforms and loops, gas values, BIS, TOF, temperature,
-  fluid balance, and alarms.
-- Events include fluids and blood, surgical stimulation, airway obstruction,
-  bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias.
-- Guided scenarios cover TIVA and inhalational induction and emergence,
-  hemorrhage, anaphylaxis, septic shock, and oxygen supply failure.
+| Feature | Supported controls and measurements |
+|---------|-------------------------------------|
+| Anesthesia | Propofol, remifentanil, fentanyl, midazolam, etomidate, ketamine, lidocaine, sevoflurane, nitrous oxide, rocuronium, and sugammadex |
+| Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, and glycopyrrolate |
+| Anesthesia machine | Facemask or tracheal tube, fresh gas flow, vaporizer, and bag-mask ventilation |
+| Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
+| Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF), temperature, fluid balance, and alarms |
+| Events | Fluids and blood, surgical stimulation, airway obstruction, bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias |
+| Guided scenarios | TIVA and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, and oxygen supply failure |
+
+Drug delivery supports boluses, manual infusions, and plasma or effect-site TCI,
+depending on the drug.
 
 ## Limits
 
-AnaSim supports adults aged 18 to 70 years, with [input limits](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md#fields).
-[Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md#supported-patient-domain)
-describes source populations and teaching calibrations. Acid-base balance,
-lactate, tissue oxygen debt, machine pneumatics, and CPR are not modeled.
+AnaSim supports adults aged 18 to 70 years within the
+[input limits](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md#fields).
+The [architecture guide](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md#supported-patient-domain)
+describes source populations, simulator calibrations, and model limits.
+Acid-base balance, lactate, tissue oxygen debt, machine pneumatics, and
+cardiopulmonary resuscitation are not modeled.
 
 ## Headless use
+
+Run a 60-second simulation and save a CSV recording.
 
 ```bash
 anasim --mode headless --duration 60 --record
