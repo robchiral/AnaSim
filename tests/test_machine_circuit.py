@@ -41,6 +41,11 @@ def test_low_flow_mixture_balances_uptake_spill_and_vaporizer_consumption():
     vaporizer.step(60.0, carrier)
     assert initial_liquid - vaporizer.state.level == pytest.approx(vapor * 1000.0 / 180.0)
 
+    # The last partial dose still enters the circuit when the reservoir empties.
+    vaporizer.state.level = 0.01
+    delivered = vaporizer.step(60.0, carrier) / 100.0
+    assert carrier * delivered / (1.0 - delivered) == pytest.approx(0.01 * 0.18)
+
 
 def test_closed_circuit_stays_stable_until_oxygen_supply_fails():
     circuit = CircleSystem()

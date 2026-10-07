@@ -270,12 +270,13 @@ def step_machine(engine: "SimulationEngine", dt: float) -> tuple[float, float]:
     circuit = engine.circuit
     vaporizer = engine.vaporizer
     if engine._volatile_enabled:
-        vaporizer.step(dt, circuit.fgf_total())
+        delivered_setting = vaporizer.step(dt, circuit.fgf_total())
     else:
         vaporizer.set_concentration(0.0)
+        delivered_setting = 0.0
     circuit.vaporizer_agent = vaporizer.state.agent
-    circuit.vaporizer_setting = vaporizer.state.setting
-    circuit.vaporizer_on = vaporizer.state.is_on
+    circuit.vaporizer_setting = delivered_setting
+    circuit.vaporizer_on = delivered_setting > 0.0
 
     fi_sevo, fi_n2o = sync_inspired_gas(engine)
     if engine.state.airway_mode == AirwayType.NONE:
@@ -458,7 +459,7 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     # Gas exchange uses recent exhaled breaths, so it lags at least one breath.
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)
     if vent_active:
-        total_peep_effect = vent.settings.peep + spirometry.auto_peep
+        total_peep_effect = engine.resp_mech.peep + spirometry.auto_peep
     else:
         total_peep_effect = spirometry.auto_peep if bag_mask_active else 0.0
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.

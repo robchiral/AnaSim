@@ -35,7 +35,6 @@ class TOFModel:
 
         self.ce = 0.0
         self.ce_central = 0.0
-        self.prev_cp = 0.0
         self.sugammadex_amount_umol = 0.0
 
     def step_recovery(self, dt_sec: float, cp_roc_mg_l: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
@@ -44,17 +43,14 @@ class TOFModel:
             self.sugammadex_amount_umol *= np.exp(-self.kel_s * dt_min)
 
         cp_free = self._compute_free_rocuronium(cp_roc_mg_l)
-        rising = cp_free >= self.prev_cp
-        self.prev_cp = cp_free
-
-        ke0 = self._ke0(self.ce, cp_free, rising)
-        self.ce = max(0.0, self.ce + ke0 * (cp_free - self.ce) * dt_min)
-        ke0_central = self._ke0(self.ce_central, cp_free, rising) * self.central_ke0_ratio
-        self.ce_central = max(0.0, self.ce_central + ke0_central * (cp_free - self.ce_central) * dt_min)
+        ke0 = self._ke0(self.ce, cp_free)
+        self.ce += (cp_free - self.ce) * -np.expm1(-ke0 * dt_min)
+        ke0_central = self._ke0(self.ce_central, cp_free) * self.central_ke0_ratio
+        self.ce_central += (cp_free - self.ce_central) * -np.expm1(-ke0_central * dt_min)
         return self.compute_tof_from_ce(self.ce, mac_sevo, mac_n2o)
 
-    def _ke0(self, ce: float, cp_free: float, rising: bool) -> float:
-        if rising:
+    def _ke0(self, ce: float, cp_free: float) -> float:
+        if cp_free >= ce:
             return self.ke0_onset
         if ce > cp_free * 3.0 and self.sugammadex_amount_umol > 0:
             return self.reversal_ke0
@@ -98,7 +94,6 @@ class TOFModel:
     def reset(self):
         self.ce = 0.0
         self.ce_central = 0.0
-        self.prev_cp = 0.0
         self.sugammadex_amount_umol = 0.0
 
 

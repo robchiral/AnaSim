@@ -296,7 +296,9 @@ class RespiratoryModel:
         perfusion_ratio = 1.0
         if self.baseline_co_l_min > 0:
             perfusion_ratio = clamp(cardiac_output / self.baseline_co_l_min, 0.05, 1.2)
-        if mech_rr > 0:
+        if measured_breaths:
+            vt_for_gradient_l = mech_vt_l
+        elif mech_rr > 0:
             vt_for_gradient_l = max(mech_vt_l, current_vt / 1000.0)
         else:
             vt_for_gradient_l = current_vt / 1000.0

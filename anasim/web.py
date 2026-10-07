@@ -437,7 +437,7 @@ class WebSession:
             "fgf": {"o2": circuit.fgf_o2, "air": circuit.fgf_air, "n2o": circuit.fgf_n2o},
             "o2_connected": circuit.oxygen_supply_connected,
             "circuit_fio2": _num(circuit.composition.fio2, 4),
-            "vaporizer": circuit.vaporizer_setting,
+            "vaporizer": engine.vaporizer.state.setting,
             "bag_mask": engine.bag_mask_active,
             "vent": {
                 "on": engine.vent.is_on,

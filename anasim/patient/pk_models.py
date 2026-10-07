@@ -96,21 +96,30 @@ class MammillaryPK:
         self.cl3 = self.cl3_base * distribution_scale
 
     def step(self, dt_sec: float, input_rate_per_sec: float, cl1_scale: float = 1.0) -> PKState:
-        """Advance concentrations by one explicit Euler step."""
+        """Advance with simultaneous Euler steps that conserve compartment transfers."""
         s = self.state
         if not input_rate_per_sec and not (s.c1 or s.c2 or s.c3 or s.ce):
             return s  # Skip drugs with no input or residual concentration.
-        flux2 = self.cl2 * (s.c1 - s.c2) if self.v2 > 0 else 0.0
-        flux3 = self.cl3 * (s.c1 - s.c3) if self.v3 > 0 else 0.0
-        elimination = self.cl1 * cl1_scale * s.c1
-        dt_min = dt_sec / 60.0
-        dce = self.ke0 * (s.c1 - s.ce)
-        s.c1 = max(0.0, s.c1 + (input_rate_per_sec * 60.0 - elimination - flux2 - flux3) / self.v1 * dt_min)
-        if self.v2 > 0:
-            s.c2 = max(0.0, s.c2 + flux2 / self.v2 * dt_min)
-        if self.v3 > 0:
-            s.c3 = max(0.0, s.c3 + flux3 / self.v3 * dt_min)
-        s.ce = max(0.0, s.ce + dce * dt_min)
+        cl2 = self.cl2 if self.v2 > 0 else 0.0
+        cl3 = self.cl3 if self.v3 > 0 else 0.0
+        elimination_cl = self.cl1 * cl1_scale
+        fastest_rate = max((elimination_cl + cl2 + cl3) / self.v1,
+                           self.k21, self.k31, self.ke0)
+        # At most one second and 2.5% turnover per interval, including after
+        # blood-volume scaling. Clipping an overshoot would create drug mass.
+        substeps = max(1, math.ceil(dt_sec * max(1.0, fastest_rate / 1.5)))
+        dt_min = dt_sec / (60.0 * substeps)
+        for _ in range(substeps):
+            flux2 = cl2 * (s.c1 - s.c2)
+            flux3 = cl3 * (s.c1 - s.c3)
+            elimination = elimination_cl * s.c1
+            dce = self.ke0 * (s.c1 - s.ce)
+            s.c1 += (input_rate_per_sec * 60.0 - elimination - flux2 - flux3) / self.v1 * dt_min
+            if self.v2 > 0:
+                s.c2 += flux2 / self.v2 * dt_min
+            if self.v3 > 0:
+                s.c3 += flux3 / self.v3 * dt_min
+            s.ce += dce * dt_min
         return s
 
     def get_ss_matrices(self) -> tuple[np.ndarray, np.ndarray]:

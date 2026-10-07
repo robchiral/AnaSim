@@ -54,6 +54,15 @@ def test_low_cardiac_output_widens_the_paco2_etco2_gap(patient):
     assert low_flow.pa_co2 - low_flow.etco2 > normal.pa_co2 - normal.etco2 + 3.0
 
 
+def test_measured_shallow_breaths_widen_the_co2_gap(patient):
+    """Measured breaths set the dead-space fraction, not the unassisted pattern."""
+    state = RespiratoryModel(patient).step(
+        0.0, ce_prop=0.0, ce_remi=0.0, measured_breaths=True,
+        mech_rr=12.0, mech_vt_l=0.2, mech_vent_mv=2.4,
+    )
+    assert state.pa_co2 - state.etco2 > 10.0
+
+
 def test_hemorrhage_with_atelectasis_retains_oxygen_from_ventilated_lung(engine_factory):
     engine = engine_factory(
         config=SimulationConfig(mode="steady_state", end_on_cardiac_arrest=False), start=True,

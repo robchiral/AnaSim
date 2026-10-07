@@ -94,7 +94,9 @@ vasoactive drugs, a baroreflex, septic shock, and anaphylaxis. Su drug-effect
 parameters keep their published values, and concentration-step responses match
 an independent integration of the published equations. Baseline HR and MAP are
 resting values, so the study's initial anxiety-related HR and SV transients are
-omitted. Cardiovascular propofol and opioid effects use plasma concentrations;
+omitted. Pressure feedback includes rhythm, hypoxia, and stimulation effects,
+and holds its last value during arrest.
+Cardiovascular propofol and opioid effects use plasma concentrations;
 hypnosis and respiratory depression use effect-site concentrations. Applying
 fentanyl's remifentanil equivalent to cardiovascular effects is a simulator
 approximation.
@@ -146,8 +148,8 @@ See [adjunct tests](../tests/test_anesthetic_adjuncts.py).
 
 [`TOFModel`](../anasim/patient/pd/nmba.py) separates adductor pollicis from
 diaphragm and larynx effects, allowing breathing to recover before TOF. Both
-central muscles share laryngeal kinetics. It models spontaneous recovery and
-simplified sugammadex binding, with calibrated onset and recovery constants.
+central muscles share laryngeal kinetics. Plasma-to-muscle gradients select
+calibrated onset or recovery rates; sugammadex binding accelerates recovery.
 See [pharmacology tests](../tests/test_pharmacology.py).
 
 ### Respiration

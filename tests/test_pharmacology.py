@@ -1,10 +1,12 @@
 import numpy as np
 import pytest
+from scipy.linalg import expm
 
 from anasim.core.drug_registry import DRUG_REGISTRY
 from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import TOFModel
 from anasim.patient.pk_models import (
+    EpinephrinePK,
     MilrinonePK,
     NorepinephrinePK,
     PropofolPKEleveld,
@@ -34,6 +36,17 @@ def _tof_trace(patient, roc_mg_kg, seconds):
 def _first_second(trace, condition, start=0):
     hits = np.flatnonzero(condition(trace[start:]))
     return start + int(hits[0]) if hits.size else None
+
+
+@pytest.mark.parametrize("model_type", [EpinephrinePK, RemifentanilPKMinto])
+def test_bolus_pk_with_reduced_volume_and_large_steps(patient, model_type):
+    model = model_type(patient)
+    model.update_hemodynamics(0.2, 0.5)
+    model.state.c1 = 10.0
+    matrix, _ = model.get_ss_matrices()
+    expected = expm(matrix * 0.5) @ model.state_vector()
+    model.step(30.0, 0.0)
+    assert model.state_vector() == pytest.approx(expected, rel=0.05, abs=0.01)
 
 
 def test_eleveld_reference_adult_matches_publication():
@@ -164,6 +177,15 @@ def test_sugammadex_reversal_time(
         engine.step(1.0)
     assert recovered is not None
     assert recovered <= max_reversal_s
+
+
+def test_sugammadex_reversal_continues_once_free_rocuronium_reaches_zero(patient):
+    model = TOFModel(patient)
+    model.ce = model.ce_central = 4.0
+    model.give_sugammadex(4.0 * patient.weight)
+    for _ in range(4):
+        model.step_recovery(30.0, 0.0)
+    assert model.compute_tof_from_ce(model.ce) > 60.0
 
 
 class TestNeuromuscularEffectSite:

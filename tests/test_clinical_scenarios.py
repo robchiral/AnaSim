@@ -35,12 +35,12 @@ class TestClinicalAcceptance:
         assert hypnosis_time is not None
         assert engine.state.map >= 60.0
 
-        # FDA label: 0.6 mg/kg rocuronium, with intubation at 60-90 seconds.
+        # Label: 0.6 mg/kg reaches 80% block in a median 1.0 min (range 0.4-6).
         engine.give_drug_bolus("Rocuronium", 0.6 * engine.patient.weight)
         block_time = _first_time(engine, 90, lambda e: e.state.tof < 5.0)
 
         assert block_time is not None
-        assert 60 <= block_time <= 90
+        assert 24 <= block_time <= 90
 
     @pytest.mark.parametrize("tci_enabled", [False, True], ids=["manual", "tci"])
     def test_maintenance_requires_explicit_vasopressor_treatment(self, engine_factory, tci_enabled):

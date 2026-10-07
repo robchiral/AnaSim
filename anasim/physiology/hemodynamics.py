@@ -64,6 +64,7 @@ class HemodynamicModel:
         self.smoothed_baro_hr = 0.0
         self._baro_setpoint = patient.baseline_map
         self._stim_map = 0.0  # MAP attributable to noxious stimulation
+        self._rmap_fb = 1.0  # Turnover feedback, (MAP / baseline) ** fb
         self.myocardial_hypoxia = 0.0  # 0-1 depression of rate and contractility
 
         self.sv_star = self.base_sv
@@ -788,20 +789,23 @@ class HemodynamicModel:
         self.vasopressor_sv_factor = combined_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (combined_svr_factor - 1.0)
 
-        # Su feedback senses RMAP = HR * SV * TPR relative to baseline, including
-        # drug, preload, and this step's stimulation effects.
-        current_hr = self._calc_hr()
-        term = self._hr_sv_factor(current_hr)
-        raw_sv = (self.sv_star + self.tde_sv) * term
-        current_sv = raw_sv * f_frank_starling * combined_sv_factor
+        # Feedback senses the same circulation as the outputs, including
+        # rhythm, hypoxia, preload, and this step's stimulation. Without
+        # output it holds its last value instead of winding up during arrest.
+        self.dist_hr, self.dist_sv, self.dist_svr = dist_hr, dist_sv, dist_svr
         distributive_svr_drop = (self.sepsis_svr_drop_wood * sepsis_sev +
                                  self.anaphylaxis_svr_drop_wood * anaph_sev)
         distributive_tpr_offset = -distributive_svr_drop / 1000.0
-        effective_tpr = self.tpr + self.delta_tpr_vasopressors + (dist_svr / 1000.0) + distributive_tpr_offset
-        effective_tpr = max(0.006, effective_tpr)
-
-        rmap = clamp((current_hr * current_sv * effective_tpr) * self._inv_base_rmap_denom, 0.1, 5.0)
-        rmap_fb = rmap ** self.fb
+        feedback_state = self._compute_state(
+            preload_sv_factor=f_frank_starling,
+            sepsis_sev=sepsis_sev,
+            anaph_sev=anaph_sev,
+            distributive_tpr_offset=distributive_tpr_offset,
+        )
+        if feedback_state.map > 0.0:
+            rmap = clamp(feedback_state.map * self._inv_base_rmap_denom, 0.1, 5.0)
+            self._rmap_fb = rmap ** self.fb
+        rmap_fb = self._rmap_fb
 
         # Thermoregulatory vasoconstriction below 36.5 °C. Anesthesia lowers the
         # threshold by up to 2.5 °C at 1 MAC or propofol 4 mcg/mL (Sessler 2000).
@@ -836,10 +840,6 @@ class HemodynamicModel:
         self.hr_star += d_hr_star * dt_min
         self.tde_hr -= self.k_drift * self.tde_hr * dt_min
         self.tde_sv -= self.k_drift * self.tde_sv * dt_min
-
-        self.dist_hr = dist_hr
-        self.dist_sv = dist_sv
-        self.dist_svr = dist_svr
 
         hr_base_for_state = self._calc_hr()
         computed_state = self._compute_state(
