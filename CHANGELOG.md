@@ -4,7 +4,9 @@ Ventilation abbreviations follow the [README](README.md#features).
 
 ## Unreleased
 
-- Revised the setup, CLI, architecture, and reference guides.
+- Removed the unused `simulation_speed`, `pk_model_remi`, `hemo_model`, and
+  `resp_model` configuration fields and the `asa` patient input. The browser
+  speed control sets the real-time multiplier.
 
 ## 1.4 - 2026-10-06
 

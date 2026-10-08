@@ -541,16 +541,13 @@ class WebSession:
         self.engine.set_oxygen_supply_connected(connected)
 
     def _cmd_vaporizer(self, percent: float):
-        self.engine.set_vaporizer(self.engine.active_agent, float(percent))
+        self.engine.set_vaporizer(float(percent))
 
     def _cmd_bag_mask(self, active: bool):
         # Bag-mask and the ventilator are mutually exclusive.
         if active and self.engine.vent.is_on:
             self.engine.set_vent_power(False)
-        if active:
-            self.engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.5)
-        else:
-            self.engine.set_bag_mask_ventilation(False)
+        self.engine.set_bag_mask_ventilation(active)
 
     def _cmd_vent_power(self, on: bool):
         if on and self.engine.bag_mask_active:
@@ -561,23 +558,9 @@ class WebSession:
         unknown = set(fields) - set(VENT_FIELDS)
         if unknown:
             raise ValueError(f"Unknown ventilator setting(s): {', '.join(sorted(unknown))}")
-        if "mode" in fields and fields["mode"] not in MODES:
-            raise ValueError(f"Unsupported ventilator mode {fields['mode']!r}")
         if "ie" in fields and fields["ie"] not in IE_RATIOS:
             raise ValueError(f"Unsupported I:E ratio {fields['ie']!r}")
-        current = self.engine.vent.settings
-        settings = {name: getattr(current, name) for name in VENT_FIELDS} | fields
-        numbers = {name: float(settings[name]) for name in VENT_FIELDS if name not in ("mode", "ie")}
-        if not all(map(math.isfinite, numbers.values())):
-            raise ValueError("Ventilator settings must be finite numbers")
-        self.engine.set_vent_settings(
-            numbers.pop("rr"),
-            numbers.pop("tv") / 1000.0,
-            numbers.pop("peep"),
-            settings["ie"],
-            mode=settings["mode"],
-            **numbers,
-        )
+        self.engine.vent.update_settings(**fields)
 
     def _cmd_drug_rate(self, key: str, rate: float):
         if not math.isfinite(float(rate)):

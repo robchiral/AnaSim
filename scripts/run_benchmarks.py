@@ -6,7 +6,6 @@ from functools import partial
 from pathlib import Path
 from statistics import mean
 from time import perf_counter
-from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -58,7 +57,7 @@ def _print_profile(name: str, profiler, limit: int) -> None:
         print(f"\n[Profile] {name}\n{output}\n")
 
 
-def _resolve_profile_path(template: Optional[str], bench: str, multi: bool) -> Optional[str]:
+def _resolve_profile_path(template: str | None, bench: str, multi: bool) -> str | None:
     if not template:
         return None
     if "{bench}" in template:

@@ -1,7 +1,8 @@
 """Typed registry of guided simulation scenarios."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Literal
+from typing import Literal
 
 from .anaphylaxis import create_anaphylaxis_scenario
 from .base import Scenario, ScenarioStep

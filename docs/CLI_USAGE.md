@@ -45,7 +45,6 @@ with balanced maintenance.
 | `weight` | 70 | 50 to 100 kg |
 | `height` | 170 | 150 to 200 cm; BMI 18 to 32 kg/m² |
 | `sex` | `"male"` | `"male"` or `"female"` |
-| `asa` | 1 | ASA physical status, integer 1 to 5 |
 | `baseline_temp` | 37 | Core temperature, 25 to 42 °C |
 | `baseline_hb` | 13.5 | Hemoglobin, 6 to 20 g/dL |
 | `baseline_hct` | `null` | Hematocrit, 0.18 to 0.60 as a fraction; `null` derives it from hemoglobin |
@@ -69,11 +68,10 @@ See [patient limits and source cohorts](ARCHITECTURE.md#supported-patient-domain
 | `tci_enabled` | `false` | Enable target-controlled infusion (TCI) and use it at maintenance startup |
 | `dt` | 0.01 | Positive engine step in seconds |
 | `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
-| `simulation_speed` | 1.0 | Real-time multiplier for UI sessions |
 | `arterial_line_enabled` | `true` | Display continuous arterial pressure |
 | `end_on_cardiac_arrest` | `false` | End at modeled [cardiac arrest](ARCHITECTURE.md#hemodynamics) |
 | `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr; `null` uses 1 mL/kg/hr |
-| `volatile_agents` | `["sevoflurane"]` | `["sevoflurane"]` or `[]` to disable the vaporizer |
+| `sevoflurane_enabled` | `true` | Enable the sevoflurane vaporizer; `"balanced"` requires `true` |
 | `disturbance_profile` | `null` | `"stim_intubation_pulse"`, `"stim_sustained_surgery"`, or `null` |
 
 #### Models
@@ -85,13 +83,13 @@ and [Model notes](ARCHITECTURE.md#model-notes) for assumptions and limits.
 | Field | Default | Accepted values |
 |-------|---------|-----------------|
 | `pk_model_propofol` | `"Eleveld"` | `"Marsh"`, `"Schnider"`, `"Eleveld"` |
-| `pk_model_remi` | `"Minto"` | `"Minto"` |
 | `bis_model` | `"Bouillon"` | `"Bouillon"`, `"Eleveld"`, `"Fuentes"`, `"Yumuk"` |
-| `hemo_model` | `"Su"` | `"Su"` |
-| `resp_model` | `"SingleCompartment"` | `"SingleCompartment"` |
 | `pk_model_nore` | `"Li"` | `"Li"`, `"Beloeil"` |
 | `pk_model_epi` | `"HealthyAdult"` | `"HealthyAdult"`, `"Abboud"` |
 | `loc_model` | `"Kern"` | `"Kern"`, `"Mertens"`, `"Johnson"` |
+
+Remifentanil uses Minto PK, hemodynamics use Su, and respiration uses the
+single-compartment model.
 
 ## Headless example
 
@@ -146,6 +144,7 @@ print(state.time, state.pa_co2, state.display_etco2)
 
 `set_vent_settings(vt=...)` takes liters; `Patient.baseline_vt` takes mL.
 Use `set_vent_power(True)` to start the ventilator after applying its settings.
+`set_vaporizer(percent)` sets the sevoflurane dial as a percentage.
 `set_drug_rate(key, rate)` uses the [registry's units](../anasim/core/drug_registry.py).
 Propofol and remifentanil rates are in mcg/kg/min using total body weight;
 vasopressor rates are absolute. `enable_tci()` requires `tci_enabled=True`.

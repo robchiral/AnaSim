@@ -23,7 +23,6 @@ class CircleSystem:
         self.fgf_air = 0.0
         self.fgf_n2o = 0.0
         self.oxygen_supply_connected = True
-        self.vaporizer_agent = "Sevo"
         self.vaporizer_setting = 0.0  # %
         self.vaporizer_on = False
 

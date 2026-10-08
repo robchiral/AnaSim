@@ -5,9 +5,8 @@ esmolol, mU/sec for vasopressin, and ug/sec for the other drugs.
 """
 
 import math
-from typing import Dict, Tuple
 
-_RATE_UNIT_ALIASES: Dict[str, str] = {
+_RATE_UNIT_ALIASES: dict[str, str] = {
     "mg/s": "mg/sec",
     "mg/second": "mg/sec",
     "mg/h": "mg/hr",
@@ -19,7 +18,7 @@ _RATE_UNIT_ALIASES: Dict[str, str] = {
     "mu/s": "mu/sec",
 }
 
-_RATE_CONVERSIONS: Dict[Tuple[str, str], float] = {
+_RATE_CONVERSIONS: dict[tuple[str, str], float] = {
     ("mg/hr", "mg/sec"): 1.0 / 3600.0,
     ("mg/min", "mg/sec"): 1.0 / 60.0,
     ("mg/hr", "ug/sec"): 1000.0 / 3600.0,

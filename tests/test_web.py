@@ -40,9 +40,20 @@ def test_ventilator_settings_survive_bag_mask_handover():
     vent = parse(session.advance(0.0))["controls"]["vent"]
     assert not vent["on"]
     assert (vent["mode"], vent["p_insp"], vent["peep"], vent["p_max"], vent["trigger"]) == ("PCV", 18, 8, 35, 2.5)
-    for bad in ({"mode": "SIMV"}, {"p_max": 8}, {"t_insp": 0}):
+    invalid_updates = (
+        {"mode": "SIMV"},
+        {"p_max": 8},
+        {"t_insp": 0},
+        {"rr": 18, "ie": "1:0"},
+        {"rr": 18, "tv": float("nan")},
+        {"rr": 18, "tv": None},
+        {"rr": 18, "p_support": float("inf")},
+        {"rr": 18, "unknown": 1},
+    )
+    for bad in invalid_updates:
         with pytest.raises(ValueError):
             cmd(session, "vent", **bad)
+        assert parse(session.advance(0.0))["controls"]["vent"] == vent
 
     cmd(session, "vent_power", on=True)
     cmd(session, "run", running=True)

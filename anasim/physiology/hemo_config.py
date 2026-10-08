@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -76,7 +75,7 @@ class HemodynamicConfig:
     venous_compliance: float = 100.0  # mL/mmHg
     mcfp_floor: float = 1.0
     # Fixed urine output (mL/min); overrides uop_ml_kg_hr when set.
-    vol_clearance: Optional[float] = None
+    vol_clearance: float | None = None
     # Urine output (mL/kg/hr), scaled by MAP and renal function.
     uop_ml_kg_hr: float = 0.5
     # Urine (mL/min) per unit fractional blood-volume expansion, awake (fit to

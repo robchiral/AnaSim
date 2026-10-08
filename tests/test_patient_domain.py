@@ -150,7 +150,6 @@ def test_invalid_patient_values_are_rejected():
         ({"height": "unknown"}, "height"),
         ({"height": 200.1}, "height"),
         ({"sex": "other"}, "sex"),
-        ({"asa": 2.5}, "asa"),
         ({"baseline_hb": 5.9}, "baseline_hb"),
         ({"baseline_hct": 0.61}, "baseline_hct"),
         ({"baseline_hb": 8.0, "baseline_hct": 0.42}, "grossly inconsistent"),
@@ -169,9 +168,9 @@ def test_invalid_simulation_config_is_rejected():
         ({"pk_model_propofol": []}, "pk_model_propofol"),
         ({"pk_model_epi": "Clutter"}, "pk_model_epi"),
         ({"pk_model_nore": "Oualha"}, "pk_model_nore"),
-        ({"resp_model": "legacy"}, "resp_model"),
-        ({"volatile_agents": None}, "volatile_agents"),
-        ({"volatile_agents": [{}]}, "volatile_agents"),
+        ({"loc_model": "unknown"}, "loc_model"),
+        ({"sevoflurane_enabled": "false"}, "sevoflurane_enabled"),
+        ({"maint_type": "balanced", "sevoflurane_enabled": False}, "sevoflurane_enabled"),
     )
     for config_kwargs, field_name in invalid_values:
         with pytest.raises(ValueError, match=field_name):

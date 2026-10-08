@@ -31,8 +31,8 @@ class VolatilePK:
         lambda_b_g: float,
         lambda_t_b_vrg: float = 1.6,
         mac_40: float = 2.0,
-        lambda_t_b_mus: float = None,
-        lambda_t_b_fat: float = None,
+        lambda_t_b_mus: float | None = None,
+        lambda_t_b_fat: float | None = None,
     ):
         self.patient = patient
         self.name = name

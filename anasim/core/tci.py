@@ -36,7 +36,6 @@ class TCIController:
     def __init__(
         self,
         pk_model,
-        drug_name: str = "",
         target_compartment: str = "effect_site",
         max_rate: float = 1200.0,
         sampling_time: float = 1.0,
@@ -45,8 +44,7 @@ class TCIController:
         """Build a controller for pk_model.
 
         Args:
-            pk_model: PK model exposing get_ss_matrices(), state_fields, and state_vector().
-            drug_name: Drug label for the controller.
+            pk_model: PK model exposing get_ss_matrices() and state_vector().
             target_compartment: "plasma" or "effect_site".
             max_rate: Pump limit in model units per second.
             sampling_time: Internal state-estimate step (s).
@@ -54,7 +52,6 @@ class TCIController:
         """
         if sampling_time > control_time:
             raise ValueError("Sampling time cannot be larger than control time")
-        self.drug_name = drug_name
         self.target_compartment = target_compartment
         self.max_rate = max_rate
         self.sampling_time = sampling_time
@@ -69,7 +66,6 @@ class TCIController:
     def _load_pk_model(self, pk_model) -> None:
         A_min, B = pk_model.get_ss_matrices()
         A = A_min / 60.0  # B already maps a per-second input to concentration per second.
-        self.state_fields = tuple(pk_model.state_fields)
         self.n_state = A.shape[0]
         self.target_id = 0 if self.target_compartment == "plasma" else self.n_state - 1
         self.Ad, self.Bd = _discretize(A, B, self.sampling_time)
@@ -107,10 +103,6 @@ class TCIController:
     def sync_state_estimate(self, pk_model) -> None:
         """Seed the internal state estimate from the live PK compartments."""
         self.x = pk_model.state_vector().reshape(-1, 1)
-
-    def set_state(self, **concentrations: float) -> None:
-        """Set the state estimate by compartment name (c1, c2, c3, ce)."""
-        self.x = np.array([[concentrations.get(name, 0.0)] for name in self.state_fields])
 
     def set_target(self, target: float) -> None:
         """Change the target and recompute the rate at the next step."""

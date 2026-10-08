@@ -5,8 +5,9 @@ count only actions taken while the objective is active. State objectives
 ("MAP ≥ 65") read the current engine state.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Literal
 
 from anasim.core.action_log import (
     ACTION_AIRWAY,

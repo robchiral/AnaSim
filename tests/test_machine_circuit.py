@@ -84,6 +84,24 @@ def test_oxygen_supply_failure_stops_o2_and_n2o_delivery():
     assert circuit.fgf_n2o == 4.0
 
 
+def test_disabling_sevoflurane_preserves_nitrous_oxide_delivery(engine_factory):
+    engine = engine_factory(config=SimulationConfig(sevoflurane_enabled=False), start=True)
+    engine.set_airway_mode("ETT")
+    engine.set_vent_settings(rr=12, vt=0.5, peep=5, ie="1:2", mode="VCV")
+    engine.set_vent_power(True)
+    engine.set_fgf(2.0, 0.0, 2.0)
+    engine.set_vaporizer(4.0)
+    liquid_level = engine.vaporizer.state.level
+    for _ in range(120):
+        engine.step(0.5)
+
+    assert engine.state.fi_sevo == engine.state.mac_sevo == 0.0
+    assert not engine.circuit.vaporizer_on
+    assert engine.vaporizer.state.level == liquid_level
+    assert engine.state.fi_n2o > 10.0
+    assert engine.state.mac_n2o > 0.0
+
+
 def test_engine_volatile_washin_washout(engine_factory):
     """Circuit + volatile PK integration: vaporizer raises MAC, washout lowers it."""
     config = SimulationConfig(mode="awake")
@@ -93,7 +111,7 @@ def test_engine_volatile_washin_washout(engine_factory):
     engine.set_vent_power(True)
     engine.set_fgf(8.0, 0.0)
 
-    engine.set_vaporizer("Sevoflurane", 2.0)
+    engine.set_vaporizer(2.0)
     initial_level = engine.vaporizer.state.level
     for _ in range(300):  # 5 min wash-in
         engine.step(1.0)

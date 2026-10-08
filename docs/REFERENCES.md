@@ -64,7 +64,6 @@ Ventilation abbreviations follow the [README](../README.md#features).
 
 ## Intravenous drug models
 
-- Janmahasatian et al. (2005). *Clin Pharmacokinet*. [Lean body mass equation across body sizes](https://pubmed.ncbi.nlm.nih.gov/16176118/).
 - James (1976). *Research on Obesity*. HMSO. Lean body mass.
 - Marsh et al. (1991). *Br J Anaesth*. [Propofol PK](https://pubmed.ncbi.nlm.nih.gov/1859758/).
 - Thomson et al. (2014). *Anaesthesia*. [Marsh effect-site equilibration](https://pubmed.ncbi.nlm.nih.gov/24738800/).

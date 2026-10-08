@@ -72,7 +72,7 @@ def _initialize_awake(engine: "SimulationEngine") -> None:
     engine.state.airway_mode = AirwayType.NONE
     engine.resp.state.apnea = False
     engine.set_vent_power(False)
-    engine.set_vaporizer(engine.active_agent, 0.0)
+    engine.set_vaporizer(0.0)
 
 
 def _initialize_steady_state(engine: "SimulationEngine") -> None:
@@ -92,7 +92,7 @@ def _initialize_steady_state(engine: "SimulationEngine") -> None:
 
 
 def _select_profile(engine: "SimulationEngine") -> StartupProfile:
-    if "balanced" in str(engine.config.maint_type).lower():
+    if engine.config.maint_type == "balanced":
         return BALANCED_PROFILE
     return TIVA_PROFILE
 
@@ -155,7 +155,7 @@ def _seed_steady_state_subsystems(
     profile: StartupProfile,
     targets: StartupTargets,
 ) -> None:
-    engine.set_vaporizer(engine.active_agent, 0.0)
+    engine.set_vaporizer(0.0)
     engine.set_fgf(profile.fgf_o2_l_min, 0.0, 0.0)
     engine.propofol_rate_mg_sec = 0.0
     engine.remi_rate_ug_sec = 0.0
@@ -226,7 +226,7 @@ def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, durati
     uptake = q_co * pk.lambda_b_g * (state.p_alv - state.p_ven)
     fi_agent = state.p_alv + uptake / max(va, 0.1)
     dial_pct = 100.0 * (fi_agent + uptake / max(engine.circuit.fgf_total(), 0.1))
-    engine.set_vaporizer("Sevoflurane", dial_pct)
+    engine.set_vaporizer(dial_pct)
     return fi_agent
 
 

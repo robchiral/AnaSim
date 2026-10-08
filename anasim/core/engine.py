@@ -1,8 +1,6 @@
 import copy
-import math
 from collections import deque
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -14,7 +12,7 @@ from anasim.core.enums import RhythmType
 from anasim.core.recorder import DataRecorder
 from anasim.core.utils import clamp
 from anasim.machine.circuit import CircleSystem
-from anasim.machine.ventilator import MODES, AnesthesiaVentilator
+from anasim.machine.ventilator import AnesthesiaVentilator
 from anasim.machine.volatile import Vaporizer
 from anasim.monitors.airway import AirwaySensor
 from anasim.monitors.alarms import AlarmSystem
@@ -92,7 +90,7 @@ class PendingInfusion:
     remaining_ml: float
     rate_ml_min: float
     hematocrit: float = 0.0
-    retention_fraction: Optional[float] = None
+    retention_fraction: float | None = None
     label: str = "crystalloid"
 
 
@@ -102,39 +100,10 @@ PROPOFOL_MODELS = {
     "Eleveld": PropofolPKEleveld,
 }
 
-REMI_MODELS = {
-    "Minto": RemifentanilPKMinto,
-}
-
-# MAC40 from Mapleson 1996 / Nickalls and Mapleson 2003.
-VOLATILE_AGENT_PARAMS = {
-    "sevoflurane": {"name": "Sevoflurane", "lambda_b_g": 0.65, "mac_40": 1.80},
-}
-
-VOLATILE_AGENT_ALIASES = {
-    "sevoflurane": "sevoflurane",
-    "sevo": "sevoflurane",
-}
-
-# N2O partition coefficients at 37 °C (blood:gas 0.47; brain, muscle, fat:blood
-# 1.1, 1.2, 2.3) and MAC about 104% at 1 atm.
-N2O_PARAMS = {
-    "name": "Nitrous Oxide",
-    "lambda_b_g": 0.47,
-    "mac_40": 104.0,
-    "lambda_t_b_vrg": 1.1,
-    "lambda_t_b_mus": 1.2,
-    "lambda_t_b_fat": 2.3,
-}
-
 NORE_PD_PARAMS = {
     "Beloeil": (7.04, 98.7, 1.8),
     "Li": (5.4, 98.7, 1.8),
 }
-
-
-def _resolve_volatile_agent(agent: Optional[str]) -> Optional[str]:
-    return VOLATILE_AGENT_ALIASES.get(str(agent or "").strip().lower())
 
 
 class SimulationEngine(DrugControllerMixin):
@@ -164,7 +133,7 @@ class SimulationEngine(DrugControllerMixin):
         self.disturbance_profile = config.disturbance_profile
         self.disturbance_active = bool(config.disturbance_profile)
         self.disturbance_start_time = 0.0
-        self.alarms = AlarmSystem(dt=config.dt)
+        self.alarms = AlarmSystem()
 
         self._output_window_s = 20.0
         self.output_buffer = deque()
@@ -184,7 +153,6 @@ class SimulationEngine(DrugControllerMixin):
         self.pending_infusions = []
         self.fluid_infusion_rate_ml_min = 150.0
         self.blood_infusion_rate_ml_min = 75.0
-        self._maintenance_override_ml_hr = self.config.maintenance_fluid_ml_hr
         self.maintenance_fluid_rate_ml_min = 0.0
 
         # Event severities (0-1) ramp at these rates per second.
@@ -236,7 +204,7 @@ class SimulationEngine(DrugControllerMixin):
         self._pulseless_s = 0.0
 
         self.initialize_models()
-        self._configure_maintenance_fluids()
+        self.set_continuous_fluid_rate(self.config.maintenance_fluid_ml_hr)
         self.initialize_state()
 
     def _append_output_snapshot(self) -> None:
@@ -265,32 +233,19 @@ class SimulationEngine(DrugControllerMixin):
         monitor_core.seed_nibp_reading(self)
         self._append_output_snapshot()
 
-    def _configure_maintenance_fluids(self):
-        """Set continuous IV fluids to 1 mL/kg/hr unless overridden."""
-        override = self._maintenance_override_ml_hr
-        if override is None:
-            self.maintenance_fluid_rate_ml_min = self.patient.weight / 60.0
-        else:
-            self.maintenance_fluid_rate_ml_min = max(0.0, float(override) / 60.0)
-
-    def set_continuous_fluid_rate(self, ml_hr: Optional[float]):
+    def set_continuous_fluid_rate(self, ml_hr: float | None):
         """Set continuous IV fluids in mL/hr; None restores 1 mL/kg/hr."""
-        if ml_hr is None:
-            self._maintenance_override_ml_hr = None
-            self._configure_maintenance_fluids()
-            return
-        val = float(ml_hr)
-        self._maintenance_override_ml_hr = max(0.0, val)
-        self.maintenance_fluid_rate_ml_min = self._maintenance_override_ml_hr / 60.0
+        rate = self.patient.weight if ml_hr is None else max(0.0, float(ml_hr))
+        self.maintenance_fluid_rate_ml_min = rate / 60.0
 
     def get_continuous_fluid_rate(self) -> float:
         """Return current continuous IV fluid rate in mL/hr."""
-        return max(0.0, self.maintenance_fluid_rate_ml_min * 60.0)
+        return self.maintenance_fluid_rate_ml_min * 60.0
 
     def initialize_models(self):
         """Build the subsystem models selected by the configuration."""
         self.pk_prop = PROPOFOL_MODELS[self.config.pk_model_propofol](self.patient)
-        self.pk_remi = REMI_MODELS[self.config.pk_model_remi](self.patient)
+        self.pk_remi = RemifentanilPKMinto(self.patient)
         self.pk_fentanyl = FentanylPK(self.patient)
         self.pk_midazolam = MidazolamPK(self.patient)
         self.pk_etomidate = EtomidatePK(self.patient)
@@ -301,35 +256,26 @@ class SimulationEngine(DrugControllerMixin):
         self.circuit = CircleSystem()
         self.vent = AnesthesiaVentilator()
 
-        requested_agents = self.config.volatile_agents
-        if not requested_agents:
-            self._volatile_enabled = False
-            agent_key = "sevoflurane"
-        else:
-            self._volatile_enabled = True
-            agent_key = requested_agents[0]
-
-        agent_params = VOLATILE_AGENT_PARAMS[agent_key]
-        self.active_agent = agent_params["name"]
-        self.vaporizer = Vaporizer(agent=agent_params["name"])
+        self.vaporizer = Vaporizer()
+        # MAC40 from Mapleson 1996 / Nickalls and Mapleson 2003.
         self.pk_sevo = VolatilePK(
             self.patient,
-            agent_params["name"],
-            lambda_b_g=agent_params["lambda_b_g"],
-            mac_40=agent_params["mac_40"],
+            "Sevoflurane",
+            lambda_b_g=0.65,
+            mac_40=1.80,
         )
         # N2O comes from fresh gas, not the vaporizer, so it is always modeled.
+        # Partition coefficients at 37 °C (blood:gas 0.47; brain, muscle, fat:blood
+        # 1.1, 1.2, 2.3) and MAC about 104% at 1 atm.
         self.pk_n2o = VolatilePK(
             self.patient,
-            N2O_PARAMS["name"],
-            lambda_b_g=N2O_PARAMS["lambda_b_g"],
-            lambda_t_b_vrg=N2O_PARAMS["lambda_t_b_vrg"],
-            mac_40=N2O_PARAMS["mac_40"],
-            lambda_t_b_mus=N2O_PARAMS["lambda_t_b_mus"],
-            lambda_t_b_fat=N2O_PARAMS["lambda_t_b_fat"],
+            "Nitrous Oxide",
+            lambda_b_g=0.47,
+            lambda_t_b_vrg=1.1,
+            mac_40=104.0,
+            lambda_t_b_mus=1.2,
+            lambda_t_b_fat=2.3,
         )
-
-        self.circuit.vaporizer_agent = agent_params["name"]
 
         self.hemo = HemodynamicModel(self.patient)
         c50, emax, gamma = NORE_PD_PARAMS[self.config.pk_model_nore]
@@ -390,29 +336,17 @@ class SimulationEngine(DrugControllerMixin):
             label="connected" if connected else "disconnected",
         )
 
-    def set_vaporizer(self, agent: str, percent: float):
-        """Set the vaporizer agent and dial (%)."""
-        if not self._volatile_enabled:
-            self.vaporizer.set_concentration(0.0)
-            self.circuit.vaporizer_setting = 0.0
-            self.circuit.vaporizer_on = False
+    def set_vaporizer(self, percent: float):
+        """Set the sevoflurane vaporizer dial (%); it stays off when sevoflurane is disabled."""
+        if not self.config.sevoflurane_enabled:
             return
-
-        resolved = _resolve_volatile_agent(agent)
-        if resolved is None:
-            raise ValueError(f"Unsupported volatile agent: {agent!r}")
-
-        agent_params = VOLATILE_AGENT_PARAMS[resolved]
-        self.active_agent = agent_params["name"]
-        self.vaporizer.state.agent = agent_params["name"]
         self.vaporizer.set_concentration(percent)
-        self.circuit.vaporizer_agent = agent_params["name"]
         self.circuit.vaporizer_setting = self.vaporizer.state.setting
         self.circuit.vaporizer_on = self.vaporizer.state.is_on
         self.actions.record(
             self.state.time,
             ACTION_VAPORIZER,
-            label=self.active_agent,
+            label="Sevoflurane",
             amount=self.circuit.vaporizer_setting,
         )
 
@@ -444,7 +378,7 @@ class SimulationEngine(DrugControllerMixin):
         volume_ml: float,
         rate_ml_min: float,
         hematocrit: float,
-        retention_fraction: float = None,
+        retention_fraction: float | None = None,
         label: str = "crystalloid",
     ):
         if volume_ml <= 0 or rate_ml_min <= 0:
@@ -525,23 +459,17 @@ class SimulationEngine(DrugControllerMixin):
         self.disturbance_active = True
         self.disturbance_start_time = self.state.time
 
-    def set_disturbance_profile(self, profile: str):
-        """Select a disturbance profile without activating it."""
-        if profile:
-            self.disturbances = Disturbances(profile)
-            self.disturbance_profile = profile
-            self.config.disturbance_profile = profile
-        else:
-            self.disturbances = Disturbances(None)
-            self.disturbance_profile = None
-            self.config.disturbance_profile = None
+    def set_disturbance_profile(self, profile: str | None):
+        """Select a disturbance profile without activating it; None clears it."""
+        profile = profile or None
+        self.disturbances = Disturbances(profile)
+        self.disturbance_profile = self.config.disturbance_profile = profile
 
     def stop_disturbance(self, clear_profile: bool = False):
         """Stop the active stimulation profile."""
         self.disturbance_active = False
         if clear_profile:
-            self.disturbance_profile = None
-            self.config.disturbance_profile = None
+            self.set_disturbance_profile(None)
 
     def set_bair_hugger(self, target_c: float):
         """Set the forced-air warmer target (°C); 0 turns it off."""
@@ -695,7 +623,7 @@ class SimulationEngine(DrugControllerMixin):
         self.vent.is_on = bool(on)
 
     def set_vent_settings(self, rr: float, vt: float, peep: float, ie: str,
-                          mode: str, p_insp: float = None, fio2: float = None, **extra):
+                          mode: str, p_insp: float | None = None, fio2: float | None = None, **extra):
         """Set the ventilator without starting or stopping it.
 
         Args:
@@ -709,21 +637,15 @@ class SimulationEngine(DrugControllerMixin):
             fio2: Target FiO2; rebalances O2 and air flows.
             extra: p_support, t_insp, pause, p_max, or trigger; see VentSettings.
         """
-        if not isinstance(mode, str) or mode.upper() not in MODES:
-            raise ValueError(f"Unsupported ventilator mode {mode!r}; choose one of: {', '.join(MODES)}")
-        if not math.isfinite(rr) or rr < 0.0:
-            raise ValueError("ventilator rate must be finite and not negative")
-        limits = {"t_insp": (0.2, 5.0), "trigger": (0.2, 20.0), "p_support": (0.0, 60.0), "pause": (0.0, 60.0)}
-        for name, (low, high) in limits.items():
-            if name in extra and not low <= extra[name] <= high:
-                raise ValueError(f"{name} must be between {low:g} and {high:g}")
-        if extra.get("p_max", self.vent.settings.p_max) <= peep:
-            raise ValueError("Pmax must exceed PEEP")
-        self.vent.update_settings(rr=rr, tv=vt * 1000, peep=peep, ie=ie, mode=mode, p_insp=p_insp, fio2=fio2,
-                                  **extra)
+        settings = dict(rr=rr, tv=vt * 1000, peep=peep, ie=ie, mode=mode, **extra)
+        if p_insp is not None:
+            settings["p_insp"] = p_insp
+        if fio2 is not None:
+            settings["fio2"] = fio2
+        self.vent.update_settings(**settings)
 
         if fio2 is not None:
-            self._apply_fio2_blender(fio2)
+            self._apply_fio2_blender(self.vent.settings.fio2)
 
     def _apply_fio2_blender(self, fio2: float):
         """Split the O2 plus air flow to reach the target FiO2, keeping N2O fixed.

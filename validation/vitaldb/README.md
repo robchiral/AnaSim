@@ -1,8 +1,7 @@
 # VitalDB validation
 
 These scripts compare AnaSim ventilation, capnography, and gas exchange with
-Dräger Primus recordings in VitalDB. They use NumPy and SciPy, which are included
-in AnaSim's dependencies. Run them from the repository root after the
+Dräger Primus recordings in VitalDB. Run them from the repository root after the
 [contributor setup](../../CONTRIBUTING.md#setup).
 
 ```bash
@@ -19,10 +18,9 @@ The PEEP audit uses cached tracks only and writes `results/vitaldb_peep.json`.
 Its counts depend on the local cache. It requires cached `cases.csv` and
 `trks.csv`; `--cache PATH` selects another cache directory.
 
-The reports in `results/` are saved analysis snapshots and may predate current
-model changes. The scripts and reports are kept in Git; downloaded tracks and
-optional PNG overlays are ignored. To create overlays, install Matplotlib and
-add `--figure validation/vitaldb/results/overlay.png` to the ventilation command.
+Reports in `results/` are saved snapshots and may predate current model
+changes. To create overlays, install Matplotlib and add
+`--figure validation/vitaldb/results/overlay.png` to the ventilation command.
 
 Source data are from VitalDB (Lee et al., *Scientific Data*, 2022), under
 CC BY-NC-SA 4.0 and its data use agreement.

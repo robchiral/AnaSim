@@ -1,6 +1,6 @@
 """Drug infusion and TCI controls for SimulationEngine."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from .action_log import ACTION_INFUSION_RATE, ACTION_TCI_TARGET
 from .drug_registry import DRUG_REGISTRY, DrugSpec, TCIMode, get_drug_spec
@@ -33,7 +33,6 @@ class DrugControllerMixin:
             sampling_time = max(self.config.dt, 0.1)
             controller = TCIController(
                 pk_model,
-                drug_name=spec.generic_name,
                 target_compartment=target_compartment,
                 sampling_time=sampling_time,
                 control_time=max(10.0, sampling_time),
@@ -80,7 +79,7 @@ class DrugControllerMixin:
         setattr(self, spec.rate_attr, converted)
         self.actions.record(self.state.time, ACTION_INFUSION_RATE, label=spec.key, amount=rate)
 
-    def set_drug_target(self: "SimulationEngine", key: str, target: Optional[float]):
+    def set_drug_target(self: "SimulationEngine", key: str, target: float | None):
         """Set a TCI target; None or a negative target disables TCI."""
         if target is None or target < 0:
             self.disable_tci(key)

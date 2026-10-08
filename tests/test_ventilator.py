@@ -1,4 +1,5 @@
 import math
+from dataclasses import asdict
 
 import pytest
 from scipy.integrate import solve_ivp
@@ -19,6 +20,37 @@ def breaths(engine, seconds, dt=0.01):
             spirometry = engine.vent.monitors
             started.append((engine.vent._breath.kind, spirometry.paw_peak, spirometry.tv_exp))
     return started
+
+
+def test_rejected_ventilator_updates_preserve_settings_and_gas_flows(awake_engine):
+    engine = awake_engine
+    engine.set_fgf(1.0, 1.0, 0.0)
+    settings = asdict(engine.vent.settings)
+    gas_flows = (engine.circuit.fgf_o2, engine.circuit.fgf_air, engine.circuit.fgf_n2o)
+    changes = dict(rr=18, vt=0.6, peep=8, ie="1:3", mode="PCV", fio2=0.5)
+    invalid_changes = (
+        {"ie": "invalid"},
+        {"ie": "1:0"},
+        {"vt": math.nan},
+        {"fio2": math.inf},
+        {"rr": -1},
+        {"rr": None},
+        {"mode": "SIMV"},
+        {"mode": None},
+        {"t_insp": 0},
+        {"p_max": 8},
+        {"unknown": 1},
+    )
+    for invalid in invalid_changes:
+        with pytest.raises(ValueError):
+            engine.set_vent_settings(**(changes | invalid))
+        assert asdict(engine.vent.settings) == settings
+        assert (engine.circuit.fgf_o2, engine.circuit.fgf_air, engine.circuit.fgf_n2o) == gas_flows
+
+    engine.set_vent_settings(**changes)
+    assert (engine.vent.settings.mode, engine.vent.settings.rr, engine.vent.settings.tv) == ("PCV", 18, 600)
+    assert engine.circuit.fgf_o2 + engine.circuit.fgf_air == pytest.approx(2.0)
+    assert (engine.circuit.fgf_o2 + 0.21 * engine.circuit.fgf_air) / 2.0 == pytest.approx(0.5)
 
 
 def test_bag_mask_ventilates_paralysis_only_through_an_airway(awake_engine, advance_time):
@@ -572,9 +604,9 @@ def test_volume_guarantee_feedback_survives_a_mode_change_during_inspiration():
     vent.update_settings(mode="PCV-VG")
     vent.step(5.5, lung, "vent")
     delivered_pressure = vent._breath.target
-    vent.set_mode("VCV")
+    vent.update_settings(mode="VCV")
     vent.step(0.1, lung, "vent")
-    vent.set_mode("PCV-VG")
+    vent.update_settings(mode="PCV-VG")
     vent.step(1.1, lung, "vent")
     assert abs(vent._vg_pressure - delivered_pressure) <= 3
     vent.step(4, lung, "vent")

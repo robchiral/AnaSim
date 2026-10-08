@@ -1,23 +1,19 @@
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, NamedTuple, Optional
+from typing import NamedTuple
 
 from anasim.patient.domain import finite_number
 
 SUPPORTED_MODEL_OPTIONS = {
     "pk_model_propofol": {"Marsh", "Schnider", "Eleveld"},
-    "pk_model_remi": {"Minto"},
     "bis_model": {"Bouillon", "Eleveld", "Fuentes", "Yumuk"},
-    "hemo_model": {"Su"},
-    "resp_model": {"SingleCompartment"},
     "pk_model_nore": {"Beloeil", "Li"},
     "pk_model_epi": {"HealthyAdult", "Abboud"},
     "loc_model": {"Kern", "Mertens", "Johnson"},
     "mode": {"awake", "steady_state"},
     "maint_type": {"tiva", "balanced"},
 }
-SUPPORTED_VOLATILE_AGENTS = {"sevoflurane"}
 
 
 @dataclass
@@ -27,30 +23,26 @@ class SimulationConfig:
     dt: float = 0.01  # s
 
     pk_model_propofol: str = "Eleveld"
-    pk_model_remi: str = "Minto"
     bis_model: str = "Bouillon"
-    hemo_model: str = "Su"
-    resp_model: str = "SingleCompartment"
     pk_model_nore: str = "Li"
     pk_model_epi: str = "HealthyAdult"
     loc_model: str = "Kern"
     mode: str = "awake"
     maint_type: str = "tiva"
     tci_enabled: bool = False
-    disturbance_profile: str = None
-    # An empty list disables the vaporizer.
-    volatile_agents: List[str] = field(default_factory=lambda: ["sevoflurane"])
+    disturbance_profile: str | None = None
+    sevoflurane_enabled: bool = True
     # None gives 1 mL/kg/hr.
-    maintenance_fluid_ml_hr: Optional[float] = None
+    maintenance_fluid_ml_hr: float | None = None
 
-    simulation_speed: float = 1.0  # Multiple of real time
     end_on_cardiac_arrest: bool = False
     arterial_line_enabled: bool = True
-    rng_seed: Optional[int] = None
+    rng_seed: int | None = None
 
     def __post_init__(self):
-        if not isinstance(self.tci_enabled, bool):
-            raise ValueError("tci_enabled must be a boolean")
+        for name in ("tci_enabled", "sevoflurane_enabled"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be a boolean")
         self.dt = finite_number("dt", self.dt)
         if self.dt <= 0:
             raise ValueError("dt must be greater than zero")
@@ -59,14 +51,8 @@ class SimulationConfig:
             if not isinstance(value, str) or value not in supported:
                 choices = ", ".join(sorted(supported))
                 raise ValueError(f"{field_name}={value!r} is unsupported; choose one of: {choices}")
-        if not isinstance(self.volatile_agents, list) or any(
-            not isinstance(agent, str) for agent in self.volatile_agents
-        ):
-            raise ValueError("volatile_agents must be a list of agent names")
-        unsupported_agents = set(self.volatile_agents) - SUPPORTED_VOLATILE_AGENTS
-        if unsupported_agents:
-            names = ", ".join(sorted(unsupported_agents))
-            raise ValueError(f"Unsupported volatile agent(s): {names}")
+        if self.maint_type == "balanced" and not self.sevoflurane_enabled:
+            raise ValueError("balanced maintenance requires sevoflurane_enabled=True")
 
 
 class WaveformSample(NamedTuple):
@@ -186,7 +172,7 @@ class SimulationState:
     nibp_sys: float = 120.0
     nibp_dia: float = 80.0
     nibp_map: float = 93.3
-    nibp_timestamp: Optional[float] = None
+    nibp_timestamp: float | None = None
     nibp_interval_sec: float = 300.0
     nibp_is_cycling: bool = False
     nibp_measurement_failed: bool = False
@@ -229,7 +215,7 @@ class SimulationState:
     ecg_voltage: float = 0.0
     pleth_voltage: float = 0.0
 
-    alarms: Dict[str, Dict[str, bool]] = field(default_factory=dict)
+    alarms: dict[str, dict[str, bool]] = field(default_factory=dict)
 
     # Airway severities, 0-1.
     airway_mode: AirwayType = AirwayType.NONE

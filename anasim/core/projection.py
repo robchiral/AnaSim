@@ -114,7 +114,7 @@ def sync_inspired_gas(engine: "SimulationEngine") -> tuple[float, float]:
         fio2, fi_sevo, fi_n2o = 0.21, 0.0, 0.0
     else:
         fio2 = composition.fio2
-        fi_sevo = composition.fi_agent if engine._volatile_enabled else 0.0
+        fi_sevo = composition.fi_agent
         fi_n2o = composition.fin2o
     state.fio2 = float(fio2)
     state.fi_sevo = float(fi_sevo * 100.0)
@@ -137,26 +137,19 @@ def sync_inhaled_agents(engine: "SimulationEngine") -> None:
 def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
     """Copy hemodynamic model state into the public snapshot."""
     state = engine.state
-    map_val = hemo_state.map
-    hr_val = hemo_state.hr
-    sv_val = hemo_state.sv
-    svr_val = hemo_state.svr
-    co_val = hemo_state.co
-    hct_val = engine.hemo.get_hematocrit()
-    total_crystalloid = engine.hemo.total_crystalloid_in_ml
     total_colloid = engine.hemo.total_colloid_in_ml
     blood_in_ml = engine.hemo.total_blood_in_ml
     urine_out_ml = engine.hemo.total_urine_out_ml
     blood_out_ml = engine.hemo.total_blood_out_ml
-    fluid_in_ml = total_crystalloid + total_colloid
-    state.map = float(map_val)
-    state.hr = float(hr_val)
-    state.sv = float(sv_val)
-    state.svr = float(svr_val)
-    state.co = float(co_val)
+    fluid_in_ml = engine.hemo.total_crystalloid_in_ml + total_colloid
+    state.map = float(hemo_state.map)
+    state.hr = float(hemo_state.hr)
+    state.sv = float(hemo_state.sv)
+    state.svr = float(hemo_state.svr)
+    state.co = float(hemo_state.co)
     state.blood_volume = float(engine.hemo.blood_volume)
     state.hb_g_dl = float(engine.hemo.hb_conc)
-    state.hct = float(hct_val)
+    state.hct = float(engine.hemo.get_hematocrit())
     state.colloid_in_ml = float(total_colloid)
     state.fluid_in_ml = float(fluid_in_ml)
     state.blood_in_ml = float(blood_in_ml)
@@ -171,7 +164,7 @@ def _project_respiratory_observables(engine: "SimulationEngine", snapshot: Physi
     """Copy respiratory fields shared by startup sync and runtime projection."""
     state = engine.state
     resp_state = snapshot.resp_state
-    connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
+    connected = state.airway_mode != AirwayType.NONE
     state.rr = float(snapshot.rr_display)
     state.vt = float(snapshot.vt_display_ml)
     state.mv = float(snapshot.mv_display_l_min)
@@ -195,38 +188,26 @@ def _project_respiratory_observables(engine: "SimulationEngine", snapshot: Physi
     state.apnea = bool(resp_state.apnea)
 
 
-def _current_respiratory_support(engine: "SimulationEngine") -> dict[str, Any]:
-    """Return current assisted-ventilation inputs used for state projection."""
-    state = engine.state
-    connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
-    vent_active = connected and engine.vent.is_on
-    bag_mask_active = engine.bag_mask_active and connected and not vent_active
-    assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)
-    return {
-        "connected": connected,
-        "assisted_active": vent_active or bag_mask_active,
-        "assisted_rr": assisted_rr,
-        "assisted_vt_l": assisted_vt_l,
-    }
-
-
 def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> Any:
     """Evaluate the respiratory model at the current subsystem state without advancing time."""
-    support = _current_respiratory_support(engine)
+    connected = engine.state.airway_mode != AirwayType.NONE
+    assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)
 
     kwargs = engine.get_resp_step_kwargs(
-        total_assisted_mv=support["assisted_rr"] * support["assisted_vt_l"],
-        mech_rr=support["assisted_rr"],
-        mech_vt_l=support["assisted_vt_l"],
+        total_assisted_mv=assisted_rr * assisted_vt_l,
+        mech_rr=assisted_rr,
+        mech_vt_l=assisted_vt_l,
         cardiac_output=hemo_state.co,
     )
     return engine.resp.step(0.0, **kwargs)
 
 
-def build_snapshot_from_models(engine: "SimulationEngine", hemo_state: Any, resp_state: Any) -> PhysiologyStepState:
-    """Build a projection snapshot from current model state without advancing runtime."""
-    support = _current_respiratory_support(engine)
-    assisted, connected = support["assisted_active"], support["connected"]
+def build_snapshot_from_models(
+    engine: "SimulationEngine", hemo_state: Any, resp_state: Any, *, pit_estimate: float,
+) -> PhysiologyStepState:
+    """Build the respiratory projection shared by initialization and runtime."""
+    connected = engine.state.airway_mode != AirwayType.NONE
+    assisted = connected and (engine.vent.is_on or engine.bag_mask_active)
     rr_display, vt_display_ml, mv_display_l_min = measured_ventilation(
         engine, connected, resp_state.rr, resp_state.vt / 1000.0
     )
@@ -235,7 +216,7 @@ def build_snapshot_from_models(engine: "SimulationEngine", hemo_state: Any, resp
     return PhysiologyStepState(
         hemo_state=hemo_state,
         resp_state=resp_state,
-        pit_estimate=engine.hemo.pit_0,
+        pit_estimate=pit_estimate,
         rr_display=rr_display,
         vt_display_ml=vt_display_ml,
         mv_display_l_min=mv_display_l_min,
@@ -296,9 +277,7 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
     state.tof = float(tof_val)
     state.loc = float(loc_val)
     state.tol = float(tol_val)
-    state.capno_co2 = float(0.0)
-    state.ecg_voltage = float(0.0)
-    state.pleth_voltage = float(0.0)
+    state.capno_co2 = state.ecg_voltage = state.pleth_voltage = 0.0
     state.sbp = float(arterial_sample.systolic)
     state.dbp = float(arterial_sample.diastolic)
     state.art_pressure = float(art_reading.pressure)
@@ -316,12 +295,13 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
 def sync_state_from_models(engine: "SimulationEngine") -> None:
     """Derive the public SimulationState from current subsystem state."""
     state = engine.state
-    state.blood_volume = float(engine.hemo.blood_volume)
     state.temp_c = float(engine.patient.baseline_temp)
     sync_pk_state(engine)
     sync_inspired_gas(engine)
     sync_inhaled_agents(engine)
     hemo_state = engine.hemo.state
     resp_state = snapshot_respiratory_state(engine, hemo_state)
-    project_runtime_physiology(engine, build_snapshot_from_models(engine, hemo_state, resp_state))
+    project_runtime_physiology(engine, build_snapshot_from_models(
+        engine, hemo_state, resp_state, pit_estimate=engine.hemo.pit_0,
+    ))
     sync_monitor_baselines(engine)

@@ -3,8 +3,9 @@
 import math
 from bisect import bisect_right
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 
+from anasim.patient.domain import finite_number
 from anasim.physiology.resp_mech import (
     ExpiratorySegment,
     RespiratoryMechanics,
@@ -64,10 +65,28 @@ class VentSettings:
     trigger: float = 3.0  # L/min
     fio2: float = 0.21
 
+    def __post_init__(self):
+        if not isinstance(self.mode, str) or self.mode.upper() not in MODES:
+            raise ValueError(f"Unsupported ventilator mode {self.mode!r}; choose one of: {', '.join(MODES)}")
+        self.mode = self.mode.upper()
+        for setting in fields(self):
+            if setting.name != "mode":
+                setattr(self, setting.name, finite_number(setting.name, getattr(self, setting.name)))
+        if self.rr < 0.0:
+            raise ValueError("ventilator rate must not be negative")
+        if self.ie_ratio <= 0.0:
+            raise ValueError("I:E ratio must be greater than zero")
+        limits = {"t_insp": (0.2, 5.0), "trigger": (0.2, 20.0), "p_support": (0.0, 60.0), "pause": (0.0, 60.0)}
+        for name, (low, high) in limits.items():
+            if not low <= getattr(self, name) <= high:
+                raise ValueError(f"{name} must be between {low:g} and {high:g}")
+        if self.p_max <= self.peep:
+            raise ValueError("Pmax must exceed PEEP")
+
     @property
     def ie(self) -> str:
         """I:E ratio as offered by the controls, such as "1:2"."""
-        return f"1:{max(1, round(1.0 / self.ie_ratio))}" if self.ie_ratio > 0 else "1:2"
+        return f"1:{max(1, round(1.0 / self.ie_ratio))}"
 
 
 @dataclass
@@ -79,7 +98,6 @@ class VentMonitors:
     paw_mean: float = 0.0
     peep: float = 0.0  # End-expiratory pressure
     auto_peep: float = 0.0  # Static recoil left at end-expiration
-    tv_insp: float = 0.0
     tv_exp: float = 0.0
     tv_exp_mandatory: float = math.nan
     mv_exp: float = 0.0  # Recent breaths
@@ -163,34 +181,25 @@ class AnesthesiaVentilator:
         self._recent = deque(maxlen=RECENT_BREATHS)
         self._recent_totals = (0.0, 0.0)  # Duration s and exhaled volume L
 
-    def set_mode(self, mode: str):
-        if mode.upper() in MODES:
-            self.settings.mode = mode.upper()
-
     @property
     def has_measured_breath(self) -> bool:
         return bool(self._recent)
 
-    def update_settings(self, rr=None, tv=None, peep=None, fio2=None, ie=None, p_insp=None, mode=None, **extra):
-        """Update any given setting; VT in mL, I:E as "1:2" or a float."""
-        for name, value in dict(rr=rr, tv=tv, peep=peep, fio2=fio2, p_insp=p_insp, **extra).items():
-            if value is not None:
-                if not hasattr(self.settings, name):
-                    raise ValueError(f"Unknown ventilator setting {name!r}")
-                setattr(self.settings, name, float(value))
-        if mode is not None:
-            self.set_mode(mode)
-        if ie is not None:
+    def update_settings(self, **values):
+        """Validate and apply settings together; VT in mL, I:E as "1:2" or a float."""
+        unknown = set(values) - {setting.name for setting in fields(self.settings)} - {"ie"}
+        if unknown:
+            raise ValueError(f"Unknown ventilator setting(s): {', '.join(sorted(unknown))}")
+        if "ie" in values:
+            ie = values.pop("ie")
             if isinstance(ie, str) and ':' in ie:
-                i, e = map(float, ie.split(':'))
+                i, e = (finite_number("I:E ratio", value) for value in ie.split(':'))
                 if i <= 0.0 or e <= 0.0:
                     raise ValueError("I:E ratio components must be greater than zero")
-                self.settings.ie_ratio = i / e
+                values["ie_ratio"] = i / e
             else:
-                ratio = float(ie)
-                if ratio <= 0.0:
-                    raise ValueError("I:E ratio must be greater than zero")
-                self.settings.ie_ratio = ratio
+                values["ie_ratio"] = ie
+        self.settings = replace(self.settings, **values)
 
     # --- Configuration of the active source --------------------------------
 
@@ -377,7 +386,6 @@ class AnesthesiaVentilator:
         if self._breath is None or not self._breath.inspiring:
             m.peep = self._paw_end
             m.auto_peep = lung.elastic_pressure
-        m.tv_insp = b.inspired * 1000.0
         m.tv_exp = vte * 1000.0
         if b.kind != "SPONT":
             driving = b.paw_peak - self._paw_end

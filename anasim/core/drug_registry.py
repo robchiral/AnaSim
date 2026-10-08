@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
-from typing import Optional
 
 
 class TCIMode(str, Enum):
@@ -57,14 +56,14 @@ class DrugSpec:
     bolus_unit: str
     default_bolus: float
     bolus_model_scale: float
-    rate_attr: Optional[str] = None
-    rate_unit: Optional[str] = None
-    internal_rate_unit: Optional[str] = None
-    tci_attr: Optional[str] = None
-    tci_unit: Optional[str] = None
-    tci_range: Optional[tuple[float, float]] = None
-    fixed_tci_mode: Optional[TCIMode] = None
-    max_rate: Optional[MaxRatePolicy] = None
+    rate_attr: str | None = None
+    rate_unit: str | None = None
+    internal_rate_unit: str | None = None
+    tci_attr: str | None = None
+    tci_unit: str | None = None
+    tci_range: tuple[float, float] | None = None
+    fixed_tci_mode: TCIMode | None = None
+    max_rate: MaxRatePolicy | None = None
 
     @property
     def has_infusion(self) -> bool:

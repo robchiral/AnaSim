@@ -5,15 +5,16 @@ from anasim.core.utils import clamp
 
 @dataclass
 class VaporizerState:
-    agent: str = "Sevo"
     setting: float = 0.0  # %
     is_on: bool = False
     level: float = 250.0  # mL of liquid
 
 
 class Vaporizer:
-    def __init__(self, agent: str = "Sevo"):
-        self.state = VaporizerState(agent=agent)
+    """Sevoflurane vaporizer with liquid depletion."""
+
+    def __init__(self):
+        self.state = VaporizerState()
 
     def set_concentration(self, conc: float):
         self.state.setting = clamp(conc, 0.0, 8.0)  # Sevoflurane dial maximum

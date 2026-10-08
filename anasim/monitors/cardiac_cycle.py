@@ -69,12 +69,6 @@ class CardiacCycleSample:
     def elapsed_s(self) -> float:
         return self.phase * self.rr_interval_s
 
-    def delayed_phase(self, delay_s: float) -> float:
-        """Return beat phase after applying a fixed signal transit delay."""
-        if not self.organized:
-            return 0.0
-        return ((self.elapsed_s - delay_s) / self.rr_interval_s) % 1.0
-
 
 class CardiacCycle:
     """Own the organized beat clock used by ECG, ART, and pleth renderers."""

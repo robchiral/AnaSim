@@ -24,8 +24,8 @@ from anasim.physiology.disturbances import DisturbanceEffects
 from .monitors import step_monitors
 from .projection import (
     PhysiologyStepState,
+    build_snapshot_from_models,
     circuit_ventilation,
-    measured_ventilation,
     project_runtime_physiology,
     sync_inhaled_agents,
     sync_inspired_gas,
@@ -126,7 +126,7 @@ def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_
     engine._last_patient_effort_cmH2O = min(lung.effort.amplitude, 20.0)
 
 
-def update_shivering(engine: "SimulationEngine", dt: float) -> float:
+def update_shivering(engine: "SimulationEngine", dt: float) -> None:
     """Update shivering intensity based on temperature and anesthetic state."""
     state = engine.state
     depth_factor = clamp01(engine._depth_index)
@@ -146,7 +146,6 @@ def update_shivering(engine: "SimulationEngine", dt: float) -> float:
     engine._shiver_level += (target - engine._shiver_level) * (dt / tau)
     engine._shiver_level = clamp01(engine._shiver_level)
     state.shivering = float(engine._shiver_level)
-    return engine._shiver_level
 
 
 def step_temperature(engine: "SimulationEngine", dt: float) -> None:
@@ -268,13 +267,7 @@ def step_tci(engine: "SimulationEngine", dt: float) -> None:
 def step_machine(engine: "SimulationEngine", dt: float) -> tuple[float, float]:
     """Update machine state and return inspired volatile fractions."""
     circuit = engine.circuit
-    vaporizer = engine.vaporizer
-    if engine._volatile_enabled:
-        delivered_setting = vaporizer.step(dt, circuit.fgf_total())
-    else:
-        vaporizer.set_concentration(0.0)
-        delivered_setting = 0.0
-    circuit.vaporizer_agent = vaporizer.state.agent
+    delivered_setting = engine.vaporizer.step(dt, circuit.fgf_total())
     circuit.vaporizer_setting = delivered_setting
     circuit.vaporizer_on = delivered_setting > 0.0
 
@@ -435,7 +428,7 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     state = engine.state
     update_airway_complications(engine, dt)
 
-    connected = state.airway_mode in (AirwayType.ETT, AirwayType.MASK)
+    connected = state.airway_mode != AirwayType.NONE
     vent_active = connected and engine.vent.is_on
     bag_mask_active = engine.bag_mask_active and connected and not vent_active
     assisted_active = vent_active or bag_mask_active
@@ -472,10 +465,6 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     )
     resp_state = engine.resp.step(dt, **kwargs)
 
-    rr_display, vt_display_ml, total_patient_mv = measured_ventilation(
-        engine, connected, resp_state.rr, resp_state.vt / 1000.0
-    )
-
     hemo_state = engine.hemo.step(
         dt,
         state.propofol_cp,
@@ -502,23 +491,8 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
         sao2=resp_state.sao2,
     )
 
-    # The machine's sensors see only gas that crosses the Y-piece.
-    paw_display, flow_display, volume_display = (vent.paw, vent.flow, vent.volume) if connected else (0.0, 0.0, 0.0)
-    return PhysiologyStepState(
-        hemo_state=hemo_state,
-        resp_state=resp_state,
-        pit_estimate=pit_estimate,
-        rr_display=rr_display,
-        vt_display_ml=vt_display_ml,
-        mv_display_l_min=total_patient_mv,
-        paw_display=paw_display,
-        flow_display=flow_display,
-        volume_display=volume_display,
-        paw_peak=spirometry.paw_peak if connected else 0.0,
-        paw_plat=spirometry.paw_plat if assisted_active else math.nan,
-        paw_mean=spirometry.paw_mean if connected else 0.0,
-        peep=spirometry.peep if assisted_active else 0.0,
-        compliance_dyn=spirometry.compliance_dyn if assisted_active else math.nan,
+    return build_snapshot_from_models(
+        engine, hemo_state, resp_state, pit_estimate=pit_estimate,
     )
 
 

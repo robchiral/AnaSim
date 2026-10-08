@@ -69,8 +69,7 @@ def list_disturbance_profiles() -> list[tuple[str, str]]:
 class Disturbances:
     """Surgical stimulation profile, timed in seconds from when it starts."""
 
-    def __init__(self, dist_profile: str = None):
-        self.dist_profile = dist_profile
+    def __init__(self, dist_profile: str | None = None):
         self.spec = None
 
         if dist_profile is None:

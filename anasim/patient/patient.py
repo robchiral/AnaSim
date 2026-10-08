@@ -11,7 +11,6 @@ from .domain import (
     RENAL_FUNCTION_RANGE,
     WEIGHT_RANGE_KG,
     bounded_number,
-    finite_number,
 )
 
 
@@ -23,7 +22,6 @@ class Patient:
     weight: float = 70.0
     height: float = 170.0
     sex: str = "male"
-    asa: int = 1
     baseline_temp: float = 37.0
     baseline_hb: float = 13.5
     baseline_hct: float | None = None
@@ -38,7 +36,6 @@ class Patient:
     baseline_rr: float = 12.0
     baseline_vt: float = 500.0
 
-    lbm: float = field(init=False)
     bmi: float = field(init=False)
     bsa: float = field(init=False)
 
@@ -59,11 +56,6 @@ class Patient:
         self.sex = self.sex.strip().lower()
         if self.sex not in ("male", "female"):
             raise ValueError("sex must be 'male' or 'female'")
-
-        asa = finite_number("asa", self.asa)
-        if not asa.is_integer() or not 1 <= asa <= 5:
-            raise ValueError("asa must be an integer between 1 and 5")
-        self.asa = int(asa)
 
         self.baseline_hr = bounded_number("baseline_hr", self.baseline_hr, 10.0)
         self.baseline_map = bounded_number("baseline_map", self.baseline_map, 20.0)
@@ -89,12 +81,9 @@ class Patient:
                 )
 
     def _calculate_metrics(self):
-        """Derive BMI, BSA (Du Bois), and lean body mass."""
+        """Derive BMI and BSA (Du Bois)."""
         self.bmi = self.weight / ((self.height / 100.0) ** 2)
         self.bsa = 0.007184 * (self.weight**0.425) * (self.height**0.725)
-
-        # Janmahasatian 2005 stays well behaved at high BMI.
-        self.lbm = self._janmahasatian_lbm()
 
     def _validate_body_composition(self):
         """Reject weight and height combinations outside the supported BMI range."""
@@ -140,11 +129,6 @@ class Patient:
         if self.sex == "male":
             return 1.1 * self.weight - 128.0 * ratio**2
         return 1.07 * self.weight - 148.0 * ratio**2
-
-    def _janmahasatian_lbm(self) -> float:
-        if self.sex == "male":
-            return (9270.0 * self.weight) / (6680.0 + 216.0 * self.bmi)
-        return (9270.0 * self.weight) / (8780.0 + 244.0 * self.bmi)
 
     def predicted_body_weight(self) -> float:
         """Devine predicted body weight (kg), which tracks lung size."""

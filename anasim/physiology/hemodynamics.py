@@ -1,6 +1,5 @@
 import math
 from copy import copy
-from typing import Optional
 
 from scipy.optimize import root_scalar
 
@@ -20,10 +19,10 @@ class HemodynamicModel:
     Units: MAP mmHg, HR bpm, SV mL, CO L/min, SVR Wood units (mmHg·min/L),
     internal TPR mmHg·min/mL. Sources are listed in docs/REFERENCES.md.
     """
-    def __init__(self, patient: Patient, config: Optional[HemodynamicConfig] = None):
+    def __init__(self, patient: Patient, config: HemodynamicConfig | None = None):
         self.patient = patient
         self.config = config or HemodynamicConfig()
-        self._cached_state: Optional[HemoStateExtended] = None
+        self._cached_state: HemoStateExtended | None = None
         for name, value in vars(self.config).items():
             setattr(self, name, value)
 
@@ -112,7 +111,6 @@ class HemodynamicModel:
         self.total_blood_in_ml = 0.0
         self.total_urine_out_ml = 0.0
         self.total_blood_out_ml = 0.0
-        self.total_leak_out_ml = 0.0
         self.total_third_space_ml = 0.0
 
         self._rhythm_type = RhythmType.SINUS
@@ -166,7 +164,7 @@ class HemodynamicModel:
         self,
         amount_ml: float,
         hematocrit: float = 0.0,
-        retention_fraction: Optional[float] = None,
+        retention_fraction: float | None = None,
         label: str = "crystalloid",
     ):
         """Add fluid or blood (positive) or remove blood (negative).
@@ -224,7 +222,7 @@ class HemodynamicModel:
         else:
             self.hb_conc = self.hb_mass / (self.blood_volume / 100.0)
 
-    def _calc_stressed_volume(self, sepsis_sev: Optional[float] = None) -> float:
+    def _calc_stressed_volume(self, sepsis_sev: float | None = None) -> float:
         """Stressed volume after sepsis shifts part of baseline volume to unstressed."""
         sev = clamp01(self.sepsis_severity) if sepsis_sev is None else sepsis_sev
         pooling = self.sepsis_pooling_fraction * self.blood_volume_0 * sev
@@ -332,7 +330,7 @@ class HemodynamicModel:
         hill = hill_function(ce, c50, gamma)
         return emax_hr * hill, 1.0 + emax_sv * hill, max(0.5, 1.0 + emax_svr * hill)
 
-    def _calc_pvr_factor(self, pao2: float, peep_cmH2O: Optional[float] = None) -> float:
+    def _calc_pvr_factor(self, pao2: float, peep_cmH2O: float | None = None) -> float:
         """PVR multiplier from hypoxic vasoconstriction and PEEP."""
         pvr_factor = 1.0
         if pao2 < self.pvr_o2_threshold:
@@ -349,7 +347,7 @@ class HemodynamicModel:
         self,
         dt: float,
         pao2: float,
-        peep_cmH2O: Optional[float],
+        peep_cmH2O: float | None,
         f_preload_pit: float,
         sepsis_sev: float,
     ) -> float:
@@ -446,11 +444,11 @@ class HemodynamicModel:
 
     def _compute_state(
         self,
-        preload_sv_factor: Optional[float] = None,
-        sepsis_sev: Optional[float] = None,
-        anaph_sev: Optional[float] = None,
-        distributive_tpr_offset: Optional[float] = None,
-        hr_base: Optional[float] = None,
+        preload_sv_factor: float | None = None,
+        sepsis_sev: float | None = None,
+        anaph_sev: float | None = None,
+        distributive_tpr_offset: float | None = None,
+        hr_base: float | None = None,
     ) -> HemoStateExtended:
         if sepsis_sev is None:
             sepsis_sev = clamp01(self.sepsis_severity)
@@ -581,7 +579,7 @@ class HemodynamicModel:
              ce_vaso: float = 0.0, ce_dobu: float = 0.0, ce_mil: float = 0.0,
              ce_esmolol: float = 0.0, ce_labetalol: float = 0.0, ce_glyco: float = 0.0,
              ce_ketamine: float = 0.0,
-             temp_c: float = 37.0, peep_cmH2O: Optional[float] = None, sao2: float = 98.0) -> HemoState:
+             temp_c: float = 37.0, peep_cmH2O: float | None = None, sao2: float = 98.0) -> HemoState:
         """Advance the model by dt seconds and return the new state.
 
         Args:
@@ -656,7 +654,6 @@ class HemodynamicModel:
             actual_leak = min(leak_ml, available)
             if actual_leak > 0:
                 blood_volume -= actual_leak
-                self.total_leak_out_ml += actual_leak
                 self.total_third_space_ml += actual_leak
         if self.total_third_space_ml > 0 and self.third_space_refill_tau_hr > 0:
             intravascular_excess = blood_volume - self.blood_volume_0

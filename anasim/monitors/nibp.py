@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -11,7 +10,7 @@ class NIBPReading:
     systolic: float = 120.0
     diastolic: float = 80.0
     map: float = 93.0
-    timestamp: Optional[float] = None
+    timestamp: float | None = None
 
 class NIBPMonitor:
     """Simulate an oscillometric NIBP cuff."""
