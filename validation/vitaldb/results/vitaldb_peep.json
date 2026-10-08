@@ -1,0 +1,262 @@
+{
+  "counts": {
+    "eligible_cases": 1405,
+    "cached_complete_cases": 81,
+    "candidate_steps": 16,
+    "numeric_eligible_steps": 6,
+    "retained_steps": 3,
+    "retained_patients": 3
+  },
+  "rejected": {
+    "pressure_waveform_failed": 3,
+    "unstable_or_missing_window": 9,
+    "other_setting_changed": 1
+  },
+  "exclusions": [
+    {
+      "case": 703,
+      "time": 1365.8,
+      "before": "pressure waveform: control shape or mechanics outside comparison range",
+      "after": "pressure waveform: control shape or mechanics outside comparison range",
+      "waveforms": {
+        "before": {
+          "peep": 2.131173,
+          "r": 5.325249078947369,
+          "c": 900.9329397678908,
+          "volume_control": false
+        },
+        "after": {
+          "peep": 2.6512200000000004,
+          "r": 5.5195217183770895,
+          "c": 1110.5545086127618,
+          "volume_control": false
+        }
+      }
+    },
+    {
+      "case": 1239,
+      "time": 646.388,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 1311,
+      "time": 1496.39,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 3519,
+      "time": 1128.69,
+      "before": null,
+      "after": "pressure waveform: control shape or mechanics outside comparison range",
+      "waveforms": {
+        "before": {
+          "peep": 5.40441,
+          "r": 26.319185357142874,
+          "c": 28.340769411402707,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 7.44381,
+          "r": 49.240162115232835,
+          "c": 38.290363959429136,
+          "volume_control": false
+        }
+      }
+    },
+    {
+      "case": 4054,
+      "time": 2331.08,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 5023,
+      "time": 2522.5,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 5023,
+      "time": 2529.49,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 6277,
+      "time": 2797.01,
+      "before": "pressure waveform: control shape or mechanics outside comparison range",
+      "after": null,
+      "waveforms": {
+        "before": {
+          "peep": 0.81576,
+          "r": 0.0,
+          "c": 17.72768763060025,
+          "volume_control": false
+        },
+        "after": {
+          "peep": 4.945545000000001,
+          "r": 8.151266459627337,
+          "c": 24.962778713881978,
+          "volume_control": true
+        }
+      }
+    },
+    {
+      "case": 6277,
+      "time": 2998.57,
+      "before": null,
+      "after": "Primus/SET_INTER_PEEP: setting changed in window"
+    },
+    {
+      "case": 6277,
+      "time": 3083.5,
+      "before": "Primus/SET_INTER_PEEP: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 6277,
+      "time": 3250.28,
+      "before": null,
+      "after": "Primus/PEEP_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 6277,
+      "time": 3285.46,
+      "before": "Primus/SET_INTER_PEEP: setting changed in window",
+      "after": null
+    }
+  ],
+  "rows": [
+    {
+      "case": 1679,
+      "time": 963.152,
+      "before": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 10.0,
+        "SET_TV_L": 0.49,
+        "SET_INSP_TM": 2.0,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 516.5,
+        "PPLAT_MBAR": 12.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 10.0,
+        "compliance": 42.21012716158347
+      },
+      "after": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 10.0,
+        "SET_TV_L": 0.49,
+        "SET_INSP_TM": 2.0,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 509.0,
+        "PPLAT_MBAR": 15.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 10.0,
+        "compliance": 49.91664214965186
+      },
+      "waveforms": {
+        "before": {
+          "peep": 0.81576,
+          "r": 6.7519341723136534,
+          "c": 55.661706147143036,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 4.89456,
+          "r": 11.358937131630645,
+          "c": 68.85054089607152,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.03353885695695683
+    },
+    {
+      "case": 3225,
+      "time": 1495.1,
+      "before": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 13.0,
+        "SET_TV_L": 0.36,
+        "SET_INSP_TM": 1.6,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 371.5,
+        "PPLAT_MBAR": 14.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 13.0,
+        "compliance": 26.023060003642527
+      },
+      "after": {
+        "SET_INTER_PEEP": 4.0,
+        "SET_RR_IPPV": 13.0,
+        "SET_TV_L": 0.36,
+        "SET_INSP_TM": 1.6,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 364.5,
+        "PPLAT_MBAR": 16.0,
+        "PEEP_MBAR": 4.0,
+        "RR_CO2": 13.0,
+        "compliance": 29.788172992056488
+      },
+      "waveforms": {
+        "before": {
+          "peep": 0.71379,
+          "r": 10.177786271870795,
+          "c": 33.65568961210119,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 4.231755,
+          "r": 12.94137777777779,
+          "c": 40.910795525571146,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.03378209177953933
+    },
+    {
+      "case": 4054,
+      "time": 2869.36,
+      "before": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 15.0,
+        "SET_TV_L": 0.42,
+        "SET_INSP_TM": 1.4,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 406.0,
+        "PPLAT_MBAR": 17.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 15.0,
+        "compliance": 33.17969337386813
+      },
+      "after": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 15.0,
+        "SET_TV_L": 0.42,
+        "SET_INSP_TM": 1.4,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 413.5,
+        "PPLAT_MBAR": 14.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 15.0,
+        "compliance": 28.96510178063576
+      },
+      "waveforms": {
+        "before": {
+          "peep": 4.89456,
+          "r": 15.453729310344828,
+          "c": 45.67758934834619,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 1.0197,
+          "r": 13.25733301088271,
+          "c": 38.49792008818677,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.027169264993049013
+    }
+  ]
+}

@@ -53,7 +53,8 @@ dmypy.json
 
 # === Project Specific ===
 node_modules/
-comparisons/
+validation/vitaldb/.vitaldb_cache/
+validation/vitaldb/results/*.png
 docs/papers/
 docs/RELEASING.md
 docs/TODO.md
