@@ -1,3 +1,4 @@
+import math
 from dataclasses import replace
 
 import pytest
@@ -100,6 +101,17 @@ def test_steady_state_initialization_keeps_fast_and_slow_drug_effects(patient):
         state = model.step(1.0, 3.53, 3.6, 10.0, -2.0, 40.0, 95.0)
     assert (state.map, state.hr, state.co) == pytest.approx(initial_values, rel=0.01)
 
+    # The cardiovascular sevoflurane site follows the same kinetics at any step size.
+    expected_peak = -math.expm1(-model.config.ke0_sevo * 5.0)
+    for dt in (1.0, 300.0):
+        model = HemodynamicModel(patient, replace(HemodynamicConfig(), vol_clearance=0.0))
+        for _ in range(round(300.0 / dt)):
+            state = model.step(dt, 0, 0, 0, -2, 40, 95, mac_sevo=1.0)
+        assert state.ce_sevo == pytest.approx(expected_peak)
+        for _ in range(round(300.0 / dt)):
+            state = model.step(dt, 0, 0, 0, -2, 40, 95)
+        assert state.ce_sevo == pytest.approx(expected_peak * (1.0 - expected_peak))
+
 
 def test_thoracic_pressure_tracks_breathing_effort_and_applied_cpap(awake_engine):
     engine = awake_engine
@@ -143,13 +155,19 @@ def test_hypoxia_and_peep_raise_pvr():
         assert state.pvr > base.pvr * 1.2
 
 
-def test_pulmonary_transit_delays_lv_inflow():
-    model = _model()
-    base = model.step(1.0, 0, 0, 0, -2, 40, 95, peep_cmH2O=5.0)
-    # Acute hypoxia and high PEEP raise PVR and drop RV output immediately.
-    state = model.step(1.0, 0, 0, 0, -2, 40, 30, peep_cmH2O=20.0)
-    assert state.lv_inflow < base.lv_inflow
-    assert state.lv_inflow > state.rv_co
+def test_pulmonary_transit_delays_lv_inflow(patient):
+    for dt in (0.1, 1.0, 6.8):
+        model = HemodynamicModel(patient, replace(HemodynamicConfig(), vol_clearance=0.0))
+        base = model.step(0.0, 0, 0, 0, -2, 40, 95, peep_cmH2O=5.0)
+        # Acute hypoxia and high PEEP drop RV output; LV inflow follows after transit.
+        elapsed = 0.0
+        while elapsed < model.config.pulmonary_transit_time_s - 1e-10:
+            interval = min(dt, model.config.pulmonary_transit_time_s - elapsed)
+            state = model.step(interval, 0, 0, 0, -2, 40, 30, peep_cmH2O=20.0)
+            elapsed += interval
+        assert state.rv_co < state.lv_inflow < base.lv_inflow
+        expected = state.rv_co + (base.lv_inflow - state.rv_co) * math.exp(-1.0)
+        assert state.lv_inflow == pytest.approx(expected)
 
 
 class TestSepsis:

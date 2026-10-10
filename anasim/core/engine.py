@@ -515,12 +515,18 @@ class SimulationEngine(DrugControllerMixin):
             self.recorder.log(self.state)
 
     def get_latest_state(self) -> SimulationState:
-        """Return a copy of the current state."""
-        return copy.copy(self.state)
+        """Return an independent copy of the current state, including alarm flags."""
+        return copy.deepcopy(self.state)
 
     def get_predicted_csht(self, drug: str, max_seconds: int = 7200) -> float:
         """Minutes for a drug's effect site to halve if stopped now, up to max_seconds."""
-        model = self.pk[get_drug_spec(drug).key]
+        key = get_drug_spec(drug).key
+        model = self.pk[key]
+        if key == "roc":
+            return self.tof_pd.simulate_decay(
+                model, max_seconds=max_seconds,
+                mac_sevo=self.pk_sevo.state.mac, mac_n2o=self.pk_n2o.state.mac,
+            )
         return model.simulate_decay(target_fraction=0.5, max_seconds=max_seconds)
 
     def set_vent_power(self, on: bool):

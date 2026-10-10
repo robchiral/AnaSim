@@ -29,3 +29,14 @@ def test_awake_initial_snapshot_uses_patient_baselines():
     assert engine.state.hct == pytest.approx(0.24, abs=1e-6)
     assert engine.patient.baseline_hct == pytest.approx(0.24, abs=1e-6)
     assert engine.state.nibp_map == pytest.approx(engine.state.map, abs=1e-3)
+
+    engine.start()
+    engine.step(0.1)
+    snapshot = engine.get_latest_state()
+    assert snapshot.alarms["BIS"]["high"]
+    snapshot.alarms["BIS"]["high"] = False
+    assert engine.state.alarms["BIS"]["high"]
+    snapshot.alarms.clear()
+    assert "BIS" in engine.state.alarms
+    engine.step(0.1)
+    assert snapshot.alarms == {}

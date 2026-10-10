@@ -2,233 +2,177 @@
 
 ## Unreleased
 
-- Corrected gas exchange for body size. CO₂ production sets alveolar CO₂,
-  oxygen consumption scales with weight^0.75, and dead space follows predicted
-  body weight. Heavier patients no longer desaturate at rest, and maintenance
-  starts scale tidal volume with size. `baseline_vt` now defaults to the
-  volume that keeps resting PaCO₂ at 40 mmHg.
-- Applied Katoh 1997's sevoflurane-nitrous oxide interaction at awakening as a
-  continuous product term, replacing a fixed factor whenever any sevoflurane
-  was present. Nitrous oxide now adds to laryngoscopy tolerance in the same MAC
-  fractions as sevoflurane.
+- Corrected sevoflurane cardiovascular equilibration, pulmonary transit delays,
+  and CO₂ washout across time steps.
+- Isolated alarm flags in returned state copies from the live simulation.
+- Restricted rocuronium target-controlled infusion (TCI) to free plasma targets.
+  Decay predictions include neuromuscular kinetics, sugammadex, and inhaled agents.
+- Corrected gas exchange and maintenance tidal volumes for body size. Oxygen
+  consumption scales with weight^0.75, CO₂ production sets alveolar CO₂, and
+  dead space follows predicted body weight. `baseline_vt` defaults to the volume
+  that holds resting PaCO₂ at 40 mmHg.
+- Applied the continuous sevoflurane-nitrous oxide interaction at awakening and
+  included nitrous oxide in laryngoscopy tolerance.
 - Limited blood-volume scaling to the vascular part of each drug's central
-  volume, so hemorrhage and dilution no longer shift drugs with large central
-  volumes such as esmolol, ketamine, and lidocaine. Renal clearance of
-  milrinone, glycopyrrolate, and rocuronium follows renal perfusion instead of
-  cardiac output.
-- Awake patients hold baseline core temperature; they previously warmed about
-  0.3 °C/h. The thermoregulatory vasoconstriction threshold uses the same
-  anesthetic depth as the other hemodynamic effects.
-- Rescaled PK on 0.1% hemodynamic changes and resynchronized only active TCI
-  controllers. `get_predicted_csht` accepts any registry drug.
-- Replaced rocuronium and sugammadex PK/PD with Kleijn 2011's integrated
-  population model, including age, weight, renal function, and sevoflurane
-  covariates.
-- Set the rocuronium renal clearance share to 20% (Khuenl-Brady 1996).
-  Blood loss lowers propofol clearances and remifentanil elimination clearance
-  (Johnson 2001, 2003); volume restoration reverses the PK scaling.
-- Added reciprocal propofol-midazolam PK covariates from Vuyk 2009 and
-  Lichtenbelt 2010 with drug mass conservation and TCI resynchronization.
-- Recalibrated the ketamine sympathetic response so pressure peaks after the
-  induction bolus and returns to baseline during maintenance (Idvall 1979).
-  Added a separate cardiovascular effect site with Kamp 2021's 2.28 min
-  equilibration half-time and included ketamine in laryngoscopy tolerance.
-- Added passive lung-gas refill after relief of complete airway obstruction
-  during apnea, with oxygen drawn from the breathing circuit (Laviola 2020).
-- Recalibrated anesthetic heat loss and redistribution to the 1 h and 3 h core
-  temperature falls in Matsukawa 1995.
+  volume. Renal clearance of milrinone, glycopyrrolate, and rocuronium follows
+  renal perfusion.
+- Updated pharmacokinetic (PK) covariates on 0.1% hemodynamic changes and
+  resynchronized active TCI controllers. `get_predicted_csht` accepts any registry drug.
+- Replaced rocuronium and sugammadex PK/PD with Kleijn 2011's integrated model
+  and set rocuronium's renal clearance share to 20%.
+- Added blood-loss scaling of propofol clearances and remifentanil elimination
+  clearance, reversed by volume restoration.
+- Added reciprocal propofol-midazolam PK covariates with drug mass conservation
+  and TCI resynchronization.
+- Recalibrated ketamine cardiovascular responses, added a separate effect site
+  with a 2.28 min equilibration half-time, and included ketamine in laryngoscopy tolerance.
+- Added passive lung-gas refill after relief of complete obstruction during
+  apnea, with oxygen drawn from the breathing circuit.
+- Stabilized awake core temperature, aligned thermoregulatory vasoconstriction
+  with anesthetic depth, and recalibrated anesthetic heat loss and redistribution.
 
 ## 1.5 - 2026-10-10
 
-- Corrected circuit gas balance during uptake and washout, vaporizer delivery
-  as liquid agent runs out, and shunt mixing when venous oxygen is depleted.
-- Added pharmacokinetic (PK) substeps to preserve drug mass during larger time
-  steps. Corrected rocuronium effect-site onset and recovery and matched
-  hemodynamic pressure feedback to the circulation shown on the monitor.
-- Added VitalDB comparison scripts and saved reports for ventilation,
-  capnography, gas exchange, and positive end-expiratory pressure (PEEP).
-- Removed the unused `simulation_speed`, `pk_model_remi`, `hemo_model`, and
-  `resp_model` configuration fields and the `asa` patient input. The browser
-  speed control sets the real-time multiplier.
-- Fixed anesthetic PK to Eleveld 2018 propofol and Eleveld 2017 remifentanil.
-  Removed `pk_model_propofol`, `bis_model`, and `loc_model`, their browser
-  selectors, and the old model implementations. Added `concomitant_opioids`
-  for the fixed opioid-regimen propofol PK covariate.
-- Paired original Eleveld BIS with the Bouillon Bayesian hierarchy for clinical
-  responsiveness and laryngoscopy tolerance. Opioids blunt stimulation-related
-  BIS arousal. Clinical response and breathing use separate effect sites;
-  transfer assumptions are documented in `docs/ARCHITECTURE.md`.
-- Fixed norepinephrine to Li PK with an integrated response calibrated against
-  de Keijzer infusion and Joachim bolus data. Removed additional cardiac-output
-  scaling of its clearance and distribution. Pressure response increases under
-  anesthesia while cardiac output recovers toward baseline.
+- Corrected circuit gas balance, vaporizer delivery as liquid runs out, and
+  shunt mixing when venous oxygen is depleted.
+- Added PK substeps to preserve drug mass during larger steps. Corrected
+  rocuronium onset and recovery and matched pressure feedback to the displayed circulation.
+- Added VitalDB comparison scripts and reports for ventilation, capnography,
+  gas exchange, and positive end-expiratory pressure (PEEP).
+- Fixed anesthetic PK to Eleveld 2018 propofol and Eleveld 2017 remifentanil. Added
+  `concomitant_opioids` for the propofol opioid-regimen covariate.
+- Paired Eleveld bispectral index (BIS) with Bouillon clinical responsiveness
+  and laryngoscopy tolerance. Added separate clinical and respiratory effect
+  sites and opioid suppression of stimulation-related BIS arousal.
+- Fixed norepinephrine to Li PK with propofol-dependent clearance and responses
+  calibrated to de Keijzer and Joachim data. Removed additional cardiac-output scaling.
 - Fixed epinephrine to Ensinger arterial clearance with adult infusion and
-  bolus calibration. Removed `pk_model_nore`, `pk_model_epi`, their browser
-  selectors, and the alternative vasoactive PK implementations.
-- Replaced the respiratory stopgap with Bouillon propofol depression and an
-  Olofsen signed opioid/CO₂ controller. CO₂ can restore ventilation during
-  ongoing opioid administration. Updated maintenance starts and walkthroughs
-  for the fixed model set.
-- Corrected respiratory depression to act on alveolar ventilation and added
-  Bouillon's nonlinear CO₂ feedback. Subtracting dead space from already
-  depressed total ventilation previously caused excessive CO₂ retention.
-  Added steady-state checks with and without reduced CO₂ production.
-- Corrected CO₂ accumulation during apnea with a zero baseline respiratory
-  rate and removed the pressure ceiling that stopped ongoing accumulation.
-- Preserved inspiratory effort during airway obstruction and limited airflow
-  as the airway closes. Effort no longer increases to compensate for acute
-  airway resistance.
-- Coupled circuit oxygen removal to lung gas exchange, including filling and
-  washout of oxygen stores. Complete obstruction stops oxygen transport from
-  the circuit while metabolism continues using patient stores.
-- Coupled intrathoracic pressure to resolved airway pressure and muscle effort
-  during each step. Removed the fixed pressure offset and the sustained peak
-  effort that exaggerated venous return between breaths.
-- Preserved impedance respiratory rate during obstruction and held the last
-  end-tidal CO₂ reading until its timeout while the airway remains connected.
-- Matched TCI prediction pulses to the actual rate-update interval when the
-  sampling period does not divide the requested control interval.
-- Initialized hemodynamic turnover and fast drug responses together, preserving
-  the calculated pressure and cardiac output at maintenance startup.
-- Included endogenous secretion and propofol-dependent clearance in
-  norepinephrine TCI predictions. Rate updates now use live PK parameters and
-  concentrations. Maintenance starts seed endogenous norepinephrine at the
-  current propofol concentration.
-- Delayed epinephrine beta-2 vasodilation and reduced the alpha-response
-  ceiling, limiting the early mean arterial pressure (MAP) dip and large-bolus
-  pressure clipping while preserving the infusion and small-bolus calibration
-  tests.
-- Revised the urine pressure-response curve to preserve most basal output
-  at MAP 60 and taper toward zero near circulatory collapse.
-- Corrected hemorrhage responses. Right atrial pressure now falls with filling,
-  and reflex venoconstriction recruits venous volume. A 20% blood loss
-  previously caused near-arrest; blood pressure now holds through ATLS class II.
-- Blunted adrenergic agonists in severe anaphylaxis. Epinephrine 50-100 mcg
-  boluses previously raised MAP to 230-300 mmHg.
-- Keyed intravenous PK models, infusion rates, and active TCI controllers by
-  drug in `engine.pk`, `engine.infusion_rates`, and `engine.tci`.
-- Moved temperature to `engine.thermal` and anaphylaxis and sepsis to
-  `engine.anaphylaxis` and `engine.sepsis`.
+  bolus calibration. Delayed beta-2 vasodilation and limited the alpha response
+  to reduce early pressure dips and large-bolus pressure clipping.
+- Adopted Bouillon propofol depression and an Olofsen signed opioid/CO₂
+  controller with nonlinear CO₂ feedback. Corrected depression to act on
+  alveolar ventilation and updated maintenance starts and walkthroughs.
+- Corrected ongoing CO₂ accumulation during apnea, including a zero baseline
+  respiratory rate.
+- Preserved inspiratory effort and impedance respiratory rate during
+  obstruction, limited airflow as the airway closes, and held end-tidal CO₂
+  until its timeout while connected.
+- Coupled circuit oxygen removal to lung gas exchange and oxygen stores.
+  Complete obstruction stops circuit transport while metabolism uses patient stores.
+- Derived intrathoracic pressure from resolved airway pressure and muscle
+  effort, removing offsets that exaggerated venous return.
+- Matched TCI prediction pulses to rate-update intervals. Norepinephrine TCI
+  uses live PK, endogenous secretion, and propofol-dependent clearance;
+  maintenance starts seed the corresponding endogenous concentration.
+- Initialized hemodynamic turnover and fast drug responses together to
+  preserve pressure and cardiac output at maintenance startup.
+- Revised urine output to preserve most basal output at mean arterial pressure
+  (MAP) 60 and taper toward zero near circulatory collapse.
+- Corrected hemorrhage responses through filling-dependent right atrial
+  pressure and venous recruitment, preserving pressure through ATLS class II.
+- Blunted adrenergic agonists in severe anaphylaxis to prevent excessive
+  pressure rises after epinephrine boluses.
+- Removed `simulation_speed`, `pk_model_remi`, `hemo_model`, `resp_model`,
+  `pk_model_propofol`, `bis_model`, `loc_model`, `pk_model_nore`, `pk_model_epi`,
+  and the `asa` patient input, along with model selectors and alternative implementations.
+- Organized drug models and controls in `engine.pk`, `engine.infusion_rates`,
+  and `engine.tci`; moved temperature, anaphylaxis, and sepsis to `engine.thermal`,
+  `engine.anaphylaxis`, and `engine.sepsis`.
 
 ## 1.4 - 2026-10-06
 
-- Added pulmonary edema from fluid overload, with reduced oxygenation and
-  compliance and partial relief from positive end-expiratory pressure (PEEP).
-  Volume expansion increases urine output.
-- Removed automatic norepinephrine from maintenance starts. Mean arterial
-  pressure (MAP) now reflects the untreated anesthetic response.
-- Removed cardiac-output scaling of propofol and remifentanil clearance.
-  Bradycardia now increases stroke volume. Renamed `hemo_model` value
-  `"Su2023"` to `"Su"`.
-- Made manual infusion rates the default. Setup can enable target-controlled
-  infusion (TCI) for concentration targets, maintenance starts, and dosing
-  guidance. Propofol and remifentanil rates use mcg/kg/min.
+- Added pulmonary edema from fluid overload, reduced oxygenation and
+  compliance, partial relief from PEEP, and increased urine output after volume expansion.
+- Removed automatic norepinephrine from maintenance starts so MAP reflects
+  the untreated anesthetic response.
+- Removed cardiac-output scaling of propofol and remifentanil clearance and
+  increased stroke volume during bradycardia. Renamed `hemo_model` value `"Su2023"` to `"Su"`.
+- Made manual infusion rates the default, with optional TCI for targets,
+  maintenance starts, and dosing guidance. Propofol and remifentanil rates use mcg/kg/min.
 - Added fentanyl with TCI, midazolam, etomidate, ketamine, esmolol, labetalol,
-  and glycopyrrolate, including combined anesthetic and autonomic effects.
-  Added lidocaine boluses and infusions to partly blunt stimulation responses.
-- Revised induction scenarios to offer lidocaine before propofol, apply a
-  laryngoscopy stimulus, and check maintenance MAP. Balanced induction gives
-  fentanyl during preoxygenation and starts sevoflurane during rocuronium onset.
-- Required end-tidal O₂ ≥ 90% for preoxygenation. Emergence checks unassisted
-  breathing and train-of-four (TOF) ratio ≥ 90% before tube removal.
+  and glycopyrrolate with combined drug effects. Added lidocaine boluses and
+  infusions to partly blunt stimulation.
+- Revised induction scenarios for lidocaine, laryngoscopy stimulation, and
+  maintenance MAP checks. Balanced induction gives fentanyl during
+  preoxygenation and starts sevoflurane during rocuronium onset.
+- Required end-tidal O₂ ≥ 90% for preoxygenation and unassisted breathing with
+  train-of-four (TOF) ratio ≥ 90% before tube removal.
 - Revised crisis instructions, fluid choices, and oxygen supply checks.
   Vasopressor objectives accept recovered pressure without another infusion.
 - Added epinephrine relief of bronchospasm, positive-pressure relief of
   pharyngeal collapse, and reduced oxygen reserve after blood loss.
-- Revised atrial-fibrillation hemodynamics, ECG timing, and displayed heart
+- Revised atrial-fibrillation circulation, ECG timing, and displayed heart
   rate. The baroreflex adjusts vascular resistance when a rhythm fixes the rate.
-- Added PCV-VG and SIMV, patient triggering, flow cycling, adjustable VCV pause
-  and pressure limits, and flow-dependent expiratory PEEP-valve resistance.
-- Added tissue viscoelasticity, compliance scaling by body size, and muscle
-  pressure for spontaneous and assisted breaths. Patient effort synchronizes
-  with the ventilator and can produce curare clefts. CO₂ controls apnea under
-  anesthesia.
-- Added airway traces, ventilator measurements, live loops, inspired and
-  end-tidal gas values, and corresponding CSV fields. End-tidal values clear
-  when exhaled breath detection stops. Chest-impedance respiratory rate is
-  labeled "RR imp".
-- Added alarms for high airway pressure, low minute ventilation, low delivered
-  tidal volume, and low inspired O₂.
-- Corrected expired-volume measurements, mask leak, and tracheal-tube
-  obstruction. Bronchospasm reduces alveolar ventilation without reducing
-  displayed minute ventilation.
-- Separated `RespiratoryMechanics` from `AnesthesiaVentilator`.
-  `set_vent_settings` accepts the new modes and settings; PSV's apnea delay is
-  now `vent.apnea_backup_s`.
+- Added PCV-VG, SIMV, patient triggering, flow cycling, VCV pause and pressure
+  limits, and flow-dependent expiratory PEEP-valve resistance.
+- Added tissue viscoelasticity, body-size compliance scaling, and synchronized
+  inspiratory muscle effort with curare clefts. CO₂ controls apnea under anesthesia.
+- Added airway traces, ventilator measurements, live loops, gas values, CSV
+  fields, and alarms for high airway pressure and low ventilation, delivered
+  tidal volume, and inspired O₂. End-tidal readings clear when exhaled breath
+  detection stops; chest-impedance rate is labeled "RR imp".
+- Corrected expired volume, mask leak, and tube obstruction. Bronchospasm
+  reduces alveolar ventilation without reducing displayed minute ventilation.
+- Separated `RespiratoryMechanics` from `AnesthesiaVentilator`. Extended
+  `set_vent_settings` and moved PSV's apnea delay to `vent.apnea_backup_s`.
 
 ## 1.3 - 2026-09-30
 
-- Replaced the Qt desktop app with a browser interface shared by local Python
-  and the hosted Pyodide app. `anasim` opens the local interface and saves CSV
-  files to `recordings/`. Removed PySide6 and pyqtgraph dependencies.
-- Separated ventilator settings from power. Use `set_vent_settings` to apply
-  settings and `set_vent_power` to start or stop ventilation. The ventilator
-  works in awake sessions and retains settings while off.
-- Corrected step-size effects on ventilator mechanics, double-counted trapped-gas
-  pressure, and gas exchange timing. Gas exchange uses completed exhaled
-  breaths; capnography works during PSV apnea backup.
-- Corrected NIBP cycle timing across step sizes. SpO₂ requires a pulsatile
-  signal; the previous blood-pressure reading remains visible during cuff cycles.
-- Made manual infusion rates disable TCI and preserved central drug amount
-  during hemodynamic pharmacokinetic (PK) scaling.
-- Added CSV error reporting that preserves the recorded portion. Sampling
-  stays on schedule when steps cross sample deadlines.
+- Replaced Qt with a browser interface shared by local Python and hosted
+  Pyodide. `anasim` opens the local app and saves CSV files to `recordings/`.
+  Removed PySide6 and pyqtgraph dependencies.
+- Separated `set_vent_settings` from `set_vent_power`. Ventilation works in
+  awake sessions and settings persist while power is off.
+- Corrected step-size effects, trapped-gas pressure, and gas exchange timing.
+  Gas exchange uses completed exhaled breaths; capnography works during PSV backup.
+- Corrected NIBP cycle timing and retained the last reading during cuff cycles.
+  SpO₂ requires a pulsatile signal.
+- Made manual rates disable TCI and preserved central drug mass during PK scaling.
+- Added CSV error reporting that preserves recorded data and sampling schedules.
 - Stopped sessions at confirmed arrest when `end_on_cardiac_arrest` is enabled.
 - Required ventilator startup after intubation and fresh gas reduction during
-  total intravenous anesthesia (TIVA) maintenance. Baseline objectives show
-  their checked ranges.
-- Applied arterial-line setting changes immediately and reduced waveform
-  computation time.
-- Added Python 3.14 support and removed the unused pandas dependency.
+  total intravenous anesthesia (TIVA) maintenance. Baseline objectives show checked ranges.
+- Applied arterial-line settings immediately and reduced waveform computation time.
+- Added Python 3.14 support and removed pandas.
 
 ## 1.2 - 2026-09-24
 
-- Added a cardiac baroreflex, revised epinephrine responses, and corrected the
-  Li norepinephrine age covariate. Renamed epinephrine PK option `"Clutter"` to
-  `"HealthyAdult"` in saved configurations.
-- Added myocardial hypoxia and a cardiac arrest endpoint. Renamed the
-  configuration option to `end_on_cardiac_arrest`; state fields are
-  `cardiac_arrest` and `arrest_reason`.
-- Added a central rocuronium effect site, allowing respiratory muscle recovery
-  before TOF recovery after sugammadex.
-- Added upper-airway obstruction after loss of consciousness and alveolar and
+- Added a baroreflex, revised epinephrine responses, and corrected the Li
+  norepinephrine age covariate. Renamed epinephrine PK option `"Clutter"` to `"HealthyAdult"`.
+- Added myocardial hypoxia and cardiac arrest with `end_on_cardiac_arrest`,
+  `cardiac_arrest`, and `arrest_reason`.
+- Added a central rocuronium effect site for respiratory muscle recovery before TOF recovery.
+- Added upper-airway obstruction after loss of consciousness and lung and
   blood oxygen stores for preoxygenation and apneic oxygenation.
 - Removed TCI rate spikes after resynchronization and capped propofol and
   remifentanil TCI at 1200 mL/hr.
 - Corrected sevoflurane minimum alveolar concentration (MAC) at age 40 to 1.80%,
-  cardiovascular effect timing, and its bispectral index (BIS) contribution
-  during TIVA. Gas monitoring and scenario objectives use end-tidal MAC.
-- Revised steady-state startup, ventilator waveforms, temperature changes,
-  and stimulation responses.
-- Preserved drug mass during hemodynamic PK scaling and used the published
-  James lean body mass covariate for Schnider and Minto.
-- Removed pediatric Oualha norepinephrine and epinephrine models.
-  Configurations that select them fail validation.
-- Simplified subsystem code and expanded alarm and cardiac arrest tests.
+  cardiovascular timing, and BIS contribution during TIVA. Gas monitoring and
+  scenario objectives use end-tidal MAC.
+- Revised steady-state startup, ventilator waveforms, temperature, and stimulation responses.
+- Preserved drug mass during PK scaling and used the published James lean
+  body mass covariate for Schnider and Minto.
+- Removed pediatric Oualha norepinephrine and epinephrine models and rejected
+  configurations that select them.
 
 ## 1.1 - 2026-08-30
 
 - Enforced patient limits across the API, CLI, and desktop setup. Added
-  hemoglobin and hematocrit inputs and derived organ status labels from
-  organ-function factors.
-- Averaged stimulation profiles over each step and ended timed profiles after
-  the step in which they finish.
-- Added an arterial pressure waveform based on Su MAP and stroke volume,
-  with shared ECG and pleth timing and catheter-transducer dynamics.
-- Made cardiac waveforms and their history independent of step size. Removed
-  pleth-derived arterial pressure, duplicate pressure reconstruction, separate
-  cardiac phases, and redundant MAP and heart-rate display smoothing.
+  hemoglobin and hematocrit inputs and derived organ status from function factors.
+- Averaged stimulation over each step and ended timed profiles after their final step.
+- Added arterial waveforms with shared ECG and pleth timing and catheter
+  dynamics. Made cardiac waveforms and history independent of step size and
+  removed duplicate pressure, timing, and display calculations.
 - Added a clinical guide and first-session instructions to the README.
-- Revised setup, monitor, and control labels and fixed clipped setup content.
-- Simplified setup cancellation and removed the duplicate screenshot launcher.
+- Revised interface labels, fixed clipped setup content, simplified
+  cancellation, and removed the duplicate screenshot launcher.
 - Added Ruff configuration and CI linting.
 
 ## 1.0 - 2026-07-17
 
-- Integrated cardiovascular, respiratory, pharmacologic, ventilator, fluid, and
-  temperature simulation using published models with documented adaptations.
+- Integrated cardiovascular, respiratory, pharmacologic, ventilator, fluid,
+  and temperature simulation with documented adaptations of published models.
 - Added an operating-room monitor, guided scenarios, a headless runner, and
-  CSV recording, including pulse-oximeter lag and signal validity.
+  CSV recording with pulse-oximeter lag and signal validity.
 - Supported adults aged 18 to 70 years.
-- Simplified configuration, simulation state, interface code, and tests.
 - Added Python packaging, continuous integration, and automated PyPI publishing.

@@ -266,9 +266,11 @@ to Eleveld propofol and Albrecht midazolam is a modeling assumption.
 
 TCI uses current PK parameters and concentrations to predict exposure over
 10 minutes. Rates update at a nominal 10-second interval within pump limits.
-Norepinephrine predictions include endogenous secretion. A manual rate disables
-TCI for that drug. `tci_enabled` selects TCI or manual infusion rates for
-maintenance initialization.
+Rocuronium TCI targets free plasma concentration. Its effect-site decay
+prediction uses the neuromuscular model with current hemodynamic parameters
+and inhaled MAC held constant. Norepinephrine predictions include endogenous
+secretion. A manual rate disables TCI for that drug. `tci_enabled` selects TCI
+or manual infusion rates for maintenance initialization.
 
 ### Temperature and stimulation
 

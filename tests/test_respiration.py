@@ -1,3 +1,4 @@
+import copy
 from dataclasses import replace
 from typing import Any
 
@@ -94,7 +95,7 @@ def test_low_dose_propofol_promotes_transient_remifentanil_apnea(patient):
     assert 10 < apnea[1.0] < 300
 
 
-def test_apneic_co2_accumulates_independently_of_baseline_breathing(patient_factory):
+def test_apneic_co2_accumulation_and_ventilated_recovery(patient_factory):
     outcomes = []
     for baseline_rr in (0.0, 12.0):
         model = RespiratoryModel(patient_factory(baseline_rr=baseline_rr))
@@ -109,6 +110,18 @@ def test_apneic_co2_accumulates_independently_of_baseline_breathing(patient_fact
             state = model.step(1.0, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0,
                                fio2=1.0, metabolic_factor=0.8)
         assert state.p_alveolar_co2 > 170.0  # Production continues throughout prolonged apnea.
+        recovered = []
+        for dt in (1.0, 300.0):
+            ventilated = copy.deepcopy(model)
+            for _ in range(round(600.0 / dt)):
+                state = ventilated.step(
+                    dt, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0,
+                    fio2=1.0, metabolic_factor=0.8, mech_rr=12.0,
+                    mech_vt_l=0.5, measured_breaths=True,
+                )
+            assert 25.0 < state.etco2 < state.pa_co2 < 50.0
+            recovered.append((state.pa_co2, state.etco2))
+        assert recovered[1] == pytest.approx(recovered[0], abs=1e-8)
     assert outcomes[0] == pytest.approx(outcomes[1], abs=0.1)
 
 

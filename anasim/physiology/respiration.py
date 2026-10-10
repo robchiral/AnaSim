@@ -324,7 +324,7 @@ class RespiratoryModel:
 
         metabolic_factor = max(0.1, float(metabolic_factor))
         paco2_eq = self.co2_constant * self.vco2 * metabolic_factor / effective_va
-        d_paco2 = (paco2_eq - state.p_alveolar_co2) / self.tau_co2 * dt
+        d_paco2 = (paco2_eq - state.p_alveolar_co2) * -math.expm1(-dt / self.tau_co2)
 
         # CO2 continues accumulating without alveolar ventilation, independent
         # of the baseline breath pattern. Production scales the apneic rise.

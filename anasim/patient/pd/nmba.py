@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import math
 
 from anasim.core.utils import clamp, clamp01
@@ -85,6 +86,26 @@ class TOFModel:
     def bound_rocuronium(self) -> float:
         """Plasma rocuronium held in the complex, mg/L of complex central volume."""
         return self.complex.state.c1 * MW_ROCURONIUM / 1000.0
+
+    def simulate_decay(
+        self, roc: MammillaryPK, *, max_seconds: int = 7200,
+        mac_sevo: float = 0.0, mac_n2o: float = 0.0,
+    ) -> float:
+        """Minutes for adductor pollicis rocuronium to halve with infusions stopped.
+
+        Hemodynamic covariates and inhaled MAC are held at their current values.
+        """
+        target = self.ce * 0.5
+        if target <= 0.0:
+            return 0.0
+        rocuronium = copy.deepcopy(roc)
+        neuromuscular = copy.deepcopy(self)
+        for second in range(1, max_seconds + 1):
+            rocuronium.step(1.0, 0.0)
+            neuromuscular.step_recovery(1.0, rocuronium, mac_sevo, mac_n2o)
+            if neuromuscular.ce <= target:
+                return second / 60.0
+        return max_seconds / 60.0
 
     def step_recovery(self, dt_sec: float, roc: MammillaryPK, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """Advance binding and the effect sites after the rocuronium PK step; return TOF %."""

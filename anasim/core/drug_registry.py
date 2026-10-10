@@ -355,7 +355,7 @@ DRUG_REGISTRY = (
         generic_name="Rocuronium",
         tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),
-        fixed_tci_mode=None,
+        fixed_tci_mode=TCIMode.PLASMA,
         max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_HOUR, 1.0),
     ),
 )

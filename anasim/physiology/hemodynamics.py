@@ -391,7 +391,7 @@ class HemodynamicModel:
         rv_out_target_factor = vr_flow_factor * (pvr_factor ** (-cfg.pvr_flow_exponent))
 
         if cfg.pulmonary_transit_time_s > 0 and dt > 0:
-            alpha = min(1.0, dt / cfg.pulmonary_transit_time_s)
+            alpha = -math.expm1(-dt / cfg.pulmonary_transit_time_s)
             self._pulm_flow_factor += (rv_out_target_factor - self._pulm_flow_factor) * alpha
         elif self._pulm_flow_factor <= 0:
             self._pulm_flow_factor = rv_out_target_factor
@@ -607,7 +607,7 @@ class HemodynamicModel:
         anaph_sev = clamp01(self.anaphylaxis_severity)
 
         # Sevoflurane cardiovascular effect site, driven by end-tidal MAC.
-        self.ce_sevo += cfg.ke0_sevo * (mac_sevo - self.ce_sevo) * dt_min
+        self.ce_sevo += (mac_sevo - self.ce_sevo) * -math.expm1(-cfg.ke0_sevo * dt_min)
         anesthetic_depth = clamp01(self.ce_sevo + cp_prop / 4.0)
 
         # Antagonist dose ratios; esmolol is beta-1 selective.

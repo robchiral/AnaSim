@@ -55,6 +55,7 @@ def test_norepinephrine_tci_includes_secretion_and_propofol_clearance(patient_fa
     pk = NorepinephrinePK(patient_factory(age=35))
     controller = TCIController(pk, target_compartment="plasma", sampling_time=1.0)
     controller.set_target(1.0)
+    rates = []
     for propofol in (0.0, 3.53):
         pk.update_propofol(propofol)
         for _ in range(1800):
@@ -62,6 +63,8 @@ def test_norepinephrine_tci_includes_secretion_and_propofol_clearance(patient_fa
         assert pk.state.c1 == pytest.approx(1.0, abs=0.015)
         required_rate = (pk.elimination_clearance - pk.endogenous_ug_min) / 60.0
         assert controller.infusion_rate == pytest.approx(required_rate, rel=0.01)
+        rates.append(controller.infusion_rate)
+    assert rates[1] < 0.9 * rates[0]
     # A target below endogenous concentration stops exogenous input.
     controller.set_target(0.2)
     for _ in range(3600):
@@ -72,6 +75,36 @@ def test_norepinephrine_tci_includes_secretion_and_propofol_clearance(patient_fa
 
 class TestEngineTCI:
     """Pump-limited TCI inside the engine."""
+
+    def test_rocuronium_plasma_target_and_reversal_prediction(self, engine_factory, advance_time):
+        engine = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", tci_enabled=True), start=True,
+        )
+        engine.enable_tci("roc", 0.8)
+        assert engine.tci["roc"].target_compartment == "plasma"
+        for _ in range(900):
+            engine.step(1.0)
+        assert engine.pk["roc"].state.c1 == pytest.approx(0.8, rel=0.03)
+        assert engine.state.mac_sevo > 0.5
+        assert 0.0 < engine.state.roc_ce < engine.pk["roc"].state.c1
+        engine.disable_tci("roc")
+        engine.give_drug_bolus("sugammadex", 4.0 * engine.patient.weight)
+        advance_time(engine, 60.0)
+        assert engine.state.tof > 90.0
+        before = engine.get_latest_state()
+        models = (engine.pk["roc"], engine.tof_pd.sugammadex, engine.tof_pd.complex)
+        compartments = [model.state_vector() for model in models]
+        predicted = engine.get_predicted_csht("roc")
+        assert (engine.state.time, engine.state.roc_ce, engine.state.tof) == (before.time, before.roc_ce, before.tof)
+        assert engine.tof_pd.ce == before.roc_ce
+        for model, initial in zip(models, compartments, strict=True):
+            assert model.state_vector() == pytest.approx(initial)
+        target = before.roc_ce / 2.0
+        while engine.state.roc_ce > target and engine.state.time < before.time + 600.0:
+            engine.step(1.0)
+        observed = (engine.state.time - before.time) / 60.0
+        assert engine.state.roc_ce <= target
+        assert predicted == pytest.approx(observed, abs=2.0 / 60.0)
 
     def test_propofol_target_survives_midazolam_pk_interaction(self, engine_factory):
         """A midazolam bolus changes live PK while the propofol pump holds its target."""

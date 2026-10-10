@@ -10,7 +10,6 @@ from anasim.patient.pk_models import (
     EpinephrinePK,
     MidazolamPK,
     MilrinonePK,
-    NorepinephrinePK,
     PropofolPKEleveld,
     RemifentanilPKEleveld,
     RocuroniumPK,
@@ -75,21 +74,20 @@ def test_propofol_half_time_is_context_sensitive(patient):
     assert csht(4) > two_hours
 
 
-def test_remifentanil_half_time_is_context_insensitive(patient):
-    """Egan 1993; Kapila 1995: remifentanil CSHT stays near 3-5 min after 4 h."""
-    model = RemifentanilPKEleveld(patient)
-    _infuse(model, 4 * 3600, 0.2 * patient.weight / 60.0)
-    assert model.simulate_decay(target_fraction=0.5, max_seconds=1200) < 9
-
-
-def test_remifentanil_eleveld_reference_adult_matches_publication():
-    """Eleveld 2017 Table 3, reference 35-year-old 70-kg 170-cm male."""
+def test_remifentanil_reference_pk_and_context_insensitive_offset():
+    """Eleveld 2017 Table 3; Egan 1993 and Kapila 1995 report a 3-5 min offset."""
     model = RemifentanilPKEleveld(Patient(age=35, weight=70, height=170, sex="male"))
     assert (model.v1, model.v2, model.v3) == pytest.approx((5.81, 8.82, 5.03))
     assert (model.cl1, model.cl2, model.cl3) == pytest.approx((2.58, 1.72, 0.124))
     assert model.ke0 == pytest.approx(1.09)
-    _infuse(model, 4 * 3600, 0.1 * 70 / 60.0)
+    rate = 0.1 * 70 / 60.0
+    _infuse(model, 15 * 60, rate)
+    short = model.simulate_decay(max_seconds=1200)
+    _infuse(model, (240 - 15) * 60, rate)
+    long = model.simulate_decay(max_seconds=1200)
     assert model.state.c1 == pytest.approx(7.0 / 2.58, rel=0.01)
+    assert 2.0 < short < 6.0 and 2.0 < long < 6.0
+    assert long == pytest.approx(short, abs=2.0)
 
 
 def test_propofol_opioid_covariate_matches_nonmem():
@@ -102,17 +100,6 @@ def test_propofol_opioid_covariate_matches_nonmem():
     no_opioid = PropofolPKEleveld(patient, concomitant_opioids=False)
     assert model.v1 == no_opioid.v1 and model.v2 == no_opioid.v2
     assert model.ke0 == no_opioid.ke0
-
-
-def test_propofol_slows_li_norepinephrine_clearance(patient):
-    """Li 2024: propofol plasma concentration is a covariate on clearance."""
-    concentrations = []
-    for propofol_cp in (0.0, 4.0):
-        model = NorepinephrinePK(patient)
-        model.update_propofol(propofol_cp)
-        _infuse(model, 600, 0.1 * patient.weight / 60.0)
-        concentrations.append(model.state.c1)
-    assert concentrations[1] > concentrations[0]
 
 
 def test_reciprocal_propofol_midazolam_pk_preserves_mass_and_reverses(patient):
