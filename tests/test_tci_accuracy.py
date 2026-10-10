@@ -58,14 +58,14 @@ def test_norepinephrine_tci_includes_secretion_and_propofol_clearance(patient_fa
     for propofol in (0.0, 3.53):
         pk.update_propofol(propofol)
         for _ in range(1800):
-            pk.step(1.0, controller.step(), propofol)
+            pk.step(1.0, controller.step())
         assert pk.state.c1 == pytest.approx(1.0, abs=0.015)
         required_rate = (pk.elimination_clearance - pk.endogenous_ug_min) / 60.0
         assert controller.infusion_rate == pytest.approx(required_rate, rel=0.01)
     # A target below endogenous concentration stops exogenous input.
     controller.set_target(0.2)
     for _ in range(3600):
-        pk.step(1.0, controller.step(), 3.53)
+        pk.step(1.0, controller.step())
     assert controller.infusion_rate == 0.0
     assert pk.state.c1 == pytest.approx(pk.endogenous_ug_min / pk.elimination_clearance, rel=0.005)
 
@@ -97,14 +97,14 @@ class TestEngineTCI:
         engine.set_drug_rate("nore", 5.0)
         for _ in range(300):
             engine.step(1.0)
-        engine.enable_tci("nore", engine.pk_nore.state.c1, mode="plasma")
+        engine.enable_tci("nore", engine.pk["nore"].state.c1, mode="plasma")
         target = engine.tci["nore"].target
         peak = 0.0
         for _ in range(3000):
             engine.step(0.1)
-            peak = max(peak, engine.pk_nore.state.c1)
+            peak = max(peak, engine.pk["nore"].state.c1)
         assert peak < target * 1.03
-        assert engine.pk_nore.state.c1 == pytest.approx(target, rel=0.03)
+        assert engine.pk["nore"].state.c1 == pytest.approx(target, rel=0.03)
 
     @pytest.mark.parametrize("manual_rate", [0.0, 120.0])
     def test_manual_rate_remains_in_control_after_tci(self, engine_factory, manual_rate):

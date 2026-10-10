@@ -16,7 +16,6 @@ from anasim.core.constants import (
     SHIVER_TAU_ON,
     TEMP_METABOLIC_COEFFICIENT,
 )
-from anasim.core.drug_registry import PK_HEMODYNAMIC_TARGETS
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.physiology.disturbances import DisturbanceEffects
@@ -89,7 +88,7 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
 
     disturbance_complete = _disturbance_completes_during_step(engine, dt)
     disturbances = step_disturbances(engine, dt)
-    updated_pk_models = update_pk_hemodynamics(engine, engine.state.co)
+    updated_pk_models = update_pk_covariates(engine, engine.state.co)
     if updated_pk_models:
         engine.sync_active_tci_from_pk(*updated_pk_models)
 
@@ -253,7 +252,6 @@ def _disturbance_completes_during_step(engine: "SimulationEngine", dt: float) ->
 
 def step_tci(engine: "SimulationEngine", dt: float) -> None:
     """Advance TCI controllers on their own sampling clock."""
-    engine.pk_nore.update_propofol(engine.pk_prop.state.c1)
     sim_time = engine.state.time
     for key, controller in engine.tci.items():
         sampling_time = controller.sampling_time
@@ -298,34 +296,24 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
     sync_inhaled_agents(engine)
 
     rates = engine.infusion_rates
-    engine.pk_prop.step(dt, rates["propofol"])
-    engine.pk_remi.step(dt, rates["remi"])
-    engine.pk_fentanyl.step(dt, rates["fentanyl"])
-    engine.pk_midazolam.step(dt, rates["midazolam"])
-    engine.pk_etomidate.step(dt, 0.0)
-    engine.pk_ketamine.step(dt, rates["ketamine"])
-    engine.pk_lidocaine.step(dt, rates["lidocaine"])
-    engine.pk_nore.step(dt, rates["nore"], propofol_conc_ug_ml=engine.pk_prop.state.c1)
-    engine.pk_roc.step(dt, rates["roc"])
+    for key, model in engine.pk.items():
+        model.step(dt, rates.get(key, 0.0))
     # Free (sugammadex-unbound) rocuronium at the neuromuscular junction drives
     # TOF and every muscle effect.
     tof = engine.tof_pd.step_recovery(
-        dt, engine.pk_roc.state.c1, mac_sevo=engine.pk_sevo.state.mac, mac_n2o=engine.pk_n2o.state.mac
+        dt, engine.pk["roc"].state.c1, mac_sevo=engine.pk_sevo.state.mac, mac_n2o=engine.pk_n2o.state.mac
     )
     state.tof = float(tof)
-    engine.pk_epi.step(dt, rates["epi"])
-    engine.pk_phenyl.step(dt, rates["phenyl"])
-    engine.pk_vaso.step(dt, rates["vaso"])
-    engine.pk_dobu.step(dt, rates["dobu"])
-    engine.pk_mil.step(dt, rates["milri"])
-    engine.pk_esmolol.step(dt, rates["esmolol"])
-    engine.pk_labetalol.step(dt, 0.0)
-    engine.pk_glyco.step(dt, 0.0)
     sync_pk_state(engine)
 
 
-def update_pk_hemodynamics(engine: "SimulationEngine", co_curr: float) -> tuple[str, ...]:
-    """Scale PK parameters based on current blood volume and cardiac output."""
+def update_pk_covariates(engine: "SimulationEngine", co_curr: float) -> tuple[str, ...]:
+    """Update PK covariates and return the drugs whose models were rescaled.
+
+    Propofol slows norepinephrine clearance. Blood volume and cardiac output
+    scale every intravenous model.
+    """
+    engine.pk_nore.update_propofol(engine.pk["propofol"].state.c1)
     base_bv = engine.hemo.blood_volume_0
     base_co = engine.hemo.base_co_l_min
     if base_bv <= 0.0 or base_co <= 0.0:
@@ -341,10 +329,10 @@ def update_pk_hemodynamics(engine: "SimulationEngine", co_curr: float) -> tuple[
         ):
             return ()
 
-    for _, attr in PK_HEMODYNAMIC_TARGETS:
-        getattr(engine, attr).update_hemodynamics(v_ratio, co_ratio)
+    for model in engine.pk.values():
+        model.update_hemodynamics(v_ratio, co_ratio)
     engine._pk_hemo_scale_cache = (v_ratio, co_ratio)
-    return tuple(drug_key for drug_key, _ in PK_HEMODYNAMIC_TARGETS)
+    return tuple(engine.pk)
 
 
 def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:

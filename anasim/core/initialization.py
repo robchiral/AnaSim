@@ -162,18 +162,18 @@ def _seed_steady_state_subsystems(
     engine.infusion_rates["nore"] = 0.0
 
     if targets.prop_ce > 0.0:
-        engine.infusion_rates["propofol"] = _seed_linear_history(engine.pk_prop, targets.prop_ce, profile.history_minutes) / 60.0
+        engine.infusion_rates["propofol"] = _seed_linear_history(engine.pk["propofol"], targets.prop_ce, profile.history_minutes) / 60.0
     if targets.remi_ce > 0.0:
-        engine.infusion_rates["remi"] = _seed_linear_history(engine.pk_remi, targets.remi_ce, profile.history_minutes) / 60.0
+        engine.infusion_rates["remi"] = _seed_linear_history(engine.pk["remi"], targets.remi_ce, profile.history_minutes) / 60.0
     fi_agent = 0.0
     if profile.primary_hypnotic == "volatile":
         fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
     engine.circuit.equilibrate(_oxygen_uptake_l_min(engine, targets), fi_agent)
     engine.resp.equilibrate_oxygen(engine.circuit.composition.fio2)
 
-    engine.resp.initialize_drug_effects(engine.pk_prop.state.ce_resp, engine.pk_remi.state.ce_resp)
-    prop_cp = engine.pk_prop.state.c1
-    remi_cp = engine.pk_remi.state.c1
+    engine.resp.initialize_drug_effects(engine.pk["propofol"].state.ce_resp, engine.pk["remi"].state.ce_resp)
+    prop_cp = engine.pk["propofol"].state.c1
+    remi_cp = engine.pk["remi"].state.c1
     engine.pk_nore.update_propofol(prop_cp)
     engine.pk_nore.equilibrate_endogenous()
     # Start at the untreated anesthetic steady state so the hidden settle
@@ -181,7 +181,7 @@ def _seed_steady_state_subsystems(
     engine.hemo.initialize_steady_state(
         prop_cp,
         remi_cp,
-        engine.pk_nore.state.ce,
+        engine.pk["nore"].state.ce,
         mac_sevo=targets.mac,
     )
 
@@ -252,7 +252,7 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
         )
         engine._depth_index = depth_index
         engine._metabolic_factor = metabolic_factor
-        runtime_core.update_pk_hemodynamics(engine, engine.state.co)
+        runtime_core.update_pk_covariates(engine, engine.state.co)
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)
         runtime_core.step_pk(engine, profile.settle_dt_seconds, fi_sevo, fi_n2o, engine.state.co)
         physiology = runtime_core.step_physiology(engine, profile.settle_dt_seconds, DisturbanceEffects())
@@ -274,8 +274,8 @@ def _attach_startup_controllers(engine: "SimulationEngine", targets: StartupTarg
     """Attach TCI controllers after seeding so they inherit and hold the post-settle state."""
     projection_core.sync_pk_state(engine)
     if targets.prop_ce > 0.0:
-        engine.enable_tci("propofol", engine.pk_prop.state.ce, mode="effect_site")
+        engine.enable_tci("propofol", engine.pk["propofol"].state.ce, mode="effect_site")
         engine.infusion_rates["propofol"] = 0.0
     if targets.remi_ce > 0.0:
-        engine.enable_tci("remi", engine.pk_remi.state.ce, mode="effect_site")
+        engine.enable_tci("remi", engine.pk["remi"].state.ce, mode="effect_site")
         engine.infusion_rates["remi"] = 0.0

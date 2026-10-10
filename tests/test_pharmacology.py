@@ -15,9 +15,9 @@ from anasim.patient.pk_models import (
 )
 
 
-def _infuse(model, seconds: int, rate: float, **kwargs) -> None:
+def _infuse(model, seconds: int, rate: float) -> None:
     for _ in range(seconds):
-        model.step(1.0, rate, **kwargs)
+        model.step(1.0, rate)
 
 
 def _tof_trace(patient, roc_mg_kg, seconds):
@@ -107,7 +107,8 @@ def test_propofol_slows_li_norepinephrine_clearance(patient):
     concentrations = []
     for propofol_cp in (0.0, 4.0):
         model = NorepinephrinePK(patient)
-        _infuse(model, 600, 0.1 * patient.weight / 60.0, propofol_conc_ug_ml=propofol_cp)
+        model.update_propofol(propofol_cp)
+        _infuse(model, 600, 0.1 * patient.weight / 60.0)
         concentrations.append(model.state.c1)
     assert concentrations[1] > concentrations[0]
 
@@ -132,7 +133,7 @@ def test_organ_impairment_scales_pk():
 def test_hemodynamic_rescaling_conserves_drug_mass(awake_engine, volume_ratio):
     """Changing effective V1 must not act as an unlogged drug dose or loss."""
     for spec in DRUG_REGISTRY:
-        pk = getattr(awake_engine, spec.pk_attr)
+        pk = awake_engine.pk[spec.key]
         pk.state.c1, pk.state.c2, pk.state.c3, pk.state.ce = 4.0, 2.0, 1.0, 3.0
         original_v1 = pk.v1
         original_mass = pk.v1 * 4.0 + pk.v2 * 2.0 + pk.v3

@@ -1,6 +1,7 @@
 """Drug infusion and TCI controls for SimulationEngine."""
 
 from anasim.patient.patient import Patient
+from anasim.patient.pk_models import MammillaryPK
 
 from .action_log import ACTION_INFUSION_RATE, ACTION_TCI_TARGET, ActionLog
 from .drug_registry import (
@@ -23,6 +24,7 @@ class DrugControllerMixin:
     patient: Patient
     state: SimulationState
     actions: ActionLog
+    pk: dict[str, MammillaryPK]
     infusion_rates: dict[str, float]
     tci: dict[str, TCIController]
     _tci_accumulators: dict[str, float]
@@ -38,7 +40,7 @@ class DrugControllerMixin:
         max_rate = _tci_max_rate(spec)
         if not self.config.tci_enabled:
             raise ValueError("TCI is disabled for this session")
-        pk_model = getattr(self, spec.pk_attr)
+        pk_model = self.pk[spec.key]
         controller = self.tci.get(spec.key)
         target_compartment = (spec.fixed_tci_mode or TCIMode(mode)).value
         if controller is None or controller.target_compartment != target_compartment:
@@ -64,7 +66,7 @@ class DrugControllerMixin:
         for spec in specs:
             controller = self.tci.get(spec.key)
             if controller:
-                controller.sync_from_pk_model(getattr(self, spec.pk_attr))
+                controller.sync_from_pk_model(self.pk[spec.key])
 
     def disable_tci(self, drug: str):
         """Disable TCI for a drug and stop its infusion."""

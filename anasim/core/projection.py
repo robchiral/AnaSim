@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
 
+from .drug_registry import DRUG_REGISTRY
 from .state import AirwayType
 from .utils import clamp
 
@@ -76,39 +77,25 @@ def measured_ventilation(
 def sync_pk_state(engine: "SimulationEngine") -> None:
     """Synchronize PK concentrations from subsystem states to public state."""
     state = engine.state
-    state.propofol_ce = float(engine.pk_prop.state.ce)
-    state.propofol_cp = float(engine.pk_prop.state.c1)
-    state.remi_ce = float(engine.pk_remi.state.ce)
-    state.remi_cp = float(engine.pk_remi.state.c1)
-    state.fentanyl_ce = float(engine.pk_fentanyl.state.ce)
-    state.fentanyl_cp = float(engine.pk_fentanyl.state.c1)
-    state.midazolam_ce = float(engine.pk_midazolam.state.ce)
-    state.etomidate_ce = float(engine.pk_etomidate.state.ce)
-    state.ketamine_ce = float(engine.pk_ketamine.state.ce)
-    state.lidocaine_ce = float(engine.pk_lidocaine.state.ce)
-    state.opioid_ce = float(opioid_equivalent(engine.pk_remi.state.ce, engine.pk_fentanyl.state.ce))
-    state.opioid_cp = float(opioid_equivalent(engine.pk_remi.state.c1, engine.pk_fentanyl.state.c1))
+    for spec in DRUG_REGISTRY:
+        pk_state = engine.pk[spec.key].state
+        if spec.ce_field is not None:
+            setattr(state, spec.ce_field, float(pk_state.ce))
+        if spec.cp_field is not None:
+            setattr(state, spec.cp_field, float(pk_state.c1))
+    state.roc_ce = float(engine.tof_pd.ce)
+    state.opioid_ce = float(opioid_equivalent(engine.pk["remi"].state.ce, engine.pk["fentanyl"].state.ce))
+    state.opioid_cp = float(opioid_equivalent(engine.pk["remi"].state.c1, engine.pk["fentanyl"].state.c1))
     state.hypnotic_ce = float(hypnotic_equivalent(
-        engine.pk_prop.state.ce,
-        engine.pk_etomidate.state.ce,
-        engine.pk_midazolam.state.ce,
+        engine.pk["propofol"].state.ce,
+        engine.pk["etomidate"].state.ce,
+        engine.pk["midazolam"].state.ce,
         engine.midazolam_c50,
     ))
     state.hypnotic_response_ce = float(hypnotic_equivalent(
-        engine.pk_prop.state.ce_response, engine.pk_etomidate.state.ce,
-        engine.pk_midazolam.state.ce, engine.midazolam_c50,
+        engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
+        engine.pk["midazolam"].state.ce, engine.midazolam_c50,
     ))
-    state.nore_ce = float(engine.pk_nore.state.ce)
-    state.roc_ce = float(engine.tof_pd.ce)
-    state.roc_cp = float(engine.pk_roc.state.c1)
-    state.epi_ce = float(engine.pk_epi.state.ce)
-    state.phenyl_ce = float(engine.pk_phenyl.state.ce)
-    state.vaso_ce = float(engine.pk_vaso.state.ce)
-    state.dobu_ce = float(engine.pk_dobu.state.ce)
-    state.mil_ce = float(engine.pk_mil.state.ce)
-    state.esmolol_ce = float(engine.pk_esmolol.state.ce)
-    state.labetalol_ce = float(engine.pk_labetalol.state.ce)
-    state.glyco_ce = float(engine.pk_glyco.state.ce)
 
 
 def sync_inspired_gas(engine: "SimulationEngine") -> tuple[float, float]:

@@ -109,9 +109,8 @@ class MammillaryPK:
         self.cl2 = self.cl2_base * distribution_scale
         self.cl3 = self.cl3_base * distribution_scale
 
-    def step(self, dt_sec: float, input_rate_per_sec: float, cl1_scale: float = 1.0) -> PKState:
+    def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
         """Advance with simultaneous Euler steps that conserve compartment transfers."""
-        self.cl1_scale = cl1_scale
         input_rate_per_sec += self.basal_input_rate
         s = self.state
         if not input_rate_per_sec and not (s.c1 or s.c2 or s.c3 or s.ce or s.ce_response or s.ce_resp):
@@ -473,10 +472,6 @@ class NorepinephrinePK(MammillaryPK):
     def update_propofol(self, propofol_conc_ug_ml: float) -> None:
         """Set the clearance covariate used by both integration and prediction."""
         self.cl1_scale = math.exp(self.PROPOFOL_CL_THETA * max(0.0, propofol_conc_ug_ml) / 100.0)
-
-    def step(self, dt_sec: float, infusion_rate_ug_sec: float, propofol_conc_ug_ml: float = 0.0) -> PKState:
-        self.update_propofol(propofol_conc_ug_ml)
-        return super().step(dt_sec, infusion_rate_ug_sec, self.cl1_scale)
 
 
 class EpinephrinePK(MammillaryPK):

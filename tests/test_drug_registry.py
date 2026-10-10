@@ -43,7 +43,7 @@ def test_boluses_deliver_the_prescribed_mass_to_each_pk_model(engine):
     # Prescribed mg or units become mcg or milliunits in these four models.
     model_scales = {"midazolam": 1000.0, "vaso": 1000.0, "labetalol": 1000.0, "glyco": 1000.0}
     for spec in DRUG_REGISTRY:
-        model = getattr(engine, spec.pk_attr)
+        model = engine.pk[spec.key]
         initial_c1 = model.state.c1
 
         engine.give_drug_bolus(spec.generic_name, 2.0)

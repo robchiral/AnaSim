@@ -66,7 +66,7 @@ def test_induction_uses_separate_clinical_and_bis_sites(awake_engine):
         engine.step(1.0)
         if clinical_onset is None and engine.state.loc > 0.95:
             clinical_onset = second
-            assert engine.pk_prop.state.ce_response > engine.pk_prop.state.ce
+            assert engine.pk["propofol"].state.ce_response > engine.pk["propofol"].state.ce
         if bis_onset is None and engine.state.bis < 60.0:
             bis_onset = second
     assert clinical_onset is not None and bis_onset is not None

@@ -70,7 +70,7 @@ def test_esmolol_onset_offset_and_atrial_fibrillation_rate(engine_factory):
     steady_fall = engine.state.hr - base_hr
     assert steady_fall < -6.0
     assert fall_at_5_min < 0.8 * steady_fall
-    assert engine.pk_esmolol.state.c1 == pytest.approx(0.569, rel=0.1)
+    assert engine.pk["esmolol"].state.c1 == pytest.approx(0.569, rel=0.1)
 
     engine.set_drug_rate("esmolol", 0.0)
     _advance(engine, 18 * 60)
@@ -128,7 +128,7 @@ def test_glycopyrrolate_raises_rate_and_blocks_vagal_bradycardia(engine_factory)
     _advance(engine, 60)
     assert engine.state.hr - base_hr > 8.0
     _advance(engine, 240)
-    assert engine.pk_glyco.state.c1 == pytest.approx(11.8, rel=0.25)
+    assert engine.pk["glyco"].state.c1 == pytest.approx(11.8, rel=0.25)
     assert engine.state.hr - base_hr < 30.0
 
     base_hr = engine.state.hr

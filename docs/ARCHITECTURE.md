@@ -32,7 +32,7 @@ recordings include both physiological values and measurements.
 | [`projection.py`](../anasim/core/projection.py) | Copies model outputs into the shared state |
 | [`monitors.py`](../anasim/core/monitors.py) | Updates measurements and alarms |
 | [`initialization.py`](../anasim/core/initialization.py) | Configures starting states |
-| [`drug_registry.py`](../anasim/core/drug_registry.py) | Defines drug units, pump limits, and interface metadata |
+| [`drug_registry.py`](../anasim/core/drug_registry.py) | Defines each drug's PK model, units, pump limits, state fields, and interface metadata |
 
 ## Step order
 

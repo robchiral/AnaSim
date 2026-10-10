@@ -125,7 +125,7 @@ class TestClinicalAcceptance:
         """A 30-40% loss should cause shock; hemostasis and blood should restore pressure."""
         engine = anesthetized_engine
         initial_volume = engine.hemo.blood_volume
-        initial_v1 = engine.pk_prop.v1
+        initial_v1 = engine.pk["propofol"].v1
         baseline_hr = engine.state.hr
 
         engine.start_hemorrhage(500.0)
@@ -139,7 +139,7 @@ class TestClinicalAcceptance:
         assert engine.state.hr > baseline_hr + 5.0
         assert engine.state.sbp < 90.0
         assert shock_map >= 20.0
-        assert engine.pk_prop.v1 / initial_v1 == pytest.approx(
+        assert engine.pk["propofol"].v1 / initial_v1 == pytest.approx(
             engine.hemo.blood_volume / initial_volume, rel=0.05
         )
 

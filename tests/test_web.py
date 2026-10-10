@@ -172,11 +172,11 @@ def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload(
     reversal = cmd(session, "sugammadex", mg_per_kg=2)["medication"]
     assert reversal["text"] == "Sugammadex 140 mg given (2 mg/kg)"
     before = parse(session.info())["medication_history"]
-    concentration = session.engine.pk_prop.state.c1
+    concentration = session.engine.pk["propofol"].state.c1
     for key, amount in [("missing", 50), ("Propofol 10 mg/mL", 50), ("propofol", 0), ("propofol", float("nan"))]:
         with pytest.raises(ValueError):
             cmd(session, "drug_bolus", key=key, amount=amount)
-    assert session.engine.pk_prop.state.c1 == concentration
+    assert session.engine.pk["propofol"].state.c1 == concentration
     session.replay_waves()
     assert parse(session.info())["medication_history"] == before
     for rate in range(55):
@@ -216,7 +216,7 @@ def test_weight_based_rates_reach_the_engine_and_round_trip_through_browser_comm
     for key, rate in (("propofol", 100.0), ("remi", 0.15)):
         assert snap["controls"]["drugs"][key]["rate"] == pytest.approx(rate)
         assert not snap["controls"]["drugs"][key]["is_tci"]
-    assert session.engine.pk_prop.state.c1 > 0 and session.engine.pk_remi.state.c1 > 0
+    assert session.engine.pk["propofol"].state.c1 > 0 and session.engine.pk["remi"].state.c1 > 0
 
 
 def test_recording_returns_the_session_as_csv_even_after_a_failure(tmp_path):

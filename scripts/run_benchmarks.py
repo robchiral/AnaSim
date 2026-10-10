@@ -164,8 +164,14 @@ def build_step(name):
         if case == 'propofol_eleveld':
             return _cycle(PropofolPKEleveld(patient).step, dt_sec=1.0,
                           input_rate_per_sec=(0.0, 0.5, 1.0, 2.0))
-        return _cycle(NorepinephrinePK(patient, model='Li').step, dt_sec=1.0,
-                      infusion_rate_ug_sec=(0.0, 5.0, 10.0, 20.0),
+        norepinephrine = NorepinephrinePK(patient)
+
+        def step_nore(dt_sec, input_rate_per_sec, propofol_conc_ug_ml):
+            norepinephrine.update_propofol(propofol_conc_ug_ml)
+            return norepinephrine.step(dt_sec, input_rate_per_sec)
+
+        return _cycle(step_nore, dt_sec=1.0,
+                      input_rate_per_sec=(0.0, 5.0, 10.0, 20.0),
                       propofol_conc_ug_ml=(0.0, 1.0, 2.0, 3.0))
 
     if group == 'mixed':

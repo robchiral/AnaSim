@@ -32,23 +32,7 @@ from anasim.patient.pd import (
     opioid_equivalent,
 )
 from anasim.patient.pk_models import (
-    DobutaminePK,
-    EpinephrinePK,
-    EsmololPK,
-    EtomidatePK,
-    FentanylPK,
-    GlycopyrrolatePK,
-    KetaminePK,
-    LabetalolPK,
-    LidocainePK,
-    MidazolamPK,
-    MilrinonePK,
     NorepinephrinePK,
-    PhenylephrinePK,
-    PropofolPKEleveld,
-    RemifentanilPKEleveld,
-    RocuroniumPK,
-    VasopressinPK,
 )
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.disturbances import Disturbances
@@ -227,13 +211,8 @@ class SimulationEngine(DrugControllerMixin):
 
     def initialize_models(self):
         """Build the subsystem models selected by the configuration."""
-        self.pk_prop = PropofolPKEleveld(self.patient, concomitant_opioids=self.config.concomitant_opioids)
-        self.pk_remi = RemifentanilPKEleveld(self.patient)
-        self.pk_fentanyl = FentanylPK(self.patient)
-        self.pk_midazolam = MidazolamPK(self.patient)
-        self.pk_etomidate = EtomidatePK(self.patient)
-        self.pk_ketamine = KetaminePK(self.patient)
-        self.pk_lidocaine = LidocainePK(self.patient)
+        # Intravenous drug PK, keyed like the drug registry.
+        self.pk = {spec.key: spec.pk_model(self.patient, self.config) for spec in DRUG_REGISTRY}
         self.midazolam_c50 = midazolam_loss_of_response(self.patient.age)
 
         self.circuit = CircleSystem()
@@ -282,16 +261,12 @@ class SimulationEngine(DrugControllerMixin):
         self.nibp = NIBPMonitor(interval_min=5.0, rng=self._nibp_rng)
         self.state.nibp_interval_sec = self.nibp.interval
 
-        self.pk_nore = NorepinephrinePK(self.patient)
-        self.pk_roc = RocuroniumPK(self.patient)
-        self.pk_epi = EpinephrinePK(self.patient)
-        self.pk_phenyl = PhenylephrinePK(self.patient)
-        self.pk_vaso = VasopressinPK(self.patient)
-        self.pk_dobu = DobutaminePK(self.patient)
-        self.pk_mil = MilrinonePK(self.patient)
-        self.pk_esmolol = EsmololPK(self.patient)
-        self.pk_labetalol = LabetalolPK(self.patient)
-        self.pk_glyco = GlycopyrrolatePK(self.patient)
+    @property
+    def pk_nore(self) -> NorepinephrinePK:
+        """Norepinephrine PK, which also takes a propofol clearance covariate."""
+        model = self.pk["nore"]
+        assert isinstance(model, NorepinephrinePK)
+        return model
 
     def set_fgf(self, o2_l_min: float, air_l_min: float, n2o_l_min: float = 0.0):
         """Set fresh gas flows in L/min."""
@@ -391,7 +366,7 @@ class SimulationEngine(DrugControllerMixin):
             return
 
         spec = resolve_bolus_drug(drug_name)
-        model = getattr(self, spec.pk_attr)
+        model = self.pk[spec.key]
         dose = amount * spec.bolus_model_scale
         model.state.c1 += dose / model.v1
         self.sync_active_tci_from_pk(spec.key)
@@ -476,13 +451,13 @@ class SimulationEngine(DrugControllerMixin):
         """Respiratory-model inputs shared by the runtime and startup projection."""
         return {
             "ce_prop": hypnotic_equivalent(
-                self.pk_prop.state.ce_resp,
+                self.pk["propofol"].state.ce_resp,
                 self.state.etomidate_ce,
                 self.state.midazolam_ce,
                 self.midazolam_c50,
                 ventilation=True,
             ),
-            "ce_remi": opioid_equivalent(self.pk_remi.state.ce_resp, self.state.fentanyl_ce),
+            "ce_remi": opioid_equivalent(self.pk["remi"].state.ce_resp, self.state.fentanyl_ce),
             "mech_vent_mv": total_assisted_mv,
             "fio2": self.state.fio2,
             "ce_roc": self.tof_pd.ce_central,
@@ -589,9 +564,9 @@ class SimulationEngine(DrugControllerMixin):
     def get_predicted_csht(self, drug: str) -> float:
         """Minutes for the "propofol", "remi", or "fentanyl" effect site to halve if stopped now."""
         models = {
-            "propofol": (self.pk_prop, 3600),
-            "remi": (self.pk_remi, 1200),
-            "fentanyl": (self.pk_fentanyl, 7200),
+            "propofol": (self.pk["propofol"], 3600),
+            "remi": (self.pk["remi"], 1200),
+            "fentanyl": (self.pk["fentanyl"], 7200),
         }
         if drug not in models:
             return 0.0

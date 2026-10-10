@@ -19,9 +19,10 @@ from anasim.physiology.hemodynamics import HemodynamicModel
 
 def _equilibrated(patient, propofol, remifentanil):
     pk = NorepinephrinePK(patient)
+    pk.update_propofol(propofol)
     model = HemodynamicModel(patient, replace(HemodynamicConfig(), vol_clearance=0.0))
     for _ in range(1800):
-        pk.step(1.0, 0.0, propofol)
+        pk.step(1.0, 0.0)
     model.initialize_steady_state(propofol, remifentanil, pk.state.ce)
     for _ in range(900):
         state = model.step(1.0, propofol, remifentanil, pk.state.ce, -2.0, 40.0, 95.0)
@@ -35,9 +36,10 @@ def test_li_infusion_concentration_with_propofol_and_changed_cardiac_output():
     # A change in CO must not add a second clearance/distribution covariate.
     pk.update_hemodynamics(1.0, 1.6)
     propofol = 3.53
+    pk.update_propofol(propofol)
     rate = 10.0  # mcg/min
     for _ in range(7200):
-        pk.step(0.5, rate / 60.0, propofol)
+        pk.step(0.5, rate / 60.0)
     size = patient.weight / 70.0
     clearance = 2.1 * size**0.75 * math.exp(-0.00344 * (patient.age - 35))
     clearance *= math.exp(-0.0357 * propofol)
@@ -45,7 +47,7 @@ def test_li_infusion_concentration_with_propofol_and_changed_cardiac_output():
     assert pk.state.c1 == pytest.approx(expected, rel=0.005)
     assert pk.state.ce == pytest.approx(expected, rel=0.005)
     for _ in range(10800):
-        pk.step(0.5, 0.0, propofol)
+        pk.step(0.5, 0.0)
     assert pk.state.c1 == pytest.approx(0.4977 * size**0.75 / clearance, rel=0.005)
 
 
@@ -58,7 +60,7 @@ def test_de_keijzer_infusion_pressure_and_cardiac_output():
         rates = (0.0, 0.04, 0.08, 0.12, 0.16, 0.20)  # mcg/kg/min
         for rate in rates[1:]:
             for _ in range(900):
-                pk.step(1.0, rate * patient.weight / 60.0, propofol)
+                pk.step(1.0, rate * patient.weight / 60.0)
                 state = model.step(1.0, propofol, remifentanil, pk.state.ce, -2.0, 40.0, 95.0)
             states.append(state)
         phases.append(states)
@@ -83,7 +85,7 @@ def test_joachim_peripheral_bolus_pressure_and_timing():
     dt = 0.2
     pressures = []
     for _ in range(round(300.0 / dt)):
-        pk.step(dt, 0.0, propofol)
+        pk.step(dt, 0.0)
         state = model.step(dt, propofol, remifentanil, pk.state.ce, -2.0, 40.0, 95.0)
         pressures.append(state.map)
     rise = 100.0 * (max(pressures) / baseline.map - 1.0)
