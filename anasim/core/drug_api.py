@@ -71,7 +71,8 @@ class DrugControllerMixin:
     def disable_tci(self, drug: str):
         """Disable TCI for a drug and stop its infusion."""
         spec = get_drug_spec(drug)
-        _require(spec, spec.has_tci, "target-controlled infusion")
+        if not spec.has_tci:
+            raise _unavailable(spec, "target-controlled infusion")
         self.tci.pop(spec.key, None)
         self._tci_accumulators.pop(spec.key, None)
         self.infusion_rates[spec.key] = 0.0
@@ -113,19 +114,18 @@ class DrugControllerMixin:
         }
 
 
-def _require(spec: DrugSpec, available: bool, control: str) -> None:
-    if not available:
-        raise ValueError(f"{spec.generic_name} has no {control}")
+def _unavailable(spec: DrugSpec, control: str) -> ValueError:
+    return ValueError(f"{spec.generic_name} has no {control}")
 
 
 def _rate_units(spec: DrugSpec) -> tuple[str, str]:
     """Return the (user, model) infusion rate units."""
     if spec.rate_unit is None or spec.internal_rate_unit is None:
-        raise ValueError(f"{spec.generic_name} has no infusion")
+        raise _unavailable(spec, "infusion")
     return spec.rate_unit, spec.internal_rate_unit
 
 
 def _tci_max_rate(spec: DrugSpec) -> MaxRatePolicy:
     if not spec.has_tci or spec.max_rate is None:
-        raise ValueError(f"{spec.generic_name} has no target-controlled infusion")
+        raise _unavailable(spec, "target-controlled infusion")
     return spec.max_rate

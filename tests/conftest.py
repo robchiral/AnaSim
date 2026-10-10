@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -11,7 +12,7 @@ from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 
-DEFAULT_PATIENT = dict(age=40, weight=70, height=170, sex="male")
+DEFAULT_PATIENT: dict[str, Any] = dict(age=40, weight=70, height=170, sex="male")
 
 
 @pytest.fixture

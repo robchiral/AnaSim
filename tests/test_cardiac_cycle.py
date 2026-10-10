@@ -20,10 +20,10 @@ def _r_wave_width_ms(rhythm: RhythmType, hr: float) -> float:
         if sample.beat_started:
             beats.append(index)
         voltages.append(ecg.step(dt, sample))
-    voltages = np.array(voltages)
+    trace = np.array(voltages)
     widths = []
     for beat in beats[1:-1]:
-        window = voltages[beat - 100:beat + 100]
+        window = trace[beat - 100:beat + 100]
         widths.append(np.count_nonzero(window > 0.5 * window.max()) * dt * 1000.0)
     return float(np.mean(widths))
 

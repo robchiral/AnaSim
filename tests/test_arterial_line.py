@@ -40,7 +40,7 @@ def test_filter_matches_continuous_second_order_system(damping):
         dt = (0.01, 0.007, 0.003)[index % 3]
         pressure = 90 + 30 * np.sin(index / 9)
         solution = solve_ivp(
-            lambda t, x: [x[1], omega**2 * (pressure - x[0]) - 2 * damping * omega * x[1]],
+            lambda t, x, pressure=pressure: [x[1], omega**2 * (pressure - x[0]) - 2 * damping * omega * x[1]],
             (0.0, dt), reference, rtol=1e-10, atol=1e-10,
         )
         reference = solution.y[:, -1]

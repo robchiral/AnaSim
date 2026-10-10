@@ -1,11 +1,15 @@
 """Browser sessions driven through the same JSON commands the web page sends."""
 
 import json
+import re
+from pathlib import Path
 
 import pytest
 
+from anasim import web
 from anasim.core.drug_registry import DRUG_REGISTRY
 from anasim.machine.ventilator import MODES
+from anasim.scenarios import SCENARIO_REGISTRY
 from anasim.web import WebSession
 
 PATIENT = dict(age=40, weight=70, height=170, sex="male")
@@ -85,7 +89,7 @@ def test_ventilator_display_and_disconnection_alarm():
     flow_time = 60 / v["rr"] / 3 * (1 - engine.vent.settings.pause / 100)
     assert max(flow) == pytest.approx(v["vte"] / 1000 / flow_time * 60, abs=0.2)
     # Loops trace each breath as it happens; a completed one spans VTe and Ppeak.
-    runs = {}
+    runs: dict[int, list] = {}
     for snap in snaps:
         for run in snap["loop"]:
             runs.setdefault(run["breath"], []).append(run)
@@ -138,10 +142,10 @@ def test_loops_retain_the_flow_boundary_across_modes(mode):
     cmd(session, "vent", mode=mode or "VCV", rr=6, peep=5, p_insp=12, p_support=5)
     cmd(session, "vent_power", on=mode is not None)
     cmd(session, "run", running=True)
-    runs = {}
+    runs: dict[int, list] = {}
     for snap in run_seconds(session, 35, tick_s=0.1):
         for run in snap["loop"]:
-            runs.setdefault(run["breath"], []).extend(zip(run["paw"], run["flow"], run["volume"]))
+            runs.setdefault(run["breath"], []).extend(zip(run["paw"], run["flow"], run["volume"], strict=True))
     completed = [runs[breath] for breath in sorted(runs)[-3:-1]]
     assert max(p[2] for points in completed for p in points) > 350.0
     for points in completed:
@@ -238,7 +242,9 @@ def test_recording_returns_the_session_as_csv_even_after_a_failure(tmp_path):
     # A write failure pauses the session and still hands over the rows recorded so far.
     cmd(session, "record", active=True)
     run_seconds(session, 3)
-    session.engine.recorder.file.close()
+    recorder = session.engine.recorder
+    assert recorder is not None and recorder.file is not None
+    recorder.file.close()
     (snap,) = run_seconds(session, 1)
     assert not snap["running"] and not snap["recording"]
     assert "incomplete" in snap["notice"]
@@ -247,7 +253,7 @@ def test_recording_returns_the_session_as_csv_even_after_a_failure(tmp_path):
     assert not any(tmp_path.iterdir())
 
 
-def test_cardiac_arrest_ends_the_session():
+def test_cardiac_arrest_ends_the_session(monkeypatch):
     session = WebSession({**PATIENT, "end_on_cardiac_arrest": True})
     engine = session.engine
     steps_after_arrest = []
@@ -258,7 +264,7 @@ def test_cardiac_arrest_ends_the_session():
             steps_after_arrest.append(dt)
         step(dt)
 
-    engine.step = recording_step
+    monkeypatch.setattr(engine, "step", recording_step)
     cmd(session, "run", running=True)
     cmd(session, "rhythm", name="Asystole")
 
@@ -283,10 +289,10 @@ def test_simv_shows_untriggered_breaths_in_numerics_and_loops(mode):
     cmd(session, "vent", mode=mode, rr=3, p_insp=8, p_support=5, trigger=20, t_insp=0.5)
     cmd(session, "vent_power", on=True)
     cmd(session, "run", running=True)
-    runs = {}
+    runs: dict[int, list] = {}
     for snap in run_seconds(session, 58):
         for loop in snap["loop"]:
-            runs.setdefault(loop["breath"], []).extend(zip(loop["paw"], loop["flow"], loop["volume"]))
+            runs.setdefault(loop["breath"], []).extend(zip(loop["paw"], loop["flow"], loop["volume"], strict=True))
     assert snap["vitals"]["rr"] == pytest.approx(18, abs=0.2)
     assert 200 < snap["vitals"]["vte"] < 260
     assert snap["vitals"]["mv"] > 3.5
@@ -298,3 +304,21 @@ def test_simv_shows_untriggered_breaths_in_numerics_and_loops(mode):
         assert min(p[1] for p in points) < 0 < max(p[1] for p in points) < 20
         assert 200 < max(p[2] for p in points) < 260
         assert max(p[0] for p in points) < 8  # No pressure support was triggered.
+
+
+def test_page_reads_only_snapshot_fields_and_commands_the_session_provides():
+    """A renamed snapshot field or command fails here instead of silently in the browser."""
+    assets = Path(web.__file__).parent / "web_assets"
+    script = {path.name: path.read_text() for path in assets.glob("*.js")}
+    session = WebSession({**PATIENT, "scenario_id": SCENARIO_REGISTRY[0].id})
+    snap = parse(session.advance(0.0))
+
+    def read(name, receiver):
+        return set(re.findall(rf"\b{receiver}\.([a-z_][a-z0-9_]*)", script[name]))
+
+    assert read("app.js", "snap") | read("monitor.js", "snap") <= set(snap)
+    assert read("monitor.js", "v") <= set(snap["vitals"])
+    assert read("controls.js", "c") <= set(snap["controls"])
+    commands = set(re.findall(r'\b(?:command|send)\(\s*"([a-z_]+)"', "".join(script.values())))
+    assert len(commands) > 20
+    assert {name for name in commands if not hasattr(session, f"_cmd_{name}")} == set()

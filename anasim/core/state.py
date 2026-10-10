@@ -48,6 +48,16 @@ class SimulationConfig:
             raise ValueError("maintenance initialization includes opioids; use concomitant_opioids=True")
 
 
+@dataclass(frozen=True, slots=True)
+class AirwayStatus:
+    """Effects of upper-airway obstruction and bronchospasm on gas exchange, 0-1."""
+
+    patency: float = 1.0  # Share of the upper airway left open
+    ventilation_efficiency: float = 1.0
+    capno_obstruction: float = 0.0  # Distortion of the capnogram
+    vq_mismatch: float = 0.0
+
+
 class WaveformSample(NamedTuple):
     """One simulation step of the monitor waveforms."""
 

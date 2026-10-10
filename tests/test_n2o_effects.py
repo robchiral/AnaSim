@@ -1,3 +1,5 @@
+import itertools
+
 import pytest
 
 from anasim.core.state import SimulationConfig
@@ -29,5 +31,5 @@ def test_sevoflurane_deepens_bis_continuously(patient):
     bis = BISModel(patient)
     values = [bis.compute_bis(3.0, mac_sevo=mac) for mac in (0.0, 1e-4, 0.01, 0.02, 0.5, 1.0)]
     assert values[1] == pytest.approx(values[0], abs=0.05)
-    assert all(later <= earlier for earlier, later in zip(values, values[1:]))
+    assert all(later <= earlier for earlier, later in itertools.pairwise(values))
     assert bis.compute_bis(0.0, mac_sevo=1.0) == pytest.approx(SEVO_BIS_AT_1_MAC, abs=0.5)

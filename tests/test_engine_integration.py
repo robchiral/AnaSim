@@ -41,7 +41,7 @@ def test_peep_reduces_preload_without_automatically_recruiting_lung():
     pit_low = engine.state.pit
     preload_low = engine.hemo.state.preload_factor
     map_low = engine.state.map
-    aeration_low = engine.resp_mech.aeration.recruited
+    aeration_low = engine.aeration.recruited
 
     engine.set_vent_settings(rr=12, vt=0.5, peep=15.0, ie="1:2", mode="VCV")
     _run_for(engine, 60.0, dt=0.5)
@@ -49,7 +49,7 @@ def test_peep_reduces_preload_without_automatically_recruiting_lung():
     assert engine.state.pit > pit_low + 0.5
     assert engine.hemo.state.preload_factor < preload_low
     assert engine.state.map < map_low
-    assert engine.resp_mech.aeration.recruited == pytest.approx(aeration_low, abs=1e-4)
+    assert engine.aeration.recruited == pytest.approx(aeration_low, abs=1e-4)
 
 
 def test_positive_pressure_reduces_preload_vs_spontaneous(engine):

@@ -14,10 +14,10 @@ def _model(sepsis_severity: float = 0.0) -> HemodynamicModel:
     return model
 
 
-def _steady_exposure(seconds: int = 60, **ce):
+def _steady_exposure(**ce: float):
     model = _model()
     base = model.step(1.0, 0, 0, 0, -2, 40, 95)
-    for _ in range(seconds):
+    for _ in range(60):
         state = model.step(1.0, 0, 0, 0, -2, 40, 95, **ce)
     return base, state
 
@@ -71,7 +71,7 @@ def test_su_concentration_step_time_course(propofol, remifentanil, expected):
         state = model.step(0.1, propofol, remifentanil, 0.0, -2.0, 40.0, 85.0, peep_cmH2O=5.0)
         if index in (599, 2999, 8999):
             observations.append((state.map, state.hr, state.sv))
-    for observed, reference in zip(observations, expected):
+    for observed, reference in zip(observations, expected, strict=True):
         assert observed == pytest.approx(reference, abs=0.02)
 
 

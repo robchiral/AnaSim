@@ -62,6 +62,8 @@
   boluses previously raised MAP to 230-300 mmHg.
 - Keyed intravenous PK models, infusion rates, and active TCI controllers by
   drug in `engine.pk`, `engine.infusion_rates`, and `engine.tci`.
+- Moved temperature to `engine.thermal` and anaphylaxis and sepsis to
+  `engine.anaphylaxis` and `engine.sepsis`.
 
 ## 1.4 - 2026-10-06
 

@@ -2,22 +2,26 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
 
 from .drug_registry import DRUG_REGISTRY
-from .state import AirwayType
+from .state import AirwayType, SimulationState
 from .utils import clamp
 
 if TYPE_CHECKING:
+    from anasim.monitors.arterial import ArterialPressureSample
+    from anasim.physiology.hemo_types import HemoState
+    from anasim.physiology.respiration import RespState
+
     from .engine import SimulationEngine
 
 
 @dataclass(slots=True)
 class PhysiologyStepState:
-    hemo_state: Any
-    resp_state: Any
+    hemo_state: HemoState
+    resp_state: RespState
     pit_estimate: float
     rr_display: float
     vt_display_ml: float
@@ -32,17 +36,17 @@ class PhysiologyStepState:
     compliance_dyn: float
 
 
-def mask_leak(engine: "SimulationEngine") -> float:
+def mask_leak(engine: SimulationEngine) -> float:
     """Share of each assisted breath lost at a facemask when the upper airway is obstructed.
 
     The gas cannot reach the lungs, so it leaks around the mask. A tracheal tube
     does not leak; obstruction raises its resistance instead.
     """
     assisted = engine.vent.is_on or engine.bag_mask_active
-    return 1.0 - engine._airway_patency if assisted and engine.state.airway_mode == AirwayType.MASK else 0.0
+    return 1.0 - engine.airway_status.patency if assisted and engine.state.airway_mode == AirwayType.MASK else 0.0
 
 
-def circuit_ventilation(engine: "SimulationEngine") -> tuple[float, float]:
+def circuit_ventilation(engine: SimulationEngine) -> tuple[float, float]:
     """Return (RR, mean VT L) of all recent measured breaths that reach the lungs."""
     spirometry = engine.vent.monitors
     rr = spirometry.rr_total
@@ -51,7 +55,7 @@ def circuit_ventilation(engine: "SimulationEngine") -> tuple[float, float]:
 
 
 def measured_ventilation(
-    engine: "SimulationEngine",
+    engine: SimulationEngine,
     connected: bool,
     spontaneous_rr: float,
     spontaneous_vt_l: float,
@@ -73,8 +77,36 @@ def measured_ventilation(
     return engine.resp.state.effort_rr, spontaneous_vt_l * 1000.0, spontaneous_rr * spontaneous_vt_l
 
 
+def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> float:
+    """Probability of no response to shaking or shouting at the current effect sites.
+
+    Airway tone excludes ketamine, which preserves it.
+    """
+    state = engine.state
+    return engine.response.loss_of_response(
+        state.hypnotic_response_ce,
+        state.opioid_ce,
+        mac_sevo=state.mac_sevo,
+        mac_n2o=state.mac_n2o,
+        ce_ketamine=state.ketamine_ce if ketamine else 0.0,
+    )
+
+
+def laryngoscopy_tolerance(engine: SimulationEngine) -> float:
+    """Probability of no response to laryngoscopy at the current effect sites."""
+    state = engine.state
+    return engine.response.tolerance(
+        state.hypnotic_response_ce,
+        state.opioid_ce,
+        mac_sevo=state.mac_sevo,
+        mac_n2o=state.mac_n2o,
+        ce_ketamine=state.ketamine_ce,
+        ce_lidocaine=state.lidocaine_ce,
+    )
+
+
 # Projections run every step, so they assign public fields directly, as built-in floats.
-def sync_pk_state(engine: "SimulationEngine") -> None:
+def sync_pk_state(engine: SimulationEngine) -> None:
     """Synchronize PK concentrations from subsystem states to public state."""
     state = engine.state
     for spec in DRUG_REGISTRY:
@@ -98,7 +130,7 @@ def sync_pk_state(engine: "SimulationEngine") -> None:
     ))
 
 
-def sync_inspired_gas(engine: "SimulationEngine") -> tuple[float, float]:
+def sync_inspired_gas(engine: SimulationEngine) -> tuple[float, float]:
     """Project inspired gas at the airway and return (Fi sevo, Fi N2O) as fractions."""
     state = engine.state
     composition = engine.circuit.composition
@@ -114,7 +146,7 @@ def sync_inspired_gas(engine: "SimulationEngine") -> tuple[float, float]:
     return fi_sevo, fi_n2o
 
 
-def sync_inhaled_agents(engine: "SimulationEngine") -> None:
+def sync_inhaled_agents(engine: SimulationEngine) -> None:
     """Project end-tidal and brain MAC values for sevoflurane and nitrous oxide."""
     state = engine.state
     sevo, n2o = engine.pk_sevo.state, engine.pk_n2o.state
@@ -126,7 +158,19 @@ def sync_inhaled_agents(engine: "SimulationEngine") -> None:
     state.et_mac = float(sevo.p_alv * 100.0 / engine.pk_sevo.mac_age + n2o.p_alv * 100.0 / engine.pk_n2o.mac_age)
 
 
-def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
+def project_arterial(
+    state: SimulationState, arterial_sample: ArterialPressureSample, art_reading: ArterialPressureSample,
+) -> None:
+    """Copy the ideal pulse landmarks and the catheter reading into the public snapshot."""
+    state.sbp = float(arterial_sample.systolic)
+    state.dbp = float(arterial_sample.diastolic)
+    state.art_pressure = float(art_reading.pressure)
+    state.art_sbp = float(art_reading.systolic)
+    state.art_dbp = float(art_reading.diastolic)
+    state.art_map = float(art_reading.mean)
+
+
+def project_hemodynamics(engine: SimulationEngine, hemo_state: HemoState) -> None:
     """Copy hemodynamic model state into the public snapshot."""
     state = engine.state
     total_colloid = engine.hemo.total_colloid_in_ml
@@ -152,7 +196,7 @@ def project_hemodynamics(engine: "SimulationEngine", hemo_state: Any) -> None:
     state.lung_water = float(engine.hemo.lung_water_ml_kg)
 
 
-def _project_respiratory_observables(engine: "SimulationEngine", snapshot: PhysiologyStepState) -> None:
+def _project_respiratory_observables(engine: SimulationEngine, snapshot: PhysiologyStepState) -> None:
     """Copy respiratory fields shared by startup sync and runtime projection."""
     state = engine.state
     resp_state = snapshot.resp_state
@@ -180,22 +224,45 @@ def _project_respiratory_observables(engine: "SimulationEngine", snapshot: Physi
     state.apnea = bool(resp_state.apnea)
 
 
-def snapshot_respiratory_state(engine: "SimulationEngine", hemo_state: Any) -> Any:
-    """Evaluate the respiratory model at the current subsystem state without advancing time."""
-    connected = engine.state.airway_mode != AirwayType.NONE
+def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float) -> RespState:
+    """Advance the respiratory model; dt 0 evaluates the current state without advancing it."""
+    state = engine.state
+    connected = state.airway_mode != AirwayType.NONE
+    # Gas exchange uses recent exhaled breaths, so it lags at least one breath.
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)
-
-    kwargs = engine.get_resp_step_kwargs(
-        total_assisted_mv=assisted_rr * assisted_vt_l,
+    airway = engine.airway_status
+    return engine.resp.step(
+        dt,
+        ce_prop=hypnotic_equivalent(
+            engine.pk["propofol"].state.ce_resp,
+            state.etomidate_ce,
+            state.midazolam_ce,
+            engine.midazolam_c50,
+            ventilation=True,
+        ),
+        ce_remi=opioid_equivalent(engine.pk["remi"].state.ce_resp, state.fentanyl_ce),
+        mech_vent_mv=assisted_rr * assisted_vt_l,
+        fio2=state.fio2,
+        ce_roc=engine.tof_pd.ce_central,
+        mac_sevo=state.mac_sevo,
         mech_rr=assisted_rr,
         mech_vt_l=assisted_vt_l,
-        cardiac_output=hemo_state.co,
+        measured_breaths=connected and engine.vent.has_measured_breath,
+        airway_patency=airway.patency,
+        ventilation_efficiency=airway.ventilation_efficiency,
+        vq_mismatch=airway.vq_mismatch,
+        hb_g_dl=engine.hemo.hb_conc,
+        blood_volume_ml=engine.hemo.blood_volume,
+        cardiac_output=cardiac_output,
+        metabolic_factor=max(0.5, engine.thermal.metabolic_factor),
+        unconscious=state.loc,
+        lung_volume_l=engine.aeration.frc,
+        shunt_fraction=engine.aeration.shunt_fraction,
     )
-    return engine.resp.step(0.0, **kwargs)
 
 
 def build_snapshot_from_models(
-    engine: "SimulationEngine", hemo_state: Any, resp_state: Any, *, pit_estimate: float,
+    engine: SimulationEngine, hemo_state: HemoState, resp_state: RespState, *, pit_estimate: float,
 ) -> PhysiologyStepState:
     """Build the respiratory projection shared by initialization and runtime."""
     connected = engine.state.airway_mode != AirwayType.NONE
@@ -223,7 +290,7 @@ def build_snapshot_from_models(
     )
 
 
-def project_runtime_physiology(engine: "SimulationEngine", snapshot: PhysiologyStepState) -> None:
+def project_runtime_physiology(engine: SimulationEngine, snapshot: PhysiologyStepState) -> None:
     """Project a runtime physiology step back into the public SimulationState."""
     state = engine.state
     project_hemodynamics(engine, snapshot.hemo_state)
@@ -233,7 +300,7 @@ def project_runtime_physiology(engine: "SimulationEngine", snapshot: PhysiologyS
     ))
 
 
-def sync_monitor_baselines(engine: "SimulationEngine") -> None:
+def sync_monitor_baselines(engine: SimulationEngine) -> None:
     """Derive monitor baselines from the current physiologic snapshot."""
     state = engine.state
     bis_val = clamp(engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo), 0.0, 100.0)
@@ -242,21 +309,8 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
         mac_sevo=state.mac_sevo,
         mac_n2o=state.mac_n2o,
     )
-    loc_val = engine.response.loss_of_response(
-        state.hypnotic_response_ce,
-        state.opioid_ce,
-        mac_sevo=state.mac_sevo,
-        mac_n2o=state.mac_n2o,
-        ce_ketamine=state.ketamine_ce,
-    )
-    tol_val = engine.response.tolerance(
-        state.hypnotic_response_ce,
-        state.opioid_ce,
-        mac_sevo=state.mac_sevo,
-        mac_n2o=state.mac_n2o,
-        ce_ketamine=state.ketamine_ce,
-        ce_lidocaine=state.lidocaine_ce,
-    )
+    loc_val = loss_of_response(engine)
+    tol_val = laryngoscopy_tolerance(engine)
     engine._tol_current = tol_val
     cardiac_sample = engine.cardiac_cycle.seed(state.hr, engine.hemo.state.rhythm_type)
     arterial_sample = engine.arterial_waveform.step(
@@ -271,21 +325,17 @@ def sync_monitor_baselines(engine: "SimulationEngine") -> None:
     state.loc = float(loc_val)
     state.tol = float(tol_val)
     state.capno_co2 = state.ecg_voltage = state.pleth_voltage = 0.0
-    state.sbp = float(arterial_sample.systolic)
-    state.dbp = float(arterial_sample.diastolic)
-    state.art_pressure = float(art_reading.pressure)
-    state.art_sbp = float(art_reading.systolic)
-    state.art_dbp = float(art_reading.diastolic)
-    state.art_map = float(art_reading.mean)
+    project_arterial(state, arterial_sample, art_reading)
     state.display_hr = float(cardiac_sample.display_hr)
     state.display_bis = float(bis_val)
+    engine.etco2_readout.seed(state.etco2)
     state.display_etco2 = float(state.etco2)
     state.display_spo2 = float(state.spo2)
     engine.bis.initialize(state.bis)
     engine.smooth_bis = state.bis
 
 
-def sync_state_from_models(engine: "SimulationEngine") -> None:
+def sync_state_from_models(engine: SimulationEngine) -> None:
     """Derive the public SimulationState from current subsystem state."""
     state = engine.state
     state.temp_c = float(engine.patient.baseline_temp)
@@ -293,7 +343,7 @@ def sync_state_from_models(engine: "SimulationEngine") -> None:
     sync_inspired_gas(engine)
     sync_inhaled_agents(engine)
     hemo_state = engine.hemo.state
-    resp_state = snapshot_respiratory_state(engine, hemo_state)
+    resp_state = step_respiration(engine, 0.0, hemo_state.co)
     project_runtime_physiology(engine, build_snapshot_from_models(
         engine, hemo_state, resp_state, pit_estimate=engine.hemo.config.pit_0,
     ))

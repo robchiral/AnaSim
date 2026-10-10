@@ -21,7 +21,7 @@ def test_four_hour_case_stays_stable(engine_factory):
     )
     initial_temp = engine.state.temp_c
 
-    samples = {name: [] for name in MONITORED}
+    samples: dict[str, list[float]] = {name: [] for name in MONITORED}
     for step in range(4 * 3600):
         engine.step(1.0)
         if step % 60 == 0:

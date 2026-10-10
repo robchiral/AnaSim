@@ -44,6 +44,7 @@ dev = [
     "build",
     "mypy",
     "pytest",
+    "pytest-xdist",
     "ruff",
     "twine",
 ]
@@ -73,7 +74,7 @@ version = { attr = "anasim.__version__" }
 testpaths = ["tests"]
 
 [tool.mypy]
-files = ["anasim"]
+files = ["anasim", "tests"]
 check_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -86,7 +87,11 @@ ignore_missing_imports = true
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I"]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "RUF"]
+# Tuple concatenation reads more clearly than unpacking in the breath profiles.
+ignore = ["RUF005"]
+# En dashes mark printed ranges.
+allowed-confusables = ["–"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/conftest.py" = ["E402"]

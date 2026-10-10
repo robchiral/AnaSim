@@ -8,7 +8,24 @@ from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.patient import Patient
 
 from .hemo_config import HemodynamicConfig
-from .hemo_types import HemoState, HemoStateExtended
+from .hemo_types import HemoState
+
+# Ventricular rates set by the rhythm: SVT 150-220, VT 150-250 bpm.
+FIXED_RHYTHM_RATE = {
+    RhythmType.SVT: 160.0,
+    RhythmType.VTACH: 180.0,
+    RhythmType.VFIB: 0.0,
+    RhythmType.ASYSTOLE: 0.0,
+}
+PULSELESS_RHYTHMS = (RhythmType.VFIB, RhythmType.ASYSTOLE)
+# Stroke volume relative to sinus rhythm at the same filling.
+RHYTHM_SV_FACTOR = {
+    RhythmType.AFIB: 0.68,  # Lost atrial kick (~20%) and R-R irregularity (-15% CO; Clark 1997)
+    RhythmType.SVT: 0.50,  # CO about 80-90% of baseline
+    RhythmType.VTACH: 0.25,  # CO about 40% of baseline
+    RhythmType.VFIB: 0.0,
+    RhythmType.ASYSTOLE: 0.0,
+}
 
 
 class HemodynamicModel:
@@ -21,7 +38,7 @@ class HemodynamicModel:
     def __init__(self, patient: Patient, config: HemodynamicConfig | None = None):
         self.patient = patient
         self.config = cfg = config or HemodynamicConfig()
-        self._cached_state: HemoStateExtended | None = None
+        self._cached_state: HemoState | None = None
 
         self.baseline_hb = patient.baseline_hb
         assert patient.baseline_hct is not None  # Patient derives it from hemoglobin when omitted.
@@ -461,7 +478,7 @@ class HemodynamicModel:
         anaph_sev: float | None = None,
         distributive_tpr_offset: float | None = None,
         hr_base: float | None = None,
-    ) -> HemoStateExtended:
+    ) -> HemoState:
         cfg = self.config
         if sepsis_sev is None:
             sepsis_sev = clamp01(self.sepsis_severity)
@@ -488,16 +505,9 @@ class HemodynamicModel:
         current_sv = raw_sv * preload_sv_factor * self.vasopressor_sv_factor
         current_sv = max(1.0, current_sv) * (1.0 - cfg.hypoxia_sv_depression * self.myocardial_hypoxia)
 
-        if self.rhythm_type == RhythmType.AFIB:
-            current_sv *= 0.68  # Lost atrial kick (~20%) and R-R irregularity (-15% CO; Clark 1997)
-        elif self.rhythm_type == RhythmType.VTACH:
-            current_sv *= 0.25  # CO about 40% of baseline
-        elif self.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE):
-            current_sv = 0.0
-        elif self.rhythm_type == RhythmType.SVT:
-            current_sv *= 0.50  # CO about 80-90% of baseline
+        current_sv *= RHYTHM_SV_FACTOR.get(self.rhythm_type, 1.0)
 
-        if self.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE) or current_hr <= 0.0 or current_sv <= 0.0:
+        if self.rhythm_type in PULSELESS_RHYTHMS or current_hr <= 0.0 or current_sv <= 0.0:
             current_hr = current_sv = co = map_val = svr_val = self._stim_map = 0.0
         else:
             co = current_hr * current_sv / 1000.0
@@ -517,7 +527,7 @@ class HemodynamicModel:
                 self.dist_hr / current_hr + self.dist_sv / max(raw_sv, 1.0) + self.dist_svr / 1000.0 / eff_tpr
             )
 
-        self._cached_state = HemoStateExtended(
+        self._cached_state = HemoState(
             map=map_val,
             hr=current_hr,
             sv=current_sv,
@@ -541,16 +551,10 @@ class HemodynamicModel:
         return self._cached_state
 
     def _rhythm_rate(self, sinus_hr: float) -> float:
-        """Ventricular rate from the underlying sinus rate.
-
-        SVT 150-220, VT 150-250, untreated AF with RVR 110-150 bpm.
-        """
-        if self.rhythm_type == RhythmType.SVT:
-            return 160.0
-        if self.rhythm_type == RhythmType.VTACH:
-            return 180.0
-        if self.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE):
-            return 0.0
+        """Ventricular rate from the underlying sinus rate; untreated AF with RVR is 110-150 bpm."""
+        fixed = FIXED_RHYTHM_RATE.get(self.rhythm_type)
+        if fixed is not None:
+            return fixed
         if self.rhythm_type == RhythmType.AFIB:
             return max(sinus_hr, 110.0 * (1.0 - self.config.beta_block_af_rate * self._beta_occupancy))
         if self.rhythm_type == RhythmType.SINUS_BRADY:
@@ -558,7 +562,7 @@ class HemodynamicModel:
         return sinus_hr
 
     @property
-    def state(self) -> HemoStateExtended:
+    def state(self) -> HemoState:
         if self._cached_state is not None:
             return self._cached_state
         return self._compute_state()

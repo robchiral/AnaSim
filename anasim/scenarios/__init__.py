@@ -92,15 +92,15 @@ SCENARIO_REGISTRY = (
 )
 
 __all__ = [
-    "Scenario",
-    "ScenarioStep",
-    "ScenarioSpec",
     "SCENARIO_REGISTRY",
-    "create_induction_balanced",
-    "create_induction_tiva",
+    "Scenario",
+    "ScenarioSpec",
+    "ScenarioStep",
+    "create_anaphylaxis_scenario",
     "create_emergence",
     "create_hemorrhage_response",
-    "create_anaphylaxis_scenario",
-    "create_sepsis_response",
+    "create_induction_balanced",
+    "create_induction_tiva",
     "create_oxygen_supply_failure",
+    "create_sepsis_response",
 ]

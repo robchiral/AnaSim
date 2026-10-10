@@ -5,7 +5,7 @@ count only actions taken while the objective is active. State objectives
 ("MAP ≥ 65") read the current engine state.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -67,6 +67,9 @@ class Scenario:
 
     def __len__(self) -> int:
         return len(self.steps)
+
+    def __iter__(self) -> Iterator[ScenarioStep]:
+        return iter(self.steps)
 
     def __getitem__(self, idx: int) -> ScenarioStep:
         return self.steps[idx]
@@ -288,33 +291,33 @@ def require_drug_bolus(drug_key: str, fail_message: str) -> Requirement:
     return check
 
 
-def require_crisis_started(event_name: str, attr: str, fail_message: str) -> Requirement:
+def require_crisis_started(event_name: str, fail_message: str) -> Requirement:
     """Require a crisis to be started during this objective and remain active."""
     def check(engine) -> tuple[bool, str]:
         started = action_taken_this_step(engine, ACTION_EVENT_START, event_name)
-        if started and getattr(engine, attr):
+        if started and engine.event_active(event_name):
             return True, ""
         return False, fail_message
     return check
 
 
-def require_crisis_stopped(event_name: str, attr: str, fail_message: str) -> Requirement:
+def require_crisis_stopped(event_name: str, fail_message: str) -> Requirement:
     """Require a crisis to be stopped during this objective and remain inactive."""
     def check(engine) -> tuple[bool, str]:
         stopped = action_taken_this_step(engine, ACTION_EVENT_STOP, event_name)
-        if stopped and not getattr(engine, attr):
+        if stopped and not engine.event_active(event_name):
             return True, ""
         return False, fail_message
     return check
 
 
 def require_crisis_resolved_with_map(
-    attr: str, map_threshold: float = 65, fail_crisis: str = "Stop crisis event",
+    event_name: str, map_threshold: float = 65, fail_crisis: str = "Stop crisis event",
 ) -> Requirement:
-    """Check that a crisis flag is False and MAP meets a threshold."""
+    """Check that a crisis has stopped and MAP meets a threshold."""
     return require_all(
         require_map_at_least(map_threshold),
-        lambda engine: (not getattr(engine, attr), fail_crisis),
+        lambda engine: (not engine.event_active(event_name), fail_crisis),
     )
 
 
@@ -442,7 +445,7 @@ def create_observe_baseline_step(crisis_name: str) -> ScenarioStep:
 
 
 def create_reassess_step(
-    crisis_attr: str,
+    event_name: str,
     fail_crisis_msg: str,
     controlled_text: str,
     extra_text: str,
@@ -455,5 +458,5 @@ def create_reassess_step(
             "Reassess HR, oxygenation, and ventilation as treatment takes effect.<br><br>"
             f"{extra_text}"
         ),
-        check_requirements=require_crisis_resolved_with_map(crisis_attr, fail_crisis=fail_crisis_msg),
+        check_requirements=require_crisis_resolved_with_map(event_name, fail_crisis=fail_crisis_msg),
     )

@@ -6,6 +6,7 @@ holds exogenous drug only, so targets are increments above basal converted with
 Tolerances are 1.5 reported SD for peaks and approximate for timing.
 """
 
+import itertools
 import math
 from dataclasses import replace
 
@@ -40,7 +41,7 @@ def test_freyschuss_arterial_infusion_steps():
             _step(model, ce)
 
     for state, hr, sv, co, svr in zip(
-        (measurements[0], measurements[2]), (5, 13), (10, 34), (19, 60), (-15, -38)
+        (measurements[0], measurements[2]), (5, 13), (10, 34), (19, 60), (-15, -38), strict=True
     ):
         assert state.hr - base.hr == pytest.approx(hr, abs=3.0)
         assert 100 * (state.sv / base.sv - 1) == pytest.approx(sv, abs=7.0)
@@ -105,7 +106,7 @@ def test_bolus_timing_converges_and_late_dip_requires_feedback():
 def test_bolus_has_no_large_initial_pressure_dip_or_large_dose_clipping():
     assert _bolus_response(10)[6] > -5.0
     peaks = [_bolus_response(dose)[7] for dose in (15, 50, 100, 200)]
-    assert all(a < b for a, b in zip(peaks, peaks[1:]))
+    assert all(a < b for a, b in itertools.pairwise(peaks))
     assert max(peaks) < 280.0  # Leave headroom below the 300 mmHg safety cap.
 
 

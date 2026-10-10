@@ -27,7 +27,7 @@ class DataRecorder:
         self.filename = f"anasim_log_{time.time_ns()}.csv"
         self.file_path = str(Path(output_dir) / self.filename)
         self.file: TextIO | None = None
-        self.writer: "Writer | None" = None
+        self.writer: Writer | None = None
         self.is_recording = False
         self.sample_interval_sec = max(0.0, sample_interval_sec)
         self._next_sample_time: float | None = None

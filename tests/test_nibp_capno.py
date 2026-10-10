@@ -116,7 +116,7 @@ class TestCapnography:
         notched = exhale(Capnograph(0.15), notch=True)
         # Phase I holds inspired gas until the dead space empties, then the plateau rises to end-tidal.
         assert smooth[5] < 1.0 and smooth[-1] == pytest.approx(38.0, abs=1.5)
-        dip = max(a - b for a, b in zip(smooth, notched))
+        dip = max(a - b for a, b in zip(smooth, notched, strict=True))
         assert dip > 10.0
         assert notched[-1] == pytest.approx(smooth[-1], abs=1.0)
 

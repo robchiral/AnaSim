@@ -1,5 +1,6 @@
 """Anesthesia workstation ventilation and spirometry."""
 
+import itertools
 import math
 from bisect import bisect_right
 from collections import deque
@@ -819,7 +820,7 @@ class AnesthesiaVentilator:
             lung = segment.lung
             peep_volume = lung.compliance * self._baseline if connected else 0.0
             volume_offset = lung.volume_offset
-        for index, (start, end) in enumerate(zip(bounds, bounds[1:])):
+        for index, (start, end) in enumerate(itertools.pairwise(bounds)):
             if end <= start:
                 continue  # A reversal rounded to an existing boundary moves no gas.
             change = volumes[index + 1] - volumes[index]

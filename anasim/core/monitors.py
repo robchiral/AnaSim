@@ -7,7 +7,7 @@ from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
 
-from .projection import mask_leak
+from .projection import loss_of_response, mask_leak, project_arterial
 from .state import AirwayType
 from .utils import clamp
 
@@ -15,10 +15,12 @@ if TYPE_CHECKING:
     from .engine import SimulationEngine
 
 CARDIAC_MONITOR_MAX_STEP_S = 0.01
+BIS_NOISE_SD = 0.2
+BIS_DISPLAY_TAU_S = 2.0
 VOLUME_TARGETED = ("VCV", "PCV-VG", "SIMV-VC", "SIMV-VG")
 
 
-def seed_nibp_reading(engine: "SimulationEngine") -> None:
+def seed_nibp_reading(engine: SimulationEngine) -> None:
     """Seed NIBP with an initial reading and start cycling immediately."""
     state = engine.state
     map_val = state.map
@@ -35,7 +37,7 @@ def seed_nibp_reading(engine: "SimulationEngine") -> None:
     state.nibp_is_cycling = True
 
 
-def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
+def update_nibp(engine: SimulationEngine, dt: float, hemo_state) -> None:
     state = engine.state
     if state.time >= engine._next_nibp_time and not engine.nibp.is_cycling:
         engine.nibp.trigger()
@@ -63,75 +65,39 @@ def update_nibp(engine: "SimulationEngine", dt: float, hemo_state) -> None:
         state.nibp_timestamp = float(latest.timestamp)
 
 
-def _capno_sampling_possible(engine: "SimulationEngine") -> bool:
+def _capno_sampling_possible(engine: SimulationEngine) -> bool:
     state = engine.state
     return (
         state.airway_mode != AirwayType.NONE
-        and engine._airway_patency >= 0.05
+        and engine.airway_status.patency >= 0.05
         and state.rr > 0.0
         and state.va > 0.0
     )
 
 
-def compute_capno_value(engine: "SimulationEngine", resp_state, dt: float) -> float:
+def compute_capno_value(engine: SimulationEngine, resp_state, dt: float) -> float:
     """Advance the capnograph with the gas that crossed the Y-piece this step."""
     state = engine.state
+    readout = engine.etco2_readout
     if not _capno_sampling_possible(engine):
         engine.capno.reset()
-        engine._capno_numeric_peak = 0.0
-        engine._capno_numeric_age_s += dt
-        engine._capno_last_phase = "INSP"
-        if state.airway_mode == AirwayType.NONE:
-            engine._capno_has_sample = False
-        _project_capno_numeric(engine)
-        return 0.0
-    capno = engine.capno
-    end_tidal = resp_state.etco2 * engine._airway_patency
-    obstruction = engine._capno_obstruction
-    for duration, change, _, _, _ in engine.vent.samples:
-        value = capno.step(duration, change, end_tidal, obstruction=obstruction)
-        _update_capno_numeric(
-            engine, duration, "EXP" if capno.exhaling else "INSP", value
-        )
-    return capno.co2
-
-
-def _update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, capno_value: float) -> None:
-    """Hold breath-derived EtCO2 during sampling; the caller checks availability."""
-    state = engine.state
-    engine._capno_numeric_age_s += dt
-
-    if phase == "EXP":
-        engine._capno_numeric_peak = max(engine._capno_numeric_peak, capno_value)
-
-    completed_breath = engine._capno_last_phase == "EXP" and phase == "INSP"
-    if completed_breath and engine._capno_numeric_peak > 1.0:
-        display_value = engine._capno_numeric_peak
-        engine._capno_numeric_age_s = 0.0
-        engine._capno_numeric_peak = 0.0
-        engine._capno_has_sample = True
+        readout.interrupt(dt, disconnected=state.airway_mode == AirwayType.NONE)
+        co2 = 0.0
     else:
-        display_value = state.display_etco2
-
-    engine._capno_last_phase = phase
-    state.display_etco2 = float(display_value)
-    _project_capno_numeric(engine)
-
-
-def _project_capno_numeric(engine: "SimulationEngine") -> None:
-    """Hold the last completed breath's endpoint until it expires."""
-    state = engine.state
-    valid = (
-        engine._capno_has_sample
-        and engine._capno_numeric_age_s <= engine._capno_numeric_timeout_s
-    )
-    if not valid:
-        state.display_etco2 = 0.0
-    state.etco2_signal_valid = valid
+        capno = engine.capno
+        airway = engine.airway_status
+        end_tidal = resp_state.etco2 * airway.patency
+        for duration, change, _, _, _ in engine.vent.samples:
+            value = capno.step(duration, change, end_tidal, obstruction=airway.capno_obstruction)
+            readout.update(duration, capno.exhaling, value)
+        co2 = capno.co2
+    state.display_etco2 = float(readout.value)
+    state.etco2_signal_valid = readout.valid
+    return co2
 
 
 def step_cardiac_monitors(
-    engine: "SimulationEngine",
+    engine: SimulationEngine,
     dt: float,
     hemo_state,
     sao2: float,
@@ -173,18 +139,13 @@ def step_cardiac_monitors(
     state.spo2_signal_valid = engine.spo2_mon.signal_valid
     state.ecg_voltage = float(ecg_voltage)
     state.pleth_voltage = float(pleth)
-    state.sbp = float(arterial_sample.systolic)
-    state.dbp = float(arterial_sample.diastolic)
-    state.art_pressure = float(art_reading.pressure)
-    state.art_sbp = float(art_reading.systolic)
-    state.art_dbp = float(art_reading.diastolic)
-    state.art_map = float(art_reading.mean)
+    project_arterial(state, arterial_sample, art_reading)
     state.spo2 = float(spo2_val)
     return cardiac_sample
 
 
 def step_monitors(
-    engine: "SimulationEngine",
+    engine: SimulationEngine,
     dt: float,
     hemo_state,
     resp_state,
@@ -196,13 +157,7 @@ def step_monitors(
     bis_val = engine.bis.step(dt, state.hypnotic_ce, mac_sevo=mac_sevo)
     capno_val = compute_capno_value(engine, resp_state, dt)
 
-    loc_val = engine.response.loss_of_response(
-        state.hypnotic_response_ce,
-        state.opioid_ce,
-        mac_sevo=mac_sevo,
-        mac_n2o=state.mac_n2o,
-        ce_ketamine=state.ketamine_ce,
-    )
+    loc_val = loss_of_response(engine)
     cardiac_sample = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
 
     update_nibp(engine, dt, hemo_state)
@@ -216,8 +171,8 @@ def step_monitors(
     bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
     state.bis = float(bis_display_source)
 
-    raw_bis = state.bis + float(engine.rng.normal(0.0, engine._bis_noise_std))
-    alpha_bis = 1.0 - math.exp(-dt / engine._monitor_tau_bis_s)
+    raw_bis = state.bis + float(engine.rng.normal(0.0, BIS_NOISE_SD))
+    alpha_bis = 1.0 - math.exp(-dt / BIS_DISPLAY_TAU_S)
     engine.smooth_bis = float((1 - alpha_bis) * engine.smooth_bis + alpha_bis * raw_bis)
 
     display_hr = max(0.0, cardiac_sample.display_hr)

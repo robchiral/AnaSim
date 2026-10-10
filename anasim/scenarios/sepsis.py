@@ -33,7 +33,6 @@ def create_sepsis_response() -> Scenario:
             ),
             check_requirements=require_crisis_started(
                 "sepsis",
-                "active_sepsis",
                 "Start sepsis event (Events tab)",
             ),
             target_tab="Events",
@@ -87,13 +86,12 @@ def create_sepsis_response() -> Scenario:
             ),
             check_requirements=require_crisis_stopped(
                 "sepsis",
-                "active_sepsis",
                 "Select Stop sepsis to model recovery after infection treatment",
             ),
             target_tab="Events",
         ),
         create_reassess_step(
-            "active_sepsis",
+            "sepsis",
             "Select Stop sepsis to model recovery after infection treatment",
             "Infection treatment underway",
             "Reassess the response before giving more fluid and wean vasopressors as perfusion improves. "

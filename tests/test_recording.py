@@ -37,7 +37,7 @@ class FailingFile(io.StringIO):
 def inject_file(monkeypatch):
     def inject(failure):
         file = FailingFile(failure)
-        monkeypatch.setattr("anasim.core.recorder.open", lambda *a, **kw: file, raising=False)
+        monkeypatch.setattr("anasim.core.recorder.open", lambda *_args, **_kwargs: file, raising=False)
         return file
     return inject
 

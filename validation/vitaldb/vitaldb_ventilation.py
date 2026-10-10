@@ -174,7 +174,7 @@ def steady_window(case: dict, trk: dict, half_s: float = 60.0) -> dict | None:
 
 def template(signal: np.ndarray, rr: float) -> np.ndarray | None:
     """Median breath aligned where pressure leaves PEEP."""
-    n = int(round(60.0 / rr / WAVE_DT))
+    n = round(60.0 / rr / WAVE_DT)
     peep, peak = np.percentile(signal, 10), np.percentile(signal, 99)
     level = peep + 0.3 * (peak - peep)
     breaths = []
@@ -280,7 +280,7 @@ def capnogram_shape(co2: np.ndarray, period: float) -> dict:
 
 def cyclic_breath(signal: np.ndarray, rr: float) -> np.ndarray:
     """Median of consecutive breath-length windows: one breath, starting anywhere."""
-    n = int(round(60.0 / rr / WAVE_DT))
+    n = round(60.0 / rr / WAVE_DT)
     return np.median(signal[: len(signal) // n * n].reshape(-1, n), axis=0)
 
 
@@ -522,7 +522,7 @@ def engine_eto2_gap(w: dict) -> tuple[float, float]:
     engine.start()
     # 2 L/min of O2 and air whose steady circle composition matches the recorded
     # FiO2: fresh O2 fraction = FiO2 + O2 uptake / fresh gas flow.
-    uptake = engine.resp.vco2 * max(0.5, engine._metabolic_factor) / engine.resp.rq / 1000.0
+    uptake = engine.resp.vco2 * max(0.5, engine.thermal.metabolic_factor) / engine.resp.rq / 1000.0
     fresh = w["FIO2"] / 100 + uptake / 2.0
     o2 = min(2.0, max(0.0, (2.0 * fresh - 0.42) / 0.79))
     engine.set_fgf(o2, 2.0 - o2, 0.0)
@@ -605,14 +605,14 @@ def main() -> None:
     compliance = compliance_by_patient(args.compliance_cases)
 
     print("end-tidal O2", flush=True)
-    fio2_sim, gap_sim = zip(*(engine_eto2_gap(w) for w in cases))
+    fio2_sim, gap_sim = zip(*(engine_eto2_gap(w) for w in cases), strict=True)
     gap_real = [w["FIO2"] - w["FEO2"] for w in cases]
     paired = np.array(gap_sim) - np.array(gap_real)
 
     default = Patient()
     feats = [w["features"] for w in cases]
     beta, ci = compliance["beta"], compliance["ci"]
-    improved = sum(v < s for s, v in zip(single["whole"], viscous["whole"]))
+    improved = sum(v < s for s, v in zip(single["whole"], viscous["whole"], strict=True))
     settings = ventilator.VentSettings()
     lines = [
         "# AnaSim ventilation vs Dräger Primus recordings (VitalDB)",
@@ -689,7 +689,7 @@ def main() -> None:
         "|---|---|---|---|",
         *(f"| {label} | {quartiles([w['capnogram'][key] for w in held_out])} | "
           f"{quartiles([s[key] for s in simulated_capno])} | "
-          f"{quartiles([s[key] - w['capnogram'][key] for s, w in zip(simulated_capno, held_out)])} |"
+          f"{quartiles([s[key] - w['capnogram'][key] for s, w in zip(simulated_capno, held_out, strict=True)])} |"
           for key, label in (("fall", "Fall 90-10% (s)"), ("rise", "Rise 10-90% (s)"),
                              ("duty", "Share of breath above 50%"), ("slope", "Phase III slope (% of plateau/s)"))),
         "",
@@ -733,7 +733,7 @@ def main() -> None:
         import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(3, 4, figsize=(16, 9))
-        for ax, w in zip(axes.flat, held_out):
+        for ax, w in zip(axes.flat, held_out, strict=False):
             t = (np.arange(len(w["template"])) - LEAD) * WAVE_DT
             ax.plot(t, w["template"], "k", lw=1.5, label="Primus")
             for viscoelastic, color, label in ((False, "C0", "Single compartment"), (True, "C3", "Viscoelastic")):

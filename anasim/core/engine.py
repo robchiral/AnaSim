@@ -4,10 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from anasim.core.constants import (
-    AirwayTuning,
-    ThermalTuning,
-)
+from anasim.core.constants import AirwayTuning
 from anasim.core.enums import RhythmType
 from anasim.core.recorder import DataRecorder
 from anasim.core.utils import clamp
@@ -17,7 +14,7 @@ from anasim.machine.volatile import Vaporizer
 from anasim.monitors.airway import AirwaySensor
 from anasim.monitors.alarms import AlarmSystem
 from anasim.monitors.arterial import ArterialLineMonitor, ArterialWaveformRenderer
-from anasim.monitors.capno import Capnograph
+from anasim.monitors.capno import Capnograph, EtCO2Readout
 from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.nibp import NIBPMonitor
@@ -27,19 +24,17 @@ from anasim.patient.pd import (
     BISModel,
     ClinicalResponseModel,
     TOFModel,
-    hypnotic_equivalent,
     midazolam_loss_of_response,
-    opioid_equivalent,
 )
-from anasim.patient.pk_models import (
-    NorepinephrinePK,
-)
+from anasim.patient.pk_models import NorepinephrinePK
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.disturbances import Disturbances
+from anasim.physiology.events import SeverityRamp
 from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.physiology.lung import LungAeration
 from anasim.physiology.resp_mech import RespiratoryMechanics
 from anasim.physiology.respiration import RespiratoryModel
+from anasim.physiology.thermal import ThermalModel
 
 from . import monitors as monitor_core
 from . import projection as projection_core
@@ -59,14 +54,17 @@ from .action_log import (
 from .drug_api import DrugControllerMixin
 from .drug_registry import DRUG_REGISTRY, resolve_bolus_drug
 from .initialization import initialize_engine_state
-from .state import AirwayType, SimulationConfig, SimulationState, WaveformSample
+from .state import (
+    AirwayStatus,
+    AirwayType,
+    SimulationConfig,
+    SimulationState,
+    WaveformSample,
+)
 from .tci import TCIController
 
-AIRWAY_MODE_MAP = {
-    "None": AirwayType.NONE,
-    "Mask": AirwayType.MASK,
-    "ETT": AirwayType.ETT,
-}
+OUTPUT_WINDOW_S = 20.0  # Waveform history kept in output_buffer
+
 
 @dataclass(slots=True)
 class PendingInfusion:
@@ -90,7 +88,7 @@ class SimulationEngine(DrugControllerMixin):
         self.state = SimulationState()
         self.actions = ActionLog()
         self.airway_tuning = AirwayTuning()
-        self.thermal_tuning = ThermalTuning()
+        self.thermal = ThermalModel(patient)
 
         # Infusion rates (model units/s) and active TCI controllers, by drug key.
         self.infusion_rates = {spec.key: 0.0 for spec in DRUG_REGISTRY if spec.has_infusion}
@@ -103,7 +101,6 @@ class SimulationEngine(DrugControllerMixin):
         self.disturbance_start_time = 0.0
         self.alarms = AlarmSystem()
 
-        self._output_window_s = 20.0
         self.output_buffer: deque[WaveformSample] = deque()
         self.recorder: DataRecorder | None = None
         self._tci_accumulators: dict[str, float] = {}
@@ -114,7 +111,6 @@ class SimulationEngine(DrugControllerMixin):
         self.bag_mask_vt = 0.5  # L
 
         self.active_hemorrhage = False
-        self.active_anaphylaxis = False
         self.hemorrhage_rate_ml_min = 500.0
 
         # Boluses run in over minutes rather than instantly.
@@ -123,32 +119,19 @@ class SimulationEngine(DrugControllerMixin):
         self.blood_infusion_rate_ml_min = 75.0
         self.maintenance_fluid_rate_ml_min = 0.0
 
-        # Event severities (0-1) ramp at these rates per second.
-        self.anaphylaxis_severity = 0.0
-        self.anaphylaxis_onset_rate = 0.5 / 60.0  # full in about 2 min
-        self.anaphylaxis_decay_rate = 0.1 / 60.0  # resolves in about 10 min
-        self.active_sepsis = False
-        self.sepsis_severity = 0.0
-        self.sepsis_onset_rate = 0.1 / 60.0  # full in about 10 min
-        self.sepsis_decay_rate = 0.03 / 60.0  # resolves in 30+ min
+        # Anaphylaxis is full in about 2 min and resolves in about 10; sepsis
+        # is full in about 10 min and resolves over 30 or more.
+        self.anaphylaxis = SeverityRamp(onset_rate=0.5 / 60.0, decay_rate=0.1 / 60.0)
+        self.sepsis = SeverityRamp(onset_rate=0.1 / 60.0, decay_rate=0.03 / 60.0)
 
         self.auto_laryngospasm_enabled = True
         self.airway_obstruction_manual = 0.0
         self.bronchospasm_manual = 0.0
         self.laryngospasm_severity = 0.0
-        self._airway_patency = 1.0
-        self._ventilation_efficiency = 1.0
-        self._capno_obstruction = 0.0
-        self._vq_mismatch = 0.0
+        self.airway_status = AirwayStatus()
 
         self.smooth_bis = 98.0
-        self._monitor_tau_bis_s = 2.0
-        self._capno_numeric_peak = 0.0
-        self._capno_numeric_age_s = 0.0
-        self._capno_numeric_timeout_s = 15.0
-        self._capno_last_phase = "EXP"
-        self._capno_has_sample = False
-        self._mean_paw_tau_s = 0.25
+        self.etco2_readout = EtCO2Readout()
         self._tol_current = 0.0
         self._pk_hemo_scale_cache: tuple[float, float] | None = None
         self.current_mean_paw = 0.0
@@ -159,15 +142,7 @@ class SimulationEngine(DrugControllerMixin):
         self._ecg_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._nibp_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._cardiac_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
-        self._bis_noise_std = 0.2
 
-        self.heat_production_basal = self.patient.weight * 1.0  # W
-        self.specific_heat = self.thermal_tuning.specific_heat_j_kg_k  # J/(kg K)
-        self.surface_area = self.patient.bsa  # m^2
-        self._redistributed_heat_j = 0.0  # Core heat moved to the periphery
-        self._depth_index = 0.0
-        self._shiver_level = 0.0
-        self._metabolic_factor = 1.0
         self._pulseless_s = 0.0
 
         self.initialize_models()
@@ -183,17 +158,14 @@ class SimulationEngine(DrugControllerMixin):
                 state.paw, state.flow, state.volume, self.vent.breath_count,
             )
         )
-        cutoff = self.state.time - self._output_window_s
+        cutoff = self.state.time - OUTPUT_WINDOW_S
         while len(self.output_buffer) > 1 and self.output_buffer[0].time < cutoff:
             self.output_buffer.popleft()
 
     def initialize_state(self):
         """Seed the public state from the initialized subsystems."""
         self.state.temp_c = self.patient.baseline_temp
-        self._airway_patency = 1.0
-        self._ventilation_efficiency = 1.0
-        self._capno_obstruction = 0.0
-        self._vq_mismatch = 0.0
+        self.airway_status = AirwayStatus()
 
         initialize_engine_state(self)
         projection_core.sync_state_from_models(self)
@@ -374,31 +346,46 @@ class SimulationEngine(DrugControllerMixin):
             self.state.time, ACTION_DRUG_BOLUS, label=spec.key, amount=amount
         )
 
-    def _set_event(self, name: str, attr: str, active: bool, amount: float = 0.0):
-        """Set a clinical event flag and log learner-triggered transitions."""
-        if getattr(self, attr) != active:
+    def event_active(self, name: str) -> bool:
+        """Return whether the "hemorrhage", "anaphylaxis", or "sepsis" event is running."""
+        if name == "hemorrhage":
+            return self.active_hemorrhage
+        if name == "anaphylaxis":
+            return self.anaphylaxis.active
+        if name == "sepsis":
+            return self.sepsis.active
+        raise ValueError(f"Unknown clinical event: {name!r}")
+
+    def _log_event(self, name: str, active: bool, amount: float = 0.0):
+        """Log a learner-triggered event transition before it is applied."""
+        if self.event_active(name) != active:
             action = ACTION_EVENT_START if active else ACTION_EVENT_STOP
             self.actions.record(self.state.time, action, label=name, amount=amount)
-        setattr(self, attr, active)
 
     def start_hemorrhage(self, rate_ml_min: float = 500.0):
         self.hemorrhage_rate_ml_min = rate_ml_min
-        self._set_event("hemorrhage", "active_hemorrhage", True, amount=rate_ml_min)
+        self._log_event("hemorrhage", True, amount=rate_ml_min)
+        self.active_hemorrhage = True
 
     def stop_hemorrhage(self):
-        self._set_event("hemorrhage", "active_hemorrhage", False)
+        self._log_event("hemorrhage", False)
+        self.active_hemorrhage = False
 
     def start_anaphylaxis(self):
-        self._set_event("anaphylaxis", "active_anaphylaxis", True)
+        self._log_event("anaphylaxis", True)
+        self.anaphylaxis.active = True
 
     def stop_anaphylaxis(self):
-        self._set_event("anaphylaxis", "active_anaphylaxis", False)
+        self._log_event("anaphylaxis", False)
+        self.anaphylaxis.active = False
 
     def start_sepsis(self):
-        self._set_event("sepsis", "active_sepsis", True)
+        self._log_event("sepsis", True)
+        self.sepsis.active = True
 
     def stop_sepsis(self):
-        self._set_event("sepsis", "active_sepsis", False)
+        self._log_event("sepsis", False)
+        self.sepsis.active = False
 
     def stop_events(self):
         self.stop_hemorrhage()
@@ -432,9 +419,9 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_airway_mode(self, mode_str: str):
         try:
-            self.state.airway_mode = AIRWAY_MODE_MAP[mode_str]
-        except (KeyError, TypeError) as exc:
-            choices = ", ".join(AIRWAY_MODE_MAP)
+            self.state.airway_mode = AirwayType(mode_str)
+        except ValueError as exc:
+            choices = ", ".join(mode.value for mode in AirwayType)
             raise ValueError(
                 f"Unsupported airway mode {mode_str!r}; choose one of: {choices}"
             ) from exc
@@ -446,36 +433,6 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_airway_obstruction(self, severity: float):
         self.airway_obstruction_manual = clamp(severity, 0.0, 1.0)
-
-    def get_resp_step_kwargs(self, total_assisted_mv, mech_rr, mech_vt_l, cardiac_output):
-        """Respiratory-model inputs shared by the runtime and startup projection."""
-        return {
-            "ce_prop": hypnotic_equivalent(
-                self.pk["propofol"].state.ce_resp,
-                self.state.etomidate_ce,
-                self.state.midazolam_ce,
-                self.midazolam_c50,
-                ventilation=True,
-            ),
-            "ce_remi": opioid_equivalent(self.pk["remi"].state.ce_resp, self.state.fentanyl_ce),
-            "mech_vent_mv": total_assisted_mv,
-            "fio2": self.state.fio2,
-            "ce_roc": self.tof_pd.ce_central,
-            "mac_sevo": self.state.mac_sevo,
-            "mech_rr": mech_rr,
-            "mech_vt_l": mech_vt_l,
-            "measured_breaths": self.state.airway_mode != AirwayType.NONE and self.vent.has_measured_breath,
-            "airway_patency": self._airway_patency,
-            "ventilation_efficiency": self._ventilation_efficiency,
-            "vq_mismatch": self._vq_mismatch,
-            "hb_g_dl": self.hemo.hb_conc,
-            "blood_volume_ml": self.hemo.blood_volume,
-            "cardiac_output": cardiac_output,
-            "metabolic_factor": max(0.5, self._metabolic_factor),
-            "unconscious": self.state.loc,
-            "lung_volume_l": self.aeration.frc,
-            "shunt_fraction": self.aeration.shunt_fraction,
-        }
 
     def set_bronchospasm(self, severity: float):
         self.bronchospasm_manual = clamp(severity, 0.0, 1.0)

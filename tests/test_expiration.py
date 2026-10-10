@@ -59,7 +59,7 @@ def test_longer_expiration_and_bronchospasm_relief_reduce_intrinsic_peep_across_
             engine.set_vent_settings(mode="VCV", rr=rr, vt=0.5, ie=ie, peep=5, p_max=60)
             for _ in range(round(90 / dt)):
                 engine.step(dt)
-            trace.append((engine.vent.monitors.auto_peep, engine.resp_mech.aeration.frc, engine.state.vt))
+            trace.append((engine.vent.monitors.auto_peep, engine.aeration.frc, engine.state.vt))
         short, longer, slow, relieved = trace
         assert short[0] > 5.0
         assert longer[0] < 0.75 * short[0]
@@ -70,5 +70,5 @@ def test_longer_expiration_and_bronchospasm_relief_reduce_intrinsic_peep_across_
         assert all(endpoint[2] == pytest.approx(500.0, abs=2.0) for endpoint in trace)
         traces.append(trace)
     for trace in traces[1:]:
-        for actual, reference in zip(trace, traces[0]):
+        for actual, reference in zip(trace, traces[0], strict=True):
             assert actual == pytest.approx(reference, abs=1e-8)

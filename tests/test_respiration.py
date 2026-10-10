@@ -1,4 +1,5 @@
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -184,7 +185,7 @@ def test_hyperventilation_stops_breathing_under_anesthesia_until_co2_recovers(pa
     fixed to isolate the CO2 threshold from PK and induction kinetics.
     """
     model = RespiratoryModel(patient)
-    inputs = dict(ce_prop=2.0, ce_remi=0.0, unconscious=1.0, fio2=1.0)
+    inputs: dict[str, Any] = dict(ce_prop=2.0, ce_remi=0.0, unconscious=1.0, fio2=1.0)
     for _ in range(9000):
         model.step(0.1, **inputs)
     assert model.state.rr > 8.0

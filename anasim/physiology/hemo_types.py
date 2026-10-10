@@ -7,7 +7,7 @@ from anasim.core.enums import RhythmType
 
 @dataclass
 class HemoState:
-    """Hemodynamic outputs."""
+    """Hemodynamic outputs and the internal model variables behind them."""
 
     map: float = 80.0
     hr: float = 75.0
@@ -15,12 +15,6 @@ class HemoState:
     svr: float = 16.0
     co: float = 5.25
     rhythm_type: RhythmType = RhythmType.SINUS
-
-
-@dataclass
-class HemoStateExtended(HemoState):
-    """Extended hemodynamic state with internal model variables."""
-
     tpr: float = 0.016
     sv_star: float = 82.2
     hr_star: float = 56.0

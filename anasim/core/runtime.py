@@ -4,18 +4,6 @@ import logging
 import math
 from typing import TYPE_CHECKING
 
-from anasim.core.constants import (
-    SHIVER_BASE_THRESHOLD,
-    SHIVER_BIS_FULL,
-    SHIVER_BIS_ON,
-    SHIVER_DELTA_FULL,
-    SHIVER_DEPTH_DROP_MAX,
-    SHIVER_MAX_MULTIPLIER,
-    SHIVER_REMI_DROP_MAX,
-    SHIVER_TAU_OFF,
-    SHIVER_TAU_ON,
-    TEMP_METABOLIC_COEFFICIENT,
-)
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.physiology.disturbances import DisturbanceEffects
@@ -24,13 +12,15 @@ from .monitors import step_monitors
 from .projection import (
     PhysiologyStepState,
     build_snapshot_from_models,
-    circuit_ventilation,
+    laryngoscopy_tolerance,
+    loss_of_response,
     project_runtime_physiology,
+    step_respiration,
     sync_inhaled_agents,
     sync_inspired_gas,
     sync_pk_state,
 )
-from .state import AirwayType
+from .state import AirwayStatus, AirwayType
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine
@@ -41,50 +31,14 @@ logger = logging.getLogger(__name__)
 ARREST_MAP_MMHG = 20.0
 ARREST_HR_BPM = 10.0
 ARREST_CONFIRM_S = 15.0
+# Mean airway pressure is smoothed before it sets intrathoracic pressure.
+MEAN_PAW_TAU_S = 0.25
 
 
-def compute_depth_metabolic_context(
-    engine: "SimulationEngine",
-    temp_c: float,
-    prop_ce: float,
-    mac: float,
-    shiver_level: float = 0.0,
-) -> tuple[float, float]:
-    """Return depth index and metabolic factor shared by runtime and initialization."""
-    tuning = engine.thermal_tuning
-    depth_index = mac + prop_ce / tuning.depth_propofol_scale
-    metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
-    metabolic_factor *= 1.0 - tuning.metabolic_reduction_max * clamp01(depth_index)
-    metabolic_factor = max(0.5, metabolic_factor) * (1.0 + SHIVER_MAX_MULTIPLIER * shiver_level)
-    return depth_index, metabolic_factor
-
-
-def redistribution_target_j(engine: "SimulationEngine", depth_index: float) -> float:
-    """Core heat moved to the periphery at steady anesthetic depth."""
-    tuning = engine.thermal_tuning
-    heat_capacity = engine.patient.weight * engine.specific_heat
-    return tuning.redistribution_core_drop_c * clamp01(depth_index) * heat_capacity
-
-
-def step_simulation(engine: "SimulationEngine", dt: float) -> None:
+def step_simulation(engine: SimulationEngine, dt: float) -> None:
     state = engine.state
-    engine._depth_index, engine._metabolic_factor = compute_depth_metabolic_context(
-        engine,
-        state.temp_c,
-        state.hypnotic_ce,
-        state.mac,
-        shiver_level=engine._shiver_level,
-    )
-    engine._tol_current = clamp01(
-        engine.response.tolerance(
-            state.hypnotic_response_ce,
-            state.opioid_ce,
-            mac_sevo=state.mac_sevo,
-            mac_n2o=state.mac_n2o,
-            ce_ketamine=state.ketamine_ce,
-            ce_lidocaine=state.lidocaine_ce,
-        )
-    )
+    engine.thermal.update_depth(state.temp_c, state.hypnotic_ce, state.mac)
+    engine._tol_current = clamp01(laryngoscopy_tolerance(engine))
 
     disturbance_complete = _disturbance_completes_during_step(engine, dt)
     disturbances = step_disturbances(engine, dt)
@@ -106,7 +60,7 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
         engine.stop_disturbance()
 
 
-def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_active: bool,
+def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_active: bool,
                    bag_mask_active: bool) -> None:
     """Advance breathing through the workstation: ventilator, bag, or the patient's own effort."""
     resp = engine.resp.state
@@ -115,7 +69,7 @@ def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_
     aeration.unconscious = engine.state.loc
     aeration.lung_water = engine.hemo.lung_water_ml_kg
     lung.effort.unconscious = engine.state.loc
-    aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine._airway_patency > 0.5
+    aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine.airway_status.patency > 0.5
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.
     lung.effort.set_drive(resp.effort_rr, resp.effort_vt / 1000.0)
     source: str | None
@@ -128,60 +82,22 @@ def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_
     engine.vent.step(dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt), collect_samples=True)
 
 
-def update_shivering(engine: "SimulationEngine", dt: float) -> None:
+def update_shivering(engine: SimulationEngine, dt: float) -> None:
     """Update shivering intensity based on temperature and anesthetic state."""
     state = engine.state
-    depth_factor = clamp01(engine._depth_index)
     remi_effect = hill_function(state.opioid_ce, engine.resp.c50_remi, engine.resp.gamma_remi)
-
-    threshold = SHIVER_BASE_THRESHOLD - SHIVER_DEPTH_DROP_MAX * depth_factor - SHIVER_REMI_DROP_MAX * remi_effect
-    temp_deficit = max(0.0, threshold - state.temp_c)
-    cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
-
-    emergence = clamp01((state.bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
-
     # Shivering uses peripheral muscle, as sensitive as the adductor pollicis.
     muscle_factor = 1.0 - engine.tof_pd.twitch_block(state.roc_ce, state.mac_sevo, state.mac_n2o)
-
-    target = cold_drive * emergence * muscle_factor
-    tau = SHIVER_TAU_ON if target > engine._shiver_level else SHIVER_TAU_OFF
-    engine._shiver_level += (target - engine._shiver_level) * (dt / tau)
-    engine._shiver_level = clamp01(engine._shiver_level)
-    state.shivering = float(engine._shiver_level)
+    state.shivering = float(engine.thermal.step_shivering(dt, state.temp_c, state.bis, remi_effect, muscle_factor))
 
 
-def step_temperature(engine: "SimulationEngine", dt: float) -> None:
+def step_temperature(engine: SimulationEngine, dt: float) -> None:
     """Update core temperature from metabolic heat, environmental loss, and redistribution."""
     state = engine.state
-    temp_c = state.temp_c
-    tuning = engine.thermal_tuning
-    depth_factor = clamp01(engine._depth_index)
-
-    production = engine.heat_production_basal * max(0.5, engine._metabolic_factor)
-    conductance = (
-        tuning.base_conductance_w_per_c
-        * (1.0 + tuning.anesthetic_conductance_gain * depth_factor)
-        * (engine.surface_area / 1.9)
-    )
-    heat_loss = conductance * (temp_c - tuning.ambient_temp_c)
-
-    # Anesthetic vasodilation moves core heat to the periphery over the first
-    # hour (Matsukawa 1995). Vasoconstriction on lightening traps it peripherally,
-    # so the core deficit does not reverse.
-    deficit_gap = redistribution_target_j(engine, engine._depth_index) - engine._redistributed_heat_j
-    redistribution_w = max(0.0, deficit_gap) / tuning.redistribution_tau_s
-    engine._redistributed_heat_j += redistribution_w * dt
-
-    warming = 0.0
-    if state.bair_hugger_target > 0:
-        warming = tuning.bair_hugger_gain_w_per_c * max(0.0, state.bair_hugger_target - temp_c)
-
-    net_heat_w = production + warming - heat_loss - redistribution_w
-    heat_capacity = engine.patient.weight * engine.specific_heat
-    state.temp_c = float(clamp(temp_c + net_heat_w * dt / heat_capacity, tuning.temp_min_c, tuning.temp_max_c))
+    state.temp_c = float(engine.thermal.step_temperature(dt, state.temp_c, state.bair_hugger_target))
 
 
-def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffects:
+def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects:
     """Calculate disturbances and update event-driven volume state."""
     state = engine.state
     if not engine.disturbance_active:
@@ -227,30 +143,20 @@ def step_disturbances(engine: "SimulationEngine", dt: float) -> DisturbanceEffec
         rate_sec = engine.maintenance_fluid_rate_ml_min / 60.0
         hemo.add_volume(rate_sec * dt, hematocrit=0.0, label="crystalloid")
 
-    if engine.active_anaphylaxis:
-        engine.anaphylaxis_severity = min(1.0, engine.anaphylaxis_severity + engine.anaphylaxis_onset_rate * dt)
-    else:
-        engine.anaphylaxis_severity = max(0.0, engine.anaphylaxis_severity - engine.anaphylaxis_decay_rate * dt)
-
-    if engine.active_sepsis:
-        engine.sepsis_severity = min(1.0, engine.sepsis_severity + engine.sepsis_onset_rate * dt)
-    else:
-        engine.sepsis_severity = max(0.0, engine.sepsis_severity - engine.sepsis_decay_rate * dt)
-
-    hemo.anaphylaxis_severity = engine.anaphylaxis_severity
-    hemo.sepsis_severity = engine.sepsis_severity
+    hemo.anaphylaxis_severity = engine.anaphylaxis.step(dt)
+    hemo.sepsis_severity = engine.sepsis.step(dt)
 
     return effects
 
 
-def _disturbance_completes_during_step(engine: "SimulationEngine", dt: float) -> bool:
+def _disturbance_completes_during_step(engine: SimulationEngine, dt: float) -> bool:
     if not engine.disturbance_active:
         return False
     t_rel = max(0.0, engine.state.time - engine.disturbance_start_time)
     return engine.disturbances.is_complete(t_rel + dt)
 
 
-def step_tci(engine: "SimulationEngine", dt: float) -> None:
+def step_tci(engine: SimulationEngine, dt: float) -> None:
     """Advance TCI controllers on their own sampling clock."""
     sim_time = engine.state.time
     for key, controller in engine.tci.items():
@@ -262,7 +168,7 @@ def step_tci(engine: "SimulationEngine", dt: float) -> None:
         engine._tci_accumulators[key] = acc - steps * sampling_time
 
 
-def step_machine(engine: "SimulationEngine", dt: float) -> tuple[float, float]:
+def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
     """Update machine state and return inspired volatile fractions."""
     circuit = engine.circuit
     delivered_setting = engine.vaporizer.step(dt, circuit.fgf_total())
@@ -273,22 +179,23 @@ def step_machine(engine: "SimulationEngine", dt: float) -> tuple[float, float]:
     if engine.state.airway_mode == AirwayType.NONE:
         uptake_o2 = uptake_sevo = uptake_n2o = 0.0
     else:
-        va = max(0.0, engine.state.va) if engine._airway_patency > 0.0 else 0.0
+        airway = engine.airway_status
+        va = max(0.0, engine.state.va) if airway.patency > 0.0 else 0.0
         uptake_sevo = (fi_sevo - engine.pk_sevo.state.p_alv) * va
         uptake_n2o = (fi_n2o - engine.pk_n2o.state.p_alv) * va
         uptake_o2 = engine.resp.oxygen_exchange_l_min(
-            engine.state.fio2, va, engine._metabolic_factor,
-            engine._airway_patency, engine._vq_mismatch,
+            engine.state.fio2, va, engine.thermal.metabolic_factor,
+            airway.patency, airway.vq_mismatch,
         )
     circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o)
     return fi_sevo, fi_n2o
 
 
-def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float, co_curr: float) -> None:
+def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, co_curr: float) -> None:
     """Update pharmacokinetic models and synchronize their public state."""
     state = engine.state
     aeration = engine.aeration
-    va = state.va if engine._airway_patency > 0.0 else 0.0
+    va = state.va if engine.airway_status.patency > 0.0 else 0.0
     engine.pk_sevo.step(dt, fi_sevo, va, co_curr, temp_c=state.temp_c,
                         lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction)
     engine.pk_n2o.step(dt, fi_n2o, va, co_curr, temp_c=state.temp_c,
@@ -307,7 +214,7 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
     sync_pk_state(engine)
 
 
-def update_pk_covariates(engine: "SimulationEngine", co_curr: float) -> tuple[str, ...]:
+def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> tuple[str, ...]:
     """Update PK covariates and return the drugs whose models were rescaled.
 
     Propofol slows norepinephrine clearance. Blood volume and cardiac output
@@ -335,7 +242,7 @@ def update_pk_covariates(engine: "SimulationEngine", co_curr: float) -> tuple[st
     return tuple(engine.pk)
 
 
-def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
+def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
     """Update airway obstruction/bronchospasm/laryngospasm state."""
     state = engine.state
     tol = engine._tol_current
@@ -371,15 +278,12 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
             elif engine.bag_mask_active:
                 splint_pressure = vent.monitors.paw_mean
         relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
-        # Pharyngeal collapse excludes ketamine, which preserves airway tone.
-        unconscious = engine.response.loss_of_response(
-            state.hypnotic_response_ce, state.opioid_ce, mac_sevo=state.mac_sevo, mac_n2o=state.mac_n2o
-        )
+        unconscious = loss_of_response(engine, ketamine=False)
         collapse = airway_tuning.unsupported_collapse_max * unconscious * (1.0 - relief)
         upper_obstruction = max(upper_obstruction, engine.laryngospasm_severity, collapse)
     upper_obstruction = clamp01(upper_obstruction)
 
-    bronch = 1.0 - (1.0 - engine.bronchospasm_manual) * (1.0 - engine.anaphylaxis_severity)
+    bronch = 1.0 - (1.0 - engine.bronchospasm_manual) * (1.0 - engine.anaphylaxis.severity)
     # Epinephrine relieves bronchospasm but not upper-airway obstruction.
     bronchodilation = airway_tuning.epi_bronchodilation_max * hill_function(
         state.epi_ce, airway_tuning.epi_bronchodilation_c50, 1.0
@@ -397,21 +301,23 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
     engine.resp_mech.bronchospasm = bronch
     engine.resp_mech.bronch_resistance = r_bronch
 
-    engine._airway_patency = clamp(1.0 - upper_obstruction, 0.0, 1.0)
-    engine._ventilation_efficiency = clamp(
-        1.0
-        - airway_tuning.vent_efficiency_bronch_weight * bronch
-        - airway_tuning.vent_efficiency_upper_weight * upper_obstruction,
-        airway_tuning.vent_efficiency_min,
-        1.0,
-    )
-    engine._capno_obstruction = clamp01(
-        airway_tuning.capno_obstruction_upper_weight * upper_obstruction
-        + airway_tuning.capno_obstruction_bronch_weight * bronch
-    )
-    engine._vq_mismatch = clamp01(
-        airway_tuning.vq_mismatch_bronch_weight * bronch
-        + airway_tuning.vq_mismatch_upper_weight * upper_obstruction
+    engine.airway_status = AirwayStatus(
+        patency=clamp(1.0 - upper_obstruction, 0.0, 1.0),
+        ventilation_efficiency=clamp(
+            1.0
+            - airway_tuning.vent_efficiency_bronch_weight * bronch
+            - airway_tuning.vent_efficiency_upper_weight * upper_obstruction,
+            airway_tuning.vent_efficiency_min,
+            1.0,
+        ),
+        capno_obstruction=clamp01(
+            airway_tuning.capno_obstruction_upper_weight * upper_obstruction
+            + airway_tuning.capno_obstruction_bronch_weight * bronch
+        ),
+        vq_mismatch=clamp01(
+            airway_tuning.vq_mismatch_bronch_weight * bronch
+            + airway_tuning.vq_mismatch_upper_weight * upper_obstruction
+        ),
     )
 
     state.airway_obstruction = upper_obstruction
@@ -419,7 +325,7 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
     state.laryngospasm = engine.laryngospasm_severity
 
 
-def step_physiology(engine: "SimulationEngine", dt: float, disturbances: DisturbanceEffects) -> PhysiologyStepState:
+def step_physiology(engine: SimulationEngine, dt: float, disturbances: DisturbanceEffects) -> PhysiologyStepState:
     """Advance physiology models and return a projected runtime snapshot."""
     state = engine.state
     connected = state.airway_mode != AirwayType.NONE
@@ -429,7 +335,7 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     vent = engine.vent
     spirometry = vent.monitors
 
-    alpha_paw = 1.0 - math.exp(-dt / max(engine._mean_paw_tau_s, 1e-6))
+    alpha_paw = 1.0 - math.exp(-dt / MEAN_PAW_TAU_S)
     mean_paw = vent.airway_pressure_area / dt
     engine.current_mean_paw = (1 - alpha_paw) * engine.current_mean_paw + alpha_paw * mean_paw
 
@@ -442,21 +348,13 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     effort_mmhg = effort_pressure * paw_to_mmhg * effort_transmission
     pit_estimate -= effort_mmhg
 
-    # Gas exchange uses recent exhaled breaths, so it lags at least one breath.
-    assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)
     if vent_active:
         total_peep_effect = engine.resp_mech.peep + spirometry.auto_peep
     else:
         total_peep_effect = spirometry.auto_peep if bag_mask_active else 0.0
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
-    kwargs = engine.get_resp_step_kwargs(
-        total_assisted_mv=assisted_rr * assisted_vt_l,
-        mech_rr=assisted_rr,
-        mech_vt_l=assisted_vt_l,
-        cardiac_output=state.co,
-    )
-    resp_state = engine.resp.step(dt, **kwargs)
+    resp_state = step_respiration(engine, dt, state.co)
 
     hemo_state = engine.hemo.step(
         dt,
@@ -489,7 +387,7 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     )
 
 
-def check_cardiac_arrest(engine: "SimulationEngine", dt: float) -> None:
+def check_cardiac_arrest(engine: SimulationEngine, dt: float) -> None:
     """End the session after 15 s without effective circulation (MAP < 20 or HR < 10).
 
     Resuscitation is not modeled, so a confirmed arrest is a session endpoint.

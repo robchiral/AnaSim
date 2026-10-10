@@ -43,7 +43,6 @@ def create_anaphylaxis_scenario() -> Scenario:
             ),
             check_requirements=require_crisis_started(
                 "anaphylaxis",
-                "active_anaphylaxis",
                 "Start anaphylaxis in Events",
             ),
             target_tab="Events",
@@ -94,7 +93,6 @@ def create_anaphylaxis_scenario() -> Scenario:
             check_requirements=require_all(
                 require_crisis_stopped(
                     "anaphylaxis",
-                    "active_anaphylaxis",
                     "Stop anaphylaxis event",
                 ),
                 require_map_at_least(),

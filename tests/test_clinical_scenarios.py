@@ -1,5 +1,7 @@
 """One integrated adult path per clinical workflow; comments cite each bound's source."""
 
+import itertools
+
 import pytest
 
 from anasim.core.state import SimulationConfig
@@ -408,8 +410,8 @@ def test_atrial_fibrillation_then_sinus_bradycardia(engine_factory):
     rate = engine.hemo.state.hr
     each_second = shown[::10]
     assert max(abs(value - rate) for value in shown) < 0.2 * rate
-    assert max(abs(b - a) for a, b in zip(each_second, each_second[1:])) < 15.0
-    art_sbp, art_map_error = zip(*art)
+    assert max(abs(b - a) for a, b in itertools.pairwise(each_second)) < 15.0
+    art_sbp, art_map_error = zip(*art, strict=True)
     assert max(art_sbp) - min(art_sbp) < 8.0
     assert max(abs(error) for error in art_map_error) < 5.0
     assert engine.hemo.state.co < baseline_co

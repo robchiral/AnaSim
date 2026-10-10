@@ -454,8 +454,8 @@ class WebSession:
             "laryngospasm": engine.laryngospasm_level,
             "auto_laryngospasm": engine.auto_laryngospasm_enabled,
             "hemorrhage": {"active": engine.active_hemorrhage, "rate": engine.hemorrhage_rate_ml_min},
-            "anaphylaxis": engine.active_anaphylaxis,
-            "sepsis": engine.active_sepsis,
+            "anaphylaxis": engine.anaphylaxis.active,
+            "sepsis": engine.sepsis.active,
             "rhythm": engine.hemo.rhythm_type.value,
             "bair_hugger": engine.state.bair_hugger_target,
         }

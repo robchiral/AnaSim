@@ -1,3 +1,4 @@
+import itertools
 import math
 from dataclasses import asdict
 
@@ -165,7 +166,7 @@ def test_viscoelastic_breaths_match_numerical_integration(mode, monkeypatch):
     split = t_flow if mode == "VCV" else ventilator.RISE_TIME
     bounds = [b for k in range(25) for b in (k * period, k * period + split, k * period + ti)]
     x = [0.0, 0.0]
-    for start, end in zip(bounds, bounds[1:] + [25 * period]):
+    for start, end in zip(bounds, bounds[1:] + [25 * period], strict=True):
         x = solve_ivp(rhs, (start, end), x, method="DOP853", rtol=1e-11, atol=1e-13).y[:, -1]
     # Both end at the start of an inspiration.
     assert lung.volume == pytest.approx(x[0], abs=1e-7)
@@ -208,7 +209,7 @@ def test_peep_valve_slows_early_exhalation_as_a_quadratic_drop(compliance, resis
     bounds = [b for n in range(25) for b in (n * period, n * period + t_flow, n * period + ti)]
     bounds += [25 * period, 25 * period + t_flow, 25 * period + ti, 25 * period + ti + 0.1]
     x = [0.0, 0.0]
-    for start, end in zip(bounds, bounds[1:]):
+    for start, end in itertools.pairwise(bounds):
         x = solve_ivp(rhs, (start, end), x, method="DOP853", rtol=1e-11, atol=1e-13).y[:, -1]
     q = exhaled_flow(x)
     assert lung.volume == pytest.approx(x[0], abs=1e-3)
@@ -258,7 +259,7 @@ def test_pressure_support_follows_patient_triggers(awake_engine, advance_time):
     half_sine = [peak * math.sin(math.pi * (i - start) / (end - start)) for i in range(start, end)]
     effort = engine.resp_mech.effort
     assert ti == pytest.approx(min(effort.TI_FRACTION * effort.period, effort.TI_MAX), rel=0.05)
-    assert max(abs(f - s) for f, s in zip(flows[start:end], half_sine)) < 0.1 * peak
+    assert max(abs(f - s) for f, s in zip(flows[start:end], half_sine, strict=True)) < 0.1 * peak
 
     engine.set_vent_settings(rr=0.0, vt=0.0, peep=8.0, ie="1:2", mode="PSV", p_support=10.0, t_insp=0.2)
     advance_time(engine, 30.0, dt=0.1)
@@ -309,7 +310,7 @@ def test_cpap_and_untriggered_psv_preserve_spontaneous_circuit_mechanics(dt):
         assert max(paw for paw, _, _ in trace) > 5.4
         traces.append(trace)
     for trace in traces[1:]:
-        for point, reference in zip(trace, traces[0]):
+        for point, reference in zip(trace, traces[0], strict=True):
             assert point == pytest.approx(reference, abs=1e-9)
 
 
@@ -337,7 +338,7 @@ def test_spontaneous_inflow_does_not_retain_the_expiratory_valve_load(dt):
 def test_pressure_support_cycles_at_zero_flow_during_pressure_rise(dt):
     class ObservedVentilator(AnesthesiaVentilator):
         def _end_inspiration(self, segment, t):
-            ends.append((self._breath.t, segment.flow(t)))
+            ends.append((self._active_breath.t, segment.flow(t)))
             super()._end_inspiration(segment, t)
 
     # Short, weak efforts reach an insensitive trigger late. If flow reverses
@@ -346,7 +347,7 @@ def test_pressure_support_cycles_at_zero_flow_during_pressure_rise(dt):
     lung.effort.set_drive(60, 0.1)
     vent = ObservedVentilator()
     vent.update_settings(mode="PSV", rr=0, peep=5, p_support=1, trigger=20)
-    ends = []
+    ends: list[tuple[float, float]] = []
     for _ in range(round(5 / dt)):
         vent.step(dt, lung, "vent")
     assert len(ends) == 3
@@ -428,7 +429,7 @@ def test_simv_early_triggers_preserve_the_set_mandatory_rate(mode, dt):
     for i in range(round(150 / dt)):
         vent.step(dt, lung, "vent")
         if vent._breath is not previous:
-            previous = vent._breath
+            previous = vent._active_breath
             kinds.add(previous.kind)
             if previous.mandatory:
                 mandatory.append((i + 1) * dt - previous.t)
@@ -555,7 +556,7 @@ def test_volume_guarantee_restores_tidal_volume_three_cmh2o_per_breath(awake_eng
     started = breaths(engine, 60.0)
     peaks = [peak for _, peak, _ in started]
     assert started[1][2] < 300.0
-    assert max(b - a for a, b in zip(peaks, peaks[1:])) <= 3.0 + 1e-9
+    assert max(b - a for a, b in itertools.pairwise(peaks)) <= 3.0 + 1e-9
     assert started[-1][2] == pytest.approx(450.0, rel=0.02)
 
 
@@ -589,13 +590,13 @@ def test_volume_guarantee_rechecks_pressure_headroom_before_the_next_breath(edit
     vent.update_settings(mode="PCV-VG", rr=12, tv=500, peep=5, p_max=40)
     for _ in range(round(32 / dt)):
         vent.step(dt, lung, "vent")
-    assert vent._vg_pressure > 25
+    assert vent._vg_pressure is not None and vent._vg_pressure > 25
     vent.update_settings(**edit)  # Edit during expiration, after pressure adaptation.
     for _ in range(round(4 / dt)):
         vent.step(dt, lung, "vent")
-    assert vent._breath.kind == "VG" and vent.inspiring
+    assert vent._active_breath.kind == "VG" and vent.inspiring
     assert vent.paw == pytest.approx(vent.settings.p_max - 5, abs=1e-9)
-    assert vent._breath.target == pytest.approx(vent.settings.p_max - 5 - vent.settings.peep)
+    assert vent._active_breath.target == pytest.approx(vent.settings.p_max - 5 - vent.settings.peep)
 
 
 def test_volume_guarantee_feedback_survives_a_mode_change_during_inspiration():
@@ -603,14 +604,14 @@ def test_volume_guarantee_feedback_survives_a_mode_change_during_inspiration():
     vent = AnesthesiaVentilator()
     vent.update_settings(mode="PCV-VG")
     vent.step(5.5, lung, "vent")
-    delivered_pressure = vent._breath.target
+    delivered_pressure = vent._active_breath.target
     vent.update_settings(mode="VCV")
     vent.step(0.1, lung, "vent")
     vent.update_settings(mode="PCV-VG")
     vent.step(1.1, lung, "vent")
-    assert abs(vent._vg_pressure - delivered_pressure) <= 3
+    assert vent._vg_pressure is not None and abs(vent._vg_pressure - delivered_pressure) <= 3
     vent.step(4, lung, "vent")
-    assert vent._breath.kind == "VG"
+    assert vent._active_breath.kind == "VG"
     assert math.isfinite(vent.paw)
 
 

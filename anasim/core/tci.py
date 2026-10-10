@@ -118,7 +118,7 @@ class TCIController:
         signature = _pk_signature(pk_model)
         rebuilt = any(
             abs(curr - prev) > max(abs(prev) * rel_tol, abs_tol)
-            for prev, curr in zip(self._signature, signature)
+            for prev, curr in zip(self._signature, signature, strict=True)
         )
         if rebuilt:
             self._load_pk_model(pk_model)

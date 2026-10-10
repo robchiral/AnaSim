@@ -115,3 +115,52 @@ class Capnograph:
             if slug[0] <= 1e-12:
                 column.popleft() if left else column.pop()
         return taken
+
+
+class EtCO2Readout:
+    """End-tidal CO2 numeric from the peak of each completed exhalation.
+
+    The value holds between breaths and blanks once no breath has completed
+    for the timeout, or when the sampling line is disconnected.
+    """
+
+    def __init__(self, timeout_s: float = 15.0):
+        self.timeout_s = timeout_s
+        self.value = 0.0  # mmHg
+        self._peak = 0.0
+        self._age_s = 0.0
+        self._exhaling = True
+        self._has_sample = False
+
+    @property
+    def valid(self) -> bool:
+        return self._has_sample and self._age_s <= self.timeout_s
+
+    def seed(self, value: float) -> None:
+        self.value = value
+
+    def interrupt(self, dt: float, disconnected: bool) -> None:
+        """Advance without exhaled gas at the sampling port."""
+        self._peak = 0.0
+        self._age_s += dt
+        self._exhaling = False
+        if disconnected:
+            self._has_sample = False
+        self._expire()
+
+    def update(self, dt: float, exhaling: bool, co2: float) -> None:
+        """Advance with one capnograph sample; a breath completes when inspiration begins."""
+        self._age_s += dt
+        if exhaling:
+            self._peak = max(self._peak, co2)
+        if self._exhaling and not exhaling and self._peak > 1.0:
+            self.value = self._peak
+            self._age_s = 0.0
+            self._peak = 0.0
+            self._has_sample = True
+        self._exhaling = exhaling
+        self._expire()
+
+    def _expire(self) -> None:
+        if not self.valid:
+            self.value = 0.0

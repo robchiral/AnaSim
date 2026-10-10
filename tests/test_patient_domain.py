@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from anasim.core.engine import SimulationEngine
@@ -13,7 +15,7 @@ from anasim.patient.domain import (
 )
 from anasim.patient.patient import Patient
 
-BOUNDARY_PATIENTS = (
+BOUNDARY_PATIENTS: tuple[dict[str, Any], ...] = (
     {
         "age": AGE_RANGE_YEARS[0],
         "weight": WEIGHT_RANGE_KG[0],

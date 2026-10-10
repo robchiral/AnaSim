@@ -37,13 +37,13 @@ def test_controller_reaches_target_without_overshoot_and_follows_a_decrease(
     for _ in range(round(300 / sampling_time)):
         pk.step(sampling_time, tci.step(target))
         history.append(concentration())
-    history = np.asarray(history)
+    trace = np.asarray(history)
 
-    reached = np.flatnonzero(history >= 0.9 * target)
+    reached = np.flatnonzero(trace >= 0.9 * target)
     assert reached.size > 0
     assert reached[0] * sampling_time < t90_limit_s
-    assert history.max() < 1.03 * target
-    assert history[-round(60 / sampling_time):].mean() == pytest.approx(target, rel=0.02)
+    assert trace.max() < 1.03 * target
+    assert trace[-round(60 / sampling_time):].mean() == pytest.approx(target, rel=0.02)
 
     lower = 2.5
     for _ in range(round(600 / sampling_time)):

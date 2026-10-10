@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import pytest
 
@@ -12,7 +13,7 @@ from anasim.scenarios import (
 from anasim.web import WebSession
 
 # Browser commands for each objective; TCI targets become manual rates when disabled.
-SCENARIO_WALKTHROUGHS = {
+SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = {
     "hemorrhage_response": {
         "START_HEMORRHAGE": [("hemorrhage", {"active": True, "rate_ml_min": 800})],
         "GIVE_FLUIDS": [("fluid", {"kind": "crystalloid", "volume_ml": 500})],
@@ -308,6 +309,7 @@ def test_intubation_objective_starts_one_laryngoscopy_stimulus():
     session = WebSession({"scenario_id": "induction_balanced"})
     engine = session.engine
     engine.start()
+    assert session.scenario is not None
     session.step_index = next(i for i, step in enumerate(session.scenario) if step.id == "INTUBATE")
     session._begin_step()
 

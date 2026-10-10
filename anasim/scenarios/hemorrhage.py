@@ -33,7 +33,6 @@ def create_hemorrhage_response() -> Scenario:
             ),
             check_requirements=require_crisis_started(
                 "hemorrhage",
-                "active_hemorrhage",
                 "Start hemorrhage event (Events tab)",
             ),
             target_tab="Events",
@@ -56,7 +55,7 @@ def create_hemorrhage_response() -> Scenario:
                 "In practice, hemorrhage control and resuscitation proceed together."
             ),
             check_requirements=require_crisis_stopped(
-                "hemorrhage", "active_hemorrhage", "Stop bleeding to represent surgical hemostasis",
+                "hemorrhage", "Stop bleeding to represent surgical hemostasis",
             ),
             target_tab="Events",
         ),
@@ -91,7 +90,7 @@ def create_hemorrhage_response() -> Scenario:
             target_tab="Medications",
         ),
         create_reassess_step(
-            "active_hemorrhage",
+            "hemorrhage",
             "Stop hemorrhage first",
             "Hemorrhage controlled",
             "Persistent tachycardia or hypotension warrants reassessment for continued bleeding, "

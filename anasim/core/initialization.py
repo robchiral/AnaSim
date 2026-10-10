@@ -60,7 +60,7 @@ BALANCED_PROFILE = StartupProfile(
 )
 
 
-def initialize_engine_state(engine: "SimulationEngine") -> None:
+def initialize_engine_state(engine: SimulationEngine) -> None:
     """Initialize the configured awake or maintenance state."""
     if engine.config.mode == "steady_state":
         _initialize_steady_state(engine)
@@ -68,14 +68,14 @@ def initialize_engine_state(engine: "SimulationEngine") -> None:
         _initialize_awake(engine)
 
 
-def _initialize_awake(engine: "SimulationEngine") -> None:
+def _initialize_awake(engine: SimulationEngine) -> None:
     engine.state.airway_mode = AirwayType.NONE
     engine.resp.state.apnea = False
     engine.set_vent_power(False)
     engine.set_vaporizer(0.0)
 
 
-def _initialize_steady_state(engine: "SimulationEngine") -> None:
+def _initialize_steady_state(engine: SimulationEngine) -> None:
     profile = _select_profile(engine)
     targets = _solve_startup_targets(engine, profile)
 
@@ -91,13 +91,13 @@ def _initialize_steady_state(engine: "SimulationEngine") -> None:
     engine._next_nibp_time = 0.0
 
 
-def _select_profile(engine: "SimulationEngine") -> StartupProfile:
+def _select_profile(engine: SimulationEngine) -> StartupProfile:
     if engine.config.maint_type == "balanced":
         return BALANCED_PROFILE
     return TIVA_PROFILE
 
 
-def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) -> StartupTargets:
+def _solve_startup_targets(engine: SimulationEngine, profile: StartupProfile) -> StartupTargets:
     bis_model = engine.bis
     response_model = engine.response
 
@@ -132,16 +132,12 @@ def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) 
     return StartupTargets(prop_ce=primary_load * bis_model.c50, remi_ce=remi_ce)
 
 
-def _configure_controlled_ventilation(engine: "SimulationEngine", targets: StartupTargets) -> None:
+def _configure_controlled_ventilation(engine: SimulationEngine, targets: StartupTargets) -> None:
     baseline_rr = max(1.0, engine.patient.baseline_rr)
     baseline_vt_l = max(0.1, engine.patient.baseline_vt / 1000.0)
     baseline_mv = baseline_rr * baseline_vt_l
-    _depth_index, metabolic_factor = runtime_core.compute_depth_metabolic_context(
-        engine,
-        engine.patient.baseline_temp,
-        targets.prop_ce,
-        targets.mac,
-        shiver_level=0.0,
+    _depth_index, metabolic_factor = engine.thermal.depth_and_metabolism(
+        engine.patient.baseline_temp, targets.prop_ce, targets.mac,
     )
     target_mv = baseline_mv * metabolic_factor
     vent_vt = target_mv / baseline_rr
@@ -151,7 +147,7 @@ def _configure_controlled_ventilation(engine: "SimulationEngine", targets: Start
 
 
 def _seed_steady_state_subsystems(
-    engine: "SimulationEngine",
+    engine: SimulationEngine,
     profile: StartupProfile,
     targets: StartupTargets,
 ) -> None:
@@ -195,14 +191,14 @@ def _seed_linear_history(pk_model, target_ce: float, duration_min: float) -> flo
     return rate_per_min
 
 
-def _oxygen_uptake_l_min(engine: "SimulationEngine", targets: StartupTargets) -> float:
-    _, metabolic_factor = runtime_core.compute_depth_metabolic_context(
-        engine, engine.patient.baseline_temp, targets.prop_ce, targets.mac
+def _oxygen_uptake_l_min(engine: SimulationEngine, targets: StartupTargets) -> float:
+    _, metabolic_factor = engine.thermal.depth_and_metabolism(
+        engine.patient.baseline_temp, targets.prop_ce, targets.mac,
     )
     return engine.resp.vco2 * metabolic_factor / engine.resp.rq / 1000.0
 
 
-def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, duration_min: float) -> float:
+def _seed_volatile_history(engine: SimulationEngine, target_mac: float, duration_min: float) -> float:
     """Seed tissue partial pressures after an anesthetic maintenance history.
 
     Sets the vaporizer to the dial that holds alveolar partial pressure constant
@@ -233,7 +229,7 @@ def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, durati
     return fi_agent
 
 
-def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> None:
+def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile) -> None:
     """Run a short settle for circuit and physiology transients without visible side effects."""
     saved_hemo_config = engine.hemo.config
     saved_maintenance_rate = engine.maintenance_fluid_rate_ml_min
@@ -243,15 +239,10 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
 
     steps = max(1, int(profile.settle_seconds / profile.settle_dt_seconds))
     for _ in range(steps):
-        depth_index, metabolic_factor = runtime_core.compute_depth_metabolic_context(
-            engine,
-            engine.patient.baseline_temp,
-            engine.state.propofol_ce,
-            engine.state.mac,
-            shiver_level=0.0,
+        thermal = engine.thermal
+        thermal.depth_index, thermal.metabolic_factor = thermal.depth_and_metabolism(
+            engine.patient.baseline_temp, engine.state.propofol_ce, engine.state.mac,
         )
-        engine._depth_index = depth_index
-        engine._metabolic_factor = metabolic_factor
         runtime_core.update_pk_covariates(engine, engine.state.co)
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)
         runtime_core.step_pk(engine, profile.settle_dt_seconds, fi_sevo, fi_n2o, engine.state.co)
@@ -262,15 +253,13 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
     engine.hemo.config = saved_hemo_config
     engine.maintenance_fluid_rate_ml_min = saved_maintenance_rate
     engine.state.temp_c = engine.patient.baseline_temp
-    engine._metabolic_factor = 1.0
-    engine._shiver_level = 0.0
     # Redistribution belongs to the maintenance history, not the visible start.
-    engine._redistributed_heat_j = runtime_core.redistribution_target_j(engine, engine._depth_index)
+    engine.thermal.settle_at_depth()
     engine._pulseless_s = 0.0
     engine.state.time = saved_time
 
 
-def _attach_startup_controllers(engine: "SimulationEngine", targets: StartupTargets) -> None:
+def _attach_startup_controllers(engine: SimulationEngine, targets: StartupTargets) -> None:
     """Attach TCI controllers after seeding so they inherit and hold the post-settle state."""
     projection_core.sync_pk_state(engine)
     if targets.prop_ce > 0.0:

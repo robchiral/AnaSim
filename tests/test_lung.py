@@ -11,6 +11,14 @@ from anasim.physiology.resp_mech import RespiratoryMechanics
 from anasim.physiology.respiration import RespiratoryModel
 
 
+def _run(engine, dt, seconds):
+    for _ in range(round(seconds / dt)):
+        engine.step(dt)
+    aeration = engine.aeration
+    return (aeration.recruited, aeration.frc, engine.resp_mech.compliance,
+            engine.state.vt, engine.state.sao2)
+
+
 def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
     traces = []
     for dt in (0.01, 0.1, 1.0):
@@ -18,21 +26,14 @@ def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
         engine.start()
         engine.set_fgf(1.0, 6.0)
 
-        def run(seconds):
-            for _ in range(round(seconds / dt)):
-                engine.step(dt)
-            aeration = engine.resp_mech.aeration
-            return (aeration.recruited, aeration.frc, engine.resp_mech.compliance,
-                    engine.state.vt, engine.state.sao2)
-
         engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=0, ie="1:2")
-        collapsed = run(240)
+        collapsed = _run(engine, dt, 240)
         engine.set_vent_settings(mode="PCV", vt=0.5, rr=3, peep=5, ie="1:1", p_insp=35)
-        recruited = run(40)
+        recruited = _run(engine, dt, 40)
         engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=5, ie="1:2")
-        maintained = run(120)
+        maintained = _run(engine, dt, 120)
         engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=0, ie="1:2")
-        withdrawn = run(240)
+        withdrawn = _run(engine, dt, 240)
 
         assert collapsed[0] < 0.75 and recruited[0] > 0.95
         assert maintained[0] > 0.95 and withdrawn[0] < 0.75
@@ -43,7 +44,7 @@ def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
         assert maintained[3] == pytest.approx(500.0, abs=2.0)
         traces.append((collapsed, recruited, maintained, withdrawn))
     for trace in traces[1:]:
-        for actual, reference in zip(trace, traces[0]):
+        for actual, reference in zip(trace, traces[0], strict=True):
             assert actual[:3] == pytest.approx(reference[:3], rel=0.005, abs=0.001)
             assert actual[3:] == pytest.approx(reference[3:], abs=0.2)
 

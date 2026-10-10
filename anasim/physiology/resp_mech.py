@@ -126,7 +126,7 @@ class RespiratoryMechanics:
 class FlowSegment:
     """Flow is set; Paw = R x flow + V/C + P2 - Pmus. Times are seconds from the segment start."""
 
-    __slots__ = ("lung", "v0", "p20", "q", "m0", "m1", "elastance", "tau", "asymptote")
+    __slots__ = ("asymptote", "elastance", "lung", "m0", "m1", "p20", "q", "tau", "v0")
 
     def __init__(self, lung: RespiratoryMechanics, q: float, pmus: tuple[float, float]):
         self.lung = lung
@@ -177,7 +177,7 @@ class FlowSegment:
 class SineSegment(FlowSegment):
     """Flow (V/2) w sin(w u), w = pi/duration, where u is time since the flow began."""
 
-    __slots__ = ("w", "amplitude", "u0", "gain", "offset")
+    __slots__ = ("amplitude", "gain", "offset", "u0", "w")
 
     def __init__(self, lung, volume, duration, start, pmus):
         super().__init__(lung, 0.0, pmus)
@@ -225,9 +225,33 @@ class PressureSegment:
     latest time are kept.
     """
 
-    __slots__ = ("lung", "v0", "p20", "p0", "p1", "d0", "d1", "rs", "elastance", "s", "w",
-                 "a11", "a12", "a21", "a22", "y0", "z0", "az", "slope", "pv", "pp",
-                 "start", "last_t", "last", "rt")
+    __slots__ = (
+        "a11",
+        "a12",
+        "a21",
+        "a22",
+        "az",
+        "d0",
+        "d1",
+        "elastance",
+        "last",
+        "last_t",
+        "lung",
+        "p0",
+        "p1",
+        "p20",
+        "pp",
+        "pv",
+        "rs",
+        "rt",
+        "s",
+        "slope",
+        "start",
+        "v0",
+        "w",
+        "y0",
+        "z0",
+    )
 
     def __init__(self, lung: RespiratoryMechanics, pressure, pmus, series_resistance):
         self.lung = lung

@@ -52,19 +52,19 @@ def _af_beats(hr: float, sv: float, map_value: float = 85.0, dt: float = 0.002):
         if sample.beat_started:
             beat_steps.append(index)
         pressures.append(renderer.step(sample, map_value, sv).pressure)
-    pressures = np.asarray(pressures)
+    trace = np.asarray(pressures)
     upstroke = round(renderer.config.electromechanical_delay_s / dt)
     preceding_rr, pulse_pressure = [], []
-    for previous, start, end in zip(beat_steps[1:], beat_steps[2:], beat_steps[3:]):
+    for previous, start, end in zip(beat_steps[1:], beat_steps[2:], beat_steps[3:], strict=False):
         preceding_rr.append((start - previous) * dt)
-        pulse_pressure.append(pressures[start:end].max() - pressures[start + upstroke])
-    return np.asarray(preceding_rr), np.asarray(pulse_pressure), float(np.mean(pressures))
+        pulse_pressure.append(trace[start:end].max() - trace[start + upstroke])
+    return np.asarray(preceding_rr), np.asarray(pulse_pressure), float(np.mean(trace))
 
 
 def test_af_pulse_pressure_follows_filling_time():
     """AF stroke volume rises with the preceding R-R (Hardman 1998), and its beat-to-beat
     variability grows with ventricular rate (Kerr 1998). Mean pressure stays at MAP."""
-    slow_rr, slow_pp, slow_mean = _af_beats(hr=80.0, sv=60.0)
+    _, slow_pp, slow_mean = _af_beats(hr=80.0, sv=60.0)
     fast_rr, fast_pp, fast_mean = _af_beats(hr=140.0, sv=40.0)
 
     assert np.corrcoef(fast_rr, fast_pp)[0, 1] > 0.8
