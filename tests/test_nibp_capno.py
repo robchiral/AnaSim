@@ -43,7 +43,7 @@ class TestNIBP:
 
     def test_cuff_reads_on_its_interval_and_tracks_map(self, engine_factory):
         engine = engine_factory(
-            config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5),
+            config=SimulationConfig(mode="awake", dt=0.5, rng_seed=123),
             start=True,
         )
         readings = []
@@ -73,6 +73,32 @@ class TestNIBP:
 
 
 class TestCapnography:
+    def test_obstruction_keeps_impedance_effort_and_expires_end_tidal_reading(self, awake_engine):
+        engine = awake_engine
+        engine.set_airway_mode("ETT")
+        for _ in range(300):
+            engine.step(0.1)
+        last_endpoint = engine.state.display_etco2
+        assert engine.state.etco2_signal_valid and last_endpoint > 20.0
+
+        engine.set_airway_obstruction(1.0)
+        engine.step(0.1)
+        assert engine.state.capno_co2 == 0.0
+        assert engine.state.etco2_signal_valid
+        assert engine.state.display_etco2 == last_endpoint
+        for _ in range(160):
+            engine.step(0.1)
+        assert not engine.state.etco2_signal_valid and engine.state.display_etco2 == 0.0
+
+        engine.set_airway_mode("None")
+        engine.step(0.1)
+        assert engine.state.rr > 8.0
+        assert engine.state.vt == engine.state.mv == engine.state.va == 0.0
+        engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
+        for _ in range(1200):
+            engine.step(0.1)
+        assert engine.state.rr == 0.0
+
     def test_patient_effort_during_exhalation_notches_the_plateau(self):
         """A curare cleft: an inspiratory effort draws fresh gas past the sampling port."""
         def exhale(capno, notch):

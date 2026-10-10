@@ -43,11 +43,11 @@ class StartupTargets:
 
 
 TIVA_PROFILE = StartupProfile(
-    bis_target=55.0,
-    tol_target=0.6,
+    bis_target=50.0,
+    tol_target=0.9,
     primary_hypnotic="propofol",
-    primary_bounds=(2.8, 4.2),
-    remi_bounds=(1.0, 2.0),
+    primary_bounds=(0.5, 1.5),  # Multiples of the age-adjusted BIS Ce50
+    remi_bounds=(1.0, 4.0),
 )
 
 BALANCED_PROFILE = StartupProfile(
@@ -99,7 +99,7 @@ def _select_profile(engine: "SimulationEngine") -> StartupProfile:
 
 def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) -> StartupTargets:
     bis_model = engine.bis
-    tol_model = engine.tol_pd
+    response_model = engine.response
 
     def objective(x):
         primary_load = x[0]
@@ -108,11 +108,11 @@ def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) 
             prop_ce = 0.0
             mac = primary_load
         else:
-            prop_ce = primary_load
+            prop_ce = primary_load * bis_model.c50
             mac = 0.0
 
-        bis_val = bis_model.compute_bis(prop_ce, remi_ce, mac_sevo=mac)
-        tol_val = tol_model.compute_probability(prop_ce, remi_ce, mac=mac)
+        bis_val = bis_model.compute_bis(prop_ce, mac_sevo=mac)
+        tol_val = response_model.tolerance(prop_ce, remi_ce, mac_sevo=mac)
         tol_deficit = max(0.0, profile.tol_target - tol_val)
         return (
             ((bis_val - profile.bis_target) ** 2) / (STARTUP_BIS_BAND_SCALE ** 2)
@@ -129,7 +129,7 @@ def _solve_startup_targets(engine: "SimulationEngine", profile: StartupProfile) 
     primary_load, remi_ce = map(float, result.x)
     if profile.primary_hypnotic == "volatile":
         return StartupTargets(remi_ce=remi_ce, mac=primary_load)
-    return StartupTargets(prop_ce=primary_load, remi_ce=remi_ce)
+    return StartupTargets(prop_ce=primary_load * bis_model.c50, remi_ce=remi_ce)
 
 
 def _configure_controlled_ventilation(engine: "SimulationEngine", targets: StartupTargets) -> None:
@@ -171,11 +171,14 @@ def _seed_steady_state_subsystems(
     engine.circuit.equilibrate(_oxygen_uptake_l_min(engine, targets), fi_agent)
     engine.resp.equilibrate_oxygen(engine.circuit.composition.fio2)
 
+    engine.resp.initialize_drug_effects(engine.pk_prop.state.ce_resp, engine.pk_remi.state.ce_resp)
     prop_cp = engine.pk_prop.state.c1
     remi_cp = engine.pk_remi.state.c1
+    engine.pk_nore.update_propofol(prop_cp)
+    engine.pk_nore.equilibrate_endogenous()
     # Start at the untreated anesthetic steady state so the hidden settle
     # handles only circuit and monitor transients.
-    engine.hemo.state = engine.hemo.calculate_steady_state(
+    engine.hemo.initialize_steady_state(
         prop_cp,
         remi_cp,
         engine.pk_nore.state.ce,

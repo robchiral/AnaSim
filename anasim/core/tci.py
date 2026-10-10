@@ -1,5 +1,7 @@
 """Target-controlled infusion (Shafer and Gregg. J Pharmacokinet Biopharm. 1992)."""
 
+import math
+
 import numpy as np
 from scipy.linalg import expm
 
@@ -22,7 +24,7 @@ def _discretize(A: np.ndarray, B: np.ndarray, dt: float) -> tuple[np.ndarray, np
 def _pk_signature(pk_model) -> tuple[float, ...]:
     return tuple(
         float(getattr(pk_model, name))
-        for name in ("v1", "v2", "v3", "cl1", "cl2", "cl3", "ke0")
+        for name in ("v1", "v2", "v3", "elimination_clearance", "cl2", "cl3", "ke0", "basal_input_rate")
     )
 
 
@@ -47,41 +49,63 @@ class TCIController:
             pk_model: PK model exposing get_ss_matrices() and state_vector().
             target_compartment: "plasma" or "effect_site".
             max_rate: Pump limit in model units per second.
-            sampling_time: Internal state-estimate step (s).
+            sampling_time: Interval between controller ticks (s).
             control_time: Interval between rate updates (s).
         """
         if sampling_time > control_time:
             raise ValueError("Sampling time cannot be larger than control time")
         self.target_compartment = target_compartment
+        self.pk_model = pk_model
         self.max_rate = max_rate
         self.sampling_time = sampling_time
-        self.control_time = control_time
+        # Rate changes fall on sampling instants; prediction uses that same duration.
+        self.control_time = math.ceil(control_time / sampling_time) * sampling_time
         self.target = 0.0
         self.infusion_rate = 0.0
         self._time = 0.0
         self._next_update = 0.0
         self._load_pk_model(pk_model)
-        self.x = np.zeros((self.n_state, 1))
+        self.sync_state_estimate(pk_model)
 
     def _load_pk_model(self, pk_model) -> None:
         A_min, B = pk_model.get_ss_matrices()
         A = A_min / 60.0  # B already maps a per-second input to concentration per second.
         self.n_state = A.shape[0]
         self.target_id = 0 if self.target_compartment == "plasma" else self.n_state - 1
-        self.Ad, self.Bd = _discretize(A, B, self.sampling_time)
-
         A_grid, B_grid = _discretize(A, B, PREDICTION_GRID_S)
         steps = int(PREDICTION_HORIZON_S / PREDICTION_GRID_S)
-        pulse_steps = max(1, round(self.control_time / PREDICTION_GRID_S))
-        self._free_response = np.empty((steps, self.n_state))
-        self._unit_response = np.empty(steps)
+        pulse_steps = math.floor(self.control_time / PREDICTION_GRID_S)
+        partial_time = self.control_time - pulse_steps * PREDICTION_GRID_S
+        partial_input = np.zeros_like(B_grid)
+        if partial_time > 0.0:
+            _, B_partial = _discretize(A, B, partial_time)
+            partial_input = expm(A * (PREDICTION_GRID_S - partial_time)) @ B_partial
+        predictions = steps + int(partial_time > 0.0)
+        self._free_response = np.empty((predictions, self.n_state))
+        self._unit_response = np.empty(predictions)
+        self._basal_response = np.zeros(predictions)
+        self.basal_input_rate = pk_model.basal_input_rate
         row = np.eye(self.n_state)[self.target_id]
         unit_state = np.zeros((self.n_state, 1))
+        basal_state = np.zeros((self.n_state, 1))
         for k in range(steps):
             row = row @ A_grid
-            unit_state = A_grid @ unit_state + B_grid * (1.0 if k < pulse_steps else 0.0)
+            unit_state = A_grid @ unit_state
+            if k < pulse_steps:
+                unit_state += B_grid
+            elif k == pulse_steps:
+                unit_state += partial_input
             self._free_response[k] = row
             self._unit_response[k] = unit_state[self.target_id, 0]
+            if self.basal_input_rate:
+                basal_state = A_grid @ basal_state + B_grid * self.basal_input_rate
+                self._basal_response[k] = basal_state[self.target_id, 0]
+        if partial_time > 0.0:
+            # A plasma peak at pump stop can lie between the one-second grid points.
+            A_stop, B_stop = _discretize(A, B, self.control_time)
+            self._free_response[-1] = A_stop[self.target_id]
+            self._unit_response[-1] = B_stop[self.target_id, 0]
+            self._basal_response[-1] = self._unit_response[-1] * self.basal_input_rate
         self._responsive = self._unit_response > 1e-6 * self._unit_response.max()
         self._signature = _pk_signature(pk_model)
 
@@ -90,6 +114,7 @@ class TCIController:
 
         Returns True when the prediction model was rebuilt.
         """
+        self.pk_model = pk_model
         signature = _pk_signature(pk_model)
         rebuilt = any(
             abs(curr - prev) > max(abs(prev) * rel_tol, abs_tol)
@@ -112,7 +137,7 @@ class TCIController:
     def _control_rate(self) -> float:
         if self.target <= 0.0:
             return 0.0
-        free = self._free_response[self._responsive] @ self.x[:, 0]
+        free = self._free_response[self._responsive] @ self.x[:, 0] + self._basal_response[self._responsive]
         unit = self._unit_response[self._responsive]
         return clamp(float(np.min((self.target - free) / unit)), 0.0, self.max_rate)
 
@@ -122,10 +147,10 @@ class TCIController:
             self._time = sim_time
         if target is not None and target != self.target:
             self.set_target(target)
-        if self._time + 0.5 * self.sampling_time >= self._next_update:
+        if self._time + 1e-9 >= self._next_update:
+            self.sync_from_pk_model(self.pk_model, rel_tol=0.0, abs_tol=0.0)
             self.infusion_rate = self._control_rate()
             self._next_update = self._time + self.control_time
-        self.x = self.Ad @ self.x + self.Bd * self.infusion_rate
         if sim_time is None:
             self._time += self.sampling_time
         return self.infusion_rate

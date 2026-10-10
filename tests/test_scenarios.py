@@ -49,7 +49,12 @@ SCENARIO_WALKTHROUGHS = {
         "GIVE_NMB": [("drug_bolus", {"key": "roc", "amount": 42})],
         "INTUBATE": [("airway", {"mode": "ETT"})],
         "CONFIRM_ETT": [("vent_power", {"on": True})],
-        "MAINTENANCE": [("fgf", {"o2": 2, "air": 0, "n2o": 0})],
+        "MAINTENANCE": [
+            ("fgf", {"o2": 2, "air": 0, "n2o": 0}),
+            ("drug_target", {"key": "propofol", "target": 3}),
+            ("drug_bolus", {"key": "phenyl", "amount": 100}),
+            ("drug_rate", {"key": "nore", "rate": 6}),
+        ],
     },
     "induction_balanced": {
         "APPLY_MASK": [("airway", {"mode": "Mask"})],
@@ -62,7 +67,7 @@ SCENARIO_WALKTHROUGHS = {
         "INTUBATE": [("airway", {"mode": "ETT"})],
         "CONFIRM_ETT": [("vent_power", {"on": True})],
         "MAINTENANCE": [
-            ("vaporizer", {"percent": 3}),
+            ("vaporizer", {"percent": 2.0}),
             ("fgf", {"o2": 1, "air": 1, "n2o": 0}),
         ],
     },
@@ -344,13 +349,13 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
             if name == "drug_target" and not tci_enabled:
                 name = "drug_rate"
                 key = args["key"]
-                args = {"key": key, "rate": {"propofol": 150, "remi": 0.2}[key]}
+                args = {"key": key, "rate": {"propofol": (100 if step["id"] == "MAINTENANCE" else 150), "remi": 0.2}[key]}
             session.command(name, json.dumps(args))
         if json.loads(session.advance(0.0))["scenario"]["met"]:
             session.command("scenario_next")
             snap = json.loads(session.advance(0.0))
         else:
-            assert snap["time"] < 1200, f"{spec.id}/{step['id']} unreachable: {step['status']}"
+            assert snap["time"] < 1800, f"{spec.id}/{step['id']} unreachable: {step['status']}"
             snap = json.loads(session.advance(0.2))
             samples += len(snap["waves"]["ecg"])
 

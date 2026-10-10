@@ -25,6 +25,7 @@ class RespiratoryMechanics:
         """Static compliance in L/cmH2O; airway and tube resistance in cmH2O/(L/s)."""
         self.compliance = compliance
         self.resistance = resistance
+        self.reference_resistance = resistance  # Before acute airway obstruction.
         self.bronchospasm = 0.0
         self.bronch_resistance = 0.0
         self.aeration = aeration
@@ -499,11 +500,11 @@ class PatientEffort:
         # Tissue stress solves dP2/dt = E2 x flow - P2/tau2 from P2 = 0.
         gain = lung.viscoelastic_ratio * elastance * 0.5 * w / (rate * rate + w * w)
         p2 = gain * (rate * math.sin(w * t) - w * math.cos(w * t) + w * math.exp(-rate * t))
-        return (lung.resistance + series_resistance) * flow + elastance * volume + p2
+        return (lung.reference_resistance + series_resistance) * flow + elastance * volume + p2
 
     def _unit_volume(self, lung: RespiratoryMechanics, series_resistance: float) -> float:
         """Peak volume from rest for a unit amplitude, breathing at the baseline pressure."""
-        scratch = RespiratoryMechanics(lung.compliance, lung.resistance)
+        scratch = RespiratoryMechanics(lung.compliance, lung.reference_resistance)
         scratch.viscoelastic_ratio, scratch.viscoelastic_tau = lung.viscoelastic_ratio, lung.viscoelastic_tau
         start = 0.0
         for end in self._knots:

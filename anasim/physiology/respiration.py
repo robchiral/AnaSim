@@ -31,6 +31,8 @@ class RespState:
     sao2: float = 98.0  # %
     drive_central: float = 1.0
     muscle_factor: float = 1.0
+    effort_rr: float = 12.0
+    effort_vt: float = 500.0
 
 
 class RespiratoryModel:
@@ -41,6 +43,9 @@ class RespiratoryModel:
     APNEIC_GAP = 4.5  # mmHg
     AWAKE_HYPOCAPNIC_GAIN = 0.2  # Fraction of HCVR; nonlinear depth response, a teaching estimate
     RATE_CO2_GAP = 5.0  # mmHg above the set point before hypercapnia raises frequency
+    CO2_CONTROLLER_TAU_S = 150.0  # Olofsen 2010, 2.5 min
+    CO2_RESPONSE_EXPONENT = 4.37  # Bouillon 2004 nonlinear CO2 response.
+    MAX_ALVEOLAR_DRIVE = 12.0  # Bound demand above the nonlinear response at PCO2 70.
 
     def __init__(self, patient: Patient):
         self.patient = patient
@@ -53,18 +58,18 @@ class RespiratoryModel:
         ci = ci_elderly if patient.age > 70 else ci_adult
         self.baseline_co_l_min = max(0.1, ci * patient.bsa)
 
-        # Propofol depresses central drive (HCVR) at lower concentrations than
-        # rate and depth (Blouin 1993; Nieuwenhuijs 2001; Lee 2011).
-        self.c50_prop_hcvr = 2.0
-        self.gamma_prop_hcvr = 2.0
-        self.c50_prop_mech = 4.0
-        self.gamma_prop_mech = 2.0
-
-        # Remifentanil EC50 about 1.1-1.2 ng/mL (Glass 1999; Babenco 2000); it
-        # also shifts the CO2 set point right.
-        self.c50_remi = 1.2
-        self.gamma_remi = 1.7
-        self.remi_setpoint_shift_max = 8.0  # mmHg
+        # Bouillon 2004 respiratory concentration-response curve, using its
+        # own effect site (equilibration half-time 2.6 min).
+        self.c50_prop = 1.33
+        self.gamma_prop = 1.68
+        # Olofsen 2010: a linear opioid shift allows apnea at finite Ce.
+        self.c50_remi = 1.6
+        self.gamma_remi = 1.0  # Used by the separate shivering response.
+        self._ventilatory_drive = 1.0
+        # Olofsen's low-dose propofol background reduces opioid-controller gain
+        # to 0.46. Interpolation to other concentrations is a transfer assumption.
+        prop_keep_at_one = 1.0 - hill_function(1.0, self.c50_prop, self.gamma_prop)
+        self.prop_co2_gain_exponent = math.log(0.46) / math.log(prop_keep_at_one)
 
         # Sevoflurane barely changes the CO2 response at 0.1 MAC (Pandit 1999)
         # and depresses it at 1.1-1.4 MAC (Doi 1987).
@@ -77,24 +82,13 @@ class RespiratoryModel:
         self.c50_nmba = 1.8 * 0.8
         self.gamma_nmba = 3.0
 
-        # HCVR about 2-3 L/min per mmHg (Nieuwenhuijs 2001; Pandit 1999).
+        # Awake hypocapnic calibration (Nieuwenhuijs 2001; Pandit 1999).
         self.hcvr_slope_baseline = 2.2
         self.paco2_setpoint = 40.0
-        # Fractional HCVR slope reduction at full drug effect.
-        self.hcvr_depression_remi = 0.70
-        self.hcvr_depression_prop = 0.40
-        self.hcvr_depression_sevo = 0.50
-
-        # Share of each drug's effect on rate vs tidal volume. Opioids slow the
-        # rate; propofol and sevoflurane mainly reduce depth.
-        self.w_prop_rr = 0.6
-        self.w_prop_vt = 0.8
-        self.w_remi_rr = 1.0
-        self.w_remi_vt = 0.35
-        self.w_sevo_rr = 0.4
-        self.w_sevo_vt = 0.8
-
-        self.state = RespState(self.rr_0, self.vt_0, (self.rr_0 * self.vt_0)/1000.0)
+        self.state = RespState(
+            rr=self.rr_0, vt=self.vt_0, mv=self.rr_0 * self.vt_0 / 1000.0,
+            effort_rr=self.rr_0, effort_vt=self.vt_0,
+        )
         self.rq = 0.8
 
         # Resting VO2 about 3.6 mL/kg/min.
@@ -105,7 +99,6 @@ class RespiratoryModel:
         self.baseline_blood_volume_ml = patient.estimate_blood_volume()
 
         self.vd_deadspace = 2.2 * patient.weight / 1000.0  # L
-        self.va_baseline = max(0.1, (self.vt_0/1000.0 - self.vd_deadspace) * self.rr_0)  # L/min
 
         # Body CO2 stores equilibrate slowly (apneic rise 3-5 mmHg/min).
         self.tau_co2 = 180.0  # s
@@ -124,12 +117,32 @@ class RespiratoryModel:
         self._apnea_timer = 0.0
         # Perfusion effect on deadspace fraction (low flow increases VD/VT).
         self.perfusion_deadspace_gain = 0.25
-        self._own_pco2 = self.state.p_alveolar_co2  # PCO2 the patient's own breathing would hold
+
+    @property
+    def va_baseline(self) -> float:
+        """Resting alveolar ventilation derived from baseline breath rate and volume."""
+        return max(0.1, (self.vt_0 / 1000.0 - self.vd_deadspace) * self.rr_0)
 
     def equilibrate_oxygen(self, fio2: float) -> None:
         """Set alveolar O2 to its alveolar-gas-equation value at the current PACO2."""
         self.state.p_alveolar_o2 = max(0.0, fio2 * self._atm_dry - self.state.p_alveolar_co2 / self.rq)
         self.state.p_arterial_o2 = max(0.0, self.state.p_alveolar_o2 - self.aa_grad_base)
+
+    def oxygen_exchange_l_min(
+        self, fio2: float, alveolar_ventilation: float, metabolic_factor: float,
+        airway_patency: float, vq_mismatch: float,
+    ) -> float:
+        """Net O2 transport from inspired gas into the lung and blood stores, STPD L/min."""
+        if airway_patency <= 0.0:
+            return 0.0
+        ventilation = max(0.0, alveolar_ventilation * (1.0 - 0.6 * clamp01(vq_mismatch)))
+        vo2 = self.vco2 * max(0.1, metabolic_factor) / self.rq / 1000.0
+        apneic_inflow = vo2 * clamp01(airway_patency) * clamp01(1.0 - ventilation)
+        return (
+            ventilation * self._btps_to_stpd
+            * (fio2 - self.state.p_alveolar_o2 / self._atm_dry)
+            + apneic_inflow * fio2
+        )
 
     def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0,
              fio2: float = 0.21, ce_roc: float = 0.0, mac_sevo: float = 0.0,
@@ -171,53 +184,35 @@ class RespiratoryModel:
         hill = hill_function
         clamp01_local = clamp01
 
-        eff_prop_hcvr = hill(ce_prop, self.c50_prop_hcvr, self.gamma_prop_hcvr)
-        eff_prop_mech = hill(ce_prop, self.c50_prop_mech, self.gamma_prop_mech)
-        eff_remi = hill(ce_remi, self.c50_remi, self.gamma_remi)
-        eff_sevo = hill(mac_sevo, self.c50_sevo_mac, self.gamma_sevo)
-        eff_nmba = hill(ce_roc, self.c50_nmba, self.gamma_nmba)
-
-        # Central drive; multiplicative drug interaction is synergistic.
-        drug_drive = (1.0 - eff_prop_hcvr) * (1.0 - eff_remi) * (1.0 - eff_sevo)
-
-        # HCVR: VA boost = slope x (PACO2 - set point). Drugs flatten the slope
-        # multiplicatively, and opioids move the set point right.
-        factor_remi = max(0.0, 1.0 - self.hcvr_depression_remi * eff_remi)
-        factor_prop = max(0.0, 1.0 - self.hcvr_depression_prop * eff_prop_hcvr)
-        factor_sevo = max(0.0, 1.0 - self.hcvr_depression_sevo * eff_sevo)
-        hcvr_slope = self.hcvr_slope_baseline * factor_remi * factor_prop * factor_sevo
-        effective_setpoint = self.paco2_setpoint + (self.remi_setpoint_shift_max * eff_remi)
-
-        # Neuromuscular block weakens the muscles without changing drive.
-        muscle_factor = 1.0 - eff_nmba
-        rr_inhib_base = (self.w_prop_rr * eff_prop_mech +
-                         self.w_remi_rr * eff_remi +
-                         self.w_sevo_rr * eff_sevo)
-        vt_inhib_base = (self.w_prop_vt * eff_prop_mech +
-                         self.w_remi_vt * eff_remi +
-                         self.w_sevo_vt * eff_sevo)
+        prop_keep = 1.0 - hill(ce_prop, self.c50_prop, self.gamma_prop)
+        sevo_keep = 1.0 - hill(mac_sevo, self.c50_sevo_mac, self.gamma_sevo)
+        muscle_factor = 1.0 - hill(ce_roc, self.c50_nmba, self.gamma_nmba)
         airway_patency = clamp01_local(airway_patency)
         ventilation_efficiency = clamp01_local(ventilation_efficiency)
         unconscious = clamp01_local(unconscious)
-        pattern = (drug_drive, hcvr_slope, effective_setpoint, rr_inhib_base, vt_inhib_base, muscle_factor,
-                   airway_patency * ventilation_efficiency, unconscious)
-        current_rr, current_vt, drive_central = self._unassisted(state.p_alveolar_co2, *pattern)
 
-        # Awake hypocapnia reduces effort intensity while rhythmic breathing
-        # persists (Patrick 1995). Under anesthesia, rate and depth fall to the
-        # apneic threshold (Hickey 1971).
-        below = self._own_pco2 - state.p_alveolar_co2
-        if below > 0.0 and current_rr > 0.0:
-            kept = 1.0 - unconscious * clamp01_local(below / self.APNEIC_GAP)
-            share = math.sqrt(kept)
-            dead_space_ml = 1000.0 * self.vd_deadspace
-            current_rr *= share
-            if current_vt > dead_space_ml:
-                awake_kept = 1.0 / (1.0 + self.AWAKE_HYPOCAPNIC_GAIN * hcvr_slope * below / self.va_baseline)
-                depth = share * (1.0 - (1.0 - unconscious) * (1.0 - awake_kept))
-                current_vt = dead_space_ml + depth * (current_vt - dead_space_ml)
-            if current_rr < RR_APNEA_THRESHOLD:
-                current_rr = current_vt = 0.0
+        # At Ce_prop=1 the opioid C50 is 0.84 * 1.6 ng/mL (Olofsen).
+        # Interpolation to other propofol concentrations is a teaching assumption.
+        remi_c50 = self.c50_remi * (1.0 - 0.32 * max(0.0, ce_prop) / (1.0 + max(0.0, ce_prop)))
+        gain = self.hcvr_slope_baseline / 2.2 * (0.42 / 7.2)
+        gain *= prop_keep ** (self.prop_co2_gain_exponent - 1.0) * sevo_keep
+        co2_excess = max(0.0, state.p_alveolar_co2 - self.paco2_setpoint)
+        opioid_reference = 1.0 + gain * co2_excess
+        target_drive = opioid_reference - 0.5 * max(0.0, ce_remi) / remi_c50
+        # Keep the controller signed during apnea. Clipping its internal state
+        # discards drug inhibition and makes recovery too early.
+        alpha = -math.expm1(-dt / self.CO2_CONTROLLER_TAU_S)
+        self._ventilatory_drive += alpha * (target_drive - self._ventilatory_drive)
+        effort_rr, effort_vt, drive_central = self._unassisted(
+            state.p_alveolar_co2, prop_keep, sevo_keep, muscle_factor,
+            unconscious, opioid_reference,
+        )
+        state.effort_rr, state.effort_vt = effort_rr, effort_vt
+        current_rr = effort_rr
+        current_vt = effort_vt * airway_patency * ventilation_efficiency
+        if current_vt < max(100.0, VT_MIN):
+            current_rr = current_vt = 0.0
+
         state.apnea = current_rr <= 0.0
 
         vd = self.vd_deadspace
@@ -245,6 +240,8 @@ class RespiratoryModel:
             total_va_l_min = ref_rr_mech * vt_mech_avail
         else:
             total_va_l_min = effective_rate * (max(vt_mech_avail, vt_spont_avail) if mech_rr > 0 else vt_spont_avail)
+        if airway_patency <= 0.0:
+            total_va_l_min = 0.0
         state.va = total_va_l_min
 
         # PACO2 relaxes toward 40 x metabolic factor x VA_baseline / VA; V/Q
@@ -265,31 +262,23 @@ class RespiratoryModel:
         metabolic_factor = max(0.1, float(metabolic_factor))
         paco2_base = 40.0
         paco2_eq = paco2_base * metabolic_factor * (self.va_baseline / effective_va)
-        paco2_eq = min(150.0, paco2_eq)
         d_paco2 = (paco2_eq - state.p_alveolar_co2) / self.tau_co2 * dt
 
-        # Cap the rise at the apneic rate (fast for the first minute, then slow)
-        # scaled by CO2 production. Washout is not limited.
-        if d_paco2 > 0:
-            fast_seconds = 0.0
-            if self._apnea_timer > 0:
-                fast_seconds = min(dt, max(0.0, APNEA_PACO2_RISE_FAST_DURATION_SEC - (self._apnea_timer - dt)))
-            max_rise = metabolic_factor * (
-                APNEA_PACO2_RISE_FAST_MMHG_MIN * fast_seconds
-                + APNEA_PACO2_RISE_SLOW_MMHG_MIN * (dt - fast_seconds)
-            ) / 60.0
+        # CO2 continues accumulating without alveolar ventilation, independent
+        # of the baseline breath pattern. Production scales the apneic rise.
+        fast_seconds = 0.0
+        if self._apnea_timer > 0:
+            fast_seconds = min(dt, max(0.0, APNEA_PACO2_RISE_FAST_DURATION_SEC - (self._apnea_timer - dt)))
+        max_rise = metabolic_factor * (
+            APNEA_PACO2_RISE_FAST_MMHG_MIN * fast_seconds
+            + APNEA_PACO2_RISE_SLOW_MMHG_MIN * (dt - fast_seconds)
+        ) / 60.0
+        if apnea_like:
+            d_paco2 = max_rise
+        elif d_paco2 > 0:
             d_paco2 = min(d_paco2, max_rise)
 
         state.p_alveolar_co2 += d_paco2
-        # The PCO2 the patient's own breathing would hold follows the same
-        # dynamics; only assistance holds the actual value lower.
-        own_rr, own_vt, _ = self._unassisted(self._own_pco2, *pattern)
-        own_va = max(0.1, own_rr * max(0.0, own_vt / 1000.0 - vd) * (1.0 - 0.6 * vq_mismatch))
-        own_eq = min(150.0, paco2_base * metabolic_factor * (self.va_baseline / own_va))
-        own_change = min((own_eq - self._own_pco2) / self.tau_co2 * dt,
-                         metabolic_factor * APNEA_PACO2_RISE_SLOW_MMHG_MIN * dt / 60.0)
-        self._own_pco2 = max(self._own_pco2 + own_change, state.p_alveolar_co2)
-
         # PaCO2 and EtCO2 derive from alveolar CO2. The PaCO2-EtCO2 gap widens
         # with dead space, V/Q mismatch, obstruction, and low cardiac output
         # (Russell 1990; Lujan 2008; Kim 2019).
@@ -328,13 +317,9 @@ class RespiratoryModel:
         # During apnea a patent airway draws gas in to replace absorbed O2
         # (apneic oxygenation).
         vo2 = self.vco2 * metabolic_factor / self.rq / 1000.0  # L/min, same uptake as the circuit
-        o2_ventilation = max(0.0, total_va_l_min * (1.0 - 0.6 * vq_mismatch))
-        apneic_inflow = vo2 * airway_patency * clamp01_local(1.0 - o2_ventilation)
-        o2_flux = (
-            o2_ventilation * self._btps_to_stpd * (fio2 * self._atm_dry - state.p_alveolar_o2) / self._atm_dry
-            + apneic_inflow * fio2
-            - vo2
-        )
+        o2_flux = self.oxygen_exchange_l_min(
+            fio2, total_va_l_min, metabolic_factor, airway_patency, vq_mismatch,
+        ) - vo2
         sat = self._saturation(state.p_arterial_o2)
         dsat_dpo2 = self._n_hill * sat * (1.0 - sat) / max(state.p_arterial_o2, 1.0)
         hb = self.baseline_hb if hb_g_dl is None else max(0.0, hb_g_dl)
@@ -391,43 +376,49 @@ class RespiratoryModel:
 
         return state
 
-    def _unassisted(self, pco2: float, drug_drive: float, hcvr_slope: float, setpoint: float,
-                    rr_inhib: float, vt_inhib: float, muscle_factor: float,
-                    vent_factor: float, unconscious: float) -> tuple[float, float, float]:
-        """Unassisted rate (/min), VT (mL), and central drive at an alveolar PCO2."""
-        boost = hcvr_slope * max(0.0, pco2 - setpoint) / self.va_baseline if self.va_baseline > 0 else 0.0
-        # Express the VA boost as drive relative to baseline VA, capped at 2x.
-        drive = min(2.0, drug_drive + boost)
-        # Hypercapnia partly overcomes drug depression, by up to 50%.
-        counteraction = min(0.5, boost * 0.3)
-        rr_fraction = (1.0 - clamp01(rr_inhib * (1.0 - counteraction))) * muscle_factor
-        vt_fraction = (1.0 - clamp01(vt_inhib * (1.0 - counteraction))) * muscle_factor
-        # Modest hypercapnia primarily increases depth; assigning it all to
-        # frequency makes tiny CO2 fluctuations shift every assisted breath.
-        # At larger rises, frequency contributes too (Georgopoulos 1997).
-        frequency = 1.0
-        if drive > 1.0:
-            awake_rate = min(0.6 * (drive - 1.0), 0.06 * max(0.0, pco2 - setpoint - self.RATE_CO2_GAP))
-            frequency += (1.0 - unconscious) * awake_rate + unconscious * 0.6 * (drive - 1.0)
-            rr_fraction *= frequency
-        rr = self.rr_0 * rr_fraction
-        # Below the apnea threshold breathing stops; in the bradypnea range
-        # irregular breaths halve the effective rate.
-        if rr < RR_APNEA_THRESHOLD:
-            rr = 0.0
+    def initialize_drug_effects(self, ce_prop: float, ce_remi: float) -> None:
+        """Seed the signed ventilatory controller for a maintenance history."""
+        remi_c50 = self.c50_remi * (1.0 - 0.32 * ce_prop / (1.0 + ce_prop))
+        self._ventilatory_drive = 1.0 - 0.5 * ce_remi / remi_c50
+
+    def _unassisted(self, pco2: float, prop_keep: float, sevo_keep: float,
+                    muscle_factor: float,
+                    unconscious: float, opioid_reference: float) -> tuple[float, float, float]:
+        """Convert normalized alveolar demand to a rate and tidal volume.
+
+        Opioids mainly slow rate; hypnotics mainly reduce depth. This split and
+        the awake hypocapnic response are teaching approximations.
+        """
+        controller = max(0.0, self._ventilatory_drive)
+        # Transfer the opioid controller as a fraction of its drug-free response
+        # at the same CO2, then apply Bouillon's nonlinear alveolar response.
+        co2_exponent = self.CO2_RESPONSE_EXPONENT * self.hcvr_slope_baseline / 2.2
+        co2_response = (max(self.paco2_setpoint, pco2) / self.paco2_setpoint) ** co2_exponent
+        response_fraction = controller / opioid_reference * co2_response
+        drive = min(self.MAX_ALVEOLAR_DRIVE, response_fraction * prop_keep * sevo_keep)
+        rate_fraction = min(1.0, controller)
+        if controller > 1.0:
+            rate_fraction += min(
+                0.6 * (response_fraction - 1.0),
+                (0.06 + 0.04 * unconscious) * max(0.0, pco2 - self.paco2_setpoint - self.RATE_CO2_GAP),
+            )
+        rate_fraction *= (0.6 + 0.4 * prop_keep) * (0.6 + 0.4 * sevo_keep)
+        rr = self.rr_0 * rate_fraction
+        # Add dead space after allocating the alveolar demand to breaths.
+        # Applying drug depression to total VT would subtract dead space twice.
+        vt = (self.vd_deadspace + self.va_baseline * drive / rr) * 1000.0 if rr > 0.0 else 0.0
+        vt *= muscle_factor
+
+        below = max(0.0, self.paco2_setpoint - pco2)
+        if below > 0.0:
+            kept = 1.0 - unconscious * clamp01(below / self.APNEIC_GAP)
+            rr *= math.sqrt(kept)
+            awake_kept = 1.0 / (1.0 + self.AWAKE_HYPOCAPNIC_GAIN * self.hcvr_slope_baseline * below / self.va_baseline)
+            vt *= math.sqrt(kept) * (unconscious + (1.0 - unconscious) * awake_kept)
+        if rr < RR_APNEA_THRESHOLD or vt < max(100.0, VT_MIN):
+            rr = vt = 0.0
         elif rr < RR_BRADYPNEA_THRESHOLD:
             rr *= 0.5
-        vt = self.vt_0 * vt_fraction
-        dead_space_ml = 1000.0 * self.vd_deadspace
-        if drive > 1.0 and vt > dead_space_ml:
-            depth = 1.0 + (1.0 - unconscious) * (drive / frequency - 1.0)
-            vt = dead_space_ml + (vt - dead_space_ml) * depth
-        if vt < VT_MIN:
-            vt = 0.0
-        vt *= vent_factor
-        # Breaths under 100 mL do not produce a detectable capnogram.
-        if vt < 100.0:
-            rr = 0.0
         return rr, vt, drive
 
     def _saturation(self, pao2: float) -> float:

@@ -167,6 +167,8 @@ class AnesthesiaVentilator:
         self._measured = None
         self._since_measured = 0.0
         self.samples = []  # Resolved (dt, dV L, Paw, flow L/min, absolute volume L).
+        self.muscle_pressure_area = 0.0
+        self.airway_pressure_area = 0.0
         self._collect_samples = False
         self._paw_end = 0.0
         self._current = None  # (segment, time) valid at the end of the step
@@ -249,6 +251,8 @@ class AnesthesiaVentilator:
         if dt <= 0.0:
             return
         self.samples.clear()
+        self.muscle_pressure_area = 0.0
+        self.airway_pressure_area = 0.0
         self._collect_samples = collect_samples
         self._bag = bag
         if source != self._source:
@@ -563,6 +567,9 @@ class AnesthesiaVentilator:
             if reached is not None and (event is None or reached < t - 1e-12):
                 t, event = reached, name
         self._measure(segment, t)
+        self.muscle_pressure_area += pmus[0] * t + 0.5 * pmus[1] * t * t
+        if self._source is not None:
+            self.airway_pressure_area += self._peep() * t + segment.area(t)
         segment.commit(t)
         self._paw_end = self._peep() + segment.paw(t)
         if effort.clock < effort.ti:

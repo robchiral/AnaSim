@@ -84,61 +84,25 @@ def test_supported_patient_boundaries_run_through_integrated_model():
         assert engine.state.bis < baseline.bis
 
 
-def test_each_propofol_pk_and_pd_choice_runs():
-    model_choices = (
-        ("Marsh", "Bouillon", "Kern"),
-        ("Schnider", "Eleveld", "Mertens"),
-        ("Eleveld", "Fuentes", "Johnson"),
-        ("Eleveld", "Yumuk", "Kern"),
-    )
-    for pk_model, bis_model, loc_model in model_choices:
-        patient = Patient()
-        config = SimulationConfig(
-            mode="awake",
-            dt=0.5,
-            pk_model_propofol=pk_model,
-            bis_model=bis_model,
-            loc_model=loc_model,
-            rng_seed=1,
-        )
-        engine, baseline = _run(
-            patient,
-            config,
-            (("Propofol", 1.5 * patient.weight),),
-            duration_s=60.0,
-        )
-
-        _assert_plausible_integrated_state(engine)
-        assert engine.state.propofol_ce > 0.0
-        assert engine.state.bis < baseline.bis
+@pytest.mark.parametrize("concomitant_opioids", [False, True])
+def test_eleveld_regimens_run(concomitant_opioids):
+    patient = Patient()
+    config = SimulationConfig(mode="awake", dt=0.5, concomitant_opioids=concomitant_opioids, rng_seed=1)
+    engine, baseline = _run(patient, config, (("Propofol", 1.5 * patient.weight),), duration_s=60.0)
+    _assert_plausible_integrated_state(engine)
+    assert engine.state.propofol_ce > 0.0
+    assert engine.state.bis < baseline.bis
 
 
-def test_each_vasoactive_pk_choice_runs():
-    model_choices = (
-        ("Beloeil", "HealthyAdult"),
-        ("Li", "Abboud"),
-    )
-    for nore_model, epi_model in model_choices:
-        patient = Patient()
-        config = SimulationConfig(
-            mode="awake",
-            dt=0.5,
-            pk_model_nore=nore_model,
-            pk_model_epi=epi_model,
-            rng_seed=1,
-        )
-        engine, baseline = _run(
-            patient,
-            config,
-            (("nore", 10.0), ("epi", 10.0)),
-            duration_s=30.0,
-        )
-
-        assert engine.state.nore_ce > 0.0
-        assert engine.state.epi_ce > 0.0
-        _assert_plausible_integrated_state(engine)
-        assert engine.state.hr > baseline.hr + 5.0
-        assert engine.state.co > baseline.co
+def test_vasoactive_models_run():
+    patient = Patient()
+    config = SimulationConfig(mode="awake", dt=0.5, rng_seed=1)
+    engine, baseline = _run(patient, config, (("nore", 10.0), ("epi", 10.0)), duration_s=30.0)
+    assert engine.state.nore_ce > 0.0
+    assert engine.state.epi_ce > 0.0
+    _assert_plausible_integrated_state(engine)
+    assert engine.state.hr > baseline.hr + 5.0
+    assert engine.state.co > baseline.co
 
 
 def test_invalid_patient_values_are_rejected():
@@ -165,10 +129,7 @@ def test_invalid_patient_values_are_rejected():
 def test_invalid_simulation_config_is_rejected():
     invalid_values = (
         ({"dt": float("nan")}, "dt"),
-        ({"pk_model_propofol": []}, "pk_model_propofol"),
-        ({"pk_model_epi": "Clutter"}, "pk_model_epi"),
-        ({"pk_model_nore": "Oualha"}, "pk_model_nore"),
-        ({"loc_model": "unknown"}, "loc_model"),
+        ({"concomitant_opioids": "false"}, "concomitant_opioids"),
         ({"sevoflurane_enabled": "false"}, "sevoflurane_enabled"),
         ({"maint_type": "balanced", "sevoflurane_enabled": False}, "sevoflurane_enabled"),
     )

@@ -1,6 +1,6 @@
 import pytest
 
-from anasim.core.state import SUPPORTED_MODEL_OPTIONS, SimulationConfig
+from anasim.core.state import SimulationConfig
 from anasim.patient.pd.anesthesia import SEVO_BIS_AT_1_MAC, BISModel
 
 
@@ -25,11 +25,9 @@ def test_n2o_washin_deepens_hypnosis_and_neuromuscular_block(engine_factory, adv
     assert with_n2o[2] < control[2] - 10.0
 
 
-def test_sevoflurane_deepens_bis_continuously_for_every_bis_model(patient):
-    """Adding volatile to a propofol-remifentanil state must never raise BIS."""
-    for model_name in SUPPORTED_MODEL_OPTIONS["bis_model"]:
-        bis = BISModel(patient, model_name=model_name)
-        values = [bis.compute_bis(3.0, 3.0, mac_sevo=mac) for mac in (0.0, 1e-4, 0.01, 0.02, 0.5, 1.0)]
-        assert values[1] == pytest.approx(values[0], abs=0.05)
-        assert all(later <= earlier for earlier, later in zip(values, values[1:]))
-        assert bis.compute_bis(0.0, 0.0, mac_sevo=1.0) == pytest.approx(SEVO_BIS_AT_1_MAC, abs=0.5)
+def test_sevoflurane_deepens_bis_continuously(patient):
+    bis = BISModel(patient)
+    values = [bis.compute_bis(3.0, mac_sevo=mac) for mac in (0.0, 1e-4, 0.01, 0.02, 0.5, 1.0)]
+    assert values[1] == pytest.approx(values[0], abs=0.05)
+    assert all(later <= earlier for earlier, later in zip(values, values[1:]))
+    assert bis.compute_bis(0.0, mac_sevo=1.0) == pytest.approx(SEVO_BIS_AT_1_MAC, abs=0.5)

@@ -5,12 +5,7 @@ from typing import NamedTuple
 
 from anasim.patient.domain import finite_number
 
-SUPPORTED_MODEL_OPTIONS = {
-    "pk_model_propofol": {"Marsh", "Schnider", "Eleveld"},
-    "bis_model": {"Bouillon", "Eleveld", "Fuentes", "Yumuk"},
-    "pk_model_nore": {"Beloeil", "Li"},
-    "pk_model_epi": {"HealthyAdult", "Abboud"},
-    "loc_model": {"Kern", "Mertens", "Johnson"},
+CONFIG_CHOICES = {
     "mode": {"awake", "steady_state"},
     "maint_type": {"tiva", "balanced"},
 }
@@ -22,11 +17,7 @@ class SimulationConfig:
 
     dt: float = 0.01  # s
 
-    pk_model_propofol: str = "Eleveld"
-    bis_model: str = "Bouillon"
-    pk_model_nore: str = "Li"
-    pk_model_epi: str = "HealthyAdult"
-    loc_model: str = "Kern"
+    concomitant_opioids: bool = True  # Opioid regimen; fixed for the session.
     mode: str = "awake"
     maint_type: str = "tiva"
     tci_enabled: bool = False
@@ -40,19 +31,21 @@ class SimulationConfig:
     rng_seed: int | None = None
 
     def __post_init__(self):
-        for name in ("tci_enabled", "sevoflurane_enabled"):
+        for name in ("tci_enabled", "sevoflurane_enabled", "concomitant_opioids"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a boolean")
         self.dt = finite_number("dt", self.dt)
         if self.dt <= 0:
             raise ValueError("dt must be greater than zero")
-        for field_name, supported in SUPPORTED_MODEL_OPTIONS.items():
+        for field_name, supported in CONFIG_CHOICES.items():
             value = getattr(self, field_name)
             if not isinstance(value, str) or value not in supported:
                 choices = ", ".join(sorted(supported))
                 raise ValueError(f"{field_name}={value!r} is unsupported; choose one of: {choices}")
         if self.maint_type == "balanced" and not self.sevoflurane_enabled:
             raise ValueError("balanced maintenance requires sevoflurane_enabled=True")
+        if self.mode == "steady_state" and not self.concomitant_opioids:
+            raise ValueError("maintenance initialization includes opioids; use concomitant_opioids=True")
 
 
 class WaveformSample(NamedTuple):
@@ -99,7 +92,8 @@ class SimulationState:
     # propofol-equivalent hypnotic with etomidate and midazolam (mcg/mL).
     opioid_ce: float = 0.0
     opioid_cp: float = 0.0
-    hypnotic_ce: float = 0.0
+    hypnotic_ce: float = 0.0  # BIS effect site
+    hypnotic_response_ce: float = 0.0  # Clinical response effect site
     nore_ce: float = 0.0
     epi_ce: float = 0.0
     phenyl_ce: float = 0.0
@@ -127,7 +121,7 @@ class SimulationState:
     bis: float = 98.0
     display_bis: float = 98.0
     tof: float = 100.0  # %
-    loc: float = 0.0  # Probability of unconsciousness
+    loc: float = 0.0  # Probability of no response to shaking/shouting
     tol: float = 0.0  # Probability of tolerating laryngoscopy
     map: float = 90.0
     hr: float = 70.0

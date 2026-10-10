@@ -1,8 +1,8 @@
 # AnaSim
 
-AnaSim is an adult anesthesia simulator for education and research. It runs
-published pharmacology and cardiorespiratory models in real time, with a patient
-monitor and anesthesia machine interface.
+AnaSim simulates adult anesthesia for education and research. It combines
+published pharmacology and cardiorespiratory models with a patient monitor and
+anesthesia machine interface.
 
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/anasim-simulator.svg)](https://pypi.org/project/anasim-simulator/)
@@ -36,14 +36,13 @@ Press Ctrl+C in the terminal to stop the server.
 
 ## Start a session
 
-For a first session, choose Guided scenario and the total intravenous anesthesia
-(TIVA) induction scenario. Choose Start simulation, then Start below the monitor.
-For open practice, choose Open simulation and either Awake before induction or
-Anesthetized maintenance.
+Choose Guided scenario for a structured case or Open simulation for independent
+practice. Sessions start with an awake patient or an anesthetized patient under
+maintenance. Select Start simulation, then Start below the monitor.
 
 Manual infusion rates are the default. To use target-controlled infusion (TCI),
-select Allow TCI during setup. Concentration targets, maintenance starts, and
-guided dosing instructions follow this setting. Propofol and remifentanil
+select Allow TCI during setup. This enables concentration targets and TCI dosing
+instructions, including maintenance infusions. Propofol and remifentanil
 infusion rates use mcg/kg/min.
 
 Use Apply or Enter to apply settings and Escape to cancel edits. For mechanical
@@ -64,7 +63,7 @@ recording to download the file.
 | Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
 | Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF), temperature, fluid balance, and alarms |
 | Events | Fluids and blood, surgical stimulation, airway obstruction, bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias |
-| Guided scenarios | TIVA and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, and oxygen supply failure |
+| Guided scenarios | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, and oxygen supply failure |
 
 Drug delivery supports boluses, manual infusions, and plasma or effect-site TCI,
 depending on the drug.
@@ -100,5 +99,5 @@ anasim --mode headless --duration 60 --record
 
 Cite using [`CITATION.cff`](https://github.com/robchiral/AnaSim/blob/main/CITATION.cff).
 Licensed under [MIT](https://github.com/robchiral/AnaSim/blob/main/LICENSE).
-The first TIVA implementation was derived from
+AnaSim includes code adapted from
 [Python Anesthesia Simulator](https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator).

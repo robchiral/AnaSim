@@ -73,16 +73,17 @@ def _capno_sampling_possible(engine: "SimulationEngine") -> bool:
     )
 
 
-def compute_capno_value(engine: "SimulationEngine", resp_state) -> float:
+def compute_capno_value(engine: "SimulationEngine", resp_state, dt: float) -> float:
     """Advance the capnograph with the gas that crossed the Y-piece this step."""
     state = engine.state
     if not _capno_sampling_possible(engine):
         engine.capno.reset()
         engine._capno_numeric_peak = 0.0
-        engine._capno_numeric_age_s = 0.0
-        engine._capno_has_sample = False
+        engine._capno_numeric_age_s += dt
         engine._capno_last_phase = "INSP"
-        state.display_etco2, state.etco2_signal_valid = 0.0, False
+        if state.airway_mode == AirwayType.NONE:
+            engine._capno_has_sample = False
+        _project_capno_numeric(engine)
         return 0.0
     capno = engine.capno
     end_tidal = resp_state.etco2 * engine._airway_patency
@@ -113,11 +114,19 @@ def _update_capno_numeric(engine: "SimulationEngine", dt: float, phase: str, cap
         display_value = state.display_etco2
 
     engine._capno_last_phase = phase
+    state.display_etco2 = float(display_value)
+    _project_capno_numeric(engine)
+
+
+def _project_capno_numeric(engine: "SimulationEngine") -> None:
+    """Hold the last completed breath's endpoint until it expires."""
+    state = engine.state
     valid = (
         engine._capno_has_sample
         and engine._capno_numeric_age_s <= engine._capno_numeric_timeout_s
     )
-    state.display_etco2 = float(display_value) if valid else 0.0
+    if not valid:
+        state.display_etco2 = 0.0
     state.etco2_signal_valid = valid
 
 
@@ -184,11 +193,11 @@ def step_monitors(
     """Update monitor models and learner-facing display values."""
     state = engine.state
     mac_sevo = engine.pk_sevo.state.mac
-    bis_val = engine.bis.step(dt, state.hypnotic_ce, state.opioid_ce, mac_sevo=mac_sevo)
-    capno_val = compute_capno_value(engine, resp_state)
+    bis_val = engine.bis.step(dt, state.hypnotic_ce, mac_sevo=mac_sevo)
+    capno_val = compute_capno_value(engine, resp_state, dt)
 
-    loc_val = engine.loc_pd.compute_probability(
-        state.hypnotic_ce,
+    loc_val = engine.response.loss_of_response(
+        state.hypnotic_response_ce,
         state.opioid_ce,
         mac_sevo=mac_sevo,
         mac_n2o=state.mac_n2o,

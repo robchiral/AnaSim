@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from dataclasses import dataclass
 
-from anasim.core.state import SUPPORTED_MODEL_OPTIONS
 from anasim.patient.patient import Patient
 
 # Sevoflurane potency on the BIS response surface is anchored to BIS ~41 at
@@ -18,9 +16,9 @@ FENTANYL_REMI_POTENCY = 1.37 / 1.67
 
 # Midazolam converts to a saturating propofol equivalent (mcg/mL). At its
 # loss-of-response Ce (Albrecht 1999: 499 ng/mL at 26 years, 210 at 71) it
-# equals 2 mcg/mL propofol, near the LOC model Ce50s of 1.8-2.9 mcg/mL, and
+# equals the Bouillon Bayesian shaking/shouting Ce50 of 3.21 mcg/mL, and
 # half the maximum. AnaSim calibrates the maximum.
-PROPOFOL_LOSS_OF_RESPONSE = 2.0
+PROPOFOL_LOSS_OF_RESPONSE = 6.68 * 0.48
 MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT = 2.0 * PROPOFOL_LOSS_OF_RESPONSE
 # Short 1992: midazolam with propofol needs 37% less than additive doses for
 # hypnosis, an interaction coefficient of 3.7 at equal shares. The propofol
@@ -31,11 +29,11 @@ MIDAZOLAM_PROPOFOL_SYNERGY = 3.7
 # Etomidate (mcg/mL whole blood) converts to propofol at equal
 # loss-of-response concentrations: the plasma OAA/S Ce50 is 0.554 mcg/mL
 # (Kaneda 2011), about 0.50 in whole blood (Arden 1986 plasma:blood ratio).
-# It counts at half strength for ventilation: apnea after induction lasts
+# Its respiratory conversion is calibrated separately: apnea after induction lasts
 # about 20 s, and CO2-response depression is smaller than with other
 # hypnotics (Valk 2021).
 ETOMIDATE_LOSS_OF_RESPONSE = 0.50
-ETOMIDATE_RESPIRATORY_SHARE = 0.5
+ETOMIDATE_RESPIRATORY_PROPOFOL_RATIO = 2.0  # Calibrated independently of clinical response.
 
 # Ketamine (mcg/mL): patients woke at 0.64 mcg/mL, and 2.2 mcg/mL with about
 # 0.6 MAC nitrous oxide maintained surgical anesthesia (Idvall 1979), so 3.5
@@ -63,11 +61,11 @@ def hypnotic_equivalent(
 ) -> float:
     """Propofol-equivalent Ce (mcg/mL) of propofol, etomidate, and midazolam (ng/mL).
 
-    With `ventilation`, etomidate counts at its smaller respiratory share.
+    With `ventilation`, etomidate uses its separate respiratory conversion.
     """
     etomidate = max(0.0, ce_etomidate) * PROPOFOL_LOSS_OF_RESPONSE / ETOMIDATE_LOSS_OF_RESPONSE
     if ventilation:
-        etomidate *= ETOMIDATE_RESPIRATORY_SHARE
+        etomidate = max(0.0, ce_etomidate) * ETOMIDATE_RESPIRATORY_PROPOFOL_RATIO
     ce_prop = max(0.0, ce_prop) + etomidate
     ce_midazolam = max(0.0, ce_midazolam)
     midazolam = MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT * ce_midazolam / (ce_midazolam + midazolam_c50)
@@ -80,184 +78,103 @@ def opioid_equivalent(remi: float, fentanyl: float) -> float:
     return max(0.0, remi) + FENTANYL_REMI_POTENCY * max(0.0, fentanyl)
 
 
-@dataclass(frozen=True)
-class BISModelParams:
-    c50p: float
-    c50r: float
-    gamma: float
-    beta: float
-    e0: float
-    emax: float
-    delay: float = 0.0
-    gamma_above_c50: float | None = None  # Eleveld uses a second slope above Ce50.
-
-
-BIS_MODEL_PARAMS = {
-    "Bouillon": BISModelParams(c50p=4.47, c50r=19.3, gamma=1.43, beta=0.0, e0=97.4, emax=97.4),
-    "Fuentes": BISModelParams(c50p=2.99, c50r=21.0, gamma=2.69, beta=0.0, e0=94.0, emax=94.0 * 0.81),
-    "Yumuk": BISModelParams(c50p=7.66, c50r=149.62, gamma=4.07, beta=15.03, e0=93.97, emax=93.97),
-}
-
-
 class BISModel:
-    """Propofol-remifentanil BIS response surface with additive sevoflurane.
+    """Eleveld 2018 BIS, with a calibrated additive sevoflurane contribution.
 
-    Sevoflurane adds MAC / mac50 to the model's interaction term, where mac50
-    places 1 MAC at SEVO_BIS_AT_1_MAC. Propofol and sevoflurane therefore add
-    on one continuous surface (Schumacher 2009) for every IV model choice.
+    Opioids affect stimulation-related arousal outside this baseline curve.
+    The published age-dependent delay includes monitor processing.
     """
 
-    def __init__(self, patient: Patient, model_name: str = "Bouillon"):
-        if model_name not in SUPPORTED_MODEL_OPTIONS["bis_model"]:
-            raise ValueError(f"Unsupported BIS model: {model_name!r}")
-        self.model_name = model_name
-        if model_name == "Eleveld":
-            # Eleveld 2018: arterial Ce50 with age, no opioid term, and age-dependent delay (s).
-            self.params = BISModelParams(
-                c50p=3.08 * math.exp(-0.00635 * (patient.age - 35)),
-                c50r=0.0,
-                gamma=1.89,
-                gamma_above_c50=1.47,
-                beta=0.0,
-                e0=93.0,
-                emax=93.0,
-                delay=15.0 + math.exp(0.0517 * patient.age),
-            )
-        else:
-            self.params = BIS_MODEL_PARAMS[model_name]
-        self.mac50 = 1.0 / self._interaction_for_bis(SEVO_BIS_AT_1_MAC)
-        # Monitor processing: 10 s smoothing plus the model's transport delay.
-        self.tau_smooth = 10.0
-        self.initialize(self.params.e0)
-
-    def _gamma(self, interaction: float) -> float:
-        p = self.params
-        return p.gamma_above_c50 if p.gamma_above_c50 and interaction > 1.0 else p.gamma
-
-    def _interaction_for_bis(self, bis: float) -> float:
-        """Invert the Hill surface for a single-drug interaction term."""
-        p = self.params
-        odds = (p.e0 - bis) / (p.emax - p.e0 + bis)
-        if odds <= 0.0:
-            raise ValueError(f"{self.model_name} BIS model cannot reach BIS {bis:g}")
-        return odds ** (1.0 / self._gamma(odds))
+    def __init__(self, patient: Patient):
+        self.c50 = 3.079446890954557 * math.exp(-0.00634837 * (patient.age - 35.0))
+        self.baseline = 92.9824
+        self.gamma_above = 1.4736185873429664
+        self.gamma_below = 1.8939053122841638
+        self.delay = 15.0 + math.exp(0.0517399 * patient.age)
+        sevo_units = (self.baseline / SEVO_BIS_AT_1_MAC - 1.0) ** (1.0 / self.gamma_above)
+        self.mac50 = 1.0 / sevo_units
+        self.initialize(self.baseline)
 
     def initialize(self, bis: float) -> None:
-        self.bis_smoothed = bis
         self._clock = 0.0
         self._history = deque([(0.0, bis)])
 
-    def compute_bis(self, ce_prop: float, ce_remi: float = 0.0, mac_sevo: float = 0.0) -> float:
-        p = self.params
-        u_prop = max(0.0, ce_prop) / p.c50p
-        u_remi = max(0.0, ce_remi) / p.c50r if p.c50r > 0 else 0.0
-        interaction = u_prop + u_remi + p.beta * u_prop * u_remi + max(0.0, mac_sevo) / self.mac50
-        term = interaction ** self._gamma(interaction)
-        return max(0.0, p.e0 - p.emax * term / (1.0 + term))
+    def compute_bis(self, ce_prop: float, mac_sevo: float = 0.0) -> float:
+        ce_equivalent = max(0.0, ce_prop) + self.c50 * max(0.0, mac_sevo) / self.mac50
+        # NONMEM's smooth slope transition is on the concentration scale.
+        switch = 1.0 / (1.0 + math.exp(-30.0 * max(-20.0, ce_equivalent - self.c50)))
+        gamma = switch * self.gamma_above + (1.0 - switch) * self.gamma_below
+        return self.baseline / (1.0 + (ce_equivalent / self.c50)**gamma)
 
-    def step(self, dt: float, ce_prop: float, ce_remi: float = 0.0, mac_sevo: float = 0.0) -> float:
-        """Return the smoothed, delayed BIS after dt seconds."""
-        alpha = 1.0 - math.exp(-dt / self.tau_smooth)
-        self.bis_smoothed += alpha * (self.compute_bis(ce_prop, ce_remi, mac_sevo) - self.bis_smoothed)
-        if self.params.delay <= 0.0:
-            return self.bis_smoothed
+    def step(self, dt: float, ce_prop: float, mac_sevo: float = 0.0) -> float:
+        """Return the delayed BIS after dt seconds."""
         self._clock += dt
         history = self._history
-        history.append((self._clock, self.bis_smoothed))
-        while len(history) > 1 and history[1][0] <= self._clock - self.params.delay:
+        history.append((self._clock, self.compute_bis(ce_prop, mac_sevo)))
+        target = self._clock - self.delay
+        while len(history) > 1 and history[1][0] <= target:
             history.popleft()
-        return history[0][1]
+        t0, y0 = history[0]
+        if target <= t0 or len(history) == 1:
+            return y0
+        t1, y1 = history[1]
+        return y0 + (y1 - y0) * (target - t0) / (t1 - t0)
 
 
-class LOCModel:
-    """Loss-of-consciousness probability model."""
+class ClinicalResponseModel:
+    """Bouillon 2004 Bayesian hierarchy for shaking/shouting and laryngoscopy.
 
-    def __init__(self, model_name: str = "Kern"):
-        if model_name not in SUPPORTED_MODEL_OPTIONS["loc_model"]:
-            raise ValueError(f"Unsupported LOC model: {model_name!r}")
-        self.model_name = model_name
-        self.c50p = 1.80
-        self.c50r = 12.5
-        self.gamma = 3.76
-        self.beta = 5.1
-
-        if model_name == "Mertens":
-            self.c50p = 2.92
-            self.c50r = 5.15
-            self.gamma = 3.88
-            self.beta = 0.0
-        elif model_name == "Johnson":
-            self.c50p = 2.20
-            self.c50r = 33.1
-            self.gamma = 5.00
-            self.beta = 3.60
-
-        self.mac_awake_sevo = 0.30
-        self.mac_awake_n2o = 0.61
-        self.n2o_sevo_awake_interaction = 0.7
-
-    def compute_probability(
-        self,
-        ce_prop: float,
-        ce_remi: float,
-        mac_sevo: float = 0.0,
-        mac_n2o: float = 0.0,
-        ce_ketamine: float = 0.0,
-    ) -> float:
-        awake_units = max(0.0, ce_ketamine) / KETAMINE_LOSS_OF_RESPONSE
-        if mac_sevo > 0:
-            awake_units += mac_sevo / self.mac_awake_sevo
-        if mac_n2o > 0:
-            n2o_units = mac_n2o / self.mac_awake_n2o
-            if mac_sevo > 0:
-                n2o_units *= self.n2o_sevo_awake_interaction
-            awake_units += n2o_units
-
-        ce_effective = ce_prop + awake_units * self.c50p
-        up = ce_effective / self.c50p
-        ur = ce_remi / self.c50r
-        interaction = up + ur + self.beta * up * ur
-        term = interaction ** self.gamma
-        return term / (1 + term)
-
-
-class TOLModel:
-    """Tolerance-of-laryngoscopy probability model."""
+    Propofol and remifentanil inputs represent clinical effect-site concentrations.
+    Their transfer to Eleveld PK is an assumption. Sevoflurane potency is anchored
+    to Kuizenga 2019 shaking/shouting and Hannivoort 2016 laryngoscopy; the
+    combined volatile surface and shared slope are simulator approximations.
+    """
 
     def __init__(self):
-        self.c50p = 8.04
-        self.c50r = 1.07
-        self.gamma_p = 5.1
-        self.gamma_r = 0.97
-        self.pre_intensity = 1.05
+        self.c50_prop = 6.68
+        self.c50_remi = 1.01
+        self.gamma_prop = 6.9
+        self.gamma_remi = 0.72
+        # The input already includes age-adjusted MAC. Convert the measured
+        # thresholds at a chosen reference age to MAC once, rather than
+        # applying the patient's age correction twice.
+        self.mac_reference = 1.80 * 10.0 ** (-0.00269 * (35.0 - 40.0))
 
-    def compute_probability(
-        self,
-        ce_prop: float,
-        ce_remi: float,
-        mac: float = 0.0,
-        ce_ketamine: float = 0.0,
-        ce_lidocaine: float = 0.0,
+    def _probability(self, hypnotic_units: float, ce_remi: float, intensity: float) -> float:
+        opioid_units = max(0.0, ce_remi) / (self.c50_remi * intensity)
+        post_opioid = intensity / (1.0 + opioid_units**self.gamma_remi)
+        effect = (max(0.0, hypnotic_units) / post_opioid)**self.gamma_prop
+        # Increasing nonresponse matches the paper's surfaces. Its printed
+        # equation 4 appears to reverse the probability with a complement.
+        return effect / (1.0 + effect)
+
+    def loss_of_response(
+        self, ce_prop: float, ce_remi: float, mac_sevo: float = 0.0,
+        mac_n2o: float = 0.0, ce_ketamine: float = 0.0,
     ) -> float:
-        c50r_scaled = self.c50r * self.pre_intensity
-        fsig_r = 0.0 if c50r_scaled == 0 else (ce_remi**self.gamma_r) / (c50r_scaled**self.gamma_r + ce_remi**self.gamma_r)
-        post_opioid = self.pre_intensity * (1.0 - fsig_r)
-        c50p_scaled = self.c50p * post_opioid
-        if c50p_scaled <= 1e-6:
-            return 1.0
-        mac += max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
-        ce_effective = ce_prop + (mac * self.c50p)
-        tolerance = (ce_effective**self.gamma_p) / (c50p_scaled**self.gamma_p + ce_effective**self.gamma_p)
+        intensity = 0.48
+        units = max(0.0, ce_prop) / self.c50_prop
+        units += intensity * max(0.0, mac_sevo) * self.mac_reference / 0.90
+        n2o_units = intensity * max(0.0, mac_n2o) / 0.61
+        units += n2o_units * (0.7 if mac_sevo > 0.0 else 1.0)
+        units += intensity * max(0.0, ce_ketamine) / KETAMINE_LOSS_OF_RESPONSE
+        return self._probability(units, ce_remi, intensity)
+
+    def tolerance(
+        self, ce_prop: float, ce_remi: float, mac_sevo: float = 0.0,
+        mac_n2o: float = 0.0, ce_ketamine: float = 0.0, ce_lidocaine: float = 0.0,
+    ) -> float:
+        intensity = 0.83
+        units = max(0.0, ce_prop) / self.c50_prop
+        units += intensity * max(0.0, mac_sevo) * self.mac_reference / 2.59
+        units += intensity * max(0.0, mac_n2o)
+        units += intensity * max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
+        tolerance = self._probability(units, ce_remi, intensity)
         lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
         return 1.0 - (1.0 - tolerance) * (1.0 - lidocaine_block)
 
 
 __all__ = [
-    "BISModel",
-    "BISModelParams",
-    "LOCModel",
-    "TOLModel",
-    "hypnotic_equivalent",
-    "midazolam_loss_of_response",
-    "opioid_equivalent",
+    "BISModel", "ClinicalResponseModel", "hypnotic_equivalent",
+    "midazolam_loss_of_response", "opioid_equivalent",
 ]

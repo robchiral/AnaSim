@@ -62,6 +62,33 @@ def test_closed_circuit_stays_stable_until_oxygen_supply_fails():
     assert 0.0 < circuit.composition.fio2 < 0.8
 
 
+def test_obstructed_patient_uses_oxygen_stores_without_drawing_from_circuit(engine_factory):
+    engine = engine_factory(start=True)
+    engine.set_airway_mode("ETT")
+    engine.set_fgf(0.0, 6.0)
+    for _ in range(200):
+        engine.step(0.1)
+    assert engine.state.va > 3.0
+    engine.set_fgf(0.0, 0.0)
+    engine.circuit.composition.fio2 = 0.5
+    engine.circuit.composition.fin2 = 0.5
+    engine.set_airway_obstruction(1.0)
+    initial_o2 = engine.resp.state.p_alveolar_o2
+    initial_co2 = engine.state.pa_co2
+    for _ in range(300):
+        engine.step(0.1)
+    assert engine.state.va == 0.0
+    assert engine.circuit.composition.fio2 == pytest.approx(0.5, abs=1e-8)
+    assert engine.resp.state.p_alveolar_o2 < initial_o2 - 10.0
+    assert engine.state.pa_co2 > initial_co2 + 4.0
+
+    engine.set_airway_obstruction(0.0)
+    for _ in range(300):
+        engine.step(0.1)
+    assert engine.state.va > 3.0
+    assert engine.circuit.composition.fio2 < 0.48
+
+
 def test_oxygen_supply_failure_stops_o2_and_n2o_delivery():
     circuit = CircleSystem(volume_l=6.0)
     circuit.fgf_o2 = 2.0

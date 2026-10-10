@@ -48,7 +48,8 @@ def test_labetalol_lowers_heart_rate_longer_than_blood_pressure(engine_factory):
     assert -20.0 < max_hr_fall < -8.0
     assert -35.0 < max_sbp_fall < -15.0
     assert changes[59][1] > 0.5 * max_sbp_fall
-    assert changes[179][0] < 0.45 * max_hr_fall
+    # The paper reports a persistent decrease at 3 h, without a fixed peak ratio.
+    assert changes[179][0] < -3.0
 
 
 def test_esmolol_onset_offset_and_atrial_fibrillation_rate(engine_factory):
@@ -92,6 +93,10 @@ def test_esmolol_reduces_intubation_and_epinephrine_tachycardia(engine_factory):
     responses = {}
     for esmolol_mg in (0.0, 70.0):
         engine = _tiva(engine_factory)
+        # Let remifentanil wash out so opioid tolerance does not conceal the
+        # stimulus whose beta-blockade response this test measures.
+        engine.set_drug_rate("remi", 0.0)
+        _advance(engine, 900)
         engine.give_drug_bolus("esmolol", esmolol_mg)
         _advance(engine, 120)
         base_hr = engine.state.hr
@@ -103,6 +108,7 @@ def test_esmolol_reduces_intubation_and_epinephrine_tachycardia(engine_factory):
         responses[esmolol_mg] = stimulation, _extreme_hr(engine, 120, max) - base_hr
 
     (stim_off, epi_off), (stim_on, epi_on) = responses[0.0], responses[70.0]
+    assert stim_off > 3.0
     assert stim_on < 0.6 * stim_off
     assert epi_on < 0.6 * epi_off
 

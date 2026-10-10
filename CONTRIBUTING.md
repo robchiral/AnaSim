@@ -17,7 +17,7 @@ In Windows Command Prompt, use `python` in place of `python3` and activate with
 See the [architecture guide](docs/ARCHITECTURE.md#main-modules) for the code
 structure and [CLI and Python usage](docs/CLI_USAGE.md) for scripted runs.
 
-## Choose checks
+## Validation
 
 Run native Python and Pyodide test suites for shared Python changes. Pyodide
 is the hosted app's Python runtime.
@@ -96,9 +96,3 @@ Keep model behavior, assumptions, calibrations, and limits in
 defaults in [CLI and Python usage](docs/CLI_USAGE.md#fields), and citations with
 brief topic labels in [Model references](docs/REFERENCES.md). Add user-visible
 changes to the [changelog](CHANGELOG.md).
-
-Use plain, direct language. Define abbreviations at first use, keep terminology
-consistent, and link to detailed explanations instead of repeating them.
-
-Describe the resulting behavior and validation in pull requests. Use short,
-imperative commit subjects.

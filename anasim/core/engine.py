@@ -25,11 +25,11 @@ from anasim.monitors.spo2 import SpO2Monitor
 from anasim.patient.patient import Patient
 from anasim.patient.pd import (
     BISModel,
-    LOCModel,
+    ClinicalResponseModel,
     TOFModel,
-    TOLModel,
     hypnotic_equivalent,
     midazolam_loss_of_response,
+    opioid_equivalent,
 )
 from anasim.patient.pk_models import (
     DobutaminePK,
@@ -46,9 +46,7 @@ from anasim.patient.pk_models import (
     NorepinephrinePK,
     PhenylephrinePK,
     PropofolPKEleveld,
-    PropofolPKMarsh,
-    PropofolPKSchnider,
-    RemifentanilPKMinto,
+    RemifentanilPKEleveld,
     RocuroniumPK,
     VasopressinPK,
 )
@@ -92,18 +90,6 @@ class PendingInfusion:
     hematocrit: float = 0.0
     retention_fraction: float | None = None
     label: str = "crystalloid"
-
-
-PROPOFOL_MODELS = {
-    "Marsh": PropofolPKMarsh,
-    "Schnider": PropofolPKSchnider,
-    "Eleveld": PropofolPKEleveld,
-}
-
-NORE_PD_PARAMS = {
-    "Beloeil": (7.04, 98.7, 1.8),
-    "Li": (5.4, 98.7, 1.8),
-}
 
 
 class SimulationEngine(DrugControllerMixin):
@@ -183,8 +169,7 @@ class SimulationEngine(DrugControllerMixin):
         self._mean_paw_tau_s = 0.25
         self._tol_current = 0.0
         self._pk_hemo_scale_cache = None
-        self.current_mean_paw = 5.0
-        self._last_patient_effort_cmH2O = 0.0
+        self.current_mean_paw = 0.0
 
         # Separate generators keep each monitor's noise reproducible regardless
         # of how often the others draw.
@@ -244,8 +229,8 @@ class SimulationEngine(DrugControllerMixin):
 
     def initialize_models(self):
         """Build the subsystem models selected by the configuration."""
-        self.pk_prop = PROPOFOL_MODELS[self.config.pk_model_propofol](self.patient)
-        self.pk_remi = RemifentanilPKMinto(self.patient)
+        self.pk_prop = PropofolPKEleveld(self.patient, concomitant_opioids=self.config.concomitant_opioids)
+        self.pk_remi = RemifentanilPKEleveld(self.patient)
         self.pk_fentanyl = FentanylPK(self.patient)
         self.pk_midazolam = MidazolamPK(self.patient)
         self.pk_etomidate = EtomidatePK(self.patient)
@@ -278,8 +263,6 @@ class SimulationEngine(DrugControllerMixin):
         )
 
         self.hemo = HemodynamicModel(self.patient)
-        c50, emax, gamma = NORE_PD_PARAMS[self.config.pk_model_nore]
-        self.hemo.set_nore_pd(c50=c50, emax=emax, gamma=gamma)
         self.resp = RespiratoryModel(self.patient)
         aeration = LungAeration(self.patient, recruited=0.9 if self.config.mode == "steady_state" else 1.0)
         self.resp_mech = RespiratoryMechanics(aeration=aeration)
@@ -287,11 +270,10 @@ class SimulationEngine(DrugControllerMixin):
         self.set_vent_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_insp=15.0)
         self.resp.baseline_co_l_min = self.hemo.base_co_l_min
 
-        self.bis = BISModel(self.patient, model_name=self.config.bis_model)
+        self.bis = BISModel(self.patient)
         self.capno = Capnograph(self.resp.vd_deadspace)
         self.airway_sensor = AirwaySensor()
-        self.loc_pd = LOCModel(model_name=self.config.loc_model)
-        self.tol_pd = TOLModel()
+        self.response = ClinicalResponseModel()
         self.tof_pd = TOFModel(self.patient)
 
         self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)
@@ -302,9 +284,9 @@ class SimulationEngine(DrugControllerMixin):
         self.nibp = NIBPMonitor(interval_min=5.0, rng=self._nibp_rng)
         self.state.nibp_interval_sec = self.nibp.interval
 
-        self.pk_nore = NorepinephrinePK(self.patient, model=self.config.pk_model_nore)
+        self.pk_nore = NorepinephrinePK(self.patient)
         self.pk_roc = RocuroniumPK(self.patient)
-        self.pk_epi = EpinephrinePK(self.patient, model=self.config.pk_model_epi)
+        self.pk_epi = EpinephrinePK(self.patient)
         self.pk_phenyl = PhenylephrinePK(self.patient)
         self.pk_vaso = VasopressinPK(self.patient)
         self.pk_dobu = DobutaminePK(self.patient)
@@ -496,13 +478,13 @@ class SimulationEngine(DrugControllerMixin):
         """Respiratory-model inputs shared by the runtime and startup projection."""
         return {
             "ce_prop": hypnotic_equivalent(
-                self.state.propofol_ce,
+                self.pk_prop.state.ce_resp,
                 self.state.etomidate_ce,
                 self.state.midazolam_ce,
                 self.midazolam_c50,
                 ventilation=True,
             ),
-            "ce_remi": self.state.opioid_ce,
+            "ce_remi": opioid_equivalent(self.pk_remi.state.ce_resp, self.state.fentanyl_ce),
             "mech_vent_mv": total_assisted_mv,
             "fio2": self.state.fio2,
             "ce_roc": self.tof_pd.ce_central,

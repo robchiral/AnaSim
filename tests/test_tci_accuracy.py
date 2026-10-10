@@ -3,24 +3,30 @@ import pytest
 
 from anasim.core.state import SimulationConfig
 from anasim.core.tci import TCIController
-from anasim.patient.pk_models import PropofolPKSchnider, RemifentanilPKMinto
+from anasim.patient.pk_models import (
+    EpinephrinePK,
+    NorepinephrinePK,
+    PropofolPKEleveld,
+    RemifentanilPKEleveld,
+)
 
 
 @pytest.mark.parametrize(
-    ("pk_cls", "compartment", "max_rate", "t90_limit_s"),
+    ("pk_cls", "compartment", "max_rate", "t90_limit_s", "sampling_time"),
     [
-        (PropofolPKSchnider, "effect_site", 50.0, 90),
-        (PropofolPKSchnider, "plasma", 50.0, 30),
-        (RemifentanilPKMinto, "effect_site", 500.0, 90),
+        (PropofolPKEleveld, "effect_site", 50.0, 180, 1.0),
+        (PropofolPKEleveld, "plasma", 50.0, 30, 1.0),
+        (RemifentanilPKEleveld, "effect_site", 500.0, 90, 1.0),
+        (EpinephrinePK, "plasma", 100.0, 30, 1.5),
     ],
 )
 def test_controller_reaches_target_without_overshoot_and_follows_a_decrease(
-    patient_factory, pk_cls, compartment, max_rate, t90_limit_s
+    patient_factory, pk_cls, compartment, max_rate, t90_limit_s, sampling_time
 ):
     """Shafer and Gregg 1992: the peak-constrained controller never overshoots."""
     pk = pk_cls(patient_factory(age=45))
     tci = TCIController(
-        pk_model=pk, target_compartment=compartment, max_rate=max_rate, sampling_time=1.0
+        pk_model=pk, target_compartment=compartment, max_rate=max_rate, sampling_time=sampling_time
     )
 
     def concentration():
@@ -28,21 +34,40 @@ def test_controller_reaches_target_without_overshoot_and_follows_a_decrease(
 
     target = 4.0
     history = []
-    for _ in range(300):
-        pk.step(1.0, tci.step(target))
+    for _ in range(round(300 / sampling_time)):
+        pk.step(sampling_time, tci.step(target))
         history.append(concentration())
     history = np.asarray(history)
 
     reached = np.flatnonzero(history >= 0.9 * target)
     assert reached.size > 0
-    assert reached[0] < t90_limit_s
+    assert reached[0] * sampling_time < t90_limit_s
     assert history.max() < 1.03 * target
-    assert history[-60:].mean() == pytest.approx(target, rel=0.02)
+    assert history[-round(60 / sampling_time):].mean() == pytest.approx(target, rel=0.02)
 
     lower = 2.5
-    for _ in range(300):
-        pk.step(1.0, tci.step(lower))
+    for _ in range(round(600 / sampling_time)):
+        pk.step(sampling_time, tci.step(lower))
     assert concentration() == pytest.approx(lower, rel=0.03)
+
+
+def test_norepinephrine_tci_includes_secretion_and_propofol_clearance(patient_factory):
+    pk = NorepinephrinePK(patient_factory(age=35))
+    controller = TCIController(pk, target_compartment="plasma", sampling_time=1.0)
+    controller.set_target(1.0)
+    for propofol in (0.0, 3.53):
+        pk.update_propofol(propofol)
+        for _ in range(1800):
+            pk.step(1.0, controller.step(), propofol)
+        assert pk.state.c1 == pytest.approx(1.0, abs=0.015)
+        required_rate = (pk.elimination_clearance - pk.endogenous_ug_min) / 60.0
+        assert controller.infusion_rate == pytest.approx(required_rate, rel=0.01)
+    # A target below endogenous concentration stops exogenous input.
+    controller.set_target(0.2)
+    for _ in range(3600):
+        pk.step(1.0, controller.step(), 3.53)
+    assert controller.infusion_rate == 0.0
+    assert pk.state.c1 == pytest.approx(pk.endogenous_ug_min / pk.elimination_clearance, rel=0.005)
 
 
 class TestEngineTCI:
@@ -78,7 +103,8 @@ class TestEngineTCI:
         for _ in range(3000):
             engine.step(0.1)
             peak = max(peak, engine.pk_nore.state.c1)
-        assert peak < target * 1.4
+        assert peak < target * 1.03
+        assert engine.pk_nore.state.c1 == pytest.approx(target, rel=0.03)
 
     @pytest.mark.parametrize("manual_rate", [0.0, 120.0])
     def test_manual_rate_remains_in_control_after_tci(self, engine_factory, manual_rate):

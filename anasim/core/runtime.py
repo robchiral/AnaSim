@@ -77,10 +77,11 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
         shiver_level=engine._shiver_level,
     )
     engine._tol_current = clamp01(
-        engine.tol_pd.compute_probability(
-            state.hypnotic_ce,
+        engine.response.tolerance(
+            state.hypnotic_response_ce,
             state.opioid_ce,
-            mac=state.mac,
+            mac_sevo=state.mac_sevo,
+            mac_n2o=state.mac_n2o,
             ce_ketamine=state.ketamine_ce,
             ce_lidocaine=state.lidocaine_ce,
         )
@@ -93,6 +94,7 @@ def step_simulation(engine: "SimulationEngine", dt: float) -> None:
         engine.sync_active_tci_from_pk(*updated_pk_models)
 
     step_tci(engine, dt)
+    update_airway_complications(engine, dt)
     fi_sevo, fi_n2o = step_machine(engine, dt)
     step_pk(engine, dt, fi_sevo, fi_n2o, engine.state.co)
     physiology = step_physiology(engine, dt, disturbances)
@@ -115,7 +117,7 @@ def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_
     lung.effort.unconscious = engine.state.loc
     lung.aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine._airway_patency > 0.5
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.
-    lung.effort.set_drive(0.0 if resp.apnea else resp.rr, resp.vt / 1000.0)
+    lung.effort.set_drive(resp.effort_rr, resp.effort_vt / 1000.0)
     if vent_active:
         source = "vent"
     elif bag_mask_active:
@@ -123,7 +125,6 @@ def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_
     else:
         source = "spontaneous" if connected else None
     engine.vent.step(dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt), collect_samples=True)
-    engine._last_patient_effort_cmH2O = min(lung.effort.amplitude, 20.0)
 
 
 def update_shivering(engine: "SimulationEngine", dt: float) -> None:
@@ -250,6 +251,7 @@ def _disturbance_completes_during_step(engine: "SimulationEngine", dt: float) ->
 
 def step_tci(engine: "SimulationEngine", dt: float) -> None:
     """Advance TCI controllers on their own sampling clock."""
+    engine.pk_nore.update_propofol(engine.pk_prop.state.c1)
     sim_time = engine.state.time
     for tci_attr, rate_attr in TCI_TARGET_CONFIG:
         controller = getattr(engine, tci_attr)
@@ -275,10 +277,13 @@ def step_machine(engine: "SimulationEngine", dt: float) -> tuple[float, float]:
     if engine.state.airway_mode == AirwayType.NONE:
         uptake_o2 = uptake_sevo = uptake_n2o = 0.0
     else:
-        va = max(0.0, engine.state.va)
+        va = max(0.0, engine.state.va) if engine._airway_patency > 0.0 else 0.0
         uptake_sevo = (fi_sevo - engine.pk_sevo.state.p_alv) * va
         uptake_n2o = (fi_n2o - engine.pk_n2o.state.p_alv) * va
-        uptake_o2 = engine.resp.vco2 * max(0.5, engine._metabolic_factor) / engine.resp.rq / 1000.0
+        uptake_o2 = engine.resp.oxygen_exchange_l_min(
+            engine.state.fio2, va, engine._metabolic_factor,
+            engine._airway_patency, engine._vq_mismatch,
+        )
     circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o)
     return fi_sevo, fi_n2o
 
@@ -287,9 +292,10 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
     """Update pharmacokinetic models and synchronize their public state."""
     state = engine.state
     aeration = engine.resp_mech.aeration
-    engine.pk_sevo.step(dt, fi_sevo, state.va, co_curr, temp_c=state.temp_c,
+    va = state.va if engine._airway_patency > 0.0 else 0.0
+    engine.pk_sevo.step(dt, fi_sevo, va, co_curr, temp_c=state.temp_c,
                         lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction)
-    engine.pk_n2o.step(dt, fi_n2o, state.va, co_curr, temp_c=state.temp_c,
+    engine.pk_n2o.step(dt, fi_n2o, va, co_curr, temp_c=state.temp_c,
                        lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction)
     sync_inhaled_agents(engine)
 
@@ -379,8 +385,8 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
                 splint_pressure = vent.monitors.paw_mean
         relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
         # Pharyngeal collapse excludes ketamine, which preserves airway tone.
-        unconscious = engine.loc_pd.compute_probability(
-            state.hypnotic_ce, state.opioid_ce, mac_sevo=state.mac_sevo, mac_n2o=state.mac_n2o
+        unconscious = engine.response.loss_of_response(
+            state.hypnotic_response_ce, state.opioid_ce, mac_sevo=state.mac_sevo, mac_n2o=state.mac_n2o
         )
         collapse = airway_tuning.unsupported_collapse_max * unconscious * (1.0 - relief)
         upper_obstruction = max(upper_obstruction, engine.laryngospasm_severity, collapse)
@@ -395,8 +401,11 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
     bronch = clamp01(bronch)
 
     base_r = engine._base_airway_resistance
-    r_upper = airway_tuning.upper_resistance_gain * upper_obstruction
+    # Resistance diverges as the airway closes. The finite denominator keeps
+    # the exact mechanics solver conditioned at complete occlusion.
+    r_upper = airway_tuning.upper_resistance_gain * upper_obstruction / max(1e-6, 1.0 - upper_obstruction)
     r_bronch = airway_tuning.bronch_resistance_gain * bronch
+    engine.resp_mech.reference_resistance = base_r
     engine.resp_mech.resistance = base_r + r_upper + r_bronch
     engine.resp_mech.bronchospasm = bronch
     engine.resp_mech.bronch_resistance = r_bronch
@@ -426,27 +435,24 @@ def update_airway_complications(engine: "SimulationEngine", dt: float) -> None:
 def step_physiology(engine: "SimulationEngine", dt: float, disturbances: DisturbanceEffects) -> PhysiologyStepState:
     """Advance physiology models and return a projected runtime snapshot."""
     state = engine.state
-    update_airway_complications(engine, dt)
-
     connected = state.airway_mode != AirwayType.NONE
     vent_active = connected and engine.vent.is_on
     bag_mask_active = engine.bag_mask_active and connected and not vent_active
-    assisted_active = vent_active or bag_mask_active
-
     step_mechanics(engine, dt, connected, vent_active, bag_mask_active)
     vent = engine.vent
     spirometry = vent.monitors
 
     alpha_paw = 1.0 - math.exp(-dt / max(engine._mean_paw_tau_s, 1e-6))
-    mean_paw = spirometry.paw_mean if assisted_active else 0.0
+    mean_paw = vent.airway_pressure_area / dt
     engine.current_mean_paw = (1 - alpha_paw) * engine.current_mean_paw + alpha_paw * mean_paw
 
     pit_base = engine.hemo.pit_0
     paw_to_mmhg = 0.74
     paw_transmission = 0.54
     effort_transmission = 0.30
-    pit_estimate = pit_base + paw_to_mmhg * paw_transmission * (engine.current_mean_paw - 5.0)
-    effort_mmhg = engine._last_patient_effort_cmH2O * paw_to_mmhg * effort_transmission
+    pit_estimate = pit_base + paw_to_mmhg * paw_transmission * engine.current_mean_paw
+    effort_pressure = min(vent.muscle_pressure_area / dt, 20.0)
+    effort_mmhg = effort_pressure * paw_to_mmhg * effort_transmission
     pit_estimate -= effort_mmhg
 
     # Gas exchange uses recent exhaled breaths, so it lags at least one breath.

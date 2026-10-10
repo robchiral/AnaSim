@@ -1,12 +1,65 @@
 # Changelog
 
-Ventilation abbreviations follow the [README](README.md#features).
-
 ## Unreleased
 
 - Removed the unused `simulation_speed`, `pk_model_remi`, `hemo_model`, and
   `resp_model` configuration fields and the `asa` patient input. The browser
   speed control sets the real-time multiplier.
+- Fixed anesthetic PK to Eleveld 2018 propofol and Eleveld 2017 remifentanil.
+  Removed `pk_model_propofol`, `bis_model`, and `loc_model`, their browser
+  selectors, and the old model implementations. Added `concomitant_opioids`
+  for the fixed opioid-regimen propofol PK covariate.
+- Paired original Eleveld BIS with the Bouillon Bayesian hierarchy for clinical
+  responsiveness and laryngoscopy tolerance. Opioids blunt stimulation-related
+  BIS arousal. Clinical response and breathing use separate effect sites;
+  transfer assumptions are documented in `docs/ARCHITECTURE.md`.
+- Fixed norepinephrine to Li PK with an integrated response calibrated against
+  de Keijzer infusion and Joachim bolus data. Removed additional cardiac-output
+  scaling of its clearance and distribution. Pressure response increases under
+  anesthesia while cardiac output recovers toward baseline.
+- Fixed epinephrine to Ensinger arterial clearance with adult infusion and
+  bolus calibration. Removed `pk_model_nore`, `pk_model_epi`, their browser
+  selectors, and the alternative vasoactive PK implementations.
+- Replaced the respiratory stopgap with Bouillon propofol depression and an
+  Olofsen signed opioid/CO₂ controller. CO₂ can restore ventilation during
+  ongoing opioid administration. Updated maintenance starts and walkthroughs
+  for the fixed model set.
+- Corrected respiratory depression to act on alveolar ventilation and added
+  Bouillon's nonlinear CO₂ feedback. Subtracting dead space from already
+  depressed total ventilation previously caused excessive CO₂ retention.
+  Added steady-state checks with and without reduced CO₂ production.
+- Corrected CO₂ accumulation during apnea with a zero baseline respiratory
+  rate and removed the pressure ceiling that stopped ongoing accumulation.
+- Preserved inspiratory effort during airway obstruction and limited airflow
+  as the airway closes. Effort no longer increases to compensate for acute
+  airway resistance.
+- Coupled circuit oxygen removal to lung gas exchange, including filling and
+  washout of oxygen stores. Complete obstruction stops oxygen transport from
+  the circuit while metabolism continues using patient stores.
+- Coupled intrathoracic pressure to resolved airway pressure and muscle effort
+  during each step. Removed the fixed pressure offset and the sustained peak
+  effort that exaggerated venous return between breaths.
+- Preserved impedance respiratory rate during obstruction and held the last
+  end-tidal CO₂ reading until its timeout while the airway remains connected.
+- Matched TCI prediction pulses to the actual rate-update interval when the
+  sampling period does not divide the requested control interval.
+- Initialized hemodynamic turnover and fast drug responses together, preserving
+  the calculated pressure and cardiac output at maintenance startup.
+- Included endogenous secretion and propofol-dependent clearance in
+  norepinephrine TCI predictions. Rate updates now use live PK parameters and
+  concentrations. Maintenance starts seed endogenous norepinephrine at the
+  current propofol concentration.
+- Delayed epinephrine beta-2 vasodilation and reduced the alpha-response
+  ceiling, limiting the early mean arterial pressure (MAP) dip and large-bolus
+  pressure clipping while preserving the infusion and small-bolus calibration
+  tests.
+- Revised the urine pressure-response curve to preserve most basal output
+  at MAP 60 and taper toward zero near circulatory collapse.
+- Corrected hemorrhage responses. Right atrial pressure now falls with filling,
+  and reflex venoconstriction recruits venous volume. A 20% blood loss
+  previously caused near-arrest; blood pressure now holds through ATLS class II.
+- Blunted adrenergic agonists in severe anaphylaxis. Epinephrine 50-100 mcg
+  boluses previously raised MAP to 230-300 mmHg.
 
 ## 1.4 - 2026-10-06
 

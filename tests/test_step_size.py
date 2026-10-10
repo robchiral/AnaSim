@@ -8,7 +8,7 @@ from anasim.patient.pd.anesthesia import BISModel
 def test_bis_processing_delay_runs_on_simulation_time(patient):
     outputs = []
     for dt in (0.01, 0.1):
-        bis = BISModel(patient, model_name="Eleveld")
+        bis = BISModel(patient)
         bis.initialize(93.0)
         trace = []
         for seconds in (10.0, 35.0, 75.0):

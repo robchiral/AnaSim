@@ -1,16 +1,15 @@
 # Model references
 
-These sources inform AnaSim's models, calibrations, and scenario guidance.
-See the [architecture guide](ARCHITECTURE.md#model-notes) for implementation
-choices and limits. PK means pharmacokinetics; PD means pharmacodynamics;
-BIS means bispectral index; MAC means minimum alveolar concentration;
-TCI means target-controlled infusion.
-Ventilation abbreviations follow the [README](../README.md#features).
+These sources support model parameters, simulator calibrations, and scenario guidance.
+The [architecture guide](ARCHITECTURE.md#model-notes) describes their use and
+the model assumptions. PK and PD mean pharmacokinetics and pharmacodynamics.
+BIS means bispectral index, MAC means minimum alveolar concentration, and
+TCI means target-controlled infusion. Ventilation modes are defined in the
+[README](../README.md#features).
 
 ## Hemodynamics and physiology
 
 - Su et al. (2023). *Br J Anaesth*. [Mechanistic hemodynamic interaction model](https://pubmed.ncbi.nlm.nih.gov/37355412/).
-- Beloeil et al. (2005). *Br J Anaesth*. [Norepinephrine PK/PD in septic shock and trauma](https://pubmed.ncbi.nlm.nih.gov/16227334/).
 - Clutter et al. (1980). *J Clin Invest*. [Epinephrine cardiovascular effects](https://pubmed.ncbi.nlm.nih.gov/6995479/).
 - Ebert et al. (1995). *Anesth Analg*. [Sevoflurane cardiovascular responses](https://pubmed.ncbi.nlm.nih.gov/7486143/).
 - Segeroth et al. (2023). *Eur Heart J Cardiovasc Imaging*. [Pulmonary transit time](https://pubmed.ncbi.nlm.nih.gov/36662127/).
@@ -33,6 +32,7 @@ Ventilation abbreviations follow the [README](../README.md#features).
 - De Jong et al. (2018). *Crit Care Med*. [Intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/29261566/).
 - Heffner et al. (2013). *Resuscitation*. [Cardiac arrest during emergency airway management](https://pubmed.ncbi.nlm.nih.gov/23911630/).
 - de Keijzer et al. (2026). *Eur J Anaesthesiol*. [Norepinephrine response under general anesthesia](https://pubmed.ncbi.nlm.nih.gov/41481868/).
+- Joachim et al. (2024). *Br J Clin Pharmacol*. [Peripheral norepinephrine bolus PK/PD during general anesthesia](https://pubmed.ncbi.nlm.nih.gov/39039779/).
 - Stratton et al. (1985). *J Appl Physiol*. [Epinephrine infusion hemodynamics](https://pubmed.ncbi.nlm.nih.gov/3988675/).
 - Freyschuss et al. (1986). *Clin Sci (Lond)*. [Arterial epinephrine concentrations and hemodynamics](https://pubmed.ncbi.nlm.nih.gov/3956110/).
 - Takahashi et al. (2002). *Anesth Analg*. [IV epinephrine bolus response](https://pubmed.ncbi.nlm.nih.gov/11867404/).
@@ -64,15 +64,12 @@ Ventilation abbreviations follow the [README](../README.md#features).
 
 ## Intravenous drug models
 
-- James (1976). *Research on Obesity*. HMSO. Lean body mass.
-- Marsh et al. (1991). *Br J Anaesth*. [Propofol PK](https://pubmed.ncbi.nlm.nih.gov/1859758/).
-- Thomson et al. (2014). *Anaesthesia*. [Marsh effect-site equilibration](https://pubmed.ncbi.nlm.nih.gov/24738800/).
-- Schnider et al. (1998). *Anesthesiology*. [Propofol PK](https://pubmed.ncbi.nlm.nih.gov/9605675/).
+- Eleveld et al. (2017). *Anesthesiology*. [Remifentanil PK/PD](https://doi.org/10.1097/ALN.0000000000001634).
 - Eleveld et al. (2018). *Br J Anaesth*. [Propofol PK/PD](https://pubmed.ncbi.nlm.nih.gov/29661412/).
+- Eleveld et al. (2018). *Br J Anaesth*. [Propofol model corrigendum](https://doi.org/10.1016/j.bja.2018.05.045).
+- Vellinga et al. (2021). *Br J Anaesth*. [Prospective Eleveld propofol PK/PD validation](https://doi.org/10.1016/j.bja.2020.10.027).
 - Servin et al. (1990). *Br J Anaesth*. [Propofol PK in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/2223333/).
 - Hiraoka et al. (2005). *Br J Clin Pharmacol*. [Renal extraction of propofol](https://pubmed.ncbi.nlm.nih.gov/16042671/).
-- Minto et al. (1997). *Anesthesiology*. [Remifentanil PK](https://pubmed.ncbi.nlm.nih.gov/9009936/).
-- Remifentanil prescribing information. [Minto steady-state infusion concentrations, table 6](https://www.medicines.org.uk/emc/product/3333/smpc).
 - Dershwitz et al. (1996). *Anesthesiology*. [Remifentanil PK/PD in liver disease](https://pubmed.ncbi.nlm.nih.gov/8638835/).
 - Hoke et al. (1997). *Anesthesiology*. [Remifentanil PK in renal failure](https://pubmed.ncbi.nlm.nih.gov/9316957/).
 - Bae et al. (2020). *Br J Anaesth*. [Adult fentanyl PK](https://pubmed.ncbi.nlm.nih.gov/32861508/).
@@ -100,7 +97,6 @@ Ventilation abbreviations follow the [README](../README.md#features).
 - Robertson et al. (2005). *Eur J Anaesthesiol*. [Rocuronium PK in renal failure](https://pubmed.ncbi.nlm.nih.gov/15816565/).
 - Ensinger et al. (1992). *Eur J Anaesthesiol*. [Arterial epinephrine clearance](https://pubmed.ncbi.nlm.nih.gov/1425612/).
 - Ensinger et al. (1992). *Eur J Clin Pharmacol*. [Arterial and peripheral venous catecholamine concentrations](https://pubmed.ncbi.nlm.nih.gov/1425886/).
-- Abboud et al. (2009). *Crit Care*. [Epinephrine PK in adult septic shock](https://pubmed.ncbi.nlm.nih.gov/19622169/).
 - Li et al. (2024). *Clin Pharmacokinet*. [Norepinephrine PK with propofol interaction](https://pubmed.ncbi.nlm.nih.gov/39465453/).
 - Ploeger et al. (2009). *Anesthesiology*. [Sugammadex PK/PD modeling](https://pubmed.ncbi.nlm.nih.gov/19104176/).
 - Kleijn et al. (2011). *Br J Clin Pharmacol*. [Sugammadex PK/PD](https://pubmed.ncbi.nlm.nih.gov/21535448/).
@@ -113,9 +109,8 @@ Ventilation abbreviations follow the [README](../README.md#features).
 - Fiset et al. (1991). *Can J Anaesth*. [Nitrous oxide and neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/1683819/).
 - Nguyen-Lee et al. (2018). *Curr Anesthesiol Rep*. [Sugammadex PK review](https://doi.org/10.1007/s40140-018-0266-5).
 - Bouillon et al. (2004). *Anesthesiology*. [Propofol-remifentanil interaction for hypnosis, BIS, and tolerance of laryngoscopy](https://pubmed.ncbi.nlm.nih.gov/15166553/).
-- Kern et al. (2004). *Anesthesiology*. [Propofol-remifentanil response surfaces](https://pubmed.ncbi.nlm.nih.gov/15166554/).
-- Mertens et al. (2003). *Anesthesiology*. [Propofol-remifentanil interaction and return of consciousness](https://pubmed.ncbi.nlm.nih.gov/12883407/).
-- Johnson et al. (2008). *Anesth Analg*. [Propofol-remifentanil response surfaces for responsiveness and laryngoscopy](https://pubmed.ncbi.nlm.nih.gov/18227302/).
+- Hannivoort et al. (2016). *Br J Anaesth*. [Propofol-sevoflurane-remifentanil interaction for laryngoscopy](https://doi.org/10.1093/bja/aew060).
+- Kuizenga et al. (2019). *Anesthesiology*. [Propofol and sevoflurane with remifentanil for clinical responses](https://doi.org/10.1097/ALN.0000000000002966).
 - FDA NDA 203826 Clinical Pharmacology Review (2012). [Phenylephrine PK](https://www.accessdata.fda.gov/drugsatfda_docs/nda/2012/203826_phenylephrine_toc.cfm).
 - Hengstmann and Goronzy (1982). *Eur J Clin Pharmacol*. [Phenylephrine PK](https://pubmed.ncbi.nlm.nih.gov/7056280/).
 - Vasopressin injection label (DailyMed). [Vasopressin PK](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=971f9b1c-6094-4f80-920b-cb5d7e62950a).
@@ -132,8 +127,9 @@ Ventilation abbreviations follow the [README](../README.md#features).
 
 ## Respiratory control and BIS
 
-- Fuentes et al. (2018). *Paediatr Anaesth*. [Propofol-remifentanil BIS model in children](https://pubmed.ncbi.nlm.nih.gov/30307663/).
-- Yumuk et al. (2024). *J Process Control*. [Propofol-remifentanil response surface models](https://doi.org/10.1016/j.jprocont.2024.103243).
+- Bouillon et al. (2004). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).
+- Olofsen et al. (2010). *Anesthesiology*. [Dynamic remifentanil respiratory effects in awake and propofol-sedated volunteers](https://pubmed.ncbi.nlm.nih.gov/20461001/).
+
 - Kanazawa et al. (2017). *J Anesth*. [Volatile anesthetics and BIS](https://pubmed.ncbi.nlm.nih.gov/28791477/).
 - Ryu et al. (2018). *Anesthesiology*. [BIS and surgical pleth index during stimulation](https://pubmed.ncbi.nlm.nih.gov/29509579/).
 - Ryu et al. (2018). *Br J Anaesth*. [Remifentanil requirements with volatile anesthetics](https://pubmed.ncbi.nlm.nih.gov/30336856/).

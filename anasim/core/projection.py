@@ -68,7 +68,8 @@ def measured_ventilation(
         # the baseline rate; no tidal volume has yet been measured.
         rr = spirometry.rr_total if engine.vent.has_measured_breath else spontaneous_rr
         return rr, spirometry.tv_exp * kept, spirometry.mv_exp * kept
-    return spontaneous_rr, spontaneous_vt_l * 1000.0, spontaneous_rr * spontaneous_vt_l
+    # Impedance counts muscle effort even when obstruction prevents airflow.
+    return engine.resp.state.effort_rr, spontaneous_vt_l * 1000.0, spontaneous_rr * spontaneous_vt_l
 
 
 # Projections run every step, so they assign public fields directly, as built-in floats.
@@ -92,6 +93,10 @@ def sync_pk_state(engine: "SimulationEngine") -> None:
         engine.pk_etomidate.state.ce,
         engine.pk_midazolam.state.ce,
         engine.midazolam_c50,
+    ))
+    state.hypnotic_response_ce = float(hypnotic_equivalent(
+        engine.pk_prop.state.ce_response, engine.pk_etomidate.state.ce,
+        engine.pk_midazolam.state.ce, engine.midazolam_c50,
     ))
     state.nore_ce = float(engine.pk_nore.state.ce)
     state.roc_ce = float(engine.tof_pd.ce)
@@ -244,23 +249,24 @@ def project_runtime_physiology(engine: "SimulationEngine", snapshot: PhysiologyS
 def sync_monitor_baselines(engine: "SimulationEngine") -> None:
     """Derive monitor baselines from the current physiologic snapshot."""
     state = engine.state
-    bis_val = clamp(engine.bis.compute_bis(state.hypnotic_ce, state.opioid_ce, state.mac_sevo), 0.0, 100.0)
+    bis_val = clamp(engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo), 0.0, 100.0)
     tof_val = engine.tof_pd.compute_tof_from_ce(
         state.roc_ce,
         mac_sevo=state.mac_sevo,
         mac_n2o=state.mac_n2o,
     )
-    loc_val = engine.loc_pd.compute_probability(
-        state.hypnotic_ce,
+    loc_val = engine.response.loss_of_response(
+        state.hypnotic_response_ce,
         state.opioid_ce,
         mac_sevo=state.mac_sevo,
         mac_n2o=state.mac_n2o,
         ce_ketamine=state.ketamine_ce,
     )
-    tol_val = engine.tol_pd.compute_probability(
-        state.hypnotic_ce,
+    tol_val = engine.response.tolerance(
+        state.hypnotic_response_ce,
         state.opioid_ce,
-        mac=state.mac,
+        mac_sevo=state.mac_sevo,
+        mac_n2o=state.mac_n2o,
         ce_ketamine=state.ketamine_ce,
         ce_lidocaine=state.lidocaine_ce,
     )

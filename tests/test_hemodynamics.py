@@ -22,6 +22,24 @@ def _steady_exposure(seconds: int = 60, **ce):
     return base, state
 
 
+@pytest.mark.parametrize("renal_function", [1.0, 0.4])
+def test_urine_output_tapers_with_pressure_and_preserves_fluid_balance(renal_function):
+    patient = Patient(renal_function=renal_function)
+    rates = []
+    for pressure in (20.0, 40.0, 60.0, 65.0, 90.0):
+        model = HemodynamicModel(patient)
+        model._prev_map = pressure
+        before = model.blood_volume
+        model.step(1.0, 0, 0, 0, -2, 40, 95)
+        urine = model.total_urine_out_ml
+        assert before - model.blood_volume == pytest.approx(urine)
+        rates.append(urine * 3600 / patient.weight)
+    assert rates[0] == 0.0
+    assert rates[0] < rates[1] < rates[2] < rates[3]
+    assert 0.4 * renal_function < rates[2] < 0.5 * renal_function
+    assert rates[3] == rates[4] == pytest.approx(0.5 * renal_function)
+
+
 @pytest.mark.parametrize(
     ("propofol", "remifentanil", "expected"),
     [
@@ -70,6 +88,41 @@ def test_pressors_raise_svr_without_beta_effects():
     assert vaso.map > base.map + 5.0
     assert vaso.svr > base.svr * 1.1
     assert vaso.hr <= base.hr + 5.0
+
+
+def test_steady_state_initialization_keeps_fast_and_slow_drug_effects(patient):
+    model = HemodynamicModel(patient, replace(HemodynamicConfig(), vol_clearance=0.0))
+    initialized = model.initialize_steady_state(3.53, 3.6, 10.0)
+    assert initialized.map > 100.0
+    initial_values = (initialized.map, initialized.hr, initialized.co)
+    assert (model.state.map, model.state.hr, model.state.co) == pytest.approx(initial_values)
+    for _ in range(60):
+        state = model.step(1.0, 3.53, 3.6, 10.0, -2.0, 40.0, 95.0)
+    assert (state.map, state.hr, state.co) == pytest.approx(initial_values, rel=0.01)
+
+
+def test_thoracic_pressure_tracks_breathing_effort_and_applied_cpap(awake_engine):
+    engine = awake_engine
+    pressure = []
+    for _ in range(150):
+        engine.step(0.1)
+        pressure.append(engine.state.pit)
+    assert max(pressure) == pytest.approx(engine.hemo.pit_0, abs=0.01)
+    assert min(pressure) < engine.hemo.pit_0 - 2.0
+
+    engine.set_airway_mode("ETT")
+    engine.set_fgf(6.0, 0.0)
+    engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
+    for _ in range(1200):
+        engine.step(0.1)
+    assert engine.resp_mech.effort.amplitude == 0.0
+    assert engine.state.pit == pytest.approx(engine.hemo.pit_0, abs=0.1)
+
+    engine.set_vent_settings(rr=0, vt=0, peep=5, ie="1:2", mode="CPAP")
+    engine.set_vent_power(True)
+    for _ in range(200):
+        engine.step(0.1)
+    assert engine.state.pit > engine.hemo.pit_0 + 1.8
 
 
 @pytest.mark.parametrize(("drug", "min_co_ratio"), [("ce_dobu", 1.1), ("ce_mil", 1.05)])

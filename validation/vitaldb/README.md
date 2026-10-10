@@ -18,8 +18,8 @@ The PEEP audit uses cached tracks only and writes `results/vitaldb_peep.json`.
 Its counts depend on the local cache. It requires cached `cases.csv` and
 `trks.csv`; `--cache PATH` selects another cache directory.
 
-Reports in `results/` are saved snapshots and may predate current model
-changes. To create overlays, install Matplotlib and add
+Reports in `results/` contain the comparison results. Generate a report for the
+checkout being evaluated. To create overlays, install Matplotlib and add
 `--figure validation/vitaldb/results/overlay.png` to the ventilation command.
 
 Source data are from VitalDB (Lee et al., *Scientific Data*, 2022), under

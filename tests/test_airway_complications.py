@@ -52,7 +52,7 @@ def test_mask_obstruction_raises_airway_pressure_and_leaks_delivered_breaths(awa
     obstructed = engine.state
     assert obstructed.paw_peak > baseline.paw_peak + 5.0
     assert obstructed.vt < baseline.vt * 0.5
-    assert obstructed.mv == pytest.approx(obstructed.vt * obstructed.rr / 1000.0, rel=1e-3)
+    assert obstructed.mv < baseline.mv * 0.5
 
 
 def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
@@ -71,3 +71,33 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="CPAP")
     engine.step(0.1)
     assert engine.state.airway_obstruction == 0.0
+
+
+def test_obstructed_airway_preserves_effort_without_restoring_ventilation(awake_engine):
+    engine = awake_engine
+    engine.resp.hcvr_slope_baseline = 0.0
+    engine.set_airway_mode("ETT")
+    for _ in range(200):
+        engine.step(0.1)
+    baseline_effort = engine.resp_mech.effort.amplitude
+    baseline_co2 = engine.resp.state.pa_co2
+
+    engine.set_airway_obstruction(1.0)
+    for _ in range(600):
+        engine.step(0.1)
+    resp, effort = engine.resp.state, engine.resp_mech.effort
+    assert resp.drive_central > 0.0 and resp.muscle_factor == 1.0
+    assert effort.rr > 8.0 and effort.target_vt > 0.4
+    assert effort.amplitude == pytest.approx(baseline_effort, rel=0.05)
+    assert engine.state.mv < 0.01 and resp.va < 0.01
+    assert resp.pa_co2 > baseline_co2 + 8.0
+
+    engine.set_airway_obstruction(0.0)
+    for _ in range(300):
+        engine.step(0.1)
+    assert engine.state.vt > 400.0 and engine.resp.state.va > 3.0
+
+    engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
+    for _ in range(1200):
+        engine.step(0.1)
+    assert engine.resp_mech.effort.amplitude == 0.0

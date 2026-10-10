@@ -18,12 +18,11 @@ For installation and the browser interface, see the [README](../README.md).
 
 ## Configuration file
 
-Use a flat JSON object for headless runs. Omitted fields use defaults; unknown
-fields are rejected. The CLI argument `--mode` chooses `ui` or `headless`.
-The JSON field `mode` chooses the patient's initial state.
+Headless runs accept a flat JSON object. Omitted fields use defaults; unknown
+fields are rejected. The CLI argument `--mode` selects the interface, and the
+JSON field `mode` selects the patient's initial state.
 
-Save this example as `patient_config.json` to start an anesthetized patient
-with balanced maintenance.
+Save this configuration as `patient_config.json` for balanced maintenance.
 
 ```json
 {
@@ -65,6 +64,7 @@ See [patient limits and source cohorts](ARCHITECTURE.md#supported-patient-domain
 |-------|---------|---------|
 | `mode` | `"awake"` | `"awake"` or `"steady_state"`; see [initialization](ARCHITECTURE.md#initialization) |
 | `maint_type` | `"tiva"` | Total intravenous anesthesia (`"tiva"`) or `"balanced"` maintenance for steady-state initialization |
+| `concomitant_opioids` | `true` | Fixed opioid-regimen covariate for Eleveld propofol PK; maintenance initialization requires `true` |
 | `tci_enabled` | `false` | Enable target-controlled infusion (TCI) and use it at maintenance startup |
 | `dt` | 0.01 | Positive engine step in seconds |
 | `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
@@ -73,23 +73,6 @@ See [patient limits and source cohorts](ARCHITECTURE.md#supported-patient-domain
 | `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr; `null` uses 1 mL/kg/hr |
 | `sevoflurane_enabled` | `true` | Enable the sevoflurane vaporizer; `"balanced"` requires `true` |
 | `disturbance_profile` | `null` | `"stim_intubation_pulse"`, `"stim_sustained_surgery"`, or `null` |
-
-#### Models
-
-PK means pharmacokinetics; BIS means bispectral index. `loc_model` selects the
-loss-of-consciousness model. See [Model references](REFERENCES.md) for sources
-and [Model notes](ARCHITECTURE.md#model-notes) for assumptions and limits.
-
-| Field | Default | Accepted values |
-|-------|---------|-----------------|
-| `pk_model_propofol` | `"Eleveld"` | `"Marsh"`, `"Schnider"`, `"Eleveld"` |
-| `bis_model` | `"Bouillon"` | `"Bouillon"`, `"Eleveld"`, `"Fuentes"`, `"Yumuk"` |
-| `pk_model_nore` | `"Li"` | `"Li"`, `"Beloeil"` |
-| `pk_model_epi` | `"HealthyAdult"` | `"HealthyAdult"`, `"Abboud"` |
-| `loc_model` | `"Kern"` | `"Kern"`, `"Mertens"`, `"Johnson"` |
-
-Remifentanil uses Minto PK, hemodynamics use Su, and respiration uses the
-single-compartment model.
 
 ## Headless example
 
@@ -111,9 +94,9 @@ means plateau pressure is unavailable.
 See [field groups](ARCHITECTURE.md#simulation-state) and
 [units](../anasim/core/state.py).
 
-`engine.output_buffer` holds the last 20 seconds of monitor waveform samples.
-To reproduce a run, save the configuration, AnaSim
-version, random seed, `dt`, and intervention times.
+`engine.output_buffer` holds 20 seconds of monitor waveform samples. To
+reproduce a run, save the configuration, AnaSim version, random seed, `dt`,
+and intervention times.
 
 ## Python use
 

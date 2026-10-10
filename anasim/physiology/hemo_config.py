@@ -54,11 +54,15 @@ class HemodynamicConfig:
     ec50_int_hr: float = 0.20
     int_sv: float = -0.21
 
-    nore_c50: float = 7.04
-    nore_gamma: float = 1.8
-    nore_emax_map: float = 98.7
-    nore_emax_hr: float = 10.0
-    nore_emax_sv: float = 0.15
+    # Integrated Li PK / Su circulation calibration: de Keijzer 2026 infusion
+    # responses and Joachim 2024 bolus responses. These are simulation
+    # coefficients, not either paper's standalone MAP-model parameters.
+    nore_c50: float = 25.0
+    nore_emax_svr: float = 1.75
+    nore_emax_hr: float = 60.0
+    nore_emax_sv: float = 0.7
+    nore_anesthetic_alpha_gain: float = 0.6
+    nore_anesthetic_sv_gain: float = 4.0
 
     # Sevoflurane, with remifentanil shifting the TPR EC50.
     ke0_sevo: float = 0.25
@@ -74,6 +78,10 @@ class HemodynamicConfig:
     unstressed_volume_fraction: float = 0.70
     venous_compliance: float = 100.0  # mL/mmHg
     mcfp_floor: float = 1.0
+    # Reflex venoconstriction returns this share of a blood-volume deficit to
+    # stressed volume, about 8 mL/kg at a 40% loss. Calibrated so slow losses
+    # follow the ATLS hemorrhage classes.
+    venous_recruitment_fraction: float = 0.3
     # Fixed urine output (mL/min); overrides uop_ml_kg_hr when set.
     vol_clearance: float | None = None
     # Urine output (mL/kg/hr), scaled by MAP and renal function.
@@ -85,8 +93,10 @@ class HemodynamicConfig:
     crystalloid_retention_fraction: float = 0.30
     colloid_retention_fraction: float = 0.80
     blood_retention_fraction: float = 1.0
-    renal_map_min: float = 50.0
-    renal_map_norm: float = 80.0
+    # Teaching pressure-response curve, not an AKI or GFR threshold. Preserve
+    # most basal output at MAP 60; taper to zero near circulatory collapse.
+    renal_map_min: float = 20.0
+    renal_map_norm: float = 65.0
     # Interstitial fluid returns only while blood volume is below its 30% share.
     third_space_refill_tau_hr: float = 6.0
 
@@ -140,6 +150,10 @@ class HemodynamicConfig:
     sepsis_pooling_fraction: float = 0.06  # Fraction of baseline volume made unstressed
 
     anaphylaxis_svr_drop_wood: float = 10.0
+    # Full severity shifts adrenergic agonist responses 3-fold to the right, so
+    # 50-100 mcg epinephrine boluses (ANZAAG and ANZCA 2022) restore pressure
+    # briefly without overshoot. Calibrated.
+    anaphylaxis_agonist_shift: float = 2.0
 
     # Epinephrine: exogenous arterial concentrations in ng/mL. Responses and
     # delays are fitted to Freyschuss 1986 infusions and Takahashi 2002 boluses
@@ -151,11 +165,14 @@ class HemodynamicConfig:
     epi_emax_sv: float = 1.4
     epi_c50_beta2: float = 0.35
     epi_emax_svr_beta: float = -0.55
-    epi_c50_alpha: float = 8.0
+    epi_c50_alpha: float = 2.5
     epi_gamma_alpha: float = 2.0
-    epi_emax_svr_alpha: float = 3.0
-    epi_tau_hr_s: float = 20.0
-    epi_tau_pressor_s: float = 50.0
+    # Saturating alpha response preserves small-bolus pressure gains without
+    # multiplying baseline resistance fourfold at larger doses. Calibrated.
+    epi_emax_svr_alpha: float = 0.4
+    epi_tau_hr_s: float = 18.0
+    epi_tau_beta2_s: float = 20.0
+    epi_tau_pressor_s: float = 55.0
     # Volatiles also blunt direct chronotropy; propofol does not.
     epi_volatile_hr_depression: float = 0.4
 

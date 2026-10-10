@@ -170,10 +170,6 @@ fieldset:disabled { opacity: 0.5; }
 .choice { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .choice input { accent-color: var(--primary); margin: 0; }
 
-.models { border-top: 1px solid var(--border); }
-.models summary { padding: 10px 0; cursor: pointer; color: var(--text-secondary); font-size: 12px; font-weight: 700; }
-.models-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
-
 .setup-error { color: var(--danger); font-weight: 600; }
 .setup-footer { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
 .setup-footer .version { margin-right: auto; color: var(--text-dim); font-size: 11px; }
@@ -434,7 +430,7 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
 }
 
 @media (max-width: 720px) {
-  .setup-grid, .models-grid, .group-row { grid-template-columns: minmax(0, 1fr); }
+  .setup-grid, .group-row { grid-template-columns: minmax(0, 1fr); }
   .monitor { height: auto; min-height: 720px; }
   .monitor-body { --numeric-width: 174px; --loop-width: 148px; flex: 0 0 auto; grid-template-rows: repeat(var(--lane-count), 76px) 150px; }
   .respiratory-lane .wave { margin-right: 0; }

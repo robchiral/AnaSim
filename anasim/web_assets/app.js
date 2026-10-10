@@ -90,24 +90,27 @@ function buildSetup() {
   for (const [name, [min, max]] of Object.entries(catalog.ranges)) {
     Object.assign(form.elements[name], { min, max });
   }
-  for (const [name, { options, default: value }] of Object.entries(catalog.models)) {
-    const select = form.elements[name];
-    select.replaceChildren(...options.map((option) => new Option(option, option)));
-    select.value = value;
-  }
   form.elements.scenario_id.replaceChildren(
     ...catalog.scenarios.map((scenario) => new Option(scenario.label, scenario.id)),
   );
 
+  const syncOpioidPlan = () => {
+    const maintenance = form.elements.mode.value === "steady_state";
+    form.elements.concomitant_opioids.disabled = maintenance;
+    if (maintenance) form.elements.concomitant_opioids.checked = true;
+  };
+  for (const radio of form.elements.mode) radio.onchange = syncOpioidPlan;
   const syncGuided = () => {
     const guided = form.elements.session.value === "guided";
     $("scenario-row").hidden = !guided;
     $("initial-state").disabled = guided;
     if (guided) {
       const scenario = catalog.scenarios.find((s) => s.id === form.elements.scenario_id.value);
+      form.elements.concomitant_opioids.checked = true;
       form.elements.mode.value = scenario.mode;
       form.elements.maint_type.value = scenario.maint_type;
     }
+    syncOpioidPlan();
   };
   for (const radio of form.elements.session) radio.onchange = syncGuided;
   form.elements.scenario_id.onchange = syncGuided;
@@ -142,10 +145,10 @@ function readSetup(form) {
   params.sex = f.sex.value;
   params.renal_function = Number(f.renal_function.value);
   params.hepatic_function = Number(f.hepatic_function.value);
-  for (const name of Object.keys(catalog.models)) params[name] = f[name].value;
   params.arterial_line_enabled = f.arterial_line_enabled.checked;
   params.end_on_cardiac_arrest = f.end_on_cardiac_arrest.checked;
   params.tci_enabled = f.tci_enabled.checked;
+  params.concomitant_opioids = f.concomitant_opioids.checked;
   if (f.session.value === "guided") {
     params.scenario_id = f.scenario_id.value;
   } else {

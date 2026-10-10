@@ -27,10 +27,12 @@ class PKState:
     c2: float = 0.0  # Fast peripheral
     c3: float = 0.0  # Slow peripheral
     ce: float = 0.0  # Effect site
+    ce_response: float = 0.0  # Propofol clinical response
+    ce_resp: float = 0.0  # Respiratory depression
 
 
 class MammillaryPK:
-    """Central compartment with up to two peripheral compartments and an effect site.
+    """Central compartment with up to two peripheral compartments and effect sites.
 
     Mass is V1*c1 + V2*c2 + V3*c3. Hemodynamic scaling changes the central
     volume with blood volume and clearances with cardiac output, using per-model
@@ -48,10 +50,14 @@ class MammillaryPK:
         cl3: float = 0.0,
         cl1_co_exponent: float = 1.0,
         distribution_co_exponent: float = 1.0,
+        additional_effect_sites: tuple[tuple[str, float], ...] = (),
+        basal_input_rate: float = 0.0,
     ):
         self.v1_base = v1
         self.v1 = v1
         self.cl1_base = cl1
+        self.cl1_scale = 1.0
+        self.basal_input_rate = basal_input_rate  # Model mass units per second.
         self.cl2_base = cl2
         self.cl3_base = cl3
         self.v2 = v2
@@ -59,15 +65,22 @@ class MammillaryPK:
         self.ke0 = ke0
         self.cl1_co_exponent = cl1_co_exponent
         self.distribution_co_exponent = distribution_co_exponent
+        # The primary site is last so TCI and decay predictions target it.
+        self.effect_sites = (*additional_effect_sites, ("ce", ke0))
         self.state_fields = (
-            ("c1",) + (("c2",) if v2 > 0 else ()) + (("c3",) if v3 > 0 else ()) + ("ce",)
+            ("c1",) + (("c2",) if v2 > 0 else ()) + (("c3",) if v3 > 0 else ())
+            + tuple(name for name, _ in self.effect_sites)
         )
         self.state = PKState()
         self.update_hemodynamics(1.0, 1.0)
 
     @property
     def k10(self) -> float:
-        return self.cl1 / self.v1
+        return self.elimination_clearance / self.v1
+
+    @property
+    def elimination_clearance(self) -> float:
+        return self.cl1 * self.cl1_scale
 
     @property
     def k12(self) -> float:
@@ -97,14 +110,16 @@ class MammillaryPK:
 
     def step(self, dt_sec: float, input_rate_per_sec: float, cl1_scale: float = 1.0) -> PKState:
         """Advance with simultaneous Euler steps that conserve compartment transfers."""
+        self.cl1_scale = cl1_scale
+        input_rate_per_sec += self.basal_input_rate
         s = self.state
-        if not input_rate_per_sec and not (s.c1 or s.c2 or s.c3 or s.ce):
+        if not input_rate_per_sec and not (s.c1 or s.c2 or s.c3 or s.ce or s.ce_response or s.ce_resp):
             return s  # Skip drugs with no input or residual concentration.
         cl2 = self.cl2 if self.v2 > 0 else 0.0
         cl3 = self.cl3 if self.v3 > 0 else 0.0
-        elimination_cl = self.cl1 * cl1_scale
+        elimination_cl = self.elimination_clearance
         fastest_rate = max((elimination_cl + cl2 + cl3) / self.v1,
-                           self.k21, self.k31, self.ke0)
+                           self.k21, self.k31, *(rate for _, rate in self.effect_sites))
         # At most one second and 2.5% turnover per interval, including after
         # blood-volume scaling. Clipping an overshoot would create drug mass.
         substeps = max(1, math.ceil(dt_sec * max(1.0, fastest_rate / 1.5)))
@@ -113,28 +128,30 @@ class MammillaryPK:
             flux2 = cl2 * (s.c1 - s.c2)
             flux3 = cl3 * (s.c1 - s.c3)
             elimination = elimination_cl * s.c1
-            dce = self.ke0 * (s.c1 - s.ce)
+            for name, rate in self.effect_sites:
+                ce = getattr(s, name)
+                setattr(s, name, ce + rate * (s.c1 - ce) * dt_min)
             s.c1 += (input_rate_per_sec * 60.0 - elimination - flux2 - flux3) / self.v1 * dt_min
             if self.v2 > 0:
                 s.c2 += flux2 / self.v2 * dt_min
             if self.v3 > 0:
                 s.c3 += flux3 / self.v3 * dt_min
-            s.ce += dce * dt_min
         return s
 
     def get_ss_matrices(self) -> tuple[np.ndarray, np.ndarray]:
         """Return continuous A (1/min) and B for the state order in `state_fields`."""
         peripherals = [(v, cl) for v, cl in ((self.v2, self.cl2), (self.v3, self.cl3)) if v > 0]
-        n = len(peripherals) + 2
+        n = len(peripherals) + 1 + len(self.effect_sites)
         A = np.zeros((n, n))
         B = np.zeros((n, 1))
-        A[0, 0] = -(self.cl1 + sum(cl for _, cl in peripherals)) / self.v1
+        A[0, 0] = -(self.elimination_clearance + sum(cl for _, cl in peripherals)) / self.v1
         for i, (v, cl) in enumerate(peripherals, start=1):
             A[0, i] = cl / self.v1
             A[i, 0] = cl / v
             A[i, i] = -cl / v
-        A[-1, 0] = self.ke0
-        A[-1, -1] = -self.ke0
+        for i, (_, rate) in enumerate(self.effect_sites, start=len(peripherals) + 1):
+            A[i, 0] = rate
+            A[i, i] = -rate
         B[0, 0] = 1.0 / self.v1
         return A, B
 
@@ -153,11 +170,13 @@ class MammillaryPK:
         ce_target = self.state.ce * target_fraction
         if ce_target <= 0.0:
             return 0.0
-        A, _ = self.get_ss_matrices()
+        A, B = self.get_ss_matrices()
         transition = expm(A / 60.0)
+        equilibrium = (np.linalg.solve(-A, B[:, 0] * self.basal_input_rate * 60.0)
+                       if self.basal_input_rate else np.zeros(A.shape[0]))
         x = self.state_vector()
         for second in range(1, max_seconds + 1):
-            x = transition @ x
+            x = transition @ (x - equilibrium) + equilibrium
             if x[-1] <= ce_target:
                 return second / 60.0
         return max_seconds / 60.0
@@ -200,101 +219,89 @@ def _scale_volumes(params: dict, factor: float) -> dict:
     return {key: value * factor if key.startswith("v") else value for key, value in params.items()}
 
 
-# Marsh, Schnider, Eleveld, and Minto have no cardiac-output covariate.
+# Population parameters without an additional cardiac-output covariate.
 _NO_CO_COVARIATE = {"cl1_co_exponent": 0.0, "distribution_co_exponent": 0.0}
+
+
+def _sigmoid(x: float, x50: float, gamma: float) -> float:
+    return x**gamma / (x50**gamma + x**gamma)
+
+
+def _eleveld_ffm(age: float, weight: float, height: float, male: bool) -> float:
+    """Al-Sallami fat-free mass used by both Eleveld models."""
+    bmi = weight / (height / 100.0) ** 2
+    if male:
+        maturation = 0.88 + 0.12 / (1.0 + (age / 13.4) ** -12.7)
+        return maturation * 9270.0 * weight / (6680.0 + 216.0 * bmi)
+    maturation = 1.11 - 0.11 / (1.0 + (age / 7.1) ** -1.1)
+    return maturation * 9270.0 * weight / (8780.0 + 244.0 * bmi)
 
 
 # Propofol ---------------------------------------------------------------------
 
-class PropofolPKMarsh(MammillaryPK):
-    """Marsh et al. 1991 with the modified effect-site ke0 of 1.2 min^-1."""
-
-    def __init__(self, patient: Patient):
-        w = patient.weight
-        params = {
-            "v1": 0.228 * w,
-            "cl1": 0.119 * 0.228 * w,
-            "v2": 0.463 * w,
-            "cl2": 0.112 * 0.228 * w,
-            "v3": 2.893 * w,
-            "cl3": 0.042 * 0.228 * w,
-        }
-        params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.6))
-        super().__init__(ke0=1.2, **_NO_CO_COVARIATE, **params)
-
-
-class PropofolPKSchnider(MammillaryPK):
-    """Schnider et al. 1998 with its James lean-body-mass covariate."""
-
-    def __init__(self, patient: Patient):
-        age, w, h, lbm = patient.age, patient.weight, patient.height, patient.james_lbm()
-        params = {
-            "v1": 4.27,
-            "cl1": max(0.01, 1.89 + 0.0456 * (w - 77) - 0.0681 * (lbm - 59) + 0.0264 * (h - 177)),
-            "v2": max(0.5, 18.9 - 0.391 * (age - 53)),
-            "cl2": max(0.01, 1.29 - 0.024 * (age - 53)),
-            "v3": 238.0,
-            "cl3": 0.836,
-        }
-        params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.6))
-        super().__init__(ke0=0.456, **_NO_CO_COVARIATE, **params)
-
-
 class PropofolPKEleveld(MammillaryPK):
-    """Eleveld et al. 2018 arterial fixed effects without opiate covariates."""
+    """Eleveld 2018 arterial PK and BIS effect site, with separate clinical PD sites."""
 
-    def __init__(self, patient: Patient):
-        age = patient.age
-        w = patient.weight
+    def __init__(self, patient: Patient, concomitant_opioids: bool = True):
+        age, w = patient.age, patient.weight
         male = patient.sex == "male"
-        bmi = w / (patient.height / 100.0) ** 2
         age_ref, w_ref = 35.0, 70.0
-        bmi_ref = w_ref / 1.7**2
-
-        def sigmoid(x, x50, gamma):
-            return x**gamma / (x50**gamma + x**gamma)
-
-        def fat_free_mass(is_male, weight, years, body_mass_index):
-            if is_male:
-                return (0.88 + 0.12 / (1 + (years / 13.4) ** -12.7)) * 9270 * weight / (6680 + 216 * body_mass_index)
-            return (1.11 - 0.11 / (1 + (years / 7.1) ** -1.1)) * 9270 * weight / (8780 + 244 * body_mass_index)
 
         pma, pma_ref = age * 52 + 40, age_ref * 52 + 40
-        cl_maturation = sigmoid(pma, 42.2760190602615, 9.0548452392807) / sigmoid(pma_ref, 42.2760190602615, 9.0548452392807)
-        q3_maturation = sigmoid(pma, 68.2767978846832, 1) / sigmoid(pma_ref, 68.2767978846832, 1)
+        cl_maturation = _sigmoid(pma, 42.2760190602615, 9.0548452392807) / _sigmoid(pma_ref, 42.2760190602615, 9.0548452392807)
+        q3_maturation = _sigmoid(pma, 68.2767978846832, 1) / _sigmoid(pma_ref, 68.2767978846832, 1)
         v2_ref, v3_ref = 25.5013145036879, 272.8166615043603
 
-        v1 = 6.2830780766822 * sigmoid(w, 33.5531248778544, 1) / sigmoid(w_ref, 33.5531248778544, 1)
+        v1 = 6.2830780766822 * _sigmoid(w, 33.5531248778544, 1) / _sigmoid(w_ref, 33.5531248778544, 1)
         v2 = v2_ref * (w / w_ref) * np.exp(-0.015633 * (age - age_ref))
-        v3 = v3_ref * fat_free_mass(male, w, age, bmi) / fat_free_mass(True, w_ref, age_ref, bmi_ref)
+        v3 = v3_ref * _eleveld_ffm(age, w, patient.height, male) / _eleveld_ffm(35.0, 70.0, 170.0, True)
+        if concomitant_opioids:
+            v3 *= math.exp(-0.0138166 * age)
         cl_ref = 1.7895836588902 if male else 2.1002218877899
+        if concomitant_opioids:
+            cl_ref *= math.exp(-0.00285709 * age)
         params = {
             "v1": v1,
             "cl1": cl_ref * (w / w_ref) ** 0.75 * cl_maturation,
             "v2": v2,
-            "cl2": 1.7500983738779 * (v2 / v2_ref) ** 0.75 * (1.0 + 1.3042680471360 * (1.0 - sigmoid(pma, 68.2767978846832, 1))),
+            "cl2": 1.7500983738779 * (v2 / v2_ref) ** 0.75 * (1.0 + 1.3042680471360 * (1.0 - _sigmoid(pma, 68.2767978846832, 1))),
             "v3": v3,
             "cl3": 1.1085424008536 * (v3 / v3_ref) ** 0.75 * q3_maturation,
         }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.6))
-        super().__init__(ke0=0.146 * (w / 70.0) ** -0.25, **_NO_CO_COVARIATE, **params)
+        # The clinical response rate is a timing assumption (Kuizenga 2019 study
+        # design); respiratory equilibration half-time is 2.6 min (Bouillon 2004).
+        super().__init__(
+            ke0=0.14636965112551278 * (w / 70.0) ** -0.25,
+            additional_effect_sites=(("ce_response", 0.456), ("ce_resp", math.log(2.0) / 2.6)),
+            **_NO_CO_COVARIATE, **params,
+        )
 
 
 # Remifentanil -----------------------------------------------------------------
 
-class RemifentanilPKMinto(MammillaryPK):
-    """Minto et al. 1997 with its James lean-body-mass covariate."""
+class RemifentanilPKEleveld(MammillaryPK):
+    """Eleveld 2017 arterial PK, SEF effect site, and Olofsen 2010 respiratory site."""
 
     def __init__(self, patient: Patient):
-        age, lbm = patient.age, patient.james_lbm()
+        age, weight = patient.age, patient.weight
+        size = _eleveld_ffm(age, weight, patient.height, patient.sex == "male") / _eleveld_ffm(35.0, 70.0, 170.0, True)
+        aging_fast = math.exp(-0.00554 * (age - 35.0))
+        aging_slow = math.exp(-0.00327 * (age - 35.0))
+        sex_factor = 1.0
+        if patient.sex == "female":
+            sex_factor += 0.470 * _sigmoid(age, 12.0, 6.0) * (1.0 - _sigmoid(age, 45.0, 6.0))
+        v2 = 8.82 * size * aging_slow * sex_factor
+        v3 = 5.03 * size * math.exp(-0.0315 * (age - 35.0) - 0.0260 * (weight - 70.0))
         super().__init__(
-            v1=max(1.0, 5.1 - 0.0201 * (age - 40) + 0.072 * (lbm - 55)),
-            cl1=max(0.01, 2.6 - 0.0162 * (age - 40) + 0.0191 * (lbm - 55)),
-            v2=max(1.0, 9.82 - 0.0811 * (age - 40) + 0.108 * (lbm - 55)),
-            cl2=max(0.01, 2.05 - 0.0301 * (age - 40)),
-            v3=5.42,
-            cl3=max(0.005, 0.076 - 0.00113 * (age - 40)),
-            ke0=max(0.01, 0.595 - 0.007 * (age - 40)),
+            v1=5.81 * size * aging_fast,
+            v2=v2,
+            v3=v3,
+            cl1=2.58 * size**0.75 * _sigmoid(weight, 2.88, 2.0) / _sigmoid(70.0, 2.88, 2.0) * sex_factor * aging_slow,
+            cl2=1.72 * (v2 / 8.82)**0.75 * aging_fast * sex_factor,
+            cl3=0.124 * (v3 / 5.03)**0.75 * aging_fast,
+            ke0=1.09 * math.exp(-0.0289 * (age - 35.0)),
+            additional_effect_sites=(("ce_resp", math.log(2.0) / 0.53),),
             **_NO_CO_COVARIATE,
         )
 
@@ -429,63 +436,54 @@ class RocuroniumPK(MammillaryPK):
 # Vasoactive drugs -------------------------------------------------------------
 
 class NorepinephrinePK(MammillaryPK):
-    """Beloeil 2005 or Li 2024 PK; Li includes secretion and propofol-dependent clearance."""
+    """Li 2024 arterial PK with secretion and propofol-dependent clearance.
+
+    The clinical effect-site rate includes circulation and response timing.
+    """
 
     # Li et al. 2024: clearance multiplier exp(theta * Cp / 100), about 12% lower at 3.5 µg/mL.
     PROPOFOL_CL_THETA = -3.57
 
-    def __init__(self, patient: Patient, model: str = "Beloeil"):
+    def __init__(self, patient: Patient):
         w, age = patient.weight, patient.age
-        self.model = model
-        self.endogenous_ug_min = 0.0
-        if model == "Beloeil":
-            # CL = 59.6 / SAPS II with SAPS II = 30 (moderate severity).
-            params = {"v1": 8.840, "cl1": 59.6 / 30.0}
-        elif model == "Li":
-            params = {
-                "v1": 2.4 * (w / 70),
-                # Li 2024 Eq. 2 and Table 3: age effect theta = -0.344 per 100 years.
-                "cl1": 2.1 * np.exp(-0.344 / 100 * (age - 35)) * (w / 70) ** 0.75,
-                "v2": 3.6 * (w / 70),
-                "cl2": 0.6 * (w / 70) ** 0.75,
-            }
-            self.endogenous_ug_min = 0.4977 * (w / 70) ** 0.75
-        else:
-            raise ValueError(f"Unsupported norepinephrine PK model: {model!r}")
-        super().__init__(ke0=0.4, **params)
-        endogenous_conc = self.endogenous_ug_min / self.cl1
+        self.endogenous_ug_min = 0.4977 * (w / 70) ** 0.75
+        super().__init__(
+            v1=2.4 * (w / 70),
+            # Li 2024 Eq. 2: the age covariate is centered on 35 years.
+            cl1=2.1 * math.exp(-0.344 / 100 * (age - 35)) * (w / 70) ** 0.75,
+            v2=3.6 * (w / 70),
+            cl2=0.6 * (w / 70) ** 0.75,
+            ke0=0.4,
+            basal_input_rate=self.endogenous_ug_min / 60.0,
+            **_NO_CO_COVARIATE,
+        )
+        self.equilibrate_endogenous()
+
+    def equilibrate_endogenous(self) -> None:
+        """Seed secretion without an exogenous infusion at the current clearance."""
+        endogenous_conc = self.endogenous_ug_min / self.elimination_clearance
         self.set_state_vector([endogenous_conc] * len(self.state_fields))
 
+    def update_propofol(self, propofol_conc_ug_ml: float) -> None:
+        """Set the clearance covariate used by both integration and prediction."""
+        self.cl1_scale = math.exp(self.PROPOFOL_CL_THETA * max(0.0, propofol_conc_ug_ml) / 100.0)
+
     def step(self, dt_sec: float, infusion_rate_ug_sec: float, propofol_conc_ug_ml: float = 0.0) -> PKState:
-        cl1_scale = 1.0
-        if self.model == "Li":
-            cl1_scale = math.exp(self.PROPOFOL_CL_THETA * max(0.0, propofol_conc_ug_ml) / 100.0)
-        return super().step(dt_sec, infusion_rate_ug_sec + self.endogenous_ug_min / 60.0, cl1_scale)
+        self.update_propofol(propofol_conc_ug_ml)
+        return super().step(dt_sec, infusion_rate_ug_sec, self.cl1_scale)
 
 
 class EpinephrinePK(MammillaryPK):
     """Exogenous epinephrine, in ng/mL above the patient's endogenous baseline.
 
-    HealthyAdult uses arterial infusion clearance (Ensinger 1992) with a
-    calibrated mixing volume. Abboud uses adult septic-shock parameters at
-    SAPS II 50.
+    Arterial infusion clearance is from Ensinger 1992. Mixing volume and
+    effect-site timing are calibrated against adult infusion and bolus data.
     """
 
-    def __init__(self, patient: Patient, model: str = "HealthyAdult"):
+    def __init__(self, patient: Patient):
         w = patient.weight
-        self.model = model
-        if model == "HealthyAdult":
-            # Ensinger: 0.2 mcg/kg/min / (4.349 - 0.053) ng/mL
-            # gives arterial clearance about 0.046 L/kg/min.
-            v1, cl1 = 0.035 * w, 0.046 * w
-        elif model == "Abboud":
-            # CL = 127 (BW/70)^0.60 (SAPS II/50)^-0.67 L/h.
-            v1, cl1 = 7.9, 127.0 * (w / 70.0) ** 0.60 / 60.0
-        else:
-            raise ValueError(f"Unsupported epinephrine PK model: {model!r}")
-        # ke0 is calibrated. Clearance does not scale with simulated CO because
-        # the infusion data fix the dose-concentration relationship.
-        super().__init__(v1=v1, cl1=cl1, ke0=2.2, cl1_co_exponent=0.0)
+        # Ensinger: 0.2 mcg/kg/min / (4.349 - 0.053) ng/mL.
+        super().__init__(v1=0.035 * w, cl1=0.046 * w, ke0=2.2, **_NO_CO_COVARIATE)
 
 
 class PhenylephrinePK(MammillaryPK):

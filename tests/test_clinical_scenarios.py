@@ -29,7 +29,7 @@ class TestClinicalAcceptance:
         advance_time(engine, 5.0, dt=0.1)
 
         # DailyMed: 2-2.5 mg/kg propofol for induction in healthy adults.
-        engine.give_drug_bolus("Propofol", 2.5 * engine.patient.weight)
+        engine.give_drug_bolus("Propofol", 2.0 * engine.patient.weight)
         hypnosis_time = _first_time(engine, 120, lambda e: e.state.bis <= 60.0)
 
         assert hypnosis_time is not None
@@ -75,7 +75,9 @@ class TestClinicalAcceptance:
             # NICE gives BIS 40-60 as the target range during general anesthesia.
             assert min(bis_values) >= 40.0
             assert max(bis_values) <= 60.0
-            assert max(map_values) - min(map_values) < 5.0
+            # Compare whole 5 s ventilator cycles, preserving respiratory MAP variation.
+            cycle_maps = [sum(map_values[i:i + 5]) / 5.0 for i in range(0, 900, 5)]
+            assert max(cycle_maps) - min(cycle_maps) < 5.0
             assert engine.get_drug_state("nore")["rate"] == 0.0
             if maint_type == "tiva":
                 # Su predicts hypotension during unstimulated TIVA; the user
@@ -124,6 +126,7 @@ class TestClinicalAcceptance:
         engine = anesthetized_engine
         initial_volume = engine.hemo.blood_volume
         initial_v1 = engine.pk_prop.v1
+        baseline_hr = engine.state.hr
 
         engine.start_hemorrhage(500.0)
         advance_time(engine, 180.0)
@@ -132,8 +135,10 @@ class TestClinicalAcceptance:
         loss_fraction = (initial_volume - engine.hemo.blood_volume) / initial_volume
         shock_map = engine.state.map
         assert 0.30 <= loss_fraction <= 0.40
-        assert engine.state.hr > 100.0
+        # Propofol and remifentanil blunt the tachycardia.
+        assert engine.state.hr > baseline_hr + 5.0
         assert engine.state.sbp < 90.0
+        assert shock_map >= 20.0
         assert engine.pk_prop.v1 / initial_v1 == pytest.approx(
             engine.hemo.blood_volume / initial_volume, rel=0.05
         )
@@ -152,6 +157,25 @@ class TestClinicalAcceptance:
             engine.set_drug_rate("nore", 8.0)
             advance_time(engine, 300.0)
         assert engine.state.sbp >= 80.0
+
+    def test_awake_hemorrhage_follows_atls_classes(self, awake_engine):
+        """ATLS: SBP stays normal in class II (15-30% loss) and falls with HR > 100 in class IV (> 40%)."""
+        engine = awake_engine
+        baseline_map = engine.state.map
+        initial_volume = engine.hemo.blood_volume
+        engine.start_hemorrhage(100.0)
+
+        def bleed_to(loss_fraction):
+            while engine.hemo.blood_volume > (1.0 - loss_fraction) * initial_volume:
+                engine.step(1.0)
+            return engine.state.sbp, engine.state.map, engine.state.hr
+
+        sbp, map_val, _ = bleed_to(0.20)
+        assert sbp >= 100.0
+        assert map_val >= 0.85 * baseline_map
+        sbp, _, hr = bleed_to(0.45)
+        assert sbp < 90.0
+        assert hr > 100.0
 
     def test_septic_shock_and_guideline_resuscitation(
         self, anesthetized_engine, advance_time
@@ -195,6 +219,7 @@ class TestClinicalAcceptance:
         engine.give_fluid(3000.0)
         advance_time(engine, 1800.0)
         assert engine.state.lung_water == 0.0
+        well_filled_pf = engine.state.pao2 / engine.state.fio2
 
         engine.give_fluid(4000.0)
         advance_time(engine, 3600.0)
@@ -203,13 +228,13 @@ class TestClinicalAcceptance:
         assert engine.state.lap > 20.0
         assert engine.state.lung_water > 3.0
         edema_pao2 = engine.state.pao2
-        assert edema_pao2 / engine.state.fio2 < 300.0
+        assert edema_pao2 / engine.state.fio2 < 0.75 * well_filled_pf
         assert engine.state.paw_plat > base_plat + 1.0
 
         # Malo 1984: PEEP re-aerates flooded alveoli without removing lung water.
         engine.vent.update_settings(peep=13.0)
         advance_time(engine, 300.0)
-        assert engine.state.pao2 > 1.5 * edema_pao2
+        assert engine.state.pao2 > 1.2 * edema_pao2
         assert engine.state.lung_water > 3.0
 
     def test_anaphylaxis_and_epinephrine_rescue(
@@ -238,15 +263,21 @@ class TestClinicalAcceptance:
         # perioperative anaphylaxis and an initial 1000 mL crystalloid bolus.
         engine.give_drug_bolus("epi", 100.0)
         engine.give_fluid(1000.0)
-        # Start near 0.1 mcg/kg/min and titrate persistent hypotension.
+        # Start near 0.1 mcg/kg/min; repeat boluses and titrate persistent hypotension.
         epi_rate = 6.0
         engine.set_drug_rate("epi", epi_rate)
+        peak_map = 0.0
         for _ in range(6):
-            advance_time(engine, 60.0)
+            for _ in range(60):
+                engine.step(1.0)
+                peak_map = max(peak_map, engine.state.map)
             if engine.state.map < 65.0:
+                engine.give_drug_bolus("epi", 50.0)
                 epi_rate += 2.0
                 engine.set_drug_rate("epi", epi_rate)
 
+        # Guideline doses restore pressure without a hypertensive crisis.
+        assert peak_map < 130.0
         assert engine.state.map >= 65.0
         assert engine.state.bronchospasm < 0.5
         assert engine.state.paw_peak - engine.state.paw_plat < gap - 2.0

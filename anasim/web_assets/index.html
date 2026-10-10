@@ -73,6 +73,8 @@
 
         <fieldset id="initial-state">
           <legend>Initial state</legend>
+          <label class="choice" title="Opioid-containing anesthesia for this session. Maintenance starts include opioids. This setting stays fixed when infusions start or stop.">
+            <input type="checkbox" name="concomitant_opioids" checked> Opioid-containing anesthesia</label>
           <label class="choice"><input type="radio" name="mode" value="awake"> Awake before induction</label>
           <label class="choice"><input type="radio" name="mode" value="steady_state" checked> Anesthetized maintenance</label>
           <label class="row">Maintenance technique
@@ -92,17 +94,6 @@
         </fieldset>
       </div>
     </div>
-
-    <details class="models">
-      <summary>Advanced model selection</summary>
-      <div class="models-grid">
-        <label class="row">Propofol PK <select name="pk_model_propofol"></select></label>
-        <label class="row">BIS model <select name="bis_model"></select></label>
-        <label class="row">Norepinephrine PK <select name="pk_model_nore"></select></label>
-        <label class="row">LOC model <select name="loc_model"></select></label>
-        <label class="row">Epinephrine PK <select name="pk_model_epi"></select></label>
-      </div>
-    </details>
 
     <p id="setup-error" class="setup-error" role="alert" hidden></p>
 

@@ -10,8 +10,7 @@ from anasim.patient.pk_models import (
     MilrinonePK,
     NorepinephrinePK,
     PropofolPKEleveld,
-    PropofolPKMarsh,
-    RemifentanilPKMinto,
+    RemifentanilPKEleveld,
     RocuroniumPK,
 )
 
@@ -38,7 +37,7 @@ def _first_second(trace, condition, start=0):
     return start + int(hits[0]) if hits.size else None
 
 
-@pytest.mark.parametrize("model_type", [EpinephrinePK, RemifentanilPKMinto])
+@pytest.mark.parametrize("model_type", [EpinephrinePK, RemifentanilPKEleveld])
 def test_bolus_pk_with_reduced_volume_and_large_steps(patient, model_type):
     model = model_type(patient)
     model.update_hemodynamics(0.2, 0.5)
@@ -50,7 +49,7 @@ def test_bolus_pk_with_reduced_volume_and_large_steps(patient, model_type):
 
 
 def test_eleveld_reference_adult_matches_publication():
-    model = PropofolPKEleveld(Patient(age=35, weight=70, height=170, sex="male"))
+    model = PropofolPKEleveld(Patient(age=35, weight=70, height=170, sex="male"), concomitant_opioids=False)
 
     assert model.v1 == pytest.approx(6.283, abs=0.02)
     assert model.v2 == pytest.approx(25.501, abs=0.05)
@@ -65,7 +64,7 @@ def test_propofol_half_time_is_context_sensitive(patient):
     """Hughes 1992: propofol CSHT is 10-40 min after 2 h and rises with duration."""
 
     def csht(hours):
-        model = PropofolPKMarsh(patient)
+        model = PropofolPKEleveld(patient)
         _infuse(model, int(hours * 3600), 10.0 * patient.weight / 3600.0)
         return model.simulate_decay(target_fraction=0.5, max_seconds=3600)
 
@@ -76,28 +75,38 @@ def test_propofol_half_time_is_context_sensitive(patient):
 
 def test_remifentanil_half_time_is_context_insensitive(patient):
     """Egan 1993; Kapila 1995: remifentanil CSHT stays near 3-5 min after 4 h."""
-    model = RemifentanilPKMinto(patient)
+    model = RemifentanilPKEleveld(patient)
     _infuse(model, 4 * 3600, 0.2 * patient.weight / 60.0)
     assert model.simulate_decay(target_fraction=0.5, max_seconds=1200) < 9
 
 
-def test_minto_manual_infusion_matches_label_concentrations(patient):
-    """Remifentanil SmPC Table 6: 0.1 and 0.25 mcg/kg/min give 2.6 and 6.3 ng/mL.
+def test_remifentanil_eleveld_reference_adult_matches_publication():
+    """Eleveld 2017 Table 3, reference 35-year-old 70-kg 170-cm male."""
+    model = RemifentanilPKEleveld(Patient(age=35, weight=70, height=170, sex="male"))
+    assert (model.v1, model.v2, model.v3) == pytest.approx((5.81, 8.82, 5.03))
+    assert (model.cl1, model.cl2, model.cl3) == pytest.approx((2.58, 1.72, 0.124))
+    assert model.ke0 == pytest.approx(1.09)
+    _infuse(model, 4 * 3600, 0.1 * 70 / 60.0)
+    assert model.state.c1 == pytest.approx(7.0 / 2.58, rel=0.01)
 
-    The label rounds predictions; allow 10% for its tabulation and the age/LBM
-    equations.
-    """
-    for rate, expected in ((0.1, 2.6), (0.25, 6.3)):
-        model = RemifentanilPKMinto(patient)
-        _infuse(model, 4 * 3600, rate * patient.weight / 60.0)
-        assert model.state.c1 == pytest.approx(expected, rel=0.1)
+
+def test_propofol_opioid_covariate_matches_nonmem():
+    """Eleveld 2018 supplied control stream, reference male with opioids."""
+    patient = Patient(age=35, weight=70, height=170, sex="male")
+    model = PropofolPKEleveld(patient)
+    assert model.v3 == pytest.approx(168.19, abs=0.05)
+    assert model.cl1 == pytest.approx(1.6193, abs=0.001)
+    assert model.cl3 == pytest.approx(0.7713, abs=0.002)
+    no_opioid = PropofolPKEleveld(patient, concomitant_opioids=False)
+    assert model.v1 == no_opioid.v1 and model.v2 == no_opioid.v2
+    assert model.ke0 == no_opioid.ke0
 
 
 def test_propofol_slows_li_norepinephrine_clearance(patient):
     """Li 2024: propofol plasma concentration is a covariate on clearance."""
     concentrations = []
     for propofol_cp in (0.0, 4.0):
-        model = NorepinephrinePK(patient, model="Li")
+        model = NorepinephrinePK(patient)
         _infuse(model, 600, 0.1 * patient.weight / 60.0, propofol_conc_ug_ml=propofol_cp)
         concentrations.append(model.state.c1)
     assert concentrations[1] > concentrations[0]
@@ -112,8 +121,8 @@ def test_organ_impairment_scales_pk():
         age=40, weight=70, height=170, sex="male", renal_function=0.4, hepatic_function=0.5
     )
 
-    assert PropofolPKMarsh(both).v1 > PropofolPKMarsh(normal).v1 * 1.5
-    assert PropofolPKMarsh(renal).k10 == pytest.approx(PropofolPKMarsh(normal).k10)
+    assert PropofolPKEleveld(both).v1 > PropofolPKEleveld(normal).v1 * 1.5
+    assert PropofolPKEleveld(renal).k10 == pytest.approx(PropofolPKEleveld(normal).k10)
     assert RocuroniumPK(both).v1 > RocuroniumPK(normal).v1 * 1.3
     assert RocuroniumPK(both).k10 < RocuroniumPK(normal).k10 * 0.7
     assert MilrinonePK(renal).k10 < MilrinonePK(normal).k10 * 0.6

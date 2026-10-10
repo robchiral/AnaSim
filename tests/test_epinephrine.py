@@ -59,7 +59,7 @@ def _bolus_response(dose, *, dt=0.2, mac=0.0, baroreflex=True):
         config = replace(config, fb=0.0, baro_gain_brady=0.0, baro_gain_tachy=0.0)
     model = HemodynamicModel(patient, config)
     # Fixed propofol Cp 3 approximates the trial's propofol/N2O anesthetic.
-    model.state = model.calculate_steady_state(3.0, 0.0, 0.0, mac_sevo=mac)
+    model.initialize_steady_state(3.0, 0.0, 0.0, mac_sevo=mac)
     base = _step(model, dt=0.0, propofol=3.0, mac=mac)
     cycle = CardiacCycle(np.random.default_rng(0))
     renderer = ArterialWaveformRenderer(age=patient.age)
@@ -70,12 +70,13 @@ def _bolus_response(dose, *, dt=0.2, mac=0.0, baroreflex=True):
     for _ in range(round(300 / dt)):
         state = _step(model, pk.step(dt, 0.0).ce, dt=dt, propofol=3.0, mac=mac)
         pressure = renderer.step(cycle.step(dt, state.hr, state.rhythm_type), state.map, state.sv)
-        rows.append((state.hr - base.hr, pressure.systolic - baseline_pressure.systolic))
+        rows.append((state.hr - base.hr, pressure.systolic - baseline_pressure.systolic, state.map))
     response = np.asarray(rows)
-    hr_peak, sbp_peak = response.max(axis=0)
-    hr_time, sbp_time = (response.argmax(axis=0) + 1) * dt
+    hr_peak, sbp_peak = response[:, :2].max(axis=0)
+    hr_time, sbp_time = (response[:, :2].argmax(axis=0) + 1) * dt
     late_hr = response[round(160 / dt):, 0].min()
-    return np.array([hr_peak, sbp_peak, hr_time, sbp_time, late_hr, response[-1, 0]])
+    return np.array([hr_peak, sbp_peak, hr_time, sbp_time, late_hr, response[-1, 0],
+                     response[:, 2].min() - base.map, response[:, 2].max()])
 
 
 @pytest.mark.parametrize(
@@ -101,13 +102,20 @@ def test_bolus_timing_converges_and_late_dip_requires_feedback():
     assert _bolus_response(10, baroreflex=False)[4] > fine[4] + 1.0
 
 
+def test_bolus_has_no_large_initial_pressure_dip_or_large_dose_clipping():
+    assert _bolus_response(10)[6] > -5.0
+    peaks = [_bolus_response(dose)[7] for dose in (15, 50, 100, 200)]
+    assert all(a < b for a, b in zip(peaks, peaks[1:]))
+    assert max(peaks) < 280.0  # Leave headroom below the 300 mmHg safety cap.
+
+
 def test_volatile_blunts_bolus_chronotropy():
     assert _bolus_response(10, mac=1.0)[0] < 0.85 * _bolus_response(10)[0]
 
 
-@pytest.mark.parametrize("model_name", ["HealthyAdult", "Abboud"])
-def test_pk_infusion_mass_balance_and_washout(model_name):
-    pk = EpinephrinePK(Patient(), model=model_name)
+def test_pk_infusion_mass_balance_and_washout():
+    pk = EpinephrinePK(Patient())
+    assert pk.cl1_base == pytest.approx(0.046 * 70)  # Ensinger arterial clearance, L/min.
     # Clearance must not scale with the resulting rise in cardiac output.
     pk.update_hemodynamics(1.0, 1.6)
     rate = 0.2 * 70 / 60  # mcg/kg/min -> mcg/s

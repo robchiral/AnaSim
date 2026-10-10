@@ -14,7 +14,7 @@ from anasim.core.drug_registry import get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
 from anasim.core.recorder import RecordingError
-from anasim.core.state import SUPPORTED_MODEL_OPTIONS, AirwayType, SimulationConfig
+from anasim.core.state import AirwayType, SimulationConfig
 from anasim.machine.ventilator import MODES
 from anasim.patient import domain
 from anasim.patient.patient import Patient
@@ -31,18 +31,13 @@ PATIENT_FIELDS = (
     "hepatic_function",
 )
 CONFIG_FIELDS = (
-    "pk_model_propofol",
-    "pk_model_nore",
-    "pk_model_epi",
-    "bis_model",
-    "loc_model",
+    "concomitant_opioids",
     "mode",
     "maint_type",
     "tci_enabled",
     "end_on_cardiac_arrest",
     "arterial_line_enabled",
 )
-MODEL_FIELDS = ("pk_model_propofol", "pk_model_nore", "pk_model_epi", "bis_model", "loc_model")
 
 SPEED_RANGE = (0.1, 50.0)
 MAX_REAL_DT_S = 0.2
@@ -59,17 +54,12 @@ SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
 
 def catalog() -> str:
     """Return the choices the setup screen offers, as JSON."""
-    defaults = SimulationConfig()
     return json.dumps({
         "version": __version__,
         "scenarios": [
             {"id": spec.id, "label": spec.label, "mode": spec.start_mode, "maint_type": spec.maint_type}
             for spec in SCENARIO_REGISTRY
         ],
-        "models": {
-            name: {"options": sorted(SUPPORTED_MODEL_OPTIONS[name]), "default": getattr(defaults, name)}
-            for name in MODEL_FIELDS
-        },
         "ranges": {
             "age": domain.AGE_RANGE_YEARS,
             "weight": domain.WEIGHT_RANGE_KG,

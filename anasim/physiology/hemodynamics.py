@@ -1,5 +1,4 @@
 import math
-from copy import copy
 
 from scipy.optimize import root_scalar
 
@@ -59,6 +58,7 @@ class HemodynamicModel:
         self.smoothed_epi_hr = 0.0
         self._epi_pressor_ce = 0.0
         self._epi_chrono_effect = 0.0
+        self._epi_beta2_effect = 0.0
         self.smoothed_chemo_hr = 0.0
         self.smoothed_baro_hr = 0.0
         self._baro_setpoint = patient.baseline_map
@@ -86,6 +86,7 @@ class HemodynamicModel:
         self.hb_conc = self.baseline_hb
         # Hemorrhage depletes stressed volume first, lowering MCFP and preload.
         self.unstressed_volume = self.blood_volume * self.unstressed_volume_fraction
+        self._venous_tone = 1.0  # Share of reflex venoconstriction left after alpha block
         self.cv = self.venous_compliance  # mL/mmHg
         # Guyton MCFP = stressed volume / venous compliance, about 10-15 mmHg.
         stressed_vol_0 = max(0.0, self.blood_volume - self.unstressed_volume)
@@ -154,12 +155,6 @@ class HemodynamicModel:
             self._rhythm_type = value
             self.invalidate_state_cache()
 
-    def set_nore_pd(self, c50: float, emax: float = 98.7, gamma: float = 1.8):
-        self.nore_c50 = c50
-        self.nore_emax_map = emax
-        self.nore_gamma = gamma
-        self.invalidate_state_cache()
-
     def add_volume(
         self,
         amount_ml: float,
@@ -223,10 +218,16 @@ class HemodynamicModel:
             self.hb_conc = self.hb_mass / (self.blood_volume / 100.0)
 
     def _calc_stressed_volume(self, sepsis_sev: float | None = None) -> float:
-        """Stressed volume after sepsis shifts part of baseline volume to unstressed."""
+        """Stressed volume after sepsis pooling and reflex venoconstriction.
+
+        Sepsis shifts part of baseline volume to unstressed. Venoconstriction
+        returns part of any blood-volume deficit to the stressed pool.
+        """
         sev = clamp01(self.sepsis_severity) if sepsis_sev is None else sepsis_sev
         pooling = self.sepsis_pooling_fraction * self.blood_volume_0 * sev
-        return max(0.0, self.blood_volume - self.unstressed_volume - pooling)
+        deficit = max(0.0, self.blood_volume_0 - self.blood_volume)
+        recruited = self.venous_recruitment_fraction * deficit * self._venous_tone
+        return max(0.0, self.blood_volume - self.unstressed_volume + recruited - pooling)
 
     def get_hematocrit(self) -> float:
         if self.baseline_hb <= 0:
@@ -296,7 +297,7 @@ class HemodynamicModel:
         return hr_mult, tpr_mult
 
     def _calc_epi_effects(
-        self, ce_epi: float, ce_pressor: float, beta1_dr: float = 1.0, beta2_dr: float = 1.0, alpha_dr: float = 1.0
+        self, ce_epi: float, ce_pressor: float, beta1_dr: float = 1.0, alpha_dr: float = 1.0
     ) -> tuple[float, float, float]:
         """Return direct chronotropy, SV factor, and baseline-relative SVR factor.
 
@@ -308,11 +309,10 @@ class HemodynamicModel:
         delta_hr = self.epi_emax_hr * hill_function(ce_epi / beta1_dr, self.epi_c50_hr, self.epi_gamma_hr)
         delta_hr *= 1.0 - self.epi_volatile_hr_depression * clamp01(self.ce_sevo)
         sv_factor = 1.0 + self.epi_emax_sv * hill_function(ce_pressor / beta1_dr, self.epi_c50_sv, 1.0)
-        beta2 = self.epi_emax_svr_beta * hill_function(ce_epi / beta2_dr, self.epi_c50_beta2, 1.0)
         alpha = self.epi_emax_svr_alpha * hill_function(
             ce_pressor / alpha_dr, self.epi_c50_alpha, self.epi_gamma_alpha
         )
-        svr_factor = 1.0 + beta2 * self.tpr / self.base_tpr + alpha
+        svr_factor = 1.0 + self._epi_beta2_effect * self.tpr / self.base_tpr + alpha
         return delta_hr, sv_factor, max(0.2, svr_factor)
 
     def _calc_phenyl_effects(self, ce_phenyl: float) -> float:
@@ -354,12 +354,14 @@ class HemodynamicModel:
         """Return the Frank-Starling factor after venous return and pulmonary transit.
 
         Venous return follows MCFP - RAP, is attenuated by PVR, and reaches the
-        left heart through a first-order transit delay.
+        left heart through a first-order transit delay. Below baseline filling,
+        RAP falls in proportion to MCFP, the intersection with a cardiac
+        function curve that is linear at low filling pressures.
         """
         stressed_vol = self._calc_stressed_volume(sepsis_sev)
         mcfp = stressed_vol / self.cv if self.cv > 0 else self.mcfp_0
 
-        rap = self.rap_baseline
+        rap = self.rap_baseline * min(1.0, mcfp / self.mcfp_0)
         delta_p = max(0.0, mcfp - rap)
         vr_flow_l_min = delta_p / max(0.1, self.venous_return_resistance)
         vr_flow_factor = vr_flow_l_min * self._inv_base_co_l_min
@@ -389,19 +391,23 @@ class HemodynamicModel:
 
         return f_frank_starling
 
-    def _calc_nore_effects(self, ce_nore: float, beta1_dr: float = 1.0, alpha_dr: float = 1.0) -> tuple:
-        """Return (delta HR, SV factor, SVR factor); alpha-1 constriction dominates.
+    def _calc_nore_effects(
+        self, ce_nore: float, beta1_dr: float = 1.0, alpha_dr: float = 1.0,
+        anesthetic_depth: float = 0.0,
+    ) -> tuple:
+        """Return direct chronotropy, stroke-volume factor, and vascular-resistance factor.
 
         Reflex bradycardia comes from the baroreflex.
         """
         if ce_nore <= 0:
             return 0.0, 1.0, 1.0
-        beta_hill = hill_function(ce_nore / beta1_dr, self.nore_c50, self.nore_gamma)
+        beta_hill = hill_function(ce_nore / beta1_dr, self.nore_c50, 1.0)
         delta_hr = self.nore_emax_hr * beta_hill
-        sv_factor = 1.0 + self.nore_emax_sv * beta_hill
-        # Emax is a MAP rise; express it relative to an 80 mmHg baseline.
-        alpha_hill = hill_function(ce_nore / alpha_dr, self.nore_c50, self.nore_gamma)
-        svr_factor = 1.0 + (self.nore_emax_map * alpha_hill) / 80.0
+        sv_gain = self.nore_emax_sv + self.nore_anesthetic_sv_gain * anesthetic_depth
+        sv_factor = 1.0 + sv_gain * beta_hill
+        alpha_hill = hill_function(ce_nore / alpha_dr, self.nore_c50, 1.0)
+        alpha_gain = 1.0 + self.nore_anesthetic_alpha_gain * anesthetic_depth
+        svr_factor = 1.0 + self.nore_emax_svr * alpha_gain * alpha_hill
         return delta_hr, sv_factor, svr_factor
 
     def _calc_anesthetic_effects(self, cp_prop: float, cp_remi: float, ce_sevo: float) -> tuple:
@@ -550,22 +556,6 @@ class HemodynamicModel:
             return self._cached_state
         return self._compute_state()
 
-    @state.setter
-    def state(self, new_state: HemoState):
-        self._cached_state = None
-
-        if not isinstance(new_state, HemoStateExtended):
-            raise TypeError("Hemodynamic state must be HemoStateExtended")
-        self.tpr = new_state.tpr
-        self.sv_star = new_state.sv_star
-        self.hr_star = new_state.hr_star
-        self.tde_sv = new_state.tde_sv
-        self.tde_hr = new_state.tde_hr
-        self.ce_sevo = new_state.ce_sevo
-        self.rhythm_type = new_state.rhythm_type
-        self._prev_map = self._baro_setpoint = new_state.map
-        self.smoothed_baro_hr = 0.0
-
     def _calc_hr(self):
         return self.hr_star + self.tde_hr + self.smoothed_chemo_hr + self.smoothed_baro_hr + self.smoothed_epi_hr
 
@@ -623,6 +613,13 @@ class HemodynamicModel:
         dist_hr *= beta_response
         dist_sv *= beta_response
         dist_svr *= alpha_response
+        self._venous_tone = alpha_response
+        # Severe anaphylaxis blunts adrenergic agonists; vasopressin acts on V1 receptors.
+        agonist_shift = 1.0 + self.anaphylaxis_agonist_shift * anaph_sev
+        ce_epi /= agonist_shift
+        ce_nore /= agonist_shift
+        ce_phenyl /= agonist_shift
+        ce_dobu /= agonist_shift
 
         # Urine output, scaled by renal perfusion and function.
         map_prev = self._prev_map
@@ -734,13 +731,21 @@ class HemodynamicModel:
         self._epi_pressor_ce += (max(0.0, ce_epi) - self._epi_pressor_ce) * (
             -math.expm1(-dt / self.epi_tau_pressor_s)
         )
+        # Vascular relaxation develops alongside the cardiac response. An
+        # instantaneous beta-2 effect otherwise produces a spurious early dip.
+        beta2_target = self.epi_emax_svr_beta * hill_function(ce_epi / beta2_dr, self.epi_c50_beta2, 1.0)
+        self._epi_beta2_effect += (beta2_target - self._epi_beta2_effect) * (
+            -math.expm1(-dt / self.epi_tau_beta2_s)
+        )
         epi_delta_hr, epi_sv_factor, epi_svr_factor = self._calc_epi_effects(
-            ce_epi, self._epi_pressor_ce, beta1_dr, beta2_dr, alpha_dr
+            ce_epi, self._epi_pressor_ce, beta1_dr, alpha_dr
         )
         self._epi_chrono_effect += (epi_delta_hr - self._epi_chrono_effect) * (
             -math.expm1(-dt / self.epi_tau_hr_s)
         )
-        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(ce_nore, beta1_dr, alpha_dr)
+        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(
+            ce_nore, beta1_dr, alpha_dr, anesthetic_depth,
+        )
         phenyl_svr_factor = self._calc_phenyl_effects(ce_phenyl / alpha_dr)
         vaso_delta_hr, _, vaso_svr_factor = self._calc_hr_sv_svr_effects(
             ce_vaso, self.vaso_c50, self.vaso_gamma, self.vaso_emax_hr, 0.0, self.vaso_emax_svr
@@ -849,21 +854,16 @@ class HemodynamicModel:
         self._prev_map = computed_state.map
         return computed_state
 
-    def calculate_steady_state(self, cp_prop: float, cp_remi: float, ce_nore: float, mac_sevo: float = 0.0) -> HemoState:
-        """Return the steady state for constant plasma propofol and remifentanil.
-
-        At steady state the turnover equations reduce to one unknown, RMAP,
-        solved as a root of Z_calc(Z) - Z on a copy of the model.
-        """
-        return copy(self)._calculate_steady_state(cp_prop, cp_remi, ce_nore, mac_sevo)
-
-    def _calculate_steady_state(self, cp_prop: float, cp_remi: float, ce_nore: float, mac_sevo: float) -> HemoState:
+    def initialize_steady_state(self, cp_prop: float, cp_remi: float, ce_nore: float, mac_sevo: float = 0.0) -> HemoState:
+        """Seed turnover, drug effects, and the baroreflex at fixed concentrations."""
         cn = max(0.0, ce_nore)
         (total_eff_tpr, total_eff_sv, total_eff_hr_prod,
          eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(
             cp_prop, cp_remi, mac_sevo
         )
-        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(cn)
+        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(
+            cn, anesthetic_depth=clamp01(mac_sevo + cp_prop / 4.0),
+        )
 
         def residual(z):
             z_fb = z ** self.fb
@@ -893,9 +893,12 @@ class HemodynamicModel:
         self.tde_sv = 0
         self.ce_sevo = mac_sevo
 
-        self._epi_pressor_ce = self._epi_chrono_effect = 0.0
+        self._epi_pressor_ce = self._epi_chrono_effect = self._epi_beta2_effect = 0.0
+        self.smoothed_chemo_hr = self.smoothed_baro_hr = 0.0
         self.smoothed_epi_hr = nore_delta_hr
         self.vasopressor_sv_factor = nore_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (nore_svr_factor - 1.0)
 
-        return self.step(0.0, cp_prop, cp_remi, ce_nore, -2.0, 40.0, 95.0, 0, 0, 0, mac_sevo=mac_sevo)
+        state = self.step(0.0, cp_prop, cp_remi, ce_nore, -2.0, 40.0, 95.0, 0, 0, 0, mac_sevo=mac_sevo)
+        self._prev_map = self._baro_setpoint = state.map
+        return state
