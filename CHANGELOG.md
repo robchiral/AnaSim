@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 1.5 - 2026-10-10
+
+- Corrected circuit gas balance during uptake and washout, vaporizer delivery
+  as liquid agent runs out, and shunt mixing when venous oxygen is depleted.
+- Added pharmacokinetic (PK) substeps to preserve drug mass during larger time
+  steps. Corrected rocuronium effect-site onset and recovery and matched
+  hemodynamic pressure feedback to the circulation shown on the monitor.
+- Added VitalDB comparison scripts and saved reports for ventilation,
+  capnography, gas exchange, and positive end-expiratory pressure (PEEP).
 - Removed the unused `simulation_speed`, `pk_model_remi`, `hemo_model`, and
   `resp_model` configuration fields and the `asa` patient input. The browser
   speed control sets the real-time multiplier.
