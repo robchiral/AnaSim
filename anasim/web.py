@@ -14,12 +14,13 @@ from anasim.core.drug_registry import get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
 from anasim.core.recorder import RecordingError
-from anasim.core.state import AirwayType, SimulationConfig
+from anasim.core.state import AirwayType, SimulationConfig, WaveformSample
 from anasim.machine.ventilator import MODES
 from anasim.patient import domain
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import list_disturbance_profiles
 from anasim.scenarios import SCENARIO_REGISTRY
+from anasim.scenarios.base import Scenario
 
 PATIENT_FIELDS = (
     "age",
@@ -51,6 +52,8 @@ FLUIDS = {"crystalloid": "give_fluid", "albumin": "give_albumin", "blood": "give
 
 SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
 
+LoopPoint = tuple[float | None, float | None, float | None]  # Paw, flow, volume above breath start
+
 
 def catalog() -> str:
     """Return the choices the setup screen offers, as JSON."""
@@ -77,9 +80,7 @@ def _num(value, digits=None):
     return round(value, digits) if digits is not None else value
 
 
-def _target_label(spec) -> str | None:
-    if not spec.has_tci:
-        return None
+def _target_label(spec) -> str:
     site = spec.fixed_tci_mode.value.replace("_", " ") if spec.fixed_tci_mode else "effect site"
     return f"{site.capitalize()} target"
 
@@ -106,26 +107,26 @@ class WebSession:
         self.achieved_speed = 1.0
         self.ended = False
         self.lagging = False
-        self.notice = None
-        self._download = None
+        self.notice: str | None = None
+        self._download: dict[str, str] | None = None
         self._accumulator = 0.0
         self._last_wave_time = -math.inf
         # Loops trace the breath in progress over the last completed one.
-        self._loop_sample = None
-        self._loop_pending = []  # Flow crossing awaiting confirmation by the breath counter.
-        self._loop_breath = None
+        self._loop_sample: WaveformSample | None = None
+        self._loop_pending: list[WaveformSample] = []  # Flow crossing awaiting confirmation by the breath counter.
+        self._loop_breath: int | None = None
         self._loop_start = 0.0
         self._loop_index = 0
-        self._loop_current = []
-        self._loop_previous = None
-        self._loop_new = []
+        self._loop_current: list[LoopPoint] = []
+        self._loop_previous: tuple[int | None, list[LoopPoint]] | None = None
+        self._loop_new: list[tuple[int | None, LoopPoint]] = []
         self._loop_replay = False
         self._recordings_dir = recordings_dir or os.path.join(tempfile.gettempdir(), "anasim-recordings")
         self.retain_recordings = retain_recordings
-        self._medication_history = deque(maxlen=50)
+        self._medication_history: deque[dict] = deque(maxlen=50)
         self._medication_sequence = 0
 
-        self.scenario = None
+        self.scenario: Scenario | None = None
         self.step_index = 0
         self.step_met = False
         self.step_status = ""
@@ -160,7 +161,7 @@ class WebSession:
                     "default_bolus": spec.default_bolus,
                     "tci_unit": spec.tci_unit if engine.config.tci_enabled else None,
                     "tci_range": spec.tci_range if engine.config.tci_enabled else None,
-                    "target_label": _target_label(spec) if engine.config.tci_enabled else None,
+                    "target_label": _target_label(spec) if engine.config.tci_enabled and spec.has_tci else None,
                 }
                 for spec in engine.get_controllable_drugs()
             ],
@@ -341,7 +342,7 @@ class WebSession:
             if previous is not None and sample.time <= previous.time:
                 continue  # Replayed for the sweep
             self._loop_sample = sample
-            if self._loop_breath is None:
+            if previous is None or self._loop_breath is None:
                 self._start_loop(sample)
                 continue
             # The filtered flow crossing can precede or follow breath detection.
@@ -408,7 +409,7 @@ class WebSession:
         else:
             points = self._loop_new
         self._loop_new = []
-        out = []
+        out: list[dict] = []
         for breath, (paw, flow, volume) in points:
             if not out or out[-1]["breath"] != breath:
                 out.append({"breath": breath, "paw": [], "flow": [], "volume": []})
@@ -466,8 +467,9 @@ class WebSession:
         self.step_met = False
         self.step_status = ""
         self.step_effect_applied = False
-        if self.step_index < len(self.scenario):
-            step = self.scenario[self.step_index]
+        scenario = self.scenario
+        if scenario is not None and self.step_index < len(scenario):
+            step = scenario[self.step_index]
             self.engine.actions.begin_step(step.id, self.engine.state.time)
 
     def _update_scenario(self):
@@ -679,7 +681,7 @@ class WebSession:
             self.notice = f"{error}. The CSV may be incomplete."
         return self._take_recording(recorder)
 
-    def _take_recording(self, recorder):
+    def _take_recording(self, recorder) -> dict[str, str] | None:
         """Move a finished recording into a download; retained recordings stay on disk."""
         if self.retain_recordings:
             return None

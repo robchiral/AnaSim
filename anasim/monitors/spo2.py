@@ -41,7 +41,7 @@ class SpO2Monitor:
             raise ValueError("response_tau_s must be greater than zero")
         if self.peripheral_delay_s < 0.0:
             raise ValueError("peripheral_delay_s cannot be negative")
-        self.display_saturation = None
+        self.display_saturation: float | None = None
         self.signal_valid = True
         self._template = _PPG_TEMPLATE
         self._template_max_index = _PPG_TEMPLATE.size - 1

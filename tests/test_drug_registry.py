@@ -16,24 +16,26 @@ def engine():
 
 def test_infusion_rates_convert_the_prescribed_units(engine):
     rate_cases = (
-        ("propofol", 60000.0 / engine.patient.weight, "propofol_rate_mg_sec", 1.0),
-        ("remi", 60.0 / engine.patient.weight, "remi_rate_ug_sec", 1.0),
-        ("fentanyl", 3600.0, "fentanyl_rate_ug_sec", 1.0),
-        ("midazolam", 3.6, "midazolam_rate_ug_sec", 1.0),
-        ("ketamine", 3600.0, "ketamine_rate_mg_sec", 1.0),
-        ("lidocaine", 3600.0, "lidocaine_rate_mg_sec", 1.0),
-        ("nore", 60.0, "nore_rate_ug_sec", 1.0),
-        ("vaso", 0.06, "vaso_rate_mu_sec", 1.0),
-        ("phenyl", 60.0, "phenyl_rate_ug_sec", 1.0),
-        ("epi", 60.0, "epi_rate_ug_sec", 1.0),
-        ("dobu", 60.0, "dobu_rate_ug_sec", 1.0),
-        ("milri", 60.0, "mil_rate_ug_sec", 1.0),
-        ("esmolol", 60.0, "esmolol_rate_mg_sec", 1.0),
-        ("roc", 3600.0, "roc_rate_mg_sec", 1.0),
+        ("propofol", 60000.0 / engine.patient.weight),
+        ("remi", 60.0 / engine.patient.weight),
+        ("fentanyl", 3600.0),
+        ("midazolam", 3.6),
+        ("ketamine", 3600.0),
+        ("lidocaine", 3600.0),
+        ("nore", 60.0),
+        ("vaso", 0.06),
+        ("phenyl", 60.0),
+        ("epi", 60.0),
+        ("dobu", 60.0),
+        ("milri", 60.0),
+        ("esmolol", 60.0),
+        ("roc", 3600.0),
     )
-    for drug, user_rate, rate_attr, expected_internal in rate_cases:
+    # Each user rate is one model unit per second.
+    assert {drug for drug, _ in rate_cases} == set(engine.infusion_rates)
+    for drug, user_rate in rate_cases:
         engine.set_drug_rate(drug, user_rate)
-        assert getattr(engine, rate_attr) == pytest.approx(expected_internal)
+        assert engine.infusion_rates[drug] == pytest.approx(1.0)
         assert engine.get_drug_state(drug)["rate"] == pytest.approx(user_rate)
 
 

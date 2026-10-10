@@ -61,7 +61,7 @@ class _DriftingOscillator:
 class ECGMonitor:
     """ECG from per-rhythm Gaussian waves placed in time around each R peak."""
 
-    def __init__(self, rng: np.random.Generator = None):
+    def __init__(self, rng: np.random.Generator | None = None):
         self.rng = rng if rng is not None else np.random.default_rng()
         # VF dominant frequency is about 5 Hz; f-waves run at 350-450/min.
         self._vf_main = _DriftingOscillator(5.0, 1.5, tau_s=0.3)
@@ -69,7 +69,7 @@ class ECGMonitor:
         self._vf_envelope = _DriftingOscillator(0.4, 0.15, tau_s=2.0)
         self._f_wave = _DriftingOscillator(6.5, 1.0, tau_s=0.3)
         self._f_envelope = _DriftingOscillator(0.3, 0.1, tau_s=2.0)
-        self._rhythm = None
+        self._rhythm: RhythmType | None = None
         self._rr_s = (0.0, 0.0, 0.0)
         self._waves: list[tuple[float, float, float, float]] = []
 

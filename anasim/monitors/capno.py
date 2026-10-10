@@ -26,7 +26,7 @@ class Capnograph:
         # (volume L, PCO2 mmHg) slugs from the Y-piece inward; the column is
         # shorter than the dead space by half the phase II spread.
         self._column = deque([[max(1e-3, self.dead_space - 0.5 * self.PHASE_II_VOLUME), 0.0]])
-        self._window = deque()  # Recently exhaled gas, Y-piece end first
+        self._window: deque[list[float]] = deque()  # Recently exhaled gas, Y-piece end first
         self._window_volume = self._window_co2 = 0.0  # L and L x mmHg
         self._exhaled_alveolar = 0.0
         self._breath_volume = 0.0  # Inspired volume of the current breath, L.

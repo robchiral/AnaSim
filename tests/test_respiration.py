@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from anasim.core.state import SimulationConfig
@@ -219,7 +221,7 @@ class TestOxygenStores:
         times = []
         for loss_fraction in (0.0, 0.3):
             engine = engine_factory(start=True)
-            engine.hemo.vol_clearance = 0.0
+            engine.hemo.config = replace(engine.hemo.config, vol_clearance=0.0)
             engine.hemo.add_volume(-loss_fraction * engine.hemo.blood_volume)
             engine.set_airway_obstruction(1.0)
             while engine.state.sao2 >= 80.0 and engine.state.time < 120.0:

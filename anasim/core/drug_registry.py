@@ -56,10 +56,8 @@ class DrugSpec:
     bolus_unit: str
     default_bolus: float
     bolus_model_scale: float
-    rate_attr: str | None = None
     rate_unit: str | None = None
     internal_rate_unit: str | None = None
-    tci_attr: str | None = None
     tci_unit: str | None = None
     tci_range: tuple[float, float] | None = None
     fixed_tci_mode: TCIMode | None = None
@@ -67,25 +65,23 @@ class DrugSpec:
 
     @property
     def has_infusion(self) -> bool:
-        return self.rate_attr is not None
+        return self.rate_unit is not None
 
     @property
     def has_tci(self) -> bool:
-        return self.tci_attr is not None
+        return self.tci_unit is not None
 
 
 DRUG_REGISTRY = (
     DrugSpec(
         key="propofol",
         name="Propofol 10 mg/mL",
-        rate_attr="propofol_rate_mg_sec",
         rate_unit="mcg/kg/min",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
         default_bolus=150.0,
         bolus_model_scale=1.0,
         pk_attr="pk_prop",
-        tci_attr="tci_prop",
         generic_name="Propofol",
         tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),
@@ -96,14 +92,12 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="remi",
         name="Remifentanil 50 mcg/mL",
-        rate_attr="remi_rate_ug_sec",
         rate_unit="mcg/kg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=10.0,
         bolus_model_scale=1.0,
         pk_attr="pk_remi",
-        tci_attr="tci_remi",
         generic_name="Remifentanil",
         tci_unit="ng/mL",
         tci_range=(0.0, 10.0),
@@ -114,14 +108,12 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="fentanyl",
         name="Fentanyl 50 mcg/mL",
-        rate_attr="fentanyl_rate_ug_sec",
         rate_unit="mcg/hr",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=50.0,
         bolus_model_scale=1.0,
         pk_attr="pk_fentanyl",
-        tci_attr="tci_fentanyl",
         generic_name="Fentanyl",
         tci_unit="ng/mL",
         tci_range=(0.0, 10.0),
@@ -131,7 +123,6 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="midazolam",
         name="Midazolam 1 mg/mL",
-        rate_attr="midazolam_rate_ug_sec",
         rate_unit="mg/hr",
         internal_rate_unit="ug/sec",
         bolus_unit="mg",
@@ -152,7 +143,6 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="ketamine",
         name="Ketamine 10 mg/mL",
-        rate_attr="ketamine_rate_mg_sec",
         rate_unit="mg/hr",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
@@ -164,7 +154,6 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="lidocaine",
         name="Lidocaine 20 mg/mL",
-        rate_attr="lidocaine_rate_mg_sec",
         rate_unit="mg/hr",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
@@ -176,14 +165,12 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="nore",
         name="Norepinephrine 16 mcg/mL",
-        rate_attr="nore_rate_ug_sec",
         rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=10.0,
         bolus_model_scale=1.0,
         pk_attr="pk_nore",
-        tci_attr="tci_nore",
         generic_name="Norepinephrine",
         tci_unit="ng/mL",
         tci_range=(0.0, 30.0),
@@ -193,14 +180,12 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="vaso",
         name="Vasopressin 20 U/mL",
-        rate_attr="vaso_rate_mu_sec",
         rate_unit="U/min",
         internal_rate_unit="mU/sec",
         bolus_unit="U",
         default_bolus=1.0,
         bolus_model_scale=1000.0,
         pk_attr="pk_vaso",
-        tci_attr="tci_vaso",
         generic_name="Vasopressin",
         tci_unit="mU/L",
         tci_range=(0.0, 80.0),
@@ -214,14 +199,12 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="phenyl",
         name="Phenylephrine 100 mcg/mL",
-        rate_attr="phenyl_rate_ug_sec",
         rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=100.0,
         bolus_model_scale=1.0,
         pk_attr="pk_phenyl",
-        tci_attr="tci_phenyl",
         generic_name="Phenylephrine",
         tci_unit="ng/mL",
         tci_range=(0.0, 120.0),
@@ -231,14 +214,12 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="epi",
         name="Epinephrine 100 mcg/mL",
-        rate_attr="epi_rate_ug_sec",
         rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=10.0,
         bolus_model_scale=1.0,
         pk_attr="pk_epi",
-        tci_attr="tci_epi",
         generic_name="Epinephrine",
         tci_unit="ng/mL",
         tci_range=(0.0, 20.0),
@@ -248,14 +229,12 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="dobu",
         name="Dobutamine 1 mg/mL",
-        rate_attr="dobu_rate_ug_sec",
         rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=0.0,
         bolus_model_scale=1.0,
         pk_attr="pk_dobu",
-        tci_attr="tci_dobu",
         generic_name="Dobutamine",
         tci_unit="ng/mL",
         tci_range=(0.0, 500.0),
@@ -265,14 +244,12 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="milri",
         name="Milrinone 200 mcg/mL",
-        rate_attr="mil_rate_ug_sec",
         rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=0.0,
         bolus_model_scale=1.0,
         pk_attr="pk_mil",
-        tci_attr="tci_mil",
         generic_name="Milrinone",
         tci_unit="ng/mL",
         tci_range=(0.0, 500.0),
@@ -282,7 +259,6 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="esmolol",
         name="Esmolol 10 mg/mL",
-        rate_attr="esmolol_rate_mg_sec",
         rate_unit="mg/min",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
@@ -312,14 +288,12 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="roc",
         name="Rocuronium 10 mg/mL",
-        rate_attr="roc_rate_mg_sec",
         rate_unit="mg/hr",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
         default_bolus=50.0,
         bolus_model_scale=1.0,
         pk_attr="pk_roc",
-        tci_attr="tci_roc",
         generic_name="Rocuronium",
         tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),
@@ -354,16 +328,16 @@ def _bolus_index() -> dict[str, DrugSpec]:
     return index
 
 
-for _attribute in ("key", "rate_attr", "pk_attr", "tci_attr"):
+for _attribute in ("key", "pk_attr"):
     _ensure_unique_attribute(_attribute)
 for _spec in DRUG_REGISTRY:
     if _spec.key != _spec.key.strip().casefold():
         raise ValueError(f"Drug key must be normalized: {_spec.key!r}")
-    infusion_fields = (_spec.rate_attr, _spec.rate_unit, _spec.internal_rate_unit)
+    infusion_fields = (_spec.rate_unit, _spec.internal_rate_unit)
     if any(field is None for field in infusion_fields) != all(field is None for field in infusion_fields):
         raise ValueError(f"Incomplete infusion metadata for {_spec.key}")
     if _spec.has_tci:
-        if not _spec.has_infusion or _spec.tci_unit is None or _spec.max_rate is None:
+        if not _spec.has_infusion or _spec.max_rate is None:
             raise ValueError(f"Incomplete TCI metadata for {_spec.key}")
         if _spec.tci_range is None or _spec.tci_range[0] < 0.0 or _spec.tci_range[0] >= _spec.tci_range[1]:
             raise ValueError(f"Invalid TCI range for {_spec.key}: {_spec.tci_range!r}")
@@ -374,7 +348,6 @@ DRUGS_BY_KEY = MappingProxyType({spec.key: spec for spec in DRUG_REGISTRY})
 DRUGS_BY_BOLUS_NAME = MappingProxyType(_bolus_index())
 
 PK_HEMODYNAMIC_TARGETS = tuple((spec.key, spec.pk_attr) for spec in DRUG_REGISTRY)
-TCI_TARGET_CONFIG = tuple((spec.tci_attr, spec.rate_attr) for spec in DRUG_REGISTRY if spec.has_tci)
 
 
 def get_drug_spec(key: str) -> DrugSpec:

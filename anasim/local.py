@@ -132,6 +132,7 @@ class LocalHandler(BaseHTTPRequestHandler):
     """Serve packaged assets and same-origin JSON commands only."""
 
     timeout = 2.0
+    server: LocalServer
 
     def log_message(self, *_args):
         pass

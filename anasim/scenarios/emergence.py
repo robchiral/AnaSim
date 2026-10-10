@@ -6,6 +6,7 @@ from anasim.core.action_log import ACTION_AIRWAY, ACTION_FGF, ACTION_VAPORIZER
 from anasim.core.state import AirwayType
 
 from .base import (
+    ControlTab,
     Requirement,
     Scenario,
     ScenarioStep,
@@ -117,7 +118,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             "<i>High flow accelerates volatile agent washout.</i>"
         )
         stop_agents_check = _require_agents_stopped_balanced()
-        stop_agents_tab = "Machine"
+        stop_agents_tab: ControlTab = "Machine"
     else:
         stop_agents_instruction = (
             "Turn <b>OFF</b> propofol and remifentanil infusions.<br><br>"

@@ -16,7 +16,7 @@ from anasim.core.constants import (
     SHIVER_TAU_ON,
     TEMP_METABOLIC_COEFFICIENT,
 )
-from anasim.core.drug_registry import PK_HEMODYNAMIC_TARGETS, TCI_TARGET_CONFIG
+from anasim.core.drug_registry import PK_HEMODYNAMIC_TARGETS
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.physiology.disturbances import DisturbanceEffects
@@ -112,12 +112,14 @@ def step_mechanics(engine: "SimulationEngine", dt: float, connected: bool, vent_
     """Advance breathing through the workstation: ventilator, bag, or the patient's own effort."""
     resp = engine.resp.state
     lung = engine.resp_mech
-    lung.aeration.unconscious = engine.state.loc
-    lung.aeration.lung_water = engine.hemo.lung_water_ml_kg
+    aeration = engine.aeration
+    aeration.unconscious = engine.state.loc
+    aeration.lung_water = engine.hemo.lung_water_ml_kg
     lung.effort.unconscious = engine.state.loc
-    lung.aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine._airway_patency > 0.5
+    aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine._airway_patency > 0.5
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.
     lung.effort.set_drive(resp.effort_rr, resp.effort_vt / 1000.0)
+    source: str | None
     if vent_active:
         source = "vent"
     elif bag_mask_active:
@@ -253,17 +255,13 @@ def step_tci(engine: "SimulationEngine", dt: float) -> None:
     """Advance TCI controllers on their own sampling clock."""
     engine.pk_nore.update_propofol(engine.pk_prop.state.c1)
     sim_time = engine.state.time
-    for tci_attr, rate_attr in TCI_TARGET_CONFIG:
-        controller = getattr(engine, tci_attr)
-        if not controller:
-            continue
-
+    for key, controller in engine.tci.items():
         sampling_time = controller.sampling_time
-        acc = engine._tci_accumulators.get(tci_attr, 0.0) + dt
+        acc = engine._tci_accumulators.get(key, 0.0) + dt
         steps = int(acc / sampling_time)
         for i in range(steps):
-            setattr(engine, rate_attr, controller.step(sim_time=sim_time + i * sampling_time))
-        engine._tci_accumulators[tci_attr] = acc - steps * sampling_time
+            engine.infusion_rates[key] = controller.step(sim_time=sim_time + i * sampling_time)
+        engine._tci_accumulators[key] = acc - steps * sampling_time
 
 
 def step_machine(engine: "SimulationEngine", dt: float) -> tuple[float, float]:
@@ -291,7 +289,7 @@ def step_machine(engine: "SimulationEngine", dt: float) -> tuple[float, float]:
 def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float, co_curr: float) -> None:
     """Update pharmacokinetic models and synchronize their public state."""
     state = engine.state
-    aeration = engine.resp_mech.aeration
+    aeration = engine.aeration
     va = state.va if engine._airway_patency > 0.0 else 0.0
     engine.pk_sevo.step(dt, fi_sevo, va, co_curr, temp_c=state.temp_c,
                         lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction)
@@ -299,27 +297,28 @@ def step_pk(engine: "SimulationEngine", dt: float, fi_sevo: float, fi_n2o: float
                        lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction)
     sync_inhaled_agents(engine)
 
-    engine.pk_prop.step(dt, engine.propofol_rate_mg_sec)
-    engine.pk_remi.step(dt, engine.remi_rate_ug_sec)
-    engine.pk_fentanyl.step(dt, engine.fentanyl_rate_ug_sec)
-    engine.pk_midazolam.step(dt, engine.midazolam_rate_ug_sec)
+    rates = engine.infusion_rates
+    engine.pk_prop.step(dt, rates["propofol"])
+    engine.pk_remi.step(dt, rates["remi"])
+    engine.pk_fentanyl.step(dt, rates["fentanyl"])
+    engine.pk_midazolam.step(dt, rates["midazolam"])
     engine.pk_etomidate.step(dt, 0.0)
-    engine.pk_ketamine.step(dt, engine.ketamine_rate_mg_sec)
-    engine.pk_lidocaine.step(dt, engine.lidocaine_rate_mg_sec)
-    engine.pk_nore.step(dt, engine.nore_rate_ug_sec, propofol_conc_ug_ml=engine.pk_prop.state.c1)
-    engine.pk_roc.step(dt, engine.roc_rate_mg_sec)
+    engine.pk_ketamine.step(dt, rates["ketamine"])
+    engine.pk_lidocaine.step(dt, rates["lidocaine"])
+    engine.pk_nore.step(dt, rates["nore"], propofol_conc_ug_ml=engine.pk_prop.state.c1)
+    engine.pk_roc.step(dt, rates["roc"])
     # Free (sugammadex-unbound) rocuronium at the neuromuscular junction drives
     # TOF and every muscle effect.
     tof = engine.tof_pd.step_recovery(
         dt, engine.pk_roc.state.c1, mac_sevo=engine.pk_sevo.state.mac, mac_n2o=engine.pk_n2o.state.mac
     )
     state.tof = float(tof)
-    engine.pk_epi.step(dt, engine.epi_rate_ug_sec)
-    engine.pk_phenyl.step(dt, engine.phenyl_rate_ug_sec)
-    engine.pk_vaso.step(dt, engine.vaso_rate_mu_sec)
-    engine.pk_dobu.step(dt, engine.dobu_rate_ug_sec)
-    engine.pk_mil.step(dt, engine.mil_rate_ug_sec)
-    engine.pk_esmolol.step(dt, engine.esmolol_rate_mg_sec)
+    engine.pk_epi.step(dt, rates["epi"])
+    engine.pk_phenyl.step(dt, rates["phenyl"])
+    engine.pk_vaso.step(dt, rates["vaso"])
+    engine.pk_dobu.step(dt, rates["dobu"])
+    engine.pk_mil.step(dt, rates["milri"])
+    engine.pk_esmolol.step(dt, rates["esmolol"])
     engine.pk_labetalol.step(dt, 0.0)
     engine.pk_glyco.step(dt, 0.0)
     sync_pk_state(engine)
@@ -446,7 +445,7 @@ def step_physiology(engine: "SimulationEngine", dt: float, disturbances: Disturb
     mean_paw = vent.airway_pressure_area / dt
     engine.current_mean_paw = (1 - alpha_paw) * engine.current_mean_paw + alpha_paw * mean_paw
 
-    pit_base = engine.hemo.pit_0
+    pit_base = engine.hemo.config.pit_0
     paw_to_mmhg = 0.74
     paw_transmission = 0.54
     effort_transmission = 0.30

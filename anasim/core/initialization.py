@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -157,14 +157,14 @@ def _seed_steady_state_subsystems(
 ) -> None:
     engine.set_vaporizer(0.0)
     engine.set_fgf(profile.fgf_o2_l_min, 0.0, 0.0)
-    engine.propofol_rate_mg_sec = 0.0
-    engine.remi_rate_ug_sec = 0.0
-    engine.nore_rate_ug_sec = 0.0
+    engine.infusion_rates["propofol"] = 0.0
+    engine.infusion_rates["remi"] = 0.0
+    engine.infusion_rates["nore"] = 0.0
 
     if targets.prop_ce > 0.0:
-        engine.propofol_rate_mg_sec = _seed_linear_history(engine.pk_prop, targets.prop_ce, profile.history_minutes) / 60.0
+        engine.infusion_rates["propofol"] = _seed_linear_history(engine.pk_prop, targets.prop_ce, profile.history_minutes) / 60.0
     if targets.remi_ce > 0.0:
-        engine.remi_rate_ug_sec = _seed_linear_history(engine.pk_remi, targets.remi_ce, profile.history_minutes) / 60.0
+        engine.infusion_rates["remi"] = _seed_linear_history(engine.pk_remi, targets.remi_ce, profile.history_minutes) / 60.0
     fi_agent = 0.0
     if profile.primary_hypnotic == "volatile":
         fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
@@ -235,10 +235,10 @@ def _seed_volatile_history(engine: "SimulationEngine", target_mac: float, durati
 
 def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> None:
     """Run a short settle for circuit and physiology transients without visible side effects."""
-    saved_vol_clearance = engine.hemo.vol_clearance
+    saved_hemo_config = engine.hemo.config
     saved_maintenance_rate = engine.maintenance_fluid_rate_ml_min
     saved_time = engine.state.time
-    engine.hemo.vol_clearance = 0.0
+    engine.hemo.config = replace(saved_hemo_config, vol_clearance=0.0)
     engine.maintenance_fluid_rate_ml_min = 0.0
 
     steps = max(1, int(profile.settle_seconds / profile.settle_dt_seconds))
@@ -259,7 +259,7 @@ def _run_hidden_settle(engine: "SimulationEngine", profile: StartupProfile) -> N
         projection_core.project_runtime_physiology(engine, physiology)
         engine.state.time += profile.settle_dt_seconds
 
-    engine.hemo.vol_clearance = saved_vol_clearance
+    engine.hemo.config = saved_hemo_config
     engine.maintenance_fluid_rate_ml_min = saved_maintenance_rate
     engine.state.temp_c = engine.patient.baseline_temp
     engine._metabolic_factor = 1.0
@@ -275,7 +275,7 @@ def _attach_startup_controllers(engine: "SimulationEngine", targets: StartupTarg
     projection_core.sync_pk_state(engine)
     if targets.prop_ce > 0.0:
         engine.enable_tci("propofol", engine.pk_prop.state.ce, mode="effect_site")
-        engine.propofol_rate_mg_sec = 0.0
+        engine.infusion_rates["propofol"] = 0.0
     if targets.remi_ce > 0.0:
         engine.enable_tci("remi", engine.pk_remi.state.ce, mode="effect_site")
-        engine.remi_rate_ug_sec = 0.0
+        engine.infusion_rates["remi"] = 0.0

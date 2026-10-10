@@ -33,4 +33,5 @@ class AirwaySensor:
         self._stage1[2] = volume - ramp + (first - start + ramp) * decay
         self._stage2[2] = volume - 2.0 * ramp + (second - start + 2.0 * ramp
                                               + z * (first - start + ramp)) * decay
-        return tuple(self._stage2)
+        paw, flow, volume = self._stage2
+        return paw, flow, volume

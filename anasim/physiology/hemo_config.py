@@ -134,9 +134,6 @@ class HemodynamicConfig:
     g_hr_o2: float = 15.0
     k_tpr_co2: float = 0.3
 
-    hemorrhage_hr_mult: float = 1.0
-    hemorrhage_tpr_mult: float = 1.0
-
     # Sepsis at full severity.
     # SIRS HR > 90 bpm, about 20 above a typical baseline (Bone 1992).
     sepsis_hr_increase: float = 20.0  # bpm

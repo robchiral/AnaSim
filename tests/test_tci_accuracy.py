@@ -98,7 +98,7 @@ class TestEngineTCI:
         for _ in range(300):
             engine.step(1.0)
         engine.enable_tci("nore", engine.pk_nore.state.c1, mode="plasma")
-        target = engine.tci_nore.target
+        target = engine.tci["nore"].target
         peak = 0.0
         for _ in range(3000):
             engine.step(0.1)
@@ -111,12 +111,12 @@ class TestEngineTCI:
         engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
         engine.enable_tci("propofol", 4.0)
         engine.step(0.1)
-        assert engine.propofol_rate_mg_sec > 0
+        assert engine.infusion_rates["propofol"] > 0
 
         engine.set_drug_rate("propofol", manual_rate)
         for _ in range(120):
             engine.step(0.1)
-            assert engine.propofol_rate_mg_sec == pytest.approx(manual_rate * engine.patient.weight / 60000)
+            assert engine.infusion_rates["propofol"] == pytest.approx(manual_rate * engine.patient.weight / 60000)
         assert not engine.get_drug_state("propofol")["is_tci"]
 
     def test_target_mode_switch_uses_live_compartments(self, engine_factory):
@@ -126,8 +126,8 @@ class TestEngineTCI:
         engine.step(0.05)
         engine.enable_tci("propofol", 2.0, mode="plasma")
 
-        assert engine.tci_prop.target_compartment == "plasma"
+        assert engine.tci["propofol"].target_compartment == "plasma"
         for _ in range(20):
             engine.step(0.1)
             # Plasma already exceeds the new target after the manual bolus.
-            assert engine.propofol_rate_mg_sec == 0.0
+            assert engine.infusion_rates["propofol"] == 0.0

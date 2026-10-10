@@ -76,6 +76,7 @@ from .drug_api import DrugControllerMixin
 from .drug_registry import DRUG_REGISTRY, resolve_bolus_drug
 from .initialization import initialize_engine_state
 from .state import AirwayType, SimulationConfig, SimulationState, WaveformSample
+from .tci import TCIController
 
 AIRWAY_MODE_MAP = {
     "None": AirwayType.NONE,
@@ -107,12 +108,9 @@ class SimulationEngine(DrugControllerMixin):
         self.airway_tuning = AirwayTuning()
         self.thermal_tuning = ThermalTuning()
 
-        # Manual infusion rates (model units/s) and TCI controllers per drug.
-        for spec in DRUG_REGISTRY:
-            if spec.has_infusion:
-                setattr(self, spec.rate_attr, 0.0)
-            if spec.has_tci:
-                setattr(self, spec.tci_attr, None)
+        # Infusion rates (model units/s) and active TCI controllers, by drug key.
+        self.infusion_rates = {spec.key: 0.0 for spec in DRUG_REGISTRY if spec.has_infusion}
+        self.tci: dict[str, TCIController] = {}
         self._next_nibp_time = 0.0
 
         self.disturbances = Disturbances(config.disturbance_profile)
@@ -122,9 +120,9 @@ class SimulationEngine(DrugControllerMixin):
         self.alarms = AlarmSystem()
 
         self._output_window_s = 20.0
-        self.output_buffer = deque()
-        self.recorder = None
-        self._tci_accumulators = {}
+        self.output_buffer: deque[WaveformSample] = deque()
+        self.recorder: DataRecorder | None = None
+        self._tci_accumulators: dict[str, float] = {}
         self.running = False
 
         self.bag_mask_active = False
@@ -136,7 +134,7 @@ class SimulationEngine(DrugControllerMixin):
         self.hemorrhage_rate_ml_min = 500.0
 
         # Boluses run in over minutes rather than instantly.
-        self.pending_infusions = []
+        self.pending_infusions: list[PendingInfusion] = []
         self.fluid_infusion_rate_ml_min = 150.0
         self.blood_infusion_rate_ml_min = 75.0
         self.maintenance_fluid_rate_ml_min = 0.0
@@ -168,7 +166,7 @@ class SimulationEngine(DrugControllerMixin):
         self._capno_has_sample = False
         self._mean_paw_tau_s = 0.25
         self._tol_current = 0.0
-        self._pk_hemo_scale_cache = None
+        self._pk_hemo_scale_cache: tuple[float, float] | None = None
         self.current_mean_paw = 0.0
 
         # Separate generators keep each monitor's noise reproducible regardless
@@ -264,8 +262,8 @@ class SimulationEngine(DrugControllerMixin):
 
         self.hemo = HemodynamicModel(self.patient)
         self.resp = RespiratoryModel(self.patient)
-        aeration = LungAeration(self.patient, recruited=0.9 if self.config.mode == "steady_state" else 1.0)
-        self.resp_mech = RespiratoryMechanics(aeration=aeration)
+        self.aeration = LungAeration(self.patient, recruited=0.9 if self.config.mode == "steady_state" else 1.0)
+        self.resp_mech = RespiratoryMechanics(aeration=self.aeration)
         self._base_airway_resistance = self.resp_mech.resistance
         self.set_vent_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_insp=15.0)
         self.resp.baseline_co_l_min = self.hemo.base_co_l_min
@@ -351,7 +349,7 @@ class SimulationEngine(DrugControllerMixin):
             volume_ml,
             self.fluid_infusion_rate_ml_min,
             hematocrit=0.0,
-            retention_fraction=self.hemo.colloid_retention_fraction,
+            retention_fraction=self.hemo.config.colloid_retention_fraction,
             label="colloid",
         )
 
@@ -500,8 +498,8 @@ class SimulationEngine(DrugControllerMixin):
             "cardiac_output": cardiac_output,
             "metabolic_factor": max(0.5, self._metabolic_factor),
             "unconscious": self.state.loc,
-            "lung_volume_l": self.resp_mech.aeration.frc,
-            "shunt_fraction": self.resp_mech.aeration.shunt_fraction,
+            "lung_volume_l": self.aeration.frc,
+            "shunt_fraction": self.aeration.shunt_fraction,
         }
 
     def set_bronchospasm(self, severity: float):
@@ -566,8 +564,8 @@ class SimulationEngine(DrugControllerMixin):
         """Start CSV recording, raising RecordingError on file failures."""
         if self.recorder and self.recorder.is_recording:
             return
-        self.recorder = DataRecorder(output_dir=output_dir, sample_interval_sec=sample_interval_sec)
-        self.recorder.start()
+        self.recorder = recorder = DataRecorder(output_dir=output_dir, sample_interval_sec=sample_interval_sec)
+        recorder.start()
 
     def stop_recording(self):
         """Flush and close the CSV, raising RecordingError on failure."""

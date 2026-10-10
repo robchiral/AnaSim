@@ -60,6 +60,11 @@
   previously caused near-arrest; blood pressure now holds through ATLS class II.
 - Blunted adrenergic agonists in severe anaphylaxis. Epinephrine 50-100 mcg
   boluses previously raised MAP to 230-300 mmHg.
+- Moved infusion rates to `engine.infusion_rates` and active TCI controllers
+  to `engine.tci`, both keyed by drug. Removed the per-drug engine attributes
+  such as `propofol_rate_mg_sec` and `tci_prop`, and the `rate_attr` and
+  `tci_attr` registry fields. Hemodynamic parameters are read from
+  `HemodynamicModel.config` only. CI type-checks the package with mypy.
 
 ## 1.4 - 2026-10-06
 

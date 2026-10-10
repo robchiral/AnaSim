@@ -136,9 +136,9 @@ def test_inotropy_is_applied_once():
         state = model.step(1.0, 0, 0, 0, -2, 40, 95, ce_dobu=10.0)
     # Inotropy scales output SV only, not SV production.
     _, factor, _ = model._calc_hr_sv_svr_effects(
-        10.0, model.dobu_c50, model.dobu_gamma, model.dobu_emax_hr,
-        model.dobu_emax_sv, model.dobu_emax_svr,
+        10.0, config.dobu_c50, config.dobu_gamma, config.dobu_emax_hr,
+        config.dobu_emax_sv, config.dobu_emax_svr,
     )
-    coupling = 1 - model.hr_sv_coupling * math.log(max(1.0, state.hr / model.base_hr))
+    coupling = 1 - config.hr_sv_coupling * math.log(max(1.0, state.hr / model.base_hr))
     assert state.sv / base.sv / coupling == pytest.approx(factor, rel=0.001)
     assert state.sv_star == pytest.approx(base.sv_star, rel=0.001)

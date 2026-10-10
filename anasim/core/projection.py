@@ -308,6 +308,6 @@ def sync_state_from_models(engine: "SimulationEngine") -> None:
     hemo_state = engine.hemo.state
     resp_state = snapshot_respiratory_state(engine, hemo_state)
     project_runtime_physiology(engine, build_snapshot_from_models(
-        engine, hemo_state, resp_state, pit_estimate=engine.hemo.pit_0,
+        engine, hemo_state, resp_state, pit_estimate=engine.hemo.config.pit_0,
     ))
     sync_monitor_baselines(engine)

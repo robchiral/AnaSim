@@ -45,6 +45,8 @@ class RespiratoryMechanics:
     def update_aeration(self, dt: float, pressure_area: float, peep: float) -> float:
         """Return the coordinate shift after updating the static curve, conserving gas volume."""
         aeration = self.aeration
+        if aeration is None:
+            return 0.0
         absolute = aeration.reference_volume + self.volume_offset + self.compliance * peep + self.volume
         aeration.frc = min(aeration.frc, absolute)
         if not aeration.advance(dt, pressure_area):
@@ -250,7 +252,8 @@ class PressureSegment:
         self.z0 = self._apply(self.y0)
         self.az = self._apply(self.z0)
         self.start = (self.v0, self.p20, self.z0[0] + self.slope, self.az[0])
-        self.last_t = self.last = None
+        self.last_t: float | None = None
+        self.last: tuple[float, float, float, float] | None = None
 
     def _apply(self, x):
         return self.a11 * x[0] + self.a12 * x[1], self.a21 * x[0] + self.a22 * x[1]
@@ -366,8 +369,8 @@ class PatientEffort:
         self._trough = 0.0  # L, lowest lung volume since this breath began
         self._reference_shift = 0.0
         self._release_slope = 0.0
-        self._knots = (math.inf,)
-        self._values = (0.0, 0.0)
+        self._knots: tuple[float, ...] = (math.inf,)
+        self._values: tuple[float, ...] = (0.0, 0.0)
 
     def set_drive(self, rr: float, vt_l: float) -> None:
         """Rate and unassisted volume for the breaths that follow."""

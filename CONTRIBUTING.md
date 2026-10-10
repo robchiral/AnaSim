@@ -33,6 +33,7 @@ is the hosted app's Python runtime.
 
 ```bash
 ruff check .
+mypy
 python -m pytest -q
 npm install --no-save "pyodide@$(python scripts/build_web.py --pyodide-version)"
 node scripts/pyodide_tests.mjs -q

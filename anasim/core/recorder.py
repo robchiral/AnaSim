@@ -5,8 +5,12 @@ import time
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
+from typing import TYPE_CHECKING, TextIO
 
 from .state import SimulationState
+
+if TYPE_CHECKING:
+    from _csv import Writer
 
 STATE_FIELD_NAMES = tuple(field.name for field in fields(SimulationState))
 
@@ -22,21 +26,21 @@ class DataRecorder:
         self.output_dir = output_dir
         self.filename = f"anasim_log_{time.time_ns()}.csv"
         self.file_path = str(Path(output_dir) / self.filename)
-        self.file = None
-        self.writer = None
+        self.file: TextIO | None = None
+        self.writer: "Writer | None" = None
         self.is_recording = False
         self.sample_interval_sec = max(0.0, sample_interval_sec)
-        self._next_sample_time = None
+        self._next_sample_time: float | None = None
 
     def start(self):
         if self.is_recording:
             return
         try:
             os.makedirs(self.output_dir, exist_ok=True)
-            self.file = open(self.file_path, 'x', newline='', encoding='utf-8')
-            self.writer = csv.writer(self.file)
-            self.writer.writerow(STATE_FIELD_NAMES)
-            self.file.flush()
+            self.file = file = open(self.file_path, 'x', newline='', encoding='utf-8')
+            self.writer = writer = csv.writer(file)
+            writer.writerow(STATE_FIELD_NAMES)
+            file.flush()
             self._next_sample_time = None
             self.is_recording = True
         except (OSError, csv.Error, ValueError) as error:
@@ -51,7 +55,7 @@ class DataRecorder:
         raise RecordingError(message) from error
 
     def log(self, state: SimulationState):
-        if not self.is_recording or not self.writer:
+        if not self.is_recording or self.writer is None or self.file is None:
             return
 
         tolerance = 1e-9 * max(1.0, abs(state.time))

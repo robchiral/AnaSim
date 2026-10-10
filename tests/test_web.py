@@ -209,8 +209,8 @@ def test_weight_based_rates_reach_the_engine_and_round_trip_through_browser_comm
         assert specs[key]["rate_unit"] == "mcg/kg/min"
         receipt = cmd(session, "drug_rate", key=key, rate=rate)["medication"]
         assert f"{rate:g} mcg/kg/min" in receipt["text"]
-    assert session.engine.propofol_rate_mg_sec == pytest.approx(100.0 * weight / 60000)
-    assert session.engine.remi_rate_ug_sec == pytest.approx(0.15 * weight / 60)
+    assert session.engine.infusion_rates["propofol"] == pytest.approx(100.0 * weight / 60000)
+    assert session.engine.infusion_rates["remi"] == pytest.approx(0.15 * weight / 60)
     cmd(session, "run", running=True)
     snap = run_seconds(session, 1)[-1]
     for key, rate in (("propofol", 100.0), ("remi", 0.15)):

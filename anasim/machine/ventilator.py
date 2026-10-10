@@ -159,12 +159,12 @@ class AnesthesiaVentilator:
         self.inspiring = False
         self.breath_count = 0
         self.pressure_limited = False  # Last volume-targeted breath fell short at its limit
-        self._source = None
+        self._source: str | None = None
         self._bag = (12.0, 0.5)
-        self._mode = None
-        self._baseline = None  # PEEP the lung volume is referenced to; the first one applied
-        self._breath = None
-        self._measured = None
+        self._mode: str | None = None
+        self._baseline: float | None = None  # PEEP the lung volume is referenced to; the first one applied
+        self._breath: Breath | None = None
+        self._measured: MeasuredBreath | None = None
         self._since_measured = 0.0
         self.samples = []  # Resolved (dt, dV L, Paw, flow L/min, absolute volume L).
         self.muscle_pressure_area = 0.0
@@ -178,14 +178,28 @@ class AnesthesiaVentilator:
         self._valve = None  # (knot, offset, resistance) linearizing the PEEP valve
         self._expiration = None  # (physical knot, airway parameters) for obstructed expiration
         self._backup = False
-        self._vg_pressure = None
+        self._vg_pressure: float | None = None
         self._armed = False
-        self._recent = deque(maxlen=RECENT_BREATHS)
+        self._recent: deque[tuple[float, float]] = deque(maxlen=RECENT_BREATHS)  # (duration s, VTe L)
         self._recent_totals = (0.0, 0.0)  # Duration s and exhaled volume L
 
     @property
     def has_measured_breath(self) -> bool:
         return bool(self._recent)
+
+    @property
+    def _active_breath(self) -> Breath:
+        """The controlled breath, for code that runs only while one exists."""
+        if self._breath is None:
+            raise RuntimeError("No ventilator breath in progress")
+        return self._breath
+
+    @property
+    def _active_measurement(self) -> MeasuredBreath:
+        """The breath spirometry is measuring, for code that runs only while one exists."""
+        if self._measured is None:
+            raise RuntimeError("No breath is being measured")
+        return self._measured
 
     def update_settings(self, **values):
         """Validate and apply settings together; VT in mL, I:E as "1:2" or a float."""
@@ -258,7 +272,7 @@ class AnesthesiaVentilator:
         if source != self._source:
             self._switch(source, lung)
         if self._source == "vent" and self.settings.mode != self._mode:
-            if MANDATORY.get(self.settings.mode) == "VG" and MANDATORY.get(self._mode) != "VG":
+            if MANDATORY.get(self.settings.mode) == "VG" and (self._mode is None or MANDATORY.get(self._mode) != "VG"):
                 self._vg_pressure = None
             self._mode = self.settings.mode
         lung.effort.start(lung, self._series_resistance())
@@ -320,8 +334,9 @@ class AnesthesiaVentilator:
         self._begin_measurement(lung, kind, mandatory)
         # A mandatory stroke can join an ongoing spontaneous inflation. Its
         # volume target includes the gas already delivered in that same breath.
-        inspired = self._measured.inspired
-        retained = max(0.0, inspired - self._measured.expired)
+        measured = self._active_measurement
+        inspired = measured.inspired
+        retained = max(0.0, inspired - measured.expired)
         s = self.settings
         peep = self._peep()
         period = self._mandatory_period()
@@ -346,6 +361,7 @@ class AnesthesiaVentilator:
         elif kind == "PC":
             target = s.p_insp
         elif kind == "VG":
+            assert self._vg_pressure is not None  # A VC test breath sets it first.
             # A Pmax or PEEP edit during expiration must constrain the very
             # next stroke, before the next volume-feedback update.
             target = self._vg_pressure = min(max(self._vg_pressure, VG_MIN), self._vg_ceiling(peep))
@@ -531,12 +547,12 @@ class AnesthesiaVentilator:
             self._rebase(lung, self._configured_peep())
         if not self.inspiring and self._due():
             self._start(lung, self._mandatory_type(), True)
-        b = self._breath
+        b = self._active_breath if self.inspiring else None
         boundary, effort_break = self._boundary(), effort.time_to_break()
         h = min(available, effort_break, boundary)
         if lung.aeration is not None:
             h = min(h, lung.aeration.INTERVAL - lung.aeration.elapsed)
-        if lung.bronchospasm > 0.0 and (not self.inspiring or b.kind in ("PC", "VG", "PS", "SPONT")
+        if lung.bronchospasm > 0.0 and (b is None or b.kind in ("PC", "VG", "PS", "SPONT")
                                       or (b.kind == "VC" and b.limited)):
             interval = lung.EXPIRATORY_INTERVAL
             knot = math.floor((self._since_exhalation + 1e-12) / interval)
@@ -573,7 +589,7 @@ class AnesthesiaVentilator:
         segment.commit(t)
         self._paw_end = self._peep() + segment.paw(t)
         if effort.clock < effort.ti:
-            assistance = segment.area(t) if self.inspiring and b.kind != "SPONT" else 0.0
+            assistance = segment.area(t) if b is not None and b.kind != "SPONT" else 0.0
             effort.note_assistance(t, assistance)
         effort.advance(t, lung, self._series_resistance())
         self._since_mandatory += t
@@ -650,16 +666,17 @@ class AnesthesiaVentilator:
 
     def _search(self, segment, h: float, watch: str):
         """Return (t, event) for the first crossing in [0, h], or (h, None)."""
-        b = self._breath
         if watch == "limit":
-            cap = self._pressure_cap(b.peep)
+            cap = self._pressure_cap(self._active_breath.peep)
             f = lambda t: segment.paw(t) - cap  # noqa: E731
         elif watch == "volume":
+            b = self._active_breath
             goal = b.v_start + b.target
             f = lambda t: segment.volume(t) - goal  # noqa: E731
         elif watch == "zero_flow":
             f = lambda t: -segment.flow(t)  # noqa: E731
         elif watch == "cycle":
+            b = self._active_breath
             start = 0.0
             if segment.dflow(0.0) > 0.0 > segment.dflow(h):
                 start = find_root(segment.dflow, 0.0, h)
@@ -697,10 +714,10 @@ class AnesthesiaVentilator:
     def _transition(self, lung, segment, t, event) -> None:
         b = self._breath
         if event == "limit":
-            b.limited = True
+            self._active_breath.limited = True
             return
         if event == "volume":
-            b.limited, b.delivered = False, True
+            self._active_breath.limited, self._active_breath.delivered = False, True
             return
         if event == "trigger":
             self._on_trigger(lung)
@@ -709,7 +726,7 @@ class AnesthesiaVentilator:
             self._begin_measurement(lung, "SPONT", False)
             return
         if event == "passive_exhale":
-            self._measured.inspiring = False
+            self._active_measurement.inspiring = False
             self._since_exhalation, self._valve = 0.0, None
             self._expiration = None
             return
@@ -743,7 +760,7 @@ class AnesthesiaVentilator:
         self._start(lung, "PS" if supported else "SPONT", False)
 
     def _end_inspiration(self, segment, t) -> None:
-        b = self._breath
+        b = self._active_breath
         b.inspiring = False
         self.inspiring = False
         self._since_exhalation, self._valve = 0.0, None
@@ -766,8 +783,8 @@ class AnesthesiaVentilator:
                 self._adjust_vg(volume, b)
         if segment.lung.effort.pmus()[0] > PLATEAU_PRESSURE:
             b.plat = math.nan
-        if b.mandatory and self._measured.mandatory:
-            self._measured.plat = b.plat
+        if b.mandatory and self._active_measurement.mandatory:
+            self._active_measurement.plat = b.plat
 
     def _adjust_vg(self, volume: float, b: Breath) -> None:
         """Move Pinsp toward the set VT by at most VG_STEP, retaining the Pmax margin."""

@@ -10,6 +10,7 @@ catecholamines, labetalol, and glycopyrrolate, and mU/L for vasopressin.
 
 import math
 from dataclasses import dataclass
+from typing import TypedDict
 
 import numpy as np
 from scipy.linalg import expm
@@ -159,7 +160,7 @@ class MammillaryPK:
         return np.array([getattr(self.state, name) for name in self.state_fields])
 
     def set_state_vector(self, values) -> None:
-        for name, value in zip(self.state_fields, values):
+        for name, value in zip(self.state_fields, values, strict=True):
             setattr(self.state, name, max(0.0, float(value)))
 
     def reset(self) -> None:
@@ -219,8 +220,13 @@ def _scale_volumes(params: dict, factor: float) -> dict:
     return {key: value * factor if key.startswith("v") else value for key, value in params.items()}
 
 
+class _CoExponents(TypedDict):
+    cl1_co_exponent: float
+    distribution_co_exponent: float
+
+
 # Population parameters without an additional cardiac-output covariate.
-_NO_CO_COVARIATE = {"cl1_co_exponent": 0.0, "distribution_co_exponent": 0.0}
+_NO_CO_COVARIATE: _CoExponents = {"cl1_co_exponent": 0.0, "distribution_co_exponent": 0.0}
 
 
 def _sigmoid(x: float, x50: float, gamma: float) -> float:

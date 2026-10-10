@@ -107,8 +107,8 @@ def test_thoracic_pressure_tracks_breathing_effort_and_applied_cpap(awake_engine
     for _ in range(150):
         engine.step(0.1)
         pressure.append(engine.state.pit)
-    assert max(pressure) == pytest.approx(engine.hemo.pit_0, abs=0.01)
-    assert min(pressure) < engine.hemo.pit_0 - 2.0
+    assert max(pressure) == pytest.approx(engine.hemo.config.pit_0, abs=0.01)
+    assert min(pressure) < engine.hemo.config.pit_0 - 2.0
 
     engine.set_airway_mode("ETT")
     engine.set_fgf(6.0, 0.0)
@@ -116,13 +116,13 @@ def test_thoracic_pressure_tracks_breathing_effort_and_applied_cpap(awake_engine
     for _ in range(1200):
         engine.step(0.1)
     assert engine.resp_mech.effort.amplitude == 0.0
-    assert engine.state.pit == pytest.approx(engine.hemo.pit_0, abs=0.1)
+    assert engine.state.pit == pytest.approx(engine.hemo.config.pit_0, abs=0.1)
 
     engine.set_vent_settings(rr=0, vt=0, peep=5, ie="1:2", mode="CPAP")
     engine.set_vent_power(True)
     for _ in range(200):
         engine.step(0.1)
-    assert engine.state.pit > engine.hemo.pit_0 + 1.8
+    assert engine.state.pit > engine.hemo.config.pit_0 + 1.8
 
 
 @pytest.mark.parametrize(("drug", "min_co_ratio"), [("ce_dobu", 1.1), ("ce_mil", 1.05)])
