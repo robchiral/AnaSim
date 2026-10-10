@@ -14,7 +14,7 @@ anesthesia machine interface.
 ![AnaSim patient monitor and controls during guided induction](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/anasim_demo.gif)
 
 > [!WARNING]
-> AnaSim is for education and research. Do not use it to guide clinical care.
+> Do not use AnaSim to guide clinical care.
 
 ## Run AnaSim
 

@@ -11,6 +11,7 @@ from anasim.core.constants import (
 )
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.patient import Patient
+from anasim.patient.pd.nmba import ROCURONIUM_T1_EC50
 
 from .hemo_config import HemodynamicConfig
 
@@ -73,10 +74,10 @@ class RespiratoryModel:
         self.c50_sevo_mac = 1.1
         self.gamma_sevo = 2.0
 
-        # Free rocuronium at the central (diaphragm and larynx) effect site. These
-        # muscles need about 1.8x the adductor pollicis concentration (Cantineau
-        # 1994; Plaud 1995).
-        self.c50_nmba = 1.8 * 0.8
+        # Rocuronium at the central (diaphragm and larynx) effect site. These
+        # muscles need about 1.8x the adductor pollicis concentration for the
+        # same twitch depression (Cantineau 1994; Plaud 1995).
+        self.c50_nmba = 1.8 * ROCURONIUM_T1_EC50
         self.gamma_nmba = 3.0
 
         # Awake hypocapnic calibration (Nieuwenhuijs 2001; Pandit 1999).
@@ -88,6 +89,9 @@ class RespiratoryModel:
         self.vco2 = 3.6 * 70.0 * (patient.weight / 70.0) ** 0.75 * self.rq  # mL/min
         self.frc = patient.functional_residual_capacity()
         self.shunt_fraction = 0.0
+        # Gas removed from the sealed lung during obstruction, STPD L. Opening
+        # the airway passively refills this deficit (Laviola 2020).
+        self._apneic_gas_deficit_l = 0.0
         self.baseline_blood_volume_ml = patient.estimate_blood_volume()
 
         self.vd_deadspace = 2.2 * patient.predicted_body_weight() / 1000.0  # L
@@ -136,10 +140,59 @@ class RespiratoryModel:
         """Set alveolar O2 to its alveolar-gas-equation value at the current PACO2."""
         self.state.p_alveolar_o2 = max(0.0, fio2 * self._atm_dry - self.state.p_alveolar_co2 / self.rq)
         self.state.p_arterial_o2 = max(0.0, self.state.p_alveolar_o2 - self.aa_grad_base)
+        self._apneic_gas_deficit_l = 0.0
+
+    def _passive_refill_l_min(self, airway_patency: float, dt: float) -> float:
+        """Mean passive inflow this interval, limited to the missing lung gas.
+
+        The 0.5 s refill time is a simulator estimate. Patency slows refill;
+        no pressure or lung-volume transient is represented.
+        """
+        if dt <= 0.0:
+            return 0.0
+        fraction = -math.expm1(-clamp01(airway_patency) * dt / 0.5)
+        return self._apneic_gas_deficit_l * fraction * 60.0 / dt
+
+    def _add_oxygen_store(
+        self, oxygen_l: float, hb: float, blood_volume_ml: float,
+        cardiac_output: float, vo2_l_min: float, vq_mismatch: float,
+    ) -> None:
+        """Add refill O2 by solving the nonlinear lung and blood content balance.
+
+        A fixed saturation derivative loses O2 during the rapid transition
+        between severe hypoxemia and the flat part of the dissociation curve.
+        """
+        if oxygen_l <= 1e-9:
+            return
+        gas_capacity = self.frc * self._gas_capacity_per_l
+        blood_dl_to_l = blood_volume_ml / 100000.0
+        aa_gap = self.aa_grad_base * (1.0 + 2.5 * vq_mismatch)
+        shunt = self.shunt_fraction
+        extraction = 100.0 * vo2_l_min / max(0.1, cardiac_output)
+
+        def store(pressure: float) -> float:
+            cap_pressure = max(0.0, pressure - aa_gap)
+            content = 1.34 * hb * self._saturation(cap_pressure) + 0.0031 * cap_pressure
+            arterial_content = max((1.0 - shunt) * content, content - shunt / (1.0 - shunt) * extraction)
+            return gas_capacity * pressure + blood_dl_to_l * arterial_content
+
+        lower = self.state.p_alveolar_o2
+        upper = max(lower, self._atm_dry - self.state.p_alveolar_co2)
+        target = store(lower) + oxygen_l
+        if target >= store(upper):
+            self.state.p_alveolar_o2 = upper
+            return
+        for _ in range(24):
+            pressure = (lower + upper) / 2.0
+            if store(pressure) < target:
+                lower = pressure
+            else:
+                upper = pressure
+        self.state.p_alveolar_o2 = (lower + upper) / 2.0
 
     def oxygen_exchange_l_min(
         self, fio2: float, alveolar_ventilation: float, metabolic_factor: float,
-        airway_patency: float, vq_mismatch: float,
+        airway_patency: float, vq_mismatch: float, dt: float = 1.0,
     ) -> float:
         """Net O2 transport from inspired gas into the lung and blood stores, STPD L/min."""
         if airway_patency <= 0.0:
@@ -150,7 +203,7 @@ class RespiratoryModel:
         return (
             ventilation * self._btps_to_stpd
             * (fio2 - self.state.p_alveolar_o2 / self._atm_dry)
-            + apneic_inflow * fio2
+            + (apneic_inflow + self._passive_refill_l_min(airway_patency, dt)) * fio2
         )
 
     def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0,
@@ -190,6 +243,7 @@ class RespiratoryModel:
             shunt_fraction: Perfusion through closed lung units, 0-1.
         """
         state = self.state
+        old_gas_pressure = state.p_alveolar_o2 + state.p_alveolar_co2
         hill = hill_function
         clamp01_local = clamp01
 
@@ -325,9 +379,10 @@ class RespiratoryModel:
         # During apnea a patent airway draws gas in to replace absorbed O2
         # (apneic oxygenation).
         vo2 = self.vco2 * metabolic_factor / self.rq / 1000.0  # L/min, same uptake as the circuit
+        refill_l_min = self._passive_refill_l_min(airway_patency, dt)
         o2_flux = self.oxygen_exchange_l_min(
-            fio2, total_va_l_min, metabolic_factor, airway_patency, vq_mismatch,
-        ) - vo2
+            fio2, total_va_l_min, metabolic_factor, airway_patency, vq_mismatch, dt,
+        ) - vo2 - refill_l_min * fio2
         sat = self._saturation(state.p_arterial_o2)
         dsat_dpo2 = self._n_hill * sat * (1.0 - sat) / max(state.p_arterial_o2, 1.0)
         hb = self.baseline_hb if hb_g_dl is None else max(0.0, hb_g_dl)
@@ -361,6 +416,19 @@ class RespiratoryModel:
         o2_capacitance = self.frc * self._gas_capacity_per_l + blood_o2_capacity_l * dsat_dpo2
         state.p_alveolar_o2 += o2_flux / o2_capacitance * dt / 60.0
         state.p_alveolar_o2 = clamp(state.p_alveolar_o2, 0.0, max(0.0, self._atm_dry - state.p_alveolar_co2))
+        self._add_oxygen_store(refill_l_min * fio2 * dt / 60.0, hb, blood_volume,
+                               cardiac_output, vo2, vq_mismatch)
+        if airway_patency <= 0.0:
+            # Only loss from the lung gas creates hypobaric inflow. Blood O2
+            # buffering does not, and accumulating alveolar CO2 offsets it.
+            gas_pressure_loss = old_gas_pressure - state.p_alveolar_o2 - state.p_alveolar_co2
+            self._apneic_gas_deficit_l = max(
+                0.0, self._apneic_gas_deficit_l + self.frc * self._gas_capacity_per_l * gas_pressure_loss,
+            )
+        else:
+            self._apneic_gas_deficit_l = max(
+                0.0, self._apneic_gas_deficit_l - refill_l_min * dt / 60.0,
+            )
 
         # Residual V/Q inequality sets end-capillary PO2. Closed units mix
         # venous blood into arterial blood by O2 content, not partial pressure.

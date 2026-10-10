@@ -144,6 +144,14 @@ class Patient:
         """
         return 2.5 * (self.predicted_body_weight() / 65.0) ** 0.8 * math.exp(-0.04 * (self.bmi - 24.0))
 
+    def creatinine_clearance(self) -> float:
+        """Estimated creatinine clearance (mL/min) for Kleijn's covariates.
+
+        Use Kleijn 2011's adult imputation for missing serum creatinine,
+        scaled by renal function. This surrogate does not use measured creatinine.
+        """
+        return (183.0 - 1.34 * self.age) * self.renal_function
+
     def estimate_blood_volume(self) -> float:
         """Estimate total blood volume in mL using Nadler's formula."""
         h_m = self.height / 100.0

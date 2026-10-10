@@ -521,9 +521,10 @@ def engine_eto2_gap(w: dict) -> tuple[float, float]:
                              mode="VCV")
     engine.start()
     # 2 L/min of O2 and air whose steady circle composition matches the recorded
-    # FiO2: fresh O2 fraction = FiO2 + O2 uptake / fresh gas flow.
+    # FiO2. O2 uptake reduces both supplied O2 and the total spill flow.
     uptake = engine.resp.vco2 * max(0.5, engine.thermal.metabolic_factor) / engine.resp.rq / 1000.0
-    fresh = w["FIO2"] / 100 + uptake / 2.0
+    recorded_fio2 = w["FIO2"] / 100
+    fresh = recorded_fio2 + (1.0 - recorded_fio2) * uptake / 2.0
     o2 = min(2.0, max(0.0, (2.0 * fresh - 0.42) / 0.79))
     engine.set_fgf(o2, 2.0 - o2, 0.0)
     engine.circuit.equilibrate(uptake)

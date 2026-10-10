@@ -73,6 +73,24 @@ def test_norepinephrine_tci_includes_secretion_and_propofol_clearance(patient_fa
 class TestEngineTCI:
     """Pump-limited TCI inside the engine."""
 
+    def test_propofol_target_survives_midazolam_pk_interaction(self, engine_factory):
+        """A midazolam bolus changes live PK while the propofol pump holds its target."""
+        engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
+        engine.set_airway_mode("ETT")
+        engine.enable_tci("propofol", 2.0)
+        for _ in range(600):
+            engine.step(1.0)
+        baseline_signature = engine.tci["propofol"]._signature
+        engine.give_drug_bolus("midazolam", 3.0)
+        peak = 0.0
+        for _ in range(600):
+            engine.step(1.0)
+            peak = max(peak, engine.state.propofol_ce)
+        assert engine.pk["propofol"].cl1_scale < 0.98
+        assert engine.tci["propofol"]._signature != baseline_signature
+        assert peak < 2.0 * 1.03
+        assert engine.state.propofol_ce == pytest.approx(2.0, rel=0.03)
+
     @pytest.mark.parametrize("dt", [0.1, 0.3, 1.0])
     def test_effect_site_induction_reaches_hypnosis_without_overshoot(self, engine_factory, dt):
         engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, dt=dt, rng_seed=123), start=True)

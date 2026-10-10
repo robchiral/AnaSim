@@ -45,7 +45,7 @@ def test_hypothermia_slows_apneic_co2_rise(engine_factory):
         engine.set_fgf(10.0, 0.0)
         engine.set_vent_power(True)
         engine.give_drug_bolus("roc", engine.patient.weight)
-        _advance(engine, 120)
+        _advance(engine, 180)
         # Apneic oxygenation keeps SaO2 up, so only CO2 production differs.
         engine.set_vent_power(False)
         start = engine.state.pa_co2

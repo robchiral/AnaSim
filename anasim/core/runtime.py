@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from anasim.core.constants import CMH2O_TO_MMHG
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
+from anasim.patient.pk_models import MidazolamPK, PropofolPKEleveld
 from anasim.physiology.disturbances import DisturbanceEffects
 
 from .monitors import step_monitors
@@ -185,7 +186,7 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
         uptake_n2o = (fi_n2o - engine.pk_n2o.state.p_alv) * va
         uptake_o2 = engine.resp.oxygen_exchange_l_min(
             engine.state.fio2, va, engine.thermal.metabolic_factor,
-            airway.patency, airway.vq_mismatch,
+            airway.patency, airway.vq_mismatch, dt,
         )
     circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o)
     return fi_sevo, fi_n2o
@@ -205,8 +206,8 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
     rates = engine.infusion_rates
     for key, model in engine.pk.items():
         model.step(dt, rates.get(key, 0.0))
-    # Sugammadex binds rocuronium in plasma and at the neuromuscular junction;
-    # free rocuronium there drives TOF and every muscle effect.
+    # Plasma binding and sugammadex-dependent effect-site efflux reduce free
+    # rocuronium, which drives TOF and every muscle effect.
     tof = engine.tof_pd.step_recovery(
         dt, engine.pk["roc"], mac_sevo=engine.pk_sevo.state.mac, mac_n2o=engine.pk_n2o.state.mac
     )
@@ -217,14 +218,20 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
 def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     """Update PK covariates and return whether the models were rescaled.
 
-    Propofol slows norepinephrine clearance. Blood volume, cardiac output, and
-    renal perfusion scale every intravenous model.
+    Propofol slows norepinephrine and midazolam disposition; midazolam slows
+    propofol clearance. Blood volume, cardiac output, and renal perfusion
+    provide the hemodynamic covariates.
     """
     engine.pk_nore.update_propofol(engine.pk["propofol"].state.c1)
+    # Both covariates use the concentrations before either parameter update.
+    propofol_cp = engine.pk["propofol"].state.c1
+    midazolam_cp = engine.pk["midazolam"].state.c1
+    interaction_changed = cast(PropofolPKEleveld, engine.pk["propofol"]).update_midazolam(midazolam_cp)
+    interaction_changed |= cast(MidazolamPK, engine.pk["midazolam"]).update_propofol(propofol_cp)
     base_bv = engine.hemo.blood_volume_0
     base_co = engine.hemo.base_co_l_min
     if base_bv <= 0.0 or base_co <= 0.0:
-        return False
+        return interaction_changed
     v_ratio = clamp(engine.hemo.blood_volume / base_bv, 0.1, 2.0)
     co_ratio = clamp(co_curr / base_co, 0.1, 2.0)
     scale = (v_ratio, co_ratio, engine.hemo.renal_perfusion)
@@ -234,7 +241,7 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     if last_scale is not None and all(
         math.isclose(value, last, rel_tol=1e-3, abs_tol=1e-3) for value, last in zip(scale, last_scale, strict=True)
     ):
-        return False
+        return interaction_changed
 
     for model in engine.pk.values():
         model.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
@@ -374,7 +381,7 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         ce_esmolol=state.esmolol_ce,
         ce_labetalol=state.labetalol_ce,
         ce_glyco=state.glyco_ce,
-        ce_ketamine=state.ketamine_ce,
+        ce_ketamine=engine.pk["ketamine"].state.ce_cv,
         temp_c=state.temp_c,
         peep_cmH2O=total_peep_effect,
         sao2=resp_state.sao2,

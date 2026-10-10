@@ -87,8 +87,8 @@ AnaSim's default patient: static 53.1, plateau 47.4 mL/cmH2O.
 
 | | Recordings | AnaSim |
 |---|---|---|
-| FiO2 (%) | 35 (34–37) | 36.8 (36–39) |
-| FiO2 - EtO2 (%) | 6 (5–6) | 5.03 (4.16–6.45) |
+| FiO2 (%) | 35 (34–37) | 36.9 (36–38.9) |
+| FiO2 - EtO2 (%) | 6 (5–6) | 5.32 (4.27–6.26) |
 
-Paired AnaSim - recorded difference: -0.617 (-1.38–0.986); mean absolute 1.42
+Paired AnaSim - recorded difference: -0.47 (-1.22–0.564); mean absolute 1.13
 percentage points (the Primus reports whole percent).

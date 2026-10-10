@@ -68,6 +68,10 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Eleveld et al. (2018). *Br J Anaesth*. [Propofol PK/PD](https://pubmed.ncbi.nlm.nih.gov/29661412/).
 - Eleveld et al. (2018). *Br J Anaesth*. [Propofol model corrigendum](https://doi.org/10.1016/j.bja.2018.05.045).
 - Johnson et al. (2003). *Anesthesiology*. [Propofol PK/PD in hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/12883414/).
+- Johnson et al. (2001). *Anesthesiology*. [Remifentanil PK/PD in hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/11176098/).
+- Johnson et al. (2004). *Anesthesiology*. [Propofol after hemorrhagic shock and crystalloid resuscitation](https://pubmed.ncbi.nlm.nih.gov/15329589/).
+- Kurita et al. (2011). *Br J Anaesth*. [Remifentanil and propofol across stages of hemorrhage](https://pubmed.ncbi.nlm.nih.gov/21862493/).
+- Egan and Johnson (2020). *Anesth Analg*. [Intravenous anesthetics in hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/32149755/).
 - Vellinga et al. (2021). *Br J Anaesth*. [Prospective Eleveld propofol PK/PD validation](https://doi.org/10.1016/j.bja.2020.10.027).
 - Servin et al. (1990). *Br J Anaesth*. [Propofol PK in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/2223333/).
 - Hiraoka et al. (2005). *Br J Clin Pharmacol*. [Renal extraction of propofol](https://pubmed.ncbi.nlm.nih.gov/16042671/).
@@ -78,16 +82,21 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - McEwan et al. (1993). *Anesthesiology*. [Fentanyl reduction of isoflurane MAC](https://pubmed.ncbi.nlm.nih.gov/8489058/).
 - Lang et al. (1996). *Anesthesiology*. [Remifentanil reduction of isoflurane MAC](https://pubmed.ncbi.nlm.nih.gov/8873541/).
 - Albrecht et al. (1999). *Clin Pharmacol Ther*. [Midazolam PK/PD and age](https://pubmed.ncbi.nlm.nih.gov/10391668/).
+- Vuyk et al. (2009). *Anesth Analg*. [Midazolam reduces propofol clearance](https://pubmed.ncbi.nlm.nih.gov/19372331/).
+- Lichtenbelt et al. (2010). *Anesth Analg*. [Propofol reduces midazolam distribution and clearance](https://pubmed.ncbi.nlm.nih.gov/20435936/).
 - Short, Plummer, and Chui (1992). *Br J Anaesth*. [Midazolam-propofol hypnotic synergy](https://pubmed.ncbi.nlm.nih.gov/1389820/).
 - Arden, Holley, and Stanski (1986). *Anesthesiology*. [Etomidate PK/PD and age](https://pubmed.ncbi.nlm.nih.gov/3729056/).
 - Van Hamme et al. (1978). *Anesthesiology*. [Etomidate PK](https://pubmed.ncbi.nlm.nih.gov/697083/).
 - Kaneda et al. (2011). *J Clin Pharmacol*. [Etomidate PK/PD](https://pubmed.ncbi.nlm.nih.gov/20498288/).
 - Valk and Struys (2021). *Clin Pharmacokinet*. [Etomidate pharmacology review](https://pubmed.ncbi.nlm.nih.gov/34060021/).
 - Kamp et al. (2020). *Anesthesiology*. [Ketamine PK meta-analysis and three-compartment model](https://pubmed.ncbi.nlm.nih.gov/32997732/).
+- Kamp et al. (2021). *Br J Anaesth*. [Stereoselective ketamine effects on cardiac output](https://pubmed.ncbi.nlm.nih.gov/33896589/).
 - Idvall et al. (1979). *Br J Anaesth*. [Ketamine anesthesia and hemodynamics](https://pubmed.ncbi.nlm.nih.gov/526385/).
 - Bourke, Malit, and Smith (1987). *Anesthesiology*. [Ketamine and CO₂ response](https://pubmed.ncbi.nlm.nih.gov/3101549/).
 - Foong et al. (2025). *Pharm Res*. [Lidocaine population PK in surgical patients](https://pubmed.ncbi.nlm.nih.gov/40021547/).
 - Himes, DiFazio, and Burney (1977). *Anesthesiology*. [Lidocaine and anesthetic requirement](https://pubmed.ncbi.nlm.nih.gov/911052/).
+- Hans et al. (2010). *Br J Anaesth*. [Lidocaine reduces propofol requirements during stimulation](https://pubmed.ncbi.nlm.nih.gov/20650919/).
+- Altermatt et al. (2012). *Br J Anaesth*. [Lidocaine during propofol maintenance and recovery](https://pubmed.ncbi.nlm.nih.gov/22490315/).
 - Qin et al. (2025). *Indian J Anaesth*. [Meta-analysis of IV lidocaine and the intubation response](https://pubmed.ncbi.nlm.nih.gov/40800699/).
 - Wilson, Meiklejohn, and Smith (1991). *Anaesthesia*. [Lidocaine timing and the intubation response](https://pubmed.ncbi.nlm.nih.gov/2014891/).
 - Tam, Chung, and Campbell (1987). *Anesth Analg*. [Lidocaine timing before intubation](https://pubmed.ncbi.nlm.nih.gov/3631567/).
@@ -95,6 +104,8 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Wierda et al. (1991). *Can J Anaesth*. [Rocuronium PK](https://pubmed.ncbi.nlm.nih.gov/1829656/).
 - Khuenl-Brady and Sparr (1996). *Clin Pharmacokinet*. [Rocuronium clinical PK review](https://pubmed.ncbi.nlm.nih.gov/8877248/).
 - Masui et al. (2018). *J Anesth*. [Rocuronium PD covariates](https://pubmed.ncbi.nlm.nih.gov/30099599/).
+- Sasakawa et al. (2016). *J Anesth*. [Predictive ability of six rocuronium PK models](https://pubmed.ncbi.nlm.nih.gov/27098255/).
+- Varrique et al. (2016). *J Pharm Pharmacol*. [Rocuronium PK/PD in young and elderly patients](https://pubmed.ncbi.nlm.nih.gov/27545305/).
 - Magorian et al. (1995). *Anesth Analg*. [Rocuronium PK in liver disease](https://pubmed.ncbi.nlm.nih.gov/7893030/).
 - Robertson et al. (2005). *Eur J Anaesthesiol*. [Rocuronium PK in renal failure](https://pubmed.ncbi.nlm.nih.gov/15816565/).
 - Ensinger et al. (1992). *Eur J Anaesthesiol*. [Arterial epinephrine clearance](https://pubmed.ncbi.nlm.nih.gov/1425612/).
@@ -163,6 +174,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Benumof et al. (1997). *Anesthesiology*. [Desaturation after preoxygenation](https://pubmed.ncbi.nlm.nih.gov/9357902/).
 - Nimmagadda et al. (2017). *Anesth Analg*. [Preoxygenation endpoints](https://pubmed.ncbi.nlm.nih.gov/28099321/).
 - Hardman et al. (2000). *Anesth Analg*. [Hypoxemia during apnea](https://pubmed.ncbi.nlm.nih.gov/10702447/).
+- Laviola et al. (2020). *Br J Anaesth*. [Oxygen fraction during passive airway rescue](https://pubmed.ncbi.nlm.nih.gov/32008701/).
 - Eastwood et al. (2005). *Anesthesiology*. [Propofol and airway closing pressure](https://pubmed.ncbi.nlm.nih.gov/16129969/).
 - Hillman et al. (2009). *Anesthesiology*. [Airway collapse at loss of consciousness](https://pubmed.ncbi.nlm.nih.gov/19512872/).
 - Larsson et al. (1985). *J Allergy Clin Immunol*. [Epinephrine relief of bronchoconstriction](https://pubmed.ncbi.nlm.nih.gov/3989143/).

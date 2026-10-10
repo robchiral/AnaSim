@@ -58,7 +58,7 @@ def test_bag_mask_ventilates_paralysis_only_through_an_airway(awake_engine, adva
     engine = awake_engine
     engine.give_drug_bolus("Rocuronium", 0.8 * engine.patient.weight)
     engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.6)
-    advance_time(engine, 60.0, dt=0.25)
+    advance_time(engine, 120.0, dt=0.25)
     assert engine.state.mv < 1.0
     assert engine.resp.state.apnea
     assert engine.resp.state.drive_central > 0.95
@@ -549,7 +549,7 @@ def test_volume_guarantee_restores_tidal_volume_three_cmh2o_per_breath(awake_eng
     engine.give_drug_bolus("Rocuronium", 0.8 * engine.patient.weight)
     engine.set_vent_settings(rr=12.0, vt=0.45, peep=5.0, ie="1:2", mode="PCV-VG")
     engine.set_vent_power(True)
-    advance_time(engine, 75.0, dt=0.1)
+    advance_time(engine, 120.0, dt=0.1)
     assert engine.state.vt == pytest.approx(450.0, rel=0.02)
 
     engine.resp_mech.reference_compliance /= 2.0

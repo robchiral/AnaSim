@@ -8,6 +8,7 @@ from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import TOFModel
 from anasim.patient.pk_models import (
     EpinephrinePK,
+    MidazolamPK,
     MilrinonePK,
     NorepinephrinePK,
     PropofolPKEleveld,
@@ -114,6 +115,54 @@ def test_propofol_slows_li_norepinephrine_clearance(patient):
     assert concentrations[1] > concentrations[0]
 
 
+def test_reciprocal_propofol_midazolam_pk_preserves_mass_and_reverses(patient):
+    """Vuyk 2009 and Lichtenbelt 2010, drug-only columns in Table 2.
+
+    Relative covariates transfer to AnaSim's baseline models. Changing V1
+    must preserve drug amount, including when blood volume also changes.
+    """
+    prop, mid = PropofolPKEleveld(patient), MidazolamPK(patient)
+    prop_cl = (prop.cl1, prop.cl2, prop.cl3)
+    mid_cl = (mid.cl1, mid.cl2)
+    mid.state.c1, mid.state.c2, mid.state.c3 = 100.0, 40.0, 10.0
+    mid_mass = mid.v1 * mid.state.c1 + mid.v2 * mid.state.c2 + mid.v3 * mid.state.c3
+    prop.update_midazolam(225.0)
+    mid.update_propofol(1.2)
+    assert (prop.elimination_clearance, prop.cl2, prop.cl3) == pytest.approx(
+        np.asarray(prop_cl) * np.exp(-225.0 * np.asarray((0.000820, 0.00274, 0.00142)))
+    )
+    assert (mid.elimination_clearance, mid.cl2) == pytest.approx(
+        np.asarray(mid_cl) * np.exp(-1200.0 * np.asarray((0.000205, 0.000232)))
+    )
+    assert mid.v1 / mid.v1_base == pytest.approx(0.581, abs=0.001)
+    mid.update_hemodynamics(0.6, 0.7, blood_volume_l=patient.estimate_blood_volume() / 1000.0)
+    mid.update_propofol(8.0)  # Higher concentrations retain the bounded covariate.
+    assert mid.v1 * mid.state.c1 + mid.v2 * mid.state.c2 + mid.v3 * mid.state.c3 == pytest.approx(mid_mass)
+    mid.update_propofol(0.0)
+    mid.update_hemodynamics(1.0, 1.0)
+    prop.update_midazolam(0.0)
+    assert mid.v1 == mid.v1_base and mid.state.c1 == pytest.approx(100.0)
+    assert (prop.elimination_clearance, prop.cl2, prop.cl3) == pytest.approx(prop_cl)
+
+
+def test_hemorrhage_increases_anesthetic_exposure_and_resuscitation_restores_pk(patient):
+    """Johnson 2001/2003/2004: swine-informed shock covariates, unchanged remi PD."""
+    for model_type in (PropofolPKEleveld, RemifentanilPKEleveld):
+        normal, shock = model_type(patient), model_type(patient)
+        shock.update_hemodynamics(0.5, 0.4, blood_volume_l=patient.estimate_blood_volume() / 1000.0)
+        normal_cl = (normal.cl1, normal.cl2, normal.cl3)
+        if model_type is RemifentanilPKEleveld:
+            assert (shock.cl2, shock.cl3, shock.ke0) == (normal.cl2, normal.cl3, normal.ke0)
+        _infuse(normal, 600, 1.0)
+        _infuse(shock, 600, 1.0)
+        assert shock.state.c1 > 1.4 * normal.state.c1
+        shock.update_hemodynamics(1.0, 1.0, blood_volume_l=patient.estimate_blood_volume() / 1000.0)
+        assert (shock.cl1, shock.cl2, shock.cl3) == pytest.approx(normal_cl)
+        _infuse(normal, 3600, 1.0)
+        _infuse(shock, 3600, 1.0)
+        assert shock.state.c1 == pytest.approx(normal.state.c1, rel=0.08)
+
+
 def test_organ_impairment_scales_pk():
     """Hepatic impairment expands Vd; renal impairment slows rocuronium and
     milrinone clearance but not propofol's."""
@@ -151,29 +200,32 @@ def test_hemodynamic_rescaling_conserves_drug_mass(awake_engine, volume_ratio):
         assert pk.state.c1 == pytest.approx(4.0)
 
 
-def test_rocuronium_duration_and_spontaneous_recovery(patient):
-    """0.6 mg/kg: TOF 25% at 25-70 min (Wierda 1991), then TOF ratio 90%."""
-    tof = _tof_trace(patient, 0.6, 7200)
-    block = _first_second(tof, lambda x: x < 5.0)
-    assert block is not None
-
-    duration = _first_second(tof, lambda x: x > 25.0, start=block)
-    assert duration is not None and 25 * 60 < duration < 70 * 60
-    recovery = _first_second(tof, lambda x: x >= 90.0, start=duration)
-    assert recovery is not None and 20 * 60 < recovery < 125 * 60
+def test_rocuronium_spontaneous_recovery_slows_with_age(patient_factory):
+    """Kleijn 2011: after 0.6 mg/kg under propofol, TOF ratio 0.9 at about 40-80 min.
+    Clearance is 25% lower over 65 years (Varrique 2016), so recovery is later.
+    """
+    recovery = {}
+    for age in (30, 70):
+        tof = _tof_trace(patient_factory(age=age), 0.6, 9000)
+        block = _first_second(tof, lambda x: x < 5.0)
+        assert block is not None and block < 180
+        recovery[age] = _first_second(tof, lambda x: x >= 90.0, start=block)
+    assert 40 * 60 < recovery[30] < 80 * 60
+    assert recovery[70] > recovery[30] + 10 * 60
 
 
 @pytest.mark.parametrize(
     ("roc_mg_kg", "given_at_s", "sugammadex_mg_kg", "max_reversal_s"),
     [
-        (0.6, 900, 2.0, 210),  # Pühringer 2010
-        (0.6, 180, 4.0, 240),  # Pühringer 2010, deep block
-        (1.2, 180, 16.0, 300),  # Kleijn 2011, immediate reversal
+        (0.6, 1800, 2.0, 204),  # Moderate block: observed median 1.7 min, range 0.9-3.4
+        (0.6, 900, 4.0, 180),  # Deep block: predicted median 1.5 min
+        (1.2, 180, 16.0, 120),  # Immediate reversal: predicted 0.8 min, observed 1.3
     ],
 )
 def test_sugammadex_reversal_time(
     anesthetized_engine, advance_time, roc_mg_kg, given_at_s, sugammadex_mg_kg, max_reversal_s
 ):
+    """Time to TOF ratio 0.9 after sugammadex (Kleijn 2011, Tables 5 and 6)."""
     engine = anesthetized_engine
     engine.give_drug_bolus("roc", roc_mg_kg * engine.patient.weight)
     advance_time(engine, given_at_s)
@@ -187,11 +239,11 @@ def test_sugammadex_reversal_time(
             break
         engine.step(1.0)
     assert recovered is not None
-    assert recovered <= max_reversal_s
+    assert 20 <= recovered <= max_reversal_s
 
 
 def test_sugammadex_raises_total_plasma_rocuronium(engine_factory):
-    """Ploeger 2009: the complex is cleared like sugammadex, about a third as fast
+    """Kleijn 2011: the complex is cleared like sugammadex, about a third as fast
     as free rocuronium, and tissue rocuronium returns to bind, so total plasma
     rocuronium rises after sugammadex while free rocuronium falls.
     """

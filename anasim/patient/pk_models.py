@@ -30,6 +30,7 @@ class PKState:
     ce: float = 0.0  # Effect site
     ce_response: float = 0.0  # Propofol clinical response
     ce_resp: float = 0.0  # Respiratory depression
+    ce_cv: float = 0.0  # Ketamine cardiovascular effect
 
 
 class MammillaryPK:
@@ -62,6 +63,8 @@ class MammillaryPK:
         self.v1 = v1
         self.cl1_base = cl1
         self.cl1_scale = 1.0
+        self.v1_scale = 1.0
+        self.cl2_scale = self.cl3_scale = 1.0
         self.basal_input_rate = basal_input_rate  # Model mass units per second.
         self.cl2_base = cl2
         self.cl3_base = cl3
@@ -117,7 +120,7 @@ class MammillaryPK:
         volume; the rest is tissue. Without blood_volume_l, all of V1 does.
         """
         vascular = self.v1_base if blood_volume_l is None else min(self.v1_base, blood_volume_l)
-        new_v1 = self.v1_base + vascular * (v_ratio - 1.0)
+        new_v1 = (self.v1_base + vascular * (v_ratio - 1.0)) * self.v1_scale
         self.state.c1 *= self.v1 / new_v1
         self.v1 = new_v1
         deficit = min(1.0, v_ratio)
@@ -126,14 +129,29 @@ class MammillaryPK:
         self.cl1 *= deficit ** self.cl1_deficit_exponent
         distribution_scale = co_ratio ** self.distribution_co_exponent
         distribution_scale *= deficit ** self.distribution_deficit_exponent
-        self.cl2 = self.cl2_base * distribution_scale
-        self.cl3 = self.cl3_base * distribution_scale
+        self.cl2 = self.cl2_base * distribution_scale * self.cl2_scale
+        self.cl3 = self.cl3_base * distribution_scale * self.cl3_scale
+
+    def _set_interaction_scales(
+        self, *, v1: float = 1.0, cl1: float = 1.0, cl2: float = 1.0, cl3: float = 1.0,
+    ) -> bool:
+        """Apply drug covariates without changing central mass or losing flow scaling."""
+        scales = (v1, cl1, cl2, cl3)
+        old = (self.v1_scale, self.cl1_scale, self.cl2_scale, self.cl3_scale)
+        if all(math.isclose(a, b, rel_tol=1e-3) for a, b in zip(scales, old, strict=True)):
+            return False
+        self.state.c1 *= self.v1_scale / v1
+        self.v1 *= v1 / self.v1_scale
+        self.cl2 *= cl2 / self.cl2_scale
+        self.cl3 *= cl3 / self.cl3_scale
+        self.v1_scale, self.cl1_scale, self.cl2_scale, self.cl3_scale = scales
+        return True
 
     def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
         """Advance with simultaneous Euler steps that conserve compartment transfers."""
         input_rate_per_sec += self.basal_input_rate
         s = self.state
-        if not input_rate_per_sec and not (s.c1 or s.c2 or s.c3 or s.ce or s.ce_response or s.ce_resp):
+        if not input_rate_per_sec and not any(getattr(s, name) for name in self.state_fields):
             return s  # Skip drugs with no input or residual concentration.
         cl2 = self.cl2 if self.v2 > 0 else 0.0
         cl3 = self.cl3 if self.v3 > 0 else 0.0
@@ -299,12 +317,27 @@ class PropofolPKEleveld(MammillaryPK):
         # Eleveld's anesthetized cohort already reflects propofol's fall in cardiac
         # output, so blood loss scales clearance instead. In swine bled 30 mL/kg
         # (about 43%), clearance halved and distribution clearances fell 52-78%,
-        # doubling plasma propofol (Johnson 2003).
+        # doubling plasma propofol; shed blood volume predicted the change best
+        # (Johnson 2003). Crystalloid resuscitation restored the kinetics as
+        # volume returned (Johnson 2004).
         super().__init__(
             ke0=0.14636965112551278 * (w / 70.0) ** -0.25,
             additional_effect_sites=(("ce_response", 0.456), ("ce_resp", math.log(2.0) / 2.6)),
             cl1_deficit_exponent=1.0, distribution_deficit_exponent=2.0,
             **_NO_CO_COVARIATE, **params,
+        )
+
+    def update_midazolam(self, concentration_ng_ml: float) -> bool:
+        """Vuyk 2009 Table 2, midazolam-only clearance covariates.
+
+        Apply relative changes to Eleveld, centered on no midazolam, and bound
+        the covariate at the studied 225 ng/mL. This transfer is an assumption.
+        """
+        cp = clamp(concentration_ng_ml, 0.0, 225.0)
+        return self._set_interaction_scales(
+            cl1=math.exp(-0.000820 * cp),
+            cl2=math.exp(-0.00274 * cp),
+            cl3=math.exp(-0.00142 * cp),
         )
 
 
@@ -332,6 +365,9 @@ class RemifentanilPKEleveld(MammillaryPK):
             cl3=0.124 * (v3 / 5.03)**0.75 * aging_fast,
             ke0=1.09 * math.exp(-0.0289 * (age - 35.0)),
             additional_effect_sites=(("ce_resp", math.log(2.0) / 0.53),),
+            # Swine bled 48 mL/kg had 58% lower central clearance and half the
+            # V1, with unchanged distribution clearances (Johnson 2001).
+            cl1_deficit_exponent=0.8,
             **_NO_CO_COVARIATE,
         )
 
@@ -382,6 +418,19 @@ class MidazolamPK(MammillaryPK):
             ke0=0.11 - 0.03 * years,
         )
 
+    def update_propofol(self, concentration_ug_ml: float) -> bool:
+        """Lichtenbelt 2010 Table 2, propofol-only covariates on V1, CL and Q2.
+
+        Apply relative changes to Albrecht, centered on no propofol, and bound
+        the covariate at the studied 1.2 mcg/mL. This transfer is an assumption.
+        """
+        cp_ng_ml = 1000.0 * clamp(concentration_ug_ml, 0.0, 1.2)
+        return self._set_interaction_scales(
+            v1=math.exp(-0.000453 * cp_ng_ml),
+            cl1=math.exp(-0.000205 * cp_ng_ml),
+            cl2=math.exp(-0.000232 * cp_ng_ml),
+        )
+
 
 class EtomidatePK(MammillaryPK):
     """Arden et al. 1986 three-compartment whole-blood model (mcg/mL).
@@ -412,7 +461,9 @@ class KetaminePK(MammillaryPK):
 
     CL 84, Q2 161, and Q3 79 L/h and V1 25, V2 56, and V3 157 L at 70 kg;
     clearance is hepatic. AnaSim sets ke0 for loss of consciousness within
-    about a minute.
+    about a minute. The separate cardiovascular site uses Kamp 2021's
+    equilibration half-time of 2.28 min; its transfer to total racemic
+    ketamine concentrations is an assumption.
     """
 
     def __init__(self, patient: Patient):
@@ -426,6 +477,7 @@ class KetaminePK(MammillaryPK):
             v3=157.0 * size,
             cl3=79.0 / 60.0 * size**0.75,
             ke0=0.5,
+            additional_effect_sites=(("ce_cv", math.log(2.0) / 2.28),),
         )
 
 
@@ -454,22 +506,36 @@ class LidocainePK(MammillaryPK):
 # Rocuronium -------------------------------------------------------------------
 
 class RocuroniumPK(MammillaryPK):
-    """Wierda et al. 1991 with the Masui age-dependent ke0.
+    """Kleijn 2011 two-compartment population PK (446 subjects, 1-91 years).
 
-    Clearance is mainly hepatic uptake and biliary excretion; 12-22% of 0.6
-    mg/kg appears unchanged in urine. Renal failure changes clearance little,
-    and cirrhosis enlarges the central and steady-state volumes about 30-40%
-    (Khuenl-Brady 1996).
+    Clearance falls 0.68% per year above 43, V1 falls with creatinine
+    clearance, and V2 rises with age. Of six rocuronium models, this one and
+    Magorian's predicted measured concentrations within accepted limits
+    (Sasakawa 2016); clearance at 65-88 years was 25% lower (Varrique 2016).
+    Clearance is mainly hepatic uptake and biliary excretion: 12-22% of 0.6
+    mg/kg appears unchanged in urine, renal failure changes clearance little,
+    and cirrhosis enlarges the volumes 30-40% (Khuenl-Brady 1996). The effect
+    site is Kleijn's, without sevoflurane.
     """
 
     RENAL_FRACTION = 0.2
 
     def __init__(self, patient: Patient):
-        params = _from_rate_constants(0.044 * patient.weight, 0.100, 0.210, 0.130, 0.028, 0.010)
+        size = patient.weight / 70.0
+        age = patient.age
+        crcl = patient.creatinine_clearance()
+        params = {
+            "v1": 4.73 * size * math.exp(-0.00143 * (crcl - 119.0)),
+            "cl1": 0.269 * size**0.75 * (1.0 - 0.00678 * (age - 43.0)),
+            "v2": 6.76 * size * math.exp(0.00613 * (age - 43.0)),
+            "cl2": 0.279 * size**0.75,
+        }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.4))
         params["cl1"] *= organ_clearance_scaler(patient, renal_fraction=self.RENAL_FRACTION)
+        # Kleijn's patients were anesthetized, so his parameters already reflect
+        # anesthetic cardiac output.
         super().__init__(
-            ke0=max(0.01, 0.100 - 0.00138 * (patient.age - 50.0)), renal_fraction=self.RENAL_FRACTION, **params,
+            ke0=0.134 * size**-0.25, renal_fraction=self.RENAL_FRACTION, **_NO_CO_COVARIATE, **params,
         )
 
 

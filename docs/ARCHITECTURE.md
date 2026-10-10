@@ -32,7 +32,7 @@ recordings include both physiological values and measurements.
 | [`projection.py`](../anasim/core/projection.py) | Copies model outputs into the shared state |
 | [`monitors.py`](../anasim/core/monitors.py) | Updates measurements and alarms |
 | [`initialization.py`](../anasim/core/initialization.py) | Configures starting states |
-| [`drug_registry.py`](../anasim/core/drug_registry.py) | Defines each drug's PK model, units, pump limits, state fields, and interface metadata |
+| [`drug_registry.py`](../anasim/core/drug_registry.py) | Defines drug models, units, pump limits, state fields, and interface metadata |
 
 ## Step order
 
@@ -40,8 +40,8 @@ Each `SimulationEngine.step()` call performs these operations:
 
 1. Calculate anesthetic depth, metabolic rate, and stimulation tolerance.
 2. Apply stimulation, hemorrhage, fluids, and other clinical events.
-3. Scale pharmacokinetic (PK) parameters with blood volume and cardiac output,
-   then update target-controlled infusion (TCI) rates.
+3. Update pharmacokinetic (PK) parameters for blood volume, cardiac output, and
+   drug interactions, then calculate target-controlled infusion (TCI) rates.
 4. Update the airway, vaporizer, and breathing circuit.
 5. Update drug concentrations, inhaled anesthetic uptake, and neuromuscular block.
 6. Advance breathing mechanics, gas exchange, and hemodynamics.
@@ -69,10 +69,10 @@ within their source cohorts.
 
 ## Model notes
 
-[Model references](REFERENCES.md) lists the source studies. Published parameters
-describe their source cohorts. Simulator calibrations define combined drug
-responses, reflexes, and volume and airway effects. Tests check equations,
-conservation, and clinical responses; they do not establish accuracy for
+[Model references](REFERENCES.md) lists the source studies. Simulator
+calibrations define combined drug responses, reflexes, and volume and airway
+effects. Tests check equations, conservation, and clinical responses; they do
+not establish accuracy for
 individual patients.
 
 ### Hemodynamics
@@ -135,14 +135,23 @@ equivalent; etomidate and midazolam contribute propofol equivalents, with
 midazolam-propofol synergy. Nitrous oxide and ketamine affect clinical
 responsiveness; ketamine and lidocaine also blunt stimulation responses.
 
-The [neuromuscular model](../anasim/patient/pd/nmba.py) separates train-of-four
-(TOF) response at the adductor pollicis from diaphragm and larynx effects.
-Respiratory muscle effects equilibrate faster and require higher rocuronium
-concentrations, allowing breathing to recover before TOF. Sugammadex follows
-the Ploeger 2009 interaction model: it binds rocuronium in plasma at finite
-rates, the complex is cleared like sugammadex, and sugammadex binds rocuronium
-at the neuromuscular junction at equilibrium. Total plasma rocuronium rises
-after reversal while free rocuronium falls.
+Ketamine uses a separate cardiovascular effect site with a 2.28 min
+equilibration half-time (Kamp 2021) and response magnitude calibrated to
+Idvall 1979. The model represents total ketamine without separate enantiomers
+or metabolites. Lidocaine reduces stimulation-related BIS and cardiovascular
+responses without a baseline hypnotic effect (Hans 2010); its response
+coefficient is a simulator estimate.
+
+The [neuromuscular model](../anasim/patient/pd/nmba.py) uses Kleijn 2011 with
+age, weight, and estimated creatinine clearance covariates. Sugammadex binds
+rocuronium in plasma and increases its effect-site efflux. The complex clears
+like sugammadex; free rocuronium drives muscle effects.
+
+Train-of-four (TOF) represents the adductor pollicis response. Diaphragm and
+larynx effects equilibrate faster and require higher rocuronium concentrations,
+allowing breathing to recover before TOF. Creatinine clearance is estimated
+from age and renal function. Sevoflurane scaling, TOF normalization, and
+conversion to muscle effects use simulator calibrations.
 
 ### Respiration
 
@@ -158,10 +167,14 @@ Bouillon's nonlinear alveolar CO₂ response and extrapolates the low-dose
 propofol interaction to other concentrations. Combined responses, breath
 patterns, and apnea durations are simulator estimates.
 
-Measured breaths drive gas exchange. Oxygen exchange tracks lung gas and blood
-stores for preoxygenation, apnea, and blood loss, and determines circuit oxygen
-uptake. Alveolar, arterial, and end-tidal CO₂ are separate; low cardiac output
-widens the arterial to end-tidal gap. Oxygen and inhaled anesthetics share lung
+Measured breaths drive gas exchange. Lung and blood oxygen stores support
+preoxygenation, apnea, and blood loss responses and determine circuit oxygen
+uptake. Opening an obstructed airway allows passive gas refill and
+reoxygenation during apnea (Laviola 2020). Refill uses circuit oxygen; its timing
+is estimated, and the pressure transient is not modeled.
+
+Alveolar, arterial, and end-tidal CO₂ are separate; low cardiac output widens
+the arterial to end-tidal gap. Oxygen and inhaled anesthetics share lung
 gas volume and shunt from perfused closed units. Shunt mixing accounts for
 hemoglobin-bound and dissolved oxygen, with extraction limited to available
 oxygen.
@@ -172,7 +185,7 @@ The [mechanics model](../anasim/physiology/resp_mech.py) combines airway
 resistance, compliance, tissue viscoelasticity, and inspiratory muscle pressure.
 Compliance scales with predicted body weight and body mass index (BMI).
 [Lung aeration](../anasim/physiology/lung.py) depends on pressure history;
-recruitment and closure change gas volume, shunt, and compliance. Volume remains
+recruitment and closure change gas volume, shunt, and compliance. Volume is
 continuous during PEEP and compliance changes.
 
 Ventilatory assistance reduces muscle effort. Inflation ends effort earlier
@@ -233,15 +246,23 @@ MAC; anesthetic effects use brain MAC.
 
 ### PK and TCI
 
-IV drugs use a central compartment, up to two peripheral compartments, and
-endpoint-specific effect sites. The vascular part of the central volume, up
+Intravenous drugs use a central compartment, up to two peripheral compartments,
+and endpoint-specific effect sites. The vascular part of the central volume, up
 to the baseline blood volume, changes with blood volume while preserving drug
 amount. Renal clearance follows renal perfusion, the same MAP curve as urine
 output. Other clearances scale with cardiac output by drug-specific exponents.
-Propofol, remifentanil, norepinephrine, and epinephrine retain their population
-clearances at normal blood volume; norepinephrine also has its propofol
-covariate. Blood loss lowers propofol clearances, after the doubled plasma
-concentrations in hemorrhagic shock in swine (Johnson 2003).
+Propofol, remifentanil, norepinephrine, and epinephrine use population clearances
+at normal blood volume. Blood loss lowers propofol elimination and distribution
+clearances and remifentanil elimination clearance (Johnson 2001, 2003).
+Volume replacement restores these PK parameters. This scaling uses swine data;
+it does not distinguish compensated and uncompensated shock or model persistent
+propofol sensitivity after resuscitation (Kurita 2011; Johnson 2004).
+
+Midazolam reduces propofol elimination and distribution clearances (Vuyk 2009).
+Propofol reduces midazolam central volume, elimination clearance, and fast
+distribution clearance (Lichtenbelt 2010). Covariate calculations cap midazolam
+at 225 ng/mL and propofol at 1.2 mcg/mL. Applying these interaction coefficients
+to Eleveld propofol and Albrecht midazolam is a modeling assumption.
 
 TCI uses current PK parameters and concentrations to predict exposure over
 10 minutes. Rates update at a nominal 10-second interval within pump limits.
@@ -267,8 +288,7 @@ measurements, waveforms, controls, and scenario objectives.
 The local server binds to 127.0.0.1 and accepts same-origin requests under a
 session-specific path. It advances simulation on its own clock. Reloading
 reconnects to the paused session. After five seconds without polling, the
-server pauses simulation and closes the recording. Local recordings remain
-in the recording directory.
+server pauses simulation and closes the recording.
 
 The hosted app runs Python in a Pyodide worker with NumPy and SciPy. Stopping
 a recording downloads the CSV. `scripts/build_web.py` creates `build/web`;

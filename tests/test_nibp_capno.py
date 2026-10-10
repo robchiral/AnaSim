@@ -175,7 +175,7 @@ class TestCapnography:
         engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="PSV", p_insp=10.0, t_insp=1.7)
         engine.set_vent_power(True)
         engine.give_drug_bolus("Rocuronium", 0.8 * engine.patient.weight)
-        for _ in range(1000):
+        for _ in range(1500):
             engine.step(0.1)
         assert engine.resp.state.apnea
         assert engine.state.mv > 5.0

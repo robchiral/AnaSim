@@ -21,16 +21,20 @@
   anesthetic depth as the other hemodynamic effects.
 - Rescaled PK on 0.1% hemodynamic changes and resynchronized only active TCI
   controllers. `get_predicted_csht` accepts any registry drug.
-- Replaced sugammadex binding with the Ploeger 2009 interaction model. The
-  complex is cleared like sugammadex, total plasma rocuronium (`roc_cp`) rises
-  after reversal, and reversal speed comes from sugammadex binding at the
-  neuromuscular junction.
-- Set the rocuronium renal clearance share to 20% (Wierda 1991; Khuenl-Brady
-  1996). Blood loss lowers propofol clearances (Johnson 2003).
+- Replaced rocuronium and sugammadex PK/PD with Kleijn 2011's integrated
+  population model, including age, weight, renal function, and sevoflurane
+  covariates.
+- Set the rocuronium renal clearance share to 20% (Khuenl-Brady 1996).
+  Blood loss lowers propofol clearances and remifentanil elimination clearance
+  (Johnson 2001, 2003); volume restoration reverses the PK scaling.
+- Added reciprocal propofol-midazolam PK covariates from Vuyk 2009 and
+  Lichtenbelt 2010 with drug mass conservation and TCI resynchronization.
 - Recalibrated the ketamine sympathetic response so pressure peaks after the
   induction bolus and returns to baseline during maintenance (Idvall 1979).
-  Ketamine adds to laryngoscopy tolerance through the same MAC conversion as
-  the inhaled agents.
+  Added a separate cardiovascular effect site with Kamp 2021's 2.28 min
+  equilibration half-time and included ketamine in laryngoscopy tolerance.
+- Added passive lung-gas refill after relief of complete airway obstruction
+  during apnea, with oxygen drawn from the breathing circuit (Laviola 2020).
 - Recalibrated anesthetic heat loss and redistribution to the 1 h and 3 h core
   temperature falls in Matsukawa 1995.
 

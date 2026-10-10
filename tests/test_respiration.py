@@ -288,6 +288,53 @@ class TestOxygenStores:
         assert 70.0 < patent[2] < 100.0
 
 
+def test_airway_rescue_reoxygenates_during_ongoing_apnea(patient):
+    """Laviola 2020: opening an obstructed airway causes oxygen-dependent passive refill.
+
+    This checks the reported direction and mechanism, rather than numerical
+    agreement with that paper's different cardiopulmonary model.
+    """
+    peaks, endpoints = [], []
+    for fio2 in (0.21, 0.6, 1.0):
+        model = RespiratoryModel(patient)
+        model.equilibrate_oxygen(1.0)
+        for _ in range(900):
+            state = model.step(1.0, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0,
+                               fio2=1.0, airway_patency=0.0, unconscious=1.0)
+            if state.sao2 <= 60.0:
+                break
+        assert 55.0 < state.sao2 <= 60.0
+        assert model.oxygen_exchange_l_min(1.0, 0.0, 1.0, 0.0, 0.0) == 0.0
+        # The circuit uses this same transport function before the lung step.
+        # Opening the airway draws more O2 than maintenance apneic uptake.
+        transport = model.oxygen_exchange_l_min(fio2, 0.0, 1.0, 1.0, 0.0)
+        assert transport > fio2 * model.vco2 / model.rq / 1000.0
+        peak = state.sao2
+        for _ in range(300):
+            state = model.step(1.0, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0,
+                               fio2=fio2, airway_patency=1.0, unconscious=1.0)
+            assert state.apnea and state.va == 0.0
+            peak = max(peak, state.sao2)
+        peaks.append(peak)
+        endpoints.append(state.sao2)
+    assert 70.0 < peaks[0] < peaks[1] < peaks[2]
+    assert endpoints[0] < 90.0 < endpoints[1] < endpoints[2]
+
+    # Rapid refill must conserve O2 through the nonlinear blood store, so
+    # subdividing the same interval cannot change the rescued oxygen tension.
+    fine = RespiratoryModel(patient)
+    fine.equilibrate_oxygen(1.0)
+    for _ in range(9000):
+        state = fine.step(0.1, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0,
+                          fio2=1.0, airway_patency=0.0, unconscious=1.0)
+        if state.sao2 <= 60.0:
+            break
+    for _ in range(3000):
+        state = fine.step(0.1, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0,
+                          fio2=1.0, airway_patency=1.0, unconscious=1.0)
+    assert state.p_arterial_o2 == pytest.approx(model.state.p_arterial_o2, rel=0.01)
+
+
 def test_ventilation_requirement_scales_with_body_size(engine_factory):
     """Resting breathing matches CO2 production; fixed ventilator settings do not.
 
@@ -296,7 +343,9 @@ def test_ventilation_requirement_scales_with_body_size(engine_factory):
     VCV 500 mL x 12 overventilates a small patient and underventilates a large
     one (PaCO2 = 0.863 VCO2 / VA).
     """
-    sizes = (dict(weight=50, height=165, sex="female"), {}, dict(weight=100, height=177))
+    sizes: tuple[dict[str, Any], ...] = (
+        dict(weight=50, height=165, sex="female"), {}, dict(weight=100, height=177),
+    )
     ventilated_co2 = []
     for size in sizes:
         engine = engine_factory(start=True, **size)

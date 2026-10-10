@@ -43,9 +43,9 @@ ETOMIDATE_RESPIRATORY_PROPOFOL_RATIO = 2.0  # Calibrated independently of clinic
 KETAMINE_LOSS_OF_RESPONSE = 0.64
 KETAMINE_MAC_EQUIVALENT = 3.5
 
-# Lidocaine blocks 4.2% of responses to stimulation per mcg/mL, apart from
-# other drugs: 3-6 mcg/mL lowered anesthetic requirement 10-28% (Himes 1977).
-# It has no hypnotic or BIS effect.
+# Lidocaine blunts stimulation without a baseline hypnotic or BIS effect
+# (Hans 2010; Altermatt 2012). The 4.2%/mcg/mL response attenuation remains a
+# simulator calibration, informed by Himes 1977 and intubation-response data.
 LIDOCAINE_BLOCK_PER_MCG_ML = 0.042
 
 # Nitrous oxide is less than additive with sevoflurane for response to command.
