@@ -128,6 +128,7 @@ class TestClinicalAcceptance:
         engine = anesthetized_engine
         initial_volume = engine.hemo.blood_volume
         initial_v1 = engine.pk["propofol"].v1
+        initial_cp = engine.state.propofol_cp
         baseline_hr = engine.state.hr
 
         engine.start_hemorrhage(500.0)
@@ -141,9 +142,12 @@ class TestClinicalAcceptance:
         assert engine.state.hr > baseline_hr + 5.0
         assert engine.state.sbp < 90.0
         assert shock_map >= 20.0
-        assert engine.pk["propofol"].v1 / initial_v1 == pytest.approx(
-            engine.hemo.blood_volume / initial_volume, rel=0.05
+        # Propofol's central volume exceeds blood volume, so it loses the shed volume.
+        assert initial_v1 - engine.pk["propofol"].v1 == pytest.approx(
+            (initial_volume - engine.hemo.blood_volume) / 1000.0, rel=0.05
         )
+        # The same infusion gives higher plasma propofol in shock (Johnson 2003).
+        assert engine.state.propofol_cp > 1.3 * initial_cp
 
         engine.give_blood(600.0)
         engine.give_fluid(500.0)
@@ -192,6 +196,10 @@ class TestClinicalAcceptance:
         assert engine.state.hr > 90.0
         assert engine.state.map < 65.0
         assert engine.state.svr < baseline_svr * 0.75
+        # Hypotension slows renal milrinone clearance while flow-limited
+        # hepatic fentanyl clearance follows the raised cardiac output.
+        assert engine.pk["milri"].cl1 < 0.85 * engine.pk["milri"].cl1_base
+        assert engine.pk["fentanyl"].cl1 > engine.pk["fentanyl"].cl1_base
 
         # Surviving Sepsis Campaign: 30 mL/kg crystalloid, norepinephrine first,
         # and an initial MAP target of 65 mmHg.

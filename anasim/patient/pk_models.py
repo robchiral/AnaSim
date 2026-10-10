@@ -35,8 +35,9 @@ class PKState:
 class MammillaryPK:
     """Central compartment with up to two peripheral compartments and effect sites.
 
-    Mass is V1*c1 + V2*c2 + V3*c3. Hemodynamic scaling changes the central
-    volume with blood volume and clearances with cardiac output, using per-model
+    Mass is V1*c1 + V2*c2 + V3*c3. Hemodynamic scaling changes the vascular
+    part of the central volume with blood volume, renal clearance with renal
+    perfusion, and other clearances with cardiac output using per-model
     exponents. Peripheral volumes stay fixed so redistribution conserves mass.
     """
 
@@ -53,6 +54,9 @@ class MammillaryPK:
         distribution_co_exponent: float = 1.0,
         additional_effect_sites: tuple[tuple[str, float], ...] = (),
         basal_input_rate: float = 0.0,
+        renal_fraction: float = 0.0,
+        cl1_deficit_exponent: float = 0.0,
+        distribution_deficit_exponent: float = 0.0,
     ):
         self.v1_base = v1
         self.v1 = v1
@@ -65,6 +69,10 @@ class MammillaryPK:
         self.v3 = v3
         self.ke0 = ke0
         self.cl1_co_exponent = cl1_co_exponent
+        self.renal_fraction = renal_fraction
+        # Exponents on the blood-volume ratio, applied only below baseline volume.
+        self.cl1_deficit_exponent = cl1_deficit_exponent
+        self.distribution_deficit_exponent = distribution_deficit_exponent
         self.distribution_co_exponent = distribution_co_exponent
         # The primary site is last so TCI and decay predictions target it.
         self.effect_sites = (*additional_effect_sites, ("ce", ke0))
@@ -99,13 +107,25 @@ class MammillaryPK:
     def k31(self) -> float:
         return self.cl3 / self.v3 if self.v3 > 0 else 0.0
 
-    def update_hemodynamics(self, v_ratio: float, co_ratio: float) -> None:
-        """Rescale effective V1 without creating or removing central drug mass."""
-        new_v1 = self.v1_base * v_ratio
+    def update_hemodynamics(
+        self, v_ratio: float, co_ratio: float, renal_perfusion: float = 1.0,
+        blood_volume_l: float | None = None,
+    ) -> None:
+        """Rescale effective V1 without creating or removing central drug mass.
+
+        Only the part of V1 up to the baseline blood volume changes with blood
+        volume; the rest is tissue. Without blood_volume_l, all of V1 does.
+        """
+        vascular = self.v1_base if blood_volume_l is None else min(self.v1_base, blood_volume_l)
+        new_v1 = self.v1_base + vascular * (v_ratio - 1.0)
         self.state.c1 *= self.v1 / new_v1
         self.v1 = new_v1
-        self.cl1 = self.cl1_base * co_ratio ** self.cl1_co_exponent
+        deficit = min(1.0, v_ratio)
+        nonrenal = (1.0 - self.renal_fraction) * co_ratio ** self.cl1_co_exponent
+        self.cl1 = self.cl1_base * (nonrenal + self.renal_fraction * renal_perfusion)
+        self.cl1 *= deficit ** self.cl1_deficit_exponent
         distribution_scale = co_ratio ** self.distribution_co_exponent
+        distribution_scale *= deficit ** self.distribution_deficit_exponent
         self.cl2 = self.cl2_base * distribution_scale
         self.cl3 = self.cl3_base * distribution_scale
 
@@ -276,9 +296,14 @@ class PropofolPKEleveld(MammillaryPK):
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.6))
         # The clinical response rate is a timing assumption (Kuizenga 2019 study
         # design); respiratory equilibration half-time is 2.6 min (Bouillon 2004).
+        # Eleveld's anesthetized cohort already reflects propofol's fall in cardiac
+        # output, so blood loss scales clearance instead. In swine bled 30 mL/kg
+        # (about 43%), clearance halved and distribution clearances fell 52-78%,
+        # doubling plasma propofol (Johnson 2003).
         super().__init__(
             ke0=0.14636965112551278 * (w / 70.0) ** -0.25,
             additional_effect_sites=(("ce_response", 0.456), ("ce_resp", math.log(2.0) / 2.6)),
+            cl1_deficit_exponent=1.0, distribution_deficit_exponent=2.0,
             **_NO_CO_COVARIATE, **params,
         )
 
@@ -429,13 +454,23 @@ class LidocainePK(MammillaryPK):
 # Rocuronium -------------------------------------------------------------------
 
 class RocuroniumPK(MammillaryPK):
-    """Wierda et al. 1991 with the Masui age-dependent ke0."""
+    """Wierda et al. 1991 with the Masui age-dependent ke0.
+
+    Clearance is mainly hepatic uptake and biliary excretion; 12-22% of 0.6
+    mg/kg appears unchanged in urine. Renal failure changes clearance little,
+    and cirrhosis enlarges the central and steady-state volumes about 30-40%
+    (Khuenl-Brady 1996).
+    """
+
+    RENAL_FRACTION = 0.2
 
     def __init__(self, patient: Patient):
         params = _from_rate_constants(0.044 * patient.weight, 0.100, 0.210, 0.130, 0.028, 0.010)
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.4))
-        params["cl1"] *= organ_clearance_scaler(patient, renal_fraction=0.6)
-        super().__init__(ke0=max(0.01, 0.100 - 0.00138 * (patient.age - 50.0)), **params)
+        params["cl1"] *= organ_clearance_scaler(patient, renal_fraction=self.RENAL_FRACTION)
+        super().__init__(
+            ke0=max(0.01, 0.100 - 0.00138 * (patient.age - 50.0)), renal_fraction=self.RENAL_FRACTION, **params,
+        )
 
 
 # Vasoactive drugs -------------------------------------------------------------
@@ -517,7 +552,7 @@ class MilrinonePK(MammillaryPK):
     def __init__(self, patient: Patient):
         w = patient.weight
         cl1 = 0.13 * w / 60.0 * organ_clearance_scaler(patient, renal_fraction=0.9)
-        super().__init__(v1=0.45 * w, cl1=cl1, ke0=0.12)
+        super().__init__(v1=0.45 * w, cl1=cl1, ke0=0.12, renal_fraction=0.9)
 
 
 # Adrenergic and muscarinic antagonists ----------------------------------------
@@ -565,6 +600,7 @@ class GlycopyrrolatePK(MammillaryPK):
         super().__init__(
             v1=10.38 * size,
             cl1=49.76 / 60.0 * size**0.75 * organ_clearance_scaler(patient, renal_fraction=0.7),
+            renal_fraction=0.7,
             v2=21.41 * size,
             cl2=6.54 / 60.0 * size**0.75,
             v3=11.0 * size,

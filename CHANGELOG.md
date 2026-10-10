@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+- Corrected gas exchange for body size. CO₂ production sets alveolar CO₂,
+  oxygen consumption scales with weight^0.75, and dead space follows predicted
+  body weight. Heavier patients no longer desaturate at rest, and maintenance
+  starts scale tidal volume with size. `baseline_vt` now defaults to the
+  volume that keeps resting PaCO₂ at 40 mmHg.
+- Applied Katoh 1997's sevoflurane-nitrous oxide interaction at awakening as a
+  continuous product term, replacing a fixed factor whenever any sevoflurane
+  was present. Nitrous oxide now adds to laryngoscopy tolerance in the same MAC
+  fractions as sevoflurane.
+- Limited blood-volume scaling to the vascular part of each drug's central
+  volume, so hemorrhage and dilution no longer shift drugs with large central
+  volumes such as esmolol, ketamine, and lidocaine. Renal clearance of
+  milrinone, glycopyrrolate, and rocuronium follows renal perfusion instead of
+  cardiac output.
+- Awake patients hold baseline core temperature; they previously warmed about
+  0.3 °C/h. The thermoregulatory vasoconstriction threshold uses the same
+  anesthetic depth as the other hemodynamic effects.
+- Rescaled PK on 0.1% hemodynamic changes and resynchronized only active TCI
+  controllers. `get_predicted_csht` accepts any registry drug.
+- Replaced sugammadex binding with the Ploeger 2009 interaction model. The
+  complex is cleared like sugammadex, total plasma rocuronium (`roc_cp`) rises
+  after reversal, and reversal speed comes from sugammadex binding at the
+  neuromuscular junction.
+- Set the rocuronium renal clearance share to 20% (Wierda 1991; Khuenl-Brady
+  1996). Blood loss lowers propofol clearances (Johnson 2003).
+- Recalibrated the ketamine sympathetic response so pressure peaks after the
+  induction bolus and returns to baseline during maintenance (Idvall 1979).
+  Ketamine adds to laryngoscopy tolerance through the same MAC conversion as
+  the inhaled agents.
+- Recalibrated anesthetic heat loss and redistribution to the 1 h and 3 h core
+  temperature falls in Matsukawa 1995.
+
 ## 1.5 - 2026-10-10
 
 - Corrected circuit gas balance during uptake and washout, vaporizer delivery

@@ -54,13 +54,18 @@ def test_hypothermia_slows_apneic_co2_rise(engine_factory):
     assert rises[0] < 0.85 * rises[1]
 
 
-def test_first_hour_core_drop_after_induction(engine_factory):
-    """Core temperature after induction (Matsukawa et al. Anesthesiology. 1995)."""
+def test_core_drop_after_induction(engine_factory):
+    """Matsukawa 1995: core temperature fell 1.6 ± 0.3 °C in the first hour and 2.8 ± 0.5 °C by 3 h."""
     engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
+    # Awake thermoregulation holds core temperature before induction.
+    _advance(engine, 1800, dt=2.0)
+    assert engine.state.temp_c == pytest.approx(37.0, abs=0.02)
     engine.set_airway_mode("ETT")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
     engine.set_vent_power(True)
     engine.enable_tci("propofol", 3.5)
     engine.enable_tci("remi", 3.0)
-    _advance(engine, 3600, dt=1.0)
-    assert 0.8 < 37.0 - engine.state.temp_c < 1.7
+    _advance(engine, 3600, dt=2.0)
+    assert 37.0 - engine.state.temp_c == pytest.approx(1.6, abs=0.3)
+    _advance(engine, 7200, dt=2.0)
+    assert 37.0 - engine.state.temp_c == pytest.approx(2.8, abs=0.5)

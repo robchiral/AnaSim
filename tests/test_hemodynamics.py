@@ -62,7 +62,7 @@ def test_su_concentration_step_time_course(propofol, remifentanil, expected):
     """
     patient = Patient(age=35, baseline_hr=56, baseline_map=56 * 82.2 * 0.016)
     config = replace(
-        HemodynamicConfig(), ci_adult=56 * 82.2 / 1000 / patient.bsa,
+        HemodynamicConfig(), cardiac_index=56 * 82.2 / 1000 / patient.bsa,
         vol_clearance=0.0, baro_gain_brady=0.0, baro_gain_tachy=0.0,
     )
     model = HemodynamicModel(patient, config)

@@ -138,8 +138,11 @@ responsiveness; ketamine and lidocaine also blunt stimulation responses.
 The [neuromuscular model](../anasim/patient/pd/nmba.py) separates train-of-four
 (TOF) response at the adductor pollicis from diaphragm and larynx effects.
 Respiratory muscle effects equilibrate faster and require higher rocuronium
-concentrations, allowing breathing to recover before TOF. Sugammadex binding
-reduces free rocuronium and accelerates recovery.
+concentrations, allowing breathing to recover before TOF. Sugammadex follows
+the Ploeger 2009 interaction model: it binds rocuronium in plasma at finite
+rates, the complex is cleared like sugammadex, and sugammadex binds rocuronium
+at the neuromuscular junction at equilibrium. Total plasma rocuronium rises
+after reversal while free rocuronium falls.
 
 ### Respiration
 
@@ -231,10 +234,14 @@ MAC; anesthetic effects use brain MAC.
 ### PK and TCI
 
 IV drugs use a central compartment, up to two peripheral compartments, and
-endpoint-specific effect sites. Central volume scales with blood volume while
-preserving drug amount. Clearances scale with cardiac output by drug-specific
-exponents. Propofol, remifentanil, norepinephrine, and epinephrine retain their
-population clearances; norepinephrine also has its propofol covariate.
+endpoint-specific effect sites. The vascular part of the central volume, up
+to the baseline blood volume, changes with blood volume while preserving drug
+amount. Renal clearance follows renal perfusion, the same MAP curve as urine
+output. Other clearances scale with cardiac output by drug-specific exponents.
+Propofol, remifentanil, norepinephrine, and epinephrine retain their population
+clearances at normal blood volume; norepinephrine also has its propofol
+covariate. Blood loss lowers propofol clearances, after the doubled plasma
+concentrations in hemorrhagic shock in swine (Johnson 2003).
 
 TCI uses current PK parameters and concentrations to predict exposure over
 10 minutes. Rates update at a nominal 10-second interval within pump limits.
@@ -244,7 +251,10 @@ maintenance initialization.
 
 ### Temperature and stimulation
 
-Induction redistributes core heat to the periphery. Stimulation responses scale
+Awake thermoregulation holds core temperature at baseline. Anesthesia replaces
+it with passive heat loss in proportion to depth, and induction redistributes
+core heat to the periphery. Core temperature falls about 1.6 °C in the first
+hour and 2.8 °C by 3 hours (Matsukawa 1995). Stimulation responses scale
 with the probability of responding to laryngoscopy; opioids reduce the
 hemodynamic and BIS responses.
 

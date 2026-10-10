@@ -124,7 +124,8 @@ class SimulationState:
     mac: float = 0.0  # Brain MAC, summed across agents; drives drug effects
     et_mac: float = 0.0  # End-tidal MAC shown by the gas monitor
 
-    # Rocuronium (mcg/mL): free drug at the adductor pollicis, and total plasma.
+    # Rocuronium (mcg/mL): free drug at the adductor pollicis, and total plasma
+    # including drug bound to sugammadex.
     roc_ce: float = 0.0
     roc_cp: float = 0.0
 

@@ -116,6 +116,7 @@ def sync_pk_state(engine: SimulationEngine) -> None:
         if spec.cp_field is not None:
             setattr(state, spec.cp_field, float(pk_state.c1))
     state.roc_ce = float(engine.tof_pd.ce)
+    state.roc_cp = float(engine.pk["roc"].state.c1 + engine.tof_pd.bound_rocuronium())
     state.opioid_ce = float(opioid_equivalent(engine.pk["remi"].state.ce, engine.pk["fentanyl"].state.ce))
     state.opioid_cp = float(opioid_equivalent(engine.pk["remi"].state.c1, engine.pk["fentanyl"].state.c1))
     state.hypnotic_ce = float(hypnotic_equivalent(

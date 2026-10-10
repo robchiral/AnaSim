@@ -133,15 +133,14 @@ def _solve_startup_targets(engine: SimulationEngine, profile: StartupProfile) ->
 
 
 def _configure_controlled_ventilation(engine: SimulationEngine, targets: StartupTargets) -> None:
-    baseline_rr = max(1.0, engine.patient.baseline_rr)
-    baseline_vt_l = max(0.1, engine.patient.baseline_vt / 1000.0)
-    baseline_mv = baseline_rr * baseline_vt_l
+    resp = engine.resp
+    baseline_rr = max(1.0, resp.rr_0)
     _depth_index, metabolic_factor = engine.thermal.depth_and_metabolism(
         engine.patient.baseline_temp, targets.prop_ce, targets.mac,
     )
-    target_mv = baseline_mv * metabolic_factor
-    vent_vt = target_mv / baseline_rr
-    vent_vt = clamp(vent_vt, 0.25, 0.8)
+    # Alveolar ventilation that holds PaCO2 at the set point at anesthetic CO2 production.
+    target_va = resp.co2_constant * resp.vco2 * metabolic_factor / resp.paco2_setpoint
+    vent_vt = clamp(resp.vd_deadspace + target_va / baseline_rr, 0.25, 0.8)
     engine.set_vent_settings(rr=baseline_rr, vt=vent_vt, peep=5.0, ie="1:2", mode="VCV")
     engine.set_vent_power(True)
 

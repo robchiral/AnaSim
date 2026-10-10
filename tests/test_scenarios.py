@@ -275,11 +275,11 @@ def test_extubation_requires_recovered_block_and_spontaneous_ventilation(engine_
     assert not step.check_requirements(engine)[0]
 
 
-@pytest.mark.parametrize("assisted", [False, True], ids=["tidal-breathing", "assisted-higher-bmi"])
+@pytest.mark.parametrize("assisted", [False, True], ids=["tidal-breathing", "assisted-shallow-breathing"])
 def test_preoxygenation_waits_for_lung_washin(engine_factory, assisted):
     spec = next(spec for spec in SCENARIO_REGISTRY if spec.id == "induction_tiva")
     step = _step(spec.builder(), "PREOXYGENATE")
-    patient = dict(age=70, weight=100, height=177) if assisted else {}
+    patient = dict(age=70, baseline_rr=24, baseline_vt=250) if assisted else {}
     engine = engine_factory(start=True, **patient)
     engine.set_airway_mode("Mask")
     engine.set_fgf(10.0, 0.0)
@@ -287,16 +287,17 @@ def test_preoxygenation_waits_for_lung_washin(engine_factory, assisted):
     for _ in range(60):
         engine.step(1.0)
     assert not step.check_requirements(engine)[0]
-    for _ in range(180):
+    for _ in range(120):
         engine.step(1.0)
     if assisted:
-        # A high inspired fraction alone does not establish adequate preoxygenation.
+        # Rapid shallow breaths mostly move dead space, so the lungs wash in
+        # slowly; a high inspired fraction alone is not preoxygenation.
         assert engine.state.fio2 > 0.95
         assert not step.check_requirements(engine)[0]
         engine.set_vent_settings(rr=16, vt=0.5, peep=5, ie="1:2", mode="VCV")
         engine.set_vent_power(True)
-        for _ in range(300):
-            engine.step(1.0)
+    for _ in range(180 if assisted else 60):
+        engine.step(1.0)
     assert engine.state.et_o2 >= 90
     assert step.check_requirements(engine)[0]
 

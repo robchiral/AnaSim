@@ -50,7 +50,7 @@ Save this configuration as `patient_config.json` for balanced maintenance.
 | `baseline_hr` | 70 | Heart rate, at least 10 bpm |
 | `baseline_map` | 90 | Mean arterial pressure, at least 20 mmHg |
 | `baseline_rr` | 12 | Respiratory rate, at least 0 breaths/min |
-| `baseline_vt` | 500 | Tidal volume, at least 50 mL |
+| `baseline_vt` | `null` | Tidal volume, at least 50 mL; `null` defaults to the volume that keeps resting PaCO₂ at 40 mmHg |
 | `renal_function` | 1.0 | Renal-function factor, 0.4 to 1.0; `1.0` is normal |
 | `hepatic_function` | 1.0 | Hepatic-function factor, 0.5 to 1.0; `1.0` is normal |
 

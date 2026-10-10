@@ -61,12 +61,12 @@ class DrugControllerMixin:
         self.actions.record(self.state.time, ACTION_TCI_TARGET, label=spec.key, amount=target)
 
     def sync_active_tci_from_pk(self, *drug_keys: str):
-        """Resynchronize active TCI controllers with the live PK model state."""
-        specs = [get_drug_spec(key) for key in drug_keys] if drug_keys else DRUG_REGISTRY
-        for spec in specs:
-            controller = self.tci.get(spec.key)
+        """Resynchronize active TCI controllers, or the named drugs' controllers, with live PK."""
+        keys = [get_drug_spec(key).key for key in drug_keys] if drug_keys else list(self.tci)
+        for key in keys:
+            controller = self.tci.get(key)
             if controller:
-                controller.sync_from_pk_model(self.pk[spec.key])
+                controller.sync_from_pk_model(self.pk[key])
 
     def disable_tci(self, drug: str):
         """Disable TCI for a drug and stop its infusion."""

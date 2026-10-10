@@ -8,9 +8,7 @@ class HemodynamicConfig:
     # Su et al. 2023 turnover model.
     kout: float = 0.072
 
-    ci_adult: float = 3.0
-    ci_elderly: float = 2.5
-    ci_elderly_age: float = 70.0
+    cardiac_index: float = 3.0  # L/min/m²
 
     # Signed RMAP exponent. Su et al. report FB = 0.66 and apply -FB.
     fb: float = -0.66
@@ -111,6 +109,11 @@ class HemodynamicConfig:
     # Intrathoracic pressure (mmHg) and preload.
     pit_0: float = -2.0
     alpha_peep: float = 0.04
+    # About half of mean airway pressure reaches the pleura in normal lungs.
+    # The share of inspiratory muscle pressure and its cap (cmH2O) are calibrated.
+    paw_transmission: float = 0.54
+    effort_transmission: float = 0.30
+    effort_pressure_max: float = 20.0
 
     # Right heart and pulmonary circulation. Normal RAP 2-6 mmHg,
     # PVR 0.3-2.0 Wood units. Pulmonary transit median 6.8 s (Segeroth 2023).
@@ -232,11 +235,13 @@ class HemodynamicConfig:
     glyco_emax_hr: float = 20.0
     glyco_brady_relief: float = 30.0  # bpm added to the 50 bpm sinus bradycardia rate
 
-    # Ketamine (mcg/mL) raises sympathetic outflow: arterial pressure, HR, and
-    # CO rose 15-30% during ketamine-nitrous oxide anesthesia at about 2.2
-    # mcg/mL (Idvall 1979). Anesthetic depth and adrenoceptor block reduce it.
-    ketamine_c50: float = 1.0
-    ketamine_gamma: float = 1.5
-    ketamine_emax_hr: float = 0.40  # Fraction of HR
-    ketamine_emax_sv: float = 0.10
-    ketamine_emax_tpr: float = 0.15
+    # Ketamine (mcg/mL) raises sympathetic outflow. After 2 mg/kg, arterial
+    # pressure, HR, and CO peaked 15-30% above baseline within 10 min and
+    # returned to baseline by 30 min of infusion at 2.2 mcg/mL (Idvall 1979).
+    # Calibrated through the Kamp PK, which gives lower early concentrations
+    # than Idvall measured. Anesthetic depth and adrenoceptor block reduce it.
+    ketamine_c50: float = 2.0
+    ketamine_gamma: float = 3.0
+    ketamine_emax_hr: float = 0.45  # Fraction of HR
+    ketamine_emax_sv: float = 0.11
+    ketamine_emax_tpr: float = 0.17

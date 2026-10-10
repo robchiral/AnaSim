@@ -12,6 +12,8 @@ from anasim.core.constants import (
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.patient import Patient
 
+from .hemo_config import HemodynamicConfig
+
 
 @dataclass
 class RespState:
@@ -49,14 +51,9 @@ class RespiratoryModel:
 
     def __init__(self, patient: Patient):
         self.patient = patient
-        self.rr_0 = patient.baseline_rr
-        self.vt_0 = patient.baseline_vt
         self.baseline_hb = patient.baseline_hb
-        # Baseline CO for perfusion effects, matching the hemodynamic defaults.
-        ci_adult = 3.0
-        ci_elderly = 2.5
-        ci = ci_elderly if patient.age > 70 else ci_adult
-        self.baseline_co_l_min = max(0.1, ci * patient.bsa)
+        # Baseline CO for perfusion effects; the engine sets the hemodynamic model's value.
+        self.baseline_co_l_min = HemodynamicConfig().cardiac_index * patient.bsa
 
         # Bouillon 2004 respiratory concentration-response curve, using its
         # own effect site (equilibration half-time 2.6 min).
@@ -85,20 +82,15 @@ class RespiratoryModel:
         # Awake hypocapnic calibration (Nieuwenhuijs 2001; Pandit 1999).
         self.hcvr_slope_baseline = 2.2
         self.paco2_setpoint = 40.0
-        self.state = RespState(
-            rr=self.rr_0, vt=self.vt_0, mv=self.rr_0 * self.vt_0 / 1000.0,
-            effort_rr=self.rr_0, effort_vt=self.vt_0,
-        )
         self.rq = 0.8
 
-        # Resting VO2 about 3.6 mL/kg/min.
-        self.vo2_ml_kg_min = 3.6
-        self.vco2 = self.vo2_ml_kg_min * patient.weight * self.rq  # mL/min
+        # Resting VO2 3.6 mL/kg/min at 70 kg, scaled with weight^0.75.
+        self.vco2 = 3.6 * 70.0 * (patient.weight / 70.0) ** 0.75 * self.rq  # mL/min
         self.frc = patient.functional_residual_capacity()
         self.shunt_fraction = 0.0
         self.baseline_blood_volume_ml = patient.estimate_blood_volume()
 
-        self.vd_deadspace = 2.2 * patient.weight / 1000.0  # L
+        self.vd_deadspace = 2.2 * patient.predicted_body_weight() / 1000.0  # L
 
         # Body CO2 stores equilibrate slowly (apneic rise 3-5 mmHg/min).
         self.tau_co2 = 180.0  # s
@@ -108,6 +100,23 @@ class RespiratoryModel:
         # Lung ventilation/volume is BTPS; VO2 and Hb-bound O2 are STPD.
         self._btps_to_stpd = self._atm_dry / 760.0 * 273.15 / 310.15
         self._gas_capacity_per_l = self._btps_to_stpd / self._atm_dry
+        # PACO2 = K x VCO2 / VA, with VCO2 in STPD mL/min and VA in BTPS L/min (K about 0.863).
+        self.co2_constant = self._atm_dry / self._btps_to_stpd / 1000.0
+
+        # Without a configured VT, resting breaths carry the alveolar
+        # ventilation that holds PaCO2 at the set point.
+        self.rr_0 = patient.baseline_rr
+        if patient.baseline_vt is not None:
+            self.vt_0 = patient.baseline_vt
+        elif self.rr_0 > 0.0:
+            resting_va = self.co2_constant * self.vco2 / self.paco2_setpoint
+            self.vt_0 = (self.vd_deadspace + resting_va / self.rr_0) * 1000.0
+        else:
+            self.vt_0 = 0.0
+        self.state = RespState(
+            rr=self.rr_0, vt=self.vt_0, mv=self.rr_0 * self.vt_0 / 1000.0,
+            effort_rr=self.rr_0, effort_vt=self.vt_0,
+        )
         # Age-adjusted A-a gradient, age/4 + 4 mmHg.
         self.aa_grad_base = max(5.0, (self.patient.age / 4.0) + 4.0)
         self.equilibrate_oxygen(0.21)
@@ -244,8 +253,8 @@ class RespiratoryModel:
             total_va_l_min = 0.0
         state.va = total_va_l_min
 
-        # PACO2 relaxes toward 40 x metabolic factor x VA_baseline / VA; V/Q
-        # mismatch reduces effective CO2 elimination.
+        # PACO2 relaxes toward K x VCO2 / VA; V/Q mismatch reduces effective
+        # CO2 elimination.
         vq_mismatch = clamp01_local(vq_mismatch)
         effective_va = max(0.1, total_va_l_min * (1.0 - 0.6 * vq_mismatch))
 
@@ -260,8 +269,7 @@ class RespiratoryModel:
             self._apnea_timer = 0.0
 
         metabolic_factor = max(0.1, float(metabolic_factor))
-        paco2_base = 40.0
-        paco2_eq = paco2_base * metabolic_factor * (self.va_baseline / effective_va)
+        paco2_eq = self.co2_constant * self.vco2 * metabolic_factor / effective_va
         d_paco2 = (paco2_eq - state.p_alveolar_co2) / self.tau_co2 * dt
 
         # CO2 continues accumulating without alveolar ventilation, independent

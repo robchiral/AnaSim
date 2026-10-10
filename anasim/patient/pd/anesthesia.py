@@ -35,9 +35,11 @@ MIDAZOLAM_PROPOFOL_SYNERGY = 3.7
 ETOMIDATE_LOSS_OF_RESPONSE = 0.50
 ETOMIDATE_RESPIRATORY_PROPOFOL_RATIO = 2.0  # Calibrated independently of clinical response.
 
-# Ketamine (mcg/mL): patients woke at 0.64 mcg/mL, and 2.2 mcg/mL with about
-# 0.6 MAC nitrous oxide maintained surgical anesthesia (Idvall 1979), so 3.5
-# mcg/mL counts as 1 MAC for laryngoscopy tolerance. BIS excludes ketamine.
+# Ketamine (mcg/mL; Idvall 1979 reports umol/L): patients woke at 0.64 mcg/mL,
+# and 2.2 mcg/mL with 65% nitrous oxide (about 0.65 MAC) gave adequate surgical
+# conditions under neuromuscular block. Taking that combination as about 1.3
+# MAC makes 3.5 mcg/mL 1 MAC; the study measured no MAC endpoint. BIS excludes
+# ketamine.
 KETAMINE_LOSS_OF_RESPONSE = 0.64
 KETAMINE_MAC_EQUIVALENT = 3.5
 
@@ -45,6 +47,12 @@ KETAMINE_MAC_EQUIVALENT = 3.5
 # other drugs: 3-6 mcg/mL lowered anesthetic requirement 10-28% (Himes 1977).
 # It has no hypnotic or BIS effect.
 LIDOCAINE_BLOCK_PER_MCG_ML = 0.042
+
+# Nitrous oxide is less than additive with sevoflurane for response to command.
+# Katoh 1997's logistic fit (Table 1) gives the 50% isobole s + n - k s n = 1
+# in MAC-awake fractions, with k = b12 x (N2O MAC-awake) / b_sevo. Fractions in
+# the product are capped near the studied range so each agent always adds effect.
+N2O_SEVO_AWAKE_INTERACTION = 0.135 * (11.06 / 0.1677) / 16.653
 
 
 def midazolam_loss_of_response(age: float) -> float:
@@ -154,9 +162,10 @@ class ClinicalResponseModel:
     ) -> float:
         intensity = 0.48
         units = max(0.0, ce_prop) / self.c50_prop
-        units += intensity * max(0.0, mac_sevo) * self.mac_reference / 0.90
-        n2o_units = intensity * max(0.0, mac_n2o) / 0.61
-        units += n2o_units * (0.7 if mac_sevo > 0.0 else 1.0)
+        sevo_awake = max(0.0, mac_sevo) * self.mac_reference / 0.90
+        n2o_awake = max(0.0, mac_n2o) / 0.61
+        interaction = N2O_SEVO_AWAKE_INTERACTION * min(sevo_awake, 1.0) * min(n2o_awake, 1.0)
+        units += intensity * (sevo_awake + n2o_awake - interaction)
         units += intensity * max(0.0, ce_ketamine) / KETAMINE_LOSS_OF_RESPONSE
         return self._probability(units, ce_remi, intensity)
 
@@ -166,9 +175,9 @@ class ClinicalResponseModel:
     ) -> float:
         intensity = 0.83
         units = max(0.0, ce_prop) / self.c50_prop
-        units += intensity * max(0.0, mac_sevo) * self.mac_reference / 2.59
-        units += intensity * max(0.0, mac_n2o)
-        units += intensity * max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
+        # MAC fractions of sevoflurane, nitrous oxide, and ketamine add for noxious stimulation.
+        mac = max(0.0, mac_sevo) + max(0.0, mac_n2o) + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
+        units += intensity * mac * self.mac_reference / 2.59
         tolerance = self._probability(units, ce_remi, intensity)
         lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
         return 1.0 - (1.0 - tolerance) * (1.0 - lidocaine_block)

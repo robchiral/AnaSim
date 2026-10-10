@@ -34,7 +34,7 @@ class Patient:
     baseline_hr: float = 70.0
     baseline_map: float = 90.0
     baseline_rr: float = 12.0
-    baseline_vt: float = 500.0
+    baseline_vt: float | None = None  # mL; None follows CO2 production and dead space
 
     bmi: float = field(init=False)
     bsa: float = field(init=False)
@@ -60,7 +60,8 @@ class Patient:
         self.baseline_hr = bounded_number("baseline_hr", self.baseline_hr, 10.0)
         self.baseline_map = bounded_number("baseline_map", self.baseline_map, 20.0)
         self.baseline_rr = bounded_number("baseline_rr", self.baseline_rr, 0.0)
-        self.baseline_vt = bounded_number("baseline_vt", self.baseline_vt, 50.0)
+        if self.baseline_vt is not None:
+            self.baseline_vt = bounded_number("baseline_vt", self.baseline_vt, 50.0)
         self.baseline_temp = bounded_number(
             "baseline_temp", self.baseline_temp, 25.0, 42.0, unit="°C"
         )

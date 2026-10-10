@@ -25,6 +25,10 @@ class ThermalModel:
         self.heat_production_basal = patient.weight * 1.0  # W
         self.heat_capacity = patient.weight * self.tuning.specific_heat_j_kg_k  # J/K
         self.surface_area = patient.bsa  # m^2
+        # Awake vasomotor tone holds core temperature at baseline: heat loss
+        # matches basal production there. Anesthesia replaces it with the
+        # passive vasodilated conductance in proportion to depth.
+        self.awake_conductance = self.heat_production_basal / max(1.0, patient.baseline_temp - self.tuning.ambient_temp_c)
         self.redistributed_heat_j = 0.0  # Core heat moved to the periphery
         self.depth_index = 0.0
         self.shiver_level = 0.0
@@ -82,11 +86,8 @@ class ThermalModel:
         depth_factor = clamp01(self.depth_index)
 
         production = self.heat_production_basal * max(0.5, self.metabolic_factor)
-        conductance = (
-            tuning.base_conductance_w_per_c
-            * (1.0 + tuning.anesthetic_conductance_gain * depth_factor)
-            * (self.surface_area / 1.9)
-        )
+        anesthetized = tuning.anesthetized_conductance_w_per_c * self.surface_area / 1.9
+        conductance = self.awake_conductance + (anesthetized - self.awake_conductance) * depth_factor
         heat_loss = conductance * (temp_c - tuning.ambient_temp_c)
 
         # Anesthetic vasodilation moves core heat to the periphery over the first

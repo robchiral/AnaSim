@@ -3,6 +3,7 @@ import pytest
 from scipy.linalg import expm
 
 from anasim.core.drug_registry import DRUG_REGISTRY
+from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import TOFModel
 from anasim.patient.pk_models import (
@@ -28,7 +29,7 @@ def _tof_trace(patient, roc_mg_kg, seconds):
     trace = []
     for _ in range(seconds):
         pk.step(1.0, 0.0)
-        trace.append(pd.step_recovery(1.0, pk.state.c1))
+        trace.append(pd.step_recovery(1.0, pk))
     return np.asarray(trace)
 
 
@@ -189,13 +190,24 @@ def test_sugammadex_reversal_time(
     assert recovered <= max_reversal_s
 
 
-def test_sugammadex_reversal_continues_once_free_rocuronium_reaches_zero(patient):
-    model = TOFModel(patient)
-    model.ce = model.ce_central = 4.0
-    model.give_sugammadex(4.0 * patient.weight)
-    for _ in range(4):
-        model.step_recovery(30.0, 0.0)
-    assert model.compute_tof_from_ce(model.ce) > 60.0
+def test_sugammadex_raises_total_plasma_rocuronium(engine_factory):
+    """Ploeger 2009: the complex is cleared like sugammadex, about a third as fast
+    as free rocuronium, and tissue rocuronium returns to bind, so total plasma
+    rocuronium rises after sugammadex while free rocuronium falls.
+    """
+    totals, free = [], []
+    for sugammadex_mg_kg in (0.0, 4.0):
+        engine = engine_factory(config=SimulationConfig(mode="steady_state"), start=True)
+        engine.give_drug_bolus("roc", 0.6 * engine.patient.weight)
+        for _ in range(180):
+            engine.step(1.0)
+        engine.give_drug_bolus("sugammadex", sugammadex_mg_kg * engine.patient.weight)
+        for _ in range(1800):
+            engine.step(1.0)
+        totals.append(engine.state.roc_cp)
+        free.append(engine.pk["roc"].state.c1)
+    assert totals[1] > 1.4 * totals[0]
+    assert free[1] < 0.5 * free[0]
 
 
 class TestNeuromuscularEffectSite:

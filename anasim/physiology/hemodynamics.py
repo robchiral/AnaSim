@@ -47,8 +47,7 @@ class HemodynamicModel:
         self.base_hr = patient.baseline_hr
 
         # Baseline SV from cardiac index and BSA.
-        ci_0 = cfg.ci_elderly if patient.age > cfg.ci_elderly_age else cfg.ci_adult
-        co_0 = ci_0 * patient.bsa
+        co_0 = cfg.cardiac_index * patient.bsa
         self.base_sv = (co_0 * 1000.0) / self.base_hr
 
         flow_ml_min = self.base_hr * self.base_sv
@@ -132,6 +131,7 @@ class HemodynamicModel:
 
         self._rhythm_type = RhythmType.SINUS
         self.f_preload_pit = 1.0
+        self.renal_perfusion = 1.0  # Share of normal renal blood flow, from MAP
         self.vasopressor_sv_factor = 1.0
         self._prev_map = patient.baseline_map
 
@@ -636,8 +636,8 @@ class HemodynamicModel:
         # Urine output, scaled by renal perfusion and function.
         map_prev = self._prev_map
         map_denom = max(1e-3, cfg.renal_map_norm - cfg.renal_map_min)
-        renal_factor = clamp01((map_prev - cfg.renal_map_min) / map_denom)
-        renal_factor *= max(0.0, self.patient.renal_function)
+        self.renal_perfusion = clamp01((map_prev - cfg.renal_map_min) / map_denom)
+        renal_factor = self.renal_perfusion * max(0.0, self.patient.renal_function)
         if cfg.vol_clearance is not None:
             urine_ml_min = max(0.0, float(cfg.vol_clearance))
         else:
@@ -823,9 +823,7 @@ class HemodynamicModel:
 
         # Thermoregulatory vasoconstriction below 36.5 °C. Anesthesia lowers the
         # threshold by up to 2.5 °C at 1 MAC or propofol 4 mcg/mL (Sessler 2000).
-        depth_metric = mac_sevo + (cp_prop / 4.0)
-        threshold_drop = 2.5 * min(1.0, depth_metric)
-        vasoconstriction_threshold = 36.5 - threshold_drop
+        vasoconstriction_threshold = 36.5 - 2.5 * anesthetic_depth
 
         thermo_tpr_mult = 1.0
         if temp_c < vasoconstriction_threshold:

@@ -352,7 +352,6 @@ DRUG_REGISTRY = (
         default_bolus=50.0,
         bolus_model_scale=1.0,
         pk_model=_from_patient(RocuroniumPK),
-        cp_field="roc_cp",
         generic_name="Rocuronium",
         tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),

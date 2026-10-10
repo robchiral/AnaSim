@@ -67,6 +67,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Eleveld et al. (2017). *Anesthesiology*. [Remifentanil PK/PD](https://doi.org/10.1097/ALN.0000000000001634).
 - Eleveld et al. (2018). *Br J Anaesth*. [Propofol PK/PD](https://pubmed.ncbi.nlm.nih.gov/29661412/).
 - Eleveld et al. (2018). *Br J Anaesth*. [Propofol model corrigendum](https://doi.org/10.1016/j.bja.2018.05.045).
+- Johnson et al. (2003). *Anesthesiology*. [Propofol PK/PD in hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/12883414/).
 - Vellinga et al. (2021). *Br J Anaesth*. [Prospective Eleveld propofol PK/PD validation](https://doi.org/10.1016/j.bja.2020.10.027).
 - Servin et al. (1990). *Br J Anaesth*. [Propofol PK in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/2223333/).
 - Hiraoka et al. (2005). *Br J Clin Pharmacol*. [Renal extraction of propofol](https://pubmed.ncbi.nlm.nih.gov/16042671/).
@@ -92,6 +93,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Tam, Chung, and Campbell (1987). *Anesth Analg*. [Lidocaine timing before intubation](https://pubmed.ncbi.nlm.nih.gov/3631567/).
 - Okuda et al. (1990). *J Anesth*. [Lidocaine plasma concentration and timing before intubation](https://pubmed.ncbi.nlm.nih.gov/15236000/).
 - Wierda et al. (1991). *Can J Anaesth*. [Rocuronium PK](https://pubmed.ncbi.nlm.nih.gov/1829656/).
+- Khuenl-Brady and Sparr (1996). *Clin Pharmacokinet*. [Rocuronium clinical PK review](https://pubmed.ncbi.nlm.nih.gov/8877248/).
 - Masui et al. (2018). *J Anesth*. [Rocuronium PD covariates](https://pubmed.ncbi.nlm.nih.gov/30099599/).
 - Magorian et al. (1995). *Anesth Analg*. [Rocuronium PK in liver disease](https://pubmed.ncbi.nlm.nih.gov/7893030/).
 - Robertson et al. (2005). *Eur J Anaesthesiol*. [Rocuronium PK in renal failure](https://pubmed.ncbi.nlm.nih.gov/15816565/).

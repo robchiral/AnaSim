@@ -286,3 +286,29 @@ class TestOxygenStores:
         assert patent[1] > 95.0 and blocked[1] < 90.0
         # Apneic PaCO2 rises about 3-6 mmHg/min from 40 mmHg (Stock 1989).
         assert 70.0 < patent[2] < 100.0
+
+
+def test_ventilation_requirement_scales_with_body_size(engine_factory):
+    """Resting breathing matches CO2 production; fixed ventilator settings do not.
+
+    VO2 scales with weight^0.75 and dead space with predicted body weight, so
+    awake room-air oxygenation is the same across the supported domain, while
+    VCV 500 mL x 12 overventilates a small patient and underventilates a large
+    one (PaCO2 = 0.863 VCO2 / VA).
+    """
+    sizes = (dict(weight=50, height=165, sex="female"), {}, dict(weight=100, height=177))
+    ventilated_co2 = []
+    for size in sizes:
+        engine = engine_factory(start=True, **size)
+        for _ in range(900):
+            engine.step(1.0)
+        assert engine.state.sao2 > 95.0
+        assert engine.state.pa_co2 == pytest.approx(40.0, abs=1.5)
+
+        engine = engine_factory(config=SimulationConfig(mode="steady_state"), start=True, **size)
+        engine.set_vent_settings(rr=12, vt=0.5, peep=5, ie="1:2", mode="VCV")
+        for _ in range(1200):
+            engine.step(1.0)
+        ventilated_co2.append(engine.state.pa_co2)
+    small, typical, large = ventilated_co2
+    assert small < 30.0 < typical < 40.0 < 44.0 < large

@@ -76,6 +76,31 @@ def test_ketamine_induction_keeps_breathing_and_raises_pressure(engine_factory):
     assert 0.5 < engine.state.ketamine_ce < 0.8
 
 
+
+def test_ketamine_nitrous_maintenance_settles_to_baseline(engine_factory):
+    """Idvall 1979: after 2 mg/kg and an infusion with 65% N2O, the pressure rise
+    peaked within 10 min and returned to baseline by 30 min; CI fell 16%.
+    """
+    engine = _awake(engine_factory, age=67, weight=66)
+    base_map, base_hr, base_co = engine.state.map, engine.state.hr, engine.state.co
+    engine.give_drug_bolus("ketamine", 2.0 * engine.patient.weight)
+    engine.set_airway_mode("ETT")
+    engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    engine.set_vent_power(True)
+    engine.set_fgf(1.0, 0.0, n2o_l_min=2.0)
+    engine.set_drug_rate("ketamine", 0.058 * engine.patient.weight * 60.0)  # 58 mcg/kg/min
+    peak_map = 0.0
+    for _ in range(600):
+        engine.step(1.0)
+        peak_map = max(peak_map, engine.state.map)
+    assert peak_map > 1.12 * base_map
+
+    engine.set_drug_rate("ketamine", 0.030 * engine.patient.weight * 60.0)
+    _advance(engine, 50 * 60)
+    assert abs(engine.state.map / base_map - 1.0) < 0.10
+    assert abs(engine.state.hr / base_hr - 1.0) < 0.10
+    assert engine.state.co < 1.03 * base_co
+
 def test_midazolam_sedates_more_with_age_and_potentiates_propofol(engine_factory):
     """Albrecht 1999: elderly volunteers needed half the young EC50. Short 1992:
     midazolam lowered the propofol ED50 for anesthesia by 52%.

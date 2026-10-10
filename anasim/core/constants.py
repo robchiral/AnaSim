@@ -6,6 +6,8 @@ HR_MIN = 10.0  # bpm
 HR_MAX = 220.0  # bpm
 BLOOD_VOLUME_MIN = 500.0  # mL
 
+CMH2O_TO_MMHG = 0.7356
+
 # Spontaneous rates (breaths/min): apnea below 2, irregular bradypnea 2-4.
 RR_APNEA_THRESHOLD = 2.0
 RR_BRADYPNEA_THRESHOLD = 4.0
@@ -74,12 +76,14 @@ class ThermalTuning:
     """Heat balance parameters."""
 
     ambient_temp_c: float = 20.0
-    base_conductance_w_per_c: float = 3.0
-    anesthetic_conductance_gain: float = 0.5
-    # Redistribution accounts for about 1.3 °C of the 1.6 °C first-hour core
-    # drop after induction (Matsukawa 1995).
-    redistribution_core_drop_c: float = 1.3
-    redistribution_tau_s: float = 1200.0
+    # Matsukawa 1995: core temperature fell 1.6 °C in the first hour of
+    # propofol-fentanyl anesthesia (81% redistribution) and 2.8 °C by 3 h, as
+    # redistribution continued and heat production fell a third. Fitted at
+    # propofol 3.5 mcg/mL with the metabolic reduction below. Conductance is at
+    # full depth and 1.9 m² BSA; awake heat loss matches heat production.
+    anesthetized_conductance_w_per_c: float = 5.3
+    redistribution_core_drop_c: float = 2.0  # At full depth
+    redistribution_tau_s: float = 2800.0
     bair_hugger_gain_w_per_c: float = 7.0
     metabolic_reduction_max: float = 0.2
     depth_propofol_scale: float = 4.0

@@ -4,6 +4,7 @@ import logging
 import math
 from typing import TYPE_CHECKING
 
+from anasim.core.constants import CMH2O_TO_MMHG
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.physiology.disturbances import DisturbanceEffects
@@ -42,9 +43,8 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
 
     disturbance_complete = _disturbance_completes_during_step(engine, dt)
     disturbances = step_disturbances(engine, dt)
-    updated_pk_models = update_pk_covariates(engine, engine.state.co)
-    if updated_pk_models:
-        engine.sync_active_tci_from_pk(*updated_pk_models)
+    if update_pk_covariates(engine, engine.state.co):
+        engine.sync_active_tci_from_pk()
 
     step_tci(engine, dt)
     update_airway_complications(engine, dt)
@@ -205,41 +205,42 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
     rates = engine.infusion_rates
     for key, model in engine.pk.items():
         model.step(dt, rates.get(key, 0.0))
-    # Free (sugammadex-unbound) rocuronium at the neuromuscular junction drives
-    # TOF and every muscle effect.
+    # Sugammadex binds rocuronium in plasma and at the neuromuscular junction;
+    # free rocuronium there drives TOF and every muscle effect.
     tof = engine.tof_pd.step_recovery(
-        dt, engine.pk["roc"].state.c1, mac_sevo=engine.pk_sevo.state.mac, mac_n2o=engine.pk_n2o.state.mac
+        dt, engine.pk["roc"], mac_sevo=engine.pk_sevo.state.mac, mac_n2o=engine.pk_n2o.state.mac
     )
     state.tof = float(tof)
     sync_pk_state(engine)
 
 
-def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> tuple[str, ...]:
-    """Update PK covariates and return the drugs whose models were rescaled.
+def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
+    """Update PK covariates and return whether the models were rescaled.
 
-    Propofol slows norepinephrine clearance. Blood volume and cardiac output
-    scale every intravenous model.
+    Propofol slows norepinephrine clearance. Blood volume, cardiac output, and
+    renal perfusion scale every intravenous model.
     """
     engine.pk_nore.update_propofol(engine.pk["propofol"].state.c1)
     base_bv = engine.hemo.blood_volume_0
     base_co = engine.hemo.base_co_l_min
     if base_bv <= 0.0 or base_co <= 0.0:
-        return ()
+        return False
     v_ratio = clamp(engine.hemo.blood_volume / base_bv, 0.1, 2.0)
     co_ratio = clamp(co_curr / base_co, 0.1, 2.0)
+    scale = (v_ratio, co_ratio, engine.hemo.renal_perfusion)
 
     last_scale = engine._pk_hemo_scale_cache
-    if last_scale is not None:
-        last_v_ratio, last_co_ratio = last_scale
-        if math.isclose(v_ratio, last_v_ratio, rel_tol=1e-4, abs_tol=1e-4) and math.isclose(
-            co_ratio, last_co_ratio, rel_tol=1e-4, abs_tol=1e-4
-        ):
-            return ()
+    # Changes below 0.1% leave concentrations unchanged at display precision.
+    if last_scale is not None and all(
+        math.isclose(value, last, rel_tol=1e-3, abs_tol=1e-3) for value, last in zip(scale, last_scale, strict=True)
+    ):
+        return False
 
     for model in engine.pk.values():
-        model.update_hemodynamics(v_ratio, co_ratio)
-    engine._pk_hemo_scale_cache = (v_ratio, co_ratio)
-    return tuple(engine.pk)
+        model.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
+    engine.tof_pd.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
+    engine._pk_hemo_scale_cache = scale
+    return True
 
 
 def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
@@ -339,14 +340,11 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
     mean_paw = vent.airway_pressure_area / dt
     engine.current_mean_paw = (1 - alpha_paw) * engine.current_mean_paw + alpha_paw * mean_paw
 
-    pit_base = engine.hemo.config.pit_0
-    paw_to_mmhg = 0.74
-    paw_transmission = 0.54
-    effort_transmission = 0.30
-    pit_estimate = pit_base + paw_to_mmhg * paw_transmission * engine.current_mean_paw
-    effort_pressure = min(vent.muscle_pressure_area / dt, 20.0)
-    effort_mmhg = effort_pressure * paw_to_mmhg * effort_transmission
-    pit_estimate -= effort_mmhg
+    hemo_cfg = engine.hemo.config
+    effort_pressure = min(vent.muscle_pressure_area / dt, hemo_cfg.effort_pressure_max)
+    pit_estimate = hemo_cfg.pit_0 + CMH2O_TO_MMHG * (
+        hemo_cfg.paw_transmission * engine.current_mean_paw - hemo_cfg.effort_transmission * effort_pressure
+    )
 
     if vent_active:
         total_peep_effect = engine.resp_mech.peep + spirometry.auto_peep

@@ -52,7 +52,7 @@ from .action_log import (
     ActionLog,
 )
 from .drug_api import DrugControllerMixin
-from .drug_registry import DRUG_REGISTRY, resolve_bolus_drug
+from .drug_registry import DRUG_REGISTRY, get_drug_spec, resolve_bolus_drug
 from .initialization import initialize_engine_state
 from .state import (
     AirwayStatus,
@@ -133,7 +133,7 @@ class SimulationEngine(DrugControllerMixin):
         self.smooth_bis = 98.0
         self.etco2_readout = EtCO2Readout()
         self._tol_current = 0.0
-        self._pk_hemo_scale_cache: tuple[float, float] | None = None
+        self._pk_hemo_scale_cache: tuple[float, float, float] | None = None
         self.current_mean_paw = 0.0
 
         # Separate generators keep each monitor's noise reproducible regardless
@@ -518,16 +518,9 @@ class SimulationEngine(DrugControllerMixin):
         """Return a copy of the current state."""
         return copy.copy(self.state)
 
-    def get_predicted_csht(self, drug: str) -> float:
-        """Minutes for the "propofol", "remi", or "fentanyl" effect site to halve if stopped now."""
-        models = {
-            "propofol": (self.pk["propofol"], 3600),
-            "remi": (self.pk["remi"], 1200),
-            "fentanyl": (self.pk["fentanyl"], 7200),
-        }
-        if drug not in models:
-            return 0.0
-        model, max_seconds = models[drug]
+    def get_predicted_csht(self, drug: str, max_seconds: int = 7200) -> float:
+        """Minutes for a drug's effect site to halve if stopped now, up to max_seconds."""
+        model = self.pk[get_drug_spec(drug).key]
         return model.simulate_decay(target_fraction=0.5, max_seconds=max_seconds)
 
     def set_vent_power(self, on: bool):

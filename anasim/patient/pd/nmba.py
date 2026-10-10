@@ -1,23 +1,67 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from anasim.core.utils import clamp, clamp01
 from anasim.patient.patient import Patient
+from anasim.patient.pk_models import MammillaryPK, organ_clearance_scaler
+
+MW_ROCURONIUM = 609.7
+MW_SUGAMMADEX = 2178.0
+# Ploeger 2009: Kd 0.1 umol/L (in vitro) and dissociation 0.00216 /min.
+SUGAMMADEX_KD_UM = 0.1
+SUGAMMADEX_K2_PER_MIN = 0.00216
+SUGAMMADEX_K1_PER_UM_MIN = SUGAMMADEX_K2_PER_MIN / SUGAMMADEX_KD_UM
+# Ploeger links the effect site to the first peripheral compartment (ke0 0.655 /min).
+SUGAMMADEX_KE0 = 0.655
+
+
+def _sugammadex_pk(patient: Patient) -> MammillaryPK:
+    """Ploeger 2009 sugammadex PK with rocuronium under anesthesia (umol, umol/L).
+
+    The complex shares these parameters. Parameters are scaled from 80 kg;
+    clearance is close to GFR. The effect site is unused.
+    """
+    size = patient.weight / 80.0
+    renal = 0.95
+    return MammillaryPK(
+        v1=3.47 * size,
+        cl1=0.109 * size**0.75 * organ_clearance_scaler(patient, renal_fraction=renal),
+        v2=2.3 * size,
+        cl2=0.427 * size**0.75,
+        v3=8.93 * size,
+        cl3=0.21 * size**0.75,
+        ke0=1.0,
+        renal_fraction=renal,
+    )
+
+
+def free_concentration(total: float, binder: float, kd: float) -> float:
+    """Free ligand at equilibrium with a 1:1 binder; all in the same molar units."""
+    if total <= 0.0:
+        return 0.0
+    b = binder - total + kd
+    root = math.sqrt(b * b + 4.0 * kd * total)
+    # Two algebraically equal forms; each avoids cancellation on its side.
+    return 2.0 * kd * total / (b + root) if b > 0.0 else 0.5 * (root - b)
 
 
 class TOFModel:
-    """Train-of-four model for rocuronium with spontaneous recovery and sugammadex reversal."""
+    """Train-of-four response to rocuronium, with sugammadex binding after Ploeger 2009.
 
-    MW_ROCURONIUM = 609.7
-    MW_SUGAMMADEX = 2178.0
+    Rocuronium PK holds free drug. Sugammadex binds it in plasma at finite
+    rates; the complex is cleared like sugammadex. Sugammadex reaches the
+    neuromuscular effect sites from its first peripheral compartment and binds
+    rocuronium there at equilibrium.
+    """
 
     def __init__(self, patient: Patient):
         # Adductor pollicis effect site with faster onset than offset
         # (Plaud 1995: t1/2 ke0 4.4 min, Ce50 823 ug/L).
         self.ke0_onset = 0.16
         self.recovery_ke0 = 0.12
-        self.reversal_ke0 = 1.0
         self.Ce50_T1 = 0.8
         self.gamma_T1 = 3.0
         self.beta_TOF = 1.5
@@ -28,50 +72,81 @@ class TOFModel:
         # Volatile potentiation: EC50 multiplier at 1 MAC.
         self.f_sevo = 0.75
         self.f_n2o = 0.6
-        # Sugammadex PK (Vd 0.18 L/kg, CL 88 mL/min) and binding constant (M^-1).
-        self.Vs = 0.18 * patient.weight
-        self.kel_s = 0.088 / self.Vs
-        self.Ka = 1.79e7
+        self.patient = patient
+        self.reset()
 
-        self.ce = 0.0
-        self.ce_central = 0.0
-        self.sugammadex_amount_umol = 0.0
+    def reset(self) -> None:
+        self.sugammadex = _sugammadex_pk(self.patient)
+        self.complex = _sugammadex_pk(self.patient)
+        # Total rocuronium (mg/L) and sugammadex (umol/L) at each effect site.
+        self.ce_total = self.ce_central_total = 0.0
+        self.ce_sugammadex = self.ce_central_sugammadex = 0.0
+        # Free rocuronium (mg/L), which sets the block.
+        self.ce = self.ce_central = 0.0
 
-    def step_recovery(self, dt_sec: float, cp_roc_mg_l: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
+    def update_hemodynamics(
+        self, v_ratio: float, co_ratio: float, renal_perfusion: float, blood_volume_l: float | None = None,
+    ) -> None:
+        for model in (self.sugammadex, self.complex):
+            model.update_hemodynamics(v_ratio, co_ratio, renal_perfusion, blood_volume_l=blood_volume_l)
+
+    def give_sugammadex(self, dose_mg: float) -> None:
+        self.sugammadex.state.c1 += dose_mg / MW_SUGAMMADEX * 1000.0 / self.sugammadex.v1
+
+    def bound_rocuronium(self) -> float:
+        """Plasma rocuronium held in the complex, mg/L of complex central volume."""
+        return self.complex.state.c1 * MW_ROCURONIUM / 1000.0
+
+    def step_recovery(self, dt_sec: float, roc: MammillaryPK, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
+        """Advance binding and the effect sites after the rocuronium PK step; return TOF %."""
         dt_min = dt_sec / 60.0
-        if self.sugammadex_amount_umol > 0:
-            self.sugammadex_amount_umol *= np.exp(-self.kel_s * dt_min)
+        sugammadex, complex_ = self.sugammadex, self.complex
+        if sugammadex.state.c1 > 0.0 or complex_.state.c1 > 0.0:
+            self._bind_in_plasma(dt_min, roc)
+        sugammadex.step(dt_sec, 0.0)
+        complex_.step(dt_sec, 0.0)
 
-        cp_free = self._compute_free_rocuronium(cp_roc_mg_l)
-        ke0 = self._ke0(self.ce, cp_free)
-        self.ce += (cp_free - self.ce) * -np.expm1(-ke0 * dt_min)
-        ke0_central = self._ke0(self.ce_central, cp_free) * self.central_ke0_ratio
-        self.ce_central += (cp_free - self.ce_central) * -np.expm1(-ke0_central * dt_min)
+        cp_free = roc.state.c1
+        self.ce_total = self._approach(self.ce_total, cp_free, dt_min, 1.0)
+        self.ce_central_total = self._approach(self.ce_central_total, cp_free, dt_min, self.central_ke0_ratio)
+        c_peripheral = sugammadex.state.c2
+        self.ce_sugammadex += (c_peripheral - self.ce_sugammadex) * -math.expm1(-SUGAMMADEX_KE0 * dt_min)
+        self.ce_central_sugammadex += (c_peripheral - self.ce_central_sugammadex) * -math.expm1(
+            -SUGAMMADEX_KE0 * self.central_ke0_ratio * dt_min
+        )
+        self.ce = self._free_at_site(self.ce_total, self.ce_sugammadex)
+        self.ce_central = self._free_at_site(self.ce_central_total, self.ce_central_sugammadex)
         return self.compute_tof_from_ce(self.ce, mac_sevo, mac_n2o)
 
-    def _ke0(self, ce: float, cp_free: float) -> float:
-        if cp_free >= ce:
-            return self.ke0_onset
-        if ce > cp_free * 3.0 and self.sugammadex_amount_umol > 0:
-            return self.reversal_ke0
-        return self.recovery_ke0
+    def _bind_in_plasma(self, dt_min: float, roc: MammillaryPK) -> None:
+        """Ploeger Eqs 3-4: association K1 Croc Csug and dissociation K2 Ccplx in the central volume."""
+        sugammadex, complex_ = self.sugammadex, self.complex
+        v_sug = sugammadex.v1
+        to_um = 1000.0 / MW_ROCURONIUM
+        fastest = SUGAMMADEX_K1_PER_UM_MIN * max(
+            sugammadex.state.c1, roc.state.c1 * to_um * v_sug / roc.v1
+        ) + SUGAMMADEX_K2_PER_MIN
+        substeps = max(1, math.ceil(dt_min * fastest / 0.05))
+        h = dt_min / substeps
+        for _ in range(substeps):
+            free_roc_um = roc.state.c1 * to_um
+            rate = (SUGAMMADEX_K1_PER_UM_MIN * free_roc_um * sugammadex.state.c1
+                    - SUGAMMADEX_K2_PER_MIN * complex_.state.c1)
+            flux = rate * v_sug * h  # umol bound this substep
+            flux = min(flux, free_roc_um * roc.v1, sugammadex.state.c1 * v_sug)
+            flux = max(flux, -complex_.state.c1 * v_sug)
+            roc.state.c1 -= flux / roc.v1 / to_um
+            sugammadex.state.c1 -= flux / v_sug
+            complex_.state.c1 += flux / v_sug
 
-    def _compute_free_rocuronium(self, cp_total_mg_l: float) -> float:
-        if self.sugammadex_amount_umol <= 0 or cp_total_mg_l <= 0:
-            return cp_total_mg_l
+    def _approach(self, ce: float, cp: float, dt_min: float, ratio: float) -> float:
+        ke0 = (self.ke0_onset if cp >= ce else self.recovery_ke0) * ratio
+        return ce + (cp - ce) * -np.expm1(-ke0 * dt_min)
 
-        r_tot = (cp_total_mg_l / self.MW_ROCURONIUM) / 1000.0
-        s_tot = (self.sugammadex_amount_umol / self.Vs) / 1e6
-        if r_tot <= 0 or s_tot <= 0:
-            return cp_total_mg_l
-
-        a = self.Ka
-        b = -(self.Ka * (r_tot + s_tot) + 1.0)
-        c_coef = self.Ka * r_tot * s_tot
-        discriminant = max(0.0, b * b - 4.0 * a * c_coef)
-        complex_conc = (-b - np.sqrt(discriminant)) / (2.0 * a)
-        r_free = max(0.0, r_tot - complex_conc)
-        return r_free * self.MW_ROCURONIUM * 1000.0
+    @staticmethod
+    def _free_at_site(roc_mg_l: float, sugammadex_um: float) -> float:
+        to_um = 1000.0 / MW_ROCURONIUM
+        return free_concentration(roc_mg_l * to_um, sugammadex_um, SUGAMMADEX_KD_UM) / to_um
 
     def twitch_block(self, ce: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """Fractional T1 depression of peripheral (adductor pollicis) muscle."""
@@ -88,13 +163,5 @@ class TOFModel:
         twitch = 1.0 - self.twitch_block(ce, mac_sevo, mac_n2o)
         return (twitch ** self.beta_TOF) * 100.0
 
-    def give_sugammadex(self, dose_mg: float) -> None:
-        self.sugammadex_amount_umol += dose_mg / self.MW_SUGAMMADEX * 1000.0
 
-    def reset(self):
-        self.ce = 0.0
-        self.ce_central = 0.0
-        self.sugammadex_amount_umol = 0.0
-
-
-__all__ = ["TOFModel"]
+__all__ = ["TOFModel", "free_concentration"]
