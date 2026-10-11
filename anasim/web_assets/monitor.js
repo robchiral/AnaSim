@@ -398,9 +398,12 @@ export class Monitor {
     this.set("v-vte", trunc(v.vte));
     this.set("v-mv", fixed(v.mv, 1));
     this.set("v-cdyn", trunc(v.cdyn));
-    this.set("v-o2", `${trunc(v.fio2)} / ${trunc(v.eto2)}`);
-    this.set("v-n2o", `${trunc(v.fi_n2o)} / ${trunc(v.et_n2o)}`);
-    this.set("v-sevo", `${fixed(v.fi_sevo, 1)} / ${fixed(v.et_sevo, 1)}`);
+    this.set("v-fio2", trunc(v.fio2));
+    this.set("v-eto2", trunc(v.eto2));
+    this.set("v-fi-n2o", trunc(v.fi_n2o));
+    this.set("v-et-n2o", trunc(v.et_n2o));
+    this.set("v-fi-sevo", fixed(v.fi_sevo, 1));
+    this.set("v-et-sevo", fixed(v.et_sevo, 1));
     this.set("v-mac", fixed(v.et_mac, 2));
   }
 

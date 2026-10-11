@@ -27,7 +27,8 @@ from anasim.core.state import AirwayType
 if TYPE_CHECKING:
     from anasim.core.engine import SimulationEngine
 
-ControlTab = Literal["Machine", "Medications", "Events"]
+ControlTab = Literal["Machine", "Medications", "Fluids", "Events"]
+EventSection = Literal["circulation", "airway", "stimulation", "equipment"]
 Requirement = Callable[["SimulationEngine"], tuple[bool, str]]
 
 MONITOR_BP_INDEX = {"sbp": 0, "dbp": 1, "map": 2}
@@ -46,6 +47,7 @@ class ScenarioStep:
     instruction: str
     check_requirements: Requirement
     target_tab: ControlTab | None = None
+    target_section: EventSection | None = None
     # Runs once, the first time the requirements are met.
     on_met: Callable[["SimulationEngine"], None] | None = None
     # Steps with dosing guidance can provide a variant for sessions allowing TCI.
@@ -228,7 +230,7 @@ def require_fluid_bolus(
             return True, ""
         if volume_requested > 0.0:
             return False, f"{fail_prefix} ({volume_requested:.0f}/{min_ml:.0f} mL requested)"
-        return False, f"{fail_prefix} ({min_ml:.0f} mL via Events tab)"
+        return False, f"{fail_prefix} ({min_ml:.0f} mL via Fluids tab)"
     return check
 
 

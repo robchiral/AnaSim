@@ -45,6 +45,7 @@ MAX_REAL_DT_S = 0.2
 # Averaging window for the achieved speed, so one slow frame does not flag lag.
 SPEED_AVERAGE_S = 2.0
 WAVE_WINDOW_S = 20.0  # The slower respiratory sweep
+TREND_WINDOW_S = 1800
 VENT_FIELDS = ("mode", "rr", "tv", "peep", "ie", "p_insp", "p_support", "t_insp", "pause", "p_max", "trigger")
 IE_RATIOS = ("1:1", "1:2", "1:3", "1:4")
 LOOP_INTERVAL_S = 0.03  # Spacing of loop points, about 170 per 5-second breath
@@ -135,6 +136,10 @@ class WebSession:
             self.scenario = spec.builder()
             self.scenario.prepare(self.engine)
             self._begin_step()
+        self._trend_history: deque[dict] = deque(maxlen=TREND_WINDOW_S + 1)
+        self._trend_pending: deque[dict] = deque(maxlen=TREND_WINDOW_S + 1)
+        self._next_trend_time = math.floor(self.engine.state.time) + 1
+        self._sample_trends()
 
     def info(self) -> str:
         """Return session constants the UI needs once, as JSON."""
@@ -156,6 +161,7 @@ class WebSession:
                 {
                     "key": spec.key,
                     "name": spec.name,
+                    "generic_name": spec.generic_name,
                     "rate_unit": spec.rate_unit,
                     "bolus_unit": spec.bolus_unit,
                     "default_bolus": spec.default_bolus,
@@ -166,6 +172,7 @@ class WebSession:
                 for spec in engine.get_controllable_drugs()
             ],
             "medication_history": list(self._medication_history),
+            "trends": list(self._trend_history),
             "disturbances": [{"key": key, "label": label} for label, key in list_disturbance_profiles()],
             "rhythms": [rhythm.value for rhythm in RhythmType],
             "vent_modes": MODES,
@@ -205,6 +212,9 @@ class WebSession:
                     break
                 self._accumulator -= sim_step
                 steps += 1
+                if engine.state.time >= self._next_trend_time - 1e-9:
+                    self._sample_trends()
+                    self._next_trend_time = math.floor(engine.state.time + 1e-9) + 1
             # Drop time the browser could not simulate instead of catching up later.
             if steps >= max_steps:
                 self._accumulator = 0.0
@@ -237,6 +247,8 @@ class WebSession:
         notice, self.notice = self.notice, None
         download, self._download = self._download, None
         state = self.engine.state
+        trends = list(self._trend_pending)
+        self._trend_pending.clear()
         return {
             "time": _num(state.time, 3),
             "running": self.engine.running,
@@ -249,6 +261,7 @@ class WebSession:
             "notice": notice,
             "download": download,
             "vitals": self._vitals(),
+            "trends": trends,
             "alarms": {
                 name: "low" if flags.get("low") else "high"
                 for name, flags in state.alarms.items()
@@ -259,6 +272,25 @@ class WebSession:
             "controls": self._controls(),
             "scenario": self._scenario_state(),
         }
+
+    def _sample_trends(self) -> None:
+        state = self.engine.state
+        vitals = self._vitals()
+        arterial = self.engine.config.arterial_line_enabled
+        pressure = vitals["art"][2] if arterial else (
+            None if vitals["nibp"] is None else vitals["nibp"][2]
+        )
+        pressure_time = state.time if arterial else state.nibp_timestamp
+        sample = {
+            "time": _num(state.time, 3),
+            "hr": vitals["hr"],
+            "etco2": vitals["etco2"],
+            "bis": vitals["bis"],
+            "map": pressure,
+            "map_time": None if pressure_time is None else _num(pressure_time, 3),
+        }
+        self._trend_history.append(sample)
+        self._trend_pending.append(sample)
 
     def _vitals(self) -> dict:
         engine = self.engine
@@ -496,6 +528,7 @@ class WebSession:
             "title": step.title,
             "instruction": step.instruction_for(self.engine),
             "target_tab": step.target_tab,
+            "target_section": step.target_section,
             "met": self.step_met,
             "status": "" if self.step_met else self.step_status,
         }
@@ -599,7 +632,12 @@ class WebSession:
         return {"medication": entry}
 
     def _cmd_fluid(self, kind: str, volume_ml: float):
-        getattr(self.engine, FLUIDS[kind])(float(volume_ml))
+        volume = float(volume_ml)
+        if not math.isfinite(volume) or volume <= 0:
+            raise ValueError("Fluid volume must be positive and finite")
+        getattr(self.engine, FLUIDS[kind])(volume)
+        label = {"crystalloid": "crystalloid", "albumin": "albumin", "blood": "PRBC"}[kind]
+        return {"fluid": {"time": self.engine.state.time, "text": f"{volume:g} mL {label} started"}}
 
     def _cmd_maintenance_fluid(self, ml_hr: float):
         self.engine.set_continuous_fluid_rate(float(ml_hr))

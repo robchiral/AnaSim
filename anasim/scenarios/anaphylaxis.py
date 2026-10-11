@@ -46,6 +46,7 @@ def create_anaphylaxis_scenario() -> Scenario:
                 "Start anaphylaxis in Events",
             ),
             target_tab="Events",
+            target_section="circulation",
         ),
         ScenarioStep(
             id="EPINEPHRINE",
@@ -78,7 +79,7 @@ def create_anaphylaxis_scenario() -> Scenario:
                 labels=("crystalloid",),
                 fail_prefix="Start crystalloid resuscitation",
             ),
-            target_tab="Events",
+            target_tab="Fluids",
         ),
         ScenarioStep(
             id="STABILIZE",
@@ -100,6 +101,7 @@ def create_anaphylaxis_scenario() -> Scenario:
                 require_tracheal_ventilation,
             ),
             target_tab="Events",
+            target_section="circulation",
         ),
     ]
 

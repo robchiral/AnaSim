@@ -34,6 +34,39 @@ def run_seconds(session, seconds, tick_s=1.0):
     return [parse(session.advance(0.2)) for _ in range(round(seconds / tick_s))]
 
 
+@pytest.mark.parametrize("arterial", [True, False])
+def test_trends_record_displayed_pressures_and_recover_after_reload(arterial):
+    session = WebSession({**PATIENT, "mode": "steady_state", "arterial_line_enabled": arterial})
+    initial = session.snapshot()["trends"]
+    assert [sample["time"] for sample in initial] == [0]
+    cmd(session, "run", running=True)
+    snapshots = []
+    # Poll at sampling boundaries to compare recorded and displayed measurements.
+    for step in range(1200):
+        session.step(0.01)
+        if (step + 1) % 100 == 0:
+            snapshots.append(session.snapshot())
+    samples = initial + [sample for snap in snapshots for sample in snap["trends"]]
+    assert [sample["time"] for sample in samples] == pytest.approx(range(13))
+    for snap in snapshots:
+        sample = snap["trends"][-1]
+        vitals = snap["vitals"]
+        displayed = vitals["art"] if arterial else vitals["nibp"]
+        assert sample["map"] == displayed[2]
+        assert (sample["hr"], sample["etco2"], sample["bis"]) == (
+            vitals["hr"], vitals["etco2"], vitals["bis"],
+        )
+        if arterial:
+            assert sample["map_time"] == sample["time"]
+        else:
+            assert sample["map_time"] <= sample["time"]
+    cmd(session, "run", running=False)
+    assert parse(session.advance(0.2))["trends"] == []
+    session.replay_waves()
+    assert parse(session.info())["trends"] == samples
+    assert session.snapshot()["trends"] == []
+
+
 def test_ventilator_settings_survive_bag_mask_handover():
     session = WebSession({**PATIENT, "mode": "steady_state"})
     snap = parse(session.advance(0.0))
@@ -190,6 +223,25 @@ def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload(
     assert history[-1]["text"] == "Propofol infusion 54 mcg/kg/min"
 
 
+@pytest.mark.parametrize("kind,label", [("crystalloid", "crystalloid"), ("albumin", "albumin"), ("blood", "PRBC")])
+def test_fluid_confirmation_follows_acceptance_and_delivery_continues_over_time(kind, label):
+    session = WebSession(PATIENT)
+    before = session.snapshot()["vitals"]
+    receipt = cmd(session, "fluid", kind=kind, volume_ml=250)["fluid"]
+    assert receipt == {"time": 0, "text": f"250 mL {label} started"}
+    assert session.engine.pending_infusions[0].remaining_ml == 250
+    after = session.snapshot()["vitals"]
+    assert (after["fluid_in"], after["blood_in"]) == (before["fluid_in"], before["blood_in"])
+    for volume in [0, -1, float("nan"), float("inf")]:
+        with pytest.raises(ValueError):
+            cmd(session, "fluid", kind=kind, volume_ml=volume)
+    assert len(session.engine.pending_infusions) == 1
+    cmd(session, "run", running=True)
+    delivered = run_seconds(session, 2)[-1]["vitals"]
+    assert 0 < delivered["blood_in" if kind == "blood" else "fluid_in"] < 250
+    assert 0 < session.engine.pending_infusions[0].remaining_ml < 250
+
+
 def test_manual_session_hides_and_rejects_tci_for_every_supported_drug():
     session = WebSession({**PATIENT, "mode": "steady_state"})
     drugs = parse(session.info())["drugs"]
@@ -316,9 +368,17 @@ def test_page_reads_only_snapshot_fields_and_commands_the_session_provides():
     def read(name, receiver):
         return set(re.findall(rf"\b{receiver}\.([a-z_][a-z0-9_]*)", script[name]))
 
-    assert read("app.js", "snap") | read("monitor.js", "snap") <= set(snap)
+    assert read("app.js", "snap") | read("monitor.js", "snap") | read("trends.js", "snap") <= set(snap)
     assert read("monitor.js", "v") <= set(snap["vitals"])
     assert read("controls.js", "c") <= set(snap["controls"])
     commands = set(re.findall(r'\b(?:command|send)\(\s*"([a-z_]+)"', "".join(script.values())))
     assert len(commands) > 20
     assert {name for name in commands if not hasattr(session, f"_cmd_{name}")} == set()
+    page = (assets / "index.html").read_text()
+    tabs = set(re.findall(r'data-tab="([^"]+)"', page))
+    sections = set(re.findall(r'data-event="([^"]+)"', page))
+    for spec in SCENARIO_REGISTRY:
+        for step in spec.builder():
+            assert step.target_tab is None or step.target_tab in tabs
+            if step.target_section is not None:
+                assert step.target_tab == "Events" and step.target_section in sections

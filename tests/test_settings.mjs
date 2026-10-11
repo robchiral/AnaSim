@@ -7,6 +7,7 @@ class Field extends EventTarget {
   type = "number";
   value = "";
   disabled = false;
+  classList = { toggle() {} };
   reportValidity() { return this.value !== "" && Number(this.value) >= 0; }
   edit(value) {
     this.value = value;

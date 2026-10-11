@@ -34,24 +34,8 @@ In Windows Command Prompt, use `python` in place of `python3` and activate with
 `anasim` opens the interface in your browser and works offline after installation.
 Press Ctrl+C in the terminal to stop the server.
 
-## Start a session
-
-Choose Guided scenario for a structured case or Open simulation for independent
-practice. Sessions start with an awake patient or an anesthetized patient under
-maintenance. Select Start simulation, then Start below the monitor.
-
-Manual infusion rates are the default. To use target-controlled infusion (TCI),
-select Allow TCI during setup. This enables concentration targets and TCI dosing
-instructions, including maintenance infusions. Propofol and remifentanil
-infusion rates use mcg/kg/min.
-
-Use Apply or Enter to apply settings and Escape to cancel edits. For mechanical
-ventilation, select a facemask or tracheal tube, apply a mode, and choose
-Start ventilator.
-
-Choose Record CSV to record a session. Local recordings go to `recordings/` in
-the directory where you launched `anasim`. In the hosted app, choose Stop
-recording to download the file.
+Choose a guided scenario or open simulation, then select Start simulation and
+Start. Use Apply to confirm setting changes.
 
 ## Features
 
@@ -61,8 +45,8 @@ recording to download the file.
 | Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, and glycopyrrolate |
 | Anesthesia machine | Facemask or tracheal tube, fresh gas flow, vaporizer, and bag-mask ventilation |
 | Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
-| Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF), temperature, fluid balance, and alarms |
-| Events | Fluids and blood, surgical stimulation, airway obstruction, bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias |
+| Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF), temperature, fluid balance, trends, and alarms |
+| Fluids and events | Fluids and blood, surgical stimulation, airway obstruction, bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias |
 | Guided scenarios | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, and oxygen supply failure |
 
 Drug delivery supports boluses, manual infusions, and plasma or effect-site TCI,

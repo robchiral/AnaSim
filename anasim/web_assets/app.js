@@ -1,6 +1,7 @@
 // Page controller: loading, setup, and the running session.
 import { Controls } from "./controls.js";
 import { Monitor } from "./monitor.js";
+import { Trends } from "./trends.js";
 import { connect } from "./transport.js";
 
 const $ = (id) => document.getElementById(id);
@@ -17,6 +18,8 @@ let catalog = null;
 let info = null;
 let monitor = null;
 let controls = null;
+let trends = null;
+let trendReturnTab = "Machine";
 let last = null;
 let arrestShown = false;
 let cshtTimer = null;
@@ -24,6 +27,7 @@ const pending = new Map();
 let nextId = 1;
 
 function show(screen) {
+  $("session-options").open = false;
   for (const id of ["loading", "setup", "app"]) $(id).hidden = id !== screen;
 }
 
@@ -171,6 +175,7 @@ function startSession(sessionInfo) {
   info = sessionInfo;
   monitor?.destroy();
   controls?.destroy();
+  trends?.destroy();
   last = null;
   arrestShown = false;
   delete $("step-instruction").dataset.instruction;
@@ -181,9 +186,11 @@ function startSession(sessionInfo) {
 
   monitor = new Monitor(info);
   controls = new Controls(info, command);
+  trends = new Trends(info);
+  trendReturnTab = "Machine";
   controls.onMedicationsShown = refreshCsht;
   clearInterval(cshtTimer);
-  cshtTimer = setInterval(() => controls.currentTab === "Medications" && refreshCsht(), 5000);
+  cshtTimer = setInterval(refreshCsht, 5000);
 
   const speed = $("speed");
   [speed.min, speed.max] = info.speed_range;
@@ -198,6 +205,7 @@ function startSession(sessionInfo) {
 }
 
 function refreshCsht() {
+  if ($("app").hidden || !controls.needsCsht()) return;
   send("csht").then((values) => controls.showCsht(values)).catch(() => {});
 }
 
@@ -205,6 +213,7 @@ function onTick(snap) {
   last = snap;
   monitor.update(snap);
   controls.sync(snap.controls);
+  trends.update(snap);
   updateBar(snap);
   if (info.scenario) updateScenario(snap.scenario);
   if (snap.download) download(snap.download.filename, snap.download.csv);
@@ -236,15 +245,16 @@ function updateBar(snap) {
   run.className = `btn ${variant}`;
   run.disabled = snap.ended;
   if (document.activeElement !== $("speed")) $("speed").value = String(snap.speed);
-  status.textContent = snap.running && snap.lagging ? `Actual speed ${snap.achieved_speed}×` : "";
+  setText(status, snap.running && snap.lagging ? `Actual speed ${snap.achieved_speed}×` : "");
 
   const record = $("record");
   record.setAttribute("aria-pressed", String(snap.recording));
   setText(record, snap.recording ? "Stop recording" : "Record CSV");
+  $("recording-status").hidden = !snap.recording;
 
   const total = Math.floor(snap.time);
   const pad = (n) => String(n).padStart(2, "0");
-  $("clock").textContent = `${pad(Math.floor(total / 3600))}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+  setText($("clock"), `${pad(Math.floor(total / 3600))}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`);
 }
 
 function updateScenario(step) {
@@ -253,27 +263,28 @@ function updateScenario(step) {
   const next = $("step-next");
   const target = $("step-target");
   if (step.complete) {
-    $("step-title").textContent = "Scenario complete";
-    $("step-instruction").textContent = info.scenario.description;
-    $("scenario-count").textContent = "";
-    status.textContent = "";
+    setText($("step-title"), "Scenario complete");
+    setText($("step-instruction"), info.scenario.description);
+    setText($("scenario-count"), "");
+    setText(status, "");
     target.hidden = true;
     next.hidden = true;
     return;
   }
   next.hidden = false;
-  if ($("step-title").textContent !== step.title) {
-    $("step-title").textContent = step.title;
-  }
+  setText($("step-title"), step.title);
   // Instructions are authored in anasim/scenarios with simple <b>, <i>, and <br> markup.
   if ($("step-instruction").dataset.instruction !== step.instruction) {
     $("step-instruction").innerHTML = step.instruction;
     $("step-instruction").dataset.instruction = step.instruction;
   }
-  $("scenario-count").textContent = `Step ${step.index + 1} of ${total}`;
+  setText($("scenario-count"), `Step ${step.index + 1} of ${total}`);
   target.hidden = !step.target_tab;
-  if (step.target_tab) setText(target, `Open ${step.target_tab.toLowerCase()}`);
-  status.textContent = step.met ? "" : step.status;
+  if (step.target_tab) {
+    const tab = controls.tabs.find((button) => button.dataset.tab === step.target_tab);
+    setText(target, `Open ${tab.textContent.toLowerCase()}`);
+  }
+  setText(status, step.met ? "" : step.status);
   next.disabled = !step.met;
   setText(next, step.met && step.index === total - 1 ? "Finish scenario" : "Continue");
 }
@@ -282,6 +293,8 @@ $("step-next").onclick = () => command("scenario_next");
 $("step-target").onclick = () => {
   const tab = last?.scenario?.target_tab;
   if (tab) controls.openTab(tab);
+  const section = last?.scenario?.target_section;
+  if (section) controls.openEventSection(section);
 };
 
 $("run").onclick = () => last && command("run", { running: !last.running });
@@ -293,11 +306,42 @@ $("speed").onchange = () => {
   command("speed", { value });
 };
 $("record").onclick = async () => {
+  $("session-options").open = false;
   if (!last) return;
   const result = await command("record", { active: !last.recording });
   if (result && result.csv) download(result.filename, result.csv);
 };
-$("new-session").onclick = () => newSession();
+$("new-session").onclick = () => {
+  $("session-options").open = false;
+  newSession();
+};
+$("show-trends").onclick = () => {
+  $("session-options").open = false;
+  if (controls.currentTab !== "Trends") trendReturnTab = controls.currentTab;
+  controls.openTab("Trends");
+  trends.requestDraw();
+  $("close-trends").focus();
+};
+$("close-trends").onclick = () => {
+  controls.openTab(trendReturnTab);
+  $("session-options").querySelector("summary").focus();
+};
+$("trends-panel").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    $("close-trends").click();
+  }
+});
+document.addEventListener("pointerdown", (event) => {
+  const options = $("session-options");
+  if (!options.contains(event.target)) options.open = false;
+});
+$("session-options").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    $("session-options").open = false;
+    $("session-options").querySelector("summary").focus();
+  }
+});
 
 async function newSession() {
   if (last?.recording) {

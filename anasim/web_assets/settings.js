@@ -11,7 +11,7 @@ export class SettingsEditor {
     this.toolbar = document.createElement("div");
     this.toolbar.className = "setting-actions";
     this.toolbar.hidden = true;
-    this.toolbar.innerHTML = `<button type="button" class="btn small">Apply</button>
+    this.toolbar.innerHTML = `<button type="button" class="btn small primary">Apply</button>
       <button type="button" class="btn small outlined">Cancel</button>`;
     [this.applyButton, this.cancelButton] = this.toolbar.children;
     container.append(this.toolbar);
@@ -46,12 +46,23 @@ export class SettingsEditor {
     const text = String(value);
     this.values.set(field, text);
     if (!this.dirty && !this.pending && field.value !== text) field.value = text;
+    this.markField(field);
+  }
+
+  markField(field) {
+    const value = this.values.get(field);
+    const edited = this.dirty && !field.disabled && value !== undefined && field.value !== value;
+    field.classList.toggle("setting-edited", edited);
+    field.title = edited ? `Applied value ${value}` : "";
+    field.ariaDescription = edited ? `Unapplied edit. Applied value ${value}.` : "";
   }
 
   refresh() {
     this.toolbar.hidden = !this.dirty && !this.pending;
     this.applyButton.disabled = this.pending;
     this.cancelButton.disabled = this.pending;
+    this.applyButton.textContent = this.pending ? "Applying…" : "Apply";
+    for (const field of this.fields) this.markField(field);
     this.onChange();
   }
 

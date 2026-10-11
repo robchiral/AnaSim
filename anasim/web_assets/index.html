@@ -106,12 +106,28 @@
 </section>
 
 <div id="app" hidden>
+  <header class="session-bar" aria-label="Session controls">
+    <span id="patient-info"></span>
+    <span id="recording-status" class="recording-status" role="status" hidden>Recording</span>
+    <div class="session-controls">
+      <span class="status" id="status"></span>
+      <div class="clock"><output id="clock" aria-label="Elapsed simulation time">00:00:00</output></div>
+      <button type="button" class="btn primary" id="run">Start</button>
+      <label class="speed">Speed
+        <span class="unit-input"><input type="number" id="speed" min="0.1" max="50" step="0.5" value="1"><span>×</span></span>
+      </label>
+    </div>
+    <details id="session-options" class="session-options">
+      <summary class="btn outlined small" aria-label="Session options" title="Session options">⋯</summary>
+      <div class="session-menu">
+        <button type="button" class="btn" id="show-trends">Trends</button>
+        <button type="button" class="btn toggle" id="record" aria-pressed="false">Record CSV</button>
+        <button type="button" class="btn" id="new-session">New session</button>
+      </div>
+    </details>
+  </header>
   <main class="workspace">
     <section class="monitor">
-      <header class="monitor-header">
-        <span id="patient-info"></span>
-        <button type="button" class="btn outlined small" id="new-session">New session</button>
-      </header>
       <div class="monitor-body">
         <div class="monitor-lane">
           <div class="wave" data-wave="ecg"><canvas role="img" aria-label="ECG lead II waveform"></canvas><span class="wave-label ecg">ECG · II</span><span class="sweep-label">10 s</span></div>
@@ -162,9 +178,21 @@
         </section>
       </div>
       <div class="gas-bar">
-        <div class="numeric gas" data-alarm="FiO2"><div class="numeric-head"><span class="numeric-title">O₂</span><span class="numeric-unit">Fi / Et %</span></div><output id="v-o2">-- / --</output></div>
-        <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">N₂O</span><span class="numeric-unit">Fi / Et %</span></div><output id="v-n2o">-- / --</output></div>
-        <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">Sevo</span><span class="numeric-unit">Fi / Et %</span></div><output id="v-sevo">-- / --</output></div>
+        <div class="numeric gas gas-pair" data-alarm="FiO2">
+          <div class="gas-name"><span class="numeric-title">O₂</span><span class="numeric-unit">%</span></div>
+          <div class="gas-reading"><span title="Inspired oxygen">Fi</span><output id="v-fio2" aria-label="Inspired oxygen, percent">--</output></div>
+          <div class="gas-reading"><span title="End-tidal oxygen">Et</span><output id="v-eto2" aria-label="End-tidal oxygen, percent">--</output></div>
+        </div>
+        <div class="numeric gas gas-pair">
+          <div class="gas-name"><span class="numeric-title">N₂O</span><span class="numeric-unit">%</span></div>
+          <div class="gas-reading"><span title="Inspired nitrous oxide">Fi</span><output id="v-fi-n2o" aria-label="Inspired nitrous oxide, percent">--</output></div>
+          <div class="gas-reading"><span title="End-tidal nitrous oxide">Et</span><output id="v-et-n2o" aria-label="End-tidal nitrous oxide, percent">--</output></div>
+        </div>
+        <div class="numeric gas gas-pair">
+          <div class="gas-name"><span class="numeric-title">Sevo</span><span class="numeric-unit">%</span></div>
+          <div class="gas-reading"><span title="Inspired sevoflurane">Fi</span><output id="v-fi-sevo" aria-label="Inspired sevoflurane, percent">--</output></div>
+          <div class="gas-reading"><span title="End-tidal sevoflurane">Et</span><output id="v-et-sevo" aria-label="End-tidal sevoflurane, percent">--</output></div>
+        </div>
         <div class="numeric gas"><div class="numeric-head"><span class="numeric-title">MAC</span></div><output id="v-mac">--</output></div>
         <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">Pmean</span><span class="numeric-unit">cmH₂O</span></div><output id="v-pmean">--</output></div>
         <div class="numeric vent"><div class="numeric-head"><span class="numeric-title">Cdyn</span><span class="numeric-unit">mL/cmH₂O</span></div><output id="v-cdyn">--</output></div>
@@ -180,16 +208,6 @@
         <div class="numeric compact temp"><div class="numeric-head"><span class="numeric-title">Temp</span><span class="numeric-unit">°C</span></div><output id="v-temp">--</output></div>
         <div class="panel-io"><div class="io-head"><span>Fluid balance</span><output id="v-net">--</output></div><div class="io-detail" id="v-io">IV -- · PRBC -- · Urine -- · Loss --</div></div>
       </div>
-      <footer class="sim-bar">
-        <button type="button" class="btn primary" id="run">Start</button>
-        <button type="button" class="btn toggle" id="record" aria-pressed="false">Record CSV</button>
-        <label class="speed">Speed
-          <span class="unit-input"><input type="number" id="speed" min="0.1" max="50" step="0.5" value="1"><span>×</span></span>
-        </label>
-        <span class="status" id="status"></span>
-        <span class="spacer"></span>
-        <div class="clock"><output id="clock" aria-label="Elapsed simulation time">00:00:00</output></div>
-      </footer>
     </section>
 
     <aside class="controls">
@@ -212,8 +230,9 @@
       </section>
       <nav class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="Machine" aria-selected="true">Machine</button>
-        <button type="button" role="tab" data-tab="Medications" aria-selected="false">Medications</button>
-        <button type="button" role="tab" data-tab="Events" aria-selected="false">Events and fluids</button>
+        <button type="button" role="tab" data-tab="Medications" aria-selected="false">Drugs</button>
+        <button type="button" role="tab" data-tab="Fluids" aria-selected="false">Fluids</button>
+        <button type="button" role="tab" data-tab="Events" aria-selected="false">Events</button>
       </nav>
 
       <div class="tab-panel" data-panel="Machine" role="tabpanel">
@@ -254,8 +273,8 @@
             <div class="control-setting" data-vent="trigger"><div class="control-setting-head"><label for="c-trigger">Trigger</label><span>L/min</span></div><input id="c-trigger" aria-label="Flow trigger setting, L/min" type="number" min="1" max="15" step="0.5"></div>
           </div>
           <div class="manual-ventilation">
-            <button type="button" class="btn toggle" id="c-bag" aria-pressed="false">Start bag ventilation</button>
-            <span class="dim small">12 breaths/min · 500 mL</span>
+            <button type="button" class="btn toggle" id="c-bag" aria-pressed="false" title="Bag ventilation uses 12 breaths/min and 500 mL tidal volume.">Start bag ventilation</button>
+            <span id="c-bag-settings" class="dim small" hidden>12 breaths/min · 500 mL</span>
           </div>
         </fieldset>
 
@@ -268,7 +287,6 @@
               <div class="control-setting"><label for="c-n2o">N₂O</label><input id="c-n2o" aria-label="Nitrous oxide flow, L/min" type="number" min="0" max="15" step="0.5"></div>
             </div>
             <div class="circuit-oxygen"><span>Circuit FiO₂</span><output id="c-fio2" class="fio2">21%</output></div>
-            <button type="button" class="btn toggle t-danger full" id="c-o2-supply" aria-pressed="false">Disconnect O₂ supply</button>
           </fieldset>
 
           <fieldset class="group">
@@ -278,6 +296,14 @@
             </div>
           </fieldset>
         </div>
+        <label class="inline">Forced-air warmer
+          <select id="c-bair">
+            <option value="0">Off</option>
+            <option value="32">Low (32°C)</option>
+            <option value="38">Medium (38°C)</option>
+            <option value="43">High (43°C)</option>
+          </select>
+        </label>
       </div>
 
       <div class="tab-panel" data-panel="Medications" role="tabpanel" hidden>
@@ -289,28 +315,15 @@
           <h2 id="running-infusions-title">Running infusions</h2>
           <div id="running-infusion-list"></div>
         </section>
-        <details id="medication-history" class="medication-history">
+        <details id="medication-history" class="medication-history" hidden>
           <summary>Recent medication actions</summary>
-          <p id="medication-history-empty">No medication actions yet.</p>
           <ol id="medication-history-list"></ol>
         </details>
         <div id="drug-cards"></div>
         <p id="drug-search-empty" role="status" hidden>No medications found.</p>
       </div>
 
-      <div class="tab-panel" data-panel="Events" role="tabpanel" hidden>
-        <fieldset class="group">
-          <legend>Temperature management</legend>
-          <label class="inline">Forced-air warmer
-            <select id="c-bair">
-              <option value="0">Off</option>
-              <option value="32">Low (32°C)</option>
-              <option value="38">Medium (38°C)</option>
-              <option value="43">High (43°C)</option>
-            </select>
-          </label>
-        </fieldset>
-
+      <div class="tab-panel" data-panel="Fluids" role="tabpanel" hidden>
         <fieldset class="group">
           <legend>Fluid administration</legend>
           <div class="button-grid">
@@ -319,46 +332,78 @@
             <button type="button" class="btn" data-fluid="albumin" data-volume="250">Albumin 250 mL</button>
             <button type="button" class="btn" data-fluid="blood" data-volume="300">PRBC 300 mL</button>
           </div>
+          <p id="fluid-feedback" class="action-feedback" role="status" hidden></p>
           <label class="inline">Maintenance fluid
             <span class="unit-input"><input id="c-maint" type="number" min="0" max="5000" step="25"><span>mL/hr</span></span>
           </label>
         </fieldset>
+      </div>
 
-        <fieldset class="group">
-          <legend>Surgical stimulation</legend>
-          <div class="inline">
-            <select id="c-disturbance"><option value="">Off</option></select>
+      <div class="tab-panel" data-panel="Events" role="tabpanel" hidden>
+        <details class="event-section" data-event="circulation">
+          <summary><span>Circulation</span><output hidden></output></summary>
+          <div class="event-controls">
+            <div class="inline">
+              <select id="c-hem-rate" aria-label="Bleeding rate">
+                <option value="500">Mild (500 mL/min)</option>
+                <option value="1000">Moderate (1000 mL/min)</option>
+                <option value="2000">Severe (2000 mL/min)</option>
+                <option value="4000">Massive (4000 mL/min)</option>
+              </select>
+              <button type="button" class="btn toggle t-danger" id="c-hemorrhage" aria-pressed="false">Start bleeding</button>
+            </div>
+            <label class="inline">Cardiac rhythm <select id="c-rhythm"></select></label>
+            <button type="button" class="btn toggle t-warning full" id="c-anaphylaxis" aria-pressed="false">Start anaphylaxis</button>
+            <button type="button" class="btn toggle t-danger full" id="c-sepsis" aria-pressed="false">Start sepsis</button>
+          </div>
+        </details>
+
+        <details class="event-section" data-event="airway">
+          <summary><span>Airway complications</span><output hidden></output></summary>
+          <div class="event-controls">
+            <div class="grid2">
+              <label for="c-obstruction">Upper airway obstruction</label><span class="unit-input"><input id="c-obstruction" type="number" min="0" max="100" step="5"><span>%</span></span>
+              <label for="c-bronchospasm">Bronchospasm</label><span class="unit-input"><input id="c-bronchospasm" type="number" min="0" max="100" step="5"><span>%</span></span>
+            </div>
+            <label class="choice"><input type="checkbox" id="c-auto-laryngo" checked> Automatic laryngospasm</label>
+            <p class="dim small" id="c-laryngo">Laryngospasm: none</p>
+          </div>
+        </details>
+
+        <details class="event-section" data-event="stimulation">
+          <summary><span>Surgical stimulation</span><output hidden></output></summary>
+          <div class="event-controls inline">
+            <select id="c-disturbance" aria-label="Stimulation profile"><option value="">Off</option></select>
             <button type="button" class="btn toggle t-warning" id="c-disturb" aria-pressed="false" disabled>Start stimulation</button>
           </div>
-        </fieldset>
+        </details>
 
-        <fieldset class="group">
-          <legend>Airway complications</legend>
-          <div class="grid2">
-            <label for="c-obstruction">Upper airway obstruction</label><span class="unit-input"><input id="c-obstruction" type="number" min="0" max="100" step="5"><span>%</span></span>
-            <label for="c-bronchospasm">Bronchospasm</label><span class="unit-input"><input id="c-bronchospasm" type="number" min="0" max="100" step="5"><span>%</span></span>
+        <details class="event-section" data-event="equipment">
+          <summary><span>Equipment faults</span><output hidden></output></summary>
+          <div class="event-controls">
+            <button type="button" class="btn toggle t-danger full" id="c-o2-supply" aria-pressed="false">Disconnect O₂ supply</button>
           </div>
-          <label class="choice"><input type="checkbox" id="c-auto-laryngo" checked> Automatic laryngospasm</label>
-          <p class="dim small" id="c-laryngo">Laryngospasm: none</p>
-        </fieldset>
-
-        <fieldset class="group">
-          <legend>Critical events</legend>
-          <div class="inline">
-            <select id="c-hem-rate">
-              <option value="500">Mild (500 mL/min)</option>
-              <option value="1000">Moderate (1000 mL/min)</option>
-              <option value="2000">Severe (2000 mL/min)</option>
-              <option value="4000">Massive (4000 mL/min)</option>
-            </select>
-            <button type="button" class="btn toggle t-danger" id="c-hemorrhage" aria-pressed="false">Start bleeding</button>
-          </div>
-          <label class="inline">Cardiac rhythm <select id="c-rhythm"></select></label>
-          <button type="button" class="btn toggle t-warning full" id="c-anaphylaxis" aria-pressed="false">Start anaphylaxis</button>
-          <button type="button" class="btn toggle t-danger full" id="c-sepsis" aria-pressed="false">Start sepsis</button>
-          <button type="button" class="btn outlined full" id="c-stop-events">Stop all events</button>
-        </fieldset>
+        </details>
       </div>
+      <section id="trends-panel" class="tab-panel" data-panel="Trends" aria-label="Session trends" hidden>
+        <header class="trends-header">
+          <h2>Trends</h2>
+          <button type="button" class="btn outlined small" id="close-trends">Back to controls</button>
+        </header>
+        <label class="inline">Window
+          <select id="trend-window" aria-label="Trend time window">
+            <option value="300">5 min</option>
+            <option value="900" selected>15 min</option>
+            <option value="1800">30 min</option>
+          </select>
+        </label>
+        <div class="trend-grid">
+          <figure><figcaption><span id="trend-map-label">ART MAP</span><span>mmHg</span></figcaption><canvas data-trend="map" role="img" aria-label="Mean arterial pressure trend"></canvas></figure>
+          <figure><figcaption><span>HR</span><span>/min</span></figcaption><canvas data-trend="hr" role="img" aria-label="Heart rate trend"></canvas></figure>
+          <figure><figcaption><span>EtCO₂</span><span>mmHg</span></figcaption><canvas data-trend="etco2" role="img" aria-label="End-tidal carbon dioxide trend"></canvas></figure>
+          <figure><figcaption><span>BIS</span></figcaption><canvas data-trend="bis" role="img" aria-label="Bispectral index trend"></canvas></figure>
+        </div>
+      </section>
     </aside>
   </main>
 </div>

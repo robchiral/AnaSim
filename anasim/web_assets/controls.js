@@ -1,9 +1,13 @@
-// Machine, medication, and event controls.
+// Machine, medication, fluid, and event controls.
 // Numeric settings remain drafts until explicitly applied.
 import { SettingsEditor } from "./settings.js";
 
 const $ = (id) => document.getElementById(id);
 const editors = new WeakMap();
+
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
+}
 
 function setValue(input, value) {
   if (editors.has(input)) {
@@ -16,8 +20,9 @@ function setValue(input, value) {
 }
 
 function setPressed(button, pressed, text) {
-  button.setAttribute("aria-pressed", String(pressed));
-  if (text !== undefined && button.textContent !== text) button.textContent = text;
+  const value = String(pressed);
+  if (button.getAttribute("aria-pressed") !== value) button.setAttribute("aria-pressed", value);
+  if (text !== undefined) setText(button, text);
 }
 
 function readNumber(input) {
@@ -25,6 +30,8 @@ function readNumber(input) {
 }
 
 const round = (value, digits = 2) => Number(value.toFixed(digits));
+// Keep small active rates visible without long decimals in the infusion summary.
+const rateText = (value) => String(Number(value.toPrecision(3)));
 
 // Settings each ventilator mode uses, as on a GE Aisys. PSV uses RR and Pinsp
 // for apnea backup breaths and Tinsp as the longest supported breath.
@@ -51,6 +58,7 @@ const medicationGroups = [
   { name: "Heart rate and blood pressure", keys: ["glyco", "esmolol", "labetalol"] },
   { name: "Neuromuscular blockade and reversal", keys: ["roc", "sugammadex"] },
 ];
+const halfTimeDrugs = ["propofol", "remi", "fentanyl"];
 
 export class Controls {
   constructor(info, send) {
@@ -70,6 +78,7 @@ export class Controls {
     this.bindTabs();
     this.bindMachine();
     this.buildDrugs(info.drugs);
+    this.bindFluids();
     this.bindEvents(info);
     this.showMedicationHistory();
   }
@@ -83,13 +92,14 @@ export class Controls {
 
   destroy() {
     this.destroyed = true;
+    clearTimeout(this.fluidFeedbackTimer);
     for (const editor of this.settingEditors) {
       for (const field of editor.fields) editors.delete(field);
       editor.destroy();
     }
   }
 
-  async medicationAction(button, name, args) {
+  async performAction(button, name, args) {
     if (button.disabled) return;
     button.disabled = true;
     try {
@@ -102,7 +112,7 @@ export class Controls {
   showMedicationHistory() {
     const list = $("medication-history-list");
     list.replaceChildren();
-    $("medication-history-empty").hidden = this.history.length > 0;
+    $("medication-history").hidden = this.history.length === 0;
     const latest = new Map();
     for (const entry of this.history) {
       const seconds = Math.floor(entry.time);
@@ -115,9 +125,9 @@ export class Controls {
       latest.set(entry.key, `${entry.text} · ${stamp}`);
     }
     for (const [key, text] of latest) {
-      const feedback = this.medicationRows.get(key).card.querySelector(".medication-feedback");
+      const feedback = this.medicationRows.get(key).feedback;
       feedback.hidden = false;
-      if (feedback.textContent !== text) feedback.textContent = text;
+      setText(feedback, text);
     }
   }
 
@@ -130,6 +140,7 @@ export class Controls {
   }
 
   openTab(name) {
+    document.querySelector(".tabs").hidden = name === "Trends";
     for (const tab of this.tabs) tab.setAttribute("aria-selected", String(tab.dataset.tab === name));
     for (const panel of document.querySelectorAll(".tab-panel")) panel.hidden = panel.dataset.panel !== name;
     this.currentTab = name;
@@ -139,12 +150,12 @@ export class Controls {
   // --- Machine ------------------------------------------------------
 
   bindMachine() {
+    $("c-bair").onchange = () => this.send("bair_hugger", { target_c: Number($("c-bair").value) });
     for (const button of $("c-airway").querySelectorAll("button")) {
       button.onclick = () => this.send("airway", { mode: button.dataset.value });
     }
     const fgf = () => this.send("fgf", { o2: readNumber($("c-o2")), air: readNumber($("c-air")), n2o: readNumber($("c-n2o")) });
     this.editSettings([$("c-o2"), $("c-air"), $("c-n2o")], fgf, $("c-o2").closest(".fresh-gas-settings"));
-    $("c-o2-supply").onclick = () => this.send("oxygen_supply", { connected: !this.state.o2_connected });
     this.editSettings([$("c-vap")], () => this.send("vaporizer", { percent: readNumber($("c-vap")) }));
     $("c-bag").onclick = () => this.send("bag_mask", { active: !this.state.bag_mask });
     $("c-vent-power").onclick = () => this.send("vent_power", { on: !this.state.vent.on });
@@ -160,6 +171,8 @@ export class Controls {
   }
 
   applyVentMode(mode) {
+    if (this.displayedVentMode === mode) return;
+    this.displayedVentMode = mode;
     const used = ventFields[mode];
     for (const el of document.querySelectorAll("#c-vent-settings [data-vent]")) {
       el.hidden = !used.includes(el.dataset.vent);
@@ -197,6 +210,7 @@ export class Controls {
       card.innerHTML = `
         <summary></summary>
         <div class="drug-controls">
+        <p class="drug-formulation"></p>
         ${tci ? `<label class="inline">Infusion mode
           <select class="infusion-mode"><option value="rate">Manual rate</option><option value="tci">TCI</option></select>
         </label>` : ""}
@@ -214,12 +228,14 @@ export class Controls {
         <p class="medication-feedback" role="status" hidden></p>
         <p class="csht" hidden></p>
         </div>`;
-      card.querySelector("summary").textContent = spec.name;
+      card.querySelector("summary").textContent = spec.generic_name;
+      card.querySelector(".drug-formulation").textContent = spec.name;
       card.querySelector(".bolus-unit").textContent = spec.bolus_unit;
 
       const w = {
         card,
         spec,
+        form: card.querySelector(".drug-controls"),
         mode: card.querySelector(".infusion-mode"),
         rate: card.querySelector(".rate"),
         target: card.querySelector(".target"),
@@ -259,11 +275,16 @@ export class Controls {
       w.bolus.min = "0.001";
       w.give.onclick = () => {
         if (!w.bolus.reportValidity()) return;
-        return this.medicationAction(w.give, "drug_bolus", { key, amount: readNumber(w.bolus) });
+        return this.performAction(w.give, "drug_bolus", { key, amount: readNumber(w.bolus) });
       };
       this.drugs[key] = w;
-      this.medicationRows.set(key, { card, name: spec.name });
+      this.medicationRows.set(key, { card, name: spec.name, feedback: card.querySelector(".medication-feedback") });
       if (infusion) this.buildRunningInfusion(key, w);
+      card.ontoggle = () => {
+        if (!card.open) return;
+        if (infusion) this.closeInfusionEditor(w);
+        if (halfTimeDrugs.includes(key)) this.onMedicationsShown?.();
+      };
     }
     const reversal = document.createElement("details");
     reversal.className = "drug-card";
@@ -275,12 +296,14 @@ export class Controls {
         <button type="button" class="btn outlined full" data-sugammadex="16">Immediate reversal: 16 mg/kg</button>
         <p class="medication-feedback" role="status" hidden></p>
       </div>`;
-    this.medicationRows.set("sugammadex", { card: reversal, name: "Sugammadex" });
+    this.medicationRows.set("sugammadex", {
+      card: reversal, name: "Sugammadex", feedback: reversal.querySelector(".medication-feedback"),
+    });
     for (const group of this.medicationGroups) {
       for (const key of group.keys) group.section.append(this.medicationRows.get(key).card);
     }
     for (const button of document.querySelectorAll("[data-sugammadex]")) {
-      button.onclick = () => this.medicationAction(button, "sugammadex", { mg_per_kg: Number(button.dataset.sugammadex) });
+      button.onclick = () => this.performAction(button, "sugammadex", { mg_per_kg: Number(button.dataset.sugammadex) });
     }
     $("drug-search").oninput = () => this.filterMedications();
     $("drug-search-clear").onclick = () => {
@@ -322,24 +345,34 @@ export class Controls {
     row.innerHTML = `
       <div><span class="infusion-name"></span><output></output></div>
       <button type="button" class="btn small outlined infusion-adjust">Adjust</button>
-      <button type="button" class="btn small outlined infusion-stop">Stop</button>`;
-    row.querySelector(".infusion-name").textContent = w.spec.name;
+      <button type="button" class="btn small outlined infusion-stop">Stop</button>
+      <div class="infusion-editor" hidden></div>`;
+    row.querySelector(".infusion-name").textContent = w.spec.generic_name;
+    row.querySelector(".infusion-name").title = w.spec.name;
     const adjust = row.querySelector(".infusion-adjust");
     adjust.setAttribute("aria-label", `Adjust ${w.spec.name}`);
+    w.runningEditor = row.querySelector(".infusion-editor");
+    w.runningEditor.id = `infusion-editor-${key}`;
+    w.runningAdjust = adjust;
+    adjust.setAttribute("aria-controls", w.runningEditor.id);
+    adjust.setAttribute("aria-expanded", "false");
     adjust.onclick = () => {
-      $("drug-search").value = "";
-      this.filterMedications();
-      w.card.parentElement.open = true;
-      w.card.open = true;
+      if (!w.runningEditor.hidden) {
+        this.closeInfusionEditor(w);
+        return;
+      }
+      w.card.open = false;
+      w.runningEditor.append(w.form);
+      w.runningEditor.hidden = false;
+      adjust.setAttribute("aria-expanded", "true");
       const input = w.mode?.value === "tci" ? w.target : w.rate;
       input.focus({ preventScroll: true });
-      w.card.scrollIntoView({ block: "nearest" });
     };
     const stop = row.querySelector(".infusion-stop");
     stop.setAttribute("aria-label", `Stop ${w.spec.name}`);
     // A manual rate command also disables TCI in the shared engine.
     stop.onclick = async () => {
-      const result = await this.medicationAction(stop, "drug_rate", { key, rate: 0 });
+      const result = await this.performAction(stop, "drug_rate", { key, rate: 0 });
       if (result !== undefined) w.editor.cancel();
     };
     w.runningRow = row;
@@ -347,27 +380,64 @@ export class Controls {
     $("running-infusion-list").append(row);
   }
 
+  closeInfusionEditor(w) {
+    if (w.runningEditor.hidden) return;
+    w.card.append(w.form);
+    w.runningEditor.hidden = true;
+    w.runningAdjust.setAttribute("aria-expanded", "false");
+  }
+
+  needsCsht() {
+    return this.currentTab === "Medications" && halfTimeDrugs.some((key) => this.drugs[key].card.open);
+  }
+
   showCsht(values) {
-    for (const key of ["propofol", "remi", "fentanyl"]) {
-      const label = this.drugs[key]?.csht;
-      if (!label) continue;
+    for (const key of halfTimeDrugs) {
+      const label = this.drugs[key].csht;
       const minutes = values[key];
       label.hidden = !(minutes > 0);
       if (minutes > 0) {
-        label.textContent = `Effect-site half-time ~${minutes.toFixed(0)} min`;
+        setText(label, `Effect-site half-time ~${minutes.toFixed(0)} min`);
         label.title = "Estimated PK effect-site half-time from the current model state; not a guaranteed wake-up time.";
       }
     }
   }
 
-  // --- Events and fluids --------------------------------------------
+  // --- Fluids -------------------------------------------------------
 
-  bindEvents(info) {
-    $("c-bair").onchange = () => this.send("bair_hugger", { target_c: Number($("c-bair").value) });
+  bindFluids() {
+    $("fluid-feedback").hidden = true;
     for (const button of document.querySelectorAll("[data-fluid]")) {
-      button.onclick = () => this.send("fluid", { kind: button.dataset.fluid, volume_ml: Number(button.dataset.volume) });
+      button.onclick = async () => {
+        const result = await this.performAction(button, "fluid", {
+          kind: button.dataset.fluid, volume_ml: Number(button.dataset.volume),
+        });
+        if (this.destroyed || result === undefined) return;
+        const feedback = $("fluid-feedback");
+        setText(feedback, result.fluid.text);
+        feedback.hidden = false;
+        clearTimeout(this.fluidFeedbackTimer);
+        this.fluidFeedbackTimer = setTimeout(() => { feedback.hidden = true; }, 6000);
+      };
     }
     this.editSettings([$("c-maint")], () => this.send("maintenance_fluid", { ml_hr: readNumber($("c-maint")) }));
+  }
+
+  // --- Events -------------------------------------------------------
+
+  bindEvents(info) {
+    this.eventSections = new Map([...document.querySelectorAll(".event-section")].map((section) => {
+      section.open = false;
+      section.dataset.active = "false";
+      const summary = section.querySelector("summary");
+      summary.setAttribute("aria-disabled", "false");
+      summary.tabIndex = 0;
+      summary.onclick = (event) => {
+        if (section.dataset.active === "true") event.preventDefault();
+      };
+      return [section.dataset.event, { section, summary, output: summary.querySelector("output") }];
+    }));
+    $("c-o2-supply").onclick = () => this.send("oxygen_supply", { connected: !this.state.o2_connected });
 
     const profiles = $("c-disturbance");
     profiles.replaceChildren(new Option("Off", ""));
@@ -389,7 +459,24 @@ export class Controls {
     rhythms.onchange = () => this.send("rhythm", { name: rhythms.value });
     $("c-anaphylaxis").onclick = () => this.send("anaphylaxis", { active: !this.state.anaphylaxis });
     $("c-sepsis").onclick = () => this.send("sepsis", { active: !this.state.sepsis });
-    $("c-stop-events").onclick = () => this.send("stop_events");
+  }
+
+  openEventSection(name) {
+    this.eventSections.get(name).section.open = true;
+  }
+
+  syncEventSection(name, states) {
+    const { section, summary, output } = this.eventSections.get(name);
+    const active = states.length > 0;
+    const value = String(active);
+    if (section.dataset.active !== value) {
+      section.dataset.active = value;
+      summary.setAttribute("aria-disabled", value);
+      summary.tabIndex = active ? -1 : 0;
+    }
+    if (active && !section.open) section.open = true;
+    output.hidden = !active;
+    setText(output, states.join(" · "));
   }
 
   // --- Sync from snapshots ------------------------------------------
@@ -398,18 +485,19 @@ export class Controls {
     this.state = c;
 
     for (const button of $("c-airway").querySelectorAll("button")) {
-      button.setAttribute("aria-pressed", String(button.dataset.value === c.airway));
+      setPressed(button, button.dataset.value === c.airway);
     }
     setValue($("c-o2"), round(c.fgf.o2));
     setValue($("c-air"), round(c.fgf.air));
     setValue($("c-n2o"), round(c.fgf.n2o));
     const fio2 = $("c-fio2");
-    fio2.textContent = `${Math.round(c.circuit_fio2 * 100)}%`;
+    setText(fio2, `${Math.round(c.circuit_fio2 * 100)}%`);
     fio2.className = "fio2" + (!c.o2_connected || c.circuit_fio2 < 0.21 ? " bad" : c.circuit_fio2 < 0.3 ? " warn" : "");
     setPressed($("c-o2-supply"), !c.o2_connected, c.o2_connected ? "Disconnect O₂ supply" : "Connect backup O₂");
     setValue($("c-vap"), round(c.vaporizer, 1));
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
+    $("c-bag-settings").hidden = !c.bag_mask;
     const vent = c.vent;
     setPressed($("c-vent-power"), vent.on, vent.on ? "Stop ventilator" : "Start ventilator");
     setValue($("c-vent-mode"), vent.mode);
@@ -430,11 +518,12 @@ export class Controls {
         setValue(w.rate, round(d.rate, 3));
         const active = d.rate > 0 || (d.is_tci && d.target > 0);
         if (!active && w.runningRow.contains(document.activeElement)) $("drug-search").focus();
+        if (!active) this.closeInfusionEditor(w);
         w.runningRow.hidden = !active;
         if (active) {
-          w.runningValue.textContent = d.is_tci
-            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit} · ${round(d.rate, 3)} ${w.spec.rate_unit}`
-            : `${round(d.rate, 3)} ${w.spec.rate_unit}`;
+          setText(w.runningValue, d.is_tci
+            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit} · ${rateText(d.rate)} ${w.spec.rate_unit}`
+            : `${rateText(d.rate)} ${w.spec.rate_unit}`);
         }
         running ||= active;
       }
@@ -450,7 +539,7 @@ export class Controls {
     setPressed($("c-disturb"), c.disturbance.active, c.disturbance.active ? "Stop stimulation" : "Start stimulation");
     setValue($("c-obstruction"), round(c.obstruction, 0));
     setValue($("c-bronchospasm"), round(c.bronchospasm, 0));
-    $("c-laryngo").textContent = `Laryngospasm: ${c.laryngospasm}`;
+    setText($("c-laryngo"), `Laryngospasm: ${c.laryngospasm}`);
     $("c-auto-laryngo").checked = c.auto_laryngospasm;
 
     setPressed($("c-hemorrhage"), c.hemorrhage.active, c.hemorrhage.active ? "Stop bleeding" : "Start bleeding");
@@ -459,5 +548,19 @@ export class Controls {
     setValue($("c-rhythm"), c.rhythm);
     setPressed($("c-anaphylaxis"), c.anaphylaxis, c.anaphylaxis ? "Stop anaphylaxis" : "Start anaphylaxis");
     setPressed($("c-sepsis"), c.sepsis, c.sepsis ? "Stop sepsis" : "Start sepsis");
+
+    const circulation = [];
+    if (c.hemorrhage.active) circulation.push(`Bleeding ${c.hemorrhage.rate} mL/min`);
+    if (c.anaphylaxis) circulation.push("Anaphylaxis");
+    if (c.sepsis) circulation.push("Sepsis");
+    if (c.rhythm !== "Sinus rhythm") circulation.push(c.rhythm);
+    this.syncEventSection("circulation", circulation);
+    const airway = [];
+    if (c.obstruction > 0) airway.push(`Obstruction ${round(c.obstruction, 0)}%`);
+    if (c.bronchospasm > 0) airway.push(`Bronchospasm ${round(c.bronchospasm, 0)}%`);
+    if (c.laryngospasm !== "none") airway.push(`Laryngospasm ${c.laryngospasm}`);
+    this.syncEventSection("airway", airway);
+    this.syncEventSection("stimulation", c.disturbance.active ? [$("c-disturbance").selectedOptions[0].text] : []);
+    this.syncEventSection("equipment", c.o2_connected ? [] : ["O₂ supply disconnected"]);
   }
 }

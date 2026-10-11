@@ -110,9 +110,10 @@ def create_oxygen_supply_failure() -> Scenario:
                     "A pressure fail-safe does not verify the delivered gas composition."
                 ),
                 check_requirements=require_oxygen_supply_action(
-                    False, "Disconnect the O₂ supply on the Machine tab",
+                    False, "Disconnect the O₂ supply in Events",
                 ),
-                target_tab="Machine",
+                target_tab="Events",
+                target_section="equipment",
             ),
             ScenarioStep(
                 id="RECOGNIZE_LOW_FIO2",
@@ -128,7 +129,8 @@ def create_oxygen_supply_failure() -> Scenario:
                 id="CONNECT_BACKUP_OXYGEN",
                 title="Move to backup oxygen",
                 instruction=(
-                    "Call for help. Select <b>Connect backup O₂</b>, set O₂ to "
+                    "Call for help. In Events, select <b>Connect backup O₂</b>. "
+                    "Then open Machine, set O₂ to "
                     "<b>10 L/min</b>, and set air and N₂O to <b>0 L/min</b> to flush the circuit. "
                     "This control represents isolating the failed supply and using verified backup oxygen. "
                     "If machine oxygen delivery is uncertain in practice, use a self-inflating bag with an independent oxygen source."
@@ -141,7 +143,8 @@ def create_oxygen_supply_failure() -> Scenario:
                     ),
                     require_oxygen_flow(),
                 ),
-                target_tab="Machine",
+                target_tab="Events",
+                target_section="equipment",
             ),
             ScenarioStep(
                 id="CONFIRM_RECOVERY",

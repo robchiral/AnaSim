@@ -79,11 +79,14 @@ def induce(page):
 
 
 def begin_maintenance(page):
-    # The objective opens Medications to check the infusions; the flow is on Machine.
+    # The objective opens Drugs to check the infusions; the flow is on Machine.
     page.click('.tabs [data-tab="Machine"]')
     enter(page.locator("#c-o2"), 2)
     page.locator(".fresh-gas-settings").get_by_role("button", name="Apply", exact=True).click()
     page.click('.tabs [data-tab="Medications"]')
+    if int(page.text_content("#v-bis")) < 40:
+        start_infusion(page, "Propofol", 90)
+        start_infusion(page, "Remifentanil", 0.1)
     if int(page.text_content("#v-art-map")) < 65:
         give_bolus(page, "Phenylephrine", 100)
 
@@ -134,6 +137,7 @@ def record(server, page, fps, max_duration):
     started = next_frame = time.monotonic()
     step_id, phase, phase_start = None, "settle", started
     done_at = None
+    last_support_at = started
     while True:
         now = time.monotonic()
         if now >= next_frame:
@@ -160,9 +164,19 @@ def record(server, page, fps, max_duration):
         elif phase == "navigate" and now - phase_start >= NAVIGATE_S:
             if step.id in ACTIONS:
                 ACTIONS[step.id](page)
+                if step.id == "MAINTENANCE":
+                    last_support_at = time.monotonic()
             phase, phase_start = "wait", now
-        elif phase == "wait" and page.is_enabled("#step-next"):
-            phase, phase_start = "continue", now
+        elif phase == "wait":
+            if page.is_enabled("#step-next"):
+                phase, phase_start = "continue", now
+            elif (
+                step.id == "MAINTENANCE"
+                and now - last_support_at >= 2.5
+                and int(page.text_content("#v-art-map")) < 65
+            ):
+                give_bolus(page, "Phenylephrine", 100)
+                last_support_at = time.monotonic()
         elif phase == "continue" and now - phase_start >= CONTINUE_S:
             page.click("#step-next")
             phase = "advanced"

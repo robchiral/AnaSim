@@ -28,7 +28,7 @@ def create_hemorrhage_response() -> Scenario:
             title="Hemorrhage begins",
             instruction=(
                 "The surgeon reports brisk blood loss. Set the bleeding rate to "
-                "<b>500-800 mL/min</b>, then select Start bleeding in Events and fluids. "
+                "<b>500-800 mL/min</b>, then select Start bleeding in Events. "
                 "Call for help and ask the surgeon to control the source while resuscitation begins."
             ),
             check_requirements=require_crisis_started(
@@ -36,6 +36,7 @@ def create_hemorrhage_response() -> Scenario:
                 "Start hemorrhage event (Events tab)",
             ),
             target_tab="Events",
+            target_section="circulation",
         ),
         ScenarioStep(
             id="RECOGNIZE_SHOCK",
@@ -58,12 +59,13 @@ def create_hemorrhage_response() -> Scenario:
                 "hemorrhage", "Stop bleeding to represent surgical hemostasis",
             ),
             target_tab="Events",
+            target_section="circulation",
         ),
         ScenarioStep(
             id="GIVE_FLUIDS",
             title="Replace circulating volume",
             instruction=(
-                "Start <b>500 mL crystalloid or blood</b> in Events and fluids, "
+                "Start <b>500 mL crystalloid or blood</b> in Fluids, "
                 "then reassess blood loss and perfusion. Use blood products early for major "
                 "hemorrhage and activate the local major hemorrhage protocol when needed. "
                 "Coagulation testing, component therapy, and calcium replacement are clinical actions outside this model."
@@ -72,7 +74,7 @@ def create_hemorrhage_response() -> Scenario:
                 500,
                 labels=("crystalloid", "blood"),
             ),
-            target_tab="Events",
+            target_tab="Fluids",
         ),
         ScenarioStep(
             id="START_VASOPRESSOR",

@@ -28,7 +28,7 @@ def create_sepsis_response() -> Scenario:
             title="Sepsis begins",
             instruction=(
                 "This patient has an intra-abdominal infection. Select <b>Start sepsis</b> "
-                "in Events and fluids to model developing vasodilatory shock. "
+                "in Events to model developing vasodilatory shock. "
                 "In practice, call for help, give prompt antibiotics, and arrange source control while resuscitating."
             ),
             check_requirements=require_crisis_started(
@@ -36,6 +36,7 @@ def create_sepsis_response() -> Scenario:
                 "Start sepsis event (Events tab)",
             ),
             target_tab="Events",
+            target_section="circulation",
         ),
         ScenarioStep(
             id="RECOGNIZE_WARM_SHOCK",
@@ -51,7 +52,7 @@ def create_sepsis_response() -> Scenario:
             id="GIVE_FLUIDS",
             title="Initial fluid resuscitation",
             instruction=(
-                "Start a <b>500 mL crystalloid bolus</b> in Events and fluids and reassess "
+                "Start a <b>500 mL crystalloid bolus</b> in Fluids and reassess "
                 "the response. Balanced crystalloid is preferred in practice; the simulator uses one crystalloid model. "
                 "An initial 30 mL/kg over the first 3 hours is a guideline starting point, "
                 "with further fluid guided by perfusion and response."
@@ -60,7 +61,7 @@ def create_sepsis_response() -> Scenario:
                 500,
                 labels=("crystalloid",),
             ),
-            target_tab="Events",
+            target_tab="Fluids",
         ),
         ScenarioStep(
             id="START_VASOPRESSOR",
@@ -89,6 +90,7 @@ def create_sepsis_response() -> Scenario:
                 "Select Stop sepsis to model recovery after infection treatment",
             ),
             target_tab="Events",
+            target_section="circulation",
         ),
         create_reassess_step(
             "sepsis",
