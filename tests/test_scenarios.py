@@ -341,8 +341,13 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
         session.command("scenario_next")
         assert json.loads(session.advance(0.0))["scenario"]["id"] == snap["scenario"]["id"]
 
+    seen = set()
     while not snap["scenario"]["complete"]:
         step = snap["scenario"]
+        if step["id"] not in seen:
+            seen.add(step["id"])
+            # Maintenance MAP can start below 65; shock objectives need a fall from the crisis start.
+            assert not (step["id"] in {"RECOGNIZE_SHOCK", "RECOGNIZE_WARM_SHOCK"} and step["met"])
         if spec.id == "induction_tiva":
             uses_tci_guidance = tci_enabled and step["id"] in {"START_ANALGESIA", "INDUCE"}
             assert ("TCI" in step["instruction"]) is uses_tci_guidance

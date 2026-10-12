@@ -97,8 +97,10 @@ outside the source cohorts is an assumption. Severe anaphylaxis reduces
 adrenergic sensitivity.
 
 Blood loss lowers filling pressure and preload; reflex venoconstriction partly
-compensates. Crystalloid retains 30% of infused volume in blood and albumin 80%.
-The remaining volume enters an interstitial pool that can refill blood-volume
+compensates. Awake responses to 1 L in 333 mL steps match Johnson 2014.
+Anesthesia blunts hemorrhage tachycardia as it does the cardiac baroreflex
+(Ebert 1992; Sellgren 1994). Crystalloid retains 30% of infused volume in
+blood and albumin 80%. The remaining volume enters an interstitial pool that can refill blood-volume
 deficits. Urine output depends on pressure, volume expansion, renal function,
 and anesthetic state. Elevated left atrial pressure increases lung water, shunt,
 and stiffness. Positive end-expiratory pressure (PEEP) can recruit affected lung
@@ -136,11 +138,13 @@ midazolam-propofol synergy. Nitrous oxide and ketamine affect clinical
 responsiveness; ketamine and lidocaine also blunt stimulation responses.
 
 Ketamine uses a separate cardiovascular effect site with a 2.28 min
-equilibration half-time (Kamp 2021) and response magnitude calibrated to
-Idvall 1979. The model represents total ketamine without separate enantiomers
-or metabolites. Lidocaine reduces stimulation-related BIS and cardiovascular
-responses without a baseline hypnotic effect (Hans 2010); its response
-coefficient is a simulator estimate.
+equilibration half-time (Kamp 2021). It raises HR and cardiac output with SV
+and SVR unchanged, calibrated to Tweed 1972. At anesthetic concentrations it
+depresses the baroreflex like other anesthetics (Akine 2001), but analgesic
+doses do not (Huang 2020). The model represents total ketamine without separate
+enantiomers or metabolites. Lidocaine reduces stimulation-related BIS and
+cardiovascular responses without a baseline hypnotic effect (Hans 2010); its
+response coefficient is a simulator estimate.
 
 The [neuromuscular model](../anasim/patient/pd/nmba.py) uses Kleijn 2011 with
 age, weight, and estimated creatinine clearance covariates. Sugammadex binds
@@ -159,8 +163,9 @@ conversion to muscle effects use simulator calibrations.
 effects, CO₂ feedback, and muscle strength. Propofol and sevoflurane mainly
 reduce breath depth; opioids mainly slow rate. CO₂ accumulation can restore
 breathing during opioid administration. Hypocapnia and neuromuscular block
-suppress effort. Airway obstruction limits airflow while muscle effort
-continues.
+suppress effort. Under anesthesia, breathing stops 4.5 mmHg below the resting
+PaCO₂ that the drugs set (Hickey 1971). Airway obstruction limits airflow
+while muscle effort continues.
 
 The respiratory model applies Olofsen's fractional opioid response to
 Bouillon's nonlinear alveolar CO₂ response and extrapolates the low-dose
@@ -175,9 +180,9 @@ is estimated, and the pressure transient is not modeled.
 
 Alveolar, arterial, and end-tidal CO₂ are separate; low cardiac output widens
 the arterial to end-tidal gap. Oxygen and inhaled anesthetics share lung
-gas volume and shunt from perfused closed units. Shunt mixing accounts for
-hemoglobin-bound and dissolved oxygen, with extraction limited to available
-oxygen.
+gas volume and shunt. The A-a gradient follows sea-level means by age (Crapo
+1999). Shunt mixing accounts for hemoglobin-bound and dissolved oxygen, with
+extraction limited to available oxygen.
 
 ### Ventilation mechanics
 
@@ -185,8 +190,11 @@ The [mechanics model](../anasim/physiology/resp_mech.py) combines airway
 resistance, compliance, tissue viscoelasticity, and inspiratory muscle pressure.
 Compliance scales with predicted body weight and body mass index (BMI).
 [Lung aeration](../anasim/physiology/lung.py) depends on pressure history;
-recruitment and closure change gas volume, shunt, and compliance. Volume is
-continuous during PEEP and compliance changes.
+recruitment and closure change gas volume, shunt, and compliance. Most lost
+aeration is the anesthetic fall in FRC (Hedenstierna 2015); its atelectatic
+part shunts at most about 10% of cardiac output (Tokics 1996). Flooded units
+shunt fully. Open-airway apnea times after 100, 80, and 60% O₂ match Edmark
+2003. Volume is continuous during PEEP and compliance changes.
 
 Ventilatory assistance reduces muscle effort. Inflation ends effort earlier
 under anesthesia. Airway and muscle pressures determine the intrathoracic
@@ -211,12 +219,14 @@ Stopping ventilation preserves the settings. Spirometry includes ventilated,
 bagged, and unassisted breaths. Expired tidal volume is the last completed
 breath's volume. Respiratory rate and minute ventilation use four-breath
 averages that clear after 15 seconds without a breath. Mask leak reduces
-measured gas delivery; tube obstruction raises resistance.
+measured gas delivery; tube obstruction raises resistance. Mean airway
+pressure over recent breaths, including unassisted ones, holds the pharynx open
+during mask ventilation.
 
 Primus recordings inform compliance and sensor fits; CT atelectasis studies
-inform recruitment pressure and timing. Recruitment-to-shunt mapping,
-assisted effort, and obstructed expiration use simulator estimates. Lung
-closure is independent of gas composition.
+inform recruitment pressure and timing. Assisted effort and obstructed
+expiration use simulator estimates. Lung closure is independent of gas
+composition.
 
 ### Monitors
 
@@ -277,9 +287,14 @@ or manual infusion rates for maintenance initialization.
 Awake thermoregulation holds core temperature at baseline. Anesthesia replaces
 it with passive heat loss in proportion to depth, and induction redistributes
 core heat to the periphery. Core temperature falls about 1.6 °C in the first
-hour and 2.8 °C by 3 hours (Matsukawa 1995). Stimulation responses scale
-with the probability of responding to laryngoscopy; opioids reduce the
-hemodynamic and BIS responses.
+hour and 2.8 °C by 3 hours (Matsukawa 1995). Stimulation-related BIS arousal
+scales with the probability of responding to laryngoscopy. HR and MAP responses
+use stronger Bouillon stimulus intensities, fitted to the remifentanil
+concentrations that blunted them in half of patients at intubation and skin
+incision (Albertin 2005). Without opioid, intubation raises HR about 36 bpm and
+MAP 35-40 mmHg (Ebert 1992; Ebert 1995); the response peaks within a minute and
+resolves over about 5 minutes. Laryngospasm can follow only the first 40 s of
+laryngoscopy.
 
 ## Browser app
 
@@ -302,7 +317,8 @@ The action log records controls and clinical events with simulation times.
 Objectives check actions taken after activation, current monitor values, and
 control state. Log positions distinguish actions performed at the same paused
 timestamp. Completion callbacks run once; the intubation objective starts the
-laryngoscopy stimulus.
+laryngoscopy stimulus. Shock recognition requires MAP below 65 mmHg and 20%
+below its value when the crisis started.
 
 Fluid objectives count requested bolus volume while delivery continues at the
 pump rate. Dosing instructions follow the session's TCI setting.

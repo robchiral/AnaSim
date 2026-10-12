@@ -19,11 +19,20 @@ class DisturbanceEffects:
 
 @dataclass(frozen=True)
 class DisturbanceProfileSpec:
-    """One time-varying stimulus and its lifecycle."""
+    """One time-varying stimulus and its lifecycle.
+
+    `sympathetic_intensity` is the Bouillon 2004 pre-opioid intensity that sets
+    how much drug blocks the HR and MAP response. At propofol 3.4 mcg/mL (BIS
+    40-50), remifentanil blocked a 15% rise in half of patients at 5.0 ng/mL
+    for intubation and 2.1 ng/mL for skin incision (Albertin 2005), giving 1.64
+    and 1.25. Laryngoscopy movement is 0.83.
+    """
 
     label: str
     points: np.ndarray
+    sympathetic_intensity: float
     finite: bool = False
+    airway_stimulus_s: float = 0.0  # Instrumentation that can provoke laryngospasm
 
     @property
     def duration_s(self) -> float | None:
@@ -31,23 +40,23 @@ class DisturbanceProfileSpec:
         return float(self.points[-1, _PROFILE_COL_TIME]) if self.finite else None
 
 
+# Without opioid, intubation after propofol or at 1 MAC sevoflurane raised HR
+# 36-38 bpm and MAP 35-40 mmHg (Ebert 1992; Ebert 1995). The response peaks
+# within a minute and resolves over about 5 minutes.
+_INTUBATION_PEAK = (12.0, 36.0, 1.5, 2.0)  # BIS, HR, SVR, SV deltas
+_INTUBATION_SHAPE = ((0.0, 0.0), (15.0, 0.6), (40.0, 1.0), (90.0, 0.6), (180.0, 0.25), (300.0, 0.0))
+
 PROFILE_SPECS = {
     "stim_intubation_pulse": DisturbanceProfileSpec(
         label="Intubation / Short Stimulus",
+        sympathetic_intensity=1.64,
         finite=True,
-        points=np.array(
-            [
-                # time, BIS delta, HR delta, SVR delta, SV delta
-                [0.0, 0.0, 0.0, 0.0, 0.0],
-                [8.0, 6.0, 6.0, 1.5, 2.0],
-                [20.0, 12.0, 12.0, 3.0, 3.0],
-                [35.0, 4.0, 4.0, 1.0, 1.0],
-                [50.0, 0.0, 0.0, 0.0, 0.0],
-            ]
-        ),
+        airway_stimulus_s=40.0,
+        points=np.array([[t, *(peak * share for peak in _INTUBATION_PEAK)] for t, share in _INTUBATION_SHAPE]),
     ),
     "stim_sustained_surgery": DisturbanceProfileSpec(
         label="Sustained Surgical Stimulation",
+        sympathetic_intensity=1.25,
         points=np.array(
             [
                 # time, BIS delta, HR delta, SVR delta, SV delta
@@ -79,6 +88,10 @@ class Disturbances:
         except KeyError as exc:
             choices = ", ".join(PROFILE_SPECS)
             raise ValueError(f"dist_profile must be one of {choices} or None") from exc
+
+    def stimulates_airway(self, elapsed_s: float) -> bool:
+        """Return whether airway instrumentation is still under way."""
+        return self.spec is not None and elapsed_s < self.spec.airway_stimulus_s
 
     def is_complete(self, elapsed_s: float) -> bool:
         """Return whether a finite profile has reached its configured end."""

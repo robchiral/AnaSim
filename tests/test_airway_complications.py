@@ -19,10 +19,11 @@ def test_intubation_stimulus_triggers_laryngospasm_unless_disabled(engine_factor
     assert engine.state.laryngospasm > 0.1
     assert engine.state.airway_obstruction >= engine.state.laryngospasm
 
-    # The 50 s stimulus ends and the spasm resolves.
-    for _ in range(240):
+    # Laryngoscopy ends at 40 s and the spasm resolves while the pressor
+    # response continues.
+    for _ in range(190):
         engine.step(0.2)
-    assert not engine.disturbance_active
+    assert engine.disturbance_active
     severity_at_end = engine.state.laryngospasm
     for _ in range(100):
         engine.step(0.2)
@@ -71,6 +72,20 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, ie="1:2", mode="CPAP")
     engine.step(0.1)
     assert engine.state.airway_obstruction == 0.0
+
+    # Bagging over spontaneous breaths splints by mean pressure across both,
+    # so obstruction does not switch with the type of the last breath.
+    engine.set_vent_power(False)
+    engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.5)
+    for _ in range(300):
+        engine.step(0.1)
+    assert not engine.resp.state.apnea
+    obstruction = []
+    for _ in range(200):
+        engine.step(0.1)
+        obstruction.append(engine.state.airway_obstruction)
+    assert max(obstruction) < 0.2
+    assert max(obstruction) - min(obstruction) < 0.05
 
 
 def test_obstructed_airway_preserves_effort_without_restoring_ventilation(awake_engine):

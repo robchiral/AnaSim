@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Limited atelectatic shunt to about 10% of cardiac output; lost aeration still
+  lowers lung volume and compliance. Open-airway apnea after 100, 80, and 60%
+  O₂ matches Edmark 2003.
+- Separated HR and MAP responses to stimulation from movement tolerance, using
+  the remifentanil concentrations that blunt them (Albertin 2005), so surgery
+  raises MAP and HR during maintenance. Without opioid, intubation raises HR
+  36 bpm and MAP 35-40 mmHg for about 5 minutes (Ebert 1992, 1995);
+  laryngospasm follows only the first 40 s.
+- Placed the anesthetized apneic threshold 4.5 mmHg below the resting PaCO₂
+  set by the drugs (Hickey 1971), so balanced maintenance no longer breathes
+  over VCV.
+- Blunted hemorrhage tachycardia under anesthesia as for the cardiac baroreflex.
+- Held the pharynx open by mean pressure over recent breaths during mask
+  ventilation, so obstruction no longer alternates with unassisted breaths.
+- Required MAP 20% below its crisis-start value for shock recognition in the
+  hemorrhage and sepsis scenarios.
+- Set the baseline A-a gradient to sea-level means by age (Crapo 1999) and
+  rejected negative or non-finite hemorrhage rates.
 - Corrected sevoflurane cardiovascular equilibration, pulmonary transit delays,
   and CO₂ washout across time steps.
 - Isolated alarm flags in returned state copies from the live simulation.
@@ -24,8 +42,10 @@
   clearance, reversed by volume restoration.
 - Added reciprocal propofol-midazolam PK covariates with drug mass conservation
   and TCI resynchronization.
-- Recalibrated ketamine cardiovascular responses, added a separate effect site
-  with a 2.28 min equilibration half-time, and included ketamine in laryngoscopy tolerance.
+- Recalibrated ketamine to raise HR and cardiac output about 30% with SVR
+  unchanged (Tweed 1972), added a separate effect site with a 2.28 min
+  equilibration half-time, and included ketamine in laryngoscopy tolerance.
+  Anesthetic ketamine concentrations depress the baroreflex (Akine 2001).
 - Added passive lung-gas refill after relief of complete obstruction during
   apnea, with oxygen drawn from the breathing circuit.
 - Stabilized awake core temperature, aligned thermoregulatory vasoconstriction

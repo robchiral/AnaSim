@@ -303,6 +303,30 @@ def require_crisis_started(event_name: str, fail_message: str) -> Requirement:
     return check
 
 
+class CrisisStartMAP:
+    """Monitored MAP when a crisis starts, recorded by the starting step's on_met."""
+
+    def __init__(self) -> None:
+        self.value: float | None = None
+
+    def record(self, engine) -> None:
+        self.value = monitor_value(engine, "map")
+
+
+def require_hypotension_after_start(start: CrisisStartMAP, prompt: str) -> Requirement:
+    """Require MAP below 65 mmHg and 20% below its value when the crisis started.
+
+    Maintenance can begin near 65 mmHg, so the absolute threshold alone can be
+    met before the crisis has changed anything.
+    """
+    def check(engine) -> tuple[bool, str]:
+        map_val = monitor_value(engine, "map")
+        threshold = 65.0 if start.value is None else min(65.0, 0.8 * start.value)
+        met = map_val < threshold
+        return met, "" if met else f"MAP: {map_val:.0f}/<{threshold:.0f} mmHg; {prompt}"
+    return check
+
+
 def require_crisis_stopped(event_name: str, fail_message: str) -> Requirement:
     """Require a crisis to be stopped during this objective and remain inactive."""
     def check(engine) -> tuple[bool, str]:

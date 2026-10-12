@@ -68,11 +68,17 @@ class TestClinicalAcceptance:
                 assert 0.8 <= engine.state.mac_sevo <= 1.05
             bis_values = []
             map_values = []
+            spontaneous_effort = []
 
             for _ in range(901):
                 bis_values.append(engine.state.bis)
                 map_values.append(engine.state.map)
+                spontaneous_effort.append(engine.resp.state.effort_rr)
                 engine.step(1.0)
+
+            # Ventilation to PaCO2 about 41 mmHg is below the apneic threshold,
+            # 4-5 mmHg under the anesthetized resting PaCO2 (Hickey 1971).
+            assert max(spontaneous_effort) == 0.0
 
             # NICE gives BIS 40-60 as the target range during general anesthesia.
             assert min(bis_values) >= 40.0
@@ -164,6 +170,45 @@ class TestClinicalAcceptance:
             advance_time(engine, 300.0)
         assert engine.state.sbp >= 80.0
 
+    def test_stepwise_blood_loss_matches_awake_and_anesthetized_responses(self, engine_factory, advance_time):
+        """Johnson 2014: awake men bled 1 L (17%) in 333 mL steps at about 41
+        mL/min kept MAP within 2%, with HR +14%, SV -20%, and TPR +8%. Under
+        propofol-remifentanil, 10% steps every 30 min raised HR 26% at 30% loss
+        (Kurita 2011, swine); propofol depresses the cardiac and sympathetic
+        baroreflex limbs about 70% (Ebert 1992; Sellgren 1994).
+        """
+        engine = engine_factory(start=True, age=32, height=185, weight=91, baseline_hr=59, baseline_map=91)
+        engine.set_continuous_fluid_rate(0.0)
+        advance_time(engine, 300.0)
+        before = engine.state.map, engine.state.hr, engine.state.sv, engine.state.svr
+        for _ in range(3):
+            engine.start_hemorrhage(41.0)
+            advance_time(engine, 333.0 / 41.0 * 60.0)
+            engine.stop_hemorrhage()
+            advance_time(engine, 300.0)
+        map_change, hr_change, sv_change, svr_change = (
+            now / then - 1.0 for now, then in zip(
+                (engine.state.map, engine.state.hr, engine.state.sv, engine.state.svr), before, strict=True,
+            )
+        )
+        assert abs(map_change) < 0.05
+        assert 0.08 < hr_change < 0.22
+        assert -0.26 < sv_change < -0.14
+        assert 0.03 < svr_change < 0.13
+
+        engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+        engine.set_continuous_fluid_rate(0.0)
+        advance_time(engine, 60.0)
+        baseline_hr, baseline_map = engine.state.hr, engine.state.map
+        step_ml = 0.1 * engine.hemo.blood_volume
+        for _ in range(3):
+            engine.start_hemorrhage(step_ml / 4.0)
+            advance_time(engine, 240.0)
+            engine.stop_hemorrhage()
+            advance_time(engine, 1560.0)
+        assert 1.15 * baseline_hr < engine.state.hr < 1.35 * baseline_hr
+        assert 0.65 * baseline_map < engine.state.map < 0.9 * baseline_map
+
     def test_awake_hemorrhage_follows_atls_classes(self, awake_engine):
         """ATLS: SBP stays normal in class II (15-30% loss) and falls with HR > 100 in class IV (> 40%)."""
         engine = awake_engine
@@ -224,6 +269,8 @@ class TestClinicalAcceptance:
         """Massive crystalloid raises LAP into the edema range; PEEP helps oxygenation."""
         engine = anesthetized_engine
         base_plat = engine.state.paw_plat
+        # FiO2 about 0.55, where added shunt shows in P/F.
+        engine.set_fgf(1.0, 1.0)
 
         # A healthy heart tolerates 3 L (43 mL/kg).
         engine.give_fluid(3000.0)
@@ -367,27 +414,38 @@ class TestClinicalAcceptance:
         assert engine.state.sao2 > rescue_spo2 + 5.0
 
 
-def test_remifentanil_blunts_laryngoscopy_response(engine_factory):
-    """Opioid blunts the pressor response to laryngoscopy (Bouillon 2004 TOL surface)."""
+@pytest.mark.parametrize(("profile", "ce50", "seconds"), [
+    ("stim_intubation_pulse", 5.0, 300.0),
+    ("stim_sustained_surgery", 2.1, 300.0),
+])
+def test_remifentanil_blunts_the_pressor_response(engine_factory, profile, ce50, seconds):
+    """Albertin 2005: at propofol 3.4 mcg/mL (BIS 40-50), remifentanil blocked a
+    15% HR or MAP rise in half of patients at 5.0 ng/mL for intubation and
+    2.1 ng/mL for skin incision. Blocking movement takes far less (Bouillon 2004).
+    """
 
     def peak_map_rise(remi_target: float) -> float:
-        engine = engine_factory(config=SimulationConfig(mode="steady_state", tci_enabled=True, rng_seed=5), start=True)
+        engine = engine_factory(
+            config=SimulationConfig(mode="steady_state", tci_enabled=True, rng_seed=5), start=True,
+            age=53, weight=67, height=166, sex="female",
+        )
+        engine.enable_tci("propofol", 3.4)
         engine.enable_tci("remi", remi_target)
-        for _ in range(600):
+        for _ in range(900):
             engine.step(1.0)
         baseline = engine.state.map
         engine.set_auto_laryngospasm(False)
-        engine.start_disturbance("stim_intubation_pulse")
+        engine.start_disturbance(profile)
         peak = 0.0
-        for _ in range(600):
+        for _ in range(round(seconds / 0.1)):
             engine.step(0.1)
-            peak = max(peak, engine.state.map - baseline)
+            peak = max(peak, engine.state.map / baseline - 1.0)
         return peak
 
     propofol_only = peak_map_rise(0.0)
-    with_remifentanil = peak_map_rise(4.0)
-    assert propofol_only > 15.0
-    assert with_remifentanil < 0.25 * propofol_only
+    at_ce50 = peak_map_rise(ce50)
+    assert propofol_only > 0.15
+    assert 0.3 * propofol_only < at_ce50 < 0.7 * propofol_only
 
 
 def test_atrial_fibrillation_then_sinus_bradycardia(engine_factory):

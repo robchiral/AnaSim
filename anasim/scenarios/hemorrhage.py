@@ -1,26 +1,21 @@
 """Intraoperative hemorrhage and hypovolemic shock scenario."""
 
 from .base import (
+    CrisisStartMAP,
     Scenario,
     ScenarioStep,
     create_observe_baseline_step,
     create_reassess_step,
-    monitor_value,
     require_crisis_started,
     require_crisis_stopped,
     require_fluid_bolus,
+    require_hypotension_after_start,
     require_vasopressor_if_hypotensive,
 )
 
 
-def _require_shock_recognition(engine) -> tuple[bool, str]:
-    """Recognize hypotension during hemorrhage without requiring tachycardia."""
-    map_val = monitor_value(engine, "map")
-    met = map_val < 65
-    return met, "" if met else f"MAP: {map_val:.0f} mmHg; observe the response to blood loss"
-
-
 def create_hemorrhage_response() -> Scenario:
+    start_map = CrisisStartMAP()
     steps = [
         create_observe_baseline_step("hemorrhage"),
         ScenarioStep(
@@ -37,16 +32,19 @@ def create_hemorrhage_response() -> Scenario:
             ),
             target_tab="Events",
             target_section="circulation",
+            on_met=start_map.record,
         ),
         ScenarioStep(
             id="RECOGNIZE_SHOCK",
             title="Recognize hypovolemic shock",
             instruction=(
-                "Watch for falling blood pressure during bleeding, including <b>MAP < 65 mmHg</b>. "
-                "HR may rise and pulse pressure may narrow. Anesthesia and beta blockade "
-                "can blunt tachycardia; begin treatment as the situation develops."
+                "Watch for falling blood pressure during bleeding: <b>MAP < 65 mmHg and at least 20% "
+                "below its value when bleeding began</b>. HR may rise and pulse pressure may narrow. "
+                "Anesthesia and beta blockade can blunt tachycardia; begin treatment as the situation develops."
             ),
-            check_requirements=_require_shock_recognition,
+            check_requirements=require_hypotension_after_start(
+                start_map, "observe the response to blood loss",
+            ),
         ),
         ScenarioStep(
             id="STOP_BLEEDING",

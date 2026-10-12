@@ -14,10 +14,10 @@ from .monitors import step_monitors
 from .projection import (
     PhysiologyStepState,
     build_snapshot_from_models,
-    laryngoscopy_tolerance,
     loss_of_response,
     project_runtime_physiology,
     step_respiration,
+    stimulus_tolerance,
     sync_inhaled_agents,
     sync_inspired_gas,
     sync_pk_state,
@@ -40,7 +40,7 @@ MEAN_PAW_TAU_S = 0.25
 def step_simulation(engine: SimulationEngine, dt: float) -> None:
     state = engine.state
     engine.thermal.update_depth(state.temp_c, state.hypnotic_ce, state.mac)
-    engine._tol_current = clamp01(laryngoscopy_tolerance(engine))
+    engine._tol_current = clamp01(stimulus_tolerance(engine))
 
     disturbance_complete = _disturbance_completes_during_step(engine, dt)
     disturbances = step_disturbances(engine, dt)
@@ -101,22 +101,24 @@ def step_temperature(engine: SimulationEngine, dt: float) -> None:
 def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects:
     """Calculate disturbances and update event-driven volume state."""
     state = engine.state
-    if not engine.disturbance_active:
+    spec = engine.disturbances.spec
+    if not engine.disturbance_active or spec is None:
         effects = DisturbanceEffects()
     else:
         t_rel = max(0.0, state.time - engine.disturbance_start_time)
-        effects = engine.disturbances.compute_average(t_rel, t_rel + dt)
-
-    # Hypnotics, lidocaine, and especially opioids blunt the response to noxious
-    # stimulation; scale it by the probability of responding to laryngoscopy
-    # (Bouillon 2004).
-    stim_gain = 1.0 - engine._tol_current
-    effects = DisturbanceEffects(
-        bis=effects.bis * stim_gain,
-        svr=effects.svr * stim_gain,
-        sv=effects.sv * stim_gain,
-        hr=effects.hr * stim_gain,
-    )
+        stimulus = engine.disturbances.compute_average(t_rel, t_rel + dt)
+        # Hypnotics, lidocaine, and especially opioids blunt the response to
+        # noxious stimulation (Bouillon 2004). EEG arousal scales with the
+        # probability of responding to laryngoscopy; blocking the HR and MAP
+        # response takes more drug (Albertin 2005).
+        arousal = 1.0 - engine._tol_current
+        sympathetic = 1.0 - clamp01(stimulus_tolerance(engine, spec.sympathetic_intensity))
+        effects = DisturbanceEffects(
+            bis=stimulus.bis * arousal,
+            svr=stimulus.svr * sympathetic,
+            sv=stimulus.sv * sympathetic,
+            hr=stimulus.hr * sympathetic,
+        )
 
     hemo = engine.hemo
     if engine.active_hemorrhage:
@@ -254,9 +256,11 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
     """Update airway obstruction/bronchospasm/laryngospasm state."""
     state = engine.state
     tol = engine._tol_current
-    stim_profile = engine.disturbance_profile or ""
-    stim_active = bool(
-        engine.auto_laryngospasm_enabled and engine.disturbance_active and ("intubation" in stim_profile)
+    # Laryngoscopy can provoke laryngospasm; the sympathetic response outlasts it.
+    stim_active = (
+        engine.auto_laryngospasm_enabled
+        and engine.disturbance_active
+        and engine.disturbances.stimulates_airway(state.time - engine.disturbance_start_time)
     )
 
     nmba_effect = hill_function(engine.tof_pd.ce_central, engine.resp.c50_nmba, engine.resp.gamma_nmba)
@@ -275,16 +279,17 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
 
     upper_obstruction = engine.airway_obstruction_manual
     if state.airway_mode != AirwayType.ETT:
-        # Mask CPAP or positive-pressure breaths hold the pharynx open.
+        # Mask CPAP or positive-pressure breaths hold the pharynx open. Mean
+        # pressure over recent breaths includes any unassisted breaths between them.
         splint_pressure = 0.0
         if state.airway_mode == AirwayType.MASK:
             vent = engine.vent
             if vent.is_on:
                 splint_pressure = vent.settings.peep
                 if vent.settings.mode != "CPAP":
-                    splint_pressure = max(splint_pressure, vent.monitors.paw_mean)
+                    splint_pressure = max(splint_pressure, vent.monitors.paw_mean_recent)
             elif engine.bag_mask_active:
-                splint_pressure = vent.monitors.paw_mean
+                splint_pressure = vent.monitors.paw_mean_recent
         relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
         unconscious = loss_of_response(engine, ketamine=False)
         collapse = airway_tuning.unsupported_collapse_max * unconscious * (1.0 - relief)

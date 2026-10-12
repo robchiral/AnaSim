@@ -235,13 +235,13 @@ class HemodynamicConfig:
     glyco_emax_hr: float = 20.0
     glyco_brady_relief: float = 30.0  # bpm added to the 50 bpm sinus bradycardia rate
 
-    # Ketamine (mcg/mL) raises sympathetic outflow. After 2 mg/kg, arterial
-    # pressure, HR, and CO peaked 15-30% above baseline within 10 min and
-    # returned to baseline by 30 min of infusion at 2.2 mcg/mL (Idvall 1979).
-    # Calibrated through the Kamp PK, which gives lower early concentrations
-    # than Idvall measured. Anesthetic depth and adrenoceptor block reduce it.
+    # Ketamine (mcg/mL) raises sympathetic outflow. Without atropine, 2 mg/kg
+    # raised HR 33%, cardiac index 29%, and aortic pressure 28%, with SV and SVR
+    # unchanged (Tweed 1972). With atropine and nitrous oxide, pressure, HR, and
+    # CO peaked 15-30% above baseline within 10 min and returned to baseline by
+    # 30 min of infusion at 2.2 mcg/mL (Idvall 1979). Calibrated through the Kamp
+    # PK. Anesthetic depth and adrenoceptor block reduce it.
     ketamine_c50: float = 2.0
     ketamine_gamma: float = 3.0
-    ketamine_emax_hr: float = 0.45  # Fraction of HR
-    ketamine_emax_sv: float = 0.11
-    ketamine_emax_tpr: float = 0.17
+    ketamine_emax_hr: float = 0.8  # Fraction of HR
+    ketamine_emax_sv: float = 0.11  # Offsets the rate-related fall in SV

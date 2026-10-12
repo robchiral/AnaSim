@@ -15,13 +15,18 @@ class LungAeration:
     approximations, not a fit to the between-patient VitalDB PEEP association.
     The static curve stiffens above an inflation equivalent to 25 cmH2O.
 
-    Lung water beyond 3 mL/kg floods alveoli, which shunt like closed units.
-    PEEP 13 vs 3 cmH2O left about 70% fewer alveoli flooded (Malo 1984).
+    Lost aeration lowers gas volume and compliance, but most of the FRC fall
+    under anesthesia is cranial displacement of the diaphragm (Hedenstierna
+    2015). Only atelectatic units shunt: shunt follows CT atelectasis and stays
+    near 1-12% of cardiac output (Tokics 1996). Lung water beyond 3 mL/kg floods
+    alveoli, which shunt fully. PEEP 13 vs 3 cmH2O left about 70% fewer alveoli
+    flooded (Malo 1984).
     """
 
     INTERVAL = 0.1  # s; independent of the engine's outer step
     REFERENCE_RECRUITED = 0.9  # Compliance calibration at PEEP 5 under anesthesia
     MIN_RECRUITED = 0.65  # Maximum modeled aeration loss under anesthesia
+    ATELECTASIS_SHUNT = 0.3  # Shunt per unit of lost aeration
     OPENING_WIDTH = 4.5  # cmH2O; logistic pressure response, Rothen 1993
     OPENING_RATE = 1.0 / 2.6  # /s; CT reopening time constant at 40 cmH2O, Rothen 1999
     FLOOD_ONSET = 3.0  # mL/kg lung water above normal
@@ -55,8 +60,8 @@ class LungAeration:
 
     @property
     def shunt_fraction(self) -> float:
-        # Closed units retain perfusion; no instantaneous oxygen benefit from PEEP.
-        return 1.0 - self.aerated
+        # Atelectatic and flooded units retain perfusion; no instantaneous oxygen benefit from PEEP.
+        return self.ATELECTASIS_SHUNT * (1.0 - self.recruited) + self.recruited * self.flooded
 
     def advance(self, dt: float, pressure_area: float) -> bool:
         """Accumulate distending pressure; change aeration at fixed physical times."""

@@ -97,6 +97,7 @@ class VentMonitors:
     paw_peak: float = 0.0
     paw_plat: float = math.nan  # End-inspiratory pressure of the last mandatory breath with no flow
     paw_mean: float = 0.0
+    paw_mean_recent: float = 0.0  # Time-weighted over recent breaths, as for RR and MV
     peep: float = 0.0  # End-expiratory pressure
     auto_peep: float = 0.0  # Static recoil left at end-expiration
     tv_exp: float = 0.0
@@ -181,8 +182,9 @@ class AnesthesiaVentilator:
         self._backup = False
         self._vg_pressure: float | None = None
         self._armed = False
-        self._recent: deque[tuple[float, float]] = deque(maxlen=RECENT_BREATHS)  # (duration s, VTe L)
-        self._recent_totals = (0.0, 0.0)  # Duration s and exhaled volume L
+        # (duration s, VTe L, pressure area cmH2O·s)
+        self._recent: deque[tuple[float, float, float]] = deque(maxlen=RECENT_BREATHS)
+        self._recent_totals = (0.0, 0.0, 0.0)
 
     @property
     def has_measured_breath(self) -> bool:
@@ -292,6 +294,7 @@ class AnesthesiaVentilator:
         self._measured = None
         self._since_measured = 0.0
         self._recent.clear()
+        self._recent_totals = (0.0, 0.0, 0.0)
         self.monitors = VentMonitors()
         self.monitors.peep = self._configured_peep()
         self.pressure_limited = False
@@ -414,8 +417,9 @@ class AnesthesiaVentilator:
         if b.mandatory:
             m.tv_exp_mandatory = m.tv_exp
             m.paw_plat = b.plat
-        self._recent.append((b.t, vte))
-        self._recent_totals = (sum(d for d, _ in self._recent), sum(v for _, v in self._recent))
+        self._recent.append((b.t, vte, b.area))
+        durations, volumes, areas = zip(*self._recent, strict=True)
+        self._recent_totals = (sum(durations), sum(volumes), sum(areas))
         self.breath_count += 1
 
     def _begin_measurement(self, lung, kind: str, mandatory: bool) -> None:
@@ -433,10 +437,19 @@ class AnesthesiaVentilator:
         self._since_measured = 0.0
 
     def _update_rates(self) -> None:
+        total, volume, area = self._recent_totals
+        window_t, window_area = total, area
+        current = self._measured
+        if current is not None and (not self._recent or current.t > self._recent[0][0]):
+            # A breath that outlasts the oldest one replaces it, so pauses lower the mean.
+            oldest_t, _, oldest_area = self._recent[0] if self._recent else (0.0, 0.0, 0.0)
+            window_t += current.t - oldest_t
+            window_area += current.area - oldest_area
+        if window_t > 0.0:
+            self.monitors.paw_mean_recent = window_area / window_t
         if not self._recent or self._since_measured >= APNEA_S:
             self.monitors.rr_total = self.monitors.mv_exp = 0.0
             return
-        total, volume = self._recent_totals
         # A breath that runs long, as in apnea, lowers the rate before it ends.
         span = max(total, total - self._recent[0][0] + self._since_measured)
         self.monitors.rr_total = 60.0 * len(self._recent) / span

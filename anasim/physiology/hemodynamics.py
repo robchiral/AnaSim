@@ -6,6 +6,7 @@ from anasim.core.constants import BLOOD_VOLUME_MIN, HR_MAX, HR_MIN, TEMP_TPR_COE
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.patient import Patient
+from anasim.patient.pd.anesthesia import KETAMINE_MAC_EQUIVALENT
 
 from .hemo_config import HemodynamicConfig
 from .hemo_types import HemoState
@@ -715,13 +716,16 @@ class HemodynamicModel:
         chemo_hr_boost = (cfg.g_hr_co2 * e_co2 + cfg.g_hr_o2 * e_o2) * beta_response
         chemo_tpr_factor = 1.0 + cfg.k_tpr_co2 * e_co2
 
-        # Fast baroreflex. Propofol depresses both limbs (Sato 2005).
+        # Fast baroreflex. Propofol depresses both limbs (Sato 2005). Anesthetic
+        # ketamine depresses it as much (Akine 2001), but analgesic doses do not
+        # (Huang 2020); it counts in MAC equivalents for this reflex only.
         sensed_error = map_prev - self._stim_map - self._baro_setpoint
         if sensed_error > 0.0:
             baro_gain = cfg.baro_gain_brady * (1.0 - vagal)
         else:
             baro_gain = cfg.baro_gain_tachy * beta_response
-        baro_gain *= 1.0 - cfg.baro_anesthetic_depression * anesthetic_depth
+        reflex_depth = clamp01(anesthetic_depth + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT)
+        baro_gain *= 1.0 - cfg.baro_anesthetic_depression * reflex_depth
         baro_hr = clamp(-baro_gain * sensed_error, -cfg.baro_max_hr_change, cfg.baro_max_hr_change)
         self._baro_setpoint += sensed_error * min(1.0, dt / cfg.baro_reset_tau_s)
 
@@ -736,7 +740,12 @@ class HemodynamicModel:
         self.myocardial_hypoxia += (hypoxia_target - self.myocardial_hypoxia) * min(1.0, dt / hypoxia_tau)
 
         hemorrhage_hr_mult, hemorrhage_tpr_mult = self._calc_hemorrhage_response()
-        hemorrhage_hr_mult = 1.0 + (hemorrhage_hr_mult - 1.0) * beta_response
+        # Anesthesia blunts the tachycardia as it does the cardiac baroreflex
+        # (Ebert 1992; Sellgren 1994). The slower resistance response persists
+        # under propofol-remifentanil (Kurita 2011).
+        hemorrhage_hr_mult = 1.0 + (hemorrhage_hr_mult - 1.0) * beta_response * (
+            1.0 - cfg.baro_anesthetic_depression * anesthetic_depth
+        )
         hemorrhage_tpr_mult = 1.0 + (hemorrhage_tpr_mult - 1.0) * alpha_response
         sepsis_hr_mult = 1.0 + self._sepsis_hr_gain * sepsis_sev
 
@@ -786,8 +795,7 @@ class HemodynamicModel:
             vaso_svr_factor *
             dobu_svr_factor *
             mil_svr_factor *
-            (1.0 - cfg.alpha_block_tpr * alpha_occ * resting_tone) *
-            (1.0 + cfg.ketamine_emax_tpr * ketamine * alpha_response)
+            (1.0 - cfg.alpha_block_tpr * alpha_occ * resting_tone)
         )
         combined_sv_factor = (
             epi_sv_factor * nore_sv_factor * dobu_sv_factor * mil_sv_factor

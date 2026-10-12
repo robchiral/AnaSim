@@ -1,26 +1,21 @@
 """Warm septic shock scenario."""
 
 from .base import (
+    CrisisStartMAP,
     Scenario,
     ScenarioStep,
     create_observe_baseline_step,
     create_reassess_step,
-    monitor_value,
     require_crisis_started,
     require_crisis_stopped,
     require_fluid_bolus,
+    require_hypotension_after_start,
     require_vasopressor_if_hypotensive,
 )
 
 
-def _require_warm_shock_recognition(engine) -> tuple[bool, str]:
-    """Recognize hypotension in the infection scenario using the visible monitor."""
-    map_val = monitor_value(engine, "map")
-    met = map_val < 65
-    return met, "" if met else f"MAP: {map_val:.0f} mmHg; observe the developing hypotension"
-
-
 def create_sepsis_response() -> Scenario:
+    start_map = CrisisStartMAP()
     steps = [
         create_observe_baseline_step("sepsis"),
         ScenarioStep(
@@ -37,16 +32,20 @@ def create_sepsis_response() -> Scenario:
             ),
             target_tab="Events",
             target_section="circulation",
+            on_met=start_map.record,
         ),
         ScenarioStep(
             id="RECOGNIZE_WARM_SHOCK",
             title="Recognize septic shock",
             instruction=(
-                "Recognize <b>MAP < 65 mmHg</b> in the setting of infection. "
+                "Recognize <b>MAP < 65 mmHg and at least 20% below its value when sepsis began</b> "
+                "in the setting of infection. "
                 "Vasodilation is the main mechanism in this case; HR may rise, but tachycardia is variable. "
                 "In practice, assess perfusion and consider blood loss, anesthetic effects, and other causes of hypotension."
             ),
-            check_requirements=_require_warm_shock_recognition,
+            check_requirements=require_hypotension_after_start(
+                start_map, "observe the developing hypotension",
+            ),
         ),
         ScenarioStep(
             id="GIVE_FLUIDS",

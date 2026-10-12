@@ -52,19 +52,23 @@ def _intubation_response(engine_factory, fentanyl_mcg=0.0, lidocaine_mg=0.0, lid
 
 
 def test_ketamine_induction_keeps_breathing_and_raises_pressure(engine_factory):
-    """Idvall 1979: arterial pressure, HR, and CO rose 15-30%, and patients woke
-    at 0.64 mcg/mL. Bourke 1987: 3 mg/kg shifted the CO2 response 2 mmHg.
-    In AnaSim, ketamine preserves pharyngeal tone and BIS.
+    """Tweed 1972: without atropine, 2 mg/kg raised HR 33%, cardiac index 29%,
+    and aortic pressure 28%, with SVR unchanged. Idvall 1979: patients woke at
+    0.64 mcg/mL. Bourke 1987: 3 mg/kg shifted the CO2 response 2 mmHg. In
+    AnaSim, ketamine preserves pharyngeal tone and BIS.
     """
     engine = _awake(engine_factory)
-    base_map, base_co, base_mv = engine.state.map, engine.state.co, engine.state.mv
+    base_map, base_hr, base_co, base_svr = engine.state.map, engine.state.hr, engine.state.co, engine.state.svr
+    base_mv = engine.state.mv
 
     engine.give_drug_bolus("ketamine", 2.0 * engine.patient.weight)
     _advance(engine, 60)
     assert engine.state.loc > 0.9
     _advance(engine, 120)
-    assert 1.12 * base_map < engine.state.map < 1.35 * base_map
-    assert engine.state.co > 1.05 * base_co
+    assert 1.15 * base_map < engine.state.map < 1.4 * base_map
+    assert 1.2 * base_hr < engine.state.hr < 1.45 * base_hr
+    assert 1.15 * base_co < engine.state.co < 1.45 * base_co
+    assert abs(engine.state.svr / base_svr - 1.0) < 0.1
     assert engine.state.mv > 0.85 * base_mv
     assert engine.state.airway_obstruction < 0.05
     assert engine.state.bis > 90.0
@@ -156,12 +160,15 @@ def test_fentanyl_depresses_breathing_and_accumulates(engine_factory):
 
 
 def test_fentanyl_blunts_the_intubation_response_more_than_lidocaine(engine_factory):
-    """Qin 2025 (18 trials): lidocaine 1-2 mg/kg lowered the MAP rise at
+    """Ebert 1992: without opioid, intubation after propofol raised HR 36 bpm and
+    MAP 35 mmHg. Qin 2025 (18 trials): lidocaine 1-2 mg/kg lowered the MAP rise at
     intubation by 3.85 mmHg (95% CI 1.09-6.61), with no significant HR effect in
     Western trials; Wilson 1991 found HR rose 21-26% with or without it. Okuda
     1990: intubation 30 s after lidocaine raised MAP and HR, unlike at 1-3 min.
     """
     hr_alone, map_alone, tol_alone = _intubation_response(engine_factory)
+    assert 28.0 < hr_alone < 45.0
+    assert 28.0 < map_alone < 45.0
     hr_fentanyl, _, tol_fentanyl = _intubation_response(engine_factory, fentanyl_mcg=140.0)
     hr_lidocaine, map_lidocaine, _ = _intubation_response(engine_factory, lidocaine_mg=105.0)
     _, map_rushed, _ = _intubation_response(engine_factory, lidocaine_mg=105.0, lidocaine_lead_s=30)
@@ -170,7 +177,8 @@ def test_fentanyl_blunts_the_intubation_response_more_than_lidocaine(engine_fact
     assert hr_fentanyl < 0.7 * hr_alone
     assert 1.09 < map_alone - map_lidocaine < 6.61
     assert hr_lidocaine > 0.8 * hr_alone
-    assert map_alone - map_rushed < 0.7 * (map_alone - map_lidocaine)
+    # Lidocaine reaches its effect site over minutes, so 30 s gives clearly less blunting.
+    assert map_alone - map_rushed < 0.8 * (map_alone - map_lidocaine)
 
 
 def test_etomidate_induction_is_brief_and_hemodynamically_stable(engine_factory):

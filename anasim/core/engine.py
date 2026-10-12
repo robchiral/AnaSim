@@ -19,6 +19,7 @@ from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.nibp import NIBPMonitor
 from anasim.monitors.spo2 import SpO2Monitor
+from anasim.patient.domain import finite_number
 from anasim.patient.patient import Patient
 from anasim.patient.pd import (
     BISModel,
@@ -363,6 +364,9 @@ class SimulationEngine(DrugControllerMixin):
             self.actions.record(self.state.time, action, label=name, amount=amount)
 
     def start_hemorrhage(self, rate_ml_min: float = 500.0):
+        rate_ml_min = finite_number("rate_ml_min", rate_ml_min)
+        if rate_ml_min < 0.0:
+            raise ValueError("rate_ml_min must not be negative")
         self.hemorrhage_rate_ml_min = rate_ml_min
         self._log_event("hemorrhage", True, amount=rate_ml_min)
         self.active_hemorrhage = True

@@ -43,6 +43,9 @@ ETOMIDATE_RESPIRATORY_PROPOFOL_RATIO = 2.0  # Calibrated independently of clinic
 KETAMINE_LOSS_OF_RESPONSE = 0.64
 KETAMINE_MAC_EQUIVALENT = 3.5
 
+# Bouillon 2004 pre-opioid intensity of laryngoscopy for movement.
+LARYNGOSCOPY_INTENSITY = 0.83
+
 # Lidocaine blunts stimulation without a baseline hypnotic or BIS effect
 # (Hans 2010; Altermatt 2012). The 4.2%/mcg/mL response attenuation remains a
 # simulator calibration, informed by Himes 1977 and intubation-response data.
@@ -172,18 +175,20 @@ class ClinicalResponseModel:
     def tolerance(
         self, ce_prop: float, ce_remi: float, mac_sevo: float = 0.0,
         mac_n2o: float = 0.0, ce_ketamine: float = 0.0, ce_lidocaine: float = 0.0,
+        intensity: float = LARYNGOSCOPY_INTENSITY,
     ) -> float:
-        intensity = 0.83
+        """Probability of no response to a stimulus; laryngoscopy by default."""
         units = max(0.0, ce_prop) / self.c50_prop
-        # MAC fractions of sevoflurane, nitrous oxide, and ketamine add for noxious stimulation.
+        # MAC fractions of sevoflurane, nitrous oxide, and ketamine add for noxious
+        # stimulation, converted to propofol units at the laryngoscopy endpoint.
         mac = max(0.0, mac_sevo) + max(0.0, mac_n2o) + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
-        units += intensity * mac * self.mac_reference / 2.59
+        units += LARYNGOSCOPY_INTENSITY * mac * self.mac_reference / 2.59
         tolerance = self._probability(units, ce_remi, intensity)
         lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
         return 1.0 - (1.0 - tolerance) * (1.0 - lidocaine_block)
 
 
 __all__ = [
-    "BISModel", "ClinicalResponseModel", "hypnotic_equivalent",
+    "LARYNGOSCOPY_INTENSITY", "BISModel", "ClinicalResponseModel", "hypnotic_equivalent",
     "midazolam_loss_of_response", "opioid_equivalent",
 ]

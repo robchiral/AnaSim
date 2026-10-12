@@ -160,21 +160,27 @@ def test_measured_shallow_breaths_widen_the_co2_gap(patient):
     assert state.pa_co2 - state.etco2 > 10.0
 
 
-def test_hemorrhage_with_atelectasis_retains_oxygen_from_ventilated_lung(engine_factory):
-    engine = engine_factory(
-        config=SimulationConfig(mode="steady_state", end_on_cardiac_arrest=False), start=True,
-    )
-    engine.set_fgf(10.0, 0.0)
-    engine.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=0, ie="1:2")
-    engine.hemo.add_volume(-0.4 * engine.hemo.blood_volume)
-    for _ in range(240):
-        engine.step(1.0)
-    state, resp = engine.state, engine.resp
-    assert state.co < 2.0
-    assert resp.shunt_fraction > 0.25
-    assert state.fio2 > 0.95
-    # Shunt causes hypoxemia, while ventilated lung still oxygenates blood.
-    assert 60.0 < state.sao2 < 90.0
+def test_low_cardiac_output_amplifies_atelectatic_shunt(engine_factory):
+    """ZEEP atelectasis shunts 1-12% of cardiac output (Tokics 1996). Blood loss
+    lowers mixed venous O2, so the same shunt lowers PaO2 further."""
+    endpoints = []
+    for loss in (0.0, 0.4):
+        engine = engine_factory(
+            config=SimulationConfig(mode="steady_state", end_on_cardiac_arrest=False), start=True,
+        )
+        engine.set_fgf(10.0, 0.0)
+        engine.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=0, ie="1:2")
+        engine.hemo.add_volume(-loss * engine.hemo.blood_volume)
+        for _ in range(240):
+            engine.step(1.0)
+        assert engine.state.fio2 > 0.95
+        assert 0.05 < engine.resp.shunt_fraction < 0.12
+        endpoints.append((engine.state.co, engine.state.pao2, engine.state.sao2))
+    normal, bled = endpoints
+    assert bled[0] < 2.0
+    assert bled[1] < 0.5 * normal[1]
+    # Ventilated lung still saturates most of the blood.
+    assert bled[2] > 95.0
 
 
 def test_co2_drives_breathing_and_opioids_blunt_it(patient):
@@ -193,15 +199,17 @@ def test_co2_drives_breathing_and_opioids_blunt_it(patient):
 
 
 def test_hyperventilation_stops_breathing_under_anesthesia_until_co2_recovers(patient):
-    """Hickey 1971 motivates a 4-5 mmHg hypocapnic gap. AnaSim applies it
-    below the nominal drug-free PaCO2 set point. Hold drug concentrations and consciousness
-    fixed to isolate the CO2 threshold from PK and induction kinetics.
+    """Hickey 1971: under anesthesia, breathing stops 4-5 mmHg below the
+    resting PaCO2, whatever the agent and depth. Hold drug concentrations and
+    consciousness fixed to isolate the CO2 threshold from PK and induction kinetics.
     """
     model = RespiratoryModel(patient)
     inputs: dict[str, Any] = dict(ce_prop=2.0, ce_remi=0.0, unconscious=1.0, fio2=1.0)
     for _ in range(9000):
         model.step(0.1, **inputs)
     assert model.state.rr > 8.0
+    resting = model.state.p_alveolar_co2
+    assert resting > 45.0  # Propofol raises the resting PaCO2.
 
     for _ in range(6000):
         model.step(0.1, **inputs, mech_rr=20.0, mech_vt_l=0.5, mech_vent_mv=10.0)
@@ -212,7 +220,7 @@ def test_hyperventilation_stops_breathing_under_anesthesia_until_co2_recovers(pa
         if not model.state.apnea:
             break
     assert not model.state.apnea
-    assert 35.0 <= model.state.p_alveolar_co2 <= 36.5
+    assert 3.75 <= resting - model.state.p_alveolar_co2 <= 5.0
 
 
 def test_opioids_reduce_the_equilibrated_co2_response(patient):
@@ -257,19 +265,45 @@ class TestOxygenStores:
         engine.give_drug_bolus("propofol", 2.0 * engine.patient.weight)
         engine.give_drug_bolus("roc", 0.6 * engine.patient.weight)
 
-    def test_preoxygenation_extends_safe_apnea_time(self, awake_engine):
-        awake_engine.set_airway_mode("Mask")
-        awake_engine.set_fgf(10.0, 0.0)
-        for _ in range(1800):
-            awake_engine.step(0.1)
-        assert awake_engine.state.pao2 > 450.0, "Three minutes of tidal breathing should denitrogenate"
-        # Near the EtO2 90% preoxygenation endpoint, limited by circuit FiO2 (Nimmagadda 2017).
-        assert 85.0 < awake_engine.state.et_o2 < 100.0 * awake_engine.state.fio2
+    @pytest.mark.parametrize(("fio2", "air_l_min", "eto2", "seconds"), [
+        (1.0, 0.0, 93.0, (327.0, 495.0)),
+        (0.8, 1.52, 75.0, (244.0, 362.0)),
+        (0.6, 3.04, 53.0, (144.0, 282.0)),
+    ])
+    def test_preoxygenation_sets_open_airway_apnea_time(self, engine_factory, fio2, air_l_min, eto2, seconds):
+        """Edmark 2003: women aged 44 given 100, 80, or 60% O2 at 6 L/min during
+        induction reached EtO2 93, 75, and 53%; with the tube open to air,
+        SpO2 fell to 90% after 411 ± 84, 303 ± 59, and 213 ± 69 s.
+        """
+        dt = 0.1
+        engine = engine_factory(
+            config=SimulationConfig(tci_enabled=True, dt=dt, rng_seed=1), start=True,
+            age=44, height=166, weight=67, sex="female", baseline_hb=12.1,
+        )
 
-        self._induce_apnea(awake_engine)
-        awake_engine.set_airway_obstruction(1.0)
-        minutes = self._minutes_to_sao2_below_90(awake_engine)
-        assert minutes is not None and 5.0 < minutes < 11.0
+        def advance(seconds_):
+            for _ in range(round(seconds_ / dt)):
+                engine.step(dt)
+
+        engine.set_airway_mode("Mask")
+        engine.set_fgf(6.0 - air_l_min, air_l_min)
+        advance(60.0)
+        engine.give_drug_bolus("fentanyl", 300)  # Fentanyl 0.2 mg and alfentanil 1 mg
+        advance(60.0)
+        engine.enable_tci("propofol", 8.0, mode="plasma")
+        advance(30.0)
+        engine.give_drug_bolus("roc", 30)
+        engine.set_bag_mask_ventilation(True, rr=9, vt=0.55)
+        advance(180.0)
+        assert engine.state.et_o2 == pytest.approx(eto2, abs=5.0)
+
+        engine.set_bag_mask_ventilation(False)
+        engine.set_airway_mode("ETT")
+        engine.set_fgf(0.0, 10.0)
+        start = engine.state.time
+        while engine.state.display_spo2 >= 90.0 and engine.state.time - start < 900.0:
+            engine.step(dt)
+        assert seconds[0] < engine.state.time - start < seconds[1]
 
     def test_room_air_apnea_desaturates_within_two_minutes(self, awake_engine):
         self._induce_apnea(awake_engine)

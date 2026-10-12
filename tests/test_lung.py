@@ -16,7 +16,7 @@ def _run(engine, dt, seconds):
         engine.step(dt)
     aeration = engine.aeration
     return (aeration.recruited, aeration.frc, engine.resp_mech.compliance,
-            engine.state.vt, engine.state.sao2)
+            engine.state.vt, engine.state.pao2)
 
 
 def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
@@ -39,14 +39,15 @@ def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
         assert maintained[0] > 0.95 and withdrawn[0] < 0.75
         assert maintained[1] > collapsed[1] + 0.5
         assert maintained[2] > 1.25 * collapsed[2]
-        assert maintained[4] > collapsed[4] + 5.0
-        assert withdrawn[4] < maintained[4] - 5.0
+        # Atelectasis shunts about 10% at ZEEP (Tokics 1996); recruitment raises PaO2.
+        assert maintained[4] > 1.25 * collapsed[4]
+        assert withdrawn[4] < 0.8 * maintained[4]
         assert maintained[3] == pytest.approx(500.0, abs=2.0)
         traces.append((collapsed, recruited, maintained, withdrawn))
     for trace in traces[1:]:
         for actual, reference in zip(trace, traces[0], strict=True):
             assert actual[:3] == pytest.approx(reference[:3], rel=0.005, abs=0.001)
-            assert actual[3:] == pytest.approx(reference[3:], abs=0.2)
+            assert actual[3:] == pytest.approx(reference[3:], rel=0.01, abs=0.2)
 
 
 def test_sustained_pressure_has_a_recruitment_ceiling_across_step_sizes():

@@ -44,6 +44,9 @@ class RespiratoryModel:
     # Under anesthesia the apneic threshold is 4-5 mmHg below resting PaCO2,
     # independent of agent and depth (Hickey 1971).
     APNEIC_GAP = 4.5  # mmHg
+    VQ_MISMATCH_GRADIENT = 35.0  # mmHg added to the A-a gradient at full airway V/Q mismatch
+    RESTING_PCO2_MAX = 100.0  # mmHg; search ceiling for the anesthetized resting PaCO2
+    RESTING_PCO2_INTERVAL_S = 1.0  # Drug effects change slowly; recompute the threshold this often
     AWAKE_HYPOCAPNIC_GAIN = 0.2  # Fraction of HCVR; nonlinear depth response, a teaching estimate
     RATE_CO2_GAP = 5.0  # mmHg above the set point before hypercapnia raises frequency
     CO2_CONTROLLER_TAU_S = 150.0  # Olofsen 2010, 2.5 min
@@ -121,13 +124,15 @@ class RespiratoryModel:
             rr=self.rr_0, vt=self.vt_0, mv=self.rr_0 * self.vt_0 / 1000.0,
             effort_rr=self.rr_0, effort_vt=self.vt_0,
         )
-        # Age-adjusted A-a gradient, age/4 + 4 mmHg.
-        self.aa_grad_base = max(5.0, (self.patient.age / 4.0) + 4.0)
+        # Mean sea-level A-a gradient, -4.4 + 0.261 x age mmHg (Crapo 1999).
+        self.aa_grad_base = max(5.0, -4.404 + 0.261 * self.patient.age)
         self.equilibrate_oxygen(0.21)
         self._p50 = 26.6
         self._n_hill = 2.7
         self._p50_pow = self._p50 ** self._n_hill
         self._apnea_timer = 0.0
+        self._resting_pco2: float | None = None
+        self._resting_age_s = 0.0
         # Perfusion effect on deadspace fraction (low flow increases VD/VT).
         self.perfusion_deadspace_gain = 0.25
 
@@ -166,7 +171,7 @@ class RespiratoryModel:
             return
         gas_capacity = self.frc * self._gas_capacity_per_l
         blood_dl_to_l = blood_volume_ml / 100000.0
-        aa_gap = self.aa_grad_base * (1.0 + 2.5 * vq_mismatch)
+        aa_gap = self._aa_gradient(vq_mismatch)
         shunt = self.shunt_fraction
         extraction = 100.0 * vo2_l_min / max(0.1, cardiac_output)
 
@@ -266,9 +271,16 @@ class RespiratoryModel:
         # discards drug inhibition and makes recovery too early.
         alpha = -math.expm1(-dt / self.CO2_CONTROLLER_TAU_S)
         self._ventilatory_drive += alpha * (target_drive - self._ventilatory_drive)
+        self._resting_age_s += dt
+        if self._resting_pco2 is None or self._resting_age_s >= self.RESTING_PCO2_INTERVAL_S:
+            self._resting_pco2 = self._solve_resting_pco2(
+                prop_keep, sevo_keep, muscle_factor, unconscious, gain,
+                0.5 * max(0.0, ce_remi) / remi_c50, max(0.1, float(metabolic_factor)),
+            )
+            self._resting_age_s = 0.0
         effort_rr, effort_vt, drive_central = self._unassisted(
             state.p_alveolar_co2, prop_keep, sevo_keep, muscle_factor,
-            unconscious, opioid_reference,
+            unconscious, opioid_reference, resting_pco2=self._resting_pco2,
         )
         state.effort_rr, state.effort_vt = effort_rr, effort_vt
         current_rr = effort_rr
@@ -393,7 +405,7 @@ class RespiratoryModel:
         if self.shunt_fraction > 0.0:
             # The blood store follows arterial saturation as alveolar PO2
             # changes. Shunt mixing changes that derivative, especially on O2.
-            cap_pressure = max(0.0, state.p_alveolar_o2 - self.aa_grad_base * (1.0 + 2.5 * vq_mismatch))
+            cap_pressure = max(0.0, state.p_alveolar_o2 - self._aa_gradient(vq_mismatch))
             cap_saturation = self._saturation(cap_pressure)
             cap_derivative = (1.34 * hb * self._n_hill * cap_saturation * (1.0 - cap_saturation)
                               / max(cap_pressure, 1.0) + 0.0031)
@@ -432,7 +444,7 @@ class RespiratoryModel:
 
         # Residual V/Q inequality sets end-capillary PO2. Closed units mix
         # venous blood into arterial blood by O2 content, not partial pressure.
-        end_capillary = max(0.0, state.p_alveolar_o2 - self.aa_grad_base * (1.0 + 2.5 * vq_mismatch))
+        end_capillary = max(0.0, state.p_alveolar_o2 - self._aa_gradient(vq_mismatch))
         state.p_arterial_o2 = self._arterial_po2(end_capillary, hb, cardiac_output, vo2,
                                               state.p_arterial_o2)
 
@@ -457,15 +469,45 @@ class RespiratoryModel:
         remi_c50 = self.c50_remi * (1.0 - 0.32 * ce_prop / (1.0 + ce_prop))
         self._ventilatory_drive = 1.0 - 0.5 * ce_remi / remi_c50
 
+    def _solve_resting_pco2(self, prop_keep: float, sevo_keep: float, muscle_factor: float,
+                       unconscious: float, gain: float, opioid_shift: float,
+                       metabolic_factor: float) -> float:
+        """Alveolar PCO2 at which unassisted breathing removes the CO2 produced.
+
+        The opioid controller is taken at equilibrium. Without drugs this is the set point.
+        """
+        produced = self.co2_constant * self.vco2 * metabolic_factor
+
+        def removed(pco2: float) -> float:
+            reference = 1.0 + gain * max(0.0, pco2 - self.paco2_setpoint)
+            rr, vt, _ = self._unassisted(pco2, prop_keep, sevo_keep, muscle_factor, unconscious,
+                                         reference, controller=reference - opioid_shift)
+            return rr * max(0.0, vt / 1000.0 - self.vd_deadspace) * pco2
+
+        low, high = self.paco2_setpoint, self.RESTING_PCO2_MAX
+        if removed(low) >= produced:
+            return low
+        if removed(high) < produced:
+            return high
+        for _ in range(20):
+            middle = 0.5 * (low + high)
+            if removed(middle) < produced:
+                low = middle
+            else:
+                high = middle
+        return 0.5 * (low + high)
+
     def _unassisted(self, pco2: float, prop_keep: float, sevo_keep: float,
                     muscle_factor: float,
-                    unconscious: float, opioid_reference: float) -> tuple[float, float, float]:
+                    unconscious: float, opioid_reference: float,
+                    controller: float | None = None,
+                    resting_pco2: float | None = None) -> tuple[float, float, float]:
         """Convert normalized alveolar demand to a rate and tidal volume.
 
         Opioids mainly slow rate; hypnotics mainly reduce depth. This split and
         the awake hypocapnic response are teaching approximations.
         """
-        controller = max(0.0, self._ventilatory_drive)
+        controller = max(0.0, self._ventilatory_drive if controller is None else controller)
         # Transfer the opioid controller as a fraction of its drug-free response
         # at the same CO2, then apply Bouillon's nonlinear alveolar response.
         co2_exponent = self.CO2_RESPONSE_EXPONENT * self.hcvr_slope_baseline / 2.2
@@ -485,17 +527,27 @@ class RespiratoryModel:
         vt = (self.vd_deadspace + self.va_baseline * drive / rr) * 1000.0 if rr > 0.0 else 0.0
         vt *= muscle_factor
 
+        # Unconscious breathing stops APNEIC_GAP below the resting PaCO2, which
+        # drugs raise; awake, hypocapnia below the set point weakens effort.
+        resting = self.paco2_setpoint if resting_pco2 is None else max(self.paco2_setpoint, resting_pco2)
+        below_resting = max(0.0, resting - pco2)
+        if below_resting > 0.0:
+            kept = math.sqrt(1.0 - unconscious * clamp01(below_resting / self.APNEIC_GAP))
+            rr *= kept
+            vt *= kept
         below = max(0.0, self.paco2_setpoint - pco2)
         if below > 0.0:
-            kept = 1.0 - unconscious * clamp01(below / self.APNEIC_GAP)
-            rr *= math.sqrt(kept)
             awake_kept = 1.0 / (1.0 + self.AWAKE_HYPOCAPNIC_GAIN * self.hcvr_slope_baseline * below / self.va_baseline)
-            vt *= math.sqrt(kept) * (unconscious + (1.0 - unconscious) * awake_kept)
+            vt *= unconscious + (1.0 - unconscious) * awake_kept
         if rr < RR_APNEA_THRESHOLD or vt < max(100.0, VT_MIN):
             rr = vt = 0.0
         elif rr < RR_BRADYPNEA_THRESHOLD:
             rr *= 0.5
         return rr, vt, drive
+
+    def _aa_gradient(self, vq_mismatch: float) -> float:
+        """Alveolar to end-capillary PO2 difference (mmHg) from residual V/Q inequality."""
+        return self.aa_grad_base + self.VQ_MISMATCH_GRADIENT * clamp01(vq_mismatch)
 
     def _saturation(self, pao2: float) -> float:
         """Hill oxyhemoglobin dissociation (P50 26.6 mmHg, n 2.7) as a fraction."""

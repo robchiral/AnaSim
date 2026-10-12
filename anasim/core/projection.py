@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
+from anasim.patient.pd.anesthesia import LARYNGOSCOPY_INTENSITY
 
 from .drug_registry import DRUG_REGISTRY
 from .state import AirwayType, SimulationState
@@ -92,8 +93,8 @@ def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> floa
     )
 
 
-def laryngoscopy_tolerance(engine: SimulationEngine) -> float:
-    """Probability of no response to laryngoscopy at the current effect sites."""
+def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY_INTENSITY) -> float:
+    """Probability of no response to a noxious stimulus of the given Bouillon intensity; laryngoscopy by default."""
     state = engine.state
     return engine.response.tolerance(
         state.hypnotic_response_ce,
@@ -102,6 +103,7 @@ def laryngoscopy_tolerance(engine: SimulationEngine) -> float:
         mac_n2o=state.mac_n2o,
         ce_ketamine=state.ketamine_ce,
         ce_lidocaine=state.lidocaine_ce,
+        intensity=intensity,
     )
 
 
@@ -311,7 +313,7 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
         mac_n2o=state.mac_n2o,
     )
     loc_val = loss_of_response(engine)
-    tol_val = laryngoscopy_tolerance(engine)
+    tol_val = stimulus_tolerance(engine)
     engine._tol_current = tol_val
     cardiac_sample = engine.cardiac_cycle.seed(state.hr, engine.hemo.state.rhythm_type)
     arterial_sample = engine.arterial_waveform.step(
