@@ -209,6 +209,23 @@ class TestClinicalAcceptance:
         assert 1.15 * baseline_hr < engine.state.hr < 1.35 * baseline_hr
         assert 0.65 * baseline_map < engine.state.map < 0.9 * baseline_map
 
+    def test_age_blunts_reflex_tachycardia(self, engine_factory, advance_time):
+        """Older adults have a smaller compensatory HR rise (Laitinen 2004)."""
+        rises = {}
+        for age in (30, 68):
+            engine = engine_factory(start=True, age=age)
+            engine.set_continuous_fluid_rate(0.0)
+            advance_time(engine, 120.0)
+            baseline_hr, initial_volume = engine.state.hr, engine.hemo.blood_volume
+            engine.start_hemorrhage(100.0)
+            while engine.hemo.blood_volume > 0.8 * initial_volume:
+                engine.step(1.0)
+            engine.stop_hemorrhage()
+            advance_time(engine, 300.0)
+            rises[age] = engine.state.hr - baseline_hr
+
+        assert 0.6 < rises[68] / rises[30] < 0.9
+
     def test_awake_hemorrhage_follows_atls_classes(self, awake_engine):
         """ATLS: SBP stays normal in class II (15-30% loss) and falls with HR > 100 in class IV (> 40%)."""
         engine = awake_engine

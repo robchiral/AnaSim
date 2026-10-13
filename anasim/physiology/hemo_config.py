@@ -16,6 +16,13 @@ class HemodynamicConfig:
     k_drift: float = 0.067
     tau_hr_fast: float = 5.0  # s
 
+    # Simulator estimates of HR reflex aging, informed by Laitinen 2004 and
+    # Monahan 2007. Vascular sympathetic control is preserved; transfer to
+    # hemorrhage and stimulation is an assumption.
+    age_reference: float = 40.0
+    age_sympathetic_hr: float = -0.0085  # Fraction per year
+    age_vagal_baroreflex: float = -0.021  # ln gain per year
+
     # Fast baroreflex gains (bpm/mmHg) around a slowly resetting MAP set point.
     # Propofol depresses both limbs 65-73% (Sato 2005; Ebert 1994 found mainly
     # the tachycardic limb) and sevoflurane depresses cardiovagal gain (Umehara
@@ -91,6 +98,7 @@ class HemodynamicConfig:
     crystalloid_retention_fraction: float = 0.30
     colloid_retention_fraction: float = 0.80
     blood_retention_fraction: float = 1.0
+    donor_mchc_g_dl: float = 100.0 / 3.0  # Normal donor red cells; Hb = Hct / 0.03.
     # Teaching pressure-response curve, not an AKI or GFR threshold. Preserve
     # most basal output at MAP 60; taper to zero near circulatory collapse.
     renal_map_min: float = 20.0

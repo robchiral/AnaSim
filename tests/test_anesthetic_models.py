@@ -56,6 +56,24 @@ def test_remifentanil_blunts_arousal_without_changing_baseline_bis(engine_factor
     assert combined[4] < 0.2 * alone[4]
 
 
+def test_older_patients_lose_response_at_lower_propofol_concentrations(engine_factory):
+    """Eleveld 2018: propofol Ce50 falls with age; responsiveness follows BIS."""
+    outcomes = {}
+    for age in (25, 70):
+        engine = engine_factory(
+            config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=2), start=True, age=age,
+        )
+        engine.set_airway_mode("ETT")
+        engine.set_vent_power(True)
+        engine.enable_tci("propofol", 2.8)
+        for _ in range(900):
+            engine.step(1.0)
+        outcomes[age] = engine.state.bis, engine.state.loc
+    assert outcomes[70][0] < outcomes[25][0] - 5.0
+    assert outcomes[25][1] < 0.3
+    assert outcomes[70][1] > 0.5
+
+
 def test_induction_uses_separate_clinical_and_bis_sites(awake_engine):
     engine = awake_engine
     engine.set_airway_mode("ETT")

@@ -46,6 +46,9 @@ class HemodynamicModel:
         self.baseline_hct = patient.baseline_hct
 
         self.base_hr = patient.baseline_hr
+        years = patient.age - cfg.age_reference
+        self._age_chronotropy = 1.0 + cfg.age_sympathetic_hr * years
+        self._age_vagal_baroreflex = math.exp(cfg.age_vagal_baroreflex * years)
 
         # Baseline SV from cardiac index and BSA.
         co_0 = cfg.cardiac_index * patient.bsa
@@ -99,6 +102,7 @@ class HemodynamicModel:
         self.blood_volume = patient.estimate_blood_volume()
         self.blood_volume_0 = self.blood_volume
         self.hb_mass = self.baseline_hb * (self.blood_volume / 100.0)  # g
+        self.red_cell_volume_ml = self.baseline_hct * self.blood_volume
         self.hb_conc = self.baseline_hb
         # Hemorrhage depletes stressed volume first, lowering MCFP and preload.
         self.unstressed_volume = self.blood_volume * cfg.unstressed_volume_fraction
@@ -194,6 +198,7 @@ class HemodynamicModel:
             available = max(0.0, self.blood_volume - BLOOD_VOLUME_MIN)
             actual_loss = min(loss_ml, available)
             if actual_loss > 0:
+                self.red_cell_volume_ml *= 1.0 - actual_loss / self.blood_volume
                 self.blood_volume -= actual_loss
                 self.total_blood_out_ml += actual_loss
                 hb_loss = self.hb_conc * actual_loss / 100.0
@@ -203,9 +208,10 @@ class HemodynamicModel:
                 self.total_blood_in_ml += amount_ml
                 retained_ml = amount_ml * cfg.blood_retention_fraction
                 self.total_third_space_ml += max(0.0, amount_ml - retained_ml)
-                hct_ref = max(self.baseline_hct, 0.01)
-                hb_gain = self.baseline_hb * (hematocrit / hct_ref) * retained_ml / 100.0
-                self.hb_mass += hb_gain
+                donor_red_cells_ml = hematocrit * retained_ml
+                self.red_cell_volume_ml += donor_red_cells_ml
+                # Donor MCHC is independent of the recipient's Hb/Hct ratio.
+                self.hb_mass += donor_red_cells_ml * cfg.donor_mchc_g_dl / 100.0
             else:
                 is_colloid = (label == "colloid")
                 if is_colloid:
@@ -248,10 +254,7 @@ class HemodynamicModel:
         return max(0.0, self.blood_volume - self.unstressed_volume + recruited - pooling)
 
     def get_hematocrit(self) -> float:
-        if self.baseline_hb <= 0:
-            return self.baseline_hct
-        ratio = self.hb_conc / self.baseline_hb
-        return clamp(self.baseline_hct * ratio, 0.0, 0.7)
+        return clamp(self.red_cell_volume_ml / self.blood_volume, 0.0, 0.7)
 
     @staticmethod
     def calc_oxygen_content(hb_g_dl: float, sao2_frac: float, pao2: float) -> float:
@@ -620,10 +623,12 @@ class HemodynamicModel:
         alpha_occ = 1.0 - 1.0 / alpha_dr
         self._vagal_block = vagal = hill_function(max(0.0, ce_glyco), cfg.glyco_c50, cfg.glyco_gamma)
         resting_tone = 1.0 - cfg.sympathetic_anesthetic_depression * anesthetic_depth
-        # Shares of sympathetic reflex and stimulation responses left after block.
+        # Shares of sympathetic reflex and stimulation responses left after
+        # block; age reduces the HR share only.
         beta_response = 1.0 - cfg.beta_block_reflex * beta_occ
+        sympathetic_hr_response = beta_response * self._age_chronotropy
         alpha_response = 1.0 - alpha_occ
-        dist_hr *= beta_response
+        dist_hr *= sympathetic_hr_response
         dist_sv *= beta_response
         dist_svr *= alpha_response
         self._venous_tone = alpha_response
@@ -713,7 +718,7 @@ class HemodynamicModel:
         # Chemoreflex: hypercapnia raises HR and TPR; hypoxemia raises HR.
         e_co2 = max(0.0, (paco2 - cfg.paco2_set) / cfg.paco2_set)
         e_o2 = max(0.0, (cfg.pao2_set - pao2) / cfg.pao2_set)
-        chemo_hr_boost = (cfg.g_hr_co2 * e_co2 + cfg.g_hr_o2 * e_o2) * beta_response
+        chemo_hr_boost = (cfg.g_hr_co2 * e_co2 + cfg.g_hr_o2 * e_o2) * sympathetic_hr_response
         chemo_tpr_factor = 1.0 + cfg.k_tpr_co2 * e_co2
 
         # Fast baroreflex. Propofol depresses both limbs (Sato 2005). Anesthetic
@@ -721,9 +726,9 @@ class HemodynamicModel:
         # (Huang 2020); it counts in MAC equivalents for this reflex only.
         sensed_error = map_prev - self._stim_map - self._baro_setpoint
         if sensed_error > 0.0:
-            baro_gain = cfg.baro_gain_brady * (1.0 - vagal)
+            baro_gain = cfg.baro_gain_brady * (1.0 - vagal) * self._age_vagal_baroreflex
         else:
-            baro_gain = cfg.baro_gain_tachy * beta_response
+            baro_gain = cfg.baro_gain_tachy * sympathetic_hr_response
         reflex_depth = clamp01(anesthetic_depth + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT)
         baro_gain *= 1.0 - cfg.baro_anesthetic_depression * reflex_depth
         baro_hr = clamp(-baro_gain * sensed_error, -cfg.baro_max_hr_change, cfg.baro_max_hr_change)
@@ -743,7 +748,7 @@ class HemodynamicModel:
         # Anesthesia blunts the tachycardia as it does the cardiac baroreflex
         # (Ebert 1992; Sellgren 1994). The slower resistance response persists
         # under propofol-remifentanil (Kurita 2011).
-        hemorrhage_hr_mult = 1.0 + (hemorrhage_hr_mult - 1.0) * beta_response * (
+        hemorrhage_hr_mult = 1.0 + (hemorrhage_hr_mult - 1.0) * sympathetic_hr_response * (
             1.0 - cfg.baro_anesthetic_depression * anesthetic_depth
         )
         hemorrhage_tpr_mult = 1.0 + (hemorrhage_tpr_mult - 1.0) * alpha_response
@@ -804,7 +809,7 @@ class HemodynamicModel:
         )
         combined_delta_hr = (
             self._epi_chrono_effect + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr
-            + (cfg.ketamine_emax_hr * ketamine * beta_response - cfg.beta_block_hr * beta_occ * resting_tone)
+            + (cfg.ketamine_emax_hr * ketamine * sympathetic_hr_response - cfg.beta_block_hr * beta_occ * resting_tone)
             * self.hr_star
             + cfg.glyco_emax_hr * vagal
         )

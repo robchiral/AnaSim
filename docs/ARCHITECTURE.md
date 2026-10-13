@@ -71,9 +71,7 @@ within their source cohorts.
 
 [Model references](REFERENCES.md) lists the source studies. Simulator
 calibrations define combined drug responses, reflexes, and volume and airway
-effects. Tests check equations, conservation, and clinical responses; they do
-not establish accuracy for
-individual patients.
+effects.
 
 ### Hemodynamics
 
@@ -99,12 +97,19 @@ adrenergic sensitivity.
 Blood loss lowers filling pressure and preload; reflex venoconstriction partly
 compensates. Awake responses to 1 L in 333 mL steps match Johnson 2014.
 Anesthesia blunts hemorrhage tachycardia as it does the cardiac baroreflex
-(Ebert 1992; Sellgren 1994). Crystalloid retains 30% of infused volume in
-blood and albumin 80%. The remaining volume enters an interstitial pool that can refill blood-volume
-deficits. Urine output depends on pressure, volume expansion, renal function,
-and anesthetic state. Elevated left atrial pressure increases lung water, shunt,
-and stiffness. Positive end-expiratory pressure (PEEP) can recruit affected lung
-units. These volume responses use simulator calibrations.
+(Ebert 1992; Sellgren 1994). Reflex tachycardia and cardiovagal baroreflex gain
+fall with age while vascular responses are preserved (Laitinen 2004; Monahan
+2007); the coefficients are simulator estimates, and applying them to
+hemorrhage and stimulation is an assumption.
+
+Crystalloid retains 30% of infused volume in blood and albumin 80%. The
+remaining volume enters an interstitial pool that can refill blood-volume
+deficits. Transfused red cells carry donor hemoglobin (33.3 g/dL of cells)
+whatever the recipient's Hb/Hct ratio. Urine output depends on pressure, volume
+expansion, renal function, and anesthetic state. Elevated left atrial pressure
+increases lung water, shunt, and stiffness. Positive end-expiratory pressure
+(PEEP) can recruit affected lung units. These volume responses use simulator
+calibrations.
 
 With `end_on_cardiac_arrest=True`, MAP below 20 mmHg or heart rate below 10 bpm
 for 15 seconds ends the session.
@@ -119,7 +124,7 @@ responsiveness, and breathing.
 | Propofol PK | Eleveld 2018 arterial model with the opioid-regimen covariate |
 | Remifentanil PK | Eleveld 2017 arterial model |
 | Baseline BIS | Eleveld 2018 curve with age-dependent potency and processing delay |
-| Clinical response and laryngoscopy tolerance | Bouillon 2004 Bayesian hierarchy |
+| Clinical response and laryngoscopy tolerance | Bouillon 2004 Bayesian hierarchy with Eleveld's age term for propofol |
 | Ventilatory depression | Bouillon 2004 propofol curve with Olofsen 2010 opioid and CO₂ control |
 
 Propofol and sevoflurane determine baseline BIS. Opioids blunt
@@ -129,22 +134,21 @@ probability of no response to laryngoscopy. Sevoflurane thresholds follow
 Kuizenga 2019 and Hannivoort 2016 in age-adjusted minimum alveolar concentration
 (MAC).
 
-Applying Bouillon's individual concentration estimates to Eleveld population
-concentrations, selecting clinical effect-site timing, and extending the
-hierarchy to sevoflurane are modeling assumptions. BIS arousal and adjunct drug
-combinations use simulator calibrations. Fentanyl contributes a remifentanil
-equivalent; etomidate and midazolam contribute propofol equivalents, with
-midazolam-propofol synergy. Nitrous oxide and ketamine affect clinical
-responsiveness; ketamine and lidocaine also blunt stimulation responses.
+Applying Bouillon's individual concentration estimates and Eleveld's BIS age
+term to Eleveld population concentrations, selecting clinical effect-site
+timing, and extending the hierarchy to sevoflurane are modeling assumptions.
+BIS arousal and adjunct drug combinations use simulator calibrations. Fentanyl
+contributes a remifentanil equivalent; etomidate and midazolam contribute
+propofol equivalents at the patient's propofol potency, with midazolam-propofol
+synergy. Nitrous oxide and ketamine affect clinical responsiveness; ketamine
+and lidocaine also blunt stimulation responses.
 
-Ketamine uses a separate cardiovascular effect site with a 2.28 min
-equilibration half-time (Kamp 2021). It raises HR and cardiac output with SV
-and SVR unchanged, calibrated to Tweed 1972. At anesthetic concentrations it
-depresses the baroreflex like other anesthetics (Akine 2001), but analgesic
-doses do not (Huang 2020). The model represents total ketamine without separate
-enantiomers or metabolites. Lidocaine reduces stimulation-related BIS and
-cardiovascular responses without a baseline hypnotic effect (Hans 2010); its
-response coefficient is a simulator estimate.
+Ketamine has a separate cardiovascular effect site (Kamp 2021) and raises HR
+and cardiac output with SVR unchanged (Tweed 1972). Anesthetic concentrations
+depress the baroreflex (Akine 2001); analgesic doses do not (Huang 2020).
+Enantiomers and metabolites are not modeled. Lidocaine reduces
+stimulation-related BIS and cardiovascular responses without a baseline
+hypnotic effect (Hans 2010); its response coefficient is a simulator estimate.
 
 The [neuromuscular model](../anasim/patient/pd/nmba.py) uses Kleijn 2011 with
 age, weight, and estimated creatinine clearance covariates. Sugammadex binds
@@ -260,19 +264,17 @@ Intravenous drugs use a central compartment, up to two peripheral compartments,
 and endpoint-specific effect sites. The vascular part of the central volume, up
 to the baseline blood volume, changes with blood volume while preserving drug
 amount. Renal clearance follows renal perfusion, the same MAP curve as urine
-output. Other clearances scale with cardiac output by drug-specific exponents.
-Propofol, remifentanil, norepinephrine, and epinephrine use population clearances
-at normal blood volume. Blood loss lowers propofol elimination and distribution
-clearances and remifentanil elimination clearance (Johnson 2001, 2003).
-Volume replacement restores these PK parameters. This scaling uses swine data;
-it does not distinguish compensated and uncompensated shock or model persistent
-propofol sensitivity after resuscitation (Kurita 2011; Johnson 2004).
+output. Other clearances scale with cardiac output by drug-specific exponents,
+except propofol, remifentanil, norepinephrine, and epinephrine, which use
+population clearances. Blood loss lowers propofol clearances and remifentanil
+elimination clearance, and volume replacement restores them (Johnson 2001,
+2003, 2004). This scaling uses swine data, does not distinguish compensated
+from uncompensated shock, and does not model persistent propofol sensitivity
+after resuscitation (Kurita 2011).
 
-Midazolam reduces propofol elimination and distribution clearances (Vuyk 2009).
-Propofol reduces midazolam central volume, elimination clearance, and fast
-distribution clearance (Lichtenbelt 2010). Covariate calculations cap midazolam
-at 225 ng/mL and propofol at 1.2 mcg/mL. Applying these interaction coefficients
-to Eleveld propofol and Albrecht midazolam is a modeling assumption.
+Midazolam and propofol reduce each other's clearances (Vuyk 2009; Lichtenbelt
+2010), with covariates capped at the studied concentrations. Applying these
+coefficients to Eleveld propofol and Albrecht midazolam is an assumption.
 
 TCI uses current PK parameters and concentrations to predict exposure over
 10 minutes. Rates update at a nominal 10-second interval within pump limits.
@@ -290,11 +292,9 @@ core heat to the periphery. Core temperature falls about 1.6 °C in the first
 hour and 2.8 °C by 3 hours (Matsukawa 1995). Stimulation-related BIS arousal
 scales with the probability of responding to laryngoscopy. HR and MAP responses
 use stronger Bouillon stimulus intensities, fitted to the remifentanil
-concentrations that blunted them in half of patients at intubation and skin
-incision (Albertin 2005). Without opioid, intubation raises HR about 36 bpm and
-MAP 35-40 mmHg (Ebert 1992; Ebert 1995); the response peaks within a minute and
-resolves over about 5 minutes. Laryngospasm can follow only the first 40 s of
-laryngoscopy.
+concentrations that blunted them in half of patients (Albertin 2005), and
+resolve over about 5 minutes (Ebert 1992; Ebert 1995). Laryngospasm can follow
+only the first 40 s of laryngoscopy.
 
 ## Browser app
 

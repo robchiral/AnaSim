@@ -19,6 +19,9 @@ FENTANYL_REMI_POTENCY = 1.37 / 1.67
 # equals the Bouillon Bayesian shaking/shouting Ce50 of 3.21 mcg/mL, and
 # half the maximum. AnaSim calibrates the maximum.
 PROPOFOL_LOSS_OF_RESPONSE = 6.68 * 0.48
+# Eleveld 2018 BIS Ce50 falls 0.63% per year from age 35. Applying it to
+# Bouillon's clinical Ce50s (median age 33.5) is an assumption.
+PROPOFOL_AGE_SLOPE = -0.00634837
 MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT = 2.0 * PROPOFOL_LOSS_OF_RESPONSE
 # Short 1992: midazolam with propofol needs 37% less than additive doses for
 # hypnosis, an interaction coefficient of 3.7 at equal shares. The propofol
@@ -59,8 +62,13 @@ N2O_SEVO_AWAKE_INTERACTION = 0.135 * (11.06 / 0.1677) / 16.653
 
 
 def midazolam_loss_of_response(age: float) -> float:
-    """Midazolam Ce (ng/mL) for loss of response, falling 1.9% per year (Albrecht 1999)."""
-    return 499.0 * math.exp(-0.0189 * (age - 26.0))
+    """Midazolam Ce (ng/mL) for loss of response, log-linear in age (Albrecht 1999)."""
+    return 499.0 * (210.0 / 499.0) ** ((age - 26.0) / 45.0)
+
+
+def propofol_age_factor(age: float) -> float:
+    """Propofol Ce50 relative to age 35."""
+    return math.exp(PROPOFOL_AGE_SLOPE * (age - 35.0))
 
 
 def hypnotic_equivalent(
@@ -68,19 +76,24 @@ def hypnotic_equivalent(
     ce_etomidate: float,
     ce_midazolam: float,
     midazolam_c50: float,
+    age_factor: float = 1.0,
     ventilation: bool = False,
 ) -> float:
     """Propofol-equivalent Ce (mcg/mL) of propofol, etomidate, and midazolam (ng/mL).
 
-    With `ventilation`, etomidate uses its separate respiratory conversion.
+    Etomidate and midazolam convert at the patient's propofol potency
+    (`age_factor`), so they keep only their own age effects (Arden 1986;
+    Albrecht 1999). With `ventilation`, etomidate uses its separate
+    respiratory conversion.
     """
-    etomidate = max(0.0, ce_etomidate) * PROPOFOL_LOSS_OF_RESPONSE / ETOMIDATE_LOSS_OF_RESPONSE
+    loss_of_response = PROPOFOL_LOSS_OF_RESPONSE * age_factor
+    etomidate = max(0.0, ce_etomidate) * loss_of_response / ETOMIDATE_LOSS_OF_RESPONSE
     if ventilation:
         etomidate = max(0.0, ce_etomidate) * ETOMIDATE_RESPIRATORY_PROPOFOL_RATIO
     ce_prop = max(0.0, ce_prop) + etomidate
     ce_midazolam = max(0.0, ce_midazolam)
-    midazolam = MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT * ce_midazolam / (ce_midazolam + midazolam_c50)
-    propofol_share = min(ce_prop / PROPOFOL_LOSS_OF_RESPONSE, 1.0)
+    midazolam = MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT * age_factor * ce_midazolam / (ce_midazolam + midazolam_c50)
+    propofol_share = min(ce_prop / loss_of_response, 1.0)
     return ce_prop + midazolam * (1.0 + MIDAZOLAM_PROPOFOL_SYNERGY * propofol_share)
 
 
@@ -97,7 +110,7 @@ class BISModel:
     """
 
     def __init__(self, patient: Patient):
-        self.c50 = 3.079446890954557 * math.exp(-0.00634837 * (patient.age - 35.0))
+        self.c50 = 3.079446890954557 * propofol_age_factor(patient.age)
         self.baseline = 92.9824
         self.gamma_above = 1.4736185873429664
         self.gamma_below = 1.8939053122841638
@@ -136,13 +149,14 @@ class ClinicalResponseModel:
     """Bouillon 2004 Bayesian hierarchy for shaking/shouting and laryngoscopy.
 
     Propofol and remifentanil inputs represent clinical effect-site concentrations.
-    Their transfer to Eleveld PK is an assumption. Sevoflurane potency is anchored
-    to Kuizenga 2019 shaking/shouting and Hannivoort 2016 laryngoscopy; the
-    combined volatile surface and shared slope are simulator approximations.
+    Their transfer to Eleveld PK is an assumption. Propofol potency follows
+    Eleveld's BIS age term. Sevoflurane potency is anchored to Kuizenga 2019
+    shaking/shouting and Hannivoort 2016 laryngoscopy; the combined volatile
+    surface and shared slope are simulator approximations.
     """
 
-    def __init__(self):
-        self.c50_prop = 6.68
+    def __init__(self, age: float = 35.0):
+        self.c50_prop = 6.68 * propofol_age_factor(age)
         self.c50_remi = 1.01
         self.gamma_prop = 6.9
         self.gamma_remi = 0.72
@@ -190,5 +204,5 @@ class ClinicalResponseModel:
 
 __all__ = [
     "LARYNGOSCOPY_INTENSITY", "BISModel", "ClinicalResponseModel", "hypnotic_equivalent",
-    "midazolam_loss_of_response", "opioid_equivalent",
+    "midazolam_loss_of_response", "opioid_equivalent", "propofol_age_factor",
 ]

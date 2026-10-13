@@ -2,50 +2,46 @@
 
 ## Unreleased
 
+- Reduced reflex tachycardia and cardiovagal baroreflex gain with age.
+- Applied Eleveld's age term to propofol loss of response and laryngoscopy
+  tolerance, matching BIS. Midazolam and etomidate keep only their own age effects.
+- Tracked red-cell volume separately from hemoglobin, so transfused hemoglobin
+  no longer depends on the recipient's Hb/Hct ratio.
 - Limited atelectatic shunt to about 10% of cardiac output; lost aeration still
-  lowers lung volume and compliance. Open-airway apnea after 100, 80, and 60%
-  O₂ matches Edmark 2003.
-- Separated HR and MAP responses to stimulation from movement tolerance, using
-  the remifentanil concentrations that blunt them (Albertin 2005), so surgery
-  raises MAP and HR during maintenance. Without opioid, intubation raises HR
-  36 bpm and MAP 35-40 mmHg for about 5 minutes (Ebert 1992, 1995);
-  laryngospasm follows only the first 40 s.
-- Placed the anesthetized apneic threshold 4.5 mmHg below the resting PaCO₂
-  set by the drugs (Hickey 1971), so balanced maintenance no longer breathes
-  over VCV.
-- Blunted hemorrhage tachycardia under anesthesia as for the cardiac baroreflex.
-- Held the pharynx open by mean pressure over recent breaths during mask
+  lowers lung volume and compliance.
+- Separated HR and MAP responses to stimulation from movement tolerance, so
+  surgery raises MAP and HR during maintenance and opioids blunt the intubation
+  response. Laryngospasm can follow only the first 40 s of laryngoscopy.
+- Placed the apneic threshold below the resting PaCO₂ set by the drugs, so
+  patients no longer breathe over VCV during balanced maintenance.
+- Blunted hemorrhage tachycardia under anesthesia.
+- Held the pharynx open by mean airway pressure over recent breaths during mask
   ventilation, so obstruction no longer alternates with unassisted breaths.
 - Required MAP 20% below its crisis-start value for shock recognition in the
   hemorrhage and sepsis scenarios.
-- Set the baseline A-a gradient to sea-level means by age (Crapo 1999) and
-  rejected negative or non-finite hemorrhage rates.
+- Set the baseline A-a gradient to sea-level means by age.
+- Rejected negative or non-finite hemorrhage rates.
 - Corrected sevoflurane cardiovascular equilibration, pulmonary transit delays,
   and CO₂ washout across time steps.
 - Isolated alarm flags in returned state copies from the live simulation.
 - Restricted rocuronium target-controlled infusion (TCI) to free plasma targets.
   Decay predictions include neuromuscular kinetics, sugammadex, and inhaled agents.
-- Corrected gas exchange and maintenance tidal volumes for body size. Oxygen
-  consumption scales with weight^0.75, CO₂ production sets alveolar CO₂, and
-  dead space follows predicted body weight. `baseline_vt` defaults to the volume
-  that holds resting PaCO₂ at 40 mmHg.
-- Applied the continuous sevoflurane-nitrous oxide interaction at awakening and
-  included nitrous oxide in laryngoscopy tolerance.
+- Scaled oxygen consumption, CO₂ production, and dead space with body size.
+  `baseline_vt` defaults to the volume that holds resting PaCO₂ at 40 mmHg.
+- Applied the sevoflurane-nitrous oxide interaction at awakening and included
+  nitrous oxide in laryngoscopy tolerance.
 - Limited blood-volume scaling to the vascular part of each drug's central
   volume. Renal clearance of milrinone, glycopyrrolate, and rocuronium follows
   renal perfusion.
-- Updated pharmacokinetic (PK) covariates on 0.1% hemodynamic changes and
+- Updated pharmacokinetic (PK) covariates after small hemodynamic changes and
   resynchronized active TCI controllers. `get_predicted_csht` accepts any registry drug.
-- Replaced rocuronium and sugammadex PK/PD with Kleijn 2011's integrated model
-  and set rocuronium's renal clearance share to 20%.
-- Added blood-loss scaling of propofol clearances and remifentanil elimination
-  clearance, reversed by volume restoration.
-- Added reciprocal propofol-midazolam PK covariates with drug mass conservation
-  and TCI resynchronization.
+- Replaced rocuronium and sugammadex PK/PD with Kleijn 2011's integrated model.
+- Reduced propofol and remifentanil clearances with blood loss, reversed by
+  volume restoration.
+- Added reciprocal propofol-midazolam PK interactions.
 - Recalibrated ketamine to raise HR and cardiac output about 30% with SVR
-  unchanged (Tweed 1972), added a separate effect site with a 2.28 min
-  equilibration half-time, and included ketamine in laryngoscopy tolerance.
-  Anesthetic ketamine concentrations depress the baroreflex (Akine 2001).
+  unchanged, added a separate cardiovascular effect site, and included ketamine
+  in laryngoscopy tolerance and baroreflex depression.
 - Added passive lung-gas refill after relief of complete obstruction during
   apnea, with oxygen drawn from the breathing circuit.
 - Stabilized awake core temperature, aligned thermoregulatory vasoconstriction
@@ -67,11 +63,9 @@
 - Fixed norepinephrine to Li PK with propofol-dependent clearance and responses
   calibrated to de Keijzer and Joachim data. Removed additional cardiac-output scaling.
 - Fixed epinephrine to Ensinger arterial clearance with adult infusion and
-  bolus calibration. Delayed beta-2 vasodilation and limited the alpha response
-  to reduce early pressure dips and large-bolus pressure clipping.
-- Adopted Bouillon propofol depression and an Olofsen signed opioid/CO₂
-  controller with nonlinear CO₂ feedback. Corrected depression to act on
-  alveolar ventilation and updated maintenance starts and walkthroughs.
+  bolus calibration, reducing early pressure dips and large-bolus clipping.
+- Adopted Bouillon propofol and Olofsen opioid ventilatory depression, acting
+  on alveolar ventilation.
 - Corrected ongoing CO₂ accumulation during apnea, including a zero baseline
   respiratory rate.
 - Preserved inspiratory effort and impedance respiratory rate during
@@ -82,8 +76,7 @@
 - Derived intrathoracic pressure from resolved airway pressure and muscle
   effort, removing offsets that exaggerated venous return.
 - Matched TCI prediction pulses to rate-update intervals. Norepinephrine TCI
-  uses live PK, endogenous secretion, and propofol-dependent clearance;
-  maintenance starts seed the corresponding endogenous concentration.
+  accounts for endogenous secretion and propofol-dependent clearance.
 - Initialized hemodynamic turnover and fast drug responses together to
   preserve pressure and cardiac output at maintenance startup.
 - Revised urine output to preserve most basal output at mean arterial pressure

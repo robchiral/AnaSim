@@ -508,7 +508,7 @@ class LidocainePK(MammillaryPK):
 class RocuroniumPK(MammillaryPK):
     """Kleijn 2011 two-compartment population PK (446 subjects, 1-91 years).
 
-    Clearance falls 0.68% per year above 43, V1 falls with creatinine
+    Clearance falls 0.68% per year of age from 43, V1 falls with creatinine
     clearance, and V2 rises with age. Of six rocuronium models, this one and
     Magorian's predicted measured concentrations within accepted limits
     (Sasakawa 2016); clearance at 65-88 years was 25% lower (Varrique 2016).

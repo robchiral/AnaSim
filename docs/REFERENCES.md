@@ -29,6 +29,8 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Sato et al. (2005). *Br J Anaesth*. [Baroreflex during propofol infusion](https://pubmed.ncbi.nlm.nih.gov/15722386/).
 - Ebert et al. (1992). *Anesthesiology*. [Sympathetic responses and baroreflexes during propofol induction](https://pubmed.ncbi.nlm.nih.gov/1575340/).
 - Sellgren et al. (1994). *Anesthesiology*. [Sympathetic nerve activity and baroreflexes during propofol anesthesia](https://pubmed.ncbi.nlm.nih.gov/8141450/).
+- Laitinen et al. (2004). *J Appl Physiol*. [Age and autonomic responses to head-up tilt](https://pubmed.ncbi.nlm.nih.gov/14766788/).
+- Monahan (2007). *Am J Physiol Regul Integr Comp Physiol*. [Aging and baroreflex function](https://pubmed.ncbi.nlm.nih.gov/17442786/).
 - Ebert et al. (1995). *Anesthesiology*. [Sympathetic and hemodynamic responses to sevoflurane and intubation](https://pubmed.ncbi.nlm.nih.gov/7605024/).
 - Johnson et al. (2014). *J Appl Physiol*. [Hemodynamic responses to graded blood loss in awake humans](https://pubmed.ncbi.nlm.nih.gov/24876357/).
 - Umehara et al. (2006). *Anesth Analg*. [Sevoflurane and baroreflex sensitivity](https://pubmed.ncbi.nlm.nih.gov/16368802/).

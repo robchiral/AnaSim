@@ -41,6 +41,41 @@ def test_urine_output_tapers_with_pressure_and_preserves_fluid_balance(renal_fun
     assert rates[3] == rates[4] == pytest.approx(0.5 * renal_function)
 
 
+@pytest.mark.parametrize(("hematocrit", "dt"), [(0.24, 1.0), (0.32, 0.1)])
+def test_transfusion_preserves_donor_cells_and_hemoglobin(
+    engine_factory, advance_time, hematocrit, dt,
+):
+    """The same PRBC unit adds the same Hb to normochromic and hypochromic anemia.
+
+    Hemorrhage removes both red cells and Hb; crystalloid and urine change
+    their concentrations without changing their amounts.
+    """
+    engine = engine_factory(start=True, baseline_hb=8.0, baseline_hct=hematocrit)
+    engine.set_continuous_fluid_rate(0.0)
+    model = engine.hemo
+    remaining_volume = model.blood_volume - 1000.0
+    expected_hb_g = 8.0 * remaining_volume / 100.0
+    expected_cells_ml = hematocrit * remaining_volume
+    model.add_volume(-1000.0)
+
+    engine.give_blood(300.0, hematocrit=0.55)
+    engine.give_fluid(500.0)
+    advance_time(engine, 300.0, dt=dt)
+    expected_hb_g += 55.0  # 300 mL at Hct 0.55 and donor MCHC 33.33 g/dL.
+    expected_cells_ml += 165.0
+    assert model.total_blood_in_ml == pytest.approx(300.0)
+    assert engine.state.hb_g_dl * engine.state.blood_volume / 100.0 == pytest.approx(expected_hb_g)
+    assert engine.state.hct * engine.state.blood_volume == pytest.approx(expected_cells_ml)
+    assert model.total_urine_out_ml > 0.0
+
+    # Subsequent bleeding removes the mixed donor and recipient cells.
+    remaining_fraction = 1.0 - 300.0 / model.blood_volume
+    model.add_volume(-300.0)
+    advance_time(engine, 10.0, dt=dt)
+    assert engine.state.hb_g_dl * engine.state.blood_volume / 100.0 == pytest.approx(expected_hb_g * remaining_fraction)
+    assert engine.state.hct * engine.state.blood_volume == pytest.approx(expected_cells_ml * remaining_fraction)
+
+
 @pytest.mark.parametrize(
     ("propofol", "remifentanil", "expected"),
     [

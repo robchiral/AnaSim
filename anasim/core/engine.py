@@ -26,6 +26,7 @@ from anasim.patient.pd import (
     ClinicalResponseModel,
     TOFModel,
     midazolam_loss_of_response,
+    propofol_age_factor,
 )
 from anasim.patient.pk_models import NorepinephrinePK
 from anasim.patient.volatile_pk import VolatilePK
@@ -187,6 +188,7 @@ class SimulationEngine(DrugControllerMixin):
         # Intravenous drug PK, keyed like the drug registry.
         self.pk = {spec.key: spec.pk_model(self.patient, self.config) for spec in DRUG_REGISTRY}
         self.midazolam_c50 = midazolam_loss_of_response(self.patient.age)
+        self.propofol_age_factor = propofol_age_factor(self.patient.age)
 
         self.circuit = CircleSystem()
         self.vent = AnesthesiaVentilator()
@@ -223,7 +225,7 @@ class SimulationEngine(DrugControllerMixin):
         self.bis = BISModel(self.patient)
         self.capno = Capnograph(self.resp.vd_deadspace)
         self.airway_sensor = AirwaySensor()
-        self.response = ClinicalResponseModel()
+        self.response = ClinicalResponseModel(self.patient.age)
         self.tof_pd = TOFModel(self.patient)
 
         self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)

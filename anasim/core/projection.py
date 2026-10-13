@@ -126,10 +126,11 @@ def sync_pk_state(engine: SimulationEngine) -> None:
         engine.pk["etomidate"].state.ce,
         engine.pk["midazolam"].state.ce,
         engine.midazolam_c50,
+        engine.propofol_age_factor,
     ))
     state.hypnotic_response_ce = float(hypnotic_equivalent(
         engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
-        engine.pk["midazolam"].state.ce, engine.midazolam_c50,
+        engine.pk["midazolam"].state.ce, engine.midazolam_c50, engine.propofol_age_factor,
     ))
 
 
