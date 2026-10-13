@@ -1,9 +1,10 @@
 """Epinephrine calibration against published cohort responses.
 
-Infusion: Freyschuss 1986 (arterial samples, basal 0.27 nmol/L). The PK model
-holds exogenous drug only, so targets are increments above basal converted with
-1 nmol/L = 0.1832 ng/mL. Bolus: Takahashi 2002, 5-15 mcg IV under propofol.
-Tolerances are 1.5 reported SD for peaks and approximate for timing.
+Infusion: Freyschuss 1986 (arterial samples, basal 0.27 nmol/L, mean age 24).
+The PK model holds exogenous drug only, so targets are increments above basal
+converted with 1 nmol/L = 0.1832 ng/mL. Bolus: Takahashi 2002, 5-15 mcg IV under
+propofol (mean age 32). Tolerances are 1.5 reported SD for peaks and approximate
+for timing.
 """
 
 import itertools
@@ -28,7 +29,7 @@ def _step(model, ce=0.0, *, dt=1.0, propofol=0.0, mac=0.0):
 
 def test_freyschuss_arterial_infusion_steps():
     """Three 15-min steps, sampled at 12 min; baseline 0.27 nmol/L is endogenous."""
-    patient = Patient(age=25, weight=70, height=178, baseline_hr=60, baseline_map=91)
+    patient = Patient(age=24, weight=70, height=178, baseline_hr=60, baseline_map=91)
     model = HemodynamicModel(patient)
     base = _step(model, dt=0.0)
     measurements = []
@@ -54,7 +55,7 @@ def test_freyschuss_arterial_infusion_steps():
 
 
 def _bolus_response(dose, *, dt=0.2, mac=0.0, baroreflex=True):
-    patient = Patient(age=40, weight=56, height=160, sex="female")
+    patient = Patient(age=32, weight=56, height=160, sex="female")
     config = HemodynamicConfig()
     if not baroreflex:
         config = replace(config, fb=0.0, baro_gain_brady=0.0, baro_gain_tachy=0.0)
@@ -100,7 +101,7 @@ def test_bolus_timing_converges_and_late_dip_requires_feedback():
     coarse = _bolus_response(10, dt=0.5)
     assert coarse[:2] == pytest.approx(fine[:2], abs=0.6)
     assert coarse[2:4] == pytest.approx(fine[2:4], abs=2.0)
-    assert _bolus_response(10, baroreflex=False)[4] > fine[4] + 1.0
+    assert _bolus_response(10, baroreflex=False)[4] > 0.0 > fine[4]
 
 
 def test_bolus_has_no_large_initial_pressure_dip_or_large_dose_clipping():
@@ -143,3 +144,28 @@ def test_inotropy_is_applied_once():
     coupling = 1 - config.hr_sv_coupling * math.log(max(1.0, state.hr / model.base_hr))
     assert state.sv / base.sv / coupling == pytest.approx(factor, rel=0.001)
     assert state.sv_star == pytest.approx(base.sv_star, rel=0.001)
+
+
+def test_age_blunts_bolus_but_not_infusion_tachycardia(engine_factory):
+    """Leenen 2005: infusions raised HR equally at 29 and 61 years, as a smaller
+    beta response offset weaker baroreflex buffering. Guinard 1995: 10 mcg IV
+    raised HR 40 bpm before age 40 and 28-29 bpm after.
+    """
+    infusion, bolus = {}, {}
+    for age in (29, 65):
+        engine = engine_factory(start=True, age=age)
+        base = engine.state.hr
+        engine.set_drug_rate("epi", 0.12 * engine.patient.weight)  # 120 ng/kg/min
+        for _ in range(600):
+            engine.step(1.0)
+        infusion[age] = engine.state.hr - base
+
+        engine = engine_factory(start=True, age=age)
+        base = peak = engine.state.hr
+        engine.give_drug_bolus("epi", 10.0)
+        for _ in range(1200):
+            engine.step(0.1)
+            peak = max(peak, engine.state.hr)
+        bolus[age] = peak - base
+    assert infusion[65] == pytest.approx(infusion[29], rel=0.15)
+    assert 0.65 < bolus[65] / bolus[29] < 0.95

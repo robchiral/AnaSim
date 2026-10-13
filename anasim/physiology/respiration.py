@@ -127,9 +127,8 @@ class RespiratoryModel:
         # Mean sea-level A-a gradient, -4.4 + 0.261 x age mmHg (Crapo 1999).
         self.aa_grad_base = max(5.0, -4.404 + 0.261 * self.patient.age)
         self.equilibrate_oxygen(0.21)
-        self._p50 = 26.6
-        self._n_hill = 2.7
-        self._p50_pow = self._p50 ** self._n_hill
+        self._blood_temp_c = patient.baseline_temp
+        self._p50 = self._temperature_p50(patient.baseline_temp)
         self._apnea_timer = 0.0
         self._resting_pco2: float | None = None
         self._resting_age_s = 0.0
@@ -169,31 +168,64 @@ class RespiratoryModel:
         """
         if oxygen_l <= 1e-9:
             return
+        target = self._oxygen_store(
+            self.state.p_alveolar_o2, hb, blood_volume_ml, cardiac_output, vo2_l_min, vq_mismatch,
+        )[0] + oxygen_l
+        self.state.p_alveolar_o2 = self._pressure_from_oxygen_store(
+            target, hb, blood_volume_ml, cardiac_output, vo2_l_min, vq_mismatch,
+        )
+
+    def _oxygen_store(
+        self, pressure: float, hb: float, blood_volume_ml: float,
+        cardiac_output: float, vo2_l_min: float, vq_mismatch: float,
+    ) -> tuple[float, float]:
+        """O2 store (STPD L) and its derivative with respect to alveolar PO2."""
         gas_capacity = self.frc * self._gas_capacity_per_l
         blood_dl_to_l = blood_volume_ml / 100000.0
-        aa_gap = self._aa_gradient(vq_mismatch)
+        cap_pressure = max(0.0, pressure - self._aa_gradient(vq_mismatch))
+        content = 1.34 * hb * self._saturation(cap_pressure) + 0.0031 * cap_pressure
+        derivative = (
+            1.34 * hb * self._saturation_derivative(cap_pressure) + 0.0031
+        ) if cap_pressure > 0.0 else 0.0
         shunt = self.shunt_fraction
         extraction = 100.0 * vo2_l_min / max(0.1, cardiac_output)
+        if extraction >= (1.0 - shunt) * content:
+            arterial_content = (1.0 - shunt) * content
+            derivative *= 1.0 - shunt
+        else:
+            arterial_content = content - shunt / (1.0 - shunt) * extraction
+        return (
+            gas_capacity * pressure + blood_dl_to_l * arterial_content,
+            gas_capacity + blood_dl_to_l * derivative,
+        )
 
-        def store(pressure: float) -> float:
-            cap_pressure = max(0.0, pressure - aa_gap)
-            content = 1.34 * hb * self._saturation(cap_pressure) + 0.0031 * cap_pressure
-            arterial_content = max((1.0 - shunt) * content, content - shunt / (1.0 - shunt) * extraction)
-            return gas_capacity * pressure + blood_dl_to_l * arterial_content
-
-        lower = self.state.p_alveolar_o2
-        upper = max(lower, self._atm_dry - self.state.p_alveolar_co2)
-        target = store(lower) + oxygen_l
-        if target >= store(upper):
-            self.state.p_alveolar_o2 = upper
-            return
+    def _pressure_from_oxygen_store(
+        self, target: float, hb: float, blood_volume_ml: float,
+        cardiac_output: float, vo2_l_min: float, vq_mismatch: float,
+    ) -> float:
+        """Invert the nonlinear O2 content with a bracketed Newton solve."""
+        lower, upper = 0.0, max(0.0, self._atm_dry - self.state.p_alveolar_co2)
+        if target <= 0.0:
+            return lower
+        if target >= self._oxygen_store(
+            upper, hb, blood_volume_ml, cardiac_output, vo2_l_min, vq_mismatch,
+        )[0]:
+            return upper
+        pressure = clamp(self.state.p_alveolar_o2, lower, upper)
         for _ in range(24):
-            pressure = (lower + upper) / 2.0
-            if store(pressure) < target:
-                lower = pressure
-            else:
+            content, derivative = self._oxygen_store(
+                pressure, hb, blood_volume_ml, cardiac_output, vo2_l_min, vq_mismatch,
+            )
+            residual = content - target
+            if abs(residual) < 1e-10:
+                return pressure
+            if residual > 0.0:
                 upper = pressure
-        self.state.p_alveolar_o2 = (lower + upper) / 2.0
+            else:
+                lower = pressure
+            candidate = pressure - residual / derivative
+            pressure = candidate if lower < candidate < upper else 0.5 * (lower + upper)
+        return pressure
 
     def oxygen_exchange_l_min(
         self, fio2: float, alveolar_ventilation: float, metabolic_factor: float,
@@ -222,7 +254,7 @@ class RespiratoryModel:
              blood_volume_ml: float | None = None,
              measured_breaths: bool = False,
              unconscious: float = 0.0, lung_volume_l: float | None = None,
-             shunt_fraction: float = 0.0) -> RespState:
+             shunt_fraction: float = 0.0, temp_c: float = 37.0) -> RespState:
         """Advance respiration by dt seconds.
 
         Args:
@@ -246,6 +278,7 @@ class RespiratoryModel:
             unconscious: Probability of loss of consciousness, 0-1.
             lung_volume_l: Measured end-expiratory gas volume, L.
             shunt_fraction: Perfusion through closed lung units, 0-1.
+            temp_c: Blood temperature for hemoglobin O2 affinity, degrees C.
         """
         state = self.state
         old_gas_pressure = state.p_alveolar_o2 + state.p_alveolar_co2
@@ -391,14 +424,27 @@ class RespiratoryModel:
         # During apnea a patent airway draws gas in to replace absorbed O2
         # (apneic oxygenation).
         vo2 = self.vco2 * metabolic_factor / self.rq / 1000.0  # L/min, same uptake as the circuit
+        hb = self.baseline_hb if hb_g_dl is None else max(0.0, hb_g_dl)
+        blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else max(0.0, blood_volume_ml)
+        if temp_c != self._blood_temp_c:
+            # Redistribute existing O2 between lung gas and blood at the new affinity.
+            stored = self._oxygen_store(
+                state.p_alveolar_o2, hb, blood_volume, cardiac_output, vo2, vq_mismatch,
+            )[0]
+            self._blood_temp_c = temp_c
+            self._p50 = self._temperature_p50(temp_c)
+            state.p_alveolar_o2 = self._pressure_from_oxygen_store(
+                stored, hb, blood_volume, cardiac_output, vo2, vq_mismatch,
+            )
+            cap_pressure = max(0.0, state.p_alveolar_o2 - self._aa_gradient(vq_mismatch))
+            state.p_arterial_o2 = self._arterial_po2(
+                cap_pressure, hb, cardiac_output, vo2, state.p_arterial_o2,
+            )
         refill_l_min = self._passive_refill_l_min(airway_patency, dt)
         o2_flux = self.oxygen_exchange_l_min(
             fio2, total_va_l_min, metabolic_factor, airway_patency, vq_mismatch, dt,
         ) - vo2 - refill_l_min * fio2
-        sat = self._saturation(state.p_arterial_o2)
-        dsat_dpo2 = self._n_hill * sat * (1.0 - sat) / max(state.p_arterial_o2, 1.0)
-        hb = self.baseline_hb if hb_g_dl is None else max(0.0, hb_g_dl)
-        blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else max(0.0, blood_volume_ml)
+        dsat_dpo2 = self._saturation_derivative(state.p_arterial_o2)
         # Circulating Hb mass sets the store, so blood loss lowers it before hemodilution.
         blood_o2_capacity_l = 1.34 * hb * (blood_volume / 100.0) / 1000.0
         self.shunt_fraction = clamp(shunt_fraction, 0.0, 0.95)
@@ -407,8 +453,7 @@ class RespiratoryModel:
             # changes. Shunt mixing changes that derivative, especially on O2.
             cap_pressure = max(0.0, state.p_alveolar_o2 - self._aa_gradient(vq_mismatch))
             cap_saturation = self._saturation(cap_pressure)
-            cap_derivative = (1.34 * hb * self._n_hill * cap_saturation * (1.0 - cap_saturation)
-                              / max(cap_pressure, 1.0) + 0.0031)
+            cap_derivative = 1.34 * hb * self._saturation_derivative(cap_pressure) + 0.0031
             cap_content = 1.34 * hb * cap_saturation + 0.0031 * cap_pressure
             extraction = 100.0 * vo2 / max(0.1, cardiac_output)
             if extraction >= (1.0 - self.shunt_fraction) * cap_content:
@@ -549,10 +594,28 @@ class RespiratoryModel:
         """Alveolar to end-capillary PO2 difference (mmHg) from residual V/Q inequality."""
         return self.aa_grad_base + self.VQ_MISMATCH_GRADIENT * clamp01(vq_mismatch)
 
+    @staticmethod
+    def _temperature_p50(temp_c: float) -> float:
+        """Dash 2016 Eq. 9d; pH, PCO2, and 2,3-DPG held at reference values."""
+        delta = temp_c - 37.0
+        return 26.8 + delta * (1.435 + delta * (0.04163 + delta * 0.000686))
+
     def _saturation(self, pao2: float) -> float:
-        """Hill oxyhemoglobin dissociation (P50 26.6 mmHg, n 2.7) as a fraction."""
-        pao2_pow = max(0.0, pao2) ** self._n_hill
-        return pao2_pow / (pao2_pow + self._p50_pow)
+        """Dash 2016 Eqs. 6 and 11, including low-saturation cooperativity."""
+        if pao2 <= 0.0:
+            return 0.0
+        exponent = 2.82 - 1.20 * 10.0**(-pao2 / 29.25)
+        return 1.0 / (1.0 + (self._p50 / pao2)**exponent)
+
+    def _saturation_derivative(self, pao2: float) -> float:
+        """dS/dPO2 includes the pressure-dependent Hill exponent."""
+        if pao2 <= 0.0:
+            return 0.0
+        correction = 1.20 * 10.0**(-pao2 / 29.25)
+        exponent = 2.82 - correction
+        exponent_derivative = math.log(10.0) * correction / 29.25
+        sat = self._saturation(pao2)
+        return sat * (1.0 - sat) * (exponent / pao2 + exponent_derivative * math.log(pao2 / self._p50))
 
     def _arterial_po2(self, end_capillary: float, hb: float, cardiac_output: float,
                       vo2_l_min: float, previous: float) -> float:
@@ -581,8 +644,7 @@ class RespiratoryModel:
                 upper = pressure
             else:
                 lower = pressure
-            derivative = (capacity * self._n_hill * saturation * (1.0 - saturation)
-                          / max(pressure, 1e-12) + 0.0031)
+            derivative = capacity * self._saturation_derivative(pressure) + 0.0031
             candidate = pressure - residual / derivative
             pressure = candidate if lower < candidate < upper else 0.5 * (lower + upper)
         return pressure

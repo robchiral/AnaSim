@@ -17,10 +17,12 @@ class ArterialWaveformConfig:
     """Parameters for the Su-constrained arterial pulse renderer."""
 
     compliance_ref_ml_mmhg: float = 1.5
+    # Compliance falls 0.8% per year after 40, matching normotensive pulse
+    # pressure in Franklin 1997: flat until about 45, then 35-40% higher by 70-74.
     compliance_age_ref: float = 40.0
     compliance_age_slope: float = 0.008
     compliance_age_min_factor: float = 0.5
-    compliance_age_max_factor: float = 1.2
+    compliance_age_max_factor: float = 1.0
     electromechanical_delay_s: float = 0.04
     notch_height: float = 0.46
     dicrotic_peak_height: float = 0.52

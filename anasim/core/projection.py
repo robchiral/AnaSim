@@ -84,8 +84,12 @@ def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> floa
     Airway tone excludes ketamine, which preserves it.
     """
     state = engine.state
+    hypnotic = hypnotic_equivalent(
+        engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
+        engine.pk["midazolam"].state.ce, engine.midazolam_c50, engine.response.age_factor,
+    )
     return engine.response.loss_of_response(
-        state.hypnotic_response_ce,
+        hypnotic,
         state.opioid_ce,
         mac_sevo=state.mac_sevo,
         mac_n2o=state.mac_n2o,
@@ -126,11 +130,11 @@ def sync_pk_state(engine: SimulationEngine) -> None:
         engine.pk["etomidate"].state.ce,
         engine.pk["midazolam"].state.ce,
         engine.midazolam_c50,
-        engine.propofol_age_factor,
+        engine.bis.age_factor,
     ))
     state.hypnotic_response_ce = float(hypnotic_equivalent(
         engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
-        engine.pk["midazolam"].state.ce, engine.midazolam_c50, engine.propofol_age_factor,
+        engine.pk["midazolam"].state.ce, engine.midazolam_c50,
     ))
 
 
@@ -262,6 +266,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         unconscious=state.loc,
         lung_volume_l=engine.aeration.frc,
         shunt_fraction=engine.aeration.shunt_fraction,
+        temp_c=state.temp_c,
     )
 
 

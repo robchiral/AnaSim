@@ -289,10 +289,11 @@ class TestClinicalAcceptance:
         # FiO2 about 0.55, where added shunt shows in P/F.
         engine.set_fgf(1.0, 1.0)
 
-        # A healthy heart tolerates 3 L (43 mL/kg).
+        # A healthy heart tolerates 3 L (43 mL/kg) without alveolar flooding.
         engine.give_fluid(3000.0)
         advance_time(engine, 1800.0)
-        assert engine.state.lung_water == 0.0
+        assert engine.state.lung_water < 3.0  # Below the modeled flooding threshold.
+        assert engine.aeration.flooded == 0.0
         well_filled_pf = engine.state.pao2 / engine.state.fio2
 
         engine.give_fluid(4000.0)

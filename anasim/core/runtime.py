@@ -292,7 +292,8 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
                 splint_pressure = vent.monitors.paw_mean_recent
         relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
         unconscious = loss_of_response(engine, ketamine=False)
-        collapse = airway_tuning.unsupported_collapse_max * unconscious * (1.0 - relief)
+        tone = engine.tof_pd.pharyngeal_tone_fraction(state.mac_sevo, state.mac_n2o)
+        collapse = clamp01(airway_tuning.unsupported_collapse_max * unconscious / tone) * (1.0 - relief)
         upper_obstruction = max(upper_obstruction, engine.laryngospasm_severity, collapse)
     upper_obstruction = clamp01(upper_obstruction)
 

@@ -8,6 +8,7 @@ from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import KETAMINE_MAC_EQUIVALENT
 
+from .fluids import CrystalloidKinetics
 from .hemo_config import HemodynamicConfig
 from .hemo_types import HemoState
 
@@ -133,6 +134,7 @@ class HemodynamicModel:
         self.total_urine_out_ml = 0.0
         self.total_blood_out_ml = 0.0
         self.total_third_space_ml = 0.0
+        self.crystalloid = CrystalloidKinetics()
 
         self._rhythm_type = RhythmType.SINUS
         self.f_preload_pit = 1.0
@@ -198,6 +200,7 @@ class HemodynamicModel:
             available = max(0.0, self.blood_volume - BLOOD_VOLUME_MIN)
             actual_loss = min(loss_ml, available)
             if actual_loss > 0:
+                self.crystalloid.central_ml *= 1.0 - actual_loss / self.blood_volume
                 self.red_cell_volume_ml *= 1.0 - actual_loss / self.blood_volume
                 self.blood_volume -= actual_loss
                 self.total_blood_out_ml += actual_loss
@@ -219,12 +222,14 @@ class HemodynamicModel:
                     retention = cfg.colloid_retention_fraction
                 else:
                     self.total_crystalloid_in_ml += amount_ml
-                    retention = cfg.crystalloid_retention_fraction
+                    retention = 1.0
                 if retention_fraction is not None:
                     retention = retention_fraction
                 retention = clamp01(retention)
                 retained_ml = amount_ml * retention
                 self.total_third_space_ml += max(0.0, amount_ml - retained_ml)
+                if not is_colloid:
+                    self.crystalloid.central_ml += retained_ml
 
             self.blood_volume += retained_ml
 
@@ -329,7 +334,7 @@ class HemodynamicModel:
         """
         cfg = self.config
         delta_hr = cfg.epi_emax_hr * hill_function(ce_epi / beta1_dr, cfg.epi_c50_hr, cfg.epi_gamma_hr)
-        delta_hr *= 1.0 - cfg.epi_volatile_hr_depression * clamp01(self.ce_sevo)
+        delta_hr *= (1.0 - cfg.epi_volatile_hr_depression * clamp01(self.ce_sevo)) * self._age_chronotropy
         sv_factor = 1.0 + cfg.epi_emax_sv * hill_function(ce_pressor / beta1_dr, cfg.epi_c50_sv, 1.0)
         alpha = cfg.epi_emax_svr_alpha * hill_function(
             ce_pressor / alpha_dr, cfg.epi_c50_alpha, cfg.epi_gamma_alpha
@@ -428,7 +433,7 @@ class HemodynamicModel:
         if ce_nore <= 0:
             return 0.0, 1.0, 1.0
         beta_hill = hill_function(ce_nore / beta1_dr, cfg.nore_c50, 1.0)
-        delta_hr = cfg.nore_emax_hr * beta_hill
+        delta_hr = cfg.nore_emax_hr * beta_hill * self._age_chronotropy
         sv_gain = cfg.nore_emax_sv + cfg.nore_anesthetic_sv_gain * anesthetic_depth
         sv_factor = 1.0 + sv_gain * beta_hill
         alpha_hill = hill_function(ce_nore / alpha_dr, cfg.nore_c50, 1.0)
@@ -624,7 +629,7 @@ class HemodynamicModel:
         self._vagal_block = vagal = hill_function(max(0.0, ce_glyco), cfg.glyco_c50, cfg.glyco_gamma)
         resting_tone = 1.0 - cfg.sympathetic_anesthetic_depression * anesthetic_depth
         # Shares of sympathetic reflex and stimulation responses left after
-        # block; age reduces the HR share only.
+        # block; age reduces the HR share only, as for beta agonists.
         beta_response = 1.0 - cfg.beta_block_reflex * beta_occ
         sympathetic_hr_response = beta_response * self._age_chronotropy
         alpha_response = 1.0 - alpha_occ
@@ -644,35 +649,41 @@ class HemodynamicModel:
         map_denom = max(1e-3, cfg.renal_map_norm - cfg.renal_map_min)
         self.renal_perfusion = clamp01((map_prev - cfg.renal_map_min) / map_denom)
         renal_factor = self.renal_perfusion * max(0.0, self.patient.renal_function)
+        fluid_change, fluid_urine, fluid_sequestration = self.crystalloid.step(
+            dt, map_prev, self.patient.age, self.patient.renal_function * cfg.crystalloid_renal_scale,
+            self.blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml),
+            urinary_elimination=cfg.vol_clearance is None,
+        )
+        self.blood_volume += fluid_change
+        self.total_urine_out_ml += fluid_urine
+        self.total_third_space_ml += fluid_sequestration
         if cfg.vol_clearance is not None:
             urine_ml_min = max(0.0, float(cfg.vol_clearance))
         else:
-            # Volume expansion adds urine; anesthesia blunts it.
-            expansion = max(0.0, self.blood_volume / self.blood_volume_0 - 1.0)
-            clearance = cfg.volume_clearance_ml_min * (
-                1.0 - cfg.anesthetic_clearance_reduction * anesthetic_depth
-            )
-            urine_ml_min = cfg.uop_ml_kg_hr * self.patient.weight / 60.0 + clearance * expansion
+            urine_ml_min = cfg.uop_ml_kg_hr * self.patient.weight / 60.0
         urine_out_ml = min(
             urine_ml_min * renal_factor * dt_min,
-            max(0.0, self.blood_volume - BLOOD_VOLUME_MIN),
+            max(0.0, self.blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml)),
         )
         blood_volume = self.blood_volume - urine_out_ml
         if urine_out_ml > 0:
+            plasma_volume = self.blood_volume - self.red_cell_volume_ml
+            self.crystalloid.central_ml *= max(0.0, 1.0 - urine_out_ml / plasma_volume)
             self.total_urine_out_ml += urine_out_ml
         if sepsis_sev > 0.0:
             # Capillary leak loses plasma, not red cells.
             dt_hr = dt / 3600.0
             leak_fraction = cfg.sepsis_leak_fraction_per_hr * sepsis_sev
             leak_ml = blood_volume * leak_fraction * dt_hr
-            available = max(0.0, blood_volume - BLOOD_VOLUME_MIN)
+            available = max(0.0, blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml))
             actual_leak = min(leak_ml, available)
             if actual_leak > 0:
+                self.crystalloid.central_ml *= max(0.0, 1.0 - actual_leak / (blood_volume - self.red_cell_volume_ml))
                 blood_volume -= actual_leak
                 self.total_third_space_ml += actual_leak
         if self.total_third_space_ml > 0 and cfg.third_space_refill_tau_hr > 0:
             intravascular_excess = blood_volume - self.blood_volume_0
-            shortfall = cfg.crystalloid_retention_fraction * (
+            shortfall = cfg.interstitial_refill_fraction * (
                 intravascular_excess + self.total_third_space_ml
             ) - intravascular_excess
             frac = -math.expm1(-dt / (cfg.third_space_refill_tau_hr * 3600.0))
@@ -685,10 +696,12 @@ class HemodynamicModel:
         lap_excess = max(0.0, self._last_lap - cfg.lung_water_lap_threshold)
         filtration_ml = min(
             cfg.lung_water_filtration * self._pbw * lap_excess * dt_min,
-            max(0.0, blood_volume - BLOOD_VOLUME_MIN),
+            max(0.0, blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml)),
         )
         lung_clearance_ml = self.lung_water_ml * -math.expm1(-dt / (cfg.lung_water_clearance_tau_hr * 3600.0))
         self.lung_water_ml += filtration_ml - lung_clearance_ml
+        if filtration_ml > 0.0:
+            self.crystalloid.central_ml *= 1.0 - filtration_ml / (blood_volume - self.red_cell_volume_ml)
         blood_volume += lung_clearance_ml - filtration_ml
         self.blood_volume = max(BLOOD_VOLUME_MIN, blood_volume)
         self._update_hb_conc()
@@ -777,7 +790,8 @@ class HemodynamicModel:
             ce_vaso, cfg.vaso_c50, cfg.vaso_gamma, cfg.vaso_emax_hr, 0.0, cfg.vaso_emax_svr
         )
         dobu_delta_hr, dobu_sv_factor, _ = self._calc_hr_sv_svr_effects(
-            ce_dobu / beta1_dr, cfg.dobu_c50, cfg.dobu_gamma, cfg.dobu_emax_hr, cfg.dobu_emax_sv, 0.0
+            ce_dobu / beta1_dr, cfg.dobu_c50, cfg.dobu_gamma, cfg.dobu_emax_hr * self._age_chronotropy,
+            cfg.dobu_emax_sv, 0.0,
         )
         _, _, dobu_svr_factor = self._calc_hr_sv_svr_effects(
             ce_dobu / beta2_dr, cfg.dobu_c50, cfg.dobu_gamma, 0.0, 0.0, cfg.dobu_emax_svr

@@ -26,12 +26,13 @@ def test_waveform_mean_and_pulse_pressure_match_su_targets():
     assert float(np.ptp(values)) == pytest.approx(70.0 / renderer.arterial_compliance, abs=0.02)
 
 
-def test_age_related_compliance_changes_pulse_pressure():
-    younger, _ = _render_beat(age=25, map_value=90.0, hr=70.0, sv=70.0)
-    older, _ = _render_beat(age=70, map_value=90.0, hr=70.0, sv=70.0)
+def test_pulse_pressure_rises_with_age_after_45():
+    """Franklin 1997, normotensive groups: pulse pressure is flat from 30 to 45
+    and 27-42% higher at 65-74 than at 40-44."""
+    pulse = {age: np.ptp(_render_beat(age=age, map_value=90.0, hr=70.0, sv=70.0)[0]) for age in (25, 40, 70)}
 
-    assert np.ptp(older) > np.ptp(younger)
-    assert np.mean(older) == pytest.approx(np.mean(younger), abs=0.02)
+    assert pulse[25] == pytest.approx(pulse[40])
+    assert 1.27 < pulse[70] / pulse[40] < 1.42
 
 
 def test_nonnegative_constraint_preserves_map_in_extreme_state():

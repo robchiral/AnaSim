@@ -16,12 +16,12 @@ class HemodynamicConfig:
     k_drift: float = 0.067
     tau_hr_fast: float = 5.0  # s
 
-    # Simulator estimates of HR reflex aging, informed by Laitinen 2004 and
-    # Monahan 2007. Vascular sympathetic control is preserved; transfer to
-    # hemorrhage and stimulation is an assumption.
+    # Cardiovagal aging follows Kardos 2001. Reflex/beta HR scaling is calibrated
+    # to Laitinen 2004, Bullington 1989, and Leenen 2005; vascular responses
+    # are preserved (Monahan 2007).
     age_reference: float = 40.0
     age_sympathetic_hr: float = -0.0085  # Fraction per year
-    age_vagal_baroreflex: float = -0.021  # ln gain per year
+    age_vagal_baroreflex: float = -0.026  # ln gain per year
 
     # Fast baroreflex gains (bpm/mmHg) around a slowly resetting MAP set point.
     # Propofol depresses both limbs 65-73% (Sato 2005; Ebert 1994 found mainly
@@ -91,11 +91,8 @@ class HemodynamicConfig:
     vol_clearance: float | None = None
     # Urine output (mL/kg/hr), scaled by MAP and renal function.
     uop_ml_kg_hr: float = 0.5
-    # Urine (mL/min) per unit fractional blood-volume expansion, awake (fit to
-    # Reid 2003); anesthesia cuts it to 10-20% (Hahn 2010).
-    volume_clearance_ml_min: float = 30.0
-    anesthetic_clearance_reduction: float = 0.7
-    crystalloid_retention_fraction: float = 0.30
+    # Hahn 2017 kinetics with integrated urine normalization to Reid 2003.
+    crystalloid_renal_scale: float = 0.20
     colloid_retention_fraction: float = 0.80
     blood_retention_fraction: float = 1.0
     donor_mchc_g_dl: float = 100.0 / 3.0  # Normal donor red cells; Hb = Hct / 0.03.
@@ -105,6 +102,7 @@ class HemodynamicConfig:
     renal_map_norm: float = 65.0
     # Interstitial fluid returns only while blood volume is below its 30% share.
     third_space_refill_tau_hr: float = 6.0
+    interstitial_refill_fraction: float = 0.30
 
     # LAP (mmHg) = A (exp(k x preload) - 1): 9 at baseline filling, 20 at double.
     lap_scale: float = 40.9
@@ -164,11 +162,11 @@ class HemodynamicConfig:
     anaphylaxis_agonist_shift: float = 2.0
 
     # Epinephrine: exogenous arterial concentrations in ng/mL. Responses and
-    # delays are fitted to Freyschuss 1986 infusions and Takahashi 2002 boluses
-    # (tests/test_epinephrine.py).
+    # delays are fitted to Freyschuss 1986 infusions (mean age 24) and Takahashi
+    # 2002 boluses (mean age 32) (tests/test_epinephrine.py).
     epi_c50_hr: float = 3.2
     epi_gamma_hr: float = 1.5
-    epi_emax_hr: float = 120.0
+    epi_emax_hr: float = 109.0
     epi_c50_sv: float = 2.0
     epi_emax_sv: float = 1.4
     epi_c50_beta2: float = 0.35

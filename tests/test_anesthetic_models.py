@@ -2,6 +2,7 @@
 
 import json
 
+import numpy as np
 import pytest
 
 from anasim.core.state import SimulationConfig
@@ -11,8 +12,9 @@ from anasim.web import WebSession, catalog
 
 
 def test_published_response_thresholds_and_bis_delay():
-    response = ClinicalResponseModel()
-    # Bouillon 2004 Bayesian table: 50% no response with propofol alone.
+    # Bouillon 2004 Bayesian table at the cohort's median age: 50% no response
+    # with propofol alone.
+    response = ClinicalResponseModel(age=33.5)
     assert response.loss_of_response(3.2064, 0.0) == pytest.approx(0.5)
     assert response.tolerance(5.5444, 0.0) == pytest.approx(0.5)
     assert response.tolerance(3.0, 4.0) > 0.9
@@ -56,22 +58,28 @@ def test_remifentanil_blunts_arousal_without_changing_baseline_bis(engine_factor
     assert combined[4] < 0.2 * alone[4]
 
 
-def test_older_patients_lose_response_at_lower_propofol_concentrations(engine_factory):
-    """Eleveld 2018: propofol Ce50 falls with age; responsiveness follows BIS."""
-    outcomes = {}
+def test_older_patients_lose_responsiveness_at_lower_propofol_and_higher_bis(engine_factory):
+    """Lysakowski 2009: with 0.5 mcg/mL Ce steps held 5 min, patients aged 78
+    lost consciousness at a median BIS of 70 and those aged 35 at 58. Schnider
+    1999: the Ce50 falls 0.022 mcg/mL per year.
+    """
+    at_loss = {}
     for age in (25, 70):
         engine = engine_factory(
             config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=2), start=True, age=age,
         )
         engine.set_airway_mode("ETT")
         engine.set_vent_power(True)
-        engine.enable_tci("propofol", 2.8)
-        for _ in range(900):
-            engine.step(1.0)
-        outcomes[age] = engine.state.bis, engine.state.loc
-    assert outcomes[70][0] < outcomes[25][0] - 5.0
-    assert outcomes[25][1] < 0.3
-    assert outcomes[70][1] > 0.5
+        steps = []
+        for target in np.arange(1.0, 4.6, 0.5):
+            engine.enable_tci("propofol", target)
+            for _ in range(300):
+                engine.step(1.0)
+            steps.append((engine.state.loc, engine.state.propofol_ce, engine.state.bis))
+        loc, ce, bis = np.asarray(steps).T
+        at_loss[age] = np.interp(0.5, loc, ce), np.interp(0.5, loc, bis)
+    assert at_loss[70][0] < 0.75 * at_loss[25][0]
+    assert 5.0 < at_loss[70][1] - at_loss[25][1] < 20.0
 
 
 def test_induction_uses_separate_clinical_and_bis_sites(awake_engine):

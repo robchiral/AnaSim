@@ -4,7 +4,6 @@ from .anesthesia import (
     hypnotic_equivalent,
     midazolam_loss_of_response,
     opioid_equivalent,
-    propofol_age_factor,
 )
 from .nmba import TOFModel
 
@@ -15,5 +14,4 @@ __all__ = [
     "hypnotic_equivalent",
     "midazolam_loss_of_response",
     "opioid_equivalent",
-    "propofol_age_factor",
 ]

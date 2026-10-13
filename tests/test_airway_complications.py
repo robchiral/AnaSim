@@ -88,6 +88,40 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     assert max(obstruction) - min(obstruction) < 0.05
 
 
+def test_residual_block_increases_sedated_airway_collapse_but_preserves_awake_patency(engine_factory):
+    """Herbstreit 2009: resting awake ventilation can persist at TOF 0.8,
+    while the weakened pharynx is more susceptible to a closing challenge.
+    """
+    collapse = {}
+    for sedated in (False, True):
+        for blocked in (False, True):
+            engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
+            engine.set_continuous_fluid_rate(0.0)
+            engine.set_airway_mode("Mask")
+            if sedated:
+                engine.enable_tci("propofol", 2.5)
+            for _ in range(600):
+                engine.step(1.0)
+            if blocked:
+                engine.give_drug_bolus("rocuronium", 0.2 * engine.patient.weight)
+            for _ in range(240):
+                engine.step(1.0)
+            if blocked:
+                assert 40.0 < engine.state.tof < 85.0
+            collapse[sedated, blocked] = engine.state.airway_obstruction
+            if sedated and blocked:
+                engine.set_vent_settings(mode="CPAP", rr=0, vt=0, peep=5.0, ie="1:2")
+                engine.set_vent_power(True)
+                engine.step(1.0)
+                assert engine.state.airway_obstruction == 0.0
+                engine.set_airway_mode("ETT")
+                engine.set_vent_power(False)
+                engine.step(1.0)
+                assert engine.state.airway_obstruction == 0.0
+    assert collapse[False, False] == collapse[False, True] == 0.0
+    assert collapse[True, True] > 1.4 * collapse[True, False] > 0.05
+
+
 def test_obstructed_airway_preserves_effort_without_restoring_ventilation(awake_engine):
     engine = awake_engine
     engine.resp.hcvr_slope_baseline = 0.0

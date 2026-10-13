@@ -144,6 +144,34 @@ def test_anemia_and_low_cardiac_output_do_not_lower_pao2(patient):
         assert state.sao2 == pytest.approx(reference.sao2, abs=0.5)
 
 
+def test_blood_temperature_shifts_oxygen_affinity_without_creating_oxygen(patient):
+    """Dash 2016: cooling increases affinity, with O2 supplied by existing stores."""
+    model = RespiratoryModel(patient)
+    model.state.p_alveolar_o2 = 45.0
+    model.state.p_arterial_o2 = 45.0 - model.aa_grad_base
+
+    def oxygen_l():
+        state = model.state
+        gas = model.frc * model._gas_capacity_per_l * state.p_alveolar_o2
+        blood = (1.34 * patient.baseline_hb * model._saturation(state.p_arterial_o2)
+                 + 0.0031 * state.p_arterial_o2) * patient.estimate_blood_volume() / 100000
+        return gas + blood
+
+    stored = oxygen_l()
+    initial_pressure = model.state.p_arterial_o2
+    for temperature in (34.0, 40.0, 37.0):
+        model.step(0.0, ce_prop=0, ce_remi=0, temp_c=temperature, airway_patency=0.0)
+        assert oxygen_l() == pytest.approx(stored, abs=1e-9)
+        if temperature == 34:
+            assert model.state.p_arterial_o2 < initial_pressure
+        elif temperature == 40:
+            assert model.state.p_arterial_o2 > initial_pressure
+    assert model.state.p_arterial_o2 == pytest.approx(initial_pressure, abs=1e-7)
+    endpoints = [_ventilated(patient, 900, fio2=0.14, temp_c=temperature) for temperature in (34, 37, 40)]
+    assert endpoints[0].sao2 > endpoints[1].sao2 > endpoints[2].sao2
+    assert endpoints[0].p_arterial_o2 == pytest.approx(endpoints[2].p_arterial_o2, abs=0.2)
+
+
 def test_low_cardiac_output_widens_the_paco2_etco2_gap(patient):
     normal = _ventilated(patient, 30.0, fio2=0.5)
     low_flow = _ventilated(patient, 30.0, fio2=0.5, cardiac_output=0.5)

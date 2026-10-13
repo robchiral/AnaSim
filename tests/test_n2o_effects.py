@@ -43,7 +43,7 @@ def test_n2o_and_sevoflurane_interaction_by_endpoint():
     """Katoh 1997: 45% N2O halves sevoflurane MAC-awake, less than additively.
     For noxious stimulation, MAC fractions of the two agents add.
     """
-    model = ClinicalResponseModel()
+    model = ClinicalResponseModel(age=40.0)
     sevo_awake = 0.90 / model.mac_reference  # Sevoflurane MAC-awake in MAC
 
     def awake_loss(sevo_fraction, n2o_percent):

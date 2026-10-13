@@ -41,6 +41,36 @@ def test_urine_output_tapers_with_pressure_and_preserves_fluid_balance(renal_fun
     assert rates[3] == rates[4] == pytest.approx(0.5 * renal_function)
 
 
+def test_crystalloid_distribution_pressure_age_and_component_conservation():
+    """Hahn 2017: Ringer's distributes over time; low MAP and age slow urine.
+    Blood loss removes mixed cells and Hb, while water exchange preserves them.
+    """
+    outcomes = {}
+    for age, pressure, dt in ((30, 50, 1.0), (30, 100, 1.0), (70, 100, 1.0), (30, 100, 0.1)):
+        model = HemodynamicModel(Patient(age=age), HemodynamicConfig(uop_ml_kg_hr=0.0, third_space_refill_tau_hr=0.0))
+        baseline = model.blood_volume
+        hemoglobin, cells = model.hb_mass, model.red_cell_volume_ml
+        for _ in range(round(1800 / dt)):
+            model.add_volume(1000 / 1800 * dt)
+            model._prev_map = pressure  # Match the pressure-conditioned volume-kinetic experiment.
+            model.step(dt, 0, 0, 0, -2, 40, 95)
+        blood_gain = model.blood_volume - baseline
+        assert 300.0 < blood_gain < 600.0
+        assert blood_gain + model.crystalloid.interstitial_ml + model.total_third_space_ml + model.lung_water_ml + model.total_urine_out_ml == pytest.approx(1000, abs=1e-7)
+        assert model.hb_conc * model.blood_volume / 100 == pytest.approx(hemoglobin)
+        assert model.get_hematocrit() * model.blood_volume == pytest.approx(cells)
+        outcomes[age, pressure, dt] = blood_gain, model.total_urine_out_ml
+        # Redistribution persists after the infusion stops.
+        for _ in range(round(1800 / dt)):
+            model._prev_map = pressure
+            model.step(dt, 0, 0, 0, -2, 40, 95)
+        assert model.blood_volume - baseline < blood_gain
+    assert outcomes[30, 50, 1.0][1] < 0.1 * outcomes[30, 100, 1.0][1]
+    assert outcomes[70, 100, 1.0][1] < 0.4 * outcomes[30, 100, 1.0][1]
+    # Infusion enters at the start of each step, giving a half-step timing error.
+    assert outcomes[30, 100, 0.1] == pytest.approx(outcomes[30, 100, 1.0], abs=0.3)
+
+
 @pytest.mark.parametrize(("hematocrit", "dt"), [(0.24, 1.0), (0.32, 0.1)])
 def test_transfusion_preserves_donor_cells_and_hemoglobin(
     engine_factory, advance_time, hematocrit, dt,

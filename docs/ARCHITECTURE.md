@@ -97,19 +97,20 @@ adrenergic sensitivity.
 Blood loss lowers filling pressure and preload; reflex venoconstriction partly
 compensates. Awake responses to 1 L in 333 mL steps match Johnson 2014.
 Anesthesia blunts hemorrhage tachycardia as it does the cardiac baroreflex
-(Ebert 1992; Sellgren 1994). Reflex tachycardia and cardiovagal baroreflex gain
-fall with age while vascular responses are preserved (Laitinen 2004; Monahan
-2007); the coefficients are simulator estimates, and applying them to
-hemorrhage and stimulation is an assumption.
+(Ebert 1992; Sellgren 1994). With age, cardiovagal baroreflex gain falls
+(Kardos 2001), as do reflex and beta-agonist tachycardia, while vascular
+responses are preserved (Laitinen 2004; Monahan 2007). Tachycardia scaling and
+its transfer to hemorrhage and stimulation use simulator calibrations.
 
-Crystalloid retains 30% of infused volume in blood and albumin 80%. The
-remaining volume enters an interstitial pool that can refill blood-volume
-deficits. Transfused red cells carry donor hemoglobin (33.3 g/dL of cells)
-whatever the recipient's Hb/Hct ratio. Urine output depends on pressure, volume
-expansion, renal function, and anesthetic state. Elevated left atrial pressure
-increases lung water, shunt, and stiffness. Positive end-expiratory pressure
-(PEEP) can recruit affected lung units. These volume responses use simulator
-calibrations.
+Crystalloid represents lactated Ringer's solution and distributes between
+blood and interstitium (Hahn 2017). Urinary elimination depends on MAP, age,
+and renal function, with an integrated calibration to Reid 2003. Albumin retains 80% initially.
+Non-exchanging fluid and capillary leakage enter a slower pool that can refill
+blood-volume deficits. Fluid exchange during hemorrhage and sepsis, albumin
+retention, and slow refill use simulator calibrations. Transfused red cells
+carry donor hemoglobin (33.3 g/dL of cells) whatever the recipient's Hb/Hct
+ratio. Elevated left atrial pressure increases lung water, shunt, and
+stiffness. Positive end-expiratory pressure (PEEP) can recruit affected units.
 
 With `end_on_cardiac_arrest=True`, MAP below 20 mmHg or heart rate below 10 bpm
 for 15 seconds ends the session.
@@ -124,7 +125,7 @@ responsiveness, and breathing.
 | Propofol PK | Eleveld 2018 arterial model with the opioid-regimen covariate |
 | Remifentanil PK | Eleveld 2017 arterial model |
 | Baseline BIS | Eleveld 2018 curve with age-dependent potency and processing delay |
-| Clinical response and laryngoscopy tolerance | Bouillon 2004 Bayesian hierarchy with Eleveld's age term for propofol |
+| Clinical response and laryngoscopy tolerance | Bouillon 2004 Bayesian hierarchy; loss of response uses Schnider 1999's age term |
 | Ventilatory depression | Bouillon 2004 propofol curve with Olofsen 2010 opioid and CO₂ control |
 
 Propofol and sevoflurane determine baseline BIS. Opioids blunt
@@ -134,12 +135,13 @@ probability of no response to laryngoscopy. Sevoflurane thresholds follow
 Kuizenga 2019 and Hannivoort 2016 in age-adjusted minimum alveolar concentration
 (MAC).
 
-Applying Bouillon's individual concentration estimates and Eleveld's BIS age
-term to Eleveld population concentrations, selecting clinical effect-site
-timing, and extending the hierarchy to sevoflurane are modeling assumptions.
-BIS arousal and adjunct drug combinations use simulator calibrations. Fentanyl
-contributes a remifentanil equivalent; etomidate and midazolam contribute
-propofol equivalents at the patient's propofol potency, with midazolam-propofol
+Applying Bouillon's individual concentration estimates and Schnider's age term
+to Eleveld population concentrations, selecting clinical effect-site timing,
+and extending the hierarchy to sevoflurane are modeling assumptions. Older
+patients lose responsiveness at a higher BIS (Lysakowski 2009). BIS arousal
+and adjunct drug combinations use simulator calibrations. Fentanyl contributes
+a remifentanil equivalent; etomidate and midazolam contribute propofol
+equivalents at the patient's endpoint-specific potency, with midazolam-propofol
 synergy. Nitrous oxide and ketamine affect clinical responsiveness; ketamine
 and lidocaine also blunt stimulation responses.
 
@@ -160,6 +162,10 @@ larynx effects equilibrate faster and require higher rocuronium concentrations,
 allowing breathing to recover before TOF. Creatinine clearance is estimated
 from age and renal function. Sevoflurane scaling, TOF normalization, and
 conversion to muscle effects use simulator calibrations.
+
+Residual block increases susceptibility to hypnotic airway collapse
+(Herbstreit 2009), with preserved awake patency and pressure relief.
+This coupling uses simulator calibration.
 
 ### Respiration
 
@@ -187,6 +193,10 @@ the arterial to end-tidal gap. Oxygen and inhaled anesthetics share lung
 gas volume and shunt. The A-a gradient follows sea-level means by age (Crapo
 1999). Shunt mixing accounts for hemoglobin-bound and dissolved oxygen, with
 extraction limited to available oxygen.
+
+Hemoglobin saturation uses Dash 2016's pressure- and temperature-dependent
+curve at reference pH, PCO₂, and 2,3-DPG. Temperature changes preserve the
+combined lung and blood oxygen store.
 
 ### Ventilation mechanics
 
@@ -246,10 +256,11 @@ pressure; intrinsic PEEP affects plateau pressure and residual flow.
 
 ECG, arterial pressure, and plethysmography share beat timing. The arterial
 waveform uses Mahdi 2017 pressure points with modeled MAP, stroke volume, and
-arterial compliance. Catheter and transducer dynamics affect arterial-line
-measurements. Displayed heart rate averages beat intervals; NIBP updates after
-each cuff cycle. Poor perfusion delays pulse oximetry and reduces pleth
-amplitude. Pulse oximetry requires an organized rhythm and adequate perfusion.
+arterial compliance, which falls after age 40 (Franklin 1997). Catheter and
+transducer dynamics affect arterial-line measurements. Displayed heart rate
+averages beat intervals; NIBP updates after each cuff cycle. Poor perfusion
+delays pulse oximetry and reduces pleth amplitude. Pulse oximetry requires an
+organized rhythm and adequate perfusion.
 BIS includes processing delay and smoothing.
 
 [Capnography](../anasim/monitors/capno.py) tracks exhaled gas through dead space

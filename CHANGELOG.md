@@ -2,9 +2,15 @@
 
 ## Unreleased
 
-- Reduced reflex tachycardia and cardiovagal baroreflex gain with age.
-- Applied Eleveld's age term to propofol loss of response and laryngoscopy
-  tolerance, matching BIS. Midazolam and etomidate keep only their own age effects.
+- Added residual neuromuscular block to hypnotic airway collapse.
+- Added crystalloid distribution and pressure- and age-dependent elimination.
+- Updated oxygen dissociation and temperature-dependent affinity while
+  conserving oxygen stores.
+- Reduced reflex and beta-agonist tachycardia and cardiovagal gain with age.
+- Lowered the propofol concentration for loss of response with age, so older
+  patients lose responsiveness at a higher BIS. Midazolam and etomidate keep
+  only their own age effects.
+- Held arterial compliance constant below age 40, matching pulse pressure by age.
 - Tracked red-cell volume separately from hemoglobin, so transfused hemoglobin
   no longer depends on the recipient's Hb/Hct ratio.
 - Limited atelectatic shunt to about 10% of cardiac output; lost aeration still
