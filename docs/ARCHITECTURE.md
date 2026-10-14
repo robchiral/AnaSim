@@ -130,6 +130,13 @@ responsiveness, and breathing.
 
 Propofol and sevoflurane determine baseline BIS. Opioids blunt
 stimulation-related BIS arousal through tolerance of the stimulus.
+The propofol curve predicts a population response. Prospective Eleveld studies
+show substantial individual BIS prediction error (Vellinga 2021; Coetzee 2024).
+Monitor processing and early distribution after a rapid bolus affect transition
+accuracy (Sahinovic 2020; Struys 2007). The Eleveld processing delay is included;
+delay estimates and equilibration constants from other PK models do not transfer
+directly to this model.
+
 `loc` is the probability of no response to shaking or shouting; `tol` is the
 probability of no response to laryngoscopy. Sevoflurane thresholds follow
 Kuizenga 2019 and Hannivoort 2016 in age-adjusted minimum alveolar concentration

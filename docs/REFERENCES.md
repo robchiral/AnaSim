@@ -86,6 +86,11 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Kurita et al. (2011). *Br J Anaesth*. [Remifentanil and propofol across stages of hemorrhage](https://pubmed.ncbi.nlm.nih.gov/21862493/).
 - Egan and Johnson (2020). *Anesth Analg*. [Intravenous anesthetics in hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/32149755/).
 - Vellinga et al. (2021). *Br J Anaesth*. [Prospective Eleveld propofol PK/PD validation](https://doi.org/10.1016/j.bja.2020.10.027).
+- Coetzee et al. (2024). *Br J Anaesth*. [Agreement between Eleveld-predicted and measured BIS during TIVA](https://doi.org/10.1016/j.bja.2024.06.041).
+- Sahinovic et al. (2020). *Anesth Analg*. [EEG monitor delay relative to Schnider-predicted propofol effect-site concentrations](https://doi.org/10.1213/ANE.0000000000004672).
+- Dahaba et al. (2020). *J Pharmacokinet Pharmacodyn*. [Age covariates in propofol-BIS pharmacodynamics](https://doi.org/10.1007/s10928-020-09678-0).
+- Struys et al. (2007). *Anesthesiology*. [Propofol administration rate and apparent plasma-effect-site equilibration](https://doi.org/10.1097/01.anes.0000278902.15505.f8).
+- Doufas et al. (2004). *Anesthesiology*. [Propofol induction rate and individualized pharmacodynamics](https://doi.org/10.1097/00000542-200411000-00010).
 - Servin et al. (1990). *Br J Anaesth*. [Propofol PK in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/2223333/).
 - Hiraoka et al. (2005). *Br J Clin Pharmacol*. [Renal extraction of propofol](https://pubmed.ncbi.nlm.nih.gov/16042671/).
 - Dershwitz et al. (1996). *Anesthesiology*. [Remifentanil PK/PD in liver disease](https://pubmed.ncbi.nlm.nih.gov/8638835/).

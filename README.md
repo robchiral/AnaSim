@@ -76,6 +76,7 @@ anasim --mode headless --duration 60 --record
 | Configure patients, run scripts, or interpret CSV | [CLI and Python usage](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md) |
 | Understand model behavior and assumptions | [Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md) |
 | Find the source studies | [Model references](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md) |
+| Compare model outputs with clinical recordings | [VitalDB validation](validation/vitaldb/README.md) |
 | Change the code and choose checks | [Contributing](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md) |
 | Review release changes | [Changelog](https://github.com/robchiral/AnaSim/blob/main/CHANGELOG.md) |
 
