@@ -38,10 +38,9 @@ class PhysiologyStepState:
 
 
 def mask_leak(engine: SimulationEngine) -> float:
-    """Share of each assisted breath lost at a facemask when the upper airway is obstructed.
+    """Fraction of an assisted breath lost around a mask during upper airway obstruction.
 
-    The gas cannot reach the lungs, so it leaks around the mask. A tracheal tube
-    does not leak; obstruction raises its resistance instead.
+    Obstruction raises tracheal tube resistance; leakage applies only to masks.
     """
     assisted = engine.vent.is_on or engine.bag_mask_active
     return 1.0 - engine.airway_status.patency if assisted and engine.state.airway_mode == AirwayType.MASK else 0.0
@@ -63,9 +62,9 @@ def measured_ventilation(
 ) -> tuple[float, float, float]:
     """Return (RR, exhaled VT mL, MV L/min) as the workstation measures them.
 
-    Assisted VT is the last completed breath and MV the exhaled volume of
-    recent breaths, less any mask leak. Bronchospasm lowers alveolar
-    ventilation in the respiratory model, not the exhaled volume.
+    Assisted VT comes from the last completed breath; MV uses recent exhaled
+    breaths. Both exclude mask leak. The respiratory model applies the
+    bronchospasm efficiency loss to alveolar ventilation only.
     """
     if connected:
         spirometry = engine.vent.monitors
@@ -111,7 +110,7 @@ def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY
     )
 
 
-# Projections run every step, so they assign public fields directly, as built-in floats.
+# Built-in floats keep public state JSON-serializable.
 def sync_pk_state(engine: SimulationEngine) -> None:
     """Synchronize PK concentrations from subsystem states to public state."""
     state = engine.state

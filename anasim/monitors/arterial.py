@@ -303,7 +303,7 @@ class ArterialLineMonitor:
         )
         transition = expm(augmented * dt)
         coefficients = tuple(float(value) for value in transition[:2].flat)
-        # Variable headless step sizes must not grow the cache without bound.
+        # Bound the cache for variable headless step sizes.
         if len(self._coefficient_cache) >= 16:
             self._coefficient_cache.pop(next(iter(self._coefficient_cache)))
         self._coefficient_cache[cache_key] = coefficients

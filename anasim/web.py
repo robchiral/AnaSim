@@ -42,7 +42,7 @@ CONFIG_FIELDS = (
 
 SPEED_RANGE = (0.1, 50.0)
 MAX_REAL_DT_S = 0.2
-# Averaging window for the achieved speed, so one slow frame does not flag lag.
+# Average achieved speed over several frames.
 SPEED_AVERAGE_S = 2.0
 WAVE_WINDOW_S = 20.0  # The slower respiratory sweep
 TREND_WINDOW_S = 1800
@@ -215,7 +215,7 @@ class WebSession:
                 if engine.state.time >= self._next_trend_time - 1e-9:
                     self._sample_trends()
                     self._next_trend_time = math.floor(engine.state.time + 1e-9) + 1
-            # Drop time the browser could not simulate instead of catching up later.
+            # Discard unsimulated time to prevent a later catch-up.
             if steps >= max_steps:
                 self._accumulator = 0.0
             if real_dt > 0 and engine.running:
@@ -312,7 +312,7 @@ class WebSession:
             "nibp_failed": s.nibp_measurement_failed,
             "etco2": _num(s.display_etco2, 1) if s.etco2_signal_valid else None,
             "rr": _num(s.rr, 1),
-            # Without an airway the monitor counts chest movement by impedance, not CO2.
+            # Without an airway, respiratory rate comes from chest impedance.
             "rr_source": "co2" if connected else "impedance",
             "bis": _num(s.display_bis, 1),
             "tof": _num(s.tof, 1),
@@ -413,7 +413,7 @@ class WebSession:
 
     def _start_loop(self, boundary) -> None:
         if len(self._loop_current) > 1:
-            # Keep real changes in end-expiratory volume rather than forcing closure.
+            # Preserve changes in end-expiratory volume.
             self._append_loop_point(boundary.paw, boundary.flow, boundary.volume)
             self._loop_previous = (self._loop_breath, self._loop_current)
         self._loop_breath, self._loop_start = boundary.breath, boundary.volume
@@ -588,9 +588,10 @@ class WebSession:
         self.engine.vent.update_settings(**fields)
 
     def _cmd_drug_rate(self, key: str, rate: float):
-        if not math.isfinite(float(rate)):
+        rate = float(rate)
+        if not math.isfinite(rate):
             raise ValueError("Infusion rate must be finite")
-        self.engine.set_drug_rate(key, float(rate))
+        self.engine.set_drug_rate(key, rate)
         spec = get_drug_spec(key)
         applied = self.engine.get_drug_state(key)["rate"]
         text = f"{spec.generic_name} infusion {applied:g} {spec.rate_unit}" if applied else f"{spec.generic_name} infusion stopped"
@@ -599,9 +600,11 @@ class WebSession:
     def _cmd_drug_target(self, key: str, target: float | None):
         if not self.engine.config.tci_enabled:
             raise ValueError("TCI is disabled for this session")
-        if target is not None and not math.isfinite(float(target)):
-            raise ValueError("TCI target must be finite")
-        self.engine.set_drug_target(key, None if target is None else float(target))
+        if target is not None:
+            target = float(target)
+            if not math.isfinite(target):
+                raise ValueError("TCI target must be finite")
+        self.engine.set_drug_target(key, target)
         spec = get_drug_spec(key)
         applied = self.engine.get_drug_state(key)
         text = (
@@ -611,18 +614,20 @@ class WebSession:
         return self._medication_receipt(spec.key, text)
 
     def _cmd_drug_bolus(self, key: str, amount: float):
-        if not math.isfinite(float(amount)) or float(amount) <= 0:
+        amount = float(amount)
+        if not math.isfinite(amount) or amount <= 0:
             raise ValueError("Bolus amount must be positive and finite")
         spec = get_drug_spec(key)
-        self.engine.give_drug_bolus(key, float(amount))
-        return self._medication_receipt(spec.key, f"{spec.generic_name} {float(amount):g} {spec.bolus_unit} given")
+        self.engine.give_drug_bolus(key, amount)
+        return self._medication_receipt(spec.key, f"{spec.generic_name} {amount:g} {spec.bolus_unit} given")
 
     def _cmd_sugammadex(self, mg_per_kg: float):
-        if not math.isfinite(float(mg_per_kg)) or float(mg_per_kg) <= 0:
+        mg_per_kg = float(mg_per_kg)
+        if not math.isfinite(mg_per_kg) or mg_per_kg <= 0:
             raise ValueError("Sugammadex dose must be positive and finite")
-        amount = float(mg_per_kg) * self.engine.patient.weight
+        amount = mg_per_kg * self.engine.patient.weight
         self.engine.give_drug_bolus("sugammadex", amount)
-        return self._medication_receipt("sugammadex", f"Sugammadex {amount:g} mg given ({float(mg_per_kg):g} mg/kg)")
+        return self._medication_receipt("sugammadex", f"Sugammadex {amount:g} mg given ({mg_per_kg:g} mg/kg)")
 
     def _medication_receipt(self, key: str, text: str) -> dict:
         """Acknowledge a completed action and retain it across local page reloads."""

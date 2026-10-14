@@ -18,7 +18,7 @@ ORGANIZED_RHYTHMS = frozenset(
     }
 )
 
-# Bedside monitors average recent R-R intervals rather than showing each beat's rate.
+# Bedside monitors average recent R-R intervals.
 DISPLAY_HR_BEATS = 12
 
 

@@ -92,7 +92,7 @@ class Sweep {
       this.range = [Math.min(range[0], desired[0]), Math.max(range[1], desired[1])];
       this.shrinkSamples = 0;
     } else if (channel.autoScale !== "expand" && desired[1] - desired[0] <= 0.75 * (range[1] - range[0])) {
-      // Require a full sweep of headroom; count simulation samples, not wall time.
+      // Shrink after a full sweep of simulation samples with headroom.
       this.shrinkSamples += samples;
       if (this.shrinkSamples >= data.length) {
         this.range = desired;
@@ -206,8 +206,7 @@ class Loops {
     const maxPaw = niceCeil(Math.max(2, ...all("paw")), pressureStep);
     const maxFlow = niceCeil(Math.max(10, ...all("flow").map(Math.abs)), 10);
     const desired = { pressure: [minPaw, maxPaw], volume: [volumeFloor, maxVolume], flow: [-maxFlow, maxFlow] };
-    // Expand immediately; shrink only on a new breath, using both retained loops.
-    // This keeps a partial inspiration from repeatedly changing the scale.
+    // Expand immediately; shrink on a new breath using both retained loops.
     for (const key of Object.keys(desired)) {
       if (this.ranges && !this.newBreath) {
         desired[key] = [Math.min(this.ranges[key][0], desired[key][0]),

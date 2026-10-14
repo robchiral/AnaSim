@@ -47,10 +47,9 @@ class TOFModel:
     """Train-of-four response to rocuronium and sugammadex reversal (Kleijn 2011).
 
     Rocuronium PK holds free drug. Sugammadex binds it in plasma at finite
-    rates, and the complex is cleared like sugammadex. Free sugammadex in
-    plasma also increases rocuronium efflux from the effect sites, which sets
-    the speed of reversal. Kleijn modeled this as an empirical rate, rather
-    than explicit binding within the neuromuscular junction.
+    rates; the complex shares sugammadex clearance. Free plasma sugammadex
+    increases effect-site efflux and controls reversal speed. Kleijn's efflux
+    rate is empirical; binding within the neuromuscular junction is unmodeled.
     """
 
     def __init__(self, patient: Patient):

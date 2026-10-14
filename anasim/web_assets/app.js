@@ -39,7 +39,7 @@ function send(name, args = {}) {
   });
 }
 
-// Commands from controls surface failures in a dialog instead of rejecting silently.
+// Show control command failures in a dialog.
 function command(name, args) {
   return send(name, args).catch((message) => { alertDialog("Command failed", message); });
 }

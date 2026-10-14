@@ -78,12 +78,11 @@ class MaxRatePolicy:
 
 @dataclass(frozen=True, slots=True)
 class DrugSpec:
-    """Complete PK, bolus, infusion, TCI, and UI metadata for one drug.
+    """PK, bolus, infusion, TCI, and UI metadata for one drug.
 
-    Infusion fields are None for bolus-only drugs, and TCI fields are None for
-    drugs given by bolus or manual rate only. ce_field and cp_field name the
-    SimulationState fields that receive the effect-site and plasma
-    concentrations.
+    Infusion and TCI fields are None when those controls are unavailable.
+    ce_field and cp_field name the SimulationState fields for effect-site
+    and plasma concentrations.
     """
 
     key: str

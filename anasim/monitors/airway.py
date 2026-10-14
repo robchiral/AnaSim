@@ -25,8 +25,7 @@ class AirwaySensor:
             first, second = self._stage1[i], self._stage2[i]
             self._stage1[i] = source + (first - source) * decay
             self._stage2[i] = source + (second - source + z * (first - source)) * decay
-        # Volume is the integral of the interval-mean flow. Filter its ramp
-        # exactly rather than holding the end volume through the whole interval.
+        # Filter the volume ramp exactly from the interval-mean flow.
         first, second = self._stage1[2], self._stage2[2]
         start, slope = volume - volume_change, volume_change / dt
         ramp = slope * self.tau_s

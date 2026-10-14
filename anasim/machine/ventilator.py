@@ -376,8 +376,7 @@ class AnesthesiaVentilator:
             ti = flow_end = math.inf  # Unsupported inspiration ends only when flow reverses.
         v_start, v_max = lung.volume, lung.volume
         if kind == "VG":
-            # Pressure adaptation sees the whole inflation, including its peak
-            # before the mandatory stroke, rather than only the added volume.
+            # Pressure adaptation uses the full inflation, including the peak before the mandatory stroke.
             v_start -= retained
             v_max = max(v_max, v_start + inspired)
         p_start = 0.0
@@ -392,8 +391,8 @@ class AnesthesiaVentilator:
         self._since_breath = 0.0
         if mandatory:
             if continuing and self._source == "vent" and s.mode.startswith("SIMV") and math.isfinite(period):
-                # An early synchronized breath replaces the next scheduled one.
-                # Carry its advance forward so repeated triggers do not raise RR.
+                # An early synchronized breath replaces the next scheduled one,
+                # preserving the set RR across repeated triggers.
                 self._since_mandatory = min(0.0, self._since_mandatory - period)
             else:
                 self._since_mandatory = 0.0
@@ -642,8 +641,7 @@ class AnesthesiaVentilator:
     @staticmethod
     def _volume_reached(segment, t: float, level: float, sign: float) -> float | None:
         """First time in [0, t] at which volume rises (sign 1) or falls (sign -1) to level."""
-        # A constant-flow breath can land on the threshold to roundoff and
-        # then hold there. Treat that as reaching it rather than missing it.
+        # Count thresholds reached within roundoff, including constant-flow plateaus.
         f = lambda u: sign * (segment.volume(u) - level) + 1e-12  # noqa: E731
         f0, ft = f(0.0), f(t)
         if f0 >= 0.0:

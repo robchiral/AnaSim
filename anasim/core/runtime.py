@@ -107,10 +107,9 @@ def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects
     else:
         t_rel = max(0.0, state.time - engine.disturbance_start_time)
         stimulus = engine.disturbances.compute_average(t_rel, t_rel + dt)
-        # Hypnotics, lidocaine, and especially opioids blunt the response to
-        # noxious stimulation (Bouillon 2004). EEG arousal scales with the
-        # probability of responding to laryngoscopy; blocking the HR and MAP
-        # response takes more drug (Albertin 2005).
+        # Hypnotics, lidocaine, and opioids blunt stimulus responses (Bouillon 2004).
+        # EEG arousal follows laryngoscopy response probability; suppressing
+        # HR and MAP responses takes more drug (Albertin 2005).
         arousal = 1.0 - engine._tol_current
         sympathetic = 1.0 - clamp01(stimulus_tolerance(engine, spec.sympathetic_intensity))
         effects = DisturbanceEffects(
@@ -221,15 +220,17 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     """Update PK covariates and return whether the models were rescaled.
 
     Propofol slows norepinephrine and midazolam disposition; midazolam slows
-    propofol clearance. Blood volume, cardiac output, and renal perfusion
-    provide the hemodynamic covariates.
+    propofol clearance. Hemodynamic covariates are blood volume, cardiac
+    output, and renal perfusion.
     """
-    engine.pk_nore.update_propofol(engine.pk["propofol"].state.c1)
+    propofol = cast(PropofolPKEleveld, engine.pk["propofol"])
+    midazolam = cast(MidazolamPK, engine.pk["midazolam"])
+    engine.pk_nore.update_propofol(propofol.state.c1)
     # Both covariates use the concentrations before either parameter update.
-    propofol_cp = engine.pk["propofol"].state.c1
-    midazolam_cp = engine.pk["midazolam"].state.c1
-    interaction_changed = cast(PropofolPKEleveld, engine.pk["propofol"]).update_midazolam(midazolam_cp)
-    interaction_changed |= cast(MidazolamPK, engine.pk["midazolam"]).update_propofol(propofol_cp)
+    propofol_cp = propofol.state.c1
+    midazolam_cp = midazolam.state.c1
+    interaction_changed = propofol.update_midazolam(midazolam_cp)
+    interaction_changed |= midazolam.update_propofol(propofol_cp)
     base_bv = engine.hemo.blood_volume_0
     base_co = engine.hemo.base_co_l_min
     if base_bv <= 0.0 or base_co <= 0.0:

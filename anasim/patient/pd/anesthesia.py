@@ -156,9 +156,8 @@ class ClinicalResponseModel:
         self.c50_remi = 1.01
         self.gamma_prop = 6.9
         self.gamma_remi = 0.72
-        # The input already includes age-adjusted MAC. Convert the measured
-        # thresholds at a chosen reference age to MAC once, rather than
-        # applying the patient's age correction twice.
+        # Convert thresholds to MAC at reference age 35; inputs already include
+        # the patient's age adjustment.
         self.mac_reference = 1.80 * 10.0 ** (-0.00269 * (35.0 - 40.0))
 
     def _probability(self, hypnotic_units: float, ce_remi: float, intensity: float) -> float:

@@ -114,7 +114,7 @@ class SimulationEngine(DrugControllerMixin):
         self.active_hemorrhage = False
         self.hemorrhage_rate_ml_min = 500.0
 
-        # Boluses run in over minutes rather than instantly.
+        # Fluid and blood boluses run in over minutes.
         self.pending_infusions: list[PendingInfusion] = []
         self.fluid_infusion_rate_ml_min = 150.0
         self.blood_infusion_rate_ml_min = 75.0
@@ -137,8 +137,7 @@ class SimulationEngine(DrugControllerMixin):
         self._pk_hemo_scale_cache: tuple[float, float, float] | None = None
         self.current_mean_paw = 0.0
 
-        # Separate generators keep each monitor's noise reproducible regardless
-        # of how often the others draw.
+        # Independent generators keep each monitor's noise reproducible.
         self.rng = np.random.default_rng(self.config.rng_seed)
         self._ecg_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._nibp_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
@@ -199,7 +198,7 @@ class SimulationEngine(DrugControllerMixin):
             lambda_b_g=0.65,
             mac_40=1.80,
         )
-        # N2O comes from fresh gas, not the vaporizer, so it is always modeled.
+        # Fresh gas supplies N2O even when sevoflurane is disabled.
         # Partition coefficients at 37 °C (blood:gas 0.47; brain, muscle, fat:blood
         # 1.1, 1.2, 2.3) and MAC about 104% at 1 atm.
         self.pk_n2o = VolatilePK(

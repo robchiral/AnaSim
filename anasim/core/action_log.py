@@ -1,14 +1,13 @@
 """Ordered log of learner actions and scenario objective activations.
 
-Objectives count only actions taken since they started. Scoping uses record
-positions, not timestamps, because time stands still while paused. Step-scoped
-queries raise when no objective is active.
+Objectives count actions taken since they started. Record positions define
+the scope because paused actions share a timestamp. Step-scoped queries
+require an active objective.
 """
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-# Action names recorded by the engine.
 ACTION_AIRWAY = "airway"
 ACTION_BAG_MASK = "bag_mask"
 ACTION_DRUG_BOLUS = "drug_bolus"

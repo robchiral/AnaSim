@@ -465,7 +465,7 @@ class PatientEffort:
         self._begin(lung, series_resistance)
 
     def _onset_threshold(self) -> float:
-        # Filling to a new relaxed volume after PEEP rises is not inflation above it.
+        # Measure inflation above the relaxed volume at the current PEEP.
         fraction = self.AWAKE_INFLATION_VT + (self.ONSET_FRACTION - self.AWAKE_INFLATION_VT) * self.unconscious
         return max(self._trough, self._reference_shift) + fraction * self.target_vt
 

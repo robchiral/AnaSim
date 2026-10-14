@@ -110,10 +110,7 @@ class TCIController:
         self._signature = _pk_signature(pk_model)
 
     def sync_from_pk_model(self, pk_model, rel_tol: float = 0.05, abs_tol: float = 1e-3) -> bool:
-        """Rebuild the prediction model after material PK drift and reseed the state.
-
-        Returns True when the prediction model was rebuilt.
-        """
+        """Reseed from live PK; return True if parameter drift required a model rebuild."""
         self.pk_model = pk_model
         signature = _pk_signature(pk_model)
         rebuilt = any(
