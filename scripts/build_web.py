@@ -24,10 +24,10 @@ DEFAULT_OUT = ROOT / "build" / "web"
 
 
 def package_zip() -> bytes:
-    """Zip anasim/*.py with fixed timestamps so the name changes only with content."""
+    """Zip Python sources and the license with fixed timestamps for content-based names."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted((ROOT / "anasim").rglob("*.py")):
+        for path in [ROOT / "LICENSE", *sorted((ROOT / "anasim").rglob("*.py"))]:
             info = zipfile.ZipInfo(path.relative_to(ROOT).as_posix(), date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, path.read_bytes())
@@ -48,6 +48,7 @@ def build(out: Path) -> None:
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(ROOT / "anasim" / "web_assets", out)
+    shutil.copyfile(ROOT / "LICENSE", out / "LICENSE")
     data = package_zip()
     name = f"anasim-{hashlib.sha256(data).hexdigest()[:12]}.zip"
     (out / name).write_bytes(data)

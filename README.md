@@ -7,7 +7,7 @@ anesthesia machine interface.
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/anasim-simulator.svg)](https://pypi.org/project/anasim-simulator/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/robchiral/AnaSim/blob/main/LICENSE)
+[![License: Noncommercial](https://img.shields.io/badge/license-noncommercial-blue.svg)](https://github.com/robchiral/AnaSim/blob/main/LICENSE)
 
 [![Run AnaSim in your browser](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/run_anasim.svg)](https://robche.com/AnaSim/)
 
@@ -76,13 +76,28 @@ anasim --mode headless --duration 60 --record
 | Configure patients, run scripts, or interpret CSV | [CLI and Python usage](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md) |
 | Understand model behavior and assumptions | [Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md) |
 | Find the source studies | [Model references](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md) |
-| Compare model outputs with clinical recordings | [VitalDB validation](validation/vitaldb/README.md) |
+| Compare model outputs with clinical recordings | [VitalDB validation](https://github.com/robchiral/AnaSim/blob/main/validation/vitaldb/README.md) |
 | Change the code and choose checks | [Contributing](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md) |
 | Review release changes | [Changelog](https://github.com/robchiral/AnaSim/blob/main/CHANGELOG.md) |
 
 ## Citation and license
 
 Cite using [`CITATION.cff`](https://github.com/robchiral/AnaSim/blob/main/CITATION.cff).
-Licensed under [MIT](https://github.com/robchiral/AnaSim/blob/main/LICENSE).
-AnaSim includes code adapted from
-[Python Anesthesia Simulator](https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator).
+
+AnaSim 1.6 and later use the proprietary, source-available
+[AnaSim noncommercial license](https://github.com/robchiral/AnaSim/blob/main/LICENSE).
+
+| Use | Terms |
+|-----|-------|
+| Individual study, experimentation, and code changes | Free, including for students, residents, and clinicians |
+| Noncommercial teaching, assessment, research, and internal deployment at nonprofit or government institutions | Free, including internal hosting for participants |
+| Commercial use, other institutional use, or hosting outside that exemption | Paid license |
+
+Contact [Robert Chen](mailto:rob@robche.com) for paid licenses or
+written fee waivers. Sharing copies is allowed under the license terms.
+Earlier releases retain their MIT terms.
+
+Early AnaSim versions adapted code from
+[Python Anesthesia Simulator](https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator),
+licensed under GPL-3.0. Those implementations have since been substantially
+rewritten. Third-party material retains its own terms.

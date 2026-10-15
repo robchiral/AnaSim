@@ -1,21 +1,105 @@
-MIT License
+AnaSim noncommercial license 1.0
+SPDX-License-Identifier: LicenseRef-AnaSim-Noncommercial-1.0
 
 Copyright (c) 2026 Robert Chen
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Scope
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This license covers AnaSim 1.6 and later versions distributed under these terms,
+including source code, executable code, and documentation (the "Software").
+Robert Chen is the "Licensor". "You" means the individual or organization
+exercising these permissions.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+The Licensor grants only rights the Licensor controls. Third-party licenses
+and their obligations remain in effect, as do rights granted under earlier
+AnaSim licenses.
+
+Early AnaSim total intravenous anesthesia implementations adapted code from
+Python Anesthesia Simulator (GNU General Public License version 3) and have
+since been substantially rewritten. Its project and license are available at
+https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator.
+
+2. Free uses
+
+You may use, copy, run, study, display, and modify the Software without charge for:
+
+a. Individual self-directed study and personal experimentation, including by
+   students, residents, and clinicians, regardless of affiliation or employment.
+b. Noncommercial teaching, training, assessment, research, or internal deployment
+   by nonprofit organizations and government bodies. This includes nonprofit
+   universities, research institutes, and hospitals, and internal hosting for
+   their participating staff, students, and researchers.
+
+Ordinary tuition, salaries, and recovery of actual costs do not by themselves
+make qualifying institutional activities commercial. Work for commercial
+clients is governed by Section 3.
+
+These permissions are worldwide, nonexclusive, and perpetual, subject to
+compliance with this license.
+
+3. Uses requiring a separate license
+
+Except for sharing copies and contributions under Sections 4 and 5, these
+activities require a separate written license from the Licensor before use:
+
+a. Institutional use outside Section 2.
+b. Commercial use, including use by or on behalf of a for-profit organization,
+   contract research or services for a commercial client, paid courses or
+   services outside Section 2, sale or commercial distribution of the Software,
+   and integration into commercial products or services.
+c. Hosting a running instance of the Software for others, except internal
+   hosting permitted by Section 2.
+
+These requirements apply even when access is free or provided through the
+Licensor's hosted version. The written agreement sets the scope and fees;
+the Licensor may waive fees in writing. Contact rob@robche.com.
+
+4. Sharing copies and modifications
+
+You may share unmodified or modified copies without charge for recipients'
+uses permitted by Section 2, including through public source forks, mirrors,
+and package archives.
+
+Include this license, retain copyright notices, third-party notices,
+attributions, and source references, and identify your changes. You may
+license your original additions separately; the Software in a combined work
+remains subject to this license.
+
+5. Contributions
+
+For original material you intentionally submit for inclusion in AnaSim under
+this license, you grant the Licensor a worldwide, perpetual, irrevocable,
+nonexclusive, royalty-free copyright license to use, reproduce, modify,
+prepare derivative works, publicly display, publicly perform, distribute,
+and sublicense that material under these or other terms, including
+institutional and commercial licenses. You retain ownership of your
+contributions.
+
+Submit only material you have authority to license. Identify third-party
+material and its terms when submitting it; the grant excludes that material.
+Earlier contributions retain their original terms.
+
+6. Compliance
+
+Permissions terminate automatically if you breach this license. They are
+restored if you correct the breach within 30 days after you discover it,
+unless your permissions previously terminated for another breach. The
+Licensor may also reinstate them in writing.
+Recipients who comply with their own licenses retain their rights.
+
+Rights provided by applicable law or a separate valid license remain in effect.
+No trademark rights or permission to imply the Licensor's endorsement are
+granted. All other rights are reserved.
+
+7. Warranty and liability
+
+The Software is intended for education, research, and experimentation.
+Do not use it to guide clinical care.
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED "AS IS",
+WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, ACCURACY, AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE LICENSOR OR CONTRIBUTORS BE LIABLE
+FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE
+OR ITS USE.

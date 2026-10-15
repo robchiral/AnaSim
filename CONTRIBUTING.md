@@ -1,5 +1,12 @@
 # Contributing
 
+## License
+
+Under Section 5 of the [license](LICENSE), you retain ownership of original
+contributions and grant Robert Chen permission to use, modify, and sublicense
+them, including under paid licenses. Submit only work you have authority to
+license, and identify any third-party material and its license.
+
 ## Setup
 
 Use Python 3.10 or later. Node.js 22 is required for browser tests and Pyodide.

@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.6 - 2026-10-14
 
+- Adopted the AnaSim noncommercial license. Personal use and qualifying
+  noncommercial institutional use are free. Commercial use and hosting outside
+  the institutional exemption require a paid license. Earlier releases retain
+  their MIT terms.
+- Added recorded-case VitalDB comparisons for TIVA and sevoflurane.
+- Changed the validation-guide link to an absolute URL.
 - Added residual neuromuscular block to hypnotic airway collapse.
 - Added crystalloid distribution and pressure- and age-dependent elimination.
 - Updated oxygen dissociation and temperature-dependent affinity while

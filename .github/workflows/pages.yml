@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "LICENSE"
       - "anasim/**"
       - "scripts/build_web.py"
       - ".github/workflows/pages.yml"

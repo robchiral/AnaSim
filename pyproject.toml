@@ -7,10 +7,10 @@ name = "anasim-simulator"
 dynamic = ["version"]
 description = "Real-time anesthesia and physiology simulator for medical education"
 readme = "README.md"
-license = "MIT"
+license = "LicenseRef-AnaSim-Noncommercial-1.0"
 license-files = ["LICENSE"]
 authors = [
-  { name = "Robert Chen", email = "robert.chen@icahn.mssm.edu" },
+  { name = "Robert Chen", email = "rob@robche.com" },
 ]
 keywords = [
     "anesthesia",

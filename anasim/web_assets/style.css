@@ -173,6 +173,8 @@ fieldset:disabled { opacity: 0.5; }
 .setup-error { color: var(--danger); font-weight: 600; }
 .setup-footer { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
 .setup-footer .version { margin-right: auto; color: var(--text-dim); font-size: 11px; }
+.license-notice { color: var(--text-secondary); font-size: 11px; }
+.license-notice a { color: var(--primary); }
 
 /* --- Session layout ------------------------------------------------ */
 
