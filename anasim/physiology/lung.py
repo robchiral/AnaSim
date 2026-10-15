@@ -6,29 +6,25 @@ from anasim.patient.patient import Patient
 
 
 class LungAeration:
-    """A recruited fraction shared by respiratory mechanics and gas exchange.
+    """Aeration, atelectatic shunt, and alveolar flooding.
 
-    Opening requires more pressure than maintaining aeration. A distribution
-    of opening pressures limits how much sustained pressure can recruit
-    (Rothen 1993). Opening is faster than closure (Bates and Irvin 2002;
-    Rothen 1999). Timing away from 40 cmH2O, BMI shifts, and perfusion are teaching
-    approximations, not a fit to the between-patient VitalDB PEEP association.
-    The static curve stiffens above an inflation equivalent to 25 cmH2O.
-
-    Lost aeration lowers gas volume and compliance, but most of the FRC fall
-    under anesthesia is cranial displacement of the diaphragm (Hedenstierna
-    2015). Only atelectatic units shunt: shunt follows CT atelectasis and stays
-    near 1-12% of cardiac output (Tokics 1996). Lung water beyond 3 mL/kg floods
-    alveoli, which shunt fully. PEEP 13 vs 3 cmH2O left about 70% fewer alveoli
-    flooded (Malo 1984).
+    Pressure and timing follow Rothen 1993/1999 and Bates and Irvin 2002.
+    BMI shifts, perfusion, and timing away from 40 cmH2O are approximations.
+    Most FRC loss reflects diaphragm displacement (Hedenstierna 2015);
+    atelectatic units shunt about 1-12% of output (Tokics 1996).
+    Lung water above 3 mL/kg floods alveoli. PEEP 13 vs 3 cmH2O reduced
+    flooding by about 70% (Malo 1984).
     """
 
     INTERVAL = 0.1  # s; independent of the engine's outer step
     REFERENCE_RECRUITED = 0.9  # Compliance calibration at PEEP 5 under anesthesia
     MIN_RECRUITED = 0.65  # Maximum modeled aeration loss under anesthesia
-    ATELECTASIS_SHUNT = 0.3  # Shunt per unit of lost aeration
+    ATELECTASIS_SHUNT = 0.3  # Perfusion per unit of atelectatic fraction
     OPENING_WIDTH = 4.5  # cmH2O; logistic pressure response, Rothen 1993
     OPENING_RATE = 1.0 / 2.6  # /s; CT reopening time constant at 40 cmH2O, Rothen 1999
+    # Gas-dependent closure calibrated to Rothen 1995.
+    ABSORPTION_RATE = 0.02  # /s at zero distending pressure without inert gas
+    INERT_GAS_PROTECTION = 9.0  # Aggregate gas effect
     FLOOD_ONSET = 3.0  # mL/kg lung water above normal
     FLOOD_SLOPE = 0.05  # Flooded fraction per mL/kg
     FLOOD_MAX = 0.6
@@ -38,6 +34,8 @@ class LungAeration:
 
     def __init__(self, patient: Patient, recruited: float = 1.0):
         self.recruited = recruited
+        self.atelectatic = 1.0 - recruited
+        self.inert_fraction = 0.75
         self.unconscious = 0.0
         self.spontaneous_breathing = False
         self.reference_volume = patient.functional_residual_capacity()
@@ -61,7 +59,7 @@ class LungAeration:
     @property
     def shunt_fraction(self) -> float:
         # Atelectatic and flooded units retain perfusion; no instantaneous oxygen benefit from PEEP.
-        return self.ATELECTASIS_SHUNT * (1.0 - self.recruited) + self.recruited * self.flooded
+        return self.ATELECTASIS_SHUNT * self.atelectatic + (1.0 - self.atelectatic) * self.flooded
 
     def advance(self, dt: float, pressure_area: float) -> bool:
         """Accumulate distending pressure; change aeration at fixed physical times."""
@@ -82,6 +80,16 @@ class LungAeration:
         if rate > 0.0:
             equilibrium = (opening * target + spontaneous + closing * minimum) / rate
             self.recruited = equilibrium + (self.recruited - equilibrium) * math.exp(-rate * self.elapsed)
+        # Gas composition changes shunt separately from bulk compliance (Rothen 1995).
+        closed_target = 1.0 - target
+        reopening = self.OPENING_RATE if self.atelectatic > closed_target else 0.0
+        absorption = self.ABSORPTION_RATE * math.exp(-self.INERT_GAS_PROTECTION * self.inert_fraction)
+        absorption *= max(0.0, self.closing_pressure - pressure) / self.closing_pressure
+        closed_max = (1.0 - self.MIN_RECRUITED) * self.unconscious
+        total = reopening + spontaneous + absorption
+        if total > 0.0:
+            equilibrium = (reopening * closed_target + absorption * closed_max) / total
+            self.atelectatic = equilibrium + (self.atelectatic - equilibrium) * math.exp(-total * self.elapsed)
         flood = min(self.FLOOD_MAX, self.FLOOD_SLOPE * max(0.0, self.lung_water - self.FLOOD_ONSET))
         low, high = self.FLOOD_RELIEF_PRESSURES
         relief = self.FLOOD_RELIEF_MAX * min(1.0, max(0.0, (pressure - low) / (high - low)))

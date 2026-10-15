@@ -156,6 +156,46 @@ def test_pressors_raise_svr_without_beta_effects():
     assert vaso.hr <= base.hr + 5.0
 
 
+def test_propofol_changes_venous_pressure_and_resistance_without_losing_blood():
+    """de Wit 2016, Table 1: relative MSFP and Rvr at Cp 3 and 6.5 mcg/mL."""
+    observations = []
+    for propofol in (3.0, 6.5):
+        model = HemodynamicModel(Patient(age=62), replace(HemodynamicConfig(), vol_clearance=0.0))
+        volume, hemoglobin = model.blood_volume, model.hb_mass
+        model.initialize_steady_state(propofol, 0.0, 0.0)
+        for _ in range(600):
+            state = model.step(1.0, propofol, 0.0, 0.0, -2.0, 40.0, 95.0)
+        assert model.blood_volume == pytest.approx(volume)
+        assert model.hb_mass == pytest.approx(hemoglobin)
+        observations.append((state.mcfp, model.venous_return_resistance))
+    low, high = observations
+    assert high[0] / low[0] == pytest.approx(21.4 / 27.9, rel=0.01)
+    assert high[1] / low[1] == pytest.approx(2.6 / 3.7, rel=0.01)
+
+
+def test_phenylephrine_output_response_depends_on_preload():
+    """Rebet 2016: CO falls at normal preload and is preserved at low preload."""
+    responses = []
+    for deficit in (0.0, 0.15):
+        model = HemodynamicModel(Patient(age=64), replace(HemodynamicConfig(), vol_clearance=0.0))
+        model.initialize_steady_state(3.5, 3.6, 0.0)
+        model.add_volume(-deficit * model.blood_volume)
+        volume, hemoglobin = model.blood_volume, model.hb_mass
+        for _ in range(600):
+            before = model.step(1.0, 3.5, 3.6, 0.0, -2.0, 40.0, 95.0)
+        for _ in range(60):
+            after = model.step(1.0, 3.5, 3.6, 0.0, -2.0, 40.0, 95.0, ce_phenyl=4.0)
+        assert after.map > before.map + 10.0
+        assert after.mcfp > before.mcfp
+        assert after.hr < before.hr
+        assert model.blood_volume == pytest.approx(volume)
+        assert model.hb_mass == pytest.approx(hemoglobin)
+        responses.append((after.co / before.co, after.sv / before.sv))
+    normal, low = responses
+    assert 0.7 < normal[0] < 0.9 and normal[1] < 0.95
+    assert 0.9 < low[0] < 1.1 and low[1] > 1.0
+
+
 def test_steady_state_initialization_keeps_fast_and_slow_drug_effects(patient):
     model = HemodynamicModel(patient, replace(HemodynamicConfig(), vol_clearance=0.0))
     initialized = model.initialize_steady_state(3.53, 3.6, 10.0)

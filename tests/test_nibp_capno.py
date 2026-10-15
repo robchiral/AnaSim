@@ -94,10 +94,15 @@ class TestCapnography:
         engine.step(0.1)
         assert engine.state.rr > 8.0
         assert engine.state.vt == engine.state.mv == engine.state.va == 0.0
+        effort_before_block = engine.resp_mech.effort.amplitude
         engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
         for _ in range(1200):
             engine.step(0.1)
-        assert engine.state.rr == 0.0
+        # Residual diaphragm contractions can persist without airflow.
+        assert engine.resp.state.muscle_factor < 0.2
+        assert engine.resp_mech.effort.amplitude < 0.6 * effort_before_block
+        assert engine.state.vt == engine.state.mv == engine.state.va == 0.0
+        assert not engine.state.etco2_signal_valid
 
     def test_patient_effort_during_exhalation_notches_the_plateau(self):
         """A curare cleft: an inspiratory effort draws fresh gas past the sampling port."""

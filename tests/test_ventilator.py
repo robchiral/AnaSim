@@ -59,8 +59,10 @@ def test_bag_mask_ventilates_paralysis_only_through_an_airway(awake_engine, adva
     engine.give_drug_bolus("Rocuronium", 0.8 * engine.patient.weight)
     engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.6)
     advance_time(engine, 120.0, dt=0.25)
-    assert engine.state.mv < 1.0
-    assert engine.resp.state.apnea
+    # Residual contractions can move dead-space gas without effective ventilation.
+    assert engine.state.mv < 0.5 * 12.0 * 0.6
+    assert engine.resp.state.va < 0.1
+    assert engine.resp.state.muscle_factor < 0.2
     assert engine.resp.state.drive_central > 0.95
     apneic_pao2 = engine.state.pao2
 

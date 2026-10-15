@@ -10,6 +10,8 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 ## Hemodynamics and physiology
 
 - Su et al. (2023). *Br J Anaesth*. [Mechanistic hemodynamic interaction model](https://pubmed.ncbi.nlm.nih.gov/37355412/).
+- de Wit et al. (2016). *Br J Anaesth*. [Propofol, stressed volume, and resistance to venous return](https://pubmed.ncbi.nlm.nih.gov/27199311/).
+- Rebet et al. (2016). *Eur J Anaesthesiol*. [Preload-dependent phenylephrine cardiac-output responses](https://pubmed.ncbi.nlm.nih.gov/27164015/).
 - Clutter et al. (1980). *J Clin Invest*. [Epinephrine cardiovascular effects](https://pubmed.ncbi.nlm.nih.gov/6995479/).
 - Ebert et al. (1995). *Anesth Analg*. [Sevoflurane cardiovascular responses](https://pubmed.ncbi.nlm.nih.gov/7486143/).
 - Segeroth et al. (2023). *Eur Heart J Cardiovasc Imaging*. [Pulmonary transit time](https://pubmed.ncbi.nlm.nih.gov/36662127/).
@@ -186,6 +188,8 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Babenco et al. (2000). *Anesthesiology*. [Opioid effects on ventilatory control](https://pubmed.ncbi.nlm.nih.gov/10691225/).
 - Lee et al. (2011). *Korean J Anesthesiol*. [Propofol effect-site EC₅₀ for respiratory depression](https://pubmed.ncbi.nlm.nih.gov/21927681/).
 - Blouin et al. (1993). *Anesthesiology*. [Propofol depresses hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8267192/).
+- Nieuwenhuijs et al. (2000). *Anesthesiology*. [Acute and sustained hypoxic responses during propofol sedation](https://pubmed.ncbi.nlm.nih.gov/10638898/).
+- Sarton et al. (1996). *Anesthesiology*. [Sevoflurane, stimulation, and hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8712445/).
 - Nieuwenhuijs et al. (2001). *Anesthesiology*. [Propofol effects on ventilatory control](https://pubmed.ncbi.nlm.nih.gov/11605929/).
 - Glass et al. (1999). *Anesthesiology*. [Remifentanil ventilatory depression and CO₂](https://pubmed.ncbi.nlm.nih.gov/10360852/).
 - Pandit et al. (1999). *Br J Anaesth*. [Sevoflurane and hypercapnic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/10618930/).

@@ -87,6 +87,10 @@ class HemodynamicConfig:
     # stressed volume, about 8 mL/kg at a 40% loss. Calibrated so slow losses
     # follow the ATLS hemorrhage classes.
     venous_recruitment_fraction: float = 0.3
+    # de Wit 2016, Table 1: relative venous effects at Cp 3 to 6.5 mcg/mL.
+    # Extrapolation below 3 is assumed; exposure is capped at 6.5.
+    propofol_venous_pooling_slope: float = 0.0758
+    propofol_venous_resistance_slope: float = 0.1007
     # Fixed urine output (mL/min); overrides uop_ml_kg_hr when set.
     vol_clearance: float | None = None
     # Urine output (mL/kg/hr), scaled by MAP and renal function.
@@ -188,6 +192,9 @@ class HemodynamicConfig:
     phenyl_c50: float = 4.0
     phenyl_gamma: float = 1.5
     phenyl_emax_svr: float = 1.2
+    # Recruitment and afterload calibrated to Rebet 2016.
+    phenyl_venous_recruitment_fraction: float = 0.6  # Share of baseline stressed volume
+    phenyl_afterload_gain: float = 0.3  # Acute SV loss per relative arterial resistance gain
 
     # Vasopressin (mU/L), from 0.01-0.07 U/min dosing and label PK.
     vaso_c50: float = 20.0

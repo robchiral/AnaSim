@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from anasim.core.state import SimulationConfig
+from anasim.patient.patient import Patient
 from anasim.physiology.respiration import RespiratoryModel
 
 
@@ -14,6 +15,7 @@ def _breath(patient, paco2=None, **drugs):
         model.state.p_alveolar_co2 = paco2
     drugs.setdefault("ce_prop", 0.0)
     drugs.setdefault("ce_remi", 0.0)
+    drugs.setdefault("fio2", 1.0)  # Isolate CO2/drug effects from hypoxic feedback.
     # Concentration-response checks hold CO2 fixed while the controller settles.
     for _ in range(900):
         model.state.p_alveolar_co2 = 40.0 if paco2 is None else paco2
@@ -95,6 +97,51 @@ def test_low_dose_propofol_promotes_transient_remifentanil_apnea(patient):
     assert 10 < apnea[1.0] < 300
 
 
+def test_hypoxic_response_declines_with_sustained_exposure_and_propofol():
+    """Nieuwenhuijs 2000: fractional responses to pulsed and sustained hypoxia."""
+    traces = []
+    for dt in (0.1, 1.0):
+        responses = {}
+        for propofol in (0.0, 0.6):
+            model = RespiratoryModel(Patient(age=24))
+
+            def expose(pressure, seconds, model=model, propofol=propofol, dt=dt):
+                for _ in range(round(seconds / dt)):
+                    model.state.p_alveolar_co2 = 46.6
+                    model.state.p_arterial_o2 = pressure
+                    model.state.p_alveolar_o2 = pressure + model.aa_grad_base
+                    state = model.step(dt, ce_prop=propofol, ce_remi=0.0, fio2=0.5)
+                return state.va
+
+            baseline = expose(110.0, 900.0)
+            acute = expose(55.0, 180.0) - baseline
+            sustained = expose(55.0, 720.0) - baseline
+            assert acute > 0.5 * baseline
+            decline = 1.0 - sustained / acute
+            assert decline == pytest.approx(0.35 if propofol == 0 else 0.54, abs=0.08)
+            # Two minutes of normoxia do not erase the sustained-hypoxia history.
+            expose(110.0, 120.0)
+            rechallenge = expose(55.0, 180.0) - baseline
+            assert 0.4 < rechallenge / acute < 0.8
+            responses[propofol] = acute, sustained, rechallenge
+        assert responses[0.6][0] / responses[0.0][0] == pytest.approx(0.5, abs=0.1)
+        traces.append((*responses[0.0], *responses[0.6]))
+    assert traces[0] == pytest.approx(traces[1], rel=0.005)
+
+    # Repeated 3-min challenges generate no sustained ventilatory decline.
+    model = RespiratoryModel(Patient(age=24))
+    pulses = []
+    for _ in range(6):
+        for pressure, seconds in ((110.0, 300), (55.0, 180)):
+            for _ in range(seconds):
+                model.state.p_alveolar_co2 = 46.6
+                model.state.p_arterial_o2 = pressure
+                model.state.p_alveolar_o2 = pressure + model.aa_grad_base
+                state = model.step(1.0, ce_prop=0.6, ce_remi=0.0, fio2=0.5)
+        pulses.append(state.va)
+    assert pulses[-1] == pytest.approx(pulses[0], rel=0.01)
+
+
 def test_apneic_co2_accumulation_and_ventilated_recovery(patient_factory):
     outcomes = []
     for baseline_rr in (0.0, 12.0):
@@ -130,6 +177,7 @@ def _ventilated(patient, seconds, **inputs):
     for _ in range(round(seconds / 0.1)):
         state = model.step(
             0.1, ce_prop=0.0, ce_remi=0.0, mech_vent_mv=6.0, mech_rr=12.0, mech_vt_l=0.5,
+            measured_breaths=True,
             **inputs,
         )
     return state
@@ -170,6 +218,26 @@ def test_blood_temperature_shifts_oxygen_affinity_without_creating_oxygen(patien
     endpoints = [_ventilated(patient, 900, fio2=0.14, temp_c=temperature) for temperature in (34, 37, 40)]
     assert endpoints[0].sao2 > endpoints[1].sao2 > endpoints[2].sao2
     assert endpoints[0].p_arterial_o2 == pytest.approx(endpoints[2].p_arterial_o2, abs=0.2)
+
+
+def test_changing_shunt_redistributes_existing_oxygen(patient):
+    model = RespiratoryModel(patient)
+    model.state.p_alveolar_o2 = 60.0
+    model.state.p_arterial_o2 = 60.0 - model.aa_grad_base
+
+    def stored_oxygen():
+        state = model.state
+        return (
+            model.frc * model._gas_capacity_per_l * state.p_alveolar_o2
+            + (1.34 * patient.baseline_hb * model._saturation(state.p_arterial_o2)
+               + 0.0031 * state.p_arterial_o2) * patient.estimate_blood_volume() / 100000
+        )
+
+    initial = stored_oxygen()
+    for shunt in (0.1, 0.35, 0.0):
+        model.step(0.0, ce_prop=0.0, ce_remi=0.0, airway_patency=0.0, shunt_fraction=shunt)
+        assert stored_oxygen() == pytest.approx(initial, abs=1e-8)
+    assert model.state.p_alveolar_o2 == pytest.approx(60.0, abs=1e-6)
 
 
 def test_low_cardiac_output_widens_the_paco2_etco2_gap(patient):

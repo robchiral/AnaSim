@@ -102,6 +102,11 @@ Anesthesia blunts hemorrhage tachycardia as it does the cardiac baroreflex
 responses are preserved (Laitinen 2004; Monahan 2007). Tachycardia scaling and
 its transfer to hemorrhage and stimulation use simulator calibrations.
 
+Propofol reduces stressed volume and venous resistance (de Wit 2016), while
+the net response at normal blood volume follows Su. Phenylephrine recruits
+venous blood and raises afterload, preserving output better at low preload
+(Rebet 2016). These couplings use simulator calibrations.
+
 Crystalloid represents lactated Ringer's solution and distributes between
 blood and interstitium (Hahn 2017). Urinary elimination depends on MAP, age,
 and renal function, with an integrated calibration to Reid 2003. Albumin retains 80% initially.
@@ -184,6 +189,10 @@ suppress effort. Under anesthesia, breathing stops 4.5 mmHg below the resting
 PaCO₂ that the drugs set (Hickey 1971). Airway obstruction limits airflow
 while muscle effort continues.
 
+Hypoxic drive declines during sustained exposure and is attenuated by propofol
+and sevoflurane (Nieuwenhuijs 2000; Sarton 1996). Timing and extrapolation beyond
+these volunteer protocols use simulator calibrations.
+
 The respiratory model applies Olofsen's fractional opioid response to
 Bouillon's nonlinear alveolar CO₂ response and extrapolates the low-dose
 propofol interaction to other concentrations. Combined responses, breath
@@ -245,9 +254,10 @@ pressure over recent breaths, including unassisted ones, holds the pharynx open
 during mask ventilation.
 
 Primus recordings inform compliance and sensor fits; CT atelectasis studies
-inform recruitment pressure and timing. Assisted effort and obstructed
-expiration use simulator estimates. Lung closure is independent of gas
-composition.
+inform recruitment pressure and timing. Alveolar nitrogen slows recurrent
+collapse (Rothen 1995); atelectatic shunt evolves separately from bulk FRC and
+compliance. Gas-dependent closure, assisted effort, and obstructed expiration
+use simulator calibrations.
 
 ### Monitors
 

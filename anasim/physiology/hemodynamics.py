@@ -111,12 +111,18 @@ class HemodynamicModel:
         self.cv = cfg.venous_compliance  # mL/mmHg
         # Guyton MCFP = stressed volume / venous compliance, about 10-15 mmHg.
         stressed_vol_0 = max(0.0, self.blood_volume - self.unstressed_volume)
+        self._baseline_stressed_volume = stressed_vol_0
+        self._venous_stressed_fraction = 1.0
+        self._pressor_recruitment_ml = 0.0
+        self._venous_reference_mcfp = stressed_vol_0 / self.cv
         self.mcfp_0 = max(cfg.mcfp_floor, stressed_vol_0 / self.cv)
 
         # Venous return resistance (Wood units) calibrated to baseline CO.
         delta_p_vr = max(0.1, self.mcfp_0 - cfg.rap_baseline)
         self.venous_return_resistance = delta_p_vr / max(0.1, self.base_co_l_min)
+        self._baseline_venous_resistance = self.venous_return_resistance
         self._pulm_flow_factor = 1.0
+        self._pulm_reference_factor = 1.0
         self._last_mcfp = self.mcfp_0
         self._last_rap = cfg.rap_baseline
         self._last_pvr = cfg.pvr_wood_baseline
@@ -247,7 +253,7 @@ class HemodynamicModel:
             self.hb_conc = self.hb_mass / (self.blood_volume / 100.0)
 
     def _calc_stressed_volume(self, sepsis_sev: float | None = None) -> float:
-        """Stressed volume after sepsis pooling and reflex venoconstriction.
+        """Stressed volume after drug effects, sepsis pooling, and venous reflexes.
 
         Sepsis shifts part of baseline volume to unstressed. Venoconstriction
         returns part of any blood-volume deficit to the stressed pool.
@@ -256,7 +262,27 @@ class HemodynamicModel:
         pooling = self.config.sepsis_pooling_fraction * self.blood_volume_0 * sev
         deficit = max(0.0, self.blood_volume_0 - self.blood_volume)
         recruited = self.config.venous_recruitment_fraction * deficit * self._venous_tone
-        return max(0.0, self.blood_volume - self.unstressed_volume + recruited - pooling)
+        available = max(0.0, self.blood_volume - self.unstressed_volume + recruited - pooling)
+        # Propofol pools a fraction of the remaining stressed blood.
+        return min(self.blood_volume, available * self._venous_stressed_fraction + self._pressor_recruitment_ml)
+
+    def _update_venous_drug_effects(self, cp_prop: float, ce_phenyl: float, pressor_gain: float = 1.0) -> None:
+        """Venous drug effects, normalized to preserve Su's normal-volume response."""
+        cfg = self.config
+        propofol = clamp(cp_prop, 0.0, 6.5)
+        stressed_fraction = math.exp(-cfg.propofol_venous_pooling_slope * propofol)
+        self._venous_stressed_fraction = stressed_fraction
+        self._venous_reference_mcfp = self._baseline_stressed_volume * stressed_fraction / self.cv
+        self.venous_return_resistance = self._baseline_venous_resistance * math.exp(
+            -cfg.propofol_venous_resistance_slope * propofol
+        )
+        recruitment = cfg.phenyl_venous_recruitment_fraction * self._baseline_stressed_volume * hill_function(
+            max(0.0, ce_phenyl), cfg.phenyl_c50, cfg.phenyl_gamma,
+        )
+        self._pressor_recruitment_ml = min(
+            recruitment * pressor_gain,
+            self.unstressed_volume + self._baseline_stressed_volume * (1.0 - stressed_fraction),
+        )
 
     def get_hematocrit(self) -> float:
         return clamp(self.red_cell_volume_ml / self.blood_volume, 0.0, 0.7)
@@ -284,11 +310,8 @@ class HemodynamicModel:
         return self.lung_water_ml / self._pbw
 
     def _frank_starling(self, preload_factor: float, inotropy: float = 1.0) -> float:
-        """SV factor 1 - exp(-2 x preload), normalized to 1 at baseline preload.
-
-        Floored at 5% of baseline SV.
-        """
-        pf = clamp(preload_factor, 0.01, 2.5)
+        """Preload response with a plateau at normal filling (Rebet 2016)."""
+        pf = clamp(preload_factor, 0.01, 1.0)
         normalized = (1.0 - math.exp(-2.0 * pf)) / self._frank_starling_baseline_raw
         return max(0.05, inotropy * normalized)
 
@@ -398,16 +421,23 @@ class HemodynamicModel:
 
         pvr_factor = self._calc_pvr_factor(pao2, peep_cmH2O)
         rv_out_target_factor = vr_flow_factor * (pvr_factor ** (-cfg.pvr_flow_exponent))
+        reference_rap = cfg.rap_baseline * min(1.0, self._venous_reference_mcfp / self.mcfp_0)
+        reference_flow_factor = (
+            (self._venous_reference_mcfp - reference_rap) / self.venous_return_resistance
+            * self._inv_base_co_l_min
+        )
 
         if cfg.pulmonary_transit_time_s > 0 and dt > 0:
             alpha = -math.expm1(-dt / cfg.pulmonary_transit_time_s)
             self._pulm_flow_factor += (rv_out_target_factor - self._pulm_flow_factor) * alpha
-        elif self._pulm_flow_factor <= 0:
+            self._pulm_reference_factor += (reference_flow_factor - self._pulm_reference_factor) * alpha
+        elif cfg.pulmonary_transit_time_s <= 0:
             self._pulm_flow_factor = rv_out_target_factor
+            self._pulm_reference_factor = reference_flow_factor
 
         self._pulm_flow_factor = clamp(self._pulm_flow_factor, 0.05, 3.0)
 
-        f_preload = self._pulm_flow_factor * f_preload_pit
+        f_preload = self._pulm_flow_factor / self._pulm_reference_factor * f_preload_pit
         f_frank_starling = self._frank_starling(f_preload)
 
         self._last_lap = self._lap(f_preload)
@@ -720,6 +750,9 @@ class HemodynamicModel:
             f_preload_pit = 1.0 + cfg.alpha_peep * (-delta_pit)
         self.f_preload_pit = clamp(f_preload_pit, 0.4, 1.4)
 
+        pressor_gain = 1.0 - clamp01(cfg.sepsis_pressor_resistance * sepsis_sev)
+        self._update_venous_drug_effects(cp_prop, ce_phenyl / alpha_dr, pressor_gain)
+
         f_frank_starling = self._update_pulmonary_coupling(
             dt=dt,
             pao2=pao2,
@@ -820,6 +853,7 @@ class HemodynamicModel:
             epi_sv_factor * nore_sv_factor * dobu_sv_factor * mil_sv_factor
             * (1.0 - cfg.beta_block_sv * beta_occ * resting_tone)
             * (1.0 + cfg.ketamine_emax_sv * ketamine * beta_response)
+            / (1.0 + cfg.phenyl_afterload_gain * (phenyl_svr_factor - 1.0) * pressor_gain)
         )
         combined_delta_hr = (
             self._epi_chrono_effect + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr
@@ -929,6 +963,13 @@ class HemodynamicModel:
         self.tde_hr = 0
         self.tde_sv = 0
         self.ce_sevo = mac_sevo
+        self._update_venous_drug_effects(cp_prop, 0.0)
+        reference_rap = self.config.rap_baseline * min(1.0, self._venous_reference_mcfp / self.mcfp_0)
+        self._pulm_reference_factor = (
+            (self._venous_reference_mcfp - reference_rap) / self.venous_return_resistance
+            * self._inv_base_co_l_min
+        )
+        self._pulm_flow_factor = self._pulm_reference_factor
 
         self._epi_pressor_ce = self._epi_chrono_effect = self._epi_beta2_effect = 0.0
         self.smoothed_chemo_hr = self.smoothed_baro_hr = 0.0

@@ -137,7 +137,8 @@ def test_obstructed_airway_preserves_effort_without_restoring_ventilation(awake_
     resp, effort = engine.resp.state, engine.resp_mech.effort
     assert resp.drive_central > 0.0 and resp.muscle_factor == 1.0
     assert effort.rr > 8.0 and effort.target_vt > 0.4
-    assert effort.amplitude == pytest.approx(baseline_effort, rel=0.05)
+    # Hypoxic drive raises effort while the airway remains obstructed.
+    assert effort.amplitude > baseline_effort * 1.1
     assert engine.state.mv < 0.01 and resp.va < 0.01
     assert resp.pa_co2 > baseline_co2 + 8.0
 

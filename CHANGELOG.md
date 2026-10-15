@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Added hypoxic breathing feedback, sustained hypoxic ventilatory decline, and
+  anesthetic attenuation.
+- Made recurrent atelectatic shunt depend on alveolar inert gas separately from
+  bulk compliance, with oxygen conserved as shunt changes.
+- Added propofol venous pooling and resistance changes, and preload-dependent
+  phenylephrine recruitment and afterload responses.
+
 ## 1.6 - 2026-10-14
 
 - Adopted the AnaSim noncommercial license. Personal use and qualifying

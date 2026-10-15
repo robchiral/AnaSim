@@ -52,6 +52,12 @@ class RespiratoryModel:
     CO2_CONTROLLER_TAU_S = 150.0  # Olofsen 2010, 2.5 min
     CO2_RESPONSE_EXPONENT = 4.37  # Bouillon 2004 nonlinear CO2 response.
     MAX_ALVEOLAR_DRIVE = 12.0  # Bound demand above the nonlinear response at PCO2 70.
+    # Nieuwenhuijs 2000: acute hypoxic drive followed by ventilatory decline.
+    HYPOXIC_GAIN = 0.10  # Fraction of alveolar demand per percentage-point desaturation
+    HYPOXIC_TAU_S = 5.0  # Fast response timing is a simulator approximation.
+    HYPOXIC_DECLINE_DELAY_S = 180.0
+    HYPOXIC_DECLINE_TAU_S = 180.0
+    HYPOXIC_RECOVERY_TAU_S = 1200.0  # Estimated; decline persists beyond 2 min of normoxia.
 
     def __init__(self, patient: Patient):
         self.patient = patient
@@ -67,6 +73,9 @@ class RespiratoryModel:
         self.c50_remi = 1.6
         self.gamma_remi = 1.0  # Used by the separate shivering response.
         self._ventilatory_drive = 1.0
+        self._hypoxic_drive = 0.0
+        self._hypoxic_exposure_s = 0.0
+        self._hypoxic_decline = 0.0
         # Olofsen's low-dose propofol background reduces opioid-controller gain
         # to 0.46. Interpolation to other concentrations is a transfer assumption.
         prop_keep_at_one = 1.0 - hill_function(1.0, self.c50_prop, self.gamma_prop)
@@ -314,6 +323,7 @@ class RespiratoryModel:
         effort_rr, effort_vt, drive_central = self._unassisted(
             state.p_alveolar_co2, prop_keep, sevo_keep, muscle_factor,
             unconscious, opioid_reference, resting_pco2=self._resting_pco2,
+            hypoxic_drive=opioid_reference * self._step_hypoxic_control(dt, ce_prop, mac_sevo),
         )
         state.effort_rr, state.effort_vt = effort_rr, effort_vt
         current_rr = effort_rr
@@ -426,13 +436,15 @@ class RespiratoryModel:
         vo2 = self.vco2 * metabolic_factor / self.rq / 1000.0  # L/min, same uptake as the circuit
         hb = self.baseline_hb if hb_g_dl is None else max(0.0, hb_g_dl)
         blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else max(0.0, blood_volume_ml)
-        if temp_c != self._blood_temp_c:
-            # Redistribute existing O2 between lung gas and blood at the new affinity.
+        new_shunt = clamp(shunt_fraction, 0.0, 0.95)
+        if temp_c != self._blood_temp_c or new_shunt != self.shunt_fraction:
+            # Affinity and shunt redistribute existing O2 between gas and blood.
             stored = self._oxygen_store(
                 state.p_alveolar_o2, hb, blood_volume, cardiac_output, vo2, vq_mismatch,
             )[0]
             self._blood_temp_c = temp_c
             self._p50 = self._temperature_p50(temp_c)
+            self.shunt_fraction = new_shunt
             state.p_alveolar_o2 = self._pressure_from_oxygen_store(
                 stored, hb, blood_volume, cardiac_output, vo2, vq_mismatch,
             )
@@ -447,7 +459,6 @@ class RespiratoryModel:
         dsat_dpo2 = self._saturation_derivative(state.p_arterial_o2)
         # Circulating Hb mass sets the store, so blood loss lowers it before hemodilution.
         blood_o2_capacity_l = 1.34 * hb * (blood_volume / 100.0) / 1000.0
-        self.shunt_fraction = clamp(shunt_fraction, 0.0, 0.95)
         if self.shunt_fraction > 0.0:
             # The blood store follows arterial saturation as alveolar PO2
             # changes. Shunt mixing changes that derivative, especially on O2.
@@ -509,6 +520,35 @@ class RespiratoryModel:
 
         return state
 
+    def _step_hypoxic_control(self, dt: float, ce_prop: float, mac_sevo: float) -> float:
+        """Hypoxic drive calibrated to Nieuwenhuijs 2000 and Sarton 1996.
+
+        Timing and extrapolation beyond low-dose volunteer data are assumptions.
+        """
+        if dt == 0.0:
+            return self._hypoxic_drive
+        pressure = self.state.p_arterial_o2
+        # Carotid bodies sense PO2, not Hb content or temperature-dependent SaO2.
+        deficit = max(0.0, 98.0 - 100.0 * self._saturation_at_p50(pressure, 26.8))
+        deficit *= clamp01((85.0 - pressure) / 25.0)
+        # Combined with baseline depression, halves the response at Ce_prop 0.6.
+        prop_keep = 1.0 / (1.0 + max(0.0, ce_prop) / 1.1)
+        sevo_keep = 1.0 / (1.0 + max(0.0, mac_sevo) / 0.23)
+        if pressure < 60.0:
+            previous = self._hypoxic_exposure_s
+            self._hypoxic_exposure_s += dt
+            decline_dt = max(0.0, self._hypoxic_exposure_s - max(previous, self.HYPOXIC_DECLINE_DELAY_S))
+            target = 0.35 + 0.55 * (1.0 - prop_keep)
+            self._hypoxic_decline += (target - self._hypoxic_decline) * (
+                -math.expm1(-decline_dt / self.HYPOXIC_DECLINE_TAU_S)
+            )
+        else:
+            self._hypoxic_exposure_s = 0.0
+            self._hypoxic_decline *= math.exp(-dt / self.HYPOXIC_RECOVERY_TAU_S)
+        target = self.HYPOXIC_GAIN * deficit * prop_keep * sevo_keep * (1.0 - self._hypoxic_decline)
+        self._hypoxic_drive += (target - self._hypoxic_drive) * -math.expm1(-dt / self.HYPOXIC_TAU_S)
+        return self._hypoxic_drive
+
     def initialize_drug_effects(self, ce_prop: float, ce_remi: float) -> None:
         """Seed the signed ventilatory controller for a maintenance history."""
         remi_c50 = self.c50_remi * (1.0 - 0.32 * ce_prop / (1.0 + ce_prop))
@@ -546,13 +586,14 @@ class RespiratoryModel:
                     muscle_factor: float,
                     unconscious: float, opioid_reference: float,
                     controller: float | None = None,
-                    resting_pco2: float | None = None) -> tuple[float, float, float]:
+                    resting_pco2: float | None = None,
+                    hypoxic_drive: float = 0.0) -> tuple[float, float, float]:
         """Convert normalized alveolar demand to a rate and tidal volume.
 
         Opioids mainly slow rate; hypnotics mainly reduce depth. This split and
         the awake hypocapnic response are teaching approximations.
         """
-        controller = max(0.0, self._ventilatory_drive if controller is None else controller)
+        controller = max(0.0, (self._ventilatory_drive if controller is None else controller) + hypoxic_drive)
         # Transfer the opioid controller as a fraction of its drug-free response
         # at the same CO2, then apply Bouillon's nonlinear alveolar response.
         co2_exponent = self.CO2_RESPONSE_EXPONENT * self.hcvr_slope_baseline / 2.2
@@ -563,7 +604,8 @@ class RespiratoryModel:
         if controller > 1.0:
             rate_fraction += min(
                 0.6 * (response_fraction - 1.0),
-                (0.06 + 0.04 * unconscious) * max(0.0, pco2 - self.paco2_setpoint - self.RATE_CO2_GAP),
+                (0.06 + 0.04 * unconscious) * max(0.0, pco2 - self.paco2_setpoint - self.RATE_CO2_GAP)
+                + 0.3 * hypoxic_drive,
             )
         rate_fraction *= (0.6 + 0.4 * prop_keep) * (0.6 + 0.4 * sevo_keep)
         rr = self.rr_0 * rate_fraction
@@ -602,10 +644,14 @@ class RespiratoryModel:
 
     def _saturation(self, pao2: float) -> float:
         """Dash 2016 Eqs. 6 and 11, including low-saturation cooperativity."""
+        return self._saturation_at_p50(pao2, self._p50)
+
+    @staticmethod
+    def _saturation_at_p50(pao2: float, p50: float) -> float:
         if pao2 <= 0.0:
             return 0.0
         exponent = 2.82 - 1.20 * 10.0**(-pao2 / 29.25)
-        return 1.0 / (1.0 + (self._p50 / pao2)**exponent)
+        return 1.0 / (1.0 + (p50 / pao2)**exponent)
 
     def _saturation_derivative(self, pao2: float) -> float:
         """dS/dPO2 includes the pressure-dependent Hill exponent."""

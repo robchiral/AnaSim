@@ -24,7 +24,7 @@ def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
     for dt in (0.01, 0.1, 1.0):
         engine = SimulationEngine(Patient(), SimulationConfig(mode="steady_state", dt=dt, rng_seed=123))
         engine.start()
-        engine.set_fgf(1.0, 6.0)
+        engine.set_fgf(10.0, 0.0)
 
         engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=0, ie="1:2")
         collapsed = _run(engine, dt, 240)
@@ -76,6 +76,35 @@ def test_sustained_pressure_has_a_recruitment_ceiling_across_step_sizes():
         traces.append(recruited)
     for trace in traces[1:]:
         assert trace == pytest.approx(traces[0], abs=1e-10)
+
+
+def test_inert_gas_slows_recollapse_without_changing_bulk_compliance():
+    """Rothen 1995: nitrogen delays CT collapse recurrence after recruitment."""
+    traces = []
+    for dt in (0.01, 0.1, 1.0):
+        outcomes = []
+        for nitrogen in (0.0, 0.6):
+            aeration = LungAeration(Patient(), recruited=0.65)
+            aeration.unconscious = 1.0
+            aeration.inert_fraction = nitrogen
+            values = []
+            for pressure, seconds in ((45.0, 40), (0.0, 300), (0.0, 2100)):
+                for _ in range(round(seconds / dt)):
+                    aeration.advance(dt, pressure * dt)
+                values.append(aeration.atelectatic / 0.35)
+            outcomes.append(values)
+            if nitrogen == 0.0:
+                oxygen_compliance = aeration.static_mechanics(aeration.relaxed_volume)[1]
+            else:
+                assert aeration.static_mechanics(aeration.relaxed_volume)[1] == pytest.approx(oxygen_compliance)
+        oxygen, mixed = outcomes
+        assert oxygen[0] < 0.05 and mixed[0] < 0.05
+        assert oxygen[1] > 0.9
+        assert 0.1 < mixed[2] < 0.3
+        assert mixed[2] < 0.3 * oxygen[2]
+        traces.append((*oxygen, *mixed))
+    for trace in traces[1:]:
+        assert trace == pytest.approx(traces[0], abs=1e-9)
 
 
 def test_changing_aeration_and_peep_conserves_volume_and_stiffens_at_high_inflation():
