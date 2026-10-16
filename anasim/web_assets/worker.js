@@ -17,10 +17,13 @@ function describe(error) {
 }
 
 async function load() {
+  post({ type: "load_progress", stage: 1, label: "Loading runtime" });
   const build = await (await fetch("build.json", { cache: "no-cache" })).json();
   const { loadPyodide } = await import(`${build.pyodide}pyodide.mjs`);
   pyodide = await loadPyodide({ indexURL: build.pyodide });
+  post({ type: "load_progress", stage: 2, label: "Loading libraries" });
   await pyodide.loadPackage(["numpy", "scipy"], { messageCallback: () => {} });
+  post({ type: "load_progress", stage: 3, label: "Preparing simulator" });
   const archive = await (await fetch(build.package)).arrayBuffer();
   await pyodide.unpackArchive(archive, "zip");
   webModule = pyodide.pyimport("anasim.web");

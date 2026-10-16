@@ -25,6 +25,8 @@ process.exit(shard ? await runShard(shard.split("/").map(Number)) : await runWor
 async function runWorkers() {
   const count = Math.min(availableParallelism(), MAX_WORKERS);
   const started = Date.now();
+  // Populate the shared wheel cache before workers can read partly written downloads.
+  await loadTestRuntime();
   const codes = await Promise.all(Array.from({ length: count }, (_, index) => new Promise((done) => {
     const child = spawn(process.execPath, [script, ...pytestArgs], {
       env: { ...process.env, ANASIM_PYODIDE_SHARD: `${index}/${count}` },
@@ -46,10 +48,15 @@ async function runWorkers() {
   return code;
 }
 
-async function runShard([index, count]) {
+async function loadTestRuntime() {
   const { loadPyodide } = await import("pyodide");
   const pyodide = await loadPyodide();
   await pyodide.loadPackage(["numpy", "scipy", "pytest"], { messageCallback: () => {} });
+  return pyodide;
+}
+
+async function runShard([index, count]) {
+  const pyodide = await loadTestRuntime();
   pyodide.FS.mkdirTree("/repo");
   pyodide.FS.mount(pyodide.FS.filesystems.NODEFS, { root }, "/repo");
 

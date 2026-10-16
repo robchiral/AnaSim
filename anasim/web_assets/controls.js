@@ -30,8 +30,8 @@ function readNumber(input) {
 }
 
 const round = (value, digits = 2) => Number(value.toFixed(digits));
-// Keep small active rates visible without long decimals in the infusion summary.
-const rateText = (value) => String(Number(value.toPrecision(3)));
+// Four significant figures keep small rates visible without long decimals.
+const rateText = (value) => String(Number(value.toPrecision(4)));
 
 // Settings each ventilator mode uses, as on a GE Aisys. PSV uses RR and Pinsp
 // for apnea backup breaths and Tinsp as the longest supported breath.
@@ -64,6 +64,7 @@ export class Controls {
   constructor(info, send) {
     this.settingEditors = [];
     this.destroyed = false;
+    this.feedbackTimers = new Map();
     this.history = [...info.medication_history];
     this.send = async (name, args) => {
       const result = await send(name, args);
@@ -71,6 +72,7 @@ export class Controls {
         this.history.push(result.medication);
         this.history = this.history.slice(-50);
         this.showMedicationHistory();
+        this.showMedicationFeedback(result.medication);
       }
       return result;
     };
@@ -93,6 +95,7 @@ export class Controls {
   destroy() {
     this.destroyed = true;
     clearTimeout(this.fluidFeedbackTimer);
+    for (const timer of this.feedbackTimers.values()) clearTimeout(timer);
     for (const editor of this.settingEditors) {
       for (const field of editor.fields) editors.delete(field);
       editor.destroy();
@@ -113,7 +116,6 @@ export class Controls {
     const list = $("medication-history-list");
     list.replaceChildren();
     $("medication-history").hidden = this.history.length === 0;
-    const latest = new Map();
     for (const entry of this.history) {
       const seconds = Math.floor(entry.time);
       const stamp = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -122,13 +124,18 @@ export class Controls {
       time.textContent = stamp;
       row.append(time, entry.text);
       list.prepend(row);
-      latest.set(entry.key, `${entry.text} · ${stamp}`);
     }
-    for (const [key, text] of latest) {
-      const feedback = this.medicationRows.get(key).feedback;
-      feedback.hidden = false;
-      setText(feedback, text);
-    }
+  }
+
+  showMedicationFeedback(entry) {
+    const feedback = this.medicationRows.get(entry.key).feedback;
+    setText(feedback, entry.text);
+    feedback.hidden = false;
+    clearTimeout(this.feedbackTimers.get(entry.key));
+    this.feedbackTimers.set(entry.key, setTimeout(() => {
+      feedback.hidden = true;
+      this.feedbackTimers.delete(entry.key);
+    }, 6000));
   }
 
   // --- Tabs ---------------------------------------------------------
@@ -145,6 +152,7 @@ export class Controls {
     for (const panel of document.querySelectorAll(".tab-panel")) panel.hidden = panel.dataset.panel !== name;
     this.currentTab = name;
     if (name === "Medications") this.onMedicationsShown?.();
+    this.onViewChanged?.();
   }
 
   // --- Machine ------------------------------------------------------
@@ -208,9 +216,8 @@ export class Controls {
       const card = document.createElement("details");
       card.className = "drug-card";
       card.innerHTML = `
-        <summary></summary>
+        <summary><span class="drug-name"></span><span class="drug-strength"></span></summary>
         <div class="drug-controls">
-        <p class="drug-formulation"></p>
         ${tci ? `<label class="inline">Infusion mode
           <select class="infusion-mode"><option value="rate">Manual rate</option><option value="tci">TCI</option></select>
         </label>` : ""}
@@ -228,8 +235,8 @@ export class Controls {
         <p class="medication-feedback" role="status" hidden></p>
         <p class="csht" hidden></p>
         </div>`;
-      card.querySelector("summary").textContent = spec.generic_name;
-      card.querySelector(".drug-formulation").textContent = spec.name;
+      card.querySelector(".drug-name").textContent = spec.generic_name;
+      card.querySelector(".drug-strength").textContent = ` · ${spec.name.slice(spec.generic_name.length).trim()}`;
       card.querySelector(".bolus-unit").textContent = spec.bolus_unit;
 
       const w = {
@@ -429,6 +436,7 @@ export class Controls {
     this.eventSections = new Map([...document.querySelectorAll(".event-section")].map((section) => {
       section.open = false;
       section.dataset.active = "false";
+      section.ontoggle = () => this.onViewChanged?.();
       const summary = section.querySelector("summary");
       summary.setAttribute("aria-disabled", "false");
       summary.tabIndex = 0;
@@ -515,7 +523,7 @@ export class Controls {
       }
       if (w.rate) {
         w.rate.disabled = w.editor.pending || w.mode?.value === "tci";
-        setValue(w.rate, round(d.rate, 3));
+        setValue(w.rate, rateText(d.rate));
         const active = d.rate > 0 || (d.is_tci && d.target > 0);
         if (!active && w.runningRow.contains(document.activeElement)) $("drug-search").focus();
         if (!active) this.closeInfusionEditor(w);

@@ -15,8 +15,13 @@
 <section id="loading" class="screen">
   <div class="loading-card">
     <h1 class="brand">AnaSim</h1>
-    <div class="loading-bar"><div></div></div>
-    <p id="loading-status" class="loading-status" role="status">Loading…</p>
+    <div id="loading-progress" class="loading-progress" role="progressbar" aria-label="Loading AnaSim" aria-valuemin="0" aria-valuemax="3">
+      <span data-state="active"></span><span></span><span></span>
+    </div>
+    <div class="loading-caption">
+      <p id="loading-status" class="loading-status" role="status">Connecting…</p>
+      <span id="loading-stage" class="loading-stage" aria-hidden="true"></span>
+    </div>
   </div>
 </section>
 
@@ -24,7 +29,7 @@
   <form id="setup-form" class="setup-card" novalidate>
     <header class="setup-header">
       <h1 class="brand">AnaSim</h1>
-      <span class="subtitle">Adult anesthesia and physiology simulation</span>
+      <h2>Session setup</h2>
     </header>
 
     <div class="setup-grid">
@@ -64,8 +69,10 @@
       <div class="setup-col">
         <fieldset>
           <legend>Session type</legend>
-          <label class="choice"><input type="radio" name="session" value="open" checked> Open simulation</label>
-          <label class="choice"><input type="radio" name="session" value="guided"> Guided scenario</label>
+          <div class="choice-group">
+            <label class="choice"><input type="radio" name="session" value="open" checked> Open simulation</label>
+            <label class="choice"><input type="radio" name="session" value="guided"> Guided scenario</label>
+          </div>
           <label class="row" id="scenario-row" hidden>Scenario <select name="scenario_id"></select></label>
           <label class="choice" title="Use target controls and TCI maintenance starts. Manual rates remain available.">
             <input type="checkbox" name="tci_enabled"> Allow TCI</label>
@@ -75,9 +82,11 @@
           <legend>Initial state</legend>
           <label class="choice" title="Opioid-containing anesthesia for this session. Maintenance starts include opioids. This setting stays fixed when infusions start or stop.">
             <input type="checkbox" name="concomitant_opioids" checked> Opioid-containing anesthesia</label>
-          <label class="choice"><input type="radio" name="mode" value="awake"> Awake before induction</label>
-          <label class="choice"><input type="radio" name="mode" value="steady_state" checked> Anesthetized maintenance</label>
-          <label class="row">Maintenance technique
+          <div class="choice-group">
+            <label class="choice"><input type="radio" name="mode" value="awake"> Awake before induction</label>
+            <label class="choice"><input type="radio" name="mode" value="steady_state" checked> Anesthetized maintenance</label>
+          </div>
+          <label class="row" id="maintenance-row">Maintenance technique
             <select name="maint_type">
               <option value="tiva">TIVA (propofol)</option>
               <option value="balanced">Inhalational (sevoflurane)</option>
@@ -85,10 +94,15 @@
           </label>
         </fieldset>
 
+        <fieldset id="scenario-initial-state" hidden>
+          <legend>Initial state</legend>
+          <p id="scenario-start-summary"></p>
+        </fieldset>
+
         <fieldset>
           <legend>Monitoring and endpoint</legend>
           <label class="choice" title="Show the arterial pressure waveform and continuous pressure values.">
-            <input type="checkbox" name="arterial_line_enabled" checked> Display continuous arterial pressure</label>
+            <input type="checkbox" name="arterial_line_enabled" checked> Show arterial pressure</label>
           <label class="choice" title="Stop when MAP stays below 20 mmHg or HR below 10 bpm for 15 seconds. Resuscitation is not modeled.">
             <input type="checkbox" name="end_on_cardiac_arrest"> End session at cardiac arrest</label>
         </fieldset>
@@ -108,6 +122,7 @@
 
 <div id="app" hidden>
   <header class="session-bar" aria-label="Session controls">
+    <span class="session-brand">AnaSim</span>
     <span id="patient-info"></span>
     <span id="recording-status" class="recording-status" role="status" hidden>Recording</span>
     <div class="session-controls">
@@ -317,7 +332,7 @@
           <div id="running-infusion-list"></div>
         </section>
         <details id="medication-history" class="medication-history" hidden>
-          <summary>Recent medication actions</summary>
+          <summary>Medication history</summary>
           <ol id="medication-history-list"></ol>
         </details>
         <div id="drug-cards"></div>

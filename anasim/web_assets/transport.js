@@ -5,8 +5,14 @@ export async function connect(onmessage) {
   const { backend } = await response.json();
   if (backend === "pyodide") {
     const worker = new Worker("worker.js", { type: "module" });
-    worker.onmessage = onmessage;
-    worker.onerror = () => onmessage({ data: { type: "error", message: "The simulation worker stopped. Reload to restart." } });
+    let ready = false;
+    worker.onmessage = (event) => {
+      if (event.data.type === "ready") ready = true;
+      onmessage(event);
+    };
+    worker.onerror = () => onmessage({ data: {
+      type: ready ? "error" : "load_error", message: "The simulation worker stopped. Reload to restart.",
+    } });
     return worker;
   }
   if (backend !== "native") throw new Error(`Unknown runtime: ${backend}`);

@@ -43,11 +43,30 @@ def check_output_dir(out: Path) -> None:
         raise SystemExit(f"Refusing to replace {out}: it is not empty and is not a previous build.")
 
 
+def fingerprint_assets(out: Path) -> None:
+    """Give each build's styles, modules, and worker distinct URLs."""
+    assets = sorted(path for path in out.iterdir() if path.suffix in {".css", ".js"})
+    digest = hashlib.sha256()
+    for path in assets:
+        digest.update(path.name.encode() + b"\0" + path.read_bytes())
+    revision = digest.hexdigest()[:12]
+    names = {path.name: f"{path.stem}-{revision}{path.suffix}" for path in assets}
+    references = re.compile(r'''(["'])(\./)?(''' + "|".join(map(re.escape, names)) + r''')\1''')
+    for path in [out / "index.html", *assets]:
+        path.write_text(references.sub(
+            lambda match: f"{match[1]}{match[2] or ''}{names[match[3]]}{match[1]}",
+            path.read_text(),
+        ))
+    for path in assets:
+        path.rename(out / names[path.name])
+
+
 def build(out: Path) -> None:
     check_output_dir(out)
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(ROOT / "anasim" / "web_assets", out)
+    fingerprint_assets(out)
     shutil.copyfile(ROOT / "LICENSE", out / "LICENSE")
     data = package_zip()
     name = f"anasim-{hashlib.sha256(data).hexdigest()[:12]}.zip"

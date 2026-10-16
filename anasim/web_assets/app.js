@@ -46,10 +46,22 @@ function command(name, args) {
 
 function onMessage({ data }) {
   switch (data.type) {
+    case "load_progress": {
+      const progress = $("loading-progress");
+      progress.setAttribute("aria-valuenow", String(data.stage - 1));
+      progress.setAttribute("aria-valuetext", `${data.label}, step ${data.stage} of 3`);
+      for (const [index, segment] of [...progress.children].entries()) {
+        segment.dataset.state = index < data.stage - 1 ? "complete" : index === data.stage - 1 ? "active" : "";
+      }
+      $("loading-status").textContent = data.label;
+      $("loading-stage").textContent = `${data.stage} / 3`;
+      break;
+    }
     case "load_error":
       $("loading-status").textContent = `AnaSim could not load: ${data.message}`;
       $("loading-status").classList.add("error");
-      document.querySelector(".loading-bar").hidden = true;
+      $("loading-progress").hidden = true;
+      $("loading-stage").hidden = true;
       break;
     case "ready":
       catalog = data.catalog;
@@ -100,6 +112,7 @@ function buildSetup() {
 
   const syncOpioidPlan = () => {
     const maintenance = form.elements.mode.value === "steady_state";
+    $("maintenance-row").hidden = !maintenance;
     form.elements.concomitant_opioids.disabled = maintenance;
     if (maintenance) form.elements.concomitant_opioids.checked = true;
   };
@@ -108,11 +121,17 @@ function buildSetup() {
     const guided = form.elements.session.value === "guided";
     $("scenario-row").hidden = !guided;
     $("initial-state").disabled = guided;
+    $("initial-state").hidden = guided;
+    $("scenario-initial-state").hidden = !guided;
     if (guided) {
       const scenario = catalog.scenarios.find((s) => s.id === form.elements.scenario_id.value);
       form.elements.concomitant_opioids.checked = true;
       form.elements.mode.value = scenario.mode;
       form.elements.maint_type.value = scenario.maint_type;
+      const start = scenario.mode === "awake"
+        ? "Awake before induction"
+        : `Anesthetized · ${form.elements.maint_type.selectedOptions[0].textContent}`;
+      setText($("scenario-start-summary"), `${start} · Opioids planned`);
     }
     syncOpioidPlan();
   };
@@ -186,6 +205,9 @@ function startSession(sessionInfo) {
 
   monitor = new Monitor(info);
   controls = new Controls(info, command);
+  controls.onViewChanged = () => {
+    if (last?.scenario) updateScenario(last.scenario);
+  };
   trends = new Trends(info);
   trendReturnTab = "Machine";
   controls.onMedicationsShown = refreshCsht;
@@ -279,12 +301,15 @@ function updateScenario(step) {
     $("step-instruction").dataset.instruction = step.instruction;
   }
   setText($("scenario-count"), `Step ${step.index + 1} of ${total}`);
-  target.hidden = !step.target_tab;
+  const sectionVisible = !step.target_section || controls.eventSections.get(step.target_section).section.open;
+  target.hidden = !step.target_tab || (controls.currentTab === step.target_tab && sectionVisible);
   if (step.target_tab) {
     const tab = controls.tabs.find((button) => button.dataset.tab === step.target_tab);
     setText(target, `Open ${tab.textContent.toLowerCase()}`);
   }
-  setText(status, step.met ? "" : step.status);
+  const normalize = (text) => text.replace(/\s+/g, " ").trim().toLowerCase();
+  const repeated = normalize($("step-instruction").textContent).includes(normalize(step.status));
+  setText(status, step.met || repeated ? "" : step.status);
   next.disabled = !step.met;
   setText(next, step.met && step.index === total - 1 ? "Finish scenario" : "Continue");
 }
