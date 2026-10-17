@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from anasim.physiology.blood_chemistry import BloodChemistry
+from anasim.physiology.blood_chemistry import BloodChemistry, extracellular_contents
 
 MMHG_PER_KPA = 7.5006168270417
 
@@ -87,6 +87,20 @@ def test_haldane_effect_matches_independent_blood_transport_reference():
     difference_ml_dl = (deoxygenated.total_co2_mmol_l - oxygenated.total_co2_mmol_l) * 22.414 / 10.0
     assert difference_ml_dl == pytest.approx(6.28, rel=0.05)
     assert deoxygenated.ph > oxygenated.ph
+
+
+@pytest.mark.parametrize("fluid_ratio", [1e-6, 2.5, 1e10])
+def test_contact_equilibrium_is_stable_across_blood_aliquot_sizes(fluid_ratio):
+    model = BloodChemistry(hemoglobin_mmol_l=9.3, hematocrit=9.3 / 21.0)
+    blood = model.evaluate(7.23, 80.0, 0.4)
+    carbon, base, _, _ = extracellular_contents(7.23, 80.0)
+    result = model.solve_contents(
+        blood.total_co2 + fluid_ratio * carbon,
+        blood.buffer_base + fluid_ratio * base,
+        0.4, 40.0, 7.4, fluid_ratio,
+    )
+    assert result.pco2 == pytest.approx(80.0, abs=1e-7)
+    assert result.blood.ph == pytest.approx(7.23, abs=1e-9)
 
 
 def test_solution_is_independent_of_initial_ph_including_search_limits():

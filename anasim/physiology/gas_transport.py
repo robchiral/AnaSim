@@ -112,20 +112,25 @@ class GasTransport:
         bases, gains = [], []
         partitions, offsets = [], []
         if relations:
-            outgoing = []
-            for amount, capacity, (content, slope) in zip(self.tissue_co2, self.capacities, relations, strict=True):
-                outgoing.append(content)
-                partitions.append(capacity / slope)
-                offsets.append(content - slope * amount / capacity)
-            rhs_v = vv * cv + flow * (sum(f * c for f, c in zip(self.PERFUSION, outgoing, strict=True)) - cv)
-            for volume, old, fraction, metabolism, offset, amount in zip(
-                partitions, outgoing, self.PERFUSION, self.METABOLISM, offsets, self.tissue_co2, strict=True,
+            outgoing = venous_base = venous_gain = 0.0
+            for amount, capacity, (content, slope), fraction, metabolism in zip(
+                self.tissue_co2, self.capacities, relations, self.PERFUSION, self.METABOLISM, strict=True,
             ):
+                volume = capacity / slope
+                offset = content - slope * amount / capacity
                 exchange = flow * fraction
-                bases.append((amount + volume * offset + exchange * (ca - old) + source * metabolism) / (volume + exchange))
-                gains.append(exchange / (volume + exchange))
-            av = (rhs_v + flow * sum(f * b for f, b in zip(self.PERFUSION, bases, strict=True))) / (vv + flow)
-            bv = flow * sum(f * g for f, g in zip(self.PERFUSION, gains, strict=True)) / (vv + flow)
+                base = (amount + volume * offset + exchange * (ca - content) + source * metabolism) / (volume + exchange)
+                gain = exchange / (volume + exchange)
+                partitions.append(volume)
+                offsets.append(offset)
+                bases.append(base)
+                gains.append(gain)
+                outgoing += fraction * content
+                venous_base += fraction * base
+                venous_gain += fraction * gain
+            rhs_v = vv * cv + flow * (outgoing - cv)
+            av = (rhs_v + flow * venous_base) / (vv + flow)
+            bv = flow * venous_gain / (vv + flow)
         else:
             av = (vv * cv + flow * (ca - cv) + source) / (vv + flow)
             bv = flow / (vv + flow)
@@ -142,9 +147,15 @@ class GasTransport:
         flow = max(0.0, cardiac_output) * minutes / 2.0
         relations = []
         for index, (amount, capacity) in enumerate(zip(self.tissue_co2, self.capacities, strict=True)):
-            blood = chemistry.solve(amount / capacity, saturation, self.base[2], self._tissue_ph[index])
-            self._tissue_ph[index] = blood.ph
-            relations.append((blood.total_co2, blood.co2_capacity))
+            pco2 = amount / capacity
+            blood = chemistry.evaluate(self._tissue_ph[index], pco2, saturation)
+            ph_change = (self.base[2] - blood.buffer_base) / blood.base_ph
+            # A Newton step this small from the last pH leaves a quadratic error below the solver tolerance.
+            if abs(ph_change) > 1e-5:
+                blood = chemistry.solve(pco2, saturation, self.base[2], blood.ph)
+                ph_change = 0.0
+            self._tissue_ph[index] = blood.ph + ph_change
+            relations.append((blood.total_co2 + blood.content_ph * ph_change, blood.co2_capacity))
         carbon = self._plan(self.co2, flow, shunt, production_l_min * minutes / CO2_L_PER_MMOL, tuple(relations))
         oxygen = self._plan(self.oxygen, flow, shunt, -consumption_l_min * minutes)
         base = self._plan(self.base, flow, shunt, 0.0)

@@ -8,7 +8,7 @@ from anasim.physiology.respiration import RespiratoryModel
 
 
 def _carbon_l(model):
-    gas = model.frc * model._gas_capacity_per_l * model.state.p_alveolar_co2
+    gas = model.gas_volume_l * model._gas_capacity_per_l * model.state.p_alveolar_co2
     return gas + model.gas_transport.co2_l
 
 
@@ -18,7 +18,7 @@ def test_apnea_and_ventilation_conserve_carbon_and_change_buffering(patient):
     initial_carbon = _carbon_l(model)
     initial_ph, initial_bicarbonate = model.state.ph, model.state.hco3
     initial_base = model.gas_transport.base_meq
-    initial_oxygen = (model.frc * model._gas_capacity_per_l * model.state.p_alveolar_o2
+    initial_oxygen = (model.gas_volume_l * model._gas_capacity_per_l * model.state.p_alveolar_o2
                       + model.gas_transport.oxygen_l)
     for _ in range(120):
         model.step(1.0, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0,
@@ -44,7 +44,7 @@ def test_apnea_and_ventilation_conserve_carbon_and_change_buffering(patient):
     )
     assert equilibrium.buffer_base_meq_l == pytest.approx(model.buffer_base, abs=1e-7)
     assert model.gas_transport.base_meq == pytest.approx(initial_base, abs=1e-7)
-    final_oxygen = (model.frc * model._gas_capacity_per_l * model.state.p_alveolar_o2
+    final_oxygen = (model.gas_volume_l * model._gas_capacity_per_l * model.state.p_alveolar_o2
                     + model.gas_transport.oxygen_l)
     assert final_oxygen - initial_oxygen == pytest.approx(
         model.gas_transport.oxygen_from_air_l - model.gas_transport.consumed_o2_l, abs=1e-8,
@@ -202,6 +202,25 @@ def test_zero_flow_retains_metabolic_co2_in_tissues(patient):
     assert model.gas_transport.tissue_co2_l - initial_tissue == pytest.approx(model.vco2 / 1000.0, abs=1e-10)
 
 
+@pytest.mark.parametrize("dt", [0.1, 1.0])
+def test_stagnant_blood_cannot_equilibrate_the_extravascular_pool(patient, dt):
+    model = RespiratoryModel(patient)
+    transport = model.gas_transport
+    carbon, base = transport.extracellular_co2, transport.extracellular_base
+    initial_venous_o2 = model.state.pv_o2
+    for _ in range(round(60.0 / dt)):
+        model.step(dt, ce_prop=0.0, ce_remi=0.0, measured_breaths=True,
+                   cardiac_output=0.0, airway_patency=0.0)
+    # Desaturating venous blood changes its buffering but cannot reach the fluid without flow.
+    assert model.state.pv_o2 < initial_venous_o2
+    assert transport.extracellular_co2 == carbon
+    assert transport.extracellular_base == base
+    for _ in range(60):
+        model.step(1.0, ce_prop=0.0, ce_remi=0.0, measured_breaths=True,
+                   cardiac_output=5.0, airway_patency=0.0)
+    assert abs(transport.extracellular_co2 - carbon) > 0.1
+
+
 @pytest.mark.parametrize("shunt", [0.0, 0.95])
 def test_fast_blood_turnover_preserves_nonnegative_stores_and_gas_balance(patient, shunt):
     model = RespiratoryModel(patient)
@@ -213,13 +232,13 @@ def test_fast_blood_turnover_preserves_nonnegative_stores_and_gas_balance(patien
     model.step(0.0, **settings)
     transport = model.gas_transport
     carbon, base = _carbon_l(model), transport.base_meq
-    oxygen = model.frc * model._gas_capacity_per_l * model.state.p_alveolar_o2 + transport.oxygen_l
+    oxygen = model.gas_volume_l * model._gas_capacity_per_l * model.state.p_alveolar_o2 + transport.oxygen_l
     for _ in range(90):
         model.step(1.0, **settings)
         assert min(transport.co2 + transport.oxygen + transport.tissue_co2) >= 0.0
     assert _carbon_l(model) - carbon == pytest.approx(transport.produced_l - transport.exhaled_l, abs=1e-7)
     assert transport.base_meq == pytest.approx(base, abs=1e-7)
-    final_oxygen = model.frc * model._gas_capacity_per_l * model.state.p_alveolar_o2 + transport.oxygen_l
+    final_oxygen = model.gas_volume_l * model._gas_capacity_per_l * model.state.p_alveolar_o2 + transport.oxygen_l
     assert final_oxygen - oxygen == pytest.approx(
         transport.oxygen_from_air_l - transport.consumed_o2_l, abs=1e-8,
     )
@@ -230,6 +249,7 @@ def test_apneic_rise_matches_lyons_short_term_data(patient):
 
     FRC 2.2 L follows Magor-Elliott 2021's comparison. Q 3 L/min and 80%
     basal metabolism are simulator anesthesia assumptions; Lyons reports neither.
+    After ideal preoxygenation the open airway entrains room air, as in that arm.
     """
     model = RespiratoryModel(patient)
     model.frc = 2.2
@@ -238,7 +258,7 @@ def test_apneic_rise_matches_lyons_short_term_data(patient):
     first_minute = 0.0
     for elapsed in range(240):
         model.step(1.0, ce_prop=0.0, ce_remi=0.0, cardiac_output=3.0,
-                   ce_roc=10.0, fio2=1.0, metabolic_factor=0.8, unconscious=1.0)
+                   ce_roc=10.0, fio2=0.21, metabolic_factor=0.8, unconscious=1.0)
         if elapsed == 59:
             first_minute = model.state.pa_co2
     assert first_minute - 40.0 == pytest.approx(1.39 * 7.5006, abs=0.39 * 7.5006)

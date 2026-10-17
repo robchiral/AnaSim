@@ -76,6 +76,7 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         1.0 - (resp.p_alveolar_o2 + resp.p_alveolar_co2) / engine.resp._atm_dry
         - engine.pk_n2o.state.p_alv - engine.pk_sevo.state.p_alv
     )
+    aeration.absorbed_volume = engine.resp.frc - engine.resp.gas_volume_l
     lung.effort.unconscious = engine.state.loc
     aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine.airway_status.patency > 0.5
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.

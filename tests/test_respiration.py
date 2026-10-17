@@ -231,7 +231,7 @@ def test_blood_temperature_shifts_oxygen_affinity_without_creating_oxygen(patien
 
     def oxygen_l():
         state = model.state
-        gas = model.frc * model._gas_capacity_per_l * state.p_alveolar_o2
+        gas = model.gas_volume_l * model._gas_capacity_per_l * state.p_alveolar_o2
         return gas + model.gas_transport.oxygen_l
 
     stored = oxygen_l()
@@ -258,7 +258,7 @@ def test_changing_shunt_redistributes_existing_oxygen(patient):
     def stored_oxygen():
         state = model.state
         return (
-            model.frc * model._gas_capacity_per_l * state.p_alveolar_o2
+            model.gas_volume_l * model._gas_capacity_per_l * state.p_alveolar_o2
             + model.gas_transport.oxygen_l
         )
 
@@ -435,6 +435,32 @@ class TestOxygenStores:
         while engine.state.display_spo2 >= 90.0 and engine.state.time - start < 900.0:
             engine.step(dt)
         assert seconds[0] < engine.state.time - start < seconds[1]
+
+    def test_clamped_tube_after_oxygen_matches_stock_blood_gases(self, engine_factory):
+        """Stock 1989 Table 1: after 10 min of O2 ventilation the tracheal tube was clamped.
+
+        Changes are applied to the PaCO2 39 and PaO2 412 mmHg baselines; bounds
+        are 2 SEM. ZEEP is assumed, and Stock used enflurane rather than propofol.
+        The sealed lung shrinks as it absorbs O2, so PaO2 falls slowly.
+        """
+        engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1),
+                                start=True, age=36)
+        settings = engine.vent.settings
+        engine.set_vent_settings(rr=settings.rr, vt=settings.tv / 1000.0, peep=0.0, ie="1:2", mode="VCV")
+        engine.set_fgf(6.0, 0.0)
+        for _ in range(600):
+            engine.step(1.0)
+        engine.set_airway_obstruction(1.0)
+        resp = engine.resp.state
+        pa_co2, pa_o2 = [resp.pa_co2], [resp.p_arterial_o2]
+        for _ in range(300):
+            engine.step(1.0)
+            pa_co2.append(resp.pa_co2)
+            pa_o2.append(resp.p_arterial_o2)
+        for time, mean, sd, n in ((20, 44, 7, 13), (40, 48, 8, 14), (60, 50, 7, 14), (120, 53, 6, 13),
+                                  (180, 56, 6, 11), (240, 59, 7, 9), (300, 63, 9, 7)):
+            assert 39.0 + pa_co2[time] - pa_co2[0] == pytest.approx(mean, abs=2.0 * sd / n**0.5)
+        assert 412.0 + pa_o2[300] - pa_o2[0] == pytest.approx(314.0, abs=2.0 * 87.0 / 7**0.5)
 
     def test_room_air_apnea_desaturates_within_two_minutes(self, awake_engine):
         self._induce_apnea(awake_engine)

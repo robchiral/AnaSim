@@ -70,9 +70,7 @@ within their source cohorts.
 
 ## Model notes
 
-[Model references](REFERENCES.md) lists the source studies. Simulator
-calibrations define combined drug responses, reflexes, and volume and airway
-effects.
+[Model references](REFERENCES.md) lists the source studies.
 
 ### PK and TCI
 
@@ -113,14 +111,10 @@ responsiveness, and breathing.
 | Clinical response and laryngoscopy tolerance | Bouillon 2004 Bayesian hierarchy; loss of response uses Schnider 1999's age term |
 | Ventilatory depression | Bouillon 2004 propofol curve with Olofsen 2010 opioid and CO₂ control |
 
-Propofol and sevoflurane determine baseline BIS. Opioids blunt
-stimulation-related BIS arousal through tolerance of the stimulus.
-The propofol curve predicts a population response. Prospective Eleveld studies
-show substantial individual BIS prediction error (Vellinga 2021; Coetzee 2024).
-Monitor processing and early distribution after a rapid bolus affect transition
-accuracy (Sahinovic 2020; Struys 2007). The Eleveld processing delay is included;
-delay estimates and equilibration constants from other PK models do not transfer
-directly to this model.
+Propofol and sevoflurane determine baseline BIS; opioids blunt
+stimulation-related arousal. The propofol curve predicts a population response,
+and individual errors are large (Vellinga 2021; Coetzee 2024). Transitions after
+a rapid bolus are less accurate (Sahinovic 2020; Struys 2007).
 
 `loc` is the probability of no response to shaking or shouting; `tol` is the
 probability of no response to laryngoscopy. Sevoflurane thresholds follow
@@ -243,12 +237,18 @@ these volunteer protocols use simulator calibrations.
 
 Measured breaths drive gas exchange. Lung and blood oxygen stores support
 preoxygenation, apnea, and blood loss responses and determine circuit oxygen
-uptake. Opening an obstructed airway allows passive gas refill and
-reoxygenation during apnea (Laviola 2020). Refill uses circuit oxygen; its timing
-is estimated, and the pressure transient is not modeled. Oxygen and inhaled
-anesthetics share lung gas volume and shunt. The A-a gradient follows sea-level
-means by age (Crapo 1999). Shunt mixing accounts for hemoglobin-bound and
-dissolved oxygen, with extraction limited to available oxygen.
+uptake. Oxygen and inhaled anesthetics share lung gas volume and shunt. The A-a
+gradient follows sea-level means by age (Crapo 1999). Shunt mixing accounts for
+hemoglobin-bound and dissolved oxygen, with extraction limited to available
+oxygen.
+
+Behind an obstructed airway, absorbed gas shrinks the lung at near-atmospheric
+pressure until only the conducting airways hold gas, and the lower alveolar
+pressure promotes absorption atelectasis. Blood gases after clamping the
+tracheal tube follow Stock 1989. Ventilator mechanics and inhaled anesthetics
+keep the unshrunk volume. Opening the airway refills the lung with circuit gas
+(Laviola 2020); refill timing is estimated, and the pressure transient is not
+modeled.
 
 [Gas transport](../anasim/physiology/gas_transport.py) carries oxygen, CO₂, and
 buffer base through well-mixed pulmonary capillary, arterial, and mixed venous
@@ -259,13 +259,14 @@ the extracellular pool's share. Pulmonary capillary blood equilibrates with lung
 gas, so ventilation during cardiac arrest clears lung CO₂ while arterial blood
 keeps its contents. Respiratory CO₂ feedback follows arterial PCO₂. Comparisons
 cover acute human acid-base ranges, short and prolonged apnea with sustained
-oxygenation, and preceding hyperventilation.
+oxygenation, and preceding hyperventilation. PaCO₂ rise during severe
+desaturation is unvalidated.
 
 [Blood buffering](../anasim/physiology/blood_chemistry.py) follows Rees 2010 at
-37 °C. Venous blood shares pH and PCO₂ with an extracellular pool of
-plasma-equivalent fluid at twice the blood volume (Wooten 2003); this immediate
-equilibration is a simulator assumption. Bicarbonate redistribution conserves
-CO₂ and buffer base.
+37 °C. Venous blood renewed by cardiac output equilibrates with an extracellular
+pool of plasma-equivalent fluid at twice the blood volume (Wooten 2003), then
+mixes back into the venous pool. This flow-limited exchange is a simulator
+assumption; it conserves CO₂ and buffer base and stops without flow.
 
 Oxygen affinity follows Dash 2016's temperature, pH, and PCO₂ terms at reference
 2,3-DPG; combining the two models' red-cell pH relations is a simulator
@@ -288,11 +289,9 @@ part shunts at most about 10% of cardiac output (Tokics 1996). Flooded units
 shunt fully. Open-airway apnea times after 100, 80, and 60% O₂ match Edmark
 2003. Volume is continuous during PEEP and compliance changes.
 
-Primus recordings inform compliance and sensor fits; CT atelectasis studies
-inform recruitment pressure and timing. Alveolar nitrogen slows recurrent
-collapse (Rothen 1995); atelectatic shunt evolves separately from bulk FRC and
-compliance. Gas-dependent closure, assisted effort, and obstructed expiration
-use simulator calibrations.
+Alveolar nitrogen slows recurrent collapse (Rothen 1995); atelectatic shunt
+evolves separately from bulk FRC and compliance. Gas-dependent closure, assisted
+effort, and obstructed expiration use simulator calibrations.
 
 Ventilatory assistance reduces muscle effort. Inflation ends effort earlier
 under anesthesia. Airway and muscle pressures determine the intrathoracic
@@ -313,7 +312,7 @@ ranges. [Mode names](../README.md#features) are defined in the README.
 
 Mandatory breaths include gas already inspired during spontaneous effort.
 Inspiratory settings apply at the next breath; PEEP applies during expiration.
-Stopping ventilation preserves the settings. Spirometry includes ventilated,
+Spirometry includes ventilated,
 bagged, and unassisted breaths. Expired tidal volume is the last completed
 breath's volume. Respiratory rate and minute ventilation use four-breath
 averages that clear after 15 seconds without a breath. Mask leak reduces
@@ -327,9 +326,8 @@ ECG, arterial pressure, and plethysmography share beat timing. The arterial
 waveform uses Mahdi 2017 pressure points with modeled MAP, stroke volume, and
 arterial compliance, which falls after age 40 (Franklin 1997). Catheter and
 transducer dynamics affect arterial-line measurements. Displayed heart rate
-averages beat intervals; NIBP updates after each cuff cycle. Poor perfusion
-delays pulse oximetry and reduces pleth amplitude. Pulse oximetry requires an
-organized rhythm and adequate perfusion.
+averages beat intervals. Pulse oximetry requires an organized rhythm and
+adequate perfusion; poor perfusion delays it and reduces pleth amplitude.
 
 Airway pressure includes sensor filtering and expiratory valve resistance.
 Flow reflects gas moved during each sampling interval; volume is its filtered

@@ -236,7 +236,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Hillman et al. (2009). *Anesthesiology*. [Airway collapse at loss of consciousness](https://pubmed.ncbi.nlm.nih.gov/19512872/).
 - Larsson et al. (1985). *J Allergy Clin Immunol*. [Epinephrine relief of bronchoconstriction](https://pubmed.ncbi.nlm.nih.gov/3989143/).
 - Farmery and Roe (1996). *Br J Anaesth*. [Model of oxyhemoglobin desaturation during apnea](https://pubmed.ncbi.nlm.nih.gov/8777112/).
-- Stock et al. (1989). *J Clin Anesth*. [CO₂ accumulation during airway obstruction](https://pubmed.ncbi.nlm.nih.gov/2516732/).
+- Stock et al. (1989). *J Clin Anesth*. [Blood gases during airway obstruction](https://pubmed.ncbi.nlm.nih.gov/2516732/).
 - Magor-Elliott et al. (2021). *J Appl Physiol*. [Tissue gas storage and circulation delays](https://doi.org/10.1152/japplphysiol.00764.2020).
 - Lyons et al. (2024). *Anaesthesia*. [Arterial CO₂ accumulation during apnea with and without high-flow oxygen](https://pubmed.ncbi.nlm.nih.gov/38100148/).
 - Gentz et al. (1998). *J Clin Anesth*. [Apneic CO₂ accumulation after brief hypocapnia](https://doi.org/10.1016/S0952-8180(98)00005-1).

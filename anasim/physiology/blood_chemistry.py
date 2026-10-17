@@ -15,6 +15,8 @@ _PLASMA_CO2_SOLUBILITY = 0.230 / _MMHG_PER_KPA  # mmol/L/mmHg
 _RBC_CO2_SOLUBILITY = 0.195 / _MMHG_PER_KPA  # mmol/L/mmHg
 _PH_RANGE = (6.0, 10.0)  # Numerical limits, wide enough for CO2-washed-out pulmonary blood.
 _LN_10 = math.log(10.0)
+# mmol/L or mEq/L; leaves pH within about 1e-9 and PCO2 within 1e-7 mmHg.
+_CONTENT_TOLERANCE = 1e-8
 # Reaction ratios relative to the bicarbonate pK 6.1 (Rees Fig. 1).
 _PLASMA_BUFFER_RATIO = 10.0**(6.96 - 6.1)
 _OXY_AMINO_RATIO = 10.0**(7.14 - 6.1)
@@ -76,20 +78,17 @@ class Equilibrium(NamedTuple):
 class FluidEquilibrium(NamedTuple):
     """Blood and adjacent extracellular fluid at a common pH and PCO2.
 
-    Fluid contents are per liter of that fluid. The extracellular buffer pool
-    uses Rees's plasma chemistry as a plasma-equivalent approximation.
+    The adjacent fluid uses the plasma-equivalent extracellular_contents model.
     """
 
     blood: Equilibrium
     pco2: float
-    extracellular_co2: float
-    extracellular_base: float
 
 
 class ContentIterate(NamedTuple):
     """Equilibrium at one iterate and the next damped Newton iterate."""
 
-    fluid: FluidEquilibrium
+    blood: Equilibrium
     converged: bool
     ph: float
     pco2: float
@@ -177,7 +176,7 @@ class BloodChemistry:
         for _ in range(32):
             equilibrium = self.evaluate(ph, pco2_mmhg, oxygen_saturation)
             residual = equilibrium.buffer_base - buffer_base_meq_l
-            if abs(residual) < 1e-10:
+            if abs(residual) < _CONTENT_TOLERANCE:
                 return equilibrium
             if residual > 0.0:
                 high = ph
@@ -196,12 +195,12 @@ class BloodChemistry:
                        pco2: float, ph: float, extracellular_ratio: float = 0.0) -> FluidEquilibrium:
         """Invert conserved CO2 and base per liter of blood plus adjacent fluid.
 
-        Extracellular fluid shares the blood's pH and PCO2 after rapid redistribution.
+        Contacted extracellular fluid shares the aliquot's pH and PCO2 at equilibrium.
         """
         for _ in range(24):
             iterate = self.iterate_contents(co2, base, saturation, pco2, ph, extracellular_ratio)
             if iterate.converged:
-                return iterate.fluid
+                return FluidEquilibrium(iterate.blood, iterate.pco2)
             ph, pco2 = iterate.ph, iterate.pco2
         raise RuntimeError("Blood gas content solve did not converge")
 
@@ -213,22 +212,22 @@ class BloodChemistry:
             fluid_co2, fluid_base, fluid_ph, fluid_pco2 = extracellular_contents(ph, pco2)
         else:
             fluid_co2 = fluid_base = fluid_ph = fluid_pco2 = 0.0
-        carbon_residual = blood.total_co2 + extracellular_ratio * fluid_co2 - co2
-        base_residual = blood.buffer_base + extracellular_ratio * fluid_base - base
-        if max(abs(carbon_residual), abs(base_residual)) < 1e-10:
-            if not extracellular_ratio:
-                fluid_co2, fluid_base, _, _ = extracellular_contents(ph, pco2)
-            return ContentIterate(FluidEquilibrium(blood, pco2, fluid_co2, fluid_base), True, ph, pco2)
-        b_ph = blood.base_ph + extracellular_ratio * fluid_ph
-        b_p = blood.base_co2 + extracellular_ratio * fluid_pco2
-        c_ph = blood.content_ph + extracellular_ratio * _LN_10 * fluid_pco2 * pco2
-        c_p = blood.content_co2 + extracellular_ratio * fluid_co2 / pco2
+        # Residuals per liter of blood plus fluid keep the tolerance independent of aliquot size.
+        blood_weight = 1.0 / (1.0 + extracellular_ratio)
+        fluid_weight = extracellular_ratio * blood_weight
+        carbon_residual = blood_weight * (blood.total_co2 - co2) + fluid_weight * fluid_co2
+        base_residual = blood_weight * (blood.buffer_base - base) + fluid_weight * fluid_base
+        if max(abs(carbon_residual), abs(base_residual)) < _CONTENT_TOLERANCE:
+            return ContentIterate(blood, True, ph, pco2)
+        b_ph = blood_weight * blood.base_ph + fluid_weight * fluid_ph
+        b_p = blood_weight * blood.base_co2 + fluid_weight * fluid_pco2
+        c_ph = blood_weight * blood.content_ph + fluid_weight * _LN_10 * fluid_pco2 * pco2
+        c_p = blood_weight * blood.content_co2 + fluid_weight * fluid_co2 / pco2
         determinant = b_ph * c_p - b_p * c_ph
         ph_change = (base_residual * c_p - carbon_residual * b_p) / determinant
         pressure_change = (carbon_residual * b_ph - base_residual * c_ph) / determinant
         fraction = step_fraction(ph, ph_change, pco2, pressure_change)
-        fluid = FluidEquilibrium(blood, pco2, fluid_co2, fluid_base)
-        return ContentIterate(fluid, False, ph - fraction * ph_change, pco2 - fraction * pressure_change)
+        return ContentIterate(blood, False, ph - fraction * ph_change, pco2 - fraction * pressure_change)
 
     @staticmethod
     def _gas_inputs(pco2_mmhg: float, oxygen_saturation: float) -> tuple[float, float]:

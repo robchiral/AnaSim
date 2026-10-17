@@ -36,6 +36,7 @@ class LungAeration:
         self.recruited = recruited
         self.atelectatic = 1.0 - recruited
         self.inert_fraction = 0.75
+        self.absorbed_volume = 0.0  # L of gas absorbed behind a closed airway
         self.unconscious = 0.0
         self.spontaneous_breathing = False
         self.reference_volume = patient.functional_residual_capacity()
@@ -67,7 +68,8 @@ class LungAeration:
         self.pressure_area += pressure_area
         if self.elapsed < self.INTERVAL - 1e-12:
             return False
-        pressure = self.pressure_area / self.elapsed
+        # Absorbed gas shrinks the lung below its mechanical volume and lowers alveolar pressure.
+        pressure = self.pressure_area / self.elapsed - self.absorbed_volume / self.static_compliance
         fraction = 1.0 / (1.0 + math.exp((self.opening_midpoint - pressure) / self.OPENING_WIDTH))
         target = self.MIN_RECRUITED + (1.0 - self.MIN_RECRUITED) * fraction
         opening = self.OPENING_RATE if target > self.recruited else 0.0
@@ -98,9 +100,14 @@ class LungAeration:
         self.elapsed = self.pressure_area = 0.0
         return True
 
+    @property
+    def static_compliance(self) -> float:
+        """Low-inflation compliance at the current aeration, L/cmH2O."""
+        return self.reference_compliance * self.aerated / self.REFERENCE_RECRUITED
+
     def static_mechanics(self, volume: float) -> tuple[float, float]:
         """Static recoil and tangent compliance at an absolute gas volume (L)."""
-        compliance = self.reference_compliance * self.aerated / self.REFERENCE_RECRUITED
+        compliance = self.static_compliance
         inflation = (volume - self.relaxed_volume) / compliance
         excess = max(0.0, inflation - 25.0)
         recoil = inflation + excess ** 3 / 1200.0

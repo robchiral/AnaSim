@@ -128,18 +128,21 @@ def test_changing_aeration_and_peep_conserves_volume_and_stiffens_at_high_inflat
 
 
 def test_patient_lung_volume_sets_apnea_reserve_and_shunt_limits_oxygen_rescue():
-    def oxygen_after_apnea(weight):
+    def seconds_to_desaturation(weight):
         patient = Patient(weight=weight, height=170)
         model = RespiratoryModel(patient)
         model.equilibrate_oxygen(1.0)
-        for _ in range(600):
-            model.step(0.1, ce_prop=0, ce_remi=0, ce_roc=10, airway_patency=0,
+        seconds = 0
+        while model.state.sao2 >= 90.0:
+            model.step(1.0, ce_prop=0, ce_remi=0, ce_roc=10, airway_patency=0,
                        blood_volume_ml=5000, metabolic_factor=70.0 / weight)
-        return model
+            seconds += 1
+        return model.frc, seconds
 
-    lean, heavier = oxygen_after_apnea(55), oxygen_after_apnea(90)
-    assert heavier.frc < lean.frc
-    assert heavier.state.p_alveolar_o2 < lean.state.p_alveolar_o2 - 20.0
+    (lean_frc, lean_seconds), (heavier_frc, heavier_seconds) = (
+        seconds_to_desaturation(55), seconds_to_desaturation(90))
+    assert heavier_frc < lean_frc
+    assert heavier_seconds < lean_seconds - 60
 
     saturation = []
     for shunt in (0.0, 0.4):

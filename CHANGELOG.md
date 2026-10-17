@@ -13,6 +13,8 @@
   anesthetic attenuation.
 - Made recurrent atelectatic shunt depend on alveolar inert gas separately from
   bulk compliance, with oxygen conserved as shunt changes.
+- Made the lung shrink as it absorbs gas behind an obstructed airway, so PaO₂
+  falls more slowly after preoxygenation and absorption atelectasis develops.
 - Added propofol venous pooling and resistance changes, and preload-dependent
   phenylephrine recruitment and afterload responses.
 
