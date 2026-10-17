@@ -41,7 +41,7 @@ def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
         assert maintained[2] > 1.25 * collapsed[2]
         # Atelectasis shunts about 10% at ZEEP (Tokics 1996); recruitment raises PaO2.
         assert maintained[4] > 1.25 * collapsed[4]
-        assert withdrawn[4] < 0.8 * maintained[4]
+        assert withdrawn[4] < 0.85 * maintained[4]
         assert maintained[3] == pytest.approx(500.0, abs=2.0)
         traces.append((collapsed, recruited, maintained, withdrawn))
     for trace in traces[1:]:

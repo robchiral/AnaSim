@@ -250,26 +250,31 @@ anesthetics share lung gas volume and shunt. The A-a gradient follows sea-level
 means by age (Crapo 1999). Shunt mixing accounts for hemoglobin-bound and
 dissolved oxygen, with extraction limited to available oxygen.
 
-[CO₂ stores](../anasim/physiology/co2_stores.py) divide body CO₂ among lung gas,
-central blood, and two perfused tissue groups from Magor-Elliott 2021.
-Metabolism adds CO₂ to the tissues, blood flow carries it to the lungs, and
-ventilation removes it, so cardiac output and stored CO₂ shape PaCO₂ and EtCO₂.
-Low cardiac output also widens the arterial to end-tidal gap. The reduction omits
-circulation delays and flow redistribution; half the published tissue capacity
-reproduces Stock 1989's five-minute apneic rise, and longer storage is not
-validated. Central blood stays in equilibrium with lung gas even without flow.
+[Gas transport](../anasim/physiology/gas_transport.py) carries oxygen, CO₂, and
+buffer base through well-mixed pulmonary capillary, arterial, and mixed venous
+blood, with shunt bypassing the lungs. Blood volumes scale with circulating
+volume. Two tissue groups from Magor-Elliott 2021 receive fixed shares of
+cardiac output and hold a calibrated half of the published CO₂ capacity, less
+the extracellular pool's share. Pulmonary capillary blood equilibrates with lung
+gas, so ventilation during cardiac arrest clears lung CO₂ while arterial blood
+keeps its contents. Respiratory CO₂ feedback follows arterial PCO₂. Comparisons
+cover acute human acid-base ranges, short and prolonged apnea with sustained
+oxygenation, and preceding hyperventilation.
 
 [Blood buffering](../anasim/physiology/blood_chemistry.py) follows Rees 2010 at
-37 °C with buffer base held fixed, giving pH, bicarbonate, and central blood
-CO₂ for acute respiratory changes. Oxygen affinity follows Dash 2016's
-temperature, pH, and PCO₂ terms at reference 2,3-DPG; combining the two
-models' red-cell pH relations is a simulator assumption. Affinity and Haldane
-shifts redistribute oxygen and CO₂ without changing their amounts. Changes in
-Hb or hematocrit reset buffer base to normal for the new blood, and Hb/Hct
-ratios away from Rees's red-cell hemoglobin concentration are untested.
-Lactic acidosis, infusate electrolytes, and renal compensation are not
-modeled, so low-flow states and cardiac arrest show only respiratory acid-base
-changes.
+37 °C. Venous blood shares pH and PCO₂ with an extracellular pool of
+plasma-equivalent fluid at twice the blood volume (Wooten 2003); this immediate
+equilibration is a simulator assumption. Bicarbonate redistribution conserves
+CO₂ and buffer base.
+
+Oxygen affinity follows Dash 2016's temperature, pH, and PCO₂ terms at reference
+2,3-DPG; combining the two models' red-cell pH relations is a simulator
+assumption. Affinity and Haldane shifts preserve oxygen and CO₂ amounts.
+Changes in Hb or hematocrit adjust the normal buffer contribution while
+preserving respiratory buffer-base changes. Hb/Hct ratios away from Rees's
+red-cell hemoglobin concentration are untested. Lactic acidosis, infusate
+electrolytes, and renal compensation are not modeled, so low-flow states and
+cardiac arrest show only respiratory acid-base changes.
 
 ### Ventilation mechanics
 

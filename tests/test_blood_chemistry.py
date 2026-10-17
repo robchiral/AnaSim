@@ -72,6 +72,23 @@ def test_co2_capacity_matches_solved_buffering():
         assert states[1].co2_capacity == pytest.approx(derivative, rel=1e-6)
 
 
+def test_haldane_effect_matches_independent_blood_transport_reference():
+    """O'Neill and Robbins 2017 Table 3 gives 6.28 mL CO2/dL at PCO2 40.
+
+    Compare fully oxygenated and deoxygenated blood at fixed buffer base.
+    The 5% tolerance allows for the different blood-chemistry parameterization.
+    """
+    model = BloodChemistry(hemoglobin_mmol_l=9.3, hematocrit=9.3 / 21.0)
+    oxygenated = model.equilibrate(ph=7.4, pco2_mmhg=40.0, oxygen_saturation=1.0)
+    deoxygenated = model.solve_ph(
+        pco2_mmhg=40.0, oxygen_saturation=0.0,
+        buffer_base_meq_l=oxygenated.buffer_base_meq_l,
+    )
+    difference_ml_dl = (deoxygenated.total_co2_mmol_l - oxygenated.total_co2_mmol_l) * 22.414 / 10.0
+    assert difference_ml_dl == pytest.approx(6.28, rel=0.05)
+    assert deoxygenated.ph > oxygenated.ph
+
+
 def test_solution_is_independent_of_initial_ph_including_search_limits():
     model = BloodChemistry(hemoglobin_mmol_l=9.3, hematocrit=9.3 / 21.0)
     for ph, pressure, saturation in ((6.0, 160.0, 0.1), (7.2, 80.0, 0.7), (7.6, 20.0, 0.98), (8.5, 5.0, 0.7)):

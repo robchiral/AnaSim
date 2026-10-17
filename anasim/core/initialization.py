@@ -181,8 +181,8 @@ def _seed_steady_state_subsystems(
         mac_sevo=targets.mac,
     )
     # Tissue CO2 belongs to the same maintenance history as the seeded drugs.
-    engine.resp.co2_stores.equilibrate(
-        engine.resp.state.p_alveolar_co2, engine.hemo.state.co,
+    engine.resp.equilibrate_blood_gases(
+        engine.hemo.state.co,
         _oxygen_uptake_l_min(engine, targets) * engine.resp.rq,
     )
 

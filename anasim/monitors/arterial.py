@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from collections import deque
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import numpy as np
 from scipy.linalg import expm
@@ -31,8 +32,7 @@ class ArterialWaveformConfig:
     diastolic_slow_rate: float = 1.5
 
 
-@dataclass(frozen=True, slots=True)
-class ArterialPressureSample:
+class ArterialPressureSample(NamedTuple):
     pressure: float
     systolic: float
     diastolic: float
@@ -92,6 +92,12 @@ class ArterialWaveformRenderer:
             self.config.compliance_age_max_factor,
         )
         self.arterial_compliance = self.config.compliance_ref_ml_mmhg * age_factor
+        cfg = self.config
+        # Unnormalized decay at the end of diastole.
+        self._diastolic_end = (
+            cfg.diastolic_fast_weight * math.exp(-cfg.diastolic_fast_rate)
+            + (1.0 - cfg.diastolic_fast_weight) * math.exp(-cfg.diastolic_slow_rate)
+        )
         self._initialized = False
         # Mean-beat pressures, latched at each R wave.
         self._mean_pressure = 0.0
@@ -147,7 +153,7 @@ class ArterialWaveformRenderer:
             mean=clamp(area, 1e-6, 1.0 - 1e-6),
         )
 
-    def _shape_value(self, phase: float) -> float:
+    def _shape_value(self, phase: float, diastolic_decay: float) -> float:
         shape = self._shape
         phase = phase % 1.0
         if phase <= shape.peak_phase:
@@ -162,7 +168,7 @@ class ArterialWaveformRenderer:
                 shape.dicrotic_height - shape.notch_height
             ) * _quintic_smoothstep(u)
 
-        return shape.dicrotic_height * self._diastolic_decay(phase)
+        return shape.dicrotic_height * diastolic_decay
 
     def _diastolic_decay(self, phase: float) -> float:
         """Diastolic pressure above the beat's end value, from 1 at the dicrotic peak to 0."""
@@ -176,10 +182,7 @@ class ArterialWaveformRenderer:
             cfg.diastolic_fast_weight * math.exp(-cfg.diastolic_fast_rate * u)
             + (1.0 - cfg.diastolic_fast_weight) * math.exp(-cfg.diastolic_slow_rate * u)
         )
-        end_value = (
-            cfg.diastolic_fast_weight * math.exp(-cfg.diastolic_fast_rate)
-            + (1.0 - cfg.diastolic_fast_weight) * math.exp(-cfg.diastolic_slow_rate)
-        )
+        end_value = self._diastolic_end
         normalized = (raw - end_value) / (1.0 - end_value)
         return clamp(normalized, 0.0, 1.0)
 
@@ -241,10 +244,11 @@ class ArterialWaveformRenderer:
         else:
             phase = ((sample.elapsed_s - delay_s) / self._beat_rr_s) % 1.0
         phase = min(phase, 1.0 - 1e-9)
-        runoff = 1.0 - self._diastolic_decay(phase)
+        decay = self._diastolic_decay(phase)
+        runoff = 1.0 - decay
         pressure = (
             self._foot_pressure
-            + self._pulse_pressure * self._shape_value(phase)
+            + self._pulse_pressure * self._shape_value(phase, decay)
             + (self._end_pressure - self._foot_pressure) * runoff
         )
         return ArterialPressureSample(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from dataclasses import dataclass
+from typing import NamedTuple
 
 import numpy as np
 
@@ -51,8 +51,7 @@ def _mean_af_filling(mean_rr_s: float) -> float:
     return (high - low - _FILLING_TAU_S * decay) / (2.0 * spread * mean_rr_s)
 
 
-@dataclass(frozen=True, slots=True)
-class CardiacCycleSample:
+class CardiacCycleSample(NamedTuple):
     """Timing information shared by beat-synchronous monitor renderers."""
 
     phase: float

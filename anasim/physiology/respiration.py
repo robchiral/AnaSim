@@ -11,8 +11,13 @@ from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import ROCURONIUM_T1_EC50
 
-from .blood_chemistry import BloodChemistry, Equilibrium
-from .co2_stores import CarbonDioxideStores
+from .blood_chemistry import (
+    BloodChemistry,
+    Equilibrium,
+    extracellular_contents,
+    step_fraction,
+)
+from .gas_transport import GasTransport, TransportPlan
 from .hemo_config import HemodynamicConfig
 
 _HB_G_DL_PER_MMOL_L = 1.61145  # Heme monomer, 16.1145 g/mmol.
@@ -37,6 +42,9 @@ class RespState:
     sao2: float = 98.0  # %
     ph: float = 7.4  # Blood gas values at 37 °C.
     hco3: float = 24.5  # Plasma bicarbonate, mmol/L.
+    pv_co2: float = 46.0
+    pv_o2: float = 40.0
+    venous_ph: float = 7.36
     drive_central: float = 1.0
     muscle_factor: float = 1.0
     effort_rr: float = 12.0
@@ -138,20 +146,22 @@ class RespiratoryModel:
         )
         # Mean sea-level A-a gradient, -4.4 + 0.261 x age mmHg (Crapo 1999).
         self.aa_grad_base = max(5.0, -4.404 + 0.261 * self.patient.age)
-        self.equilibrate_oxygen(0.21)
-        self._blood_temp_c = patient.baseline_temp
         self._p50 = self._temperature_p50(patient.baseline_temp)
+        self._temperature_p50_now = self._p50
         assert patient.baseline_hct is not None
         self.baseline_hct = patient.baseline_hct
-        reference = self._set_blood_composition(self.baseline_hb, self.baseline_hct)
-        self._co2_gap = 0.5  # PaCO2 - PACO2 at the last step
-        # Tissue stores start at awake production for the baseline temperature.
-        awake_metabolism = max(0.5, TEMP_METABOLIC_COEFFICIENT ** (37.0 - patient.baseline_temp))
-        self.co2_stores = CarbonDioxideStores(
-            patient.weight, self.state.p_alveolar_co2, self.baseline_co_l_min,
-            reference.co2_capacity * _CO2_L_PER_MMOL, self.vco2 / 1000.0 * awake_metabolism,
-            self.baseline_blood_volume_ml / 1000.0,
+        self._set_blood_composition(self.baseline_hb, self.baseline_hct)
+        self.gas_transport = GasTransport(
+            patient.weight, self.baseline_blood_volume_ml / 1000.0,
         )
+        self._blood_pressures = [40.0, 40.0, 46.0]
+        self._blood_ph = [7.4, 7.4, 7.36]
+        self._blood_po2 = [100.0, 95.0, 40.0]
+        self._blood_saturations = [0.98, 0.98, 0.75]
+        self._blood_p50 = [self._p50] * 3
+        self.equilibrate_oxygen(0.21)
+        awake_metabolism = max(0.5, TEMP_METABOLIC_COEFFICIENT ** (37.0 - patient.baseline_temp))
+        self.equilibrate_blood_gases(self.baseline_co_l_min, self.vco2 / 1000.0 * awake_metabolism)
         self._resting_pco2: float | None = None
         self._resting_age_s = 0.0
         # Perfusion effect on deadspace fraction (low flow increases VD/VT).
@@ -162,13 +172,8 @@ class RespiratoryModel:
         self._chemistry_composition = (hb_g_dl, hematocrit)
         self.chemistry = BloodChemistry(hb_g_dl / _HB_G_DL_PER_MMOL_L, hematocrit)
         reference = self.chemistry.evaluate(7.4, 40.0, 0.98)
-        self.buffer_base = reference.buffer_base
+        self.buffer_base = self._reference_buffer_base = reference.buffer_base
         return reference
-
-    @staticmethod
-    def _central_blood_scale(blood_volume_ml: float) -> float:
-        """STPD liters of central blood CO2 per mmol/L."""
-        return CarbonDioxideStores.CENTRAL_BLOOD_FRACTION * blood_volume_ml / 1000.0 * _CO2_L_PER_MMOL
 
     @property
     def va_baseline(self) -> float:
@@ -176,10 +181,49 @@ class RespiratoryModel:
         return max(0.1, (self.vt_0 / 1000.0 - self.vd_deadspace) * self.rr_0)
 
     def equilibrate_oxygen(self, fio2: float) -> None:
-        """Set alveolar O2 to its alveolar-gas-equation value at the current PACO2."""
+        """Seed lung and blood oxygen after an explicitly equilibrated exposure."""
         self.state.p_alveolar_o2 = max(0.0, fio2 * self._atm_dry - self.state.p_alveolar_co2 / self.rq)
-        self.state.p_arterial_o2 = max(0.0, self.state.p_alveolar_o2 - self.aa_grad_base)
+        capillary = max(0.0, self.state.p_alveolar_o2 - self.aa_grad_base)
+        self.state.p_arterial_o2 = capillary
+        hb = self._chemistry_composition[0]
+        content = self._oxygen_content(capillary, hb, self._p50)[0]
+        venous = max(0.0, content - self.vco2 / self.rq / 1000.0 / self.baseline_co_l_min)
+        self.gas_transport.oxygen = [content, content, venous]
+        for index, oxygen in enumerate(self.gas_transport.oxygen):
+            po2 = self._po2_from_content(oxygen, hb, self._blood_p50[index], self._blood_po2[index])
+            self._blood_po2[index] = po2
+            self._blood_saturations[index] = self._saturation_at_p50(po2, self._blood_p50[index])
+        self.state.sao2 = 100.0 * self._blood_saturations[1]
         self._apneic_gas_deficit_l = 0.0
+
+    def equilibrate_blood_gases(self, cardiac_output: float, production_l_min: float) -> None:
+        """Seed blood and tissues for a specified maintenance history."""
+        transport = self.gas_transport
+        hb = self._chemistry_composition[0]
+        reference = self.chemistry.evaluate(7.4, 40.0, 0.98)
+        transport.base = [reference.buffer_base] * 3
+        capillary = max(0.0, self.state.p_alveolar_o2 - self.aa_grad_base)
+        oxygen = self._oxygen_content(capillary, hb, self._p50)[0]
+        transport.oxygen = [oxygen, oxygen, max(0.0, oxygen - production_l_min / self.rq / cardiac_output)]
+        saturation = self._saturation_at_p50(capillary, self._p50)
+        arterial = self.chemistry.solve(self.state.p_alveolar_co2, saturation, reference.buffer_base)
+        venous_co2 = arterial.total_co2 + production_l_min / _CO2_L_PER_MMOL / cardiac_output
+        transport.co2 = [arterial.total_co2, arterial.total_co2, venous_co2]
+        venous_po2 = self._po2_from_content(transport.oxygen[2], hb, self._p50, 40.0)
+        venous_saturation = self._saturation_at_p50(venous_po2, self._p50)
+        venous = self.chemistry.solve_contents(venous_co2, reference.buffer_base, venous_saturation, 46.0, 7.36)
+        co2, base, _, _ = extracellular_contents(venous.blood.ph, venous.pco2)
+        transport.extracellular_co2 = transport.extracellular_volume * co2
+        transport.extracellular_base = transport.extracellular_volume * base
+        self._blood_pressures[0], self._blood_ph[0] = self.state.p_alveolar_co2, arterial.ph
+        self._blood_po2[0], self._blood_saturations[0] = capillary, saturation
+        self._resolve_blood_pool(1, hb)
+        self._resolve_blood_pool(2, hb)
+        transport.seed_tissues(arterial.total_co2, cardiac_output, production_l_min,
+                               self.chemistry, self._blood_saturations[2])
+        self._pulmonary_o2_uptake = production_l_min / self.rq
+        self._pulmonary_co2_delivery = production_l_min
+        self._publish_blood_gases()
 
     def _passive_refill_l_min(self, airway_patency: float, dt: float) -> float:
         """Mean passive inflow this interval, limited to the missing lung gas.
@@ -192,74 +236,142 @@ class RespiratoryModel:
         fraction = -math.expm1(-clamp01(airway_patency) * dt / 0.5)
         return self._apneic_gas_deficit_l * fraction * 60.0 / dt
 
-    def _oxygen_store(
-        self, pressure: float, hb: float, blood_volume_ml: float,
-        cardiac_output: float, vo2_l_min: float, vq_mismatch: float,
-    ) -> tuple[float, float]:
-        """O2 store (STPD L) and its derivative with respect to alveolar PO2."""
-        gas_capacity = self.frc * self._gas_capacity_per_l
-        blood_dl_to_l = blood_volume_ml / 100000.0
-        cap_pressure = max(0.0, pressure - self._aa_gradient(vq_mismatch))
-        saturation, saturation_derivative = self._saturation_with_derivative(cap_pressure)
-        content = 1.34 * hb * saturation + 0.0031 * cap_pressure
-        derivative = (
-            1.34 * hb * saturation_derivative + 0.0031
-        ) if cap_pressure > 0.0 else 0.0
-        shunt = self.shunt_fraction
-        extraction = 100.0 * vo2_l_min / max(0.1, cardiac_output)
-        if extraction >= (1.0 - shunt) * content:
-            arterial_content = (1.0 - shunt) * content
-            derivative *= 1.0 - shunt
-        else:
-            arterial_content = content - shunt / (1.0 - shunt) * extraction
-        return (
-            gas_capacity * pressure + blood_dl_to_l * arterial_content,
-            gas_capacity + blood_dl_to_l * derivative,
-        )
+    @classmethod
+    def _oxygen_content(cls, pressure: float, hb: float, p50: float) -> tuple[float, float]:
+        """STPD L O2 per L blood and derivative per mmHg."""
+        saturation, derivative = cls._saturation_gradient(pressure, p50)
+        return 0.01 * (1.34 * hb * saturation + 0.0031 * pressure), 0.01 * (1.34 * hb * derivative + 0.0031)
 
-    def _pressure_from_oxygen_store(
-        self, target: float, hb: float, blood_volume_ml: float,
-        cardiac_output: float, vo2_l_min: float, vq_mismatch: float,
-    ) -> float:
-        """Invert the nonlinear O2 content with a bracketed Newton solve."""
-        lower, upper = 0.0, max(0.0, self._atm_dry - self.state.p_alveolar_co2)
-        if target <= 0.0:
-            return lower
-        if target >= self._oxygen_store(
-            upper, hb, blood_volume_ml, cardiac_output, vo2_l_min, vq_mismatch,
-        )[0]:
-            return upper
-        pressure = clamp(self.state.p_alveolar_o2, lower, upper)
+    @classmethod
+    def _po2_from_content(cls, content: float, hb: float, p50: float, previous: float) -> float:
+        if content <= 0.0:
+            return 0.0
+        lower, upper = 0.0, max(760.0, content / 0.000031)
+        pressure = max(1e-6, min(upper, previous))
         for _ in range(24):
-            content, derivative = self._oxygen_store(
-                pressure, hb, blood_volume_ml, cardiac_output, vo2_l_min, vq_mismatch,
-            )
-            residual = content - target
-            if abs(residual) < 1e-10:
+            value, derivative = cls._oxygen_content(pressure, hb, p50)
+            residual = value - content
+            if abs(residual) < 1e-12:
                 return pressure
             if residual > 0.0:
                 upper = pressure
             else:
                 lower = pressure
             candidate = pressure - residual / derivative
-            pressure = candidate if lower < candidate < upper else 0.5 * (lower + upper)
-        return pressure
+            pressure = candidate if lower < candidate < upper else (lower + upper) / 2.0
+        raise RuntimeError("Blood O2 content solve did not converge")
+
+    def _resolve_blood_pool(self, index: int, hb: float) -> None:
+        transport = self.gas_transport
+        volume = transport.volumes[index]
+        ratio = transport.extracellular_volume / volume if index == 2 else 0.0
+        carbon = transport.co2[index] + (transport.extracellular_co2 / volume if index == 2 else 0.0)
+        base = transport.base[index] + (transport.extracellular_base / volume if index == 2 else 0.0)
+        # Start from the saturation that carries the new O2 content at the previous affinity.
+        pco2, ph = self._blood_pressures[index], self._blood_ph[index]
+        p50 = self._blood_p50[index]
+        po2 = self._po2_from_content(transport.oxygen[index], hb, p50, self._blood_po2[index])
+        saturation = self._saturation_at_p50(po2, p50)
+        # Alternate single CO2 and O2 updates; saturation barely moves once O2 content is fixed.
+        for iteration in range(24):
+            iterate = self.chemistry.iterate_contents(carbon, base, saturation, pco2, ph, ratio)
+            if iterate.converged and iteration:
+                break  # Saturation was last updated at this pH and PCO2.
+            ph, pco2 = iterate.ph, iterate.pco2
+            p50 = self._acid_base_p50(ph, pco2)
+            po2 = self._po2_from_content(transport.oxygen[index], hb, p50, po2)
+            updated = self._saturation_at_p50(po2, p50)
+            if iterate.converged and abs(updated - saturation) < 1e-10:
+                break
+            saturation = updated
+        else:
+            raise RuntimeError("Blood O2/CO2 equilibrium did not converge")
+        fluid = iterate.fluid
+        self._blood_pressures[index], self._blood_ph[index] = pco2, ph
+        self._blood_po2[index], self._blood_saturations[index] = po2, saturation
+        self._blood_p50[index] = p50
+        if index == 2:
+            # Extracellular fluid takes the exact remainder, conserving CO2 and base at any solver tolerance.
+            transport.extracellular_co2 += volume * (transport.co2[index] - fluid.blood.total_co2)
+            transport.extracellular_base += volume * (transport.base[index] - fluid.blood.buffer_base)
+            transport.co2[index] = fluid.blood.total_co2
+            transport.base[index] = fluid.blood.buffer_base
+        if index == 1:
+            self.state.hco3 = fluid.blood.plasma_bicarbonate
+
+    def _equilibrate_lung(self, carbon: float, oxygen: float, hb: float,
+                          gas_capacity: float, aa_gradient: float, carbon_plan: TransportPlan,
+                          oxygen_plan: TransportPlan, flow: float) -> tuple[float, float]:
+        """Equilibrate lung gas and pulmonary capillary blood at fixed amounts."""
+        state, transport = self.state, self.gas_transport
+        pulmonary = flow * (1.0 - self.shunt_fraction)
+        volume = transport.volumes[0] + pulmonary
+        pco2, po2 = state.p_alveolar_co2, state.p_alveolar_o2
+        ph, p50 = self._blood_ph[0], self._blood_p50[0]
+        base = transport.base[0]
+        carbon_volume = _CO2_L_PER_MMOL * (volume - pulmonary * carbon_plan.venous_gain)
+        for _ in range(24):
+            saturation = self._saturation_at_p50(max(0.0, po2 - aa_gradient), p50)
+            chemical = self.chemistry.evaluate(ph, pco2, saturation)
+            # Newton step in pH and PCO2 for fixed buffer base and conserved CO2.
+            base_residual = chemical.buffer_base - base
+            venous_co2 = carbon_plan.venous_base + carbon_plan.venous_gain * chemical.total_co2
+            residual = gas_capacity * pco2 + _CO2_L_PER_MMOL * (volume * chemical.total_co2 - pulmonary * venous_co2) - carbon
+            carbon_ph = carbon_volume * chemical.content_ph
+            carbon_co2 = gas_capacity + carbon_volume * chemical.content_co2
+            determinant = chemical.base_ph * carbon_co2 - chemical.base_co2 * carbon_ph
+            ph_change = (base_residual * carbon_co2 - residual * chemical.base_co2) / determinant
+            change = (residual * chemical.base_ph - base_residual * carbon_ph) / determinant
+            fraction = step_fraction(ph, ph_change, pco2, change)
+            ph -= fraction * ph_change
+            pco2 -= fraction * change
+            p50 = self._acid_base_p50(ph, pco2)
+            capillary = max(0.0, po2 - aa_gradient)
+            content, derivative = self._oxygen_content(capillary, hb, p50)
+            _, venous_o2, venous_gain = transport.oxygen_blood(content, oxygen_plan, flow, self.shunt_fraction)
+            o2_residual = gas_capacity * po2 + volume * content - pulmonary * venous_o2 - oxygen
+            effective_volume = volume - pulmonary * venous_gain
+            o2_change = o2_residual / (gas_capacity + (effective_volume * derivative if capillary > 0.0 else 0.0))
+            po2 = max(0.0, po2 - o2_change)
+            if abs(change) < 1e-8 and abs(o2_change) < 1e-8 and abs(base_residual) < 1e-10:
+                break
+        else:
+            raise RuntimeError("Pulmonary blood gas equilibrium did not converge")
+        state.p_alveolar_co2, state.p_alveolar_o2 = pco2, po2
+        self._blood_pressures[0], self._blood_ph[0] = pco2, ph
+        self._blood_po2[0] = max(0.0, po2 - aa_gradient)
+        self._blood_p50[0] = p50
+        self._blood_saturations[0] = saturation
+        return chemical.total_co2, self._oxygen_content(max(0.0, po2 - aa_gradient), hb, p50)[0]
+
+    def _publish_blood_gases(self) -> None:
+        state = self.state
+        state.pa_co2, state.ph = self._blood_pressures[1], self._blood_ph[1]
+        state.p_arterial_o2 = self._blood_po2[1]
+        state.sao2 = 100.0 * self._blood_saturations[1]
+        state.pv_co2, state.pv_o2, state.venous_ph = self._blood_pressures[2], self._blood_po2[2], self._blood_ph[2]
+        self._p50 = self._blood_p50[1]
+        self.buffer_base = self.gas_transport.base[1]
 
     def oxygen_exchange_l_min(
-        self, fio2: float, alveolar_ventilation: float, metabolic_factor: float,
+        self, fio2: float, alveolar_ventilation: float,
         airway_patency: float, vq_mismatch: float, dt: float = 1.0,
     ) -> float:
         """Net O2 transport from inspired gas into the lung and blood stores, STPD L/min."""
         if airway_patency <= 0.0:
             return 0.0
         ventilation = max(0.0, alveolar_ventilation * (1.0 - 0.6 * clamp01(vq_mismatch)))
-        vo2 = self.vco2 * max(0.1, metabolic_factor) / self.rq / 1000.0
-        apneic_inflow = vo2 * clamp01(airway_patency) * clamp01(1.0 - ventilation)
-        return (
+        net_uptake = max(0.0, self._pulmonary_o2_uptake - self._pulmonary_co2_delivery)
+        apneic_inflow = net_uptake * clamp01(airway_patency) * clamp01(1.0 - ventilation)
+        initial_flux = (
             ventilation * self._btps_to_stpd
             * (fio2 - self.state.p_alveolar_o2 / self._atm_dry)
             + (apneic_inflow + self._passive_refill_l_min(airway_patency, dt)) * fio2
         )
+        # Predict the interval mean gas pressure for the circuit's O2 balance.
+        # The respiratory solve uses the same midpoint ventilation flux.
+        mixing = ventilation * dt / (120.0 * self.frc)
+        return (initial_flux + mixing * self._pulmonary_o2_uptake) / (1.0 + mixing)
 
     def step(self, dt: float, ce_prop: float, ce_remi: float, mech_vent_mv: float = 0.0,
              fio2: float = 0.21, ce_roc: float = 0.0, mac_sevo: float = 0.0,
@@ -290,7 +402,7 @@ class RespiratoryModel:
             vq_mismatch: V/Q mismatch severity, 0-1.
             hb_g_dl: Hemoglobin (g/dL), which sets the blood O2 store.
             hematocrit: Red-cell volume fraction, supplied independently of Hb.
-            cardiac_output: L/min, for the PaCO2-EtCO2 gap.
+            cardiac_output: Pulmonary and systemic blood flow, L/min.
             metabolic_factor: VO2 and VCO2 multiplier.
             blood_volume_ml: Blood volume (mL), which with Hb sets the blood O2 store.
             measured_breaths: The supplied rate and volume include all observed
@@ -302,9 +414,18 @@ class RespiratoryModel:
             opioid_controller_fraction: Fraction of baseline ventilation and CO2 gain remaining.
             neuromuscular_strength: Muscle strength remaining after depolarizing block, 0-1.
         """
-        if dt > 1.0:
-            # Gas store solves assume short intervals; long steps repeat them.
-            count = math.ceil(dt)
+        transport = self.gas_transport
+        blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else blood_volume_ml
+        transport.resize_blood(blood_volume / 1000.0)
+        max_step = 1.0
+        if cardiac_output > 0.0:
+            vp, va, vv = transport.volumes
+            # Crank-Nicolson advection preserves nonnegative contents when
+            # no pool exports more than its volume in the explicit half-step.
+            transit_volume = min(vp / (1.0 - clamp(shunt_fraction, 0.0, 0.95)), va, vv)
+            max_step = min(max_step, 120.0 * transit_volume / cardiac_output)
+        if dt > max_step:
+            count = math.ceil(dt / max_step)
             for _ in range(count):
                 self.step(
                     dt / count, ce_prop, ce_remi, mech_vent_mv, fio2, ce_roc, mac_sevo,
@@ -332,7 +453,7 @@ class RespiratoryModel:
         remi_c50 = self.c50_remi * (1.0 - 0.32 * max(0.0, ce_prop) / (1.0 + max(0.0, ce_prop)))
         gain = self.hcvr_slope_baseline / 2.2 * (0.42 / 7.2)
         gain *= prop_keep ** (self.prop_co2_gain_exponent - 1.0) * sevo_keep
-        co2_excess = max(0.0, state.p_alveolar_co2 - self.paco2_setpoint)
+        co2_excess = max(0.0, state.pa_co2 - self.paco2_setpoint)
         opioid_reference = 1.0 + gain * co2_excess
         long_opioid_keep = clamp01_local(opioid_controller_fraction)
         target_drive = opioid_reference * long_opioid_keep - 0.5 * max(0.0, ce_remi) / remi_c50
@@ -349,7 +470,7 @@ class RespiratoryModel:
             )
             self._resting_age_s = 0.0
         effort_rr, effort_vt, drive_central = self._unassisted(
-            state.p_alveolar_co2, prop_keep, sevo_keep, muscle_factor,
+            state.pa_co2, prop_keep, sevo_keep, muscle_factor,
             unconscious, opioid_reference, resting_pco2=self._resting_pco2,
             hypoxic_drive=opioid_reference * self._step_hypoxic_control(dt, ce_prop, mac_sevo),
         )
@@ -394,7 +515,7 @@ class RespiratoryModel:
         vq_mismatch = clamp01_local(vq_mismatch)
         effective_va = total_va_l_min * (1.0 - 0.6 * vq_mismatch)
         metabolic_factor = max(0.1, float(metabolic_factor))
-        # PaCO2 and EtCO2 derive from alveolar CO2. The PaCO2-EtCO2 gap widens
+        # EtCO2 samples diluted alveolar CO2. The PaCO2-EtCO2 gap widens
         # with dead space, V/Q mismatch, obstruction, and low cardiac output
         # (Russell 1990; Lujan 2008; Kim 2019).
         perfusion_ratio = 1.0
@@ -413,162 +534,79 @@ class RespiratoryModel:
         vq_for_etco2 = clamp01(vq_mismatch)
         etco2_gradient = 4.0 + 15.0 * vd_vt_excess + 8.0 * vq_for_etco2 + 6.0 * (1.0 - ventilation_efficiency)
         etco2_gradient = min(20.0, etco2_gradient)
-        pa_co2_gap = (
-            0.5
-            + 2.5 * vq_for_etco2
-            + 2.5 * clamp01(1.0 - perfusion_ratio)
-            + 1.5 * (1.0 - ventilation_efficiency)
-        )
-        pa_co2_gap = min(8.0, pa_co2_gap)
         hb = self.baseline_hb if hb_g_dl is None else hb_g_dl
         hct = self.baseline_hct if hematocrit is None else hematocrit
-        blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else blood_volume_ml
-        saturation = self._saturation(state.p_arterial_o2)
-        chemical = self.chemistry.solve(
-            state.p_alveolar_co2 + self._co2_gap, saturation, self.buffer_base, state.ph,
-        )
-        ph = chemical.ph
-        gas_capacity = self.frc * self._gas_capacity_per_l
-        # Blood gained or lost since the last step carries its current CO2 content.
-        blood_scale = self._central_blood_scale(blood_volume)
-        initial_co2 = gas_capacity * state.p_alveolar_co2 + blood_scale * chemical.total_co2
-        self._co2_gap = pa_co2_gap
         if (hb, hct) != self._chemistry_composition:
-            self._set_blood_composition(hb, hct)
-
-        def central_co2(pressure: float) -> tuple[float, float]:
-            nonlocal ph
-            chemical = self.chemistry.solve(pressure + pa_co2_gap, saturation, self.buffer_base, ph)
-            ph = chemical.ph
-            return (gas_capacity * pressure + blood_scale * chemical.total_co2,
-                    gas_capacity + blood_scale * chemical.co2_capacity)
-
-        state.p_alveolar_co2, co2_target = self.co2_stores.step(
-            dt, state.p_alveolar_co2, cardiac_output=cardiac_output,
-            production_l_min=self.vco2 * metabolic_factor / 1000.0,
-            ventilation_l_min_mmhg=effective_va * self._gas_capacity_per_l,
-            initial_content_l=initial_co2,
-            central=central_co2,
+            previous_reference = self._reference_buffer_base
+            reference = self._set_blood_composition(hb, hct)
+            shift = reference.buffer_base - previous_reference
+            transport.base = [base + shift for base in transport.base]
+            transport.oxygen = [self._oxygen_content(p, hb, p50)[0] for p, p50 in zip(
+                self._blood_po2, self._blood_p50, strict=True)]
+        self._temperature_p50_now = self._temperature_p50(temp_c)
+        self.shunt_fraction = clamp(shunt_fraction, 0.0, 0.95)
+        production = self.vco2 * metabolic_factor / 1000.0
+        consumption = production / self.rq
+        carbon_plan, oxygen_plan, pulmonary = transport.prepare(
+            dt, cardiac_output, self.shunt_fraction, production, consumption, self.chemistry,
+            self._blood_saturations[2],
         )
-
-        # Alveolar O2 mass balance over the lung and blood stores:
-        # C dPAO2/dt = VA_STPD (PIO2 - PAO2)/Pdry + inflow*FiO2 - VO2, where C is FRC gas
-        # plus hemoglobin-bound O2 (steep on the dissociation curve). At steady
-        # state PAO2 = PIO2 - 863 VO2/VA_BTPS; in apnea stores deplete at VO2, giving the
-        # preoxygenation-dependent safe apnea time (Benumof 1997; Farmery 1996).
-        # During apnea a patent airway draws gas in to replace absorbed O2
-        # (apneic oxygenation).
-        vo2 = self.vco2 * metabolic_factor / self.rq / 1000.0  # L/min, same uptake as the circuit
-        new_shunt = clamp(shunt_fraction, 0.0, 0.95)
-        # Temperature, pH, and PCO2 affinity changes are resolved with CO2 below.
-        self._blood_temp_c = temp_c
-        if new_shunt != self.shunt_fraction:
-            # Shunt redistributes existing O2 between gas and blood.
-            stored = self._oxygen_store(
-                state.p_alveolar_o2, hb, blood_volume, cardiac_output, vo2, vq_mismatch,
-            )[0]
-            self.shunt_fraction = new_shunt
-            state.p_alveolar_o2 = self._pressure_from_oxygen_store(
-                stored, hb, blood_volume, cardiac_output, vo2, vq_mismatch,
-            )
-            cap_pressure = max(0.0, state.p_alveolar_o2 - self._aa_gradient(vq_mismatch))
-            state.p_arterial_o2 = self._arterial_po2(
-                cap_pressure, hb, cardiac_output, vo2, state.p_arterial_o2,
-            )
-        refill_l_min = self._passive_refill_l_min(airway_patency, dt)
-        o2_flux = self.oxygen_exchange_l_min(
-            fio2, total_va_l_min, metabolic_factor, airway_patency, vq_mismatch, dt,
-        ) - vo2
-        oxygen_target = self._oxygen_store(
-            state.p_alveolar_o2, hb, blood_volume, cardiac_output, vo2, vq_mismatch,
-        )[0] + o2_flux * dt / 60.0
+        gas_capacity = self.frc * self._gas_capacity_per_l
+        carbon = (gas_capacity * state.p_alveolar_co2 + transport.volumes[0] * _CO2_L_PER_MMOL * transport.co2[0]
+                  + pulmonary * _CO2_L_PER_MMOL * (transport.co2[2] - transport.co2[0]))
+        oxygen = (gas_capacity * state.p_alveolar_o2 + transport.volumes[0] * transport.oxygen[0]
+                  + pulmonary * (transport.oxygen[2] - transport.oxygen[0]))
         if lung_volume_l is not None:
             volume_change = lung_volume_l - self.frc
-            self.frc = lung_volume_l
             gas_o2 = fio2 * self._atm_dry if volume_change > 0.0 else state.p_alveolar_o2
-            oxygen_target += volume_change * self._gas_capacity_per_l * gas_o2
+            oxygen += volume_change * self._gas_capacity_per_l * gas_o2
+            transport.oxygen_from_air_l += volume_change * self._gas_capacity_per_l * gas_o2
             if volume_change < 0.0:
                 lost_co2 = -volume_change * self._gas_capacity_per_l * state.p_alveolar_co2
-                co2_target -= lost_co2
-                self.co2_stores.exhaled_l += lost_co2
-        state.p_alveolar_o2 = self._pressure_from_oxygen_store(
-            oxygen_target, hb, blood_volume, cardiac_output, vo2, vq_mismatch,
+                carbon -= lost_co2
+                transport.exhaled_l += lost_co2
+            self.frc = lung_volume_l
+            gas_capacity = self.frc * self._gas_capacity_per_l
+        old_co2, old_o2 = state.p_alveolar_co2, state.p_alveolar_o2
+        refill_l_min = self._passive_refill_l_min(airway_patency, dt)
+        net_uptake = max(0.0, self._pulmonary_o2_uptake - self._pulmonary_co2_delivery)
+        inflow = (net_uptake * airway_patency * clamp01_local(1.0 - effective_va) + refill_l_min)
+        ventilation = effective_va * self._gas_capacity_per_l * dt / 60.0
+        capillary_co2, capillary_o2 = self._equilibrate_lung(
+            carbon - ventilation * old_co2 / 2.0,
+            oxygen + ventilation * (fio2 * self._atm_dry - old_o2 / 2.0) + inflow * fio2 * dt / 60.0,
+            hb, gas_capacity + ventilation / 2.0, self._aa_gradient(vq_mismatch),
+            carbon_plan, oxygen_plan, max(0.0, cardiac_output) * dt / 120.0,
         )
-        # Residual V/Q inequality sets end-capillary PO2. Closed units mix
-        # venous blood into arterial blood by O2 content, not partial pressure.
-        end_capillary = max(0.0, state.p_alveolar_o2 - self._aa_gradient(vq_mismatch))
-        state.p_arterial_o2 = self._arterial_po2(end_capillary, hb, cardiac_output, vo2,
-                                              state.p_arterial_o2)
-
-        state.drive_central = drive_central
-        state.muscle_factor = muscle_factor
-        state.rr = current_rr
-        state.vt = current_vt
-        state.mv = (current_rr * current_vt) / 1000.0
-        self._reconcile_blood_gases(co2_target, pa_co2_gap, hb, blood_volume,
-                                    cardiac_output, vo2, vq_mismatch)
+        transport.exhaled_l += ventilation * (old_co2 + state.p_alveolar_co2) / 2.0
+        transport.oxygen_from_air_l += (
+            ventilation * (fio2 * self._atm_dry - (old_o2 + state.p_alveolar_o2) / 2.0)
+            + inflow * fio2 * dt / 60.0
+        )
+        uptake_o2, delivered_co2 = transport.finish(
+            capillary_co2, capillary_o2, carbon_plan, oxygen_plan, dt, cardiac_output,
+            self.shunt_fraction, production,
+        )
+        self._resolve_blood_pool(1, hb)
+        self._resolve_blood_pool(2, hb)
+        self._publish_blood_gases()
+        if dt > 0.0:
+            self._pulmonary_o2_uptake = max(0.0, uptake_o2 * 60.0 / dt)
+            self._pulmonary_co2_delivery = max(0.0, delivered_co2 * 60.0 / dt)
+        state.drive_central, state.muscle_factor = drive_central, muscle_factor
+        state.rr, state.vt, state.mv = current_rr, current_vt, current_rr * current_vt / 1000.0
         if airway_patency <= 0.0:
-            # Only loss from lung gas creates hypobaric inflow. Blood buffering
-            # redistributes gas, and accumulating alveolar CO2 offsets O2 loss.
             gas_pressure_loss = old_gas_pressure - state.p_alveolar_o2 - state.p_alveolar_co2
             self._apneic_gas_deficit_l = max(
                 0.0, self._apneic_gas_deficit_l + self.frc * self._gas_capacity_per_l * gas_pressure_loss,
             )
         else:
-            self._apneic_gas_deficit_l = max(
-                0.0, self._apneic_gas_deficit_l - refill_l_min * dt / 60.0,
-            )
-        # End-tidal gas is alveolar gas diluted by gas of inspired composition.
+            self._apneic_gas_deficit_l = max(0.0, self._apneic_gas_deficit_l - refill_l_min * dt / 60.0)
         state.etco2 = max(0.0, state.p_alveolar_co2 - etco2_gradient)
         dilution = clamp01_local(1.0 - state.etco2 / state.p_alveolar_co2)
         state.eto2 = 100.0 * (state.p_alveolar_o2
                              + dilution * (fio2 * self._atm_dry - state.p_alveolar_o2)) / self._atm_dry
-
         return state
-
-    def _reconcile_blood_gases(self, co2_target: float, gap: float, hb: float,
-                               blood_volume_ml: float, cardiac_output: float,
-                               vo2: float, vq_mismatch: float) -> None:
-        """Resolve affinity and Haldane redistribution at fixed O2 and CO2 amounts.
-
-        Each pass solves buffering at the current gases, takes a Newton step
-        toward the CO2 amount, and redistributes O2 at the updated affinity.
-        """
-        state = self.state
-        oxygen_target = self._oxygen_store(
-            state.p_alveolar_o2, hb, blood_volume_ml, cardiac_output, vo2, vq_mismatch,
-        )[0]
-        gas_capacity = self.frc * self._gas_capacity_per_l
-        blood_scale = self._central_blood_scale(blood_volume_ml)
-        aa_gradient = self._aa_gradient(vq_mismatch)
-        ph = state.ph
-        for _ in range(16):
-            pco2 = state.p_alveolar_co2 + gap
-            saturation = self._saturation(state.p_arterial_o2)
-            chemical = self.chemistry.solve(pco2, saturation, self.buffer_base, ph)
-            ph = chemical.ph
-            change = (co2_target - gas_capacity * state.p_alveolar_co2 - blood_scale * chemical.total_co2) / (
-                gas_capacity + blood_scale * chemical.co2_capacity
-            )
-            state.p_alveolar_co2 += change
-            # Affinity at the corrected PCO2, with pH moving along fixed buffer base.
-            p50 = self._acid_base_p50(
-                self._blood_temp_c, ph - change * chemical.base_co2 / chemical.base_ph, pco2 + change,
-            )
-            if abs(change) < 1e-8 and abs(p50 - self._p50) < 1e-8:
-                break
-            self._p50 = p50
-            state.p_alveolar_o2 = self._pressure_from_oxygen_store(
-                oxygen_target, hb, blood_volume_ml, cardiac_output, vo2, vq_mismatch,
-            )
-            state.p_arterial_o2 = self._arterial_po2(
-                max(0.0, state.p_alveolar_o2 - aa_gradient), hb, cardiac_output, vo2, state.p_arterial_o2,
-            )
-        else:
-            raise RuntimeError("Coupled blood gas equilibrium did not converge")
-        state.pa_co2 = state.p_alveolar_co2 + gap
-        state.sao2 = 100.0 * saturation
-        state.ph, state.hco3 = ph, chemical.plasma_bicarbonate
 
     def _step_hypoxic_control(self, dt: float, ce_prop: float, mac_sevo: float) -> float:
         """Hypoxic drive calibrated to Nieuwenhuijs 2000 and Sarton 1996.
@@ -692,9 +730,8 @@ class RespiratoryModel:
         delta = temp_c - 37.0
         return 26.8 + delta * (1.435 + delta * (0.04163 + delta * 0.000686))
 
-    @classmethod
-    def _acid_base_p50(cls, temp_c: float, ph: float, pco2: float) -> float:
-        """Dash 2016 Eqs. 9-10; its RBC pH convention, with DPG at reference.
+    def _acid_base_p50(self, ph: float, pco2: float) -> float:
+        """Dash 2016 Eqs. 9-10 at the current temperature; its RBC pH convention, with DPG at reference.
 
         Dash uses pH_RBC = 0.795 pH_plasma + 1.357, distinct from Rees's
         red-cell pH relation. Combining the models is a simulator assumption.
@@ -703,58 +740,24 @@ class RespiratoryModel:
         delta_co2 = pco2 - 40.0
         ph_factor = 26.8 + delta_ph * (-25.535 + delta_ph * (10.646 - 1.764 * delta_ph))
         co2_factor = 26.8 + delta_co2 * (0.1273 + 0.0001083 * delta_co2)
-        return cls._temperature_p50(temp_c) * ph_factor * co2_factor / 26.8**2
-
-    def _saturation(self, pao2: float) -> float:
-        """Dash 2016 Eqs. 6 and 11, including low-saturation cooperativity."""
-        return self._saturation_at_p50(pao2, self._p50)
+        return self._temperature_p50_now * ph_factor * co2_factor / 26.8**2
 
     @staticmethod
     def _saturation_at_p50(pao2: float, p50: float) -> float:
+        """Dash 2016 Eqs. 6 and 11, including low-saturation cooperativity."""
         if pao2 <= 0.0:
             return 0.0
         exponent = 2.82 - 1.20 * 10.0**(-pao2 / 29.25)
         return 1.0 / (1.0 + (p50 / pao2)**exponent)
 
-    def _saturation_with_derivative(self, pao2: float) -> tuple[float, float]:
+    @staticmethod
+    def _saturation_gradient(pao2: float, p50: float) -> tuple[float, float]:
         """S and dS/dPO2 share the pressure-dependent Hill exponent."""
         if pao2 <= 0.0:
             return 0.0, 0.0
         correction = 1.20 * 10.0**(-pao2 / 29.25)
         exponent = 2.82 - correction
         exponent_derivative = math.log(10.0) * correction / 29.25
-        sat = 1.0 / (1.0 + (self._p50 / pao2)**exponent)
-        derivative = sat * (1.0 - sat) * (exponent / pao2 + exponent_derivative * math.log(pao2 / self._p50))
+        sat = 1.0 / (1.0 + (p50 / pao2)**exponent)
+        derivative = sat * (1.0 - sat) * (exponent / pao2 + exponent_derivative * math.log(pao2 / p50))
         return sat, derivative
-
-    def _arterial_po2(self, end_capillary: float, hb: float, cardiac_output: float,
-                      vo2_l_min: float, previous: float) -> float:
-        """Shunt mixing with venous content determined by Fick O2 extraction.
-
-        Ca = (1-s) Cc + s Cv and Cv = Ca - VO2/Q give
-        Ca = Cc - s/(1-s) VO2/Q. Contents include dissolved O2 (mL/dL).
-        Extraction stops at Cv = 0, so Ca cannot fall below (1-s) Cc.
-        """
-        shunt = self.shunt_fraction
-        if shunt == 0.0:
-            return end_capillary
-        capacity = 1.34 * hb
-        extraction = 100.0 * vo2_l_min / max(0.1, cardiac_output)
-        capillary_content = capacity * self._saturation(end_capillary) + 0.0031 * end_capillary
-        target = max((1.0 - shunt) * capillary_content,
-                     capillary_content - shunt / (1.0 - shunt) * extraction)
-        lower, upper = 0.0, end_capillary
-        pressure = min(max(previous, lower), upper)
-        for _ in range(16):
-            saturation, saturation_derivative = self._saturation_with_derivative(pressure)
-            residual = capacity * saturation + 0.0031 * pressure - target
-            if abs(residual) < 1e-8:
-                return pressure
-            if residual > 0.0:
-                upper = pressure
-            else:
-                lower = pressure
-            derivative = capacity * saturation_derivative + 0.0031
-            candidate = pressure - residual / derivative
-            pressure = candidate if lower < candidate < upper else 0.5 * (lower + upper)
-        return pressure

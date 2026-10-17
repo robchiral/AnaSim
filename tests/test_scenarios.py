@@ -73,7 +73,10 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         ],
     },
     "emergence_tiva": {
-        "ASSESS": [("drug_bolus", {"key": "phenyl", "amount": 100})],
+        "ASSESS": [
+            ("drug_bolus", {"key": "phenyl", "amount": 100}),
+            ("vent", {"rr": 9}),
+        ],
         "STOP_AGENTS": [
             ("drug_rate", {"key": "propofol", "rate": 0}),
             ("drug_rate", {"key": "remi", "rate": 0}),

@@ -410,6 +410,7 @@ class TestClinicalAcceptance:
 
         baseline_mv = engine.state.mv
         baseline_spo2 = engine.state.sao2
+        baseline_co2 = engine.state.pa_co2
         engine.give_drug_bolus("Propofol", 2.0 * engine.patient.weight)
         engine.give_drug_bolus("Remifentanil", 100.0)
 
@@ -422,7 +423,7 @@ class TestClinicalAcceptance:
         rescue_o2 = engine.state.pao2
         rescue_spo2 = engine.state.sao2
         assert min_mv < 1.0
-        assert rescue_co2 > 50.0
+        assert rescue_co2 > baseline_co2 + 5.0
         assert rescue_spo2 < baseline_spo2 - 10.0
 
         engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.55)
@@ -430,7 +431,7 @@ class TestClinicalAcceptance:
             engine.step(1.0)
 
         assert engine.state.mv > 5.0
-        assert engine.state.pa_co2 < rescue_co2 - 5.0
+        assert engine.state.pa_co2 < baseline_co2 + 0.5 * (rescue_co2 - baseline_co2)
         assert engine.state.pao2 > rescue_o2 + 5.0
         assert engine.state.sao2 > rescue_spo2 + 5.0
 

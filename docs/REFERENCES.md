@@ -186,6 +186,10 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Egan et al. (2004). *Br J Anaesth*. [Remifentanil bolus respiratory effects by age](https://pubmed.ncbi.nlm.nih.gov/14970134/).
 - Dash, Korman, and Bassingthwaighte (2016). *Eur J Appl Physiol*. [Hemoglobin dissociation curves across oxygen tension, temperature, pH, and PCO₂](https://pubmed.ncbi.nlm.nih.gov/26298270/).
 - Rees et al. (2010). *Eur J Appl Physiol*. [Plasma and red-cell acid-base chemistry with oxygen-dependent buffering](https://doi.org/10.1007/s00421-009-1244-x).
+- O'Neill and Robbins (2017). *J Appl Physiol*. [Blood CO₂ transport and the magnitude of the Haldane effect](https://doi.org/10.1152/japplphysiol.00318.2016).
+- Wooten (2003). *J Appl Physiol*. [Acid-base balance in multicompartment systems and the extracellular buffer approximation](https://pubmed.ncbi.nlm.nih.gov/12923118/).
+- Brackett, Cohen, and Schwartz (1965). *N Engl J Med*. [Whole-body acute hypercapnic buffering](https://pubmed.ncbi.nlm.nih.gov/14219220/).
+- Arbus et al. (1969). *N Engl J Med*. [Human acute respiratory alkalosis ranges](https://pubmed.ncbi.nlm.nih.gov/5782512/).
 - Bouillon et al. (2004). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).
 - Olofsen et al. (2010). *Anesthesiology*. [Dynamic remifentanil respiratory effects in awake and propofol-sedated volunteers](https://pubmed.ncbi.nlm.nih.gov/20461001/).
 - Kanazawa et al. (2017). *J Anesth*. [Volatile anesthetics and BIS](https://pubmed.ncbi.nlm.nih.gov/28791477/).
@@ -234,6 +238,12 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Farmery and Roe (1996). *Br J Anaesth*. [Model of oxyhemoglobin desaturation during apnea](https://pubmed.ncbi.nlm.nih.gov/8777112/).
 - Stock et al. (1989). *J Clin Anesth*. [CO₂ accumulation during airway obstruction](https://pubmed.ncbi.nlm.nih.gov/2516732/).
 - Magor-Elliott et al. (2021). *J Appl Physiol*. [Tissue gas storage and circulation delays](https://doi.org/10.1152/japplphysiol.00764.2020).
+- Lyons et al. (2024). *Anaesthesia*. [Arterial CO₂ accumulation during apnea with and without high-flow oxygen](https://pubmed.ncbi.nlm.nih.gov/38100148/).
+- Gentz et al. (1998). *J Clin Anesth*. [Apneic CO₂ accumulation after brief hypocapnia](https://doi.org/10.1016/S0952-8180(98)00005-1).
+- Eger and Severinghaus (1961). *Anesthesiology*. [Apneic CO₂ rise after sustained hyperventilation](https://doi.org/10.1097/00000542-196105000-00013).
+- Frumin, Epstein, and Cohen (1959). *Anesthesiology*. [Prolonged apneic oxygenation](https://doi.org/10.1097/00000542-195911000-00007).
+- Taskar et al. (1995). *Chest*. [CO₂ elimination after ventilation changes](https://pubmed.ncbi.nlm.nih.gov/7606958/).
+- Weil et al. (1986). *N Engl J Med*. [Arterial and mixed venous acid-base differences during CPR](https://doi.org/10.1056/NEJM198607173150303).
 - Kobayashi et al. (1994). *Masui*. [Blood gas changes during apnea](https://pubmed.ncbi.nlm.nih.gov/7933492/).
 - Miyamura et al. (1980). *Jpn J Physiol*. [Hypercapnic ventilatory response variability](https://pubmed.ncbi.nlm.nih.gov/6790801/).
 - Christie et al. (1992). *Anesth Analg*. [Pressure support during general anesthesia](https://pubmed.ncbi.nlm.nih.gov/1632530/).

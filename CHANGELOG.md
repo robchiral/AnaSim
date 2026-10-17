@@ -2,11 +2,10 @@
 
 ## Unreleased
 
-- Sped up simulation steps, especially after propofol is given.
 - Added plasma and red-cell buffering with live pH and bicarbonate, and made
   oxygen affinity depend on pH and PCO₂.
-- Replaced prescribed apneic CO₂ slopes with CO₂ exchange between the lungs,
-  blood, and perfused tissue stores, so cardiac output and stored CO₂ affect
+- Replaced prescribed apneic CO₂ slopes with CO₂ transport through lung,
+  blood, tissue, and extracellular stores, so blood flow and stored CO₂ shape
   PaCO₂ and EtCO₂.
 - Added ephedrine, atropine, succinylcholine, hydromorphone, and morphine.
 - Replaced the TOF value with a TOF and single-twitch monitor.

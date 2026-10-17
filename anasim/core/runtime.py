@@ -193,7 +193,7 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
         uptake_sevo = (fi_sevo - engine.pk_sevo.state.p_alv) * va
         uptake_n2o = (fi_n2o - engine.pk_n2o.state.p_alv) * va
         uptake_o2 = engine.resp.oxygen_exchange_l_min(
-            engine.state.fio2, va, engine.thermal.metabolic_factor,
+            engine.state.fio2, va,
             airway.patency, airway.vq_mismatch, dt,
         )
     circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o)

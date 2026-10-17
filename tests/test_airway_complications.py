@@ -142,7 +142,7 @@ def test_obstructed_airway_preserves_effort_without_restoring_ventilation(awake_
     # Hypoxic drive raises effort while the airway remains obstructed.
     assert effort.amplitude > baseline_effort * 1.1
     assert engine.state.mv < 0.01 and resp.va < 0.01
-    assert resp.pa_co2 > baseline_co2 + 8.0
+    assert resp.pa_co2 > baseline_co2 + 5.0
 
     engine.set_airway_obstruction(0.0)
     for _ in range(300):

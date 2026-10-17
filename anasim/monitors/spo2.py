@@ -43,7 +43,7 @@ class SpO2Monitor:
             raise ValueError("peripheral_delay_s cannot be negative")
         self.display_saturation: float | None = None
         self.signal_valid = True
-        self._template = _PPG_TEMPLATE
+        self._template = _PPG_TEMPLATE.tolist()  # Python floats avoid NumPy scalar arithmetic per sample.
         self._template_max_index = _PPG_TEMPLATE.size - 1
         self._beat_amplitude = 1.0
         self._beat_rr_s: float | None = None
