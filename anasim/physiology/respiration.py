@@ -263,7 +263,8 @@ class RespiratoryModel:
              blood_volume_ml: float | None = None,
              measured_breaths: bool = False,
              unconscious: float = 0.0, lung_volume_l: float | None = None,
-             shunt_fraction: float = 0.0, temp_c: float = 37.0) -> RespState:
+             shunt_fraction: float = 0.0, temp_c: float = 37.0,
+             opioid_controller_fraction: float = 1.0, neuromuscular_strength: float = 1.0) -> RespState:
         """Advance respiration by dt seconds.
 
         Args:
@@ -288,6 +289,8 @@ class RespiratoryModel:
             lung_volume_l: Measured end-expiratory gas volume, L.
             shunt_fraction: Perfusion through closed lung units, 0-1.
             temp_c: Blood temperature for hemoglobin O2 affinity, degrees C.
+            opioid_controller_fraction: Fraction of baseline ventilation and CO2 gain remaining.
+            neuromuscular_strength: Muscle strength remaining after depolarizing block, 0-1.
         """
         state = self.state
         old_gas_pressure = state.p_alveolar_o2 + state.p_alveolar_co2
@@ -297,6 +300,7 @@ class RespiratoryModel:
         prop_keep = 1.0 - hill(ce_prop, self.c50_prop, self.gamma_prop)
         sevo_keep = 1.0 - hill(mac_sevo, self.c50_sevo_mac, self.gamma_sevo)
         muscle_factor = 1.0 - hill(ce_roc, self.c50_nmba, self.gamma_nmba)
+        muscle_factor *= clamp01_local(neuromuscular_strength)
         airway_patency = clamp01_local(airway_patency)
         ventilation_efficiency = clamp01_local(ventilation_efficiency)
         unconscious = clamp01_local(unconscious)
@@ -308,7 +312,8 @@ class RespiratoryModel:
         gain *= prop_keep ** (self.prop_co2_gain_exponent - 1.0) * sevo_keep
         co2_excess = max(0.0, state.p_alveolar_co2 - self.paco2_setpoint)
         opioid_reference = 1.0 + gain * co2_excess
-        target_drive = opioid_reference - 0.5 * max(0.0, ce_remi) / remi_c50
+        long_opioid_keep = clamp01_local(opioid_controller_fraction)
+        target_drive = opioid_reference * long_opioid_keep - 0.5 * max(0.0, ce_remi) / remi_c50
         # Keep the controller signed during apnea. Clipping its internal state
         # discards drug inhibition and makes recovery too early.
         alpha = -math.expm1(-dt / self.CO2_CONTROLLER_TAU_S)
@@ -318,6 +323,7 @@ class RespiratoryModel:
             self._resting_pco2 = self._solve_resting_pco2(
                 prop_keep, sevo_keep, muscle_factor, unconscious, gain,
                 0.5 * max(0.0, ce_remi) / remi_c50, max(0.1, float(metabolic_factor)),
+                long_opioid_keep,
             )
             self._resting_age_s = 0.0
         effort_rr, effort_vt, drive_central = self._unassisted(
@@ -556,7 +562,7 @@ class RespiratoryModel:
 
     def _solve_resting_pco2(self, prop_keep: float, sevo_keep: float, muscle_factor: float,
                        unconscious: float, gain: float, opioid_shift: float,
-                       metabolic_factor: float) -> float:
+                       metabolic_factor: float, opioid_controller_fraction: float = 1.0) -> float:
         """Alveolar PCO2 at which unassisted breathing removes the CO2 produced.
 
         The opioid controller is taken at equilibrium. Without drugs this is the set point.
@@ -566,7 +572,7 @@ class RespiratoryModel:
         def removed(pco2: float) -> float:
             reference = 1.0 + gain * max(0.0, pco2 - self.paco2_setpoint)
             rr, vt, _ = self._unassisted(pco2, prop_keep, sevo_keep, muscle_factor, unconscious,
-                                         reference, controller=reference - opioid_shift)
+                                         reference, controller=reference * opioid_controller_fraction - opioid_shift)
             return rr * max(0.0, vt / 1000.0 - self.vd_deadspace) * pco2
 
         low, high = self.paco2_setpoint, self.RESTING_PCO2_MAX

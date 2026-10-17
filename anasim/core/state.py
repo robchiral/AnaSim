@@ -87,13 +87,21 @@ class SimulationState:
     arrest_reason: str = ""
 
     # Effect-site (ce) and plasma (cp) concentrations: propofol, etomidate,
-    # ketamine, lidocaine, and esmolol mcg/mL, vasopressin mU/L, others ng/mL.
+    # ketamine, lidocaine, succinylcholine, and esmolol mcg/mL, vasopressin
+    # mU/L, others ng/mL.
     propofol_ce: float = 0.0
     propofol_cp: float = 0.0
     remi_ce: float = 0.0
     remi_cp: float = 0.0
     fentanyl_ce: float = 0.0
     fentanyl_cp: float = 0.0
+    morphine_ce: float = 0.0
+    morphine_cp: float = 0.0
+    hydromorphone_ce: float = 0.0
+    hydromorphone_cp: float = 0.0
+    atropine_ce: float = 0.0
+    ephedrine_ce: float = 0.0
+    succinylcholine_ce: float = 0.0
     midazolam_ce: float = 0.0
     etomidate_ce: float = 0.0
     ketamine_ce: float = 0.0
@@ -132,6 +140,7 @@ class SimulationState:
     bis: float = 98.0
     display_bis: float = 98.0
     tof: float = 100.0  # %
+    twitch: float = 100.0  # T1 height %, including depolarizing block
     loc: float = 0.0  # Probability of no response to shaking/shouting
     tol: float = 0.0  # Probability of tolerating laryngoscopy
     map: float = 90.0

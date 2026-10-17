@@ -130,7 +130,7 @@
       <div class="clock"><output id="clock" aria-label="Elapsed simulation time">00:00:00</output></div>
       <button type="button" class="btn primary" id="run">Start</button>
       <label class="speed">Speed
-        <span class="unit-input"><input type="number" id="speed" min="0.1" max="50" step="0.5" value="1"><span>×</span></span>
+        <span class="unit-input"><input type="number" id="speed" min="0.1" max="50" step="0.1" value="1"><span>×</span></span>
       </label>
     </div>
     <details id="session-options" class="session-options">
@@ -220,10 +220,35 @@
           <output id="v-nibp-status" class="measurement-status"></output>
         </div>
         <div class="numeric compact bis" data-alarm="BIS"><div class="numeric-head"><span class="numeric-title">BIS</span></div><output id="v-bis">--</output></div>
-        <div class="numeric compact tof"><div class="numeric-head"><span class="numeric-title">TOF</span><span class="numeric-unit">%</span></div><output id="v-tof">--</output></div>
         <div class="numeric compact temp"><div class="numeric-head"><span class="numeric-title">Temp</span><span class="numeric-unit">°C</span></div><output id="v-temp">--</output></div>
         <div class="panel-io"><div class="io-head"><span>Fluid balance</span><output id="v-net">--</output></div><div class="io-detail" id="v-io">IV -- · PRBC -- · Urine -- · Loss --</div></div>
       </div>
+      <section class="nmb-panel" aria-label="Neuromuscular monitor">
+        <div class="nmb-result" id="nmb-result">
+          <div class="numeric-head"><span class="numeric-title" id="nmb-title">TOF ratio</span><span class="nmb-caption" id="nmb-status"></span></div>
+          <output id="nmb-value">--</output>
+          <span id="nmb-detail" class="nmb-caption">Awaiting measurement</span>
+        </div>
+        <div class="nmb-bars" role="img" id="nmb-bars" aria-label="No twitch responses measured">
+          <div class="nmb-bar baseline" id="nmb-baseline"><i></i><span>Ref</span></div>
+          <div class="nmb-bar" id="nmb-t1"><i></i><span>T1</span></div>
+          <div class="nmb-bar" id="nmb-t2"><i></i><span>T2</span></div>
+          <div class="nmb-bar" id="nmb-t3"><i></i><span>T3</span></div>
+          <div class="nmb-bar" id="nmb-t4"><i></i><span>T4</span></div>
+        </div>
+        <div class="nmb-trend">
+          <span class="nmb-caption" id="nmb-trend-label">TOF ratio · 15 min</span>
+          <svg viewBox="0 0 180 40" preserveAspectRatio="none" role="img" id="nmb-trend" aria-label="TOF ratio over the past 15 minutes">
+            <path class="nmb-trend-guide" d="M0 3H180 M0 37H180"/>
+            <g id="nmb-trend-points"></g>
+          </svg>
+        </div>
+        <div class="nmb-controls">
+          <select id="nmb-mode" aria-label="Stimulation" title="TOF measures fade (T4/T1). Single twitch measures response height relative to baseline."><option value="tof">TOF</option><option value="single">Single twitch</option></select>
+          <select id="nmb-repeat" aria-label="Repeat"><option value="0">Manual</option><option value="10">Every 10 s</option><option value="20" selected>Every 20 s</option><option value="30">Every 30 s</option><option value="60">Every 60 s</option></select>
+          <button type="button" class="btn outlined small" id="nmb-measure">Measure</button>
+        </div>
+      </section>
     </section>
 
     <aside class="controls">

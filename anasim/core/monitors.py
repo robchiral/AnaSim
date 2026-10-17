@@ -161,6 +161,7 @@ def step_monitors(
     cardiac_sample = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
 
     update_nibp(engine, dt, hemo_state)
+    engine.nmb.step(state.time + dt, state.twitch / 100.0, state.tof / 100.0)
 
     for duration, change, sample_paw, _, sample_volume in engine.vent.samples:
         paw, flow, volume = engine.airway_sensor.step(duration, sample_paw, sample_volume,

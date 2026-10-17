@@ -13,6 +13,7 @@ from .base import (
     action_taken_this_step,
     join_messages,
     monitor_value,
+    neuromuscular_response,
     require_all,
     require_infusions_stopped,
     require_maintenance_depth,
@@ -74,7 +75,8 @@ def _require_extubation_readiness(engine) -> tuple[bool, str]:
     breathing = rr > 8 and resp.rr > 8 and not resp.apnea
     minimum_vt = 5.0 * engine.patient.predicted_body_weight()
     volume_ok = engine.state.vt > minimum_vt
-    block_recovered = engine.state.tof >= 90.0
+    block_label, block = neuromuscular_response(engine)
+    block_recovered = block >= 90.0
     spo2 = monitor_value(engine, "spo2")
     oxygenated = engine.state.spo2_signal_valid and spo2 > 95.0
     bis = monitor_value(engine, "bis")
@@ -87,7 +89,7 @@ def _require_extubation_readiness(engine) -> tuple[bool, str]:
     if not volume_ok:
         msgs.append(f"Exhaled VT: {engine.state.vt:.0f}/{minimum_vt:.0f}+ mL")
     if not block_recovered:
-        msgs.append(f"TOF ratio: {engine.state.tof:.0f}%/90%+")
+        msgs.append(f"{block_label}: {block:.0f}%/90%+")
     if not oxygenated:
         msgs.append(f"SpO₂: {spo2:.0f}%/95%+" if engine.state.spo2_signal_valid else "Awaiting valid SpO₂")
     if engine.vent.is_on or engine.bag_mask_active:

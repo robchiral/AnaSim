@@ -13,6 +13,7 @@ from anasim.patient.pk_models import (
     PropofolPKEleveld,
     RemifentanilPKEleveld,
     RocuroniumPK,
+    SuccinylcholinePK,
 )
 
 
@@ -38,7 +39,7 @@ def _first_second(trace, condition, start=0):
     return start + int(hits[0]) if hits.size else None
 
 
-@pytest.mark.parametrize("model_type", [EpinephrinePK, RemifentanilPKEleveld])
+@pytest.mark.parametrize("model_type", [EpinephrinePK, RemifentanilPKEleveld, SuccinylcholinePK])
 def test_bolus_pk_with_reduced_volume_and_large_steps(patient, model_type):
     model = model_type(patient)
     model.update_hemodynamics(0.2, 0.5)

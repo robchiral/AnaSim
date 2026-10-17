@@ -17,6 +17,7 @@ from anasim.monitors.arterial import ArterialLineMonitor, ArterialWaveformRender
 from anasim.monitors.capno import Capnograph, EtCO2Readout
 from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.monitors.ecg import ECGMonitor
+from anasim.monitors.neuromuscular import NeuromuscularMonitor
 from anasim.monitors.nibp import NIBPMonitor
 from anasim.monitors.spo2 import SpO2Monitor
 from anasim.patient.domain import finite_number
@@ -170,6 +171,7 @@ class SimulationEngine(DrugControllerMixin):
         initialize_engine_state(self)
         projection_core.sync_state_from_models(self)
         monitor_core.seed_nibp_reading(self)
+        self.nmb.establish_baseline(self.state.twitch / 100.0)
         self._append_output_snapshot()
 
     def set_continuous_fluid_rate(self, ml_hr: float | None):
@@ -231,6 +233,7 @@ class SimulationEngine(DrugControllerMixin):
         self.ecg = ECGMonitor(rng=self._ecg_rng)
         self.spo2_mon = SpO2Monitor()
         self.nibp = NIBPMonitor(interval_min=5.0, rng=self._nibp_rng)
+        self.nmb = NeuromuscularMonitor()
         self.state.nibp_interval_sec = self.nibp.interval
 
     @property

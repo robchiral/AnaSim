@@ -324,6 +324,9 @@ $("step-target").onclick = () => {
 
 $("run").onclick = () => last && command("run", { running: !last.running });
 $("measure-nibp").onclick = () => command("nibp");
+$("nmb-mode").onchange = () => command("nmb_mode", { mode: $("nmb-mode").value });
+$("nmb-repeat").onchange = () => command("nmb_repeat", { seconds: Number($("nmb-repeat").value) });
+$("nmb-measure").onclick = () => command("nmb_measure");
 $("speed").onchange = () => {
   const input = $("speed");
   const value = Math.min(Math.max(Number(input.value) || 1, Number(input.min)), Number(input.max));

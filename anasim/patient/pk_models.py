@@ -4,8 +4,9 @@ Sources are cited on each model and in docs/REFERENCES.md.
 
 Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
 second. Concentrations are µg/mL for propofol, etomidate, ketamine,
-lidocaine, rocuronium, and esmolol, ng/mL for opioids, midazolam,
-catecholamines, labetalol, and glycopyrrolate, and mU/L for vasopressin.
+lidocaine, rocuronium, succinylcholine, and esmolol, ng/mL for opioids,
+midazolam, catecholamines, ephedrine, atropine, labetalol, and glycopyrrolate,
+and mU/L for vasopressin.
 """
 
 import math
@@ -31,6 +32,7 @@ class PKState:
     ce_response: float = 0.0  # Propofol clinical response
     ce_resp: float = 0.0  # Respiratory depression
     ce_cv: float = 0.0  # Ketamine cardiovascular effect
+    ce_transit: float = 0.0  # Transit before the primary effect site
 
 
 class MammillaryPK:
@@ -58,6 +60,7 @@ class MammillaryPK:
         renal_fraction: float = 0.0,
         cl1_deficit_exponent: float = 0.0,
         distribution_deficit_exponent: float = 0.0,
+        effect_site_transit_rate: float | None = None,
     ):
         self.v1_base = v1
         self.v1 = v1
@@ -77,8 +80,10 @@ class MammillaryPK:
         self.cl1_deficit_exponent = cl1_deficit_exponent
         self.distribution_deficit_exponent = distribution_deficit_exponent
         self.distribution_co_exponent = distribution_co_exponent
+        self.ce_input = "ce_transit" if effect_site_transit_rate is not None else "c1"
+        transit = (("ce_transit", effect_site_transit_rate),) if effect_site_transit_rate is not None else ()
         # The primary site is last so TCI and decay predictions target it.
-        self.effect_sites = (*additional_effect_sites, ("ce", ke0))
+        self.effect_sites = (*transit, *additional_effect_sites, ("ce", ke0))
         self.state_fields = (
             ("c1",) + (("c2",) if v2 > 0 else ()) + (("c3",) if v3 > 0 else ())
             + tuple(name for name, _ in self.effect_sites)
@@ -166,9 +171,11 @@ class MammillaryPK:
             flux2 = cl2 * (s.c1 - s.c2)
             flux3 = cl3 * (s.c1 - s.c3)
             elimination = elimination_cl * s.c1
-            for name, rate in self.effect_sites:
+            # Downstream sites read the source value from the start of this interval.
+            for name, rate in reversed(self.effect_sites):
                 ce = getattr(s, name)
-                setattr(s, name, ce + rate * (s.c1 - ce) * dt_min)
+                source = getattr(s, self.ce_input) if name == "ce" else s.c1
+                setattr(s, name, ce + rate * (source - ce) * dt_min)
             s.c1 += (input_rate_per_sec * 60.0 - elimination - flux2 - flux3) / self.v1 * dt_min
             if self.v2 > 0:
                 s.c2 += flux2 / self.v2 * dt_min
@@ -187,8 +194,9 @@ class MammillaryPK:
             A[0, i] = cl / self.v1
             A[i, 0] = cl / v
             A[i, i] = -cl / v
-        for i, (_, rate) in enumerate(self.effect_sites, start=len(peripherals) + 1):
-            A[i, 0] = rate
+        for i, (name, rate) in enumerate(self.effect_sites, start=len(peripherals) + 1):
+            source = self.state_fields.index(self.ce_input) if name == "ce" else 0
+            A[i, source] = rate
             A[i, i] = -rate
         B[0, 0] = 1.0 / self.v1
         return A, B
@@ -393,6 +401,75 @@ class FentanylPK(MammillaryPK):
             cl3=1.49 * flow,
             ke0=0.147,
         )
+
+
+class MorphinePK(MammillaryPK):
+    """Meissner 2025 Table 1 PK and Olofsen 2026 effect sites, ng/mL (input mcg).
+
+    Olofsen's shared parameters are divided by each drug factor for morphine
+    and multiplied by it for hydromorphone.
+    """
+
+    def __init__(self, patient: Patient):
+        params = _from_rate_constants(20.0, 5.1 / 60, 4.3 / 60, 1.3 / 60, 1.2 / 60, 0.306 / 60)
+        super().__init__(
+            **params, **_NO_CO_COVARIATE,
+            ke0=math.log(2.0) / (0.73 / 1.02 * 60.0),
+            additional_effect_sites=(("ce_resp", math.log(2.0) / (3.3 / 0.694 * 60.0)),),
+        )
+
+
+class HydromorphonePK(MammillaryPK):
+    """Meissner 2025 Table 1 PK with its sex factor and Olofsen 2026 sites, ng/mL."""
+
+    def __init__(self, patient: Patient):
+        v1 = 13.6 / 0.908 if patient.sex == "male" else 13.6 * 0.908
+        params = _from_rate_constants(v1, 6.1 / 60, 6.6 / 60, 1.6 / 60, 1.6 / 60, 0.41 / 60)
+        super().__init__(
+            **params, **_NO_CO_COVARIATE,
+            ke0=math.log(2.0) / (0.73 * 1.02 * 60.0),
+            additional_effect_sites=(("ce_resp", math.log(2.0) / (3.3 * 0.694 * 60.0)),),
+        )
+
+
+class AtropinePK(MammillaryPK):
+    """Hinderling 1985 I Table I means (CL 1.175 L/min, V1 19.1 L, k12 0.56 and
+    k21 0.0557 /min), in ng/mL.
+
+    ke0 = k21 links HR to the peripheral compartment (part II). Weight scaling
+    from the cohort's 72.3 kg mean is a simulator assumption.
+    """
+
+    def __init__(self, patient: Patient):
+        v1 = 19.1 * patient.weight / 72.3
+        params = _from_rate_constants(v1, 1.175 / 19.1, 0.56, 0.0557, 0.0, 0.0)
+        super().__init__(**params, ke0=0.0557, renal_fraction=0.568, **_NO_CO_COVARIATE)
+
+
+class EphedrinePK(MammillaryPK):
+    """Persky 2004 apparent oral disposition, transferred to IV use (ng/mL).
+
+    Bioavailability of one and weight-linear V/CL are assumptions.
+    The one-minute effect-site time constant is calibrated to IV responses.
+    """
+
+    def __init__(self, patient: Patient):
+        super().__init__(
+            v1=4.0 * patient.weight, cl1=0.47 * patient.weight / 60.0,
+            ke0=1.0, **_NO_CO_COVARIATE,
+        )
+
+
+class SuccinylcholinePK(MammillaryPK):
+    """Roy 2002 plasma PK with effect-site timing calibrated to Kopman 2003.
+
+    Transit and effect-site rates (1/min) fit Table 2 twitch time courses at
+    0.4-1 mg/kg. Concentrations are mcg/mL; hydrolysis has no organ/flow covariate.
+    """
+
+    def __init__(self, patient: Patient):
+        params = _from_rate_constants(0.009 * patient.weight, 5.0, 2.9, 1.6, 0.0, 0.0)
+        super().__init__(**params, ke0=0.4, effect_site_transit_rate=1.3, **_NO_CO_COVARIATE)
 
 
 class MidazolamPK(MammillaryPK):

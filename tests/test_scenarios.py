@@ -264,6 +264,10 @@ def test_extubation_requires_recovered_block_and_spontaneous_ventilation(engine_
     engine.state.tof = 89.0
     assert not step.check_requirements(engine)[0]
     engine.state.tof = 90.0
+    engine.state.twitch = 20.0
+    met, message = step.check_requirements(engine)
+    assert not met and "T1: 20%" in message
+    engine.state.twitch = 100.0
     engine.set_vent_power(True)
     assert not step.check_requirements(engine)[0]
     engine.set_vent_power(False)
@@ -378,4 +382,4 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
             assert controls["drugs"][key]["is_tci"] is tci_enabled
             assert controls["drugs"][key]["rate"] > 0 or controls["drugs"][key]["target"] > 0
         assert snap["vitals"]["bis"] < 60
-        assert snap["vitals"]["tof"] < 25
+        assert session.engine.state.tof < 25

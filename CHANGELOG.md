@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added ephedrine, atropine, succinylcholine, hydromorphone, and morphine.
+- Replaced the TOF value with a TOF and single-twitch monitor.
 - Added hypoxic breathing feedback, sustained hypoxic ventilatory decline, and
   anesthetic attenuation.
 - Made recurrent atelectatic shunt depend on alveolar inert gas separately from

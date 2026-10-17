@@ -26,7 +26,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Baim et al. (1983). *N Engl J Med*. [Milrinone hemodynamics](https://pubmed.ncbi.nlm.nih.gov/6888453/).
 - Martin et al. (1990). *Acta Anaesthesiol Scand*. [Vascular resistance in septic shock](https://pubmed.ncbi.nlm.nih.gov/2389659/).
 - Melo et al. (1999). *Crit Care*. [Vascular resistance in septic shock](https://pubmed.ncbi.nlm.nih.gov/11056727/).
-- Meng et al. (2011). *Br J Anaesth*. [Phenylephrine under propofol-remifentanil anesthesia](https://pubmed.ncbi.nlm.nih.gov/21642644/).
+- Meng et al. (2011). *Br J Anaesth*. [Phenylephrine and ephedrine boluses under propofol-remifentanil anesthesia](https://pubmed.ncbi.nlm.nih.gov/21642644/).
 - Ebert et al. (1994). *Anesth Analg*. [Propofol and baroreflex sensitivity](https://pubmed.ncbi.nlm.nih.gov/8311293/).
 - Sato et al. (2005). *Br J Anaesth*. [Baroreflex during propofol infusion](https://pubmed.ncbi.nlm.nih.gov/15722386/).
 - Ebert et al. (1992). *Anesthesiology*. [Sympathetic responses and baroreflexes during propofol induction](https://pubmed.ncbi.nlm.nih.gov/1575340/).
@@ -98,6 +98,18 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Dershwitz et al. (1996). *Anesthesiology*. [Remifentanil PK/PD in liver disease](https://pubmed.ncbi.nlm.nih.gov/8638835/).
 - Hoke et al. (1997). *Anesthesiology*. [Remifentanil PK in renal failure](https://pubmed.ncbi.nlm.nih.gov/9316957/).
 - Bae et al. (2020). *Br J Anaesth*. [Adult fentanyl PK](https://pubmed.ncbi.nlm.nih.gov/32861508/).
+- Meissner et al. (2023). *Anesthesiology*. [Morphine and hydromorphone effects and respiratory time courses](https://pubmed.ncbi.nlm.nih.gov/37014986/).
+- Meissner et al. (2025). *Br J Anaesth*. [Morphine and hydromorphone population PK](https://pubmed.ncbi.nlm.nih.gov/39592363/).
+- Olofsen et al. (2026). *Br J Anaesth*. [Morphine and hydromorphone endpoint-specific PD](https://pubmed.ncbi.nlm.nih.gov/41656122/), [supplement](https://ars.els-cdn.com/content/image/1-s2.0-S0007091225009134-mmc1.docx), and [corrected doses and pupil equation](https://pubmed.ncbi.nlm.nih.gov/42150960/).
+- Hinderling et al. (1985). *J Pharm Sci*. [Atropine PK](https://pubmed.ncbi.nlm.nih.gov/4032240/) and [peripheral-compartment PD](https://pubmed.ncbi.nlm.nih.gov/4032241/).
+- Yamaguchi et al. (1988). *Can J Anaesth*. [Atropine HR response during anesthesia](https://pubmed.ncbi.nlm.nih.gov/3168130/).
+- Horiguchi and Nishikawa (2002). *Anesth Analg*. [Atropine dose-response awake and during propofol anesthesia](https://pubmed.ncbi.nlm.nih.gov/12145057/).
+- Persky et al. (2004). *Br J Clin Pharmacol*. [Oral ephedrine PK and cardiovascular tolerance](https://doi.org/10.1111/j.1365-2125.2003.02062.x).
+- Dings et al. (2026). *Pharmaceutics*. [Ephedrine hemodynamic time course during cesarean section](https://doi.org/10.3390/pharmaceutics18030296).
+- Sjøen et al. (2026). *Acta Anaesthesiol Scand*. [Vasopressor boluses during propofol-remifentanil induction](https://pubmed.ncbi.nlm.nih.gov/41144827/) and [corrected norepinephrine 0.1 mcg/kg and phenylephrine 1 mcg/kg doses](https://pubmed.ncbi.nlm.nih.gov/41326972/).
+- Roy et al. (2002). *Anesthesiology*. [Succinylcholine concentration-effect model](https://pubmed.ncbi.nlm.nih.gov/12411790/).
+- Kopman et al. (2003). *Anesthesiology*. [Succinylcholine dose, onset, and twitch recovery](https://pubmed.ncbi.nlm.nih.gov/14576537/).
+- Dhonneur et al. (1999). *Anesthesiology*. [Succinylcholine and rocuronium at the larynx, diaphragm, and adductor pollicis](https://pubmed.ncbi.nlm.nih.gov/10201662/).
 - Scott and Stanski (1987). *J Pharmacol Exp Ther*. [Fentanyl effect-site equilibration and age](https://pubmed.ncbi.nlm.nih.gov/3100765/).
 - McEwan et al. (1993). *Anesthesiology*. [Fentanyl reduction of isoflurane MAC](https://pubmed.ncbi.nlm.nih.gov/8489058/).
 - Lang et al. (1996). *Anesthesiology*. [Remifentanil reduction of isoflurane MAC](https://pubmed.ncbi.nlm.nih.gov/8873541/).
@@ -254,6 +266,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 
 ## Scenario guidance
 
+- Blink Device Company (2024). [TwitchView operating manual, Rev N, pp. 14-16 and 20](https://www.blinkdc.com/hubfs/PN00211%20TwitchView%20IFU%20Rev%20N.pdf). TOF count/ratio, weak-response qualification, single twitch, baseline reference, and stimulation timing.
 - Thilen et al. (2023). *Anesthesiology*. [Quantitative neuromuscular monitoring and train-of-four ratio ≥ 0.9 before extubation](https://pubmed.ncbi.nlm.nih.gov/36520073/).
 - ANZAAG and ANZCA (2022). [Perioperative anaphylaxis, adult epinephrine doses, oxygen, and crystalloid resuscitation](https://www.anzca.edu.au/getContentAsset/d38d29ae-74f0-4136-8372-1d342c594e11/80feb437-d24d-46b8-a858-4a2a28b9b970/Anaphylaxis-Card-1-Adult-Immediate-Management-2022.pdf?language=en).
 - Surviving Sepsis Campaign (2026). [Adult fluids, norepinephrine, antibiotics, and source control](https://sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-campaign-international-guidelines-for-management-of-sepsis-and-septic-shock-2026).

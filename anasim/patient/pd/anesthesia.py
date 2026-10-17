@@ -89,9 +89,26 @@ def hypnotic_equivalent(
     return ce_prop + midazolam * (1.0 + MIDAZOLAM_PROPOFOL_SYNERGY * propofol_share)
 
 
-def opioid_equivalent(remi: float, fentanyl: float) -> float:
-    """Remifentanil-equivalent concentration (ng/mL)."""
-    return max(0.0, remi) + FENTANYL_REMI_POTENCY * max(0.0, fentanyl)
+def opioid_equivalent(remi: float, fentanyl: float, morphine: float = 0.0, hydromorphone: float = 0.0) -> float:
+    """Remifentanil equivalent (ng/mL).
+
+    Morphine and hydromorphone add their Olofsen 2026 Table 1 limit-temperature
+    shifts at a calibrated 1.01 ng/mL per degree C.
+    """
+    morphine_shift = (max(0.0, morphine) / (14.9 / 0.316)) ** (0.83 / 0.863)
+    hydromorphone_shift = (max(0.0, hydromorphone) / (14.9 * 0.316)) ** (0.83 * 0.863)
+    return (max(0.0, remi) + FENTANYL_REMI_POTENCY * max(0.0, fentanyl)
+            + 1.01 * (morphine_shift + hydromorphone_shift))
+
+
+def opioid_controller_fraction(morphine: float, hydromorphone: float) -> float:
+    """Share of ventilatory controller output left (Olofsen 2026 supplement Table 4).
+
+    Morphine and hydromorphone potency units are assumed to add.
+    """
+    morphine_units = (max(0.0, morphine) / (5.5 / 0.616)) ** (0.72 / 1.04)
+    hydromorphone_units = (max(0.0, hydromorphone) / (5.5 * 0.616)) ** (0.72 * 1.04)
+    return 1.0 / (1.0 + morphine_units + hydromorphone_units)
 
 
 class BISModel:

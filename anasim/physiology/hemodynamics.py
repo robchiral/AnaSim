@@ -73,6 +73,7 @@ class HemodynamicModel:
         # Adrenoceptor occupancy and muscarinic block, 0-1.
         self._beta_occupancy = 0.0
         self._vagal_block = 0.0
+        self._ephedrine_tolerance_ce = 0.0
 
         # Fast HR effects (chemoreflex, baroreflex, vasoactive chronotropy).
         self.smoothed_epi_hr = 0.0
@@ -618,7 +619,7 @@ class HemodynamicModel:
              mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0,
              ce_vaso: float = 0.0, ce_dobu: float = 0.0, ce_mil: float = 0.0,
              ce_esmolol: float = 0.0, ce_labetalol: float = 0.0, ce_glyco: float = 0.0,
-             ce_ketamine: float = 0.0,
+             ce_ketamine: float = 0.0, ce_atropine: float = 0.0, ce_ephedrine: float = 0.0,
              temp_c: float = 37.0, peep_cmH2O: float | None = None, sao2: float = 98.0) -> HemoState:
         """Advance the model by dt seconds and return the new state.
 
@@ -633,7 +634,7 @@ class HemodynamicModel:
             ce_epi, ce_phenyl, ce_dobu, ce_mil: Effect-site concentrations (ng/mL).
             ce_vaso: Vasopressin effect-site concentration (mU/L).
             ce_esmolol: Esmolol effect-site concentration (mcg/mL).
-            ce_labetalol, ce_glyco: Effect-site concentrations (ng/mL).
+            ce_labetalol, ce_glyco, ce_atropine, ce_ephedrine: Effect-site concentrations (ng/mL).
             ce_ketamine: Ketamine effect-site concentration (mcg/mL).
             temp_c: Core temperature (°C).
             peep_cmH2O: Total PEEP (cmH2O).
@@ -656,7 +657,11 @@ class HemodynamicModel:
         alpha_dr = 1.0 + max(0.0, ce_labetalol) / cfg.labetalol_kb_alpha
         self._beta_occupancy = beta_occ = 1.0 - 1.0 / beta1_dr
         alpha_occ = 1.0 - 1.0 / alpha_dr
-        self._vagal_block = vagal = hill_function(max(0.0, ce_glyco), cfg.glyco_c50, cfg.glyco_gamma)
+        glyco = hill_function(max(0.0, ce_glyco), cfg.glyco_c50, cfg.glyco_gamma)
+        atropine = hill_function(max(0.0, ce_atropine), cfg.atropine_c50, cfg.atropine_gamma)
+        self._vagal_block = vagal = 1.0 - (1.0 - glyco) * (1.0 - atropine)
+        atropine_hr = cfg.atropine_emax_hr * atropine / (1.0 + max(0.0, cp_prop) / cfg.atropine_propofol_cp50)
+        vagal_hr = cfg.glyco_emax_hr * glyco * (1.0 - atropine) + atropine_hr
         resting_tone = 1.0 - cfg.sympathetic_anesthetic_depression * anesthetic_depth
         # Shares of sympathetic reflex and stimulation responses left after
         # block; age reduces the HR share only, as for beta agonists.
@@ -818,6 +823,22 @@ class HemodynamicModel:
         nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(
             ce_nore, beta1_dr, alpha_dr, anesthetic_depth,
         )
+        self._ephedrine_tolerance_ce += (max(0.0, ce_ephedrine) - self._ephedrine_tolerance_ce) * (
+            -math.expm1(-math.log(2.0) * dt_min / cfg.ephedrine_tolerance_half_min)
+        )
+        ephedrine = max(0.0, ce_ephedrine) / agonist_shift
+        ephedrine_effect = max(0.0,
+            hill_function(ephedrine, cfg.ephedrine_c50, cfg.ephedrine_gamma)
+            - cfg.ephedrine_tolerance_max * hill_function(
+                self._ephedrine_tolerance_ce / agonist_shift,
+                cfg.ephedrine_tolerance_c50, cfg.ephedrine_tolerance_gamma,
+            )
+        )
+        ephedrine_svr = 1.0 + cfg.ephedrine_emax_svr * ephedrine_effect / alpha_dr
+        ephedrine_sv = 1.0 + cfg.ephedrine_emax_sv * ephedrine_effect / beta1_dr
+        ephedrine_hr = (
+            cfg.ephedrine_hr_slope * ephedrine + cfg.ephedrine_emax_hr * ephedrine_effect
+        ) * self.base_hr * sympathetic_hr_response
         phenyl_svr_factor = self._calc_phenyl_effects(ce_phenyl / alpha_dr)
         vaso_delta_hr, _, vaso_svr_factor = self._calc_hr_sv_svr_effects(
             ce_vaso, cfg.vaso_c50, cfg.vaso_gamma, cfg.vaso_emax_hr, 0.0, cfg.vaso_emax_svr
@@ -834,7 +855,7 @@ class HemodynamicModel:
         )
 
         # SVR and SV factors multiply; chronotropy adds. Sepsis blunts catecholamines.
-        catechol_svr_factor = epi_svr_factor * nore_svr_factor * phenyl_svr_factor
+        catechol_svr_factor = epi_svr_factor * nore_svr_factor * phenyl_svr_factor * ephedrine_svr
         pressor_resistance = clamp01(cfg.sepsis_pressor_resistance * sepsis_sev)
         if pressor_resistance > 0:
             catechol_svr_factor = 1.0 + (catechol_svr_factor - 1.0) * (1.0 - pressor_resistance)
@@ -850,16 +871,16 @@ class HemodynamicModel:
             (1.0 - cfg.alpha_block_tpr * alpha_occ * resting_tone)
         )
         combined_sv_factor = (
-            epi_sv_factor * nore_sv_factor * dobu_sv_factor * mil_sv_factor
+            epi_sv_factor * nore_sv_factor * dobu_sv_factor * mil_sv_factor * ephedrine_sv
             * (1.0 - cfg.beta_block_sv * beta_occ * resting_tone)
             * (1.0 + cfg.ketamine_emax_sv * ketamine * beta_response)
             / (1.0 + cfg.phenyl_afterload_gain * (phenyl_svr_factor - 1.0) * pressor_gain)
         )
         combined_delta_hr = (
-            self._epi_chrono_effect + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr
+            self._epi_chrono_effect + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr + ephedrine_hr
             + (cfg.ketamine_emax_hr * ketamine * sympathetic_hr_response - cfg.beta_block_hr * beta_occ * resting_tone)
             * self.hr_star
-            + cfg.glyco_emax_hr * vagal
+            + vagal_hr
         )
         self.vasopressor_sv_factor = combined_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (combined_svr_factor - 1.0)

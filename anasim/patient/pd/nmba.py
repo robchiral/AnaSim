@@ -23,6 +23,16 @@ TOF_FADE_EXPONENT = 1.5
 ROCURONIUM_T1_EC50 = ROCURONIUM_TOF_EC50 * (0.5**-TOF_FADE_EXPONENT - 1.0) ** (1.0 / ROCURONIUM_TOF_HILL)
 
 
+def succinylcholine_twitch_fraction(ce: float, *, central: bool = False) -> float:
+    """Phase I twitch height, calibrated to Kopman 2003 Table 2 (mcg/mL).
+
+    A twofold central EC50 calibrates earlier diaphragm/larynx recovery
+    (Dhonneur 1999). Phase I suppresses all four twitches without fade.
+    """
+    ec50 = 0.84 * (2.0 if central else 1.0)
+    return 1.0 / (1.0 + (max(0.0, ce) / ec50) ** 4.0)
+
+
 def _sugammadex_pk(patient: Patient) -> MammillaryPK:
     """Kleijn 2011 sugammadex PK (umol, umol/L); the complex shares it.
 
@@ -183,4 +193,4 @@ class TOFModel:
         return 1.0 - reduction
 
 
-__all__ = ["ROCURONIUM_T1_EC50", "TOFModel"]
+__all__ = ["ROCURONIUM_T1_EC50", "TOFModel", "succinylcholine_twitch_fraction"]

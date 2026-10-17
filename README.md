@@ -41,11 +41,11 @@ Start. Use Apply to confirm setting changes.
 
 | Feature | Supported controls and measurements |
 |---------|-------------------------------------|
-| Anesthesia | Propofol, remifentanil, fentanyl, midazolam, etomidate, ketamine, lidocaine, sevoflurane, nitrous oxide, rocuronium, and sugammadex |
-| Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, and glycopyrrolate |
+| Anesthesia | Propofol, remifentanil, fentanyl, hydromorphone, morphine, midazolam, etomidate, ketamine, lidocaine, sevoflurane, nitrous oxide, rocuronium, succinylcholine, and sugammadex |
+| Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, ephedrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, atropine, and glycopyrrolate |
 | Anesthesia machine | Facemask or tracheal tube, fresh gas flow, vaporizer, and bag-mask ventilation |
 | Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
-| Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF), temperature, fluid balance, trends, and alarms |
+| Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF) and single-twitch monitoring, temperature, fluid balance, trends, and alarms |
 | Fluids and events | Fluids and blood, surgical stimulation, airway obstruction, bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias |
 | Guided scenarios | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, and oxygen supply failure |
 

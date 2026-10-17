@@ -386,10 +386,17 @@ def require_bag_mask_started(engine) -> tuple[bool, str]:
     return met, "" if met else "Turn ON Bag-Mask ventilation"
 
 
+def neuromuscular_response(engine) -> tuple[str, float]:
+    """The more depressed of T1 height (phase I block) and TOF ratio, %."""
+    state = engine.state
+    return ("T1", state.twitch) if state.twitch < state.tof else ("TOF ratio", state.tof)
+
+
 def require_tof_at_most(threshold: float = 25) -> Requirement:
     def check(engine) -> tuple[bool, str]:
-        met = engine.state.tof <= threshold
-        return met, "" if met else f"TOF: {engine.state.tof:.0f}%/≤{threshold:.0f}%"
+        label, response = neuromuscular_response(engine)
+        met = response <= threshold
+        return met, "" if met else f"{label}: {response:.0f}%/≤{threshold:.0f}%"
     return check
 
 

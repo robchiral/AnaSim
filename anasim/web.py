@@ -112,6 +112,7 @@ class WebSession:
         self._download: dict[str, str] | None = None
         self._accumulator = 0.0
         self._last_wave_time = -math.inf
+        self._last_nmb_time = -math.inf
         # Loops trace the breath in progress over the last completed one.
         self._loop_sample: WaveformSample | None = None
         self._loop_pending: list[WaveformSample] = []  # Flow crossing awaiting confirmation by the breath counter.
@@ -173,6 +174,7 @@ class WebSession:
             ],
             "medication_history": list(self._medication_history),
             "trends": list(self._trend_history),
+            "nmb_history": engine.nmb.trend_history(),
             "disturbances": [{"key": key, "label": label} for label, key in list_disturbance_profiles()],
             "rhythms": [rhythm.value for rhythm in RhythmType],
             "vent_modes": MODES,
@@ -249,6 +251,9 @@ class WebSession:
         state = self.engine.state
         trends = list(self._trend_pending)
         self._trend_pending.clear()
+        nmb_trend = self.engine.nmb.trend_history(after=self._last_nmb_time)
+        if nmb_trend:
+            self._last_nmb_time = nmb_trend[-1][0]
         return {
             "time": _num(state.time, 3),
             "running": self.engine.running,
@@ -261,6 +266,8 @@ class WebSession:
             "notice": notice,
             "download": download,
             "vitals": self._vitals(),
+            "nmb": self.engine.nmb.snapshot(state.time),
+            "nmb_trend": nmb_trend,
             "trends": trends,
             "alarms": {
                 name: "low" if flags.get("low") else "high"
@@ -315,7 +322,6 @@ class WebSession:
             # Without an airway, respiratory rate comes from chest impedance.
             "rr_source": "co2" if connected else "impedance",
             "bis": _num(s.display_bis, 1),
-            "tof": _num(s.tof, 1),
             "temp": _num(s.temp_c, 2),
             "fluid_in": _num(s.fluid_in_ml, 1),
             "blood_in": _num(s.blood_in_ml, 1),
@@ -704,6 +710,15 @@ class WebSession:
 
     def _cmd_nibp(self):
         self.engine.measure_nibp()
+
+    def _cmd_nmb_mode(self, mode: str):
+        self.engine.nmb.set_mode(mode, self.engine.state.time)
+
+    def _cmd_nmb_repeat(self, seconds: float):
+        self.engine.nmb.set_repeat(seconds, self.engine.state.time)
+
+    def _cmd_nmb_measure(self):
+        self.engine.nmb.measure(self.engine.state.time)
 
     def _cmd_record(self, active: bool):
         """Start recording, or stop it and return {"filename", "csv"} to download, if any."""

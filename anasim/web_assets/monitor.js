@@ -1,4 +1,5 @@
 // Waveform sweeps and monitor numerics.
+import { NeuromuscularDisplay } from "./neuromuscular.js";
 
 // Slower respiratory sweeps show several breaths.
 const CARDIAC_SWEEP_S = 10;
@@ -318,6 +319,7 @@ export class Monitor {
     this.fields["v-rr-title"] = document.getElementById("v-rr-title");
     this.alarmBoxes = [...document.querySelectorAll(".monitor [data-alarm]")];
     this.loops = new Loops();
+    this.nmb = new NeuromuscularDisplay(info.nmb_history);
     this.frame = requestAnimationFrame(() => this.render());
   }
 
@@ -338,6 +340,7 @@ export class Monitor {
     }
     this.loops.update(snap.loop);
     this.updateNumerics(snap.vitals);
+    this.nmb.update(snap.nmb, snap.nmb_trend, snap.time, snap.ended);
     document.getElementById("measure-nibp").disabled = snap.ended || snap.vitals.nibp_cuff !== null;
     this.updateAlarms(snap.alarms);
   }
@@ -382,7 +385,6 @@ export class Monitor {
     this.set("v-rr", trunc(v.rr));
     this.set("v-rr-title", v.rr_source === "impedance" ? "RR imp" : "RR");
     this.set("v-bis", trunc(v.bis));
-    this.set("v-tof", trunc(v.tof));
     this.set("v-temp", fixed(v.temp, 1));
 
     const net = v.net_fluid ?? 0;

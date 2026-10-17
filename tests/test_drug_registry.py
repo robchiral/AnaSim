@@ -20,6 +20,8 @@ def test_infusion_rates_convert_the_prescribed_units(engine):
         ("remi", 60.0 / engine.patient.weight),
         ("fentanyl", 3600.0),
         ("midazolam", 3.6),
+        ("morphine", 3.6),
+        ("hydromorphone", 3.6),
         ("ketamine", 3600.0),
         ("lidocaine", 3600.0),
         ("nore", 60.0),
@@ -40,8 +42,11 @@ def test_infusion_rates_convert_the_prescribed_units(engine):
 
 
 def test_boluses_deliver_the_prescribed_mass_to_each_pk_model(engine):
-    # Prescribed mg or units become mcg or milliunits in these four models.
-    model_scales = {"midazolam": 1000.0, "vaso": 1000.0, "labetalol": 1000.0, "glyco": 1000.0}
+    # Prescribed mg or units become mcg or milliunits in these models.
+    model_scales = dict.fromkeys(
+        ("midazolam", "vaso", "labetalol", "glyco", "morphine", "hydromorphone", "atropine", "ephedrine"),
+        1000.0,
+    )
     for spec in DRUG_REGISTRY:
         model = engine.pk[spec.key]
         initial_c1 = model.state.c1

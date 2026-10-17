@@ -296,13 +296,35 @@ fieldset:disabled { opacity: 0.5; }
 }
 .alarm-low .numeric-title, .alarm-high .numeric-title { color: var(--alarm); }
 .numeric.compact output.measurement-status { color: var(--text-secondary); font-size: 11px; font-weight: 400; line-height: 1.3; white-space: normal; margin-top: 3px; }
-.secondary-bar { display: grid; grid-template-columns: minmax(220px, 1.3fr) .4fr .5fr .6fr minmax(170px, 1.3fr); border-top: 1px solid var(--monitor-rule); }
+.secondary-bar { display: grid; grid-template-columns: minmax(220px, 1.3fr) .4fr .6fr minmax(170px, 1.3fr); border-top: 1px solid var(--monitor-rule); }
 .secondary-bar > :nth-child(2), .secondary-bar > .panel-io { border-left: 1px solid var(--monitor-rule); }
 .secondary-bar .numeric { padding: 7px 10px; color: var(--text-secondary); }
 #n-nibp { color: var(--text); }
 .nibp-reading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nibp-reading output { font-size: 23px; }
 .nibp-reading .btn { flex: 0 0 auto; padding: 3px 6px; font-size: 11px; }
+
+.nmb-panel { display: grid; grid-template-columns: 150px auto minmax(80px, 1fr) auto; align-items: center; gap: 20px; padding: 7px 10px; border-top: 1px solid var(--monitor-rule); }
+.nmb-result { min-width: 0; color: var(--text-secondary); }
+.nmb-result output { display: block; font-size: 25px; line-height: 1.15; }
+.nmb-result[data-quality="recovered"] output { color: var(--ecg); }
+.nmb-result[data-quality="low"] output { color: var(--warning); }
+.nmb-caption { display: block; min-height: 14px; color: var(--text-dim); font-size: 10px; line-height: 1.4; white-space: nowrap; }
+.nmb-bars { display: flex; align-items: end; gap: 9px; height: 50px; padding-bottom: 13px; }
+.nmb-bar { position: relative; display: flex; align-items: end; width: 12px; height: 100%; border-bottom: 1px solid var(--border-light); }
+.nmb-bar i { display: block; width: 100%; height: var(--height, 0%); background: var(--tof); }
+.nmb-bar.baseline i { height: 100%; background: var(--temp); }
+.nmb-bar span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); padding-top: 1px; color: var(--text-dim); font-size: 9px; }
+.nmb-trend { min-width: 0; }
+.nmb-trend svg { display: block; width: 100%; height: 40px; overflow: visible; }
+.nmb-trend path { vector-effect: non-scaling-stroke; }
+.nmb-trend-guide { stroke: var(--monitor-rule); fill: none; }
+/* Zero-length round-capped strokes stay circular in the stretched plot. */
+#nmb-trend-points { stroke: var(--tof); stroke-width: 4px; stroke-linecap: round; }
+#nmb-trend-points .low { stroke: var(--warning); }
+.nmb-controls { display: grid; grid-template-columns: auto auto; gap: 4px; }
+.nmb-controls select { padding: 3px 5px; font-size: 11px; }
+.nmb-controls .btn { grid-column: 1 / -1; padding: 3px 8px; font-size: 11px; }
 
 .panel-io { min-width: 0; padding: 7px 10px; }
 .io-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; color: var(--text-dim); font-size: 11px; }
@@ -522,11 +544,15 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
   .gas-bar .numeric-unit { display: block; }
   .gas-bar .numeric:nth-child(n + 4) { border-top: 1px solid var(--monitor-rule); }
   .gas-bar .numeric:nth-child(5) { border-left: none; }
-  .secondary-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .secondary-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #n-nibp { grid-column: 1 / -1; border-bottom: 1px solid var(--monitor-rule); }
   .secondary-bar > :nth-child(2) { border-left: none; }
   .secondary-bar .panel-io { grid-column: 1 / -1; border-top: 1px solid var(--monitor-rule); border-left: none; }
   .secondary-bar .numeric { padding: 7px 8px; }
+  .nmb-panel { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; }
+  .nmb-trend, .nmb-controls { grid-column: 1 / -1; }
+  .nmb-controls { grid-template-columns: 1fr 1fr auto; }
+  .nmb-controls .btn { grid-column: auto; }
   .clock output { font-size: 16px; }
   .scenario-body p { font-size: 11px; }
 }

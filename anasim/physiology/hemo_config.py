@@ -248,6 +248,30 @@ class HemodynamicConfig:
     glyco_emax_hr: float = 20.0
     glyco_brady_relief: float = 30.0  # bpm added to the 50 bpm sinus bradycardia rate
 
+    # Hinderling 1985 II tissue-linked response and Hill slope. Potency and
+    # maximum fit awake patients (Horiguchi 2002) and Hinderling's infusions;
+    # volatile and opioid anesthesia leave the response intact (Yamaguchi 1988).
+    # Propofol (mcg/mL) limits the HR rise but not vagal block (Horiguchi 2002).
+    atropine_c50: float = 2.4  # ng/mL
+    atropine_gamma: float = 3.4
+    atropine_emax_hr: float = 60.0
+    atropine_propofol_cp50: float = 1.6
+
+    # Meng 2011 / Sjøen 2026 IV calibration; tolerance timing and Hill slope
+    # use Persky 2004 oral data. IV tolerance potency and maximum are calibrated.
+    # HR combines Persky's sustained slope (fraction of baseline per ng/mL)
+    # with a peak response that shares the vascular tolerance.
+    ephedrine_c50: float = 25.0
+    ephedrine_gamma: float = 1.9
+    ephedrine_emax_svr: float = 0.45
+    ephedrine_emax_sv: float = 0.2
+    ephedrine_hr_slope: float = 0.0014
+    ephedrine_emax_hr: float = 0.4
+    ephedrine_tolerance_half_min: float = 15.0
+    ephedrine_tolerance_c50: float = 20.0
+    ephedrine_tolerance_gamma: float = 3.7
+    ephedrine_tolerance_max: float = 0.9
+
     # Ketamine (mcg/mL) raises sympathetic outflow. Without atropine, 2 mg/kg
     # raised HR 33%, cardiac index 29%, and aortic pressure 28%, with SV and SVR
     # unchanged (Tweed 1972). With atropine and nitrous oxide, pressure, HR, and

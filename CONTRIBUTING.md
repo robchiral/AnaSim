@@ -33,7 +33,7 @@ is the hosted app's Python runtime.
 |--------|-----------------|
 | Physiology, pharmacology, or ventilation | Clinical scenarios and affected subsystem tests at several step sizes |
 | Browser commands or state fields | `tests/test_web.py`, `tests/test_state_semantics.py`, and local and hosted browser previews |
-| Settings controls | `node --test tests/test_settings.mjs` and browser checks |
+| Settings controls or monitor display | `node --test tests/*.mjs` and browser checks |
 | Guided scenarios | `tests/test_scenarios.py`, `tests/test_action_log.py`, and a complete browser run of the changed scenario |
 | Local server | `tests/test_local.py` in native Python |
 | Documentation | Run changed examples, check links, and preserve citations and model limits |

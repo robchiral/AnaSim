@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, cast
 from anasim.core.constants import CMH2O_TO_MMHG
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
+from anasim.patient.pd.anesthesia import opioid_equivalent
+from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
 from anasim.patient.pk_models import MidazolamPK, PropofolPKEleveld
 from anasim.physiology.disturbances import DisturbanceEffects
 
@@ -92,8 +94,8 @@ def update_shivering(engine: SimulationEngine, dt: float) -> None:
     """Update shivering intensity based on temperature and anesthetic state."""
     state = engine.state
     remi_effect = hill_function(state.opioid_ce, engine.resp.c50_remi, engine.resp.gamma_remi)
-    # Shivering uses peripheral muscle, as sensitive as the adductor pollicis.
-    muscle_factor = 1.0 - engine.tof_pd.twitch_block(state.roc_ce, state.mac_sevo, state.mac_n2o)
+    # Shivering muscle is as sensitive to block as the adductor pollicis.
+    muscle_factor = state.twitch / 100.0
     state.shivering = float(engine.thermal.step_shivering(dt, state.temp_c, state.bis, remi_effect, muscle_factor))
 
 
@@ -214,10 +216,9 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
         model.step(dt, rates.get(key, 0.0))
     # Plasma binding and sugammadex-dependent effect-site efflux reduce free
     # rocuronium, which drives TOF and every muscle effect.
-    tof = engine.tof_pd.step_recovery(
+    engine.tof_pd.step_recovery(
         dt, engine.pk["roc"], mac_sevo=engine.pk_sevo.state.mac, mac_n2o=engine.pk_n2o.state.mac
     )
-    state.tof = float(tof)
     sync_pk_state(engine)
 
 
@@ -270,7 +271,8 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
     )
 
     nmba_effect = hill_function(engine.tof_pd.ce_central, engine.resp.c50_nmba, engine.resp.gamma_nmba)
-    muscle_factor = clamp01(1.0 - nmba_effect)
+    depolarizing_strength = succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True)
+    muscle_factor = clamp01(1.0 - nmba_effect) * depolarizing_strength
 
     airway_tuning = engine.airway_tuning
     laryng_target = 0.0
@@ -298,7 +300,7 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
                 splint_pressure = vent.monitors.paw_mean_recent
         relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
         unconscious = loss_of_response(engine, ketamine=False)
-        tone = engine.tof_pd.pharyngeal_tone_fraction(state.mac_sevo, state.mac_n2o)
+        tone = max(0.1, engine.tof_pd.pharyngeal_tone_fraction(state.mac_sevo, state.mac_n2o) * depolarizing_strength)
         collapse = clamp01(airway_tuning.unsupported_collapse_max * unconscious / tone) * (1.0 - relief)
         upper_obstruction = max(upper_obstruction, engine.laryngospasm_severity, collapse)
     upper_obstruction = clamp01(upper_obstruction)
@@ -373,10 +375,11 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
     resp_state = step_respiration(engine, dt, state.co)
 
+    # Su 2023 uses plasma remifentanil; morphine and hydromorphone act at their slower effect sites.
     hemo_state = engine.hemo.step(
         dt,
         state.propofol_cp,
-        state.opioid_cp,
+        opioid_equivalent(state.remi_cp, state.fentanyl_cp, state.morphine_ce, state.hydromorphone_ce),
         state.nore_ce,
         pit=pit_estimate,
         paco2=resp_state.pa_co2,
@@ -393,6 +396,8 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         ce_esmolol=state.esmolol_ce,
         ce_labetalol=state.labetalol_ce,
         ce_glyco=state.glyco_ce,
+        ce_atropine=state.atropine_ce,
+        ce_ephedrine=state.ephedrine_ce,
         ce_ketamine=engine.pk["ketamine"].state.ce_cv,
         temp_c=state.temp_c,
         peep_cmH2O=total_peep_effect,

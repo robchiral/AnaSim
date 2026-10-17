@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
-from anasim.patient.pd.anesthesia import LARYNGOSCOPY_INTENSITY
+from anasim.patient.pd.anesthesia import (
+    LARYNGOSCOPY_INTENSITY,
+    opioid_controller_fraction,
+)
+from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
 
 from .drug_registry import DRUG_REGISTRY
 from .state import AirwayType, SimulationState
@@ -122,8 +126,13 @@ def sync_pk_state(engine: SimulationEngine) -> None:
             setattr(state, spec.cp_field, float(pk_state.c1))
     state.roc_ce = float(engine.tof_pd.ce)
     state.roc_cp = float(engine.pk["roc"].state.c1 + engine.tof_pd.bound_rocuronium())
-    state.opioid_ce = float(opioid_equivalent(engine.pk["remi"].state.ce, engine.pk["fentanyl"].state.ce))
-    state.opioid_cp = float(opioid_equivalent(engine.pk["remi"].state.c1, engine.pk["fentanyl"].state.c1))
+    state.opioid_ce = float(opioid_equivalent(
+        engine.pk["remi"].state.ce, state.fentanyl_ce, state.morphine_ce, state.hydromorphone_ce,
+    ))
+    state.opioid_cp = float(opioid_equivalent(
+        engine.pk["remi"].state.c1, state.fentanyl_cp, state.morphine_cp, state.hydromorphone_cp,
+    ))
+    sync_neuromuscular_state(engine)
     state.hypnotic_ce = float(hypnotic_equivalent(
         engine.pk["propofol"].state.ce,
         engine.pk["etomidate"].state.ce,
@@ -135,6 +144,14 @@ def sync_pk_state(engine: SimulationEngine) -> None:
         engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
         engine.pk["midazolam"].state.ce, engine.midazolam_c50,
     ))
+
+
+def sync_neuromuscular_state(engine: SimulationEngine) -> None:
+    """T1 height includes phase I block, which depresses all four twitches without fade."""
+    s = engine.state
+    s.tof = float(engine.tof_pd.compute_tof_from_ce(s.roc_ce, s.mac_sevo, s.mac_n2o))
+    roc_twitch = 1.0 - engine.tof_pd.twitch_block(s.roc_ce, s.mac_sevo, s.mac_n2o)
+    s.twitch = 100.0 * roc_twitch * succinylcholine_twitch_fraction(s.succinylcholine_ce)
 
 
 def sync_inspired_gas(engine: SimulationEngine) -> tuple[float, float]:
@@ -248,9 +265,13 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
             ventilation=True,
         ),
         ce_remi=opioid_equivalent(engine.pk["remi"].state.ce_resp, state.fentanyl_ce),
+        opioid_controller_fraction=opioid_controller_fraction(
+            engine.pk["morphine"].state.ce_resp, engine.pk["hydromorphone"].state.ce_resp,
+        ),
         mech_vent_mv=assisted_rr * assisted_vt_l,
         fio2=state.fio2,
         ce_roc=engine.tof_pd.ce_central,
+        neuromuscular_strength=succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True),
         mac_sevo=state.mac_sevo,
         mech_rr=assisted_rr,
         mech_vt_l=assisted_vt_l,
@@ -312,11 +333,6 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     """Derive monitor baselines from the current physiologic snapshot."""
     state = engine.state
     bis_val = clamp(engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo), 0.0, 100.0)
-    tof_val = engine.tof_pd.compute_tof_from_ce(
-        state.roc_ce,
-        mac_sevo=state.mac_sevo,
-        mac_n2o=state.mac_n2o,
-    )
     loc_val = loss_of_response(engine)
     tol_val = stimulus_tolerance(engine)
     engine._tol_current = tol_val
@@ -329,7 +345,6 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     art_reading = engine.art_line.seed(arterial_sample)
     engine.airway_sensor.seed(state.paw, state.flow, state.volume)
     state.bis = float(bis_val)
-    state.tof = float(tof_val)
     state.loc = float(loc_val)
     state.tol = float(tol_val)
     state.capno_co2 = state.ecg_voltage = state.pleth_voltage = 0.0
@@ -347,9 +362,9 @@ def sync_state_from_models(engine: SimulationEngine) -> None:
     """Derive the public SimulationState from current subsystem state."""
     state = engine.state
     state.temp_c = float(engine.patient.baseline_temp)
-    sync_pk_state(engine)
     sync_inspired_gas(engine)
     sync_inhaled_agents(engine)
+    sync_pk_state(engine)
     hemo_state = engine.hemo.state
     resp_state = step_respiration(engine, 0.0, hemo_state.co)
     project_runtime_physiology(engine, build_snapshot_from_models(
