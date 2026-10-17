@@ -11,6 +11,7 @@ and mU/L for vasopressin.
 
 import math
 from dataclasses import dataclass
+from operator import attrgetter
 from typing import TypedDict
 
 import numpy as np
@@ -88,6 +89,7 @@ class MammillaryPK:
             ("c1",) + (("c2",) if v2 > 0 else ()) + (("c3",) if v3 > 0 else ())
             + tuple(name for name, _ in self.effect_sites)
         )
+        self._state_values = attrgetter(*self.state_fields)
         self.state = PKState()
         self.update_hemodynamics(1.0, 1.0)
 
@@ -143,7 +145,7 @@ class MammillaryPK:
         """Apply drug covariates without changing central mass or losing flow scaling."""
         scales = (v1, cl1, cl2, cl3)
         old = (self.v1_scale, self.cl1_scale, self.cl2_scale, self.cl3_scale)
-        if all(math.isclose(a, b, rel_tol=1e-3) for a, b in zip(scales, old, strict=True)):
+        if scales == old or all(math.isclose(a, b, rel_tol=1e-3) for a, b in zip(scales, old, strict=True)):
             return False
         self.state.c1 *= self.v1_scale / v1
         self.v1 *= v1 / self.v1_scale
@@ -156,7 +158,7 @@ class MammillaryPK:
         """Advance with simultaneous Euler steps that conserve compartment transfers."""
         input_rate_per_sec += self.basal_input_rate
         s = self.state
-        if not input_rate_per_sec and not any(getattr(s, name) for name in self.state_fields):
+        if not input_rate_per_sec and not any(self._state_values(s)):
             return s  # Skip drugs with no input or residual concentration.
         cl2 = self.cl2 if self.v2 > 0 else 0.0
         cl3 = self.cl3 if self.v3 > 0 else 0.0
@@ -304,7 +306,7 @@ class PropofolPKEleveld(MammillaryPK):
         v2_ref, v3_ref = 25.5013145036879, 272.8166615043603
 
         v1 = 6.2830780766822 * _sigmoid(w, 33.5531248778544, 1) / _sigmoid(w_ref, 33.5531248778544, 1)
-        v2 = v2_ref * (w / w_ref) * np.exp(-0.015633 * (age - age_ref))
+        v2 = v2_ref * (w / w_ref) * math.exp(-0.015633 * (age - age_ref))
         v3 = v3_ref * _eleveld_ffm(age, w, patient.height, male) / _eleveld_ffm(35.0, 70.0, 170.0, True)
         if concomitant_opioids:
             v3 *= math.exp(-0.0138166 * age)

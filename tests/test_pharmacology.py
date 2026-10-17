@@ -39,6 +39,15 @@ def _first_second(trace, condition, start=0):
     return start + int(hits[0]) if hits.size else None
 
 
+def test_residual_effect_site_decays_after_plasma_is_empty(patient):
+    model = PropofolPKEleveld(patient)
+    model.step(1.0, 0.0)
+    model.state.ce_resp = 1.0
+    model.step(1.0, 0.0)
+    assert model.state.c1 == 0.0
+    assert 0.0 < model.state.ce_resp < 1.0
+
+
 @pytest.mark.parametrize("model_type", [EpinephrinePK, RemifentanilPKEleveld, SuccinylcholinePK])
 def test_bolus_pk_with_reduced_volume_and_large_steps(patient, model_type):
     model = model_type(patient)

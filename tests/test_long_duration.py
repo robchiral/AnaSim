@@ -49,3 +49,6 @@ def test_four_hour_case_stays_stable(engine_factory):
 
     for name in MONITORED:
         assert np.isfinite(getattr(engine.state, name)), f"{name} is not finite after perturbations"
+    # NumPy scalars spread through coupled models and slow every later step.
+    internals = (engine.pk["propofol"].state.c1, engine.hemo.blood_volume, engine.resp.state.p_alveolar_co2)
+    assert all(type(value) is float for value in internals)

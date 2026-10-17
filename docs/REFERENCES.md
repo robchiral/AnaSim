@@ -184,7 +184,8 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 
 - García-Río et al. (2007). *Respir Med*. [Age and hypoxic and hypercapnic inspiratory drive](https://pubmed.ncbi.nlm.nih.gov/17643972/).
 - Egan et al. (2004). *Br J Anaesth*. [Remifentanil bolus respiratory effects by age](https://pubmed.ncbi.nlm.nih.gov/14970134/).
-- Dash, Korman, and Bassingthwaighte (2016). *Eur J Appl Physiol*. [Hemoglobin dissociation curves across oxygen tension and temperature](https://pubmed.ncbi.nlm.nih.gov/26298270/).
+- Dash, Korman, and Bassingthwaighte (2016). *Eur J Appl Physiol*. [Hemoglobin dissociation curves across oxygen tension, temperature, pH, and PCO₂](https://pubmed.ncbi.nlm.nih.gov/26298270/).
+- Rees et al. (2010). *Eur J Appl Physiol*. [Plasma and red-cell acid-base chemistry with oxygen-dependent buffering](https://doi.org/10.1007/s00421-009-1244-x).
 - Bouillon et al. (2004). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).
 - Olofsen et al. (2010). *Anesthesiology*. [Dynamic remifentanil respiratory effects in awake and propofol-sedated volunteers](https://pubmed.ncbi.nlm.nih.gov/20461001/).
 - Kanazawa et al. (2017). *J Anesth*. [Volatile anesthetics and BIS](https://pubmed.ncbi.nlm.nih.gov/28791477/).
@@ -232,6 +233,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Larsson et al. (1985). *J Allergy Clin Immunol*. [Epinephrine relief of bronchoconstriction](https://pubmed.ncbi.nlm.nih.gov/3989143/).
 - Farmery and Roe (1996). *Br J Anaesth*. [Model of oxyhemoglobin desaturation during apnea](https://pubmed.ncbi.nlm.nih.gov/8777112/).
 - Stock et al. (1989). *J Clin Anesth*. [CO₂ accumulation during airway obstruction](https://pubmed.ncbi.nlm.nih.gov/2516732/).
+- Magor-Elliott et al. (2021). *J Appl Physiol*. [Tissue gas storage and circulation delays](https://doi.org/10.1152/japplphysiol.00764.2020).
 - Kobayashi et al. (1994). *Masui*. [Blood gas changes during apnea](https://pubmed.ncbi.nlm.nih.gov/7933492/).
 - Miyamura et al. (1980). *Jpn J Physiol*. [Hypercapnic ventilatory response variability](https://pubmed.ncbi.nlm.nih.gov/6790801/).
 - Christie et al. (1992). *Anesth Analg*. [Pressure support during general anesthesia](https://pubmed.ncbi.nlm.nih.gov/1632530/).

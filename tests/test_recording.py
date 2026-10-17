@@ -48,13 +48,18 @@ def test_recording_keeps_its_schedule_and_restart_uses_new_file(awake_engine, tm
     first = engine.recorder
     engine.start_recording(str(tmp_path))
     assert engine.recorder is first
+    blood_gases = {}
     for _ in range(round(5.0 / 0.3)):
         engine.step(0.3)
+        blood_gases[engine.state.time] = (engine.state.ph, engine.state.hco3)
     with open(first.file_path, newline="") as file:
         rows = list(csv.DictReader(file))
     # Steps that cross a deadline keep the 1 s schedule instead of drifting.
     assert [float(row["time"]) for row in rows] == pytest.approx([0.3, 1.5, 2.4, 3.3, 4.5])
     assert float(rows[-1]["hr"]) > 0
+    assert (float(rows[-1]["ph"]), float(rows[-1]["hco3"])) == pytest.approx(
+        blood_gases[float(rows[-1]["time"])],
+    )
     engine.stop_recording()
     original = Path(first.file_path).read_bytes()
     engine.stop_recording()

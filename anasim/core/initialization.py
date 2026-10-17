@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
@@ -179,6 +180,11 @@ def _seed_steady_state_subsystems(
         engine.pk["nore"].state.ce,
         mac_sevo=targets.mac,
     )
+    # Tissue CO2 belongs to the same maintenance history as the seeded drugs.
+    engine.resp.co2_stores.equilibrate(
+        engine.resp.state.p_alveolar_co2, engine.hemo.state.co,
+        _oxygen_uptake_l_min(engine, targets) * engine.resp.rq,
+    )
 
 
 def _seed_linear_history(pk_model, target_ce: float, duration_min: float) -> float:
@@ -214,7 +220,7 @@ def _seed_volatile_history(engine: SimulationEngine, target_mac: float, duration
     }
     state.p_alv = state.p_art = p_art
     for name, (flow, volume, partition) in flows.items():
-        setattr(state, name, p_art * (1.0 - np.exp(-flow / volume / partition * duration_min)))
+        setattr(state, name, p_art * -math.expm1(-flow / volume / partition * duration_min))
     state.p_ven = sum(flow * getattr(state, name) for name, (flow, _, _) in flows.items()) / q_co
     state.mac = state.p_vrg * 100.0 / pk.mac_age
 

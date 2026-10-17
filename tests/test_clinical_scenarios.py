@@ -112,6 +112,10 @@ class TestClinicalAcceptance:
         bis_80_time = None
 
         for elapsed in range(1201):
+            # Withdraw controlled breaths once hypnosis clears and effort
+            # returns, then assess unassisted ventilation through the ETT.
+            if engine.state.bis > 70.0 and engine.resp.state.mv > 1.0:
+                engine.set_vent_power(False)
             if engine.resp.state.mv > 3.0 and ventilation_time is None:
                 ventilation_time = elapsed
             if engine.state.bis > 70.0 and bis_70_time is None:
@@ -122,7 +126,6 @@ class TestClinicalAcceptance:
 
         # Published propofol-remifentanil recovery studies report spontaneous
         # respiration and eye opening in roughly 4-15 minutes, depending on dose.
-        # Ventilation continues, holding PaCO2 below the patient's own level.
         assert ventilation_time is not None and 180 <= ventilation_time <= 900
         assert bis_70_time is not None and 180 <= bis_70_time <= 900
         assert bis_80_time is not None and bis_80_time <= 1200

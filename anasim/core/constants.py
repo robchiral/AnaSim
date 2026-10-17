@@ -35,12 +35,6 @@ SHIVER_MAX_MULTIPLIER = 3.0
 SHIVER_TAU_ON = 30.0
 SHIVER_TAU_OFF = 90.0
 
-# Apneic PaCO2 rise (mmHg/min): fast for the first minute, then slow.
-APNEA_PACO2_RISE_FAST_MMHG_MIN = 10.0
-APNEA_PACO2_RISE_SLOW_MMHG_MIN = 3.6
-APNEA_PACO2_RISE_FAST_DURATION_SEC = 60.0
-
-
 @dataclass(frozen=True)
 class AirwayTuning:
     """Airway complication parameters."""

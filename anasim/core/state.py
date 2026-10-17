@@ -157,6 +157,8 @@ class SimulationState:
     display_etco2: float = 38.0
     etco2_signal_valid: bool = False
     pa_co2: float = 40.0
+    ph: float = 7.4  # Blood gas values at 37 °C.
+    hco3: float = 24.5  # Plasma bicarbonate, mmol/L.
     alveolar_co2: float = 40.0
     pao2: float = 95.0
     capno_co2: float = 0.0

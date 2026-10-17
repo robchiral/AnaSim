@@ -76,16 +76,18 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     # Bagging over spontaneous breaths splints by mean pressure across both,
     # so obstruction does not switch with the type of the last breath.
     engine.set_vent_power(False)
-    engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.5)
-    for _ in range(300):
+    # Slow assisted breaths allow spontaneous effort rather than washing CO2
+    # below the anesthetized apneic threshold.
+    engine.set_bag_mask_ventilation(True, rr=6.0, vt=0.5)
+    for _ in range(900):
         engine.step(0.1)
     assert not engine.resp.state.apnea
     obstruction = []
     for _ in range(200):
         engine.step(0.1)
         obstruction.append(engine.state.airway_obstruction)
-    assert max(obstruction) < 0.2
-    assert max(obstruction) - min(obstruction) < 0.05
+    # Switching would alternate between full relief and unsupported collapse (> 0.2).
+    assert 0.05 < min(obstruction) <= max(obstruction) < 0.2
 
 
 def test_residual_block_increases_sedated_airway_collapse_but_preserves_awake_patency(engine_factory):

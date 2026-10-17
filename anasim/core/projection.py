@@ -230,6 +230,8 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     state.mv = float(snapshot.mv_display_l_min)
     state.va = float(resp_state.va)
     state.pa_co2 = float(resp_state.pa_co2)
+    state.ph = float(resp_state.ph)
+    state.hco3 = float(resp_state.hco3)
     state.alveolar_co2 = float(resp_state.p_alveolar_co2)
     state.pao2 = float(resp_state.p_arterial_o2)
     state.sao2 = float(resp_state.sao2)
@@ -280,6 +282,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         ventilation_efficiency=airway.ventilation_efficiency,
         vq_mismatch=airway.vq_mismatch,
         hb_g_dl=engine.hemo.hb_conc,
+        hematocrit=engine.hemo.get_hematocrit(),
         blood_volume_ml=engine.hemo.blood_volume,
         cardiac_output=cardiac_output,
         metabolic_factor=max(0.5, engine.thermal.metabolic_factor),

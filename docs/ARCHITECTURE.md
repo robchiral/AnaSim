@@ -40,6 +40,7 @@ the start of the step. Physiology supplies these values for the next step.
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
 | Physiology | `map`, `hr`, `co`, `sv`, `sao2`, `pa_co2`, `pao2` | Values used by the models and cardiac arrest check |
+| Blood chemistry | `ph`, `hco3` | Arterial plasma pH and bicarbonate (mmol/L) at 37 °C |
 | Arterial pulse | `sbp`, `dbp` | Pressures derived from mean pressure, stroke volume, and arterial compliance |
 | Arterial catheter | `art_pressure`, `art_sbp`, `art_dbp`, `art_map` | Pressure after catheter and transducer filtering |
 | Other monitors | `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Monitor measurements |
@@ -244,17 +245,31 @@ Measured breaths drive gas exchange. Lung and blood oxygen stores support
 preoxygenation, apnea, and blood loss responses and determine circuit oxygen
 uptake. Opening an obstructed airway allows passive gas refill and
 reoxygenation during apnea (Laviola 2020). Refill uses circuit oxygen; its timing
-is estimated, and the pressure transient is not modeled.
+is estimated, and the pressure transient is not modeled. Oxygen and inhaled
+anesthetics share lung gas volume and shunt. The A-a gradient follows sea-level
+means by age (Crapo 1999). Shunt mixing accounts for hemoglobin-bound and
+dissolved oxygen, with extraction limited to available oxygen.
 
-Alveolar, arterial, and end-tidal CO₂ are separate; low cardiac output widens
-the arterial to end-tidal gap. Oxygen and inhaled anesthetics share lung
-gas volume and shunt. The A-a gradient follows sea-level means by age (Crapo
-1999). Shunt mixing accounts for hemoglobin-bound and dissolved oxygen, with
-extraction limited to available oxygen.
+[CO₂ stores](../anasim/physiology/co2_stores.py) divide body CO₂ among lung gas,
+central blood, and two perfused tissue groups from Magor-Elliott 2021.
+Metabolism adds CO₂ to the tissues, blood flow carries it to the lungs, and
+ventilation removes it, so cardiac output and stored CO₂ shape PaCO₂ and EtCO₂.
+Low cardiac output also widens the arterial to end-tidal gap. The reduction omits
+circulation delays and flow redistribution; half the published tissue capacity
+reproduces Stock 1989's five-minute apneic rise, and longer storage is not
+validated. Central blood stays in equilibrium with lung gas even without flow.
 
-Hemoglobin saturation uses Dash 2016's pressure- and temperature-dependent
-curve at reference pH, PCO₂, and 2,3-DPG. Temperature changes preserve the
-combined lung and blood oxygen store.
+[Blood buffering](../anasim/physiology/blood_chemistry.py) follows Rees 2010 at
+37 °C with buffer base held fixed, giving pH, bicarbonate, and central blood
+CO₂ for acute respiratory changes. Oxygen affinity follows Dash 2016's
+temperature, pH, and PCO₂ terms at reference 2,3-DPG; combining the two
+models' red-cell pH relations is a simulator assumption. Affinity and Haldane
+shifts redistribute oxygen and CO₂ without changing their amounts. Changes in
+Hb or hematocrit reset buffer base to normal for the new blood, and Hb/Hct
+ratios away from Rees's red-cell hemoglobin concentration are untested.
+Lactic acidosis, infusate electrolytes, and renal compensation are not
+modeled, so low-flow states and cardiac arrest show only respiratory acid-base
+changes.
 
 ### Ventilation mechanics
 

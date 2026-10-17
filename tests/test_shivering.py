@@ -15,6 +15,7 @@ def test_paralysis_stops_shivering_and_reduces_co2_production(engine_factory, ad
     advance_time(engine, 300)
     assert engine.state.shivering > 0.4
     shivering_co2, ventilation = engine.state.pa_co2, engine.state.mv
+    shivering_metabolism = engine.thermal.metabolic_factor
 
     engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
     advance_time(engine, 360)
@@ -22,4 +23,6 @@ def test_paralysis_stops_shivering_and_reduces_co2_production(engine_factory, ad
     assert engine.state.shivering < 0.1
     assert engine.state.temp_c < 36.0
     assert engine.state.mv == pytest.approx(ventilation, rel=0.02)
-    assert engine.state.pa_co2 < shivering_co2 - 10.0
+    assert engine.thermal.metabolic_factor < 0.7 * shivering_metabolism
+    # Stored CO2 continues returning after metabolic production falls.
+    assert engine.state.pa_co2 < shivering_co2
