@@ -41,22 +41,29 @@ Save this configuration as `patient_config.json` for balanced maintenance.
 | Field | Default | Units or accepted values |
 |-------|---------|--------------------------|
 | `age` | 40 | 18 to 70 years |
-| `weight` | 70 | 50 to 100 kg |
-| `height` | 170 | 150 to 200 cm; BMI 18 to 32 kg/m² |
+| `weight` | 70 | 50 to 200 kg; pre-pregnancy weight during pregnancy |
+| `height` | 170 | 150 to 200 cm; BMI 18 to 60 kg/m² |
 | `sex` | `"male"` | `"male"` or `"female"` |
 | `baseline_temp` | 37 | Core temperature, 25 to 42 °C |
 | `baseline_hb` | 13.5 | Hemoglobin, 6 to 20 g/dL |
 | `baseline_hct` | `null` | Hematocrit, 0.18 to 0.60 as a fraction; `null` derives it from hemoglobin |
-| `baseline_hr` | 70 | Heart rate, at least 10 bpm |
+| `baseline_hr` | 70 | Heart rate before any pregnancy rise, at least 10 bpm |
 | `baseline_map` | 90 | Mean arterial pressure, at least 20 mmHg |
 | `baseline_rr` | 12 | Respiratory rate, at least 0 breaths/min |
-| `baseline_vt` | `null` | Tidal volume, at least 50 mL; `null` defaults to the volume that keeps resting PaCO₂ at 40 mmHg |
+| `baseline_vt` | `null` | Tidal volume, at least 50 mL; `null` defaults to the volume that keeps resting PaCO₂ at 40 mmHg, or lower in pregnancy |
 | `renal_function` | 1.0 | Renal-function factor, 0.4 to 1.0; `1.0` is normal |
 | `hepatic_function` | 1.0 | Hepatic-function factor, 0.5 to 1.0; `1.0` is normal |
+| `coronary_flow_reserve` | 5.0 | Maximal to resting coronary flow ratio, 1 to 5; 5 is normal |
+| `heart_failure` | `"none"` | `"none"`, `"hfref"` (reduced EF), or `"hfpef"` (preserved EF) |
+| `copd_severity` | 0.0 | Mixed obstructive/emphysematous profile, 0 to 1; not a GOLD stage |
+| `gestational_age_weeks` | 0.0 | 0 for no pregnancy, or 4 to 40 weeks for a female patient |
+| `position` | `"supine"` | `"supine"` or `"left_lateral"`; affects venous return from 20 weeks of pregnancy |
 
 If you set `baseline_hct`, it must be within 0.12 of `0.03 * baseline_hb`.
 Patient ranges are inclusive. Patient inputs and `dt` must be finite.
 See [patient limits and source cohorts](ARCHITECTURE.md#supported-patient-domain).
+During pregnancy, hemoglobin and hematocrit are the measured starting values.
+`engine.set_position("left_lateral")` changes position during a run.
 
 #### Initialization and runtime
 

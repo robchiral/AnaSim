@@ -74,8 +74,12 @@ def covered(series, start, end, max_gap):
 def patient_for(case):
     if case["sex"] not in ("M", "F"):
         raise Excluded("missing patient sex")
-    return Patient(age=float(case["age"]), weight=float(case["weight"]),
-                   height=float(case["height"]), sex="male" if case["sex"] == "M" else "female")
+    patient = Patient(age=float(case["age"]), weight=float(case["weight"]),
+                      height=float(case["height"]), sex="male" if case["sex"] == "M" else "female")
+    # Evaluation eligibility stays fixed when the simulator's input domain grows.
+    if patient.weight > 100.0 or patient.bmi > 32.0:
+        raise Excluded("outside prespecified evaluation domain")
+    return patient
 
 
 def time_grid(start, end, dt):

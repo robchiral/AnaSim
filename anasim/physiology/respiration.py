@@ -78,7 +78,7 @@ class RespiratoryModel:
         self.patient = patient
         self.baseline_hb = patient.baseline_hb
         # Baseline CO for perfusion effects; the engine sets the hemodynamic model's value.
-        self.baseline_co_l_min = HemodynamicConfig().cardiac_index * patient.bsa
+        self.baseline_co_l_min = HemodynamicConfig().cardiac_index * patient.bsa * patient.cardiac_output_factor
 
         # Bouillon 2004 respiratory concentration-response curve, using its
         # own effect site (equilibration half-time 2.6 min).
@@ -109,11 +109,11 @@ class RespiratoryModel:
 
         # Awake hypocapnic calibration (Nieuwenhuijs 2001; Pandit 1999).
         self.hcvr_slope_baseline = 2.2
-        self.paco2_setpoint = 40.0
+        self.paco2_setpoint = patient.pregnancy.paco2
         self.rq = 0.8
 
         # Resting VO2 3.6 mL/kg/min at 70 kg, scaled with weight^0.75.
-        self.vco2 = 3.6 * 70.0 * (patient.weight / 70.0) ** 0.75 * self.rq  # mL/min
+        self.vco2 = 3.6 * 70.0 * (patient.weight / 70.0) ** 0.75 * self.rq * patient.pregnancy.metabolism  # mL/min
         self.frc = patient.functional_residual_capacity()
         self.shunt_fraction = 0.0
         # Gas absorbed behind a closed airway, STPD L. Opening the airway
@@ -121,7 +121,9 @@ class RespiratoryModel:
         self._apneic_gas_deficit_l = 0.0
         self.baseline_blood_volume_ml = patient.estimate_blood_volume()
 
-        self.vd_deadspace = 2.2 * patient.predicted_body_weight() / 1000.0  # L
+        # COPD adds dead space and, below, an A-a gradient that persist without
+        # bronchospasm (Wagner 1977). Severity scaling is a calibration.
+        self.vd_deadspace = 2.2 * patient.predicted_body_weight() / 1000.0 * (1.0 + 0.6 * patient.copd_severity)  # L
 
         self.atm_p = 760.0
         self.vapor_p = 47.0
@@ -145,9 +147,10 @@ class RespiratoryModel:
         self.state = RespState(
             rr=self.rr_0, vt=self.vt_0, mv=self.rr_0 * self.vt_0 / 1000.0,
             effort_rr=self.rr_0, effort_vt=self.vt_0,
+            p_alveolar_co2=self.paco2_setpoint, pa_co2=self.paco2_setpoint,
         )
         # Mean sea-level A-a gradient, -4.4 + 0.261 x age mmHg (Crapo 1999).
-        self.aa_grad_base = max(5.0, -4.404 + 0.261 * self.patient.age)
+        self.aa_grad_base = max(5.0, -4.404 + 0.261 * self.patient.age) + 25.0 * patient.copd_severity
         self._p50 = self._temperature_p50(patient.baseline_temp)
         self._temperature_p50_now = self._p50
         assert patient.baseline_hct is not None
@@ -157,8 +160,8 @@ class RespiratoryModel:
         self.gas_transport = GasTransport(
             patient.weight, self.baseline_blood_volume_ml / 1000.0,
         )
-        self._blood_pressures = [40.0, 40.0, 46.0]
-        self._blood_ph = [7.4, 7.4, 7.36]
+        self._blood_pressures = [self.paco2_setpoint, self.paco2_setpoint, self.paco2_setpoint + 6.0]
+        self._blood_ph = [patient.pregnancy.ph, patient.pregnancy.ph, patient.pregnancy.ph - 0.04]
         self._blood_po2 = [100.0, 95.0, 40.0]
         self._blood_saturations = [0.98, 0.98, 0.75]
         self._blood_p50 = [self._p50] * 3
@@ -171,10 +174,10 @@ class RespiratoryModel:
         self.perfusion_deadspace_gain = 0.25
 
     def _set_blood_composition(self, hb_g_dl: float, hematocrit: float) -> Equilibrium:
-        """Rebuild buffering and reset buffer base to its pH 7.4, PCO2 40 reference."""
+        """Rebuild buffering around the patient's resting acid-base reference."""
         self._chemistry_composition = (hb_g_dl, hematocrit)
         self.chemistry = BloodChemistry(hb_g_dl / _HB_G_DL_PER_MMOL_L, hematocrit)
-        reference = self.chemistry.evaluate(7.4, 40.0, 0.98)
+        reference = self.chemistry.evaluate(self.patient.pregnancy.ph, self.paco2_setpoint, 0.98)
         self.buffer_base = self._reference_buffer_base = reference.buffer_base
         return reference
 
@@ -203,7 +206,7 @@ class RespiratoryModel:
         """Seed blood and tissues for a specified maintenance history."""
         transport = self.gas_transport
         hb = self._oxygen_hb
-        reference = self.chemistry.evaluate(7.4, 40.0, 0.98)
+        reference = self.chemistry.evaluate(self.patient.pregnancy.ph, self.paco2_setpoint, 0.98)
         transport.base = [reference.buffer_base] * 3
         capillary = max(0.0, self.state.p_alveolar_o2 - self.aa_grad_base)
         oxygen = self._oxygen_content(capillary, hb, self._p50)[0]

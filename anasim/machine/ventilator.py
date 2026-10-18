@@ -464,7 +464,7 @@ class AnesthesiaVentilator:
                 # An effort below the support trigger still draws gas through
                 # the inspiratory limb, then exhales through the PEEP valve.
                 return self._driven_segment(lung, (0.0, 0.0), pmus, rs)
-            if lung.bronchospasm > 0.0:
+            if lung.expiratory_obstruction > 0.0:
                 knot = math.floor((self._since_exhalation + 1e-12) / lung.EXPIRATORY_INTERVAL)
                 if self._expiration is None or self._expiration[0] != knot:
                     self._valve = None
@@ -491,7 +491,7 @@ class AnesthesiaVentilator:
         return self._driven_segment(lung, (b.target, 0.0), pmus)
 
     def _driven_segment(self, lung, pressure, pmus, series_resistance=0.0):
-        if lung.bronchospasm <= 0.0:
+        if lung.expiratory_obstruction <= 0.0:
             return lung.pressure_segment(pressure, pmus, series_resistance)
         # A relaxing patient can exhale during a mandatory pressure plateau.
         # Airway mechanics follow gas direction, including before triggering.
@@ -518,7 +518,7 @@ class AnesthesiaVentilator:
             r = lung.resistance + self._series_resistance()
             recoil = lung.elastic_pressure + lung.p2 - pmus
             ceiling = math.inf
-            if lung.bronchospasm > 0.0:
+            if lung.expiratory_obstruction > 0.0:
                 resistance, ceiling_resistance, _ = lung.expiration_parameters((0.0, 0.0), (pmus, 0.0), self._series_resistance())
                 r = resistance + self._series_resistance()
                 ceiling = max(0.0, (lung.peep + lung.elastic_pressure + lung.p2 + 5.0) / ceiling_resistance)
@@ -565,7 +565,7 @@ class AnesthesiaVentilator:
         h = min(available, effort_break, boundary)
         if lung.aeration is not None:
             h = min(h, lung.aeration.INTERVAL - lung.aeration.elapsed)
-        if lung.bronchospasm > 0.0 and (b is None or b.kind in ("PC", "VG", "PS", "SPONT")
+        if lung.expiratory_obstruction > 0.0 and (b is None or b.kind in ("PC", "VG", "PS", "SPONT")
                                       or (b.kind == "VC" and b.limited)):
             interval = lung.EXPIRATORY_INTERVAL
             knot = math.floor((self._since_exhalation + 1e-12) / interval)
@@ -846,11 +846,11 @@ class AnesthesiaVentilator:
                 previous, previous_volume = start, volumes[index]
                 for i in range(1, n + 1):
                     u = start + (end - start) * i / n
-                    volume = segment.volume(u)
+                    volume, flow, paw = segment.sample(u)
                     dv = volume - previous_volume
                     self.samples.append((u - previous, dv,
-                                         peep + segment.paw(u) if connected else 0.0,
-                                         segment.flow(u) * 60.0 if connected else 0.0,
+                                         peep + paw if connected else 0.0,
+                                         flow * 60.0 if connected else 0.0,
                                          volume + peep_volume + volume_offset if connected else 0.0))
                     previous, previous_volume = u, volume
         if measured is not None:

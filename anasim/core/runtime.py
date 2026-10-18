@@ -239,7 +239,9 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     interaction_changed = propofol.update_midazolam(midazolam_cp)
     interaction_changed |= midazolam.update_propofol(propofol_cp)
     base_bv = engine.hemo.blood_volume_0
-    base_co = engine.hemo.base_co_l_min
+    # Heart failure's low output slows flow-dependent clearance. Pregnancy's
+    # added output mostly perfuses the uterus and kidneys, so it is the reference.
+    base_co = engine.hemo.base_co_l_min / engine.hemo.failure.output_factor
     if base_bv <= 0.0 or base_co <= 0.0:
         return interaction_changed
     v_ratio = clamp(engine.hemo.blood_volume / base_bv, 0.1, 2.0)
@@ -335,7 +337,7 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
         ),
         capno_obstruction=clamp01(
             airway_tuning.capno_obstruction_upper_weight * upper_obstruction
-            + airway_tuning.capno_obstruction_bronch_weight * bronch
+            + airway_tuning.capno_obstruction_bronch_weight * engine.resp_mech.expiratory_obstruction
         ),
         vq_mismatch=clamp01(
             airway_tuning.vq_mismatch_bronch_weight * bronch
@@ -375,6 +377,10 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
     resp_state = step_respiration(engine, dt, state.co)
+
+    engine.hemo.coronary.step(
+        dt, state.hr, state.sbp, state.dbp, state.lap, engine.hemo.hb_conc, resp_state.sao2,
+    )
 
     # Su 2023 uses plasma remifentanil; morphine and hydromorphone act at their slower effect sites.
     hemo_state = engine.hemo.step(

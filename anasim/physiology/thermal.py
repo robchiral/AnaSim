@@ -22,7 +22,7 @@ class ThermalModel:
 
     def __init__(self, patient: Patient, tuning: ThermalTuning | None = None):
         self.tuning = tuning or ThermalTuning()
-        self.heat_production_basal = patient.weight * 1.0  # W
+        self.heat_production_basal = patient.weight * patient.pregnancy.metabolism  # W
         self.heat_capacity = patient.weight * self.tuning.specific_heat_j_kg_k  # J/K
         self.surface_area = patient.bsa  # m^2
         # Awake vasomotor tone holds core temperature at baseline: heat loss

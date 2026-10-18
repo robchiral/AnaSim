@@ -465,6 +465,8 @@ export class Controls {
     const rhythms = $("c-rhythm");
     rhythms.replaceChildren(...info.rhythms.map((name) => new Option(name, name)));
     rhythms.onchange = () => this.send("rhythm", { name: rhythms.value });
+    $("c-position-row").hidden = info.patient.gestational_age_weeks === 0;
+    $("c-position").onchange = () => this.send("position", { position: $("c-position").value });
     $("c-anaphylaxis").onclick = () => this.send("anaphylaxis", { active: !this.state.anaphylaxis });
     $("c-sepsis").onclick = () => this.send("sepsis", { active: !this.state.sepsis });
   }
@@ -554,6 +556,7 @@ export class Controls {
     $("c-hem-rate").disabled = c.hemorrhage.active;
     if (c.hemorrhage.active) setValue($("c-hem-rate"), String(c.hemorrhage.rate));
     setValue($("c-rhythm"), c.rhythm);
+    setValue($("c-position"), c.position);
     setPressed($("c-anaphylaxis"), c.anaphylaxis, c.anaphylaxis ? "Stop anaphylaxis" : "Start anaphylaxis");
     setPressed($("c-sepsis"), c.sepsis, c.sepsis ? "Stop sepsis" : "Start sepsis");
 

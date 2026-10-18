@@ -217,6 +217,9 @@ def project_hemodynamics(engine: SimulationEngine, hemo_state: HemoState) -> Non
     state.blood_out_ml = float(blood_out_ml)
     state.net_fluid_ml = float(fluid_in_ml + blood_in_ml - urine_out_ml - blood_out_ml)
     state.lap = float(hemo_state.lap)
+    state.myocardial_ischemia = float(engine.hemo.coronary.ischemia)
+    state.coronary_supply_demand_ratio = float(engine.hemo.coronary.supply_demand_ratio)
+    state.st_depression_mv = float(engine.hemo.coronary.st_depression_mv)
     state.lung_water = float(engine.hemo.lung_water_ml_kg)
 
 

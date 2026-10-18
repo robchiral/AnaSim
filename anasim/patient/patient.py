@@ -1,9 +1,19 @@
 import math
 from dataclasses import dataclass, field
 
+from .conditions import (
+    COPD_RESISTANCE,
+    HEART_FAILURE_PROFILES,
+    POSITIONS,
+    PregnancyFactors,
+    pregnancy_factors,
+)
 from .domain import (
     AGE_RANGE_YEARS,
     BMI_RANGE_KG_M2,
+    COPD_SEVERITY_RANGE,
+    CORONARY_FLOW_RESERVE_RANGE,
+    GESTATIONAL_AGE_RANGE_WEEKS,
     HEIGHT_RANGE_CM,
     HEMATOCRIT_RANGE,
     HEMOGLOBIN_RANGE_G_DL,
@@ -19,6 +29,8 @@ class Patient:
     """Patient demographics and baseline physiology."""
 
     age: float = 40.0
+    # kg; the pre-pregnancy weight during pregnancy, since the gestational
+    # factors already include the pregnancy's own mass and volume changes.
     weight: float = 70.0
     height: float = 170.0
     sex: str = "male"
@@ -27,6 +39,12 @@ class Patient:
     baseline_hct: float | None = None
     renal_function: float = 1.0
     hepatic_function: float = 1.0
+    coronary_flow_reserve: float = 5.0
+    heart_failure: str = "none"
+    copd_severity: float = 0.0
+    gestational_age_weeks: float = 0.0
+    position: str = "supine"  # Starting maternal position
+    pregnancy: PregnancyFactors = field(init=False)
     renal_status: str = field(init=False)
     hepatic_status: str = field(init=False)
 
@@ -44,6 +62,7 @@ class Patient:
         self._calculate_metrics()
         self._validate_body_composition()
         self._validate_organ_function()
+        self._validate_conditions()
 
     def _validate_demographics(self):
         """Normalize categorical values and enforce supported numeric inputs."""
@@ -89,7 +108,8 @@ class Patient:
     def _validate_body_composition(self):
         """Reject weight and height combinations outside the supported BMI range."""
         minimum, maximum = BMI_RANGE_KG_M2
-        if not minimum <= self.bmi <= maximum:
+        # Accept boundary entries that round, such as 173.4 kg at 170 cm.
+        if not minimum - 1e-10 <= self.bmi <= maximum + 1e-10:
             raise ValueError(
                 f"bmi derived from weight and height must be between {minimum:g} "
                 f"and {maximum:g} kg/m²; got {self.bmi:.1f}"
@@ -121,6 +141,25 @@ class Patient:
         else:
             self.hepatic_status = "Severe"
 
+    def _validate_conditions(self):
+        """Enforce supported disease profiles and pregnancy inputs."""
+        self.coronary_flow_reserve = bounded_number(
+            "coronary_flow_reserve", self.coronary_flow_reserve, *CORONARY_FLOW_RESERVE_RANGE
+        )
+        self.copd_severity = bounded_number("copd_severity", self.copd_severity, *COPD_SEVERITY_RANGE)
+        if not isinstance(self.heart_failure, str) or self.heart_failure not in HEART_FAILURE_PROFILES:
+            raise ValueError("heart_failure must be 'none', 'hfref', or 'hfpef'")
+        if not isinstance(self.position, str) or self.position not in POSITIONS:
+            raise ValueError("position must be 'supine' or 'left_lateral'")
+        minimum, maximum = GESTATIONAL_AGE_RANGE_WEEKS
+        weeks = bounded_number("gestational_age_weeks", self.gestational_age_weeks, 0.0, maximum, unit="weeks")
+        if weeks and (self.sex != "female" or weeks < minimum):
+            raise ValueError(
+                f"gestational_age_weeks must be 0, or {minimum:g} to {maximum:g} weeks in a female patient"
+            )
+        self.gestational_age_weeks = weeks
+        self.pregnancy = pregnancy_factors(weeks)
+
     def predicted_body_weight(self) -> float:
         """Devine predicted body weight (kg), which tracks lung size."""
         return (50.0 if self.sex == "male" else 45.5) + 0.91 * (self.height - 152.4)
@@ -131,18 +170,40 @@ class Patient:
         It grows with lung size and falls exponentially with BMI (Pelosi 1998).
         Exponents come from VitalDB recordings; the constant gives the recorded
         plateau compliance once AnaSim's tissue viscoelasticity is included. See
-        docs/REFERENCES.md#ventilator-waveforms.
+        docs/REFERENCES.md#ventilator-waveforms. Above BMI 32, the VitalDB fit
+        gives way to Pelosi's saturating curve. The COPD rise is a calibration.
         """
-        apparent = 0.0475 * (self.predicted_body_weight() / 60.0) ** 0.62 * math.exp(-0.0277 * (self.bmi - 23.0))
-        return 1.09 * apparent
+        bmi = min(self.bmi, 32.0)
+        apparent = 0.0475 * (self.predicted_body_weight() / 60.0) ** 0.62 * math.exp(-0.0277 * (bmi - 23.0))
+        if self.bmi > 32.0:
+            apparent *= (233.3 * math.exp(-0.086 * self.bmi) + 40.0) / (233.3 * math.exp(-0.086 * 32.0) + 40.0)
+        return 1.09 * apparent * (1.0 + 0.6 * self.copd_severity)
 
     def functional_residual_capacity(self) -> float:
-        """Supine FRC (L), scaled by lung size and BMI.
+        """Supine FRC (L), scaled by lung size, BMI, COPD, and pregnancy.
 
-        The BMI dependence follows Pelosi 1998; the coefficient and reference
-        volume are teaching estimates within the supported adult domain.
+        The BMI dependence follows Pelosi 1998, using its saturating curve above
+        BMI 32; the coefficient, reference volume, and COPD hyperinflation are
+        teaching estimates.
         """
-        return 2.5 * (self.predicted_body_weight() / 65.0) ** 0.8 * math.exp(-0.04 * (self.bmi - 24.0))
+        frc = 2.5 * (self.predicted_body_weight() / 65.0) ** 0.8 * math.exp(-0.04 * (min(self.bmi, 32.0) - 24.0))
+        if self.bmi > 32.0:
+            frc *= (11.97 * math.exp(-0.096 * self.bmi) + 0.46) / (11.97 * math.exp(-0.096 * 32.0) + 0.46)
+        return frc * (1.0 + self.copd_severity) * self.pregnancy.frc
+
+    def airway_resistance(self) -> float:
+        """Airway and tube resistance, cmH2O/(L/s); the BMI slope above 32 follows Pelosi 1998."""
+        return 10.0 + 0.23 * max(0.0, self.bmi - 32.0) + COPD_RESISTANCE * self.copd_severity
+
+    @property
+    def cardiac_output_factor(self) -> float:
+        """Resting cardiac output relative to a healthy nonpregnant adult."""
+        return HEART_FAILURE_PROFILES[self.heart_failure].output_factor * self.pregnancy.cardiac_output
+
+    @property
+    def renal_clearance_factor(self) -> float:
+        """Renal function scaled by the rise in filtration during pregnancy."""
+        return self.renal_function * self.pregnancy.filtration
 
     def creatinine_clearance(self) -> float:
         """Estimated creatinine clearance (mL/min) for Kleijn's covariates.
@@ -150,7 +211,7 @@ class Patient:
         Use Kleijn 2011's adult imputation for missing serum creatinine,
         scaled by renal function. This surrogate does not use measured creatinine.
         """
-        return (183.0 - 1.34 * self.age) * self.renal_function
+        return (183.0 - 1.34 * self.age) * self.renal_clearance_factor
 
     def estimate_blood_volume(self) -> float:
         """Estimate total blood volume in mL using Nadler's formula."""
@@ -161,4 +222,4 @@ class Patient:
         else:
             vol_l = 0.3561 * (h_m**3) + 0.03308 * self.weight + 0.1833
 
-        return vol_l * 1000.0
+        return vol_l * 1000.0 * self.pregnancy.blood_volume

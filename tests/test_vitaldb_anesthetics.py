@@ -18,6 +18,12 @@ def case():
     return dict(age="40", weight="70", height="170", sex="M", opstart="600", opend="1500")
 
 
+def test_evaluation_eligibility_remains_fixed_when_simulator_accepts_obesity(comparison, case):
+    for changes in ({"weight": "110", "height": "190"}, {"weight": "100", "height": "170"}):
+        with pytest.raises(comparison.Excluded, match="prespecified evaluation domain"):
+            comparison.patient_for({**case, **changes})
+
+
 def tiva_recording(comparison):
     time = np.arange(2201, dtype=float)
     rate = np.where((time >= 60) & (time < 180), 500.0,

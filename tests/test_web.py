@@ -15,6 +15,22 @@ from anasim.web import WebSession
 PATIENT = dict(age=40, weight=70, height=170, sex="male")
 
 
+def test_condition_inputs_and_maternal_position_round_trip_through_browser_protocol():
+    session = WebSession({**PATIENT, "sex": "female", "weight": 140, "mode": "awake",
+                          "heart_failure": "hfpef", "copd_severity": 0.65,
+                          "coronary_flow_reserve": 2, "gestational_age_weeks": 36})
+    info = parse(session.info())["patient"]
+    assert info["heart_failure"] == "hfpef"
+    assert info["copd_severity"] == 0.65 and info["coronary_flow_reserve"] == 2
+    assert info["gestational_age_weeks"] == 36 and info["weight"] == 140
+    cmd(session, "position", position="left_lateral")
+    snap = session.snapshot()
+    assert snap["controls"]["position"] == "left_lateral"
+    assert snap["vitals"]["st_depression_mv"] == 0
+    with pytest.raises(ValueError, match="position"):
+        cmd(session, "position", position="upright")
+
+
 def _reject_constant(name):
     raise AssertionError(f"Snapshot is not valid browser JSON: {name}")
 

@@ -4,13 +4,16 @@ import math
 from typing import Any
 
 AGE_RANGE_YEARS = (18.0, 70.0)
-WEIGHT_RANGE_KG = (50.0, 100.0)
+WEIGHT_RANGE_KG = (50.0, 200.0)
 HEIGHT_RANGE_CM = (150.0, 200.0)
-BMI_RANGE_KG_M2 = (18.0, 32.0)
+BMI_RANGE_KG_M2 = (18.0, 60.0)
 HEMOGLOBIN_RANGE_G_DL = (6.0, 20.0)
 HEMATOCRIT_RANGE = (0.18, 0.60)
 RENAL_FUNCTION_RANGE = (0.4, 1.0)
 HEPATIC_FUNCTION_RANGE = (0.5, 1.0)
+CORONARY_FLOW_RESERVE_RANGE = (1.0, 5.0)
+COPD_SEVERITY_RANGE = (0.0, 1.0)
+GESTATIONAL_AGE_RANGE_WEEKS = (4.0, 40.0)  # 0 means no pregnancy
 
 
 def finite_number(name: str, value: Any) -> float:

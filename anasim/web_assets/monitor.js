@@ -311,6 +311,10 @@ export class Monitor {
     const parts = [`${Math.round(p.age)} y`, cap(p.sex), `${p.weight.toFixed(1)} kg`];
     if (p.renal_status.toLowerCase() !== "normal") parts.push(`Renal: ${p.renal_status}`);
     if (p.hepatic_status.toLowerCase() !== "normal") parts.push(`Hepatic: ${p.hepatic_status}`);
+    if (p.coronary_flow_reserve < 5) parts.push("Coronary disease");
+    if (p.heart_failure !== "none") parts.push(p.heart_failure === "hfref" ? "HFrEF" : "HFpEF");
+    if (p.copd_severity > 0) parts.push("COPD");
+    if (p.gestational_age_weeks > 0) parts.push(`Pregnancy ${p.gestational_age_weeks} wk`);
     document.getElementById("patient-info").textContent = parts.join("  ·  ");
 
     this.fields = {};
@@ -364,6 +368,8 @@ export class Monitor {
 
   updateNumerics(v) {
     this.set("v-hr", trunc(v.hr));
+    this.fields["v-st"].hidden = v.st_depression_mv < 0.03;
+    this.set("v-st", `· ST -${v.st_depression_mv.toFixed(2)} mV`);
     this.set("v-spo2", trunc(v.spo2));
     this.set("v-spo2-unit", v.spo2 === null ? "No signal" : "%");
     if (this.arterialLine) {

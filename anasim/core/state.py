@@ -219,6 +219,9 @@ class SimulationState:
     net_fluid_ml: float = 0.0
     # Left atrial pressure (mmHg); lung water above normal (mL/kg PBW).
     lap: float = 9.0
+    myocardial_ischemia: float = 0.0  # Reversible supply-demand depression, 0-1
+    coronary_supply_demand_ratio: float = 5.0  # Available maximal supply / estimated demand
+    st_depression_mv: float = 0.0  # Illustrative ECG signal, not a lead-specific prediction
     lung_water: float = 0.0
 
     fio2: float = 0.21

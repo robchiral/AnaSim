@@ -7,6 +7,18 @@ BIS means bispectral index, MAC means minimum alveolar concentration, and
 TCI means target-controlled infusion. Ventilation modes are defined in the
 [README](../README.md#features).
 
+## Patient conditions
+
+- Gobel et al. (1978). *Circulation*. [Rate-pressure product and myocardial oxygen consumption in angina](https://pubmed.ncbi.nlm.nih.gov/624164/).
+- Wilson et al. (1987). *Circulation*. [Coronary lesion geometry and flow reserve](https://pubmed.ncbi.nlm.nih.gov/3829334/).
+- Arthurs et al. (2016). *Am J Physiol Heart Circ Physiol*. [Coronary blood-flow control and myocardial oxygen balance](https://pubmed.ncbi.nlm.nih.gov/26945076/).
+- Schwartzenberg et al. (2012). *J Am Coll Cardiol*. [Hemodynamic responses to vasodilation in reduced- and preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/22281246/).
+- Westermann et al. (2008). *Circulation*. [Ventricular stiffness and filling during tachycardia in preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/18413502/).
+- Wagner et al. (1977). *J Clin Invest*. [Ventilation-perfusion inequality in COPD](https://pubmed.ncbi.nlm.nih.gov/833271/).
+- Dallmann et al. (2017). *Clin Pharmacokinet*. [Gestation-specific anatomical and physiological parameter regressions](https://pubmed.ncbi.nlm.nih.gov/28401479/).
+- Contreras et al. (1991). *Am Rev Respir Dis*. [Ventilatory drive, lung volumes, and respiratory muscles during pregnancy](https://pubmed.ncbi.nlm.nih.gov/1928958/).
+- Humphries et al. (2019). *J Matern Fetal Neonatal Med*. [Supine positioning and maternal hemodynamics in late pregnancy](https://pubmed.ncbi.nlm.nih.gov/29772936/).
+
 ## Hemodynamics and physiology
 
 - Su et al. (2023). *Br J Anaesth*. [Mechanistic hemodynamic interaction model](https://pubmed.ncbi.nlm.nih.gov/37355412/).

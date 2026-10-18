@@ -139,6 +139,19 @@ function buildSetup() {
   form.elements.scenario_id.onchange = syncGuided;
   syncGuided();
 
+  const syncPregnancy = () => {
+    const female = form.elements.sex.value === "female";
+    $("pregnancy-choice").hidden = !female;
+    if (!female) form.elements.pregnant.checked = false;
+    const pregnant = form.elements.pregnant.checked;
+    form.elements.weight.closest("label").firstChild.textContent = pregnant ? "Pre-pregnancy weight " : "Weight ";
+    $("gestation-row").hidden = !pregnant;
+    $("position-row").hidden = !pregnant;
+  };
+  form.elements.sex.onchange = syncPregnancy;
+  form.elements.pregnant.onchange = syncPregnancy;
+  syncPregnancy();
+
   form.onsubmit = (event) => {
     event.preventDefault();
     const params = readSetup(form);
@@ -153,8 +166,10 @@ function buildSetup() {
 
 function readSetup(form) {
   const f = form.elements;
-  const params = {};
-  for (const name of ["age", "weight", "height", "baseline_hb"]) {
+  const params = { gestational_age_weeks: 0, position: "supine" };
+  const numeric = ["age", "weight", "height", "baseline_hb"];
+  if (f.pregnant.checked) numeric.push("gestational_age_weeks");
+  for (const name of numeric) {
     const input = f[name];
     const value = Number(input.value);
     if (input.value === "" || !Number.isFinite(value) || value < Number(input.min) || value > Number(input.max)) {
@@ -168,6 +183,10 @@ function readSetup(form) {
   params.sex = f.sex.value;
   params.renal_function = Number(f.renal_function.value);
   params.hepatic_function = Number(f.hepatic_function.value);
+  params.coronary_flow_reserve = Number(f.coronary_flow_reserve.value);
+  params.heart_failure = f.heart_failure.value;
+  params.copd_severity = Number(f.copd_severity.value);
+  if (f.pregnant.checked) params.position = f.position.value;
   params.arterial_line_enabled = f.arterial_line_enabled.checked;
   params.end_on_cardiac_arrest = f.end_on_cardiac_arrest.checked;
   params.tci_enabled = f.tci_enabled.checked;

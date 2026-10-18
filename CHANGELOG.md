@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added coronary disease, reduced- and preserved-EF heart failure, COPD, and
+  pregnancy, with maternal positioning and reversible ischemic ST depression.
+- Extended patient inputs to 200 kg and BMI 60, with severe-obesity respiratory
+  mechanics. The VitalDB evaluation keeps its prespecified domain.
 - Added plasma and red-cell buffering with live pH and bicarbonate, and made
   oxygen affinity depend on pH and PCO₂.
 - Replaced prescribed apneic CO₂ slopes with CO₂ transport through lung,

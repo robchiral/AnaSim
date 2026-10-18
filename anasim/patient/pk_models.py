@@ -244,21 +244,17 @@ def _from_rate_constants(v1, k10, k12, k21, k13, k31):
     }
 
 
-def _organ_function(patient: Patient, attr: str) -> float:
-    return clamp(float(getattr(patient, attr)), 0.1, 1.0)
-
-
 def organ_clearance_scaler(patient: Patient, hepatic_fraction: float = 0.0, renal_fraction: float = 0.0) -> float:
     """Weighted clearance scaler; clearance outside the named fractions is unaffected."""
-    hepatic = _organ_function(patient, "hepatic_function")
-    renal = _organ_function(patient, "renal_function")
+    hepatic = patient.hepatic_function
+    renal = patient.renal_clearance_factor
     other = max(0.0, 1.0 - hepatic_fraction - renal_fraction)
     return hepatic_fraction * hepatic + renal_fraction * renal + other
 
 
 def hepatic_vd_multiplier(patient: Patient, severe_multiplier: float) -> float:
     """Scale volumes with hepatic impairment; severe impairment is hepatic_function 0.5."""
-    severity = clamp((1.0 - _organ_function(patient, "hepatic_function")) / 0.5, 0.0, 1.0)
+    severity = (1.0 - patient.hepatic_function) / 0.5
     return 1.0 + (severe_multiplier - 1.0) * severity
 
 

@@ -41,6 +41,7 @@ Start. Use Apply to confirm setting changes.
 
 | Feature | Supported controls and measurements |
 |---------|-------------------------------------|
+| Patient variation | Age, body size, renal and hepatic function, coronary disease, heart failure, COPD, obesity, and pregnancy with maternal positioning |
 | Anesthesia | Propofol, remifentanil, fentanyl, hydromorphone, morphine, midazolam, etomidate, ketamine, lidocaine, sevoflurane, nitrous oxide, rocuronium, succinylcholine, and sugammadex |
 | Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, ephedrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, atropine, and glycopyrrolate |
 | Anesthesia machine | Facemask or tracheal tube, fresh gas flow, vaporizer, and bag-mask ventilation |
@@ -58,8 +59,6 @@ AnaSim supports adults aged 18 to 70 years within the
 [input limits](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md#fields).
 The [architecture guide](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md#supported-patient-domain)
 describes source populations, simulator calibrations, and model limits.
-Acid-base balance, lactate, tissue oxygen debt, machine pneumatics, and
-cardiopulmonary resuscitation are not modeled.
 
 ## Headless use
 
@@ -89,13 +88,12 @@ AnaSim 1.6 and later use the proprietary, source-available
 
 | Use | Terms |
 |-----|-------|
-| Individual study, experimentation, and code changes | Free, including for students, residents, and clinicians |
-| Noncommercial teaching, assessment, research, and internal deployment at nonprofit or government institutions | Free, including internal hosting for participants |
-| Commercial use, other institutional use, or hosting outside that exemption | Paid license |
+| Individual use | Free |
+| Noncommercial use at nonprofit or government institutions | Free |
+| Commercial or other institutional use | Paid license |
 
 Contact [Robert Chen](mailto:rob@robche.com) for paid licenses or
 written fee waivers. Sharing copies is allowed under the license terms.
-Earlier releases retain their MIT terms.
 
 Early AnaSim versions adapted code from
 [Python Anesthesia Simulator](https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator),

@@ -20,6 +20,7 @@ from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.neuromuscular import NeuromuscularMonitor
 from anasim.monitors.nibp import NIBPMonitor
 from anasim.monitors.spo2 import SpO2Monitor
+from anasim.patient.conditions import COPD_RESISTANCE, POSITIONS
 from anasim.patient.domain import finite_number
 from anasim.patient.patient import Patient
 from anasim.patient.pd import (
@@ -50,6 +51,7 @@ from .action_log import (
     ACTION_FGF,
     ACTION_FLUID,
     ACTION_OXYGEN_SUPPLY,
+    ACTION_POSITION,
     ACTION_VAPORIZER,
     ActionLog,
 )
@@ -216,7 +218,9 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo = HemodynamicModel(self.patient)
         self.resp = RespiratoryModel(self.patient)
         self.aeration = LungAeration(self.patient, recruited=0.9 if self.config.mode == "steady_state" else 1.0)
-        self.resp_mech = RespiratoryMechanics(aeration=self.aeration)
+        self.resp_mech = RespiratoryMechanics(resistance=self.patient.airway_resistance(), aeration=self.aeration)
+        self.resp_mech.chronic_obstruction = self.patient.copd_severity
+        self.resp_mech.chronic_resistance = COPD_RESISTANCE * self.patient.copd_severity
         self._base_airway_resistance = self.resp_mech.resistance
         self.set_vent_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_insp=15.0)
         self.resp.baseline_co_l_min = self.hemo.base_co_l_min
@@ -255,6 +259,13 @@ class SimulationEngine(DrugControllerMixin):
             if getattr(self.circuit, attr) != flow:
                 self.actions.record(self.state.time, ACTION_FGF, label=gas, amount=flow)
             setattr(self.circuit, attr, flow)
+
+    def set_position(self, position: str):
+        """Change maternal position; venous return responds over seconds."""
+        if position not in POSITIONS:
+            raise ValueError("position must be 'supine' or 'left_lateral'")
+        self.hemo.position = position
+        self.actions.record(self.state.time, ACTION_POSITION, label=position)
 
     def set_oxygen_supply_connected(self, connected: bool):
         """Connect or isolate the oxygen source feeding the flowmeter."""

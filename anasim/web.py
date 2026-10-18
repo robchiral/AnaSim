@@ -30,6 +30,11 @@ PATIENT_FIELDS = (
     "baseline_hb",
     "renal_function",
     "hepatic_function",
+    "coronary_flow_reserve",
+    "heart_failure",
+    "copd_severity",
+    "gestational_age_weeks",
+    "position",
 )
 CONFIG_FIELDS = (
     "concomitant_opioids",
@@ -69,6 +74,7 @@ def catalog() -> str:
             "weight": domain.WEIGHT_RANGE_KG,
             "height": domain.HEIGHT_RANGE_CM,
             "baseline_hb": domain.HEMOGLOBIN_RANGE_G_DL,
+            "gestational_age_weeks": domain.GESTATIONAL_AGE_RANGE_WEEKS,
         },
     })
 
@@ -153,6 +159,10 @@ class WebSession:
                 "weight": patient.weight,
                 "renal_status": patient.renal_status,
                 "hepatic_status": patient.hepatic_status,
+                "coronary_flow_reserve": patient.coronary_flow_reserve,
+                "heart_failure": patient.heart_failure,
+                "copd_severity": patient.copd_severity,
+                "gestational_age_weeks": patient.gestational_age_weeks,
             },
             "arterial_line": engine.config.arterial_line_enabled,
             "recordings_dir": self._recordings_dir if self.retain_recordings else None,
@@ -309,6 +319,7 @@ class WebSession:
         exhaled = s.etco2_signal_valid
         return {
             "hr": _num(s.display_hr, 1),
+            "st_depression_mv": _num(s.st_depression_mv, 2),
             "spo2": _num(s.display_spo2, 1) if s.spo2_signal_valid else None,
             "art": [_num(s.art_sbp, 1), _num(s.art_dbp, 1), _num(s.art_map, 1)],
             "nibp": None if s.nibp_timestamp is None else [
@@ -463,6 +474,7 @@ class WebSession:
         vent = engine.vent.settings
         return {
             "airway": engine.state.airway_mode.value,
+            "position": engine.hemo.position,
             "fgf": {"o2": circuit.fgf_o2, "air": circuit.fgf_air, "n2o": circuit.fgf_n2o},
             "o2_connected": circuit.oxygen_supply_connected,
             "circuit_fio2": _num(circuit.composition.fio2, 4),
@@ -671,6 +683,9 @@ class WebSession:
 
     def _cmd_bronchospasm(self, percent: float):
         self.engine.set_bronchospasm(float(percent) / 100.0)
+
+    def _cmd_position(self, position: str):
+        self.engine.set_position(position)
 
     def _cmd_auto_laryngospasm(self, enabled: bool):
         self.engine.set_auto_laryngospasm(enabled)

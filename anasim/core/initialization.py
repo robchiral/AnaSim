@@ -135,14 +135,21 @@ def _solve_startup_targets(engine: SimulationEngine, profile: StartupProfile) ->
 
 def _configure_controlled_ventilation(engine: SimulationEngine, targets: StartupTargets) -> None:
     resp = engine.resp
-    baseline_rr = max(1.0, resp.rr_0)
+    # COPD keeps a lower rate to leave time for exhalation.
+    rate_limit = 18.0 if engine.patient.copd_severity > 0.0 else 30.0
+    baseline_rr = clamp(resp.rr_0, 1.0, rate_limit)
     _depth_index, metabolic_factor = engine.thermal.depth_and_metabolism(
         engine.patient.baseline_temp, targets.prop_ce, targets.mac,
     )
     # Alveolar ventilation that holds PaCO2 at the set point at anesthetic CO2 production.
     target_va = resp.co2_constant * resp.vco2 * metabolic_factor / resp.paco2_setpoint
-    vent_vt = clamp(resp.vd_deadspace + target_va / baseline_rr, 0.25, 0.8)
-    engine.set_vent_settings(rr=baseline_rr, vt=vent_vt, peep=5.0, ie="1:2", mode="VCV")
+    # Body mass raises CO2 production without enlarging the lungs, so VT stops
+    # at 8 mL/kg predicted body weight and the rate rises instead.
+    max_vt = min(0.8, 0.008 * engine.patient.predicted_body_weight())
+    vent_vt = clamp(resp.vd_deadspace + target_va / baseline_rr, 0.25, max_vt)
+    target_rr = target_va / max(0.05, vent_vt - resp.vd_deadspace)
+    vent_rr = min(rate_limit, max(baseline_rr, target_rr))
+    engine.set_vent_settings(rr=vent_rr, vt=vent_vt, peep=5.0, ie="1:2", mode="VCV")
     engine.set_vent_power(True)
 
 

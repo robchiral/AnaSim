@@ -41,6 +41,7 @@ the start of the step. Physiology supplies these values for the next step.
 |-------|-----------------|---------|
 | Physiology | `map`, `hr`, `co`, `sv`, `sao2`, `pa_co2`, `pao2` | Values used by the models and cardiac arrest check |
 | Blood chemistry | `ph`, `hco3` | Arterial plasma pH and bicarbonate (mmol/L) at 37 °C |
+| Myocardium | `myocardial_ischemia`, `coronary_supply_demand_ratio`, `st_depression_mv` | Reversible ischemia index (0 to 1), maximal supply/demand ratio, and illustrative ST depression (mV) |
 | Arterial pulse | `sbp`, `dbp` | Pressures derived from mean pressure, stroke volume, and arterial compliance |
 | Arterial catheter | `art_pressure`, `art_sbp`, `art_dbp`, `art_map` | Pressure after catheter and transducer filtering |
 | Other monitors | `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Monitor measurements |
@@ -61,12 +62,47 @@ at zero; mean arterial pressure (MAP) reflects the untreated anesthetic response
 The session clock and recordings start after initialization. Fluid totals start
 at zero.
 
+Starting ventilation aims for the resting PaCO₂ with tidal volume up to 8 mL/kg
+predicted body weight (800 mL maximum), then raises the rate up to 30/min, or
+18/min with COPD. Severe obstruction or obesity can leave PaCO₂ above target.
+
 ## Supported patient domain
 
 AnaSim supports adults aged 18 to 70 years. The [input limits](CLI_USAGE.md#fields)
-define the accepted body size, hemoglobin, and organ-function ranges. These are
-simulation boundaries. Published model parameters represent typical responses
-within their source cohorts.
+define the accepted body size, hemoglobin, organ-function, and condition ranges.
+These are simulation boundaries. Published model parameters represent typical
+responses within their source cohorts. Disease severities, time courses, and
+combined conditions use simulator calibrations and need independent clinical
+validation, as do drug responses in severe obesity and pregnancy.
+
+Coronary disease limits coronary flow reserve. Heart rate and systolic pressure
+set myocardial oxygen demand; diastolic perfusion pressure, diastolic time, and
+arterial oxygen content limit supply. Sustained imbalance causes reversible
+contractile depression and illustrative ST depression. The rate-pressure
+product omits wall stress, so it underestimates demand in a dilated ventricle.
+Coronary anatomy and infarction are not modeled.
+
+Heart failure profiles lower resting output and raise filling pressure
+(Schwartzenberg 2012; Westermann 2008). Reduced EF is more sensitive to
+afterload; preserved EF is stiffer and fills less during tachycardia. Lung water
+starts to accumulate at the same margin above resting left atrial pressure as
+in a normal heart. Low output slows flow-dependent drug clearance.
+
+COPD adds persistent obstruction, hyperinflation, gas trapping, dead space, an
+A-a gradient, and a steeper capnogram; acute bronchospasm adds to these.
+Severity scales a mixed obstructive and emphysematous profile with normal
+resting PaCO₂. Chronic hypercapnia is not modeled.
+
+Pregnancy changes blood volume and cardiac output (Dallmann 2017), FRC
+(Contreras 1991), renal filtration, heart rate, metabolism, and resting PaCO₂
+with gestational age. From 20 weeks, the supine position increasingly reduces
+venous return (Humphries 2019); left lateral positioning restores it within
+seconds. Weight is the pre-pregnancy weight, and drug models keep their
+nonpregnant calibrations. Entered hemoglobin and hematocrit are the starting
+values. Fetal circulation and placental transfer are not modeled.
+
+Above BMI 32, respiratory compliance and supine FRC follow the saturating curves
+of Pelosi 1998, normalized at BMI 32, and airway resistance rises with BMI.
 
 ## Model notes
 
@@ -274,8 +310,8 @@ assumption. Affinity and Haldane shifts preserve oxygen and CO₂ amounts.
 Changes in Hb or hematocrit adjust the normal buffer contribution while
 preserving respiratory buffer-base changes. Hb/Hct ratios away from Rees's
 red-cell hemoglobin concentration are untested. Lactic acidosis, infusate
-electrolytes, and renal compensation are not modeled, so low-flow states and
-cardiac arrest show only respiratory acid-base changes.
+electrolytes, and dynamic renal compensation are not modeled, so low-flow
+states and cardiac arrest show only respiratory acid-base changes.
 
 ### Ventilation mechanics
 

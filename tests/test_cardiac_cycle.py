@@ -82,3 +82,22 @@ def test_shared_cycle_orders_qrs_art_and_pleth():
 
     assert int(np.argmax(ecg_values)) < int(np.argmax(art_values))
     assert int(np.argmax(art_values)) < int(np.argmax(pleth_values))
+
+
+def test_ischemic_st_signal_preserves_qrs_and_wide_complex_morphology():
+    for rhythm, hr in ((RhythmType.SINUS, 60), (RhythmType.SVT, 160), (RhythmType.VTACH, 180)):
+        cycle = CardiacCycle(np.random.default_rng(1))
+        normal = ECGMonitor(np.random.default_rng(2))
+        ischemic = ECGMonitor(np.random.default_rng(2))
+        sample = cycle.seed(hr, rhythm)
+        st_differences = []
+        for index in range(1000):
+            if index:
+                sample = cycle.step(0.001, hr, rhythm)
+            difference = normal.step(0.001, sample) - ischemic.step(0.001, sample, 0.2)
+            if sample.elapsed_s < 0.04 or rhythm == RhythmType.VTACH:
+                assert difference == 0
+            if 0.09 < sample.elapsed_s < 0.11:
+                st_differences.append(difference)
+        if rhythm != RhythmType.VTACH:
+            assert min(st_differences) > 0.19

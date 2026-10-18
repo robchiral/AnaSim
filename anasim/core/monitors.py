@@ -110,6 +110,7 @@ def step_cardiac_monitors(
     rhythm = hemo_state.rhythm_type
     co_ratio = hemo_state.co / engine.hemo.base_co_l_min
     perfusion = clamp(co_ratio, 0.0, 1.0)
+    st_depression = engine.hemo.coronary.st_depression_mv
 
     for _ in range(substeps):
         cardiac_sample = engine.cardiac_cycle.step(
@@ -127,7 +128,7 @@ def step_cardiac_monitors(
             cardiac_sample,
             arterial_sample,
         )
-        ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample)
+        ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample, st_depression)
         pleth, spo2_val = engine.spo2_mon.step(
             substep_dt,
             cardiac_sample,

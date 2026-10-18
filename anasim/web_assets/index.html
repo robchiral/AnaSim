@@ -64,6 +64,40 @@
             </select>
           </label>
         </fieldset>
+
+        <fieldset>
+          <legend>Clinical conditions</legend>
+          <label class="row">Coronary disease
+            <select name="coronary_flow_reserve" title="Represented by coronary flow reserve, the ratio of maximal to resting blood flow.">
+              <option value="5">None</option>
+              <option value="3">Mild</option>
+              <option value="2">Moderate</option>
+              <option value="1.3">Severe</option>
+            </select>
+          </label>
+          <label class="row">Heart failure
+            <select name="heart_failure">
+              <option value="none">None</option>
+              <option value="hfref">Reduced EF</option>
+              <option value="hfpef">Preserved EF</option>
+            </select>
+          </label>
+          <label class="row">COPD
+            <select name="copd_severity">
+              <option value="0">None</option>
+              <option value="0.35">Mild</option>
+              <option value="0.65">Moderate</option>
+              <option value="1">Severe</option>
+            </select>
+          </label>
+          <label class="choice" id="pregnancy-choice"><input type="checkbox" name="pregnant"> Pregnant</label>
+          <label class="row" id="gestation-row" hidden>Gestational age
+            <span class="unit-input"><input name="gestational_age_weeks" type="number" value="28" step="1"><span>weeks</span></span>
+          </label>
+          <label class="row" id="position-row" hidden>Position
+            <select name="position"><option value="supine">Supine</option><option value="left_lateral">Left lateral</option></select>
+          </label>
+        </fieldset>
       </div>
 
       <div class="setup-col">
@@ -146,7 +180,7 @@
     <section class="monitor">
       <div class="monitor-body">
         <div class="monitor-lane">
-          <div class="wave" data-wave="ecg"><canvas role="img" aria-label="ECG lead II waveform"></canvas><span class="wave-label ecg">ECG · II</span><span class="sweep-label">10 s</span></div>
+          <div class="wave" data-wave="ecg"><canvas role="img" aria-label="ECG lead II waveform"></canvas><span class="wave-label ecg">ECG · II <output id="v-st" hidden></output></span><span class="sweep-label">10 s</span></div>
           <div class="lane-numerics">
             <div class="numeric big ecg" data-alarm="HR"><div class="numeric-head"><span class="numeric-title">HR</span><span class="numeric-unit">/min</span></div><output id="v-hr">--</output></div>
           </div>
@@ -394,6 +428,9 @@
               <button type="button" class="btn toggle t-danger" id="c-hemorrhage" aria-pressed="false">Start bleeding</button>
             </div>
             <label class="inline">Cardiac rhythm <select id="c-rhythm"></select></label>
+            <label class="inline" id="c-position-row" hidden>Maternal position
+              <select id="c-position"><option value="supine">Supine</option><option value="left_lateral">Left lateral</option></select>
+            </label>
             <button type="button" class="btn toggle t-warning full" id="c-anaphylaxis" aria-pressed="false">Start anaphylaxis</button>
             <button type="button" class="btn toggle t-danger full" id="c-sepsis" aria-pressed="false">Start sepsis</button>
           </div>

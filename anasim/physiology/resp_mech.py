@@ -28,6 +28,8 @@ class RespiratoryMechanics:
         self.reference_resistance = resistance  # Before acute airway obstruction.
         self.bronchospasm = 0.0
         self.bronch_resistance = 0.0
+        self.chronic_obstruction = 0.0  # COPD severity
+        self.chronic_resistance = 0.0  # COPD resistance that narrows with deflation
         self.aeration = aeration
         self.peep = 0.0
         self.volume_offset = 0.0  # Shift of the static curve relative to the initial relaxed volume
@@ -63,6 +65,11 @@ class RespiratoryMechanics:
         if self.aeration is not None:
             self.aeration.frc = (self.aeration.reference_volume + self.volume_offset
                                  + self.compliance * peep + self.volume)
+
+    @property
+    def expiratory_obstruction(self) -> float:
+        """Combined acute bronchospasm and chronic obstruction, 0-1."""
+        return 1.0 - (1.0 - self.bronchospasm) * (1.0 - self.chronic_obstruction)
 
     @property
     def reference_compliance(self) -> float:
@@ -111,8 +118,9 @@ class RespiratoryMechanics:
         if self.aeration is not None:
             inflation += self.volume_offset + self.aeration.reference_volume - self.aeration.relaxed_volume
         scale = 10.0 * self.reference_compliance
-        resistance = self.resistance + 2.0 * self.bronch_resistance / (1.0 + max(0.0, inflation) / scale) ** 2
-        ceiling_resistance = resistance * (1.0 + 0.75 * self.bronchospasm ** 2)
+        resistance = (self.resistance + 2.0 * (self.bronch_resistance + self.chronic_resistance)
+                      / (1.0 + max(0.0, inflation) / scale) ** 2)
+        ceiling_resistance = resistance * (1.0 + 0.75 * self.expiratory_obstruction ** 2)
         recoil = self.elastic_pressure + self.p2
         free_flow = (pressure[0] + pmus[0] - recoil) / (resistance + series_resistance)
         if free_flow >= 0.0:
@@ -149,6 +157,12 @@ class FlowSegment:
     def paw(self, t: float) -> float:
         return (self.lung.resistance * self.flow(t) + self.elastance * self.volume(t) + self.p2(t)
                 - self.m0 - self.m1 * t)
+
+    def sample(self, t: float) -> tuple[float, float, float]:
+        """Return lung volume, flow, and airway pressure with one evaluation of each."""
+        volume, flow = self.volume(t), self.flow(t)
+        paw = self.lung.resistance * flow + self.elastance * volume + self.p2(t) - self.m0 - self.m1 * t
+        return volume, flow, paw
 
     def dpaw(self, t: float) -> float:
         return self.elastance * self.q + (self.asymptote - self.p20) / self.tau * math.exp(-t / self.tau) - self.m1
@@ -317,6 +331,10 @@ class PressureSegment:
 
     def paw(self, t: float) -> float:
         return self.p0 + self.p1 * t - self.rs * self.flow(t)
+
+    def sample(self, t: float) -> tuple[float, float, float]:
+        volume, _, flow, _ = self._evaluate(t)
+        return volume, flow, self.p0 + self.p1 * t - self.rs * flow
 
     def dpaw(self, t: float) -> float:
         return self.p1 - self.rs * self.dflow(t)

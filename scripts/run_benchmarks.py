@@ -76,7 +76,7 @@ BENCHMARKS = {
     'mech': ('vcv', 'pcv', 'autopeep'),
     'pk': ('propofol_eleveld', 'norepi_li'),
     'mixed': ('baseline', 'sepsis'),
-    'engine': ('awake', 'steady_state'),
+    'engine': ('awake', 'steady_state', 'conditions'),
 }
 
 
@@ -197,7 +197,12 @@ def build_step(name):
             vent.step(0.05, mech, "vent")
         return step
 
-    engine = SimulationEngine(patient, SimulationConfig(mode=case, rng_seed=123, dt=0.1))
+    mode = case
+    if case == 'conditions':
+        patient = Patient(sex='female', weight=140, gestational_age_weeks=36,
+                          heart_failure='hfpef', copd_severity=0.65, coronary_flow_reserve=1.3)
+        mode = 'steady_state'
+    engine = SimulationEngine(patient, SimulationConfig(mode=mode, rng_seed=123, dt=0.1))
     engine.start()
     return lambda i: engine.step(0.1)
 

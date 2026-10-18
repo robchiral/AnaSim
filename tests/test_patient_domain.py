@@ -29,7 +29,7 @@ BOUNDARY_PATIENTS: tuple[dict[str, Any], ...] = (
     {
         "age": AGE_RANGE_YEARS[1],
         "weight": WEIGHT_RANGE_KG[1],
-        "height": 177.0,
+        "height": HEIGHT_RANGE_CM[1],
         "sex": "male",
         "baseline_hb": HEMOGLOBIN_RANGE_G_DL[1],
         "baseline_hct": HEMATOCRIT_RANGE[1],
@@ -38,6 +38,8 @@ BOUNDARY_PATIENTS: tuple[dict[str, Any], ...] = (
     },
     {"age": 40, "weight": 72.0, "height": HEIGHT_RANGE_CM[1], "sex": "male"},
     {"age": 40, "weight": 72.0, "height": HEIGHT_RANGE_CM[0], "sex": "female"},
+    # BMI 60 as entered; floating-point division gives 60.00000000000001.
+    {"age": 40, "weight": 173.4, "height": 170.0, "sex": "male"},
 )
 
 
@@ -98,7 +100,7 @@ def test_opioid_regimen_changes_propofol_exposure():
 
 
 def test_invalid_patient_values_are_rejected():
-    invalid_values = (
+    invalid_values: tuple[tuple[dict[str, Any], str], ...] = (
         ({"age": float("nan")}, "age"),
         ({"age": 17.0}, "age"),
         ({"age": 71.0}, "age"),
@@ -112,6 +114,16 @@ def test_invalid_patient_values_are_rejected():
         ({"renal_function": 0.39}, "renal_function"),
         ({"hepatic_function": 1.01}, "hepatic_function"),
         ({"weight": 50.0, "height": 200.0}, "bmi"),
+        ({"weight": 200.0, "height": 150.0}, "bmi"),
+        ({"coronary_flow_reserve": float("nan")}, "coronary_flow_reserve"),
+        ({"coronary_flow_reserve": 0.9}, "coronary_flow_reserve"),
+        ({"heart_failure": "unknown"}, "heart_failure"),
+        ({"heart_failure": []}, "heart_failure"),
+        ({"copd_severity": 1.1}, "copd_severity"),
+        ({"gestational_age_weeks": 36.0}, "gestational_age_weeks"),
+        ({"sex": "female", "gestational_age_weeks": 2.0}, "gestational_age_weeks"),
+        ({"sex": "female", "gestational_age_weeks": 41.0}, "gestational_age_weeks"),
+        ({"position": "upright"}, "position"),
     )
     for patient_kwargs, field_name in invalid_values:
         with pytest.raises(ValueError, match=field_name):

@@ -5,9 +5,11 @@ from scipy.optimize import root_scalar
 from anasim.core.constants import BLOOD_VOLUME_MIN, HR_MAX, HR_MIN, TEMP_TPR_COEFFICIENT
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
+from anasim.patient.conditions import HEART_FAILURE_PROFILES
 from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import KETAMINE_MAC_EQUIVALENT
 
+from .coronary import CoronaryModel
 from .fluids import CrystalloidKinetics
 from .hemo_config import HemodynamicConfig
 from .hemo_types import HemoState
@@ -40,19 +42,30 @@ class HemodynamicModel:
     def __init__(self, patient: Patient, config: HemodynamicConfig | None = None):
         self.patient = patient
         self.config = cfg = config or HemodynamicConfig()
+        self.failure = HEART_FAILURE_PROFILES[patient.heart_failure]
+        # Heart failure applies all afterload through ventricular-arterial coupling.
+        self._phenyl_afterload_gain = cfg.phenyl_afterload_gain if patient.heart_failure == "none" else 0.0
+        self.position = patient.position
+        # Supine preload that gives the pregnancy's positional CO loss on the
+        # Frank-Starling curve at normal filling.
+        loss = patient.pregnancy.supine_output_loss
+        self._supine_preload = -math.log(1.0 - (1.0 - loss) * (1.0 - math.exp(-2.0))) / 2.0 if loss else 1.0
+        self._position_preload = self._supine_preload if self.position == "supine" else 1.0
         self._cached_state: HemoState | None = None
 
         self.baseline_hb = patient.baseline_hb
         assert patient.baseline_hct is not None  # Patient derives it from hemoglobin when omitted.
         self.baseline_hct = patient.baseline_hct
 
-        self.base_hr = patient.baseline_hr
+        self.base_hr = patient.baseline_hr * patient.pregnancy.heart_rate
+        # Pregnancy lowers the PaCO2 the chemoreflex defends.
+        self._paco2_set = cfg.paco2_set + patient.pregnancy.paco2 - 40.0
         years = patient.age - cfg.age_reference
         self._age_chronotropy = 1.0 + cfg.age_sympathetic_hr * years
         self._age_vagal_baroreflex = math.exp(cfg.age_vagal_baroreflex * years)
 
         # Baseline SV from cardiac index and BSA.
-        co_0 = cfg.cardiac_index * patient.bsa
+        co_0 = cfg.cardiac_index * patient.bsa * patient.cardiac_output_factor
         self.base_sv = (co_0 * 1000.0) / self.base_hr
 
         flow_ml_min = self.base_hr * self.base_sv
@@ -132,6 +145,12 @@ class HemodynamicModel:
         self._last_preload_factor = 1.0
         self._last_preload_sv_factor = 1.0
         self._last_lap = self._lap(1.0)
+        # Chronic left atrial hypertension raises lymph flow, so edema begins
+        # the same margin above resting LAP as with a normal heart.
+        normal_lap = cfg.lap_scale * math.expm1(cfg.lap_preload_gain)
+        self._lung_water_threshold = cfg.lung_water_lap_threshold + self._last_lap - normal_lap
+        self.coronary = CoronaryModel(patient.coronary_flow_reserve, self.base_hr,
+                                      patient.baseline_map, self._last_lap)
         self._pbw = patient.predicted_body_weight()
         self.lung_water_ml = 0.0  # Extravascular lung water above normal
 
@@ -303,6 +322,9 @@ class HemodynamicModel:
 
     def _lap(self, preload_factor: float) -> float:
         """Left atrial pressure (mmHg) from LV filling relative to baseline."""
+        if self.patient.heart_failure != "none":
+            gain = self.config.lap_preload_gain * self.failure.stiffness_factor
+            return self.failure.filling_pressure * math.expm1(gain * preload_factor) / math.expm1(gain)
         return self.config.lap_scale * math.expm1(self.config.lap_preload_gain * preload_factor)
 
     @property
@@ -438,7 +460,10 @@ class HemodynamicModel:
 
         self._pulm_flow_factor = clamp(self._pulm_flow_factor, 0.05, 3.0)
 
-        f_preload = self._pulm_flow_factor / self._pulm_reference_factor * f_preload_pit
+        position_target = self._supine_preload if self.position == "supine" else 1.0
+        if self._position_preload != position_target:
+            self._position_preload += (position_target - self._position_preload) * -math.expm1(-dt / 10.0)
+        f_preload = self._pulm_flow_factor / self._pulm_reference_factor * f_preload_pit * self._position_preload
         f_frank_starling = self._frank_starling(f_preload)
 
         self._last_lap = self._lap(f_preload)
@@ -524,6 +549,10 @@ class HemodynamicModel:
             sepsis_sev = clamp01(self.sepsis_severity)
         if anaph_sev is None:
             anaph_sev = clamp01(self.anaphylaxis_severity)
+        if distributive_tpr_offset is None:
+            distributive_tpr_offset = -(
+                cfg.sepsis_svr_drop_wood * sepsis_sev + cfg.anaphylaxis_svr_drop_wood * anaph_sev
+            ) / 1000.0
 
         if hr_base is None:
             hr_base = self._calc_hr()
@@ -542,8 +571,23 @@ class HemodynamicModel:
 
         if preload_sv_factor is None:
             preload_sv_factor = self._last_preload_sv_factor if self._last_preload_sv_factor > 0 else 1.0
+        # TPR floor of about 6 Wood units.
+        eff_tpr = max(
+            0.006,
+            self.tpr + self.delta_tpr_vasopressors + self.dist_svr / 1000.0 + distributive_tpr_offset,
+        ) * reflex_tpr_factor
+
         current_sv = raw_sv * preload_sv_factor * self.vasopressor_sv_factor
-        current_sv = max(1.0, current_sv) * (1.0 - cfg.hypoxia_sv_depression * self.myocardial_hypoxia)
+        coupling = self.failure.coupling_ratio
+        if coupling:
+            # SV scales with 1 / (1 + Ea/Ees), with Ea proportional to arterial resistance.
+            load = max(0.2, eff_tpr / self.base_tpr)
+            current_sv *= (1.0 + coupling) / (1.0 + coupling * load)
+        # Both terms describe oxygen-limited myocardium; use the larger so
+        # global hypoxemia is not counted twice.
+        depression = max(1.0 - self.coronary.contractility_factor,
+                         cfg.hypoxia_sv_depression * self.myocardial_hypoxia)
+        current_sv = max(1.0, current_sv) * (1.0 - depression)
 
         current_sv *= RHYTHM_SV_FACTOR.get(self.rhythm_type, 1.0)
 
@@ -551,15 +595,6 @@ class HemodynamicModel:
             current_hr = current_sv = co = map_val = svr_val = self._stim_map = 0.0
         else:
             co = current_hr * current_sv / 1000.0
-            if distributive_tpr_offset is None:
-                distributive_tpr_offset = -(
-                    cfg.sepsis_svr_drop_wood * sepsis_sev + cfg.anaphylaxis_svr_drop_wood * anaph_sev
-                ) / 1000.0
-            # TPR floor of about 6 Wood units.
-            eff_tpr = max(
-                0.006,
-                self.tpr + self.delta_tpr_vasopressors + self.dist_svr / 1000.0 + distributive_tpr_offset,
-            ) * reflex_tpr_factor
             map_val = clamp(current_hr * current_sv * eff_tpr, 5.0, 300.0)
             svr_val = map_val / co
             # First-order share of MAP from stimulation; nociception resets the baroreflex.
@@ -611,8 +646,10 @@ class HemodynamicModel:
         return self.hr_star + self.tde_hr + self.smoothed_chemo_hr + self.smoothed_baro_hr + self.smoothed_epi_hr
 
     def _hr_sv_factor(self, hr: float) -> float:
-        # Su Eq. 9 also increases filling when HR falls below baseline.
-        return max(0.1, 1.0 - self.config.hr_sv_coupling * math.log(max(1.0, hr) / self.base_hr))
+        # Su Eq. 9 also increases filling when HR falls below baseline. Heart
+        # failure, especially HFpEF, loses more filling during tachycardia.
+        factor = max(0.1, 1.0 - self.config.hr_sv_coupling * math.log(max(1.0, hr) / self.base_hr))
+        return factor / (1.0 + self.failure.tachycardia_gain * max(0.0, hr / self.base_hr - 1.0))
 
     def step(self, dt: float, cp_prop: float, cp_remi: float, ce_nore: float, pit: float, paco2: float, pao2: float,
              dist_hr: float = 0.0, dist_sv: float = 0.0, dist_svr: float = 0.0,
@@ -683,9 +720,9 @@ class HemodynamicModel:
         map_prev = self._prev_map
         map_denom = max(1e-3, cfg.renal_map_norm - cfg.renal_map_min)
         self.renal_perfusion = clamp01((map_prev - cfg.renal_map_min) / map_denom)
-        renal_factor = self.renal_perfusion * max(0.0, self.patient.renal_function)
+        renal_factor = self.renal_perfusion * self.patient.renal_clearance_factor
         fluid_change, fluid_urine, fluid_sequestration = self.crystalloid.step(
-            dt, map_prev, self.patient.age, self.patient.renal_function * cfg.crystalloid_renal_scale,
+            dt, map_prev, self.patient.age, self.patient.renal_clearance_factor * cfg.crystalloid_renal_scale,
             self.blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml),
             urinary_elimination=cfg.vol_clearance is None,
         )
@@ -728,7 +765,7 @@ class HemodynamicModel:
                 blood_volume += refill_ml
 
         # Lung water filters from blood above the LAP threshold and returns over hours.
-        lap_excess = max(0.0, self._last_lap - cfg.lung_water_lap_threshold)
+        lap_excess = max(0.0, self._last_lap - self._lung_water_threshold)
         filtration_ml = min(
             cfg.lung_water_filtration * self._pbw * lap_excess * dt_min,
             max(0.0, blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml)),
@@ -767,7 +804,7 @@ class HemodynamicModel:
         )
 
         # Chemoreflex: hypercapnia raises HR and TPR; hypoxemia raises HR.
-        e_co2 = max(0.0, (paco2 - cfg.paco2_set) / cfg.paco2_set)
+        e_co2 = max(0.0, (paco2 - self._paco2_set) / self._paco2_set)
         e_o2 = max(0.0, (cfg.pao2_set - pao2) / cfg.pao2_set)
         chemo_hr_boost = (cfg.g_hr_co2 * e_co2 + cfg.g_hr_o2 * e_o2) * sympathetic_hr_response
         chemo_tpr_factor = 1.0 + cfg.k_tpr_co2 * e_co2
@@ -874,7 +911,7 @@ class HemodynamicModel:
             epi_sv_factor * nore_sv_factor * dobu_sv_factor * mil_sv_factor * ephedrine_sv
             * (1.0 - cfg.beta_block_sv * beta_occ * resting_tone)
             * (1.0 + cfg.ketamine_emax_sv * ketamine * beta_response)
-            / (1.0 + cfg.phenyl_afterload_gain * (phenyl_svr_factor - 1.0) * pressor_gain)
+            / (1.0 + self._phenyl_afterload_gain * (phenyl_svr_factor - 1.0) * pressor_gain)
         )
         combined_delta_hr = (
             self._epi_chrono_effect + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr + ephedrine_hr

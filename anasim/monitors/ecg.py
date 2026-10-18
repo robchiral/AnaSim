@@ -72,6 +72,7 @@ class ECGMonitor:
         self._rhythm: RhythmType | None = None
         self._rr_s = (0.0, 0.0, 0.0)
         self._waves: list[tuple[float, float, float, float]] = []
+        self._st_end_s = 0.0
 
     def _place_beats(self, cycle: CardiacCycleSample) -> None:
         """Lay out the previous, current and next beat around the current R peak."""
@@ -83,6 +84,8 @@ class ECGMonitor:
 
         morphology = _MORPHOLOGIES[cycle.rhythm_type]
         rr_into_prev, rr_into_current, rr_to_next = self._rr_s
+        # ST depression ends on the T-wave upstroke, 55% of the way through QT.
+        self._st_end_s = 0.55 * _QTC_S * rr_into_current ** (1.0 / 3.0) if morphology.t_amplitude else 0.0
         beats = ((-rr_into_current, rr_into_prev), (0.0, rr_into_current), (rr_to_next, rr_to_next))
         self._waves = [
             (r_time + offset, amplitude, width, _WAVE_CUTOFF_SIGMAS * width)
@@ -90,7 +93,7 @@ class ECGMonitor:
             for offset, amplitude, width in morphology.waves(preceding_rr)
         ]
 
-    def step(self, dt: float, cycle: CardiacCycleSample) -> float:
+    def step(self, dt: float, cycle: CardiacCycleSample, st_depression_mv: float = 0.0) -> float:
         """Return the next ECG voltage (mV)."""
         rhythm_type = cycle.rhythm_type
         if rhythm_type == RhythmType.ASYSTOLE:
@@ -112,6 +115,11 @@ class ECGMonitor:
             offset = t - center
             if -cutoff < offset < cutoff:
                 val += amplitude * math.exp(-0.5 * (offset / width) ** 2)
+
+        if st_depression_mv > 0.0 and 0.06 < t < self._st_end_s:
+            # Illustrative horizontal ST depression starting 60 ms after the R peak.
+            edge = min(1.0, (t - 0.06) / 0.015, (self._st_end_s - t) / 0.025)
+            val -= st_depression_mv * edge
 
         if rhythm_type == RhythmType.AFIB:
             f_amplitude = 0.05 * (1.0 + 0.4 * self._f_envelope.step(dt, self.rng))
