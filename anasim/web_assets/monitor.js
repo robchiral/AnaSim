@@ -310,6 +310,7 @@ export class Monitor {
     const p = info.patient;
     const parts = [`${Math.round(p.age)} y`, cap(p.sex), `${p.weight.toFixed(1)} kg`];
     if (p.renal_status.toLowerCase() !== "normal") parts.push(`Renal: ${p.renal_status}`);
+    if (p.creatinine_clearance_ml_min != null) parts.push(`CrCl ${Math.round(p.creatinine_clearance_ml_min)} mL/min`);
     if (p.hepatic_status.toLowerCase() !== "normal") parts.push(`Hepatic: ${p.hepatic_status}`);
     if (p.coronary_flow_reserve < 5) parts.push("Coronary disease");
     if (p.heart_failure !== "none") parts.push(p.heart_failure === "hfref" ? "HFrEF" : "HFpEF");

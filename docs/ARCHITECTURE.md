@@ -1,22 +1,30 @@
 # AnaSim architecture
 
-AnaSim combines pharmacology, physiology, the anesthesia machine, and monitor
-models. The runtime advances these models and writes their outputs to
-`SimulationState`. [CLI and Python usage](CLI_USAGE.md) covers configuration,
-units, and scripted runs.
+AnaSim combines patient, drug, physiology, anesthesia machine, and monitor
+models in one simulation engine. Each subsystem keeps its own state. The runtime
+updates the models and copies their outputs into `SimulationState`.
+
+This guide describes how the components work and share data. [CLI and Python
+usage](CLI_USAGE.md) covers configuration, units, and scripted runs. [Model
+references](REFERENCES.md) lists the supporting studies.
 
 ## Main modules
 
 | Module | Responsibility |
 |--------|----------------|
-| [`engine.py`](../anasim/core/engine.py) | Creates the models and applies controls |
-| [`runtime.py`](../anasim/core/runtime.py) | Advances the simulation |
-| [`projection.py`](../anasim/core/projection.py) | Copies model outputs into the shared state |
-| [`monitors.py`](../anasim/core/monitors.py) | Updates measurements and alarms |
-| [`initialization.py`](../anasim/core/initialization.py) | Configures starting states |
-| [`drug_registry.py`](../anasim/core/drug_registry.py) | Defines drug models, units, pump limits, state fields, and interface metadata |
+| [`engine.py`](../anasim/core/engine.py) | Creates the subsystems, applies controls, and records simulation output |
+| [`runtime.py`](../anasim/core/runtime.py) | Advances subsystems in step order |
+| [`projection.py`](../anasim/core/projection.py) and [`state.py`](../anasim/core/state.py) | Copy model outputs into the shared state and define its fields |
+| [`initialization.py`](../anasim/core/initialization.py) | Configures awake and maintenance starting states |
+| [`patient/`](../anasim/patient/) and [`drug_registry.py`](../anasim/core/drug_registry.py) | Define patient characteristics, drug models, delivery units, pump limits, and interface metadata |
+| [`physiology/`](../anasim/physiology/) | Models circulation, fluids, respiration, gas exchange, and temperature |
+| [`machine/`](../anasim/machine/) | Models the breathing circuit, vaporizer, and ventilator |
+| [`monitors/`](../anasim/monitors/) and [`core/monitors.py`](../anasim/core/monitors.py) | Produce measurements, waveforms, and alarms |
+| [`web.py`](../anasim/web.py) and [`web_assets/`](../anasim/web_assets/) | Connect the engine and guided scenarios to the browser interface |
 
-## Step order
+## Runtime
+
+### Step order
 
 Each `SimulationEngine.step()` call performs these operations:
 
@@ -27,312 +35,271 @@ Each `SimulationEngine.step()` call performs these operations:
 4. Update the airway, vaporizer, and breathing circuit.
 5. Update drug concentrations, inhaled anesthetic uptake, and neuromuscular block.
 6. Advance breathing mechanics, gas exchange, and hemodynamics.
-7. Copy outputs into `SimulationState` and update monitor measurements and alarms.
+7. Copy outputs into `SimulationState` and update measurements and alarms.
 8. Update shivering and temperature, then check for cardiac arrest.
 
-PK and circuit calculations use cardiac output and alveolar ventilation from
-the start of the step. Physiology supplies these values for the next step.
+PK and circuit calculations use cardiac output and alveolar ventilation from the
+start of the step. Physiology supplies these values for the next step. The
+engine then advances the simulation clock, retains waveform samples, and writes
+the recording.
 
-## Simulation state
+### Simulation state
 
-`SimulationState` contains physiological values and monitor measurements.
+`SimulationState` holds physiological values and monitor measurements.
 
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
-| Physiology | `map`, `hr`, `co`, `sv`, `sao2`, `pa_co2`, `pao2` | Values used by the models and cardiac arrest check |
-| Blood chemistry | `ph`, `hco3` | Arterial plasma pH and bicarbonate (mmol/L) at 37 °C |
-| Myocardium | `myocardial_ischemia`, `coronary_supply_demand_ratio`, `st_depression_mv` | Reversible ischemia index (0 to 1), maximal supply/demand ratio, and illustrative ST depression (mV) |
-| Arterial pulse | `sbp`, `dbp` | Pressures derived from mean pressure, stroke volume, and arterial compliance |
-| Arterial catheter | `art_pressure`, `art_sbp`, `art_dbp`, `art_map` | Pressure after catheter and transducer filtering |
-| Other monitors | `nibp_map`, `display_hr`, `display_bis`, `display_etco2`, `display_spo2` | Monitor measurements |
-| Ventilation | `paw_peak`, `paw_plat`, `paw_mean`, `peep`, `compliance_dyn`, `et_o2` | Breath pressures, compliance, and end-tidal oxygen |
-| Fluids | `blood_volume`, `urine_out_ml`, `net_fluid_ml`, `lap`, `lung_water` | Blood volume, fluid balance, left atrial pressure, and excess lung water |
+| Physiology | `map`, `hr`, `co`, `sao2`, `pa_co2`, `pao2` | Values used by the models and cardiac arrest check |
+| Blood chemistry | `ph`, `hco3` | Arterial plasma pH and bicarbonate at 37 °C |
+| Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after measurement and processing effects |
+| Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Breath pressures and exhaled gas measurements |
+| Fluids | `blood_volume`, `urine_out_ml`, `net_fluid_ml`, `lap`, `lung_water` | Circulating volume, fluid balance, filling pressure, and excess lung water |
 
-Monitors read physiological values. Pressure displays and scenario objectives
-use the configured arterial or noninvasive blood pressure (NIBP) monitor. CSV
-recordings include both physiological values and measurements.
-[`state.py`](../anasim/core/state.py) defines the fields and units.
+Monitors read physiological values and apply sensor dynamics, sampling, and
+averaging. Pressure displays and scenario objectives use the configured arterial
+or noninvasive blood pressure (NIBP) monitor. CSV recordings include both
+physiological values and measurements. `state.py` defines all fields and their
+units.
 
-## Initialization
+### Initialization
 
 `awake` starts from patient baselines. `steady_state` initializes a maintenance
-anesthetic after 30 minutes of drug administration, starts controlled
-ventilation, and allows the models to settle. Vasopressor infusion rates start
-at zero; mean arterial pressure (MAP) reflects the untreated anesthetic response.
-The session clock and recordings start after initialization. Fluid totals start
-at zero.
+anesthetic from a 30-minute drug history, starts controlled ventilation, and
+allows the models to settle. Vasopressor infusion rates start at zero, so mean
+arterial pressure (MAP) reflects the untreated anesthetic response. The session
+clock, recordings, and fluid totals start after initialization.
 
-Starting ventilation aims for the resting PaCO₂ with tidal volume up to 8 mL/kg
-predicted body weight (800 mL maximum), then raises the rate up to 30/min, or
-18/min with COPD. Severe obstruction or obesity can leave PaCO₂ above target.
+Starting ventilation targets resting PaCO₂ by adjusting tidal volume within
+limits based on predicted body weight, then respiratory rate. COPD uses a lower
+rate ceiling to allow expiration; severe obstruction or obesity can leave PaCO₂
+above target.
 
 ## Supported patient domain
 
-AnaSim supports adults aged 18 to 70 years. The [input limits](CLI_USAGE.md#fields)
-define the accepted body size, hemoglobin, organ-function, and condition ranges.
-These are simulation boundaries. Published model parameters represent typical
-responses within their source cohorts. Disease severities, time courses, and
-combined conditions use simulator calibrations and need independent clinical
-validation, as do drug responses in severe obesity and pregnancy.
+AnaSim supports adults aged 18 to 70 years within the [input
+limits](CLI_USAGE.md#fields) for body size, hemoglobin, organ function, and
+patient conditions. These ranges define accepted simulation inputs.
 
-Coronary disease limits coronary flow reserve. Heart rate and systolic pressure
-set myocardial oxygen demand; diastolic perfusion pressure, diastolic time, and
-arterial oxygen content limit supply. Sustained imbalance causes reversible
-contractile depression and illustrative ST depression. The rate-pressure
-product omits wall stress, so it underestimates demand in a dilated ventricle.
-Coronary anatomy and infarction are not modeled.
+Coronary disease limits coronary flow reserve. Myocardial oxygen demand follows
+the rate-pressure product; supply depends on diastolic perfusion pressure,
+diastolic time, and arterial oxygen content. Sustained imbalance produces
+reversible contractile depression and illustrative ST depression.
 
-Heart failure profiles lower resting output and raise filling pressure
-(Schwartzenberg 2012; Westermann 2008). Reduced EF is more sensitive to
-afterload; preserved EF is stiffer and fills less during tachycardia. Lung water
-starts to accumulate at the same margin above resting left atrial pressure as
-in a normal heart. Low output slows flow-dependent drug clearance.
+Heart failure profiles change resting output, filling pressure, and sensitivity
+to loading conditions (Schwartzenberg 2012; Westermann 2008). Reduced ejection
+fraction increases afterload sensitivity. Preserved ejection fraction increases
+stiffness and reduces filling during tachycardia.
 
-COPD adds persistent obstruction, hyperinflation, gas trapping, dead space, an
-A-a gradient, and a steeper capnogram; acute bronchospasm adds to these.
-Severity scales a mixed obstructive and emphysematous profile with normal
-resting PaCO₂. Chronic hypercapnia is not modeled.
+COPD combines persistent obstruction, hyperinflation, gas trapping, dead space,
+and impaired gas exchange with normal resting PaCO₂. Acute bronchospasm adds to
+this baseline. Obesity reduces supine functional residual capacity (FRC) and
+respiratory compliance and increases airway resistance (Pelosi 1998).
 
-Pregnancy changes blood volume and cardiac output (Dallmann 2017), FRC
-(Contreras 1991), renal filtration, heart rate, metabolism, and resting PaCO₂
-with gestational age. From 20 weeks, the supine position increasingly reduces
-venous return (Humphries 2019); left lateral positioning restores it within
-seconds. Weight is the pre-pregnancy weight, and drug models keep their
-nonpregnant calibrations. Entered hemoglobin and hematocrit are the starting
-values. Fetal circulation and placental transfer are not modeled.
-
-Above BMI 32, respiratory compliance and supine FRC follow the saturating curves
-of Pelosi 1998, normalized at BMI 32, and airway resistance rises with BMI.
+Pregnancy changes maternal blood volume, cardiac output, renal filtration, FRC,
+heart rate, metabolism, and resting PaCO₂ with gestational age (Dallmann 2017;
+Contreras 1991). Supine positioning reduces venous return in later pregnancy;
+left lateral positioning restores it (Humphries 2019). Weight is pre-pregnancy
+weight, entered hemoglobin and hematocrit are starting values, and drug
+responses retain their adult calibrations.
 
 ## Model notes
 
-[Model references](REFERENCES.md) lists the source studies.
+Published models describe their study populations. AnaSim uses calibrations to
+connect the models and represent patient conditions. The sections below describe
+the main model choices and interactions. The implementation documents source
+equations and coefficients.
 
 ### PK and TCI
 
 Intravenous drugs use a central compartment, up to two peripheral compartments,
-and endpoint-specific effect sites. The vascular part of the central volume, up
-to the baseline blood volume, changes with blood volume while preserving drug
-amount. Renal clearance follows renal perfusion, the same MAP curve as urine
-output. Other clearances scale with cardiac output by drug-specific exponents,
-except propofol, remifentanil, norepinephrine, and epinephrine, which use
-population clearances. Blood loss lowers propofol clearances and remifentanil
-elimination clearance, and volume replacement restores them (Johnson 2001,
-2003, 2004). This scaling uses swine data, does not distinguish compensated
-from uncompensated shock, and does not model persistent propofol sensitivity
-after resuscitation (Kurita 2011).
+and effect sites for their clinical effects. Propofol uses Eleveld 2018 arterial
+PK with its opioid-regimen covariate; remifentanil uses Eleveld 2017. Morphine
+and hydromorphone use Meissner 2025 PK. Inhaled agents move between lung, blood,
+and tissue compartments. Their effects follow brain partial pressures expressed
+as age-adjusted minimum alveolar concentration (MAC) (Davis and Mapleson 1981;
+Yasuda 1991).
 
-Midazolam and propofol reduce each other's clearances (Vuyk 2009; Lichtenbelt
-2010), with covariates capped at the studied concentrations. Applying these
-coefficients to Eleveld propofol and Albrecht midazolam is an assumption.
+Changes in blood volume rescale the vascular part of each drug's central volume
+while conserving drug amount. Clearance responds to organ function, renal
+perfusion, and cardiac output according to each model. Renal perfusion acts on
+the renal clearance left after renal impairment. Blood loss lowers
+propofol and remifentanil clearance; volume replacement restores it. This
+scaling comes from swine data (Johnson 2001, 2003, 2004). Midazolam and propofol
+reduce each other's clearances within the studied concentration ranges (Vuyk
+2009; Lichtenbelt 2010).
 
-TCI uses current PK parameters and concentrations to predict exposure over
-10 minutes. Rates update at a nominal 10-second interval within pump limits.
-Rocuronium TCI targets free plasma concentration. Its effect-site decay
-prediction uses the neuromuscular model with current hemodynamic parameters
-and inhaled MAC held constant. Norepinephrine predictions include endogenous
-secretion. A manual rate disables TCI for that drug. `tci_enabled` selects TCI
-or manual infusion rates for maintenance initialization.
+TCI predicts exposure from current PK parameters and concentrations, then
+adjusts infusion rates within pump limits. Rocuronium TCI targets free plasma
+concentration, and its decay prediction includes sugammadex and inhaled-agent
+effects. A manual infusion rate disables TCI for that drug. `tci_enabled`
+selects TCI or manual rates for maintenance initialization.
 
 ### Anesthetic drug effects
 
-AnaSim uses separate effect sites for bispectral index (BIS), clinical
-responsiveness, and breathing.
+Separate effect sites determine bispectral index (BIS), clinical responsiveness,
+and breathing.
 
 | Endpoint | Model |
 |----------|-------|
-| Propofol PK | Eleveld 2018 arterial model with the opioid-regimen covariate |
-| Remifentanil PK | Eleveld 2017 arterial model |
-| Baseline BIS | Eleveld 2018 curve with age-dependent potency and processing delay |
-| Clinical response and laryngoscopy tolerance | Bouillon 2004 Bayesian hierarchy; loss of response uses Schnider 1999's age term |
-| Ventilatory depression | Bouillon 2004 propofol curve with Olofsen 2010 opioid and CO₂ control |
-
-Propofol and sevoflurane determine baseline BIS; opioids blunt
-stimulation-related arousal. The propofol curve predicts a population response,
-and individual errors are large (Vellinga 2021; Coetzee 2024). Transitions after
-a rapid bolus are less accurate (Sahinovic 2020; Struys 2007).
+| Baseline BIS | Eleveld 2018 propofol response with age-dependent potency and processing delay, plus a calibrated sevoflurane contribution |
+| Clinical responsiveness | Bouillon 2004 response curves for shaking or shouting and laryngoscopy, with Schnider 1999's age effect on loss of response |
+| Ventilatory depression | Bouillon 2004 propofol response with Olofsen 2010 opioid and CO₂ control |
 
 `loc` is the probability of no response to shaking or shouting; `tol` is the
 probability of no response to laryngoscopy. Sevoflurane thresholds follow
-Kuizenga 2019 and Hannivoort 2016 in age-adjusted minimum alveolar concentration
-(MAC).
+Kuizenga 2019 and Hannivoort 2016. Older patients lose responsiveness at a
+higher BIS (Lysakowski 2009).
 
-Applying Bouillon's individual concentration estimates and Schnider's age term
-to Eleveld population concentrations, selecting clinical effect-site timing,
-and extending the hierarchy to sevoflurane are modeling assumptions. Older
-patients lose responsiveness at a higher BIS (Lysakowski 2009). BIS arousal
-and adjunct drug combinations use simulator calibrations. Fentanyl contributes
-a remifentanil equivalent; etomidate and midazolam contribute propofol
-equivalents at the patient's endpoint-specific potency, with midazolam-propofol
-synergy. Nitrous oxide and ketamine affect clinical responsiveness; ketamine
-and lidocaine also blunt stimulation responses.
+The response curves use remifentanil equivalents for fentanyl, morphine, and
+hydromorphone, and propofol equivalents for etomidate and midazolam. Potency
+depends on the patient and effect. Midazolam and propofol act synergistically
+in the model. Nitrous oxide
+and ketamine affect clinical responsiveness. Ketamine and lidocaine also blunt
+stimulation responses.
 
-Morphine and hydromorphone use Meissner 2025 PK with separate analgesic and
-respiratory effect sites (Olofsen 2026). Analgesia contributes a calibrated
-remifentanil equivalent; the respiratory site reduces ventilatory drive and
-CO₂ response.
-
-Ketamine has a separate cardiovascular effect site (Kamp 2021) and raises HR
-and cardiac output with SVR unchanged (Tweed 1972). Anesthetic concentrations
-depress the baroreflex (Akine 2001); analgesic doses do not (Huang 2020).
-Enantiomers and metabolites are not modeled. Lidocaine reduces
-stimulation-related BIS and cardiovascular responses without a baseline
-hypnotic effect (Hans 2010); its response coefficient is a simulator estimate.
+Stimulation-related BIS arousal depends on laryngoscopy tolerance. HR and MAP
+responses use separate, stronger stimulus intensities (Albertin 2005). The
+laryngoscopy stimulus can trigger laryngospasm.
 
 ### Neuromuscular block
 
 The [neuromuscular model](../anasim/patient/pd/nmba.py) uses Kleijn 2011 for
-rocuronium, with age, weight, and estimated creatinine clearance covariates.
-Sugammadex binds rocuronium in plasma and increases its effect-site efflux.
-The complex clears like sugammadex; free rocuronium drives muscle effects.
+rocuronium and sugammadex. Sugammadex binds free plasma rocuronium and increases
+its effect-site efflux; the complex clears like sugammadex. Both drugs use
+measured creatinine clearance when supplied, or an estimate from age and renal
+function. Other renal effects use the renal-function factor.
 
 Train-of-four (TOF) represents the adductor pollicis response. Diaphragm and
 larynx effects equilibrate faster and require higher rocuronium concentrations,
-allowing breathing to recover before TOF. Creatinine clearance is estimated
-from age and renal function. Sevoflurane scaling, TOF normalization, and
-conversion to muscle effects use simulator calibrations.
+allowing breathing to recover before TOF. Residual block reduces pharyngeal
+reserve and increases susceptibility to hypnotic airway collapse (Herbstreit
+2009). Awake tone and positive airway pressure preserve patency.
 
-Succinylcholine uses Roy 2002 PK, with onset and recovery calibrated to Kopman
-2003 and central muscle sensitivity to Dhonneur 1999. Its phase I block
-depresses T1 without TOF fade.
-
-Residual block increases susceptibility to hypnotic airway collapse
-(Herbstreit 2009), with preserved awake patency and pressure relief.
-This coupling uses simulator calibration.
+Succinylcholine uses Roy 2002 PK, with twitch onset and recovery calibrated to
+Kopman 2003 and central muscle sensitivity to Dhonneur 1999. Its phase I block
+depresses single-twitch height without TOF fade.
 
 ### Hemodynamics
 
-The Su 2023 turnover model describes propofol-remifentanil cardiovascular
-effects using plasma concentrations. The model includes blood volume, pulmonary
-circulation, reflexes, vasoactive drugs, and distributive shock. MAP feedback
-accounts for rhythm, hypoxia, and stimulation. The baroreflex adjusts heart rate
-or vascular resistance when a rhythm fixes the rate. Severe hypoxia reduces
+The [hemodynamic model](../anasim/physiology/hemodynamics.py) uses Su 2023's
+turnover model for propofol-remifentanil effects, connected to blood volume,
+pulmonary circulation, reflexes, vasoactive drugs, and distributive shock.
+Propofol reduces stressed volume and venous resistance (de Wit 2016). Blood loss
+lowers filling pressure and preload; reflex venoconstriction partly compensates.
+
+MAP feedback adjusts heart rate or vascular resistance according to rhythm,
+anesthetic depth, blood gases, and stimulation. Anesthesia blunts baroreflex and
+hemorrhage tachycardia (Ebert 1992; Sellgren 1994). With age, cardiovagal gain
+and reflex and beta-agonist tachycardia fall, while vascular responses are
+preserved (Kardos 2001; Laitinen 2004; Monahan 2007). Severe hypoxia reduces
 rate and contractility.
 
-Blood loss lowers filling pressure and preload; reflex venoconstriction partly
-compensates. Awake responses to 1 L in 333 mL steps match Johnson 2014.
-Anesthesia blunts hemorrhage tachycardia as it does the cardiac baroreflex
-(Ebert 1992; Sellgren 1994). With age, cardiovagal baroreflex gain falls
-(Kardos 2001), as do reflex and beta-agonist tachycardia, while vascular
-responses are preserved (Laitinen 2004; Monahan 2007). Tachycardia scaling and
-its transfer to hemorrhage and stimulation use simulator calibrations.
+Vasoactive drugs modify vascular resistance, stroke volume, and heart rate;
+adrenergic and muscarinic antagonists modify these responses and reflexes.
+Norepinephrine includes endogenous secretion and propofol-dependent clearance
+(Li 2024). Anesthetic depth increases its vascular and stroke-volume responses.
+Epinephrine uses arterial clearance with calibrated cardiac and vascular
+response timing (Ensinger 1992). Phenylephrine recruits venous blood and raises
+afterload, making cardiac output depend on preload (Rebet 2016). Anaphylaxis
+reduces adrenergic sensitivity.
 
-Propofol reduces stressed volume and venous resistance (de Wit 2016), while
-the net response at normal blood volume follows Su. Phenylephrine recruits
-venous blood and raises afterload, preserving output better at low preload
-(Rebet 2016). These couplings use simulator calibrations.
-
-| Drug | Sources and implementation |
-|------|----------------------------|
-| Norepinephrine | Li 2024 PK with endogenous secretion and propofol-dependent clearance; integrated response calibrated to de Keijzer 2026 infusion and Joachim 2024 bolus data |
-| Epinephrine | Ensinger 1992 arterial clearance; mixing volume and cardiac and vascular response timing calibrated to Freyschuss 1986 infusion and Takahashi 2002 bolus data |
-| Phenylephrine, vasopressin, dobutamine, milrinone | Concentration-response curves informed by published data |
-| Ephedrine | Persky 2004 oral disposition and tolerance transferred to IV use; responses calibrated to Meng 2011 and Sjøen 2026 |
-| Esmolol, labetalol, glycopyrrolate | Published antagonist potencies with calibrated sympathetic and vagal effects |
-| Atropine | Hinderling 1985 PK and tissue-linked HR response; potency and propofol attenuation calibrated to Horiguchi 2002 |
-
-Anesthetic depth increases the norepinephrine vascular and stroke-volume
-responses. Applying this calibration to volatile anesthesia and populations
-outside the source cohorts is an assumption. Ephedrine tachyphylaxis reduces
-vascular, stroke-volume, and peak HR responses; a smaller HR response persists
-(Persky 2004). Severe anaphylaxis reduces adrenergic sensitivity.
+Ephedrine uses Persky 2004 oral disposition and tolerance transferred to IV use,
+with responses calibrated to Meng 2011 and Sjøen 2026. Tachyphylaxis reduces its
+pressor and peak HR effects while a smaller HR response persists. Atropine's HR
+response follows peripheral concentration (Hinderling 1985), and propofol
+reduces this response (Horiguchi 2002). Ketamine raises HR and cardiac output through
+sympathetic effects and depresses the baroreflex at anesthetic concentrations
+(Tweed 1972; Akine 2001).
 
 With `end_on_cardiac_arrest=True`, MAP below 20 mmHg or heart rate below 10 bpm
 for 15 seconds ends the session.
 
 ### Fluids
 
-Crystalloid represents lactated Ringer's solution and distributes between
-blood and interstitium (Hahn 2017). Urinary elimination depends on MAP, age,
-and renal function, with an integrated calibration to Reid 2003. Albumin retains 80% initially.
-Non-exchanging fluid and capillary leakage enter a slower pool that can refill
-blood-volume deficits. Fluid exchange during hemorrhage and sepsis, albumin
-retention, and slow refill use simulator calibrations. Transfused red cells
-carry donor hemoglobin (33.3 g/dL of cells) whatever the recipient's Hb/Hct
-ratio. Elevated left atrial pressure increases lung water, shunt, and
-stiffness. Positive end-expiratory pressure (PEEP) can recruit affected units.
+Crystalloid represents lactated Ringer's solution and exchanges between blood
+and interstitium (Hahn 2017). Urinary elimination depends on MAP, age, and renal
+function. Albumin infusions keep more of their volume in the circulation
+initially. Fluid leaves the circulation through capillary leakage and other slow
+exchanges. A separate pool holds this fluid and slowly refills blood-volume
+deficits.
 
-### Respiration
+Transfusion tracks donor red-cell volume and hemoglobin separately. Elevated
+left atrial pressure increases lung water, shunt, and stiffness, linking fluid
+balance to respiratory mechanics and gas exchange.
+
+### Respiratory control
 
 [Ventilatory control](../anasim/physiology/respiration.py) combines anesthetic
-effects, CO₂ feedback, and muscle strength. Propofol and sevoflurane mainly
-reduce breath depth; opioids mainly slow rate. CO₂ accumulation can restore
-breathing during opioid administration. Hypocapnia and neuromuscular block
-suppress effort. Under anesthesia, breathing stops 4.5 mmHg below the resting
-PaCO₂ that the drugs set (Hickey 1971). Airway obstruction limits airflow
-while muscle effort continues.
+effects, CO₂ feedback, hypoxic drive, and muscle strength. Propofol and
+sevoflurane mainly reduce breath depth; opioids mainly slow rate. CO₂
+accumulation can restore breathing during opioid administration. Hypocapnia and
+neuromuscular block suppress effort. Under anesthesia, the apneic threshold
+tracks the drug-dependent resting PaCO₂ (Hickey 1971).
 
-The respiratory model applies Olofsen's fractional opioid response to
-Bouillon's nonlinear alveolar CO₂ response and extrapolates the low-dose
-propofol interaction to other concentrations. Combined responses, breath
-patterns, and apnea durations are simulator estimates.
+Morphine and hydromorphone rate effects set breath frequency separately from
+ventilatory drive (Olofsen 2026). The controller combines Olofsen's fractional
+opioid response with Bouillon's nonlinear alveolar CO₂ response. Hypoxic drive
+declines during sustained exposure and is attenuated by propofol and sevoflurane
+(Nieuwenhuijs 2000; Sarton 1996). Airway obstruction limits airflow while muscle
+effort continues.
 
-Hypoxic drive declines during sustained exposure and is attenuated by propofol
-and sevoflurane (Nieuwenhuijs 2000; Sarton 1996). Timing and extrapolation beyond
-these volunteer protocols use simulator calibrations.
+### Gas exchange and blood chemistry
 
-Measured breaths drive gas exchange. Lung and blood oxygen stores support
-preoxygenation, apnea, and blood loss responses and determine circuit oxygen
-uptake. Oxygen and inhaled anesthetics share lung gas volume and shunt. The A-a
-gradient follows sea-level means by age (Crapo 1999). Shunt mixing accounts for
-hemoglobin-bound and dissolved oxygen, with extraction limited to available
-oxygen.
-
-Behind an obstructed airway, absorbed gas shrinks the lung at near-atmospheric
-pressure until only the conducting airways hold gas, and the lower alveolar
-pressure promotes absorption atelectasis. Blood gases after clamping the
-tracheal tube follow Stock 1989. Ventilator mechanics and inhaled anesthetics
-keep the unshrunk volume. Opening the airway refills the lung with circuit gas
-(Laviola 2020); refill timing is estimated, and the pressure transient is not
-modeled.
+Ventilation exchanges gas with lung stores, which support preoxygenation, apnea,
+and blood loss responses and determine circuit oxygen uptake. Shunt mixes blood
+oxygen contents, including hemoglobin-bound and dissolved oxygen. The baseline
+A-a gradient follows sea-level means by age (Crapo 1999).
 
 [Gas transport](../anasim/physiology/gas_transport.py) carries oxygen, CO₂, and
-buffer base through well-mixed pulmonary capillary, arterial, and mixed venous
-blood, with shunt bypassing the lungs. Blood volumes scale with circulating
-volume. Two tissue groups from Magor-Elliott 2021 receive fixed shares of
-cardiac output and hold a calibrated half of the published CO₂ capacity, less
-the extracellular pool's share. Pulmonary capillary blood equilibrates with lung
-gas, so ventilation during cardiac arrest clears lung CO₂ while arterial blood
-keeps its contents. Respiratory CO₂ feedback follows arterial PCO₂. Comparisons
-cover acute human acid-base ranges, short and prolonged apnea with sustained
-oxygenation, and preceding hyperventilation. PaCO₂ rise during severe
-desaturation is unvalidated.
+buffer base through pulmonary capillary, arterial, and mixed venous blood, with
+shunt bypassing the lungs. Two tissue groups and an extracellular pool store CO₂
+with calibrated capacities (Magor-Elliott 2021; Wooten 2003). Blood flow
+controls exchange with these stores, and respiratory feedback follows arterial
+PCO₂. During cardiac arrest, ventilation clears lung CO₂ while arterial blood
+retains its contents.
 
-[Blood buffering](../anasim/physiology/blood_chemistry.py) follows Rees 2010 at
-37 °C. Venous blood renewed by cardiac output equilibrates with an extracellular
-pool of plasma-equivalent fluid at twice the blood volume (Wooten 2003), then
-mixes back into the venous pool. This flow-limited exchange is a simulator
-assumption; it conserves CO₂ and buffer base and stops without flow.
+Behind a closed airway, gas absorption shrinks the respiratory gas store and
+promotes absorption atelectasis. This absorbed volume is tracked separately from
+the bulk lung volume used by mechanics and inhaled agents. Opening the airway
+refills the store with circuit gas (Laviola 2020).
 
-Oxygen affinity follows Dash 2016's temperature, pH, and PCO₂ terms at reference
-2,3-DPG; combining the two models' red-cell pH relations is a simulator
-assumption. Affinity and Haldane shifts preserve oxygen and CO₂ amounts.
-Changes in Hb or hematocrit adjust the normal buffer contribution while
-preserving respiratory buffer-base changes. Hb/Hct ratios away from Rees's
-red-cell hemoglobin concentration are untested. Lactic acidosis, infusate
-electrolytes, and dynamic renal compensation are not modeled, so low-flow
-states and cardiac arrest show only respiratory acid-base changes.
+Blood-gas chemistry describes respiratory acid-base changes at 37 °C. [Blood
+buffering](../anasim/physiology/blood_chemistry.py) follows Rees 2010; oxygen
+affinity follows Dash 2016's temperature, pH, and PCO₂ terms at reference
+2,3-DPG. Exchange and affinity changes conserve CO₂, oxygen, and buffer base.
+Changes in hemoglobin or hematocrit adjust the normal buffer contribution while
+preserving respiratory buffer-base changes.
 
-### Ventilation mechanics
+### Respiratory mechanics and aeration
 
 The [mechanics model](../anasim/physiology/resp_mech.py) combines airway
 resistance, compliance, tissue viscoelasticity, and inspiratory muscle pressure.
-Compliance scales with predicted body weight and body mass index (BMI).
-[Lung aeration](../anasim/physiology/lung.py) depends on pressure history;
-recruitment and closure change gas volume, shunt, and compliance. Most lost
-aeration is the anesthetic fall in FRC (Hedenstierna 2015); its atelectatic
-part shunts at most about 10% of cardiac output (Tokics 1996). Flooded units
-shunt fully. Open-airway apnea times after 100, 80, and 60% O₂ match Edmark
-2003. Volume is continuous during PEEP and compliance changes.
+Body size and patient conditions set baseline mechanics. Ventilatory assistance
+reduces muscle effort, and inflation ends effort earlier under anesthesia.
+Airway and muscle pressures determine the intrathoracic pressure used for venous
+return.
 
-Alveolar nitrogen slows recurrent collapse (Rothen 1995); atelectatic shunt
-evolves separately from bulk FRC and compliance. Gas-dependent closure, assisted
-effort, and obstructed expiration use simulator calibrations.
+[Lung aeration](../anasim/physiology/lung.py) depends on pressure history.
+Recruitment and closure change gas volume, shunt, and compliance. Alveolar inert
+gas slows recurrent collapse. Atelectatic shunt evolves separately from bulk FRC
+and compliance (Rothen 1995). Bronchospasm increases expiratory resistance as
+volume falls and can limit flow, causing gas trapping and intrinsic positive
+end-expiratory pressure (PEEP).
 
-Ventilatory assistance reduces muscle effort. Inflation ends effort earlier
-under anesthesia. Airway and muscle pressures determine the intrathoracic
-pressure used for venous return. Bronchospasm increases expiratory resistance
-as volume falls and can limit flow, causing gas trapping and intrinsic PEEP.
+### Temperature
+
+Awake thermoregulation maintains baseline core temperature. Anesthesia reduces
+active regulation, increases heat loss, and redistributes core heat to the
+periphery (Matsukawa 1995). Temperature changes metabolic demand, and warming
+changes heat input. Opioids and neuromuscular block reduce shivering.
+
+### Anesthesia machine and ventilation
+
+The [circle system](../anasim/machine/circuit.py) mixes fresh gas with circuit
+gas and accounts for patient uptake, surplus gas spill, and ambient air
+entrainment when uptake exceeds fresh gas flow. Vaporizer output depends on
+flow, dial setting, and available agent. Oxygen supply failure stops oxygen and
+nitrous oxide delivery.
 
 The [ventilator](../anasim/machine/ventilator.py) uses GE Aisys CS2 modes and
 ranges. [Mode names](../README.md#features) are defined in the README.
@@ -346,84 +313,72 @@ ranges. [Mode names](../README.md#features) are defined in the README.
 | PSV | Cycles support according to inspiratory flow, with apnea backup ventilation |
 | CPAP | Maintains airway pressure during spontaneous breathing |
 
-Mandatory breaths include gas already inspired during spontaneous effort.
+Mandatory breaths include gas already inspired during patient effort.
 Inspiratory settings apply at the next breath; PEEP applies during expiration.
-Spirometry includes ventilated,
-bagged, and unassisted breaths. Expired tidal volume is the last completed
-breath's volume. Respiratory rate and minute ventilation use four-breath
-averages that clear after 15 seconds without a breath. Mask leak reduces
-measured gas delivery; tube obstruction raises resistance. Mean airway
-pressure over recent breaths, including unassisted ones, holds the pharynx open
-during mask ventilation.
+Mask leak reduces gas delivery, tube obstruction raises resistance, and mean
+airway pressure over recent breaths holds the pharynx open during mask
+ventilation.
 
-### Monitors
+## Monitors
 
-ECG, arterial pressure, and plethysmography share beat timing. The arterial
-waveform uses Mahdi 2017 pressure points with modeled MAP, stroke volume, and
-arterial compliance, which falls after age 40 (Franklin 1997). Catheter and
-transducer dynamics affect arterial-line measurements. Displayed heart rate
-averages beat intervals. Pulse oximetry requires an organized rhythm and
-adequate perfusion; poor perfusion delays it and reduces pleth amplitude.
+ECG, arterial pressure, and plethysmography share beat timing. Arterial
+waveforms reflect MAP, stroke volume, and age-dependent arterial compliance
+(Mahdi 2017; Franklin 1997). Catheter and transducer dynamics filter arterial
+pressure measurements. Heart rate averages beat intervals; pulse oximetry
+responds to rhythm and perfusion, with poor perfusion delaying readings and
+reducing plethysmographic amplitude.
 
-Airway pressure includes sensor filtering and expiratory valve resistance.
-Flow reflects gas moved during each sampling interval; volume is its filtered
-integral. Pressure-volume and flow-volume loops use synchronized samples.
-Patient effort can alter loops or reverse flow during a pressure plateau.
+Spirometry measures ventilated, bagged, and unassisted breaths. Expired tidal
+volume comes from completed breaths; respiratory rate and minute ventilation use
+recent breath averages. Pressure-volume and flow-volume loops use synchronized
+pressure, flow, and volume samples. Plateau pressure requires negligible flow
+and passive muscles. Displayed PEEP is airway pressure, while intrinsic PEEP
+affects plateau pressure and residual flow.
 
-VCV reports plateau pressure after an inspiratory pause. Pressure-control modes
-report it when end-inspiratory flow and its pressure drop are negligible.
-Plateau pressure is unavailable during patient effort. Displayed PEEP is airway
-pressure; intrinsic PEEP affects plateau pressure and residual flow.
+[Capnography](../anasim/monitors/capno.py) includes dead-space transit and
+analyzer lag. End-tidal readings clear when valid exhaled gas stops. Without an
+airway, impedance respiratory rate counts breathing effort, including during
+obstruction. The gas monitor displays end-tidal, age-adjusted MAC; anesthetic
+effects use brain MAC.
 
-[Capnography](../anasim/monitors/capno.py) tracks exhaled gas through dead space
-and analyzer lag. End-tidal values clear 15 seconds after valid exhaled CO₂
-stops. Without an airway, impedance respiratory rate counts breathing effort,
-including during obstruction. The gas monitor displays end-tidal, age-adjusted
-MAC; anesthetic effects use brain MAC.
-
-BIS includes processing delay and smoothing. The
-[neuromuscular monitor](../anasim/monitors/neuromuscular.py) measures TOF
-or single twitch on demand or at a set interval. TOF reports the twitch count
-and, with all four twitches, the T4/T1 ratio, qualified for weak trains. Single
-twitch reports T1 relative to an unblocked baseline. Display conventions follow
-TwitchView; intermediate twitch amplitudes and signal thresholds are simulator
-estimates.
-
-### Temperature and stimulation
-
-Awake thermoregulation holds core temperature at baseline. Anesthesia replaces
-it with passive heat loss in proportion to depth, and induction redistributes
-core heat to the periphery. Core temperature falls about 1.6 °C in the first
-hour and 2.8 °C by 3 hours (Matsukawa 1995). Stimulation-related BIS arousal
-scales with the probability of responding to laryngoscopy. HR and MAP responses
-use stronger Bouillon stimulus intensities, fitted to the remifentanil
-concentrations that blunted them in half of patients (Albertin 2005), and
-resolve over about 5 minutes (Ebert 1992; Ebert 1995). Laryngospasm can follow
-only the first 40 s of laryngoscopy.
+BIS includes processing delay and smoothing. The [neuromuscular
+monitor](../anasim/monitors/neuromuscular.py) samples TOF or single twitch on
+demand or at a set interval. TOF reports twitch count and, with all four
+twitches, the T4/T1 ratio. It flags ratios from weak twitches. Single twitch
+reports T1 relative to an unblocked baseline.
 
 ## Browser app
 
-The local and hosted apps share `anasim/web_assets/` and
+The local and hosted apps share `web_assets/` and
 [`WebSession`](../anasim/web.py), which applies commands and returns
-measurements, waveforms, controls, and scenario objectives.
+measurements, waveforms, controls, and scenario objectives. The transport keeps
+commands ordered, and simulation speed maps elapsed wall time to simulation
+time.
 
-The local server binds to 127.0.0.1 and accepts same-origin requests under a
-session-specific path. It advances simulation on its own clock. Reloading
-reconnects to the paused session. After five seconds without polling, the
-server pauses simulation and closes the recording.
+The local Python server advances the session on its own clock and writes CSV
+recordings to disk. It accepts same-origin requests under a session-specific
+path on 127.0.0.1. Reloading reconnects to the paused session; loss of polling
+pauses simulation and closes the recording.
 
-The hosted app runs Python in a Pyodide worker with NumPy and SciPy. Stopping
-a recording downloads the CSV. `scripts/build_web.py` creates `build/web`;
-[pages.yml](../.github/workflows/pages.yml) publishes the hosted app.
+The hosted app runs Python, NumPy, and SciPy in a Pyodide worker. Stopping a
+recording downloads the CSV. [`build_web.py`](../scripts/build_web.py) creates
+the hosted bundle, and [pages.yml](../.github/workflows/pages.yml) publishes it.
 
 ## Scenario objectives
 
 The action log records controls and clinical events with simulation times.
-Objectives check actions taken after activation, current monitor values, and
+Objectives combine actions taken since activation, current monitor values, and
 control state. Log positions distinguish actions performed at the same paused
-timestamp. Completion callbacks run once; the intubation objective starts the
-laryngoscopy stimulus. Shock recognition requires MAP below 65 mmHg and 20%
-below its value when the crisis started.
+timestamp, and completion callbacks run once. In induction scenarios, completing
+the intubation objective starts the laryngoscopy stimulus.
 
 Fluid objectives count requested bolus volume while delivery continues at the
 pump rate. Dosing instructions follow the session's TCI setting.
+
+## Validation
+
+Tests cover published equations, gas and drug conservation, monitor behavior,
+and integrated clinical scenarios in native Python and Pyodide. [Recorded-case
+comparisons](../validation/vitaldb/README.md) evaluate selected anesthetic and
+respiratory components against VitalDB data. Each comparison applies to the
+patients, conditions, and measurements it covers.

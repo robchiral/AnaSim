@@ -36,7 +36,7 @@ is the hosted app's Python runtime.
 | Settings controls or monitor display | `node --test tests/*.mjs` and browser checks |
 | Guided scenarios | `tests/test_scenarios.py`, `tests/test_action_log.py`, and a complete browser run of the changed scenario |
 | Local server | `tests/test_local.py` in native Python |
-| Documentation | Run changed examples, check links, and preserve citations and model limits |
+| Documentation | Run changed examples and check links |
 
 ```bash
 ruff check .
@@ -99,7 +99,7 @@ slow functions; measure timings without the profiler.
 
 ## Documentation and pull requests
 
-Keep model behavior, assumptions, calibrations, and limits in
+Keep model behavior and main modeling choices in
 [the architecture guide](docs/ARCHITECTURE.md#model-notes), inputs, units, and
 defaults in [CLI and Python usage](docs/CLI_USAGE.md#fields), and citations with
 brief topic labels in [Model references](docs/REFERENCES.md). Add user-visible

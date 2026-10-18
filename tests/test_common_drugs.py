@@ -9,59 +9,71 @@ from scipy.linalg import expm
 
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
+from anasim.patient.pd.anesthesia import opioid_rate_fraction
 from anasim.patient.pk_models import HydromorphonePK, MorphinePK
 from anasim.scenarios.base import require_tof_at_most
 
 
 @pytest.mark.parametrize(
-    "model_type,v1,rates,dose,half_life",
+    "model_type,v1,rates,dose,half_life,rr_half_life,c25,gamma",
     [
-        (MorphinePK, 20.0, (5.1, 4.3, 1.3, 1.2, 0.306), 14_000.0, 3.3 / 0.694),
-        (HydromorphonePK, 13.6 / 0.908, (6.1, 6.6, 1.6, 1.6, 0.41), 3500.0, 3.3 * 0.694),
+        (MorphinePK, 20.0, (5.1, 4.3, 1.3, 1.2, 0.306), 14_000.0,
+         3.3 / 0.694, 2.2 / 0.736, 7.7 / 0.518, 0.43 / 1.08),
+        (HydromorphonePK, 13.6 / 0.908, (6.1, 6.6, 1.6, 1.6, 0.41), 3500.0,
+         3.3 * 0.694, 2.2 * 0.736, 7.7 * 0.518, 0.43 * 1.08),
     ],
 )
-def test_opioid_two_hour_infusion_matches_source_odes(model_type, v1, rates, dose, half_life):
-    """Meissner 2025 Table 1 PK and the Olofsen 2026 respiratory effect site.
+def test_opioid_two_hour_infusion_matches_source_odes(
+    model_type, v1, rates, dose, half_life, rr_half_life, c25, gamma,
+):
+    """Meissner 2025 PK and Olofsen 2026 controller and rate effect sites.
 
-    The source amount equations are solved independently for the corrected
-    0.2 mg/kg morphine and 0.05 mg/kg hydromorphone infusions, through washout.
+    Independently solve the amount equations for 0.2 mg/kg morphine and
+    0.05 mg/kg hydromorphone over two hours, followed by washout.
     """
     model = model_type(Patient(age=28, weight=70, height=170, sex="male"))
     k10, k12, k21, k13, k31 = rates
     matrix = np.array([
-        [-k10 - k12 - k13, k21, k31, 0],
-        [k12, -k21, 0, 0], [k13, 0, -k31, 0],
-        [math.log(2) / half_life / v1, 0, 0, -math.log(2) / half_life],
+        [-k10 - k12 - k13, k21, k31, 0, 0],
+        [k12, -k21, 0, 0, 0], [k13, 0, -k31, 0, 0],
+        [math.log(2) / half_life / v1, 0, 0, -math.log(2) / half_life, 0],
+        [math.log(2) / rr_half_life / v1, 0, 0, 0, -math.log(2) / rr_half_life],
     ])
     transition = expm(matrix / 60.0)
-    input_vector = np.array([dose / 2.0, 0, 0, 0])  # mcg/h for two hours
+    input_vector = np.array([dose / 2.0, 0, 0, 0, 0])  # mcg/h for two hours
     equilibrium = np.linalg.solve(-matrix, input_vector)
-    expected = np.zeros(4)
+    expected = np.zeros(5)
     for minute in range(360):
-        target = equilibrium if minute < 120 else np.zeros(4)
+        target = equilibrium if minute < 120 else np.zeros(5)
         expected = transition @ (expected - target) + target
         model.step(60.0, dose / 7200.0 if minute < 120 else 0.0)
         if minute in (9, 119, 239, 359):
             assert model.state.c1 == pytest.approx(expected[0] / v1, rel=0.015)
             assert model.state.ce_resp == pytest.approx(expected[3], rel=0.015)
+            assert model.state.ce_rr == pytest.approx(expected[4], rel=0.015)
+            concentrations = (model.state.ce_rr, 0.0) if model_type is MorphinePK else (0.0, model.state.ce_rr)
+            expected_rate = 1.0 / (1.0 + (expected[4] / c25) ** gamma / 3.0)
+            assert opioid_rate_fraction(*concentrations) == pytest.approx(expected_rate, rel=0.005)
     assert model.state.ce_resp > model.state.c1
 
 
-@pytest.mark.parametrize("drug,dose,peak_hours", [
-    ("morphine", 0.2, (2.7, 8.3)),
-    ("hydromorphone", 0.05, (1.5, 4.5)),
+@pytest.mark.parametrize("drug,dose,peak_hours,rate_fraction,nadir_hours", [
+    ("morphine", 0.2, (2.7, 8.3), 0.740, (2.3, 2.8)),
+    ("hydromorphone", 0.05, (1.5, 4.5), 0.696, (2.0, 2.5)),
 ])
-def test_long_opioid_infusions_match_volunteer_breathing(engine_factory, advance_time, drug, dose, peak_hours):
+def test_long_opioid_infusions_follow_separate_respiratory_endpoints(
+    engine_factory, advance_time, drug, dose, peak_hours, rate_fraction, nadir_hours,
+):
     """Meissner 2023: 2-h infusions of morphine 0.2 or hydromorphone 0.05 mg/kg.
 
-    End-expired CO2 peaked 8-9 mmHg above baseline, 5.5 ± 2.8 h after starting
-    morphine and 3.0 ± 1.5 h after hydromorphone. Respiratory rate fell to
-    53-65% of baseline at its nadir.
+    CO2 checks use observed peak sizes and timing. Rate checks use Olofsen
+    2026 typical PK/PD predictions, independently reproduced above; the
+    observed mean rate nadirs (53-65% of baseline) remain a validation gap.
     """
     e = engine_factory(config=SimulationConfig(mode="awake", rng_seed=4), start=True)
     baseline_rr, baseline_co2 = e.state.rr, e.state.pa_co2
     e.set_drug_rate(drug, dose * e.patient.weight / 2.0)
-    peak_co2, peak_hour, min_rr = 0.0, 0.0, baseline_rr
+    peak_co2, peak_hour, min_rr, nadir_hour = 0.0, 0.0, baseline_rr, 0.0
     for minute in range(1, 4 * 60 + 1):
         advance_time(e, 60, dt=5.0)
         if minute == 120:
@@ -69,9 +81,11 @@ def test_long_opioid_infusions_match_volunteer_breathing(engine_factory, advance
             assert e.state.bis > 85.0
         if e.state.pa_co2 - baseline_co2 > peak_co2:
             peak_co2, peak_hour = e.state.pa_co2 - baseline_co2, minute / 60
-        min_rr = min(min_rr, e.state.rr)
+        if e.state.rr < min_rr:
+            min_rr, nadir_hour = e.state.rr, minute / 60.0
     assert 4.0 < peak_co2 < 12.0
-    assert 0.45 < min_rr / baseline_rr < 0.8
+    assert min_rr / baseline_rr == pytest.approx(rate_fraction, abs=0.02)
+    assert nadir_hours[0] < nadir_hour < nadir_hours[1]
     assert peak_hours[0] < peak_hour < peak_hours[1]
 
 

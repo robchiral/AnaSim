@@ -13,6 +13,7 @@ from .domain import (
     BMI_RANGE_KG_M2,
     COPD_SEVERITY_RANGE,
     CORONARY_FLOW_RESERVE_RANGE,
+    CREATININE_CLEARANCE_RANGE_ML_MIN,
     GESTATIONAL_AGE_RANGE_WEEKS,
     HEIGHT_RANGE_CM,
     HEMATOCRIT_RANGE,
@@ -38,6 +39,7 @@ class Patient:
     baseline_hb: float = 13.5
     baseline_hct: float | None = None
     renal_function: float = 1.0
+    creatinine_clearance_ml_min: float | None = None
     hepatic_function: float = 1.0
     coronary_flow_reserve: float = 5.0
     heart_failure: str = "none"
@@ -120,6 +122,11 @@ class Patient:
         self.renal_function = bounded_number(
             "renal_function", self.renal_function, *RENAL_FUNCTION_RANGE
         )
+        if self.creatinine_clearance_ml_min is not None:
+            self.creatinine_clearance_ml_min = bounded_number(
+                "creatinine_clearance_ml_min", self.creatinine_clearance_ml_min,
+                *CREATININE_CLEARANCE_RANGE_ML_MIN, unit="mL/min",
+            )
         self.hepatic_function = bounded_number(
             "hepatic_function", self.hepatic_function, *HEPATIC_FUNCTION_RANGE
         )
@@ -206,11 +213,13 @@ class Patient:
         return self.renal_function * self.pregnancy.filtration
 
     def creatinine_clearance(self) -> float:
-        """Estimated creatinine clearance (mL/min) for Kleijn's covariates.
+        """Absolute creatinine clearance (mL/min) for Kleijn's covariates.
 
-        Use Kleijn 2011's adult imputation for missing serum creatinine,
-        scaled by renal function. This surrogate does not use measured creatinine.
+        A supplied measurement already includes renal and pregnancy effects.
+        Otherwise use Kleijn 2011's adult imputation, scaled by renal function.
         """
+        if self.creatinine_clearance_ml_min is not None:
+            return self.creatinine_clearance_ml_min
         return (183.0 - 1.34 * self.age) * self.renal_clearance_factor
 
     def estimate_blood_volume(self) -> float:

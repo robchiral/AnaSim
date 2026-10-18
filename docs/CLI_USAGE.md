@@ -52,6 +52,7 @@ Save this configuration as `patient_config.json` for balanced maintenance.
 | `baseline_rr` | 12 | Respiratory rate, at least 0 breaths/min |
 | `baseline_vt` | `null` | Tidal volume, at least 50 mL; `null` defaults to the volume that keeps resting PaCO₂ at 40 mmHg, or lower in pregnancy |
 | `renal_function` | 1.0 | Renal-function factor, 0.4 to 1.0; `1.0` is normal |
+| `creatinine_clearance_ml_min` | `null` | Absolute creatinine clearance, 4.3 to 221 mL/min, for rocuronium and sugammadex; `null` estimates it from age and renal function |
 | `hepatic_function` | 1.0 | Hepatic-function factor, 0.5 to 1.0; `1.0` is normal |
 | `coronary_flow_reserve` | 5.0 | Maximal to resting coronary flow ratio, 1 to 5; 5 is normal |
 | `heart_failure` | `"none"` | `"none"`, `"hfref"` (reduced EF), or `"hfpef"` (preserved EF) |

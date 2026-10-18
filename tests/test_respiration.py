@@ -38,6 +38,25 @@ def test_opioid_slows_rate_and_propofol_reduces_depth(patient):
     assert propofol.rr / baseline.rr >= propofol_vt - 0.1
 
 
+def test_bradypnea_preserves_controller_ventilation_until_apnea(patient):
+    """A smooth opioid response must not halve ventilation again at RR 4.
+
+    Hold CO2 at baseline and seed the settled controller, as in a controlled
+    ventilatory-response protocol. The apnea cutoff still suppresses breaths.
+    """
+    for rate in (1.99, 2.01, 3.99, 4.01):
+        model = RespiratoryModel(patient)
+        remi = 2.0 * model.c50_remi * (1.0 - rate / model.rr_0)
+        model.initialize_drug_effects(0.0, remi)
+        state = model.step(0.0, ce_prop=0.0, ce_remi=remi, fio2=1.0)
+        if rate < 2.0:
+            assert state.apnea and state.rr == state.va == 0.0
+        else:
+            assert not state.apnea
+            assert state.rr == pytest.approx(rate)
+            assert state.va == pytest.approx(model.va_baseline * state.drive_central)
+
+
 @pytest.mark.parametrize("ce_prop", [2.0, 3.0, 6.0])
 def test_bouillon_spontaneous_steady_state_co2_and_alveolar_ventilation(patient, ce_prop):
     """Bouillon 2004 Eq. 18, with and without its CO2-production correction."""

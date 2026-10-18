@@ -124,6 +124,32 @@ def test_residual_block_increases_sedated_airway_collapse_but_preserves_awake_pa
     assert collapse[True, True] > 1.4 * collapse[True, False] > 0.05
 
 
+def test_near_recovered_tof_retains_pharyngeal_vulnerability(engine_factory, advance_time):
+    """Herbstreit 2009: closing-pressure reserve remains 16% below baseline
+    at normalized TOF 0.98. Transfer to sedated collapse is a calibration.
+    """
+    engines = [
+        engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
+        for _ in range(2)
+    ]
+    for engine in engines:
+        engine.set_continuous_fluid_rate(0.0)
+        engine.set_airway_mode("Mask")
+        engine.enable_tci("propofol", 2.5)
+        advance_time(engine, 600)
+    control, blocked = engines
+    blocked.give_drug_bolus("rocuronium", 0.2 * blocked.patient.weight)
+    for second in range(1, 3601):
+        for engine in engines:
+            engine.step(1.0)
+        if second >= 240 and blocked.state.tof >= 98.0:
+            break
+    assert 98.0 <= blocked.state.tof < 98.1
+    # A recovered thumb response still understates the airway's vulnerability.
+    ratio = blocked.state.airway_obstruction / control.state.airway_obstruction
+    assert 1.15 < ratio < 1.25
+
+
 def test_obstructed_airway_preserves_effort_without_restoring_ventilation(awake_engine):
     engine = awake_engine
     engine.resp.hcvr_slope_baseline = 0.0

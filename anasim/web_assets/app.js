@@ -168,6 +168,7 @@ function readSetup(form) {
   const f = form.elements;
   const params = { gestational_age_weeks: 0, position: "supine" };
   const numeric = ["age", "weight", "height", "baseline_hb"];
+  if (f.creatinine_clearance_ml_min.value !== "") numeric.push("creatinine_clearance_ml_min");
   if (f.pregnant.checked) numeric.push("gestational_age_weeks");
   for (const name of numeric) {
     const input = f[name];

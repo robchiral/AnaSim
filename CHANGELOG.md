@@ -12,7 +12,15 @@
   blood, tissue, and extracellular stores, so blood flow and stored CO₂ shape
   PaCO₂ and EtCO₂.
 - Added ephedrine, atropine, succinylcholine, hydromorphone, and morphine.
+  Morphine and hydromorphone have separate effects on respiratory rate and on
+  ventilatory drive and CO₂ response.
 - Replaced the TOF value with a TOF and single-twitch monitor.
+- Added measured creatinine clearance for rocuronium and sugammadex.
+- Applied renal perfusion only to the renal clearance left after renal
+  impairment.
+- Kept residual-block airway collapse until TOF fully recovers, matching the
+  pharyngeal closing-pressure change at a normalized TOF of 0.98.
+- Removed the extra halving of spontaneous rates between 2 and 4 breaths/min.
 - Added hypoxic breathing feedback, sustained hypoxic ventilatory decline, and
   anesthetic attenuation.
 - Made recurrent atelectatic shunt depend on alveolar inert gas separately from

@@ -111,6 +111,16 @@ def opioid_controller_fraction(morphine: float, hydromorphone: float) -> float:
     return 1.0 / (1.0 + morphine_units + hydromorphone_units)
 
 
+def opioid_rate_fraction(morphine: float, hydromorphone: float) -> float:
+    """Fraction of baseline RR (Olofsen 2026 Eq. 8, supplement Table 3).
+
+    C25 reduces rate by 25%; the two drugs' potency units are assumed to add.
+    """
+    morphine_units = (max(0.0, morphine) / (7.7 / 0.518)) ** (0.43 / 1.08)
+    hydromorphone_units = (max(0.0, hydromorphone) / (7.7 * 0.518)) ** (0.43 * 1.08)
+    return 1.0 / (1.0 + (morphine_units + hydromorphone_units) / 3.0)
+
+
 class BISModel:
     """Eleveld 2018 BIS, with a calibrated additive sevoflurane contribution.
 

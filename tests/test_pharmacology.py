@@ -7,7 +7,9 @@ from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import TOFModel
 from anasim.patient.pk_models import (
+    AtropinePK,
     EpinephrinePK,
+    GlycopyrrolatePK,
     MidazolamPK,
     MilrinonePK,
     PropofolPKEleveld,
@@ -161,8 +163,7 @@ def test_hemorrhage_increases_anesthetic_exposure_and_resuscitation_restores_pk(
 
 
 def test_organ_impairment_scales_pk():
-    """Hepatic impairment expands Vd; renal impairment slows rocuronium and
-    milrinone clearance but not propofol's."""
+    """Organ impairment affects each drug's distribution and elimination routes."""
     normal = Patient(age=40, weight=70, height=170, sex="male")
     renal = Patient(age=40, weight=70, height=170, sex="male", renal_function=0.4)
     both = Patient(
@@ -173,7 +174,45 @@ def test_organ_impairment_scales_pk():
     assert PropofolPKEleveld(renal).k10 == pytest.approx(PropofolPKEleveld(normal).k10)
     assert RocuroniumPK(both).v1 > RocuroniumPK(normal).v1 * 1.3
     assert RocuroniumPK(both).k10 < RocuroniumPK(normal).k10 * 0.7
-    assert MilrinonePK(renal).k10 < MilrinonePK(normal).k10 * 0.6
+    # Renal perfusion acts only on the renal clearance left after impairment.
+    for model_type, fraction in (
+        (AtropinePK, 0.568), (GlycopyrrolatePK, 0.7), (MilrinonePK, 0.9), (RocuroniumPK, 0.2),
+    ):
+        normal_model, renal_model = model_type(normal), model_type(renal)
+        assert renal_model.cl1 == pytest.approx(normal_model.cl1 * (1.0 - fraction + fraction * 0.4))
+        renal_model.update_hemodynamics(1.0, 1.0, renal_perfusion=0.5)
+        assert renal_model.cl1 == pytest.approx(normal_model.cl1 * (1.0 - fraction + fraction * 0.4 * 0.5))
+
+
+def test_measured_creatinine_clearance_separates_reversal_from_complex_elimination():
+    """Kleijn 2011: renal impairment prolongs complex retention, with rapid reversal.
+
+    Compare equal-age adults at measured CrCl 10 and 119 mL/min, keeping the
+    other organ-function factors equal to isolate the published CrCl covariates.
+    """
+    outcomes = {}
+    for clearance in (10.0, 119.0):
+        patient = Patient(age=43, weight=70, creatinine_clearance_ml_min=clearance)
+        roc = RocuroniumPK(patient)
+        pd = TOFModel(patient)
+        roc.state.c1 = 42.0 / roc.v1
+        reversal_s = None
+        for second in range(1, 7201):
+            roc.step(1.0, 0.0)
+            tof = pd.step_recovery(1.0, roc)
+            if second == 1800:
+                assert tof < 10.0
+                pd.give_sugammadex(280.0)
+            elif second > 1800 and reversal_s is None and tof >= 90.0:
+                reversal_s = second - 1800
+        assert reversal_s is not None and 20 < reversal_s < 180
+        complex_ = pd.complex
+        bound_amount = complex_.state.c1 * complex_.v1 + complex_.state.c2 * complex_.v2
+        outcomes[clearance] = roc.v1, complex_.elimination_clearance, bound_amount, reversal_s
+    assert outcomes[10.0][0] > outcomes[119.0][0]  # Rocuronium central distribution volume.
+    assert outcomes[10.0][1] < 0.1 * outcomes[119.0][1]
+    assert outcomes[10.0][2] > 1.5 * outcomes[119.0][2]
+    assert abs(outcomes[10.0][3] - outcomes[119.0][3]) < 30
 
 
 @pytest.mark.parametrize("volume_ratio", [0.5, 1.5])

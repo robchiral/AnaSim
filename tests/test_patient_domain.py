@@ -6,6 +6,7 @@ from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig, SimulationState
 from anasim.patient.domain import (
     AGE_RANGE_YEARS,
+    CREATININE_CLEARANCE_RANGE_ML_MIN,
     HEIGHT_RANGE_CM,
     HEMATOCRIT_RANGE,
     HEMOGLOBIN_RANGE_G_DL,
@@ -24,6 +25,7 @@ BOUNDARY_PATIENTS: tuple[dict[str, Any], ...] = (
         "baseline_hb": HEMOGLOBIN_RANGE_G_DL[0],
         "baseline_hct": HEMATOCRIT_RANGE[0],
         "renal_function": RENAL_FUNCTION_RANGE[0],
+        "creatinine_clearance_ml_min": CREATININE_CLEARANCE_RANGE_ML_MIN[0],
         "hepatic_function": HEPATIC_FUNCTION_RANGE[0],
     },
     {
@@ -34,6 +36,7 @@ BOUNDARY_PATIENTS: tuple[dict[str, Any], ...] = (
         "baseline_hb": HEMOGLOBIN_RANGE_G_DL[1],
         "baseline_hct": HEMATOCRIT_RANGE[1],
         "renal_function": RENAL_FUNCTION_RANGE[1],
+        "creatinine_clearance_ml_min": CREATININE_CLEARANCE_RANGE_ML_MIN[1],
         "hepatic_function": HEPATIC_FUNCTION_RANGE[1],
     },
     {"age": 40, "weight": 72.0, "height": HEIGHT_RANGE_CM[1], "sex": "male"},
@@ -112,6 +115,10 @@ def test_invalid_patient_values_are_rejected():
         ({"baseline_hct": 0.61}, "baseline_hct"),
         ({"baseline_hb": 8.0, "baseline_hct": 0.42}, "grossly inconsistent"),
         ({"renal_function": 0.39}, "renal_function"),
+        ({"creatinine_clearance_ml_min": float("nan")}, "creatinine_clearance_ml_min"),
+        ({"creatinine_clearance_ml_min": True}, "creatinine_clearance_ml_min"),
+        ({"creatinine_clearance_ml_min": 4.2}, "creatinine_clearance_ml_min"),
+        ({"creatinine_clearance_ml_min": 221.1}, "creatinine_clearance_ml_min"),
         ({"hepatic_function": 1.01}, "hepatic_function"),
         ({"weight": 50.0, "height": 200.0}, "bmi"),
         ({"weight": 200.0, "height": 150.0}, "bmi"),

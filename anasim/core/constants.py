@@ -8,9 +8,8 @@ BLOOD_VOLUME_MIN = 500.0  # mL
 
 CMH2O_TO_MMHG = 0.7356
 
-# Spontaneous rates (breaths/min): apnea below 2, irregular bradypnea 2-4.
+# Spontaneous rates below 2 breaths/min count as apnea.
 RR_APNEA_THRESHOLD = 2.0
-RR_BRADYPNEA_THRESHOLD = 4.0
 VT_MIN = 50.0  # mL; smaller breaths count as apnea
 
 # Hill function guards.

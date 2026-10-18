@@ -58,7 +58,7 @@ depending on the drug.
 AnaSim supports adults aged 18 to 70 years within the
 [input limits](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md#fields).
 The [architecture guide](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md#supported-patient-domain)
-describes source populations, simulator calibrations, and model limits.
+describes how the models represent patient conditions.
 
 ## Headless use
 

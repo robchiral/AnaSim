@@ -18,8 +18,10 @@ PATIENT = dict(age=40, weight=70, height=170, sex="male")
 def test_condition_inputs_and_maternal_position_round_trip_through_browser_protocol():
     session = WebSession({**PATIENT, "sex": "female", "weight": 140, "mode": "awake",
                           "heart_failure": "hfpef", "copd_severity": 0.65,
-                          "coronary_flow_reserve": 2, "gestational_age_weeks": 36})
+                          "coronary_flow_reserve": 2, "gestational_age_weeks": 36,
+                          "creatinine_clearance_ml_min": 30.0})
     info = parse(session.info())["patient"]
+    assert info["creatinine_clearance_ml_min"] == session.engine.patient.creatinine_clearance() == 30.0
     assert info["heart_failure"] == "hfpef"
     assert info["copd_severity"] == 0.65 and info["coronary_flow_reserve"] == 2
     assert info["gestational_age_weeks"] == 36 and info["weight"] == 140

@@ -181,15 +181,19 @@ class TOFModel:
         return 1.0 - tof ** (1.0 / TOF_FADE_EXPONENT)
 
     def pharyngeal_tone_fraction(self, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
-        """Closing-pressure reserve (Herbstreit 2009: 37% loss at TOF 0.8, 54% at 0.5).
+        """Closing-pressure reserve (Herbstreit 2009), using normalized TOF.
 
-        Interpolation and coupling to hypnotic collapse are calibrations.
+        Reserve loss was 54%, 37%, and 16% at normalized TOF 0.48, 0.79,
+        and 0.98. Interpolation to baseline at TOF 1 and coupling to hypnotic
+        collapse are calibrations. Separate recovery kinetics are unmodeled.
         """
         tof = self.compute_tof_from_ce(self.ce, mac_sevo, mac_n2o) / 100.0
-        if tof >= 0.8:
-            reduction = 0.37 * (1.0 - tof) / 0.2
+        if tof >= 0.98:
+            reduction = 0.16 * (1.0 - tof) / 0.02
+        elif tof >= 0.79:
+            reduction = 0.16 + 0.21 * (0.98 - tof) / 0.19
         else:
-            reduction = 0.37 + 0.17 * clamp01((0.8 - tof) / 0.3)
+            reduction = 0.37 + 0.17 * clamp01((0.79 - tof) / 0.31)
         return 1.0 - reduction
 
 

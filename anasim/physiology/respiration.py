@@ -1,12 +1,7 @@
 import math
 from dataclasses import dataclass
 
-from anasim.core.constants import (
-    RR_APNEA_THRESHOLD,
-    RR_BRADYPNEA_THRESHOLD,
-    TEMP_METABOLIC_COEFFICIENT,
-    VT_MIN,
-)
+from anasim.core.constants import RR_APNEA_THRESHOLD, TEMP_METABOLIC_COEFFICIENT, VT_MIN
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import ROCURONIUM_T1_EC50
@@ -169,6 +164,7 @@ class RespiratoryModel:
         awake_metabolism = max(0.5, TEMP_METABOLIC_COEFFICIENT ** (37.0 - patient.baseline_temp))
         self.equilibrate_blood_gases(self.baseline_co_l_min, self.vco2 / 1000.0 * awake_metabolism)
         self._resting_pco2: float | None = None
+        self._rate_pco2_reference = self.paco2_setpoint
         self._resting_age_s = 0.0
         # Perfusion effect on deadspace fraction (low flow increases VD/VT).
         self.perfusion_deadspace_gain = 0.25
@@ -434,7 +430,8 @@ class RespiratoryModel:
              measured_breaths: bool = False,
              unconscious: float = 0.0, lung_volume_l: float | None = None,
              shunt_fraction: float = 0.0, temp_c: float = 37.0,
-             opioid_controller_fraction: float = 1.0, neuromuscular_strength: float = 1.0) -> RespState:
+             opioid_controller_fraction: float = 1.0, neuromuscular_strength: float = 1.0,
+             opioid_rate_fraction: float = 1.0) -> RespState:
         """Advance respiration by dt seconds.
 
         Args:
@@ -462,6 +459,7 @@ class RespiratoryModel:
             temp_c: Blood temperature for hemoglobin O2 affinity, degrees C.
             opioid_controller_fraction: Fraction of baseline ventilation and CO2 gain remaining.
             neuromuscular_strength: Muscle strength remaining after depolarizing block, 0-1.
+            opioid_rate_fraction: Fraction of baseline RR from morphine and hydromorphone.
         """
         transport = self.gas_transport
         blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else blood_volume_ml
@@ -482,6 +480,7 @@ class RespiratoryModel:
                     hb_g_dl, hematocrit, cardiac_output, metabolic_factor, blood_volume_ml,
                     measured_breaths, unconscious, lung_volume_l, shunt_fraction, temp_c,
                     opioid_controller_fraction, neuromuscular_strength,
+                    opioid_rate_fraction,
                 )
             return self.state
         state = self.state
@@ -499,11 +498,12 @@ class RespiratoryModel:
         # At Ce_prop=1 the opioid C50 is 0.84 * 1.6 ng/mL (Olofsen).
         # Interpolation to other propofol concentrations is a teaching assumption.
         remi_c50 = self.c50_remi * (1.0 - 0.32 * max(0.0, ce_prop) / (1.0 + max(0.0, ce_prop)))
-        gain = self.hcvr_slope_baseline / 2.2 * (0.42 / 7.2)
-        gain *= prop_keep ** (self.prop_co2_gain_exponent - 1.0) * sevo_keep
+        baseline_gain = self.hcvr_slope_baseline / 2.2 * (0.42 / 7.2)
+        gain = baseline_gain * prop_keep ** (self.prop_co2_gain_exponent - 1.0) * sevo_keep
         co2_excess = max(0.0, state.pa_co2 - self.paco2_setpoint)
         opioid_reference = 1.0 + gain * co2_excess
         long_opioid_keep = clamp01_local(opioid_controller_fraction)
+        long_opioid_rate = clamp01_local(opioid_rate_fraction)
         target_drive = opioid_reference * long_opioid_keep - 0.5 * max(0.0, ce_remi) / remi_c50
         # Keep the controller signed during apnea. Clipping its internal state
         # discards drug inhibition and makes recovery too early.
@@ -511,16 +511,25 @@ class RespiratoryModel:
         self._ventilatory_drive += alpha * (target_drive - self._ventilatory_drive)
         self._resting_age_s += dt
         if self._resting_pco2 is None or self._resting_age_s >= self.RESTING_PCO2_INTERVAL_S:
+            # The RR curve includes the infusion's CO2 rise. Extra rate feedback
+            # starts above the resting PCO2 predicted for the long opioid alone.
+            self._rate_pco2_reference = self.paco2_setpoint
+            if long_opioid_keep < 1.0:
+                self._rate_pco2_reference = self._solve_resting_pco2(
+                    1.0, 1.0, 1.0, 0.0, baseline_gain,
+                    0.0, 1.0, long_opioid_keep, long_opioid_rate,
+                )
             self._resting_pco2 = self._solve_resting_pco2(
                 prop_keep, sevo_keep, muscle_factor, unconscious, gain,
                 0.5 * max(0.0, ce_remi) / remi_c50, max(0.1, float(metabolic_factor)),
-                long_opioid_keep,
+                long_opioid_keep, long_opioid_rate,
             )
             self._resting_age_s = 0.0
         effort_rr, effort_vt, drive_central = self._unassisted(
             state.pa_co2, prop_keep, sevo_keep, muscle_factor,
             unconscious, opioid_reference, resting_pco2=self._resting_pco2,
             hypoxic_drive=opioid_reference * self._step_hypoxic_control(dt, ce_prop, mac_sevo),
+            opioid_controller_fraction=long_opioid_keep, opioid_rate_fraction=long_opioid_rate,
         )
         state.effort_rr, state.effort_vt = effort_rr, effort_vt
         current_rr = effort_rr
@@ -704,9 +713,11 @@ class RespiratoryModel:
         remi_c50 = self.c50_remi * (1.0 - 0.32 * ce_prop / (1.0 + ce_prop))
         self._ventilatory_drive = 1.0 - 0.5 * ce_remi / remi_c50
 
-    def _solve_resting_pco2(self, prop_keep: float, sevo_keep: float, muscle_factor: float,
-                       unconscious: float, gain: float, opioid_shift: float,
-                       metabolic_factor: float, opioid_controller_fraction: float = 1.0) -> float:
+    def _solve_resting_pco2(
+        self, prop_keep: float, sevo_keep: float, muscle_factor: float,
+        unconscious: float, gain: float, opioid_shift: float, metabolic_factor: float,
+        opioid_controller_fraction: float = 1.0, opioid_rate_fraction: float = 1.0,
+    ) -> float:
         """Alveolar PCO2 at which unassisted breathing removes the CO2 produced.
 
         The opioid controller is taken at equilibrium. Without drugs this is the set point.
@@ -715,8 +726,12 @@ class RespiratoryModel:
 
         def removed(pco2: float) -> float:
             reference = 1.0 + gain * max(0.0, pco2 - self.paco2_setpoint)
-            rr, vt, _ = self._unassisted(pco2, prop_keep, sevo_keep, muscle_factor, unconscious,
-                                         reference, controller=reference * opioid_controller_fraction - opioid_shift)
+            rr, vt, _ = self._unassisted(
+                pco2, prop_keep, sevo_keep, muscle_factor, unconscious, reference,
+                controller=reference * opioid_controller_fraction - opioid_shift,
+                opioid_controller_fraction=opioid_controller_fraction,
+                opioid_rate_fraction=opioid_rate_fraction,
+            )
             return rr * max(0.0, vt / 1000.0 - self.vd_deadspace) * pco2
 
         low, high = self.paco2_setpoint, self.RESTING_PCO2_MAX
@@ -732,32 +747,42 @@ class RespiratoryModel:
                 high = middle
         return 0.5 * (low + high)
 
-    def _unassisted(self, pco2: float, prop_keep: float, sevo_keep: float,
-                    muscle_factor: float,
-                    unconscious: float, opioid_reference: float,
-                    controller: float | None = None,
-                    resting_pco2: float | None = None,
-                    hypoxic_drive: float = 0.0) -> tuple[float, float, float]:
+    def _unassisted(
+        self, pco2: float, prop_keep: float, sevo_keep: float, muscle_factor: float,
+        unconscious: float, opioid_reference: float, controller: float | None = None,
+        resting_pco2: float | None = None, hypoxic_drive: float = 0.0,
+        opioid_controller_fraction: float = 1.0, opioid_rate_fraction: float = 1.0,
+    ) -> tuple[float, float, float]:
         """Convert normalized alveolar demand to a rate and tidal volume.
 
-        Opioids mainly slow rate; hypnotics mainly reduce depth. This split and
-        the awake hypocapnic response are teaching approximations.
+        Morphine and hydromorphone have separate rate and controller curves.
+        Their combination with CO2 feedback and other drugs is a simulator
+        assumption, as is the awake hypocapnic response.
         """
-        controller = max(0.0, (self._ventilatory_drive if controller is None else controller) + hypoxic_drive)
+        controller = self._ventilatory_drive if controller is None else controller
+        # The controller sets alveolar demand. Rate adds back the long-opioid
+        # share, which the separate rate curve applies, so it is not applied
+        # twice and remifentanil's rate effect is unchanged.
+        rate_controller = max(
+            0.0, controller + opioid_reference * (1.0 - opioid_controller_fraction) + hypoxic_drive,
+        )
+        controller = max(0.0, controller + hypoxic_drive)
         # Transfer the opioid controller as a fraction of its drug-free response
         # at the same CO2, then apply Bouillon's nonlinear alveolar response.
         co2_exponent = self.CO2_RESPONSE_EXPONENT * self.hcvr_slope_baseline / 2.2
         co2_response = (max(self.paco2_setpoint, pco2) / self.paco2_setpoint) ** co2_exponent
         response_fraction = controller / opioid_reference * co2_response
         drive = min(self.MAX_ALVEOLAR_DRIVE, response_fraction * prop_keep * sevo_keep)
-        rate_fraction = min(1.0, controller)
-        if controller > 1.0:
+        rate_fraction = min(1.0, rate_controller)
+        if rate_controller > 1.0:
             rate_fraction += min(
-                0.6 * (response_fraction - 1.0),
-                (0.06 + 0.04 * unconscious) * max(0.0, pco2 - self.paco2_setpoint - self.RATE_CO2_GAP)
+                0.6 * (rate_controller / opioid_reference * co2_response - 1.0),
+                (0.06 + 0.04 * unconscious) * max(0.0, pco2 - self._rate_pco2_reference - self.RATE_CO2_GAP)
                 + 0.3 * hypoxic_drive,
             )
-        rate_fraction *= (0.6 + 0.4 * prop_keep) * (0.6 + 0.4 * sevo_keep)
+        rate_fraction *= opioid_rate_fraction * (0.6 + 0.4 * prop_keep) * (0.6 + 0.4 * sevo_keep)
+        if controller == 0.0:
+            rate_fraction = 0.0
         rr = self.rr_0 * rate_fraction
         # Add dead space after allocating the alveolar demand to breaths.
         # Applying drug depression to total VT would subtract dead space twice.
@@ -778,8 +803,6 @@ class RespiratoryModel:
             vt *= unconscious + (1.0 - unconscious) * awake_kept
         if rr < RR_APNEA_THRESHOLD or vt < max(100.0, VT_MIN):
             rr = vt = 0.0
-        elif rr < RR_BRADYPNEA_THRESHOLD:
-            rr *= 0.5
         return rr, vt, drive
 
     def _aa_gradient(self, vq_mismatch: float) -> float:

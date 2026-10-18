@@ -32,6 +32,7 @@ class PKState:
     ce: float = 0.0  # Effect site
     ce_response: float = 0.0  # Propofol clinical response
     ce_resp: float = 0.0  # Respiratory depression
+    ce_rr: float = 0.0  # Morphine/hydromorphone respiratory rate
     ce_cv: float = 0.0  # Ketamine cardiovascular effect
     ce_transit: float = 0.0  # Transit before the primary effect site
 
@@ -252,6 +253,15 @@ def organ_clearance_scaler(patient: Patient, hepatic_fraction: float = 0.0, rena
     return hepatic_fraction * hepatic + renal_fraction * renal + other
 
 
+def renal_capacity_scaling(patient: Patient, renal_fraction: float) -> tuple[float, float]:
+    """Clearance scale for renal capacity, and the renal share of the scaled clearance.
+
+    Renal perfusion acts only on the renal share left after the capacity change.
+    """
+    scale = organ_clearance_scaler(patient, renal_fraction=renal_fraction)
+    return scale, renal_fraction * patient.renal_clearance_factor / scale
+
+
 def hepatic_vd_multiplier(patient: Patient, severe_multiplier: float) -> float:
     """Scale volumes with hepatic impairment; severe impairment is hepatic_function 0.5."""
     severity = (1.0 - patient.hepatic_function) / 0.5
@@ -413,7 +423,10 @@ class MorphinePK(MammillaryPK):
         super().__init__(
             **params, **_NO_CO_COVARIATE,
             ke0=math.log(2.0) / (0.73 / 1.02 * 60.0),
-            additional_effect_sites=(("ce_resp", math.log(2.0) / (3.3 / 0.694 * 60.0)),),
+            additional_effect_sites=(
+                ("ce_resp", math.log(2.0) / (3.3 / 0.694 * 60.0)),
+                ("ce_rr", math.log(2.0) / (2.2 / 0.736 * 60.0)),
+            ),
         )
 
 
@@ -426,7 +439,10 @@ class HydromorphonePK(MammillaryPK):
         super().__init__(
             **params, **_NO_CO_COVARIATE,
             ke0=math.log(2.0) / (0.73 * 1.02 * 60.0),
-            additional_effect_sites=(("ce_resp", math.log(2.0) / (3.3 * 0.694 * 60.0)),),
+            additional_effect_sites=(
+                ("ce_resp", math.log(2.0) / (3.3 * 0.694 * 60.0)),
+                ("ce_rr", math.log(2.0) / (2.2 * 0.736 * 60.0)),
+            ),
         )
 
 
@@ -435,13 +451,16 @@ class AtropinePK(MammillaryPK):
     k21 0.0557 /min), in ng/mL.
 
     ke0 = k21 links HR to the peripheral compartment (part II). Weight scaling
-    from the cohort's 72.3 kg mean is a simulator assumption.
+    from the cohort's 72.3 kg mean and proportional renal-capacity scaling of
+    the 56.8% renal fraction are simulator assumptions.
     """
 
     def __init__(self, patient: Patient):
         v1 = 19.1 * patient.weight / 72.3
         params = _from_rate_constants(v1, 1.175 / 19.1, 0.56, 0.0557, 0.0, 0.0)
-        super().__init__(**params, ke0=0.0557, renal_fraction=0.568, **_NO_CO_COVARIATE)
+        clearance_scale, renal_fraction = renal_capacity_scaling(patient, 0.568)
+        params["cl1"] *= clearance_scale
+        super().__init__(**params, ke0=0.0557, renal_fraction=renal_fraction, **_NO_CO_COVARIATE)
 
 
 class EphedrinePK(MammillaryPK):
@@ -606,11 +625,12 @@ class RocuroniumPK(MammillaryPK):
             "cl2": 0.279 * size**0.75,
         }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.4))
-        params["cl1"] *= organ_clearance_scaler(patient, renal_fraction=self.RENAL_FRACTION)
+        clearance_scale, renal_fraction = renal_capacity_scaling(patient, self.RENAL_FRACTION)
+        params["cl1"] *= clearance_scale
         # Kleijn's patients were anesthetized, so his parameters already reflect
         # anesthetic cardiac output.
         super().__init__(
-            ke0=0.134 * size**-0.25, renal_fraction=self.RENAL_FRACTION, **_NO_CO_COVARIATE, **params,
+            ke0=0.134 * size**-0.25, renal_fraction=renal_fraction, **_NO_CO_COVARIATE, **params,
         )
 
 
@@ -692,8 +712,8 @@ class MilrinonePK(MammillaryPK):
 
     def __init__(self, patient: Patient):
         w = patient.weight
-        cl1 = 0.13 * w / 60.0 * organ_clearance_scaler(patient, renal_fraction=0.9)
-        super().__init__(v1=0.45 * w, cl1=cl1, ke0=0.12, renal_fraction=0.9)
+        clearance_scale, renal_fraction = renal_capacity_scaling(patient, 0.9)
+        super().__init__(v1=0.45 * w, cl1=0.13 * w / 60.0 * clearance_scale, ke0=0.12, renal_fraction=renal_fraction)
 
 
 # Adrenergic and muscarinic antagonists ----------------------------------------
@@ -738,10 +758,11 @@ class GlycopyrrolatePK(MammillaryPK):
 
     def __init__(self, patient: Patient):
         size = patient.weight / 61.3
+        clearance_scale, renal_fraction = renal_capacity_scaling(patient, 0.7)
         super().__init__(
             v1=10.38 * size,
-            cl1=49.76 / 60.0 * size**0.75 * organ_clearance_scaler(patient, renal_fraction=0.7),
-            renal_fraction=0.7,
+            cl1=49.76 / 60.0 * size**0.75 * clearance_scale,
+            renal_fraction=renal_fraction,
             v2=21.41 * size,
             cl2=6.54 / 60.0 * size**0.75,
             v3=11.0 * size,

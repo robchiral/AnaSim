@@ -29,6 +29,7 @@ PATIENT_FIELDS = (
     "sex",
     "baseline_hb",
     "renal_function",
+    "creatinine_clearance_ml_min",
     "hepatic_function",
     "coronary_flow_reserve",
     "heart_failure",
@@ -74,6 +75,7 @@ def catalog() -> str:
             "weight": domain.WEIGHT_RANGE_KG,
             "height": domain.HEIGHT_RANGE_CM,
             "baseline_hb": domain.HEMOGLOBIN_RANGE_G_DL,
+            "creatinine_clearance_ml_min": domain.CREATININE_CLEARANCE_RANGE_ML_MIN,
             "gestational_age_weeks": domain.GESTATIONAL_AGE_RANGE_WEEKS,
         },
     })
@@ -158,6 +160,7 @@ class WebSession:
                 "sex": patient.sex,
                 "weight": patient.weight,
                 "renal_status": patient.renal_status,
+                "creatinine_clearance_ml_min": patient.creatinine_clearance_ml_min,
                 "hepatic_status": patient.hepatic_status,
                 "coronary_flow_reserve": patient.coronary_flow_reserve,
                 "heart_failure": patient.heart_failure,

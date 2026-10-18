@@ -8,6 +8,7 @@ from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
 from anasim.patient.pd.anesthesia import (
     LARYNGOSCOPY_INTENSITY,
     opioid_controller_fraction,
+    opioid_rate_fraction,
 )
 from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
 
@@ -272,6 +273,9 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         ce_remi=opioid_equivalent(engine.pk["remi"].state.ce_resp, state.fentanyl_ce),
         opioid_controller_fraction=opioid_controller_fraction(
             engine.pk["morphine"].state.ce_resp, engine.pk["hydromorphone"].state.ce_resp,
+        ),
+        opioid_rate_fraction=opioid_rate_fraction(
+            engine.pk["morphine"].state.ce_rr, engine.pk["hydromorphone"].state.ce_rr,
         ),
         mech_vent_mv=assisted_rr * assisted_vt_l,
         fio2=state.fio2,
