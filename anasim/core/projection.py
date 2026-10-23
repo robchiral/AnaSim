@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
 from anasim.patient.pd.anesthesia import (
     LARYNGOSCOPY_INTENSITY,
+    PROPOFOL_LOC_TRANSFER,
     opioid_controller_fraction,
     opioid_rate_fraction,
 )
@@ -89,7 +90,7 @@ def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> floa
     """
     state = engine.state
     hypnotic = hypnotic_equivalent(
-        engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
+        PROPOFOL_LOC_TRANSFER * engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
         engine.pk["midazolam"].state.ce, engine.midazolam_c50, engine.response.age_factor,
     )
     return engine.response.loss_of_response(
@@ -112,6 +113,23 @@ def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY
         ce_ketamine=state.ketamine_ce,
         ce_lidocaine=state.lidocaine_ce,
         intensity=intensity,
+    )
+
+
+def cardiovascular_response_fractions(engine: SimulationEngine, intensity: float) -> tuple[float, float]:
+    """Pressure and HR stimulus fractions, separate from movement and EEG arousal.
+
+    The fractions are calibrated at steady propofol concentrations, so propofol
+    enters at its BIS effect site; the faster response site reads about twice as
+    high early after induction and would block the intubation response.
+    """
+    state = engine.state
+    return engine.response.cardiovascular_response_fractions(
+        state.hypnotic_ce,
+        opioid_equivalent(engine.pk["remi"].state.ce, 0.0, state.morphine_ce, state.hydromorphone_ce),
+        mac_sevo=state.mac_sevo, mac_n2o=state.mac_n2o,
+        ce_ketamine=state.ketamine_ce, ce_lidocaine=state.lidocaine_ce,
+        intensity=intensity, ce_fentanyl=state.fentanyl_ce,
     )
 
 

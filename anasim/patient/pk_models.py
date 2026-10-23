@@ -33,7 +33,8 @@ class PKState:
     ce_response: float = 0.0  # Propofol clinical response
     ce_resp: float = 0.0  # Respiratory depression
     ce_rr: float = 0.0  # Morphine/hydromorphone respiratory rate
-    ce_cv: float = 0.0  # Ketamine cardiovascular effect
+    ce_cv: float = 0.0  # Ketamine cardiac-output effect
+    ce_hr: float = 0.0  # Ketamine chronotropy
     ce_transit: float = 0.0  # Transit before the primary effect site
 
 
@@ -467,7 +468,7 @@ class EphedrinePK(MammillaryPK):
     """Persky 2004 apparent oral disposition, transferred to IV use (ng/mL).
 
     Bioavailability of one and weight-linear V/CL are assumptions.
-    The one-minute effect-site time constant is calibrated to IV responses.
+    The one-minute effect-site time constant is calibrated.
     """
 
     def __init__(self, patient: Patient):
@@ -555,9 +556,10 @@ class KetaminePK(MammillaryPK):
 
     CL 84, Q2 161, and Q3 79 L/h and V1 25, V2 56, and V3 157 L at 70 kg;
     clearance is hepatic. AnaSim sets ke0 for loss of consciousness within
-    about a minute. The separate cardiovascular site uses Kamp 2021's
+    about a minute. The cardiac-output site uses Kamp 2021's
     equilibration half-time of 2.28 min; its transfer to total racemic
-    ketamine concentrations is an assumption.
+    ketamine concentrations is an assumption. The separate HR half-time of
+    0.7 min is calibrated to Bovill 1972's peak within the first 3 min.
     """
 
     def __init__(self, patient: Patient):
@@ -571,7 +573,7 @@ class KetaminePK(MammillaryPK):
             v3=157.0 * size,
             cl3=79.0 / 60.0 * size**0.75,
             ke0=0.5,
-            additional_effect_sites=(("ce_cv", math.log(2.0) / 2.28),),
+            additional_effect_sites=(("ce_cv", math.log(2.0) / 2.28), ("ce_hr", math.log(2.0) / 0.7)),
         )
 
 

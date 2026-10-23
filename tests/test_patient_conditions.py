@@ -191,7 +191,10 @@ def test_combined_conditions_start_and_run_with_finite_drug_and_physiology_outpu
     state = engine.state
     assert engine.vent.settings.tv <= 8.0 * patient.predicted_body_weight()
     assert engine.vent.settings.rr <= 18.0
-    assert all(math.isfinite(value) for value in asdict(state).values() if isinstance(value, float))
+    # Plateau and dynamic compliance are blank when breathing effort coincides with a mandatory breath.
+    unmeasured = {"paw_plat", "compliance_dyn"}
+    assert all(math.isfinite(value) for key, value in asdict(state).items()
+               if isinstance(value, float) and key not in unmeasured)
     assert 20 < state.map < 160 and 0 < state.co < 20
     assert 25 < state.pa_co2 < 50 and 7.25 < state.ph < 7.55
     assert 30 < state.bis < 65 and state.sao2 > 94

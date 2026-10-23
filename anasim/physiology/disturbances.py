@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -31,6 +32,8 @@ class DisturbanceProfileSpec:
     label: str
     points: np.ndarray
     sympathetic_intensity: float
+    tonic_svr_fraction: float = 0.0  # Plateau rise in resistance that anesthetics do not block
+    tonic_onset_s: float = 0.0  # Time constant of that rise
     finite: bool = False
     airway_stimulus_s: float = 0.0  # Instrumentation that can provoke laryngospasm
 
@@ -39,24 +42,47 @@ class DisturbanceProfileSpec:
         """Return the endpoint for a finite profile."""
         return float(self.points[-1, _PROFILE_COL_TIME]) if self.finite else None
 
+    @property
+    def established_s(self) -> float:
+        """Elapsed time after which a sustained profile has reached its plateau."""
+        return max(float(self.points[-1, _PROFILE_COL_TIME]), 5.0 * self.tonic_onset_s)
+
+    def tonic_svr(self, elapsed_s: float, tpr_wood: float) -> float:
+        """Unblocked vasoconstriction (Wood units) `elapsed_s` into the profile."""
+        progress = -math.expm1(-elapsed_s / self.tonic_onset_s) if self.tonic_onset_s > 0.0 else 1.0
+        return self.tonic_svr_fraction * tpr_wood * progress
+
 
 # Without opioid, intubation after propofol or at 1 MAC sevoflurane raised HR
-# 36-38 bpm and MAP 35-40 mmHg (Ebert 1992; Ebert 1995). The response peaks
-# within a minute and resolves over about 5 minutes.
-_INTUBATION_PEAK = (12.0, 36.0, 1.5, 2.0)  # BIS, HR, SVR, SV deltas
-_INTUBATION_SHAPE = ((0.0, 0.0), (15.0, 0.6), (40.0, 1.0), (90.0, 0.6), (180.0, 0.25), (300.0, 0.0))
-
+# 36-38 bpm and MAP 35-40 mmHg (Ebert 1992; Ebert 1995). HR recovers within
+# 3 min and pressure within 5; HR recovery and the SV/SVR split are calibrated
+# to Billard 1994 and Sawano 2013.
 PROFILE_SPECS = {
     "stim_intubation_pulse": DisturbanceProfileSpec(
         label="Intubation / Short Stimulus",
         sympathetic_intensity=1.64,
         finite=True,
         airway_stimulus_s=40.0,
-        points=np.array([[t, *(peak * share for peak in _INTUBATION_PEAK)] for t, share in _INTUBATION_SHAPE]),
+        points=np.array([
+            # time, BIS, HR (bpm), SVR (Wood units), SV (mL)
+            [0.0, 0.0, 0.0, 0.0, 0.0],
+            [15.0, 7.2, 36.0, 0.28, 8.8],
+            [40.0, 12.0, 24.0, 0.46, 14.7],
+            [90.0, 7.2, 10.0, 0.28, 8.8],
+            [180.0, 3.0, 0.0, 0.115, 3.7],
+            [300.0, 0.0, 0.0, 0.0, 0.0],
+        ]),
     ),
+    # Surgery also adds vasoconstriction that anesthetics do not block. In VitalDB
+    # TIVA cases, MAP rose 12 mmHg from before incision to surgery while
+    # remifentanil was increased (validation/vitaldb/vitaldb_tiva.py).
+    # It develops over minutes, so MAP rises about 15% within 5 minutes of
+    # incision at the sevoflurane-fentanyl MAC-BAR concentrations (Katoh 1999).
     "stim_sustained_surgery": DisturbanceProfileSpec(
         label="Sustained Surgical Stimulation",
         sympathetic_intensity=1.25,
+        tonic_svr_fraction=0.15,
+        tonic_onset_s=300.0,
         points=np.array(
             [
                 # time, BIS delta, HR delta, SVR delta, SV delta

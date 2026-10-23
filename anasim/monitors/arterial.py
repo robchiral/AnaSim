@@ -24,6 +24,13 @@ class ArterialWaveformConfig:
     compliance_age_slope: float = 0.008
     compliance_age_min_factor: float = 0.5
     compliance_age_max_factor: float = 1.0
+    # Arterial compliance rises as distending pressure falls (Langewouters 1984),
+    # so pulse pressure narrows with MAP at a fixed stroke volume; the reference
+    # compliance applies at MAP 93 mmHg. Propofol lowers SBP about three times
+    # as much as DBP (Ebert 1992; Jeleazcov 2015); steeper exponents than 0.5
+    # break the epinephrine bolus SBP fits.
+    compliance_pressure_ref_mmhg: float = 93.0
+    compliance_pressure_exponent: float = 0.5
     electromechanical_delay_s: float = 0.04
     notch_height: float = 0.46
     dicrotic_peak_height: float = 0.52
@@ -186,6 +193,12 @@ class ArterialWaveformRenderer:
         normalized = (raw - end_value) / (1.0 - end_value)
         return clamp(normalized, 0.0, 1.0)
 
+    def compliance_at(self, mean_pressure: float) -> float:
+        """Arterial compliance (mL/mmHg) at a mean pressure."""
+        cfg = self.config
+        ratio = cfg.compliance_pressure_ref_mmhg / max(20.0, float(mean_pressure))
+        return self.arterial_compliance * ratio**cfg.compliance_pressure_exponent
+
     def _update_reference(self, map_value: float, stroke_volume_ml: float, sample: CardiacCycleSample) -> None:
         mean_pressure = max(0.0, float(map_value))
         if not sample.organized or mean_pressure <= 0.0 or stroke_volume_ml <= 0.0:
@@ -193,14 +206,15 @@ class ArterialWaveformRenderer:
             return
 
         shape = self._build_shape(sample.rr_interval_s, sample.measured_hr)
-        requested_pp = float(stroke_volume_ml) / self.arterial_compliance
+        compliance = self.compliance_at(mean_pressure)
+        requested_pp = float(stroke_volume_ml) / compliance
         self._reference_pp = min(requested_pp, mean_pressure / shape.mean)
         self._mean_pressure = mean_pressure
         self._diastolic = mean_pressure - self._reference_pp * shape.mean
         self._systolic = self._diastolic + self._reference_pp
         self._next_shape = shape
         flow_ml_s = float(stroke_volume_ml) / sample.mean_rr_s
-        self._runoff_tau_s = mean_pressure / flow_ml_s * self.arterial_compliance
+        self._runoff_tau_s = mean_pressure / flow_ml_s * compliance
 
     def _start_beat(self, sample: CardiacCycleSample) -> None:
         """Rise from the previous beat's end pressure by this beat's stroke volume,

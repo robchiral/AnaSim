@@ -1,4 +1,4 @@
-"""Two-compartment buffered crystalloid kinetics (Hahn 2017, Table 3)."""
+"""Two-compartment buffered crystalloid kinetics (Hahn 2017, Table 3; Hahn 2021)."""
 
 import math
 from dataclasses import dataclass
@@ -18,7 +18,10 @@ class CrystalloidKinetics:
         """Advance exact kinetics; return vascular change, urine, and sequestration (mL)."""
         if dt_s <= 0.0 or self.central_ml + self.interstitial_ml == 0.0:
             return 0.0, 0.0, 0.0
-        k12, k21, kb = 0.0956, 0.0506, 0.0052
+        # Distribution slows with arterial pressure, as at anesthesia induction
+        # (Hahn 2021: exponent 2.34), around Hahn 2017's reference pressure.
+        k12 = 0.0956 * (max(0.0, map_mmHg) / 81.3)**2.34
+        k21, kb = 0.0506, 0.0052
         k10 = (
             0.0065 * (max(0.0, map_mmHg) / 81.3)**5.2 * (age / 40.0)**-1.5 * elimination_scale
         ) if urinary_elimination else 0.0

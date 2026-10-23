@@ -3,8 +3,8 @@
 Infusion: Freyschuss 1986 (arterial samples, basal 0.27 nmol/L, mean age 24).
 The PK model holds exogenous drug only, so targets are increments above basal
 converted with 1 nmol/L = 0.1832 ng/mL. Bolus: Takahashi 2002, 5-15 mcg IV under
-propofol (mean age 32). Tolerances are 1.5 reported SD for peaks and approximate
-for timing.
+propofol (mean age 32), and Guinard 1995, 10-15 mcg IV while awake. Tolerances
+are 1.5 reported SD for peaks and approximate for timing.
 """
 
 import itertools
@@ -92,7 +92,7 @@ def test_takahashi_bolus_response(dose, hr_mean, hr_sd, sbp_mean, sbp_sd, hr_tim
     assert response[2] == pytest.approx(hr_time, abs=15.0)
     assert response[3] == pytest.approx(sbp_time, abs=25.0)
     assert response[3] > response[2] + 15.0
-    assert response[4] < -0.3
+    assert response[4] < 0.0  # Figure 1: late fall below baseline.
     assert abs(response[5]) < 5.0
 
 
@@ -113,6 +113,40 @@ def test_bolus_has_no_large_initial_pressure_dip_or_large_dose_clipping():
 
 def test_volatile_blunts_bolus_chronotropy():
     assert _bolus_response(10, mac=1.0)[0] < 0.85 * _bolus_response(10)[0]
+
+
+@pytest.mark.parametrize(
+    "age,baseline_hr,hr_means,hr_sds,sbp_means,sbp_sds",
+    [(30, 71, (40, 39), (10, 9), (22, 28), (7, 10)),
+     (50, 82, (28, 29), (8, 8), (22, 28), (9, 10)),
+     (65, 67, (29, 31), (10, 8), (28, 33), (12, 14))],
+)
+@pytest.mark.parametrize("dose_index,dose", [(0, 10.0), (1, 15.0)])
+def test_guinard_awake_bolus_by_age(age, baseline_hr, hr_means, hr_sds, sbp_means, sbp_sds,
+                                  dose_index, dose):
+    """Guinard 1995, Tables 1-2: unpremedicated, supine, 3-s IV injections.
+
+    Use the cohort's mean size and age-group resting HR, with representative
+    ages in AnaSim's adult domain. Only SBP is reported, so baseline MAP is fixed.
+    """
+    patient = Patient(age=age, weight=74.5, height=173, baseline_hr=baseline_hr, baseline_map=85)
+    model, pk = HemodynamicModel(patient), EpinephrinePK(patient)
+    cycle = CardiacCycle(np.random.default_rng(0))
+    renderer = ArterialWaveformRenderer(age=age)
+    base = _step(model, dt=0.0)
+    baseline_pressure = renderer.step(cycle.seed(base.hr, RhythmType.SINUS), base.map, base.sv)
+    hr_peak = sbp_peak = 0.0
+    for index in range(1500):
+        ce = pk.step(0.2, dose / 3.0 if index < 15 else 0.0).ce
+        state = _step(model, ce, dt=0.2)
+        pressure = renderer.step(cycle.step(0.2, state.hr, state.rhythm_type), state.map, state.sv)
+        if index < 600:  # Continuous peak measurement for 2 min; recovery at 5 min.
+            hr_peak = max(hr_peak, state.hr - base.hr)
+            sbp_peak = max(sbp_peak, pressure.systolic - baseline_pressure.systolic)
+    assert hr_peak == pytest.approx(hr_means[dose_index], abs=1.5 * hr_sds[dose_index])
+    assert sbp_peak == pytest.approx(sbp_means[dose_index], abs=1.5 * sbp_sds[dose_index])
+    assert abs(state.hr - base.hr) < 5.0
+    assert abs(pressure.systolic - baseline_pressure.systolic) < 5.0
 
 
 def test_pk_infusion_mass_balance_and_washout():

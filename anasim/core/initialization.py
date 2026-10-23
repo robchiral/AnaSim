@@ -8,12 +8,10 @@ import numpy as np
 from scipy.linalg import expm
 from scipy.optimize import minimize
 
-from anasim.physiology.disturbances import DisturbanceEffects
-
 from . import projection as projection_core
 from . import runtime as runtime_core
 from .state import AirwayType
-from .utils import clamp
+from .utils import clamp, clamp01
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine
@@ -85,6 +83,11 @@ def _initialize_steady_state(engine: SimulationEngine) -> None:
     _configure_controlled_ventilation(engine, targets)
     _seed_steady_state_subsystems(engine, profile, targets)
     projection_core.sync_state_from_models(engine)
+    spec = engine.disturbances.spec
+    if engine.disturbance_active and spec is not None and not spec.finite:
+        # Sustained stimulation configured for a maintenance start, such as
+        # ongoing surgery, is already established.
+        engine.disturbance_start_time = engine.state.time - spec.established_s
     _run_hidden_settle(engine, profile)
     if engine.config.tci_enabled:
         _attach_startup_controllers(engine, targets)
@@ -186,6 +189,7 @@ def _seed_steady_state_subsystems(
         remi_cp,
         engine.pk["nore"].state.ce,
         mac_sevo=targets.mac,
+        remifentanil_cp=remi_cp,
     )
     # Tissue CO2 belongs to the same maintenance history as the seeded drugs.
     engine.resp.equilibrate_blood_gases(
@@ -258,7 +262,9 @@ def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile) -> Non
         runtime_core.update_pk_covariates(engine, engine.state.co)
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)
         runtime_core.step_pk(engine, profile.settle_dt_seconds, fi_sevo, fi_n2o, engine.state.co)
-        physiology = runtime_core.step_physiology(engine, profile.settle_dt_seconds, DisturbanceEffects())
+        engine._tol_current = clamp01(projection_core.stimulus_tolerance(engine))
+        stimulus = runtime_core.stimulus_effects(engine, profile.settle_dt_seconds)
+        physiology = runtime_core.step_physiology(engine, profile.settle_dt_seconds, stimulus)
         projection_core.project_runtime_physiology(engine, physiology)
         engine.state.time += profile.settle_dt_seconds
 

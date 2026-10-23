@@ -22,6 +22,7 @@ class ScenarioSpec:
     start_mode: Literal["awake", "steady_state"]
     maint_type: Literal["tiva", "balanced"]
     builder: Callable[[], Scenario]
+    surgery: bool = False  # Starts with sustained surgical stimulation in progress
 
 
 def _create_emergence_tiva() -> Scenario:
@@ -67,6 +68,7 @@ SCENARIO_REGISTRY = (
         "steady_state",
         "tiva",
         create_oxygen_supply_failure,
+        surgery=True,
     ),
     ScenarioSpec(
         "hemorrhage_response",
@@ -74,6 +76,7 @@ SCENARIO_REGISTRY = (
         "steady_state",
         "tiva",
         create_hemorrhage_response,
+        surgery=True,
     ),
     ScenarioSpec(
         "anaphylaxis_response",
@@ -81,6 +84,7 @@ SCENARIO_REGISTRY = (
         "steady_state",
         "tiva",
         create_anaphylaxis_scenario,
+        surgery=True,
     ),
     ScenarioSpec(
         "sepsis_response",
@@ -88,6 +92,7 @@ SCENARIO_REGISTRY = (
         "steady_state",
         "tiva",
         create_sepsis_response,
+        surgery=True,
     ),
 )
 

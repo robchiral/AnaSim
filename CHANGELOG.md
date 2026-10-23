@@ -2,14 +2,45 @@
 
 ## Unreleased
 
+- Moved anesthetic cardiovascular effects to hemodynamic effect sites acting on
+  slow tone, so pressure falls within minutes of induction while compensation
+  stays slow.
+- Slowed propofol's effect on pressure to about 10 minutes, and made propofol
+  alone lower pressure about half as much as propofol with an opioid.
+- Added venous pooling as propofol removes sympathetic tone, so induction lowers
+  cardiac output and filling pressure.
+- Made pressure fall more after propofol in patients with a higher
+  pre-induction MAP.
+- Fitted propofol-opioid and sevoflurane induction to VitalDB recordings of
+  routine practice, with published induction trials as limits.
+- Added an HR effect for sevoflurane and removed opioid strengthening of its
+  effect on pressure.
+- Made opioids suppress reflex tachycardia, and added remifentanil's vagal
+  bradycardia.
+- Made arterial compliance rise as pressure falls, so pulse pressure narrows in
+  hypotension.
+- Stopped propofol alone from blunting the cardiovascular response to
+  stimulation.
+- Made routine remifentanil doses leave most of the intubation response.
+- Made fentanyl lower the sevoflurane concentration that blocks the incision
+  response.
+- Added surgical vasoconstriction that builds over minutes. Maintenance sessions
+  and intraoperative crises start during surgery, and emergence after it.
+- Made septic tachycardia follow severity under anesthesia, and septic shock
+  remove surgical vasoconstriction.
+- Slowed crystalloid distribution at low arterial pressure.
+- Recalibrated epinephrine, phenylephrine, the HR rise with ketamine, and the
+  propofol concentration for loss of response.
+- Added acceptance tests for standard teaching cases, replays of published
+  induction and intubation studies, and VitalDB hemodynamic comparisons.
 - Added coronary disease, reduced- and preserved-EF heart failure, COPD, and
   pregnancy, with maternal positioning and reversible ischemic ST depression.
-- Extended patient inputs to 200 kg and BMI 60, with severe-obesity respiratory
-  mechanics. The VitalDB evaluation keeps its prespecified domain.
+- Extended patient inputs to 200 kg and BMI 60, with respiratory mechanics for
+  severe obesity.
 - Added plasma and red-cell buffering with live pH and bicarbonate, and made
   oxygen affinity depend on pH and PCO₂.
 - Replaced prescribed apneic CO₂ slopes with CO₂ transport through lung,
-  blood, tissue, and extracellular stores, so blood flow and stored CO₂ shape
+  blood, tissue, and extracellular stores, so blood flow and stored CO₂ determine
   PaCO₂ and EtCO₂.
 - Added ephedrine, atropine, succinylcholine, hydromorphone, and morphine.
   Morphine and hydromorphone have separate effects on respiratory rate and on

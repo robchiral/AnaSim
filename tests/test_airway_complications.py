@@ -58,9 +58,12 @@ def test_mask_obstruction_raises_airway_pressure_and_leaks_delivered_breaths(awa
 
 def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
-    engine.enable_tci("propofol", 3.0)
+    # Light unconsciousness retains respiratory effort for the assisted-breath
+    # comparison below; deeper exposure can produce apnea.
+    engine.enable_tci("propofol", 2.5)
     for _ in range(3000):
         engine.step(0.1)
+    assert engine.state.loc > 0.5
     assert engine.state.airway_obstruction > 0.2
 
     engine.set_airway_mode("Mask")

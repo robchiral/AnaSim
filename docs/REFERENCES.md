@@ -1,11 +1,11 @@
 # Model references
 
-These sources support model parameters, simulator calibrations, and scenario guidance.
-The [architecture guide](ARCHITECTURE.md#model-notes) describes their use and
-the model assumptions. PK and PD mean pharmacokinetics and pharmacodynamics.
-BIS means bispectral index, MAC means minimum alveolar concentration, and
-TCI means target-controlled infusion. Ventilation modes are defined in the
-[README](../README.md#features).
+These studies are the sources for the model parameters, calibrations, and
+scenario guidance. The [architecture guide](ARCHITECTURE.md#model-notes)
+explains how they are used. Abbreviations: PK, pharmacokinetics; PD,
+pharmacodynamics; BIS, bispectral index; MAC, minimum alveolar concentration;
+TCI, target-controlled infusion. The [README](../README.md#features) lists the
+ventilation modes.
 
 ## Patient conditions
 
@@ -22,7 +22,11 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 ## Hemodynamics and physiology
 
 - Su et al. (2023). *Br J Anaesth*. [Mechanistic hemodynamic interaction model](https://pubmed.ncbi.nlm.nih.gov/37355412/).
+- Garraza-Obaldia et al. (2024). *Pharmaceutics*. [Propofol-remifentanil hemodynamics and noxious stimulation](https://doi.org/10.3390/pharmaceutics16121615). MAP-to-HR feedback was near zero and omitted, and remifentanil had no direct MAP effect; SV and SVR were not measured.
 - de Wit et al. (2016). *Br J Anaesth*. [Propofol, stressed volume, and resistance to venous return](https://pubmed.ncbi.nlm.nih.gov/27199311/).
+- Zucker et al. (2022). *BMC Anesthesiol*. [Mean systemic filling pressure during propofol induction](https://pubmed.ncbi.nlm.nih.gov/35869445/).
+- Fairfield, Dritsas, and Beale (1991). *Br J Anaesth*. [Echocardiographic hemodynamics after propofol 2.5 mg/kg](https://pubmed.ncbi.nlm.nih.gov/1751277/).
+- Morley et al. (2010). *Anesth Analg*. [Fasting, baseline pressure, and hypotension during propofol induction](https://pubmed.ncbi.nlm.nih.gov/20861421/).
 - Rebet et al. (2016). *Eur J Anaesthesiol*. [Preload-dependent phenylephrine cardiac-output responses](https://pubmed.ncbi.nlm.nih.gov/27164015/).
 - Clutter et al. (1980). *J Clin Invest*. [Epinephrine cardiovascular effects](https://pubmed.ncbi.nlm.nih.gov/6995479/).
 - Ebert et al. (1995). *Anesth Analg*. [Sevoflurane cardiovascular responses](https://pubmed.ncbi.nlm.nih.gov/7486143/).
@@ -50,6 +54,13 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Leenen et al. (2005). *Am J Physiol Heart Circ Physiol*. [Aging and cardiac responses to epinephrine](https://pubmed.ncbi.nlm.nih.gov/15626690/).
 - Guinard, Mulroy, and Carpenter (1995). *Reg Anesth*. [Age and HR after IV epinephrine test doses](https://pubmed.ncbi.nlm.nih.gov/7547654/).
 - Ebert et al. (1995). *Anesthesiology*. [Sympathetic and hemodynamic responses to sevoflurane and intubation](https://pubmed.ncbi.nlm.nih.gov/7605024/).
+- Kazama, Ikeda, and Morita (1997). *Anesthesiology*. [Propofol-fentanyl interaction and cardiovascular responses to noxious stimuli](https://pubmed.ncbi.nlm.nih.gov/9286884/).
+- Billard et al. (1994). *Anesthesiology*. [Hemodynamic response to induction and intubation with propofol and fentanyl](https://pubmed.ncbi.nlm.nih.gov/7992907/).
+- Hayakawa-Fujii et al. (2001). *J Anesth*. [Hemodynamic stability during induction and intubation with propofol plus fentanyl, ketamine, and fentanyl-ketamine](https://doi.org/10.1007/s005400170001).
+- Sawano et al. (2013). *J Anesth*. [Fentanyl dose, hemodynamics, and cardiac output during induction and intubation](https://doi.org/10.1007/s00540-012-1552-x).
+- Sjøen et al. (2024). *Acta Anaesthesiol Scand*. [Remifentanil dose and hemodynamics during propofol induction](https://pubmed.ncbi.nlm.nih.gov/38400761/).
+- Sjøen et al. (2023). *Acta Anaesthesiol Scand*. [Propofol dose and hemodynamics during remifentanil-propofol induction](https://pubmed.ncbi.nlm.nih.gov/37291731/).
+- Poterman et al. (2017). *Eur J Anaesthesiol*. [Atropine before propofol and high-dose remifentanil induction](https://pubmed.ncbi.nlm.nih.gov/28403018/).
 - Johnson et al. (2014). *J Appl Physiol*. [Hemodynamic responses to graded blood loss in awake humans](https://pubmed.ncbi.nlm.nih.gov/24876357/).
 - Umehara et al. (2006). *Anesth Analg*. [Sevoflurane and baroreflex sensitivity](https://pubmed.ncbi.nlm.nih.gov/16368802/).
 - Mort (2004). *J Clin Anesth*. [Hypoxemia and intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/15590254/).
@@ -67,6 +78,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Hahn (2010). *Anesthesiology*. [Crystalloid volume kinetics](https://pubmed.ncbi.nlm.nih.gov/20613481/).
 - Hahn (2017). *Anesth Analg*. [Arterial pressure, age, and crystalloid elimination](https://pubmed.ncbi.nlm.nih.gov/28452823/).
 - Hahn and Nemme (2020). *BMC Anesthesiol*. [Fluid retention after anesthesia induction](https://doi.org/10.1186/s12871-020-01001-1).
+- Hahn (2021). *Perioper Med (Lond)*. [Crystalloid distribution during anesthesia-induced hypotension](https://pubmed.ncbi.nlm.nih.gov/34629113/).
 - Clark et al. (1997). *J Am Coll Cardiol*. [Atrial fibrillation and cardiac output](https://pubmed.ncbi.nlm.nih.gov/9316536/).
 - Hardman et al. (1998). *Cardiovasc Res*. [Atrial fibrillation and stroke volume](https://pubmed.ncbi.nlm.nih.gov/9683909/).
 - Kerr et al. (1998). *Am J Cardiol*. [Stroke-volume variability in atrial fibrillation](https://pubmed.ncbi.nlm.nih.gov/9874054/).
@@ -77,6 +89,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 
 - Mahdi, Clifford, and Payne (2017). *Physiol Meas*. [Synthetic arterial pressure waveform](https://pubmed.ncbi.nlm.nih.gov/28176674/).
 - Franklin et al. (1997). *Circulation*. [Pulse pressure by age in the Framingham Heart Study](https://pubmed.ncbi.nlm.nih.gov/9236450/).
+- Langewouters, Wesseling, and Goedhard (1984). *J Biomech*. [Pressure dependence of human aortic compliance](https://pubmed.ncbi.nlm.nih.gov/6480618/).
 - Saugel et al. (2020). *Crit Care*. [Arterial catheter frequency response and damping](https://pubmed.ncbi.nlm.nih.gov/32331527/).
 
 ## Inhaled anesthetics
@@ -137,6 +150,7 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Kamp et al. (2021). *Br J Anaesth*. [Stereoselective ketamine effects on cardiac output](https://pubmed.ncbi.nlm.nih.gov/33896589/).
 - Idvall et al. (1979). *Br J Anaesth*. [Ketamine anesthesia and hemodynamics](https://pubmed.ncbi.nlm.nih.gov/526385/).
 - Tweed, Minuck, and Mymin (1972). *Anesthesiology*. [Circulatory responses to ketamine](https://pubmed.ncbi.nlm.nih.gov/4652778/).
+- Bovill and Dundee (1972). *Anaesthesia*. [Ketamine cardiovascular responses after atropine and adrenergic blockade](https://pubmed.ncbi.nlm.nih.gov/5041076/).
 - Akine et al. (2001). *Auton Neurosci*. [Ketamine and propofol depress baroreflex sensitivity](https://pubmed.ncbi.nlm.nih.gov/11476280/).
 - Huang et al. (2020). *J Physiol*. [Low-dose ketamine and sympathetic responses to central hypovolemia](https://pubmed.ncbi.nlm.nih.gov/33084081/).
 - Bourke, Malit, and Smith (1987). *Anesthesiology*. [Ketamine and CO₂ response](https://pubmed.ncbi.nlm.nih.gov/3101549/).
@@ -173,9 +187,13 @@ TCI means target-controlled infusion. Ventilation modes are defined in the
 - Hannivoort et al. (2016). *Br J Anaesth*. [Propofol-sevoflurane-remifentanil interaction for laryngoscopy](https://doi.org/10.1093/bja/aew060).
 - Kuizenga et al. (2019). *Anesthesiology*. [Propofol and sevoflurane with remifentanil for clinical responses](https://doi.org/10.1097/ALN.0000000000002966).
 - Albertin et al. (2005). *Anesth Analg*. [Remifentanil blunting the hemodynamic response to intubation and incision](https://pubmed.ncbi.nlm.nih.gov/15976218/).
+- Katoh et al. (1999). *Anesthesiology*. [Fentanyl reduction of sevoflurane MAC and MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/9952144/).
 - Schnider et al. (1999). *Anesthesiology*. [Age and propofol Ce50 for loss of consciousness](https://pubmed.ncbi.nlm.nih.gov/10360845/).
 - Lysakowski et al. (2009). *Br J Anaesth*. [BIS at propofol loss of consciousness in young and elderly patients](https://pubmed.ncbi.nlm.nih.gov/19542103/).
 - Kazama et al. (1999). *Anesthesiology*. [Propofol equilibration for SBP and BIS by age](https://pubmed.ncbi.nlm.nih.gov/10360846/).
+- Jeleazcov et al. (2015). *Br J Anaesth*. [Propofol arterial pressure effect sites in volunteers](https://pubmed.ncbi.nlm.nih.gov/25627394/).
+- van den Berg et al. (2021). *J Clin Monit Comput*. [Hemodynamics at equipotent propofol-remifentanil pairs](https://pubmed.ncbi.nlm.nih.gov/32488680/).
+- Fregolent et al. (2025). *IFAC-PapersOnLine*. [Su model calibration in surgical patients](https://doi.org/10.1016/j.ifacol.2025.07.125).
 - Minto et al. (1997). *Anesthesiology*. [Age and remifentanil EEG potency](https://pubmed.ncbi.nlm.nih.gov/9009935/).
 - Kim et al. (2018). *Clin Interv Aging*. [Age and remifentanil for emergence cough](https://pubmed.ncbi.nlm.nih.gov/29881261/).
 - FDA NDA 203826 Clinical Pharmacology Review (2012). [Phenylephrine PK](https://www.accessdata.fda.gov/drugsatfda_docs/nda/2012/203826_phenylephrine_toc.cfm).

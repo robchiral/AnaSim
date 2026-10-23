@@ -1,4 +1,5 @@
 import math
+from itertools import pairwise
 
 from scipy.optimize import root_scalar
 
@@ -32,9 +33,20 @@ RHYTHM_SV_FACTOR = {
 }
 
 
+def _interpolate(x: float, points: tuple[tuple[float, float], ...]) -> float:
+    """Piecewise-linear interpolation, constant beyond the end points."""
+    if x <= points[0][0]:
+        return points[0][1]
+    for (x0, y0), (x1, y1) in pairwise(points):
+        if x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return points[-1][1]
+
+
 class HemodynamicModel:
-    """Su et al. Br J Anaesth. 2023 turnover model with volume, pulmonary
-    circulation, reflexes, vasoactive drugs, and distributive shock.
+    """Su et al. Br J Anaesth. 2023 drug effects from hemodynamic effect sites
+    on slow turnover tone, with volume, pulmonary circulation, reflexes,
+    vasoactive drugs, and distributive shock.
 
     Units: MAP mmHg, HR bpm, SV mL, CO L/min, SVR Wood units (mmHg·min/L),
     internal TPR mmHg·min/mL. Sources are listed in docs/REFERENCES.md.
@@ -73,9 +85,13 @@ class HemodynamicModel:
         self.base_co_l_min = flow_ml_min / 1000.0
         self.baseline_do2 = self.calc_oxygen_content(self.baseline_hb, 0.98, 95.0) * self.base_co_l_min * 10.0
         self._emax_prop_sv_age = cfg.emax_prop_sv_typ * math.exp(cfg.age_emax_sv * (patient.age - 35.0))
+        # Share of propofol's sympathetic withdrawal relative to a patient at the reference pressure.
+        self._sympathetic_gain = clamp(
+            1.0 + cfg.propofol_baseline_sensitivity * (patient.baseline_map - cfg.propofol_baseline_map_ref),
+            *cfg.propofol_baseline_gain_range,
+        )
         self._inv_base_rmap_denom = 1.0 / (self.base_hr * self.base_sv * self.base_tpr)
         self._inv_base_co_l_min = 1.0 / max(0.1, self.base_co_l_min)
-        self._sepsis_hr_gain = cfg.sepsis_hr_increase / max(self.base_hr, 1.0)
 
         self.delta_tpr_vasopressors = 0.0
         self.dist_svr = 0.0
@@ -100,9 +116,18 @@ class HemodynamicModel:
         self._rmap_fb = 1.0  # Turnover feedback, (MAP / baseline) ** fb
         self.myocardial_hypoxia = 0.0  # 0-1 depression of rate and contractility
 
-        self.sv_star = self.base_sv
-        self.hr_star = self.base_hr
-        self.tpr = self.base_tpr
+        # Slow tone: baselines adjusted by MAP feedback, chemoreflex, blood
+        # loss, and temperature. Anesthetic effects multiply it from their own
+        # effect sites, so drug onset and homeostatic recovery keep separate rates.
+        self.sv_tone = self.base_sv
+        self.hr_tone = self.base_hr
+        self.tpr_tone = self.base_tpr
+        self._drug_tpr = self._drug_sv = self._drug_hr = 1.0
+        self.ce_prop_cv = self.ce_opioid_cv = self.ce_remi_vagal = 0.0
+        self._sympathetic_venous_depth = 0.0
+        self._epi_venous_alpha = 0.0  # Share of propofol's venous pooling reversed by epinephrine
+        self._ke0_prop_cv = math.log(2.0) / _interpolate(patient.age, cfg.prop_cv_half_time_by_age)
+        self._ke0_opioid_cv = math.log(2.0) / cfg.opioid_cv_half_time
         # Baselines are resting values, so Su's pre-infusion anxiety transient
         # starts at zero.
         self.tde_sv = 0.0
@@ -275,21 +300,27 @@ class HemodynamicModel:
     def _calc_stressed_volume(self, sepsis_sev: float | None = None) -> float:
         """Stressed volume after drug effects, sepsis pooling, and venous reflexes.
 
-        Sepsis shifts part of baseline volume to unstressed. Venoconstriction
-        returns part of any blood-volume deficit to the stressed pool.
+        Sepsis shifts part of baseline volume to unstressed. Propofol's loss of
+        sympathetic venous tone pools a share of stressed blood, up to that
+        share of the baseline stressed volume, so blood loss mobilizes it and
+        fluid loading does not refill it; epinephrine's alpha tone restores it.
+        Venoconstriction returns part of any blood-volume deficit to the
+        stressed pool.
         """
+        cfg = self.config
         sev = clamp01(self.sepsis_severity) if sepsis_sev is None else sepsis_sev
-        pooling = self.config.sepsis_pooling_fraction * self.blood_volume_0 * sev
+        pooling = cfg.sepsis_pooling_fraction * self.blood_volume_0 * sev
         deficit = max(0.0, self.blood_volume_0 - self.blood_volume)
-        recruited = self.config.venous_recruitment_fraction * deficit * self._venous_tone
+        recruited = cfg.venous_recruitment_fraction * deficit * self._venous_tone
         available = max(0.0, self.blood_volume - self.unstressed_volume + recruited - pooling)
-        # Propofol pools a fraction of the remaining stressed blood.
+        available -= (cfg.propofol_sympathetic_pooling * self._sympathetic_gain * self._sympathetic_venous_depth
+                      * (1.0 - self._epi_venous_alpha) * min(available, self._baseline_stressed_volume))
         return min(self.blood_volume, available * self._venous_stressed_fraction + self._pressor_recruitment_ml)
 
-    def _update_venous_drug_effects(self, cp_prop: float, ce_phenyl: float, pressor_gain: float = 1.0) -> None:
+    def _update_venous_drug_effects(self, ce_prop: float, ce_phenyl: float, pressor_gain: float = 1.0) -> None:
         """Venous drug effects, normalized to preserve Su's normal-volume response."""
         cfg = self.config
-        propofol = clamp(cp_prop, 0.0, 6.5)
+        propofol = clamp(ce_prop, 0.0, 6.5)
         stressed_fraction = math.exp(-cfg.propofol_venous_pooling_slope * propofol)
         self._venous_stressed_fraction = stressed_fraction
         self._venous_reference_mcfp = self._baseline_stressed_volume * stressed_fraction / self.cv
@@ -497,39 +528,45 @@ class HemodynamicModel:
         svr_factor = 1.0 + cfg.nore_emax_svr * alpha_gain * alpha_hill
         return delta_hr, sv_factor, svr_factor
 
-    def _calc_anesthetic_effects(self, cp_prop: float, cp_remi: float, ce_sevo: float) -> tuple:
+    def _hr_feedback(self, map_feedback: float, tachycardia_depth: float) -> float:
+        # Anesthesia removes the tachycardic side of the slow MAP feedback;
+        # pressure-induced slowing remains (Takahashi 2002's late epinephrine fall).
+        return map_feedback - max(0.0, map_feedback - 1.0) * (
+            self.config.hr_feedback_anesthetic_depression * tachycardia_depth
+        )
+
+    def _calc_anesthetic_effects(self, ce_prop: float, ce_opioid: float, ce_sevo: float) -> tuple:
         """Combined anesthetic effects on TPR, SV, and HR (Su et al. 2023).
 
-        Propofol and remifentanil use plasma concentrations.
-        Returns (total_eff_tpr, total_eff_sv, total_eff_hr, eff_remi_tpr,
-        eff_remi_sv, eff_remi_hr).
+        Propofol and remifentanil-equivalent concentrations are at the
+        hemodynamic effect sites. Returns (total_eff_tpr, total_eff_sv,
+        total_eff_hr, eff_remi_tpr, eff_remi_sv, eff_remi_hr).
         """
         cfg = self.config
-        cp = max(0.0, cp_prop)
-        cr = max(0.0, cp_remi)
+        cp = max(0.0, ce_prop)
+        cr = max(0.0, ce_opioid)
+        if cfg.opioid_cv_saturation > 0.0:
+            cr = cfg.opioid_cv_saturation * math.tanh(cr / cfg.opioid_cv_saturation)
         emax_prop_sv = self._emax_prop_sv_age
 
         # Propofol TPR effect, with remifentanil interaction.
         remi_int_term = cfg.int_tpr * (cr / (cfg.ec50_remi_tpr + cr + 1e-9))
-        eff_prop_tpr = (cfg.emax_prop_tpr + remi_int_term) * hill_function(cp, cfg.ec50_prop_tpr, cfg.gamma_prop)
+        eff_prop_tpr = (cfg.emax_prop_tpr * self._sympathetic_gain + remi_int_term) * hill_function(
+            cp, cfg.ec50_prop_tpr, cfg.gamma_prop)
         eff_prop_sv = emax_prop_sv * hill_function(cp, cfg.ec50_prop_sv, 1.0)
 
-        remi_shift_factor = cfg.vol_remi_shift_max * (cr / (cfg.vol_remi_ec50 + cr + 1e-9))
-        vol_ec50_mult = 1.0 - remi_shift_factor
-
-        # Sevoflurane (no HR effect); remifentanil shifts only the TPR EC50.
-        eff_sevo_tpr = cfg.sevo_emax_tpr * hill_function(
-            ce_sevo, cfg.sevo_ec50_tpr * vol_ec50_mult, cfg.sevo_gamma_tpr
-        )
+        eff_sevo_tpr = cfg.sevo_emax_tpr * hill_function(ce_sevo, cfg.sevo_ec50_tpr, cfg.sevo_gamma_tpr)
         eff_sevo_sv = cfg.sevo_emax_sv * hill_function(ce_sevo, cfg.sevo_ec50_sv, 1.0)
 
-        total_eff_tpr = max(-0.95, eff_prop_tpr + eff_sevo_tpr)
-        total_eff_sv = max(-0.95, eff_prop_sv + eff_sevo_sv)
-        total_eff_hr = 0.0
+        # Propofol and sevoflurane act as independent fractions.
+        total_eff_tpr = max(-0.95, (1.0 + eff_prop_tpr) * (1.0 + eff_sevo_tpr) - 1.0)
+        total_eff_sv = max(-0.95, (1.0 + eff_prop_sv) * (1.0 + eff_sevo_sv) - 1.0)
+        total_eff_hr = cfg.sevo_emax_hr * hill_function(ce_sevo, cfg.sevo_ec50_hr, 1.0)
 
-        # Remifentanil acts on dissipation; propofol modulates the SV and HR slopes.
+        # Remifentanil effects divide tone, as Su's dissipation terms do at
+        # steady state; propofol modulates the SV and HR slopes.
         eff_remi_tpr = cfg.emax_remi_tpr * hill_function(cr, cfg.ec50_remi_tpr, cfg.gamma_remi_tpr)
-        slope_sv = cfg.sl_remi_sv + cfg.int_sv * (cp / (cfg.ec50_prop_sv + cp + 1e-9))
+        slope_sv = cfg.sl_remi_sv + cfg.int_sv * (cp / (cfg.ec50_int_sv + cp + 1e-9))
         eff_remi_sv = slope_sv * cr
         slope_hr = cfg.sl_remi_hr + cfg.int_hr * (cp / (cfg.ec50_int_hr + cp + 1e-9))
         eff_remi_hr = max(-0.9, min(0.9, slope_hr * cr))
@@ -642,6 +679,28 @@ class HemodynamicModel:
             return self._cached_state
         return self._compute_state()
 
+    @property
+    def tpr(self) -> float:
+        return self.tpr_tone * self._drug_tpr
+
+    @property
+    def sv_star(self) -> float:
+        return self.sv_tone * self._drug_sv
+
+    @property
+    def hr_star(self) -> float:
+        return self.hr_tone * self._drug_hr
+
+    def _set_drug_factors(self, effects: tuple, vagal: float = 0.0) -> None:
+        total_eff_tpr, total_eff_sv, total_eff_hr, eff_remi_tpr, eff_remi_sv, eff_remi_hr = effects
+        if eff_remi_hr < 0.0:
+            eff_remi_hr *= 1.0 - vagal  # Opioid bradycardia is vagal.
+        self._drug_tpr = (1.0 + total_eff_tpr) / max(0.05, 1.0 - eff_remi_tpr)
+        self._drug_sv = (1.0 + total_eff_sv) / max(0.05, 1.0 - eff_remi_sv)
+        cfg = self.config
+        remi_vagal = cfg.remi_vagal_hr * self.ce_remi_vagal / (self.ce_remi_vagal + cfg.remi_vagal_c50)
+        self._drug_hr = (1.0 + total_eff_hr) / max(0.05, 1.0 - eff_remi_hr) * (1.0 - remi_vagal * (1.0 - vagal))
+
     def _calc_hr(self):
         return self.hr_star + self.tde_hr + self.smoothed_chemo_hr + self.smoothed_baro_hr + self.smoothed_epi_hr
 
@@ -656,8 +715,10 @@ class HemodynamicModel:
              mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0,
              ce_vaso: float = 0.0, ce_dobu: float = 0.0, ce_mil: float = 0.0,
              ce_esmolol: float = 0.0, ce_labetalol: float = 0.0, ce_glyco: float = 0.0,
-             ce_ketamine: float = 0.0, ce_atropine: float = 0.0, ce_ephedrine: float = 0.0,
-             temp_c: float = 37.0, peep_cmH2O: float | None = None, sao2: float = 98.0) -> HemoState:
+             ce_ketamine: float = 0.0, ce_ketamine_hr: float = 0.0,
+             ce_atropine: float = 0.0, ce_ephedrine: float = 0.0,
+             temp_c: float = 37.0, peep_cmH2O: float | None = None, sao2: float = 98.0,
+             remifentanil_cp: float | None = None) -> HemoState:
         """Advance the model by dt seconds and return the new state.
 
         Args:
@@ -672,10 +733,12 @@ class HemodynamicModel:
             ce_vaso: Vasopressin effect-site concentration (mU/L).
             ce_esmolol: Esmolol effect-site concentration (mcg/mL).
             ce_labetalol, ce_glyco, ce_atropine, ce_ephedrine: Effect-site concentrations (ng/mL).
-            ce_ketamine: Ketamine effect-site concentration (mcg/mL).
+            ce_ketamine, ce_ketamine_hr: Ketamine cardiac-output and HR effect sites (mcg/mL).
             temp_c: Core temperature (°C).
             peep_cmH2O: Total PEEP (cmH2O).
             sao2: Arterial saturation (%).
+            remifentanil_cp: Remifentanil alone (ng/mL), for its vagal
+                bradycardia; defaults to cp_remi.
         """
         cfg = self.config
         self._cached_state = None
@@ -683,9 +746,19 @@ class HemodynamicModel:
         sepsis_sev = clamp01(self.sepsis_severity)
         anaph_sev = clamp01(self.anaphylaxis_severity)
 
-        # Sevoflurane cardiovascular effect site, driven by end-tidal MAC.
+        # Hemodynamic effect sites: propofol's arterial, cardiac, and venous
+        # effects follow Kazama 1999's SBP equilibration. Reflex depression
+        # follows plasma propofol, as consciousness does within a minute.
+        self.ce_prop_cv += (max(0.0, cp_prop) - self.ce_prop_cv) * -math.expm1(-self._ke0_prop_cv * dt_min)
+        self.ce_opioid_cv += (max(0.0, cp_remi) - self.ce_opioid_cv) * -math.expm1(-self._ke0_opioid_cv * dt_min)
+        remifentanil = max(0.0, cp_remi if remifentanil_cp is None else remifentanil_cp)
+        self.ce_remi_vagal += (remifentanil - self.ce_remi_vagal) * -math.expm1(-self._ke0_opioid_cv * dt_min)
         self.ce_sevo += (mac_sevo - self.ce_sevo) * -math.expm1(-cfg.ke0_sevo * dt_min)
+        ce_prop = self.ce_prop_cv
         anesthetic_depth = clamp01(self.ce_sevo + cp_prop / 4.0)
+        self._sympathetic_venous_depth += (
+            clamp01(max(0.0, cp_prop) / 3.0) - self._sympathetic_venous_depth
+        ) * -math.expm1(-math.log(2.0) / cfg.propofol_sympathetic_half_time * dt_min)
 
         # Antagonist dose ratios; esmolol is beta-1 selective.
         labetalol_beta = max(0.0, ce_labetalol) / cfg.labetalol_kb_beta
@@ -707,7 +780,9 @@ class HemodynamicModel:
         alpha_response = 1.0 - alpha_occ
         dist_hr *= sympathetic_hr_response
         dist_sv *= beta_response
-        dist_svr *= alpha_response
+        # Septic shock removes stimulation-driven vasoconstriction, which depends
+        # partly on the vasopressin that septic shock depletes.
+        dist_svr *= alpha_response * (1.0 - sepsis_sev)
         self._venous_tone = alpha_response
         # Severe anaphylaxis blunts adrenergic agonists; vasopressin acts on V1 receptors.
         agonist_shift = 1.0 + cfg.anaphylaxis_agonist_shift * anaph_sev
@@ -778,10 +853,7 @@ class HemodynamicModel:
         self.blood_volume = max(BLOOD_VOLUME_MIN, blood_volume)
         self._update_hb_conc()
 
-        (total_eff_tpr, total_eff_sv, total_eff_hr_prod,
-         eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(cp_prop, cp_remi, self.ce_sevo)
-        if eff_remi_hr < 0.0:
-            eff_remi_hr *= 1.0 - vagal  # Opioid bradycardia is vagal.
+        self._set_drug_factors(self._calc_anesthetic_effects(ce_prop, self.ce_opioid_cv, self.ce_sevo), vagal)
 
         # Positive intrathoracic pressure reduces venous return; spontaneous
         # negative pressure modestly augments it.
@@ -792,8 +864,12 @@ class HemodynamicModel:
             f_preload_pit = 1.0 + cfg.alpha_peep * (-delta_pit)
         self.f_preload_pit = clamp(f_preload_pit, 0.4, 1.4)
 
+        self._epi_pressor_ce += (max(0.0, ce_epi) - self._epi_pressor_ce) * (
+            -math.expm1(-dt / cfg.epi_tau_pressor_s)
+        )
+        self._epi_venous_alpha = hill_function(self._epi_pressor_ce / alpha_dr, cfg.epi_c50_alpha, cfg.epi_gamma_alpha)
         pressor_gain = 1.0 - clamp01(cfg.sepsis_pressor_resistance * sepsis_sev)
-        self._update_venous_drug_effects(cp_prop, ce_phenyl / alpha_dr, pressor_gain)
+        self._update_venous_drug_effects(ce_prop, ce_phenyl / alpha_dr, pressor_gain)
 
         f_frank_starling = self._update_pulmonary_coupling(
             dt=dt,
@@ -812,13 +888,16 @@ class HemodynamicModel:
         # Fast baroreflex. Propofol depresses both limbs (Sato 2005). Anesthetic
         # ketamine depresses it as much (Akine 2001), but analgesic doses do not
         # (Huang 2020); it counts in MAC equivalents for this reflex only.
+        # Opioids raise vagal tone, suppressing reflex tachycardia but not slowing.
+        reflex_depth = clamp01(anesthetic_depth + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT)
+        tachycardia_depth = clamp01(reflex_depth + self.ce_opioid_cv / cfg.opioid_reflex_ce)
         sensed_error = map_prev - self._stim_map - self._baro_setpoint
         if sensed_error > 0.0:
             baro_gain = cfg.baro_gain_brady * (1.0 - vagal) * self._age_vagal_baroreflex
+            baro_gain *= 1.0 - cfg.baro_anesthetic_depression * reflex_depth
         else:
             baro_gain = cfg.baro_gain_tachy * sympathetic_hr_response
-        reflex_depth = clamp01(anesthetic_depth + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT)
-        baro_gain *= 1.0 - cfg.baro_anesthetic_depression * reflex_depth
+            baro_gain *= 1.0 - cfg.baro_anesthetic_depression * tachycardia_depth
         baro_hr = clamp(-baro_gain * sensed_error, -cfg.baro_max_hr_change, cfg.baro_max_hr_change)
         self._baro_setpoint += sensed_error * min(1.0, dt / cfg.baro_reset_tau_s)
 
@@ -833,18 +912,11 @@ class HemodynamicModel:
         self.myocardial_hypoxia += (hypoxia_target - self.myocardial_hypoxia) * min(1.0, dt / hypoxia_tau)
 
         hemorrhage_hr_mult, hemorrhage_tpr_mult = self._calc_hemorrhage_response()
-        # Anesthesia blunts the tachycardia as it does the cardiac baroreflex
-        # (Ebert 1992; Sellgren 1994). The slower resistance response persists
-        # under propofol-remifentanil (Kurita 2011).
-        hemorrhage_hr_mult = 1.0 + (hemorrhage_hr_mult - 1.0) * sympathetic_hr_response * (
-            1.0 - cfg.baro_anesthetic_depression * anesthetic_depth
-        )
+        # Anesthesia already depresses the fast and slow reflex tachycardia, so
+        # the volume-loss drive keeps full strength; HR still rises under TIVA (Kurita 2011).
+        hemorrhage_hr_mult = 1.0 + (hemorrhage_hr_mult - 1.0) * sympathetic_hr_response
         hemorrhage_tpr_mult = 1.0 + (hemorrhage_tpr_mult - 1.0) * alpha_response
-        sepsis_hr_mult = 1.0 + self._sepsis_hr_gain * sepsis_sev
 
-        self._epi_pressor_ce += (max(0.0, ce_epi) - self._epi_pressor_ce) * (
-            -math.expm1(-dt / cfg.epi_tau_pressor_s)
-        )
         # Vascular relaxation develops alongside the cardiac response. An
         # instantaneous beta-2 effect otherwise produces a spurious early dip.
         beta2_target = cfg.epi_emax_svr_beta * hill_function(ce_epi / beta2_dr, cfg.epi_c50_beta2, 1.0)
@@ -900,6 +972,7 @@ class HemodynamicModel:
         # Blockade removes resting sympathetic tone; vagal block removes vagal
         # tone; ketamine adds sympathetic tone.
         ketamine = hill_function(max(0.0, ce_ketamine), cfg.ketamine_c50, cfg.ketamine_gamma) * resting_tone
+        ketamine_hr = hill_function(max(0.0, ce_ketamine_hr), cfg.ketamine_c50, cfg.ketamine_gamma) * resting_tone
         combined_svr_factor = (
             catechol_svr_factor *
             vaso_svr_factor *
@@ -915,15 +988,16 @@ class HemodynamicModel:
         )
         combined_delta_hr = (
             self._epi_chrono_effect + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr + ephedrine_hr
-            + (cfg.ketamine_emax_hr * ketamine * sympathetic_hr_response - cfg.beta_block_hr * beta_occ * resting_tone)
-            * self.hr_star
+            + (cfg.ketamine_emax_hr * ketamine_hr + cfg.sepsis_hr_increase * sepsis_sev) * sympathetic_hr_response
+            - cfg.beta_block_hr * beta_occ * resting_tone * self.hr_star
             + vagal_hr
         )
         self.vasopressor_sv_factor = combined_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (combined_svr_factor - 1.0)
 
         # Feedback senses the same circulation as the outputs, including
-        # rhythm, hypoxia, preload, and this step's stimulation. Without
+        # rhythm, hypoxia, and preload. Nociception resets it as it does the
+        # fast baroreflex, so sustained surgery keeps MAP raised. Without
         # output it holds its last value instead of winding up during arrest.
         self.dist_hr, self.dist_sv, self.dist_svr = dist_hr, dist_sv, dist_svr
         distributive_svr_drop = (cfg.sepsis_svr_drop_wood * sepsis_sev +
@@ -936,7 +1010,7 @@ class HemodynamicModel:
             distributive_tpr_offset=distributive_tpr_offset,
         )
         if feedback_state.map > 0.0:
-            rmap = clamp(feedback_state.map * self._inv_base_rmap_denom, 0.1, 5.0)
+            rmap = clamp((feedback_state.map - self._stim_map) * self._inv_base_rmap_denom, 0.1, 5.0)
             self._rmap_fb = rmap ** cfg.fb
         rmap_fb = self._rmap_fb
 
@@ -950,25 +1024,20 @@ class HemodynamicModel:
         thermo_tpr_mult = min(2.0, thermo_tpr_mult)
 
         # Turnover equations; inotropy and preload act on output SV only.
-        tpr_production = self.kin_tpr * rmap_fb * (1.0 + total_eff_tpr) * chemo_tpr_factor * hemorrhage_tpr_mult * thermo_tpr_mult
-        tpr_dissipation = cfg.kout * self.tpr * (1.0 - eff_remi_tpr)
-        d_tpr = tpr_production - tpr_dissipation
-        sv_production = self.kin_sv * rmap_fb * (1.0 + total_eff_sv)
-        sv_dissipation = cfg.kout * self.sv_star * (1.0 - eff_remi_sv)
-        d_sv_star = sv_production - sv_dissipation
-        # eff_remi_hr can be negative with propofol, which speeds HR dissipation.
-        hr_production = self.kin_hr * rmap_fb * (1.0 + total_eff_hr_prod) * hemorrhage_hr_mult * sepsis_hr_mult
-        hr_dissipation = cfg.kout * self.hr_star * (1.0 - eff_remi_hr)
-        d_hr_star = hr_production - hr_dissipation
+        tpr_production = self.kin_tpr * rmap_fb * chemo_tpr_factor * hemorrhage_tpr_mult * thermo_tpr_mult
+        d_tpr_tone = tpr_production - cfg.kout * self.tpr_tone
+        d_sv_tone = self.kin_sv * rmap_fb - cfg.kout * self.sv_tone
+        hr_feedback = self._hr_feedback(rmap_fb, tachycardia_depth)
+        d_hr_tone = self.kin_hr * hr_feedback * hemorrhage_hr_mult - cfg.kout * self.hr_tone
 
         alpha_fast = min(1.0, dt / cfg.tau_hr_fast)
         self.smoothed_chemo_hr += (chemo_hr_boost - self.smoothed_chemo_hr) * alpha_fast
         self.smoothed_baro_hr += (baro_hr - self.smoothed_baro_hr) * alpha_fast
         self.smoothed_epi_hr += (combined_delta_hr - self.smoothed_epi_hr) * alpha_fast
 
-        self.tpr += d_tpr * dt_min
-        self.sv_star += d_sv_star * dt_min
-        self.hr_star += d_hr_star * dt_min
+        self.tpr_tone += d_tpr_tone * dt_min
+        self.sv_tone += d_sv_tone * dt_min
+        self.hr_tone += d_hr_tone * dt_min
         self.tde_hr -= cfg.k_drift * self.tde_hr * dt_min
         self.tde_sv -= cfg.k_drift * self.tde_sv * dt_min
 
@@ -983,28 +1052,35 @@ class HemodynamicModel:
         self._prev_map = computed_state.map
         return computed_state
 
-    def initialize_steady_state(self, cp_prop: float, cp_remi: float, ce_nore: float, mac_sevo: float = 0.0) -> HemoState:
-        """Seed turnover, drug effects, and the baroreflex at fixed concentrations."""
+    def initialize_steady_state(self, cp_prop: float, cp_remi: float, ce_nore: float, mac_sevo: float = 0.0,
+                                remifentanil_cp: float | None = None) -> HemoState:
+        """Seed tone, drug effects, and the baroreflex at fixed concentrations."""
         cn = max(0.0, ce_nore)
-        (total_eff_tpr, total_eff_sv, total_eff_hr_prod,
-         eff_remi_tpr, eff_remi_sv, eff_remi_hr) = self._calc_anesthetic_effects(
-            cp_prop, cp_remi, mac_sevo
-        )
-        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(
-            cn, anesthetic_depth=clamp01(mac_sevo + cp_prop / 4.0),
-        )
+        self.ce_remi_vagal = max(0.0, cp_remi if remifentanil_cp is None else remifentanil_cp)
+        self._sympathetic_venous_depth = clamp01(max(0.0, cp_prop) / 3.0)
+        self._epi_venous_alpha = 0.0
+        self._set_drug_factors(self._calc_anesthetic_effects(cp_prop, cp_remi, mac_sevo))
+        anesthetic_depth = clamp01(mac_sevo + cp_prop / 4.0)
+        tachycardia_depth = clamp01(anesthetic_depth + max(0.0, cp_remi) / self.config.opioid_reflex_ce)
+        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(cn, anesthetic_depth=anesthetic_depth)
+        # Venous return at the drug's stressed volume, relative to the reference
+        # that keeps Su's response, sets the steady-state preload.
+        self._update_venous_drug_effects(cp_prop, 0.0)
+
+        def flow_factor(mcfp: float) -> float:
+            rap = self.config.rap_baseline * min(1.0, mcfp / self.mcfp_0)
+            return (mcfp - rap) / self.venous_return_resistance * self._inv_base_co_l_min
+
+        self._pulm_reference_factor = flow_factor(self._venous_reference_mcfp)
+        self._pulm_flow_factor = flow_factor(self._calc_stressed_volume() / self.cv)
+        preload_sv = self._frank_starling(self._pulm_flow_factor / self._pulm_reference_factor * self._position_preload)
 
         def residual(z):
             z_fb = z ** self.config.fb
-            hr_z = self.base_hr * z_fb * (1.0 + total_eff_hr_prod) / (1.0 - eff_remi_hr)
-            hr_z += nore_delta_hr
-            sv_star_z = self.base_sv * z_fb * (1.0 + total_eff_sv) / (1.0 - eff_remi_sv)
-            tpr_z = self.base_tpr * z_fb * (1.0 + total_eff_tpr) / (1.0 - eff_remi_tpr)
-            term = self._hr_sv_factor(hr_z)
-            sv_z = sv_star_z * term * nore_sv_factor
-            eff_tpr_z = tpr_z + self.base_tpr * (nore_svr_factor - 1.0)
-            z_new = (hr_z * sv_z * eff_tpr_z) / (self.base_hr * self.base_sv * self.base_tpr)
-            return z_new - z
+            hr_z = self.base_hr * self._hr_feedback(z_fb, tachycardia_depth) * self._drug_hr + nore_delta_hr
+            sv_z = self.base_sv * z_fb * self._drug_sv * self._hr_sv_factor(hr_z) * nore_sv_factor * preload_sv
+            tpr_z = self.base_tpr * (z_fb * self._drug_tpr + nore_svr_factor - 1.0)
+            return hr_z * sv_z * tpr_z * self._inv_base_rmap_denom - z
 
         try:
             sol = root_scalar(residual, bracket=[0.01, 5.0], method='brentq')
@@ -1015,19 +1091,13 @@ class HemodynamicModel:
         z_ss = sol.root
 
         z_fb = z_ss ** self.config.fb
-        self.hr_star = self.base_hr * z_fb * (1.0 + total_eff_hr_prod) / (1.0 - eff_remi_hr)
-        self.sv_star = self.base_sv * z_fb * (1.0 + total_eff_sv) / (1.0 - eff_remi_sv)
-        self.tpr = self.base_tpr * z_fb * (1.0 + total_eff_tpr) / (1.0 - eff_remi_tpr)
+        self.hr_tone = self.base_hr * self._hr_feedback(z_fb, tachycardia_depth)
+        self.sv_tone = self.base_sv * z_fb
+        self.tpr_tone = self.base_tpr * z_fb
+        self.ce_prop_cv, self.ce_opioid_cv = max(0.0, cp_prop), max(0.0, cp_remi)
         self.tde_hr = 0
         self.tde_sv = 0
         self.ce_sevo = mac_sevo
-        self._update_venous_drug_effects(cp_prop, 0.0)
-        reference_rap = self.config.rap_baseline * min(1.0, self._venous_reference_mcfp / self.mcfp_0)
-        self._pulm_reference_factor = (
-            (self._venous_reference_mcfp - reference_rap) / self.venous_return_resistance
-            * self._inv_base_co_l_min
-        )
-        self._pulm_flow_factor = self._pulm_reference_factor
 
         self._epi_pressor_ce = self._epi_chrono_effect = self._epi_beta2_effect = 0.0
         self.smoothed_chemo_hr = self.smoothed_baro_hr = 0.0
@@ -1035,6 +1105,7 @@ class HemodynamicModel:
         self.vasopressor_sv_factor = nore_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (nore_svr_factor - 1.0)
 
-        state = self.step(0.0, cp_prop, cp_remi, ce_nore, -2.0, 40.0, 95.0, 0, 0, 0, mac_sevo=mac_sevo)
+        state = self.step(0.0, cp_prop, cp_remi, ce_nore, -2.0, 40.0, 95.0, 0, 0, 0, mac_sevo=mac_sevo,
+                          remifentanil_cp=remifentanil_cp)
         self._prev_map = self._baro_setpoint = state.map
         return state
