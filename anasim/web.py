@@ -111,6 +111,10 @@ class WebSession:
 
         patient = Patient(**{key: params[key] for key in PATIENT_FIELDS if key in params})
         config = SimulationConfig(**{key: params[key] for key in CONFIG_FIELDS if key in params})
+        # Maintenance starts during surgery unless a scenario, such as emergence, says otherwise.
+        surgery = spec.surgery if spec is not None else config.mode == "steady_state"
+        if surgery:
+            config.disturbance_profile = "stim_sustained_surgery"
         self.engine = SimulationEngine(patient, config)
         self.speed = 1.0
         self.achieved_speed = 1.0

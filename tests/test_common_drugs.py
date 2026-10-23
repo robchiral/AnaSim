@@ -128,8 +128,7 @@ def test_atropine_dose_response_awake_and_during_propofol(engine_factory, advanc
 def test_ephedrine_raises_pressure_and_preserves_output(engine_factory, advance_time):
     """Meng 2011 under TIVA, at peak MAP: MAP +24 to +28 mmHg, HR +2 to +8 bpm, CO preserved.
 
-    HR stays near baseline as the pressor effect fades (about +4 bpm at
-    30 min in the Dings 2026 model; Persky 2004 sustained slope).
+    The 30-min washout checks have no matched single-bolus data.
     """
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=4), start=True)
     advance_time(engine, 60)
@@ -148,38 +147,66 @@ def test_ephedrine_raises_pressure_and_preserves_output(engine_factory, advance_
     assert abs(engine.state.hr - baseline[1]) < 8
 
 
-def test_ephedrine_preserves_pressure_during_induction(engine_factory, advance_time):
+def test_ephedrine_preserves_pressure_during_induction(engine_factory):
     """Sjøen 2026: ephedrine 0.1 mg/kg at propofol-remifentanil induction reduced
-    the SBP fall by 15 mmHg (95% CI 9-22) versus placebo.
+    the SBP fall by 15 mmHg (95% CI 9-22) and retained benefit at five minutes.
 
-    The study used Marsh and Minto TCI; this run uses AnaSim's Eleveld models.
+    Eleveld plasma targets approximate the study's Marsh/Minto protocol;
+    effect-site targets would leave the patient unresponsive during sedation.
     """
-    nadirs = []
+    traces = []
+    baselines = []
     for dose in (0.0, 0.1):
         e = engine_factory(
             config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=4),
-            start=True, sex="female", height=165,
+            start=True, age=35, weight=73, sex="female", height=165,
         )
         e.set_airway_mode("ETT")
         e.set_vent_power(True)
-        e.set_drug_target("propofol", 1.0)
-        e.set_drug_target("remi", 1.0)
-        advance_time(e, 150, dt=0.5)
-        baseline_sbp = e.state.sbp
-        e.set_drug_target("propofol", 6.0)
-        e.set_drug_target("remi", 8.0)
-        e.give_drug_bolus("ephedrine", dose * e.patient.weight)
-        nadir = baseline_sbp
+        e.enable_tci("propofol", 1.0, mode="plasma")
+        e.enable_tci("remi", 1.0, mode="plasma")
+        sedation = []
+        for _ in range(300):
+            e.step(0.5)
+            sedation.append((e.state.sbp, e.state.hr, e.state.co))
+        # The paper averaged the interval 55-5 s before the induction bolus.
+        baseline = np.mean(sedation[190:290], axis=0)
+        assert e.state.loc < 0.5
+        e.enable_tci("propofol", 6.0, mode="plasma")
+        e.enable_tci("remi", 8.0, mode="plasma")
+        samples = []
         reduced = False
-        for _ in range(600):
+        # At 1 mg/mL and 0.5 mL/s, 0.1 mg/kg takes 0.2 s/kg to inject.
+        remaining = dose * e.patient.weight
+        for _ in range(570):
+            injection = min(remaining, 0.5 * 0.5)
+            if injection > 0.0:
+                e.give_drug_bolus("ephedrine", injection)
+                remaining -= injection
             e.step(0.5)
             if not reduced and e.state.loc > 0.95:
-                e.set_drug_target("propofol", 2.0)
-                e.set_drug_target("remi", 5.0)
+                e.enable_tci("propofol", 2.0, mode="plasma")
+                e.enable_tci("remi", 5.0, mode="plasma")
                 reduced = True
-            nadir = min(nadir, e.state.sbp)
-        nadirs.append(nadir - baseline_sbp)
+            samples.append((e.state.sbp, e.state.hr, e.state.co))
+        assert reduced
+        assert remaining == pytest.approx(0.0)
+        # Ten-second sliding means, five-second overlap, through 285 s.
+        traces.append(np.array([
+            np.mean(samples[i:i + 20], axis=0) for i in range(0, len(samples) - 19, 10)
+        ]))
+        baselines.append(baseline)
+    control, treated = traces
+    nadirs = [trace[:, 0].min() - baseline[0]
+              for trace, baseline in zip(traces, baselines, strict=True)]
     assert 5.0 < nadirs[1] - nadirs[0] < 25.0
+    # Gradual onset, and benefit that persists through five minutes.
+    pressure_benefit = treated[:, 0] - control[:, 0]
+    assert pressure_benefit[2] < 3.0  # Mean of the 10-20 s interval.
+    assert 10.0 < pressure_benefit[-1] < 30.0
+    assert pressure_benefit[-1] > 0.5 * pressure_benefit.max()
+    assert treated[-1, 1] > control[-1, 1]
+    assert treated[-1, 2] > control[-1, 2]
 
 
 def test_ephedrine_repeated_boluses_have_a_smaller_pressor_response(engine_factory, advance_time):

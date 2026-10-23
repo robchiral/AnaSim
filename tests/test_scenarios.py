@@ -68,8 +68,10 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         "INTUBATE": [("airway", {"mode": "ETT"})],
         "CONFIRM_ETT": [("vent_power", {"on": True})],
         "MAINTENANCE": [
-            ("vaporizer", {"percent": 2.0}),
+            ("vaporizer", {"percent": 1.8}),
             ("fgf", {"o2": 1, "air": 1, "n2o": 0}),
+            # Unstimulated sevoflurane before incision needs pressor support.
+            ("drug_rate", {"key": "phenyl", "rate": 40}),
         ],
     },
     "emergence_tiva": {
@@ -86,6 +88,7 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         "RECOVERY": [("fgf", {"o2": 5, "air": 0, "n2o": 0})],
     },
     "emergence_balanced": {
+        "ASSESS": [("drug_bolus", {"key": "phenyl", "amount": 100})],
         "STOP_AGENTS": [
             ("vaporizer", {"percent": 0}),
             ("drug_rate", {"key": "remi", "rate": 0}),
@@ -215,7 +218,9 @@ def test_objectives_ignore_actions_taken_before_activation(
     (create_sepsis_response, "sepsis"),
 ])
 def test_vasopressor_objective_tracks_pressure_and_current_support(engine_factory, builder, event):
-    engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"), start=True)
+    # These crises start during surgery, as in the browser.
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced",
+                                                    disturbance_profile="stim_sustained_surgery"), start=True)
     step = _step(builder(), "START_VASOPRESSOR")
     _activate(engine, step)
     # Recovered pressure does not justify another vasopressor.
@@ -342,6 +347,10 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
     pending = dict(SCENARIO_WALKTHROUGHS[spec.id])
     samples = 0
     snap = json.loads(session.advance(0.0))
+    # Intraoperative crises start during surgery, normotensive without vasopressors.
+    assert session.engine.disturbance_active is spec.surgery
+    if spec.surgery:
+        assert session.engine.state.map > 65.0
 
     # Continue does nothing until the current objective is met.
     if not snap["scenario"]["met"]:

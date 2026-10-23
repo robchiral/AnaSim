@@ -1,12 +1,25 @@
 import math
 from dataclasses import replace
 
+import numpy as np
 import pytest
 
+from anasim.core.enums import RhythmType
 from anasim.core.state import SimulationConfig
+from anasim.monitors.arterial import ArterialWaveformRenderer
+from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.patient.patient import Patient
+from anasim.patient.pk_models import PropofolPKEleveld
+from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.hemo_config import HemodynamicConfig
 from anasim.physiology.hemodynamics import HemodynamicModel
+from validation.intubation import (
+    POTERMAN_ARMS,
+    SJOEN_2023_ARMS,
+    SJOEN_ARMS,
+    replay_poterman,
+    replay_sjoen,
+)
 
 
 def _model(sepsis_severity: float = 0.0) -> HemodynamicModel:
@@ -21,6 +34,48 @@ def _steady_exposure(**ce: float):
     for _ in range(60):
         state = model.step(1.0, 0, 0, 0, -2, 40, 95, **ce)
     return base, state
+
+
+def _intubation_peaks(age: float, propofol: float = 3.4, sevo: float = 0.0) -> tuple[float, float]:
+    """Peak HR and MAP rises over an unstimulated control at fixed exposure."""
+    models = [HemodynamicModel(Patient(age=age)) for _ in range(2)]
+    for model in models:
+        model.initialize_steady_state(propofol, 0.0, 0.0, mac_sevo=sevo)
+    stimulus = Disturbances("stim_intubation_pulse")
+    hr_rise = map_rise = 0.0
+    for index in range(600):
+        effects = stimulus.compute_average(index * 0.2, (index + 1) * 0.2)
+        stimulated = models[0].step(
+            0.2, propofol, 0.0, 0.0, -2.0, 40.0, 95.0,
+            dist_hr=effects.hr, dist_sv=effects.sv, dist_svr=effects.svr, mac_sevo=sevo,
+        )
+        control = models[1].step(0.2, propofol, 0.0, 0.0, -2.0, 40.0, 95.0, mac_sevo=sevo)
+        hr_rise = max(hr_rise, stimulated.hr - control.hr)
+        map_rise = max(map_rise, stimulated.map - control.map)
+    return hr_rise, map_rise
+
+
+def test_age_blunts_intubation_tachycardia_with_a_retained_pressor_response():
+    """Bullington 1989: less tachycardia with age, with a retained BP response.
+
+    The study used thiopental, so only direction is checked.
+    """
+    younger, older = _intubation_peaks(30), _intubation_peaks(65)
+    assert 0.0 < older[0] < younger[0]
+    assert younger[1] > 0.0 and older[1] > 0.0
+
+
+@pytest.mark.parametrize("age,propofol,sevo,hr_peak,map_peak", [
+    (39, 3.4, 0.0, 36.0, 35.0),
+    (28, 0.0, 1.0, 38.0, 40.0),
+])
+def test_intubation_retains_ebert_peak_response(age, propofol, sevo, hr_peak, map_peak):
+    """Ebert 1992 Fig. 7 and 1995 Fig. 3: no-opioid peak rises at fixed
+    exposures. The 8 bpm/mmHg bounds allow for reading values from the figures.
+    """
+    hr_rise, map_rise = _intubation_peaks(age, propofol, sevo)
+    assert hr_rise == pytest.approx(hr_peak, abs=8.0)
+    assert map_rise == pytest.approx(map_peak, abs=8.0)
 
 
 @pytest.mark.parametrize("renal_function", [1.0, 0.4])
@@ -43,6 +98,7 @@ def test_urine_output_tapers_with_pressure_and_preserves_fluid_balance(renal_fun
 
 def test_crystalloid_distribution_pressure_age_and_component_conservation():
     """Hahn 2017: Ringer's distributes over time; low MAP and age slow urine.
+    Hahn 2021: low MAP also slows distribution, so more stays intravascular.
     Blood loss removes mixed cells and Hb, while water exchange preserves them.
     """
     outcomes = {}
@@ -55,7 +111,7 @@ def test_crystalloid_distribution_pressure_age_and_component_conservation():
             model._prev_map = pressure  # Match the pressure-conditioned volume-kinetic experiment.
             model.step(dt, 0, 0, 0, -2, 40, 95)
         blood_gain = model.blood_volume - baseline
-        assert 300.0 < blood_gain < 600.0
+        assert 300.0 < blood_gain < (950.0 if pressure < 81.3 else 600.0)
         assert blood_gain + model.crystalloid.interstitial_ml + model.total_third_space_ml + model.lung_water_ml + model.total_urine_out_ml == pytest.approx(1000, abs=1e-7)
         assert model.hb_conc * model.blood_volume / 100 == pytest.approx(hemoglobin)
         assert model.get_hematocrit() * model.blood_volume == pytest.approx(cells)
@@ -66,6 +122,7 @@ def test_crystalloid_distribution_pressure_age_and_component_conservation():
             model.step(dt, 0, 0, 0, -2, 40, 95)
         assert model.blood_volume - baseline < blood_gain
     assert outcomes[30, 50, 1.0][1] < 0.1 * outcomes[30, 100, 1.0][1]
+    assert outcomes[30, 50, 1.0][0] > outcomes[30, 100, 1.0][0] + 100.0
     assert outcomes[70, 100, 1.0][1] < 0.4 * outcomes[30, 100, 1.0][1]
     # Infusion enters at the start of each step, giving a half-step timing error.
     assert outcomes[30, 100, 0.1] == pytest.approx(outcomes[30, 100, 1.0], abs=0.3)
@@ -106,39 +163,136 @@ def test_transfusion_preserves_donor_cells_and_hemoglobin(
     assert engine.state.hct * engine.state.blood_volume == pytest.approx(expected_cells_ml * remaining_fraction)
 
 
-@pytest.mark.parametrize(
-    ("propofol", "remifentanil", "expected"),
-    [
-        (4.0, 0.0, (
-            (70.741, 56.054, 81.472), (63.226, 57.048, 79.708), (57.165, 61.043, 79.080),
-        )),
-        (3.0, 2.0, (
-            (68.868, 55.476, 80.394), (58.095, 55.062, 75.639), (52.184, 57.608, 71.768),
-        )),
-        (4.0, 8.0, (
-            (63.130, 53.739, 76.923), (44.359, 49.885, 64.213), (38.709, 50.714, 56.188),
-        )),
-    ],
-)
-def test_su_concentration_step_time_course(propofol, remifentanil, expected):
-    """Su Eqs 6-17/Table 2, integrated independently with solve_ivp, at 1, 5, and 15 min.
-
-    The baroreflex and fluid clearance are off. The baseline is the paper's
-    35-year-old (HR 56, SV 82.2, TPR 0.016) without the anxiety transient.
+def test_sjoen_remifentanil_doses_give_the_same_induction_fall():
+    """Sjøen 2024: remifentanil doses giving peak effect-site concentrations of 2,
+    4, and 8 ng/mL with propofol 1.8 mg/kg lowered invasive SAP 30-32% (SD 6-7%),
+    with no dose effect. These research inductions fall further than routine
+    practice (test_clinical_acceptance.py), so they bound the model within 2 SD.
     """
-    patient = Patient(age=35, baseline_hr=56, baseline_map=56 * 82.2 * 0.016)
-    config = replace(
-        HemodynamicConfig(), cardiac_index=56 * 82.2 / 1000 / patient.bsa,
-        vol_clearance=0.0, baro_gain_brady=0.0, baro_gain_tachy=0.0,
-    )
-    model = HemodynamicModel(patient, config)
-    observations = []
-    for index in range(9000):
-        state = model.step(0.1, propofol, remifentanil, 0.0, -2.0, 40.0, 85.0, peep_cmH2O=5.0)
-        if index in (599, 2999, 8999):
-            observations.append((state.map, state.hr, state.sv))
-    for observed, reference in zip(observations, expected, strict=True):
-        assert observed == pytest.approx(reference, abs=0.02)
+    falls = [replay_sjoen(arm)["sap"] for arm in SJOEN_ARMS]
+    for fall, arm in zip(falls, SJOEN_ARMS, strict=True):
+        assert fall == pytest.approx(arm.sap_change, abs=2 * 6.6)
+    assert abs(falls[2] - falls[0]) < 6.0
+
+
+def test_sjoen_doubled_propofol_deepens_the_induction_fall():
+    """Sjøen 2023: propofol 1.4 or 2.7 mg/kg with remifentanil near 2 mcg/kg
+    lowered invasive SAP 31 ± 6.6% and 36 ± 7.3%, within 2 SD as above.
+    """
+    low, high = (replay_sjoen(arm)["sap"] for arm in SJOEN_2023_ARMS)
+    assert low == pytest.approx(SJOEN_2023_ARMS[0].sap_change, abs=2 * 6.6)
+    assert high == pytest.approx(SJOEN_2023_ARMS[1].sap_change, abs=2 * 7.3)
+    assert high < low
+
+
+def _pressures(model, renderer, cycle, state, seed=False):
+    sample = cycle.seed(state.hr, RhythmType.SINUS) if seed else cycle.step(1.0, state.hr, state.rhythm_type)
+    return renderer.step(sample, state.map, state.sv)
+
+
+def test_ebert_propofol_induction_without_opioid():
+    """Ebert 1992, unpremedicated patients aged about 37: propofol 2.5 mg/kg
+    then 200 mcg/kg/min lowered SBP 26 and DBP 9 mmHg (MAP 16%) by 3-4 min, and
+    HR rose 11 bpm. The model's falls run about 5 points deeper, with SBP still
+    falling more than DBP; its HR rises less.
+    """
+    patient = Patient(age=37, weight=81, height=176, sex="male", baseline_map=88.4, baseline_hr=61.5)
+    model = HemodynamicModel(patient)
+    pk = PropofolPKEleveld(patient, concomitant_opioids=False)
+    renderer, cycle = ArterialWaveformRenderer(age=37), CardiacCycle(np.random.default_rng(0))
+    awake = model.step(0.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0)
+    baseline = _pressures(model, renderer, cycle, awake, seed=True)
+    for second in range(240):
+        rate = 2.5 * 81 / 20.0 if second < 20 else 0.2 * 81 / 60.0
+        state = model.step(1.0, pk.step(1.0, rate).c1, 0.0, 0.0, -2.0, 40.0, 95.0, remifentanil_cp=0.0)
+        pressure = _pressures(model, renderer, cycle, state)
+    sbp_fall, dbp_fall = baseline.systolic - pressure.systolic, baseline.diastolic - pressure.diastolic
+    assert 10.0 < 100.0 * (1.0 - state.map / awake.map) < 30.0
+    assert sbp_fall > 1.5 * dbp_fall
+
+
+def test_morley_propofol_fall_grows_with_preinduction_pressure():
+    """Morley 2010, non-hypertensive adults aged about 38 without opioid: propofol
+    40 mg/kg/h until BIS 50 (mean 2.0 mg/kg, so 3 min), then 8 mg/kg/h. The
+    largest of 15 one-minute MAP readings fell 25.6% (SD 7.3), 0.44 points more
+    per mmHg of baseline, about 0.33 after regression to the mean from a single
+    baseline reading.
+    """
+    falls = {}
+    for baseline_map in (80.0, 97.0, 115.0):
+        patient = Patient(age=38, weight=72, height=165, sex="female", baseline_map=baseline_map, baseline_hr=75)
+        model = HemodynamicModel(patient)
+        pk = PropofolPKEleveld(patient, concomitant_opioids=False)
+        awake = model.step(0.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0).map
+        pressures = []
+        for second in range(900):
+            rate = (40.0 if second < 180 else 8.0) * 72 / 3600.0
+            pressures.append(model.step(1.0, pk.step(1.0, rate).c1, 0.0, 0.0, -2.0, 40.0, 95.0).map)
+        readings = [np.mean(pressures[minute * 60 - 40:minute * 60]) for minute in range(1, 16)]
+        falls[baseline_map] = 100.0 * (1.0 - min(readings) / awake)
+    assert falls[97.0] == pytest.approx(25.6, abs=7.3)
+    assert 0.2 < (falls[115.0] - falls[80.0]) / 35.0 < 0.45
+
+
+def test_van_den_berg_equipotent_propofol_remifentanil_pairs():
+    """van den Berg 2021: after 11 min at propofol/remifentanil effect-site
+    pairs of 8.6/1, 5.9/2, 3.6/4, and 2.0/8 (equal predicted tolerance of
+    laryngoscopy), median SBP was 90-104 mmHg in every group and HR fell from 71
+    to 60 with more remifentanil. Ephedrine rescues before the measurement and
+    unreported awake values leave the absolute level unchecked.
+    """
+    readings = []
+    for propofol, remifentanil in ((8.6, 1.0), (5.9, 2.0), (3.6, 4.0), (2.0, 8.0)):
+        model = HemodynamicModel(Patient(age=53, weight=78, height=172, sex="male"))
+        renderer, cycle = ArterialWaveformRenderer(age=53), CardiacCycle(np.random.default_rng(0))
+        state = model.step(0.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0)
+        _pressures(model, renderer, cycle, state, seed=True)
+        for _ in range(1200):
+            state = model.step(1.0, propofol, remifentanil, 0.0, -2.0, 40.0, 95.0)
+            pressure = _pressures(model, renderer, cycle, state)
+        readings.append((pressure.systolic, state.hr))
+    systolic = [sbp for sbp, _ in readings]
+    assert all(85.0 <= sbp <= 109.0 for sbp in systolic)  # Observed 90-104.
+    assert readings[0][1] > readings[3][1] + 5.0
+
+
+def test_poterman_high_dose_remifentanil_with_and_without_atropine():
+    """Poterman 2017 Table 2: propofol Ce 2.5 mcg/mL and remifentanil Ce 8 ng/mL
+    lowered MAP by a median 37 mmHg (IQR 31-41) and HR by 19 ± 11 bpm at 10 min.
+    Methylatropine at induction kept HR unchanged (0 ± 13 bpm) and limited the
+    MAP fall to 24 mmHg (IQR 21-40). The model's HR fall is about half the
+    observed mean. Like other research inductions, these bound the model within
+    2 SD, taking the SD as the IQR over 1.35.
+    """
+    results = {name: replay_poterman(arm) for name, arm in POTERMAN_ARMS.items()}
+    for name, arm in POTERMAN_ARMS.items():
+        map_change, hr_change = results[name]
+        spread = (arm.map_change[2] - arm.map_change[1]) / 1.35
+        assert map_change == pytest.approx(arm.map_change[0], abs=2 * spread)
+        assert hr_change == pytest.approx(arm.hr_change[0], abs=arm.hr_change[1])
+    assert results["atropine"][0] > results["saline"][0]
+    assert results["atropine"][1] > results["saline"][1]
+
+
+@pytest.mark.parametrize("age,ic50,gamma", [(30, 4.61, 1.75), (50, 4.13, 2.12), (65, 3.96, 1.64)])
+def test_kazama_equilibrated_propofol_sbp_by_age(engine_factory, age, ic50, gamma):
+    """Kazama 1999 Table 2: SBP after 22-28 min at constant plasma propofol, as a
+    share of the fall from baseline to 80 mmHg, with these IC50s and slopes.
+    """
+    for target in (4.0, 6.0):
+        engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True,
+                                age=age, baseline_map=(130.0 + 2.0 * 80.0) / 3.0)
+        engine.set_airway_mode("ETT")
+        engine.set_vent_settings(rr=12, vt=0.5, peep=0.0, ie="1:2", mode="VCV")
+        engine.set_vent_power(True)
+        for _ in range(60):
+            engine.step(1.0)
+        baseline = engine.state.sbp
+        engine.enable_tci("propofol", target, mode="plasma")
+        for _ in range(1500):
+            engine.step(1.0)
+        expected = 100.0 * (1.0 - 80.0 / baseline) * target**gamma / (ic50**gamma + target**gamma)
+        assert 100.0 * (1.0 - engine.state.sbp / baseline) == pytest.approx(expected, abs=5.0)
 
 
 def test_pressors_raise_svr_without_beta_effects():
@@ -196,18 +350,66 @@ def test_phenylephrine_output_response_depends_on_preload():
     assert 0.9 < low[0] < 1.1 and low[1] > 1.0
 
 
-def test_steady_state_initialization_keeps_fast_and_slow_drug_effects(patient):
+@pytest.mark.parametrize("propofol,sevo,nore", [
+    (0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (4.0, 0.0, 0.0),
+    (0.0, 1.0, 0.0), (3.53, 0.0, 10.0),
+])
+def test_steady_state_initialization_keeps_fast_and_slow_drug_effects(patient, propofol, sevo, nore):
     model = HemodynamicModel(patient, replace(HemodynamicConfig(), vol_clearance=0.0))
-    initialized = model.initialize_steady_state(3.53, 3.6, 10.0)
-    assert initialized.map > 100.0
+    initialized = model.initialize_steady_state(propofol, 3.6, nore, mac_sevo=sevo)
+    if nore:
+        assert initialized.map > patient.baseline_map
     initial_values = (initialized.map, initialized.hr, initialized.co)
     assert (model.state.map, model.state.hr, model.state.co) == pytest.approx(initial_values)
-    for _ in range(60):
-        state = model.step(1.0, 3.53, 3.6, 10.0, -2.0, 40.0, 95.0)
-    assert (state.map, state.hr, state.co) == pytest.approx(initial_values, rel=0.01)
+    for second in range(1, 901):
+        state = model.step(1.0, propofol, 3.6, nore, -2.0, 40.0, 95.0, mac_sevo=sevo)
+        if second in (60, 300, 900):
+            assert (state.map, state.hr, state.co) == pytest.approx(initial_values, rel=0.01)
 
-    # The cardiovascular sevoflurane site follows the same kinetics at any step size.
-    expected_peak = -math.expm1(-model.config.ke0_sevo * 5.0)
+def test_ebert_sevoflurane_induction_and_steady_state():
+    """Ebert 1995, volunteers aged 19-32 without stimulation: propofol 2 mg/kg
+    lowered MAP 14% before mask sevoflurane began, and the fall reached 24-25%
+    by 4.5-9.5 minutes as end-tidal rose to 2.1% (Fig. 1). After intubation, MAP
+    was 24, 29, and 40% below awake 10 minutes after end-tidal reached 1, 2, and
+    3% (Fig. 4). These rested volunteers fall further than routine patients
+    (test_clinical_acceptance.py), so they bound the model within 2 SD, taking
+    the SD as 9 points from the figures' standard errors with 12 subjects.
+    """
+    patient = Patient(age=25, weight=75, height=178, sex="male", baseline_map=92, baseline_hr=60)
+    model = HemodynamicModel(patient)
+    pk = PropofolPKEleveld(patient, concomitant_opioids=False)
+    mac = 1.80 * 10 ** (-0.00269 * (25 - 40))
+    awake = model.step(0.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0).map
+    ramp = (0.2, 0.5, 1.0, 1.4, 1.5, 1.8, 2.0, 2.1, 2.1, 2.1)  # End-tidal % by minute
+    intubation = Disturbances("stim_intubation_pulse")
+    falls = {}
+    for second in range(4560):
+        if second < 120:
+            end_tidal = 0.0
+        elif second < 720:
+            end_tidal = ramp[(second - 120) // 60]
+        else:
+            # Vaporizer 1% for 20 min, then end-tidal steps to 2 and 3% every 18 min.
+            step = min(2, max(0, (second - 1920) // 1080 + 1))
+            start = 720 if step == 0 else 1920 + (step - 1) * 1080
+            previous, target = ((2.1, 1.0), (1.0, 2.0), (2.0, 3.0))[step]
+            end_tidal = target + (previous - target) * math.exp(-(second - start) / 180.0)
+        effects = intubation.compute_average(second - 720.0, second - 719.0)
+        state = model.step(1.0, pk.step(1.0, 7.5 if second < 20 else 0.0).c1, 0.0, 0.0, -2.0, 40.0, 95.0,
+                           mac_sevo=end_tidal / mac, dist_hr=effects.hr, dist_sv=effects.sv, dist_svr=effects.svr)
+        falls[second + 1] = 100.0 * (1.0 - state.map / awake)
+    # Fig. 1 falls by second: before the vaporizer started, then 0.5-9.5 min after.
+    figure1 = {110: 14, 150: 16, 210: 18, 270: 20, 330: 22, 390: 24, 570: 24, 630: 25, 690: 25}
+    for second, fall in figure1.items():
+        assert falls[second] == pytest.approx(fall, abs=2 * 9.0)
+    for second, fall in ((1920, 24), (3000, 29), (4080, 40)):
+        assert falls[second] == pytest.approx(fall, abs=2 * 9.0)
+    assert falls[690] > falls[150] + 3.0  # Gradual fall on mask sevoflurane.
+    assert falls[1920] < falls[3000] < falls[4080]
+
+
+def test_sevo_effect_site_kinetics_do_not_depend_on_step_size(patient):
+    expected_peak = -math.expm1(-HemodynamicConfig().ke0_sevo * 5.0)
     for dt in (1.0, 300.0):
         model = HemodynamicModel(patient, replace(HemodynamicConfig(), vol_clearance=0.0))
         for _ in range(round(300.0 / dt)):

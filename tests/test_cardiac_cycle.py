@@ -1,6 +1,10 @@
+from dataclasses import replace
+
 import numpy as np
 
 from anasim.core.enums import RhythmType
+from anasim.core.monitors import step_cardiac_monitors
+from anasim.core.state import SimulationConfig
 from anasim.monitors.arterial import ArterialWaveformRenderer
 from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.monitors.ecg import ECGMonitor
@@ -101,3 +105,33 @@ def test_ischemic_st_signal_preserves_qrs_and_wide_complex_morphology():
                 st_differences.append(difference)
         if rhythm != RhythmType.VTACH:
             assert min(st_differences) > 0.19
+
+
+def test_batched_monitor_updates_preserve_waveforms_readings_and_noise(engine_factory):
+    """Long physiology steps must publish the same monitor samples as 100 Hz updates."""
+    reference, batched = [
+        engine_factory(config=SimulationConfig(mode="awake", rng_seed=7)) for _ in range(2)
+    ]
+    fields = ("ecg_voltage", "pleth_voltage", "art_pressure", "art_sbp", "art_dbp", "art_map",
+              "sbp", "dbp", "spo2", "spo2_signal_valid")
+    for rhythm, hr, saturation, output in (
+        (RhythmType.SINUS, 75.0, 98.0, 5.0),
+        (RhythmType.AFIB, 110.0, 85.0, 3.0),
+        (RhythmType.SVT, 160.0, 93.0, 2.0),
+        (RhythmType.VTACH, 180.0, 90.0, 1.0),
+        (RhythmType.VFIB, 0.0, 60.0, 0.0),
+        (RhythmType.ASYSTOLE, 0.0, 50.0, 0.0),
+        (RhythmType.SINUS_BRADY, 45.0, 99.0, 4.0),
+    ):
+        hemo = replace(reference.hemo.state, rhythm_type=rhythm, hr=hr, co=output)
+        for engine in (reference, batched):
+            engine.hemo.coronary.ischemia = 0.5
+        for _ in range(5):
+            for _ in range(100):
+                step_cardiac_monitors(reference, 0.01, hemo, saturation)
+            step_cardiac_monitors(batched, 1.0, hemo, saturation)
+            assert tuple(getattr(batched.state, name) for name in fields) == tuple(
+                getattr(reference.state, name) for name in fields
+            )
+        assert batched.ecg.rng.bit_generator.state == reference.ecg.rng.bit_generator.state
+        assert batched.cardiac_cycle.rng.bit_generator.state == reference.cardiac_cycle.rng.bit_generator.state

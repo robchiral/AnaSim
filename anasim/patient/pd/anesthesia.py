@@ -14,6 +14,29 @@ SEVO_BIS_AT_1_MAC = 41.0
 # ng/mL fentanyl (McEwan 1993).
 FENTANYL_REMI_POTENCY = 1.37 / 1.67
 
+# Fentanyl attenuation of the pressure response to stimulation, fitted to
+# Kazama 1997 Tables 2-3 (measured fentanyl concentrations, absolute intubation
+# SBP rises). The effect scales with propofol-equivalent depth; the C50 applies
+# at propofol 3.4 mcg/mL.
+FENTANYL_PRESSURE_C50 = 6.7
+FENTANYL_PRESSURE_GAMMA = 1.9
+
+# Fentanyl attenuation of the HR response, fitted to Kazama 1997 Table 3
+# intubation HR rises relative to the no-fentanyl rises at the motor Cp50 and
+# Cp95. A propofol interaction did not improve the fit.
+FENTANYL_HR_C50 = 1.15  # ng/mL
+FENTANYL_HR_GAMMA = 1.32
+
+# Fentanyl lowers the sevoflurane concentration that blocks HR and MAP rises
+# to incision (MAC-BAR) by 50, 57, 83, and 92% at 0.78, 1, 3, and 6 ng/mL
+# (Katoh 1999), which 1 / (1 + (C / 0.78)**1.14) reproduces.
+FENTANYL_MAC_BAR_C50 = 0.78  # ng/mL
+FENTANYL_MAC_BAR_GAMMA = 1.14
+
+# Eleveld-to-Bouillon propofol scale for loss of response, calibrated to BIS at
+# loss of response during stepped induction (Lysakowski 2009).
+PROPOFOL_LOC_TRANSFER = 1.3
+
 # Midazolam converts to a saturating propofol equivalent (mcg/mL). At its
 # loss-of-response Ce (Albrecht 1999: 499 ng/mL at 26 years, 210 at 71) it
 # equals the Bouillon Bayesian shaking/shouting Ce50 of 3.21 mcg/mL, and
@@ -169,7 +192,8 @@ class ClinicalResponseModel:
     """Bouillon 2004 Bayesian hierarchy for shaking/shouting and laryngoscopy.
 
     Propofol and remifentanil inputs represent clinical effect-site concentrations.
-    Their transfer to Eleveld PK is an assumption. Sevoflurane potency is
+    The engine calibrates Eleveld propofol's LOC input to Lysakowski 2009;
+    the other PK transfers remain assumptions. Sevoflurane potency is
     anchored to Kuizenga 2019 shaking/shouting and Hannivoort 2016
     laryngoscopy; the combined volatile surface and shared slope are simulator
     approximations.
@@ -187,10 +211,13 @@ class ClinicalResponseModel:
         # the patient's age adjustment.
         self.mac_reference = 1.80 * 10.0 ** (-0.00269 * (35.0 - 40.0))
 
-    def _probability(self, hypnotic_units: float, ce_remi: float, intensity: float) -> float:
+    def _effect(self, hypnotic_units: float, ce_remi: float, intensity: float) -> float:
         opioid_units = max(0.0, ce_remi) / (self.c50_remi * intensity)
         post_opioid = intensity / (1.0 + opioid_units**self.gamma_remi)
-        effect = (max(0.0, hypnotic_units) / post_opioid)**self.gamma_prop
+        return (max(0.0, hypnotic_units) / post_opioid)**self.gamma_prop
+
+    def _probability(self, hypnotic_units: float, ce_remi: float, intensity: float) -> float:
+        effect = self._effect(hypnotic_units, ce_remi, intensity)
         # Increasing nonresponse matches the paper's surfaces. Its printed
         # equation 4 appears to reverse the probability with a complement.
         return effect / (1.0 + effect)
@@ -209,20 +236,48 @@ class ClinicalResponseModel:
         units += intensity * max(0.0, ce_ketamine) / KETAMINE_LOSS_OF_RESPONSE
         return self._probability(units, ce_remi, intensity)
 
+    def _noxious_units(self, ce_prop: float, mac_sevo: float, mac_n2o: float,
+                       ce_ketamine: float) -> float:
+        # MAC fractions add at the laryngoscopy endpoint.
+        mac = max(0.0, mac_sevo) + max(0.0, mac_n2o) + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
+        return max(0.0, ce_prop) / self.c50_prop + LARYNGOSCOPY_INTENSITY * mac * self.mac_reference / 2.59
+
     def tolerance(
         self, ce_prop: float, ce_remi: float, mac_sevo: float = 0.0,
         mac_n2o: float = 0.0, ce_ketamine: float = 0.0, ce_lidocaine: float = 0.0,
         intensity: float = LARYNGOSCOPY_INTENSITY,
     ) -> float:
         """Probability of no response to a stimulus; laryngoscopy by default."""
-        units = max(0.0, ce_prop) / self.c50_prop
-        # MAC fractions of sevoflurane, nitrous oxide, and ketamine add for noxious
-        # stimulation, converted to propofol units at the laryngoscopy endpoint.
-        mac = max(0.0, mac_sevo) + max(0.0, mac_n2o) + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
-        units += LARYNGOSCOPY_INTENSITY * mac * self.mac_reference / 2.59
+        units = self._noxious_units(ce_prop, mac_sevo, mac_n2o, ce_ketamine)
         tolerance = self._probability(units, ce_remi, intensity)
         lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
         return 1.0 - (1.0 - tolerance) * (1.0 - lidocaine_block)
+
+    def cardiovascular_response_fractions(
+        self, ce_prop: float, ce_remi: float, mac_sevo: float = 0.0,
+        mac_n2o: float = 0.0, ce_ketamine: float = 0.0, ce_lidocaine: float = 0.0,
+        *, intensity: float, ce_fentanyl: float = 0.0,
+    ) -> tuple[float, float]:
+        """Pressure and HR fractions of the sympathetic stimulus left after drugs.
+
+        Kazama 1997: propofol alone lowers baseline BP without blunting the
+        stimulus-related rise, so IV hypnotics only potentiate the other drugs.
+        ce_remi excludes fentanyl, which has separate fits with propofol and
+        lowers the inhaled agents' requirement; other opioids use the Bouillon
+        surface.
+        """
+        ce_fentanyl = max(0.0, ce_fentanyl)
+        inhaled_shift = 1.0 + (ce_fentanyl / FENTANYL_MAC_BAR_C50)**FENTANYL_MAC_BAR_GAMMA
+        units = self._noxious_units(ce_prop, mac_sevo * inhaled_shift, mac_n2o * inhaled_shift, ce_ketamine)
+        effect = self._effect(units, ce_remi, intensity)
+        baseline = self._effect(max(0.0, ce_prop) / self.c50_prop, 0.0, intensity)
+        lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
+        # Ratio of survival probabilities, evaluated without subtracting near-one values.
+        remaining = (1.0 + baseline) / (1.0 + effect) * (1.0 - lidocaine_block)
+        pressure_exposure = (ce_fentanyl / FENTANYL_PRESSURE_C50)**FENTANYL_PRESSURE_GAMMA
+        pressure = remaining * math.exp(-math.log(2.0) * pressure_exposure * max(0.0, ce_prop) / 3.4)
+        hr = remaining / (1.0 + (ce_fentanyl / FENTANYL_HR_C50)**FENTANYL_HR_GAMMA)
+        return pressure, hr
 
 
 __all__ = [

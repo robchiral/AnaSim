@@ -93,36 +93,41 @@ class ECGMonitor:
             for offset, amplitude, width in morphology.waves(preceding_rr)
         ]
 
-    def step(self, dt: float, cycle: CardiacCycleSample, st_depression_mv: float = 0.0) -> float:
-        """Return the next ECG voltage (mV)."""
+    def step(self, dt: float, cycle: CardiacCycleSample, st_depression_mv: float = 0.0,
+             *, render: bool = True) -> float:
+        """Advance timing and noise; return voltage (mV), or zero when render is false."""
         rhythm_type = cycle.rhythm_type
         if rhythm_type == RhythmType.ASYSTOLE:
             self._rhythm = None
-            return self.rng.random() * 0.02 - 0.01
+            voltage = self.rng.random() * 0.02 - 0.01
+            return voltage if render else 0.0
 
         if rhythm_type == RhythmType.VFIB:
             self._rhythm = None
             amplitude = 0.3 * (1.0 + 0.35 * self._vf_envelope.step(dt, self.rng))
             val = amplitude * (self._vf_main.step(dt, self.rng) + 0.5 * self._vf_slow.step(dt, self.rng))
-            return val + self.rng.random() * 0.10 - 0.05
+            voltage = val + self.rng.random() * 0.10 - 0.05
+            return voltage if render else 0.0
 
         if cycle.beat_started or rhythm_type != self._rhythm:
             self._place_beats(cycle)
 
-        t = cycle.elapsed_s
         val = 0.0
-        for center, amplitude, width, cutoff in self._waves:
-            offset = t - center
-            if -cutoff < offset < cutoff:
-                val += amplitude * math.exp(-0.5 * (offset / width) ** 2)
+        if render:
+            t = cycle.elapsed_s
+            for center, amplitude, width, cutoff in self._waves:
+                offset = t - center
+                if -cutoff < offset < cutoff:
+                    val += amplitude * math.exp(-0.5 * (offset / width) ** 2)
 
-        if st_depression_mv > 0.0 and 0.06 < t < self._st_end_s:
-            # Illustrative horizontal ST depression starting 60 ms after the R peak.
-            edge = min(1.0, (t - 0.06) / 0.015, (self._st_end_s - t) / 0.025)
-            val -= st_depression_mv * edge
+            if st_depression_mv > 0.0 and 0.06 < t < self._st_end_s:
+                # Illustrative horizontal ST depression starting 60 ms after the R peak.
+                edge = min(1.0, (t - 0.06) / 0.015, (self._st_end_s - t) / 0.025)
+                val -= st_depression_mv * edge
 
         if rhythm_type == RhythmType.AFIB:
             f_amplitude = 0.05 * (1.0 + 0.4 * self._f_envelope.step(dt, self.rng))
             val += f_amplitude * self._f_wave.step(dt, self.rng)
 
-        return val + self.rng.random() * 0.03 - 0.015
+        voltage = val + self.rng.random() * 0.03 - 0.015
+        return voltage if render else 0.0

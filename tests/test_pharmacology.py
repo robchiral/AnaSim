@@ -10,6 +10,7 @@ from anasim.patient.pk_models import (
     AtropinePK,
     EpinephrinePK,
     GlycopyrrolatePK,
+    KetaminePK,
     MidazolamPK,
     MilrinonePK,
     PropofolPKEleveld,
@@ -50,7 +51,7 @@ def test_residual_effect_site_decays_after_plasma_is_empty(patient):
     assert 0.0 < model.state.ce_resp < 1.0
 
 
-@pytest.mark.parametrize("model_type", [EpinephrinePK, RemifentanilPKEleveld, SuccinylcholinePK])
+@pytest.mark.parametrize("model_type", [EpinephrinePK, RemifentanilPKEleveld, SuccinylcholinePK, KetaminePK])
 def test_bolus_pk_with_reduced_volume_and_large_steps(patient, model_type):
     model = model_type(patient)
     model.update_hemodynamics(0.2, 0.5)

@@ -112,7 +112,10 @@ def step_cardiac_monitors(
     perfusion = clamp(co_ratio, 0.0, 1.0)
     st_depression = engine.hemo.coronary.st_depression_mv
 
-    for _ in range(substeps):
+    for index in range(substeps):
+        # Only the final voltage is published. Keep every beat, random draw,
+        # pressure-filter update, and saturation update at waveform resolution.
+        render = index == substeps - 1
         cardiac_sample = engine.cardiac_cycle.step(
             substep_dt,
             hemo_state.hr,
@@ -128,12 +131,13 @@ def step_cardiac_monitors(
             cardiac_sample,
             arterial_sample,
         )
-        ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample, st_depression)
+        ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample, st_depression, render=render)
         pleth, spo2_val = engine.spo2_mon.step(
             substep_dt,
             cardiac_sample,
             saturation=sao2,
             perfusion=perfusion,
+            render=render,
         )
 
     state = engine.state

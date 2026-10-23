@@ -5,6 +5,8 @@ import json
 import numpy as np
 import pytest
 
+from anasim.core.projection import stimulus_tolerance
+from anasim.core.runtime import step_disturbances
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import BISModel, ClinicalResponseModel
@@ -28,6 +30,39 @@ def test_published_response_thresholds_and_bis_delay():
     assert bis.step(30.0, bis.c50) == pytest.approx(bis.baseline / 2.0)
 
 
+def test_deeper_iv_hypnosis_preserves_cardiovascular_stimulation(engine_factory):
+    """Kazama 1997: propofol alone does not change the BP or HR rise to
+    stimulation; opioids, volatiles, and lidocaine still blunt it.
+    """
+    engine = engine_factory(start=True)
+    engine.start_disturbance("stim_intubation_pulse")
+    engine.state.time += 40.0
+    responses = []
+    for ce in (3.4, 12.0):
+        engine.state.hypnotic_response_ce = engine.state.hypnotic_ce = ce
+        engine._tol_current = stimulus_tolerance(engine)
+        responses.append(step_disturbances(engine, 0.1))
+    lighter, deeper = responses
+    assert deeper.bis < 0.01 * lighter.bis
+    assert deeper.hr == pytest.approx(lighter.hr)
+    assert deeper.svr == pytest.approx(lighter.svr)
+    assert deeper.sv == pytest.approx(lighter.sv)
+    engine.pk["remi"].state.ce = 5.0
+    engine.state.opioid_ce = 5.0
+    opioid = step_disturbances(engine, 0.1)
+    assert opioid.hr < 0.1 * deeper.hr
+    assert opioid.svr < 0.1 * deeper.svr
+
+    engine.pk["remi"].state.ce = engine.state.opioid_ce = 0.0
+    engine.state.mac_sevo = 1.5
+    volatile = step_disturbances(engine, 0.1)
+    engine.state.mac_sevo = 0.0
+    engine.state.lidocaine_ce = 4.0
+    lidocaine = step_disturbances(engine, 0.1)
+    assert 0.0 < volatile.svr < deeper.svr
+    assert 0.0 < lidocaine.svr < deeper.svr
+
+
 def test_remifentanil_blunts_arousal_without_changing_baseline_bis(engine_factory):
     outcomes = []
     for remi_target in (0.0, 4.0):
@@ -36,7 +71,9 @@ def test_remifentanil_blunts_arousal_without_changing_baseline_bis(engine_factor
         )
         engine.set_airway_mode("ETT")
         engine.set_vent_power(True)
-        engine.enable_tci("propofol", 2.3)
+        # Keep propofol below the calibrated LOC midpoint so the added opioid
+        # response can be resolved without saturating both probabilities.
+        engine.enable_tci("propofol", 2.0)
         if remi_target:
             engine.enable_tci("remi", remi_target)
         for _ in range(900):
@@ -60,26 +97,46 @@ def test_remifentanil_blunts_arousal_without_changing_baseline_bis(engine_factor
 
 def test_older_patients_lose_responsiveness_at_lower_propofol_and_higher_bis(engine_factory):
     """Lysakowski 2009: with 0.5 mcg/mL Ce steps held 5 min, patients aged 78
-    lost consciousness at a median BIS of 70 and those aged 35 at 58. Schnider
-    1999: the Ce50 falls 0.022 mcg/mL per year.
+    lost responsiveness to mild prodding/shaking at median BIS 70 (IQR 65-79),
+    and those aged 35 at 58. Hold after Cp/Ce equilibration and average the
+    last 30 s before each clinical assessment.
+
+    Age 70 is within the older cohort's 67-96 range and AnaSim's supported
+    domain. Use male patients of each cohort's mean size, controlled
+    ventilation, and Eleveld TCI in place of the study's Schnider TCI.
     """
     at_loss = {}
-    for age in (25, 70):
+    for age, weight, height in ((35, 76, 173), (70, 71, 166)):
         engine = engine_factory(
-            config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=2), start=True, age=age,
+            config=SimulationConfig(mode="awake", tci_enabled=True, concomitant_opioids=False, rng_seed=2),
+            start=True, age=age, weight=weight, height=height,
         )
         engine.set_airway_mode("ETT")
         engine.set_vent_power(True)
         steps = []
-        for target in np.arange(1.0, 4.6, 0.5):
+        for target in np.arange(0.5, 4.6, 0.5):
             engine.enable_tci("propofol", target)
-            for _ in range(300):
+            for _ in range(900):
                 engine.step(1.0)
-            steps.append((engine.state.loc, engine.state.propofol_ce, engine.state.bis))
+                if abs(engine.state.propofol_cp - engine.state.propofol_ce) < 0.05:
+                    break
+            else:
+                pytest.fail("propofol Cp/Ce did not equilibrate before the 5-min hold")
+            readings = []
+            for second in range(300):
+                engine.step(1.0)
+                if second >= 270:
+                    readings.append((engine.state.loc, engine.state.propofol_ce, engine.state.bis))
+            steps.append(np.mean(readings, axis=0))
+            if steps[-1][0] > 0.5:
+                break
         loc, ce, bis = np.asarray(steps).T
+        assert loc[0] < 0.5 < loc[-1]
         at_loss[age] = np.interp(0.5, loc, ce), np.interp(0.5, loc, bis)
-    assert at_loss[70][0] < 0.75 * at_loss[25][0]
-    assert 5.0 < at_loss[70][1] - at_loss[25][1] < 20.0
+    assert at_loss[35][1] == pytest.approx(58.0, abs=5.0)
+    assert 65.0 < at_loss[70][1] < 79.0
+    assert at_loss[70][0] < 0.75 * at_loss[35][0]
+    assert at_loss[70][1] > at_loss[35][1] + 5.0
 
 
 def test_induction_uses_separate_clinical_and_bis_sites(awake_engine):

@@ -23,7 +23,7 @@ def test_waveform_mean_and_pulse_pressure_match_su_targets():
     values, renderer = _render_beat(age=40, map_value=90.0, hr=75.0, sv=70.0)
 
     assert float(np.mean(values)) == pytest.approx(90.0, abs=0.02)
-    assert float(np.ptp(values)) == pytest.approx(70.0 / renderer.arterial_compliance, abs=0.02)
+    assert float(np.ptp(values)) == pytest.approx(70.0 / renderer.compliance_at(90.0), abs=0.02)
 
 
 def test_pulse_pressure_rises_with_age_after_45():

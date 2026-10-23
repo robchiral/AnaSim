@@ -55,8 +55,10 @@ class SpO2Monitor:
         cycle: CardiacCycleSample,
         saturation: float,
         perfusion: float = 1.0,
+        *,
+        render: bool = True,
     ) -> tuple[float, float]:
-        """Return (pleth voltage, displayed saturation %)."""
+        """Return (pleth voltage, displayed saturation %); render=False omits voltage."""
         if dt <= 0.0:
             raise ValueError("SpO2 monitor dt must be greater than zero")
 
@@ -70,12 +72,15 @@ class SpO2Monitor:
                 self._beat_amplitude = cycle.stroke_fraction
                 self._beat_rr_s = cycle.rr_interval_s
                 self._beat_pending = False
-            if self._beat_pending:
-                phase = min((self._beat_rr_s - delay_s + cycle.elapsed_s) / self._beat_rr_s, 1.0)
+            if render:
+                if self._beat_pending:
+                    phase = min((self._beat_rr_s - delay_s + cycle.elapsed_s) / self._beat_rr_s, 1.0)
+                else:
+                    phase = ((cycle.elapsed_s - delay_s) / self._beat_rr_s) % 1.0
+                idx = int(phase * self._template_max_index)
+                pleth_voltage = self._template[idx] * perf * self._beat_amplitude
             else:
-                phase = ((cycle.elapsed_s - delay_s) / self._beat_rr_s) % 1.0
-            idx = int(phase * self._template_max_index)
-            pleth_voltage = self._template[idx] * perf * self._beat_amplitude
+                pleth_voltage = 0.0
         else:
             self._beat_amplitude = 1.0
             self._beat_rr_s = None

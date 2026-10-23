@@ -46,7 +46,7 @@ npm install --no-save "pyodide@$(python scripts/build_web.py --pyodide-version)"
 node scripts/pyodide_tests.mjs -q
 ```
 
-The Pyodide runner accepts pytest arguments, runs up to eight workers, and skips local HTTP server tests.
+The Pyodide runner accepts pytest arguments, runs up to four workers (set with `--workers N`), and skips local HTTP server tests.
 
 Use published data to set expected clinical responses where available. Check
 gas or drug conservation when a change affects either.

@@ -16,6 +16,7 @@ from .monitors import step_monitors
 from .projection import (
     PhysiologyStepState,
     build_snapshot_from_models,
+    cardiovascular_response_fractions,
     loss_of_response,
     project_runtime_physiology,
     step_respiration,
@@ -106,27 +107,27 @@ def step_temperature(engine: SimulationEngine, dt: float) -> None:
     state.temp_c = float(engine.thermal.step_temperature(dt, state.temp_c, state.bair_hugger_target))
 
 
-def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects:
-    """Calculate disturbances and update event-driven volume state."""
-    state = engine.state
+def stimulus_effects(engine: SimulationEngine, dt: float) -> DisturbanceEffects:
+    """Drug-attenuated effects of the active stimulation profile over one step."""
     spec = engine.disturbances.spec
     if not engine.disturbance_active or spec is None:
-        effects = DisturbanceEffects()
-    else:
-        t_rel = max(0.0, state.time - engine.disturbance_start_time)
-        stimulus = engine.disturbances.compute_average(t_rel, t_rel + dt)
-        # Hypnotics, lidocaine, and opioids blunt stimulus responses (Bouillon 2004).
-        # EEG arousal follows laryngoscopy response probability; suppressing
-        # HR and MAP responses takes more drug (Albertin 2005).
-        arousal = 1.0 - engine._tol_current
-        sympathetic = 1.0 - clamp01(stimulus_tolerance(engine, spec.sympathetic_intensity))
-        effects = DisturbanceEffects(
-            bis=stimulus.bis * arousal,
-            svr=stimulus.svr * sympathetic,
-            sv=stimulus.sv * sympathetic,
-            hr=stimulus.hr * sympathetic,
-        )
+        return DisturbanceEffects()
+    t_rel = max(0.0, engine.state.time - engine.disturbance_start_time)
+    stimulus = engine.disturbances.compute_average(t_rel, t_rel + dt)
+    # Movement/EEG arousal and cardiovascular attenuation are separate endpoints.
+    arousal = 1.0 - engine._tol_current
+    pressure, hr = cardiovascular_response_fractions(engine, spec.sympathetic_intensity)
+    return DisturbanceEffects(
+        bis=stimulus.bis * arousal,
+        svr=stimulus.svr * pressure + spec.tonic_svr(t_rel + 0.5 * dt, 1000.0 * engine.hemo.tpr),
+        sv=stimulus.sv * pressure,
+        hr=stimulus.hr * hr,
+    )
 
+
+def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects:
+    """Calculate disturbances and update event-driven volume state."""
+    effects = stimulus_effects(engine, dt)
     hemo = engine.hemo
     if engine.active_hemorrhage:
         rate_sec = engine.hemorrhage_rate_ml_min / 60.0
@@ -382,11 +383,12 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         dt, state.hr, state.sbp, state.dbp, state.lap, engine.hemo.hb_conc, resp_state.sao2,
     )
 
-    # Su 2023 uses plasma remifentanil; morphine and hydromorphone act at their slower effect sites.
+    # Plasma remifentanil and propofol reach hemodynamic effect sites inside the model;
+    # slower opioids enter at their own effect sites.
     hemo_state = engine.hemo.step(
         dt,
         state.propofol_cp,
-        opioid_equivalent(state.remi_cp, state.fentanyl_cp, state.morphine_ce, state.hydromorphone_ce),
+        opioid_equivalent(state.remi_cp, state.fentanyl_ce, state.morphine_ce, state.hydromorphone_ce),
         state.nore_ce,
         pit=pit_estimate,
         paco2=resp_state.pa_co2,
@@ -406,9 +408,11 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         ce_atropine=state.atropine_ce,
         ce_ephedrine=state.ephedrine_ce,
         ce_ketamine=engine.pk["ketamine"].state.ce_cv,
+        ce_ketamine_hr=engine.pk["ketamine"].state.ce_hr,
         temp_c=state.temp_c,
         peep_cmH2O=total_peep_effect,
         sao2=resp_state.sao2,
+        remifentanil_cp=state.remi_cp,
     )
 
     return build_snapshot_from_models(
