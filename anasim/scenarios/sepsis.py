@@ -9,7 +9,7 @@ from .base import (
     require_crisis_started,
     require_crisis_stopped,
     require_fluid_bolus,
-    require_hypotension_after_start,
+    require_hypotension_or_treatment,
     require_vasopressor_if_hypotensive,
 )
 
@@ -24,7 +24,9 @@ def create_sepsis_response() -> Scenario:
             instruction=(
                 "This patient has an intra-abdominal infection. Select <b>Start sepsis</b> "
                 "in Events to model developing vasodilatory shock. "
-                "In practice, call for help, give prompt antibiotics, and arrange source control while resuscitating."
+                "Call for help and resuscitate promptly. In practice, obtain blood cultures without delaying "
+                "antibiotics, give antibiotics immediately (ideally within 1 hour for shock), "
+                "and arrange source control."
             ),
             check_requirements=require_crisis_started(
                 "sepsis",
@@ -38,13 +40,13 @@ def create_sepsis_response() -> Scenario:
             id="RECOGNIZE_WARM_SHOCK",
             title="Recognize septic shock",
             instruction=(
-                "Recognize <b>MAP < 65 mmHg and at least 20% below its value when sepsis began</b> "
-                "in the setting of infection. "
+                "Recognize falling pressure and impaired perfusion in the setting of infection; "
+                "begin treatment before profound hypotension develops. "
                 "Vasodilation is the main mechanism in this case; HR may rise, but tachycardia is variable. "
                 "In practice, assess perfusion and consider blood loss, anesthetic effects, and other causes of hypotension."
             ),
-            check_requirements=require_hypotension_after_start(
-                start_map, "observe the developing hypotension",
+            check_requirements=require_hypotension_or_treatment(
+                start_map, "sepsis", "begin fluid resuscitation and support pressure",
             ),
         ),
         ScenarioStep(
@@ -59,6 +61,7 @@ def create_sepsis_response() -> Scenario:
             check_requirements=require_fluid_bolus(
                 500,
                 labels=("crystalloid",),
+                event_name="sepsis",
             ),
             target_tab="Fluids",
         ),
@@ -73,6 +76,7 @@ def create_sepsis_response() -> Scenario:
             ),
             check_requirements=require_vasopressor_if_hypotensive(
                 "nore", fail_message="Start or adjust norepinephrine for persistent hypotension",
+                event_name="sepsis",
             ),
             target_tab="Medications",
         ),

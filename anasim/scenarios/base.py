@@ -1,7 +1,8 @@
 """Guided scenarios: ordered steps with instructions and requirement checks.
 
-Action objectives ("give fluids", "select the ETT") read `engine.actions` and
-count only actions taken while the objective is active. State objectives
+Action objectives ("give fluids", "select the ETT") read `engine.actions`.
+Crisis treatments count from event onset; other actions count while the
+objective is active. State objectives
 ("MAP ≥ 65") read the current engine state.
 """
 
@@ -176,16 +177,22 @@ def join_messages(messages) -> str:
     return ", ".join(message for message in messages if message)
 
 
-def bolus_given_this_step(engine, drug_key: str) -> bool:
-    """Return True when the drug was bolused during this objective."""
-    records = engine.actions.since_step(ACTION_DRUG_BOLUS, labels=(drug_key,))
+def _action_records(engine, *actions: str, labels: tuple[str, ...], event_name: str | None = None):
+    if event_name is not None:
+        return engine.actions.since_event(event_name, *actions, labels=labels)
+    return engine.actions.since_step(*actions, labels=labels)
+
+
+def bolus_given_this_step(engine, drug_key: str, *, event_name: str | None = None) -> bool:
+    """Check a bolus since objective activation or the named crisis onset."""
+    records = _action_records(engine, ACTION_DRUG_BOLUS, labels=(drug_key,), event_name=event_name)
     return any(record.amount > 0 for record in records)
 
 
-def infusion_set_this_step(engine, *drug_keys: str) -> bool:
-    """Return True when an infusion rate or TCI target was set during this objective."""
-    records = engine.actions.since_step(
-        ACTION_INFUSION_RATE, ACTION_TCI_TARGET, labels=drug_keys
+def infusion_set_this_step(engine, *drug_keys: str, event_name: str | None = None) -> bool:
+    """Check an infusion action since objective activation or crisis onset."""
+    records = _action_records(
+        engine, ACTION_INFUSION_RATE, ACTION_TCI_TARGET, labels=drug_keys, event_name=event_name,
     )
     return any(record.amount > 0 for record in records)
 
@@ -222,10 +229,13 @@ def require_fluid_bolus(
     min_ml: float,
     labels: tuple[str, ...],
     fail_prefix: str = "Give fluid bolus",
+    event_name: str | None = None,
 ) -> Requirement:
     """Check requested bolus volume; delivery continues at the pump rate."""
     def check(engine) -> tuple[bool, str]:
-        volume_requested = engine.actions.total_since_step(ACTION_FLUID, labels=labels)
+        volume_requested = sum(record.amount for record in _action_records(
+            engine, ACTION_FLUID, labels=labels, event_name=event_name,
+        ))
         if volume_requested >= min_ml:
             return True, ""
         if volume_requested > 0.0:
@@ -234,11 +244,11 @@ def require_fluid_bolus(
     return check
 
 
-def require_infusion_started(*drug_keys: str, fail_message: str) -> Requirement:
-    """Check that one of the infusions was set during this objective and is running."""
+def require_infusion_started(*drug_keys: str, fail_message: str, event_name: str | None = None) -> Requirement:
+    """Require a running infusion set during this objective or crisis."""
     def check(engine) -> tuple[bool, str]:
         if any(
-            infusion_set_this_step(engine, key) and infusion_running(engine, key)
+            infusion_set_this_step(engine, key, event_name=event_name) and infusion_running(engine, key)
             for key in drug_keys
         ):
             return True, ""
@@ -257,9 +267,11 @@ def require_infusion_running(drug_key: str, fail_message: str) -> Requirement:
     return check
 
 
-def require_vasopressor_if_hypotensive(*drug_keys: str, fail_message: str) -> Requirement:
+def require_vasopressor_if_hypotensive(
+    *drug_keys: str, fail_message: str, event_name: str | None = None,
+) -> Requirement:
     """Accept recovered pressure, or require pressor treatment for persistent hypotension."""
-    infusion_check = require_infusion_started(*drug_keys, fail_message=fail_message)
+    infusion_check = require_infusion_started(*drug_keys, fail_message=fail_message, event_name=event_name)
 
     def check(engine) -> tuple[bool, str]:
         if monitor_value(engine, "map") >= 65.0:
@@ -294,10 +306,10 @@ def require_drug_bolus(drug_key: str, fail_message: str) -> Requirement:
 
 
 def require_crisis_started(event_name: str, fail_message: str) -> Requirement:
-    """Require a crisis to be started during this objective and remain active."""
+    """Require a crisis start, including one the learner has already controlled."""
     def check(engine) -> tuple[bool, str]:
         started = action_taken_this_step(engine, ACTION_EVENT_START, event_name)
-        if started and engine.event_active(event_name):
+        if started:
             return True, ""
         return False, fail_message
     return check
@@ -313,8 +325,10 @@ class CrisisStartMAP:
         self.value = monitor_value(engine, "map")
 
 
-def require_hypotension_after_start(start: CrisisStartMAP, prompt: str) -> Requirement:
-    """Require MAP below 65 mmHg and 20% below its value when the crisis started.
+def require_hypotension_or_treatment(
+    start: CrisisStartMAP, event_name: str, prompt: str, pressors: tuple[str, ...] = ("nore",),
+) -> Requirement:
+    """Accept the observed pressure fall or prompt treatment that may prevent it.
 
     Maintenance can begin near 65 mmHg, so the absolute threshold alone can be
     met before the crisis has changed anything.
@@ -322,15 +336,19 @@ def require_hypotension_after_start(start: CrisisStartMAP, prompt: str) -> Requi
     def check(engine) -> tuple[bool, str]:
         map_val = monitor_value(engine, "map")
         threshold = 65.0 if start.value is None else min(65.0, 0.8 * start.value)
-        met = map_val < threshold
+        fluids = engine.actions.since_event(event_name, ACTION_FLUID, labels=("crystalloid", "blood"))
+        infusions = engine.actions.since_event(event_name, ACTION_INFUSION_RATE, labels=pressors)
+        controlled = engine.actions.since_event(event_name, ACTION_EVENT_STOP, labels=(event_name,))
+        treated = any(record.amount > 0 for record in (*fluids, *infusions)) or bool(controlled)
+        met = treated or map_val < threshold
         return met, "" if met else f"MAP: {map_val:.0f}/<{threshold:.0f} mmHg; {prompt}"
     return check
 
 
 def require_crisis_stopped(event_name: str, fail_message: str) -> Requirement:
-    """Require a crisis to be stopped during this objective and remain inactive."""
+    """Accept source control at any point after this crisis began."""
     def check(engine) -> tuple[bool, str]:
-        stopped = action_taken_this_step(engine, ACTION_EVENT_STOP, event_name)
+        stopped = bool(engine.actions.since_event(event_name, ACTION_EVENT_STOP, labels=(event_name,)))
         if stopped and not engine.event_active(event_name):
             return True, ""
         return False, fail_message
@@ -340,9 +358,11 @@ def require_crisis_stopped(event_name: str, fail_message: str) -> Requirement:
 def require_crisis_resolved_with_map(
     event_name: str, map_threshold: float = 65, fail_crisis: str = "Stop crisis event",
 ) -> Requirement:
-    """Check that a crisis has stopped and MAP meets a threshold."""
+    """Check that a crisis has stopped, MAP meets a threshold, and ventilation and oxygenation are adequate."""
     return require_all(
         require_map_at_least(map_threshold),
+        require_oxygenation(),
+        require_tracheal_ventilation,
         lambda engine: (not engine.event_active(event_name), fail_crisis),
     )
 
@@ -392,11 +412,14 @@ def neuromuscular_response(engine) -> tuple[str, float]:
     return ("T1", state.twitch) if state.twitch < state.tof else ("TOF ratio", state.tof)
 
 
-def require_tof_at_most(threshold: float = 25) -> Requirement:
+def require_tof_count_at_most(threshold: int) -> Requirement:
+    """Require a recent measured TOF count during block onset."""
     def check(engine) -> tuple[bool, str]:
-        label, response = neuromuscular_response(engine)
-        met = response <= threshold
-        return met, "" if met else f"{label}: {response:.0f}%/≤{threshold:.0f}%"
+        reading = engine.nmb.reading
+        if reading is None or reading.mode != "tof" or engine.state.time - reading.time > 60.0:
+            return False, "Measure TOF at the adductor pollicis"
+        met = reading.count <= threshold
+        return met, "" if met else f"TOF count: {reading.count}/{threshold} or fewer"
     return check
 
 

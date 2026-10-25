@@ -68,6 +68,19 @@ def _require_awakening(engine) -> tuple[bool, str]:
     return not msgs, join_messages(msgs)
 
 
+def _require_block_recovery(engine) -> tuple[bool, str]:
+    """Require quantitative recovery, with a recent TOF measurement."""
+    label, response = neuromuscular_response(engine)
+    if response < 90.0:
+        return False, f"{label}: {response:.0f}%/90%+; assess reversal"
+    reading = engine.nmb.reading
+    if reading is None or reading.mode != "tof" or engine.state.time - reading.time > 60.0:
+        return False, "Measure TOF and confirm a ratio of at least 90%"
+    if reading.ratio is None or reading.low_signal or reading.ratio < 90.0:
+        return False, "Confirm a reliable measured TOF ratio of at least 90%"
+    return True, ""
+
+
 def _require_extubation_readiness(engine) -> tuple[bool, str]:
     """Check wakefulness, measured breathing, oxygenation, and block recovery."""
     resp = engine.resp.state
@@ -75,8 +88,7 @@ def _require_extubation_readiness(engine) -> tuple[bool, str]:
     breathing = rr > 8 and resp.rr > 8 and not resp.apnea
     minimum_vt = 5.0 * engine.patient.predicted_body_weight()
     volume_ok = engine.state.vt > minimum_vt
-    block_label, block = neuromuscular_response(engine)
-    block_recovered = block >= 90.0
+    block_recovered, block_message = _require_block_recovery(engine)
     spo2 = monitor_value(engine, "spo2")
     oxygenated = engine.state.spo2_signal_valid and spo2 > 95.0
     bis = monitor_value(engine, "bis")
@@ -89,7 +101,7 @@ def _require_extubation_readiness(engine) -> tuple[bool, str]:
     if not volume_ok:
         msgs.append(f"Exhaled VT: {engine.state.vt:.0f}/{minimum_vt:.0f}+ mL")
     if not block_recovered:
-        msgs.append(f"{block_label}: {block:.0f}%/90%+")
+        msgs.append(block_message)
     if not oxygenated:
         msgs.append(f"SpO₂: {spo2:.0f}%/95%+" if engine.state.spo2_signal_valid else "Awaiting valid SpO₂")
     if engine.vent.is_on or engine.bag_mask_active:
@@ -144,6 +156,21 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             check_requirements=require_all(
                 require_maintenance_depth, require_map_at_least(), _require_normocapnia,
             ),
+        ),
+        ScenarioStep(
+            id="ASSESS_BLOCK",
+            title="Assess block and reversal",
+            instruction=(
+                "Check quantitative <b>TOF at the adductor pollicis</b> before emergence. "
+                "If rocuronium block remains and at least two twitches have returned, "
+                "give <b>sugammadex 2 mg/kg actual body weight</b>. Deeper block (0-1 twitches) "
+                "needs 4 mg/kg once post-tetanic twitches return; post-tetanic count is not modeled. "
+                "Continue anesthesia and ventilation until recovery. "
+                "Confirm a measured <b>TOF ratio ≥ 90%</b>; reversal is unnecessary if "
+                "quantitative recovery is already complete."
+            ),
+            check_requirements=_require_block_recovery,
+            target_tab="Medications",
         ),
         ScenarioStep(
             id="STOP_AGENTS",

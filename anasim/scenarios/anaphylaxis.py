@@ -18,13 +18,13 @@ from .base import (
 
 
 def _require_epinephrine_started() -> Requirement:
-    """Check that epinephrine was bolused or started during this objective."""
+    """Check that epinephrine was bolused or started after anaphylaxis began."""
     infusion_check = require_infusion_started(
-        "epi", fail_message="Give epinephrine (bolus or infusion)"
+        "epi", fail_message="Give epinephrine (bolus or infusion)", event_name="anaphylaxis",
     )
 
     def check(engine) -> tuple[bool, str]:
-        if bolus_given_this_step(engine, "epi"):
+        if bolus_given_this_step(engine, "epi", event_name="anaphylaxis"):
             return True, ""
         return infusion_check(engine)
     return check
@@ -57,7 +57,9 @@ def create_anaphylaxis_scenario() -> Scenario:
                 "start an infusion if repeated boluses are needed (for example, "
                 "0.05 mcg/kg/min = 3.5 mcg/min for 70 kg).<br><br>"
                 "Give <b>100% oxygen</b>: set O₂ 10 L/min, air and N₂O 0 L/min. "
-                "Maintain ventilation and assess the airway while treating circulation."
+                "Maintain ventilation and assess the airway while treating circulation. "
+                "If hypotensive, turn off the volatile anesthetic and vasodilating infusions, "
+                "and consider an amnestic agent such as midazolam."
             ),
             check_requirements=require_all(
                 _require_epinephrine_started(),
@@ -78,6 +80,7 @@ def create_anaphylaxis_scenario() -> Scenario:
                 1000.0,
                 labels=("crystalloid",),
                 fail_prefix="Start crystalloid resuscitation",
+                event_name="anaphylaxis",
             ),
             target_tab="Fluids",
         ),

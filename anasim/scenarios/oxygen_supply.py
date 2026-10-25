@@ -49,14 +49,6 @@ def _require_safe_baseline(engine) -> tuple[bool, str]:
     return False, join_messages(messages)
 
 
-def _require_analyzer_warning(engine) -> tuple[bool, str]:
-    fio2 = engine.circuit.composition.fio2
-    detected = not engine.circuit.oxygen_supply_connected and fio2 < 0.30
-    if detected:
-        return True, ""
-    return False, f"Circuit FiO₂: {fio2 * 100:.0f}%; watch for a value below 30%"
-
-
 def _require_oxygen_recovery(engine) -> tuple[bool, str]:
     fio2 = engine.circuit.composition.fio2
     recovered = (
@@ -116,24 +108,17 @@ def create_oxygen_supply_failure() -> Scenario:
                 target_section="equipment",
             ),
             ScenarioStep(
-                id="RECOGNIZE_LOW_FIO2",
-                title="Recognize the analyzer warning",
-                instruction=(
-                    "Watch the measured circuit FiO₂ fall below <b>30%</b>. "
-                    "Do not wait for SpO₂ to decline before responding."
-                ),
-                check_requirements=_require_analyzer_warning,
-                target_tab="Machine",
-            ),
-            ScenarioStep(
                 id="CONNECT_BACKUP_OXYGEN",
                 title="Move to backup oxygen",
                 instruction=(
+                    "Act on the supply failure immediately; do not wait for FiO₂ or SpO₂ to fall. "
                     "Call for help. In Events, select <b>Connect backup O₂</b>. "
                     "Then open Machine, set O₂ to "
                     "<b>10 L/min</b>, and set air and N₂O to <b>0 L/min</b> to flush the circuit. "
                     "This control represents isolating the failed supply and using verified backup oxygen. "
-                    "If machine oxygen delivery is uncertain in practice, use a self-inflating bag with an independent oxygen source."
+                    "If machine oxygen delivery is uncertain in practice, disconnect the patient "
+                    "and use a self-inflating bag with independent oxygen, or room air until it is available. "
+                    "The machine's auxiliary O₂ outlet shares its supply and is not an independent source."
                 ),
                 check_requirements=require_all(
                     require_oxygen_supply_action(True, "Connect backup O₂"),

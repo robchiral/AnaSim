@@ -1,9 +1,11 @@
 import json
+from dataclasses import replace
 from typing import Any
 
 import pytest
 
 from anasim.core.state import SimulationConfig
+from anasim.monitors.neuromuscular import TwitchReading
 from anasim.scenarios import (
     SCENARIO_REGISTRY,
     create_emergence,
@@ -142,6 +144,9 @@ def _early_extubation(engine):
     engine.state.spo2_signal_valid = True
     engine.set_vent_power(False)
     engine.set_airway_mode("Mask")
+    engine.nmb.reading = TwitchReading(
+        engine.state.time, "tof", (1.0, 1.0, 1.0, 1.0), 4, 100.0, 100.0, False,
+    )
 
 
 def _stop_tiva(engine):
@@ -154,12 +159,6 @@ EARLY_ACTIONS = [
     ("hemorrhage_response", "START_HEMORRHAGE",
      lambda e: e.start_hemorrhage(),
      lambda e: (e.stop_hemorrhage(), e.start_hemorrhage())),
-    ("hemorrhage_response", "GIVE_FLUIDS",
-     lambda e: e.give_fluid(1000),
-     lambda e: e.give_fluid(500)),
-    ("hemorrhage_response", "STOP_BLEEDING",
-     lambda e: (e.start_hemorrhage(), e.stop_hemorrhage()),
-     lambda e: (e.start_hemorrhage(), e.stop_hemorrhage())),
     ("induction_balanced", "SET_FGF_PREOX",
      lambda e: e.set_fgf(10.0, 0.0, 0.0),
      lambda e: e.set_fgf(9.0, 0.0, 0.0)),
@@ -235,12 +234,13 @@ def test_vasopressor_objective_tracks_pressure_and_current_support(engine_factor
     engine.set_drug_rate("nore", 5.0)
 
     _activate(engine, step)
-    assert not step.check_requirements(engine)[0]
+    assert step.check_requirements(engine)[0]
     if event == "hemorrhage":
+        engine.set_drug_rate("nore", 0.0)
         engine.set_drug_rate("phenyl", 20.0)
         assert step.check_requirements(engine)[0]
         engine.set_drug_rate("phenyl", 0.0)
-        # The earlier norepinephrine infusion cannot stand in for stopped phenylephrine.
+        # Neither infusion remains running.
         assert not step.check_requirements(engine)[0]
     engine.set_drug_rate("nore", 5.0)
     assert step.check_requirements(engine)[0]
@@ -253,6 +253,7 @@ def test_sepsis_fluid_objective_requires_crystalloid(engine_factory):
     engine = engine_factory(start=True)
     step = _step(create_sepsis_response(), "GIVE_FLUIDS")
     _activate(engine, step)
+    engine.start_sepsis()
 
     engine.give_blood(600)
     engine.give_albumin(500)
@@ -283,8 +284,56 @@ def test_extubation_requires_recovered_block_and_spontaneous_ventilation(engine_
     engine.set_bag_mask_ventilation(True)
     assert not step.check_requirements(engine)[0]
     engine.set_bag_mask_ventilation(False)
+    reading = engine.nmb.reading
+    assert reading is not None
+    for invalid in (None, replace(reading, time=engine.state.time - 61),
+                    replace(reading, ratio=89.0), replace(reading, mode="single", ratio=None)):
+        engine.nmb.reading = invalid
+        assert not step.check_requirements(engine)[0]
+    engine.nmb.reading = reading
     engine.state.vt = 200.0
     assert not step.check_requirements(engine)[0]
+
+
+@pytest.mark.parametrize("scenario_id,event,fluid_ml", [
+    ("hemorrhage_response", "hemorrhage", 500),
+    ("sepsis_response", "sepsis", 500),
+    ("anaphylaxis_response", "anaphylaxis", 1000),
+])
+def test_crisis_objectives_accept_prompt_treatment_without_repeating_doses(scenario_id, event, fluid_ml):
+    session = WebSession({"scenario_id": scenario_id})
+    engine, scenario = session.engine, session.scenario
+    assert scenario is not None
+    fluid_step = _step(scenario, "FLUIDS" if event == "anaphylaxis" else "GIVE_FLUIDS")
+    engine.give_fluid(fluid_ml)
+    getattr(engine, f"start_{event}")()
+    _activate(engine, fluid_step)
+    assert not fluid_step.check_requirements(engine)[0]  # Pre-event fluid does not count.
+    if event == "hemorrhage":
+        engine.give_blood(300)  # A single red-cell unit is an acceptable initial replacement.
+    else:
+        engine.give_fluid(fluid_ml)
+    if event == "anaphylaxis":
+        engine.give_drug_bolus("epi", 100)
+        engine.set_fgf(10, 0, 0)
+        step = _step(scenario, "EPINEPHRINE")
+        _activate(engine, step)
+        assert step.check_requirements(engine)[0]
+    else:
+        step = _step(scenario, "RECOGNIZE_SHOCK" if event == "hemorrhage" else "RECOGNIZE_WARM_SHOCK")
+        _activate(engine, step)
+        assert engine.state.map > 65.0
+        assert step.check_requirements(engine)[0]  # Treatment need not wait for hypotension.
+    _activate(engine, fluid_step)
+    assert fluid_step.check_requirements(engine)[0]
+    getattr(engine, f"stop_{event}")()
+    if event != "anaphylaxis":
+        step = _step(scenario, "STOP_BLEEDING" if event == "hemorrhage" else "SOURCE_CONTROL")
+        _activate(engine, step)
+        assert step.check_requirements(engine)[0]
+    getattr(engine, f"start_{event}")()
+    _activate(engine, fluid_step)
+    assert not fluid_step.check_requirements(engine)[0]  # A later event needs its own response.
 
 
 @pytest.mark.parametrize("assisted", [False, True], ids=["tidal-breathing", "assisted-shallow-breathing"])
@@ -370,6 +419,8 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
             if not tci_enabled:
                 assert "µg/mL" not in step["instruction"] and "ng/mL" not in step["instruction"]
         for name, args in pending.pop(step["id"], []):
+            if spec.id == "induction_tiva" and tci_enabled and name == "drug_bolus" and args["key"] == "propofol":
+                continue  # The TCI controller provides induction loading.
             if name == "drug_target" and not tci_enabled:
                 name = "drug_rate"
                 key = args["key"]

@@ -465,8 +465,10 @@ the hosted bundle, and [pages.yml](../.github/workflows/pages.yml) publishes it.
 ## Scenario objectives
 
 The action log records controls and clinical events with their simulation
-times. Objectives check actions taken since the objective became active, current
-monitor values, and control settings. The position in the log separates actions
+times. Crisis objectives accept treatment given since the event began, including
+fluid, epinephrine, and source control performed before their named steps.
+Other action objectives count from activation. Checks also use current monitor
+values and control settings. The position in the log separates actions
 taken at the same paused time, and completion callbacks run only once. In
 induction scenarios, completing the intubation objective starts the
 laryngoscopy stimulus.
@@ -474,6 +476,8 @@ laryngoscopy stimulus.
 Fluid objectives count the requested bolus volume while the fluid is still
 being delivered at the pump rate. Dosing instructions match the session's TCI
 setting.
+Induction uses measured TOF counts. Emergence includes reversal assessment and
+requires a recent quantitative TOF ratio of at least 0.9 before extubation.
 
 ## Validation
 

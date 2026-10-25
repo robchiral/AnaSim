@@ -18,7 +18,7 @@ from .base import (
     require_map_at_least,
     require_oxygenation,
     require_preoxygenation,
-    require_tof_at_most,
+    require_tof_count_at_most,
     require_tracheal_ventilation,
     require_vaporizer_started,
 )
@@ -78,6 +78,20 @@ def _confirm_loc() -> ScenarioStep:
     )
 
 
+_PROPOFOL_INFUSION = require_infusion_started("propofol", fail_message="Start the propofol infusion")
+_PROPOFOL_BOLUS = require_drug_bolus("propofol", "Give the titrated propofol induction bolus")
+
+
+def _require_propofol_induction(engine) -> tuple[bool, str]:
+    """Accept propofol TCI, which delivers its own loading dose, or a bolus with a manual infusion."""
+    running, message = _PROPOFOL_INFUSION(engine)
+    if not running:
+        return False, message
+    if engine.config.tci_enabled and engine.get_drug_state("propofol")["target"] > 0:
+        return True, ""
+    return _PROPOFOL_BOLUS(engine)
+
+
 def _mask_ventilate() -> ScenarioStep:
     return ScenarioStep(
         id="MASK_VENTILATE",
@@ -114,11 +128,12 @@ def _wait_for_paralysis() -> ScenarioStep:
         id="WAIT_PARALYSIS",
         title="Assess neuromuscular block",
         instruction=(
-            "Continue mask ventilation with <b>BIS < 60</b> and wait for the modeled <b>TOF ≤ 5%</b>. "
-            "This indicates substantial block in the simulator; clinical intubating "
+            "Continue mask ventilation with <b>BIS < 60</b> and assess the quantitative monitor "
+            "for a <b>TOF count of 0-1</b>. A ratio is unavailable when fewer than four twitches are detected. "
+            "Clinical intubating "
             "conditions also depend on anesthetic depth and the muscles assessed."
         ),
-        check_requirements=require_all(require_bis_below(60), require_tof_at_most(5)),
+        check_requirements=require_all(require_bis_below(60), require_tof_count_at_most(1)),
     )
 
 
@@ -264,17 +279,12 @@ def create_induction_tiva() -> Scenario:
                 "Optional lidocaine 20-40 mg IV before propofol can reduce injection pain."
             ),
             tci_instruction=(
-                "Give propofol <b>1.5-2.5 mg/kg</b>, titrated to effect "
-                "(about 150 mg for 70 kg; use less in older patients or with hypotension), and start propofol "
-                "<b>TCI 4-6 µg/mL</b>.<br><br>"
-                "Optional lidocaine 20-40 mg IV before propofol can reduce injection pain."
+                "Start propofol <b>TCI 4 µg/mL</b> and titrate to response; use a lower target "
+                "in older patients or with hypotension. The controller delivers the loading dose. "
+                "A separate induction bolus is not required. Alternatively, use a titrated "
+                "manual bolus followed by a manual infusion."
             ),
-            check_requirements=require_all(
-                require_drug_bolus("propofol", "Give the propofol induction bolus"),
-                require_infusion_started(
-                    "propofol", fail_message="Start the propofol infusion"
-                ),
-            ),
+            check_requirements=_require_propofol_induction,
             target_tab="Medications",
         ),
         _confirm_loc(),

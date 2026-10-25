@@ -308,6 +308,8 @@ ventilation modes.
 
 ## Scenario guidance
 
+- Stanford Anesthesia Cognitive Aid Program (2022). [Emergency Manual v4.4, anaphylaxis, hemorrhage, and oxygen failure](https://web.stanford.edu/dept/anesthesia/em/epic-manual.pdf).
+- Merck (2026). [Bridion (sugammadex) US prescribing information, reversal doses by block depth and actual body weight](https://www.merck.com/product/usa/pi_circulars/b/bridion/bridion_pi.pdf).
 - Blink Device Company (2024). [TwitchView operating manual, Rev N, pp. 14-16 and 20](https://www.blinkdc.com/hubfs/PN00211%20TwitchView%20IFU%20Rev%20N.pdf). TOF count/ratio, weak-response qualification, single twitch, baseline reference, and stimulation timing.
 - Thilen et al. (2023). *Anesthesiology*. [Quantitative neuromuscular monitoring and train-of-four ratio ≥ 0.9 before extubation](https://pubmed.ncbi.nlm.nih.gov/36520073/).
 - ANZAAG and ANZCA (2022). [Perioperative anaphylaxis, adult epinephrine doses, oxygen, and crystalloid resuscitation](https://www.anzca.edu.au/getContentAsset/d38d29ae-74f0-4136-8372-1d342c594e11/80feb437-d24d-46b8-a858-4a2a28b9b970/Anaphylaxis-Card-1-Adult-Immediate-Management-2022.pdf?language=en).

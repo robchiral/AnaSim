@@ -87,3 +87,19 @@ class ActionLog:
     ) -> float:
         """Return the summed amount of matching actions in the active objective."""
         return sum(record.amount for record in self.since_step(*actions, labels=labels))
+
+    def since_event(
+        self,
+        event_name: str,
+        *actions: str,
+        labels: Iterable[str] | None = None,
+    ) -> tuple[ActionRecord, ...]:
+        """Return actions after the latest crisis start, across objective changes."""
+        for index in range(len(self._records) - 1, -1, -1):
+            record = self._records[index]
+            if record.action == ACTION_EVENT_START and record.label == event_name:
+                return tuple(
+                    item for item in self._records[index + 1:]
+                    if item.action in actions and (labels is None or item.label in labels)
+                )
+        return ()

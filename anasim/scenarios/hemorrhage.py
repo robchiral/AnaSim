@@ -9,9 +9,18 @@ from .base import (
     require_crisis_started,
     require_crisis_stopped,
     require_fluid_bolus,
-    require_hypotension_after_start,
+    require_hypotension_or_treatment,
     require_vasopressor_if_hypotensive,
 )
+
+
+def _require_volume_replacement(engine) -> tuple[bool, str]:
+    """Accept an initial crystalloid bolus or one modeled red-cell unit."""
+    for volume, label in ((500, "crystalloid"), (300, "blood")):
+        met, _ = require_fluid_bolus(volume, labels=(label,), event_name="hemorrhage")(engine)
+        if met:
+            return True, ""
+    return False, "Start 500 mL crystalloid or one 300 mL red-cell unit"
 
 
 def create_hemorrhage_response() -> Scenario:
@@ -38,12 +47,13 @@ def create_hemorrhage_response() -> Scenario:
             id="RECOGNIZE_SHOCK",
             title="Recognize hypovolemic shock",
             instruction=(
-                "Watch for falling blood pressure during bleeding: <b>MAP < 65 mmHg and at least 20% "
-                "below its value when bleeding began</b>. HR may rise and pulse pressure may narrow. "
-                "Anesthesia and beta blockade can blunt tachycardia; begin treatment as the situation develops."
+                "Treat brisk blood loss promptly; do not wait for hypotension. "
+                "A falling MAP, narrowing pulse pressure, and falling EtCO₂ can indicate reduced flow. "
+                "Anesthesia and beta blockade can blunt tachycardia. "
+                "This objective accepts early volume replacement or bleeding control, or the developing pressure fall."
             ),
-            check_requirements=require_hypotension_after_start(
-                start_map, "observe the response to blood loss",
+            check_requirements=require_hypotension_or_treatment(
+                start_map, "hemorrhage", "replace volume and control bleeding", pressors=("nore", "phenyl"),
             ),
         ),
         ScenarioStep(
@@ -63,15 +73,13 @@ def create_hemorrhage_response() -> Scenario:
             id="GIVE_FLUIDS",
             title="Replace circulating volume",
             instruction=(
-                "Start <b>500 mL crystalloid or blood</b> in Fluids, "
-                "then reassess blood loss and perfusion. Use blood products early for major "
-                "hemorrhage and activate the local major hemorrhage protocol when needed. "
+                "Start <b>500 mL crystalloid</b> as a bridge while blood is obtained, "
+                "or give a red-cell unit (<b>300 mL</b> in this simulator). "
+                "Reassess blood loss and perfusion. Use blood products early for major "
+                "hemorrhage and activate the local massive transfusion protocol when needed. "
                 "Coagulation testing, component therapy, and calcium replacement are clinical actions outside this model."
             ),
-            check_requirements=require_fluid_bolus(
-                500,
-                labels=("crystalloid", "blood"),
-            ),
+            check_requirements=_require_volume_replacement,
             target_tab="Fluids",
         ),
         ScenarioStep(
@@ -86,6 +94,7 @@ def create_hemorrhage_response() -> Scenario:
             check_requirements=require_vasopressor_if_hypotensive(
                 "nore", "phenyl",
                 fail_message="Start or adjust vasopressor support for persistent hypotension",
+                event_name="hemorrhage",
             ),
             target_tab="Medications",
         ),

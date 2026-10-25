@@ -11,7 +11,7 @@ from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import opioid_rate_fraction
 from anasim.patient.pk_models import HydromorphonePK, MorphinePK
-from anasim.scenarios.base import require_tof_at_most
+from anasim.scenarios.base import require_tof_count_at_most
 
 
 @pytest.mark.parametrize(
@@ -248,7 +248,7 @@ def test_succinylcholine_paralysis_and_sugammadex_independence(engine_factory, a
         advance_time(e, 90, dt=0.5)
         assert e.state.twitch < 5
         assert e.state.tof == 100.0
-        assert require_tof_at_most(5)(e)[0]
+        assert require_tof_count_at_most(1)(e)[0]
         assert e.state.loc < 0.01 and e.state.tol < 0.01
         assert e.resp.state.effort_rr == 0.0
         if reverse:
