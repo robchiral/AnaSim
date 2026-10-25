@@ -306,15 +306,16 @@ class PropofolPKEleveld(MammillaryPK):
         age, w = patient.age, patient.weight
         male = patient.sex == "male"
         age_ref, w_ref = 35.0, 70.0
+        eta = patient.variability.propofol
 
         pma, pma_ref = age * 52 + 40, age_ref * 52 + 40
         cl_maturation = _sigmoid(pma, 42.2760190602615, 9.0548452392807) / _sigmoid(pma_ref, 42.2760190602615, 9.0548452392807)
         q3_maturation = _sigmoid(pma, 68.2767978846832, 1) / _sigmoid(pma_ref, 68.2767978846832, 1)
         v2_ref, v3_ref = 25.5013145036879, 272.8166615043603
 
-        v1 = 6.2830780766822 * _sigmoid(w, 33.5531248778544, 1) / _sigmoid(w_ref, 33.5531248778544, 1)
-        v2 = v2_ref * (w / w_ref) * math.exp(-0.015633 * (age - age_ref))
-        v3 = v3_ref * _eleveld_ffm(age, w, patient.height, male) / _eleveld_ffm(35.0, 70.0, 170.0, True)
+        v1 = 6.2830780766822 * _sigmoid(w, 33.5531248778544, 1) / _sigmoid(w_ref, 33.5531248778544, 1) * eta.v1
+        v2 = v2_ref * (w / w_ref) * math.exp(-0.015633 * (age - age_ref)) * eta.v2
+        v3 = v3_ref * _eleveld_ffm(age, w, patient.height, male) / _eleveld_ffm(35.0, 70.0, 170.0, True) * eta.v3
         if concomitant_opioids:
             v3 *= math.exp(-0.0138166 * age)
         cl_ref = 1.7895836588902 if male else 2.1002218877899
@@ -322,11 +323,12 @@ class PropofolPKEleveld(MammillaryPK):
             cl_ref *= math.exp(-0.00285709 * age)
         params = {
             "v1": v1,
-            "cl1": cl_ref * (w / w_ref) ** 0.75 * cl_maturation,
+            "cl1": cl_ref * (w / w_ref) ** 0.75 * cl_maturation * eta.cl,
             "v2": v2,
-            "cl2": 1.7500983738779 * (v2 / v2_ref) ** 0.75 * (1.0 + 1.3042680471360 * (1.0 - _sigmoid(pma, 68.2767978846832, 1))),
+            "cl2": 1.7500983738779 * (v2 / v2_ref) ** 0.75 * (1.0 + 1.3042680471360 * (1.0 - _sigmoid(pma, 68.2767978846832, 1)))
+            * eta.q2,
             "v3": v3,
-            "cl3": 1.1085424008536 * (v3 / v3_ref) ** 0.75 * q3_maturation,
+            "cl3": 1.1085424008536 * (v3 / v3_ref) ** 0.75 * q3_maturation * eta.q3,
         }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.6))
         # The clinical response rate is a timing assumption (Kuizenga 2019 study
@@ -338,7 +340,7 @@ class PropofolPKEleveld(MammillaryPK):
         # (Johnson 2003). Crystalloid resuscitation restored the kinetics as
         # volume returned (Johnson 2004).
         super().__init__(
-            ke0=0.14636965112551278 * (w / 70.0) ** -0.25,
+            ke0=0.14636965112551278 * (w / 70.0) ** -0.25 * eta.ke0,
             additional_effect_sites=(("ce_response", 0.456), ("ce_resp", math.log(2.0) / 2.6)),
             cl1_deficit_exponent=1.0, distribution_deficit_exponent=2.0,
             **_NO_CO_COVARIATE, **params,

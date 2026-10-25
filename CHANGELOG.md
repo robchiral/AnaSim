@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added optional patient variability. The session seed samples propofol
+  kinetics and BIS sensitivity (Eleveld 2018, standard deviations halved to
+  match VitalDB) and blood pressure sensitivity to propofol and opioids
+  (Su 2023).
 - Corrected guided scenarios to accept prompt crisis treatment across steps,
   allow TCI induction without an extra propofol bolus, and use measured TOF
   counts and ratios. Emergence starts with residual rocuronium block.

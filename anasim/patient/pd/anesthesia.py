@@ -153,7 +153,7 @@ class BISModel:
 
     def __init__(self, patient: Patient):
         self.age_factor = math.exp(-0.00634837 * (patient.age - 35.0))
-        self.c50 = 3.079446890954557 * self.age_factor
+        self.c50 = 3.079446890954557 * self.age_factor * patient.variability.propofol.ce50
         self.baseline = 92.9824
         self.gamma_above = 1.4736185873429664
         self.gamma_below = 1.8939053122841638

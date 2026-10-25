@@ -28,10 +28,12 @@ class SimulationConfig:
 
     end_on_cardiac_arrest: bool = False
     arterial_line_enabled: bool = True
+    # Sample PK/PD from published variability; otherwise the typical patient.
+    patient_variability: bool = False
     rng_seed: int | None = None
 
     def __post_init__(self):
-        for name in ("tci_enabled", "sevoflurane_enabled", "concomitant_opioids"):
+        for name in ("tci_enabled", "sevoflurane_enabled", "concomitant_opioids", "patient_variability"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a boolean")
         self.dt = finite_number("dt", self.dt)

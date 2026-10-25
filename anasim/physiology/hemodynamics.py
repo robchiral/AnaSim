@@ -1,4 +1,5 @@
 import math
+from dataclasses import replace
 from itertools import pairwise
 
 from scipy.optimize import root_scalar
@@ -9,6 +10,7 @@ from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.conditions import HEART_FAILURE_PROFILES
 from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import KETAMINE_MAC_EQUIVALENT
+from anasim.patient.variability import HemodynamicVariability
 
 from .coronary import CoronaryModel
 from .fluids import CrystalloidKinetics
@@ -53,7 +55,16 @@ class HemodynamicModel:
     """
     def __init__(self, patient: Patient, config: HemodynamicConfig | None = None):
         self.patient = patient
-        self.config = cfg = config or HemodynamicConfig()
+        cfg = config or HemodynamicConfig()
+        eta = patient.variability.hemodynamics
+        if eta != HemodynamicVariability():
+            cfg = replace(
+                cfg,
+                ec50_prop_tpr=cfg.ec50_prop_tpr * eta.propofol_tpr_c50,
+                propofol_sympathetic_cp=cfg.propofol_sympathetic_cp * eta.propofol_tpr_c50,
+                emax_remi_tpr=cfg.emax_remi_tpr * eta.opioid_tpr_emax,
+            )
+        self.config = cfg
         self.failure = HEART_FAILURE_PROFILES[patient.heart_failure]
         # Heart failure applies all afterload through ventricular-arterial coupling.
         self._phenyl_afterload_gain = cfg.phenyl_afterload_gain if patient.heart_failure == "none" else 0.0
@@ -757,7 +768,7 @@ class HemodynamicModel:
         ce_prop = self.ce_prop_cv
         anesthetic_depth = clamp01(self.ce_sevo + cp_prop / 4.0)
         self._sympathetic_venous_depth += (
-            clamp01(max(0.0, cp_prop) / 3.0) - self._sympathetic_venous_depth
+            clamp01(max(0.0, cp_prop) / cfg.propofol_sympathetic_cp) - self._sympathetic_venous_depth
         ) * -math.expm1(-math.log(2.0) / cfg.propofol_sympathetic_half_time * dt_min)
 
         # Antagonist dose ratios; esmolol is beta-1 selective.
@@ -1057,7 +1068,7 @@ class HemodynamicModel:
         """Seed tone, drug effects, and the baroreflex at fixed concentrations."""
         cn = max(0.0, ce_nore)
         self.ce_remi_vagal = max(0.0, cp_remi if remifentanil_cp is None else remifentanil_cp)
-        self._sympathetic_venous_depth = clamp01(max(0.0, cp_prop) / 3.0)
+        self._sympathetic_venous_depth = clamp01(max(0.0, cp_prop) / self.config.propofol_sympathetic_cp)
         self._epi_venous_alpha = 0.0
         self._set_drug_factors(self._calc_anesthetic_effects(cp_prop, cp_remi, mac_sevo))
         anesthetic_depth = clamp01(mac_sevo + cp_prop / 4.0)

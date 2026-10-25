@@ -23,6 +23,7 @@ from .domain import (
     WEIGHT_RANGE_KG,
     bounded_number,
 )
+from .variability import TYPICAL, PatientVariability
 
 
 @dataclass
@@ -58,6 +59,8 @@ class Patient:
 
     bmi: float = field(init=False)
     bsa: float = field(init=False)
+    # Set by the engine when the session samples an individual patient.
+    variability: PatientVariability = field(default=TYPICAL, init=False, repr=False)
 
     def __post_init__(self):
         self._validate_demographics()

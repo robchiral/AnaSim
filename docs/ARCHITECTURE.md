@@ -106,6 +106,11 @@ return and the left lateral position restores it (Humphries 2019). Weight is
 entered as pre-pregnancy weight, and hemoglobin and hematocrit are the measured
 starting values. Drug responses use the same calibrations as in other adults.
 
+With `patient_variability`, the session seed draws propofol kinetics and BIS
+sensitivity from Eleveld 2018, with standard deviations halved to match VitalDB
+TIVA inductions, and blood pressure sensitivity to propofol and opioids from Su
+2023. Otherwise each patient responds as the typical patient.
+
 ## Model notes
 
 AnaSim links published models, each developed in its own study population, and
@@ -455,29 +460,11 @@ into simulation time.
 
 The local Python server runs the session on its own clock and saves CSV
 recordings to disk. It accepts requests from the same origin under a
-session-specific path on 127.0.0.1. Reloading the page reconnects to the paused
-session. If polling stops, the simulation pauses and the recording is closed.
+session-specific path on 127.0.0.1.
 
 The hosted app runs Python, NumPy, and SciPy in a Pyodide worker, and stopping
 a recording downloads the CSV. [`build_web.py`](../scripts/build_web.py) builds
 the hosted bundle, and [pages.yml](../.github/workflows/pages.yml) publishes it.
-
-## Scenario objectives
-
-The action log records controls and clinical events with their simulation
-times. Crisis objectives accept treatment given since the event began, including
-fluid, epinephrine, and source control performed before their named steps.
-Other action objectives count from activation. Checks also use current monitor
-values and control settings. The position in the log separates actions
-taken at the same paused time, and completion callbacks run only once. In
-induction scenarios, completing the intubation objective starts the
-laryngoscopy stimulus.
-
-Fluid objectives count the requested bolus volume while the fluid is still
-being delivered at the pump rate. Dosing instructions match the session's TCI
-setting.
-Induction uses measured TOF counts. Emergence includes reversal assessment and
-requires a recent quantitative TOF ratio of at least 0.9 before extubation.
 
 ## Validation
 

@@ -192,6 +192,7 @@ function readSetup(form) {
   params.end_on_cardiac_arrest = f.end_on_cardiac_arrest.checked;
   params.tci_enabled = f.tci_enabled.checked;
   params.concomitant_opioids = f.concomitant_opioids.checked;
+  params.patient_variability = f.patient_variability.checked;
   if (f.session.value === "guided") {
     params.scenario_id = f.scenario_id.value;
   } else {

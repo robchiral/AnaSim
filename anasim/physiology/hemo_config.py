@@ -152,6 +152,7 @@ class HemodynamicConfig:
     # plasma depth with this half-time (min); epinephrine's alpha tone reverses it.
     propofol_sympathetic_pooling: float = 0.3
     propofol_sympathetic_half_time: float = 3.0
+    propofol_sympathetic_cp: float = 3.0  # Plasma mcg/mL for full depth
     # Propofol's resistance effect and venous pooling scale with pre-induction
     # MAP around the reference, since higher pressure carries more sympathetic
     # tone to withdraw (fractional gain per mmHg). The maximum MAP fall rose

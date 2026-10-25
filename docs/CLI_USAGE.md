@@ -76,6 +76,7 @@ During pregnancy, hemoglobin and hematocrit are the measured starting values.
 | `tci_enabled` | `false` | Enable target-controlled infusion (TCI) and use it at maintenance startup |
 | `dt` | 0.01 | Positive engine step in seconds |
 | `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
+| `patient_variability` | `false` | Sample propofol kinetics, BIS sensitivity, and blood pressure sensitivity to propofol and opioids; `rng_seed` fixes the patient |
 | `arterial_line_enabled` | `true` | Display continuous arterial pressure |
 | `end_on_cardiac_arrest` | `false` | End at modeled [cardiac arrest](ARCHITECTURE.md#hemodynamics) |
 | `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr; `null` uses 1 mL/kg/hr |

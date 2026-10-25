@@ -44,6 +44,7 @@ CONFIG_FIELDS = (
     "tci_enabled",
     "end_on_cardiac_arrest",
     "arterial_line_enabled",
+    "patient_variability",
 )
 
 SPEED_RANGE = (0.1, 50.0)

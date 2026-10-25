@@ -30,6 +30,7 @@ from anasim.patient.pd import (
     midazolam_loss_of_response,
 )
 from anasim.patient.pk_models import NorepinephrinePK
+from anasim.patient.variability import sample_variability
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
@@ -87,6 +88,9 @@ class SimulationEngine(DrugControllerMixin):
     """
 
     def __init__(self, patient: Patient, config: SimulationConfig):
+        if config.patient_variability:
+            patient = copy.copy(patient)
+            patient.variability = sample_variability(config.rng_seed)
         self.patient = patient
         self.config = config
         self.state = SimulationState()
