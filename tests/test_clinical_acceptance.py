@@ -64,11 +64,11 @@ def _fall(awake, value):
 
 
 def test_propofol_fentanyl_sevoflurane_induction_intubation_and_incision():
-    """The typical VitalDB bolus induction with sevoflurane (84 recorded cases):
+    """The typical VitalDB bolus induction with sevoflurane (83 recorded cases):
     age 55, 63 kg, fentanyl 1.4 mcg/kg, then propofol 1.8 mg/kg, end-tidal
     sevoflurane about 1.6% before incision and 1.9% during surgery, incision at
-    24 min. Ranges are the recorded interquartile ranges: MAP -13% at 1-2 min,
-    -13% at 2-5 min, lowest reading -28% in the first 10 min, -27% before
+    24 min. Ranges are the recorded interquartile ranges: MAP -19% at 1-2 min,
+    -12% at 2-5 min, lowest reading -28% in the first 10 min, -27% before
     incision, -19% during surgery; HR 65 before incision and 70 during surgery.
     """
     patient: dict[str, Any] = dict(age=55, weight=63, height=163, sex="female", baseline_map=98, baseline_hr=74)
@@ -82,8 +82,8 @@ def test_propofol_fentanyl_sevoflurane_induction_intubation_and_incision():
         (1560, lambda e: (e.start_disturbance("stim_sustained_surgery"), e.set_vaporizer(3.0))),
     ], 3120)
     falls = 100.0 * (1.0 - trace[:, 0] / awake[0])
-    assert 1.0 <= falls[180:240].mean() <= 22.0
-    assert 3.0 <= falls[240:420].mean() <= 27.0
+    assert 9.0 <= falls[180:240].mean() <= 25.0
+    assert -3.0 <= falls[240:420].mean() <= 26.0
     assert 20.0 <= max(falls[k - 40:k].mean() for k in range(180, 720, 150)) <= 35.0
     assert 19.0 <= falls[960:1560].mean() <= 32.0
     assert 58.0 <= trace[960:1560, 1].mean() <= 73.0

@@ -54,6 +54,11 @@ from anasim.physiology import hemodynamics
 REQUIRED = ["Solar8000/NIBP_MBP", "Solar8000/NIBP_SBP", "Solar8000/HR", "BIS/BIS",
             "Primus/INSP_SEVO", "Primus/FIN2O", "Primus/PPLAT_MBAR"]
 HR_WINDOWS = ((0.0, 300.0), (300.0, 600.0), (600.0, np.inf))  # Seconds after propofol, to incision
+# In TIVA cases with exact pump timing, model BIS falls below 60 a median 34 s after recorded BIS
+# (22 s with the fastest loading), so propofol starts this much after the model latency implies.
+BIS_LAG_S = 30.0
+# The ventilator tidal volume setting first appears a median 200 s after propofol.
+INTUBATION_S = 150.0
 
 
 def eligible(case, tracks):
@@ -164,7 +169,7 @@ def evaluate(candidate, dt):
             raise Excluded("missing patient sex")
         sizing = Patient(age=float(case["age"]), weight=float(case["weight"]), height=float(case["height"]),
                          sex="male" if case["sex"] == "M" else "female")
-        onset = drop - bis_latency(case, sizing)
+        onset = drop - bis_latency(case, sizing) + BIS_LAG_S
         incision = float(case["opstart"])
         if incision - onset < 300:
             raise Excluded("less than five minutes from induction to incision")
@@ -189,7 +194,8 @@ def evaluate(candidate, dt):
         else:
             remi_ug = np.zeros(len(grid))
         inspired = np.nan_to_num(held(gases["Primus/INSP_SEVO"], grid, 30.0))
-        baseline_map, baseline_hr = pre_induction(tracks, onset)
+        # Onset is uncertain by about this lag, so the baseline reading must post this much earlier.
+        baseline_map, baseline_hr = pre_induction(tracks, onset - BIS_LAG_S)
         patient = Patient(age=float(case["age"]), weight=float(case["weight"]), height=float(case["height"]),
                           sex="male" if case["sex"] == "M" else "female",
                           baseline_map=baseline_map, baseline_hr=baseline_hr)
@@ -202,9 +208,7 @@ def evaluate(candidate, dt):
                   (float(case["opend"]), lambda e: e.stop_disturbance())]
         if amount(case, "intraop_ftn"):
             events.append((onset - 120.0, lambda e: e.give_drug_bolus("fentanyl", amount(case, "intraop_ftn"))))
-        # The first plateau pressure is usually mask ventilation, at a median 104 s, so intubation is placed
-        # at 3 minutes.
-        events.append((onset + 180.0, lambda e: e.start_disturbance("stim_intubation_pulse")))
+        events.append((onset + INTUBATION_S, lambda e: e.start_disturbance("stim_intubation_pulse")))
         if ebl:
             events += [(incision, lambda e: e.start_hemorrhage(bleed)), (float(case["opend"]), lambda e: e.stop_hemorrhage())]
         predicted = replay(case, patient, grid, onset, remi_ug, inspired, events)
@@ -270,9 +274,9 @@ def report(data, prov):
     lines = report_header("VitalDB bolus induction with sevoflurane", prov) + [
         f"Model override: `{json.dumps(prov['override'])}`.", "",
         "## Methods", "",
-        "Propofol runs over 20 s, starting so that model BIS first falls below 60 when recorded BIS does; fentanyl is",
-        "given 2 minutes earlier; recorded inspired sevoflurane and remifentanil pumps are replayed, with intubation",
-        "stimulation 3 minutes after propofol and surgery from incision.",
+        f"Propofol runs over 20 s, starting {BIS_LAG_S:.0f} s after the time at which model BIS would first fall below 60",
+        "when recorded BIS does; fentanyl is given 2 minutes earlier; recorded inspired sevoflurane and remifentanil",
+        f"pumps are replayed, with intubation stimulation {INTUBATION_S / 60:.1f} minutes after propofol and surgery from incision.",
         f"Each cuff reading from propofol to incision is compared with model MAP over the {CUFF_WINDOW_S:.0f} s before it",
         "posts, stopping at the first reading with MAP below 65 mmHg, SBP below 90, or HR below 45; a likelihood fit with",
         f"a patient offset and reading noise gives the mean error (model minus recorded) with {BOOTSTRAP}-sample patient",

@@ -65,9 +65,12 @@ recorded and model course of MAP, and scores MAP and HR during surgery in
 untreated patients.
 
 `vitaldb_sevo.py` replays induction as it is usually taught in the United
-States: a propofol bolus, timed from the recorded fall in BIS, with fentanyl and
-sevoflurane. It is scored in the same way and also reports MAP and HR during
-surgery.
+States: a propofol bolus with fentanyl and sevoflurane. Propofol is timed from
+the recorded fall in BIS, 30 s later than the model's BIS latency suggests,
+because model BIS falls about that much later than recorded BIS in the TIVA
+cases. Intubation is placed at 2.5 minutes, shortly before the ventilator
+settings first appear. It is scored in the same way and also reports MAP and HR
+during surgery.
 
 Current results (mmHg, 95% CI):
 
@@ -75,17 +78,16 @@ Current results (mmHg, 95% CI):
 |---|---:|---|---|
 | TIVA | 301 | Propofol to incision | -1.7 (-2.8 to -0.6) |
 | TIVA, untreated | 114 | Surgery | -1.3 (-3.6 to 0.8) |
-| Sevoflurane | 26 | Propofol to incision | -6.4 (-10.0 to -2.0) |
-| Sevoflurane, untreated | 11 | Surgery | 4.6 (-2.6 to 11.9) |
+| Sevoflurane | 29 | Propofol to incision | -5.3 (-9.5 to -1.0) |
+| Sevoflurane, untreated | 12 | Surgery | 6.1 (-1.6 to 13.7) |
 
 In the TIVA cases, recorded MAP fell by a median of 17% at 1 to 2 minutes after
 propofol, 31% at the lowest reading in the first 10 minutes, and 27% before
 incision. The corresponding model values are 15%, 30%, and 28%. In the
-sevoflurane cases, recorded MAP fell by 29% at the lowest reading and 26% before
-incision, compared with 31% and 29% in the model, and model HR was within 3 bpm
-of the recordings. At 2 to 5 minutes the recorded fall was smaller than the
-model's (12% compared with 20%). Readings at this time depend on when the
-patient was intubated, which VitalDB does not record.
+sevoflurane cases, recorded MAP fell by 16% at 1 to 2 minutes, 29% at the
+lowest reading, and 27% before incision, compared with 14%, 32%, and 29% in the
+model, and model HR was within 3 bpm of the recordings. At 2 to 5 minutes the
+recorded fall was smaller than the model's (13% compared with 19%).
 
 ## Reports and source
 
