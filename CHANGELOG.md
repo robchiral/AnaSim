@@ -4,7 +4,7 @@
 
 - Corrected guided scenarios to accept prompt crisis treatment across steps,
   allow TCI induction without an extra propofol bolus, and use measured TOF
-  counts and ratios.
+  counts and ratios. Emergence starts with residual rocuronium block.
 - Moved anesthetic cardiovascular effects to hemodynamic effect sites acting on
   slow tone, so pressure falls within minutes of induction while compensation
   stays slow.

@@ -3,6 +3,7 @@
 from typing import Literal
 
 from anasim.core.action_log import ACTION_AIRWAY, ACTION_FGF, ACTION_VAPORIZER
+from anasim.core.projection import sync_pk_state
 from anasim.core.state import AirwayType
 
 from .base import (
@@ -20,6 +21,24 @@ from .base import (
     require_map_at_least,
     require_oxygen_flow,
 )
+
+# Rocuronium 0.6 mg/kg at induction leaves a TOF count of 2 at the start.
+# Sevoflurane potentiates rocuronium and slows recovery (Kleijn 2011).
+ROCURONIUM_DOSE_MG_KG = 0.6
+ROCURONIUM_MINUTES = {"balanced": 60, "tiva": 35}
+
+
+def _residual_block(minutes: int):
+    """Seed the induction rocuronium history with inhaled agents at their current MAC."""
+    def prepare(engine) -> None:
+        roc, tof = engine.pk["roc"], engine.tof_pd
+        mac_sevo, mac_n2o = engine.pk_sevo.state.mac, engine.pk_n2o.state.mac
+        roc.state.c1 += ROCURONIUM_DOSE_MG_KG * engine.patient.weight / roc.v1
+        for _ in range(minutes * 60):
+            roc.step(1.0, 0.0)
+            tof.step_recovery(1.0, roc, mac_sevo, mac_n2o)
+        sync_pk_state(engine)
+    return prepare
 
 
 def _require_normocapnia(engine) -> tuple[bool, str]:
@@ -124,6 +143,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
     if maint_type not in ("balanced", "tiva"):
         raise ValueError(f"Unsupported maintenance type: {maint_type!r}")
     is_balanced = maint_type == "balanced"
+    rocuronium_minutes = ROCURONIUM_MINUTES[maint_type]
 
     if is_balanced:
         stop_agents_instruction = (
@@ -161,6 +181,8 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             id="ASSESS_BLOCK",
             title="Assess block and reversal",
             instruction=(
+                f"Rocuronium {ROCURONIUM_DOSE_MG_KG:g} mg/kg was given at induction, "
+                f"{rocuronium_minutes} minutes ago. "
                 "Check quantitative <b>TOF at the adductor pollicis</b> before emergence. "
                 "If rocuronium block remains and at least two twitches have returned, "
                 "give <b>sugammadex 2 mg/kg actual body weight</b>. Deeper block (0-1 twitches) "
@@ -246,6 +268,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
     return Scenario(
         id=scenario_id,
         name="Emergence sequence",
-        description="Learn the emergence and extubation sequence.",
+        description="Learn the emergence and extubation sequence, including reversal of residual block.",
         steps=steps,
+        setup_engine=_residual_block(rocuronium_minutes),
     )

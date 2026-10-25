@@ -81,6 +81,7 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
             ("drug_bolus", {"key": "phenyl", "amount": 100}),
             ("vent", {"rr": 9}),
         ],
+        "ASSESS_BLOCK": [("sugammadex", {"mg_per_kg": 2})],
         "STOP_AGENTS": [
             ("drug_rate", {"key": "propofol", "rate": 0}),
             ("drug_rate", {"key": "remi", "rate": 0}),
@@ -91,6 +92,7 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
     },
     "emergence_balanced": {
         "ASSESS": [("drug_bolus", {"key": "phenyl", "amount": 100})],
+        "ASSESS_BLOCK": [("sugammadex", {"mg_per_kg": 2})],
         "STOP_AGENTS": [
             ("vaporizer", {"percent": 0}),
             ("drug_rate", {"key": "remi", "rate": 0}),
@@ -139,7 +141,7 @@ def _early_extubation(engine):
     engine.state.rr = 12.0
     engine.state.vt = 500.0
     engine.resp.state.apnea = False
-    engine.state.tof = 100.0
+    engine.state.tof = engine.state.twitch = 100.0
     engine.state.display_spo2 = 98.0
     engine.state.spo2_signal_valid = True
     engine.set_vent_power(False)
@@ -293,6 +295,35 @@ def test_extubation_requires_recovered_block_and_spontaneous_ventilation(engine_
     engine.nmb.reading = reading
     engine.state.vt = 200.0
     assert not step.check_requirements(engine)[0]
+
+
+@pytest.mark.parametrize("scenario_id", ["emergence_tiva", "emergence_balanced"])
+def test_emergence_starts_with_residual_block_reversed_by_sugammadex(scenario_id):
+    """Sugammadex 2 mg/kg at reappearance of T2 after rocuronium 0.6 mg/kg gives
+    a TOF ratio of 0.9 in a median 1.4 min (IQR 1.2-1.7) in the Bridion label's
+    comparative trial, and 1.7-2.2 min in its other trials."""
+    session = WebSession({"scenario_id": scenario_id})
+    engine = session.engine
+    assert session.scenario is not None
+    step = _step(session.scenario, "ASSESS_BLOCK")
+    engine.start()
+    for _ in range(25):
+        engine.step(1.0)
+    reading = engine.nmb.reading
+    assert reading is not None and reading.mode == "tof"
+    assert 2 <= reading.count <= 3
+    _activate(engine, step)
+    assert not step.check_requirements(engine)[0]
+
+    session.command("sugammadex", '{"mg_per_kg": 2}')
+    seconds = 0
+    while engine.state.tof < 90.0 and seconds < 600:
+        engine.step(1.0)
+        seconds += 1
+    assert 60 <= seconds <= 180
+    for _ in range(25):
+        engine.step(1.0)
+    assert step.check_requirements(engine)[0]
 
 
 @pytest.mark.parametrize("scenario_id,event,fluid_ml", [
