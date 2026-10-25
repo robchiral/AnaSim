@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 1.7 - 2026-10-25
+
+- Added loading progress and made patient setup controls more compact.
 - Added optional patient variability. The session seed samples propofol
   kinetics and BIS sensitivity (Eleveld 2018, standard deviations halved to
   match VitalDB) and blood pressure sensitivity to propofol and opioids

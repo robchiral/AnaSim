@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: "Chen"
     given-names: "Robert"
-version: "1.6"
-date-released: 2026-10-14
+version: "1.7"
+date-released: 2026-10-25
 repository-code: "https://github.com/robchiral/AnaSim"
 url: "https://github.com/robchiral/AnaSim"
 license-url: "https://github.com/robchiral/AnaSim/blob/main/LICENSE"
