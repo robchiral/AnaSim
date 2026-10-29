@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Sped up TCI prediction rebuilds, drug kinetics, and monitor updates.
+
 ## 1.7 - 2026-10-25
 
 - Added loading progress and made patient setup controls more compact.

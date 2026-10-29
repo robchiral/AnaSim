@@ -370,6 +370,16 @@ class ArterialLineMonitor:
         cycle: CardiacCycleSample,
         sample: ArterialPressureSample,
     ) -> ArterialPressureSample:
+        self.advance(dt, cycle, sample)
+        return self.reading
+
+    def advance(
+        self,
+        dt: float,
+        cycle: CardiacCycleSample,
+        sample: ArterialPressureSample,
+    ) -> None:
+        """Advance the filter and beat numerics without building a reading."""
         if dt <= 0.0:
             raise ValueError("arterial line dt must be greater than zero")
         if not self._initialized:
@@ -397,8 +407,12 @@ class ArterialLineMonitor:
             self._beat_max = max(self._beat_max, pressure)
 
         self._previous_pressure = pressure
+
+    @property
+    def reading(self) -> ArterialPressureSample:
+        """Latest filtered pressure and completed-beat numerics."""
         return ArterialPressureSample(
-            pressure=pressure,
+            pressure=float(self._previous_pressure),
             systolic=float(self._latest_sbp),
             diastolic=float(self._latest_dbp),
             mean=float(self._latest_map),

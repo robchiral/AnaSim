@@ -82,24 +82,33 @@ class TCIController:
             partial_input = expm(A * (PREDICTION_GRID_S - partial_time)) @ B_partial
         predictions = steps + int(partial_time > 0.0)
         self._free_response = np.empty((predictions, self.n_state))
-        self._unit_response = np.empty(predictions)
+        self._unit_response = np.zeros(predictions)
         self._basal_response = np.zeros(predictions)
         self.basal_input_rate = pk_model.basal_input_rate
-        row = np.eye(self.n_state)[self.target_id]
-        unit_state = np.zeros((self.n_state, 1))
-        basal_state = np.zeros((self.n_state, 1))
-        for k in range(steps):
-            row = row @ A_grid
-            unit_state = A_grid @ unit_state
-            if k < pulse_steps:
-                unit_state += B_grid
-            elif k == pulse_steps:
-                unit_state += partial_input
-            self._free_response[k] = row
-            self._unit_response[k] = unit_state[self.target_id, 0]
-            if self.basal_input_rate:
-                basal_state = A_grid @ basal_state + B_grid * self.basal_input_rate
-                self._basal_response[k] = basal_state[self.target_id, 0]
+        # Build C A^k in doubling blocks; each advances all earlier rows by A^filled.
+        response = self._free_response[:steps]
+        response[0] = A_grid[self.target_id]
+        advance = A_grid
+        filled = 1
+        while filled < steps:
+            count = min(filled, steps - filled)
+            response[filled:filled + count] = response[:count] @ advance
+            filled += count
+            if filled < steps:
+                advance = advance @ advance
+
+        # The pump pulse sums the impulse response C A^k B over its active steps.
+        impulse = np.empty(steps)
+        impulse[0] = B_grid[self.target_id, 0]
+        impulse[1:] = response[:-1] @ B_grid[:, 0]
+        unit = self._unit_response[:steps]
+        if pulse_steps:
+            unit[:] = np.convolve(impulse, np.ones(min(pulse_steps, steps)))[:steps]
+        if partial_time > 0.0 and pulse_steps < steps:
+            unit[pulse_steps] += partial_input[self.target_id, 0]
+            unit[pulse_steps + 1:] += response[:steps - pulse_steps - 1] @ partial_input[:, 0]
+        if self.basal_input_rate:
+            self._basal_response[:steps] = np.cumsum(impulse) * self.basal_input_rate
         if partial_time > 0.0:
             # A plasma peak at pump stop can lie between the one-second grid points.
             A_stop, B_stop = _discretize(A, B, self.control_time)

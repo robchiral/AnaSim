@@ -1,7 +1,7 @@
 import argparse
 import sys
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from statistics import mean
@@ -74,9 +74,11 @@ BENCHMARKS = {
     'hemo': ('baseline', 'sepsis', 'hemorrhage', 'arrhythmia', 'pressors', 'hypothermia'),
     'resp': ('baseline', 'apnea', 'hypercapnia', 'obstruction', 'mech_vent'),
     'mech': ('vcv', 'pcv', 'autopeep'),
-    'pk': ('propofol_eleveld', 'norepi_li'),
+    'pk': ('propofol_eleveld', 'norepi_li', 'remifentanil_eleveld', 'morphine'),
     'mixed': ('baseline', 'sepsis'),
-    'engine': ('awake', 'steady_state', 'conditions'),
+    'engine': ('awake', 'steady_state', 'conditions', 'tci'),
+    'tci': ('propofol', 'norepinephrine'),
+    'monitor': ('sinus', 'afib'),
 }
 
 
@@ -94,10 +96,17 @@ def build_step(name):
     """Build a fresh workload outside the timed loop."""
     from anasim.core.engine import SimulationEngine
     from anasim.core.enums import RhythmType
+    from anasim.core.monitors import step_cardiac_monitors
     from anasim.core.state import SimulationConfig
+    from anasim.core.tci import TCIController
     from anasim.machine.ventilator import AnesthesiaVentilator
     from anasim.patient.patient import Patient
-    from anasim.patient.pk_models import NorepinephrinePK, PropofolPKEleveld
+    from anasim.patient.pk_models import (
+        MorphinePK,
+        NorepinephrinePK,
+        PropofolPKEleveld,
+        RemifentanilPKEleveld,
+    )
     from anasim.physiology.hemodynamics import HemodynamicModel
     from anasim.physiology.resp_mech import RespiratoryMechanics
     from anasim.physiology.respiration import RespiratoryModel
@@ -106,6 +115,22 @@ def build_step(name):
     if case not in BENCHMARKS[group]:
         raise ValueError(f'Unknown benchmark: {name}')
     patient = Patient()
+
+    if group == 'monitor':
+        engine = SimulationEngine(patient, SimulationConfig(mode='awake', rng_seed=123))
+        hemo = replace(engine.hemo.state, hr=110.0 if case == 'afib' else 75.0,
+                       rhythm_type=RhythmType.AFIB if case == 'afib' else RhythmType.SINUS)
+        return lambda i: step_cardiac_monitors(engine, 0.1, hemo, 98.0)
+
+    if group == 'tci':
+        model = PropofolPKEleveld(patient) if case == 'propofol' else NorepinephrinePK(patient)
+        controller = TCIController(model, target_compartment='effect_site' if case == 'propofol' else 'plasma')
+
+        def rebuild(i):
+            model.update_hemodynamics((0.5, 0.8, 1.0, 1.2)[i % 4], 1.0)
+            controller.sync_from_pk_model(model, rel_tol=0.0, abs_tol=0.0)
+
+        return rebuild
 
     if group == 'hemo':
         model = HemodynamicModel(patient)
@@ -161,8 +186,10 @@ def build_step(name):
         return lambda i: vent.step(0.05, model, "vent")
 
     if group == 'pk':
-        if case == 'propofol_eleveld':
-            return _cycle(PropofolPKEleveld(patient).step, dt_sec=1.0,
+        model_types = {'propofol_eleveld': PropofolPKEleveld,
+                       'remifentanil_eleveld': RemifentanilPKEleveld, 'morphine': MorphinePK}
+        if case in model_types:
+            return _cycle(model_types[case](patient).step, dt_sec=1.0,
                           input_rate_per_sec=(0.0, 0.5, 1.0, 2.0))
         norepinephrine = NorepinephrinePK(patient)
 
@@ -202,7 +229,10 @@ def build_step(name):
         patient = Patient(sex='female', weight=140, gestational_age_weeks=36,
                           heart_failure='hfpef', copd_severity=0.65, coronary_flow_reserve=1.3)
         mode = 'steady_state'
-    engine = SimulationEngine(patient, SimulationConfig(mode=mode, rng_seed=123, dt=0.1))
+    elif case == 'tci':
+        mode = 'steady_state'
+    engine = SimulationEngine(patient, SimulationConfig(mode=mode, rng_seed=123, dt=0.1,
+                                                       tci_enabled=case == 'tci'))
     engine.start()
     return lambda i: engine.step(0.1)
 

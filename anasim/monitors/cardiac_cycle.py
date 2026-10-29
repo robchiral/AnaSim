@@ -83,6 +83,7 @@ class CardiacCycle:
         self._stroke_fraction = 1.0
         self._measured_hr = 70.0
         self._recent_rr: deque[float] = deque(maxlen=DISPLAY_HR_BEATS)
+        self._display_hr = self._measured_hr
 
     @staticmethod
     def _mean_rr(hr: float) -> float:
@@ -112,12 +113,8 @@ class CardiacCycle:
 
     def _sample(self, *, beat_started: bool) -> CardiacCycleSample:
         phase = 0.0
-        display_hr = 0.0
         if self._organized:
             phase = self._elapsed_s / self._rr_interval_s
-            display_hr = self._measured_hr
-            if self._recent_rr:
-                display_hr = 60.0 * len(self._recent_rr) / sum(self._recent_rr)
         return CardiacCycleSample(
             phase=float(phase % 1.0),
             beat_started=beat_started,
@@ -125,7 +122,7 @@ class CardiacCycle:
             mean_rr_s=float(self._mean_rr_s),
             stroke_fraction=float(self._stroke_fraction if self._organized else 0.0),
             measured_hr=float(self._measured_hr if self._organized else 0.0),
-            display_hr=float(display_hr),
+            display_hr=float(self._display_hr if self._organized else 0.0),
             organized=self._organized,
             rhythm_type=self._rhythm_type,
         )
@@ -143,7 +140,12 @@ class CardiacCycle:
         else:
             self._measured_hr = 0.0
             self._recent_rr.clear()
+        self._update_display_hr()
         return self._sample(beat_started=self._organized)
+
+    def _update_display_hr(self) -> None:
+        recent = self._recent_rr
+        self._display_hr = 60.0 * len(recent) / sum(recent) if recent else self._measured_hr
 
     def seed(self, hr: float, rhythm_type: RhythmType) -> CardiacCycleSample:
         """Initialize timing at a ventricular depolarization."""
@@ -185,4 +187,6 @@ class CardiacCycle:
             self._rr_interval_s = self._next_rr(hr, rhythm_type)
             beat_started = True
 
+        if beat_started:
+            self._update_display_hr()
         return self._sample(beat_started=seeded_beat or beat_started)

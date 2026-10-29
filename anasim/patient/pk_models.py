@@ -87,6 +87,12 @@ class MammillaryPK:
         transit = (("ce_transit", effect_site_transit_rate),) if effect_site_transit_rate is not None else ()
         # The primary site is last so TCI and decay predictions target it.
         self.effect_sites = (*transit, *additional_effect_sites, ("ce", ke0))
+        # Downstream sites advance first so every site reads the old source.
+        self._effect_updates = tuple(
+            (name, rate, self.ce_input if name == "ce" else "c1")
+            for name, rate in reversed(self.effect_sites)
+        )
+        self._max_effect_rate = max(rate for _, rate in self.effect_sites)
         self.state_fields = (
             ("c1",) + (("c2",) if v2 > 0 else ()) + (("c3",) if v3 > 0 else ())
             + tuple(name for name, _ in self.effect_sites)
@@ -162,29 +168,31 @@ class MammillaryPK:
         s = self.state
         if not input_rate_per_sec and not any(self._state_values(s)):
             return s  # Skip drugs with no input or residual concentration.
-        cl2 = self.cl2 if self.v2 > 0 else 0.0
-        cl3 = self.cl3 if self.v3 > 0 else 0.0
+        v1, v2, v3 = self.v1, self.v2, self.v3
+        cl2 = self.cl2 if v2 > 0 else 0.0
+        cl3 = self.cl3 if v3 > 0 else 0.0
         elimination_cl = self.elimination_clearance
-        fastest_rate = max((elimination_cl + cl2 + cl3) / self.v1,
-                           self.k21, self.k31, *(rate for _, rate in self.effect_sites))
+        fastest_rate = max((elimination_cl + cl2 + cl3) / v1,
+                           cl2 / v2 if v2 > 0 else 0.0, cl3 / v3 if v3 > 0 else 0.0,
+                           self._max_effect_rate)
         # At most one second and 2.5% turnover per interval, including after
         # blood-volume scaling. Clipping an overshoot would create drug mass.
         substeps = max(1, math.ceil(dt_sec * max(1.0, fastest_rate / 1.5)))
         dt_min = dt_sec / (60.0 * substeps)
+        input_per_min = input_rate_per_sec * 60.0
         for _ in range(substeps):
             flux2 = cl2 * (s.c1 - s.c2)
             flux3 = cl3 * (s.c1 - s.c3)
             elimination = elimination_cl * s.c1
-            # Downstream sites read the source value from the start of this interval.
-            for name, rate in reversed(self.effect_sites):
+            for name, rate, source_name in self._effect_updates:
                 ce = getattr(s, name)
-                source = getattr(s, self.ce_input) if name == "ce" else s.c1
+                source = getattr(s, source_name)
                 setattr(s, name, ce + rate * (source - ce) * dt_min)
-            s.c1 += (input_rate_per_sec * 60.0 - elimination - flux2 - flux3) / self.v1 * dt_min
-            if self.v2 > 0:
-                s.c2 += flux2 / self.v2 * dt_min
-            if self.v3 > 0:
-                s.c3 += flux3 / self.v3 * dt_min
+            s.c1 += (input_per_min - elimination - flux2 - flux3) / v1 * dt_min
+            if v2 > 0:
+                s.c2 += flux2 / v2 * dt_min
+            if v3 > 0:
+                s.c3 += flux3 / v3 * dt_min
         return s
 
     def get_ss_matrices(self) -> tuple[np.ndarray, np.ndarray]:
@@ -206,7 +214,7 @@ class MammillaryPK:
         return A, B
 
     def state_vector(self) -> np.ndarray:
-        return np.array([getattr(self.state, name) for name in self.state_fields])
+        return np.array(self._state_values(self.state))
 
     def set_state_vector(self, values) -> None:
         for name, value in zip(self.state_fields, values, strict=True):

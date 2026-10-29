@@ -19,8 +19,6 @@ source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
 
-In Windows Command Prompt, use `python` in place of `python3` and activate with
-`.venv\Scripts\activate.bat`.
 See the [architecture guide](docs/ARCHITECTURE.md#main-modules) for the code
 structure and [CLI and Python usage](docs/CLI_USAGE.md) for scripted runs.
 
@@ -46,8 +44,6 @@ npm install --no-save "pyodide@$(python scripts/build_web.py --pyodide-version)"
 node scripts/pyodide_tests.mjs -q
 ```
 
-The Pyodide runner accepts pytest arguments, runs up to four workers (set with `--workers N`), and skips local HTTP server tests.
-
 Use published data to set expected clinical responses where available. Check
 gas or drug conservation when a change affects either.
 
@@ -60,8 +56,8 @@ mode, and maintenance technique with a `ScenarioSpec` in the
 [hemorrhage example](anasim/scenarios/hemorrhage.py) and
 [objective checks](docs/ARCHITECTURE.md#scenario-objectives).
 Use `tci_instruction` for guidance that changes with target-controlled infusion
-(TCI). The scenario tests complete every registered scenario through browser
-commands with TCI enabled and disabled.
+(TCI). The scenario tests complete each registered scenario with TCI enabled
+and disabled.
 
 ## Interface changes
 
@@ -72,10 +68,9 @@ anasim
 python scripts/build_web.py --serve
 ```
 
-The hosted preview runs at `http://localhost:8000/`; change the port with `--port`.
-It requires internet access to load Pyodide packages. Rebuild after Python
-changes. Check the changed interface, settings edits, recordings, and starting
-a new session in both versions.
+The hosted preview runs at `http://localhost:8000/` and needs internet access to
+load Pyodide. Rebuild it after Python changes. Check the changed interface,
+settings edits, recordings, and starting a new session in both versions.
 
 Regenerate the README demo after interface changes that affect it.
 
@@ -88,14 +83,13 @@ python scripts/capture_demo.py
 ## Performance changes
 
 ```bash
-python scripts/run_benchmarks.py --bench engine --repeat 3
+python scripts/run_benchmarks.py --bench engine,tci,monitor --repeat 3
 ```
 
-The engine benchmark runs awake and steady-state simulations at `dt=0.1`.
 Add a workload to exercise the change if needed. Compare timings, numerical
-results, and waveforms with the same seeds, settings, and step sizes.
-Report native Python and Pyodide timings separately. Use `--profile` to locate
-slow functions; measure timings without the profiler.
+results, and waveforms with the same seeds, settings, and step sizes, and report
+native Python and Pyodide timings separately. Use `--profile` to find slow
+functions, but time without it.
 
 ## Documentation and pull requests
 

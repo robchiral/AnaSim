@@ -1,8 +1,16 @@
+import math
+
 import numpy as np
 import pytest
 
+from anasim.core.drug_registry import DRUG_REGISTRY
 from anasim.core.state import SimulationConfig
-from anasim.core.tci import TCIController
+from anasim.core.tci import (
+    PREDICTION_GRID_S,
+    PREDICTION_HORIZON_S,
+    TCIController,
+    _discretize,
+)
 from anasim.patient.pk_models import (
     EpinephrinePK,
     NorepinephrinePK,
@@ -71,6 +79,43 @@ def test_norepinephrine_tci_includes_secretion_and_propofol_clearance(patient_fa
         pk.step(1.0, controller.step())
     assert controller.infusion_rate == 0.0
     assert pk.state.c1 == pytest.approx(pk.endogenous_ug_min / pk.elimination_clearance, rel=0.005)
+
+
+def _stepwise_tables(model, controller):
+    """Propagate free, pump-pulse, and basal states one prediction interval at a time."""
+    a_min, b = model.get_ss_matrices()
+    a = a_min / 60.0
+    a_grid, b_grid = _discretize(a, b, PREDICTION_GRID_S)
+    target = controller.target_id
+    pulse_steps = math.floor(controller.control_time / PREDICTION_GRID_S)
+    partial = controller.control_time - pulse_steps * PREDICTION_GRID_S
+    free, pulse, basal = np.eye(len(a)), np.zeros_like(b), np.zeros_like(b)
+    rows = []
+    for k in range(int(PREDICTION_HORIZON_S / PREDICTION_GRID_S)):
+        free = a_grid @ free
+        pulse = a_grid @ pulse
+        if k < pulse_steps:
+            pulse += b_grid
+        elif k == pulse_steps and partial > 0.0:
+            pulse += _discretize(a, b, PREDICTION_GRID_S - partial)[0] @ _discretize(a, b, partial)[1]
+        basal = a_grid @ basal + b_grid * model.basal_input_rate
+        rows.append((free[target], pulse[target, 0], basal[target, 0]))
+    if partial > 0.0:
+        stop, stop_input = _discretize(a, b, controller.control_time)
+        rows.append((stop[target], stop_input[target, 0], stop_input[target, 0] * model.basal_input_rate))
+    return [np.array(column) for column in zip(*rows, strict=True)]
+
+
+@pytest.mark.parametrize("spec", [spec for spec in DRUG_REGISTRY if spec.has_tci], ids=lambda spec: spec.key)
+def test_prediction_tables_match_stepwise_propagation(patient_factory, spec):
+    model = spec.pk_model(patient_factory(age=70, weight=55), SimulationConfig())
+    # Whole, fractional, sub-grid, and longer-than-horizon pump pulses.
+    for sampling, control in ((1.0, 10.0), (1.5, 10.0), (0.1, 0.3), (1.0, 900.0)):
+        controller = TCIController(model, target_compartment=spec.fixed_tci_mode or "effect_site",
+                                   sampling_time=sampling, control_time=control)
+        tables = (controller._free_response, controller._unit_response, controller._basal_response)
+        for table, expected in zip(tables, _stepwise_tables(model, controller), strict=True):
+            np.testing.assert_allclose(table, expected, rtol=1e-12, atol=1e-12)
 
 
 class TestEngineTCI:

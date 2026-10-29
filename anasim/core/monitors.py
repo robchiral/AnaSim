@@ -126,7 +126,7 @@ def step_cardiac_monitors(
             hemo_state.map,
             hemo_state.sv,
         )
-        art_reading = engine.art_line.step(
+        engine.art_line.advance(
             substep_dt,
             cardiac_sample,
             arterial_sample,
@@ -144,7 +144,7 @@ def step_cardiac_monitors(
     state.spo2_signal_valid = engine.spo2_mon.signal_valid
     state.ecg_voltage = float(ecg_voltage)
     state.pleth_voltage = float(pleth)
-    project_arterial(state, arterial_sample, art_reading)
+    project_arterial(state, arterial_sample, engine.art_line.reading)
     state.spo2 = float(spo2_val)
     return cardiac_sample
 
@@ -168,12 +168,13 @@ def step_monitors(
     update_nibp(engine, dt, hemo_state)
     engine.nmb.step(state.time + dt, state.twitch / 100.0, state.tof / 100.0)
 
+    connected = state.airway_mode != AirwayType.NONE
     for duration, change, sample_paw, _, sample_volume in engine.vent.samples:
         paw, flow, volume = engine.airway_sensor.step(duration, sample_paw, sample_volume,
-                                                   change if state.airway_mode != AirwayType.NONE else 0.0)
-        state.paw = float(paw)
-        state.flow = float(flow)
-        state.volume = float(volume)
+                                                   change if connected else 0.0)
+    state.paw = float(paw)
+    state.flow = float(flow)
+    state.volume = float(volume)
     bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
     state.bis = float(bis_display_source)
 
@@ -189,7 +190,6 @@ def step_monitors(
     state.loc = float(loc_val)
     state.tol = float(engine._tol_current)
     state.display_spo2 = float(state.spo2)
-    connected = state.airway_mode != AirwayType.NONE
     vent = engine.vent
     # Volume-targeted breaths alarm when they deliver less than the set VT.
     vte_percent = None
