@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added optional pulse oximeter tones and alarm audio.
 - Sped up TCI prediction rebuilds, drug kinetics, and monitor updates.
 - Added poorly ventilated (low V/Q) lung units, separate from atelectatic shunt.
   Under anesthesia, airway closure lowers PaO₂ more in older patients, and PEEP

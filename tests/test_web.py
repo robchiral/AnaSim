@@ -386,7 +386,7 @@ def test_page_reads_only_snapshot_fields_and_commands_the_session_provides():
     def read(name, receiver):
         return set(re.findall(rf"\b{receiver}\.([a-z_][a-z0-9_]*)", script[name]))
 
-    assert read("app.js", "snap") | read("monitor.js", "snap") | read("trends.js", "snap") <= set(snap)
+    assert set().union(*(read(name, "snap") for name in ("app.js", "audio.js", "monitor.js", "trends.js"))) <= set(snap)
     assert read("monitor.js", "v") <= set(snap["vitals"])
     assert read("controls.js", "c") <= set(snap["controls"])
     commands = set(re.findall(r'\b(?:command|send)\(\s*"([a-z_]+)"', "".join(script.values())))

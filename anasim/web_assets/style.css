@@ -169,6 +169,11 @@ input:disabled, select:disabled { opacity: 0.55; }
 .choice-group { display: flex; flex-wrap: wrap; gap: 8px 24px; }
 .choice-group > .choice { flex: 1 1 200px; }
 .choice:has(input:disabled) { color: var(--text-dim); cursor: default; }
+.setup-details { border-top: 1px solid var(--border); }
+.setup-details > summary { cursor: pointer; padding: 12px 0; color: var(--text); font-size: 14px; font-weight: 600; }
+.setup-details > summary::after { content: ""; display: block; clear: both; }
+.setup-summary { float: right; max-width: 62%; margin-left: 12px; text-align: right; color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.setup-detail-fields { display: grid; gap: 12px; padding: 2px 0 4px; }
 
 fieldset {
   margin: 0;
@@ -225,11 +230,24 @@ fieldset:disabled { opacity: 0.5; }
 .session-brand { color: var(--text); font-size: 14px; font-weight: 650; letter-spacing: -0.03em; padding-right: 12px; border-right: 1px solid var(--border); }
 .session-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .session-bar .btn { font-size: 12px; font-weight: 500; padding: 5px 10px; }
+.session-bar .icon-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; height: 30px; padding: 5px 6px; }
+.icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+#sound-toggle[aria-pressed="false"] .sound-waves, #sound-toggle[aria-pressed="true"] .sound-muted,
+#alarm-silence[aria-pressed="false"] .alarm-muted { display: none; }
+#alarm-silence { --accent: var(--warning); }
+#alarm-countdown { font-size: 11px; font-variant-numeric: tabular-nums; }
 .session-options { position: relative; }
 .session-bar .session-options > summary { list-style: none; font-size: 20px; line-height: 1; padding: 3px 8px; cursor: pointer; }
 .session-options > summary::-webkit-details-marker { display: none; }
 .session-menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 180px; padding: 4px; border: 1px solid var(--border-light); border-radius: var(--radius); background: var(--panel); z-index: 10; }
 .session-menu .btn { display: block; width: 100%; text-align: left; border: 0; padding: 8px 10px; }
+.sound-settings { border-top: 1px solid var(--border); margin-top: 4px; font-weight: 400; }
+.sound-settings > summary { cursor: pointer; padding: 8px 10px; font-size: 12px; }
+.sound-volumes { display: grid; gap: 8px; width: 232px; padding: 4px 10px 10px; }
+.sound-volume { display: grid; grid-template-columns: 40px minmax(0, 1fr) 30px; align-items: center; gap: 8px; font-size: 12px; }
+.sound-volume input { min-width: 0; width: 100%; accent-color: var(--primary); }
+.sound-volume output { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.sound-status { max-width: 232px; padding: 6px 8px; color: var(--warning); font-weight: 400; }
 .recording-status { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-weight: 500; }
 .recording-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
 .monitor-body {
@@ -315,6 +333,8 @@ fieldset:disabled { opacity: 0.5; }
 .nmb-bar i { display: block; width: 100%; height: var(--height, 0%); background: var(--tof); }
 .nmb-bar.baseline i { height: 100%; background: var(--temp); }
 .nmb-bar span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); padding-top: 1px; color: var(--text-dim); font-size: 9px; }
+.nmb-history { grid-column: 3; grid-row: 1; min-width: 0; }
+.monitor-detail-toggle { display: none; }
 .nmb-trend { min-width: 0; }
 .nmb-trend svg { display: block; width: 100%; height: 40px; overflow: visible; }
 .nmb-trend path { vector-effect: non-scaling-stroke; }
@@ -322,7 +342,7 @@ fieldset:disabled { opacity: 0.5; }
 /* Zero-length round-capped strokes stay circular in the stretched plot. */
 #nmb-trend-points { stroke: var(--tof); stroke-width: 4px; stroke-linecap: round; }
 #nmb-trend-points .low { stroke: var(--warning); }
-.nmb-controls { display: grid; grid-template-columns: auto auto; gap: 4px; }
+.nmb-controls { grid-column: 4; grid-row: 1; display: grid; grid-template-columns: auto auto; gap: 4px; }
 .nmb-controls select { padding: 3px 5px; font-size: 11px; }
 .nmb-controls .btn { grid-column: 1 / -1; padding: 3px 8px; font-size: 11px; }
 
@@ -415,7 +435,8 @@ input.setting-edited, select.setting-edited { border-color: var(--warning); back
 .fio2.warn { color: var(--warning); }
 .fio2.bad { color: var(--danger); }
 
-.respiratory-loops { display: grid; grid-column: 1; grid-row: var(--respiratory-start) / span 3; justify-self: end; width: var(--loop-width); min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 4px 8px; border-left: 1px solid var(--monitor-rule); }
+.respiratory-loops { position: relative; grid-column: 1; grid-row: var(--respiratory-start) / span 3; justify-self: end; width: var(--loop-width); min-height: 0; border-left: 1px solid var(--monitor-rule); }
+.respiratory-loop-plots { position: absolute; inset: 0; display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 4px 8px; }
 .respiratory-loops figure { margin: 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 3px; }
 .respiratory-loops canvas { width: 100%; background: var(--bg); display: block; flex: 1; height: 0; min-height: 0; }
 .respiratory-loops figcaption { color: var(--text-secondary); font-size: 11px; min-height: 16px; }
@@ -523,14 +544,16 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
   .setup-footer { flex-wrap: wrap; }
   .setup-footer .version { flex-basis: 100%; }
   .setup-footer .btn { flex: 1; }
-  .session-controls { order: 1; flex-basis: 100%; justify-content: space-between; gap: 6px 8px; }
+  .session-controls { order: 1; flex-basis: 100%; justify-content: space-between; gap: 6px; }
   .session-bar #run { min-width: 72px; }
   .session-bar .speed input { width: 48px; }
   .setup-grid, .group-row { grid-template-columns: minmax(0, 1fr); }
-  .monitor { height: auto; min-height: 720px; }
-  .monitor-body { --numeric-width: 174px; --loop-width: 148px; flex: 0 0 auto; grid-template-rows: repeat(var(--lane-count), 76px) 150px; }
+  .monitor { height: auto; min-height: 0; }
+  .monitor-body { --numeric-width: 174px; --loop-width: 148px; flex: 0 0 auto; grid-template-rows: repeat(var(--lane-count), 76px) auto; }
   .respiratory-lane .wave { margin-right: 0; }
-  .respiratory-loops { grid-column: 1 / -1; grid-row: calc(var(--lane-count) + 1); justify-self: stretch; width: auto; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr); border-left: none; border-top: 1px solid var(--monitor-rule); gap: 12px; }
+  .respiratory-loops { grid-column: 1 / -1; grid-row: calc(var(--lane-count) + 1); justify-self: stretch; width: auto; border-left: none; border-top: 1px solid var(--monitor-rule); }
+  .respiratory-loop-plots { position: static; height: 150px; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr); gap: 12px; }
+  .monitor-detail-toggle { display: list-item; cursor: pointer; padding: 8px 12px; color: var(--text-secondary); font-size: 11px; }
   .numeric { padding: 5px 7px; }
   .numeric.big output { font-size: 36px; }
   .numeric.pressure output { font-size: 25px; }
@@ -550,8 +573,9 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
   .secondary-bar .panel-io { grid-column: 1 / -1; border-top: 1px solid var(--monitor-rule); border-left: none; }
   .secondary-bar .numeric { padding: 7px 8px; }
   .nmb-panel { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; }
-  .nmb-trend, .nmb-controls { grid-column: 1 / -1; }
-  .nmb-controls { grid-template-columns: 1fr 1fr auto; }
+  .nmb-history { grid-column: 1 / -1; grid-row: 3; border-top: 1px solid var(--monitor-rule); }
+  .nmb-history > summary { padding: 8px 0; }
+  .nmb-controls { grid-column: 1 / -1; grid-row: 2; grid-template-columns: 1fr 1fr auto; }
   .nmb-controls .btn { grid-column: auto; }
   .clock output { font-size: 16px; }
   .scenario-body p { font-size: 11px; }

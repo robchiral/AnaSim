@@ -47,62 +47,66 @@
             <input type="checkbox" name="patient_variability"> Individual drug response</label>
         </fieldset>
 
-        <fieldset>
-          <legend>Organ function</legend>
-          <label class="row">Renal
-            <select name="renal_function">
-              <option value="1.0">Normal (eGFR ≥ 90)</option>
-              <option value="0.8">Mild (eGFR 60 to 89)</option>
-              <option value="0.6">Moderate (eGFR 30 to 59)</option>
-              <option value="0.4">Severe (eGFR &lt; 30)</option>
-            </select>
-          </label>
-          <label class="row" title="Optional absolute clearance in mL/min, without body surface area indexing. Used for rocuronium and sugammadex; other renal effects use the Renal selection.">Creatinine clearance
-            <span class="unit-input"><input name="creatinine_clearance_ml_min" type="number" step="0.1" placeholder="Estimated"><span>mL/min</span></span>
-          </label>
-          <label class="row">Hepatic
-            <select name="hepatic_function">
-              <option value="1.0">Normal (no cirrhosis)</option>
-              <option value="0.9">Mild (Child-Pugh A)</option>
-              <option value="0.7">Moderate (Child-Pugh B)</option>
-              <option value="0.5">Severe (Child-Pugh C)</option>
-            </select>
-          </label>
-        </fieldset>
+        <details class="setup-details" id="organ-function">
+          <summary>Organ function <span class="setup-summary" id="organ-function-summary">Normal</span></summary>
+          <div class="setup-detail-fields">
+            <label class="row">Renal
+              <select name="renal_function">
+                <option value="1.0">Normal (eGFR ≥ 90)</option>
+                <option value="0.8">Mild (eGFR 60 to 89)</option>
+                <option value="0.6">Moderate (eGFR 30 to 59)</option>
+                <option value="0.4">Severe (eGFR &lt; 30)</option>
+              </select>
+            </label>
+            <label class="row" title="Optional absolute clearance in mL/min, without body surface area indexing. Used for rocuronium and sugammadex; other renal effects use the Renal selection.">Creatinine clearance
+              <span class="unit-input"><input name="creatinine_clearance_ml_min" type="number" step="0.1" placeholder="Estimated"><span>mL/min</span></span>
+            </label>
+            <label class="row">Hepatic
+              <select name="hepatic_function">
+                <option value="1.0">Normal (no cirrhosis)</option>
+                <option value="0.9">Mild (Child-Pugh A)</option>
+                <option value="0.7">Moderate (Child-Pugh B)</option>
+                <option value="0.5">Severe (Child-Pugh C)</option>
+              </select>
+            </label>
+          </div>
+        </details>
 
-        <fieldset>
-          <legend>Clinical conditions</legend>
-          <label class="row">Coronary disease
-            <select name="coronary_flow_reserve" title="Represented by coronary flow reserve, the ratio of maximal to resting blood flow.">
-              <option value="5">None</option>
-              <option value="3">Mild</option>
-              <option value="2">Moderate</option>
-              <option value="1.3">Severe</option>
-            </select>
-          </label>
-          <label class="row">Heart failure
-            <select name="heart_failure">
-              <option value="none">None</option>
-              <option value="hfref">Reduced EF</option>
-              <option value="hfpef">Preserved EF</option>
-            </select>
-          </label>
-          <label class="row">COPD
-            <select name="copd_severity">
-              <option value="0">None</option>
-              <option value="0.35">Mild</option>
-              <option value="0.65">Moderate</option>
-              <option value="1">Severe</option>
-            </select>
-          </label>
-          <label class="choice" id="pregnancy-choice"><input type="checkbox" name="pregnant"> Pregnant</label>
-          <label class="row" id="gestation-row" hidden>Gestational age
-            <span class="unit-input"><input name="gestational_age_weeks" type="number" value="28" step="1"><span>weeks</span></span>
-          </label>
-          <label class="row" id="position-row" hidden>Position
-            <select name="position"><option value="supine">Supine</option><option value="left_lateral">Left lateral</option></select>
-          </label>
-        </fieldset>
+        <details class="setup-details" id="clinical-conditions">
+          <summary>Clinical conditions <span class="setup-summary" id="clinical-conditions-summary">None</span></summary>
+          <div class="setup-detail-fields">
+            <label class="row">Coronary disease
+              <select name="coronary_flow_reserve" title="Represented by coronary flow reserve, the ratio of maximal to resting blood flow.">
+                <option value="5">None</option>
+                <option value="3">Mild</option>
+                <option value="2">Moderate</option>
+                <option value="1.3">Severe</option>
+              </select>
+            </label>
+            <label class="row">Heart failure
+              <select name="heart_failure">
+                <option value="none">None</option>
+                <option value="hfref">Reduced EF</option>
+                <option value="hfpef">Preserved EF</option>
+              </select>
+            </label>
+            <label class="row">COPD
+              <select name="copd_severity">
+                <option value="0">None</option>
+                <option value="0.35">Mild</option>
+                <option value="0.65">Moderate</option>
+                <option value="1">Severe</option>
+              </select>
+            </label>
+            <label class="choice" id="pregnancy-choice"><input type="checkbox" name="pregnant"> Pregnant</label>
+            <label class="row" id="gestation-row" hidden>Gestational age
+              <span class="unit-input"><input name="gestational_age_weeks" type="number" value="28" step="1"><span>weeks</span></span>
+            </label>
+            <label class="row" id="position-row" hidden>Position
+              <select name="position"><option value="supine">Supine</option><option value="left_lateral">Left lateral</option></select>
+            </label>
+          </div>
+        </details>
       </div>
 
       <div class="setup-col">
@@ -168,6 +172,13 @@
       <span class="status" id="status"></span>
       <div class="clock"><output id="clock" aria-label="Elapsed simulation time">00:00:00</output></div>
       <button type="button" class="btn primary" id="run">Start</button>
+      <button type="button" class="btn toggle icon-button" id="sound-toggle" aria-pressed="false" aria-label="Enable sound" title="Enable sound">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-6 4H2v6h3l6 4Z"/><path class="sound-waves" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/><path class="sound-muted" d="m16 9 6 6m0-6-6 6"/></svg>
+      </button>
+      <button type="button" class="btn toggle icon-button" id="alarm-silence" aria-pressed="false" aria-label="Silence alarms for 2 minutes" title="Silence alarms for 2 minutes" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/><path class="alarm-muted" d="m3 3 18 18"/></svg>
+        <span id="alarm-countdown" aria-hidden="true" hidden></span>
+      </button>
       <label class="speed">Speed
         <span class="unit-input"><input type="number" id="speed" min="0.1" max="50" step="0.1" value="1"><span>×</span></span>
       </label>
@@ -178,6 +189,14 @@
         <button type="button" class="btn" id="show-trends">Trends</button>
         <button type="button" class="btn toggle" id="record" aria-pressed="false">Record CSV</button>
         <button type="button" class="btn" id="new-session">New session</button>
+        <details class="sound-settings" id="sound-options">
+          <summary>Sound</summary>
+          <div class="sound-volumes" role="group" aria-label="Sound volume">
+            <label class="sound-volume" for="pulse-volume"><span>Pulse</span><input type="range" id="pulse-volume" min="0" max="100" step="5" value="35"><output id="pulse-volume-value" for="pulse-volume">35%</output></label>
+            <label class="sound-volume" for="alarm-volume"><span>Alarms</span><input type="range" id="alarm-volume" min="0" max="100" step="5" value="45"><output id="alarm-volume-value" for="alarm-volume">45%</output></label>
+          </div>
+        </details>
+        <p id="sound-status" class="sound-status" role="status" hidden></p>
       </div>
     </details>
   </header>
@@ -227,10 +246,13 @@
             <div class="numeric compact vent" data-alarm="MV"><div class="numeric-head"><span class="numeric-title">MV</span><span class="numeric-unit">L/min</span></div><output id="v-mv">--</output></div>
           </div>
         </div>
-        <section class="respiratory-loops" aria-label="Respiratory loops">
-          <figure><figcaption>Pressure-volume</figcaption><canvas id="loop-pv" role="img" aria-label="Pressure-volume loop, current and previous breaths"></canvas></figure>
-          <figure><figcaption>Flow-volume</figcaption><canvas id="loop-fv" role="img" aria-label="Flow-volume loop, current and previous breaths"></canvas></figure>
-        </section>
+        <details class="respiratory-loops" id="respiratory-loops" open>
+          <summary class="monitor-detail-toggle">Respiratory loops</summary>
+          <div class="respiratory-loop-plots">
+            <figure><figcaption>Pressure-volume</figcaption><canvas id="loop-pv" role="img" aria-label="Pressure-volume loop, current and previous breaths"></canvas></figure>
+            <figure><figcaption>Flow-volume</figcaption><canvas id="loop-fv" role="img" aria-label="Flow-volume loop, current and previous breaths"></canvas></figure>
+          </div>
+        </details>
       </div>
       <div class="gas-bar">
         <div class="numeric gas gas-pair" data-alarm="FiO2">
@@ -275,13 +297,16 @@
           <div class="nmb-bar" id="nmb-t3"><i></i><span>T3</span></div>
           <div class="nmb-bar" id="nmb-t4"><i></i><span>T4</span></div>
         </div>
-        <div class="nmb-trend">
-          <span class="nmb-caption" id="nmb-trend-label">TOF ratio · 15 min</span>
-          <svg viewBox="0 0 180 40" preserveAspectRatio="none" role="img" id="nmb-trend" aria-label="TOF ratio over the past 15 minutes">
-            <path class="nmb-trend-guide" d="M0 3H180 M0 37H180"/>
-            <g id="nmb-trend-points"></g>
-          </svg>
-        </div>
+        <details class="nmb-history" id="nmb-history" open>
+          <summary class="monitor-detail-toggle">Twitch history</summary>
+          <div class="nmb-trend">
+            <span class="nmb-caption" id="nmb-trend-label">TOF ratio · 15 min</span>
+            <svg viewBox="0 0 180 40" preserveAspectRatio="none" role="img" id="nmb-trend" aria-label="TOF ratio over the past 15 minutes">
+              <path class="nmb-trend-guide" d="M0 3H180 M0 37H180"/>
+              <g id="nmb-trend-points"></g>
+            </svg>
+          </div>
+        </details>
         <div class="nmb-controls">
           <select id="nmb-mode" aria-label="Stimulation" title="TOF measures fade (T4/T1). Single twitch measures response height relative to baseline."><option value="tof">TOF</option><option value="single">Single twitch</option></select>
           <select id="nmb-repeat" aria-label="Repeat"><option value="0">Manual</option><option value="10">Every 10 s</option><option value="20" selected>Every 20 s</option><option value="30">Every 30 s</option><option value="60">Every 60 s</option></select>

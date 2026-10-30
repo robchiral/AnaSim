@@ -158,7 +158,7 @@ def record(server, page, fps, max_duration):
         elif step.id != step_id:
             step_id, phase, phase_start = step.id, "settle", now
         elif phase == "settle" and now - phase_start >= SETTLE_S:
-            if step.target_tab:
+            if step.target_tab and page.is_visible("#step-target"):
                 page.click("#step-target")
             phase, phase_start = "navigate", now
         elif phase == "navigate" and now - phase_start >= NAVIGATE_S:

@@ -1,6 +1,7 @@
 // Page controller: loading, setup, and the running session.
 import { Controls } from "./controls.js";
 import { Monitor } from "./monitor.js";
+import { MonitorAudio } from "./audio.js";
 import { Trends } from "./trends.js";
 import { connect } from "./transport.js";
 
@@ -13,6 +14,13 @@ function setText(el, text) {
 }
 
 let transport;
+const audio = new MonitorAudio();
+const compactMonitor = window.matchMedia("(max-width: 720px)");
+function syncMonitorDetails() {
+  for (const id of ["respiratory-loops", "nmb-history"]) $(id).open = !compactMonitor.matches;
+}
+compactMonitor.addEventListener("change", syncMonitorDetails);
+syncMonitorDetails();
 
 let catalog = null;
 let info = null;
@@ -28,6 +36,7 @@ let nextId = 1;
 
 function show(screen) {
   $("session-options").open = false;
+  if (screen !== "app") audio.stopPlayback();
   for (const id of ["loading", "setup", "app"]) $(id).hidden = id !== screen;
 }
 
@@ -86,6 +95,7 @@ function onMessage({ data }) {
       break;
     }
     case "error":
+      audio.resetSession(info?.sample_interval);
       for (const request of pending.values()) request.reject(data.message);
       pending.clear();
       clearInterval(cshtTimer);
@@ -152,6 +162,29 @@ function buildSetup() {
   form.elements.pregnant.onchange = syncPregnancy;
   syncPregnancy();
 
+  const syncPatientDetails = () => {
+    const f = form.elements;
+    const severity = (field) => field.selectedOptions[0].textContent.split(" (")[0].toLowerCase();
+    const organs = [];
+    if (Number(f.renal_function.value) !== 1) organs.push(`Renal ${severity(f.renal_function)}`);
+    if (f.creatinine_clearance_ml_min.value !== "") organs.push(`CrCl ${f.creatinine_clearance_ml_min.value} mL/min`);
+    if (Number(f.hepatic_function.value) !== 1) organs.push(`Hepatic ${severity(f.hepatic_function)}`);
+    setText($("organ-function-summary"), organs.join(" · ") || "Normal");
+    const conditions = [];
+    if (Number(f.coronary_flow_reserve.value) < 5) conditions.push(`Coronary disease ${severity(f.coronary_flow_reserve)}`);
+    if (f.heart_failure.value !== "none") conditions.push(f.heart_failure.value === "hfref" ? "HFrEF" : "HFpEF");
+    if (Number(f.copd_severity.value) > 0) conditions.push(`COPD ${severity(f.copd_severity)}`);
+    if (f.pregnant.checked) conditions.push(`Pregnant ${f.gestational_age_weeks.value} wk`);
+    setText($("clinical-conditions-summary"), conditions.join(" · ") || "None");
+  };
+  const onSetupEdit = () => {
+    syncPatientDetails();
+    $("setup-error").hidden = true;
+  };
+  form.addEventListener("input", onSetupEdit);
+  form.addEventListener("change", onSetupEdit);
+  syncPatientDetails();
+
   form.onsubmit = (event) => {
     event.preventDefault();
     const params = readSetup(form);
@@ -176,6 +209,8 @@ function readSetup(form) {
     if (input.value === "" || !Number.isFinite(value) || value < Number(input.min) || value > Number(input.max)) {
       const label = input.closest("label").firstChild.textContent.trim();
       setupError(`${label} must be between ${input.min} and ${input.max}.`);
+      const details = input.closest("details");
+      if (details) details.open = true;
       input.focus();
       return null;
     }
@@ -213,6 +248,8 @@ function setupError(message) {
 
 function startSession(sessionInfo) {
   info = sessionInfo;
+  syncMonitorDetails();
+  audio.resetSession(info.sample_interval);
   monitor?.destroy();
   controls?.destroy();
   trends?.destroy();
@@ -254,6 +291,7 @@ function refreshCsht() {
 
 function onTick(snap) {
   last = snap;
+  audio.update(snap);
   monitor.update(snap);
   controls.sync(snap.controls);
   trends.update(snap);
