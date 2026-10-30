@@ -39,15 +39,51 @@ def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
         assert maintained[0] > 0.95 and withdrawn[0] < 0.75
         assert maintained[1] > collapsed[1] + 0.5
         assert maintained[2] > 1.25 * collapsed[2]
-        # Atelectasis shunts about 10% at ZEEP (Tokics 1996); recruitment raises PaO2.
-        assert maintained[4] > 1.25 * collapsed[4]
-        assert withdrawn[4] < 0.85 * maintained[4]
+        # Atelectasis shunts about 5-7% at ZEEP (Gunnarsson 1991; Tokics 1996;
+        # Rothen 1995); recruitment raises PaO2.
+        assert maintained[4] > 1.15 * collapsed[4]
+        assert withdrawn[4] < 0.9 * maintained[4]
         assert maintained[3] == pytest.approx(500.0, abs=2.0)
         traces.append((collapsed, recruited, maintained, withdrawn))
     for trace in traces[1:]:
         for actual, reference in zip(trace, traces[0], strict=True):
             assert actual[:3] == pytest.approx(reference[:3], rel=0.005, abs=0.001)
             assert actual[3:] == pytest.approx(reference[3:], rel=0.01, abs=0.2)
+
+
+def test_age_and_peep_set_anesthetized_oxygenation():
+    """Awake on room air, the A-a gradient is 12.6 mmHg at 65 (Crapo 1999).
+    Under inhaled anesthesia at FiO2 0.4 without PEEP it is 52 mmHg at 25 and
+    rises 1.35 mmHg/yr (Gunnarsson 1991). In VitalDB intraoperative blood gases
+    at FiO2 0.36, PEEP 4-8 raised PaO2 by about 5 mmHg at 30 (95% CI -24 to
+    +30) and 35 at 70 (+15 to +51)."""
+    awake = SimulationEngine(Patient(age=65), SimulationConfig(mode="awake", rng_seed=123))
+    awake.start()
+    for _ in range(120):
+        awake.step(1.0)
+    assert awake.resp.state.p_alveolar_o2 - awake.state.pao2 == pytest.approx(12.6, abs=2.0)
+
+    def anesthetized(age, maint_type, peep, o2_l_min):
+        engine = SimulationEngine(Patient(age=age), SimulationConfig(
+            mode="steady_state", maint_type=maint_type, rng_seed=123))
+        engine.start()
+        engine.set_fgf(o2_l_min, 10.0 - o2_l_min)
+        engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=peep, ie="1:2")
+        for _ in range(1500):
+            engine.step(1.0)
+        return engine
+
+    gradient = []
+    for age in (25, 65):
+        engine = anesthetized(age, "balanced", 0, 2.5)
+        assert engine.state.fio2 == pytest.approx(0.39, abs=0.01)
+        gradient.append(engine.resp.state.p_alveolar_o2 - engine.state.pao2)
+    assert gradient[0] == pytest.approx(52.0, abs=10.0)
+    assert 1.0 < (gradient[1] - gradient[0]) / 40.0 < 1.8
+
+    for age, low, high in ((30, -10.0, 15.0), (70, 20.0, 50.0)):
+        pao2 = [anesthetized(age, "tiva", peep, 2.0).state.pao2 for peep in (0, 5)]
+        assert low < pao2[1] - pao2[0] < high
 
 
 def test_sustained_pressure_has_a_recruitment_ceiling_across_step_sizes():

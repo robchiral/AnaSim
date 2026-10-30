@@ -1,23 +1,23 @@
 # VitalDB TIVA hemodynamics
 
-Generated 2026-10-24T16:10:50.856915+00:00.
-Git revision `7185631994e5f0eb6635e412b6c09420722d84db`. Model source SHA256 `f2186c9cd885b5acfe0e744245ccfa6b6b069bd90905ee423a7249990b53246c`.
+Generated 2026-10-30.
 
 ## Methods
 
-Recorded propofol and remifentanil pump delivery drives the full engine at production parameters, from each
-patient's last cuff MAP within 15 minutes before propofol and median HR over the preceding 2 minutes.
-Controlled ventilation (VT 8 mL/kg PBW, at most 600 mL; RR 12; PEEP 5) starts 90 s after propofol and
-intubation stimulation at 4 minutes. Recorded crystalloid runs at a constant rate, colloid is given every 5
-minutes, and blood loss bleeds at a constant rate during surgery, with sustained surgical stimulation.
-Positioning and pneumoperitoneum are not replayed.
+Recorded propofol and remifentanil pump delivery is the input to the full engine, at its standard parameters.
+Each patient starts from their last cuff MAP within 15 minutes before propofol and their median HR over the
+preceding 2 minutes. Controlled ventilation (VT 8 mL/kg PBW up to 600 mL, RR 12, PEEP 5) starts 90 s after
+propofol, and intubation stimulation occurs at 4 minutes. Recorded crystalloid runs at a constant rate, colloid
+is given every 5 minutes, and recorded blood loss occurs at a constant rate during surgery, with sustained
+surgical stimulation. The replay does not include positioning or pneumoperitoneum.
 
-From propofol to incision, each cuff reading is compared with model MAP over the 40 s before it
-posts. A patient's readings stop at the first with MAP below 65 mmHg, SBP below 90, or HR below 45
-(sensitivity: 70, 100, 45), so later treatment cannot bias the fit; a likelihood fit with a patient offset and
-reading noise gives the mean error (model minus recorded) with 500-sample patient bootstrap intervals.
+From propofol to incision, each cuff reading is compared with model MAP averaged over the 40 s
+before the reading appears. A patient's readings stop at the first one with MAP below 65 mmHg, SBP below 90, or
+HR below 45 (sensitivity analysis: 70, 100, and 45), so later treatment cannot bias the fit. A likelihood fit
+with a patient offset and reading noise gives the mean error (model minus recorded), with 95% intervals from
+500 patient bootstrap resamples.
 
-Eligible candidates 959; retained 301.
+Eligible candidates: 959. Retained: 301.
 
 ## From propofol to incision
 
@@ -25,8 +25,8 @@ Eligible candidates 959; retained 301.
 |---|---:|---:|---|---:|---:|
 | All patients | 301 | 1609 | -1.7 (-2.8 to -0.6) | 7.5 | 12.1 |
 | Untreated | 187 | 1127 | -2.9 (-4.2 to -1.6) | 7.5 | 11.7 |
-| Pressor-treated | 114 | 482 | 0.4 (-1.6 to 2.1) | 6.9 | 13.0 |
-| Open, supine | 169 | 872 | -1.1 (-2.6 to 0.5) | 7.2 | 12.0 |
+| Pressor-treated | 114 | 482 | 0.4 (-1.5 to 2.1) | 6.9 | 13.0 |
+| Open, supine | 169 | 872 | -1.0 (-2.6 to 0.5) | 7.2 | 12.0 |
 | Laparoscopic or robotic, supine | 65 | 317 | 0.7 (-1.4 to 2.8) | 5.6 | 9.8 |
 | Other positions | 67 | 420 | -5.6 (-8.1 to -3.0) | 8.2 | 13.7 |
 | Age under 45 | 87 | 441 | -0.5 (-2.4 to 1.5) | 7.6 | 11.1 |
@@ -37,7 +37,7 @@ Sensitivity stopping rule, all patients: -1.6 (-2.8 to -0.5) mmHg.
 
 By time after propofol, all patients: before 10 min -1.6 (-2.8 to -0.5); from 10 min -2.3 (-4.2 to -0.5) mmHg.
 
-Compared with model MAP when each reading posts, all patients: -3.4 (-4.5 to -2.4) mmHg.
+Compared with model MAP when each reading appears, all patients: -3.4 (-4.5 to -2.4) mmHg.
 
 Change in MAP from pre-induction, all readings without stopping, median (IQR):
 

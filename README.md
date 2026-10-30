@@ -1,8 +1,8 @@
 # AnaSim
 
 AnaSim simulates adult anesthesia for education and research. It combines
-published pharmacology and cardiorespiratory models with a patient monitor and
-anesthesia machine interface.
+published pharmacology and cardiorespiratory models with an interface for the
+patient monitor and anesthesia machine.
 
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/anasim-simulator.svg)](https://pypi.org/project/anasim-simulator/)
@@ -20,7 +20,7 @@ anesthesia machine interface.
 
 Open [robche.com/AnaSim](https://robche.com/AnaSim/) in your browser.
 
-For local use, install with Python 3.10 or later.
+To run it locally, install it with Python 3.10 or later.
 
 ```bash
 python3 -m venv .venv
@@ -31,17 +31,18 @@ anasim
 
 In Windows Command Prompt, use `python` in place of `python3` and activate with
 `.venv\Scripts\activate.bat`.
-`anasim` opens the interface in your browser and works offline after installation.
-Press Ctrl+C in the terminal to stop the server.
 
-Choose a guided scenario or open simulation, then select Start simulation and
-Start. Use Apply to confirm setting changes.
+`anasim` opens the interface in your browser and works offline after
+installation. Press Ctrl+C in the terminal to stop the server.
+
+Choose a guided scenario or an open simulation, then select Start simulation and
+Start. Use Apply to confirm changes to settings.
 
 ## Features
 
 | Feature | Supported controls and measurements |
 |---------|-------------------------------------|
-| Patient variation | Age, body size, renal and hepatic function, coronary disease, heart failure, COPD, obesity, and pregnancy with maternal positioning |
+| Patient variation | Age, body size, renal and hepatic function, coronary disease, heart failure, COPD, obesity, pregnancy with maternal positioning, and optional random variation in drug response |
 | Anesthesia | Propofol, remifentanil, fentanyl, hydromorphone, morphine, midazolam, etomidate, ketamine, lidocaine, sevoflurane, nitrous oxide, rocuronium, succinylcholine, and sugammadex |
 | Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, ephedrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, atropine, and glycopyrrolate |
 | Anesthesia machine | Facemask or tracheal tube, fresh gas flow, vaporizer, and bag-mask ventilation |
@@ -50,8 +51,8 @@ Start. Use Apply to confirm setting changes.
 | Fluids and events | Fluids and blood, surgical stimulation, airway obstruction, bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias |
 | Guided scenarios | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, and oxygen supply failure |
 
-Drug delivery supports boluses, manual infusions, and plasma or effect-site TCI,
-depending on the drug.
+Depending on the drug, delivery options include boluses, manual infusions, and
+target-controlled infusion (TCI) to a plasma or effect-site target.
 
 ## Limits
 
@@ -72,16 +73,16 @@ anasim --mode headless --duration 60 --record
 
 | Task | Guide |
 |------|-------|
-| Configure patients, run scripts, or interpret CSV | [CLI and Python usage](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md) |
+| Configure patients, run scripts, or interpret CSV files | [CLI and Python usage](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md) |
 | Understand model behavior and assumptions | [Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md) |
 | Find the source studies | [Model references](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md) |
 | Compare model outputs with clinical recordings | [VitalDB validation](https://github.com/robchiral/AnaSim/blob/main/validation/vitaldb/README.md) |
-| Change the code and choose checks | [Contributing](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md) |
+| Change the code and choose which checks to run | [Contributing](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md) |
 | Review release changes | [Changelog](https://github.com/robchiral/AnaSim/blob/main/CHANGELOG.md) |
 
 ## Citation and license
 
-Cite using [`CITATION.cff`](https://github.com/robchiral/AnaSim/blob/main/CITATION.cff).
+To cite AnaSim, use [`CITATION.cff`](https://github.com/robchiral/AnaSim/blob/main/CITATION.cff).
 
 AnaSim 1.6 and later use the proprietary, source-available
 [AnaSim noncommercial license](https://github.com/robchiral/AnaSim/blob/main/LICENSE).
@@ -92,8 +93,8 @@ AnaSim 1.6 and later use the proprietary, source-available
 | Noncommercial use at nonprofit or government institutions | Free |
 | Commercial or other institutional use | Paid license |
 
-Contact [Robert Chen](mailto:rob@robche.com) for paid licenses or
-written fee waivers. Sharing copies is allowed under the license terms.
+Contact [Robert Chen](mailto:rob@robche.com) for paid licenses or written fee
+waivers. The license terms allow you to share copies.
 
 Early AnaSim versions adapted code from
 [Python Anesthesia Simulator](https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator),

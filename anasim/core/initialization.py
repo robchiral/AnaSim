@@ -175,7 +175,7 @@ def _seed_steady_state_subsystems(
     if profile.primary_hypnotic == "volatile":
         fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
     engine.circuit.equilibrate(_oxygen_uptake_l_min(engine, targets), fi_agent)
-    engine.resp.equilibrate_oxygen(engine.circuit.composition.fio2)
+    engine.resp.equilibrate_oxygen(engine.circuit.composition.fio2, 1.0, engine.vent.settings.peep)
 
     engine.resp.initialize_drug_effects(engine.pk["propofol"].state.ce_resp, engine.pk["remi"].state.ce_resp)
     prop_cp = engine.pk["propofol"].state.c1

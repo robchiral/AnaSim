@@ -1,12 +1,8 @@
 {
-  "provenance": {
-    "generated_utc": "2026-10-13T23:53:42.116599+00:00",
+  "settings": {
+    "generated": "2026-10-30",
     "dt": 1.0,
-    "seed": 20261013,
-    "git_revision": "2d704b251a1a16957feed608804c7e3bf8147bef",
-    "model_sha256": "489a73798ce2521e09984128f34fd215be8bed7cc1cca0428bad54788d0cf88f",
-    "source": "https://doi.org/10.1038/s41597-022-01411-5",
-    "validator_sha256": "47e58816ddf33c22767dd00d3af557298722072f264d519733e1d304b763165a"
+    "seed": 20261013
   },
   "tiva": {
     "requested": 100,

@@ -37,7 +37,6 @@ from vitaldb_replay import (
     estimate,
     mean_ci,
     pre_induction,
-    provenance,
     readings,
     report_footer,
     report_header,
@@ -266,22 +265,22 @@ def apply_override(override):
         hemodynamics.HemodynamicModel.__init__ = init
 
 
-def report(data, prov):
-    rng = np.random.default_rng(prov["seed"])
+def report(data, settings):
+    rng = np.random.default_rng(settings["seed"])
     rows = data["rows"]
     untreated = [r for r in rows if not r["treated"]]
     groups = (("All patients", rows), ("Untreated", untreated), ("Pressor-treated", [r for r in rows if r["treated"]]))
-    lines = report_header("VitalDB bolus induction with sevoflurane", prov) + [
-        f"Model override: `{json.dumps(prov['override'])}`.", "",
+    override = [f"Model override: `{json.dumps(settings['override'])}`.", ""] if settings["override"] else []
+    lines = report_header("VitalDB bolus induction with sevoflurane", settings) + override + [
         "## Methods", "",
-        f"Propofol runs over 20 s, starting {BIS_LAG_S:.0f} s after the time at which model BIS would first fall below 60",
-        "when recorded BIS does; fentanyl is given 2 minutes earlier; recorded inspired sevoflurane and remifentanil",
-        f"pumps are replayed, with intubation stimulation {INTUBATION_S / 60:.1f} minutes after propofol and surgery from incision.",
-        f"Each cuff reading from propofol to incision is compared with model MAP over the {CUFF_WINDOW_S:.0f} s before it",
-        "posts, stopping at the first reading with MAP below 65 mmHg, SBP below 90, or HR below 45; a likelihood fit with",
-        f"a patient offset and reading noise gives the mean error (model minus recorded) with {BOOTSTRAP}-sample patient",
-        "bootstrap intervals.", "",
-        f"Eligible candidates {data['eligible']}; retained {len(rows)} ({sum(r['fentanyl'] for r in rows)} with fentanyl, "
+        f"Propofol runs over 20 s. It starts {BIS_LAG_S:.0f} s after the time at which model BIS would first fall below 60",
+        "when recorded BIS does. Fentanyl is given 2 minutes earlier. Recorded inspired sevoflurane and remifentanil pumps",
+        f"are replayed, with intubation stimulation {INTUBATION_S / 60:.1f} minutes after propofol and surgery from incision.", "",
+        f"From propofol to incision, each cuff reading is compared with model MAP averaged over the {CUFF_WINDOW_S:.0f} s",
+        "before the reading appears. A patient's readings stop at the first one with MAP below 65 mmHg, SBP below 90, or",
+        "HR below 45. A likelihood fit with a patient offset and reading noise gives the mean error (model minus recorded),",
+        f"with 95% intervals from {BOOTSTRAP} patient bootstrap resamples.", "",
+        f"Eligible candidates: {data['eligible']}. Retained: {len(rows)} ({sum(r['fentanyl'] for r in rows)} with fentanyl, "
         f"{sum(r['remifentanil'] for r in rows)} with remifentanil).", "",
         "| Patients | n | Readings | Mean error, mmHg (95% CI) | Patient SD | Reading SD |",
         "|---|---:|---:|---|---:|---:|"]
@@ -326,18 +325,17 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "results")
     args = parser.parse_args()
     override = json.loads(args.override)
-    prov = provenance(__file__, dt=args.dt, seed=args.seed, override=override)
     pool = sorted(((case, trk) for case, trk in domain_cases(REQUIRED) if eligible(case, trk)),
                   key=lambda candidate: int(candidate[0]["caseid"]))
     with ProcessPoolExecutor(args.workers, initializer=apply_override, initargs=(override,)) as executor:
         results = list(executor.map(evaluate, pool, [args.dt] * len(pool), chunksize=4))
     data = dict(eligible=len(pool), rows=[r for r in results if "exclusion" not in r],
                 exclusions=[r for r in results if "exclusion" in r])
-    prov["generated_utc"] = datetime.now(timezone.utc).isoformat()
+    settings = dict(generated=datetime.now(timezone.utc).date().isoformat(), dt=args.dt, seed=args.seed, override=override)
     args.output.mkdir(parents=True, exist_ok=True)
     stem = args.output / "vitaldb_sevo"
-    stem.with_suffix(".json").write_text(json.dumps(dict(provenance=prov, **data), indent=2, allow_nan=False) + "\n")
-    stem.with_suffix(".md").write_text(report(data, prov))
+    stem.with_suffix(".json").write_text(json.dumps(dict(settings=settings, **data), indent=2, allow_nan=False) + "\n")
+    stem.with_suffix(".md").write_text(report(data, settings))
     print(f"Report: {stem.with_suffix('.md')}", flush=True)
 
 

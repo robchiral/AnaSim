@@ -7,11 +7,9 @@ script's existing cache. Only deidentified case summaries are saved in Git.
 
 import argparse
 import csv
-import hashlib
 import json
 import math
 import random
-import subprocess
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -296,55 +294,74 @@ def mean_ci(values, rng):
     return f"{np.mean(values):.2f} ({low:.2f} to {high:.2f})"
 
 
-def report(data, provenance, seed):
-    lines = ["# VitalDB anesthetic comparisons", "", f"Generated {provenance['generated_utc']}.",
-             f"Git revision `{provenance['git_revision']}`. Fixed model source SHA256 `{provenance['model_sha256']}`.",
+def report(data, settings, seed):
+    lines = ["# VitalDB anesthetic comparisons", "", f"Generated {settings['generated']}.",
              "", "## Methods", "",
-             "Models use the checkout's production parameters without fitting, individual calibration, observed-BIS initialization,",
-             "or fitted time shifts. This evaluates isolated anesthetic components, with normal organ function and unchanged blood volume.",
-             "Patients meet the existing ventilation cohort rules: general anesthesia, oral single-lumen tube, open surgery, supine,",
-             "age 18 to 70 years, weight 50 to 100 kg, height 150 to 200 cm, and BMI 18 to 32 kg/m².",
-             f"Seed {seed} fixes candidate order; each cohort includes at most one case per patient. No validation data are used to tune models.",
-             f"Replay step {provenance['dt']:g} s; endpoint sampling every {SAMPLE_SECONDS:g} s. Each reported phase needs at least one usable minute;",
-             "each case needs ten usable minutes in total. Phase sample counts vary with measurement availability.",
-             "The all-phase score includes usable intervals between the named phases. Eligibility uses recorded inputs and signal quality, not prediction errors.",
-             "Errors are predicted minus measured. Tables show the mean of per-patient metrics with patient bootstrap 95% intervals",
-             "(2,000 resamples). Long cases therefore have the same weight as short cases. Baseline comparisons use identical samples.",
+             "These comparisons test the anesthetic models in isolation, with normal organ function and unchanged blood volume.",
+             "The models use AnaSim's standard parameters, which were not tuned to these recordings. The replay fits no",
+             "individual calibrations or time shifts, and predicted BIS does not start from the observed BIS.", "",
+             "Patients meet the same rules as the ventilation cohort: general anesthesia, oral single-lumen tube, open surgery,",
+             "supine position, age 18 to 70 years, weight 50 to 100 kg, height 150 to 200 cm, and BMI 18 to 32 kg/m².",
+             f"Each cohort includes at most one case per patient, and seed {seed} fixes the order of candidates.",
+             "Eligibility uses only recorded inputs and signal quality.", "",
+             f"The replay step is {settings['dt']:g} s, and endpoints are sampled every {SAMPLE_SECONDS:g} s. Each reported phase",
+             "needs at least one usable minute, and each case needs ten usable minutes in total. The number of samples in a",
+             "phase depends on which measurements are available. The all-phase score includes usable intervals between the",
+             "named phases.", "",
+             "Errors are predicted minus measured. Tables show the mean of the per-patient metrics, with 95% intervals from",
+             "2,000 patient bootstrap resamples, so long cases have the same weight as short cases. The comparator is scored",
+             "on the same samples.",
              "", "## Propofol and BIS", "",
-             "PPF20_RATE is held between recorded packets and integrated in mL; 20 mg/mL converts delivery to model mg/s.",
-             "Cumulative pump volume must start at zero (at most 0.05 mL), with at least 30 seconds of common zero-rate/volume history before induction.",
-             "Rates must be between 0 and 1,500 mL/h, with at least 5 mL delivered and a replay interval of at least 15 minutes after induction.",
-             "The integrated rate must agree with the recorded volume within the larger of 5% or 0.5 mL. Counter reversals over 0.25 mL",
-             "are excluded; smaller counter artifacts do not affect rate-based replay. Delivery gaps over 5 s are excluded.",
-             "Recorded supplemental propofol, midazolam, and fentanyl bolus totals must be zero. Dexmedetomidine pump tracks are excluded.",
-             "Remifentanil delivery must be recorded and nonzero; the production propofol model uses its opioid-regimen covariate.",
-             "Remifentanil analgesia and stimulus responses are not evaluated. No hemorrhage or individualized surgical arousal is replayed.",
-             "MAC must stay at or below 0.05 and inspired N2O at or below 1%; gas coverage must start before propofol delivery and have no",
-             f"gaps over 30 s during replay. BIS uses SQI at least {SQI_MIN:g}, with no more than 2 s since the latest BIS/SQI packet.",
-             "The Eleveld effect site, published BIS processing delay, and production display smoothing are included; display noise is omitted.",
-             "Induction ends at incision or ten minutes after first delivery, whichever is earlier. Maintenance begins after both;",
-             "emergence begins after both surgical end and the final recorded nonzero infusion. These are recording phases, not observed",
-             "loss or return of consciousness. The comparator is constant BIS 40. Pump CP/CE estimates are never treated as measured concentrations.", ""]
+             "Propofol delivery comes from the recorded pump rate (PPF20_RATE), which is held between recorded packets and",
+             "integrated in mL. A concentration of 20 mg/mL converts it to mg/s for the model. Each case must meet these rules:", "",
+             "- The cumulative pump volume must start at zero (at most 0.05 mL), and both rate and volume must stay at zero for",
+             "  at least 30 seconds before induction.",
+             "- Rates must be between 0 and 1,500 mL/h, at least 5 mL must be delivered, and the replay must last at least 15",
+             "  minutes after induction.",
+             "- The integrated rate must agree with the recorded volume within 5% or 0.5 mL, whichever is larger.",
+             "- Counter reversals over 0.25 mL and delivery gaps over 5 s are excluded. Smaller counter artifacts do not affect",
+             "  the replay, which uses the rate.",
+             "- Recorded supplemental boluses of propofol, midazolam, and fentanyl must total zero, and dexmedetomidine pump",
+             "  tracks are excluded.",
+             "- Remifentanil delivery must be recorded and nonzero, and the propofol model uses its opioid-regimen covariate.",
+             "- MAC must stay at or below 0.05, and inspired N₂O at or below 1%. Gas recording must start before propofol",
+             "  delivery and have no gaps over 30 s during the replay.",
+             f"- BIS samples need a signal quality index (SQI) of at least {SQI_MIN:g}, with no more than 2 s since the latest BIS",
+             "  and SQI packets.", "",
+             "The model includes the Eleveld effect site, the published BIS processing delay, and the display smoothing, but",
+             "no display noise. Remifentanil analgesia and stimulus responses are not evaluated, and the replay does not",
+             "include hemorrhage or surgical arousal for individual patients.", "",
+             "Induction ends at incision or ten minutes after first delivery, whichever is earlier, and maintenance begins",
+             "once both have passed. Emergence begins once surgery has ended and the last recorded nonzero infusion has",
+             "stopped. These phases come from the recording and do not mark observed loss or return of consciousness. The",
+             "comparator is a constant BIS of 40. Concentrations estimated by the pump (CP and CE) are never treated as",
+             "measured values.", ""]
     rng = np.random.default_rng(seed)
     for kind, title, phases in (("tiva", None, ("all", "induction", "maintenance", "emergence")),
                                  ("sevo", "Sevoflurane uptake", ("all", "washin", "maintenance", "washout"))):
         group = data[kind]
         if title:
-            lines += [f"## {title}", "", "Recorded inspired sevoflurane drives production VolatilePK, initialized with no agent in any compartment.",
-                      "Inspired and expired concentrations must start at or below 0.1%, with 30 s before exposure reaches 0.5%.",
-                      "Inspired exposure must reach at least 1%, with at least 15 minutes between the first and last readings at or above 0.5%.",
-                      "Recorded tidal volume and CO2 respiratory rate give alveolar ventilation using AnaSim's 2.2 mL/kg PBW dead space.",
-                      "Input gaps over 30 s, inspired concentrations outside 0 to 8%, VT outside 0 to 1,500 mL, RR outside 0 to 50/min,",
-                      "and N2O exposure over 1% are excluded. Endpoint samples need VT at least 200 mL, RR at least 5/min, EtCO2 15 to 60 mmHg,",
-                      "and expired gas/ventilation packets within 15 s. No agent is carried across an unknown input gap.",
-                      "Cardiac output is assumed to be 5 L/min, with prespecified 3 and 7 L/min sensitivity runs. FRC uses the patient's production",
-                      "body-size formula and stays fixed; shunt is zero and temperature is 37 °C. These quantities are not measured or fitted.",
-                      "Wash-in is the first ten minutes after inspired agent reaches 0.5%; washout follows its final reading at or above 0.5%.",
-                      "The comparator sets end-tidal equal to recorded inspired sevoflurane. Concentration errors are percentage points.",
-                      "This conditions on measured inspired gas and ventilation; vaporizer/circuit delivery, lung recruitment, cardiovascular effects,",
-                      "and sevoflurane BIS effects are not tested.", ""]
-        lines += [f"Track-eligible cases {group['track_eligible']}; after metadata rules {group['metadata_eligible']};",
-                  f"screened {len(group['rows']) + len(group['exclusions'])}; retained {len(group['rows'])} of {group['requested']} requested patients.", "",
+            lines += [f"## {title}", "",
+                      "Recorded inspired sevoflurane is the input to the uptake model (`VolatilePK`), which starts with no agent in",
+                      "any compartment. Recorded tidal volume and the respiratory rate from the CO₂ trace give alveolar ventilation,",
+                      "using AnaSim's dead space of 2.2 mL/kg PBW. Each case must meet these rules:", "",
+                      "- Inspired and expired concentrations must start at or below 0.1%, with 30 s before exposure reaches 0.5%.",
+                      "- Inspired concentration must reach at least 1%, and the first and last readings at or above 0.5% must be at",
+                      "  least 15 minutes apart.",
+                      "- Cases are excluded for input gaps over 30 s, inspired concentrations outside 0 to 8%, VT outside 0 to 1,500 mL,",
+                      "  RR outside 0 to 50/min, or N₂O exposure over 1%.",
+                      "- Endpoint samples need VT of at least 200 mL, RR of at least 5/min, EtCO₂ of 15 to 60 mmHg, and expired gas and",
+                      "  ventilation packets within 15 s.", "",
+                      "No agent is carried across an unknown input gap. Cardiac output is assumed to be 5 L/min, with sensitivity runs",
+                      "at 3 and 7 L/min. FRC comes from the patient's body size and stays fixed, shunt is zero, and temperature is",
+                      "37 °C. These values are neither measured nor fitted.", "",
+                      "Wash-in is the first ten minutes after inspired agent reaches 0.5%, and washout follows the final reading at or",
+                      "above 0.5%. The comparator sets the end-tidal concentration equal to the recorded inspired concentration.",
+                      "Concentration errors are in percentage points. The comparison takes measured inspired gas and ventilation as",
+                      "inputs, so it does not test vaporizer or circuit delivery, lung recruitment, cardiovascular effects, or the",
+                      "effects of sevoflurane on BIS.", ""]
+        lines += [f"Cases with the required tracks: {group['track_eligible']}. After the metadata rules: {group['metadata_eligible']}.",
+                  f"Screened: {len(group['rows']) + len(group['exclusions'])}. Retained: {len(group['rows'])} of {group['requested']} requested patients.", "",
                   "| Phase | Patients | Usable minutes | Bias (95% CI) | MAE (95% CI) | RMSE (95% CI) | Comparator MAE (95% CI) |",
                   "|---|---:|---:|---|---|---|---|"]
         for phase in phases:
@@ -368,18 +385,22 @@ def report(data, provenance, seed):
         counts = Counter(r["exclusion"] for r in group["exclusions"])
         lines.extend(f"- {reason}: {count}" for reason, count in sorted(counts.items()))
         if len(group["rows"]) < group["requested"]:
-            lines += ["", "The requested sample was not reached; the table reports all eligible patients found."]
+            lines += ["", "The requested sample was not reached, so the table reports all eligible patients found."]
         lines += [""]
-    lines += ["## Interpretation", "", "These are external clinical comparisons of fixed component models, not proof of accuracy for the whole simulator.",
-              "BIS reflects EEG and monitor behavior rather than a direct consciousness label. Doses were selected by clinicians in response",
-              "to patient state. Unrecorded interventions and delivery/monitor timing can contribute to errors; population predictions need",
-              "not reproduce individual trajectories. A model that does not outperform its comparator should be reported as such.",
-              "Sevoflurane results depend on unmeasured cardiac output, FRC, and ventilation history. Conclusions about transition behavior",
-              "need the phase-specific results, especially where few emergence or washout minutes are available.", "",
-              "Per-patient errors, track identifiers, and exclusions are in `vitaldb_anesthetics.json` and `vitaldb_anesthetics_cases.csv`.",
-              "Overlay patients are selected at the minimum, quartiles, and maximum of all-phase MAE, with their case IDs shown.", "",
+    lines += ["## Interpretation", "",
+              "These comparisons test individual anesthetic models against clinical recordings. They do not establish the",
+              "accuracy of the whole simulator. BIS reflects EEG and monitor behavior and is not a direct measure of",
+              "consciousness. Clinicians chose doses in response to the patient's state, and unrecorded interventions and",
+              "delays in delivery or monitoring can contribute to errors. A population model is also not expected to reproduce",
+              "each patient's course. Sevoflurane results depend on unmeasured cardiac output, FRC, and ventilation history.",
+              "Conclusions about induction, emergence, wash-in, and washout should use the results for that phase, especially",
+              "where few minutes of emergence or washout are available.", "",
+              "Per-patient errors, track identifiers, and exclusions are in `vitaldb_anesthetics.json` and",
+              "`vitaldb_anesthetics_cases.csv`. Overlay plots show the patients at the minimum, quartiles, and maximum of",
+              "all-phase MAE, with their case IDs.", "",
               f"Source: [Lee et al., Scientific Data, 2022]({SOURCE}); [VitalDB documentation](https://vitaldb.net/docs/?documentId=OpenDataset/Overview.md).",
-              "VitalDB data are used under CC BY-NC-SA 4.0 and its data use agreement. Downloaded tracks and overlay PNGs stay in the ignored local cache/results paths.", ""]
+              "VitalDB data are used under CC BY-NC-SA 4.0 and its data use agreement. Downloaded tracks and overlay plots are",
+              "kept locally and are not in the repository.", ""]
     return "\n".join(lines)
 
 
@@ -426,29 +447,18 @@ def main():
 
     vitaldb_ventilation.CACHE = args.cache
     args.cache.mkdir(parents=True, exist_ok=True)
-    model_files = ["anasim/patient/pk_models.py", "anasim/patient/pd/anesthesia.py", "anasim/patient/volatile_pk.py",
-                   "anasim/patient/patient.py", "anasim/core/monitors.py", "anasim/core/engine.py",
-                   "anasim/core/drug_registry.py", "anasim/core/state.py", "anasim/physiology/respiration.py"]
-    model_hash = hashlib.sha256()
-    for name in model_files:
-        model_hash.update(name.encode())
-        model_hash.update((ROOT.parent.parent / name).read_bytes())
-    provenance = dict(generated_utc=datetime.now(timezone.utc).isoformat(), dt=args.dt, seed=args.seed,
-                      git_revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-                      model_sha256=model_hash.hexdigest(), source=SOURCE,
-                      validator_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
     data = {kind: cohort(kind, count, args.seed + offset, args.workers, args.dt)
             for offset, (kind, count) in enumerate((("tiva", args.tiva_cases), ("sevo", args.sevo_cases)))}
-    provenance["generated_utc"] = datetime.now(timezone.utc).isoformat()
+    settings = dict(generated=datetime.now(timezone.utc).date().isoformat(), dt=args.dt, seed=args.seed)
     args.output.mkdir(parents=True, exist_ok=True)
-    (args.output / "vitaldb_anesthetics.md").write_text(report(data, provenance, args.seed))
+    (args.output / "vitaldb_anesthetics.md").write_text(report(data, settings, args.seed))
     if args.figures:
         for kind, group in data.items():
             overlays(group, kind, args.output / f"vitaldb_{kind}_overlay.png")
     for group in data.values():
         for row in group["rows"]:
             del row["_trace"]
-    (args.output / "vitaldb_anesthetics.json").write_text(json.dumps(dict(provenance=provenance, **data), indent=2, allow_nan=False) + "\n")
+    (args.output / "vitaldb_anesthetics.json").write_text(json.dumps(dict(settings=settings, **data), indent=2, allow_nan=False) + "\n")
     with (args.output / "vitaldb_anesthetics_cases.csv").open("w", newline="") as handle:
         fields = ["cohort", "caseid", "subjectid", "phase", "n", "minutes", "bias", "mae", "rmse", "baseline_mae"]
         writer = csv.DictWriter(handle, fieldnames=fields)

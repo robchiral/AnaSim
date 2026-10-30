@@ -35,7 +35,6 @@ from vitaldb_replay import (
     estimate,
     mean_ci,
     pre_induction,
-    provenance,
     readings,
     report_footer,
     report_header,
@@ -176,8 +175,8 @@ def evaluate(candidate, dt):
     return summary
 
 
-def report(data, prov):
-    rng = np.random.default_rng(prov["seed"])
+def report(data, settings):
+    rng = np.random.default_rng(settings["seed"])
     rows = data["rows"]
     untreated = [r for r in rows if not r["treated"]]
     groups = [("All patients", rows), ("Untreated", untreated), ("Pressor-treated", [r for r in rows if r["treated"]])]
@@ -185,19 +184,20 @@ def report(data, prov):
                for name in ("Open, supine", "Laparoscopic or robotic, supine", "Other positions")]
     groups += [(name, [r for r in rows if low <= r["age"] < high])
                for name, low, high in (("Age under 45", 0, 45), ("Age 45-59", 45, 60), ("Age 60 and over", 60, 200))]
-    lines = report_header("VitalDB TIVA hemodynamics", prov) + [
+    lines = report_header("VitalDB TIVA hemodynamics", settings) + [
         "## Methods", "",
-        "Recorded propofol and remifentanil pump delivery drives the full engine at production parameters, from each",
-        "patient's last cuff MAP within 15 minutes before propofol and median HR over the preceding 2 minutes.",
-        "Controlled ventilation (VT 8 mL/kg PBW, at most 600 mL; RR 12; PEEP 5) starts 90 s after propofol and",
-        "intubation stimulation at 4 minutes. Recorded crystalloid runs at a constant rate, colloid is given every 5",
-        "minutes, and blood loss bleeds at a constant rate during surgery, with sustained surgical stimulation.",
-        "Positioning and pneumoperitoneum are not replayed.", "",
-        f"From propofol to incision, each cuff reading is compared with model MAP over the {CUFF_WINDOW_S:.0f} s before it",
-        "posts. A patient's readings stop at the first with MAP below 65 mmHg, SBP below 90, or HR below 45",
-        "(sensitivity: 70, 100, 45), so later treatment cannot bias the fit; a likelihood fit with a patient offset and",
-        f"reading noise gives the mean error (model minus recorded) with {BOOTSTRAP}-sample patient bootstrap intervals.", "",
-        f"Eligible candidates {data['eligible']}; retained {len(rows)}.", "",
+        "Recorded propofol and remifentanil pump delivery is the input to the full engine, at its standard parameters.",
+        "Each patient starts from their last cuff MAP within 15 minutes before propofol and their median HR over the",
+        "preceding 2 minutes. Controlled ventilation (VT 8 mL/kg PBW up to 600 mL, RR 12, PEEP 5) starts 90 s after",
+        "propofol, and intubation stimulation occurs at 4 minutes. Recorded crystalloid runs at a constant rate, colloid",
+        "is given every 5 minutes, and recorded blood loss occurs at a constant rate during surgery, with sustained",
+        "surgical stimulation. The replay does not include positioning or pneumoperitoneum.", "",
+        f"From propofol to incision, each cuff reading is compared with model MAP averaged over the {CUFF_WINDOW_S:.0f} s",
+        "before the reading appears. A patient's readings stop at the first one with MAP below 65 mmHg, SBP below 90, or",
+        "HR below 45 (sensitivity analysis: 70, 100, and 45), so later treatment cannot bias the fit. A likelihood fit",
+        "with a patient offset and reading noise gives the mean error (model minus recorded), with 95% intervals from",
+        f"{BOOTSTRAP} patient bootstrap resamples.", "",
+        f"Eligible candidates: {data['eligible']}. Retained: {len(rows)}.", "",
         "## From propofol to incision", "",
         "| Patients | n | Readings | Mean error, mmHg (95% CI) | Patient SD | Reading SD |",
         "|---|---:|---:|---|---:|---:|"]
@@ -215,7 +215,7 @@ def report(data, prov):
                           for name, (m, lo, hi) in zip(("before 10 min", "from 10 min"), by_period, strict=True))
               + " mmHg."]
     [(mean, low, high)], _, _, _ = estimate(rows, "posting", False, rng)
-    lines += ["", f"Compared with model MAP when each reading posts, all patients: {mean:.1f} ({low:.1f} to {high:.1f}) mmHg."]
+    lines += ["", f"Compared with model MAP when each reading appears, all patients: {mean:.1f} ({low:.1f} to {high:.1f}) mmHg."]
     lines += course_table(rows)
     hr = [r["hr"] for r in untreated if "hr" in r]
     if hr:
@@ -246,18 +246,17 @@ def main():
     parser.add_argument("--dt", type=float, default=1.0)
     parser.add_argument("--output", type=Path, default=ROOT / "results")
     args = parser.parse_args()
-    prov = provenance(__file__, dt=args.dt, seed=args.seed)
     pool = sorted(((case, trk) for case, trk in domain_cases(REQUIRED, typical_only=False) if eligible(case, trk)),
                   key=lambda candidate: int(candidate[0]["caseid"]))
     with ProcessPoolExecutor(args.workers) as executor:
         results = list(executor.map(evaluate, pool, [args.dt] * len(pool), chunksize=4))
     data = dict(eligible=len(pool), rows=[r for r in results if "exclusion" not in r],
                 exclusions=[r for r in results if "exclusion" in r])
-    prov["generated_utc"] = datetime.now(timezone.utc).isoformat()
+    settings = dict(generated=datetime.now(timezone.utc).date().isoformat(), dt=args.dt, seed=args.seed)
     args.output.mkdir(parents=True, exist_ok=True)
     stem = args.output / "vitaldb_tiva"
-    stem.with_suffix(".json").write_text(json.dumps(dict(provenance=prov, **data), indent=2, allow_nan=False) + "\n")
-    stem.with_suffix(".md").write_text(report(data, prov))
+    stem.with_suffix(".json").write_text(json.dumps(dict(settings=settings, **data), indent=2, allow_nan=False) + "\n")
+    stem.with_suffix(".md").write_text(report(data, settings))
     print(f"Report: {stem.with_suffix('.md')}", flush=True)
 
 

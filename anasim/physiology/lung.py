@@ -10,16 +10,18 @@ class LungAeration:
 
     Pressure and timing follow Rothen 1993/1999 and Bates and Irvin 2002.
     BMI shifts, perfusion, and timing away from 40 cmH2O are approximations.
-    Most FRC loss reflects diaphragm displacement (Hedenstierna 2015);
-    atelectatic units shunt about 1-12% of output (Tokics 1996).
-    Lung water above 3 mL/kg floods alveoli. PEEP 13 vs 3 cmH2O reduced
-    flooding by about 70% (Malo 1984).
+    Most FRC loss reflects diaphragm displacement (Hedenstierna 2015).
+    After a preoxygenated induction without PEEP, shunt averages about 5%
+    (Gunnarsson 1991 4.8%, Tokics 1996 5.0%, Rothen 1995 6.5%). Atelectasis
+    persists after emergence (Benoit 2002). Lung water above 3 mL/kg floods
+    alveoli. PEEP 13 vs 3 cmH2O reduced flooding by about 70% (Malo 1984).
     """
 
     INTERVAL = 0.1  # s; independent of the engine's outer step
     REFERENCE_RECRUITED = 0.9  # Compliance calibration at PEEP 5 under anesthesia
     MIN_RECRUITED = 0.65  # Maximum modeled aeration loss under anesthesia
-    ATELECTASIS_SHUNT = 0.3  # Perfusion per unit of atelectatic fraction
+    ATELECTASIS_SHUNT = 0.2  # Perfusion per unit of atelectatic fraction
+    INDUCTION_ATELECTASIS = 0.25  # Left by preoxygenation and apnea at induction
     OPENING_WIDTH = 4.5  # cmH2O; logistic pressure response, Rothen 1993
     OPENING_RATE = 1.0 / 2.6  # /s; CT reopening time constant at 40 cmH2O, Rothen 1999
     # Gas-dependent closure calibrated to Rothen 1995.
@@ -32,9 +34,9 @@ class LungAeration:
     FLOOD_RELIEF_PRESSURES = (6.0, 16.0)  # Mean distending pressure (PEEP + ~3), cmH2O
     FLOOD_RATE = 1.0 / 60.0  # /s
 
-    def __init__(self, patient: Patient, recruited: float = 1.0):
+    def __init__(self, patient: Patient, recruited: float = 1.0, atelectatic: float | None = None):
         self.recruited = recruited
-        self.atelectatic = 1.0 - recruited
+        self.atelectatic = 1.0 - recruited if atelectatic is None else atelectatic
         self.inert_fraction = 0.75
         self.absorbed_volume = 0.0  # L of gas absorbed behind a closed airway
         self.unconscious = 0.0
@@ -83,12 +85,15 @@ class LungAeration:
             equilibrium = (opening * target + spontaneous + closing * minimum) / rate
             self.recruited = equilibrium + (self.recruited - equilibrium) * math.exp(-rate * self.elapsed)
         # Gas composition changes shunt separately from bulk compliance (Rothen 1995).
+        # Only recruiting pressure reopens collapsed units.
         closed_target = 1.0 - target
         reopening = self.OPENING_RATE if self.atelectatic > closed_target else 0.0
-        absorption = self.ABSORPTION_RATE * math.exp(-self.INERT_GAS_PROTECTION * self.inert_fraction)
-        absorption *= max(0.0, self.closing_pressure - pressure) / self.closing_pressure
         closed_max = (1.0 - self.MIN_RECRUITED) * self.unconscious
-        total = reopening + spontaneous + absorption
+        absorption = 0.0
+        if self.atelectatic < closed_max:
+            absorption = self.ABSORPTION_RATE * math.exp(-self.INERT_GAS_PROTECTION * self.inert_fraction)
+            absorption *= max(0.0, self.closing_pressure - pressure) / self.closing_pressure
+        total = reopening + absorption
         if total > 0.0:
             equilibrium = (reopening * closed_target + absorption * closed_max) / total
             self.atelectatic = equilibrium + (self.atelectatic - equilibrium) * math.exp(-total * self.elapsed)

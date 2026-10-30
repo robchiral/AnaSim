@@ -105,6 +105,7 @@ class TestClinicalAcceptance:
         """TIVA washout should recover breathing and wakefulness within 20 minutes."""
         engine = anesthetized_engine
         assert 40.0 <= engine.state.bis <= 60.0
+        shunt = engine.aeration.shunt_fraction
 
         _stop_tiva(engine)
         ventilation_time = None
@@ -129,6 +130,8 @@ class TestClinicalAcceptance:
         assert ventilation_time is not None and 180 <= ventilation_time <= 900
         assert bis_70_time is not None and 180 <= bis_70_time <= 900
         assert bis_80_time is not None and bis_80_time <= 1200
+        # Atelectasis from induction persists after emergence (Benoit 2002).
+        assert engine.aeration.shunt_fraction >= shunt
 
     def test_class_iii_hemorrhage_and_blood_rescue(
         self, anesthetized_engine, advance_time

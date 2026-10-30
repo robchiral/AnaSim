@@ -139,6 +139,18 @@ def test_copd_has_persistent_obstruction_gas_trapping_and_wasted_ventilation():
     assert max(differences) > 5
 
 
+def test_copd_hypoxemia_is_ventilation_perfusion_mismatch_that_oxygen_corrects():
+    """Wagner 1977: advanced COPD breathing air had PaO2 38-71 mmHg with almost
+    no shunt, so V/Q mismatch caused the hypoxemia and oxygen corrects it."""
+    engine = _engine(age=65, copd_severity=1)
+    _advance(engine, 600)
+    assert 38 < engine.state.pao2 < 71
+    engine.set_airway_mode(AirwayType.MASK)
+    engine.set_fgf(10.0, 0.0)
+    _advance(engine, 300)
+    assert engine.state.pao2 > 450
+
+
 def test_copd_startup_calculates_tidal_volume_at_the_limited_rate():
     engine = SimulationEngine(Patient(copd_severity=1, baseline_rr=30),
                               SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1))

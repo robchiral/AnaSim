@@ -315,6 +315,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         lung_volume_l=engine.aeration.frc,
         shunt_fraction=engine.aeration.shunt_fraction,
         temp_c=state.temp_c,
+        airway_pressure=engine.resp_mech.peep,
     )
 
 

@@ -1,14 +1,10 @@
 """Shared pieces of the VitalDB hemodynamic replays: delivery checks, cuff scoring, and summaries."""
 
-import hashlib
-import subprocess
 from collections import Counter
-from pathlib import Path
 
 import numpy as np
 from scipy.optimize import minimize
 from vitaldb_anesthetics import REMI_RATES, Excluded, covered, held, numeric_track
-from vitaldb_ventilation import ROOT
 
 VASOACTIVE = ("NEPI", "PHEN", "EPI", "DOPA", "DOBU", "VASO", "NTG", "NPS", "MRN", "DTZ", "AMD", "PGE1")
 REMI_UG_PER_ML = {"Orchestra/RFTN20_RATE": 20.0, "Orchestra/RFTN50_RATE": 50.0}
@@ -19,9 +15,6 @@ STOP = (65.0, 90.0, 45.0)  # MAP, SBP, and HR below which treatment could follow
 SENSITIVITY = (70.0, 100.0, 45.0)
 PERIODS = ((0.0, 600.0), (600.0, np.inf))  # Seconds after propofol onset
 BOOTSTRAP = 500
-MODEL_FILES = ("anasim/physiology/hemodynamics.py", "anasim/physiology/hemo_config.py",
-               "anasim/physiology/disturbances.py", "anasim/patient/pk_models.py", "anasim/core/runtime.py",
-               "anasim/core/projection.py", "anasim/patient/pd/anesthesia.py")
 
 
 def amount(case, key):
@@ -190,19 +183,8 @@ def mean_ci(values, rng):
     return f"{values.mean():.1f} ({low:.1f} to {high:.1f}), n={len(values)}"
 
 
-def provenance(validator, **extra):
-    model_hash = hashlib.sha256()
-    for name in MODEL_FILES:
-        model_hash.update(name.encode())
-        model_hash.update((ROOT.parent.parent / name).read_bytes())
-    return dict(source=SOURCE, model_sha256=model_hash.hexdigest(),
-                git_revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-                validator_sha256=hashlib.sha256(Path(validator).read_bytes()).hexdigest(), **extra)
-
-
-def report_header(title, provenance_data):
-    return [f"# {title}", "", f"Generated {provenance_data['generated_utc']}.",
-            f"Git revision `{provenance_data['git_revision']}`. Model source SHA256 `{provenance_data['model_sha256']}`.", ""]
+def report_header(title, settings):
+    return [f"# {title}", "", f"Generated {settings['generated']}.", ""]
 
 
 def report_footer(exclusions):

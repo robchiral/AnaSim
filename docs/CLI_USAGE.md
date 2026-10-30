@@ -16,11 +16,11 @@ For installation and the browser interface, see the [README](../README.md).
 | `--record-dir` | CSV directory for headless runs and the local UI | `recordings` |
 | `--record-interval` | Headless CSV interval in simulated seconds; `0` records every step | `1.0` |
 
-## Configuration file
+## Headless runs
 
-Headless runs accept a flat JSON object. Omitted fields use defaults; unknown
-fields are rejected. The CLI argument `--mode` selects the interface, and the
-JSON field `mode` selects the patient's initial state.
+Headless runs accept a flat JSON object. Omitted fields use their defaults, and
+unknown fields are rejected. The CLI argument `--mode` selects the interface,
+and the JSON field `mode` selects the patient's initial state.
 
 Save this configuration as `patient_config.json` for balanced maintenance.
 
@@ -34,83 +34,84 @@ Save this configuration as `patient_config.json` for balanced maintenance.
 }
 ```
 
-### Fields
-
-#### Patient inputs
-
-| Field | Default | Units or accepted values |
-|-------|---------|--------------------------|
-| `age` | 40 | 18 to 70 years |
-| `weight` | 70 | 50 to 200 kg; pre-pregnancy weight during pregnancy |
-| `height` | 170 | 150 to 200 cm; BMI 18 to 60 kg/m² |
-| `sex` | `"male"` | `"male"` or `"female"` |
-| `baseline_temp` | 37 | Core temperature, 25 to 42 °C |
-| `baseline_hb` | 13.5 | Hemoglobin, 6 to 20 g/dL |
-| `baseline_hct` | `null` | Hematocrit, 0.18 to 0.60 as a fraction; `null` derives it from hemoglobin |
-| `baseline_hr` | 70 | Heart rate before any pregnancy rise, at least 10 bpm |
-| `baseline_map` | 90 | Mean arterial pressure, at least 20 mmHg |
-| `baseline_rr` | 12 | Respiratory rate, at least 0 breaths/min |
-| `baseline_vt` | `null` | Tidal volume, at least 50 mL; `null` defaults to the volume that keeps resting PaCO₂ at 40 mmHg, or lower in pregnancy |
-| `renal_function` | 1.0 | Renal-function factor, 0.4 to 1.0; `1.0` is normal |
-| `creatinine_clearance_ml_min` | `null` | Absolute creatinine clearance, 4.3 to 221 mL/min, for rocuronium and sugammadex; `null` estimates it from age and renal function |
-| `hepatic_function` | 1.0 | Hepatic-function factor, 0.5 to 1.0; `1.0` is normal |
-| `coronary_flow_reserve` | 5.0 | Maximal to resting coronary flow ratio, 1 to 5; 5 is normal |
-| `heart_failure` | `"none"` | `"none"`, `"hfref"` (reduced EF), or `"hfpef"` (preserved EF) |
-| `copd_severity` | 0.0 | Mixed obstructive/emphysematous profile, 0 to 1; not a GOLD stage |
-| `gestational_age_weeks` | 0.0 | 0 for no pregnancy, or 4 to 40 weeks for a female patient |
-| `position` | `"supine"` | `"supine"` or `"left_lateral"`; affects venous return from 20 weeks of pregnancy |
-
-If you set `baseline_hct`, it must be within 0.12 of `0.03 * baseline_hb`.
-Patient ranges are inclusive. Patient inputs and `dt` must be finite.
-See [patient limits and source cohorts](ARCHITECTURE.md#supported-patient-domain).
-During pregnancy, hemoglobin and hematocrit are the measured starting values.
-`engine.set_position("left_lateral")` changes position during a run.
-
-#### Initialization and runtime
-
-| Field | Default | Meaning |
-|-------|---------|---------|
-| `mode` | `"awake"` | `"awake"` or `"steady_state"`; see [initialization](ARCHITECTURE.md#initialization) |
-| `maint_type` | `"tiva"` | Total intravenous anesthesia (`"tiva"`) or `"balanced"` maintenance for steady-state initialization |
-| `concomitant_opioids` | `true` | Fixed opioid-regimen covariate for Eleveld propofol PK; maintenance initialization requires `true` |
-| `tci_enabled` | `false` | Enable target-controlled infusion (TCI) and use it at maintenance startup |
-| `dt` | 0.01 | Positive engine step in seconds |
-| `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
-| `patient_variability` | `false` | Sample propofol kinetics, BIS sensitivity, and blood pressure sensitivity to propofol and opioids; `rng_seed` fixes the patient |
-| `arterial_line_enabled` | `true` | Display continuous arterial pressure |
-| `end_on_cardiac_arrest` | `false` | End at modeled [cardiac arrest](ARCHITECTURE.md#hemodynamics) |
-| `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr; `null` uses 1 mL/kg/hr |
-| `sevoflurane_enabled` | `true` | Enable the sevoflurane vaporizer; `"balanced"` requires `true` |
-| `disturbance_profile` | `null` | `"stim_intubation_pulse"`, `"stim_sustained_surgery"`, or `null` |
-
-## Headless example
+Then run it and record the output.
 
 ```bash
 anasim --mode headless --duration 60 --config patient_config.json \
     --record --record-dir results --record-interval 0.1
 ```
 
+## Fields
+
+### Patient inputs
+
+| Field | Default | Units or accepted values |
+|-------|---------|--------------------------|
+| `age` | 40 | 18 to 70 years |
+| `weight` | 70 | 50 to 200 kg; use pre-pregnancy weight during pregnancy |
+| `height` | 170 | 150 to 200 cm; BMI must be 18 to 60 kg/m² |
+| `sex` | `"male"` | `"male"` or `"female"` |
+| `baseline_temp` | 37 | Core temperature, 25 to 42 °C |
+| `baseline_hb` | 13.5 | Hemoglobin, 6 to 20 g/dL |
+| `baseline_hct` | `null` | Hematocrit as a fraction, 0.18 to 0.60; `null` derives it from hemoglobin |
+| `baseline_hr` | 70 | Heart rate before any rise from pregnancy, at least 10 bpm |
+| `baseline_map` | 90 | Mean arterial pressure, at least 20 mmHg |
+| `baseline_rr` | 12 | Respiratory rate, at least 0 breaths/min |
+| `baseline_vt` | `null` | Tidal volume, at least 50 mL; `null` uses the volume that keeps resting PaCO₂ at 40 mmHg (lower in pregnancy) |
+| `renal_function` | 1.0 | Renal function factor, 0.4 to 1.0; `1.0` is normal |
+| `creatinine_clearance_ml_min` | `null` | Absolute creatinine clearance for rocuronium and sugammadex, 4.3 to 221 mL/min; `null` estimates it from age and renal function |
+| `hepatic_function` | 1.0 | Hepatic function factor, 0.5 to 1.0; `1.0` is normal |
+| `coronary_flow_reserve` | 5.0 | Ratio of maximal to resting coronary flow, 1 to 5; `5` is normal |
+| `heart_failure` | `"none"` | `"none"`, `"hfref"` (reduced EF), or `"hfpef"` (preserved EF) |
+| `copd_severity` | 0.0 | Severity of a mixed obstructive and emphysematous profile, 0 to 1; this is not a GOLD stage |
+| `gestational_age_weeks` | 0.0 | `0` for no pregnancy, or 4 to 40 weeks for a female patient |
+| `position` | `"supine"` | `"supine"` or `"left_lateral"`; affects venous return from 20 weeks of pregnancy |
+
+Patient ranges are inclusive, and patient inputs and `dt` must be finite. If you
+set `baseline_hct`, it must be within 0.12 of `0.03 * baseline_hb`. During
+pregnancy, hemoglobin and hematocrit are the measured starting values.
+`engine.set_position("left_lateral")` changes position during a run. The
+[architecture guide](ARCHITECTURE.md#supported-patient-domain) describes how the
+models represent these patient conditions.
+
+### Initialization and runtime
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `mode` | `"awake"` | `"awake"` or `"steady_state"`; see [initialization](ARCHITECTURE.md#initialization) |
+| `maint_type` | `"tiva"` | `"tiva"` (total intravenous anesthesia) or `"balanced"` maintenance for steady-state initialization |
+| `concomitant_opioids` | `true` | Whether the patient receives opioids, a covariate in the Eleveld propofol PK model; steady-state initialization requires `true` |
+| `tci_enabled` | `false` | Enable target-controlled infusion (TCI) and use it at maintenance startup |
+| `dt` | 0.01 | Positive engine step in seconds |
+| `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
+| `patient_variability` | `false` | Sample propofol kinetics, BIS sensitivity, and blood pressure sensitivity to propofol and opioids; `rng_seed` fixes the sampled patient |
+| `arterial_line_enabled` | `true` | Display continuous arterial pressure |
+| `end_on_cardiac_arrest` | `false` | End the session at [cardiac arrest](ARCHITECTURE.md#hemodynamics) |
+| `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr; `null` uses 1 mL/kg/hr |
+| `sevoflurane_enabled` | `true` | Enable the sevoflurane vaporizer; `"balanced"` requires `true` |
+| `disturbance_profile` | `null` | `"stim_intubation_pulse"`, `"stim_sustained_surgery"`, or `null` |
+
 ## Recordings
 
 `anasim_log_<timestamp>.csv` contains sampled
-[`SimulationState`](../anasim/core/state.py) values. `time` is elapsed simulation
-time in seconds. The default interval is 1 second, and each engine step records
-at most one row. An interval shorter than `dt` still produces one row per step.
+[`SimulationState`](../anasim/core/state.py) values. `time` is the elapsed
+simulation time in seconds. The default interval is 1 second, and each engine
+step records at most one row. An interval shorter than `dt` still produces one
+row per step.
 
 `pa_co2` is arterial CO₂. `display_etco2` is the end-tidal CO₂ measurement with
-sensor effects; `etco2_signal_valid` reports its validity. `NaN` in `paw_plat`
-means plateau pressure is unavailable.
-See [field groups](ARCHITECTURE.md#simulation-state) and
-[units](../anasim/core/state.py).
+sensor effects, and `etco2_signal_valid` reports whether it is valid. `NaN` in
+`paw_plat` means that plateau pressure is unavailable. The [field
+groups](ARCHITECTURE.md#simulation-state) and [units](../anasim/core/state.py)
+describe the other columns.
 
-`engine.output_buffer` holds 20 seconds of monitor waveform samples. To
-reproduce a run, save the configuration, AnaSim version, random seed, `dt`,
+To reproduce a run, save the configuration, AnaSim version, random seed, `dt`,
 and intervention times.
 
 ## Python use
 
-This example records three 20-second phases of anesthetized maintenance,
-with bronchospasm introduced in the second phase and relieved in the third.
+This example records three 20-second phases of anesthetized maintenance. It
+introduces bronchospasm in the second phase and relieves it in the third.
 
 ```python
 from anasim.core.engine import SimulationEngine
@@ -134,11 +135,14 @@ state = engine.get_latest_state()
 print(state.time, state.pa_co2, state.display_etco2)
 ```
 
-`set_vent_settings(vt=...)` takes liters; `Patient.baseline_vt` takes mL.
-Use `set_vent_power(True)` to start the ventilator after applying its settings.
-`set_vaporizer(percent)` sets the sevoflurane dial as a percentage.
-`set_drug_rate(key, rate)` uses the [registry's units](../anasim/core/drug_registry.py).
-Propofol and remifentanil rates are in mcg/kg/min using total body weight;
-vasopressor rates are absolute. `enable_tci()` requires `tci_enabled=True`.
-Read results through `engine.state` or `get_latest_state()`. Apply controls
-through engine methods.
+Read results through `engine.state` or `get_latest_state()`, and apply controls
+through engine methods. `engine.output_buffer` holds 20 seconds of monitor
+waveform samples.
+
+| Method | Notes |
+|--------|-------|
+| `set_vent_settings(vt=...)` | Takes liters, whereas `Patient.baseline_vt` takes mL |
+| `set_vent_power(True)` | Starts the ventilator after you apply its settings |
+| `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
+| `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Propofol and remifentanil rates are in mcg/kg/min using total body weight, and vasopressor rates are absolute |
+| `enable_tci()` | Requires `tci_enabled=True` |

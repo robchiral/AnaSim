@@ -1,7 +1,7 @@
 {
   "counts": {
     "eligible_cases": 1405,
-    "cached_complete_cases": 81,
+    "cached_complete_cases": 83,
     "candidate_steps": 16,
     "numeric_eligible_steps": 6,
     "retained_steps": 3,

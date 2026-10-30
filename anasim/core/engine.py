@@ -221,7 +221,10 @@ class SimulationEngine(DrugControllerMixin):
 
         self.hemo = HemodynamicModel(self.patient)
         self.resp = RespiratoryModel(self.patient)
-        self.aeration = LungAeration(self.patient, recruited=0.9 if self.config.mode == "steady_state" else 1.0)
+        if self.config.mode == "steady_state":
+            self.aeration = LungAeration(self.patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
+        else:
+            self.aeration = LungAeration(self.patient)
         self.resp_mech = RespiratoryMechanics(resistance=self.patient.airway_resistance(), aeration=self.aeration)
         self.resp_mech.chronic_obstruction = self.patient.copd_severity
         self.resp_mech.chronic_resistance = COPD_RESISTANCE * self.patient.copd_severity

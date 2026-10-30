@@ -31,6 +31,7 @@ import sys
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -616,47 +617,52 @@ def main() -> None:
     improved = sum(v < s for s, v in zip(single["whole"], viscous["whole"], strict=True))
     settings = ventilator.VentSettings()
     lines = [
-        "# AnaSim ventilation vs Dräger Primus recordings (VitalDB)",
+        "# VitalDB ventilation comparisons",
         "",
-        f"{len(cases)} volume-control windows from {len(candidates)} eligible cases: adults in AnaSim's domain,",
-        "general anesthesia, oral tube, open surgery, supine, one steady mid-surgery window each.",
-        f"{rejected} further windows were skipped because their breaths did not peak at the end of flow and",
-        "exhale at the set Ti (pressure-regulated breaths) or gave implausible mechanics. Fitted values use",
-        f"the {len(calibration)} calibration windows and are checked on the {len(held_out)} held-out windows.",
-        "Source: VitalDB (Lee et al., Sci Data 2022), CC BY-NC-SA 4.0. Median (IQR).",
+        f"Generated {datetime.now(timezone.utc).date().isoformat()}.",
+        "",
+        f"These comparisons use {len(cases)} volume-control windows recorded on the Dräger Primus, from {len(candidates)} eligible",
+        "cases. The cases are adults within AnaSim's supported range who had general anesthesia with an oral tube and open",
+        "surgery in the supine position. Each case contributes one steady window during surgery.",
+        f"Another {rejected} windows were skipped, either because their breaths did not peak at the end of flow and exhale at the",
+        "set inspiratory time (pressure-regulated breaths) or because they gave implausible mechanics.",
+        f"Fitted values use the {len(calibration)} calibration windows and are checked on the {len(held_out)} held-out windows.",
+        "Values are median (IQR).",
+        "",
+        "Source: VitalDB (Lee et al., *Scientific Data*, 2022), used under CC BY-NC-SA 4.0 and its data use agreement.",
         "",
         "## Settings",
         "",
         "| Setting | Recordings | AnaSim default |",
         "|---|---|---|",
         f"| Inspiratory pause (% of Ti) | {quartiles([w['SET_INSP_PAUSE'] for w in cases])} | {settings.pause:g} |",
-        f"| Pmax (cmH2O) | {quartiles([w['SET_PIP'] * CM_PER_MBAR for w in cases])} | {settings.p_max:g} |",
+        f"| Pmax (cmH₂O) | {quartiles([w['SET_PIP'] * CM_PER_MBAR for w in cases])} | {settings.p_max:g} |",
         "",
         "## Mechanics from the recorded airway pressure",
         "",
         "Each case's resistance and compliance are set so that AnaSim's breath has the recorded end-of-flow",
-        "drop and plateau; the other quantities are then predictions. Tissue viscoelasticity uses Jonson 1993",
-        "(viscoelastic compliance 4x static, time constant 0.82 s) without fitting.",
+        "drop and plateau. The other quantities are then predictions. Tissue viscoelasticity uses Jonson 1993",
+        "(viscoelastic compliance four times static compliance, time constant 0.82 s) without fitting.",
         "",
         "| Quantity | Recordings | Single compartment | With tissue viscoelasticity |",
         "|---|---|---|---|",
-        f"| Resistance from end-of-flow drop (cmH2O/(L/s)) | {quartiles([f['r'] for f in feats])} | matched | matched |",
-        f"| Plateau compliance (mL/cmH2O) | {quartiles([f['c'] for f in feats])} | matched | matched |",
+        f"| Resistance from end-of-flow drop (cmH₂O/(L/s)) | {quartiles([f['r'] for f in feats])} | matched | matched |",
+        f"| Plateau compliance (mL/cmH₂O) | {quartiles([f['c'] for f in feats])} | matched | matched |",
         f"| Expiratory tail decay / RC | {quartiles([f['tau_e_ratio'] for f in feats])} | "
         f"{quartiles(single['tau_e_ratio'])} | {quartiles(viscous['tau_e_ratio'])} |",
-        f"| Expiratory limb resistance (cmH2O/(L/s)) | {quartiles([f['r_exp'] for f in feats])} | "
+        f"| Expiratory limb resistance (cmH₂O/(L/s)) | {quartiles([f['r_exp'] for f in feats])} | "
         f"{quartiles(single['r_exp'])} | {quartiles(viscous['r_exp'])} |",
         f"| Inspiratory knee time constant (ms) | {quartiles([1000 * f['tau_knee'] for f in feats])} | "
         f"{quartiles(1000 * np.array(single['knee']))} | {quartiles(1000 * np.array(viscous['knee']))} |",
         "",
-        f"Tail values use windows whose expiratory tail reached 0.5 cmH2O ({sum(np.isfinite(f['tau_e']) for f in feats)}"
-        " recorded); in the rest Paw returned to PEEP within 0.2 s.",
+        f"Tail values use windows whose expiratory tail reached 0.5 cmH₂O ({sum(np.isfinite(f['tau_e']) for f in feats)}"
+        " recorded). In the other windows, Paw returned to PEEP within 0.2 s.",
         "",
         "Circuit limb resistance fitted on the calibration windows (whole-breath RMSE): "
         + ", ".join(f"{k:g} {v:.3f}" for k, v in limb_grid.items())
-        + f". Best {min(limb_grid, key=limb_grid.get):g}; AnaSim uses {production_limb:g} cmH2O/(L/s).",
+        + f". Best {min(limb_grid, key=limb_grid.get):g}; AnaSim uses {production_limb:g} cmH₂O/(L/s).",
         "",
-        "## Breath shape (RMSE, cmH2O)",
+        "## Breath shape (RMSE, cmH₂O)",
         "",
         "Airway sensor time constant fitted on the calibration windows (transition RMSE): "
         + ", ".join(f"{1000 * k:g} ms {v:.2f}" for k, v in sensor_grid.items())
@@ -677,13 +683,13 @@ def main() -> None:
         "",
         "## Capnogram shape",
         "",
-        "Features come from the CO2 track alone. Each capnograph parameter was fitted on the calibration",
-        "windows to the feature it alone sets, in turn (median absolute error): "
+        "Features come from the CO₂ track alone. Each capnograph parameter was fitted in turn on the calibration",
+        "windows, to the one feature that it sets (median absolute error): "
         + "; ".join(f"{name} " + ", ".join(f"{k:g}: {v:.3f}" for k, v in grid.items()) + f" (best {fitted[name]:g})"
                     for name, grid in capno_grids.items()) + ".",
         f"AnaSim uses ANALYZER_TAU {production['ANALYZER_TAU']:g} s, PHASE_II_VOLUME {production['PHASE_II_VOLUME']:g} L,",
-        f"and PHASE_III_SLOPE {production['PHASE_III_SLOPE']:g} mmHg/L; the held-out check below uses the fitted",
-        "values. The series dead space is the respiratory model's 2.2 mL/kg and was not fitted, so the share",
+        f"and PHASE_III_SLOPE {production['PHASE_III_SLOPE']:g} mmHg/L. The held-out check below uses the fitted",
+        "values. The series dead space is the respiratory model's 2.2 mL/kg. It was not fitted, so the share",
         "of each breath above 50% tests it.",
         "",
         "| Feature (held-out) | Recordings | AnaSim | Paired difference |",
@@ -698,27 +704,27 @@ def main() -> None:
         "",
         f"Plateau compliance TV/(Pplat - PEEP) before incision in {compliance['n']} cases from numeric tracks:",
         f"PEEP 0-2 {quartiles(compliance['by_peep']['0-2'])}, PEEP 4-6 {quartiles(compliance['by_peep']['4-6'])}"
-        " mL/cmH2O.",
+        " mL/cmH₂O.",
         "",
         "log C = a + b log(PBW/60) + c (BMI - 23) + d PEEP over all cases (bootstrap 95% CI):",
-        f"b = {beta[1]:.2f} ({ci[0][1]:.2f}-{ci[1][1]:.2f}), c = {beta[2]:.4f} ({ci[0][2]:.4f}-{ci[1][2]:.4f}) per kg/m2,",
-        f"d = {beta[3]:.3f} ({ci[0][3]:.3f}-{ci[1][3]:.3f}) per cmH2O. C at PBW 60 kg, BMI 23, PEEP 5:",
-        f"{math.exp(beta[0] + 5 * beta[3]):.1f} mL/cmH2O. Age adds {compliance['age_beta']:.4f} per year.",
+        f"b = {beta[1]:.2f} ({ci[0][1]:.2f} to {ci[1][1]:.2f}), c = {beta[2]:.4f} ({ci[0][2]:.4f} to {ci[1][2]:.4f}) per kg/m²,",
+        f"d = {beta[3]:.3f} ({ci[0][3]:.3f} to {ci[1][3]:.3f}) per cmH₂O. C at PBW 60 kg, BMI 23, PEEP 5:",
+        f"{math.exp(beta[0] + 5 * beta[3]):.1f} mL/cmH₂O. Age adds {compliance['age_beta']:.4f} per year.",
         "",
-        f"Held-out cases at PEEP 4-6 (n = {compliance['held_out']}), mean absolute error in mL/cmH2O:",
+        f"Held-out cases at PEEP 4-6 (n = {compliance['held_out']}), mean absolute error in mL/cmH₂O:",
         f"constant {compliance['mae']['constant']:.2f}, body-size fit {compliance['mae']['scaled']:.2f},",
         f"AnaSim {compliance['mae']['anasim']:.2f} (median bias {compliance['anasim_bias']:+.2f}).",
         f"AnaSim's default patient: static {1000 * default.respiratory_compliance():.1f}, plateau "
-        f"{anasim_plateau_compliance(default, 500):.1f} mL/cmH2O.",
+        f"{anasim_plateau_compliance(default, 500):.1f} mL/cmH₂O.",
         "",
-        "## End-tidal O2",
+        "## End-tidal O₂",
         "",
         "| | Recordings | AnaSim |",
         "|---|---|---|",
-        f"| FiO2 (%) | {quartiles([w['FIO2'] for w in cases])} | {quartiles(fio2_sim)} |",
-        f"| FiO2 - EtO2 (%) | {quartiles(gap_real)} | {quartiles(gap_sim)} |",
+        f"| FiO₂ (%) | {quartiles([w['FIO2'] for w in cases])} | {quartiles(fio2_sim)} |",
+        f"| FiO₂ - EtO₂ (%) | {quartiles(gap_real)} | {quartiles(gap_sim)} |",
         "",
-        f"Paired AnaSim - recorded difference: {quartiles(paired)}; mean absolute {np.mean(np.abs(paired)):.2f}",
+        f"Paired difference, AnaSim minus recorded: {quartiles(paired)}; mean absolute {np.mean(np.abs(paired)):.2f}",
         "percentage points (the Primus reports whole percent).",
         "",
     ]
