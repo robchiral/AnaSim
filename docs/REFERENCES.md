@@ -290,7 +290,7 @@ PCV-VG, pressure control with volume guarantee.
 - Egan et al. (2004). *Br J Anaesth*. [Remifentanil bolus respiratory effects by age](https://pubmed.ncbi.nlm.nih.gov/14970134/).
 - Bouillon et al. (2004). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).
 - Olofsen et al. (2010). *Anesthesiology*. [Dynamic remifentanil respiratory effects in awake and propofol-sedated volunteers](https://pubmed.ncbi.nlm.nih.gov/20461001/).
-- Babenco et al. (2000). *Anesthesiology*. [Opioid effects on ventilatory control](https://pubmed.ncbi.nlm.nih.gov/10691225/).
+- Babenco et al. (2000). *Anesthesiology*. [Remifentanil bolus ventilatory control](https://pubmed.ncbi.nlm.nih.gov/10691225/).
 - Lee et al. (2011). *Korean J Anesthesiol*. [Propofol effect-site EC₅₀ for respiratory depression](https://pubmed.ncbi.nlm.nih.gov/21927681/).
 - Blouin et al. (1993). *Anesthesiology*. [Propofol depresses hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8267192/).
 - Nieuwenhuijs et al. (2000). *Anesthesiology*. [Acute and sustained hypoxic responses during propofol sedation](https://pubmed.ncbi.nlm.nih.gov/10638898/).
@@ -342,6 +342,7 @@ PCV-VG, pressure control with volume guarantee.
 - Gunnarsson et al. (1991). *Br J Anaesth*. [Age, low V/Q, and atelectasis during anesthesia](https://pubmed.ncbi.nlm.nih.gov/2025468/).
 - Hedenstierna and Edmark (2015). *Best Pract Res Clin Anaesthesiol*. [FRC, airway closure, atelectasis, and gas exchange under anesthesia](https://pubmed.ncbi.nlm.nih.gov/26643094/).
 - Tokics et al. (1996). *J Appl Physiol*. [Atelectasis and shunt during anesthesia](https://pubmed.ncbi.nlm.nih.gov/8904605/).
+- Ballester et al. (1989). *Thorax*. [V/Q distributions and oxygen response in acute severe asthma](https://doi.org/10.1136/thx.44.4.258).
 - Edmark et al. (2003). *Anesthesiology*. [Inspired O₂ during induction, atelectasis, and apnea time](https://pubmed.ncbi.nlm.nih.gov/12502975/).
 - Rothen et al. (1993). *Br J Anaesth*. [Inflation pressure and CT atelectasis](https://pubmed.ncbi.nlm.nih.gov/8280539/).
 - Rothen et al. (1995). *Anesthesiology*. [Oxygen concentration and recurrent atelectasis](https://pubmed.ncbi.nlm.nih.gov/7717553/).

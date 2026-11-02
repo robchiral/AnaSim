@@ -55,12 +55,6 @@ dmypy.json
 node_modules/
 validation/vitaldb/.vitaldb_cache/
 validation/vitaldb/results/*.png
-docs/papers/
-docs/RELEASING.md
-docs/TODO.md
-docs/NOTES.md
 recordings/
 .claude/
-
-# === Scripts ===
-reset_history.sh
+/private/

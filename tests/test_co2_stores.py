@@ -222,8 +222,9 @@ def test_stagnant_blood_cannot_equilibrate_the_extravascular_pool(patient, dt):
 
 
 @pytest.mark.parametrize("shunt", [0.0, 0.95])
-def test_fast_blood_turnover_preserves_nonnegative_stores_and_gas_balance(patient, shunt):
-    model = RespiratoryModel(patient)
+@pytest.mark.parametrize("copd", [0.0, 1.0])
+def test_fast_blood_turnover_preserves_nonnegative_stores_and_gas_balance(patient_factory, shunt, copd):
+    model = RespiratoryModel(patient_factory(copd_severity=copd))
     settings = dict(ce_prop=0.0, ce_remi=0.0, ce_roc=10.0, unconscious=1.0,
                     cardiac_output=30.0, blood_volume_ml=1000.0, shunt_fraction=shunt,
                     fio2=0.0, mech_rr=12.0, mech_vt_l=0.5)

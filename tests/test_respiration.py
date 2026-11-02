@@ -1,4 +1,5 @@
 import copy
+import math
 from typing import Any
 
 import pytest
@@ -36,6 +37,18 @@ def test_opioid_slows_rate_and_propofol_reduces_depth(patient):
     propofol_vt = propofol.vt / baseline.vt
     assert propofol_vt < 0.7
     assert propofol.rr / baseline.rr >= propofol_vt - 0.1
+
+
+def test_remifentanil_step_matches_olofsen_2010_equations_at_fixed_co2(patient):
+    """Eqs. 2 and 6: at baseline CO2, Ce 1.6 ng/mL gives a first-order decline toward 50%."""
+    model = RespiratoryModel(patient)
+    baseline = model.state.mv
+    for second in range(1, 301):
+        model.state.pa_co2 = model.state.p_alveolar_co2 = 40.0
+        model.state.p_arterial_o2 = 120.0
+        state = model.step(1.0, ce_prop=0.0, ce_remi=1.6, fio2=1.0)
+        if second in (30, 150, 300):
+            assert state.mv / baseline == pytest.approx(0.5 + 0.5 * math.exp(-second / 150.0), abs=1e-10)
 
 
 def test_bradypnea_preserves_controller_ventilation_until_apnea(patient):

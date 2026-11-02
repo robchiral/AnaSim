@@ -109,7 +109,9 @@ responses use the same calibrations as in other adults.
 With `patient_variability`, each session samples propofol kinetics and
 bispectral index (BIS) sensitivity from Eleveld 2018, using standard deviations
 halved to match VitalDB inductions with total intravenous anesthesia (TIVA). It
-also samples blood pressure sensitivity to propofol and opioids from Su 2023.
+also samples blood pressure sensitivity to propofol and opioids from Su 2023,
+and the timing, sensitivity, and shape of the respiratory-rate response to
+morphine and hydromorphone from Olofsen 2026.
 The session seed fixes the sampled patient. Without this option, each patient
 has the typical response.
 
@@ -360,16 +362,17 @@ of preoxygenation, apnea, and blood loss, and they determine oxygen uptake from
 the circuit. Shunt mixes blood by oxygen content, which includes oxygen bound to
 hemoglobin and dissolved oxygen.
 
-Some pulmonary blood also passes through poorly ventilated (low V/Q) units.
-These units lower PaO₂ most at low FiO₂ and little at high FiO₂. Their share of
-cardiac output rises with age, which produces the sea-level A-a gradient on room
-air (Crapo 1999). In unconscious patients, dependent airways also close at
-end-expiration, and this closure increases after age 30. Positive end-expiratory
-pressure (PEEP) of about 6 cmH₂O, or more with obesity, holds these airways open
-(Gunnarsson 1991; Hedenstierna 2015). Older patients therefore oxygenate worse
-under anesthesia, especially without PEEP. COPD and bronchospasm add low V/Q
-units with little shunt (Wagner 1977), so added oxygen corrects most of their
-hypoxemia.
+Some pulmonary blood also passes through poorly ventilated units with a
+ventilation-perfusion ratio (V/Q) of 0.05. These units lower PaO₂ most at low
+FiO₂ and little at high FiO₂. Their share of cardiac output rises with age,
+which produces the sea-level A-a gradient on room air (Crapo 1999). In
+unconscious patients, dependent airways also close at end-expiration, and this
+closure increases after age 30. Positive end-expiratory pressure (PEEP) of about
+6 cmH₂O, or more with obesity, holds these airways open (Gunnarsson 1991;
+Hedenstierna 2015). Older patients therefore oxygenate worse under anesthesia,
+especially without PEEP. Bronchospasm adds more of these units, and COPD adds a
+separate group with a V/Q of 0.1 (Wagner 1977). Neither condition adds much
+shunt, so added oxygen corrects most of the hypoxemia.
 
 [Gas transport](../anasim/physiology/gas_transport.py) moves oxygen, CO₂, and
 buffer base through pulmonary capillary, arterial, and mixed venous blood, with

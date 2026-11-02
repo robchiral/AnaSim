@@ -11,6 +11,8 @@
 - Lowered atelectatic shunt to about 5% after a preoxygenated induction.
   Maintenance sessions start with this atelectasis, and it persists after
   emergence.
+- Added morphine and hydromorphone respiratory-rate responses to optional
+  patient variability (Olofsen 2026).
 
 ## 1.7 - 2026-10-25
 

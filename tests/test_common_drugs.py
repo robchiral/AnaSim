@@ -11,6 +11,7 @@ from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import opioid_rate_fraction
 from anasim.patient.pk_models import HydromorphonePK, MorphinePK
+from anasim.patient.variability import TYPICAL, OpioidRateVariability
 from anasim.scenarios.base import require_tof_count_at_most
 
 
@@ -23,15 +24,22 @@ from anasim.scenarios.base import require_tof_count_at_most
          3.3 * 0.694, 2.2 * 0.736, 7.7 * 0.518, 0.43 * 1.08),
     ],
 )
+@pytest.mark.parametrize("sampled_rate", [False, True])
 def test_opioid_two_hour_infusion_matches_source_odes(
-    model_type, v1, rates, dose, half_life, rr_half_life, c25, gamma,
+    model_type, v1, rates, dose, half_life, rr_half_life, c25, gamma, sampled_rate,
 ):
     """Meissner 2025 PK and Olofsen 2026 controller and rate effect sites.
 
     Independently solve the amount equations for 0.2 mg/kg morphine and
     0.05 mg/kg hydromorphone over two hours, followed by washout.
     """
-    model = model_type(Patient(age=28, weight=70, height=170, sex="male"))
+    patient = Patient(age=28, weight=70, height=170, sex="male")
+    if sampled_rate:
+        patient.variability = replace(TYPICAL, opioid_rate=OpioidRateVariability(0.6, 0.5, 1.5))
+        rr_half_life *= 0.6
+        c25 *= 0.5
+        gamma *= 1.5
+    model = model_type(patient)
     k10, k12, k21, k13, k31 = rates
     matrix = np.array([
         [-k10 - k12 - k13, k21, k31, 0, 0],
@@ -53,7 +61,9 @@ def test_opioid_two_hour_infusion_matches_source_odes(
             assert model.state.ce_rr == pytest.approx(expected[4], rel=0.015)
             concentrations = (model.state.ce_rr, 0.0) if model_type is MorphinePK else (0.0, model.state.ce_rr)
             expected_rate = 1.0 / (1.0 + (expected[4] / c25) ** gamma / 3.0)
-            assert opioid_rate_fraction(*concentrations) == pytest.approx(expected_rate, rel=0.005)
+            assert opioid_rate_fraction(
+                *concentrations, variability=patient.variability.opioid_rate,
+            ) == pytest.approx(expected_rate, rel=0.005)
     assert model.state.ce_resp > model.state.c1
 
 

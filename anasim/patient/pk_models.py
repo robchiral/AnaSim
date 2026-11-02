@@ -436,7 +436,7 @@ class MorphinePK(MammillaryPK):
             ke0=math.log(2.0) / (0.73 / 1.02 * 60.0),
             additional_effect_sites=(
                 ("ce_resp", math.log(2.0) / (3.3 / 0.694 * 60.0)),
-                ("ce_rr", math.log(2.0) / (2.2 / 0.736 * 60.0)),
+                ("ce_rr", math.log(2.0) / (2.2 / 0.736 * patient.variability.opioid_rate.half_time * 60.0)),
             ),
         )
 
@@ -452,7 +452,7 @@ class HydromorphonePK(MammillaryPK):
             ke0=math.log(2.0) / (0.73 * 1.02 * 60.0),
             additional_effect_sites=(
                 ("ce_resp", math.log(2.0) / (3.3 * 0.694 * 60.0)),
-                ("ce_rr", math.log(2.0) / (2.2 * 0.736 * 60.0)),
+                ("ce_rr", math.log(2.0) / (2.2 * 0.736 * patient.variability.opioid_rate.half_time * 60.0)),
             ),
         )
 

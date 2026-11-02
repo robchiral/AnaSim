@@ -294,6 +294,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         ),
         opioid_rate_fraction=opioid_rate_fraction(
             engine.pk["morphine"].state.ce_rr, engine.pk["hydromorphone"].state.ce_rr,
+            variability=engine.patient.variability.opioid_rate,
         ),
         mech_vent_mv=assisted_rr * assisted_vt_l,
         fio2=state.fio2,

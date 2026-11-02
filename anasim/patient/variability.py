@@ -25,6 +25,9 @@ ELEVELD_SD_SCALE = 0.5
 # remifentanil resistance Emax of -1.
 SU_PROPOFOL_TPR_C50_OMEGA = 0.44
 SU_REMIFENTANIL_TPR_EMAX_OMEGA = 0.449
+# Olofsen 2026 supplement Table 3, log-scale variances. One draw applies to both
+# morphine and hydromorphone; correlations were not reported, so draws are independent.
+OLOFSEN_OPIOID_RATE_OMEGA = {"half_time": 0.594, "c25": 0.552, "gamma": 0.264}
 
 
 @dataclass(frozen=True)
@@ -51,9 +54,19 @@ class HemodynamicVariability:
 
 
 @dataclass(frozen=True)
+class OpioidRateVariability:
+    """Morphine and hydromorphone respiratory-rate timing, sensitivity, and shape."""
+
+    half_time: float = 1.0
+    c25: float = 1.0
+    gamma: float = 1.0
+
+
+@dataclass(frozen=True)
 class PatientVariability:
     propofol: PropofolVariability = PropofolVariability()
     hemodynamics: HemodynamicVariability = HemodynamicVariability()
+    opioid_rate: OpioidRateVariability = OpioidRateVariability()
 
 
 TYPICAL = PatientVariability()
@@ -70,4 +83,8 @@ def sample_variability(seed: int | None) -> PatientVariability:
         propofol_tpr_c50=math.exp(rng.normal(0.0, math.sqrt(SU_PROPOFOL_TPR_C50_OMEGA))),
         opioid_tpr_emax=max(0.0, 1.0 + rng.normal(0.0, math.sqrt(SU_REMIFENTANIL_TPR_EMAX_OMEGA))),
     )
-    return PatientVariability(propofol=propofol, hemodynamics=hemodynamics)
+    opioid_rate = OpioidRateVariability(**{
+        name: math.exp(rng.normal(0.0, math.sqrt(omega)))
+        for name, omega in OLOFSEN_OPIOID_RATE_OMEGA.items()
+    })
+    return PatientVariability(propofol=propofol, hemodynamics=hemodynamics, opioid_rate=opioid_rate)

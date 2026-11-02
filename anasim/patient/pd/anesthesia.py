@@ -4,6 +4,7 @@ import math
 from collections import deque
 
 from anasim.patient.patient import Patient
+from anasim.patient.variability import TYPICAL, OpioidRateVariability
 
 # Sevoflurane potency on the BIS response surface is anchored to BIS ~41 at
 # 1 MAC (Kanazawa 2017; Ryu 2018), which gives BIS ~30 at 1.5 MAC (Paraskeva 2005).
@@ -134,13 +135,16 @@ def opioid_controller_fraction(morphine: float, hydromorphone: float) -> float:
     return 1.0 / (1.0 + morphine_units + hydromorphone_units)
 
 
-def opioid_rate_fraction(morphine: float, hydromorphone: float) -> float:
+def opioid_rate_fraction(
+    morphine: float, hydromorphone: float, *, variability: OpioidRateVariability = TYPICAL.opioid_rate,
+) -> float:
     """Fraction of baseline RR (Olofsen 2026 Eq. 8, supplement Table 3).
 
     C25 reduces rate by 25%; the two drugs' potency units are assumed to add.
     """
-    morphine_units = (max(0.0, morphine) / (7.7 / 0.518)) ** (0.43 / 1.08)
-    hydromorphone_units = (max(0.0, hydromorphone) / (7.7 * 0.518)) ** (0.43 * 1.08)
+    c25, gamma = 7.7 * variability.c25, 0.43 * variability.gamma
+    morphine_units = (max(0.0, morphine) / (c25 / 0.518)) ** (gamma / 1.08)
+    hydromorphone_units = (max(0.0, hydromorphone) / (c25 * 0.518)) ** (gamma * 1.08)
     return 1.0 / (1.0 + (morphine_units + hydromorphone_units) / 3.0)
 
 

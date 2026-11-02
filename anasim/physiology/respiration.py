@@ -22,6 +22,13 @@ _O2_SOLUBILITY = 0.000031  # STPD L O2 per L blood per mmHg.
 
 
 @dataclass
+class _LowVQUnit:
+    ratio: float
+    share: float = 0.0  # Fraction of nonshunted pulmonary blood flow.
+    po2: float = 40.0  # Previous solution, mmHg.
+
+
+@dataclass
 class RespState:
     """Respiratory outputs. Gas tensions in mmHg, EtO2 in %, VT in mL, MV and VA in L/min."""
 
@@ -54,7 +61,8 @@ class RespiratoryModel:
     # Under anesthesia the apneic threshold is 4-5 mmHg below resting PaCO2,
     # independent of agent and depth (Hickey 1971).
     APNEIC_GAP = 4.5  # mmHg
-    LOW_VQ_RATIO = 0.05  # Ventilation per unit perfusion of poorly ventilated units (MIGET 0.005-0.1)
+    LOW_VQ_RATIO = 0.05  # Age, airway closure, and bronchospasm; fitted to Gunnarsson 1991
+    COPD_VQ_RATIO = 0.1  # Low V/Q mode in COPD (Wagner 1977, Figs. 3-4)
     LOW_VQ_AIRWAY = 0.2  # Share of output at full airway V/Q mismatch; room-air PaO2 near 64 mmHg at 40
     RESTING_PCO2_MAX = 100.0  # mmHg; search ceiling for the anesthetized resting PaCO2
     RESTING_PCO2_INTERVAL_S = 1.0  # Drug effects change slowly; recompute the threshold this often
@@ -117,7 +125,7 @@ class RespiratoryModel:
         self._apneic_gas_deficit_l = 0.0
         self.baseline_blood_volume_ml = patient.estimate_blood_volume()
 
-        # COPD adds dead space and, below, an A-a gradient that persist without
+        # COPD adds dead space and, below, low V/Q perfusion that persist without
         # bronchospasm (Wagner 1977). Severity scaling is a calibration.
         self.vd_deadspace = 2.2 * patient.predicted_body_weight() / 1000.0 * (1.0 + 0.6 * patient.copd_severity)  # L
 
@@ -152,15 +160,14 @@ class RespiratoryModel:
         # PEEP holds them open: about 6 cmH2O at BMI 25 and 8 at BMI 30
         # (Hedenstierna 2015). Closure is calibrated to the A-a gradient's rise
         # with age at FiO2 0.4 without PEEP (Gunnarsson 1991). COPD adds low V/Q
-        # units with little shunt (Wagner 1977), 12% of output at severity 1 for
+        # units with little shunt (Wagner 1977), 13% of output at severity 1 for
         # a room-air PaO2 near 70 mmHg at age 65.
         self.aa_grad_base = 5.0
-        self.low_vq_awake = 0.001 * max(0.0, patient.age - 34.0) + 0.12 * patient.copd_severity
+        self.low_vq_awake = 0.001 * max(0.0, patient.age - 34.0)
+        self.low_vq_copd = 0.13 * patient.copd_severity
         self.low_vq_closure = 0.0025 * max(0.0, patient.age - 30.0)
         self.airway_opening_pressure = 6.0 + 0.4 * max(0.0, patient.bmi - 25.0)
-        self.low_vq_fraction = self.low_vq_awake
-        self._low_vq_share = self.low_vq_awake
-        self._low_vq_po2 = 40.0
+        self._low_vq_units = (_LowVQUnit(self.LOW_VQ_RATIO), _LowVQUnit(self.COPD_VQ_RATIO))
         self._p50 = self._temperature_p50(patient.baseline_temp)
         self._temperature_p50_now = self._p50
         assert patient.baseline_hct is not None
@@ -199,9 +206,12 @@ class RespiratoryModel:
 
     def _set_low_vq(self, unconscious: float, airway_pressure: float, vq_mismatch: float = 0.0) -> None:
         closure = clamp01(unconscious) * clamp01(1.0 - airway_pressure / self.airway_opening_pressure)
-        self.low_vq_fraction = (self.low_vq_awake + closure * self.low_vq_closure
-                                + self.LOW_VQ_AIRWAY * clamp01(vq_mismatch))
+        airway = self.low_vq_awake + closure * self.low_vq_closure + self.LOW_VQ_AIRWAY * clamp01(vq_mismatch)
+        self.low_vq_fraction = airway + self.low_vq_copd
         self._low_vq_share = min(1.0, self.low_vq_fraction / (1.0 - self.shunt_fraction))
+        scale = self._low_vq_share / self.low_vq_fraction if self.low_vq_fraction else 0.0
+        self._low_vq_units[0].share = airway * scale
+        self._low_vq_units[1].share = self.low_vq_copd * scale
 
     def _seed_capillary_oxygen(self, extraction: float) -> tuple[float, float, float]:
         """Capillary O2 content, and the PO2 and saturation of the mixed blood, at a venous extraction."""
@@ -209,7 +219,7 @@ class RespiratoryModel:
         content = self._oxygen_content(max(0.0, alveolar - self.aa_grad_base), hb, self._p50)[0]
         for _ in range(50):
             previous = content
-            low = self._low_vq_unit(alveolar, max(0.0, content - extraction), hb, self._p50) if self._low_vq_share else None
+            low = self._low_vq_oxygen(alveolar, max(0.0, content - extraction), hb, self._p50)
             content, _, po2, _ = self._capillary_oxygen(alveolar, hb, self._p50, self.aa_grad_base, low)
             if abs(content - previous) < 1e-12:
                 po2 = self._po2_from_content(content, hb, self._p50, po2)
@@ -289,19 +299,21 @@ class RespiratoryModel:
         saturation, derivative = cls._saturation_gradient(pressure, p50)
         return _O2_PER_HB * hb * saturation + _O2_SOLUBILITY * pressure, _O2_PER_HB * hb * derivative + _O2_SOLUBILITY
 
-    def _low_vq_unit(self, alveolar_po2: float, venous_o2: float, hb: float,
+    def _low_vq_unit(self, unit: _LowVQUnit, alveolar_po2: float, venous_o2: float, hb: float,
                      p50: float) -> tuple[float, float, float, float, float]:
         """Alveolar PO2, and low V/Q end-capillary PO2 and saturation with their slopes per mmHg of it.
 
-        The units draw alveolar gas, and absorbed O2 draws in more:
-        C(P) - Cv = k (PA - P) / (1 - PA / Pdry), with k from LOW_VQ_RATIO.
+        The units draw alveolar gas, and net gas uptake, O2 uptake less CO2 output, draws in more:
+        C(P) - Cv = k (PA - P) / (1 - (1 - RQ) PA / Pdry), with k from the unit's V/Q.
+        Whole-body RQ stands in for each unit's exchange ratio.
         """
-        exchange = self.LOW_VQ_RATIO * self._gas_capacity_per_l * self._atm_dry / max(
-            0.01 * self._atm_dry, self._atm_dry - alveolar_po2)
+        net_uptake = 1.0 - self.rq
+        denominator = self._atm_dry - net_uptake * alveolar_po2
+        exchange = unit.ratio * self._gas_capacity_per_l * self._atm_dry / denominator
         target = venous_o2 + exchange * alveolar_po2
         bound_capacity = _O2_PER_HB * hb
         lower, upper = 0.0, 800.0
-        pressure = min(max(self._low_vq_po2, 1e-6), upper)
+        pressure = min(max(unit.po2, 1e-6), upper)
         for _ in range(40):
             saturation, slope = self._saturation_gradient(pressure, p50)
             residual = bound_capacity * saturation + (_O2_SOLUBILITY + exchange) * pressure - target
@@ -316,17 +328,31 @@ class RespiratoryModel:
             pressure = candidate if lower < candidate < upper else (lower + upper) / 2.0
         else:
             raise RuntimeError("Low V/Q unit O2 solve did not converge")
-        self._low_vq_po2 = pressure
-        if alveolar_po2 < 0.99 * self._atm_dry:
-            exchange *= (self._atm_dry - pressure) / (self._atm_dry - alveolar_po2)
-        rise = exchange / derivative
+        unit.po2 = pressure
+        rise = exchange * (self._atm_dry - net_uptake * pressure) / denominator / derivative
         return alveolar_po2, pressure, saturation, rise, slope * rise
+
+    def _low_vq_oxygen(self, alveolar_po2: float, venous_o2: float, hb: float,
+                       p50: float) -> tuple[float, float, float, float, float] | None:
+        """Flow-weighted mix of the low V/Q units, keeping each unit's response to alveolar PO2."""
+        if not self._low_vq_share:
+            return None
+        po2 = saturation = po2_slope = saturation_slope = 0.0
+        for unit in self._low_vq_units:
+            if unit.share:
+                _, pressure, sat, pressure_rise, sat_rise = self._low_vq_unit(unit, alveolar_po2, venous_o2, hb, p50)
+                weight = unit.share / self._low_vq_share
+                po2 += weight * pressure
+                saturation += weight * sat
+                po2_slope += weight * pressure_rise
+                saturation_slope += weight * sat_rise
+        return alveolar_po2, po2, saturation, po2_slope, saturation_slope
 
     def _capillary_oxygen(self, alveolar_po2: float, hb: float, p50: float, gradient: float,
                           low: tuple[float, float, float, float, float] | None) -> tuple[float, float, float, float]:
         """Mixed end-capillary O2 content, its slope per mmHg of alveolar PO2, PO2, and saturation.
 
-        Low V/Q units follow a _low_vq_unit solution, linear in alveolar PO2. The PO2 weights
+        Low V/Q units follow a _low_vq_oxygen solution, linear in alveolar PO2. The PO2 weights
         each stream's dissolved O2, so it and the saturation reproduce the content.
         """
         po2 = max(0.0, alveolar_po2 - gradient)
@@ -437,7 +463,7 @@ class RespiratoryModel:
         ph, p50 = self._blood_ph[0], self._blood_p50[0]
         base = transport.base[0]
         carbon_volume = _CO2_L_PER_MMOL * (volume - pulmonary * carbon_plan.venous_gain)
-        low = self._low_vq_unit(po2, transport.oxygen[2], hb, p50) if self._low_vq_share else None
+        low = self._low_vq_oxygen(po2, transport.oxygen[2], hb, p50)
         for _ in range(24):
             saturation = self._capillary_oxygen(po2, hb, p50, aa_gradient, low)[3]
             chemical = self.chemistry.evaluate(ph, pco2, saturation)

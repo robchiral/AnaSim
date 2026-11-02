@@ -3,6 +3,7 @@
 from typing import Any
 
 import numpy as np
+import pytest
 
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
@@ -48,7 +49,17 @@ def test_a_seed_fixes_the_patient_and_the_typical_patient_is_the_default():
     assert first.patient.variability == second.patient.variability != TYPICAL
     assert first.pk["propofol"].v1 == second.pk["propofol"].v1 != typical.pk["propofol"].v1
     assert first.hemo.config.ec50_prop_tpr != typical.hemo.config.ec50_prop_tpr
+    assert first.patient.variability.opioid_rate != TYPICAL.opioid_rate
     assert WebSession({"patient_variability": True}).engine.patient.variability != TYPICAL
+
+
+@pytest.mark.parametrize(("drug", "c25"), [("morphine", 7.7 / 0.518), ("hydromorphone", 7.7 * 0.518)])
+def test_sampled_opioid_c25_reduces_engine_rate_by_one_quarter(drug, c25):
+    engine = SimulationEngine(Patient(**ADULT), SimulationConfig(patient_variability=True, rng_seed=3))
+    engine.start()
+    engine.pk[drug].state.ce_rr = c25 * engine.patient.variability.opioid_rate.c25
+    engine.step(0.1)
+    assert engine.state.rr == pytest.approx(0.75 * engine.patient.baseline_rr, abs=0.02)
 
 
 def test_sampled_bolus_inductions_vary_within_clinical_limits():

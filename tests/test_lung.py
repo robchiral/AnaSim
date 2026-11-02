@@ -1,5 +1,7 @@
 """Recruitment, oxygen reserve, and conservation across changing mechanics."""
 
+from itertools import pairwise
+
 import pytest
 
 from anasim.core.engine import SimulationEngine
@@ -84,6 +86,88 @@ def test_age_and_peep_set_anesthetized_oxygenation():
     for age, low, high in ((30, -10.0, 15.0), (70, 20.0, 50.0)):
         pao2 = [anesthetized(age, "tiva", peep, 2.0).state.pao2 for peep in (0, 5)]
         assert low < pao2[1] - pao2[0] < high
+
+
+def test_copd_and_airway_closure_have_separate_oxygen_responses_across_step_sizes():
+    """Similar room-air hypoxemia can have different oxygen responses.
+
+    COPD units have a V/Q near 0.1 (Wagner 1977, Figs. 3-4); units from
+    airway closure under anesthesia have a V/Q of 0.05.
+    """
+    traces = []
+    for dt in (0.1, 1.0):
+        outcomes = []
+        for copd, unconscious in ((0.75, 0.0), (0.0, 1.0)):
+            model = RespiratoryModel(Patient(age=70, copd_severity=copd))
+            values = []
+            for fio2, pressure in ((0.21, 0), (0.28, 0), (0.4, 0), (1.0, 0), (0.4, 8)):
+                for _ in range(round(600.0 / dt)):
+                    state = model.step(
+                        dt, ce_prop=0, ce_remi=0, ce_roc=10, measured_breaths=True,
+                        mech_rr=12, mech_vt_l=model.vt_0 / 1000.0, fio2=fio2,
+                        unconscious=unconscious, airway_pressure=pressure,
+                        cardiac_output=model.baseline_co_l_min,
+                    )
+                values.append(state.p_arterial_o2)
+            assert all(right > left for left, right in pairwise(values[:4]))
+            assert values[3] > 450.0
+            outcomes.append(values)
+        copd_oxygen, airway_oxygen = outcomes
+        assert copd_oxygen[0] == pytest.approx(airway_oxygen[0], abs=3.0)
+        assert copd_oxygen[2] > airway_oxygen[2] + 15.0
+        # PEEP opens anesthesia-related closure; the chronic COPD component persists.
+        assert copd_oxygen[4] == pytest.approx(copd_oxygen[2], abs=1.0)
+        assert airway_oxygen[4] > airway_oxygen[2] + 30.0
+        traces.append(outcomes)
+    for actual, reference in zip(traces[1], traces[0], strict=True):
+        assert actual == pytest.approx(reference, abs=0.3)
+
+
+@pytest.mark.parametrize(("fio2", "flow", "vco2", "vo2", "paco2", "shunt", "low_flow", "pao2", "sem"), [
+    (0.21, 6.68, 224.0, 256.0, 36.8, 0.008, 0.116, 77.0, 8.1),
+    (1.0, 6.44, 239.0, 274.0, 39.8, 0.021, 0.235, 487.0, 40.0),
+])
+def test_acute_asthma_oxygen_exchange_matches_ballester_1989(
+    fio2, flow, vco2, vo2, paco2, shunt, low_flow, pao2, sem,
+):
+    """Table 5: five patients on air and after 20 min of 100% oxygen.
+
+    Use the measured flow, metabolism, shunt, and low V/Q perfusion, with
+    ventilation set for the measured PaCO2. Hb was not reported, so the
+    default is used. Bands are 2 SEM.
+    """
+    model = RespiratoryModel(Patient(age=40, weight=62, height=157, sex="female"))
+    model.vco2, model.rq = vco2, vco2 / vo2
+    model.baseline_co_l_min = flow
+    model.low_vq_awake = low_flow
+    model.state.p_alveolar_co2 = paco2
+    model.equilibrate_oxygen(fio2)
+    model.equilibrate_blood_gases(flow, vco2 / 1000.0)
+    tidal_volume = model.vd_deadspace + model.co2_constant * vco2 / paco2 / 12.0
+    for _ in range(1200):
+        state = model.step(
+            1.0, ce_prop=0, ce_remi=0, ce_roc=10, measured_breaths=True,
+            mech_rr=12, mech_vt_l=tidal_volume, fio2=fio2,
+            cardiac_output=flow, shunt_fraction=shunt,
+        )
+    assert state.pa_co2 == pytest.approx(paco2, abs=0.5)
+    assert state.p_arterial_o2 == pytest.approx(pao2, abs=2.0 * sem)
+
+
+def test_low_vq_oxygen_gradient_matches_pressure_perturbation():
+    model = RespiratoryModel(Patient(age=65, copd_severity=1))
+    for rq in (0.7, 0.875, 1.0):
+        model.rq = rq
+        for pressure in (40.0, 100.0, 250.0, 700.0):
+            low = model._low_vq_oxygen(pressure, 0.15, 14.0, 26.8)
+            epsilon = 1e-3
+            above = model._low_vq_oxygen(pressure + epsilon, 0.15, 14.0, 26.8)
+            below = model._low_vq_oxygen(pressure - epsilon, 0.15, 14.0, 26.8)
+            assert low is not None and above is not None and below is not None
+            assert low[3:] == pytest.approx(
+                ((above[1] - below[1]) / (2 * epsilon), (above[2] - below[2]) / (2 * epsilon)),
+                rel=1e-5, abs=1e-8,
+            )
 
 
 def test_sustained_pressure_has_a_recruitment_ceiling_across_step_sizes():
