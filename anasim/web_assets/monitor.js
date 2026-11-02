@@ -315,6 +315,7 @@ export class Monitor {
     if (p.coronary_flow_reserve < 5) parts.push("Coronary disease");
     if (p.heart_failure !== "none") parts.push(p.heart_failure === "hfref" ? "HFrEF" : "HFpEF");
     if (p.copd_severity > 0) parts.push("COPD");
+    if (p.surgical_site !== "other") parts.push(p.surgical_site === "upper_abdominal" ? "Upper abdominal surgery" : "Lower abdominal surgery");
     if (p.gestational_age_weeks > 0) parts.push(`Pregnancy ${p.gestational_age_weeks} wk`);
     document.getElementById("patient-info").textContent = parts.join("  ·  ");
 

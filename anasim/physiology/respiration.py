@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from anasim.core.constants import RR_APNEA_THRESHOLD, TEMP_METABOLIC_COEFFICIENT, VT_MIN
 from anasim.core.utils import clamp, clamp01, hill_function
+from anasim.patient.conditions import SURGICAL_SITE_CLOSURE
 from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import ROCURONIUM_T1_EC50
 
@@ -159,13 +160,16 @@ class RespiratoryModel:
         # Unconscious, airways also close at end-expiration after age 30 unless
         # PEEP holds them open: about 6 cmH2O at BMI 25 and 8 at BMI 30
         # (Hedenstierna 2015). Closure is calibrated to the A-a gradient's rise
-        # with age at FiO2 0.4 without PEEP (Gunnarsson 1991). COPD adds low V/Q
-        # units with little shunt (Wagner 1977), 13% of output at severity 1 for
-        # a room-air PaO2 near 70 mmHg at age 65.
+        # with age at FiO2 0.4 without PEEP (Gunnarsson 1991). After abdominal
+        # surgery, part of this closure persists when the patient wakes. COPD adds
+        # low V/Q units with little shunt (Wagner 1977), 13% of output at
+        # severity 1 for a room-air PaO2 near 70 mmHg at age 65.
         self.aa_grad_base = 5.0
         self.low_vq_awake = 0.001 * max(0.0, patient.age - 34.0)
         self.low_vq_copd = 0.13 * patient.copd_severity
         self.low_vq_closure = 0.0025 * max(0.0, patient.age - 30.0)
+        self.postoperative_closure = SURGICAL_SITE_CLOSURE[patient.surgical_site]
+        self._anesthetized = 0.0  # Deepest unconsciousness so far; surgery follows it
         self.airway_opening_pressure = 6.0 + 0.4 * max(0.0, patient.bmi - 25.0)
         self._low_vq_units = (_LowVQUnit(self.LOW_VQ_RATIO), _LowVQUnit(self.COPD_VQ_RATIO))
         self._p50 = self._temperature_p50(patient.baseline_temp)
@@ -205,7 +209,10 @@ class RespiratoryModel:
         return max(0.1, (self.vt_0 / 1000.0 - self.vd_deadspace) * self.rr_0)
 
     def _set_low_vq(self, unconscious: float, airway_pressure: float, vq_mismatch: float = 0.0) -> None:
-        closure = clamp01(unconscious) * clamp01(1.0 - airway_pressure / self.airway_opening_pressure)
+        unconscious = clamp01(unconscious)
+        self._anesthetized = max(self._anesthetized, unconscious)
+        closed = max(unconscious, self.postoperative_closure * self._anesthetized)
+        closure = closed * clamp01(1.0 - airway_pressure / self.airway_opening_pressure)
         airway = self.low_vq_awake + closure * self.low_vq_closure + self.LOW_VQ_AIRWAY * clamp01(vq_mismatch)
         self.low_vq_fraction = airway + self.low_vq_copd
         self._low_vq_share = min(1.0, self.low_vq_fraction / (1.0 - self.shunt_fraction))

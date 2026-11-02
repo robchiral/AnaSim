@@ -64,6 +64,7 @@ anasim --mode headless --duration 60 --config patient_config.json \
 | `coronary_flow_reserve` | 5.0 | Ratio of maximal to resting coronary flow, 1 to 5; `5` is normal |
 | `heart_failure` | `"none"` | `"none"`, `"hfref"` (reduced EF), or `"hfpef"` (preserved EF) |
 | `copd_severity` | 0.0 | Severity of a mixed obstructive and emphysematous profile, 0 to 1; this is not a GOLD stage |
+| `surgical_site` | `"other"` | `"other"`, `"lower_abdominal"`, or `"upper_abdominal"`; abdominal surgery keeps part of the airway closure under anesthesia after emergence |
 | `gestational_age_weeks` | 0.0 | `0` for no pregnancy, or 4 to 40 weeks for a female patient |
 | `position` | `"supine"` | `"supine"` or `"left_lateral"`; affects venous return from 20 weeks of pregnancy |
 

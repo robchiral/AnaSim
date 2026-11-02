@@ -370,7 +370,10 @@ unconscious patients, dependent airways also close at end-expiration, and this
 closure increases after age 30. Positive end-expiratory pressure (PEEP) of about
 6 cmH₂O, or more with obesity, holds these airways open (Gunnarsson 1991;
 Hedenstierna 2015). Older patients therefore oxygenate worse under anesthesia,
-especially without PEEP. Bronchospasm adds more of these units, and COPD adds a
+especially without PEEP. After upper abdominal surgery, FRC stays at or below
+its value under anesthesia (Wahba 1975; Putensen-Himmer 1992), so this closure
+persists after emergence. After lower abdominal surgery, about a third of it
+persists (Lindberg 1992). Bronchospasm adds more of these units, and COPD adds a
 separate group with a V/Q of 0.1 (Wagner 1977). Neither condition adds much
 shunt, so added oxygen corrects most of the hypoxemia.
 

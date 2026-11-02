@@ -25,6 +25,12 @@ HEART_FAILURE_PROFILES = {
 }
 POSITIONS = ("supine", "left_lateral")
 COPD_RESISTANCE = 12.0  # cmH2O/(L/s) added at severity 1; calibrated
+# Share of anesthetized airway closure that persists after emergence. After
+# upper abdominal surgery, supine FRC is 66-78% of its preoperative value
+# (Putensen-Himmer 1992 at 6 h; Wahba 1975), at or below its value under
+# anesthesia. The lower abdominal share matches the A-a gradient 2 h after
+# colon surgery at age 68 (Lindberg 1992).
+SURGICAL_SITE_CLOSURE = {"other": 0.0, "lower_abdominal": 0.3, "upper_abdominal": 1.0}
 
 
 @dataclass(frozen=True)

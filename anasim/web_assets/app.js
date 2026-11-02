@@ -174,6 +174,7 @@ function buildSetup() {
     if (Number(f.coronary_flow_reserve.value) < 5) conditions.push(`Coronary disease ${severity(f.coronary_flow_reserve)}`);
     if (f.heart_failure.value !== "none") conditions.push(f.heart_failure.value === "hfref" ? "HFrEF" : "HFpEF");
     if (Number(f.copd_severity.value) > 0) conditions.push(`COPD ${severity(f.copd_severity)}`);
+    if (f.surgical_site.value !== "other") conditions.push(`${f.surgical_site.selectedOptions[0].textContent} surgery`);
     if (f.pregnant.checked) conditions.push(`Pregnant ${f.gestational_age_weeks.value} wk`);
     setText($("clinical-conditions-summary"), conditions.join(" · ") || "None");
   };
@@ -222,6 +223,7 @@ function readSetup(form) {
   params.coronary_flow_reserve = Number(f.coronary_flow_reserve.value);
   params.heart_failure = f.heart_failure.value;
   params.copd_severity = Number(f.copd_severity.value);
+  params.surgical_site = f.surgical_site.value;
   if (f.pregnant.checked) params.position = f.position.value;
   params.arterial_line_enabled = f.arterial_line_enabled.checked;
   params.end_on_cardiac_arrest = f.end_on_cardiac_arrest.checked;

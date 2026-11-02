@@ -13,6 +13,9 @@
   emergence.
 - Added morphine and hydromorphone respiratory-rate responses to optional
   patient variability (Olofsen 2026).
+- Added a surgical site setting. After abdominal surgery, part of the airway
+  closure under anesthesia persists after emergence, so room-air PaO₂ stays
+  lower, most after upper abdominal surgery and in older patients.
 
 ## 1.7 - 2026-10-25
 

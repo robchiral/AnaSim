@@ -5,6 +5,7 @@ from .conditions import (
     COPD_RESISTANCE,
     HEART_FAILURE_PROFILES,
     POSITIONS,
+    SURGICAL_SITE_CLOSURE,
     PregnancyFactors,
     pregnancy_factors,
 )
@@ -45,6 +46,7 @@ class Patient:
     coronary_flow_reserve: float = 5.0
     heart_failure: str = "none"
     copd_severity: float = 0.0
+    surgical_site: str = "other"
     gestational_age_weeks: float = 0.0
     position: str = "supine"  # Starting maternal position
     pregnancy: PregnancyFactors = field(init=False)
@@ -159,6 +161,8 @@ class Patient:
         self.copd_severity = bounded_number("copd_severity", self.copd_severity, *COPD_SEVERITY_RANGE)
         if not isinstance(self.heart_failure, str) or self.heart_failure not in HEART_FAILURE_PROFILES:
             raise ValueError("heart_failure must be 'none', 'hfref', or 'hfpef'")
+        if not isinstance(self.surgical_site, str) or self.surgical_site not in SURGICAL_SITE_CLOSURE:
+            raise ValueError("surgical_site must be 'other', 'lower_abdominal', or 'upper_abdominal'")
         if not isinstance(self.position, str) or self.position not in POSITIONS:
             raise ValueError("position must be 'supine' or 'left_lateral'")
         minimum, maximum = GESTATIONAL_AGE_RANGE_WEEKS

@@ -34,6 +34,7 @@ PATIENT_FIELDS = (
     "coronary_flow_reserve",
     "heart_failure",
     "copd_severity",
+    "surgical_site",
     "gestational_age_weeks",
     "position",
 )
@@ -170,6 +171,7 @@ class WebSession:
                 "coronary_flow_reserve": patient.coronary_flow_reserve,
                 "heart_failure": patient.heart_failure,
                 "copd_severity": patient.copd_severity,
+                "surgical_site": patient.surgical_site,
                 "gestational_age_weeks": patient.gestational_age_weeks,
             },
             "arterial_line": engine.config.arterial_line_enabled,

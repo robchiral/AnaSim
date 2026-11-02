@@ -350,6 +350,9 @@ PCV-VG, pressure control with volume guarantee.
 - Bates and Irvin (2002). *J Appl Physiol*. [Recruitment and derecruitment dynamics](https://pubmed.ncbi.nlm.nih.gov/12133882/).
 - Malo, Ali, and Wood (1984). *J Appl Physiol*. [PEEP and shunt in pulmonary edema](https://pubmed.ncbi.nlm.nih.gov/6389451/).
 - Benoit et al. (2002). *Anesth Analg*. [Inspired O₂ before extubation and postoperative atelectasis](https://pubmed.ncbi.nlm.nih.gov/12456458/).
+- Wahba et al. (1975). *Can Anaesth Soc J*. [Lung volumes after upper abdominal surgery](https://pubmed.ncbi.nlm.nih.gov/1095163/).
+- Lindberg et al. (1992). *Acta Anaesthesiol Scand*. [Atelectasis and A-a gradient after lower abdominal surgery](https://pubmed.ncbi.nlm.nih.gov/1514340/).
+- Putensen-Himmer et al. (1992). *Anesthesiology*. [FRC and blood gases after open and laparoscopic cholecystectomy](https://pubmed.ncbi.nlm.nih.gov/1416164/).
 - Eastwood et al. (2005). *Anesthesiology*. [Propofol and airway closing pressure](https://pubmed.ncbi.nlm.nih.gov/16129969/).
 - Hillman et al. (2009). *Anesthesiology*. [Airway collapse at loss of consciousness](https://pubmed.ncbi.nlm.nih.gov/19512872/).
 - Larsson et al. (1985). *J Allergy Clin Immunol*. [Epinephrine relief of bronchoconstriction](https://pubmed.ncbi.nlm.nih.gov/3989143/).

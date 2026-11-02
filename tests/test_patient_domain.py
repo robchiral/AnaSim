@@ -127,6 +127,7 @@ def test_invalid_patient_values_are_rejected():
         ({"heart_failure": "unknown"}, "heart_failure"),
         ({"heart_failure": []}, "heart_failure"),
         ({"copd_severity": 1.1}, "copd_severity"),
+        ({"surgical_site": "thoracic"}, "surgical_site"),
         ({"gestational_age_weeks": 36.0}, "gestational_age_weeks"),
         ({"sex": "female", "gestational_age_weeks": 2.0}, "gestational_age_weeks"),
         ({"sex": "female", "gestational_age_weeks": 41.0}, "gestational_age_weeks"),

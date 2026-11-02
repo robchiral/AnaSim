@@ -151,6 +151,54 @@ def test_copd_hypoxemia_is_ventilation_perfusion_mismatch_that_oxygen_corrects()
     assert engine.state.pao2 > 450
 
 
+def _gradient_kpa(state):
+    """Room-air A-a gradient as Lindberg 1992 calculated it, with R = 0.8."""
+    return (0.21 * (760.0 - 47.0) - state.pa_co2 / 0.8 - state.pao2) / 7.50062
+
+
+def _postoperative_gradient_kpa(site):
+    """A-a gradient 30 min after extubation to room air, following emergence on 100% O2."""
+    engine = SimulationEngine(Patient(age=68, surgical_site=site),
+                              SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1))
+    engine.start()
+    engine.set_vaporizer(0.0)
+    engine.set_drug_rate("remi", 0.0)
+    engine.set_fgf(10.0, 0.0)
+    engine.give_drug_bolus("sugammadex", 2.0 * engine.patient.weight)
+    for _ in range(1800):
+        if engine.state.bis > 70.0 and engine.resp.state.mv > 1.0:
+            engine.set_vent_power(False)
+        if engine.state.bis > 80.0 and engine.resp.state.mv > 3.0:
+            break
+        engine.step(1.0)
+    else:
+        raise AssertionError("Patient did not meet extubation criteria")
+    engine.set_airway_mode("None")
+    for _ in range(1800):
+        engine.step(1.0)
+    return _gradient_kpa(engine.state)
+
+
+def test_abdominal_surgery_keeps_airway_closure_after_emergence():
+    """Lindberg 1992, colon surgery at age 68 (n = 13): the A-a gradient was
+    1.8 +/- 1.7 kPa awake and 3.7 +/- 1.9 kPa 2 h after surgery. The gradient
+    excludes the PaCO2 rise from postoperative opioids. Bands are 2 SE. After
+    upper abdominal surgery, FRC is at or below its anesthetized value (Wahba
+    1975), so the gradient widens further. The site has no effect before
+    anesthesia.
+    """
+    awake = []
+    for site in ("other", "upper_abdominal"):
+        engine = _engine(age=68, surgical_site=site)
+        _advance(engine, 600)
+        awake.append(_gradient_kpa(engine.state))
+    assert awake[0] == awake[1] == pytest.approx(1.8, abs=2 * 1.7 / math.sqrt(13))
+    gradients = {site: _postoperative_gradient_kpa(site)
+                 for site in ("other", "lower_abdominal", "upper_abdominal")}
+    assert gradients["lower_abdominal"] == pytest.approx(3.7, abs=2 * 1.9 / math.sqrt(13))
+    assert gradients["other"] < gradients["lower_abdominal"] < gradients["upper_abdominal"]
+
+
 def test_copd_startup_calculates_tidal_volume_at_the_limited_rate():
     engine = SimulationEngine(Patient(copd_severity=1, baseline_rr=30),
                               SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1))
