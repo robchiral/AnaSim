@@ -137,11 +137,11 @@ def _fgf_preox_state(engine) -> tuple[bool, str]:
         return True, ""
     msgs = []
     if not o2_ok:
-        msgs.append(f"Delivered O₂: {delivered_o2:.1f}/8+ L/min")
+        msgs.append(f"Delivered O₂: {round(delivered_o2, 1):g}/8+ L/min")
     if not air_ok:
-        msgs.append(f"Air: {engine.circuit.fgf_air:.1f}/0 L/min")
+        msgs.append(f"Air: {round(engine.circuit.fgf_air, 1):g}/0 L/min")
     if not n2o_ok:
-        msgs.append(f"N₂O: {engine.circuit.fgf_n2o:.1f}/0 L/min")
+        msgs.append(f"N₂O: {round(engine.circuit.fgf_n2o, 1):g}/0 L/min")
     return False, join_messages(msgs)
 
 
@@ -152,7 +152,7 @@ def require_oxygen_flow(min_o2: float = 8.0) -> Requirement:
         delivered_o2 = circuit.delivered_o2_flow()
         messages = []
         if not delivered_o2 >= min_o2:
-            messages.append(f"O₂ flow: {delivered_o2:.1f}/{min_o2:g}+ L/min")
+            messages.append(f"O₂ flow: {round(delivered_o2, 1):g}/{min_o2:g}+ L/min")
         if not circuit.fgf_air <= 0.1:
             messages.append("Set air to 0 L/min")
         if not circuit.fgf_n2o <= 0.1:
@@ -440,10 +440,11 @@ def require_tracheal_ventilation(engine) -> tuple[bool, str]:
 
 
 def require_mac_above(threshold: float = 0.5) -> Requirement:
-    """Check the gas monitor's end-tidal MAC above threshold."""
+    """Check end-tidal MAC as the gas monitor shows it, to one decimal."""
     def check(engine) -> tuple[bool, str]:
-        met = engine.state.et_mac > threshold
-        return met, "" if met else f"MAC: {engine.state.et_mac:.2f}/{threshold}+"
+        mac = round(engine.state.et_mac, 1)
+        met = mac >= threshold
+        return met, "" if met else f"MAC: {mac:.1f}/{threshold}+"
     return check
 
 

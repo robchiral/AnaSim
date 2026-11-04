@@ -22,7 +22,7 @@ export class NeuromuscularDisplay {
         title = "TOF count";
         value = `${reading.count}/4`;
         if (reading.low_signal) {
-          detail = `(${Math.round(reading.ratio)}%) · Low signal`;
+          detail = `Low signal, ratio ${Math.round(reading.ratio)}%`;
           quality = "low";
         }
       } else {
@@ -65,6 +65,6 @@ export class NeuromuscularDisplay {
       return `<path d="M${x.toFixed(2)} ${y.toFixed(2)}h0"${low ? ' class="low"' : ""}/>`;
     }).join("");
     $("nmb-trend").setAttribute("aria-label", `${label} over the past 15 minutes`);
-    $("nmb-trend-label").textContent = `${label} · 15 min`;
+    $("nmb-trend-label").textContent = `${label}, past 15 min`;
   }
 }

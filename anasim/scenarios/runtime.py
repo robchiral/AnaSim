@@ -162,8 +162,8 @@ class CaseRun:
             "duration": self.elapsed, "hints_used": len(self.hints),
             "outcomes": outcomes, "safety_events": list(self.safety), "learning_points": points,
             "physiology": {
-                "lowest_map": round(self.lowest_map, 1), "lowest_spo2": round(self.lowest_spo2, 1),
-                "hypotension_s": round(self.hypotension_s, 1), "hypoxemia_s": round(self.hypoxemia_s, 1),
+                "lowest_map": round(self.lowest_map), "lowest_spo2": round(self.lowest_spo2),
+                "hypotension_s": round(self.hypotension_s), "hypoxemia_s": round(self.hypoxemia_s),
             },
             "timeline": self._timeline(),
         }
@@ -187,7 +187,7 @@ def _describe(record: ActionRecord) -> str | None:
     action, label, amount = record.action, record.label, record.amount
     if action in {ACTION_DRUG_BOLUS, ACTION_INFUSION_RATE, ACTION_TCI_TARGET}:
         if label == "sugammadex":
-            return f"Sugammadex {amount:g} mg given"
+            return f"Sugammadex {amount:.0f} mg given"
         spec = get_drug_spec(label)
         if action == ACTION_DRUG_BOLUS:
             return f"{spec.generic_name} {amount:g} {spec.bolus_unit} given"

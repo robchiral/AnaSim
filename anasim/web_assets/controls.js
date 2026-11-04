@@ -29,9 +29,11 @@ function readNumber(input) {
   return Number(input.value);
 }
 
-const round = (value, digits = 2) => Number(value.toFixed(digits));
+const round = (value, digits = 1) => Number(value.toFixed(digits));
 // Four significant figures keep small rates visible without long decimals.
 const rateText = (value) => String(Number(value.toPrecision(4)));
+// Controller-set rates: whole numbers from 10 up, two significant figures below.
+const tciRate = (value) => (value >= 10 ? Math.round(value) : Number(value.toPrecision(2)));
 
 // Settings each ventilator mode uses, as on a GE Aisys. PSV uses RR and Pinsp
 // for apnea backup breaths and Tinsp as the longest supported breath.
@@ -241,7 +243,7 @@ export class Controls {
         <p class="csht" hidden></p>
         </div>`;
       card.querySelector(".drug-name").textContent = spec.generic_name;
-      card.querySelector(".drug-strength").textContent = ` · ${spec.name.slice(spec.generic_name.length).trim()}`;
+      card.querySelector(".drug-strength").textContent = spec.name.slice(spec.generic_name.length).trim();
       card.querySelector(".bolus-unit").textContent = spec.bolus_unit;
 
       const w = {
@@ -487,7 +489,7 @@ export class Controls {
     }
     if (active && !section.open) section.open = true;
     output.hidden = !active;
-    setText(output, states.join(" · "));
+    setText(output, states.join(", "));
   }
 
   // --- Sync from snapshots ------------------------------------------
@@ -513,7 +515,7 @@ export class Controls {
     setText(fio2, `${Math.round(c.circuit_fio2 * 100)}%`);
     fio2.className = "fio2" + (!c.o2_connected || c.circuit_fio2 < 0.21 ? " bad" : c.circuit_fio2 < 0.3 ? " warn" : "");
     setPressed($("c-o2-supply"), !c.o2_connected, c.o2_connected ? "Disconnect O₂ supply" : "Connect backup O₂");
-    setValue($("c-vap"), round(c.vaporizer, 1));
+    setValue($("c-vap"), round(c.vaporizer));
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
     $("c-bag-settings").hidden = !c.bag_mask;
@@ -534,14 +536,14 @@ export class Controls {
       }
       if (w.rate) {
         w.rate.disabled = w.editor.pending || w.mode?.value === "tci";
-        setValue(w.rate, rateText(d.rate));
+        setValue(w.rate, d.is_tci ? tciRate(d.rate) : rateText(d.rate));
         const active = d.rate > 0 || (d.is_tci && d.target > 0);
         if (!active && w.runningRow.contains(document.activeElement)) $("drug-search").focus();
         if (!active) this.closeInfusionEditor(w);
         w.runningRow.hidden = !active;
         if (active) {
           setText(w.runningValue, d.is_tci
-            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit} · ${rateText(d.rate)} ${w.spec.rate_unit}`
+            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit}, rate ${tciRate(d.rate)} ${w.spec.rate_unit}`
             : `${rateText(d.rate)} ${w.spec.rate_unit}`);
         }
         running ||= active;

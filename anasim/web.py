@@ -83,7 +83,7 @@ def catalog() -> str:
     return json.dumps({
         "version": __version__,
         "scenarios": [
-            {"id": spec.id, "label": spec.label, "mode": spec.start_mode, "maint_type": spec.maint_type}
+            {"id": spec.id, "label": spec.label, "summary": spec.summary}
             for spec in SCENARIO_REGISTRY
         ],
         "ranges": {
@@ -223,7 +223,7 @@ class WebSession:
             "vent_modes": MODES,
             "ie_ratios": IE_RATIOS,
             "scenario": None if self.scenario is None or self.case_run is None else {
-                "name": self.scenario.name if self.case_run.mode == "guided" else "Independent case",
+                "name": self.scenario.name,
                 "mode": self.case_run.mode,
                 "total": len(self.scenario),
             },
@@ -741,7 +741,7 @@ class WebSession:
             raise ValueError("Sugammadex dose must be positive and finite")
         amount = mg_per_kg * self.engine.patient.weight
         self.engine.give_drug_bolus("sugammadex", amount)
-        return self._medication_receipt("sugammadex", f"Sugammadex {amount:g} mg given ({mg_per_kg:g} mg/kg)")
+        return self._medication_receipt("sugammadex", f"Sugammadex {amount:.0f} mg given ({mg_per_kg:g} mg/kg)")
 
     def _medication_receipt(self, key: str, text: str) -> dict:
         """Acknowledge a completed action and retain it across local page reloads."""

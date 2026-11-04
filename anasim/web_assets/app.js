@@ -129,27 +129,18 @@ function buildSetup() {
     if (maintenance) form.elements.concomitant_opioids.checked = true;
   };
   for (const radio of form.elements.mode) radio.onchange = syncOpioidPlan;
-  const syncGuided = () => {
-    const guided = form.elements.session.value !== "open";
-    $("scenario-row").hidden = !guided;
-    $("initial-state").disabled = guided;
-    $("initial-state").hidden = guided;
-    $("scenario-initial-state").hidden = !guided;
-    if (guided) {
-      const scenario = catalog.scenarios.find((s) => s.id === form.elements.scenario_id.value);
-      form.elements.concomitant_opioids.checked = true;
-      form.elements.mode.value = scenario.mode;
-      form.elements.maint_type.value = scenario.maint_type;
-      const start = scenario.mode === "awake"
-        ? "Awake before induction"
-        : `Anesthetized · ${form.elements.maint_type.selectedOptions[0].textContent}`;
-      setText($("scenario-start-summary"), `${start} · Opioids planned`);
-    }
-    syncOpioidPlan();
+  syncOpioidPlan();
+  // Cases set their own starting state; open simulation asks for it.
+  const syncSession = () => {
+    const isCase = form.elements.session.value === "case";
+    $("case-fields").hidden = !isCase;
+    $("initial-state").hidden = isCase;
+    const scenario = catalog.scenarios.find((s) => s.id === form.elements.scenario_id.value);
+    setText($("case-summary"), scenario.summary);
   };
-  for (const radio of form.elements.session) radio.onchange = syncGuided;
-  form.elements.scenario_id.onchange = syncGuided;
-  syncGuided();
+  for (const radio of form.elements.session) radio.onchange = syncSession;
+  form.elements.scenario_id.onchange = syncSession;
+  syncSession();
 
   const syncPregnancy = () => {
     const female = form.elements.sex.value === "female";
@@ -164,29 +155,42 @@ function buildSetup() {
   form.elements.pregnant.onchange = syncPregnancy;
   syncPregnancy();
 
-  const syncPatientDetails = () => {
+  // Collapsed sections summarize their settings; options list only changes from the defaults.
+  const syncSummaries = () => {
     const f = form.elements;
     const severity = (field) => field.selectedOptions[0].textContent.split(" (")[0].toLowerCase();
+    const list = (items, empty) => {
+      const text = items.join(", ");
+      return text ? text.charAt(0).toUpperCase() + text.slice(1) : empty;
+    };
     const organs = [];
-    if (Number(f.renal_function.value) !== 1) organs.push(`Renal ${severity(f.renal_function)}`);
+    if (Number(f.renal_function.value) !== 1) organs.push(`${severity(f.renal_function)} renal impairment`);
     if (f.creatinine_clearance_ml_min.value !== "") organs.push(`CrCl ${f.creatinine_clearance_ml_min.value} mL/min`);
-    if (Number(f.hepatic_function.value) !== 1) organs.push(`Hepatic ${severity(f.hepatic_function)}`);
-    setText($("organ-function-summary"), organs.join(" · ") || "Normal");
+    if (Number(f.hepatic_function.value) !== 1) organs.push(`${severity(f.hepatic_function)} hepatic impairment`);
+    setText($("organ-function-summary"), list(organs, "Normal"));
     const conditions = [];
-    if (Number(f.coronary_flow_reserve.value) < 5) conditions.push(`Coronary disease ${severity(f.coronary_flow_reserve)}`);
+    if (Number(f.coronary_flow_reserve.value) < 5) conditions.push(`${severity(f.coronary_flow_reserve)} coronary disease`);
     if (f.heart_failure.value !== "none") conditions.push(f.heart_failure.value === "hfref" ? "HFrEF" : "HFpEF");
-    if (Number(f.copd_severity.value) > 0) conditions.push(`COPD ${severity(f.copd_severity)}`);
-    if (f.surgical_site.value !== "other") conditions.push(`${f.surgical_site.selectedOptions[0].textContent} surgery`);
-    if (f.pregnant.checked) conditions.push(`Pregnant ${f.gestational_age_weeks.value} wk`);
-    setText($("clinical-conditions-summary"), conditions.join(" · ") || "None");
+    if (Number(f.copd_severity.value) > 0) conditions.push(`${severity(f.copd_severity)} COPD`);
+    if (f.surgical_site.value !== "other") conditions.push(`${severity(f.surgical_site)} surgery`);
+    if (f.pregnant.checked) conditions.push(`${f.gestational_age_weeks.value} weeks pregnant`);
+    setText($("clinical-conditions-summary"), list(conditions, "None"));
+    const patient = `${f.age.value}-year-old ${f.sex.value}, ${f.weight.value} kg`;
+    setText($("patient-summary"), list([patient, ...organs, ...conditions]));
+    const options = [];
+    if (f.tci_enabled.checked) options.push("TCI allowed");
+    if (f.patient_variability.checked) options.push("individual drug response");
+    if (!f.arterial_line_enabled.checked) options.push("no arterial line");
+    if (f.end_on_cardiac_arrest.checked) options.push("ends at cardiac arrest");
+    setText($("options-summary"), list(options, "Defaults"));
   };
   const onSetupEdit = () => {
-    syncPatientDetails();
+    syncSummaries();
     $("setup-error").hidden = true;
   };
   form.addEventListener("input", onSetupEdit);
   form.addEventListener("change", onSetupEdit);
-  syncPatientDetails();
+  syncSummaries();
 
   form.onsubmit = (event) => {
     event.preventDefault();
@@ -212,8 +216,9 @@ function readSetup(form) {
     if (input.value === "" || !Number.isFinite(value) || value < Number(input.min) || value > Number(input.max)) {
       const label = input.closest("label").firstChild.textContent.trim();
       setupError(`${label} must be between ${input.min} and ${input.max}.`);
-      const details = input.closest("details");
-      if (details) details.open = true;
+      for (let details = input.closest("details"); details; details = details.parentElement.closest("details")) {
+        details.open = true;
+      }
       input.focus();
       return null;
     }
@@ -230,23 +235,25 @@ function readSetup(form) {
   params.arterial_line_enabled = f.arterial_line_enabled.checked;
   params.end_on_cardiac_arrest = f.end_on_cardiac_arrest.checked;
   params.tci_enabled = f.tci_enabled.checked;
-  params.concomitant_opioids = f.concomitant_opioids.checked;
   params.patient_variability = f.patient_variability.checked;
-  if (f.session.value !== "open") {
+  if (f.session.value === "case") {
     params.scenario_id = f.scenario_id.value;
-    params.practice_mode = f.session.value;
+    params.practice_mode = f.guidance.value;
   } else {
     params.mode = f.mode.value;
     params.maint_type = f.maint_type.value;
+    params.concomitant_opioids = f.concomitant_opioids.checked;
   }
   return params;
 }
+
+const SETUP_START_LABEL = "Open session";
 
 function setupError(message) {
   $("setup-error").textContent = message;
   $("setup-error").hidden = false;
   $("setup-start").disabled = false;
-  $("setup-start").textContent = "Start simulation";
+  $("setup-start").textContent = SETUP_START_LABEL;
 }
 
 // --- Session ------------------------------------------------------------
@@ -263,7 +270,7 @@ function startSession(sessionInfo) {
   arrestShown = false;
   delete $("step-instruction").dataset.instruction;
   $("setup-start").disabled = false;
-  $("setup-start").textContent = "Start simulation";
+  $("setup-start").textContent = SETUP_START_LABEL;
   $("setup-cancel").hidden = false;
   show("app");
 
@@ -333,7 +340,8 @@ function updateBar(snap) {
   run.className = `btn ${variant}`;
   run.disabled = snap.ended;
   if (document.activeElement !== $("speed")) $("speed").value = String(snap.speed);
-  setText(status, snap.running && snap.lagging ? `Actual speed ${snap.achieved_speed}×` : "");
+  const achieved = snap.achieved_speed >= 10 ? Math.round(snap.achieved_speed) : snap.achieved_speed;
+  setText(status, snap.running && snap.lagging ? `Actual speed ${achieved}×` : "");
 
   const record = $("record");
   record.setAttribute("aria-pressed", String(snap.recording));
@@ -346,7 +354,7 @@ function updateBar(snap) {
 }
 
 function updateScenario(step) {
-  casePanel.update(step);
+  casePanel.update(step, !last?.running && last?.time === 0);
   if (step.mode === "independent" || step.complete) return;
   const total = info.scenario.total;
   const status = $("step-status");

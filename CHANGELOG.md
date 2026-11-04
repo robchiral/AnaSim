@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Added independent practice with optional hints and a debrief for every case.
+- Reorganized the setup screen around the choice of a case or an open
+  simulation, with patient details and options collapsed.
 - Made case events start on their own and replaced the Events tab in cases with
   case actions, such as requesting hemostasis. Guided steps credit earlier actions.
 - Added warnings for unsafe actions, such as extubation with residual block.

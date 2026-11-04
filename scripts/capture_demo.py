@@ -120,7 +120,8 @@ def current_step(server):
 
 def start_session(page, url):
     page.goto(url)
-    page.check('input[name="session"][value="guided"]')
+    page.check('input[name="session"][value="case"]')
+    page.check('input[name="guidance"][value="guided"]')
     page.select_option('select[name="scenario_id"]', "induction_tiva")
     page.click("#setup-start")
     page.wait_for_selector("#app", state="visible")

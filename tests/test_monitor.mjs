@@ -53,7 +53,7 @@ print(json.dumps({"info": json.loads(session.info()), "snapshots": snapshots}))
 
   monitor.update(snapshots[2]);
   assert.equal(elements.get("nmb-value").textContent, "4/4");
-  assert.equal(elements.get("nmb-detail").textContent, "(100%) · Low signal");
+  assert.equal(elements.get("nmb-detail").textContent, "Low signal, ratio 100%");
   assert.equal(elements.get("nmb-result").dataset.quality, "low");
 
   monitor.update(snapshots[3]);

@@ -32,104 +32,29 @@
       <h2>Session setup</h2>
     </header>
 
-    <div class="setup-grid">
-      <div class="setup-col">
+    <div class="setup-panels">
+      <section class="setup-col" aria-label="Session">
         <fieldset>
-          <legend>Patient</legend>
-          <label class="row">Age <span class="unit-input"><input name="age" type="number" step="1" value="40" required><span>years</span></span></label>
-          <label class="row">Weight <span class="unit-input"><input name="weight" type="number" step="0.1" value="70" required><span>kg</span></span></label>
-          <label class="row">Height <span class="unit-input"><input name="height" type="number" step="0.1" value="170" required><span>cm</span></span></label>
-          <label class="row">Sex
-            <select name="sex"><option value="male">Male</option><option value="female">Female</option></select>
-          </label>
-          <label class="row">Hemoglobin <span class="unit-input"><input name="baseline_hb" type="number" step="0.1" value="13.5" required><span>g/dL</span></span></label>
-          <label class="choice" title="Propofol kinetics, BIS sensitivity, and blood pressure sensitivity to propofol and opioids vary as in published patient studies. Off gives the typical patient.">
-            <input type="checkbox" name="patient_variability"> Individual drug response</label>
-        </fieldset>
-
-        <details class="setup-details" id="organ-function">
-          <summary>Organ function <span class="setup-summary" id="organ-function-summary">Normal</span></summary>
-          <div class="setup-detail-fields">
-            <label class="row">Renal
-              <select name="renal_function">
-                <option value="1.0">Normal (eGFR ≥ 90)</option>
-                <option value="0.8">Mild (eGFR 60 to 89)</option>
-                <option value="0.6">Moderate (eGFR 30 to 59)</option>
-                <option value="0.4">Severe (eGFR &lt; 30)</option>
-              </select>
-            </label>
-            <label class="row" title="Optional absolute clearance in mL/min, without body surface area indexing. Used for rocuronium and sugammadex; other renal effects use the Renal selection.">Creatinine clearance
-              <span class="unit-input"><input name="creatinine_clearance_ml_min" type="number" step="0.1" placeholder="Estimated"><span>mL/min</span></span>
-            </label>
-            <label class="row">Hepatic
-              <select name="hepatic_function">
-                <option value="1.0">Normal (no cirrhosis)</option>
-                <option value="0.9">Mild (Child-Pugh A)</option>
-                <option value="0.7">Moderate (Child-Pugh B)</option>
-                <option value="0.5">Severe (Child-Pugh C)</option>
-              </select>
-            </label>
-          </div>
-        </details>
-
-        <details class="setup-details" id="clinical-conditions">
-          <summary>Clinical conditions <span class="setup-summary" id="clinical-conditions-summary">None</span></summary>
-          <div class="setup-detail-fields">
-            <label class="row">Coronary disease
-              <select name="coronary_flow_reserve" title="Represented by coronary flow reserve, the ratio of maximal to resting blood flow.">
-                <option value="5">None</option>
-                <option value="3">Mild</option>
-                <option value="2">Moderate</option>
-                <option value="1.3">Severe</option>
-              </select>
-            </label>
-            <label class="row">Heart failure
-              <select name="heart_failure">
-                <option value="none">None</option>
-                <option value="hfref">Reduced EF</option>
-                <option value="hfpef">Preserved EF</option>
-              </select>
-            </label>
-            <label class="row">COPD
-              <select name="copd_severity">
-                <option value="0">None</option>
-                <option value="0.35">Mild</option>
-                <option value="0.65">Moderate</option>
-                <option value="1">Severe</option>
-              </select>
-            </label>
-            <label class="row">Surgery
-              <select name="surgical_site">
-                <option value="other">Other</option>
-                <option value="lower_abdominal">Lower abdominal</option>
-                <option value="upper_abdominal">Upper abdominal</option>
-              </select>
-            </label>
-            <label class="choice" id="pregnancy-choice"><input type="checkbox" name="pregnant"> Pregnant</label>
-            <label class="row" id="gestation-row" hidden>Gestational age
-              <span class="unit-input"><input name="gestational_age_weeks" type="number" value="28" step="1"><span>weeks</span></span>
-            </label>
-            <label class="row" id="position-row" hidden>Position
-              <select name="position"><option value="supine">Supine</option><option value="left_lateral">Left lateral</option></select>
-            </label>
-          </div>
-        </details>
-      </div>
-
-      <div class="setup-col">
-        <fieldset>
-          <legend>Session type</legend>
+          <legend>Session</legend>
           <div class="choice-group">
-            <label class="choice"><input type="radio" name="session" value="open" checked> Open simulation</label>
-            <label class="choice"><input type="radio" name="session" value="guided"> Guided case</label>
-            <label class="choice"><input type="radio" name="session" value="independent"> Independent case</label>
+            <label class="choice"><input type="radio" name="session" value="case" checked> Practice a case</label>
+            <label class="choice"><input type="radio" name="session" value="open"> Open simulation</label>
           </div>
-          <label class="row" id="scenario-row" hidden>Case <select name="scenario_id"></select></label>
-          <label class="choice" title="Use target controls and TCI maintenance starts. Manual rates remain available.">
-            <input type="checkbox" name="tci_enabled"> Allow TCI</label>
         </fieldset>
 
-        <fieldset id="initial-state">
+        <div id="case-fields" class="setup-detail-fields">
+          <label class="row">Case <select name="scenario_id"></select></label>
+          <p id="case-summary" class="setup-note"></p>
+          <fieldset>
+            <legend>Guidance</legend>
+            <div class="choice-group">
+              <label class="choice"><input type="radio" name="guidance" value="guided" checked> Step-by-step guide</label>
+              <label class="choice"><input type="radio" name="guidance" value="independent"> On my own, hints on request</label>
+            </div>
+          </fieldset>
+        </div>
+
+        <fieldset id="initial-state" hidden>
           <legend>Initial state</legend>
           <label class="choice" title="Opioid-containing anesthesia for this session. Maintenance starts include opioids. This setting stays fixed when infusions start or stop.">
             <input type="checkbox" name="concomitant_opioids" checked> Opioid-containing anesthesia</label>
@@ -144,20 +69,102 @@
             </select>
           </label>
         </fieldset>
+      </section>
 
-        <fieldset id="scenario-initial-state" hidden>
-          <legend>Initial state</legend>
-          <p id="scenario-start-summary"></p>
-        </fieldset>
+      <section class="setup-col" aria-label="Patient and options">
+        <details class="setup-details" id="patient-details">
+          <summary>Patient <span class="setup-summary" id="patient-summary"></span></summary>
+          <div class="setup-detail-fields">
+            <label class="row">Age <span class="unit-input"><input name="age" type="number" step="1" value="40" required><span>years</span></span></label>
+            <label class="row">Weight <span class="unit-input"><input name="weight" type="number" step="0.1" value="70" required><span>kg</span></span></label>
+            <label class="row">Height <span class="unit-input"><input name="height" type="number" step="0.1" value="170" required><span>cm</span></span></label>
+            <label class="row">Sex
+              <select name="sex"><option value="male">Male</option><option value="female">Female</option></select>
+            </label>
+            <label class="row">Hemoglobin <span class="unit-input"><input name="baseline_hb" type="number" step="0.1" value="13.5" required><span>g/dL</span></span></label>
+            <details class="setup-details" id="organ-function">
+              <summary>Organ function <span class="setup-summary" id="organ-function-summary">Normal</span></summary>
+              <div class="setup-detail-fields">
+                <label class="row">Renal
+                  <select name="renal_function">
+                    <option value="1.0">Normal (eGFR ≥ 90)</option>
+                    <option value="0.8">Mild (eGFR 60 to 89)</option>
+                    <option value="0.6">Moderate (eGFR 30 to 59)</option>
+                    <option value="0.4">Severe (eGFR &lt; 30)</option>
+                  </select>
+                </label>
+                <label class="row" title="Optional absolute clearance in mL/min, without body surface area indexing. Used for rocuronium and sugammadex; other renal effects use the Renal selection.">Creatinine clearance
+                  <span class="unit-input"><input name="creatinine_clearance_ml_min" type="number" step="0.1" placeholder="Estimated"><span>mL/min</span></span>
+                </label>
+                <label class="row">Hepatic
+                  <select name="hepatic_function">
+                    <option value="1.0">Normal (no cirrhosis)</option>
+                    <option value="0.9">Mild (Child-Pugh A)</option>
+                    <option value="0.7">Moderate (Child-Pugh B)</option>
+                    <option value="0.5">Severe (Child-Pugh C)</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+            <details class="setup-details" id="clinical-conditions">
+              <summary>Clinical conditions <span class="setup-summary" id="clinical-conditions-summary">None</span></summary>
+              <div class="setup-detail-fields">
+                <label class="row">Coronary disease
+                  <select name="coronary_flow_reserve" title="Represented by coronary flow reserve, the ratio of maximal to resting blood flow.">
+                    <option value="5">None</option>
+                    <option value="3">Mild</option>
+                    <option value="2">Moderate</option>
+                    <option value="1.3">Severe</option>
+                  </select>
+                </label>
+                <label class="row">Heart failure
+                  <select name="heart_failure">
+                    <option value="none">None</option>
+                    <option value="hfref">Reduced EF</option>
+                    <option value="hfpef">Preserved EF</option>
+                  </select>
+                </label>
+                <label class="row">COPD
+                  <select name="copd_severity">
+                    <option value="0">None</option>
+                    <option value="0.35">Mild</option>
+                    <option value="0.65">Moderate</option>
+                    <option value="1">Severe</option>
+                  </select>
+                </label>
+                <label class="row">Surgery
+                  <select name="surgical_site">
+                    <option value="other">Other</option>
+                    <option value="lower_abdominal">Lower abdominal</option>
+                    <option value="upper_abdominal">Upper abdominal</option>
+                  </select>
+                </label>
+                <label class="choice" id="pregnancy-choice"><input type="checkbox" name="pregnant"> Pregnant</label>
+                <label class="row" id="gestation-row" hidden>Gestational age
+                  <span class="unit-input"><input name="gestational_age_weeks" type="number" value="28" step="1"><span>weeks</span></span>
+                </label>
+                <label class="row" id="position-row" hidden>Position
+                  <select name="position"><option value="supine">Supine</option><option value="left_lateral">Left lateral</option></select>
+                </label>
+              </div>
+            </details>
+          </div>
+        </details>
 
-        <fieldset>
-          <legend>Monitoring and endpoint</legend>
-          <label class="choice" title="Show the arterial pressure waveform and continuous pressure values.">
-            <input type="checkbox" name="arterial_line_enabled" checked> Show arterial pressure</label>
-          <label class="choice" title="Stop when MAP stays below 20 mmHg or HR below 10 bpm for 15 seconds. Resuscitation is not modeled.">
-            <input type="checkbox" name="end_on_cardiac_arrest"> End session at cardiac arrest</label>
-        </fieldset>
-      </div>
+        <details class="setup-details" id="setup-options">
+          <summary>Options <span class="setup-summary" id="options-summary">Defaults</span></summary>
+          <div class="setup-detail-fields">
+            <label class="choice" title="Use target controls and TCI maintenance starts. Manual rates remain available.">
+              <input type="checkbox" name="tci_enabled"> Allow TCI</label>
+            <label class="choice" title="Propofol kinetics, BIS sensitivity, and blood pressure sensitivity to propofol and opioids vary as in published patient studies. Off gives the typical patient.">
+              <input type="checkbox" name="patient_variability"> Individual drug response</label>
+            <label class="choice" title="Show the arterial pressure waveform and continuous pressure values.">
+              <input type="checkbox" name="arterial_line_enabled" checked> Show arterial pressure</label>
+            <label class="choice" title="Stop when MAP stays below 20 mmHg or HR below 10 bpm for 15 seconds. Resuscitation is not modeled.">
+              <input type="checkbox" name="end_on_cardiac_arrest"> End session at cardiac arrest</label>
+          </div>
+        </details>
+      </section>
     </div>
 
     <p id="setup-error" class="setup-error" role="alert" hidden></p>
@@ -165,7 +172,7 @@
     <footer class="setup-footer">
       <span class="version" id="version"></span>
       <button type="button" class="btn outlined" id="setup-cancel" hidden>Back to session</button>
-      <button type="submit" class="btn primary" id="setup-start">Start simulation</button>
+      <button type="submit" class="btn primary" id="setup-start">Open session</button>
     </footer>
     <p class="license-notice">Free for personal and qualifying noncommercial institutional use. <a href="https://github.com/robchiral/AnaSim/blob/main/LICENSE" target="_blank" rel="noopener">License terms</a></p>
   </form>
@@ -212,13 +219,13 @@
     <section class="monitor">
       <div class="monitor-body">
         <div class="monitor-lane">
-          <div class="wave" data-wave="ecg"><canvas role="img" aria-label="ECG lead II waveform"></canvas><span class="wave-label ecg">ECG · II <output id="v-st" hidden></output></span><span class="sweep-label">10 s</span></div>
+          <div class="wave" data-wave="ecg"><canvas role="img" aria-label="ECG lead II waveform"></canvas><span class="wave-label ecg">ECG II <output id="v-st" hidden></output></span><span class="sweep-label">10 s</span></div>
           <div class="lane-numerics">
             <div class="numeric big ecg" data-alarm="HR"><div class="numeric-head"><span class="numeric-title">HR</span><span class="numeric-unit">/min</span></div><output id="v-hr">--</output></div>
           </div>
         </div>
         <div class="monitor-lane" id="art-lane">
-          <div class="wave" data-wave="art"><canvas role="img" aria-label="Arterial pressure waveform, 10 second sweep"></canvas><span class="wave-label abp">ART · mmHg</span></div>
+          <div class="wave" data-wave="art"><canvas role="img" aria-label="Arterial pressure waveform, 10 second sweep"></canvas><span class="wave-label abp">ART <span class="wave-unit">mmHg</span></span></div>
           <div class="lane-numerics abp" data-alarm="MAP" id="n-art">
             <div class="numeric pressure"><div class="numeric-head"><span class="numeric-title">ART</span><span class="numeric-unit">mmHg</span></div><output id="v-art">--/--</output></div>
             <div class="numeric compact"><div class="numeric-head"><span class="numeric-title">MAP</span></div><output id="v-art-map">--</output></div>
@@ -231,14 +238,14 @@
           </div>
         </div>
         <div class="monitor-lane respiratory-lane">
-          <div class="wave" data-wave="co2"><canvas role="img" aria-label="Carbon dioxide waveform"></canvas><span class="wave-label co2">CO₂ · mmHg</span><span class="sweep-label">20 s</span></div>
+          <div class="wave" data-wave="co2"><canvas role="img" aria-label="Carbon dioxide waveform"></canvas><span class="wave-label co2">CO₂ <span class="wave-unit">mmHg</span></span><span class="sweep-label">20 s</span></div>
           <div class="lane-numerics">
             <div class="numeric big co2" data-alarm="EtCO2"><div class="numeric-head"><span class="numeric-title">EtCO₂</span><span class="numeric-unit">mmHg</span></div><output id="v-etco2">--</output></div>
             <div class="numeric compact co2"><div class="numeric-head"><span class="numeric-title" id="v-rr-title">RR</span><span class="numeric-unit">/min</span></div><output id="v-rr">--</output></div>
           </div>
         </div>
         <div class="monitor-lane respiratory-lane">
-          <div class="wave" data-wave="paw"><canvas role="img" aria-label="Airway pressure waveform, 20 second sweep"></canvas><span class="wave-label vent">Paw · cmH₂O</span></div>
+          <div class="wave" data-wave="paw"><canvas role="img" aria-label="Airway pressure waveform, 20 second sweep"></canvas><span class="wave-label vent">Paw <span class="wave-unit">cmH₂O</span></span></div>
           <div class="lane-numerics">
             <div class="numeric big vent" data-alarm="Ppeak"><div class="numeric-head"><span class="numeric-title">Ppeak</span><span class="numeric-unit">cmH₂O</span></div><output id="v-ppeak">--</output></div>
             <div class="numeric-stack vent">
@@ -248,7 +255,7 @@
           </div>
         </div>
         <div class="monitor-lane respiratory-lane">
-          <div class="wave" data-wave="flow"><canvas role="img" aria-label="Respiratory flow waveform, 20 second sweep"></canvas><span class="wave-label vent">Flow · L/min</span></div>
+          <div class="wave" data-wave="flow"><canvas role="img" aria-label="Respiratory flow waveform, 20 second sweep"></canvas><span class="wave-label vent">Flow <span class="wave-unit">L/min</span></span></div>
           <div class="lane-numerics">
             <div class="numeric big vent" data-alarm="VTe"><div class="numeric-head"><span class="numeric-title">VTe</span><span class="numeric-unit">mL</span></div><output id="v-vte">--</output></div>
             <div class="numeric compact vent" data-alarm="MV"><div class="numeric-head"><span class="numeric-title">MV</span><span class="numeric-unit">L/min</span></div><output id="v-mv">--</output></div>
@@ -290,7 +297,7 @@
         </div>
         <div class="numeric compact bis" data-alarm="BIS"><div class="numeric-head"><span class="numeric-title">BIS</span></div><output id="v-bis">--</output></div>
         <div class="numeric compact temp"><div class="numeric-head"><span class="numeric-title">Temp</span><span class="numeric-unit">°C</span></div><output id="v-temp">--</output></div>
-        <div class="panel-io"><div class="io-head"><span>Fluid balance</span><output id="v-net">--</output></div><div class="io-detail" id="v-io">IV -- · PRBC -- · Urine -- · Loss --</div></div>
+        <div class="panel-io"><div class="io-head"><span>Fluid balance</span><output id="v-net">--</output></div><div class="io-detail" id="v-io">IV --, PRBC --, urine --, loss -- mL</div></div>
       </div>
       <section class="nmb-panel" aria-label="Neuromuscular monitor">
         <div class="nmb-result" id="nmb-result">
@@ -308,7 +315,7 @@
         <details class="nmb-history" id="nmb-history" open>
           <summary class="monitor-detail-toggle">Twitch history</summary>
           <div class="nmb-trend">
-            <span class="nmb-caption" id="nmb-trend-label">TOF ratio · 15 min</span>
+            <span class="nmb-caption" id="nmb-trend-label">TOF ratio, past 15 min</span>
             <svg viewBox="0 0 180 40" preserveAspectRatio="none" role="img" id="nmb-trend" aria-label="TOF ratio over the past 15 minutes">
               <path class="nmb-trend-guide" d="M0 3H180 M0 37H180"/>
               <g id="nmb-trend-points"></g>
@@ -406,7 +413,7 @@
           </div>
           <div class="manual-ventilation">
             <button type="button" class="btn toggle" id="c-bag" aria-pressed="false" title="Bag ventilation uses 12 breaths/min and 500 mL tidal volume.">Start bag ventilation</button>
-            <span id="c-bag-settings" class="dim small" hidden>12 breaths/min · 500 mL</span>
+            <span id="c-bag-settings" class="dim small" hidden>12 breaths/min, 500 mL</span>
           </div>
         </fieldset>
 

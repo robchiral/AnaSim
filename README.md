@@ -35,7 +35,7 @@ In Windows Command Prompt, use `python` in place of `python3` and activate with
 `anasim` opens the interface in your browser and works offline after
 installation. Press Ctrl+C in the terminal to stop the server.
 
-Choose an open simulation or a case, then select Start simulation and Start.
+Choose a case or an open simulation, then select Open session and Start.
 Use Apply to confirm changes to settings.
 
 ## Features

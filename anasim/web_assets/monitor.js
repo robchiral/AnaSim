@@ -308,16 +308,16 @@ export class Monitor {
     document.querySelector("#n-art").dataset.alarm = this.arterialLine ? "MAP" : "";
 
     const p = info.patient;
-    const parts = [`${Math.round(p.age)} y`, cap(p.sex), `${p.weight.toFixed(1)} kg`];
-    if (p.renal_status.toLowerCase() !== "normal") parts.push(`Renal: ${p.renal_status}`);
+    const parts = [`${Math.round(p.age)}-year-old ${p.sex}, ${Number(p.weight.toFixed(1))} kg`];
+    if (p.renal_status !== "Normal") parts.push(`${p.renal_status.toLowerCase()} renal impairment`);
     if (p.creatinine_clearance_ml_min != null) parts.push(`CrCl ${Math.round(p.creatinine_clearance_ml_min)} mL/min`);
-    if (p.hepatic_status.toLowerCase() !== "normal") parts.push(`Hepatic: ${p.hepatic_status}`);
-    if (p.coronary_flow_reserve < 5) parts.push("Coronary disease");
+    if (p.hepatic_status !== "Normal") parts.push(`${p.hepatic_status.toLowerCase()} hepatic impairment`);
+    if (p.coronary_flow_reserve < 5) parts.push("coronary disease");
     if (p.heart_failure !== "none") parts.push(p.heart_failure === "hfref" ? "HFrEF" : "HFpEF");
     if (p.copd_severity > 0) parts.push("COPD");
-    if (p.surgical_site !== "other") parts.push(p.surgical_site === "upper_abdominal" ? "Upper abdominal surgery" : "Lower abdominal surgery");
-    if (p.gestational_age_weeks > 0) parts.push(`Pregnancy ${p.gestational_age_weeks} wk`);
-    document.getElementById("patient-info").textContent = parts.join("  ·  ");
+    if (p.surgical_site !== "other") parts.push(`${p.surgical_site === "upper_abdominal" ? "upper" : "lower"} abdominal surgery`);
+    if (p.gestational_age_weeks > 0) parts.push(`${p.gestational_age_weeks} weeks pregnant`);
+    document.getElementById("patient-info").textContent = parts.join(", ");
 
     this.fields = {};
     for (const el of document.querySelectorAll(".monitor output")) this.fields[el.id] = el;
@@ -371,7 +371,7 @@ export class Monitor {
   updateNumerics(v) {
     this.set("v-hr", trunc(v.hr));
     this.fields["v-st"].hidden = v.st_depression_mv < 0.03;
-    this.set("v-st", `· ST -${v.st_depression_mv.toFixed(2)} mV`);
+    this.set("v-st", `ST -${(10 * v.st_depression_mv).toFixed(1)} mm`);
     this.set("v-spo2", trunc(v.spo2));
     this.set("v-spo2-unit", v.spo2 === null ? "No signal" : "%");
     if (this.arterialLine) {
@@ -388,7 +388,7 @@ export class Monitor {
       `${Math.floor(age / 60)}:${String(age % 60).padStart(2, "0")} ago`;
     const status = v.nibp_cuff !== null ? `Cuff ${trunc(v.nibp_cuff)} mmHg` :
       v.nibp_failed ? "Measurement failed" : "";
-    this.set("v-nibp-status", status ? `${status} · ${reading.toLowerCase()}` : reading);
+    this.set("v-nibp-status", status ? `${status}, ${reading.toLowerCase()}` : reading);
     this.set("v-etco2", trunc(v.etco2));
     this.set("v-rr", trunc(v.rr));
     this.set("v-rr-title", v.rr_source === "impedance" ? "RR imp" : "RR");
@@ -398,7 +398,7 @@ export class Monitor {
     const net = v.net_fluid ?? 0;
     this.set("v-net", `${net >= 0 ? "+" : "−"}${Math.abs(net).toFixed(0)} mL`);
     document.getElementById("v-io").textContent =
-      `IV ${fixed(v.fluid_in, 0)} · PRBC ${fixed(v.blood_in, 0)} · Urine ${fixed(v.urine_out, 0)} · Loss ${fixed(v.blood_out, 0)} mL`;
+      `IV ${fixed(v.fluid_in, 0)}, PRBC ${fixed(v.blood_in, 0)}, urine ${fixed(v.urine_out, 0)}, loss ${fixed(v.blood_out, 0)} mL`;
 
     this.set("v-ppeak", trunc(v.ppeak));
     this.set("v-pplat", trunc(v.pplat));
@@ -413,7 +413,7 @@ export class Monitor {
     this.set("v-et-n2o", trunc(v.et_n2o));
     this.set("v-fi-sevo", fixed(v.fi_sevo, 1));
     this.set("v-et-sevo", fixed(v.et_sevo, 1));
-    this.set("v-mac", fixed(v.et_mac, 2));
+    this.set("v-mac", fixed(v.et_mac, 1));
   }
 
   updateAlarms(alarms) {
@@ -424,8 +424,4 @@ export class Monitor {
       box.classList.toggle("alarm-high", level === "high");
     }
   }
-}
-
-function cap(text) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }
