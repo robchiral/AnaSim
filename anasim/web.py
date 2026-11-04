@@ -522,6 +522,7 @@ class WebSession:
             "circuit_fio2": _num(circuit.composition.fio2, 4),
             "vaporizer": engine.vaporizer.state.setting,
             "bag_mask": engine.bag_mask_active,
+            "bag": {"rr": round(engine.bag_mask_rr), "tv": round(engine.bag_mask_vt * 1000.0)},
             "vent": {
                 "on": engine.vent.is_on,
                 "mode": vent.mode,
@@ -673,6 +674,9 @@ class WebSession:
             self.engine.set_vent_power(False)
         self.engine.set_bag_mask_ventilation(active)
         return self._assistance_result(assisted)
+
+    def _cmd_bag_settings(self, rr: float, tv: float):
+        self.engine.set_bag_mask_settings(rr, domain.finite_number("bag tidal volume", tv) / 1000.0)
 
     def _cmd_vent_power(self, on: bool):
         assisted = self.engine.vent.is_on or self.engine.bag_mask_active

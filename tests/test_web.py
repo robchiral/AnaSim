@@ -85,15 +85,17 @@ def test_trends_record_displayed_pressures_and_recover_after_reload(arterial):
     assert session.snapshot()["trends"] == []
 
 
-def test_ventilator_settings_survive_bag_mask_handover():
+def test_ventilator_and_bag_settings_survive_handover():
     session = WebSession({**PATIENT, "mode": "steady_state"})
     snap = parse(session.advance(0.0))
     assert snap["controls"]["vent"]["on"]
 
     cmd(session, "vent", mode="PCV", p_insp=18, peep=8, p_max=35, trigger=2.5)
+    cmd(session, "bag_settings", rr=20, tv=400)
     cmd(session, "bag_mask", active=True)
-    vent = parse(session.advance(0.0))["controls"]["vent"]
-    assert not vent["on"]
+    controls = parse(session.advance(0.0))["controls"]
+    vent, bag = controls["vent"], controls["bag"]
+    assert not vent["on"] and bag == {"rr": 20, "tv": 400}
     assert (vent["mode"], vent["p_insp"], vent["peep"], vent["p_max"], vent["trigger"]) == ("PCV", 18, 8, 35, 2.5)
     invalid_updates = (
         {"mode": "SIMV"},
@@ -109,12 +111,20 @@ def test_ventilator_settings_survive_bag_mask_handover():
         with pytest.raises(ValueError):
             cmd(session, "vent", **bad)
         assert parse(session.advance(0.0))["controls"]["vent"] == vent
+    for bad in ({"rr": 0, "tv": 400}, {"rr": 41, "tv": 400}, {"rr": 20, "tv": 1300}, {"rr": 20, "tv": float("nan")}):
+        with pytest.raises(ValueError):
+            cmd(session, "bag_settings", **bad)
+        assert parse(session.advance(0.0))["controls"]["bag"] == bag
+
+    # The monitor counts every bag breath, and expired volume is near the set volume.
+    cmd(session, "run", running=True)
+    vitals = run_seconds(session, 30)[-1]["vitals"]
+    assert vitals["rr"] == 20 and 380 <= vitals["vte"] <= 440
 
     cmd(session, "vent_power", on=True)
-    cmd(session, "run", running=True)
     snap = run_seconds(session, 60)[-1]
     settings = session.engine.vent.settings
-    assert not snap["controls"]["bag_mask"]
+    assert not snap["controls"]["bag_mask"] and snap["controls"]["bag"] == bag
     assert (settings.mode, settings.p_insp, settings.peep) == ("PCV", 18, 8)
     assert 25 <= snap["vitals"]["etco2"] <= 50
 

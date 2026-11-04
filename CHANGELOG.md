@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added bag ventilation rate and tidal volume settings.
 - Added independent practice with optional hints and a debrief for every case.
 - Reorganized the setup screen around the choice of a case or an open
   simulation, with patient details and options collapsed.

@@ -173,6 +173,11 @@ export class Controls {
     this.editSettings([$("c-o2"), $("c-air"), $("c-n2o")], fgf, $("c-o2").closest(".fresh-gas-settings"));
     this.editSettings([$("c-vap")], () => this.send("vaporizer", { percent: readNumber($("c-vap")) }));
     $("c-bag").onclick = () => this.send("bag_mask", { active: !this.state.bag_mask });
+    this.editSettings(
+      [$("c-bag-rr"), $("c-bag-tv")],
+      () => this.send("bag_settings", { rr: readNumber($("c-bag-rr")), tv: readNumber($("c-bag-tv")) }),
+      $("c-bag-settings"),
+    );
     $("c-vent-power").onclick = () => this.send("vent_power", { on: !this.state.vent.on });
     this.editSettings(
       ["c-vent-mode", "c-ie", ...Object.values(ventInputs)].map($),
@@ -518,7 +523,8 @@ export class Controls {
     setValue($("c-vap"), round(c.vaporizer));
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
-    $("c-bag-settings").hidden = !c.bag_mask;
+    setValue($("c-bag-rr"), c.bag.rr);
+    setValue($("c-bag-tv"), c.bag.tv);
     const vent = c.vent;
     setPressed($("c-vent-power"), vent.on, vent.on ? "Stop ventilator" : "Start ventilator");
     setValue($("c-vent-mode"), vent.mode);

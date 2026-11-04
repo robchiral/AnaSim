@@ -412,8 +412,11 @@
             <div class="control-setting" data-vent="trigger"><div class="control-setting-head"><label for="c-trigger">Trigger</label><span>L/min</span></div><input id="c-trigger" aria-label="Flow trigger setting, L/min" type="number" min="1" max="15" step="0.5"></div>
           </div>
           <div class="manual-ventilation">
-            <button type="button" class="btn toggle" id="c-bag" aria-pressed="false" title="Bag ventilation uses 12 breaths/min and 500 mL tidal volume.">Start bag ventilation</button>
-            <span id="c-bag-settings" class="dim small" hidden>12 breaths/min, 500 mL</span>
+            <button type="button" class="btn toggle" id="c-bag" aria-pressed="false">Start bag ventilation</button>
+            <div class="vent-settings" id="c-bag-settings">
+              <div class="control-setting"><div class="control-setting-head"><label for="c-bag-rr">Bag rate</label><span>/min</span></div><input id="c-bag-rr" aria-label="Bag ventilation rate, breaths/min" type="number" min="1" max="40" step="1"></div>
+              <div class="control-setting"><div class="control-setting-head"><label for="c-bag-tv">Bag Vt</label><span>mL</span></div><input id="c-bag-tv" aria-label="Bag ventilation tidal volume, mL" type="number" min="50" max="1200" step="50"></div>
+            </div>
           </div>
         </fieldset>
 

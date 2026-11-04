@@ -21,7 +21,7 @@ from anasim.monitors.neuromuscular import NeuromuscularMonitor
 from anasim.monitors.nibp import NIBPMonitor
 from anasim.monitors.spo2 import SpO2Monitor
 from anasim.patient.conditions import COPD_RESISTANCE, POSITIONS
-from anasim.patient.domain import finite_number
+from anasim.patient.domain import bounded_number, finite_number
 from anasim.patient.patient import Patient
 from anasim.patient.pd import (
     BISModel,
@@ -72,6 +72,8 @@ from .state import (
 from .tci import TCIController
 
 OUTPUT_WINDOW_S = 20.0  # Waveform history kept in output_buffer
+BAG_RR_RANGE = (1.0, 40.0)  # breaths/min
+BAG_VT_RANGE_L = (0.05, 1.2)
 
 
 @dataclass(slots=True)
@@ -511,18 +513,24 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo.rhythm_type = rhythm
         self.hemo.invalidate_state_cache()
 
-    def set_bag_mask_ventilation(self, active: bool, rr: float = 12.0, vt: float = 0.5):
+    def set_bag_mask_ventilation(self, active: bool, rr: float | None = None, vt: float | None = None):
         """Start or stop manual bag ventilation at rr breaths/min and vt liters.
 
-        It ventilates only through a mask or ETT and yields to the ventilator.
+        Omitted settings keep their last values. Bag ventilation works only
+        through a mask or ETT and yields to the ventilator.
         """
+        if rr is not None or vt is not None:
+            self.set_bag_mask_settings(self.bag_mask_rr if rr is None else rr,
+                                       self.bag_mask_vt if vt is None else vt)
         self.bag_mask_active = active
-        if active:
-            self.bag_mask_rr = clamp(rr, 0.0, 40.0)
-            self.bag_mask_vt = clamp(vt, 0.05, 1.2)
         self.actions.record(
             self.state.time, ACTION_BAG_MASK, label="on" if active else "off"
         )
+
+    def set_bag_mask_settings(self, rr: float, vt: float):
+        """Set the bag rate (breaths/min) and tidal volume (L) without starting or stopping it."""
+        self.bag_mask_rr = bounded_number("bag rate", rr, *BAG_RR_RANGE, unit="breaths/min")
+        self.bag_mask_vt = bounded_number("bag tidal volume", vt, *BAG_VT_RANGE_L, unit="L")
 
     def start(self):
         self.running = True
