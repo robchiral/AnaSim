@@ -1,12 +1,16 @@
 """Intraoperative hemorrhage and hypovolemic shock scenario."""
 
 from .base import (
+    CRISIS_BRIEFING,
+    CRISIS_ONSET_S,
+    CaseAction,
+    CaseEvent,
     CrisisStartMAP,
     Scenario,
     ScenarioStep,
-    create_observe_baseline_step,
+    create_observe_step,
     create_reassess_step,
-    require_crisis_started,
+    crisis_outcomes,
     require_crisis_stopped,
     require_fluid_bolus,
     require_hypotension_or_treatment,
@@ -25,24 +29,13 @@ def _require_volume_replacement(engine) -> tuple[bool, str]:
 
 def create_hemorrhage_response() -> Scenario:
     start_map = CrisisStartMAP()
+
+    def start(engine) -> None:
+        start_map.record(engine)
+        engine.start_hemorrhage(800)
+
     steps = [
-        create_observe_baseline_step("hemorrhage"),
-        ScenarioStep(
-            id="START_HEMORRHAGE",
-            title="Hemorrhage begins",
-            instruction=(
-                "The surgeon reports brisk blood loss. Set the bleeding rate to "
-                "<b>500-800 mL/min</b>, then select Start bleeding in Events. "
-                "Call for help and ask the surgeon to control the source while resuscitation begins."
-            ),
-            check_requirements=require_crisis_started(
-                "hemorrhage",
-                "Start hemorrhage event (Events tab)",
-            ),
-            target_tab="Events",
-            target_section="circulation",
-            on_met=start_map.record,
-        ),
+        create_observe_step("hemorrhage"),
         ScenarioStep(
             id="RECOGNIZE_SHOCK",
             title="Recognize hypovolemic shock",
@@ -60,14 +53,10 @@ def create_hemorrhage_response() -> Scenario:
             id="STOP_BLEEDING",
             title="Control the bleeding source",
             instruction=(
-                "Select <b>Stop bleeding</b> to represent surgical hemostasis. "
+                "Call for help and select <b>Request surgical hemostasis</b>. "
                 "In practice, hemorrhage control and resuscitation proceed together."
             ),
-            check_requirements=require_crisis_stopped(
-                "hemorrhage", "Stop bleeding to represent surgical hemostasis",
-            ),
-            target_tab="Events",
-            target_section="circulation",
+            check_requirements=require_crisis_stopped("hemorrhage", "Request surgical hemostasis"),
         ),
         ScenarioStep(
             id="GIVE_FLUIDS",
@@ -100,7 +89,7 @@ def create_hemorrhage_response() -> Scenario:
         ),
         create_reassess_step(
             "hemorrhage",
-            "Stop hemorrhage first",
+            "Request surgical hemostasis",
             "Hemorrhage controlled",
             "Persistent tachycardia or hypotension warrants reassessment for continued bleeding, "
             "inadequate replacement, or another cause. In practice, also assess hemoglobin, "
@@ -111,6 +100,13 @@ def create_hemorrhage_response() -> Scenario:
     return Scenario(
         id="hemorrhage_response",
         name="Hemorrhage response",
-        description="Learn to recognize and manage intraoperative hemorrhage and hypovolemic shock.",
+        briefing=CRISIS_BRIEFING,
         steps=steps,
+        events=(CaseEvent("hemorrhage", CRISIS_ONSET_S, "The surgeon reports brisk blood loss.", start),),
+        actions=(CaseAction(
+            "hemostasis", "Request surgical hemostasis",
+            lambda engine: engine.stop_hemorrhage(), lambda engine: engine.active_hemorrhage,
+            completed_label="Surgical hemostasis requested",
+        ),),
+        outcomes=crisis_outcomes("hemorrhage", _require_volume_replacement),
     )

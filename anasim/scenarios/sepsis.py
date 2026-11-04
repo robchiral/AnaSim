@@ -1,12 +1,16 @@
 """Warm septic shock scenario."""
 
 from .base import (
+    CRISIS_BRIEFING,
+    CRISIS_ONSET_S,
+    CaseAction,
+    CaseEvent,
     CrisisStartMAP,
     Scenario,
     ScenarioStep,
-    create_observe_baseline_step,
+    create_observe_step,
     create_reassess_step,
-    require_crisis_started,
+    crisis_outcomes,
     require_crisis_stopped,
     require_fluid_bolus,
     require_hypotension_or_treatment,
@@ -16,26 +20,14 @@ from .base import (
 
 def create_sepsis_response() -> Scenario:
     start_map = CrisisStartMAP()
+    fluids = require_fluid_bolus(500, labels=("crystalloid",), event_name="sepsis")
+
+    def start(engine) -> None:
+        start_map.record(engine)
+        engine.start_sepsis()
+
     steps = [
-        create_observe_baseline_step("sepsis"),
-        ScenarioStep(
-            id="START_SEPSIS",
-            title="Sepsis begins",
-            instruction=(
-                "This patient has an intra-abdominal infection. Select <b>Start sepsis</b> "
-                "in Events to model developing vasodilatory shock. "
-                "Call for help and resuscitate promptly. In practice, obtain blood cultures without delaying "
-                "antibiotics, give antibiotics immediately (ideally within 1 hour for shock), "
-                "and arrange source control."
-            ),
-            check_requirements=require_crisis_started(
-                "sepsis",
-                "Start sepsis event (Events tab)",
-            ),
-            target_tab="Events",
-            target_section="circulation",
-            on_met=start_map.record,
-        ),
+        create_observe_step("sepsis"),
         ScenarioStep(
             id="RECOGNIZE_WARM_SHOCK",
             title="Recognize septic shock",
@@ -58,11 +50,7 @@ def create_sepsis_response() -> Scenario:
                 "An initial 30 mL/kg over the first 3 hours is a guideline starting point, "
                 "with further fluid guided by perfusion and response."
             ),
-            check_requirements=require_fluid_bolus(
-                500,
-                labels=("crystalloid",),
-                event_name="sepsis",
-            ),
+            check_requirements=fluids,
             target_tab="Fluids",
         ),
         ScenarioStep(
@@ -84,20 +72,16 @@ def create_sepsis_response() -> Scenario:
             id="SOURCE_CONTROL",
             title="Source control",
             instruction=(
-                "Select <b>Stop sepsis</b> to let the simulated inflammatory effects subside. "
-                "Continue hemodynamic support as the patient recovers. "
-                "This control represents recovery after antibiotics and source control; real shock can persist after both."
+                "Select <b>Request surgical source control</b> to let the simulated inflammatory "
+                "effects subside. Continue hemodynamic support as the patient recovers. "
+                "In practice, obtain blood cultures without delaying antibiotics, and give antibiotics "
+                "immediately (ideally within 1 hour for shock). Shock can persist after both."
             ),
-            check_requirements=require_crisis_stopped(
-                "sepsis",
-                "Select Stop sepsis to model recovery after infection treatment",
-            ),
-            target_tab="Events",
-            target_section="circulation",
+            check_requirements=require_crisis_stopped("sepsis", "Request surgical source control"),
         ),
         create_reassess_step(
             "sepsis",
-            "Select Stop sepsis to model recovery after infection treatment",
+            "Request surgical source control",
             "Infection treatment underway",
             "Reassess the response before giving more fluid and wean vasopressors as perfusion improves. "
             "Lactate, urine output, examination, and bedside ultrasound inform reassessment in practice."
@@ -107,6 +91,16 @@ def create_sepsis_response() -> Scenario:
     return Scenario(
         id="sepsis_response",
         name="Septic shock response",
-        description="Recognize and manage early distributive septic shock.",
+        briefing=CRISIS_BRIEFING,
         steps=steps,
+        events=(CaseEvent(
+            "sepsis", CRISIS_ONSET_S,
+            "The surgeon reports purulent contamination. Blood pressure is falling.", start,
+        ),),
+        actions=(CaseAction(
+            "source_control", "Request surgical source control",
+            lambda engine: engine.stop_sepsis(), lambda engine: engine.sepsis.active,
+            completed_label="Source control requested",
+        ),),
+        outcomes=crisis_outcomes("sepsis", fluids),
     )

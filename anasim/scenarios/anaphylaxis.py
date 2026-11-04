@@ -1,12 +1,18 @@
 """Anaphylaxis response scenario."""
 
 from .base import (
+    CRISIS_BRIEFING,
+    CRISIS_ONSET_S,
+    CaseAction,
+    CaseEvent,
+    CaseOutcome,
     Requirement,
     Scenario,
     ScenarioStep,
-    bolus_given_this_step,
+    bolus_given_in_case,
+    create_observe_step,
+    crisis_outcomes,
     require_all,
-    require_crisis_started,
     require_crisis_stopped,
     require_fluid_bolus,
     require_infusion_started,
@@ -24,34 +30,28 @@ def _require_epinephrine_started() -> Requirement:
     )
 
     def check(engine) -> tuple[bool, str]:
-        if bolus_given_this_step(engine, "epi", event_name="anaphylaxis"):
+        if bolus_given_in_case(engine, "epi", event_name="anaphylaxis"):
             return True, ""
         return infusion_check(engine)
     return check
 
 
 def create_anaphylaxis_scenario() -> Scenario:
+    epinephrine = _require_epinephrine_started()
+    fluids = require_fluid_bolus(
+        1000.0,
+        labels=("crystalloid",),
+        fail_prefix="Start crystalloid resuscitation",
+        event_name="anaphylaxis",
+    )
     steps = [
-        ScenarioStep(
-            id="RECOGNIZE",
-            title="Recognize anaphylaxis",
-            instruction=(
-                "Select <b>Start anaphylaxis</b> to model a severe perioperative reaction. "
-                "Look for abrupt hypotension and bronchospasm with rising airway pressure; "
-                "HR and skin signs vary. Call for help, stop suspected triggers, "
-                "and pause the procedure while treatment begins."
-            ),
-            check_requirements=require_crisis_started(
-                "anaphylaxis",
-                "Start anaphylaxis in Events",
-            ),
-            target_tab="Events",
-            target_section="circulation",
-        ),
+        create_observe_step("anaphylaxis"),
         ScenarioStep(
             id="EPINEPHRINE",
             title="Give epinephrine",
             instruction=(
+                "Abrupt hypotension and bronchospasm with rising airway pressure suggest anaphylaxis; "
+                "HR and skin signs vary. Call for help and pause the procedure.<br><br>"
                 "Give <b>epinephrine 50-100 mcg IV</b> promptly for this severe reaction "
                 "with IV access and continuous monitoring. Repeat and titrate to response; "
                 "start an infusion if repeated boluses are needed (for example, "
@@ -62,7 +62,7 @@ def create_anaphylaxis_scenario() -> Scenario:
                 "and consider an amnestic agent such as midazolam."
             ),
             check_requirements=require_all(
-                _require_epinephrine_started(),
+                epinephrine,
                 require_oxygen_flow(),
                 require_tracheal_ventilation,
             ),
@@ -76,41 +76,46 @@ def create_anaphylaxis_scenario() -> Scenario:
                 "reaction, alongside epinephrine. Reassess and repeat as needed; "
                 "vasodilation and capillary leak can require substantial volume."
             ),
-            check_requirements=require_fluid_bolus(
-                1000.0,
-                labels=("crystalloid",),
-                fail_prefix="Start crystalloid resuscitation",
-                event_name="anaphylaxis",
-            ),
+            check_requirements=fluids,
             target_tab="Fluids",
         ),
         ScenarioStep(
             id="STABILIZE",
             title="Stabilize and reassess",
             instruction=(
-                "Select <b>Stop anaphylaxis</b> to model the reaction subsiding after "
+                "Select <b>Stop suspected trigger</b> to model the reaction subsiding after "
                 "trigger removal and treatment. Continue support and confirm <b>MAP ≥ 65 mmHg</b>; "
                 "reassess oxygenation, capnography, and airway pressure. "
                 "Persistent hypotension or bronchospasm requires further epinephrine, fluids, and escalation. "
                 "In practice, arrange tryptase sampling and allergy follow-up."
             ),
             check_requirements=require_all(
-                require_crisis_stopped(
-                    "anaphylaxis",
-                    "Stop anaphylaxis event",
-                ),
+                require_crisis_stopped("anaphylaxis", "Stop the suspected trigger"),
                 require_map_at_least(),
                 require_oxygenation(),
                 require_tracheal_ventilation,
             ),
-            target_tab="Events",
-            target_section="circulation",
         ),
     ]
 
     return Scenario(
         id="anaphylaxis_response",
         name="Anaphylaxis management",
-        description="Recognize and manage intraoperative anaphylaxis.",
+        briefing=CRISIS_BRIEFING,
         steps=steps,
+        events=(CaseEvent(
+            "anaphylaxis", CRISIS_ONSET_S,
+            "Shortly after an antibiotic dose, blood pressure falls and airway pressure rises.",
+            lambda engine: engine.start_anaphylaxis(),
+        ),),
+        actions=(CaseAction(
+            "stop_trigger", "Stop suspected trigger",
+            lambda engine: engine.stop_anaphylaxis(), lambda engine: engine.anaphylaxis.active,
+            completed_label="Suspected trigger stopped",
+        ),),
+        outcomes=(
+            CaseOutcome("epinephrine", "Epinephrine started", lambda engine: epinephrine(engine)[0],
+                        "Give epinephrine promptly for severe perioperative anaphylaxis.", milestone=True),
+            *crisis_outcomes("anaphylaxis", fluids),
+        ),
     )

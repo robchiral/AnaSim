@@ -15,7 +15,7 @@ from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
 
 from .drug_registry import DRUG_REGISTRY
 from .state import AirwayType, SimulationState
-from .utils import clamp
+from .utils import clamp, clamp01, hill_function
 
 if TYPE_CHECKING:
     from anasim.monitors.arterial import ArterialPressureSample
@@ -113,6 +113,14 @@ def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY
         ce_ketamine=state.ketamine_ce,
         ce_lidocaine=state.lidocaine_ce,
         intensity=intensity,
+    )
+
+
+def central_muscle_strength(engine: SimulationEngine) -> float:
+    """Remaining central respiratory/airway strength after either muscle blocker."""
+    block = hill_function(engine.tof_pd.ce_central, engine.resp.c50_nmba, engine.resp.gamma_nmba)
+    return clamp01(1.0 - block) * succinylcholine_twitch_fraction(
+        engine.state.succinylcholine_ce, central=True,
     )
 
 

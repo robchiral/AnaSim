@@ -17,6 +17,7 @@ from .projection import (
     PhysiologyStepState,
     build_snapshot_from_models,
     cardiovascular_response_fractions,
+    central_muscle_strength,
     loss_of_response,
     project_runtime_physiology,
     step_respiration,
@@ -62,6 +63,10 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
     check_cardiac_arrest(engine, dt)
     if disturbance_complete and engine.disturbance_active:
         engine.stop_disturbance()
+    if engine.intubation_start_time is not None and engine.intubation_stimulus.is_complete(
+        state.time + dt - engine.intubation_start_time,
+    ):
+        engine.intubation_start_time = None
 
 
 def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_active: bool,
@@ -108,21 +113,28 @@ def step_temperature(engine: SimulationEngine, dt: float) -> None:
 
 
 def stimulus_effects(engine: SimulationEngine, dt: float) -> DisturbanceEffects:
-    """Drug-attenuated effects of the active stimulation profile over one step."""
-    spec = engine.disturbances.spec
-    if not engine.disturbance_active or spec is None:
+    """Drug-attenuated effects of surgical and intubation stimulation over one step."""
+    if not engine.disturbance_active and engine.intubation_start_time is None:
         return DisturbanceEffects()
-    t_rel = max(0.0, engine.state.time - engine.disturbance_start_time)
-    stimulus = engine.disturbances.compute_average(t_rel, t_rel + dt)
-    # Movement/EEG arousal and cardiovascular attenuation are separate endpoints.
-    arousal = 1.0 - engine._tol_current
-    pressure, hr = cardiovascular_response_fractions(engine, spec.sympathetic_intensity)
-    return DisturbanceEffects(
-        bis=stimulus.bis * arousal,
-        svr=stimulus.svr * pressure + spec.tonic_svr(t_rel + 0.5 * dt, 1000.0 * engine.hemo.tpr),
-        sv=stimulus.sv * pressure,
-        hr=stimulus.hr * hr,
-    )
+    active = []
+    if engine.disturbance_active:
+        active.append((engine.disturbances, engine.disturbance_start_time))
+    if engine.intubation_start_time is not None:
+        active.append((engine.intubation_stimulus, engine.intubation_start_time))
+    bis = svr = sv = heart_rate = 0.0
+    for disturbance, started in active:
+        spec = disturbance.spec
+        if spec is None:
+            continue
+        t_rel = max(0.0, engine.state.time - started)
+        stimulus = disturbance.compute_average(t_rel, t_rel + dt)
+        # Movement/EEG arousal and cardiovascular attenuation are separate endpoints.
+        pressure, hr = cardiovascular_response_fractions(engine, spec.sympathetic_intensity)
+        bis += stimulus.bis * (1.0 - engine._tol_current)
+        svr += stimulus.svr * pressure + spec.tonic_svr(t_rel + 0.5 * dt, 1000.0 * engine.hemo.tpr)
+        sv += stimulus.sv * pressure
+        heart_rate += stimulus.hr * hr
+    return DisturbanceEffects(bis=bis, svr=svr, sv=sv, hr=heart_rate)
 
 
 def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects:
@@ -274,9 +286,8 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
         and engine.disturbances.stimulates_airway(state.time - engine.disturbance_start_time)
     )
 
-    nmba_effect = hill_function(engine.tof_pd.ce_central, engine.resp.c50_nmba, engine.resp.gamma_nmba)
     depolarizing_strength = succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True)
-    muscle_factor = clamp01(1.0 - nmba_effect) * depolarizing_strength
+    muscle_factor = central_muscle_strength(engine)
 
     airway_tuning = engine.airway_tuning
     laryng_target = 0.0

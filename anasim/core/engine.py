@@ -51,11 +51,14 @@ from .action_log import (
     ACTION_EVENT_STOP,
     ACTION_FGF,
     ACTION_FLUID,
+    ACTION_INTUBATION_ATTEMPT,
     ACTION_OXYGEN_SUPPLY,
     ACTION_POSITION,
     ACTION_VAPORIZER,
+    ACTION_VENTILATION,
     ActionLog,
 )
+from .clinical_actions import ActionFeedback, check_intubation
 from .drug_api import DrugControllerMixin
 from .drug_registry import DRUG_REGISTRY, get_drug_spec, resolve_bolus_drug
 from .initialization import initialize_engine_state
@@ -107,6 +110,9 @@ class SimulationEngine(DrugControllerMixin):
         self.disturbance_profile = config.disturbance_profile
         self.disturbance_active = bool(config.disturbance_profile)
         self.disturbance_start_time = 0.0
+        # Learner intubation adds a transient without replacing ongoing surgery.
+        self.intubation_stimulus = Disturbances("stim_intubation_pulse")
+        self.intubation_start_time: float | None = None
         self.alarms = AlarmSystem()
 
         self.output_buffer: deque[WaveformSample] = deque()
@@ -416,6 +422,7 @@ class SimulationEngine(DrugControllerMixin):
         self.stop_anaphylaxis()
         self.stop_sepsis()
         self.stop_disturbance()
+        self.intubation_start_time = None
 
     def start_disturbance(self, profile: str):
         """Start a stimulation profile."""
@@ -441,7 +448,24 @@ class SimulationEngine(DrugControllerMixin):
         """Set the forced-air warmer target (°C); 0 turns it off."""
         self.state.bair_hugger_target = target_c
 
+    def attempt_intubation(self) -> ActionFeedback | None:
+        """Attempt learner intubation, including stimulation even if placement fails."""
+        if self.state.airway_mode == AirwayType.ETT:
+            return None
+        feedback = check_intubation(self)
+        failed = feedback is not None and feedback.blocked
+        self.intubation_start_time = self.state.time
+        self.actions.record(
+            self.state.time, ACTION_INTUBATION_ATTEMPT, label="failed" if failed else "placed",
+        )
+        if not failed:
+            self.set_airway_mode("ETT")
+            if self.bag_mask_active:
+                self.set_bag_mask_ventilation(False)
+        return feedback
+
     def set_airway_mode(self, mode_str: str):
+        """Set the connection directly; learner tube placement uses attempt_intubation."""
         try:
             self.state.airway_mode = AirwayType(mode_str)
         except ValueError as exc:
@@ -555,6 +579,8 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_vent_power(self, on: bool):
         """Start or stop the ventilator; its settings persist while it is off."""
+        if self.vent.is_on != bool(on):
+            self.actions.record(self.state.time, ACTION_VENTILATION, label="on" if on else "off")
         self.vent.is_on = bool(on)
 
     def set_vent_settings(self, rr: float, vt: float, peep: float, ie: str,

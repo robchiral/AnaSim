@@ -68,6 +68,7 @@ export class Controls {
     this.history = [...info.medication_history];
     this.send = async (name, args) => {
       const result = await send(name, args);
+      if (!this.destroyed && result && "feedback" in result) this.showClinicalFeedback(result.feedback);
       if (!this.destroyed && result?.medication) {
         this.history.push(result.medication);
         this.history = this.history.slice(-50);
@@ -77,11 +78,15 @@ export class Controls {
       return result;
     };
     this.state = null;
+    $("clinical-feedback-dismiss").onclick = () => this.send("dismiss_feedback");
     this.bindTabs();
     this.bindMachine();
     this.buildDrugs(info.drugs);
     this.bindFluids();
     this.bindEvents(info);
+    // Cases start their own events.
+    this.tabs.find((tab) => tab.dataset.tab === "Events").hidden = Boolean(info.scenario);
+    document.querySelector(".tabs").classList.toggle("case-tabs", Boolean(info.scenario));
     this.showMedicationHistory();
   }
 
@@ -471,10 +476,6 @@ export class Controls {
     $("c-sepsis").onclick = () => this.send("sepsis", { active: !this.state.sepsis });
   }
 
-  openEventSection(name) {
-    this.eventSections.get(name).section.open = true;
-  }
-
   syncEventSection(name, states) {
     const { section, summary, output } = this.eventSections.get(name);
     const active = states.length > 0;
@@ -491,8 +492,16 @@ export class Controls {
 
   // --- Sync from snapshots ------------------------------------------
 
+  showClinicalFeedback(feedback) {
+    const panel = $("clinical-feedback");
+    panel.hidden = !feedback;
+    panel.dataset.level = feedback?.level ?? "";
+    setText($("clinical-feedback-text"), feedback?.message ?? "");
+  }
+
   sync(c) {
     this.state = c;
+    this.showClinicalFeedback(c.clinical_feedback);
 
     for (const button of $("c-airway").querySelectorAll("button")) {
       setPressed(button, button.dataset.value === c.airway);

@@ -189,7 +189,7 @@ def test_ventilator_display_and_disconnection_alarm():
 def test_loops_retain_the_flow_boundary_across_modes(mode):
     session = WebSession({**PATIENT, "mode": "awake"})
     session.engine.resp.hcvr_slope_baseline = 0.0
-    cmd(session, "airway", mode="ETT")
+    cmd(session, "airway", mode="Mask")
     cmd(session, "vent", mode=mode or "VCV", rr=6, peep=5, p_insp=12, p_support=5)
     cmd(session, "vent_power", on=mode is not None)
     cmd(session, "run", running=True)
@@ -355,7 +355,7 @@ def test_simv_shows_untriggered_breaths_in_numerics_and_loops(mode):
     engine = session.engine
     engine.resp.hcvr_slope_baseline = 0.0
     engine.resp.rr_0, engine.resp.vt_0 = 18.0, 250.0
-    cmd(session, "airway", mode="ETT")
+    cmd(session, "airway", mode="Mask")
     cmd(session, "vent", mode=mode, rr=3, p_insp=8, p_support=5, trigger=20, t_insp=0.5)
     cmd(session, "vent_power", on=True)
     cmd(session, "run", running=True)
@@ -394,9 +394,6 @@ def test_page_reads_only_snapshot_fields_and_commands_the_session_provides():
     assert {name for name in commands if not hasattr(session, f"_cmd_{name}")} == set()
     page = (assets / "index.html").read_text()
     tabs = set(re.findall(r'data-tab="([^"]+)"', page))
-    sections = set(re.findall(r'data-event="([^"]+)"', page))
     for spec in SCENARIO_REGISTRY:
         for step in spec.builder():
             assert step.target_tab is None or step.target_tab in tabs
-            if step.target_section is not None:
-                assert step.target_tab == "Events" and step.target_section in sections

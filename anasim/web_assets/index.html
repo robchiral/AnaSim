@@ -121,9 +121,10 @@
           <legend>Session type</legend>
           <div class="choice-group">
             <label class="choice"><input type="radio" name="session" value="open" checked> Open simulation</label>
-            <label class="choice"><input type="radio" name="session" value="guided"> Guided scenario</label>
+            <label class="choice"><input type="radio" name="session" value="guided"> Guided case</label>
+            <label class="choice"><input type="radio" name="session" value="independent"> Independent case</label>
           </div>
-          <label class="row" id="scenario-row" hidden>Scenario <select name="scenario_id"></select></label>
+          <label class="row" id="scenario-row" hidden>Case <select name="scenario_id"></select></label>
           <label class="choice" title="Use target controls and TCI maintenance starts. Manual rates remain available.">
             <input type="checkbox" name="tci_enabled"> Allow TCI</label>
         </fieldset>
@@ -328,16 +329,27 @@
           <span class="scenario-name" id="scenario-name"></span>
           <span class="scenario-count" id="scenario-count"></span>
         </div>
-        <div class="scenario-body">
-          <div>
-            <h2 id="step-title"></h2>
-            <p id="step-instruction"></p>
+        <p id="case-briefing" hidden></p>
+        <p id="case-observation" class="case-observation" role="status" hidden></p>
+        <div id="case-guide">
+          <div class="scenario-body">
+            <div>
+              <h2 id="step-title"></h2>
+              <p id="step-instruction"></p>
+            </div>
+          </div>
+          <div class="scenario-foot">
+            <span class="step-status" id="step-status"></span>
+            <button type="button" class="btn outlined small" id="step-target"></button>
+            <button type="button" class="btn outlined small" id="step-next" disabled>Continue</button>
           </div>
         </div>
-        <div class="scenario-foot">
-          <span class="step-status" id="step-status"></span>
-          <button type="button" class="btn outlined small" id="step-target"></button>
-          <button type="button" class="btn outlined small" id="step-next" disabled>Continue</button>
+        <div id="case-actions" class="case-actions"></div>
+        <p id="case-hint-text" class="case-hint" hidden></p>
+        <div class="case-tools">
+          <button type="button" class="btn outlined small" id="case-hint" hidden>Hint</button>
+          <button type="button" class="btn outlined small" id="case-end">End case and review</button>
+          <button type="button" class="btn outlined small" id="case-review" hidden>Review case</button>
         </div>
       </section>
       <nav class="tabs" role="tablist">
@@ -347,6 +359,11 @@
         <button type="button" role="tab" data-tab="Events" aria-selected="false">Events</button>
       </nav>
 
+      <section id="clinical-feedback" class="clinical-feedback" role="status" aria-live="polite" hidden>
+        <p id="clinical-feedback-text"></p>
+        <button type="button" class="btn outlined small" id="clinical-feedback-dismiss">Dismiss</button>
+      </section>
+
       <div class="tab-panel" data-panel="Machine" role="tabpanel">
         <fieldset class="group">
           <legend>Airway</legend>
@@ -355,6 +372,9 @@
             <button type="button" data-value="Mask">Facemask</button>
             <button type="button" data-value="ETT">Tracheal tube</button>
           </div>
+          <label class="inline" id="c-position-row" hidden>Maternal position
+            <select id="c-position"><option value="supine">Supine</option><option value="left_lateral">Left lateral</option></select>
+          </label>
         </fieldset>
 
         <fieldset class="group">
@@ -465,9 +485,6 @@
               <button type="button" class="btn toggle t-danger" id="c-hemorrhage" aria-pressed="false">Start bleeding</button>
             </div>
             <label class="inline">Cardiac rhythm <select id="c-rhythm"></select></label>
-            <label class="inline" id="c-position-row" hidden>Maternal position
-              <select id="c-position"><option value="supine">Supine</option><option value="left_lateral">Left lateral</option></select>
-            </label>
             <button type="button" class="btn toggle t-warning full" id="c-anaphylaxis" aria-pressed="false">Start anaphylaxis</button>
             <button type="button" class="btn toggle t-danger full" id="c-sepsis" aria-pressed="false">Start sepsis</button>
           </div>
@@ -522,6 +539,13 @@
     </aside>
   </main>
 </div>
+
+<dialog id="case-review-dialog" aria-labelledby="case-review-title">
+  <header class="case-review-head"><h2 id="case-review-title"></h2><button type="button" class="btn outlined small" id="case-review-close">Close</button></header>
+  <p id="case-review-summary"></p>
+  <div id="case-review-content"></div>
+  <button type="button" class="btn primary" id="case-new-session">New session</button>
+</dialog>
 
 <dialog id="dialog">
   <h2 id="dialog-title"></h2>

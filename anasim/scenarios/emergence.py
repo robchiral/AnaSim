@@ -7,11 +7,12 @@ from anasim.core.projection import sync_pk_state
 from anasim.core.state import AirwayType
 
 from .base import (
+    CaseOutcome,
     ControlTab,
     Requirement,
     Scenario,
     ScenarioStep,
-    action_taken_this_step,
+    action_taken_in_case,
     join_messages,
     monitor_value,
     neuromuscular_response,
@@ -20,6 +21,7 @@ from .base import (
     require_maintenance_depth,
     require_map_at_least,
     require_oxygen_flow,
+    stability_outcome,
 )
 
 # Rocuronium 0.6 mg/kg at induction leaves a TOF count of 2 at the start.
@@ -52,23 +54,23 @@ def _require_normocapnia(engine) -> tuple[bool, str]:
 def _require_agents_stopped_balanced() -> Requirement:
     """Check volatile agent and remifentanil stopped, with high fresh gas flow."""
     opioid_check = require_infusions_stopped(
-        "remi", fail_message="Stop remifentanil for this objective"
+        "remi", fail_message="Stop remifentanil for this case"
     )
 
     def check(engine) -> tuple[bool, str]:
         gas_off = not engine.circuit.vaporizer_on or engine.circuit.vaporizer_setting < 0.1
         high_flow = engine.circuit.fgf_total() > 6.0
-        vaporizer_records = engine.actions.since_step(ACTION_VAPORIZER)
+        vaporizer_records = engine.actions.since_case(ACTION_VAPORIZER)
         vaporizer_stopped = any(record.amount < 0.1 for record in vaporizer_records)
-        flow_changed = action_taken_this_step(engine, ACTION_FGF)
+        flow_changed = action_taken_in_case(engine, ACTION_FGF)
         opioid_stopped, opioid_message = opioid_check(engine)
         if gas_off and high_flow and vaporizer_stopped and flow_changed and opioid_stopped:
             return True, ""
         msgs = []
         if not gas_off or not vaporizer_stopped:
-            msgs.append("Turn vaporizer off for this objective")
+            msgs.append("Turn vaporizer off for this case")
         if not high_flow or not flow_changed:
-            msgs.append("Set FGF above 6 L/min for this objective")
+            msgs.append("Set FGF above 6 L/min for this case")
         if not opioid_stopped:
             msgs.append(opioid_message)
         return False, join_messages(msgs)
@@ -129,13 +131,37 @@ def _require_extubation_readiness(engine) -> tuple[bool, str]:
 
 
 def _require_tube_removed(engine) -> tuple[bool, str]:
-    """Require tube removal during this objective."""
+    """Require tube removal during this case."""
     extubated = engine.state.airway_mode in (AirwayType.MASK, AirwayType.NONE)
-    airway_action = action_taken_this_step(
+    airway_action = action_taken_in_case(
         engine, ACTION_AIRWAY, AirwayType.MASK.value, AirwayType.NONE.value,
     )
     met = extubated and airway_action
-    return met, "" if met else "Select Facemask or Disconnected for this objective"
+    return met, "" if met else "Select Facemask or Disconnected for this case"
+
+
+def _extubated_and_breathing(engine) -> bool:
+    return (
+        engine.state.airway_mode != AirwayType.ETT
+        and not engine.resp.state.apnea
+        and not (engine.vent.is_on or engine.bag_mask_active)
+        and monitor_value(engine, "bis") > 80
+    )
+
+
+# Readiness counts at the moment of tube removal, not at an earlier favorable moment.
+OUTCOMES = (
+    CaseOutcome("block", "Block recovery confirmed at tube removal",
+                lambda engine: _require_block_recovery(engine)[0],
+                "Confirm quantitative neuromuscular recovery before extubation.", on_action="extubation"),
+    CaseOutcome("readiness", "Readiness established at tube removal",
+                lambda engine: _require_extubation_readiness(engine)[0],
+                "Assess spontaneous ventilation, wakefulness, and oxygenation before removing the tube.",
+                on_action="extubation"),
+    CaseOutcome("extubation", "Tube removed with spontaneous ventilation", _extubated_and_breathing,
+                "Establish adequate spontaneous breathing and wakefulness before completing emergence."),
+    stability_outcome("Continue respiratory and circulatory support during recovery."),
+)
 
 
 def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Scenario:
@@ -159,7 +185,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             "Observe the return of spontaneous breathing as the drug effect decreases."
         )
         stop_agents_check = require_infusions_stopped(
-            "propofol", "remi", fail_message="Stop propofol and remifentanil for this objective",
+            "propofol", "remi", fail_message="Stop propofol and remifentanil for this case",
         )
         stop_agents_tab = "Medications"
 
@@ -268,7 +294,8 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
     return Scenario(
         id=scenario_id,
         name="Emergence sequence",
-        description="Learn the emergence and extubation sequence, including reversal of residual block.",
+        briefing="Surgery is complete. Awaken the patient, prepare for extubation, and establish recovery care.",
         steps=steps,
+        outcomes=OUTCOMES,
         setup_engine=_residual_block(rocuronium_minutes),
     )

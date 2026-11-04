@@ -10,6 +10,12 @@ import tempfile
 from collections import deque
 
 from anasim import __version__
+from anasim.core.clinical_actions import (
+    ActionFeedback,
+    check_airway_removal,
+    check_drug_administration,
+    check_ventilation_withdrawal,
+)
 from anasim.core.drug_registry import get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
@@ -21,6 +27,7 @@ from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import list_disturbance_profiles
 from anasim.scenarios import SCENARIO_REGISTRY
 from anasim.scenarios.base import Scenario
+from anasim.scenarios.runtime import CaseRun
 
 PATIENT_FIELDS = (
     "age",
@@ -60,6 +67,13 @@ LOOP_INTERVAL_S = 0.03  # Spacing of loop points, about 170 per 5-second breath
 FLUIDS = {"crystalloid": "give_fluid", "albumin": "give_albumin", "blood": "give_blood"}
 
 SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
+# Instructor event controls; cases start their own events and offer case actions instead.
+EVENT_COMMANDS = frozenset({
+    "hemorrhage", "anaphylaxis", "sepsis", "stop_events", "rhythm", "obstruction",
+    "bronchospasm", "auto_laryngospasm", "disturbance", "disturbance_profile", "oxygen_supply",
+})
+# Commands still accepted after a case ends.
+ENDED_CASE_COMMANDS = frozenset({"csht", "dismiss_feedback", "case_finish"})
 
 LoopPoint = tuple[float | None, float | None, float | None]  # Paw, flow, volume above breath start
 
@@ -101,12 +115,17 @@ class WebSession:
 
     def __init__(self, params: dict, recordings_dir: str | None = None, *, retain_recordings: bool = False):
         params = dict(params)
-        unknown = set(params) - set(PATIENT_FIELDS) - set(CONFIG_FIELDS) - {"scenario_id"}
+        unknown = set(params) - set(PATIENT_FIELDS) - set(CONFIG_FIELDS) - {"scenario_id", "practice_mode"}
         if unknown:
             raise ValueError(f"Unknown session setting(s): {', '.join(sorted(unknown))}")
 
         spec = None
         scenario_id = params.pop("scenario_id", None)
+        practice_mode = params.pop("practice_mode", "guided")
+        if practice_mode not in {"guided", "independent"}:
+            raise ValueError("practice_mode must be 'guided' or 'independent'")
+        if not scenario_id and practice_mode != "guided":
+            raise ValueError("Independent practice requires a case")
         if scenario_id:
             spec = SCENARIOS[scenario_id]
             params.update(mode=spec.start_mode, maint_type=spec.maint_type)
@@ -123,6 +142,7 @@ class WebSession:
         self.ended = False
         self.lagging = False
         self.notice: str | None = None
+        self._clinical_feedback: dict | None = None
         self._download: dict[str, str] | None = None
         self._accumulator = 0.0
         self._last_wave_time = -math.inf
@@ -143,6 +163,7 @@ class WebSession:
         self._medication_sequence = 0
 
         self.scenario: Scenario | None = None
+        self.case_run: CaseRun | None = None
         self.step_index = 0
         self.step_met = False
         self.step_status = ""
@@ -150,7 +171,9 @@ class WebSession:
         if spec is not None:
             self.scenario = spec.builder()
             self.scenario.prepare(self.engine)
-            self._begin_step()
+            self.case_run = CaseRun(self.scenario, self.engine, practice_mode)
+            if practice_mode == "guided":
+                self._begin_step()
         self._trend_history: deque[dict] = deque(maxlen=TREND_WINDOW_S + 1)
         self._trend_pending: deque[dict] = deque(maxlen=TREND_WINDOW_S + 1)
         self._next_trend_time = math.floor(self.engine.state.time) + 1
@@ -199,9 +222,9 @@ class WebSession:
             "rhythms": [rhythm.value for rhythm in RhythmType],
             "vent_modes": MODES,
             "ie_ratios": IE_RATIOS,
-            "scenario": None if self.scenario is None else {
-                "name": self.scenario.name,
-                "description": self.scenario.description,
+            "scenario": None if self.scenario is None or self.case_run is None else {
+                "name": self.scenario.name if self.case_run.mode == "guided" else "Independent case",
+                "mode": self.case_run.mode,
                 "total": len(self.scenario),
             },
         })
@@ -225,6 +248,8 @@ class WebSession:
             steps = 0
             while self._accumulator >= sim_step and steps < max_steps and not engine.state.cardiac_arrest:
                 try:
+                    if self.case_run is not None:
+                        self.case_run.before_step()
                     engine.step(sim_step)
                 except RecordingError as error:
                     self._pause()
@@ -232,6 +257,10 @@ class WebSession:
                     saved = "; the recorded part was downloaded" if self._download else ""
                     self.notice = f"{error}. The CSV is incomplete{saved}. The simulation is paused."
                     break
+                finally:
+                    # The model step completes before a recording write can fail.
+                    if self.case_run is not None:
+                        self.case_run.observe(sim_step)
                 self._accumulator -= sim_step
                 steps += 1
                 if engine.state.time >= self._next_trend_time - 1e-9:
@@ -248,6 +277,8 @@ class WebSession:
             if engine.state.cardiac_arrest:
                 self.ended = True
                 self._pause()
+                if self.case_run is not None:
+                    self._finish_case("cardiac_arrest")
 
     def close(self) -> None:
         """Pause and finish any recording before disconnect or shutdown."""
@@ -484,6 +515,7 @@ class WebSession:
         vent = engine.vent.settings
         return {
             "airway": engine.state.airway_mode.value,
+            "clinical_feedback": self._clinical_feedback,
             "position": engine.hemo.position,
             "fgf": {"o2": circuit.fgf_o2, "air": circuit.fgf_air, "n2o": circuit.fgf_n2o},
             "o2_connected": circuit.oxygen_supply_connected,
@@ -523,16 +555,15 @@ class WebSession:
     # --- Scenario -------------------------------------------------------
 
     def _begin_step(self):
-        """Scope action objectives to what the learner does from now on."""
         self.step_met = False
         self.step_status = ""
         self.step_effect_applied = False
-        scenario = self.scenario
-        if scenario is not None and self.step_index < len(scenario):
-            step = scenario[self.step_index]
-            self.engine.actions.begin_step(step.id, self.engine.state.time)
 
     def _update_scenario(self):
+        if self.case_run is not None:
+            self.case_run.observe()
+            if self.case_run.mode == "independent" or self.case_run.report is not None:
+                return
         if self.scenario is None or self.step_index >= len(self.scenario):
             return
         step = self.scenario[self.step_index]
@@ -544,19 +575,19 @@ class WebSession:
             step.on_met(self.engine)
 
     def _scenario_state(self):
-        if self.scenario is None:
+        if self.scenario is None or self.case_run is None:
             return None
-        if self.step_index >= len(self.scenario):
-            return {"index": self.step_index, "complete": True}
+        state = self.case_run.snapshot()
+        if self.case_run.mode == "independent" or state["complete"]:
+            return state
         step = self.scenario[self.step_index]
-        return {
+        return {**state,
             "index": self.step_index,
             "complete": False,
             "id": step.id,
             "title": step.title,
             "instruction": step.instruction_for(self.engine),
             "target_tab": step.target_tab,
-            "target_section": step.target_section,
             "met": self.step_met,
             "status": "" if self.step_met else self.step_status,
         }
@@ -565,10 +596,21 @@ class WebSession:
 
     def command(self, name: str, args_json: str = "{}") -> str:
         """Apply one learner control; return its JSON result (usually null)."""
+        args = json.loads(args_json or "{}")
+        if self.case_run is not None:
+            if self.case_run.report is not None:
+                stopping = (name == "record" and not args.get("active")) or (name == "run" and not args.get("running"))
+                if not (name in ENDED_CASE_COMMANDS or stopping):
+                    raise ValueError("The case has ended. Start a new session to continue.")
+            if name in EVENT_COMMANDS:
+                raise ValueError("Case events are controlled by the case. Use the available case actions.")
         handler = getattr(self, f"_cmd_{name}", None)
         if handler is None:
             raise ValueError(f"Unknown command: {name!r}")
-        return json.dumps(handler(**json.loads(args_json or "{}")))
+        result = handler(**args)
+        if self.case_run is not None:
+            self.case_run.observe(force=True)
+        return json.dumps(result)
 
     def _cmd_run(self, running: bool):
         if running and not self.ended:
@@ -583,9 +625,37 @@ class WebSession:
         self._reset_speed_average()
 
     def _cmd_airway(self, mode: str):
-        if mode == "ETT" and self.engine.bag_mask_active:
-            self.engine.set_bag_mask_ventilation(False)
+        target = AirwayType(mode)
+        if target == AirwayType.ETT:
+            return self._clinical_result(self.engine.attempt_intubation())
+        feedback = check_airway_removal(self.engine) if self.engine.state.airway_mode == AirwayType.ETT else None
+        if self.case_run is not None and self.engine.state.airway_mode == AirwayType.ETT:
+            self.case_run.record_transition("extubation")
         self.engine.set_airway_mode(mode)
+        return self._clinical_result(feedback)
+
+    def _clinical_result(self, feedback: ActionFeedback | None, receipt: dict | None = None):
+        """Record feedback for the debrief and return what the browser shows now."""
+        if feedback is not None and self.case_run is not None:
+            self.case_run.record_safety(feedback)
+            if self.case_run.mode == "independent" and not feedback.blocked:
+                feedback = None
+        if feedback is None:
+            if self._clinical_feedback is not None:
+                self._clinical_feedback = None
+                return {**(receipt or {}), "feedback": None}
+            return receipt
+        self._clinical_feedback = {
+            "code": feedback.code,
+            "level": "blocked" if feedback.blocked else "warning",
+            "message": feedback.message,
+            "time": self.engine.state.time,
+        }
+        return {**(receipt or {}), "feedback": self._clinical_feedback}
+
+    def _cmd_dismiss_feedback(self):
+        self._clinical_feedback = None
+        return {"feedback": None}
 
     def _cmd_fgf(self, o2: float, air: float, n2o: float):
         self.engine.set_fgf(float(o2), float(air), float(n2o))
@@ -596,16 +666,25 @@ class WebSession:
     def _cmd_vaporizer(self, percent: float):
         self.engine.set_vaporizer(float(percent))
 
+    # Bag-mask and the ventilator are mutually exclusive.
     def _cmd_bag_mask(self, active: bool):
-        # Bag-mask and the ventilator are mutually exclusive.
+        assisted = self.engine.vent.is_on or self.engine.bag_mask_active
         if active and self.engine.vent.is_on:
             self.engine.set_vent_power(False)
         self.engine.set_bag_mask_ventilation(active)
+        return self._assistance_result(assisted)
 
     def _cmd_vent_power(self, on: bool):
+        assisted = self.engine.vent.is_on or self.engine.bag_mask_active
         if on and self.engine.bag_mask_active:
             self.engine.set_bag_mask_ventilation(False)
         self.engine.set_vent_power(on)
+        return self._assistance_result(assisted)
+
+    def _assistance_result(self, was_assisted: bool):
+        """Check apnea when the last source of assisted ventilation stops."""
+        stopped = was_assisted and not (self.engine.vent.is_on or self.engine.bag_mask_active)
+        return self._clinical_result(check_ventilation_withdrawal(self.engine) if stopped else None)
 
     def _cmd_vent(self, **fields):
         unknown = set(fields) - set(VENT_FIELDS)
@@ -619,11 +698,13 @@ class WebSession:
         rate = float(rate)
         if not math.isfinite(rate):
             raise ValueError("Infusion rate must be finite")
-        self.engine.set_drug_rate(key, rate)
         spec = get_drug_spec(key)
+        previous = self.engine.get_drug_state(key)["rate"]
+        self.engine.set_drug_rate(key, rate)
         applied = self.engine.get_drug_state(key)["rate"]
+        feedback = check_drug_administration(self.engine, spec.key) if applied > previous else None
         text = f"{spec.generic_name} infusion {applied:g} {spec.rate_unit}" if applied else f"{spec.generic_name} infusion stopped"
-        return self._medication_receipt(spec.key, text)
+        return self._clinical_result(feedback, self._medication_receipt(spec.key, text))
 
     def _cmd_drug_target(self, key: str, target: float | None):
         if not self.engine.config.tci_enabled:
@@ -632,22 +713,27 @@ class WebSession:
             target = float(target)
             if not math.isfinite(target):
                 raise ValueError("TCI target must be finite")
-        self.engine.set_drug_target(key, target)
         spec = get_drug_spec(key)
+        previous = self.engine.get_drug_state(key)["target"]
+        self.engine.set_drug_target(key, target)
         applied = self.engine.get_drug_state(key)
+        feedback = check_drug_administration(self.engine, spec.key) if applied["target"] > previous else None
         text = (
             f"{spec.generic_name} {_target_label(spec).lower()} {applied['target']:g} {spec.tci_unit}"
             if applied["is_tci"] else f"{spec.generic_name} TCI stopped"
         )
-        return self._medication_receipt(spec.key, text)
+        return self._clinical_result(feedback, self._medication_receipt(spec.key, text))
 
     def _cmd_drug_bolus(self, key: str, amount: float):
         amount = float(amount)
         if not math.isfinite(amount) or amount <= 0:
             raise ValueError("Bolus amount must be positive and finite")
         spec = get_drug_spec(key)
+        feedback = check_drug_administration(self.engine, spec.key)
         self.engine.give_drug_bolus(key, amount)
-        return self._medication_receipt(spec.key, f"{spec.generic_name} {amount:g} {spec.bolus_unit} given")
+        return self._clinical_result(
+            feedback, self._medication_receipt(spec.key, f"{spec.generic_name} {amount:g} {spec.bolus_unit} given"),
+        )
 
     def _cmd_sugammadex(self, mg_per_kg: float):
         mg_per_kg = float(mg_per_kg)
@@ -722,12 +808,42 @@ class WebSession:
         self.engine.set_bair_hugger(float(target_c))
 
     def _cmd_scenario_next(self):
-        if self.scenario is None or self.step_index >= len(self.scenario):
+        if self.scenario is None or self.case_run is None or self.case_run.mode != "guided":
+            raise ValueError("Step progression is available only in guided cases")
+        if self.step_index >= len(self.scenario):
             return
         self._update_scenario()
         if self.step_met:
             self.step_index += 1
-            self._begin_step()
+            if self.step_index == len(self.scenario):
+                self._finish_case("completed")
+            else:
+                self._begin_step()
+
+    def _cmd_case_action(self, action: str):
+        if self.case_run is None:
+            raise ValueError("No case is active")
+        self.case_run.act(action)
+
+    def _cmd_case_hint(self):
+        if self.case_run is None or self.case_run.mode != "independent":
+            raise ValueError("Hints are available only in independent practice")
+        return {"hint": self.case_run.request_hint()}
+
+    def _cmd_case_finish(self):
+        if self.case_run is None:
+            raise ValueError("No case is active")
+        return {"debrief": self._finish_case("learner_finished")}
+
+    def _finish_case(self, reason: str) -> dict:
+        assert self.case_run is not None
+        report = self.case_run.finish(reason)
+        self._pause()
+        self.ended = True
+        download = self._cmd_record(False)
+        if download is not None:
+            self._download = download
+        return report
 
     def _cmd_csht(self):
         """Estimated context-sensitive half-times (min) for propofol, remifentanil, and fentanyl."""

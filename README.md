@@ -35,8 +35,8 @@ In Windows Command Prompt, use `python` in place of `python3` and activate with
 `anasim` opens the interface in your browser and works offline after
 installation. Press Ctrl+C in the terminal to stop the server.
 
-Choose a guided scenario or an open simulation, then select Start simulation and
-Start. Use Apply to confirm changes to settings.
+Choose an open simulation or a case, then select Start simulation and Start.
+Use Apply to confirm changes to settings.
 
 ## Features
 
@@ -49,7 +49,7 @@ Start. Use Apply to confirm changes to settings.
 | Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
 | Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF) and single-twitch monitoring, temperature, fluid balance, trends, and alarms |
 | Fluids and events | Fluids and blood, surgical stimulation, airway obstruction, bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias |
-| Guided scenarios | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, and oxygen supply failure |
+| Cases | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, and oxygen supply failure, each guided or independent with a debrief |
 
 Depending on the drug, delivery options include boluses, manual infusions, and
 target-controlled infusion (TCI) to a plasma or effect-site target.

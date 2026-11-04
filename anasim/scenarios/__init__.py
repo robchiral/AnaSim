@@ -1,4 +1,4 @@
-"""Typed registry of guided simulation scenarios."""
+"""Typed registry of cases for guided and independent practice."""
 
 from collections.abc import Callable
 from dataclasses import dataclass

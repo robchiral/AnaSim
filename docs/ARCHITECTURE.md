@@ -21,8 +21,8 @@ references](REFERENCES.md) lists the supporting studies.
 | [`physiology/`](../anasim/physiology/) | Models circulation, fluids, respiration, gas exchange, and temperature |
 | [`machine/`](../anasim/machine/) | Models the breathing circuit, vaporizer, and ventilator |
 | [`monitors/`](../anasim/monitors/) and [`core/monitors.py`](../anasim/core/monitors.py) | Produce measurements, waveforms, and alarms |
-| [`scenarios/`](../anasim/scenarios/) | Defines guided scenarios, their steps, and their objective checks |
-| [`web.py`](../anasim/web.py) and [`web_assets/`](../anasim/web_assets/) | Connect the engine and guided scenarios to the browser interface |
+| [`scenarios/`](../anasim/scenarios/) | Defines cases, with their events, guided steps, and debrief outcomes |
+| [`web.py`](../anasim/web.py) and [`web_assets/`](../anasim/web_assets/) | Connect the engine and cases to the browser interface |
 
 ## Runtime
 
@@ -193,8 +193,22 @@ incision at Katoh's MAC-BAR concentrations. Septic shock removes the increase.
 Nociception resets the slow MAP feedback in the same way as the baroreflex, so
 pressor responses persist while stimulation continues.
 
-In the browser, maintenance sessions and intraoperative guided crises begin
+In the browser, maintenance sessions and intraoperative crisis cases begin
 during surgery, and emergence begins after surgery.
+
+### Learner action checks
+
+In the browser, selecting the tracheal tube calls
+`SimulationEngine.attempt_intubation`, which adds a brief intubation stimulus to
+any surgical stimulation. The tube is not placed when loss of response and
+laryngoscopy tolerance are both below 0.1 and central muscle strength is above
+0.5.
+
+[`clinical_actions.py`](../anasim/core/clinical_actions.py) warns, and lets the
+action proceed, when the tube is placed in a responsive patient, when a
+neuromuscular blocker is given to a responsive patient without an induction
+dose in plasma, when the tube is removed during apnea or residual block (TOF
+ratio or T1 below 90%), and when assisted ventilation stops during apnea.
 
 ### Neuromuscular block
 
@@ -483,9 +497,30 @@ Single twitch reports T1 relative to an unblocked baseline.
 
 ## Browser app
 
+### Cases
+
+Each scenario file defines one case: a briefing, timed events, case actions
+such as requesting hemostasis, guided steps, and debrief outcomes. `CaseRun` in
+[`scenarios/runtime.py`](../anasim/scenarios/runtime.py) starts the events,
+tracks outcomes, and builds the debrief in both practice modes. Case sessions
+hide the instructor event controls that open simulation provides.
+
+Crises start 30 simulated seconds into the case. Guided requirements count
+actions from the start of the case, or from crisis onset for crisis treatment,
+so the guide never asks for a repeat dose. In independent mode, the browser
+receives no step text, and safety warnings other than a failed intubation
+appear only in the debrief.
+
+Milestone outcomes, such as preoxygenation, stay credited once achieved.
+Extubation outcomes are checked when the tube is removed, and the rest must
+hold when the case ends. Ending the case, finishing the last guided step, or
+cardiac arrest pauses the model, stops recording, and freezes the debrief.
+
+### Session transport
+
 The local and hosted apps share `web_assets/` and
 [`WebSession`](../anasim/web.py), which applies commands and returns
-measurements, waveforms, controls, and scenario objectives. Commands are
+measurements, waveforms, controls, and case state. Commands are
 processed in order, and the simulation speed setting converts elapsed real time
 into simulation time.
 

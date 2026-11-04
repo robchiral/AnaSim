@@ -1,8 +1,12 @@
 """Adult general anesthesia inductions with volatile or TIVA maintenance."""
 
+from anasim.core.projection import loss_of_response
+
 from .base import (
+    CaseOutcome,
     Scenario,
     ScenarioStep,
+    infusion_running,
     require_airway_selected,
     require_all,
     require_bag_mask_started,
@@ -21,7 +25,30 @@ from .base import (
     require_tof_count_at_most,
     require_tracheal_ventilation,
     require_vaporizer_started,
+    stability_outcome,
+    tracheal_ventilation_confirmed,
 )
+
+
+def _maintained(engine) -> bool:
+    hypnotic_running = infusion_running(engine, "propofol", "etomidate", "ketamine", "midazolam")
+    return (hypnotic_running or engine.circuit.vaporizer_on) and loss_of_response(engine) > 0.9
+
+
+OUTCOMES = (
+    CaseOutcome("preoxygenation", "Preoxygenation established",
+                lambda engine: loss_of_response(engine) < 0.5 and require_preoxygenation(engine)[0],
+                "Establish an oxygen reserve before induction and airway instrumentation.", milestone=True),
+    CaseOutcome("airway", "Tracheal ventilation established", tracheal_ventilation_confirmed,
+                "Confirm tube placement with sustained capnography and adequate ventilation."),
+    CaseOutcome("anesthesia", "Anesthesia maintained", _maintained,
+                "Maintain hypnosis after securing the airway."),
+    stability_outcome("Reassess oxygenation and blood pressure after induction."),
+)
+
+
+def _briefing(technique: str) -> str:
+    return f"Prepare for general anesthesia. Induce, secure the airway, and establish {technique} maintenance."
 
 
 def _apply_mask() -> ScenarioStep:
@@ -148,7 +175,6 @@ def _intubate() -> ScenarioStep:
         ),
         check_requirements=require_airway_selected("ETT"),
         target_tab="Machine",
-        on_met=lambda engine: engine.start_disturbance("stim_intubation_pulse"),
     )
 
 
@@ -242,8 +268,9 @@ def create_induction_balanced() -> Scenario:
     return Scenario(
         id="induction_balanced",
         name="Balanced induction",
-        description="Routine fentanyl, propofol, and rocuronium induction with sevoflurane maintenance.",
+        briefing=_briefing("balanced"),
         steps=steps,
+        outcomes=OUTCOMES,
     )
 
 
@@ -322,6 +349,7 @@ def create_induction_tiva() -> Scenario:
     return Scenario(
         id="induction_tiva",
         name="TIVA induction",
-        description="Routine propofol and rocuronium induction with propofol-remifentanil maintenance.",
+        briefing=_briefing("intravenous"),
         steps=steps,
+        outcomes=OUTCOMES,
     )

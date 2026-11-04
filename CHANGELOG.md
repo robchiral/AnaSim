@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added independent practice with optional hints and a debrief for every case.
+- Made case events start on their own and replaced the Events tab in cases with
+  case actions, such as requesting hemostasis. Guided steps credit earlier actions.
+- Added warnings for unsafe actions, such as extubation with residual block.
+  Intubation of an awake, reactive patient fails.
+- Made every intubation add a stimulation response to any surgical stimulation.
 - Added optional pulse oximeter tones and alarm audio.
 - Sped up TCI prediction rebuilds, drug kinetics, and monitor updates.
 - Added poorly ventilated (low V/Q) lung units, separate from atelectatic shunt.

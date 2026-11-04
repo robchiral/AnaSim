@@ -1,8 +1,8 @@
-"""Ordered log of learner actions and scenario objective activations.
+"""Ordered log of learner actions within a case.
 
-Objectives count actions taken since they started. Record positions define
-the scope because paused actions share a timestamp. Step-scoped queries
-require an active objective.
+Requirements and outcomes count actions from the case start, or from the
+latest crisis onset. Record positions define both scopes because paused
+actions share a timestamp.
 """
 
 from collections.abc import Iterable
@@ -10,17 +10,20 @@ from dataclasses import dataclass
 
 ACTION_AIRWAY = "airway"
 ACTION_BAG_MASK = "bag_mask"
+ACTION_CASE_ACTION = "case_action"
+ACTION_CASE_START = "case_start"
 ACTION_DRUG_BOLUS = "drug_bolus"
 ACTION_EVENT_START = "event_start"
 ACTION_EVENT_STOP = "event_stop"
 ACTION_FGF = "fgf"
 ACTION_FLUID = "fluid"
 ACTION_INFUSION_RATE = "infusion_rate"
+ACTION_INTUBATION_ATTEMPT = "intubation_attempt"
 ACTION_OXYGEN_SUPPLY = "oxygen_supply"
 ACTION_POSITION = "position"
-ACTION_SCENARIO_STEP = "scenario_step"
 ACTION_TCI_TARGET = "tci_target"
 ACTION_VAPORIZER = "vaporizer"
+ACTION_VENTILATION = "ventilation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,22 +37,15 @@ class ActionRecord:
 
 
 class ActionLog:
-    """Ordered control actions with queries scoped to the active objective."""
+    """Ordered control actions with queries scoped to the case or a crisis."""
 
     def __init__(self) -> None:
         self._records: list[ActionRecord] = []
-        self._step_start_index: int | None = None
+        self._case_start_index = 0
 
     @property
     def records(self) -> tuple[ActionRecord, ...]:
         return tuple(self._records)
-
-    @property
-    def current_step(self) -> ActionRecord | None:
-        """Return the record that activated the objective, None outside a scenario."""
-        if self._step_start_index is None:
-            return None
-        return self._records[self._step_start_index - 1]
 
     def record(
         self,
@@ -60,33 +56,17 @@ class ActionLog:
     ) -> None:
         self._records.append(ActionRecord(float(time), action, label, float(amount)))
 
-    def begin_step(self, step_id: str, time: float) -> None:
-        """Activate a scenario objective; later actions are scoped to it."""
-        self.record(time, ACTION_SCENARIO_STEP, label=step_id)
-        self._step_start_index = len(self._records)
+    def begin_case(self, case_id: str, time: float) -> None:
+        """Exclude setup actions from later case queries."""
+        self.record(time, ACTION_CASE_START, label=case_id)
+        self._case_start_index = len(self._records)
 
-    def since_step(
-        self,
-        *actions: str,
-        labels: Iterable[str] | None = None,
-    ) -> tuple[ActionRecord, ...]:
-        """Return matching actions taken since the active objective began."""
-        if self._step_start_index is None:
-            raise RuntimeError("No scenario objective is active")
+    def since_case(self, *actions: str, labels: Iterable[str] | None = None) -> tuple[ActionRecord, ...]:
+        """Return matching actions since the case began; no actions means all."""
         return tuple(
-            record
-            for record in self._records[self._step_start_index:]
-            if record.action in actions
-            and (labels is None or record.label in labels)
+            record for record in self._records[self._case_start_index:]
+            if (not actions or record.action in actions) and (labels is None or record.label in labels)
         )
-
-    def total_since_step(
-        self,
-        *actions: str,
-        labels: Iterable[str] | None = None,
-    ) -> float:
-        """Return the summed amount of matching actions in the active objective."""
-        return sum(record.amount for record in self.since_step(*actions, labels=labels))
 
     def since_event(
         self,
@@ -94,8 +74,8 @@ class ActionLog:
         *actions: str,
         labels: Iterable[str] | None = None,
     ) -> tuple[ActionRecord, ...]:
-        """Return actions after the latest crisis start, across objective changes."""
-        for index in range(len(self._records) - 1, -1, -1):
+        """Return actions after the latest crisis start in this case."""
+        for index in range(len(self._records) - 1, self._case_start_index - 1, -1):
             record = self._records[index]
             if record.action == ACTION_EVENT_START and record.label == event_name:
                 return tuple(

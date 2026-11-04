@@ -39,7 +39,7 @@ def test_native_session_recovers_waveforms_controls_and_recording(server, tmp_pa
     assert request(server, "init")[0]["type"] == "ready"
     request(server, "create", params={"mode": "awake"})
     request(server, "cmd", id=1, name="record", args={"active": True})
-    request(server, "cmd", id=2, name="airway", args={"mode": "ETT"})
+    request(server, "cmd", id=2, name="airway", args={"mode": "Mask"})
     request(server, "cmd", id=3, name="run", args={"running": True})
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
@@ -56,7 +56,7 @@ def test_native_session_recovers_waveforms_controls_and_recording(server, tmp_pa
     snap = json.loads(restored[2]["snap"])
     assert server.session is old_session
     assert not snap["running"] and not snap["recording"]
-    assert snap["controls"]["airway"] == "ETT"
+    assert snap["controls"]["airway"] == "Mask"
     assert len(snap["waves"]["ecg"]) >= 15
     assert not old_session.engine.recorder.is_recording
     assert len(list(tmp_path.glob("*.csv"))) == 1
@@ -89,6 +89,18 @@ def test_disconnect_timeout_and_shutdown_finish_recordings(server, tmp_path):
     server.server_close()
     assert not server.session.engine.recorder.is_recording
     assert len(list(tmp_path.glob("*.csv"))) == 2
+
+
+def test_case_debrief_survives_a_native_page_reload(server):
+    request(server, "init")
+    request(server, "create", params={"scenario_id": "induction_tiva", "practice_mode": "independent"})
+    request(server, "cmd", id=1, name="case_hint")
+    report = request(server, "cmd", id=2, name="case_finish")[0]["value"]["debrief"]
+    restored = request(server, "init", client="reloaded-case")
+    snap = json.loads(restored[2]["snap"])
+    assert snap["scenario"]["debrief"] == report
+    assert snap["ended"] and not snap["running"]
+    assert report["hints_used"] == 1
 
 
 def test_local_server_rejects_cross_origin_and_unscoped_requests(server):

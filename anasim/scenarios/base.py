@@ -1,10 +1,4 @@
-"""Guided scenarios: ordered steps with instructions and requirement checks.
-
-Action objectives ("give fluids", "select the ETT") read `engine.actions`.
-Crisis treatments count from event onset; other actions count while the
-objective is active. State objectives
-("MAP ≥ 65") read the current engine state.
-"""
+"""Case definitions and the requirement helpers for guided steps."""
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -28,9 +22,9 @@ from anasim.core.state import AirwayType
 if TYPE_CHECKING:
     from anasim.core.engine import SimulationEngine
 
-ControlTab = Literal["Machine", "Medications", "Fluids", "Events"]
-EventSection = Literal["circulation", "airway", "stimulation", "equipment"]
+ControlTab = Literal["Machine", "Medications", "Fluids"]
 Requirement = Callable[["SimulationEngine"], tuple[bool, str]]
+Condition = Callable[["SimulationEngine"], bool]
 
 MONITOR_BP_INDEX = {"sbp": 0, "dbp": 1, "map": 2}
 MONITOR_DISPLAY_FIELD = {
@@ -48,7 +42,6 @@ class ScenarioStep:
     instruction: str
     check_requirements: Requirement
     target_tab: ControlTab | None = None
-    target_section: EventSection | None = None
     # Runs once, the first time the requirements are met.
     on_met: Callable[["SimulationEngine"], None] | None = None
     # Steps with dosing guidance can provide a variant for sessions allowing TCI.
@@ -60,13 +53,43 @@ class ScenarioStep:
         return self.instruction
 
 
+@dataclass(frozen=True)
+class CaseOutcome:
+    id: str
+    label: str
+    check: Condition
+    review: str  # Debrief point and hint when the outcome is missing
+    milestone: bool = False  # Stays credited once achieved
+    on_action: str | None = None  # Checked only when this action occurs
+
+
+@dataclass(frozen=True)
+class CaseEvent:
+    id: str
+    at: float  # Seconds of simulated time after the case starts
+    cue: str
+    apply: Callable[["SimulationEngine"], None]
+
+
+@dataclass(frozen=True)
+class CaseAction:
+    id: str
+    label: str
+    apply: Callable[["SimulationEngine"], None]
+    available: Condition
+    completed_label: str
+
+
 @dataclass
 class Scenario:
     id: str
     name: str
-    description: str
     steps: list[ScenarioStep] = field(default_factory=list)
     setup_engine: Callable[["SimulationEngine"], None] | None = None
+    briefing: str = ""
+    outcomes: tuple[CaseOutcome, ...] = ()
+    events: tuple[CaseEvent, ...] = ()
+    actions: tuple[CaseAction, ...] = ()
 
     def __len__(self) -> int:
         return len(self.steps)
@@ -83,14 +106,14 @@ class Scenario:
             self.setup_engine(engine)
 
 
-def action_taken_this_step(engine, action: str, *labels: str) -> bool:
-    """Return whether a matching control action occurred during this objective."""
-    records = engine.actions.since_step(action, labels=labels or None)
+def action_taken_in_case(engine, action: str, *labels: str) -> bool:
+    """Return whether a matching learner action occurred during this case."""
+    records = engine.actions.since_case(action, labels=labels or None)
     return bool(records)
 
 
 def require_airway_selected(airway_type: str) -> Requirement:
-    """Require selection of an airway type during this objective."""
+    """Require selection of an airway type during this case."""
     target, label = {
         "None": (AirwayType.NONE, "Disconnected"),
         "Mask": (AirwayType.MASK, "Facemask"),
@@ -98,7 +121,7 @@ def require_airway_selected(airway_type: str) -> Requirement:
     }[airway_type]
 
     def check(engine) -> tuple[bool, str]:
-        selected = action_taken_this_step(engine, ACTION_AIRWAY, target.value)
+        selected = action_taken_in_case(engine, ACTION_AIRWAY, target.value)
         met = selected and engine.state.airway_mode == target
         return met, "" if met else f"Select {label}"
     return check
@@ -141,10 +164,10 @@ def require_oxygen_flow(min_o2: float = 8.0) -> Requirement:
 def require_fgf_set_for_preox(engine) -> tuple[bool, str]:
     """Require a fresh gas flow action and adequate current preoxygenation flow."""
     state_met, message = _fgf_preox_state(engine)
-    action_met = action_taken_this_step(engine, ACTION_FGF)
+    action_met = action_taken_in_case(engine, ACTION_FGF)
     if not state_met:
         return False, message
-    return action_met, "" if action_met else "Set fresh gas flow for this objective"
+    return action_met, "" if action_met else "Set fresh gas flow for this case"
 
 
 def require_preoxygenation(engine) -> tuple[bool, str]:
@@ -180,17 +203,17 @@ def join_messages(messages) -> str:
 def _action_records(engine, *actions: str, labels: tuple[str, ...], event_name: str | None = None):
     if event_name is not None:
         return engine.actions.since_event(event_name, *actions, labels=labels)
-    return engine.actions.since_step(*actions, labels=labels)
+    return engine.actions.since_case(*actions, labels=labels)
 
 
-def bolus_given_this_step(engine, drug_key: str, *, event_name: str | None = None) -> bool:
-    """Check a bolus since objective activation or the named crisis onset."""
+def bolus_given_in_case(engine, drug_key: str, *, event_name: str | None = None) -> bool:
+    """Check a bolus since the case or the named crisis began."""
     records = _action_records(engine, ACTION_DRUG_BOLUS, labels=(drug_key,), event_name=event_name)
     return any(record.amount > 0 for record in records)
 
 
-def infusion_set_this_step(engine, *drug_keys: str, event_name: str | None = None) -> bool:
-    """Check an infusion action since objective activation or crisis onset."""
+def infusion_set_in_case(engine, *drug_keys: str, event_name: str | None = None) -> bool:
+    """Check an infusion action since the case or the named crisis began."""
     records = _action_records(
         engine, ACTION_INFUSION_RATE, ACTION_TCI_TARGET, labels=drug_keys, event_name=event_name,
     )
@@ -201,28 +224,6 @@ def infusion_running(engine, *drug_keys: str) -> bool:
     """Return True when a drug is running by manual rate or TCI target."""
     states = (engine.get_drug_state(key) for key in drug_keys)
     return any(state["rate"] > 0 or state["target"] > 0 for state in states)
-
-
-def require_stable_baseline_vitals(
-    hr_min: float,
-    hr_max: float,
-    map_min: float,
-    spo2_min: float,
-    fail_message: str = "Wait for stable baseline vitals",
-) -> Requirement:
-    """Check that monitor-facing baseline vitals are in a reasonable range."""
-    def check(engine) -> tuple[bool, str]:
-        hr = monitor_value(engine, "hr")
-        map_val = monitor_value(engine, "map")
-        spo2 = monitor_value(engine, "spo2")
-        stable = (
-            engine.state.spo2_signal_valid
-            and hr_min < hr < hr_max
-            and map_val > map_min
-            and spo2 > spo2_min
-        )
-        return (True, "") if stable else (False, fail_message)
-    return check
 
 
 def require_fluid_bolus(
@@ -245,16 +246,16 @@ def require_fluid_bolus(
 
 
 def require_infusion_started(*drug_keys: str, fail_message: str, event_name: str | None = None) -> Requirement:
-    """Require a running infusion set during this objective or crisis."""
+    """Require a running infusion set during this case or crisis."""
     def check(engine) -> tuple[bool, str]:
         if any(
-            infusion_set_this_step(engine, key, event_name=event_name) and infusion_running(engine, key)
+            infusion_set_in_case(engine, key, event_name=event_name) and infusion_running(engine, key)
             for key in drug_keys
         ):
             return True, ""
         if infusion_running(engine, *drug_keys):
             control = "infusion rate or TCI target" if engine.config.tci_enabled else "infusion rate"
-            return False, f"Set the {control} for this objective"
+            return False, f"Set the {control} for this case"
         return False, fail_message
     return check
 
@@ -281,26 +282,26 @@ def require_vasopressor_if_hypotensive(
 
 
 def require_infusions_stopped(*drug_keys: str, fail_message: str) -> Requirement:
-    """Require each named infusion to be stopped during this objective."""
+    """Require each named infusion to be stopped during this case."""
     def check(engine) -> tuple[bool, str]:
         for drug_key in drug_keys:
             stopped = not infusion_running(engine, drug_key)
-            records = engine.actions.since_step(
+            records = engine.actions.since_case(
                 ACTION_INFUSION_RATE,
                 ACTION_TCI_TARGET,
                 labels=(drug_key,),
             )
-            stopped_this_step = any(record.amount <= 0 for record in records)
-            if not (stopped and stopped_this_step):
+            stopped_in_case = any(record.amount <= 0 for record in records)
+            if not (stopped and stopped_in_case):
                 return False, fail_message
         return True, ""
     return check
 
 
 def require_drug_bolus(drug_key: str, fail_message: str) -> Requirement:
-    """Check that a drug bolus was given during this objective."""
+    """Check that a drug bolus was given during this case."""
     def check(engine) -> tuple[bool, str]:
-        met = bolus_given_this_step(engine, drug_key)
+        met = bolus_given_in_case(engine, drug_key)
         return (True, "") if met else (False, fail_message)
     return check
 
@@ -308,7 +309,7 @@ def require_drug_bolus(drug_key: str, fail_message: str) -> Requirement:
 def require_crisis_started(event_name: str, fail_message: str) -> Requirement:
     """Require a crisis start, including one the learner has already controlled."""
     def check(engine) -> tuple[bool, str]:
-        started = action_taken_this_step(engine, ACTION_EVENT_START, event_name)
+        started = action_taken_in_case(engine, ACTION_EVENT_START, event_name)
         if started:
             return True, ""
         return False, fail_message
@@ -316,7 +317,7 @@ def require_crisis_started(event_name: str, fail_message: str) -> Requirement:
 
 
 class CrisisStartMAP:
-    """Monitored MAP when a crisis starts, recorded by the starting step's on_met."""
+    """Monitored MAP when a crisis starts, recorded by the case event."""
 
     def __init__(self) -> None:
         self.value: float | None = None
@@ -400,8 +401,8 @@ def require_oxygenation(min_spo2: float = 94.0) -> Requirement:
 
 
 def require_bag_mask_started(engine) -> tuple[bool, str]:
-    """Require bag-mask ventilation to be started during this objective."""
-    started = action_taken_this_step(engine, ACTION_BAG_MASK, "on")
+    """Require bag-mask ventilation to be started during this case."""
+    started = action_taken_in_case(engine, ACTION_BAG_MASK, "on")
     met = started and engine.bag_mask_active
     return met, "" if met else "Turn ON Bag-Mask ventilation"
 
@@ -447,17 +448,17 @@ def require_mac_above(threshold: float = 0.5) -> Requirement:
 
 
 def require_vaporizer_started(engine) -> tuple[bool, str]:
-    """Require the vaporizer to be turned on during this objective."""
-    records = engine.actions.since_step(ACTION_VAPORIZER)
+    """Require the vaporizer to be turned on during this case."""
+    records = engine.actions.since_case(ACTION_VAPORIZER)
     started = any(record.amount > 0 for record in records)
     running = engine.circuit.vaporizer_on and engine.circuit.vaporizer_setting > 0
     return (True, "") if started and running else (False, "Turn on vaporizer")
 
 
 def require_fgf_reduced(max_total_l_min: float) -> Requirement:
-    """Require reduced flow with continued oxygen delivery during this objective."""
+    """Require reduced flow with continued oxygen delivery during this case."""
     def check(engine) -> tuple[bool, str]:
-        changed = action_taken_this_step(engine, ACTION_FGF)
+        changed = action_taken_in_case(engine, ACTION_FGF)
         total = engine.circuit.fgf_total()
         met = changed and total <= max_total_l_min and engine.circuit.delivered_o2_flow() >= 1.0
         return met, "" if met else f"Set FGF ≤ {max_total_l_min:g} L/min with O₂ ≥ 1 L/min"
@@ -469,7 +470,7 @@ def require_oxygen_supply_action(connected: bool, fail_message: str) -> Requirem
     label = "connected" if connected else "disconnected"
 
     def check(engine) -> tuple[bool, str]:
-        acted = action_taken_this_step(engine, ACTION_OXYGEN_SUPPLY, label)
+        acted = action_taken_in_case(engine, ACTION_OXYGEN_SUPPLY, label)
         met = acted and engine.circuit.oxygen_supply_connected == connected
         return met, "" if met else fail_message
     return check
@@ -486,17 +487,17 @@ def require_all(*checks: Requirement) -> Requirement:
     return combined
 
 
-def create_observe_baseline_step(crisis_name: str) -> ScenarioStep:
-    hr_min, hr_max, map_min, spo2_min = 60, 100, 60, 94
+def create_observe_step(
+    label: str,
+    action: str = ACTION_EVENT_START,
+    instruction: str = "Follow blood pressure, oxygenation, capnography, and airway pressure.",
+) -> ScenarioStep:
+    """Wait for the case event; the learner cannot start it."""
     return ScenarioStep(
-        id="OBSERVE_BASELINE",
-        title="Observe baseline",
-        instruction=(
-            f"Note HR, blood pressure, SpO₂, and EtCO₂ before the {crisis_name} event. "
-            f"Begin with HR {hr_min}-{hr_max}/min, MAP > {map_min} mmHg, and SpO₂ > {spo2_min}%. "
-            "Follow changes from this baseline during the case."
-        ),
-        check_requirements=require_stable_baseline_vitals(hr_min, hr_max, map_min, spo2_min),
+        id="OBSERVE",
+        title="Observe the patient",
+        instruction=f"{instruction} The case progresses automatically while the simulation runs.",
+        check_requirements=lambda engine: (action_taken_in_case(engine, action, label), ""),
     )
 
 
@@ -515,4 +516,42 @@ def create_reassess_step(
             f"{extra_text}"
         ),
         check_requirements=require_crisis_resolved_with_map(event_name, fail_crisis=fail_crisis_msg),
+    )
+
+
+def patient_stable(engine) -> bool:
+    # Model values, so deterioration between cuff readings counts.
+    return engine.state.sao2 >= 94 and engine.state.map >= 65
+
+
+def tracheal_ventilation_confirmed(engine) -> bool:
+    return (
+        engine.state.airway_mode == AirwayType.ETT
+        and (engine.vent.is_on or engine.bag_mask_active)
+        and engine.state.etco2_signal_valid
+        and monitor_value(engine, "etco2") > 20
+    )
+
+
+def stability_outcome(review: str) -> CaseOutcome:
+    return CaseOutcome("stability", "Oxygenation and circulation stable", patient_stable, review)
+
+
+CRISIS_BRIEFING = (
+    "Anesthesia is established and surgery is in progress. "
+    "Monitor the patient and manage any deterioration."
+)
+CRISIS_ONSET_S = 30.0
+
+
+def crisis_outcomes(event_name: str, volume: Requirement) -> tuple[CaseOutcome, ...]:
+    stopped = require_crisis_stopped(event_name, "")
+    return (
+        CaseOutcome("volume", "Volume replacement started", lambda engine: volume(engine)[0],
+                    "Replace circulating volume while treating the cause of shock.", milestone=True),
+        CaseOutcome("source", "Cause addressed", lambda engine: stopped(engine)[0],
+                    "Address the cause of deterioration alongside resuscitation."),
+        CaseOutcome("ventilation", "Tracheal ventilation maintained", tracheal_ventilation_confirmed,
+                    "Maintain ventilation and assess the airway during circulatory deterioration."),
+        stability_outcome("Reassess the response to treatment and continue support until stable."),
     )

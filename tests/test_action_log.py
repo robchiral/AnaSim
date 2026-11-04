@@ -1,4 +1,4 @@
-"""Action log recording and scenario step scoping."""
+"""Action log recording and case scoping."""
 
 from anasim.core.action_log import (
     ACTION_DRUG_BOLUS,
@@ -13,7 +13,9 @@ from anasim.core.state import SimulationConfig
 
 def test_engine_logs_controls_and_event_transitions(engine_factory):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", tci_enabled=True), start=True)
-    engine.actions.begin_step("OBJECTIVE", engine.state.time)
+    # Setup at the same paused timestamp stays outside the case.
+    engine.give_fluid(1000)
+    engine.actions.begin_case("CASE", engine.state.time)
 
     engine.give_fluid(500)
     engine.give_albumin(250)
@@ -26,7 +28,7 @@ def test_engine_logs_controls_and_event_transitions(engine_factory):
     engine.stop_hemorrhage()
     engine.stop_hemorrhage()
 
-    fluids = engine.actions.since_step(ACTION_FLUID)
+    fluids = engine.actions.since_case(ACTION_FLUID)
     assert [(record.label, record.amount) for record in fluids] == [
         ("crystalloid", 500),
         ("colloid", 250),
@@ -34,7 +36,7 @@ def test_engine_logs_controls_and_event_transitions(engine_factory):
     ]
 
     def amounts(action, label):
-        return [record.amount for record in engine.actions.since_step(action, labels=(label,))]
+        return [record.amount for record in engine.actions.since_case(action, labels=(label,))]
 
     assert amounts(ACTION_DRUG_BOLUS, "propofol") == [150]
     assert amounts(ACTION_INFUSION_RATE, "nore") == [4.0]

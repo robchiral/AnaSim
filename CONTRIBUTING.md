@@ -35,24 +35,24 @@ Each type of change also needs the checks below.
 | Physiology, pharmacology, or ventilation | Clinical scenarios and tests of the affected subsystem at several step sizes |
 | Browser commands or state fields | `tests/test_web.py`, `tests/test_state_semantics.py`, and local and hosted browser previews |
 | Settings controls or monitor display | `node --test tests/*.mjs` and browser checks |
-| Guided scenarios | `tests/test_scenarios.py`, `tests/test_action_log.py`, and a complete browser run of the changed scenario |
+| Cases | `tests/test_scenarios.py`, `tests/test_case_runtime.py`, and complete browser runs of the changed case in both modes |
 | Local server | `tests/test_local.py` in native Python |
 | Documentation | Run changed examples and check links |
 
 Use published data to set expected clinical responses where available. Check
 conservation of gas or drug when a change affects either one.
 
-## Guided scenarios
+## Cases
 
-Build a `Scenario` from `ScenarioStep` objects using the [requirement
-helpers](anasim/scenarios/base.py). Register its builder, starting mode, and
-maintenance technique with a `ScenarioSpec` in the
-[registry](anasim/scenarios/__init__.py). The [hemorrhage
-example](anasim/scenarios/hemorrhage.py) shows a complete scenario.
+Model a new case on the [hemorrhage case](anasim/scenarios/hemorrhage.py),
+using the [requirement helpers](anasim/scenarios/base.py), and register it with
+a `ScenarioSpec` in the [registry](anasim/scenarios/__init__.py). Use
+`tci_instruction` for guidance that changes with target-controlled infusion
+(TCI).
 
-Use `tci_instruction` for guidance that changes with target-controlled infusion
-(TCI). The scenario tests complete each registered scenario with TCI enabled and
-disabled.
+Add the browser commands that complete each guided step to
+`SCENARIO_WALKTHROUGHS` in `tests/test_scenarios.py`. The test runs them with
+TCI enabled and disabled and requires every debrief outcome.
 
 ## Interface changes
 

@@ -17,26 +17,23 @@ from anasim.web import WebSession
 # Browser commands for each objective; TCI targets become manual rates when disabled.
 SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = {
     "hemorrhage_response": {
-        "START_HEMORRHAGE": [("hemorrhage", {"active": True, "rate_ml_min": 800})],
         "GIVE_FLUIDS": [("fluid", {"kind": "crystalloid", "volume_ml": 500})],
         "START_VASOPRESSOR": [("drug_rate", {"key": "nore", "rate": 12})],
-        "STOP_BLEEDING": [("hemorrhage", {"active": False})],
+        "STOP_BLEEDING": [("case_action", {"action": "hemostasis"})],
     },
     "sepsis_response": {
-        "START_SEPSIS": [("sepsis", {"active": True})],
         "GIVE_FLUIDS": [("fluid", {"kind": "crystalloid", "volume_ml": 1000})],
         "START_VASOPRESSOR": [("drug_rate", {"key": "nore", "rate": 15})],
-        "SOURCE_CONTROL": [("sepsis", {"active": False})],
+        "SOURCE_CONTROL": [("case_action", {"action": "source_control"})],
     },
     "anaphylaxis_response": {
-        "RECOGNIZE": [("anaphylaxis", {"active": True})],
         "EPINEPHRINE": [
             ("drug_bolus", {"key": "epi", "amount": 100}),
             ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
         ],
         "FLUIDS": [("fluid", {"kind": "crystalloid", "volume_ml": 1000})],
         "STABILIZE": [
-            ("anaphylaxis", {"active": False}),
+            ("case_action", {"action": "stop_trigger"}),
             ("drug_rate", {"key": "epi", "rate": 6}),
         ],
     },
@@ -103,9 +100,8 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         "RECOVERY": [("fgf", {"o2": 5, "air": 0, "n2o": 0})],
     },
     "oxygen_supply_failure": {
-        "DISCONNECT_OXYGEN": [("oxygen_supply", {"connected": False})],
         "CONNECT_BACKUP_OXYGEN": [
-            ("oxygen_supply", {"connected": True}),
+            ("case_action", {"action": "backup_oxygen"}),
             ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
         ],
     },
@@ -114,23 +110,6 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
 
 def _step(scenario, step_id):
     return next(step for step in scenario.steps if step.id == step_id)
-
-
-def _activate(engine, step):
-    engine.actions.begin_step(step.id, engine.state.time)
-
-
-def _early_induction(engine):
-    engine.give_drug_bolus("propofol", 150)
-    for _ in range(20):
-        engine.step(1.0)
-
-
-def _mask_ventilate(engine):
-    engine.set_airway_mode("Mask")
-    engine.set_bag_mask_ventilation(True)
-    for _ in range(10):
-        engine.step(1.0)
 
 
 def _early_extubation(engine):
@@ -151,69 +130,6 @@ def _early_extubation(engine):
     )
 
 
-def _stop_tiva(engine):
-    engine.set_drug_rate("propofol", 0.0)
-    engine.set_drug_rate("remi", 0.0)
-
-
-# (scenario, objective, action taken before the objective, the same action repeated during it)
-EARLY_ACTIONS = [
-    ("hemorrhage_response", "START_HEMORRHAGE",
-     lambda e: e.start_hemorrhage(),
-     lambda e: (e.stop_hemorrhage(), e.start_hemorrhage())),
-    ("induction_balanced", "SET_FGF_PREOX",
-     lambda e: e.set_fgf(10.0, 0.0, 0.0),
-     lambda e: e.set_fgf(9.0, 0.0, 0.0)),
-    ("induction_balanced", "INDUCE",
-     _early_induction,
-     lambda e: e.give_drug_bolus("propofol", 20)),
-    ("induction_balanced", "MASK_VENTILATE",
-     _mask_ventilate,
-     lambda e: (e.set_bag_mask_ventilation(False), _mask_ventilate(e))),
-    ("induction_balanced", "INTUBATE",
-     lambda e: e.set_airway_mode("ETT"),
-     lambda e: (e.set_airway_mode("Mask"), e.set_airway_mode("ETT"))),
-    ("emergence_balanced", "STOP_AGENTS",
-     lambda e: (e.set_vaporizer(0.0), e.set_drug_rate("remi", 0.0), e.set_fgf(8.0, 0.0, 0.0)),
-     lambda e: (e.set_vaporizer(0.0), e.set_drug_rate("remi", 0.1),
-                e.set_drug_rate("remi", 0.0), e.set_fgf(9.0, 0.0, 0.0))),
-    ("emergence_balanced", "EXTUBATE",
-     _early_extubation,
-     lambda e: (e.set_airway_mode("ETT"), e.set_airway_mode("Mask"))),
-    ("emergence_tiva", "STOP_AGENTS",
-     _stop_tiva,
-     lambda e: (e.set_drug_rate("propofol", 100.0), e.set_drug_rate("remi", 0.1), _stop_tiva(e))),
-    ("oxygen_supply_failure", "DISCONNECT_OXYGEN",
-     lambda e: e.set_oxygen_supply_connected(False),
-     lambda e: (e.set_oxygen_supply_connected(True), e.set_oxygen_supply_connected(False))),
-]
-
-
-@pytest.mark.parametrize(
-    ("scenario_id", "step_id", "early", "repeat"),
-    EARLY_ACTIONS,
-    ids=[f"{scenario_id}-{step_id}" for scenario_id, step_id, *_ in EARLY_ACTIONS],
-)
-def test_objectives_ignore_actions_taken_before_activation(
-    engine_factory, scenario_id, step_id, early, repeat
-):
-    spec = next(spec for spec in SCENARIO_REGISTRY if spec.id == scenario_id)
-    engine = engine_factory(
-        config=SimulationConfig(mode=spec.start_mode, maint_type=spec.maint_type)
-    )
-    scenario = spec.builder()
-    scenario.prepare(engine)
-    engine.start()
-    step = _step(scenario, step_id)
-
-    early(engine)
-    _activate(engine, step)
-    assert not step.check_requirements(engine)[0]
-
-    repeat(engine)
-    assert step.check_requirements(engine)[0]
-
-
 @pytest.mark.parametrize("builder,event", [
     (create_hemorrhage_response, "hemorrhage"),
     (create_sepsis_response, "sepsis"),
@@ -223,7 +139,6 @@ def test_vasopressor_objective_tracks_pressure_and_current_support(engine_factor
     engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced",
                                                     disturbance_profile="stim_sustained_surgery"), start=True)
     step = _step(builder(), "START_VASOPRESSOR")
-    _activate(engine, step)
     # Recovered pressure does not justify another vasopressor.
     assert step.check_requirements(engine)[0]
 
@@ -235,7 +150,6 @@ def test_vasopressor_objective_tracks_pressure_and_current_support(engine_factor
     assert engine.state.monitored_blood_pressure(True)[2] < 65
     engine.set_drug_rate("nore", 5.0)
 
-    _activate(engine, step)
     assert step.check_requirements(engine)[0]
     if event == "hemorrhage":
         engine.set_drug_rate("nore", 0.0)
@@ -254,7 +168,6 @@ def test_vasopressor_objective_tracks_pressure_and_current_support(engine_factor
 def test_sepsis_fluid_objective_requires_crystalloid(engine_factory):
     engine = engine_factory(start=True)
     step = _step(create_sepsis_response(), "GIVE_FLUIDS")
-    _activate(engine, step)
     engine.start_sepsis()
 
     engine.give_blood(600)
@@ -270,7 +183,6 @@ def test_extubation_requires_recovered_block_and_spontaneous_ventilation(engine_
     """Residual block impairs the upper airway after breathing returns (Eikermann 2003)."""
     engine = engine_factory(start=True, weight=weight, height=177)
     step = _step(create_emergence("tiva"), "EXTUBATE")
-    _activate(engine, step)
     _early_extubation(engine)
     engine.state.tof = 89.0
     assert not step.check_requirements(engine)[0]
@@ -312,7 +224,6 @@ def test_emergence_starts_with_residual_block_reversed_by_sugammadex(scenario_id
     reading = engine.nmb.reading
     assert reading is not None and reading.mode == "tof"
     assert 2 <= reading.count <= 3
-    _activate(engine, step)
     assert not step.check_requirements(engine)[0]
 
     session.command("sugammadex", '{"mg_per_kg": 2}')
@@ -338,7 +249,6 @@ def test_crisis_objectives_accept_prompt_treatment_without_repeating_doses(scena
     fluid_step = _step(scenario, "FLUIDS" if event == "anaphylaxis" else "GIVE_FLUIDS")
     engine.give_fluid(fluid_ml)
     getattr(engine, f"start_{event}")()
-    _activate(engine, fluid_step)
     assert not fluid_step.check_requirements(engine)[0]  # Pre-event fluid does not count.
     if event == "hemorrhage":
         engine.give_blood(300)  # A single red-cell unit is an acceptable initial replacement.
@@ -348,22 +258,17 @@ def test_crisis_objectives_accept_prompt_treatment_without_repeating_doses(scena
         engine.give_drug_bolus("epi", 100)
         engine.set_fgf(10, 0, 0)
         step = _step(scenario, "EPINEPHRINE")
-        _activate(engine, step)
         assert step.check_requirements(engine)[0]
     else:
         step = _step(scenario, "RECOGNIZE_SHOCK" if event == "hemorrhage" else "RECOGNIZE_WARM_SHOCK")
-        _activate(engine, step)
         assert engine.state.map > 65.0
         assert step.check_requirements(engine)[0]  # Treatment need not wait for hypotension.
-    _activate(engine, fluid_step)
     assert fluid_step.check_requirements(engine)[0]
     getattr(engine, f"stop_{event}")()
     if event != "anaphylaxis":
         step = _step(scenario, "STOP_BLEEDING" if event == "hemorrhage" else "SOURCE_CONTROL")
-        _activate(engine, step)
         assert step.check_requirements(engine)[0]
     getattr(engine, f"start_{event}")()
-    _activate(engine, fluid_step)
     assert not fluid_step.check_requirements(engine)[0]  # A later event needs its own response.
 
 
@@ -375,7 +280,6 @@ def test_preoxygenation_waits_for_lung_washin(engine_factory, assisted):
     engine = engine_factory(start=True, **patient)
     engine.set_airway_mode("Mask")
     engine.set_fgf(10.0, 0.0)
-    _activate(engine, step)
     for _ in range(60):
         engine.step(1.0)
     assert not step.check_requirements(engine)[0]
@@ -396,24 +300,6 @@ def test_preoxygenation_waits_for_lung_washin(engine_factory, assisted):
     # The flowmeter stays set, but no O2 is delivered.
     engine.set_oxygen_supply_connected(False)
     assert not step.check_requirements(engine)[0]
-
-
-def test_intubation_objective_starts_one_laryngoscopy_stimulus():
-    session = WebSession({"scenario_id": "induction_balanced"})
-    engine = session.engine
-    engine.start()
-    assert session.scenario is not None
-    session.step_index = next(i for i, step in enumerate(session.scenario) if step.id == "INTUBATE")
-    session._begin_step()
-
-    engine.set_airway_mode("ETT")
-    session.snapshot()
-    assert engine.disturbance_active and engine.disturbance_profile == "stim_intubation_pulse"
-    started = engine.disturbance_start_time
-    for _ in range(10):
-        engine.step(1.0)
-        session.snapshot()
-    assert engine.disturbance_start_time == started
 
 
 @pytest.mark.parametrize("spec", SCENARIO_REGISTRY, ids=lambda spec: spec.id)
@@ -466,6 +352,8 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
             samples += len(snap["waves"]["ecg"])
 
     assert not pending
+    # Following the guide achieves every debrief outcome.
+    assert [o["id"] for o in snap["scenario"]["debrief"]["outcomes"] if not o["achieved"]] == []
     # Every simulated step reaches the monitor sweep exactly once.
     assert samples == round(snap["time"] / info["sample_interval"])
     if spec.id == "induction_tiva":

@@ -4,6 +4,7 @@ import { Monitor } from "./monitor.js";
 import { MonitorAudio } from "./audio.js";
 import { Trends } from "./trends.js";
 import { connect } from "./transport.js";
+import { CasePanel } from "./case.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -26,6 +27,7 @@ let catalog = null;
 let info = null;
 let monitor = null;
 let controls = null;
+let casePanel = null;
 let trends = null;
 let trendReturnTab = "Machine";
 let last = null;
@@ -128,7 +130,7 @@ function buildSetup() {
   };
   for (const radio of form.elements.mode) radio.onchange = syncOpioidPlan;
   const syncGuided = () => {
-    const guided = form.elements.session.value === "guided";
+    const guided = form.elements.session.value !== "open";
     $("scenario-row").hidden = !guided;
     $("initial-state").disabled = guided;
     $("initial-state").hidden = guided;
@@ -230,8 +232,9 @@ function readSetup(form) {
   params.tci_enabled = f.tci_enabled.checked;
   params.concomitant_opioids = f.concomitant_opioids.checked;
   params.patient_variability = f.patient_variability.checked;
-  if (f.session.value === "guided") {
+  if (f.session.value !== "open") {
     params.scenario_id = f.scenario_id.value;
+    params.practice_mode = f.session.value;
   } else {
     params.mode = f.mode.value;
     params.maint_type = f.maint_type.value;
@@ -254,6 +257,7 @@ function startSession(sessionInfo) {
   audio.resetSession(info.sample_interval);
   monitor?.destroy();
   controls?.destroy();
+  casePanel?.destroy();
   trends?.destroy();
   last = null;
   arrestShown = false;
@@ -265,6 +269,7 @@ function startSession(sessionInfo) {
 
   monitor = new Monitor(info);
   controls = new Controls(info, command);
+  casePanel = new CasePanel(command, newSession);
   controls.onViewChanged = () => {
     if (last?.scenario) updateScenario(last.scenario);
   };
@@ -301,7 +306,7 @@ function onTick(snap) {
   if (info.scenario) updateScenario(snap.scenario);
   if (snap.download) download(snap.download.filename, snap.download.csv);
   if (snap.notice) alertDialog("Recording failed", snap.notice);
-  if (snap.arrest_reason && !arrestShown) {
+  if (snap.arrest_reason && !arrestShown && !snap.scenario?.debrief) {
     arrestShown = true;
     confirmDialog(
       "Simulation endpoint reached",
@@ -341,19 +346,12 @@ function updateBar(snap) {
 }
 
 function updateScenario(step) {
+  casePanel.update(step);
+  if (step.mode === "independent" || step.complete) return;
   const total = info.scenario.total;
   const status = $("step-status");
   const next = $("step-next");
   const target = $("step-target");
-  if (step.complete) {
-    setText($("step-title"), "Scenario complete");
-    setText($("step-instruction"), info.scenario.description);
-    setText($("scenario-count"), "");
-    setText(status, "");
-    target.hidden = true;
-    next.hidden = true;
-    return;
-  }
   next.hidden = false;
   setText($("step-title"), step.title);
   // Instructions are authored in anasim/scenarios with simple <b>, <i>, and <br> markup.
@@ -362,8 +360,7 @@ function updateScenario(step) {
     $("step-instruction").dataset.instruction = step.instruction;
   }
   setText($("scenario-count"), `Step ${step.index + 1} of ${total}`);
-  const sectionVisible = !step.target_section || controls.eventSections.get(step.target_section).section.open;
-  target.hidden = !step.target_tab || (controls.currentTab === step.target_tab && sectionVisible);
+  target.hidden = !step.target_tab || controls.currentTab === step.target_tab;
   if (step.target_tab) {
     const tab = controls.tabs.find((button) => button.dataset.tab === step.target_tab);
     setText(target, `Open ${tab.textContent.toLowerCase()}`);
@@ -372,15 +369,13 @@ function updateScenario(step) {
   const repeated = normalize($("step-instruction").textContent).includes(normalize(step.status));
   setText(status, step.met || repeated ? "" : step.status);
   next.disabled = !step.met;
-  setText(next, step.met && step.index === total - 1 ? "Finish scenario" : "Continue");
+  setText(next, step.met && step.index === total - 1 ? "Finish and review" : "Continue");
 }
 
 $("step-next").onclick = () => command("scenario_next");
 $("step-target").onclick = () => {
   const tab = last?.scenario?.target_tab;
   if (tab) controls.openTab(tab);
-  const section = last?.scenario?.target_section;
-  if (section) controls.openEventSection(section);
 };
 
 $("run").onclick = () => last && command("run", { running: !last.running });
