@@ -365,6 +365,7 @@ def require_crisis_resolved_with_map(
         require_oxygenation(),
         require_tracheal_ventilation,
         lambda engine: (not engine.event_active(event_name), fail_crisis),
+        lambda engine: (patient_stable(engine), ""),
     )
 
 

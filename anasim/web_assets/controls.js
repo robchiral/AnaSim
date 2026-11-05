@@ -52,8 +52,8 @@ const bloodGasRows = [
 ];
 // Four significant figures keep small rates visible without long decimals.
 const rateText = (value) => String(Number(value.toPrecision(4)));
-// Controller-set rates: whole numbers from 10 up, two significant figures below.
-const tciRate = (value) => (value >= 10 ? Math.round(value) : Number(value.toPrecision(2)));
+// Displayed rates: whole numbers from 10 up, two significant figures below.
+const shortRate = (value) => (value >= 10 ? Math.round(value) : Number(value.toPrecision(2)));
 
 // Settings each ventilator mode uses, as on a GE Aisys. PSV uses RR and Pinsp
 // for apnea backup breaths and Tinsp as the longest supported breath.
@@ -555,7 +555,7 @@ export class Controls {
     $("c-sepsis").onclick = () => this.send("sepsis", { active: !this.state.sepsis });
   }
 
-  syncEventSection(name, states) {
+  syncEventSection(name, states, listStates = true) {
     const { section, summary, output } = this.eventSections.get(name);
     const active = states.length > 0;
     const value = String(active);
@@ -565,7 +565,7 @@ export class Controls {
       summary.tabIndex = active ? -1 : 0;
     }
     if (active && !section.open) section.open = true;
-    output.hidden = !active;
+    output.hidden = !active || !listStates;
     setText(output, states.join(", "));
   }
 
@@ -597,6 +597,7 @@ export class Controls {
     setValue($("c-vap"), round(c.vaporizer));
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
+    $("c-bag-settings").hidden = !c.bag_mask;
     setValue($("c-bag-rr"), c.bag.rr);
     setValue($("c-bag-tv"), c.bag.tv);
     const vent = c.vent;
@@ -616,15 +617,15 @@ export class Controls {
       }
       if (w.rate) {
         w.rate.disabled = w.editor.pending || w.mode?.value === "tci";
-        setValue(w.rate, d.is_tci ? tciRate(d.rate) : rateText(d.rate));
+        setValue(w.rate, d.is_tci ? shortRate(d.rate) : rateText(d.rate));
         const active = d.rate > 0 || (d.is_tci && d.target > 0);
         if (!active && w.runningRow.contains(document.activeElement)) $("drug-search").focus();
         if (!active) this.closeInfusionEditor(w);
         w.runningRow.hidden = !active;
         if (active) {
           setText(w.runningValue, d.is_tci
-            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit}, rate ${tciRate(d.rate)} ${w.spec.rate_unit}`
-            : `${rateText(d.rate)} ${w.spec.rate_unit}`);
+            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit}, rate ${shortRate(d.rate)} ${w.spec.rate_unit}`
+            : `${shortRate(d.rate)} ${w.spec.rate_unit}`);
         }
         running ||= active;
       }
@@ -662,7 +663,8 @@ export class Controls {
     if (c.bronchospasm > 0) airway.push(`Bronchospasm ${round(c.bronchospasm, 0)}%`);
     if (c.laryngospasm !== "none") airway.push(`Laryngospasm ${c.laryngospasm}`);
     this.syncEventSection("airway", airway);
-    this.syncEventSection("stimulation", c.disturbance.active ? [$("c-disturbance").selectedOptions[0].text] : []);
+    // The disabled profile select already names the active stimulation.
+    this.syncEventSection("stimulation", c.disturbance.active ? [$("c-disturbance").selectedOptions[0].text] : [], false);
     this.syncEventSection("equipment", c.o2_connected ? [] : ["O₂ supply disconnected"]);
   }
 }

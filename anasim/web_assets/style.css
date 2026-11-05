@@ -241,7 +241,8 @@ fieldset:disabled { opacity: 0.5; }
 .session-bar .session-options > summary { list-style: none; font-size: 20px; line-height: 1; padding: 3px 8px; cursor: pointer; }
 .session-options > summary::-webkit-details-marker { display: none; }
 .session-menu { position: absolute; right: 0; top: calc(100% + 6px); min-width: 180px; padding: 4px; border: 1px solid var(--border-light); border-radius: var(--radius); background: var(--panel); z-index: 10; }
-.session-menu .btn { display: block; width: 100%; text-align: left; border: 0; padding: 8px 10px; }
+.session-menu .btn { display: block; width: 100%; text-align: left; border: 0; padding: 8px 10px; background: transparent; }
+.session-menu .btn:hover:not(:disabled) { background: var(--control-hover); }
 .sound-settings { border-top: 1px solid var(--border); margin-top: 4px; font-weight: 400; }
 .sound-settings > summary { cursor: pointer; padding: 8px 10px; font-size: 12px; }
 .sound-volumes { display: grid; gap: 8px; width: 232px; padding: 4px 10px 10px; }
@@ -428,8 +429,7 @@ input.setting-edited, select.setting-edited { border-color: var(--warning); back
 .fresh-gas-settings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .circuit-oxygen { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; color: var(--text-secondary); font-size: 11px; }
 .inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.button-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; }
-.button-grid .btn { white-space: normal; }
+.button-stack { display: grid; gap: 6px; }
 .action-feedback { color: var(--text-secondary); font-size: 12px; }
 .abg-results { overflow-x: auto; scrollbar-width: thin; }
 .abg-results table { min-width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }

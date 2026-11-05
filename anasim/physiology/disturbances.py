@@ -59,7 +59,7 @@ class DisturbanceProfileSpec:
 # to Billard 1994 and Sawano 2013.
 PROFILE_SPECS = {
     "stim_intubation_pulse": DisturbanceProfileSpec(
-        label="Intubation / Short Stimulus",
+        label="Intubation or brief stimulus",
         sympathetic_intensity=1.64,
         finite=True,
         airway_stimulus_s=40.0,
@@ -79,7 +79,7 @@ PROFILE_SPECS = {
     # It develops over minutes, so MAP rises about 15% within 5 minutes of
     # incision at the sevoflurane-fentanyl MAC-BAR concentrations (Katoh 1999).
     "stim_sustained_surgery": DisturbanceProfileSpec(
-        label="Sustained Surgical Stimulation",
+        label="Sustained surgical stimulation",
         sympathetic_intensity=1.25,
         tonic_svr_fraction=0.15,
         tonic_onset_s=300.0,

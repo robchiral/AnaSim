@@ -93,7 +93,11 @@ export class Trends {
         ctx.stroke();
         ctx.fillText(String(value), left - 5, y(value) + 4);
       }
-      for (const [time, alignment] of [[start, "left"], [(start + end) / 2, "center"], [end, "right"]]) {
+      const middle = Math.round((start + end) / 120) * 60;
+      const labels = [[start, "left"], [end, "right"]];
+      const clearance = (end - start) / 4;
+      if (middle - start >= clearance && end - middle >= clearance) labels.push([middle, "center"]);
+      for (const [time, alignment] of labels) {
         ctx.textAlign = alignment;
         ctx.fillText(stamp(time), x(time), height - 7);
       }
