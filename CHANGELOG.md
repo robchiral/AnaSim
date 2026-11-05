@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added arterial blood gas sampling in a new Labs tab.
+- Labeled the crystalloid as lactated Ringer's.
 - Added lactate and standard base excess. Oxygen consumption falls when oxygen
   delivery drops below a critical level, and the unmet demand raises lactate.
   Epinephrine, sepsis, hepatic impairment, and lactated Ringer's also change

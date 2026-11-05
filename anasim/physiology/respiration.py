@@ -540,6 +540,11 @@ class RespiratoryModel:
             blood_volume + transport.extracellular_volume
         )
 
+    def arterial_po2_at_37(self) -> float:
+        """Arterial PO2 after the analyzer warms the sample to 37 °C, mmHg."""
+        p50 = self._blood_p50[1] * self._temperature_p50(37.0) / self._temperature_p50_now
+        return self._po2_from_content(self.gas_transport.oxygen[1], self._oxygen_hb, p50, self._blood_po2[1])
+
     def remove_buffer_base(self, meq: float) -> None:
         """Remove buffer base from extracellular fluid; a negative amount adds base."""
         self.gas_transport.extracellular_base -= meq

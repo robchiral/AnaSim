@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 ACTION_AIRWAY = "airway"
 ACTION_BAG_MASK = "bag_mask"
+ACTION_BLOOD_GAS = "blood_gas"
 ACTION_CASE_ACTION = "case_action"
 ACTION_CASE_START = "case_start"
 ACTION_DRUG_BOLUS = "drug_bolus"

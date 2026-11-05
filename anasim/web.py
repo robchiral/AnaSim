@@ -22,6 +22,7 @@ from anasim.core.enums import RhythmType
 from anasim.core.recorder import RecordingError
 from anasim.core.state import AirwayType, SimulationConfig, WaveformSample
 from anasim.machine.ventilator import MODES
+from anasim.monitors.blood_gas import BloodGasResult
 from anasim.patient import domain
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import list_disturbance_profiles
@@ -103,6 +104,16 @@ def _num(value, digits=None):
     if not math.isfinite(value):
         return None
     return round(value, digits) if digits is not None else value
+
+
+def _blood_gas(result: BloodGasResult) -> dict:
+    return {
+        "drawn_at": _num(result.drawn_at, 3), "ready_at": _num(result.ready_at, 3),
+        "ph": _num(result.ph, 3), "pa_co2": _num(result.pa_co2, 1), "pao2": _num(result.pao2, 1),
+        "hco3": _num(result.hco3, 2), "base_excess": _num(result.base_excess, 2),
+        "lactate": _num(result.lactate, 2), "sao2": _num(result.sao2, 2), "hb": _num(result.hb, 2),
+        "fio2": _num(result.fio2, 3),
+    }
 
 
 def _target_label(spec) -> str:
@@ -216,6 +227,7 @@ class WebSession:
                 for spec in engine.get_controllable_drugs()
             ],
             "medication_history": list(self._medication_history),
+            "blood_gases": [_blood_gas(result) for result in engine.blood_gases],
             "trends": list(self._trend_history),
             "nmb_history": engine.nmb.trend_history(),
             "disturbances": [{"key": key, "label": label} for label, key in list_disturbance_profiles()],
@@ -759,7 +771,7 @@ class WebSession:
         if not math.isfinite(volume) or volume <= 0:
             raise ValueError("Fluid volume must be positive and finite")
         getattr(self.engine, FLUIDS[kind])(volume)
-        label = {"crystalloid": "crystalloid", "albumin": "albumin", "blood": "PRBC"}[kind]
+        label = {"crystalloid": "lactated Ringer's", "albumin": "albumin", "blood": "PRBC"}[kind]
         return {"fluid": {"time": self.engine.state.time, "text": f"{volume:g} mL {label} started"}}
 
     def _cmd_maintenance_fluid(self, ml_hr: float):
@@ -855,6 +867,9 @@ class WebSession:
 
     def _cmd_nibp(self):
         self.engine.measure_nibp()
+
+    def _cmd_blood_gas(self):
+        return {"blood_gas": _blood_gas(self.engine.draw_blood_gas())}
 
     def _cmd_nmb_mode(self, mode: str):
         self.engine.nmb.set_mode(mode, self.engine.state.time)

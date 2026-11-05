@@ -35,7 +35,7 @@ In Windows Command Prompt, use `python` in place of `python3` and activate with
 `anasim` opens the interface in your browser and works offline after
 installation. Press Ctrl+C in the terminal to stop the server.
 
-Choose a case or an open simulation, then select Open session and Start.
+Choose an open simulation or a case, then select Open session and Start.
 Use Apply to confirm changes to settings.
 
 ## Features
@@ -47,7 +47,7 @@ Use Apply to confirm changes to settings.
 | Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, ephedrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, atropine, and glycopyrrolate |
 | Anesthesia machine | Facemask or tracheal tube, fresh gas flow, vaporizer, and bag-mask ventilation |
 | Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
-| Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF) and single-twitch monitoring, temperature, fluid balance, trends, and alarms |
+| Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF) and single-twitch monitoring, temperature, arterial blood gases, fluid balance, trends, and alarms |
 | Fluids and events | Fluids and blood, surgical stimulation, airway obstruction, bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, and arrhythmias |
 | Cases | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, and oxygen supply failure, each guided or independent with a debrief |
 

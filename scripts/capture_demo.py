@@ -54,8 +54,8 @@ def enter(field, value):
 
 
 def drug_card(page, name):
-    summary = page.locator("summary").filter(has_text=re.compile(rf"^{re.escape(name)}(?:\s|$)"))
-    card = page.locator(".drug-card").filter(has=summary)
+    label = page.locator(".drug-name", has_text=re.compile(rf"^{re.escape(name)}$"))
+    card = page.locator(".drug-card").filter(has=label)
     if card.get_attribute("open") is None:
         card.locator("summary").click()
     return card
@@ -152,8 +152,7 @@ def record(server, page, fps, max_duration):
         step = current_step(server)
         if step is None:
             if done_at is None:
-                page.click('.tabs [data-tab="Machine"]')
-                done_at = now
+                done_at = now  # The completed case opens its debrief.
             if now - done_at >= END_HOLD_S:
                 return frames
         elif step.id != step_id:

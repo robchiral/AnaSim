@@ -61,10 +61,13 @@ def test_early_crisis_treatment_counts_without_repeating_doses_or_following_the_
     advance(session, 31)
     command(session, "drug_bolus", key="epi", amount=100)
     command(session, "fluid", kind="crystalloid", volume_ml=1000)
+    command(session, "blood_gas")
     command(session, "case_action", action="stop_trigger")
     report = command(session, "case_finish")["debrief"]
     outcomes = {o["id"]: o["achieved"] for o in report["outcomes"]}
     assert outcomes["epinephrine"] and outcomes["volume"] and outcomes["source"]
+    timeline = [item["text"] for item in report["timeline"]]
+    assert {"1000 mL lactated Ringer's started", "Arterial blood gas drawn"} <= set(timeline)
     doses = [r for r in session.engine.actions.since_case(ACTION_DRUG_BOLUS) if r.label == "epi"]
     assert len(doses) == 1 and doses[0].amount == 100
 

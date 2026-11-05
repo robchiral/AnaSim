@@ -527,6 +527,13 @@ demand or at a set interval. TOF reports the twitch count and, when all four
 twitches are present, the T4/T1 ratio. Ratios from weak twitches are flagged.
 Single twitch reports T1 relative to an unblocked baseline.
 
+An [arterial blood gas](../anasim/monitors/blood_gas.py) sample records the
+arterial values at the time of the draw, and the result appears 2 minutes
+later. As in a blood gas analyzer, pH, PaCO₂, and PaO₂ are reported at 37 °C,
+so PaO₂ in a hypothermic patient is higher than the value in the body. The
+report also includes bicarbonate, standard base excess, lactate, SaO₂,
+hemoglobin, and FiO₂. Electrolytes and glucose are not modeled.
+
 ## Browser app
 
 ### Cases

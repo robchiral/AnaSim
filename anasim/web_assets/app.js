@@ -307,7 +307,7 @@ function onTick(snap) {
   last = snap;
   audio.update(snap);
   monitor.update(snap);
-  controls.sync(snap.controls);
+  controls.sync(snap.controls, snap.time);
   trends.update(snap);
   updateBar(snap);
   if (info.scenario) updateScenario(snap.scenario);

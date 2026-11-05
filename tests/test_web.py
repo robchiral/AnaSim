@@ -251,7 +251,27 @@ def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload(
     assert history[-1]["text"] == "Propofol infusion 54 mcg/kg/min"
 
 
-@pytest.mark.parametrize("kind,label", [("crystalloid", "crystalloid"), ("albumin", "albumin"), ("blood", "PRBC")])
+def test_blood_gas_reports_values_at_the_draw_after_analysis_and_survives_reload():
+    session = WebSession({**PATIENT, "mode": "steady_state"})
+    cmd(session, "sepsis", active=True)
+    cmd(session, "run", running=True)
+    run_seconds(session, 1200, tick_s=10.0)
+    state = session.engine.state
+    drawn = cmd(session, "blood_gas")["blood_gas"]
+    assert drawn["ready_at"] - drawn["drawn_at"] == pytest.approx(120)
+    assert (drawn["ph"], drawn["lactate"], drawn["base_excess"]) == pytest.approx(
+        (state.ph, state.lactate, state.base_excess), abs=0.01,
+    )
+    # Sepsis raises lactate and lowers base excess within 20 minutes.
+    assert drawn["lactate"] > 1.3 and drawn["base_excess"] < -0.5
+    run_seconds(session, 130, tick_s=10.0)
+    assert session.engine.state.lactate > drawn["lactate"]
+    assert parse(session.info())["blood_gases"] == [drawn]
+
+
+@pytest.mark.parametrize("kind,label", [
+    ("crystalloid", "lactated Ringer's"), ("albumin", "albumin"), ("blood", "PRBC"),
+])
 def test_fluid_confirmation_follows_acceptance_and_delivery_continues_over_time(kind, label):
     session = WebSession(PATIENT)
     before = session.snapshot()["vitals"]

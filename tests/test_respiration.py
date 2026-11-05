@@ -271,6 +271,9 @@ def test_blood_temperature_shifts_oxygen_affinity_without_creating_oxygen(patien
     for temperature in (34.0, 40.0, 37.0):
         model.step(0.0, ce_prop=0, ce_remi=0, temp_c=temperature, airway_patency=0.0)
         assert oxygen_l() == pytest.approx(stored, abs=1e-9)
+        # A blood gas analyzer warms the sample to 37 °C at unchanged content. The
+        # saturation change shifts pH slightly through oxygen-dependent buffering.
+        assert model.arterial_po2_at_37() == pytest.approx(initial_pressure, rel=1e-3)
         if temperature == 34:
             assert model.state.p_arterial_o2 < initial_pressure
         elif temperature == 40:

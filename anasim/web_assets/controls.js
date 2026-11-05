@@ -30,6 +30,26 @@ function readNumber(input) {
 }
 
 const round = (value, digits = 1) => Number(value.toFixed(digits));
+const clock = (seconds) => {
+  const whole = Math.floor(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+};
+const signed = (value) => {
+  const text = value.toFixed(1);
+  return Number(text) > 0 ? `+${text}` : Number(text) === 0 ? "0.0" : text;
+};
+// Blood gas report rows: label, unit, result field, and display format.
+const bloodGasRows = [
+  ["pH", "", "ph", (value) => value.toFixed(2)],
+  ["PaCO₂", "mmHg", "pa_co2", (value) => value.toFixed(0)],
+  ["PaO₂", "mmHg", "pao2", (value) => value.toFixed(0)],
+  ["HCO₃⁻", "mmol/L", "hco3", (value) => value.toFixed(1)],
+  ["Base excess", "mmol/L", "base_excess", signed],
+  ["Lactate", "mmol/L", "lactate", (value) => value.toFixed(1)],
+  ["SaO₂", "%", "sao2", (value) => value.toFixed(1)],
+  ["Hb", "g/dL", "hb", (value) => value.toFixed(1)],
+  ["FiO₂", "%", "fio2", (value) => (value * 100).toFixed(0)],
+];
 // Four significant figures keep small rates visible without long decimals.
 const rateText = (value) => String(Number(value.toPrecision(4)));
 // Controller-set rates: whole numbers from 10 up, two significant figures below.
@@ -68,6 +88,9 @@ export class Controls {
     this.destroyed = false;
     this.feedbackTimers = new Map();
     this.history = [...info.medication_history];
+    this.bloodGases = [...info.blood_gases];
+    this.shownBloodGases = null;
+    this.time = 0;
     this.send = async (name, args) => {
       const result = await send(name, args);
       if (!this.destroyed && result && "feedback" in result) this.showClinicalFeedback(result.feedback);
@@ -85,6 +108,7 @@ export class Controls {
     this.bindMachine();
     this.buildDrugs(info.drugs);
     this.bindFluids();
+    this.bindLabs();
     this.bindEvents(info);
     // Cases start their own events.
     this.tabs.find((tab) => tab.dataset.tab === "Events").hidden = Boolean(info.scenario);
@@ -124,11 +148,9 @@ export class Controls {
     list.replaceChildren();
     $("medication-history").hidden = this.history.length === 0;
     for (const entry of this.history) {
-      const seconds = Math.floor(entry.time);
-      const stamp = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
       const row = document.createElement("li");
       const time = document.createElement("time");
-      time.textContent = stamp;
+      time.textContent = clock(entry.time);
       row.append(time, entry.text);
       list.prepend(row);
     }
@@ -442,6 +464,56 @@ export class Controls {
     this.editSettings([$("c-maint")], () => this.send("maintenance_fluid", { ml_hr: readNumber($("c-maint")) }));
   }
 
+  // --- Labs ---------------------------------------------------------
+
+  bindLabs() {
+    const button = $("c-abg");
+    button.onclick = async () => {
+      const result = await this.performAction(button, "blood_gas");
+      if (this.destroyed || result === undefined) return;
+      this.bloodGases.push(result.blood_gas);
+      this.showBloodGases();
+    };
+    this.showBloodGases();
+  }
+
+  // Results post at their ready time on the simulation clock.
+  showBloodGases() {
+    const ready = this.bloodGases.filter((result) => result.ready_at <= this.time);
+    const pending = this.bloodGases.length - ready.length;
+    const status = $("abg-pending");
+    status.hidden = pending === 0;
+    if (pending > 0) {
+      const next = clock(Math.ceil(this.bloodGases[ready.length].ready_at - this.time));
+      setText(status, pending === 1 ? `Result in ${next}` : `${pending} samples in analysis; next result in ${next}`);
+    }
+    if (ready.length === this.shownBloodGases) return;
+    this.shownBloodGases = ready.length;
+    $("abg-results").hidden = ready.length === 0;
+    const newest = ready.reverse();
+    const cell = (tag, text, scope) => {
+      const element = document.createElement(tag);
+      if (scope) element.scope = scope;
+      element.textContent = text;
+      return element;
+    };
+    const table = $("abg-results").querySelector("table");
+    const header = document.createElement("tr");
+    header.append(cell("th", "Drawn", "col"), ...newest.map((result) => cell("th", clock(result.drawn_at), "col")));
+    table.tHead.replaceChildren(header);
+    table.tBodies[0].replaceChildren(...bloodGasRows.map(([label, unit, key, format]) => {
+      const row = document.createElement("tr");
+      const name = cell("th", label, "row");
+      if (unit) {
+        const span = cell("span", unit);
+        span.className = "unit";
+        name.append(span);
+      }
+      row.append(name, ...newest.map((result) => cell("td", result[key] === null ? "—" : format(result[key]))));
+      return row;
+    }));
+  }
+
   // --- Events -------------------------------------------------------
 
   bindEvents(info) {
@@ -506,8 +578,10 @@ export class Controls {
     setText($("clinical-feedback-text"), feedback?.message ?? "");
   }
 
-  sync(c) {
+  sync(c, time) {
     this.state = c;
+    this.time = time;
+    this.showBloodGases();
     this.showClinicalFeedback(c.clinical_feedback);
 
     for (const button of $("c-airway").querySelectorAll("button")) {

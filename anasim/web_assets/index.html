@@ -37,8 +37,8 @@
         <fieldset>
           <legend>Session</legend>
           <div class="choice-group">
-            <label class="choice"><input type="radio" name="session" value="case" checked> Practice a case</label>
-            <label class="choice"><input type="radio" name="session" value="open"> Open simulation</label>
+            <label class="choice"><input type="radio" name="session" value="open" checked> Open simulation</label>
+            <label class="choice"><input type="radio" name="session" value="case"> Practice a case</label>
           </div>
         </fieldset>
 
@@ -363,6 +363,7 @@
         <button type="button" role="tab" data-tab="Machine" aria-selected="true">Machine</button>
         <button type="button" role="tab" data-tab="Medications" aria-selected="false">Drugs</button>
         <button type="button" role="tab" data-tab="Fluids" aria-selected="false">Fluids</button>
+        <button type="button" role="tab" data-tab="Labs" aria-selected="false">Labs</button>
         <button type="button" role="tab" data-tab="Events" aria-selected="false">Events</button>
       </nav>
 
@@ -469,8 +470,8 @@
         <fieldset class="group">
           <legend>Fluid administration</legend>
           <div class="button-grid">
-            <button type="button" class="btn" data-fluid="crystalloid" data-volume="250">Crystalloid 250 mL</button>
-            <button type="button" class="btn" data-fluid="crystalloid" data-volume="500">Crystalloid 500 mL</button>
+            <button type="button" class="btn" data-fluid="crystalloid" data-volume="250">Lactated Ringer's 250 mL</button>
+            <button type="button" class="btn" data-fluid="crystalloid" data-volume="500">Lactated Ringer's 500 mL</button>
             <button type="button" class="btn" data-fluid="albumin" data-volume="250">Albumin 250 mL</button>
             <button type="button" class="btn" data-fluid="blood" data-volume="300">PRBC 300 mL</button>
           </div>
@@ -478,6 +479,21 @@
           <label class="inline">Maintenance fluid
             <span class="unit-input"><input id="c-maint" type="number" min="0" max="5000" step="25"><span>mL/hr</span></span>
           </label>
+        </fieldset>
+      </div>
+
+      <div class="tab-panel" data-panel="Labs" role="tabpanel" hidden>
+        <fieldset class="group">
+          <legend>Arterial blood gas</legend>
+          <button type="button" class="btn full" id="c-abg">Draw arterial blood gas</button>
+          <p id="abg-pending" class="action-feedback" hidden></p>
+          <div id="abg-results" class="abg-results" hidden>
+            <table>
+              <caption>Reported at 37 °C. Newest sample first.</caption>
+              <thead><tr><th scope="col">Drawn</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </fieldset>
       </div>
 

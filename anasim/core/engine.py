@@ -14,6 +14,7 @@ from anasim.machine.volatile import Vaporizer
 from anasim.monitors.airway import AirwaySensor
 from anasim.monitors.alarms import AlarmSystem
 from anasim.monitors.arterial import ArterialLineMonitor, ArterialWaveformRenderer
+from anasim.monitors.blood_gas import BloodGasResult
 from anasim.monitors.capno import Capnograph, EtCO2Readout
 from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.monitors.ecg import ECGMonitor
@@ -47,6 +48,7 @@ from . import runtime as runtime_core
 from .action_log import (
     ACTION_AIRWAY,
     ACTION_BAG_MASK,
+    ACTION_BLOOD_GAS,
     ACTION_DRUG_BOLUS,
     ACTION_EVENT_START,
     ACTION_EVENT_STOP,
@@ -255,6 +257,7 @@ class SimulationEngine(DrugControllerMixin):
         self.spo2_mon = SpO2Monitor()
         self.nibp = NIBPMonitor(interval_min=5.0, rng=self._nibp_rng)
         self.nmb = NeuromuscularMonitor()
+        self.blood_gases: list[BloodGasResult] = []
         self.state.nibp_interval_sec = self.nibp.interval
 
     @property
@@ -549,6 +552,18 @@ class SimulationEngine(DrugControllerMixin):
         self.state.nibp_measurement_failed = False
         self.state.nibp_cuff_pressure = 0.0
         self._next_nibp_time = self.state.time + self.nibp.interval
+
+    def draw_blood_gas(self) -> BloodGasResult:
+        """Draw an arterial sample; its result is ready after the analysis time."""
+        state = self.state
+        result = BloodGasResult(
+            drawn_at=state.time, ph=state.ph, pa_co2=state.pa_co2, pao2=self.resp.arterial_po2_at_37(),
+            hco3=state.hco3, base_excess=state.base_excess, lactate=state.lactate,
+            sao2=state.sao2, hb=self.hemo.hb_conc, fio2=state.fio2,
+        )
+        self.blood_gases.append(result)
+        self.actions.record(state.time, ACTION_BLOOD_GAS)
+        return result
 
     def start_recording(self, output_dir: str = ".", sample_interval_sec: float = 1.0):
         """Start CSV recording, raising RecordingError on file failures."""

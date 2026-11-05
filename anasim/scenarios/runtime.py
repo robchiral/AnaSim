@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 from anasim.core.action_log import (
     ACTION_AIRWAY,
     ACTION_BAG_MASK,
+    ACTION_BLOOD_GAS,
     ACTION_CASE_ACTION,
     ACTION_DRUG_BOLUS,
     ACTION_FGF,
@@ -197,8 +198,10 @@ def _describe(record: ActionRecord) -> str | None:
         unit = spec.rate_unit if action == ACTION_INFUSION_RATE else spec.tci_unit
         return f"{spec.generic_name} {delivery} {amount:g} {unit}"
     if action == ACTION_FLUID:
-        fluid = {"crystalloid": "crystalloid", "colloid": "albumin", "blood": "PRBC"}[label]
+        fluid = {"crystalloid": "lactated Ringer's", "colloid": "albumin", "blood": "PRBC"}[label]
         return f"{amount:g} mL {fluid} started"
+    if action == ACTION_BLOOD_GAS:
+        return "Arterial blood gas drawn"
     if action == ACTION_VAPORIZER:
         return f"{label} {amount:g}%" if amount > 0 else f"{label} off"
     if action == ACTION_INTUBATION_ATTEMPT:
