@@ -389,6 +389,7 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
     resp_state = step_respiration(engine, dt, state.co)
+    step_lactate(engine, dt)
 
     engine.hemo.coronary.step(
         dt, state.hr, state.sbp, state.dbp, state.lap, engine.hemo.hb_conc, resp_state.sao2,
@@ -429,6 +430,21 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
     return build_snapshot_from_models(
         engine, hemo_state, resp_state, pit_estimate=pit_estimate,
     )
+
+
+def step_lactate(engine: SimulationEngine, dt: float) -> None:
+    """Advance lactate from this step's O2 balance and update extracellular buffer base."""
+    if dt <= 0.0:
+        return
+    resp = engine.resp
+    base_removed = engine.lactate.step(
+        dt, resp.oxygen_deficit_l, resp.oxygen_supply_fraction,
+        epinephrine_ng_ml=engine.pk["epi"].state.c1,
+        sepsis_severity=engine.hemo.sepsis_severity,
+        crystalloid_in_ml=engine.hemo.total_crystalloid_in_ml,
+    )
+    resp.oxygen_deficit_l = 0.0
+    resp.remove_buffer_base(base_removed)
 
 
 def check_cardiac_arrest(engine: SimulationEngine, dt: float) -> None:

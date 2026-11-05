@@ -35,6 +35,7 @@ from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
 from anasim.physiology.hemodynamics import HemodynamicModel
+from anasim.physiology.lactate import LactateModel
 from anasim.physiology.lung import LungAeration
 from anasim.physiology.resp_mech import RespiratoryMechanics
 from anasim.physiology.respiration import RespiratoryModel
@@ -229,6 +230,7 @@ class SimulationEngine(DrugControllerMixin):
 
         self.hemo = HemodynamicModel(self.patient)
         self.resp = RespiratoryModel(self.patient)
+        self.lactate = LactateModel(self.patient.weight, self.patient.hepatic_function)
         if self.config.mode == "steady_state":
             self.aeration = LungAeration(self.patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
         else:

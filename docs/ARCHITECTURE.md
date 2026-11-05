@@ -53,7 +53,7 @@ writes the recording.
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
 | Physiology | `map`, `hr`, `co`, `sao2`, `pa_co2`, `pao2` | Values that the models and the cardiac arrest check use |
-| Blood chemistry | `ph`, `hco3` | Arterial plasma pH and bicarbonate at 37 °C |
+| Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate` | Arterial plasma pH and bicarbonate at 37 °C, standard base excess, and plasma lactate |
 | Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after measurement and processing effects |
 | Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Breath pressures and exhaled gas measurements |
 | Fluids | `blood_volume`, `urine_out_ml`, `net_fluid_ml`, `lap`, `lung_water` | Circulating volume, fluid balance, filling pressure, and excess lung water |
@@ -404,12 +404,44 @@ leads to absorption atelectasis. The model tracks this absorbed volume
 separately from the lung volume used for mechanics and inhaled agents. Opening
 the airway refills the lungs with gas from the circuit (Laviola 2020).
 
-The blood gas chemistry describes respiratory acid-base changes at 37 °C. [Blood
-buffering](../anasim/physiology/blood_chemistry.py) is based on Rees 2010, and
-oxygen affinity on the temperature, pH, and PCO₂ terms of Dash 2016 at a
-reference 2,3-DPG level. Gas exchange and changes in affinity conserve CO₂,
-oxygen, and buffer base. Changes in hemoglobin or hematocrit adjust the normal
-buffer contribution without changing the respiratory buffer-base changes.
+Oxygen consumption equals metabolic demand until oxygen delivery falls to a
+critical level. At this level, the oxygen extraction ratio is 0.6 (Ronco 1993).
+The critical delivery is therefore proportional to demand, so it is lower
+during hypothermia and anesthesia. Below this level, consumption and aerobic
+CO₂ production fall in proportion to delivery, and the unmet demand produces
+[lactate](../anasim/physiology/lactate.py). The amount of lactate produced per
+unit of oxygen deficit was fitted to data on oxygen debt in dogs with
+hemorrhagic shock (Dunham 1991).
+
+Epinephrine and sepsis increase aerobic lactate production (Grip 2015;
+Revelly 2005). Lactate has a volume of distribution of 0.26 L/kg
+(Levraut 1998). Its elimination follows Michaelis-Menten kinetics, so
+clearance falls as the concentration rises. The model assumes that the liver
+provides 60% of the elimination capacity. This hepatic portion is reduced in
+proportion to liver function and to the fraction of oxygen demand that is met.
+
+Each mmol of endogenous lactate that accumulates above the resting amount
+removes 1 mmol of buffer base, and clearance of this lactate returns the base.
+Lactated Ringer's solution raises the measured lactate without adding acid,
+and metabolism of this lactate adds buffer base (Zitek 2018). The model
+includes only the L-isomer, which blood gas analyzers measure, and omits the
+other ions in the fluid.
+
+The blood gas model includes respiratory and lactic acid-base disturbances at
+37 °C. [Blood buffering](../anasim/physiology/blood_chemistry.py) is based on
+Rees 2010. Oxygen affinity uses the temperature, pH, and PCO₂ terms of
+Dash 2016 at a reference 2,3-DPG level. Gas exchange and changes in oxygen
+affinity conserve CO₂, oxygen, and buffer base. When hemoglobin or hematocrit
+changes, the buffering capacity of blood changes, but the base gained or lost
+since rest is preserved.
+
+Standard base excess equals the patient's resting value plus the net base
+gained or lost in blood and extracellular fluid, per liter of their combined
+volume. A change in PCO₂ moves base between blood and extracellular fluid
+without changing the total, so respiratory changes alone do not change base
+excess. The resting value is calculated with the Van Slyke equation from the
+patient's resting pH and PaCO₂. It is near 0 mmol/L in nonpregnant adults and
+about −2 mmol/L in late pregnancy.
 
 ### Respiratory mechanics and aeration
 

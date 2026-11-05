@@ -315,6 +315,13 @@ PCV-VG, pressure control with volume guarantee.
 
 ## Gas exchange and blood chemistry
 
+- Ronco et al. (1993). *JAMA*. [Critical oxygen delivery and extraction in septic and nonseptic humans](https://pubmed.ncbi.nlm.nih.gov/8411504/).
+- Dunham et al. (1991). *Crit Care Med*. [Oxygen debt, lactate, and base deficit during canine hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/1989759/).
+- Ward et al. (2010). *Resuscitation*. [Oxygen transport, lactate, and base excess during simulated hemorrhage in humans](https://pubmed.ncbi.nlm.nih.gov/20418009/).
+- Revelly et al. (2005). *Crit Care Med*. [Lactate production and clearance in severe sepsis and cardiogenic shock](https://pubmed.ncbi.nlm.nih.gov/16215376/).
+- Levraut et al. (1998). *Am J Respir Crit Care Med*. [Lactate distribution and impaired clearance in stable septic patients](https://pubmed.ncbi.nlm.nih.gov/9563714/).
+- Grip et al. (2015). *Clin Sci (Lond)*. [Whole-body and muscle lactate kinetics during epinephrine infusion](https://pubmed.ncbi.nlm.nih.gov/25828264/).
+- Zitek et al. (2018). *J Emerg Med*. [Serum lactate after 30 mL/kg of lactated Ringer's](https://pubmed.ncbi.nlm.nih.gov/30037514/).
 - Dash, Korman, and Bassingthwaighte (2016). *Eur J Appl Physiol*. [Hemoglobin dissociation curves across oxygen tension, temperature, pH, and PCO₂](https://pubmed.ncbi.nlm.nih.gov/26298270/).
 - Rees et al. (2010). *Eur J Appl Physiol*. [Plasma and red-cell acid-base chemistry with oxygen-dependent buffering](https://doi.org/10.1007/s00421-009-1244-x).
 - O'Neill and Robbins (2017). *J Appl Physiol*. [Blood CO₂ transport and the magnitude of the Haldane effect](https://doi.org/10.1152/japplphysiol.00318.2016).

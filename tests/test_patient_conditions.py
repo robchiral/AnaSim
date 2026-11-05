@@ -218,6 +218,7 @@ def test_pregnancy_changes_resting_gases_and_circulation_and_responds_to_positio
     assert 30 < pregnant.state.pa_co2 < 34
     assert 7.42 < pregnant.state.ph < 7.46
     assert 19 < pregnant.state.hco3 < 24
+    assert pregnant.state.base_excess == pytest.approx(-2.2, abs=0.2)
     assert 0.8 < pregnant.resp.frc / control.resp.frc < 0.95
     assert 1.25 < pregnant.state.blood_volume / control.state.blood_volume < 1.6
     assert lateral.state.co > 1.3 * control.state.co

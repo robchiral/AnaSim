@@ -262,6 +262,8 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     state.pa_co2 = float(resp_state.pa_co2)
     state.ph = float(resp_state.ph)
     state.hco3 = float(resp_state.hco3)
+    state.base_excess = float(resp_state.base_excess)
+    state.lactate = float(engine.lactate.concentration)
     state.alveolar_co2 = float(resp_state.p_alveolar_co2)
     state.pao2 = float(resp_state.p_arterial_o2)
     state.sao2 = float(resp_state.sao2)

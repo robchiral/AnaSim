@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added lactate and standard base excess. Oxygen consumption falls when oxygen
+  delivery drops below a critical level, and the unmet demand raises lactate.
+  Epinephrine, sepsis, hepatic impairment, and lactated Ringer's also change
+  lactate and base excess.
 - Added bag ventilation rate and tidal volume settings.
 - Added independent practice with optional hints and a debrief for every case.
 - Reorganized the setup screen around the choice of a case or an open

@@ -161,6 +161,8 @@ class SimulationState:
     pa_co2: float = 40.0
     ph: float = 7.4  # Blood gas values at 37 °C.
     hco3: float = 24.5  # Plasma bicarbonate, mmol/L.
+    base_excess: float = 0.0  # Standard base excess, mmol/L.
+    lactate: float = 0.9  # Plasma lactate, mmol/L.
     alveolar_co2: float = 40.0
     pao2: float = 95.0
     capno_co2: float = 0.0

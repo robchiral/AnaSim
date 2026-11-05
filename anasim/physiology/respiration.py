@@ -47,6 +47,7 @@ class RespState:
     sao2: float = 98.0  # %
     ph: float = 7.4  # Blood gas values at 37 °C.
     hco3: float = 24.5  # Plasma bicarbonate, mmol/L.
+    base_excess: float = 0.0  # Standard (extracellular) base excess, mmol/L.
     pv_co2: float = 46.0
     pv_o2: float = 40.0
     venous_ph: float = 7.36
@@ -70,6 +71,9 @@ class RespiratoryModel:
     AWAKE_HYPOCAPNIC_GAIN = 0.2  # Fraction of HCVR; nonlinear depth response, a teaching estimate
     RATE_CO2_GAP = 5.0  # mmHg above the set point before hypercapnia raises frequency
     CO2_CONTROLLER_TAU_S = 150.0  # Olofsen 2010, 2.5 min
+    # O2 extraction at which consumption starts to depend on delivery, in septic
+    # and nonseptic patients alike (Ronco 1993).
+    CRITICAL_EXTRACTION = 0.6
     CO2_RESPONSE_EXPONENT = 4.37  # Bouillon 2004 nonlinear CO2 response.
     MAX_ALVEOLAR_DRIVE = 12.0  # Bound demand above the nonlinear response at PCO2 70.
     # Nieuwenhuijs 2000: acute hypoxic drive followed by ventilatory decline.
@@ -121,6 +125,8 @@ class RespiratoryModel:
         self.vco2 = 3.6 * 70.0 * (patient.weight / 70.0) ** 0.75 * self.rq * patient.pregnancy.metabolism  # mL/min
         self.frc = patient.functional_residual_capacity()
         self.shunt_fraction = 0.0
+        self.oxygen_supply_fraction = 1.0  # Share of O2 demand met
+        self.oxygen_deficit_l = 0.0  # Unmet O2 demand awaiting the lactate update, STPD L.
         # Gas absorbed behind a closed airway, STPD L. Opening the airway
         # passively refills this deficit (Laviola 2020).
         self._apneic_gas_deficit_l = 0.0
@@ -255,6 +261,10 @@ class RespiratoryModel:
         hb = self._oxygen_hb
         reference = self.chemistry.evaluate(self.patient.pregnancy.ph, self.paco2_setpoint, 0.98)
         transport.base = [reference.buffer_base] * 3
+        # Van Slyke equation, as reported by blood gas analyzers.
+        self._reference_base_excess = 0.93 * (
+            reference.plasma_bicarbonate - 24.4 + 14.83 * (reference.ph - 7.4)
+        )
         extraction = production_l_min / self.rq / cardiac_output
         oxygen, capillary, saturation = self._seed_capillary_oxygen(extraction)
         transport.oxygen = [oxygen, oxygen, max(0.0, oxygen - extraction)]
@@ -267,6 +277,7 @@ class RespiratoryModel:
         co2, base, _, _ = extracellular_contents(venous.blood.ph, venous.pco2)
         transport.extracellular_co2 = transport.extracellular_volume * co2
         transport.extracellular_base = transport.extracellular_volume * base
+        self._reference_extracellular_base = base
         self._extracellular_ph = venous.blood.ph
         self._extracellular_pco2 = venous.pco2
         self._blood_pressures[0], self._blood_ph[0] = self.state.p_alveolar_co2, arterial.ph
@@ -514,6 +525,25 @@ class RespiratoryModel:
         state.pv_co2, state.pv_o2, state.venous_ph = self._blood_pressures[2], self._blood_po2[2], self._blood_ph[2]
         self._p50 = self._blood_p50[1]
         self.buffer_base = self.gas_transport.base[1]
+        self._publish_base_excess()
+
+    def _publish_base_excess(self) -> None:
+        # Respiratory changes move base between blood and extracellular fluid,
+        # so base excess uses their combined change from the resting reference.
+        transport = self.gas_transport
+        blood_volume = sum(transport.volumes)
+        acquired_base = (
+            transport.base_meq - blood_volume * self._reference_buffer_base
+            - transport.extracellular_volume * self._reference_extracellular_base
+        )
+        self.state.base_excess = self._reference_base_excess + acquired_base / (
+            blood_volume + transport.extracellular_volume
+        )
+
+    def remove_buffer_base(self, meq: float) -> None:
+        """Remove buffer base from extracellular fluid; a negative amount adds base."""
+        self.gas_transport.extracellular_base -= meq
+        self._publish_base_excess()
 
     def oxygen_exchange_l_min(
         self, fio2: float, alveolar_ventilation: float,
@@ -726,7 +756,15 @@ class RespiratoryModel:
         self._temperature_p50_now = self._temperature_p50(temp_c)
         self.shunt_fraction = clamp(shunt_fraction, 0.0, 0.95)
         self._set_low_vq(unconscious, airway_pressure, vq_mismatch)
+        # Above the critical delivery, extraction rises to hold consumption at
+        # demand. Below it, consumption and aerobic CO2 production fall together.
         production = self.vco2 * metabolic_factor / 1000.0
+        demand = production / self.rq
+        delivery = max(0.0, cardiac_output) * transport.oxygen[1]
+        supply = min(1.0, self.CRITICAL_EXTRACTION * delivery / demand)
+        self.oxygen_supply_fraction = supply
+        self.oxygen_deficit_l += demand * (1.0 - supply) * dt / 60.0
+        production *= supply
         consumption = production / self.rq
         carbon_plan, oxygen_plan, pulmonary = transport.prepare(
             dt, cardiac_output, self.shunt_fraction, production, consumption, self.chemistry,
