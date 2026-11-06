@@ -226,8 +226,9 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
     sync_inhaled_agents(engine)
 
     rates = engine.infusion_rates
-    for key, model in engine.pk.items():
-        model.step(dt, rates.get(key, 0.0))
+    for models in (engine.pk, engine.pump_pk):
+        for key, model in models.items():
+            model.step(dt, rates.get(key, 0.0))
     # Plasma binding and sugammadex-dependent effect-site efflux reduce free
     # rocuronium, which drives TOF and every muscle effect.
     engine.tof_pd.step_recovery(
@@ -251,6 +252,8 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     midazolam_cp = midazolam.state.c1
     interaction_changed = propofol.update_midazolam(midazolam_cp)
     interaction_changed |= midazolam.update_propofol(propofol_cp)
+    if "propofol" in engine.pump_pk:
+        interaction_changed |= cast(PropofolPKEleveld, engine.pump_pk["propofol"]).update_midazolam(midazolam_cp)
     base_bv = engine.hemo.blood_volume_0
     # Heart failure's low output slows flow-dependent clearance. Pregnancy's
     # added output mostly perfuses the uterus and kidneys, so it is the reference.
@@ -268,7 +271,7 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     ):
         return interaction_changed
 
-    for model in engine.pk.values():
+    for model in (*engine.pk.values(), *engine.pump_pk.values()):
         model.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
     engine.tof_pd.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
     engine._pk_hemo_scale_cache = scale

@@ -289,6 +289,10 @@ class _CoExponents(TypedDict):
 
 # Population parameters without an additional cardiac-output covariate.
 _NO_CO_COVARIATE: _CoExponents = {"cl1_co_exponent": 0.0, "distribution_co_exponent": 0.0}
+# Cardiac output during surgery under anesthesia, as a fraction of awake output
+# (0.82 with TIVA, 0.85 with sevoflurane). Clearances from studies in
+# anesthetized patients apply at this output.
+ANESTHETIZED_OUTPUT = 0.82
 
 
 def _sigmoid(x: float, x50: float, gamma: float) -> float:
@@ -375,22 +379,24 @@ class RemifentanilPKEleveld(MammillaryPK):
 
     def __init__(self, patient: Patient):
         age, weight = patient.age, patient.weight
+        eta = patient.variability.remifentanil
         size = _eleveld_ffm(age, weight, patient.height, patient.sex == "male") / _eleveld_ffm(35.0, 70.0, 170.0, True)
         aging_fast = math.exp(-0.00554 * (age - 35.0))
         aging_slow = math.exp(-0.00327 * (age - 35.0))
         sex_factor = 1.0
         if patient.sex == "female":
             sex_factor += 0.470 * _sigmoid(age, 12.0, 6.0) * (1.0 - _sigmoid(age, 45.0, 6.0))
-        v2 = 8.82 * size * aging_slow * sex_factor
-        v3 = 5.03 * size * math.exp(-0.0315 * (age - 35.0) - 0.0260 * (weight - 70.0))
+        v2 = 8.82 * size * aging_slow * sex_factor * eta.v2
+        v3 = 5.03 * size * math.exp(-0.0315 * (age - 35.0) - 0.0260 * (weight - 70.0)) * eta.v3
         super().__init__(
-            v1=5.81 * size * aging_fast,
+            v1=5.81 * size * aging_fast * eta.v1,
             v2=v2,
             v3=v3,
-            cl1=2.58 * size**0.75 * _sigmoid(weight, 2.88, 2.0) / _sigmoid(70.0, 2.88, 2.0) * sex_factor * aging_slow,
-            cl2=1.72 * (v2 / 8.82)**0.75 * aging_fast * sex_factor,
-            cl3=0.124 * (v3 / 5.03)**0.75 * aging_fast,
-            ke0=1.09 * math.exp(-0.0289 * (age - 35.0)),
+            cl1=2.58 * size**0.75 * _sigmoid(weight, 2.88, 2.0) / _sigmoid(70.0, 2.88, 2.0) * sex_factor * aging_slow
+            * eta.cl,
+            cl2=1.72 * (v2 / 8.82)**0.75 * aging_fast * sex_factor * eta.q2,
+            cl3=0.124 * (v3 / 5.03)**0.75 * aging_fast * eta.q3,
+            ke0=1.09 * math.exp(-0.0289 * (age - 35.0)) * eta.ke0,
             additional_effect_sites=(("ce_resp", math.log(2.0) / 0.53),),
             # Swine bled 48 mL/kg had 58% lower central clearance and half the
             # V1, with unchanged distribution clearances (Johnson 2001).
@@ -405,19 +411,21 @@ class FentanylPK(MammillaryPK):
     """Bae et al. 2020 allometric three-compartment model (ng/mL).
 
     Volumes scale with (weight/70)^1.23 and clearances with (weight/70)^0.313;
-    ke0 0.147 min^-1 is from Scott and Stanski 1987.
+    ke0 0.147 min^-1 is from Scott and Stanski 1987. Bae studied patients during
+    surgery under propofol-remifentanil anesthesia.
     """
 
     def __init__(self, patient: Patient):
         volume = (patient.weight / 70.0) ** 1.23
-        flow = (patient.weight / 70.0) ** 0.313
+        flow = (patient.weight / 70.0) ** 0.313 / ANESTHETIZED_OUTPUT
+        eta = patient.variability.fentanyl
         super().__init__(
-            v1=10.1 * volume,
-            cl1=0.704 * flow,
-            v2=26.5 * volume,
-            cl2=2.38 * flow,
-            v3=206.0 * volume,
-            cl3=1.49 * flow,
+            v1=10.1 * volume * eta.v1,
+            cl1=0.704 * flow * eta.cl,
+            v2=26.5 * volume * eta.v2,
+            cl2=2.38 * flow * eta.q2,
+            v3=206.0 * volume * eta.v3,
+            cl3=1.49 * flow * eta.q3,
             ke0=0.147,
         )
 
@@ -544,7 +552,8 @@ class EtomidatePK(MammillaryPK):
     falls 42% from 22 to 80 years and CL about 2 mL/kg/min per decade.
     Peripheral volumes 0.259 and 4.36 L/kg reproduce the reported Vss (4.7
     L/kg) and half-lives (0.93, 12.1, and 324 min). t1/2 ke0 1.6 min.
-    Clearance is mostly hepatic (Van Hamme 1978).
+    Clearance is mostly hepatic (Van Hamme 1978). Arden gave etomidate before
+    surgery, so its clearances apply at awake cardiac output.
     """
 
     def __init__(self, patient: Patient):
@@ -569,7 +578,9 @@ class KetaminePK(MammillaryPK):
     about a minute. The cardiac-output site uses Kamp 2021's
     equilibration half-time of 2.28 min; its transfer to total racemic
     ketamine concentrations is an assumption. The separate HR half-time of
-    0.7 min is calibrated to Bovill 1972's peak within the first 3 min.
+    0.7 min is calibrated to Bovill 1972's peak within the first 3 min. Most
+    source studies were in awake volunteers, so its clearances apply at awake
+    cardiac output.
     """
 
     def __init__(self, patient: Patient):
@@ -591,20 +602,21 @@ class LidocainePK(MammillaryPK):
     """Foong et al. 2025 three-compartment model from surgical patients (mcg/mL).
 
     CL 45.9, Q2 142, and Q3 5.81 L/h and V1 25.2, V2 44.4, and V3 29.3 L,
-    scaled from 70 kg; clearance is hepatic. AnaSim sets ke0 so the effect
-    site peaks 3 min after a bolus, the best time to give it before
-    intubation (Tam 1987).
+    scaled from 70 kg; clearance is hepatic. Clearances were measured during
+    surgery. AnaSim sets ke0 so the effect site peaks 3 min after a bolus, the
+    best time to give it before intubation (Tam 1987).
     """
 
     def __init__(self, patient: Patient):
         size = patient.weight / 70.0
+        flow = size**0.75 / ANESTHETIZED_OUTPUT
         super().__init__(
             v1=25.2 * size,
-            cl1=45.9 / 60.0 * size**0.75 * organ_clearance_scaler(patient, hepatic_fraction=0.9),
+            cl1=45.9 / 60.0 * flow * organ_clearance_scaler(patient, hepatic_fraction=0.9),
             v2=44.4 * size,
-            cl2=142.0 / 60.0 * size**0.75,
+            cl2=142.0 / 60.0 * flow,
             v3=29.3 * size,
-            cl3=5.81 / 60.0 * size**0.75,
+            cl3=5.81 / 60.0 * flow,
             ke0=0.6,
         )
 

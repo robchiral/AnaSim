@@ -123,13 +123,15 @@ class HemodynamicConfig:
     # within 2 SD. The 14-min equilibration half-time fits the gradual fall over
     # 10 minutes of mask sevoflurane after propofol (Ebert 1995, Fig. 1);
     # propofol's blood-pressure effect also equilibrates several times slower
-    # than its BIS effect (Kazama 1999).
+    # than its BIS effect (Kazama 1999). Most of the fall comes from stroke
+    # volume: in unstimulated volunteers, cardiac index fell 28% at 1 and 1.5
+    # MAC and SVR fell 4% and 16% (Malan 1995).
     ke0_sevo: float = 0.05
-    sevo_emax_tpr: float = -0.6
-    sevo_ec50_tpr: float = 0.55
-    sevo_gamma_tpr: float = 1.5
-    sevo_emax_sv: float = -0.15
-    sevo_ec50_sv: float = 1.0
+    sevo_emax_tpr: float = -0.4
+    sevo_ec50_tpr: float = 0.9
+    sevo_gamma_tpr: float = 2.5
+    sevo_emax_sv: float = -0.5
+    sevo_ec50_sv: float = 0.6
     sevo_emax_hr: float = -0.2
     sevo_ec50_hr: float = 0.5
 

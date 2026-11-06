@@ -63,6 +63,7 @@ class HemodynamicModel:
                 ec50_prop_tpr=cfg.ec50_prop_tpr * eta.propofol_tpr_c50,
                 propofol_sympathetic_cp=cfg.propofol_sympathetic_cp * eta.propofol_tpr_c50,
                 emax_remi_tpr=cfg.emax_remi_tpr * eta.opioid_tpr_emax,
+                sevo_ec50_tpr=cfg.sevo_ec50_tpr * eta.sevoflurane_tpr_c50,
             )
         self.config = cfg
         self.failure = HEART_FAILURE_PROFILES[patient.heart_failure]

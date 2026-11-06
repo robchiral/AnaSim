@@ -31,7 +31,7 @@ from anasim.patient.pd import (
     midazolam_loss_of_response,
 )
 from anasim.patient.pk_models import NorepinephrinePK
-from anasim.patient.variability import sample_variability
+from anasim.patient.variability import TYPICAL, sample_variability
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
@@ -62,7 +62,7 @@ from .action_log import (
     ActionLog,
 )
 from .clinical_actions import ActionFeedback, check_intubation
-from .drug_api import DrugControllerMixin
+from .drug_api import POPULATION_TCI_DRUGS, DrugControllerMixin
 from .drug_registry import DRUG_REGISTRY, get_drug_spec, resolve_bolus_drug
 from .initialization import initialize_engine_state
 from .state import (
@@ -204,6 +204,11 @@ class SimulationEngine(DrugControllerMixin):
         """Build the subsystem models selected by the configuration."""
         # Intravenous drug PK, keyed like the drug registry.
         self.pk = {spec.key: spec.pk_model(self.patient, self.config) for spec in DRUG_REGISTRY}
+        self.pump_pk = {}
+        if self.patient.variability != TYPICAL:
+            typical = copy.copy(self.patient)
+            typical.variability = TYPICAL
+            self.pump_pk = {key: get_drug_spec(key).pk_model(typical, self.config) for key in POPULATION_TCI_DRUGS}
         self.midazolam_c50 = midazolam_loss_of_response(self.patient.age)
 
         self.circuit = CircleSystem()
@@ -247,7 +252,7 @@ class SimulationEngine(DrugControllerMixin):
         self.bis = BISModel(self.patient)
         self.capno = Capnograph(self.resp.vd_deadspace)
         self.airway_sensor = AirwaySensor()
-        self.response = ClinicalResponseModel(self.patient.age)
+        self.response = ClinicalResponseModel(self.patient.age, self.patient.variability.sevoflurane_mac)
         self.tof_pd = TOFModel(self.patient)
 
         self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)
@@ -375,6 +380,8 @@ class SimulationEngine(DrugControllerMixin):
         model = self.pk[spec.key]
         dose = amount * spec.bolus_model_scale
         model.state.c1 += dose / model.v1
+        if pump := self.pump_pk.get(spec.key):
+            pump.state.c1 += dose / pump.v1
         self.sync_active_tci_from_pk(spec.key)
         self.actions.record(
             self.state.time, ACTION_DRUG_BOLUS, label=spec.key, amount=amount
@@ -594,7 +601,7 @@ class SimulationEngine(DrugControllerMixin):
     def get_predicted_csht(self, drug: str, max_seconds: int = 7200) -> float:
         """Minutes for a drug's effect site to halve if stopped now, up to max_seconds."""
         key = get_drug_spec(drug).key
-        model = self.pk[key]
+        model = self.prediction_model(key)
         if key == "roc":
             return self.tof_pd.simulate_decay(
                 model, max_seconds=max_seconds,

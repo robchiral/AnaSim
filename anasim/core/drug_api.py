@@ -15,6 +15,10 @@ from .state import SimulationConfig, SimulationState
 from .tci import TCIController
 from .units import convert_rate
 
+# Clinical pumps for these drugs use population PK, so for a sampled patient they
+# use the typical patient's model. Vasoactive TCI uses the patient's model.
+POPULATION_TCI_DRUGS = ("propofol", "remi", "fentanyl")
+
 
 class DrugControllerMixin:
     """Infusion-rate and TCI methods shared by SimulationEngine."""
@@ -25,9 +29,14 @@ class DrugControllerMixin:
     state: SimulationState
     actions: ActionLog
     pk: dict[str, MammillaryPK]
+    pump_pk: dict[str, MammillaryPK]
     infusion_rates: dict[str, float]
     tci: dict[str, TCIController]
     _tci_accumulators: dict[str, float]
+
+    def prediction_model(self, key: str) -> MammillaryPK:
+        """Return the PK model that TCI and decrement times use."""
+        return self.pump_pk.get(key, self.pk[key])
 
     def enable_tci(
         self,
@@ -40,7 +49,7 @@ class DrugControllerMixin:
         max_rate = _tci_max_rate(spec)
         if not self.config.tci_enabled:
             raise ValueError("TCI is disabled for this session")
-        pk_model = self.pk[spec.key]
+        pk_model = self.prediction_model(spec.key)
         controller = self.tci.get(spec.key)
         target_compartment = (spec.fixed_tci_mode or TCIMode(mode)).value
         if controller is None or controller.target_compartment != target_compartment:
@@ -66,7 +75,7 @@ class DrugControllerMixin:
         for key in keys:
             controller = self.tci.get(key)
             if controller:
-                controller.sync_from_pk_model(self.pk[key])
+                controller.sync_from_pk_model(self.prediction_model(key))
 
     def disable_tci(self, drug: str):
         """Disable TCI for a drug and stop its infusion."""

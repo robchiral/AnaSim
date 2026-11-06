@@ -168,9 +168,13 @@ def _seed_steady_state_subsystems(
     engine.infusion_rates["nore"] = 0.0
 
     if targets.prop_ce > 0.0:
-        engine.infusion_rates["propofol"] = _seed_linear_history(engine.pk["propofol"], targets.prop_ce, profile.history_minutes) / 60.0
+        engine.infusion_rates["propofol"] = _seed_linear_history(
+            engine.pk["propofol"], targets.prop_ce, profile.history_minutes, engine.pump_pk.get("propofol"),
+        ) / 60.0
     if targets.remi_ce > 0.0:
-        engine.infusion_rates["remi"] = _seed_linear_history(engine.pk["remi"], targets.remi_ce, profile.history_minutes) / 60.0
+        engine.infusion_rates["remi"] = _seed_linear_history(
+            engine.pk["remi"], targets.remi_ce, profile.history_minutes, engine.pump_pk.get("remi"),
+        ) / 60.0
     fi_agent = 0.0
     if profile.primary_hypnotic == "volatile":
         fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
@@ -198,12 +202,22 @@ def _seed_steady_state_subsystems(
     )
 
 
-def _seed_linear_history(pk_model, target_ce: float, duration_min: float) -> float:
-    """Seed the state after a constant infusion that reaches target Ce; return the rate per minute."""
+def _infusion_history(pk_model, duration_min: float) -> np.ndarray:
+    """Return the compartment concentrations after duration_min of infusion at one unit per minute."""
     A, B = pk_model.get_ss_matrices()
-    history_gain = (np.eye(A.shape[0]) - expm(A * duration_min)) @ np.linalg.solve(-A, B)
-    rate_per_min = target_ce / float(history_gain[-1, 0])
-    pk_model.set_state_vector(history_gain[:, 0] * rate_per_min)
+    return ((np.eye(A.shape[0]) - expm(A * duration_min)) @ np.linalg.solve(-A, B))[:, 0]
+
+
+def _seed_linear_history(pk_model, target_ce: float, duration_min: float, pump_model=None) -> float:
+    """Seed the state after a constant infusion that reaches target Ce; return the rate per minute.
+
+    If a pump model is given, it receives the same infusion.
+    """
+    history = _infusion_history(pk_model, duration_min)
+    rate_per_min = target_ce / float(history[-1])
+    pk_model.set_state_vector(history * rate_per_min)
+    if pump_model is not None:
+        pump_model.set_state_vector(_infusion_history(pump_model, duration_min) * rate_per_min)
     return rate_per_min
 
 
@@ -281,8 +295,8 @@ def _attach_startup_controllers(engine: SimulationEngine, targets: StartupTarget
     """Attach TCI controllers after seeding so they inherit and hold the post-settle state."""
     projection_core.sync_pk_state(engine)
     if targets.prop_ce > 0.0:
-        engine.enable_tci("propofol", engine.pk["propofol"].state.ce, mode="effect_site")
+        engine.enable_tci("propofol", engine.prediction_model("propofol").state.ce, mode="effect_site")
         engine.infusion_rates["propofol"] = 0.0
     if targets.remi_ce > 0.0:
-        engine.enable_tci("remi", engine.pk["remi"].state.ce, mode="effect_site")
+        engine.enable_tci("remi", engine.prediction_model("remi").state.ce, mode="effect_site")
         engine.infusion_rates["remi"] = 0.0

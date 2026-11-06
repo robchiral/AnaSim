@@ -203,7 +203,9 @@ class ClinicalResponseModel:
     approximations.
     """
 
-    def __init__(self, age: float):
+    def __init__(self, age: float, sevoflurane_mac: float = 1.0):
+        # Heyse 2012 found one sevoflurane C50 shift for all clinical endpoints.
+        self.sevoflurane_mac = sevoflurane_mac
         # Schnider 1999 LOC Ce50 = 2.9 - 0.022 x age mcg/mL, scaled relative
         # to Bouillon's median age of 33.5. This age term applies only to LOC.
         self.age_factor = (2.9 - 0.022 * age) / (2.9 - 0.022 * 33.5)
@@ -233,7 +235,7 @@ class ClinicalResponseModel:
         """Shaking/shouting nonresponse probability with endpoint-specific adjunct potency."""
         intensity = 0.48
         units = max(0.0, ce_prop) / (self.c50_prop * self.age_factor)
-        sevo_awake = max(0.0, mac_sevo) * self.mac_reference / 0.90
+        sevo_awake = max(0.0, mac_sevo) / self.sevoflurane_mac * self.mac_reference / 0.90
         n2o_awake = max(0.0, mac_n2o) / 0.61
         interaction = N2O_SEVO_AWAKE_INTERACTION * min(sevo_awake, 1.0) * min(n2o_awake, 1.0)
         units += intensity * (sevo_awake + n2o_awake - interaction)
@@ -243,7 +245,8 @@ class ClinicalResponseModel:
     def _noxious_units(self, ce_prop: float, mac_sevo: float, mac_n2o: float,
                        ce_ketamine: float) -> float:
         # MAC fractions add at the laryngoscopy endpoint.
-        mac = max(0.0, mac_sevo) + max(0.0, mac_n2o) + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
+        mac = (max(0.0, mac_sevo) / self.sevoflurane_mac + max(0.0, mac_n2o)
+               + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT)
         return max(0.0, ce_prop) / self.c50_prop + LARYNGOSCOPY_INTENSITY * mac * self.mac_reference / 2.59
 
     def tolerance(

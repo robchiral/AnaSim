@@ -70,6 +70,8 @@ def test_propofol_fentanyl_sevoflurane_induction_intubation_and_incision():
     24 min. Ranges are the recorded interquartile ranges: MAP -19% at 1-2 min,
     -12% at 2-5 min, lowest reading -28% in the first 10 min, -27% before
     incision, -19% during surgery; HR 65 before incision and 70 during surgery.
+    In untreated cases, the highest reading in the 10 min after incision was
+    9.5 mmHg above the mean before it (IQR 7 to 27).
     """
     patient: dict[str, Any] = dict(age=55, weight=63, height=163, sex="female", baseline_map=98, baseline_hr=74)
     weight = patient["weight"]
@@ -90,7 +92,7 @@ def test_propofol_fentanyl_sevoflurane_induction_intubation_and_incision():
     pre_intubation = trace[329]
     assert 15.0 <= trace[330:450, 0].max() - pre_intubation[0] <= 30.0
     assert 10.0 <= trace[330:450, 1].max() - pre_intubation[1] <= 20.0
-    assert 10.0 <= trace[1560:1860, 0].max() - trace[1559, 0] <= 20.0
+    assert 7.0 <= trace[1560:2160, 0].max() - trace[1559, 0] <= 27.0
     assert 9.0 <= falls[2460:3120].mean() <= 26.0
     assert 63.0 <= trace[2460:3120, 1].mean() <= 81.0
 

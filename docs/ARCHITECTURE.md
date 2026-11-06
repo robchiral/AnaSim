@@ -109,11 +109,13 @@ responses use the same calibrations as in other adults.
 With `patient_variability`, each session samples propofol kinetics and
 bispectral index (BIS) sensitivity from Eleveld 2018, using standard deviations
 halved to match VitalDB inductions with total intravenous anesthesia (TIVA). It
-also samples blood pressure sensitivity to propofol and opioids from Su 2023,
-and the timing, sensitivity, and shape of the respiratory-rate response to
-morphine and hydromorphone from Olofsen 2026.
-The session seed fixes the sampled patient. Without this option, each patient
-has the typical response.
+also samples remifentanil kinetics (Eleveld 2017), fentanyl kinetics (Bae 2020),
+sevoflurane potency for awakening and noxious stimuli (Heyse 2012), the effects
+of propofol and opioids on vascular resistance (Su 2023), and the timing,
+sensitivity, and shape of the respiratory-rate response to morphine and
+hydromorphone (Olofsen 2026). Sevoflurane's effect on vascular resistance varies
+as much as propofol's. The session seed fixes the sampled patient. Without this
+option, each patient has the typical response.
 
 ## Model notes
 
@@ -133,15 +135,20 @@ partial pressure, expressed as age-adjusted minimum alveolar concentration (MAC)
 
 When blood volume changes, the vascular part of each drug's central volume is
 rescaled and the amount of drug is conserved. Clearance depends on organ
-function, renal perfusion, and cardiac output as specified by each model. Renal
-perfusion affects only the renal clearance that remains after any renal
-impairment. Blood loss reduces propofol and remifentanil clearance, and volume
-replacement restores it, based on swine data (Johnson 2001, 2003, 2004).
+function, renal perfusion, and cardiac output as specified by each model.
+Fentanyl and lidocaine clearances were measured during anesthesia and surgery,
+so they apply at the model's cardiac output under anesthesia (Bae 2020; Foong
+2025). Renal perfusion affects only the renal clearance that remains after any
+renal impairment. Blood loss reduces propofol and remifentanil clearance, and
+volume replacement restores it, based on swine data (Johnson 2001, 2003, 2004).
 Midazolam and propofol reduce each other's clearance within the concentration
 ranges studied (Vuyk 2009; Lichtenbelt 2010).
 
 TCI predicts concentrations from the current PK parameters and adjusts infusion
-rates within pump limits. Rocuronium TCI targets the free plasma concentration,
+rates within pump limits. Clinical pumps use population models, so with
+`patient_variability`, TCI and decrement times for propofol, remifentanil, and
+fentanyl use the typical patient's parameters, and the patient's concentrations
+differ from the target. Rocuronium TCI targets the free plasma concentration,
 and its prediction accounts for sugammadex and inhaled agents. Setting a manual
 infusion rate turns off TCI for that drug. `tci_enabled` chooses between TCI and
 manual rates when maintenance is initialized.
@@ -280,14 +287,16 @@ within two standard deviations of their results. The stroke volume interaction
 rises over a wider range of propofol concentrations than in Su's model, which
 makes it larger at the doses used in these trials.
 
-**Sevoflurane.** Sevoflurane lowers vascular resistance and HR. Both effects
-were fitted to routine bolus inductions in VitalDB, in which the falls did not
-depend on the opioid dose. Ebert 1995's volunteers had larger falls in pressure
-and no change in HR, and the model is within two standard deviations of their
-pressures. The vascular effect equilibrates with a 14-minute half-time, which
-matches the gradual fall in MAP over 10 minutes of sevoflurane by mask after
-propofol in the same study. The effects of propofol and sevoflurane on
-resistance and stroke volume combine as independent fractions.
+**Sevoflurane.** Sevoflurane lowers stroke volume, vascular resistance, and HR.
+The fall in pressure was fitted to routine bolus inductions in VitalDB, in which
+the falls did not depend on the opioid dose. Most of the fall comes from stroke
+volume: in unstimulated volunteers, cardiac index fell 28% at 1 and 1.5 MAC and
+resistance fell 4% and 16% (Malan 1995). Ebert 1995's volunteers had larger
+falls in pressure and no change in HR, and the model is within two standard
+deviations of their pressures. The effect equilibrates with a 14-minute
+half-time, which matches the gradual fall in MAP over 10 minutes of sevoflurane
+by mask after propofol in Ebert's study. The effects of propofol and sevoflurane
+on resistance and stroke volume combine as independent fractions.
 
 **Reflexes.** MAP feedback changes HR or vascular resistance, depending on
 rhythm, anesthetic depth, blood gases, and stimulation. Anesthesia reduces the

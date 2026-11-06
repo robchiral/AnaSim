@@ -56,31 +56,37 @@ def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
 def test_age_and_peep_set_anesthetized_oxygenation():
     """Awake on room air, the A-a gradient is 12.6 mmHg at 65 (Crapo 1999).
     Under inhaled anesthesia at FiO2 0.4 without PEEP it is 52 mmHg at 25 and
-    rises 1.35 mmHg/yr (Gunnarsson 1991). In VitalDB intraoperative blood gases
-    at FiO2 0.36, PEEP 4-8 raised PaO2 by about 5 mmHg at 30 (95% CI -24 to
-    +30) and 35 at 70 (+15 to +51)."""
+    rises 1.35 mmHg/yr (Gunnarsson 1991). The test uses his patients' weight
+    (75 kg), height (177 cm), and atropine 0.5 mg. At FiO2 0.4 the gradient is
+    proportional to shunt, which was 4.8% in his patients, so the bound is
+    scaled by the model's shunt.
+    In VitalDB intraoperative blood gases at FiO2 0.36, PEEP 4-8 raised PaO2 by
+    about 5 mmHg at 30 (95% CI -24 to +30) and 35 at 70 (+15 to +51)."""
     awake = SimulationEngine(Patient(age=65), SimulationConfig(mode="awake", rng_seed=123))
     awake.start()
     for _ in range(120):
         awake.step(1.0)
     assert awake.resp.state.p_alveolar_o2 - awake.state.pao2 == pytest.approx(12.6, abs=2.0)
 
-    def anesthetized(age, maint_type, peep, o2_l_min):
-        engine = SimulationEngine(Patient(age=age), SimulationConfig(
+    def anesthetized(age, maint_type, peep, o2_l_min, atropine_mg=0.0, **patient):
+        engine = SimulationEngine(Patient(age=age, **patient), SimulationConfig(
             mode="steady_state", maint_type=maint_type, rng_seed=123))
         engine.start()
+        if atropine_mg:
+            engine.give_drug_bolus("atropine", atropine_mg)
         engine.set_fgf(o2_l_min, 10.0 - o2_l_min)
         engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=peep, ie="1:2")
         for _ in range(1500):
             engine.step(1.0)
         return engine
 
-    gradient = []
+    gradient, shunt = [], []
     for age in (25, 65):
-        engine = anesthetized(age, "balanced", 0, 2.5)
+        engine = anesthetized(age, "balanced", 0, 2.5, atropine_mg=0.5, weight=75, height=177, sex="male")
         assert engine.state.fio2 == pytest.approx(0.39, abs=0.01)
         gradient.append(engine.resp.state.p_alveolar_o2 - engine.state.pao2)
-    assert gradient[0] == pytest.approx(52.0, abs=10.0)
+        shunt.append(engine.aeration.shunt_fraction)
+    assert gradient[0] == pytest.approx(52.0 * shunt[0] / 0.048, abs=10.0)
     assert 1.0 < (gradient[1] - gradient[0]) / 40.0 < 1.8
 
     for age, low, high in ((30, -10.0, 15.0), (70, 20.0, 50.0)):

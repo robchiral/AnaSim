@@ -67,7 +67,7 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         "INTUBATE": [("airway", {"mode": "ETT"})],
         "CONFIRM_ETT": [("vent_power", {"on": True})],
         "MAINTENANCE": [
-            ("vaporizer", {"percent": 1.8}),
+            ("vaporizer", {"percent": 1.6}),
             ("fgf", {"o2": 1, "air": 1, "n2o": 0}),
             # Unstimulated sevoflurane before incision needs pressor support.
             ("drug_rate", {"key": "phenyl", "rate": 40}),
@@ -88,7 +88,10 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         "RECOVERY": [("fgf", {"o2": 5, "air": 0, "n2o": 0})],
     },
     "emergence_balanced": {
-        "ASSESS": [("drug_bolus", {"key": "phenyl", "amount": 100})],
+        "ASSESS": [
+            ("drug_bolus", {"key": "phenyl", "amount": 100}),
+            ("vent", {"rr": 9}),
+        ],
         "ASSESS_BLOCK": [("sugammadex", {"mg_per_kg": 2})],
         "STOP_AGENTS": [
             ("vaporizer", {"percent": 0}),

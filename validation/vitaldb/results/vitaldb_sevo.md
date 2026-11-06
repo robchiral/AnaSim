@@ -1,6 +1,6 @@
 # VitalDB bolus induction with sevoflurane
 
-Generated 2026-10-30.
+Generated 2026-11-06.
 
 ## Methods
 
@@ -17,28 +17,28 @@ Eligible candidates: 217. Retained: 29 (20 with fentanyl, 9 with remifentanil).
 
 | Patients | n | Readings | Mean error, mmHg (95% CI) | Patient SD | Reading SD |
 |---|---:|---:|---|---:|---:|
-| All patients | 29 | 168 | -5.4 (-9.6 to -1.1) | 8.1 | 17.0 |
-| Untreated | 13 | 92 | -11.0 (-15.7 to -6.3) | 3.7 | 18.4 |
-| Pressor-treated | 16 | 76 | 0.2 (-5.6 to 6.4) | 9.9 | 14.4 |
+| All patients | 29 | 168 | -4.9 (-9.0 to -0.7) | 7.9 | 16.9 |
+| Untreated | 13 | 92 | -10.2 (-14.8 to -5.6) | 3.5 | 18.3 |
+| Pressor-treated | 16 | 76 | 0.5 (-5.2 to 6.6) | 9.8 | 14.3 |
 
-By time after propofol, all patients: before 10 min -5.4 (-9.8 to -1.2); from 10 min -4.9 (-11.7 to 1.7) mmHg.
+By time after propofol, all patients: before 10 min -5.0 (-9.3 to -0.9); from 10 min -3.9 (-10.6 to 2.8) mmHg.
 
 Change in MAP from pre-induction, all readings without stopping, median (IQR):
 
 | Measure | Patients | Recorded | Model |
 |---|---:|---|---|
-| 1-2 min | 21 | -16% (-25 to -8) | -14% (-16 to -12) |
+| 1-2 min | 21 | -16% (-25 to -8) | -14% (-15 to -12) |
 | 2-5 min | 27 | -13% (-24 to 1) | -19% (-26 to -12) |
-| lowest in 10 min | 29 | -29% (-34 to -26) | -32% (-37 to -27) |
-| 10 min before incision | 24 | -27% (-28 to -19) | -29% (-33 to -27) |
+| lowest in 10 min | 29 | -29% (-34 to -26) | -32% (-36 to -26) |
+| 10 min before incision | 24 | -27% (-28 to -19) | -28% (-31 to -25) |
 
-End-tidal sevoflurane before incision, median: recorded 1.60%, model 1.66% (n=27).
+End-tidal sevoflurane before incision, median: recorded 1.60%, model 1.71% (n=27).
 
-End-tidal sevoflurane surgery, median: recorded 2.00%, model 1.97% (n=27).
+End-tidal sevoflurane surgery, median: recorded 2.00%, model 2.01% (n=27).
 
-ECG HR error (model minus recorded, per-patient medians, untreated): 0-5 min -0.7 (-4.7 to 3.5), n=13; 5-10 min -2.6 (-8.9 to 3.5), n=13; 10 min to incision 0.2 (-6.2 to 6.3), n=12 bpm.
+ECG HR error (model minus recorded, per-patient medians, untreated): 0-5 min -0.1 (-4.3 to 4.2), n=13; 5-10 min -2.0 (-8.3 to 4.1), n=13; 10 min to incision 0.6 (-5.9 to 6.8), n=12 bpm.
 
-Surgery from 15 min after incision, untreated: MAP 6.0 (-1.6 to 13.7), n=12 mmHg; HR 1.9 (-5.6 to 9.6), n=12 bpm.
+Surgery from 15 min after incision, untreated: MAP 3.9 (-4.2 to 11.4), n=12 mmHg; HR 1.8 (-5.7 to 9.5), n=12 bpm.
 
 Exclusions:
 

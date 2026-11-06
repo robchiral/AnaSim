@@ -117,6 +117,7 @@ PCV-VG, pressure control with volume guarantee.
 
 - Bouillon et al. (2004). *Anesthesiology*. [Propofol-remifentanil interaction for hypnosis, BIS, and tolerance of laryngoscopy](https://pubmed.ncbi.nlm.nih.gov/15166553/).
 - Hannivoort et al. (2016). *Br J Anaesth*. [Propofol-sevoflurane-remifentanil interaction for laryngoscopy](https://doi.org/10.1093/bja/aew060).
+- Heyse et al. (2012). *Anesthesiology*. [Sevoflurane-remifentanil interaction for clinical responses](https://doi.org/10.1097/ALN.0b013e318242a2ec).
 - Kuizenga et al. (2019). *Anesthesiology*. [Propofol and sevoflurane with remifentanil for clinical responses](https://doi.org/10.1097/ALN.0000000000002966).
 - Schnider et al. (1999). *Anesthesiology*. [Age and propofol Ce50 for loss of consciousness](https://pubmed.ncbi.nlm.nih.gov/10360845/).
 - Lysakowski et al. (2009). *Br J Anaesth*. [BIS at propofol loss of consciousness in young and elderly patients](https://pubmed.ncbi.nlm.nih.gov/19542103/).
@@ -186,6 +187,7 @@ PCV-VG, pressure control with volume guarantee.
 - Fairfield, Dritsas, and Beale (1991). *Br J Anaesth*. [Echocardiographic hemodynamics after propofol 2.5 mg/kg](https://pubmed.ncbi.nlm.nih.gov/1751277/).
 - Morley et al. (2010). *Anesth Analg*. [Fasting, baseline pressure, and hypotension during propofol induction](https://pubmed.ncbi.nlm.nih.gov/20861421/).
 - Ebert et al. (1995). *Anesth Analg*. [Sevoflurane cardiovascular responses](https://pubmed.ncbi.nlm.nih.gov/7486143/).
+- Malan et al. (1995). *Anesthesiology*. [Sevoflurane cardiac output and vascular resistance in volunteers](https://doi.org/10.1097/00000542-199511000-00004).
 
 ### Reflexes and age
 

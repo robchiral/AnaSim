@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Added remifentanil and fentanyl kinetics, sevoflurane potency, and the
+  vascular effect of sevoflurane to optional patient variability. TCI then
+  predicts from population kinetics, so concentrations differ from the target.
+- Lowered cardiac output under sevoflurane below awake output, as measured in
+  volunteers. Most of sevoflurane's fall in pressure now comes from stroke
+  volume; the size of the fall is unchanged.
+- Matched fentanyl and lidocaine clearances to their source studies, which were
+  measured during anesthesia and surgery.
 - Added arterial blood gas sampling in a new Labs tab.
 - Labeled the crystalloid as lactated Ringer's.
 - Added lactate and standard base excess. Oxygen consumption falls when oxygen

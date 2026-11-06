@@ -99,8 +99,8 @@ MAP error, in mmHg with 95% CI:
 |---|---:|---|---|
 | TIVA | 301 | Propofol to incision | -1.7 (-2.8 to -0.6) |
 | TIVA, untreated | 114 | Surgery | -1.3 (-3.6 to 0.8) |
-| Sevoflurane | 29 | Propofol to incision | -5.4 (-9.6 to -1.1) |
-| Sevoflurane, untreated | 12 | Surgery | 6.0 (-1.6 to 13.7) |
+| Sevoflurane | 29 | Propofol to incision | -4.9 (-9.0 to -0.7) |
+| Sevoflurane, untreated | 12 | Surgery | 3.9 (-4.2 to 11.4) |
 
 Median fall in MAP from the pre-induction value:
 
@@ -109,7 +109,7 @@ Median fall in MAP from the pre-induction value:
 | TIVA, recorded | 17% | 31% | 27% |
 | TIVA, model | 15% | 30% | 28% |
 | Sevoflurane, recorded | 16% | 29% | 27% |
-| Sevoflurane, model | 14% | 32% | 29% |
+| Sevoflurane, model | 14% | 32% | 28% |
 
 In the sevoflurane cases, model HR was within 3 bpm of the recordings. At 2 to 5
 minutes, the recorded fall in MAP was smaller than the model's (13% compared
