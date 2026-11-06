@@ -89,7 +89,7 @@ class SimulationState:
     chest_compressions: bool = False
 
     # Effect-site (ce) and plasma (cp) concentrations: propofol, etomidate,
-    # ketamine, lidocaine, succinylcholine, and esmolol mcg/mL, vasopressin
+    # ketamine, lidocaine, amiodarone, succinylcholine, and esmolol mcg/mL, vasopressin
     # mU/L, others ng/mL.
     propofol_ce: float = 0.0
     propofol_cp: float = 0.0
@@ -108,6 +108,7 @@ class SimulationState:
     etomidate_ce: float = 0.0
     ketamine_ce: float = 0.0
     lidocaine_ce: float = 0.0
+    amiodarone_ce: float = 0.0
     # Combined drug effects: remifentanil-equivalent opioid (ng/mL) and
     # propofol-equivalent hypnotic with etomidate and midazolam (mcg/mL).
     opioid_ce: float = 0.0
@@ -144,6 +145,9 @@ class SimulationState:
     tof: float = 100.0  # %
     twitch: float = 100.0  # T1 height %, including depolarizing block
     loc: float = 0.0  # Probability of no response to shaking/shouting
+    respiratory_fatigue: float = 0.0  # Inspiratory muscle capacity lost, 0-1
+    seizure_activity: float = 0.0  # Toxic seizure intensity, 0-1; independent of motor block
+    convulsions: bool = False
     tol: float = 0.0  # Probability of tolerating laryngoscopy
     map: float = 90.0
     hr: float = 70.0

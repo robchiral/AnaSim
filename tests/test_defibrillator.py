@@ -43,7 +43,7 @@ def test_r_on_t_risk_follows_rendered_t_wave_including_irregular_rr(rhythm):
         vulnerable = ecg.vulnerable(sample)
         outcome = shock_outcome(
             rhythm, synchronized=False, energy_failure=0, electrically_silent=False,
-            vulnerable=vulnerable, rng=np.random.default_rng(3),
+            vulnerable=vulnerable, antiarrhythmic=0, rng=np.random.default_rng(3),
         )
         if vulnerable:
             seen_vulnerable = True

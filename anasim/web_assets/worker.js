@@ -42,9 +42,9 @@ function closeSession() {
 // Post a snapshot; only running sessions need another timer tick.
 function snapshot(realDt) {
   try {
-    const snap = session.advance(realDt);
+    const snap = JSON.parse(session.advance(realDt));
     post({ type: "tick", snap });
-    return JSON.parse(snap).running;
+    return snap.running;
   } catch (error) {
     closeSession();
     post({ type: "error", message: describe(error) });

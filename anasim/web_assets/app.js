@@ -86,7 +86,7 @@ function onMessage({ data }) {
       setupError(data.message);
       break;
     case "tick":
-      onTick(JSON.parse(data.snap));
+      onTick(data.snap);
       break;
     case "result": {
       const request = pending.get(data.id);

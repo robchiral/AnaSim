@@ -43,7 +43,7 @@ def test_native_session_recovers_waveforms_controls_and_recording(server, tmp_pa
     request(server, "cmd", id=3, name="run", args={"running": True})
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
-        snap = json.loads(request(server, "poll")[0]["snap"])
+        snap = request(server, "poll")[0]["snap"]
         if snap["time"] >= 0.15:
             break
         time.sleep(0.02)
@@ -53,7 +53,7 @@ def test_native_session_recovers_waveforms_controls_and_recording(server, tmp_pa
     old_session = server.session
 
     restored = request(server, "init", client="reloaded")
-    snap = json.loads(restored[2]["snap"])
+    snap = restored[2]["snap"]
     assert server.session is old_session
     assert not snap["running"] and not snap["recording"]
     assert snap["controls"]["airway"] == "Mask"
@@ -97,7 +97,7 @@ def test_case_debrief_survives_a_native_page_reload(server):
     request(server, "cmd", id=1, name="case_hint")
     report = request(server, "cmd", id=2, name="case_finish")[0]["value"]["debrief"]
     restored = request(server, "init", client="reloaded-case")
-    snap = json.loads(restored[2]["snap"])
+    snap = restored[2]["snap"]
     assert snap["scenario"]["debrief"] == report
     assert snap["ended"] and not snap["running"]
     assert report["hints_used"] == 1

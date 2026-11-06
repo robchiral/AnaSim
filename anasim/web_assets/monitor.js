@@ -161,14 +161,17 @@ const LOOP_KEYS = ["paw", "flow", "volume"];
 const LOOP_MAX_POINTS = 700; // One sweep of an open breath during apnea
 
 class Loops {
-  constructor() {
+  constructor(onResize) {
     this.canvases = ["loop-pv", "loop-fv"].map((id) => document.getElementById(id));
     this.previous = null;
     this.current = null;
     this.ranges = null;
     this.newBreath = true;
     this.dirty = true;
-    this.observer = new ResizeObserver(() => { this.dirty = true; });
+    this.observer = new ResizeObserver(() => {
+      this.dirty = true;
+      onResize();
+    });
     for (const canvas of this.canvases) this.observer.observe(canvas);
   }
 
@@ -291,6 +294,7 @@ export class Monitor {
   constructor(info) {
     this.arterialLine = info.arterial_line;
     this.dirty = false;
+    this.frame = null;
     this.sweeps = {};
     const arterialLane = document.getElementById("art-lane");
     arterialLane.hidden = !this.arterialLine;
@@ -324,13 +328,14 @@ export class Monitor {
     this.fields["v-spo2-unit"] = document.getElementById("v-spo2-unit");
     this.fields["v-rr-title"] = document.getElementById("v-rr-title");
     this.alarmBoxes = [...document.querySelectorAll(".monitor [data-alarm]")];
-    this.loops = new Loops();
+    this.loops = new Loops(() => this.requestDraw());
     this.nmb = new NeuromuscularDisplay(info.nmb_history);
-    this.frame = requestAnimationFrame(() => this.render());
+    this.requestDraw();
   }
 
   destroy() {
-    cancelAnimationFrame(this.frame);
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.frame = null;
     this.loops.destroy();
     for (const sweep of Object.values(this.sweeps)) {
       sweep.observer.disconnect();
@@ -349,6 +354,15 @@ export class Monitor {
     this.nmb.update(snap.nmb, snap.nmb_trend, snap.time, snap.ended);
     document.getElementById("measure-nibp").disabled = snap.ended || snap.vitals.nibp_cuff !== null;
     this.updateAlarms(snap.alarms);
+    if (this.dirty || this.loops.dirty) this.requestDraw();
+  }
+
+  requestDraw() {
+    if (this.frame !== null) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = null;
+      this.render();
+    });
   }
 
   render() {
@@ -360,7 +374,6 @@ export class Monitor {
       this.loops.draw();
       this.loops.dirty = false;
     }
-    this.frame = requestAnimationFrame(() => this.render());
   }
 
   set(id, text) {

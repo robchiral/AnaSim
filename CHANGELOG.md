@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Sustained high inspiratory effort now fatigues the respiratory muscles.
+- Lidocaine overdose now causes seizures, QRS widening, arrhythmias, and
+  circulatory collapse. Added 20% lipid emulsion to the Circulation tab.
+- Lidocaine's central volume and clearances now scale with fat-free mass.
+- Severe myocardial ischemia or hypoxia can now start VT or VF, and VF can
+  recur after a successful shock.
+- Added amiodarone, listed with lidocaine under Antiarrhythmics.
 - Severe circulatory failure, including untreated hemorrhage, now progresses
   through PEA to asystole, and the simulation continues through arrest. A
   perfusing rhythm within about 4 minutes restores circulation; the session

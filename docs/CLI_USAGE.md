@@ -147,6 +147,8 @@ waveform samples.
 | `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
 | `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Propofol and remifentanil rates are in mcg/kg/min using total body weight, and vasopressor rates are absolute |
 | `enable_tci()` | Requires `tci_enabled=True` |
+| `give_lipid_emulsion(volume_ml)` | Gives 20% lipid emulsion over 2.5 simulated minutes |
+| `set_lipid_infusion(ml_min)` | Sets a 20% lipid emulsion infusion from 0 to 200 mL/min |
 | `charge_defibrillator()` | Charges to 200 J in 5 simulated seconds and holds the charge for 60 seconds |
 | `disarm_defibrillator()` | Cancels a charge or a pending synchronized shock |
 | `defibrillate(synchronized=False)` | Returns a `ShockResult`: `NOT_READY` without a charge, `NOT_DELIVERED` in synchronized mode without R waves, `PENDING` until the next R wave, or `DELIVERED`. `rng_seed` fixes outcomes |

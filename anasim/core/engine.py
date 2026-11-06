@@ -37,6 +37,7 @@ from anasim.patient.pd import (
 from anasim.patient.pk_models import NorepinephrinePK
 from anasim.patient.variability import TYPICAL, sample_variability
 from anasim.patient.volatile_pk import VolatilePK
+from anasim.physiology.arrhythmia import ArrhythmiaModel, antiarrhythmic_effects
 from anasim.physiology.cerebral import CerebralModel
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
@@ -52,6 +53,7 @@ from anasim.physiology.resuscitation import (
     shock_outcome,
 )
 from anasim.physiology.thermal import ThermalModel
+from anasim.physiology.toxicity import LocalAnestheticToxicity
 
 from . import monitors as monitor_core
 from . import projection as projection_core
@@ -67,6 +69,7 @@ from .action_log import (
     ACTION_FGF,
     ACTION_FLUID,
     ACTION_INTUBATION_ATTEMPT,
+    ACTION_LIPID_INFUSION,
     ACTION_OXYGEN_SUPPLY,
     ACTION_POSITION,
     ACTION_SHOCK,
@@ -150,6 +153,7 @@ class SimulationEngine(DrugControllerMixin):
         self.fluid_infusion_rate_ml_min = 150.0
         self.blood_infusion_rate_ml_min = 75.0
         self.maintenance_fluid_rate_ml_min = 0.0
+        self.lipid_infusion_ml_min = 0.0
 
         # Anaphylaxis is full in about 2 min and resolves in about 10; sepsis
         # is full in about 10 min and resolves over 30 or more.
@@ -177,6 +181,7 @@ class SimulationEngine(DrugControllerMixin):
         # Derived without drawing from self.rng, so the other streams keep their seeds.
         seed = self.config.rng_seed
         self._shock_rng = np.random.default_rng(None if seed is None else [seed, 1])
+        self.arrhythmias = ArrhythmiaModel(np.random.default_rng(None if seed is None else [seed, 2]))
 
         self._pulseless_s = 0.0
         self.compressions_started_at: float | None = None
@@ -258,6 +263,7 @@ class SimulationEngine(DrugControllerMixin):
         self.resp = RespiratoryModel(self.patient)
         self.lactate = LactateModel(self.patient.weight, self.patient.hepatic_function)
         self.cerebral = CerebralModel(self.patient.baseline_hb)
+        self.toxicity = LocalAnestheticToxicity(self.patient.weight)
         if self.config.mode == "steady_state":
             self.aeration = LungAeration(self.patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
         else:
@@ -359,6 +365,18 @@ class SimulationEngine(DrugControllerMixin):
             retention_fraction=self.hemo.config.colloid_retention_fraction,
             label="colloid",
         )
+
+    def give_lipid_emulsion(self, volume_ml: float):
+        """Give 20% lipid over 2.5 minutes; continued infusion is set separately."""
+        volume = finite_number("lipid volume", volume_ml)
+        if volume <= 0:
+            raise ValueError("Lipid volume must be positive")
+        self._queue_infusion(volume, volume / 2.5, hematocrit=0.0,
+                             retention_fraction=1.0, label="lipid")
+
+    def set_lipid_infusion(self, ml_min: float):
+        self.lipid_infusion_ml_min = bounded_number("lipid infusion", ml_min, 0.0, 200.0, unit="mL/min")
+        self.actions.record(self.state.time, ACTION_LIPID_INFUSION, amount=self.lipid_infusion_ml_min)
 
     def _queue_infusion(
         self,
@@ -544,6 +562,7 @@ class SimulationEngine(DrugControllerMixin):
         if rhythm is None:
             raise ValueError(f"Unknown rhythm: {rhythm_name!r}")
         self.hemo.rhythm_type = rhythm
+        self.arrhythmias.reset()
         self.hemo.invalidate_state_cache()
 
     def set_chest_compressions(self, active: bool):
@@ -592,19 +611,26 @@ class SimulationEngine(DrugControllerMixin):
         return True
 
     def _deliver_shock(self, time: float, *, synchronized: bool) -> None:
-        coronary = self.hemo.coronary
         cycle = self.cardiac_cycle.current
+        hypoxia, energy_failure, silent = runtime_core.myocardial_substrate(self)
         rhythm = shock_outcome(
-            self.hemo.rhythm_type, synchronized=synchronized, energy_failure=coronary.energy_failure,
-            electrically_silent=coronary.electrically_silent,
+            self.hemo.rhythm_type, synchronized=synchronized, energy_failure=energy_failure,
+            electrically_silent=silent,
             vulnerable=cycle.rhythm_type == self.hemo.state.rhythm_type and self.ecg.vulnerable(cycle),
+            antiarrhythmic=max(antiarrhythmic_effects(
+                self.pk["lidocaine"].state.ce_cv, self.state.amiodarone_ce,
+            )),
             rng=self._shock_rng,
         )
         self.defibrillator.consume(time, synchronized)
         self.actions.record(time, ACTION_SHOCK,
                             label="synchronized" if synchronized else "unsynchronized", amount=SHOCK_ENERGY_J)
+        # An electrically silent heart keeps its underlying rhythm.
         if rhythm != RhythmType.ASYSTOLE:
-            self.hemo.rhythm_type = rhythm
+            self.hemo.rhythm_type = self.arrhythmias.after_shock(
+                self.hemo.rhythm_type, rhythm, ischemia=self.hemo.coronary.ischemia,
+                hypoxia=hypoxia, energy_failure=energy_failure,
+            )
 
     def set_bag_mask_ventilation(self, active: bool, rr: float | None = None, vt: float | None = None):
         """Start or stop manual bag ventilation at rr breaths/min and vt liters.

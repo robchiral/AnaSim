@@ -157,6 +157,7 @@ def step_cardiac_monitors(
         )
         ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample, st_depression,
                                       conduction_failure=conduction_failure,
+                                      sodium_block=engine.toxicity.conduction_block,
                                       compression_phase=pulse_sample.phase if compressions else None,
                                       render=render)
         pleth, spo2_val = engine.spo2_mon.step(
@@ -186,6 +187,7 @@ def step_monitors(
     """Update monitor models and learner-facing display values."""
     state = engine.state
     mac_sevo = engine.pk_sevo.state.mac
+    state.respiratory_fatigue = float(engine.resp_mech.effort.muscle.fatigue)
     bis_val = engine.bis.step(dt, state.hypnotic_ce, mac_sevo=mac_sevo,
                               cortical_function=engine.cerebral.cortical_function)
     capno_val = compute_capno_value(engine, resp_state, dt)

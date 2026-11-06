@@ -5,15 +5,13 @@ esmolol, mU/sec for vasopressin, and ug/sec for the other drugs.
 """
 
 import math
+from functools import lru_cache
 
 _RATE_UNIT_ALIASES: dict[str, str] = {
     "mg/s": "mg/sec",
     "mg/second": "mg/sec",
     "mg/h": "mg/hr",
-    "mcg/s": "ug/sec",
-    "mcg/sec": "ug/sec",
-    "mcg/min": "ug/min",
-    "mcg/hr": "ug/hr",
+    "ug/s": "ug/sec",
     "u/s": "u/sec",
     "mu/s": "mu/sec",
 }
@@ -34,16 +32,16 @@ _RATE_CONVERSIONS: dict[tuple[str, str], float] = {
 }
 
 
+@lru_cache(maxsize=64)
 def normalize_rate_unit(unit: str) -> str:
     """Normalize a rate unit string, e.g. "mcg/min" to "ug/min"."""
     if not unit:
         return ""
-    u = unit.strip()
+    u = unit.strip().lower()
     u = u.replace("µ", "u").replace("μ", "u")
     u = u.replace("mcg", "ug")
     u = u.replace("per", "/")
     u = u.replace(" ", "")
-    u = u.lower()
     return _RATE_UNIT_ALIASES.get(u, u)
 
 

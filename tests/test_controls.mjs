@@ -3,6 +3,33 @@ import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { Controls } from "../anasim/web_assets/controls.js";
 
+test("lipid controls submit doses and clear the receipt for a new session", async () => {
+  const elements = new Map();
+  for (const id of ["c-lipid-bolus", "c-lipid-give", "c-lipid-feedback", "c-lipid-rate",
+    "c-lipid-stop", "fluid-feedback", "c-maint"]) {
+    elements.set(id, { value: "0", disabled: false, hidden: false, textContent: "" });
+  }
+  globalThis.document = { getElementById: id => elements.get(id), querySelectorAll: () => [] };
+  const commands = [];
+  const controls = Object.create(Controls.prototype);
+  controls.editSettings = () => ({ cancel() {} });
+  controls.send = async (name, args) => {
+    commands.push([name, args]);
+    return { fluid: { text: "90 mL 20% lipid emulsion over 2.5 min started" } };
+  };
+  controls.bindFluids(60);
+  assert.equal(elements.get("c-lipid-bolus").value, "90");
+  await elements.get("c-lipid-give").onclick();
+  assert.deepEqual(commands[0], ["fluid", { kind: "lipid", volume_ml: 90 }]);
+  assert.equal(elements.get("c-lipid-feedback").hidden, false);
+  assert.match(elements.get("c-lipid-feedback").textContent, /90 mL/);
+  await elements.get("c-lipid-stop").onclick();
+  assert.deepEqual(commands[1], ["lipid_rate", { ml_min: 0 }]);
+  controls.bindFluids(80);
+  assert.equal(elements.get("c-lipid-bolus").value, "100");
+  assert.equal(elements.get("c-lipid-feedback").hidden, true);
+});
+
 test("defibrillator controls follow charging, pending R waves, and actual delivery", async () => {
   const elements = new Map();
   for (const id of ["c-compressions", "c-charge", "c-shock", "c-shock-feedback", "c-defibrillator-status"]) {

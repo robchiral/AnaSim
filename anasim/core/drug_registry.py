@@ -9,6 +9,7 @@ from types import MappingProxyType
 
 from anasim.patient.patient import Patient
 from anasim.patient.pk_models import (
+    AmiodaronePK,
     AtropinePK,
     DobutaminePK,
     EphedrinePK,
@@ -270,6 +271,18 @@ DRUG_REGISTRY = (
         pk_model=_from_patient(LidocainePK),
         ce_field="lidocaine_ce",
         generic_name="Lidocaine",
+    ),
+    DrugSpec(
+        key="amiodarone",
+        name="Amiodarone 50 mg/mL",
+        rate_unit="mg/hr",
+        internal_rate_unit="mg/sec",
+        bolus_unit="mg",
+        default_bolus=300.0,
+        bolus_model_scale=1.0,
+        pk_model=_from_patient(AmiodaronePK),
+        ce_field="amiodarone_ce",
+        generic_name="Amiodarone",
     ),
     DrugSpec(
         key="nore",

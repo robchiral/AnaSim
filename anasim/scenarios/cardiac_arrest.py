@@ -116,8 +116,10 @@ def create_cardiac_arrest() -> Scenario:
             instruction=(
                 "Every 2 minutes, pause compressions briefly to check the rhythm. Shock VF again "
                 "and resume compressions at once. Give <b>epinephrine 1 mg</b> (1000 mcg) after the "
-                "second shock and every 3-5 minutes while VF persists; amiodarone or lidocaine can "
-                "follow for refractory VF.<br><br>"
+                "second shock and every 3-5 minutes while VF persists. After the third shock, give "
+                "<b>amiodarone 300 mg</b> or <b>lidocaine 1-1.5 mg/kg</b>, then amiodarone 150 mg "
+                "or lidocaine 0.5-0.75 mg/kg if VF persists. VF can recur after a successful "
+                "shock.<br><br>"
                 "An organized rhythm with arterial pulsations and a sudden rise in EtCO₂ indicates "
                 "return of circulation."
             ),

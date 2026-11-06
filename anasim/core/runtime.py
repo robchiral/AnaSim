@@ -49,13 +49,27 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
 
     disturbance_complete = _disturbance_completes_during_step(engine, dt)
     disturbances = step_disturbances(engine, dt)
-    if update_pk_covariates(engine, engine.state.co):
-        engine.sync_active_tci_from_pk()
+    # hemo.state includes a rhythm change made since the last step.
+    cardiac_output = engine.hemo.state.co
+    update_pk_covariates(engine, cardiac_output)
 
     step_tci(engine, dt)
     update_airway_complications(engine, dt)
     fi_sevo, fi_n2o = step_machine(engine, dt)
-    step_pk(engine, dt, fi_sevo, fi_n2o, engine.state.co)
+    toxicity = engine.toxicity
+    lidocaine = engine.pk["lidocaine"]
+    toxicity.step_lipid(dt, lidocaine.circulation)
+    lidocaine.effect_input_fraction = toxicity.effect_input_fraction
+    step_pk(engine, dt, fi_sevo, fi_n2o, cardiac_output)
+    toxicity.step(
+        dt, neural_ce=lidocaine.state.ce_neuro, cardiac_ce=lidocaine.state.ce_cv, ph=state.ph,
+        propofol_ce=state.propofol_ce, midazolam_ce=state.midazolam_ce,
+        mac_sevo=state.mac_sevo, motor_strength=state.twitch / 100.0,
+        cortical_function=engine.cerebral.cortical_function,
+    )
+    engine.thermal.metabolic_factor *= toxicity.metabolic_factor
+    state.seizure_activity = toxicity.seizure_activity
+    state.convulsions = toxicity.convulsion_intensity > 0.2
     physiology = step_physiology(engine, dt, disturbances)
     project_runtime_physiology(engine, physiology)
     engine.cerebral.step(dt, state.map, state.hb_g_dl, state.sao2, state.pa_co2, state.ph)
@@ -86,6 +100,8 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
     )
     aeration.absorbed_volume = engine.resp.frc - engine.resp.gas_volume_l
     lung.effort.unconscious = engine.state.loc
+    lung.effort.muscle.muscle_strength = central_muscle_strength(engine)
+    lung.effort.muscle.oxygen_fraction = engine.resp.oxygen_supply_fraction
     aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine.airway_status.patency > 0.5
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.
     lung.effort.set_drive(resp.effort_rr, resp.effort_vt / 1000.0)
@@ -154,6 +170,8 @@ def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects
             amount_this_step = min(infusion.remaining_ml, rate_sec * dt)
             infusion.remaining_ml -= amount_this_step
             if amount_this_step > 0:
+                if infusion.label == "lipid":
+                    engine.toxicity.add_lipid(amount_this_step)
                 hemo.add_volume(
                     amount_this_step,
                     hematocrit=infusion.hematocrit,
@@ -163,6 +181,11 @@ def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects
             if infusion.remaining_ml > 1e-3:
                 remaining.append(infusion)
         engine.pending_infusions[:] = remaining
+
+    if engine.lipid_infusion_ml_min > 0.0:
+        amount = engine.lipid_infusion_ml_min * dt / 60.0
+        hemo.add_volume(amount, retention_fraction=1.0, label="lipid")
+        engine.toxicity.add_lipid(amount)
 
     if engine.maintenance_fluid_rate_ml_min > 0:
         rate_sec = engine.maintenance_fluid_rate_ml_min / 60.0
@@ -239,8 +262,8 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
     sync_pk_state(engine)
 
 
-def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
-    """Update PK covariates and return whether the models were rescaled.
+def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> None:
+    """Update drug-interaction and hemodynamic PK covariates.
 
     Propofol slows norepinephrine and midazolam disposition; midazolam slows
     propofol clearance. Hemodynamic covariates are blood volume, cardiac
@@ -252,13 +275,14 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     # Both covariates use the concentrations before either parameter update.
     propofol_cp = propofol.state.c1
     midazolam_cp = midazolam.state.c1
-    interaction_changed = propofol.update_midazolam(midazolam_cp)
-    interaction_changed |= midazolam.update_propofol(propofol_cp)
+    propofol.update_midazolam(midazolam_cp)
+    midazolam.update_propofol(propofol_cp)
     if "propofol" in engine.pump_pk:
-        interaction_changed |= cast(PropofolPKEleveld, engine.pump_pk["propofol"]).update_midazolam(midazolam_cp)
+        cast(PropofolPKEleveld, engine.pump_pk["propofol"]).update_midazolam(midazolam_cp)
     base_bv = engine.hemo.blood_volume_0
     blood_lost = engine.hemo.total_blood_out_ml - engine._pk_blood_out_ml
     if blood_lost > 0.0:
+        engine.toxicity.lipid_ml *= math.exp(-blood_lost / base_bv)
         for model in (*engine.pk.values(), *engine.pump_pk.values(),
                       engine.tof_pd.sugammadex, engine.tof_pd.complex):
             model.remove_blood(blood_lost / 1000.0, base_bv / 1000.0)
@@ -267,12 +291,12 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     # added output mostly perfuses the uterus and kidneys, so it is the reference.
     base_co = engine.hemo.base_co_l_min / engine.hemo.failure.output_factor
     if base_bv <= 0.0 or base_co <= 0.0:
-        return interaction_changed
+        return
     # Below 30% of resting output, as in arrest and CPR, flow limits drug transport.
     circulation = clamp01(co_curr / (CIRCULATION_LIMIT_FRACTION * base_co))
-    circulation_changed = circulation != propofol.circulation
-    for model in (*engine.pk.values(), *engine.pump_pk.values(), engine.tof_pd.sugammadex, engine.tof_pd.complex):
-        model.circulation = circulation
+    if circulation != propofol.circulation:
+        for model in (*engine.pk.values(), *engine.pump_pk.values(), engine.tof_pd.sugammadex, engine.tof_pd.complex):
+            model.circulation = circulation
     v_ratio = clamp(engine.hemo.blood_volume / base_bv, 0.1, 2.0)
     co_ratio = clamp(co_curr / base_co, 0.1, 2.0)
     scale = (v_ratio, co_ratio, engine.hemo.renal_perfusion)
@@ -282,13 +306,12 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     if last_scale is not None and all(
         math.isclose(value, last, rel_tol=1e-3, abs_tol=1e-3) for value, last in zip(scale, last_scale, strict=True)
     ):
-        return interaction_changed or circulation_changed
+        return
 
     for model in (*engine.pk.values(), *engine.pump_pk.values()):
         model.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
     engine.tof_pd.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
     engine._pk_hemo_scale_cache = scale
-    return True
 
 
 def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
@@ -439,6 +462,9 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         ce_glyco=state.glyco_ce,
         ce_atropine=state.atropine_ce,
         ce_ephedrine=state.ephedrine_ce,
+        ce_amiodarone=state.amiodarone_ce,
+        sodium_block=engine.toxicity.conduction_block,
+        toxic_contractility_loss=engine.toxicity.contractility_loss,
         ce_ketamine=engine.pk["ketamine"].state.ce_cv,
         ce_ketamine_hr=engine.pk["ketamine"].state.ce_hr,
         temp_c=state.temp_c,
@@ -447,10 +473,28 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         remifentanil_cp=state.remi_cp,
         ph=resp_state.ph,
     )
+    hypoxia, energy_failure, silent = myocardial_substrate(engine)
+    rhythm = engine.arrhythmias.step(
+        dt, hemo.rhythm_type, ischemia=hemo.coronary.ischemia, hypoxia=hypoxia,
+        energy_failure=energy_failure, electrically_silent=silent,
+        perfusing=hemo_state.intrinsic_co > ARREST_CO_L_MIN,
+        lidocaine=engine.pk["lidocaine"].state.ce_cv, amiodarone=state.amiodarone_ce,
+    )
+    if rhythm != hemo.rhythm_type:
+        hemo.rhythm_type = rhythm
+        hemo_state = hemo.state
 
     return build_snapshot_from_models(
         engine, hemo_state, resp_state, pit_estimate=pit_estimate,
     )
+
+
+def myocardial_substrate(engine: SimulationEngine) -> tuple[float, float, bool]:
+    """Myocardial hypoxia, energy failure, and electrical silence, including lidocaine toxicity."""
+    coronary, toxicity = engine.hemo.coronary, engine.toxicity
+    return (max(engine.hemo.myocardial_hypoxia, toxicity.cardiac_stress),
+            max(coronary.energy_failure, toxicity.conduction_block),
+            coronary.electrically_silent or toxicity.electrically_silent)
 
 
 def step_lactate(engine: SimulationEngine, dt: float) -> None:

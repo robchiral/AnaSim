@@ -74,9 +74,17 @@ class _ShockSucceeds:
         return 0.0
 
 
+class _NoRecurrence:
+    """Isolate myocardial recovery from the separately tested rhythm hazards."""
+
+    def exponential(self):
+        return float("inf")
+
+
 def _vf_engine(engine_factory):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
     engine._shock_rng = _ShockSucceeds()
+    engine.arrhythmias.rng = _NoRecurrence()
     engine.set_rhythm("VFIB")
     return engine
 
@@ -96,7 +104,7 @@ def test_shock_alone_recovers_circulation_and_consciousness_only_early(engine_fa
     # Without coronary flow the myocardium is ischemic despite oxygenated arterial blood.
     assert engine.state.myocardial_ischemia > 0.9 and engine.state.sao2 > 98
     engine.defibrillate()
-    assert engine.hemo.rhythm_type == RhythmType.SINUS
+    assert engine.hemo.rhythm_type == RhythmType.SINUS_BRADY
     _run(engine, 300)
     assert (engine.state.map > 60 and not engine.state.cardiac_arrest) == recovers
     assert (engine.state.myocardial_ischemia < 0.1) == recovers

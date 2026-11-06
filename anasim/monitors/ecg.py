@@ -46,14 +46,16 @@ def _t_wave(preceding_rr_s: float, wide: float) -> tuple[float, float]:
     return 0.62 * qt + (_stretch(wide) - 1.0) * _J_POINT_S, 0.12 * qt * (1.0 + 0.5 * wide)
 
 
-def displayed_rhythm(rhythm: RhythmType, conduction_failure: float) -> str:
-    """Rhythm on the ECG, including escape rhythms during ischemic conduction failure."""
+def displayed_rhythm(rhythm: RhythmType, conduction_failure: float, sodium_block: float = 0.0) -> str:
+    """Observed rhythm with ischemic slowing or sodium-channel block."""
     if rhythm in (RhythmType.VTACH, RhythmType.VFIB, RhythmType.ASYSTOLE):
         return rhythm.value
     if conduction_failure >= AGONAL_FAILURE:
         return "Agonal rhythm"
     if conduction_failure >= IDIOVENTRICULAR_FAILURE:
         return "Idioventricular rhythm"
+    if sodium_block >= 0.2:
+        return "Wide-complex rhythm"
     if conduction_failure >= JUNCTIONAL_FAILURE and rhythm != RhythmType.AFIB:
         return "Junctional rhythm"
     return rhythm.value
@@ -125,7 +127,7 @@ class ECGMonitor:
         self._st_scale = 1.0
         self._vulnerable_window: tuple[float, float] | None = None
 
-    def _place_beats(self, cycle: CardiacCycleSample, conduction_failure: float) -> None:
+    def _place_beats(self, cycle: CardiacCycleSample, conduction_failure: float, sodium_block: float) -> None:
         """Lay out the previous, current and next beat around the current R peak."""
         if cycle.beat_started and self._rhythm is not None:
             self._rr_s = (self._rr_s[1], self._rr_s[2], cycle.rr_interval_s)
@@ -135,7 +137,7 @@ class ECGMonitor:
 
         morphology = _MORPHOLOGIES[cycle.rhythm_type]
         p_scale = 1.0 - _ramp(conduction_failure, _P_FADE)
-        wide = _ramp(conduction_failure, _QRS_WIDENING)
+        wide = max(_ramp(conduction_failure, _QRS_WIDENING), clamp01(sodium_block))
         rr_into_prev, rr_into_current, rr_to_next = self._rr_s
         # A wide complex carries its own discordant ST-T in place of ischemic ST depression.
         self._st_scale = 1.0 - wide
@@ -167,7 +169,8 @@ class ECGMonitor:
         return _ramp(t, (j_point - 0.01, j_point + 0.01)) * (1.0 - _ramp(t, (t_onset, t_end)))
 
     def step(self, dt: float, cycle: CardiacCycleSample, st_depression_mv: float = 0.0,
-             *, conduction_failure: float = 0.0, compression_phase: float | None = None,
+             *, conduction_failure: float = 0.0, sodium_block: float = 0.0,
+             compression_phase: float | None = None,
              render: bool = True) -> float:
         """Advance timing and noise; return voltage (mV), or zero when render is false.
 
@@ -192,7 +195,7 @@ class ECGMonitor:
             return voltage if render else 0.0
 
         if cycle.beat_started or rhythm_type != self._rhythm:
-            self._place_beats(cycle, conduction_failure)
+            self._place_beats(cycle, conduction_failure, sodium_block)
 
         val = 0.0
         if render:

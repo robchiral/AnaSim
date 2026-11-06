@@ -4,11 +4,17 @@ const TREND_S = 900;
 export class NeuromuscularDisplay {
   constructor(history) {
     this.history = [...history];
+    this.trendMode = null;
+    this.trendTime = null;
   }
 
   update(nmb, rows, time, ended) {
+    let trendChanged = this.trendMode !== nmb.mode;
     for (const row of rows) {
-      if (row[0] > (this.history.at(-1)?.[0] ?? -Infinity)) this.history.push(row);
+      if (row[0] > (this.history.at(-1)?.[0] ?? -Infinity)) {
+        this.history.push(row);
+        trendChanged = true;
+      }
     }
     const reading = nmb.reading;
     const single = nmb.mode === "single";
@@ -57,14 +63,27 @@ export class NeuromuscularDisplay {
     ).join(", ") : "No twitch responses measured");
 
     const cutoff = time - TREND_S;
-    this.history = this.history.filter(([timestamp]) => timestamp >= cutoff);
-    const points = this.history.filter(([, mode, result]) => mode === nmb.mode && result !== null);
-    $("nmb-trend-points").innerHTML = points.map(([timestamp, , result, low]) => {
-      const x = (timestamp - cutoff) / TREND_S * 180;
-      const y = 37 - Math.min(100, Math.max(0, result)) / 100 * 34;
-      return `<path d="M${x.toFixed(2)} ${y.toFixed(2)}h0"${low ? ' class="low"' : ""}/>`;
-    }).join("");
-    $("nmb-trend").setAttribute("aria-label", `${label} over the past 15 minutes`);
-    $("nmb-trend-label").textContent = `${label}, past 15 min`;
+    let expired = 0;
+    while (expired < this.history.length && this.history[expired][0] < cutoff) expired++;
+    if (expired) {
+      this.history.splice(0, expired);
+      trendChanged = true;
+    }
+    if (trendChanged) {
+      const points = this.history.filter(([, mode, result]) => mode === nmb.mode && result !== null);
+      $("nmb-trend-points").innerHTML = points.map(([timestamp, , result, low]) => {
+        const x = timestamp / TREND_S * 180;
+        const y = 37 - Math.min(100, Math.max(0, result)) / 100 * 34;
+        return `<path d="M${x.toFixed(2)} ${y.toFixed(2)}h0"${low ? ' class="low"' : ""}/>`;
+      }).join("");
+      this.trendMode = nmb.mode;
+      $("nmb-trend").setAttribute("aria-label", `${label} over the past 15 minutes`);
+      $("nmb-trend-label").textContent = `${label}, past 15 min`;
+    }
+    if (this.trendTime !== time) {
+      // Keep each reading's path and move the time window as a group.
+      $("nmb-trend-points").setAttribute("transform", `translate(${-cutoff / TREND_S * 180} 0)`);
+      this.trendTime = time;
+    }
   }
 }

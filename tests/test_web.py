@@ -418,6 +418,26 @@ def test_resuscitation_commands_reach_the_engine_and_warn_on_awake_cardioversion
     assert session.snapshot()["controls"]["ecg_rhythm"] == "Sinus rhythm"
 
 
+def test_lipid_bolus_and_infusion_reach_the_engine_and_round_trip_through_controls():
+    session = WebSession({**PATIENT, "mode": "awake"})
+    receipt = cmd(session, "fluid", kind="lipid", volume_ml=100)
+    assert "20% lipid emulsion over 2.5 min" in receipt["fluid"]["text"]
+    cmd(session, "lipid_rate", ml_min=17.5)
+    controls = session.snapshot()["controls"]
+    assert controls["lipid"] == {"rate": 17.5, "total_ml": 0}
+    assert not controls["convulsions"]
+    cmd(session, "run", running=True)
+    controls = run_seconds(session, 151)[-1]["controls"]
+    assert 143 < controls["lipid"]["total_ml"] < 145
+    cmd(session, "lipid_rate", ml_min=0)
+    before = session.engine.toxicity.total_lipid_ml
+    run_seconds(session, 2)
+    assert session.engine.toxicity.total_lipid_ml == before
+    for rate in (-1, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            cmd(session, "lipid_rate", ml_min=rate)
+
+
 @pytest.mark.parametrize("mode", ["SIMV-VC", "SIMV-PC", "SIMV-VG"])
 def test_simv_shows_untriggered_breaths_in_numerics_and_loops(mode):
     session = WebSession({**PATIENT, "mode": "awake"})

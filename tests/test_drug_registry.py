@@ -24,6 +24,7 @@ def test_infusion_rates_convert_the_prescribed_units(engine):
         ("hydromorphone", 3.6),
         ("ketamine", 3600.0),
         ("lidocaine", 3600.0),
+        ("amiodarone", 3600.0),
         ("nore", 60.0),
         ("vaso", 0.06),
         ("phenyl", 60.0),

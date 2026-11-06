@@ -617,10 +617,10 @@ class RespiratoryModel:
             shunt_fraction: Perfusion through closed lung units, 0-1.
             temp_c: Blood temperature for hemoglobin O2 affinity, degrees C.
             opioid_controller_fraction: Fraction of baseline ventilation and CO2 gain remaining.
-            neuromuscular_strength: Muscle strength remaining after depolarizing block, 0-1.
+            neuromuscular_strength: Strength after depolarizing block and fatigue, 0-1.
             opioid_rate_fraction: Fraction of baseline RR from morphine and hydromorphone.
             airway_pressure: Applied end-expiratory pressure, cmH2O.
-            central_drive_fraction: Respiratory drive retained during cerebral supply failure.
+            central_drive_fraction: Drive retained during cerebral supply failure or toxicity.
         """
         transport = self.gas_transport
         blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else blood_volume_ml

@@ -35,9 +35,9 @@ Each call to `SimulationEngine.step()` does the following:
 3. Update pharmacokinetic (PK) parameters for blood volume, cardiac output, and
    drug interactions, then calculate target-controlled infusion (TCI) rates.
 4. Update the airway, vaporizer, and breathing circuit.
-5. Update drug concentrations, inhaled anesthetic uptake, and neuromuscular
-   block.
-6. Advance breathing mechanics, gas exchange, and hemodynamics.
+5. Update drug concentrations, inhaled anesthetic uptake, neuromuscular block,
+   and lidocaine toxicity.
+6. Advance breathing mechanics, gas exchange, hemodynamics, and cardiac rhythm.
 7. Copy outputs into `SimulationState` and update measurements and alarms.
 8. Update shivering and temperature, then check for cardiac arrest.
 
@@ -123,10 +123,10 @@ documents the source equations and coefficients.
 Intravenous drugs have a central compartment, up to two peripheral compartments,
 and effect sites for their clinical effects. Propofol uses the Eleveld 2018
 arterial PK model with its opioid-regimen covariate, and remifentanil uses
-Eleveld 2017. Morphine and hydromorphone use Meissner 2025. Inhaled agents move
-between lung, blood, and tissue compartments. Their effects depend on brain
-partial pressure, expressed as age-adjusted minimum alveolar concentration (MAC)
-(Davis and Mapleson 1981; Yasuda 1991).
+Eleveld 2017. Morphine and hydromorphone use Meissner 2025, and lidocaine uses
+Foong 2025. Inhaled agents move between lung, blood, and tissue compartments.
+Their effects depend on brain partial pressure, expressed as age-adjusted
+minimum alveolar concentration (MAC) (Davis and Mapleson 1981; Yasuda 1991).
 
 When blood volume changes, the vascular part of each drug's central volume is
 rescaled. Shed blood carries drug away at plasma concentration, so blood loss
@@ -426,6 +426,24 @@ Each shock needs a new charge, which takes 5 seconds and expires after 60
 seconds (ZOLL R Series). Compressions can continue while it charges. Disarming
 cancels a charge or a pending synchronized shock.
 
+[Severe ischemia or hypoxia](../anasim/physiology/arrhythmia.py) in a beating
+heart can start VT or VF, and VF can recur after a successful shock while the
+myocardium remains stressed (Koster 2008; van Alem 2003). Amiodarone
+(Korth-Bradley 1996) and lidocaine can convert VT with a pulse, amiodarone more
+often (Somberg 2002). In VF, they make a shock more likely to succeed (Kudenchuk
+2016) but do not prevent recurrence (Salcido 2018).
+
+### Lidocaine toxicity
+
+[Lidocaine](../anasim/physiology/toxicity.py) causes seizures above an
+effect-site concentration of about 6 mcg/mL, then CNS depression and apnea.
+Above 10 mcg/mL, sodium-channel block widens the QRS complex, and contractile
+depression and ventricular arrhythmias can cause collapse. Acidemia worsens
+both. Midazolam, propofol, and sevoflurane suppress seizures, and neuromuscular
+block hides convulsions without stopping the seizure. Lipid emulsion reduces
+lidocaine delivery to its effect sites, as it modestly reduced unbound exposure
+in volunteers (Heinonen 2015), and lessens contractile depression.
+
 ### Fluids
 
 Crystalloid represents lactated Ringer's solution and moves between blood and
@@ -456,6 +474,12 @@ combines Olofsen's fractional opioid response with Bouillon's nonlinear response
 to alveolar CO₂. Hypoxic drive declines during sustained hypoxia and is reduced
 by propofol and sevoflurane (Nieuwenhuijs 2000; Sarton 1996). During airway
 obstruction, airflow is limited while respiratory effort continues.
+
+[Respiratory muscles fatigue](../anasim/physiology/fatigue.py) when mean
+inspiratory pressure, including effort against an obstructed airway, exceeds
+about 15% of maximum (Bellemare and Grassino 1982). Fatigue reduces spontaneous
+tidal volume, develops sooner when oxygen supply is inadequate, and persists 24
+hours after severe loading (Laghi 1995).
 
 Metabolic acidosis lowers the PaCO₂ set point by 1.2 mmHg per mmol/L of base
 deficit, with a two-minute time constant. Anesthetics and opioids still limit

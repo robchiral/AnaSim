@@ -4,6 +4,8 @@ import math
 from bisect import bisect_right
 from typing import TYPE_CHECKING
 
+from .fatigue import RespiratoryFatigue
+
 if TYPE_CHECKING:
     from .lung import LungAeration
 
@@ -397,6 +399,7 @@ class PatientEffort:
     AWAKE_INFLATION_VT = 2.0
 
     def __init__(self):
+        self.muscle = RespiratoryFatigue()
         self.rr = 0.0
         self.target_vt = 0.0  # L
         self.amplitude = 0.0  # cmH2O
@@ -436,6 +439,8 @@ class PatientEffort:
         return self.amplitude * value, self.amplitude * slope
 
     def advance(self, dt: float, lung: RespiratoryMechanics, series_resistance: float) -> None:
+        pressure, slope = self.pmus()
+        self.muscle.step(dt, pressure * dt + 0.5 * slope * dt * dt)
         self.clock += dt
         if self._waiting:
             if self.clock >= self._wait_end - 1e-12:
@@ -522,7 +527,8 @@ class PatientEffort:
         # Relaxation continues the final slope, so flow reverses smoothly.
         self._release_slope = max(-3.0, n * self.RELEASE_FRACTION * (rising[-1] - rising[-2]) / rising[-1])
         self._relax(self._values[-1])
-        self.amplitude = unloading * self.target_vt / self._unit_volume(lung, series_resistance)
+        requested = unloading * self.target_vt / self._unit_volume(lung, series_resistance)
+        self.amplitude = min(requested, self.muscle.available_pressure)
 
     def _relax(self, value: float) -> None:
         """Append relaxation from a unit value at Ti to zero over the release time.

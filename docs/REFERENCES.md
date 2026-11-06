@@ -93,7 +93,11 @@ PCV-VG, pressure control with volume guarantee.
 
 ### Lidocaine
 
+- DailyMed. [Lidocaine IV prescribing information](https://dailymed.nlm.nih.gov/dailymed/fda/fdaDrugXsl.cfm?setid=ad1ef0a8-88db-4648-c098-d009eaeb4e5b).
 - Foong et al. (2025). *Pharm Res*. [Lidocaine population PK in surgical patients](https://pubmed.ncbi.nlm.nih.gov/40021547/).
+- Armstrong et al. (1988). *Ther Drug Monit*. [Clinical response and total and unbound plasma concentrations after lidocaine overdose](https://pubmed.ncbi.nlm.nih.gov/3201537/).
+- Heinonen et al. (2015). *Basic Clin Pharmacol Toxicol*. [Lipid emulsion and lidocaine toxicity in volunteers](https://pubmed.ncbi.nlm.nih.gov/25207682/).
+- American Society of Regional Anesthesia and Pain Medicine (2020). [LAST checklist](https://asra.com/docs/default-source/guidelines-articles/local-anesthetic-systemic-toxicity-rgb.pdf).
 - Himes, DiFazio, and Burney (1977). *Anesthesiology*. [Lidocaine and anesthetic requirement](https://pubmed.ncbi.nlm.nih.gov/911052/).
 - Hans et al. (2010). *Br J Anaesth*. [Lidocaine reduces propofol requirements during stimulation](https://pubmed.ncbi.nlm.nih.gov/20650919/).
 - Altermatt et al. (2012). *Br J Anaesth*. [Lidocaine during propofol maintenance and recovery](https://pubmed.ncbi.nlm.nih.gov/22490315/).
@@ -101,6 +105,11 @@ PCV-VG, pressure control with volume guarantee.
 - Wilson, Meiklejohn, and Smith (1991). *Anaesthesia*. [Lidocaine timing and the intubation response](https://pubmed.ncbi.nlm.nih.gov/2014891/).
 - Tam, Chung, and Campbell (1987). *Anesth Analg*. [Lidocaine timing before intubation](https://pubmed.ncbi.nlm.nih.gov/3631567/).
 - Okuda et al. (1990). *J Anesth*. [Lidocaine plasma concentration and timing before intubation](https://pubmed.ncbi.nlm.nih.gov/15236000/).
+
+### Amiodarone
+
+- Korth-Bradley et al. (1996). *J Clin Pharmacol*. [Population PK of IV amiodarone in refractory VT/VF](https://pubmed.ncbi.nlm.nih.gov/8877675/).
+- DailyMed. [Amiodarone IV prescribing information](https://www.dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=51772745-9ea9-42cd-97e6-7266f41ae3ca).
 
 ## Drug timing and TCI performance
 
@@ -227,6 +236,12 @@ PCV-VG, pressure control with volume guarantee.
 
 ### Arrhythmias and cardiac arrest
 
+- Koster et al. (2008). *Resuscitation*. [Recurrent VF during advanced life support](https://pubmed.ncbi.nlm.nih.gov/18556106/).
+- van Alem et al. (2003). *Resuscitation*. [VF recurrence and patient outcome](https://pubmed.ncbi.nlm.nih.gov/14625108/).
+- Somberg et al. (2002). *Am J Cardiol*. [IV lidocaine versus amiodarone for incessant VT](https://pubmed.ncbi.nlm.nih.gov/12372573/).
+- Kudenchuk et al. (2016). *N Engl J Med*. [Amiodarone, lidocaine, or placebo in cardiac arrest](https://doi.org/10.1056/NEJMoa1514204).
+- Salcido et al. (2018). *Resuscitation*. [Antiarrhythmic administration and rearrest in ALPS](https://pubmed.ncbi.nlm.nih.gov/29803703/).
+- American Heart Association (2025). [Adult cardiac arrest algorithm](https://cpr.heart.org/-/media/CPR-Files/CPR-Guidelines-Files/2025-Algorithms/Algorithm-ACLS-CA-250527.pdf).
 - Clark et al. (1997). *J Am Coll Cardiol*. [Atrial fibrillation and cardiac output](https://pubmed.ncbi.nlm.nih.gov/9316536/).
 - Hardman et al. (1998). *Cardiovasc Res*. [Atrial fibrillation and stroke volume](https://pubmed.ncbi.nlm.nih.gov/9683909/).
 - Kerr et al. (1998). *Am J Cardiol*. [Stroke-volume variability in atrial fibrillation](https://pubmed.ncbi.nlm.nih.gov/9874054/).
@@ -302,6 +317,8 @@ PCV-VG, pressure control with volume guarantee.
 
 ## Respiratory control
 
+- Bellemare and Grassino (1982). *J Appl Physiol*. [Pressure, duty cycle, and diaphragm endurance](https://doi.org/10.1152/jappl.1982.53.5.1190).
+- Laghi, D'Alfonso, and Tobin (1995). *J Appl Physiol*. [Recovery from diaphragmatic fatigue over 24 hours](https://doi.org/10.1152/jappl.1995.79.2.539).
 - García-Río et al. (2007). *Respir Med*. [Age and hypoxic and hypercapnic inspiratory drive](https://pubmed.ncbi.nlm.nih.gov/17643972/).
 - Egan et al. (2004). *Br J Anaesth*. [Remifentanil bolus respiratory effects by age](https://pubmed.ncbi.nlm.nih.gov/14970134/).
 - Bouillon et al. (2004). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).

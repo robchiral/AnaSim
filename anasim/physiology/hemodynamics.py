@@ -18,11 +18,13 @@ from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import KETAMINE_MAC_EQUIVALENT
 from anasim.patient.variability import HemodynamicVariability
 
+from .arrhythmia import AMIODARONE_C50
 from .coronary import CoronaryModel
 from .fluids import CrystalloidKinetics
 from .hemo_config import HemodynamicConfig
 from .hemo_types import HemoState
 from .resuscitation import COMPRESSION_OUTPUT_FRACTION
+from .toxicity import SILENT_BLOCK
 
 # Ventricular rates set by the rhythm: SVT 150-220, VT 150-250 bpm.
 FIXED_RHYTHM_RATE = {
@@ -208,6 +210,8 @@ class HemodynamicModel:
         self.crystalloid = CrystalloidKinetics()
 
         self._rhythm_type = RhythmType.SINUS
+        self.sodium_block = 0.0
+        self.toxic_contractility_loss = 0.0
         self._asystole_recovery_s = 0.0
         self._compressions = False
         self.f_preload_pit = 1.0
@@ -301,7 +305,7 @@ class HemodynamicModel:
                 # Donor MCHC is independent of the recipient's Hb/Hct ratio.
                 self.hb_mass += donor_red_cells_ml * cfg.donor_mchc_g_dl / 100.0
             else:
-                is_colloid = (label == "colloid")
+                is_colloid = label in ("colloid", "lipid")
                 if is_colloid:
                     self.total_colloid_in_ml += amount_ml
                     retention = cfg.colloid_retention_fraction
@@ -641,6 +645,7 @@ class HemodynamicModel:
             reflex_tpr_factor = 1.0 + blocked_hr / max(sinus_hr - reflex_hr, HR_MIN)
         current_hr *= 1.0 - cfg.hypoxia_hr_depression * self.myocardial_hypoxia
         current_hr *= self.coronary.electrical_factor
+        current_hr *= 1.0 - self.sodium_block
 
         term = self._hr_sv_factor(current_hr)
         raw_sv = (self.sv_star + self.tde_sv) * term + self.dist_sv
@@ -666,6 +671,7 @@ class HemodynamicModel:
         current_sv = max(0.0, current_sv) * (1.0 - depression) * self.acidosis_factor
 
         current_sv *= RHYTHM_SV_FACTOR.get(self.rhythm_type, 1.0)
+        current_sv *= 1.0 - self.toxic_contractility_loss
 
         if self.rhythm_type in PULSELESS_RHYTHMS or current_hr <= 0.0:
             current_hr = current_sv = 0.0
@@ -712,7 +718,8 @@ class HemodynamicModel:
             lv_inflow=self._last_lv_inflow,
             preload_factor=self._last_preload_factor,
             rhythm_type=RhythmType.ASYSTOLE
-            if self.coronary.electrically_silent or (current_hr <= 0.0 and self.rhythm_type != RhythmType.VFIB)
+            if (self.coronary.electrically_silent or self.sodium_block >= SILENT_BLOCK
+                or (current_hr <= 0.0 and self.rhythm_type != RhythmType.VFIB))
             else self.rhythm_type,
             compressions=self._compressions,
             intrinsic_co=intrinsic_co,
@@ -775,6 +782,8 @@ class HemodynamicModel:
              ce_esmolol: float = 0.0, ce_labetalol: float = 0.0, ce_glyco: float = 0.0,
              ce_ketamine: float = 0.0, ce_ketamine_hr: float = 0.0,
              ce_atropine: float = 0.0, ce_ephedrine: float = 0.0,
+             ce_amiodarone: float = 0.0,
+             sodium_block: float = 0.0, toxic_contractility_loss: float = 0.0,
              temp_c: float = 37.0, peep_cmH2O: float | None = None, sao2: float = 98.0,
              remifentanil_cp: float | None = None, ph: float = 7.4) -> HemoState:
         """Advance the model by dt seconds and return the new state.
@@ -792,6 +801,7 @@ class HemodynamicModel:
             ce_esmolol: Esmolol effect-site concentration (mcg/mL).
             ce_labetalol, ce_glyco, ce_atropine, ce_ephedrine: Effect-site concentrations (ng/mL).
             ce_ketamine, ce_ketamine_hr: Ketamine cardiac-output and HR effect sites (mcg/mL).
+            ce_amiodarone: Acute amiodarone effect-site concentration (mcg/mL).
             temp_c: Core temperature (°C).
             peep_cmH2O: Total PEEP (cmH2O).
             sao2: Arterial saturation (%).
@@ -802,6 +812,8 @@ class HemodynamicModel:
         base_co = self.base_co_l_min / self.failure.output_factor
         circulation = clamp01(self.state.co / (CIRCULATION_LIMIT_FRACTION * base_co))
         self._cached_state = None
+        self.sodium_block = clamp01(sodium_block)
+        self.toxic_contractility_loss = clamp01(toxic_contractility_loss)
         dt_min = dt / 60.0
         delivery_time = dt_min * circulation
         sepsis_sev = clamp01(self.sepsis_severity)
@@ -933,6 +945,9 @@ class HemodynamicModel:
         self._update_hb_conc()
 
         self._set_drug_factors(self._calc_anesthetic_effects(ce_prop, self.ce_opioid_cv, self.ce_sevo), vagal)
+        amiodarone = hill_function(ce_amiodarone, AMIODARONE_C50, 1.0)
+        self._drug_hr *= 1.0 - cfg.amiodarone_hr_reduction * amiodarone
+        self._drug_tpr *= 1.0 - cfg.amiodarone_tpr_reduction * amiodarone
 
         # Positive intrathoracic pressure reduces venous return; spontaneous
         # negative pressure modestly augments it.

@@ -4,7 +4,7 @@ Sources are cited on each model and in docs/REFERENCES.md.
 
 Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
 second. Concentrations are µg/mL for propofol, etomidate, ketamine,
-lidocaine, rocuronium, succinylcholine, and esmolol, ng/mL for opioids,
+lidocaine, amiodarone, rocuronium, succinylcholine, and esmolol, ng/mL for opioids,
 midazolam, catecholamines, ephedrine, atropine, labetalol, and glycopyrrolate,
 and mU/L for vasopressin.
 """
@@ -33,9 +33,10 @@ class PKState:
     ce_response: float = 0.0  # Propofol clinical response
     ce_resp: float = 0.0  # Respiratory depression
     ce_rr: float = 0.0  # Morphine/hydromorphone respiratory rate
-    ce_cv: float = 0.0  # Ketamine cardiac-output effect
+    ce_cv: float = 0.0  # Cardiovascular effect
     ce_hr: float = 0.0  # Ketamine chronotropy
     ce_transit: float = 0.0  # Transit before the primary effect site
+    ce_neuro: float = 0.0  # Local anesthetic CNS exposure
 
 
 class MammillaryPK:
@@ -83,6 +84,7 @@ class MammillaryPK:
         self.cl1_co_exponent = cl1_co_exponent
         self.renal_fraction = renal_fraction
         self.intravascular_clearance = intravascular_clearance
+        self.effect_input_fraction = 1.0  # Fraction of plasma exposure reaching effect sites
         # Exponents on the blood-volume ratio, applied only below baseline volume.
         self.cl1_deficit_exponent = cl1_deficit_exponent
         self.distribution_deficit_exponent = distribution_deficit_exponent
@@ -200,6 +202,8 @@ class MammillaryPK:
             for name, rate, source_name in self._effect_updates:
                 ce = getattr(s, name)
                 source = getattr(s, source_name)
+                if source_name == "c1":
+                    source *= self.effect_input_fraction
                 setattr(s, name, ce + rate * circulation * (source - ce) * dt_min)
             s.c1 += (input_per_min - elimination - flux2 - flux3) / v1 * dt_min
             if v2 > 0:
@@ -223,7 +227,7 @@ class MammillaryPK:
         for i, (name, rate) in enumerate(self.effect_sites, start=len(peripherals) + 1):
             rate *= self.circulation
             source = self.state_fields.index(self.ce_input) if name == "ce" else 0
-            A[i, source] = rate
+            A[i, source] = rate * (self.effect_input_fraction if source == 0 else 1.0)
             A[i, i] = -rate
         B[0, 0] = 1.0 / self.v1
         return A, B
@@ -249,10 +253,10 @@ class MammillaryPK:
         transition = expm(A / 60.0)
         equilibrium = (np.linalg.solve(-A, B[:, 0] * self.basal_input_rate * 60.0)
                        if self.basal_input_rate else np.zeros(A.shape[0]))
-        x = self.state_vector()
+        x = self.state_vector() - equilibrium
         for second in range(1, max_seconds + 1):
-            x = transition @ (x - equilibrium) + equilibrium
-            if x[-1] <= ce_target:
+            x = transition @ x
+            if x[-1] + equilibrium[-1] <= ce_target:
                 return second / 60.0
         return max_seconds / 60.0
 
@@ -316,14 +320,20 @@ def _sigmoid(x: float, x50: float, gamma: float) -> float:
     return x**gamma / (x50**gamma + x**gamma)
 
 
-def _eleveld_ffm(age: float, weight: float, height: float, male: bool) -> float:
-    """Al-Sallami fat-free mass used by both Eleveld models."""
+def _janmahasatian_ffm(weight: float, height: float, male: bool) -> float:
+    """Adult fat-free mass, kg; height is in cm."""
     bmi = weight / (height / 100.0) ** 2
+    denominator = 6680.0 + 216.0 * bmi if male else 8780.0 + 244.0 * bmi
+    return 9270.0 * weight / denominator
+
+
+def _eleveld_ffm(age: float, weight: float, height: float, male: bool) -> float:
+    """Al-Sallami maturation of adult fat-free mass for both Eleveld models."""
     if male:
         maturation = 0.88 + 0.12 / (1.0 + (age / 13.4) ** -12.7)
-        return maturation * 9270.0 * weight / (6680.0 + 216.0 * bmi)
-    maturation = 1.11 - 0.11 / (1.0 + (age / 7.1) ** -1.1)
-    return maturation * 9270.0 * weight / (8780.0 + 244.0 * bmi)
+    else:
+        maturation = 1.11 - 0.11 / (1.0 + (age / 7.1) ** -1.1)
+    return maturation * _janmahasatian_ffm(weight, height, male)
 
 
 # Propofol ---------------------------------------------------------------------
@@ -617,26 +627,46 @@ class KetaminePK(MammillaryPK):
         )
 
 
+class AmiodaronePK(MammillaryPK):
+    """Korth-Bradley 1996 two-compartment IV model (245 VT/VF patients), mcg/mL.
+
+    Weight-scaled CL 0.22 and Q 0.71 L/h/kg, V1 0.30 and V2 10 L/kg. The
+    1-minute effect-site half-time is a calibration.
+    """
+
+    def __init__(self, patient: Patient):
+        w = patient.weight
+        super().__init__(
+            v1=0.30 * w, v2=10.0 * w,
+            cl1=0.22 * w / 60.0 * organ_clearance_scaler(patient, hepatic_fraction=1.0),
+            cl2=0.71 * w / 60.0, ke0=math.log(2.0),
+        )
+
+
 class LidocainePK(MammillaryPK):
     """Foong et al. 2025 three-compartment model from surgical patients (mcg/mL).
 
-    CL 45.9, Q2 142, and Q3 5.81 L/h and V1 25.2, V2 44.4, and V3 29.3 L,
-    scaled from 70 kg; clearance is hepatic. Clearances were measured during
-    surgery. AnaSim sets ke0 so the effect site peaks 3 min after a bolus, the
-    best time to give it before intubation (Tam 1987).
+    CL 45.9, Q2 142, and Q3 5.81 L/h and V1 25.2, V2 44.4, and V3 29.3 L for
+    70 kg total and 56.1 kg fat-free mass (Table IV). Fat-free mass scales V1
+    and the clearances, and total mass scales V2 and V3. Clearance is hepatic
+    and was measured during surgery. AnaSim sets ke0 so the effect site peaks
+    3 min after a bolus, the best time to give it before intubation (Tam 1987).
     """
 
     def __init__(self, patient: Patient):
         size = patient.weight / 70.0
-        flow = size**0.75 / ANESTHETIZED_OUTPUT
+        lean_size = _janmahasatian_ffm(patient.weight, patient.height, patient.sex == "male") / 56.1
+        flow = lean_size**0.75 / ANESTHETIZED_OUTPUT
         super().__init__(
-            v1=25.2 * size,
+            v1=25.2 * lean_size,
             cl1=45.9 / 60.0 * flow * organ_clearance_scaler(patient, hepatic_fraction=0.9),
             v2=44.4 * size,
             cl2=142.0 / 60.0 * flow,
             v3=29.3 * size,
             cl3=5.81 / 60.0 * flow,
             ke0=0.6,
+            # Cardiac and CNS sites with calibrated half-times of 30 and 15 s.
+            additional_effect_sites=(("ce_cv", math.log(2.0) / 0.5), ("ce_neuro", math.log(2.0) / 0.25)),
         )
 
 

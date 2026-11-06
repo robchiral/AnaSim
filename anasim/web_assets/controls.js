@@ -74,7 +74,8 @@ const ventInputs = {
 
 // Presentation order stays fixed while medications are administered.
 const medicationGroups = [
-  { name: "Anesthesia and sedation", keys: ["propofol", "midazolam", "ketamine", "etomidate", "lidocaine"] },
+  { name: "Anesthesia and sedation", keys: ["propofol", "midazolam", "ketamine", "etomidate"] },
+  { name: "Antiarrhythmics", keys: ["lidocaine", "amiodarone"] },
   { name: "Opioids", keys: ["fentanyl", "remi", "hydromorphone", "morphine"] },
   { name: "Vasopressors and inotropes", keys: ["phenyl", "ephedrine", "nore", "epi", "vaso", "dobu", "milri"] },
   { name: "Heart rate and blood pressure", keys: ["atropine", "glyco", "esmolol", "labetalol"] },
@@ -107,7 +108,7 @@ export class Controls {
     this.bindTabs();
     this.bindMachine();
     this.buildDrugs(info.drugs);
-    this.bindFluids();
+    this.bindFluids(info.patient.weight);
     this.bindResuscitation();
     this.bindLabs();
     this.bindEvents(info);
@@ -447,7 +448,25 @@ export class Controls {
 
   // --- Fluids -------------------------------------------------------
 
-  bindFluids() {
+  bindFluids(weight) {
+    this.lipidMaximum = 12 * weight;
+    $("c-lipid-feedback").hidden = true;
+    $("c-lipid-bolus").value = String(weight >= 70 ? 100 : round(1.5 * weight));
+    const lipidGive = $("c-lipid-give");
+    lipidGive.onclick = async () => {
+      const result = await this.performAction(lipidGive, "fluid", {
+        kind: "lipid", volume_ml: readNumber($("c-lipid-bolus")),
+      });
+      if (this.destroyed || result === undefined) return;
+      setText($("c-lipid-feedback"), result.fluid.text);
+      $("c-lipid-feedback").hidden = false;
+    };
+    const lipidRate = $("c-lipid-rate");
+    const lipidEditor = this.editSettings([lipidRate], () => this.send("lipid_rate", { ml_min: readNumber(lipidRate) }));
+    $("c-lipid-stop").onclick = async () => {
+      const result = await this.performAction($("c-lipid-stop"), "lipid_rate", { ml_min: 0 });
+      if (!this.destroyed && result !== undefined) lipidEditor.cancel();
+    };
     $("fluid-feedback").hidden = true;
     for (const button of document.querySelectorAll("[data-fluid]")) {
       button.onclick = async () => {
@@ -642,6 +661,11 @@ export class Controls {
 
   sync(c, time) {
     this.state = c;
+    $("patient-observation").hidden = !c.convulsions;
+    setValue($("c-lipid-rate"), round(c.lipid.rate));
+    $("c-lipid-stop").hidden = c.lipid.rate <= 0;
+    setText($("c-lipid-total"), `${round(c.lipid.total_ml)} mL given`
+      + (c.lipid.total_ml > this.lipidMaximum ? "; exceeds 12 mL/kg" : ""));
     this.time = time;
     this.showBloodGases();
     this.showClinicalFeedback(c.clinical_feedback);

@@ -13,6 +13,7 @@ from anasim.patient.pk_models import (
     EsmololPK,
     GlycopyrrolatePK,
     KetaminePK,
+    MammillaryPK,
     MidazolamPK,
     MilrinonePK,
     PropofolPKEleveld,
@@ -109,6 +110,17 @@ def test_propofol_half_time_is_context_sensitive(patient):
     two_hours = csht(2)
     assert 6 < two_hours < 45
     assert csht(4) > two_hours
+
+
+def test_decay_prediction_preserves_basal_input_and_live_concentrations():
+    model = MammillaryPK(v1=1.0, cl1=1.0, ke0=1.0, basal_input_rate=1.0 / 60.0)
+    model.state.c1 = model.state.ce = 3.0
+    initial = model.state_vector()
+    # Ce(t) = 1 + 2(1 + t) exp(-t), with t in minutes. Ce reaches 1.5
+    # after 161.56 seconds; basal input keeps it above 1 indefinitely.
+    assert model.simulate_decay(max_seconds=600) == 162.0 / 60.0
+    assert model.simulate_decay(target_fraction=0.25, max_seconds=600) == 10.0
+    np.testing.assert_array_equal(model.state_vector(), initial)
 
 
 def test_remifentanil_reference_pk_and_context_insensitive_offset():

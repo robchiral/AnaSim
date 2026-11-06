@@ -100,7 +100,8 @@ def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> floa
         mac_n2o=state.mac_n2o,
         ce_ketamine=state.ketamine_ce if ketamine else 0.0,
     )
-    return 1.0 - (1.0 - drug_response) * (1.0 - engine.cerebral.unresponsiveness)
+    return (1.0 - (1.0 - drug_response) * (1.0 - engine.cerebral.unresponsiveness)
+            * (1.0 - engine.toxicity.unresponsiveness))
 
 
 def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY_INTENSITY) -> float:
@@ -312,7 +313,8 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         mech_vent_mv=assisted_rr * assisted_vt_l,
         fio2=state.fio2,
         ce_roc=engine.tof_pd.ce_central,
-        neuromuscular_strength=succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True),
+        neuromuscular_strength=(succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True)
+                               * (1.0 - engine.resp_mech.effort.muscle.fatigue)),
         mac_sevo=state.mac_sevo,
         mech_rr=assisted_rr,
         mech_vt_l=assisted_vt_l,
@@ -331,7 +333,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         temp_c=state.temp_c,
         airway_pressure=engine.resp_mech.peep,
         # Brainstem drive persists until cerebral failure is nearly complete.
-        central_drive_fraction=1.0 - engine.cerebral.dysfunction ** 8,
+        central_drive_fraction=(1.0 - engine.cerebral.dysfunction ** 8) * engine.toxicity.respiratory_drive,
     )
 
 

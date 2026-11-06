@@ -67,7 +67,8 @@ TREND_WINDOW_S = 1800
 VENT_FIELDS = ("mode", "rr", "tv", "peep", "ie", "p_insp", "p_support", "t_insp", "pause", "p_max", "trigger")
 IE_RATIOS = ("1:1", "1:2", "1:3", "1:4")
 LOOP_INTERVAL_S = 0.03  # Spacing of loop points, about 170 per 5-second breath
-FLUIDS = {"crystalloid": "give_fluid", "albumin": "give_albumin", "blood": "give_blood"}
+FLUIDS = {"crystalloid": "give_fluid", "albumin": "give_albumin", "blood": "give_blood",
+          "lipid": "give_lipid_emulsion"}
 
 SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
 # Instructor event controls; cases start their own events and offer case actions instead.
@@ -532,6 +533,8 @@ class WebSession:
         return {
             "airway": engine.state.airway_mode.value,
             "clinical_feedback": self._clinical_feedback,
+            "convulsions": engine.state.convulsions,
+            "lipid": {"rate": engine.lipid_infusion_ml_min, "total_ml": engine.toxicity.total_lipid_ml},
             "position": engine.hemo.position,
             "fgf": {"o2": circuit.fgf_o2, "air": circuit.fgf_air, "n2o": circuit.fgf_n2o},
             "o2_connected": circuit.oxygen_supply_connected,
@@ -572,7 +575,8 @@ class WebSession:
             "hemorrhage": {"active": engine.active_hemorrhage, "rate": engine.hemorrhage_rate_ml_min},
             "anaphylaxis": engine.anaphylaxis.active,
             "sepsis": engine.sepsis.active,
-            "ecg_rhythm": displayed_rhythm(engine.hemo.state.rhythm_type, engine.hemo.coronary.energy_failure),
+            "ecg_rhythm": displayed_rhythm(engine.hemo.state.rhythm_type, engine.hemo.coronary.energy_failure,
+                                           engine.toxicity.conduction_block),
             "bair_hugger": engine.state.bair_hugger_target,
         }
 
@@ -782,8 +786,12 @@ class WebSession:
         if not math.isfinite(volume) or volume <= 0:
             raise ValueError("Fluid volume must be positive and finite")
         getattr(self.engine, FLUIDS[kind])(volume)
-        label = {"crystalloid": "lactated Ringer's", "albumin": "albumin", "blood": "PRBC"}[kind]
+        label = {"crystalloid": "lactated Ringer's", "albumin": "albumin", "blood": "PRBC",
+                 "lipid": "20% lipid emulsion over 2.5 min"}[kind]
         return {"fluid": {"time": self.engine.state.time, "text": f"{volume:g} mL {label} started"}}
+
+    def _cmd_lipid_rate(self, ml_min: float):
+        self.engine.set_lipid_infusion(ml_min)
 
     def _cmd_compressions(self, active: bool):
         self.engine.set_chest_compressions(bool(active))

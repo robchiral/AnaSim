@@ -369,6 +369,7 @@
         <p id="clinical-feedback-text"></p>
         <button type="button" class="btn outlined small" id="clinical-feedback-dismiss">Dismiss</button>
       </section>
+      <p id="patient-observation" class="clinical-feedback" role="status" aria-live="polite" hidden>Generalized convulsions</p>
 
       <div class="tab-panel" data-panel="Machine" role="tabpanel">
         <fieldset class="group">
@@ -477,6 +478,20 @@
           <label class="inline">Maintenance fluid
             <span class="unit-input"><input id="c-maint" type="number" min="0" max="5000" step="25"><span>mL/hr</span></span>
           </label>
+        </fieldset>
+        <fieldset class="group">
+          <legend>Lipid emulsion <span class="legend-unit">20%</span></legend>
+          <p class="action-feedback"><a href="https://asra.com/docs/default-source/guidelines-articles/local-anesthetic-systemic-toxicity-rgb.pdf" target="_blank" rel="noopener">ASRA LAST checklist</a></p>
+          <label class="inline">Bolus
+            <span class="unit-input"><input id="c-lipid-bolus" type="number" min="0" max="3000" step="1"><span>mL</span></span>
+          </label>
+          <button type="button" class="btn full" id="c-lipid-give">Give over 2.5 min</button>
+          <label class="inline">Infusion rate
+            <span class="unit-input"><input id="c-lipid-rate" type="number" min="0" max="200" step="0.5"><span>mL/min</span></span>
+          </label>
+          <button type="button" class="btn full" id="c-lipid-stop" hidden>Stop lipid infusion</button>
+          <p id="c-lipid-feedback" class="action-feedback" role="status" hidden></p>
+          <p id="c-lipid-total" class="action-feedback"></p>
         </fieldset>
         <fieldset class="group">
           <legend>Chest compressions <span class="legend-unit">110/min</span></legend>

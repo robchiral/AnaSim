@@ -11,6 +11,7 @@ from enum import Enum
 import numpy as np
 
 from anasim.core.enums import RhythmType
+from anasim.core.utils import clamp01
 
 COMPRESSION_RATE = 110.0  # /min, within the guideline 100-120
 # Share of resting cardiac output at normal filling; less when underfilled.
@@ -81,7 +82,8 @@ class Defibrillator:
 
 
 def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: float,
-                  electrically_silent: bool, vulnerable: bool, rng: np.random.Generator) -> RhythmType:
+                  electrically_silent: bool, vulnerable: bool, antiarrhythmic: float,
+                  rng: np.random.Generator) -> RhythmType:
     """Return the rhythm after a discharge.
 
     A terminated arrhythmia becomes sinus rhythm; whether it perfuses depends on
@@ -93,6 +95,8 @@ def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: flo
         return rhythm
     if rhythm == RhythmType.VFIB or (rhythm == RhythmType.VTACH and not synchronized):
         success = DEFIBRILLATION_SUCCESS * (1.0 - FINE_VF_SUCCESS_LOSS * energy_failure)
+        # Either drug reduced the shocks needed (Kudenchuk 2016); the size is a calibration.
+        success += 0.5 * (1.0 - success) * clamp01(antiarrhythmic)
         return RhythmType.SINUS if rng.random() < success else rhythm
     if not synchronized and vulnerable and rng.random() < R_ON_T_PROBABILITY:
         return RhythmType.VFIB

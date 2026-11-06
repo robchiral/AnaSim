@@ -56,6 +56,11 @@ class HemodynamicConfig:
     # after primary asystole, a teaching calibration.
     asystole_recovery_time_s: float = 30.0
 
+    # Maximal acute reductions in heart rate and vascular resistance from IV
+    # amiodarone, calibrated to the label's bradycardia and hypotension.
+    amiodarone_hr_reduction: float = 0.20
+    amiodarone_tpr_reduction: float = 0.15
+
     # Propofol, remifentanil, and their interaction (Su et al. 2023), acting
     # from hemodynamic effect sites over the slow tone. Changes from Su's
     # volunteer estimates follow surgical patients. Propofol's resistance effect

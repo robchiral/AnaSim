@@ -81,7 +81,7 @@ class LocalServer(ThreadingHTTPServer):
             if self.session is not None:
                 self.session.replay_waves()
                 messages.append({"type": "created", "info": json.loads(self.session.info())})
-                messages.append({"type": "tick", "snap": json.dumps(self.session.snapshot())})
+                messages.append({"type": "tick", "snap": self.session.snapshot()})
                 if self.error:
                     messages.append({"type": "error", "message": self.error})
             return messages
@@ -102,13 +102,13 @@ class LocalServer(ThreadingHTTPServer):
             self.last_tick = time.monotonic()
             return [
                 {"type": "created", "info": json.loads(session.info())},
-                {"type": "tick", "snap": json.dumps(session.snapshot())},
+                {"type": "tick", "snap": session.snapshot()},
             ]
         if kind == "poll":
             if self.error:
                 return [{"type": "error", "message": self.error}]
             return [] if self.session is None else [
-                {"type": "tick", "snap": json.dumps(self.session.snapshot())}
+                {"type": "tick", "snap": self.session.snapshot()}
             ]
         if kind == "cmd":
             result = {"type": "result", "id": message["id"]}

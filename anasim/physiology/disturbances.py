@@ -106,6 +106,8 @@ class Disturbances:
 
     def __init__(self, dist_profile: str | None = None):
         self.spec = None
+        self._plateau_start = math.inf
+        self._plateau = DisturbanceEffects()
 
         if dist_profile is None:
             return
@@ -114,6 +116,14 @@ class Disturbances:
         except KeyError as exc:
             choices = ", ".join(PROFILE_SPECS)
             raise ValueError(f"dist_profile must be one of {choices} or None") from exc
+        last = self.spec.points[-1]
+        self._plateau_start = float(last[_PROFILE_COL_TIME])
+        self._plateau = DisturbanceEffects(
+            bis=float(last[_PROFILE_COL_BIS]),
+            svr=float(last[_PROFILE_COL_SVR]),
+            sv=float(last[_PROFILE_COL_SV]),
+            hr=float(last[_PROFILE_COL_HR]),
+        )
 
     def stimulates_airway(self, elapsed_s: float) -> bool:
         """Return whether airway instrumentation is still under way."""
@@ -128,6 +138,8 @@ class Disturbances:
         """Return the BIS, HR, SVR, and SV deltas `time` seconds into the profile."""
         if self.spec is None:
             return DisturbanceEffects()
+        if time >= self._plateau_start:
+            return self._plateau
 
         points = self.spec.points
         profile_time = points[:, _PROFILE_COL_TIME]
@@ -142,6 +154,8 @@ class Disturbances:
         """Return the time-weighted average effect over one simulation step."""
         if self.spec is None or end_s <= start_s:
             return self.compute_dist(start_s)
+        if start_s >= self._plateau_start:
+            return self._plateau
 
         points = self.spec.points
         profile_time = points[:, _PROFILE_COL_TIME]
