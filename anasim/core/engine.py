@@ -33,6 +33,7 @@ from anasim.patient.pd import (
 from anasim.patient.pk_models import NorepinephrinePK
 from anasim.patient.variability import TYPICAL, sample_variability
 from anasim.patient.volatile_pk import VolatilePK
+from anasim.physiology.cerebral import CerebralModel
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
 from anasim.physiology.hemodynamics import HemodynamicModel
@@ -153,6 +154,7 @@ class SimulationEngine(DrugControllerMixin):
         self.etco2_readout = EtCO2Readout()
         self._tol_current = 0.0
         self._pk_hemo_scale_cache: tuple[float, float, float] | None = None
+        self._pk_blood_out_ml = 0.0
         self.current_mean_paw = 0.0
 
         # Independent generators keep each monitor's noise reproducible.
@@ -238,6 +240,7 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo = HemodynamicModel(self.patient)
         self.resp = RespiratoryModel(self.patient)
         self.lactate = LactateModel(self.patient.weight, self.patient.hepatic_function)
+        self.cerebral = CerebralModel(self.patient.baseline_hb)
         if self.config.mode == "steady_state":
             self.aeration = LungAeration(self.patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
         else:
@@ -593,6 +596,11 @@ class SimulationEngine(DrugControllerMixin):
         self._append_output_snapshot()
         if self.recorder and self.recorder.is_recording:
             self.recorder.log(self.state)
+
+    @property
+    def irreversible_arrest(self) -> bool:
+        """Arrest that no available action can reverse, since resuscitation is not modeled."""
+        return self.state.cardiac_arrest and self.hemo.coronary.electrically_silent
 
     def get_latest_state(self) -> SimulationState:
         """Return an independent copy of the current state, including alarm flags."""

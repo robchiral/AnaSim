@@ -108,6 +108,10 @@ def test_oxygen_saturation_gradient_matches_pressure_perturbation(patient):
 def test_propofol_induction_causes_transient_hypoventilation_with_patent_airway(awake_engine):
     engine = awake_engine
     engine.set_airway_mode("ETT")
+    # Preoxygenate so hypoxemia does not add cerebral depression.
+    engine.set_fgf(10.0, 0.0)
+    for _ in range(900):
+        engine.step(0.2)
     engine.give_drug_bolus("propofol", 2.0 * engine.patient.weight)
     baseline_va = engine.resp.va_baseline
     low_ventilation_seconds = 0.0
@@ -119,9 +123,11 @@ def test_propofol_induction_causes_transient_hypoventilation_with_patent_airway(
         low_ventilation_seconds += 0.2 * (engine.resp.state.va < 0.5 * baseline_va)
         min_bis = min(min_bis, engine.state.bis)
     assert min_va < 0.3 * baseline_va
-    assert 60.0 < low_ventilation_seconds < 360.0
+    # Without hypoxic drive, ventilation recovers within 7 minutes.
+    assert 60.0 < low_ventilation_seconds < 420.0
     assert min_bis < 60.0
     assert engine.resp.state.rr > 8.0
+    assert engine.resp.state.va > 0.8 * baseline_va
 
 
 def test_low_dose_propofol_promotes_transient_remifentanil_apnea(patient):
@@ -327,9 +333,7 @@ def test_low_cardiac_output_amplifies_atelectatic_shunt(engine_factory):
     endpoints = []
     # Keep delivery above critical so this comparison isolates the shunt effect.
     for loss in (0.0, 0.3):
-        engine = engine_factory(
-            config=SimulationConfig(mode="steady_state", end_on_cardiac_arrest=False), start=True,
-        )
+        engine = engine_factory(config=SimulationConfig(mode="steady_state"), start=True)
         engine.set_fgf(10.0, 0.0)
         engine.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=0, ie="1:2")
         engine.hemo.add_volume(-loss * engine.hemo.blood_volume)

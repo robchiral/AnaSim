@@ -11,25 +11,27 @@ from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.spo2 import SpO2Monitor
 
 
-def _r_wave_width_ms(rhythm: RhythmType, hr: float) -> float:
-    """Mean R-wave width at half height."""
+def _beats(rhythm: RhythmType, hr: float, failure: float = 0.0) -> list[np.ndarray]:
+    """ECG from 300 ms before to 500 ms after each R peak, in 1 ms samples."""
     dt = 0.001
     cycle = CardiacCycle(np.random.default_rng(6))
     ecg = ECGMonitor(rng=np.random.default_rng(7))
     sample = cycle.seed(hr, rhythm)
-    voltages, beats = [], []
-    for index in range(4000):
+    voltages, peaks = [], []
+    for index in range(max(4000, round(8 * 60.0 / hr / dt))):
         if index:
-            sample = cycle.step(dt, hr, rhythm)
+            sample = cycle.step(dt, hr, rhythm, failure)
         if sample.beat_started:
-            beats.append(index)
-        voltages.append(ecg.step(dt, sample))
+            peaks.append(index)
+        voltages.append(ecg.step(dt, sample, conduction_failure=failure))
     trace = np.array(voltages)
-    widths = []
-    for beat in beats[1:-1]:
-        window = trace[beat - 100:beat + 100]
-        widths.append(np.count_nonzero(window > 0.5 * window.max()) * dt * 1000.0)
-    return float(np.mean(widths))
+    return [trace[peak - 300:peak + 500] for peak in peaks[1:-1] if peak + 500 <= len(trace)]
+
+
+def _r_wave_width_ms(rhythm: RhythmType, hr: float, failure: float = 0.0) -> float:
+    """Mean R-wave width at half height."""
+    windows = [beat[200:400] for beat in _beats(rhythm, hr, failure)]
+    return float(np.mean([np.count_nonzero(window > 0.5 * window.max()) for window in windows]))
 
 
 def test_qrs_width_is_rate_independent_and_wide_in_vt():
@@ -45,6 +47,21 @@ def test_qrs_width_is_rate_independent_and_wide_in_vt():
     ]
     assert max(narrow) - min(narrow) < 3.0
     assert _r_wave_width_ms(RhythmType.VTACH, 180.0) > 2.0 * max(narrow)
+
+
+def test_ischemic_conduction_failure_removes_p_waves_then_widens_qrs():
+    """Junctional escape loses the P wave; idioventricular escape widens the QRS and inverts the T wave."""
+    sinus, junctional, idioventricular = (
+        np.mean(_beats(RhythmType.SINUS, 40.0, failure), axis=0) for failure in (0.0, 0.5, 0.8)
+    )
+    p_peak = 300 - 165
+    assert sinus[p_peak] > 0.06 and abs(junctional[p_peak]) < 0.01
+    narrow = _r_wave_width_ms(RhythmType.SINUS, 40.0)
+    assert abs(_r_wave_width_ms(RhythmType.SINUS, 40.0, 0.5) - narrow) < 1.0
+    assert _r_wave_width_ms(RhythmType.SINUS, 40.0, 0.8) > 1.8 * narrow
+    t_region = slice(300 + 150, 800)
+    assert sinus[t_region].max() > 0.1
+    assert idioventricular[t_region].min() < -0.1 and idioventricular[t_region].max() < 0.05
 
 
 def test_pulse_oximeter_requires_perfusion_and_an_organized_pulse():
@@ -88,23 +105,27 @@ def test_shared_cycle_orders_qrs_art_and_pleth():
     assert int(np.argmax(art_values)) < int(np.argmax(pleth_values))
 
 
-def test_ischemic_st_signal_preserves_qrs_and_wide_complex_morphology():
+def test_ischemic_st_depression_is_horizontal_from_the_j_point_into_the_t_wave():
+    """The QRS is unchanged, the segment is flat, and it returns to baseline through the T wave."""
     for rhythm, hr in ((RhythmType.SINUS, 60), (RhythmType.SVT, 160), (RhythmType.VTACH, 180)):
         cycle = CardiacCycle(np.random.default_rng(1))
         normal = ECGMonitor(np.random.default_rng(2))
         ischemic = ECGMonitor(np.random.default_rng(2))
         sample = cycle.seed(hr, rhythm)
-        st_differences = []
-        for index in range(1000):
+        depression = {}
+        for index in range(round(60000 / hr)):
             if index:
                 sample = cycle.step(0.001, hr, rhythm)
-            difference = normal.step(0.001, sample) - ischemic.step(0.001, sample, 0.2)
-            if sample.elapsed_s < 0.04 or rhythm == RhythmType.VTACH:
-                assert difference == 0
-            if 0.09 < sample.elapsed_s < 0.11:
-                st_differences.append(difference)
-        if rhythm != RhythmType.VTACH:
-            assert min(st_differences) > 0.19
+            depression[index] = normal.step(0.001, sample) - ischemic.step(0.001, sample, 0.2)
+        if rhythm == RhythmType.VTACH:
+            assert not any(depression.values())
+            continue
+        assert not any(depression[ms] for ms in range(40))
+        assert all(0.19 < depression[ms] < 0.201 for ms in range(60, 101))
+        if rhythm == RhythmType.SINUS:
+            # Still depressed at the T peak (248 ms at 60/min); baseline after the T wave.
+            assert depression[248] > 0.08
+            assert not any(depression[ms] for ms in range(380, 1000))
 
 
 def test_batched_monitor_updates_preserve_waveforms_readings_and_noise(engine_factory):

@@ -93,13 +93,14 @@ def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> floa
         PROPOFOL_LOC_TRANSFER * engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
         engine.pk["midazolam"].state.ce, engine.midazolam_c50, engine.response.age_factor,
     )
-    return engine.response.loss_of_response(
+    drug_response = engine.response.loss_of_response(
         hypnotic,
         state.opioid_ce,
         mac_sevo=state.mac_sevo,
         mac_n2o=state.mac_n2o,
         ce_ketamine=state.ketamine_ce if ketamine else 0.0,
     )
+    return 1.0 - (1.0 - drug_response) * (1.0 - engine.cerebral.unresponsiveness)
 
 
 def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY_INTENSITY) -> float:
@@ -327,6 +328,8 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         shunt_fraction=engine.aeration.shunt_fraction,
         temp_c=state.temp_c,
         airway_pressure=engine.resp_mech.peep,
+        # Brainstem drive persists until cerebral failure is nearly complete.
+        central_drive_fraction=1.0 - engine.cerebral.dysfunction ** 8,
     )
 
 

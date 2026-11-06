@@ -253,19 +253,18 @@ def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload(
 
 def test_blood_gas_reports_values_at_the_draw_after_analysis_and_survives_reload():
     session = WebSession({**PATIENT, "mode": "steady_state"})
-    cmd(session, "sepsis", active=True)
     cmd(session, "run", running=True)
-    run_seconds(session, 1200, tick_s=10.0)
+    run_seconds(session, 30, tick_s=10.0)
     state = session.engine.state
     drawn = cmd(session, "blood_gas")["blood_gas"]
     assert drawn["ready_at"] - drawn["drawn_at"] == pytest.approx(120)
     assert (drawn["ph"], drawn["lactate"], drawn["base_excess"]) == pytest.approx(
         (state.ph, state.lactate, state.base_excess), abs=0.01,
     )
-    # Sepsis raises lactate and lowers base excess within 20 minutes.
-    assert drawn["lactate"] > 1.3 and drawn["base_excess"] < -0.5
+    # Hyperventilation after the draw changes pH but not the reported sample.
+    cmd(session, "vent", rr=30)
     run_seconds(session, 130, tick_s=10.0)
-    assert session.engine.state.lactate > drawn["lactate"]
+    assert session.engine.state.ph > drawn["ph"] + 0.02
     assert parse(session.info())["blood_gases"] == [drawn]
 
 
@@ -353,28 +352,31 @@ def test_recording_returns_the_session_as_csv_even_after_a_failure(tmp_path):
     assert not any(tmp_path.iterdir())
 
 
-def test_cardiac_arrest_ends_the_session(monkeypatch):
-    session = WebSession({**PATIENT, "end_on_cardiac_arrest": True})
+def test_session_continues_through_arrest_until_circulation_cannot_return(monkeypatch):
+    session = WebSession(PATIENT)
     engine = session.engine
-    steps_after_arrest = []
+    steps_after_end = []
     step = engine.step
 
     def recording_step(dt):
-        if engine.state.cardiac_arrest:
-            steps_after_arrest.append(dt)
+        if engine.irreversible_arrest:
+            steps_after_end.append(dt)
         step(dt)
 
     monkeypatch.setattr(engine, "step", recording_step)
     cmd(session, "run", running=True)
     cmd(session, "rhythm", name="Asystole")
+    snaps = run_seconds(session, 60, tick_s=1.0)
+    assert engine.state.cardiac_arrest
+    assert snaps[-1]["running"] and not snaps[-1]["ended"]
 
-    snaps = run_seconds(session, 40, tick_s=10.0)
-
-    snap = snaps[-1]
+    # Skip the minutes until ischemia silences the heart.
+    engine.hemo.coronary.energy_failure = 1.0
+    snap = run_seconds(session, 20, tick_s=10.0)[-1]
     assert snap["ended"] and not snap["running"]
-    assert snap["arrest_reason"]
-    # The final state is the one at the arrest, even at 50x.
-    assert not steps_after_arrest
+    assert snap["arrest_reason"] == "Asystole"
+    # The final state is the one at the endpoint, even at 50x.
+    assert not steps_after_end
     cmd(session, "run", running=True)
     assert not parse(session.advance(0.2))["running"]
 

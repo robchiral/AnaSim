@@ -5,10 +5,9 @@ from anasim.core.state import SimulationConfig
 
 def test_paralysis_stops_shivering_and_reduces_co2_production(engine_factory, advance_time):
     engine = engine_factory(
-        config=SimulationConfig(mode="awake", rng_seed=123), start=True, baseline_temp=35.0
+        config=SimulationConfig(mode="awake", rng_seed=123), start=True, baseline_temp=35.0, baseline_rr=0.0
     )
     # Hold ventilation constant to distinguish metabolism from respiratory compensation.
-    engine.resp.hcvr_slope_baseline = 0.0
     engine.set_airway_mode("ETT")
     engine.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5, ie="1:2")
     engine.set_vent_power(True)

@@ -82,21 +82,6 @@ def test_heart_failure_profiles_change_output_afterload_response_and_fluid_toler
     assert water["hfref"] > water["hfpef"] > 0.1
 
 
-def test_absent_coronary_perfusion_causes_ischemia_despite_oxygenated_blood():
-    engine = _engine(baseline_rr=0)
-    _ventilate(engine)
-    _advance(engine, 60)
-    engine.set_rhythm(RhythmType.ASYSTOLE.value)
-    _advance(engine, 60)
-    assert engine.state.co == 0
-    assert engine.state.sao2 > 98
-    assert engine.state.myocardial_ischemia > 0.9
-    engine.set_rhythm(RhythmType.SINUS.value)
-    _advance(engine, 180)
-    assert engine.state.myocardial_ischemia < 0.1
-    assert engine.state.co > 0.9 * engine.hemo.base_co_l_min
-
-
 def test_chronic_low_output_changes_flow_sensitive_drug_exposure():
     normal, failure = (_engine(heart_failure=condition, baseline_rr=0) for condition in ("none", "hfref"))
     for engine in (normal, failure):

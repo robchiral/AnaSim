@@ -15,6 +15,10 @@ PCV-VG, pressure control with volume guarantee.
 - Gobel et al. (1978). *Circulation*. [Rate-pressure product and myocardial oxygen consumption in angina](https://pubmed.ncbi.nlm.nih.gov/624164/).
 - Wilson et al. (1987). *Circulation*. [Coronary lesion geometry and flow reserve](https://pubmed.ncbi.nlm.nih.gov/3829334/).
 - Arthurs et al. (2016). *Am J Physiol Heart Circ Physiol*. [Coronary blood-flow control and myocardial oxygen balance](https://pubmed.ncbi.nlm.nih.gov/26945076/).
+- Harasawa et al. (1992). *Circ Res*. [Basal metabolism and unloaded myocardial oxygen consumption](https://pubmed.ncbi.nlm.nih.gov/1628397/).
+- Jeremy et al. (1986). *Cardiovasc Res*. [Left ventricular diastolic pressure and the coronary pressure-flow relation during vasodilation](https://pubmed.ncbi.nlm.nih.gov/3802128/).
+- Nanto et al. (2001). *Jpn Circ J*. [Coronary zero-flow pressure in humans](https://pubmed.ncbi.nlm.nih.gov/11548878/).
+- Nebout et al. (2013). *Ann Fr Anesth Reanim*. [BIS for early detection of cerebral hypoperfusion](https://pubmed.ncbi.nlm.nih.gov/23953319/).
 - Schwartzenberg et al. (2012). *J Am Coll Cardiol*. [Hemodynamic responses to vasodilation in reduced- and preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/22281246/).
 - Westermann et al. (2008). *Circulation*. [Ventricular stiffness and filling during tachycardia in preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/18413502/).
 - Wagner et al. (1977). *J Clin Invest*. [Ventilation-perfusion inequality in COPD](https://pubmed.ncbi.nlm.nih.gov/833271/).
@@ -208,6 +212,7 @@ PCV-VG, pressure control with volume guarantee.
 - Melo et al. (1999). *Crit Care*. [Vascular resistance in septic shock](https://pubmed.ncbi.nlm.nih.gov/11056727/).
 - Bellissant et al. (2000). *Clin Pharmacol Ther*. [Pressor hyporesponsiveness in septic shock](https://pubmed.ncbi.nlm.nih.gov/11014411/).
 - Margarson et al. (2002). *J Appl Physiol (1985)*. [Albumin leakage in septic shock](https://pubmed.ncbi.nlm.nih.gov/11960967/).
+- Schotola et al. (2012). *Crit Care*. [Acidosis and the adrenergic response of human failing myocardium](https://pubmed.ncbi.nlm.nih.gov/22889236/).
 
 ### Pulmonary circulation
 
@@ -225,6 +230,7 @@ PCV-VG, pressure control with volume guarantee.
 - Mort (2004). *J Clin Anesth*. [Hypoxemia and intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/15590254/).
 - De Jong et al. (2018). *Crit Care Med*. [Intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/29261566/).
 - Heffner et al. (2013). *Resuscitation*. [Cardiac arrest during emergency airway management](https://pubmed.ncbi.nlm.nih.gov/23911630/).
+- Weisfeldt and Becker (2002). *JAMA*. [Three-phase time-sensitive model of resuscitation after cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12479769/).
 
 ## Cardiovascular drugs
 
@@ -318,6 +324,7 @@ PCV-VG, pressure control with volume guarantee.
 ## Gas exchange and blood chemistry
 
 - Ronco et al. (1993). *JAMA*. [Critical oxygen delivery and extraction in septic and nonseptic humans](https://pubmed.ncbi.nlm.nih.gov/8411504/).
+- Loer et al. (1997). *Anesthesiology*. [Oxygen consumption of the human lung](https://pubmed.ncbi.nlm.nih.gov/9066318/).
 - Dunham et al. (1991). *Crit Care Med*. [Oxygen debt, lactate, and base deficit during canine hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/1989759/).
 - Ward et al. (2010). *Resuscitation*. [Oxygen transport, lactate, and base excess during simulated hemorrhage in humans](https://pubmed.ncbi.nlm.nih.gov/20418009/).
 - Revelly et al. (2005). *Crit Care Med*. [Lactate production and clearance in severe sepsis and cardiogenic shock](https://pubmed.ncbi.nlm.nih.gov/16215376/).

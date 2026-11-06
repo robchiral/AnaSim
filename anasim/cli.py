@@ -58,7 +58,7 @@ def run_headless(args):
             engine.start()
             for i in range(steps):
                 engine.step(sim_config.dt)
-                if engine.state.cardiac_arrest:
+                if engine.irreversible_arrest:
                     break
                 if i % 100 == 0:
                     state = engine.get_latest_state()
@@ -85,8 +85,8 @@ def run_headless(args):
         raise SystemExit(1) from error
 
     end_real = time.perf_counter()
-    if engine.state.cardiac_arrest:
-        print(f"Stopped at {engine.state.time:.1f}s: cardiac arrest ({engine.state.arrest_reason})")
+    if engine.irreversible_arrest:
+        print(f"Stopped at {engine.state.time:.1f}s: irreversible cardiac arrest ({engine.state.arrest_reason})")
     print(f"Simulation completed in {end_real - start_real:.2f} seconds of real time")
 
 

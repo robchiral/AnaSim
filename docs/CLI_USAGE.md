@@ -87,7 +87,6 @@ models represent these patient conditions.
 | `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
 | `patient_variability` | `false` | Sample individual drug kinetics and responses; `rng_seed` fixes the sampled patient |
 | `arterial_line_enabled` | `true` | Display continuous arterial pressure |
-| `end_on_cardiac_arrest` | `false` | End the session at [cardiac arrest](ARCHITECTURE.md#hemodynamics) |
 | `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr; `null` uses 1 mL/kg/hr |
 | `sevoflurane_enabled` | `true` | Enable the sevoflurane vaporizer; `"balanced"` requires `true` |
 | `disturbance_profile` | `null` | `"stim_intubation_pulse"`, `"stim_sustained_surgery"`, or `null` |

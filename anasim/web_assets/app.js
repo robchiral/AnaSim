@@ -181,7 +181,6 @@ function buildSetup() {
     if (f.tci_enabled.checked) options.push("TCI allowed");
     if (f.patient_variability.checked) options.push("individual drug response");
     if (!f.arterial_line_enabled.checked) options.push("no arterial line");
-    if (f.end_on_cardiac_arrest.checked) options.push("ends at cardiac arrest");
     setText($("options-summary"), list(options, "Defaults"));
   };
   const onSetupEdit = () => {
@@ -233,7 +232,6 @@ function readSetup(form) {
   params.surgical_site = f.surgical_site.value;
   if (f.pregnant.checked) params.position = f.position.value;
   params.arterial_line_enabled = f.arterial_line_enabled.checked;
-  params.end_on_cardiac_arrest = f.end_on_cardiac_arrest.checked;
   params.tci_enabled = f.tci_enabled.checked;
   params.patient_variability = f.patient_variability.checked;
   if (f.session.value === "case") {
@@ -313,11 +311,11 @@ function onTick(snap) {
   if (info.scenario) updateScenario(snap.scenario);
   if (snap.download) download(snap.download.filename, snap.download.csv);
   if (snap.notice) alertDialog("Recording failed", snap.notice);
-  if (snap.arrest_reason && !arrestShown && !snap.scenario?.debrief) {
+  if (snap.ended && snap.arrest_reason && !arrestShown && !snap.scenario?.debrief) {
     arrestShown = true;
     confirmDialog(
       "Simulation endpoint reached",
-      `Cardiac arrest: ${snap.arrest_reason}.\n\nResuscitation is not modeled, so the session ends here.`,
+      `Cardiac arrest: ${snap.arrest_reason}.\n\nResuscitation is not modeled.`,
       [["Review final state", "outlined"], ["Start a new session", "primary"]],
     ).then((choice) => choice === 1 && newSession());
   }

@@ -143,6 +143,9 @@ class HemodynamicConfig:
     # stressed volume, about 8 mL/kg at a 40% loss. Calibrated so slow losses
     # follow the ATLS hemorrhage classes.
     venous_recruitment_fraction: float = 0.3
+    # Extra recruitment for losses above 30%, calibrated to keep slow losses
+    # near 45% compensated.
+    severe_venous_recruitment_fraction: float = 0.6
     # de Wit 2016, Table 1: relative venous effects at Cp 3 to 6.5 mcg/mL.
     # Extrapolation below 3 is assumed; exposure is capped at 6.5.
     propofol_venous_pooling_slope: float = 0.0758

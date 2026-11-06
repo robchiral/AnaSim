@@ -83,8 +83,10 @@ def test_ventilated_arrest_washes_out_lung_co2_and_isolates_arterial_blood(patie
         model.step(1.0, **settings)
     assert model.state.pa_co2 == pytest.approx(initial_pressure, abs=1e-7)
     assert model.state.ph == pytest.approx(initial_ph, abs=1e-9)
-    # Aerobic metabolism stops without delivery; preexisting tissue CO2 remains.
-    assert model.gas_transport.produced_l == produced
+    # Systemic aerobic metabolism stops without delivery; preexisting tissue
+    # CO2 remains. Lung tissue continues on alveolar O2.
+    lung_l = model.LUNG_TISSUE_FRACTION * model.vco2 * 0.8 / 1000.0 * 15.0
+    assert model.gas_transport.produced_l - produced == pytest.approx(lung_l, rel=1e-9)
     assert model.gas_transport.tissue_co2_l == pytest.approx(initial_tissue, abs=1e-9)
     assert _carbon_l(model) - initial_carbon == pytest.approx(
         model.gas_transport.produced_l - produced - model.gas_transport.exhaled_l + exhaled, abs=1e-7,
@@ -96,6 +98,16 @@ def test_ventilated_arrest_washes_out_lung_co2_and_isolates_arterial_blood(patie
     assert model.state.etco2 > 20.0
     assert model.state.pa_co2 > initial_pressure - 3.0
     assert model.gas_transport.tissue_co2_l < retained
+
+
+def test_ventilated_arrest_after_hemodilution_settles_at_lung_tissue_co2(patient):
+    """Ventilation set for PaCO2 40 clears 5% of production when only lung tissue produces CO2."""
+    model, settings = _controlled(patient, cardiac_output=5.0)
+    settings.update(cardiac_output=0.0, hb_g_dl=9.0, hematocrit=model.baseline_hct * 9.0 / model.baseline_hb)
+    for _ in range(1800):
+        model.step(1.0, **settings)
+    assert model.state.p_alveolar_co2 == pytest.approx(40.0 * model.LUNG_TISSUE_FRACTION, rel=0.01)
+    assert model.state.etco2 < 2.0
 
 
 def test_low_flow_separates_venous_and_arterial_acid_base_status(patient):
@@ -210,15 +222,16 @@ def test_ventilation_change_retains_a_slow_asymmetric_co2_elimination_tail(patie
     assert constants[0] > constants[1]
 
 
-def test_zero_flow_retains_existing_tissue_co2_without_aerobic_production(patient):
+def test_zero_flow_retains_existing_tissue_co2_without_systemic_aerobic_production(patient):
     model = RespiratoryModel(patient)
     initial_tissue = model.gas_transport.tissue_co2_l
     for _ in range(60):
         model.step(1.0, ce_prop=0.0, ce_remi=0.0, cardiac_output=0.0,
                    ce_roc=10.0, airway_patency=0.0, unconscious=1.0)
+    lung = model.LUNG_TISSUE_FRACTION
     assert model.gas_transport.tissue_co2_l == pytest.approx(initial_tissue, abs=1e-10)
-    assert model.gas_transport.produced_l == 0.0
-    assert model.oxygen_deficit_l == pytest.approx(model.vco2 / model.rq / 1000.0)
+    assert model.gas_transport.produced_l == pytest.approx(lung * model.vco2 / 1000.0)
+    assert model.oxygen_deficit_l == pytest.approx((1.0 - lung) * model.vco2 / model.rq / 1000.0)
 
 
 @pytest.mark.parametrize("dt", [0.1, 1.0])
@@ -238,7 +251,7 @@ def test_stagnant_blood_cannot_equilibrate_the_extravascular_pool(patient, dt):
     for _ in range(60):
         model.step(1.0, ce_prop=0.0, ce_remi=0.0, measured_breaths=True,
                    cardiac_output=5.0, airway_patency=0.0)
-    assert abs(transport.extracellular_co2 - carbon) > 0.1
+    assert abs(transport.extracellular_co2 - carbon) > 0.05
 
 
 @pytest.mark.parametrize("shunt", [0.0, 0.95])

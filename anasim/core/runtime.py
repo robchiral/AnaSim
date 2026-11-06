@@ -33,9 +33,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Cardiac arrest endpoint: no effective circulation for ARREST_CONFIRM_S seconds.
-ARREST_MAP_MMHG = 20.0
 ARREST_HR_BPM = 10.0
+# PEA: negligible forward flow and pulse pressure with an organized rhythm.
+ARREST_CO_L_MIN = 0.3
+ARREST_PULSE_PRESSURE_MMHG = 5.0
 ARREST_CONFIRM_S = 15.0
 # Mean airway pressure is smoothed before it sets intrathoracic pressure.
 MEAN_PAW_TAU_S = 0.25
@@ -57,6 +58,7 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
     step_pk(engine, dt, fi_sevo, fi_n2o, engine.state.co)
     physiology = step_physiology(engine, dt, disturbances)
     project_runtime_physiology(engine, physiology)
+    engine.cerebral.step(dt, state.map, state.hb_g_dl, state.sao2)
     step_monitors(engine, dt, physiology.hemo_state, physiology.resp_state, disturbances)
     update_shivering(engine, dt)
     step_temperature(engine, dt)
@@ -255,6 +257,12 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     if "propofol" in engine.pump_pk:
         interaction_changed |= cast(PropofolPKEleveld, engine.pump_pk["propofol"]).update_midazolam(midazolam_cp)
     base_bv = engine.hemo.blood_volume_0
+    blood_lost = engine.hemo.total_blood_out_ml - engine._pk_blood_out_ml
+    if blood_lost > 0.0:
+        for model in (*engine.pk.values(), *engine.pump_pk.values(),
+                      engine.tof_pd.sugammadex, engine.tof_pd.complex):
+            model.remove_blood(blood_lost / 1000.0, base_bv / 1000.0)
+        engine._pk_blood_out_ml = engine.hemo.total_blood_out_ml
     # Heart failure's low output slows flow-dependent clearance. Pregnancy's
     # added output mostly perfuses the uterus and kidneys, so it is the reference.
     base_co = engine.hemo.base_co_l_min / engine.hemo.failure.output_factor
@@ -396,6 +404,7 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
 
     engine.hemo.coronary.step(
         dt, state.hr, state.sbp, state.dbp, state.lap, engine.hemo.hb_conc, resp_state.sao2,
+        engine.hemo.myocardial_hypoxia,
     )
 
     # Plasma remifentanil and propofol reach hemodynamic effect sites inside the model;
@@ -428,6 +437,7 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         peep_cmH2O=total_peep_effect,
         sao2=resp_state.sao2,
         remifentanil_cp=state.remi_cp,
+        ph=resp_state.ph,
     )
 
     return build_snapshot_from_models(
@@ -451,25 +461,28 @@ def step_lactate(engine: SimulationEngine, dt: float) -> None:
 
 
 def check_cardiac_arrest(engine: SimulationEngine, dt: float) -> None:
-    """End the session after 15 s without effective circulation (MAP < 20 or HR < 10).
-
-    Resuscitation is not modeled, so a confirmed arrest is a session endpoint.
-    """
+    """Flag arrest after 15 s without effective pulses."""
     state = engine.state
-    if not engine.config.end_on_cardiac_arrest or state.cardiac_arrest:
-        return
-    pulseless = state.map < ARREST_MAP_MMHG or state.hr < ARREST_HR_BPM
+    rhythm = engine.hemo.state.rhythm_type
+    pulseless = (rhythm in (RhythmType.VFIB, RhythmType.ASYSTOLE)
+                 or state.hr < ARREST_HR_BPM
+                 or (state.co < ARREST_CO_L_MIN and state.sbp - state.dbp < ARREST_PULSE_PRESSURE_MMHG))
     engine._pulseless_s = engine._pulseless_s + dt if pulseless else 0.0
+    if not pulseless:
+        state.cardiac_arrest = False
+        state.arrest_reason = ""
+        return
     if engine._pulseless_s < ARREST_CONFIRM_S:
         return
 
-    rhythm = engine.hemo.rhythm_type
     if rhythm in (RhythmType.VFIB, RhythmType.ASYSTOLE):
         reason = rhythm.value
     elif state.hr < ARREST_HR_BPM:
         reason = f"Extreme bradycardia (HR < {ARREST_HR_BPM:g} bpm)"
     else:
-        reason = f"Pulseless electrical activity (MAP < {ARREST_MAP_MMHG:g} mmHg)"
+        reason = "Pulseless electrical activity (negligible forward flow)"
+    changed = not state.cardiac_arrest or state.arrest_reason != reason
     state.cardiac_arrest = True
     state.arrest_reason = reason
-    logger.warning("Cardiac arrest: %s (MAP=%.1f mmHg, HR=%.1f bpm)", reason, state.map, state.hr)
+    if changed:
+        logger.warning("Cardiac arrest: %s (MAP=%.1f mmHg, HR=%.1f bpm)", reason, state.map, state.hr)

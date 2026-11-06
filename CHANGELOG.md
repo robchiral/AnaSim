@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Severe circulatory failure, including untreated hemorrhage, now progresses
+  through PEA to asystole, and the simulation continues through arrest.
+  Restoring a perfusing rhythm within about 4 minutes restores circulation;
+  the session ends after about 11 minutes without circulation. Removed the
+  `end_on_cardiac_arrest` option.
+- As the heart fails, the ECG passes through junctional, idioventricular, and
+  agonal rhythms, and untreated VF becomes fine and then asystole. Ischemic ST
+  depression now starts at the J point and merges into the T wave.
+- Severe cerebral hypoperfusion or hypoxemia now causes unresponsiveness,
+  airway collapse, low BIS, and apnea. After 5 minutes of complete failure, the
+  patient remains comatose.
+- Severe acidemia depresses the heart and the response to adrenergic drugs, and
+  metabolic acidosis increases ventilation.
+- Shed blood now removes drug from the central compartment.
+- Fixed a crash during prolonged ventilated arrest after hemodilution.
 - Added remifentanil and fentanyl kinetics, sevoflurane potency, and the
   vascular effect of sevoflurane to optional patient variability. TCI then
   predicts from population kinetics, so concentrations differ from the target.

@@ -85,10 +85,18 @@ limits](CLI_USAGE.md#fields) for body size, hemoglobin, organ function, and
 patient conditions.
 
 Coronary disease reduces coronary flow reserve. Myocardial oxygen demand is
-based on the rate-pressure product, and supply depends on diastolic perfusion
-pressure, diastolic time, and arterial oxygen content. A sustained mismatch
-between supply and demand causes reversible contractile depression and ST
-depression.
+based on the rate-pressure product, with a basal demand that remains as
+mechanical work falls (Harasawa 1992). Supply depends on diastolic pressure
+above the coronary zero-flow pressure (Nanto 2001), diastolic time, and
+arterial oxygen content. A sustained mismatch between supply and demand causes
+reversible contractile depression and ST depression.
+
+Cerebral oxygen supply falls with MAP below 50 mmHg and with arterial oxygen
+content below two-thirds of baseline. Severe supply failure reduces
+responsiveness, airway tone, and BIS within seconds (Nebout 2013), and
+near-complete failure stops breathing. Function recovers within about two
+minutes after supply returns. After a total of 5 minutes of complete failure,
+the patient remains comatose with a flat BIS, although breathing can return.
 
 Heart failure changes resting cardiac output, filling pressure, and sensitivity
 to loading conditions (Schwartzenberg 2012; Westermann 2008). With reduced
@@ -134,8 +142,10 @@ partial pressure, expressed as age-adjusted minimum alveolar concentration (MAC)
 (Davis and Mapleson 1981; Yasuda 1991).
 
 When blood volume changes, the vascular part of each drug's central volume is
-rescaled and the amount of drug is conserved. Clearance depends on organ
-function, renal perfusion, and cardiac output as specified by each model.
+rescaled. Shed blood carries drug away at plasma concentration, so blood loss
+alone leaves the concentration unchanged; other volume changes conserve drug
+mass. Clearance depends on organ function, renal perfusion, and cardiac output
+as specified by each model.
 Fentanyl and lidocaine clearances were measured during anesthesia and surgery,
 so they apply at the model's cardiac output under anesthesia (Bae 2020; Foong
 2025). Renal perfusion affects only the renal clearance that remains after any
@@ -305,7 +315,8 @@ patients have lower cardiovagal gain and less reflex and beta-agonist
 tachycardia, while their vascular responses are preserved (Kardos 2001; Laitinen
 2004; Monahan 2007). Severe hypoxia lowers HR and contractility. Blood loss
 lowers filling pressure and preload, and reflex venoconstriction partly
-compensates.
+compensates. Venous recruitment increases for losses above 30%, so slow class
+III and IV hemorrhage remains compensated until stressed volume is exhausted.
 
 Under propofol, MAP has little effect on HR (Garraza-Obaldia 2024). Slow
 compensatory tachycardia therefore decreases with anesthetic depth, while
@@ -317,8 +328,24 @@ with fentanyl and that antimuscarinics block (Poterman 2017). Its size matches
 the fall in HR after induction in VitalDB TIVA cases. Septic tachycardia depends
 directly on sepsis severity and persists under anesthesia.
 
-**Cardiac arrest.** With `end_on_cardiac_arrest=True`, the session ends when MAP
-stays below 20 mmHg or HR stays below 10 bpm for 15 seconds.
+**Cardiac arrest.** Arrest is confirmed when VF, asystole, HR below 10 bpm, or
+PEA lasts 15 seconds. PEA is forward flow below 0.3 L/min with pulse pressure
+below 5 mmHg while the ECG remains organized. The simulation continues through
+arrest, so the instructor can change the rhythm and the learner can treat the
+cause.
+
+Severe myocardial ischemia or hypoxemia first depletes an energy reserve that
+lasts about 4 minutes without circulation. Restoring a perfusing rhythm within
+this time restores circulation, as defibrillation does in the electrical phase
+of arrest (Weisfeldt 2002). The heart then slows over several minutes: P waves
+disappear (junctional rhythm), and complexes widen and shrink (idioventricular,
+then agonal rhythm) until the ECG is flat. Untreated VF becomes fine and then
+asystole. Resuscitation is not modeled, so the session ends when the ECG is
+flat, about 11 minutes after circulation stops.
+
+Below pH 7.2, contractility and the response to adrenergic drugs fall linearly
+to 30% at pH 6.8, extrapolated from isolated failing human myocardium
+(Schotola 2012).
 
 ### Cardiovascular drugs
 
@@ -378,6 +405,10 @@ to alveolar CO₂. Hypoxic drive declines during sustained hypoxia and is reduce
 by propofol and sevoflurane (Nieuwenhuijs 2000; Sarton 1996). During airway
 obstruction, airflow is limited while respiratory effort continues.
 
+Metabolic acidosis lowers the PaCO₂ set point by 1.2 mmHg per mmol/L of base
+deficit, with a two-minute time constant. Anesthetics and opioids still limit
+the ventilatory response.
+
 ### Gas exchange and blood chemistry
 
 Ventilation exchanges gas with lung stores. These stores affect the time course
@@ -405,8 +436,10 @@ buffer base through pulmonary capillary, arterial, and mixed venous blood, with
 shunt bypassing the lungs. Two tissue groups and an extracellular pool store
 CO₂, with calibrated capacities (Magor-Elliott 2021; Wooten 2003). Blood flow
 determines exchange with these stores, and respiratory feedback responds to
-arterial PCO₂. During cardiac arrest, ventilation clears CO₂ from the lungs
-while the contents of arterial blood stay the same.
+arterial PCO₂. Lung tissue accounts for 5% of oxygen consumption and CO₂
+production and exchanges directly with alveolar gas (Loer 1997). During cardiac
+arrest, ventilation therefore lowers alveolar PCO₂ only to about 2 mmHg, while
+the contents of arterial blood stay the same.
 
 When the airway is closed, absorption of gas shrinks the lung gas volume and
 leads to absorption atelectasis. The model tracks this absorbed volume
@@ -562,7 +595,8 @@ appear only in the debrief.
 Milestone outcomes, such as preoxygenation, stay credited once achieved.
 Extubation outcomes are checked when the tube is removed, and the rest must
 hold when the case ends. Ending the case, finishing the last guided step, or
-cardiac arrest pauses the model, stops recording, and freezes the debrief.
+irreversible cardiac arrest pauses the model, stops recording, and freezes the
+debrief.
 
 ### Session transport
 

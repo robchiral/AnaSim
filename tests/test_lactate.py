@@ -136,8 +136,7 @@ def test_septic_plateau_matches_reported_lactate_and_clearance():
 
 @pytest.mark.parametrize("dt", [0.01, 0.1, 1.0])
 def test_oxygen_deficit_and_buffer_base_balance_in_engine(engine_factory, dt):
-    engine = engine_factory(config=SimulationConfig(mode="steady_state", end_on_cardiac_arrest=False),
-                            start=True)
+    engine = engine_factory(config=SimulationConfig(mode="steady_state"), start=True)
     engine.maintenance_fluid_rate_ml_min = 0.0
     # Severe blood loss crosses the critical delivery without removing all flow.
     engine.hemo.add_volume(-0.4 * engine.hemo.blood_volume)
@@ -229,6 +228,14 @@ def test_transport_and_lactate_conserve_buffer_base_during_shock_and_recovery(aw
             peak = engine.lactate.concentration
         else:
             assert 0.9 < engine.lactate.concentration < peak
+
+
+def test_sepsis_raises_lactate_and_lowers_base_excess_within_twenty_minutes(engine_factory):
+    engine = engine_factory(config=SimulationConfig(mode="steady_state"), start=True)
+    engine.start_sepsis()
+    for _ in range(1200):
+        engine.step(1.0)
+    assert engine.state.lactate > 1.3 and engine.state.base_excess < -0.5
 
 
 def test_compensated_blood_loss_preserves_lactate_and_base_excess(engine_factory):

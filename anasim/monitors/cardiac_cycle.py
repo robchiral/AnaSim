@@ -7,6 +7,7 @@ from typing import NamedTuple
 import numpy as np
 
 from anasim.core.enums import RhythmType
+from anasim.core.utils import clamp01
 
 ORGANIZED_RHYTHMS = frozenset(
     {
@@ -27,6 +28,10 @@ DISPLAY_HR_BEATS = 12
 # (about 250 ms, 240/min).
 AF_RR_SPREAD = 0.35
 AF_MIN_RR_S = 0.25
+# Late in ischemic conduction failure (the coronary model's energy failure,
+# 0-1), the slow escape rhythm becomes irregular. Teaching calibrations.
+AGONAL_FAILURE = 0.85
+AGONAL_RR_SPREAD = 0.3
 _SYSTOLE_S = 0.25
 _FILLING_TAU_S = 0.25
 
@@ -84,6 +89,7 @@ class CardiacCycle:
         self._measured_hr = 70.0
         self._recent_rr: deque[float] = deque(maxlen=DISPLAY_HR_BEATS)
         self._display_hr = self._measured_hr
+        self._agonal_spread = 0.0
 
     @staticmethod
     def _mean_rr(hr: float) -> float:
@@ -95,6 +101,8 @@ class CardiacCycle:
             spread = _af_spread(mean_rr)
             factor = float(self.rng.uniform(1.0 - spread, 1.0 + spread))
             return mean_rr * factor
+        if self._agonal_spread > 0.0:
+            return mean_rr * float(self.rng.uniform(1.0 - self._agonal_spread, 1.0 + self._agonal_spread))
         return mean_rr
 
     def _beat_stroke_fraction(self, preceding_rr_s: float, rhythm_type: RhythmType) -> float:
@@ -152,10 +160,12 @@ class CardiacCycle:
         self._recent_rr.clear()
         return self._restart(hr, rhythm_type)
 
-    def step(self, dt: float, hr: float, rhythm_type: RhythmType) -> CardiacCycleSample:
+    def step(self, dt: float, hr: float, rhythm_type: RhythmType,
+             conduction_failure: float = 0.0) -> CardiacCycleSample:
         """Advance the beat clock and report any beat boundaries crossed."""
         if dt <= 0.0:
             raise ValueError("cardiac cycle dt must be greater than zero")
+        self._agonal_spread = AGONAL_RR_SPREAD * clamp01((conduction_failure - AGONAL_FAILURE) / (1.0 - AGONAL_FAILURE))
 
         organized = rhythm_type in ORGANIZED_RHYTHMS and hr > 0.0
         seeded_beat = False

@@ -58,6 +58,9 @@ def test_mask_obstruction_raises_airway_pressure_and_leaks_delivered_breaths(awa
 
 def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
+    # Oxygen without positive pressure keeps hypoxemia from adding cerebral depression.
+    engine.set_airway_mode("Mask")
+    engine.set_fgf(10.0, 0.0)
     # Light unconsciousness retains respiratory effort for the assisted-breath
     # comparison below; deeper exposure can produce apnea.
     engine.enable_tci("propofol", 2.5)
@@ -65,6 +68,7 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
         engine.step(0.1)
     assert engine.state.loc > 0.5
     assert engine.state.airway_obstruction > 0.2
+    unsupported_obstruction = engine.state.airway_obstruction
 
     engine.set_airway_mode("Mask")
     engine.set_vent_settings(rr=0.0, vt=0.0, peep=0.0, ie="1:2", mode="CPAP")
@@ -90,7 +94,7 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
         engine.step(0.1)
         obstruction.append(engine.state.airway_obstruction)
     # Switching would alternate between full relief and unsupported collapse (> 0.2).
-    assert 0.05 < min(obstruction) <= max(obstruction) < 0.2
+    assert 0.05 < min(obstruction) <= max(obstruction) < 0.8 * unsupported_obstruction
 
 
 def test_residual_block_increases_sedated_airway_collapse_but_preserves_awake_patency(engine_factory):

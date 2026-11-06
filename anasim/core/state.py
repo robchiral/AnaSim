@@ -26,7 +26,6 @@ class SimulationConfig:
     # None gives 1 mL/kg/hr.
     maintenance_fluid_ml_hr: float | None = None
 
-    end_on_cardiac_arrest: bool = False
     arterial_line_enabled: bool = True
     # Sample PK/PD from published variability; otherwise the typical patient.
     patient_variability: bool = False

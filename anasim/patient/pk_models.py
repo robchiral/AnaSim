@@ -125,6 +125,12 @@ class MammillaryPK:
     def k31(self) -> float:
         return self.cl3 / self.v3 if self.v3 > 0 else 0.0
 
+    def remove_blood(self, volume_l: float, baseline_blood_volume_l: float) -> None:
+        """Remove drug with shed blood from the vascular share of V1, at unit blood:plasma partitioning."""
+        vascular_share = min(self.v1_base, baseline_blood_volume_l) / baseline_blood_volume_l
+        removed_volume = volume_l * vascular_share * self.v1_scale
+        self.state.c1 *= max(0.0, 1.0 - removed_volume / self.v1)
+
     def update_hemodynamics(
         self, v_ratio: float, co_ratio: float, renal_perfusion: float = 1.0,
         blood_volume_l: float | None = None,

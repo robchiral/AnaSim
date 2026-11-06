@@ -656,7 +656,7 @@ export class Controls {
     if (c.hemorrhage.active) circulation.push(`Bleeding ${c.hemorrhage.rate} mL/min`);
     if (c.anaphylaxis) circulation.push("Anaphylaxis");
     if (c.sepsis) circulation.push("Sepsis");
-    if (c.rhythm !== "Sinus rhythm") circulation.push(c.rhythm);
+    if (c.ecg_rhythm !== "Sinus rhythm") circulation.push(c.ecg_rhythm);
     this.syncEventSection("circulation", circulation);
     const airway = [];
     if (c.obstruction > 0) airway.push(`Obstruction ${round(c.obstruction, 0)}%`);

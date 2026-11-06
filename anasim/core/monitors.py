@@ -111,6 +111,7 @@ def step_cardiac_monitors(
     co_ratio = hemo_state.co / engine.hemo.base_co_l_min
     perfusion = clamp(co_ratio, 0.0, 1.0)
     st_depression = engine.hemo.coronary.st_depression_mv
+    conduction_failure = engine.hemo.coronary.energy_failure
 
     for index in range(substeps):
         # Only the final voltage is published. Keep every beat, random draw,
@@ -120,6 +121,7 @@ def step_cardiac_monitors(
             substep_dt,
             hemo_state.hr,
             rhythm,
+            conduction_failure,
         )
         arterial_sample = engine.arterial_waveform.step(
             cardiac_sample,
@@ -131,7 +133,8 @@ def step_cardiac_monitors(
             cardiac_sample,
             arterial_sample,
         )
-        ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample, st_depression, render=render)
+        ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample, st_depression,
+                                      conduction_failure=conduction_failure, render=render)
         pleth, spo2_val = engine.spo2_mon.step(
             substep_dt,
             cardiac_sample,
@@ -175,7 +178,7 @@ def step_monitors(
     state.paw = float(paw)
     state.flow = float(flow)
     state.volume = float(volume)
-    bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0)
+    bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0) * (1.0 - engine.cerebral.unresponsiveness)
     state.bis = float(bis_display_source)
 
     raw_bis = state.bis + float(engine.rng.normal(0.0, BIS_NOISE_SD))

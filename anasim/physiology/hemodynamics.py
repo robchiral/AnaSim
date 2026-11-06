@@ -127,6 +127,7 @@ class HemodynamicModel:
         self._stim_map = 0.0  # MAP attributable to noxious stimulation
         self._rmap_fb = 1.0  # Turnover feedback, (MAP / baseline) ** fb
         self.myocardial_hypoxia = 0.0  # 0-1 depression of rate and contractility
+        self.acidosis_factor = 1.0
 
         # Slow tone: baselines adjusted by MAP feedback, chemoreflex, blood
         # loss, and temperature. Anesthetic effects multiply it from their own
@@ -323,7 +324,9 @@ class HemodynamicModel:
         sev = clamp01(self.sepsis_severity) if sepsis_sev is None else sepsis_sev
         pooling = cfg.sepsis_pooling_fraction * self.blood_volume_0 * sev
         deficit = max(0.0, self.blood_volume_0 - self.blood_volume)
-        recruited = cfg.venous_recruitment_fraction * deficit * self._venous_tone
+        early_deficit = min(deficit, 0.3 * self.blood_volume_0)
+        recruited = (cfg.venous_recruitment_fraction * early_deficit
+                     + cfg.severe_venous_recruitment_fraction * (deficit - early_deficit)) * self._venous_tone
         available = max(0.0, self.blood_volume - self.unstressed_volume + recruited - pooling)
         available -= (cfg.propofol_sympathetic_pooling * self._sympathetic_gain * self._sympathetic_venous_depth
                       * (1.0 - self._epi_venous_alpha) * min(available, self._baseline_stressed_volume))
@@ -377,9 +380,9 @@ class HemodynamicModel:
 
     def _frank_starling(self, preload_factor: float, inotropy: float = 1.0) -> float:
         """Preload response with a plateau at normal filling (Rebet 2016)."""
-        pf = clamp(preload_factor, 0.01, 1.0)
+        pf = clamp(preload_factor, 0.0, 1.0)
         normalized = (1.0 - math.exp(-2.0 * pf)) / self._frank_starling_baseline_raw
-        return max(0.05, inotropy * normalized)
+        return max(0.0, inotropy * normalized)
 
     def _calc_hemorrhage_response(self) -> tuple:
         """HR and TPR multipliers by ATLS hemorrhage class, added to the baroreflex."""
@@ -501,7 +504,7 @@ class HemodynamicModel:
             self._pulm_flow_factor = rv_out_target_factor
             self._pulm_reference_factor = reference_flow_factor
 
-        self._pulm_flow_factor = clamp(self._pulm_flow_factor, 0.05, 3.0)
+        self._pulm_flow_factor = clamp(self._pulm_flow_factor, 0.0, 3.0)
 
         position_target = self._supine_preload if self.position == "supine" else 1.0
         if self._position_preload != position_target:
@@ -614,12 +617,13 @@ class HemodynamicModel:
             blocked_hr = reflex_hr - (current_hr - self._rhythm_rate(sinus_hr - reflex_hr))
             reflex_tpr_factor = 1.0 + blocked_hr / max(sinus_hr - reflex_hr, HR_MIN)
         current_hr *= 1.0 - cfg.hypoxia_hr_depression * self.myocardial_hypoxia
+        current_hr *= self.coronary.electrical_factor
 
         term = self._hr_sv_factor(current_hr)
         raw_sv = (self.sv_star + self.tde_sv) * term + self.dist_sv
 
         if preload_sv_factor is None:
-            preload_sv_factor = self._last_preload_sv_factor if self._last_preload_sv_factor > 0 else 1.0
+            preload_sv_factor = self._last_preload_sv_factor
         # TPR floor of about 6 Wood units.
         eff_tpr = max(
             0.006,
@@ -636,15 +640,17 @@ class HemodynamicModel:
         # global hypoxemia is not counted twice.
         depression = max(1.0 - self.coronary.contractility_factor,
                          cfg.hypoxia_sv_depression * self.myocardial_hypoxia)
-        current_sv = max(1.0, current_sv) * (1.0 - depression)
+        current_sv = max(0.0, current_sv) * (1.0 - depression) * self.acidosis_factor
 
         current_sv *= RHYTHM_SV_FACTOR.get(self.rhythm_type, 1.0)
 
-        if self.rhythm_type in PULSELESS_RHYTHMS or current_hr <= 0.0 or current_sv <= 0.0:
-            current_hr = current_sv = co = map_val = svr_val = self._stim_map = 0.0
+        if self.rhythm_type in PULSELESS_RHYTHMS or current_hr <= 0.0:
+            current_hr = current_sv = 0.0
+        if current_hr <= 0.0 or current_sv <= 0.0:
+            co = map_val = svr_val = self._stim_map = 0.0
         else:
             co = current_hr * current_sv / 1000.0
-            map_val = clamp(current_hr * current_sv * eff_tpr, 5.0, 300.0)
+            map_val = clamp(current_hr * current_sv * eff_tpr, 0.0, 300.0)
             svr_val = map_val / co
             # First-order share of MAP from stimulation; nociception resets the baroreflex.
             self._stim_map = map_val * (
@@ -670,7 +676,9 @@ class HemodynamicModel:
             rv_co=self._last_rv_co,
             lv_inflow=self._last_lv_inflow,
             preload_factor=self._last_preload_factor,
-            rhythm_type=self.rhythm_type,
+            rhythm_type=RhythmType.ASYSTOLE
+            if self.coronary.electrically_silent or (current_hr <= 0.0 and self.rhythm_type != RhythmType.VFIB)
+            else self.rhythm_type,
         )
         return self._cached_state
 
@@ -730,7 +738,7 @@ class HemodynamicModel:
              ce_ketamine: float = 0.0, ce_ketamine_hr: float = 0.0,
              ce_atropine: float = 0.0, ce_ephedrine: float = 0.0,
              temp_c: float = 37.0, peep_cmH2O: float | None = None, sao2: float = 98.0,
-             remifentanil_cp: float | None = None) -> HemoState:
+             remifentanil_cp: float | None = None, ph: float = 7.4) -> HemoState:
         """Advance the model by dt seconds and return the new state.
 
         Args:
@@ -771,6 +779,15 @@ class HemodynamicModel:
         self._sympathetic_venous_depth += (
             clamp01(max(0.0, cp_prop) / cfg.propofol_sympathetic_cp) - self._sympathetic_venous_depth
         ) * -math.expm1(-math.log(2.0) / cfg.propofol_sympathetic_half_time * dt_min)
+
+        # Severe acidemia depresses myocardium and adrenergic responsiveness.
+        # The curve below pH 7.2 is a teaching calibration (Schotola 2012).
+        self.acidosis_factor = 1.0 - 0.7 * clamp01((7.2 - ph) / 0.4)
+        ce_nore *= self.acidosis_factor
+        ce_epi *= self.acidosis_factor
+        ce_phenyl *= self.acidosis_factor
+        ce_dobu *= self.acidosis_factor
+        ce_ephedrine *= self.acidosis_factor
 
         # Antagonist dose ratios; esmolol is beta-1 selective.
         labetalol_beta = max(0.0, ce_labetalol) / cfg.labetalol_kb_beta
@@ -913,14 +930,14 @@ class HemodynamicModel:
         baro_hr = clamp(-baro_gain * sensed_error, -cfg.baro_max_hr_change, cfg.baro_max_hr_change)
         self._baro_setpoint += sensed_error * min(1.0, dt / cfg.baro_reset_tau_s)
 
-        # Myocardial hypoxia; recovery after reoxygenation needs coronary perfusion.
+        # Recovery follows reoxygenation; the coronary model applies the perfusion limit.
         hypoxia_target = clamp01(
             (cfg.hypoxia_sao2_onset - sao2) / (cfg.hypoxia_sao2_onset - cfg.hypoxia_sao2_full)
         )
         if hypoxia_target > self.myocardial_hypoxia:
             hypoxia_tau = cfg.hypoxia_tau_on_s
         else:
-            hypoxia_tau = cfg.hypoxia_tau_off_s / clamp(map_prev / self.patient.baseline_map, 0.1, 1.0)
+            hypoxia_tau = cfg.hypoxia_tau_off_s
         self.myocardial_hypoxia += (hypoxia_target - self.myocardial_hypoxia) * min(1.0, dt / hypoxia_tau)
 
         hemorrhage_hr_mult, hemorrhage_tpr_mult = self._calc_hemorrhage_response()

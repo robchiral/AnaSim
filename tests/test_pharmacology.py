@@ -3,6 +3,7 @@ import pytest
 from scipy.linalg import expm
 
 from anasim.core.drug_registry import DRUG_REGISTRY
+from anasim.core.runtime import update_pk_covariates
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import TOFModel
@@ -235,6 +236,28 @@ def test_hemodynamic_rescaling_conserves_drug_mass(awake_engine, volume_ratio):
         assert pk.state.c1 == cp
         pk.update_hemodynamics(1.0, 1.0)
         assert pk.state.c1 == pytest.approx(4.0)
+
+
+def test_shed_blood_removes_drug_without_instantaneous_concentration_rise(awake_engine):
+    engine = awake_engine
+    models = (engine.pk["propofol"], engine.pk["roc"], engine.tof_pd.sugammadex, engine.tof_pd.complex)
+    for model in models:
+        model.state.c1, model.state.c2, model.state.ce = 4.0, 2.0, 3.0
+    masses = [model.v1 * model.state.c1 for model in models]
+    engine.hemo.add_volume(-2000)
+    update_pk_covariates(engine, engine.state.co)
+    for model, mass in zip(models, masses, strict=True):
+        assert model.state.c1 == pytest.approx(4.0)
+        assert model.v1 * model.state.c1 < mass
+        assert model.state.c2 == 2.0 and model.state.ce == 3.0
+    update_pk_covariates(engine, engine.state.co)
+    for model in models:
+        assert model.state.c1 == pytest.approx(4.0)
+    engine.hemo.add_volume(2000)
+    update_pk_covariates(engine, engine.state.co)
+    for model, mass in zip(models, masses, strict=True):
+        assert model.state.c1 < 4.0
+        assert model.v1 * model.state.c1 < mass
 
 
 def test_rocuronium_spontaneous_recovery_slows_with_age(patient_factory):

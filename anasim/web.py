@@ -23,6 +23,7 @@ from anasim.core.recorder import RecordingError
 from anasim.core.state import AirwayType, SimulationConfig, WaveformSample
 from anasim.machine.ventilator import MODES
 from anasim.monitors.blood_gas import BloodGasResult
+from anasim.monitors.ecg import displayed_rhythm
 from anasim.patient import domain
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import list_disturbance_profiles
@@ -51,7 +52,6 @@ CONFIG_FIELDS = (
     "mode",
     "maint_type",
     "tci_enabled",
-    "end_on_cardiac_arrest",
     "arterial_line_enabled",
     "patient_variability",
 )
@@ -258,7 +258,7 @@ class WebSession:
             sim_step = engine.config.dt
             max_steps = max(100, math.ceil(MAX_REAL_DT_S * SPEED_RANGE[1] / sim_step))
             steps = 0
-            while self._accumulator >= sim_step and steps < max_steps and not engine.state.cardiac_arrest:
+            while self._accumulator >= sim_step and steps < max_steps and not engine.irreversible_arrest:
                 try:
                     if self.case_run is not None:
                         self.case_run.before_step()
@@ -286,7 +286,7 @@ class WebSession:
                 rate = (engine.state.time - start_time) / real_dt
                 self.achieved_speed += weight * (rate - self.achieved_speed)
                 self.lagging = self.achieved_speed < 0.9 * self.speed
-            if engine.state.cardiac_arrest:
+            if engine.irreversible_arrest:
                 self.ended = True
                 self._pause()
                 if self.case_run is not None:
@@ -561,7 +561,8 @@ class WebSession:
             "hemorrhage": {"active": engine.active_hemorrhage, "rate": engine.hemorrhage_rate_ml_min},
             "anaphylaxis": engine.anaphylaxis.active,
             "sepsis": engine.sepsis.active,
-            "rhythm": engine.hemo.rhythm_type.value,
+            "rhythm": engine.hemo.state.rhythm_type.value,
+            "ecg_rhythm": displayed_rhythm(engine.hemo.state.rhythm_type, engine.hemo.coronary.energy_failure),
             "bair_hugger": engine.state.bair_hugger_target,
         }
 
