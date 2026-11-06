@@ -52,6 +52,10 @@ class HemodynamicConfig:
     hypoxia_hr_depression: float = 0.75
     hypoxia_sv_depression: float = 0.85
 
+    # Adequate coronary supply during compressions for this long restarts beats
+    # after primary asystole, a teaching calibration.
+    asystole_recovery_time_s: float = 30.0
+
     # Propofol, remifentanil, and their interaction (Su et al. 2023), acting
     # from hemodynamic effect sites over the slow tone. Changes from Su's
     # volunteer estimates follow surgical patients. Propofol's resistance effect
@@ -259,6 +263,10 @@ class HemodynamicConfig:
     # multiplying baseline resistance fourfold at larger doses. Calibrated.
     # The same alpha occupancy restores propofol's pooled venous volume.
     epi_emax_svr_alpha: float = 0.3
+    # A lower-affinity alpha effect dominates at arrest doses (1 mg). Calibrated to
+    # raise diastolic pressure during compressions by about 13 mmHg.
+    epi_c50_alpha_arrest: float = 80.0
+    epi_emax_svr_alpha_arrest: float = 1.2
     epi_tau_hr_s: float = 7.0
     epi_tau_beta2_s: float = 15.0
     epi_tau_pressor_s: float = 50.0

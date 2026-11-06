@@ -22,7 +22,7 @@ from anasim.core.state import AirwayType
 if TYPE_CHECKING:
     from anasim.core.engine import SimulationEngine
 
-ControlTab = Literal["Machine", "Medications", "Fluids"]
+ControlTab = Literal["Machine", "Medications", "Circulation"]
 Requirement = Callable[["SimulationEngine"], tuple[bool, str]]
 Condition = Callable[["SimulationEngine"], bool]
 
@@ -241,7 +241,7 @@ def require_fluid_bolus(
             return True, ""
         if volume_requested > 0.0:
             return False, f"{fail_prefix} ({volume_requested:.0f}/{min_ml:.0f} mL requested)"
-        return False, f"{fail_prefix} ({min_ml:.0f} mL via Fluids tab)"
+        return False, f"{fail_prefix} ({min_ml:.0f} mL via Circulation tab)"
     return check
 
 

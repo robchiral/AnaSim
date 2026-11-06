@@ -45,6 +45,8 @@ class MammillaryPK:
     part of the central volume with blood volume, renal clearance with renal
     perfusion, and other clearances with cardiac output using per-model
     exponents. Peripheral volumes stay fixed so redistribution conserves mass.
+    Below 30% of resting output, transport to organs, peripheral compartments,
+    and effect sites slows with flow. Intravascular esterase clearance continues.
     """
 
     def __init__(
@@ -64,6 +66,7 @@ class MammillaryPK:
         cl1_deficit_exponent: float = 0.0,
         distribution_deficit_exponent: float = 0.0,
         effect_site_transit_rate: float | None = None,
+        intravascular_clearance: bool = False,
     ):
         self.v1_base = v1
         self.v1 = v1
@@ -79,6 +82,7 @@ class MammillaryPK:
         self.ke0 = ke0
         self.cl1_co_exponent = cl1_co_exponent
         self.renal_fraction = renal_fraction
+        self.intravascular_clearance = intravascular_clearance
         # Exponents on the blood-volume ratio, applied only below baseline volume.
         self.cl1_deficit_exponent = cl1_deficit_exponent
         self.distribution_deficit_exponent = distribution_deficit_exponent
@@ -99,6 +103,7 @@ class MammillaryPK:
         )
         self._state_values = attrgetter(*self.state_fields)
         self.state = PKState()
+        self.circulation = 1.0  # Share of normal transport
         self.update_hemodynamics(1.0, 1.0)
 
     @property
@@ -107,23 +112,24 @@ class MammillaryPK:
 
     @property
     def elimination_clearance(self) -> float:
-        return self.cl1 * self.cl1_scale
+        transport = 1.0 if self.intravascular_clearance else self.circulation
+        return self.cl1 * self.cl1_scale * transport
 
     @property
     def k12(self) -> float:
-        return self.cl2 / self.v1
+        return self.cl2 * self.circulation / self.v1
 
     @property
     def k21(self) -> float:
-        return self.cl2 / self.v2 if self.v2 > 0 else 0.0
+        return self.cl2 * self.circulation / self.v2 if self.v2 > 0 else 0.0
 
     @property
     def k13(self) -> float:
-        return self.cl3 / self.v1
+        return self.cl3 * self.circulation / self.v1
 
     @property
     def k31(self) -> float:
-        return self.cl3 / self.v3 if self.v3 > 0 else 0.0
+        return self.cl3 * self.circulation / self.v3 if self.v3 > 0 else 0.0
 
     def remove_blood(self, volume_l: float, baseline_blood_volume_l: float) -> None:
         """Remove drug with shed blood from the vascular share of V1, at unit blood:plasma partitioning."""
@@ -175,12 +181,13 @@ class MammillaryPK:
         if not input_rate_per_sec and not any(self._state_values(s)):
             return s  # Skip drugs with no input or residual concentration.
         v1, v2, v3 = self.v1, self.v2, self.v3
-        cl2 = self.cl2 if v2 > 0 else 0.0
-        cl3 = self.cl3 if v3 > 0 else 0.0
+        circulation = self.circulation
+        cl2 = self.cl2 * circulation if v2 > 0 else 0.0
+        cl3 = self.cl3 * circulation if v3 > 0 else 0.0
         elimination_cl = self.elimination_clearance
         fastest_rate = max((elimination_cl + cl2 + cl3) / v1,
                            cl2 / v2 if v2 > 0 else 0.0, cl3 / v3 if v3 > 0 else 0.0,
-                           self._max_effect_rate)
+                           self._max_effect_rate * circulation)
         # At most one second and 2.5% turnover per interval, including after
         # blood-volume scaling. Clipping an overshoot would create drug mass.
         substeps = max(1, math.ceil(dt_sec * max(1.0, fastest_rate / 1.5)))
@@ -193,7 +200,7 @@ class MammillaryPK:
             for name, rate, source_name in self._effect_updates:
                 ce = getattr(s, name)
                 source = getattr(s, source_name)
-                setattr(s, name, ce + rate * (source - ce) * dt_min)
+                setattr(s, name, ce + rate * circulation * (source - ce) * dt_min)
             s.c1 += (input_per_min - elimination - flux2 - flux3) / v1 * dt_min
             if v2 > 0:
                 s.c2 += flux2 / v2 * dt_min
@@ -203,7 +210,8 @@ class MammillaryPK:
 
     def get_ss_matrices(self) -> tuple[np.ndarray, np.ndarray]:
         """Return continuous A (1/min) and B for the state order in `state_fields`."""
-        peripherals = [(v, cl) for v, cl in ((self.v2, self.cl2), (self.v3, self.cl3)) if v > 0]
+        peripherals = [(v, cl * self.circulation)
+                       for v, cl in ((self.v2, self.cl2), (self.v3, self.cl3)) if v > 0]
         n = len(peripherals) + 1 + len(self.effect_sites)
         A = np.zeros((n, n))
         B = np.zeros((n, 1))
@@ -213,6 +221,7 @@ class MammillaryPK:
             A[i, 0] = cl / v
             A[i, i] = -cl / v
         for i, (name, rate) in enumerate(self.effect_sites, start=len(peripherals) + 1):
+            rate *= self.circulation
             source = self.state_fields.index(self.ce_input) if name == "ce" else 0
             A[i, source] = rate
             A[i, i] = -rate
@@ -234,6 +243,8 @@ class MammillaryPK:
         ce_target = self.state.ce * target_fraction
         if ce_target <= 0.0:
             return 0.0
+        if self.circulation == 0.0:
+            return max_seconds / 60.0
         A, B = self.get_ss_matrices()
         transition = expm(A / 60.0)
         equilibrium = (np.linalg.solve(-A, B[:, 0] * self.basal_input_rate * 60.0)
@@ -407,6 +418,7 @@ class RemifentanilPKEleveld(MammillaryPK):
             # Swine bled 48 mL/kg had 58% lower central clearance and half the
             # V1, with unchanged distribution clearances (Johnson 2001).
             cl1_deficit_exponent=0.8,
+            intravascular_clearance=True,
             **_NO_CO_COVARIATE,
         )
 
@@ -511,7 +523,8 @@ class SuccinylcholinePK(MammillaryPK):
 
     def __init__(self, patient: Patient):
         params = _from_rate_constants(0.009 * patient.weight, 5.0, 2.9, 1.6, 0.0, 0.0)
-        super().__init__(**params, ke0=0.4, effect_site_transit_rate=1.3, **_NO_CO_COVARIATE)
+        super().__init__(**params, ke0=0.4, effect_site_transit_rate=1.3,
+                         intravascular_clearance=True, **_NO_CO_COVARIATE)
 
 
 class MidazolamPK(MammillaryPK):
@@ -759,7 +772,7 @@ class EsmololPK(MammillaryPK):
 
     def __init__(self, patient: Patient):
         params = _from_rate_constants(0.867 * patient.weight, 0.2977, 0.0325, 0.0865, 0.0, 0.0)
-        super().__init__(ke0=0.5, cl1_co_exponent=0.0, **params)
+        super().__init__(ke0=0.5, cl1_co_exponent=0.0, intravascular_clearance=True, **params)
 
 
 class LabetalolPK(MammillaryPK):

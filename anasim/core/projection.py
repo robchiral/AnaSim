@@ -235,6 +235,8 @@ def project_hemodynamics(engine: SimulationEngine, hemo_state: HemoState) -> Non
     state.sv = float(hemo_state.sv)
     state.svr = float(hemo_state.svr)
     state.co = float(hemo_state.co)
+    state.intrinsic_co = float(hemo_state.intrinsic_co)
+    state.chest_compressions = hemo_state.compressions
     state.blood_volume = float(engine.hemo.blood_volume)
     state.hb_g_dl = float(engine.hemo.hb_conc)
     state.hct = float(engine.hemo.get_hematocrit())

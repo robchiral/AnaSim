@@ -2,6 +2,7 @@ import json
 from dataclasses import replace
 from typing import Any
 
+import numpy as np
 import pytest
 
 from anasim.core.state import SimulationConfig
@@ -101,6 +102,14 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
         "EXTUBATION_READINESS": [("vent_power", {"on": False})],
         "EXTUBATE": [("airway", {"mode": "Mask"})],
         "RECOVERY": [("fgf", {"o2": 5, "air": 0, "n2o": 0})],
+    },
+    "cardiac_arrest": {
+        "START_COMPRESSIONS": [
+            ("compressions", {"active": True}),
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+        ],
+        "DEFIBRILLATE": [("shock", {"synchronized": False})],
+        "POST_ARREST": [("compressions", {"active": False})],
     },
     "oxygen_supply_failure": {
         "CONNECT_BACKUP_OXYGEN": [
@@ -310,6 +319,8 @@ def test_preoxygenation_waits_for_lung_washin(engine_factory, assisted):
 def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
     """Every guided objective must remain reachable through the browser protocol."""
     session = WebSession({"scenario_id": spec.id, "tci_enabled": tci_enabled})
+    # About 1 in 10 first shocks fails; this seed's succeeds.
+    session.engine._shock_rng = np.random.default_rng(0)
     info = json.loads(session.info())
     session.command("run", '{"running": true}')
     session.command("speed", '{"value": 5}')
@@ -339,6 +350,11 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
             if not tci_enabled:
                 assert "µg/mL" not in step["instruction"] and "ng/mL" not in step["instruction"]
         for name, args in pending.pop(step["id"], []):
+            if name == "shock":
+                session.command("charge_defibrillator")
+                for _ in range(6):
+                    charged = json.loads(session.advance(0.2))
+                    samples += len(charged["waves"]["ecg"])
             if spec.id == "induction_tiva" and tci_enabled and name == "drug_bolus" and args["key"] == "propofol":
                 continue  # The TCI controller provides induction loading.
             if name == "drug_target" and not tci_enabled:

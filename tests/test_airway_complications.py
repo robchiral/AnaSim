@@ -142,6 +142,10 @@ def test_near_recovered_tof_retains_pharyngeal_vulnerability(engine_factory, adv
     for engine in engines:
         engine.set_continuous_fluid_rate(0.0)
         engine.set_airway_mode("Mask")
+        # Maintain gas exchange while block recovers. Prolonged unsupported
+        # sedation would add CO2 narcosis to the pharyngeal comparison.
+        engine.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5, ie="1:2")
+        engine.set_vent_power(True)
         engine.enable_tci("propofol", 2.5)
         advance_time(engine, 600)
     control, blocked = engines
@@ -152,6 +156,10 @@ def test_near_recovered_tof_retains_pharyngeal_vulnerability(engine_factory, adv
         if second >= 240 and blocked.state.tof >= 98.0:
             break
     assert 98.0 <= blocked.state.tof < 98.1
+    for engine in engines:
+        assert engine.cerebral.co2_narcosis < 0.01
+        engine.set_vent_power(False)
+        engine.step(0.1)
     # A recovered thumb response still understates the airway's vulnerability.
     ratio = blocked.state.airway_obstruction / control.state.airway_obstruction
     assert 1.15 < ratio < 1.25

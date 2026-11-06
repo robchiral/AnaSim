@@ -69,7 +69,7 @@ def create_hemorrhage_response() -> Scenario:
                 "Coagulation testing, component therapy, and calcium replacement are clinical actions outside this model."
             ),
             check_requirements=_require_volume_replacement,
-            target_tab="Fluids",
+            target_tab="Circulation",
         ),
         ScenarioStep(
             id="START_VASOPRESSOR",

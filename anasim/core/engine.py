@@ -16,7 +16,11 @@ from anasim.monitors.alarms import AlarmSystem
 from anasim.monitors.arterial import ArterialLineMonitor, ArterialWaveformRenderer
 from anasim.monitors.blood_gas import BloodGasResult
 from anasim.monitors.capno import Capnograph, EtCO2Readout
-from anasim.monitors.cardiac_cycle import CardiacCycle
+from anasim.monitors.cardiac_cycle import (
+    CardiacCycle,
+    CardiacCycleSample,
+    CompressionClock,
+)
 from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.neuromuscular import NeuromuscularMonitor
 from anasim.monitors.nibp import NIBPMonitor
@@ -41,6 +45,12 @@ from anasim.physiology.lactate import LactateModel
 from anasim.physiology.lung import LungAeration
 from anasim.physiology.resp_mech import RespiratoryMechanics
 from anasim.physiology.respiration import RespiratoryModel
+from anasim.physiology.resuscitation import (
+    SHOCK_ENERGY_J,
+    Defibrillator,
+    ShockResult,
+    shock_outcome,
+)
 from anasim.physiology.thermal import ThermalModel
 
 from . import monitors as monitor_core
@@ -50,6 +60,7 @@ from .action_log import (
     ACTION_AIRWAY,
     ACTION_BAG_MASK,
     ACTION_BLOOD_GAS,
+    ACTION_COMPRESSIONS,
     ACTION_DRUG_BOLUS,
     ACTION_EVENT_START,
     ACTION_EVENT_STOP,
@@ -58,6 +69,7 @@ from .action_log import (
     ACTION_INTUBATION_ATTEMPT,
     ACTION_OXYGEN_SUPPLY,
     ACTION_POSITION,
+    ACTION_SHOCK,
     ACTION_VAPORIZER,
     ACTION_VENTILATION,
     ActionLog,
@@ -162,8 +174,13 @@ class SimulationEngine(DrugControllerMixin):
         self._ecg_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._nibp_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._cardiac_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
+        # Derived without drawing from self.rng, so the other streams keep their seeds.
+        seed = self.config.rng_seed
+        self._shock_rng = np.random.default_rng(None if seed is None else [seed, 1])
 
         self._pulseless_s = 0.0
+        self.compressions_started_at: float | None = None
+        self.defibrillator = Defibrillator()
 
         self.initialize_models()
         self.set_continuous_fluid_rate(self.config.maintenance_fluid_ml_hr)
@@ -259,6 +276,7 @@ class SimulationEngine(DrugControllerMixin):
         self.tof_pd = TOFModel(self.patient)
 
         self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)
+        self.compression_clock = CompressionClock()
         self.arterial_waveform = ArterialWaveformRenderer(self.patient.age)
         self.art_line = ArterialLineMonitor()
         self.ecg = ECGMonitor(rng=self._ecg_rng)
@@ -528,6 +546,66 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo.rhythm_type = rhythm
         self.hemo.invalidate_state_cache()
 
+    def set_chest_compressions(self, active: bool):
+        """Start or stop chest compressions at the guideline rate."""
+        active = bool(active)
+        if active != self.hemo.compressions:
+            self.compressions_started_at = self.state.time if active else None
+            self.actions.record(self.state.time, ACTION_COMPRESSIONS, label="on" if active else "off")
+        self.hemo.compressions = active
+
+    def charge_defibrillator(self) -> None:
+        """Start a 5-second charge to 200 J."""
+        self.defibrillator.charge(self.state.time)
+
+    def disarm_defibrillator(self) -> None:
+        """Cancel charging or a pending synchronized shock."""
+        self.defibrillator.disarm()
+
+    def defibrillate(self, synchronized: bool = False) -> ShockResult:
+        """Discharge a ready device, or arm it to fire at the next R wave."""
+        device = self.defibrillator
+        status = device.status(self.state.time)
+        if status == "waiting_for_r":
+            return ShockResult.PENDING
+        if status != "ready":
+            return ShockResult.NOT_READY
+        if synchronized:
+            if self.hemo.state.hr <= 0.0 or self.hemo.state.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE):
+                return ShockResult.NOT_DELIVERED
+            device.waiting_for_r = True
+            return ShockResult.PENDING
+        self._deliver_shock(self.state.time, synchronized=False)
+        return ShockResult.DELIVERED
+
+    def step_defibrillator(self, time: float, cycle: CardiacCycleSample) -> bool:
+        """Fire a pending synchronized shock at an R wave; return whether it fired."""
+        device = self.defibrillator
+        if device.status(time) != "waiting_for_r":
+            return False
+        if not cycle.organized:
+            device.waiting_for_r = False
+            return False
+        if not cycle.beat_started:
+            return False
+        self._deliver_shock(time - cycle.elapsed_s, synchronized=True)
+        return True
+
+    def _deliver_shock(self, time: float, *, synchronized: bool) -> None:
+        coronary = self.hemo.coronary
+        cycle = self.cardiac_cycle.current
+        rhythm = shock_outcome(
+            self.hemo.rhythm_type, synchronized=synchronized, energy_failure=coronary.energy_failure,
+            electrically_silent=coronary.electrically_silent,
+            vulnerable=cycle.rhythm_type == self.hemo.state.rhythm_type and self.ecg.vulnerable(cycle),
+            rng=self._shock_rng,
+        )
+        self.defibrillator.consume(time, synchronized)
+        self.actions.record(time, ACTION_SHOCK,
+                            label="synchronized" if synchronized else "unsynchronized", amount=SHOCK_ENERGY_J)
+        if rhythm != RhythmType.ASYSTOLE:
+            self.hemo.rhythm_type = rhythm
+
     def set_bag_mask_ventilation(self, active: bool, rr: float | None = None, vt: float | None = None):
         """Start or stop manual bag ventilation at rr breaths/min and vt liters.
 
@@ -598,9 +676,14 @@ class SimulationEngine(DrugControllerMixin):
             self.recorder.log(self.state)
 
     @property
+    def spontaneous_circulation(self) -> bool:
+        """The heart's own beats perfuse now; arrest is flagged only after 15 s without them."""
+        return self._pulseless_s == 0.0
+
+    @property
     def irreversible_arrest(self) -> bool:
-        """Arrest that no available action can reverse, since resuscitation is not modeled."""
-        return self.state.cardiac_arrest and self.hemo.coronary.electrically_silent
+        """Arrest after ischemic injury that leaves the heart unable to contract."""
+        return self.state.cardiac_arrest and self.hemo.coronary.irreversible
 
     def get_latest_state(self) -> SimulationState:
         """Return an independent copy of the current state, including alarm flags."""

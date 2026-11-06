@@ -152,7 +152,8 @@ class BISModel:
     """Eleveld 2018 BIS, with a calibrated additive sevoflurane contribution.
 
     Opioids affect stimulation-related arousal outside this baseline curve.
-    The published age-dependent delay includes monitor processing.
+    The published age-dependent delay includes monitor processing, so cortical
+    failure from ischemia shows after the same delay.
     """
 
     def __init__(self, patient: Patient):
@@ -168,7 +169,9 @@ class BISModel:
 
     def initialize(self, bis: float) -> None:
         self._clock = 0.0
-        self._history = deque([(0.0, bis)])
+        # (time, drug BIS, remaining cortical function)
+        self._history = deque([(0.0, bis, 1.0)])
+        self.cortical_function = 1.0
 
     def compute_bis(self, ce_prop: float, mac_sevo: float = 0.0) -> float:
         ce_equivalent = max(0.0, ce_prop) + self.c50 * max(0.0, mac_sevo) / self.mac50
@@ -177,19 +180,25 @@ class BISModel:
         gamma = switch * self.gamma_above + (1.0 - switch) * self.gamma_below
         return self.baseline / (1.0 + (ce_equivalent / self.c50)**gamma)
 
-    def step(self, dt: float, ce_prop: float, mac_sevo: float = 0.0) -> float:
-        """Return the delayed BIS after dt seconds."""
+    def step(self, dt: float, ce_prop: float, mac_sevo: float = 0.0, cortical_function: float = 1.0) -> float:
+        """Return the delayed BIS after dt seconds; cortical_function (0-1) scales it.
+
+        The delayed cortical function is kept in self.cortical_function.
+        """
         self._clock += dt
         history = self._history
-        history.append((self._clock, self.compute_bis(ce_prop, mac_sevo)))
+        history.append((self._clock, self.compute_bis(ce_prop, mac_sevo), cortical_function))
         target = self._clock - self.delay
         while len(history) > 1 and history[1][0] <= target:
             history.popleft()
-        t0, y0 = history[0]
+        t0, y0, f0 = history[0]
         if target <= t0 or len(history) == 1:
-            return y0
-        t1, y1 = history[1]
-        return y0 + (y1 - y0) * (target - t0) / (t1 - t0)
+            bis, self.cortical_function = y0, f0
+        else:
+            t1, y1, f1 = history[1]
+            weight = (target - t0) / (t1 - t0)
+            bis, self.cortical_function = y0 + (y1 - y0) * weight, f0 + (f1 - f0) * weight
+        return bis * self.cortical_function
 
 
 class ClinicalResponseModel:

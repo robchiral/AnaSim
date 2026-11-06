@@ -9,8 +9,12 @@ import numpy as np
 from scipy.linalg import expm
 
 from anasim.core.utils import clamp
+from anasim.physiology.resuscitation import COMPRESSION_DUTY
 
 from .cardiac_cycle import CardiacCycleSample
+
+# Arterial runoff toward the filling pressure once flow stops.
+NO_FLOW_TAU_S = 2.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +124,7 @@ class ArterialWaveformRenderer:
         self._foot_pressure = 0.0
         self._end_pressure = 0.0
         self._beat_pending = False
+        self._pressure = 0.0
 
     def _diastolic_normalized_integral(self) -> float:
         cfg = self.config
@@ -235,13 +240,19 @@ class ArterialWaveformRenderer:
         sample: CardiacCycleSample,
         map_value: float,
         stroke_volume_ml: float,
+        *,
+        dt: float = 0.0,
+        static_pressure: float = 0.0,
     ) -> ArterialPressureSample:
+        """Render the beat; without organized beats, pressure runs off to static_pressure over dt."""
         if not sample.organized:
             self._update_reference(0.0, 0.0, sample)
             self._pulse_pressure = self._foot_pressure = self._end_pressure = 0.0
             self._beat_pending = False
             self._initialized = True
-            return ArterialPressureSample(0.0, 0.0, 0.0, 0.0)
+            decay = math.exp(-dt / NO_FLOW_TAU_S) if dt > 0.0 else 0.0
+            self._pressure = pressure = static_pressure + (self._pressure - static_pressure) * decay
+            return ArterialPressureSample(pressure, pressure, pressure, pressure)
 
         delay_s = self.config.electromechanical_delay_s
         if not self._initialized or sample.beat_started:
@@ -265,12 +276,24 @@ class ArterialWaveformRenderer:
             + self._pulse_pressure * self._shape_value(phase, decay)
             + (self._end_pressure - self._foot_pressure) * runoff
         )
+        self._pressure = pressure = max(0.0, pressure)
         return ArterialPressureSample(
-            pressure=float(max(0.0, pressure)),
+            pressure=float(pressure),
             systolic=float(self._systolic),
             diastolic=float(max(0.0, self._diastolic)),
             mean=float(self._mean_pressure),
         )
+
+    def step_compressions(self, sample: CardiacCycleSample, systolic: float, diastolic: float) -> ArterialPressureSample:
+        """Render a compression pulse over the relaxation pressure between compressions."""
+        compression = sample.phase / COMPRESSION_DUTY
+        shape = math.sin(math.pi * compression) if compression < 1.0 else 0.0
+        self._pressure = pressure = diastolic + (systolic - diastolic) * shape
+        # Organized beats restart from their own diastolic pressure after compressions.
+        self._initialized = False
+        self._end_pressure = 0.0
+        mean = diastolic + (systolic - diastolic) * 2.0 * COMPRESSION_DUTY / math.pi
+        return ArterialPressureSample(float(pressure), float(systolic), float(diastolic), float(mean))
 
 
 class ArterialLineMonitor:
@@ -393,9 +416,7 @@ class ArterialLineMonitor:
 
         if not cycle.organized:
             self._recent_beats.clear()
-            self._latest_sbp = 0.0
-            self._latest_dbp = 0.0
-            self._latest_map = 0.0
+            self._latest_sbp = self._latest_dbp = self._latest_map = pressure
             self._reset_beat(pressure)
         else:
             if cycle.beat_started:

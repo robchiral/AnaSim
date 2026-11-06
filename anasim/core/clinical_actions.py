@@ -78,6 +78,16 @@ def check_ventilation_withdrawal(engine: SimulationEngine) -> ActionFeedback | N
     return None
 
 
+def check_shock(engine: SimulationEngine) -> ActionFeedback | None:
+    unconscious, _ = _responsiveness(engine)
+    if unconscious < 0.5:
+        return ActionFeedback(
+            "shock_while_responsive",
+            "Shock delivered to a responsive patient.",
+        )
+    return None
+
+
 def check_drug_administration(engine: SimulationEngine, key: str) -> ActionFeedback | None:
     if key in {"roc", "succinylcholine"}:
         unconscious, _ = _responsiveness(engine)

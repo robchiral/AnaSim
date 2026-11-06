@@ -370,8 +370,8 @@ def test_session_continues_through_arrest_until_circulation_cannot_return(monkey
     assert engine.state.cardiac_arrest
     assert snaps[-1]["running"] and not snaps[-1]["ended"]
 
-    # Skip the minutes until ischemia silences the heart.
-    engine.hemo.coronary.energy_failure = 1.0
+    # Skip the minutes until ischemic injury is complete.
+    engine.hemo.coronary.injury = 1.0
     snap = run_seconds(session, 20, tick_s=10.0)[-1]
     assert snap["ended"] and not snap["running"]
     assert snap["arrest_reason"] == "Asystole"
@@ -379,6 +379,43 @@ def test_session_continues_through_arrest_until_circulation_cannot_return(monkey
     assert not steps_after_end
     cmd(session, "run", running=True)
     assert not parse(session.advance(0.2))["running"]
+
+
+class _ShockSucceeds:
+    def random(self):
+        return 0.0
+
+
+def test_resuscitation_commands_reach_the_engine_and_warn_on_awake_cardioversion(monkeypatch):
+    session = WebSession({**PATIENT, "mode": "awake"})
+    engine = session.engine
+    monkeypatch.setattr(engine, "_shock_rng", _ShockSucceeds())
+    cmd(session, "run", running=True)
+    cmd(session, "rhythm", name="Supraventricular tachycardia")
+    assert "not charged" in cmd(session, "shock", synchronized=True)["shock"]["text"]
+    cmd(session, "charge_defibrillator")
+    assert session.snapshot()["controls"]["defibrillator"]["status"] == "charging"
+    run_seconds(session, 6)
+    assert session.snapshot()["controls"]["defibrillator"]["status"] == "ready"
+    result = cmd(session, "shock", synchronized=True)
+    assert result["shock"]["text"] == "Waiting for an R wave"
+    snap = run_seconds(session, 1)[-1]
+    assert snap["controls"]["defibrillator"]["last_shock"]["text"] == "Synchronized shock 200 J delivered"
+    assert snap["controls"]["clinical_feedback"]["code"] == "shock_while_responsive"
+    assert engine.hemo.rhythm_type.name == "SINUS"
+    assert session.snapshot()["controls"]["ecg_rhythm"] == "Sinus rhythm"
+    cmd(session, "rhythm", name="Ventricular fibrillation")
+    cmd(session, "charge_defibrillator")
+    run_seconds(session, 6)
+    assert cmd(session, "shock", synchronized=True)["shock"]["text"] == "No R wave detected; no shock delivered"
+    cmd(session, "compressions", active=True)
+    started = engine.state.time
+    snap = run_seconds(session, 30)[-1]
+    assert snap["controls"]["compressions"] == {"active": True, "since": started}
+    assert snap["vitals"]["art"][1] > 20
+    # Unconscious in VF, the patient no longer prompts the warning.
+    assert cmd(session, "shock", synchronized=False).get("feedback") is None
+    assert session.snapshot()["controls"]["ecg_rhythm"] == "Sinus rhythm"
 
 
 @pytest.mark.parametrize("mode", ["SIMV-VC", "SIMV-PC", "SIMV-VG"])

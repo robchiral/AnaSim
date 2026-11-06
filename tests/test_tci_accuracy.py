@@ -19,6 +19,32 @@ from anasim.patient.pk_models import (
 )
 
 
+@pytest.mark.parametrize("variability", [False, True])
+def test_effect_site_tci_pauses_during_arrest_and_resumes_with_compressions(engine_factory, variability):
+    """With variability, TCI predicts from the pump's population model, which must also lose circulation."""
+    config = SimulationConfig(patient_variability=variability, rng_seed=3, tci_enabled=True)
+    engine = engine_factory(config=config, start=True)
+    engine.enable_tci("propofol", 3.0)
+    for _ in range(300):
+        engine.step(1)
+    engine.set_rhythm("VFIB")
+    for _ in range(15):
+        engine.step(1)
+    propofol = engine.pk["propofol"]
+    cp = propofol.state.c1
+    for _ in range(120):
+        engine.step(1)
+        assert engine.infusion_rates["propofol"] == 0.0
+    assert propofol.state.c1 == pytest.approx(cp)
+    assert engine.get_predicted_csht("propofol") == 120.0
+    engine.set_chest_compressions(True)
+    rates = []
+    for _ in range(120):
+        engine.step(1)
+        rates.append(engine.infusion_rates["propofol"])
+    assert max(rates) > 0.0
+
+
 @pytest.mark.parametrize(
     ("pk_cls", "compartment", "max_rate", "t90_limit_s", "sampling_time"),
     [

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
+from anasim.physiology.resuscitation import compression_pressures
 
 from .projection import loss_of_response, mask_leak, project_arterial
 from .state import AirwayType
@@ -51,6 +52,7 @@ def update_nibp(engine: SimulationEngine, dt: float, hemo_state) -> None:
         true_sys=state.sbp,
         true_dia=state.dbp,
         rhythm_type=hemo_state.rhythm_type,
+        compressions=hemo_state.compressions,
     )
 
     state.nibp_is_cycling = engine.nibp.is_cycling
@@ -112,6 +114,11 @@ def step_cardiac_monitors(
     perfusion = clamp(co_ratio, 0.0, 1.0)
     st_depression = engine.hemo.coronary.st_depression_mv
     conduction_failure = engine.hemo.coronary.energy_failure
+    compressions = hemo_state.compressions
+    if compressions:
+        compression_sbp, compression_dbp = compression_pressures(hemo_state.map, hemo_state.venous_pressure)
+    else:
+        engine.compression_clock.stop()
 
     for index in range(substeps):
         # Only the final voltage is published. Keep every beat, random draw,
@@ -123,21 +130,38 @@ def step_cardiac_monitors(
             rhythm,
             conduction_failure,
         )
-        arterial_sample = engine.arterial_waveform.step(
-            cardiac_sample,
-            hemo_state.map,
-            hemo_state.sv,
-        )
+        if engine.step_defibrillator(engine.state.time + (index + 1) * substep_dt, cardiac_sample):
+            # A shock can change the rhythm partway through a step; physiology follows on the next step.
+            hemo_state = engine.hemo.state
+            rhythm = hemo_state.rhythm_type
+            cardiac_sample = engine.cardiac_cycle.seed(hemo_state.hr, rhythm)
+        # Compressions, when running, set the pressure and pleth pulses.
+        if compressions:
+            pulse_sample = engine.compression_clock.step(substep_dt, rhythm)
+            arterial_sample = engine.arterial_waveform.step_compressions(
+                pulse_sample, compression_sbp, compression_dbp,
+            )
+        else:
+            pulse_sample = cardiac_sample
+            arterial_sample = engine.arterial_waveform.step(
+                cardiac_sample,
+                hemo_state.map,
+                hemo_state.sv,
+                dt=substep_dt,
+                static_pressure=hemo_state.venous_pressure,
+            )
         engine.art_line.advance(
             substep_dt,
-            cardiac_sample,
+            pulse_sample,
             arterial_sample,
         )
         ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample, st_depression,
-                                      conduction_failure=conduction_failure, render=render)
+                                      conduction_failure=conduction_failure,
+                                      compression_phase=pulse_sample.phase if compressions else None,
+                                      render=render)
         pleth, spo2_val = engine.spo2_mon.step(
             substep_dt,
-            cardiac_sample,
+            pulse_sample,
             saturation=sao2,
             perfusion=perfusion,
             render=render,
@@ -162,7 +186,8 @@ def step_monitors(
     """Update monitor models and learner-facing display values."""
     state = engine.state
     mac_sevo = engine.pk_sevo.state.mac
-    bis_val = engine.bis.step(dt, state.hypnotic_ce, mac_sevo=mac_sevo)
+    bis_val = engine.bis.step(dt, state.hypnotic_ce, mac_sevo=mac_sevo,
+                              cortical_function=engine.cerebral.cortical_function)
     capno_val = compute_capno_value(engine, resp_state, dt)
 
     loc_val = loss_of_response(engine)
@@ -178,7 +203,7 @@ def step_monitors(
     state.paw = float(paw)
     state.flow = float(flow)
     state.volume = float(volume)
-    bis_display_source = clamp(bis_val + disturbances.bis, 0.0, 100.0) * (1.0 - engine.cerebral.unresponsiveness)
+    bis_display_source = clamp(bis_val + disturbances.bis * engine.bis.cortical_function, 0.0, 100.0)
     state.bis = float(bis_display_source)
 
     raw_bis = state.bis + float(engine.rng.normal(0.0, BIS_NOISE_SD))

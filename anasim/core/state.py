@@ -86,6 +86,7 @@ class SimulationState:
     time: float = 0.0
     cardiac_arrest: bool = False
     arrest_reason: str = ""
+    chest_compressions: bool = False
 
     # Effect-site (ce) and plasma (cp) concentrations: propofol, etomidate,
     # ketamine, lidocaine, succinylcholine, and esmolol mcg/mL, vasopressin
@@ -202,6 +203,7 @@ class SimulationState:
     sv: float = 70.0
     svr: float = 16.0
     co: float = 5.0
+    intrinsic_co: float = 5.0  # From the heart's own beats; co adds chest compressions.
     sbp: float = 120.0
     dbp: float = 80.0
     # Arterial catheter output and completed-beat numerics.

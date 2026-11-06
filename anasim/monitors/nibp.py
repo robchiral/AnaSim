@@ -51,6 +51,7 @@ class NIBPMonitor:
         true_sys: float,
         true_dia: float,
         rhythm_type: RhythmType,
+        compressions: bool = False,
     ) -> float:
         """Advance a cuff cycle; current_time is the end of the step."""
         if dt <= 0.0:
@@ -79,7 +80,8 @@ class NIBPMonitor:
         self.is_cycling = False
         self.cuff_pressure = 0.0
         arrest_rhythm = rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE)
-        if arrest_rhythm or true_map <= 30.0:
+        # Compressions prevent oscillometric measurement.
+        if arrest_rhythm or compressions or true_map <= 30.0:
             self.measurement_failed = True
             return self.cuff_pressure
 

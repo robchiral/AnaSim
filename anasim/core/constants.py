@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 HR_MIN = 10.0  # bpm
 HR_MAX = 220.0  # bpm
+CIRCULATION_LIMIT_FRACTION = 0.3  # Below this share of resting CO, drug transport is flow-limited.
 BLOOD_VOLUME_MIN = 500.0  # mL
 
 CMH2O_TO_MMHG = 0.7356

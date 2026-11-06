@@ -1,4 +1,4 @@
-// Machine, medication, fluid, and event controls.
+// Machine, medication, circulation, and event controls.
 // Numeric settings remain drafts until explicitly applied.
 import { SettingsEditor } from "./settings.js";
 
@@ -108,11 +108,11 @@ export class Controls {
     this.bindMachine();
     this.buildDrugs(info.drugs);
     this.bindFluids();
+    this.bindResuscitation();
     this.bindLabs();
     this.bindEvents(info);
     // Cases start their own events.
     this.tabs.find((tab) => tab.dataset.tab === "Events").hidden = Boolean(info.scenario);
-    document.querySelector(".tabs").classList.toggle("case-tabs", Boolean(info.scenario));
     this.showMedicationHistory();
   }
 
@@ -126,6 +126,7 @@ export class Controls {
   destroy() {
     this.destroyed = true;
     clearTimeout(this.fluidFeedbackTimer);
+    clearTimeout(this.shockFeedbackTimer);
     for (const timer of this.feedbackTimers.values()) clearTimeout(timer);
     for (const editor of this.settingEditors) {
       for (const field of editor.fields) editors.delete(field);
@@ -464,6 +465,53 @@ export class Controls {
     this.editSettings([$("c-maint")], () => this.send("maintenance_fluid", { ml_hr: readNumber($("c-maint")) }));
   }
 
+  // --- Resuscitation ------------------------------------------------
+
+  bindResuscitation() {
+    $("c-compressions").onclick = () => this.send("compressions", { active: !this.state.compressions.active });
+    this.synchronized = false;
+    for (const button of $("c-sync").querySelectorAll("button")) {
+      button.onclick = () => {
+        this.synchronized = button.dataset.value === "true";
+        for (const other of $("c-sync").querySelectorAll("button")) setPressed(other, other === button);
+      };
+    }
+    const shock = $("c-shock");
+    const charge = $("c-charge");
+    charge.onclick = () => this.performAction(charge,
+      this.state.defibrillator.status === "idle" ? "charge_defibrillator" : "disarm_defibrillator");
+    $("c-shock-feedback").hidden = true;
+    shock.onclick = async () => {
+      const result = await this.performAction(shock, "shock", { synchronized: this.synchronized });
+      if (this.destroyed || result === undefined) return;
+      shock.disabled = true;
+      this.showShockReceipt(result.shock);
+    };
+  }
+
+  syncDefibrillator(defibrillator) {
+    const status = defibrillator.status;
+    setText($("c-defibrillator-status"), status === "charging"
+      ? `Charging, ${Math.ceil(defibrillator.charge_remaining)} s remaining`
+      : { idle: "Not charged", ready: "Ready, 200 J", waiting_for_r: "Waiting for an R wave" }[status]);
+    setText($("c-charge"), status === "idle" ? "Charge" : "Disarm");
+    $("c-shock").disabled = status !== "ready";
+    for (const button of $("c-sync").querySelectorAll("button")) button.disabled = status === "waiting_for_r";
+    const lastShock = defibrillator.last_shock;
+    if (lastShock && lastShock.time !== this.lastShockTime) {
+      this.lastShockTime = lastShock.time;
+      this.showShockReceipt(lastShock);
+    }
+  }
+
+  showShockReceipt(receipt) {
+    const feedback = $("c-shock-feedback");
+    setText(feedback, `${clock(receipt.time)} ${receipt.text}`);
+    feedback.hidden = false;
+    clearTimeout(this.shockFeedbackTimer);
+    this.shockFeedbackTimer = setTimeout(() => { feedback.hidden = true; }, 6000);
+  }
+
   // --- Labs ---------------------------------------------------------
 
   bindLabs() {
@@ -555,6 +603,20 @@ export class Controls {
     $("c-sepsis").onclick = () => this.send("sepsis", { active: !this.state.sepsis });
   }
 
+  syncRhythm(rhythm) {
+    const select = $("c-rhythm");
+    const observed = select.querySelector("option[data-observed]");
+    if (observed && observed.value !== rhythm) observed.remove();
+    if (!Array.from(select.options).some(option => option.value === rhythm)) {
+      const option = new Option(rhythm, rhythm);
+      option.disabled = true;
+      option.dataset.observed = "true";
+      select.add(option);
+    }
+    // Rhythm is a live observation, including while this control has focus.
+    select.value = rhythm;
+  }
+
   syncEventSection(name, states, listStates = true) {
     const { section, summary, output } = this.eventSections.get(name);
     const active = states.length > 0;
@@ -595,6 +657,12 @@ export class Controls {
     fio2.className = "fio2" + (!c.o2_connected || c.circuit_fio2 < 0.21 ? " bad" : c.circuit_fio2 < 0.3 ? " warn" : "");
     setPressed($("c-o2-supply"), !c.o2_connected, c.o2_connected ? "Disconnect O₂ supply" : "Connect backup O₂");
     setValue($("c-vap"), round(c.vaporizer));
+
+    const compressions = c.compressions;
+    setPressed($("c-compressions"), compressions.active, compressions.active ? "Stop compressions" : "Start compressions");
+    $("c-compressions-status").hidden = !compressions.active;
+    if (compressions.active) setText($("c-compressions-status"), `Compressing for ${clock(time - compressions.since)}`);
+    this.syncDefibrillator(c.defibrillator);
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
     $("c-bag-settings").hidden = !c.bag_mask;
@@ -647,7 +715,7 @@ export class Controls {
     setPressed($("c-hemorrhage"), c.hemorrhage.active, c.hemorrhage.active ? "Stop bleeding" : "Start bleeding");
     $("c-hem-rate").disabled = c.hemorrhage.active;
     if (c.hemorrhage.active) setValue($("c-hem-rate"), String(c.hemorrhage.rate));
-    setValue($("c-rhythm"), c.rhythm);
+    this.syncRhythm(c.ecg_rhythm);
     setValue($("c-position"), c.position);
     setPressed($("c-anaphylaxis"), c.anaphylaxis, c.anaphylaxis ? "Stop anaphylaxis" : "Start anaphylaxis");
     setPressed($("c-sepsis"), c.sepsis, c.sepsis ? "Stop sepsis" : "Start sepsis");

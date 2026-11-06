@@ -8,6 +8,7 @@ import numpy as np
 
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp01
+from anasim.physiology.resuscitation import COMPRESSION_RATE
 
 ORGANIZED_RHYTHMS = frozenset(
     {
@@ -135,6 +136,11 @@ class CardiacCycle:
             rhythm_type=self._rhythm_type,
         )
 
+    @property
+    def current(self) -> CardiacCycleSample:
+        """Current phase without advancing time or emitting another R event."""
+        return self._sample(beat_started=False)
+
     def _restart(self, hr: float, rhythm_type: RhythmType) -> CardiacCycleSample:
         self._initialized = True
         self._rhythm_type = rhythm_type
@@ -200,3 +206,32 @@ class CardiacCycle:
         if beat_started:
             self._update_display_hr()
         return self._sample(beat_started=seeded_beat or beat_started)
+
+
+class CompressionClock:
+    """Chest compression timing, which replaces the beat clock for the arterial and pleth renderers."""
+
+    def __init__(self, rate: float = COMPRESSION_RATE):
+        self.rate = rate
+        self.period_s = 60.0 / rate
+        self._elapsed_s = 0.0
+        self.active = False
+
+    def stop(self) -> None:
+        self.active = False
+
+    def step(self, dt: float, rhythm_type: RhythmType) -> CardiacCycleSample:
+        started = not self.active
+        if started:
+            self.active = True
+            self._elapsed_s = 0.0
+        else:
+            self._elapsed_s += dt
+            if self._elapsed_s >= self.period_s:
+                self._elapsed_s -= self.period_s
+                started = True
+        return CardiacCycleSample(
+            phase=self._elapsed_s / self.period_s, beat_started=started, rr_interval_s=self.period_s,
+            mean_rr_s=self.period_s, stroke_fraction=1.0, measured_hr=self.rate, display_hr=self.rate,
+            organized=True, rhythm_type=rhythm_type,
+        )

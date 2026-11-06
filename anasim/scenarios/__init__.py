@@ -6,6 +6,7 @@ from typing import Literal
 
 from .anaphylaxis import create_anaphylaxis_scenario
 from .base import Scenario, ScenarioStep
+from .cardiac_arrest import create_cardiac_arrest
 from .emergence import create_emergence
 from .hemorrhage import create_hemorrhage_response
 from .induction import create_induction_balanced, create_induction_tiva
@@ -103,6 +104,15 @@ SCENARIO_REGISTRY = (
         create_sepsis_response,
         surgery=True,
     ),
+    ScenarioSpec(
+        "cardiac_arrest",
+        "Cardiac arrest",
+        "During surgery under TIVA: ventricular fibrillation.",
+        "steady_state",
+        "tiva",
+        create_cardiac_arrest,
+        surgery=True,
+    ),
 )
 
 __all__ = [
@@ -111,6 +121,7 @@ __all__ = [
     "ScenarioSpec",
     "ScenarioStep",
     "create_anaphylaxis_scenario",
+    "create_cardiac_arrest",
     "create_emergence",
     "create_hemorrhage_response",
     "create_induction_balanced",

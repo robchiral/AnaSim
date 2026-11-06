@@ -128,9 +128,10 @@ class TOFModel:
         ke0 = self.ke0 * (1.0 - self.sevo_ke0_reduction * clamp01(mac_sevo))
         removal = self.ks * sugammadex.state.c1
         cp = roc.state.c1
-        self.ce = self._effect_site(self.ce, cp, ke0, removal, dt_min)
+        delivery_time = dt_min * roc.circulation
+        self.ce = self._effect_site(self.ce, cp, ke0, removal, delivery_time)
         ratio = self.central_ke0_ratio
-        self.ce_central = self._effect_site(self.ce_central, cp, ke0 * ratio, removal * ratio, dt_min)
+        self.ce_central = self._effect_site(self.ce_central, cp, ke0 * ratio, removal * ratio, delivery_time)
         return self.compute_tof_from_ce(self.ce, mac_sevo, mac_n2o)
 
     @staticmethod

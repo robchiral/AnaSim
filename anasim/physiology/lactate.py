@@ -72,7 +72,7 @@ class LactateModel:
         Args:
             oxygen_deficit_l: Unmet O2 demand over the step, STPD L.
             supply_fraction: Share of O2 demand met, 0-1.
-            epinephrine_ng_ml: Exogenous plasma epinephrine.
+            epinephrine_ng_ml: Epinephrine effect-site concentration.
             sepsis_severity: 0-1.
             crystalloid_in_ml: Cumulative crystalloid given; the increase since
                 the last step is lactated Ringer's.

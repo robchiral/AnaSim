@@ -4,7 +4,13 @@ from itertools import pairwise
 
 from scipy.optimize import root_scalar
 
-from anasim.core.constants import BLOOD_VOLUME_MIN, HR_MAX, HR_MIN, TEMP_TPR_COEFFICIENT
+from anasim.core.constants import (
+    BLOOD_VOLUME_MIN,
+    CIRCULATION_LIMIT_FRACTION,
+    HR_MAX,
+    HR_MIN,
+    TEMP_TPR_COEFFICIENT,
+)
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.conditions import HEART_FAILURE_PROFILES
@@ -16,6 +22,7 @@ from .coronary import CoronaryModel
 from .fluids import CrystalloidKinetics
 from .hemo_config import HemodynamicConfig
 from .hemo_types import HemoState
+from .resuscitation import COMPRESSION_OUTPUT_FRACTION
 
 # Ventricular rates set by the rhythm: SVT 150-220, VT 150-250 bpm.
 FIXED_RHYTHM_RATE = {
@@ -201,6 +208,8 @@ class HemodynamicModel:
         self.crystalloid = CrystalloidKinetics()
 
         self._rhythm_type = RhythmType.SINUS
+        self._asystole_recovery_s = 0.0
+        self._compressions = False
         self.f_preload_pit = 1.0
         self.renal_perfusion = 1.0  # Share of normal renal blood flow, from MAP
         self.vasopressor_sv_factor = 1.0
@@ -233,6 +242,17 @@ class HemodynamicModel:
             self.invalidate_state_cache()
 
     @property
+    def compressions(self) -> bool:
+        """Whether chest compressions are in progress."""
+        return self._compressions
+
+    @compressions.setter
+    def compressions(self, value: bool) -> None:
+        if value != self._compressions:
+            self._compressions = value
+            self.invalidate_state_cache()
+
+    @property
     def rhythm_type(self) -> RhythmType:
         return self._rhythm_type
 
@@ -240,6 +260,7 @@ class HemodynamicModel:
     def rhythm_type(self, value: RhythmType) -> None:
         if value != self._rhythm_type:
             self._rhythm_type = value
+            self._asystole_recovery_s = 0.0
             self.invalidate_state_cache()
 
     def add_volume(
@@ -430,6 +451,8 @@ class HemodynamicModel:
         sv_factor = 1.0 + cfg.epi_emax_sv * hill_function(ce_pressor / beta1_dr, cfg.epi_c50_sv, 1.0)
         alpha = cfg.epi_emax_svr_alpha * hill_function(
             ce_pressor / alpha_dr, cfg.epi_c50_alpha, cfg.epi_gamma_alpha
+        ) + cfg.epi_emax_svr_alpha_arrest * hill_function(
+            ce_pressor / alpha_dr, cfg.epi_c50_alpha_arrest, cfg.epi_gamma_alpha
         )
         svr_factor = 1.0 + self._epi_beta2_effect * self.tpr / self.base_tpr + alpha
         return delta_hr, sv_factor, max(0.2, svr_factor)
@@ -656,6 +679,18 @@ class HemodynamicModel:
             self._stim_map = map_val * (
                 self.dist_hr / current_hr + self.dist_sv / max(raw_sv, 1.0) + self.dist_svr / 1000.0 / eff_tpr
             )
+        intrinsic_co = co
+        venous_pressure = self._last_rap
+        if self._compressions:
+            # Compressions pump what fills the heart; map stays the pressure that drives flow.
+            co += COMPRESSION_OUTPUT_FRACTION * self.base_co_l_min * preload_sv_factor
+            map_val = clamp(co * 1000.0 * eff_tpr, 0.0, 300.0)
+            svr_val = 1000.0 * eff_tpr
+            # Venous return, (MCFP - RAP) / resistance, sets the atrial pressure.
+            venous_pressure = max(0.0, self._last_mcfp - co * self.venous_return_resistance)
+        elif co <= 0.0:
+            # Without flow, pressures equilibrate at mean systemic filling pressure.
+            venous_pressure = self._last_mcfp
 
         self._cached_state = HemoState(
             map=map_val,
@@ -679,6 +714,9 @@ class HemodynamicModel:
             rhythm_type=RhythmType.ASYSTOLE
             if self.coronary.electrically_silent or (current_hr <= 0.0 and self.rhythm_type != RhythmType.VFIB)
             else self.rhythm_type,
+            compressions=self._compressions,
+            intrinsic_co=intrinsic_co,
+            venous_pressure=venous_pressure,
         )
         return self._cached_state
 
@@ -761,24 +799,36 @@ class HemodynamicModel:
                 bradycardia; defaults to cp_remi.
         """
         cfg = self.config
+        base_co = self.base_co_l_min / self.failure.output_factor
+        circulation = clamp01(self.state.co / (CIRCULATION_LIMIT_FRACTION * base_co))
         self._cached_state = None
         dt_min = dt / 60.0
+        delivery_time = dt_min * circulation
         sepsis_sev = clamp01(self.sepsis_severity)
         anaph_sev = clamp01(self.anaphylaxis_severity)
+
+        if self.rhythm_type == RhythmType.ASYSTOLE:
+            coronary = self.coronary
+            can_restart = (self.compressions and coronary.supply_demand_ratio >= 1.0
+                           and coronary.energy_reserve > 0.0 and not coronary.electrically_silent
+                           and not coronary.irreversible)
+            self._asystole_recovery_s = self._asystole_recovery_s + dt if can_restart else 0.0
+            if self._asystole_recovery_s >= cfg.asystole_recovery_time_s:
+                self.rhythm_type = RhythmType.SINUS
 
         # Hemodynamic effect sites: propofol's arterial, cardiac, and venous
         # effects follow Kazama 1999's SBP equilibration. Reflex depression
         # follows plasma propofol, as consciousness does within a minute.
-        self.ce_prop_cv += (max(0.0, cp_prop) - self.ce_prop_cv) * -math.expm1(-self._ke0_prop_cv * dt_min)
-        self.ce_opioid_cv += (max(0.0, cp_remi) - self.ce_opioid_cv) * -math.expm1(-self._ke0_opioid_cv * dt_min)
+        self.ce_prop_cv += (max(0.0, cp_prop) - self.ce_prop_cv) * -math.expm1(-self._ke0_prop_cv * delivery_time)
+        self.ce_opioid_cv += (max(0.0, cp_remi) - self.ce_opioid_cv) * -math.expm1(-self._ke0_opioid_cv * delivery_time)
         remifentanil = max(0.0, cp_remi if remifentanil_cp is None else remifentanil_cp)
-        self.ce_remi_vagal += (remifentanil - self.ce_remi_vagal) * -math.expm1(-self._ke0_opioid_cv * dt_min)
-        self.ce_sevo += (mac_sevo - self.ce_sevo) * -math.expm1(-cfg.ke0_sevo * dt_min)
+        self.ce_remi_vagal += (remifentanil - self.ce_remi_vagal) * -math.expm1(-self._ke0_opioid_cv * delivery_time)
+        self.ce_sevo += (mac_sevo - self.ce_sevo) * -math.expm1(-cfg.ke0_sevo * delivery_time)
         ce_prop = self.ce_prop_cv
         anesthetic_depth = clamp01(self.ce_sevo + cp_prop / 4.0)
         self._sympathetic_venous_depth += (
             clamp01(max(0.0, cp_prop) / cfg.propofol_sympathetic_cp) - self._sympathetic_venous_depth
-        ) * -math.expm1(-math.log(2.0) / cfg.propofol_sympathetic_half_time * dt_min)
+        ) * -math.expm1(-math.log(2.0) / cfg.propofol_sympathetic_half_time * delivery_time)
 
         # Severe acidemia depresses myocardium and adrenergic responsiveness.
         # The curve below pH 7.2 is a teaching calibration (Schotola 2012).
@@ -1026,8 +1076,8 @@ class HemodynamicModel:
 
         # Feedback senses the same circulation as the outputs, including
         # rhythm, hypoxia, and preload. Nociception resets it as it does the
-        # fast baroreflex, so sustained surgery keeps MAP raised. Without
-        # output it holds its last value instead of winding up during arrest.
+        # fast baroreflex, so sustained surgery keeps MAP raised. Without the
+        # heart's own output it holds its last value instead of winding up during arrest.
         self.dist_hr, self.dist_sv, self.dist_svr = dist_hr, dist_sv, dist_svr
         distributive_svr_drop = (cfg.sepsis_svr_drop_wood * sepsis_sev +
                                  cfg.anaphylaxis_svr_drop_wood * anaph_sev)
@@ -1038,7 +1088,7 @@ class HemodynamicModel:
             anaph_sev=anaph_sev,
             distributive_tpr_offset=distributive_tpr_offset,
         )
-        if feedback_state.map > 0.0:
+        if feedback_state.intrinsic_co > 0.0:
             rmap = clamp((feedback_state.map - self._stim_map) * self._inv_base_rmap_denom, 0.1, 5.0)
             self._rmap_fb = rmap ** cfg.fb
         rmap_fb = self._rmap_fb

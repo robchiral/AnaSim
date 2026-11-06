@@ -24,7 +24,8 @@ def _discretize(A: np.ndarray, B: np.ndarray, dt: float) -> tuple[np.ndarray, np
 def _pk_signature(pk_model) -> tuple[float, ...]:
     return tuple(
         float(getattr(pk_model, name))
-        for name in ("v1", "v2", "v3", "elimination_clearance", "cl2", "cl3", "ke0", "basal_input_rate")
+        for name in ("v1", "v2", "v3", "elimination_clearance", "cl2", "cl3", "ke0", "basal_input_rate",
+                     "circulation")
     )
 
 
@@ -141,7 +142,7 @@ class TCIController:
         self._next_update = self._time
 
     def _control_rate(self) -> float:
-        if self.target <= 0.0:
+        if self.target <= 0.0 or not self._responsive.any():
             return 0.0
         free = self._free_response[self._responsive] @ self.x[:, 0] + self._basal_response[self._responsive]
         unit = self._unit_response[self._responsive]

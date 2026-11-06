@@ -19,6 +19,11 @@ PCV-VG, pressure control with volume guarantee.
 - Jeremy et al. (1986). *Cardiovasc Res*. [Left ventricular diastolic pressure and the coronary pressure-flow relation during vasodilation](https://pubmed.ncbi.nlm.nih.gov/3802128/).
 - Nanto et al. (2001). *Jpn Circ J*. [Coronary zero-flow pressure in humans](https://pubmed.ncbi.nlm.nih.gov/11548878/).
 - Nebout et al. (2013). *Ann Fr Anesth Reanim*. [BIS for early detection of cerebral hypoperfusion](https://pubmed.ncbi.nlm.nih.gov/23953319/).
+- Astrup et al. (1981). *Stroke*. [Thresholds in cerebral ischemia: the ischemic penumbra](https://pubmed.ncbi.nlm.nih.gov/6272455/).
+- Jones et al. (1981). *J Neurosurg*. [Thresholds of focal cerebral ischemia in awake monkeys](https://pubmed.ncbi.nlm.nih.gov/7241187/).
+- de Vries et al. (1998). *Anesth Analg*. [Cerebral oxygen uptake and EEG during defibrillation threshold testing](https://pubmed.ncbi.nlm.nih.gov/9661538/).
+- Westlake et al. (1955). *Q J Med*. [Carbon dioxide narcosis in emphysema](https://doi.org/10.1093/oxfordjournals.qjmed.a066724).
+- Turnbull et al. (2008). *Anaesthesia*. [The influence of changes in end-tidal carbon dioxide upon the Bispectral Index](https://doi.org/10.1111/j.1365-2044.2007.05399.x).
 - Schwartzenberg et al. (2012). *J Am Coll Cardiol*. [Hemodynamic responses to vasodilation in reduced- and preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/22281246/).
 - Westermann et al. (2008). *Circulation*. [Ventricular stiffness and filling during tachycardia in preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/18413502/).
 - Wagner et al. (1977). *J Clin Invest*. [Ventilation-perfusion inequality in COPD](https://pubmed.ncbi.nlm.nih.gov/833271/).
@@ -231,6 +236,9 @@ PCV-VG, pressure control with volume guarantee.
 - De Jong et al. (2018). *Crit Care Med*. [Intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/29261566/).
 - Heffner et al. (2013). *Resuscitation*. [Cardiac arrest during emergency airway management](https://pubmed.ncbi.nlm.nih.gov/23911630/).
 - Weisfeldt and Becker (2002). *JAMA*. [Three-phase time-sensitive model of resuscitation after cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12479769/).
+- Paradis et al. (1990). *JAMA*. [Coronary perfusion pressure and return of spontaneous circulation in human CPR](https://pubmed.ncbi.nlm.nih.gov/2386557/).
+- Meaney et al. (2013). *Circulation*. [Cardiopulmonary resuscitation quality](https://pubmed.ncbi.nlm.nih.gov/23801105/).
+- ZOLL. [R Series operator's guide](https://www.zoll.com/-/media/product-materials/product-manuals/r-series/05/9650-0912-05-sf_r.ashx).
 
 ## Cardiovascular drugs
 

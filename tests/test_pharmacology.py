@@ -10,6 +10,7 @@ from anasim.patient.pd.nmba import TOFModel
 from anasim.patient.pk_models import (
     AtropinePK,
     EpinephrinePK,
+    EsmololPK,
     GlycopyrrolatePK,
     KetaminePK,
     MidazolamPK,
@@ -50,6 +51,28 @@ def test_residual_effect_site_decays_after_plasma_is_empty(patient):
     model.step(1.0, 0.0)
     assert model.state.c1 == 0.0
     assert 0.0 < model.state.ce_resp < 1.0
+
+
+@pytest.mark.parametrize("model_type", [RemifentanilPKEleveld, SuccinylcholinePK, EsmololPK])
+def test_local_esterase_metabolism_continues_without_delivering_drug_to_tissue(patient, model_type):
+    model = model_type(patient)
+    model.circulation = 0.0
+    model.state.c1 = 10.0
+    initial_mass = model.v1 * model.state.c1
+    _infuse(model, 60, 0.0)
+    assert 0.0 < model.v1 * model.state.c1 < initial_mass
+    assert model.state.c2 == model.state.c3 == model.state.ce == 0.0
+
+
+@pytest.mark.parametrize("circulation", [0.0, 0.2, 1.0])
+def test_pk_predictions_follow_delivery_during_arrest_and_cpr(patient, circulation):
+    model = EpinephrinePK(patient)
+    model.circulation = circulation
+    model.state.c1 = 10.0
+    matrix, _ = model.get_ss_matrices()
+    expected = expm(matrix) @ model.state_vector()
+    _infuse(model, 60, 0.0)
+    assert model.state_vector() == pytest.approx(expected, rel=0.02, abs=0.001)
 
 
 @pytest.mark.parametrize("model_type", [EpinephrinePK, RemifentanilPKEleveld, SuccinylcholinePK, KetaminePK])

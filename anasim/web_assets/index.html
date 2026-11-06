@@ -360,7 +360,7 @@
       <nav class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="Machine" aria-selected="true">Machine</button>
         <button type="button" role="tab" data-tab="Medications" aria-selected="false">Drugs</button>
-        <button type="button" role="tab" data-tab="Fluids" aria-selected="false">Fluids</button>
+        <button type="button" role="tab" data-tab="Circulation" aria-selected="false">Circulation</button>
         <button type="button" role="tab" data-tab="Labs" aria-selected="false">Labs</button>
         <button type="button" role="tab" data-tab="Events" aria-selected="false">Events</button>
       </nav>
@@ -464,7 +464,7 @@
         <p id="drug-search-empty" role="status" hidden>No medications found.</p>
       </div>
 
-      <div class="tab-panel" data-panel="Fluids" role="tabpanel" hidden>
+      <div class="tab-panel" data-panel="Circulation" role="tabpanel" hidden>
         <fieldset class="group">
           <legend>Fluid administration</legend>
           <div class="button-stack">
@@ -477,6 +477,24 @@
           <label class="inline">Maintenance fluid
             <span class="unit-input"><input id="c-maint" type="number" min="0" max="5000" step="25"><span>mL/hr</span></span>
           </label>
+        </fieldset>
+        <fieldset class="group">
+          <legend>Chest compressions <span class="legend-unit">110/min</span></legend>
+          <button type="button" class="btn toggle t-danger full" id="c-compressions" aria-pressed="false">Start compressions</button>
+          <p id="c-compressions-status" class="action-feedback" hidden></p>
+        </fieldset>
+        <fieldset class="group">
+          <legend>Defibrillator <span class="legend-unit">200 J biphasic</span></legend>
+          <div class="segmented" id="c-sync">
+            <button type="button" data-value="false" aria-pressed="true">Unsynchronized</button>
+            <button type="button" data-value="true" aria-pressed="false">Synchronized</button>
+          </div>
+          <p id="c-defibrillator-status" class="action-feedback" role="status">Not charged</p>
+          <div class="row">
+            <button type="button" class="btn" id="c-charge">Charge</button>
+            <button type="button" class="btn" id="c-shock" disabled>Shock</button>
+          </div>
+          <p id="c-shock-feedback" class="action-feedback" role="status" hidden></p>
         </fieldset>
       </div>
 

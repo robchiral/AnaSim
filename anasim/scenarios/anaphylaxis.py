@@ -77,7 +77,7 @@ def create_anaphylaxis_scenario() -> Scenario:
                 "vasodilation and capillary leak can require substantial volume."
             ),
             check_requirements=fluids,
-            target_tab="Fluids",
+            target_tab="Circulation",
         ),
         ScenarioStep(
             id="STABILIZE",

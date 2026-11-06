@@ -4,6 +4,12 @@ import math
 
 from anasim.core.utils import clamp
 
+from .resuscitation import COMPRESSION_DUTY
+
+# Ischemic injury that reperfusion does not reverse builds up over about 7
+# minutes once the energy reserve is exhausted, as electrical activity fails.
+INJURY_TIME_S = 420.0
+
 
 class CoronaryModel:
     """Flow reserve limits supply; rate-pressure product estimates demand.
@@ -26,47 +32,69 @@ class CoronaryModel:
         self.ischemia = 0.0
         self.energy_reserve = 1.0
         self.energy_failure = 0.0
+        self.injury = 0.0
 
     @staticmethod
     def _diastolic_fraction(hr: float) -> float:
         return clamp(1.0 - 0.30 * (max(1.0, hr) / 60.0) ** 0.65, 0.15, 0.85)
 
     def step(self, dt: float, hr: float, sbp: float, dbp: float, lap: float,
-             hb: float, saturation: float, hypoxia: float = 0.0) -> None:
+             hb: float, saturation: float, hypoxia: float = 0.0, *,
+             fibrillating: bool = False, compressions: bool = False) -> None:
         """Advance ischemia toward the supply shortfall; saturation is in percent.
 
         hypoxia is the hemodynamic model's hypoxemic myocardial depression, 0-1.
+        During compressions, dbp is the relaxation pressure between them.
         """
-        # Basal and activation metabolism persist when mechanical work falls (Harasawa 1992).
-        work = hr * max(0.0, sbp) / self._reference_rpp
-        demand = max(work, 0.25 + 0.25 * hr / self._reference_hr)
-        # The pressure-flow relation is curvilinear at low pressure (Jeremy
-        # 1986); a zero-flow pressure that falls with SBP approximates it.
-        back_pressure = max(lap, min(20.0, 0.2 * max(0.0, sbp)))
+        if fibrillating:
+            # Fibrillating myocardium uses most of the beating heart's resting
+            # oxygen, less as its energy fails.
+            demand = 0.25 + 0.5 * (1.0 - self.energy_failure)
+        else:
+            # Basal and activation metabolism persist when mechanical work falls (Harasawa 1992).
+            work = hr * max(0.0, sbp) / self._reference_rpp
+            demand = max(work, 0.25 + 0.25 * hr / self._reference_hr)
+        if compressions:
+            # Coronary flow occurs between compressions, against the resting zero-flow pressure.
+            back_pressure = max(lap, 20.0)
+            diastolic_fraction = 1.0 - COMPRESSION_DUTY
+        else:
+            # The pressure-flow relation is curvilinear at low pressure (Jeremy
+            # 1986); a zero-flow pressure that falls with SBP approximates it.
+            back_pressure = max(lap, min(20.0, 0.2 * max(0.0, sbp)))
+            diastolic_fraction = self._diastolic_fraction(hr)
         pressure = max(0.0, dbp - back_pressure)
         oxygen = hb * clamp(saturation / 98.0, 0.0, 1.05)
-        self.supply_demand_ratio = self._supply_scale * pressure * self._diastolic_fraction(hr) * oxygen / demand
+        self.supply_demand_ratio = self._supply_scale * pressure * diastolic_fraction * oxygen / demand
         target = clamp(1.0 - self.supply_demand_ratio, 0.0, 1.0)
         tau = 15.0 if target > self.ischemia else 60.0
         self.ischemia += (target - self.ischemia) * -math.expm1(-dt / tau)
         # Severe oxygen limitation from either cause first depletes an energy
         # reserve, so a perfusing rhythm can return within about 4 minutes of
         # no flow, as in the electrical phase of arrest (Weisfeldt 2002).
-        # Excitation then fails. The timing is a teaching calibration.
+        # Excitation then fails and injury accumulates. The timing is a teaching calibration.
         severity = clamp((max(self.ischemia, hypoxia) - 0.5) / 0.5, 0.0, 1.0)
         self.energy_reserve = clamp(self.energy_reserve + dt * (
             (1.0 - severity) * (1.0 - self.energy_reserve) / 120.0 - severity / 240.0), 0.0, 1.0)
-        failure_target = severity if self.energy_reserve <= 0.0 else 0.0
+        exhausted = self.energy_reserve <= 0.0
+        if exhausted:
+            self.injury = min(1.0, self.injury + dt * severity / INJURY_TIME_S)
+        failure_target = severity if exhausted else 0.0
         failure_tau = 90.0 if failure_target > self.energy_failure else 60.0
         self.energy_failure += (failure_target - self.energy_failure) * -math.expm1(-dt / failure_tau)
 
     @property
     def contractility_factor(self) -> float:
-        return (1.0 - 0.50 * self.ischemia) * self.electrical_factor
+        return (1.0 - 0.50 * self.ischemia) * (1.0 - self.injury) * self.electrical_factor
+
+    @property
+    def irreversible(self) -> bool:
+        """Injury leaves no contraction to recover."""
+        return self.injury >= 0.99
 
     @property
     def electrically_silent(self) -> bool:
-        # Permanent: without a heartbeat or chest compressions, coronary flow cannot return.
+        # Without a heartbeat, only chest compressions can restore coronary flow.
         return self.energy_failure >= 0.99
 
     @property

@@ -173,7 +173,7 @@ def test_cardiac_arrest_ends_the_case_with_a_debrief():
     session.engine.start()
     session.engine.state.cardiac_arrest = True
     session.engine.state.arrest_reason = "No effective circulation"
-    session.engine.hemo.coronary.energy_failure = 1.0
+    session.engine.hemo.coronary.injury = 1.0
     session.step(0.1)
     snap = session.snapshot()
     assert snap["ended"] and not snap["running"]

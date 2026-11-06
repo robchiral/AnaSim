@@ -9,11 +9,13 @@ from anasim.core.action_log import (
     ACTION_BAG_MASK,
     ACTION_BLOOD_GAS,
     ACTION_CASE_ACTION,
+    ACTION_COMPRESSIONS,
     ACTION_DRUG_BOLUS,
     ACTION_FGF,
     ACTION_FLUID,
     ACTION_INFUSION_RATE,
     ACTION_INTUBATION_ATTEMPT,
+    ACTION_SHOCK,
     ACTION_TCI_TARGET,
     ACTION_VAPORIZER,
     ACTION_VENTILATION,
@@ -35,6 +37,7 @@ SAFETY_REVIEW = {
     "awake_neuromuscular_block": "Establish hypnosis before administering a neuromuscular blocker.",
     "unsafe_airway_removal": "Confirm ventilation and neuromuscular recovery before removing the tube.",
     "ventilation_stopped": "Maintain assisted ventilation while the patient is apneic.",
+    "shock_while_responsive": "Give sedation or anesthesia before cardioversion in a responsive patient.",
 }
 
 
@@ -213,4 +216,8 @@ def _describe(record: ActionRecord) -> str | None:
         return f"{source} {'started' if label == 'on' else 'stopped'}"
     if action == ACTION_FGF:
         return f"{label.upper()} flow {amount:g} L/min"
+    if action == ACTION_COMPRESSIONS:
+        return f"Chest compressions {'started' if label == 'on' else 'stopped'}"
+    if action == ACTION_SHOCK:
+        return f"{'Synchronized shock' if label == 'synchronized' else 'Shock'} {amount:g} J delivered"
     return None

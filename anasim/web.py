@@ -14,6 +14,7 @@ from anasim.core.clinical_actions import (
     ActionFeedback,
     check_airway_removal,
     check_drug_administration,
+    check_shock,
     check_ventilation_withdrawal,
 )
 from anasim.core.drug_registry import get_drug_spec
@@ -27,6 +28,7 @@ from anasim.monitors.ecg import displayed_rhythm
 from anasim.patient import domain
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import list_disturbance_profiles
+from anasim.physiology.resuscitation import SHOCK_ENERGY_J, ShockResult
 from anasim.scenarios import SCENARIO_REGISTRY
 from anasim.scenarios.base import Scenario
 from anasim.scenarios.runtime import CaseRun
@@ -154,6 +156,7 @@ class WebSession:
         self.lagging = False
         self.notice: str | None = None
         self._clinical_feedback: dict | None = None
+        self._observed_shock: tuple[float, bool] | None = None
         self._download: dict[str, str] | None = None
         self._accumulator = 0.0
         self._last_wave_time = -math.inf
@@ -263,6 +266,7 @@ class WebSession:
                     if self.case_run is not None:
                         self.case_run.before_step()
                     engine.step(sim_step)
+                    self._observe_shock()
                 except RecordingError as error:
                     self._pause()
                     self._download = self._take_recording(engine.recorder)
@@ -534,6 +538,13 @@ class WebSession:
             "circuit_fio2": _num(circuit.composition.fio2, 4),
             "vaporizer": engine.vaporizer.state.setting,
             "bag_mask": engine.bag_mask_active,
+            "compressions": {"active": engine.hemo.compressions, "since": engine.compressions_started_at},
+            "defibrillator": {
+                "status": engine.defibrillator.status(engine.state.time),
+                "charge_remaining": max(0.0, engine.defibrillator.ready_at - engine.state.time)
+                if engine.defibrillator.ready_at is not None else 0.0,
+                "last_shock": self._shock_receipt(),
+            },
             "bag": {"rr": round(engine.bag_mask_rr), "tv": round(engine.bag_mask_vt * 1000.0)},
             "vent": {
                 "on": engine.vent.is_on,
@@ -561,7 +572,6 @@ class WebSession:
             "hemorrhage": {"active": engine.active_hemorrhage, "rate": engine.hemorrhage_rate_ml_min},
             "anaphylaxis": engine.anaphylaxis.active,
             "sepsis": engine.sepsis.active,
-            "rhythm": engine.hemo.state.rhythm_type.value,
             "ecg_rhythm": displayed_rhythm(engine.hemo.state.rhythm_type, engine.hemo.coronary.energy_failure),
             "bair_hugger": engine.state.bair_hugger_target,
         }
@@ -774,6 +784,42 @@ class WebSession:
         getattr(self.engine, FLUIDS[kind])(volume)
         label = {"crystalloid": "lactated Ringer's", "albumin": "albumin", "blood": "PRBC"}[kind]
         return {"fluid": {"time": self.engine.state.time, "text": f"{volume:g} mL {label} started"}}
+
+    def _cmd_compressions(self, active: bool):
+        self.engine.set_chest_compressions(bool(active))
+
+    def _cmd_charge_defibrillator(self):
+        self.engine.charge_defibrillator()
+
+    def _cmd_disarm_defibrillator(self):
+        self.engine.disarm_defibrillator()
+
+    def _shock_receipt(self) -> dict | None:
+        event = self.engine.defibrillator.last_shock
+        if event is None:
+            return None
+        time, synchronized = event
+        kind = "Synchronized shock" if synchronized else "Shock"
+        return {"time": time, "text": f"{kind} {SHOCK_ENERGY_J:g} J delivered"}
+
+    def _observe_shock(self) -> dict:
+        event = self.engine.defibrillator.last_shock
+        if event is None or event == self._observed_shock:
+            return {}
+        self._observed_shock = event
+        return self._clinical_result(check_shock(self.engine), {"shock": self._shock_receipt()})
+
+    def _cmd_shock(self, synchronized: bool):
+        engine = self.engine
+        result = engine.defibrillate(synchronized=bool(synchronized))
+        if result == ShockResult.DELIVERED:
+            return self._observe_shock()
+        text = {
+            ShockResult.NOT_READY: "Defibrillator is not charged; no shock delivered",
+            ShockResult.NOT_DELIVERED: "No R wave detected; no shock delivered",
+            ShockResult.PENDING: "Waiting for an R wave",
+        }[result]
+        return {"shock": {"time": engine.state.time, "text": text}}
 
     def _cmd_maintenance_fluid(self, ml_hr: float):
         self.engine.set_continuous_fluid_rate(float(ml_hr))

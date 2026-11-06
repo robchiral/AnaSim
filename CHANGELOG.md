@@ -3,16 +3,33 @@
 ## Unreleased
 
 - Severe circulatory failure, including untreated hemorrhage, now progresses
-  through PEA to asystole, and the simulation continues through arrest.
-  Restoring a perfusing rhythm within about 4 minutes restores circulation;
-  the session ends after about 11 minutes without circulation. Removed the
-  `end_on_cardiac_arrest` option.
+  through PEA to asystole, and the simulation continues through arrest. A
+  perfusing rhythm within about 4 minutes restores circulation; the session
+  ends when ischemic injury is complete, after about 11 minutes without
+  circulation. Removed the `end_on_cardiac_arrest` option.
+- Added chest compressions and a defibrillator to a new Circulation tab, which
+  also holds fluids. Compressions move about a fifth of resting cardiac output,
+  little when the heart is empty, and diastolic pressure and EtCO₂ show their
+  effect. They keep VF shockable, make fine VF coarse again, and can restart
+  beats in asystole. The defibrillator charges before each shock. Shocks
+  terminate VF, and synchronized shocks fire on the next R wave to convert AF,
+  SVT, and VT; afterward, the heart beats only as well as its time without flow
+  allows. Epinephrine at arrest doses raises diastolic pressure during
+  compressions.
+- Added a cardiac arrest case with VF during surgery.
 - As the heart fails, the ECG passes through junctional, idioventricular, and
   agonal rhythms, and untreated VF becomes fine and then asystole. Ischemic ST
   depression now starts at the J point and merges into the T wave.
 - Severe cerebral hypoperfusion or hypoxemia now causes unresponsiveness,
-  airway collapse, low BIS, and apnea. After 5 minutes of complete failure, the
-  patient remains comatose.
+  airway collapse, low BIS, and apnea within seconds; BIS shows it after the
+  monitor's processing delay. After 5 minutes without supply, the patient
+  remains comatose, although BIS and breathing can recover.
+- Added CO₂ narcosis: severe hypercapnia, especially with acidemia, reduces
+  responsiveness and airway tone.
+- Without flow, arterial pressure now falls to the mean systemic filling
+  pressure instead of zero, and drugs are distributed, cleared, and delivered
+  to their effect sites only as blood circulates, apart from esterase
+  metabolism.
 - Severe acidemia depresses the heart and the response to adrenergic drugs, and
   metabolic acidosis increases ventilation.
 - Shed blood now removes drug from the central compartment.

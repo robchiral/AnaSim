@@ -91,7 +91,7 @@ export class CasePanel {
       independent ? "On my own" : "Step-by-step guide", `${caseTime(report.duration)} elapsed`, ...(independent ? [hints] : []),
     ].join(", "));
     const content = [];
-    if (report.reason === "cardiac_arrest") content.push(node("p", "The case ended at cardiac arrest.", "case-safety"));
+    if (report.reason === "cardiac_arrest") content.push(node("p", "The case ended at irreversible cardiac arrest.", "case-safety"));
     const { physiology } = report;
     content.push(pairs([
       ["Lowest MAP", `${physiology.lowest_map} mmHg`],

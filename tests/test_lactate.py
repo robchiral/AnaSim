@@ -77,6 +77,22 @@ def test_resting_turnover_is_at_equilibrium(hepatic_function):
     assert initial == pytest.approx(0.9 if hepatic_function == 1.0 else 1.475409836)
 
 
+def test_epinephrine_without_circulation_does_not_drive_tissue_lactate_production(engine_factory):
+    engines = [engine_factory(config=SimulationConfig(rng_seed=7), start=True) for _ in range(2)]
+    for engine in engines:
+        engine.set_rhythm("VFIB")
+        for _ in range(160):
+            engine.step(0.1)
+    engines[1].give_drug_bolus("epi", 1000)
+    for engine in engines:
+        for _ in range(1200):
+            engine.step(0.1)
+        assert engine.state.co == engine.state.epi_ce == 0
+    control, dosed = (engine.state for engine in engines)
+    assert dosed.lactate == pytest.approx(control.lactate, abs=1e-10)
+    assert dosed.base_excess == pytest.approx(control.base_excess, abs=1e-10)
+
+
 def test_reference_studies_bound_lactate_responses():
     errors = []
     for d30, d60, rise, observed_recovery in DUNHAM:

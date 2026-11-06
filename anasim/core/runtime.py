@@ -4,7 +4,7 @@ import logging
 import math
 from typing import TYPE_CHECKING, cast
 
-from anasim.core.constants import CMH2O_TO_MMHG
+from anasim.core.constants import CIRCULATION_LIMIT_FRACTION, CMH2O_TO_MMHG
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.pd.anesthesia import opioid_equivalent
@@ -58,7 +58,7 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
     step_pk(engine, dt, fi_sevo, fi_n2o, engine.state.co)
     physiology = step_physiology(engine, dt, disturbances)
     project_runtime_physiology(engine, physiology)
-    engine.cerebral.step(dt, state.map, state.hb_g_dl, state.sao2)
+    engine.cerebral.step(dt, state.map, state.hb_g_dl, state.sao2, state.pa_co2, state.ph)
     step_monitors(engine, dt, physiology.hemo_state, physiology.resp_state, disturbances)
     update_shivering(engine, dt)
     step_temperature(engine, dt)
@@ -268,6 +268,11 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     base_co = engine.hemo.base_co_l_min / engine.hemo.failure.output_factor
     if base_bv <= 0.0 or base_co <= 0.0:
         return interaction_changed
+    # Below 30% of resting output, as in arrest and CPR, flow limits drug transport.
+    circulation = clamp01(co_curr / (CIRCULATION_LIMIT_FRACTION * base_co))
+    circulation_changed = circulation != propofol.circulation
+    for model in (*engine.pk.values(), *engine.pump_pk.values(), engine.tof_pd.sugammadex, engine.tof_pd.complex):
+        model.circulation = circulation
     v_ratio = clamp(engine.hemo.blood_volume / base_bv, 0.1, 2.0)
     co_ratio = clamp(co_curr / base_co, 0.1, 2.0)
     scale = (v_ratio, co_ratio, engine.hemo.renal_perfusion)
@@ -277,7 +282,7 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> bool:
     if last_scale is not None and all(
         math.isclose(value, last, rel_tol=1e-3, abs_tol=1e-3) for value, last in zip(scale, last_scale, strict=True)
     ):
-        return interaction_changed
+        return interaction_changed or circulation_changed
 
     for model in (*engine.pk.values(), *engine.pump_pk.values()):
         model.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
@@ -402,9 +407,12 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
     resp_state = step_respiration(engine, dt, state.co)
     step_lactate(engine, dt)
 
-    engine.hemo.coronary.step(
-        dt, state.hr, state.sbp, state.dbp, state.lap, engine.hemo.hb_conc, resp_state.sao2,
-        engine.hemo.myocardial_hypoxia,
+    hemo = engine.hemo
+    # Without flow, arterial pressure equals venous pressure, so coronary flow stops.
+    hemo.coronary.step(
+        dt, state.hr, state.sbp, state.dbp, max(state.lap, hemo.state.venous_pressure), hemo.hb_conc,
+        resp_state.sao2, hemo.myocardial_hypoxia,
+        fibrillating=hemo.rhythm_type == RhythmType.VFIB, compressions=hemo.compressions,
     )
 
     # Plasma remifentanil and propofol reach hemodynamic effect sites inside the model;
@@ -452,7 +460,7 @@ def step_lactate(engine: SimulationEngine, dt: float) -> None:
     resp = engine.resp
     base_removed = engine.lactate.step(
         dt, resp.oxygen_deficit_l, resp.oxygen_supply_fraction,
-        epinephrine_ng_ml=engine.pk["epi"].state.c1,
+        epinephrine_ng_ml=engine.state.epi_ce,
         sepsis_severity=engine.hemo.sepsis_severity,
         crystalloid_in_ml=engine.hemo.total_crystalloid_in_ml,
     )
@@ -461,12 +469,14 @@ def step_lactate(engine: SimulationEngine, dt: float) -> None:
 
 
 def check_cardiac_arrest(engine: SimulationEngine, dt: float) -> None:
-    """Flag arrest after 15 s without effective pulses."""
+    """Flag arrest after 15 s without effective pulses from the heart itself."""
     state = engine.state
     rhythm = engine.hemo.state.rhythm_type
+    # Compressions mask the heart's own pulse pressure.
+    no_pulse = state.chest_compressions or state.sbp - state.dbp < ARREST_PULSE_PRESSURE_MMHG
     pulseless = (rhythm in (RhythmType.VFIB, RhythmType.ASYSTOLE)
                  or state.hr < ARREST_HR_BPM
-                 or (state.co < ARREST_CO_L_MIN and state.sbp - state.dbp < ARREST_PULSE_PRESSURE_MMHG))
+                 or (state.intrinsic_co < ARREST_CO_L_MIN and no_pulse))
     engine._pulseless_s = engine._pulseless_s + dt if pulseless else 0.0
     if not pulseless:
         state.cardiac_arrest = False

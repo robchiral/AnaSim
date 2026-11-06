@@ -45,13 +45,13 @@ def create_sepsis_response() -> Scenario:
             id="GIVE_FLUIDS",
             title="Initial fluid resuscitation",
             instruction=(
-                "Start a <b>500 mL crystalloid bolus</b> in Fluids and reassess "
+                "Start a <b>500 mL crystalloid bolus</b> in Circulation and reassess "
                 "the response. Balanced crystalloid is preferred in practice; the simulator's crystalloid is lactated Ringer's. "
                 "An initial 30 mL/kg over the first 3 hours is a guideline starting point, "
                 "with further fluid guided by perfusion and response."
             ),
             check_requirements=fluids,
-            target_tab="Fluids",
+            target_tab="Circulation",
         ),
         ScenarioStep(
             id="START_VASOPRESSOR",

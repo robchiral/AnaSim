@@ -28,3 +28,9 @@ class HemoState:
     rv_co: float = 0.0
     lv_inflow: float = 0.0
     preload_factor: float = 1.0
+    # During chest compressions, co and map include compression flow; hr, sv,
+    # and intrinsic_co are the heart's own.
+    compressions: bool = False
+    intrinsic_co: float = 5.25
+    # Right atrial pressure, or mean systemic filling pressure without flow.
+    venous_pressure: float = 0.0

@@ -385,8 +385,10 @@ fieldset:disabled { opacity: 0.5; }
 /* --- Controls ------------------------------------------------------ */
 
 .controls { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); }
-.tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--header); }
+/* Each tab fits its label and the tabs share the remaining width. */
+.tabs { display: flex; flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--header); }
 .tabs button {
+  flex: 1 1 auto;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -516,7 +518,6 @@ input.setting-edited, select.setting-edited { border-color: var(--warning); back
 .scenario h2 { font-size: 15px; font-weight: 650; }
 .scenario p { color: var(--text-secondary); font-size: 12px; margin-top: 3px; }
 .scenario-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.case-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .case-actions, .case-tools { display: flex; flex-wrap: wrap; gap: 8px; }
 .case-actions:empty { display: none; }
 .scenario .case-observation { color: var(--text); }

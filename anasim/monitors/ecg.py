@@ -27,6 +27,7 @@ _MIN_QRS_SCALE = 0.4
 _DISCORDANT_T_MV = -0.4
 JUNCTIONAL_FAILURE = 0.5
 IDIOVENTRICULAR_FAILURE = 0.65  # QRS reaches 120 ms
+_COMPRESSION_ARTIFACT_MV = 0.6
 
 
 def _ramp(value: float, bounds: tuple[float, float]) -> float:
@@ -122,6 +123,7 @@ class ECGMonitor:
         self._waves: list[tuple[float, float, float, float]] = []
         self._st_window: tuple[float, float, float] | None = None
         self._st_scale = 1.0
+        self._vulnerable_window: tuple[float, float] | None = None
 
     def _place_beats(self, cycle: CardiacCycleSample, conduction_failure: float) -> None:
         """Lay out the previous, current and next beat around the current R peak."""
@@ -138,15 +140,24 @@ class ECGMonitor:
         # A wide complex carries its own discordant ST-T in place of ischemic ST depression.
         self._st_scale = 1.0 - wide
         self._st_window = None
+        self._vulnerable_window = None
         if morphology.t_amplitude:
             peak, width = _t_wave(rr_into_current, wide)
             self._st_window = (_J_POINT_S * _stretch(wide), peak - 2.0 * width, peak + 2.5 * width)
+            # The vulnerable period's width is a teaching calibration.
+            self._vulnerable_window = (peak - width, peak + width)
         beats = ((-rr_into_current, rr_into_prev), (0.0, rr_into_current), (rr_to_next, rr_to_next))
         self._waves = [
             (r_time + offset, amplitude, width, _WAVE_CUTOFF_SIGMAS * width)
             for r_time, preceding_rr in beats
             for offset, amplitude, width in morphology.waves(preceding_rr, p_scale, wide)
         ]
+
+    def vulnerable(self, cycle: CardiacCycleSample) -> bool:
+        """Whether an unsynchronized discharge falls around this beat's T peak."""
+        return (cycle.organized and cycle.rhythm_type == self._rhythm
+                and self._vulnerable_window is not None
+                and self._vulnerable_window[0] <= cycle.elapsed_s <= self._vulnerable_window[1])
 
     def _st_profile(self, t: float) -> float:
         """Horizontal from the J point, then back to baseline through the T wave."""
@@ -156,12 +167,20 @@ class ECGMonitor:
         return _ramp(t, (j_point - 0.01, j_point + 0.01)) * (1.0 - _ramp(t, (t_onset, t_end)))
 
     def step(self, dt: float, cycle: CardiacCycleSample, st_depression_mv: float = 0.0,
-             *, conduction_failure: float = 0.0, render: bool = True) -> float:
-        """Advance timing and noise; return voltage (mV), or zero when render is false."""
+             *, conduction_failure: float = 0.0, compression_phase: float | None = None,
+             render: bool = True) -> float:
+        """Advance timing and noise; return voltage (mV), or zero when render is false.
+
+        compression_phase, 0-1 through each chest compression, adds compression artifact.
+        """
+        artifact = 0.0
+        if compression_phase is not None:
+            angle = 2.0 * math.pi * compression_phase
+            artifact = _COMPRESSION_ARTIFACT_MV * (math.sin(angle) + 0.3 * math.sin(2.0 * angle + 0.5))
         rhythm_type = cycle.rhythm_type
         if rhythm_type == RhythmType.ASYSTOLE:
             self._rhythm = None
-            voltage = self.rng.random() * 0.02 - 0.01
+            voltage = self.rng.random() * 0.02 - 0.01 + artifact
             return voltage if render else 0.0
 
         if rhythm_type == RhythmType.VFIB:
@@ -169,7 +188,7 @@ class ECGMonitor:
             # Coarse VF becomes fine as the myocardium exhausts its energy.
             amplitude = 0.3 * (1.0 - 0.85 * conduction_failure) * (1.0 + 0.35 * self._vf_envelope.step(dt, self.rng))
             val = amplitude * (self._vf_main.step(dt, self.rng) + 0.5 * self._vf_slow.step(dt, self.rng))
-            voltage = val + self.rng.random() * 0.10 - 0.05
+            voltage = val + self.rng.random() * 0.10 - 0.05 + artifact
             return voltage if render else 0.0
 
         if cycle.beat_started or rhythm_type != self._rhythm:
@@ -189,5 +208,5 @@ class ECGMonitor:
             f_amplitude = 0.05 * (1.0 + 0.4 * self._f_envelope.step(dt, self.rng))
             val += f_amplitude * self._f_wave.step(dt, self.rng)
 
-        voltage = val + self.rng.random() * 0.03 - 0.015
+        voltage = val + self.rng.random() * 0.03 - 0.015 + artifact
         return voltage if render else 0.0

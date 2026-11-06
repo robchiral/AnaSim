@@ -18,7 +18,7 @@ references](REFERENCES.md) lists the supporting studies.
 | [`projection.py`](../anasim/core/projection.py) and [`state.py`](../anasim/core/state.py) | Copy model outputs into the shared state and define its fields |
 | [`initialization.py`](../anasim/core/initialization.py) | Sets up awake and maintenance starting states |
 | [`patient/`](../anasim/patient/) and [`drug_registry.py`](../anasim/core/drug_registry.py) | Define patient characteristics, drug models, delivery units, pump limits, and interface metadata |
-| [`physiology/`](../anasim/physiology/) | Models circulation, fluids, respiration, gas exchange, and temperature |
+| [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, fluids, respiration, gas exchange, and temperature |
 | [`machine/`](../anasim/machine/) | Models the breathing circuit, vaporizer, and ventilator |
 | [`monitors/`](../anasim/monitors/) and [`core/monitors.py`](../anasim/core/monitors.py) | Produce measurements, waveforms, and alarms |
 | [`scenarios/`](../anasim/scenarios/) | Defines cases, with their events, guided steps, and debrief outcomes |
@@ -52,7 +52,7 @@ writes the recording.
 
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
-| Physiology | `map`, `hr`, `co`, `sao2`, `pa_co2`, `pao2` | Values that the models and the cardiac arrest check use |
+| Physiology | `map`, `hr`, `co`, `intrinsic_co`, `sao2`, `pa_co2`, `pao2` | Values that the models and the cardiac arrest check use; `intrinsic_co` excludes chest compressions |
 | Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate` | Arterial plasma pH and bicarbonate at 37 °C, standard base excess, and plasma lactate |
 | Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after measurement and processing effects |
 | Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Breath pressures and exhaled gas measurements |
@@ -84,24 +84,11 @@ AnaSim supports adults aged 18 to 70 years within the [input
 limits](CLI_USAGE.md#fields) for body size, hemoglobin, organ function, and
 patient conditions.
 
-Coronary disease reduces coronary flow reserve. Myocardial oxygen demand is
-based on the rate-pressure product, with a basal demand that remains as
-mechanical work falls (Harasawa 1992). Supply depends on diastolic pressure
-above the coronary zero-flow pressure (Nanto 2001), diastolic time, and
-arterial oxygen content. A sustained mismatch between supply and demand causes
-reversible contractile depression and ST depression.
-
-Cerebral oxygen supply falls with MAP below 50 mmHg and with arterial oxygen
-content below two-thirds of baseline. Severe supply failure reduces
-responsiveness, airway tone, and BIS within seconds (Nebout 2013), and
-near-complete failure stops breathing. Function recovers within about two
-minutes after supply returns. After a total of 5 minutes of complete failure,
-the patient remains comatose with a flat BIS, although breathing can return.
-
-Heart failure changes resting cardiac output, filling pressure, and sensitivity
-to loading conditions (Schwartzenberg 2012; Westermann 2008). With reduced
-ejection fraction, stroke volume is more sensitive to afterload. With preserved
-ejection fraction, the ventricle is stiffer and fills less during tachycardia.
+Coronary disease reduces coronary flow reserve. Heart failure changes resting
+cardiac output, filling pressure, and sensitivity to loading conditions
+(Schwartzenberg 2012; Westermann 2008). With reduced ejection fraction, stroke
+volume is more sensitive to afterload. With preserved ejection fraction, the
+ventricle is stiffer and fills less during tachycardia.
 
 COPD combines persistent obstruction, hyperinflation, gas trapping, dead space,
 and impaired gas exchange, with a normal resting PaCO₂. Acute bronchospasm adds
@@ -145,14 +132,19 @@ When blood volume changes, the vascular part of each drug's central volume is
 rescaled. Shed blood carries drug away at plasma concentration, so blood loss
 alone leaves the concentration unchanged; other volume changes conserve drug
 mass. Clearance depends on organ function, renal perfusion, and cardiac output
-as specified by each model.
-Fentanyl and lidocaine clearances were measured during anesthesia and surgery,
-so they apply at the model's cardiac output under anesthesia (Bae 2020; Foong
-2025). Renal perfusion affects only the renal clearance that remains after any
-renal impairment. Blood loss reduces propofol and remifentanil clearance, and
-volume replacement restores it, based on swine data (Johnson 2001, 2003, 2004).
-Midazolam and propofol reduce each other's clearance within the concentration
-ranges studied (Vuyk 2009; Lichtenbelt 2010).
+as specified by each model. Fentanyl and lidocaine clearances were measured
+during anesthesia and surgery, so they apply at the model's cardiac output under
+anesthesia (Bae 2020; Foong 2025). Renal perfusion affects only the renal
+clearance that remains after any renal impairment. Blood loss reduces propofol
+and remifentanil clearance, and volume replacement restores it, based on swine
+data (Johnson 2001, 2003, 2004). Midazolam and propofol reduce each other's
+clearance within the concentration ranges studied (Vuyk 2009; Lichtenbelt 2010).
+Below 30% of resting cardiac output, drug transport to organs, peripheral
+compartments, and effect sites falls in proportion to flow, so a dose given
+during arrest waits until compressions circulate it. Esterase metabolism of
+remifentanil, succinylcholine, and esmolol continues without flow, and
+sugammadex still binds rocuronium in plasma. TCI predicts with the same
+transport, so effect-site TCI pauses while no drug reaches the effect site.
 
 TCI predicts concentrations from the current PK parameters and adjusts infusion
 rates within pump limits. Clinical pumps use population models, so with
@@ -225,7 +217,8 @@ laryngoscopy tolerance are both below 0.1 and central muscle strength is above
 action proceed, when the tube is placed in a responsive patient, when a
 neuromuscular blocker is given to a responsive patient without an induction
 dose in plasma, when the tube is removed during apnea or residual block (TOF
-ratio or T1 below 90%), and when assisted ventilation stops during apnea.
+ratio or T1 below 90%), when assisted ventilation stops during apnea, and when
+a shock is delivered to a responsive patient.
 
 ### Neuromuscular block
 
@@ -328,24 +321,9 @@ with fentanyl and that antimuscarinics block (Poterman 2017). Its size matches
 the fall in HR after induction in VitalDB TIVA cases. Septic tachycardia depends
 directly on sepsis severity and persists under anesthesia.
 
-**Cardiac arrest.** Arrest is confirmed when VF, asystole, HR below 10 bpm, or
-PEA lasts 15 seconds. PEA is forward flow below 0.3 L/min with pulse pressure
-below 5 mmHg while the ECG remains organized. The simulation continues through
-arrest, so the instructor can change the rhythm and the learner can treat the
-cause.
-
-Severe myocardial ischemia or hypoxemia first depletes an energy reserve that
-lasts about 4 minutes without circulation. Restoring a perfusing rhythm within
-this time restores circulation, as defibrillation does in the electrical phase
-of arrest (Weisfeldt 2002). The heart then slows over several minutes: P waves
-disappear (junctional rhythm), and complexes widen and shrink (idioventricular,
-then agonal rhythm) until the ECG is flat. Untreated VF becomes fine and then
-asystole. Resuscitation is not modeled, so the session ends when the ECG is
-flat, about 11 minutes after circulation stops.
-
-Below pH 7.2, contractility and the response to adrenergic drugs fall linearly
-to 30% at pH 6.8, extrapolated from isolated failing human myocardium
-(Schotola 2012).
+**Acidemia.** Below pH 7.2, contractility and the response to adrenergic drugs
+fall linearly to 30% at pH 6.8, extrapolated from isolated failing human
+myocardium (Schotola 2012).
 
 ### Cardiovascular drugs
 
@@ -358,8 +336,10 @@ depends on propofol (Li 2024). Its effects on resistance and stroke volume
 increase with anesthetic depth. Epinephrine uses arterial clearance. Its cardiac
 and vascular responses are calibrated to boluses in awake and anesthetized
 patients and to infusions in awake volunteers (Ensinger 1992; Guinard 1995;
-Takahashi 2002; Freyschuss 1986). Phenylephrine recruits venous blood and raises
-afterload, so its effect on cardiac output depends on preload (Rebet 2016).
+Takahashi 2002; Freyschuss 1986). At arrest doses, a lower-affinity alpha
+effect raises vascular resistance further. Phenylephrine recruits venous blood
+and raises afterload, so its effect on cardiac output depends on preload (Rebet
+2016).
 
 Ephedrine uses the oral disposition and tolerance reported by Persky 2004,
 applied to intravenous use. Its peak responses are calibrated to Meng 2011, and
@@ -373,6 +353,78 @@ cardiac output through sympathetic stimulation and depresses the baroreflex at
 anesthetic concentrations (Tweed 1972; Akine 2001). Its effect on HR starts
 sooner than its effect on cardiac output and adds a fixed increase, including
 after atropine (Bovill 1972).
+
+### Heart and brain oxygen supply
+
+Myocardial oxygen demand is based on the rate-pressure product, with a basal
+demand that remains as mechanical work falls (Harasawa 1992). Fibrillating
+myocardium uses most of the resting demand of the beating heart. Supply depends
+on diastolic pressure above the coronary zero-flow pressure (Nanto 2001),
+diastolic time, coronary flow reserve, and arterial oxygen content. A sustained
+mismatch between supply and demand causes reversible contractile depression and
+ST depression.
+
+Cerebral oxygen supply falls with MAP below 50 mmHg and with arterial oxygen
+content below two-thirds of baseline. Brain oxygen stores buffer a fall in
+supply for a few seconds. As tissue oxygen falls from 60% to 35% of normal
+(Astrup 1981), responsiveness, airway tone, and BIS fail (Nebout 2013), and
+near-complete failure stops breathing. After circulation stops, this failure
+begins at about 4 seconds, and the EEG is flat at about 11 seconds (de Vries
+1998). Function recovers within about two minutes after supply returns. Below
+20% of normal, neurons are injured, more slowly the more supply remains (Jones
+1981). After the equivalent of 5 minutes without supply, the patient remains
+comatose, although BIS and breathing can recover.
+
+CO₂ narcosis reduces responsiveness and airway tone without anoxic injury. Its
+severity depends on both PaCO₂ and pH (Westlake 1955). With acidemia, it rises
+as PaCO₂ increases from 60 to 100 mmHg and pH falls from 7.3 to 7.1. In
+compensated hypercapnia, it rises as PaCO₂ increases from 100 to 140 mmHg.
+Onset and recovery have a 30-second time constant. CO₂ does not change BIS
+directly; BIS was unchanged at EtCO₂ 3-12 kPa under propofol anesthesia
+(Turnbull 2008).
+
+### Cardiac arrest and resuscitation
+
+Arrest is confirmed when VF, asystole, HR below 10 bpm, or PEA lasts 15
+seconds. PEA is output from the heart's own beats below 0.3 L/min with pulse
+pressure below 5 mmHg while the ECG remains organized. The simulation continues
+through arrest, so the learner can resuscitate and treat the cause.
+
+Severe myocardial ischemia or hypoxemia first depletes an energy reserve that
+lasts about 4 minutes without circulation. Within this time, a perfusing rhythm
+restores circulation, as defibrillation does in the electrical phase of arrest
+(Weisfeldt 2002). The heart then slows over several minutes: P waves disappear
+(junctional rhythm), and complexes widen and shrink (idioventricular, then
+agonal rhythm) until the ECG is flat. Untreated VF becomes fine and then
+asystole. Meanwhile, injury that reperfusion does not reverse builds up and
+reduces contractility. The session ends when this injury is complete, about 11
+minutes after circulation stops.
+
+[Chest compressions](../anasim/physiology/resuscitation.py) at 110/min pump a
+fifth of resting cardiac output when the heart is normally filled, and little
+after major blood loss. This flow and vascular resistance set arterial pressure
+between compressions, and each compression adds a pulse that does not drive
+flow. Coronary flow occurs between compressions. The energy reserve recovers
+when diastolic pressure exceeds about 25 mmHg, the CPR target in Meaney 2013,
+which corresponds to the coronary perfusion pressure that return of circulation
+required in Paradis 1990. In an anesthetized adult, compressions give about
+70/25 mmHg and EtCO₂ near 20 mmHg, so CPR keeps VF coarse and makes fine VF
+coarse again. Epinephrine 1 mg raises diastolic pressure by about 13 mmHg.
+In primary asystole, beats resume after 30 seconds of adequate coronary oxygen
+supply during compressions if energy remains and the myocardium is viable. An
+interruption or inadequate perfusion restarts this interval.
+
+A 200 J biphasic shock terminates coarse VF 9 times in 10, and fine VF less
+often. The heart then beats only as well as its energy reserve and injury
+allow, so a late shock without CPR leaves PEA or asystole. Synchronized shocks
+fire on the next R wave and usually convert AF, SVT, and VT; they cannot fire
+in VF or asystole, and compressions do not trigger them. An unsynchronized
+shock that falls near the T-wave peak of an organized rhythm causes VF 15% of
+the time.
+
+Each shock needs a new charge, which takes 5 seconds and expires after 60
+seconds (ZOLL R Series). Compressions can continue while it charges. Disarming
+cancels a charge or a pending synchronized shock.
 
 ### Fluids
 
@@ -437,9 +489,9 @@ shunt bypassing the lungs. Two tissue groups and an extracellular pool store
 CO₂, with calibrated capacities (Magor-Elliott 2021; Wooten 2003). Blood flow
 determines exchange with these stores, and respiratory feedback responds to
 arterial PCO₂. Lung tissue accounts for 5% of oxygen consumption and CO₂
-production and exchanges directly with alveolar gas (Loer 1997). During cardiac
-arrest, ventilation therefore lowers alveolar PCO₂ only to about 2 mmHg, while
-the contents of arterial blood stay the same.
+production and exchanges directly with alveolar gas (Loer 1997). Without
+pulmonary blood flow, ventilation therefore lowers alveolar PCO₂ only to about
+2 mmHg.
 
 When the airway is closed, absorption of gas shrinks the lung gas volume and
 leads to absorption atelectasis. The model tracks this absorbed volume
@@ -539,16 +591,20 @@ breaths holds the pharynx open.
 
 ## Monitors
 
-ECG, arterial pressure, and plethysmography use the same beat timing. The
-arterial waveform depends on MAP, stroke volume, and age-dependent arterial
-compliance (Mahdi 2017; Franklin 1997). Compliance increases as pressure falls
-(Langewouters 1984), so pulse pressure narrows during hypotension and widens
-with vasopressors. Under propofol, systolic pressure falls about twice as much
-as diastolic pressure (three times as much in Ebert 1992 and Jeleazcov 2015).
-Catheter and transducer dynamics filter the arterial pressure measurements. HR
-is averaged over beat intervals. Pulse oximetry responds to rhythm and
-perfusion, and poor perfusion delays readings and reduces the plethysmograph
-amplitude.
+ECG, arterial pressure, and plethysmography use the same beat timing, and HR
+is averaged over beat intervals. The arterial waveform depends on MAP, stroke
+volume, and age-dependent arterial compliance (Mahdi 2017; Franklin 1997).
+Compliance increases as pressure falls (Langewouters 1984), so pulse pressure
+narrows during hypotension and widens with vasopressors. Under propofol,
+systolic pressure falls about twice as much as diastolic pressure (three times
+as much in Ebert 1992 and Jeleazcov 2015). Catheter and transducer dynamics
+filter the arterial pressure measurements. Pulse oximetry responds to rhythm
+and perfusion, and poor perfusion delays readings and reduces the
+plethysmograph amplitude.
+
+Without flow, arterial pressure falls to the mean systemic filling pressure.
+During chest compressions, arterial pressure and plethysmography follow the
+compressions, the ECG shows compression artifact, and NIBP fails.
 
 Spirometry measures ventilator, bag, and unassisted breaths. Expired tidal
 volume comes from completed breaths, and respiratory rate and minute ventilation
@@ -563,7 +619,8 @@ airway device, the impedance respiratory rate counts breathing efforts,
 including during obstruction. The gas monitor displays end-tidal age-adjusted
 MAC, while anesthetic effects use brain MAC.
 
-BIS includes processing delay and smoothing. The [neuromuscular
+BIS includes processing delay and smoothing, which also delay its response to
+cerebral ischemia. The [neuromuscular
 monitor](../anasim/monitors/neuromuscular.py) measures TOF or single twitch on
 demand or at a set interval. TOF reports the twitch count and, when all four
 twitches are present, the T4/T1 ratio. Ratios from weak twitches are flagged.

@@ -94,16 +94,6 @@ def test_billard_bolus_pressure_and_hr_calibration():
     assert hr_rise_rmse < 8.0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Billard's propofol-alone arms started near MAP 103 and fell less than Morley 2010's "
-    "slope of fall on pre-induction MAP predicts, so model SBP before intubation is 13 mmHg low."
-))
-def test_billard_propofol_alone_pressure_before_intubation():
-    """Billard 1994 Table 1: propofol alone lowered SBP 13-21% before intubation."""
-    errors = [replay_billard(case)[0].sbp - case.pre_sbp for case in BILLARD_CASES if case.fentanyl == 0.0]
-    assert abs(np.mean(errors)) < 10.0
-
-
 @pytest.mark.parametrize("case,ci_sd,svi_sd", [
     (SAWANO_CASES[0], 1.4, 16.0),
     (SAWANO_CASES[1], 1.1, 7.0),

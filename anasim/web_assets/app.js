@@ -315,7 +315,7 @@ function onTick(snap) {
     arrestShown = true;
     confirmDialog(
       "Simulation endpoint reached",
-      `Cardiac arrest: ${snap.arrest_reason}.\n\nResuscitation is not modeled.`,
+      `Cardiac arrest: ${snap.arrest_reason}.\n\nProlonged ischemia has left the heart unable to recover.`,
       [["Review final state", "outlined"], ["Start a new session", "primary"]],
     ).then((choice) => choice === 1 && newSession());
   }
