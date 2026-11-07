@@ -371,9 +371,17 @@ def require_crisis_resolved_with_map(
 
 def require_map_at_least(threshold: float = 65) -> Requirement:
     def check(engine) -> tuple[bool, str]:
+        state = engine.state
+        if not engine.config.arterial_line_enabled and (
+            state.nibp_timestamp is None or state.time - state.nibp_timestamp > 60.0
+        ):
+            return False, "Measure blood pressure again"
         map_val = monitor_value(engine, "map")
-        met = map_val >= threshold
-        return met, "" if met else f"MAP: {map_val:.0f}/{threshold:.0f}+"
+        if map_val < threshold:
+            return False, f"MAP: {map_val:.0f}/{threshold:.0f}+"
+        if state.map < threshold:
+            return False, "Reassess blood pressure and perfusion"
+        return True, ""
     return check
 
 

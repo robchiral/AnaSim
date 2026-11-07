@@ -13,14 +13,27 @@ from .base import (
     create_observe_step,
     crisis_outcomes,
     require_all,
-    require_crisis_stopped,
+    require_crisis_resolved_with_map,
     require_fluid_bolus,
     require_infusion_started,
-    require_map_at_least,
     require_oxygen_flow,
-    require_oxygenation,
     require_tracheal_ventilation,
 )
+
+
+def _prepare(engine) -> None:
+    # Brown 2004 gave 1000 mL saline over 1-3 min.
+    engine.fluid_infusion_rate_ml_min = 500.0
+
+
+def _start(engine) -> None:
+    engine.start_anaphylaxis()
+    engine.anaphylaxis.severity = 1.0
+
+
+def _require_bronchospasm_improved(engine) -> tuple[bool, str]:
+    improved = engine.state.bronchospasm < 0.5
+    return improved, "" if improved else "Continue treating bronchospasm and reassess airway pressure"
 
 
 def _require_epinephrine_started() -> Requirement:
@@ -58,6 +71,7 @@ def create_anaphylaxis_scenario() -> Scenario:
                 "0.05 mcg/kg/min = 3.5 mcg/min for 70 kg).<br><br>"
                 "Give <b>100% oxygen</b>: set O₂ 10 L/min, air and N₂O 0 L/min. "
                 "Maintain ventilation and assess the airway while treating circulation. "
+                "Select <b>Stop suspected trigger</b> promptly, alongside resuscitation. "
                 "If hypotensive, turn off the volatile anesthetic and vasodilating infusions, "
                 "and consider an amnestic agent such as midazolam."
             ),
@@ -90,10 +104,8 @@ def create_anaphylaxis_scenario() -> Scenario:
                 "In practice, arrange tryptase sampling and allergy follow-up."
             ),
             check_requirements=require_all(
-                require_crisis_stopped("anaphylaxis", "Stop the suspected trigger"),
-                require_map_at_least(),
-                require_oxygenation(),
-                require_tracheal_ventilation,
+                require_crisis_resolved_with_map("anaphylaxis", fail_crisis="Stop the suspected trigger"),
+                _require_bronchospasm_improved,
             ),
         ),
     ]
@@ -102,11 +114,12 @@ def create_anaphylaxis_scenario() -> Scenario:
         id="anaphylaxis_response",
         name="Anaphylaxis management",
         briefing=CRISIS_BRIEFING,
+        setup_engine=_prepare,
         steps=steps,
         events=(CaseEvent(
             "anaphylaxis", CRISIS_ONSET_S,
             "Shortly after an antibiotic dose, blood pressure falls and airway pressure rises.",
-            lambda engine: engine.start_anaphylaxis(),
+            _start,
         ),),
         actions=(CaseAction(
             "stop_trigger", "Stop suspected trigger",
@@ -116,6 +129,9 @@ def create_anaphylaxis_scenario() -> Scenario:
         outcomes=(
             CaseOutcome("epinephrine", "Epinephrine started", lambda engine: epinephrine(engine)[0],
                         "Give epinephrine promptly for severe perioperative anaphylaxis.", milestone=True),
+            CaseOutcome("bronchospasm", "Bronchospasm improved",
+                        lambda engine: _require_bronchospasm_improved(engine)[0],
+                        "Reassess airway pressure and ventilation after treating bronchospasm."),
             *crisis_outcomes("anaphylaxis", fluids),
         ),
     )

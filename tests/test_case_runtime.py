@@ -38,21 +38,83 @@ def test_independent_cases_send_no_guide_text_and_end_with_a_debrief(spec):
 
 
 @pytest.mark.parametrize("mode", ["guided", "independent"])
-@pytest.mark.parametrize("case,event", [
-    ("hemorrhage_response", "hemorrhage"), ("sepsis_response", "sepsis"),
-    ("anaphylaxis_response", "anaphylaxis"), ("oxygen_supply_failure", "oxygen_supply"),
+@pytest.mark.parametrize("case,event,dt", [
+    ("hemorrhage_response", "hemorrhage", 0.1),
+    ("sepsis_response", "sepsis", 0.01), ("sepsis_response", "sepsis", 0.1),
+    ("anaphylaxis_response", "anaphylaxis", 0.01), ("anaphylaxis_response", "anaphylaxis", 0.1),
+    ("oxygen_supply_failure", "oxygen_supply", 0.1),
 ])
-def test_crises_start_once_on_the_case_clock_without_clicking_steps(mode, case, event):
+def test_crises_start_once_on_the_case_clock_without_clicking_steps(mode, case, event, dt):
     session = WebSession({"scenario_id": case, "practice_mode": mode})
-    session.engine.config.dt = 0.1
+    session.engine.config.dt = dt
     assert session.case_run is not None and not session.case_run.fired
     assert session.snapshot()["scenario"]["actions"] == []
     advance(session, 31)
     assert session.case_run.fired == {event}
     observations = session.snapshot()["scenario"]["observations"]
     assert len(observations) == 1 and observations[0]["time"] == pytest.approx(30, abs=0.11)
-    advance(session, 10)
+    advance(session, 14)
     assert session.snapshot()["scenario"]["observations"] == observations
+    if event in {"anaphylaxis", "sepsis"}:
+        assert session.engine.state.map < 65
+        assert session.engine.state.monitored_blood_pressure(True)[2] < 65
+
+
+@pytest.mark.parametrize("dt", [0.1, 1.0])
+def test_untreated_severe_anaphylaxis_does_not_recover_normal_pressure(dt):
+    session = WebSession({"scenario_id": "anaphylaxis_response"})
+    engine = session.engine
+    engine.config.dt = dt
+    engine.set_continuous_fluid_rate(0)
+    model = engine.hemo
+    initial_volume = engine.state.blood_volume
+    cells, hemoglobin = model.red_cell_volume_ml, model.hb_mass
+    advance(session, 900)
+    assert engine.anaphylaxis.active and engine.anaphylaxis.severity == 1
+    assert engine.state.map < 65
+    assert engine.state.blood_volume < 0.7 * initial_volume
+    assert engine.state.bronchospasm > 0.9
+    assert model.red_cell_volume_ml == cells
+    assert model.hb_mass == hemoglobin
+    assert model.hb_conc > model.baseline_hb
+    assert (model.blood_volume + model.total_third_space_ml + model.lung_water_ml
+            + model.crystalloid.interstitial_ml + model.total_urine_out_ml) == pytest.approx(initial_volume)
+
+
+@pytest.mark.parametrize("arterial_line", [False, True])
+def test_anaphylaxis_recovery_requires_current_pressure_and_cuff_reassessment(arterial_line):
+    session = WebSession({"scenario_id": "anaphylaxis_response", "arterial_line_enabled": arterial_line})
+    session.engine.config.dt = 0.1
+    advance(session, 31)
+    command(session, "scenario_next")
+    command(session, "drug_bolus", key="epi", amount=100)
+    command(session, "fgf", o2=10, air=0, n2o=0)
+    command(session, "scenario_next")
+    command(session, "fluid", kind="crystalloid", volume_ml=1000)
+    command(session, "scenario_next")
+    command(session, "case_action", action="stop_trigger")
+    assert session.engine.state.monitored_blood_pressure(arterial_line)[2] >= 65
+    assert session.engine.state.map < 65
+    state = session.snapshot()["scenario"]
+    assert state["id"] == "STABILIZE" and not state["met"]
+    assert "Reassess blood pressure and perfusion" in state["status"]
+    command(session, "scenario_next")
+    assert not session.snapshot()["scenario"]["complete"]
+
+    command(session, "drug_rate", key="epi", rate=6)
+    advance(session, 200)
+    if not arterial_line:
+        assert session.engine.state.map >= 65
+        assert session.snapshot()["scenario"]["status"] == "Measure blood pressure again"
+        command(session, "scenario_next")
+        assert not session.snapshot()["scenario"]["complete"]
+        command(session, "nibp")
+        advance(session, 12)
+    assert session.snapshot()["scenario"]["met"]
+    command(session, "scenario_next")
+    state = session.snapshot()["scenario"]
+    assert state["complete"]
+    assert all(outcome["achieved"] for outcome in state["debrief"]["outcomes"])
 
 
 def test_early_crisis_treatment_counts_without_repeating_doses_or_following_the_guide():

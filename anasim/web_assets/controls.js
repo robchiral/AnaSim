@@ -462,7 +462,9 @@ export class Controls {
       $("c-lipid-feedback").hidden = false;
     };
     const lipidRate = $("c-lipid-rate");
-    const lipidEditor = this.editSettings([lipidRate], () => this.send("lipid_rate", { ml_min: readNumber(lipidRate) }));
+    const lipidEditor = this.editSettings(
+      [lipidRate], () => this.send("lipid_rate", { ml_min: readNumber(lipidRate) }), $("c-lipid-actions"),
+    );
     $("c-lipid-stop").onclick = async () => {
       const result = await this.performAction($("c-lipid-stop"), "lipid_rate", { ml_min: 0 });
       if (!this.destroyed && result !== undefined) lipidEditor.cancel();
@@ -664,7 +666,7 @@ export class Controls {
     $("patient-observation").hidden = !c.convulsions;
     setValue($("c-lipid-rate"), round(c.lipid.rate));
     $("c-lipid-stop").hidden = c.lipid.rate <= 0;
-    setText($("c-lipid-total"), `${round(c.lipid.total_ml)} mL given`
+    setText($("c-lipid-total"), (c.lipid.rate > 0 ? `${round(c.lipid.rate)} mL/min, ` : "") + `${round(c.lipid.total_ml)} mL given`
       + (c.lipid.total_ml > this.lipidMaximum ? "; exceeds 12 mL/kg" : ""));
     this.time = time;
     this.showBloodGases();

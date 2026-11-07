@@ -243,10 +243,11 @@ class HemodynamicConfig:
     sepsis_pressor_resistance: float = 0.50
     # Albumin transcapillary escape about 6.7%/h (Margarson 2002).
     sepsis_leak_fraction_per_hr: float = 0.067
-    # Venous pooling lowers mean systemic pressure (Persichini 2012).
     sepsis_pooling_fraction: float = 0.06  # Fraction of baseline volume made unstressed
 
     anaphylaxis_svr_drop_wood: float = 10.0
+    # Fisher 1986 inferred plasma escape up to 35% of blood volume within 10 min.
+    anaphylaxis_leak_fraction_per_min: float = 0.03
     # Full severity shifts adrenergic agonist responses 3-fold to the right, so
     # 50-100 mcg epinephrine boluses (ANZAAG and ANZCA 2022) restore pressure
     # briefly without overshoot. Calibrated.

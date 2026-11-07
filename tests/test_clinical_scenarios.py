@@ -320,17 +320,22 @@ class TestClinicalAcceptance:
         assert engine.state.pao2 > 1.2 * edema_pao2
         assert engine.state.lung_water > 3.0
 
+    @pytest.mark.parametrize("dt", [0.1, 1.0])
     def test_anaphylaxis_and_epinephrine_rescue(
-        self, anesthetized_engine, advance_time
+        self, anesthetized_engine, advance_time, dt
     ):
-        """Anaphylaxis should combine airway and circulatory signs and respond to epinephrine."""
+        """ANZAAG/ANZCA 2022 guides epinephrine and rapid crystalloid dosing.
+
+        Brown 2004, p. 151: SBP exceeded 90 mmHg within five minutes in all
+        hypotensive sting reactions except one with cannula extravasation.
+        """
         engine = anesthetized_engine
         baseline_sbp = engine.state.sbp
         baseline_gap = engine.state.paw_peak - engine.state.paw_plat
         baseline_mv = engine.state.mv
 
         engine.start_anaphylaxis()
-        advance_time(engine, 120.0)
+        advance_time(engine, 120.0, dt)
 
         assert engine.state.sbp <= baseline_sbp * 0.70
         assert engine.state.map < 65.0
@@ -342,25 +347,28 @@ class TestClinicalAcceptance:
         assert engine.state.mv == pytest.approx(baseline_mv, rel=0.05)
         obstructed_va = engine.state.va
 
-        # ANZCA/ANZAAG: 50-100 mcg IV epinephrine boluses for severe
-        # perioperative anaphylaxis and an initial 1000 mL crystalloid bolus.
+        engine.fluid_infusion_rate_ml_min = 500.0
         engine.give_drug_bolus("epi", 100.0)
         engine.give_fluid(1000.0)
-        # Start near 0.1 mcg/kg/min; repeat boluses and titrate persistent hypotension.
         epi_rate = 6.0
         engine.set_drug_rate("epi", epi_rate)
         peak_map = 0.0
-        for _ in range(6):
-            for _ in range(60):
-                engine.step(1.0)
+        sbp_recovery_s = None
+        for minute in range(1, 7):
+            for sample in range(round(60 / dt)):
+                engine.step(dt)
                 peak_map = max(peak_map, engine.state.map)
+                if sbp_recovery_s is None and engine.state.sbp > 90.0:
+                    sbp_recovery_s = (minute - 1) * 60.0 + (sample + 1) * dt
             if engine.state.map < 65.0:
                 engine.give_drug_bolus("epi", 50.0)
                 epi_rate += 2.0
                 engine.set_drug_rate("epi", epi_rate)
-        advance_time(engine, 60.0)  # Let the last titration step act.
+                if minute % 2 == 0:
+                    engine.give_fluid(1000.0)
+        advance_time(engine, 60.0, dt)
 
-        # Guideline doses restore pressure without a hypertensive crisis.
+        assert sbp_recovery_s is not None and sbp_recovery_s <= 300.0
         assert peak_map < 130.0
         assert engine.state.map >= 65.0
         assert engine.state.bronchospasm < 0.5

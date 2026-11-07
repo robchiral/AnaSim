@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Anaphylaxis and sepsis cases now begin with established shock. Anaphylaxis
+  causes plasma leak, and the case requires improved bronchospasm.
+- Without an arterial line, blood pressure objectives require a cuff reading
+  from the last minute.
 - Sustained high inspiratory effort now fatigues the respiratory muscles.
 - Lidocaine overdose now causes seizures, QRS widening, arrhythmias, and
   circulatory collapse. Added 20% lipid emulsion to the Circulation tab.

@@ -454,6 +454,11 @@ infusion stays in the circulation at first. Fluid also leaves the circulation
 through capillary leak and other slow exchanges into a separate compartment,
 which slowly returns fluid when blood volume is low.
 
+Anaphylaxis causes rapid plasma leak. Red cells stay in the circulation, so
+hemoglobin concentration rises (Fisher 1986). The leak slows as the reaction
+subsides after the trigger is removed, and an ongoing reaction can require
+repeated crystalloid boluses.
+
 Transfused blood tracks donor red-cell volume and hemoglobin separately. A
 raised left atrial pressure increases lung water, shunt, and lung stiffness,
 which links fluid balance to respiratory mechanics and gas exchange.
@@ -667,11 +672,19 @@ such as requesting hemostasis, guided steps, and debrief outcomes. `CaseRun` in
 tracks outcomes, and builds the debrief in both practice modes. Case sessions
 hide the instructor event controls that open simulation provides.
 
-Crises start 30 simulated seconds into the case. Guided requirements count
-actions from the start of the case, or from crisis onset for crisis treatment,
-so the guide never asks for a repeat dose. In independent mode, the browser
-receives no step text, and safety warnings other than a failed intubation
-appear only in the debrief.
+Crises start 30 simulated seconds into the case. Anaphylaxis and sepsis start
+at full severity, and hemorrhage develops through blood loss. In the
+anaphylaxis case, crystalloid boluses run at 500 mL/min.
+
+Guided requirements count actions from the start of the case, or from crisis
+onset for crisis treatment, so the guide never asks for a repeat dose.
+In independent mode, the browser receives no step text, and safety warnings
+other than a failed intubation appear only in the debrief.
+
+Pressure objectives require both the displayed MAP and the current model MAP
+to reach the target. Without an arterial line, the cuff reading must be no
+more than one minute old. Anaphylaxis recovery also requires improved
+bronchospasm.
 
 Milestone outcomes, such as preoxygenation, stay credited once achieved.
 Extubation outcomes are checked when the tube is removed, and the rest must

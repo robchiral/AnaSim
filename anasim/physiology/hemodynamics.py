@@ -908,11 +908,11 @@ class HemodynamicModel:
             plasma_volume = self.blood_volume - self.red_cell_volume_ml
             self.crystalloid.central_ml *= max(0.0, 1.0 - urine_out_ml / plasma_volume)
             self.total_urine_out_ml += urine_out_ml
-        if sepsis_sev > 0.0:
+        leak_rate_per_s = (cfg.sepsis_leak_fraction_per_hr * sepsis_sev / 3600.0
+                           + cfg.anaphylaxis_leak_fraction_per_min * anaph_sev / 60.0)
+        if leak_rate_per_s > 0.0:
             # Capillary leak loses plasma, not red cells.
-            dt_hr = dt / 3600.0
-            leak_fraction = cfg.sepsis_leak_fraction_per_hr * sepsis_sev
-            leak_ml = blood_volume * leak_fraction * dt_hr
+            leak_ml = blood_volume * -math.expm1(-leak_rate_per_s * dt)
             available = max(0.0, blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml))
             actual_leak = min(leak_ml, available)
             if actual_leak > 0:

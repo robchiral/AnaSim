@@ -25,6 +25,7 @@ def create_sepsis_response() -> Scenario:
     def start(engine) -> None:
         start_map.record(engine)
         engine.start_sepsis()
+        engine.sepsis.severity = 1.0
 
     steps = [
         create_observe_step("sepsis"),
@@ -91,7 +92,7 @@ def create_sepsis_response() -> Scenario:
     return Scenario(
         id="sepsis_response",
         name="Septic shock response",
-        briefing=CRISIS_BRIEFING,
+        briefing=f"{CRISIS_BRIEFING} The patient has an intra-abdominal infection.",
         steps=steps,
         events=(CaseEvent(
             "sepsis", CRISIS_ONSET_S,
