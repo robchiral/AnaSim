@@ -79,11 +79,12 @@ def test_supported_patient_boundaries_run_through_integrated_model():
     for patient_kwargs in BOUNDARY_PATIENTS:
         patient = Patient(**patient_kwargs)
         config = SimulationConfig(mode="awake", dt=0.5, rng_seed=1)
+        # The Eleveld BIS processing delay reaches 96 s at age 85.
         engine, baseline = _run(
             patient,
             config,
             (("Propofol", 1.5 * patient.weight),),
-            duration_s=60.0,
+            duration_s=120.0,
         )
 
         _assert_plausible_integrated_state(engine)
@@ -106,7 +107,7 @@ def test_invalid_patient_values_are_rejected():
     invalid_values: tuple[tuple[dict[str, Any], str], ...] = (
         ({"age": float("nan")}, "age"),
         ({"age": 17.0}, "age"),
-        ({"age": 71.0}, "age"),
+        ({"age": 85.1}, "age"),
         ({"weight": 49.9}, "weight"),
         ({"height": "unknown"}, "height"),
         ({"height": 200.1}, "height"),

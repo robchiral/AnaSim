@@ -3,7 +3,7 @@
 import math
 from typing import Any
 
-AGE_RANGE_YEARS = (18.0, 70.0)
+AGE_RANGE_YEARS = (18.0, 85.0)
 WEIGHT_RANGE_KG = (50.0, 200.0)
 HEIGHT_RANGE_CM = (150.0, 200.0)
 BMI_RANGE_KG_M2 = (18.0, 60.0)

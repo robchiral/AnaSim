@@ -81,11 +81,15 @@ class HemodynamicConfig:
     # Propofol pressure equilibration half-times (min) by age-group midpoint.
     # Young volunteers equilibrated over 10-13 min (Jeleazcov 2015), slower than
     # Kazama 1999's estimates below 60; these fit inductions without opioid
-    # (Ebert 1992 and 1995; Billard 1994) and Kazama's older groups. Opioids
-    # equilibrate at remifentanil's rate. Opioid effects level off above the
-    # saturation: Sjøen 2024 found the same induction falls in SAP and HR with
-    # remifentanil doses giving peak Ce of 2, 4, and 8 ng/mL.
-    prop_cv_half_time_by_age: tuple[tuple[float, float], ...] = ((30.0, 11.0), (50.0, 10.5), (65.0, 9.5), (77.5, 10.22))
+    # (Ebert 1992 and 1995; Billard 1994) and Kazama's 60-69 group. At 70-85,
+    # Kazama's patients equilibrated 1.8 times as slowly as at 20-39 and fell
+    # further (SBP IC50 2.09 vs 3.96-4.61 mcg/mL); the potency multiplier is
+    # fitted to VitalDB TIVA patients over 70 and Oh 2025. Opioids equilibrate
+    # at remifentanil's rate. Opioid effects level off above the saturation:
+    # Sjøen 2024 found the same induction falls in SAP and HR with remifentanil
+    # doses giving peak Ce of 2, 4, and 8 ng/mL.
+    prop_cv_half_time_by_age: tuple[tuple[float, float], ...] = ((30.0, 11.0), (50.0, 10.5), (65.0, 9.5), (77.5, 19.8))
+    prop_cv_potency_by_age: tuple[tuple[float, float], ...] = ((65.0, 1.0), (77.5, 1.5))
     opioid_cv_half_time: float = 1.2
     # Remifentanil's own vagal bradycardia, beyond the opioid terms below; it is
     # not seen with fentanyl (Sjøen 2024). Share of HR at saturation, which

@@ -60,7 +60,7 @@ def eligible(case, tracks):
     except ValueError:
         return False
     return (
-        18 <= age <= 70 and 50 <= weight <= 100 and 150 <= height <= 200 and 18 <= weight / (height / 100) ** 2 <= 32
+        18 <= age <= 85 and 50 <= weight <= 100 and 150 <= height <= 200 and 18 <= weight / (height / 100) ** 2 <= 32
         and case["department"] == "General surgery" and not case["dltubesize"]
         and any(name in tracks for name in REMI_RATES)
         and not any(f"Orchestra/{drug}_RATE" in tracks for drug in (*VASOACTIVE, "DEX2", "DEX4"))
@@ -183,7 +183,8 @@ def report(data, settings):
     groups += [(name, [r for r in rows if r["procedure"] == name])
                for name in ("Open, supine", "Laparoscopic or robotic, supine", "Other positions")]
     groups += [(name, [r for r in rows if low <= r["age"] < high])
-               for name, low, high in (("Age under 45", 0, 45), ("Age 45-59", 45, 60), ("Age 60 and over", 60, 200))]
+               for name, low, high in (("Age under 45", 0, 45), ("Age 45-59", 45, 60), ("Age 60-69", 60, 70),
+                                       ("Age 70 and over", 70, 200))]
     lines = report_header("VitalDB TIVA hemodynamics", settings) + [
         "## Methods", "",
         "Recorded propofol and remifentanil pump delivery is the input to the full engine, at its standard parameters.",
@@ -217,6 +218,7 @@ def report(data, settings):
     [(mean, low, high)], _, _, _ = estimate(rows, "posting", False, rng)
     lines += ["", f"Compared with model MAP when each reading appears, all patients: {mean:.1f} ({low:.1f} to {high:.1f}) mmHg."]
     lines += course_table(rows)
+    lines += course_table([r for r in rows if r["age"] >= 70], ", patients aged 70 and over")
     hr = [r["hr"] for r in untreated if "hr" in r]
     if hr:
         lines += ["", f"ECG HR error 3-10 minutes after propofol, untreated: per-patient median "

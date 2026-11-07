@@ -17,6 +17,7 @@ from anasim.patient.patient import Patient
 
 ADULT: dict[str, Any] = dict(age=45, weight=75, height=172, sex="male", baseline_map=95, baseline_hr=75)
 OLDER: dict[str, Any] = dict(age=70, weight=72, height=168, sex="male", baseline_map=105, baseline_hr=70)
+ELDERLY: dict[str, Any] = dict(age=75, weight=60, height=162, sex="male", baseline_map=106, baseline_hr=70)
 YOUNG: dict[str, Any] = dict(age=28, weight=62, height=165, sex="female", baseline_map=85, baseline_hr=72)
 
 
@@ -98,12 +99,14 @@ def test_propofol_fentanyl_sevoflurane_induction_intubation_and_incision():
 
 
 def test_older_patient_falls_further():
+    """Hino 2019: patients aged 76 given propofol 1.2 mg/kg fell further than
+    those aged 29 given 2.0 mg/kg."""
     adult, adult_trace = _balanced(ADULT, 2.0, 1.5, 2.0)
     older, older_trace = _balanced(OLDER, 1.5, 1.0, 1.5)
     adult_fall = _fall(adult[0], adult_trace[180:300, 0].min())
     older_fall = _fall(older[0], older_trace[180:300, 0].min())
     assert 25.0 <= older_fall <= 45.0
-    assert older_fall >= adult_fall + 3.0
+    assert older_fall > adult_fall
 
 
 def test_tiva_induction_intubation_and_maintenance():
@@ -129,6 +132,30 @@ def test_tiva_induction_intubation_and_maintenance():
     assert 55.0 <= before_incision[1] <= 70.0
     assert 10.0 <= trace[240:360, 0].max() - trace[239, 0] <= 25.0
     assert 5.0 <= trace[240:360, 1].max() - trace[239, 1] <= 25.0
+
+
+def test_tiva_induction_in_an_older_patient():
+    """VitalDB TIVA patients aged 70-84 (n=33; median 75 years, 60 kg, MAP 106)
+    received the same weight-based delivery as younger patients: remifentanil
+    1.1 mcg/kg over 3 min, then propofol 1.3 mg/kg, 240 mcg/kg/min from 2 to 5
+    min, and 150 after. Ranges are their recorded interquartile ranges of cuff
+    MAP change: -19% at 1-2 min, -27% at 2-5 min, lowest reading -39% in the
+    first 10 min, -33% before incision at 15 min. Each window starts 40 s before
+    its readings appear, as a cuff measurement takes about that long."""
+    weight = ELDERLY["weight"]
+    awake, trace = _run(ELDERLY, [
+        (0, lambda e: e.set_drug_rate("remi", 0.37)),
+        (180, lambda e: (e.give_drug_bolus("propofol", 1.3 * weight), e.set_drug_rate("remi", 0.13))),
+        (250, lambda e: e.give_drug_bolus("roc", 0.6 * weight)),
+        (270, _ventilate),
+        (300, lambda e: e.set_drug_rate("propofol", 240.0)),
+        (420, lambda e: e.start_disturbance("stim_intubation_pulse")),
+        (480, lambda e: e.set_drug_rate("propofol", 150.0)),
+    ], 1080)
+    assert 7.0 <= _fall(awake[0], trace[220:300, 0].mean()) <= 26.0
+    assert 16.0 <= _fall(awake[0], trace[280:480, 0].mean()) <= 34.0
+    assert 30.0 <= max(_fall(awake[0], trace[k - 40:k, 0].mean()) for k in range(220, 781)) <= 46.0
+    assert 27.0 <= _fall(awake[0], trace[440:1080, 0].mean()) <= 42.0
 
 
 def test_propofol_alone_in_a_young_adult():

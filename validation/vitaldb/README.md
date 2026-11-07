@@ -70,18 +70,19 @@ at the corresponding times. The replays do not include patient positioning or
 pneumoperitoneum. All errors are the model value minus the recorded value.
 
 `vitaldb_tiva.py` replays every eligible propofol-remifentanil case in general
-surgery, including patients who received ephedrine or phenylephrine. From the
-start of propofol to incision, each cuff reading is compared with the model's
-average MAP over the 40 seconds before the reading appeared, which is roughly
-how long the cuff takes to measure. Each patient's readings are used only up to
-the first one that might have led to treatment (MAP below 65 mmHg, SBP below 90,
-or HR below 45), so any treatment given afterward does not affect the result.
+surgery in patients aged 18 to 85, including patients who received ephedrine or
+phenylephrine. From the start of propofol to incision, each cuff reading is
+compared with the model's average MAP over the 40 seconds before the reading
+appeared, which is roughly how long the cuff takes to measure. Each patient's
+readings are used only up to the first one that might have led to treatment (MAP
+below 65 mmHg, SBP below 90, or HR below 45), so any treatment given afterward
+does not affect the result.
 
 The script estimates the mean error with a model that allows each patient their
 own offset, and it gets confidence intervals by resampling patients. The report
 breaks the error down by treatment, type of surgery, and age, compares the
-recorded and model course of MAP, and scores MAP and HR during surgery in
-untreated patients.
+recorded and model course of MAP in all patients and those aged 70 and over, and
+scores MAP and HR during surgery in untreated patients.
 
 `vitaldb_sevo.py` replays induction as it is usually taught in the United
 States: a propofol bolus with fentanyl and sevoflurane. Propofol is timed from
@@ -97,16 +98,16 @@ MAP error, in mmHg with 95% CI:
 
 | Report | Patients | Window | MAP error |
 |---|---:|---|---|
-| TIVA | 301 | Propofol to incision | -1.7 (-2.8 to -0.6) |
-| TIVA, untreated | 114 | Surgery | -1.3 (-3.6 to 0.8) |
-| Sevoflurane | 29 | Propofol to incision | -4.9 (-9.0 to -0.7) |
-| Sevoflurane, untreated | 12 | Surgery | 3.9 (-4.2 to 11.4) |
+| TIVA | 333 | Propofol to incision | -1.8 (-2.8 to -0.7) |
+| TIVA, untreated | 123 | Surgery | -1.6 (-3.8 to 0.8) |
+| Sevoflurane | 29 | Propofol to incision | -4.8 (-8.9 to -0.6) |
+| Sevoflurane, untreated | 12 | Surgery | 3.7 (-4.4 to 11.2) |
 
 Median fall in MAP from the pre-induction value:
 
 | Report | 1 to 2 minutes | Lowest reading in 10 minutes | Before incision |
 |---|---|---|---|
-| TIVA, recorded | 17% | 31% | 27% |
+| TIVA, recorded | 17% | 32% | 28% |
 | TIVA, model | 15% | 30% | 28% |
 | Sevoflurane, recorded | 16% | 29% | 27% |
 | Sevoflurane, model | 14% | 32% | 28% |

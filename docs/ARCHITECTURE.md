@@ -80,7 +80,7 @@ target.
 
 ## Supported patient domain
 
-AnaSim supports adults aged 18 to 70 years within the [input
+AnaSim supports adults aged 18 to 85 years within the [input
 limits](CLI_USAGE.md#fields) for body size, hemoglobin, organ function, and
 patient conditions.
 
@@ -251,12 +251,14 @@ temperature. As a result, pressure falls within minutes of induction, whereas
 compensation is slow.
 
 **Propofol.** The effect of propofol on pressure equilibrates over about 10
-minutes, consistent with Jeleazcov 2015's volunteers and Kazama 1999's older age
-groups. Its effect on vascular resistance is smaller than Su's estimate, as
-Fregolent 2025 also found. Early after induction, propofol alone therefore
-lowers pressure about half as much as propofol with an opioid (Ebert 1992 and
-1995; Billard 1994). Its effect on stroke volume increases less with age than in
-Su's model, consistent with Kazama's finding of similar sensitivity across ages.
+minutes, consistent with Jeleazcov 2015's volunteers and Kazama 1999's patients
+aged 60 to 69. Above 65, the effect develops more slowly and grows larger, as
+Kazama found at 70 to 85 years, with about twice the half-time by age 78. Its
+effect on vascular resistance is smaller than Su's estimate, as Fregolent 2025
+also found. Early after induction, propofol alone therefore lowers pressure
+about half as much as propofol with an opioid (Ebert 1992 and 1995; Billard
+1994). Its effect on stroke volume increases less with age than in Su's model,
+consistent with Kazama's finding of similar sensitivity from 20 to 69 years.
 Propofol's effects on resistance and venous pooling increase with pre-induction
 MAP, so patients with higher starting pressures have larger relative falls
 (Morley 2010).

@@ -118,8 +118,8 @@ def course(seconds, cuff_map, model_map, baseline_map, incision_s):
     return out
 
 
-def course_table(rows):
-    lines = ["", "Change in MAP from pre-induction, all readings without stopping, median (IQR):", "",
+def course_table(rows, group=""):
+    lines = ["", f"Change in MAP from pre-induction, all readings without stopping{group}, median (IQR):", "",
              "| Measure | Patients | Recorded | Model |", "|---|---:|---|---|"]
     for name in ("1-2 min", "2-5 min", "lowest in 10 min", "10 min before incision"):
         pairs = np.array([r["course"][name] for r in rows if name in r["course"]])

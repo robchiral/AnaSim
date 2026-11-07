@@ -195,6 +195,8 @@ PCV-VG, pressure control with volume guarantee.
 - Fregolent et al. (2025). *IFAC-PapersOnLine*. [Su model calibration in surgical patients](https://doi.org/10.1016/j.ifacol.2025.07.125).
 - Jeleazcov et al. (2015). *Br J Anaesth*. [Propofol arterial pressure effect sites in volunteers](https://pubmed.ncbi.nlm.nih.gov/25627394/).
 - Kazama et al. (1999). *Anesthesiology*. [Propofol equilibration for SBP and BIS by age](https://pubmed.ncbi.nlm.nih.gov/10360846/).
+- Hino et al. (2019). *J Anesth*. [Age-stratified propofol and thiopental induction with remifentanil](https://doi.org/10.1007/s00540-019-02657-x).
+- Oh et al. (2025). *Drug Des Devel Ther*. [Blood pressure during propofol TCI induction in patients aged 65 and over](https://doi.org/10.2147/DDDT.S553809).
 - van den Berg et al. (2021). *J Clin Monit Comput*. [Hemodynamics at equipotent propofol-remifentanil pairs](https://pubmed.ncbi.nlm.nih.gov/32488680/).
 - Sjøen et al. (2024). *Acta Anaesthesiol Scand*. [Remifentanil dose and hemodynamics during propofol induction](https://pubmed.ncbi.nlm.nih.gov/38400761/).
 - Sjøen et al. (2023). *Acta Anaesthesiol Scand*. [Propofol dose and hemodynamics during remifentanil-propofol induction](https://pubmed.ncbi.nlm.nih.gov/37291731/).

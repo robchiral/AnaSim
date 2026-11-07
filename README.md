@@ -56,7 +56,7 @@ target-controlled infusion (TCI) to a plasma or effect-site target.
 
 ## Limits
 
-AnaSim supports adults aged 18 to 70 years within the
+AnaSim supports adults aged 18 to 85 years within the
 [input limits](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md#fields).
 The [architecture guide](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md#supported-patient-domain)
 describes how the models represent patient conditions.

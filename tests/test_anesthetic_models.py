@@ -101,12 +101,11 @@ def test_older_patients_lose_responsiveness_at_lower_propofol_and_higher_bis(eng
     and those aged 35 at 58. Hold after Cp/Ce equilibration and average the
     last 30 s before each clinical assessment.
 
-    Age 70 is within the older cohort's 67-96 range and AnaSim's supported
-    domain. Use male patients of each cohort's mean size, controlled
+    Use male patients of each cohort's mean age and size, controlled
     ventilation, and Eleveld TCI in place of the study's Schnider TCI.
     """
     at_loss = {}
-    for age, weight, height in ((35, 76, 173), (70, 71, 166)):
+    for age, weight, height in ((35, 76, 173), (78, 71, 166)):
         engine = engine_factory(
             config=SimulationConfig(mode="awake", tci_enabled=True, concomitant_opioids=False, rng_seed=2),
             start=True, age=age, weight=weight, height=height,
@@ -134,9 +133,9 @@ def test_older_patients_lose_responsiveness_at_lower_propofol_and_higher_bis(eng
         assert loc[0] < 0.5 < loc[-1]
         at_loss[age] = np.interp(0.5, loc, ce), np.interp(0.5, loc, bis)
     assert at_loss[35][1] == pytest.approx(58.0, abs=5.0)
-    assert 65.0 < at_loss[70][1] < 79.0
-    assert at_loss[70][0] < 0.75 * at_loss[35][0]
-    assert at_loss[70][1] > at_loss[35][1] + 5.0
+    assert 65.0 < at_loss[78][1] < 79.0
+    assert at_loss[78][0] < 0.75 * at_loss[35][0]
+    assert at_loss[78][1] > at_loss[35][1] + 5.0
 
 
 def test_induction_uses_separate_clinical_and_bis_sites(awake_engine):

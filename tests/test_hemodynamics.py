@@ -274,25 +274,41 @@ def test_poterman_high_dose_remifentanil_with_and_without_atropine():
     assert results["atropine"][1] > results["saline"][1]
 
 
+def _kazama_sbp(engine_factory, age, target, ic50, gamma):
+    """Model SBP fall (%) after 25 min at constant plasma propofol, and the fall
+    Kazama's curve predicts as a share of the fall from baseline to 80 mmHg."""
+    engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True,
+                            age=age, baseline_map=(130.0 + 2.0 * 80.0) / 3.0)
+    engine.set_airway_mode("ETT")
+    engine.set_vent_settings(rr=12, vt=0.5, peep=0.0, ie="1:2", mode="VCV")
+    engine.set_vent_power(True)
+    for _ in range(60):
+        engine.step(1.0)
+    baseline = engine.state.sbp
+    engine.enable_tci("propofol", target, mode="plasma")
+    for _ in range(1500):
+        engine.step(1.0)
+    expected = 100.0 * (1.0 - 80.0 / baseline) * target**gamma / (ic50**gamma + target**gamma)
+    return 100.0 * (1.0 - engine.state.sbp / baseline), expected
+
+
 @pytest.mark.parametrize("age,ic50,gamma", [(30, 4.61, 1.75), (50, 4.13, 2.12), (65, 3.96, 1.64)])
 def test_kazama_equilibrated_propofol_sbp_by_age(engine_factory, age, ic50, gamma):
-    """Kazama 1999 Table 2: SBP after 22-28 min at constant plasma propofol, as a
-    share of the fall from baseline to 80 mmHg, with these IC50s and slopes.
-    """
+    """Kazama 1999 Table 2: SBP after 22-28 min at constant plasma propofol, with
+    these IC50s and slopes."""
     for target in (4.0, 6.0):
-        engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True,
-                                age=age, baseline_map=(130.0 + 2.0 * 80.0) / 3.0)
-        engine.set_airway_mode("ETT")
-        engine.set_vent_settings(rr=12, vt=0.5, peep=0.0, ie="1:2", mode="VCV")
-        engine.set_vent_power(True)
-        for _ in range(60):
-            engine.step(1.0)
-        baseline = engine.state.sbp
-        engine.enable_tci("propofol", target, mode="plasma")
-        for _ in range(1500):
-            engine.step(1.0)
-        expected = 100.0 * (1.0 - 80.0 / baseline) * target**gamma / (ic50**gamma + target**gamma)
-        assert 100.0 * (1.0 - engine.state.sbp / baseline) == pytest.approx(expected, abs=5.0)
+        fall, expected = _kazama_sbp(engine_factory, age, target, ic50, gamma)
+        assert fall == pytest.approx(expected, abs=5.0)
+
+
+def test_kazama_oldest_group_falls_further(engine_factory):
+    """Kazama 1999: at 70-85 years (mean 79) the SBP IC50 was 2.09 mcg/mL (SE
+    0.19, n=10), below the 3.96 at 60-69. At 4 mcg/mL the fall exceeds the curve
+    at IC50 plus 2 SD."""
+    fall, bound = _kazama_sbp(engine_factory, 79, 4.0, 2.09 + 2.0 * 0.19 * 10**0.5, 1.98)
+    younger, _ = _kazama_sbp(engine_factory, 65, 4.0, 3.96, 1.64)
+    assert fall > bound
+    assert fall > younger
 
 
 def test_pressors_raise_svr_without_beta_effects():

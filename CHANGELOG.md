@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Supported adults aged up to 85 years.
+- Above 65, propofol lowers blood pressure more slowly but further.
+
 ## 1.8 - 2026-11-06
 
 - Anaphylaxis and sepsis cases now begin with established shock. Anaphylaxis

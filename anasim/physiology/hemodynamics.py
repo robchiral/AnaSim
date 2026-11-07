@@ -149,6 +149,7 @@ class HemodynamicModel:
         self._sympathetic_venous_depth = 0.0
         self._epi_venous_alpha = 0.0  # Share of propofol's venous pooling reversed by epinephrine
         self._ke0_prop_cv = math.log(2.0) / _interpolate(patient.age, cfg.prop_cv_half_time_by_age)
+        self._prop_cv_potency = _interpolate(patient.age, cfg.prop_cv_potency_by_age)
         self._ke0_opioid_cv = math.log(2.0) / cfg.opioid_cv_half_time
         # Baselines are resting values, so Su's pre-infusion anxiety transient
         # starts at zero.
@@ -836,7 +837,7 @@ class HemodynamicModel:
         remifentanil = max(0.0, cp_remi if remifentanil_cp is None else remifentanil_cp)
         self.ce_remi_vagal += (remifentanil - self.ce_remi_vagal) * -math.expm1(-self._ke0_opioid_cv * delivery_time)
         self.ce_sevo += (mac_sevo - self.ce_sevo) * -math.expm1(-cfg.ke0_sevo * delivery_time)
-        ce_prop = self.ce_prop_cv
+        ce_prop = self.ce_prop_cv * self._prop_cv_potency
         anesthetic_depth = clamp01(self.ce_sevo + cp_prop / 4.0)
         self._sympathetic_venous_depth += (
             clamp01(max(0.0, cp_prop) / cfg.propofol_sympathetic_cp) - self._sympathetic_venous_depth
@@ -1153,13 +1154,14 @@ class HemodynamicModel:
         self.ce_remi_vagal = max(0.0, cp_remi if remifentanil_cp is None else remifentanil_cp)
         self._sympathetic_venous_depth = clamp01(max(0.0, cp_prop) / self.config.propofol_sympathetic_cp)
         self._epi_venous_alpha = 0.0
-        self._set_drug_factors(self._calc_anesthetic_effects(cp_prop, cp_remi, mac_sevo))
+        ce_prop = max(0.0, cp_prop) * self._prop_cv_potency
+        self._set_drug_factors(self._calc_anesthetic_effects(ce_prop, cp_remi, mac_sevo))
         anesthetic_depth = clamp01(mac_sevo + cp_prop / 4.0)
         tachycardia_depth = clamp01(anesthetic_depth + max(0.0, cp_remi) / self.config.opioid_reflex_ce)
         nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(cn, anesthetic_depth=anesthetic_depth)
         # Venous return at the drug's stressed volume, relative to the reference
         # that keeps Su's response, sets the steady-state preload.
-        self._update_venous_drug_effects(cp_prop, 0.0)
+        self._update_venous_drug_effects(ce_prop, 0.0)
 
         def flow_factor(mcfp: float) -> float:
             rap = self.config.rap_baseline * min(1.0, mcfp / self.mcfp_0)

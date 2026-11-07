@@ -47,7 +47,7 @@ anasim --mode headless --duration 60 --config patient_config.json \
 
 | Field | Default | Units or accepted values |
 |-------|---------|--------------------------|
-| `age` | 40 | 18 to 70 years |
+| `age` | 40 | 18 to 85 years |
 | `weight` | 70 | 50 to 200 kg; use pre-pregnancy weight during pregnancy |
 | `height` | 170 | 150 to 200 cm; BMI must be 18 to 60 kg/m² |
 | `sex` | `"male"` | `"male"` or `"female"` |
