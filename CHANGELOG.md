@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.8 - 2026-11-06
+
 - Anaphylaxis and sepsis cases now begin with established shock. Anaphylaxis
   causes plasma leak, and the case requires improved bronchospasm.
 - Without an arterial line, blood pressure objectives require a cuff reading
