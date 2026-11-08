@@ -10,6 +10,7 @@ from anasim.core.action_log import (
     ACTION_BLOOD_GAS,
     ACTION_CASE_ACTION,
     ACTION_COMPRESSIONS,
+    ACTION_COOLING,
     ACTION_DRUG_BOLUS,
     ACTION_FGF,
     ACTION_FLUID,
@@ -222,6 +223,8 @@ def _describe(record: ActionRecord) -> str | None:
         return f"{label.upper()} flow {amount:g} L/min"
     if action == ACTION_COMPRESSIONS:
         return f"Chest compressions {'started' if label == 'on' else 'stopped'}"
+    if action == ACTION_COOLING:
+        return f"Surface cooling {'started' if label == 'on' else 'stopped'}"
     if action == ACTION_SHOCK:
         return f"{'Synchronized shock' if label == 'synchronized' else 'Shock'} {amount:g} J delivered"
     return None

@@ -627,6 +627,23 @@ class KetaminePK(MammillaryPK):
         )
 
 
+class DantrolenePK(MammillaryPK):
+    """Two-compartment model from the Ryanodex label (mcg/mL).
+
+    At 70 kg, CL is 2.5 L/h and total volume is 36.4 L; V1 gives the label's
+    9 mcg/mL peak after 2.5 mg/kg. Q and the 45 s effect-site half-time are
+    assumed.
+    """
+
+    def __init__(self, patient: Patient):
+        size = patient.weight / 70.0
+        super().__init__(
+            v1=19.45 * size, v2=16.95 * size,
+            cl1=2.5 / 60.0 * size**0.75 * organ_clearance_scaler(patient, hepatic_fraction=1.0),
+            cl2=0.4 * size**0.75, ke0=math.log(2.0) / 0.75,
+        )
+
+
 class AmiodaronePK(MammillaryPK):
     """Korth-Bradley 1996 two-compartment IV model (245 VT/VF patients), mcg/mL.
 

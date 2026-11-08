@@ -128,7 +128,7 @@ def create_cardiac_arrest() -> Scenario:
         ),
         ScenarioStep(
             id="POST_ARREST",
-            title="Care after return of circulation",
+            title="Stabilize after return of circulation",
             instruction=(
                 "Stop compressions once an organized rhythm perfuses. Support <b>MAP ≥ 65 mmHg</b> "
                 "with norepinephrine or epinephrine and ventilate to normal PaCO₂. In practice, "

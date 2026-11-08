@@ -44,6 +44,10 @@ from anasim.physiology.events import SeverityRamp
 from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.physiology.lactate import LactateModel
 from anasim.physiology.lung import LungAeration
+from anasim.physiology.malignant_hyperthermia import (
+    MalignantHyperthermia,
+    triggering_exposure,
+)
 from anasim.physiology.resp_mech import RespiratoryMechanics
 from anasim.physiology.respiration import RespiratoryModel
 from anasim.physiology.resuscitation import (
@@ -63,6 +67,7 @@ from .action_log import (
     ACTION_BAG_MASK,
     ACTION_BLOOD_GAS,
     ACTION_COMPRESSIONS,
+    ACTION_COOLING,
     ACTION_DRUG_BOLUS,
     ACTION_EVENT_START,
     ACTION_EVENT_STOP,
@@ -160,6 +165,7 @@ class SimulationEngine(DrugControllerMixin):
         # is full in about 10 min and resolves over 30 or more.
         self.anaphylaxis = SeverityRamp(onset_rate=0.5 / 60.0, decay_rate=0.1 / 60.0)
         self.sepsis = SeverityRamp(onset_rate=0.1 / 60.0, decay_rate=0.03 / 60.0)
+        self.malignant_hyperthermia = MalignantHyperthermia()
 
         self.auto_laryngospasm_enabled = True
         self.airway_obstruction_manual = 0.0
@@ -427,13 +433,15 @@ class SimulationEngine(DrugControllerMixin):
         )
 
     def event_active(self, name: str) -> bool:
-        """Return whether the "hemorrhage", "anaphylaxis", or "sepsis" event is running."""
+        """Return whether a clinical event is running."""
         if name == "hemorrhage":
             return self.active_hemorrhage
         if name == "anaphylaxis":
             return self.anaphylaxis.active
         if name == "sepsis":
             return self.sepsis.active
+        if name == "malignant_hyperthermia":
+            return self.malignant_hyperthermia.active
         raise ValueError(f"Unknown clinical event: {name!r}")
 
     def _log_event(self, name: str, active: bool, amount: float = 0.0):
@@ -474,8 +482,21 @@ class SimulationEngine(DrugControllerMixin):
         self.stop_hemorrhage()
         self.stop_anaphylaxis()
         self.stop_sepsis()
+        self.stop_malignant_hyperthermia()
         self.stop_disturbance()
         self.intubation_start_time = None
+
+    def start_malignant_hyperthermia(self):
+        """Start the crisis now; onset after a trigger varies, so the instructor or case sets it."""
+        if not triggering_exposure(self.state.mac_sevo, self.pk["succinylcholine"].state.c1):
+            raise ValueError("Malignant hyperthermia requires sevoflurane anesthesia or recent succinylcholine.")
+        self._log_event("malignant_hyperthermia", True)
+        self.malignant_hyperthermia.active = True
+
+    def stop_malignant_hyperthermia(self):
+        """Stop the crisis; it subsides without treatment."""
+        self._log_event("malignant_hyperthermia", False)
+        self.malignant_hyperthermia.active = False
 
     def start_disturbance(self, profile: str):
         """Start a stimulation profile."""
@@ -500,6 +521,12 @@ class SimulationEngine(DrugControllerMixin):
     def set_bair_hugger(self, target_c: float):
         """Set the forced-air warmer target (°C); 0 turns it off."""
         self.state.bair_hugger_target = target_c
+
+    def set_surface_cooling(self, on: bool):
+        """Start or stop surface cooling; it continues until stopped."""
+        if bool(on) != self.state.surface_cooling:
+            self.actions.record(self.state.time, ACTION_COOLING, label="on" if on else "off")
+        self.state.surface_cooling = bool(on)
 
     def attempt_intubation(self) -> ActionFeedback | None:
         """Attempt learner intubation, including stimulation even if placement fails."""

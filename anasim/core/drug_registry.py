@@ -11,6 +11,7 @@ from anasim.patient.patient import Patient
 from anasim.patient.pk_models import (
     AmiodaronePK,
     AtropinePK,
+    DantrolenePK,
     DobutaminePK,
     EphedrinePK,
     EpinephrinePK,
@@ -106,6 +107,10 @@ class DrugSpec:
     tci_range: tuple[float, float] | None = None
     fixed_tci_mode: TCIMode | None = None
     max_rate: MaxRatePolicy | None = None
+    bolus_per_kg: bool = False  # default_bolus is per kg of body weight
+
+    def default_bolus_for(self, weight_kg: float) -> float:
+        return round(self.default_bolus * weight_kg, 1) if self.bolus_per_kg else self.default_bolus
 
     @property
     def has_infusion(self) -> bool:
@@ -338,7 +343,7 @@ DRUG_REGISTRY = (
     ),
     DrugSpec(
         key="epi",
-        name="Epinephrine 100 mcg/mL",
+        name="Epinephrine",
         rate_unit="mcg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
@@ -430,6 +435,17 @@ DRUG_REGISTRY = (
         tci_range=(0.0, 10.0),
         fixed_tci_mode=TCIMode.PLASMA,
         max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_HOUR, 1.0),
+    ),
+    DrugSpec(
+        key="dantrolene",
+        name="Dantrolene",
+        generic_name="Dantrolene",
+        pk_model=_from_patient(DantrolenePK),
+        bolus_unit="mg",
+        default_bolus=2.5,
+        bolus_per_kg=True,
+        bolus_model_scale=1.0,
+        ce_field="dantrolene_ce",
     ),
 )
 

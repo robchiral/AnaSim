@@ -77,7 +77,8 @@ class ThermalModel:
         self.shiver_level = clamp01(self.shiver_level)
         return self.shiver_level
 
-    def step_temperature(self, dt: float, temp_c: float, warmer_target_c: float) -> float:
+    def step_temperature(self, dt: float, temp_c: float, warmer_target_c: float,
+                         surface_cooling: bool = False) -> float:
         """Return core temperature after metabolic heat, environmental loss, and redistribution.
 
         A forced-air warmer target of 0 °C is off.
@@ -101,5 +102,9 @@ class ThermalModel:
         if warmer_target_c > 0:
             warming = tuning.bair_hugger_gain_w_per_c * max(0.0, warmer_target_c - temp_c)
 
-        net_heat_w = production + warming - heat_loss - redistribution_w
+        cooling = 0.0
+        if surface_cooling:
+            cooling = (tuning.surface_cooling_w_per_c * self.surface_area / 1.9
+                       * max(0.0, temp_c - tuning.temp_min_c))
+        net_heat_w = production + warming - heat_loss - redistribution_w - cooling
         return clamp(temp_c + net_heat_w * dt / self.heat_capacity, tuning.temp_min_c, tuning.temp_max_c)

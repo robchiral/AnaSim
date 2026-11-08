@@ -596,7 +596,22 @@ persists after emergence (Benoit 2002).
 Awake thermoregulation maintains the baseline core temperature. Anesthesia
 reduces active regulation, increases heat loss, and redistributes heat from the
 core to the periphery (Matsukawa 1995). Temperature changes metabolic demand,
-and warming adds heat. Opioids and neuromuscular block reduce shivering.
+warming adds heat, and surface cooling removes it. Opioids and neuromuscular
+block reduce shivering.
+
+### Malignant hyperthermia
+
+[Malignant hyperthermia](../anasim/physiology/malignant_hyperthermia.py) can
+start during sevoflurane anesthesia or after succinylcholine. Onset after a
+volatile anesthetic varies and often comes in the second or third hour (Visoiu
+2014), so the instructor or case sets the time. Skeletal muscle hypermetabolism
+continues after the trigger is removed. Untreated, oxygen consumption and
+CO₂ production approach five times baseline, and the gas exchange, lactate,
+and temperature models produce hypercapnia, lactic acidosis, and a rising
+temperature. Tachycardia and rigidity increase with the crisis, and rigidity
+persists under neuromuscular block. Dantrolene PK follows the Ryanodex label.
+Dantrolene controls the crisis and reduces twitch height without TOF fade, but
+leaves ventilation unchanged (Flewellen 1983).
 
 ### Anesthesia machine and ventilation
 
@@ -679,7 +694,7 @@ tracks outcomes, and builds the debrief in both practice modes. Case sessions
 hide the instructor event controls that open simulation provides.
 
 Crises start 30 simulated seconds into the case. Anaphylaxis and sepsis start
-at full severity, and hemorrhage develops through blood loss. In the
+at full severity, while hemorrhage and MH develop over several minutes. In the
 anaphylaxis case, crystalloid boluses run at 500 mL/min.
 
 Guided requirements count actions from the start of the case, or from crisis

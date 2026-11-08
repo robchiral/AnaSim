@@ -68,7 +68,7 @@ def _require_agents_stopped_balanced() -> Requirement:
             return True, ""
         msgs = []
         if not gas_off or not vaporizer_stopped:
-            msgs.append("Turn vaporizer off for this case")
+            msgs.append("Turn off sevoflurane for this case")
         if not high_flow or not flow_changed:
             msgs.append("Set FGF above 6 L/min for this case")
         if not opioid_stopped:
@@ -173,7 +173,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
 
     if is_balanced:
         stop_agents_instruction = (
-            "Turn vaporizer <b>OFF</b>. Stop remifentanil in Medications. "
+            "Turn off <b>sevoflurane</b>. Stop remifentanil in Medications. "
             "Increase FGF to <b>8-10 L/min</b>.<br><br>"
             "<i>High flow accelerates volatile agent washout.</i>"
         )
@@ -181,7 +181,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
         stop_agents_tab: ControlTab = "Machine"
     else:
         stop_agents_instruction = (
-            "Turn <b>OFF</b> propofol and remifentanil infusions.<br><br>"
+            "Stop the <b>propofol and remifentanil</b> infusions.<br><br>"
             "Observe the return of spontaneous breathing as the drug effect decreases."
         )
         stop_agents_check = require_infusions_stopped(
@@ -222,7 +222,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
         ),
         ScenarioStep(
             id="STOP_AGENTS",
-            title="Discontinue anesthetics" if is_balanced else "Stop infusions",
+            title="Stop anesthetics",
             instruction=stop_agents_instruction,
             check_requirements=stop_agents_check,
             target_tab=stop_agents_tab,
@@ -259,7 +259,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
         ),
         ScenarioStep(
             id="EXTUBATE",
-            title="Extubation",
+            title="Extubate",
             instruction=(
                 "With readiness confirmed and the ventilator stopped, select "
                 "<b>Facemask</b> to simulate removing the tracheal tube and applying oxygen. "
@@ -270,11 +270,11 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
         ),
         ScenarioStep(
             id="RECOVERY",
-            title="Post-anesthesia care",
+            title="Begin recovery care",
             instruction=(
                 "Select <b>Facemask</b> and set <b>O₂ 5 L/min</b>, air and N₂O 0 L/min "
                 "to represent supplemental oxygen. Confirm adequate spontaneous breathing, "
-                "<b>SpO₂ > 95%</b>, and <b>MAP ≥ 65 mmHg</b>. A separate PACU mask is not modeled.<br><br>"
+                "<b>SpO₂ > 95%</b>, and <b>MAP ≥ 65 mmHg</b>.<br><br>"
                 "<i>Handoff should cover the procedure, anesthetics, analgesia, airway, blood loss, and current concerns.</i>"
             ),
             check_requirements=require_all(

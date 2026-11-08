@@ -48,8 +48,9 @@ Use Apply to confirm changes to settings.
 | Anesthesia machine | Facemask or tracheal tube, fresh gas flow, vaporizer, and bag-mask ventilation |
 | Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
 | Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF) and single-twitch monitoring, temperature, arterial blood gases, fluid balance, trends, and alarms |
-| Circulation and events | Fluids and blood, chest compressions, defibrillation and synchronized cardioversion, surgical stimulation, airway obstruction, bronchospasm, laryngospasm, hemorrhage, anaphylaxis, sepsis, arrhythmias, and lidocaine toxicity with lipid emulsion |
-| Cases | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, hemorrhage, anaphylaxis, septic shock, oxygen supply failure, and cardiac arrest, each guided or independent with a debrief |
+| Treatments | Fluids and blood, chest compressions, defibrillation and synchronized cardioversion, lipid emulsion, dantrolene, forced-air warming, and surface cooling |
+| Events | Surgical stimulation, airway obstruction, bronchospasm, laryngospasm, arrhythmias, hemorrhage, anaphylaxis, sepsis, malignant hyperthermia, lidocaine toxicity, and oxygen supply failure |
+| Cases | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, and crisis cases that use these events, each guided or independent with a debrief |
 
 Depending on the drug, delivery options include boluses, manual infusions, and
 target-controlled infusion (TCI) to a plasma or effect-site target.

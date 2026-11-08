@@ -10,6 +10,7 @@ from .cardiac_arrest import create_cardiac_arrest
 from .emergence import create_emergence
 from .hemorrhage import create_hemorrhage_response
 from .induction import create_induction_balanced, create_induction_tiva
+from .malignant_hyperthermia import create_malignant_hyperthermia
 from .oxygen_supply import create_oxygen_supply_failure
 from .sepsis import create_sepsis_response
 
@@ -105,6 +106,15 @@ SCENARIO_REGISTRY = (
         surgery=True,
     ),
     ScenarioSpec(
+        "malignant_hyperthermia",
+        "Malignant hyperthermia",
+        "During surgery under sevoflurane: rising EtCO₂, tachycardia, and muscle rigidity.",
+        "steady_state",
+        "balanced",
+        create_malignant_hyperthermia,
+        surgery=True,
+    ),
+    ScenarioSpec(
         "cardiac_arrest",
         "Cardiac arrest",
         "During surgery under TIVA: ventricular fibrillation.",
@@ -126,6 +136,7 @@ __all__ = [
     "create_hemorrhage_response",
     "create_induction_balanced",
     "create_induction_tiva",
+    "create_malignant_hyperthermia",
     "create_oxygen_supply_failure",
     "create_sepsis_response",
 ]

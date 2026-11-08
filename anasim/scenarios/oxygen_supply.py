@@ -49,14 +49,14 @@ def _require_oxygen_recovery(engine) -> tuple[bool, str]:
 
     messages = []
     if not engine.circuit.oxygen_supply_connected:
-        messages.append("Connect backup O₂")
+        messages.append("Connect backup oxygen")
     if fio2 < 0.85:
         messages.append(f"Circuit FiO₂: {fio2 * 100:.0f}%/85%+")
     return False, join_messages(messages)
 
 
 def create_oxygen_supply_failure() -> Scenario:
-    backup_connected = require_oxygen_supply_action(True, "Connect backup O₂")
+    backup_connected = require_oxygen_supply_action(True, "Connect backup oxygen")
     return Scenario(
         id="oxygen_supply_failure",
         name="O₂ supply failure",

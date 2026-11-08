@@ -80,7 +80,12 @@ const medicationGroups = [
   { name: "Vasopressors and inotropes", keys: ["phenyl", "ephedrine", "nore", "epi", "vaso", "dobu", "milri"] },
   { name: "Heart rate and blood pressure", keys: ["atropine", "glyco", "esmolol", "labetalol"] },
   { name: "Neuromuscular blockade and reversal", keys: ["roc", "succinylcholine", "sugammadex"] },
+  { name: "Rescue and antidotes", keys: ["dantrolene", "lipid"] },
 ];
+const medicationSearchTerms = {
+  dantrolene: "malignant hyperthermia MH",
+  lipid: "local anesthetic systemic toxicity LAST",
+};
 const halfTimeDrugs = ["propofol", "remi", "fentanyl"];
 
 export class Controls {
@@ -92,6 +97,7 @@ export class Controls {
     this.bloodGases = [...info.blood_gases];
     this.shownBloodGases = null;
     this.time = 0;
+    this.weight = info.patient.weight;
     this.send = async (name, args) => {
       const result = await send(name, args);
       if (!this.destroyed && result && "feedback" in result) this.showClinicalFeedback(result.feedback);
@@ -190,6 +196,7 @@ export class Controls {
 
   bindMachine() {
     $("c-bair").onchange = () => this.send("bair_hugger", { target_c: Number($("c-bair").value) });
+    $("c-cooling").onclick = () => this.send("surface_cooling", { on: !this.state.surface_cooling });
     for (const button of $("c-airway").querySelectorAll("button")) {
       button.onclick = () => this.send("airway", { mode: button.dataset.value });
     }
@@ -229,6 +236,7 @@ export class Controls {
 
   buildDrugs(drugs) {
     const container = $("drug-cards");
+    const lipid = $("lipid-controls");
     container.replaceChildren();
     $("running-infusion-list").replaceChildren();
     $("running-infusions").hidden = true;
@@ -287,6 +295,12 @@ export class Controls {
         csht: card.querySelector(".csht"),
       };
       w.bolus.value = String(spec.default_bolus);
+      if (spec.key === "dantrolene") {
+        const total = document.createElement("span");
+        total.id = "c-dantrolene-total";
+        total.className = "drug-strength";
+        card.querySelector("summary").append(total);
+      }
       w.bolus.setAttribute("aria-label", `${spec.name} bolus (${spec.bolus_unit})`);
 
       const key = spec.key;
@@ -321,7 +335,9 @@ export class Controls {
         return this.performAction(w.give, "drug_bolus", { key, amount: readNumber(w.bolus) });
       };
       this.drugs[key] = w;
-      this.medicationRows.set(key, { card, name: spec.name, feedback: card.querySelector(".medication-feedback") });
+      this.medicationRows.set(key, {
+        card, name: `${spec.name} ${medicationSearchTerms[key] ?? ""}`, feedback: card.querySelector(".medication-feedback"),
+      });
       if (infusion) this.buildRunningInfusion(key, w);
       card.ontoggle = () => {
         if (!card.open) return;
@@ -341,6 +357,9 @@ export class Controls {
       </div>`;
     this.medicationRows.set("sugammadex", {
       card: reversal, name: "Sugammadex", feedback: reversal.querySelector(".medication-feedback"),
+    });
+    this.medicationRows.set("lipid", {
+      card: lipid, name: `Lipid emulsion 20% ${medicationSearchTerms.lipid}`, feedback: $("c-lipid-feedback"),
     });
     for (const group of this.medicationGroups) {
       for (const key of group.keys) group.section.append(this.medicationRows.get(key).card);
@@ -622,6 +641,7 @@ export class Controls {
     $("c-position").onchange = () => this.send("position", { position: $("c-position").value });
     $("c-anaphylaxis").onclick = () => this.send("anaphylaxis", { active: !this.state.anaphylaxis });
     $("c-sepsis").onclick = () => this.send("sepsis", { active: !this.state.sepsis });
+    $("c-mh").onclick = () => this.send("malignant_hyperthermia", { active: !this.state.malignant_hyperthermia });
   }
 
   syncRhythm(rhythm) {
@@ -663,11 +683,19 @@ export class Controls {
 
   sync(c, time) {
     this.state = c;
-    $("patient-observation").hidden = !c.convulsions;
+    const observations = [];
+    if (c.convulsions) observations.push("Generalized convulsions");
+    if (c.muscle_rigidity) observations.push("Generalized muscle rigidity");
+    $("patient-observation").hidden = observations.length === 0;
+    setText($("patient-observation"), observations.join("; "));
+    setText($("c-dantrolene-total"), c.dantrolene_total_mg > 0
+      ? `${round(c.dantrolene_total_mg, 0)} mg given (${round(c.dantrolene_total_mg / this.weight, 1)} mg/kg)` : "");
+    setPressed($("c-cooling"), c.surface_cooling, c.surface_cooling ? "Stop surface cooling" : "Start surface cooling");
     setValue($("c-lipid-rate"), round(c.lipid.rate));
     $("c-lipid-stop").hidden = c.lipid.rate <= 0;
-    setText($("c-lipid-total"), (c.lipid.rate > 0 ? `${round(c.lipid.rate)} mL/min, ` : "") + `${round(c.lipid.total_ml)} mL given`
-      + (c.lipid.total_ml > this.lipidMaximum ? "; exceeds 12 mL/kg" : ""));
+    setText($("c-lipid-total"), c.lipid.rate <= 0 && c.lipid.total_ml <= 0 ? ""
+      : (c.lipid.rate > 0 ? `${round(c.lipid.rate)} mL/min, ` : "") + `${round(c.lipid.total_ml)} mL given`
+        + (c.lipid.total_ml > this.lipidMaximum ? "; exceeds 12 mL/kg" : ""));
     this.time = time;
     this.showBloodGases();
     this.showClinicalFeedback(c.clinical_feedback);
@@ -745,6 +773,8 @@ export class Controls {
     setValue($("c-position"), c.position);
     setPressed($("c-anaphylaxis"), c.anaphylaxis, c.anaphylaxis ? "Stop anaphylaxis" : "Start anaphylaxis");
     setPressed($("c-sepsis"), c.sepsis, c.sepsis ? "Stop sepsis" : "Start sepsis");
+    setPressed($("c-mh"), c.malignant_hyperthermia,
+      c.malignant_hyperthermia ? "Stop malignant hyperthermia" : "Start malignant hyperthermia");
 
     const circulation = [];
     if (c.hemorrhage.active) circulation.push(`Bleeding ${c.hemorrhage.rate} mL/min`);
@@ -752,6 +782,7 @@ export class Controls {
     if (c.sepsis) circulation.push("Sepsis");
     if (c.ecg_rhythm !== "Sinus rhythm") circulation.push(c.ecg_rhythm);
     this.syncEventSection("circulation", circulation);
+    this.syncEventSection("metabolism", c.malignant_hyperthermia ? ["Malignant hyperthermia"] : []);
     const airway = [];
     if (c.obstruction > 0) airway.push(`Obstruction ${round(c.obstruction, 0)}%`);
     if (c.bronchospasm > 0) airway.push(`Bronchospasm ${round(c.bronchospasm, 0)}%`);

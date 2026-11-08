@@ -112,7 +112,7 @@ def create_anaphylaxis_scenario() -> Scenario:
 
     return Scenario(
         id="anaphylaxis_response",
-        name="Anaphylaxis management",
+        name="Anaphylaxis response",
         briefing=CRISIS_BRIEFING,
         setup_engine=_prepare,
         steps=steps,

@@ -10,6 +10,7 @@ import tempfile
 from collections import deque
 
 from anasim import __version__
+from anasim.core.action_log import ACTION_DRUG_BOLUS
 from anasim.core.clinical_actions import (
     ActionFeedback,
     check_airway_removal,
@@ -73,7 +74,7 @@ FLUIDS = {"crystalloid": "give_fluid", "albumin": "give_albumin", "blood": "give
 SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
 # Instructor event controls; cases start their own events and offer case actions instead.
 EVENT_COMMANDS = frozenset({
-    "hemorrhage", "anaphylaxis", "sepsis", "stop_events", "rhythm", "obstruction",
+    "hemorrhage", "anaphylaxis", "sepsis", "malignant_hyperthermia", "stop_events", "rhythm", "obstruction",
     "bronchospasm", "auto_laryngospasm", "disturbance", "disturbance_profile", "oxygen_supply",
 })
 # Commands still accepted after a case ends.
@@ -223,7 +224,7 @@ class WebSession:
                     "generic_name": spec.generic_name,
                     "rate_unit": spec.rate_unit,
                     "bolus_unit": spec.bolus_unit,
-                    "default_bolus": spec.default_bolus,
+                    "default_bolus": spec.default_bolus_for(patient.weight),
                     "tci_unit": spec.tci_unit if engine.config.tci_enabled else None,
                     "tci_range": spec.tci_range if engine.config.tci_enabled else None,
                     "target_label": _target_label(spec) if engine.config.tci_enabled and spec.has_tci else None,
@@ -534,6 +535,10 @@ class WebSession:
             "airway": engine.state.airway_mode.value,
             "clinical_feedback": self._clinical_feedback,
             "convulsions": engine.state.convulsions,
+            "muscle_rigidity": engine.state.muscle_rigidity,
+            "surface_cooling": engine.state.surface_cooling,
+            "dantrolene_total_mg": sum(r.amount for r in engine.actions.records
+                                       if r.action == ACTION_DRUG_BOLUS and r.label == "dantrolene"),
             "lipid": {"rate": engine.lipid_infusion_ml_min, "total_ml": engine.toxicity.total_lipid_ml},
             "position": engine.hemo.position,
             "fgf": {"o2": circuit.fgf_o2, "air": circuit.fgf_air, "n2o": circuit.fgf_n2o},
@@ -575,6 +580,7 @@ class WebSession:
             "hemorrhage": {"active": engine.active_hemorrhage, "rate": engine.hemorrhage_rate_ml_min},
             "anaphylaxis": engine.anaphylaxis.active,
             "sepsis": engine.sepsis.active,
+            "malignant_hyperthermia": engine.malignant_hyperthermia.active,
             "ecg_rhythm": displayed_rhythm(engine.hemo.state.rhythm_type, engine.hemo.coronary.energy_failure,
                                            engine.toxicity.conduction_block),
             "bair_hugger": engine.state.bair_hugger_target,
@@ -868,6 +874,12 @@ class WebSession:
 
     def _cmd_sepsis(self, active: bool):
         (self.engine.start_sepsis if active else self.engine.stop_sepsis)()
+
+    def _cmd_malignant_hyperthermia(self, active: bool):
+        (self.engine.start_malignant_hyperthermia if active else self.engine.stop_malignant_hyperthermia)()
+
+    def _cmd_surface_cooling(self, on: bool):
+        self.engine.set_surface_cooling(on)
 
     def _cmd_stop_events(self):
         self.engine.stop_events()

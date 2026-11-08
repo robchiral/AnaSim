@@ -42,6 +42,7 @@ def test_independent_cases_send_no_guide_text_and_end_with_a_debrief(spec):
     ("hemorrhage_response", "hemorrhage", 0.1),
     ("sepsis_response", "sepsis", 0.01), ("sepsis_response", "sepsis", 0.1),
     ("anaphylaxis_response", "anaphylaxis", 0.01), ("anaphylaxis_response", "anaphylaxis", 0.1),
+    ("malignant_hyperthermia", "malignant_hyperthermia", 0.1),
     ("oxygen_supply_failure", "oxygen_supply", 0.1),
 ])
 def test_crises_start_once_on_the_case_clock_without_clicking_steps(mode, case, event, dt):

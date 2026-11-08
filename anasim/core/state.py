@@ -109,6 +109,7 @@ class SimulationState:
     ketamine_ce: float = 0.0
     lidocaine_ce: float = 0.0
     amiodarone_ce: float = 0.0
+    dantrolene_ce: float = 0.0  # mcg/mL
     # Combined drug effects: remifentanil-equivalent opioid (ng/mL) and
     # propofol-equivalent hypnotic with etomidate and midazolam (mcg/mL).
     opioid_ce: float = 0.0
@@ -148,6 +149,8 @@ class SimulationState:
     respiratory_fatigue: float = 0.0  # Inspiratory muscle capacity lost, 0-1
     seizure_activity: float = 0.0  # Toxic seizure intensity, 0-1; independent of motor block
     convulsions: bool = False
+    muscle_rigidity: bool = False
+    surface_cooling: bool = False
     tol: float = 0.0  # Probability of tolerating laryngoscopy
     map: float = 90.0
     hr: float = 70.0

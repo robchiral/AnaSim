@@ -438,14 +438,18 @@
             </div>
           </fieldset>
         </div>
-        <label class="inline">Forced-air warmer
-          <select id="c-bair">
-            <option value="0">Off</option>
-            <option value="32">Low (32°C)</option>
-            <option value="38">Medium (38°C)</option>
-            <option value="43">High (43°C)</option>
-          </select>
-        </label>
+        <fieldset class="group temperature-controls">
+          <legend>Temperature</legend>
+          <label class="inline">Forced-air warmer
+            <select id="c-bair">
+              <option value="0">Off</option>
+              <option value="32">Low (32 °C)</option>
+              <option value="38">Medium (38 °C)</option>
+              <option value="43">High (43 °C)</option>
+            </select>
+          </label>
+          <button type="button" class="btn toggle t-warning" id="c-cooling" aria-pressed="false">Start surface cooling</button>
+        </fieldset>
       </div>
 
       <div class="tab-panel" data-panel="Medications" role="tabpanel" hidden>
@@ -461,24 +465,6 @@
           <summary>Medication history</summary>
           <ol id="medication-history-list"></ol>
         </details>
-        <div id="drug-cards"></div>
-        <p id="drug-search-empty" role="status" hidden>No medications found.</p>
-      </div>
-
-      <div class="tab-panel" data-panel="Circulation" role="tabpanel" hidden>
-        <fieldset class="group">
-          <legend>Fluid administration</legend>
-          <div class="button-stack">
-            <button type="button" class="btn" data-fluid="crystalloid" data-volume="250">Lactated Ringer's 250 mL</button>
-            <button type="button" class="btn" data-fluid="crystalloid" data-volume="500">Lactated Ringer's 500 mL</button>
-            <button type="button" class="btn" data-fluid="albumin" data-volume="250">Albumin 250 mL</button>
-            <button type="button" class="btn" data-fluid="blood" data-volume="300">PRBC 300 mL</button>
-          </div>
-          <p id="fluid-feedback" class="action-feedback" role="status" hidden></p>
-          <label class="inline">Maintenance fluid
-            <span class="unit-input"><input id="c-maint" type="number" min="0" max="5000" step="25"><span>mL/hr</span></span>
-          </label>
-        </fieldset>
         <details class="drug-card" id="lipid-controls">
           <summary><span class="drug-name">Lipid emulsion</span><span class="drug-strength">20%</span><span id="c-lipid-total" class="drug-strength"></span></summary>
           <div class="drug-controls">
@@ -500,6 +486,24 @@
             <p id="c-lipid-feedback" class="medication-feedback" role="status" hidden></p>
           </div>
         </details>
+        <div id="drug-cards"></div>
+        <p id="drug-search-empty" role="status" hidden>No medications found.</p>
+      </div>
+
+      <div class="tab-panel" data-panel="Circulation" role="tabpanel" hidden>
+        <fieldset class="group">
+          <legend>Fluid administration</legend>
+          <div class="button-stack">
+            <button type="button" class="btn" data-fluid="crystalloid" data-volume="250">Lactated Ringer's 250 mL</button>
+            <button type="button" class="btn" data-fluid="crystalloid" data-volume="500">Lactated Ringer's 500 mL</button>
+            <button type="button" class="btn" data-fluid="albumin" data-volume="250">Albumin 250 mL</button>
+            <button type="button" class="btn" data-fluid="blood" data-volume="300">PRBC 300 mL</button>
+          </div>
+          <p id="fluid-feedback" class="action-feedback" role="status" hidden></p>
+          <label class="inline">Maintenance fluid
+            <span class="unit-input"><input id="c-maint" type="number" min="0" max="5000" step="25"><span>mL/hr</span></span>
+          </label>
+        </fieldset>
         <fieldset class="group">
           <legend>Chest compressions <span class="legend-unit">110/min</span></legend>
           <button type="button" class="btn toggle t-danger full" id="c-compressions" aria-pressed="false">Start compressions</button>
@@ -551,6 +555,14 @@
             <label class="inline">Cardiac rhythm <select id="c-rhythm"></select></label>
             <button type="button" class="btn toggle t-warning full" id="c-anaphylaxis" aria-pressed="false">Start anaphylaxis</button>
             <button type="button" class="btn toggle t-danger full" id="c-sepsis" aria-pressed="false">Start sepsis</button>
+          </div>
+        </details>
+
+        <details class="event-section" data-event="metabolism">
+          <summary><span>Metabolism</span><output hidden></output></summary>
+          <div class="event-controls">
+            <button type="button" class="btn toggle t-danger full" id="c-mh" aria-pressed="false">Start malignant hyperthermia</button>
+            <p class="dim small">Requires sevoflurane anesthesia or recent succinylcholine.</p>
           </div>
         </details>
 

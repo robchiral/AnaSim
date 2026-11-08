@@ -413,7 +413,7 @@ def require_bag_mask_started(engine) -> tuple[bool, str]:
     """Require bag-mask ventilation to be started during this case."""
     started = action_taken_in_case(engine, ACTION_BAG_MASK, "on")
     met = started and engine.bag_mask_active
-    return met, "" if met else "Turn ON Bag-Mask ventilation"
+    return met, "" if met else "Start bag ventilation"
 
 
 def neuromuscular_response(engine) -> tuple[str, float]:
@@ -462,7 +462,7 @@ def require_vaporizer_started(engine) -> tuple[bool, str]:
     records = engine.actions.since_case(ACTION_VAPORIZER)
     started = any(record.amount > 0 for record in records)
     running = engine.circuit.vaporizer_on and engine.circuit.vaporizer_setting > 0
-    return (True, "") if started and running else (False, "Turn on vaporizer")
+    return (True, "") if started and running else (False, "Start sevoflurane")
 
 
 def require_fgf_reduced(max_total_l_min: float) -> Requirement:

@@ -427,7 +427,7 @@ fieldset:disabled { opacity: 0.5; }
 input.setting-edited, select.setting-edited { border-color: var(--warning); background: color-mix(in srgb, var(--warning) 7%, var(--card)); }
 .vaporizer-setting { display: flex; }
 .manual-ventilation { display: grid; gap: 8px; margin-top: 2px; padding-top: 8px; }
-.manual-ventilation > .btn { justify-self: start; }
+.manual-ventilation > .btn, .temperature-controls > .btn { justify-self: start; }
 .fresh-gas-settings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .circuit-oxygen { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; color: var(--text-secondary); font-size: 11px; }
 .inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

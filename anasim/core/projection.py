@@ -12,6 +12,7 @@ from anasim.patient.pd.anesthesia import (
     opioid_rate_fraction,
 )
 from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
+from anasim.physiology.malignant_hyperthermia import dantrolene_twitch_fraction
 
 from .drug_registry import DRUG_REGISTRY
 from .state import AirwayType, SimulationState
@@ -180,7 +181,8 @@ def sync_neuromuscular_state(engine: SimulationEngine) -> None:
     s = engine.state
     s.tof = float(engine.tof_pd.compute_tof_from_ce(s.roc_ce, s.mac_sevo, s.mac_n2o))
     roc_twitch = 1.0 - engine.tof_pd.twitch_block(s.roc_ce, s.mac_sevo, s.mac_n2o)
-    s.twitch = 100.0 * roc_twitch * succinylcholine_twitch_fraction(s.succinylcholine_ce)
+    s.twitch = (100.0 * roc_twitch * succinylcholine_twitch_fraction(s.succinylcholine_ce)
+                * dantrolene_twitch_fraction(s.dantrolene_ce))
 
 
 def sync_inspired_gas(engine: SimulationEngine) -> tuple[float, float]:

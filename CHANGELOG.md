@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added malignant hyperthermia with dantrolene, surface cooling, and a guided
+  or independent case.
 - Supported adults aged up to 85 years.
 - Above 65, propofol lowers blood pressure more slowly but further.
 - Propofol, remifentanil, and fentanyl TCI now uses only age, weight, height,

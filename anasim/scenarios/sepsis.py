@@ -44,7 +44,7 @@ def create_sepsis_response() -> Scenario:
         ),
         ScenarioStep(
             id="GIVE_FLUIDS",
-            title="Initial fluid resuscitation",
+            title="Give fluids",
             instruction=(
                 "Start a <b>500 mL crystalloid bolus</b> in Circulation and reassess "
                 "the response. Balanced crystalloid is preferred in practice; the simulator's crystalloid is lactated Ringer's. "
@@ -71,7 +71,7 @@ def create_sepsis_response() -> Scenario:
         ),
         ScenarioStep(
             id="SOURCE_CONTROL",
-            title="Source control",
+            title="Request source control",
             instruction=(
                 "Select <b>Request surgical source control</b> to let the simulated inflammatory "
                 "effects subside. Continue hemodynamic support as the patient recovers. "

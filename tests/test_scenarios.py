@@ -17,6 +17,16 @@ from anasim.web import WebSession
 
 # Browser commands for each objective; TCI targets become manual rates when disabled.
 SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = {
+    "malignant_hyperthermia": {
+        "STOP_TRIGGERS": [
+            ("vaporizer", {"percent": 0}),
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+            ("vent", {"rr": 28}),
+            ("drug_rate", {"key": "propofol", "rate": 120}),
+        ],
+        "DANTROLENE": [("drug_bolus", {"key": "dantrolene", "amount": 175})],
+        "STABILIZE": [("bair_hugger", {"target_c": 0})],
+    },
     "hemorrhage_response": {
         "GIVE_FLUIDS": [("fluid", {"kind": "crystalloid", "volume_ml": 500})],
         "START_VASOPRESSOR": [("drug_rate", {"key": "nore", "rate": 12})],

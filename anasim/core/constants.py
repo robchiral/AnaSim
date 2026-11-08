@@ -79,6 +79,8 @@ class ThermalTuning:
     redistribution_core_drop_c: float = 2.0  # At full depth
     redistribution_tau_s: float = 2800.0
     bair_hugger_gain_w_per_c: float = 7.0
+    # Assumed; removes about 350 W at 39 °C, falling to zero at temp_min_c.
+    surface_cooling_w_per_c: float = 25.0
     metabolic_reduction_max: float = 0.2
     depth_propofol_scale: float = 4.0
     specific_heat_j_kg_k: float = 3470.0

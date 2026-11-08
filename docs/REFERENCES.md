@@ -413,6 +413,12 @@ PCV-VG, pressure control with volume guarantee.
 - Matsukawa et al. (1995). *Anesthesiology*. [Heat redistribution after induction](https://pubmed.ncbi.nlm.nih.gov/7879935/).
 - Frank et al. (1997). *JAMA*. [Perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/9087467/).
 
+## Malignant hyperthermia
+
+- DailyMed (2024). [Ryanodex (dantrolene) prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=8f7b3ac0-604d-4c78-b545-5e0f8ea3d698).
+- Flewellen et al. (1983). *Anesthesiology*. [Dantrolene dose response in awake man](https://doi.org/10.1097/00000542-198310000-00002).
+- Visoiu et al. (2014). *Anesth Analg*. [Anesthetic drugs and onset of malignant hyperthermia](https://pubmed.ncbi.nlm.nih.gov/24445637/).
+
 ## Ventilator waveforms
 
 - GE Healthcare. [Avance Carestation 8.X participant guide](https://www.gehealthcare.com/-/jssmedia/60148736cbc34131bbebbec747b696af.pdf).
@@ -449,3 +455,5 @@ PCV-VG, pressure control with volume guarantee.
 - Kietaibl et al. (2023). *Eur J Anaesthesiol*. [ESAIC guidelines for severe perioperative bleeding](https://pubmed.ncbi.nlm.nih.gov/36855941/).
 - Xing et al. (2018). *Pain Med*. [Lidocaine pretreatment for propofol injection pain](https://pubmed.ncbi.nlm.nih.gov/28525614/).
 - Anesthesia Patient Safety Foundation (2019). [Nitrogen contamination of an operating room oxygen pipeline](https://www.apsf.org/article/nitrogen-contamination-of-operating-room-oxygen-pipeline/).
+- Malignant Hyperthermia Association of the United States. [Managing a crisis](https://www.mhaus.org/healthcare-professionals/managing-a-crisis/).
+- European Malignant Hyperthermia Group (2024). [Recognising and managing a malignant hyperthermia crisis](https://www.emhg.org/recommendations-1/2024/11/4/recognising-and-managing-a-malignant-hyperthermia-crisis-v2024).

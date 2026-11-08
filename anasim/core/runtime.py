@@ -68,6 +68,11 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
         cortical_function=engine.cerebral.cortical_function,
     )
     engine.thermal.metabolic_factor *= toxicity.metabolic_factor
+    mh = engine.malignant_hyperthermia
+    mh.step(dt, sevo_mac=state.mac_sevo, succinylcholine_cp=engine.pk["succinylcholine"].state.c1,
+            dantrolene_ce=state.dantrolene_ce)
+    engine.thermal.metabolic_factor += mh.excess_metabolism
+    state.muscle_rigidity = mh.rigidity
     state.seizure_activity = toxicity.seizure_activity
     state.convulsions = toxicity.convulsion_intensity > 0.2
     physiology = step_physiology(engine, dt, disturbances)
@@ -127,7 +132,9 @@ def update_shivering(engine: SimulationEngine, dt: float) -> None:
 def step_temperature(engine: SimulationEngine, dt: float) -> None:
     """Update core temperature from metabolic heat, environmental loss, and redistribution."""
     state = engine.state
-    state.temp_c = float(engine.thermal.step_temperature(dt, state.temp_c, state.bair_hugger_target))
+    state.temp_c = float(engine.thermal.step_temperature(
+        dt, state.temp_c, state.bair_hugger_target, state.surface_cooling,
+    ))
 
 
 def stimulus_effects(engine: SimulationEngine, dt: float) -> DisturbanceEffects:
@@ -445,7 +452,7 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         pit=pit_estimate,
         paco2=resp_state.pa_co2,
         pao2=resp_state.p_arterial_o2,
-        dist_hr=disturbances.hr,
+        dist_hr=disturbances.hr + engine.malignant_hyperthermia.heart_rate_increase,
         dist_sv=disturbances.sv,
         dist_svr=disturbances.svr,
         mac_sevo=mac_sevo,

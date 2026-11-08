@@ -66,14 +66,14 @@ def create_hemorrhage_response() -> Scenario:
                 "or give a red-cell unit (<b>300 mL</b> in this simulator). "
                 "Reassess blood loss and perfusion. Use blood products early for major "
                 "hemorrhage and activate the local massive transfusion protocol when needed. "
-                "Coagulation testing, component therapy, and calcium replacement are clinical actions outside this model."
+                "In practice, use coagulation tests and ionized calcium to guide component therapy and calcium replacement."
             ),
             check_requirements=_require_volume_replacement,
             target_tab="Circulation",
         ),
         ScenarioStep(
             id="START_VASOPRESSOR",
-            title="Vasopressor support",
+            title="Start vasopressor",
             instruction=(
                 "If <b>MAP remains below 65 mmHg</b>, start or adjust norepinephrine "
                 "while replacing volume. A starting rate of 0.05-0.1 mcg/kg/min is "
