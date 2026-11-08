@@ -441,7 +441,7 @@ export class Controls {
       label.hidden = !(minutes > 0);
       if (minutes > 0) {
         setText(label, `Effect-site half-time ~${minutes.toFixed(0)} min`);
-        label.title = "Estimated PK effect-site half-time from the current model state; not a guaranteed wake-up time.";
+        label.title = "Estimated from the pump's population model, which omits hand boluses; not a guaranteed wake-up time.";
       }
     }
   }

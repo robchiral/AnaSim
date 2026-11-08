@@ -34,8 +34,8 @@ from anasim.patient.pd import (
     TOFModel,
     midazolam_loss_of_response,
 )
-from anasim.patient.pk_models import NorepinephrinePK
-from anasim.patient.variability import TYPICAL, sample_variability
+from anasim.patient.pk_models import ANESTHETIZED_OUTPUT, NorepinephrinePK
+from anasim.patient.variability import sample_variability
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.arrhythmia import ArrhythmiaModel, antiarrhythmic_effects
 from anasim.physiology.cerebral import CerebralModel
@@ -125,6 +125,7 @@ class SimulationEngine(DrugControllerMixin):
         # Infusion rates (model units/s) and active TCI controllers, by drug key.
         self.infusion_rates = {spec.key: 0.0 for spec in DRUG_REGISTRY if spec.has_infusion}
         self.tci: dict[str, TCIController] = {}
+        self._pump_needs_reset: set[str] = set()
         self._next_nibp_time = 0.0
 
         self.disturbances = Disturbances(config.disturbance_profile)
@@ -228,11 +229,12 @@ class SimulationEngine(DrugControllerMixin):
         """Build the subsystem models selected by the configuration."""
         # Intravenous drug PK, keyed like the drug registry.
         self.pk = {spec.key: spec.pk_model(self.patient, self.config) for spec in DRUG_REGISTRY}
-        self.pump_pk = {}
-        if self.patient.variability != TYPICAL:
-            typical = copy.copy(self.patient)
-            typical.variability = TYPICAL
-            self.pump_pk = {key: get_drug_spec(key).pk_model(typical, self.config) for key in POPULATION_TCI_DRUGS}
+        p = self.patient
+        pump_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
+        self.pump_pk = {key: get_drug_spec(key).pk_model(pump_patient, self.config) for key in POPULATION_TCI_DRUGS}
+        # Published models were fitted during anesthesia, so they apply at its output.
+        for model in self.pump_pk.values():
+            model.update_hemodynamics(1.0, ANESTHETIZED_OUTPUT)
         self.midazolam_c50 = midazolam_loss_of_response(self.patient.age)
 
         self.circuit = CircleSystem()
@@ -400,9 +402,9 @@ class SimulationEngine(DrugControllerMixin):
         self.actions.record(self.state.time, ACTION_FLUID, label=label, amount=volume_ml)
 
     def give_drug_bolus(self, drug_name: str, amount: float):
-        """Give a bolus in the drug's registry unit; it adds dose / V1 to C1.
+        """Give a hand bolus in the drug's registry unit; it adds dose / V1 to C1.
 
-        Sugammadex goes to the TOF model for binding.
+        Population TCI pumps do not see it. Sugammadex goes to the TOF model for binding.
         """
         amount = float(amount)
         if amount <= 0:
@@ -419,8 +421,6 @@ class SimulationEngine(DrugControllerMixin):
         model = self.pk[spec.key]
         dose = amount * spec.bolus_model_scale
         model.state.c1 += dose / model.v1
-        if pump := self.pump_pk.get(spec.key):
-            pump.state.c1 += dose / pump.v1
         self.sync_active_tci_from_pk(spec.key)
         self.actions.record(
             self.state.time, ACTION_DRUG_BOLUS, label=spec.key, amount=amount

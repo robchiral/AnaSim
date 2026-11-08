@@ -15,8 +15,10 @@ from .state import SimulationConfig, SimulationState
 from .tci import TCIController
 from .units import convert_rate
 
-# Clinical pumps for these drugs use population PK, so for a sampled patient they
-# use the typical patient's model. Vasoactive TCI uses the patient's model.
+# Clinical pumps for these drugs run a population model from age, weight,
+# height, and sex alone. They do not see variability, organ function, blood
+# loss, cardiac output, interactions, or hand boluses. Vasoactive TCI uses the
+# patient's model.
 POPULATION_TCI_DRUGS = ("propofol", "remi", "fentanyl")
 
 
@@ -32,6 +34,7 @@ class DrugControllerMixin:
     pump_pk: dict[str, MammillaryPK]
     infusion_rates: dict[str, float]
     tci: dict[str, TCIController]
+    _pump_needs_reset: set[str]
     _tci_accumulators: dict[str, float]
 
     def prediction_model(self, key: str) -> MammillaryPK:
@@ -44,11 +47,18 @@ class DrugControllerMixin:
         target: float,
         mode: str = TCIMode.EFFECT_SITE.value,
     ):
-        """Start or retarget TCI; fixed-mode drugs ignore the requested compartment."""
+        """Start or retarget TCI; fixed-mode drugs ignore the requested compartment.
+
+        After a manual rate, a population pump starts a new program that assumes
+        no drug on board. After a stop, it resumes its program.
+        """
         spec = get_drug_spec(drug)
         max_rate = _tci_max_rate(spec)
         if not self.config.tci_enabled:
             raise ValueError("TCI is disabled for this session")
+        if spec.key in self._pump_needs_reset:
+            self._pump_needs_reset.discard(spec.key)
+            self.pump_pk[spec.key].reset()
         pk_model = self.prediction_model(spec.key)
         controller = self.tci.get(spec.key)
         target_compartment = (spec.fixed_tci_mode or TCIMode(mode)).value
@@ -98,6 +108,8 @@ class DrugControllerMixin:
         rate = max(0.0, rate_user_unit)
         if spec.key in self.tci:
             self.disable_tci(spec.key)
+        if rate > 0.0 and spec.key in self.pump_pk:
+            self._pump_needs_reset.add(spec.key)
         self.infusion_rates[spec.key] = convert_rate(rate, user_unit, model_unit, weight_kg=self.patient.weight)
         self.actions.record(self.state.time, ACTION_INFUSION_RATE, label=spec.key, amount=rate)
 

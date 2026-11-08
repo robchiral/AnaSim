@@ -19,11 +19,10 @@ from anasim.patient.pk_models import (
 )
 
 
-@pytest.mark.parametrize("variability", [False, True])
-def test_effect_site_tci_pauses_during_arrest_and_resumes_with_compressions(engine_factory, variability):
-    """With variability, TCI predicts from the pump's population model, which must also lose circulation."""
-    config = SimulationConfig(patient_variability=variability, rng_seed=3, tci_enabled=True)
-    engine = engine_factory(config=config, start=True)
+def test_effect_site_tci_infuses_through_arrest(engine_factory):
+    """The pump does not detect arrest. Propofol pools in plasma and reaches the
+    effect site once compressions restore flow."""
+    engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
     engine.enable_tci("propofol", 3.0)
     for _ in range(300):
         engine.step(1)
@@ -31,18 +30,15 @@ def test_effect_site_tci_pauses_during_arrest_and_resumes_with_compressions(engi
     for _ in range(15):
         engine.step(1)
     propofol = engine.pk["propofol"]
-    cp = propofol.state.c1
+    cp, ce = propofol.state.c1, propofol.state.ce
     for _ in range(120):
         engine.step(1)
-        assert engine.infusion_rates["propofol"] == 0.0
-    assert propofol.state.c1 == pytest.approx(cp)
-    assert engine.get_predicted_csht("propofol") == 120.0
+    assert propofol.state.c1 > cp + 1.0
+    assert propofol.state.ce == pytest.approx(ce)
     engine.set_chest_compressions(True)
-    rates = []
-    for _ in range(120):
+    for _ in range(300):
         engine.step(1)
-        rates.append(engine.infusion_rates["propofol"])
-    assert max(rates) > 0.0
+    assert propofol.state.ce > 1.2 * 3.0
 
 
 @pytest.mark.parametrize(
@@ -177,23 +173,37 @@ class TestEngineTCI:
         assert engine.state.roc_ce <= target
         assert predicted == pytest.approx(observed, abs=2.0 / 60.0)
 
-    def test_propofol_target_survives_midazolam_pk_interaction(self, engine_factory):
-        """A midazolam bolus changes live PK while the propofol pump holds its target."""
+    def test_blood_loss_raises_concentrations_above_target(self, engine_factory, advance_time):
+        """Clinical pumps know only age, weight, height, and sex. After a 30%
+        blood loss, lower clearance raises propofol and remifentanil (Johnson
+        2001, 2003) while the pump's prediction stays at target."""
+        engine = engine_factory(config=SimulationConfig(mode="steady_state", tci_enabled=True), start=True)
+        targets = {key: engine.tci[key].target for key in ("propofol", "remi")}
+        bis = engine.state.bis
+        engine.start_hemorrhage(100.0)
+        while engine.hemo.total_blood_out_ml < 0.3 * engine.hemo.blood_volume_0:
+            engine.step(1.0)
+        engine.stop_hemorrhage()
+        advance_time(engine, 1800.0)
+        for key, target in targets.items():
+            assert engine.prediction_model(key).state.ce == pytest.approx(target, rel=0.02)
+            assert engine.pk[key].state.ce > 1.2 * target
+        assert engine.state.bis < bis - 5.0
+
+    def test_propofol_rises_above_target_after_midazolam(self, engine_factory):
+        """Midazolam slows propofol clearance (Vuyk 2009), which the pump's model omits."""
         engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
         engine.set_airway_mode("ETT")
         engine.enable_tci("propofol", 2.0)
         for _ in range(600):
             engine.step(1.0)
-        baseline_signature = engine.tci["propofol"]._signature
         engine.give_drug_bolus("midazolam", 3.0)
         peak = 0.0
         for _ in range(600):
             engine.step(1.0)
             peak = max(peak, engine.state.propofol_ce)
-        assert engine.pk["propofol"].cl1_scale < 0.98
-        assert engine.tci["propofol"]._signature != baseline_signature
-        assert peak < 2.0 * 1.03
-        assert engine.state.propofol_ce == pytest.approx(2.0, rel=0.03)
+        assert engine.prediction_model("propofol").state.ce == pytest.approx(2.0, rel=0.03)
+        assert peak > 1.05 * 2.0
 
     @pytest.mark.parametrize("dt", [0.1, 0.3, 1.0])
     def test_effect_site_induction_reaches_hypnosis_without_overshoot(self, engine_factory, dt):
@@ -241,15 +251,42 @@ class TestEngineTCI:
             assert engine.infusion_rates["propofol"] == pytest.approx(manual_rate * engine.patient.weight / 60000)
         assert not engine.get_drug_state("propofol")["is_tci"]
 
-    def test_target_mode_switch_uses_live_compartments(self, engine_factory):
-        engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
-        engine.give_drug_bolus("propofol", 100)
-        engine.enable_tci("propofol", 4.0)
-        engine.step(0.05)
-        engine.enable_tci("propofol", 2.0, mode="plasma")
+    @staticmethod
+    def _ventilated(engine_factory):
+        engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
+        engine.set_airway_mode("ETT")
+        engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        engine.set_vent_power(True)
+        return engine
 
-        assert engine.tci["propofol"].target_compartment == "plasma"
-        for _ in range(20):
-            engine.step(0.1)
-            # Plasma already exceeds the new target after the manual bolus.
-            assert engine.infusion_rates["propofol"] == 0.0
+    @staticmethod
+    def _peak_propofol_ce(engine, seconds):
+        peak = 0.0
+        for _ in range(seconds):
+            engine.step(1.0)
+            peak = max(peak, engine.state.propofol_ce)
+        return peak
+
+    @pytest.mark.parametrize("induction", ["hand bolus", "manual rate"])
+    def test_new_tci_program_assumes_no_drug_on_board(self, engine_factory, induction):
+        """The pump does not see hand boluses, and a TCI program started after a
+        manual rate begins from zero. Either way TCI loads again after induction."""
+        engine = self._ventilated(engine_factory)
+        if induction == "hand bolus":
+            engine.give_drug_bolus("propofol", 2.0 * engine.patient.weight)
+            self._peak_propofol_ce(engine, 120)
+        else:
+            engine.set_drug_rate("propofol", 200.0)
+            self._peak_propofol_ce(engine, 600)
+        engine.enable_tci("propofol", 3.0)
+        assert self._peak_propofol_ce(engine, 600) > 1.5 * 3.0
+        assert engine.prediction_model("propofol").state.ce == pytest.approx(3.0, rel=0.02)
+
+    def test_stopped_tci_program_resumes_without_reloading(self, engine_factory):
+        engine = self._ventilated(engine_factory)
+        engine.enable_tci("propofol", 3.0)
+        self._peak_propofol_ce(engine, 600)
+        engine.set_drug_rate("propofol", 0.0)
+        self._peak_propofol_ce(engine, 300)
+        engine.enable_tci("propofol", 3.0)
+        assert self._peak_propofol_ce(engine, 600) < 1.03 * 3.0

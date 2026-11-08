@@ -4,7 +4,7 @@ import pytest
 
 from anasim.core.state import SimulationConfig
 from anasim.core.tci import TCIController
-from anasim.patient.pk_models import FentanylPK
+from anasim.patient.pk_models import ANESTHETIZED_OUTPUT, FentanylPK
 
 
 def _advance(engine, seconds, dt=1.0):
@@ -238,12 +238,13 @@ def test_fentanyl_depresses_breathing_and_accumulates(engine_factory):
     engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=3), start=True)
     engine.enable_tci("fentanyl", 2.0)
     _advance(engine, 15 * 60, dt=2.0)
-    assert engine.state.fentanyl_ce == pytest.approx(2.0, rel=0.03)
+    assert engine.prediction_model("fentanyl").state.ce == pytest.approx(2.0, rel=0.03)
     short_half_time = engine.get_predicted_csht("fentanyl")
 
     # Keep the short pump history in the engine. The three-hour accumulation
     # comparison only needs PK; long full-engine stability has its own test.
     pk = FentanylPK(engine.patient)
+    pk.update_hemodynamics(1.0, ANESTHETIZED_OUTPUT)
     tci = TCIController(pk, max_rate=1000.0 / 60.0, sampling_time=1.0)
     for _ in range(180 * 60):
         pk.step(1.0, tci.step(2.0))

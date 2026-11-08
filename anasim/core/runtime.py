@@ -277,14 +277,11 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> None:
     midazolam_cp = midazolam.state.c1
     propofol.update_midazolam(midazolam_cp)
     midazolam.update_propofol(propofol_cp)
-    if "propofol" in engine.pump_pk:
-        cast(PropofolPKEleveld, engine.pump_pk["propofol"]).update_midazolam(midazolam_cp)
     base_bv = engine.hemo.blood_volume_0
     blood_lost = engine.hemo.total_blood_out_ml - engine._pk_blood_out_ml
     if blood_lost > 0.0:
         engine.toxicity.lipid_ml *= math.exp(-blood_lost / base_bv)
-        for model in (*engine.pk.values(), *engine.pump_pk.values(),
-                      engine.tof_pd.sugammadex, engine.tof_pd.complex):
+        for model in (*engine.pk.values(), engine.tof_pd.sugammadex, engine.tof_pd.complex):
             model.remove_blood(blood_lost / 1000.0, base_bv / 1000.0)
         engine._pk_blood_out_ml = engine.hemo.total_blood_out_ml
     # Heart failure's low output slows flow-dependent clearance. Pregnancy's
@@ -295,7 +292,7 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> None:
     # Below 30% of resting output, as in arrest and CPR, flow limits drug transport.
     circulation = clamp01(co_curr / (CIRCULATION_LIMIT_FRACTION * base_co))
     if circulation != propofol.circulation:
-        for model in (*engine.pk.values(), *engine.pump_pk.values(), engine.tof_pd.sugammadex, engine.tof_pd.complex):
+        for model in (*engine.pk.values(), engine.tof_pd.sugammadex, engine.tof_pd.complex):
             model.circulation = circulation
     v_ratio = clamp(engine.hemo.blood_volume / base_bv, 0.1, 2.0)
     co_ratio = clamp(co_curr / base_co, 0.1, 2.0)
@@ -308,7 +305,7 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> None:
     ):
         return
 
-    for model in (*engine.pk.values(), *engine.pump_pk.values()):
+    for model in engine.pk.values():
         model.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
     engine.tof_pd.update_hemodynamics(*scale, blood_volume_l=base_bv / 1000.0)
     engine._pk_hemo_scale_cache = scale

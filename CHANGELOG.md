@@ -4,6 +4,10 @@
 
 - Supported adults aged up to 85 years.
 - Above 65, propofol lowers blood pressure more slowly but further.
+- Propofol, remifentanil, and fentanyl TCI now uses only age, weight, height,
+  and sex, as clinical pumps do. Blood loss, hepatic impairment, and midazolam
+  can move concentrations away from the target. The pump does not see hand
+  boluses, and TCI started after a manual rate assumes no drug on board.
 
 ## 1.8 - 2026-11-06
 

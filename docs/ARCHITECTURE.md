@@ -143,16 +143,20 @@ Below 30% of resting cardiac output, drug transport to organs, peripheral
 compartments, and effect sites falls in proportion to flow, so a dose given
 during arrest waits until compressions circulate it. Esterase metabolism of
 remifentanil, succinylcholine, and esmolol continues without flow, and
-sugammadex still binds rocuronium in plasma. TCI predicts with the same
-transport, so effect-site TCI pauses while no drug reaches the effect site.
+sugammadex still binds rocuronium in plasma.
 
-TCI predicts concentrations from the current PK parameters and adjusts infusion
-rates within pump limits. Clinical pumps use population models, so with
-`patient_variability`, TCI and decrement times for propofol, remifentanil, and
-fentanyl use the typical patient's parameters, and the patient's concentrations
-differ from the target. Rocuronium TCI targets the free plasma concentration,
-and its prediction accounts for sugammadex and inhaled agents. Setting a manual
-infusion rate turns off TCI for that drug. `tci_enabled` chooses between TCI and
+TCI adjusts infusion rates within pump limits to reach a predicted plasma or
+effect-site target. For propofol, remifentanil, and fentanyl, TCI and decrement
+times use the published model with only age, weight, height, and sex, as
+clinical pumps do. The prediction omits sampled variability, hepatic impairment,
+blood volume, cardiac output, and midazolam, so the patient's concentrations can
+differ from the target; after blood loss, propofol and remifentanil rise above
+it. The pump also omits hand boluses. A TCI program started after a manual rate
+assumes no drug on board, and a stopped program resumes from its own history.
+TCI for other drugs predicts from the patient's current PK. Rocuronium TCI
+targets the free plasma concentration, and its prediction accounts for
+sugammadex and inhaled agents. Setting a manual infusion rate turns off TCI for
+that drug. `tci_enabled` chooses between TCI and
 manual rates when maintenance is initialized.
 
 ### Anesthetic drug effects
