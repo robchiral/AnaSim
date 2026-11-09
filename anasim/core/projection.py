@@ -270,6 +270,13 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     state.hco3 = float(resp_state.hco3)
     state.base_excess = float(resp_state.base_excess)
     state.lactate = float(engine.lactate.concentration)
+    fluids = engine.hemo.fluids
+    state.sodium = fluids.concentration("sodium")
+    state.potassium = fluids.concentration("potassium")
+    state.chloride = fluids.concentration("chloride")
+    state.ionized_calcium = fluids.ionized_calcium(resp_state.ph)
+    state.albumin_g_l = fluids.plasma_buffers.albumin_g_l
+    state.phosphate = fluids.concentration("phosphate")
     state.alveolar_co2 = float(resp_state.p_alveolar_co2)
     state.pao2 = float(resp_state.p_arterial_o2)
     state.sao2 = float(resp_state.sao2)
@@ -291,6 +298,7 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
 def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float) -> RespState:
     """Advance the respiratory model; dt 0 evaluates the current state without advancing it."""
     state = engine.state
+    engine.resp.update_fluid_balance(engine.hemo.hb_conc, engine.hemo.get_hematocrit(), engine.hemo.blood_volume)
     connected = state.airway_mode != AirwayType.NONE
     # Gas exchange uses recent exhaled breaths, so it lags at least one breath.
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)

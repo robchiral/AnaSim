@@ -8,10 +8,9 @@ Hepatic elimination capacity is proportional to liver function and to the
 fraction of oxygen demand that is met.
 
 Each mmol of endogenous lactate above the resting amount removes 1 mmol of
-buffer base. Lactated Ringer's solution contains sodium lactate, which raises
-lactate without adding acid and returns base when it is metabolized. The model
-includes only the L-isomer (14 mmol/L), which blood gas analyzers measure.
-D-lactate and the other ions in the fluid are omitted.
+buffer base. Infused sodium L-lactate raises lactate without adding acid and
+returns base when it is metabolized. Blood gas analyzers measure only this
+isomer; the fluid balance model handles D-lactate and the other ions.
 """
 
 import math
@@ -22,7 +21,6 @@ CLEARANCE_L_KG_MIN = 0.012
 RESTING_MMOL_L = 0.9
 CLEARANCE_KM_MMOL_L = 3.0  # Approximates the fall in apparent clearance in Grip 2015.
 HEPATIC_SHARE = 0.6  # Assumed hepatic share of elimination capacity; the rest is extrahepatic.
-LACTATED_RINGERS_MMOL_L = 14.0
 # Lactate produced per mmol of unmet O2 demand, fitted to the relation between
 # oxygen debt and lactate in canine hemorrhage (Dunham 1991).
 ANAEROBIC_PER_O2 = 0.56
@@ -52,21 +50,29 @@ class LactateModel:
         self.endogenous_mmol = self.resting_mmol
         self.infused_mmol = 0.0
         self.cleared_infused_mmol = 0.0
-        self._crystalloid_ml = 0.0
+        self._delivered_mmol = 0.0
+        self._base_removed_mmol = 0.0
 
     @property
     def concentration(self) -> float:
         """Plasma lactate, mmol/L."""
         return (self.endogenous_mmol + self.infused_mmol) / self.volume_l
 
+    def update_fluid_volume(self, volume_l: float, lost_plasma_l: float) -> None:
+        remaining = 1.0 - lost_plasma_l / self.volume_l
+        self.endogenous_mmol *= remaining
+        self.infused_mmol *= remaining
+        self.volume_l = volume_l
+        self.km_mmol = CLEARANCE_KM_MMOL_L * volume_l
+
     @property
     def base_removed_mmol(self) -> float:
-        """Net buffer base removed since rest, including infused L-lactate metabolism."""
-        return self.endogenous_mmol - self.resting_mmol - self.cleared_infused_mmol
+        """Metabolic buffer base removed since rest, mmol."""
+        return self._base_removed_mmol
 
     def step(self, dt: float, oxygen_deficit_l: float, supply_fraction: float,
              epinephrine_ng_ml: float = 0.0, sepsis_severity: float = 0.0,
-             crystalloid_in_ml: float = 0.0) -> float:
+             infused_lactate_mmol: float = 0.0) -> float:
         """Advance dt seconds and return net buffer base removed, mmol.
 
         Args:
@@ -74,13 +80,12 @@ class LactateModel:
             supply_fraction: Share of O2 demand met, 0-1.
             epinephrine_ng_ml: Epinephrine effect-site concentration.
             sepsis_severity: 0-1.
-            crystalloid_in_ml: Cumulative crystalloid given; the increase since
-                the last step is lactated Ringer's.
+            infused_lactate_mmol: Cumulative L-lactate delivered in IV fluids.
         """
         if dt <= 0.0:
             return 0.0
-        infused = max(0.0, crystalloid_in_ml - self._crystalloid_ml) * LACTATED_RINGERS_MMOL_L / 1000.0
-        self._crystalloid_ml = crystalloid_in_ml
+        infused = max(0.0, infused_lactate_mmol - self._delivered_mmol)
+        self._delivered_mmol = infused_lactate_mmol
         minutes = dt / 60.0
         epinephrine = max(0.0, epinephrine_ng_ml) ** 2
         aerobic = self.basal_mmol_min * (
@@ -110,4 +115,6 @@ class LactateModel:
         self.infused_mmol = infused_before * decay + infused_source * retained
         cleared_infused = infused_before + infused - self.infused_mmol
         self.cleared_infused_mmol += cleared_infused
-        return self.endogenous_mmol - before - cleared_infused
+        removed = self.endogenous_mmol - before - cleared_infused
+        self._base_removed_mmol += removed
+        return removed

@@ -477,6 +477,12 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         remifentanil_cp=state.remi_cp,
         ph=resp_state.ph,
     )
+    hemo.fluids.step(
+        dt, ph=resp_state.ph, paco2=resp_state.pa_co2, resting_paco2=engine.resp.paco2_setpoint,
+        renal_function=engine.patient.renal_function, renal_perfusion=hemo.renal_perfusion,
+        hepatic_function=engine.patient.hepatic_function, oxygen_supply=engine.resp.oxygen_supply_fraction,
+        epinephrine=state.epi_ce,
+    )
     hypoxia, energy_failure, silent = myocardial_substrate(engine)
     rhythm = engine.arrhythmias.step(
         dt, hemo.rhythm_type, ischemia=hemo.coronary.ischemia, hypoxia=hypoxia,
@@ -506,11 +512,14 @@ def step_lactate(engine: SimulationEngine, dt: float) -> None:
     if dt <= 0.0:
         return
     resp = engine.resp
+    fluids = engine.hemo.fluids
+    engine.lactate.update_fluid_volume(fluids.lactate_volume_l, fluids.lactate_loss_pending_l)
+    fluids.lactate_loss_pending_l = 0.0
     base_removed = engine.lactate.step(
         dt, resp.oxygen_deficit_l, resp.oxygen_supply_fraction,
         epinephrine_ng_ml=engine.state.epi_ce,
         sepsis_severity=engine.hemo.sepsis_severity,
-        crystalloid_in_ml=engine.hemo.total_crystalloid_in_ml,
+        infused_lactate_mmol=fluids.infused_l_lactate_mmol,
     )
     resp.oxygen_deficit_l = 0.0
     resp.remove_buffer_base(base_removed)

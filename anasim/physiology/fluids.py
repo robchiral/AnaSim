@@ -3,6 +3,10 @@
 import math
 from dataclasses import dataclass
 
+# Saline's urinary elimination relative to Ringer's, fitted to Reid 2003: 2 L over 1 h gave
+# median 6 h urine of 450 mL after saline and 1000 mL after Hartmann's.
+SALINE_ELIMINATION = 0.25
+
 
 @dataclass
 class CrystalloidKinetics:
@@ -10,6 +14,13 @@ class CrystalloidKinetics:
 
     central_ml: float = 0.0
     interstitial_ml: float = 0.0
+    saline_fraction: float = 0.0
+
+    def infuse(self, volume_ml: float, saline: bool) -> None:
+        total = self.central_ml + self.interstitial_ml + volume_ml
+        if total > 0.0:
+            self.saline_fraction += (float(saline) - self.saline_fraction) * volume_ml / total
+        self.central_ml += volume_ml
 
     def step(
         self, dt_s: float, map_mmHg: float, age: float, elimination_scale: float,
@@ -24,6 +35,7 @@ class CrystalloidKinetics:
         k21, kb = 0.0506, 0.0052
         k10 = (
             0.0065 * (max(0.0, map_mmHg) / 81.3)**5.2 * (age / 40.0)**-1.5 * elimination_scale
+            * (1.0 - (1.0 - SALINE_ELIMINATION) * self.saline_fraction)
         ) if urinary_elimination else 0.0
         central = min(self.central_ml, max(0.0, available_ml))
         # Preserve the minimum blood volume and remaining red cells.

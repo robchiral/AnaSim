@@ -317,6 +317,14 @@ PCV-VG, pressure control with volume guarantee.
 - Hahn (2017). *Anesth Analg*. [Arterial pressure, age, and crystalloid elimination](https://pubmed.ncbi.nlm.nih.gov/28452823/).
 - Hahn and Nemme (2020). *BMC Anesthesiol*. [Fluid retention after anesthesia induction](https://pubmed.ncbi.nlm.nih.gov/32334513/).
 - Hahn (2021). *Perioper Med (Lond)*. [Crystalloid distribution during anesthesia-induced hypotension](https://pubmed.ncbi.nlm.nih.gov/34629113/).
+- Scheingraber et al. (1999). *Anesthesiology*. [Hyperchloremic acidosis after rapid saline infusion](https://pubmed.ncbi.nlm.nih.gov/10319771/).
+- Kramer et al. (2003). *Crit Care Med*. [Citrate pharmacokinetics in critically ill patients](https://pubmed.ncbi.nlm.nih.gov/14530750/).
+- Rabcuka et al. (2025). *Transfusion*. [Acid-base and metabolite changes in stored red cell concentrates](https://pubmed.ncbi.nlm.nih.gov/41122829/).
+- Thode et al. (1983). *Scand J Clin Lab Invest Suppl*. [Relation between pH and ionized calcium in vitro and in vivo](https://pubmed.ncbi.nlm.nih.gov/6578581/).
+- Bolan et al. (2001). *Transfusion*. [Citrate, ionized calcium, and PTH during plateletpheresis](https://pubmed.ncbi.nlm.nih.gov/11552076/).
+- Ansari et al. (2025). *Anesthesiology*. [Pharmacokinetics of intravenous calcium during cesarean delivery](https://pubmed.ncbi.nlm.nih.gov/39361822/).
+- González et al. (2018). *Kidney Int Rep*. [Secondary response to chronic respiratory acidosis](https://pubmed.ncbi.nlm.nih.gov/30197983/).
+- Krapf et al. (1991). *N Engl J Med*. [Renal response to chronic respiratory alkalosis](https://pubmed.ncbi.nlm.nih.gov/1902283/).
 
 ## Respiratory control
 
@@ -361,6 +369,7 @@ PCV-VG, pressure control with volume guarantee.
 - Zitek et al. (2018). *J Emerg Med*. [Serum lactate after 30 mL/kg of lactated Ringer's](https://pubmed.ncbi.nlm.nih.gov/30037514/).
 - Dash et al. (2016). *Eur J Appl Physiol*. [Hemoglobin dissociation curves across oxygen tension, temperature, pH, and PCO₂](https://pubmed.ncbi.nlm.nih.gov/26298270/).
 - Rees et al. (2010). *Eur J Appl Physiol*. [Plasma and red-cell acid-base chemistry with oxygen-dependent buffering](https://pubmed.ncbi.nlm.nih.gov/19841930/).
+- Figge et al. (2018). *J Crit Care*. [Albumin and phosphate charge in plasma acid-base chemistry](https://pubmed.ncbi.nlm.nih.gov/29080515/).
 - O'Neill and Robbins (2017). *J Appl Physiol*. [Blood CO₂ transport and the magnitude of the Haldane effect](https://pubmed.ncbi.nlm.nih.gov/27881667/).
 - Wooten (2003). *J Appl Physiol*. [Acid-base balance in multicompartment systems and the extracellular buffer approximation](https://pubmed.ncbi.nlm.nih.gov/12923118/).
 - Brackett et al. (1965). *N Engl J Med*. [Whole-body acute hypercapnic buffering](https://pubmed.ncbi.nlm.nih.gov/14219220/).

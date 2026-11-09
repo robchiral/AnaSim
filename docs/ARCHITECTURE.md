@@ -53,7 +53,7 @@ writes the recording.
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
 | Physiology | `map`, `hr`, `co`, `intrinsic_co`, `sao2`, `pa_co2`, `pao2` | Values that the models and the cardiac arrest check use; `intrinsic_co` excludes chest compressions |
-| Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate` | Arterial plasma pH and bicarbonate at 37 °C, standard base excess, and plasma lactate |
+| Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate`, `sodium`, `potassium`, `chloride`, `ionized_calcium`, `albumin_g_l` | Arterial plasma pH and bicarbonate at 37 °C, standard base excess, and plasma lactate, electrolytes, and albumin |
 | Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after measurement and processing effects |
 | Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Breath pressures and exhaled gas measurements |
 | Fluids | `blood_volume`, `urine_out_ml`, `net_fluid_ml`, `lap`, `lung_water` | Circulating volume, fluid balance, filling pressure, and excess lung water |
@@ -452,13 +452,43 @@ in volunteers (Heinonen 2015), and lessens contractile depression.
 
 ### Fluids
 
-Crystalloid represents lactated Ringer's solution and moves between blood and
-the interstitium (Hahn 2017). Distribution slows when MAP is low, so fluid given
-during hypotension after induction stays in the circulation longer (Hahn 2021).
-Urine output depends on MAP, age, and renal function. More of an albumin
-infusion stays in the circulation at first. Fluid also leaves the circulation
-through capillary leak and other slow exchanges into a separate compartment,
-which slowly returns fluid when blood volume is low.
+Lactated Ringer's and 0.9% saline move between blood and the interstitium
+(Hahn 2017). Distribution slows when MAP is low, so fluid given during
+hypotension after induction stays in the circulation longer (Hahn 2021). Urine
+output depends on MAP, age, and renal function. Saline is excreted more slowly
+than lactated Ringer's: after 2 L over an hour, healthy volunteers pass about
+half as much urine in 6 hours (Reid 2003). More of a 5% albumin infusion stays
+in the circulation at first. Fluid also leaves the circulation through
+capillary leak and other slow exchanges into a separate compartment, which
+slowly returns fluid when blood volume is low.
+
+[Fluid balance](../anasim/physiology/fluid_balance.py) tracks sodium,
+potassium, chloride, calcium, magnesium, and phosphate in one extracellular
+volume, and albumin separately in plasma and the interstitium. Water moves
+between extracellular fluid and cells until their tonicity is equal, so the
+free water in lactated Ringer's and lipid emulsion spreads through total body
+water. Each fluid adds its own ions, albumin, and buffer base, the last equal
+to its strong ion difference. Saline therefore causes a hyperchloremic acidosis
+and lactated Ringer's does not (Scheingraber 1999). Packed red cells have the
+composition of a 3-week-old unit, at pH 6.5 and PCO₂ 98 mmHg with supernatant
+potassium 38 and lactate 22.5 mmol/L (Rabcuka 2025), so rapid transfusion adds
+acid, CO₂, and potassium. Lactate from Ringer's and packed cells, and citrate
+from packed cells, return base as they are metabolized (Kramer 2003).
+
+Potassium exchanges with a large cellular pool over minutes, and epinephrine
+moves it into cells. Ionized calcium depends on albumin, citrate, and pH
+(Thode 1983; Bolan 2001), so dilution and rapid transfusion lower it. Injected
+calcium mixes through extracellular fluid, and calcium above the patient's
+resting ionized level is then cleared. One gram of calcium chloride therefore
+raises ionized calcium by about 0.4 mmol/L, and half of the rise is gone by
+30 minutes (Ansari 2025). Calcium lost to dilution or bound by citrate is not
+replaced within a session (Bolan 2001).
+
+The kidneys excrete the daily fixed acid load when urine output and renal
+perfusion allow. Over about a day, they also move bicarbonate toward the chronic
+compensation for the current PaCO₂: 0.48 mmol/L per mmHg in hypercapnia up to
+70 mmHg (González 2018) and 0.4 mmol/L per mmHg in hypocapnia (Krapf 1991).
+Chloride moves in the opposite direction to bicarbonate.
 
 Anaphylaxis causes rapid plasma leak. Red cells stay in the circulation, so
 hemoglobin concentration rises (Fisher 1986). The leak slows as the reaction
@@ -552,25 +582,24 @@ proportion to liver function and to the fraction of oxygen demand that is met.
 Each mmol of endogenous lactate that accumulates above the resting amount
 removes 1 mmol of buffer base, and clearance of this lactate returns the base.
 Lactated Ringer's solution raises the measured lactate without adding acid,
-and metabolism of this lactate adds buffer base (Zitek 2018). The model
-includes only the L-isomer, which blood gas analyzers measure, and omits the
-other ions in the fluid.
+and metabolism of this lactate adds buffer base (Zitek 2018). Blood gas
+analyzers measure only the L-isomer, half of the racemic lactate in Ringer's.
 
-The blood gas model includes respiratory and lactic acid-base disturbances at
-37 °C. [Blood buffering](../anasim/physiology/blood_chemistry.py) is based on
-Rees 2010. Oxygen affinity uses the temperature, pH, and PCO₂ terms of
+The blood gas model includes respiratory, lactic, and fluid-related acid-base
+disturbances at 37 °C. [Blood buffering](../anasim/physiology/blood_chemistry.py)
+is based on Rees 2010, with plasma albumin and phosphate charge from
+Figge 2018. Oxygen affinity uses the temperature, pH, and PCO₂ terms of
 Dash 2016 at a reference 2,3-DPG level. Gas exchange and changes in oxygen
-affinity conserve CO₂, oxygen, and buffer base. When hemoglobin or hematocrit
-changes, the buffering capacity of blood changes, but the base gained or lost
-since rest is preserved.
+affinity conserve CO₂, oxygen, and buffer base. Bleeding, transfusion, fluids,
+and urine change the total buffer base by the amounts that they carry.
 
-Standard base excess equals the patient's resting value plus the net base
-gained or lost in blood and extracellular fluid, per liter of their combined
-volume. A change in PCO₂ moves base between blood and extracellular fluid
-without changing the total, so respiratory changes alone do not change base
-excess. The resting value is calculated with the Van Slyke equation from the
-patient's resting pH and PaCO₂. It is near 0 mmol/L in nonpregnant adults and
-about −2 mmol/L in late pregnancy.
+The interstitium buffers with its albumin and phosphate and with a fixed
+cellular buffer, the extracellular buffer of Wooten 2003. With these buffers,
+acute changes in PaCO₂ move pH and bicarbonate within the human ranges of
+Brackett 1965 and Arbus 1969, and standard base excess changes little. Standard
+base excess is calculated from arterial pH and bicarbonate with the Van Slyke
+equation, as blood gas analyzers do. It is near 0 mmol/L in nonpregnant adults
+and about −2 mmol/L in late pregnancy.
 
 ### Respiratory mechanics and aeration
 
@@ -680,8 +709,9 @@ An [arterial blood gas](../anasim/monitors/blood_gas.py) sample records the
 arterial values at the time of the draw, and the result appears 2 minutes
 later. As in a blood gas analyzer, pH, PaCO₂, and PaO₂ are reported at 37 °C,
 so PaO₂ in a hypothermic patient is higher than the value in the body. The
-report also includes bicarbonate, standard base excess, lactate, SaO₂,
-hemoglobin, and FiO₂. Electrolytes and glucose are not modeled.
+report also includes bicarbonate, standard base excess, lactate, sodium,
+potassium, chloride, ionized calcium, SaO₂, hemoglobin, and FiO₂. Glucose is
+not modeled.
 
 ## Browser app
 

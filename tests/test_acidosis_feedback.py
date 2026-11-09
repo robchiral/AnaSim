@@ -5,8 +5,10 @@ from anasim.physiology.hemodynamics import HemodynamicModel
 
 def test_awake_metabolic_acidosis_develops_respiratory_compensation(awake_engine):
     engine = awake_engine
-    engine.resp.remove_buffer_base(250)
-    for _ in range(1200):
+    for step in range(1200):
+        # Deliver the acid over two minutes so blood can distribute it.
+        if step < 240:
+            engine.resp.remove_buffer_base(250.0 / 240.0)
         engine.step(0.5)
     state = engine.state
     assert state.hco3 < 12

@@ -186,10 +186,13 @@ def test_obstructed_airway_preserves_effort_without_restoring_ventilation(awake_
     assert resp.pa_co2 > baseline_co2 + 5.0
 
     co2_at_one_minute, saturation = resp.pa_co2, resp.sao2
+    stored_carbon = engine.resp.gas_transport.co2_l
     for _ in range(600):
         engine.step(0.1)
     assert resp.sao2 < saturation - 20.0
-    assert resp.pa_co2 > co2_at_one_minute
+    # Desaturation changes CO2 binding, while total carbon continues to accumulate.
+    assert resp.pa_co2 > co2_at_one_minute - 0.5
+    assert engine.resp.gas_transport.co2_l > stored_carbon
 
     engine.set_airway_obstruction(0.0)
     for _ in range(300):

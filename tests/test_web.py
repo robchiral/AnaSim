@@ -269,7 +269,7 @@ def test_blood_gas_reports_values_at_the_draw_after_analysis_and_survives_reload
 
 
 @pytest.mark.parametrize("kind,label", [
-    ("crystalloid", "lactated Ringer's"), ("albumin", "albumin"), ("blood", "PRBC"),
+    ("crystalloid", "lactated Ringer's"), ("saline", "0.9% saline"), ("albumin", "5% albumin"), ("blood", "PRBC"),
 ])
 def test_fluid_confirmation_follows_acceptance_and_delivery_continues_over_time(kind, label):
     session = WebSession(PATIENT)
@@ -287,6 +287,18 @@ def test_fluid_confirmation_follows_acceptance_and_delivery_continues_over_time(
     delivered = run_seconds(session, 2)[-1]["vitals"]
     assert 0 < delivered["blood_in" if kind == "blood" else "fluid_in"] < 250
     assert 0 < session.engine.pending_infusions[0].remaining_ml < 250
+
+
+def test_blood_gas_electrolytes_freeze_at_draw_and_calcium_receipt_is_retained():
+    session = WebSession(PATIENT)
+    before = cmd(session, "blood_gas")["blood_gas"]
+    receipt = cmd(session, "calcium_chloride", mg=1000)["medication"]
+    assert receipt["text"] == "Calcium chloride 1000 mg given"
+    after = cmd(session, "blood_gas")["blood_gas"]
+    assert before["potassium"] == pytest.approx(4.0, abs=0.01)
+    assert after["ionized_calcium"] > before["ionized_calcium"] + 0.2
+    assert parse(session.info())["blood_gases"] == [before, after]
+    assert parse(session.info())["medication_history"][-1] == receipt
 
 
 def test_manual_session_hides_and_rejects_tci_for_every_supported_drug():

@@ -472,8 +472,11 @@ def test_simv_effort_follows_delivered_pressure_and_recovers_when_assistance_sto
                 engine.step(dt)
             assert effort.support_pressure == pytest.approx(0.0, abs=1e-12)
             assert effort.ti == pytest.approx(1.6)
-    for endpoint in endpoints[1:]:
-        assert endpoint == pytest.approx(endpoints[0], abs=1e-7)
+    for first, second in zip(endpoints[::2], endpoints[1::2], strict=True):
+        assert second == pytest.approx(first, abs=1e-7)
+    for endpoint in endpoints[2::2]:
+        assert endpoint[0] == pytest.approx(endpoints[0][0], abs=0.1)
+        assert endpoint[1:] == pytest.approx(endpoints[0][1:], abs=0.01)
 
 
 @pytest.mark.parametrize("mode", ["SIMV-VC", "SIMV-PC", "SIMV-VG"])

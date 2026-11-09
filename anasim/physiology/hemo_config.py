@@ -184,8 +184,8 @@ class HemodynamicConfig:
     vol_clearance: float | None = None
     # Urine output (mL/kg/hr), scaled by MAP and renal function.
     uop_ml_kg_hr: float = 0.5
-    # Hahn 2017 kinetics with integrated urine normalization to Reid 2003.
-    crystalloid_renal_scale: float = 0.20
+    # Hahn 2017 kinetics scaled to Reid 2003's 6 h urine after 2 L of Hartmann's.
+    crystalloid_renal_scale: float = 0.28
     colloid_retention_fraction: float = 0.80
     blood_retention_fraction: float = 1.0
     donor_mchc_g_dl: float = 100.0 / 3.0  # Normal donor red cells; Hb = Hct / 0.03.

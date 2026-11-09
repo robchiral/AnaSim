@@ -194,6 +194,8 @@ def _describe(record: ActionRecord) -> str | None:
     if action in {ACTION_DRUG_BOLUS, ACTION_INFUSION_RATE, ACTION_TCI_TARGET}:
         if label == "sugammadex":
             return f"Sugammadex {amount:.0f} mg given"
+        if label == "calcium_chloride":
+            return f"Calcium chloride {amount:g} mg given"
         spec = get_drug_spec(label)
         if action == ACTION_DRUG_BOLUS:
             return f"{spec.generic_name} {amount:g} {spec.bolus_unit} given"
@@ -203,8 +205,8 @@ def _describe(record: ActionRecord) -> str | None:
         unit = spec.rate_unit if action == ACTION_INFUSION_RATE else spec.tci_unit
         return f"{spec.generic_name} {delivery} {amount:g} {unit}"
     if action == ACTION_FLUID:
-        fluid = {"crystalloid": "lactated Ringer's", "colloid": "albumin", "blood": "PRBC",
-                 "lipid": "20% lipid emulsion"}[label]
+        fluid = {"crystalloid": "lactated Ringer's", "saline": "0.9% saline", "colloid": "5% albumin",
+                 "blood": "PRBC", "lipid": "20% lipid emulsion"}[label]
         return f"{amount:g} mL {fluid} started"
     if action == ACTION_LIPID_INFUSION:
         return f"20% lipid emulsion infusion {amount:g} mL/min" if amount > 0 else "Lipid emulsion infusion stopped"

@@ -279,16 +279,21 @@ class TestClinicalAcceptance:
 
         assert engine.state.map >= 65.0
 
-    def test_awake_crystalloid_load_is_partly_excreted(self, engine_factory, advance_time):
-        """Reid 2003: 2 L over 1 h gave median 6 h urine of 450 mL (saline) to 1000 mL (Hartmann's)."""
+    @pytest.mark.parametrize(("fluid", "urine_ml", "tolerance_ml"), [("crystalloid", 1000.0, 150.0), ("saline", 450.0, 100.0)])
+    def test_awake_saline_is_excreted_more_slowly_than_ringers(self, engine_factory, fluid, urine_ml, tolerance_ml):
+        """Reid 2003: 2 L over 1 h gave median 6 h urine of 1000 mL after Hartmann's
+        and 450 mL after saline, which kept chloride above 105 mmol/L for over 6 h.
+        """
         engine = engine_factory(start=True, age=25, weight=75, height=178)
-        engine.set_continuous_fluid_rate(2000.0)
-        advance_time(engine, 3600.0)
         engine.set_continuous_fluid_rate(0.0)
-        advance_time(engine, 5 * 3600.0)
-
-        assert 450.0 <= engine.state.urine_out_ml <= 1000.0
+        for second in range(6 * 3600):
+            if second < 3600:
+                engine.hemo.add_volume(2000.0 / 3600.0, label=fluid)
+            engine.step(1.0)
+        assert engine.state.urine_out_ml == pytest.approx(urine_ml, abs=tolerance_ml)
         assert engine.state.lung_water == 0.0
+        if fluid == "saline":
+            assert engine.state.chloride > 105.0
 
     def test_fluid_overload_floods_lungs_and_peep_reaerates(self, anesthetized_engine, advance_time):
         """Massive crystalloid raises LAP into the edema range; PEEP helps oxygenation."""

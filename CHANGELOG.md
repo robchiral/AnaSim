@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Blood gases now report sodium, potassium, chloride, and ionized calcium.
+  Each fluid carries its own ions and albumin: saline causes a hyperchloremic
+  acidosis and is excreted more slowly than lactated Ringer's, and rapid
+  transfusion of stored blood adds acid and CO₂, raises potassium, and lowers
+  ionized calcium. Over hours, the kidneys compensate for sustained changes in
+  PaCO₂. Added 0.9% saline and calcium chloride, whose effect halves in about
+  30 minutes.
 - Added malignant hyperthermia with dantrolene, surface cooling, and a guided
   or independent case.
 - Supported adults aged up to 85 years.

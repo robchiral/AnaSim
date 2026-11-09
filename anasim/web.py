@@ -68,7 +68,7 @@ TREND_WINDOW_S = 1800
 VENT_FIELDS = ("mode", "rr", "tv", "peep", "ie", "p_insp", "p_support", "t_insp", "pause", "p_max", "trigger")
 IE_RATIOS = ("1:1", "1:2", "1:3", "1:4")
 LOOP_INTERVAL_S = 0.03  # Spacing of loop points, about 170 per 5-second breath
-FLUIDS = {"crystalloid": "give_fluid", "albumin": "give_albumin", "blood": "give_blood",
+FLUIDS = {"crystalloid": "give_fluid", "saline": "give_saline", "albumin": "give_albumin", "blood": "give_blood",
           "lipid": "give_lipid_emulsion"}
 
 SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
@@ -116,6 +116,8 @@ def _blood_gas(result: BloodGasResult) -> dict:
         "ph": _num(result.ph, 3), "pa_co2": _num(result.pa_co2, 1), "pao2": _num(result.pao2, 1),
         "hco3": _num(result.hco3, 2), "base_excess": _num(result.base_excess, 2),
         "lactate": _num(result.lactate, 2), "sao2": _num(result.sao2, 2), "hb": _num(result.hb, 2),
+        "sodium": _num(result.sodium, 1), "potassium": _num(result.potassium, 2),
+        "chloride": _num(result.chloride, 1), "ionized_calcium": _num(result.ionized_calcium, 2),
         "fio2": _num(result.fio2, 3),
     }
 
@@ -780,6 +782,11 @@ class WebSession:
         self.engine.give_drug_bolus("sugammadex", amount)
         return self._medication_receipt("sugammadex", f"Sugammadex {amount:.0f} mg given ({mg_per_kg:g} mg/kg)")
 
+    def _cmd_calcium_chloride(self, mg: float):
+        mg = float(mg)
+        self.engine.give_calcium_chloride(mg)
+        return self._medication_receipt("calcium_chloride", f"Calcium chloride {mg:g} mg given")
+
     def _medication_receipt(self, key: str, text: str) -> dict:
         """Acknowledge a completed action and retain it across local page reloads."""
         self._medication_sequence += 1
@@ -792,7 +799,7 @@ class WebSession:
         if not math.isfinite(volume) or volume <= 0:
             raise ValueError("Fluid volume must be positive and finite")
         getattr(self.engine, FLUIDS[kind])(volume)
-        label = {"crystalloid": "lactated Ringer's", "albumin": "albumin", "blood": "PRBC",
+        label = {"crystalloid": "lactated Ringer's", "saline": "0.9% saline", "albumin": "5% albumin", "blood": "PRBC",
                  "lipid": "20% lipid emulsion over 2.5 min"}[kind]
         return {"fluid": {"time": self.engine.state.time, "text": f"{volume:g} mL {label} started"}}
 

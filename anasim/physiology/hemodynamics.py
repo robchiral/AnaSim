@@ -20,11 +20,14 @@ from anasim.patient.variability import HemodynamicVariability
 
 from .arrhythmia import AMIODARONE_C50
 from .coronary import CoronaryModel
+from .fluid_balance import FluidBalance
 from .fluids import CrystalloidKinetics
 from .hemo_config import HemodynamicConfig
 from .hemo_types import HemoState
 from .resuscitation import COMPRESSION_OUTPUT_FRACTION
 from .toxicity import SILENT_BLOCK
+
+MAX_HEMATOCRIT = 0.7
 
 # Ventricular rates set by the rhythm: SVT 150-220, VT 150-250 bpm.
 FIXED_RHYTHM_RATE = {
@@ -209,6 +212,8 @@ class HemodynamicModel:
         self.total_blood_out_ml = 0.0
         self.total_third_space_ml = 0.0
         self.crystalloid = CrystalloidKinetics()
+        self.fluids = FluidBalance(patient.weight, self.blood_volume, self.red_cell_volume_ml,
+                                   patient.pregnancy.ph)
 
         self._rhythm_type = RhythmType.SINUS
         self.sodium_block = 0.0
@@ -290,6 +295,7 @@ class HemodynamicModel:
             available = max(0.0, self.blood_volume - BLOOD_VOLUME_MIN)
             actual_loss = min(loss_ml, available)
             if actual_loss > 0:
+                self.fluids.bleed(actual_loss, self.red_cell_volume_ml / self.blood_volume)
                 self.crystalloid.central_ml *= 1.0 - actual_loss / self.blood_volume
                 self.red_cell_volume_ml *= 1.0 - actual_loss / self.blood_volume
                 self.blood_volume -= actual_loss
@@ -319,9 +325,10 @@ class HemodynamicModel:
                 retained_ml = amount_ml * retention
                 self.total_third_space_ml += max(0.0, amount_ml - retained_ml)
                 if not is_colloid:
-                    self.crystalloid.central_ml += retained_ml
+                    self.crystalloid.infuse(retained_ml, saline=label == "saline")
 
             self.blood_volume += retained_ml
+            self.fluids.infuse(amount_ml, retained_ml, hematocrit, label)
 
             if retained_ml > 0:
                 gain = 0.02 * (self.base_sv / 80.0)
@@ -377,7 +384,7 @@ class HemodynamicModel:
         )
 
     def get_hematocrit(self) -> float:
-        return clamp(self.red_cell_volume_ml / self.blood_volume, 0.0, 0.7)
+        return clamp(self.red_cell_volume_ml / self.blood_volume, 0.0, MAX_HEMATOCRIT)
 
     @staticmethod
     def calc_oxygen_content(hb_g_dl: float, sao2_frac: float, pao2: float) -> float:
@@ -888,12 +895,16 @@ class HemodynamicModel:
         map_denom = max(1e-3, cfg.renal_map_norm - cfg.renal_map_min)
         self.renal_perfusion = clamp01((map_prev - cfg.renal_map_min) / map_denom)
         renal_factor = self.renal_perfusion * self.patient.renal_clearance_factor
+        # Keep plasma losses within the hematocrit represented by the chemistry model.
+        minimum_blood_volume = max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml / MAX_HEMATOCRIT)
         fluid_change, fluid_urine, fluid_sequestration = self.crystalloid.step(
             dt, map_prev, self.patient.age, self.patient.renal_clearance_factor * cfg.crystalloid_renal_scale,
-            self.blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml),
+            self.blood_volume - minimum_blood_volume,
             urinary_elimination=cfg.vol_clearance is None,
         )
         self.blood_volume += fluid_change
+        self.fluids.shift_water(fluid_change + fluid_urine)
+        self.fluids.lose_urine(fluid_urine)
         self.total_urine_out_ml += fluid_urine
         self.total_third_space_ml += fluid_sequestration
         if cfg.vol_clearance is not None:
@@ -902,10 +913,11 @@ class HemodynamicModel:
             urine_ml_min = cfg.uop_ml_kg_hr * self.patient.weight / 60.0
         urine_out_ml = min(
             urine_ml_min * renal_factor * dt_min,
-            max(0.0, self.blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml)),
+            max(0.0, self.blood_volume - minimum_blood_volume),
         )
         blood_volume = self.blood_volume - urine_out_ml
         if urine_out_ml > 0:
+            self.fluids.lose_urine(urine_out_ml)
             plasma_volume = self.blood_volume - self.red_cell_volume_ml
             self.crystalloid.central_ml *= max(0.0, 1.0 - urine_out_ml / plasma_volume)
             self.total_urine_out_ml += urine_out_ml
@@ -914,9 +926,10 @@ class HemodynamicModel:
         if leak_rate_per_s > 0.0:
             # Capillary leak loses plasma, not red cells.
             leak_ml = blood_volume * -math.expm1(-leak_rate_per_s * dt)
-            available = max(0.0, blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml))
+            available = max(0.0, blood_volume - minimum_blood_volume)
             actual_leak = min(leak_ml, available)
             if actual_leak > 0:
+                self.fluids.shift_water(-actual_leak, protein_fraction=1.0)
                 self.crystalloid.central_ml *= max(0.0, 1.0 - actual_leak / (blood_volume - self.red_cell_volume_ml))
                 blood_volume -= actual_leak
                 self.total_third_space_ml += actual_leak
@@ -928,6 +941,7 @@ class HemodynamicModel:
             frac = -math.expm1(-dt / (cfg.third_space_refill_tau_hr * 3600.0))
             refill_ml = min(self.total_third_space_ml, shortfall * frac)
             if refill_ml > 0:
+                self.fluids.shift_water(refill_ml)
                 self.total_third_space_ml -= refill_ml
                 blood_volume += refill_ml
 
@@ -935,10 +949,11 @@ class HemodynamicModel:
         lap_excess = max(0.0, self._last_lap - self._lung_water_threshold)
         filtration_ml = min(
             cfg.lung_water_filtration * self._pbw * lap_excess * dt_min,
-            max(0.0, blood_volume - max(BLOOD_VOLUME_MIN, self.red_cell_volume_ml)),
+            max(0.0, blood_volume - minimum_blood_volume),
         )
         lung_clearance_ml = self.lung_water_ml * -math.expm1(-dt / (cfg.lung_water_clearance_tau_hr * 3600.0))
         self.lung_water_ml += filtration_ml - lung_clearance_ml
+        self.fluids.shift_water(lung_clearance_ml - filtration_ml)
         if filtration_ml > 0.0:
             self.crystalloid.central_ml *= 1.0 - filtration_ml / (blood_volume - self.red_cell_volume_ml)
         blood_volume += lung_clearance_ml - filtration_ml

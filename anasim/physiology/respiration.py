@@ -1,5 +1,5 @@
 import math
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass
 
 from anasim.core.constants import RR_APNEA_THRESHOLD, TEMP_METABOLIC_COEFFICIENT, VT_MIN
 from anasim.core.utils import clamp, clamp01, hill_function
@@ -11,10 +11,13 @@ from .blood_chemistry import (
     BloodChemistry,
     Equilibrium,
     extracellular_contents,
+    standard_base_excess,
     step_fraction,
 )
+from .fluid_balance import STORED_BLOOD_PCO2, STORED_BLOOD_PH, FluidBalance
 from .gas_transport import GasTransport, TransportPlan
 from .hemo_config import HemodynamicConfig
+from .plasma_buffers import PlasmaBuffers
 
 _HB_G_DL_PER_MMOL_L = 1.61145  # Heme monomer, 16.1145 g/mmol.
 _CO2_L_PER_MMOL = 0.022414  # STPD.
@@ -188,6 +191,11 @@ class RespiratoryModel:
         assert patient.baseline_hct is not None
         self.baseline_hct = patient.baseline_hct
         self._oxygen_hb = self.baseline_hb
+        self.fluids: FluidBalance | None = None
+        self._plasma_buffers: PlasmaBuffers | None = None
+        self._extracellular_buffers: PlasmaBuffers | None = None
+        self._donor_rbc_co2: float = 0.0
+        self._urine_carbon_applied: float = 0.0
         self._set_blood_composition(self.baseline_hb, self.baseline_hct)
         self.gas_transport = GasTransport(
             patient.weight, self.baseline_blood_volume_ml / 1000.0,
@@ -209,10 +217,55 @@ class RespiratoryModel:
     def _set_blood_composition(self, hb_g_dl: float, hematocrit: float) -> Equilibrium:
         """Rebuild buffering around the patient's resting acid-base reference."""
         self._chemistry_composition = (hb_g_dl, hematocrit)
-        self.chemistry = BloodChemistry(hb_g_dl / _HB_G_DL_PER_MMOL_L, hematocrit)
+        self.chemistry = BloodChemistry(
+            hb_g_dl / _HB_G_DL_PER_MMOL_L, hematocrit,
+            plasma_buffers=self._plasma_buffers, extracellular_buffers=self._extracellular_buffers,
+        )
         reference = self.chemistry.evaluate(self.patient.pregnancy.ph, self.paco2_setpoint, 0.98)
         self.buffer_base = self._reference_buffer_base = reference.buffer_base
         return reference
+
+    def attach_fluid_balance(self, fluids: FluidBalance, donor_mchc_g_dl: float) -> None:
+        """Seed physical fluid compartments before the engine's maintenance history."""
+        self.fluids = fluids
+        self._donor_mchc_g_dl = donor_mchc_g_dl
+        self._plasma_buffers = fluids.plasma_buffers
+        self._extracellular_buffers = fluids.interstitial_buffers
+        self._set_blood_composition(self.baseline_hb, self.baseline_hct)
+        self.gas_transport = GasTransport(
+            self.patient.weight, self.baseline_blood_volume_ml / 1000.0,
+            extracellular_volume_l=fluids.interstitial_l,
+            extracellular_buffers=self._extracellular_buffers,
+        )
+        self._fluid_composition = (self.baseline_hb, self.baseline_hct,
+                                   *astuple(self._plasma_buffers), *astuple(self._extracellular_buffers))
+        metabolism = max(0.5, TEMP_METABOLIC_COEFFICIENT ** (37.0 - self.patient.baseline_temp))
+        self.equilibrate_blood_gases(self.baseline_co_l_min, self.vco2 / 1000.0 * metabolism)
+
+    def update_fluid_balance(self, hb: float, hct: float, blood_volume_ml: float) -> None:
+        """Apply fluid charge and carbon transfers before gas exchange."""
+        fluids = self.fluids
+        if fluids is None:
+            return
+        transport = self.gas_transport
+        old_carbon = sum(v * c for v, c in zip(transport.volumes, transport.co2, strict=True))
+        lost_carbon = fluids.blood_loss_pending_l * old_carbon / sum(transport.volumes)
+        added_carbon = fluids.red_cell_input_pending_l * self._donor_rbc_co2 + fluids.carbon_pending_mmol
+        lost_carbon += fluids.bicarbonate_excreted_mmol - self._urine_carbon_applied
+        self._urine_carbon_applied = fluids.bicarbonate_excreted_mmol
+        fluids.blood_loss_pending_l = fluids.red_cell_input_pending_l = fluids.carbon_pending_mmol = 0.0
+        transport.resize_blood(blood_volume_ml / 1000.0)
+        transport.extracellular_volume = fluids.interstitial_l
+        new_carbon = sum(v * c for v, c in zip(transport.volumes, transport.co2, strict=True))
+        transport.extracellular_co2 += old_carbon - new_carbon - lost_carbon + added_carbon
+        transport.extracellular_base += fluids.base_meq - transport.base_meq
+        plasma, interstitial = fluids.plasma_buffers, fluids.interstitial_buffers
+        composition = (hb, hct, *astuple(plasma), *astuple(interstitial))
+        if any(abs(new - old) > 1e-6 * max(1.0, abs(old))
+               for new, old in zip(composition, self._fluid_composition, strict=True)):
+            self._fluid_composition = composition
+            self._plasma_buffers, self._extracellular_buffers = plasma, interstitial
+            self._set_blood_composition(hb, hct)
 
     @property
     def va_baseline(self) -> float:
@@ -267,9 +320,7 @@ class RespiratoryModel:
         reference = self.chemistry.evaluate(self.patient.pregnancy.ph, self.paco2_setpoint, 0.98)
         transport.base = [reference.buffer_base] * 3
         # Van Slyke equation, as reported by blood gas analyzers.
-        self._reference_base_excess = 0.93 * (
-            reference.plasma_bicarbonate - 24.4 + 14.83 * (reference.ph - 7.4)
-        )
+        self._reference_base_excess = standard_base_excess(reference.ph, reference.plasma_bicarbonate)
         systemic = production_l_min * (1.0 - self.LUNG_TISSUE_FRACTION)
         extraction = systemic / self.rq / cardiac_output
         oxygen, capillary, saturation = self._seed_capillary_oxygen(extraction)
@@ -280,7 +331,9 @@ class RespiratoryModel:
         venous_po2 = self._po2_from_content(transport.oxygen[2], hb, self._p50, 40.0)
         venous_saturation = self._saturation_at_p50(venous_po2, self._p50)
         venous = self.chemistry.solve_contents(venous_co2, reference.buffer_base, venous_saturation, 46.0, 7.36)
-        co2, base, _, _ = extracellular_contents(venous.blood.ph, venous.pco2)
+        co2, base, _, _ = extracellular_contents(
+            venous.blood.ph, venous.pco2, self._extracellular_buffers,
+        )
         transport.extracellular_co2 = transport.extracellular_volume * co2
         transport.extracellular_base = transport.extracellular_volume * base
         self._reference_extracellular_base = base
@@ -295,6 +348,14 @@ class RespiratoryModel:
         self._pulmonary_o2_uptake = production_l_min / self.rq
         self._pulmonary_co2_delivery = production_l_min
         self._publish_blood_gases()
+        if self.fluids is not None:
+            donor = BloodChemistry(self._donor_mchc_g_dl * 0.55 / _HB_G_DL_PER_MMOL_L, 0.55).evaluate(
+                STORED_BLOOD_PH, STORED_BLOOD_PCO2, 0.98,
+            )
+            self.fluids.seed_base(transport.base_meq, donor.rbc_base, reference.buffer_base)
+            plasma_carbon = donor.plasma_bicarbonate * (1.0 + 10.0**(6.1 - STORED_BLOOD_PH))
+            self._donor_rbc_co2 = (donor.total_co2 - 0.45 * plasma_carbon) / 0.55
+            self._urine_carbon_applied = 0.0
 
     @property
     def gas_volume_l(self) -> float:
@@ -531,9 +592,17 @@ class RespiratoryModel:
         state.pv_co2, state.pv_o2, state.venous_ph = self._blood_pressures[2], self._blood_po2[2], self._blood_ph[2]
         self._p50 = self._blood_p50[1]
         self.buffer_base = self.gas_transport.base[1]
+        if self.fluids is not None:
+            transport = self.gas_transport
+            self.fluids.blood_base_meq_l = sum(
+                v * b for v, b in zip(transport.volumes, transport.base, strict=True)
+            ) / sum(transport.volumes)
         self._publish_base_excess()
 
     def _publish_base_excess(self) -> None:
+        if self.fluids is not None:
+            self.state.base_excess = standard_base_excess(self.state.ph, self.state.hco3)
+            return
         # Respiratory changes move base between blood and extracellular fluid,
         # so base excess uses their combined change from the resting reference.
         transport = self.gas_transport
@@ -554,6 +623,8 @@ class RespiratoryModel:
     def remove_buffer_base(self, meq: float) -> None:
         """Remove buffer base from extracellular fluid; a negative amount adds base."""
         self.gas_transport.extracellular_base -= meq
+        if self.fluids is not None:
+            self.fluids.base_meq -= meq
         self._publish_base_excess()
 
     def oxygen_exchange_l_min(
@@ -772,8 +843,9 @@ class RespiratoryModel:
         if abs(hb - old_hb) > 1e-6 * old_hb or abs(hct - old_hct) > 1e-6 * old_hct:
             previous_reference = self._reference_buffer_base
             reference = self._set_blood_composition(hb, hct)
-            shift = reference.buffer_base - previous_reference
-            transport.base = [base + shift for base in transport.base]
+            if self.fluids is None:
+                shift = reference.buffer_base - previous_reference
+                transport.base = [base + shift for base in transport.base]
         self._temperature_p50_now = self._temperature_p50(temp_c)
         self.shunt_fraction = clamp(shunt_fraction, 0.0, 0.95)
         self._set_low_vq(unconscious, airway_pressure, vq_mismatch)

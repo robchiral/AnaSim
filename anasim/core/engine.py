@@ -269,6 +269,7 @@ class SimulationEngine(DrugControllerMixin):
 
         self.hemo = HemodynamicModel(self.patient)
         self.resp = RespiratoryModel(self.patient)
+        self.resp.attach_fluid_balance(self.hemo.fluids, self.hemo.config.donor_mchc_g_dl)
         self.lactate = LactateModel(self.patient.weight, self.patient.hepatic_function)
         self.cerebral = CerebralModel(self.patient.baseline_hb)
         self.toxicity = LocalAnestheticToxicity(self.patient.weight)
@@ -354,6 +355,18 @@ class SimulationEngine(DrugControllerMixin):
     def give_fluid(self, volume_ml: float):
         """Queue a crystalloid bolus at 150 mL/min."""
         self._queue_infusion(volume_ml, self.fluid_infusion_rate_ml_min, hematocrit=0.0)
+
+    def give_saline(self, volume_ml: float):
+        """Queue 0.9% saline at the crystalloid infusion rate."""
+        self._queue_infusion(volume_ml, self.fluid_infusion_rate_ml_min, hematocrit=0.0, label="saline")
+
+    def give_calcium_chloride(self, mg: float):
+        """Give calcium chloride dihydrate; 1 g contains 6.8 mmol calcium."""
+        dose = bounded_number("calcium chloride dose", mg, 0.0, 10000.0, unit="mg")
+        if dose == 0.0:
+            raise ValueError("calcium chloride dose must be greater than zero")
+        self.hemo.fluids.give_calcium_chloride(dose * 0.0068)
+        self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="calcium_chloride", amount=dose)
 
     def give_blood(self, volume_ml: float = 300.0, hematocrit: float = 0.55):
         """Queue packed red cells at 75 mL/min."""
@@ -697,9 +710,12 @@ class SimulationEngine(DrugControllerMixin):
     def draw_blood_gas(self) -> BloodGasResult:
         """Draw an arterial sample; its result is ready after the analysis time."""
         state = self.state
+        fluids = self.hemo.fluids
         result = BloodGasResult(
             drawn_at=state.time, ph=state.ph, pa_co2=state.pa_co2, pao2=self.resp.arterial_po2_at_37(),
             hco3=state.hco3, base_excess=state.base_excess, lactate=state.lactate,
+            sodium=fluids.concentration("sodium"), potassium=fluids.concentration("potassium"),
+            chloride=fluids.concentration("chloride"), ionized_calcium=fluids.ionized_calcium(state.ph),
             sao2=state.sao2, hb=self.hemo.hb_conc, fio2=state.fio2,
         )
         self.blood_gases.append(result)

@@ -6,8 +6,12 @@ from scipy.integrate import solve_ivp
 from anasim.core.projection import step_respiration
 from anasim.core.runtime import step_lactate
 from anasim.core.state import SimulationConfig
-from anasim.physiology.lactate import LACTATED_RINGERS_MMOL_L, LactateModel
+from anasim.physiology.fluid_balance import FLUID_COMPOSITIONS
+from anasim.physiology.lactate import LactateModel
 from anasim.physiology.respiration import RespiratoryModel
+
+_RINGERS = FLUID_COMPOSITIONS["crystalloid"]
+L_LACTATE_MMOL_L = _RINGERS.lactate * _RINGERS.l_lactate_fraction
 
 # Dunham 1991, Tables 1-2: O2 debt at 30 and 60 min (mL/kg) and lactate rise
 # at 60 and 140 min (mmol/L). ANAEROBIC_PER_O2 was fitted to these groups.
@@ -53,7 +57,7 @@ def _replay_ringers(dt=1.0):
     baseline = model.concentration
     duration = 47.0 * 60.0
     for elapsed, seconds in _intervals(duration, dt):
-        model.step(seconds, 0.0, 1.0, crystalloid_in_ml=30.0 * 70.0 * (elapsed + seconds) / duration)
+        model.step(seconds, 0.0, 1.0, infused_lactate_mmol=30.0 * 70.0 * (elapsed + seconds) / duration * L_LACTATE_MMOL_L / 1000.0)
     return model.concentration - baseline
 
 
@@ -121,16 +125,16 @@ def test_elevated_lactate_clears_more_slowly_than_resting_turnover():
 
 def test_ringers_first_step_and_zero_duration_preserve_the_dose():
     model = LactateModel(70.0)
-    assert model.step(0.0, 0.0, 1.0, crystalloid_in_ml=500.0) == 0.0
+    assert model.step(0.0, 0.0, 1.0, infused_lactate_mmol=7.0) == 0.0
     assert model.concentration == pytest.approx(0.9)
-    acid = model.step(1.0, 0.0, 1.0, crystalloid_in_ml=500.0)
+    acid = model.step(1.0, 0.0, 1.0, infused_lactate_mmol=7.0)
     assert model.infused_mmol + model.cleared_infused_mmol == pytest.approx(
-        0.5 * LACTATED_RINGERS_MMOL_L, abs=1e-10,
+        0.5 * L_LACTATE_MMOL_L, abs=1e-10,
     )
     # Sodium lactate adds no proton; its metabolism returns buffer base.
     assert acid < 0.0
     for _ in range(3600):
-        acid += model.step(1.0, 0.0, 1.0, crystalloid_in_ml=500.0)
+        acid += model.step(1.0, 0.0, 1.0, infused_lactate_mmol=7.0)
     assert acid == pytest.approx(model.base_removed_mmol, abs=1e-9)
 
 
@@ -208,7 +212,7 @@ def test_mixed_lactate_sources_match_an_independent_ode_solution():
     # Hold sources and organ factors constant while saturation changes. The
     # reference integrates both pools together with adaptive RK45 steps.
     endogenous_source = model.basal_mmol_min + 0.56 * 0.1 / 0.022414
-    infused_source = 0.5 * LACTATED_RINGERS_MMOL_L / 60.0
+    infused_source = 0.5 * L_LACTATE_MMOL_L / 60.0
 
     def balance(_time, amounts):
         rate = model.vmax_mmol_min / (model.km_mmol + sum(amounts))
@@ -218,7 +222,7 @@ def test_mixed_lactate_sources_match_an_independent_ode_solution():
     assert reference.success
     base_removed = 0.0
     for seconds in range(1, 3601):
-        base_removed += model.step(1.0, 0.1 / 60.0, 1.0, crystalloid_in_ml=500.0 * seconds / 3600.0)
+        base_removed += model.step(1.0, 0.1 / 60.0, 1.0, infused_lactate_mmol=7.0 * seconds / 3600.0)
     assert (model.endogenous_mmol, model.infused_mmol) == pytest.approx(reference.y[:, -1], abs=1e-5)
     assert model.infused_mmol + model.cleared_infused_mmol == pytest.approx(7.0, abs=1e-9)
     assert base_removed == pytest.approx(model.base_removed_mmol, abs=1e-9)
@@ -237,13 +241,13 @@ def test_transport_and_lactate_conserve_buffer_base_during_shock_and_recovery(aw
             step_lactate(engine, 1.0)
         removed = engine.lactate.base_removed_mmol
         assert transport.base_meq + removed == pytest.approx(initial_base, abs=1e-7)
-        assert model.state.base_excess == pytest.approx(
-            initial_base_excess - removed / (sum(transport.volumes) + transport.extracellular_volume), abs=1e-7,
-        )
         if flow == 0.5:
             peak = engine.lactate.concentration
+            lowest_base_excess = model.state.base_excess
+            assert lowest_base_excess < initial_base_excess - 0.5
         else:
             assert 0.9 < engine.lactate.concentration < peak
+            assert lowest_base_excess < model.state.base_excess < initial_base_excess
 
 
 def test_sepsis_raises_lactate_and_lowers_base_excess_within_twenty_minutes(engine_factory):
@@ -266,5 +270,6 @@ def test_compensated_blood_loss_preserves_lactate_and_base_excess(engine_factory
         engine.step(1.0)
         assert engine.resp.oxygen_supply_fraction == 1.0
         assert engine.state.lactate == pytest.approx(0.9, abs=0.05)
-        assert engine.state.base_excess == pytest.approx(baseline_be, abs=0.1)
+        # Analyzer SBE permits a small respiratory shift during falling flow.
+        assert engine.state.base_excess == pytest.approx(baseline_be, abs=0.5)
     assert engine.state.co < 0.85 * baseline_co

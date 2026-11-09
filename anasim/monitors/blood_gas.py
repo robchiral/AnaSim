@@ -16,6 +16,10 @@ class BloodGasResult:
     hco3: float  # Plasma bicarbonate, mmol/L.
     base_excess: float  # Standard base excess, mmol/L.
     lactate: float  # mmol/L
+    sodium: float  # mmol/L
+    potassium: float  # mmol/L
+    chloride: float  # mmol/L
+    ionized_calcium: float  # mmol/L
     sao2: float  # %
     hb: float  # g/dL
     fio2: float  # Inspired O2 fraction at the draw.

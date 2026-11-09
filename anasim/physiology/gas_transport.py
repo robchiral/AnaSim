@@ -9,6 +9,7 @@ import math
 from typing import NamedTuple
 
 from .blood_chemistry import BloodChemistry, extracellular_contents
+from .plasma_buffers import PlasmaBuffers
 
 CO2_L_PER_MMOL = 0.022414
 
@@ -36,18 +37,21 @@ class GasTransport:
     METABOLISM = (0.65, 0.35)
     EFFECTIVE_STORE_FRACTION = 0.5
 
-    def __init__(self, weight: float, blood_volume_l: float):
+    def __init__(self, weight: float, blood_volume_l: float, *,
+                 extracellular_volume_l: float | None = None,
+                 extracellular_buffers: PlasmaBuffers | None = None):
         if blood_volume_l <= 0.0:
             raise ValueError("Blood gas transport requires a positive blood volume")
         self.capillary_fraction = 0.070 * weight / 70.0 / blood_volume_l
         self.resize_blood(blood_volume_l)
         # Normal pulmonary capillary volume is about 60-75 mL. The arterial
-        # share is a reduced-compartment assumption. The extracellular pool is
-        # plasma-equivalent fluid at twice the blood volume (Wooten 2003).
-        self.extracellular_volume = 2.0 * blood_volume_l
+        # share is a reduced-compartment assumption. Without a fluid balance, the
+        # extracellular pool is plasma-equivalent fluid at twice the blood volume (Wooten 2003).
+        self.extracellular_volume = (2.0 * blood_volume_l if extracellular_volume_l is None
+                                     else extracellular_volume_l)
         scale = weight / 70.0 * self.EFFECTIVE_STORE_FRACTION
         gross_capacities = (0.01748986 * scale, 0.10237336 * scale)
-        carbon, _, base_ph, base_co2 = extracellular_contents(7.4, 40.0)
+        carbon, _, base_ph, base_co2 = extracellular_contents(7.4, 40.0, extracellular_buffers)
         carbon_ph = math.log(10.0) * base_co2 * 40.0
         extracellular_capacity = self.extracellular_volume * CO2_L_PER_MMOL * (
             carbon / 40.0 - carbon_ph * base_co2 / base_ph)

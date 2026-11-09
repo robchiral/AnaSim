@@ -190,6 +190,8 @@ def test_lipid_rescue_gradually_reduces_cardiac_toxicity_during_supported_ventil
 
 def test_lipid_is_delivered_over_time_accounted_as_fluid_and_can_be_stopped(engine_factory):
     engine = _ventilated(engine_factory)
+    fluids = engine.hemo.fluids
+    sodium, body_water = engine.state.sodium, fluids.ecf_l + fluids.icf_l
     engine.give_lipid_emulsion(100)
     engine.set_lipid_infusion(17.5)
     engine.step(1)
@@ -198,6 +200,8 @@ def test_lipid_is_delivered_over_time_accounted_as_fluid_and_can_be_stopped(engi
         engine.step(1)
     assert engine.toxicity.total_lipid_ml == pytest.approx(143.75)
     assert engine.hemo.total_colloid_in_ml == pytest.approx(143.75)
+    # Sodium-free lipid water spreads through total body water, not only extracellular fluid.
+    assert sodium - engine.state.sodium == pytest.approx(sodium * 0.14375 / body_water, rel=0.1)
     assert engine.toxicity.lipid_effect > 0
     engine.set_lipid_infusion(0)
     given = engine.toxicity.total_lipid_ml

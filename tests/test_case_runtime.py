@@ -135,6 +135,14 @@ def test_early_crisis_treatment_counts_without_repeating_doses_or_following_the_
     assert len(doses) == 1 and doses[0].amount == 100
 
 
+def test_debrief_timeline_names_saline_and_calcium_chloride():
+    session = WebSession({"scenario_id": "anaphylaxis_response", "practice_mode": "independent"})
+    command(session, "fluid", kind="saline", volume_ml=500)
+    command(session, "calcium_chloride", mg=1000)
+    timeline = [item["text"] for item in command(session, "case_finish")["debrief"]["timeline"]]
+    assert {"500 mL 0.9% saline started", "Calcium chloride 1000 mg given"} <= set(timeline)
+
+
 def test_independent_feedback_defers_explanations_but_keeps_observable_failed_actions():
     session = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"})
     failed = command(session, "airway", mode="ETT")

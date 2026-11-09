@@ -10,6 +10,8 @@ from typing import NamedTuple
 
 from anasim.patient.domain import bounded_number, finite_number
 
+from .plasma_buffers import PlasmaBuffers
+
 _MMHG_PER_KPA = 7.5006168270417
 _PLASMA_CO2_SOLUBILITY = 0.230 / _MMHG_PER_KPA  # mmol/L/mmHg
 _RBC_CO2_SOLUBILITY = 0.195 / _MMHG_PER_KPA  # mmol/L/mmHg
@@ -24,6 +26,14 @@ _DEOXY_AMINO_RATIO = 10.0**(7.32 - 6.1)
 _OXY_CARBAMINO_RATIO = 10.0**(6.1 - 5.46)
 _DEOXY_CARBAMINO_RATIO = 10.0**(6.1 - 4.80)
 _RBC_PH_GRADIENT = 0.77 * _LN_10  # d(rbc pH)/d(plasma pH) times ln 10 (Rees Eq. 24r).
+
+
+def plasma_bicarbonate(ph: float, pco2: float) -> float:
+    return _PLASMA_CO2_SOLUBILITY * pco2 * 10.0**(ph - 6.1)
+
+
+def standard_base_excess(ph: float, bicarbonate: float) -> float:
+    return 0.93 * (bicarbonate - 24.4 + 14.83 * (ph - 7.4))
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,13 +115,18 @@ def step_fraction(ph: float, ph_change: float, pco2: float, pressure_change: flo
     return fraction
 
 
-def extracellular_contents(ph: float, pco2: float) -> tuple[float, float, float, float]:
+def extracellular_contents(ph: float, pco2: float,
+                           buffers: PlasmaBuffers | None = None) -> tuple[float, float, float, float]:
     """CO2, buffer base, and base derivatives with respect to pH and PCO2."""
     dissolved = _PLASMA_CO2_SOLUBILITY * pco2
     bicarbonate = dissolved * 10.0**(ph - 6.1)
-    ratio = 10.0**(6.96 - ph)
-    weak_base = 23.5 / (1.0 + ratio)
-    base_ph = _LN_10 * (bicarbonate + weak_base * ratio / (1.0 + ratio))
+    if buffers is None:
+        ratio = 10.0**(6.96 - ph)
+        weak_base = 23.5 / (1.0 + ratio)
+        weak_ph = _LN_10 * weak_base * ratio / (1.0 + ratio)
+    else:
+        weak_base, weak_ph = buffers.contents(ph)
+    base_ph = _LN_10 * bicarbonate + weak_ph
     return dissolved + bicarbonate, bicarbonate + weak_base, base_ph, bicarbonate / pco2
 
 
@@ -129,6 +144,8 @@ class BloodChemistry:
     hemoglobin_mmol_l: float
     hematocrit: float
     plasma_buffer_mmol_l: float = 23.5
+    plasma_buffers: PlasmaBuffers | None = None
+    extracellular_buffers: PlasmaBuffers | None = None
 
     def __post_init__(self) -> None:
         hb = finite_number("hemoglobin_mmol_l", self.hemoglobin_mmol_l)
@@ -209,7 +226,9 @@ class BloodChemistry:
         """One damped Newton step of solve_contents, for solves coupled to saturation."""
         blood = self.evaluate(ph, pco2, saturation)
         if extracellular_ratio:
-            fluid_co2, fluid_base, fluid_ph, fluid_pco2 = extracellular_contents(ph, pco2)
+            fluid_co2, fluid_base, fluid_ph, fluid_pco2 = extracellular_contents(
+                ph, pco2, self.extracellular_buffers,
+            )
         else:
             fluid_co2 = fluid_base = fluid_ph = fluid_pco2 = 0.0
         # Residuals per liter of blood plus fluid keep the tolerance independent of aliquot size.
@@ -250,6 +269,8 @@ class BloodChemistry:
         weak_ratio = _PLASMA_BUFFER_RATIO / plasma_ratio
         weak_base = self.plasma_buffer_mmol_l / (1.0 + weak_ratio)
         weak_ph = _LN_10 * weak_base * weak_ratio / (1.0 + weak_ratio)
+        if self.plasma_buffers is not None:
+            weak_base, weak_ph = self.plasma_buffers.contents(ph)
 
         hb_rbc = self.hemoglobin_mmol_l / self.hematocrit
         gradient = _RBC_PH_GRADIENT

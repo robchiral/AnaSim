@@ -170,6 +170,12 @@ class SimulationState:
     hco3: float = 24.5  # Plasma bicarbonate, mmol/L.
     base_excess: float = 0.0  # Standard base excess, mmol/L.
     lactate: float = 0.9  # Plasma lactate, mmol/L.
+    sodium: float = 140.0  # mmol/L
+    potassium: float = 4.0  # mmol/L
+    chloride: float = 104.0  # mmol/L
+    ionized_calcium: float = 1.2  # mmol/L, at the sample's actual pH
+    albumin_g_l: float = 42.0
+    phosphate: float = 1.0  # mmol/L
     alveolar_co2: float = 40.0
     pao2: float = 95.0
     capno_co2: float = 0.0

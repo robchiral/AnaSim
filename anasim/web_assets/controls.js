@@ -46,6 +46,10 @@ const bloodGasRows = [
   ["HCO₃⁻", "mmol/L", "hco3", (value) => value.toFixed(1)],
   ["Base excess", "mmol/L", "base_excess", signed],
   ["Lactate", "mmol/L", "lactate", (value) => value.toFixed(1)],
+  ["Na⁺", "mmol/L", "sodium", (value) => value.toFixed(0)],
+  ["K⁺", "mmol/L", "potassium", (value) => value.toFixed(1)],
+  ["Cl⁻", "mmol/L", "chloride", (value) => value.toFixed(0)],
+  ["Ionized Ca²⁺", "mmol/L", "ionized_calcium", (value) => value.toFixed(2)],
   ["SaO₂", "%", "sao2", (value) => value.toFixed(1)],
   ["Hb", "g/dL", "hb", (value) => value.toFixed(1)],
   ["FiO₂", "%", "fio2", (value) => (value * 100).toFixed(0)],
@@ -80,11 +84,12 @@ const medicationGroups = [
   { name: "Vasopressors and inotropes", keys: ["phenyl", "ephedrine", "nore", "epi", "vaso", "dobu", "milri"] },
   { name: "Heart rate and blood pressure", keys: ["atropine", "glyco", "esmolol", "labetalol"] },
   { name: "Neuromuscular blockade and reversal", keys: ["roc", "succinylcholine", "sugammadex"] },
-  { name: "Rescue and antidotes", keys: ["dantrolene", "lipid"] },
+  { name: "Rescue and antidotes", keys: ["dantrolene", "lipid", "calcium_chloride"] },
 ];
 const medicationSearchTerms = {
   dantrolene: "malignant hyperthermia MH",
   lipid: "local anesthetic systemic toxicity LAST",
+  calcium_chloride: "hypocalcemia",
 };
 const halfTimeDrugs = ["propofol", "remi", "fentanyl"];
 
@@ -358,6 +363,17 @@ export class Controls {
     this.medicationRows.set("sugammadex", {
       card: reversal, name: "Sugammadex", feedback: reversal.querySelector(".medication-feedback"),
     });
+    const calcium = document.createElement("details");
+    calcium.className = "drug-card";
+    calcium.innerHTML = `
+      <summary>Calcium chloride</summary>
+      <div class="drug-controls">
+        <button type="button" class="btn outlined full" data-calcium="1000">Give 1 g</button>
+        <p class="medication-feedback" role="status" hidden></p>
+      </div>`;
+    this.medicationRows.set("calcium_chloride", {
+      card: calcium, name: `Calcium chloride ${medicationSearchTerms.calcium_chloride}`, feedback: calcium.querySelector(".medication-feedback"),
+    });
     this.medicationRows.set("lipid", {
       card: lipid, name: `Lipid emulsion 20% ${medicationSearchTerms.lipid}`, feedback: $("c-lipid-feedback"),
     });
@@ -366,6 +382,9 @@ export class Controls {
     }
     for (const button of document.querySelectorAll("[data-sugammadex]")) {
       button.onclick = () => this.performAction(button, "sugammadex", { mg_per_kg: Number(button.dataset.sugammadex) });
+    }
+    for (const button of document.querySelectorAll("[data-calcium]")) {
+      button.onclick = () => this.performAction(button, "calcium_chloride", { mg: Number(button.dataset.calcium) });
     }
     $("drug-search").oninput = () => this.filterMedications();
     $("drug-search-clear").onclick = () => {
