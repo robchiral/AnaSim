@@ -17,6 +17,9 @@
   and sex, as clinical pumps do. Blood loss, hepatic impairment, and midazolam
   can move concentrations away from the target. The pump does not see hand
   boluses, and TCI started after a manual rate assumes no drug on board.
+- Removed the opioid-containing anesthesia checkbox from the browser setup.
+  Propofol kinetics assume opioid co-administration unless
+  `concomitant_opioids` is set to false through the CLI or Python API.
 
 ## 1.8 - 2026-11-06
 

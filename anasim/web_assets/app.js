@@ -122,14 +122,11 @@ function buildSetup() {
     ...catalog.scenarios.map((scenario) => new Option(scenario.label, scenario.id)),
   );
 
-  const syncOpioidPlan = () => {
-    const maintenance = form.elements.mode.value === "steady_state";
-    $("maintenance-row").hidden = !maintenance;
-    form.elements.concomitant_opioids.disabled = maintenance;
-    if (maintenance) form.elements.concomitant_opioids.checked = true;
+  const syncMaintenance = () => {
+    $("maintenance-row").hidden = form.elements.mode.value !== "steady_state";
   };
-  for (const radio of form.elements.mode) radio.onchange = syncOpioidPlan;
-  syncOpioidPlan();
+  for (const radio of form.elements.mode) radio.onchange = syncMaintenance;
+  syncMaintenance();
   // Cases set their own starting state; open simulation asks for it.
   const syncSession = () => {
     const isCase = form.elements.session.value === "case";
@@ -240,7 +237,6 @@ function readSetup(form) {
   } else {
     params.mode = f.mode.value;
     params.maint_type = f.maint_type.value;
-    params.concomitant_opioids = f.concomitant_opioids.checked;
   }
   return params;
 }
