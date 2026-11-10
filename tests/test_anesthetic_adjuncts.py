@@ -95,14 +95,14 @@ def test_ketamine_nitrous_maintenance_settles_to_baseline(engine_factory):
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
     engine.set_vent_power(True)
     engine.set_fgf(1.0, 0.0, n2o_l_min=2.0)
-    engine.set_drug_rate("ketamine", 0.058 * engine.patient.weight * 60.0)  # 58 mcg/kg/min
+    engine.set_drug_rate("ketamine", 0.058 * 60.0)  # 58 mcg/kg/min
     peak_map = 0.0
     for _ in range(600):
         engine.step(1.0)
         peak_map = max(peak_map, engine.state.map)
     assert peak_map > 1.12 * base_map
 
-    engine.set_drug_rate("ketamine", 0.030 * engine.patient.weight * 60.0)
+    engine.set_drug_rate("ketamine", 0.030 * 60.0)
     _advance(engine, 50 * 60)
     assert abs(engine.state.map / base_map - 1.0) < 0.10
     assert abs(engine.state.hr / base_hr - 1.0) < 0.10
@@ -128,11 +128,11 @@ def test_ketamine_with_atropine_and_nitrous_uses_premedicated_hr_baseline(engine
     premedicated_hr = engine.state.hr
     assert premedicated_hr > unpremedicated_hr + 10.0
 
-    engine.set_drug_rate("ketamine", 2.0 * engine.patient.weight * 60.0)
+    engine.set_drug_rate("ketamine", 2.0 * 60.0)
     trace = []
     for second in range(600):
         if second == 60:
-            engine.set_drug_rate("ketamine", 0.058 * engine.patient.weight * 60.0)
+            engine.set_drug_rate("ketamine", 0.058 * 60.0)
             engine.set_fgf(2.1, 0.0, n2o_l_min=3.9)
         engine.step(1.0)
         trace.append(engine.state.hr)
@@ -172,7 +172,7 @@ def test_bovill_ketamine_hr_rise_after_iv_atropine(engine_factory, dt):
         before_hr, before_map = engine.state.hr, engine.state.map
         if atropine:
             assert 45.0 < before_hr - resting_hr < 70.0
-        engine.set_drug_rate("ketamine", 2.0 * engine.patient.weight * 120.0)
+        engine.set_drug_rate("ketamine", 2.0 * 120.0)
         readings = []
         for index in range(round(420 / dt)):
             if index == round(30 / dt):

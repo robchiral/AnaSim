@@ -77,7 +77,7 @@ def test_oxygenated_hypoventilation_impairs_response_and_ventilation_reverses_it
     engine.set_airway_mode("ETT")
     engine.set_fgf(10, 0)
     engine.give_drug_bolus("roc", 70)
-    engine.set_drug_rate("roc", 35)
+    engine.set_drug_rate("roc", 8)
     engine.set_vent_settings(mode="VCV", rr=6, vt=0.2, peep=5, ie="1:2")
     engine.set_vent_power(True)
     for _ in range(1200):

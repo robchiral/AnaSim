@@ -256,7 +256,7 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="ketamine",
         name="Ketamine 10 mg/mL",
-        rate_unit="mg/hr",
+        rate_unit="mg/kg/hr",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
         default_bolus=50.0,
@@ -268,7 +268,7 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="lidocaine",
         name="Lidocaine 20 mg/mL",
-        rate_unit="mg/hr",
+        rate_unit="mg/kg/hr",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
         default_bolus=100.0,
@@ -280,7 +280,7 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="amiodarone",
         name="Amiodarone 50 mg/mL",
-        rate_unit="mg/hr",
+        rate_unit="mg/min",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
         default_bolus=300.0,
@@ -360,7 +360,7 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="dobu",
         name="Dobutamine 1 mg/mL",
-        rate_unit="mcg/min",
+        rate_unit="mcg/kg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=0.0,
@@ -376,7 +376,7 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="milri",
         name="Milrinone 200 mcg/mL",
-        rate_unit="mcg/min",
+        rate_unit="mcg/kg/min",
         internal_rate_unit="ug/sec",
         bolus_unit="mcg",
         default_bolus=0.0,
@@ -392,7 +392,7 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="esmolol",
         name="Esmolol 10 mg/mL",
-        rate_unit="mg/min",
+        rate_unit="mcg/kg/min",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
         default_bolus=30.0,
@@ -424,7 +424,7 @@ DRUG_REGISTRY = (
     DrugSpec(
         key="roc",
         name="Rocuronium 10 mg/mL",
-        rate_unit="mg/hr",
+        rate_unit="mcg/kg/min",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
         default_bolus=50.0,

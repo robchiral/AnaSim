@@ -107,7 +107,7 @@ def test_awake_paralysis_does_not_supply_hypnosis_or_block_the_pressor_response(
 
 
 @pytest.mark.parametrize("name,args", [
-    ("drug_rate", {"key": "roc", "rate": 20}),
+    ("drug_rate", {"key": "roc", "rate": 10}),
     ("drug_target", {"key": "roc", "target": 3}),
 ])
 def test_awake_block_warning_covers_infusions_and_tci(name, args):

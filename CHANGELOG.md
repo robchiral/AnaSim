@@ -20,6 +20,9 @@
 - Removed the opioid-containing anesthesia checkbox from the browser setup.
   Propofol kinetics assume opioid co-administration unless
   `concomitant_opioids` is set to false through the CLI or Python API.
+- Infusion rates use the units clinical pumps display: rocuronium, dobutamine,
+  milrinone, and esmolol in mcg/kg/min, ketamine and lidocaine in mg/kg/hr,
+  and amiodarone in mg/min.
 
 ## 1.8 - 2026-11-06
 

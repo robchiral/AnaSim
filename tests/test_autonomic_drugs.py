@@ -61,9 +61,9 @@ def test_esmolol_onset_offset_and_atrial_fibrillation_rate(engine_factory):
     _advance(engine, 60)
     base_hr = engine.state.hr
 
-    engine.set_drug_rate("esmolol", 0.5 * engine.patient.weight)
+    engine.set_drug_rate("esmolol", 500.0)
     _advance(engine, 60)
-    engine.set_drug_rate("esmolol", 0.15 * engine.patient.weight)
+    engine.set_drug_rate("esmolol", 150.0)
     _advance(engine, 240)
     fall_at_5_min = engine.state.hr - base_hr
     _advance(engine, 1500)
@@ -81,7 +81,7 @@ def test_esmolol_onset_offset_and_atrial_fibrillation_rate(engine_factory):
     engine.set_rhythm("AFIB")
     _advance(engine, 300)
     assert engine.state.hr == pytest.approx(110.0, abs=2.0)
-    engine.set_drug_rate("esmolol", 0.15 * engine.patient.weight)
+    engine.set_drug_rate("esmolol", 150.0)
     _advance(engine, 600)
     assert engine.state.hr < 95.0
 
