@@ -533,9 +533,13 @@ obstruction, airflow is limited while respiratory effort continues.
 
 [Respiratory muscles fatigue](../anasim/physiology/fatigue.py) when mean
 inspiratory pressure, including effort against an obstructed airway, exceeds
-about 15% of maximum (Bellemare and Grassino 1982). Fatigue reduces spontaneous
-tidal volume, develops sooner when oxygen supply is inadequate, and persists 24
-hours after severe loading (Laghi 1995).
+about 15% of maximum. Endurance falls steeply as the load rises further
+(Bellemare and Grassino 1982). Fatigue reduces spontaneous tidal volume and
+develops sooner when oxygen supply is inadequate. Pressure support and
+mandatory breaths reduce inspiratory effort (Leung 1997). Most fatigue recovers
+within minutes of rest (Aubier 1981; Rohrbach 2003), and a smaller deficit
+persists for up to 24 hours after prolonged heavy loading (Laghi 1995;
+Travaline 1997).
 
 Metabolic acidosis lowers the PaCO₂ set point by 1.2 mmHg per mmol/L of base
 deficit, with a two-minute time constant. Anesthetics and opioids still limit

@@ -16,6 +16,10 @@
   are recalibrated to infusion and bolus studies. Inotropy widens pulse pressure.
   Bolus HR and pressure keep rising at larger doses, and higher infusion rates
   restore vascular resistance.
+- Respiratory muscle fatigue is recalibrated to endurance and recovery studies.
+  Heavy inspiratory loads take about twice as long to exhaust the muscles, most
+  strength returns within 15 minutes of rest or pressure support, and a smaller
+  deficit lasts up to a day.
 - Above 65, propofol lowers blood pressure more slowly but further.
 - Propofol, remifentanil, and fentanyl TCI now uses only age, weight, height,
   and sex, as clinical pumps do. Blood loss, hepatic impairment, and midazolam

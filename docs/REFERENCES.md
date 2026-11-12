@@ -334,7 +334,10 @@ PCV-VG, pressure control with volume guarantee.
 ## Respiratory control
 
 - Bellemare and Grassino (1982). *J Appl Physiol*. [Pressure, duty cycle, and diaphragm endurance](https://pubmed.ncbi.nlm.nih.gov/7174413/).
+- Aubier et al. (1981). *J Appl Physiol*. [High- and low-frequency diaphragmatic fatigue and recovery](https://pubmed.ncbi.nlm.nih.gov/7251445/).
 - Laghi et al. (1995). *J Appl Physiol*. [Recovery from diaphragmatic fatigue over 24 hours](https://pubmed.ncbi.nlm.nih.gov/7592215/).
+- Travaline et al. (1997). *Am J Respir Crit Care Med*. [Recovery of twitch and maximal transdiaphragmatic pressure after fatigue](https://pubmed.ncbi.nlm.nih.gov/9372676/).
+- Rohrbach et al. (2003). *Eur J Appl Physiol*. [Repeat inspiratory endurance and twitch pressure after 15-minute rest](https://pubmed.ncbi.nlm.nih.gov/12827367/).
 - García-Río et al. (2007). *Respir Med*. [Age and hypoxic and hypercapnic inspiratory drive](https://pubmed.ncbi.nlm.nih.gov/17643972/).
 - Egan et al. (2004). *Br J Anaesth*. [Remifentanil bolus respiratory effects by age](https://pubmed.ncbi.nlm.nih.gov/14970134/).
 - Bouillon et al. (2004). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).

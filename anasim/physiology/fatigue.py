@@ -1,9 +1,11 @@
 """Inspiratory muscle fatigue from sustained pressure generation.
 
 Mean muscle pressure as a fraction of maximum approximates the diaphragm
-tension-time index, which is sustainable up to about 0.15 (Bellemare and
-Grassino 1982). Recovery has fast and persistent components (Laghi 1995);
-their weights and time constants, the maximum, and the loss rate are calibrations.
+tension-time index. Loads up to about 0.15 are sustainable, and endurance falls
+steeply above that (Bellemare and Grassino 1982). The fast component recovers
+within minutes (Aubier 1981; Rohrbach 2003), and the persistent component lasts
+up to 24 hours (Laghi 1995; Travaline 1997). The maximum pressure, the course of
+fatigue during loading, and the oxygen scaling are calibrations.
 """
 
 import math
@@ -14,11 +16,12 @@ from anasim.core.utils import clamp01
 class RespiratoryFatigue:
     MAX_PRESSURE = 100.0  # cmH2O, representative unfatigued inspiratory capacity
     SUSTAINABLE_LOAD = 0.15
-    LOAD_TAU_S = 10.0
-    LOSS_TIME_S = 360.0
-    FAST_RECOVERY_S = 1800.0
-    SLOW_RECOVERY_S = 40.0 * 3600.0
-    PERSISTENT_SHARE = 0.8
+    LOAD_TAU_S = 15.0
+    LOSS_TIME_S = 960.0
+    EXCESS_EXPONENT = 1.35
+    FAST_RECOVERY_S = 300.0
+    SLOW_RECOVERY_S = 18.0 * 3600.0
+    PERSISTENT_SHARE = 0.35
 
     def __init__(self):
         self.fast_fatigue = 0.0
@@ -29,7 +32,8 @@ class RespiratoryFatigue:
 
     @property
     def fatigue(self) -> float:
-        return (1.0 - self.PERSISTENT_SHARE) * self.fast_fatigue + self.PERSISTENT_SHARE * self.slow_fatigue
+        persistent = self.PERSISTENT_SHARE * self.slow_fatigue
+        return 1.0 - (1.0 - self.fast_fatigue) * (1.0 - persistent)
 
     @property
     def available_pressure(self) -> float:
@@ -45,7 +49,7 @@ class RespiratoryFatigue:
         oxygen = clamp01(self.oxygen_fraction)
         sustainable = self.SUSTAINABLE_LOAD * oxygen
         excess = max(0.0, self.load - sustainable) / self.SUSTAINABLE_LOAD
-        loss = excess * excess / self.LOSS_TIME_S
+        loss = excess ** self.EXCESS_EXPONENT / self.LOSS_TIME_S
         rest = clamp01(1.0 - self.load / self.SUSTAINABLE_LOAD)
         self.fast_fatigue = self._advance(self.fast_fatigue, dt, loss, oxygen * rest / self.FAST_RECOVERY_S)
         self.slow_fatigue = self._advance(self.slow_fatigue, dt, loss, oxygen * rest / self.SLOW_RECOVERY_S)
