@@ -18,8 +18,8 @@ class HemodynamicConfig:
     tau_hr_fast: float = 5.0  # s
 
     # Cardiovagal aging follows Kardos 2001. Reflex/beta HR scaling is calibrated
-    # to Laitinen 2004, Bullington 1989, and Leenen 2005; vascular responses
-    # are preserved (Monahan 2007).
+    # to Laitinen 2004, Bullington 1989, and Leenen 2005; baroreflex vascular
+    # control is preserved (Monahan 2007).
     age_reference: float = 40.0
     age_sympathetic_hr: float = -0.0085  # Fraction per year
     age_vagal_baroreflex: float = -0.026  # ln gain per year
@@ -252,34 +252,41 @@ class HemodynamicConfig:
     anaphylaxis_svr_drop_wood: float = 10.0
     # Fisher 1986 inferred plasma escape up to 35% of blood volume within 10 min.
     anaphylaxis_leak_fraction_per_min: float = 0.03
-    # Full severity shifts adrenergic agonist responses 3-fold to the right, so
+    # Full severity shifts adrenergic agonist responses 2.7-fold to the right, so
     # 50-100 mcg epinephrine boluses (ANZAAG and ANZCA 2022) restore pressure
     # briefly without overshoot. Calibrated.
-    anaphylaxis_agonist_shift: float = 2.0
+    anaphylaxis_agonist_shift: float = 1.7
 
     # Epinephrine: exogenous arterial concentrations in ng/mL. Responses and
-    # delays are calibrated to Freyschuss 1986 infusions, Guinard 1995 awake
-    # boluses, and Takahashi 2002 anesthetized boluses (tests/test_epinephrine.py).
-    epi_c50_hr: float = 2.2
-    epi_gamma_hr: float = 2.0
-    epi_emax_hr: float = 97.0
-    epi_c50_sv: float = 1.8
-    epi_emax_sv: float = 1.35
-    epi_c50_beta2: float = 0.35
-    epi_emax_svr_beta: float = -0.55
-    epi_c50_alpha: float = 2.5
-    epi_gamma_alpha: float = 2.0
-    # Saturating alpha response preserves small-bolus pressure gains without
-    # multiplying baseline resistance fourfold at larger doses. Calibrated.
-    # The same alpha occupancy restores propofol's pooled venous volume.
-    epi_emax_svr_alpha: float = 0.3
-    # A lower-affinity alpha effect dominates at arrest doses (1 mg). Calibrated to
-    # raise diastolic pressure during compressions by about 13 mmHg.
-    epi_c50_alpha_arrest: float = 80.0
-    epi_emax_svr_alpha_arrest: float = 1.2
-    epi_tau_hr_s: float = 7.0
-    epi_tau_beta2_s: float = 15.0
-    epi_tau_pressor_s: float = 50.0
+    # delays are calibrated to Freyschuss 1986, Stratton 1985, Ensinger 1992,
+    # Marker 1998, and Leenen 2005 infusions, Guinard 1995 awake boluses,
+    # and Takahashi 2002 anesthetized boluses (tests/test_epinephrine.py).
+    epi_pulse_gain: float = 0.6
+    # Venous recruitment uses a separate calibrated potency ratio.
+    epi_venous_potency_ratio: float = 0.34
+    epi_age_sv: float = 1.3164436381410376
+    epi_age_beta2: float = 0.6165682771729425
+    epi_age_alpha: float = 0.45
+    epi_c50_hr: float = 7.210482964309253
+    epi_gamma_hr: float = 1.0413425804848178
+    epi_emax_hr: float = 133.64470160862055
+    epi_c50_sv: float = 1.3
+    epi_emax_sv: float = 0.77
+    epi_c50_beta2: float = 1.17
+    epi_emax_svr_beta: float = -0.68
+    epi_c50_alpha: float = 4.0
+    epi_gamma_alpha: float = 4.4
+    # Primary arterial alpha acts below the high-concentration component.
+    epi_emax_svr_alpha: float = 0.46
+    # A gradual alpha response at higher concentrations also supports CPR.
+    # High-dose behavior and this component's lag are extrapolated.
+    epi_c50_alpha_high: float = 25.0
+    epi_gamma_alpha_high: float = 2.0
+    epi_tau_alpha_high_s: float = 180.0
+    epi_emax_svr_alpha_high: float = 1.05
+    epi_tau_hr_s: float = 15.515422502151596
+    epi_tau_beta2_s: float = 10.000898034308412
+    epi_tau_pressor_s: float = 35.01803824066735
     # Volatiles also blunt direct chronotropy; propofol does not.
     epi_volatile_hr_depression: float = 0.4
 

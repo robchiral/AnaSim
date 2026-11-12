@@ -763,14 +763,18 @@ class NorepinephrinePK(MammillaryPK):
 class EpinephrinePK(MammillaryPK):
     """Exogenous epinephrine, in ng/mL above the patient's endogenous baseline.
 
-    Arterial infusion clearance is from Ensinger 1992. Mixing volume and
-    effect-site timing are calibrated against adult infusion and bolus data.
+    Young-adult arterial clearance is calibrated between Esler 1995 and
+    Ensinger 1992, and its decline with age is from Esler 1995. Mixing volume
+    and effect-site timing are calibrated against adult infusion and bolus data.
     """
+
+    AGE_CL_SLOPE = -0.0053  # Esler 1995: 2.24 vs 2.80 L/min from 20-30 to 60-75 yr.
 
     def __init__(self, patient: Patient):
         w = patient.weight
-        # Ensinger: 0.2 mcg/kg/min / (4.349 - 0.053) ng/mL.
-        super().__init__(v1=0.035 * w, cl1=0.046 * w, ke0=2.2, **_NO_CO_COVARIATE)
+        # Esler: 2.80 L/min, about 40 mL/kg/min at 70 kg. Ensinger Table 2: 51 mL/kg/min.
+        cl1 = 0.046 * w * math.exp(self.AGE_CL_SLOPE * (patient.age - 25.0))
+        super().__init__(v1=0.021055536419796666 * w, cl1=cl1, ke0=2.2, **_NO_CO_COVARIATE)
 
 
 class PhenylephrinePK(MammillaryPK):

@@ -149,6 +149,7 @@ def step_cardiac_monitors(
                 hemo_state.sv,
                 dt=substep_dt,
                 static_pressure=hemo_state.venous_pressure,
+                pulse_pressure_factor=hemo_state.pulse_pressure_factor,
             )
         engine.art_line.advance(
             substep_dt,

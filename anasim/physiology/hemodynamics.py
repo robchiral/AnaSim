@@ -131,7 +131,9 @@ class HemodynamicModel:
         # Fast HR effects (chemoreflex, baroreflex, vasoactive chronotropy).
         self.smoothed_epi_hr = 0.0
         self._epi_pressor_ce = 0.0
+        self._epi_high_pressor_ce = 0.0
         self._epi_chrono_effect = 0.0
+        self._epi_pulse_factor = 1.0
         self._epi_beta2_effect = 0.0
         self.smoothed_chemo_hr = 0.0
         self.smoothed_baro_hr = 0.0
@@ -448,25 +450,36 @@ class HemodynamicModel:
         return hr_mult, tpr_mult
 
     def _calc_epi_effects(
-        self, ce_epi: float, ce_pressor: float, beta1_dr: float = 1.0, alpha_dr: float = 1.0
+        self, ce_epi: float, ce_pressor: float, ce_high_pressor: float,
+        beta1_dr: float = 1.0, alpha_dr: float = 1.0
     ) -> tuple[float, float, float]:
         """Return direct chronotropy, SV factor, and baseline-relative SVR factor.
 
-        The lagged pressor concentration separates the HR and SBP peaks after a
-        bolus; at steady exposure both concentrations are equal. Beta-2 dilation
-        scales with current vascular tone; alpha tone adds relative to baseline.
-        Antagonist dose ratios divide the concentration seen by each receptor.
+        The pressor concentrations lag the effect-site concentration, with a
+        separate lag for high alpha. All three are equal at steady exposure.
+        Beta-2 dilation scales with current vascular tone; alpha tone adds
+        relative to baseline.
+        Cardiac and primary vascular sensitivity decline with age alongside
+        reduced clearance (Leenen 2005; Pan 1986; Hogikyan 1994). Antagonist dose
+        ratios divide the concentration seen by each receptor.
         """
         cfg = self.config
+        age_scale = self._age_chronotropy
         delta_hr = cfg.epi_emax_hr * hill_function(ce_epi / beta1_dr, cfg.epi_c50_hr, cfg.epi_gamma_hr)
-        delta_hr *= (1.0 - cfg.epi_volatile_hr_depression * clamp01(self.ce_sevo)) * self._age_chronotropy
-        sv_factor = 1.0 + cfg.epi_emax_sv * hill_function(ce_pressor / beta1_dr, cfg.epi_c50_sv, 1.0)
-        alpha = cfg.epi_emax_svr_alpha * hill_function(
-            ce_pressor / alpha_dr, cfg.epi_c50_alpha, cfg.epi_gamma_alpha
-        ) + cfg.epi_emax_svr_alpha_arrest * hill_function(
-            ce_pressor / alpha_dr, cfg.epi_c50_alpha_arrest, cfg.epi_gamma_alpha
+        delta_hr *= (1.0 - cfg.epi_volatile_hr_depression * clamp01(self.ce_sevo)) * age_scale
+        sv_factor = 1.0 + cfg.epi_emax_sv * (1 + cfg.epi_age_sv * (age_scale - 1)) * hill_function(
+            ce_pressor / beta1_dr, cfg.epi_c50_sv, 1.0
         )
-        svr_factor = 1.0 + self._epi_beta2_effect * self.tpr / self.base_tpr + alpha
+        alpha_age_scale = 1 + cfg.epi_age_alpha * (age_scale - 1)
+        alpha = cfg.epi_emax_svr_alpha * hill_function(
+            ce_pressor * alpha_age_scale / alpha_dr, cfg.epi_c50_alpha, cfg.epi_gamma_alpha
+        ) + cfg.epi_emax_svr_alpha_high * hill_function(
+            ce_high_pressor / alpha_dr, cfg.epi_c50_alpha_high, cfg.epi_gamma_alpha_high
+        )
+        svr_factor = (
+            1.0 + self._epi_beta2_effect * (1 + cfg.epi_age_beta2 * (age_scale - 1)) * self.tpr / self.base_tpr
+            + alpha
+        )
         return delta_hr, sv_factor, max(0.2, svr_factor)
 
     def _calc_phenyl_effects(self, ce_phenyl: float) -> float:
@@ -650,7 +663,9 @@ class HemodynamicModel:
             # When the rhythm sets the rate, the baroreflex acts through its vascular limb.
             reflex_hr = self.smoothed_baro_hr
             blocked_hr = reflex_hr - (current_hr - self._rhythm_rate(sinus_hr - reflex_hr))
-            reflex_tpr_factor = 1.0 + blocked_hr / max(sinus_hr - reflex_hr, HR_MIN)
+            # Blocked drug chronotropy must not dilute the vascular reflex.
+            reflex_hr_base = max(hr_base + self.dist_hr - reflex_hr - self.smoothed_epi_hr, HR_MIN)
+            reflex_tpr_factor = 1.0 + blocked_hr / reflex_hr_base
         current_hr *= 1.0 - cfg.hypoxia_hr_depression * self.myocardial_hypoxia
         current_hr *= self.coronary.electrical_factor
         current_hr *= 1.0 - self.sodium_block
@@ -710,6 +725,7 @@ class HemodynamicModel:
             map=map_val,
             hr=current_hr,
             sv=current_sv,
+            pulse_pressure_factor=self._epi_pulse_factor,
             svr=svr_val,
             co=co,
             tpr=self.tpr,
@@ -873,7 +889,7 @@ class HemodynamicModel:
         vagal_hr = cfg.glyco_emax_hr * glyco * (1.0 - atropine) + atropine_hr
         resting_tone = 1.0 - cfg.sympathetic_anesthetic_depression * anesthetic_depth
         # Shares of sympathetic reflex and stimulation responses left after
-        # block; age reduces the HR share only, as for beta agonists.
+        # block; age reduces the HR share only.
         beta_response = 1.0 - cfg.beta_block_reflex * beta_occ
         sympathetic_hr_response = beta_response * self._age_chronotropy
         alpha_response = 1.0 - alpha_occ
@@ -977,7 +993,12 @@ class HemodynamicModel:
         self._epi_pressor_ce += (max(0.0, ce_epi) - self._epi_pressor_ce) * (
             -math.expm1(-dt / cfg.epi_tau_pressor_s)
         )
-        self._epi_venous_alpha = hill_function(self._epi_pressor_ce / alpha_dr, cfg.epi_c50_alpha, cfg.epi_gamma_alpha)
+        self._epi_high_pressor_ce += (max(0.0, ce_epi) - self._epi_high_pressor_ce) * (
+            -math.expm1(-dt / cfg.epi_tau_alpha_high_s)
+        )
+        self._epi_venous_alpha = hill_function(
+            self._epi_pressor_ce / alpha_dr, cfg.epi_c50_alpha * cfg.epi_venous_potency_ratio, cfg.epi_gamma_alpha
+        )
         pressor_gain = 1.0 - clamp01(cfg.sepsis_pressor_resistance * sepsis_sev)
         self._update_venous_drug_effects(ce_prop, ce_phenyl / alpha_dr, pressor_gain)
 
@@ -1034,8 +1055,9 @@ class HemodynamicModel:
             -math.expm1(-dt / cfg.epi_tau_beta2_s)
         )
         epi_delta_hr, epi_sv_factor, epi_svr_factor = self._calc_epi_effects(
-            ce_epi, self._epi_pressor_ce, beta1_dr, alpha_dr
+            ce_epi, self._epi_pressor_ce, self._epi_high_pressor_ce, beta1_dr, alpha_dr
         )
+        self._epi_pulse_factor = 1.0 + cfg.epi_pulse_gain * (epi_sv_factor - 1.0)
         self._epi_chrono_effect += (epi_delta_hr - self._epi_chrono_effect) * (
             -math.expm1(-dt / cfg.epi_tau_hr_s)
         )
@@ -1210,7 +1232,7 @@ class HemodynamicModel:
         self.tde_sv = 0
         self.ce_sevo = mac_sevo
 
-        self._epi_pressor_ce = self._epi_chrono_effect = self._epi_beta2_effect = 0.0
+        self._epi_pressor_ce = self._epi_high_pressor_ce = self._epi_chrono_effect = self._epi_beta2_effect = 0.0
         self.smoothed_chemo_hr = self.smoothed_baro_hr = 0.0
         self.smoothed_epi_hr = nore_delta_hr
         self.vasopressor_sv_factor = nore_sv_factor

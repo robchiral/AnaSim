@@ -220,6 +220,34 @@ def test_epinephrine_raises_diastolic_pressure_once_compressions_circulate_it(en
     assert engine.state.art_dbp > before + 8
 
 
+@pytest.mark.parametrize("mode", ["awake", "steady_state"])
+@pytest.mark.parametrize("dt", [0.1, 1.0])
+def test_epinephrine_sustains_cpr_pressure_against_no_drug(engine_factory, mode, dt):
+    """One 1 mg dose must support DBP through four minutes after circulation starts."""
+    engines = []
+    for dose in (0.0, 1000.0):
+        engine = engine_factory(config=SimulationConfig(mode=mode, rng_seed=7), start=True)
+        engine.arrhythmias.rng = _NoRecurrence()
+        engine.set_rhythm("VFIB")
+        for _ in range(round(15 / dt)):
+            engine.step(dt)
+        if dose:
+            engine.give_drug_bolus("epi", dose)
+        for _ in range(round(30 / dt)):
+            engine.step(dt)
+        engine.set_chest_compressions(True)
+        engines.append(engine)
+    control, treated = engines
+    differences = []
+    for step in range(round(360 / dt)):
+        control.step(dt)
+        treated.step(dt)
+        elapsed = (step + 1) * dt
+        if 30 <= elapsed <= 240:
+            differences.append(treated.state.art_dbp - control.state.art_dbp)
+    assert min(differences) > 0.0
+
+
 @pytest.mark.parametrize("dt", [0.01, 0.1])
 def test_doses_wait_for_circulation_before_clearance_and_neuromuscular_or_cardiac_effects(engine_factory, dt):
     engine = engine_factory(config=SimulationConfig(rng_seed=7, dt=dt), start=True)

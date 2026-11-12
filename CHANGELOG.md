@@ -12,6 +12,10 @@
 - Added malignant hyperthermia with dantrolene, surface cooling, and a guided
   or independent case.
 - Supported adults aged up to 85 years.
+- Epinephrine clearance and sensitivity now fall with age, and its responses
+  are recalibrated to infusion and bolus studies. Inotropy widens pulse pressure.
+  Bolus HR and pressure keep rising at larger doses, and higher infusion rates
+  restore vascular resistance.
 - Above 65, propofol lowers blood pressure more slowly but further.
 - Propofol, remifentanil, and fentanyl TCI now uses only age, weight, height,
   and sex, as clinical pumps do. Blood loss, hepatic impairment, and midazolam

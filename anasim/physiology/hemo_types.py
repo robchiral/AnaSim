@@ -12,6 +12,8 @@ class HemoState:
     map: float = 80.0
     hr: float = 75.0
     sv: float = 70.0
+    # Peripheral pulse amplitude, independent of mean pressure and flow.
+    pulse_pressure_factor: float = 1.0
     svr: float = 16.0
     co: float = 5.25
     rhythm_type: RhythmType = RhythmType.SINUS

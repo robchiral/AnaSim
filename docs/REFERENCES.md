@@ -271,9 +271,14 @@ PCV-VG, pressure control with volume guarantee.
 
 - Ensinger et al. (1992). *Eur J Anaesthesiol*. [Arterial epinephrine clearance](https://pubmed.ncbi.nlm.nih.gov/1425612/).
 - Ensinger et al. (1992). *Eur J Clin Pharmacol*. [Arterial and peripheral venous catecholamine concentrations](https://pubmed.ncbi.nlm.nih.gov/1425886/).
+- Esler et al. (1995). *J Clin Endocrinol Metab*. [Aging and arterial epinephrine clearance](https://pubmed.ncbi.nlm.nih.gov/7852502/).
+- Marker et al. (1998). *Am J Physiol*. [Epinephrine clearance and infusion responses in older adults](https://pubmed.ncbi.nlm.nih.gov/9814995/).
 - Clutter et al. (1980). *J Clin Invest*. [Epinephrine cardiovascular effects](https://pubmed.ncbi.nlm.nih.gov/6995479/).
 - Stratton et al. (1985). *J Appl Physiol*. [Epinephrine infusion hemodynamics](https://pubmed.ncbi.nlm.nih.gov/3988675/).
 - Freyschuss et al. (1986). *Clin Sci (Lond)*. [Arterial epinephrine concentrations and hemodynamics](https://pubmed.ncbi.nlm.nih.gov/3956110/).
+- Piccioli et al. (2023). *Front Cardiovasc Med*. [Contractility and pulse pressure during dobutamine](https://doi.org/10.3389/fcvm.2023.1197842).
+- Pan et al. (1986). *J Pharmacol Exp Ther*. [Aging and beta-adrenergic vascular relaxation](https://pubmed.ncbi.nlm.nih.gov/3025419/).
+- Hogikyan and Supiano (1994). *Am J Physiol*. [Aging and arterial alpha-adrenergic responsiveness](https://pubmed.ncbi.nlm.nih.gov/8203510/).
 - Takahashi et al. (2002). *Anesth Analg*. [IV epinephrine bolus response](https://pubmed.ncbi.nlm.nih.gov/11867404/).
 - Guinard et al. (1995). *Reg Anesth*. [Age and HR after IV epinephrine test doses](https://pubmed.ncbi.nlm.nih.gov/7547654/).
 

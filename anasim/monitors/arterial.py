@@ -204,7 +204,9 @@ class ArterialWaveformRenderer:
         ratio = cfg.compliance_pressure_ref_mmhg / max(20.0, float(mean_pressure))
         return self.arterial_compliance * ratio**cfg.compliance_pressure_exponent
 
-    def _update_reference(self, map_value: float, stroke_volume_ml: float, sample: CardiacCycleSample) -> None:
+    def _update_reference(
+        self, map_value: float, stroke_volume_ml: float, sample: CardiacCycleSample, pulse_pressure_factor: float
+    ) -> None:
         mean_pressure = max(0.0, float(map_value))
         if not sample.organized or mean_pressure <= 0.0 or stroke_volume_ml <= 0.0:
             self._mean_pressure = self._systolic = self._diastolic = self._reference_pp = 0.0
@@ -212,7 +214,7 @@ class ArterialWaveformRenderer:
 
         shape = self._build_shape(sample.rr_interval_s, sample.measured_hr)
         compliance = self.compliance_at(mean_pressure)
-        requested_pp = float(stroke_volume_ml) / compliance
+        requested_pp = float(stroke_volume_ml) * pulse_pressure_factor / compliance
         self._reference_pp = min(requested_pp, mean_pressure / shape.mean)
         self._mean_pressure = mean_pressure
         self._diastolic = mean_pressure - self._reference_pp * shape.mean
@@ -243,10 +245,11 @@ class ArterialWaveformRenderer:
         *,
         dt: float = 0.0,
         static_pressure: float = 0.0,
+        pulse_pressure_factor: float = 1.0,
     ) -> ArterialPressureSample:
         """Render the beat; without organized beats, pressure runs off to static_pressure over dt."""
         if not sample.organized:
-            self._update_reference(0.0, 0.0, sample)
+            self._update_reference(0.0, 0.0, sample, 1.0)
             self._pulse_pressure = self._foot_pressure = self._end_pressure = 0.0
             self._beat_pending = False
             self._initialized = True
@@ -256,7 +259,7 @@ class ArterialWaveformRenderer:
 
         delay_s = self.config.electromechanical_delay_s
         if not self._initialized or sample.beat_started:
-            self._update_reference(map_value, stroke_volume_ml, sample)
+            self._update_reference(map_value, stroke_volume_ml, sample, pulse_pressure_factor)
             self._beat_pending = True
         # The drawn beat changes at its upstroke, after the electromechanical delay.
         if self._beat_pending and (sample.elapsed_s >= delay_s or not self._initialized):

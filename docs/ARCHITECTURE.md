@@ -310,12 +310,12 @@ on resistance and stroke volume combine as independent fractions.
 **Reflexes.** MAP feedback changes HR or vascular resistance, depending on
 rhythm, anesthetic depth, blood gases, and stimulation. Anesthesia reduces the
 baroreflex and the tachycardia of hemorrhage (Ebert 1992; Sellgren 1994). Older
-patients have lower cardiovagal gain and less reflex and beta-agonist
-tachycardia, while their vascular responses are preserved (Kardos 2001; Laitinen
-2004; Monahan 2007). Severe hypoxia lowers HR and contractility. Blood loss
-lowers filling pressure and preload, and reflex venoconstriction partly
-compensates. Venous recruitment increases for losses above 30%, so slow class
-III and IV hemorrhage remains compensated until stressed volume is exhausted.
+patients have lower cardiovagal gain and less reflex tachycardia, while
+baroreflex vascular control is preserved (Kardos 2001; Laitinen 2004; Monahan
+2007). Severe hypoxia lowers HR and contractility. Blood loss lowers filling
+pressure and preload, and reflex venoconstriction partly compensates. Venous
+recruitment increases for losses above 30%, so slow class III and IV hemorrhage
+remains compensated until stressed volume is exhausted.
 
 Under propofol, MAP has little effect on HR (Garraza-Obaldia 2024). Slow
 compensatory tachycardia therefore decreases with anesthetic depth, while
@@ -339,13 +339,28 @@ Anaphylaxis reduces the response to adrenergic drugs.
 
 The norepinephrine model includes endogenous secretion and clearance that
 depends on propofol (Li 2024). Its effects on resistance and stroke volume
-increase with anesthetic depth. Epinephrine uses arterial clearance. Its cardiac
-and vascular responses are calibrated to boluses in awake and anesthetized
-patients and to infusions in awake volunteers (Ensinger 1992; Guinard 1995;
-Takahashi 2002; Freyschuss 1986). At arrest doses, a lower-affinity alpha
-effect raises vascular resistance further. Phenylephrine recruits venous blood
-and raises afterload, so its effect on cardiac output depends on preload (Rebet
-2016).
+increase with anesthetic depth.
+
+Epinephrine uses arterial clearance (Ensinger 1992), which falls with age
+(Esler 1995). Its effective mixing volume is calibrated to bolus responses. It
+sets the initial bolus concentration and, with clearance, the plasma decay
+rate. Cardiac and vascular responses are calibrated to boluses in awake and
+anesthetized patients and to infusions in awake volunteers (Guinard 1995;
+Takahashi 2002; Freyschuss 1986; Stratton 1985; Ensinger 1992; Marker 1998;
+Leenen 2005).
+
+Older patients are less sensitive to epinephrine (Leenen 2005; Pan 1986;
+Hogikyan 1994). Age increases arterial alpha C50 in the model. Higher
+concentrations and weaker baroreflex buffering offset this during infusions,
+while boluses raise HR less in older patients. Under propofol, epinephrine
+recruits pooled venous blood before the steep primary arterial alpha response.
+A separate high alpha component has a gradual concentration response and its
+own lag. It sustains vascular resistance at shock infusion rates and supports
+pressure during CPR. The arterial concentration-response calibration extends
+through Ensinger's 0.22 mcg/kg/min measured infusion step.
+
+Phenylephrine recruits venous blood and raises afterload, so its effect on
+cardiac output depends on preload (Rebet 2016).
 
 Ephedrine uses the oral disposition and tolerance reported by Persky 2004,
 applied to intravenous use. Its peak responses are calibrated to Meng 2011, and
@@ -415,7 +430,7 @@ when diastolic pressure exceeds about 25 mmHg, the CPR target in Meaney 2013,
 which corresponds to the coronary perfusion pressure that return of circulation
 required in Paradis 1990. In an anesthetized adult, compressions give about
 70/25 mmHg and EtCO₂ near 20 mmHg, so CPR keeps VF coarse and makes fine VF
-coarse again. Epinephrine 1 mg raises diastolic pressure by about 13 mmHg.
+coarse again. Epinephrine raises diastolic pressure during compressions.
 In primary asystole, beats resume after 30 seconds of adequate coronary oxygen
 supply during compressions if energy remains and the myocardium is viable. An
 interruption or inadequate perfusion restarts this interval.
@@ -674,11 +689,13 @@ ECG, arterial pressure, and plethysmography use the same beat timing, and HR
 is averaged over beat intervals. The arterial waveform depends on MAP, stroke
 volume, and age-dependent arterial compliance (Mahdi 2017; Franklin 1997).
 Compliance increases as pressure falls (Langewouters 1984), so pulse pressure
-narrows during hypotension and widens with vasopressors. Under propofol,
-systolic pressure falls about twice as much as diastolic pressure (three times
-as much in Ebert 1992 and Jeleazcov 2015). Catheter and transducer dynamics
-filter the arterial pressure measurements. Pulse oximetry responds to rhythm
-and perfusion, and poor perfusion delays readings and reduces the
+narrows during hypotension and widens with vasopressors. Epinephrine's inotropy
+widens pulse pressure beyond its effect on stroke volume, without changing MAP
+or flow, as contractility does in human inotrope studies (Piccioli 2023). Under
+propofol, systolic pressure falls about twice as much as diastolic pressure
+(three times as much in Ebert 1992 and Jeleazcov 2015). Catheter and transducer
+dynamics filter the arterial pressure measurements. Pulse oximetry responds to
+rhythm and perfusion, and poor perfusion delays readings and reduces the
 plethysmograph amplitude.
 
 Without flow, arterial pressure falls to the mean systemic filling pressure.

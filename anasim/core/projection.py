@@ -398,6 +398,7 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
         cardiac_sample,
         state.map,
         state.sv,
+        pulse_pressure_factor=engine.hemo.state.pulse_pressure_factor,
     )
     art_reading = engine.art_line.seed(arterial_sample)
     engine.airway_sensor.seed(state.paw, state.flow, state.volume)
