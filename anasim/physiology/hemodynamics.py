@@ -216,7 +216,7 @@ class HemodynamicModel:
         self.total_third_space_ml = 0.0
         self.crystalloid = CrystalloidKinetics()
         self.fluids = FluidBalance(patient.weight, self.blood_volume, self.red_cell_volume_ml,
-                                   patient.pregnancy.ph)
+                                   patient.pregnancy.ph, patient.pregnancy.extracellular_water)
 
         self._rhythm_type = RhythmType.SINUS
         self.sodium_block = 0.0

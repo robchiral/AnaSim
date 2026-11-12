@@ -254,8 +254,9 @@ class SimulationState:
 
     alarms: dict[str, dict[str, bool]] = field(default_factory=dict)
 
-    # Airway severities, 0-1.
+    # Airway severities and facemask seal, 0-1.
     airway_mode: AirwayType = AirwayType.NONE
+    mask_seal: float = 1.0
     airway_obstruction: float = 0.0
     bronchospasm: float = 0.0
     laryngospasm: float = 0.0

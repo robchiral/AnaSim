@@ -37,6 +37,7 @@ SURGICAL_SITE_CLOSURE = {"other": 0.0, "lower_abdominal": 0.3, "upper_abdominal"
 class PregnancyFactors:
     cardiac_output: float = 1.0
     blood_volume: float = 1.0
+    extracellular_water: float = 1.0
     filtration: float = 1.0
     heart_rate: float = 1.0
     metabolism: float = 1.0
@@ -67,11 +68,16 @@ def pregnancy_factors(gestational_age_weeks: float) -> PregnancyFactors:
     early = min(fa / 12.0, 1.0)
     late = max(0.0, min((gestational_age_weeks - 13.0) / 24.0, 1.0))
     compression = max(0.0, min((gestational_age_weeks - 20.0) / 16.0, 1.0))
+    # Maternal plasma expansion (Dallmann 2017 Eq. 29) plus 1 L of late-pregnancy
+    # interstitial water, relative to a 12 L nonpregnant extracellular space
+    # (Ansari 2025).
+    extracellular = 1.0 + ((plasma - 2.36) + late) / 12.0
     # Contreras 1991: FRC 2184 mL at week 37 and 2524 mL postpartum. Heart
     # rate, metabolic rise, compensated PCO2, and the time courses are calibrations.
     return PregnancyFactors(
         cardiac_output=co / 5.14,
         blood_volume=blood,
+        extracellular_water=extracellular,
         filtration=filtration,
         heart_rate=1.0 + 0.20 * early,
         metabolism=1.0 + 0.20 * fa / 38.0,

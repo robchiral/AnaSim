@@ -143,7 +143,8 @@ waveform samples.
 |--------|-------|
 | `set_vent_settings(vt=...)` | Takes liters, whereas `Patient.baseline_vt` takes mL |
 | `set_vent_power(True)` | Starts the ventilator after you apply its settings |
-| `set_bag_mask_ventilation(True, rr, vt)` | Takes liters, from 1 to 40 breaths/min and 0.05 to 1.2 L; omitted settings keep their last values |
+| `set_bag_mask_ventilation(True, rr, vt, p_max)` | Takes liters, from 1 to 40 breaths/min, 0.05 to 1.2 L, and a pressure limit of 5 to 70 cmH₂O (default 20); omitted settings keep their last values |
+| `set_mask_seal(seal)` | Takes a fraction from 0 (open) to 1 (tight seal), whereas the browser shows percent |
 | `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
 | `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates such as propofol, remifentanil, and rocuronium in mcg/kg/min use total body weight; vasopressor rates are absolute |
 | `enable_tci()` | Requires `tci_enabled=True` |

@@ -797,3 +797,51 @@ def test_sensitive_trigger_catches_first_effort_within_the_same_step(mode):
         endpoints.append((vent._breath.t, lung.volume, lung.p2, vent.flow))
     for endpoint in endpoints[1:]:
         assert endpoint == pytest.approx(endpoints[0], abs=1e-10)
+
+
+def test_bag_pressure_limit_caps_manual_breaths_across_step_sizes():
+    endpoints = []
+    for dt in (0.01, 0.1, 1.0):
+        lung = RespiratoryMechanics(resistance=50.0)
+        vent = AnesthesiaVentilator()
+        for _ in range(round(30 / dt)):
+            vent.step(dt, lung, "bag", bag=(12.0, 0.5), bag_p_max=20.0)
+        m = vent.monitors
+        assert m.paw_peak == pytest.approx(20.0, abs=1e-6)
+        assert 300.0 < m.tv_exp < 420.0
+        assert vent.pressure_limited
+        endpoints.append((m.paw_peak, m.tv_exp, m.mv_exp, lung.volume))
+    for endpoint in endpoints[1:]:
+        assert endpoint == pytest.approx(endpoints[0], abs=1e-7)
+
+    lung = RespiratoryMechanics(resistance=50.0)
+    vent = AnesthesiaVentilator()
+    for _ in range(300):
+        vent.step(0.1, lung, "bag", bag=(12.0, 0.5), bag_p_max=45.0)
+    assert vent.monitors.paw_peak > 30.0
+    assert vent.monitors.tv_exp == pytest.approx(500.0, rel=0.02)
+    assert not vent.pressure_limited
+
+    for bad in (0.0, -5.0, math.nan):
+        with pytest.raises(ValueError):
+            vent.step(0.1, lung, "bag", bag=(12.0, 0.5), bag_p_max=bad)
+
+
+def test_obstructed_bag_ventilation_stops_at_the_pressure_limit(engine_factory):
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1), start=True)
+    engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
+    engine.set_vent_power(False)
+    engine.set_airway_mode("ETT")
+    engine.set_airway_obstruction(0.9)
+    engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.5)
+    for _ in range(300):
+        engine.step(0.1)
+    assert engine.state.paw_peak == pytest.approx(20.0, abs=0.1)
+    assert 40.0 < engine.state.vt < 80.0
+    assert engine.vent.pressure_limited
+
+    engine.set_bag_mask_settings(rr=12.0, vt=0.5, p_max=40.0)
+    for _ in range(300):
+        engine.step(0.1)
+    assert engine.state.paw_peak == pytest.approx(40.0, abs=0.1)
+    assert 90.0 < engine.state.vt < 130.0

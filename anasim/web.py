@@ -535,6 +535,7 @@ class WebSession:
         vent = engine.vent.settings
         return {
             "airway": engine.state.airway_mode.value,
+            "mask_seal": engine.mask_seal * 100.0,
             "clinical_feedback": self._clinical_feedback,
             "convulsions": engine.state.convulsions,
             "muscle_rigidity": engine.state.muscle_rigidity,
@@ -555,7 +556,11 @@ class WebSession:
                 if engine.defibrillator.ready_at is not None else 0.0,
                 "last_shock": self._shock_receipt(),
             },
-            "bag": {"rr": round(engine.bag_mask_rr), "tv": round(engine.bag_mask_vt * 1000.0)},
+            "bag": {
+                "rr": round(engine.bag_mask_rr),
+                "tv": round(engine.bag_mask_vt * 1000.0),
+                "p_max": round(engine.bag_mask_p_max),
+            },
             "vent": {
                 "on": engine.vent.is_on,
                 "mode": vent.mode,
@@ -670,6 +675,9 @@ class WebSession:
         self.engine.set_airway_mode(mode)
         return self._clinical_result(feedback)
 
+    def _cmd_mask_seal(self, percent: float):
+        self.engine.set_mask_seal(domain.bounded_number("mask seal", percent, 0.0, 100.0, unit="%") / 100.0)
+
     def _clinical_result(self, feedback: ActionFeedback | None, receipt: dict | None = None):
         """Record feedback for the debrief and return what the browser shows now."""
         if feedback is not None and self.case_run is not None:
@@ -710,8 +718,8 @@ class WebSession:
         self.engine.set_bag_mask_ventilation(active)
         return self._assistance_result(assisted)
 
-    def _cmd_bag_settings(self, rr: float, tv: float):
-        self.engine.set_bag_mask_settings(rr, domain.finite_number("bag tidal volume", tv) / 1000.0)
+    def _cmd_bag_settings(self, rr: float, tv: float, p_max: float | None = None):
+        self.engine.set_bag_mask_settings(rr, domain.finite_number("bag tidal volume", tv) / 1000.0, p_max=p_max)
 
     def _cmd_vent_power(self, on: bool):
         assisted = self.engine.vent.is_on or self.engine.bag_mask_active

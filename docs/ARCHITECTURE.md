@@ -95,11 +95,12 @@ and impaired gas exchange, with a normal resting PaCO₂. Acute bronchospasm add
 to these changes. Obesity reduces supine functional residual capacity (FRC) and
 respiratory compliance and increases airway resistance (Pelosi 1998).
 
-Pregnancy changes maternal blood volume, cardiac output, renal filtration, FRC,
-heart rate, metabolism, and resting PaCO₂ according to gestational age (Dallmann
-2017; Contreras 1991). In later pregnancy, the supine position reduces venous
-return and the left lateral position restores it (Humphries 2019). Drug
-responses use the same calibrations as in other adults.
+Pregnancy changes maternal blood volume, extracellular water, cardiac output,
+renal filtration, FRC, heart rate, metabolism, and resting PaCO₂ according to
+gestational age (Dallmann 2017; Contreras 1991; Ansari 2025). In later
+pregnancy, the supine position reduces venous return and the left lateral
+position restores it (Humphries 2019). Drug responses use the same calibrations
+as in other adults.
 
 With `patient_variability`, each session samples propofol kinetics and
 bispectral index (BIS) sensitivity from Eleveld 2018, using standard deviations
@@ -693,9 +694,16 @@ the GE Aisys CS2. The README defines the [mode names](../README.md#features).
 
 Mandatory breaths include gas already inspired during the patient's own effort.
 Changes to inspiratory settings take effect at the next breath, and PEEP applies
-during expiration. A mask leak reduces delivered gas, and tube obstruction
-raises resistance. During mask ventilation, the mean airway pressure over recent
-breaths holds the pharynx open.
+during expiration. Manual bag breaths stop at the adjustable pressure limit
+(APL, default 20 cmH₂O), so obstruction or bronchospasm lowers the delivered
+volume. During mask ventilation, the mean airway pressure over recent breaths
+holds the pharynx open. A loose mask loses part of each assisted breath and
+lowers this pressure, and pressures above 20 cmH₂O leak even with a tight seal
+(Bouvet 2014). A full seal delivers the tidal volume of two-handed mask
+ventilation, and an 80% seal that of a one-handed hold (Joffe 2010). Room air
+enters around a loose mask only during unsupported breaths, since bag,
+ventilator, and pressure-support breaths pressurize the mask. Tube obstruction
+raises airway resistance.
 
 ## Monitors
 
@@ -724,7 +732,10 @@ negligible flow and relaxed respiratory muscles. Displayed PEEP is the airway
 pressure, while intrinsic PEEP affects plateau pressure and residual flow.
 
 [Capnography](../anasim/monitors/capno.py) includes dead-space transit time and
-analyzer delay. End-tidal values clear when valid exhaled gas stops. Without an
+analyzer delay. End-tidal values clear when valid exhaled gas stops. Gas lost
+around a facemask does not pass the sampling port, so a large leak, especially
+with small breaths, leaves dead-space gas at the port and flattens the
+capnogram. Without an
 airway device, the impedance respiratory rate counts breathing efforts,
 including during obstruction. The gas monitor displays end-tidal age-adjusted
 MAC, while anesthetic effects use brain MAC.

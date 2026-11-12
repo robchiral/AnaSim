@@ -63,6 +63,10 @@ class AirwayTuning:
     unsupported_collapse_max: float = 0.4
     # Airway pressure that fully relieves this collapse (calibrated).
     collapse_relief_pressure: float = 5.0  # cmH2O
+    # Bouvet 2014: facemask ventilation distends the gastric antrum from
+    # 20 cmH2O. The share of pressure above this lost at the mask is calibrated.
+    mask_seal_pressure: float = 20.0  # cmH2O at full seal
+    mask_overpressure_leak: float = 0.5
 
 
 @dataclass(frozen=True)

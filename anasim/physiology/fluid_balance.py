@@ -75,11 +75,11 @@ class FluidBalance:
     """
 
     def __init__(self, weight: float, blood_volume_ml: float, red_cell_volume_ml: float,
-                 resting_ph: float = 7.4):
+                 resting_ph: float = 7.4, extracellular_water: float = 1.0):
         self.weight = weight
         self.plasma_l = (blood_volume_ml - red_cell_volume_ml) / 1000.0
         self.red_cells_l = red_cell_volume_ml / 1000.0
-        self.ecf_l = max(0.2 * weight, self.plasma_l + 0.1 * weight)
+        self.ecf_l = max(0.2 * weight * extracellular_water, self.plasma_l + 0.1 * weight)
         self.initial_ecf_l = self.ecf_l
         self.amounts = {"sodium": 140.0 * self.ecf_l, "potassium": 4.0 * self.ecf_l,
                         "chloride": 104.0 * self.ecf_l, "calcium": 0.0,

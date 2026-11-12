@@ -44,21 +44,86 @@ class PhysiologyStepState:
     compliance_dyn: float
 
 
-def mask_leak(engine: SimulationEngine) -> float:
-    """Fraction of an assisted breath lost around a mask during upper airway obstruction.
+def circuit_connected(engine: SimulationEngine) -> bool:
+    """Whether gas can cross the Y-piece between the patient and circuit."""
+    mode = engine.state.airway_mode
+    return mode != AirwayType.NONE and (mode != AirwayType.MASK or engine.mask_seal > 0.0)
 
-    Obstruction raises tracheal tube resistance; leakage applies only to masks.
+
+def assisted_positive_pressure(engine: SimulationEngine) -> bool:
+    """Whether positive-pressure tidal or support breaths are active."""
+    return (engine.vent.is_on and engine.vent.settings.mode != "CPAP") or engine.bag_mask_active
+
+
+def mask_circuit_share(engine: SimulationEngine) -> float:
+    """Fraction of inspired or exchanged gas carried by the breathing circuit."""
+    mode = engine.state.airway_mode
+    if mode == AirwayType.NONE:
+        return 0.0
+    if mode != AirwayType.MASK:
+        return 1.0
+    seal = engine.mask_seal
+    if seal <= 0.0:
+        return 0.0
+    # Room air enters around a loose mask only during unsupported inspiration.
+    # A pressurized mask leaks outward.
+    spirometry = engine.vent.monitors
+    supported = spirometry.mv_supported * (1.0 - mask_leak(engine))
+    unsupported = max(0.0, spirometry.mv_exp - spirometry.mv_supported)
+    if supported + unsupported <= 0.0:
+        pressurized = assisted_positive_pressure(engine) or (engine.vent.is_on and engine.vent.settings.peep > 0.0)
+        return 1.0 if pressurized else seal
+    return (supported + seal * unsupported) / (supported + unsupported)
+
+
+def mask_leak(engine: SimulationEngine) -> float:
+    """Fraction of an assisted breath lost around a mask or into the stomach.
+
+    Leakage applies only to positive-pressure breaths on a facemask, from an
+    imperfect mask seal, upper airway obstruction, or peak pressure above the
+    seal threshold.
     """
-    assisted = engine.vent.is_on or engine.bag_mask_active
-    return 1.0 - engine.airway_status.patency if assisted and engine.state.airway_mode == AirwayType.MASK else 0.0
+    if not assisted_positive_pressure(engine) or engine.state.airway_mode != AirwayType.MASK:
+        return 0.0
+    seal = engine.mask_seal
+    if seal <= 0.0:
+        return 1.0
+    paw_peak = engine.vent.monitors.paw_peak
+    threshold = engine.airway_tuning.mask_seal_pressure * seal
+    overpressure = engine.airway_tuning.mask_overpressure_leak * max(0.0, paw_peak - threshold) / max(paw_peak, 1.0)
+    kept = seal * engine.airway_status.patency * (1.0 - overpressure)
+    return 1.0 - clamp01(kept)
+
+
+def delivered_fraction(engine: SimulationEngine) -> float:
+    """Fraction of measured circuit volume and pressure that reaches the patient."""
+    if engine.state.airway_mode != AirwayType.MASK:
+        return 1.0
+    seal = engine.mask_seal
+    spirometry = engine.vent.monitors
+    if spirometry.mv_exp <= 0.0:
+        return 1.0 - mask_leak(engine) if assisted_positive_pressure(engine) else seal
+    # Supported breaths leak under pressure; unsupported breaths split at the seal.
+    supported = min(1.0, spirometry.mv_supported / spirometry.mv_exp)
+    return supported * (1.0 - mask_leak(engine)) + (1.0 - supported) * seal
 
 
 def circuit_ventilation(engine: SimulationEngine) -> tuple[float, float]:
     """Return (RR, mean VT L) of all recent measured breaths that reach the lungs."""
     spirometry = engine.vent.monitors
     rr = spirometry.rr_total
-    vt_l = spirometry.mv_exp / rr * (1.0 - mask_leak(engine)) if rr > 0.0 else 0.0
-    return rr, vt_l
+    if rr <= 0.0:
+        return 0.0, 0.0
+    leak = mask_leak(engine)
+    mv_lung = spirometry.mv_exp * (1.0 - leak)
+    resp = engine.resp.state
+    if leak > 0.0 and engine.mask_seal < 1.0 and resp.rr > 0.0:
+        # Unassisted breaths draw room air around a loose mask, so the
+        # leak of assisted breaths does not limit them.
+        unassisted_mv = resp.mv / engine.airway_status.ventilation_efficiency
+        if unassisted_mv > mv_lung:
+            return resp.rr, unassisted_mv / resp.rr
+    return rr, mv_lung / rr
 
 
 def measured_ventilation(
@@ -74,8 +139,10 @@ def measured_ventilation(
     bronchospasm efficiency loss to alveolar ventilation only.
     """
     if connected:
+        if not circuit_connected(engine):
+            return 0.0, 0.0, 0.0
         spirometry = engine.vent.monitors
-        kept = 1.0 - mask_leak(engine)
+        kept = delivered_fraction(engine)
         # Before the first completed breath, the respiratory model supplies
         # the baseline rate; no tidal volume has yet been measured.
         rr = spirometry.rr_total if engine.vent.has_measured_breath else spontaneous_rr
@@ -189,12 +256,10 @@ def sync_inspired_gas(engine: SimulationEngine) -> tuple[float, float]:
     """Project inspired gas at the airway and return (Fi sevo, Fi N2O) as fractions."""
     state = engine.state
     composition = engine.circuit.composition
-    if state.airway_mode == AirwayType.NONE:
-        fio2, fi_sevo, fi_n2o = 0.21, 0.0, 0.0
-    else:
-        fio2 = composition.fio2
-        fi_sevo = composition.fi_agent
-        fi_n2o = composition.fin2o
+    circuit_share = mask_circuit_share(engine)
+    fio2 = 0.21 + circuit_share * (composition.fio2 - 0.21)
+    fi_sevo = circuit_share * composition.fi_agent
+    fi_n2o = circuit_share * composition.fin2o
     state.fio2 = float(fio2)
     state.fi_sevo = float(fi_sevo * 100.0)
     state.fi_n2o = float(fi_n2o * 100.0)
@@ -260,7 +325,7 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     """Copy respiratory fields shared by startup sync and runtime projection."""
     state = engine.state
     resp_state = snapshot.resp_state
-    connected = state.airway_mode != AirwayType.NONE
+    sealed = circuit_connected(engine)
     state.rr = float(snapshot.rr_display)
     state.vt = float(snapshot.vt_display_ml)
     state.mv = float(snapshot.mv_display_l_min)
@@ -281,8 +346,8 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     state.pao2 = float(resp_state.p_arterial_o2)
     state.sao2 = float(resp_state.sao2)
     state.spo2 = float(resp_state.sao2)
-    state.etco2 = float(resp_state.etco2 if connected else 0.0)
-    state.et_o2 = float(resp_state.eto2 if connected else 0.0)
+    state.etco2 = float(resp_state.etco2 if sealed else 0.0)
+    state.et_o2 = float(resp_state.eto2 if sealed else 0.0)
     state.pit = float(snapshot.pit_estimate)
     state.paw = float(snapshot.paw_display)
     state.flow = float(snapshot.flow_display)
@@ -299,10 +364,11 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
     """Advance the respiratory model; dt 0 evaluates the current state without advancing it."""
     state = engine.state
     engine.resp.update_fluid_balance(engine.hemo.hb_conc, engine.hemo.get_hematocrit(), engine.hemo.blood_volume)
-    connected = state.airway_mode != AirwayType.NONE
+    sealed = circuit_connected(engine)
     # Gas exchange uses recent exhaled breaths, so it lags at least one breath.
-    assisted_rr, assisted_vt_l = circuit_ventilation(engine) if connected else (0.0, 0.0)
+    assisted_rr, assisted_vt_l = circuit_ventilation(engine) if sealed else (0.0, 0.0)
     airway = engine.airway_status
+    peep_scale = engine.mask_seal if state.airway_mode == AirwayType.MASK else 1.0
     return engine.resp.step(
         dt,
         ce_prop=hypnotic_equivalent(
@@ -328,7 +394,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         mac_sevo=state.mac_sevo,
         mech_rr=assisted_rr,
         mech_vt_l=assisted_vt_l,
-        measured_breaths=connected and engine.vent.has_measured_breath,
+        measured_breaths=sealed and engine.vent.has_measured_breath,
         airway_patency=airway.patency,
         ventilation_efficiency=airway.ventilation_efficiency,
         vq_mismatch=airway.vq_mismatch,
@@ -341,7 +407,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         lung_volume_l=engine.aeration.frc,
         shunt_fraction=engine.aeration.shunt_fraction,
         temp_c=state.temp_c,
-        airway_pressure=engine.resp_mech.peep,
+        airway_pressure=engine.resp_mech.peep * peep_scale,
         # Brainstem drive persists until cerebral failure is nearly complete.
         central_drive_fraction=(1.0 - engine.cerebral.dysfunction ** 8) * engine.toxicity.respiratory_drive,
     )
@@ -352,7 +418,8 @@ def build_snapshot_from_models(
 ) -> PhysiologyStepState:
     """Build the respiratory projection shared by initialization and runtime."""
     connected = engine.state.airway_mode != AirwayType.NONE
-    assisted = connected and (engine.vent.is_on or engine.bag_mask_active)
+    sealed = circuit_connected(engine)
+    assisted = sealed and (engine.vent.is_on or engine.bag_mask_active)
     rr_display, vt_display_ml, mv_display_l_min = measured_ventilation(
         engine, connected, resp_state.rr, resp_state.vt / 1000.0
     )
@@ -365,12 +432,12 @@ def build_snapshot_from_models(
         rr_display=rr_display,
         vt_display_ml=vt_display_ml,
         mv_display_l_min=mv_display_l_min,
-        paw_display=vent.paw if connected else 0.0,
-        flow_display=vent.flow if connected else 0.0,
-        volume_display=vent.volume if connected else 0.0,
-        paw_peak=spirometry.paw_peak if connected else 0.0,
+        paw_display=vent.paw if sealed else 0.0,
+        flow_display=vent.flow if sealed else 0.0,
+        volume_display=vent.volume if sealed else 0.0,
+        paw_peak=spirometry.paw_peak if sealed else 0.0,
         paw_plat=spirometry.paw_plat if assisted else math.nan,
-        paw_mean=spirometry.paw_mean if connected else 0.0,
+        paw_mean=spirometry.paw_mean if sealed else 0.0,
         peep=spirometry.peep if assisted else 0.0,
         compliance_dyn=spirometry.compliance_dyn if assisted else math.nan,
     )

@@ -103,6 +103,7 @@ class VentMonitors:
     tv_exp: float = 0.0
     tv_exp_mandatory: float = math.nan
     mv_exp: float = 0.0  # Recent breaths
+    mv_supported: float = 0.0  # Recent breaths with positive-pressure support
     rr_total: float = 0.0
     compliance_dyn: float = math.nan  # VTe / (Ppeak - PEEP)
 
@@ -163,6 +164,7 @@ class AnesthesiaVentilator:
         self.pressure_limited = False  # Last volume-targeted breath fell short at its limit
         self._source: str | None = None
         self._bag = (12.0, 0.5)
+        self._bag_p_max = math.inf
         self._mode: str | None = None
         self._baseline: float | None = None  # PEEP the lung volume is referenced to; the first one applied
         self._breath: Breath | None = None
@@ -182,9 +184,9 @@ class AnesthesiaVentilator:
         self._backup = False
         self._vg_pressure: float | None = None
         self._armed = False
-        # (duration s, VTe L, pressure area cmH2O·s)
-        self._recent: deque[tuple[float, float, float]] = deque(maxlen=RECENT_BREATHS)
-        self._recent_totals = (0.0, 0.0, 0.0)
+        # (duration s, VTe L, pressure area cmH2O·s, supported VTe L)
+        self._recent: deque[tuple[float, float, float, float]] = deque(maxlen=RECENT_BREATHS)
+        self._recent_totals = (0.0, 0.0, 0.0, 0.0)
 
     @property
     def has_measured_breath(self) -> bool:
@@ -251,7 +253,11 @@ class AnesthesiaVentilator:
 
     def _pressure_cap(self, peep: float) -> float:
         """Pmax above PEEP for volume-targeted breaths."""
-        return self.settings.p_max - peep if self._source == "vent" else math.inf
+        if self._source == "vent":
+            return self.settings.p_max - peep
+        if self._source == "bag":
+            return max(0.0, self._bag_p_max - peep)
+        return math.inf
 
     def _vg_ceiling(self, peep: float) -> float:
         return max(0.0, self._pressure_cap(peep) - VG_MARGIN)
@@ -259,12 +265,16 @@ class AnesthesiaVentilator:
     # --- Stepping ------------------------------------------------------------
 
     def step(self, dt: float, lung: RespiratoryMechanics, source: str | None, bag: tuple = (12.0, 0.5),
-             collect_samples: bool = False) -> None:
+             collect_samples: bool = False, bag_p_max: float = math.inf) -> None:
         """Advance dt seconds.
 
         source is "vent", "bag", "spontaneous" (breathing through the circuit),
         or None when the airway is disconnected and the machine measures nothing.
         """
+        if bag_p_max != math.inf:
+            bag_p_max = finite_number("bag_p_max", bag_p_max)
+            if bag_p_max <= 0.0:
+                raise ValueError("bag_p_max must be greater than zero")
         if dt <= 0.0:
             return
         self.samples.clear()
@@ -272,6 +282,7 @@ class AnesthesiaVentilator:
         self.airway_pressure_area = 0.0
         self._collect_samples = collect_samples
         self._bag = bag
+        self._bag_p_max = bag_p_max
         if source != self._source:
             self._switch(source, lung)
         if self._source == "vent" and self.settings.mode != self._mode:
@@ -294,7 +305,7 @@ class AnesthesiaVentilator:
         self._measured = None
         self._since_measured = 0.0
         self._recent.clear()
-        self._recent_totals = (0.0, 0.0, 0.0)
+        self._recent_totals = (0.0, 0.0, 0.0, 0.0)
         self.monitors = VentMonitors()
         self.monitors.peep = self._configured_peep()
         self.pressure_limited = False
@@ -416,9 +427,9 @@ class AnesthesiaVentilator:
         if b.mandatory:
             m.tv_exp_mandatory = m.tv_exp
             m.paw_plat = b.plat
-        self._recent.append((b.t, vte, b.area))
-        durations, volumes, areas = zip(*self._recent, strict=True)
-        self._recent_totals = (sum(durations), sum(volumes), sum(areas))
+        self._recent.append((b.t, vte, b.area, 0.0 if b.kind == "SPONT" else vte))
+        durations, volumes, areas, supported = zip(*self._recent, strict=True)
+        self._recent_totals = (sum(durations), sum(volumes), sum(areas), sum(supported))
         self.breath_count += 1
 
     def _begin_measurement(self, lung, kind: str, mandatory: bool) -> None:
@@ -436,23 +447,24 @@ class AnesthesiaVentilator:
         self._since_measured = 0.0
 
     def _update_rates(self) -> None:
-        total, volume, area = self._recent_totals
+        total, volume, area, supported = self._recent_totals
         window_t, window_area = total, area
         current = self._measured
         if current is not None and (not self._recent or current.t > self._recent[0][0]):
             # A breath that outlasts the oldest one replaces it, so pauses lower the mean.
-            oldest_t, _, oldest_area = self._recent[0] if self._recent else (0.0, 0.0, 0.0)
+            oldest_t, _, oldest_area, _ = self._recent[0] if self._recent else (0.0, 0.0, 0.0, 0.0)
             window_t += current.t - oldest_t
             window_area += current.area - oldest_area
         if window_t > 0.0:
             self.monitors.paw_mean_recent = window_area / window_t
         if not self._recent or self._since_measured >= APNEA_S:
-            self.monitors.rr_total = self.monitors.mv_exp = 0.0
+            self.monitors.rr_total = self.monitors.mv_exp = self.monitors.mv_supported = 0.0
             return
         # A breath that runs long, as in apnea, lowers the rate before it ends.
         span = max(total, total - self._recent[0][0] + self._since_measured)
         self.monitors.rr_total = 60.0 * len(self._recent) / span
         self.monitors.mv_exp = 60.0 * volume / span
+        self.monitors.mv_supported = 60.0 * supported / span
 
     # --- Segments ------------------------------------------------------------
 
@@ -478,7 +490,11 @@ class AnesthesiaVentilator:
         if b.kind == "SPONT":
             return self._driven_segment(lung, (0.0, 0.0), pmus, rs)
         if b.kind == "MANUAL":
-            return lung.sine_segment(b.target, b.ti, b.t, pmus)
+            if b.limited:
+                return self._driven_segment(lung, (self._pressure_cap(b.peep), 0.0), pmus)
+            if not b.delivered:
+                return lung.sine_segment(b.target, b.ti, b.t, pmus)
+            return lung.flow_segment(0.0, pmus)
         if b.kind == "VC":
             if b.limited:
                 return self._driven_segment(lung, (self._pressure_cap(b.peep), 0.0), pmus)
@@ -566,7 +582,7 @@ class AnesthesiaVentilator:
         if lung.aeration is not None:
             h = min(h, lung.aeration.INTERVAL - lung.aeration.elapsed)
         if lung.expiratory_obstruction > 0.0 and (b is None or b.kind in ("PC", "VG", "PS", "SPONT")
-                                      or (b.kind == "VC" and b.limited)):
+                                      or (b.kind in ("VC", "MANUAL") and b.limited)):
             interval = lung.EXPIRATORY_INTERVAL
             knot = math.floor((self._since_exhalation + 1e-12) / interval)
             h = min(h, (knot + 1) * interval - self._since_exhalation)
@@ -662,7 +678,7 @@ class AnesthesiaVentilator:
         """Return the crossing to search for in the current segment, if any."""
         b = self._breath
         if b is not None and b.inspiring:
-            if b.kind == "VC":
+            if b.kind in ("VC", "MANUAL"):
                 if b.limited:
                     return None if b.delivered else "volume"
                 # Relaxing inspiratory muscles can raise pressure during the
@@ -681,7 +697,20 @@ class AnesthesiaVentilator:
         if watch == "limit":
             cap = self._pressure_cap(self._active_breath.peep)
             f = lambda t: segment.paw(t) - cap  # noqa: E731
-        elif watch == "volume":
+            f0 = f(0.0)
+            if f0 >= 0.0:
+                return 0.0, watch
+            d0, dh = segment.dpaw(0.0), segment.dpaw(h)
+            if d0 > 0.0 > dh:
+                peak = find_root(segment.dpaw, 0.0, h, d0, dh)
+                fp = f(peak)
+                if fp >= 0.0:
+                    return find_root(f, 0.0, peak, f0, fp), watch
+            fh = f(h)
+            if fh >= 0.0:
+                return find_root(f, 0.0, h, f0, fh), watch
+            return h, None
+        if watch == "volume":
             b = self._active_breath
             goal = b.v_start + b.target
             f = lambda t: segment.volume(t) - goal  # noqa: E731
@@ -785,6 +814,8 @@ class AnesthesiaVentilator:
             self.pressure_limited = b.limited and not b.delivered
             if b.vg_test:
                 self._vg_pressure = min(max(end_paw - b.peep, VG_MIN), self._vg_ceiling(b.peep))
+        elif b.kind == "MANUAL":
+            self.pressure_limited = b.limited and not b.delivered
         elif b.kind in ("PC", "VG"):
             # A flat pressure trace still includes airway resistance while
             # gas flows. Only approximate a plateau after flow has settled.

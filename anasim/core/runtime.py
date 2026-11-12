@@ -18,7 +18,10 @@ from .projection import (
     build_snapshot_from_models,
     cardiovascular_response_fractions,
     central_muscle_strength,
+    circuit_connected,
+    delivered_fraction,
     loss_of_response,
+    mask_circuit_share,
     project_runtime_physiology,
     step_respiration,
     stimulus_tolerance,
@@ -117,7 +120,10 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         source = "bag"
     else:
         source = "spontaneous" if connected else None
-    engine.vent.step(dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt), collect_samples=True)
+    engine.vent.step(
+        dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt),
+        collect_samples=True, bag_p_max=engine.bag_mask_p_max,
+    )
 
 
 def update_shivering(engine: SimulationEngine, dt: float) -> None:
@@ -231,15 +237,18 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
     circuit.vaporizer_on = delivered_setting > 0.0
 
     fi_sevo, fi_n2o = sync_inspired_gas(engine)
-    if engine.state.airway_mode == AirwayType.NONE:
+    circuit_share = mask_circuit_share(engine)
+    if circuit_share <= 0.0:
         uptake_o2 = uptake_sevo = uptake_n2o = 0.0
     else:
         airway = engine.airway_status
         va = max(0.0, engine.state.va) if airway.patency > 0.0 else 0.0
-        uptake_sevo = (fi_sevo - engine.pk_sevo.state.p_alv) * va
-        uptake_n2o = (fi_n2o - engine.pk_n2o.state.p_alv) * va
-        uptake_o2 = engine.resp.oxygen_exchange_l_min(
-            engine.state.fio2, va,
+        va_circuit = va * circuit_share
+        composition = circuit.composition
+        uptake_sevo = (composition.fi_agent - engine.pk_sevo.state.p_alv) * va_circuit
+        uptake_n2o = (composition.fin2o - engine.pk_n2o.state.p_alv) * va_circuit
+        uptake_o2 = circuit_share * engine.resp.oxygen_exchange_l_min(
+            composition.fio2, va,
             airway.patency, airway.vq_mismatch, dt,
         )
     circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o)
@@ -356,6 +365,7 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
                     splint_pressure = max(splint_pressure, vent.monitors.paw_mean_recent)
             elif engine.bag_mask_active:
                 splint_pressure = vent.monitors.paw_mean_recent
+            splint_pressure *= engine.mask_seal
         relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
         unconscious = loss_of_response(engine, ketamine=False)
         tone = max(0.1, engine.tof_pd.pharyngeal_tone_fraction(state.mac_sevo, state.mac_n2o) * depolarizing_strength)
@@ -408,7 +418,7 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
 def step_physiology(engine: SimulationEngine, dt: float, disturbances: DisturbanceEffects) -> PhysiologyStepState:
     """Advance physiology models and return a projected runtime snapshot."""
     state = engine.state
-    connected = state.airway_mode != AirwayType.NONE
+    connected = circuit_connected(engine)
     vent_active = connected and engine.vent.is_on
     bag_mask_active = engine.bag_mask_active and connected and not vent_active
     step_mechanics(engine, dt, connected, vent_active, bag_mask_active)
@@ -416,7 +426,7 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
     spirometry = vent.monitors
 
     alpha_paw = 1.0 - math.exp(-dt / MEAN_PAW_TAU_S)
-    mean_paw = vent.airway_pressure_area / dt
+    mean_paw = vent.airway_pressure_area / dt * delivered_fraction(engine)
     engine.current_mean_paw = (1 - alpha_paw) * engine.current_mean_paw + alpha_paw * mean_paw
 
     hemo_cfg = engine.hemo.config
@@ -426,7 +436,8 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
     )
 
     if vent_active:
-        total_peep_effect = engine.resp_mech.peep + spirometry.auto_peep
+        peep_scale = engine.mask_seal if state.airway_mode == AirwayType.MASK else 1.0
+        total_peep_effect = engine.resp_mech.peep * peep_scale + spirometry.auto_peep
     else:
         total_peep_effect = spirometry.auto_peep if bag_mask_active else 0.0
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.

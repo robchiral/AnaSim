@@ -206,6 +206,8 @@ def test_pregnancy_changes_resting_gases_and_circulation_and_responds_to_positio
     assert pregnant.state.base_excess == pytest.approx(-2.2, abs=0.2)
     assert 0.8 < pregnant.resp.frc / control.resp.frc < 0.95
     assert 1.25 < pregnant.state.blood_volume / control.state.blood_volume < 1.6
+    assert 1.15 < pregnant.hemo.fluids.ecf_l / control.hemo.fluids.ecf_l < 1.25
+    assert 1.08 < pregnant.hemo.fluids.interstitial_l / control.hemo.fluids.interstitial_l < 1.20
     assert lateral.state.co > 1.3 * control.state.co
     assert 0.8 < pregnant.state.co / lateral.state.co < 0.95
     # Hemoglobin is the entered starting measurement, not diluted a second time.

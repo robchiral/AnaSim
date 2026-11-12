@@ -203,3 +203,100 @@ def test_obstructed_airway_preserves_effort_without_restoring_ventilation(awake_
     for _ in range(1200):
         engine.step(0.1)
     assert engine.resp_mech.effort.amplitude == 0.0
+
+
+def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(engine_factory):
+    """Joffe 2010: at 15 cmH2O facemask PCV (PEEP 0, RR 15, I:E 1:1) in apneic
+    nonparalyzed adults, a two-handed hold delivered 8.60 +/- 2.31 mL/kg PBW and
+    a one-handed hold 6.80 +/- 3.10 mL/kg PBW (79%). Below 4 mL/kg PBW,
+    ventilation is inadequate.
+    """
+    volumes = {}
+    obstructions = {}
+    gases = {}
+    for seal in (1.0, 0.8, 0.4, 0.0):
+        engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.1), start=True)
+        engine.give_drug_bolus("sugammadex", 4.0 * engine.patient.weight)
+        engine.set_airway_mode("Mask")
+        engine.set_mask_seal(seal)
+        engine.set_vent_settings(rr=15, vt=0.5, peep=0.0, ie="1:1", mode="PCV", p_insp=15.0)
+        engine.set_vent_power(True)
+        for _ in range(300):
+            engine.step(0.1)
+        pbw = engine.patient.predicted_body_weight()
+        volumes[seal] = engine.state.vt / pbw
+        obstructions[seal] = engine.state.airway_obstruction
+        gases[seal] = (engine.state.fio2, engine.state.display_etco2)
+    assert 6.3 < volumes[1.0] < 10.9
+    assert volumes[0.8] == pytest.approx(0.8 * volumes[1.0], rel=0.03)
+    assert 1.0 < volumes[0.4] < 4.0
+    assert volumes[0.0] == 0.0
+    assert obstructions[1.0] == 0.0
+    assert 0.1 < obstructions[0.4] < obstructions[0.0]
+    # Pressurized breaths leak outward, so only circuit gas is inspired. Too
+    # little exhaled gas reaches the sampling port to clear the dead space.
+    assert gases[0.4][0] == pytest.approx(gases[1.0][0])
+    assert gases[0.8][1] > gases[1.0][1] - 2.0
+    assert gases[0.4][1] < 5.0
+
+    # Awake breathing around a loose mask preserves room-air CO2 clearance
+    # and the capnogram, and stalls oxygen wash-in until the seal is tightened.
+    awake = engine_factory(config=SimulationConfig(mode="awake", dt=0.1), start=True)
+    awake.set_airway_mode("Mask")
+    awake.set_fgf(10.0, 0.0, 0.0)
+    awake.set_mask_seal(0.4)
+    for _ in range(1800):
+        awake.step(0.1)
+    assert 35.0 < awake.state.et_o2 < 55.0
+    assert 37.0 < awake.state.pa_co2 < 43.0
+    loose_etco2, loose_fio2 = awake.state.display_etco2, awake.state.fio2
+    # Bag breaths pressurize the mask, so only the breaths between them draw room air.
+    awake.set_bag_mask_ventilation(True, rr=6, vt=0.5)
+    for _ in range(600):
+        awake.step(0.1)
+    assert loose_fio2 + 0.05 < awake.state.fio2 < 0.9
+    awake.set_bag_mask_ventilation(False)
+    awake.set_mask_seal(1.0)
+    for _ in range(1800):
+        awake.step(0.1)
+    assert awake.state.et_o2 >= 90.0
+    assert loose_etco2 == pytest.approx(awake.state.display_etco2, abs=1.0)
+
+    # At 0% mask seal, no gas crosses the Y-piece and volume-targeted modes alarm.
+    awake.set_mask_seal(0.0)
+    awake.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    awake.set_vent_power(True)
+    for _ in range(200):
+        awake.step(0.1)
+    assert (awake.state.paw, awake.state.flow, awake.state.volume) == pytest.approx((0.0, 0.0, 0.0), abs=1e-6)
+    assert awake.state.alarms["VTe"]["low"] and awake.state.alarms["MV"]["low"]
+
+    for bad in (-0.1, 1.1, float("nan")):
+        with pytest.raises(ValueError):
+            awake.set_mask_seal(bad)
+    assert awake.mask_seal == 0.0
+
+
+def test_high_airway_pressure_opens_facemask_leak_above_seal_threshold(engine_factory):
+    """Bouvet 2014: facemask pressure-controlled ventilation at 20 and 25 cmH2O,
+    but not at 10 or 15 cmH2O, distended the gastric antrum. Pressures above
+    20 cmH2O leak even with a tight seal.
+    """
+    outcomes = {}
+    for bronchospasm in (0.0, 1.0):
+        for airway in ("ETT", "Mask"):
+            engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2), start=True)
+            engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
+            engine.set_airway_mode(airway)
+            engine.set_bronchospasm(bronchospasm)
+            engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_max=50.0)
+            engine.set_vent_power(True)
+            for _ in range(900):
+                engine.step(0.2)
+            outcomes[bronchospasm, airway] = (engine.state.paw_peak, engine.state.vt, engine.state.pa_co2)
+
+    assert outcomes[0.0, "Mask"][0] < 20.0
+    assert outcomes[0.0, "Mask"][1] == pytest.approx(outcomes[0.0, "ETT"][1], rel=0.01)
+    assert outcomes[1.0, "Mask"][0] > 25.0
+    assert outcomes[1.0, "Mask"][1] < 0.9 * outcomes[1.0, "ETT"][1]
+    assert outcomes[1.0, "Mask"][2] > outcomes[1.0, "ETT"][2] + 0.8

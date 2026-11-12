@@ -98,6 +98,7 @@ from .tci import TCIController
 OUTPUT_WINDOW_S = 20.0  # Waveform history kept in output_buffer
 BAG_RR_RANGE = (1.0, 40.0)  # breaths/min
 BAG_VT_RANGE_L = (0.05, 1.2)
+BAG_P_MAX_RANGE = (5.0, 70.0)  # cmH2O
 
 
 @dataclass(slots=True)
@@ -150,6 +151,7 @@ class SimulationEngine(DrugControllerMixin):
         self.bag_mask_active = False
         self.bag_mask_rr = 12.0  # breaths/min
         self.bag_mask_vt = 0.5  # L
+        self.bag_mask_p_max = 20.0  # cmH2O
 
         self.active_hemorrhage = False
         self.hemorrhage_rate_ml_min = 500.0
@@ -168,6 +170,7 @@ class SimulationEngine(DrugControllerMixin):
         self.malignant_hyperthermia = MalignantHyperthermia()
 
         self.auto_laryngospasm_enabled = True
+        self.mask_seal = 1.0
         self.airway_obstruction_manual = 0.0
         self.bronchospasm_manual = 0.0
         self.laryngospasm_severity = 0.0
@@ -572,6 +575,11 @@ class SimulationEngine(DrugControllerMixin):
         if self.state.airway_mode == AirwayType.NONE:
             self.bag_mask_active = False
 
+    def set_mask_seal(self, seal: float):
+        """Set the facemask seal fraction, from 0 (open leak) to 1 (tight seal)."""
+        self.mask_seal = bounded_number("mask seal", seal, 0.0, 1.0)
+        self.state.mask_seal = self.mask_seal
+
     def set_airway_obstruction(self, severity: float):
         self.airway_obstruction_manual = clamp(severity, 0.0, 1.0)
 
@@ -672,24 +680,37 @@ class SimulationEngine(DrugControllerMixin):
                 hypoxia=hypoxia, energy_failure=energy_failure,
             )
 
-    def set_bag_mask_ventilation(self, active: bool, rr: float | None = None, vt: float | None = None):
-        """Start or stop manual bag ventilation at rr breaths/min and vt liters.
+    def set_bag_mask_ventilation(
+        self,
+        active: bool,
+        rr: float | None = None,
+        vt: float | None = None,
+        p_max: float | None = None,
+    ):
+        """Start or stop manual bag ventilation at rr breaths/min, vt liters, and p_max cmH2O.
 
         Omitted settings keep their last values. Bag ventilation works only
         through a mask or ETT and yields to the ventilator.
         """
-        if rr is not None or vt is not None:
-            self.set_bag_mask_settings(self.bag_mask_rr if rr is None else rr,
-                                       self.bag_mask_vt if vt is None else vt)
-        self.bag_mask_active = active
+        if rr is not None or vt is not None or p_max is not None:
+            self.set_bag_mask_settings(
+                self.bag_mask_rr if rr is None else rr,
+                self.bag_mask_vt if vt is None else vt,
+                p_max=p_max,
+            )
+        self.bag_mask_active = bool(active)
         self.actions.record(
             self.state.time, ACTION_BAG_MASK, label="on" if active else "off"
         )
 
-    def set_bag_mask_settings(self, rr: float, vt: float):
-        """Set the bag rate (breaths/min) and tidal volume (L) without starting or stopping it."""
-        self.bag_mask_rr = bounded_number("bag rate", rr, *BAG_RR_RANGE, unit="breaths/min")
-        self.bag_mask_vt = bounded_number("bag tidal volume", vt, *BAG_VT_RANGE_L, unit="L")
+    def set_bag_mask_settings(self, rr: float, vt: float, p_max: float | None = None):
+        """Set the bag rate (breaths/min), tidal volume (L), and pressure limit (cmH2O) without starting or stopping it."""
+        self.bag_mask_rr, self.bag_mask_vt, self.bag_mask_p_max = (
+            bounded_number("bag rate", rr, *BAG_RR_RANGE, unit="breaths/min"),
+            bounded_number("bag tidal volume", vt, *BAG_VT_RANGE_L, unit="L"),
+            self.bag_mask_p_max if p_max is None
+            else bounded_number("bag pressure limit", p_max, *BAG_P_MAX_RANGE, unit="cmH2O"),
+        )
 
     def start(self):
         self.running = True

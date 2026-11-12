@@ -8,7 +8,13 @@ from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resuscitation import compression_pressures
 
-from .projection import loss_of_response, mask_leak, project_arterial
+from .projection import (
+    circuit_connected,
+    delivered_fraction,
+    loss_of_response,
+    mask_leak,
+    project_arterial,
+)
 from .state import AirwayType
 from .utils import clamp
 
@@ -71,6 +77,7 @@ def _capno_sampling_possible(engine: SimulationEngine) -> bool:
     state = engine.state
     return (
         state.airway_mode != AirwayType.NONE
+        and (state.airway_mode != AirwayType.MASK or engine.mask_seal >= 0.05)
         and engine.airway_status.patency >= 0.05
         and state.rr > 0.0
         and state.va > 0.0
@@ -89,8 +96,11 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float) -> floa
         capno = engine.capno
         airway = engine.airway_status
         end_tidal = resp_state.etco2 * airway.patency
+        # Gas lost around a facemask never passes the sampling port, so a
+        # large leak leaves dead-space gas at the port.
+        port_share = delivered_fraction(engine)
         for duration, change, _, _, _ in engine.vent.samples:
-            value = capno.step(duration, change, end_tidal, obstruction=airway.capno_obstruction)
+            value = capno.step(duration, change * port_share, end_tidal, obstruction=airway.capno_obstruction)
             readout.update(duration, capno.exhaling, value)
         co2 = capno.co2
     state.display_etco2 = float(readout.value)
@@ -200,9 +210,10 @@ def step_monitors(
     engine.nmb.step(state.time + dt, state.twitch / 100.0, state.tof / 100.0)
 
     connected = state.airway_mode != AirwayType.NONE
+    sealed = circuit_connected(engine)
     for duration, change, sample_paw, _, sample_volume in engine.vent.samples:
         paw, flow, volume = engine.airway_sensor.step(duration, sample_paw, sample_volume,
-                                                   change if connected else 0.0)
+                                                   change if sealed else 0.0)
     state.paw = float(paw)
     state.flow = float(flow)
     state.volume = float(volume)
@@ -225,8 +236,11 @@ def step_monitors(
     # Volume-targeted breaths alarm when they deliver less than the set VT.
     vte_percent = None
     if connected and vent.is_on and vent.settings.mode in VOLUME_TARGETED and vent.settings.tv > 0.0:
-        delivered = vent.monitors.tv_exp_mandatory * (1.0 - mask_leak(engine))
-        vte_percent = None if math.isnan(delivered) else 100.0 * delivered / vent.settings.tv
+        if not sealed:
+            vte_percent = 0.0
+        else:
+            delivered = vent.monitors.tv_exp_mandatory * (1.0 - mask_leak(engine))
+            vte_percent = None if math.isnan(delivered) else 100.0 * delivered / vent.settings.tv
     state.alarms = engine.alarms.update(
         {
             "BIS": state.display_bis,

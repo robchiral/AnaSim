@@ -419,6 +419,8 @@ PCV-VG, pressure control with volume guarantee.
 - Putensen-Himmer et al. (1992). *Anesthesiology*. [FRC and blood gases after open and laparoscopic cholecystectomy](https://pubmed.ncbi.nlm.nih.gov/1416164/).
 - Eastwood et al. (2005). *Anesthesiology*. [Propofol and airway closing pressure](https://pubmed.ncbi.nlm.nih.gov/16129969/).
 - Hillman et al. (2009). *Anesthesiology*. [Airway collapse at loss of consciousness](https://pubmed.ncbi.nlm.nih.gov/19512872/).
+- Joffe et al. (2010). *Anesthesiology*. [One-handed versus two-handed facemask ventilation in apneic adults](https://pubmed.ncbi.nlm.nih.gov/20808210/).
+- Bouvet et al. (2014). *Anesthesiology*. [Inspiratory pressure and gastric insufflation during facemask ventilation](https://pubmed.ncbi.nlm.nih.gov/24317204/).
 - Larsson et al. (1985). *J Allergy Clin Immunol*. [Epinephrine relief of bronchoconstriction](https://pubmed.ncbi.nlm.nih.gov/3989143/).
 - Sydow et al. (1993). *Intensive Care Med*. [Respiratory mechanics in status asthmaticus](https://pubmed.ncbi.nlm.nih.gov/8294630/).
 - Okayama et al. (1991). *J Asthma*. [Airway resistance in status asthmaticus](https://pubmed.ncbi.nlm.nih.gov/2010425/).

@@ -195,10 +195,8 @@ def test_calcium_binding_follows_ph_and_citrate_and_deficits_persist():
 
 def test_calcium_chloride_peaks_and_halves_as_in_parturients(engine_factory):
     """Ansari 2025: 1 g CaCl2 over 10 min after cesarean delivery raised ionized
-    calcium by 0.39 mmol/L (0.38-0.42) at the end of infusion, with half the rise
-    left 29 min (23-40) after the start and 40% at 60 min in their model. The
-    model's calcium space for this patient is about 10% smaller than their
-    V1 + V2, so its peak is higher.
+    calcium by 0.39 mmol/L (0.38-0.42) at the end of infusion. Half the rise
+    remained 29 min (23-40) after the start and 40% at 60 min in their model.
     """
     engine = engine_factory(sex="female", weight=80.0, height=165.0, age=34.0,
                             gestational_age_weeks=39.0, start=True)
@@ -212,7 +210,7 @@ def test_calcium_chloride_peaks_and_halves_as_in_parturients(engine_factory):
         rise.append(fluids.ionized_calcium(engine.state.ph) - baseline)
     peak = max(rise)
     assert 585 <= rise.index(peak) < 600
-    assert peak == pytest.approx(0.39, rel=0.2)
+    assert 0.38 <= peak <= 0.42
     half_minutes = next(t for t in range(600, 3600) if rise[t] <= peak / 2) / 60.0
     assert 23.0 < half_minutes < 40.0
     assert rise[-1] / peak == pytest.approx(0.40, abs=0.05)

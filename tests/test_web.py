@@ -91,11 +91,13 @@ def test_ventilator_and_bag_settings_survive_handover():
     assert snap["controls"]["vent"]["on"]
 
     cmd(session, "vent", mode="PCV", p_insp=18, peep=8, p_max=35, trigger=2.5)
-    cmd(session, "bag_settings", rr=20, tv=400)
+    cmd(session, "bag_settings", rr=20, tv=400, p_max=25)
     cmd(session, "bag_mask", active=True)
+    cmd(session, "mask_seal", percent=80)
     controls = parse(session.advance(0.0))["controls"]
     vent, bag = controls["vent"], controls["bag"]
-    assert not vent["on"] and bag == {"rr": 20, "tv": 400}
+    assert not vent["on"] and bag == {"rr": 20, "tv": 400, "p_max": 25}
+    assert controls["mask_seal"] == 80
     assert (vent["mode"], vent["p_insp"], vent["peep"], vent["p_max"], vent["trigger"]) == ("PCV", 18, 8, 35, 2.5)
     invalid_updates = (
         {"mode": "SIMV"},
@@ -111,10 +113,23 @@ def test_ventilator_and_bag_settings_survive_handover():
         with pytest.raises(ValueError):
             cmd(session, "vent", **bad)
         assert parse(session.advance(0.0))["controls"]["vent"] == vent
-    for bad in ({"rr": 0, "tv": 400}, {"rr": 41, "tv": 400}, {"rr": 20, "tv": 1300}, {"rr": 20, "tv": float("nan")}):
+    for bad in (
+        {"rr": 0, "tv": 400},
+        {"rr": 41, "tv": 400},
+        {"rr": 20, "tv": 1300},
+        {"rr": 20, "tv": float("nan")},
+        {"rr": 20, "tv": 400, "p_max": 4},
+        {"rr": 20, "tv": 400, "p_max": 71},
+        {"rr": 20, "tv": 400, "p_max": float("nan")},
+    ):
         with pytest.raises(ValueError):
             cmd(session, "bag_settings", **bad)
         assert parse(session.advance(0.0))["controls"]["bag"] == bag
+    for bad_seal in (-1, 101, float("nan")):
+        with pytest.raises(ValueError):
+            cmd(session, "mask_seal", percent=bad_seal)
+        assert parse(session.advance(0.0))["controls"]["mask_seal"] == 80
+    cmd(session, "mask_seal", percent=100)
 
     # The monitor counts every bag breath, and expired volume is near the set volume.
     cmd(session, "run", running=True)

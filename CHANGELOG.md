@@ -22,10 +22,18 @@
   deficit lasts up to a day.
 - Ventricular arrhythmias and intravenous amiodarone are recalibrated to
   clinical studies. Sustained VT with a pulse now takes tens of minutes to
-  convertt. VF recurs after a successful shock in about half of
-  patients. Rapid amiodarone boluses briefly
-  lower blood pressure much more than a 10-minute loading infusion, HR slows
-  over 15 to 30 minutes, and cardiac output falls more in patients with HFrEF.
+  convert. VF recurs after a successful shock in about half of patients. Rapid
+  amiodarone boluses briefly lower blood pressure much more than a 10-minute
+  loading infusion, HR slows over 15 to 30 minutes, and cardiac output falls
+  more in patients with HFrEF.
+- Added an adjustable bag pressure limit (APL, default 20 cmH₂O) and facemask
+  seal. Obstruction and bronchospasm now limit bag volume at the APL. A loose
+  mask loses part of each assisted breath, lets room air in during unsupported
+  breaths, and flattens the capnogram when the leak is large. Pressures above
+  20 cmH₂O leak even with a tight seal.
+- During upper airway obstruction, mask CPAP no longer lowers ventilation
+  below that of unassisted breathing.
+- Maternal extracellular water now expands during pregnancy.
 - Above 65, propofol lowers blood pressure more slowly but further.
 - Propofol, remifentanil, and fentanyl TCI now uses only age, weight, height,
   and sex, as clinical pumps do. Blood loss, hepatic impairment, and midazolam
