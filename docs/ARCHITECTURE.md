@@ -375,6 +375,14 @@ anesthetic concentrations (Tweed 1972; Akine 2001). Its effect on HR starts
 sooner than its effect on cardiac output and adds a fixed increase, including
 after atropine (Bovill 1972).
 
+Rapid boluses of intravenous amiodarone briefly lower vascular resistance and
+blood pressure, mostly through the polysorbate 80 solvent, and slower infusions
+lower pressure much less (Munoz 1988). Contractility falls over several
+minutes, so patients with HFrEF lose more cardiac output and blood pressure
+than patients with a normal left ventricle (Kosinski 1984). Sinus rate slows
+over 15 to 30 minutes (Munoz 1988), and sympathetic HR reflexes weaken over the
+same period.
+
 ### Heart and brain oxygen supply
 
 Myocardial oxygen demand is based on the rate-pressure product, with a basal
@@ -448,11 +456,13 @@ seconds (ZOLL R Series). Compressions can continue while it charges. Disarming
 cancels a charge or a pending synchronized shock.
 
 [Severe ischemia or hypoxia](../anasim/physiology/arrhythmia.py) in a beating
-heart can start VT or VF, and VF can recur after a successful shock while the
-myocardium remains stressed (Koster 2008; van Alem 2003). Amiodarone
-(Korth-Bradley 1996) and lidocaine can convert VT with a pulse, amiodarone more
-often (Somberg 2002). In VF, they make a shock more likely to succeed (Kudenchuk
-2016) but do not prevent recurrence (Salcido 2018).
+heart can start VT or VF. After a successful shock, VF often recurs over the
+next two minutes if myocardial ischemia or hypoxia persists (Koster 2008;
+van Alem 2003). Amiodarone (Korth-Bradley 1996) and lidocaine convert sustained
+VT with a pulse over tens of minutes, and amiodarone converts it more often
+(Somberg 2002; Scheinman 1995). In VF, both drugs make a shock more likely to
+succeed after CPR delivers them (Kudenchuk 2016), and neither prevents rearrest
+(Salcido 2018).
 
 ### Lidocaine toxicity
 

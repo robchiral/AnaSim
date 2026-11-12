@@ -18,7 +18,6 @@ from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import KETAMINE_MAC_EQUIVALENT
 from anasim.patient.variability import HemodynamicVariability
 
-from .arrhythmia import AMIODARONE_C50
 from .coronary import CoronaryModel
 from .fluid_balance import FluidBalance
 from .fluids import CrystalloidKinetics
@@ -150,6 +149,8 @@ class HemodynamicModel:
         self.hr_tone = self.base_hr
         self.tpr_tone = self.base_tpr
         self._drug_tpr = self._drug_sv = self._drug_hr = 1.0
+        self._amiodarone_ees_factor = 1.0
+        self._amiodarone_vasc_adapted = 0.0
         self.ce_prop_cv = self.ce_opioid_cv = self.ce_remi_vagal = 0.0
         self._sympathetic_venous_depth = 0.0
         self._epi_venous_alpha = 0.0  # Share of propofol's venous pooling reversed by epinephrine
@@ -685,7 +686,7 @@ class HemodynamicModel:
         coupling = self.failure.coupling_ratio
         if coupling:
             # SV scales with 1 / (1 + Ea/Ees), with Ea proportional to arterial resistance.
-            load = max(0.2, eff_tpr / self.base_tpr)
+            load = max(0.2, eff_tpr / self.base_tpr) / self._amiodarone_ees_factor
             current_sv *= (1.0 + coupling) / (1.0 + coupling * load)
         # Both terms describe oxygen-limited myocardium; use the larger so
         # global hypoxemia is not counted twice.
@@ -806,7 +807,7 @@ class HemodynamicModel:
              ce_esmolol: float = 0.0, ce_labetalol: float = 0.0, ce_glyco: float = 0.0,
              ce_ketamine: float = 0.0, ce_ketamine_hr: float = 0.0,
              ce_atropine: float = 0.0, ce_ephedrine: float = 0.0,
-             ce_amiodarone: float = 0.0,
+             ce_amiodarone: float = 0.0, ce_amiodarone_vasc: float = 0.0, ce_amiodarone_hr: float = 0.0,
              sodium_block: float = 0.0, toxic_contractility_loss: float = 0.0,
              temp_c: float = 37.0, peep_cmH2O: float | None = None, sao2: float = 98.0,
              remifentanil_cp: float | None = None, ph: float = 7.4) -> HemoState:
@@ -825,7 +826,8 @@ class HemodynamicModel:
             ce_esmolol: Esmolol effect-site concentration (mcg/mL).
             ce_labetalol, ce_glyco, ce_atropine, ce_ephedrine: Effect-site concentrations (ng/mL).
             ce_ketamine, ce_ketamine_hr: Ketamine cardiac-output and HR effect sites (mcg/mL).
-            ce_amiodarone: Acute amiodarone effect-site concentration (mcg/mL).
+            ce_amiodarone, ce_amiodarone_vasc, ce_amiodarone_hr: Amiodarone contractility,
+                vascular, and HR effect sites (mcg/mL).
             temp_c: Core temperature (°C).
             peep_cmH2O: Total PEEP (cmH2O).
             sao2: Arterial saturation (%).
@@ -888,10 +890,14 @@ class HemodynamicModel:
         atropine_hr = cfg.atropine_emax_hr * atropine / (1.0 + max(0.0, cp_prop) / cfg.atropine_propofol_cp50)
         vagal_hr = cfg.glyco_emax_hr * glyco * (1.0 - atropine) + atropine_hr
         resting_tone = 1.0 - cfg.sympathetic_anesthetic_depression * anesthetic_depth
+        amiodarone = hill_function(max(0.0, ce_amiodarone), cfg.amiodarone_c50, 1.0)
+        amiodarone_hr = hill_function(max(0.0, ce_amiodarone_hr), cfg.amiodarone_c50, 1.0)
         # Shares of sympathetic reflex and stimulation responses left after
-        # block; age reduces the HR share only.
+        # block. Age and amiodarone reduce the HR share.
         beta_response = 1.0 - cfg.beta_block_reflex * beta_occ
-        sympathetic_hr_response = beta_response * self._age_chronotropy
+        sympathetic_hr_response = (
+            beta_response * self._age_chronotropy * (1.0 - cfg.amiodarone_beta_reflex_block * amiodarone_hr)
+        )
         alpha_response = 1.0 - alpha_occ
         dist_hr *= sympathetic_hr_response
         dist_sv *= beta_response
@@ -977,9 +983,17 @@ class HemodynamicModel:
         self._update_hb_conc()
 
         self._set_drug_factors(self._calc_anesthetic_effects(ce_prop, self.ce_opioid_cv, self.ce_sevo), vagal)
-        amiodarone = hill_function(ce_amiodarone, AMIODARONE_C50, 1.0)
-        self._drug_hr *= 1.0 - cfg.amiodarone_hr_reduction * amiodarone
-        self._drug_tpr *= 1.0 - cfg.amiodarone_tpr_reduction * amiodarone
+        ce_amio_vasc = max(0.0, ce_amiodarone_vasc)
+        self._amiodarone_vasc_adapted += (ce_amio_vasc - self._amiodarone_vasc_adapted) * (
+            -math.expm1(-60.0 * delivery_time / cfg.amiodarone_vasc_adaptation_s)
+        )
+        amiodarone_vasc = hill_function(
+            max(0.0, ce_amio_vasc - self._amiodarone_vasc_adapted), cfg.amiodarone_vasc_c50, cfg.amiodarone_vasc_gamma
+        )
+        self._amiodarone_ees_factor = 1.0 - cfg.amiodarone_ees_reduction * amiodarone
+        self._drug_hr *= 1.0 - cfg.amiodarone_hr_reduction * amiodarone_hr
+        self._drug_sv *= 1.0 - cfg.amiodarone_sv_reduction * amiodarone
+        self._drug_tpr *= 1.0 - cfg.amiodarone_tpr_reduction * amiodarone_vasc
 
         # Positive intrathoracic pressure reduces venous return; spontaneous
         # negative pressure modestly augments it.
@@ -1191,6 +1205,8 @@ class HemodynamicModel:
         self.ce_remi_vagal = max(0.0, cp_remi if remifentanil_cp is None else remifentanil_cp)
         self._sympathetic_venous_depth = clamp01(max(0.0, cp_prop) / self.config.propofol_sympathetic_cp)
         self._epi_venous_alpha = 0.0
+        self._amiodarone_ees_factor = 1.0
+        self._amiodarone_vasc_adapted = 0.0
         ce_prop = max(0.0, cp_prop) * self._prop_cv_potency
         self._set_drug_factors(self._calc_anesthetic_effects(ce_prop, cp_remi, mac_sevo))
         anesthetic_depth = clamp01(mac_sevo + cp_prop / 4.0)

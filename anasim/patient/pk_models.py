@@ -34,7 +34,7 @@ class PKState:
     ce_resp: float = 0.0  # Respiratory depression
     ce_rr: float = 0.0  # Morphine/hydromorphone respiratory rate
     ce_cv: float = 0.0  # Cardiovascular effect
-    ce_hr: float = 0.0  # Ketamine chronotropy
+    ce_hr: float = 0.0  # Ketamine and amiodarone chronotropy
     ce_transit: float = 0.0  # Transit before the primary effect site
     ce_neuro: float = 0.0  # Local anesthetic CNS exposure
 
@@ -647,8 +647,10 @@ class DantrolenePK(MammillaryPK):
 class AmiodaronePK(MammillaryPK):
     """Korth-Bradley 1996 two-compartment IV model (245 VT/VF patients), mcg/mL.
 
-    Weight-scaled CL 0.22 and Q 0.71 L/h/kg, V1 0.30 and V2 10 L/kg. The
-    1-minute effect-site half-time is a calibration.
+    Weight-scaled CL 0.22 and Q 0.71 L/h/kg, V1 0.30 and V2 10 L/kg. Effect
+    half-times are 15 s for bolus vasodilation and 18 min for sinus slowing,
+    matching Munoz 1988, and 2.5 min for contractility and antiarrhythmic
+    action.
     """
 
     def __init__(self, patient: Patient):
@@ -656,7 +658,8 @@ class AmiodaronePK(MammillaryPK):
         super().__init__(
             v1=0.30 * w, v2=10.0 * w,
             cl1=0.22 * w / 60.0 * organ_clearance_scaler(patient, hepatic_fraction=1.0),
-            cl2=0.71 * w / 60.0, ke0=math.log(2.0),
+            cl2=0.71 * w / 60.0, ke0=math.log(2.0) / 2.5,
+            additional_effect_sites=(("ce_cv", math.log(2.0) / 0.25), ("ce_hr", math.log(2.0) / 18.0)),
         )
 
 

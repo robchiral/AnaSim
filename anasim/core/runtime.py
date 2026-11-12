@@ -467,6 +467,8 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         ce_atropine=state.atropine_ce,
         ce_ephedrine=state.ephedrine_ce,
         ce_amiodarone=state.amiodarone_ce,
+        ce_amiodarone_vasc=engine.pk["amiodarone"].state.ce_cv,
+        ce_amiodarone_hr=engine.pk["amiodarone"].state.ce_hr,
         sodium_block=engine.toxicity.conduction_block,
         toxic_contractility_loss=engine.toxicity.contractility_loss,
         ce_ketamine=engine.pk["ketamine"].state.ce_cv,

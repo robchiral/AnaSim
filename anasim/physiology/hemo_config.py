@@ -56,10 +56,20 @@ class HemodynamicConfig:
     # after primary asystole, a teaching calibration.
     asystole_recovery_time_s: float = 30.0
 
-    # Maximal acute reductions in heart rate and vascular resistance from IV
-    # amiodarone, calibrated to the label's bradycardia and hypotension.
-    amiodarone_hr_reduction: float = 0.20
-    amiodarone_tpr_reduction: float = 0.15
+    # Acute IV amiodarone effects, calibrated to Kosinski 1984 and Munoz 1988.
+    # Vasodilation follows the rise in concentration during a rapid bolus and
+    # fades within minutes. Contractility falls within minutes, which lowers
+    # output more when EF is reduced. HR slows and its sympathetic reflexes
+    # weaken over 15-30 minutes.
+    amiodarone_c50: float = 4.0  # mcg/mL
+    amiodarone_hr_reduction: float = 0.165
+    amiodarone_sv_reduction: float = 0.055
+    amiodarone_ees_reduction: float = 0.255
+    amiodarone_beta_reflex_block: float = 0.65
+    amiodarone_vasc_c50: float = 3.3  # mcg/mL rise above the adapted level
+    amiodarone_vasc_gamma: float = 2.5
+    amiodarone_vasc_adaptation_s: float = 90.0
+    amiodarone_tpr_reduction: float = 0.24
 
     # Propofol, remifentanil, and their interaction (Su et al. 2023), acting
     # from hemodynamic effect sites over the slow tone. Changes from Su's

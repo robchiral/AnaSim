@@ -20,6 +20,12 @@
   Heavy inspiratory loads take about twice as long to exhaust the muscles, most
   strength returns within 15 minutes of rest or pressure support, and a smaller
   deficit lasts up to a day.
+- Ventricular arrhythmias and intravenous amiodarone are recalibrated to
+  clinical studies. Sustained VT with a pulse now takes tens of minutes to
+  convertt. VF recurs after a successful shock in about half of
+  patients. Rapid amiodarone boluses briefly
+  lower blood pressure much more than a 10-minute loading infusion, HR slows
+  over 15 to 30 minutes, and cardiac output falls more in patients with HFrEF.
 - Above 65, propofol lowers blood pressure more slowly but further.
 - Propofol, remifentanil, and fentanyl TCI now uses only age, weight, height,
   and sex, as clinical pumps do. Blood loss, hepatic impairment, and midazolam

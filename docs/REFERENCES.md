@@ -108,6 +108,8 @@ PCV-VG, pressure control with volume guarantee.
 ### Amiodarone
 
 - Korth-Bradley et al. (1996). *J Clin Pharmacol*. [Population PK of IV amiodarone in refractory VT/VF](https://pubmed.ncbi.nlm.nih.gov/8877675/).
+- Kosinski et al. (1984). *J Am Coll Cardiol*. [Hemodynamic effects of IV amiodarone](https://pubmed.ncbi.nlm.nih.gov/6470338/).
+- Munoz et al. (1988). *Eur Heart J*. [IV amiodarone with and without Tween 80](https://pubmed.ncbi.nlm.nih.gov/3280316/).
 - DailyMed (2024). [Amiodarone injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=51772745-9ea9-42cd-97e6-7266f41ae3ca).
 
 ## Drug timing and TCI performance
@@ -242,6 +244,7 @@ PCV-VG, pressure control with volume guarantee.
 - Koster et al. (2008). *Resuscitation*. [Recurrent VF during advanced life support](https://pubmed.ncbi.nlm.nih.gov/18556106/).
 - van Alem et al. (2003). *Resuscitation*. [VF recurrence and patient outcome](https://pubmed.ncbi.nlm.nih.gov/14625108/).
 - Somberg et al. (2002). *Am J Cardiol*. [IV lidocaine versus amiodarone for incessant VT](https://pubmed.ncbi.nlm.nih.gov/12372573/).
+- Scheinman et al. (1995). *Circulation*. [Dose-ranging IV amiodarone in life-threatening ventricular tachyarrhythmias](https://pubmed.ncbi.nlm.nih.gov/7586313/).
 - Kudenchuk et al. (2016). *N Engl J Med*. [Amiodarone, lidocaine, or placebo in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/27043165/).
 - Salcido et al. (2018). *Resuscitation*. [Antiarrhythmic administration and rearrest in ALPS](https://pubmed.ncbi.nlm.nih.gov/29803703/).
 - American Heart Association (2025). [Adult cardiac arrest algorithm](https://cpr.heart.org/-/media/CPR-Files/CPR-Guidelines-Files/2025-Algorithms/Algorithm-ACLS-CA-250527.pdf).

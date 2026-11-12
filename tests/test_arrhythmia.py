@@ -38,13 +38,61 @@ def test_ischemic_vt_can_degenerate_to_vf_but_silent_myocardium_does_not():
         assert rhythm == (RhythmType.VTACH if silent else RhythmType.VFIB)
 
 
-@pytest.mark.parametrize("drug", ["lidocaine", "amiodarone"])
-def test_delivered_antiarrhythmics_can_convert_perfusing_vt(drug):
-    model = ArrhythmiaModel(np.random.default_rng(1))
-    rhythm = RhythmType.VTACH
-    for _ in range(1200):
-        rhythm = _step(model, 1, rhythm, **{drug: 3.0})
-    assert rhythm == RhythmType.SINUS
+def _vt_conversion_times(concs: list[float], drug: str, dt: float = 5.0, n: int = 400) -> list[float]:
+    rng = np.random.default_rng(1)
+    times: list[float] = []
+    for _ in range(n):
+        model = ArrhythmiaModel(rng)
+        rhythm = RhythmType.VTACH
+        for i, conc in enumerate(concs):
+            rhythm = _step(model, dt, rhythm, **{drug: conc})
+            if rhythm == RhythmType.SINUS:
+                times.append((i + 1) * dt)
+                break
+    return times
+
+
+def _effect_site_trace(pk, rate, site: str, duration_s: int, every_s: int = 5) -> list[float]:
+    trace: list[float] = []
+    for s in range(1, duration_s + 1):
+        pk.step(1.0, rate(s))
+        if s % every_s == 0:
+            trace.append(getattr(pk.state, site))
+    return trace
+
+
+def test_vt_conversion_matches_somberg_and_scheinman_protocols(patient_factory):
+    """Somberg 2002: amiodarone converts sustained VT with a pulse in about
+    two-thirds of patients within an hour, and lidocaine in about a quarter.
+    Scheinman 1995: median conversion is near 51 min at 1000 mg/24 h, and slower
+    at 125 mg/24 h (0.94 h in Scheinman alone and 3.11 h in its pooled analysis).
+    """
+    def two_boluses(mg: float, maintenance_mg_min: float):
+        return lambda s: maintenance_mg_min / 60.0 + (mg / 120.0 if s <= 120 or 600 < s <= 720 else 0.0)
+
+    def load_then_infuse(load_mg: float, maintenance_mg_min: float):
+        return lambda s: load_mg / 600.0 if s <= 600 else maintenance_mg_min / 60.0
+
+    somberg_amio = _effect_site_trace(
+        AmiodaronePK(patient_factory(age=68, weight=74, height=172)), two_boluses(150.0, 0.417), "ce", 3600,
+    )
+    somberg_lido = _effect_site_trace(
+        LidocainePK(patient_factory(age=64, weight=85, height=175)), two_boluses(100.0, 2.0), "ce_cv", 3600,
+    )
+    assert 0.55 <= len(_vt_conversion_times(somberg_amio, "amiodarone")) / 400 <= 0.78
+    assert 0.15 <= len(_vt_conversion_times(somberg_lido, "lidocaine")) / 400 <= 0.32
+
+    scheinman = AmiodaronePK(patient_factory(age=65, weight=78, height=174))
+    high_trace = _effect_site_trace(scheinman, load_then_infuse(150.0, 1.0), "ce", 7200, every_s=10)
+    high_times = _vt_conversion_times(high_trace, "amiodarone", dt=10.0)
+    high_censored = sorted(high_times + [7200.0] * (400 - len(high_times)))
+    assert 35.0 <= float(np.median(high_censored)) / 60.0 <= 60.0
+
+    scheinman = AmiodaronePK(patient_factory(age=65, weight=78, height=174))
+    low_trace = _effect_site_trace(scheinman, load_then_infuse(18.75, 0.125), "ce", 14400, every_s=10)
+    low_times = _vt_conversion_times(low_trace, "amiodarone", dt=10.0)
+    low_censored = sorted(low_times + [14400.0] * (400 - len(low_times)))
+    assert 1.1 <= float(np.median(low_censored)) / 3600.0 <= 2.8
 
 
 @pytest.mark.parametrize("rhythm", [RhythmType.VFIB, RhythmType.ASYSTOLE, RhythmType.VTACH])
@@ -152,17 +200,82 @@ def test_cardiac_drug_exposure_waits_for_flow_then_increases_with_cpr(patient, m
     assert getattr(model.state, site) > 0.5 and model.state.c1 < initial
 
 
-def test_acute_amiodarone_has_cardiovascular_effects_after_delivery(engine_factory):
-    endpoints = []
-    for dose in (0, 150):
-        engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
-        if dose:
-            engine.give_drug_bolus("amiodarone", dose)
-        for _ in range(120):
-            engine.step(1)
-        endpoints.append((engine.state.hr, engine.state.map))
-    assert endpoints[1][0] < endpoints[0][0] - 2
-    assert endpoints[1][1] < endpoints[0][1] - 5
+@pytest.mark.parametrize("dt", [0.5, 2.0])
+def test_post_shock_vf_recurrence_incidence_and_timing(dt):
+    """Koster 2008 and van Alem 2003: about half of shockable arrests refibrillate
+    within 2 min of a shock, with biphasic recurrence median 36 s (IQR 17-77 s).
+    """
+    rng = np.random.default_rng(1)
+    recurrences: list[float] = []
+    steps = round(180.0 / dt)
+    for _ in range(400):
+        model = ArrhythmiaModel(rng)
+        rhythm = model.after_shock(
+            RhythmType.VFIB, RhythmType.SINUS, ischemia=1.0, hypoxia=0.0, energy_failure=0.1,
+        )
+        for i in range(1, steps + 1):
+            t = i * dt
+            rhythm = _step(model, dt, rhythm, ischemia=math.exp(-t / 60.0), energy_failure=0.1)
+            if rhythm == RhythmType.VFIB:
+                recurrences.append(t)
+                break
+
+    assert 0.45 <= sum(t <= 120.0 for t in recurrences) / 400 <= 0.60
+    q25, q50, q75 = np.percentile(recurrences, [25, 50, 75])
+    assert 10.0 <= q25 <= 20.0
+    assert 25.0 <= q50 <= 42.0
+    assert 55.0 <= q75 <= 85.0
+
+
+def test_acute_amiodarone_hemodynamics_follow_rate_and_lv_function(engine_factory):
+    """Munoz 1988 and Kosinski 1984: rapid IV boluses briefly lower pressure
+    with reflex HR support and maintained output, HR and output fall modestly by
+    15-30 min, and HFrEF loses substantially more cardiac output after a bolus.
+    """
+    def run_infusion(hf: str, dose_mg: float, duration_s: int, total_s: int) -> dict[int, tuple[float, float, float]]:
+        engine = engine_factory(
+            config=SimulationConfig(mode="awake", rng_seed=1),
+            start=True, age=60, weight=75, height=175, heart_failure=hf,
+        )
+        for _ in range(30):
+            engine.step(2.0)
+        hr0, map0, co0 = engine.state.hr, engine.state.map, engine.state.co
+        engine.set_drug_rate("amiodarone", dose_mg / (duration_s / 60.0))
+        snapshots: dict[int, tuple[float, float, float]] = {}
+        for s in range(2, total_s + 1, 2):
+            if s == duration_s + 2:
+                engine.set_drug_rate("amiodarone", 0.0)
+            engine.step(2.0)
+            if s in (180, 300, 360, 600, 1800):
+                snapshots[s] = (
+                    1.0 - engine.state.hr / hr0,
+                    1.0 - engine.state.map / map0,
+                    1.0 - engine.state.co / co0,
+                )
+        return snapshots
+
+    slow_normal = run_infusion("none", 150.0, 600, 600)
+    munoz_normal = run_infusion("none", 375.0, 180, 1800)
+    kosinski_normal = run_infusion("none", 300.0, 300, 600)
+    kosinski_hfref = run_infusion("hfref", 300.0, 300, 600)
+
+    assert slow_normal[600][1] <= 0.06
+
+    assert munoz_normal[180][0] < 0.0
+    assert 0.12 <= munoz_normal[180][1] <= 0.22
+    assert -0.06 <= munoz_normal[180][2] <= 0.03
+    assert munoz_normal[360][1] <= 0.06
+    assert 0.04 <= munoz_normal[1800][0] <= 0.09
+    assert munoz_normal[1800][1] <= 0.06
+    assert 0.04 <= munoz_normal[1800][2] <= 0.09
+
+    assert 0.08 <= kosinski_normal[300][1] <= 0.14
+    assert -0.04 <= kosinski_normal[300][2] <= 0.03
+    assert kosinski_normal[600][1] <= 0.06
+    assert 0.03 <= kosinski_normal[600][2] <= 0.08
+
+    assert 0.13 <= kosinski_hfref[600][2] <= 0.22
+    assert 0.05 <= kosinski_hfref[600][1] <= 0.15
 
 
 def test_engine_projects_automatic_rhythm_changes_to_ecg_and_circulation(engine_factory):

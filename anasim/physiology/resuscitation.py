@@ -95,7 +95,7 @@ def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: flo
         return rhythm
     if rhythm == RhythmType.VFIB or (rhythm == RhythmType.VTACH and not synchronized):
         success = DEFIBRILLATION_SUCCESS * (1.0 - FINE_VF_SUCCESS_LOSS * energy_failure)
-        # Either drug reduced the shocks needed (Kudenchuk 2016); the size is a calibration.
+        # Either drug reduced the shocks needed (Kudenchuk 2016). The effect size is a calibration.
         success += 0.5 * (1.0 - success) * clamp01(antiarrhythmic)
         return RhythmType.SINUS if rng.random() < success else rhythm
     if not synchronized and vulnerable and rng.random() < R_ON_T_PROBABILITY:
