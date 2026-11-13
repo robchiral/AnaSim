@@ -473,14 +473,20 @@ succeed after CPR delivers them (Kudenchuk 2016), and neither prevents rearrest
 
 ### Lidocaine toxicity
 
-[Lidocaine](../anasim/physiology/toxicity.py) causes seizures above an
-effect-site concentration of about 6 mcg/mL, then CNS depression and apnea.
-Above 10 mcg/mL, sodium-channel block widens the QRS complex, and contractile
-depression and ventricular arrhythmias can cause collapse. Acidemia worsens
-both. Midazolam, propofol, and sevoflurane suppress seizures, and neuromuscular
-block hides convulsions without stopping the seizure. Lipid emulsion reduces
-lidocaine delivery to its effect sites, as it modestly reduced unbound exposure
-in volunteers (Heinonen 2015), and lessens contractile depression.
+In awake patients, [lidocaine](../anasim/physiology/toxicity.py) raises HR and
+blood pressure above an effect-site concentration of about 4 mcg/mL and causes
+seizures above 5 mcg/mL (Foldes 1960; Jorfeldt 1968). Between 11 and 20 mcg/mL,
+CNS depression and apnea replace seizures. Contractile depression begins above
+13 mcg/mL, and higher concentrations widen the QRS complex and can cause
+ventricular arrhythmias or arrest. A 2 g infusion over an hour causes
+hypotension and coma in sinus rhythm rather than arrest (Armstrong 1988),
+although the model clears the drug faster than in that patient, whose ejection
+fraction was 15%. Acidemia worsens both CNS and cardiac toxicity. Midazolam,
+propofol, and sevoflurane suppress seizures and the sympathetic rise, and
+neuromuscular block hides convulsions without stopping the seizure. Lipid
+emulsion reduces lidocaine delivery to its effect sites by about a fifth, as it
+reduced unentrapped exposure in volunteers (Heinonen 2015), and lessens
+contractile depression (Fettiplace 2014).
 
 ### Fluids
 

@@ -26,6 +26,13 @@
   amiodarone boluses briefly lower blood pressure much more than a 10-minute
   loading infusion, HR slows over 15 to 30 minutes, and cardiac output falls
   more in patients with HFrEF.
+- Lidocaine toxicity and lipid rescue are recalibrated to volunteer infusions
+  and overdose reports. In awake patients, lidocaine raises HR and blood
+  pressure before convulsions start. Cardiac depression and QRS widening now
+  require much higher concentrations than seizures, so a 2 g infusion over an
+  hour causes hypotension and coma in sinus rhythm rather than arrest. Lipid
+  emulsion reduces lidocaine exposure at its effect sites by about a fifth over
+  30 minutes.
 - Added an adjustable bag pressure limit (APL, default 20 cmH₂O) and facemask
   seal. Obstruction and bronchospasm now limit bag volume at the APL. A loose
   mask loses part of each assisted breath, lets room air in during unsupported

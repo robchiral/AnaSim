@@ -669,8 +669,12 @@ class LidocainePK(MammillaryPK):
     CL 45.9, Q2 142, and Q3 5.81 L/h and V1 25.2, V2 44.4, and V3 29.3 L for
     70 kg total and 56.1 kg fat-free mass (Table IV). Fat-free mass scales V1
     and the clearances, and total mass scales V2 and V3. Clearance is hepatic
-    and was measured during surgery. AnaSim sets ke0 so the effect site peaks
-    3 min after a bolus, the best time to give it before intubation (Tam 1987).
+    and was measured during surgery. Awake clearance and post-distribution
+    concentrations match Rowland 1971 and Tucker and Boas 1971, and V1 includes
+    first-pass lung uptake. Foong's fluid effect on V2, postoperative clearance
+    change, and metabolites are omitted. AnaSim sets ke0 so the analgesic site
+    peaks 3 min after a bolus, the best time to give it before intubation
+    (Tam 1987).
     """
 
     def __init__(self, patient: Patient):
@@ -685,8 +689,8 @@ class LidocainePK(MammillaryPK):
             v3=29.3 * size,
             cl3=5.81 / 60.0 * flow,
             ke0=0.6,
-            # Cardiac and CNS sites with calibrated half-times of 30 and 15 s.
-            additional_effect_sites=(("ce_cv", math.log(2.0) / 0.5), ("ce_neuro", math.log(2.0) / 0.25)),
+            # Cardiac and CNS sites with calibrated 30 s half-times.
+            additional_effect_sites=(("ce_cv", math.log(2.0) / 0.5), ("ce_neuro", math.log(2.0) / 0.5)),
         )
 
 

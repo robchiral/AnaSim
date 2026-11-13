@@ -94,8 +94,14 @@ PCV-VG, pressure control with volume guarantee.
 
 - DailyMed (2026). [Lidocaine injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ad1ef0a8-88db-4648-c098-d009eaeb4e5b).
 - Foong et al. (2025). *Pharm Res*. [Lidocaine population PK in surgical patients](https://pubmed.ncbi.nlm.nih.gov/40021547/).
+- Tucker and Boas (1971). *Anesthesiology*. [Lidocaine kinetics and intravenous regional anesthesia](https://pubmed.ncbi.nlm.nih.gov/5556244/).
+- Rowland et al. (1971). *Ann N Y Acad Sci*. [Lidocaine kinetics in healthy subjects](https://pubmed.ncbi.nlm.nih.gov/5285383/).
+- Foldes et al. (1960). *JAMA*. [Intravenous local anesthetic toxicity in man](https://pubmed.ncbi.nlm.nih.gov/13823696/).
+- Jorfeldt et al. (1968). *Acta Anaesthesiol Scand*. [Central circulation and respiration during local anesthetic infusion](https://pubmed.ncbi.nlm.nih.gov/4896937/).
 - Armstrong et al. (1988). *Ther Drug Monit*. [Clinical response and total and unbound plasma concentrations after lidocaine overdose](https://pubmed.ncbi.nlm.nih.gov/3201537/).
 - Heinonen et al. (2015). *Basic Clin Pharmacol Toxicol*. [Lipid emulsion and lidocaine toxicity in volunteers](https://pubmed.ncbi.nlm.nih.gov/25207682/).
+- Fettiplace et al. (2014). *Anesthesiology*. [Cardiotonic effect of lipid emulsion in cardiac toxicity](https://pubmed.ncbi.nlm.nih.gov/24496123/).
+- Neal et al. (2021). *Reg Anesth Pain Med*. [ASRA practice advisory and 2020 LAST checklist](https://pubmed.ncbi.nlm.nih.gov/33148630/).
 - American Society of Regional Anesthesia and Pain Medicine (2020). [LAST checklist](https://asra.com/docs/default-source/guidelines-articles/local-anesthetic-systemic-toxicity-rgb.pdf).
 - Himes et al. (1977). *Anesthesiology*. [Lidocaine and anesthetic requirement](https://pubmed.ncbi.nlm.nih.gov/911052/).
 - Hans et al. (2010). *Br J Anaesth*. [Lidocaine reduces propofol requirements during stimulation](https://pubmed.ncbi.nlm.nih.gov/20650919/).

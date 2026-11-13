@@ -463,9 +463,13 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         pit=pit_estimate,
         paco2=resp_state.pa_co2,
         pao2=resp_state.p_arterial_o2,
-        dist_hr=disturbances.hr + engine.malignant_hyperthermia.heart_rate_increase,
+        dist_hr=(
+            disturbances.hr
+            + engine.malignant_hyperthermia.heart_rate_increase
+            + engine.toxicity.heart_rate_increase
+        ),
         dist_sv=disturbances.sv,
-        dist_svr=disturbances.svr,
+        dist_svr=disturbances.svr + engine.toxicity.svr_increase,
         mac_sevo=mac_sevo,
         ce_epi=state.epi_ce,
         ce_phenyl=state.phenyl_ce,
