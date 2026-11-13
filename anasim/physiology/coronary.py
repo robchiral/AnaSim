@@ -14,8 +14,8 @@ INJURY_TIME_S = 420.0
 class CoronaryModel:
     """Flow reserve limits supply; rate-pressure product estimates demand.
 
-    Wilson 1987 informs reserve, Gobel 1978 informs demand, and Arthurs 2016
-    motivates tracking oxygen imbalance. Pressure/time scaling, response times,
+    Reserve follows Wilson 1987 and demand Gobel 1978; Arthurs 2016 is the basis
+    for tracking oxygen imbalance. Pressure/time scaling, response times,
     contractile depression, and the illustrative ST signal are calibrations.
     """
 

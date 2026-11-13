@@ -101,7 +101,7 @@ def test_breath_volumes_and_pressures_match_analytic_steady_state(mode, monkeypa
     if mode in ("VCV", "MANUAL"):
         peak_volume = tidal_volume / (1.0 - exhalation)
         end_volume = peak_volume * exhalation
-        # Volume x time over inspiration; both flows put R x VT of resistive pressure-time in.
+        # Integral of volume over inspiration; each flow pattern adds R x VT of pressure-time.
         volume_time = ti * (end_volume + tidal_volume / 2.0)
         if mode == "VCV":
             t_flow = ti * (1.0 - vent.settings.pause / 100.0)
@@ -483,7 +483,7 @@ def test_simv_effort_follows_delivered_pressure_and_recovers_when_assistance_sto
 @pytest.mark.parametrize("dt", [0.01, 0.1, 1.0])
 def test_awake_simv_synchronizes_existing_efforts_without_adding_a_second_tidal_volume(engine_factory, mode, dt):
     # Start ventilation partway through the awake patient's respiratory cycle.
-    # A narrow trigger window used to split each later inspiration into PS
+    # A narrow trigger window would split each later inspiration into PS
     # followed by a mandatory stroke, producing two pressure/flow peaks.
     engine = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=1), start=True)
     for _ in range(round(2 / dt)):

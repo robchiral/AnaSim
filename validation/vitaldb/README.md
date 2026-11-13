@@ -26,11 +26,11 @@ changing respiratory mechanics, airway pressure, or capnography. To plot
 ventilation overlays, install Matplotlib and add `--figure
 validation/vitaldb/results/overlay.png` to the command.
 
-`vitaldb_peep.py` audits recorded PEEP steps before incision, for calibrating
-recruitment, and writes `results/vitaldb_peep.json`. It reads only cached tracks,
-so its counts depend on what has been downloaded. It needs cached copies of
-`cases.csv` and `trks.csv`. Use `--cache PATH` to read from a different cache
-directory.
+`vitaldb_peep.py` audits the recorded PEEP steps before incision that are used
+to calibrate recruitment, and writes `results/vitaldb_peep.json`. It reads only
+cached tracks, so its counts depend on what has been downloaded. It needs cached
+copies of `cases.csv` and `trks.csv`. Use `--cache PATH` to read from a different
+cache directory.
 
 ## Anesthetic drugs
 

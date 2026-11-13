@@ -142,9 +142,9 @@ data (Johnson 2001, 2003, 2004). Midazolam and propofol reduce each other's
 clearance within the concentration ranges studied (Vuyk 2009; Lichtenbelt 2010).
 Below 30% of resting cardiac output, drug transport to organs, peripheral
 compartments, and effect sites falls in proportion to flow, so a dose given
-during arrest waits until compressions circulate it. Esterase metabolism of
-remifentanil, succinylcholine, and esmolol continues without flow, and
-sugammadex still binds rocuronium in plasma.
+during arrest does not reach its effect sites until compressions circulate it.
+Esterase metabolism of remifentanil, succinylcholine, and esmolol continues
+without flow, and sugammadex still binds rocuronium in plasma.
 
 TCI adjusts infusion rates within pump limits to reach a predicted plasma or
 effect-site target. For propofol, remifentanil, and fentanyl, TCI and decrement
@@ -157,8 +157,8 @@ assumes no drug on board, and a stopped program resumes from its own history.
 TCI for other drugs predicts from the patient's current PK. Rocuronium TCI
 targets the free plasma concentration, and its prediction accounts for
 sugammadex and inhaled agents. Setting a manual infusion rate turns off TCI for
-that drug. `tci_enabled` chooses between TCI and
-manual rates when maintenance is initialized.
+that drug. When maintenance is initialized, `tci_enabled` chooses between TCI
+and manual rates.
 
 ### Anesthetic drug effects
 
@@ -192,7 +192,8 @@ Propofol lowers baseline pressure but does not reduce the cardiovascular
 response to stimulation, whereas opioids do reduce it (Kazama 1997). This
 interaction uses the propofol concentration at the BIS effect site because it
 was calibrated at steady concentrations. In the first minutes after induction,
-the faster response site reads about twice as high. Fentanyl's effects on the
+the concentration at the faster clinical-response site is about twice as high.
+Fentanyl's effects on the
 pressure and HR responses are fitted separately to Kazama's equilibrated
 concentrations and intubation responses. With inhaled agents, fentanyl also
 lowers the concentration needed to block the response, in line with its effect
@@ -200,8 +201,8 @@ on sevoflurane MAC-BAR (Katoh 1999). Other opioids are converted to remifentanil
 equivalents.
 
 Surgery also increases vascular resistance by 15%, and anesthetics do not reduce
-this increase. The size comes from the rise in MAP between the period before
-incision and surgery in VitalDB TIVA cases. The increase develops with a
+this increase. Its size comes from the rise in MAP from before incision to
+during surgery in VitalDB TIVA cases. The increase develops with a
 5-minute time constant, which gives a MAP rise of about 15% within 5 minutes of
 incision at Katoh's MAC-BAR concentrations. Septic shock removes the increase.
 Nociception resets the slow MAP feedback in the same way as the baroreflex, so
@@ -218,12 +219,15 @@ any surgical stimulation. The tube is not placed when loss of response and
 laryngoscopy tolerance are both below 0.1 and central muscle strength is above
 0.5.
 
-[`clinical_actions.py`](../anasim/core/clinical_actions.py) warns, and lets the
-action proceed, when the tube is placed in a responsive patient, when a
-neuromuscular blocker is given to a responsive patient without an induction
-dose in plasma, when the tube is removed during apnea or residual block (TOF
-ratio or T1 below 90%), when assisted ventilation stops during apnea, and when
-a shock is delivered to a responsive patient.
+[`clinical_actions.py`](../anasim/core/clinical_actions.py) shows a warning but
+lets the action proceed when:
+
+- the tube is placed in a responsive patient
+- a neuromuscular blocker is given to a responsive patient without an induction
+  dose in plasma
+- the tube is removed during apnea or residual block (TOF ratio or T1 below 90%)
+- assisted ventilation stops during apnea
+- a shock is delivered to a responsive patient
 
 ### Neuromuscular block
 
@@ -272,7 +276,7 @@ Propofol also reduces stressed volume and the resistance to venous return (de
 Wit 2016), using the same effect site as its arterial effects. In addition, the
 loss of sympathetic venous tone moves up to 30% of stressed volume into
 unstressed volume. This shift follows the plasma propofol concentration over a
-few minutes. It is the reason that induction lowers filling pressure and cardiac
+few minutes. This shift is why induction lowers filling pressure and cardiac
 output more than resistance (Fairfield 1991; Zucker 2022; Sjøen 2024). Blood
 loss draws on this pooled blood first, fluid loading does not refill it, and the
 alpha-adrenergic effect of epinephrine reverses it.
@@ -343,22 +347,23 @@ depends on propofol (Li 2024). Its effects on resistance and stroke volume
 increase with anesthetic depth.
 
 Epinephrine uses arterial clearance (Ensinger 1992), which falls with age
-(Esler 1995). Its effective mixing volume is calibrated to bolus responses. It
-sets the initial bolus concentration and, with clearance, the plasma decay
-rate. Cardiac and vascular responses are calibrated to boluses in awake and
-anesthetized patients and to infusions in awake volunteers (Guinard 1995;
-Takahashi 2002; Freyschuss 1986; Stratton 1985; Ensinger 1992; Marker 1998;
-Leenen 2005).
+(Esler 1995). Its effective mixing volume is calibrated to bolus responses.
+This volume sets the initial concentration after a bolus and, with clearance,
+the rate at which plasma concentration falls. Cardiac and vascular responses
+are calibrated to boluses in awake and anesthetized patients and to infusions
+in awake volunteers (Guinard 1995; Takahashi 2002; Freyschuss 1986; Stratton
+1985; Ensinger 1992; Marker 1998; Leenen 2005).
 
 Older patients are less sensitive to epinephrine (Leenen 2005; Pan 1986;
-Hogikyan 1994). Age increases arterial alpha C50 in the model. Higher
-concentrations and weaker baroreflex buffering offset this during infusions,
-while boluses raise HR less in older patients. Under propofol, epinephrine
-recruits pooled venous blood before the steep primary arterial alpha response.
-A separate high alpha component has a gradual concentration response and its
-own lag. It sustains vascular resistance at shock infusion rates and supports
-pressure during CPR. The arterial concentration-response calibration extends
-through Ensinger's 0.22 mcg/kg/min measured infusion step.
+Hogikyan 1994), so the arterial alpha-adrenergic C50 rises with age. During
+infusions, higher plasma concentrations and weaker baroreflex buffering offset
+this, while boluses raise HR less in older patients. Under propofol, epinephrine
+recruits pooled venous blood at lower concentrations than those that constrict
+arteries. A second alpha-adrenergic component acts at higher concentrations,
+with a gradual concentration response and its own delay. It maintains vascular
+resistance at the infusion rates used in shock and supports pressure during
+CPR. The concentration-response calibration covers concentrations up to
+Ensinger's highest infusion step, 0.22 mcg/kg/min.
 
 Phenylephrine recruits venous blood and raises afterload, so its effect on
 cardiac output depends on preload (Rebet 2016).
@@ -401,9 +406,9 @@ supply for a few seconds. As tissue oxygen falls from 60% to 35% of normal
 near-complete failure stops breathing. After circulation stops, this failure
 begins at about 4 seconds, and the EEG is flat at about 11 seconds (de Vries
 1998). Function recovers within about two minutes after supply returns. Below
-20% of normal, neurons are injured, more slowly the more supply remains (Jones
-1981). After the equivalent of 5 minutes without supply, the patient remains
-comatose, although BIS and breathing can recover.
+20% of normal, neurons are injured, and injury is slower when more supply
+remains (Jones 1981). After the equivalent of 5 minutes without supply, the
+patient remains comatose, although BIS and breathing can recover.
 
 CO₂ narcosis reduces responsiveness and airway tone without anoxic injury. Its
 severity depends on both PaCO₂ and pH (Westlake 1955). With acidemia, it rises
@@ -421,9 +426,10 @@ pressure below 5 mmHg while the ECG remains organized. The simulation continues
 through arrest, so the learner can resuscitate and treat the cause.
 
 Severe myocardial ischemia or hypoxemia first depletes an energy reserve that
-lasts about 4 minutes without circulation. Within this time, a perfusing rhythm
-restores circulation, as defibrillation does in the electrical phase of arrest
-(Weisfeldt 2002). The heart then slows over several minutes: P waves disappear
+lasts about 4 minutes without circulation. If a perfusing rhythm returns within
+this time, as after defibrillation in the electrical phase of arrest (Weisfeldt
+2002), circulation is restored. Once the reserve is used up, the heart slows
+over several minutes: P waves disappear
 (junctional rhythm), and complexes widen and shrink (idioventricular, then
 agonal rhythm) until the ECG is flat. Untreated VF becomes fine and then
 asystole. Meanwhile, injury that reperfusion does not reverse builds up and
@@ -435,9 +441,9 @@ fifth of resting cardiac output when the heart is normally filled, and little
 after major blood loss. This flow and vascular resistance set arterial pressure
 between compressions, and each compression adds a pulse that does not drive
 flow. Coronary flow occurs between compressions. The energy reserve recovers
-when diastolic pressure exceeds about 25 mmHg, the CPR target in Meaney 2013,
-which corresponds to the coronary perfusion pressure that return of circulation
-required in Paradis 1990. In an anesthetized adult, compressions give about
+when diastolic pressure exceeds about 25 mmHg. This is the CPR target in Meaney
+2013 and corresponds to the coronary perfusion pressure needed for return of
+circulation in Paradis 1990. In an anesthetized adult, compressions give about
 70/25 mmHg and EtCO₂ near 20 mmHg, so CPR keeps VF coarse and makes fine VF
 coarse again. Epinephrine raises diastolic pressure during compressions.
 In primary asystole, beats resume after 30 seconds of adequate coronary oxygen
@@ -493,8 +499,8 @@ potassium, chloride, calcium, magnesium, and phosphate in one extracellular
 volume, and albumin separately in plasma and the interstitium. Water moves
 between extracellular fluid and cells until their tonicity is equal, so the
 free water in lactated Ringer's and lipid emulsion spreads through total body
-water. Each fluid adds its own ions, albumin, and buffer base, the last equal
-to its strong ion difference. Saline therefore causes a hyperchloremic acidosis
+water. Each fluid adds its own ions and albumin, and buffer base equal to its
+strong ion difference. Saline therefore causes a hyperchloremic acidosis
 and lactated Ringer's does not (Scheingraber 1999). Packed red cells have the
 composition of a 3-week-old unit, at pH 6.5 and PCO₂ 98 mmHg with supernatant
 potassium 38 and lactate 22.5 mmol/L (Rabcuka 2025), so rapid transfusion adds
@@ -711,9 +717,11 @@ ECG, arterial pressure, and plethysmography use the same beat timing, and HR
 is averaged over beat intervals. The arterial waveform depends on MAP, stroke
 volume, and age-dependent arterial compliance (Mahdi 2017; Franklin 1997).
 Compliance increases as pressure falls (Langewouters 1984), so pulse pressure
-narrows during hypotension and widens with vasopressors. Epinephrine's inotropy
-widens pulse pressure beyond its effect on stroke volume, without changing MAP
-or flow, as contractility does in human inotrope studies (Piccioli 2023). Under
+narrows during hypotension and widens with vasopressors. Epinephrine's
+inotropic effect widens pulse pressure more than its effect on stroke volume
+alone would, without changing MAP or flow. In human inotrope studies, pulse
+pressure rose with contractility even when stroke volume did not (Piccioli
+2023). Under
 propofol, systolic pressure falls about twice as much as diastolic pressure
 (three times as much in Ebert 1992 and Jeleazcov 2015). Catheter and transducer
 dynamics filter the arterial pressure measurements. Pulse oximetry responds to
@@ -735,10 +743,9 @@ pressure, while intrinsic PEEP affects plateau pressure and residual flow.
 analyzer delay. End-tidal values clear when valid exhaled gas stops. Gas lost
 around a facemask does not pass the sampling port, so a large leak, especially
 with small breaths, leaves dead-space gas at the port and flattens the
-capnogram. Without an
-airway device, the impedance respiratory rate counts breathing efforts,
-including during obstruction. The gas monitor displays end-tidal age-adjusted
-MAC, while anesthetic effects use brain MAC.
+capnogram. Without an airway device, the impedance respiratory rate counts
+breathing efforts, including during obstruction. The gas monitor displays
+end-tidal age-adjusted MAC, while anesthetic effects use brain MAC.
 
 BIS includes processing delay and smoothing, which also delay its response to
 cerebral ischemia. The [neuromuscular

@@ -80,8 +80,9 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     engine.step(0.1)
     assert engine.state.airway_obstruction == 0.0
 
-    # Bagging over spontaneous breaths splints by mean pressure across both,
-    # so obstruction does not switch with the type of the last breath.
+    # When bag breaths alternate with spontaneous ones, the mean pressure across
+    # both holds the airway open, so obstruction does not switch with the type of
+    # the last breath.
     engine.set_vent_power(False)
     # Slow assisted breaths allow spontaneous effort rather than washing CO2
     # below the anesthetized apneic threshold.

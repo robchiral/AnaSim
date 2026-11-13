@@ -2,7 +2,7 @@
 
 Pressure below the autoregulatory range and low arterial oxygen content reduce
 supply. Electrical function fails as tissue oxygen falls from 60% to 35% of
-normal, and neurons are injured below 20% (Astrup 1981), more slowly the more
+normal, and neurons are injured below 20% (Astrup 1981), more slowly when more
 supply remains (Jones 1981). Oxygen stores delay failure: after circulatory
 arrest, it starts at about 4 s and the EEG is flat at about 11 s (de Vries
 1998). Acute electrical suppression can recover while coma persists.

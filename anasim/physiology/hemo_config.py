@@ -72,10 +72,10 @@ class HemodynamicConfig:
     amiodarone_tpr_reduction: float = 0.24
 
     # Propofol, remifentanil, and their interaction (Su et al. 2023), acting
-    # from hemodynamic effect sites over the slow tone. Changes from Su's
-    # volunteer estimates follow surgical patients. Propofol's resistance effect
-    # is below Su's -0.778, as Fregolent 2025 found in surgical patients, so
-    # induction without opioid lowers pressure less than with it (Billard 1994).
+    # through hemodynamic effect sites on the slow tone. Departures from Su's
+    # volunteer values follow surgical patients: propofol's resistance effect is
+    # below Su's -0.778 (Fregolent 2025), so induction without opioid lowers
+    # pressure less than with it (Billard 1994).
     ec50_prop_tpr: float = 3.21
     emax_prop_tpr: float = -0.5
     gamma_prop: float = 1.83
@@ -89,23 +89,22 @@ class HemodynamicConfig:
     # remifentanil effect on MAP.
     emax_remi_tpr: float = -0.25
     # Propofol pressure equilibration half-times (min) by age-group midpoint.
-    # Young volunteers equilibrated over 10-13 min (Jeleazcov 2015), slower than
-    # Kazama 1999's estimates below 60; these fit inductions without opioid
-    # (Ebert 1992 and 1995; Billard 1994) and Kazama's 60-69 group. At 70-85,
-    # Kazama's patients equilibrated 1.8 times as slowly as at 20-39 and fell
-    # further (SBP IC50 2.09 vs 3.96-4.61 mcg/mL); the potency multiplier is
-    # fitted to VitalDB TIVA patients over 70 and Oh 2025. Opioids equilibrate
-    # at remifentanil's rate. Opioid effects level off above the saturation:
-    # Sjøen 2024 found the same induction falls in SAP and HR with remifentanil
-    # doses giving peak Ce of 2, 4, and 8 ng/mL.
+    # Young volunteers took 10-13 min (Jeleazcov 2015), longer than Kazama 1999's
+    # estimates below 60; these values fit inductions without opioid (Ebert 1992
+    # and 1995; Billard 1994) and Kazama's 60-69 group. At 70-85, Kazama's
+    # patients equilibrated 1.8 times as slowly as at 20-39 and fell further (SBP
+    # IC50 2.09 vs 3.96-4.61 mcg/mL); the potency multiplier is fitted to VitalDB
+    # TIVA patients over 70 and Oh 2025. Opioids equilibrate at remifentanil's
+    # rate and level off above the saturation concentration, since Sjøen 2024
+    # found equal falls in SAP and HR at peak Ce of 2, 4, and 8 ng/mL.
     prop_cv_half_time_by_age: tuple[tuple[float, float], ...] = ((30.0, 11.0), (50.0, 10.5), (65.0, 9.5), (77.5, 19.8))
     prop_cv_potency_by_age: tuple[tuple[float, float], ...] = ((65.0, 1.0), (77.5, 1.5))
     opioid_cv_half_time: float = 1.2
-    # Remifentanil's own vagal bradycardia, beyond the opioid terms below; it is
-    # not seen with fentanyl (Sjøen 2024). Share of HR at saturation, which
-    # Sjøen's equal falls at 2-8 ng/mL place below clinical doses. 4% matches
-    # the HR fall after induction in VitalDB TIVA cases; randomized inductions
-    # in younger patients fell further (Sjøen 2023; Poterman 2017).
+    # Remifentanil's own vagal bradycardia, beyond the opioid terms below and
+    # absent with fentanyl (Sjøen 2024). Share of HR at saturation, which
+    # Sjøen's equal falls at 2-8 ng/mL place below clinical doses. 4% matches the
+    # HR fall after VitalDB TIVA induction; younger trial patients fell further
+    # (Sjøen 2023; Poterman 2017).
     remi_vagal_hr: float = 0.04
     remi_vagal_c50: float = 0.5  # ng/mL
     opioid_cv_saturation: float = 2.5  # ng/mL remifentanil equivalent
@@ -128,9 +127,9 @@ class HemodynamicConfig:
     # interaction grow with propofol dose, as the higher-dose trials fall further.
     ec50_int_sv: float = 4.0
 
-    # Integrated Li PK / Su circulation calibration: de Keijzer 2026 infusion
-    # responses and Joachim 2024 bolus responses. These are simulation
-    # coefficients, not either paper's standalone MAP-model parameters.
+    # Calibrated with Li PK in the Su circulation to de Keijzer 2026 infusion and
+    # Joachim 2024 bolus responses; these differ from either paper's own MAP-model
+    # parameters.
     nore_c50: float = 25.0
     nore_emax_svr: float = 1.75
     nore_emax_hr: float = 60.0
@@ -138,17 +137,15 @@ class HemodynamicConfig:
     nore_anesthetic_alpha_gain: float = 0.45
     nore_anesthetic_sv_gain: float = 3.0
 
-    # Sevoflurane, fitted so routine bolus induction falls as VitalDB recordings
-    # do: MAP a median 27% below the pre-induction reading before incision at
-    # end-tidal 1.6% and 19% during surgery, regardless of opioid, with HR about
-    # 10 bpm lower. Ebert 1995's rested volunteers (MAP -24, -29, and -40% at
-    # end-tidal 1, 2, and 3%; HR unchanged) fall further and bound the model
-    # within 2 SD. The 14-min equilibration half-time fits the gradual fall over
-    # 10 minutes of mask sevoflurane after propofol (Ebert 1995, Fig. 1);
-    # propofol's blood-pressure effect also equilibrates several times slower
-    # than its BIS effect (Kazama 1999). Most of the fall comes from stroke
-    # volume: in unstimulated volunteers, cardiac index fell 28% at 1 and 1.5
-    # MAC and SVR fell 4% and 16% (Malan 1995).
+    # Sevoflurane, fitted to routine VitalDB bolus inductions: MAP a median 27%
+    # below baseline before incision at end-tidal 1.6% and 19% during surgery,
+    # regardless of opioid, with HR about 10 bpm lower. Ebert 1995's rested
+    # volunteers fell further (MAP -24, -29, and -40% at 1, 2, and 3%; HR
+    # unchanged) and bound the model within 2 SD; their gradual fall over 10
+    # minutes of mask sevoflurane after propofol (Fig. 1) sets the 14-min
+    # half-time. Most of the fall comes from stroke volume: in unstimulated
+    # volunteers, cardiac index fell 28% at 1 and 1.5 MAC and SVR fell 4% and
+    # 16% (Malan 1995).
     ke0_sevo: float = 0.05
     sevo_emax_tpr: float = -0.4
     sevo_ec50_tpr: float = 0.9
@@ -182,11 +179,11 @@ class HemodynamicConfig:
     propofol_sympathetic_half_time: float = 3.0
     propofol_sympathetic_cp: float = 3.0  # Plasma mcg/mL for full depth
     # Propofol's resistance effect and venous pooling scale with pre-induction
-    # MAP around the reference, since higher pressure carries more sympathetic
-    # tone to withdraw (fractional gain per mmHg). The maximum MAP fall rose
-    # 0.44 points per mmHg of baseline in Morley 2010 (n=130, reference = their
-    # mean), about 0.33 after removing regression to the mean from a single
-    # baseline reading; VitalDB TIVA cases show the same slope.
+    # MAP around the reference (fractional gain per mmHg), since higher pressure
+    # reflects more sympathetic tone. The maximum MAP fall rose 0.44 points per
+    # mmHg of baseline in Morley 2010 (n=130; the reference is their mean), about
+    # 0.33 after correcting for regression to the mean; VitalDB TIVA cases show
+    # the same slope.
     propofol_baseline_sensitivity: float = 0.018
     propofol_baseline_map_ref: float = 97.0
     propofol_baseline_gain_range: tuple[float, float] = (0.5, 1.5)
@@ -199,8 +196,8 @@ class HemodynamicConfig:
     colloid_retention_fraction: float = 0.80
     blood_retention_fraction: float = 1.0
     donor_mchc_g_dl: float = 100.0 / 3.0  # Normal donor red cells; Hb = Hct / 0.03.
-    # Teaching pressure-response curve, not an AKI or GFR threshold. Preserve
-    # most basal output at MAP 60; taper to zero near circulatory collapse.
+    # Teaching pressure-response curve: most basal output remains at MAP 60 and
+    # tapers to zero near circulatory collapse.
     renal_map_min: float = 20.0
     renal_map_norm: float = 65.0
     # Interstitial fluid returns only while blood volume is below its 30% share.

@@ -7,15 +7,15 @@
   acidosis and is excreted more slowly than lactated Ringer's, and rapid
   transfusion of stored blood adds acid and CO₂, raises potassium, and lowers
   ionized calcium. Over hours, the kidneys compensate for sustained changes in
-  PaCO₂. Added 0.9% saline and calcium chloride, whose effect halves in about
-  30 minutes.
+  PaCO₂. Added 0.9% saline and calcium chloride. The rise in ionized calcium
+  after calcium chloride halves in about 30 minutes.
 - Added malignant hyperthermia with dantrolene, surface cooling, and a guided
   or independent case.
-- Supported adults aged up to 85 years.
+- AnaSim now supports adults up to 85 years old.
 - Epinephrine clearance and sensitivity now fall with age, and its responses
-  are recalibrated to infusion and bolus studies. Inotropy widens pulse pressure.
-  Bolus HR and pressure keep rising at larger doses, and higher infusion rates
-  restore vascular resistance.
+  are recalibrated to infusion and bolus studies. Its inotropic effect widens
+  pulse pressure. HR and pressure responses to boluses keep rising at larger
+  doses, and higher infusion rates restore vascular resistance.
 - Respiratory muscle fatigue is recalibrated to endurance and recovery studies.
   Heavy inspiratory loads take about twice as long to exhaust the muscles, most
   strength returns within 15 minutes of rest or pressure support, and a smaller
@@ -37,8 +37,8 @@
 - Above 65, propofol lowers blood pressure more slowly but further.
 - Propofol, remifentanil, and fentanyl TCI now uses only age, weight, height,
   and sex, as clinical pumps do. Blood loss, hepatic impairment, and midazolam
-  can move concentrations away from the target. The pump does not see hand
-  boluses, and TCI started after a manual rate assumes no drug on board.
+  can move concentrations away from the target. The pump model does not include
+  hand boluses, and TCI started after a manual rate assumes no drug on board.
 - Removed the opioid-containing anesthesia checkbox from the browser setup.
   Propofol kinetics assume opioid co-administration unless
   `concomitant_opioids` is set to false through the CLI or Python API.

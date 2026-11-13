@@ -91,7 +91,7 @@ class TestClinicalAcceptance:
             assert engine.get_drug_state("nore")["rate"] == 0.0
             # Unstimulated maintenance settles at least 20% below baseline, as
             # before incision (VitalDB TIVA median 27%; Ebert 1995: 0.83 MAC
-            # sevoflurane lowered MAP 29%); the user treats it.
+            # sevoflurane lowered MAP 29%); the learner treats it.
             assert 50.0 <= min(map_values) <= max(map_values) < 0.8 * engine.patient.baseline_map
             engine.set_drug_rate("nore", 5.0)
             for _ in range(300):

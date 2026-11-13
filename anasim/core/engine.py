@@ -426,7 +426,7 @@ class SimulationEngine(DrugControllerMixin):
     def give_drug_bolus(self, drug_name: str, amount: float):
         """Give a hand bolus in the drug's registry unit; it adds dose / V1 to C1.
 
-        Population TCI pumps do not see it. Sugammadex goes to the TOF model for binding.
+        Population TCI pump models omit it. Sugammadex goes to the TOF model for binding.
         """
         amount = float(amount)
         if amount <= 0:

@@ -15,9 +15,9 @@ from .state import SimulationConfig, SimulationState
 from .tci import TCIController
 from .units import convert_rate
 
-# Clinical pumps for these drugs run a population model from age, weight,
-# height, and sex alone. They do not see variability, organ function, blood
-# loss, cardiac output, interactions, or hand boluses. Vasoactive TCI uses the
+# Clinical pumps for these drugs use a population model from age, weight,
+# height, and sex alone, without variability, organ function, blood loss,
+# cardiac output, interactions, or hand boluses. Vasoactive TCI uses the
 # patient's model.
 POPULATION_TCI_DRUGS = ("propofol", "remi", "fentanyl")
 

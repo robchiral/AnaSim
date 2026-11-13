@@ -70,7 +70,7 @@ def test_pulse_oximeter_requires_perfusion_and_an_organized_pulse():
     spo2 = SpO2Monitor()
     spo2.step(0.1, sample, 98.0, 1.0)
 
-    # Signal loss cannot track unmeasurable saturation or generate a pulse.
+    # Without a usable signal, the pleth is flat and saturation holds its last reading.
     for rhythm, perfusion in ((RhythmType.SINUS, 0.0), (RhythmType.VFIB, 1.0)):
         sample = cycle.seed(60.0, rhythm)
         pleth, saturation = spo2.step(10.0, sample, 50.0, perfusion)

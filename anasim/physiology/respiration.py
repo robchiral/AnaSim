@@ -168,16 +168,15 @@ class RespiratoryModel:
             effort_rr=self.rr_0, effort_vt=self.vt_0,
             p_alveolar_co2=self.paco2_setpoint, pa_co2=self.paco2_setpoint,
         )
-        # A residual gradient plus perfusion of poorly ventilated units, a share
-        # of cardiac output. Awake, the share rises with age as in Gunnarsson
-        # 1991 and gives Crapo 1999's sea-level A-a gradient on room air.
-        # Unconscious, airways also close at end-expiration after age 30 unless
-        # PEEP holds them open: about 6 cmH2O at BMI 25 and 8 at BMI 30
-        # (Hedenstierna 2015). Closure is calibrated to the A-a gradient's rise
-        # with age at FiO2 0.4 without PEEP (Gunnarsson 1991). After abdominal
-        # surgery, part of this closure persists when the patient wakes. COPD adds
-        # low V/Q units with little shunt (Wagner 1977), 13% of output at
-        # severity 1 for a room-air PaO2 near 70 mmHg at age 65.
+        # A residual gradient plus perfusion of poorly ventilated units. Awake,
+        # their share of output rises with age (Gunnarsson 1991), giving Crapo
+        # 1999's sea-level A-a gradient on room air. Unconscious, airways also
+        # close at end-expiration after age 30 unless PEEP holds them open (about
+        # 6 cmH2O at BMI 25 and 8 at BMI 30; Hedenstierna 2015). Closure is fitted
+        # to the A-a gradient's rise with age at FiO2 0.4 without PEEP (Gunnarsson
+        # 1991) and partly persists after abdominal surgery. COPD adds low V/Q
+        # units with little shunt (Wagner 1977), 13% of output at severity 1 for
+        # a room-air PaO2 near 70 mmHg at age 65.
         self.aa_grad_base = 5.0
         self.low_vq_awake = 0.001 * max(0.0, patient.age - 34.0)
         self.low_vq_copd = 0.13 * patient.copd_severity
@@ -799,8 +798,8 @@ class RespiratoryModel:
         vt_spont_avail = max(0.0, vt_eff_spont)
 
         if measured_breaths:
-            # Measured ventilation already contains the patient's contribution.
-            # Combining its VT with a separate neural rate invents extra gas.
+            # Measured ventilation already includes the patient's breaths, so a
+            # separate neural rate would count extra gas.
             total_va_l_min = ref_rr_mech * vt_mech_avail
         else:
             total_va_l_min = effective_rate * (max(vt_mech_avail, vt_spont_avail) if mech_rr > 0 else vt_spont_avail)
@@ -1023,9 +1022,9 @@ class RespiratoryModel:
         """
         pco2 *= self._metabolic_compensation
         controller = self._ventilatory_drive if controller is None else controller
-        # The controller sets alveolar demand. Rate adds back the long-opioid
-        # share, which the separate rate curve applies, so it is not applied
-        # twice and remifentanil's rate effect is unchanged.
+        # The controller sets alveolar demand. The rate controller adds back the
+        # morphine and hydromorphone share, which their own rate curve applies,
+        # so it is not counted twice; remifentanil's rate effect is unchanged.
         rate_controller = max(
             0.0, controller + opioid_reference * (1.0 - opioid_controller_fraction) + hypoxic_drive,
         )

@@ -71,8 +71,8 @@ KETAMINE_MAC_EQUIVALENT = 3.5
 LARYNGOSCOPY_INTENSITY = 0.83
 
 # Lidocaine blunts stimulation without a baseline hypnotic or BIS effect
-# (Hans 2010; Altermatt 2012). The 4.2%/mcg/mL response attenuation remains a
-# simulator calibration, informed by Himes 1977 and intubation-response data.
+# (Hans 2010; Altermatt 2012). The 4.2% attenuation per mcg/mL is calibrated
+# from Himes 1977 and intubation-response data.
 LIDOCAINE_BLOCK_PER_MCG_ML = 0.042
 
 # Nitrous oxide is less than additive with sevoflurane for response to command.

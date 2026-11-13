@@ -114,7 +114,7 @@ class RespiratoryMechanics:
         Narrowed airways lose radial traction as the lung empties. A simplified
         equal-pressure-point model limits flow independently of downstream
         pressure (Mead 1967). The resistance curve, severity scaling, and 5 cmH2O
-        resting transpulmonary offset are teaching estimates, not patient fits.
+        resting transpulmonary offset are teaching estimates.
         """
         inflation = self.volume + self.compliance * self.peep
         if self.aeration is not None:

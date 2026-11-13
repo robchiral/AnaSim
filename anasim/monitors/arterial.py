@@ -19,7 +19,7 @@ NO_FLOW_TAU_S = 2.0
 
 @dataclass(frozen=True, slots=True)
 class ArterialWaveformConfig:
-    """Parameters for the Su-constrained arterial pulse renderer."""
+    """Parameters for the arterial pulse renderer."""
 
     compliance_ref_ml_mmhg: float = 1.5
     # Compliance falls 0.8% per year after 40, matching normotensive pulse
@@ -66,7 +66,7 @@ def _quintic_smoothstep(value: float) -> float:
 
 
 class ArterialWaveformRenderer:
-    """Render a Mahdi-informed pulse constrained by Su MAP and stroke volume."""
+    """Render an arterial pulse after Mahdi 2017, constrained by Su's MAP and stroke volume."""
 
     def __init__(self, age: float, config: ArterialWaveformConfig | None = None):
         self.config = ArterialWaveformConfig() if config is None else config

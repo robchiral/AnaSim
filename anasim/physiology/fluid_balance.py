@@ -254,8 +254,8 @@ class FluidBalance:
         target_ph = 6.1 + math.log10(target_hco3 / (0.230 / 7.5006168270417 * target_pco2))
         target_be = standard_base_excess(target_ph, target_hco3)
         current_be = standard_base_excess(ph, plasma_bicarbonate(ph, paco2))
-        # Endpoints follow Gonzalez 2018 and Krapf 1991; the 24/12 h adaptation
-        # times are bounded teaching parameters, not fits to those steady-state data.
+        # Endpoints follow Gonzalez 2018 and Krapf 1991, which measured steady
+        # states; the 24 and 12 h adaptation times are teaching values.
         tau = 1440.0 if delta >= 0.0 else 720.0
         extra = (target_be - current_be) * self.ecf_l / tau
         capacity = min(renal_function * renal_perfusion,

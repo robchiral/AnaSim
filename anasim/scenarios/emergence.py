@@ -52,7 +52,7 @@ def _require_normocapnia(engine) -> tuple[bool, str]:
 
 
 def _require_agents_stopped_balanced() -> Requirement:
-    """Check volatile agent and remifentanil stopped, with high fresh gas flow."""
+    """Check that the volatile agent and remifentanil are stopped and fresh gas flow is high."""
     opioid_check = require_infusions_stopped(
         "remi", fail_message="Stop remifentanil for this case"
     )
@@ -78,7 +78,7 @@ def _require_agents_stopped_balanced() -> Requirement:
 
 
 def _require_awakening(engine) -> tuple[bool, str]:
-    """Check patient emerging (BIS > 70, spontaneous breathing)."""
+    """Check that the patient is emerging: BIS above 70 and breathing spontaneously."""
     bis = monitor_value(engine, "bis")
     rr = engine.resp.state.rr
     msgs = []

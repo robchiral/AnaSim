@@ -28,8 +28,9 @@ CIRCUIT_RESISTANCE = 1.0
 # is scaled down linearly below 5 cmH2O.
 PEEP_VALVE = 7.0  # cmH2O/(L/s)^2
 PEEP_VALVE_FULL = 5.0  # cmH2O
-# Seconds after exhalation begins at which the valve is linearized about the
-# flow it then carries, keeping segments exact; the last ends its effect.
+# Times (s) after exhalation begins at which the valve's quadratic drop is
+# relinearized at the current flow, so each segment stays exact. The valve adds
+# no drop after the last knot.
 VALVE_KNOTS = (0.0, 0.02, 0.04, 0.06, 0.08, 0.1, 0.13, 0.16, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.7, 0.8,
                0.9, 1.0, 1.15, 1.3, 1.45, 1.6, 1.8, 2.0, 2.3, 2.6, 3.0)
 RISE_TIME = 0.28  # s, pressure ramp of pressure-controlled and supported breaths (Primus recordings)
@@ -240,7 +241,7 @@ class AnesthesiaVentilator:
         return 60.0 / rr if rr > 0.0 else math.inf
 
     def _sync_window_start(self) -> float:
-        """Opening on the compensated mandatory clock, after the scheduled Ti.
+        """Start of the SIMV trigger window on the compensated mandatory clock.
 
         The adult window spans the final 5 s, or all of expiration when shorter.
         Time borrowed by an early breath remains outside the next window.

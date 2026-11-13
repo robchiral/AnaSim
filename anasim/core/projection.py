@@ -198,8 +198,9 @@ def cardiovascular_response_fractions(engine: SimulationEngine, intensity: float
     """Pressure and HR stimulus fractions, separate from movement and EEG arousal.
 
     The fractions are calibrated at steady propofol concentrations, so propofol
-    enters at its BIS effect site; the faster response site reads about twice as
-    high early after induction and would block the intubation response.
+    enters at its BIS effect site. Early after induction, the concentration at
+    the faster clinical-response site is about twice as high and would block the
+    intubation response.
     """
     state = engine.state
     return engine.response.cardiovascular_response_fractions(
