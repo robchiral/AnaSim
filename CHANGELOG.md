@@ -26,6 +26,8 @@
 - Epinephrine during CPR now raises diastolic pressure while lowering cardiac
   output and EtCO₂. Shocks temporarily reduce stroke volume, and arterial
   pressure recovers more slowly after longer VF.
+- When pulses stop, arterial systolic and diastolic readings clear after a
+  brief hold, and MAP follows catheter pressure.
 - Recalibrated lidocaine toxicity and lipid rescue. In awake patients, HR and
   blood pressure rise before seizures; QRS widening and cardiac depression
   require much higher concentrations. Lipid emulsion reduces effect-site

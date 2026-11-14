@@ -461,12 +461,14 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     loc_val = loss_of_response(engine)
     tol_val = stimulus_tolerance(engine)
     engine._tol_current = tol_val
-    cardiac_sample = engine.cardiac_cycle.seed(state.hr, engine.hemo.state.rhythm_type)
+    hemo_state = engine.hemo.state
+    cardiac_sample = engine.cardiac_cycle.seed(state.hr, hemo_state.rhythm_type)
     arterial_sample = engine.arterial_waveform.step(
         cardiac_sample,
         state.map,
         state.sv,
-        pulse_pressure_factor=engine.hemo.state.pulse_pressure_factor,
+        static_pressure=hemo_state.venous_pressure,
+        pulse_pressure_factor=hemo_state.pulse_pressure_factor,
     )
     art_reading = engine.art_line.seed(arterial_sample)
     engine.airway_sensor.seed(state.paw, state.flow, state.volume)

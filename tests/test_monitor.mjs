@@ -92,6 +92,49 @@ print(json.dumps({"info": json.loads(session.info()), "snapshots": snapshots}))
   monitor.destroy();
 });
 
+test("monitor blanks arterial systolic and diastolic numerics while retaining static MAP in arrest", () => {
+  const { elements } = setupPage();
+  const alarmClasses = new Set();
+  elements.get("n-art").classList = {
+    toggle(name, force) { force ? alarmClasses.add(name) : alarmClasses.delete(name); },
+  };
+  globalThis.document.querySelectorAll = selector => {
+    if (selector === ".monitor output") return [...elements.values()].filter(el => el.tag === "output");
+    if (selector === ".monitor [data-alarm]") return [elements.get("n-art")];
+    return [];
+  };
+
+  const { info, cpr, stopped } = JSON.parse(execFileSync("python3", ["-c", `
+import json
+from anasim.web import WebSession
+session = WebSession({"age": 40, "weight": 70, "height": 170, "sex": "male", "mode": "steady_state"})
+session.command("run", json.dumps({"running": True}))
+session.engine.set_rhythm("VFIB")
+for _ in range(150):
+    session.step(0.1)
+session.command("compressions", json.dumps({"active": True}))
+for _ in range(100):
+    session.step(0.1)
+cpr = session.snapshot()
+session.command("compressions", json.dumps({"active": False}))
+for _ in range(100):
+    session.step(0.1)
+stopped = session.snapshot()
+print(json.dumps({"info": json.loads(session.info()), "cpr": cpr, "stopped": stopped}))
+`], { cwd: new URL("..", import.meta.url), encoding: "utf8" }));
+
+  const monitor = new Monitor(info);
+  monitor.update(cpr);
+  assert.match(elements.get("v-art").textContent, /^\d+\/\d+$/);
+
+  monitor.update(stopped);
+  assert.deepEqual(stopped.vitals.art.slice(0, 2), [null, null]);
+  assert.equal(elements.get("v-art").textContent, "--/--");
+  assert.match(elements.get("v-art-map").textContent, /^\d+$/);
+  assert.equal(alarmClasses.has("alarm-low"), true);
+  monitor.destroy();
+});
+
 test("monitor coalesces updates and redraws resized loops while paused without an idle frame loop", () => {
   const { frames, drawFrame } = setupPage();
   const monitor = new Monitor({

@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from anasim.core import runtime as runtime_core
@@ -52,7 +54,8 @@ def test_untreated_vf_becomes_fine_then_asystole_and_ends_the_session(engine_fac
     # pressure settles at the mean systemic filling pressure.
     state = engine.state
     assert state.display_hr == 0.0 and state.co == 0.0 and state.oxygen_delivery_ratio == 0.0
-    assert state.art_sbp == state.art_dbp == state.art_map == pytest.approx(engine.hemo.state.mcfp, abs=0.1)
+    assert math.isnan(state.art_sbp) and math.isnan(state.art_dbp)
+    assert (state.art_pressure, state.art_map) == pytest.approx((engine.hemo.state.mcfp,) * 2, abs=0.1)
     assert 5 < state.art_map < 15
     assert state.pleth_voltage == pytest.approx(0.0) and not state.spo2_signal_valid
     coarse = _ecg_range(engine)
@@ -464,7 +467,7 @@ def test_brief_vf_defibrillation_recovery_tracks_vf_duration(engine_factory, hea
             if step == round((vf_seconds - CHARGE_TIME_S) * 10):
                 engine.charge_defibrillator()
             engine.step(0.1)
-        nadir_sbp = engine.state.art_sbp
+        assert math.isnan(engine.state.art_sbp) and math.isnan(engine.state.art_dbp)
         nadir_pressure = engine.state.art_pressure
         assert engine.defibrillate() == ShockResult.DELIVERED
         assert engine.hemo.rhythm_type == RhythmType.SINUS
@@ -479,7 +482,7 @@ def test_brief_vf_defibrillation_recovery_tracks_vf_duration(engine_factory, hea
         assert 0.84 * baseline_sbp <= steady_sbp <= 0.96 * baseline_sbp
         tr = next(t for t, sbp, _ in trace if sbp >= 0.90 * steady_sbp)
         recovery_times.append(tr)
-        recovery_rates.append((steady_sbp - nadir_sbp) / tr)
+        recovery_rates.append((steady_sbp - nadir_pressure) / tr)
 
     assert recovery_times[0] < recovery_times[1] < recovery_times[2]
     assert 6.0 <= recovery_times[1] <= 15.0

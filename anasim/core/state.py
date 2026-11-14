@@ -219,7 +219,8 @@ class SimulationState:
     intrinsic_co: float = 5.0  # From the heart's own beats; co adds chest compressions.
     sbp: float = 120.0
     dbp: float = 80.0
-    # Arterial catheter output and completed-beat numerics.
+    # Arterial catheter output and beat numerics; art_sbp and art_dbp clear to
+    # NaN after the pulse timeout.
     art_pressure: float = 80.0
     art_sbp: float = 120.0
     art_dbp: float = 80.0

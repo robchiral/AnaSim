@@ -15,6 +15,14 @@ from .cardiac_cycle import CardiacCycleSample
 
 # Arterial runoff toward the filling pressure once flow stops.
 NO_FLOW_TAU_S = 2.0
+# Pulse detection and numeric hold times.
+MIN_PULSE_PRESSURE_MMHG = 3.0
+MIN_BEAT_DURATION_S = 0.20
+NO_PULSE_TIMEOUT_S = 3.5
+MAX_PULSE_TIMEOUT_S = 12.0
+NONPULSATILE_MAP_WINDOW_S = 2.0
+_PULSE_ALLOWANCE_S = 1.5
+_MAP_SLICE_S = 0.1
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,7 +324,9 @@ class ArterialWaveformRenderer:
         """Render a compression pulse over the relaxation pressure between compressions."""
         compression = sample.phase / COMPRESSION_DUTY
         shape = math.sin(math.pi * compression) if compression < 1.0 else 0.0
-        self._pressure = pressure = diastolic + (systolic - diastolic) * shape
+        pressure = diastolic + (systolic - diastolic) * shape
+        # Stopping compressions releases pressure to the relaxation level.
+        self._pressure = float(diastolic)
         # Organized beats restart from their own diastolic pressure after compressions.
         self._initialized = self._recovering_from_no_flow = False
         self._end_pressure = self._windkessel_offset = 0.0
@@ -341,18 +351,32 @@ class ArterialLineMonitor:
             raise ValueError("natural_frequency_hz must be greater than zero")
         if self.damping_ratio < 0.0:
             raise ValueError("damping_ratio cannot be negative")
+        if self.numeric_window_s <= 0.0:
+            raise ValueError("numeric_window_s must be greater than zero")
         self._pressure = 0.0
         self._velocity = 0.0
         self._coefficient_cache: dict[tuple[float, float, float], tuple[float, ...]] = {}
         self._initialized = False
         self._previous_pressure = 0.0
-        self._beat_min = math.inf
-        self._beat_max = -math.inf
+        self._running_min = math.inf
+        self._running_max = -math.inf
+        self._best_upstroke = 0.0
+        self._upstroke_sbp = 0.0
         self._beat_integral = 0.0
         self._beat_duration = 0.0
+        self._pending_min = math.inf
+        self._pending_max = -math.inf
+        self._pending_integral = 0.0
+        self._pending_duration = 0.0
         self._recent_beats: deque[tuple[float, float, float, float]] = deque()
-        self._latest_sbp = 0.0
-        self._latest_dbp = 0.0
+        self._window_slices: deque[tuple[float, float]] = deque()
+        self._slice_integral = 0.0
+        self._slice_duration = 0.0
+        self._since_last_pulse_s = 0.0
+        self._pulsatile_rr_s = 0.0
+        self._early_pulse_active = False
+        self._latest_sbp = math.nan
+        self._latest_dbp = math.nan
         self._latest_map = 0.0
 
     def _coefficients(self, dt: float) -> tuple[float, ...]:
@@ -379,41 +403,126 @@ class ArterialLineMonitor:
         return coefficients
 
     def seed(self, sample: ArterialPressureSample) -> ArterialPressureSample:
-        self._pressure = float(sample.pressure)
+        raw_pressure = float(sample.pressure)
+        pressure = max(0.0, raw_pressure)
+        self._pressure = raw_pressure
         self._velocity = 0.0
-        self._previous_pressure = sample.pressure
-        self._beat_min = sample.pressure
-        self._beat_max = sample.pressure
-        self._beat_integral = 0.0
-        self._beat_duration = 0.0
+        self._previous_pressure = pressure
+        self._reset_beat(pressure)
+        self._clear_pending()
         self._recent_beats.clear()
-        self._latest_sbp = sample.systolic
-        self._latest_dbp = sample.diastolic
-        self._latest_map = sample.mean
-        self._initialized = True
-        return ArterialPressureSample(
-            pressure=float(sample.pressure),
-            systolic=float(sample.systolic),
-            diastolic=float(sample.diastolic),
-            mean=float(sample.mean),
+        self._window_slices.clear()
+        self._slice_integral = 0.0
+        self._slice_duration = 0.0
+        self._pulsatile_rr_s = 0.0
+        pulsatile = (
+            math.isfinite(sample.systolic)
+            and math.isfinite(sample.diastolic)
+            and sample.systolic - sample.diastolic >= MIN_PULSE_PRESSURE_MMHG
         )
+        mean = float(sample.mean)
+        if pulsatile:
+            self._latest_sbp = max(0.0, float(sample.systolic))
+            self._latest_dbp = max(0.0, float(sample.diastolic))
+            self._latest_map = clamp(mean, self._latest_dbp, self._latest_sbp)
+            self._since_last_pulse_s = 0.0
+        else:
+            self._latest_sbp = math.nan
+            self._latest_dbp = math.nan
+            self._latest_map = max(0.0, mean)
+            self._since_last_pulse_s = MAX_PULSE_TIMEOUT_S
+        self._initialized = True
+        return self.reading
 
-    def _complete_beat(self) -> None:
-        if self._beat_duration <= 0.0:
+    def _pulse_timeout(self, cycle: CardiacCycleSample) -> float:
+        if not cycle.organized or self._pulsatile_rr_s <= 0.0:
+            return NO_PULSE_TIMEOUT_S
+        return min(MAX_PULSE_TIMEOUT_S, max(NO_PULSE_TIMEOUT_S, self._pulsatile_rr_s + _PULSE_ALLOWANCE_S))
+
+    def _record_slice(self, step_integral: float, dt: float) -> None:
+        window_s = min(self.numeric_window_s, NONPULSATILE_MAP_WINDOW_S)
+        self._slice_integral += step_integral
+        self._slice_duration += dt
+        if self._slice_duration >= _MAP_SLICE_S - 1e-12:
+            self._window_slices.append((self._slice_integral, self._slice_duration))
+            self._slice_integral = 0.0
+            self._slice_duration = 0.0
+            while (
+                len(self._window_slices) > 1
+                and sum(s[1] for s in self._window_slices) - self._window_slices[0][1]
+                >= window_s - 1e-9
+            ):
+                self._window_slices.popleft()
+
+    def _continuous_map(self, fallback: float) -> float:
+        window_s = min(self.numeric_window_s, NONPULSATILE_MAP_WINDOW_S)
+        total_integral = sum(s[0] for s in self._window_slices) + self._slice_integral
+        total_duration = sum(s[1] for s in self._window_slices) + self._slice_duration
+        if total_duration <= 0.0:
+            return fallback
+        excess = total_duration - window_s
+        for oldest_integral, oldest_duration in self._window_slices:
+            if excess <= 0.0:
+                break
+            trim = min(1.0, excess / oldest_duration)
+            total_integral -= oldest_integral * trim
+            total_duration -= oldest_duration * trim
+            excess -= oldest_duration * trim
+        return total_integral / total_duration if total_duration > 0.0 else fallback
+
+    def _clear_pending(self) -> None:
+        self._pending_min = math.inf
+        self._pending_max = -math.inf
+        self._pending_integral = 0.0
+        self._pending_duration = 0.0
+
+    def _stash_pending_beat(self) -> None:
+        if not math.isnan(self._latest_sbp) and self._beat_duration > 0.0:
+            self._pending_min = min(self._pending_min, self._running_min)
+            self._pending_max = max(self._pending_max, self._running_max)
+            self._pending_integral += self._beat_integral
+            self._pending_duration += self._beat_duration
+
+    def _complete_beat(self, next_rr_s: float) -> None:
+        if self._beat_duration < MIN_BEAT_DURATION_S:
+            self._stash_pending_beat()
             return
+        if self._best_upstroke < MIN_PULSE_PRESSURE_MMHG:
+            self._stash_pending_beat()
+            self._pulsatile_rr_s = min(self._pulsatile_rr_s, next_rr_s)
+            return
+        beat_sbp = max(self._running_max, self._pending_max)
+        beat_dbp = min(self._running_min, self._pending_min)
+        total_integral = self._beat_integral + self._pending_integral
+        total_duration = self._beat_duration + self._pending_duration
+        self._clear_pending()
         beats = self._recent_beats
-        beats.append((self._beat_max, self._beat_min, self._beat_integral, self._beat_duration))
+        beats.append((beat_sbp, beat_dbp, total_integral, total_duration))
         while len(beats) > 1 and sum(beat[3] for beat in beats) - beats[0][3] >= self.numeric_window_s:
             beats.popleft()
-        self._latest_sbp = sum(beat[0] for beat in beats) / len(beats)
-        self._latest_dbp = sum(beat[1] for beat in beats) / len(beats)
-        self._latest_map = sum(beat[2] for beat in beats) / sum(beat[3] for beat in beats)
+        window_duration = sum(beat[3] for beat in beats)
+        sbp_weighted = sum(beat[0] * beat[3] for beat in beats)
+        dbp_weighted = sum(beat[1] * beat[3] for beat in beats)
+        map_integral = sum(beat[2] for beat in beats)
+        if len(beats) > 1 and window_duration > self.numeric_window_s:
+            oldest_sbp, oldest_dbp, oldest_integral, oldest_duration = beats[0]
+            excess = min(oldest_duration, window_duration - self.numeric_window_s)
+            sbp_weighted -= oldest_sbp * excess
+            dbp_weighted -= oldest_dbp * excess
+            map_integral -= oldest_integral * (excess / oldest_duration)
+            window_duration -= excess
+        self._latest_sbp = sbp_weighted / window_duration
+        self._latest_dbp = dbp_weighted / window_duration
+        self._latest_map = map_integral / window_duration
 
     def _reset_beat(self, pressure: float) -> None:
-        self._beat_min = pressure
-        self._beat_max = pressure
+        self._running_min = pressure
+        self._running_max = pressure
+        self._best_upstroke = 0.0
+        self._upstroke_sbp = pressure
         self._beat_integral = 0.0
         self._beat_duration = 0.0
+        self._early_pulse_active = False
 
     def step(
         self,
@@ -442,18 +551,53 @@ class ArterialLineMonitor:
         self._velocity = a10 * previous + a11 * velocity + b1 * sample.pressure
         pressure = max(0.0, self._pressure)
 
+        step_integral = 0.5 * (self._previous_pressure + pressure) * dt
+        self._record_slice(step_integral, dt)
+        self._since_last_pulse_s += dt
+
         if not cycle.organized:
-            self._recent_beats.clear()
-            self._latest_sbp = self._latest_dbp = self._latest_map = pressure
             self._reset_beat(pressure)
+            self._clear_pending()
+            self._pulsatile_rr_s = 0.0
         else:
             if cycle.beat_started:
-                self._complete_beat()
-                self._reset_beat(pressure)
-            self._beat_integral += 0.5 * (self._previous_pressure + pressure) * dt
+                self._complete_beat(cycle.rr_interval_s)
+                self._reset_beat(self._previous_pressure)
+            self._beat_integral += step_integral
             self._beat_duration += dt
-            self._beat_min = min(self._beat_min, pressure)
-            self._beat_max = max(self._beat_max, pressure)
+            if pressure < self._running_min:
+                self._running_min = pressure
+            if pressure > self._running_max:
+                self._running_max = pressure
+            upstroke = pressure - self._running_min
+            if upstroke > self._best_upstroke:
+                self._best_upstroke = upstroke
+                self._upstroke_sbp = pressure
+                if upstroke >= MIN_PULSE_PRESSURE_MMHG:
+                    self._since_last_pulse_s = 0.0
+                    self._pulsatile_rr_s = cycle.rr_interval_s
+            elif (
+                math.isnan(self._latest_sbp)
+                and self._best_upstroke >= MIN_PULSE_PRESSURE_MMHG
+                and pressure <= self._upstroke_sbp - min(MIN_PULSE_PRESSURE_MMHG, 0.25 * self._best_upstroke)
+            ):
+                self._early_pulse_active = True
+
+            if self._early_pulse_active and self._beat_duration > 0.0:
+                self._latest_sbp = self._running_max
+                self._latest_dbp = self._running_min
+                self._latest_map = self._beat_integral / self._beat_duration
+
+        if self._since_last_pulse_s >= self._pulse_timeout(cycle):
+            self._recent_beats.clear()
+            self._clear_pending()
+            self._pulsatile_rr_s = 0.0
+            self._early_pulse_active = False
+            self._latest_sbp = math.nan
+            self._latest_dbp = math.nan
+
+        if math.isnan(self._latest_sbp):
+            self._latest_map = self._continuous_map(pressure)
 
         self._previous_pressure = pressure
 

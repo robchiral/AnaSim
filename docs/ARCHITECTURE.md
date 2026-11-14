@@ -751,9 +751,11 @@ dynamics filter the arterial pressure measurements. Pulse oximetry responds to
 rhythm and perfusion, and poor perfusion delays readings and reduces the
 plethysmograph amplitude.
 
-Without flow, arterial pressure falls to the mean systemic filling pressure.
-During chest compressions, arterial pressure and plethysmography follow the
-compressions, the ECG shows compression artifact, and NIBP fails.
+When pulses stop, arterial pressure falls to the mean systemic filling pressure.
+Numerics briefly hold, then systolic and diastolic readings clear and MAP tracks
+the catheter pressure. During chest compressions, arterial pressure and
+plethysmography follow the compressions, the ECG shows compression artifact,
+and NIBP fails.
 
 Spirometry measures ventilator, bag, and unassisted breaths. Expired tidal
 volume comes from completed breaths, and respiratory rate and minute ventilation
