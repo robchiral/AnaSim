@@ -101,11 +101,13 @@ def test_long_opioid_infusions_follow_separate_respiratory_endpoints(
 
 @pytest.mark.parametrize("propofol", [False, True])
 def test_atropine_dose_response_awake_and_during_propofol(engine_factory, advance_time, propofol):
-    """Horiguchi 2002: atropine 5 mcg/kg every 2 min, HR read 2 min after each dose.
+    """Horiguchi 2002: atropine 5 mcg/kg every 2 min, HR and mBP read 2 min after each dose.
 
     At 10 mcg/kg HR rose 28 ± 13 bpm awake and 9 ± 6 bpm with propofol
-    10 mg/kg/h and N2O. At 20 mcg/kg all awake patients but only 13% of that
-    group exceeded +20 bpm. HR follows Hinderling's peripheral compartment.
+    10 mg/kg/h and N2O, while mBP stayed near baseline (91 ± 15 to 94 ± 17 mmHg
+    awake; 76 ± 9 to 75 ± 9 mmHg in P-10). At 20 mcg/kg all awake patients but
+    only 13% of that group exceeded +20 bpm. HR follows Hinderling's peripheral
+    compartment.
     """
     e = engine_factory(config=SimulationConfig(mode="awake", rng_seed=4), start=True)
     weight = e.patient.weight
@@ -118,21 +120,84 @@ def test_atropine_dose_response_awake_and_during_propofol(engine_factory, advanc
         e.give_drug_bolus("roc", 0.6 * weight)
         advance_time(e, 25 * 60, dt=0.5)
     baseline = e.state.hr
+    baseline_map = e.state.map
     rises = []
+    map_rises = []
     for _ in range(4):
         e.give_drug_bolus("atropine", 0.005 * weight)
         advance_time(e, 120, dt=0.5)
         rises.append(e.state.hr - baseline)
+        map_rises.append(e.state.map - baseline_map)
     if propofol:
         assert 3 < rises[1] < 15
         assert rises[3] < 20
+        assert abs(map_rises[1]) < 8.0
+        assert abs(map_rises[3]) < 8.0
     else:
         assert 15 < rises[1] < 41
         assert rises[3] > 20
+        assert abs(map_rises[1]) < 12.0
+        assert abs(map_rises[3]) < 12.0
     assert e.pk["atropine"].state.ce == pytest.approx(e.pk["atropine"].state.c2)
     e.set_rhythm("Asystole")
     advance_time(e, 10)
     assert e.state.hr == 0.0
+
+
+def test_atropine_hemodynamics_follow_vascular_baroreflex_and_venous_unloading(
+    engine_factory, advance_time,
+):
+    """Weissler 1957 Tables I-IV and Berry 1959 Table I and Fig. 1 (2 mg IV over 1 min).
+
+    At 1-3 min in recumbent young men, CO rose 65-76% while TPR fell 35% and MAP
+    rose 7 mmHg; by 4-14 min (mean 7 min), central venous unloading lowered SV
+    25% and tempered the CO rise to 28% (MAP +5 ± 9 mmHg, TPR -16%). During
+    60-deg head-up tilt, SV fell 41% immediately and CO rose 9% (P > 0.05) with
+    unchanged MAP; recumbent limb venous-occlusion cuffs lowered SV 34% and
+    cut the CI rise from 72% to 29%.
+    """
+    supine = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1), start=True,
+        age=22, weight=75.0, height=179.0, sex="male", baseline_hr=69.0, baseline_map=81.0,
+    )
+    supine.set_airway_mode("Mask")
+    supine.set_fgf(8.0, 0.0)
+    advance_time(supine, 60)
+    sv0, co0, map0, svr0 = supine.state.sv, supine.state.co, supine.state.map, supine.state.svr
+    for _ in range(60):
+        supine.give_drug_bolus("atropine", 2.0 / 60.0)
+        supine.step(1.0)
+    advance_time(supine, 90)
+    sv_early, co_early, map_early, svr_early = (
+        supine.state.sv, supine.state.co, supine.state.map, supine.state.svr,
+    )
+    assert 1.45 * co0 < co_early < 1.80 * co0
+    assert 0.62 * svr0 < svr_early < 0.78 * svr0
+    assert 2.0 < map_early - map0 < 12.0
+
+    advance_time(supine, 330)
+    assert 0.65 * sv0 < supine.state.sv < 0.80 * sv0
+    assert supine.state.sv < 0.88 * sv_early
+    assert 1.20 * co0 < supine.state.co < 1.42 * co0
+    assert 0.75 * svr0 < supine.state.svr < 0.88 * svr0
+    assert 1.0 < supine.state.map - map0 < 10.0
+
+    depleted = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1), start=True,
+        age=22, weight=75.0, height=179.0, sex="male", baseline_hr=69.0, baseline_map=81.0,
+    )
+    depleted.set_airway_mode("Mask")
+    depleted.set_fgf(8.0, 0.0)
+    depleted.hemo.add_volume(-850.0)
+    advance_time(depleted, 180)
+    sv_dep0, co_dep0, map_dep0 = depleted.state.sv, depleted.state.co, depleted.state.map
+    for _ in range(60):
+        depleted.give_drug_bolus("atropine", 2.0 / 60.0)
+        depleted.step(1.0)
+    advance_time(depleted, 90)
+    assert depleted.state.sv < 0.68 * sv_dep0
+    assert depleted.state.co < 1.20 * co_dep0
+    assert abs(depleted.state.map - map_dep0) < 6.0
 
 
 def test_ephedrine_raises_pressure_and_preserves_output(engine_factory, advance_time):

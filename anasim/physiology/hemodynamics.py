@@ -136,6 +136,9 @@ class HemodynamicModel:
         self._epi_beta2_effect = 0.0
         self.smoothed_chemo_hr = 0.0
         self.smoothed_baro_hr = 0.0
+        self.smoothed_baro_vasc = 0.0
+        self._unstim_rate = 0.0
+        self._unstim_rate_unloaded = 0.0
         self._baro_setpoint = patient.baseline_map
         self._stim_map = 0.0  # MAP attributable to noxious stimulation
         self._rmap_fb = 1.0  # Turnover feedback, (MAP / baseline) ** fb
@@ -196,6 +199,7 @@ class HemodynamicModel:
         self._last_pvr = cfg.pvr_wood_baseline
         self._last_rv_co = self.base_co_l_min
         self._last_lv_inflow = self.base_co_l_min
+        self._last_venous_preload = self._position_preload
         self._last_preload_factor = 1.0
         self._last_preload_sv_factor = 1.0
         self._last_lap = self._lap(1.0)
@@ -558,7 +562,8 @@ class HemodynamicModel:
         position_target = self._supine_preload if self.position == "supine" else 1.0
         if self._position_preload != position_target:
             self._position_preload += (position_target - self._position_preload) * -math.expm1(-dt / 10.0)
-        f_preload = self._pulm_flow_factor / self._pulm_reference_factor * f_preload_pit * self._position_preload
+        venous_preload = self._pulm_flow_factor / self._pulm_reference_factor * self._position_preload
+        f_preload = venous_preload * f_preload_pit
         f_frank_starling = self._frank_starling(f_preload)
 
         self._last_lap = self._lap(f_preload)
@@ -567,6 +572,7 @@ class HemodynamicModel:
         self._last_pvr = cfg.pvr_wood_baseline * pvr_factor
         self._last_rv_co = rv_out_target_factor * self.base_co_l_min
         self._last_lv_inflow = self._pulm_flow_factor * self.base_co_l_min
+        self._last_venous_preload = venous_preload
         self._last_preload_factor = f_preload
         self._last_preload_sv_factor = f_frank_starling
 
@@ -660,8 +666,8 @@ class HemodynamicModel:
         sinus_hr = clamp(hr_base + self.dist_hr, HR_MIN, HR_MAX)
         current_hr = self._rhythm_rate(sinus_hr)
         reflex_tpr_factor = 1.0
-        if self.rhythm_type != RhythmType.SINUS:
-            # When the rhythm sets the rate, the baroreflex acts through its vascular limb.
+        if self.rhythm_type != RhythmType.SINUS and self.smoothed_baro_hr > 0.0:
+            # When the rhythm holds rate low during hypotension, vasoconstriction compensates.
             reflex_hr = self.smoothed_baro_hr
             blocked_hr = reflex_hr - (current_hr - self._rhythm_rate(sinus_hr - reflex_hr))
             # Blocked drug chronotropy must not dilute the vascular reflex.
@@ -672,6 +678,26 @@ class HemodynamicModel:
         current_hr *= 1.0 - self.sodium_block
 
         term = self._hr_sv_factor(current_hr)
+        if (
+            self.rhythm_type not in RHYTHM_SV_FACTOR
+            and (self._unstim_rate > 0.0 or self._unstim_rate_unloaded > 0.0)
+        ):
+            preload_avail = (
+                clamp01((self._last_venous_preload - 0.75) / 0.25)
+                if self.patient.heart_failure == "none"
+                else 0.0
+            )
+            depletion = max(0.0, 1.0 - self._last_venous_preload)
+            symp_sv = (
+                max(0.0, self.vasopressor_sv_factor - 1.0)
+                + max(0.0, self.dist_sv) / max(1.0, self.base_sv)
+            )
+            unloaded = min(self._unstim_rate_unloaded, self._unstim_rate)
+            eff_unloaded = max(0.0, unloaded - 2.5 * symp_sv)
+            eff_unstim = max(0.0, self._unstim_rate - 2.5 * symp_sv)
+            reservoir_support = cfg.unstim_sv_reservoir * max(0.0, eff_unstim - eff_unloaded) * preload_avail
+            unload_loss = cfg.unstim_sv_unload * (eff_unloaded + 4.4 * depletion * eff_unstim)
+            term *= (1.0 + reservoir_support) / (1.0 + unload_loss)
         raw_sv = (self.sv_star + self.tde_sv) * term + self.dist_sv
 
         if preload_sv_factor is None:
@@ -679,7 +705,10 @@ class HemodynamicModel:
         # TPR floor of about 6 Wood units.
         eff_tpr = max(
             0.006,
-            self.tpr + self.delta_tpr_vasopressors + self.dist_svr / 1000.0 + distributive_tpr_offset,
+            self.tpr * (1.0 - self.smoothed_baro_vasc)
+            + self.delta_tpr_vasopressors
+            + self.dist_svr / 1000.0
+            + distributive_tpr_offset,
         ) * reflex_tpr_factor
 
         current_sv = raw_sv * preload_sv_factor * self.vasopressor_sv_factor
@@ -808,7 +837,7 @@ class HemodynamicModel:
              mac_sevo: float = 0.0, ce_epi: float = 0.0, ce_phenyl: float = 0.0,
              ce_vaso: float = 0.0, ce_dobu: float = 0.0, ce_mil: float = 0.0,
              ce_esmolol: float = 0.0, ce_labetalol: float = 0.0, ce_glyco: float = 0.0,
-             ce_ketamine: float = 0.0, ce_ketamine_hr: float = 0.0,
+             ce_ketamine: float = 0.0, ce_ketamine_hr: float | None = None,
              ce_atropine: float = 0.0, ce_ephedrine: float = 0.0,
              ce_amiodarone: float = 0.0, ce_amiodarone_vasc: float = 0.0, ce_amiodarone_hr: float = 0.0,
              sodium_block: float = 0.0, toxic_contractility_loss: float = 0.0,
@@ -828,7 +857,8 @@ class HemodynamicModel:
             ce_vaso: Vasopressin effect-site concentration (mU/L).
             ce_esmolol: Esmolol effect-site concentration (mcg/mL).
             ce_labetalol, ce_glyco, ce_atropine, ce_ephedrine: Effect-site concentrations (ng/mL).
-            ce_ketamine, ce_ketamine_hr: Ketamine cardiac-output and HR effect sites (mcg/mL).
+            ce_ketamine, ce_ketamine_hr: Ketamine cardiac-output and HR effect
+                sites (mcg/mL); ce_ketamine_hr defaults to ce_ketamine.
             ce_amiodarone, ce_amiodarone_vasc, ce_amiodarone_hr: Amiodarone contractility,
                 vascular, and HR effect sites (mcg/mL).
             temp_c: Core temperature (°C).
@@ -1033,16 +1063,31 @@ class HemodynamicModel:
         chemo_hr_boost = (cfg.g_hr_co2 * e_co2 + cfg.g_hr_o2 * e_o2) * sympathetic_hr_response
         chemo_tpr_factor = 1.0 + cfg.k_tpr_co2 * e_co2
 
+        ce_ket_hr = ce_ketamine if ce_ketamine_hr is None else ce_ketamine_hr
+        ketamine = hill_function(max(0.0, ce_ketamine), cfg.ketamine_c50, cfg.ketamine_gamma) * resting_tone
+        ketamine_hr = hill_function(max(0.0, ce_ket_hr), cfg.ketamine_c50, cfg.ketamine_gamma) * resting_tone
+        sinus_est = clamp(self._calc_hr() + dist_hr, HR_MIN, HR_MAX)
+
         # Fast baroreflex. Propofol depresses both limbs (Sato 2005). Anesthetic
-        # ketamine depresses it as much (Akine 2001), but analgesic doses do not
-        # (Huang 2020); it counts in MAC equivalents for this reflex only.
-        # Opioids raise vagal tone, suppressing reflex tachycardia but not slowing.
-        reflex_depth = clamp01(anesthetic_depth + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT)
+        # ketamine depresses gain as much (Akine 2001), whereas analgesic doses
+        # do not (Huang 2020); a calibrated upward shift preserves its pressor
+        # rise when vagal block or pacing engages vascular withdrawal. Opioids
+        # raise vagal tone, suppressing reflex tachycardia but not slowing.
+        reflex_depth = clamp01(anesthetic_depth + max(0.0, ce_ket_hr) / KETAMINE_MAC_EQUIVALENT)
         tachycardia_depth = clamp01(reflex_depth + self.ce_opioid_cv / cfg.opioid_reflex_ce)
         sensed_error = map_prev - self._stim_map - self._baro_setpoint
+        baro_vasc = 0.0
         if sensed_error > 0.0:
-            baro_gain = cfg.baro_gain_brady * (1.0 - vagal) * self._age_vagal_baroreflex
-            baro_gain *= 1.0 - cfg.baro_anesthetic_depression * reflex_depth
+            sensed_error = max(0.0, sensed_error - cfg.ketamine_baro_shift * ketamine_hr)
+            reflex_intact = 1.0 - cfg.baro_anesthetic_depression * reflex_depth
+            baro_gain = cfg.baro_gain_brady * (1.0 - vagal) * self._age_vagal_baroreflex * reflex_intact
+            if self.rhythm_type not in PULSELESS_RHYTHMS and not self._compressions:
+                rhythm_holds_rate_up = self._rhythm_rate(sinus_est - 1.0) > sinus_est - 1.0
+                blocked_share = 1.0 if rhythm_holds_rate_up else vagal
+                max_drop = cfg.baro_vasc_max * resting_tone * alpha_response
+                if blocked_share > 0.0 and max_drop > 1e-6 and cfg.baro_gain_vasc > 0.0 and sensed_error > 0.0:
+                    vasc_gain = cfg.baro_gain_vasc * reflex_intact
+                    baro_vasc = max_drop * math.tanh(vasc_gain * sensed_error / max_drop) * blocked_share
         else:
             baro_gain = cfg.baro_gain_tachy * sympathetic_hr_response
             baro_gain *= 1.0 - cfg.baro_anesthetic_depression * tachycardia_depth
@@ -1122,13 +1167,12 @@ class HemodynamicModel:
 
         # Blockade removes resting sympathetic tone; vagal block removes vagal
         # tone; ketamine adds sympathetic tone.
-        ketamine = hill_function(max(0.0, ce_ketamine), cfg.ketamine_c50, cfg.ketamine_gamma) * resting_tone
-        ketamine_hr = hill_function(max(0.0, ce_ketamine_hr), cfg.ketamine_c50, cfg.ketamine_gamma) * resting_tone
         combined_svr_factor = (
             catechol_svr_factor *
             vaso_svr_factor *
             dobu_svr_factor *
             mil_svr_factor *
+            (1.0 + cfg.ketamine_emax_svr * ketamine * alpha_response) *
             (1.0 - cfg.alpha_block_tpr * alpha_occ * resting_tone)
         )
         combined_sv_factor = (
@@ -1145,6 +1189,31 @@ class HemodynamicModel:
         )
         self.vasopressor_sv_factor = combined_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (combined_svr_factor - 1.0)
+
+        if self.rhythm_type in RHYTHM_SV_FACTOR or self._compressions:
+            self._unstim_rate = 0.0
+        else:
+            rhythm_hr = self._rhythm_rate(sinus_est)
+            paced_excess = max(0.0, rhythm_hr - sinus_est)
+            beating_hr = (
+                rhythm_hr
+                * (1.0 - cfg.hypoxia_hr_depression * self.myocardial_hypoxia)
+                * self.coronary.electrical_factor
+                * (1.0 - self.sodium_block)
+            )
+            actual_tachy = max(0.0, beating_hr - self.base_hr)
+            self._unstim_rate = min(max(0.0, vagal_hr + paced_excess), actual_tachy) / self.base_hr
+        if cfg.unstim_sv_tau_s > 0.0 and dt > 0.0:
+            unload_tau = (
+                cfg.unstim_sv_tau_s
+                if self._unstim_rate >= self._unstim_rate_unloaded
+                else min(15.0, cfg.unstim_sv_tau_s)
+            )
+            self._unstim_rate_unloaded += (
+                self._unstim_rate - self._unstim_rate_unloaded
+            ) * -math.expm1(-dt / unload_tau)
+        elif cfg.unstim_sv_tau_s <= 0.0:
+            self._unstim_rate_unloaded = self._unstim_rate
 
         # Feedback senses the same circulation as the outputs, including
         # rhythm, hypoxia, and preload. Nociception resets it as it does the
@@ -1184,6 +1253,7 @@ class HemodynamicModel:
         alpha_fast = min(1.0, dt / cfg.tau_hr_fast)
         self.smoothed_chemo_hr += (chemo_hr_boost - self.smoothed_chemo_hr) * alpha_fast
         self.smoothed_baro_hr += (baro_hr - self.smoothed_baro_hr) * alpha_fast
+        self.smoothed_baro_vasc += (baro_vasc - self.smoothed_baro_vasc) * alpha_fast
         self.smoothed_epi_hr += (combined_delta_hr - self.smoothed_epi_hr) * alpha_fast
 
         self.tpr_tone += d_tpr_tone * dt_min
@@ -1227,7 +1297,8 @@ class HemodynamicModel:
 
         self._pulm_reference_factor = flow_factor(self._venous_reference_mcfp)
         self._pulm_flow_factor = flow_factor(self._calc_stressed_volume() / self.cv)
-        preload_sv = self._frank_starling(self._pulm_flow_factor / self._pulm_reference_factor * self._position_preload)
+        self._last_venous_preload = self._pulm_flow_factor / self._pulm_reference_factor * self._position_preload
+        preload_sv = self._frank_starling(self._last_venous_preload)
 
         def residual(z):
             z_fb = z ** self.config.fb
@@ -1254,7 +1325,8 @@ class HemodynamicModel:
         self.ce_sevo = mac_sevo
 
         self._epi_pressor_ce = self._epi_high_pressor_ce = self._epi_chrono_effect = self._epi_beta2_effect = 0.0
-        self.smoothed_chemo_hr = self.smoothed_baro_hr = 0.0
+        self.smoothed_chemo_hr = self.smoothed_baro_hr = self.smoothed_baro_vasc = 0.0
+        self._unstim_rate = self._unstim_rate_unloaded = 0.0
         self.smoothed_epi_hr = nore_delta_hr
         self.vasopressor_sv_factor = nore_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (nore_svr_factor - 1.0)

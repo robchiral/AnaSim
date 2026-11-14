@@ -14,6 +14,8 @@
   are recalibrated to infusion and bolus studies. Its inotropic effect widens
   pulse pressure. HR and pressure responses to boluses keep rising at larger
   doses, and higher infusion rates restore vascular resistance.
+- Atropine now raises pressure less, and ketamine raises it more after
+  atropine or during pacing.
 - Recalibrated respiratory muscle fatigue. Heavy loads take about twice as
   long to exhaust the muscles, most strength returns within 15 minutes of rest
   or pressure support, and a smaller deficit lasts up to a day.

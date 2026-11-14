@@ -88,6 +88,7 @@ PCV-VG, pressure control with volume guarantee.
 - Idvall et al. (1979). *Br J Anaesth*. [Ketamine anesthesia and hemodynamics](https://pubmed.ncbi.nlm.nih.gov/526385/).
 - Tweed et al. (1972). *Anesthesiology*. [Circulatory responses to ketamine](https://pubmed.ncbi.nlm.nih.gov/4652778/).
 - Bovill and Dundee (1972). *Anaesthesia*. [Ketamine cardiovascular responses after atropine and adrenergic blockade](https://pubmed.ncbi.nlm.nih.gov/5041076/).
+- Bålfors et al. (1983). *Anesth Analg*. [Droperidol and central hemodynamics after ketamine in atherosclerotic disease](https://pubmed.ncbi.nlm.nih.gov/6829922/).
 - Akine et al. (2001). *Auton Neurosci*. [Ketamine and propofol depress baroreflex sensitivity](https://pubmed.ncbi.nlm.nih.gov/11476280/).
 - Huang et al. (2020). *J Physiol*. [Low-dose ketamine and sympathetic responses to central hypovolemia](https://pubmed.ncbi.nlm.nih.gov/33084081/).
 - Bourke et al. (1987). *Anesthesiology*. [Ketamine and CO₂ response](https://pubmed.ncbi.nlm.nih.gov/3101549/).
@@ -231,6 +232,7 @@ PCV-VG, pressure control with volume guarantee.
 - Monahan (2007). *Am J Physiol Regul Integr Comp Physiol*. [Aging and baroreflex function](https://pubmed.ncbi.nlm.nih.gov/17442786/).
 - Kardos et al. (2001). *Hypertension*. [Spontaneous baroreflex sensitivity by age in 1134 adults](https://pubmed.ncbi.nlm.nih.gov/11244017/).
 - Leenen et al. (2005). *Am J Physiol Heart Circ Physiol*. [Aging and cardiac responses to epinephrine](https://pubmed.ncbi.nlm.nih.gov/15626690/).
+- Ross et al. (1965). *Circulation*. [Right atrial pacing at rest, during exercise, and with isoproterenol](https://pubmed.ncbi.nlm.nih.gov/5825546/).
 
 ### Blood loss and shock
 
@@ -327,6 +329,8 @@ PCV-VG, pressure control with volume guarantee.
 
 ### Antimuscarinics
 
+- Weissler et al. (1957). *J Clin Invest*. [Posture, atropine, and cardiac output](https://pubmed.ncbi.nlm.nih.gov/13491696/).
+- Berry et al. (1959). *Am Heart J*. [Cardiac output, stroke volume, and central venous pressure after atropine](https://pubmed.ncbi.nlm.nih.gov/13670093/).
 - Hinderling et al. (1985). *J Pharm Sci*. [Atropine PK](https://pubmed.ncbi.nlm.nih.gov/4032240/) and [peripheral-compartment PD](https://pubmed.ncbi.nlm.nih.gov/4032241/).
 - Yamaguchi et al. (1988). *Can J Anaesth*. [Atropine HR response during anesthesia](https://pubmed.ncbi.nlm.nih.gov/3168130/).
 - Horiguchi and Nishikawa (2002). *Anesth Analg*. [Atropine dose-response awake and during propofol anesthesia](https://pubmed.ncbi.nlm.nih.gov/12145057/).

@@ -24,12 +24,16 @@ class HemodynamicConfig:
     age_sympathetic_hr: float = -0.0085  # Fraction per year
     age_vagal_baroreflex: float = -0.026  # ln gain per year
 
-    # Fast baroreflex gains (bpm/mmHg) around a slowly resetting MAP set point.
-    # Propofol depresses both limbs 65-73% (Sato 2005; Ebert 1994 found mainly
-    # the tachycardic limb) and sevoflurane depresses cardiovagal gain (Umehara
-    # 2006); one shared depression applies to both.
+    # Fast baroreflex gains around a slowly resetting MAP set point. Propofol
+    # depresses both limbs 65-73% (Sato 2005; Ebert 1994 found mainly the
+    # tachycardic limb) and sevoflurane depresses cardiovagal gain (Umehara
+    # 2006); one shared depression applies to both. When muscarinic block or a
+    # fixed rhythm prevents sinus slowing, arterial sympathoinhibition lowers
+    # endogenous resistance up to baro_vasc_max (Weissler 1957; Tweed 1972).
     baro_gain_brady: float = 0.8
     baro_gain_tachy: float = 0.5
+    baro_gain_vasc: float = 0.05  # Fractional TPR withdrawal per mmHg
+    baro_vasc_max: float = 0.38
     baro_anesthetic_depression: float = 0.7
     # Opioids also suppress reflex tachycardia, but not reflex slowing: HR fell
     # 20% as SAP fell 30% after propofol-remifentanil induction (Sjøen 2024).
@@ -364,10 +368,17 @@ class HemodynamicConfig:
     # maximum fit awake patients (Horiguchi 2002) and Hinderling's infusions;
     # volatile and opioid anesthesia leave the response intact (Yamaguchi 1988).
     # Propofol (mcg/mL) limits the HR rise but not vagal block (Horiguchi 2002).
+    # During unstimulated vagolytic tachycardia, central venous blood briefly
+    # supports filling before unloading over several minutes, whereas preload
+    # depletion removes that reserve (Weissler 1957; Berry 1959) and adrenergic
+    # drive restores stroke volume at fixed rate (Ross 1965).
     atropine_c50: float = 2.4  # ng/mL
     atropine_gamma: float = 3.4
     atropine_emax_hr: float = 60.0
     atropine_propofol_cp50: float = 1.6
+    unstim_sv_reservoir: float = 0.28
+    unstim_sv_unload: float = 0.18
+    unstim_sv_tau_s: float = 150.0
 
     # Meng 2011 IV peak calibration, checked against Sjøen 2026 induction.
     # Tolerance timing and Hill slope use Persky 2004 oral data. IV tolerance
@@ -385,13 +396,19 @@ class HemodynamicConfig:
     ephedrine_tolerance_gamma: float = 3.7
     ephedrine_tolerance_max: float = 0.9
 
-    # Ketamine (mcg/mL) raises sympathetic outflow. Without atropine, 2 mg/kg
+    # Ketamine (mcg/mL) raises central sympathetic outflow and depresses
+    # baroreflex gain at anesthetic doses (Akine 2001). Without atropine, 2 mg/kg
     # raised HR 33%, cardiac index 29%, and aortic pressure 28%, with SV and SVR
-    # unchanged (Tweed 1972). Calibrated through the Kamp PK. Anesthetic depth
-    # and adrenoceptor block reduce it. HR rises by a fixed bpm: Bovill 1972
+    # near baseline; during atrial pacing, SV, SVR, and pressure still rose
+    # (Tweed 1972). Calibrated through the Kamp PK, including an upward fast-
+    # baroreflex shift fitted to the pressor rises after atropine and during
+    # pacing (Bovill 1972; Tweed 1972). Anesthetic depth and adrenoceptor block
+    # reduce it (Bovill 1972; Bålfors 1983). HR rises by a fixed bpm: Bovill 1972
     # found similar 17-18 bpm rises with or without atropine despite different
     # pre-ketamine HR.
     ketamine_c50: float = 2.0
     ketamine_gamma: float = 3.0
-    ketamine_emax_hr: float = 26.0  # bpm; calibrated
-    ketamine_emax_sv: float = 0.11  # Offsets the rate-related fall in SV
+    ketamine_emax_hr: float = 24.0  # bpm; calibrated
+    ketamine_emax_sv: float = 0.21
+    ketamine_emax_svr: float = 0.085
+    ketamine_baro_shift: float = 20.0  # mmHg; calibrated

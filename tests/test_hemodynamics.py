@@ -621,3 +621,71 @@ class TestReflexesAndHypoxia:
         assert engine.state.display_spo2 > 94.0
         assert "SpO2" not in engine.state.alarms
         assert engine.state.map > depressed_map + 15.0
+
+    def test_tachycardia_unloading_and_vascular_baroreflex_bounds(
+        self, engine_factory, advance_time, monkeypatch,
+    ):
+        """Arrhythmias, bradycardia, arrest, PPV swings, heart failure, and pacing offset stay bounded."""
+        for rhythm in ("AFIB", "SVT", "VTACH"):
+            e = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+            e.set_airway_mode("Mask")
+            e.set_fgf(8.0, 0.0)
+            advance_time(e, 30)
+            sinus_co = e.state.co
+            e.set_rhythm(rhythm)
+            advance_time(e, 5)
+            assert e.state.co < sinus_co
+            assert e.hemo._unstim_rate == 0.0 and e.hemo._unstim_rate_unloaded == 0.0
+
+        brady = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+        brady.set_rhythm("SINUS_BRADY")
+        advance_time(brady, 60)
+        brady.give_drug_bolus("phenyl", 100.0)
+        for _ in range(60):
+            brady.step(1.0)
+            assert brady.hemo.smoothed_baro_vasc == 0.0
+        brady.give_drug_bolus("atropine", 0.5)
+        advance_time(brady, 180)
+        assert brady.state.hr < brady.hemo.base_hr
+        assert brady.hemo._unstim_rate == 0.0 and brady.hemo._unstim_rate_unloaded == 0.0
+
+        arrest = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
+        arrest.set_rhythm("VFIB")
+        advance_time(arrest, 120)
+        arrest.set_chest_compressions(True)
+        arrest.give_drug_bolus("atropine", 1.0)
+        arrest.give_drug_bolus("epi", 2000.0)
+        for _ in range(120):
+            arrest.step(1.0)
+            assert arrest.hemo.smoothed_baro_vasc == 0.0
+            assert arrest.hemo._unstim_rate == 0.0 and arrest.hemo._unstim_rate_unloaded == 0.0
+
+        vent = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True,
+        )
+        base_sv = [vent.step(0.5) or vent.state.sv for _ in range(40)]
+        base_osc = max(base_sv[-20:]) - min(base_sv[-20:])
+        vent.give_drug_bolus("atropine", 1.0)
+        atro_sv = [vent.step(0.5) or vent.state.sv for _ in range(240)]
+        assert max(atro_sv[-20:]) - min(atro_sv[-20:]) < 1.25 * base_osc
+
+        hfref = engine_factory(
+            config=SimulationConfig(mode="awake", rng_seed=1), start=True, heart_failure="hfref",
+        )
+        hfref.set_airway_mode("Mask")
+        hfref.set_fgf(8.0, 0.0)
+        advance_time(hfref, 60)
+        hf_sv0 = hfref.state.sv
+        hfref.give_drug_bolus("atropine", 1.0)
+        advance_time(hfref, 120)
+        assert hfref.state.sv < hf_sv0
+
+        paced = _model()
+        base_paced = paced.step(1.0, 0, 0, 0, -2, 40, 95)
+        with monkeypatch.context() as mp:
+            mp.setattr(paced, "_rhythm_rate", lambda _: 120.0)
+            for _ in range(240):
+                paced.step(1.0, 0, 0, 0, -2, 40, 95)
+        for _ in range(15):
+            recovered = paced.step(1.0, 0, 0, 0, -2, 40, 95)
+        assert recovered.sv == pytest.approx(base_paced.sv, rel=0.03)

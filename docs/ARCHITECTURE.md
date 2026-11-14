@@ -313,7 +313,9 @@ by mask after propofol in Ebert's study. The effects of propofol and sevoflurane
 on resistance and stroke volume combine as independent fractions.
 
 **Reflexes.** MAP feedback changes HR or vascular resistance, depending on
-rhythm, anesthetic depth, blood gases, and stimulation. Anesthesia reduces the
+rhythm, anesthetic depth, blood gases, and stimulation. When muscarinic block
+or a fixed rhythm prevents slowing, high MAP lowers endogenous vascular
+resistance (Weissler 1957; Tweed 1972). Anesthesia reduces the
 baroreflex and the tachycardia of hemorrhage (Ebert 1992; Sellgren 1994). Older
 patients have lower cardiovagal gain and less reflex tachycardia, while
 baroreflex vascular control is preserved (Kardos 2001; Laitinen 2004; Monahan
@@ -375,11 +377,18 @@ repeated doses, tachyphylaxis reduces the pressor and peak HR responses, while a
 smaller HR response remains.
 
 The HR response to atropine follows its peripheral concentration (Hinderling
-1985) and is reduced by propofol (Horiguchi 2002). Ketamine increases HR and
-cardiac output through sympathetic stimulation and depresses the baroreflex at
-anesthetic concentrations (Tweed 1972; Akine 2001). Its effect on HR starts
-sooner than its effect on cardiac output and adds a fixed increase, including
-after atropine (Bovill 1972).
+1985) and is reduced by propofol (Horiguchi 2002). Venous unloading lowers
+stroke volume over minutes, with an earlier fall at low preload (Weissler
+1957; Berry 1959). Adrenergic drive restores stroke volume during pacing
+(Ross 1965).
+
+Ketamine raises HR, stroke volume, and vascular resistance through sympathetic
+stimulation (Tweed 1972). Its HR effect starts sooner and adds a fixed increase,
+including after atropine (Bovill 1972). Baroreflex gain falls at anesthetic
+concentrations, based on rat data (Akine 2001). A calibrated offset of up to
+20 mmHg reduces reflex slowing and vasodilation to fit pressure rises after
+atropine and during pacing. Beta blockade leaves a pressor response, while
+alpha blockade reduces it (Bovill 1972; Bålfors 1983).
 
 Rapid boluses of intravenous amiodarone briefly lower vascular resistance and
 blood pressure, mostly through the polysorbate 80 solvent, and slower infusions

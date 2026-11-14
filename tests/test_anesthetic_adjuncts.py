@@ -5,6 +5,7 @@ import pytest
 from anasim.core.state import SimulationConfig
 from anasim.core.tci import TCIController
 from anasim.patient.pk_models import ANESTHETIZED_OUTPUT, FentanylPK
+from anasim.physiology.hemodynamics import HemodynamicModel
 
 
 def _advance(engine, seconds, dt=1.0):
@@ -144,16 +145,18 @@ def test_ketamine_with_atropine_and_nitrous_uses_premedicated_hr_baseline(engine
 
 
 @pytest.mark.parametrize("dt", [0.5, 1.0])
-def test_bovill_ketamine_hr_rise_after_iv_atropine(engine_factory, dt):
-    """Bovill 1972 Table 1: ketamine adds 17 bpm without a supplement and
-    18 bpm after atropine, with peaks in the first 3 min. Atropine itself
-    raised HR from 90 to 149 bpm before ketamine.
+def test_bovill_ketamine_hr_and_map_rises_after_iv_atropine(engine_factory, dt):
+    """Bovill 1972 Table 1 and Fig. 1: ketamine 2 mg/kg over 30 s added
+    17 ± 2.5 bpm and 27 ± 1.7 mmHg peak (21 mmHg on the minute-mean curve)
+    without premedication, and 18 ± 4.7 bpm and 19 ± 2.1 mmHg above
+    pre-ketamine (25 ± 2.0 mmHg above rest) after 2 mg IV atropine. Atropine
+    raised HR from 90 to 149 bpm and MAP from 92 to 98 mmHg before ketamine.
 
     Doses and timing match; the paper gives no ages or weights for its fit young
-    women, so assume 30 years, 60 kg and 165 cm. MAP is checked for direction
-    only because the model overstates atropine's own MAP rise.
+    women, so assume 30 years, 60 kg, and 165 cm.
     """
-    rises = []
+    hr_rises = []
+    map_rises = []
     for atropine in (0.0, 2.0):
         engine = engine_factory(
             config=SimulationConfig(mode="awake", rng_seed=3), start=True,
@@ -163,7 +166,7 @@ def test_bovill_ketamine_hr_rise_after_iv_atropine(engine_factory, dt):
         engine.set_airway_mode("Mask")
         engine.set_fgf(8.0, 0.0)
         _advance(engine, 60, dt)
-        resting_hr = engine.state.hr
+        resting_hr, resting_map = engine.state.hr, engine.state.map
         # Supplement over 5 min, then 2 min before ketamine.
         for _ in range(round(300 / dt)):
             engine.give_drug_bolus("atropine", atropine * dt / 300.0)
@@ -172,6 +175,7 @@ def test_bovill_ketamine_hr_rise_after_iv_atropine(engine_factory, dt):
         before_hr, before_map = engine.state.hr, engine.state.map
         if atropine:
             assert 45.0 < before_hr - resting_hr < 70.0
+            assert 1.0 < before_map - resting_map < 10.0
         engine.set_drug_rate("ketamine", 2.0 * 120.0)
         readings = []
         for index in range(round(420 / dt)):
@@ -181,13 +185,82 @@ def test_bovill_ketamine_hr_rise_after_iv_atropine(engine_factory, dt):
             if (index + 1) % round(60 / dt) == 0:
                 readings.append((engine.state.hr, engine.state.map))
         peak_hr = max(hr for hr, _ in readings)
+        peak_map = max(map_value for _, map_value in readings)
         peak_minute = max(range(len(readings)), key=lambda index: readings[index][0]) + 1
-        rise = peak_hr - before_hr
-        assert rise == pytest.approx(18.0 if atropine else 17.0, abs=6.0)
+        hr_rise = peak_hr - before_hr
+        map_rise = peak_map - before_map
+        assert hr_rise == pytest.approx(18.0 if atropine else 17.0, abs=6.0)
         assert peak_minute <= 3
-        assert max(map_value for _, map_value in readings) > before_map
-        rises.append(rise)
-    assert abs(rises[1] - rises[0]) < 8.0
+        if atropine:
+            assert 15.0 < map_rise < 27.0
+            assert 20.0 < peak_map - resting_map < 32.0
+        else:
+            assert 19.0 < map_rise < 31.0
+        hr_rises.append(hr_rise)
+        map_rises.append(map_rise)
+    assert abs(hr_rises[1] - hr_rises[0]) < 8.0
+    assert map_rises[1] < map_rises[0]
+
+
+def test_ketamine_pressor_response_persists_during_pacing_and_beta_block_until_alpha_blocked(
+    engine_factory, monkeypatch,
+):
+    """Tweed 1972 Table 3 (n=6): right atrial pacing at 1.5x resting HR lowered
+    SVI 29% and SVR 16% with a 5.5 mmHg pressure rise, and ketamine 2 mg/kg over
+    1 min then raised CI 26-34%, SVR 19-32%, and aortic pressure 17-24.5 mmHg.
+    Bovill 1972 and Bålfors 1983: beta blockade leaves a substantial pressor
+    response, whereas alpha-adrenergic blockade attenuates it.
+    """
+    paced = _awake(engine_factory, age=39, weight=72.3, height=172, sex="male", baseline_hr=73.5, baseline_map=89.0)
+    unpaced_sv, unpaced_svr, unpaced_map = paced.state.sv, paced.state.svr, paced.state.map
+    # Fixed-rate right atrial pacing at 1.5x resting HR (110 bpm).
+    monkeypatch.setattr(paced.hemo, "_rhythm_rate", lambda _: 110.0)
+    paced.hemo.invalidate_state_cache()
+    _advance(paced, 240)
+    ctrl_co, ctrl_svr, ctrl_map = paced.state.co, paced.state.svr, paced.state.map
+    assert 0.65 * unpaced_sv < paced.state.sv < 0.88 * unpaced_sv
+    assert 0.75 * unpaced_svr < ctrl_svr < 0.90 * unpaced_svr
+    assert 0.0 < ctrl_map - unpaced_map < 8.0
+
+    for _ in range(60):
+        paced.give_drug_bolus("ketamine", 2.0 * paced.patient.weight / 60.0)
+        paced.step(1.0)
+    traces = []
+    for _ in range(300):
+        paced.step(1.0)
+        traces.append((paced.state.co, paced.state.svr, paced.state.map))
+    assert max(co for co, _, _ in traces) > 1.10 * ctrl_co
+    assert max(svr for _, svr, _ in traces) > 1.10 * ctrl_svr
+    assert 15.0 < max(mp for _, _, mp in traces) - ctrl_map < 30.0
+
+    early_map_rises = {}
+    for arm in ("none", "esmolol", "labetalol"):
+        engine = _awake(engine_factory, age=30, weight=60, height=165, sex="female", baseline_hr=95, baseline_map=95)
+        for _ in range(300):
+            if arm == "esmolol":
+                engine.set_drug_rate("esmolol", 80.0)
+            elif arm == "labetalol":
+                engine.give_drug_bolus("labetalol", 40.0 / 300.0)
+            engine.step(1.0)
+        _advance(engine, 120)
+        before_map = engine.state.map
+        engine.set_drug_rate("ketamine", 2.0 * 120.0)
+        peaks = []
+        for idx in range(180):
+            if idx == 30:
+                engine.set_drug_rate("ketamine", 0.0)
+            engine.step(1.0)
+            peaks.append(engine.state.map)
+        early_map_rises[arm] = max(peaks) - before_map
+    assert early_map_rises["esmolol"] > 14.0
+    assert early_map_rises["labetalol"] < 0.45 * early_map_rises["none"]
+
+    direct = HemodynamicModel(paced.patient)
+    base_direct = direct.step(1.0, 0, 0, 0, -2, 40, 95)
+    for _ in range(60):
+        ket_direct = direct.step(1.0, 0, 0, 0, -2, 40, 95, ce_ketamine=2.5)
+    assert ket_direct.hr > base_direct.hr + 10.0
+    assert ket_direct.map > base_direct.map + 15.0
 
 
 def test_midazolam_sedates_more_with_age_and_potentiates_propofol(engine_factory):
