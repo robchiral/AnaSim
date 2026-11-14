@@ -218,7 +218,8 @@ class FluidBalance:
 
     def step(self, dt: float, *, ph: float, paco2: float, resting_paco2: float,
              renal_function: float, renal_perfusion: float, hepatic_function: float,
-             oxygen_supply: float, epinephrine: float) -> None:
+             oxygen_supply: float, epinephrine: float,
+             succinylcholine_ce: float = 0.0, mh_severity: float = 0.0) -> None:
         self.ph = ph
         self._equilibrate_cell_water()
         self._elapsed += dt
@@ -229,7 +230,10 @@ class FluidBalance:
         self._clear_calcium(minutes, ph)
         self._metabolize_buffers(minutes, hepatic_function, oxygen_supply)
         self._renal_balance(minutes, ph, paco2, resting_paco2, renal_function, renal_perfusion)
-        self._exchange_potassium(minutes, epinephrine)
+        self._exchange_potassium(
+            minutes, epinephrine, ph=ph,
+            succinylcholine_ce=succinylcholine_ce, mh_severity=mh_severity,
+        )
 
     def _metabolize_buffers(self, minutes: float, hepatic_function: float, oxygen_supply: float) -> None:
         # Kramer 2003: control Vdss 21 L and clearance 710 mL/min.
@@ -283,11 +287,19 @@ class FluidBalance:
                             ("phosphate", urine * self.concentration("phosphate"))):
             self.amounts[ion] -= amount
 
-    def _exchange_potassium(self, minutes: float, epinephrine: float) -> None:
-        # Exchange with a finite cellular pool; no universal potassium/pH correction.
+    def _exchange_potassium(
+        self, minutes: float, epinephrine: float, *, ph: float = 7.4,
+        succinylcholine_ce: float = 0.0, mh_severity: float = 0.0,
+    ) -> None:
+        # Exchange with a finite cellular pool; mild pH changes do not shift K+.
         total = self.cell_k_mmol + self.amounts["potassium"]
         beta = 0.20 * epinephrine**2 / (epinephrine**2 + 0.6**2)
-        target_k = total * self.ecf_l / (self.ecf_l + self.icf_l * 35.0 * (1.0 + beta))
+        sux_ce = max(0.0, succinylcholine_ce)
+        sux = 0.22 * sux_ce**2 / (sux_ce**2 + 1.5**2)
+        acid = 0.80 * max(0.0, 7.15 - ph)
+        efflux = 1.0 + sux + 0.70 * max(0.0, mh_severity) ** 2 + acid
+        partition = 35.0 * (1.0 + beta) / efflux
+        target_k = total * self.ecf_l / (self.ecf_l + self.icf_l * partition)
         moved = (self.amounts["potassium"] - target_k) * -math.expm1(-minutes / 5.0)
         moved = min(self.cell_na_mmol, max(-self.cell_k_mmol, moved))
         self.amounts["potassium"] -= moved

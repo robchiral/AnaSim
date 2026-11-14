@@ -60,15 +60,17 @@ class LocalAnestheticToxicity:
 
     def step(self, dt: float, *, neural_ce: float, cardiac_ce: float, ph: float,
              propofol_ce: float, midazolam_ce: float, mac_sevo: float,
-             motor_strength: float, cortical_function: float) -> None:
+             motor_strength: float, cortical_function: float,
+             mac_n2o: float = 0.0) -> None:
         acidemia = 1.0 + 0.5 * clamp01((7.35 - ph) / 0.35)
         neural = max(0.0, neural_ce) * acidemia
         cardiac = max(0.0, cardiac_ce) * acidemia
         self.neural_depression = _response(neural, 10.5, 20.0)
         excitation = _response(neural, 5.0, 9.5) * (1.0 - self.neural_depression)
+        inhaled_mac = max(0.0, mac_sevo) + 0.5 * max(0.0, mac_n2o)
         remaining_excitation = ((1.0 - hill_function(midazolam_ce, 30.0, 2.0))
                                 * (1.0 - hill_function(propofol_ce, 1.5, 2.0))
-                                * (1.0 - hill_function(mac_sevo, 0.75, 2.0)))
+                                * (1.0 - hill_function(inhaled_mac, 0.75, 2.0)))
         cortical = clamp01(cortical_function)
         target = excitation * remaining_excitation * cortical
         self.seizure_activity += (target - self.seizure_activity) * -math.expm1(-dt / 2.0)
@@ -83,9 +85,9 @@ class LocalAnestheticToxicity:
         self.sympathetic_drive += (sympathetic_target - self.sympathetic_drive) * -math.expm1(-dt / 5.0)
         self.heart_rate_increase = 16.0 * self.sympathetic_drive
         self.svr_increase = 2.0 * self.sympathetic_drive
-        self.conduction_block = _response(cardiac, 18.0, 48.0)
+        self.conduction_block = _response(cardiac, 18.0, 48.0) * (1.0 - 0.20 * self.lipid_effect)
         self.contractility_loss = _response(cardiac, 13.0, 42.0) * (1.0 - 0.35 * self.lipid_effect)
-        self.cardiac_stress = _response(cardiac, 22.0, 44.0)
+        self.cardiac_stress = _response(cardiac, 22.0, 44.0) * (1.0 - 0.35 * self.lipid_effect)
 
     @property
     def electrically_silent(self) -> bool:

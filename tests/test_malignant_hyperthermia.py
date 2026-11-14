@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from anasim.core.clinical_actions import check_airway_removal
 from anasim.core.state import SimulationConfig
 from anasim.web import WebSession
 
@@ -16,14 +17,18 @@ def _run(engine, seconds, dt=1.0):
 @pytest.mark.parametrize("dt", [0.1, 1.0])
 def test_untreated_mh_raises_co2_before_fever_and_persists_under_paralysis(engine_factory, dt):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"), start=True)
-    engine.start_malignant_hyperthermia()
     engine.give_drug_bolus("roc", 100)
+    _run(engine, 20, dt)
+    baseline_ppeak, baseline_k = engine.state.paw_peak, engine.state.potassium
+    engine.start_malignant_hyperthermia()
     _run(engine, 180, dt)
     assert engine.state.pa_co2 > 50 and engine.state.temp_c < 38
     assert engine.state.hr > 95 and engine.state.muscle_rigidity
     assert engine.state.twitch < 5
     _run(engine, 600, dt)
-    assert engine.state.temp_c > 37.5 and engine.state.hr > 120
+    assert engine.state.temp_c > 38.0 and engine.state.hr > 120
+    assert engine.state.paw_peak > baseline_ppeak + 4.0
+    assert engine.state.potassium > baseline_k + 0.8
     assert engine.state.ph < 7.25 and engine.state.lactate > 2
 
 
@@ -96,6 +101,7 @@ def test_dantrolene_depresses_twitch_without_fade_or_hypoventilation(engine_fact
     assert 20 < engine.state.twitch < 35
     assert engine.state.tof == pytest.approx(100)
     assert engine.state.pa_co2 == pytest.approx(paco2, abs=1)
+    assert check_airway_removal(engine) is None
 
 
 def test_dantrolene_stops_hypermetabolism_while_cooling_removes_accumulated_heat(engine_factory):

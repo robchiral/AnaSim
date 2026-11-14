@@ -3,6 +3,7 @@ import pytest
 from anasim.core.state import SimulationConfig
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.volatile import Vaporizer
+from anasim.scenarios.oxygen_supply import create_oxygen_supply_failure
 
 
 def test_low_flow_mixture_balances_uptake_spill_and_vaporizer_consumption():
@@ -226,3 +227,44 @@ def test_fio2_blender_with_n2o(engine_factory):
     ) / configured_total
     assert configured_total == pytest.approx(total)
     assert configured_fio2 == pytest.approx(0.3)
+
+
+def test_n2o_hypoxic_guard_step_invariance_and_low_flow_hypoxia(engine_factory, advance_time):
+    """Circle enforces >=25% O2 with N2O, conserves O2 across dt, accumulates exhaled N2
+    at metabolic flow, preserves vaporizer_on across zero FGF, and turns hypoxic on O2 loss.
+    """
+    c_fine, c_coarse = CircleSystem(volume_l=6.0), CircleSystem(volume_l=6.0)
+    c_fine.fgf_o2, c_fine.fgf_n2o = 0.0, 8.0
+    assert c_fine.delivered_n2o_flow() == 0.0
+    c_fine.fgf_o2 = 1.0
+    assert c_fine.delivered_n2o_flow() == pytest.approx(3.0)
+
+    for c in (c_fine, c_coarse):
+        c.fgf_o2 = c.fgf_n2o = 0.0
+        c.composition.fio2, c.composition.fin2 = 0.5, 0.5
+    for _ in range(600):
+        c_fine.step(0.1, uptake_o2=0.25, uptake_agent=0.0)
+    for _ in range(12):
+        c_coarse.step(5.0, uptake_o2=0.25, uptake_agent=0.0)
+    assert c_fine.composition.fio2 == pytest.approx(c_coarse.composition.fio2, abs=1e-9)
+    assert c_fine.composition.fio2 * (3.0 + c_fine.reservoir_volume) == pytest.approx(2.75, abs=1e-9)
+
+    low_flow = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    low_flow.circuit.composition.fio2, low_flow.circuit.composition.fin2 = 1.0, 0.0
+    low_flow.set_airway_mode("ETT")
+    low_flow.set_vent_power(True)
+    low_flow.set_vaporizer(2.0)
+    low_flow.set_fgf(0.0, 0.0)
+    low_flow.step(1.0)
+    assert low_flow.circuit.vaporizer_on is True
+    low_flow.set_vaporizer(0.0)
+    low_flow.set_fgf(0.3, 0.0)
+    advance_time(low_flow, 180.0, dt=1.0)
+    assert low_flow.circuit.composition.fin2 > 0.15
+
+    ox = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    create_oxygen_supply_failure().prepare(ox)
+    ox.set_oxygen_supply_connected(False)
+    advance_time(ox, 800.0, dt=2.0)
+    assert ox.circuit.composition.fio2 < 0.15
+    assert ox.state.spo2 < 85.0

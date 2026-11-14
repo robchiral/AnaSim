@@ -23,18 +23,15 @@ from .base import (
 
 
 def _prepare_oxygen_supply_failure(engine) -> None:
-    """Start with a stable, oxygen-enriched air mixture on controlled ventilation."""
+    """Start on low-flow air/oxygen maintenance so O2 loss causes hypoxic rebreathing."""
     engine.set_oxygen_supply_connected(True)
-    engine.set_fgf(2.0, 8.0, 0.0)
+    engine.set_fgf(0.45, 0.75, 0.0)
 
     circuit = engine.circuit
-    baseline_fio2 = (circuit.fgf_o2 + 0.21 * circuit.fgf_air) / (
-        circuit.fgf_o2 + circuit.fgf_air
-    )
-    circuit.composition.fio2 = baseline_fio2
-    circuit.composition.fin2 = 1.0 - baseline_fio2
-    circuit.composition.fin2o = 0.0
-    circuit.composition.fi_agent = 0.0
+    circuit.equilibrate(engine.resp._pulmonary_o2_uptake, circuit.composition.fi_agent)
+    baseline_fio2 = circuit.composition.fio2
+    engine.resp.equilibrate_oxygen(baseline_fio2, 1.0, engine.vent.settings.peep)
+    engine._tracheal_fio2 = baseline_fio2
     engine.state.fio2 = baseline_fio2
 
 

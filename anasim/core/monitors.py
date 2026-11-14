@@ -3,16 +3,20 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
+from anasim.monitors.alarms import THRESHOLDS
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resuscitation import compression_pressures
 
 from .projection import (
+    central_muscle_strength,
     circuit_connected,
     delivered_fraction,
     loss_of_response,
     mask_leak,
+    mask_seal_factor,
+    nmba_twitch_fraction,
     project_arterial,
 )
 from .state import AirwayType
@@ -79,8 +83,10 @@ def _capno_sampling_possible(engine: SimulationEngine) -> bool:
         state.airway_mode != AirwayType.NONE
         and (state.airway_mode != AirwayType.MASK or engine.mask_seal >= 0.05)
         and engine.airway_status.patency >= 0.05
-        and state.rr > 0.0
-        and state.va > 0.0
+        and (
+            (state.rr > 0.0 and state.va > 0.0)
+            or (state.rr == 0.0 and any(abs(change) > 1e-7 for _, change, _, _, _ in engine.vent.samples))
+        )
     )
 
 
@@ -169,6 +175,8 @@ def step_cardiac_monitors(
         ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample, st_depression,
                                       conduction_failure=conduction_failure,
                                       sodium_block=engine.toxicity.conduction_block,
+                                      potassium=engine.state.potassium,
+                                      hyperkalemia_block=engine.hemo.hyperkalemia_block,
                                       compression_phase=pulse_sample.phase if compressions else None,
                                       render=render)
         pleth, spo2_val = engine.spo2_mon.step(
@@ -199,8 +207,13 @@ def step_monitors(
     state = engine.state
     mac_sevo = engine.pk_sevo.state.mac
     state.respiratory_fatigue = float(engine.resp_mech.effort.muscle.fatigue)
-    bis_val = engine.bis.step(dt, state.hypnotic_ce, mac_sevo=mac_sevo,
-                              cortical_function=engine.cerebral.cortical_function)
+    bis_val = engine.bis.step(
+        dt,
+        state.hypnotic_ce,
+        mac_sevo=mac_sevo,
+        cortical_function=engine.cerebral.cortical_function,
+        ce_ketamine=state.ketamine_ce,
+    )
     capno_val = compute_capno_value(engine, resp_state, dt)
 
     loc_val = loss_of_response(engine)
@@ -211,9 +224,14 @@ def step_monitors(
 
     connected = state.airway_mode != AirwayType.NONE
     sealed = circuit_connected(engine)
+    seal_scale = mask_seal_factor(engine)
     for duration, change, sample_paw, _, sample_volume in engine.vent.samples:
-        paw, flow, volume = engine.airway_sensor.step(duration, sample_paw, sample_volume,
-                                                   change if sealed else 0.0)
+        paw, flow, volume = engine.airway_sensor.step(
+            duration,
+            sample_paw * seal_scale,
+            sample_volume * seal_scale,
+            change * seal_scale if sealed else 0.0,
+        )
     state.paw = float(paw)
     state.flow = float(flow)
     state.volume = float(volume)
@@ -241,13 +259,35 @@ def step_monitors(
         else:
             delivered = vent.monitors.tv_exp_mandatory * (1.0 - mask_leak(engine))
             vte_percent = None if math.isnan(delivered) else 100.0 * delivered / vent.settings.tv
+    if state.display_bis < 65.0:
+        engine._bis_anesthetized = True
+    elif not connected and state.display_bis >= 80.0:
+        engine._bis_anesthetized = False
+    paralyzed = (
+        state.tof < 90.0
+        or nmba_twitch_fraction(engine) < 0.90
+        or central_muscle_strength(engine) < 0.85
+    )
+    maintaining = engine._bis_anesthetized and (
+        engine.disturbance_active
+        or engine.vaporizer.state.is_on
+        or engine.circuit.fgf_n2o > 0.0
+        or any(engine.infusion_rates.get(k, 0.0) > 0.0 for k in ("propofol", "etomidate", "midazolam", "ketamine"))
+    )
+    bis_alarm = state.display_bis if (paralyzed or maintaining or state.display_bis <= THRESHOLDS["BIS_max"]) else None
+    map_alarm = (
+        state.art_map
+        if engine.config.arterial_line_enabled
+        else (0.0 if state.nibp_measurement_failed else state.nibp_map)
+    )
+    etco2_alarm = state.display_etco2 if (connected or vent.is_on or engine.bag_mask_active) else None
     state.alarms = engine.alarms.update(
         {
-            "BIS": state.display_bis,
-            "MAP": state.monitored_blood_pressure(engine.config.arterial_line_enabled)[2],
+            "BIS": bis_alarm,
+            "MAP": map_alarm,
             "HR": state.display_hr,
-            "EtCO2": state.display_etco2,
-            "SpO2": state.display_spo2 if state.spo2_signal_valid else None,
+            "EtCO2": etco2_alarm,
+            "SpO2": state.display_spo2 if state.spo2_signal_valid else 0.0,
             "Ppeak": state.paw_peak,
             # The ventilator measures only gas returning through the circuit.
             "MV": (state.mv if connected else 0.0) if vent.is_on else None,

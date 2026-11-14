@@ -1,6 +1,8 @@
 """Fluid-loading protocols, transfusion, and renal compensation."""
 
+import copy
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -254,3 +256,45 @@ def test_saline_loading_and_bleeding_preserve_carbon_and_charge(engine_factory):
     model.update_fluid_balance(engine.hemo.hb_conc, engine.hemo.get_hematocrit(), engine.hemo.blood_volume)
     assert transport.co2_l == pytest.approx(carbon - lost_fraction * blood_carbon * 0.022414, abs=1e-10)
     assert transport.base_meq == pytest.approx(engine.hemo.fluids.base_meq, abs=1e-10)
+
+
+def test_calcium_inotropy_citrate_hypotension_hyperkalemia_and_starling_refill(engine_factory, advance_time):
+    """Denlinger 1975 & Lang 1988: CaCl2 raises SV and CO without vasoconstriction,
+    reverses citrate hypocalcemic hypotension, and antagonizes hyperkalemic conduction block;
+    unresuscitated hemorrhage recruits transcapillary interstitial refill with hemodilution.
+    """
+    ca = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    citrate = copy.deepcopy(ca)
+    hyperk = copy.deepcopy(ca)
+    co0, sv0, svr0 = ca.state.co, ca.state.sv, ca.state.svr
+    ca.give_calcium_chloride(500.0)
+    advance_time(ca, 60.0, dt=1.0)
+    assert ca.state.co > 1.09 * co0 and ca.state.sv > 1.12 * sv0
+    assert ca.state.svr <= 1.02 * svr0
+
+    base_map = citrate.state.map
+    citrate.hemo.fluids.citrate_mmol = 3.5 * citrate.hemo.fluids.citrate_volume_l
+    advance_time(citrate, 60.0, dt=1.0)
+    hypoca_map = citrate.state.map
+    assert citrate.state.ionized_calcium < 0.75 and hypoca_map < 0.75 * base_map
+    citrate.give_calcium_chloride(1500.0)
+    advance_time(citrate, 60.0, dt=1.0)
+    assert citrate.state.ionized_calcium > 1.10 and citrate.state.map > hypoca_map + 20.0
+
+    hyperk.hemo.fluids.amounts["potassium"] = 7.4 * hyperk.hemo.fluids.ecf_l
+    hyperk.step(1.0)
+    slowed_hr = hyperk.state.hr
+    assert hyperk.hemo.hyperkalemia_block > 0.25
+    hyperk.give_calcium_chloride(2000.0)
+    advance_time(hyperk, 30.0, dt=1.0)
+    assert hyperk.hemo.hyperkalemia_block < 0.05 and hyperk.state.hr > slowed_hr + 8.0
+
+    bleed = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1), start=True
+    )
+    bleed.hemo.config = replace(bleed.hemo.config, uop_ml_kg_hr=0.0)
+    bleed.hemo.add_volume(-1000.0)
+    bv_after, hb_after = bleed.hemo.blood_volume, bleed.hemo.hb_conc
+    advance_time(bleed, 1800.0, dt=2.0)
+    assert bleed.hemo.blood_volume > bv_after + 60.0
+    assert bleed.hemo.hb_conc < hb_after - 0.15

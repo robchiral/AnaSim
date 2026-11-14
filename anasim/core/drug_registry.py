@@ -108,6 +108,7 @@ class DrugSpec:
     fixed_tci_mode: TCIMode | None = None
     max_rate: MaxRatePolicy | None = None
     bolus_per_kg: bool = False  # default_bolus is per kg of body weight
+    max_bolus: float = 1000.0
 
     def default_bolus_for(self, weight_kg: float) -> float:
         return round(self.default_bolus * weight_kg, 1) if self.bolus_per_kg else self.default_bolus
@@ -276,6 +277,7 @@ DRUG_REGISTRY = (
         pk_model=_from_patient(LidocainePK),
         ce_field="lidocaine_ce",
         generic_name="Lidocaine",
+        max_bolus=2000.0,
     ),
     DrugSpec(
         key="amiodarone",
@@ -283,7 +285,7 @@ DRUG_REGISTRY = (
         rate_unit="mg/min",
         internal_rate_unit="mg/sec",
         bolus_unit="mg",
-        default_bolus=300.0,
+        default_bolus=150.0,
         bolus_model_scale=1.0,
         pk_model=_from_patient(AmiodaronePK),
         ce_field="amiodarone_ce",
@@ -303,7 +305,7 @@ DRUG_REGISTRY = (
         tci_unit="ng/mL",
         tci_range=(0.0, 30.0),
         fixed_tci_mode=TCIMode.PLASMA,
-        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 1.0),
+        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 2.0),
     ),
     DrugSpec(
         key="vaso",
@@ -321,9 +323,10 @@ DRUG_REGISTRY = (
         fixed_tci_mode=TCIMode.PLASMA,
         max_rate=MaxRatePolicy(
             MaxRateBasis.ABSOLUTE_PER_MINUTE,
-            0.1,
+            0.4,
             model_unit_scale=1000.0,
         ),
+        max_bolus=40.0,
     ),
     DrugSpec(
         key="phenyl",
@@ -339,7 +342,7 @@ DRUG_REGISTRY = (
         tci_unit="ng/mL",
         tci_range=(0.0, 120.0),
         fixed_tci_mode=TCIMode.PLASMA,
-        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 2.0),
+        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 20.0),
     ),
     DrugSpec(
         key="epi",
@@ -355,7 +358,7 @@ DRUG_REGISTRY = (
         tci_unit="ng/mL",
         tci_range=(0.0, 20.0),
         fixed_tci_mode=TCIMode.PLASMA,
-        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 0.5),
+        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 2.0),
     ),
     DrugSpec(
         key="dobu",
@@ -371,7 +374,8 @@ DRUG_REGISTRY = (
         tci_unit="ng/mL",
         tci_range=(0.0, 500.0),
         fixed_tci_mode=TCIMode.PLASMA,
-        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 20.0),
+        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 40.0),
+        max_bolus=10000.0,
     ),
     DrugSpec(
         key="milri",
@@ -387,7 +391,8 @@ DRUG_REGISTRY = (
         tci_unit="ng/mL",
         tci_range=(0.0, 500.0),
         fixed_tci_mode=TCIMode.PLASMA,
-        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 0.75),
+        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 25.0),
+        max_bolus=10000.0,
     ),
     DrugSpec(
         key="esmolol",
@@ -434,7 +439,7 @@ DRUG_REGISTRY = (
         tci_unit="mcg/mL",
         tci_range=(0.0, 10.0),
         fixed_tci_mode=TCIMode.PLASMA,
-        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_HOUR, 1.0),
+        max_rate=MaxRatePolicy(MaxRateBasis.PER_KG_MINUTE, 0.6),
     ),
     DrugSpec(
         key="dantrolene",

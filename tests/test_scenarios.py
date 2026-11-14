@@ -9,6 +9,7 @@ from anasim.core.state import SimulationConfig
 from anasim.monitors.neuromuscular import TwitchReading
 from anasim.scenarios import (
     SCENARIO_REGISTRY,
+    create_anaphylaxis_scenario,
     create_emergence,
     create_hemorrhage_response,
     create_sepsis_response,
@@ -198,6 +199,17 @@ def test_sepsis_fluid_objective_requires_crystalloid(engine_factory):
 
     engine.give_fluid(500)
     assert step.check_requirements(engine)[0]
+
+    anaph = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    scenario = create_anaphylaxis_scenario()
+    scenario.prepare(anaph)
+    base_map = anaph.state.map
+    scenario.events[0].apply(anaph)
+    anaph.step(0.1)
+    assert abs(anaph.state.map - base_map) < 1.0
+    for _ in range(90):
+        anaph.step(1.0)
+    assert anaph.state.map < base_map - 25.0
 
 
 @pytest.mark.parametrize("weight", [70, 100])

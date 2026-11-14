@@ -307,6 +307,7 @@ export class Controls {
         csht: card.querySelector(".csht"),
       };
       w.bolus.value = String(spec.default_bolus);
+      w.bolus.max = String(spec.max_bolus ?? 1000);
       if (spec.key === "dantrolene") {
         const total = document.createElement("span");
         total.id = "c-dantrolene-total";

@@ -126,7 +126,6 @@ class SimulationEngine(DrugControllerMixin):
         self.state = SimulationState()
         self.actions = ActionLog()
         self.airway_tuning = AirwayTuning()
-        self.thermal = ThermalModel(patient)
 
         # Infusion rates (model units/s) and active TCI controllers, by drug key.
         self.infusion_rates = {spec.key: 0.0 for spec in DRUG_REGISTRY if spec.has_infusion}
@@ -163,12 +162,6 @@ class SimulationEngine(DrugControllerMixin):
         self.maintenance_fluid_rate_ml_min = 0.0
         self.lipid_infusion_ml_min = 0.0
 
-        # Anaphylaxis is full in about 2 min and resolves in about 10; sepsis
-        # is full in about 10 min and resolves over 30 or more.
-        self.anaphylaxis = SeverityRamp(onset_rate=0.5 / 60.0, decay_rate=0.1 / 60.0)
-        self.sepsis = SeverityRamp(onset_rate=0.1 / 60.0, decay_rate=0.03 / 60.0)
-        self.malignant_hyperthermia = MalignantHyperthermia()
-
         self.auto_laryngospasm_enabled = True
         self.mask_seal = 1.0
         self.airway_obstruction_manual = 0.0
@@ -182,6 +175,9 @@ class SimulationEngine(DrugControllerMixin):
         self._pk_hemo_scale_cache: tuple[float, float, float] | None = None
         self._pk_blood_out_ml = 0.0
         self.current_mean_paw = 0.0
+        self._apl_pressure = 0.0
+        self._extubation_stimulus_until = 0.0
+        self._tracheal_fio2 = 0.21
 
         # Independent generators keep each monitor's noise reproducible.
         self.rng = np.random.default_rng(self.config.rng_seed)
@@ -216,11 +212,17 @@ class SimulationEngine(DrugControllerMixin):
 
     def initialize_state(self):
         """Seed the public state from the initialized subsystems."""
+        self.state = SimulationState()
         self.state.temp_c = self.patient.baseline_temp
         self.airway_status = AirwayStatus()
+        self.laryngospasm_severity = 0.0
+        self._apl_pressure = 0.0
+        self._extubation_stimulus_until = 0.0
+        self._pulseless_s = 0.0
 
         initialize_engine_state(self)
         projection_core.sync_state_from_models(self)
+        self._bis_anesthetized = self.config.mode == "steady_state" or self.state.display_bis < 65.0
         monitor_core.seed_nibp_reading(self)
         self.nmb.establish_baseline(self.state.twitch / 100.0)
         self._append_output_snapshot()
@@ -236,6 +238,16 @@ class SimulationEngine(DrugControllerMixin):
 
     def initialize_models(self):
         """Build the subsystem models selected by the configuration."""
+        self.thermal = ThermalModel(self.patient)
+        # Anaphylaxis is full in about 2 min and resolves in about 10; sepsis
+        # is full in about 10 min and resolves over 30 or more.
+        self.anaphylaxis = SeverityRamp(onset_rate=0.5 / 60.0, decay_rate=0.1 / 60.0)
+        self.sepsis = SeverityRamp(onset_rate=0.1 / 60.0, decay_rate=0.03 / 60.0)
+        self.malignant_hyperthermia = MalignantHyperthermia()
+        self._pk_hemo_scale_cache = None
+        self._pk_blood_out_ml = 0.0
+        self.current_mean_paw = 0.0
+
         # Intravenous drug PK, keyed like the drug registry.
         self.pk = {spec.key: spec.pk_model(self.patient, self.config) for spec in DRUG_REGISTRY}
         p = self.patient
@@ -563,6 +575,7 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_airway_mode(self, mode_str: str):
         """Set the connection directly; learner tube placement uses attempt_intubation."""
+        previous_mode = self.state.airway_mode
         try:
             self.state.airway_mode = AirwayType(mode_str)
         except ValueError as exc:
@@ -570,6 +583,13 @@ class SimulationEngine(DrugControllerMixin):
             raise ValueError(
                 f"Unsupported airway mode {mode_str!r}; choose one of: {choices}"
             ) from exc
+        if (
+            previous_mode == AirwayType.ETT
+            and self.state.airway_mode != AirwayType.ETT
+            and self.state.loc >= 0.20
+            and self._tol_current < 0.65
+        ):
+            self._extubation_stimulus_until = self.state.time + 25.0
         self.actions.record(
             self.state.time, ACTION_AIRWAY, label=self.state.airway_mode.value
         )
@@ -670,6 +690,8 @@ class SimulationEngine(DrugControllerMixin):
                 self.pk["lidocaine"].state.ce_cv, self.state.amiodarone_ce,
             )),
             rng=self._shock_rng,
+            hypoxia=hypoxia,
+            perfusing=self.hemo.state.intrinsic_co > runtime_core.ARREST_CO_L_MIN,
         )
         self.defibrillator.consume(time, synchronized)
         self.actions.record(time, ACTION_SHOCK,
@@ -836,6 +858,9 @@ class SimulationEngine(DrugControllerMixin):
         target = clamp(fio2, 0.21, 1.0)
         n2o_flow = max(0.0, self.circuit.fgf_n2o)
         o2_flow = ((target * (total_non_n2o + n2o_flow)) - 0.21 * total_non_n2o) / 0.79
+        if 3.0 * o2_flow < n2o_flow:
+            denom = 0.79 - 3.0 * target
+            o2_flow = (target - 0.21) * total_non_n2o / denom if denom > 1e-6 else total_non_n2o
         o2_flow = clamp(o2_flow, 0.0, total_non_n2o)
         air_flow = total_non_n2o - o2_flow
         self.circuit.fgf_o2 = o2_flow

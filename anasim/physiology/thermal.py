@@ -22,9 +22,14 @@ class ThermalModel:
 
     def __init__(self, patient: Patient, tuning: ThermalTuning | None = None):
         self.tuning = tuning or ThermalTuning()
-        self.heat_production_basal = patient.weight * patient.pregnancy.metabolism  # W
+        self.heat_production_basal = 70.0 * (patient.weight / 70.0) ** 0.75 * patient.pregnancy.metabolism  # W
         self.heat_capacity = patient.weight * self.tuning.specific_heat_j_kg_k  # J/K
         self.surface_area = patient.bsa  # m^2
+        # Kurz 1995 (Anesth Analg 80:562): first-hour redistribution core cooling
+        # falls linearly with weight-to-surface-area ratio (~1.6 °C near 38 kg/m²
+        # vs ~0.5 °C above 55 kg/m²) because obese periphery is warmer preoperatively.
+        wt_per_bsa = patient.weight / max(0.5, self.surface_area)
+        self.redistribution_morphometric_factor = clamp(1.0 - 0.042 * (wt_per_bsa - 38.7), 0.22, 1.15)
         # Awake vasomotor tone holds core temperature at baseline: heat loss
         # matches basal production there. Anesthesia replaces it with the
         # passive vasodilated conductance in proportion to depth.
@@ -33,6 +38,7 @@ class ThermalModel:
         self.depth_index = 0.0
         self.shiver_level = 0.0
         self.metabolic_factor = 1.0
+        self.extra_heat_w = 0.0
 
     def depth_and_metabolism(
         self, temp_c: float, prop_ce: float, mac: float, shiver_level: float = 0.0,
@@ -52,7 +58,12 @@ class ThermalModel:
 
     def redistribution_target_j(self, depth_index: float) -> float:
         """Core heat moved to the periphery at steady anesthetic depth."""
-        return self.tuning.redistribution_core_drop_c * clamp01(depth_index) * self.heat_capacity
+        return (
+            self.tuning.redistribution_core_drop_c
+            * self.redistribution_morphometric_factor
+            * clamp01(depth_index)
+            * self.heat_capacity
+        )
 
     def settle_at_depth(self) -> None:
         """Start as if the current depth had been held: no shivering, redistribution complete."""
@@ -86,8 +97,11 @@ class ThermalModel:
         tuning = self.tuning
         depth_factor = clamp01(self.depth_index)
 
-        production = self.heat_production_basal * max(0.5, self.metabolic_factor)
-        anesthetized = tuning.anesthetized_conductance_w_per_c * self.surface_area / 1.9
+        production = self.heat_production_basal * max(0.5, self.metabolic_factor) + self.extra_heat_w
+        anesthetized = max(
+            1.12 * self.awake_conductance,
+            tuning.anesthetized_conductance_w_per_c * self.surface_area / 1.9,
+        )
         conductance = self.awake_conductance + (anesthetized - self.awake_conductance) * depth_factor
         heat_loss = conductance * (temp_c - tuning.ambient_temp_c)
 

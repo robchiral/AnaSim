@@ -48,6 +48,21 @@ class MalignantHyperthermia:
         return 4.0 * self.severity
 
     @property
+    def extra_heat_w_per_kg(self) -> float:
+        """Anaerobic glycolysis and SR calcium-cycling heat beyond aerobic metabolism."""
+        return 6.5 * self.severity**2
+
+    @property
+    def chest_wall_stiffness(self) -> float:
+        """Chest-wall elastance multiplier from generalized skeletal muscle contracture."""
+        return 1.0 + 0.90 * self.severity
+
+    @property
+    def respiratory_excursion_fraction(self) -> float:
+        """Remaining spontaneous tidal excursion against generalized muscle rigidity."""
+        return max(0.35, 1.0 - 0.62 * self.severity)
+
+    @property
     def heart_rate_increase(self) -> float:
         return 55.0 * self.severity
 

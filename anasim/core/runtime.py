@@ -22,12 +22,14 @@ from .projection import (
     delivered_fraction,
     loss_of_response,
     mask_circuit_share,
+    mask_seal_factor,
     project_runtime_physiology,
     step_respiration,
     stimulus_tolerance,
     sync_inhaled_agents,
     sync_inspired_gas,
     sync_pk_state,
+    thermal_hypnotic_ce,
 )
 from .state import AirwayStatus, AirwayType
 
@@ -47,7 +49,7 @@ MEAN_PAW_TAU_S = 0.25
 
 def step_simulation(engine: SimulationEngine, dt: float) -> None:
     state = engine.state
-    engine.thermal.update_depth(state.temp_c, state.hypnotic_ce, state.mac)
+    engine.thermal.update_depth(state.temp_c, thermal_hypnotic_ce(engine), state.mac)
     engine._tol_current = clamp01(stimulus_tolerance(engine))
 
     disturbance_complete = _disturbance_completes_during_step(engine, dt)
@@ -69,12 +71,18 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
         propofol_ce=state.propofol_ce, midazolam_ce=state.midazolam_ce,
         mac_sevo=state.mac_sevo, motor_strength=state.twitch / 100.0,
         cortical_function=engine.cerebral.cortical_function,
+        mac_n2o=state.mac_n2o,
     )
     engine.thermal.metabolic_factor *= toxicity.metabolic_factor
     mh = engine.malignant_hyperthermia
     mh.step(dt, sevo_mac=state.mac_sevo, succinylcholine_cp=engine.pk["succinylcholine"].state.c1,
             dantrolene_ce=state.dantrolene_ce)
-    engine.thermal.metabolic_factor += mh.excess_metabolism
+    sepsis_sev = engine.sepsis.severity
+    engine.thermal.metabolic_factor += mh.excess_metabolism + 0.25 * sepsis_sev
+    engine.thermal.extra_heat_w = engine.patient.weight * (
+        mh.extra_heat_w_per_kg + 0.35 * sepsis_sev
+    )
+    engine.aeration.chest_wall_stiffness = mh.chest_wall_stiffness
     state.muscle_rigidity = mh.rigidity
     state.seizure_activity = toxicity.seizure_activity
     state.convulsions = toxicity.convulsion_intensity > 0.2
@@ -99,6 +107,8 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
     resp = engine.resp.state
     lung = engine.resp_mech
     aeration = engine.aeration
+    seal_scale = mask_seal_factor(engine)
+    aeration.pressure_transmission = seal_scale if connected else 0.0
     aeration.unconscious = engine.state.loc
     aeration.lung_water = engine.hemo.lung_water_ml_kg
     # Alveolar nitrogen and argon slow absorption collapse.
@@ -108,7 +118,9 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
     )
     aeration.absorbed_volume = engine.resp.frc - engine.resp.gas_volume_l
     lung.effort.unconscious = engine.state.loc
-    lung.effort.muscle.muscle_strength = central_muscle_strength(engine)
+    lung.effort.muscle.muscle_strength = (
+        central_muscle_strength(engine) * engine.malignant_hyperthermia.respiratory_excursion_fraction
+    )
     lung.effort.muscle.oxygen_fraction = engine.resp.oxygen_supply_fraction
     aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine.airway_status.patency > 0.5
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.
@@ -120,9 +132,27 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         source = "bag"
     else:
         source = "spontaneous" if connected else None
+    if source == "spontaneous" and engine.bag_mask_p_max > 20.0:
+        excess_l_s = engine.circuit.last_net_flow / 60.0
+        apl_ceiling = (
+            min(engine.bag_mask_p_max, engine.airway_tuning.mask_seal_pressure)
+            if engine.state.airway_mode == AirwayType.MASK
+            else engine.bag_mask_p_max
+        )
+        engine._apl_pressure = clamp(
+            engine._apl_pressure + excess_l_s * dt / (0.05 + max(0.01, lung.compliance)),
+            0.0,
+            apl_ceiling,
+        )
+    else:
+        engine._apl_pressure *= math.exp(-dt / 0.4)
+        if engine._apl_pressure < 1e-3:
+            engine._apl_pressure = 0.0
     engine.vent.step(
         dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt),
         collect_samples=True, bag_p_max=engine.bag_mask_p_max,
+        spontaneous_peep=engine._apl_pressure,
+        bellows_fraction=engine.circuit.bellows_fraction,
     )
 
 
@@ -234,24 +264,36 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
     circuit = engine.circuit
     delivered_setting = engine.vaporizer.step(dt, circuit.fgf_total())
     circuit.vaporizer_setting = delivered_setting
-    circuit.vaporizer_on = delivered_setting > 0.0
+    circuit.vaporizer_on = engine.vaporizer.state.is_on and engine.config.sevoflurane_enabled
 
     fi_sevo, fi_n2o = sync_inspired_gas(engine)
     circuit_share = mask_circuit_share(engine)
     if circuit_share <= 0.0:
-        uptake_o2 = uptake_sevo = uptake_n2o = 0.0
+        uptake_o2 = uptake_sevo = uptake_n2o = uptake_n2 = rebreathed_n2 = 0.0
     else:
         airway = engine.airway_status
         va = max(0.0, engine.state.va) if airway.patency > 0.0 else 0.0
         va_circuit = va * circuit_share
         composition = circuit.composition
+        resp = engine.resp
+        ventilation = max(0.0, va * (1.0 - 0.6 * clamp01(airway.vq_mismatch)))
+        mixing = ventilation * dt / (120.0 * resp.gas_volume_l) if resp.gas_volume_l > 0.0 else 0.0
+        alveolar_n2 = resp.alveolar_fn2
         uptake_sevo = (composition.fi_agent - engine.pk_sevo.state.p_alv) * va_circuit
         uptake_n2o = (composition.fin2o - engine.pk_n2o.state.p_alv) * va_circuit
-        uptake_o2 = circuit_share * engine.resp.oxygen_exchange_l_min(
+        uptake_n2 = (
+            circuit_share * ventilation * resp._btps_to_stpd
+            * (composition.fin2 - alveolar_n2) / (1.0 + mixing)
+        )
+        rebreathed_share = clamp01(1.0 - circuit.fgf_total() / max(0.1, va_circuit)) if va_circuit > 0.0 else 0.0
+        rebreathed_n2 = uptake_n2 * rebreathed_share
+        apneic_limit = circuit.deliverable_flow(dt) if circuit_share >= 0.999 else None
+        uptake_o2 = circuit_share * resp.oxygen_exchange_l_min(
             composition.fio2, va,
             airway.patency, airway.vq_mismatch, dt,
+            apneic_flow_limit_l_min=apneic_limit,
         )
-    circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o)
+    circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o, uptake_n2, rebreathed_n2)
     return fi_sevo, fi_n2o
 
 
@@ -260,8 +302,10 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
     state = engine.state
     aeration = engine.aeration
     va = state.va if engine.airway_status.patency > 0.0 else 0.0
+    n2o_uptake = engine.pk_n2o.alveolar_uptake_l_min(co_curr, aeration.shunt_fraction)
     engine.pk_sevo.step(dt, fi_sevo, va, co_curr, temp_c=state.temp_c,
-                        lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction)
+                        lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction,
+                        companion_uptake_l_min=n2o_uptake)
     engine.pk_n2o.step(dt, fi_n2o, va, co_curr, temp_c=state.temp_c,
                        lung_volume_l=aeration.frc, shunt_fraction=aeration.shunt_fraction)
     sync_inhaled_agents(engine)
@@ -331,41 +375,58 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
     """Update airway obstruction/bronchospasm/laryngospasm state."""
     state = engine.state
     tol = engine._tol_current
-    # Laryngoscopy can provoke laryngospasm; the sympathetic response outlasts it.
-    stim_active = (
-        engine.auto_laryngospasm_enabled
-        and engine.disturbance_active
+    # Laryngoscopy or light extubation can provoke laryngospasm; an aborted
+    # fully awake intubation stops at oropharyngeal gagging before the glottis.
+    dist_stim = (
+        engine.disturbance_active
         and engine.disturbances.stimulates_airway(state.time - engine.disturbance_start_time)
     )
+    intub_stim = (
+        engine.intubation_start_time is not None
+        and state.loc >= 0.08
+        and engine.intubation_stimulus.stimulates_airway(state.time - engine.intubation_start_time)
+    )
+    extub_stim = state.time < engine._extubation_stimulus_until
+    stim_active = engine.auto_laryngospasm_enabled and (dist_stim or intub_stim or extub_stim)
 
     depolarizing_strength = succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True)
     muscle_factor = central_muscle_strength(engine)
 
     airway_tuning = engine.airway_tuning
+    splint_pressure = 0.0
+    if state.airway_mode == AirwayType.MASK:
+        vent = engine.vent
+        if vent.is_on:
+            splint_pressure = vent.settings.peep
+            if vent.settings.mode != "CPAP":
+                splint_pressure = max(splint_pressure, vent.monitors.paw_mean_recent)
+        elif engine.bag_mask_active:
+            splint_pressure = vent.monitors.paw_mean_recent
+        else:
+            splint_pressure = engine._apl_pressure
+        splint_pressure *= engine.mask_seal
+
     laryng_target = 0.0
     if state.airway_mode != AirwayType.ETT and stim_active:
         light_factor = clamp01(1.0 - tol)
         laryng_target = clamp01(light_factor * muscle_factor)
 
-    tau = airway_tuning.laryngospasm_tau_on if laryng_target > engine.laryngospasm_severity else airway_tuning.laryngospasm_tau_off
+    stage_ii_sustained = (
+        state.loc >= 0.20
+        and muscle_factor > 0.2
+        and splint_pressure < 10.0
+        and tol < 0.65
+    )
+    tau_off = 40.0 if stage_ii_sustained else airway_tuning.laryngospasm_tau_off
+    tau = airway_tuning.laryngospasm_tau_on if laryng_target > engine.laryngospasm_severity else tau_off
     if tau > 0:
-        engine.laryngospasm_severity += (laryng_target - engine.laryngospasm_severity) * (dt / tau)
+        engine.laryngospasm_severity += (laryng_target - engine.laryngospasm_severity) * -math.expm1(-dt / tau)
     engine.laryngospasm_severity = clamp01(engine.laryngospasm_severity)
 
     upper_obstruction = engine.airway_obstruction_manual
     if state.airway_mode != AirwayType.ETT:
         # Mask CPAP or positive-pressure breaths hold the pharynx open. Mean
         # pressure over recent breaths includes any unassisted breaths between them.
-        splint_pressure = 0.0
-        if state.airway_mode == AirwayType.MASK:
-            vent = engine.vent
-            if vent.is_on:
-                splint_pressure = vent.settings.peep
-                if vent.settings.mode != "CPAP":
-                    splint_pressure = max(splint_pressure, vent.monitors.paw_mean_recent)
-            elif engine.bag_mask_active:
-                splint_pressure = vent.monitors.paw_mean_recent
-            splint_pressure *= engine.mask_seal
         relief = clamp01(splint_pressure / airway_tuning.collapse_relief_pressure)
         unconscious = loss_of_response(engine, ketamine=False)
         tone = max(0.1, engine.tof_pd.pharyngeal_tone_fraction(state.mac_sevo, state.mac_n2o) * depolarizing_strength)
@@ -374,10 +435,15 @@ def update_airway_complications(engine: SimulationEngine, dt: float) -> None:
     upper_obstruction = clamp01(upper_obstruction)
 
     bronch = 1.0 - (1.0 - engine.bronchospasm_manual) * (1.0 - engine.anaphylaxis.severity)
-    # Epinephrine relieves bronchospasm but not upper-airway obstruction.
-    bronchodilation = airway_tuning.epi_bronchodilation_max * hill_function(
-        state.epi_ce, airway_tuning.epi_bronchodilation_c50, 1.0
+    # Epinephrine relieves bronchospasm via beta-2 receptors (antagonized by
+    # non-selective labetalol); sevoflurane and ketamine add direct bronchodilation.
+    beta2_dr = 1.0 + max(0.0, state.labetalol_ce) / engine.hemo.config.labetalol_kb_beta
+    epi_dil = airway_tuning.epi_bronchodilation_max * hill_function(
+        state.epi_ce, airway_tuning.epi_bronchodilation_c50 * beta2_dr, 1.0
     )
+    sevo_dil = 0.28 * hill_function(state.mac_sevo, 0.8, 1.5)
+    ket_dil = 0.32 * hill_function(state.ketamine_ce, 1.0, 1.5)
+    bronchodilation = 1.0 - (1.0 - epi_dil) * (1.0 - sevo_dil) * (1.0 - ket_dil)
     bronch *= 1.0 - bronchodilation
     bronch = clamp01(bronch)
 
@@ -435,13 +501,13 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         hemo_cfg.paw_transmission * engine.current_mean_paw - hemo_cfg.effort_transmission * effort_pressure
     )
 
-    if vent_active:
-        peep_scale = engine.mask_seal if state.airway_mode == AirwayType.MASK else 1.0
-        total_peep_effect = engine.resp_mech.peep * peep_scale + spirometry.auto_peep
-    else:
-        total_peep_effect = spirometry.auto_peep if bag_mask_active else 0.0
+    applied_peep = (
+        engine.resp_mech.peep if vent_active else (0.0 if bag_mask_active else engine._apl_pressure)
+    ) * mask_seal_factor(engine)
+    total_peep_effect = applied_peep + spirometry.auto_peep
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
+    mac_n2o = engine.pk_n2o.state.p_alv * 100.0 / engine.pk_n2o.mac_age
     resp_state = step_respiration(engine, dt, state.co)
     step_lactate(engine, dt)
 
@@ -451,6 +517,7 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         dt, state.hr, state.sbp, state.dbp, max(state.lap, hemo.state.venous_pressure), hemo.hb_conc,
         resp_state.sao2, hemo.myocardial_hypoxia,
         fibrillating=hemo.rhythm_type == RhythmType.VFIB, compressions=hemo.compressions,
+        venous_pressure=hemo.state.venous_pressure,
     )
 
     # Plasma remifentanil and propofol reach hemodynamic effect sites inside the model;
@@ -493,12 +560,17 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         sao2=resp_state.sao2,
         remifentanil_cp=state.remi_cp,
         ph=resp_state.ph,
+        ce_midazolam=state.midazolam_ce,
+        ce_etomidate=state.etomidate_ce,
+        mac_n2o=mac_n2o,
     )
     hemo.fluids.step(
         dt, ph=resp_state.ph, paco2=resp_state.pa_co2, resting_paco2=engine.resp.paco2_setpoint,
         renal_function=engine.patient.renal_function, renal_perfusion=hemo.renal_perfusion,
         hepatic_function=engine.patient.hepatic_function, oxygen_supply=engine.resp.oxygen_supply_fraction,
         epinephrine=state.epi_ce,
+        succinylcholine_ce=state.succinylcholine_ce,
+        mh_severity=engine.malignant_hyperthermia.severity,
     )
     hypoxia, energy_failure, silent = myocardial_substrate(engine)
     rhythm = engine.arrhythmias.step(
@@ -506,6 +578,8 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         energy_failure=energy_failure, electrically_silent=silent,
         perfusing=hemo_state.intrinsic_co > ARREST_CO_L_MIN,
         lidocaine=engine.pk["lidocaine"].state.ce_cv, amiodarone=state.amiodarone_ce,
+        hyperkalemia=hemo.hyperkalemia_arrhythmia,
+        hypothermia=clamp01((29.5 - state.temp_c) / 3.5),
     )
     if rhythm != hemo.rhythm_type:
         hemo.rhythm_type = rhythm
@@ -517,11 +591,13 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
 
 
 def myocardial_substrate(engine: SimulationEngine) -> tuple[float, float, bool]:
-    """Myocardial hypoxia, energy failure, and electrical silence, including lidocaine toxicity."""
-    coronary, toxicity = engine.hemo.coronary, engine.toxicity
-    return (max(engine.hemo.myocardial_hypoxia, toxicity.cardiac_stress),
-            max(coronary.energy_failure, toxicity.conduction_block),
-            coronary.electrically_silent or toxicity.electrically_silent)
+    """Myocardial hypoxia, energy failure, and electrical silence, including lidocaine and K+ toxicity."""
+    coronary, toxicity, hemo = engine.hemo.coronary, engine.toxicity, engine.hemo
+    return (
+        max(hemo.myocardial_hypoxia, toxicity.cardiac_stress),
+        coronary.energy_failure,
+        coronary.electrically_silent or toxicity.electrically_silent or hemo.hyperkalemia_block >= 0.95,
+    )
 
 
 def step_lactate(engine: SimulationEngine, dt: float) -> None:
@@ -561,6 +637,8 @@ def check_cardiac_arrest(engine: SimulationEngine, dt: float) -> None:
 
     if rhythm in (RhythmType.VFIB, RhythmType.ASYSTOLE):
         reason = rhythm.value
+    elif rhythm == RhythmType.VTACH:
+        reason = "Pulseless ventricular tachycardia"
     elif state.hr < ARREST_HR_BPM:
         reason = f"Extreme bradycardia (HR < {ARREST_HR_BPM:g} bpm)"
     else:

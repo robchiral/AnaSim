@@ -1,6 +1,7 @@
 import pytest
 
 from anasim.core.clinical_actions import check_intubation
+from anasim.core.state import SimulationConfig
 from anasim.physiology.cerebral import CerebralModel
 
 
@@ -91,3 +92,19 @@ def test_oxygenated_hypoventilation_impairs_response_and_ventilation_reverses_it
     for _ in range(1200):
         engine.step(1)
     assert state.pa_co2 < 50 and state.loc < 0.01
+
+
+def test_elderly_arrest_bis_delay_and_anemic_hypotension_dysfunction(engine_factory):
+    """Elderly BIS smoothing still reflects arrest ischemia promptly; severe anemia
+    compounds cerebral oxygen delivery failure during moderate hypotension.
+    """
+    elderly = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True, age=85)
+    elderly.set_rhythm("VFIB")
+    for _ in range(70):
+        elderly.step(0.5)
+    assert elderly.state.bis < 10.0
+
+    anemic, normal_hb = CerebralModel(6.0), CerebralModel(14.0)
+    anemic.step(120.0, 34.0, 6.0, 95.0, 40.0, 7.4)
+    normal_hb.step(120.0, 34.0, 14.0, 95.0, 40.0, 7.4)
+    assert anemic.dysfunction > normal_hb.dysfunction + 0.15

@@ -86,7 +86,8 @@ class Defibrillator:
 
 def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: float,
                   electrically_silent: bool, vulnerable: bool, antiarrhythmic: float,
-                  rng: np.random.Generator) -> RhythmType:
+                  rng: np.random.Generator, hypoxia: float = 0.0,
+                  perfusing: bool = True) -> RhythmType:
     """Return the rhythm after a discharge.
 
     A terminated arrhythmia becomes sinus rhythm; whether it perfuses depends on
@@ -96,8 +97,9 @@ def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: flo
         return RhythmType.ASYSTOLE
     if rhythm == RhythmType.ASYSTOLE:
         return rhythm
-    if rhythm == RhythmType.VFIB or (rhythm == RhythmType.VTACH and not synchronized):
-        success = DEFIBRILLATION_SUCCESS * (1.0 - FINE_VF_SUCCESS_LOSS * energy_failure)
+    if rhythm == RhythmType.VFIB or (rhythm == RhythmType.VTACH and not perfusing):
+        depletion = max(energy_failure, 0.8 * clamp01(hypoxia))
+        success = DEFIBRILLATION_SUCCESS * (1.0 - FINE_VF_SUCCESS_LOSS * depletion)
         # Either drug reduced the shocks needed (Kudenchuk 2016). The effect size is a calibration.
         success += 0.5 * (1.0 - success) * clamp01(antiarrhythmic)
         return RhythmType.SINUS if rng.random() < success else rhythm

@@ -24,8 +24,8 @@ def create_sepsis_response() -> Scenario:
 
     def start(engine) -> None:
         start_map.record(engine)
+        engine.sepsis.onset_rate = 1.0 / 60.0
         engine.start_sepsis()
-        engine.sepsis.severity = 1.0
 
     steps = [
         create_observe_step("sepsis"),

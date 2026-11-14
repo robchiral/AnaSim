@@ -290,3 +290,14 @@ class TestEngineTCI:
         self._peak_propofol_ce(engine, 300)
         engine.enable_tci("propofol", 3.0)
         assert self._peak_propofol_ce(engine, 600) < 1.03 * 3.0
+
+    def test_rocuronium_and_phenylephrine_tci_reach_targets_in_obesity(self, engine_factory, advance_time):
+        engine = engine_factory(
+            config=SimulationConfig(mode="steady_state", tci_enabled=True, rng_seed=1),
+            start=True, age=40, weight=150.0, height=165.0, sex="female",
+        )
+        engine.enable_tci("roc", 4.5)
+        engine.enable_tci("phenyl", 100.0)
+        advance_time(engine, 210.0, dt=2.0)
+        assert engine.state.tof < 5.0
+        assert engine.pk["phenyl"].state.c1 > 90.0

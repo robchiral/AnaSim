@@ -31,10 +31,11 @@ class CerebralModel:
 
     def step(self, dt: float, map_mmhg: float, hb: float, saturation: float,
              pa_co2: float, ph: float) -> None:
-        # Normal supply is maintained above MAP 50. A modest extraction/flow
-        # reserve compensates for reduced oxygen content before function fails.
+        # Normal supply is maintained above MAP 50. Partial chronic CBF adaptation
+        # mitigates mild anemia, while severe baseline anemia reduces reserve.
         pressure = clamp01((map_mmhg - 10.0) / 40.0)
-        oxygen = max(0.0, hb * saturation) / (self.baseline_hb * 98.0)
+        reference_hb = max(self.baseline_hb, 13.0 - 0.35 * max(0.0, 13.0 - self.baseline_hb))
+        oxygen = max(0.0, hb * saturation) / (reference_hb * 98.0)
         supply = pressure * min(1.0, 1.5 * oxygen)
         self.tissue_oxygen += (supply - self.tissue_oxygen) * -math.expm1(-dt / self.TISSUE_OXYGEN_TAU_S)
         target = clamp01((0.6 - self.tissue_oxygen) / 0.25)

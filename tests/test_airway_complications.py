@@ -1,6 +1,8 @@
+import copy
+
 import pytest
 
-from anasim.core.state import SimulationConfig
+from anasim.core.state import AirwayType, SimulationConfig
 
 
 @pytest.mark.parametrize("enabled", [True, False])
@@ -215,6 +217,7 @@ def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(e
     volumes = {}
     obstructions = {}
     gases = {}
+    pressures = {}
     for seal in (1.0, 0.8, 0.4, 0.0):
         engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.1), start=True)
         engine.give_drug_bolus("sugammadex", 4.0 * engine.patient.weight)
@@ -228,10 +231,13 @@ def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(e
         volumes[seal] = engine.state.vt / pbw
         obstructions[seal] = engine.state.airway_obstruction
         gases[seal] = (engine.state.fio2, engine.state.display_etco2)
+        pressures[seal] = engine.state.paw_peak
+        assert engine.aeration.pressure_transmission == pytest.approx(seal)
     assert 6.3 < volumes[1.0] < 10.9
     assert volumes[0.8] == pytest.approx(0.8 * volumes[1.0], rel=0.03)
     assert 1.0 < volumes[0.4] < 4.0
     assert volumes[0.0] == 0.0
+    assert pressures[0.4] < 0.5 * pressures[1.0]
     assert obstructions[1.0] == 0.0
     assert 0.1 < obstructions[0.4] < obstructions[0.0]
     # Pressurized breaths leak outward, so only circuit gas is inspired. Too
@@ -301,3 +307,33 @@ def test_high_airway_pressure_opens_facemask_leak_above_seal_threshold(engine_fa
     assert outcomes[1.0, "Mask"][0] > 25.0
     assert outcomes[1.0, "Mask"][1] < 0.9 * outcomes[1.0, "ETT"][1]
     assert outcomes[1.0, "Mask"][2] > outcomes[1.0, "ETT"][2] + 0.8
+
+
+def test_stage_ii_extubation_laryngospasm_and_bronchodilation(engine_factory, advance_time):
+    """Extubation at Stage II hypnosis provokes laryngospasm; epinephrine (blocked by
+    non-selective beta blockade) and ketamine relieve bronchospasm.
+    """
+    extub = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    extub.give_drug_bolus("propofol", 110.0)
+    advance_time(extub, 60.0, dt=0.5)
+    extub.state.airway_mode = AirwayType.ETT
+    extub.set_airway_mode("Mask")
+    advance_time(extub, 15.0, dt=0.5)
+    assert extub.laryngospasm_severity > 0.20
+
+    epi_free = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    epi_blocked = copy.deepcopy(epi_free)
+    epi_blocked.give_drug_bolus("labetalol", 40.0)
+    for model in (epi_free, epi_blocked):
+        model.set_bronchospasm(0.8)
+        advance_time(model, 60.0, dt=1.0)
+    ket_bronch = copy.deepcopy(epi_free)
+    before_ket = ket_bronch.state.bronchospasm
+    for model in (epi_free, epi_blocked):
+        model.give_drug_bolus("epi", 20.0)
+        advance_time(model, 30.0, dt=0.5)
+    assert epi_blocked.state.bronchospasm > epi_free.state.bronchospasm + 0.10
+
+    ket_bronch.give_drug_bolus("ketamine", 100.0)
+    advance_time(ket_bronch, 60.0, dt=1.0)
+    assert ket_bronch.state.bronchospasm < before_ket - 0.10

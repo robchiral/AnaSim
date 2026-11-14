@@ -271,7 +271,7 @@ def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile) -> Non
     for _ in range(steps):
         thermal = engine.thermal
         thermal.depth_index, thermal.metabolic_factor = thermal.depth_and_metabolism(
-            engine.patient.baseline_temp, engine.state.propofol_ce, engine.state.mac,
+            engine.patient.baseline_temp, projection_core.thermal_hypnotic_ce(engine), engine.state.mac,
         )
         runtime_core.update_pk_covariates(engine, engine.state.co)
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)

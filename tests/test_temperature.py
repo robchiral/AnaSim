@@ -70,3 +70,30 @@ def test_core_drop_after_induction(engine_factory):
     assert 37.0 - engine.state.temp_c == pytest.approx(1.6, abs=0.3)
     _advance(engine, 7200, dt=2.0)
     assert 37.0 - engine.state.temp_c == pytest.approx(2.8, abs=0.5)
+
+
+def test_obese_redistribution_cooling_sepsis_fever_and_hypothermic_bradycardia(engine_factory):
+    """Kurz 1995: obesity blunts first-hour redistribution cooling (~0.4-0.6 °C vs 1.6 °C);
+    sepsis elevates core temperature; severe hypothermia (<33 °C) depresses resting sinus HR.
+    """
+    obese = engine_factory(
+        config=SimulationConfig(tci_enabled=True, rng_seed=1),
+        start=True, age=40, weight=150.0, height=165.0, sex="female",
+    )
+    obese.set_airway_mode("ETT")
+    obese.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    obese.set_vent_power(True)
+    obese.enable_tci("propofol", 3.5)
+    obese.enable_tci("remi", 3.0)
+    _advance(obese, 3600, dt=4.0)
+    assert 0.30 < 37.0 - obese.state.temp_c < 0.80
+
+    sepsis = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    sepsis.start_sepsis()
+    _advance(sepsis, 1200, dt=2.0)
+    assert sepsis.state.temp_c > 37.12
+
+    cold = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, baseline_temp=27.0)
+    assert cold.state.hr < 55.0
+    cold.step(1.0)
+    assert cold.state.hr < 55.0

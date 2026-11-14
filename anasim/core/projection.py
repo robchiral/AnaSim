@@ -6,14 +6,17 @@ from typing import TYPE_CHECKING
 
 from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
 from anasim.patient.pd.anesthesia import (
+    ETOMIDATE_LOSS_OF_RESPONSE,
     LARYNGOSCOPY_INTENSITY,
     PROPOFOL_LOC_TRANSFER,
+    PROPOFOL_LOSS_OF_RESPONSE,
     opioid_controller_fraction,
     opioid_rate_fraction,
 )
 from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
 from anasim.physiology.malignant_hyperthermia import dantrolene_twitch_fraction
 
+from .constants import CMH2O_TO_MMHG
 from .drug_registry import DRUG_REGISTRY
 from .state import AirwayType, SimulationState
 from .utils import clamp, clamp01, hill_function
@@ -55,6 +58,11 @@ def assisted_positive_pressure(engine: SimulationEngine) -> bool:
     return (engine.vent.is_on and engine.vent.settings.mode != "CPAP") or engine.bag_mask_active
 
 
+def mask_seal_factor(engine: SimulationEngine) -> float:
+    """Mask pressure and volume transmission factor; 1.0 when not using a facemask."""
+    return engine.mask_seal if engine.state.airway_mode == AirwayType.MASK else 1.0
+
+
 def mask_circuit_share(engine: SimulationEngine) -> float:
     """Fraction of inspired or exchanged gas carried by the breathing circuit."""
     mode = engine.state.airway_mode
@@ -71,7 +79,11 @@ def mask_circuit_share(engine: SimulationEngine) -> float:
     supported = spirometry.mv_supported * (1.0 - mask_leak(engine))
     unsupported = max(0.0, spirometry.mv_exp - spirometry.mv_supported)
     if supported + unsupported <= 0.0:
-        pressurized = assisted_positive_pressure(engine) or (engine.vent.is_on and engine.vent.settings.peep > 0.0)
+        pressurized = (
+            assisted_positive_pressure(engine)
+            or (engine.vent.is_on and engine.vent.settings.peep > 0.0)
+            or engine._apl_pressure > 0.0
+        )
         return 1.0 if pressurized else seal
     return (supported + seal * unsupported) / (supported + unsupported)
 
@@ -186,11 +198,40 @@ def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY
     )
 
 
+def thermal_hypnotic_ce(engine: SimulationEngine) -> float:
+    """Propofol-equivalent Ce (mcg/mL) for thermoregulation and redistribution.
+
+    Kurz 1995 (Anesth Analg 81:393): 300 ng/mL plasma midazolam lowers the
+    shivering threshold by 0.6 °C (35.9 to 35.3 °C), far less than general anesthetics.
+    """
+    state = engine.state
+    etomidate = (
+        max(0.0, state.etomidate_ce)
+        * PROPOFOL_LOSS_OF_RESPONSE
+        * engine.bis.age_factor
+        / ETOMIDATE_LOSS_OF_RESPONSE
+    )
+    midaz = max(0.0, state.midazolam_ce)
+    return max(0.0, state.propofol_ce) + etomidate + 1.80 * midaz / (midaz + 150.0)
+
+
+def nmba_twitch_fraction(engine: SimulationEngine) -> float:
+    """Remaining peripheral T1 twitch fraction from neuromuscular blockers alone."""
+    s = engine.state
+    return (
+        (1.0 - engine.tof_pd.twitch_block(s.roc_ce, s.mac_sevo, s.mac_n2o))
+        * succinylcholine_twitch_fraction(s.succinylcholine_ce)
+    )
+
+
 def central_muscle_strength(engine: SimulationEngine) -> float:
     """Remaining central respiratory/airway strength after either muscle blocker."""
-    block = hill_function(engine.tof_pd.ce_central, engine.resp.c50_nmba, engine.resp.gamma_nmba)
+    state = engine.state
+    potentiation = engine.tof_pd.potentiation_factor(state.mac_sevo, state.mac_n2o)
+    nmba_gamma = engine.resp.gamma_nmba + 2.5 * clamp01(state.mac_sevo + 0.5 * state.mac_n2o)
+    block = hill_function(engine.tof_pd.ce_central / potentiation, engine.resp.c50_nmba, nmba_gamma)
     return clamp01(1.0 - block) * succinylcholine_twitch_fraction(
-        engine.state.succinylcholine_ce, central=True,
+        state.succinylcholine_ce, central=True,
     )
 
 
@@ -237,6 +278,7 @@ def sync_pk_state(engine: SimulationEngine) -> None:
         engine.pk["midazolam"].state.ce,
         engine.midazolam_c50,
         engine.bis.age_factor,
+        bis=True,
     ))
     state.hypnotic_response_ce = float(hypnotic_equivalent(
         engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
@@ -369,7 +411,26 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
     # Gas exchange uses recent exhaled breaths, so it lags at least one breath.
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if sealed else (0.0, 0.0)
     airway = engine.airway_status
-    peep_scale = engine.mask_seal if state.airway_mode == AirwayType.MASK else 1.0
+    peep_scale = mask_seal_factor(engine)
+    if dt <= 0.0:
+        engine._tracheal_fio2 = tracheal_fio2 = state.fio2
+    else:
+        assisted_breaths = sealed and (engine.vent.is_on or engine.bag_mask_active) and assisted_rr * assisted_vt_l > 0.05
+        spont_breaths = not engine.resp.state.apnea and state.va > 0.1
+        if assisted_breaths or spont_breaths or state.fio2 <= engine._tracheal_fio2:
+            engine._tracheal_fio2 = state.fio2
+        else:
+            # Without tidal breaths or prior denitrogenation, passive apneic mass
+            # flow (~0.2 L/min) must slowly displace nitrogen-filled upper-airway
+            # and anatomic dead space before fresh O2 reaches the carina.
+            patency = clamp01(airway.patency)
+            if patency > 0.0:
+                tau_apneic = 240.0 / max(0.1, patency)
+                engine._tracheal_fio2 += (state.fio2 - engine._tracheal_fio2) * -math.expm1(-dt / tau_apneic)
+        tracheal_fio2 = engine._tracheal_fio2
+    share = mask_circuit_share(engine)
+    inspired_fn2 = share * engine.circuit.composition.fin2 + (1.0 - share) * 0.79
+    apneic_limit = engine.circuit.deliverable_flow_l_min if sealed and share >= 0.999 else None
     return engine.resp.step(
         dt,
         ce_prop=hypnotic_equivalent(
@@ -388,10 +449,13 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
             variability=engine.patient.variability.opioid_rate,
         ),
         mech_vent_mv=assisted_rr * assisted_vt_l,
-        fio2=state.fio2,
-        ce_roc=engine.tof_pd.ce_central,
-        neuromuscular_strength=(succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True)
-                               * (1.0 - engine.resp_mech.effort.muscle.fatigue)),
+        fio2=tracheal_fio2,
+        ce_roc=engine.tof_pd.ce_central / engine.tof_pd.potentiation_factor(state.mac_sevo, state.mac_n2o),
+        neuromuscular_strength=(
+            succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True)
+            * (1.0 - engine.resp_mech.effort.muscle.fatigue)
+            * engine.malignant_hyperthermia.respiratory_excursion_fraction
+        ),
         mac_sevo=state.mac_sevo,
         mech_rr=assisted_rr,
         mech_vt_l=assisted_vt_l,
@@ -411,6 +475,11 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         airway_pressure=engine.resp_mech.peep * peep_scale,
         # Brainstem drive persists until cerebral failure is nearly complete.
         central_drive_fraction=(1.0 - engine.cerebral.dysfunction ** 8) * engine.toxicity.respiratory_drive,
+        ketamine_cp=engine.pk["ketamine"].state.c1,
+        mac_n2o=state.mac_n2o,
+        n2o_uptake_l_min=engine.pk_n2o.alveolar_uptake_l_min(cardiac_output, engine.aeration.shunt_fraction),
+        fin2=inspired_fn2,
+        apneic_flow_limit_l_min=apneic_limit,
     )
 
 
@@ -426,6 +495,8 @@ def build_snapshot_from_models(
     )
     vent = engine.vent
     spirometry = vent.monitors
+    seal_scale = mask_seal_factor(engine)
+    paw_now = vent.paw * seal_scale if sealed else 0.0
     return PhysiologyStepState(
         hemo_state=hemo_state,
         resp_state=resp_state,
@@ -433,13 +504,13 @@ def build_snapshot_from_models(
         rr_display=rr_display,
         vt_display_ml=vt_display_ml,
         mv_display_l_min=mv_display_l_min,
-        paw_display=vent.paw if sealed else 0.0,
-        flow_display=vent.flow if sealed else 0.0,
-        volume_display=vent.volume if sealed else 0.0,
-        paw_peak=spirometry.paw_peak if sealed else 0.0,
-        paw_plat=spirometry.paw_plat if assisted else math.nan,
-        paw_mean=spirometry.paw_mean if sealed else 0.0,
-        peep=spirometry.peep if assisted else 0.0,
+        paw_display=paw_now,
+        flow_display=vent.flow * seal_scale if sealed else 0.0,
+        volume_display=vent.volume * seal_scale if sealed else 0.0,
+        paw_peak=max(spirometry.paw_peak * seal_scale, paw_now) if sealed else 0.0,
+        paw_plat=spirometry.paw_plat * seal_scale if assisted else math.nan,
+        paw_mean=max(spirometry.paw_mean, engine._apl_pressure) * seal_scale if sealed else 0.0,
+        peep=(spirometry.peep if assisted else engine._apl_pressure) * seal_scale if sealed else 0.0,
         compliance_dyn=spirometry.compliance_dyn if assisted else math.nan,
     )
 
@@ -457,7 +528,11 @@ def project_runtime_physiology(engine: SimulationEngine, snapshot: PhysiologySte
 def sync_monitor_baselines(engine: SimulationEngine) -> None:
     """Derive monitor baselines from the current physiologic snapshot."""
     state = engine.state
-    bis_val = clamp(engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo), 0.0, 100.0)
+    bis_val = clamp(
+        engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo, state.ketamine_ce),
+        0.0,
+        100.0,
+    )
     loc_val = loss_of_response(engine)
     tol_val = stimulus_tolerance(engine)
     engine._tol_current = tol_val
@@ -491,11 +566,14 @@ def sync_state_from_models(engine: SimulationEngine) -> None:
     state = engine.state
     state.temp_c = float(engine.patient.baseline_temp)
     sync_inspired_gas(engine)
+    engine._tracheal_fio2 = state.fio2
     sync_inhaled_agents(engine)
     sync_pk_state(engine)
     hemo_state = engine.hemo.state
     resp_state = step_respiration(engine, 0.0, hemo_state.co)
+    hemo_cfg = engine.hemo.config
+    pit_estimate = hemo_cfg.pit_0 + CMH2O_TO_MMHG * hemo_cfg.paw_transmission * engine.current_mean_paw
     project_runtime_physiology(engine, build_snapshot_from_models(
-        engine, hemo_state, resp_state, pit_estimate=engine.hemo.config.pit_0,
+        engine, hemo_state, resp_state, pit_estimate=pit_estimate,
     ))
     sync_monitor_baselines(engine)

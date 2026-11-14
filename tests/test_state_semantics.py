@@ -32,6 +32,11 @@ def test_awake_initial_snapshot_uses_patient_baselines():
 
     engine.start()
     engine.step(0.1)
+    assert engine.state.alarms == {}
+
+    engine.give_drug_bolus("roc", 50.0)
+    for _ in range(600):
+        engine.step(0.1)
     snapshot = engine.get_latest_state()
     assert snapshot.alarms["BIS"]["high"]
     snapshot.alarms["BIS"]["high"] = False

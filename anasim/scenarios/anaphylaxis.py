@@ -27,8 +27,8 @@ def _prepare(engine) -> None:
 
 
 def _start(engine) -> None:
+    engine.anaphylaxis.onset_rate = 1.0 / 45.0
     engine.start_anaphylaxis()
-    engine.anaphylaxis.severity = 1.0
 
 
 def _require_bronchospasm_improved(engine) -> tuple[bool, str]:

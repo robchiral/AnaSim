@@ -5,6 +5,8 @@ import json
 import pytest
 
 from anasim.core.action_log import ACTION_AIRWAY, ACTION_INTUBATION_ATTEMPT
+from anasim.core.clinical_actions import check_intubation, check_shock
+from anasim.core.enums import RhythmType
 from anasim.core.projection import loss_of_response
 from anasim.core.runtime import stimulus_effects
 from anasim.web import WebSession
@@ -137,6 +139,17 @@ def test_small_hypnotic_dose_does_not_silence_an_awake_paralysis_warning():
     command(session, "drug_bolus", key="propofol", amount=5)
     result = command(session, "drug_bolus", key="roc", amount=42)
     assert result["feedback"]["code"] == "awake_neuromuscular_block"
+
+    light = WebSession({"mode": "awake"}).engine
+    light.start()
+    light.give_drug_bolus("propofol", 50.0)
+    advance(light, 45.0)
+    feedback = check_intubation(light)
+    assert feedback is not None and feedback.blocked and feedback.code == "awake_intubation"
+
+    light.hemo.rhythm_type = RhythmType.VFIB
+    light.step(0.5)
+    assert check_shock(light) is None
 
 
 @pytest.mark.parametrize("ce", [1.8, 2.2, 3.0])

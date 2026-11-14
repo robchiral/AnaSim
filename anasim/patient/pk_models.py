@@ -261,7 +261,18 @@ class MammillaryPK:
         return max_seconds / 60.0
 
 
-def _from_rate_constants(v1, k10, k12, k21, k13, k31):
+class _CompartmentParams(TypedDict):
+    v1: float
+    cl1: float
+    v2: float
+    cl2: float
+    v3: float
+    cl3: float
+
+
+def _from_rate_constants(
+    v1: float, k10: float, k12: float, k21: float, k13: float, k31: float,
+) -> _CompartmentParams:
     """Convert published micro-rate constants to volumes and clearances."""
     cl2 = k12 * v1
     cl3 = k13 * v1
@@ -283,12 +294,14 @@ def organ_clearance_scaler(patient: Patient, hepatic_fraction: float = 0.0, rena
     return hepatic_fraction * hepatic + renal_fraction * renal + other
 
 
-def renal_capacity_scaling(patient: Patient, renal_fraction: float) -> tuple[float, float]:
-    """Clearance scale for renal capacity, and the renal share of the scaled clearance.
+def renal_capacity_scaling(
+    patient: Patient, renal_fraction: float, hepatic_fraction: float = 0.0,
+) -> tuple[float, float]:
+    """Clearance scale for organ capacity, and the renal share of the scaled clearance.
 
     Renal perfusion acts only on the renal share left after the capacity change.
     """
-    scale = organ_clearance_scaler(patient, renal_fraction=renal_fraction)
+    scale = organ_clearance_scaler(patient, hepatic_fraction=hepatic_fraction, renal_fraction=renal_fraction)
     return scale, renal_fraction * patient.renal_clearance_factor / scale
 
 
@@ -435,21 +448,33 @@ class RemifentanilPKEleveld(MammillaryPK):
 
 # Fentanyl, midazolam, etomidate, ketamine, and lidocaine ----------------------
 
+def _fentanyl_pk_mass(weight_kg: float) -> float:
+    """Shibutani 2004 pharmacokinetic mass (kg) for fentanyl in lean and obese adults."""
+    return 52.0 / (1.0 + (196.4 * math.exp(-0.025 * weight_kg) - 53.66) / 100.0)
+
+
 class FentanylPK(MammillaryPK):
     """Bae et al. 2020 allometric three-compartment model (ng/mL).
 
-    Volumes scale with (weight/70)^1.23 and clearances with (weight/70)^0.313;
-    ke0 0.147 min^-1 is from Scott and Stanski 1987. Bae studied patients during
-    surgery under propofol-remifentanil anesthesia.
+    Volumes scale with (weight/70)^1.23 up to 70 kg and Shibutani 2004
+    pharmacokinetic mass above 70 kg; clearances scale with (weight/70)^0.313
+    up to 70 kg, pharmacokinetic mass in overweight/obesity (Shibutani 2004),
+    and hepatic function. ke0 0.147 min^-1 is from Scott and Stanski 1987.
     """
 
     def __init__(self, patient: Patient):
-        volume = (patient.weight / 70.0) ** 1.23
-        flow = (patient.weight / 70.0) ** 0.313 / ANESTHETIZED_OUTPUT
+        if patient.weight > 70.0:
+            pk_size = _fentanyl_pk_mass(patient.weight) / _fentanyl_pk_mass(70.0)
+            volume = pk_size ** 1.23
+            flow = pk_size / ANESTHETIZED_OUTPUT
+        else:
+            volume = (patient.weight / 70.0) ** 1.23
+            flow = (patient.weight / 70.0) ** 0.313 / ANESTHETIZED_OUTPUT
+        hepatic_scale = organ_clearance_scaler(patient, hepatic_fraction=0.75)
         eta = patient.variability.fentanyl
         super().__init__(
             v1=10.1 * volume * eta.v1,
-            cl1=0.704 * flow * eta.cl,
+            cl1=0.704 * flow * hepatic_scale * eta.cl,
             v2=26.5 * volume * eta.v2,
             cl2=2.38 * flow * eta.q2,
             v3=206.0 * volume * eta.v3,
@@ -458,17 +483,54 @@ class FentanylPK(MammillaryPK):
         )
 
 
+def _meissner_opioid_params(
+    patient: Patient,
+    v1_ref: float,
+    k10: float,
+    k12: float,
+    k21: float,
+    k13: float,
+    k31: float,
+    *,
+    hepatic_fraction: float,
+    renal_fraction: float,
+) -> tuple[_CompartmentParams, float]:
+    male = patient.sex == "male"
+    size = _janmahasatian_ffm(patient.weight, patient.height, male) / _janmahasatian_ffm(70.0, 170.0, male)
+    rate_scale = size ** -0.25
+    age_scale = max(0.5, 1.0 - 0.006 * max(0.0, patient.age - 40.0))
+    organ_scale, active_renal = renal_capacity_scaling(
+        patient, renal_fraction, hepatic_fraction=hepatic_fraction
+    )
+    params = _from_rate_constants(
+        v1_ref * size,
+        k10 / 60 * rate_scale,
+        k12 / 60 * rate_scale,
+        k21 / 60 * rate_scale,
+        k13 / 60 * rate_scale,
+        k31 / 60 * rate_scale,
+    )
+    params["cl1"] *= age_scale * organ_scale
+    return params, active_renal
+
+
 class MorphinePK(MammillaryPK):
     """Meissner 2025 Table 1 PK and Olofsen 2026 effect sites, ng/mL (input mcg).
 
     Olofsen's shared parameters are divided by each drug factor for morphine
-    and multiplied by it for hydromorphone.
+    and multiplied by it for hydromorphone. Volumes scale with Janmahasatian
+    fat-free mass and rate constants with FFM**-0.25 around a 70 kg, 170 cm
+    reference (Meissner 2025), with age and hepatic/renal clearance scaling.
     """
 
     def __init__(self, patient: Patient):
-        params = _from_rate_constants(20.0, 5.1 / 60, 4.3 / 60, 1.3 / 60, 1.2 / 60, 0.306 / 60)
+        params, renal_fraction = _meissner_opioid_params(
+            patient, 20.0, 5.1, 4.3, 1.3, 1.2, 0.306,
+            hepatic_fraction=0.65, renal_fraction=0.35,
+        )
         super().__init__(
             **params, **_NO_CO_COVARIATE,
+            renal_fraction=renal_fraction,
             ke0=math.log(2.0) / (0.73 / 1.02 * 60.0),
             additional_effect_sites=(
                 ("ce_resp", math.log(2.0) / (3.3 / 0.694 * 60.0)),
@@ -481,10 +543,14 @@ class HydromorphonePK(MammillaryPK):
     """Meissner 2025 Table 1 PK with its sex factor and Olofsen 2026 sites, ng/mL."""
 
     def __init__(self, patient: Patient):
-        v1 = 13.6 / 0.908 if patient.sex == "male" else 13.6 * 0.908
-        params = _from_rate_constants(v1, 6.1 / 60, 6.6 / 60, 1.6 / 60, 1.6 / 60, 0.41 / 60)
+        v1_ref = 13.6 / 0.908 if patient.sex == "male" else 13.6 * 0.908
+        params, renal_fraction = _meissner_opioid_params(
+            patient, v1_ref, 6.1, 6.6, 1.6, 1.6, 0.41,
+            hepatic_fraction=0.85, renal_fraction=0.15,
+        )
         super().__init__(
             **params, **_NO_CO_COVARIATE,
+            renal_fraction=renal_fraction,
             ke0=math.log(2.0) / (0.73 * 1.02 * 60.0),
             additional_effect_sites=(
                 ("ce_resp", math.log(2.0) / (3.3 * 0.694 * 60.0)),
@@ -696,6 +762,12 @@ class LidocainePK(MammillaryPK):
 
 # Rocuronium -------------------------------------------------------------------
 
+def rocuronium_adjusted_weight(patient: Patient) -> float:
+    """Adjusted dosing/distribution weight (kg) for rocuronium in obesity (Meyhoff 2009)."""
+    pbw = patient.predicted_body_weight()
+    return pbw + 0.30 * (patient.weight - pbw) if patient.bmi > 28.0 and patient.weight > pbw else patient.weight
+
+
 class RocuroniumPK(MammillaryPK):
     """Kleijn 2011 two-compartment population PK (446 subjects, 1-91 years).
 
@@ -705,14 +777,15 @@ class RocuroniumPK(MammillaryPK):
     (Sasakawa 2016); clearance at 65-88 years was 25% lower (Varrique 2016).
     Clearance is mainly hepatic uptake and biliary excretion: 12-22% of 0.6
     mg/kg appears unchanged in urine, renal failure changes clearance little,
-    and cirrhosis enlarges the volumes 30-40% (Khuenl-Brady 1996). The effect
-    site is Kleijn's, without sevoflurane.
+    and cirrhosis enlarges the volumes 30-40% (Khuenl-Brady 1996). Obesity
+    scaling follows ideal/adjusted body weight (Meyhoff 2009). The effect site
+    is Kleijn's, without sevoflurane.
     """
 
     RENAL_FRACTION = 0.2
 
     def __init__(self, patient: Patient):
-        size = patient.weight / 70.0
+        size = rocuronium_adjusted_weight(patient) / 70.0
         age = patient.age
         crcl = patient.creatinine_clearance()
         params = {
@@ -722,7 +795,9 @@ class RocuroniumPK(MammillaryPK):
             "cl2": 0.279 * size**0.75,
         }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.4))
-        clearance_scale, renal_fraction = renal_capacity_scaling(patient, self.RENAL_FRACTION)
+        clearance_scale, renal_fraction = renal_capacity_scaling(
+            patient, self.RENAL_FRACTION, hepatic_fraction=0.7
+        )
         params["cl1"] *= clearance_scale
         # Kleijn's patients were anesthetized, so his parameters already reflect
         # anesthetic cardiac output.

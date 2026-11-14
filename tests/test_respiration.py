@@ -402,6 +402,39 @@ def test_opioids_reduce_the_equilibrated_co2_response(patient):
     assert moderate.mv < _breath(patient, paco2=70.0).mv
 
 
+def test_sevoflurane_spontaneous_ventilation_nmba_potentiation_and_apnea(engine_factory, advance_time):
+    """Pandit 1999 & Doi 1987: 0.1 MAC preserves MV, 1.4 MAC causes rapid shallow
+    breathing with PaCO2 ~55 mmHg and potentiates central rocuronium block, and >2 MAC causes apnea.
+    """
+    sevo_01 = engine_factory(config=SimulationConfig(sevoflurane_enabled=True, rng_seed=1), start=True)
+    sevo_14 = engine_factory(config=SimulationConfig(sevoflurane_enabled=True, rng_seed=1), start=True)
+    mv_awake = sevo_01.state.mv
+    for model, target_mac in ((sevo_01, 0.1), (sevo_14, 1.4)):
+        model.set_airway_mode("ETT")
+        model.set_fgf(6.0, 2.0)
+        for _ in range(450):
+            err = target_mac - model.state.mac_sevo
+            model.set_vaporizer(max(0.0, target_mac * 1.9 + 10.0 * err))
+            model.step(4.0)
+
+    assert sevo_01.state.mv > 0.94 * mv_awake
+    assert sevo_14.state.mv < mv_awake
+    assert sevo_14.state.rr > 18.0 and sevo_14.state.vt < 300.0
+    assert 50.0 < sevo_14.state.pa_co2 < 59.0
+
+    sevo_14.give_drug_bolus("roc", 35.0)
+    advance_time(sevo_14, 180.0, dt=1.0)
+    assert sevo_14.state.tof < 5.0 and sevo_14.state.apnea is True
+
+    sevo_01.set_vent_power(True)
+    sevo_01.set_fgf(8.0, 0.0)
+    sevo_01.set_vaporizer(8.0)
+    advance_time(sevo_01, 480.0, dt=2.0)
+    sevo_01.set_vent_power(False)
+    advance_time(sevo_01, 30.0, dt=1.0)
+    assert sevo_01.state.mac_sevo > 2.0 and sevo_01.state.apnea is True
+
+
 class TestOxygenStores:
     """Apneic desaturation follows lung and blood O2 stores (Benumof 1997)."""
 
@@ -510,6 +543,7 @@ class TestOxygenStores:
 
     def test_apneic_oxygenation_through_patent_airway(self, engine_factory):
         endpoints = []
+        empty_bag = None
         for obstruction in (0.0, 1.0):
             engine = engine_factory(start=True)
             engine.set_airway_mode("Mask")
@@ -520,6 +554,8 @@ class TestOxygenStores:
             # A tracheal tube keeps the patent arm open during induction;
             # the obstructed arm models an occluded tube.
             engine.set_airway_mode("ETT")
+            if obstruction == 0.0:
+                empty_bag = copy.deepcopy(engine)
             engine.set_airway_obstruction(obstruction)
             for _ in range(6000):
                 engine.step(0.1)
@@ -531,6 +567,22 @@ class TestOxygenStores:
         assert patent[1] > 95.0 and blocked[1] < 90.0
         # Prolonged apnea retains CO2 even when oxygenation is sustained.
         assert 60.0 < patent[2] < 100.0
+
+        # Without prior denitrogenation or available circuit gas, passive O2 draw fails.
+        no_preox = engine_factory(start=True)
+        self._induce_apnea(no_preox)
+        no_preox.set_airway_mode("ETT")
+        no_preox.set_fgf(10.0, 0.0)
+        for _ in range(270):
+            no_preox.step(1.0)
+        assert no_preox.state.spo2 < 85.0
+
+        assert empty_bag is not None
+        empty_bag.set_fgf(0.0, 0.0)
+        empty_bag.circuit.reservoir_volume = 0.0
+        for _ in range(600):
+            empty_bag.step(1.0)
+        assert empty_bag.state.spo2 < 85.0
 
 
 def test_airway_rescue_reoxygenates_during_ongoing_apnea(patient):

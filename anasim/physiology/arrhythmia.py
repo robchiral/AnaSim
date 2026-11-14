@@ -23,6 +23,8 @@ AMIODARONE_C50 = 0.4
 LIDOCAINE_VT_CONVERSION_RATE = 1.0 / 8500.0
 AMIODARONE_VT_CONVERSION_RATE = 1.0 / 3200.0
 ISCHEMIC_ONSET_RATE = 1.0 / 600.0
+HYPERK_ONSET_RATE = 1.0 / 90.0
+HYPOTHERMIC_ONSET_RATE = 1.0 / 120.0
 VF_ONSET_SHARE = 0.15
 VT_DEGENERATION_RATE = 1.0 / 45.0
 REFIBRILLATION_RATE = 1.0 / 75.0
@@ -76,7 +78,8 @@ class ArrhythmiaModel:
 
     def step(self, dt: float, rhythm: RhythmType, *, ischemia: float, hypoxia: float,
              energy_failure: float, electrically_silent: bool, perfusing: bool,
-             lidocaine: float, amiodarone: float) -> RhythmType:
+             lidocaine: float, amiodarone: float, hyperkalemia: float = 0.0,
+             hypothermia: float = 0.0) -> RhythmType:
         if rhythm != self._rhythm:
             self._rhythm = rhythm
             self._remaining.clear()
@@ -94,13 +97,15 @@ class ArrhythmiaModel:
         # A nearly exhausted myocardium slows to asystole instead.
         viable = clamp01((0.8 - energy_failure) / 0.3)
         substrate = clamp01((stress - 0.6) / 0.4) * viable
+        hyperk = clamp01(hyperkalemia)
+        hypotherm = clamp01(hypothermia)
         lido, amio = antiarrhythmic_effects(lidocaine, amiodarone)
         if rhythm == RhythmType.VTACH:
-            degeneration = VT_DEGENERATION_RATE * substrate
+            degeneration = VT_DEGENERATION_RATE * max(substrate, hyperk, hypotherm)
             # Drugs convert only perfusing VT. The stronger drug effect applies.
             conversion = (
                 max(lido * LIDOCAINE_VT_CONVERSION_RATE, amio * AMIODARONE_VT_CONVERSION_RATE)
-                if perfusing else 0.0
+                if perfusing and hyperk < 0.2 else 0.0
             )
             events = (("degeneration", degeneration, RhythmType.VFIB),
                       ("conversion", conversion, RhythmType.SINUS))
@@ -108,7 +113,11 @@ class ArrhythmiaModel:
             recurrence = (REFIBRILLATION_RATE * self._post_shock_stress * math.sqrt(stress) * viable
                           * math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S))
             # Without the heart's own output, as in PEA, ischemia leads to asystole.
-            onset = ISCHEMIC_ONSET_RATE * substrate if perfusing else 0.0
+            onset = (
+                ISCHEMIC_ONSET_RATE * substrate
+                + HYPERK_ONSET_RATE * hyperk**2
+                + HYPOTHERMIC_ONSET_RATE * hypotherm**2
+            ) if perfusing else 0.0
             events = (("recurrence", recurrence, RhythmType.VFIB),
                       ("onset", onset, RhythmType.VTACH))
         earliest = math.inf

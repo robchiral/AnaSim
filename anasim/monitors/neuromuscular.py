@@ -39,6 +39,8 @@ class NeuromuscularMonitor:
         self._next_start = 0.0
         self._started: float | None = None
         self._responses: list[float] = []
+        self._train_t1: float = 0.0
+        self._train_ratio: float = 1.0
 
     def establish_baseline(self, t1: float) -> None:
         """Record the reference response only before appreciable block."""
@@ -86,8 +88,11 @@ class NeuromuscularMonitor:
             index = len(self._responses)
             if time + 1e-9 < self._started + PULSE_INTERVAL_S * index:
                 return
+            if index == 0:
+                self._train_t1 = clamp01(t1)
+                self._train_ratio = clamp01(ratio)
             # Geometric interpolation supplies T2/T3 between the modeled T1/T4.
-            self._responses.append(clamp01(t1) * clamp01(ratio) ** (index / 3.0))
+            self._responses.append(self._train_t1 * self._train_ratio ** (index / 3.0))
         self._finish(time)
 
     def _finish(self, time: float) -> None:

@@ -5,12 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from anasim.core.enums import RhythmType
+from anasim.core.runtime import ARREST_CO_L_MIN
 from anasim.patient.pd import hypnotic_equivalent
 from anasim.patient.pd.anesthesia import PROPOFOL_LOC_TRANSFER
 
 from .projection import (
     central_muscle_strength,
     loss_of_response,
+    nmba_twitch_fraction,
     stimulus_tolerance,
     sync_inhaled_agents,
     sync_pk_state,
@@ -37,7 +40,16 @@ def _responsiveness(engine: SimulationEngine) -> tuple[float, float]:
 def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
     unconscious, tolerance = _responsiveness(engine)
     strength = central_muscle_strength(engine)
-    if unconscious < 0.1 and tolerance < 0.1 and strength > 0.5:
+    s = engine.state
+    sustained_hypnosis = unconscious >= 0.1 and (
+        s.hypnotic_ce >= 1.2
+        or s.mac >= 0.3
+        or s.ketamine_ce >= 0.4
+        or engine.cerebral.unresponsiveness >= 0.8
+        or engine.toxicity.unresponsiveness >= 0.8
+        or s.cardiac_arrest
+    )
+    if not sustained_hypnosis and tolerance < 0.1 and strength > 0.5:
         return ActionFeedback(
             "awake_intubation",
             "Patient gags and resists; tube not placed.",
@@ -53,11 +65,12 @@ def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
 
 def check_airway_removal(engine: SimulationEngine) -> ActionFeedback | None:
     # Recompute TOF and T1 from the PD model; a paused command can follow a dose.
+    sync_inhaled_agents(engine)
     sync_pk_state(engine)
     reasons = []
     if engine.resp.state.apnea:
         reasons.append("the patient is apneic")
-    if min(engine.state.tof, engine.state.twitch) < 90.0:
+    if min(engine.state.tof, 100.0 * nmba_twitch_fraction(engine)) < 90.0:
         reasons.append("neuromuscular recovery is incomplete")
     if reasons:
         return ActionFeedback(
@@ -79,6 +92,9 @@ def check_ventilation_withdrawal(engine: SimulationEngine) -> ActionFeedback | N
 
 
 def check_shock(engine: SimulationEngine) -> ActionFeedback | None:
+    hemo = engine.hemo.state
+    if hemo.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE) or hemo.intrinsic_co <= ARREST_CO_L_MIN:
+        return None
     unconscious, _ = _responsiveness(engine)
     if unconscious < 0.5:
         return ActionFeedback(

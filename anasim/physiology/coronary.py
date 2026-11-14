@@ -63,7 +63,8 @@ class CoronaryModel:
 
     def step(self, dt: float, hr: float, sbp: float, dbp: float, lap: float,
              hb: float, saturation: float, hypoxia: float = 0.0, *,
-             fibrillating: bool = False, compressions: bool = False) -> None:
+             fibrillating: bool = False, compressions: bool = False,
+             venous_pressure: float = 13.0) -> None:
         """Advance ischemia toward the supply shortfall; saturation is in percent.
 
         hypoxia is the hemodynamic model's hypoxemic myocardial depression, 0-1.
@@ -78,8 +79,9 @@ class CoronaryModel:
             work = hr * max(0.0, sbp) / self._reference_rpp
             demand = max(work, 0.25 + 0.25 * hr / self._reference_hr)
         if compressions:
-            # Coronary flow occurs between compressions, against the resting zero-flow pressure.
-            back_pressure = max(lap, 20.0)
+            # Coronary flow occurs between compressions, against right-atrial/LA
+            # back-pressure plus critical myocardial wall closing pressure (~7 mmHg).
+            back_pressure = max(lap, venous_pressure + 7.0, 20.0)
             diastolic_fraction = 1.0 - COMPRESSION_DUTY
         else:
             # The pressure-flow relation is curvilinear at low pressure (Jeremy

@@ -1,5 +1,7 @@
 """Fentanyl, midazolam, etomidate, ketamine, and lidocaine through the engine; docstrings cite each bound."""
 
+import copy
+
 import pytest
 
 from anasim.core.state import SimulationConfig
@@ -77,6 +79,7 @@ def test_ketamine_induction_keeps_breathing_and_raises_pressure(engine_factory):
     assert engine.state.mv > 0.85 * base_mv
     assert engine.state.airway_obstruction < 0.05
     assert engine.state.bis > 90.0
+    assert engine.state.tol >= 0.45
 
     for _ in range(30 * 60):
         engine.step(1.0)
@@ -385,3 +388,51 @@ def test_etomidate_induction_is_brief_and_hemodynamically_stable(engine_factory)
             peaks.append(engine.state.loc)
         peak_loc[age] = max(peaks)
     assert peak_loc[70] > peak_loc[25] + 0.1
+
+
+def test_ketamine_raises_ga_bis_and_depresses_catecholamine_depleted_shock(engine_factory):
+    """Ketamine increases BIS during general anesthesia (Hans 2005) and unmasks direct
+    myocardial depression when sympathetic reserve is exhausted in hemorrhagic shock.
+    """
+    ga = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    shock_ctrl = copy.deepcopy(ga)
+    bis_before = ga.state.bis
+    ga.give_drug_bolus("ketamine", 140.0)
+    _advance(ga, 90)
+    assert ga.state.bis > bis_before + 4.0
+
+    shock_ctrl.hemo.add_volume(-1850.0)
+    _advance(shock_ctrl, 60)
+    shock_ket = copy.deepcopy(shock_ctrl)
+    shock_ket.give_drug_bolus("ketamine", 140.0)
+    for model in (shock_ctrl, shock_ket):
+        _advance(model, 90)
+    assert shock_ket.state.map < 0.90 * shock_ctrl.state.map
+
+
+def test_midazolam_induction_preserves_breathing_bis_and_thermoregulation_until_opioid(engine_factory):
+    """Marty 1986, Kurz 1995, & Heikkilä 1984: 0.3 mg/kg midazolam on room air preserves
+    spontaneous breathing, BIS > 65, and core temperature, while adding fentanyl lowers MAP.
+    """
+    midaz = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1),
+        start=True, age=43, weight=72.0, height=175.0, sex="male",
+    )
+    map_0 = midaz.state.map
+    for _ in range(15):
+        midaz.give_drug_bolus("midazolam", 0.3 * 72.0 / 15.0)
+        midaz.step(4.0)
+    _advance(midaz, 540, dt=4.0)
+    assert midaz.state.bis > 65.0
+    assert midaz.state.rr > 8.0 and not midaz.state.apnea
+    assert 42.0 < midaz.state.pa_co2 < 49.0 and midaz.state.spo2 > 90.0
+
+    _advance(midaz, 1200, dt=4.0)
+    assert 37.0 - midaz.state.temp_c < 0.45
+
+    midaz.set_airway_mode("ETT")
+    midaz.set_vent_power(True)
+    midaz.set_fgf(6.0, 0.0)
+    midaz.give_drug_bolus("fentanyl", 250.0)
+    _advance(midaz, 420, dt=2.0)
+    assert midaz.state.map < map_0 - 10.0

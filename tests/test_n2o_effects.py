@@ -1,3 +1,4 @@
+import copy
 import itertools
 
 import pytest
@@ -59,3 +60,37 @@ def test_n2o_and_sevoflurane_interaction_by_endpoint():
         assert model.tolerance(0.0, 1.0, mac_sevo=0.8, mac_n2o=n2o_mac) == pytest.approx(
             model.tolerance(0.0, 1.0, mac_sevo=0.8 + n2o_mac)
         )
+
+
+def test_n2o_second_gas_concentrating_effect_and_fink_diffusion_hypoxia(engine_factory, advance_time):
+    """Epstein 1964 & Fink 1955: high-flow N2O accelerates early sevoflurane wash-in,
+    and switching from 75% N2O to room air transiently dilutes alveolar O2 unless O2 is given.
+    """
+    sevo_air = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    sevo_n2o = copy.deepcopy(sevo_air)
+    ctrl_air = copy.deepcopy(sevo_air)
+    wash_air = copy.deepcopy(sevo_air)
+    for model, fgf in ((sevo_air, (2.0, 6.0, 0.0)), (sevo_n2o, (2.0, 0.0, 6.0))):
+        model.set_airway_mode("ETT")
+        model.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        model.set_vent_power(True)
+        model.set_fgf(fgf[0], fgf[1], n2o_l_min=fgf[2])
+        model.set_vaporizer(2.0)
+        advance_time(model, 90.0, dt=1.0)
+    assert sevo_n2o.state.et_sevo > sevo_air.state.et_sevo + 0.08
+
+    for model, fgf in ((wash_air, (2.0, 0.0, 6.0)), (ctrl_air, (0.5, 7.5, 0.0))):
+        model.set_airway_mode("ETT")
+        model.set_vent_settings(rr=10, vt=0.45, peep=5.0, ie="1:2", mode="VCV")
+        model.set_vent_power(True)
+        model.set_fgf(fgf[0], fgf[1], n2o_l_min=fgf[2])
+        advance_time(model, 600.0, dt=2.0)
+    wash_o2 = copy.deepcopy(wash_air)
+    for model in (wash_air, ctrl_air):
+        model.set_auto_laryngospasm(False)
+        model.set_airway_mode("None")
+    wash_o2.set_fgf(10.0, 0.0, n2o_l_min=0.0)
+    for model in (wash_air, ctrl_air, wash_o2):
+        advance_time(model, 75.0, dt=1.0)
+    assert wash_air.state.pao2 < ctrl_air.state.pao2 - 3.0 and wash_air.state.pao2 < 90.0
+    assert wash_o2.state.pao2 > 220.0

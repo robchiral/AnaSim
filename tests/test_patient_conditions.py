@@ -81,6 +81,21 @@ def test_heart_failure_profiles_change_output_afterload_response_and_fluid_toler
     assert water["none"] == 0
     assert water["hfref"] > water["hfpef"] > 0.1
 
+    overload = SimulationEngine(
+        Patient(heart_failure="hfref"), SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1)
+    )
+    overload.start()
+    overload.set_fgf(0.2, 1.8)
+    for _ in range(60):
+        overload.step(1.0)
+    co_before = overload.state.co
+    overload.give_fluid(3000.0)
+    for _ in range(600):
+        overload.step(2.0)
+    assert not overload.state.cardiac_arrest
+    assert overload.state.co <= co_before
+    assert overload.state.lung_water > 4.0 and overload.state.spo2 < 95.0
+
 
 def test_chronic_low_output_changes_flow_sensitive_drug_exposure():
     normal, failure = (_engine(heart_failure=condition, baseline_rr=0) for condition in ("none", "hfref"))

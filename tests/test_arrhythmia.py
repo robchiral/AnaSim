@@ -306,3 +306,36 @@ def test_antiarrhythmic_bolus_in_vf_needs_circulation_before_it_can_help_a_shock
         engine.step(1)
     assert engine.defibrillate() == ShockResult.DELIVERED
     assert math.isfinite(engine.state.amiodarone_ce)
+
+
+def test_sinus_bradycardia_chronotropy_extreme_tachycardia_and_afib_rvr_control(engine_factory, advance_time):
+    """SINUS_BRADY responds to epinephrine; extreme tachycardia reduces diastolic filling
+    and CO; esmolol rate-controls AFib with RVR while raising SV and CO (Clark 1997, Hardman 1998).
+    """
+    brady = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    assert brady.hemo._compute_state(hr_base=210.0).co < brady.hemo._compute_state(hr_base=120.0).co
+    brady.hemo.rhythm_type = RhythmType.SINUS_BRADY
+    brady.step(1.0)
+    brady_hr = brady.hemo.state.hr
+    assert brady_hr < 52.0
+    brady.give_drug_bolus("epi", 50.0)
+    advance_time(brady, 30.0, dt=0.5)
+    assert brady.hemo.state.hr > brady_hr + 12.0
+
+    afib = engine_factory(
+        config=SimulationConfig(mode="steady_state", disturbance_profile="stim_sustained_surgery", rng_seed=1),
+        start=True,
+    )
+    afib.set_drug_rate("remi", 0.0)
+    afib.give_drug_bolus("epi", 25.0)
+    afib.set_drug_rate("epi", 8.0)
+    advance_time(afib, 120.0, dt=1.0)
+    afib.set_rhythm("AFIB")
+    advance_time(afib, 60.0, dt=1.0)
+    rvr_hr, rvr_sv, rvr_co = afib.state.hr, afib.state.sv, afib.state.co
+    assert rvr_hr > 135.0
+    afib.give_drug_bolus("esmolol", 70.0)
+    afib.set_drug_rate("esmolol", 180.0)
+    advance_time(afib, 90.0, dt=1.0)
+    assert afib.state.hr < rvr_hr - 25.0
+    assert afib.state.sv > rvr_sv * 1.25 and afib.state.co > rvr_co * 1.05

@@ -5,6 +5,7 @@ import numpy as np
 
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp01
+from anasim.physiology.toxicity import SILENT_BLOCK
 
 from .cardiac_cycle import AGONAL_FAILURE, CardiacCycleSample
 
@@ -50,6 +51,8 @@ def displayed_rhythm(rhythm: RhythmType, conduction_failure: float, sodium_block
     """Observed rhythm with ischemic slowing or sodium-channel block."""
     if rhythm in (RhythmType.VTACH, RhythmType.VFIB, RhythmType.ASYSTOLE):
         return rhythm.value
+    if sodium_block >= SILENT_BLOCK:
+        return RhythmType.ASYSTOLE.value
     if conduction_failure >= AGONAL_FAILURE:
         return "Agonal rhythm"
     if conduction_failure >= IDIOVENTRICULAR_FAILURE:
@@ -68,7 +71,7 @@ class _Morphology:
     t_amplitude: float
 
     def waves(self, preceding_rr_s: float, p_scale: float = 1.0,
-              wide: float = 0.0) -> tuple[tuple[float, float, float], ...]:
+              wide: float = 0.0, peaked_t: float = 0.0) -> tuple[tuple[float, float, float], ...]:
         stretch = _stretch(wide)
         size = 1.0 - (1.0 - _MIN_QRS_SCALE) * wide
         waves = tuple((offset, amplitude * p_scale, width) for offset, amplitude, width in self.p)
@@ -76,7 +79,9 @@ class _Morphology:
         if not self.t_amplitude:
             return waves
         peak, width = _t_wave(preceding_rr_s, wide)
-        amplitude = self.t_amplitude * (1.0 - wide) + _DISCORDANT_T_MV * size * wide
+        width *= 1.0 - 0.35 * peaked_t * (1.0 - wide)
+        base_t = self.t_amplitude + 0.40 * peaked_t
+        amplitude = base_t * (1.0 - wide) + _DISCORDANT_T_MV * size * wide
         return waves + ((peak, amplitude, width),)
 
 
@@ -127,7 +132,10 @@ class ECGMonitor:
         self._st_scale = 1.0
         self._vulnerable_window: tuple[float, float] | None = None
 
-    def _place_beats(self, cycle: CardiacCycleSample, conduction_failure: float, sodium_block: float) -> None:
+    def _place_beats(
+        self, cycle: CardiacCycleSample, conduction_failure: float, sodium_block: float,
+        potassium: float = 4.0, hyperkalemia_block: float = 0.0,
+    ) -> None:
         """Lay out the previous, current and next beat around the current R peak."""
         if cycle.beat_started and self._rhythm is not None:
             self._rr_s = (self._rr_s[1], self._rr_s[2], cycle.rr_interval_s)
@@ -136,8 +144,9 @@ class ECGMonitor:
         self._rhythm = cycle.rhythm_type
 
         morphology = _MORPHOLOGIES[cycle.rhythm_type]
-        p_scale = 1.0 - _ramp(conduction_failure, _P_FADE)
-        wide = max(_ramp(conduction_failure, _QRS_WIDENING), clamp01(sodium_block))
+        p_scale = (1.0 - _ramp(conduction_failure, _P_FADE)) * (1.0 - clamp01(hyperkalemia_block / 0.4))
+        wide = max(_ramp(conduction_failure, _QRS_WIDENING), clamp01(sodium_block), clamp01(hyperkalemia_block))
+        peaked_t = clamp01((potassium - 5.3) / 2.2)
         rr_into_prev, rr_into_current, rr_to_next = self._rr_s
         # A wide complex carries its own discordant ST-T in place of ischemic ST depression.
         self._st_scale = 1.0 - wide
@@ -148,11 +157,13 @@ class ECGMonitor:
             self._st_window = (_J_POINT_S * _stretch(wide), peak - 2.0 * width, peak + 2.5 * width)
             # The vulnerable period's width is a teaching calibration.
             self._vulnerable_window = (peak - width, peak + width)
+        elif cycle.rhythm_type == RhythmType.VTACH:
+            self._vulnerable_window = (0.075, 0.185)
         beats = ((-rr_into_current, rr_into_prev), (0.0, rr_into_current), (rr_to_next, rr_to_next))
         self._waves = [
             (r_time + offset, amplitude, width, _WAVE_CUTOFF_SIGMAS * width)
             for r_time, preceding_rr in beats
-            for offset, amplitude, width in morphology.waves(preceding_rr, p_scale, wide)
+            for offset, amplitude, width in morphology.waves(preceding_rr, p_scale, wide, peaked_t)
         ]
 
     def vulnerable(self, cycle: CardiacCycleSample) -> bool:
@@ -170,6 +181,7 @@ class ECGMonitor:
 
     def step(self, dt: float, cycle: CardiacCycleSample, st_depression_mv: float = 0.0,
              *, conduction_failure: float = 0.0, sodium_block: float = 0.0,
+             potassium: float = 4.0, hyperkalemia_block: float = 0.0,
              compression_phase: float | None = None,
              render: bool = True) -> float:
         """Advance timing and noise; return voltage (mV), or zero when render is false.
@@ -195,7 +207,7 @@ class ECGMonitor:
             return voltage if render else 0.0
 
         if cycle.beat_started or rhythm_type != self._rhythm:
-            self._place_beats(cycle, conduction_failure, sodium_block)
+            self._place_beats(cycle, conduction_failure, sodium_block, potassium, hyperkalemia_block)
 
         val = 0.0
         if render:

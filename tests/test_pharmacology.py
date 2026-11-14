@@ -11,11 +11,14 @@ from anasim.patient.pk_models import (
     AtropinePK,
     EpinephrinePK,
     EsmololPK,
+    FentanylPK,
     GlycopyrrolatePK,
+    HydromorphonePK,
     KetaminePK,
     MammillaryPK,
     MidazolamPK,
     MilrinonePK,
+    MorphinePK,
     PropofolPKEleveld,
     RemifentanilPKEleveld,
     RocuroniumPK,
@@ -220,6 +223,24 @@ def test_organ_impairment_scales_pk():
         renal_model.update_hemodynamics(1.0, 1.0, renal_perfusion=0.5)
         assert renal_model.cl1 == pytest.approx(normal_model.cl1 * (1.0 - fraction + fraction * 0.4 * 0.5))
 
+    impaired = Patient(age=80, weight=50, height=165, sex="male", renal_function=0.4, hepatic_function=0.5)
+    obese = Patient(age=40, weight=150, height=170, sex="male")
+    m_norm, m_obese = MorphinePK(normal), MorphinePK(obese)
+    assert 1.25 < m_obese.v1 / m_norm.v1 < 1.55
+    assert m_obese.v2 / m_norm.v2 == pytest.approx(m_obese.v1 / m_norm.v1)
+    assert m_obese.cl2 / m_norm.cl2 == pytest.approx((m_obese.v1 / m_norm.v1) ** 0.75)
+    assert MorphinePK(impaired).v1 < m_norm.v1 and MorphinePK(impaired).cl1 < 0.55 * m_norm.cl1
+    assert HydromorphonePK(impaired).v1 < HydromorphonePK(normal).v1
+    assert HydromorphonePK(impaired).cl1 < 0.55 * HydromorphonePK(normal).cl1
+    assert MorphinePK(renal).cl1 / m_norm.cl1 < HydromorphonePK(renal).cl1 / HydromorphonePK(normal).cl1
+    assert FentanylPK(impaired).cl1 < FentanylPK(normal).cl1
+    assert FentanylPK(obese).v1 < 1.9 * FentanylPK(normal).v1
+    assert RocuroniumPK(impaired).cl1 < 0.65 * RocuroniumPK(normal).cl1
+
+    f_lean = FentanylPK(Patient(age=40, weight=68.5, height=170.0, sex="female"))
+    f_obese = FentanylPK(Patient(age=40, weight=117.3, height=165.0, sex="female"))
+    assert 1.32 < f_obese.cl1 / f_lean.cl1 < 1.48
+
 
 def test_measured_creatinine_clearance_separates_reversal_from_complex_elimination():
     """Kleijn 2011: renal impairment prolongs complex retention, with rapid reversal.
@@ -307,6 +328,17 @@ def test_rocuronium_spontaneous_recovery_slows_with_age(patient_factory):
         recovery[age] = _first_second(tof, lambda x: x >= 90.0, start=block)
     assert 40 * 60 < recovery[30] < 80 * 60
     assert recovery[70] > recovery[30] + 10 * 60
+
+    # Meyhoff 2009: in morbidly obese women (132 kg, 173 cm), 0.6 mg/kg IBW (42 mg)
+    # recovers TOF 0.9 around 52 min while 0.6 mg/kg IBW + 40% excess (56 mg) is prolonged.
+    obese_pt = patient_factory(age=41, weight=132.0, height=173.0, sex="female")
+    ibw_trace = _tof_trace(obese_pt, 42.0 / 132.0, 6000)
+    cbw40_trace = _tof_trace(obese_pt, 56.0 / 132.0, 6000)
+    ibw_rec = _first_second(ibw_trace, lambda x: x >= 90.0, start=180)
+    cbw40_rec = _first_second(cbw40_trace, lambda x: x >= 90.0, start=180)
+    assert ibw_rec is not None and cbw40_rec is not None
+    assert 45 * 60 < ibw_rec < 68 * 60
+    assert cbw40_rec > ibw_rec + 10 * 60
 
 
 @pytest.mark.parametrize(

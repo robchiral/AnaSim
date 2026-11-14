@@ -49,6 +49,8 @@ class LungAeration:
         self.closing_pressure = 5.0
         self.lung_water = 0.0  # mL/kg predicted body weight above normal
         self.flooded = 0.0
+        self.chest_wall_stiffness = 1.0
+        self.pressure_transmission = 1.0
         self.elapsed = 0.0
         self.pressure_area = 0.0
 
@@ -68,7 +70,7 @@ class LungAeration:
     def advance(self, dt: float, pressure_area: float) -> bool:
         """Accumulate distending pressure; change aeration at fixed physical times."""
         self.elapsed += dt
-        self.pressure_area += pressure_area
+        self.pressure_area += pressure_area * clamp01(self.pressure_transmission)
         if self.elapsed < self.INTERVAL - 1e-12:
             return False
         # Absorbed gas shrinks the lung below its mechanical volume and lowers alveolar pressure.
@@ -109,7 +111,9 @@ class LungAeration:
     @property
     def static_compliance(self) -> float:
         """Low-inflation compliance at the current aeration, L/cmH2O."""
-        return self.reference_compliance * self.aerated / self.REFERENCE_RECRUITED
+        return self.reference_compliance * self.aerated / (
+            self.REFERENCE_RECRUITED * max(0.2, self.chest_wall_stiffness)
+        )
 
     def static_mechanics(self, volume: float) -> tuple[float, float]:
         """Static recoil and tangent compliance at an absolute gas volume (L)."""

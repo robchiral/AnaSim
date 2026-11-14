@@ -9,7 +9,11 @@ from anasim.core.projection import stimulus_tolerance
 from anasim.core.runtime import step_disturbances
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
-from anasim.patient.pd.anesthesia import BISModel, ClinicalResponseModel
+from anasim.patient.pd.anesthesia import (
+    FENTANYL_REMI_POTENCY,
+    BISModel,
+    ClinicalResponseModel,
+)
 from anasim.web import WebSession, catalog
 
 
@@ -28,6 +32,15 @@ def test_published_response_thresholds_and_bis_delay():
     # Eleveld's delay applies before the displayed BIS responds.
     assert bis.step(20.0, bis.c50) == bis.baseline
     assert bis.step(30.0, bis.c50) == pytest.approx(bis.baseline / 2.0)
+
+    fent_p, fent_hr = response.cardiovascular_response_fractions(
+        0.0, 0.0, mac_sevo=1.0, intensity=1.0, ce_fentanyl=3.0
+    )
+    remi_p, remi_hr = response.cardiovascular_response_fractions(
+        0.0, 3.0 * FENTANYL_REMI_POTENCY, mac_sevo=1.0, intensity=1.0, ce_fentanyl=0.0
+    )
+    assert remi_p == pytest.approx(fent_p, rel=0.02)
+    assert remi_hr == pytest.approx(fent_hr, rel=0.02)
 
 
 def test_deeper_iv_hypnosis_preserves_cardiovascular_stimulation(engine_factory):

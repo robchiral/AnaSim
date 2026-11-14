@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from scipy.linalg import expm
 
+from anasim.core import runtime as runtime_core
 from anasim.core.enums import RhythmType
 from anasim.core.state import SimulationConfig
 from anasim.monitors.cardiac_cycle import CardiacCycle
@@ -118,6 +119,7 @@ def test_sodium_block_widens_qrs_without_implying_ischemic_p_wave_loss():
         waveforms.append(qrs)
     assert waveforms[1][-1] > waveforms[0][-1] + 0.1
     assert displayed_rhythm(RhythmType.SINUS, 0, 0.8) == "Wide-complex rhythm"
+    assert displayed_rhythm(RhythmType.SINUS, 0, 0.995) == "Asystole"
 
 
 @pytest.mark.parametrize(("failure", "label"), [(0.8, "Idioventricular rhythm"), (0.98, "Agonal rhythm")])
@@ -169,6 +171,8 @@ def test_large_overdose_depresses_circulation_before_myocardial_energy_is_exhaus
     assert engine.state.map < 10 and engine.state.intrinsic_co < 0.3
     assert engine.hemo.coronary.energy_reserve > 0.5
     assert engine.toxicity.conduction_block > 0.5
+    hypoxia, energy_failure, _ = runtime_core.myocardial_substrate(engine)
+    assert hypoxia > 0.65 and energy_failure < 0.3
 
 
 def test_cerebral_oxygen_failure_suppresses_toxic_convulsions_despite_retained_drug(engine_factory):

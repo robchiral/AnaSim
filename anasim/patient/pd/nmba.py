@@ -5,7 +5,7 @@ import math
 
 from anasim.core.utils import clamp, clamp01
 from anasim.patient.patient import Patient
-from anasim.patient.pk_models import MammillaryPK
+from anasim.patient.pk_models import MammillaryPK, rocuronium_adjusted_weight
 
 MW_ROCURONIUM = 609.7
 MW_SUGAMMADEX = 2178.0
@@ -63,7 +63,7 @@ class TOFModel:
     """
 
     def __init__(self, patient: Patient):
-        size = patient.weight / 70.0
+        size = rocuronium_adjusted_weight(patient) / 70.0
         self.ke0 = 0.134 * size**-0.25  # /min
         self.ks = math.exp(-3.43) * size**-0.25  # /min per umol/L free sugammadex
         # Kleijn's sevoflurane covariate, applied in proportion to brain MAC.
@@ -164,11 +164,15 @@ class TOFModel:
             sugammadex.state.c1 -= flux / v_sug
             complex_.state.c1 += flux / v_sug
 
-    def _ec50(self, mac_sevo: float, mac_n2o: float) -> float:
+    def potentiation_factor(self, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
+        """Relative NMBA EC50 multiplier under volatile and nitrous oxide anesthesia."""
         factor = (1.0 - self.sevo_ec50_reduction * clamp01(mac_sevo)) * (
             1.0 - (1.0 - self.f_n2o) * clamp01(mac_n2o)
         )
-        return ROCURONIUM_TOF_EC50 * clamp(factor, 0.2, 1.0)
+        return clamp(factor, 0.2, 1.0)
+
+    def _ec50(self, mac_sevo: float, mac_n2o: float) -> float:
+        return ROCURONIUM_TOF_EC50 * self.potentiation_factor(mac_sevo, mac_n2o)
 
     def compute_tof_from_ce(self, ce: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """TOF ratio (%) at the adductor pollicis."""

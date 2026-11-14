@@ -142,3 +142,10 @@ def test_glycopyrrolate_raises_rate_and_blocks_vagal_bradycardia(engine_factory)
     engine.set_rhythm("SINUS_BRADY")
     _advance(engine, 120)
     assert engine.state.hr > 60.0
+
+    engine.set_rhythm("SINUS")
+    _advance(engine, 30)
+    hr_after_glyco = engine.state.hr
+    engine.give_drug_bolus("atropine", 0.5)
+    _advance(engine, 60)
+    assert engine.state.hr >= hr_after_glyco - 0.5

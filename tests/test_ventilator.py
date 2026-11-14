@@ -845,3 +845,21 @@ def test_obstructed_bag_ventilation_stops_at_the_pressure_limit(engine_factory):
         engine.step(0.1)
     assert engine.state.paw_peak == pytest.approx(40.0, abs=0.1)
     assert 90.0 < engine.state.vt < 130.0
+
+
+def test_closed_apl_traps_fresh_gas_and_depresses_circulation(engine_factory, advance_time):
+    """Spontaneous/manual mode with APL closed (>20 cmH2O) traps continuous FGF and lowers MAP."""
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    engine.set_vent_power(False)
+    engine.set_airway_mode("ETT")
+    engine.set_fgf(10.0, 0.0)
+    engine.set_bag_mask_settings(rr=12, vt=0.5, p_max=70.0)
+    base_map = engine.state.map
+    advance_time(engine, 45.0, dt=0.5)
+    assert engine.state.peep > 45.0 and engine.state.paw_mean > 45.0
+    assert engine.state.map < 0.70 * base_map
+
+    engine.set_airway_mode("Mask")
+    engine.set_mask_seal(0.5)
+    advance_time(engine, 5.0, dt=0.5)
+    assert engine.state.peep == pytest.approx(10.0, abs=0.5)

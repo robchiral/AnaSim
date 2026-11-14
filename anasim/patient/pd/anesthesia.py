@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from collections import deque
 
+from anasim.core.utils import clamp01, hill_function
 from anasim.patient.patient import Patient
 from anasim.patient.variability import TYPICAL, OpioidRateVariability
 
@@ -44,6 +45,10 @@ PROPOFOL_LOC_TRANSFER = 1.3
 # half the maximum. AnaSim calibrates the maximum.
 PROPOFOL_LOSS_OF_RESPONSE = 6.68 * 0.48
 MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT = 2.0 * PROPOFOL_LOSS_OF_RESPONSE
+MIDAZOLAM_BIS_MAX_PROPOFOL_EQUIVALENT = 0.85 * PROPOFOL_LOSS_OF_RESPONSE
+# Marty 1986: 0.3 mg/kg IV midazolam on room air raised PaCO2 ~4 mmHg without
+# apnea > 15 s; central depression has a ceiling until combined with propofol or opioids.
+MIDAZOLAM_RESPIRATORY_MAX_PROPOFOL_EQUIVALENT = 1.25
 # Short 1992: midazolam with propofol needs 37% less than additive doses for
 # hypnosis, an interaction coefficient of 3.7 at equal shares. The propofol
 # share in the interaction is capped at loss of response, the endpoint Short
@@ -94,13 +99,14 @@ def hypnotic_equivalent(
     midazolam_c50: float,
     age_factor: float = 1.0,
     ventilation: bool = False,
+    bis: bool = False,
 ) -> float:
     """Propofol-equivalent Ce (mcg/mL) of propofol, etomidate, and midazolam (ng/mL).
 
     Etomidate and midazolam convert at the patient's propofol potency for the
     endpoint (`age_factor`), so they keep only their own age effects (Arden
     1986; Albrecht 1999). With `ventilation`, etomidate uses its separate
-    respiratory conversion.
+    respiratory conversion. With `bis`, midazolam reflects its EEG beta ceiling.
     """
     loss_of_response = PROPOFOL_LOSS_OF_RESPONSE * age_factor
     etomidate = max(0.0, ce_etomidate) * loss_of_response / ETOMIDATE_LOSS_OF_RESPONSE
@@ -108,7 +114,13 @@ def hypnotic_equivalent(
         etomidate = max(0.0, ce_etomidate) * ETOMIDATE_RESPIRATORY_PROPOFOL_RATIO
     ce_prop = max(0.0, ce_prop) + etomidate
     ce_midazolam = max(0.0, ce_midazolam)
-    midazolam = MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT * age_factor * ce_midazolam / (ce_midazolam + midazolam_c50)
+    if bis:
+        midaz_max = MIDAZOLAM_BIS_MAX_PROPOFOL_EQUIVALENT
+    elif ventilation:
+        midaz_max = MIDAZOLAM_RESPIRATORY_MAX_PROPOFOL_EQUIVALENT
+    else:
+        midaz_max = MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT
+    midazolam = midaz_max * age_factor * ce_midazolam / (ce_midazolam + midazolam_c50)
     propofol_share = min(ce_prop / loss_of_response, 1.0)
     return ce_prop + midazolam * (1.0 + MIDAZOLAM_PROPOFOL_SYNERGY * propofol_share)
 
@@ -163,6 +175,7 @@ class BISModel:
         self.gamma_above = 1.4736185873429664
         self.gamma_below = 1.8939053122841638
         self.delay = 15.0 + math.exp(0.0517399 * patient.age)
+        self.ischemia_delay = min(self.delay, 20.0)
         sevo_units = (self.baseline / SEVO_BIS_AT_1_MAC - 1.0) ** (1.0 / self.gamma_above)
         self.mac50 = 1.0 / sevo_units
         self.initialize(self.baseline)
@@ -173,31 +186,57 @@ class BISModel:
         self._history = deque([(0.0, bis, 1.0)])
         self.cortical_function = 1.0
 
-    def compute_bis(self, ce_prop: float, mac_sevo: float = 0.0) -> float:
+    def compute_bis(
+        self, ce_prop: float, mac_sevo: float = 0.0, ce_ketamine: float = 0.0,
+    ) -> float:
         ce_equivalent = max(0.0, ce_prop) + self.c50 * max(0.0, mac_sevo) / self.mac50
         # NONMEM's smooth slope transition is on the concentration scale.
         switch = 1.0 / (1.0 + math.exp(-30.0 * max(-20.0, ce_equivalent - self.c50)))
         gamma = switch * self.gamma_above + (1.0 - switch) * self.gamma_below
-        return self.baseline / (1.0 + (ce_equivalent / self.c50)**gamma)
+        drug_bis = self.baseline / (1.0 + (ce_equivalent / self.c50)**gamma)
+        if ce_ketamine > 0.0:
+            ket_effect = hill_function(ce_ketamine, 0.4, 1.5)
+            ket_shift = (
+                12.0
+                * ket_effect
+                * clamp01(drug_bis / 25.0)
+                * clamp01((self.baseline - drug_bis) / 25.0)
+            )
+            drug_bis = min(self.baseline, drug_bis + ket_shift)
+        return drug_bis
 
-    def step(self, dt: float, ce_prop: float, mac_sevo: float = 0.0, cortical_function: float = 1.0) -> float:
+    @staticmethod
+    def _interpolate_history(
+        history: deque[tuple[float, float, float]], target: float, field: int,
+    ) -> float:
+        if target <= history[0][0] or len(history) == 1:
+            return history[0][field]
+        if target >= history[-1][0]:
+            return history[-1][field]
+        idx = len(history) - 2
+        while idx > 0 and history[idx][0] > target:
+            idx -= 1
+        t0, t1 = history[idx][0], history[idx + 1][0]
+        y0, y1 = history[idx][field], history[idx + 1][field]
+        weight = (target - t0) / (t1 - t0) if t1 > t0 else 0.0
+        return y0 + (y1 - y0) * weight
+
+    def step(
+        self, dt: float, ce_prop: float, mac_sevo: float = 0.0, cortical_function: float = 1.0,
+        ce_ketamine: float = 0.0,
+    ) -> float:
         """Return the delayed BIS after dt seconds; cortical_function (0-1) scales it.
 
         The delayed cortical function is kept in self.cortical_function.
         """
         self._clock += dt
         history = self._history
-        history.append((self._clock, self.compute_bis(ce_prop, mac_sevo), cortical_function))
+        history.append((self._clock, self.compute_bis(ce_prop, mac_sevo, ce_ketamine), cortical_function))
         target = self._clock - self.delay
         while len(history) > 1 and history[1][0] <= target:
             history.popleft()
-        t0, y0, f0 = history[0]
-        if target <= t0 or len(history) == 1:
-            bis, self.cortical_function = y0, f0
-        else:
-            t1, y1, f1 = history[1]
-            weight = (target - t0) / (t1 - t0)
-            bis, self.cortical_function = y0 + (y1 - y0) * weight, f0 + (f1 - f0) * weight
+        bis = self._interpolate_history(history, target, 1)
+        self.cortical_function = self._interpolate_history(history, self._clock - self.ischemia_delay, 2)
         return bis * self.cortical_function
 
 
@@ -226,13 +265,18 @@ class ClinicalResponseModel:
         # the patient's age adjustment.
         self.mac_reference = 1.80 * 10.0 ** (-0.00269 * (35.0 - 40.0))
 
-    def _effect(self, hypnotic_units: float, ce_remi: float, intensity: float) -> float:
+    def _effect(
+        self, hypnotic_units: float, ce_remi: float, intensity: float, ce_ketamine: float = 0.0,
+    ) -> float:
         opioid_units = max(0.0, ce_remi) / (self.c50_remi * intensity)
-        post_opioid = intensity / (1.0 + opioid_units**self.gamma_remi)
+        ketamine_analgesia = 0.25 * (max(0.0, ce_ketamine) / 0.65) ** 1.1
+        post_opioid = intensity / ((1.0 + opioid_units**self.gamma_remi) * (1.0 + ketamine_analgesia))
         return (max(0.0, hypnotic_units) / post_opioid)**self.gamma_prop
 
-    def _probability(self, hypnotic_units: float, ce_remi: float, intensity: float) -> float:
-        effect = self._effect(hypnotic_units, ce_remi, intensity)
+    def _probability(
+        self, hypnotic_units: float, ce_remi: float, intensity: float, ce_ketamine: float = 0.0,
+    ) -> float:
+        effect = self._effect(hypnotic_units, ce_remi, intensity, ce_ketamine=ce_ketamine)
         # Increasing nonresponse matches the paper's surfaces. Its printed
         # equation 4 appears to reverse the probability with a complement.
         return effect / (1.0 + effect)
@@ -265,7 +309,7 @@ class ClinicalResponseModel:
     ) -> float:
         """Probability of no response to a stimulus; laryngoscopy by default."""
         units = self._noxious_units(ce_prop, mac_sevo, mac_n2o, ce_ketamine)
-        tolerance = self._probability(units, ce_remi, intensity)
+        tolerance = self._probability(units, ce_remi, intensity, ce_ketamine=ce_ketamine)
         lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
         return 1.0 - (1.0 - tolerance) * (1.0 - lidocaine_block)
 
@@ -283,16 +327,24 @@ class ClinicalResponseModel:
         surface.
         """
         ce_fentanyl = max(0.0, ce_fentanyl)
-        inhaled_shift = 1.0 + (ce_fentanyl / FENTANYL_MAC_BAR_C50)**FENTANYL_MAC_BAR_GAMMA
-        units = self._noxious_units(ce_prop, mac_sevo * inhaled_shift, mac_n2o * inhaled_shift, ce_ketamine)
-        effect = self._effect(units, ce_remi, intensity)
+        ce_remi = max(0.0, ce_remi)
+        inhaled_present = mac_sevo > 0.0 or mac_n2o > 0.0
+        effective_fent_mac_bar = ce_fentanyl + (ce_remi / FENTANYL_REMI_POTENCY if inhaled_present else 0.0)
+        inhaled_shift = 1.0 + (effective_fent_mac_bar / FENTANYL_MAC_BAR_C50)**FENTANYL_MAC_BAR_GAMMA
+        opioid_boost = 1.0 + (ce_remi / (self.c50_remi * intensity)) ** self.gamma_remi
+        units = (
+            max(0.0, ce_prop) / self.c50_prop * opioid_boost
+            + self._noxious_units(0.0, mac_sevo * inhaled_shift, mac_n2o * inhaled_shift, ce_ketamine)
+        )
+        effect = self._effect(units, 0.0, intensity, ce_ketamine=ce_ketamine)
         baseline = self._effect(max(0.0, ce_prop) / self.c50_prop, 0.0, intensity)
         lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
         # Ratio of survival probabilities, evaluated without subtracting near-one values.
         remaining = (1.0 + baseline) / (1.0 + effect) * (1.0 - lidocaine_block)
         pressure_exposure = (ce_fentanyl / FENTANYL_PRESSURE_C50)**FENTANYL_PRESSURE_GAMMA
         pressure = remaining * math.exp(-math.log(2.0) * pressure_exposure * max(0.0, ce_prop) / 3.4)
-        hr = remaining / (1.0 + (ce_fentanyl / FENTANYL_HR_C50)**FENTANYL_HR_GAMMA)
+        hr_fent = effective_fent_mac_bar if (inhaled_present and ce_prop <= 0.0) else ce_fentanyl
+        hr = remaining / (1.0 + (hr_fent / FENTANYL_HR_C50)**FENTANYL_HR_GAMMA)
         return pressure, hr
 
 

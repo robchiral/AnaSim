@@ -206,3 +206,24 @@ class TestCapnography:
         assert engine.state.capno_co2 == 0.0
         assert not engine.state.etco2_signal_valid
         assert engine.state.alarms["EtCO2"]["low"]
+
+    def test_first_breath_capnography_and_apnea_spirometry_reset(self, engine_factory, advance_time):
+        """Breath 1 after apneic intubation shows EtCO2; sustained apnea zeros VT/RR/MV."""
+        engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+        engine.give_drug_bolus("propofol", 200.0)
+        engine.give_drug_bolus("roc", 60.0)
+        advance_time(engine, 90.0, dt=0.5)
+
+        engine.set_airway_mode("ETT")
+        engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        engine.set_vent_power(True)
+
+        peak_capno = 0.0
+        for _ in range(50):
+            engine.step(0.1)
+            peak_capno = max(peak_capno, engine.state.capno_co2)
+        assert peak_capno > 20.0
+
+        engine.set_vent_power(False)
+        advance_time(engine, 20.0, dt=0.5)
+        assert engine.state.vt == engine.state.rr == engine.state.mv == 0.0

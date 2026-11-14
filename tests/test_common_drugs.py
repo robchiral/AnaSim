@@ -309,18 +309,21 @@ def test_ephedrine_repeated_boluses_have_a_smaller_pressor_response(engine_facto
 
 
 def test_succinylcholine_paralysis_and_sugammadex_independence(engine_factory, advance_time):
-    """Kopman 2003 / Dhonneur 1999: profound short block without hypnosis.
+    """Kopman 2003 / Dhonneur 1999 / Martyn 2006: profound short block without hypnosis.
 
-    Phase I block depresses T1 without TOF fade, and sugammadex leaves it
-    unchanged. Breathing returns before peripheral T1 recovers.
+    Phase I block depresses T1 without TOF fade while transiently raising serum
+    potassium ~0.4-0.5 mmol/L, and sugammadex leaves recovery unchanged.
     """
     traces = []
     for reverse in (False, True):
         e = engine_factory(config=SimulationConfig(mode="awake", rng_seed=4), start=True)
         e.set_airway_mode("ETT")
         e.set_vent_power(True)
+        e.nmb.set_repeat(10.0, 0.0)
+        baseline_k = e.state.potassium
         e.give_drug_bolus("succinylcholine", e.patient.weight)
         advance_time(e, 90, dt=0.5)
+        peak_k = e.state.potassium
         assert e.state.twitch < 5
         assert e.state.tof == 100.0
         assert require_tof_count_at_most(1)(e)[0]
@@ -328,8 +331,15 @@ def test_succinylcholine_paralysis_and_sugammadex_independence(engine_factory, a
         assert e.resp.state.effort_rr == 0.0
         if reverse:
             e.give_drug_bolus("sugammadex", 16 * e.patient.weight)
-        advance_time(e, 510, dt=0.5)
+        ratios = []
+        for _ in range(1020):
+            e.step(0.5)
+            peak_k = max(peak_k, e.state.potassium)
+            if e.nmb.reading and e.nmb.reading.ratio is not None:
+                ratios.append(e.nmb.reading.ratio)
         traces.append(e.state.twitch)
+        assert peak_k >= baseline_k + 0.35
+        assert ratios and min(ratios) == pytest.approx(100.0) and max(ratios) == pytest.approx(100.0)
         assert e.resp.state.effort_rr > 0.0
         advance_time(e, 300, dt=0.5)
         assert e.state.twitch > 95.0

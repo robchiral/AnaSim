@@ -1,3 +1,4 @@
+import copy
 import math
 from dataclasses import replace
 
@@ -689,3 +690,37 @@ class TestReflexesAndHypoxia:
         for _ in range(15):
             recovered = paced.step(1.0, 0, 0, 0, -2, 40, 95)
         assert recovered.sv == pytest.approx(base_paced.sv, rel=0.03)
+
+
+def test_matched_bleeding_high_peep_rap_and_beta_blocked_contractility_gating(engine_factory, advance_time):
+    """Matched hemorrhage and PRBC replacement keeps slow SV adaptation near zero;
+    volume loading with high PEEP raises RAP above baseline while clamping preload
+    coupling; beta blockade suppresses catecholamine SV compensation during shock.
+    """
+    matched = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    overload = copy.deepcopy(matched)
+    unblocked = copy.deepcopy(matched)
+    blocked = copy.deepcopy(matched)
+    base_co = matched.state.co
+    matched.give_calcium_chloride(1000.0)
+    for _ in range(240):
+        matched.hemo.add_volume(-10.0)
+        matched.hemo.add_volume(10.0, hematocrit=0.38, label="blood")
+        matched.step(1.0)
+    assert abs(matched.hemo.tde_sv) < 1.0
+    assert matched.state.co == pytest.approx(base_co, rel=0.10)
+
+    overload.give_fluid(2500.0)
+    overload.set_vent_settings(rr=12, vt=0.5, peep=25.0, ie="1:2", mode="VCV")
+    advance_time(overload, 60.0, dt=1.0)
+    assert overload.hemo.state.rap > 7.0
+    overload.hemo.step(1.0, 0.0, 0.0, 0.0, pit=50.0, paco2=40.0, pao2=95.0, peep_cmH2O=45.0)
+    assert overload.hemo.f_preload_pit < 0.35
+
+    blocked.give_drug_bolus("esmolol", 150.0)
+    blocked.set_drug_rate("esmolol", 300.0)
+    blocked.hemo.myocardial_hypoxia = 0.9
+    for model in (unblocked, blocked):
+        model.hemo.add_volume(-1500.0)
+        advance_time(model, 180.0, dt=1.0)
+    assert blocked.hemo.sv_tone < unblocked.hemo.sv_tone

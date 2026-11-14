@@ -233,6 +233,7 @@ class WebSession:
                     "rate_unit": spec.rate_unit,
                     "bolus_unit": spec.bolus_unit,
                     "default_bolus": spec.default_bolus_for(patient.weight),
+                    "max_bolus": spec.max_bolus,
                     "tci_unit": spec.tci_unit if engine.config.tci_enabled else None,
                     "tci_range": spec.tci_range if engine.config.tci_enabled else None,
                     "target_label": _target_label(spec) if engine.config.tci_enabled and spec.has_tci else None,
@@ -593,8 +594,11 @@ class WebSession:
             "anaphylaxis": engine.anaphylaxis.active,
             "sepsis": engine.sepsis.active,
             "malignant_hyperthermia": engine.malignant_hyperthermia.active,
-            "ecg_rhythm": displayed_rhythm(engine.hemo.state.rhythm_type, engine.hemo.coronary.energy_failure,
-                                           engine.toxicity.conduction_block),
+            "ecg_rhythm": displayed_rhythm(
+                engine.hemo.state.rhythm_type,
+                engine.hemo.coronary.energy_failure,
+                max(engine.toxicity.conduction_block, engine.hemo.hyperkalemia_block),
+            ),
             "bair_hugger": engine.state.bair_hugger_target,
         }
 

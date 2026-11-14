@@ -54,7 +54,7 @@ def test_crises_start_once_on_the_case_clock_without_clicking_steps(mode, case, 
     assert session.case_run.fired == {event}
     observations = session.snapshot()["scenario"]["observations"]
     assert len(observations) == 1 and observations[0]["time"] == pytest.approx(30, abs=0.11)
-    advance(session, 14)
+    advance(session, 59)
     assert session.snapshot()["scenario"]["observations"] == observations
     if event in {"anaphylaxis", "sepsis"}:
         assert session.engine.state.map < 65
@@ -86,7 +86,7 @@ def test_untreated_severe_anaphylaxis_does_not_recover_normal_pressure(dt):
 def test_anaphylaxis_recovery_requires_current_pressure_and_cuff_reassessment(arterial_line):
     session = WebSession({"scenario_id": "anaphylaxis_response", "arterial_line_enabled": arterial_line})
     session.engine.config.dt = 0.1
-    advance(session, 31)
+    advance(session, 56)
     command(session, "scenario_next")
     command(session, "drug_bolus", key="epi", amount=100)
     command(session, "fgf", o2=10, air=0, n2o=0)

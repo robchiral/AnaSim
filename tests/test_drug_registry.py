@@ -1,6 +1,6 @@
 import pytest
 
-from anasim.core.drug_registry import DRUG_REGISTRY
+from anasim.core.drug_registry import DRUG_REGISTRY, get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
@@ -65,3 +65,7 @@ def test_controls_a_drug_lacks_fail_explicitly(engine):
         engine.set_drug_rate("glyco", 1.0)
     with pytest.raises(ValueError, match="Esmolol has no target-controlled infusion"):
         engine.set_drug_target("esmolol", 1.0)
+
+    assert get_drug_spec("amiodarone").default_bolus == pytest.approx(150.0)
+    assert get_drug_spec("milri").max_bolus >= 5000.0
+    assert get_drug_spec("vaso").max_bolus <= 50.0

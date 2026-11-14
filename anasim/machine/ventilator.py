@@ -6,6 +6,7 @@ from bisect import bisect_right
 from collections import deque
 from dataclasses import dataclass, fields, replace
 
+from anasim.core.utils import clamp01
 from anasim.patient.domain import finite_number
 from anasim.physiology.resp_mech import (
     ExpiratorySegment,
@@ -166,6 +167,8 @@ class AnesthesiaVentilator:
         self._source: str | None = None
         self._bag = (12.0, 0.5)
         self._bag_p_max = math.inf
+        self._spontaneous_peep = 0.0
+        self._bellows_fraction = 1.0
         self._mode: str | None = None
         self._baseline: float | None = None  # PEEP the lung volume is referenced to; the first one applied
         self._breath: Breath | None = None
@@ -230,7 +233,11 @@ class AnesthesiaVentilator:
         return self._baseline or 0.0
 
     def _configured_peep(self) -> float:
-        return self.settings.peep if self._source == "vent" else 0.0
+        if self._source == "vent":
+            return self.settings.peep
+        if self._source == "spontaneous":
+            return self._spontaneous_peep
+        return 0.0
 
     def _series_resistance(self) -> float:
         """Resistance between the Y-piece and the baseline pressure source."""
@@ -266,7 +273,8 @@ class AnesthesiaVentilator:
     # --- Stepping ------------------------------------------------------------
 
     def step(self, dt: float, lung: RespiratoryMechanics, source: str | None, bag: tuple = (12.0, 0.5),
-             collect_samples: bool = False, bag_p_max: float = math.inf) -> None:
+             collect_samples: bool = False, bag_p_max: float = math.inf,
+             spontaneous_peep: float = 0.0, bellows_fraction: float = 1.0) -> None:
         """Advance dt seconds.
 
         source is "vent", "bag", "spontaneous" (breathing through the circuit),
@@ -284,8 +292,13 @@ class AnesthesiaVentilator:
         self._collect_samples = collect_samples
         self._bag = bag
         self._bag_p_max = bag_p_max
+        self._spontaneous_peep = max(0.0, float(spontaneous_peep))
+        self._bellows_fraction = clamp01(float(bellows_fraction))
         if source != self._source:
             self._switch(source, lung)
+        elif source == "spontaneous" and abs(self._spontaneous_peep - (self._baseline or 0.0)) > 1e-6:
+            self._rebase(lung, self._spontaneous_peep)
+            self.monitors.peep = self._spontaneous_peep
         if self._source == "vent" and self.settings.mode != self._mode:
             if MANDATORY.get(self.settings.mode) == "VG" and (self._mode is None or MANDATORY.get(self._mode) != "VG"):
                 self._vg_pressure = None
@@ -367,22 +380,22 @@ class AnesthesiaVentilator:
             kind, vg_test = "VC", True
         if kind == "VC":
             pause = max(s.pause, 10.0) if vg_test else s.pause
-            goal = s.tv / 1000.0
+            goal = s.tv / 1000.0 * self._bellows_fraction
             target = max(0.0, goal - retained)
             if retained > 0.0:
                 ti *= target / goal if goal > 0.0 else 0.0
             flow_end = ti * (1.0 - min(max(pause, 0.0), 60.0) / 100.0)
         elif kind == "MANUAL":
-            target = self._bag[1]
+            target = self._bag[1] * self._bellows_fraction
         elif kind == "PC":
-            target = s.p_insp
+            target = s.p_insp * self._bellows_fraction
         elif kind == "VG":
             assert self._vg_pressure is not None  # A VC test breath sets it first.
             # A Pmax or PEEP edit during expiration must constrain the very
             # next stroke, before the next volume-feedback update.
-            target = self._vg_pressure = min(max(self._vg_pressure, VG_MIN), self._vg_ceiling(peep))
+            target = self._vg_pressure = min(max(self._vg_pressure, VG_MIN), self._vg_ceiling(peep)) * self._bellows_fraction
         elif kind == "PS":
-            target, ti = s.p_support, SUPPORT_MAX_S
+            target, ti = s.p_support * self._bellows_fraction, SUPPORT_MAX_S
             flow_end = ti
         else:  # SPONT
             ti = flow_end = math.inf  # Unsupported inspiration ends only when flow reverses.
@@ -459,7 +472,7 @@ class AnesthesiaVentilator:
         if window_t > 0.0:
             self.monitors.paw_mean_recent = window_area / window_t
         if not self._recent or self._since_measured >= APNEA_S:
-            self.monitors.rr_total = self.monitors.mv_exp = self.monitors.mv_supported = 0.0
+            self.monitors.rr_total = self.monitors.tv_exp = self.monitors.mv_exp = self.monitors.mv_supported = 0.0
             return
         # A breath that runs long, as in apnea, lowers the rate before it ends.
         span = max(total, total - self._recent[0][0] + self._since_measured)

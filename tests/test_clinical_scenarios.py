@@ -383,18 +383,18 @@ class TestClinicalAcceptance:
     def test_oxygen_analyzer_warns_before_desaturation_and_backup_recovers(
         self, anesthetized_engine
     ):
-        """Inspired oxygen should warn first, then recover on high-flow backup oxygen."""
+        """Inspired oxygen should warn first on low-flow carrier gas, then recover on backup O2."""
         engine = anesthetized_engine
         scenario = create_oxygen_supply_failure()
         scenario.prepare(engine)
 
-        assert 0.34 <= engine.circuit.composition.fio2 <= 0.40
+        assert 0.34 <= engine.circuit.composition.fio2 <= 0.42
         assert engine.state.spo2 >= 94.0
 
         engine.set_oxygen_supply_connected(False)
         warning_time = _first_time(
             engine,
-            60,
+            240,
             lambda e: e.circuit.composition.fio2 < 0.30,
         )
 
@@ -402,7 +402,7 @@ class TestClinicalAcceptance:
         # oxygen analysis with a low-concentration alarm during anesthesia.
         assert warning_time is not None
         assert engine.state.spo2 >= 94.0
-        alarm_time = _first_time(engine, 180, lambda e: "FiO2" in e.state.alarms)
+        alarm_time = _first_time(engine, 300, lambda e: "FiO2" in e.state.alarms)
         assert alarm_time is not None
         assert engine.state.spo2 >= 94.0
 

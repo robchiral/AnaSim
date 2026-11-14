@@ -63,6 +63,7 @@ PCV-VG, pressure control with volume guarantee.
 ### Other opioids
 
 - Bae et al. (2020). *Br J Anaesth*. [Adult fentanyl PK](https://pubmed.ncbi.nlm.nih.gov/32861508/).
+- Shibutani et al. (2004). *Anesthesiology*. [Pharmacokinetic mass for fentanyl in lean and obese patients](https://pubmed.ncbi.nlm.nih.gov/15329584/).
 - Scott and Stanski (1987). *J Pharmacol Exp Ther*. [Fentanyl effect-site equilibration and age](https://pubmed.ncbi.nlm.nih.gov/3100765/).
 - McEwan et al. (1993). *Anesthesiology*. [Fentanyl reduction of isoflurane MAC](https://pubmed.ncbi.nlm.nih.gov/8489058/).
 - Lang et al. (1996). *Anesthesiology*. [Remifentanil reduction of isoflurane MAC](https://pubmed.ncbi.nlm.nih.gov/8873541/).
@@ -76,6 +77,8 @@ PCV-VG, pressure control with volume guarantee.
 - Vuyk et al. (2009). *Anesth Analg*. [Midazolam reduces propofol clearance](https://pubmed.ncbi.nlm.nih.gov/19372331/).
 - Lichtenbelt et al. (2010). *Anesth Analg*. [Propofol reduces midazolam distribution and clearance](https://pubmed.ncbi.nlm.nih.gov/20435936/).
 - Short et al. (1992). *Br J Anaesth*. [Midazolam-propofol hypnotic synergy](https://pubmed.ncbi.nlm.nih.gov/1389820/).
+- Marty et al. (1986). *Anesth Analg*. [Diazepam and midazolam effects on baroreflex control and sympathetic activity](https://pubmed.ncbi.nlm.nih.gov/2935050/).
+- Heikkilä et al. (1984). *Acta Anaesthesiol Scand*. [Midazolam added to high-dose fentanyl anesthesia](https://pubmed.ncbi.nlm.nih.gov/6335344/).
 - Arden et al. (1986). *Anesthesiology*. [Etomidate PK/PD and age](https://pubmed.ncbi.nlm.nih.gov/3729056/).
 - Van Hamme et al. (1978). *Anesthesiology*. [Etomidate PK](https://pubmed.ncbi.nlm.nih.gov/697083/).
 - Kaneda et al. (2011). *J Clin Pharmacol*. [Etomidate PK/PD](https://pubmed.ncbi.nlm.nih.gov/20498288/).
@@ -89,6 +92,7 @@ PCV-VG, pressure control with volume guarantee.
 - Tweed et al. (1972). *Anesthesiology*. [Circulatory responses to ketamine](https://pubmed.ncbi.nlm.nih.gov/4652778/).
 - Bovill and Dundee (1972). *Anaesthesia*. [Ketamine cardiovascular responses after atropine and adrenergic blockade](https://pubmed.ncbi.nlm.nih.gov/5041076/).
 - Bålfors et al. (1983). *Anesth Analg*. [Droperidol and central hemodynamics after ketamine in atherosclerotic disease](https://pubmed.ncbi.nlm.nih.gov/6829922/).
+- Waxman et al. (1980). *Anesth Analg*. [Cardiovascular effects of ketamine induction in critically ill patients](https://pubmed.ncbi.nlm.nih.gov/7189381/).
 - Akine et al. (2001). *Auton Neurosci*. [Ketamine and propofol depress baroreflex sensitivity](https://pubmed.ncbi.nlm.nih.gov/11476280/).
 - Huang et al. (2020). *J Physiol*. [Low-dose ketamine and sympathetic responses to central hypovolemia](https://pubmed.ncbi.nlm.nih.gov/33084081/).
 - Bourke et al. (1987). *Anesthesiology*. [Ketamine and CO₂ response](https://pubmed.ncbi.nlm.nih.gov/3101549/).
@@ -185,8 +189,10 @@ PCV-VG, pressure control with volume guarantee.
 - Magorian et al. (1995). *Anesth Analg*. [Rocuronium PK in liver disease](https://pubmed.ncbi.nlm.nih.gov/7893030/).
 - Robertson et al. (2005). *Eur J Anaesthesiol*. [Rocuronium PK in renal failure](https://pubmed.ncbi.nlm.nih.gov/15816565/).
 - Magorian et al. (1993). *Anesthesiology*. [Rocuronium onset](https://pubmed.ncbi.nlm.nih.gov/7902034/).
+- Meyhoff et al. (2009). *Anesth Analg*. [Ideal versus corrected body weight for rocuronium in obese patients](https://pubmed.ncbi.nlm.nih.gov/19690247/).
 - Roy et al. (2002). *Anesthesiology*. [Succinylcholine concentration-effect model](https://pubmed.ncbi.nlm.nih.gov/12411790/).
 - Kopman et al. (2003). *Anesthesiology*. [Succinylcholine dose, onset, and twitch recovery](https://pubmed.ncbi.nlm.nih.gov/14576537/).
+- Martyn and Richtsfeld (2006). *Anesthesiology*. [Succinylcholine-induced hyperkalemia](https://pubmed.ncbi.nlm.nih.gov/16394702/).
 - Dhonneur et al. (1999). *Anesthesiology*. [Succinylcholine and rocuronium at the larynx, diaphragm, and adductor pollicis](https://pubmed.ncbi.nlm.nih.gov/10201662/).
 - Cantineau et al. (1994). *Anesthesiology*. [Rocuronium effects at the diaphragm](https://pubmed.ncbi.nlm.nih.gov/8092503/).
 - Plaud et al. (1995). *Clin Pharmacol Ther*. [Rocuronium laryngeal effect-site kinetics](https://pubmed.ncbi.nlm.nih.gov/7648768/).
@@ -350,6 +356,8 @@ PCV-VG, pressure control with volume guarantee.
 - Thode et al. (1983). *Scand J Clin Lab Invest Suppl*. [Relation between pH and ionized calcium in vitro and in vivo](https://pubmed.ncbi.nlm.nih.gov/6578581/).
 - Bolan et al. (2001). *Transfusion*. [Citrate, ionized calcium, and PTH during plateletpheresis](https://pubmed.ncbi.nlm.nih.gov/11552076/).
 - Ansari et al. (2025). *Anesthesiology*. [Pharmacokinetics of intravenous calcium during cesarean delivery](https://pubmed.ncbi.nlm.nih.gov/39361822/).
+- Denlinger et al. (1975). *Anesthesiology*. [Cardiovascular responses to intravenous calcium during halothane anesthesia](https://pubmed.ncbi.nlm.nih.gov/1119707/).
+- Lang et al. (1988). *Ann Intern Med*. [Left ventricular contractility and blood ionized calcium](https://doi.org/10.7326/0003-4819-108-4-524).
 - González et al. (2018). *Kidney Int Rep*. [Secondary response to chronic respiratory acidosis](https://pubmed.ncbi.nlm.nih.gov/30197983/).
 - Krapf et al. (1991). *N Engl J Med*. [Renal response to chronic respiratory alkalosis](https://pubmed.ncbi.nlm.nih.gov/1902283/).
 
@@ -453,6 +461,8 @@ PCV-VG, pressure control with volume guarantee.
 - Sessler (2016). *Lancet*. [Review of perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/26775126/).
 - Matsukawa et al. (1995). *Anesthesiology*. [Heat redistribution after induction](https://pubmed.ncbi.nlm.nih.gov/7879935/).
 - Frank et al. (1997). *JAMA*. [Perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/9087467/).
+- Kurz et al. (1995). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
+- Kurz et al. (1995). *Anesth Analg*. [Midazolam and thermoregulatory control](https://doi.org/10.1097/00000539-199508000-00032).
 
 ## Malignant hyperthermia
 

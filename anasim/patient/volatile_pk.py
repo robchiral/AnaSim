@@ -1,6 +1,8 @@
 import math
 from dataclasses import dataclass
 
+from anasim.core.utils import clamp01
+
 from .patient import Patient
 
 
@@ -57,12 +59,20 @@ class VolatilePK:
         self.state = VolatileState()
         self.frc = patient.functional_residual_capacity()
 
+    def alveolar_uptake_l_min(self, cardiac_output_l: float, shunt_fraction: float = 0.0) -> float:
+        """Instantaneous pulmonary capillary uptake from alveoli (positive into blood, L/min)."""
+        lambda_q = max(0.0, cardiac_output_l) * (1.0 - shunt_fraction) * self.lambda_b_g
+        return lambda_q * (self.state.p_alv - self.state.p_ven)
+
     def step(self, dt: float, fi_agent: float, alveolar_vent_l: float, cardiac_output_l: float,
-             temp_c: float = 37.0, lung_volume_l: float | None = None, shunt_fraction: float = 0.0):
+             temp_c: float = 37.0, lung_volume_l: float | None = None, shunt_fraction: float = 0.0,
+             companion_uptake_l_min: float = 0.0):
         """Advance with inspired fraction, ventilation/output in L/min, and temperature in °C.
 
         lung_volume_l is end-expiratory gas volume; shunt_fraction is the
-        fraction of cardiac output bypassing ventilated alveoli.
+        fraction of cardiac output bypassing ventilated alveoli. Positive
+        companion_uptake_l_min (e.g. N2O wash-in) draws additional inspired
+        gas into FRC, producing the second-gas concentrating effect.
         """
         state = self.state
         dt_min = dt / 60.0
@@ -73,8 +83,9 @@ class VolatilePK:
         q_fat = q_co * self.f_fat_frac
 
         alveolar_vent = max(0.0, alveolar_vent_l)
+        concentrating_inflow = max(0.0, companion_uptake_l_min) if fi_agent > 0.0 else 0.0
 
-        # FRC dPalv/dt = VA (Fi - Palv) + (1-s) Q lambda_bg (Pven - Palv).
+        # FRC dPalv/dt = VA (Fi - Palv) + U_companion Fi + (1-s) Q lambda_bg (Pven - Palv).
         # Arterial blood mixes end-capillary and shunted venous blood.
         if lung_volume_l is not None:
             change = lung_volume_l - self.frc
@@ -91,7 +102,7 @@ class VolatilePK:
 
         # Update all compartments from the same pressures so agent is
         # conserved; substep so no Euler weight exceeds 1.
-        fastest_rate = max((alveolar_vent + lambda_q) / v_frc, k_vrg, k_mus, k_fat)
+        fastest_rate = max((alveolar_vent + concentrating_inflow + lambda_q) / v_frc, k_vrg, k_mus, k_fat)
         substeps = max(1, math.ceil(dt_min * fastest_rate))
         interval = dt_min / substeps
         for _ in range(substeps):
@@ -102,9 +113,16 @@ class VolatilePK:
                 + self.f_fat_frac * state.p_fat
             )
             p_art = (1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven
-            state.p_alv += (
-                alveolar_vent * (fi_agent - p_alv) + lambda_q * (p_ven - p_alv)
-            ) / v_frc * interval
+            state.p_alv = clamp01(
+                p_alv
+                + (
+                    alveolar_vent * (fi_agent - p_alv)
+                    + concentrating_inflow * fi_agent
+                    + lambda_q * (p_ven - p_alv)
+                )
+                / v_frc
+                * interval
+            )
             state.p_vrg += k_vrg * (p_art - state.p_vrg) * interval
             state.p_mus += k_mus * (p_art - state.p_mus) * interval
             state.p_fat += k_fat * (p_art - state.p_fat) * interval
