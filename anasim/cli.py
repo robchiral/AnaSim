@@ -95,6 +95,7 @@ def run_ui(args) -> int:
 
     return run(port=args.port, open_browser=not args.no_browser, recordings_dir=args.record_dir)
 
+
 def main():
     parser = argparse.ArgumentParser(description="AnaSim anesthesia simulator")
     parser.add_argument("--mode", choices=["ui", "headless"], default="ui", help="Run mode (default: ui)")
@@ -114,6 +115,7 @@ def main():
         run_headless(args)
     else:
         raise SystemExit(run_ui(args))
+
 
 if __name__ == "__main__":
     main()

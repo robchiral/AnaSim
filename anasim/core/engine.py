@@ -227,7 +227,7 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_continuous_fluid_rate(self, ml_hr: float | None):
         """Set continuous IV fluids in mL/hr; None restores 1 mL/kg/hr."""
-        rate = self.patient.weight if ml_hr is None else max(0.0, float(ml_hr))
+        rate = self.patient.weight if ml_hr is None else max(0.0, finite_number("maintenance fluid rate", ml_hr))
         self.maintenance_fluid_rate_ml_min = rate / 60.0
 
     def get_continuous_fluid_rate(self) -> float:
@@ -319,7 +319,7 @@ class SimulationEngine(DrugControllerMixin):
             ("n2o", n2o_l_min),
         ):
             attr = f"fgf_{gas}"
-            flow = max(0.0, requested)
+            flow = max(0.0, finite_number(f"{gas} flow", requested))
             if getattr(self.circuit, attr) != flow:
                 self.actions.record(self.state.time, ACTION_FGF, label=gas, amount=flow)
             setattr(self.circuit, attr, flow)
@@ -345,7 +345,7 @@ class SimulationEngine(DrugControllerMixin):
         """Set the sevoflurane vaporizer dial (%); it stays off when sevoflurane is disabled."""
         if not self.config.sevoflurane_enabled:
             return
-        self.vaporizer.set_concentration(percent)
+        self.vaporizer.set_concentration(finite_number("vaporizer setting", percent))
         self.circuit.vaporizer_setting = self.vaporizer.state.setting
         self.circuit.vaporizer_on = self.vaporizer.state.is_on
         self.actions.record(
@@ -410,6 +410,7 @@ class SimulationEngine(DrugControllerMixin):
         retention_fraction: float | None = None,
         label: str = "crystalloid",
     ):
+        volume_ml = finite_number(f"{label} volume", volume_ml)
         if volume_ml <= 0 or rate_ml_min <= 0:
             return
         self.pending_infusions.append(
@@ -428,7 +429,7 @@ class SimulationEngine(DrugControllerMixin):
 
         Population TCI pump models omit it. Sugammadex goes to the TOF model for binding.
         """
-        amount = float(amount)
+        amount = finite_number("bolus amount", amount)
         if amount <= 0:
             return
 
@@ -536,7 +537,7 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_bair_hugger(self, target_c: float):
         """Set the forced-air warmer target (°C); 0 turns it off."""
-        self.state.bair_hugger_target = target_c
+        self.state.bair_hugger_target = bounded_number("warmer target", target_c, 0.0, 43.0, unit="°C")
 
     def set_surface_cooling(self, on: bool):
         """Start or stop surface cooling; it continues until stopped."""
@@ -581,10 +582,10 @@ class SimulationEngine(DrugControllerMixin):
         self.state.mask_seal = self.mask_seal
 
     def set_airway_obstruction(self, severity: float):
-        self.airway_obstruction_manual = clamp(severity, 0.0, 1.0)
+        self.airway_obstruction_manual = bounded_number("airway obstruction", severity, 0.0, 1.0)
 
     def set_bronchospasm(self, severity: float):
-        self.bronchospasm_manual = clamp(severity, 0.0, 1.0)
+        self.bronchospasm_manual = bounded_number("bronchospasm", severity, 0.0, 1.0)
 
     def set_auto_laryngospasm(self, enabled: bool):
         self.auto_laryngospasm_enabled = bool(enabled)

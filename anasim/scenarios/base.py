@@ -306,16 +306,6 @@ def require_drug_bolus(drug_key: str, fail_message: str) -> Requirement:
     return check
 
 
-def require_crisis_started(event_name: str, fail_message: str) -> Requirement:
-    """Require a crisis start, including one the learner has already controlled."""
-    def check(engine) -> tuple[bool, str]:
-        started = action_taken_in_case(engine, ACTION_EVENT_START, event_name)
-        if started:
-            return True, ""
-        return False, fail_message
-    return check
-
-
 class CrisisStartMAP:
     """Monitored MAP when a crisis starts, recorded by the case event."""
 

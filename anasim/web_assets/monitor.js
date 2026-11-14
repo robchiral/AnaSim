@@ -28,6 +28,7 @@ class Sweep {
     this.range = [...channel.range];
     this.shrinkSamples = 0;
     this.color = css(channel.color);
+    this.labelColor = css("--text-dim");
     const size = Math.max(2, Math.round(channel.seconds / sampleInterval));
     this.data = new Float32Array(size).fill(NaN);
     this.gap = Math.min(size - 1, Math.max(1, Math.round(GAP_FRACTION * size)));
@@ -128,7 +129,7 @@ class Sweep {
         // The flow zero line makes incomplete exhalation visible.
         ctx.lineTo(channel === CHANNELS.flow && t === 0 ? width : AXIS_WIDTH + 2, ty);
         ctx.stroke();
-        ctx.fillStyle = css("--text-dim");
+        ctx.fillStyle = this.labelColor;
         ctx.fillText(String(t), AXIS_WIDTH - 6, Math.min(Math.max(ty, 7), height - 7));
       }
     }
@@ -233,11 +234,13 @@ function niceCeil(value, step) {
 }
 
 const LOOP_PADDING = 0.03;
+let loopColors = null;
 
 function plotLoop(canvas, traces, [x0, x1], [y0, y1], xUnit, yUnit) {
   const dpr = window.devicePixelRatio || 1;
   const { clientWidth: w, clientHeight: h } = canvas;
   if (!w || !h) return;
+  loopColors ??= { label: css("--text-dim"), trace: css("--vent") };
   const width = Math.round(w * dpr), height = Math.round(h * dpr);
   if (canvas.width !== width || canvas.height !== height) [canvas.width, canvas.height] = [width, height];
   const ctx = canvas.getContext("2d");
@@ -256,7 +259,7 @@ function plotLoop(canvas, traces, [x0, x1], [y0, y1], xUnit, yUnit) {
   ctx.moveTo(left, py(0));
   ctx.lineTo(right, py(0));
   ctx.stroke();
-  ctx.fillStyle = css("--text-dim");
+  ctx.fillStyle = loopColors.label;
   ctx.font = "11px system-ui, sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
@@ -266,12 +269,11 @@ function plotLoop(canvas, traces, [x0, x1], [y0, y1], xUnit, yUnit) {
   ctx.textBaseline = "top";
   ctx.fillText(`${y1} ${yUnit}`, left, 1);
   if (y0 < 0) ctx.fillText(String(y0), 1, bottom - 10);
-  const color = css("--vent");
   ctx.save();
   ctx.beginPath();
   ctx.rect(left, top, right - left, bottom - top);
   ctx.clip();
-  ctx.strokeStyle = ctx.fillStyle = color;
+  ctx.strokeStyle = ctx.fillStyle = loopColors.trace;
   ctx.lineWidth = 1.6;
   ctx.lineJoin = "round";
   for (const { xs, ys, alpha, head } of traces) {
@@ -327,6 +329,7 @@ export class Monitor {
     for (const el of document.querySelectorAll(".monitor output")) this.fields[el.id] = el;
     this.fields["v-spo2-unit"] = document.getElementById("v-spo2-unit");
     this.fields["v-rr-title"] = document.getElementById("v-rr-title");
+    this.fields["v-io"] = document.getElementById("v-io");
     this.alarmBoxes = [...document.querySelectorAll(".monitor [data-alarm]")];
     this.loops = new Loops(() => this.requestDraw());
     this.nmb = new NeuromuscularDisplay(info.nmb_history);
@@ -410,8 +413,8 @@ export class Monitor {
 
     const net = v.net_fluid ?? 0;
     this.set("v-net", `${net >= 0 ? "+" : "−"}${Math.abs(net).toFixed(0)} mL`);
-    document.getElementById("v-io").textContent =
-      `IV ${fixed(v.fluid_in, 0)}, PRBC ${fixed(v.blood_in, 0)}, urine ${fixed(v.urine_out, 0)}, loss ${fixed(v.blood_out, 0)} mL`;
+    this.set("v-io",
+      `IV ${fixed(v.fluid_in, 0)}, PRBC ${fixed(v.blood_in, 0)}, urine ${fixed(v.urine_out, 0)}, loss ${fixed(v.blood_out, 0)} mL`);
 
     this.set("v-ppeak", trunc(v.ppeak));
     this.set("v-pplat", trunc(v.pplat));

@@ -68,8 +68,14 @@ TREND_WINDOW_S = 1800
 VENT_FIELDS = ("mode", "rr", "tv", "peep", "ie", "p_insp", "p_support", "t_insp", "pause", "p_max", "trigger")
 IE_RATIOS = ("1:1", "1:2", "1:3", "1:4")
 LOOP_INTERVAL_S = 0.03  # Spacing of loop points, about 170 per 5-second breath
-FLUIDS = {"crystalloid": "give_fluid", "saline": "give_saline", "albumin": "give_albumin", "blood": "give_blood",
-          "lipid": "give_lipid_emulsion"}
+# Fluid kind: (engine method, receipt label).
+FLUIDS = {
+    "crystalloid": ("give_fluid", "lactated Ringer's"),
+    "saline": ("give_saline", "0.9% saline"),
+    "albumin": ("give_albumin", "5% albumin"),
+    "blood": ("give_blood", "PRBC"),
+    "lipid": ("give_lipid_emulsion", "20% lipid emulsion over 2.5 min"),
+}
 
 SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
 # Instructor event controls; cases start their own events and offer case actions instead.
@@ -540,8 +546,7 @@ class WebSession:
             "convulsions": engine.state.convulsions,
             "muscle_rigidity": engine.state.muscle_rigidity,
             "surface_cooling": engine.state.surface_cooling,
-            "dantrolene_total_mg": sum(r.amount for r in engine.actions.records
-                                       if r.action == ACTION_DRUG_BOLUS and r.label == "dantrolene"),
+            "dantrolene_total_mg": engine.actions.total(ACTION_DRUG_BOLUS, "dantrolene"),
             "lipid": {"rate": engine.lipid_infusion_ml_min, "total_ml": engine.toxicity.total_lipid_ml},
             "position": engine.hemo.position,
             "fgf": {"o2": circuit.fgf_o2, "air": circuit.fgf_air, "n2o": circuit.fgf_n2o},
@@ -662,7 +667,7 @@ class WebSession:
             self._pause()
 
     def _cmd_speed(self, value: float):
-        self.speed = min(max(float(value), SPEED_RANGE[0]), SPEED_RANGE[1])
+        self.speed = min(max(domain.finite_number("speed", value), SPEED_RANGE[0]), SPEED_RANGE[1])
         self._reset_speed_average()
 
     def _cmd_airway(self, mode: str):
@@ -702,13 +707,13 @@ class WebSession:
         return {"feedback": None}
 
     def _cmd_fgf(self, o2: float, air: float, n2o: float):
-        self.engine.set_fgf(float(o2), float(air), float(n2o))
+        self.engine.set_fgf(o2, air, n2o)
 
     def _cmd_oxygen_supply(self, connected: bool):
         self.engine.set_oxygen_supply_connected(connected)
 
     def _cmd_vaporizer(self, percent: float):
-        self.engine.set_vaporizer(float(percent))
+        self.engine.set_vaporizer(percent)
 
     # Bag-mask and the ventilator are mutually exclusive.
     def _cmd_bag_mask(self, active: bool):
@@ -803,12 +808,13 @@ class WebSession:
         return {"medication": entry}
 
     def _cmd_fluid(self, kind: str, volume_ml: float):
+        if kind not in FLUIDS:
+            raise ValueError(f"Unknown fluid: {kind!r}")
         volume = float(volume_ml)
         if not math.isfinite(volume) or volume <= 0:
             raise ValueError("Fluid volume must be positive and finite")
-        getattr(self.engine, FLUIDS[kind])(volume)
-        label = {"crystalloid": "lactated Ringer's", "saline": "0.9% saline", "albumin": "5% albumin", "blood": "PRBC",
-                 "lipid": "20% lipid emulsion over 2.5 min"}[kind]
+        method, label = FLUIDS[kind]
+        getattr(self.engine, method)(volume)
         return {"fluid": {"time": self.engine.state.time, "text": f"{volume:g} mL {label} started"}}
 
     def _cmd_lipid_rate(self, ml_min: float):
@@ -851,7 +857,7 @@ class WebSession:
         return {"shock": {"time": engine.state.time, "text": text}}
 
     def _cmd_maintenance_fluid(self, ml_hr: float):
-        self.engine.set_continuous_fluid_rate(float(ml_hr))
+        self.engine.set_continuous_fluid_rate(domain.finite_number("maintenance fluid rate", ml_hr))
 
     def _cmd_disturbance_profile(self, profile: str | None):
         if profile is None:
@@ -867,10 +873,10 @@ class WebSession:
             self.engine.stop_disturbance()
 
     def _cmd_obstruction(self, percent: float):
-        self.engine.set_airway_obstruction(float(percent) / 100.0)
+        self.engine.set_airway_obstruction(domain.bounded_number("airway obstruction", percent, 0.0, 100.0, unit="%") / 100.0)
 
     def _cmd_bronchospasm(self, percent: float):
-        self.engine.set_bronchospasm(float(percent) / 100.0)
+        self.engine.set_bronchospasm(domain.bounded_number("bronchospasm", percent, 0.0, 100.0, unit="%") / 100.0)
 
     def _cmd_position(self, position: str):
         self.engine.set_position(position)
@@ -880,7 +886,7 @@ class WebSession:
 
     def _cmd_hemorrhage(self, active: bool, rate_ml_min: float = 500.0):
         if active:
-            self.engine.start_hemorrhage(float(rate_ml_min))
+            self.engine.start_hemorrhage(rate_ml_min)
         else:
             self.engine.stop_hemorrhage()
 
@@ -903,7 +909,7 @@ class WebSession:
         self.engine.set_rhythm(name)
 
     def _cmd_bair_hugger(self, target_c: float):
-        self.engine.set_bair_hugger(float(target_c))
+        self.engine.set_bair_hugger(target_c)
 
     def _cmd_scenario_next(self):
         if self.scenario is None or self.case_run is None or self.case_run.mode != "guided":

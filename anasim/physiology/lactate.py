@@ -15,6 +15,8 @@ isomer; the fluid balance model handles D-lactate and the other ions.
 
 import math
 
+from anasim.core.utils import clamp01
+
 O2_L_PER_MMOL = 0.022414
 DISTRIBUTION_L_PER_KG = 0.26
 CLEARANCE_L_KG_MIN = 0.012
@@ -93,7 +95,7 @@ class LactateModel:
             + SEPSIS_PRODUCTION * sepsis_severity
         )
         anaerobic = ANAEROBIC_PER_O2 * max(0.0, oxygen_deficit_l) / O2_L_PER_MMOL
-        supply = min(1.0, max(0.0, supply_fraction))
+        supply = clamp01(supply_fraction)
         capacity = self.vmax_mmol_min * (1.0 - HEPATIC_SHARE + HEPATIC_SHARE * self.hepatic_function * supply)
         endogenous_source = aerobic + anaerobic / minutes
         infused_source = infused / minutes

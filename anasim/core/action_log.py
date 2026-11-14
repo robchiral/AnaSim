@@ -61,6 +61,10 @@ class ActionLog:
     ) -> None:
         self._records.append(ActionRecord(float(time), action, label, float(amount)))
 
+    def total(self, action: str, label: str) -> float:
+        """Sum the amounts of all matching actions, including setup."""
+        return sum(r.amount for r in self._records if r.action == action and r.label == label)
+
     def begin_case(self, case_id: str, time: float) -> None:
         """Exclude setup actions from later case queries."""
         self.record(time, ACTION_CASE_START, label=case_id)

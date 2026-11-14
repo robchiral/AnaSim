@@ -130,6 +130,20 @@ def test_ventilator_and_bag_settings_survive_handover():
             cmd(session, "mask_seal", percent=bad_seal)
         assert parse(session.advance(0.0))["controls"]["mask_seal"] == 80
     cmd(session, "mask_seal", percent=100)
+    controls = parse(session.advance(0.0))["controls"]
+    for name, args in (
+        ("fgf", {"o2": float("inf"), "air": 0, "n2o": 0}),
+        ("vaporizer", {"percent": float("nan")}),
+        ("obstruction", {"percent": float("nan")}),
+        ("bronchospasm", {"percent": 101}),
+        ("bair_hugger", {"target_c": 400}),
+        ("maintenance_fluid", {"ml_hr": None}),
+        ("speed", {"value": float("nan")}),
+        ("fluid", {"kind": "plasma", "volume_ml": 250}),
+    ):
+        with pytest.raises(ValueError):
+            cmd(session, name, **args)
+    assert parse(session.advance(0.0))["controls"] == controls
 
     # The monitor counts every bag breath, and expired volume is near the set volume.
     cmd(session, "run", running=True)

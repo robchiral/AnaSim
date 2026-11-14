@@ -2,6 +2,8 @@ import math
 
 import numpy as np
 
+from anasim.core.utils import clamp01
+
 from .cardiac_cycle import CardiacCycleSample
 
 _PPG_TEMPLATE_RESOLUTION = 200
@@ -62,7 +64,7 @@ class SpO2Monitor:
         if dt <= 0.0:
             raise ValueError("SpO2 monitor dt must be greater than zero")
 
-        perf = max(0.0, min(1.0, perfusion))
+        perf = clamp01(perfusion)
         if cycle.organized:
             # Each pulse starts at its upstroke with the beat's stroke volume, and the
             # previous pulse keeps its own timing until then.

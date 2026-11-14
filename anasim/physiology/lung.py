@@ -2,6 +2,7 @@
 
 import math
 
+from anasim.core.utils import clamp01
 from anasim.patient.patient import Patient
 
 
@@ -99,7 +100,7 @@ class LungAeration:
             self.atelectatic = equilibrium + (self.atelectatic - equilibrium) * math.exp(-total * self.elapsed)
         flood = min(self.FLOOD_MAX, self.FLOOD_SLOPE * max(0.0, self.lung_water - self.FLOOD_ONSET))
         low, high = self.FLOOD_RELIEF_PRESSURES
-        relief = self.FLOOD_RELIEF_MAX * min(1.0, max(0.0, (pressure - low) / (high - low)))
+        relief = self.FLOOD_RELIEF_MAX * clamp01((pressure - low) / (high - low))
         flood *= 1.0 - relief
         self.flooded = flood + (self.flooded - flood) * math.exp(-self.FLOOD_RATE * self.elapsed)
         self.elapsed = self.pressure_area = 0.0
