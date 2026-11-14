@@ -3,12 +3,10 @@
 ## Unreleased
 
 - Blood gases now report sodium, potassium, chloride, and ionized calcium.
-  Each fluid carries its own ions and albumin: saline causes a hyperchloremic
-  acidosis and is excreted more slowly than lactated Ringer's, and rapid
-  transfusion of stored blood adds acid and CO₂, raises potassium, and lowers
-  ionized calcium. Over hours, the kidneys compensate for sustained changes in
-  PaCO₂. Added 0.9% saline and calcium chloride. The rise in ionized calcium
-  after calcium chloride halves in about 30 minutes.
+  Fluids carry their own ions and albumin. Saline causes hyperchloremic
+  acidosis, and rapid transfusion adds acid, CO₂, and potassium while lowering
+  ionized calcium. Added renal compensation for sustained PaCO₂ changes,
+  0.9% saline, and calcium chloride.
 - Added malignant hyperthermia with dantrolene, surface cooling, and a guided
   or independent case.
 - AnaSim now supports adults up to 85 years old.
@@ -16,28 +14,24 @@
   are recalibrated to infusion and bolus studies. Its inotropic effect widens
   pulse pressure. HR and pressure responses to boluses keep rising at larger
   doses, and higher infusion rates restore vascular resistance.
-- Respiratory muscle fatigue is recalibrated to endurance and recovery studies.
-  Heavy inspiratory loads take about twice as long to exhaust the muscles, most
-  strength returns within 15 minutes of rest or pressure support, and a smaller
-  deficit lasts up to a day.
-- Ventricular arrhythmias and intravenous amiodarone are recalibrated to
-  clinical studies. Sustained VT with a pulse now takes tens of minutes to
-  convert. VF recurs after a successful shock in about half of patients. Rapid
-  amiodarone boluses briefly lower blood pressure much more than a 10-minute
-  loading infusion, HR slows over 15 to 30 minutes, and cardiac output falls
-  more in patients with HFrEF.
-- Lidocaine toxicity and lipid rescue are recalibrated to volunteer infusions
-  and overdose reports. In awake patients, lidocaine raises HR and blood
-  pressure before convulsions start. Cardiac depression and QRS widening now
-  require much higher concentrations than seizures, so a 2 g infusion over an
-  hour causes hypotension and coma in sinus rhythm rather than arrest. Lipid
-  emulsion reduces lidocaine exposure at its effect sites by about a fifth over
-  30 minutes.
+- Recalibrated respiratory muscle fatigue. Heavy loads take about twice as
+  long to exhaust the muscles, most strength returns within 15 minutes of rest
+  or pressure support, and a smaller deficit lasts up to a day.
+- Recalibrated ventricular arrhythmias and intravenous amiodarone. Sustained
+  VT with a pulse takes tens of minutes to convert, and VF recurs after about
+  half of successful shocks. Rapid amiodarone boluses lower pressure more than
+  slower infusions, and cardiac output falls more in HFrEF.
+- Epinephrine during CPR now raises diastolic pressure while lowering cardiac
+  output and EtCO₂. Shocks temporarily reduce stroke volume, and arterial
+  pressure recovers more slowly after longer VF.
+- Recalibrated lidocaine toxicity and lipid rescue. In awake patients, HR and
+  blood pressure rise before seizures; QRS widening and cardiac depression
+  require much higher concentrations. Lipid emulsion reduces effect-site
+  exposure by about a fifth over 30 minutes.
 - Added an adjustable bag pressure limit (APL, default 20 cmH₂O) and facemask
-  seal. Obstruction and bronchospasm now limit bag volume at the APL. A loose
-  mask loses part of each assisted breath, lets room air in during unsupported
-  breaths, and flattens the capnogram when the leak is large. Pressures above
-  20 cmH₂O leak even with a tight seal.
+  seal. Obstruction and bronchospasm limit bag volume at the APL. Mask leaks
+  reduce assisted ventilation and admit room air; large leaks flatten the
+  capnogram. Pressures above 20 cmH₂O leak even with a tight seal.
 - During upper airway obstruction, mask CPAP no longer lowers ventilation
   below that of unassisted breathing.
 - Maternal extracellular water now expands during pregnancy.

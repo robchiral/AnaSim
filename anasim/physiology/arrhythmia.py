@@ -57,13 +57,16 @@ class ArrhythmiaModel:
         self._recovering_brady = False
 
     def after_shock(self, before: RhythmType, after: RhythmType, *,
-                    ischemia: float, hypoxia: float, energy_failure: float) -> RhythmType:
+                    ischemia: float, hypoxia: float, energy_failure: float,
+                    energy_reserve: float = 0.0) -> RhythmType:
         """Return the rhythm after a terminating shock. The myocardial substrate persists."""
         if before not in VENTRICULAR_RHYTHMS or after in VENTRICULAR_RHYTHMS:
             return after
-        stress = clamp01(max(ischemia, hypoxia))
+        # Brief VF before the energy reserve falls leaves little arrest substrate
+        # for post-shock bradycardia or early refibrillation (Park 1994; Tokano 1998).
+        depletion = clamp01((0.80 - energy_reserve) / 0.50)
+        stress = clamp01(max(ischemia * depletion, hypoxia))
         if before == RhythmType.VFIB:
-            # A shock given before arrest ischemia develops leaves little substrate.
             self._post_shock_stress = clamp01((stress - 0.25) / 0.75)
         else:
             self._post_shock_stress *= math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S)

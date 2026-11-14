@@ -38,7 +38,9 @@ PCV-VG, pressure control with volume guarantee.
 - Eleveld et al. (2017). *Anesthesiology*. [Remifentanil PK/PD](https://pubmed.ncbi.nlm.nih.gov/28509794/).
 - Eleveld et al. (2018). *Br J Anaesth*. [Propofol PK/PD](https://pubmed.ncbi.nlm.nih.gov/29661412/) and [correction](https://pubmed.ncbi.nlm.nih.gov/30032904/).
 - Vellinga et al. (2021). *Br J Anaesth*. [Prospective Eleveld propofol PK/PD validation](https://pubmed.ncbi.nlm.nih.gov/33317804/).
+- Kim et al. (2023). *J Pharmacokinet Pharmacodyn*. [Propofol PK/PD model and Eleveld validation in Korean elderly subjects](https://pubmed.ncbi.nlm.nih.gov/36522561/).
 - Coetzee et al. (2024). *Br J Anaesth*. [Agreement between Eleveld-predicted and measured BIS during TIVA](https://pubmed.ncbi.nlm.nih.gov/39179443/).
+- Sørensen et al. (2011). *Acta Anaesthesiol Scand*. [Onset time and hemodynamic response after thiopental versus propofol in the elderly](https://pubmed.ncbi.nlm.nih.gov/21342151/).
 - Sahinovic et al. (2020). *Anesth Analg*. [EEG monitor delay relative to Schnider-predicted propofol effect-site concentrations](https://pubmed.ncbi.nlm.nih.gov/32925339/).
 - Dahaba et al. (2020). *J Pharmacokinet Pharmacodyn*. [Age covariates in propofol-BIS pharmacodynamics](https://pubmed.ncbi.nlm.nih.gov/32100175/).
 - Struys et al. (2007). *Anesthesiology*. [Propofol administration rate and apparent plasma-effect-site equilibration](https://pubmed.ncbi.nlm.nih.gov/17721240/).
@@ -203,6 +205,8 @@ PCV-VG, pressure control with volume guarantee.
 - Fregolent et al. (2025). *IFAC-PapersOnLine*. [Su model calibration in surgical patients](https://doi.org/10.1016/j.ifacol.2025.07.125).
 - Jeleazcov et al. (2015). *Br J Anaesth*. [Propofol arterial pressure effect sites in volunteers](https://pubmed.ncbi.nlm.nih.gov/25627394/).
 - Kazama et al. (1999). *Anesthesiology*. [Propofol equilibration for SBP and BIS by age](https://pubmed.ncbi.nlm.nih.gov/10360846/).
+- Claeys et al. (1988). *Br J Anaesth*. [Hemodynamic changes during anesthesia induced and maintained with propofol](https://pubmed.ncbi.nlm.nih.gov/3257393/).
+- He et al. (2024). *J Biomed Res*. [Echocardiographic hemodynamics during remimazolam versus propofol induction in elderly patients](https://pubmed.ncbi.nlm.nih.gov/37907250/).
 - Hino et al. (2019). *J Anesth*. [Age-stratified propofol and thiopental induction with remifentanil](https://doi.org/10.1007/s00540-019-02657-x).
 - Oh et al. (2025). *Drug Des Devel Ther*. [Blood pressure during propofol TCI induction in patients aged 65 and over](https://doi.org/10.2147/DDDT.S553809).
 - van den Berg et al. (2021). *J Clin Monit Comput*. [Hemodynamics at equipotent propofol-remifentanil pairs](https://pubmed.ncbi.nlm.nih.gov/32488680/).
@@ -265,6 +269,11 @@ PCV-VG, pressure control with volume guarantee.
 - Weisfeldt and Becker (2002). *JAMA*. [Three-phase time-sensitive model of resuscitation after cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12479769/).
 - Paradis et al. (1990). *JAMA*. [Coronary perfusion pressure and return of spontaneous circulation in human CPR](https://pubmed.ncbi.nlm.nih.gov/2386557/).
 - Meaney et al. (2013). *Circulation*. [Cardiopulmonary resuscitation quality](https://pubmed.ncbi.nlm.nih.gov/23801105/).
+- Cantineau et al. (1994). *Am J Emerg Med*. [Epinephrine and end-tidal carbon dioxide during prehospital CPR](https://pubmed.ncbi.nlm.nih.gov/8179728/).
+- Kim et al. (2025). *Resuscitation*. [Real-time arterial pressure responses to epinephrine during CPR](https://pubmed.ncbi.nlm.nih.gov/40250548/).
+- Park et al. (1994). *Pacing Clin Electrophysiol*. [Systolic arterial pressure recovery after ventricular fibrillation in humans](https://pubmed.ncbi.nlm.nih.gov/7521035/).
+- Tokano et al. (1998). *J Cardiovasc Electrophysiol*. [Ventricular shock strength and cardiac hemodynamics](https://pubmed.ncbi.nlm.nih.gov/9727657/).
+- Laurent et al. (2002). *J Am Coll Cardiol*. [Reversible myocardial dysfunction in survivors of out-of-hospital cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12505221/).
 - ZOLL (2023). [R Series operator's guide](https://www.zoll.com/-/media/product-materials/product-manuals/r-series/05/9650-0912-05-sf_r.ashx).
 
 ## Cardiovascular drugs

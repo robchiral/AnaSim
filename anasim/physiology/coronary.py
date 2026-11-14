@@ -2,12 +2,22 @@
 
 import math
 
-from anasim.core.utils import clamp
+from anasim.core.utils import clamp, clamp01
 
 from .resuscitation import COMPRESSION_DUTY
 
-# Ischemic injury that reperfusion does not reverse builds up over about 7
-# minutes once the energy reserve is exhausted, as electrical activity fails.
+# Reversible oxygen debt after brief VF clears over seconds once beats return,
+# whereas arrest-level depletion recovers over about a minute (Park 1994; Weisfeldt 2002).
+REPERFUSION_FAST_TAU_S = 3.5
+REPERFUSION_SLOW_TAU_S = 60.0
+# High-energy countershocks transiently depress stroke volume by ~10-12%,
+# resolving over a few minutes of coronary perfusion (Tokano 1998).
+SHOCK_STUN_PER_200J = 0.125
+SHOCK_STUN_MAX = 0.25
+SHOCK_STUN_BASE_TAU_S = 90.0
+SHOCK_STUN_ISCHEMIC_TAU_S = 300.0
+# Ischemic injury that reperfusion does not reverse within a session builds up
+# over about 7 minutes once the energy reserve is exhausted (Laurent 2002).
 INJURY_TIME_S = 420.0
 
 
@@ -30,9 +40,22 @@ class CoronaryModel:
         self._supply_scale = reserve / (reference_cpp * self._diastolic_fraction(hr) * 13.5)
         self.supply_demand_ratio = reserve
         self.ischemia = 0.0
+        self.shock_stunning = 0.0
+        self._shock_stun_tau_s = SHOCK_STUN_BASE_TAU_S
         self.energy_reserve = 1.0
         self.energy_failure = 0.0
         self.injury = 0.0
+
+    def apply_shock(self, energy_j: float = 200.0) -> None:
+        """Apply transient contractile stunning from a countershock (Tokano 1998)."""
+        scale = clamp(energy_j / 200.0, 0.0, 2.0)
+        if scale <= 0.0:
+            return
+        tau = SHOCK_STUN_BASE_TAU_S + (SHOCK_STUN_ISCHEMIC_TAU_S - SHOCK_STUN_BASE_TAU_S) * self.ischemia
+        prev = self.shock_stunning
+        new_stun = min(SHOCK_STUN_MAX, 1.0 - (1.0 - prev) * (1.0 - SHOCK_STUN_PER_200J * scale))
+        self._shock_stun_tau_s = (prev * self._shock_stun_tau_s + (new_stun - prev) * tau) / new_stun
+        self.shock_stunning = new_stun
 
     @staticmethod
     def _diastolic_fraction(hr: float) -> float:
@@ -66,16 +89,29 @@ class CoronaryModel:
         pressure = max(0.0, dbp - back_pressure)
         oxygen = hb * clamp(saturation / 98.0, 0.0, 1.05)
         self.supply_demand_ratio = self._supply_scale * pressure * diastolic_fraction * oxygen / demand
-        target = clamp(1.0 - self.supply_demand_ratio, 0.0, 1.0)
-        tau = 15.0 if target > self.ischemia else 60.0
+        target = clamp01(1.0 - self.supply_demand_ratio)
+        if fibrillating or compressions:
+            tau_off = REPERFUSION_SLOW_TAU_S
+        else:
+            tau_off = REPERFUSION_FAST_TAU_S + (REPERFUSION_SLOW_TAU_S - REPERFUSION_FAST_TAU_S) * (
+                1.0 - self.energy_reserve
+            )
+        tau = 15.0 if target > self.ischemia else tau_off
         self.ischemia += (target - self.ischemia) * -math.expm1(-dt / tau)
+        if self.shock_stunning > 0.0:
+            reperfusion = clamp01(self.supply_demand_ratio)
+            self.shock_stunning *= math.exp(-dt * reperfusion / self._shock_stun_tau_s)
+            if self.shock_stunning < 1e-4:
+                self.shock_stunning = 0.0
+                self._shock_stun_tau_s = SHOCK_STUN_BASE_TAU_S
         # Severe oxygen limitation from either cause first depletes an energy
         # reserve, so a perfusing rhythm can return within about 4 minutes of
         # no flow, as in the electrical phase of arrest (Weisfeldt 2002).
         # Excitation then fails and injury accumulates. The timing is a teaching calibration.
-        severity = clamp((max(self.ischemia, hypoxia) - 0.5) / 0.5, 0.0, 1.0)
-        self.energy_reserve = clamp(self.energy_reserve + dt * (
-            (1.0 - severity) * (1.0 - self.energy_reserve) / 120.0 - severity / 240.0), 0.0, 1.0)
+        severity = clamp01((max(self.ischemia, hypoxia) - 0.5) / 0.5)
+        self.energy_reserve = clamp01(
+            self.energy_reserve + dt * ((1.0 - severity) * (1.0 - self.energy_reserve) / 120.0 - severity / 240.0)
+        )
         exhausted = self.energy_reserve <= 0.0
         if exhausted:
             self.injury = min(1.0, self.injury + dt * severity / INJURY_TIME_S)
@@ -85,7 +121,12 @@ class CoronaryModel:
 
     @property
     def contractility_factor(self) -> float:
-        return (1.0 - 0.50 * self.ischemia) * (1.0 - self.injury) * self.electrical_factor
+        return (
+            (1.0 - 0.50 * self.ischemia)
+            * (1.0 - self.shock_stunning)
+            * (1.0 - self.injury)
+            * self.electrical_factor
+        )
 
     @property
     def irreversible(self) -> bool:

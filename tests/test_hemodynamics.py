@@ -211,6 +211,44 @@ def test_ebert_propofol_induction_without_opioid():
     assert sbp_fall > 1.5 * dbp_fall
 
 
+@pytest.mark.parametrize("age", [62.4, 75.0])
+def test_claeys_propofol_induction_and_maintenance_without_opioid(age):
+    """Claeys 1988 Table II (n=10, ages 50-75, mean 62.4 ± 7.6, lorazepam 1 mg
+    and glycopyrrolate 0.4 mg premedication, spontaneous room air with PaCO2
+    rising from 38.0 to 42.5 mmHg): propofol 2 mg/kg over 30 s then 6 mg/kg/h
+    lowered SAP/DAP from 136 ± 17 / 66 ± 10 mmHg to 99 ± 22 / 53 ± 15 at 2 min,
+    93 ± 18 / 50 ± 12 at 6 min, 93 ± 17 / 48 ± 11 at 30 min, and 101 ± 20 /
+    51 ± 12 at 60 min. Pressures stay within 1 SD at both the cohort mean and
+    upper age, while the model puts more of the sustained fall in SV/CO than SVR.
+    """
+    patient = Patient(
+        age=age, weight=72.1, height=168.5, sex="male",
+        baseline_map=(136.0 + 2.0 * 66.0) / 3.0, baseline_hr=74.0,
+    )
+    model = HemodynamicModel(patient)
+    pk = PropofolPKEleveld(patient, concomitant_opioids=False)
+    renderer, cycle = ArterialWaveformRenderer(age=age), CardiacCycle(np.random.default_rng(0))
+    awake = model.step(0.0, 0.0, 0.0, 0.0, -2.0, 38.0, 95.0)
+    _pressures(model, renderer, cycle, awake, seed=True)
+    checks = {
+        120: (99.0, 22.0, 53.0, 15.0),
+        360: (93.0, 18.0, 50.0, 12.0),
+        1800: (93.0, 17.0, 48.0, 11.0),
+        3600: (101.0, 20.0, 51.0, 12.0),
+    }
+    for second in range(1, 3601):
+        rate = (2.0 * 72.1 / 30.0 if second <= 30 else 0.0) + 6.0 * 72.1 / 3600.0
+        ramp = min(1.0, second / 2700.0)
+        state = model.step(
+            1.0, pk.step(1.0, rate).c1, 0.0, 0.0, -2.0, 38.0 + 4.5 * ramp, 95.0, ph=7.38 - 0.08 * ramp,
+        )
+        pressure = _pressures(model, renderer, cycle, state)
+        if second in checks:
+            obs_sbp, sd_sbp, obs_dbp, sd_dbp = checks[second]
+            assert pressure.systolic == pytest.approx(obs_sbp, abs=sd_sbp)
+            assert pressure.diastolic == pytest.approx(obs_dbp, abs=sd_dbp)
+
+
 def test_morley_propofol_fall_grows_with_preinduction_pressure():
     """Morley 2010, non-hypertensive adults aged about 38 without opioid: propofol
     40 mg/kg/h until BIS 50 (mean 2.0 mg/kg, so 3 min), then 8 mg/kg/h. The

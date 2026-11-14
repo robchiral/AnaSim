@@ -375,3 +375,151 @@ def test_synchronized_shocks_wait_for_r_waves_and_cannot_fire_twice(engine_facto
         assert engine.defibrillate() == ShockResult.NOT_READY
     shocks = engine.actions.since_case(ACTION_SHOCK)
     assert [record.label for record in shocks] == ["synchronized"] * 3
+
+
+def _breath_average(engine, seconds: float = 5.0) -> dict[str, float]:
+    steps = round(seconds / 0.1)
+    totals = {"hr": 0.0, "sv": 0.0, "co": 0.0, "art_sbp": 0.0}
+    for _ in range(steps):
+        engine.step(0.1)
+        state = engine.state
+        for key in totals:
+            totals[key] += getattr(state, key)
+    return {key: value / steps for key, value in totals.items()}
+
+
+def _settled_engine(engine_factory, **patient_kwargs):
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True, **patient_kwargs)
+    engine._shock_rng = _ShockSucceeds()
+    engine.arrhythmias.rng = _NoRecurrence()
+    _run(engine, 60)
+    return engine
+
+
+def test_cpr_epinephrine_raises_perfusion_pressure_and_lowers_etco2(engine_factory):
+    """Paradis 1990, Cantineau 1994, Kim 2025: IV epinephrine raises CPR DBP/CPP while afterload lowers flow and EtCO2."""
+    cfg = SimulationConfig(mode="steady_state", rng_seed=7)
+
+    def cpr_patient():
+        patient = engine_factory(config=cfg, start=True, age=62, weight=70, height=170, sex="male")
+        patient.arrhythmias.rng = _NoRecurrence()
+        patient.set_airway_mode("ETT")
+        patient.set_vent_settings(rr=12, vt=0.70, peep=0.0, fio2=1.0, ie="1:2", mode="VCV")
+        return patient
+
+    engine = cpr_patient()
+    engine.set_vent_power(False)
+    engine.set_rhythm("VFIB")
+    _run(engine, 240)
+    engine.set_vent_power(True)
+    engine.set_chest_compressions(True)
+    _run(engine, 240)
+
+    pre_dbp = engine.state.art_dbp
+    pre_map = engine.state.art_map
+    pre_cpp = pre_dbp - engine.hemo.state.venous_pressure
+    pre_co = engine.state.co
+    pre_etco2 = engine.state.etco2
+    assert 20 < pre_dbp < 32 and 12 < pre_cpp < 22
+    assert 13 < pre_etco2 < 20
+
+    engine.give_drug_bolus("epi", 2000)
+    _run(engine, 60)
+    assert engine.state.art_dbp > pre_dbp + 9
+    _run(engine, 120)
+    post_dbp = engine.state.art_dbp
+    post_cpp = post_dbp - engine.hemo.state.venous_pressure
+    etco2_drop = pre_etco2 - engine.state.etco2
+    assert 10 < post_dbp - pre_dbp < 18
+    assert 10 < engine.state.art_map - pre_map < 18
+    assert post_cpp > 24
+    assert engine.state.co < pre_co - 0.10
+    assert 1.5 < etco2_drop < 4.5
+
+    # Low-flow CPR with low baseline EtCO2 shows a smaller absolute EtCO2 drop (Cantineau 1994).
+    low_flow = cpr_patient()
+    low_flow.hemo.add_volume(-2200)
+    low_flow.set_rhythm("VFIB")
+    _run(low_flow, 60)
+    low_flow.set_chest_compressions(True)
+    _run(low_flow, 180)
+    low_pre_etco2 = low_flow.state.etco2
+    assert low_pre_etco2 < 10
+    low_flow.give_drug_bolus("epi", 2000)
+    _run(low_flow, 180)
+    assert low_pre_etco2 - low_flow.state.etco2 < etco2_drop
+
+
+@pytest.mark.parametrize("heart_failure", ["none", "hfref"])
+def test_brief_vf_defibrillation_recovery_tracks_vf_duration(engine_factory, heart_failure):
+    """Park 1994: brief VF converts directly to sinus rhythm, and SBP recovery slows with VF duration."""
+    recovery_times = []
+    recovery_rates = []
+    for vf_seconds in (5.0, 16.0, 60.0):
+        engine = _settled_engine(engine_factory, age=62, weight=78, height=172, sex="male", heart_failure=heart_failure)
+        baseline_sbp = _breath_average(engine)["art_sbp"]
+
+        engine.set_rhythm("VFIB")
+        for step in range(round(vf_seconds * 10)):
+            if step == round((vf_seconds - CHARGE_TIME_S) * 10):
+                engine.charge_defibrillator()
+            engine.step(0.1)
+        nadir_sbp = engine.state.art_sbp
+        nadir_pressure = engine.state.art_pressure
+        assert engine.defibrillate() == ShockResult.DELIVERED
+        assert engine.hemo.rhythm_type == RhythmType.SINUS
+
+        trace = []
+        for step in range(350):
+            engine.step(0.1)
+            trace.append(((step + 1) * 0.1, engine.state.art_sbp, engine.state.art_pressure))
+        assert min(pressure for _, _, pressure in trace) >= nadir_pressure - 1.0
+
+        steady_sbp = sum(sbp for _, sbp, _ in trace[290:340]) / 50.0
+        assert 0.84 * baseline_sbp <= steady_sbp <= 0.96 * baseline_sbp
+        tr = next(t for t, sbp, _ in trace if sbp >= 0.90 * steady_sbp)
+        recovery_times.append(tr)
+        recovery_rates.append((steady_sbp - nadir_sbp) / tr)
+
+    assert recovery_times[0] < recovery_times[1] < recovery_times[2]
+    assert 6.0 <= recovery_times[1] <= 15.0
+    assert recovery_rates[0] > recovery_rates[1] > recovery_rates[2]
+
+
+def test_countershock_stunning_resolves_within_minutes_unlike_prolonged_arrest_injury(engine_factory):
+    """Tokano 1998 and Laurent 2002: shock stunning resolves over minutes, whereas prolonged-arrest injury persists."""
+    engine = _settled_engine(engine_factory, age=55, weight=78, height=172, sex="male", heart_failure="hfref")
+    baseline = _breath_average(engine)
+
+    engine.charge_defibrillator()
+    _run(engine, CHARGE_TIME_S)
+    assert engine.defibrillate(synchronized=True) == ShockResult.PENDING
+    while engine.defibrillator.last_shock is None:
+        engine.step(0.01)
+
+    _run(engine, 17.5)
+    at_20s = _breath_average(engine)
+    assert at_20s["hr"] == pytest.approx(baseline["hr"], abs=3.0)
+    assert 0.85 * baseline["sv"] <= at_20s["sv"] <= 0.92 * baseline["sv"]
+    assert 0.85 * baseline["co"] <= at_20s["co"] <= 0.93 * baseline["co"]
+
+    _run(engine, 215)
+    at_4min = _breath_average(engine)
+    assert at_4min["sv"] > 0.96 * baseline["sv"]
+
+    # Prolonged arrest leaves contractile injury that does not resolve over 30 minutes.
+    prolonged = _vf_engine(engine_factory)
+    prolonged_base_sv = prolonged.state.sv
+    _run(prolonged, 480)
+    prolonged.set_chest_compressions(True)
+    _run(prolonged, 120)
+    injury = prolonged.hemo.coronary.injury
+    assert injury > 0.3
+    prolonged.charge_defibrillator()
+    _run(prolonged, CHARGE_TIME_S)
+    assert prolonged.defibrillate() == ShockResult.DELIVERED
+    _run(prolonged, 10)
+    prolonged.set_chest_compressions(False)
+    _run(prolonged, 1800)
+    assert prolonged.hemo.coronary.injury == pytest.approx(injury)
+    assert prolonged.state.sv < 0.65 * prolonged_base_sv

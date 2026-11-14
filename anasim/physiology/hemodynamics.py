@@ -23,7 +23,7 @@ from .fluid_balance import FluidBalance
 from .fluids import CrystalloidKinetics
 from .hemo_config import HemodynamicConfig
 from .hemo_types import HemoState
-from .resuscitation import COMPRESSION_OUTPUT_FRACTION
+from .resuscitation import COMPRESSION_AFTERLOAD_COUPLING, COMPRESSION_OUTPUT_FRACTION
 from .toxicity import SILENT_BLOCK
 
 MAX_HEMATOCRIT = 0.7
@@ -712,8 +712,11 @@ class HemodynamicModel:
         intrinsic_co = co
         venous_pressure = self._last_rap
         if self._compressions:
-            # Compressions pump what fills the heart; map stays the pressure that drives flow.
-            co += COMPRESSION_OUTPUT_FRACTION * self.base_co_l_min * preload_sv_factor
+            # Compressions pump what fills the heart against arterial resistance;
+            # map stays the pressure that drives flow.
+            load = max(0.2, eff_tpr / self.base_tpr)
+            afterload = (1.0 + COMPRESSION_AFTERLOAD_COUPLING) / (1.0 + COMPRESSION_AFTERLOAD_COUPLING * load)
+            co += COMPRESSION_OUTPUT_FRACTION * self.base_co_l_min * preload_sv_factor * afterload
             map_val = clamp(co * 1000.0 * eff_tpr, 0.0, 300.0)
             svr_val = 1000.0 * eff_tpr
             # Venous return, (MCFP - RAP) / resistance, sets the atrial pressure.
@@ -1044,7 +1047,9 @@ class HemodynamicModel:
             baro_gain = cfg.baro_gain_tachy * sympathetic_hr_response
             baro_gain *= 1.0 - cfg.baro_anesthetic_depression * tachycardia_depth
         baro_hr = clamp(-baro_gain * sensed_error, -cfg.baro_max_hr_change, cfg.baro_max_hr_change)
-        self._baro_setpoint += sensed_error * min(1.0, dt / cfg.baro_reset_tau_s)
+        # Baroreceptor firing ceases below ~50 mmHg, so arrest does not reset the setpoint toward zero.
+        reset_target = max(min(50.0, self._baro_setpoint), map_prev - self._stim_map)
+        self._baro_setpoint += (reset_target - self._baro_setpoint) * -math.expm1(-dt / cfg.baro_reset_tau_s)
 
         # Recovery follows reoxygenation; the coronary model applies the perfusion limit.
         hypoxia_target = clamp01(

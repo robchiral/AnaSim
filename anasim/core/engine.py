@@ -673,12 +673,15 @@ class SimulationEngine(DrugControllerMixin):
         self.defibrillator.consume(time, synchronized)
         self.actions.record(time, ACTION_SHOCK,
                             label="synchronized" if synchronized else "unsynchronized", amount=SHOCK_ENERGY_J)
+        self.hemo.coronary.apply_shock(SHOCK_ENERGY_J)
         # An electrically silent heart keeps its underlying rhythm.
         if rhythm != RhythmType.ASYSTOLE:
             self.hemo.rhythm_type = self.arrhythmias.after_shock(
                 self.hemo.rhythm_type, rhythm, ischemia=self.hemo.coronary.ischemia,
                 hypoxia=hypoxia, energy_failure=energy_failure,
+                energy_reserve=self.hemo.coronary.energy_reserve,
             )
+        self.hemo.invalidate_state_cache()
 
     def set_bag_mask_ventilation(
         self,

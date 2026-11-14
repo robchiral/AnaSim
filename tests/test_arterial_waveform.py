@@ -41,6 +41,18 @@ def test_nonnegative_constraint_preserves_map_in_extreme_state():
     assert float(np.min(values)) >= 0.0
     assert float(np.mean(values)) == pytest.approx(5.0, abs=0.02)
 
+    # Across consecutive beats at 100 Hz monitor resolution, zero diastolic
+    # pressure must not drift upward.
+    cycle = CardiacCycle(np.random.default_rng(1))
+    renderer = ArterialWaveformRenderer(age=70)
+    renderer.step(cycle.seed(70.0, RhythmType.SINUS), 5.0, 120.0, dt=0.01)
+    multi = [
+        renderer.step(cycle.step(0.01, 70.0, RhythmType.SINUS), 5.0, 120.0, dt=0.01).pressure
+        for _ in range(round(5 * (60.0 / 70.0) / 0.01))
+    ]
+    assert float(np.min(multi)) >= 0.0
+    assert float(np.mean(multi)) == pytest.approx(5.0, abs=0.05)
+
 
 def _af_beats(hr: float, sv: float, map_value: float = 85.0, dt: float = 0.002):
     """Per-beat preceding R-R and pulse pressure over 60 s of AF, plus mean pressure."""
@@ -72,3 +84,27 @@ def test_af_pulse_pressure_follows_filling_time():
     assert np.std(fast_pp) / np.mean(fast_pp) > 2.0 * np.std(slow_pp) / np.mean(slow_pp)
     assert slow_mean == pytest.approx(85.0, abs=1.5)
     assert fast_mean == pytest.approx(85.0, abs=1.5)
+
+
+def test_zero_flow_pea_runs_off_to_static_pressure_and_recovers_smoothly():
+    """Zero-flow organized rhythm decays smoothly to static pressure and climbs back without a 0 mmHg dip."""
+    cycle = CardiacCycle(np.random.default_rng(1))
+    renderer = ArterialWaveformRenderer(age=50)
+    renderer.step(cycle.seed(70.0, RhythmType.SINUS), 85.0, 70.0, dt=0.01, static_pressure=7.5)
+    for _ in range(100):
+        renderer.step(cycle.step(0.01, 70.0, RhythmType.SINUS), 85.0, 70.0, dt=0.01, static_pressure=7.5)
+
+    pea = [
+        renderer.step(cycle.step(0.01, 70.0, RhythmType.SINUS), 0.0, 0.0, dt=0.01, static_pressure=7.5).pressure
+        for _ in range(1200)
+    ]
+    assert pea[0] > 50.0
+    assert float(np.max(np.diff(pea))) <= 1e-9
+    assert pea[-1] == pytest.approx(7.5, abs=0.5)
+
+    recovery = [
+        renderer.step(cycle.step(0.01, 70.0, RhythmType.SINUS), 85.0, 70.0, dt=0.01, static_pressure=7.5).pressure
+        for _ in range(400)
+    ]
+    assert min(recovery) >= 7.5 - 0.1
+    assert recovery[20] < 60.0 < max(recovery[-100:])

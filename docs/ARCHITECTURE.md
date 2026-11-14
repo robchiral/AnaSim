@@ -432,27 +432,35 @@ this time, as after defibrillation in the electrical phase of arrest (Weisfeldt
 over several minutes: P waves disappear
 (junctional rhythm), and complexes widen and shrink (idioventricular, then
 agonal rhythm) until the ECG is flat. Untreated VF becomes fine and then
-asystole. Meanwhile, injury that reperfusion does not reverse builds up and
-reduces contractility. The session ends when this injury is complete, about 11
-minutes after circulation stops.
+asystole. Meanwhile, injury that reperfusion does not reverse within a session
+builds up and reduces contractility (Laurent 2002). The session ends when this
+injury is complete, about 11 minutes after circulation stops.
 
 [Chest compressions](../anasim/physiology/resuscitation.py) at 110/min pump a
-fifth of resting cardiac output when the heart is normally filled, and little
-after major blood loss. This flow and vascular resistance set arterial pressure
-between compressions, and each compression adds a pulse that does not drive
-flow. Coronary flow occurs between compressions. The energy reserve recovers
-when diastolic pressure exceeds about 25 mmHg. This is the CPR target in Meaney
-2013 and corresponds to the coronary perfusion pressure needed for return of
-circulation in Paradis 1990. In an anesthetized adult, compressions give about
-70/25 mmHg and EtCO₂ near 20 mmHg, so CPR keeps VF coarse and makes fine VF
-coarse again. Epinephrine raises diastolic pressure during compressions.
-In primary asystole, beats resume after 30 seconds of adequate coronary oxygen
-supply during compressions if energy remains and the myocardium is viable. An
-interruption or inadequate perfusion restarts this interval.
+fifth of resting cardiac output at normal filling and vascular resistance, and
+little after major blood loss. This flow and vascular resistance set arterial
+pressure between compressions, and each compression adds a pulse that does not
+drive flow. Coronary flow occurs between compressions. The energy reserve
+recovers when diastolic pressure exceeds about 25 mmHg. This is the CPR target
+in Meaney 2013 and corresponds to the coronary perfusion pressure needed for
+return of circulation in Paradis 1990. In an anesthetized adult, compressions
+give about 70/25 mmHg and EtCO₂ near 15-20 mmHg, so CPR keeps VF coarse and
+makes fine VF coarse again. Epinephrine raises diastolic and coronary perfusion
+pressure during compressions (Kim 2025), while the higher afterload reduces
+forward flow and lowers EtCO₂ by a few mmHg at constant ventilation (Cantineau
+1994). In primary asystole, beats resume after 30 seconds of adequate coronary
+oxygen supply during compressions if energy remains and the myocardium is
+viable. An interruption or inadequate perfusion restarts this interval.
 
 A 200 J biphasic shock terminates coarse VF 9 times in 10, and fine VF less
-often. The heart then beats only as well as its energy reserve and injury
-allow, so a late shock without CPR leaves PEA or asystole. Synchronized shocks
+often. Each shock also causes mild contractile stunning that reduces stroke
+volume by about 10% and resolves over several minutes of coronary perfusion
+(Tokano 1998). After brief VF, arterial pressure recovers over 5 to 20 seconds
+as beats refill the arterial tree and reversible oxygen debt clears, taking
+longer after longer VF (Park 1994). After prolonged arrest, the heart beats only
+as well as its energy reserve and accumulated injury allow, so a late shock
+without CPR leaves PEA or asystole, and resuscitation after reserve exhaustion
+leaves hypotension for the rest of the session (Laurent 2002). Synchronized shocks
 fire on the next R wave and usually convert AF, SVT, and VT; they cannot fire
 in VF or asystole, and compressions do not trigger them. An unsynchronized
 shock that falls near the T-wave peak of an organized rhythm causes VF 15% of

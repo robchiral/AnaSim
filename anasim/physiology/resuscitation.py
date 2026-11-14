@@ -14,8 +14,11 @@ from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp01
 
 COMPRESSION_RATE = 110.0  # /min, within the guideline 100-120
-# Share of resting cardiac output at normal filling; less when underfilled.
+# Share of resting cardiac output at normal filling and vascular resistance;
+# less when underfilled or when pressor afterload impedes passive forward flow
+# (Paradis 1990; Cantineau 1994; Kim 2025).
 COMPRESSION_OUTPUT_FRACTION = 0.2
+COMPRESSION_AFTERLOAD_COUPLING = 0.45
 # Each compression raises arterial and venous pressure together, so the pulse
 # adds to arterial pressure without driving flow.
 COMPRESSION_PULSE_MMHG = 45.0
