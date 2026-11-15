@@ -526,3 +526,39 @@ def test_countershock_stunning_resolves_within_minutes_unlike_prolonged_arrest_i
     _run(prolonged, 1800)
     assert prolonged.hemo.coronary.injury == pytest.approx(injury)
     assert prolonged.state.sv < 0.65 * prolonged_base_sv
+
+
+def test_cpr_lumen_vs_perfusion_pressure_vfib_rv_halt_and_small_hfref_pea_spo2(engine_factory):
+    """VFIB halts RV output and LV inflow (#30); chest compressions keep arterial
+    DBP <= MAP <= SBP while organ perfusion_map reflects forward flow (#10);
+    confirmed hemorrhagic PEA arrest in a small HFrEF patient blanks SpO2 (#18).
+    """
+    vf = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
+    vf.set_rhythm("VFIB")
+    _run(vf, 60)
+    assert vf.hemo.state.rv_co == 0.0 and vf.hemo.state.lv_inflow == 0.0
+
+    vf.set_chest_compressions(True)
+    _run(vf, 30)
+    assert vf.state.dbp <= vf.state.map <= vf.state.sbp
+    assert vf.hemo.state.perfusion_map < vf.state.map
+
+    # Overlapping compressions on a perfusing bradycardic rhythm keep DBP <= MAP <= SBP.
+    overlap = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
+    overlap.set_rhythm("SINUS_BRADY")
+    overlap.set_chest_compressions(True)
+    _run(overlap, 15)
+    assert overlap.state.dbp <= overlap.state.map <= overlap.state.sbp
+
+    pea = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True,
+        weight=50,
+        height=152,
+        sex="female",
+        heart_failure="hfref",
+    )
+    pea.hemo.add_volume(-0.75 * pea.hemo.blood_volume)
+    _run(pea, 45)
+    assert pea.state.cardiac_arrest
+    assert not pea.state.spo2_signal_valid and pea.state.pleth_voltage == 0.0

@@ -4,8 +4,9 @@ import pytest
 
 from anasim.core.enums import RhythmType
 from anasim.core.state import SimulationConfig
-from anasim.monitors.capno import Capnograph
+from anasim.monitors.capno import Capnograph, EtCO2Readout
 from anasim.monitors.nibp import NIBPMonitor
+from anasim.scenarios.base import require_map_at_least
 
 
 class _FixedRng:
@@ -70,6 +71,31 @@ class TestNIBP:
 
         arrest = _cuff_cycle(np.random.default_rng(0), 0.0, 0.0, 0.0, rhythm=RhythmType.ASYSTOLE)
         assert arrest.timestamp is None
+
+    def test_shock_boundary_is_continuous_and_failed_cuff_prompts_remeasurement(self, engine_factory):
+        """Crossing MAP 60 mmHg does not step-jump NIBP bias or failure rate (#35),
+        and a failed cuff measurement prompts a re-check rather than awaiting first BP.
+        """
+        above = [
+            _cuff_cycle(_FixedRng(q), true_map=60.0, true_sys=85.0, true_dia=48.0)
+            for q in np.linspace(0.05, 0.95, 19)
+        ]
+        below = [
+            _cuff_cycle(_FixedRng(q), true_map=59.9, true_sys=84.9, true_dia=47.9)
+            for q in np.linspace(0.05, 0.95, 19)
+        ]
+        assert all(r.timestamp is not None for r in above)
+        assert all(r.timestamp is not None for r in below)
+        assert abs(np.mean([r.map for r in above]) - np.mean([r.map for r in below])) < 0.5
+
+        engine = engine_factory(
+            config=SimulationConfig(mode="awake", arterial_line_enabled=False, rng_seed=1),
+            start=True,
+        )
+        engine.state.nibp_measurement_failed = True
+        engine.state.nibp_sys = engine.state.nibp_dia = engine.state.nibp_map = float("nan")
+        met, msg = require_map_at_least(65)(engine)
+        assert not met and msg == "Measure blood pressure again"
 
 
 class TestCapnography:
@@ -239,3 +265,48 @@ class TestCapnography:
         engine.set_vent_power(False)
         advance_time(engine, 20.0, dt=0.5)
         assert engine.state.vt == engine.state.rr == engine.state.mv == 0.0
+
+    def test_apnea_washout_curare_cleft_endpoint_and_unplanned_disconnect(self, engine_factory, advance_time):
+        """Post-expiratory apneic absorption creep washes capno_co2 to 0 within 15 s (#2);
+        a small curare cleft does not latch a false low EtCO2, and an unplanned disconnect
+        with active ventilation does not re-arm first-breath alarm grace (#17).
+        """
+        engine = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+        engine.give_drug_bolus("propofol", 200.0)
+        engine.give_drug_bolus("roc", 70.0)
+        advance_time(engine, 90.0, dt=0.5)
+        engine.set_airway_mode("ETT")
+        engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        engine.set_vent_power(True)
+        advance_time(engine, 20.0, dt=0.1)
+        assert engine.state.etco2_signal_valid and engine.state.display_etco2 > 25.0
+
+        engine.set_vent_power(False)
+        advance_time(engine, 15.0, dt=0.1)
+        assert engine.state.capno_co2 == 0.0
+
+        # Re-ventilate to establish a valid breath, then disconnect while vent stays on.
+        engine.set_vent_power(True)
+        advance_time(engine, 10.0, dt=0.1)
+        assert engine.state.etco2_signal_valid
+        engine.set_airway_mode("None")
+        engine.step(0.1)
+        assert not engine.etco2_readout.awaiting_first_breath
+        assert not engine.state.etco2_signal_valid
+        assert engine.state.alarms["EtCO2"]["low"]
+
+        # Curare cleft (< dead space) during mid-plateau must not latch the pre-notch value.
+        capno = Capnograph(0.15)
+        readout = EtCO2Readout()
+        capno.step(0.5, 0.5, 38.0)
+        readout.update(0.5, capno.exhaling, capno.co2, inhaled_l=capno._inhaled,
+                       dead_space_l=capno.dead_space, breath_index=capno.breath_index)
+        for k in range(150):
+            volume = 0.006 if 40 <= k < 45 else (-0.0043 if 45 <= k < 52 else -0.004)
+            co2 = capno.step(0.02, volume, 38.0)
+            readout.update(0.02, capno.exhaling, co2, inhaled_l=capno._inhaled,
+                           dead_space_l=capno.dead_space, breath_index=capno.breath_index)
+        capno.step(0.5, 0.5, 38.0)
+        readout.update(0.5, capno.exhaling, capno.co2, inhaled_l=capno._inhaled,
+                       dead_space_l=capno.dead_space, breath_index=capno.breath_index)
+        assert readout.value == pytest.approx(38.0, abs=1.5)

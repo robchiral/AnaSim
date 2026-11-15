@@ -56,7 +56,7 @@ writes the recording.
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
 | Physiology | `map`, `hr`, `co`, `intrinsic_co`, `sao2`, `pa_co2`, `pao2` | Values that the models and the cardiac arrest check use; `intrinsic_co` excludes chest compressions |
-| Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate`, `sodium`, `potassium`, `chloride`, `ionized_calcium`, `albumin_g_l` | Arterial plasma pH and bicarbonate at 37 °C, standard base excess, and plasma lactate, electrolytes, and albumin |
+| Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate`, `sodium`, `potassium`, `chloride`, `ionized_calcium`, `albumin_g_l` | Arterial plasma pH and bicarbonate at patient temperature, standard base excess, and plasma lactate, electrolytes, and albumin |
 | Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after measurement and processing effects |
 | Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Breath pressures and exhaled gas measurements |
 | Fluids | `blood_volume`, `urine_out_ml`, `net_fluid_ml`, `lap`, `lung_water` | Circulating volume, fluid balance, filling pressure, and excess lung water |
@@ -125,7 +125,7 @@ lets the action proceed when:
 - the tube is placed in a responsive patient
 - a neuromuscular blocker is given to a responsive patient without an induction
   dose in plasma
-- the tube is removed during apnea or residual neuromuscular block (train-of-four ratio or
+- the tube is removed during apnea, reactive Stage II anesthesia, or residual neuromuscular block (train-of-four ratio or
   blocker T1 below 90%, excluding weakness from dantrolene)
 - assisted ventilation stops during apnea
 - a shock is delivered to a responsive patient with spontaneous circulation
@@ -136,7 +136,8 @@ The local and hosted apps share `web_assets/` and
 [`WebSession`](../anasim/web.py), which applies commands and returns
 measurements, waveforms, controls, and case state. Commands are processed in
 order, and the simulation speed setting converts elapsed real time into
-simulation time.
+simulation time. The session advances the engine in 0.05-second steps, and the
+monitors sample waveforms every 10 ms within each step.
 
 The local Python server runs the session on its own clock and saves CSV
 recordings to disk. It accepts requests from the same origin under a

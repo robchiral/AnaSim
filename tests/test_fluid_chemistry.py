@@ -312,3 +312,25 @@ def test_calcium_inotropy_citrate_hypotension_hyperkalemia_and_starling_refill(e
     advance_time(bleed, 1800.0, dt=2.0)
     assert bleed.hemo.blood_volume > bv_after + 60.0
     assert bleed.hemo.hb_conc < hb_after - 0.15
+
+
+def test_reversible_protein_free_water_shift_and_calcium_chloride_acid_load(
+    engine_factory, advance_time
+):
+    """Reversing a protein-free water shift restores baseline plasma albumin (#11),
+    and exogenous CaCl2 clearance lowers strong-ion base_meq (#12).
+    """
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+    )
+    fluids = engine.hemo.fluids
+    albumin_0 = fluids.plasma_buffers.albumin_g_l
+    fluids.shift_water(-1000.0, protein_fraction=0.0)
+    fluids.shift_water(1000.0, protein_fraction=0.0)
+    assert fluids.plasma_buffers.albumin_g_l == pytest.approx(albumin_0, abs=1e-9)
+
+    base_0 = fluids.base_meq
+    engine.give_calcium_chloride(2000.0)
+    advance_time(engine, 600.0, dt=2.0)
+    assert fluids.base_meq < base_0 - 1.5

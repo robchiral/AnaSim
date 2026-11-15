@@ -74,11 +74,19 @@ def test_native_session_recovers_waveforms_controls_and_recording(server, tmp_pa
 
 
 def test_disconnect_timeout_and_shutdown_finish_recordings(server, tmp_path):
+    assert DISCONNECT_SECONDS >= 60
     request(server, "init")
     request(server, "create", params={})
     request(server, "cmd", id=1, name="record", args={"active": True})
     with server.lock:
-        server.last_seen -= DISCONNECT_SECONDS + 1
+        # Background-tab timer throttling (~30 s gap) must not drop the active session (#21).
+        server.last_seen -= 30
+        server.last_tick -= 1
+        server.service_actions()
+        assert server.client == "browser"
+        assert server.session.engine.recorder.is_recording
+
+        server.last_seen -= DISCONNECT_SECONDS
         server.last_tick -= 1
         server.service_actions()
         assert server.client is None

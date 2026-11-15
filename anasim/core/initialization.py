@@ -11,6 +11,7 @@ from scipy.optimize import minimize
 from . import monitors as monitor_core
 from . import projection as projection_core
 from . import runtime as runtime_core
+from .constants import CMH2O_TO_MMHG
 from .drug_api import _tci_max_rate
 from .drug_registry import get_drug_spec
 from .state import AirwayType
@@ -133,6 +134,7 @@ def _solve_startup_targets(engine: SimulationEngine, profile: StartupProfile) ->
         x0,
         bounds=(profile.primary_bounds, profile.remi_bounds),
         method="L-BFGS-B",
+        options={"ftol": 1e-14, "gtol": 1e-12},
     )
     primary_load, remi_ce = map(float, result.x)
     if profile.primary_hypnotic == "volatile":
@@ -172,41 +174,85 @@ def _seed_steady_state_subsystems(
     engine.infusion_rates["nore"] = 0.0
 
     if targets.prop_ce > 0.0:
-        engine.infusion_rates["propofol"] = (
-            _seed_tci_history(engine, "propofol", targets.prop_ce, profile.history_minutes)
-            if engine.config.tci_enabled
-            else _seed_linear_history(
+        if engine.config.tci_enabled:
+            engine.infusion_rates["propofol"] = _seed_tci_history(
+                engine, "propofol", targets.prop_ce, profile.history_minutes,
+            )
+        else:
+            _seed_linear_history(
                 engine.pk["propofol"], targets.prop_ce, profile.history_minutes, engine.pump_pk.get("propofol"),
-            ) / 60.0
-        )
+            )
+            engine.infusion_rates["propofol"] = (
+                _tci_maintenance_rate_per_min(engine.pk["propofol"], targets.prop_ce) / 60.0
+            )
     if targets.remi_ce > 0.0:
-        engine.infusion_rates["remi"] = (
-            _seed_tci_history(engine, "remi", targets.remi_ce, profile.history_minutes)
-            if engine.config.tci_enabled
-            else _seed_linear_history(
+        if engine.config.tci_enabled:
+            engine.infusion_rates["remi"] = _seed_tci_history(
+                engine, "remi", targets.remi_ce, profile.history_minutes,
+            )
+        else:
+            _seed_linear_history(
                 engine.pk["remi"], targets.remi_ce, profile.history_minutes, engine.pump_pk.get("remi"),
-            ) / 60.0
-        )
-    fi_agent = 0.0
-    if profile.primary_hypnotic == "volatile":
-        fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
-    engine.circuit.equilibrate(_oxygen_uptake_l_min(engine, targets), fi_agent)
-    engine.resp.equilibrate_oxygen(engine.circuit.composition.fio2, 1.0, engine.vent.settings.peep)
-
+            )
+            engine.infusion_rates["remi"] = (
+                _tci_maintenance_rate_per_min(engine.pk["remi"], targets.remi_ce) / 60.0
+            )
     engine.resp.initialize_drug_effects(engine.pk["propofol"].state.ce_resp, engine.pk["remi"].state.ce_resp)
     prop_cp = engine.pk["propofol"].state.c1
     remi_cp = engine.pk["remi"].state.c1
     engine.pk_nore.update_propofol(prop_cp)
     engine.pk_nore.equilibrate_endogenous()
-    # Start at the untreated anesthetic steady state so the hidden settle
-    # handles only circuit and monitor transients.
+    initial_mac_sevo = (
+        targets.mac * engine.pk_sevo.mac_at_temp(engine.patient.baseline_temp) / engine.pk_sevo.mac_age
+        if profile.primary_hypnotic == "volatile"
+        else 0.0
+    )
+    peep_init = engine.vent.settings.peep
+    pit_init = engine.hemo.config.pit_0 + CMH2O_TO_MMHG * engine.hemo.config.paw_transmission * (peep_init + 3.0)
     engine.hemo.initialize_steady_state(
         prop_cp,
         remi_cp,
         engine.pk["nore"].state.ce,
-        mac_sevo=targets.mac,
+        mac_sevo=initial_mac_sevo,
         remifentanil_cp=remi_cp,
+        pit=pit_init,
+        peep_cmH2O=peep_init,
     )
+    fi_agent = 0.0
+    if profile.primary_hypnotic == "volatile":
+        fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
+    engine.circuit.equilibrate(_oxygen_uptake_l_min(engine, targets), fi_agent)
+    engine.resp.equilibrate_oxygen(
+        engine.circuit.composition.fio2,
+        1.0,
+        engine.vent.settings.peep,
+        fin2=engine.circuit.composition.fin2,
+    )
+    # Start at the untreated anesthetic steady state so the hidden settle
+    # handles only circuit and monitor transients.
+    mac_sevo_alv = (
+        engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
+        if profile.primary_hypnotic == "volatile"
+        else 0.0
+    )
+    engine.hemo.initialize_steady_state(
+        prop_cp,
+        remi_cp,
+        engine.pk["nore"].state.ce,
+        mac_sevo=mac_sevo_alv,
+        remifentanil_cp=remi_cp,
+        pit=pit_init,
+        peep_cmH2O=peep_init,
+    )
+    if profile.primary_hypnotic == "volatile":
+        fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
+        engine.circuit.equilibrate(_oxygen_uptake_l_min(engine, targets), fi_agent)
+        engine.resp.equilibrate_oxygen(
+            engine.circuit.composition.fio2,
+            1.0,
+            engine.vent.settings.peep,
+            fin2=engine.circuit.composition.fin2,
+        )
     # Tissue CO2 belongs to the same maintenance history as the seeded drugs.
     engine.resp.equilibrate_blood_gases(
         engine.hemo.state.co,
@@ -289,25 +335,33 @@ def _seed_volatile_history(engine: SimulationEngine, target_mac: float, duration
     """
     pk = engine.pk_sevo
     state = pk.state
-    p_art = pk.mac_age * target_mac / 100.0
-    q_co = max(engine.hemo.base_co_l_min, 0.1)
+    corrected_mac = pk.mac_at_temp(engine.patient.baseline_temp)
+    p_art = corrected_mac * target_mac / 100.0
+    q_co = max(engine.hemo.state.co, 0.1)
+    shunt = clamp(engine.aeration.shunt_fraction, 0.0, 0.9)
     flows = {
         "p_vrg": (q_co * pk.f_vrg_frac, pk.v_vrg, pk.lambda_t_b_vrg),
         "p_mus": (q_co * pk.f_mus_frac, pk.v_mus, pk.lambda_t_b_mus),
         "p_fat": (q_co * pk.f_fat_frac, pk.v_fat, pk.lambda_t_b_fat),
     }
-    state.p_alv = state.p_art = p_art
     for name, (flow, volume, partition) in flows.items():
         setattr(state, name, p_art * -math.expm1(-flow / volume / partition * duration_min))
     state.p_ven = sum(flow * getattr(state, name) for name, (flow, _, _) in flows.items()) / q_co
-    state.mac = state.p_vrg * 100.0 / pk.mac_age
+    state.p_alv = clamp01((p_art - shunt * state.p_ven) / max(0.1, 1.0 - shunt))
+    state.p_art = (1.0 - shunt) * state.p_alv + shunt * state.p_ven
+    state.mac = state.p_vrg * 100.0 / corrected_mac
 
-    # Lung balance VA (Fi - FA) = Q λ (FA - Fv), then circuit balance FGF (dial - Fi) = uptake.
+    # Lung balance VA (Fi - FA) = (1 - s) Q λ (FA - Fv), then STPD circle balance
+    # vapor_flow - uptake = (FGF + vapor_flow - total_uptake) * Fi.
     settings = engine.vent.settings
-    va = settings.rr * max(0.0, settings.tv / 1000.0 - engine.resp.vd_deadspace)
-    uptake = q_co * pk.lambda_b_g * (state.p_alv - state.p_ven)
-    fi_agent = state.p_alv + uptake / max(va, 0.1)
-    dial_pct = 100.0 * (fi_agent + uptake / max(engine.circuit.fgf_total(), 0.1))
+    va = settings.rr * max(0.0, settings.tv / 1000.0 - engine.resp.vd_deadspace) * engine.airway_status.ventilation_efficiency
+    uptake_btps = q_co * (1.0 - shunt) * pk.lambda_b_g * (state.p_alv - state.p_ven)
+    fi_agent = clamp01(state.p_alv + uptake_btps / max(va, 0.1))
+    uptake_stpd = uptake_btps * engine.resp._btps_to_stpd
+    fgf = max(engine.circuit.fgf_total(), 0.1)
+    o2_up = _oxygen_uptake_l_min(engine, StartupTargets(mac=target_mac))
+    vapor_flow = max(0.0, (fgf - o2_up) * fi_agent / max(1e-6, 1.0 - fi_agent) + uptake_stpd)
+    dial_pct = 100.0 * vapor_flow / (fgf + vapor_flow)
     engine.set_vaporizer(dial_pct)
     return fi_agent
 
@@ -327,15 +381,16 @@ def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile, target
             engine.patient.baseline_temp, projection_core.thermal_hypnotic_ce(engine), engine.state.mac,
         )
         runtime_core.update_pk_covariates(engine, engine.state.co)
-        if engine.config.tci_enabled:
-            if targets.prop_ce > 0.0:
-                engine.infusion_rates["propofol"] = (
-                    _tci_maintenance_rate_per_min(engine.prediction_model("propofol"), targets.prop_ce) / 60.0
-                )
-            if targets.remi_ce > 0.0:
-                engine.infusion_rates["remi"] = (
-                    _tci_maintenance_rate_per_min(engine.prediction_model("remi"), targets.remi_ce) / 60.0
-                )
+        prop_model = engine.prediction_model("propofol") if engine.config.tci_enabled else engine.pk["propofol"]
+        remi_model = engine.prediction_model("remi") if engine.config.tci_enabled else engine.pk["remi"]
+        if targets.prop_ce > 0.0:
+            engine.infusion_rates["propofol"] = (
+                _tci_maintenance_rate_per_min(prop_model, targets.prop_ce) / 60.0
+            )
+        if targets.remi_ce > 0.0:
+            engine.infusion_rates["remi"] = (
+                _tci_maintenance_rate_per_min(remi_model, targets.remi_ce) / 60.0
+            )
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)
         runtime_core.step_pk(engine, profile.settle_dt_seconds, fi_sevo, fi_n2o, engine.state.co)
         engine._tol_current = clamp01(projection_core.stimulus_tolerance(engine))
@@ -353,7 +408,7 @@ def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile, target
         )
         projection_core.project_arterial(engine.state, arterial_sample, engine.art_line.seed(arterial_sample))
         engine.state.capno_co2 = float(
-            monitor_core.compute_capno_value(engine, physiology.resp_state, profile.settle_dt_seconds)
+            monitor_core.compute_capno_value(engine, physiology.resp_state, profile.settle_dt_seconds)[-1]
         )
         engine.state.time += profile.settle_dt_seconds
 
@@ -363,6 +418,7 @@ def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile, target
     # Redistribution belongs to the maintenance history, not the visible start.
     engine.thermal.settle_at_depth()
     engine._pulseless_s = 0.0
+    engine.vent.breath_count = 0
     engine.state.time = saved_time
 
 

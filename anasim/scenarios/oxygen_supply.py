@@ -1,6 +1,7 @@
 """Oxygen supply failure recognition and response scenario."""
 
 from anasim.core.action_log import ACTION_FGF, ACTION_OXYGEN_SUPPLY
+from anasim.core.projection import sync_state_from_models
 
 from .base import (
     CRISIS_ONSET_S,
@@ -11,6 +12,7 @@ from .base import (
     ScenarioStep,
     action_taken_in_case,
     create_observe_step,
+    format_unmet_int,
     join_messages,
     require_all,
     require_oxygen_flow,
@@ -30,9 +32,11 @@ def _prepare_oxygen_supply_failure(engine) -> None:
     circuit = engine.circuit
     circuit.equilibrate(engine.resp._pulmonary_o2_uptake, circuit.composition.fi_agent)
     baseline_fio2 = circuit.composition.fio2
-    engine.resp.equilibrate_oxygen(baseline_fio2, 1.0, engine.vent.settings.peep)
+    engine.resp.equilibrate_oxygen(
+        baseline_fio2, 1.0, engine.vent.settings.peep, fin2=circuit.composition.fin2
+    )
     engine._tracheal_fio2 = baseline_fio2
-    engine.state.fio2 = baseline_fio2
+    sync_state_from_models(engine)
 
 
 def _require_oxygen_recovery(engine) -> tuple[bool, str]:
@@ -48,7 +52,7 @@ def _require_oxygen_recovery(engine) -> tuple[bool, str]:
     if not engine.circuit.oxygen_supply_connected:
         messages.append("Connect backup oxygen")
     if fio2 < 0.85:
-        messages.append(f"Circuit FiO₂: {fio2 * 100:.0f}%/85%+")
+        messages.append(f"Circuit FiO₂: {format_unmet_int(fio2 * 100, low=85)}%/85%+")
     return False, join_messages(messages)
 
 

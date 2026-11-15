@@ -211,3 +211,63 @@ test("neuromuscular trends scroll retained readings, expire old results, and pre
   display.update(nmb, [], 1101, false);
   assert.equal(positions().length, 2, "switching modes must retain the other mode's recent readings");
 });
+
+test("monitor rounds integer numerics to nearest whole number", () => {
+  const { elements } = setupPage();
+  const monitor = new Monitor({
+    arterial_line: true, sample_interval: 0.01, nmb_history: [],
+    patient: { age: 40, sex: "male", weight: 70, renal_status: "Normal", hepatic_status: "Normal",
+      coronary_flow_reserve: 5, heart_failure: "none", surgical_site: "other" },
+  });
+  monitor.update({
+    time: 1.0,
+    ended: false,
+    waves: { ecg: [], pleth: [], capno: [], art: [], paw: [], flow: [], volume: [] },
+    loop: [],
+    alarms: {},
+    vitals: {
+      hr: 59.6,
+      st_depression_mv: 0.0,
+      spo2: 94.6,
+      art: [119.6, 79.4, 59.6],
+      nibp: [120.4, 80.5, 64.6],
+      nibp_age: 0,
+      nibp_cycling: false,
+      nibp_failed: false,
+      nibp_cuff: null,
+      etco2: 34.6,
+      rr: 11.6,
+      rr_source: "airway",
+      bis: 80.4,
+      temp: 37.0,
+      net_fluid: 0,
+      fluid_in: 0,
+      blood_in: 0,
+      urine_out: 0,
+      blood_out: 0,
+      ppeak: 18.6,
+      pplat: 14.4,
+      peep: 4.6,
+      pmean: 8.6,
+      vte: 499.6,
+      mv: 6.0,
+      cdyn: 49.6,
+      fio2: 39.6,
+      eto2: 35.6,
+      fi_n2o: 0.0,
+      et_n2o: 0.0,
+      fi_sevo: 2.0,
+      et_sevo: 1.9,
+      et_mac: 1.0,
+    },
+    nmb: { mode: "tof", reading: null, measuring: false, next: null, baseline: 1, repeat: 0, wait: 0 },
+    nmb_trend: [],
+  });
+  assert.equal(elements.get("v-hr").textContent, "60");
+  assert.equal(elements.get("v-spo2").textContent, "95");
+  assert.equal(elements.get("v-art").textContent, "120/79");
+  assert.equal(elements.get("v-art-map").textContent, "60");
+  assert.equal(elements.get("v-etco2").textContent, "35");
+  assert.equal(elements.get("v-bis").textContent, "80");
+  monitor.destroy();
+});

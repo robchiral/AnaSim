@@ -17,6 +17,7 @@ from anasim.core.action_log import (
     ACTION_TCI_TARGET,
     ACTION_VAPORIZER,
 )
+from anasim.core.monitors import display_int
 from anasim.core.state import AirwayType
 
 if TYPE_CHECKING:
@@ -178,7 +179,8 @@ def require_preoxygenation(engine) -> tuple[bool, str]:
     if engine.state.airway_mode != AirwayType.MASK:
         return False, "Apply the facemask"
     ready = engine.state.etco2_signal_valid and engine.state.et_o2 >= 90.0
-    return ready, "" if ready else f"Continue preoxygenation (EtO₂ {engine.state.et_o2:.0f}%/90%+)"
+    shown_eto2 = format_unmet_int(engine.state.et_o2, low=90.0)
+    return ready, "" if ready else f"Continue preoxygenation (EtO₂ {shown_eto2}%/90%+)"
 
 
 def monitor_value(engine, attr: str):
@@ -193,6 +195,21 @@ def monitor_value(engine, attr: str):
         return getattr(engine.state, MONITOR_DISPLAY_FIELD[attr])
     except KeyError as exc:
         raise ValueError(f"Unsupported monitor value: {attr!r}") from exc
+
+
+def format_unmet_int(
+    value: float,
+    *,
+    low: float | None = None,
+    high: float | None = None,
+) -> int:
+    """Format an unmet monitor value as an integer that stays outside passing bounds."""
+    shown = int(display_int(value))
+    if low is not None and (high is None or value <= low):
+        shown = min(shown, int(display_int(low)) - 1)
+    if high is not None and (low is None or value >= high):
+        shown = max(shown, int(display_int(high)) + 1)
+    return shown
 
 
 def join_messages(messages) -> str:
@@ -240,7 +257,8 @@ def require_fluid_bolus(
         if volume_requested >= min_ml:
             return True, ""
         if volume_requested > 0.0:
-            return False, f"{fail_prefix} ({volume_requested:.0f}/{min_ml:.0f} mL requested)"
+            shown_vol = format_unmet_int(volume_requested, low=min_ml)
+            return False, f"{fail_prefix} ({shown_vol}/{min_ml:.0f} mL requested)"
         return False, f"{fail_prefix} ({min_ml:.0f} mL via Circulation tab)"
     return check
 
@@ -336,7 +354,8 @@ def require_hypotension_or_treatment(
         controlled = engine.actions.since_event(event_name, ACTION_EVENT_STOP, labels=(event_name,))
         treated = any(record.amount > 0 for record in (*fluids, *pressor_actions)) or bool(controlled)
         met = treated or map_val < threshold
-        return met, "" if met else f"MAP: {map_val:.0f}/<{threshold:.0f} mmHg; {prompt}"
+        shown_map = max(int(display_int(map_val)), round(threshold))
+        return met, "" if met else f"MAP: {shown_map}/<{threshold:.0f} mmHg; {prompt}"
     return check
 
 
@@ -367,12 +386,15 @@ def require_map_at_least(threshold: float = 65) -> Requirement:
     def check(engine) -> tuple[bool, str]:
         state = engine.state
         if not engine.config.arterial_line_enabled and (
-            state.nibp_timestamp is None or state.time - state.nibp_timestamp > 60.0
+            state.nibp_measurement_failed
+            or state.nibp_timestamp is None
+            or state.time - state.nibp_timestamp > 60.0
         ):
             return False, "Measure blood pressure again"
         map_val = monitor_value(engine, "map")
         if map_val < threshold:
-            return False, f"MAP: {map_val:.0f}/{threshold:.0f}+"
+            shown_map = format_unmet_int(map_val, low=threshold)
+            return False, f"MAP: {shown_map}/{threshold:.0f}+"
         if state.map < threshold:
             return False, "Reassess blood pressure and perfusion"
         return True, ""
@@ -383,14 +405,16 @@ def require_bis_below(threshold: float) -> Requirement:
     def check(engine) -> tuple[bool, str]:
         bis = monitor_value(engine, "bis")
         met = bis < threshold
-        return met, "" if met else f"BIS: {bis:.0f}/<{threshold:.0f}"
+        shown_bis = max(int(display_int(bis)), round(threshold))
+        return met, "" if met else f"BIS: {shown_bis}/<{threshold:.0f}"
     return check
 
 
 def require_maintenance_depth(engine) -> tuple[bool, str]:
     bis = monitor_value(engine, "bis")
     met = 40 <= bis <= 60
-    return met, "" if met else f"BIS: {bis:.0f}/40-60"
+    shown_bis = format_unmet_int(bis, low=40, high=60)
+    return met, "" if met else f"BIS: {shown_bis}/40-60"
 
 
 def require_oxygenation(min_spo2: float = 94.0) -> Requirement:
@@ -399,7 +423,8 @@ def require_oxygenation(min_spo2: float = 94.0) -> Requirement:
             return False, "Awaiting valid SpO₂"
         spo2 = monitor_value(engine, "spo2")
         met = spo2 >= min_spo2
-        return met, "" if met else f"SpO₂: {spo2:.0f}%/{min_spo2:.0f}%+"
+        shown_spo2 = format_unmet_int(spo2, low=min_spo2)
+        return met, "" if met else f"SpO₂: {shown_spo2}%/{min_spo2:.0f}%+"
     return check
 
 
@@ -431,7 +456,8 @@ def require_etco2_above(threshold: float = 20) -> Requirement:
     def check(engine) -> tuple[bool, str]:
         etco2 = monitor_value(engine, "etco2")
         met = engine.state.etco2_signal_valid and etco2 > threshold
-        return met, "" if met else f"EtCO₂: {etco2:.0f}/>{threshold:.0f} mmHg"
+        shown_etco2 = min(int(display_int(etco2)), round(threshold))
+        return met, "" if met else f"EtCO₂: {shown_etco2}/>{threshold:.0f} mmHg"
     return check
 
 

@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from anasim.core.clinical_actions import check_airway_removal
 from anasim.core.state import SimulationConfig
 from anasim.monitors.neuromuscular import TwitchReading
 from anasim.scenarios import (
@@ -12,8 +13,10 @@ from anasim.scenarios import (
     create_anaphylaxis_scenario,
     create_emergence,
     create_hemorrhage_response,
+    create_oxygen_supply_failure,
     create_sepsis_response,
 )
+from anasim.scenarios.base import format_unmet_int, require_map_at_least
 from anasim.web import WebSession
 
 # Browser commands for each objective; TCI targets become manual rates when disabled.
@@ -421,3 +424,60 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
             assert controls["drugs"][key]["rate"] > 0 or controls["drugs"][key]["target"] > 0
         assert snap["vitals"]["bis"] < 60
         assert session.engine.state.tof < 25
+
+
+def test_emergence_stage_two_gating_block_persistence_and_unmet_rounding(engine_factory):
+    """Stage II blocks extubation readiness and warns on tube removal (#1); post-NMB
+    TOF recovery persists across later emergence steps unless NMB is redosed (#19);
+    unmet integer status strings never round into passing bounds (#20); O2 supply
+    failure setup equilibrates baseline EtO2 and PaO2 at t=0 (#36).
+    """
+    scenario = create_emergence("balanced")
+    engine = engine_factory(start=True)
+    _early_extubation(engine)
+
+    # #1: BIS > 80 with residual Stage II loss of consciousness is not ready to extubate.
+    engine.set_airway_mode("ETT")
+    engine.pk_sevo.state.mac = 0.42
+    engine.state.display_bis = 82.0
+    engine.state.loc = 0.27
+    met, msg = _step(scenario, "EXTUBATION_READINESS").check_requirements(engine)
+    assert not met and "Stage II" in msg
+    feedback = check_airway_removal(engine)
+    assert feedback is not None and "Stage II" in feedback.message
+
+    engine.pk_sevo.state.mac = 0.0
+    engine.state.loc = 0.0
+    assert check_airway_removal(engine) is None
+    engine.set_airway_mode("Mask")
+    assert _step(scenario, "EXTUBATE").check_requirements(engine)[0]
+
+    # #19: Older post-NMB TOF >= 90% fails ASSESS_BLOCK (>60 s) but satisfies EXTUBATE
+    # until a new neuromuscular blocker dose invalidates it.
+    engine.state.time = 200.0
+    assert engine.nmb.reading is not None
+    engine.nmb.reading = replace(engine.nmb.reading, time=50.0)
+    assert not _step(scenario, "ASSESS_BLOCK").check_requirements(engine)[0]
+    assert _step(scenario, "EXTUBATE").check_requirements(engine)[0]
+    engine.give_drug_bolus("roc", 5.0)
+    engine.state.tof = engine.state.twitch = 100.0
+    assert not _step(scenario, "EXTUBATE").check_requirements(engine)[0]
+    engine.nmb.reading = replace(engine.nmb.reading, time=200.0)
+    assert _step(scenario, "EXTUBATE").check_requirements(engine)[0]
+
+    # #20: Unmet near-boundary floats format outside the passing range.
+    assert format_unmet_int(34.6, low=35, high=45) == 34
+    assert format_unmet_int(45.3, low=35, high=45) == 46
+    assert format_unmet_int(64.8, low=65) == 64
+    assert format_unmet_int(80.0, low=80) == 79
+    assert format_unmet_int(327.2, low=327) == 326
+    engine.state.art_map = 64.8
+    met_map, map_msg = require_map_at_least(65)(engine)
+    assert not met_map and "64/65+" in map_msg
+
+    # #36: O2 supply failure prepare() syncs EtO2 and PaO2 to the low-flow circuit at t=0.
+    ox = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    create_oxygen_supply_failure().prepare(ox)
+    assert ox.state.fio2 == pytest.approx(ox.circuit.composition.fio2)
+    assert ox.state.et_o2 < 40.0
+    assert ox.state.pao2 < 230.0

@@ -46,6 +46,11 @@ class RespiratoryMechanics:
         self.p2 = 0.0  # cmH2O
         self.effort = PatientEffort()
 
+    def _transmitted_peep(self, peep: float) -> float:
+        if self.aeration is None:
+            return peep
+        return peep * max(0.0, min(1.0, self.aeration.pressure_transmission))
+
     def update_aeration(self, dt: float, pressure_area: float, peep: float) -> float:
         """Return the coordinate shift after updating the static curve, conserving gas volume."""
         aeration = self.aeration

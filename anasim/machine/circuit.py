@@ -89,16 +89,21 @@ class CircleSystem:
         uptake_agent: float,
         uptake_n2o: float = 0.0,
         uptake_n2: float = 0.0,
-        rebreathed_n2: float | None = None,
+        leak_l_min: float = 0.0,
+        rebreathed_share: float = 1.0,
     ):
         """Advance dt seconds. Uptakes are L/min and negative during washout.
 
         V dF/dt = supplied gas - uptake - spill*F for each gas.
-        Spill is total inflow minus net uptake, including agent and rebreathed N2.
+        Spill and outward circuit leaks leave at the current circuit composition,
+        except exhaled N2 vented directly at the expiratory APL valve before
+        rebreathing.
         """
         delivered_o2 = self.delivered_o2_flow()
         delivered_n2o = self.delivered_n2o_flow()
         total_fgf = max(0.0, delivered_o2 + self.fgf_air + delivered_n2o)
+        leak_l_min = max(0.0, leak_l_min)
+        rebreathed_share = clamp01(rebreathed_share)
 
         # The dial specifies vapor as a fraction of carrier plus added vapor.
         fg_agent = self.vaporizer_setting / 100.0 if self.vaporizer_on else 0.0
@@ -114,15 +119,16 @@ class CircleSystem:
             - min(0.0, uptake_n2o)
             - min(0.0, uptake_n2)
         )
-        pos_uptake = (
+        pos_demand = (
             max(0.0, uptake_o2)
             + max(0.0, uptake_agent)
             + max(0.0, uptake_n2o)
             + max(0.0, uptake_n2)
+            + leak_l_min
         )
         uptake_scale = 1.0
-        if pos_uptake > avail and pos_uptake > 1e-12:
-            uptake_scale = max(0.0, avail) / pos_uptake
+        if pos_demand > avail and pos_demand > 1e-12:
+            uptake_scale = max(0.0, avail) / pos_demand
             if uptake_o2 > 0.0:
                 uptake_o2 *= uptake_scale
             if uptake_agent > 0.0:
@@ -131,29 +137,37 @@ class CircleSystem:
                 uptake_n2o *= uptake_scale
             if uptake_n2 > 0.0:
                 uptake_n2 *= uptake_scale
-            if rebreathed_n2 is not None and rebreathed_n2 > 0.0:
-                rebreathed_n2 *= uptake_scale
+            leak_l_min *= uptake_scale
         self.last_uptake_scale = uptake_scale
         self.last_uptake_o2 = uptake_o2
-        bag_flow = total_fgf + vapor_flow - uptake_o2 - uptake_agent - uptake_n2o - uptake_n2
+        bag_flow = total_fgf + vapor_flow - uptake_o2 - uptake_agent - uptake_n2o - uptake_n2 - leak_l_min
         self.last_net_flow = bag_flow
         self.reservoir_volume = min(
             self.reservoir_capacity,
             max(0.0, self.reservoir_volume + bag_flow * dt_min),
         )
         bag_change_rate = (self.reservoir_volume - prev_reservoir) / dt_min if dt_min > 0.0 else 0.0
-        n2_mix = uptake_n2 if rebreathed_n2 is None else rebreathed_n2
-        mix_flow = total_fgf + vapor_flow - uptake_o2 - uptake_agent - uptake_n2o - n2_mix
-        spill = max(0.0, mix_flow - max(0.0, bag_change_rate))
+        spill_bulk = max(0.0, bag_flow - max(0.0, bag_change_rate))
+        bypassed_n2 = (
+            min(-uptake_n2 * (1.0 - rebreathed_share), spill_bulk)
+            if uptake_n2 < 0.0 and spill_bulk > 0.0
+            else 0.0
+        )
+        spill = spill_bulk - bypassed_n2
+        total_vent = spill + leak_l_min
         o2_flow = delivered_o2 + 0.21 * self.fgf_air
         eff_volume = max(1.0, self.volume - (self.reservoir_capacity - prev_reservoir))
         next_eff_volume = max(1.0, self.volume - (self.reservoir_capacity - self.reservoir_volume))
         eff_change_rate = (next_eff_volume - eff_volume) / dt_min if dt_min > 0.0 else 0.0
-        outflow = spill + eff_change_rate
-        # Exact constant-rate integration of d(V F)/dt = inflow - uptake - spill * F.
+        outflow = total_vent + eff_change_rate
+        # Exact constant-rate integration of d(V F)/dt = inflow - uptake - total_vent * F.
         if abs(eff_change_rate) <= 1e-9:
-            mixing = -math.expm1(-spill * dt_min / eff_volume) / spill if spill > 1e-9 else dt_min / eff_volume
-        elif spill <= 1e-9:
+            mixing = (
+                -math.expm1(-total_vent * dt_min / eff_volume) / total_vent
+                if total_vent > 1e-9
+                else dt_min / eff_volume
+            )
+        elif total_vent <= 1e-9:
             mixing = dt_min / next_eff_volume
         elif abs(outflow) <= 1e-9:
             mixing = -math.log(eff_volume / next_eff_volume) / eff_change_rate

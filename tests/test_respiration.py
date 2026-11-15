@@ -673,3 +673,37 @@ def test_ventilation_requirement_scales_with_body_size(engine_factory):
         ventilated_co2.append(engine.state.pa_co2)
     small, typical, large = ventilated_co2
     assert small < 32.0 < typical < 40.0 < 42.0 < large
+
+
+def test_denitrogenation_clears_inert_gas_zero_dt_preserves_trachea_and_disconnect_zeros_et_agents(
+    engine_factory, advance_time
+):
+    """Pure-O2 wash-in clears alveolar N2 and aeration inert_fraction (#6);
+    step_respiration(dt=0) does not overwrite _tracheal_fio2 (#25);
+    disconnecting the airway zeros EtSevo, EtN2O, and EtMAC while retaining tissue MAC (#26).
+    """
+    from anasim.core.runtime import step_respiration
+
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
+        start=True,
+    )
+    engine.set_fgf(10.0, 0.0, 0.0)
+    engine.set_vaporizer(0.0)
+    advance_time(engine, 600.0, dt=2.0)
+    assert engine.resp.alveolar_fn2 < 0.01
+    assert engine.aeration.inert_fraction < 0.01
+
+    engine._tracheal_fio2 = 0.77
+    step_respiration(engine, 0.0, engine.state.co)
+    assert engine._tracheal_fio2 == pytest.approx(0.77)
+
+    engine.set_vaporizer(3.0)
+    engine.set_fgf(2.0, 0.0, 2.0)
+    advance_time(engine, 60.0, dt=1.0)
+    assert engine.state.et_sevo > 0.5 and engine.state.et_n2o > 5.0 and engine.state.et_mac > 0.5
+    mac_before = engine.state.mac
+    engine.set_airway_mode("None")
+    engine.step(0.1)
+    assert engine.state.et_sevo == engine.state.et_n2o == engine.state.et_mac == 0.0
+    assert engine.state.mac == pytest.approx(mac_before, abs=0.05)

@@ -214,6 +214,17 @@ class ArterialWaveformRenderer:
         ratio = cfg.compliance_pressure_ref_mmhg / max(20.0, float(mean_pressure))
         return self.arterial_compliance * ratio**cfg.compliance_pressure_exponent
 
+    def steady_pressures(self, map_value: float, stroke_volume_ml: float, hr: float) -> tuple[float, float]:
+        """Steady-state (systolic, diastolic) pressures (mmHg) at fixed MAP, SV, and HR."""
+        mean_pressure = max(0.0, float(map_value))
+        if mean_pressure <= 0.0 or stroke_volume_ml <= 0.0 or hr <= 0.0:
+            return 0.0, 0.0
+        shape = self._build_shape(60.0 / float(hr), float(hr))
+        compliance = self.compliance_at(mean_pressure)
+        pp = min(float(stroke_volume_ml) / compliance, mean_pressure / shape.mean)
+        diastolic = max(0.0, mean_pressure - pp * shape.mean)
+        return diastolic + pp, diastolic
+
     def _update_reference(
         self, map_value: float, stroke_volume_ml: float, sample: CardiacCycleSample, pulse_pressure_factor: float
     ) -> None:
@@ -602,10 +613,15 @@ class ArterialLineMonitor:
         self._previous_pressure = pressure
 
     @property
+    def pressure(self) -> float:
+        """Latest filtered pressure, mmHg."""
+        return float(self._previous_pressure)
+
+    @property
     def reading(self) -> ArterialPressureSample:
         """Latest filtered pressure and completed-beat numerics."""
         return ArterialPressureSample(
-            pressure=float(self._previous_pressure),
+            pressure=self.pressure,
             systolic=float(self._latest_sbp),
             diastolic=float(self._latest_dbp),
             mean=float(self._latest_map),

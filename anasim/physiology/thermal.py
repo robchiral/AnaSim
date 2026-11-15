@@ -35,7 +35,11 @@ class ThermalModel:
         # Awake vasomotor tone holds core temperature at baseline: heat loss
         # matches basal production there. Anesthesia replaces it with the
         # passive vasodilated conductance in proportion to depth.
-        self.awake_conductance = self.heat_production_basal / max(1.0, patient.baseline_temp - self.tuning.ambient_temp_c)
+        basal_temp_factor = max(0.5, TEMP_METABOLIC_COEFFICIENT ** (37.0 - patient.baseline_temp))
+        self.awake_conductance = (
+            self.heat_production_basal * basal_temp_factor
+            / max(1.0, patient.baseline_temp - self.tuning.ambient_temp_c)
+        )
         self.redistributed_heat_j = 0.0  # Core heat moved to the periphery
         self.depth_index = 0.0
         self.shiver_level = 0.0

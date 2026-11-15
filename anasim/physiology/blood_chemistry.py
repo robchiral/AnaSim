@@ -267,11 +267,12 @@ class BloodChemistry:
         rbc_ratio = 10.0**(rbc_ph - 6.1)
         bicarbonate_plasma = co2_plasma * plasma_ratio
         bicarbonate_rbc = co2_rbc * rbc_ratio
-        weak_ratio = _PLASMA_BUFFER_RATIO / plasma_ratio
-        weak_base = self.plasma_buffer_mmol_l / (1.0 + weak_ratio)
-        weak_ph = _LN_10 * weak_base * weak_ratio / (1.0 + weak_ratio)
         if self.plasma_buffers is not None:
             weak_base, weak_ph = self.plasma_buffers.contents(ph)
+        else:
+            weak_ratio = _PLASMA_BUFFER_RATIO / plasma_ratio
+            weak_base = self.plasma_buffer_mmol_l / (1.0 + weak_ratio)
+            weak_ph = _LN_10 * weak_base * weak_ratio / (1.0 + weak_ratio)
 
         hb_rbc = self.hemoglobin_mmol_l / self.hematocrit
         gradient = _RBC_PH_GRADIENT

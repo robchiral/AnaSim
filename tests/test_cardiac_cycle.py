@@ -148,9 +148,8 @@ def test_batched_monitor_updates_preserve_waveforms_readings_and_noise(engine_fa
         for engine in (reference, batched):
             engine.hemo.coronary.ischemia = 0.5
         for _ in range(5):
-            for _ in range(100):
-                step_cardiac_monitors(reference, 0.01, hemo, saturation)
-            step_cardiac_monitors(batched, 1.0, hemo, saturation)
+            waves = [step_cardiac_monitors(reference, 0.01, hemo, saturation)[1][0] for _ in range(100)]
+            assert step_cardiac_monitors(batched, 1.0, hemo, saturation)[1] == waves
             assert tuple(getattr(batched.state, name) for name in fields) == tuple(
                 getattr(reference.state, name) for name in fields
             )

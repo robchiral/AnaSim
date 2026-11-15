@@ -103,6 +103,7 @@ class FluidBalance:
         self.icf_l = 0.4 * weight
         self.cell_k_mmol = 140.0 * self.icf_l
         self.cell_na_mmol = 10.0 * self.icf_l
+        self.exogenous_calcium_mmol = 0.0
         self._cell_solute = self.icf_l * self._extracellular_solute() / self.ecf_l
         self.d_lactate_mmol = 0.0
         self.infused_l_lactate_mmol = 0.0
@@ -196,6 +197,7 @@ class FluidBalance:
                 self.amounts[ion] -= water * plasma_calcium
             else:
                 self.amounts[ion] *= 1.0 - fraction
+        self.exogenous_calcium_mmol *= max(0.0, 1.0 - fraction)
         self.citrate_mmol *= 1.0 - water / self.citrate_volume_l
         self.d_lactate_mmol *= 1.0 - water / self.lactate_volume_l
         self.plasma_albumin_g *= 1.0 - water / self.plasma_l
@@ -207,10 +209,11 @@ class FluidBalance:
 
     def shift_water(self, vascular_change_ml: float, protein_fraction: float = 0.0) -> None:
         volume = vascular_change_ml / 1000.0
+        frac = max(0.0, min(1.0, protein_fraction))
         if volume < 0.0:
-            protein = -volume * self.plasma_albumin_g / self.plasma_l * protein_fraction
+            protein = -volume * self.plasma_albumin_g / self.plasma_l * frac
         else:
-            protein = -volume * self.interstitial_albumin_g / self.interstitial_l
+            protein = -volume * self.interstitial_albumin_g / self.interstitial_l * frac
         self.plasma_albumin_g -= protein
         self.interstitial_albumin_g += protein
         self.plasma_l += volume
@@ -227,10 +230,9 @@ class FluidBalance:
              succinylcholine_ce: float = 0.0, mh_severity: float = 0.0) -> None:
         self.ph = ph
         self._equilibrate_cell_water()
-        self._elapsed += dt
-        if self._elapsed < 1.0 - 1e-12:
+        if dt <= 0.0:
             return
-        minutes = self._elapsed / 60.0
+        minutes = dt / 60.0
         self._elapsed = 0.0
         self._clear_calcium(minutes)
         self._metabolize_buffers(minutes, hepatic_function, oxygen_supply)
@@ -271,25 +273,44 @@ class FluidBalance:
                        self.urine_pending_l / (0.5 * self.weight / 1000.0 / 60.0 * minutes))
         net_acid = max(-4.0 * basal, min(4.0 * basal, basal + extra)) * capacity * minutes
         urine = self.urine_pending_l
-        sodium = urine * self.concentration("sodium")
-        potassium = urine * 40.0 * (self.concentration("potassium") / 4.0)**2
-        magnesium = urine * self.concentration("magnesium")
-        calcium = urine * 0.5
-        net_acid = max(-sodium - potassium - 2.0 * (calcium + magnesium), net_acid)
+        ecf_before = self.ecf_l + urine
+        if urine > 0.0 and ecf_before > 0.0:
+            conc_na = self.amounts["sodium"] / ecf_before
+            conc_k = self.amounts["potassium"] / ecf_before
+            conc_cl = self.amounts["chloride"] / ecf_before
+            conc_mg = self.amounts["magnesium"] / ecf_before
+            conc_pi = self.amounts["phosphate"] / ecf_before
+            max_na = min(self.amounts["sodium"], urine * conc_na)
+            potassium = min(self.amounts["potassium"], urine * 25.0 * (conc_k / 4.0) ** 2)
+            magnesium = min(self.amounts["magnesium"], urine * conc_mg)
+            calcium = min(self.amounts["calcium"], urine * 0.5)
+            phosphate = min(self.amounts["phosphate"], urine * conc_pi)
+        else:
+            conc_cl = max_na = potassium = magnesium = calcium = phosphate = 0.0
+        non_na_cations = potassium + 2.0 * (calcium + magnesium)
+        net_acid = max(-max_na - non_na_cations, net_acid)
         compensation = net_acid - basal * capacity * minutes
         self.renal_base_meq += compensation
         self.net_acid_excretion_mmol += net_acid
         self.fixed_acid_mmol += basal * minutes
-        self.base_meq += net_acid - basal * minutes
         self.urine_pending_l = 0.0
         # Fixed acid leaves with its own unmeasured anions. Compensation excretes
-        # ammonium chloride or retains chloride, so chloride moves opposite to bicarbonate.
-        chloride = max(0.0, urine * self.concentration("chloride") + compensation)
+        # ammonium chloride or retains chloride, while urinary strong cations match
+        # uncompensated chloride so urine SID tracks -compensation.
+        chloride = min(self.amounts["chloride"], max(0.0, urine * conc_cl + compensation))
+        target_na = chloride - compensation - non_na_cations
+        if target_na >= 0.0:
+            sodium = min(self.amounts["sodium"], target_na)
+        else:
+            sodium = 0.0
+            chloride = min(self.amounts["chloride"], max(0.0, non_na_cations + compensation))
+        sid_excreted = sodium + non_na_cations - chloride
+        self.base_meq += -sid_excreted - basal * (1.0 - capacity) * minutes
         bicarbonate = max(0.0, -net_acid)
         self.bicarbonate_excreted_mmol += bicarbonate
         for ion, amount in (("sodium", sodium), ("potassium", potassium), ("chloride", chloride),
                             ("calcium", calcium), ("magnesium", magnesium),
-                            ("phosphate", urine * self.concentration("phosphate"))):
+                            ("phosphate", phosphate)):
             self.amounts[ion] -= amount
 
     def _exchange_potassium(
@@ -319,7 +340,14 @@ class FluidBalance:
         excess = (self.amounts["calcium"] + self.calcium_unmixed_mmol / _CALCIUM_CENTRAL_FRACTION
                   - self.ecf_l * self._total_calcium(self.calcium_set_point, self.resting_ph))
         if excess > 0.0:
-            self.amounts["calcium"] -= excess * -math.expm1(-_CALCIUM_CLEARANCE_PER_MIN * minutes)
+            cleared = excess * -math.expm1(-_CALCIUM_CLEARANCE_PER_MIN * minutes)
+            self.amounts["calcium"] -= cleared
+            exo_cleared = min(cleared, self.exogenous_calcium_mmol)
+            self.exogenous_calcium_mmol -= exo_cleared
+            self.base_meq -= 2.0 * exo_cleared
+            endo_cleared = cleared - exo_cleared
+            if endo_cleared > 0.0:
+                self.amounts["chloride"] = max(0.0, self.amounts["chloride"] - 2.0 * endo_cleared)
 
     def _protein_binding(self, ph: float) -> float:
         return _albumin_binding((self.plasma_albumin_g + self.interstitial_albumin_g) / self.ecf_l, ph)
@@ -341,4 +369,5 @@ class FluidBalance:
     def give_calcium_chloride(self, mmol: float) -> None:
         self.amounts["calcium"] += mmol
         self.amounts["chloride"] += 2.0 * mmol
+        self.exogenous_calcium_mmol += mmol
         self.calcium_unmixed_mmol += mmol * (1.0 - _CALCIUM_CENTRAL_FRACTION)

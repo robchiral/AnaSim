@@ -76,7 +76,7 @@ BENCHMARKS = {
     'mech': ('vcv', 'pcv', 'autopeep'),
     'pk': ('propofol_eleveld', 'norepi_li', 'remifentanil_eleveld', 'morphine'),
     'mixed': ('baseline', 'sepsis'),
-    'engine': ('awake', 'steady_state', 'conditions', 'tci'),
+    'engine': ('awake', 'steady_state', 'conditions', 'tci', 'app'),
     'tci': ('propofol', 'norepinephrine'),
     'monitor': ('sinus', 'afib'),
 }
@@ -110,6 +110,7 @@ def build_step(name):
     from anasim.physiology.hemodynamics import HemodynamicModel
     from anasim.physiology.resp_mech import RespiratoryMechanics
     from anasim.physiology.respiration import RespiratoryModel
+    from anasim.web import STEP_S
 
     group, case = name.split('.')
     if case not in BENCHMARKS[group]:
@@ -229,12 +230,13 @@ def build_step(name):
         patient = Patient(sex='female', weight=140, gestational_age_weeks=36,
                           heart_failure='hfpef', copd_severity=0.65, coronary_flow_reserve=1.3)
         mode = 'steady_state'
-    elif case == 'tci':
+    elif case in ('tci', 'app'):
         mode = 'steady_state'
-    engine = SimulationEngine(patient, SimulationConfig(mode=mode, rng_seed=123, dt=0.1,
+    dt = STEP_S if case == 'app' else 0.1
+    engine = SimulationEngine(patient, SimulationConfig(mode=mode, rng_seed=123, dt=dt,
                                                        tci_enabled=case == 'tci'))
     engine.start()
-    return lambda i: engine.step(0.1)
+    return lambda i: engine.step(dt)
 
 
 def _format_results(results: list[BenchmarkResult]) -> str:

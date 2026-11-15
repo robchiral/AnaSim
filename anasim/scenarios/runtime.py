@@ -37,7 +37,7 @@ SAFETY_REVIEW = {
     "awake_intubation": "Establish appropriate intubating conditions before airway instrumentation.",
     "intubation_awareness": "Neuromuscular block does not establish hypnosis.",
     "awake_neuromuscular_block": "Establish hypnosis before administering a neuromuscular blocker.",
-    "unsafe_airway_removal": "Confirm ventilation and neuromuscular recovery before removing the tube.",
+    "unsafe_airway_removal": "Confirm ventilation, neuromuscular recovery, and a safe anesthetic plane before removing the tube.",
     "ventilation_stopped": "Maintain assisted ventilation while the patient is apneic.",
     "shock_while_responsive": "Give sedation or anesthesia before cardioversion in a responsive patient.",
 }

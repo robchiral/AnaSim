@@ -7,6 +7,12 @@ HR_MAX = 220.0  # bpm
 CIRCULATION_LIMIT_FRACTION = 0.3  # Below this share of resting CO, drug transport is flow-limited.
 BLOOD_VOLUME_MIN = 500.0  # mL
 
+ARREST_HR_BPM = 10.0
+# PEA: negligible forward flow and pulse pressure with an organized rhythm.
+ARREST_CO_L_MIN = 0.3
+ARREST_PULSE_PRESSURE_MMHG = 5.0
+ARREST_CONFIRM_S = 15.0
+
 CMH2O_TO_MMHG = 0.7356
 
 # Spontaneous rates below 2 breaths/min count as apnea.

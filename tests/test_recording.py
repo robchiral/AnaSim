@@ -1,7 +1,9 @@
 """CSV lifecycle failures must reach API and CLI callers."""
 
+import copy
 import csv
 import io
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -104,3 +106,29 @@ def test_headless_recording_failure_exits_unsuccessfully(tmp_path, inject_file, 
     assert "Recording failed:" in output.err
     assert "injected" in output.err
     assert "Simulation completed" not in output.out
+
+
+def test_deepcopy_during_active_recording_and_json_alarm_serialization(awake_engine, tmp_path):
+    """Deepcopying an active recording engine detaches the copy's recorder (#34),
+    and CSV alarm dictionaries serialize as valid JSON (#43).
+    """
+    engine = awake_engine
+    engine.give_drug_bolus("roc", 50.0)
+    for _ in range(60):
+        engine.step(1.0)
+    assert engine.state.alarms
+
+    engine.start_recording(str(tmp_path), sample_interval_sec=1.0)
+    cloned = copy.deepcopy(engine)
+    assert engine.recorder.is_recording
+    assert not cloned.recorder.is_recording and cloned.recorder.file is None
+
+    engine.step(1.0)
+    csv_path = Path(engine.recorder.file_path)
+    engine.stop_recording()
+
+    with open(csv_path, newline="") as file:
+        rows = list(csv.DictReader(file))
+    assert rows
+    parsed_alarms = json.loads(rows[-1]["alarms"])
+    assert isinstance(parsed_alarms, dict) and "BIS" in parsed_alarms

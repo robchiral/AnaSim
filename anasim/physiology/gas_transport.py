@@ -81,22 +81,30 @@ class GasTransport:
         arterial = 0.2 * volume
         self.volumes = (pulmonary, arterial, volume - pulmonary - arterial)
 
+    def blood_amount(self, concentrations: list[float]) -> float:
+        """Amount in the three blood pools at the given concentrations per liter."""
+        pulmonary, arterial, venous = self.volumes
+        return sum((pulmonary * concentrations[0], arterial * concentrations[1], venous * concentrations[2]))
+
+    @property
+    def blood_volume(self) -> float:
+        return sum(self.volumes)
+
     @property
     def tissue_co2_l(self) -> float:
         return sum(self.tissue_co2) * CO2_L_PER_MMOL
 
     @property
     def co2_l(self) -> float:
-        return (sum(v * c for v, c in zip(self.volumes, self.co2, strict=True))
-                + sum(self.tissue_co2) + self.extracellular_co2) * CO2_L_PER_MMOL
+        return (self.blood_amount(self.co2) + sum(self.tissue_co2) + self.extracellular_co2) * CO2_L_PER_MMOL
 
     @property
     def oxygen_l(self) -> float:
-        return sum(v * c for v, c in zip(self.volumes, self.oxygen, strict=True))
+        return self.blood_amount(self.oxygen)
 
     @property
     def base_meq(self) -> float:
-        return sum(v * c for v, c in zip(self.volumes, self.base, strict=True)) + self.extracellular_base
+        return self.blood_amount(self.base) + self.extracellular_base
 
     def seed_tissues(self, arterial_co2: float, cardiac_output: float, production_l_min: float,
                      chemistry: BloodChemistry, saturation: float) -> None:

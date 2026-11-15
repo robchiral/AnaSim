@@ -83,7 +83,7 @@ these patient conditions.
 | `maint_type` | `"tiva"` | `"tiva"` (total intravenous anesthesia) or `"balanced"` maintenance for steady-state initialization |
 | `concomitant_opioids` | `true` | Whether the patient receives opioids, a covariate in the Eleveld propofol PK model; steady-state initialization requires `true` |
 | `tci_enabled` | `false` | Enable target-controlled infusion (TCI) and use it at maintenance startup |
-| `dt` | 0.01 | Positive engine step in seconds |
+| `dt` | 0.01 | Engine step in seconds, above 0 and at most 2.0 |
 | `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
 | `patient_variability` | `false` | Sample individual drug kinetics and responses; `rng_seed` fixes the sampled patient |
 | `arterial_line_enabled` | `true` | Display continuous arterial pressure |
@@ -137,7 +137,7 @@ print(state.time, state.pa_co2, state.display_etco2)
 
 Read results through `engine.state` or `get_latest_state()`, and apply controls
 through engine methods. `engine.output_buffer` holds 20 seconds of monitor
-waveform samples.
+waveform samples, spaced 10 ms apart or less at any `dt`.
 
 | Method | Notes |
 |--------|-------|

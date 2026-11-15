@@ -27,6 +27,7 @@ class NIBPMonitor:
         self._deflation_rate = 10.0
         self.latest_reading = NIBPReading()
         self.measurement_failed = False
+        self.failed_timestamp: float | None = None
         self.rng = rng if rng is not None else np.random.default_rng()
 
     def trigger(self) -> None:
@@ -44,7 +45,7 @@ class NIBPMonitor:
         if true_map <= 30.0:
             return 1.0
         severity = (60.0 - true_map) / 30.0
-        return min(0.9, 0.15 + 0.75 * (severity ** 1.5))
+        return min(0.9, 0.9 * (severity ** 1.2))
 
     def step(
         self,
@@ -89,18 +90,21 @@ class NIBPMonitor:
         # Compressions and pulseless states prevent oscillometric measurement.
         if arrest_rhythm or compressions or pulseless_pea or true_map <= 30.0:
             self.measurement_failed = True
+            self.failed_timestamp = completed_at
             return self.cuff_pressure
 
         if self.rng.random() < self._shock_failure_probability(true_map):
             self.measurement_failed = True
+            self.failed_timestamp = completed_at
             return self.cuff_pressure
 
         self.measurement_failed = False
+        self.failed_timestamp = None
 
         low_flow_bias = 0.0
         if true_map < 60.0:
             severity = (60.0 - true_map) / 30.0
-            low_flow_bias = 4.0 + 10.0 * severity
+            low_flow_bias = 14.0 * severity
         meas_map = true_map + low_flow_bias
 
         meas_sys = max(40.0, true_sys + low_flow_bias * 1.15)

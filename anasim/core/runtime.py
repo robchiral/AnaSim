@@ -4,9 +4,16 @@ import logging
 import math
 from typing import TYPE_CHECKING, cast
 
-from anasim.core.constants import CIRCULATION_LIMIT_FRACTION
+from anasim.core.constants import (
+    ARREST_CO_L_MIN,
+    ARREST_CONFIRM_S,
+    ARREST_HR_BPM,
+    ARREST_PULSE_PRESSURE_MMHG,
+    CIRCULATION_LIMIT_FRACTION,
+)
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
+from anasim.machine.ventilator import VOLUME_TARGETED
 from anasim.patient.pd.anesthesia import opioid_equivalent
 from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
 from anasim.patient.pk_models import MidazolamPK, PropofolPKEleveld
@@ -17,6 +24,7 @@ from .monitors import step_monitors
 from .projection import (
     PhysiologyStepState,
     advance_tracheal_fio2,
+    assisted_positive_pressure,
     build_snapshot_from_models,
     cardiovascular_response_fractions,
     central_muscle_strength,
@@ -26,6 +34,7 @@ from .projection import (
     delivered_fraction,
     loss_of_response,
     mask_circuit_share,
+    mask_leak,
     mask_seal_factor,
     project_runtime_physiology,
     step_respiration,
@@ -42,16 +51,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-ARREST_HR_BPM = 10.0
-# PEA: negligible forward flow and pulse pressure with an organized rhythm.
-ARREST_CO_L_MIN = 0.3
-ARREST_PULSE_PRESSURE_MMHG = 5.0
-ARREST_CONFIRM_S = 15.0
 # Mean airway pressure is smoothed before it sets intrathoracic pressure.
 MEAN_PAW_TAU_S = 0.25
 
 
 def step_simulation(engine: SimulationEngine, dt: float) -> None:
+    if dt <= 0.0:
+        return
     state = engine.state
     engine.thermal.update_depth(state.temp_c, thermal_hypnotic_ce(engine), state.mac)
     engine._tol_current = clamp01(stimulus_tolerance(engine))
@@ -92,7 +98,7 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
     state.convulsions = toxicity.convulsion_intensity > 0.2
     physiology = step_physiology(engine, dt, disturbances)
     project_runtime_physiology(engine, physiology)
-    engine.cerebral.step(dt, state.map, state.hb_g_dl, state.sao2, state.pa_co2, state.ph)
+    engine.cerebral.step(dt, physiology.hemo_state.perfusion_map, state.hb_g_dl, state.sao2, state.pa_co2, state.ph)
     step_monitors(engine, dt, physiology.hemo_state, physiology.resp_state, disturbances)
     update_shivering(engine, dt)
     step_temperature(engine, dt)
@@ -116,10 +122,7 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
     aeration.unconscious = engine.state.loc
     aeration.lung_water = engine.hemo.lung_water_ml_kg
     # Alveolar nitrogen and argon slow absorption collapse.
-    aeration.inert_fraction = clamp01(
-        1.0 - (resp.p_alveolar_o2 + resp.p_alveolar_co2) / engine.resp._atm_dry
-        - engine.pk_n2o.state.p_alv - engine.pk_sevo.state.p_alv
-    )
+    aeration.inert_fraction = clamp01(engine.resp.alveolar_fn2)
     aeration.absorbed_volume = engine.resp.frc - engine.resp.gas_volume_l
     lung.effort.unconscious = engine.state.loc
     lung.effort.muscle.muscle_strength = (
@@ -157,6 +160,7 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         collect_samples=True, bag_p_max=engine.bag_mask_p_max,
         spontaneous_peep=engine._apl_pressure,
         bellows_fraction=engine.circuit.bellows_fraction,
+        reservoir_volume=engine.circuit.reservoir_volume,
     )
 
 
@@ -235,7 +239,7 @@ def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects
 
     if engine.lipid_infusion_ml_min > 0.0:
         amount = engine.lipid_infusion_ml_min * dt / 60.0
-        hemo.add_volume(amount, retention_fraction=1.0, label="lipid")
+        hemo.add_volume(amount, retention_fraction=0.25, label="lipid")
         engine.toxicity.add_lipid(amount)
 
     if engine.maintenance_fluid_rate_ml_min > 0:
@@ -260,11 +264,15 @@ def step_tci(engine: SimulationEngine, dt: float) -> None:
     sim_time = engine.state.time
     for key, controller in engine.tci.items():
         sampling_time = controller.sampling_time
-        acc = engine._tci_accumulators.get(key, 0.0) + dt
-        steps = int(acc / sampling_time)
-        for i in range(steps):
-            engine.infusion_rates[key] = controller.step(sim_time=sim_time + i * sampling_time)
-        engine._tci_accumulators[key] = acc - steps * sampling_time
+        acc = engine._tci_accumulators.get(key, 0.0)
+        steps = int((acc + 1e-9) / sampling_time)
+        if steps > 0:
+            for i in range(steps):
+                remaining = acc - (i + 1) * sampling_time
+                sample_time = sim_time if abs(remaining) <= 1e-9 else sim_time - remaining
+                engine.infusion_rates[key] = controller.step(sim_time=sample_time)
+            acc = max(0.0, acc - steps * sampling_time)
+        engine._tci_accumulators[key] = acc + dt
 
 
 def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
@@ -283,13 +291,34 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
     engine._step_lung_volume_l = target_lung_vol
     circuit_share = mask_circuit_share(engine)
     apneic_limit: float | None = None
+    leak_l_min = 0.0
+    if (
+        engine.state.airway_mode == AirwayType.MASK
+        and circuit_connected(engine)
+        and assisted_positive_pressure(engine)
+    ):
+        if engine.vent.has_measured_breath:
+            supported_mv = engine.vent.monitors.mv_supported
+        elif engine.vent.is_on and engine.vent.settings.mode in VOLUME_TARGETED:
+            supported_mv = engine.vent.settings.rr * engine.vent.settings.tv / 1000.0
+        elif engine.bag_mask_active and not engine.vent.is_on:
+            supported_mv = engine.bag_mask_rr * engine.bag_mask_vt
+        else:
+            supported_mv = 0.0
+        leak_l_min = max(0.0, supported_mv) * mask_leak(engine) * engine.resp._btps_to_stpd
+    rebreathed_share = 1.0
     if circuit_share <= 0.0:
-        uptake_o2 = uptake_sevo = uptake_n2o = uptake_n2 = rebreathed_n2 = 0.0
+        uptake_o2 = uptake_sevo = uptake_n2o = uptake_n2 = 0.0
     else:
         airway = engine.airway_status
         patency = clamp01(airway.patency)
         va = max(0.0, engine.state.va) if patency > 0.0 else 0.0
         va_circuit = va * circuit_share
+        rebreathed_share = (
+            clamp01(1.0 - circuit.fgf_total() / max(0.1, va_circuit))
+            if va_circuit > 0.0
+            else 0.0
+        )
         composition = circuit.composition
         circuit_fio2, circuit_fi_sevo, circuit_fin2o, circuit_fin2 = circuit_inspired_mixture(
             composition, tracheal_fio2, circuit_share
@@ -297,7 +326,7 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
         fi_sevo = circuit_share * circuit_fi_sevo
         fi_n2o = circuit_share * circuit_fin2o
         resp = engine.resp
-        ventilation = max(0.0, va * (1.0 - 0.6 * clamp01(airway.vq_mismatch)))
+        ventilation = va
         apneic_limit = circuit.deliverable_flow(dt) if circuit_share >= 0.999 else None
         frc_change_btps_l, remaining_apneic_limit = resp._frc_volume_change_l(
             target_lung_vol, patency, dt, apneic_limit
@@ -324,21 +353,17 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
         frc_sevo = circuit_fi_sevo if frc_stpd_l_min >= 0.0 else engine.pk_sevo.state.p_alv
         frc_n2o = circuit_fin2o if frc_stpd_l_min >= 0.0 else engine.pk_n2o.state.p_alv
         frc_n2 = circuit_fin2 if frc_stpd_l_min >= 0.0 else alveolar_n2
-        uptake_sevo = (circuit_fi_sevo - engine.pk_sevo.state.p_alv) * va_circuit + circuit_share * (
+        tidal_scale = va_circuit * resp._btps_to_stpd / (1.0 + mixing)
+        uptake_sevo = (circuit_fi_sevo - engine.pk_sevo.state.p_alv) * tidal_scale + circuit_share * (
             frc_stpd_l_min * frc_sevo + passive_flow * circuit_fi_sevo - washout_stpd * engine.pk_sevo.state.p_alv
         )
-        uptake_n2o = (circuit_fin2o - engine.pk_n2o.state.p_alv) * va_circuit + circuit_share * (
+        uptake_n2o = (circuit_fin2o - engine.pk_n2o.state.p_alv) * tidal_scale + circuit_share * (
             frc_stpd_l_min * frc_n2o + passive_flow * circuit_fin2o - washout_stpd * engine.pk_n2o.state.p_alv
         )
-        tidal_n2 = (
-            circuit_share * ventilation * resp._btps_to_stpd
-            * (circuit_fin2 - alveolar_n2) / (1.0 + mixing)
-        )
+        tidal_n2 = tidal_scale * (circuit_fin2 - alveolar_n2)
         uptake_n2 = tidal_n2 + circuit_share * (
             frc_stpd_l_min * frc_n2 + passive_flow * circuit_fin2 - washout_stpd * alveolar_n2
         )
-        rebreathed_share = clamp01(1.0 - circuit.fgf_total() / max(0.1, va_circuit)) if va_circuit > 0.0 else 0.0
-        rebreathed_n2 = tidal_n2 * rebreathed_share
         uptake_o2 = circuit_share * resp.oxygen_exchange_l_min(
             circuit_fio2, va,
             airway.patency, airway.vq_mismatch, dt,
@@ -346,7 +371,15 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
             apneic_flow_limit_l_min=apneic_limit,
             lung_volume_l=target_lung_vol,
         )
-    circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o, uptake_n2, rebreathed_n2)
+    circuit.step(
+        dt,
+        uptake_o2,
+        uptake_sevo,
+        uptake_n2o,
+        uptake_n2,
+        leak_l_min=leak_l_min,
+        rebreathed_share=rebreathed_share,
+    )
     engine._step_apneic_limit_l_min = (
         None if apneic_limit is None else apneic_limit * circuit.last_uptake_scale
     )
@@ -365,27 +398,36 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
         else engine.pk_n2o.alveolar_uptake_l_min(co_curr, aeration.shunt_fraction)
     )
     target_lung_vol = engine._step_lung_volume_l if engine._step_lung_volume_l is not None else aeration.frc
-    frc_change, remaining_apneic_limit = engine.resp._frc_volume_change_l(
+    resp = engine.resp
+    frc_change, remaining_apneic_limit = resp._frc_volume_change_l(
         target_lung_vol, patency, dt, engine._step_apneic_limit_l_min
     )
-    if n2o_uptake >= 0.0:
-        companion_btps = n2o_uptake * patency
-        if remaining_apneic_limit is not None:
-            companion_btps = min(companion_btps, remaining_apneic_limit / engine.resp._btps_to_stpd)
-        elif circuit_connected(engine) and mask_circuit_share(engine) >= 0.999:
-            companion_btps = min(
-                companion_btps,
-                max(0.0, engine.circuit.deliverable_flow_l_min) / engine.resp._btps_to_stpd,
-            )
-    else:
-        companion_btps = n2o_uptake * patency
-    lung_vol = engine.resp.frc + frc_change
+    flow_cap_stpd = remaining_apneic_limit
+    if flow_cap_stpd is None and circuit_connected(engine) and mask_circuit_share(engine) >= 0.999:
+        flow_cap_stpd = max(0.0, engine.circuit.deliverable_flow_l_min)
+    refill_l_min = resp._passive_refill_l_min(patency, dt)
+    if flow_cap_stpd is not None:
+        refill_l_min = min(refill_l_min, flow_cap_stpd)
+    net_uptake = max(0.0, resp._pulmonary_o2_uptake - resp._pulmonary_co2_delivery)
+    apneic_inflow = net_uptake * patency * clamp01(1.0 - va)
+    passive_o2_stpd = apneic_inflow + refill_l_min
+    n2o_inflow_stpd = max(0.0, n2o_uptake * resp._btps_to_stpd) * patency
+    if flow_cap_stpd is not None and passive_o2_stpd + n2o_inflow_stpd > flow_cap_stpd:
+        total_passive = passive_o2_stpd + n2o_inflow_stpd
+        scale_passive = flow_cap_stpd / total_passive if total_passive > 0.0 else 0.0
+        passive_o2_stpd *= scale_passive
+        n2o_inflow_stpd *= scale_passive
+    passive_btps = passive_o2_stpd / resp._btps_to_stpd
+    companion_btps = (
+        n2o_inflow_stpd / resp._btps_to_stpd if n2o_uptake >= 0.0 else n2o_uptake * patency
+    )
+    lung_vol = resp.frc + frc_change
     engine.pk_sevo.step(dt, fi_sevo, va, co_curr, temp_c=state.temp_c,
                         lung_volume_l=lung_vol, shunt_fraction=aeration.shunt_fraction,
-                        companion_uptake_l_min=companion_btps)
+                        companion_uptake_l_min=companion_btps, passive_inflow_l_min=passive_btps)
     engine.pk_n2o.step(dt, fi_n2o, va, co_curr, temp_c=state.temp_c,
                        lung_volume_l=lung_vol, shunt_fraction=aeration.shunt_fraction,
-                       companion_uptake_l_min=companion_btps)
+                       companion_uptake_l_min=companion_btps, passive_inflow_l_min=passive_btps)
     sync_inhaled_agents(engine)
 
     rates = engine.infusion_rates
@@ -418,7 +460,8 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> None:
     base_bv = engine.hemo.blood_volume_0
     blood_lost = engine.hemo.total_blood_out_ml - engine._pk_blood_out_ml
     if blood_lost > 0.0:
-        engine.toxicity.lipid_ml *= math.exp(-blood_lost / base_bv)
+        pre_loss_bv = max(500.0, engine.hemo.blood_volume + blood_lost)
+        engine.toxicity.lipid_ml *= max(0.0, 1.0 - blood_lost / pre_loss_bv)
         for model in (*engine.pk.values(), engine.tof_pd.sugammadex, engine.tof_pd.complex):
             model.remove_blood(blood_lost / 1000.0, base_bv / 1000.0)
         engine._pk_blood_out_ml = engine.hemo.total_blood_out_ml
@@ -576,8 +619,10 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
     pit_estimate = compute_pit_estimate(engine, dt)
 
     applied_peep = (
-        engine.resp_mech.peep if vent_active else (0.0 if bag_mask_active else engine._apl_pressure)
-    ) * mask_seal_factor(engine)
+        engine.resp_mech.peep
+        if vent_active
+        else (0.0 if bag_mask_active or not connected else engine._apl_pressure * mask_seal_factor(engine))
+    )
     total_peep_effect = applied_peep + spirometry.auto_peep
     # Sevoflurane cardiovascular effects follow end-tidal MAC through the model's own ke0.
     mac_sevo = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
@@ -604,13 +649,14 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         pit=pit_estimate,
         paco2=resp_state.pa_co2,
         pao2=resp_state.p_arterial_o2,
-        dist_hr=(
-            disturbances.hr
-            + engine.malignant_hyperthermia.heart_rate_increase
+        dist_hr=disturbances.hr,
+        dist_sv=disturbances.sv,
+        dist_svr=disturbances.svr,
+        crisis_hr=(
+            engine.malignant_hyperthermia.heart_rate_increase
             + engine.toxicity.heart_rate_increase
         ),
-        dist_sv=disturbances.sv,
-        dist_svr=disturbances.svr + engine.toxicity.svr_increase,
+        crisis_svr=engine.toxicity.svr_increase,
         mac_sevo=mac_sevo,
         ce_epi=state.epi_ce,
         ce_phenyl=state.phenyl_ce,

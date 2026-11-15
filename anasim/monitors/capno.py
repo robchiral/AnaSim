@@ -16,6 +16,8 @@ class Capnograph:
     ANALYZER_TAU = 0.12  # s, each of two first-order stages
     PHASE_II_VOLUME = 0.10  # L, spread of path dead spaces
     PHASE_III_SLOPE = 20.0  # mmHg/L
+    MIN_FLOW_L_S = 0.002  # L/s (0.12 L/min); analyzer no-flow floor
+    PASSIVE_CREEP_L_S = 0.015  # L/s (0.9 L/min); post-expiratory apneic drift
 
     def __init__(self, dead_space_l: float):
         self.dead_space = dead_space_l
@@ -31,6 +33,7 @@ class Capnograph:
         self._exhaled_alveolar = 0.0
         self._breath_volume = 0.0  # Inspired volume of the current breath, L.
         self._inhaled = 0.0
+        self.breath_index = 0
         self._no_flow_s = 0.0
         self._stages = [0.0, 0.0]
         self.co2 = 0.0
@@ -43,16 +46,24 @@ class Capnograph:
         steepens phase III; previous breath sizes do not change its endpoint.
         """
         exhaled = -volume_change
-        self.exhaling = exhaled > 1e-6 * dt
-        if abs(exhaled) > 0.002 * dt:
+        passive_creep = (
+            0.0 < exhaled <= self.PASSIVE_CREEP_L_S * dt
+            and self._inhaled <= self.dead_space
+            and self._exhaled_alveolar >= self._breath_volume
+        )
+        flow_floor = self.PASSIVE_CREEP_L_S * dt if passive_creep else self.MIN_FLOW_L_S * dt
+        active_flow = abs(exhaled) > flow_floor
+        self.exhaling = active_flow and exhaled > 0.0
+        if active_flow:
             self._no_flow_s = 0.0
         else:
             self._no_flow_s += dt
-        if exhaled > 1e-6 * dt:
+        if self.exhaling:
             if self._inhaled > self.dead_space:
                 # Fresh gas reached the alveoli, so this is a new exhalation.
                 self._breath_volume = self._inhaled
                 self._exhaled_alveolar = 0.0
+                self.breath_index += 1
             else:
                 # A small effort interrupts this expiration. Its returning gas
                 # must not advance the alveolar concentration profile twice.
@@ -75,10 +86,8 @@ class Capnograph:
                 for volume, slug_co2 in self._take(self._window, excess, left=True):
                     self._window_volume -= volume
                     self._window_co2 -= volume * slug_co2
-            if self._no_flow_s > 1.5:
-                self._decay_window(math.exp(-dt / 2.5))
             sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
-        elif exhaled < -1e-6 * dt:
+        elif active_flow:
             inhaled = -exhaled
             self._inhaled += inhaled
             # Gas moves into the alveoli and fresh gas refills the column from the Y-piece.
@@ -89,7 +98,7 @@ class Capnograph:
             sample = 0.0
         else:
             if self._no_flow_s > 1.5:
-                self._decay_window(math.exp(-dt / 2.5))
+                self._decay_window(math.exp(-dt / 1.8))
                 sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
             else:
                 sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else self._stages[0]
@@ -100,6 +109,9 @@ class Capnograph:
         first, second = self._stages
         self._stages[0] = sample + (first - sample) * decay
         self._stages[1] = sample + (second - sample + z * (first - sample)) * decay
+        if self._no_flow_s > 1.5 and self._stages[1] < 0.25 and sample < 0.25:
+            self._decay_window(0.0)
+            self._stages[0] = self._stages[1] = 0.0
         self.co2 = self._stages[1]
         return self.co2
 
@@ -148,6 +160,9 @@ class EtCO2Readout:
         self._age_s = 0.0
         self._exhaling = True
         self._has_sample = False
+        self._ever_sampled = False
+        self._latched = False
+        self._last_breath_index = 0
 
     @property
     def valid(self) -> bool:
@@ -155,36 +170,65 @@ class EtCO2Readout:
 
     @property
     def awaiting_first_breath(self) -> bool:
-        return not self._has_sample and self._age_s < self.timeout_s
+        return not self._ever_sampled and not self._has_sample and self._age_s < self.timeout_s
 
     def seed(self, value: float) -> None:
         self.value = value
         self._age_s = 0.0
         self._peak = 0.0
         self._has_sample = value > 0.0
+        self._ever_sampled = self._has_sample
+        self._latched = False
 
     def interrupt(self, dt: float, disconnected: bool, *, idle_airway: bool = False) -> None:
         """Advance without exhaled gas at the sampling port."""
         self._peak = 0.0
         self._exhaling = False
+        self._latched = False
         if disconnected:
             self._has_sample = False
         if idle_airway:
             self._age_s = 0.0
+            self._ever_sampled = False
         else:
             self._age_s += dt
         self._expire()
 
-    def update(self, dt: float, exhaling: bool, co2: float) -> None:
-        """Advance with one capnograph sample; a breath completes when inspiration begins."""
+    def update(
+        self,
+        dt: float,
+        exhaling: bool,
+        co2: float,
+        *,
+        inhaled_l: float = 0.0,
+        dead_space_l: float = 0.0,
+        breath_index: int | None = None,
+    ) -> None:
+        """Advance with one capnograph sample; ignore mid-expiration curare clefts."""
         self._age_s += dt
-        if exhaling:
-            self._peak = max(self._peak, co2)
-        if self._exhaling and not exhaling and self._peak > 1.0:
+        if breath_index is not None and breath_index != self._last_breath_index:
+            if self._peak > 1.0 and not self._latched:
+                self.value = self._peak
+                self._age_s = 0.0
+                self._has_sample = True
+                self._ever_sampled = True
+            self._last_breath_index = breath_index
+            self._peak = 0.0
+            self._latched = False
+        new_inspiration = not exhaling and dead_space_l > 0.0 and inhaled_l > dead_space_l
+        if exhaling and co2 > self._peak:
+            self._peak = co2
+            self._latched = False
+        end_pause = self._exhaling and not exhaling and inhaled_l <= 0.0
+        if (end_pause or new_inspiration) and self._peak > 1.0 and not self._latched:
             self.value = self._peak
             self._age_s = 0.0
-            self._peak = 0.0
             self._has_sample = True
+            self._ever_sampled = True
+            self._latched = True
+        if new_inspiration or (end_pause and dead_space_l <= 0.0):
+            self._peak = 0.0
+            self._latched = False
         self._exhaling = exhaling
         self._expire()
 

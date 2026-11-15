@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pytest
 from scipy.linalg import expm
@@ -20,6 +22,7 @@ from anasim.patient.pk_models import (
     MidazolamPK,
     MilrinonePK,
     MorphinePK,
+    NorepinephrinePK,
     PropofolPKEleveld,
     RemifentanilPKEleveld,
     RocuroniumPK,
@@ -444,3 +447,38 @@ class TestNeuromuscularEffectSite:
                 engine.state.mac_sevo = mac
                 strengths.append(central_muscle_strength(engine))
             assert strengths[0] > strengths[1] > strengths[2]
+
+
+def test_finite_drug_inputs_nore_reset_sugammadex_v1_monotonicity_and_zero_flow_decay(
+    awake_engine, patient_factory
+):
+    """Drug rate/TCI APIs reject NaN and Inf (#16); NorepinephrinePK.reset restores
+    endogenous baseline and scaling (#31); SugammadexPK V1 is non-decreasing at high
+    body weight (#40); TOFModel.simulate_decay exits immediately at zero flow (#41).
+    """
+    for bad in (math.nan, math.inf):
+        with pytest.raises(ValueError):
+            awake_engine.set_drug_rate("propofol", bad)
+        with pytest.raises(ValueError):
+            awake_engine.enable_tci("propofol", bad)
+        with pytest.raises(ValueError):
+            awake_engine.set_drug_target("propofol", bad)
+
+    nore = NorepinephrinePK(patient_factory())
+    endogenous_c1 = nore.state.c1
+    nore.update_hemodynamics(0.8, 0.5, 0.0)
+    nore.state.c1 = 40.0
+    nore.reset()
+    assert nore.state.c1 == pytest.approx(endogenous_c1)
+    assert nore.circulation == 1.0 and nore.cl1_scale == 1.0
+
+    v1_150 = TOFModel(patient_factory(weight=150, height=185)).sugammadex.v1
+    v1_200 = TOFModel(patient_factory(weight=200, height=185)).sugammadex.v1
+    assert v1_200 >= v1_150
+
+    roc = RocuroniumPK(patient_factory())
+    roc.state.c1 = 5.0
+    roc.circulation = 0.0
+    tof_model = TOFModel(patient_factory())
+    tof_model.ce = 3.0
+    assert tof_model.simulate_decay(roc) == pytest.approx(120.0)

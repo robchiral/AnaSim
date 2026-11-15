@@ -45,3 +45,20 @@ def test_awake_initial_snapshot_uses_patient_baselines():
     assert "BIS" in engine.state.alarms
     engine.step(0.1)
     assert snapshot.alarms == {}
+
+
+def test_steady_state_startup_capno_sync_and_projection_preserves_temperature():
+    """Steady-state startup resets breath_count and syncs capno_co2, and projection
+    preserves live hyperthermic temperature (#32).
+    """
+    from anasim.core.projection import sync_state_from_models
+
+    patient, config = build_models_from_config({"mode": "steady_state", "rng_seed": 1})
+    engine = SimulationEngine(patient, config)
+    engine.start()
+    assert engine.vent.breath_count == 0
+    assert engine.state.capno_co2 == pytest.approx(engine.capno.co2)
+
+    engine.state.temp_c = 39.2
+    sync_state_from_models(engine)
+    assert engine.state.temp_c == pytest.approx(39.2)

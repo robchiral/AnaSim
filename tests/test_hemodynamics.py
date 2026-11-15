@@ -724,3 +724,45 @@ def test_matched_bleeding_high_peep_rap_and_beta_blocked_contractility_gating(en
         model.hemo.add_volume(-1500.0)
         advance_time(model, 180.0, dt=1.0)
     assert blocked.hemo.sv_tone < unblocked.hemo.sv_tone
+
+
+def test_stim_map_bounds_afib_baroreflex_elderly_cfr_and_hfref_startup(engine_factory, advance_time):
+    """_stim_map stays bounded by realized pressure in sinus bradycardia (#9);
+    hemorrhagic shock in AFIB does not invert vascular baroreflex (#28);
+    awake elderly low-CFR baseline has no resting ischemia (#29);
+    HFrEF balanced steady-state startup holds MAP without jump (#39).
+    """
+    brady = engine_factory(
+        config=SimulationConfig(
+            mode="steady_state", disturbance_profile="stim_sustained_surgery", rng_seed=1
+        ),
+        start=True,
+    )
+    brady.set_rhythm("SINUS_BRADY")
+    advance_time(brady, 30.0, dt=1.0)
+    assert 0.0 <= brady.hemo._stim_map <= brady.hemo.state.intrinsic_map
+
+    afib = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    afib.set_rhythm("AFIB")
+    afib.hemo.add_volume(-1500.0)
+    advance_time(afib, 60.0, dt=1.0)
+    assert afib.hemo.smoothed_baro_vasc >= 0.0
+
+    elderly = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1),
+        start=True,
+        age=85,
+        coronary_flow_reserve=1.2,
+    )
+    elderly.step(1.0)
+    assert elderly.hemo.coronary.supply_demand_ratio >= 1.0
+    assert elderly.hemo.coronary.st_depression_mv == 0.0
+
+    hfref = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
+        start=True,
+        heart_failure="hfref",
+    )
+    map_0 = hfref.state.map
+    advance_time(hfref, 10.0, dt=0.5)
+    assert hfref.state.map == pytest.approx(map_0, abs=2.5)

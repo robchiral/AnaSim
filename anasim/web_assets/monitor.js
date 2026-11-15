@@ -17,7 +17,7 @@ const AXIS_WIDTH = 32;
 const GAP_FRACTION = 0.014;
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const trunc = (value) => (value === null ? "--" : String(Math.trunc(value)));
+const whole = (value) => (value === null ? "--" : String(Math.round(value)));
 const fixed = (value, digits) => (value === null ? "--" : value.toFixed(digits));
 
 class Sweep {
@@ -385,30 +385,30 @@ export class Monitor {
   }
 
   updateNumerics(v) {
-    this.set("v-hr", trunc(v.hr));
+    this.set("v-hr", whole(v.hr));
     this.fields["v-st"].hidden = v.st_depression_mv < 0.03;
     this.set("v-st", `ST -${(10 * v.st_depression_mv).toFixed(1)} mm`);
-    this.set("v-spo2", trunc(v.spo2));
+    this.set("v-spo2", whole(v.spo2));
     this.set("v-spo2-unit", v.spo2 === null ? "No signal" : "%");
     if (this.arterialLine) {
-      this.set("v-art", `${trunc(v.art[0])}/${trunc(v.art[1])}`);
-      this.set("v-art-map", trunc(v.art[2]));
+      this.set("v-art", `${whole(v.art[0])}/${whole(v.art[1])}`);
+      this.set("v-art-map", whole(v.art[2]));
     }
     if (v.nibp === null) {
       this.set("v-nibp", "--/-- (--)");
     } else {
-      this.set("v-nibp", `${trunc(v.nibp[0])}/${trunc(v.nibp[1])} (${trunc(v.nibp[2])})`);
+      this.set("v-nibp", `${whole(v.nibp[0])}/${whole(v.nibp[1])} (${whole(v.nibp[2])})`);
     }
     const age = Math.floor(v.nibp_age);
     const reading = v.nibp_age === null ? "No reading" :
       `${Math.floor(age / 60)}:${String(age % 60).padStart(2, "0")} ago`;
-    const status = v.nibp_cuff !== null ? `Cuff ${trunc(v.nibp_cuff)} mmHg` :
+    const status = v.nibp_cuff !== null ? `Cuff ${whole(v.nibp_cuff)} mmHg` :
       v.nibp_failed ? "Measurement failed" : "";
     this.set("v-nibp-status", status ? `${status}, ${reading.toLowerCase()}` : reading);
-    this.set("v-etco2", trunc(v.etco2));
-    this.set("v-rr", trunc(v.rr));
+    this.set("v-etco2", whole(v.etco2));
+    this.set("v-rr", whole(v.rr));
     this.set("v-rr-title", v.rr_source === "impedance" ? "RR imp" : "RR");
-    this.set("v-bis", trunc(v.bis));
+    this.set("v-bis", whole(v.bis));
     this.set("v-temp", fixed(v.temp, 1));
 
     const net = v.net_fluid ?? 0;
@@ -416,17 +416,17 @@ export class Monitor {
     this.set("v-io",
       `IV ${fixed(v.fluid_in, 0)}, PRBC ${fixed(v.blood_in, 0)}, urine ${fixed(v.urine_out, 0)}, loss ${fixed(v.blood_out, 0)} mL`);
 
-    this.set("v-ppeak", trunc(v.ppeak));
-    this.set("v-pplat", trunc(v.pplat));
-    this.set("v-peep", trunc(v.peep));
-    this.set("v-pmean", trunc(v.pmean));
-    this.set("v-vte", trunc(v.vte));
+    this.set("v-ppeak", whole(v.ppeak));
+    this.set("v-pplat", whole(v.pplat));
+    this.set("v-peep", whole(v.peep));
+    this.set("v-pmean", whole(v.pmean));
+    this.set("v-vte", whole(v.vte));
     this.set("v-mv", fixed(v.mv, 1));
-    this.set("v-cdyn", trunc(v.cdyn));
-    this.set("v-fio2", trunc(v.fio2));
-    this.set("v-eto2", trunc(v.eto2));
-    this.set("v-fi-n2o", trunc(v.fi_n2o));
-    this.set("v-et-n2o", trunc(v.et_n2o));
+    this.set("v-cdyn", whole(v.cdyn));
+    this.set("v-fio2", whole(v.fio2));
+    this.set("v-eto2", whole(v.eto2));
+    this.set("v-fi-n2o", whole(v.fi_n2o));
+    this.set("v-et-n2o", whole(v.et_n2o));
     this.set("v-fi-sevo", fixed(v.fi_sevo, 1));
     this.set("v-et-sevo", fixed(v.et_sevo, 1));
     this.set("v-mac", fixed(v.et_mac, 1));

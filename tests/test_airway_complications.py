@@ -337,3 +337,42 @@ def test_stage_ii_extubation_laryngospasm_and_bronchodilation(engine_factory, ad
     ket_bronch.give_drug_bolus("ketamine", 100.0)
     advance_time(ket_bronch, 60.0, dt=1.0)
     assert ket_bronch.state.bronchospasm < before_ket - 0.10
+
+
+def test_bronchospasm_mask_parity_ppv_leak_drain_and_overpressure_volume_scaling(
+    engine_factory, advance_time
+):
+    """Spontaneous mask breathing does not double-count distal bronchospasm (#3);
+    positive-pressure ventilation on a leaky mask drains the reservoir bag at low FGF (#7);
+    overpressure leak on a tight mask scales displayed volume with delivered VT (#23).
+    """
+    open_airway = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    mask_airway = copy.deepcopy(open_airway)
+    mask_airway.set_airway_mode("Mask")
+    mask_airway.set_fgf(8.0, 0.0)
+    for model in (open_airway, mask_airway):
+        model.set_bronchospasm(0.8)
+        advance_time(model, 30.0, dt=0.5)
+    assert mask_airway.state.va > 0.65 * open_airway.state.va
+
+    leaky_ppv = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    leaky_ppv.give_drug_bolus("roc", 60.0)
+    leaky_ppv.set_airway_mode("Mask")
+    leaky_ppv.set_mask_seal(0.25)
+    leaky_ppv.set_fgf(0.3, 0.0)
+    advance_time(leaky_ppv, 30.0, dt=0.5)
+    assert leaky_ppv.circuit.reservoir_volume < 1.5
+
+    overpressure = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    overpressure.give_drug_bolus("roc", 60.0)
+    overpressure.set_airway_mode("Mask")
+    overpressure.set_mask_seal(1.0)
+    overpressure.set_airway_obstruction(0.85)
+    overpressure.set_vent_settings(rr=12, vt=0.6, peep=5.0, ie="1:2", mode="VCV", p_max=45.0)
+    advance_time(overpressure, 20.0, dt=0.1)
+    volumes = []
+    for _ in range(100):
+        overpressure.step(0.1)
+        volumes.append(overpressure.state.volume)
+    assert overpressure.state.vt < 100.0
+    assert (max(volumes) - min(volumes)) * 1000.0 < 2.0 * overpressure.state.vt

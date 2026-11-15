@@ -1,4 +1,5 @@
 import csv
+import json
 import math
 import os
 import time
@@ -13,6 +14,14 @@ if TYPE_CHECKING:
     from _csv import Writer
 
 STATE_FIELD_NAMES = tuple(field.name for field in fields(SimulationState))
+
+
+def _format_csv_value(value):
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, dict):
+        return json.dumps(value, separators=(",", ":"))
+    return value
 
 
 class RecordingError(RuntimeError):
@@ -31,6 +40,14 @@ class DataRecorder:
         self.is_recording = False
         self.sample_interval_sec = max(0.0, sample_interval_sec)
         self._next_sample_time: float | None = None
+
+    def __deepcopy__(self, memo):
+        clone = DataRecorder(
+            output_dir=self.output_dir,
+            sample_interval_sec=self.sample_interval_sec,
+        )
+        memo[id(self)] = clone
+        return clone
 
     def start(self):
         if self.is_recording:
@@ -65,7 +82,7 @@ class DataRecorder:
 
         values = (getattr(state, name) for name in STATE_FIELD_NAMES)
         try:
-            self.writer.writerow(value.value if isinstance(value, Enum) else value for value in values)
+            self.writer.writerow(_format_csv_value(value) for value in values)
         except (OSError, csv.Error, ValueError) as error:
             self._fail("write", error)
         try:

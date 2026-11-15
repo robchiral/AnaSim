@@ -36,3 +36,24 @@ def test_pea_arrest_alarms_without_arterial_line(engine_factory, advance_time):
 
     assert engine.state.alarms["MAP"]["low"] is True
     assert engine.state.alarms["SpO2"]["low"] is True
+
+
+def test_integer_channel_alarms_match_rounded_monitor_numerics(engine_factory):
+    """Monitor alarms evaluate rounded integer display values so numerics at the limit do not alarm (#20)."""
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", arterial_line_enabled=False, rng_seed=1),
+        start=True,
+    )
+    engine.step(0.1)
+
+    # MAP_min = 60, EtCO2_max = 45: values rounding to 60 and 45 must not alarm.
+    alarms_at_limit = engine.alarms.update({"MAP": round(59.6), "EtCO2": round(45.4)}, dt=1.0)
+    assert "MAP" not in alarms_at_limit and "EtCO2" not in alarms_at_limit
+
+    # Integrated step_monitors applies display_int rounding to fractional pressures.
+    engine.state.nibp_map = 59.6
+    engine.step(0.1)
+    assert "MAP" not in engine.state.alarms
+    engine.state.nibp_map = 59.4
+    engine.step(0.1)
+    assert engine.state.alarms["MAP"]["low"] is True

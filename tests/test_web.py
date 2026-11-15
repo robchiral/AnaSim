@@ -527,3 +527,13 @@ def test_page_reads_only_snapshot_fields_and_commands_the_session_provides():
     for spec in SCENARIO_REGISTRY:
         for step in spec.builder():
             assert step.target_tab is None or step.target_tab in tabs
+
+
+def test_step_accumulator_executes_exact_sim_steps_across_float_boundaries():
+    """Binary-float accumulator residuals (e.g. 0.016 * 50 = 16 * 0.05) do not drop a step."""
+    session = WebSession(PATIENT)
+    session.engine.config.dt = 0.05
+    cmd(session, "run", running=True)
+    cmd(session, "speed", value=50)
+    session.step(0.016)
+    assert session.engine.state.time == pytest.approx(0.80, abs=1e-12)

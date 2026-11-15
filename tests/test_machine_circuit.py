@@ -343,3 +343,51 @@ def test_n2o_hypoxic_guard_step_invariance_and_low_flow_hypoxia(engine_factory, 
     loose_mask.circuit.reservoir_volume = 0.0
     advance_time(loose_mask, 60.0, dt=0.1)
     assert loose_mask.state.va > 3.5 and loose_mask.state.sao2 > 96.5
+
+
+def test_shrinking_reservoir_o2_conservation_stpd_inert_exchange_and_n2o_fio2_blender(engine_factory):
+    """Shrinking half-full reservoir conserves O2 mass without phantom spill (#4);
+    circle volatile/N2O uptake converts BTPS to STPD consistently with N2 (#5);
+    set_fio2 adjusts active N2O/air/O2 flows to hit target FiO2 (#24).
+    """
+    circuit = CircleSystem()
+    circuit.reservoir_volume = 1.5
+    circuit.fgf_o2 = 0.1
+    circuit.composition.fio2, circuit.composition.fin2 = 0.6, 0.4
+    fixed = circuit.volume - circuit.reservoir_capacity
+    o2_initial = (fixed + circuit.reservoir_volume) * circuit.composition.fio2
+    circuit.step(6.0, uptake_o2=0.3, uptake_agent=0.0)
+    o2_final = (fixed + circuit.reservoir_volume) * circuit.composition.fio2
+    assert o2_final == pytest.approx(o2_initial + (0.1 - 0.3) * 0.1, abs=1e-9)
+
+    inert = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    inert.pk_n2o.lambda_b_g = 0.0
+    inert.set_fgf(0.0, 0.0, 0.0)
+    inert.circuit.reservoir_volume = 2.0
+    inert.circuit.composition.fio2, inert.circuit.composition.fin2o, inert.circuit.composition.fin2 = 0.5, 0.5, 0.0
+    inert.resp.equilibrate_oxygen(0.5, 1.0, inert.vent.settings.peep, fin2=0.5)
+    inert._tracheal_fio2 = 0.5
+    stpd = inert.resp._btps_to_stpd
+    inert_0 = (
+        (3.0 + inert.circuit.reservoir_volume) * (inert.circuit.composition.fin2 + inert.circuit.composition.fin2o)
+        + inert.resp.frc * stpd * (inert.resp.alveolar_fn2 + inert.pk_n2o.state.p_alv)
+    )
+    for _ in range(30):
+        inert.step(1.0)
+    inert_1 = (
+        (3.0 + inert.circuit.reservoir_volume) * (inert.circuit.composition.fin2 + inert.circuit.composition.fin2o)
+        + inert.resp.frc * stpd * (inert.resp.alveolar_fn2 + inert.pk_n2o.state.p_alv)
+    )
+    assert inert_1 == pytest.approx(inert_0, abs=0.02)
+
+    blender = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=False)
+    blender.set_fgf(1.0, 1.0, 3.0)
+    blender.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.60)
+    total_60 = blender.circuit.fgf_o2 + blender.circuit.fgf_air + blender.circuit.fgf_n2o
+    assert total_60 == pytest.approx(5.0)
+    assert (blender.circuit.fgf_o2 + 0.21 * blender.circuit.fgf_air) / total_60 == pytest.approx(0.60)
+    blender.set_fgf(2.0, 0.0, 2.0)
+    blender.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.30)
+    total_30 = blender.circuit.fgf_o2 + blender.circuit.fgf_air + blender.circuit.fgf_n2o
+    assert total_30 == pytest.approx(4.0)
+    assert (blender.circuit.fgf_o2 + 0.21 * blender.circuit.fgf_air) / total_30 == pytest.approx(0.30)

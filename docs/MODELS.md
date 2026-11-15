@@ -807,7 +807,7 @@ excess gas that spills from the circuit.
 
 When patient uptake exceeds the inflow of fresh gas and vapor, the reservoir
 empties. The circuit is sealed, so no room air enters. As the bellows collapses,
-delivered breaths become smaller and inspiratory resistance rises.
+delivered breaths are capped by the remaining gas.
 
 Vaporizer output depends on flow, the dial setting, and the remaining agent. A
 proportioning system limits nitrous oxide flow to three times the delivered
@@ -920,7 +920,9 @@ are flagged. Single twitch reports T1 relative to an unblocked baseline.
 
 An [arterial blood gas](../anasim/monitors/blood_gas.py) sample records the
 arterial values at the time of the draw, and the result appears 2 minutes later.
-As in a blood gas analyzer, pH, PaCO₂, and PaO₂ are reported at 37 °C, so PaO₂
-in a hypothermic patient is higher than the value in the body. The report also
+As in a blood gas analyzer, pH, PaCO₂, and PaO₂ are warmed anaerobically to
+37 °C, so PaCO₂ and PaO₂ in a
+hypothermic patient are higher on the 37 °C report than in vivo and pH is lower.
+The report also
 includes bicarbonate, standard base excess, lactate, sodium, potassium,
 chloride, ionized calcium, SaO₂, hemoglobin, and FiO₂. Glucose is not modeled.

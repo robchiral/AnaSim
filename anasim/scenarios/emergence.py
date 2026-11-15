@@ -2,7 +2,16 @@
 
 from typing import Literal
 
-from anasim.core.action_log import ACTION_AIRWAY, ACTION_FGF, ACTION_VAPORIZER
+from anasim.core.action_log import (
+    ACTION_AIRWAY,
+    ACTION_CASE_START,
+    ACTION_DRUG_BOLUS,
+    ACTION_FGF,
+    ACTION_INFUSION_RATE,
+    ACTION_TCI_TARGET,
+    ACTION_VAPORIZER,
+)
+from anasim.core.monitors import display_int
 from anasim.core.projection import sync_pk_state
 from anasim.core.state import AirwayType
 
@@ -13,6 +22,8 @@ from .base import (
     Scenario,
     ScenarioStep,
     action_taken_in_case,
+    format_unmet_int,
+    infusion_running,
     join_messages,
     monitor_value,
     neuromuscular_response,
@@ -48,7 +59,8 @@ def _require_normocapnia(engine) -> tuple[bool, str]:
         return False, "Awaiting exhaled CO₂"
     etco2 = monitor_value(engine, "etco2")
     met = 35 <= etco2 <= 45
-    return met, "" if met else f"EtCO₂: {etco2:.0f}/35-45 mmHg"
+    shown_etco2 = format_unmet_int(etco2, low=35, high=45)
+    return met, "" if met else f"EtCO₂: {shown_etco2}/35-45 mmHg"
 
 
 def _require_agents_stopped_balanced() -> Requirement:
@@ -83,23 +95,52 @@ def _require_awakening(engine) -> tuple[bool, str]:
     rr = engine.resp.state.rr
     msgs = []
     if not bis > 70:
-        msgs.append(f"BIS: {bis:.0f}/70+")
+        msgs.append(f"BIS: {format_unmet_int(bis, low=70)}/70+")
     if not (rr > 6 and not engine.resp.state.apnea):
-        msgs.append(f"Spontaneous RR: {rr:.0f}/6+")
+        msgs.append(f"Spontaneous RR: {format_unmet_int(rr, low=6)}/6+")
     return not msgs, join_messages(msgs)
 
 
-def _require_block_recovery(engine) -> tuple[bool, str]:
-    """Require quantitative recovery, with a recent TOF measurement."""
+def _nmb_valid_since(engine) -> float:
+    """Earliest timestamp at which a TOF recovery reading remains valid."""
+    valid_since = 0.0
+    for record in engine.actions.records:
+        if record.action == ACTION_CASE_START:
+            valid_since = max(valid_since, record.time)
+        elif (
+            record.action in (ACTION_DRUG_BOLUS, ACTION_INFUSION_RATE, ACTION_TCI_TARGET)
+            and record.label in ("roc", "succinylcholine")
+        ):
+            valid_since = max(valid_since, record.time)
+    if infusion_running(engine, "roc"):
+        return float("inf")
+    return valid_since
+
+
+def _check_block_recovery(engine, *, require_recent: bool) -> tuple[bool, str]:
+    """Require quantitative recovery and a valid TOF measurement."""
     label, response = neuromuscular_response(engine)
     if response < 90.0:
-        return False, f"{label}: {response:.0f}%/90%+; assess reversal"
+        return False, f"{label}: {format_unmet_int(response, low=90.0)}%/90%+; assess reversal"
     reading = engine.nmb.reading
-    if reading is None or reading.mode != "tof" or engine.state.time - reading.time > 60.0:
+    if (
+        reading is None
+        or reading.mode != "tof"
+        or reading.time < _nmb_valid_since(engine)
+        or (require_recent and engine.state.time - reading.time > 60.0)
+    ):
         return False, "Measure TOF and confirm a ratio of at least 90%"
     if reading.ratio is None or reading.low_signal or reading.ratio < 90.0:
         return False, "Confirm a reliable measured TOF ratio of at least 90%"
     return True, ""
+
+
+def _require_block_recovery(engine) -> tuple[bool, str]:
+    return _check_block_recovery(engine, require_recent=True)
+
+
+def _require_confirmed_block_recovery(engine) -> tuple[bool, str]:
+    return _check_block_recovery(engine, require_recent=False)
 
 
 def _require_extubation_readiness(engine) -> tuple[bool, str]:
@@ -109,22 +150,31 @@ def _require_extubation_readiness(engine) -> tuple[bool, str]:
     breathing = rr > 8 and resp.rr > 8 and not resp.apnea
     minimum_vt = 5.0 * engine.patient.predicted_body_weight()
     volume_ok = engine.state.vt > minimum_vt
-    block_recovered, block_message = _require_block_recovery(engine)
+    block_recovered, block_message = _require_confirmed_block_recovery(engine)
     spo2 = monitor_value(engine, "spo2")
     oxygenated = engine.state.spo2_signal_valid and spo2 > 95.0
     bis = monitor_value(engine, "bis")
-    awake = bis > 80
+    awake = bis > 80 and engine.state.loc < 0.20
     msgs = []
     if not awake:
-        msgs.append(f"BIS: {bis:.0f}/80+")
+        msgs.append(
+            f"BIS: {format_unmet_int(bis, low=80)}/80+"
+            if bis <= 80
+            else "Continue anesthetic washout (Stage II risk)"
+        )
     if not breathing:
-        msgs.append(f"Spontaneous RR: {min(rr, resp.rr):.0f}/8+")
+        msgs.append(f"Spontaneous RR: {format_unmet_int(min(rr, resp.rr), low=8)}/8+")
     if not volume_ok:
-        msgs.append(f"Exhaled VT: {engine.state.vt:.0f}/{minimum_vt:.0f}+ mL")
+        shown_min_vt = int(display_int(minimum_vt))
+        msgs.append(f"Exhaled VT: {format_unmet_int(engine.state.vt, low=shown_min_vt)}/{shown_min_vt}+ mL")
     if not block_recovered:
         msgs.append(block_message)
     if not oxygenated:
-        msgs.append(f"SpO₂: {spo2:.0f}%/95%+" if engine.state.spo2_signal_valid else "Awaiting valid SpO₂")
+        msgs.append(
+            f"SpO₂: {format_unmet_int(spo2, low=95.0)}%/95%+"
+            if engine.state.spo2_signal_valid
+            else "Awaiting valid SpO₂"
+        )
     if engine.vent.is_on or engine.bag_mask_active:
         msgs.append("Stop assisted ventilation")
     return not msgs, join_messages(msgs)
@@ -146,13 +196,14 @@ def _extubated_and_breathing(engine) -> bool:
         and not engine.resp.state.apnea
         and not (engine.vent.is_on or engine.bag_mask_active)
         and monitor_value(engine, "bis") > 80
+        and engine.state.loc < 0.20
     )
 
 
 # Readiness counts at the moment of tube removal, not at an earlier favorable moment.
 OUTCOMES = (
     CaseOutcome("block", "Block recovery confirmed at tube removal",
-                lambda engine: _require_block_recovery(engine)[0],
+                lambda engine: _require_confirmed_block_recovery(engine)[0],
                 "Confirm quantitative neuromuscular recovery before extubation.", on_action="extubation"),
     CaseOutcome("readiness", "Readiness established at tube removal",
                 lambda engine: _require_extubation_readiness(engine)[0],

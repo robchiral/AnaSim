@@ -6,6 +6,7 @@ import numpy as np
 from scipy.linalg import expm
 
 from anasim.core.utils import clamp
+from anasim.patient.domain import finite_number
 
 PREDICTION_HORIZON_S = 600.0
 PREDICTION_GRID_S = 1.0
@@ -138,7 +139,7 @@ class TCIController:
 
     def set_target(self, target: float) -> None:
         """Change the target and recompute the rate at the next step."""
-        self.target = max(0.0, float(target))
+        self.target = max(0.0, finite_number("target", target))
         self._next_update = self._time
 
     def _control_rate(self) -> float:

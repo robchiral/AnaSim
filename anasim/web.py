@@ -58,6 +58,7 @@ CONFIG_FIELDS = (
 )
 
 SPEED_RANGE = (0.1, 50.0)
+STEP_S = 0.05  # The engine still samples waveforms every 10 ms.
 MAX_REAL_DT_S = 0.2
 # Average achieved speed over several frames.
 SPEED_AVERAGE_S = 2.0
@@ -152,7 +153,7 @@ class WebSession:
             params.update(mode=spec.start_mode, maint_type=spec.maint_type)
 
         patient = Patient(**{key: params[key] for key in PATIENT_FIELDS if key in params})
-        config = SimulationConfig(**{key: params[key] for key in CONFIG_FIELDS if key in params})
+        config = SimulationConfig(dt=STEP_S, **{key: params[key] for key in CONFIG_FIELDS if key in params})
         # Maintenance starts during surgery unless a scenario, such as emergence, says otherwise.
         surgery = spec.surgery if spec is not None else config.mode == "steady_state"
         if surgery:
@@ -221,7 +222,7 @@ class WebSession:
             },
             "arterial_line": engine.config.arterial_line_enabled,
             "recordings_dir": self._recordings_dir if self.retain_recordings else None,
-            "sample_interval": engine.config.dt,
+            "sample_interval": engine.waveform_interval,
             "speed_range": SPEED_RANGE,
             "drugs": [
                 {
@@ -268,7 +269,11 @@ class WebSession:
             sim_step = engine.config.dt
             max_steps = max(100, math.ceil(MAX_REAL_DT_S * SPEED_RANGE[1] / sim_step))
             steps = 0
-            while self._accumulator >= sim_step and steps < max_steps and not engine.irreversible_arrest:
+            while (
+                self._accumulator >= sim_step - 1e-12
+                and steps < max_steps
+                and not engine.irreversible_arrest
+            ):
                 try:
                     if self.case_run is not None:
                         self.case_run.before_step()
@@ -284,7 +289,7 @@ class WebSession:
                     # The model step completes before a recording write can fail.
                     if self.case_run is not None:
                         self.case_run.observe(sim_step)
-                self._accumulator -= sim_step
+                self._accumulator = max(0.0, self._accumulator - sim_step)
                 steps += 1
                 if engine.state.time >= self._next_trend_time - 1e-9:
                     self._sample_trends()
@@ -381,6 +386,11 @@ class WebSession:
         connected = s.airway_mode != AirwayType.NONE
         assisted = connected and (engine.vent.is_on or engine.bag_mask_active)
         exhaled = s.etco2_signal_valid
+        nibp_ts = (
+            engine.nibp.failed_timestamp
+            if (s.nibp_measurement_failed and engine.nibp.failed_timestamp is not None)
+            else s.nibp_timestamp
+        )
         return {
             "hr": _num(s.display_hr, 1),
             "st_depression_mv": _num(s.st_depression_mv, 2),
@@ -390,7 +400,7 @@ class WebSession:
                 _num(s.nibp_sys, 1), _num(s.nibp_dia, 1), _num(s.nibp_map, 1)
             ],
             "nibp_cuff": _num(s.nibp_cuff_pressure, 1) if s.nibp_is_cycling else None,
-            "nibp_age": None if s.nibp_timestamp is None else _num(max(0.0, s.time - s.nibp_timestamp), 0),
+            "nibp_age": None if nibp_ts is None else _num(max(0.0, s.time - nibp_ts), 0),
             "nibp_failed": s.nibp_measurement_failed,
             "etco2": _num(s.display_etco2, 1) if s.etco2_signal_valid else None,
             "rr": _num(s.rr, 1),
@@ -432,7 +442,7 @@ class WebSession:
             if sample.time <= self._last_wave_time:
                 break
             samples.append(sample)
-            if len(samples) >= round(WAVE_WINDOW_S / self.engine.config.dt):
+            if len(samples) >= round(WAVE_WINDOW_S / self.engine.waveform_interval):
                 break
         if samples:
             self._last_wave_time = samples[0].time
@@ -449,7 +459,7 @@ class WebSession:
 
     def _collect_loop(self, samples) -> None:
         """Add points of the breath in progress; a new breath makes it the previous loop."""
-        stride = max(1, round(LOOP_INTERVAL_S / self.engine.config.dt))
+        stride = max(1, round(LOOP_INTERVAL_S / self.engine.waveform_interval))
         for sample in samples:
             previous = self._loop_sample
             if previous is not None and sample.time <= previous.time:

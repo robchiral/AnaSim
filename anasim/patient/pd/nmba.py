@@ -40,9 +40,12 @@ def _sugammadex_pk(patient: Patient) -> MammillaryPK:
     """
     w = patient.weight
     size = w / 70.0
+    # Kleijn's linear covariate on weight/70 has a quadratic peak near 178.5 kg;
+    # hold the peak above that weight so V1 does not shrink at high body mass.
+    w_v1 = min(w, (1.0 + 0.00354 * 74.5) / (2.0 * 0.00354))
     crcl = patient.creatinine_clearance()
     return MammillaryPK(
-        v1=4.42 * size * (1.0 - 0.00354 * (w - 74.5)),
+        v1=4.42 * (w_v1 / 70.0) * (1.0 - 0.00354 * (w_v1 - 74.5)),
         cl1=0.093 * (2.0 * crcl / (crcl + 119.0)) ** 1.29 * (1.0 + 0.00378 * (w - 74.5)),
         v2=6.35 * size * math.exp(-0.00305 * (crcl - 119.0)),
         cl2=0.206 * size**0.75,
@@ -107,6 +110,8 @@ class TOFModel:
         target = self.ce * 0.5
         if target <= 0.0:
             return 0.0
+        if roc.circulation <= 0.0:
+            return max_seconds / 60.0
         rocuronium = copy.deepcopy(roc)
         neuromuscular = copy.deepcopy(self)
         for second in range(1, max_seconds + 1):

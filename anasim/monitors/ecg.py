@@ -182,9 +182,8 @@ class ECGMonitor:
     def step(self, dt: float, cycle: CardiacCycleSample, st_depression_mv: float = 0.0,
              *, conduction_failure: float = 0.0, sodium_block: float = 0.0,
              potassium: float = 4.0, hyperkalemia_block: float = 0.0,
-             compression_phase: float | None = None,
-             render: bool = True) -> float:
-        """Advance timing and noise; return voltage (mV), or zero when render is false.
+             compression_phase: float | None = None) -> float:
+        """Advance timing and noise; return voltage (mV).
 
         compression_phase, 0-1 through each chest compression, adds compression artifact.
         """
@@ -195,33 +194,29 @@ class ECGMonitor:
         rhythm_type = cycle.rhythm_type
         if rhythm_type == RhythmType.ASYSTOLE:
             self._rhythm = None
-            voltage = self.rng.random() * 0.02 - 0.01 + artifact
-            return voltage if render else 0.0
+            return self.rng.random() * 0.02 - 0.01 + artifact
 
         if rhythm_type == RhythmType.VFIB:
             self._rhythm = None
             # Coarse VF becomes fine as the myocardium exhausts its energy.
             amplitude = 0.3 * (1.0 - 0.85 * conduction_failure) * (1.0 + 0.35 * self._vf_envelope.step(dt, self.rng))
             val = amplitude * (self._vf_main.step(dt, self.rng) + 0.5 * self._vf_slow.step(dt, self.rng))
-            voltage = val + self.rng.random() * 0.10 - 0.05 + artifact
-            return voltage if render else 0.0
+            return val + self.rng.random() * 0.10 - 0.05 + artifact
 
         if cycle.beat_started or rhythm_type != self._rhythm:
             self._place_beats(cycle, conduction_failure, sodium_block, potassium, hyperkalemia_block)
 
         val = 0.0
-        if render:
-            t = cycle.elapsed_s
-            for center, amplitude, width, cutoff in self._waves:
-                offset = t - center
-                if -cutoff < offset < cutoff:
-                    val += amplitude * math.exp(-0.5 * (offset / width) ** 2)
-            if st_depression_mv > 0.0:
-                val -= st_depression_mv * self._st_scale * self._st_profile(t)
+        t = cycle.elapsed_s
+        for center, amplitude, width, cutoff in self._waves:
+            offset = t - center
+            if -cutoff < offset < cutoff:
+                val += amplitude * math.exp(-0.5 * (offset / width) ** 2)
+        if st_depression_mv > 0.0:
+            val -= st_depression_mv * self._st_scale * self._st_profile(t)
 
         if rhythm_type == RhythmType.AFIB:
             f_amplitude = 0.05 * (1.0 + 0.4 * self._f_envelope.step(dt, self.rng))
             val += f_amplitude * self._f_wave.step(dt, self.rng)
 
-        voltage = val + self.rng.random() * 0.03 - 0.015 + artifact
-        return voltage if render else 0.0
+        return val + self.rng.random() * 0.03 - 0.015 + artifact

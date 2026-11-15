@@ -137,17 +137,16 @@ def circuit_ventilation(engine: SimulationEngine) -> tuple[float, float]:
     resp = engine.resp.state
     if rr <= 0.0:
         if engine.state.airway_mode == AirwayType.MASK and engine.mask_seal < 1.0 and resp.rr > 0.0:
-            unassisted_mv = resp.mv / engine.airway_status.ventilation_efficiency
-            return resp.rr, unassisted_mv / resp.rr
+            return resp.rr, resp.mv / resp.rr
         return 0.0, 0.0
     leak = mask_leak(engine)
-    mv_lung = spirometry.mv_exp * (1.0 - leak)
-    if (leak > 0.0 or engine.circuit.bellows_fraction < 1.0) and engine.mask_seal < 1.0 and resp.rr > 0.0:
-        # Unassisted breaths draw room air around a loose mask, so the
-        # leak of assisted breaths or an empty reservoir does not limit them.
-        unassisted_mv = resp.mv / engine.airway_status.ventilation_efficiency
-        if unassisted_mv > mv_lung:
-            return resp.rr, unassisted_mv / resp.rr
+    unsupported_mv = max(0.0, spirometry.mv_exp - spirometry.mv_supported)
+    mv_lung = spirometry.mv_supported * (1.0 - leak) + unsupported_mv
+    if engine.circuit.bellows_fraction < 1.0 and engine.mask_seal < 1.0 and resp.rr > 0.0:
+        # Unassisted breaths draw room air around a loose mask, so an empty
+        # reservoir does not limit them.
+        if resp.mv > mv_lung:
+            return resp.rr, resp.mv / resp.rr
     return rr, mv_lung / rr
 
 
@@ -328,12 +327,17 @@ def sync_inhaled_agents(engine: SimulationEngine) -> None:
     """Project end-tidal and brain MAC values for sevoflurane and nitrous oxide."""
     state = engine.state
     sevo, n2o = engine.pk_sevo.state, engine.pk_n2o.state
-    state.et_sevo = float(sevo.p_alv * 100.0)
-    state.et_n2o = float(n2o.p_alv * 100.0)
     state.mac_sevo = float(sevo.mac)
     state.mac_n2o = float(n2o.mac)
     state.mac = float(sevo.mac + n2o.mac)
-    state.et_mac = float(sevo.p_alv * 100.0 / engine.pk_sevo.mac_age + n2o.p_alv * 100.0 / engine.pk_n2o.mac_age)
+    if circuit_connected(engine):
+        state.et_sevo = float(sevo.p_alv * 100.0)
+        state.et_n2o = float(n2o.p_alv * 100.0)
+        state.et_mac = float(
+            sevo.p_alv * 100.0 / engine.pk_sevo.mac_age + n2o.p_alv * 100.0 / engine.pk_n2o.mac_age
+        )
+    else:
+        state.et_sevo = state.et_n2o = state.et_mac = 0.0
 
 
 def project_arterial(
@@ -422,8 +426,7 @@ def advance_tracheal_fio2(engine: SimulationEngine, dt: float) -> float:
     """Advance and return effective tracheal FiO2 after anatomic dead-space wash-in."""
     state = engine.state
     if dt <= 0.0:
-        engine._tracheal_fio2 = state.fio2
-        return state.fio2
+        return engine._tracheal_fio2
     sealed = circuit_connected(engine)
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if sealed else (0.0, 0.0)
     assisted_breaths = sealed and (engine.vent.is_on or engine.bag_mask_active) and assisted_rr * assisted_vt_l > 0.05
@@ -495,6 +498,12 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
     else:
         lung_volume_l = engine.aeration.frc
     loose_starved_mask = peep_scale < 0.999 and engine.circuit.bellows_fraction < 1.0
+    spirometry = engine.vent.monitors
+    supported_share = (
+        clamp01(spirometry.mv_supported / spirometry.mv_exp)
+        if spirometry.mv_exp > 0.0
+        else (1.0 if assisted_positive_pressure(engine) else 0.0)
+    )
     return engine.resp.step(
         dt,
         ce_prop=hypnotic_equivalent(
@@ -539,7 +548,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         lung_volume_l=lung_volume_l,
         shunt_fraction=engine.aeration.shunt_fraction,
         temp_c=state.temp_c,
-        airway_pressure=engine.resp_mech.peep * peep_scale,
+        airway_pressure=engine.resp_mech.peep,
         # Brainstem drive persists until cerebral failure is nearly complete.
         central_drive_fraction=(1.0 - engine.cerebral.dysfunction ** 8) * engine.toxicity.respiratory_drive,
         ketamine_cp=engine.pk["ketamine"].state.c1,
@@ -547,6 +556,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         n2o_uptake_l_min=n2o_uptake,
         fin2=inspired_fn2,
         apneic_flow_limit_l_min=apneic_limit,
+        mech_supported_fraction=supported_share,
     )
 
 
@@ -563,6 +573,7 @@ def build_snapshot_from_models(
     vent = engine.vent
     spirometry = vent.monitors
     seal_scale = mask_seal_factor(engine)
+    kept = delivered_fraction(engine) if sealed else 0.0
     paw_now = vent.paw * seal_scale if sealed else 0.0
     return PhysiologyStepState(
         hemo_state=hemo_state,
@@ -572,13 +583,17 @@ def build_snapshot_from_models(
         vt_display_ml=vt_display_ml,
         mv_display_l_min=mv_display_l_min,
         paw_display=paw_now,
-        flow_display=vent.flow * seal_scale if sealed else 0.0,
-        volume_display=vent.volume * seal_scale if sealed else 0.0,
+        flow_display=vent.flow * kept,
+        volume_display=vent.volume * kept,
         paw_peak=max(spirometry.paw_peak * seal_scale, paw_now) if sealed else 0.0,
         paw_plat=spirometry.paw_plat * seal_scale if assisted else math.nan,
         paw_mean=max(spirometry.paw_mean, engine._apl_pressure) * seal_scale if sealed else 0.0,
         peep=(spirometry.peep if assisted else engine._apl_pressure) * seal_scale if sealed else 0.0,
-        compliance_dyn=spirometry.compliance_dyn if assisted else math.nan,
+        compliance_dyn=(
+            spirometry.compliance_dyn * (kept / seal_scale)
+            if assisted and seal_scale > 0.0
+            else math.nan
+        ),
     )
 
 
@@ -629,14 +644,19 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     state.bis = float(bis_val)
     state.loc = float(loc_val)
     state.tol = float(tol_val)
-    state.capno_co2 = state.ecg_voltage = state.pleth_voltage = 0.0
+    state.capno_co2 = float(engine.capno.co2) if circuit_connected(engine) else 0.0
+    state.ecg_voltage = state.pleth_voltage = 0.0
     project_arterial(state, arterial_sample, art_reading)
     state.display_hr = float(cardiac_sample.display_hr)
     state.display_bis = float(bis_val)
     engine.etco2_readout.seed(state.etco2)
     state.etco2_signal_valid = engine.etco2_readout.valid
+    if not state.etco2_signal_valid:
+        state.et_o2 = state.et_sevo = state.et_n2o = state.et_mac = 0.0
     state.display_etco2 = float(state.etco2)
     state.display_spo2 = float(state.spo2)
+    if state.spo2_signal_valid:
+        engine.spo2_mon.display_saturation = float(state.spo2)
     engine.bis.initialize(raw_bis)
     engine.smooth_bis = state.bis
 
@@ -644,12 +664,16 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
 def sync_state_from_models(engine: SimulationEngine) -> None:
     """Derive the public SimulationState from current subsystem state."""
     state = engine.state
-    state.temp_c = float(engine.patient.baseline_temp)
+    state.temp_c = float(state.temp_c)
     sync_inspired_gas(engine)
     engine._tracheal_fio2 = state.fio2
     sync_inhaled_agents(engine)
     sync_pk_state(engine)
     engine.thermal.update_depth(state.temp_c, thermal_hypnotic_ce(engine), state.mac)
+    engine.thermal.metabolic_factor *= engine.toxicity.metabolic_factor
+    engine.thermal.metabolic_factor += (
+        engine.malignant_hyperthermia.excess_metabolism + 0.25 * engine.sepsis.severity
+    )
     hemo_state = engine.hemo.state
     resp_state = step_respiration(engine, 0.0, hemo_state.co)
     project_runtime_physiology(engine, build_snapshot_from_models(

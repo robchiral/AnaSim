@@ -78,6 +78,12 @@ class VentSettings:
                 setattr(self, setting.name, finite_number(setting.name, getattr(self, setting.name)))
         if self.rr < 0.0:
             raise ValueError("ventilator rate must not be negative")
+        if self.tv < 0.0:
+            raise ValueError("tidal volume must not be negative")
+        if self.peep < 0.0:
+            raise ValueError("PEEP must not be negative")
+        if self.p_insp < 0.0:
+            raise ValueError("inspiratory pressure must not be negative")
         if self.ie_ratio <= 0.0:
             raise ValueError("I:E ratio must be greater than zero")
         limits = {"t_insp": (0.2, 5.0), "trigger": (0.2, 20.0), "p_support": (0.0, 60.0), "pause": (0.0, 60.0)}
@@ -129,6 +135,8 @@ class Breath:
     v_max: float = -math.inf  # Largest volume during inspiration
     plat: float = math.nan
     p_start: float = 0.0  # Pressure above PEEP at a PS-to-mandatory handoff
+    v_origin: float = 0.0  # Lung volume at breath start before any retained adjustment
+    depleted: bool = False  # Reservoir gas exhausted during this inspiration
 
 
 @dataclass
@@ -170,8 +178,11 @@ class AnesthesiaVentilator:
         self._bag_p_max = math.inf
         self._spontaneous_peep = 0.0
         self._bellows_fraction = 1.0
+        self._available_volume = math.inf
+        self._bag_ref_volume = 0.0
         self._mode: str | None = None
         self._baseline: float | None = None  # PEEP the lung volume is referenced to; the first one applied
+        self._eff_baseline: float | None = None
         self._breath: Breath | None = None
         self._measured: MeasuredBreath | None = None
         self._since_measured = 0.0
@@ -254,13 +265,21 @@ class AnesthesiaVentilator:
         """Resistance between the Y-piece and the baseline pressure source."""
         return 0.0 if self._source is None else CIRCUIT_RESISTANCE
 
-    def _inspiratory_resistance(self) -> float:
-        """Inspiratory limb resistance, rising sharply when the reservoir bag collapses."""
+    def _bag_exhausted(self, lung: RespiratoryMechanics) -> bool:
+        if not math.isfinite(self._available_volume):
+            return False
+        if self._available_volume <= 1e-6:
+            return True
+        return max(0.0, lung.volume - self._bag_ref_volume) >= self._available_volume - 1e-9
+
+    def _inspiratory_resistance(self, lung: RespiratoryMechanics | None = None) -> float:
+        """Inspiratory limb resistance, closing when the reservoir is empty."""
         if self._source is None:
             return 0.0
-        if self._bellows_fraction >= 1.0:
-            return CIRCUIT_RESISTANCE
-        return CIRCUIT_RESISTANCE + 2000.0 * (1.0 - self._bellows_fraction) / max(1e-3, self._bellows_fraction)
+        depleted = self._breath is not None and self._breath.inspiring and self._breath.depleted
+        if self._available_volume <= 1e-6 or depleted or (lung is not None and self._bag_exhausted(lung)):
+            return CIRCUIT_RESISTANCE + 1e6
+        return CIRCUIT_RESISTANCE
 
     def _mandatory_period(self) -> float:
         rr = self._bag[0] if self._source == "bag" else self.settings.rr
@@ -293,7 +312,8 @@ class AnesthesiaVentilator:
 
     def step(self, dt: float, lung: RespiratoryMechanics, source: str | None, bag: tuple = (12.0, 0.5),
              collect_samples: bool = False, bag_p_max: float = math.inf,
-             spontaneous_peep: float = 0.0, bellows_fraction: float = 1.0) -> None:
+             spontaneous_peep: float = 0.0, bellows_fraction: float = 1.0,
+             reservoir_volume: float | None = None) -> None:
         """Advance dt seconds.
 
         source is "vent", "bag", "spontaneous" (breathing through the circuit),
@@ -313,12 +333,25 @@ class AnesthesiaVentilator:
         self._bag_p_max = bag_p_max
         self._spontaneous_peep = max(0.0, float(spontaneous_peep))
         new_bellows = clamp01(float(bellows_fraction))
-        if abs(new_bellows - self._bellows_fraction) > 1e-6:
+        avail_vol = (
+            max(0.0, float(reservoir_volume))
+            if reservoir_volume is not None
+            else (math.inf if new_bellows >= 1.0 - 1e-9 else 0.5 * new_bellows)
+        )
+        avail_changed = (
+            math.isfinite(avail_vol) != math.isfinite(self._available_volume)
+            or (math.isfinite(avail_vol) and abs(avail_vol - self._available_volume) > 1e-9)
+        )
+        if abs(new_bellows - self._bellows_fraction) > 1e-6 or avail_changed:
             self._bellows_fraction = new_bellows
+            self._available_volume = avail_vol
             self._current = None
         if source != self._source:
             self._switch(source, lung)
-        elif source == "spontaneous" and abs(self._spontaneous_peep - (self._baseline or 0.0)) > 1e-6:
+        elif source == "spontaneous" and (
+            abs(self._spontaneous_peep - (self._baseline or 0.0)) > 1e-6
+            or abs(lung._transmitted_peep(self._spontaneous_peep) - (self._eff_baseline or 0.0)) > 1e-6
+        ):
             self._rebase(lung, self._spontaneous_peep)
             self.monitors.peep = self._spontaneous_peep
         if self._source == "vent" and self.settings.mode != self._mode:
@@ -349,6 +382,7 @@ class AnesthesiaVentilator:
         self._since_exhalation, self._valve = 0.0, None
         self._expiration = None
         self._rebase(lung, self._configured_peep())
+        self._bag_ref_volume = lung.volume
         mandatory = self._mandatory_type()
         if mandatory is not None:
             self._start(lung, mandatory, True)
@@ -367,21 +401,26 @@ class AnesthesiaVentilator:
 
     def _rebase(self, lung, peep: float) -> None:
         """Keep absolute lung volume continuous when the set PEEP changes."""
-        if self._baseline is not None and peep != self._baseline:
-            shift = -lung.compliance * (peep - self._baseline)
+        eff_peep = lung._transmitted_peep(peep)
+        if self._eff_baseline is not None and eff_peep != self._eff_baseline:
+            shift = -lung.compliance * (eff_peep - self._eff_baseline)
             lung.volume += shift
+            self._bag_ref_volume += shift
             lung.effort.shift_volume_reference(shift)
             self._current = self._valve = None
             self._expiration = None
-        elif self._baseline is None and lung.aeration is not None:
-            lung.volume -= lung.compliance * peep
+        elif self._eff_baseline is None:
+            if lung.aeration is not None:
+                lung.volume -= lung.compliance * eff_peep
+            self._bag_ref_volume = lung.volume
         self._baseline = peep
-        lung.peep = peep
+        self._eff_baseline = eff_peep
+        lung.peep = eff_peep
 
     def _start(self, lung, kind: str, mandatory: bool) -> None:
         previous = self._breath
         continuing = previous is not None
-        lung.note_end_expiration(self._baseline or 0.0)
+        lung.note_end_expiration(self._eff_baseline or 0.0)
         self._begin_measurement(lung, kind, mandatory)
         # A mandatory stroke can join an ongoing spontaneous inflation. Its
         # volume target includes the gas already delivered in that same breath.
@@ -402,23 +441,23 @@ class AnesthesiaVentilator:
             kind, vg_test = "VC", True
         if kind == "VC":
             pause = max(s.pause, 10.0) if vg_test else s.pause
-            goal = s.tv / 1000.0 * self._bellows_fraction
+            goal = s.tv / 1000.0
             target = max(0.0, goal - retained)
             if retained > 0.0:
                 ti *= target / goal if goal > 0.0 else 0.0
             flow_end = ti * (1.0 - min(max(pause, 0.0), 60.0) / 100.0)
         elif kind == "MANUAL":
-            target = self._bag[1] * self._bellows_fraction
+            target = self._bag[1]
         elif kind == "PC":
-            target = s.p_insp * self._bellows_fraction
+            target = s.p_insp
         elif kind == "VG":
             assert self._vg_pressure is not None  # A VC test breath sets it first.
             # A Pmax or PEEP edit during expiration must constrain the very
             # next stroke, before the next volume-feedback update.
             self._vg_pressure = min(max(self._vg_pressure, VG_MIN), self._vg_ceiling(peep))
-            target = self._vg_pressure * self._bellows_fraction
+            target = self._vg_pressure
         elif kind == "PS":
-            target, ti = s.p_support * self._bellows_fraction, SUPPORT_MAX_S
+            target, ti = s.p_support, SUPPORT_MAX_S
             flow_end = ti
         else:  # SPONT
             ti = flow_end = math.inf  # Unsupported inspiration ends only when flow reverses.
@@ -432,8 +471,11 @@ class AnesthesiaVentilator:
             # Continue the pressure already supplied to this inspiration.
             p_start = (previous.target if previous.t >= RISE_TIME else previous.p_start
                        + (previous.target - previous.p_start) * previous.t / RISE_TIME)
-        self._breath = Breath(kind, mandatory, ti, flow_end, target, peep, v_start, vg_test=vg_test,
-                              v_max=v_max, p_start=p_start)
+        self._breath = Breath(
+            kind, mandatory, ti, flow_end, target, peep, v_start, vg_test=vg_test,
+            v_max=v_max, p_start=p_start, v_origin=lung.volume,
+            depleted=self._bag_exhausted(lung),
+        )
         self.inspiring = True
         self._armed = False
         self._since_breath = 0.0
@@ -479,7 +521,8 @@ class AnesthesiaVentilator:
             b.kind, b.mandatory = kind, mandatory
             return
         self._finish(lung)
-        lung.note_end_expiration(self._baseline or 0.0)
+        lung.note_end_expiration(self._eff_baseline or 0.0)
+        self._bag_ref_volume = lung.volume
         self._measured = MeasuredBreath(kind, mandatory)
         self._since_measured = 0.0
 
@@ -494,7 +537,9 @@ class AnesthesiaVentilator:
             window_area += current.area - oldest_area
         if window_t > 0.0:
             self.monitors.paw_mean_recent = window_area / window_t
-        if not self._recent or self._since_measured >= APNEA_S:
+        period = self._mandatory_period() if self._mandatory_type() is not None else math.inf
+        apnea_timeout = max(APNEA_S, 1.25 * period) if math.isfinite(period) else APNEA_S
+        if not self._recent or self._since_measured >= apnea_timeout:
             self.monitors.rr_total = self.monitors.tv_exp = self.monitors.mv_exp = self.monitors.mv_supported = 0.0
             return
         # A breath that runs long, as in apnea, lowers the rate before it ends.
@@ -508,12 +553,17 @@ class AnesthesiaVentilator:
     def _segment(self, lung, pmus):
         b = self._breath
         rs = self._series_resistance()
-        r_insp = self._inspiratory_resistance()
+        r_insp = self._inspiratory_resistance(lung)
         starvation = r_insp - rs
+        recoil = lung.elastic_pressure + lung.p2
         if b is None or not b.inspiring:
             if self._measured is not None and self._measured.kind == "SPONT" and self._measured.inspiring:
                 # An effort below the support trigger still draws gas through
                 # the inspiratory limb, then exhales through the PEEP valve.
+                return self._driven_segment(lung, (0.0, 0.0), pmus, r_insp)
+            if self._bag_exhausted(lung) and (
+                pmus[0] > recoil + 1e-9 or (pmus[0] >= recoil - 1e-9 and pmus[1] > 0.0)
+            ):
                 return self._driven_segment(lung, (0.0, 0.0), pmus, r_insp)
             if lung.expiratory_obstruction > 0.0:
                 knot = math.floor((self._since_exhalation + 1e-12) / lung.EXPIRATORY_INTERVAL)
@@ -529,16 +579,28 @@ class AnesthesiaVentilator:
         if b.kind == "SPONT":
             return self._driven_segment(lung, (0.0, 0.0), pmus, r_insp)
         if b.kind == "MANUAL":
+            if b.depleted:
+                if b.limited and recoil - pmus[0] > self._pressure_cap(b.peep):
+                    return self._driven_segment(lung, (self._pressure_cap(b.peep), 0.0), pmus)
+                return lung.flow_segment(0.0, pmus)
             if b.limited:
                 return self._driven_segment(lung, (self._pressure_cap(b.peep), 0.0), pmus)
             if not b.delivered:
                 return lung.sine_segment(b.target, b.ti, b.t, pmus)
             return lung.flow_segment(0.0, pmus)
         if b.kind == "VC":
+            if b.depleted:
+                if b.limited and recoil - pmus[0] > self._pressure_cap(b.peep):
+                    return self._driven_segment(lung, (self._pressure_cap(b.peep), 0.0), pmus)
+                return lung.flow_segment(0.0, pmus)
             if b.limited:
                 return self._driven_segment(lung, (self._pressure_cap(b.peep), 0.0), pmus)
             if b.t < b.flow_end - 1e-12 and not b.delivered:
                 return lung.flow_segment(b.target / b.flow_end, pmus)
+            return lung.flow_segment(0.0, pmus)
+        if b.depleted and b.kind in ("PC", "VG"):
+            if recoil - pmus[0] > b.target:
+                return self._driven_segment(lung, (b.target, 0.0), pmus)
             return lung.flow_segment(0.0, pmus)
         if b.t < RISE_TIME - 1e-12:
             slope = (b.target - b.p_start) / RISE_TIME
@@ -587,7 +649,7 @@ class AnesthesiaVentilator:
         b = self._breath
         if b is not None and b.inspiring:
             ends = [b.ti]
-            if b.kind == "VC" and not b.limited and not b.delivered:
+            if b.kind == "VC" and not b.limited and not b.delivered and not b.depleted:
                 ends.append(b.flow_end)
             if b.kind in ("PC", "VG", "PS"):
                 ends.append(RISE_TIME)
@@ -634,9 +696,16 @@ class AnesthesiaVentilator:
         passive_inspiration = (not self.inspiring and self._measured is not None
                                and self._measured.kind == "SPONT" and self._measured.inspiring)
         onset = effort.onset_volume()
-        if watch is not None or observe or passive_inspiration or onset is not None:
+        can_deplete = (
+            b is not None and b.inspiring and not b.depleted and math.isfinite(self._available_volume)
+        )
+        if watch is not None or observe or passive_inspiration or onset is not None or can_deplete:
             h = min(h, EVENT_STEP)
         t, event = (h, None) if watch is None else self._search(segment, h, watch)
+        if can_deplete:
+            deplete_t = self._volume_reached(segment, t, self._bag_ref_volume + self._available_volume, 1.0)
+            if deplete_t is not None and (event is None or deplete_t < t - 1e-12):
+                t, event = deplete_t, "deplete"
         if observe:
             measured_t, measured_event = self._search(segment, t, "measure")
             if measured_event is not None and (event is None or measured_t < t - 1e-12):
@@ -682,11 +751,13 @@ class AnesthesiaVentilator:
             # Recoil plus tissue pressure excludes airway and circuit drops,
             # including the extra drop when expiratory flow is limited.
             pressure_area = self._peep() * t + segment.distending_area(t)
-            shift = lung.update_aeration(t, pressure_area, self._baseline or 0.0)
+            shift = lung.update_aeration(t, pressure_area, self._eff_baseline or 0.0)
             if lung.aeration.elapsed == 0.0:
+                self._bag_ref_volume += shift
                 if self._breath is not None:
                     self._breath.v_start += shift
                     self._breath.v_max += shift
+                    self._breath.v_origin += shift
                 self._current = self._valve = None
                 self._expiration = None
         if not self.inspiring:
@@ -719,7 +790,7 @@ class AnesthesiaVentilator:
         if b is not None and b.inspiring:
             if b.kind in ("VC", "MANUAL"):
                 if b.limited:
-                    return None if b.delivered else "volume"
+                    return None if (b.delivered or b.depleted) else "volume"
                 # Relaxing inspiratory muscles can raise pressure during the
                 # pause too, including after the set volume has been delivered.
                 if math.isfinite(self._pressure_cap(b.peep)):
@@ -799,6 +870,11 @@ class AnesthesiaVentilator:
         if event == "volume":
             self._active_breath.limited, self._active_breath.delivered = False, True
             return
+        if event == "deplete":
+            self._active_breath.depleted = True
+            if self._active_breath.kind in ("PS", "SPONT"):
+                self._end_inspiration(segment, t)
+            return
         if event == "trigger":
             self._on_trigger(lung)
             return
@@ -848,11 +924,11 @@ class AnesthesiaVentilator:
         end_paw = b.peep + segment.paw(t)
         volume = max(0.0, b.v_max - b.v_start)
         if b.kind == "VC":
-            if not b.limited and (b.delivered or b.flow_end < b.ti):
+            if not b.limited and (b.delivered or b.depleted or b.flow_end < b.ti):
                 b.plat = end_paw
             self.pressure_limited = b.limited and not b.delivered
             if b.vg_test:
-                if self._bellows_fraction >= 1.0 - 1e-6:
+                if not b.depleted and volume >= 0.9 * (self.settings.tv / 1000.0):
                     self._vg_pressure = min(max(end_paw - b.peep, VG_MIN), self._vg_ceiling(b.peep))
                 elif self._vg_pressure is None:
                     self._vg_pressure = min(max(self.settings.p_insp, VG_MIN), self._vg_ceiling(b.peep))
@@ -874,7 +950,7 @@ class AnesthesiaVentilator:
     def _adjust_vg(self, volume: float, b: Breath) -> None:
         """Move Pinsp toward the set VT by at most VG_STEP, retaining the Pmax margin."""
         goal = self.settings.tv / 1000.0
-        if self._bellows_fraction < 1.0 - 1e-6:
+        if b.depleted:
             self.pressure_limited = volume < 0.9 * goal
             return
         pressure = self._vg_pressure if self._vg_pressure is not None else b.target

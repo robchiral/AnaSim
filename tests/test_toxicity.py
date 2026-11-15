@@ -377,3 +377,32 @@ def test_lipid_is_delivered_over_time_accounted_as_fluid_and_can_be_stopped(engi
     for invalid in (math.nan, math.inf, -1):
         with pytest.raises(ValueError):
             engine.set_lipid_infusion(invalid)
+
+
+def test_lipid_bolus_and_infusion_match_compartment_volumes_and_shed_proportionally(engine_factory):
+    """Equal lipid doses via bolus vs infusion produce identical blood and ECF volumes
+    and shed intravascular lipid proportionally during hemorrhage (#27).
+    """
+    import copy
+
+    bolus_arm = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+    )
+    infusion_arm = copy.deepcopy(bolus_arm)
+    bolus_arm.give_lipid_emulsion(100.0)
+    infusion_arm.set_lipid_infusion(40.0)
+    for _ in range(150):
+        bolus_arm.step(1.0)
+        infusion_arm.step(1.0)
+    infusion_arm.set_lipid_infusion(0.0)
+    assert bolus_arm.hemo.blood_volume == pytest.approx(infusion_arm.hemo.blood_volume, abs=1e-6)
+    assert bolus_arm.hemo.fluids.ecf_l == pytest.approx(infusion_arm.hemo.fluids.ecf_l, abs=1e-6)
+
+    lipid_before = bolus_arm.toxicity.lipid_ml
+    bv_before = bolus_arm.hemo.blood_volume
+    bolus_arm.hemo.add_volume(-1000.0)
+    bolus_arm.step(0.1)
+    assert bolus_arm.toxicity.lipid_ml / lipid_before == pytest.approx(
+        (bv_before - 1000.0) / bv_before, rel=1e-3
+    )

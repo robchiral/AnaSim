@@ -16,7 +16,7 @@ from anasim.web import WebSession, catalog
 ASSETS = Path(__file__).with_name("web_assets")
 # Fixed types: Windows registry mappings can serve .js as text/plain, which blocks modules.
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json"}
-DISCONNECT_SECONDS = 5.0
+DISCONNECT_SECONDS = 120.0
 
 
 class LocalServer(ThreadingHTTPServer):

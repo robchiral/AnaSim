@@ -40,6 +40,10 @@ def test_rejected_ventilator_updates_preserve_settings_and_gas_flows(awake_engin
         {"mode": None},
         {"t_insp": 0},
         {"p_max": 8},
+        {"vt": -0.5},
+        {"peep": -1},
+        {"p_insp": -5},
+        {"p_support": -3},
         {"unknown": 1},
     )
     for invalid in invalid_changes:
@@ -871,3 +875,30 @@ def test_closed_apl_traps_fresh_gas_and_depresses_circulation(engine_factory, ad
     lung.peep = 50.0
     lung.effort._begin(lung, 0.0)
     assert lung.effort.amplitude == 0.0
+
+
+def test_partial_reservoir_caps_all_modes_and_bradypneic_vcv_retains_spirometry(
+    engine_factory, advance_time
+):
+    """Partially depleted reservoir caps VCV, PCV, and PCV-VG consistently (#8),
+    and controlled VCV at RR 3.5/min does not time out spirometry mid-cycle (#24).
+    """
+    delivered = []
+    for mode in ("VCV", "PCV", "PCV-VG"):
+        lung = RespiratoryMechanics()
+        vent = AnesthesiaVentilator()
+        vent.update_settings(mode=mode, rr=12, tv=600, peep=5, p_insp=15)
+        for _ in range(200):
+            vent.step(0.1, lung, "vent", reservoir_volume=0.25)
+        delivered.append(vent.monitors.tv_exp)
+    assert delivered == pytest.approx([250.0, 250.0, 250.0], abs=2.0)
+
+    slow_vent = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    slow_vent.give_drug_bolus("roc", 70.0)
+    slow_vent.set_vent_settings(rr=3.5, vt=0.55, peep=5.0, ie="1:2", mode="VCV")
+    advance_time(slow_vent, 40.0, dt=0.5)
+    va_samples = []
+    for _ in range(40):
+        slow_vent.step(0.5)
+        va_samples.append(slow_vent.state.va)
+    assert min(va_samples) > 1.0

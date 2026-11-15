@@ -3,6 +3,7 @@
 ## Unreleased
 
 - AnaSim now supports adults up to 85 years old.
+- The app now runs about four times faster at high simulation speeds.
 - Blood gases now report sodium, potassium, chloride, and ionized calcium.
   Fluids carry their own ions and albumin. Saline causes hyperchloremic
   acidosis, and rapid transfusion adds acid, CO₂, and potassium and lowers
@@ -110,6 +111,39 @@
 - Infusion rates use the units clinical pumps display: rocuronium, dobutamine,
   milrinone, and esmolol in mcg/kg/min, ketamine and lidocaine in mg/kg/hr,
   and amiodarone in mg/min.
+- The emergence case no longer counts a patient in Stage II as ready for
+  extubation, and removing the tube in Stage II asks for confirmation. A
+  recovered train-of-four stays valid until another blocker dose.
+- Monitor numerics now round instead of truncating, and alarms and case
+  status messages use the rounded values. A failed cuff measurement shows its
+  own age and prompts a new reading, and NIBP bias and failure rate rise
+  smoothly as MAP falls below 60 mmHg.
+- EtCO₂ now falls to zero within 15 seconds of apnea, and a curare cleft no
+  longer gives a falsely low reading. Disconnecting the airway clears
+  end-tidal agent and nitrous oxide readings, and an unplanned disconnect no
+  longer suspends EtCO₂ alarms.
+- A partly empty reservoir now limits VCV, PCV, and PCV-VG breaths alike, and
+  bagging through a leaky mask drains the bag at low fresh gas flow. Mask
+  breathing no longer counts bronchospasm twice, and slow VCV keeps reporting
+  exhaled volumes. Breathing pure oxygen clears alveolar nitrogen, and setting
+  FiO₂ adjusts nitrous oxide, air, and oxygen flows together.
+- During chest compressions, arterial readings stay ordered and organ
+  perfusion follows forward flow. VF stops right heart output. Hemorrhage in
+  AF no longer inverts the baroreflex, older patients with low coronary
+  reserve no longer have ischemia at rest, and HFrEF maintenance starts
+  without a pressure jump.
+- Blood gases from hypothermic patients are warmed to 37 °C, so reported
+  PaCO₂ and PaO₂ rise and pH falls. Febrile patients hold their baseline
+  temperature, and balanced maintenance starts at the same MAC at any
+  temperature.
+- A hand bolus of a vasopressor running by TCI pauses the pump, and manual
+  TIVA startup sets a propofol rate that holds the effect-site concentration.
+  Lipid emulsion expands volumes equally by bolus or infusion, sugammadex
+  volume no longer shrinks in very heavy patients, and calcium chloride leaves
+  an acid load as the calcium clears.
+- The browser session now survives background-tab throttling, and the app no
+  longer drops steps at some speeds. `dt` is limited to 2 s, boolean settings
+  and drug rates are validated, and CSV alarm columns are valid JSON.
 
 ## 1.8 - 2026-11-06
 

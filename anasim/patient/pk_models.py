@@ -241,6 +241,17 @@ class MammillaryPK:
 
     def reset(self) -> None:
         self.state = PKState()
+        self.v1 = self.v1_base
+        self.cl1 = self.cl1_base
+        self.cl2 = self.cl2_base
+        self.cl3 = self.cl3_base
+        self.v1_scale = 1.0
+        self.cl1_scale = 1.0
+        self.cl2_scale = 1.0
+        self.cl3_scale = 1.0
+        self.effect_input_fraction = 1.0
+        self.circulation = 1.0
+        self.update_hemodynamics(1.0, 1.0)
 
     def simulate_decay(self, target_fraction: float = 0.5, max_seconds: int = 3600) -> float:
         """Return minutes for Ce to fall to `target_fraction` with no further input."""
@@ -837,6 +848,10 @@ class NorepinephrinePK(MammillaryPK):
         """Seed secretion without an exogenous infusion at the current clearance."""
         endogenous_conc = self.endogenous_ug_min / self.elimination_clearance
         self.set_state_vector([endogenous_conc] * len(self.state_fields))
+
+    def reset(self) -> None:
+        super().reset()
+        self.equilibrate_endogenous()
 
     def update_propofol(self, propofol_conc_ug_ml: float) -> None:
         """Set the clearance covariate used by both integration and prediction."""

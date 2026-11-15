@@ -32,12 +32,18 @@ class SimulationConfig:
     rng_seed: int | None = None
 
     def __post_init__(self):
-        for name in ("tci_enabled", "sevoflurane_enabled", "concomitant_opioids", "patient_variability"):
+        for name in (
+            "tci_enabled",
+            "sevoflurane_enabled",
+            "concomitant_opioids",
+            "arterial_line_enabled",
+            "patient_variability",
+        ):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a boolean")
         self.dt = finite_number("dt", self.dt)
-        if self.dt <= 0:
-            raise ValueError("dt must be greater than zero")
+        if self.dt <= 0 or self.dt > 2.0:
+            raise ValueError("dt must be between 0 (exclusive) and 2.0 seconds")
         for field_name, supported in CONFIG_CHOICES.items():
             value = getattr(self, field_name)
             if not isinstance(value, str) or value not in supported:
@@ -60,7 +66,7 @@ class AirwayStatus:
 
 
 class WaveformSample(NamedTuple):
-    """One simulation step of the monitor waveforms."""
+    """Monitor waveforms at one instant; a step yields one sample per 10 ms or less."""
 
     time: float
     ecg_voltage: float
@@ -166,7 +172,7 @@ class SimulationState:
     display_etco2: float = 38.0
     etco2_signal_valid: bool = False
     pa_co2: float = 40.0
-    ph: float = 7.4  # Blood gas values at 37 °C.
+    ph: float = 7.4  # In-vivo blood gas values at patient temperature.
     hco3: float = 24.5  # Plasma bicarbonate, mmol/L.
     base_excess: float = 0.0  # Standard base excess, mmol/L.
     lactate: float = 0.9  # Plasma lactate, mmol/L.

@@ -29,14 +29,26 @@ class CoronaryModel:
     contractile depression, and the illustrative ST signal are calibrations.
     """
 
-    def __init__(self, reserve: float, hr: float, map_mmhg: float, lap: float):
-        # Normalize reserve at estimated resting SBP (1.35 x MAP), diastolic
-        # perfusion pressure (0.8 x MAP - LAP), diastolic time, and Hb 13.5 g/dL.
-        self._reference_rpp = hr * 1.35 * map_mmhg
+    def __init__(
+        self,
+        reserve: float,
+        hr: float,
+        map_mmhg: float,
+        lap: float,
+        *,
+        sbp_mmhg: float | None = None,
+        dbp_mmhg: float | None = None,
+    ):
+        # Normalize reserve against the patient's resting SBP, diastolic
+        # perfusion pressure (DBP - back pressure), diastolic time, and Hb 13.5 g/dL.
+        ref_sbp = 1.35 * map_mmhg if sbp_mmhg is None else max(1.0, sbp_mmhg)
+        ref_dbp = 0.8 * map_mmhg if dbp_mmhg is None else max(0.0, dbp_mmhg)
+        self._reference_rpp = hr * ref_sbp
         self._reference_hr = hr
         # Coronary zero-flow pressure exceeds venous pressure (Nanto 2001). At
-        # rest it is calibrated to 20 mmHg.
-        reference_cpp = max(10.0, 0.8 * map_mmhg - max(20.0, lap))
+        # rest it is calibrated to 20 mmHg (falling at very low SBP as in step()).
+        ref_back = max(lap, min(20.0, 0.2 * ref_sbp))
+        reference_cpp = max(10.0, ref_dbp - ref_back)
         self._supply_scale = reserve / (reference_cpp * self._diastolic_fraction(hr) * 13.5)
         self.supply_demand_ratio = reserve
         self.ischemia = 0.0

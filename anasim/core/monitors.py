@@ -3,12 +3,14 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
+from anasim.core.constants import ARREST_CO_L_MIN, ARREST_PULSE_PRESSURE_MMHG
 from anasim.machine.ventilator import VOLUME_TARGETED
 from anasim.monitors.alarms import THRESHOLDS
+from anasim.monitors.arterial import ArterialPressureSample
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
-from anasim.physiology.resuscitation import compression_pressures
+from anasim.physiology.resuscitation import COMPRESSION_DUTY, compression_pressures
 
 from .projection import (
     central_muscle_strength,
@@ -20,15 +22,33 @@ from .projection import (
     nmba_twitch_fraction,
     project_arterial,
 )
-from .state import AirwayType
+from .state import AirwayType, WaveformSample
 from .utils import clamp
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine
 
-CARDIAC_MONITOR_MAX_STEP_S = 0.01
+WAVEFORM_MAX_INTERVAL_S = 0.01
 BIS_NOISE_SD = 0.2
 BIS_DISPLAY_TAU_S = 2.0
+
+
+def display_int(value: float) -> float:
+    """Round to the whole-number value shown on the patient monitor."""
+    if not math.isfinite(value):
+        return value
+    return float(math.floor(round(value, 1) + 0.5))
+
+
+def waveform_substeps(dt: float) -> int:
+    """Waveform samples in a step of dt; beat-synchronous monitors advance once per sample."""
+    return math.ceil(dt / WAVEFORM_MAX_INTERVAL_S)
+
+
+def _hold(waves: list, value, elapsed: float, substeps: int, substep_dt: float) -> None:
+    """Assign the latest value to each waveform sample time that `elapsed` has reached, except the last."""
+    while len(waves) < substeps - 1 and elapsed >= (len(waves) + 1) * substep_dt - 1e-9:
+        waves.append(value)
 
 
 def seed_nibp_reading(engine: SimulationEngine) -> None:
@@ -39,10 +59,13 @@ def seed_nibp_reading(engine: SimulationEngine) -> None:
     dbp_val = state.dbp
     ts = state.time
     engine.nibp.latest_reading = NIBPReading(sbp_val, dbp_val, map_val, ts)
+    engine.nibp.measurement_failed = False
+    engine.nibp.failed_timestamp = None
     state.nibp_sys = float(sbp_val)
     state.nibp_dia = float(dbp_val)
     state.nibp_map = float(map_val)
     state.nibp_timestamp = float(ts)
+    state.nibp_measurement_failed = False
     engine._next_nibp_time = state.time + engine.nibp.interval
     engine.nibp.trigger()
     state.nibp_is_cycling = True
@@ -83,15 +106,11 @@ def _capno_sampling_possible(engine: SimulationEngine) -> bool:
         state.airway_mode != AirwayType.NONE
         and (state.airway_mode != AirwayType.MASK or engine.mask_seal >= 0.05)
         and engine.airway_status.patency >= 0.05
-        and (
-            (state.rr > 0.0 and state.va > 0.0)
-            or (state.rr == 0.0 and any(abs(change) > 0.002 * duration for duration, change, _, _, _ in engine.vent.samples))
-        )
     )
 
 
-def compute_capno_value(engine: SimulationEngine, resp_state, dt: float) -> float:
-    """Advance the capnograph with the gas that crossed the Y-piece this step."""
+def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substeps: int = 1) -> list[float]:
+    """Advance the capnograph with the gas that crossed the Y-piece; return CO2 at each waveform sample."""
     state = engine.state
     readout = engine.etco2_readout
     if not _capno_sampling_possible(engine):
@@ -101,7 +120,7 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float) -> floa
             disconnected=state.airway_mode == AirwayType.NONE,
             idle_airway=state.airway_mode == AirwayType.NONE and not (engine.vent.is_on or engine.bag_mask_active),
         )
-        co2 = 0.0
+        waves = [0.0] * substeps
     else:
         capno = engine.capno
         airway = engine.airway_status
@@ -109,13 +128,28 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float) -> floa
         # Gas lost around a facemask never passes the sampling port, so a
         # large leak leaves dead-space gas at the port.
         port_share = delivered_fraction(engine)
-        for duration, change, _, _, _ in engine.vent.samples:
+        waves = []
+        elapsed = 0.0
+        substep_dt = dt / substeps
+        samples = engine.vent.samples or [(dt, 0.0, 0.0, 0.0, 0.0)]
+        for duration, change, _, _, _ in samples:
             value = capno.step(duration, change * port_share, end_tidal, obstruction=airway.capno_obstruction)
-            readout.update(duration, capno.exhaling, value)
-        co2 = capno.co2
+            readout.update(
+                duration,
+                capno.exhaling,
+                value,
+                inhaled_l=capno._inhaled,
+                dead_space_l=capno.dead_space,
+                breath_index=capno.breath_index,
+            )
+            elapsed += duration
+            _hold(waves, value, elapsed, substeps, substep_dt)
+        waves.extend([capno.co2] * (substeps - len(waves)))
     state.display_etco2 = float(readout.value)
     state.etco2_signal_valid = readout.valid
-    return co2
+    if not state.etco2_signal_valid:
+        state.et_o2 = state.et_sevo = state.et_n2o = state.et_mac = 0.0
+    return waves
 
 
 def step_cardiac_monitors(
@@ -123,12 +157,13 @@ def step_cardiac_monitors(
     dt: float,
     hemo_state,
     sao2: float,
-) -> CardiacCycleSample:
-    """Advance beat-synchronous monitors at waveform resolution."""
+) -> tuple[CardiacCycleSample, list[tuple[float, float, float]]]:
+    """Advance beat-synchronous monitors; return the last beat sample and (ECG, pleth, ART) per waveform sample."""
     if dt <= 0.0:
         raise ValueError("cardiac monitor dt must be greater than zero")
-    substeps = math.ceil(dt / CARDIAC_MONITOR_MAX_STEP_S)
+    substeps = waveform_substeps(dt)
     substep_dt = dt / substeps
+    waves = []
     rhythm = hemo_state.rhythm_type
     co_ratio = hemo_state.co / engine.hemo.base_co_l_min
     perfusion = clamp(co_ratio, 0.0, 1.0)
@@ -136,14 +171,16 @@ def step_cardiac_monitors(
     conduction_failure = engine.hemo.coronary.energy_failure
     compressions = hemo_state.compressions
     if compressions:
-        compression_sbp, compression_dbp = compression_pressures(hemo_state.map, hemo_state.venous_pressure)
+        compression_sbp, compression_dbp = compression_pressures(
+            hemo_state.cpr_perfusion_map, hemo_state.venous_pressure
+        )
+        compression_mean = (
+            compression_dbp + (compression_sbp - compression_dbp) * 2.0 * COMPRESSION_DUTY / math.pi
+        )
     else:
         engine.compression_clock.stop()
 
     for index in range(substeps):
-        # Only the final voltage is published. Keep every beat, random draw,
-        # pressure-filter update, and saturation update at waveform resolution.
-        render = index == substeps - 1
         cardiac_sample = engine.cardiac_cycle.step(
             substep_dt,
             hemo_state.hr,
@@ -155,12 +192,40 @@ def step_cardiac_monitors(
             hemo_state = engine.hemo.state
             rhythm = hemo_state.rhythm_type
             cardiac_sample = engine.cardiac_cycle.seed(hemo_state.hr, rhythm)
-        # Compressions, when running, set the pressure and pleth pulses.
+            if compressions:
+                compression_sbp, compression_dbp = compression_pressures(
+                    hemo_state.cpr_perfusion_map, hemo_state.venous_pressure
+                )
+                compression_mean = (
+                    compression_dbp + (compression_sbp - compression_dbp) * 2.0 * COMPRESSION_DUTY / math.pi
+                )
+        # Compressions, when running, envelope any weaker intrinsic beat rather than adding onto MAP.
         if compressions:
-            pulse_sample = engine.compression_clock.step(substep_dt, rhythm)
-            arterial_sample = engine.arterial_waveform.step_compressions(
-                pulse_sample, compression_sbp, compression_dbp,
-            )
+            comp_sample = engine.compression_clock.step(substep_dt, rhythm)
+            if hemo_state.intrinsic_co > 0.0:
+                intrinsic_art = engine.arterial_waveform.step(
+                    cardiac_sample,
+                    hemo_state.intrinsic_map,
+                    hemo_state.sv,
+                    dt=substep_dt,
+                    static_pressure=hemo_state.venous_pressure,
+                    pulse_pressure_factor=hemo_state.pulse_pressure_factor,
+                )
+                comp_u = comp_sample.phase / COMPRESSION_DUTY
+                comp_shape = math.sin(math.pi * comp_u) if comp_u < 1.0 else 0.0
+                comp_p = compression_dbp + (compression_sbp - compression_dbp) * comp_shape
+                arterial_sample = ArterialPressureSample(
+                    pressure=float(max(intrinsic_art.pressure, comp_p)),
+                    systolic=float(max(intrinsic_art.systolic, compression_sbp)),
+                    diastolic=float(max(intrinsic_art.diastolic, compression_dbp)),
+                    mean=float(max(intrinsic_art.mean, compression_mean)),
+                )
+                pulse_sample = cardiac_sample if intrinsic_art.mean >= compression_mean else comp_sample
+            else:
+                pulse_sample = comp_sample
+                arterial_sample = engine.arterial_waveform.step_compressions(
+                    pulse_sample, compression_sbp, compression_dbp,
+                )
         else:
             pulse_sample = cardiac_sample
             arterial_sample = engine.arterial_waveform.step(
@@ -181,23 +246,31 @@ def step_cardiac_monitors(
                                       sodium_block=engine.toxicity.conduction_block,
                                       potassium=engine.state.potassium,
                                       hyperkalemia_block=engine.hemo.hyperkalemia_block,
-                                      compression_phase=pulse_sample.phase if compressions else None,
-                                      render=render)
+                                      compression_phase=pulse_sample.phase if compressions else None)
+        pulse_pressure = arterial_sample.systolic - arterial_sample.diastolic
+        spo2_perfusion = (
+            0.0
+            if not compressions and (
+                hemo_state.intrinsic_co < ARREST_CO_L_MIN
+                or not math.isfinite(pulse_pressure)
+                or pulse_pressure < ARREST_PULSE_PRESSURE_MMHG
+            )
+            else perfusion
+        )
         pleth, spo2_val = engine.spo2_mon.step(
             substep_dt,
             pulse_sample,
             saturation=sao2,
-            perfusion=perfusion,
-            render=render,
+            perfusion=spo2_perfusion,
         )
+        waves.append((float(ecg_voltage), float(pleth), engine.art_line.pressure))
 
     state = engine.state
     state.spo2_signal_valid = engine.spo2_mon.signal_valid
-    state.ecg_voltage = float(ecg_voltage)
-    state.pleth_voltage = float(pleth)
+    state.ecg_voltage, state.pleth_voltage, _ = waves[-1]
     project_arterial(state, arterial_sample, engine.art_line.reading)
     state.spo2 = float(spo2_val)
-    return cardiac_sample
+    return cardiac_sample, waves
 
 
 def step_monitors(
@@ -218,10 +291,12 @@ def step_monitors(
         cortical_function=engine.cerebral.cortical_function,
         ce_ketamine=state.ketamine_ce,
     )
-    capno_val = compute_capno_value(engine, resp_state, dt)
+    substeps = waveform_substeps(dt)
+    substep_dt = dt / substeps
+    capno_waves = compute_capno_value(engine, resp_state, dt, substeps)
 
     loc_val = loss_of_response(engine)
-    cardiac_sample = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
+    cardiac_sample, cardiac_waves = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
 
     update_nibp(engine, dt, hemo_state)
     engine.nmb.step(state.time + dt, state.twitch / 100.0, state.tof / 100.0)
@@ -229,16 +304,21 @@ def step_monitors(
     connected = state.airway_mode != AirwayType.NONE
     sealed = circuit_connected(engine)
     seal_scale = mask_seal_factor(engine)
+    kept = delivered_fraction(engine) if sealed else 0.0
+    airway_wave = engine.airway_sensor.reading
+    airway_waves: list[tuple[float, float, float]] = []
+    elapsed = 0.0
     for duration, change, sample_paw, _, sample_volume in engine.vent.samples:
-        paw, flow, volume = engine.airway_sensor.step(
+        airway_wave = engine.airway_sensor.step(
             duration,
-            sample_paw * seal_scale,
-            sample_volume * seal_scale,
-            change * seal_scale if sealed else 0.0,
+            sample_paw * seal_scale if sealed else 0.0,
+            sample_volume * kept,
+            change * kept,
         )
-    state.paw = float(paw)
-    state.flow = float(flow)
-    state.volume = float(volume)
+        elapsed += duration
+        _hold(airway_waves, airway_wave, elapsed, substeps, substep_dt)
+    airway_waves.extend([airway_wave] * (substeps - len(airway_waves)))
+    state.paw, state.flow, state.volume = (float(value) for value in airway_wave)
     bis_display_source = clamp(bis_val + disturbances.bis * engine.bis.cortical_function, 0.0, 100.0)
     state.bis = float(bis_display_source)
 
@@ -250,7 +330,7 @@ def step_monitors(
     display_bis = clamp(engine.smooth_bis, 0.0, 100.0)
     state.display_hr = float(display_hr)
     state.display_bis = float(display_bis)
-    state.capno_co2 = float(capno_val)
+    state.capno_co2 = float(capno_waves[-1])
     state.loc = float(loc_val)
     state.tol = float(engine._tol_current)
     state.display_spo2 = float(state.spo2)
@@ -281,14 +361,15 @@ def step_monitors(
             for k in ("propofol", "midazolam", "ketamine")
         )
     )
-    bis_alarm = state.display_bis if (paralyzed or maintaining or state.display_bis <= THRESHOLDS["BIS_max"]) else None
+    bis_int = display_int(state.display_bis)
+    bis_alarm = bis_int if (paralyzed or maintaining or bis_int <= THRESHOLDS["BIS_max"]) else None
     map_alarm = (
-        state.art_map
+        display_int(state.art_map)
         if engine.config.arterial_line_enabled
-        else (0.0 if state.nibp_measurement_failed else state.nibp_map)
+        else (0.0 if state.nibp_measurement_failed else display_int(state.nibp_map))
     )
     etco2_alarm = (
-        state.display_etco2
+        display_int(state.display_etco2)
         if (connected or vent.is_on or engine.bag_mask_active) and not engine.etco2_readout.awaiting_first_breath
         else None
     )
@@ -296,14 +377,21 @@ def step_monitors(
         {
             "BIS": bis_alarm,
             "MAP": map_alarm,
-            "HR": state.display_hr,
+            "HR": display_int(state.display_hr),
             "EtCO2": etco2_alarm,
-            "SpO2": state.display_spo2 if state.spo2_signal_valid else 0.0,
-            "Ppeak": state.paw_peak,
+            "SpO2": display_int(state.display_spo2) if state.spo2_signal_valid else 0.0,
+            "Ppeak": display_int(state.paw_peak),
             # The ventilator measures only gas returning through the circuit.
-            "MV": (state.mv if connected else 0.0) if vent.is_on else None,
+            "MV": (round(state.mv, 1) if connected else 0.0) if vent.is_on else None,
             "VTe": vte_percent,
-            "FiO2": state.fio2 * 100.0,
+            "FiO2": display_int(state.fio2 * 100.0),
         },
         dt=dt,
+    )
+    start, breath = state.time, vent.breath_count
+    engine.output_buffer.extend(
+        WaveformSample(start + dt if index == substeps - 1 else start + (index + 1) * substep_dt,
+                       ecg, pleth, float(co2), art, float(paw), float(flow), float(volume), breath)
+        for index, ((ecg, pleth, art), co2, (paw, flow, volume)) in enumerate(
+            zip(cardiac_waves, capno_waves, airway_waves, strict=True))
     )

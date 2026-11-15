@@ -1,5 +1,6 @@
 """Drug infusion and TCI controls for SimulationEngine."""
 
+from anasim.patient.domain import finite_number
 from anasim.patient.patient import Patient
 from anasim.patient.pk_models import MammillaryPK
 
@@ -53,6 +54,7 @@ class DrugControllerMixin:
         no drug on board. After a stop, it resumes its program.
         """
         spec = get_drug_spec(drug)
+        target = finite_number("target", target)
         max_rate = _tci_max_rate(spec)
         if not self.config.tci_enabled:
             raise ValueError("TCI is disabled for this session")
@@ -87,7 +89,12 @@ class DrugControllerMixin:
         for key in keys:
             controller = self.tci.get(key)
             if controller:
-                controller.sync_from_pk_model(self.prediction_model(key))
+                model = self.prediction_model(key)
+                controller.sync_from_pk_model(model)
+                if model is self.pk.get(key):
+                    controller._next_update = self.state.time
+                    self.infusion_rates[key] = controller.step(sim_time=self.state.time)
+                    self._tci_accumulators[key] = 0.0
 
     def disable_tci(self, drug: str):
         """Disable TCI for a drug and stop its infusion."""
@@ -107,7 +114,7 @@ class DrugControllerMixin:
         """Switch to manual infusion at the rate in the registry's user unit."""
         spec = get_drug_spec(key)
         user_unit, model_unit = _rate_units(spec)
-        rate = max(0.0, rate_user_unit)
+        rate = max(0.0, finite_number("rate", rate_user_unit))
         if spec.key in self.tci:
             self.disable_tci(spec.key)
         if rate > 0.0 and spec.key in self.pump_pk:
@@ -117,6 +124,8 @@ class DrugControllerMixin:
 
     def set_drug_target(self, key: str, target: float | None):
         """Set a TCI target; None or a negative target disables TCI."""
+        if target is not None:
+            target = finite_number("target", target)
         if target is None or target < 0:
             self.disable_tci(key)
         else:

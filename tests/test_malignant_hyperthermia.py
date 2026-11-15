@@ -155,8 +155,13 @@ def test_untreated_mh_case_earns_no_treatment_credit():
     session.engine.config.dt = 0.1
     session.command("run", '{"running":true}')
     session.command("speed", '{"value":50}')
-    for _ in range(180):
+    late_mvs = []
+    for step_idx in range(180):
         session.step(0.1)
+        if step_idx >= 170:
+            assert not session.engine.resp.state.apnea
+            late_mvs.append(session.engine.state.mv)
+    assert min(late_mvs) > 10
     assert session.engine.state.mv > 10
     report = json.loads(session.command("case_finish"))["debrief"]
     assert not any(o["achieved"] for o in report["outcomes"] if o["id"] != "stability")

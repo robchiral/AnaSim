@@ -1,6 +1,7 @@
 """Malignant hyperthermia during sevoflurane anesthesia."""
 
 from anasim.core.action_log import ACTION_DRUG_BOLUS
+from anasim.core.monitors import display_int
 from anasim.machine.ventilator import VentSettings
 
 from .base import (
@@ -11,6 +12,7 @@ from .base import (
     Scenario,
     ScenarioStep,
     create_observe_step,
+    format_unmet_int,
     monitor_value,
     require_all,
     require_infusion_started,
@@ -26,7 +28,8 @@ def _require_dantrolene(engine) -> tuple[bool, str]:
     if given >= target - 0.1:
         return True, ""
     if given > 0.0:
-        return False, f"Dantrolene: {given:.0f}/{target:.0f} mg given"
+        shown_target = int(display_int(target))
+        return False, f"Dantrolene: {format_unmet_int(given, low=shown_target)}/{shown_target} mg given"
     return False, "Give dantrolene 2.5 mg/kg IV"
 
 
@@ -53,9 +56,12 @@ def _require_temperature_managed(engine) -> tuple[bool, str]:
 
 
 def _require_etco2_normal(engine) -> tuple[bool, str]:
+    if not engine.state.etco2_signal_valid:
+        return False, "Awaiting exhaled CO₂"
     etco2 = monitor_value(engine, "etco2")
-    met = engine.state.etco2_signal_valid and etco2 < 45.0
-    return met, "" if met else f"EtCO₂: {etco2:.0f}/<45 mmHg"
+    met = etco2 < 45.0
+    shown_etco2 = max(int(display_int(etco2)), 45)
+    return met, "" if met else f"EtCO₂: {shown_etco2}/<45 mmHg"
 
 
 def create_malignant_hyperthermia() -> Scenario:

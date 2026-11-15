@@ -311,3 +311,38 @@ class TestEngineTCI:
         advance_time(engine, 210.0, dt=2.0)
         assert engine.state.tof < 5.0
         assert engine.pk["phenyl"].state.c1 > 90.0
+
+    def test_substep_boundary_alignment_bolus_override_and_manual_steady_state_rate(
+        self, engine_factory, advance_time
+    ):
+        """Effect-site TCI aligns updates at dt=0.05 vs 0.10 s (#13); a hand bolus on
+        a TCI-only vasopressor pauses the active TCI pump (#14); manual steady-state
+        TIVA seeds a maintenance rate that holds propofol Ce steady (#22).
+        """
+        fine = engine_factory(
+            config=SimulationConfig(mode="awake", tci_enabled=True, dt=0.05, rng_seed=1),
+            start=True,
+        )
+        coarse = engine_factory(
+            config=SimulationConfig(mode="awake", tci_enabled=True, dt=0.10, rng_seed=1),
+            start=True,
+        )
+        fine.enable_tci("propofol", 3.5)
+        coarse.enable_tci("propofol", 3.5)
+        advance_time(fine, 60.0, dt=0.05)
+        advance_time(coarse, 60.0, dt=0.10)
+        assert fine.pk["propofol"].state.c1 == pytest.approx(coarse.pk["propofol"].state.c1, abs=0.01)
+
+        coarse.enable_tci("nore", 5.0, mode="plasma")
+        coarse.step(0.10)
+        assert coarse.infusion_rates["nore"] > 0.0
+        coarse.give_drug_bolus("nore", 20.0)
+        assert coarse.infusion_rates["nore"] == 0.0
+
+        manual_tiva = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="tiva", tci_enabled=False, rng_seed=1),
+            start=True,
+        )
+        ce_start = manual_tiva.state.propofol_ce
+        advance_time(manual_tiva, 1800.0, dt=5.0)
+        assert manual_tiva.state.propofol_ce == pytest.approx(ce_start, rel=0.10)

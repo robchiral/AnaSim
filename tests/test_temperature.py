@@ -97,3 +97,38 @@ def test_obese_redistribution_cooling_sepsis_fever_and_hypothermic_bradycardia(e
     assert cold.state.hr < 55.0
     cold.step(1.0)
     assert cold.state.hr < 55.0
+
+
+def test_balanced_mac_temp_parity_abg_warming_to_37c_and_awake_febrile_setpoint(engine_factory):
+    """Balanced steady-state starts at uniform MAC across baseline temperatures (#15);
+    draw_blood_gas() anaerobically warms hypothermic samples to 37 °C (#38);
+    awake febrile baseline_temp holds its setpoint without cooling toward 37 °C (#42).
+    """
+    macs = [
+        engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
+            start=True,
+            baseline_temp=temp,
+        ).state.mac
+        for temp in (32.0, 37.0, 39.0)
+    ]
+    assert macs[0] == pytest.approx(macs[1], abs=0.02)
+    assert macs[2] == pytest.approx(macs[1], abs=0.02)
+
+    hypo = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True,
+        baseline_temp=32.0,
+    )
+    abg = hypo.draw_blood_gas()
+    assert abg.pa_co2 > hypo.state.pa_co2 + 3.0
+    assert abg.pao2 > hypo.state.pao2
+    assert abg.ph < hypo.state.ph - 0.04
+
+    febrile = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1),
+        start=True,
+        baseline_temp=38.5,
+    )
+    _advance(febrile, 1800, dt=5.0)
+    assert febrile.state.temp_c == pytest.approx(38.5, abs=0.03)

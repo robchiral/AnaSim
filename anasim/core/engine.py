@@ -38,6 +38,7 @@ from anasim.patient.pk_models import ANESTHETIZED_OUTPUT, NorepinephrinePK
 from anasim.patient.variability import sample_variability
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.arrhythmia import ArrhythmiaModel, antiarrhythmic_effects
+from anasim.physiology.blood_chemistry import plasma_bicarbonate
 from anasim.physiology.cerebral import CerebralModel
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
@@ -201,73 +202,20 @@ class SimulationEngine(DrugControllerMixin):
         self.set_continuous_fluid_rate(self.config.maintenance_fluid_ml_hr)
         self.initialize_state()
 
-    def _append_output_snapshot(self) -> None:
-        """Append this step's waveform samples and retain twenty seconds by timestamp."""
-        state = self.state
-        self.output_buffer.append(
-            WaveformSample(
-                state.time, state.ecg_voltage, state.pleth_voltage, state.capno_co2, state.art_pressure,
-                state.paw, state.flow, state.volume, self.vent.breath_count,
-            )
-        )
-        cutoff = self.state.time - OUTPUT_WINDOW_S
-        while len(self.output_buffer) > 1 and self.output_buffer[0].time < cutoff:
-            self.output_buffer.popleft()
-
     def initialize_state(self):
         """Seed the public state from the initialized subsystems."""
-        if self.output_buffer:
-            self.infusion_rates = {spec.key: 0.0 for spec in DRUG_REGISTRY if spec.has_infusion}
-            self.tci.clear()
-            self._tci_accumulators.clear()
-            self._pump_needs_reset.clear()
-            self.output_buffer.clear()
-            self.pending_infusions.clear()
-            self.blood_gases.clear()
-            self.active_hemorrhage = False
-            self.hemorrhage_rate_ml_min = 500.0
-            self.lipid_infusion_ml_min = 0.0
-            self.bag_mask_active = False
-            self.bag_mask_rr = 12.0
-            self.bag_mask_vt = 0.5
-            self.bag_mask_p_max = 20.0
-            self.auto_laryngospasm_enabled = True
-            self.mask_seal = 1.0
-            self.airway_obstruction_manual = 0.0
-            self.bronchospasm_manual = 0.0
-            self.intubation_start_time = None
-            self.compressions_started_at = None
-            self.disturbances = Disturbances(self.config.disturbance_profile)
-            self.disturbance_active = bool(self.config.disturbance_profile)
-            self.disturbance_start_time = 0.0
-            self.alarms = AlarmSystem()
-            self.defibrillator = Defibrillator()
-            self.arrhythmias.reset()
-            self._last_shock_feedback = None
-            self.etco2_readout = EtCO2Readout()
-            self.initialize_models()
-            self.set_continuous_fluid_rate(self.config.maintenance_fluid_ml_hr)
-
-        self.state = SimulationState()
         self.state.temp_c = self.patient.baseline_temp
-        self.airway_status = AirwayStatus()
-        self.laryngospasm_severity = 0.0
-        self._apl_pressure = 0.0
-        self._extubation_stimulus_until = 0.0
-        self._pulseless_s = 0.0
-        self._tracheal_fio2 = 0.21
-        self._step_tracheal_fio2 = None
-        self._step_apneic_limit_l_min = None
-        self._step_n2o_uptake_l_min = None
-        self._step_lung_volume_l = None
-
         initialize_engine_state(self)
         self.actions = ActionLog()
         projection_core.sync_state_from_models(self)
         self._bis_anesthetized = self.config.mode == "steady_state" or self.state.display_bis < 65.0
         monitor_core.seed_nibp_reading(self)
         self.nmb.establish_baseline(self.state.twitch / 100.0)
-        self._append_output_snapshot()
+        state = self.state
+        self.output_buffer.append(WaveformSample(
+            state.time, state.ecg_voltage, state.pleth_voltage, state.capno_co2, state.art_pressure,
+            state.paw, state.flow, state.volume, self.vent.breath_count,
+        ))
 
     def set_continuous_fluid_rate(self, ml_hr: float | None):
         """Set continuous IV fluids in mL/hr; None restores 1 mL/kg/hr."""
@@ -286,9 +234,6 @@ class SimulationEngine(DrugControllerMixin):
         self.anaphylaxis = SeverityRamp(onset_rate=0.5 / 60.0, decay_rate=0.1 / 60.0)
         self.sepsis = SeverityRamp(onset_rate=0.1 / 60.0, decay_rate=0.03 / 60.0)
         self.malignant_hyperthermia = MalignantHyperthermia()
-        self._pk_hemo_scale_cache = None
-        self._pk_blood_out_ml = 0.0
-        self.current_mean_paw = 0.0
 
         # Intravenous drug PK, keyed like the drug registry.
         self.pk = {spec.key: spec.pk_model(self.patient, self.config) for spec in DRUG_REGISTRY}
@@ -350,6 +295,10 @@ class SimulationEngine(DrugControllerMixin):
         self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)
         self.compression_clock = CompressionClock()
         self.arterial_waveform = ArterialWaveformRenderer(self.patient.age)
+        resting_sbp, resting_dbp = self.arterial_waveform.steady_pressures(
+            self.patient.baseline_map, self.hemo.base_sv, self.hemo.base_hr,
+        )
+        self.hemo.calibrate_coronary(resting_sbp, resting_dbp)
         self.art_line = ArterialLineMonitor()
         self.ecg = ECGMonitor(rng=self._ecg_rng)
         self.spo2_mon = SpO2Monitor()
@@ -451,7 +400,7 @@ class SimulationEngine(DrugControllerMixin):
         if volume <= 0:
             raise ValueError("Lipid volume must be positive")
         self._queue_infusion(volume, volume / 2.5, hematocrit=0.0,
-                             retention_fraction=1.0, label="lipid")
+                             retention_fraction=0.25, label="lipid")
 
     def set_lipid_infusion(self, ml_min: float):
         self.lipid_infusion_ml_min = bounded_number("lipid infusion", ml_min, 0.0, 200.0, unit="mL/min")
@@ -812,13 +761,17 @@ class SimulationEngine(DrugControllerMixin):
         """Draw an arterial sample; its result is ready after the analysis time."""
         state = self.state
         fluids = self.hemo.fluids
+        delta_t = 37.0 - state.temp_c
+        abg_ph = float(state.ph - 0.0147 * delta_t)
+        abg_paco2 = float(state.pa_co2 * (10.0 ** (0.019 * delta_t)))
+        abg_hco3 = state.hco3 if abs(delta_t) <= 1e-9 else float(plasma_bicarbonate(abg_ph, abg_paco2))
         result = BloodGasResult(
-            drawn_at=state.time, ph=state.ph, pa_co2=state.pa_co2, pao2=self.resp.arterial_po2_at_37(),
-            hco3=state.hco3, base_excess=state.base_excess, lactate=state.lactate,
+            drawn_at=state.time, ph=abg_ph, pa_co2=abg_paco2, pao2=self.resp.arterial_po2_at_37(),
+            hco3=abg_hco3, base_excess=state.base_excess, lactate=state.lactate,
             sodium=float(fluids.concentration("sodium")),
             potassium=float(fluids.concentration("potassium")),
             chloride=float(fluids.concentration("chloride")),
-            ionized_calcium=float(fluids.ionized_calcium(state.ph)),
+            ionized_calcium=float(fluids.ionized_calcium(abg_ph)),
             sao2=state.sao2, hb=float(self.hemo.hb_conc), fio2=state.fio2,
         )
         self.blood_gases.append(result)
@@ -843,9 +796,18 @@ class SimulationEngine(DrugControllerMixin):
             return
         runtime_core.step_simulation(self, dt)
         self.state.time += dt
-        self._append_output_snapshot()
+        output = self.output_buffer
+        cutoff = self.state.time - OUTPUT_WINDOW_S
+        while len(output) > 1 and output[0].time < cutoff:
+            output.popleft()
         if self.recorder and self.recorder.is_recording:
             self.recorder.log(self.state)
+
+    @property
+    def waveform_interval(self) -> float:
+        """Spacing of output_buffer samples at the configured step, s."""
+        dt = self.config.dt
+        return dt / monitor_core.waveform_substeps(dt)
 
     @property
     def spontaneous_circulation(self) -> bool:
@@ -910,16 +872,28 @@ class SimulationEngine(DrugControllerMixin):
             self._apply_fio2_blender(self.vent.settings.fio2)
 
     def _apply_fio2_blender(self, fio2: float):
-        """Split the O2 plus air flow to reach the target FiO2, keeping N2O fixed.
+        """Split the O2 plus air flow to reach the target FiO2, reducing N2O only when needed.
 
-        Solves FiO2 = (O2 + 0.21 x air) / (O2 + air + N2O) for O2.
+        Solves FiO2 = (O2 + 0.21 x air) / (O2 + air + N2O) at constant total flow.
         """
         total_non_n2o = self.circuit.fgf_o2 + self.circuit.fgf_air
-        if total_non_n2o <= 0:
+        n2o_flow = max(0.0, self.circuit.fgf_n2o)
+        total_flow = total_non_n2o + n2o_flow
+        if total_flow <= 0:
             return
         target = clamp(fio2, 0.21, 1.0)
-        n2o_flow = max(0.0, self.circuit.fgf_n2o)
-        o2_flow = ((target * (total_non_n2o + n2o_flow)) - 0.21 * total_non_n2o) / 0.79
-        o2_flow = clamp(max(o2_flow, n2o_flow / 3.0), 0.0, total_non_n2o)
-        air_flow = total_non_n2o - o2_flow
-        self.set_fgf(o2_flow, air_flow, min(n2o_flow, 3.0 * o2_flow))
+        if n2o_flow <= 0.0:
+            o2_flow = clamp((target - 0.21) / 0.79 * total_flow, 0.0, total_flow)
+            air_flow = total_flow - o2_flow
+            self.set_fgf(o2_flow, air_flow, 0.0)
+            return
+        o2_needed = (target * total_flow - 0.21 * total_non_n2o) / 0.79
+        o2_min_n2o = n2o_flow / 3.0
+        if max(o2_needed, o2_min_n2o) <= total_non_n2o:
+            o2_flow = clamp(max(o2_needed, o2_min_n2o), 0.0, total_non_n2o)
+            air_flow = total_non_n2o - o2_flow
+            self.set_fgf(o2_flow, air_flow, min(n2o_flow, 3.0 * o2_flow))
+        else:
+            o2_flow = clamp(max(target, 0.25) * total_flow, 0.0, total_flow)
+            n2o_new = max(0.0, total_flow - o2_flow)
+            self.set_fgf(o2_flow, 0.0, min(n2o_new, 3.0 * o2_flow))

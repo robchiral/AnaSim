@@ -16,6 +16,11 @@ class AirwaySensor:
         self._stage1 = [paw, flow, volume]
         self._stage2 = [paw, flow, volume]
 
+    @property
+    def reading(self) -> tuple[float, float, float]:
+        paw, flow, volume = self._stage2
+        return paw, flow, volume
+
     def step(self, dt: float, paw: float, volume: float, volume_change: float) -> tuple[float, float, float]:
         """Filter pressure, interval-mean flow, and a volume ramp with the same gas movement."""
         z = dt / self.tau_s
