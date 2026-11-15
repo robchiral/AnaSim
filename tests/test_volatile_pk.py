@@ -67,3 +67,15 @@ def test_gas_monitor_mac_follows_end_tidal_during_washin(engine_factory):
     expected = engine.state.et_sevo / engine.pk_sevo.mac_age
     assert engine.state.et_mac == pytest.approx(expected, rel=1e-6)
     assert engine.state.et_mac > engine.state.mac
+
+
+def test_high_ventilation_and_flow_substepping_preserves_volatile_uptake(patient):
+    """VolatilePK substeps large dt under high VA and CO to match fine integration."""
+    fine = VolatilePK(patient, name="N2O", lambda_b_g=0.47, mac_40=104.0)
+    coarse = VolatilePK(patient, name="N2O", lambda_b_g=0.47, mac_40=104.0)
+    for _ in range(1200):
+        fine.step(0.05, 0.70, alveolar_vent_l=18.0, cardiac_output_l=12.0)
+    for _ in range(60):
+        coarse.step(1.0, 0.70, alveolar_vent_l=18.0, cardiac_output_l=12.0)
+    assert coarse.state.p_alv == pytest.approx(fine.state.p_alv, rel=0.005)
+    assert coarse.state.p_vrg == pytest.approx(fine.state.p_vrg, rel=0.005)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from anasim.core.constants import AirwayTuning
+from anasim.core.constants import BAG_P_MAX_DEFAULT, AirwayTuning
 from anasim.core.enums import RhythmType
 from anasim.core.recorder import DataRecorder
 from anasim.core.utils import clamp
@@ -12,7 +12,7 @@ from anasim.machine.circuit import CircleSystem
 from anasim.machine.ventilator import AnesthesiaVentilator
 from anasim.machine.volatile import Vaporizer
 from anasim.monitors.airway import AirwaySensor
-from anasim.monitors.alarms import AlarmSystem
+from anasim.monitors.alarms import THRESHOLDS, AlarmSystem
 from anasim.monitors.arterial import ArterialLineMonitor, ArterialWaveformRenderer
 from anasim.monitors.blood_gas import BloodGasResult
 from anasim.monitors.capno import Capnograph, EtCO2Readout
@@ -140,7 +140,13 @@ class SimulationEngine(DrugControllerMixin):
         # Learner intubation adds a transient without replacing ongoing surgery.
         self.intubation_stimulus = Disturbances("stim_intubation_pulse")
         self.intubation_start_time: float | None = None
-        self.alarms = AlarmSystem()
+        paco2_drop = max(0.0, 40.0 - self.patient.pregnancy.paco2)
+        alarm_thresholds = (
+            {"EtCO2_min": max(20, round(THRESHOLDS["EtCO2_min"] - paco2_drop))}
+            if paco2_drop > 0.5
+            else None
+        )
+        self.alarms = AlarmSystem(thresholds=alarm_thresholds)
 
         self.output_buffer: deque[WaveformSample] = deque()
         self.recorder: DataRecorder | None = None
@@ -150,7 +156,7 @@ class SimulationEngine(DrugControllerMixin):
         self.bag_mask_active = False
         self.bag_mask_rr = 12.0  # breaths/min
         self.bag_mask_vt = 0.5  # L
-        self.bag_mask_p_max = 20.0  # cmH2O
+        self.bag_mask_p_max = BAG_P_MAX_DEFAULT  # cmH2O
 
         self.active_hemorrhage = False
         self.hemorrhage_rate_ml_min = 500.0
@@ -175,13 +181,11 @@ class SimulationEngine(DrugControllerMixin):
         self._pk_hemo_scale_cache: tuple[float, float, float] | None = None
         self._pk_blood_out_ml = 0.0
         self.current_mean_paw = 0.0
+        self.current_mean_effort = 0.0
         self._apl_pressure = 0.0
         self._extubation_stimulus_until = 0.0
         self._tracheal_fio2 = 0.21
-        self._step_tracheal_fio2: float | None = None
-        self._step_apneic_limit_l_min: float | None = None
-        self._step_n2o_uptake_l_min: float | None = None
-        self._step_lung_volume_l: float | None = None
+        self._step_gas: projection_core.StepGasCache | None = None
 
         # Independent generators keep each monitor's noise reproducible.
         self.rng = np.random.default_rng(self.config.rng_seed)
@@ -204,6 +208,7 @@ class SimulationEngine(DrugControllerMixin):
 
     def initialize_state(self):
         """Seed the public state from the initialized subsystems."""
+        self._step_gas = None
         self.state.temp_c = self.patient.baseline_temp
         initialize_engine_state(self)
         self.actions = ActionLog()
@@ -735,12 +740,14 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_bag_mask_settings(self, rr: float, vt: float, p_max: float | None = None):
         """Set the bag rate (breaths/min), tidal volume (L), and pressure limit (cmH2O) without starting or stopping it."""
-        self.bag_mask_rr, self.bag_mask_vt, self.bag_mask_p_max = (
-            bounded_number("bag rate", rr, *BAG_RR_RANGE, unit="breaths/min"),
-            bounded_number("bag tidal volume", vt, *BAG_VT_RANGE_L, unit="L"),
-            self.bag_mask_p_max if p_max is None
-            else bounded_number("bag pressure limit", p_max, *BAG_P_MAX_RANGE, unit="cmH2O"),
+        validated_rr = bounded_number("bag rate", rr, *BAG_RR_RANGE, unit="breaths/min")
+        validated_vt = bounded_number("bag tidal volume", vt, *BAG_VT_RANGE_L, unit="L")
+        validated_p_max = (
+            self.bag_mask_p_max
+            if p_max is None
+            else bounded_number("bag pressure limit", p_max, *BAG_P_MAX_RANGE, unit="cmH2O")
         )
+        self.bag_mask_rr, self.bag_mask_vt, self.bag_mask_p_max = validated_rr, validated_vt, validated_p_max
 
     def start(self):
         self.running = True

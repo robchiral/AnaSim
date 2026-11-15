@@ -1,5 +1,6 @@
 import pytest
 
+from anasim.core.constants import SHIVER_MAX_MULTIPLIER
 from anasim.core.state import SimulationConfig
 
 
@@ -25,3 +26,18 @@ def test_paralysis_stops_shivering_and_reduces_co2_production(engine_factory, ad
     assert engine.thermal.metabolic_factor < 0.7 * shivering_metabolism
     # Stored CO2 continues returning after metabolic production falls.
     assert engine.state.pa_co2 < shivering_co2
+
+
+def test_shivering_updates_thermal_metabolic_factor_on_same_step(engine_factory):
+    """Shivering updates before thermal depth so metabolic_factor matches current shivering."""
+    engine = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1), start=True, baseline_temp=35.0
+    )
+    engine.step(1.0)
+    base_depth_met = engine.thermal.depth_and_metabolism(
+        engine.state.temp_c, 0.0, 0.0, 0.0
+    )[1]
+    assert engine.state.shivering > 0.02
+    assert engine.thermal.metabolic_factor == pytest.approx(
+        base_depth_met * (1.0 + SHIVER_MAX_MULTIPLIER * engine.state.shivering), abs=1e-4
+    )

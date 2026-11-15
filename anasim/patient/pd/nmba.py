@@ -95,9 +95,10 @@ class TOFModel:
     def give_sugammadex(self, dose_mg: float) -> None:
         self.sugammadex.state.c1 += dose_mg / MW_SUGAMMADEX * 1000.0 / self.sugammadex.v1
 
-    def bound_rocuronium(self) -> float:
-        """Plasma rocuronium held in the complex, mg/L of complex central volume."""
-        return self.complex.state.c1 * MW_ROCURONIUM / 1000.0
+    def bound_rocuronium(self, roc_v1: float) -> float:
+        """Plasma rocuronium held in the complex, mg/L on the rocuronium V1 basis."""
+        volume_scale = 1.0 if roc_v1 <= 0.0 else self.complex.v1 / roc_v1
+        return self.complex.state.c1 * volume_scale * MW_ROCURONIUM / 1000.0
 
     def simulate_decay(
         self, roc: MammillaryPK, *, max_seconds: int = 7200,

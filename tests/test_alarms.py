@@ -39,7 +39,7 @@ def test_pea_arrest_alarms_without_arterial_line(engine_factory, advance_time):
 
 
 def test_integer_channel_alarms_match_rounded_monitor_numerics(engine_factory):
-    """Monitor alarms evaluate rounded integer display values so numerics at the limit do not alarm (#20)."""
+    """Monitor alarms evaluate rounded integer display values so numerics at the limit do not alarm."""
     engine = engine_factory(
         config=SimulationConfig(mode="steady_state", arterial_line_enabled=False, rng_seed=1),
         start=True,
@@ -57,3 +57,16 @@ def test_integer_channel_alarms_match_rounded_monitor_numerics(engine_factory):
     engine.state.nibp_map = 59.4
     engine.step(0.1)
     assert engine.state.alarms["MAP"]["low"] is True
+
+
+def test_pregnancy_adapts_low_etco2_alarm_limit(engine_factory, advance_time):
+    """Term pregnancy lowers EtCO2_min so gravid normocapnia (~31 mmHg) does not alarm."""
+    gravid = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True,
+        sex="female",
+        gestational_age_weeks=39.0,
+    )
+    assert gravid.alarms.thresholds["EtCO2_min"] <= 26.0
+    advance_time(gravid, 15.0, dt=0.5)
+    assert "EtCO2" not in gravid.state.alarms

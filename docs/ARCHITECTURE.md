@@ -32,7 +32,8 @@ configuration, units, and scripted runs.
 
 Each call to `SimulationEngine.step()` does the following:
 
-1. Calculate anesthetic depth, metabolic rate, and stimulation tolerance.
+1. Update shivering, then calculate anesthetic depth, metabolic rate, and
+   stimulation tolerance.
 2. Apply stimulation, hemorrhage, fluids, and other clinical events.
 3. Update pharmacokinetic (PK) parameters for blood volume, cardiac output, and
    drug interactions, then calculate target-controlled infusion (TCI) rates.
@@ -42,7 +43,7 @@ Each call to `SimulationEngine.step()` does the following:
 6. Advance breathing mechanics, gas exchange, hemodynamics, and cardiac rhythm.
 7. Copy outputs into `SimulationState`, then update brain function,
    measurements, and alarms.
-8. Update shivering and temperature, then check for cardiac arrest.
+8. Update temperature, then check for cardiac arrest.
 
 PK and circuit calculations use the cardiac output and alveolar ventilation from
 the start of the step, and the physiology models update these values for the

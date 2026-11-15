@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from anasim.core.runtime import step_respiration
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.physiology.respiration import RespiratoryModel
@@ -678,12 +679,10 @@ def test_ventilation_requirement_scales_with_body_size(engine_factory):
 def test_denitrogenation_clears_inert_gas_zero_dt_preserves_trachea_and_disconnect_zeros_et_agents(
     engine_factory, advance_time
 ):
-    """Pure-O2 wash-in clears alveolar N2 and aeration inert_fraction (#6);
-    step_respiration(dt=0) does not overwrite _tracheal_fio2 (#25);
-    disconnecting the airway zeros EtSevo, EtN2O, and EtMAC while retaining tissue MAC (#26).
+    """Pure-O2 wash-in clears alveolar N2 and aeration inert_fraction;
+    step_respiration(dt=0) does not overwrite _tracheal_fio2;
+    disconnecting the airway zeros EtSevo, EtN2O, and EtMAC while retaining tissue MAC.
     """
-    from anasim.core.runtime import step_respiration
-
     engine = engine_factory(
         config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
         start=True,
@@ -707,3 +706,19 @@ def test_denitrogenation_clears_inert_gas_zero_dt_preserves_trachea_and_disconne
     engine.step(0.1)
     assert engine.state.et_sevo == engine.state.et_n2o == engine.state.et_mac == 0.0
     assert engine.state.mac == pytest.approx(mac_before, abs=0.05)
+
+
+def test_oxygen_exchange_preview_accounts_for_vq_mismatch(patient):
+    """oxygen_exchange_l_min applies vq_mismatch so circuit debit matches actual lung O2 uptake."""
+    model = RespiratoryModel(patient)
+    va_mech = 10.0 * (0.65 - model.vd_deadspace)
+    full = model.oxygen_exchange_l_min(0.8, va_mech, 1.0, 0.0, dt=0.1)
+    mismatched = model.oxygen_exchange_l_min(0.8, va_mech, 1.0, 0.5, dt=0.1)
+    assert mismatched < full
+    before = model.gas_transport.oxygen_from_air_l
+    model.step(
+        0.1, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0, fio2=0.8,
+        mech_rr=10.0, mech_vt_l=0.65, measured_breaths=True, vq_mismatch=0.5,
+    )
+    actual_rate = (model.gas_transport.oxygen_from_air_l - before) * 600.0
+    assert actual_rate == pytest.approx(mismatched, rel=0.05)

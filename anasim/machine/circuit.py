@@ -22,6 +22,7 @@ class CircleSystem:
         self.reservoir_volume = self.reservoir_capacity
         self.deliverable_flow_l_min = math.inf
         self.last_net_flow = 0.0  # L/min
+        self.last_spill_flow = 0.0  # L/min
         self.last_uptake_scale = 1.0
         self.last_uptake_o2 = 0.0
         self.composition = GasComposition()
@@ -148,6 +149,7 @@ class CircleSystem:
         )
         bag_change_rate = (self.reservoir_volume - prev_reservoir) / dt_min if dt_min > 0.0 else 0.0
         spill_bulk = max(0.0, bag_flow - max(0.0, bag_change_rate))
+        self.last_spill_flow = spill_bulk
         bypassed_n2 = (
             min(-uptake_n2 * (1.0 - rebreathed_share), spill_bulk)
             if uptake_n2 < 0.0 and spill_bulk > 0.0

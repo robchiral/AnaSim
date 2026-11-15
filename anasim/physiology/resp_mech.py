@@ -43,6 +43,7 @@ class RespiratoryMechanics:
         self.viscoelastic_ratio = 0.25  # E2 / static elastance
         self.viscoelastic_tau = 0.82  # s
         self.volume = 0.0  # L
+        self._unrefilled_absorption_l = 0.0  # L BTPS subatmospheric gas loss awaiting refill
         self.p2 = 0.0  # cmH2O
         self.effort = PatientEffort()
 
@@ -51,13 +52,30 @@ class RespiratoryMechanics:
             return peep
         return peep * max(0.0, min(1.0, self.aeration.pressure_transmission))
 
+    def absorb_gas(self, volume_l: float) -> None:
+        """Remove unreplaced alveolar gas absorbed into blood (BTPS L)."""
+        if volume_l <= 0.0:
+            return
+        self.volume -= volume_l
+        self._unrefilled_absorption_l += volume_l
+        self.effort.shift_volume_reference(-volume_l)
+
+    def _clamp_absorption(self) -> float:
+        self._unrefilled_absorption_l = min(self._unrefilled_absorption_l, max(0.0, -self.volume))
+        return self._unrefilled_absorption_l
+
+    def _absolute_volume(self, peep: float) -> float:
+        assert self.aeration is not None
+        return self.aeration.reference_volume + self.volume_offset + self.compliance * peep + self.volume
+
     def update_aeration(self, dt: float, pressure_area: float, peep: float) -> float:
         """Return the coordinate shift after updating the static curve, conserving gas volume."""
         aeration = self.aeration
         if aeration is None:
             return 0.0
-        absolute = aeration.reference_volume + self.volume_offset + self.compliance * peep + self.volume
-        aeration.frc = min(aeration.frc, absolute)
+        absorbed = self._clamp_absorption()
+        absolute = self._absolute_volume(peep)
+        aeration.frc = min(aeration.frc, absolute + absorbed)
         if not aeration.advance(dt, pressure_area):
             return 0.0
         recoil, compliance = aeration.static_mechanics(absolute)
@@ -65,13 +83,13 @@ class RespiratoryMechanics:
         shift = volume - self.volume
         self.compliance, self.volume = compliance, volume
         self.volume_offset = absolute - aeration.reference_volume - compliance * peep - volume
+        self._clamp_absorption()
         self.effort.shift_volume_reference(shift)
         return shift
 
     def note_end_expiration(self, peep: float) -> None:
         if self.aeration is not None:
-            self.aeration.frc = (self.aeration.reference_volume + self.volume_offset
-                                 + self.compliance * peep + self.volume)
+            self.aeration.frc = self._absolute_volume(peep) + self._clamp_absorption()
 
     @property
     def expiratory_obstruction(self) -> float:

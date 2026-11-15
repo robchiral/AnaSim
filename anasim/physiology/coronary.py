@@ -12,7 +12,7 @@ REPERFUSION_FAST_TAU_S = 3.5
 REPERFUSION_SLOW_TAU_S = 60.0
 # High-energy countershocks transiently depress stroke volume by ~10-12%,
 # resolving over a few minutes of coronary perfusion (Tokano 1998).
-SHOCK_STUN_PER_200J = 0.125
+SHOCK_STUN_PER_200J = 0.12
 SHOCK_STUN_MAX = 0.25
 SHOCK_STUN_BASE_TAU_S = 90.0
 SHOCK_STUN_ISCHEMIC_TAU_S = 300.0
@@ -73,34 +73,48 @@ class CoronaryModel:
     def _diastolic_fraction(hr: float) -> float:
         return clamp(1.0 - 0.30 * (max(1.0, hr) / 60.0) ** 0.65, 0.15, 0.85)
 
+    @staticmethod
+    def _nonneg_pressure(value: float) -> float:
+        return 0.0 if math.isnan(value) else max(0.0, value)
+
     def step(self, dt: float, hr: float, sbp: float, dbp: float, lap: float,
              hb: float, saturation: float, hypoxia: float = 0.0, *,
              fibrillating: bool = False, compressions: bool = False,
-             venous_pressure: float = 13.0) -> None:
+             venous_pressure: float = 13.0,
+             intrinsic_sbp: float | None = None) -> None:
         """Advance ischemia toward the supply shortfall; saturation is in percent.
 
         hypoxia is the hemodynamic model's hypoxemic myocardial depression, 0-1.
-        During compressions, dbp is the relaxation pressure between them.
+        During compressions, dbp is the relaxation pressure between them, while
+        active wall-stress demand follows intrinsic_sbp rather than passive chest recoil.
         """
+        sbp_val = self._nonneg_pressure(sbp)
+        dbp_val = self._nonneg_pressure(dbp)
+        active_sbp = sbp_val if intrinsic_sbp is None else self._nonneg_pressure(intrinsic_sbp)
         if fibrillating:
             # Fibrillating myocardium uses most of the beating heart's resting
             # oxygen, less as its energy fails.
             demand = 0.25 + 0.5 * (1.0 - self.energy_failure)
         else:
             # Basal and activation metabolism persist when mechanical work falls (Harasawa 1992).
-            work = hr * max(0.0, sbp) / self._reference_rpp
-            demand = max(work, 0.25 + 0.25 * hr / self._reference_hr)
+            work = hr * active_sbp / self._reference_rpp
+            activation_hr = hr / self._reference_hr
+            if compressions and activation_hr > 1.5:
+                activation_hr += clamp01((35.0 - active_sbp) / 15.0) * (1.5 - activation_hr)
+            demand = max(work, 0.25 + 0.25 * activation_hr)
         if compressions:
             # Coronary flow occurs between compressions, against right-atrial/LA
             # back-pressure plus critical myocardial wall closing pressure (~7 mmHg).
             back_pressure = max(lap, venous_pressure + 7.0, 20.0)
             diastolic_fraction = 1.0 - COMPRESSION_DUTY
         else:
-            # The pressure-flow relation is curvilinear at low pressure (Jeremy
-            # 1986); a zero-flow pressure that falls with SBP approximates it.
-            back_pressure = max(lap, min(20.0, 0.2 * max(0.0, sbp)))
+            # Jeremy 1986 curvilinear low-pressure zero-flow pressure during ejection,
+            # rising smoothly to diastolic pressure as pulse pressure collapses (<7 mmHg).
+            base_bp = max(lap, min(20.0, 0.2 * sbp_val))
+            pulseless_blend = clamp01((7.0 - (sbp_val - dbp_val)) / 4.0)
+            back_pressure = base_bp + pulseless_blend * max(0.0, dbp_val - base_bp)
             diastolic_fraction = self._diastolic_fraction(hr)
-        pressure = max(0.0, dbp - back_pressure)
+        pressure = max(0.0, dbp_val - back_pressure)
         oxygen = hb * clamp(saturation / 98.0, 0.0, 1.05)
         self.supply_demand_ratio = self._supply_scale * pressure * diastolic_fraction * oxygen / demand
         target = clamp01(1.0 - self.supply_demand_ratio)

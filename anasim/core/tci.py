@@ -25,8 +25,10 @@ def _discretize(A: np.ndarray, B: np.ndarray, dt: float) -> tuple[np.ndarray, np
 def _pk_signature(pk_model) -> tuple[float, ...]:
     return tuple(
         float(getattr(pk_model, name))
-        for name in ("v1", "v2", "v3", "elimination_clearance", "cl2", "cl3", "ke0", "basal_input_rate",
-                     "circulation")
+        for name in (
+            "v1", "v2", "v3", "elimination_clearance", "cl2", "cl3", "ke0",
+            "basal_input_rate", "circulation", "effect_input_fraction",
+        )
     )
 
 
@@ -111,13 +113,28 @@ class TCIController:
             unit[pulse_steps + 1:] += response[:steps - pulse_steps - 1] @ partial_input[:, 0]
         if self.basal_input_rate:
             self._basal_response[:steps] = np.cumsum(impulse) * self.basal_input_rate
+        A_stop, B_stop = _discretize(A, B, self.control_time)
+
+        def stop_terms(row: int) -> tuple[np.ndarray, float, float]:
+            unit_stop = float(B_stop[row, 0])
+            return A_stop[row], unit_stop, unit_stop * self.basal_input_rate
+
+        self._stop_c1_free, self._stop_c1_unit, self._stop_c1_basal = stop_terms(0)
+        self._stop_target_free, self._stop_target_unit, self._stop_target_basal = stop_terms(self.target_id)
         if partial_time > 0.0:
             # A plasma peak at pump stop can lie between the one-second grid points.
-            A_stop, B_stop = _discretize(A, B, self.control_time)
-            self._free_response[-1] = A_stop[self.target_id]
-            self._unit_response[-1] = B_stop[self.target_id, 0]
-            self._basal_response[-1] = self._unit_response[-1] * self.basal_input_rate
+            self._free_response[-1] = self._stop_target_free
+            self._unit_response[-1] = self._stop_target_unit
+            self._basal_response[-1] = self._stop_target_basal
         self._responsive = self._unit_response > 1e-6 * self._unit_response.max()
+        sub_pulse_steps = pulse_steps if partial_time > 0.0 else pulse_steps - 1
+        if self.target_compartment == "effect_site" and sub_pulse_steps > 0:
+            # Effect-site peaks occur at or after pump stop; ignoring sub-pulse
+            # decay steps prevents 1e-4 concentration noise from zeroing a 10 s step.
+            post_pulse = self._responsive.copy()
+            post_pulse[:min(sub_pulse_steps, steps)] = False
+            if post_pulse.any():
+                self._responsive = post_pulse
         self._signature = _pk_signature(pk_model)
 
     def sync_from_pk_model(self, pk_model, rel_tol: float = 0.05, abs_tol: float = 1e-3) -> bool:
@@ -145,9 +162,26 @@ class TCIController:
     def _control_rate(self) -> float:
         if self.target <= 0.0 or not self._responsive.any():
             return 0.0
-        free = self._free_response[self._responsive] @ self.x[:, 0] + self._basal_response[self._responsive]
+        x = self.x[:, 0]
+        free = self._free_response[self._responsive] @ x + self._basal_response[self._responsive]
         unit = self._unit_response[self._responsive]
-        return clamp(float(np.min((self.target - free) / unit)), 0.0, self.max_rate)
+        u_pulse = max(0.0, float(np.min((self.target - free) / unit)))
+        if self.target_compartment == "effect_site" and self._stop_c1_unit > 0.0:
+            effect_frac = max(1e-6, float(self.pk_model.effect_input_fraction))
+            c1_target = self.target / effect_frac
+            u_c1 = max(0.0, (c1_target - float(self._stop_c1_free @ x) - self._stop_c1_basal) / self._stop_c1_unit)
+            ce_at_stop = float(self._stop_target_free @ x) + self._stop_target_basal + self._stop_target_unit * u_c1
+            blend = clamp((ce_at_stop / self.target - 0.98) / 0.018, 0.0, 1.0)
+            rate = (1.0 - blend) * u_pulse + blend * min(u_pulse, u_c1)
+        else:
+            rate = u_pulse
+        return clamp(rate, 0.0, self.max_rate)
+
+    def recompute(self, sim_time: float) -> float:
+        """Force an immediate control-rate update at sim_time."""
+        self._time = sim_time
+        self._next_update = sim_time
+        return self.step(sim_time=sim_time)
 
     def step(self, target: float | None = None, sim_time: float | None = None) -> float:
         """Advance one sampling interval and return the infusion rate (model units/s)."""

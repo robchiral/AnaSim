@@ -1,6 +1,8 @@
 from dataclasses import replace
+from itertools import pairwise
 
 import numpy as np
+import pytest
 
 from anasim.core.enums import RhythmType
 from anasim.core.monitors import step_cardiac_monitors
@@ -9,6 +11,7 @@ from anasim.monitors.arterial import ArterialWaveformRenderer
 from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.spo2 import SpO2Monitor
+from anasim.web import WebSession
 
 
 def _beats(rhythm: RhythmType, hr: float, failure: float = 0.0) -> list[np.ndarray]:
@@ -155,3 +158,51 @@ def test_batched_monitor_updates_preserve_waveforms_readings_and_noise(engine_fa
             )
         assert batched.ecg.rng.bit_generator.state == reference.ecg.rng.bit_generator.state
         assert batched.cardiac_cycle.rng.bit_generator.state == reference.cardiac_cycle.rng.bit_generator.state
+
+
+def test_pulse_oximeter_blanks_on_dropout_and_reacquires_without_clearing_alarm():
+    """SpO2 dropout blanks UI vitals without clearing the low-SpO2 alarm and rapidly reacquires current SaO2."""
+    for dt, reacquire_steps in ((0.5, 4), (0.05, 3)):
+        session = WebSession({"mode": "awake"})
+        engine = session.engine
+        engine.config.dt = dt
+        engine.start()
+        engine.set_rhythm("VFIB")
+        for _ in range(round(10.0 / dt)):
+            engine.step(dt)
+        assert not engine.state.spo2_signal_valid
+        assert session.snapshot()["vitals"]["spo2"] is None
+        assert engine.state.alarms["SpO2"]["low"]
+
+        engine.resp.gas_transport.oxygen[1] *= 0.82
+        engine.set_rhythm("SINUS")
+        for _ in range(reacquire_steps):
+            engine.step(dt)
+            assert engine.state.alarms["SpO2"]["low"]
+        assert engine.state.spo2_signal_valid
+        assert engine.state.display_spo2 < 90.0
+        if dt == 0.5:
+            assert engine.state.display_spo2 == pytest.approx(engine.state.sao2, abs=2.0)
+
+
+def test_chest_compressions_add_110_per_minute_ecg_artifact_during_sinus_rhythm(engine_factory):
+    """Chest compressions during perfusing sinus rhythm generate 110 /min ECG compression artifact."""
+    cpr_only = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    no_cpr = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    cpr_only.set_chest_compressions(True)
+    for _ in range(6):
+        cpr_only.step(0.5)
+        no_cpr.step(0.5)
+    diffs = [
+        a.ecg_voltage - b.ecg_voltage
+        for a, b in zip(list(cpr_only.output_buffer)[-300:], list(no_cpr.output_buffer)[-300:], strict=True)
+    ]
+    peaks = [
+        i * 0.01
+        for i in range(1, len(diffs) - 1)
+        if diffs[i] > 0.15 and diffs[i] > diffs[i - 1] and diffs[i] >= diffs[i + 1]
+    ]
+    periods = [b - a for a, b in pairwise(peaks)]
+    assert len(periods) >= 4
+    for period in periods:
+        assert period == pytest.approx(60.0 / 110.0, abs=0.02)

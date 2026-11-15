@@ -36,11 +36,14 @@ MONITOR_DISPLAY_FIELD = {
 }
 
 
+_STALE_BP_MESSAGE = "Measure blood pressure again"
+
+
 @dataclass
 class ScenarioStep:
     id: str
     title: str
-    instruction: str
+    instruction: str | Callable[["SimulationEngine"], str]
     check_requirements: Requirement
     target_tab: ControlTab | None = None
     # Runs once, the first time the requirements are met.
@@ -49,6 +52,8 @@ class ScenarioStep:
     tci_instruction: str | None = None
 
     def instruction_for(self, engine) -> str:
+        if callable(self.instruction):
+            return self.instruction(engine)
         if engine.config.tci_enabled and self.tci_instruction is not None:
             return self.tci_instruction
         return self.instruction
@@ -290,12 +295,19 @@ def require_vasopressor_if_hypotensive(
     *drug_keys: str, fail_message: str, event_name: str | None = None,
 ) -> Requirement:
     """Accept recovered pressure, or require pressor treatment for persistent hypotension."""
+    map_check = require_map_at_least(65)
     infusion_check = require_infusion_started(*drug_keys, fail_message=fail_message, event_name=event_name)
 
     def check(engine) -> tuple[bool, str]:
-        if monitor_value(engine, "map") >= 65.0:
+        map_ok, map_message = map_check(engine)
+        if map_ok:
             return True, ""
-        return infusion_check(engine)
+        infusion_ok, infusion_message = infusion_check(engine)
+        if infusion_ok:
+            return True, ""
+        if map_message == _STALE_BP_MESSAGE:
+            return False, f"{infusion_message}, or measure blood pressure again"
+        return False, infusion_message
     return check
 
 
@@ -390,7 +402,7 @@ def require_map_at_least(threshold: float = 65) -> Requirement:
             or state.nibp_timestamp is None
             or state.time - state.nibp_timestamp > 60.0
         ):
-            return False, "Measure blood pressure again"
+            return False, _STALE_BP_MESSAGE
         map_val = monitor_value(engine, "map")
         if map_val < threshold:
             shown_map = format_unmet_int(map_val, low=threshold)

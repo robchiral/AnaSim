@@ -16,7 +16,12 @@ from anasim.scenarios import (
     create_oxygen_supply_failure,
     create_sepsis_response,
 )
-from anasim.scenarios.base import format_unmet_int, require_map_at_least
+from anasim.scenarios.base import (
+    format_unmet_int,
+    require_map_at_least,
+    require_vasopressor_if_hypotensive,
+)
+from anasim.scenarios.emergence import _require_normocapnia
 from anasim.web import WebSession
 
 # Browser commands for each objective; TCI targets become manual rates when disabled.
@@ -427,16 +432,16 @@ def test_guided_scenario_completes_through_browser_commands(spec, tci_enabled):
 
 
 def test_emergence_stage_two_gating_block_persistence_and_unmet_rounding(engine_factory):
-    """Stage II blocks extubation readiness and warns on tube removal (#1); post-NMB
-    TOF recovery persists across later emergence steps unless NMB is redosed (#19);
-    unmet integer status strings never round into passing bounds (#20); O2 supply
-    failure setup equilibrates baseline EtO2 and PaO2 at t=0 (#36).
+    """Stage II blocks extubation readiness and warns on tube removal; post-NMB
+    TOF recovery persists across later emergence steps unless NMB is redosed;
+    unmet integer status strings never round into passing bounds; O2 supply
+    failure setup equilibrates baseline EtO2 and PaO2 at t=0.
     """
     scenario = create_emergence("balanced")
     engine = engine_factory(start=True)
     _early_extubation(engine)
 
-    # #1: BIS > 80 with residual Stage II loss of consciousness is not ready to extubate.
+    # BIS > 80 with residual Stage II loss of consciousness is not ready to extubate.
     engine.set_airway_mode("ETT")
     engine.pk_sevo.state.mac = 0.42
     engine.state.display_bis = 82.0
@@ -452,7 +457,7 @@ def test_emergence_stage_two_gating_block_persistence_and_unmet_rounding(engine_
     engine.set_airway_mode("Mask")
     assert _step(scenario, "EXTUBATE").check_requirements(engine)[0]
 
-    # #19: Older post-NMB TOF >= 90% fails ASSESS_BLOCK (>60 s) but satisfies EXTUBATE
+    # Older post-NMB TOF >= 90% fails ASSESS_BLOCK (>60 s) but satisfies EXTUBATE
     # until a new neuromuscular blocker dose invalidates it.
     engine.state.time = 200.0
     assert engine.nmb.reading is not None
@@ -465,7 +470,7 @@ def test_emergence_stage_two_gating_block_persistence_and_unmet_rounding(engine_
     engine.nmb.reading = replace(engine.nmb.reading, time=200.0)
     assert _step(scenario, "EXTUBATE").check_requirements(engine)[0]
 
-    # #20: Unmet near-boundary floats format outside the passing range.
+    # Unmet near-boundary floats format outside the passing range.
     assert format_unmet_int(34.6, low=35, high=45) == 34
     assert format_unmet_int(45.3, low=35, high=45) == 46
     assert format_unmet_int(64.8, low=65) == 64
@@ -475,9 +480,33 @@ def test_emergence_stage_two_gating_block_persistence_and_unmet_rounding(engine_
     met_map, map_msg = require_map_at_least(65)(engine)
     assert not met_map and "64/65+" in map_msg
 
-    # #36: O2 supply failure prepare() syncs EtO2 and PaO2 to the low-flow circuit at t=0.
+    # O2 supply failure prepare() syncs EtO2 and PaO2 to the low-flow circuit at t=0.
     ox = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     create_oxygen_supply_failure().prepare(ox)
     assert ox.state.fio2 == pytest.approx(ox.circuit.composition.fio2)
     assert ox.state.et_o2 < 40.0
     assert ox.state.pao2 < 230.0
+
+
+def test_emergence_normocapnia_covariates_and_stale_nibp_vasopressor_check(engine_factory):
+    """Emergence normocapnia accepts values rounding to 35 and adapts to pregnancy and COPD;
+    require_vasopressor_if_hypotensive rejects stale NIBP readings when arterial line is off.
+    """
+    for overrides, etco2 in (
+        ({}, 34.7),
+        ({"sex": "female", "gestational_age_weeks": 39.0}, 31.0),
+        ({"copd_severity": 1.0}, 31.5),
+    ):
+        case = engine_factory(config=SimulationConfig(rng_seed=1), **overrides)
+        case.state.etco2_signal_valid = True
+        case.state.display_etco2 = etco2
+        assert _require_normocapnia(case)[0] is True
+
+    no_art = engine_factory(config=SimulationConfig(arterial_line_enabled=False, rng_seed=1))
+    no_art.state.nibp_map = 75.0
+    no_art.state.nibp_timestamp = 0.0
+    no_art.state.time = 120.0
+    no_art.state.map = 52.0
+    check = require_vasopressor_if_hypotensive("nore", fail_message="Start norepinephrine")
+    met, msg = check(no_art)
+    assert not met and "measure blood pressure again" in msg.lower()

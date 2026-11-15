@@ -2,6 +2,7 @@
 
 import pytest
 
+from anasim.core.state import SimulationConfig
 from anasim.patient.pd.anesthesia import BISModel
 
 
@@ -38,3 +39,18 @@ def test_pressure_control_gas_exchange_does_not_depend_on_step_size(engine_facto
     assert coarse.va == pytest.approx(fine.va, abs=1e-8)
     assert coarse.pa_co2 == pytest.approx(fine.pa_co2, abs=0.1)
     assert coarse.pao2 == pytest.approx(fine.pao2, abs=1.0)
+
+
+def test_tci_maintenance_concentrations_match_across_step_sizes(engine_factory):
+    """Effect-site TCI maintenance holds identical concentrations across dt=0.05, 0.1, and 1.0 s."""
+    traces = []
+    for dt in (0.05, 0.1, 1.0):
+        engine = engine_factory(
+            config=SimulationConfig(mode="steady_state", tci_enabled=True, dt=dt, rng_seed=1),
+            start=True,
+        )
+        for _ in range(round(120.0 / dt)):
+            engine.step(dt)
+        traces.append((engine.state.propofol_ce, engine.state.remi_ce))
+    for trace in traces[1:]:
+        assert trace == pytest.approx(traces[0], rel=0.01)

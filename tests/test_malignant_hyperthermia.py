@@ -165,3 +165,56 @@ def test_untreated_mh_case_earns_no_treatment_credit():
     assert session.engine.state.mv > 10
     report = json.loads(session.command("case_finish"))["debrief"]
     assert not any(o["achieved"] for o in report["outcomes"] if o["id"] != "stability")
+
+
+def test_hyperventilation_before_mh_onset_earns_debrief_credit():
+    """Hyperventilation configured before MH onset still earns debrief credit."""
+    session = WebSession({"scenario_id": "malignant_hyperthermia", "practice_mode": "independent"})
+    session.engine.config.dt = 0.2
+    session.command("run", '{"running":true}')
+    session.command("speed", '{"value":50}')
+    session.command("vent", '{"rr": 28}')
+    for _ in range(50):
+        session.step(0.2)
+    report = json.loads(session.command("case_finish"))["debrief"]
+    outcomes = {o["id"]: o["achieved"] for o in report["outcomes"]}
+    assert outcomes["ventilation"] is True
+
+
+def test_complete_dantrolene_rescue_sustains_remission_until_reexposed(engine_factory):
+    """Complete dantrolene rescue does not relapse after washout, whereas stopping
+    volatile agent alone without dantrolene fails to arrest a developing crisis.
+    """
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True
+    )
+    engine.start_malignant_hyperthermia()
+    _run(engine, 120)
+    engine.set_vaporizer(0)
+    engine.set_fgf(10, 0)
+    engine.set_drug_rate("propofol", 100)
+    engine.give_drug_bolus("dantrolene", 2.5 * engine.patient.weight)
+    _run(engine, 600)
+    assert engine.malignant_hyperthermia.severity < 0.05
+    _run(engine, 7200, dt=5.0)
+    assert engine.malignant_hyperthermia.severity == 0.0
+    assert not engine.malignant_hyperthermia.active
+
+    engine.pk["dantrolene"].reset()
+    engine.state.dantrolene_ce = 0.0
+    engine.set_vaporizer(2.0)
+    engine.set_fgf(6, 0)
+    _run(engine, 60)
+    engine.start_malignant_hyperthermia()
+    _run(engine, 120)
+    assert engine.malignant_hyperthermia.severity > 0.05
+
+    early_stop = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=2), start=True
+    )
+    early_stop.start_malignant_hyperthermia()
+    _run(early_stop, 15)
+    early_stop.set_vaporizer(0)
+    early_stop.set_fgf(10, 0)
+    _run(early_stop, 300)
+    assert early_stop.malignant_hyperthermia.severity > 0.25

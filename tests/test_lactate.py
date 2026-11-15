@@ -273,3 +273,27 @@ def test_compensated_blood_loss_preserves_lactate_and_base_excess(engine_factory
         # Analyzer SBE permits a small respiratory shift during falling flow.
         assert engine.state.base_excess == pytest.approx(baseline_be, abs=0.5)
     assert engine.state.co < 0.85 * baseline_co
+
+
+def test_volume_changes_preserve_lactate_buffer_base_accounting(engine_factory):
+    """Normoxic volume expansion adds no metabolic acid, and post-shock recovery clears base_removed_mmol."""
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+    )
+    engine.hemo.add_volume(2000.0, label="saline")
+    for _ in range(120):
+        engine.step(1.0)
+    assert engine.resp.oxygen_supply_fraction == 1.0
+    assert engine.lactate.base_removed_mmol == pytest.approx(0.0, abs=1e-6)
+
+    shock = LactateModel(70.0)
+    for _ in range(180):
+        shock.step(1.0, 0.15 / 60.0, 0.6)
+    assert shock.base_removed_mmol > 1.0
+    shock.update_fluid_volume(shock.volume_l + 2.5, lost_plasma_l=0.0)
+    shock.update_fluid_volume(shock.volume_l - 0.5, lost_plasma_l=0.5)
+    for _ in range(7200):
+        shock.step(5.0, 0.0, 1.0)
+    assert shock.concentration == pytest.approx(0.9, abs=1e-3)
+    assert shock.base_removed_mmol == pytest.approx(0.0, abs=1e-3)

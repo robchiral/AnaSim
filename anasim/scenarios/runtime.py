@@ -24,8 +24,9 @@ from anasim.core.action_log import (
     ActionRecord,
 )
 from anasim.core.drug_registry import get_drug_spec
+from anasim.core.state import AirwayType
 
-from .base import Scenario
+from .base import CaseOutcome, Scenario
 
 if TYPE_CHECKING:
     from anasim.core.clinical_actions import ActionFeedback
@@ -119,12 +120,21 @@ class CaseRun:
         self.used_actions.add(action_id)
         self.observe(force=True)
 
+    def _needs_hint(self, outcome: CaseOutcome) -> bool:
+        if outcome.id in self.achieved_at:
+            return False
+        if outcome.on_action is None:
+            return True
+        if outcome.on_action == "extubation" and self.engine.state.airway_mode != AirwayType.ETT:
+            return False
+        return not outcome.check(self.engine)
+
     def request_hint(self) -> str:
         self.observe(force=True)
         if self.scenario.events and not self.fired:
             text = "Observe the monitors and clinical information as the case progresses."
         else:
-            pending = next((o for o in self.scenario.outcomes if o.id not in self.achieved_at), None)
+            pending = next((o for o in self.scenario.outcomes if self._needs_hint(o)), None)
             text = pending.review if pending is not None else "Reassess the patient and decide whether the case is ready to end."
         self.hint = text
         self.hints.append({"time": self.elapsed, "text": text})

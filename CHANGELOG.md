@@ -83,10 +83,11 @@
   and lessens cardiac toxicity.
 - Added an adjustable bag pressure limit (APL, default 20 cmH₂O) and facemask
   seal. Obstruction and bronchospasm limit bag volume at the APL, and an APL
-  above 20 cmH₂O during spontaneous breathing builds continuous airway
-  pressure. Mask leaks reduce assisted ventilation and the displayed airway
-  pressure, flow, and volume, and they admit room air. Large leaks flatten the
-  capnogram, and pressures above 20 cmH₂O leak even with a tight seal.
+  setting other than 20 cmH₂O during spontaneous breathing builds continuous
+  airway pressure as the bag fills. Mask leaks reduce assisted ventilation and
+  the displayed airway pressure, flow, and volume, and they admit room air.
+  Large leaks flatten the capnogram, and pressures above 20 cmH₂O leak even
+  with a tight seal.
 - During upper airway obstruction, mask CPAP no longer lowers ventilation
   below that of unassisted breathing.
 - Basal heat production now scales with body weight, redistribution cooling is
@@ -144,6 +145,44 @@
 - The browser session now survives background-tab throttling, and the app no
   longer drops steps at some speeds. `dt` is limited to 2 s, boolean settings
   and drug rates are validated, and CSV alarm columns are valid JSON.
+- In normal ventricles, stroke volume now falls when vasopressors raise
+  resistance more than contractility, which limits the pressure overshoot
+  after epinephrine at return of circulation. Severe left ventricular failure
+  congests the lungs and raises left atrial pressure. Without circulation,
+  left atrial pressure settles at venous pressure and pulmonary edema stops
+  forming.
+- VT with a pulse pressure below 5 mmHg and MAP below 25 mmHg now counts as
+  pulseless VT, and compressions restore its coronary supply at once. Asystole
+  from hyperkalemia or local anesthetic toxicity restarts only after
+  conduction recovers. Compressions during a perfusing rhythm show artifact on
+  the ECG.
+- Below 33 °C, cold-induced vasoconstriction and reflex tachycardia now
+  weaken, and shivering fades below 31 °C. Alpha blockade blunts cold-induced
+  vasoconstriction, and the core cools faster during arrest.
+- Rapid saline no longer causes a brief alkalemia before the acidosis, and
+  volume expansion alone no longer adds metabolic acid. Lipid emulsion no
+  longer causes hyponatremia, stored red cells carry less oxygen, and
+  crystalloid stops returning from the interstitium without circulation.
+- A loose mask now admits room air during PSV and SIMV breaths with little
+  support, and PCV-VG raises pressure to make up for a mask leak. An empty
+  bellows or apnea on the circuit no longer ventilates the lungs. Gas absorbed
+  behind a closed airway lowers resting lung volume, and a partly obstructed
+  airway refills the lungs more slowly.
+- Effect-site TCI now holds maintenance concentrations with a steady infusion
+  rate at any step size. Stopping a TCI infusion in the browser clears its
+  target.
+- Norepinephrine now raises MAP steadily during TIVA with hypovolemia, and
+  awake patients start at their baseline MAP. Sugammadex no longer causes a
+  jump in plasma rocuronium.
+- The low EtCO₂ alarm limit and the emergence case's EtCO₂ range now follow
+  the lower PaCO₂ of pregnancy, and the range also widens in COPD. SpO₂
+  returns to the current saturation promptly after signal loss, and a dropout
+  no longer clears a low-SpO₂ alarm.
+- Malignant hyperthermia no longer recurs after dantrolene has controlled it
+  and the triggers have cleared, and the case credits hyperventilation started
+  before onset. Case blood pressure checks no longer accept an outdated cuff
+  reading, and hints in the independent emergence case skip completed steps.
+- `--record-interval 0` now records every step.
 
 ## 1.8 - 2026-11-06
 

@@ -42,6 +42,11 @@ class DrugControllerMixin:
         """Return the PK model that TCI and decrement times use."""
         return self.pump_pk.get(key, self.pk[key])
 
+    def _recompute_tci(self, key: str, sim_time: float | None = None) -> None:
+        t = self.state.time if sim_time is None else sim_time
+        self.infusion_rates[key] = self.tci[key].recompute(t)
+        self._tci_accumulators[key] = 0.0
+
     def enable_tci(
         self,
         drug: str,
@@ -79,8 +84,7 @@ class DrugControllerMixin:
         controller.max_rate = max_rate.internal_rate(self.patient.weight)
         controller.sync_state_estimate(pk_model)
         controller.set_target(target)
-        self.infusion_rates[spec.key] = controller.step(sim_time=self.state.time)
-        self._tci_accumulators[spec.key] = 0.0
+        self._recompute_tci(spec.key)
         self.actions.record(self.state.time, ACTION_TCI_TARGET, label=spec.key, amount=target)
 
     def sync_active_tci_from_pk(self, *drug_keys: str):
@@ -92,9 +96,7 @@ class DrugControllerMixin:
                 model = self.prediction_model(key)
                 controller.sync_from_pk_model(model)
                 if model is self.pk.get(key):
-                    controller._next_update = self.state.time
-                    self.infusion_rates[key] = controller.step(sim_time=self.state.time)
-                    self._tci_accumulators[key] = 0.0
+                    self._recompute_tci(key)
 
     def disable_tci(self, drug: str):
         """Disable TCI for a drug and stop its infusion."""
@@ -115,18 +117,18 @@ class DrugControllerMixin:
         spec = get_drug_spec(key)
         user_unit, model_unit = _rate_units(spec)
         rate = max(0.0, finite_number("rate", rate_user_unit))
-        if spec.key in self.tci:
+        was_tci = spec.key in self.tci
+        if was_tci:
             self.disable_tci(spec.key)
         if rate > 0.0 and spec.key in self.pump_pk:
             self._pump_needs_reset.add(spec.key)
         self.infusion_rates[spec.key] = convert_rate(rate, user_unit, model_unit, weight_kg=self.patient.weight)
-        self.actions.record(self.state.time, ACTION_INFUSION_RATE, label=spec.key, amount=rate)
+        if rate > 0.0 or not was_tci:
+            self.actions.record(self.state.time, ACTION_INFUSION_RATE, label=spec.key, amount=rate)
 
     def set_drug_target(self, key: str, target: float | None):
-        """Set a TCI target; None or a negative target disables TCI."""
-        if target is not None:
-            target = finite_number("target", target)
-        if target is None or target < 0:
+        """Set a TCI target; None or a non-positive target disables TCI."""
+        if target is None or finite_number("target", target) <= 0:
             self.disable_tci(key)
         else:
             self.enable_tci(key, target)

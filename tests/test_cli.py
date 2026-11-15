@@ -49,15 +49,13 @@ def test_config_builder_rejects_invalid_documents(tmp_path, capsys):
 
 
 def test_headless_prints_arterial_map_during_arrest_and_blanks_failed_nibp(tmp_path, capsys, monkeypatch):
-    import anasim.cli as cli_mod
-
     class _ArrestEngine(SimulationEngine):
         def start(self):
             super().start()
             self.set_rhythm("VFIB")
             self.measure_nibp()
 
-    monkeypatch.setattr(cli_mod, "SimulationEngine", _ArrestEngine)
+    monkeypatch.setattr("anasim.cli.SimulationEngine", _ArrestEngine)
 
     def run_case(arterial_line: bool) -> str:
         cfg_path = tmp_path / f"cfg_{int(arterial_line)}.json"
@@ -73,3 +71,23 @@ def test_headless_prints_arterial_map_during_arrest_and_blanks_failed_nibp(tmp_p
     nibp_lines = [line for line in run_case(False).splitlines() if line.startswith("Time: 20.")]
     assert art_lines and "MAP: --" not in art_lines[-1]
     assert nibp_lines and "MAP: -- |" in nibp_lines[-1]
+
+
+def test_headless_zero_record_interval_records_every_step(tmp_path):
+    """--record-interval 0 records every simulation step."""
+    cfg_path = tmp_path / "cfg.json"
+    cfg_path.write_text('{"dt": 0.2}')
+    out_dir = tmp_path / "rec"
+    run_headless(
+        SimpleNamespace(
+            config=str(cfg_path),
+            duration=1.0,
+            record=True,
+            record_dir=str(out_dir),
+            record_interval=0.0,
+        )
+    )
+    files = list(out_dir.glob("*.csv")) + list(out_dir.glob("*.parquet")) + list(out_dir.glob("*.json*"))
+    assert files
+    lines = files[0].read_text().strip().splitlines()
+    assert len(lines) >= 6

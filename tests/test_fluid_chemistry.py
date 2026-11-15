@@ -8,6 +8,7 @@ import pytest
 
 from anasim.core.state import SimulationConfig
 from anasim.physiology.fluid_balance import FluidBalance
+from anasim.physiology.fluids import CrystalloidKinetics
 from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.physiology.plasma_buffers import PlasmaBuffers, buffer_coefficients
 
@@ -264,6 +265,19 @@ def test_saline_loading_and_bleeding_preserve_carbon_and_charge(engine_factory):
     assert transport.co2_l == pytest.approx(carbon - lost_fraction * blood_carbon * 0.022414, abs=1e-10)
     assert transport.base_meq == pytest.approx(engine.hemo.fluids.base_meq, abs=1e-10)
 
+    batched = engine_factory()
+    flushed = copy.deepcopy(batched)
+    batched.hemo.add_volume(2000.0, label="saline")
+    batched.hemo.add_volume(-1500.0)
+    batched.resp.update_fluid_balance(batched.hemo.hb_conc, batched.hemo.get_hematocrit(), batched.hemo.blood_volume)
+    flushed.hemo.add_volume(2000.0, label="saline")
+    flushed.resp.update_fluid_balance(flushed.hemo.hb_conc, flushed.hemo.get_hematocrit(), flushed.hemo.blood_volume)
+    flushed.hemo.add_volume(-1500.0)
+    flushed.resp.update_fluid_balance(flushed.hemo.hb_conc, flushed.hemo.get_hematocrit(), flushed.hemo.blood_volume)
+    assert batched.resp.gas_transport.oxygen_l == pytest.approx(flushed.resp.gas_transport.oxygen_l, abs=1e-10)
+    assert batched.resp.gas_transport.co2_l == pytest.approx(flushed.resp.gas_transport.co2_l, abs=1e-10)
+    assert batched.resp.gas_transport.base_meq == pytest.approx(flushed.resp.gas_transport.base_meq, abs=1e-10)
+
     lactate = engine.lactate
     v0 = lactate.volume_l
     lactate.endogenous_mmol = 5.0 * v0
@@ -317,8 +331,8 @@ def test_calcium_inotropy_citrate_hypotension_hyperkalemia_and_starling_refill(e
 def test_reversible_protein_free_water_shift_and_calcium_chloride_acid_load(
     engine_factory, advance_time
 ):
-    """Reversing a protein-free water shift restores baseline plasma albumin (#11),
-    and exogenous CaCl2 clearance lowers strong-ion base_meq (#12).
+    """Reversing a protein-free water shift restores baseline plasma albumin,
+    and exogenous CaCl2 clearance lowers strong-ion base_meq.
     """
     engine = engine_factory(
         config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
@@ -334,3 +348,64 @@ def test_reversible_protein_free_water_shift_and_calcium_chloride_acid_load(
     engine.give_calcium_chloride(2000.0)
     advance_time(engine, 600.0, dt=2.0)
     assert fluids.base_meq < base_0 - 1.5
+
+
+def test_rapid_saline_resuscitation_lowers_ph_monotonically(engine_factory, advance_time):
+    """Rapid 0.9% saline lowers pH monotonically without transient alkalemia."""
+    saline = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+    )
+    bleed = copy.deepcopy(saline)
+    ph_0 = saline.state.ph
+    saline.hemo.add_volume(2000.0, label="saline")
+    saline.step(1.0)
+    ph_step1 = saline.state.ph
+    advance_time(saline, 60.0, dt=1.0)
+    assert saline.state.ph <= ph_step1 <= ph_0
+
+    bleed.hemo.add_volume(-2200.0)
+    bleed.hemo.add_volume(2500.0, label="saline")
+    advance_time(bleed, 60.0, dt=1.0)
+    assert math.isfinite(bleed.state.ph) and 7.05 < bleed.state.ph < ph_0
+
+
+def test_lipid_partition_donor_prbc_oxygen_and_zero_flow_crystalloid_kinetics(
+    engine_factory, advance_time
+):
+    """20% lipid emulsion stays extracellular without hyponatremia or excess third-spacing;
+    stored pRBC transfusion adds venous-saturated donor O2; crystalloid third-space refill
+    remains protein-free; crystalloid k21 return halts at zero circulation.
+    """
+    lipid = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+    )
+    cryst = copy.deepcopy(lipid)
+    na_0 = lipid.state.sodium
+    lipid.give_lipid_emulsion(105.0)
+    lipid.set_lipid_infusion(17.5)
+    advance_time(lipid, 180.0, dt=1.0)
+    assert lipid.state.sodium == pytest.approx(na_0, abs=0.7)
+    assert lipid.hemo.total_third_space_ml < 30.0
+
+    prbc = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    o2_before = prbc.resp.gas_transport.oxygen_l
+    hb_before = prbc.hemo.hb_mass
+    prbc.hemo.add_volume(600.0, hematocrit=0.60, label="blood")
+    prbc.resp.update_fluid_balance(prbc.hemo.hb_conc, prbc.hemo.get_hematocrit(), prbc.hemo.blood_volume)
+    added_hb_g = prbc.hemo.hb_mass - hb_before
+    assert prbc.resp.gas_transport.oxygen_l - o2_before == pytest.approx(
+        added_hb_g * 1.34 * 0.60 / 1000.0, rel=0.02
+    )
+
+    alb_total_0 = cryst.hemo.fluids.plasma_albumin_g + cryst.hemo.fluids.interstitial_albumin_g
+    cryst.give_fluid(2000.0)
+    advance_time(cryst, 600.0, dt=2.0)
+    assert cryst.hemo.fluids.plasma_albumin_g + cryst.hemo.fluids.interstitial_albumin_g == pytest.approx(
+        alb_total_0, abs=1e-6
+    )
+
+    ck = CrystalloidKinetics(central_ml=0.0, interstitial_ml=500.0)
+    ck.step(60.0, 0.0, 40.0, 1.0, 1000.0, circulation=0.0)
+    assert ck.central_ml == 0.0 and ck.interstitial_ml == pytest.approx(500.0)

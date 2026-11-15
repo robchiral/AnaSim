@@ -121,10 +121,9 @@ def main():
     args = parser.parse_args()
     if not 0 <= args.port <= 65535:
         parser.error("--port must be between 0 and 65535")
-    if not (math.isfinite(args.duration) and args.duration >= 0):
-        parser.error("--duration must be a non-negative finite number")
-    if not (math.isfinite(args.record_interval) and args.record_interval > 0):
-        parser.error("--record-interval must be a positive finite number")
+    for flag, value in (("--duration", args.duration), ("--record-interval", args.record_interval)):
+        if not (math.isfinite(value) and value >= 0):
+            parser.error(f"{flag} must be a non-negative finite number")
 
     if args.mode == "headless":
         run_headless(args)

@@ -727,10 +727,10 @@ def test_matched_bleeding_high_peep_rap_and_beta_blocked_contractility_gating(en
 
 
 def test_stim_map_bounds_afib_baroreflex_elderly_cfr_and_hfref_startup(engine_factory, advance_time):
-    """_stim_map stays bounded by realized pressure in sinus bradycardia (#9);
-    hemorrhagic shock in AFIB does not invert vascular baroreflex (#28);
-    awake elderly low-CFR baseline has no resting ischemia (#29);
-    HFrEF balanced steady-state startup holds MAP without jump (#39).
+    """_stim_map stays bounded by realized pressure in sinus bradycardia;
+    hemorrhagic shock in AFIB does not invert vascular baroreflex;
+    awake elderly low-CFR baseline has no resting ischemia;
+    HFrEF balanced steady-state startup holds MAP without jump.
     """
     brady = engine_factory(
         config=SimulationConfig(
@@ -766,3 +766,72 @@ def test_stim_map_bounds_afib_baroreflex_elderly_cfr_and_hfref_startup(engine_fa
     map_0 = hfref.state.map
     advance_time(hfref, 10.0, dt=0.5)
     assert hfref.state.map == pytest.approx(map_0, abs=2.5)
+
+
+def test_awake_startup_equilibration_across_baseline_states(engine_factory, advance_time):
+    """Awake initialization holds step-1 MAP, gravid supine baseline, and cold baseline steady."""
+    awake_hi = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1),
+        start=True,
+        baseline_map=105.0,
+        baseline_hr=95.0,
+    )
+    awake_hi.step(0.1)
+    assert awake_hi.state.map == pytest.approx(105.0, abs=0.2)
+    assert awake_hi.state.hr == pytest.approx(95.0, abs=0.2)
+
+    gravid = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1),
+        start=True,
+        sex="female",
+        gestational_age_weeks=39.0,
+    )
+    gravid_map_0 = gravid.state.map
+    advance_time(gravid, 60.0, dt=1.0)
+    assert gravid.state.map == pytest.approx(gravid_map_0, abs=2.5)
+
+    cold = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1),
+        start=True,
+        baseline_temp=28.0,
+    )
+    cold_map_0 = cold.state.map
+    advance_time(cold, 180.0, dt=1.0)
+    assert cold.state.map == pytest.approx(cold_map_0, abs=2.5)
+    assert cold.state.lactate < 1.05
+
+
+def test_respiratory_hemodynamic_coupling_and_alpha_blocked_cold_tone(
+    engine_factory, advance_time
+):
+    """Spontaneous high-drive MAP is step-size invariant, positive-pressure inspiration
+    augments LV stroke volume, and alpha blockade blunts hypothermic vasoconstrictor tone.
+    """
+    dt_maps = []
+    for dt in (0.05, 0.10, 1.00):
+        e = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=1), start=True)
+        e.give_drug_bolus("lidocaine", 500.0)
+        e.give_lipid_emulsion(105.0)
+        advance_time(e, 120.0, dt=dt)
+        dt_maps.append(e.state.map)
+    assert max(dt_maps) - min(dt_maps) < 1.5
+
+    ppv = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    advance_time(ppv, 20.0, dt=0.1)
+    insp_sv, exp_sv = [], []
+    for _ in range(200):
+        ppv.step(0.1)
+        if ppv.vent.flow > 0.05:
+            insp_sv.append(ppv.state.sv)
+        elif ppv.state.paw <= ppv.vent.settings.peep + 0.5:
+            exp_sv.append(ppv.state.sv)
+    assert sum(insp_sv) / len(insp_sv) >= sum(exp_sv) / len(exp_sv)
+
+    cold_unblocked = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    cold_blocked = copy.deepcopy(cold_unblocked)
+    cold_blocked.give_drug_bolus("labetalol", 60.0)
+    for model in (cold_unblocked, cold_blocked):
+        model.state.temp_c = 33.0
+        model.thermal.temp_c = 33.0
+        advance_time(model, 300.0, dt=1.0)
+    assert cold_blocked.hemo.tpr_tone < cold_unblocked.hemo.tpr_tone - 0.0005

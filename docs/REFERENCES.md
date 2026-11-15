@@ -23,6 +23,8 @@ PCV-VG, pressure control with volume guarantee.
 - de Vries et al. (1998). *Anesth Analg*. [Cerebral oxygen uptake and EEG during defibrillation threshold testing](https://pubmed.ncbi.nlm.nih.gov/9661538/).
 - Westlake et al. (1955). *Q J Med*. [Carbon dioxide narcosis in emphysema](https://doi.org/10.1093/oxfordjournals.qjmed.a066724).
 - Turnbull et al. (2008). *Anaesthesia*. [The influence of changes in end-tidal carbon dioxide upon the Bispectral Index](https://pubmed.ncbi.nlm.nih.gov/18412642/).
+- Asanoi et al. (1989). *Circ Res*. [Ventriculoarterial coupling in normal and failing heart in humans](https://pubmed.ncbi.nlm.nih.gov/2752553/).
+- Chen et al. (1998). *J Am Coll Cardiol*. [Coupled systolic-ventricular and vascular stiffening with age](https://pubmed.ncbi.nlm.nih.gov/9809929/).
 - Schwartzenberg et al. (2012). *J Am Coll Cardiol*. [Hemodynamic responses to vasodilation in reduced- and preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/22281246/).
 - Westermann et al. (2008). *Circulation*. [Ventricular stiffness and filling during tachycardia in preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/18413502/).
 - Wagner et al. (1977). *J Clin Invest*. [Ventilation-perfusion inequality in COPD](https://pubmed.ncbi.nlm.nih.gov/833271/).

@@ -100,9 +100,9 @@ def test_obese_redistribution_cooling_sepsis_fever_and_hypothermic_bradycardia(e
 
 
 def test_balanced_mac_temp_parity_abg_warming_to_37c_and_awake_febrile_setpoint(engine_factory):
-    """Balanced steady-state starts at uniform MAC across baseline temperatures (#15);
-    draw_blood_gas() anaerobically warms hypothermic samples to 37 °C (#38);
-    awake febrile baseline_temp holds its setpoint without cooling toward 37 °C (#42).
+    """Balanced steady-state starts at uniform MAC across baseline temperatures;
+    draw_blood_gas() anaerobically warms hypothermic samples to 37 °C;
+    awake febrile baseline_temp holds its setpoint without cooling toward 37 °C.
     """
     macs = [
         engine_factory(
@@ -132,3 +132,13 @@ def test_balanced_mac_temp_parity_abg_warming_to_37c_and_awake_febrile_setpoint(
     )
     _advance(febrile, 1800, dt=5.0)
     assert febrile.state.temp_c == pytest.approx(38.5, abs=0.03)
+
+
+def test_zero_flow_arrest_accelerates_passive_core_cooling(engine_factory):
+    """Core cooling continues faster during zero-flow arrest than perfused normothermia."""
+    perfused = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    arrested = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    arrested.set_rhythm("VFIB")
+    _advance(perfused, 600, dt=2.0)
+    _advance(arrested, 600, dt=2.0)
+    assert arrested.state.temp_c < perfused.state.temp_c - 0.05

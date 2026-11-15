@@ -94,3 +94,28 @@ def test_joachim_peripheral_bolus_pressure_and_timing():
     assert 15.0 < rise < 31.0  # Reported IQR; median 24%.
     assert 53.0 < peak_time < 94.0  # Reported IQR; median 74 s.
     assert pressures[-1] < baseline.map + 5.0
+
+
+def test_propofol_bolus_clearance_cap_and_hypovolemic_pressor_response(patient):
+    """Bolus propofol Cp spikes cap at 8 mcg/mL, and clinical norepinephrine
+    infusion monotonically raises MAP during TIVA hypovolemia.
+    """
+    pk = NorepinephrinePK(patient)
+    base_cl = pk.elimination_clearance
+    pk.update_propofol(60.0)
+    assert pk.elimination_clearance >= 0.70 * base_cl
+    pk_cap = NorepinephrinePK(patient)
+    pk_cap.update_propofol(8.0)
+    assert pk.elimination_clearance == pytest.approx(pk_cap.elimination_clearance)
+
+    pk_h, model_h, _ = _equilibrated(patient, 3.5, 3.0)
+    model_h.add_volume(-1400.0)
+    for _ in range(180):
+        pk_h.step(1.0, 0.0)
+        pre_nore = model_h.step(1.0, 3.5, 3.0, pk_h.state.ce, -2.0, 40.0, 95.0)
+    maps = []
+    for _ in range(120):
+        pk_h.step(1.0, 0.15 * patient.weight / 60.0)
+        maps.append(model_h.step(1.0, 3.5, 3.0, pk_h.state.ce, -2.0, 40.0, 95.0).map)
+    assert min(maps) >= pre_nore.map - 0.1
+    assert maps[-1] > pre_nore.map + 12.0

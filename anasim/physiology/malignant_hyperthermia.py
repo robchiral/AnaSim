@@ -27,21 +27,54 @@ class MalignantHyperthermia:
     """Crisis severity, 0-1."""
 
     def __init__(self):
-        self.active = False
+        self._active = False
         self.severity = 0.0
+        self._controlled = False
+
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    @active.setter
+    def active(self, value: bool) -> None:
+        self._active = bool(value)
+        self._controlled = False
 
     def step(self, dt: float, *, sevo_mac: float, succinylcholine_cp: float,
              dantrolene_ce: float) -> None:
-        if self.active:
+        if self._active:
             inhibition = hill_function(dantrolene_ce, 1.5, 3.0)
-            # Trigger removal alone does not abort an established crisis.
-            exposed = triggering_exposure(sevo_mac, succinylcholine_cp)
-            growth = (1.0 / 180.0 if exposed else 1.0 / 600.0) * (1.0 - inhibition)
+            if (
+                inhibition > 0.5
+                and self.severity < 0.02
+                and sevo_mac <= 0.05
+                and succinylcholine_cp <= 0.01
+            ):
+                self._controlled = True
+            # Trigger removal alone does not abort an established crisis, whereas
+            # full suppression after trigger elimination resolves without relapse
+            # despite trace post-washout adipose sevoflurane.
+            sevo_threshold = 0.05 if self._controlled else 0.001
+            exposed = sevo_mac > sevo_threshold or succinylcholine_cp > 0.01
+            if exposed:
+                self._controlled = False
             recovery = inhibition / 45.0
+            if self._controlled:
+                growth = 0.0
+                recovery = max(recovery, 1.0 / 180.0)
+            else:
+                tau_on = 180.0 if exposed else 600.0
+                growth = (1.0 / tau_on) * (1.0 - inhibition)
         else:
+            self._controlled = False
+            exposed = False
             growth, recovery = 0.0, 1.0 / 90.0
         rate = growth + recovery
-        self.severity += (growth / rate - self.severity) * -math.expm1(-dt * rate)
+        if rate > 0.0:
+            self.severity += (growth / rate - self.severity) * -math.expm1(-dt * rate)
+        if self._active and self._controlled and not exposed and self.severity < 1e-3:
+            self.severity = 0.0
+            self.active = False
 
     @property
     def excess_metabolism(self) -> float:

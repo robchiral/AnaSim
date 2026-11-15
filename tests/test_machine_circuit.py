@@ -346,9 +346,9 @@ def test_n2o_hypoxic_guard_step_invariance_and_low_flow_hypoxia(engine_factory, 
 
 
 def test_shrinking_reservoir_o2_conservation_stpd_inert_exchange_and_n2o_fio2_blender(engine_factory):
-    """Shrinking half-full reservoir conserves O2 mass without phantom spill (#4);
-    circle volatile/N2O uptake converts BTPS to STPD consistently with N2 (#5);
-    set_fio2 adjusts active N2O/air/O2 flows to hit target FiO2 (#24).
+    """Shrinking half-full reservoir conserves O2 mass without phantom spill;
+    circle volatile/N2O uptake converts BTPS to STPD consistently with N2;
+    set_fio2 adjusts active N2O/air/O2 flows to hit target FiO2.
     """
     circuit = CircleSystem()
     circuit.reservoir_volume = 1.5
@@ -391,3 +391,45 @@ def test_shrinking_reservoir_o2_conservation_stpd_inert_exchange_and_n2o_fio2_bl
     total_30 = blender.circuit.fgf_o2 + blender.circuit.fgf_air + blender.circuit.fgf_n2o
     assert total_30 == pytest.approx(4.0)
     assert (blender.circuit.fgf_o2 + 0.21 * blender.circuit.fgf_air) / total_30 == pytest.approx(0.30)
+
+
+def test_apneic_deadspace_washin_and_closed_circuit_multigas_dt_invariance(
+    engine_factory, advance_time
+):
+    """Apneic oxygenation washes dead-space _tracheal_fio2 upward while conserving O2,
+    and closed-circuit volatile/N2O/N2 transport stays consistent across dt.
+    """
+    apneic = engine_factory(config=SimulationConfig(mode="awake", dt=0.2, rng_seed=1), start=True)
+    apneic.give_drug_bolus("roc", 90.0)
+    advance_time(apneic, 60.0, dt=0.2)
+    apneic.set_airway_mode("ETT")
+    apneic.set_fgf(0.0, 0.0, 0.0)
+    apneic.circuit.reservoir_volume = 2.0
+    apneic.circuit.composition.fio2, apneic.circuit.composition.fin2 = 1.0, 0.0
+    assert apneic._tracheal_fio2 < 0.30
+    o2_circuit_0 = (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
+    o2_resp_0 = apneic.resp.gas_transport.oxygen_from_air_l
+    advance_time(apneic, 90.0, dt=0.2)
+    assert apneic._tracheal_fio2 > 0.65
+    o2_circuit_lost = o2_circuit_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
+    o2_resp_gained = apneic.resp.gas_transport.oxygen_from_air_l - o2_resp_0
+    assert o2_circuit_lost == pytest.approx(o2_resp_gained, abs=0.03)
+
+    endpoints = []
+    for dt in (0.05, 0.1, 1.0):
+        e = engine_factory(config=SimulationConfig(mode="steady_state", dt=dt, rng_seed=1), start=True)
+        e.give_drug_bolus("roc", 70.0)
+        e.set_fgf(0.25, 0.0, 0.0)
+        e.circuit.composition.fio2 = 0.50
+        e.circuit.composition.fin2o = 0.30
+        e.circuit.composition.fin2 = 0.18
+        e.circuit.composition.fi_agent = 0.02
+        advance_time(e, 60.0, dt=dt)
+        endpoints.append((
+            e.circuit.composition.fi_agent,
+            e.circuit.composition.fin2o,
+            e.pk_sevo.state.p_alv,
+            e.pk_n2o.state.p_alv,
+        ))
+    for ep in endpoints[1:]:
+        assert ep == pytest.approx(endpoints[0], abs=0.004)

@@ -1,5 +1,7 @@
 """Malignant hyperthermia during sevoflurane anesthesia."""
 
+from dataclasses import replace
+
 from anasim.core.action_log import ACTION_DRUG_BOLUS
 from anasim.core.monitors import display_int
 from anasim.machine.ventilator import VentSettings
@@ -68,9 +70,13 @@ def create_malignant_hyperthermia() -> Scenario:
     onset_vent: VentSettings | None = None
     onset_mv = 0.0
 
-    def start(engine) -> None:
+    def capture_baseline(engine) -> None:
         nonlocal onset_vent, onset_mv
-        onset_vent, onset_mv = engine.vent.settings, engine.state.mv
+        onset_vent, onset_mv = replace(engine.vent.settings), engine.state.mv
+
+    def start(engine) -> None:
+        if onset_vent is None:
+            capture_baseline(engine)
         engine.start_malignant_hyperthermia()
 
     def ventilation(engine) -> tuple[bool, str]:
@@ -92,6 +98,7 @@ def create_malignant_hyperthermia() -> Scenario:
     return Scenario(
         id="malignant_hyperthermia",
         name="Malignant hyperthermia",
+        setup_engine=capture_baseline,
         briefing=CRISIS_BRIEFING,
         events=(CaseEvent(
             "malignant_hyperthermia", CRISIS_ONSET_S,

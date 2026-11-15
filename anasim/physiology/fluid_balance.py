@@ -34,12 +34,44 @@ class FluidComposition:
                 - self.chloride - self.lactate - 3.0 * self.citrate)
 
 
+@dataclass(slots=True)
+class PendingBloodSync:
+    """Accumulated vascular, carbon, and buffer transfers awaiting respiratory sync."""
+
+    retention_factor: float = 1.0
+    transfused_cells_l: float = 0.0
+    retained_cells_l: float = 0.0
+    carbon_mmol: float = 0.0
+    blood_carbon_in_mmol: float = 0.0
+    blood_carbon_retained_mmol: float = 0.0
+    blood_base_in_meq: float = 0.0
+    blood_base_retained_meq: float = 0.0
+    infuse_base_meq: float = 0.0
+    water_shift_total_l: float = 0.0
+    water_shift_retained_l: float = 0.0
+    albumin_shift_total_g: float = 0.0
+    albumin_shift_retained_g: float = 0.0
+    blood_urine_l: float = 0.0
+    bled_base_est_meq: float = 0.0
+
+    def bleed(self, keep: float, bled_base_est: float) -> None:
+        self.bled_base_est_meq += bled_base_est
+        self.retention_factor *= keep
+        self.retained_cells_l *= keep
+        self.blood_carbon_retained_mmol *= keep
+        self.blood_base_retained_meq *= keep
+        self.water_shift_retained_l *= keep
+        self.albumin_shift_retained_g *= keep
+        self.blood_urine_l *= keep
+
+
 # A 3-week-old SAGM unit (Rabcuka 2025, Table 3): pH 6.5 and CO2 13.0 kPa, with
 # supernatant potassium 38 and lactate 22.5 mmol/L. Sodium is the additive's
 # 150 mmol/L less the potassium gained, and chloride balances the bicarbonate.
 # Citrate is 1.32 mmol per 300 mL unit.
 STORED_BLOOD_PH = 6.5
 STORED_BLOOD_PCO2 = 13.0 * _MMHG_PER_KPA
+STORED_BLOOD_SO2 = 0.60
 _STORED_BICARBONATE = plasma_bicarbonate(STORED_BLOOD_PH, STORED_BLOOD_PCO2)
 _STORED_CITRATE = 1.32 / 0.135
 
@@ -115,11 +147,9 @@ class FluidBalance:
         self.fixed_acid_mmol = 0.0
         self.bicarbonate_excreted_mmol = 0.0
         self.urine_pending_l = 0.0
-        self.blood_loss_pending_l = 0.0
-        self.red_cell_input_pending_l = 0.0
-        self.carbon_pending_mmol = 0.0
+        self._blood_sync = PendingBloodSync()
+        self._running_blood_base_meq: float | None = None
         self.lactate_loss_pending_l = 0.0
-        self._elapsed = 0.0
 
     @property
     def interstitial_l(self) -> float:
@@ -157,12 +187,33 @@ class FluidBalance:
         return PlasmaBuffers(self.interstitial_albumin_g / self.interstitial_l,
                              self.concentration("phosphate"), self.cell_buffer_mmol / self.interstitial_l)
 
+    def _ensure_running_blood_base(self) -> float:
+        if self._running_blood_base_meq is None:
+            self._running_blood_base_meq = (self.plasma_l + self.red_cells_l) * self.blood_base_meq_l
+        return self._running_blood_base_meq
+
     def seed_base(self, base_meq: float, donor_rbc_base_meq_l: float, blood_base_meq_l: float) -> None:
         self.base_meq = base_meq
         self.donor_rbc_base_meq_l = donor_rbc_base_meq_l
         self.blood_base_meq_l = blood_base_meq_l
+        self._running_blood_base_meq = None
+
+    def consume_blood_sync(self) -> PendingBloodSync:
+        """Return and reset accumulated vascular transfers for respiratory synchronization."""
+        sync = self._blood_sync
+        self._blood_sync = PendingBloodSync()
+        self._running_blood_base_meq = None
+        return sync
+
+    def consume_lactate_loss_l(self) -> float:
+        """Return and clear shed plasma water (L) for lactate pool adjustment."""
+        lost = self.lactate_loss_pending_l
+        self.lactate_loss_pending_l = 0.0
+        return lost
 
     def infuse(self, amount_ml: float, retained_ml: float, hematocrit: float, label: str) -> None:
+        running_blood_base = self._ensure_running_blood_base()
+        sync = self._blood_sync
         fluid = FLUID_COMPOSITIONS["blood" if hematocrit > 0.0 else label]
         volume = amount_ml / 1000.0
         cells = retained_ml * hematocrit / 1000.0
@@ -171,23 +222,47 @@ class FluidBalance:
             self.amounts[ion] += water * getattr(fluid, ion)
         self.ecf_l += water
         self.red_cells_l += cells
-        self.red_cell_input_pending_l += cells
-        self.carbon_pending_mmol += water * fluid.carbon
-        self.base_meq += water * fluid.sid + cells * self.donor_rbc_base_meq_l
+        sync.transfused_cells_l += cells
+        sync.retained_cells_l += cells
+        sync.carbon_mmol += water * fluid.carbon
+        total_base_in = water * fluid.sid + cells * self.donor_rbc_base_meq_l
+        self.base_meq += total_base_in
+        sync.infuse_base_meq += total_base_in
         self.citrate_mmol += water * fluid.citrate
         self.infused_l_lactate_mmol += water * fluid.lactate * fluid.l_lactate_fraction
         self.d_lactate_mmol += water * fluid.lactate * (1.0 - fluid.l_lactate_fraction)
         plasma_water = retained_ml / 1000.0 - cells
+        plasma_carbon = plasma_water * fluid.carbon
+        sync.blood_carbon_in_mmol += plasma_carbon
+        sync.blood_carbon_retained_mmol += plasma_carbon
+        organic_acid_per_l = fluid.lactate + 3.0 * fluid.citrate
+        inorganic_sid = fluid.sid + organic_acid_per_l
+        plasma_share = (self.plasma_l + plasma_water) / self.ecf_l if self.ecf_l > 0.0 else 0.0
+        blood_inc = (
+            plasma_water * inorganic_sid
+            - water * organic_acid_per_l * plasma_share
+            + cells * self.donor_rbc_base_meq_l
+        )
+        sync.blood_base_in_meq += blood_inc
+        sync.blood_base_retained_meq += blood_inc
+        self._running_blood_base_meq = running_blood_base + blood_inc
         self.plasma_l += plasma_water
         self.plasma_albumin_g += plasma_water * fluid.albumin
         self.interstitial_albumin_g += (water - plasma_water) * fluid.albumin
 
     def bleed(self, amount_ml: float, hematocrit: float) -> None:
+        running_blood_base = self._ensure_running_blood_base()
+        curr_blood_l = self.plasma_l + self.red_cells_l
         volume = amount_ml / 1000.0
         cells = volume * hematocrit
         water = volume - cells
         fraction = water / self.ecf_l
-        self.base_meq -= volume * self.blood_base_meq_l
+        step_bleed_frac = min(1.0, max(0.0, volume / curr_blood_l)) if curr_blood_l > 0.0 else 0.0
+        keep = 1.0 - step_bleed_frac
+        bled_base_est = step_bleed_frac * running_blood_base
+        self._running_blood_base_meq = running_blood_base - bled_base_est
+        self.base_meq -= bled_base_est
+        self._blood_sync.bleed(keep, bled_base_est)
         free_calcium = self.ionized_calcium(self.ph)
         plasma_albumin = self.plasma_albumin_g / self.plasma_l
         plasma_calcium = (free_calcium * (1.0 + _albumin_binding(plasma_albumin, self.ph))
@@ -204,10 +279,11 @@ class FluidBalance:
         self.ecf_l -= water
         self.plasma_l -= water
         self.red_cells_l -= cells
-        self.blood_loss_pending_l += volume
         self.lactate_loss_pending_l += water
 
     def shift_water(self, vascular_change_ml: float, protein_fraction: float = 0.0) -> None:
+        running_blood_base = self._ensure_running_blood_base()
+        sync = self._blood_sync
         volume = vascular_change_ml / 1000.0
         frac = max(0.0, min(1.0, protein_fraction))
         if volume < 0.0:
@@ -217,12 +293,19 @@ class FluidBalance:
         self.plasma_albumin_g -= protein
         self.interstitial_albumin_g += protein
         self.plasma_l += volume
+        sync.water_shift_total_l += volume
+        sync.water_shift_retained_l += volume
+        sync.albumin_shift_total_g -= protein
+        sync.albumin_shift_retained_g -= protein
+        self._running_blood_base_meq = running_blood_base + volume * self.blood_base_meq_l
 
     def lose_urine(self, amount_ml: float) -> None:
+        self._ensure_running_blood_base()
         volume = amount_ml / 1000.0
         self.ecf_l -= volume
         self.plasma_l -= volume
         self.urine_pending_l += volume
+        self._blood_sync.blood_urine_l += volume
 
     def step(self, dt: float, *, ph: float, paco2: float, resting_paco2: float,
              renal_function: float, renal_perfusion: float, hepatic_function: float,
@@ -233,7 +316,6 @@ class FluidBalance:
         if dt <= 0.0:
             return
         minutes = dt / 60.0
-        self._elapsed = 0.0
         self._clear_calcium(minutes)
         self._metabolize_buffers(minutes, hepatic_function, oxygen_supply)
         self._renal_balance(minutes, ph, paco2, resting_paco2, renal_function, renal_perfusion)

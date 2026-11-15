@@ -452,9 +452,9 @@ class TestNeuromuscularEffectSite:
 def test_finite_drug_inputs_nore_reset_sugammadex_v1_monotonicity_and_zero_flow_decay(
     awake_engine, patient_factory
 ):
-    """Drug rate/TCI APIs reject NaN and Inf (#16); NorepinephrinePK.reset restores
-    endogenous baseline and scaling (#31); SugammadexPK V1 is non-decreasing at high
-    body weight (#40); TOFModel.simulate_decay exits immediately at zero flow (#41).
+    """Drug rate/TCI APIs reject NaN and Inf; NorepinephrinePK.reset restores
+    endogenous baseline and scaling; SugammadexPK V1 is non-decreasing at high
+    body weight; TOFModel.simulate_decay exits immediately at zero flow.
     """
     for bad in (math.nan, math.inf):
         with pytest.raises(ValueError):
@@ -482,3 +482,21 @@ def test_finite_drug_inputs_nore_reset_sugammadex_v1_monotonicity_and_zero_flow_
     tof_model = TOFModel(patient_factory())
     tof_model.ce = 3.0
     assert tof_model.simulate_decay(roc) == pytest.approx(120.0)
+
+
+def test_sugammadex_binding_conserves_initial_total_plasma_rocuronium_across_v1_mismatch(
+    engine_factory, advance_time
+):
+    """Giving sugammadex when roc.v1 != sugammadex.v1 does not jump state.roc_cp at t=0."""
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True,
+        creatinine_clearance_ml_min=15.0,
+    )
+    assert engine.pk["roc"].v1 != pytest.approx(engine.tof_pd.sugammadex.v1)
+    engine.give_drug_bolus("roc", 50.0)
+    advance_time(engine, 60.0)
+    roc_cp_before = engine.state.roc_cp
+    engine.give_drug_bolus("sugammadex", 200.0)
+    engine.step(0.01)
+    assert engine.state.roc_cp == pytest.approx(roc_cp_before, rel=0.02)

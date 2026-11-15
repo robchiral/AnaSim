@@ -315,9 +315,9 @@ class TestEngineTCI:
     def test_substep_boundary_alignment_bolus_override_and_manual_steady_state_rate(
         self, engine_factory, advance_time
     ):
-        """Effect-site TCI aligns updates at dt=0.05 vs 0.10 s (#13); a hand bolus on
-        a TCI-only vasopressor pauses the active TCI pump (#14); manual steady-state
-        TIVA seeds a maintenance rate that holds propofol Ce steady (#22).
+        """Effect-site TCI aligns updates at dt=0.05 vs 0.10 s; a hand bolus on
+        a TCI-only vasopressor pauses the active TCI pump; manual steady-state
+        TIVA seeds a maintenance rate that holds propofol Ce steady.
         """
         fine = engine_factory(
             config=SimulationConfig(mode="awake", tci_enabled=True, dt=0.05, rng_seed=1),
@@ -346,3 +346,34 @@ class TestEngineTCI:
         ce_start = manual_tiva.state.propofol_ce
         advance_time(manual_tiva, 1800.0, dt=5.0)
         assert manual_tiva.state.propofol_ce == pytest.approx(ce_start, rel=0.10)
+
+    def test_steady_state_tci_smooth_maintenance_and_obese_equilibration(self, engine_factory):
+        """Maintenance TCI holds nonzero infusion rates without bang-bang oscillation,
+        including in obese steady-state startup.
+        """
+        for kwargs in ({}, {"weight": 150.0, "height": 168.0, "sex": "female"}):
+            engine = engine_factory(
+                config=SimulationConfig(mode="steady_state", tci_enabled=True, dt=1.0, rng_seed=1),
+                start=True,
+                **kwargs,
+            )
+            prop_rates, remi_rates = [], []
+            for _ in range(120):
+                engine.step(1.0)
+                prop_rates.append(engine.infusion_rates["propofol"])
+                remi_rates.append(engine.infusion_rates["remi"])
+            assert min(prop_rates) > 0.0 and min(remi_rates) > 0.0
+            assert max(prop_rates) < 2.5 * min(prop_rates)
+            assert max(remi_rates) < 2.5 * min(remi_rates)
+
+
+def test_controller_ignores_subpulse_effect_noise_and_rebuilds_on_pk_drift(patient):
+    """Effect-site TCI masks sub-pulse decay steps and rebuilds tables when PK parameters drift."""
+    pk_prop = PropofolPKEleveld(patient)
+    ctrl = TCIController(
+        pk_prop, target_compartment="effect_site", sampling_time=0.35, control_time=1.05
+    )
+    assert not ctrl._responsive[0] and ctrl._responsive[1]
+    pk_prop.effect_input_fraction = 0.5
+    assert ctrl.sync_from_pk_model(pk_prop) is True
+    assert ctrl.sync_from_pk_model(pk_prop) is False

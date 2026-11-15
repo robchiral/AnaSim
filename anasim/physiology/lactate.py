@@ -50,7 +50,10 @@ class LactateModel:
         self.vmax_mmol_min = CLEARANCE_L_KG_MIN * weight_kg * (CLEARANCE_KM_MMOL_L + RESTING_MMOL_L)
         self.basal_mmol_min = CLEARANCE_L_KG_MIN * weight_kg * RESTING_MMOL_L
         capacity = self.vmax_mmol_min * (1.0 - HEPATIC_SHARE + HEPATIC_SHARE * hepatic_function)
+        self._normoxic_capacity = capacity
         self.resting_mmol = self.basal_mmol_min * self.km_mmol / (capacity - self.basal_mmol_min)
+        self._resting_conc = self.resting_mmol / self.volume_l
+        self._resting_pool_mmol = self.resting_mmol
         self.endogenous_mmol = self.resting_mmol
         self.infused_mmol = 0.0
         self.cleared_infused_mmol = 0.0
@@ -66,14 +69,27 @@ class LactateModel:
         remaining = 1.0 - lost_plasma_l / self.volume_l
         self.endogenous_mmol *= remaining
         self.infused_mmol *= remaining
+        self._resting_pool_mmol *= remaining
         self._base_removed_mmol *= remaining
         self.volume_l = volume_l
         self.km_mmol = CLEARANCE_KM_MMOL_L * volume_l
+        self.resting_mmol = self._resting_conc * volume_l
 
     @property
     def base_removed_mmol(self) -> float:
         """Metabolic buffer base removed since rest, mmol."""
         return self._base_removed_mmol
+
+    @staticmethod
+    def _midpoint_factors(
+        amount: float, source: float, capacity: float, km: float, minutes: float
+    ) -> tuple[float, float]:
+        rate = capacity / (km + amount)
+        half_loss = -math.expm1(-rate * minutes / 2.0)
+        midpoint = amount * (1.0 - half_loss) + source * (half_loss / rate)
+        rate = capacity / (km + midpoint)
+        loss = -math.expm1(-rate * minutes)
+        return 1.0 - loss, loss / rate
 
     def step(self, dt: float, oxygen_deficit_l: float, supply_fraction: float,
              epinephrine_ng_ml: float = 0.0, sepsis_severity: float = 0.0,
@@ -105,21 +121,22 @@ class LactateModel:
         total = self.endogenous_mmol + self.infused_mmol
         # Predict the midpoint amount, then freeze Michaelis-Menten clearance
         # there. Exponential updates preserve positive amounts and source balance.
-        # Each expm1 result supplies both the eliminated fraction and its decay.
-        rate = capacity / (self.km_mmol + total)
-        half_loss = -math.expm1(-rate * minutes / 2.0)
-        half_retained = half_loss / rate
-        midpoint = total * (1.0 - half_loss) + (endogenous_source + infused_source) * half_retained
-        rate = capacity / (self.km_mmol + midpoint)
-        loss = -math.expm1(-rate * minutes)
-        retained = loss / rate
-        decay = 1.0 - loss
+        decay, retained = self._midpoint_factors(
+            total, endogenous_source + infused_source, capacity, self.km_mmol, minutes
+        )
         before = self.endogenous_mmol
         infused_before = self.infused_mmol
-        self.endogenous_mmol = self.endogenous_mmol * decay + endogenous_source * retained
+        self.endogenous_mmol = before * decay + endogenous_source * retained
         self.infused_mmol = infused_before * decay + infused_source * retained
         cleared_infused = infused_before + infused - self.infused_mmol
         self.cleared_infused_mmol += cleared_infused
-        removed = self.endogenous_mmol - before - cleared_infused
+        rest_decay, rest_retained = self._midpoint_factors(
+            self._resting_pool_mmol, self.basal_mmol_min, self._normoxic_capacity, self.km_mmol, minutes
+        )
+        resting_before = self._resting_pool_mmol
+        self._resting_pool_mmol = resting_before * rest_decay + self.basal_mmol_min * rest_retained
+        excess_before = max(0.0, before - resting_before)
+        excess_after = max(0.0, self.endogenous_mmol - self._resting_pool_mmol)
+        removed = (excess_after - excess_before) - cleared_infused
         self._base_removed_mmol += removed
         return removed

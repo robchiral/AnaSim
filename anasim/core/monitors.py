@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from anasim.core.constants import ARREST_CO_L_MIN, ARREST_PULSE_PRESSURE_MMHG
 from anasim.machine.ventilator import VOLUME_TARGETED
-from anasim.monitors.alarms import THRESHOLDS
 from anasim.monitors.arterial import ArterialPressureSample
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
@@ -21,6 +20,7 @@ from .projection import (
     mask_seal_factor,
     nmba_twitch_fraction,
     project_arterial,
+    stimulus_tolerance,
 )
 from .state import AirwayType, WaveformSample
 from .utils import clamp
@@ -246,7 +246,7 @@ def step_cardiac_monitors(
                                       sodium_block=engine.toxicity.conduction_block,
                                       potassium=engine.state.potassium,
                                       hyperkalemia_block=engine.hemo.hyperkalemia_block,
-                                      compression_phase=pulse_sample.phase if compressions else None)
+                                      compression_phase=comp_sample.phase if compressions else None)
         pulse_pressure = arterial_sample.systolic - arterial_sample.diastolic
         spo2_perfusion = (
             0.0
@@ -296,6 +296,7 @@ def step_monitors(
     capno_waves = compute_capno_value(engine, resp_state, dt, substeps)
 
     loc_val = loss_of_response(engine)
+    engine._tol_current = stimulus_tolerance(engine)
     cardiac_sample, cardiac_waves = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
 
     update_nibp(engine, dt, hemo_state)
@@ -362,7 +363,7 @@ def step_monitors(
         )
     )
     bis_int = display_int(state.display_bis)
-    bis_alarm = bis_int if (paralyzed or maintaining or bis_int <= THRESHOLDS["BIS_max"]) else None
+    bis_alarm = bis_int if (paralyzed or maintaining or bis_int <= engine.alarms.thresholds["BIS_max"]) else None
     map_alarm = (
         display_int(state.art_map)
         if engine.config.arterial_line_enabled

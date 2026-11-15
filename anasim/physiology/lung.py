@@ -39,7 +39,6 @@ class LungAeration:
         self.recruited = recruited
         self.atelectatic = 1.0 - recruited if atelectatic is None else atelectatic
         self.inert_fraction = 0.75
-        self.absorbed_volume = 0.0  # L of gas absorbed behind a closed airway
         self.unconscious = 0.0
         self.spontaneous_breathing = False
         self.reference_volume = patient.functional_residual_capacity()
@@ -73,8 +72,7 @@ class LungAeration:
         self.pressure_area += pressure_area * clamp01(self.pressure_transmission)
         if self.elapsed < self.INTERVAL - 1e-12:
             return False
-        # Absorbed gas shrinks the lung below its mechanical volume and lowers alveolar pressure.
-        pressure = self.pressure_area / self.elapsed - self.absorbed_volume / self.static_compliance
+        pressure = self.pressure_area / self.elapsed
         fraction = 1.0 / (1.0 + math.exp((self.opening_midpoint - pressure) / self.OPENING_WIDTH))
         target = self.MIN_RECRUITED + (1.0 - self.MIN_RECRUITED) * fraction
         opening = self.OPENING_RATE if target > self.recruited else 0.0

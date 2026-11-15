@@ -54,13 +54,34 @@ def _residual_block(minutes: int):
     return prepare
 
 
+def _normocapnia_bounds(engine) -> tuple[int, int]:
+    """Expected maintenance EtCO2 range, adjusted for pregnancy hypocapnia and COPD dead space."""
+    paco2_drop = max(0.0, 40.0 - engine.resp.paco2_setpoint)
+    copd_shift = 4.0 * max(0.0, engine.patient.copd_severity)
+    low = max(20, round(35.0 - paco2_drop - copd_shift))
+    high = max(low + 8, round(45.0 - paco2_drop))
+    return low, high
+
+
+def _assess_instruction(engine) -> str:
+    low, high = _normocapnia_bounds(engine)
+    return (
+        f"Confirm <b>BIS 40-60</b>, <b>MAP ≥ 65 mmHg</b>, and valid <b>EtCO₂ {low}-{high} mmHg</b>. "
+        "Treat hypotension and adjust ventilation as needed. In practice, confirm surgery is complete, "
+        "maintain warmth, and arrange postoperative analgesia before stopping remifentanil. "
+        "Its analgesic effect wears off quickly."
+    )
+
+
 def _require_normocapnia(engine) -> tuple[bool, str]:
     if not engine.state.etco2_signal_valid:
         return False, "Awaiting exhaled CO₂"
+    low, high = _normocapnia_bounds(engine)
     etco2 = monitor_value(engine, "etco2")
-    met = 35 <= etco2 <= 45
-    shown_etco2 = format_unmet_int(etco2, low=35, high=45)
-    return met, "" if met else f"EtCO₂: {shown_etco2}/35-45 mmHg"
+    rounded = int(display_int(etco2))
+    met = low <= rounded <= high
+    shown_etco2 = format_unmet_int(etco2, low=low, high=high)
+    return met, "" if met else f"EtCO₂: {shown_etco2}/{low}-{high} mmHg"
 
 
 def _require_agents_stopped_balanced() -> Requirement:
@@ -244,12 +265,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
         ScenarioStep(
             id="ASSESS",
             title="Assess hemodynamic stability",
-            instruction=(
-                "Confirm <b>BIS 40-60</b>, <b>MAP ≥ 65 mmHg</b>, and valid <b>EtCO₂ 35-45 mmHg</b>. "
-                "Treat hypotension and adjust ventilation as needed. In practice, confirm surgery is complete, "
-                "maintain warmth, and arrange postoperative analgesia before stopping remifentanil. "
-                "Its analgesic effect wears off quickly."
-            ),
+            instruction=_assess_instruction,
             check_requirements=require_all(
                 require_maintenance_depth, require_map_at_least(), _require_normocapnia,
             ),

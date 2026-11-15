@@ -341,10 +341,7 @@ export class Controls {
         w.editor = this.editSettings(fields, () => w.mode?.value === "tci"
           ? this.send("drug_target", { key, target: readNumber(w.target) })
           : this.send("drug_rate", { key, rate: readNumber(w.rate) }),
-          card.querySelector(".infusion-actions"), () => {
-            w.rate.disabled = w.editor.pending || w.mode?.value === "tci";
-            if (w.target) w.target.disabled = w.editor.pending || w.mode.value !== "tci";
-          });
+          card.querySelector(".infusion-actions"), () => this.syncDrugInputs(w));
         if (w.mode) w.mode.setAttribute("aria-label", `${spec.name} infusion mode`);
       }
       w.bolus.required = true;
@@ -465,14 +462,22 @@ export class Controls {
     };
     const stop = row.querySelector(".infusion-stop");
     stop.setAttribute("aria-label", `Stop ${w.spec.name}`);
-    // A manual rate command also disables TCI in the shared engine.
+    // Stop TCI via target reset so receipts and mode reflect TCI rather than manual rate.
     stop.onclick = async () => {
-      const result = await this.performAction(stop, "drug_rate", { key, rate: 0 });
-      if (result !== undefined) w.editor.cancel();
+      const [action, payload] = this.state?.drugs?.[key]?.is_tci
+        ? ["drug_target", { key, target: null }]
+        : ["drug_rate", { key, rate: 0 }];
+      if (await this.performAction(stop, action, payload) !== undefined) w.editor.cancel();
     };
     w.runningRow = row;
     w.runningValue = row.querySelector("output");
     $("running-infusion-list").append(row);
+  }
+
+  syncDrugInputs(w) {
+    const tciMode = w.mode?.value === "tci";
+    w.rate.disabled = w.editor.pending || tciMode;
+    if (w.target) w.target.disabled = w.editor.pending || !tciMode;
   }
 
   closeInfusionEditor(w) {
@@ -771,12 +776,12 @@ export class Controls {
     for (const [key, w] of Object.entries(this.drugs)) {
       const d = c.drugs[key];
       if (w.mode) {
-        setValue(w.mode, d.is_tci ? "tci" : "rate");
+        const idleMode = w.editor.values?.get(w.mode) ?? w.mode.value;
+        setValue(w.mode, d.is_tci ? "tci" : d.rate > 0 ? "rate" : idleMode);
         setValue(w.target, round(d.target));
-        w.target.disabled = w.editor.pending || w.mode.value !== "tci";
       }
       if (w.rate) {
-        w.rate.disabled = w.editor.pending || w.mode?.value === "tci";
+        this.syncDrugInputs(w);
         setValue(w.rate, d.is_tci ? shortRate(d.rate) : rateText(d.rate));
         const active = d.rate > 0 || (d.is_tci && d.target > 0);
         if (!active && w.runningRow.contains(document.activeElement)) $("drug-search").focus();

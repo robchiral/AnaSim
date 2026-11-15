@@ -88,3 +88,87 @@ print(json.dumps(states))
   assert.ok(modes.every(button => !button.disabled));
   clearTimeout(controls.shockFeedbackTimer);
 });
+
+test("stopping a TCI infusion resets target to null and clears is_tci in engine", async () => {
+  const stubs = new Map();
+  globalThis.document = {
+    activeElement: null,
+    getElementById: id => {
+      if (!stubs.has(id)) {
+        stubs.set(id, {
+          value: "", disabled: false, hidden: false, checked: false,
+          className: "", textContent: "", querySelectorAll: () => [],
+          append() {}, getAttribute() { return null; }, setAttribute() {}, focus() {},
+        });
+      }
+      return stubs.get(id);
+    },
+    createElement: () => {
+      const children = new Map();
+      return {
+        className: "",
+        hidden: false,
+        contains: () => false,
+        set innerHTML(_v) {
+          children.set(".infusion-name", { textContent: "", title: "" });
+          children.set(".infusion-adjust", { onclick: null, setAttribute() {} });
+          children.set(".infusion-stop", { onclick: null, setAttribute() {} });
+          children.set(".infusion-editor", { id: "", hidden: true, append() {} });
+          children.set("output", { textContent: "" });
+        },
+        querySelector: sel => children.get(sel),
+      };
+    },
+  };
+  const sent = [];
+  const controls = Object.create(Controls.prototype);
+  controls.performAction = async (_btn, name, args) => {
+    sent.push([name, args]);
+    return {};
+  };
+  const w = {
+    spec: { generic_name: "Propofol", name: "Propofol 10 mg/mL" },
+    card: { open: false },
+    form: {},
+    mode: { value: "tci" },
+    target: { value: "", disabled: false, focus() {} },
+    rate: { value: "", disabled: false, focus() {} },
+    editor: { pending: false, values: new Map(), cancel() {} },
+  };
+  controls.buildRunningInfusion("propofol", w);
+  const stopBtn = w.runningRow.querySelector(".infusion-stop");
+  controls.state = { drugs: { propofol: { is_tci: true } } };
+  await stopBtn.onclick();
+  assert.deepEqual(sent[0], ["drug_target", { key: "propofol", target: null }]);
+  controls.state = { drugs: { propofol: { is_tci: false } } };
+  await stopBtn.onclick();
+  assert.deepEqual(sent[1], ["drug_rate", { key: "propofol", rate: 0 }]);
+
+  const pyState = JSON.parse(execFileSync("python3", ["-B", "-c", `
+import json
+from anasim.web import WebSession
+s = WebSession(dict(age=40, weight=70, height=170, sex="male", mode="awake", tci_enabled=True))
+s.command("drug_target", '{"key": "propofol", "target": 3.0}')
+on_state = s.snapshot()["controls"]["drugs"]["propofol"]
+s.command("drug_target", '{"key": "propofol", "target": 0}')
+zero_controls = s.snapshot()["controls"]
+zero_state = zero_controls["drugs"]["propofol"]
+print(json.dumps([on_state["is_tci"], zero_state["is_tci"], zero_state["rate"], zero_controls]))
+`], { cwd: new URL("..", import.meta.url), encoding: "utf8" }));
+  assert.deepEqual(pyState.slice(0, 3), [true, false, 0]);
+
+  controls.weight = 70;
+  controls.lipidMaximum = 840;
+  controls.drugs = { propofol: w };
+  controls.showBloodGases = () => {};
+  controls.showClinicalFeedback = () => {};
+  controls.maskSealEditor = { cancel() {} };
+  controls.syncDefibrillator = () => {};
+  controls.applyVentMode = () => {};
+  controls.syncRhythm = () => {};
+  controls.syncEventSection = () => {};
+  controls.sync(pyState[3], 0);
+  assert.equal(w.mode.value, "tci");
+  assert.equal(w.target.disabled, false);
+  assert.equal(w.rate.disabled, true);
+});

@@ -683,7 +683,6 @@ def test_plateau_compliance_scales_with_lung_size_and_bmi(engine_factory):
     """VT/(Pplat - PEEP) at PEEP 5 for a 170 cm, 70 kg man lies in the interquartile
     range of Dräger Primus recordings at PEEP 4-6 (VitalDB, 181 adults: 40.5-53.9
     mL/cmH2O). It rises with lung size and falls with BMI (Pelosi 1998)."""
-    from anasim.core.state import SimulationConfig
 
     def plateau_compliance(**patient):
         engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True, **patient)
@@ -869,6 +868,9 @@ def test_closed_apl_traps_fresh_gas_and_depresses_circulation(engine_factory, ad
     engine.set_mask_seal(0.5)
     advance_time(engine, 5.0, dt=0.5)
     assert engine.state.peep == pytest.approx(10.0, abs=0.5)
+    engine.set_bag_mask_settings(rr=12, vt=0.5, p_max=20.0)
+    advance_time(engine, 5.0, dt=0.5)
+    assert engine.state.peep == pytest.approx(0.0, abs=0.05)
 
     lung = RespiratoryMechanics()
     lung.effort.set_drive(12, 0.5)
@@ -880,8 +882,8 @@ def test_closed_apl_traps_fresh_gas_and_depresses_circulation(engine_factory, ad
 def test_partial_reservoir_caps_all_modes_and_bradypneic_vcv_retains_spirometry(
     engine_factory, advance_time
 ):
-    """Partially depleted reservoir caps VCV, PCV, and PCV-VG consistently (#8),
-    and controlled VCV at RR 3.5/min does not time out spirometry mid-cycle (#24).
+    """Partially depleted reservoir caps VCV, PCV, and PCV-VG consistently,
+    and controlled VCV at RR 3.5/min does not time out spirometry mid-cycle.
     """
     delivered = []
     for mode in ("VCV", "PCV", "PCV-VG"):
@@ -902,3 +904,68 @@ def test_partial_reservoir_caps_all_modes_and_bradypneic_vcv_retains_spirometry(
         slow_vent.step(0.5)
         va_samples.append(slow_vent.state.va)
     assert min(va_samples) > 1.0
+
+
+def test_loose_mask_supported_entrainment_and_starved_or_apneic_va_gating(
+    engine_factory, advance_time
+):
+    """Loose facemask on PSV/SIMV entrains room air on unassisted/low-pressure inspiration,
+    and empty bellows or acute connected mask apnea zeros physical VA without creating volatile agent.
+    """
+    for mode, rr, ps in (("PSV", 0.0, 4.0), ("SIMV-VC", 4.0, 0.0)):
+        mask_vent = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+        mask_vent.set_airway_mode("Mask")
+        mask_vent.set_mask_seal(0.35)
+        mask_vent.set_fgf(10.0, 0.0, 0.0)
+        mask_vent.set_vent_settings(rr=rr, vt=0.45, peep=0.0, ie="1:2", mode=mode, p_support=ps)
+        mask_vent.set_vent_power(True)
+        advance_time(mask_vent, 40.0, dt=0.1)
+        assert mask_vent.state.fio2 < 0.90
+
+    starved = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=1), start=True)
+    starved.give_drug_bolus("roc", 70.0)
+    starved.set_vaporizer(0.0)
+    starved.set_fgf(0.0, 0.0, 0.0)
+    starved.circuit.reservoir_volume = 0.0
+    starved.circuit.composition.fi_agent = 0.04
+    advance_time(starved, 25.0, dt=0.2)
+    assert starved.resp.state.va == pytest.approx(0.0, abs=1e-6)
+    assert starved.pk_sevo.state.p_alv < 0.02
+
+    mask_apnea = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+    mask_apnea.set_airway_mode("Mask")
+    mask_apnea.set_fgf(8.0, 0.0)
+    advance_time(mask_apnea, 20.0, dt=0.1)
+    mask_apnea.give_drug_bolus("propofol", 200.0)
+    mask_apnea.give_drug_bolus("roc", 80.0)
+    advance_time(mask_apnea, 45.0, dt=0.1)
+    assert mask_apnea.resp.state.apnea and mask_apnea.resp.state.va == pytest.approx(0.0, abs=1e-6)
+
+
+def test_pcv_vg_mask_leak_compensation_and_spontaneous_apl_cpap(engine_factory, advance_time):
+    """PCV-VG adapts upward across a facemask leak, and the spontaneous APL valve
+    provides 5-20 cmH2O mask CPAP scaled by reservoir fullness.
+    """
+    delivered_vt = {}
+    for mode in ("PCV", "PCV-VG"):
+        model = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+        model.give_drug_bolus("roc", 70.0)
+        model.set_airway_mode("Mask")
+        model.set_mask_seal(0.75)
+        model.set_vent_settings(rr=12, vt=0.45, peep=5.0, ie="1:2", mode=mode, p_insp=12.0)
+        model.set_vent_power(True)
+        advance_time(model, 45.0, dt=0.1)
+        delivered_vt[mode] = model.state.vt
+    assert delivered_vt["PCV-VG"] > delivered_vt["PCV"] + 30.0
+    assert delivered_vt["PCV-VG"] == pytest.approx(450.0, abs=25.0)
+
+    cpap = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+    cpap.set_airway_mode("Mask")
+    cpap.set_fgf(8.0, 0.0)
+    cpap.set_bag_mask_settings(rr=12.0, vt=0.5, p_max=10.0)
+    advance_time(cpap, 15.0, dt=0.1)
+    assert cpap.state.peep == pytest.approx(10.0, abs=0.5)
+    cpap.set_fgf(0.0, 0.0)
+    cpap.circuit.reservoir_volume = 0.0
+    cpap.step(0.1)
+    assert cpap.state.peep == pytest.approx(0.0, abs=0.2)

@@ -20,8 +20,9 @@ DEFAULT_DELAYS = {"BIS": 0, "MAP": 0, "HR": 0, "SpO2": 5, "EtCO2": 0, "Ppeak": 0
 class AlarmSystem:
     """Threshold alarms that sound once a limit violation persists for its delay."""
 
-    def __init__(self, delays: dict | None = None):
+    def __init__(self, delays: dict | None = None, thresholds: dict | None = None):
         self.delays = delays or dict(DEFAULT_DELAYS)
+        self.thresholds = {**THRESHOLDS, **(thresholds or {})}
         self._violation_s: dict[tuple[str, str], float] = {}
 
     def update(self, values: dict, dt: float) -> dict:
@@ -29,8 +30,8 @@ class AlarmSystem:
         alarms = {}
         for name, delay_s in self.delays.items():
             value = values.get(name)
-            limit_low = THRESHOLDS.get(f"{name}_min")
-            limit_high = THRESHOLDS.get(f"{name}_max")
+            limit_low = self.thresholds.get(f"{name}_min")
+            limit_high = self.thresholds.get(f"{name}_max")
             flags = {}
             for side, violated in (
                 ("low", value is not None and limit_low is not None and value < limit_low),

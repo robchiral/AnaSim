@@ -281,3 +281,33 @@ def test_earlier_readiness_does_not_mask_residual_block_at_actual_tube_removal()
     outcomes = {o["id"]: o["achieved"] for o in report["outcomes"]}
     assert not outcomes["block"] and not outcomes["readiness"]
     assert report["safety_events"][0]["code"] == "unsafe_airway_removal"
+
+
+def test_independent_emergence_hint_advances_past_extubation_step():
+    """In independent mode, case_hint advances past TOF confirmation once recovery is measured and past pre-extubation steps once extubated."""
+    session = WebSession({"scenario_id": "emergence_tiva", "practice_mode": "independent"})
+    engine = session.engine
+    engine.set_drug_rate("propofol", 0)
+    engine.set_drug_rate("remi", 0)
+    command(session, "sugammadex", mg_per_kg=4)
+    advance(session, 900)
+    command(session, "nmb_mode", mode="tof")
+    command(session, "nmb_measure")
+    advance(session, 5)
+    pre_extub_hint = command(session, "case_hint")["hint"]
+    assert pre_extub_hint and "confirm quantitative neuromuscular recovery" not in pre_extub_hint.lower()
+
+    engine.set_vent_power(False)
+    advance(session, 120)
+    command(session, "airway", mode="Mask")
+    command(session, "fgf", o2=8, air=0, n2o=0)
+    hint = command(session, "case_hint")["hint"]
+    assert hint and "remove the tracheal tube" not in hint.lower()
+
+    premature = WebSession({"scenario_id": "emergence_tiva", "practice_mode": "independent"})
+    premature.engine.set_drug_rate("propofol", 0)
+    premature.engine.set_drug_rate("remi", 0)
+    premature.engine.set_vent_power(False)
+    command(premature, "airway", mode="Mask")
+    premature_hint = command(premature, "case_hint")["hint"]
+    assert premature_hint and "before extubation" not in premature_hint.lower()

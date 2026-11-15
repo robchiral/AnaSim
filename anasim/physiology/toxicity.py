@@ -84,7 +84,7 @@ class LocalAnestheticToxicity:
         )
         self.sympathetic_drive += (sympathetic_target - self.sympathetic_drive) * -math.expm1(-dt / 5.0)
         self.heart_rate_increase = 16.0 * self.sympathetic_drive
-        self.svr_increase = 2.0 * self.sympathetic_drive
+        self.svr_increase = 2.4 * self.sympathetic_drive
         self.conduction_block = _response(cardiac, 18.0, 48.0) * (1.0 - 0.20 * self.lipid_effect)
         self.contractility_loss = _response(cardiac, 13.0, 42.0) * (1.0 - 0.35 * self.lipid_effect)
         self.cardiac_stress = _response(cardiac, 22.0, 44.0) * (1.0 - 0.35 * self.lipid_effect)

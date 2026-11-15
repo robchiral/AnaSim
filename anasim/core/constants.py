@@ -11,7 +11,10 @@ ARREST_HR_BPM = 10.0
 # PEA: negligible forward flow and pulse pressure with an organized rhythm.
 ARREST_CO_L_MIN = 0.3
 ARREST_PULSE_PRESSURE_MMHG = 5.0
+PULSELESS_VT_MAP_MMHG = 25.0
 ARREST_CONFIRM_S = 15.0
+
+BAG_P_MAX_DEFAULT = 20.0  # cmH2O; open APL during spontaneous breathing
 
 CMH2O_TO_MMHG = 0.7356
 

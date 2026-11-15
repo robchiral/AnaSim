@@ -85,6 +85,9 @@ class ThermalModel:
         threshold = SHIVER_BASE_THRESHOLD - SHIVER_DEPTH_DROP_MAX * depth_factor - SHIVER_REMI_DROP_MAX * opioid_effect
         temp_deficit = max(0.0, threshold - temp_c)
         cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
+        if temp_c < 31.0:
+            # Severe hypothermia progressively impairs central shivering thermogenesis.
+            cold_drive *= clamp01(0.2 + 0.8 * (temp_c - 28.0) / 3.0)
 
         emergence_bis = clamp01((bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
         emergence = min(emergence_bis, clamp01(1.0 - unconscious))
@@ -96,7 +99,8 @@ class ThermalModel:
         return self.shiver_level
 
     def step_temperature(self, dt: float, temp_c: float, warmer_target_c: float,
-                         surface_cooling: bool = False) -> float:
+                         surface_cooling: bool = False, *,
+                         oxygen_supply_fraction: float = 1.0) -> float:
         """Return core temperature after metabolic heat, environmental loss, and redistribution.
 
         A forced-air warmer target of 0 °C is off.
@@ -104,7 +108,11 @@ class ThermalModel:
         tuning = self.tuning
         depth_factor = clamp01(self.depth_index)
 
-        production = self.heat_production_basal * max(0.5, self.metabolic_factor) + self.extra_heat_w
+        aerobic_gate = clamp(oxygen_supply_fraction, 0.12, 1.0)
+        production = (
+            self.heat_production_basal * max(0.5, self.metabolic_factor) * aerobic_gate
+            + self.extra_heat_w
+        )
         anesthetized = max(
             1.12 * self.awake_conductance,
             tuning.anesthetized_conductance_w_per_c * self.surface_area / 1.9,

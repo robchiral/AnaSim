@@ -14,6 +14,9 @@ class HemodynamicConfig:
     # Signed RMAP exponent. Su et al. report FB = 0.66 and apply -FB.
     fb: float = -0.66
     hr_sv_coupling: float = 0.312
+    # Resting ventriculo-arterial coupling ratio Ea/Ees in normal left ventricles
+    # (Asanoi 1989 Group A: 0.46 ± 0.17; Chen 1998: 0.96 ± 0.36; Schwartzenberg 2012: 0.5-1.0).
+    normal_coupling_ratio: float = 0.70
     k_drift: float = 0.067
     tau_hr_fast: float = 5.0  # s
 

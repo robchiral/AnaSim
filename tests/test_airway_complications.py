@@ -342,9 +342,9 @@ def test_stage_ii_extubation_laryngospasm_and_bronchodilation(engine_factory, ad
 def test_bronchospasm_mask_parity_ppv_leak_drain_and_overpressure_volume_scaling(
     engine_factory, advance_time
 ):
-    """Spontaneous mask breathing does not double-count distal bronchospasm (#3);
-    positive-pressure ventilation on a leaky mask drains the reservoir bag at low FGF (#7);
-    overpressure leak on a tight mask scales displayed volume with delivered VT (#23).
+    """Spontaneous mask breathing does not double-count distal bronchospasm;
+    positive-pressure ventilation on a leaky mask drains the reservoir bag at low FGF;
+    overpressure leak on a tight mask scales displayed volume with delivered VT.
     """
     open_airway = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
     mask_airway = copy.deepcopy(open_airway)
@@ -376,3 +376,68 @@ def test_bronchospasm_mask_parity_ppv_leak_drain_and_overpressure_volume_scaling
         volumes.append(overpressure.state.volume)
     assert overpressure.state.vt < 100.0
     assert (max(volumes) - min(volumes)) * 1000.0 < 2.0 * overpressure.state.vt
+
+
+def test_partial_airway_patency_and_flow_limited_reopen_conserve_dry_gas_pressure(
+    engine_factory, advance_time
+):
+    """Partial airway obstruction and flow-limited reopening conserve dry alveolar pressure and volatile agent mass."""
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=1), start=True)
+    resp = engine.resp
+
+    def _dry_pressure() -> float:
+        return (
+            resp.state.p_alveolar_o2
+            + resp.state.p_alveolar_co2
+            + resp.alveolar_fn2 * resp._atm_dry
+            + (engine.pk_sevo.state.p_alv + engine.pk_n2o.state.p_alv) * resp._atm_dry
+        )
+
+    initial_dry = _dry_pressure()
+    engine.give_drug_bolus("roc", 70.0)
+    engine.set_vent_power(False)
+    engine.set_fgf(8.0, 0.0, 0.0)
+    engine.set_airway_obstruction(0.95)
+    advance_time(engine, 90.0, dt=0.2)
+    assert _dry_pressure() == pytest.approx(initial_dry, abs=2.5)
+
+    engine.set_airway_obstruction(1.0)
+    advance_time(engine, 120.0, dt=0.2)
+    deficit_closed = resp._apneic_gas_deficit_l
+    assert deficit_closed > 0.05
+    engine.set_airway_obstruction(0.6)
+    advance_time(engine, 30.0, dt=0.2)
+    assert resp._apneic_gas_deficit_l < 0.2 * deficit_closed
+    assert _dry_pressure() == pytest.approx(initial_dry, abs=6.0)
+
+    sevo = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=0.2, rng_seed=1), start=True
+    )
+    sevo.give_drug_bolus("roc", 70.0)
+    sevo.set_vent_power(False)
+    sevo.set_fgf(0.0, 0.0, 0.0)
+    sevo.circuit.reservoir_volume = 1.5
+
+    def _total_sevo_stpd() -> float:
+        pk = sevo.pk_sevo
+        stpd = sevo.resp._btps_to_stpd
+        circuit_l = (3.0 + sevo.circuit.reservoir_volume) * sevo.circuit.composition.fi_agent
+        alv_l = pk.frc * pk.state.p_alv * stpd
+        tissue_l = (
+            pk.lambda_b_g
+            * (
+                pk.v_vrg * pk.lambda_t_b_vrg * pk.state.p_vrg
+                + pk.v_mus * pk.lambda_t_b_mus * pk.state.p_mus
+                + pk.v_fat * pk.lambda_t_b_fat * pk.state.p_fat
+            )
+            * stpd
+        )
+        return circuit_l + alv_l + tissue_l
+
+    sevo_0 = _total_sevo_stpd()
+    sevo.set_airway_obstruction(1.0)
+    advance_time(sevo, 90.0, dt=0.2)
+    assert _total_sevo_stpd() == pytest.approx(sevo_0, abs=1e-3)
+    sevo.set_airway_obstruction(0.6)
+    advance_time(sevo, 30.0, dt=0.2)
+    assert _total_sevo_stpd() == pytest.approx(sevo_0, abs=1e-3)

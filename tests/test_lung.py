@@ -278,3 +278,21 @@ def test_patient_lung_volume_sets_apnea_reserve_and_shunt_limits_oxygen_rescue()
                                mech_rr=12, mech_vt_l=0.5, measured_breaths=True, shunt_fraction=shunt)
         saturation.append(state.sao2)
     assert saturation[0] > 99.0 and saturation[1] < 95.0
+
+
+def test_closed_airway_gas_absorption_reduces_resting_lung_recoil_volume():
+    """Closed-airway apneic gas absorption shrinks FRC and resting recoil volume."""
+    engine = SimulationEngine(Patient(), SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1))
+    engine.start()
+    engine.give_drug_bolus("roc", 70.0)
+    engine.set_fgf(10.0, 0.0)
+    _run(engine, 0.5, 180)
+    engine.set_vent_power(False)
+    engine.set_airway_obstruction(1.0)
+    _run(engine, 0.5, 5)
+    relaxed_0 = engine.aeration.relaxed_volume
+    frc_0 = engine.aeration.frc
+    _run(engine, 0.5, 150)
+    assert engine.resp._apneic_gas_deficit_l > 0.15
+    assert engine.aeration.frc < frc_0 - 0.10
+    assert engine.aeration.relaxed_volume < relaxed_0 - 0.10

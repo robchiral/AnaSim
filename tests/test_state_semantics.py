@@ -2,6 +2,8 @@ import pytest
 
 from anasim.cli import build_models_from_config
 from anasim.core.engine import SimulationEngine
+from anasim.core.projection import stimulus_tolerance, sync_state_from_models
+from anasim.core.state import SimulationConfig
 
 
 def test_awake_initial_snapshot_uses_patient_baselines():
@@ -49,10 +51,8 @@ def test_awake_initial_snapshot_uses_patient_baselines():
 
 def test_steady_state_startup_capno_sync_and_projection_preserves_temperature():
     """Steady-state startup resets breath_count and syncs capno_co2, and projection
-    preserves live hyperthermic temperature (#32).
+    preserves live hyperthermic temperature.
     """
-    from anasim.core.projection import sync_state_from_models
-
     patient, config = build_models_from_config({"mode": "steady_state", "rng_seed": 1})
     engine = SimulationEngine(patient, config)
     engine.start()
@@ -62,3 +62,16 @@ def test_steady_state_startup_capno_sync_and_projection_preserves_temperature():
     engine.state.temp_c = 39.2
     sync_state_from_models(engine)
     assert engine.state.temp_c == pytest.approx(39.2)
+
+
+def test_state_tol_reflects_current_step_pk_update(engine_factory, advance_time):
+    """state.tol updates after step_pk within the same simulation step."""
+    engine = engine_factory(config=SimulationConfig(mode="awake", dt=0.5, rng_seed=1), start=True)
+    engine.give_drug_bolus("remi", 150.0)
+    engine.give_drug_bolus("propofol", 140.0)
+    engine.step(0.5)
+    assert engine.state.tol > 0.0
+    assert engine.state.tol == pytest.approx(stimulus_tolerance(engine), rel=1e-9)
+    advance_time(engine, 15.0, dt=0.5)
+    assert engine.state.tol > 0.2
+    assert engine.state.tol == pytest.approx(stimulus_tolerance(engine), rel=1e-9)

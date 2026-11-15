@@ -93,11 +93,6 @@ class MammillaryPK:
         transit = (("ce_transit", effect_site_transit_rate),) if effect_site_transit_rate is not None else ()
         # The primary site is last so TCI and decay predictions target it.
         self.effect_sites = (*transit, *additional_effect_sites, ("ce", ke0))
-        # Downstream sites advance first so every site reads the old source.
-        self._effect_updates = tuple(
-            (name, rate, self.ce_input if name == "ce" else "c1")
-            for name, rate in reversed(self.effect_sites)
-        )
         self._max_effect_rate = max(rate for _, rate in self.effect_sites)
         self.state_fields = (
             ("c1",) + (("c2",) if v2 > 0 else ()) + (("c3",) if v3 > 0 else ())
@@ -177,7 +172,7 @@ class MammillaryPK:
         return True
 
     def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
-        """Advance with simultaneous Euler steps that conserve compartment transfers."""
+        """Advance with conserved midpoint steps across central, peripheral, and effect compartments."""
         input_rate_per_sec += self.basal_input_rate
         s = self.state
         if not input_rate_per_sec and not any(self._state_values(s)):
@@ -190,26 +185,48 @@ class MammillaryPK:
         fastest_rate = max((elimination_cl + cl2 + cl3) / v1,
                            cl2 / v2 if v2 > 0 else 0.0, cl3 / v3 if v3 > 0 else 0.0,
                            self._max_effect_rate * circulation)
-        # At most one second and 2.5% turnover per interval, including after
-        # blood-volume scaling. Clipping an overshoot would create drug mass.
-        substeps = max(1, math.ceil(dt_sec * max(1.0, fastest_rate / 1.5)))
+        # At most 0.25 s and 2% turnover per midpoint step, including after
+        # blood-volume scaling. Equal flux terms preserve compartment mass.
+        substeps = max(1, math.ceil(dt_sec * max(4.0, fastest_rate / 1.2)))
         dt_min = dt_sec / (60.0 * substeps)
+        half_dt_min = 0.5 * dt_min
         input_per_min = input_rate_per_sec * 60.0
+        effect_frac = self.effect_input_fraction
         for _ in range(substeps):
-            flux2 = cl2 * (s.c1 - s.c2)
-            flux3 = cl3 * (s.c1 - s.c3)
-            elimination = elimination_cl * s.c1
-            for name, rate, source_name in self._effect_updates:
-                ce = getattr(s, name)
-                source = getattr(s, source_name)
-                if source_name == "c1":
-                    source *= self.effect_input_fraction
-                setattr(s, name, ce + rate * circulation * (source - ce) * dt_min)
-            s.c1 += (input_per_min - elimination - flux2 - flux3) / v1 * dt_min
+            c1, c2, c3 = s.c1, s.c2, s.c3
+            flux2_0 = cl2 * (c1 - c2)
+            flux3_0 = cl3 * (c1 - c3)
+            elim_0 = elimination_cl * c1
+            c1_mid = c1 + (input_per_min - elim_0 - flux2_0 - flux3_0) / v1 * half_dt_min
+            c2_mid = c2 + flux2_0 / v2 * half_dt_min if v2 > 0 else 0.0
+            c3_mid = c3 + flux3_0 / v3 * half_dt_min if v3 > 0 else 0.0
+            if len(self.effect_sites) == 1:
+                _, rate = self.effect_sites[0]
+                ce = s.ce
+                ce_mid = ce + rate * circulation * (c1 * effect_frac - ce) * half_dt_min
+                s.ce = ce + rate * circulation * (c1_mid * effect_frac - ce_mid) * dt_min
+            else:
+                c1_eff_0 = c1 * effect_frac
+                c1_eff_mid = c1_mid * effect_frac
+                transit_0 = transit_mid = 0.0
+                for name, rate in self.effect_sites:
+                    ce = getattr(s, name)
+                    if name == "ce" and self.ce_input == "ce_transit":
+                        src_0, src_mid = transit_0, transit_mid
+                    else:
+                        src_0, src_mid = c1_eff_0, c1_eff_mid
+                    ce_mid = ce + rate * circulation * (src_0 - ce) * half_dt_min
+                    if name == "ce_transit":
+                        transit_0, transit_mid = ce, ce_mid
+                    setattr(s, name, ce + rate * circulation * (src_mid - ce_mid) * dt_min)
+            flux2_mid = cl2 * (c1_mid - c2_mid)
+            flux3_mid = cl3 * (c1_mid - c3_mid)
+            elim_mid = elimination_cl * c1_mid
+            s.c1 = c1 + (input_per_min - elim_mid - flux2_mid - flux3_mid) / v1 * dt_min
             if v2 > 0:
-                s.c2 += flux2 / v2 * dt_min
+                s.c2 = c2 + flux2_mid / v2 * dt_min
             if v3 > 0:
-                s.c3 += flux3 / v3 * dt_min
+                s.c3 = c3 + flux3_mid / v3 * dt_min
         return s
 
     def get_ss_matrices(self) -> tuple[np.ndarray, np.ndarray]:
@@ -844,6 +861,11 @@ class NorepinephrinePK(MammillaryPK):
         )
         self.equilibrate_endogenous()
 
+    @staticmethod
+    def resting_concentration(age: float) -> float:
+        """Resting endogenous arterial concentration (ng/mL) before drug covariates."""
+        return 0.4977 / (2.1 * math.exp(-0.344 / 100 * (age - 35)))
+
     def equilibrate_endogenous(self) -> None:
         """Seed secretion without an exogenous infusion at the current clearance."""
         endogenous_conc = self.endogenous_ug_min / self.elimination_clearance
@@ -854,8 +876,9 @@ class NorepinephrinePK(MammillaryPK):
         self.equilibrate_endogenous()
 
     def update_propofol(self, propofol_conc_ug_ml: float) -> None:
-        """Set the clearance covariate used by both integration and prediction."""
-        self.cl1_scale = math.exp(self.PROPOFOL_CL_THETA * max(0.0, propofol_conc_ug_ml) / 100.0)
+        """Set the clearance covariate, capping bolus peaks at 8 µg/mL."""
+        cp = clamp(propofol_conc_ug_ml, 0.0, 8.0)
+        self.cl1_scale = math.exp(self.PROPOFOL_CL_THETA * cp / 100.0)
 
 
 class EpinephrinePK(MammillaryPK):

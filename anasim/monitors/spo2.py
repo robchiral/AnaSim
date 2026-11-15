@@ -2,13 +2,15 @@ import math
 
 import numpy as np
 
-from anasim.core.utils import clamp01
+from anasim.core.utils import clamp, clamp01
 
 from .cardiac_cycle import CardiacCycleSample
 
 _PPG_TEMPLATE_RESOLUTION = 200
 _PPG_LANDMARKS_X = np.array([0.0, 0.175, 0.40, 0.45, 1.0])
 _PPG_LANDMARKS_Y = np.array([0.0, 1.0, 0.49, 0.51, 0.0])
+_REACQUIRE_WINDOW_S = 0.12
+_REACQUIRE_TAU_S = 0.012
 
 
 def _build_ppg_template(resolution: int = _PPG_TEMPLATE_RESOLUTION) -> np.ndarray:
@@ -45,6 +47,7 @@ class SpO2Monitor:
             raise ValueError("peripheral_delay_s cannot be negative")
         self.display_saturation: float | None = None
         self.signal_valid = True
+        self._reacquire_s = 0.0
         self._template = _PPG_TEMPLATE.tolist()  # Python floats avoid NumPy scalar arithmetic per sample.
         self._template_max_index = _PPG_TEMPLATE.size - 1
         self._beat_amplitude = 1.0
@@ -86,15 +89,21 @@ class SpO2Monitor:
 
         self.signal_valid = cycle.organized and perf >= 0.08
         if not self.signal_valid:
-            # No saturation measurement is available without a pulsatile signal.
+            self._reacquire_s = _REACQUIRE_WINDOW_S
             return pleth_voltage, self.display_saturation if self.display_saturation is not None else 0.0
 
-        target = max(0.0, min(100.0, saturation))
+        target = clamp(saturation, 0.0, 100.0)
         if self.display_saturation is None:
             self.display_saturation = target
+            self._reacquire_s = 0.0
 
-        # The reading trails arterial saturation, more slowly with poor perfusion.
-        tau = self.response_tau_s * (1.0 + 2.0 * (1.0 - perf))
+        # Re-acquired pulses lock onto current saturation immediately;
+        # steady tracking trails arterial saturation, more slowly with poor perfusion.
+        if self._reacquire_s > 0.0:
+            tau = _REACQUIRE_TAU_S
+            self._reacquire_s = max(0.0, self._reacquire_s - dt)
+        else:
+            tau = self.response_tau_s * (1.0 + 2.0 * (1.0 - perf))
         alpha = 1.0 - math.exp(-dt / tau)
         self.display_saturation += alpha * (target - self.display_saturation)
         return pleth_voltage, self.display_saturation

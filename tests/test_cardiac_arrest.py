@@ -1,4 +1,6 @@
+import copy
 import math
+from itertools import pairwise
 
 import pytest
 
@@ -7,6 +9,7 @@ from anasim.core.action_log import ACTION_SHOCK
 from anasim.core.enums import RhythmType
 from anasim.core.state import SimulationConfig
 from anasim.monitors.ecg import displayed_rhythm
+from anasim.physiology.coronary import CoronaryModel
 from anasim.physiology.resuscitation import CHARGE_TIME_S, ShockResult
 
 
@@ -529,9 +532,9 @@ def test_countershock_stunning_resolves_within_minutes_unlike_prolonged_arrest_i
 
 
 def test_cpr_lumen_vs_perfusion_pressure_vfib_rv_halt_and_small_hfref_pea_spo2(engine_factory):
-    """VFIB halts RV output and LV inflow (#30); chest compressions keep arterial
-    DBP <= MAP <= SBP while organ perfusion_map reflects forward flow (#10);
-    confirmed hemorrhagic PEA arrest in a small HFrEF patient blanks SpO2 (#18).
+    """VFIB halts RV output and LV inflow; chest compressions keep arterial
+    DBP <= MAP <= SBP while organ perfusion_map reflects forward flow;
+    confirmed hemorrhagic PEA arrest in a small HFrEF patient blanks SpO2.
     """
     vf = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
     vf.set_rhythm("VFIB")
@@ -562,3 +565,77 @@ def test_cpr_lumen_vs_perfusion_pressure_vfib_rv_halt_and_small_hfref_pea_spo2(e
     _run(pea, 45)
     assert pea.state.cardiac_arrest
     assert not pea.state.spo2_signal_valid and pea.state.pleth_voltage == 0.0
+
+
+def test_post_rosc_epinephrine_coupling_and_pulseless_vt_cpr(engine_factory, advance_time):
+    """Post-ROSC 1 mg epinephrine stays bounded by ventriculo-arterial coupling, and
+    CPR in pulseless VT restores coronary supply on step 1 while untreated VT arrests.
+    """
+    rosc = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
+    rosc.set_rhythm("VFIB")
+    _run(rosc, 60)
+    rosc.set_chest_compressions(True)
+    rosc.give_drug_bolus("epi", 1000.0)
+    _run(rosc, 45)
+    rosc.charge_defibrillator()
+    _run(rosc, CHARGE_TIME_S)
+    assert rosc.defibrillate() == ShockResult.DELIVERED
+    rosc.set_chest_compressions(False)
+    peak_map = peak_co = 0.0
+    for _ in range(90):
+        rosc.step(1.0)
+        peak_map = max(peak_map, rosc.state.map)
+        peak_co = max(peak_co, rosc.state.co)
+    assert 130.0 < peak_map < 215.0 and peak_co < 9.0
+
+    vt_cpr = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    vt_cpr.give_drug_bolus("lidocaine", 1600.0)
+    vt_cpr.set_rhythm("VTACH")
+    advance_time(vt_cpr, 24.0, dt=1.0)
+    assert vt_cpr.hemo.coronary.supply_demand_ratio == 0.0
+    vt_nocpr = copy.deepcopy(vt_cpr)
+
+    vt_cpr.set_chest_compressions(True)
+    vt_cpr.step(1.0)
+    assert vt_cpr.hemo.coronary.supply_demand_ratio > 0.30
+    advance_time(vt_cpr, 19.0, dt=1.0)
+    advance_time(vt_nocpr, 10.0, dt=1.0)
+    assert vt_nocpr.state.cardiac_arrest
+    assert vt_nocpr.state.arrest_reason == "Pulseless ventricular tachycardia"
+    advance_time(vt_nocpr, 10.0, dt=1.0)
+    assert vt_cpr.hemo.coronary.ischemia < vt_nocpr.hemo.coronary.ischemia - 0.15
+
+
+def test_pulmonary_congestion_hyperkalemic_asystole_and_low_pressure_coronary_ramp(
+    engine_factory, advance_time
+):
+    """Zero-flow VF equilibrates LAP toward MCFP while severe LV pump failure raises LAP and
+    lung water; hyperkalemic conduction block prevents asystole auto-restart; low-pressure
+    coronary supply ramps continuously from zero.
+    """
+    vf_eq = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    lung_0 = vf_eq.hemo.lung_water_ml
+    vf_eq.set_rhythm("VFIB")
+    advance_time(vf_eq, 45.0, dt=1.0)
+    assert vf_eq.state.lap == pytest.approx(vf_eq.hemo._last_mcfp, abs=0.5)
+    assert vf_eq.hemo.lung_water_ml == pytest.approx(lung_0, abs=0.05)
+
+    lv_fail = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    lv_fail.hemo.coronary.injury = 0.80
+    advance_time(lv_fail, 180.0, dt=1.0)
+    assert lv_fail.state.lap > 20.0 and lv_fail.hemo.lung_water_ml > 5.0
+
+    k_asystole = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    k_asystole.hemo.fluids.amounts["potassium"] = 9.5 * k_asystole.hemo.fluids.ecf_l
+    k_asystole.set_rhythm("ASYSTOLE")
+    k_asystole.set_chest_compressions(True)
+    advance_time(k_asystole, 40.0, dt=1.0)
+    assert k_asystole.hemo.rhythm_type == RhythmType.ASYSTOLE
+
+    ratios = []
+    for sbp in range(12, 52):
+        cor = CoronaryModel(3.5, 70.0, 90.0, 8.0, sbp_mmhg=120.0, dbp_mmhg=70.0)
+        cor.step(1.0, 180.0, float(sbp), 0.72 * sbp, 10.0, 14.0, 98.0, venous_pressure=11.0)
+        ratios.append(cor.supply_demand_ratio)
+    assert ratios[0] == 0.0 and ratios[-1] > 0.25
+    assert max(b - a for a, b in pairwise(ratios)) < 0.08

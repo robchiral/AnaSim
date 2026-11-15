@@ -318,9 +318,18 @@ pressure-limiting (APL) valve raises right atrial pressure and impedes venous
 return.
 
 In untreated atrial fibrillation, the ventricular rate rises with sympathetic
-drive, and stroke volume falls further at rapid rates. In any rhythm, venous
-return limits stroke volume above 145 bpm, and short diastolic filling reduces
-it further above 170 bpm.
+drive, and stroke volume falls further at rapid rates. In normal ventricles,
+stroke volume falls when arterial resistance rises more than contractility. This
+follows ventriculo-arterial coupling with a resting ratio of arterial to
+ventricular elastance of 0.7 (Asanoi 1989; Chen 1998). Venous return limits
+stroke volume above 130 bpm and during combined inotropic and vasoconstrictor
+stimulation, and short diastolic filling reduces it further above 170 bpm.
+
+Severe left ventricular failure shifts blood into the pulmonary circulation.
+Left atrial pressure, lung water, and right ventricular afterload then rise
+until the outputs of the two ventricles match. Without circulation, left atrial
+pressure equilibrates with mean systemic filling pressure, and fluid stops
+filtering into the lungs.
 
 ### Acidemia, electrolytes, and hypothermia
 
@@ -334,8 +343,9 @@ baseline (Denlinger 1975; Lang 1988). Hyperkalemia slows conduction, depresses
 contractility, and can trigger ventricular arrhythmias or asystole. Elevated
 ionized calcium raises the potassium threshold for these effects.
 
-Core temperatures below 33 °C slow HR. Temperatures below 30 °C depress
-contractility and increase the risk of ventricular fibrillation.
+Core temperatures below 33 °C slow HR and weaken cold-induced vasoconstriction
+and reflex tachycardia. Temperatures below 30 °C depress contractility and
+increase the risk of ventricular fibrillation.
 
 ## Cardiovascular drugs
 
@@ -346,8 +356,9 @@ Anaphylaxis reduces the response to adrenergic drugs.
 ### Norepinephrine
 
 The norepinephrine model includes endogenous secretion and a clearance that
-depends on propofol (Li 2024). Its effects on resistance and stroke volume
-increase with anesthetic depth.
+falls with plasma propofol up to 8 mcg/mL (Li 2024). Only concentrations above
+the resting endogenous level change HR, resistance, and stroke volume, and the
+effects on resistance and stroke volume increase with anesthetic depth.
 
 ### Epinephrine
 
@@ -450,7 +461,8 @@ BIS was unchanged at EtCO₂ 3-12 kPa under propofol anesthesia (Turnbull 2008).
 Arrest is confirmed when ventricular fibrillation (VF), pulseless ventricular
 tachycardia (VT), asystole, HR below 10 bpm, or pulseless electrical activity
 (PEA) lasts 15 seconds. In PEA, the ECG remains organized while the heart's own
-beats produce less than 0.3 L/min with a pulse pressure below 5 mmHg. The
+beats produce less than 0.3 L/min with a pulse pressure below 5 mmHg. VT is
+pulseless when pulse pressure is below 5 mmHg and MAP is below 25 mmHg. The
 simulation continues through arrest, so the learner can resuscitate and treat
 the cause.
 
@@ -489,7 +501,8 @@ Epinephrine raises diastolic and coronary perfusion pressure during compressions
 mmHg at constant ventilation (Cantineau 1994).
 
 In primary asystole, beats resume after 30 seconds of adequate coronary oxygen
-supply during compressions if energy remains and the myocardium is viable. An
+supply during compressions if energy remains, the myocardium is viable, and
+neither hyperkalemia nor local anesthetic toxicity blocks conduction. An
 interruption or inadequate perfusion restarts this interval.
 
 ### Defibrillation and cardioversion
@@ -684,10 +697,10 @@ pulmonary blood flow, ventilation therefore lowers alveolar PCO₂ only to about
 2 mmHg.
 
 When the airway is closed or circuit gas is exhausted, gas that is absorbed is
-not replaced. Lung gas volume shrinks, and absorption atelectasis follows. The
-model tracks this absorbed volume separately from the lung volume used for
-mechanics and inhaled agents. Opening the airway refills the lungs with gas from
-the circuit (Laviola 2020).
+not replaced. Lung gas volume shrinks, and absorption atelectasis follows.
+Without positive-pressure ventilation, the resting lung volume used for
+mechanics falls by the absorbed volume. Opening the airway refills the lungs
+with gas from the circuit (Laviola 2020).
 
 During apnea with an open airway, circuit oxygen washes through anatomic dead
 space slowly unless earlier breathing removed its nitrogen. The circuit and
@@ -766,7 +779,8 @@ persists after emergence (Benoit 2002).
 Awake thermoregulation maintains the baseline core temperature. Basal heat
 production scales with body weight to the 0.75 power. Temperature and sepsis
 change metabolic demand and heat production, warming adds heat, and surface
-cooling removes it.
+cooling removes it. Heat production falls with oxygen delivery, so the core
+cools faster during arrest.
 
 General anesthetics, including etomidate and ketamine, inhibit active
 regulation, increase heat loss, and redistribute heat from the core to the
@@ -775,7 +789,8 @@ less (Kurz 1995). Cooling from redistribution in the first hour is smaller in
 heavier patients, who have higher ratios of weight to surface area (Kurz 1995).
 
 A cold patient shivers only after BIS has risen and responsiveness has
-returned. Opioids and neuromuscular block reduce shivering.
+returned. Opioids, neuromuscular block, and core temperatures below 31 °C
+reduce shivering.
 
 ## Malignant hyperthermia
 
@@ -793,8 +808,9 @@ generalized rigidity increase with the crisis. Rigidity stiffens the chest wall,
 limits spontaneous tidal volume, and persists under neuromuscular block.
 
 Dantrolene PK follows the Ryanodex label. Dantrolene controls the crisis and
-reduces twitch height without TOF fade, but leaves ventilation unchanged
-(Flewellen 1983).
+reduces twitch height without TOF fade, while leaving ventilation unchanged
+(Flewellen 1983). Once the crisis is controlled and triggering agents have
+cleared, it does not recur as dantrolene washes out.
 
 ## Anesthesia machine and ventilation
 
@@ -836,8 +852,9 @@ during expiration. Tube obstruction raises airway resistance.
 
 Manual bag breaths stop at the APL setting (default 20 cmH₂O), so obstruction or
 bronchospasm lowers the delivered volume. During unassisted breathing on the
-circuit, an APL above 20 cmH₂O with excess fresh gas builds continuous airway
-pressure up to the APL or the pressure at which the mask leaks.
+circuit, the default setting adds no airway pressure. At any other setting,
+excess fresh gas builds continuous airway pressure once the reservoir bag is
+more than half full, capped by the APL setting or the mask leak threshold.
 
 During mask ventilation, the mean airway pressure over recent breaths holds the
 pharynx open. A loose mask loses part of each assisted breath, lowers this
@@ -845,8 +862,8 @@ pressure, and reduces the measured airway pressure, flow, and volume. Pressures
 above 20 cmH₂O leak even with a tight seal (Bouvet 2014). A full seal delivers
 the tidal volume of two-handed mask ventilation, and an 80% seal that of a
 one-handed hold (Joffe 2010). Room air enters around a loose mask during
-unsupported breaths, or when an empty reservoir cannot supply an assisted
-breath.
+unsupported breaths, or when assisted breaths deliver less than the patient's
+own effort draws. PCV-VG raises inspiratory pressure to make up for a mask leak.
 
 ## Monitors
 
@@ -895,10 +912,12 @@ pressure, while intrinsic PEEP affects plateau pressure and residual flow.
 
 [Capnography](../anasim/monitors/capno.py) includes dead-space transit time and
 analyzer delay. End-tidal values clear when valid exhaled gas stops, and gas
-that stays at the sampling port decays when flow stops. End-tidal CO₂ alarms
-start only after the first breath with the airway connected. Gas lost around a
-facemask does not pass the sampling port, so a large leak, especially with small
-breaths, leaves dead-space gas at the port and flattens the capnogram.
+that stays at the sampling port decays when flow stops. Once an airway is
+connected or assisted ventilation is on, end-tidal CO₂ alarms start after the
+first breath, or after the apnea timeout if no breath arrives. In pregnancy, the
+low EtCO₂ alarm limit falls with the expected PaCO₂. Gas lost around a facemask
+does not pass the sampling port, so a large leak, especially with small breaths,
+leaves dead-space gas at the port and flattens the capnogram.
 
 Without an airway device, the impedance respiratory rate counts breathing
 efforts, including during obstruction. The gas monitor displays end-tidal
