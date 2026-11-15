@@ -182,8 +182,8 @@ class BISModel:
 
     def initialize(self, bis: float) -> None:
         self._clock = 0.0
-        # (time, drug BIS, remaining cortical function)
-        self._history = deque([(0.0, bis, 1.0)])
+        self._drug_history: deque[tuple[float, float]] = deque([(0.0, bis)])
+        self._cortical_history: deque[tuple[float, float]] = deque([(0.0, 1.0)])
         self.cortical_function = 1.0
 
     def compute_bis(
@@ -206,18 +206,19 @@ class BISModel:
         return drug_bis
 
     @staticmethod
-    def _interpolate_history(
-        history: deque[tuple[float, float, float]], target: float, field: int,
+    def _advance_delay_queue(
+        history: deque[tuple[float, float]], clock: float, value: float, delay: float,
     ) -> float:
+        history.append((clock, value))
+        target = clock - delay
+        while len(history) > 1 and history[1][0] <= target:
+            history.popleft()
         if target <= history[0][0] or len(history) == 1:
-            return history[0][field]
+            return history[0][1]
         if target >= history[-1][0]:
-            return history[-1][field]
-        idx = len(history) - 2
-        while idx > 0 and history[idx][0] > target:
-            idx -= 1
-        t0, t1 = history[idx][0], history[idx + 1][0]
-        y0, y1 = history[idx][field], history[idx + 1][field]
+            return history[-1][1]
+        t0, y0 = history[0]
+        t1, y1 = history[1]
         weight = (target - t0) / (t1 - t0) if t1 > t0 else 0.0
         return y0 + (y1 - y0) * weight
 
@@ -230,13 +231,12 @@ class BISModel:
         The delayed cortical function is kept in self.cortical_function.
         """
         self._clock += dt
-        history = self._history
-        history.append((self._clock, self.compute_bis(ce_prop, mac_sevo, ce_ketamine), cortical_function))
-        target = self._clock - self.delay
-        while len(history) > 1 and history[1][0] <= target:
-            history.popleft()
-        bis = self._interpolate_history(history, target, 1)
-        self.cortical_function = self._interpolate_history(history, self._clock - self.ischemia_delay, 2)
+        bis = self._advance_delay_queue(
+            self._drug_history, self._clock, self.compute_bis(ce_prop, mac_sevo, ce_ketamine), self.delay,
+        )
+        self.cortical_function = self._advance_delay_queue(
+            self._cortical_history, self._clock, cortical_function, self.ischemia_delay,
+        )
         return bis * self.cortical_function
 
 
@@ -334,10 +334,31 @@ class ClinicalResponseModel:
         effective_fent_mac_bar = ce_fentanyl + (ce_remi / FENTANYL_REMI_POTENCY if inhaled_mac > 0.0 else 0.0)
         inhaled_shift = 1.0 + (effective_fent_mac_bar / FENTANYL_MAC_BAR_C50)**FENTANYL_MAC_BAR_GAMMA
         opioid_boost = 1.0 + (ce_remi / (self.c50_remi * intensity)) ** self.gamma_remi
-        units = (
-            (prop_units + ket_units) * opioid_boost
-            + self._noxious_units(0.0, mac_sevo * inhaled_shift, mac_n2o * inhaled_shift, 0.0)
-        )
+        inhaled_units = self._noxious_units(0.0, mac_sevo * inhaled_shift, mac_n2o * inhaled_shift, 0.0)
+        ket_analgesia = 1.0 + 0.25 * (max(0.0, ce_ketamine) / 0.65) ** 1.1
+        additive_scaled = (ket_units * opioid_boost + inhaled_units) * ket_analgesia / intensity
+        slope_boost = opioid_boost * ket_analgesia
+        prop_scaled = prop_units / intensity
+        if additive_scaled > 0.0 and prop_scaled > 0.0:
+            gm1 = self.gamma_prop - 1.0
+
+            def _ratio_slope(x: float) -> float:
+                xg1 = x**gm1
+                ux = slope_boost * x + additive_scaled
+                ug1 = ux**gm1
+                return xg1 / (1.0 + xg1 * x) - slope_boost * ug1 / (1.0 + ug1 * ux)
+
+            if _ratio_slope(prop_scaled) > 0.0:
+                lo, hi = 0.0, prop_scaled
+                for _ in range(28):
+                    mid = 0.5 * (lo + hi)
+                    if _ratio_slope(mid) < 0.0:
+                        lo = mid
+                    else:
+                        hi = mid
+                prop_scaled = 0.5 * (lo + hi)
+                prop_units = prop_scaled * intensity
+        units = (prop_units + ket_units) * opioid_boost + inhaled_units
         effect = self._effect(units, 0.0, intensity, ce_ketamine=ce_ketamine)
         baseline = self._effect(prop_units, 0.0, intensity)
         lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
@@ -345,11 +366,7 @@ class ClinicalResponseModel:
         remaining = (1.0 + baseline) / (1.0 + effect) * (1.0 - lidocaine_block)
         pressure_exposure = (ce_fentanyl / FENTANYL_PRESSURE_C50)**FENTANYL_PRESSURE_GAMMA
         pressure = remaining * math.exp(-math.log(2.0) * pressure_exposure * max(0.0, ce_prop) / 3.4)
-        inhaled_hr_weight = (
-            clamp01(inhaled_mac / 0.25) * (inhaled_mac / max(1e-9, inhaled_mac + prop_units))
-            if inhaled_mac > 0.0
-            else 0.0
-        )
+        inhaled_hr_weight = clamp01(inhaled_mac / 0.25) if inhaled_mac > 0.0 else 0.0
         hr_fent = ce_fentanyl + inhaled_hr_weight * (ce_remi / FENTANYL_REMI_POTENCY)
         hr = remaining / (1.0 + (hr_fent / FENTANYL_HR_C50)**FENTANYL_HR_GAMMA)
         return pressure, hr

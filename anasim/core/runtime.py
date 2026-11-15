@@ -16,10 +16,12 @@ from anasim.physiology.toxicity import SILENT_BLOCK
 from .monitors import step_monitors
 from .projection import (
     PhysiologyStepState,
+    advance_tracheal_fio2,
     build_snapshot_from_models,
     cardiovascular_response_fractions,
     central_muscle_strength,
     circuit_connected,
+    circuit_inspired_mixture,
     compute_pit_estimate,
     delivered_fraction,
     loss_of_response,
@@ -273,7 +275,14 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
     circuit.vaporizer_on = engine.vaporizer.state.is_on and engine.config.sevoflurane_enabled
 
     fi_sevo, fi_n2o = sync_inspired_gas(engine)
+    tracheal_fio2 = advance_tracheal_fio2(engine, dt)
+    engine._step_tracheal_fio2 = tracheal_fio2
+    n2o_uptake = engine.pk_n2o.alveolar_uptake_l_min(engine.hemo.state.co, engine.aeration.shunt_fraction)
+    engine._step_n2o_uptake_l_min = n2o_uptake
+    target_lung_vol = engine.aeration.frc
+    engine._step_lung_volume_l = target_lung_vol
     circuit_share = mask_circuit_share(engine)
+    apneic_limit: float | None = None
     if circuit_share <= 0.0:
         uptake_o2 = uptake_sevo = uptake_n2o = uptake_n2 = rebreathed_n2 = 0.0
     else:
@@ -282,35 +291,65 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
         va = max(0.0, engine.state.va) if patency > 0.0 else 0.0
         va_circuit = va * circuit_share
         composition = circuit.composition
+        circuit_fio2, circuit_fi_sevo, circuit_fin2o, circuit_fin2 = circuit_inspired_mixture(
+            composition, tracheal_fio2, circuit_share
+        )
+        fi_sevo = circuit_share * circuit_fi_sevo
+        fi_n2o = circuit_share * circuit_fin2o
         resp = engine.resp
         ventilation = max(0.0, va * (1.0 - 0.6 * clamp01(airway.vq_mismatch)))
-        mixing = ventilation * dt / (120.0 * resp.gas_volume_l) if resp.gas_volume_l > 0.0 else 0.0
-        alveolar_n2 = resp.alveolar_fn2
         apneic_limit = circuit.deliverable_flow(dt) if circuit_share >= 0.999 else None
-        n2o_uptake = engine.pk_n2o.alveolar_uptake_l_min(engine.hemo.state.co, engine.aeration.shunt_fraction)
-        n2o_inflow_btps = max(0.0, n2o_uptake) * patency
-        if apneic_limit is not None:
-            n2o_inflow_btps = min(n2o_inflow_btps, max(0.0, apneic_limit) / resp._btps_to_stpd)
-        uptake_sevo = (composition.fi_agent - engine.pk_sevo.state.p_alv) * va_circuit + (
-            n2o_inflow_btps * circuit_share * composition.fi_agent
+        frc_change_btps_l, remaining_apneic_limit = resp._frc_volume_change_l(
+            target_lung_vol, patency, dt, apneic_limit
         )
-        uptake_n2o = (composition.fin2o - engine.pk_n2o.state.p_alv) * va_circuit + (
-            n2o_inflow_btps * circuit_share * composition.fin2o
+        frc_stpd_l_min = frc_change_btps_l * resp._btps_to_stpd * 60.0 / dt if dt > 0.0 else 0.0
+        refill_l_min = resp._passive_refill_l_min(patency, dt)
+        if remaining_apneic_limit is not None:
+            refill_l_min = min(refill_l_min, remaining_apneic_limit)
+        deficit_after_refill = max(0.0, resp._apneic_gas_deficit_l - refill_l_min * dt / 60.0)
+        gas_vol = max(
+            resp.vd_deadspace,
+            resp.frc + frc_change_btps_l - deficit_after_refill / resp._btps_to_stpd,
+        )
+        mixing = ventilation * dt / (120.0 * gas_vol) if gas_vol > 0.0 else 0.0
+        alveolar_n2 = resp.alveolar_fn2
+        n2o_stpd_l_min = n2o_uptake * resp._btps_to_stpd
+        net_uptake = max(0.0, resp._pulmonary_o2_uptake - resp._pulmonary_co2_delivery)
+        apneic_inflow = net_uptake * patency * clamp01(1.0 - ventilation)
+        n2o_inflow = max(0.0, n2o_stpd_l_min) * patency
+        passive_flow = apneic_inflow + refill_l_min + n2o_inflow
+        if remaining_apneic_limit is not None:
+            passive_flow = min(passive_flow, remaining_apneic_limit)
+        washout_stpd = max(0.0, -n2o_stpd_l_min) * patency
+        frc_sevo = circuit_fi_sevo if frc_stpd_l_min >= 0.0 else engine.pk_sevo.state.p_alv
+        frc_n2o = circuit_fin2o if frc_stpd_l_min >= 0.0 else engine.pk_n2o.state.p_alv
+        frc_n2 = circuit_fin2 if frc_stpd_l_min >= 0.0 else alveolar_n2
+        uptake_sevo = (circuit_fi_sevo - engine.pk_sevo.state.p_alv) * va_circuit + circuit_share * (
+            frc_stpd_l_min * frc_sevo + passive_flow * circuit_fi_sevo - washout_stpd * engine.pk_sevo.state.p_alv
+        )
+        uptake_n2o = (circuit_fin2o - engine.pk_n2o.state.p_alv) * va_circuit + circuit_share * (
+            frc_stpd_l_min * frc_n2o + passive_flow * circuit_fin2o - washout_stpd * engine.pk_n2o.state.p_alv
         )
         tidal_n2 = (
             circuit_share * ventilation * resp._btps_to_stpd
-            * (composition.fin2 - alveolar_n2) / (1.0 + mixing)
+            * (circuit_fin2 - alveolar_n2) / (1.0 + mixing)
         )
-        uptake_n2 = tidal_n2 + n2o_inflow_btps * resp._btps_to_stpd * circuit_share * composition.fin2
+        uptake_n2 = tidal_n2 + circuit_share * (
+            frc_stpd_l_min * frc_n2 + passive_flow * circuit_fin2 - washout_stpd * alveolar_n2
+        )
         rebreathed_share = clamp01(1.0 - circuit.fgf_total() / max(0.1, va_circuit)) if va_circuit > 0.0 else 0.0
         rebreathed_n2 = tidal_n2 * rebreathed_share
         uptake_o2 = circuit_share * resp.oxygen_exchange_l_min(
-            composition.fio2, va,
+            circuit_fio2, va,
             airway.patency, airway.vq_mismatch, dt,
             n2o_uptake_l_min=n2o_uptake,
             apneic_flow_limit_l_min=apneic_limit,
+            lung_volume_l=target_lung_vol,
         )
     circuit.step(dt, uptake_o2, uptake_sevo, uptake_n2o, uptake_n2, rebreathed_n2)
+    engine._step_apneic_limit_l_min = (
+        None if apneic_limit is None else apneic_limit * circuit.last_uptake_scale
+    )
     return fi_sevo, fi_n2o
 
 
@@ -320,20 +359,33 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
     aeration = engine.aeration
     patency = clamp01(engine.airway_status.patency)
     va = state.va if patency > 0.0 else 0.0
-    n2o_uptake = engine.pk_n2o.alveolar_uptake_l_min(co_curr, aeration.shunt_fraction)
-    n2o_inflow_btps = max(0.0, n2o_uptake) * patency
-    if circuit_connected(engine) and mask_circuit_share(engine) >= 0.999:
-        n2o_inflow_btps = min(
-            n2o_inflow_btps,
-            max(0.0, engine.circuit.deliverable_flow_l_min) / engine.resp._btps_to_stpd,
-        )
-    lung_vol = engine.resp.frc
+    n2o_uptake = (
+        engine._step_n2o_uptake_l_min
+        if engine._step_n2o_uptake_l_min is not None
+        else engine.pk_n2o.alveolar_uptake_l_min(co_curr, aeration.shunt_fraction)
+    )
+    target_lung_vol = engine._step_lung_volume_l if engine._step_lung_volume_l is not None else aeration.frc
+    frc_change, remaining_apneic_limit = engine.resp._frc_volume_change_l(
+        target_lung_vol, patency, dt, engine._step_apneic_limit_l_min
+    )
+    if n2o_uptake >= 0.0:
+        companion_btps = n2o_uptake * patency
+        if remaining_apneic_limit is not None:
+            companion_btps = min(companion_btps, remaining_apneic_limit / engine.resp._btps_to_stpd)
+        elif circuit_connected(engine) and mask_circuit_share(engine) >= 0.999:
+            companion_btps = min(
+                companion_btps,
+                max(0.0, engine.circuit.deliverable_flow_l_min) / engine.resp._btps_to_stpd,
+            )
+    else:
+        companion_btps = n2o_uptake * patency
+    lung_vol = engine.resp.frc + frc_change
     engine.pk_sevo.step(dt, fi_sevo, va, co_curr, temp_c=state.temp_c,
                         lung_volume_l=lung_vol, shunt_fraction=aeration.shunt_fraction,
-                        companion_uptake_l_min=n2o_inflow_btps)
+                        companion_uptake_l_min=companion_btps)
     engine.pk_n2o.step(dt, fi_n2o, va, co_curr, temp_c=state.temp_c,
                        lung_volume_l=lung_vol, shunt_fraction=aeration.shunt_fraction,
-                       companion_uptake_l_min=n2o_inflow_btps)
+                       companion_uptake_l_min=companion_btps)
     sync_inhaled_agents(engine)
 
     rates = engine.infusion_rates

@@ -1,6 +1,7 @@
 """Fixed anesthetic model endpoints and their integrated opioid behavior."""
 
 import json
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -41,6 +42,23 @@ def test_published_response_thresholds_and_bis_delay():
     )
     assert remi_p == pytest.approx(fent_p, rel=0.02)
     assert remi_hr == pytest.approx(fent_hr, rel=0.02)
+
+    bis_85 = BISModel(Patient(age=85, weight=70, height=170, sex="male"))
+    assert bis_85.delay > 90.0 and bis_85.ischemia_delay == pytest.approx(20.0)
+    for _ in range(250):
+        val = bis_85.step(0.1, bis_85.c50, cortical_function=0.2)
+    assert bis_85.cortical_function == pytest.approx(0.2)
+    assert val == pytest.approx(bis_85.baseline * 0.2)
+    for _ in range(800):
+        val = bis_85.step(0.1, bis_85.c50, cortical_function=0.2)
+    assert val == pytest.approx(bis_85.baseline * 0.5 * 0.2)
+
+    for mac, remi in ((0.5, 0.0), (1.0, 0.0), (0.5, 2.0)):
+        curves = [
+            response.cardiovascular_response_fractions(cp, remi, mac_sevo=mac, intensity=1.0)
+            for cp in (0.0, 2.0, 5.0, 8.0, 12.0, 20.0)
+        ]
+        assert all(b[0] <= a[0] + 1e-12 and b[1] <= a[1] + 1e-12 for a, b in pairwise(curves))
 
 
 def test_deeper_iv_hypnosis_preserves_cardiovascular_stimulation(engine_factory):

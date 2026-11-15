@@ -43,12 +43,12 @@ class Capnograph:
         steepens phase III; previous breath sizes do not change its endpoint.
         """
         exhaled = -volume_change
-        self.exhaling = exhaled > 0.0
-        if exhaled != 0.0:
+        self.exhaling = exhaled > 1e-6 * dt
+        if abs(exhaled) > 0.002 * dt:
             self._no_flow_s = 0.0
         else:
             self._no_flow_s += dt
-        if exhaled > 0.0:
+        if exhaled > 1e-6 * dt:
             if self._inhaled > self.dead_space:
                 # Fresh gas reached the alveoli, so this is a new exhalation.
                 self._breath_volume = self._inhaled
@@ -75,8 +75,10 @@ class Capnograph:
                 for volume, slug_co2 in self._take(self._window, excess, left=True):
                     self._window_volume -= volume
                     self._window_co2 -= volume * slug_co2
+            if self._no_flow_s > 1.5:
+                self._decay_window(math.exp(-dt / 2.5))
             sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
-        elif exhaled < 0.0:
+        elif exhaled < -1e-6 * dt:
             inhaled = -exhaled
             self._inhaled += inhaled
             # Gas moves into the alveoli and fresh gas refills the column from the Y-piece.
@@ -87,7 +89,7 @@ class Capnograph:
             sample = 0.0
         else:
             if self._no_flow_s > 1.5:
-                self._window_co2 *= math.exp(-dt / 2.5)
+                self._decay_window(math.exp(-dt / 2.5))
                 sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
             else:
                 sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else self._stages[0]
@@ -100,6 +102,12 @@ class Capnograph:
         self._stages[1] = sample + (second - sample + z * (first - sample)) * decay
         self.co2 = self._stages[1]
         return self.co2
+
+    def _decay_window(self, factor: float) -> None:
+        self._window_co2 = 0.0
+        for slug in self._window:
+            slug[1] *= factor
+            self._window_co2 += slug[0] * slug[1]
 
     @staticmethod
     def _push(column: deque, volume: float, pco2: float, right: bool) -> None:

@@ -325,7 +325,7 @@ class AnesthesiaVentilator:
             if MANDATORY.get(self.settings.mode) == "VG" and (self._mode is None or MANDATORY.get(self._mode) != "VG"):
                 self._vg_pressure = None
             self._mode = self.settings.mode
-        lung.effort.start(lung, self._inspiratory_resistance())
+        lung.effort.start(lung, self._series_resistance())
         remaining = dt
         while remaining > 1e-12:
             remaining -= self._advance(remaining, lung)

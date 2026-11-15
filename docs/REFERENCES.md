@@ -1,9 +1,8 @@
 # Model references
 
 These studies are the sources for the model parameters, calibrations, and
-scenario guidance. The sections follow the
-[architecture guide](ARCHITECTURE.md#model-notes), which explains how the
-studies are used.
+scenario guidance. The sections follow the [model guide](MODELS.md), which
+explains how the studies are used.
 
 Abbreviations: PK, pharmacokinetics; PD, pharmacodynamics; BIS, bispectral
 index; MAC, minimum alveolar concentration; TCI, target-controlled infusion;
@@ -108,7 +107,7 @@ PCV-VG, pressure control with volume guarantee.
 - Armstrong et al. (1988). *Ther Drug Monit*. [Clinical response and total and unbound plasma concentrations after lidocaine overdose](https://pubmed.ncbi.nlm.nih.gov/3201537/).
 - Heinonen et al. (2015). *Basic Clin Pharmacol Toxicol*. [Lipid emulsion and lidocaine toxicity in volunteers](https://pubmed.ncbi.nlm.nih.gov/25207682/).
 - Fettiplace et al. (2014). *Anesthesiology*. [Cardiotonic effect of lipid emulsion in cardiac toxicity](https://pubmed.ncbi.nlm.nih.gov/24496123/).
-- Neal et al. (2021). *Reg Anesth Pain Med*. [ASRA practice advisory and 2020 LAST checklist](https://pubmed.ncbi.nlm.nih.gov/33148630/).
+- Neal et al. (2021). *Reg Anesth Pain Med*. [ASRA 2020 LAST checklist](https://pubmed.ncbi.nlm.nih.gov/33148630/).
 - American Society of Regional Anesthesia and Pain Medicine (2020). [LAST checklist](https://asra.com/docs/default-source/guidelines-articles/local-anesthetic-systemic-toxicity-rgb.pdf).
 - Himes et al. (1977). *Anesthesiology*. [Lidocaine and anesthetic requirement](https://pubmed.ncbi.nlm.nih.gov/911052/).
 - Hans et al. (2010). *Br J Anaesth*. [Lidocaine reduces propofol requirements during stimulation](https://pubmed.ncbi.nlm.nih.gov/20650919/).
@@ -214,8 +213,8 @@ PCV-VG, pressure control with volume guarantee.
 - Kazama et al. (1999). *Anesthesiology*. [Propofol equilibration for SBP and BIS by age](https://pubmed.ncbi.nlm.nih.gov/10360846/).
 - Claeys et al. (1988). *Br J Anaesth*. [Hemodynamic changes during anesthesia induced and maintained with propofol](https://pubmed.ncbi.nlm.nih.gov/3257393/).
 - He et al. (2024). *J Biomed Res*. [Echocardiographic hemodynamics during remimazolam versus propofol induction in elderly patients](https://pubmed.ncbi.nlm.nih.gov/37907250/).
-- Hino et al. (2019). *J Anesth*. [Age-stratified propofol and thiopental induction with remifentanil](https://doi.org/10.1007/s00540-019-02657-x).
-- Oh et al. (2025). *Drug Des Devel Ther*. [Blood pressure during propofol TCI induction in patients aged 65 and over](https://doi.org/10.2147/DDDT.S553809).
+- Hino et al. (2019). *J Anesth*. [Age-stratified propofol and thiopental induction with remifentanil](https://pubmed.ncbi.nlm.nih.gov/31228006/).
+- Oh et al. (2025). *Drug Des Devel Ther*. [Blood pressure during propofol TCI induction in patients aged 65 and over](https://pubmed.ncbi.nlm.nih.gov/41180601/).
 - van den Berg et al. (2021). *J Clin Monit Comput*. [Hemodynamics at equipotent propofol-remifentanil pairs](https://pubmed.ncbi.nlm.nih.gov/32488680/).
 - Sjøen et al. (2024). *Acta Anaesthesiol Scand*. [Remifentanil dose and hemodynamics during propofol induction](https://pubmed.ncbi.nlm.nih.gov/38400761/).
 - Sjøen et al. (2023). *Acta Anaesthesiol Scand*. [Propofol dose and hemodynamics during remifentanil-propofol induction](https://pubmed.ncbi.nlm.nih.gov/37291731/).
@@ -302,7 +301,7 @@ PCV-VG, pressure control with volume guarantee.
 - Clutter et al. (1980). *J Clin Invest*. [Epinephrine cardiovascular effects](https://pubmed.ncbi.nlm.nih.gov/6995479/).
 - Stratton et al. (1985). *J Appl Physiol*. [Epinephrine infusion hemodynamics](https://pubmed.ncbi.nlm.nih.gov/3988675/).
 - Freyschuss et al. (1986). *Clin Sci (Lond)*. [Arterial epinephrine concentrations and hemodynamics](https://pubmed.ncbi.nlm.nih.gov/3956110/).
-- Piccioli et al. (2023). *Front Cardiovasc Med*. [Contractility and pulse pressure during dobutamine](https://doi.org/10.3389/fcvm.2023.1197842).
+- Piccioli et al. (2023). *Front Cardiovasc Med*. [Contractility and pulse pressure during dobutamine](https://pubmed.ncbi.nlm.nih.gov/37424904/).
 - Pan et al. (1986). *J Pharmacol Exp Ther*. [Aging and beta-adrenergic vascular relaxation](https://pubmed.ncbi.nlm.nih.gov/3025419/).
 - Hogikyan and Supiano (1994). *Am J Physiol*. [Aging and arterial alpha-adrenergic responsiveness](https://pubmed.ncbi.nlm.nih.gov/8203510/).
 - Takahashi et al. (2002). *Anesth Analg*. [IV epinephrine bolus response](https://pubmed.ncbi.nlm.nih.gov/11867404/).
@@ -357,7 +356,7 @@ PCV-VG, pressure control with volume guarantee.
 - Bolan et al. (2001). *Transfusion*. [Citrate, ionized calcium, and PTH during plateletpheresis](https://pubmed.ncbi.nlm.nih.gov/11552076/).
 - Ansari et al. (2025). *Anesthesiology*. [Pharmacokinetics of intravenous calcium during cesarean delivery](https://pubmed.ncbi.nlm.nih.gov/39361822/).
 - Denlinger et al. (1975). *Anesthesiology*. [Cardiovascular responses to intravenous calcium during halothane anesthesia](https://pubmed.ncbi.nlm.nih.gov/1119707/).
-- Lang et al. (1988). *Ann Intern Med*. [Left ventricular contractility and blood ionized calcium](https://doi.org/10.7326/0003-4819-108-4-524).
+- Lang et al. (1988). *Ann Intern Med*. [Left ventricular contractility and blood ionized calcium](https://pubmed.ncbi.nlm.nih.gov/3248127/).
 - González et al. (2018). *Kidney Int Rep*. [Secondary response to chronic respiratory acidosis](https://pubmed.ncbi.nlm.nih.gov/30197983/).
 - Krapf et al. (1991). *N Engl J Med*. [Renal response to chronic respiratory alkalosis](https://pubmed.ncbi.nlm.nih.gov/1902283/).
 
@@ -462,12 +461,12 @@ PCV-VG, pressure control with volume guarantee.
 - Matsukawa et al. (1995). *Anesthesiology*. [Heat redistribution after induction](https://pubmed.ncbi.nlm.nih.gov/7879935/).
 - Frank et al. (1997). *JAMA*. [Perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/9087467/).
 - Kurz et al. (1995). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
-- Kurz et al. (1995). *Anesth Analg*. [Midazolam and thermoregulatory control](https://doi.org/10.1097/00000539-199508000-00032).
+- Kurz et al. (1995). *Anesth Analg*. [Midazolam and thermoregulatory control](https://pubmed.ncbi.nlm.nih.gov/7618734/).
 
 ## Malignant hyperthermia
 
 - DailyMed (2024). [Ryanodex (dantrolene) prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=8f7b3ac0-604d-4c78-b545-5e0f8ea3d698).
-- Flewellen et al. (1983). *Anesthesiology*. [Dantrolene dose response in awake man](https://doi.org/10.1097/00000542-198310000-00002).
+- Flewellen et al. (1983). *Anesthesiology*. [Dantrolene dose response in awake man](https://pubmed.ncbi.nlm.nih.gov/6614536/).
 - Visoiu et al. (2014). *Anesth Analg*. [Anesthetic drugs and onset of malignant hyperthermia](https://pubmed.ncbi.nlm.nih.gov/24445637/).
 
 ## Ventilator waveforms

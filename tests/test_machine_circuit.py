@@ -288,3 +288,58 @@ def test_n2o_hypoxic_guard_step_invariance_and_low_flow_hypoxia(engine_factory, 
     starved.set_fgf(2.0, 3.0, 3.0)
     starved.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.21)
     assert starved.circuit.fgf_o2 >= starved.circuit.fgf_n2o / 3.0 - 1e-9
+
+    apneic = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+    apneic.give_drug_bolus("roc", 100.0)
+    advance_time(apneic, 60.0, dt=0.1)
+    apneic.set_airway_mode("ETT")
+    apneic.set_fgf(0.0, 0.0, 0.0)
+    apneic.circuit.composition.fio2, apneic.circuit.composition.fin2 = 0.90, 0.10
+    apneic.aeration.frc = apneic.resp.frc + 0.05
+    assert apneic.state.apnea and apneic._tracheal_fio2 == pytest.approx(0.21, abs=0.01)
+    reservoir_0 = apneic.circuit.reservoir_volume
+    circuit_o2_0 = (3.0 + reservoir_0) * apneic.circuit.composition.fio2
+    resp_o2_0 = apneic.resp.gas_transport.oxygen_from_air_l
+    apneic.step(0.1)
+    reservoir_lost = reservoir_0 - apneic.circuit.reservoir_volume
+    circuit_o2_lost = circuit_o2_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
+    resp_o2_gained = apneic.resp.gas_transport.oxygen_from_air_l - resp_o2_0
+    assert circuit_o2_lost == pytest.approx(resp_o2_gained, rel=1e-6, abs=1e-9)
+    assert reservoir_lost == pytest.approx(resp_o2_gained / apneic._tracheal_fio2, rel=1e-6, abs=1e-9)
+
+    apneic.circuit.composition.fio2, apneic.circuit.composition.fin2 = 0.90, 0.10
+    apneic.circuit.reservoir_volume = 0.001
+    frc_0 = apneic.resp.frc
+    reservoir_0 = apneic.circuit.reservoir_volume
+    circuit_o2_0 = (3.0 + reservoir_0) * apneic.circuit.composition.fio2
+    resp_o2_0 = apneic.resp.gas_transport.oxygen_from_air_l
+    for _ in range(20):
+        apneic.aeration.frc = frc_0 + 0.05
+        apneic.step(0.1)
+    stpd_expansion = (apneic.resp.frc - frc_0) * apneic.resp._btps_to_stpd
+    reservoir_lost = reservoir_0 - apneic.circuit.reservoir_volume
+    circuit_o2_lost = circuit_o2_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
+    resp_o2_gained = apneic.resp.gas_transport.oxygen_from_air_l - resp_o2_0
+    assert stpd_expansion == pytest.approx(0.001, abs=1e-9)
+    assert reservoir_lost == pytest.approx(0.001, abs=1e-9)
+    assert circuit_o2_lost == pytest.approx(resp_o2_gained, rel=1e-6, abs=1e-9)
+
+    apneic.circuit.composition.fio2, apneic.circuit.composition.fin2 = 1.0, 0.0
+    apneic._tracheal_fio2 = 1.0
+    apneic.circuit.reservoir_volume = 0.001
+    apneic.aeration.frc = apneic.resp.frc + 0.05
+    circuit_o2_0 = (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
+    resp_o2_0 = apneic.resp.gas_transport.oxygen_from_air_l
+    apneic.step(1.0)
+    circuit_o2_lost = circuit_o2_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
+    resp_o2_gained = apneic.resp.gas_transport.oxygen_from_air_l - resp_o2_0
+    assert circuit_o2_lost == pytest.approx(0.001, abs=1e-9)
+    assert resp_o2_gained == pytest.approx(0.001, abs=1e-9)
+
+    loose_mask = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+    loose_mask.set_airway_mode("Mask")
+    loose_mask.set_mask_seal(0.4)
+    loose_mask.set_fgf(0.0, 0.0, 0.0)
+    loose_mask.circuit.reservoir_volume = 0.0
+    advance_time(loose_mask, 60.0, dt=0.1)
+    assert loose_mask.state.va > 3.5 and loose_mask.state.sao2 > 96.5

@@ -59,7 +59,7 @@ target-controlled infusion (TCI) to a plasma or effect-site target.
 
 AnaSim supports adults aged 18 to 85 years within the
 [input limits](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md#fields).
-The [architecture guide](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md#supported-patient-domain)
+The [model guide](https://github.com/robchiral/AnaSim/blob/main/docs/MODELS.md#supported-patient-domain)
 describes how the models represent patient conditions.
 
 ## Headless use
@@ -75,7 +75,8 @@ anasim --mode headless --duration 60 --record
 | Task | Guide |
 |------|-------|
 | Configure patients, run scripts, or interpret CSV files | [CLI and Python usage](https://github.com/robchiral/AnaSim/blob/main/docs/CLI_USAGE.md) |
-| Understand model behavior and assumptions | [Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md) |
+| Understand model behavior and assumptions | [Models](https://github.com/robchiral/AnaSim/blob/main/docs/MODELS.md) |
+| Understand the code structure and step order | [Architecture](https://github.com/robchiral/AnaSim/blob/main/docs/ARCHITECTURE.md) |
 | Find the source studies | [Model references](https://github.com/robchiral/AnaSim/blob/main/docs/REFERENCES.md) |
 | Compare model outputs with clinical recordings | [VitalDB validation](https://github.com/robchiral/AnaSim/blob/main/validation/vitaldb/README.md) |
 | Change the code and choose which checks to run | [Contributing](https://github.com/robchiral/AnaSim/blob/main/CONTRIBUTING.md) |

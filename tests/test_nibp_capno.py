@@ -151,6 +151,18 @@ class TestCapnography:
             peaks.append(max(expired))
         assert peaks == pytest.approx([38.0] * 4, abs=0.5)
 
+        capno = Capnograph(0.15)
+        capno.step(0.1, 0.5, 40.0)
+        for _ in range(30):
+            capno.step(0.1, -0.015, 40.0)
+        for _ in range(200):
+            capno.step(0.1, -0.0001, 40.0)
+        assert capno.co2 < 2.0
+        for _ in range(15):
+            resumed = capno.step(0.1, -0.015, 40.0)
+        assert capno._window_co2 == pytest.approx(sum(v * p for v, p in capno._window), abs=1e-12)
+        assert resumed == pytest.approx(40.0, abs=0.5)
+
     @pytest.mark.parametrize(("mode", "p_insp"), [("VCV", 0.0), ("PSV", 10.0), ("CPAP", 0.0)])
     def test_capnogram_follows_spontaneous_breaths_over_backup_and_after_stop(
         self, engine_factory, mode, p_insp

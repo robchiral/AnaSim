@@ -71,9 +71,9 @@ anasim --mode headless --duration 60 --config patient_config.json \
 Patient ranges are inclusive, and patient inputs and `dt` must be finite. If you
 set `baseline_hct`, it must be within 0.12 of `0.03 * baseline_hb`. During
 pregnancy, hemoglobin and hematocrit are the measured starting values.
-`engine.set_position("left_lateral")` changes position during a run. The
-[architecture guide](ARCHITECTURE.md#supported-patient-domain) describes how the
-models represent these patient conditions.
+`engine.set_position("left_lateral")` changes position during a run. The [model
+guide](MODELS.md#supported-patient-domain) describes how the models represent
+these patient conditions.
 
 ### Initialization and runtime
 
@@ -143,7 +143,7 @@ waveform samples.
 |--------|-------|
 | `set_vent_settings(vt=...)` | Takes liters, whereas `Patient.baseline_vt` takes mL |
 | `set_vent_power(True)` | Starts the ventilator after you apply its settings |
-| `set_bag_mask_ventilation(True, rr, vt, p_max)` | Takes liters, from 1 to 40 breaths/min, 0.05 to 1.2 L, and a pressure limit of 5 to 70 cmH₂O (default 20); omitted settings keep their last values |
+| `set_bag_mask_ventilation(True, rr, vt, p_max)` | Takes a rate of 1 to 40 breaths/min, a tidal volume of 0.05 to 1.2 L, and a pressure limit of 5 to 70 cmH₂O (default 20); omitted settings keep their last values |
 | `set_mask_seal(seal)` | Takes a fraction from 0 (open) to 1 (tight seal), whereas the browser shows percent |
 | `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
 | `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates such as propofol, remifentanil, and rocuronium in mcg/kg/min use total body weight; vasopressor rates are absolute |

@@ -2,20 +2,63 @@
 
 ## Unreleased
 
+- AnaSim now supports adults up to 85 years old.
 - Blood gases now report sodium, potassium, chloride, and ionized calcium.
   Fluids carry their own ions and albumin. Saline causes hyperchloremic
-  acidosis, and rapid transfusion adds acid, CO₂, and potassium while lowering
+  acidosis, and rapid transfusion adds acid, CO₂, and potassium and lowers
   ionized calcium. Added renal compensation for sustained PaCO₂ changes,
   0.9% saline, and calcium chloride.
-- Added malignant hyperthermia with dantrolene, surface cooling, and a guided
-  or independent case.
-- AnaSim now supports adults up to 85 years old.
+- Hypocalcemia now lowers contractility and vascular resistance, and calcium
+  chloride restores contractility. Succinylcholine, malignant hyperthermia,
+  and severe acidemia move potassium into plasma. Hyperkalemia peaks T waves,
+  widens the QRS complex, and can cause ventricular arrhythmias or asystole,
+  and calcium protects against these effects.
+- Added malignant hyperthermia with dantrolene, surface cooling, chest-wall
+  rigidity, and a guided or independent case.
+- Morphine, hydromorphone, fentanyl, and rocuronium kinetics now depend on body
+  composition and hepatic function, and morphine and hydromorphone also on age
+  and renal function. Tissue volumes for inhaled agents scale with fat-free
+  mass and fat mass.
+- Midazolam alone now lowers BIS only to the sedation range and causes mild
+  respiratory depression and vasodilation. Etomidate preserves blood pressure.
+  Both affect thermoregulation, midazolam much less than general anesthetics.
+- Ketamine now raises BIS under propofol or sevoflurane, adds analgesia, and
+  briefly depresses breathing after rapid high-dose boluses. When sympathetic
+  reserve is exhausted, it lowers contractility and vascular resistance.
+- Remifentanil now lowers sevoflurane MAC-BAR and blunts the HR response to
+  stimulation under inhaled anesthesia, as fentanyl does. Sevoflurane and
+  nitrous oxide strengthen rocuronium block at central as well as peripheral
+  muscles.
+- Sevoflurane now causes rapid shallow breathing that progresses to apnea near
+  2 MAC. Nitrous oxide uptake concentrates the other alveolar gases, and its
+  washout dilutes alveolar oxygen and CO₂. Nitrous oxide flow is limited to
+  three times the delivered oxygen flow.
+- When patient uptake exceeds fresh gas flow, the reservoir bag and bellows
+  now empty, and a collapsed bellows limits delivered breaths. Room air no
+  longer enters the sealed circuit. During apnea without earlier
+  denitrogenation, oxygen washes through dead space slowly.
+- Sevoflurane and ketamine now partly relieve bronchospasm, and labetalol
+  antagonizes epinephrine's bronchodilation. Severe hyperinflation weakens
+  inspiratory effort.
+- Extubation under light anesthesia can now trigger laryngospasm. Intubation
+  of a responsive patient fails unless hypnosis is sustained or circulation
+  has stopped.
+- Fluid loading no longer raises stroke volume in HFrEF, and pulmonary edema
+  starts at a higher filling pressure in chronic heart failure. Blood loss
+  draws interstitial fluid into plasma. High intrathoracic pressure reduces
+  preload further, and rapid AF and extreme tachycardia limit ventricular
+  filling.
+- Hypothermia below 33 °C now slows HR, and below 30 °C it depresses
+  contractility and can start VF.
+- Alpha and beta blockade now shift ephedrine's vascular and cardiac responses
+  separately, and beta agonists relieve sinus bradycardia.
 - Epinephrine clearance and sensitivity now fall with age, and its responses
   are recalibrated to infusion and bolus studies. Its inotropic effect widens
   pulse pressure. HR and pressure responses to boluses keep rising at larger
   doses, and higher infusion rates restore vascular resistance.
 - Atropine now raises pressure less, and ketamine raises it more after
   atropine or during pacing.
+- Above 65, propofol lowers blood pressure more slowly but further.
 - Recalibrated respiratory muscle fatigue. Heavy loads take about twice as
   long to exhaust the muscles, most strength returns within 15 minutes of rest
   or pressure support, and a smaller deficit lasts up to a day.
@@ -23,27 +66,44 @@
   VT with a pulse takes tens of minutes to convert, and VF recurs after about
   half of successful shocks. Rapid amiodarone boluses lower pressure more than
   slower infusions, and cardiac output falls more in HFrEF.
-- Epinephrine during CPR now raises diastolic pressure while lowering cardiac
-  output and EtCO₂. Shocks temporarily reduce stroke volume, and arterial
-  pressure recovers more slowly after longer VF.
+- Epinephrine during CPR now raises diastolic pressure and lowers cardiac
+  output and EtCO₂. Pulseless VT is defibrillated like VF, and an
+  unsynchronized shock on a perfusing rhythm can cause VF. Shocks temporarily
+  reduce stroke volume, and arterial pressure recovers more slowly after
+  longer VF.
 - When pulses stop, arterial systolic and diastolic readings clear after a
-  brief hold, and MAP follows catheter pressure.
+  brief hold, and MAP follows catheter pressure. NIBP fails during PEA and
+  raises a low-MAP alarm. Headless output shows arterial MAP during arrest and
+  blanks failed NIBP and invalid SpO₂ readings.
 - Recalibrated lidocaine toxicity and lipid rescue. In awake patients, HR and
-  blood pressure rise before seizures; QRS widening and cardiac depression
-  require much higher concentrations. Lipid emulsion reduces effect-site
-  exposure by about a fifth over 30 minutes.
+  blood pressure rise before seizures, and QRS widening and cardiac depression
+  require much higher concentrations. Nitrous oxide helps suppress seizures.
+  Lipid emulsion reduces effect-site exposure by about a fifth over 30 minutes
+  and lessens cardiac toxicity.
 - Added an adjustable bag pressure limit (APL, default 20 cmH₂O) and facemask
-  seal. Obstruction and bronchospasm limit bag volume at the APL. Mask leaks
-  reduce assisted ventilation and admit room air; large leaks flatten the
-  capnogram. Pressures above 20 cmH₂O leak even with a tight seal.
+  seal. Obstruction and bronchospasm limit bag volume at the APL, and an APL
+  above 20 cmH₂O during spontaneous breathing builds continuous airway
+  pressure. Mask leaks reduce assisted ventilation and the displayed airway
+  pressure, flow, and volume, and they admit room air. Large leaks flatten the
+  capnogram, and pressures above 20 cmH₂O leak even with a tight seal.
 - During upper airway obstruction, mask CPAP no longer lowers ventilation
   below that of unassisted breathing.
+- Basal heat production now scales with body weight, redistribution cooling is
+  smaller in heavier patients, and sepsis raises metabolism and heat
+  production. Shivering starts only after the patient regains responsiveness.
+- Cerebral ischemia now lowers BIS within 20 seconds. High-BIS alarms apply
+  only during paralysis or active maintenance, and EtCO₂ alarms wait for the
+  first connected breath.
+- Anaphylaxis and sepsis cases now reach full severity over 45 to 60 seconds
+  and accept 0.9% saline for initial resuscitation. The oxygen supply failure
+  case starts on low-flow maintenance.
 - Maternal extracellular water now expands during pregnancy.
-- Above 65, propofol lowers blood pressure more slowly but further.
-- Propofol, remifentanil, and fentanyl TCI now uses only age, weight, height,
-  and sex, as clinical pumps do. Blood loss, hepatic impairment, and midazolam
-  can move concentrations away from the target. The pump model does not include
-  hand boluses, and TCI started after a manual rate assumes no drug on board.
+- Propofol, remifentanil, fentanyl, and rocuronium TCI now use only age,
+  weight, height, and sex, as clinical pumps do. Organ impairment, blood loss,
+  midazolam, and sugammadex can move concentrations away from the target. The
+  pump model omits hand boluses, and TCI started after a manual rate assumes no
+  drug on board. Pump bolus and rate limits are updated, and maintenance with
+  TCI starts from a 30-minute TCI history.
 - Removed the opioid-containing anesthesia checkbox from the browser setup.
   Propofol kinetics assume opioid co-administration unless
   `concomitant_opioids` is set to false through the CLI or Python API.

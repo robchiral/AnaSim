@@ -3,6 +3,7 @@ import pytest
 from scipy.linalg import expm
 
 from anasim.core.drug_registry import DRUG_REGISTRY
+from anasim.core.projection import central_muscle_strength
 from anasim.core.runtime import update_pk_covariates
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
@@ -23,6 +24,7 @@ from anasim.patient.pk_models import (
     RemifentanilPKEleveld,
     RocuroniumPK,
     SuccinylcholinePK,
+    rocuronium_adjusted_weight,
 )
 
 
@@ -241,6 +243,10 @@ def test_organ_impairment_scales_pk():
     f_obese = FentanylPK(Patient(age=40, weight=117.3, height=165.0, sex="female"))
     assert 1.32 < f_obese.cl1 / f_lean.cl1 < 1.48
 
+    w_below = rocuronium_adjusted_weight(Patient(age=40, weight=27.99 * 1.70**2, height=170.0, sex="male"))
+    w_above = rocuronium_adjusted_weight(Patient(age=40, weight=28.01 * 1.70**2, height=170.0, sex="male"))
+    assert abs(w_above - w_below) < 0.05
+
 
 def test_measured_creatinine_clearance_separates_reversal_from_complex_elimination():
     """Kleijn 2011: renal impairment prolongs complex retention, with rapid reversal.
@@ -430,3 +436,11 @@ class TestNeuromuscularEffectSite:
                 break
         assert tof_when_breathing_recovers is not None
         assert tof_when_breathing_recovers < 25.0
+
+        for ce_central in (0.6, 1.8):
+            engine.tof_pd.ce_central = ce_central
+            strengths = []
+            for mac in (0.0, 0.5, 1.0):
+                engine.state.mac_sevo = mac
+                strengths.append(central_muscle_strength(engine))
+            assert strengths[0] > strengths[1] > strengths[2]

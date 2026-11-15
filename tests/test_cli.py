@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from anasim.cli import build_models_from_config, main, run_headless
+from anasim.core.engine import SimulationEngine
 
 
 def test_default_command_launches_the_local_browser_server(monkeypatch):
@@ -45,3 +46,30 @@ def test_config_builder_rejects_invalid_documents(tmp_path, capsys):
     with pytest.raises(SystemExit, match="1"):
         run_headless(args)
     assert "Error loading config: dist_profile" in capsys.readouterr().out
+
+
+def test_headless_prints_arterial_map_during_arrest_and_blanks_failed_nibp(tmp_path, capsys, monkeypatch):
+    import anasim.cli as cli_mod
+
+    class _ArrestEngine(SimulationEngine):
+        def start(self):
+            super().start()
+            self.set_rhythm("VFIB")
+            self.measure_nibp()
+
+    monkeypatch.setattr(cli_mod, "SimulationEngine", _ArrestEngine)
+
+    def run_case(arterial_line: bool) -> str:
+        cfg_path = tmp_path / f"cfg_{int(arterial_line)}.json"
+        cfg_path.write_text(f'{{"dt": 0.2, "arterial_line_enabled": {str(arterial_line).lower()}}}')
+        run_headless(
+            SimpleNamespace(
+                config=str(cfg_path), duration=20.4, record=False, record_dir="recordings", record_interval=1.0,
+            )
+        )
+        return capsys.readouterr().out
+
+    art_lines = [line for line in run_case(True).splitlines() if line.startswith("Time: 20.")]
+    nibp_lines = [line for line in run_case(False).splitlines() if line.startswith("Time: 20.")]
+    assert art_lines and "MAP: --" not in art_lines[-1]
+    assert nibp_lines and "MAP: -- |" in nibp_lines[-1]

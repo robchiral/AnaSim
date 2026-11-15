@@ -22,6 +22,8 @@ class CircleSystem:
         self.reservoir_volume = self.reservoir_capacity
         self.deliverable_flow_l_min = math.inf
         self.last_net_flow = 0.0  # L/min
+        self.last_uptake_scale = 1.0
+        self.last_uptake_o2 = 0.0
         self.composition = GasComposition()
         self.fgf_o2 = 2.0  # L/min
         self.fgf_air = 0.0
@@ -49,8 +51,15 @@ class CircleSystem:
         """Return delivered carrier flow before added vapor, L/min."""
         return self.delivered_o2_flow() + self.fgf_air + self.delivered_n2o_flow()
 
-    def deliverable_flow(self, dt: float, vapor_flow: float = 0.0) -> float:
+    def vapor_flow(self) -> float:
+        """Return vaporizer output flow added to fresh carrier gas, L/min."""
+        fg_agent = self.vaporizer_setting / 100.0 if self.vaporizer_on else 0.0
+        return max(0.0, self.fgf_total()) * fg_agent / max(1e-6, 1.0 - fg_agent)
+
+    def deliverable_flow(self, dt: float, vapor_flow: float | None = None) -> float:
         """Maximum gas flow (L/min) available from fresh gas plus the reservoir over dt."""
+        if vapor_flow is None:
+            vapor_flow = self.vapor_flow()
         reservoir_rate = (
             self.reservoir_volume * 60.0 / dt
             if dt > 0.0
@@ -111,6 +120,7 @@ class CircleSystem:
             + max(0.0, uptake_n2o)
             + max(0.0, uptake_n2)
         )
+        uptake_scale = 1.0
         if pos_uptake > avail and pos_uptake > 1e-12:
             uptake_scale = max(0.0, avail) / pos_uptake
             if uptake_o2 > 0.0:
@@ -123,6 +133,8 @@ class CircleSystem:
                 uptake_n2 *= uptake_scale
             if rebreathed_n2 is not None and rebreathed_n2 > 0.0:
                 rebreathed_n2 *= uptake_scale
+        self.last_uptake_scale = uptake_scale
+        self.last_uptake_o2 = uptake_o2
         bag_flow = total_fgf + vapor_flow - uptake_o2 - uptake_agent - uptake_n2o - uptake_n2
         self.last_net_flow = bag_flow
         self.reservoir_volume = min(

@@ -90,8 +90,10 @@ slow functions, but measure timings without it.
 
 Keep each kind of information in one place:
 
-- Model behavior and main modeling choices go in the [architecture
-  guide](docs/ARCHITECTURE.md#model-notes).
+- Model behavior and main modeling choices go in the [model
+  guide](docs/MODELS.md).
+- Code structure and step order go in the [architecture
+  guide](docs/ARCHITECTURE.md).
 - Inputs, units, and defaults go in [CLI and Python
   usage](docs/CLI_USAGE.md#fields).
 - Citations with brief topic labels go in [Model

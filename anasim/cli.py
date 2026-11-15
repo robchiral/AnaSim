@@ -64,10 +64,19 @@ def run_headless(args):
                 if i % 100 == 0:
                     state = engine.get_latest_state()
                     hr = state.display_hr
-                    sbp_val, _, map_val = state.monitored_blood_pressure(
+                    _, _, map_val = state.monitored_blood_pressure(
                         sim_config.arterial_line_enabled
                     )
-                    map_text = "--" if math.isnan(sbp_val) else f"{map_val:.1f}"
+                    map_valid = (
+                        math.isfinite(map_val)
+                        if sim_config.arterial_line_enabled
+                        else (
+                            state.nibp_timestamp is not None
+                            and not state.nibp_measurement_failed
+                            and math.isfinite(map_val)
+                        )
+                    )
+                    map_text = f"{map_val:.1f}" if map_valid else "--"
                     spo2_text = f"{state.display_spo2:.1f}" if state.spo2_signal_valid else "--"
                     print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_text} | SpO2: {spo2_text}")
             else:

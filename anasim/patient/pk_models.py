@@ -765,7 +765,8 @@ class LidocainePK(MammillaryPK):
 def rocuronium_adjusted_weight(patient: Patient) -> float:
     """Adjusted dosing/distribution weight (kg) for rocuronium in obesity (Meyhoff 2009)."""
     pbw = patient.predicted_body_weight()
-    return pbw + 0.30 * (patient.weight - pbw) if patient.bmi > 28.0 and patient.weight > pbw else patient.weight
+    threshold = max(pbw, 28.0 * (patient.height / 100.0) ** 2)
+    return threshold + 0.30 * (patient.weight - threshold) if patient.weight > threshold else patient.weight
 
 
 class RocuroniumPK(MammillaryPK):

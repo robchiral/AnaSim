@@ -204,12 +204,13 @@ class HemodynamicModel:
         self._last_preload_factor = self._position_preload
         self._last_preload_sv_factor = self._frank_starling(self._position_preload)
         self._last_lap = self._lap(self._position_preload)
+        resting_lap = self._lap(1.0)
         # Chronic left atrial hypertension raises lymph flow, partially offsetting
         # elevated resting LAP while leaving less reserve before acute edema.
         normal_lap = cfg.lap_scale * math.expm1(cfg.lap_preload_gain)
-        self._lung_water_threshold = cfg.lung_water_lap_threshold + 0.62 * max(0.0, self._last_lap - normal_lap)
+        self._lung_water_threshold = cfg.lung_water_lap_threshold + 0.62 * max(0.0, resting_lap - normal_lap)
         self.coronary = CoronaryModel(patient.coronary_flow_reserve, self.base_hr,
-                                      patient.baseline_map, self._last_lap)
+                                      patient.baseline_map, resting_lap)
         self._pbw = patient.predicted_body_weight()
         self.lung_water_ml = 0.0  # Extravascular lung water above normal
 
@@ -790,12 +791,15 @@ class HemodynamicModel:
         )
         if electrically_silent or self.rhythm_type in PULSELESS_RHYTHMS or current_hr <= 0.0:
             current_hr = current_sv = 0.0
-        elif current_hr > 170.0 and current_sv > 0.0:
+        elif current_hr > 145.0 and current_sv > 0.0:
             max_vr_co = max(
                 0.5,
                 self._last_mcfp / max(0.1, self.venous_return_resistance) * max(0.15, self.f_preload_pit) * 1.45,
             )
-            current_sv = min(current_sv, max_vr_co * 1000.0 / current_hr)
+            vr_sv_cap = max_vr_co * 1000.0 / current_hr
+            if vr_sv_cap < current_sv:
+                vr_blend = clamp01((current_hr - 145.0) / 35.0)
+                current_sv += vr_blend * (vr_sv_cap - current_sv)
         if current_hr <= 0.0 or current_sv <= 0.0:
             co = map_val = svr_val = self._stim_map = 0.0
         else:

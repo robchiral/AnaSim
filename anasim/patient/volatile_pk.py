@@ -87,6 +87,7 @@ class VolatilePK:
 
         alveolar_vent = max(0.0, alveolar_vent_l)
         concentrating_inflow = max(0.0, companion_uptake_l_min) if fi_agent > 0.0 else 0.0
+        washout_outflow = max(0.0, -companion_uptake_l_min)
 
         # FRC dPalv/dt = VA (Fi - Palv) + U_companion Fi + (1-s) Q lambda_bg (Pven - Palv).
         # Arterial blood mixes end-capillary and shunted venous blood.
@@ -105,7 +106,12 @@ class VolatilePK:
 
         # Update all compartments from the same pressures so agent is
         # conserved; substep so no Euler weight exceeds 1.
-        fastest_rate = max((alveolar_vent + concentrating_inflow + lambda_q) / v_frc, k_vrg, k_mus, k_fat)
+        fastest_rate = max(
+            (alveolar_vent + concentrating_inflow + washout_outflow + lambda_q) / v_frc,
+            k_vrg,
+            k_mus,
+            k_fat,
+        )
         substeps = max(1, math.ceil(dt_min * fastest_rate))
         interval = dt_min / substeps
         for _ in range(substeps):
@@ -121,6 +127,7 @@ class VolatilePK:
                 + (
                     alveolar_vent * (fi_agent - p_alv)
                     + concentrating_inflow * fi_agent
+                    - washout_outflow * p_alv
                     + lambda_q * (p_ven - p_alv)
                 )
                 / v_frc

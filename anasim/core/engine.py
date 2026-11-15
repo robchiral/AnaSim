@@ -177,6 +177,10 @@ class SimulationEngine(DrugControllerMixin):
         self._apl_pressure = 0.0
         self._extubation_stimulus_until = 0.0
         self._tracheal_fio2 = 0.21
+        self._step_tracheal_fio2: float | None = None
+        self._step_apneic_limit_l_min: float | None = None
+        self._step_n2o_uptake_l_min: float | None = None
+        self._step_lung_volume_l: float | None = None
 
         # Independent generators keep each monitor's noise reproducible.
         self.rng = np.random.default_rng(self.config.rng_seed)
@@ -221,8 +225,13 @@ class SimulationEngine(DrugControllerMixin):
             self.pending_infusions.clear()
             self.blood_gases.clear()
             self.active_hemorrhage = False
+            self.hemorrhage_rate_ml_min = 500.0
             self.lipid_infusion_ml_min = 0.0
             self.bag_mask_active = False
+            self.bag_mask_rr = 12.0
+            self.bag_mask_vt = 0.5
+            self.bag_mask_p_max = 20.0
+            self.auto_laryngospasm_enabled = True
             self.mask_seal = 1.0
             self.airway_obstruction_manual = 0.0
             self.bronchospasm_manual = 0.0
@@ -233,6 +242,7 @@ class SimulationEngine(DrugControllerMixin):
             self.disturbance_start_time = 0.0
             self.alarms = AlarmSystem()
             self.defibrillator = Defibrillator()
+            self.arrhythmias.reset()
             self._last_shock_feedback = None
             self.etco2_readout = EtCO2Readout()
             self.initialize_models()
@@ -245,6 +255,11 @@ class SimulationEngine(DrugControllerMixin):
         self._apl_pressure = 0.0
         self._extubation_stimulus_until = 0.0
         self._pulseless_s = 0.0
+        self._tracheal_fio2 = 0.21
+        self._step_tracheal_fio2 = None
+        self._step_apneic_limit_l_min = None
+        self._step_n2o_uptake_l_min = None
+        self._step_lung_volume_l = None
 
         initialize_engine_state(self)
         self.actions = ActionLog()
