@@ -1,3 +1,4 @@
+import copy
 import math
 
 import numpy as np
@@ -148,12 +149,19 @@ class TestEngineTCI:
             config=SimulationConfig(mode="steady_state", maint_type="balanced", tci_enabled=True), start=True,
         )
         engine.enable_tci("roc", 0.8)
+        assert engine.infusion_rates["roc"] > 0.0
         assert engine.tci["roc"].target_compartment == "plasma"
         for _ in range(900):
             engine.step(1.0)
         assert engine.pk["roc"].state.c1 == pytest.approx(0.8, rel=0.03)
         assert engine.state.mac_sevo > 0.5
         assert 0.0 < engine.state.roc_ce < engine.pk["roc"].state.c1
+        active = copy.deepcopy(engine)
+        maint_rate = active.infusion_rates["roc"]
+        active.give_drug_bolus("sugammadex", 4.0 * active.patient.weight)
+        advance_time(active, 60.0)
+        assert active.infusion_rates["roc"] == pytest.approx(maint_rate, rel=0.05)
+        assert active.state.tof > 85.0
         engine.disable_tci("roc")
         engine.give_drug_bolus("sugammadex", 4.0 * engine.patient.weight)
         advance_time(engine, 60.0)
@@ -178,6 +186,8 @@ class TestEngineTCI:
         blood loss, lower clearance raises propofol and remifentanil (Johnson
         2001, 2003) while the pump's prediction stays at target."""
         engine = engine_factory(config=SimulationConfig(mode="steady_state", tci_enabled=True), start=True)
+        assert engine.infusion_rates["propofol"] > 0.0 and engine.infusion_rates["remi"] > 0.0
+        assert engine.get_predicted_csht("nore") == 0.0
         targets = {key: engine.tci[key].target for key in ("propofol", "remi")}
         bis = engine.state.bis
         engine.start_hemorrhage(100.0)

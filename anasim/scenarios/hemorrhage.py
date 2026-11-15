@@ -20,8 +20,8 @@ from .base import (
 
 def _require_volume_replacement(engine) -> tuple[bool, str]:
     """Accept an initial crystalloid bolus or one modeled red-cell unit."""
-    for volume, label in ((500, "crystalloid"), (300, "blood")):
-        met, _ = require_fluid_bolus(volume, labels=(label,), event_name="hemorrhage")(engine)
+    for volume, labels in ((500, ("crystalloid", "saline")), (300, ("blood",))):
+        met, _ = require_fluid_bolus(volume, labels=labels, event_name="hemorrhage")(engine)
         if met:
             return True, ""
     return False, "Start 500 mL crystalloid or one 300 mL red-cell unit"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
+from anasim.machine.ventilator import VOLUME_TARGETED
 from anasim.monitors.alarms import THRESHOLDS
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
@@ -28,7 +29,6 @@ if TYPE_CHECKING:
 CARDIAC_MONITOR_MAX_STEP_S = 0.01
 BIS_NOISE_SD = 0.2
 BIS_DISPLAY_TAU_S = 2.0
-VOLUME_TARGETED = ("VCV", "PCV-VG", "SIMV-VC", "SIMV-VG")
 
 
 def seed_nibp_reading(engine: SimulationEngine) -> None:
@@ -85,7 +85,7 @@ def _capno_sampling_possible(engine: SimulationEngine) -> bool:
         and engine.airway_status.patency >= 0.05
         and (
             (state.rr > 0.0 and state.va > 0.0)
-            or (state.rr == 0.0 and any(abs(change) > 1e-7 for _, change, _, _, _ in engine.vent.samples))
+            or (state.rr == 0.0 and any(abs(change) > 0.002 * duration for duration, change, _, _, _ in engine.vent.samples))
         )
     )
 
@@ -96,7 +96,11 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float) -> floa
     readout = engine.etco2_readout
     if not _capno_sampling_possible(engine):
         engine.capno.reset()
-        readout.interrupt(dt, disconnected=state.airway_mode == AirwayType.NONE)
+        readout.interrupt(
+            dt,
+            disconnected=state.airway_mode == AirwayType.NONE,
+            idle_airway=state.airway_mode == AirwayType.NONE and not (engine.vent.is_on or engine.bag_mask_active),
+        )
         co2 = 0.0
     else:
         capno = engine.capno
@@ -272,7 +276,10 @@ def step_monitors(
         engine.disturbance_active
         or engine.vaporizer.state.is_on
         or engine.circuit.fgf_n2o > 0.0
-        or any(engine.infusion_rates.get(k, 0.0) > 0.0 for k in ("propofol", "etomidate", "midazolam", "ketamine"))
+        or any(
+            engine.infusion_rates.get(k, 0.0) > 0.0 or (k in engine.tci and engine.tci[k].target > 0.0)
+            for k in ("propofol", "midazolam", "ketamine")
+        )
     )
     bis_alarm = state.display_bis if (paralyzed or maintaining or state.display_bis <= THRESHOLDS["BIS_max"]) else None
     map_alarm = (
@@ -280,7 +287,11 @@ def step_monitors(
         if engine.config.arterial_line_enabled
         else (0.0 if state.nibp_measurement_failed else state.nibp_map)
     )
-    etco2_alarm = state.display_etco2 if (connected or vent.is_on or engine.bag_mask_active) else None
+    etco2_alarm = (
+        state.display_etco2
+        if (connected or vent.is_on or engine.bag_mask_active) and not engine.etco2_readout.awaiting_first_breath
+        else None
+    )
     state.alarms = engine.alarms.update(
         {
             "BIS": bis_alarm,

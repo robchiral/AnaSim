@@ -94,12 +94,37 @@ class CircleSystem:
         # The dial specifies vapor as a fraction of carrier plus added vapor.
         fg_agent = self.vaporizer_setting / 100.0 if self.vaporizer_on else 0.0
         vapor_flow = total_fgf * fg_agent / (1.0 - fg_agent)
-        bag_flow = total_fgf + vapor_flow - uptake_o2 - uptake_agent - uptake_n2o - uptake_n2
-        self.last_net_flow = bag_flow
         dt_min = dt / 60.0
         prev_reservoir = self.reservoir_volume
         # Record pre-debit capacity so downstream lung exchange receives this step's gas.
         self.deliverable_flow_l_min = self.deliverable_flow(dt, vapor_flow)
+        avail = (
+            self.deliverable_flow_l_min
+            - min(0.0, uptake_o2)
+            - min(0.0, uptake_agent)
+            - min(0.0, uptake_n2o)
+            - min(0.0, uptake_n2)
+        )
+        pos_uptake = (
+            max(0.0, uptake_o2)
+            + max(0.0, uptake_agent)
+            + max(0.0, uptake_n2o)
+            + max(0.0, uptake_n2)
+        )
+        if pos_uptake > avail and pos_uptake > 1e-12:
+            uptake_scale = max(0.0, avail) / pos_uptake
+            if uptake_o2 > 0.0:
+                uptake_o2 *= uptake_scale
+            if uptake_agent > 0.0:
+                uptake_agent *= uptake_scale
+            if uptake_n2o > 0.0:
+                uptake_n2o *= uptake_scale
+            if uptake_n2 > 0.0:
+                uptake_n2 *= uptake_scale
+            if rebreathed_n2 is not None and rebreathed_n2 > 0.0:
+                rebreathed_n2 *= uptake_scale
+        bag_flow = total_fgf + vapor_flow - uptake_o2 - uptake_agent - uptake_n2o - uptake_n2
+        self.last_net_flow = bag_flow
         self.reservoir_volume = min(
             self.reservoir_capacity,
             max(0.0, self.reservoir_volume + bag_flow * dt_min),

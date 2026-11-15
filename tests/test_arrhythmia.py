@@ -37,6 +37,20 @@ def test_ischemic_vt_can_degenerate_to_vf_but_silent_myocardium_does_not():
                            energy_failure=1 if silent else 0)
         assert rhythm == (RhythmType.VTACH if silent else RhythmType.VFIB)
 
+    outcomes = []
+    for perfusing in (True, False):
+        rng = np.random.default_rng(7)
+        converted = sum(
+            shock_outcome(
+                RhythmType.VTACH, synchronized=False, energy_failure=0.0,
+                electrically_silent=False, vulnerable=False, antiarrhythmic=0.0,
+                rng=rng, perfusing=perfusing,
+            ) == RhythmType.SINUS
+            for _ in range(200)
+        )
+        outcomes.append(converted)
+    assert outcomes[0] == outcomes[1] and outcomes[0] > 160
+
 
 def _vt_conversion_times(concs: list[float], drug: str, dt: float = 5.0, n: int = 400) -> list[float]:
     rng = np.random.default_rng(1)

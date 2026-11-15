@@ -269,4 +269,6 @@ class SimulationState:
         """Return systolic, diastolic, and mean pressure from the active monitor."""
         if arterial_line_enabled:
             return self.art_sbp, self.art_dbp, self.art_map
+        if self.nibp_measurement_failed or self.nibp_timestamp is None:
+            return math.nan, math.nan, 0.0
         return self.nibp_sys, self.nibp_dia, self.nibp_map

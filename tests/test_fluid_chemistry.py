@@ -171,6 +171,13 @@ def test_engine_respiratory_buffering_keeps_base_excess_within_human_bands(engin
 
 def test_calcium_binding_follows_ph_and_citrate_and_deficits_persist():
     fluids = FluidBalance(70.0, 4900.0, 1984.5)
+    acidemic = FluidBalance(70.0, 4900.0, 1984.5)
+    ca0 = acidemic.amounts["calcium"]
+    acidemic.step(
+        1800.0, ph=7.10, paco2=80.0, resting_paco2=40.0, renal_function=1.0,
+        renal_perfusion=1.0, hepatic_function=1.0, oxygen_supply=1.0, epinephrine=0.0,
+    )
+    assert acidemic.amounts["calcium"] == pytest.approx(ca0, abs=1e-9)
     baseline = fluids.ionized_calcium(7.4)
     alkalotic = fluids.ionized_calcium(7.6)
     assert baseline == pytest.approx(1.2, abs=1e-9)
@@ -256,6 +263,13 @@ def test_saline_loading_and_bleeding_preserve_carbon_and_charge(engine_factory):
     model.update_fluid_balance(engine.hemo.hb_conc, engine.hemo.get_hematocrit(), engine.hemo.blood_volume)
     assert transport.co2_l == pytest.approx(carbon - lost_fraction * blood_carbon * 0.022414, abs=1e-10)
     assert transport.base_meq == pytest.approx(engine.hemo.fluids.base_meq, abs=1e-10)
+
+    lactate = engine.lactate
+    v0 = lactate.volume_l
+    lactate.endogenous_mmol = 5.0 * v0
+    lactate._base_removed_mmol = initial_removed = 4.1 * v0
+    lactate.update_fluid_volume(v0, lost_plasma_l=2.0)
+    assert lactate._base_removed_mmol == pytest.approx(initial_removed * (1.0 - 2.0 / v0), rel=1e-9)
 
 
 def test_calcium_inotropy_citrate_hypotension_hyperkalemia_and_starling_refill(engine_factory, advance_time):

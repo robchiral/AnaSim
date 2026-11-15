@@ -15,7 +15,6 @@ from anasim.core.clinical_actions import (
     ActionFeedback,
     check_airway_removal,
     check_drug_administration,
-    check_shock,
     check_ventilation_withdrawal,
 )
 from anasim.core.drug_registry import get_drug_spec
@@ -23,7 +22,6 @@ from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
 from anasim.core.recorder import RecordingError
 from anasim.core.state import AirwayType, SimulationConfig, WaveformSample
-from anasim.machine.ventilator import MODES
 from anasim.monitors.blood_gas import BloodGasResult
 from anasim.monitors.ecg import displayed_rhythm
 from anasim.patient import domain
@@ -246,8 +244,6 @@ class WebSession:
             "nmb_history": engine.nmb.trend_history(),
             "disturbances": [{"key": key, "label": label} for label, key in list_disturbance_profiles()],
             "rhythms": [rhythm.value for rhythm in RhythmType],
-            "vent_modes": MODES,
-            "ie_ratios": IE_RATIOS,
             "scenario": None if self.scenario is None or self.case_run is None else {
                 "name": self.scenario.name,
                 "mode": self.case_run.mode,
@@ -365,7 +361,7 @@ class WebSession:
         pressure = vitals["art"][2] if arterial else (
             None if vitals["nibp"] is None else vitals["nibp"][2]
         )
-        pressure_time = state.time if arterial else state.nibp_timestamp
+        pressure_time = state.time if arterial else (None if vitals["nibp"] is None else state.nibp_timestamp)
         sample = {
             "time": _num(state.time, 3),
             "hr": vitals["hr"],
@@ -390,7 +386,7 @@ class WebSession:
             "st_depression_mv": _num(s.st_depression_mv, 2),
             "spo2": _num(s.display_spo2, 1) if s.spo2_signal_valid else None,
             "art": [_num(s.art_sbp, 1), _num(s.art_dbp, 1), _num(s.art_map, 1)],
-            "nibp": None if s.nibp_timestamp is None else [
+            "nibp": None if (s.nibp_timestamp is None or s.nibp_measurement_failed) else [
                 _num(s.nibp_sys, 1), _num(s.nibp_dia, 1), _num(s.nibp_map, 1)
             ],
             "nibp_cuff": _num(s.nibp_cuff_pressure, 1) if s.nibp_is_cycling else None,
@@ -819,7 +815,11 @@ class WebSession:
             raise ValueError("Fluid volume must be positive and finite")
         method, label = FLUIDS[kind]
         getattr(self.engine, method)(volume)
-        return {"fluid": {"time": self.engine.state.time, "text": f"{volume:g} mL {label} started"}}
+        text = f"{volume:g} mL {label} started"
+        receipt = {"time": self.engine.state.time, "text": text}
+        if kind == "lipid":
+            return {"fluid": receipt, **self._medication_receipt("lipid", text)}
+        return {"fluid": receipt}
 
     def _cmd_lipid_rate(self, ml_min: float):
         self.engine.set_lipid_infusion(ml_min)
@@ -846,7 +846,7 @@ class WebSession:
         if event is None or event == self._observed_shock:
             return {}
         self._observed_shock = event
-        return self._clinical_result(check_shock(self.engine), {"shock": self._shock_receipt()})
+        return self._clinical_result(self.engine._last_shock_feedback, {"shock": self._shock_receipt()})
 
     def _cmd_shock(self, synchronized: bool):
         engine = self.engine

@@ -17,7 +17,9 @@ import math
 
 from anasim.core.utils import clamp01
 
-O2_L_PER_MMOL = 0.022414
+from .blood_chemistry import MOLAR_GAS_VOLUME_STPD_L_MMOL
+
+O2_L_PER_MMOL = MOLAR_GAS_VOLUME_STPD_L_MMOL
 DISTRIBUTION_L_PER_KG = 0.26
 CLEARANCE_L_KG_MIN = 0.012
 RESTING_MMOL_L = 0.9
@@ -64,6 +66,7 @@ class LactateModel:
         remaining = 1.0 - lost_plasma_l / self.volume_l
         self.endogenous_mmol *= remaining
         self.infused_mmol *= remaining
+        self._base_removed_mmol *= remaining
         self.volume_l = volume_l
         self.km_mmol = CLEARANCE_KM_MMOL_L * volume_l
 

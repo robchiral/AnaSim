@@ -8,9 +8,13 @@ import numpy as np
 from scipy.linalg import expm
 from scipy.optimize import minimize
 
+from . import monitors as monitor_core
 from . import projection as projection_core
 from . import runtime as runtime_core
+from .drug_api import _tci_max_rate
+from .drug_registry import get_drug_spec
 from .state import AirwayType
+from .tci import TCIController, _discretize
 from .utils import clamp, clamp01
 
 if TYPE_CHECKING:
@@ -88,11 +92,11 @@ def _initialize_steady_state(engine: SimulationEngine) -> None:
         # Sustained stimulation configured for a maintenance start, such as
         # ongoing surgery, is already established.
         engine.disturbance_start_time = engine.state.time - spec.established_s
-    _run_hidden_settle(engine, profile)
-    if engine.config.tci_enabled:
-        _attach_startup_controllers(engine, targets)
+    _run_hidden_settle(engine, profile, targets)
     engine.state.time = 0.0
     engine._next_nibp_time = 0.0
+    if engine.config.tci_enabled:
+        _attach_startup_controllers(engine, targets)
 
 
 def _select_profile(engine: SimulationEngine) -> StartupProfile:
@@ -168,13 +172,21 @@ def _seed_steady_state_subsystems(
     engine.infusion_rates["nore"] = 0.0
 
     if targets.prop_ce > 0.0:
-        engine.infusion_rates["propofol"] = _seed_linear_history(
-            engine.pk["propofol"], targets.prop_ce, profile.history_minutes, engine.pump_pk.get("propofol"),
-        ) / 60.0
+        engine.infusion_rates["propofol"] = (
+            _seed_tci_history(engine, "propofol", targets.prop_ce, profile.history_minutes)
+            if engine.config.tci_enabled
+            else _seed_linear_history(
+                engine.pk["propofol"], targets.prop_ce, profile.history_minutes, engine.pump_pk.get("propofol"),
+            ) / 60.0
+        )
     if targets.remi_ce > 0.0:
-        engine.infusion_rates["remi"] = _seed_linear_history(
-            engine.pk["remi"], targets.remi_ce, profile.history_minutes, engine.pump_pk.get("remi"),
-        ) / 60.0
+        engine.infusion_rates["remi"] = (
+            _seed_tci_history(engine, "remi", targets.remi_ce, profile.history_minutes)
+            if engine.config.tci_enabled
+            else _seed_linear_history(
+                engine.pk["remi"], targets.remi_ce, profile.history_minutes, engine.pump_pk.get("remi"),
+            ) / 60.0
+        )
     fi_agent = 0.0
     if profile.primary_hypnotic == "volatile":
         fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
@@ -206,6 +218,47 @@ def _infusion_history(pk_model, duration_min: float) -> np.ndarray:
     """Return the compartment concentrations after duration_min of infusion at one unit per minute."""
     A, B = pk_model.get_ss_matrices()
     return ((np.eye(A.shape[0]) - expm(A * duration_min)) @ np.linalg.solve(-A, B))[:, 0]
+
+
+def _tci_maintenance_rate_per_min(pump_model, target_ce: float) -> float:
+    """Return the pump infusion rate/min that holds C1 == target_ce."""
+    vec = pump_model.state_vector()
+    rate_per_min = pump_model.elimination_clearance * target_ce
+    for idx, (v, cl) in enumerate(((pump_model.v2, pump_model.cl2), (pump_model.v3, pump_model.cl3)), start=1):
+        if v > 0.0 and cl > 0.0:
+            rate_per_min += cl * max(0.0, target_ce - float(vec[idx]))
+    return rate_per_min
+
+
+def _seed_tci_history(engine: SimulationEngine, key: str, target_ce: float, duration_min: float) -> float:
+    """Simulate duration_min of effect-site TCI at target_ce; return rate in model units/s."""
+    spec = get_drug_spec(key)
+    max_rate = _tci_max_rate(spec).internal_rate(engine.patient.weight)
+    pk_model = engine.pk[key]
+    pump = engine.pump_pk.get(key, pk_model)
+    ctrl = TCIController(
+        pump, target_compartment="effect_site", max_rate=max_rate, sampling_time=10.0, control_time=10.0,
+    )
+    ctrl.set_target(target_ce)
+    A_pump, B_pump = pump.get_ss_matrices()
+    Ad_pump, Bd_pump = _discretize(A_pump / 60.0, B_pump, 10.0)
+    x_pump = pump.state_vector()
+    if pump is not pk_model:
+        A_pk, B_pk = pk_model.get_ss_matrices()
+        Ad_pk, Bd_pk = _discretize(A_pk / 60.0, B_pk, 10.0)
+        x_pk = pk_model.state_vector()
+    steps = max(1, round(duration_min * 60.0 / 10.0))
+    rate = 0.0
+    for step in range(steps):
+        pump.set_state_vector(x_pump)
+        rate = ctrl.step(sim_time=step * 10.0)
+        x_pump = Ad_pump @ x_pump + Bd_pump[:, 0] * rate
+        if pump is not pk_model:
+            x_pk = Ad_pk @ x_pk + Bd_pk[:, 0] * rate
+    pump.set_state_vector(x_pump)
+    if pump is not pk_model:
+        pk_model.set_state_vector(x_pk)
+    return rate
 
 
 def _seed_linear_history(pk_model, target_ce: float, duration_min: float, pump_model=None) -> float:
@@ -259,7 +312,7 @@ def _seed_volatile_history(engine: SimulationEngine, target_mac: float, duration
     return fi_agent
 
 
-def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile) -> None:
+def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile, targets: StartupTargets) -> None:
     """Run a short settle for circuit and physiology transients without visible side effects."""
     saved_hemo_config = engine.hemo.config
     saved_maintenance_rate = engine.maintenance_fluid_rate_ml_min
@@ -274,12 +327,34 @@ def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile) -> Non
             engine.patient.baseline_temp, projection_core.thermal_hypnotic_ce(engine), engine.state.mac,
         )
         runtime_core.update_pk_covariates(engine, engine.state.co)
+        if engine.config.tci_enabled:
+            if targets.prop_ce > 0.0:
+                engine.infusion_rates["propofol"] = (
+                    _tci_maintenance_rate_per_min(engine.prediction_model("propofol"), targets.prop_ce) / 60.0
+                )
+            if targets.remi_ce > 0.0:
+                engine.infusion_rates["remi"] = (
+                    _tci_maintenance_rate_per_min(engine.prediction_model("remi"), targets.remi_ce) / 60.0
+                )
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)
         runtime_core.step_pk(engine, profile.settle_dt_seconds, fi_sevo, fi_n2o, engine.state.co)
         engine._tol_current = clamp01(projection_core.stimulus_tolerance(engine))
         stimulus = runtime_core.stimulus_effects(engine, profile.settle_dt_seconds)
         physiology = runtime_core.step_physiology(engine, profile.settle_dt_seconds, stimulus)
         projection_core.project_runtime_physiology(engine, physiology)
+        hemo_state = physiology.hemo_state
+        cardiac_sample = engine.cardiac_cycle.seed(engine.state.hr, hemo_state.rhythm_type)
+        arterial_sample = engine.arterial_waveform.step(
+            cardiac_sample,
+            engine.state.map,
+            engine.state.sv,
+            static_pressure=hemo_state.venous_pressure,
+            pulse_pressure_factor=hemo_state.pulse_pressure_factor,
+        )
+        projection_core.project_arterial(engine.state, arterial_sample, engine.art_line.seed(arterial_sample))
+        engine.state.capno_co2 = float(
+            monitor_core.compute_capno_value(engine, physiology.resp_state, profile.settle_dt_seconds)
+        )
         engine.state.time += profile.settle_dt_seconds
 
     engine.hemo.config = saved_hemo_config
@@ -295,8 +370,6 @@ def _attach_startup_controllers(engine: SimulationEngine, targets: StartupTarget
     """Attach TCI controllers after seeding so they inherit and hold the post-settle state."""
     projection_core.sync_pk_state(engine)
     if targets.prop_ce > 0.0:
-        engine.enable_tci("propofol", engine.prediction_model("propofol").state.ce, mode="effect_site")
-        engine.infusion_rates["propofol"] = 0.0
+        engine.enable_tci("propofol", targets.prop_ce, mode="effect_site")
     if targets.remi_ce > 0.0:
-        engine.enable_tci("remi", engine.prediction_model("remi").state.ce, mode="effect_site")
-        engine.infusion_rates["remi"] = 0.0
+        engine.enable_tci("remi", targets.remi_ce, mode="effect_site")

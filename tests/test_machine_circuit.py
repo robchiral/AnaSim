@@ -268,3 +268,23 @@ def test_n2o_hypoxic_guard_step_invariance_and_low_flow_hypoxia(engine_factory, 
     advance_time(ox, 800.0, dt=2.0)
     assert ox.circuit.composition.fio2 < 0.15
     assert ox.state.spo2 < 85.0
+
+    empty = CircleSystem()
+    empty.reservoir_volume = 0.0
+    empty.composition.fio2, empty.composition.fin2 = 1.0, 0.0
+    empty.step(10.0, uptake_o2=0.25, uptake_agent=0.0)
+    assert empty.composition.fin2 == 0.0
+
+    starved = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    starved.set_vent_settings(rr=12, vt=0.6, peep=5.0, ie="1:2", mode="PCV-VG")
+    advance_time(starved, 15.0, dt=0.5)
+    converged_vg = starved.vent._vg_pressure
+    assert converged_vg is not None and converged_vg > 8.0
+    starved.set_fgf(0.0, 0.0)
+    starved.circuit.reservoir_volume = 0.02
+    advance_time(starved, 15.0, dt=0.5)
+    assert starved.state.vt < 100.0 and starved.vent._vg_pressure == pytest.approx(converged_vg, abs=1e-6)
+
+    starved.set_fgf(2.0, 3.0, 3.0)
+    starved.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.21)
+    assert starved.circuit.fgf_o2 >= starved.circuit.fgf_n2o / 3.0 - 1e-9

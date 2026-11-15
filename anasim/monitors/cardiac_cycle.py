@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import math
 from collections import deque
 from typing import NamedTuple
@@ -160,6 +158,10 @@ class CardiacCycle:
     def _update_display_hr(self) -> None:
         recent = self._recent_rr
         self._display_hr = 60.0 * len(recent) / sum(recent) if recent else self._measured_hr
+
+    def clear_rate_history(self) -> None:
+        """Discard prior R-R intervals when an unsynchronized shock changes the rhythm."""
+        self._recent_rr.clear()
 
     def seed(self, hr: float, rhythm_type: RhythmType) -> CardiacCycleSample:
         """Initialize timing at a ventricular depolarization."""

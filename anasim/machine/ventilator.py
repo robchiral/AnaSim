@@ -18,6 +18,7 @@ MODES = ("VCV", "PCV", "PCV-VG", "SIMV-VC", "SIMV-PC", "SIMV-VG", "PSV", "CPAP")
 # Mandatory breath type of each mode. SIMV, PSV, and CPAP respond to patient triggers.
 MANDATORY = {"VCV": "VC", "PCV": "PC", "PCV-VG": "VG", "SIMV-VC": "VC", "SIMV-PC": "PC", "SIMV-VG": "VG"}
 TRIGGERED = ("SIMV-VC", "SIMV-PC", "SIMV-VG", "PSV", "CPAP")
+VOLUME_TARGETED = ("VCV", "PCV-VG", "SIMV-VC", "SIMV-VG")
 
 # Circle-system limb resistance between the Y-piece and the bag or expiratory
 # valve (cmH2O/(L/s)), fitted with the PEEP valve to Primus recordings. See
@@ -224,6 +225,16 @@ class AnesthesiaVentilator:
                 values["ie_ratio"] = i / e
             else:
                 values["ie_ratio"] = ie
+        target_mode = values.get("mode", self.settings.mode)
+        new_peep = values.get("peep", self.settings.peep)
+        if (
+            "p_max" not in values
+            and target_mode not in VOLUME_TARGETED
+            and isinstance(new_peep, (int, float))
+            and math.isfinite(new_peep)
+            and self.settings.p_max <= new_peep
+        ):
+            values["p_max"] = max(40.0, float(new_peep) + 10.0)
         self.settings = replace(self.settings, **values)
 
     # --- Configuration of the active source --------------------------------
@@ -242,6 +253,14 @@ class AnesthesiaVentilator:
     def _series_resistance(self) -> float:
         """Resistance between the Y-piece and the baseline pressure source."""
         return 0.0 if self._source is None else CIRCUIT_RESISTANCE
+
+    def _inspiratory_resistance(self) -> float:
+        """Inspiratory limb resistance, rising sharply when the reservoir bag collapses."""
+        if self._source is None:
+            return 0.0
+        if self._bellows_fraction >= 1.0:
+            return CIRCUIT_RESISTANCE
+        return CIRCUIT_RESISTANCE + 2000.0 * (1.0 - self._bellows_fraction) / max(1e-3, self._bellows_fraction)
 
     def _mandatory_period(self) -> float:
         rr = self._bag[0] if self._source == "bag" else self.settings.rr
@@ -293,7 +312,10 @@ class AnesthesiaVentilator:
         self._bag = bag
         self._bag_p_max = bag_p_max
         self._spontaneous_peep = max(0.0, float(spontaneous_peep))
-        self._bellows_fraction = clamp01(float(bellows_fraction))
+        new_bellows = clamp01(float(bellows_fraction))
+        if abs(new_bellows - self._bellows_fraction) > 1e-6:
+            self._bellows_fraction = new_bellows
+            self._current = None
         if source != self._source:
             self._switch(source, lung)
         elif source == "spontaneous" and abs(self._spontaneous_peep - (self._baseline or 0.0)) > 1e-6:
@@ -303,7 +325,7 @@ class AnesthesiaVentilator:
             if MANDATORY.get(self.settings.mode) == "VG" and (self._mode is None or MANDATORY.get(self._mode) != "VG"):
                 self._vg_pressure = None
             self._mode = self.settings.mode
-        lung.effort.start(lung, self._series_resistance())
+        lung.effort.start(lung, self._inspiratory_resistance())
         remaining = dt
         while remaining > 1e-12:
             remaining -= self._advance(remaining, lung)
@@ -393,7 +415,8 @@ class AnesthesiaVentilator:
             assert self._vg_pressure is not None  # A VC test breath sets it first.
             # A Pmax or PEEP edit during expiration must constrain the very
             # next stroke, before the next volume-feedback update.
-            target = self._vg_pressure = min(max(self._vg_pressure, VG_MIN), self._vg_ceiling(peep)) * self._bellows_fraction
+            self._vg_pressure = min(max(self._vg_pressure, VG_MIN), self._vg_ceiling(peep))
+            target = self._vg_pressure * self._bellows_fraction
         elif kind == "PS":
             target, ti = s.p_support * self._bellows_fraction, SUPPORT_MAX_S
             flow_end = ti
@@ -485,11 +508,13 @@ class AnesthesiaVentilator:
     def _segment(self, lung, pmus):
         b = self._breath
         rs = self._series_resistance()
+        r_insp = self._inspiratory_resistance()
+        starvation = r_insp - rs
         if b is None or not b.inspiring:
             if self._measured is not None and self._measured.kind == "SPONT" and self._measured.inspiring:
                 # An effort below the support trigger still draws gas through
                 # the inspiratory limb, then exhales through the PEEP valve.
-                return self._driven_segment(lung, (0.0, 0.0), pmus, rs)
+                return self._driven_segment(lung, (0.0, 0.0), pmus, r_insp)
             if lung.expiratory_obstruction > 0.0:
                 knot = math.floor((self._since_exhalation + 1e-12) / lung.EXPIRATORY_INTERVAL)
                 if self._expiration is None or self._expiration[0] != knot:
@@ -502,7 +527,7 @@ class AnesthesiaVentilator:
             offset, valve = self._valve_tangent(lung, pmus[0])
             return lung.pressure_segment((offset, 0.0), pmus, rs + valve)
         if b.kind == "SPONT":
-            return self._driven_segment(lung, (0.0, 0.0), pmus, rs)
+            return self._driven_segment(lung, (0.0, 0.0), pmus, r_insp)
         if b.kind == "MANUAL":
             if b.limited:
                 return self._driven_segment(lung, (self._pressure_cap(b.peep), 0.0), pmus)
@@ -517,8 +542,8 @@ class AnesthesiaVentilator:
             return lung.flow_segment(0.0, pmus)
         if b.t < RISE_TIME - 1e-12:
             slope = (b.target - b.p_start) / RISE_TIME
-            return self._driven_segment(lung, (b.p_start + slope * b.t, slope), pmus)
-        return self._driven_segment(lung, (b.target, 0.0), pmus)
+            return self._driven_segment(lung, (b.p_start + slope * b.t, slope), pmus, starvation)
+        return self._driven_segment(lung, (b.target, 0.0), pmus, starvation)
 
     def _driven_segment(self, lung, pressure, pmus, series_resistance=0.0):
         if lung.expiratory_obstruction <= 0.0:
@@ -827,7 +852,10 @@ class AnesthesiaVentilator:
                 b.plat = end_paw
             self.pressure_limited = b.limited and not b.delivered
             if b.vg_test:
-                self._vg_pressure = min(max(end_paw - b.peep, VG_MIN), self._vg_ceiling(b.peep))
+                if self._bellows_fraction >= 1.0 - 1e-6:
+                    self._vg_pressure = min(max(end_paw - b.peep, VG_MIN), self._vg_ceiling(b.peep))
+                elif self._vg_pressure is None:
+                    self._vg_pressure = min(max(self.settings.p_insp, VG_MIN), self._vg_ceiling(b.peep))
         elif b.kind == "MANUAL":
             self.pressure_limited = b.limited and not b.delivered
         elif b.kind in ("PC", "VG"):
@@ -846,7 +874,10 @@ class AnesthesiaVentilator:
     def _adjust_vg(self, volume: float, b: Breath) -> None:
         """Move Pinsp toward the set VT by at most VG_STEP, retaining the Pmax margin."""
         goal = self.settings.tv / 1000.0
-        pressure = b.target
+        if self._bellows_fraction < 1.0 - 1e-6:
+            self.pressure_limited = volume < 0.9 * goal
+            return
+        pressure = self._vg_pressure if self._vg_pressure is not None else b.target
         if volume > 0.0:
             pressure += min(max(pressure * (goal / volume - 1.0), -VG_STEP), VG_STEP)
         ceiling = self._vg_ceiling(b.peep)

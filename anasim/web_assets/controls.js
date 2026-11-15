@@ -69,7 +69,7 @@ const ventFields = {
   "SIMV-PC": ["rr", "p_insp", "t_insp", "p_support", "trigger"],
   "SIMV-VG": ["rr", "tv", "t_insp", "p_max", "p_support", "trigger"],
   "PSV": ["p_support", "trigger", "rr", "p_insp", "t_insp"],
-  "CPAP": ["trigger"],
+  "CPAP": [],
 };
 const ventInputs = {
   rr: "c-rr", tv: "c-tv", p_insp: "c-pinsp", p_support: "c-psupport", peep: "c-peep",
@@ -224,10 +224,16 @@ export class Controls {
     $("c-vent-power").onclick = () => this.send("vent_power", { on: !this.state.vent.on });
     this.editSettings(
       ["c-vent-mode", "c-ie", ...Object.values(ventInputs)].map($),
-      () => this.send("vent", {
-        mode: $("c-vent-mode").value, ie: $("c-ie").value,
-        ...Object.fromEntries(Object.entries(ventInputs).map(([name, id]) => [name, readNumber($(id))])),
-      }),
+      () => {
+        const mode = $("c-vent-mode").value;
+        const used = ventFields[mode];
+        return this.send("vent", {
+          mode,
+          ...(used.includes("ie") ? { ie: $("c-ie").value } : {}),
+          peep: readNumber($("c-peep")),
+          ...Object.fromEntries(used.filter((n) => n !== "ie").map((n) => [n, readNumber($(ventInputs[n]))])),
+        });
+      },
       $("c-vent-settings"),
       () => this.applyVentMode($("c-vent-mode").value),
     );
@@ -500,10 +506,11 @@ export class Controls {
     $("c-lipid-bolus").value = String(weight >= 70 ? 100 : round(1.5 * weight));
     const lipidGive = $("c-lipid-give");
     lipidGive.onclick = async () => {
+      if ($("c-lipid-bolus").reportValidity && !$("c-lipid-bolus").reportValidity()) return;
       const result = await this.performAction(lipidGive, "fluid", {
         kind: "lipid", volume_ml: readNumber($("c-lipid-bolus")),
       });
-      if (this.destroyed || result === undefined) return;
+      if (this.destroyed || result === undefined || result.medication) return;
       setText($("c-lipid-feedback"), result.fluid.text);
       $("c-lipid-feedback").hidden = false;
     };

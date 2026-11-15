@@ -151,6 +151,14 @@ def test_small_hypnotic_dose_does_not_silence_an_awake_paralysis_warning():
     light.step(0.5)
     assert check_shock(light) is None
 
+    lidocaine = WebSession({"mode": "awake"}).engine
+    lidocaine.start()
+    lidocaine.give_drug_bolus("lidocaine", 120.0)
+    advance(lidocaine, 180.0)
+    assert lidocaine.state.loc == 0.0 and lidocaine.state.tol >= 0.1
+    lido_fb = check_intubation(lidocaine)
+    assert lido_fb is not None and lido_fb.blocked and lido_fb.code == "awake_intubation"
+
 
 @pytest.mark.parametrize("ce", [1.8, 2.2, 3.0])
 def test_borderline_hypnosis_and_partial_airway_reflex_suppression_do_not_generate_advisories(ce):

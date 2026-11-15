@@ -20,7 +20,7 @@ from .base import (
 
 def create_sepsis_response() -> Scenario:
     start_map = CrisisStartMAP()
-    fluids = require_fluid_bolus(500, labels=("crystalloid",), event_name="sepsis")
+    fluids = require_fluid_bolus(500, labels=("crystalloid", "saline"), event_name="sepsis")
 
     def start(engine) -> None:
         start_map.record(engine)

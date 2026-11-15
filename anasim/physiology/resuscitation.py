@@ -97,13 +97,13 @@ def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: flo
         return RhythmType.ASYSTOLE
     if rhythm == RhythmType.ASYSTOLE:
         return rhythm
-    if rhythm == RhythmType.VFIB or (rhythm == RhythmType.VTACH and not perfusing):
-        depletion = max(energy_failure, 0.8 * clamp01(hypoxia))
+    depletion = max(energy_failure, 0.8 * clamp01(hypoxia))
+    if not synchronized and rhythm != RhythmType.VFIB and perfusing and vulnerable and rng.random() < R_ON_T_PROBABILITY:
+        return RhythmType.VFIB
+    if rhythm == RhythmType.VFIB or (rhythm == RhythmType.VTACH and (not perfusing or not synchronized)):
         success = DEFIBRILLATION_SUCCESS * (1.0 - FINE_VF_SUCCESS_LOSS * depletion)
         # Either drug reduced the shocks needed (Kudenchuk 2016). The effect size is a calibration.
         success += 0.5 * (1.0 - success) * clamp01(antiarrhythmic)
         return RhythmType.SINUS if rng.random() < success else rhythm
-    if not synchronized and vulnerable and rng.random() < R_ON_T_PROBABILITY:
-        return RhythmType.VFIB
-    success = CARDIOVERSION_SUCCESS.get(rhythm, 0.0)
+    success = CARDIOVERSION_SUCCESS.get(rhythm, 0.0) * (1.0 - 0.5 * depletion)
     return RhythmType.SINUS if success and rng.random() < success else rhythm

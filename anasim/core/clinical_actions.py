@@ -41,21 +41,29 @@ def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
     unconscious, tolerance = _responsiveness(engine)
     strength = central_muscle_strength(engine)
     s = engine.state
-    sustained_hypnosis = unconscious >= 0.1 and (
-        s.hypnotic_ce >= 1.2
-        or s.mac >= 0.3
-        or s.ketamine_ce >= 0.4
-        or engine.cerebral.unresponsiveness >= 0.8
-        or engine.toxicity.unresponsiveness >= 0.8
-        or s.cardiac_arrest
+    hemo = engine.hemo.state
+    in_arrest = (
+        s.cardiac_arrest
+        or hemo.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE)
+        or hemo.intrinsic_co <= ARREST_CO_L_MIN
     )
-    if not sustained_hypnosis and tolerance < 0.1 and strength > 0.5:
+    sustained_hypnosis = in_arrest or (
+        unconscious >= 0.1
+        and (
+            s.hypnotic_ce >= 1.2
+            or s.mac >= 0.3
+            or s.ketamine_ce >= 0.4
+            or engine.cerebral.unresponsiveness >= 0.8
+            or engine.toxicity.unresponsiveness >= 0.8
+        )
+    )
+    if not sustained_hypnosis and (unconscious < 0.1 or tolerance < 0.1) and strength > 0.5:
         return ActionFeedback(
             "awake_intubation",
             "Patient gags and resists; tube not placed.",
             blocked=True,
         )
-    if unconscious < 0.1 and strength <= 0.5:
+    if not in_arrest and unconscious < 0.1 and strength <= 0.5:
         return ActionFeedback(
             "intubation_awareness",
             "Tube placed without adequate hypnosis.",

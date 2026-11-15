@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
 from anasim.patient.pd.anesthesia import (
     ETOMIDATE_LOSS_OF_RESPONSE,
+    KETAMINE_MAC_EQUIVALENT,
     LARYNGOSCOPY_INTENSITY,
     PROPOFOL_LOC_TRANSFER,
     PROPOFOL_LOSS_OF_RESPONSE,
@@ -18,6 +19,7 @@ from anasim.physiology.malignant_hyperthermia import dantrolene_twitch_fraction
 
 from .constants import CMH2O_TO_MMHG
 from .drug_registry import DRUG_REGISTRY
+from .enums import RhythmType
 from .state import AirwayType, SimulationState
 from .utils import clamp, clamp01, hill_function
 
@@ -212,7 +214,8 @@ def thermal_hypnotic_ce(engine: SimulationEngine) -> float:
         / ETOMIDATE_LOSS_OF_RESPONSE
     )
     midaz = max(0.0, state.midazolam_ce)
-    return max(0.0, state.propofol_ce) + etomidate + 1.80 * midaz / (midaz + 150.0)
+    ketamine = engine.thermal.tuning.depth_propofol_scale * max(0.0, state.ketamine_ce) / KETAMINE_MAC_EQUIVALENT
+    return max(0.0, state.propofol_ce) + etomidate + ketamine + 1.80 * midaz / (midaz + 150.0)
 
 
 def nmba_twitch_fraction(engine: SimulationEngine) -> float:
@@ -525,17 +528,29 @@ def project_runtime_physiology(engine: SimulationEngine, snapshot: PhysiologySte
     ))
 
 
+def compute_pit_estimate(engine: SimulationEngine, dt: float) -> float:
+    """Estimate mean intrathoracic pressure (mmHg) from airway pressure and inspiratory effort."""
+    hemo_cfg = engine.hemo.config
+    effort_pressure = min(engine.vent.muscle_pressure_area / dt, hemo_cfg.effort_pressure_max) if dt > 0.0 else 0.0
+    return hemo_cfg.pit_0 + CMH2O_TO_MMHG * (
+        hemo_cfg.paw_transmission * engine.current_mean_paw - hemo_cfg.effort_transmission * effort_pressure
+    )
+
+
 def sync_monitor_baselines(engine: SimulationEngine) -> None:
     """Derive monitor baselines from the current physiologic snapshot."""
+    from . import runtime as runtime_core
+
     state = engine.state
-    bis_val = clamp(
-        engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo, state.ketamine_ce),
-        0.0,
-        100.0,
-    )
     loc_val = loss_of_response(engine)
     tol_val = stimulus_tolerance(engine)
     engine._tol_current = tol_val
+    raw_bis = engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo, state.ketamine_ce) * engine.bis.cortical_function
+    bis_val = clamp(
+        raw_bis + runtime_core.stimulus_effects(engine, 0.0).bis * engine.bis.cortical_function,
+        0.0,
+        100.0,
+    )
     hemo_state = engine.hemo.state
     cardiac_sample = engine.cardiac_cycle.seed(state.hr, hemo_state.rhythm_type)
     arterial_sample = engine.arterial_waveform.step(
@@ -555,9 +570,10 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     state.display_hr = float(cardiac_sample.display_hr)
     state.display_bis = float(bis_val)
     engine.etco2_readout.seed(state.etco2)
+    state.etco2_signal_valid = engine.etco2_readout.valid
     state.display_etco2 = float(state.etco2)
     state.display_spo2 = float(state.spo2)
-    engine.bis.initialize(state.bis)
+    engine.bis.initialize(raw_bis)
     engine.smooth_bis = state.bis
 
 
@@ -569,11 +585,20 @@ def sync_state_from_models(engine: SimulationEngine) -> None:
     engine._tracheal_fio2 = state.fio2
     sync_inhaled_agents(engine)
     sync_pk_state(engine)
+    engine.thermal.update_depth(state.temp_c, thermal_hypnotic_ce(engine), state.mac)
     hemo_state = engine.hemo.state
     resp_state = step_respiration(engine, 0.0, hemo_state.co)
-    hemo_cfg = engine.hemo.config
-    pit_estimate = hemo_cfg.pit_0 + CMH2O_TO_MMHG * hemo_cfg.paw_transmission * engine.current_mean_paw
     project_runtime_physiology(engine, build_snapshot_from_models(
-        engine, hemo_state, resp_state, pit_estimate=pit_estimate,
+        engine, hemo_state, resp_state, pit_estimate=compute_pit_estimate(engine, 0.0),
     ))
     sync_monitor_baselines(engine)
+    hemo = engine.hemo
+    hemo.coronary.step(
+        0.0, state.hr, state.sbp, state.dbp, max(state.lap, hemo_state.venous_pressure), hemo.hb_conc,
+        resp_state.sao2, hemo.myocardial_hypoxia,
+        fibrillating=hemo.rhythm_type == RhythmType.VFIB, compressions=hemo.compressions,
+        venous_pressure=hemo_state.venous_pressure,
+    )
+    state.myocardial_ischemia = float(hemo.coronary.ischemia)
+    state.coronary_supply_demand_ratio = float(hemo.coronary.supply_demand_ratio)
+    state.st_depression_mv = float(hemo.coronary.st_depression_mv)

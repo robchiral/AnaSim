@@ -3,7 +3,12 @@
 import math
 from dataclasses import dataclass
 
-from .blood_chemistry import plasma_bicarbonate, standard_base_excess
+from .blood_chemistry import (
+    _MMHG_PER_KPA,
+    _PLASMA_CO2_SOLUBILITY,
+    plasma_bicarbonate,
+    standard_base_excess,
+)
 from .plasma_buffers import PlasmaBuffers
 
 
@@ -34,7 +39,7 @@ class FluidComposition:
 # 150 mmol/L less the potassium gained, and chloride balances the bicarbonate.
 # Citrate is 1.32 mmol per 300 mL unit.
 STORED_BLOOD_PH = 6.5
-STORED_BLOOD_PCO2 = 13.0 * 7.5006168270417
+STORED_BLOOD_PCO2 = 13.0 * _MMHG_PER_KPA
 _STORED_BICARBONATE = plasma_bicarbonate(STORED_BLOOD_PH, STORED_BLOOD_PCO2)
 _STORED_CITRATE = 1.32 / 0.135
 
@@ -227,7 +232,7 @@ class FluidBalance:
             return
         minutes = self._elapsed / 60.0
         self._elapsed = 0.0
-        self._clear_calcium(minutes, ph)
+        self._clear_calcium(minutes)
         self._metabolize_buffers(minutes, hepatic_function, oxygen_supply)
         self._renal_balance(minutes, ph, paco2, resting_paco2, renal_function, renal_perfusion)
         self._exchange_potassium(
@@ -255,7 +260,7 @@ class FluidBalance:
         delta = target_pco2 - resting_paco2
         resting_hco3 = plasma_bicarbonate(self.resting_ph, resting_paco2)
         target_hco3 = resting_hco3 + (0.48 if delta >= 0.0 else 0.40) * delta
-        target_ph = 6.1 + math.log10(target_hco3 / (0.230 / 7.5006168270417 * target_pco2))
+        target_ph = 6.1 + math.log10(target_hco3 / (_PLASMA_CO2_SOLUBILITY * target_pco2))
         target_be = standard_base_excess(target_ph, target_hco3)
         current_be = standard_base_excess(ph, plasma_bicarbonate(ph, paco2))
         # Endpoints follow Gonzalez 2018 and Krapf 1991, which measured steady
@@ -307,12 +312,12 @@ class FluidBalance:
         self.amounts["sodium"] += moved
         self.cell_na_mmol -= moved
 
-    def _clear_calcium(self, minutes: float, ph: float) -> None:
+    def _clear_calcium(self, minutes: float) -> None:
         self.calcium_unmixed_mmol *= math.exp(-_CALCIUM_MIXING_PER_MIN * minutes)
         # Bolan 2001: total calcium held steady through 90 min of citrate-induced
-        # hypocalcemia, so only calcium above the normal ionized level is cleared.
+        # hypocalcemia, so only calcium above the normal resting pool is cleared.
         excess = (self.amounts["calcium"] + self.calcium_unmixed_mmol / _CALCIUM_CENTRAL_FRACTION
-                  - self.ecf_l * self._total_calcium(self.calcium_set_point, ph))
+                  - self.ecf_l * self._total_calcium(self.calcium_set_point, self.resting_ph))
         if excess > 0.0:
             self.amounts["calcium"] -= excess * -math.expm1(-_CALCIUM_CLEARANCE_PER_MIN * minutes)
 

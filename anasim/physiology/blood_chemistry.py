@@ -13,6 +13,7 @@ from anasim.patient.domain import bounded_number, finite_number
 from .plasma_buffers import PlasmaBuffers
 
 _MMHG_PER_KPA = 7.5006168270417
+MOLAR_GAS_VOLUME_STPD_L_MMOL = 0.022414
 _PLASMA_CO2_SOLUBILITY = 0.230 / _MMHG_PER_KPA  # mmol/L/mmHg
 _RBC_CO2_SOLUBILITY = 0.195 / _MMHG_PER_KPA  # mmol/L/mmHg
 _PH_RANGE = (6.0, 10.0)  # Numerical limits, wide enough for CO2-washed-out pulmonary blood.

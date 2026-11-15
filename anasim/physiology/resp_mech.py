@@ -528,7 +528,14 @@ class PatientEffort:
         self._release_slope = max(-3.0, n * self.RELEASE_FRACTION * (rising[-1] - rising[-2]) / rising[-1])
         self._relax(self._values[-1])
         requested = unloading * self.target_vt / self._unit_volume(lung, series_resistance)
-        self.amplitude = min(requested, self.muscle.available_pressure)
+        recoil_ee = (
+            lung.aeration.static_mechanics(lung.aeration.frc)[0]
+            if lung.aeration is not None
+            else lung.peep + lung.elastic_pressure
+        )
+        # Diaphragmatic length-tension capacity collapses at severe hyperinflation near TLC.
+        hyperinflation_scale = min(1.0, max(0.0, 1.0 - max(0.0, recoil_ee - 15.0) / 35.0))
+        self.amplitude = min(requested, self.muscle.available_pressure * hyperinflation_scale)
 
     def _relax(self, value: float) -> None:
         """Append relaxation from a unit value at Ti to zero over the release time.

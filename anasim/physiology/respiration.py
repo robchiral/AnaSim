@@ -8,6 +8,7 @@ from anasim.patient.patient import Patient
 from anasim.patient.pd.nmba import ROCURONIUM_T1_EC50
 
 from .blood_chemistry import (
+    MOLAR_GAS_VOLUME_STPD_L_MMOL,
     BloodChemistry,
     Equilibrium,
     extracellular_contents,
@@ -20,7 +21,7 @@ from .hemo_config import HemodynamicConfig
 from .plasma_buffers import PlasmaBuffers
 
 _HB_G_DL_PER_MMOL_L = 1.61145  # Heme monomer, 16.1145 g/mmol.
-_CO2_L_PER_MMOL = 0.022414  # STPD.
+_CO2_L_PER_MMOL = MOLAR_GAS_VOLUME_STPD_L_MMOL  # STPD.
 _O2_PER_HB = 0.0134  # STPD L O2 per L blood per g/dL Hb (1.34 mL/g).
 _O2_SOLUBILITY = 0.000031  # STPD L O2 per L blood per mmHg.
 
@@ -633,20 +634,33 @@ class RespiratoryModel:
         self, fio2: float, alveolar_ventilation: float,
         airway_patency: float, vq_mismatch: float, dt: float = 1.0,
         apneic_flow_limit_l_min: float | None = None,
+        n2o_uptake_l_min: float = 0.0,
     ) -> float:
         """Net O2 transport from inspired gas into the lung and blood stores, STPD L/min."""
         if airway_patency <= 0.0:
             return 0.0
+        patency = clamp01(airway_patency)
         ventilation = max(0.0, alveolar_ventilation * (1.0 - 0.6 * clamp01(vq_mismatch)))
+        n2o_stpd_l_min = n2o_uptake_l_min * self._btps_to_stpd
         net_uptake = max(0.0, self._pulmonary_o2_uptake - self._pulmonary_co2_delivery)
-        apneic_inflow = net_uptake * clamp01(airway_patency) * clamp01(1.0 - ventilation)
-        passive_flow = apneic_inflow + self._passive_refill_l_min(airway_patency, dt)
+        apneic_inflow = net_uptake * patency * clamp01(1.0 - ventilation)
+        n2o_inflow = max(0.0, n2o_stpd_l_min) * patency
+        passive_flow = apneic_inflow + self._passive_refill_l_min(airway_patency, dt) + n2o_inflow
         if apneic_flow_limit_l_min is not None:
             passive_flow = min(passive_flow, max(0.0, apneic_flow_limit_l_min))
+        washout_o2_l_min = 0.0
+        if n2o_stpd_l_min < 0.0 and dt > 0.0:
+            lung_o2 = self.gas_volume_l * self._gas_capacity_per_l * self.state.p_alveolar_o2
+            washout_l = -n2o_stpd_l_min * patency * dt / 60.0
+            washout_o2_l_min = min(
+                max(0.0, 0.85 * lung_o2),
+                washout_l * (0.5 * fio2 + 0.5 * self.state.p_alveolar_o2 / self._atm_dry),
+            ) * 60.0 / dt
         initial_flux = (
             ventilation * self._btps_to_stpd
             * (fio2 - self.state.p_alveolar_o2 / self._atm_dry)
             + passive_flow * fio2
+            - washout_o2_l_min
         )
         # Predict the interval mean gas pressure for the circuit's O2 balance.
         # The respiratory solve uses the same midpoint ventilation flux.
@@ -818,8 +832,8 @@ class RespiratoryModel:
         ref_rr_mech = max(0.0, mech_rr)
         ref_rr_spont = max(0.0, current_rr)
         effective_rate = max(ref_rr_mech, ref_rr_spont)
-        vt_mech_avail = max(0.0, alveolar_vt_mech)
-        vt_spont_avail = max(0.0, vt_eff_spont)
+        vt_mech_avail = alveolar_vt_mech
+        vt_spont_avail = vt_eff_spont
 
         if measured_breaths:
             # Measured ventilation already includes the patient's breaths, so a
@@ -851,8 +865,7 @@ class RespiratoryModel:
         vd_vt = min(0.95, self.vd_deadspace / vt_l)
         perfusion_excess = self.perfusion_deadspace_gain * clamp01(1.0 - perfusion_ratio)
         vd_vt_excess = max(0.0, vd_vt - 0.30 + perfusion_excess)
-        vq_for_etco2 = clamp01(vq_mismatch)
-        etco2_gradient = 4.0 + 15.0 * vd_vt_excess + 8.0 * vq_for_etco2 + 6.0 * (1.0 - ventilation_efficiency)
+        etco2_gradient = 4.0 + 15.0 * vd_vt_excess + 8.0 * vq_mismatch + 6.0 * (1.0 - ventilation_efficiency)
         etco2_gradient = min(20.0, etco2_gradient)
         hb = self.baseline_hb if hb_g_dl is None else hb_g_dl
         hct = self.baseline_hct if hematocrit is None else hematocrit
@@ -928,23 +941,24 @@ class RespiratoryModel:
                   + pulmonary * _CO2_L_PER_MMOL * (transport.co2[2] - transport.co2[0]))
         oxygen = (lung_o2 - lung_tissue_o2 + transport.volumes[0] * transport.oxygen[0]
                   + pulmonary * (transport.oxygen[2] - transport.oxygen[0]))
+        n2o_stpd_l_min = n2o_uptake_l_min * self._btps_to_stpd
         net_uptake = max(0.0, self._pulmonary_o2_uptake - self._pulmonary_co2_delivery)
         apneic_inflow = net_uptake * airway_patency * clamp01_local(1.0 - effective_va)
-        inflow = apneic_inflow + refill_l_min
+        n2o_inflow = max(0.0, n2o_stpd_l_min) * airway_patency
+        inflow = apneic_inflow + refill_l_min + n2o_inflow
         if flow_limit is not None:
             inflow = min(inflow, flow_limit)
-        n2o_flux_l = n2o_uptake_l_min * dt / 60.0
-        if n2o_flux_l >= 0.0:
-            n2o_o2_flux_l = n2o_flux_l * fio2
+        if n2o_stpd_l_min >= 0.0:
+            n2o_washout_o2_l = 0.0
             n2o_co2_loss_l = 0.0
         else:
-            washout_l = -n2o_flux_l
-            n2o_o2_flux_l = -min(
+            washout_l = -n2o_stpd_l_min * airway_patency * dt / 60.0
+            n2o_washout_o2_l = min(
                 max(0.0, 0.85 * lung_o2),
                 washout_l * (0.5 * fio2 + 0.5 * old_o2 / self._atm_dry),
             )
             n2o_co2_loss_l = min(max(0.0, 0.85 * lung_co2), washout_l * 0.5 * old_co2 / self._atm_dry)
-        inflow_o2_l = inflow * fio2 * dt / 60.0 + n2o_o2_flux_l
+        inflow_o2_l = inflow * fio2 * dt / 60.0 - n2o_washout_o2_l
         ventilation = effective_va * self._gas_capacity_per_l * dt / 60.0
         capillary_co2, capillary_o2 = self._equilibrate_lung(
             carbon - ventilation * old_co2 / 2.0 - n2o_co2_loss_l,

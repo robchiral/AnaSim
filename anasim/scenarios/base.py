@@ -327,10 +327,14 @@ def require_hypotension_or_treatment(
     def check(engine) -> tuple[bool, str]:
         map_val = monitor_value(engine, "map")
         threshold = 65.0 if start.value is None else min(65.0, 0.8 * start.value)
-        fluids = engine.actions.since_event(event_name, ACTION_FLUID, labels=("crystalloid", "blood"))
-        infusions = engine.actions.since_event(event_name, ACTION_INFUSION_RATE, labels=pressors)
+        fluids = engine.actions.since_event(
+            event_name, ACTION_FLUID, labels=("crystalloid", "saline", "colloid", "blood"),
+        )
+        pressor_actions = engine.actions.since_event(
+            event_name, ACTION_INFUSION_RATE, ACTION_TCI_TARGET, ACTION_DRUG_BOLUS, labels=pressors,
+        )
         controlled = engine.actions.since_event(event_name, ACTION_EVENT_STOP, labels=(event_name,))
-        treated = any(record.amount > 0 for record in (*fluids, *infusions)) or bool(controlled)
+        treated = any(record.amount > 0 for record in (*fluids, *pressor_actions)) or bool(controlled)
         met = treated or map_val < threshold
         return met, "" if met else f"MAP: {map_val:.0f}/<{threshold:.0f} mmHg; {prompt}"
     return check

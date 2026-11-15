@@ -19,7 +19,7 @@ from .units import convert_rate
 # height, and sex alone, without variability, organ function, blood loss,
 # cardiac output, interactions, or hand boluses. Vasoactive TCI uses the
 # patient's model.
-POPULATION_TCI_DRUGS = ("propofol", "remi", "fentanyl")
+POPULATION_TCI_DRUGS = ("propofol", "remi", "fentanyl", "roc")
 
 
 class DrugControllerMixin:
@@ -77,6 +77,8 @@ class DrugControllerMixin:
         controller.max_rate = max_rate.internal_rate(self.patient.weight)
         controller.sync_state_estimate(pk_model)
         controller.set_target(target)
+        self.infusion_rates[spec.key] = controller.step(sim_time=self.state.time)
+        self._tci_accumulators[spec.key] = 0.0
         self.actions.record(self.state.time, ACTION_TCI_TARGET, label=spec.key, amount=target)
 
     def sync_active_tci_from_pk(self, *drug_keys: str):

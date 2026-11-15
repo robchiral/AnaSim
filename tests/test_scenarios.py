@@ -304,6 +304,22 @@ def test_crisis_objectives_accept_prompt_treatment_without_repeating_doses(scena
         assert step.check_requirements(engine)[0]
     getattr(engine, f"start_{event}")()
     assert not fluid_step.check_requirements(engine)[0]  # A later event needs its own response.
+    engine.give_saline(fluid_ml)
+    assert fluid_step.check_requirements(engine)[0]
+
+    if event == "anaphylaxis":
+        arrest_session = WebSession({"scenario_id": "cardiac_arrest"})
+        arrest_engine, arrest_scenario = arrest_session.engine, arrest_session.scenario
+        assert arrest_scenario is not None
+        arrest_scenario.events[0].apply(arrest_engine)
+        arrest_engine.start()
+        for _ in range(20):
+            arrest_engine.step(1.0)
+        epi_step = _step(arrest_scenario, "CONTINUE_CYCLES")
+        arrest_engine.give_drug_bolus("epi", 500)
+        assert not epi_step.check_requirements(arrest_engine)[0]
+        arrest_engine.give_drug_bolus("epi", 500)
+        assert epi_step.check_requirements(arrest_engine)[0]
 
 
 @pytest.mark.parametrize("assisted", [False, True], ids=["tidal-breathing", "assisted-shallow-breathing"])

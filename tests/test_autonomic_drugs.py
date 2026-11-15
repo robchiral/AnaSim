@@ -149,3 +149,19 @@ def test_glycopyrrolate_raises_rate_and_blocks_vagal_bradycardia(engine_factory)
     engine.give_drug_bolus("atropine", 0.5)
     _advance(engine, 60)
     assert engine.state.hr >= hr_after_glyco - 0.5
+
+
+def test_ephedrine_tachyphylaxis_and_competitive_blockade(patient):
+    from anasim.physiology.hemodynamics import HemodynamicModel
+
+    normal, acidotic = HemodynamicModel(patient), HemodynamicModel(patient)
+    for _ in range(900):
+        normal.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=600.0, ph=7.40)
+        acidotic.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=600.0, ph=6.85)
+    assert acidotic._ephedrine_tolerance_ce == pytest.approx(normal._ephedrine_tolerance_ce, rel=1e-6)
+    assert acidotic._ephedrine_tolerance_ce == pytest.approx(300.0, rel=1e-3)
+
+    low_eph, high_eph = HemodynamicModel(patient), HemodynamicModel(patient)
+    s_low = low_eph.step(0.5, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=300.0)
+    s_high = high_eph.step(0.5, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=10000.0)
+    assert s_high.svr > s_low.svr and s_high.sv > s_low.sv

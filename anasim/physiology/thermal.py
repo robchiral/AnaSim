@@ -1,5 +1,7 @@
 """Core temperature with anesthetic heat redistribution and shivering."""
 
+import math
+
 from anasim.core.constants import (
     SHIVER_BASE_THRESHOLD,
     SHIVER_BIS_FULL,
@@ -67,12 +69,12 @@ class ThermalModel:
 
     def settle_at_depth(self) -> None:
         """Start as if the current depth had been held: no shivering, redistribution complete."""
-        self.metabolic_factor = 1.0
         self.shiver_level = 0.0
         self.redistributed_heat_j = self.redistribution_target_j(self.depth_index)
 
     def step_shivering(
         self, dt: float, temp_c: float, bis: float, opioid_effect: float, muscle_factor: float,
+        unconscious: float = 0.0,
     ) -> float:
         """Advance shivering intensity (0-1) from cold, emergence, opioid effect, and muscle strength."""
         depth_factor = clamp01(self.depth_index)
@@ -80,11 +82,12 @@ class ThermalModel:
         temp_deficit = max(0.0, threshold - temp_c)
         cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
 
-        emergence = clamp01((bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
+        emergence_bis = clamp01((bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
+        emergence = min(emergence_bis, clamp01(1.0 - unconscious))
 
         target = cold_drive * emergence * muscle_factor
         tau = SHIVER_TAU_ON if target > self.shiver_level else SHIVER_TAU_OFF
-        self.shiver_level += (target - self.shiver_level) * (dt / tau)
+        self.shiver_level += (target - self.shiver_level) * -math.expm1(-dt / tau)
         self.shiver_level = clamp01(self.shiver_level)
         return self.shiver_level
 

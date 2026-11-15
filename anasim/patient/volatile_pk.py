@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from anasim.core.utils import clamp01
 
 from .patient import Patient
+from .pk_models import _janmahasatian_ffm
 
 
 @dataclass
@@ -47,11 +48,13 @@ class VolatilePK:
         self.mac_40 = mac_40
         self.mac_age = self.mac_40 * (10 ** (-0.00269 * (self.patient.age - 40)))
 
-        # Tissue volumes (L) and shares of cardiac output.
-        w_kg = self.patient.weight
-        self.v_vrg = 0.1 * w_kg
-        self.v_mus = 0.5 * w_kg
-        self.v_fat = 0.2 * w_kg
+        # Tissue volumes (L) and shares of cardiac output: lean organs scale
+        # with fat-free mass, while excess body mass expands the adipose depot.
+        male = self.patient.sex == "male"
+        ffm_scale = _janmahasatian_ffm(self.patient.weight, self.patient.height, male) / _janmahasatian_ffm(70.0, 170.0, male)
+        self.v_vrg = 7.0 * ffm_scale
+        self.v_mus = 35.0 * ffm_scale
+        self.v_fat = max(3.0, 14.0 * ffm_scale + 0.8 * max(0.0, self.patient.weight - 70.0 * ffm_scale))
         self.f_vrg_frac = 0.75
         self.f_mus_frac = 0.19
         self.f_fat_frac = 0.06

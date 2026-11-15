@@ -68,8 +68,16 @@ def test_n2o_second_gas_concentrating_effect_and_fink_diffusion_hypoxia(engine_f
     """
     sevo_air = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
     sevo_n2o = copy.deepcopy(sevo_air)
+    blocked = copy.deepcopy(sevo_air)
     ctrl_air = copy.deepcopy(sevo_air)
     wash_air = copy.deepcopy(sevo_air)
+    blocked.set_airway_mode("ETT")
+    blocked.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    blocked.set_vent_power(True)
+    blocked.set_fgf(2.0, 0.0, n2o_l_min=6.0)
+    blocked.set_airway_obstruction(1.0)
+    advance_time(blocked, 30.0, dt=1.0)
+    assert blocked.pk_n2o.state.p_alv == 0.0
     for model, fgf in ((sevo_air, (2.0, 6.0, 0.0)), (sevo_n2o, (2.0, 0.0, 6.0))):
         model.set_airway_mode("ETT")
         model.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
@@ -86,6 +94,11 @@ def test_n2o_second_gas_concentrating_effect_and_fink_diffusion_hypoxia(engine_f
         model.set_fgf(fgf[0], fgf[1], n2o_l_min=fgf[2])
         advance_time(model, 600.0, dt=2.0)
     wash_o2 = copy.deepcopy(wash_air)
+    blocked_wash = copy.deepcopy(wash_air)
+    blocked_wash.set_fgf(10.0, 0.0, n2o_l_min=0.0)
+    blocked_wash.set_airway_obstruction(1.0)
+    advance_time(blocked_wash, 30.0, dt=1.0)
+    assert blocked_wash.pk_n2o.state.p_alv > 0.55
     for model in (wash_air, ctrl_air):
         model.set_auto_laryngospasm(False)
         model.set_airway_mode("None")

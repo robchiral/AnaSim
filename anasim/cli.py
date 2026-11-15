@@ -1,6 +1,7 @@
 import argparse
 import contextlib
 import json
+import math
 import sys
 import time
 from dataclasses import fields
@@ -63,11 +64,12 @@ def run_headless(args):
                 if i % 100 == 0:
                     state = engine.get_latest_state()
                     hr = state.display_hr
-                    _, _, map_val = state.monitored_blood_pressure(
+                    sbp_val, _, map_val = state.monitored_blood_pressure(
                         sim_config.arterial_line_enabled
                     )
-                    spo2 = state.display_spo2
-                    print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_val:.1f} | SpO2: {spo2:.1f}")
+                    map_text = "--" if math.isnan(sbp_val) else f"{map_val:.1f}"
+                    spo2_text = f"{state.display_spo2:.1f}" if state.spo2_signal_valid else "--"
+                    print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_text} | SpO2: {spo2_text}")
             else:
                 remainder = args.duration - steps * sim_config.dt
                 if remainder > 1e-12:
@@ -110,6 +112,10 @@ def main():
     args = parser.parse_args()
     if not 0 <= args.port <= 65535:
         parser.error("--port must be between 0 and 65535")
+    if not (math.isfinite(args.duration) and args.duration >= 0):
+        parser.error("--duration must be a non-negative finite number")
+    if not (math.isfinite(args.record_interval) and args.record_interval > 0):
+        parser.error("--record-interval must be a positive finite number")
 
     if args.mode == "headless":
         run_headless(args)

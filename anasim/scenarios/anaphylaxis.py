@@ -53,7 +53,7 @@ def create_anaphylaxis_scenario() -> Scenario:
     epinephrine = _require_epinephrine_started()
     fluids = require_fluid_bolus(
         1000.0,
-        labels=("crystalloid",),
+        labels=("crystalloid", "saline"),
         fail_prefix="Start crystalloid resuscitation",
         event_name="anaphylaxis",
     )

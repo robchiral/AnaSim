@@ -31,6 +31,7 @@ class Capnograph:
         self._exhaled_alveolar = 0.0
         self._breath_volume = 0.0  # Inspired volume of the current breath, L.
         self._inhaled = 0.0
+        self._no_flow_s = 0.0
         self._stages = [0.0, 0.0]
         self.co2 = 0.0
         self.exhaling = False
@@ -43,6 +44,10 @@ class Capnograph:
         """
         exhaled = -volume_change
         self.exhaling = exhaled > 0.0
+        if exhaled != 0.0:
+            self._no_flow_s = 0.0
+        else:
+            self._no_flow_s += dt
         if exhaled > 0.0:
             if self._inhaled > self.dead_space:
                 # Fresh gas reached the alveoli, so this is a new exhalation.
@@ -81,7 +86,11 @@ class Capnograph:
             self._window_volume = self._window_co2 = 0.0
             sample = 0.0
         else:
-            sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else self._stages[0]
+            if self._no_flow_s > 1.5:
+                self._window_co2 *= math.exp(-dt / 2.5)
+                sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
+            else:
+                sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else self._stages[0]
         # Exact coupled response of two identical first-order stages to a
         # constant sample, using both stages' values at the interval start.
         z = dt / self.ANALYZER_TAU
@@ -136,16 +145,26 @@ class EtCO2Readout:
     def valid(self) -> bool:
         return self._has_sample and self._age_s <= self.timeout_s
 
+    @property
+    def awaiting_first_breath(self) -> bool:
+        return not self._has_sample and self._age_s < self.timeout_s
+
     def seed(self, value: float) -> None:
         self.value = value
+        self._age_s = 0.0
+        self._peak = 0.0
+        self._has_sample = value > 0.0
 
-    def interrupt(self, dt: float, disconnected: bool) -> None:
+    def interrupt(self, dt: float, disconnected: bool, *, idle_airway: bool = False) -> None:
         """Advance without exhaled gas at the sampling port."""
         self._peak = 0.0
-        self._age_s += dt
         self._exhaling = False
         if disconnected:
             self._has_sample = False
+        if idle_airway:
+            self._age_s = 0.0
+        else:
+            self._age_s += dt
         self._expire()
 
     def update(self, dt: float, exhaling: bool, co2: float) -> None:

@@ -82,7 +82,7 @@ from .action_log import (
     ACTION_VENTILATION,
     ActionLog,
 )
-from .clinical_actions import ActionFeedback, check_intubation
+from .clinical_actions import ActionFeedback, check_intubation, check_shock
 from .drug_api import POPULATION_TCI_DRUGS, DrugControllerMixin
 from .drug_registry import DRUG_REGISTRY, get_drug_spec, resolve_bolus_drug
 from .initialization import initialize_engine_state
@@ -134,7 +134,6 @@ class SimulationEngine(DrugControllerMixin):
         self._next_nibp_time = 0.0
 
         self.disturbances = Disturbances(config.disturbance_profile)
-        self.disturbance_profile = config.disturbance_profile
         self.disturbance_active = bool(config.disturbance_profile)
         self.disturbance_start_time = 0.0
         # Learner intubation adds a transient without replacing ongoing surgery.
@@ -192,6 +191,7 @@ class SimulationEngine(DrugControllerMixin):
         self._pulseless_s = 0.0
         self.compressions_started_at: float | None = None
         self.defibrillator = Defibrillator()
+        self._last_shock_feedback: ActionFeedback | None = None
 
         self.initialize_models()
         self.set_continuous_fluid_rate(self.config.maintenance_fluid_ml_hr)
@@ -212,6 +212,32 @@ class SimulationEngine(DrugControllerMixin):
 
     def initialize_state(self):
         """Seed the public state from the initialized subsystems."""
+        if self.output_buffer:
+            self.infusion_rates = {spec.key: 0.0 for spec in DRUG_REGISTRY if spec.has_infusion}
+            self.tci.clear()
+            self._tci_accumulators.clear()
+            self._pump_needs_reset.clear()
+            self.output_buffer.clear()
+            self.pending_infusions.clear()
+            self.blood_gases.clear()
+            self.active_hemorrhage = False
+            self.lipid_infusion_ml_min = 0.0
+            self.bag_mask_active = False
+            self.mask_seal = 1.0
+            self.airway_obstruction_manual = 0.0
+            self.bronchospasm_manual = 0.0
+            self.intubation_start_time = None
+            self.compressions_started_at = None
+            self.disturbances = Disturbances(self.config.disturbance_profile)
+            self.disturbance_active = bool(self.config.disturbance_profile)
+            self.disturbance_start_time = 0.0
+            self.alarms = AlarmSystem()
+            self.defibrillator = Defibrillator()
+            self._last_shock_feedback = None
+            self.etco2_readout = EtCO2Readout()
+            self.initialize_models()
+            self.set_continuous_fluid_rate(self.config.maintenance_fluid_ml_hr)
+
         self.state = SimulationState()
         self.state.temp_c = self.patient.baseline_temp
         self.airway_status = AirwayStatus()
@@ -221,6 +247,7 @@ class SimulationEngine(DrugControllerMixin):
         self._pulseless_s = 0.0
 
         initialize_engine_state(self)
+        self.actions = ActionLog()
         projection_core.sync_state_from_models(self)
         self._bis_anesthetized = self.config.mode == "steady_state" or self.state.display_bis < 65.0
         monitor_core.seed_nibp_reading(self)
@@ -381,6 +408,7 @@ class SimulationEngine(DrugControllerMixin):
         if dose == 0.0:
             raise ValueError("calcium chloride dose must be greater than zero")
         self.hemo.fluids.give_calcium_chloride(dose * 0.0068)
+        self.state.ionized_calcium = float(self.hemo.fluids.ionized_calcium(self.state.ph))
         self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="calcium_chloride", amount=dose)
 
     def give_blood(self, volume_ml: float = 300.0, hematocrit: float = 0.55):
@@ -404,7 +432,7 @@ class SimulationEngine(DrugControllerMixin):
 
     def give_lipid_emulsion(self, volume_ml: float):
         """Give 20% lipid over 2.5 minutes; continued infusion is set separately."""
-        volume = finite_number("lipid volume", volume_ml)
+        volume = bounded_number("lipid volume", volume_ml, 0.0, 3000.0, unit="mL")
         if volume <= 0:
             raise ValueError("Lipid volume must be positive")
         self._queue_infusion(volume, volume / 2.5, hematocrit=0.0,
@@ -535,11 +563,19 @@ class SimulationEngine(DrugControllerMixin):
         self.disturbance_active = True
         self.disturbance_start_time = self.state.time
 
+    @property
+    def disturbance_profile(self) -> str | None:
+        return self.config.disturbance_profile
+
+    @disturbance_profile.setter
+    def disturbance_profile(self, value: str | None) -> None:
+        self.config.disturbance_profile = value
+
     def set_disturbance_profile(self, profile: str | None):
         """Select a disturbance profile without activating it; None clears it."""
         profile = profile or None
         self.disturbances = Disturbances(profile)
-        self.disturbance_profile = self.config.disturbance_profile = profile
+        self.config.disturbance_profile = profile
 
     def stop_disturbance(self, clear_profile: bool = False):
         """Stop the active stimulation profile."""
@@ -680,10 +716,12 @@ class SimulationEngine(DrugControllerMixin):
         return True
 
     def _deliver_shock(self, time: float, *, synchronized: bool) -> None:
+        self._last_shock_feedback = check_shock(self)
+        prev_rhythm = self.hemo.rhythm_type
         cycle = self.cardiac_cycle.current
         hypoxia, energy_failure, silent = runtime_core.myocardial_substrate(self)
         rhythm = shock_outcome(
-            self.hemo.rhythm_type, synchronized=synchronized, energy_failure=energy_failure,
+            prev_rhythm, synchronized=synchronized, energy_failure=energy_failure,
             electrically_silent=silent,
             vulnerable=cycle.rhythm_type == self.hemo.state.rhythm_type and self.ecg.vulnerable(cycle),
             antiarrhythmic=max(antiarrhythmic_effects(
@@ -700,11 +738,13 @@ class SimulationEngine(DrugControllerMixin):
         # An electrically silent heart keeps its underlying rhythm.
         if rhythm != RhythmType.ASYSTOLE:
             self.hemo.rhythm_type = self.arrhythmias.after_shock(
-                self.hemo.rhythm_type, rhythm, ischemia=self.hemo.coronary.ischemia,
+                prev_rhythm, rhythm, ischemia=self.hemo.coronary.ischemia,
                 hypoxia=hypoxia, energy_failure=energy_failure,
                 energy_reserve=self.hemo.coronary.energy_reserve,
             )
         self.hemo.invalidate_state_cache()
+        if not synchronized and self.hemo.rhythm_type != prev_rhythm:
+            self.cardiac_cycle.clear_rate_history()
 
     def set_bag_mask_ventilation(
         self,
@@ -750,7 +790,6 @@ class SimulationEngine(DrugControllerMixin):
             return
         self.nibp.trigger()
         self.state.nibp_is_cycling = True
-        self.state.nibp_measurement_failed = False
         self.state.nibp_cuff_pressure = 0.0
         self._next_nibp_time = self.state.time + self.nibp.interval
 
@@ -761,9 +800,11 @@ class SimulationEngine(DrugControllerMixin):
         result = BloodGasResult(
             drawn_at=state.time, ph=state.ph, pa_co2=state.pa_co2, pao2=self.resp.arterial_po2_at_37(),
             hco3=state.hco3, base_excess=state.base_excess, lactate=state.lactate,
-            sodium=fluids.concentration("sodium"), potassium=fluids.concentration("potassium"),
-            chloride=fluids.concentration("chloride"), ionized_calcium=fluids.ionized_calcium(state.ph),
-            sao2=state.sao2, hb=self.hemo.hb_conc, fio2=state.fio2,
+            sodium=float(fluids.concentration("sodium")),
+            potassium=float(fluids.concentration("potassium")),
+            chloride=float(fluids.concentration("chloride")),
+            ionized_calcium=float(fluids.ionized_calcium(state.ph)),
+            sao2=state.sao2, hb=float(self.hemo.hb_conc), fio2=state.fio2,
         )
         self.blood_gases.append(result)
         self.actions.record(state.time, ACTION_BLOOD_GAS)
@@ -808,13 +849,19 @@ class SimulationEngine(DrugControllerMixin):
     def get_predicted_csht(self, drug: str, max_seconds: int = 7200) -> float:
         """Minutes for a drug's effect site to halve if stopped now, up to max_seconds."""
         key = get_drug_spec(drug).key
-        model = self.prediction_model(key)
         if key == "roc":
             return self.tof_pd.simulate_decay(
-                model, max_seconds=max_seconds,
+                self.pk["roc"], max_seconds=max_seconds,
                 mac_sevo=self.pk_sevo.state.mac, mac_n2o=self.pk_n2o.state.mac,
             )
-        return model.simulate_decay(target_fraction=0.5, max_seconds=max_seconds)
+        model = self.prediction_model(key)
+        target_fraction = 0.5
+        if model.basal_input_rate > 0.0 and model.elimination_clearance > 0.0:
+            basal_ce = model.basal_input_rate * 60.0 / model.elimination_clearance
+            if model.state.ce <= basal_ce + 1e-9:
+                return 0.0
+            target_fraction = (basal_ce + 0.5 * (model.state.ce - basal_ce)) / model.state.ce
+        return model.simulate_decay(target_fraction=target_fraction, max_seconds=max_seconds)
 
     def set_vent_power(self, on: bool):
         """Start or stop the ventilator; its settings persist while it is off."""
@@ -858,10 +905,6 @@ class SimulationEngine(DrugControllerMixin):
         target = clamp(fio2, 0.21, 1.0)
         n2o_flow = max(0.0, self.circuit.fgf_n2o)
         o2_flow = ((target * (total_non_n2o + n2o_flow)) - 0.21 * total_non_n2o) / 0.79
-        if 3.0 * o2_flow < n2o_flow:
-            denom = 0.79 - 3.0 * target
-            o2_flow = (target - 0.21) * total_non_n2o / denom if denom > 1e-6 else total_non_n2o
-        o2_flow = clamp(o2_flow, 0.0, total_non_n2o)
+        o2_flow = clamp(max(o2_flow, n2o_flow / 3.0), 0.0, total_non_n2o)
         air_flow = total_non_n2o - o2_flow
-        self.circuit.fgf_o2 = o2_flow
-        self.circuit.fgf_air = air_flow
+        self.set_fgf(o2_flow, air_flow, min(n2o_flow, 3.0 * o2_flow))

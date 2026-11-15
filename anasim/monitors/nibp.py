@@ -4,6 +4,8 @@ import numpy as np
 
 from anasim.core.enums import RhythmType
 
+MIN_PULSE_PRESSURE_MMHG = 5.0
+
 
 @dataclass(frozen=True, slots=True)
 class NIBPReading:
@@ -22,6 +24,7 @@ class NIBPMonitor:
         self.is_cycling = False
         self.is_inflating = False
         self.cuff_pressure = 0.0
+        self._deflation_rate = 10.0
         self.latest_reading = NIBPReading()
         self.measurement_failed = False
         self.rng = rng if rng is not None else np.random.default_rng()
@@ -30,10 +33,10 @@ class NIBPMonitor:
         """Start a measurement manually."""
         if self.is_cycling:
             return
-        self.measurement_failed = False
         self.is_cycling = True
         self.is_inflating = True
         self.cuff_pressure = 0.0
+        self._deflation_rate = 10.0
 
     def _shock_failure_probability(self, true_map: float) -> float:
         if true_map >= 60.0:
@@ -62,32 +65,37 @@ class NIBPMonitor:
 
         remaining = dt
         if self.is_inflating:
-            inflation_time = (160.0 - self.cuff_pressure) / 400.0
+            target_cuff = max(160.0, min(300.0, true_sys + 30.0))
+            self._deflation_rate = max(10.0, (target_cuff - 50.0) / 11.0)
+            inflation_time = max(0.0, (target_cuff - self.cuff_pressure) / 400.0)
             elapsed = min(remaining, inflation_time)
-            self.cuff_pressure = min(160.0, self.cuff_pressure + 400.0 * elapsed)
+            self.cuff_pressure = min(target_cuff, self.cuff_pressure + 400.0 * elapsed)
             remaining -= elapsed
             if elapsed < inflation_time:
                 return self.cuff_pressure
             self.is_inflating = False
 
         # Carry unused time across the phase boundary, without overshooting.
-        deflation_time = (self.cuff_pressure - 50.0) / 10.0
+        deflation_time = (self.cuff_pressure - 50.0) / self._deflation_rate
         if remaining < deflation_time - 1e-9:
-            self.cuff_pressure -= 10.0 * remaining
+            self.cuff_pressure -= self._deflation_rate * remaining
             return self.cuff_pressure
 
         completed_at = current_time - max(0.0, remaining - deflation_time)
         self.is_cycling = False
         self.cuff_pressure = 0.0
         arrest_rhythm = rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE)
-        # Compressions prevent oscillometric measurement.
-        if arrest_rhythm or compressions or true_map <= 30.0:
+        pulseless_pea = (true_sys - true_dia) < MIN_PULSE_PRESSURE_MMHG
+        # Compressions and pulseless states prevent oscillometric measurement.
+        if arrest_rhythm or compressions or pulseless_pea or true_map <= 30.0:
             self.measurement_failed = True
             return self.cuff_pressure
 
         if self.rng.random() < self._shock_failure_probability(true_map):
             self.measurement_failed = True
             return self.cuff_pressure
+
+        self.measurement_failed = False
 
         low_flow_bias = 0.0
         if true_map < 60.0:

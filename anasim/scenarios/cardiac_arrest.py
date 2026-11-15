@@ -66,7 +66,7 @@ def _require_epinephrine_or_rosc(engine) -> tuple[bool, str]:
     if _circulation_restored(engine):
         return True, ""
     doses = engine.actions.since_event(EVENT, ACTION_DRUG_BOLUS, labels=("epi",))
-    met = any(record.amount >= 1000.0 for record in doses)
+    met = sum(record.amount for record in doses) >= 1000.0
     return met, "" if met else "Give epinephrine 1000 mcg if VF persists after the second shock"
 
 

@@ -52,6 +52,8 @@ def test_rejected_ventilator_updates_preserve_settings_and_gas_flows(awake_engin
     assert (engine.vent.settings.mode, engine.vent.settings.rr, engine.vent.settings.tv) == ("PCV", 18, 600)
     assert engine.circuit.fgf_o2 + engine.circuit.fgf_air == pytest.approx(2.0)
     assert (engine.circuit.fgf_o2 + 0.21 * engine.circuit.fgf_air) / 2.0 == pytest.approx(0.5)
+    engine.set_vent_settings(rr=12, vt=0.5, peep=42, ie="1:2", mode="CPAP")
+    assert engine.vent.settings.peep == 42 and engine.vent.settings.p_max >= 52
 
 
 def test_bag_mask_ventilates_paralysis_only_through_an_airway(awake_engine, advance_time):
@@ -863,3 +865,9 @@ def test_closed_apl_traps_fresh_gas_and_depresses_circulation(engine_factory, ad
     engine.set_mask_seal(0.5)
     advance_time(engine, 5.0, dt=0.5)
     assert engine.state.peep == pytest.approx(10.0, abs=0.5)
+
+    lung = RespiratoryMechanics()
+    lung.effort.set_drive(12, 0.5)
+    lung.peep = 50.0
+    lung.effort._begin(lung, 0.0)
+    assert lung.effort.amplitude == 0.0

@@ -67,8 +67,8 @@ ETOMIDATE_RESPIRATORY_PROPOFOL_RATIO = 2.0  # Calibrated independently of clinic
 # Ketamine (mcg/mL; Idvall 1979 reports umol/L): patients woke at 0.64 mcg/mL,
 # and 2.2 mcg/mL with 65% nitrous oxide (about 0.65 MAC) gave adequate surgical
 # conditions under neuromuscular block. Taking that combination as about 1.3
-# MAC makes 3.5 mcg/mL 1 MAC; the study measured no MAC endpoint. BIS excludes
-# ketamine.
+# MAC makes 3.5 mcg/mL 1 MAC; the study measured no MAC endpoint. Ketamine
+# raises BIS paradoxically during GABAergic anesthesia via high-frequency EEG.
 KETAMINE_LOSS_OF_RESPONSE = 0.64
 KETAMINE_MAC_EQUIVALENT = 3.5
 
@@ -328,22 +328,29 @@ class ClinicalResponseModel:
         """
         ce_fentanyl = max(0.0, ce_fentanyl)
         ce_remi = max(0.0, ce_remi)
-        inhaled_present = mac_sevo > 0.0 or mac_n2o > 0.0
-        effective_fent_mac_bar = ce_fentanyl + (ce_remi / FENTANYL_REMI_POTENCY if inhaled_present else 0.0)
+        inhaled_mac = max(0.0, mac_sevo) / self.sevoflurane_mac + max(0.0, mac_n2o)
+        prop_units = max(0.0, ce_prop) / self.c50_prop
+        ket_units = LARYNGOSCOPY_INTENSITY * max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT * self.mac_reference / 2.59
+        effective_fent_mac_bar = ce_fentanyl + (ce_remi / FENTANYL_REMI_POTENCY if inhaled_mac > 0.0 else 0.0)
         inhaled_shift = 1.0 + (effective_fent_mac_bar / FENTANYL_MAC_BAR_C50)**FENTANYL_MAC_BAR_GAMMA
         opioid_boost = 1.0 + (ce_remi / (self.c50_remi * intensity)) ** self.gamma_remi
         units = (
-            max(0.0, ce_prop) / self.c50_prop * opioid_boost
-            + self._noxious_units(0.0, mac_sevo * inhaled_shift, mac_n2o * inhaled_shift, ce_ketamine)
+            (prop_units + ket_units) * opioid_boost
+            + self._noxious_units(0.0, mac_sevo * inhaled_shift, mac_n2o * inhaled_shift, 0.0)
         )
         effect = self._effect(units, 0.0, intensity, ce_ketamine=ce_ketamine)
-        baseline = self._effect(max(0.0, ce_prop) / self.c50_prop, 0.0, intensity)
+        baseline = self._effect(prop_units, 0.0, intensity)
         lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
         # Ratio of survival probabilities, evaluated without subtracting near-one values.
         remaining = (1.0 + baseline) / (1.0 + effect) * (1.0 - lidocaine_block)
         pressure_exposure = (ce_fentanyl / FENTANYL_PRESSURE_C50)**FENTANYL_PRESSURE_GAMMA
         pressure = remaining * math.exp(-math.log(2.0) * pressure_exposure * max(0.0, ce_prop) / 3.4)
-        hr_fent = effective_fent_mac_bar if (inhaled_present and ce_prop <= 0.0) else ce_fentanyl
+        inhaled_hr_weight = (
+            clamp01(inhaled_mac / 0.25) * (inhaled_mac / max(1e-9, inhaled_mac + prop_units))
+            if inhaled_mac > 0.0
+            else 0.0
+        )
+        hr_fent = ce_fentanyl + inhaled_hr_weight * (ce_remi / FENTANYL_REMI_POTENCY)
         hr = remaining / (1.0 + (hr_fent / FENTANYL_HR_C50)**FENTANYL_HR_GAMMA)
         return pressure, hr
 

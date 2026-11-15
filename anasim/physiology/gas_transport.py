@@ -8,10 +8,14 @@ and exchange with blood along the local CO2 dissociation slope.
 import math
 from typing import NamedTuple
 
-from .blood_chemistry import BloodChemistry, extracellular_contents
+from .blood_chemistry import (
+    MOLAR_GAS_VOLUME_STPD_L_MMOL,
+    BloodChemistry,
+    extracellular_contents,
+)
 from .plasma_buffers import PlasmaBuffers
 
-CO2_L_PER_MMOL = 0.022414
+CO2_L_PER_MMOL = MOLAR_GAS_VOLUME_STPD_L_MMOL
 
 
 class TransportPlan(NamedTuple):
