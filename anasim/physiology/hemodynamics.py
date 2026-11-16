@@ -257,6 +257,7 @@ class HemodynamicModel:
             patient.baseline_temp
         )
         self._asystole_recovery_s = 0.0
+        self.post_shock_asystole = False
         self._compressions = False
         self.f_preload_pit = 1.0
         self.renal_perfusion = 1.0  # Share of normal renal blood flow, from MAP
@@ -1237,8 +1238,11 @@ class HemodynamicModel:
 
         if self.rhythm_type == RhythmType.ASYSTOLE:
             coronary = self.coronary
+            # Primary asystole uses a calibrated CPR recovery timer;
+            # post-shock asystole escapes in ArrhythmiaModel.
             can_restart = (
                 self.compressions
+                and not self.post_shock_asystole
                 and coronary.supply_demand_ratio >= 1.0
                 and coronary.energy_reserve > 0.0
                 and not coronary.electrically_silent

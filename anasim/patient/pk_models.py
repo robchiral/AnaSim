@@ -763,24 +763,29 @@ class LidocainePK(MammillaryPK):
     CL 45.9, Q2 142, and Q3 5.81 L/h and V1 25.2, V2 44.4, and V3 29.3 L for
     70 kg total and 56.1 kg fat-free mass (Table IV). Fat-free mass scales V1
     and the clearances, and total mass scales V2 and V3. Clearance is hepatic
-    and was measured during surgery. Awake clearance and post-distribution
-    concentrations match Rowland 1971 and Tucker and Boas 1971, and V1 includes
-    first-pass lung uptake. Foong's fluid effect on V2, postoperative clearance
-    change, and metabolites are omitted. AnaSim sets ke0 so the analgesic site
-    peaks 3 min after a bolus, the best time to give it before intubation
-    (Tam 1987).
+    and was measured during surgery. Flow scaling lowers clearance and slows
+    distribution in heart failure (Stenson 1971; Thomson 1973); peripheral
+    volumes remain fixed as a model approximation. Renal impairment leaves
+    parent-drug disposition unchanged (Thomson 1973). Cirrhosis expands
+    steady-state volume by ~75% and lowers plasma clearance (Thomson 1973).
+    Awake clearance and post-distribution concentrations match Rowland 1971
+    and Tucker and Boas 1971, and V1 includes first-pass lung uptake. Foong's
+    fluid effect on V2, postoperative clearance change, and metabolites are
+    omitted. AnaSim sets ke0 so the analgesic site peaks 3 min after a bolus,
+    the best time to give it before intubation (Tam 1987).
     """
 
     def __init__(self, patient: Patient):
         size = patient.weight / 70.0
         lean_size = _janmahasatian_ffm(patient.weight, patient.height, patient.sex == "male") / 56.1
         flow = lean_size**0.75 / ANESTHETIZED_OUTPUT
+        peripheral_vd = hepatic_vd_multiplier(patient, 1.95)
         super().__init__(
-            v1=25.2 * lean_size,
+            v1=25.2 * lean_size * hepatic_vd_multiplier(patient, 1.16),
             cl1=45.9 / 60.0 * flow * organ_clearance_scaler(patient, hepatic_fraction=0.9),
-            v2=44.4 * size,
+            v2=44.4 * size * peripheral_vd,
             cl2=142.0 / 60.0 * flow,
-            v3=29.3 * size,
+            v3=29.3 * size * peripheral_vd,
             cl3=5.81 / 60.0 * flow,
             ke0=0.6,
             # Cardiac and CNS sites with calibrated 30 s half-times.

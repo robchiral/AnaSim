@@ -698,14 +698,15 @@ class SimulationEngine(DrugControllerMixin):
             )),
             rng=self._shock_rng,
             hypoxia=hypoxia,
-            perfusing=self.hemo.state.intrinsic_co > runtime_core.ARREST_CO_L_MIN,
+            perfusing=runtime_core.is_perfusing(self),
+            energy_reserve=self.hemo.coronary.energy_reserve,
         )
         self.defibrillator.consume(time, synchronized)
         self.actions.record(time, ACTION_SHOCK,
                             label="synchronized" if synchronized else "unsynchronized", amount=SHOCK_ENERGY_J)
         self.hemo.coronary.apply_shock(SHOCK_ENERGY_J)
         # An electrically silent heart keeps its underlying rhythm.
-        if rhythm != RhythmType.ASYSTOLE:
+        if not silent and prev_rhythm != RhythmType.ASYSTOLE:
             self.hemo.rhythm_type = self.arrhythmias.after_shock(
                 prev_rhythm, rhythm, ischemia=self.hemo.coronary.ischemia,
                 hypoxia=hypoxia, energy_failure=energy_failure,

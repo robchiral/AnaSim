@@ -639,3 +639,56 @@ def test_pulmonary_congestion_hyperkalemic_asystole_and_low_pressure_coronary_ra
         ratios.append(cor.supply_demand_ratio)
     assert ratios[0] == 0.0 and ratios[-1] > 0.25
     assert max(b - a for a, b in pairwise(ratios)) < 0.08
+
+
+def test_post_shock_asystole_requires_cpr_after_prolonged_vf_and_primary_asystole_never_restarts_alone(
+    engine_factory, advance_time
+):
+    """Pierce 2015 supports resuming CPR after shocks that leave asystole.
+    AnaSim calibrates recovery after prolonged VF to require CPR, with a
+    separate timer for primary asystole and no spontaneous primary-asystole
+    recovery.
+    """
+    class _PostShockAsystoleRng:
+        def random(self):
+            return 0.50
+
+    class _EscapeAtFortyfiveSeconds:
+        def exponential(self):
+            return 2.0
+
+    prolonged = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
+    prolonged._shock_rng = _PostShockAsystoleRng()
+    prolonged.arrhythmias.rng = _EscapeAtFortyfiveSeconds()
+    prolonged.set_rhythm("VFIB")
+    advance_time(prolonged, 355.0, dt=1.0)
+    prolonged.charge_defibrillator()
+    advance_time(prolonged, CHARGE_TIME_S, dt=1.0)
+    assert prolonged.defibrillate() == ShockResult.DELIVERED
+    assert prolonged.hemo.rhythm_type == RhythmType.ASYSTOLE
+    assert prolonged.arrhythmias.post_shock_asystole
+
+    no_cpr = copy.deepcopy(prolonged)
+    advance_time(no_cpr, 180.0, dt=1.0)
+    assert no_cpr.hemo.rhythm_type == RhythmType.ASYSTOLE
+    assert no_cpr.state.intrinsic_co == 0.0 and no_cpr.state.cardiac_arrest
+
+    prolonged.set_chest_compressions(True)
+    prolonged.give_drug_bolus("epi", 1000.0)
+    advance_time(prolonged, 40.0, dt=1.0)
+    # The 30 s primary-asystole timer must not override ongoing post-shock stunning.
+    assert prolonged.hemo.rhythm_type == RhythmType.ASYSTOLE
+    advance_time(prolonged, 90.0, dt=1.0)
+    assert prolonged.hemo.rhythm_type in (RhythmType.SINUS_BRADY, RhythmType.SINUS)
+    assert not prolonged.arrhythmias.post_shock_asystole
+    prolonged.set_chest_compressions(False)
+    advance_time(prolonged, 30.0, dt=1.0)
+    assert not prolonged.state.cardiac_arrest and prolonged.state.map > 50.0
+
+    # Primary asystole without spontaneous recovery is a model calibration.
+    unassisted = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=3), start=True)
+    unassisted.set_rhythm("ASYSTOLE")
+    for _ in range(600):
+        unassisted.step(1.0)
+        assert unassisted.hemo.rhythm_type == RhythmType.ASYSTOLE
+        assert unassisted.state.intrinsic_co == 0.0

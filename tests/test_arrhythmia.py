@@ -241,6 +241,95 @@ def test_post_shock_vf_recurrence_incidence_and_timing(dt):
     assert 55.0 <= q75 <= 85.0
 
 
+@pytest.mark.parametrize("dt", [0.5, 2.0])
+def test_post_shock_asystole_incidence_duration_and_competing_refibrillation(dt):
+    """Stiell 2007 and Koster 2008: first 200 J biphasic shocks terminate ~90%
+    of VF. Pierce 2015: post-shock asystole occurs in about half of OHCA shocks
+    (27% in hospital-discharge survivors), lasting a median 20 s (IQR 36 s),
+    with time to organized rhythm median 7 s (IQR 26 s) and VF recurring from
+    both post-shock asystole and organized rhythms. Energy-dependent incidence
+    and the absence of post-shock asystole after brief VF are calibrations.
+    """
+    brief_rng = np.random.default_rng(11)
+    brief = [
+        shock_outcome(
+            RhythmType.VFIB, synchronized=False, energy_failure=0.0,
+            electrically_silent=False, vulnerable=False, antiarrhythmic=0.0,
+            rng=brief_rng, perfusing=False, energy_reserve=0.90,
+        )
+        for _ in range(400)
+    ]
+    assert RhythmType.ASYSTOLE not in brief
+    assert 0.85 <= brief.count(RhythmType.SINUS) / 400 <= 0.94
+
+    survivor_rng = np.random.default_rng(12)
+    survivor = [
+        shock_outcome(
+            RhythmType.VFIB, synchronized=False, energy_failure=0.0,
+            electrically_silent=False, vulnerable=False, antiarrhythmic=0.0,
+            rng=survivor_rng, perfusing=False, energy_reserve=0.40,
+        )
+        for _ in range(400)
+    ]
+    assert 0.18 <= survivor.count(RhythmType.ASYSTOLE) / 400 <= 0.36
+
+    rng = np.random.default_rng(19)
+    shock_rng = np.random.default_rng(23)
+    steps = round(240.0 / dt)
+    asystole_shocks = 0
+    asystole_durations: list[float] = []
+    time_to_organized: list[float] = []
+    refib_from_asystole = refib_from_organized = 0
+    for _ in range(500):
+        ef0 = float(shock_rng.uniform(0.0, 0.55))
+        er0 = max(0.0, 1.0 - float(shock_rng.uniform(0.75, 1.4)))
+        outcome = shock_outcome(
+            RhythmType.VFIB, synchronized=False, energy_failure=ef0,
+            electrically_silent=False, vulnerable=False, antiarrhythmic=0.0,
+            rng=shock_rng, perfusing=False, energy_reserve=er0,
+        )
+        if outcome == RhythmType.VFIB:
+            continue
+        model = ArrhythmiaModel(rng)
+        rhythm = model.after_shock(
+            RhythmType.VFIB, outcome, ischemia=1.0, hypoxia=0.0,
+            energy_failure=ef0, energy_reserve=er0,
+        )
+        started_asystole = rhythm == RhythmType.ASYSTOLE
+        if started_asystole:
+            asystole_shocks += 1
+        else:
+            time_to_organized.append(3.5)
+        left_asystole = not started_asystole
+        for i in range(1, steps + 1):
+            t = i * dt
+            ef = ef0 * math.exp(-t / 60.0)
+            isch = max(0.2, math.exp(-t / 120.0))
+            prev = rhythm
+            rhythm = _step(
+                model, dt, rhythm, ischemia=isch, energy_failure=ef,
+                perfusing=False, energy_reserve=er0, compressions=True,
+            )
+            if not left_asystole and rhythm != RhythmType.ASYSTOLE:
+                left_asystole = True
+                asystole_durations.append(t)
+                if rhythm != RhythmType.VFIB:
+                    time_to_organized.append(3.5 + t)
+            if rhythm == RhythmType.VFIB:
+                if prev == RhythmType.ASYSTOLE:
+                    refib_from_asystole += 1
+                else:
+                    refib_from_organized += 1
+                break
+
+    assert 0.45 <= asystole_shocks / 500 <= 0.62
+    aq25, aq50, aq75 = np.percentile(asystole_durations, [25, 50, 75])
+    oq25, oq50, oq75 = np.percentile(time_to_organized, [25, 50, 75])
+    assert 15.0 <= aq50 <= 26.0 and 22.0 <= aq75 - aq25 <= 40.0
+    assert 3.5 <= oq50 <= 11.0 and 16.0 <= oq75 - oq25 <= 32.0
+    assert refib_from_asystole >= 40 and refib_from_organized >= 40
+
+
 def test_acute_amiodarone_hemodynamics_follow_rate_and_lv_function(engine_factory):
     """Munoz 1988 and Kosinski 1984: rapid IV boluses briefly lower pressure
     with reflex HR support and maintained output, HR and output fall modestly by

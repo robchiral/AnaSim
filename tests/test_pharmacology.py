@@ -18,6 +18,7 @@ from anasim.patient.pk_models import (
     GlycopyrrolatePK,
     HydromorphonePK,
     KetaminePK,
+    LidocainePK,
     MammillaryPK,
     MidazolamPK,
     MilrinonePK,
@@ -249,6 +250,74 @@ def test_organ_impairment_scales_pk():
     w_below = rocuronium_adjusted_weight(Patient(age=40, weight=27.99 * 1.70**2, height=170.0, sex="male"))
     w_above = rocuronium_adjusted_weight(Patient(age=40, weight=28.01 * 1.70**2, height=170.0, sex="male"))
     assert abs(w_above - w_below) < 0.05
+
+
+@pytest.mark.parametrize("dt", [0.5, 2.0])
+def test_lidocaine_disposition_in_cirrhosis_renal_failure_and_heart_failure(engine_factory, dt):
+    """Stenson 1971 and Thomson 1973: cirrhosis expands lidocaine Vdss ~1.75x
+    while reducing plasma clearance ~40% and prolonging elimination; severe renal
+    impairment leaves Vdss and clearance unchanged; low cardiac output raises
+    arterial concentrations during constant infusion in proportion to reduced flow.
+    """
+    normal = Patient(age=52, weight=70.0, height=172.0, sex="male")
+    cirrhosis = Patient(age=52, weight=70.0, height=172.0, sex="male", hepatic_function=0.5)
+    renal = Patient(
+        age=52, weight=70.0, height=172.0, sex="male",
+        renal_function=0.4, creatinine_clearance_ml_min=10.0,
+    )
+    pk_norm, pk_cirr, pk_renal = LidocainePK(normal), LidocainePK(cirrhosis), LidocainePK(renal)
+    vdss_norm = pk_norm.v1 + pk_norm.v2 + pk_norm.v3
+    vdss_cirr = pk_cirr.v1 + pk_cirr.v2 + pk_cirr.v3
+    vdss_renal = pk_renal.v1 + pk_renal.v2 + pk_renal.v3
+
+    assert 1.12 <= pk_cirr.v1 / pk_norm.v1 <= 1.20
+    assert 1.70 <= vdss_cirr / vdss_norm <= 1.80
+    assert 0.50 <= pk_cirr.cl1 / pk_norm.cl1 <= 0.65
+    assert vdss_renal == pytest.approx(vdss_norm) and pk_renal.cl1 == pytest.approx(pk_norm.cl1)
+
+    for pk in (pk_norm, pk_cirr):
+        pk.state.c1 = 50.0 / pk.v1
+    c30_norm = c30_cirr = 0.0
+    steps = round(14400.0 / dt)
+    for i in range(1, steps + 1):
+        pk_norm.step(dt, 0.0)
+        pk_cirr.step(dt, 0.0)
+        if math.isclose(i * dt, 1800.0):
+            c30_norm, c30_cirr = pk_norm.state.c1, pk_cirr.state.c1
+    assert c30_cirr < c30_norm  # Larger distribution space lowers early post-bolus levels.
+    assert pk_cirr.state.c1 > pk_norm.state.c1  # Slower elimination crosses above normal later.
+    assert (pk_cirr.state.c1 / c30_cirr) > 2.0 * (pk_norm.state.c1 / c30_norm)
+
+    if dt == 2.0:
+        # Stenson 1971: 50 mg bolus + 40 mcg/kg/min (2.4 mg/kg/h) for 100 min;
+        # whole-blood levels (~0.8x plasma base) were 1.5 vs 2.4 mcg/mL at CI 3.3 vs 1.9 L/min/m^2.
+        pk_ci_norm = LidocainePK(normal)
+        pk_ci_low = LidocainePK(normal)
+        pk_ci_norm.update_hemodynamics(1.0, 3.3 / 3.0)
+        pk_ci_low.update_hemodynamics(1.0, 1.9 / 3.0)
+        for pk in (pk_ci_norm, pk_ci_low):
+            pk.step(60.0, 50.0 / 60.0)
+            for _ in range(99):
+                pk.step(60.0, 0.04 * 70.0 / 60.0)
+        blood_norm = 0.8 * pk_ci_norm.state.c1
+        blood_low = 0.8 * pk_ci_low.state.c1
+        assert 1.3 <= blood_norm <= 1.9 and 2.0 <= blood_low <= 2.8
+        assert blood_low / blood_norm > 1.35
+
+        hf = engine_factory(
+            config=SimulationConfig(mode="awake", rng_seed=1),
+            start=True, age=58, weight=70.0, height=172.0, sex="male", heart_failure="hfref",
+        )
+        ctrl = engine_factory(
+            config=SimulationConfig(mode="awake", rng_seed=1),
+            start=True, age=58, weight=70.0, height=172.0, sex="male",
+        )
+        for eng in (ctrl, hf):
+            eng.give_drug_bolus("lidocaine", 50.0)
+            eng.set_drug_rate("lidocaine", 2.4)
+            for _ in range(1500):
+                eng.step(4.0)
+        assert hf.pk["lidocaine"].state.c1 > 1.22 * ctrl.pk["lidocaine"].state.c1
 
 
 def test_measured_creatinine_clearance_separates_reversal_from_complex_elimination():

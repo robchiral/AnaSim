@@ -59,8 +59,8 @@ class HemodynamicConfig:
     hypoxia_hr_depression: float = 0.75
     hypoxia_sv_depression: float = 0.85
 
-    # Adequate coronary supply during compressions for this long restarts beats
-    # after primary asystole, a teaching calibration.
+    # Adequate coronary supply during CPR for this long restarts beats after
+    # primary asystole while energy reserve remains, a teaching calibration.
     asystole_recovery_time_s: float = 30.0
 
     # Acute IV amiodarone effects, calibrated to Kosinski 1984 and Munoz 1988.

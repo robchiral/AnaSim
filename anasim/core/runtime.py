@@ -709,6 +709,7 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
 
     # Plasma remifentanil and propofol reach hemodynamic effect sites inside the model;
     # slower opioids enter at their own effect sites.
+    hemo.post_shock_asystole = engine.arrhythmias.post_shock_asystole
     hemo_state = engine.hemo.step(
         dt,
         state.propofol_cp,
@@ -761,12 +762,7 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         mh_severity=engine.malignant_hyperthermia.severity,
     )
     hypoxia, energy_failure, silent = myocardial_substrate(engine)
-    intrinsic_pp = _intrinsic_pulse_pressure(engine, hemo_state)
-    perfusing = hemo_state.intrinsic_co > ARREST_CO_L_MIN and not (
-        hemo.rhythm_type == RhythmType.VTACH
-        and intrinsic_pp < ARREST_PULSE_PRESSURE_MMHG
-        and hemo_state.intrinsic_map < PULSELESS_VT_MAP_MMHG
-    )
+    perfusing = is_perfusing(engine, hemo_state)
     rhythm = engine.arrhythmias.step(
         dt, hemo.rhythm_type, ischemia=hemo.coronary.ischemia, hypoxia=hypoxia,
         energy_failure=energy_failure, electrically_silent=silent,
@@ -774,6 +770,8 @@ def step_physiology(engine: SimulationEngine, dt: float, disturbances: Disturban
         lidocaine=engine.pk["lidocaine"].state.ce_cv, amiodarone=state.amiodarone_ce,
         hyperkalemia=hemo.hyperkalemia_arrhythmia,
         hypothermia=clamp01((29.5 - state.temp_c) / 3.5),
+        energy_reserve=hemo.coronary.energy_reserve,
+        compressions=hemo.compressions,
     )
     if rhythm != hemo.rhythm_type:
         hemo.rhythm_type = rhythm
@@ -796,6 +794,18 @@ def myocardial_substrate(engine: SimulationEngine) -> tuple[float, float, bool]:
 
 def _intrinsic_pulse_pressure(engine: SimulationEngine, hemo_state) -> float:
     return hemo_state.sv / engine.arterial_waveform.compliance_at(max(1.0, hemo_state.intrinsic_map))
+
+
+def is_perfusing(engine: SimulationEngine, hemo_state=None) -> bool:
+    """Whether the heart's own beats produce effective systemic perfusion."""
+    state = engine.hemo.state if hemo_state is None else hemo_state
+    if state.intrinsic_co <= ARREST_CO_L_MIN:
+        return False
+    return not (
+        engine.hemo.rhythm_type == RhythmType.VTACH
+        and _intrinsic_pulse_pressure(engine, state) < ARREST_PULSE_PRESSURE_MMHG
+        and state.intrinsic_map < PULSELESS_VT_MAP_MMHG
+    )
 
 
 def step_lactate(engine: SimulationEngine, dt: float) -> None:

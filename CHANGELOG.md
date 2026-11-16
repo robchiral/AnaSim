@@ -16,10 +16,10 @@
   and calcium protects against these effects.
 - Added malignant hyperthermia with dantrolene, surface cooling, chest-wall
   rigidity, and a guided or independent case.
-- Morphine, hydromorphone, fentanyl, and rocuronium kinetics now depend on body
-  composition and hepatic function, and morphine and hydromorphone also on age
-  and renal function. Tissue volumes for inhaled agents scale with fat-free
-  mass and fat mass.
+- Morphine, hydromorphone, fentanyl, lidocaine, and rocuronium kinetics now
+  depend on body composition and hepatic function, and morphine and
+  hydromorphone also on age and renal function. Tissue volumes for inhaled
+  agents scale with fat-free mass and fat mass.
 - Midazolam alone now lowers BIS only to the sedation range and causes mild
   respiratory depression and vasodilation. Etomidate preserves blood pressure.
   Both affect thermoregulation, midazolam much less than general anesthetics.
@@ -70,8 +70,9 @@
 - Epinephrine during CPR now raises diastolic pressure and lowers cardiac
   output and EtCO₂. Pulseless VT is defibrillated like VF, and an
   unsynchronized shock on a perfusing rhythm can cause VF. Shocks temporarily
-  reduce stroke volume, and arterial pressure recovers more slowly after
-  longer VF.
+  reduce stroke volume, arterial pressure recovers more slowly after longer VF,
+  and shocks after prolonged arrest can leave transient post-shock asystole
+  before beats return.
 - When pulses stop, arterial systolic and diastolic readings clear after a
   brief hold, and MAP follows catheter pressure. NIBP fails during PEA and
   raises a low-MAP alarm. Headless output shows arterial MAP during arrest and

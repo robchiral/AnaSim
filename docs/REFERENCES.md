@@ -104,6 +104,8 @@ PCV-VG, pressure control with volume guarantee.
 - Foong et al. (2025). *Pharm Res*. [Lidocaine population PK in surgical patients](https://pubmed.ncbi.nlm.nih.gov/40021547/).
 - Tucker and Boas (1971). *Anesthesiology*. [Lidocaine kinetics and intravenous regional anesthesia](https://pubmed.ncbi.nlm.nih.gov/5556244/).
 - Rowland et al. (1971). *Ann N Y Acad Sci*. [Lidocaine kinetics in healthy subjects](https://pubmed.ncbi.nlm.nih.gov/5285383/).
+- Stenson et al. (1971). *Circulation*. [Hepatic blood flow, cardiac output, and blood lidocaine levels](https://pubmed.ncbi.nlm.nih.gov/5540706/).
+- Thomson et al. (1973). *Ann Intern Med*. [Lidocaine pharmacokinetics in heart failure, liver disease, and renal failure](https://pubmed.ncbi.nlm.nih.gov/4694036/).
 - Foldes et al. (1960). *JAMA*. [Intravenous local anesthetic toxicity in man](https://pubmed.ncbi.nlm.nih.gov/13823696/).
 - Jorfeldt et al. (1968). *Acta Anaesthesiol Scand*. [Central circulation and respiration during local anesthetic infusion](https://pubmed.ncbi.nlm.nih.gov/4896937/).
 - Armstrong et al. (1988). *Ther Drug Monit*. [Clinical response and total and unbound plasma concentrations after lidocaine overdose](https://pubmed.ncbi.nlm.nih.gov/3201537/).
@@ -262,6 +264,9 @@ PCV-VG, pressure control with volume guarantee.
 
 - Koster et al. (2008). *Resuscitation*. [Recurrent VF during advanced life support](https://pubmed.ncbi.nlm.nih.gov/18556106/).
 - van Alem et al. (2003). *Resuscitation*. [VF recurrence and patient outcome](https://pubmed.ncbi.nlm.nih.gov/14625108/).
+- Stiell et al. (2007). *Circulation*. [Fixed lower versus escalating higher biphasic energy in out-of-hospital cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/17353443/).
+- Pierce et al. (2015). *Resuscitation*. [Post-shock rhythms and duration of pulselessness after out-of-hospital cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/25597505/).
+- Dhanani et al. (2021). *N Engl J Med*. [Resumption of cardiac activity after withdrawal of life-sustaining measures](https://pubmed.ncbi.nlm.nih.gov/33503343/).
 - Somberg et al. (2002). *Am J Cardiol*. [IV lidocaine versus amiodarone for incessant VT](https://pubmed.ncbi.nlm.nih.gov/12372573/).
 - Scheinman et al. (1995). *Circulation*. [Dose-ranging IV amiodarone in life-threatening ventricular tachyarrhythmias](https://pubmed.ncbi.nlm.nih.gov/7586313/).
 - Kudenchuk et al. (2016). *N Engl J Med*. [Amiodarone, lidocaine, or placebo in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/27043165/).

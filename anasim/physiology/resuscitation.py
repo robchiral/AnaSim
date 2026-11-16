@@ -2,8 +2,10 @@
 
 Compressions are calibrated to adult CPR targets: forward flow near a fifth of
 resting output, and diastolic pressure near the 25 mmHg needed for coronary
-perfusion (Paradis 1990; Meaney 2013). Shock success rates are teaching
-calibrations.
+perfusion (Paradis 1990; Meaney 2013). First-shock biphasic VF termination and
+post-shock asystole follow out-of-hospital arrest recordings (Stiell 2007;
+Koster 2008; Pierce 2015). Pulseless VT responses, penalties for fine VF or
+hypoxia, synchronized cardioversion, and R-on-T risk are calibrations.
 """
 
 from enum import Enum
@@ -28,7 +30,8 @@ SHOCK_ENERGY_J = 200.0  # Biphasic
 # The ZOLL R Series charges to 200 J in under 7 s and disarms 60 s after charging.
 CHARGE_TIME_S = 5.0
 CHARGE_HOLD_S = 60.0
-# First biphasic shocks terminate about 90% of VF; fine VF responds less often.
+# First 200 J biphasic shocks terminate ~90% of VF (Stiell 2007; Koster 2008).
+# Penalties for fine VF or hypoxia are calibrations.
 DEFIBRILLATION_SUCCESS = 0.9
 FINE_VF_SUCCESS_LOSS = 0.6
 # Synchronized shocks.
@@ -87,11 +90,12 @@ class Defibrillator:
 def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: float,
                   electrically_silent: bool, vulnerable: bool, antiarrhythmic: float,
                   rng: np.random.Generator, hypoxia: float = 0.0,
-                  perfusing: bool = True) -> RhythmType:
+                  perfusing: bool = True, energy_reserve: float = 1.0) -> RhythmType:
     """Return the rhythm after a discharge.
 
-    A terminated arrhythmia becomes sinus rhythm; whether it perfuses depends on
-    the myocardium's energy state.
+    A terminated arrhythmia becomes sinus rhythm, or transient post-shock
+    asystole after prolonged pulseless arrest (Pierce 2015); whether an
+    organized rhythm perfuses depends on the myocardium's energy state.
     """
     if electrically_silent:
         return RhythmType.ASYSTOLE
@@ -104,6 +108,14 @@ def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: flo
         success = DEFIBRILLATION_SUCCESS * (1.0 - FINE_VF_SUCCESS_LOSS * depletion)
         # Either drug reduced the shocks needed (Kudenchuk 2016). The effect size is a calibration.
         success += 0.5 * (1.0 - success) * clamp01(antiarrhythmic)
-        return RhythmType.SINUS if rng.random() < success else rhythm
+        u = rng.random()
+        if u >= success:
+            return rhythm
+        if rhythm == RhythmType.VFIB or not perfusing:
+            arrest_depth = clamp01((max(1.0 - energy_reserve, energy_failure, clamp01(hypoxia)) - 0.25) / 0.75)
+            asystole_share = min(0.78, 0.60 * arrest_depth + 0.25 * energy_failure)
+            if u >= success * (1.0 - asystole_share):
+                return RhythmType.ASYSTOLE
+        return RhythmType.SINUS
     success = CARDIOVERSION_SUCCESS.get(rhythm, 0.0) * (1.0 - 0.5 * depletion)
     return RhythmType.SINUS if success and rng.random() < success else rhythm

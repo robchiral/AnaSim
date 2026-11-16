@@ -1,10 +1,12 @@
 """Ventricular rhythm transitions during ischemia and resuscitation.
 
 VF often recurs within the first two minutes after a successful shock (Koster
-2008; van Alem 2003). Amiodarone converts sustained VT with a pulse more often
-than lidocaine (Somberg 2002; Scheinman 1995), and neither drug prevents
-rearrest (Salcido 2018). Spontaneous onset, VT degeneration, and post-shock
-bradycardia recovery are calibrations.
+2008; van Alem 2003), and shocks after prolonged arrest often leave transient
+post-shock asystole before pacemaker escape or refibrillation (Pierce 2015).
+Amiodarone converts sustained VT with a pulse more often than lidocaine
+(Somberg 2002; Scheinman 1995), and neither drug prevents rearrest (Salcido
+2018). Spontaneous onset, VT degeneration, and post-shock bradycardia recovery
+are calibrations.
 """
 
 import math
@@ -29,6 +31,7 @@ VF_ONSET_SHARE = 0.15
 VT_DEGENERATION_RATE = 1.0 / 45.0
 REFIBRILLATION_RATE = 1.0 / 75.0
 REFIBRILLATION_TAU_S = 150.0
+POST_SHOCK_ASYSTOLE_TAU_S = 32.0
 POST_SHOCK_BRADY_S = 30.0
 
 
@@ -47,16 +50,24 @@ class ArrhythmiaModel:
         self._remaining: dict[str, float] = {}
         self._rhythm: RhythmType | None = None
         self._post_shock_s = math.inf
+        self._brady_s = 0.0
         self._post_shock_stress = 0.0
         self._recovering_brady = False
+        self._post_shock_asystole = False
+
+    @property
+    def post_shock_asystole(self) -> bool:
+        return self._post_shock_asystole and self._rhythm == RhythmType.ASYSTOLE
 
     def reset(self) -> None:
         """Clear transient shock effects when the instructor selects a rhythm."""
         self._remaining.clear()
         self._rhythm = None
         self._post_shock_s = math.inf
+        self._brady_s = 0.0
         self._post_shock_stress = 0.0
         self._recovering_brady = False
+        self._post_shock_asystole = False
 
     def after_shock(self, before: RhythmType, after: RhythmType, *,
                     ischemia: float, hypoxia: float, energy_failure: float,
@@ -73,25 +84,43 @@ class ArrhythmiaModel:
         else:
             self._post_shock_stress *= math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S)
         self._post_shock_s = 0.0
+        self._brady_s = 0.0
+        self._remaining.clear()
+        if after == RhythmType.ASYSTOLE:
+            self._post_shock_asystole = True
+            self._recovering_brady = False
+            self._rhythm = RhythmType.ASYSTOLE
+            return RhythmType.ASYSTOLE
+        self._post_shock_asystole = False
         self._recovering_brady = after == RhythmType.SINUS and (stress > 0.5 or energy_failure > 0.1)
-        return RhythmType.SINUS_BRADY if self._recovering_brady else after
+        result = RhythmType.SINUS_BRADY if self._recovering_brady else after
+        self._rhythm = result
+        return result
 
     def step(self, dt: float, rhythm: RhythmType, *, ischemia: float, hypoxia: float,
              energy_failure: float, electrically_silent: bool, perfusing: bool,
              lidocaine: float, amiodarone: float, hyperkalemia: float = 0.0,
-             hypothermia: float = 0.0) -> RhythmType:
+             hypothermia: float = 0.0, energy_reserve: float = 1.0,
+             compressions: bool = False) -> RhythmType:
         if rhythm != self._rhythm:
             self._rhythm = rhythm
             self._remaining.clear()
             if rhythm != RhythmType.SINUS_BRADY:
                 self._recovering_brady = False
+            if rhythm != RhythmType.ASYSTOLE:
+                self._post_shock_asystole = False
         self._post_shock_s += dt
         stress = clamp01(max(ischemia, hypoxia))
-        if (self._recovering_brady and self._post_shock_s >= POST_SHOCK_BRADY_S
-                and stress < 0.5 and energy_failure < 0.2):
-            self._recovering_brady = False
-            return RhythmType.SINUS
-        if electrically_silent or rhythm in (RhythmType.ASYSTOLE, RhythmType.VFIB):
+        if self._recovering_brady:
+            self._brady_s += dt
+            if self._brady_s >= POST_SHOCK_BRADY_S and stress < 0.5 and energy_failure < 0.2:
+                self._recovering_brady = False
+                rhythm = RhythmType.SINUS
+                self._rhythm = rhythm
+        if electrically_silent:
+            self._post_shock_asystole = False
+            return rhythm
+        if rhythm == RhythmType.VFIB or (rhythm == RhythmType.ASYSTOLE and not self._post_shock_asystole):
             return rhythm
 
         # A nearly exhausted myocardium slows to asystole instead.
@@ -100,7 +129,19 @@ class ArrhythmiaModel:
         hyperk = clamp01(hyperkalemia)
         hypotherm = clamp01(hypothermia)
         lido, amio = antiarrhythmic_effects(lidocaine, amiodarone)
-        if rhythm == RhythmType.VTACH:
+        events: tuple[tuple[str, float, RhythmType], ...]
+        if rhythm == RhythmType.ASYSTOLE:
+            recurrence = (REFIBRILLATION_RATE * self._post_shock_stress * math.sqrt(stress) * viable
+                          * math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S))
+            pacemaker = clamp01(1.0 - 1.15 * energy_failure)
+            if energy_reserve <= 0.0 and not compressions:
+                pacemaker *= clamp01((0.35 - energy_failure) / 0.35)
+            escape_target = (
+                RhythmType.SINUS_BRADY if (stress > 0.5 or energy_failure > 0.1) else RhythmType.SINUS
+            )
+            events = (("recurrence", recurrence, RhythmType.VFIB),
+                      ("escape", pacemaker / POST_SHOCK_ASYSTOLE_TAU_S, escape_target))
+        elif rhythm == RhythmType.VTACH:
             degeneration = VT_DEGENERATION_RATE * max(substrate, hyperk, hypotherm)
             # Drugs convert only perfusing VT. The stronger drug effect applies.
             conversion = (
@@ -121,6 +162,7 @@ class ArrhythmiaModel:
             events = (("recurrence", recurrence, RhythmType.VFIB),
                       ("onset", onset, RhythmType.VTACH))
         earliest = math.inf
+        winner = ""
         following: RhythmType = rhythm
         for name, rate, target in events:
             if rate <= 0.0:
@@ -130,7 +172,18 @@ class ArrhythmiaModel:
             time_to_event = self._remaining[name] / rate
             self._remaining[name] -= rate * dt
             if time_to_event <= dt and time_to_event < earliest:
-                earliest, following = time_to_event, target
+                earliest, winner, following = time_to_event, name, target
                 if name == "onset" and self.rng.random() < VF_ONSET_SHARE:
                     following = RhythmType.VFIB
+        if winner == "escape":
+            self._post_shock_asystole = False
+            self._recovering_brady = following == RhythmType.SINUS_BRADY
+            self._brady_s = dt - earliest if self._recovering_brady else 0.0
+            self._remaining.pop("escape", None)
+            self._rhythm = following
+        elif following != rhythm:
+            self._post_shock_asystole = False
+            self._recovering_brady = False
+            self._remaining.clear()
+            self._rhythm = following
         return following

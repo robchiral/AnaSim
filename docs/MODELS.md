@@ -68,7 +68,7 @@ clinical effects.
 | Remifentanil | Eleveld 2017 |
 | Fentanyl | Bae 2020 up to 70 kg; at higher weights it scales with pharmacokinetic mass (Shibutani 2004). Clearance scales with hepatic function |
 | Morphine and hydromorphone | Meissner 2025, scaled with fat-free mass, age, and hepatic and renal function |
-| Lidocaine | Foong 2025 |
+| Lidocaine | Foong 2025. Cirrhosis enlarges its volumes and lowers hepatic clearance (Thomson 1973) |
 | Rocuronium | Scaled with adjusted weight toward ideal body weight in obesity (Meyhoff 2009). Cirrhosis enlarges its volumes and lowers hepatic clearance (Khuenl-Brady 1996; Magorian 1995) |
 
 Inhaled agents move between lung, blood, and tissue compartments. Lean tissue
@@ -500,24 +500,32 @@ Epinephrine raises diastolic and coronary perfusion pressure during compressions
 (Kim 2025). The higher afterload reduces forward flow and lowers EtCO₂ by a few
 mmHg at constant ventilation (Cantineau 1994).
 
-In primary asystole, beats resume after 30 seconds of adequate coronary oxygen
-supply during compressions if energy remains, the myocardium is viable, and
-neither hyperkalemia nor local anesthetic toxicity blocks conduction. An
-interruption or inadequate perfusion restarts this interval.
+After withdrawal of life-sustaining measures, cardiac activity sometimes
+resumed transiently without intervention; no patient with resumed activity
+regained consciousness or survived (Dhanani 2021). AnaSim requires compressions
+for recovery from primary asystole, a teaching calibration. Beats resume after
+30 seconds of adequate coronary oxygen supply during compressions if energy
+remains, the myocardium is viable, and neither hyperkalemia nor local anesthetic
+toxicity blocks conduction. An interruption or inadequate perfusion restarts
+this interval.
 
 ### Defibrillation and cardioversion
 
-A 200 J biphasic shock terminates coarse VF and pulseless VT 9 times in 10, and
-fine VF or hypoxic arrest less often. Each shock also causes mild contractile
-stunning that reduces stroke volume by about 10% and resolves over several
-minutes of coronary perfusion (Tokano 1998).
+A first 200 J biphasic shock terminates VF about 9 times in 10 (Stiell 2007;
+Koster 2008). AnaSim uses this rate for coarse VF and pulseless VT, with lower
+calibrated rates for fine VF or hypoxic arrest. Each shock also causes mild
+contractile stunning that reduces stroke volume by about 10% and resolves over
+several minutes of coronary perfusion (Tokano 1998).
 
-After brief VF, arterial pressure recovers over 5 to 20 seconds as beats refill
-the arterial tree and reversible oxygen debt clears. Recovery takes longer after
-longer VF (Park 1994). After prolonged arrest, the heart beats only as well as
-its energy reserve and accumulated injury allow. A late shock without CPR
-therefore leaves PEA or asystole, and resuscitation after the reserve is
-exhausted leaves hypotension for the rest of the session (Laurent 2002).
+After brief VF, conversion is directly to sinus rhythm, and arterial pressure
+recovers over 5 to 20 seconds as beats refill the arterial tree and reversible
+oxygen debt clears. Recovery takes longer after longer VF (Park 1994). After
+prolonged arrest, terminating shocks often leave transient post-shock asystole
+before pacemaker escape or refibrillation (Pierce 2015), and an organized rhythm
+beats only as well as the heart's energy reserve and accumulated injury allow. A
+late shock without CPR therefore leaves PEA or persistent asystole, and
+resuscitation after the reserve is exhausted leaves hypotension for the rest of
+the session (Laurent 2002).
 
 Synchronized shocks fire on the next R wave and usually convert atrial
 fibrillation, supraventricular tachycardia, and perfusing VT. They cannot fire
@@ -552,9 +560,12 @@ CNS depression and apnea replace seizures. Contractile depression begins above
 ventricular arrhythmias or arrest. Acidemia worsens both CNS and cardiac
 toxicity.
 
-A 2 g infusion over an hour causes hypotension and coma in sinus rhythm without
-arrest, as in Armstrong 1988. The model clears the drug faster than that
-patient did, whose ejection fraction was 15%.
+Low cardiac output slows lidocaine distribution and hepatic clearance, while
+renal failure leaves parent-drug disposition unchanged (Stenson 1971; Thomson
+1973). A 2 g infusion over an hour in HFrEF causes hypotension and coma in
+sinus rhythm without arrest, matching the post-infusion concentration in
+Armstrong 1988, though linear kinetics clear the drug faster than in that
+patient, whose ejection fraction was 15%.
 
 Midazolam, propofol, sevoflurane, and nitrous oxide suppress seizures and the
 sympathetic rise in HR and pressure. Neuromuscular block hides convulsions
