@@ -29,6 +29,8 @@ PCV-VG, pressure control with volume guarantee.
 - Westermann et al. (2008). *Circulation*. [Ventricular stiffness and filling during tachycardia in preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/18413502/).
 - Sherry et al. (1995). *J Cardiothorac Vasc Anesth*. [Propofol infusion in normal and low cardiac output states](https://pubmed.ncbi.nlm.nih.gov/7579104/).
 - Wagner et al. (1977). *J Clin Invest*. [Ventilation-perfusion inequality in COPD](https://pubmed.ncbi.nlm.nih.gov/833271/).
+- DeGaute et al. (1981). *Am Rev Respir Dis*. [Controlled oxygen therapy in acute exacerbation of COPD](https://pubmed.ncbi.nlm.nih.gov/6789729/).
+- Robinson et al. (2000). *Am J Respir Crit Care Med*. [Hypoventilation and V/Q redistribution in oxygen-induced hypercapnia in COPD](https://pubmed.ncbi.nlm.nih.gov/10806149/).
 - Dallmann et al. (2017). *Clin Pharmacokinet*. [Gestation-specific anatomical and physiological parameter regressions](https://pubmed.ncbi.nlm.nih.gov/28401479/).
 - Contreras et al. (1991). *Am Rev Respir Dis*. [Ventilatory drive, lung volumes, and respiratory muscles during pregnancy](https://pubmed.ncbi.nlm.nih.gov/1928958/).
 - Humphries et al. (2019). *J Matern Fetal Neonatal Med*. [Supine positioning and maternal hemodynamics in late pregnancy](https://pubmed.ncbi.nlm.nih.gov/29772936/).
@@ -379,7 +381,10 @@ PCV-VG, pressure control with volume guarantee.
 - Laghi et al. (1995). *J Appl Physiol*. [Recovery from diaphragmatic fatigue over 24 hours](https://pubmed.ncbi.nlm.nih.gov/7592215/).
 - Travaline et al. (1997). *Am J Respir Crit Care Med*. [Recovery of twitch and maximal transdiaphragmatic pressure after fatigue](https://pubmed.ncbi.nlm.nih.gov/9372676/).
 - Rohrbach et al. (2003). *Eur J Appl Physiol*. [Repeat inspiratory endurance and twitch pressure after 15-minute rest](https://pubmed.ncbi.nlm.nih.gov/12827367/).
+- Peterson et al. (1981). *Am Rev Respir Dis*. [Aging and ventilatory and occlusion-pressure responses to hypoxia and hypercapnia](https://pubmed.ncbi.nlm.nih.gov/7294501/).
+- Poulin et al. (1993). *J Appl Physiol*. [Ventilatory sensitivity to CO₂ in hyperoxia and hypoxia in older humans](https://pubmed.ncbi.nlm.nih.gov/8307881/).
 - García-Río et al. (2007). *Respir Med*. [Age and hypoxic and hypercapnic inspiratory drive](https://pubmed.ncbi.nlm.nih.gov/17643972/).
+- Lhuissier et al. (2012). *J Physiol*. [Ageing and cardiorespiratory response to hypoxia](https://pubmed.ncbi.nlm.nih.gov/22907053/).
 - Egan et al. (2004). *Br J Anaesth*. [Remifentanil bolus respiratory effects by age](https://pubmed.ncbi.nlm.nih.gov/14970134/).
 - Bouillon et al. (2004). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).
 - Olofsen et al. (2010). *Anesthesiology*. [Dynamic remifentanil respiratory effects in awake and propofol-sedated volunteers](https://pubmed.ncbi.nlm.nih.gov/20461001/).
@@ -387,6 +392,7 @@ PCV-VG, pressure control with volume guarantee.
 - Lee et al. (2011). *Korean J Anesthesiol*. [Propofol effect-site EC₅₀ for respiratory depression](https://pubmed.ncbi.nlm.nih.gov/21927681/).
 - Blouin et al. (1993). *Anesthesiology*. [Propofol depresses hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8267192/).
 - Nieuwenhuijs et al. (2000). *Anesthesiology*. [Acute and sustained hypoxic responses during propofol sedation](https://pubmed.ncbi.nlm.nih.gov/10638898/).
+- Knill and Gelb (1978). *Anesthesiology*. [Ventilatory responses to hypoxia and hypercapnia during halothane sedation and anesthesia](https://pubmed.ncbi.nlm.nih.gov/697078/).
 - Sarton et al. (1996). *Anesthesiology*. [Sevoflurane, stimulation, and hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8712445/).
 - Nieuwenhuijs et al. (2001). *Anesthesiology*. [Propofol effects on ventilatory control](https://pubmed.ncbi.nlm.nih.gov/11605929/).
 - Glass et al. (1999). *Anesthesiology*. [Remifentanil ventilatory depression and CO₂](https://pubmed.ncbi.nlm.nih.gov/10360852/).
@@ -429,7 +435,9 @@ PCV-VG, pressure control with volume guarantee.
 - Gentz et al. (1998). *J Clin Anesth*. [Apneic CO₂ accumulation after brief hypocapnia](https://pubmed.ncbi.nlm.nih.gov/9603587/).
 - Eger and Severinghaus (1961). *Anesthesiology*. [Apneic CO₂ rise after sustained hyperventilation](https://pubmed.ncbi.nlm.nih.gov/13725901/).
 - Frumin et al. (1959). *Anesthesiology*. [Prolonged apneic oxygenation](https://pubmed.ncbi.nlm.nih.gov/13825447/).
+- Henneberg et al. (1987). *Crit Care Med*. [CO₂ production and tissue-store equilibration during mechanical ventilation](https://pubmed.ncbi.nlm.nih.gov/3098501/).
 - Taskar et al. (1995). *Chest*. [CO₂ elimination after ventilation changes](https://pubmed.ncbi.nlm.nih.gov/7606958/).
+- Sasse et al. (1996). *Chest*. [Arterial blood gas changes during room-air breath-holding from FRC](https://pubmed.ncbi.nlm.nih.gov/8874252/).
 - Weil et al. (1986). *N Engl J Med*. [Arterial and mixed venous acid-base differences during CPR](https://pubmed.ncbi.nlm.nih.gov/3088448/).
 - Kobayashi and Yokoyama (1994). *Masui*. [Blood gas changes during apnea](https://pubmed.ncbi.nlm.nih.gov/7933492/).
 - Benumof et al. (1997). *Anesthesiology*. [Desaturation after preoxygenation](https://pubmed.ncbi.nlm.nih.gov/9357902/).

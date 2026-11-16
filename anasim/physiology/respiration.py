@@ -134,8 +134,12 @@ class RespiratoryModel:
         self.c50_nmba = 1.8 * ROCURONIUM_T1_EC50
         self.gamma_nmba = 3.0
 
-        # Awake hypocapnic calibration (Nieuwenhuijs 2001; Pandit 1999).
-        self.hcvr_slope_baseline = 2.2
+        # Awake chemoreflex calibration (Nieuwenhuijs 2000; Nieuwenhuijs 2001;
+        # Pandit 1999). Age curves are calibrated to García-Río 2007 and Poulin
+        # 1993; other protocols show equal hypoxic and CO2 declines (Peterson
+        # 1981) or rising hypoxic responses in older men (Lhuissier 2012).
+        self.hcvr_slope_baseline = 2.2 * (1.0 - 0.22 * clamp01((patient.age - 60.0) / 15.0))
+        self.hypoxic_gain = self.HYPOXIC_GAIN * (1.0 - 0.60 * clamp01((patient.age - 62.0) / 13.0))
         self.paco2_setpoint = patient.pregnancy.paco2
         self.rq = 0.8
 
@@ -1312,9 +1316,9 @@ class RespiratoryModel:
     def _step_hypoxic_control(
         self, dt: float, ce_prop: float, mac_sevo: float, mac_n2o: float = 0.0
     ) -> float:
-        """Hypoxic drive calibrated to Nieuwenhuijs 2000 and Sarton 1996.
+        """Hypoxic drive calibrated to Nieuwenhuijs 2000, Sarton 1996, and Knill and Gelb 1978.
 
-        Timing and extrapolation beyond low-dose volunteer data are assumptions.
+        Timing and the surgical propofol cutoff are simulator approximations.
         """
         if dt == 0.0:
             return self._hypoxic_drive
@@ -1322,22 +1326,24 @@ class RespiratoryModel:
         # Carotid bodies sense PO2, not Hb content or temperature-dependent SaO2.
         deficit = max(0.0, 98.0 - 100.0 * self._saturation_at_p50(pressure, 26.8))
         deficit *= clamp01((85.0 - pressure) / 25.0)
-        # Combined with baseline depression, halves the response at Ce_prop 0.6.
-        prop_keep = 1.0 / (1.0 + max(0.0, ce_prop) / 1.1)
-        sevo_keep = 1.0 / (1.0 + max(0.0, mac_sevo) / 0.23)
+        # Combined with baseline depression, halves the response at Ce_prop 0.6
+        # and abolishes it at surgical volatile or propofol anesthesia (Knill and Gelb 1978).
+        prop_sedation_keep = 1.0 / (1.0 + max(0.0, ce_prop) / 1.1)
+        prop_keep = prop_sedation_keep * clamp01((4.2 - ce_prop) / 1.7)
+        sevo_keep = clamp01((0.95 - mac_sevo) / 0.45) / (1.0 + max(0.0, mac_sevo) / 0.23)
         n2o_keep = 1.0 / (1.0 + max(0.0, mac_n2o) / 0.50)
         if pressure < 60.0:
             previous = self._hypoxic_exposure_s
             self._hypoxic_exposure_s += dt
             decline_dt = max(0.0, self._hypoxic_exposure_s - max(previous, self.HYPOXIC_DECLINE_DELAY_S))
-            target = 0.35 + 0.55 * (1.0 - prop_keep)
+            target = 0.35 + 0.55 * (1.0 - prop_sedation_keep)
             self._hypoxic_decline += (target - self._hypoxic_decline) * (
                 -math.expm1(-decline_dt / self.HYPOXIC_DECLINE_TAU_S)
             )
         else:
             self._hypoxic_exposure_s = 0.0
             self._hypoxic_decline *= math.exp(-dt / self.HYPOXIC_RECOVERY_TAU_S)
-        target = self.HYPOXIC_GAIN * deficit * prop_keep * sevo_keep * n2o_keep * (1.0 - self._hypoxic_decline)
+        target = self.hypoxic_gain * deficit * prop_keep * sevo_keep * n2o_keep * (1.0 - self._hypoxic_decline)
         self._hypoxic_drive += (target - self._hypoxic_drive) * -math.expm1(-dt / self.HYPOXIC_TAU_S)
         return self._hypoxic_drive
 

@@ -659,9 +659,17 @@ separately from the effect on ventilatory drive (Olofsen 2026). The controller
 combines Olofsen's fractional opioid response with Bouillon's nonlinear response
 to alveolar CO₂.
 
-Hypoxic drive declines during sustained hypoxia and is reduced by propofol,
-sevoflurane, and nitrous oxide (Nieuwenhuijs 2000; Sarton 1996). During airway
-obstruction, airflow is limited while respiratory effort continues.
+Hypoxic drive declines during sustained hypoxia. Low doses of propofol,
+sevoflurane, and nitrous oxide reduce it, and surgical concentrations of
+sevoflurane or propofol abolish it while CO₂ drive persists (Knill and Gelb
+1978; Blouin 1993; Sarton 1996; Nieuwenhuijs 2000). Reported age effects vary
+by method: García-Río 2007 and Poulin 1993 found a much steeper fall in hypoxic
+than in moderate CO₂ sensitivity after 65, whereas Peterson 1981 found ~50%
+reductions in both during rebreathing and Lhuissier 2012 found a rising
+poikilocapnic hypoxic response in men. As a calibration, acute hypoxic
+sensitivity holds through age 62 and falls to 40% from age 75, while CO₂
+sensitivity falls much less. During airway obstruction, airflow is limited
+while respiratory effort continues.
 
 Metabolic acidosis lowers the PaCO₂ set point by 1.2 mmHg per mmol/L of base
 deficit, with a two-minute time constant. Anesthetics and opioids still limit
@@ -690,8 +698,9 @@ ventilation-perfusion ratio (V/Q) of 0.05. These units lower PaO₂ most at low
 FiO₂ and little at high FiO₂. Their share of cardiac output rises with age,
 which produces the sea-level A-a gradient on room air (Crapo 1999). Bronchospasm
 adds more of these units, and COPD adds a separate group with a V/Q of 0.1
-(Wagner 1977). Neither condition adds much shunt, so added oxygen corrects most
-of the hypoxemia.
+(Wagner 1977). Neither condition adds much shunt, so controlled or high-flow
+oxygen corrects most of the hypoxemia while relieving hypoxic drive and
+releasing CO₂ from hemoglobin (DeGaute 1981; Robinson 2000).
 
 In unconscious patients, dependent airways also close at end-expiration, and
 this closure increases after age 30. PEEP of about 6 cmH₂O, or more with
@@ -706,7 +715,9 @@ After lower abdominal surgery, about a third of it persists (Lindberg 1992).
 [Gas transport](../anasim/physiology/gas_transport.py) moves oxygen, CO₂, and
 buffer base through pulmonary capillary, arterial, and mixed venous blood, with
 shunt bypassing the lungs. Two tissue groups and an extracellular pool store
-CO₂, with calibrated capacities (Magor-Elliott 2021; Wooten 2003). Blood flow
+CO₂, with calibrated capacities that equilibrate over 30–60 minutes after
+changes in ventilation or metabolism (Henneberg 1987; Taskar 1995; Wooten 2003;
+Magor-Elliott 2021). Blood flow
 determines exchange with these stores, and respiratory feedback responds to
 arterial PCO₂. Lung tissue accounts for 5% of oxygen consumption and CO₂
 production and exchanges directly with alveolar gas (Loer 1997). Without

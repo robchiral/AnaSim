@@ -222,6 +222,91 @@ def test_ventilation_change_retains_a_slow_asymmetric_co2_elimination_tail(patie
     assert constants[0] > constants[1]
 
 
+def test_taskar_and_henneberg_co2_store_equilibration_benchmarks(patient_factory):
+    """Taskar 1995 (+/-10% VT) and Henneberg 1987 (+15% VT, -14% cooling, 6-min apnea):
+    verify normalized VCO2 and PaCO2 trajectories and 25-50 min VCO2 store equilibration.
+    """
+    patient = patient_factory(age=59, weight=76.0, height=174.0, sex="male")
+    ratios_20m = {}
+    for sign, factor in ((1.0, 1.10), (-1.0, 0.90)):
+        model = RespiratoryModel(patient)
+        model.vco2 = 199.0
+        model.paco2_setpoint = 37.5
+        model.state.p_alveolar_co2 = model.state.pa_co2 = 37.5
+        model.equilibrate_oxygen(0.40)
+        model.equilibrate_blood_gases(model.baseline_co_l_min, 0.199)
+        vt0 = model.vd_deadspace + model.co2_constant * 199.0 / 37.5 / 16.0
+        for _ in range(300):
+            model.step(
+                1.0, ce_prop=3.0, ce_remi=2.0, ce_roc=5.0, fio2=0.40,
+                mech_rr=16.0, mech_vt_l=vt0, measured_breaths=True,
+                cardiac_output=model.baseline_co_l_min, unconscious=1.0,
+            )
+        paco2_0 = model.state.pa_co2
+        dvt_pct = (factor - 1.0) * 100.0
+        samples = {}
+        for sec in range(1, 1201):
+            before = model.gas_transport.exhaled_l
+            model.step(
+                1.0, ce_prop=3.0, ce_remi=2.0, ce_roc=5.0, fio2=0.40,
+                mech_rr=16.0, mech_vt_l=vt0 * factor, measured_breaths=True,
+                cardiac_output=model.baseline_co_l_min, unconscious=1.0,
+            )
+            if sec in (20, 300, 1200):
+                vco2_ml = (model.gas_transport.exhaled_l - before) * 60000.0
+                samples[sec] = (
+                    (vco2_ml - 199.0) / 199.0 * 100.0 / dvt_pct,
+                    (model.state.pa_co2 - paco2_0) / paco2_0 * 100.0 / dvt_pct,
+                )
+        assert samples[20][0] > 0.9 > samples[1200][0] > 0.2
+        assert samples[20][0] > samples[300][0] > samples[1200][0]
+        assert -1.25 < samples[1200][1] < samples[300][1] < -0.35
+        ratios_20m[sign] = samples[1200][0]
+    assert ratios_20m[-1.0] > ratios_20m[1.0]
+
+    # Henneberg 1987: +15% VT and -14% cooling take ~35-40 min to settle within +/-5 mL/min.
+    icu_patient = patient_factory(age=55, weight=70.0, height=175.0, sex="male")
+    icu_ref = RespiratoryModel(icu_patient)
+    vt_icu = icu_ref.vd_deadspace + icu_ref.co2_constant * 240.0 / 40.0 / 12.0
+
+    def minutes_to_settle(vt_mult: float, met_factor: float, co: float) -> int:
+        model = RespiratoryModel(icu_patient)
+        model.vco2 = 240.0
+        model.equilibrate_oxygen(0.40)
+        model.equilibrate_blood_gases(co, 0.240)
+        target_ml_min = 240.0 * met_factor
+        for minute in range(1, 91):
+            before = model.gas_transport.exhaled_l
+            for _ in range(60):
+                model.step(
+                    1.0, ce_prop=3.0, ce_remi=2.0, ce_roc=5.0, fio2=0.40,
+                    mech_rr=12.0, mech_vt_l=vt_icu * vt_mult, measured_breaths=True,
+                    cardiac_output=co, metabolic_factor=met_factor, unconscious=1.0,
+                )
+            if abs((model.gas_transport.exhaled_l - before) * 1000.0 - target_ml_min) <= 5.0:
+                return minute
+        raise AssertionError("VCO2 did not equilibrate within 90 minutes")
+
+    t_vent_norm = minutes_to_settle(1.15, 1.0, 5.0)
+    t_vent_low = minutes_to_settle(1.15, 1.0, 3.0)
+    t_cool = minutes_to_settle(1.0, 0.86, 5.0)
+    assert 25 <= t_vent_norm <= 50
+    assert t_vent_low > t_vent_norm
+    assert 25 <= t_cool <= 50
+
+    apneic = RespiratoryModel(icu_patient)
+    apneic.state.p_alveolar_co2 = 46.0
+    apneic.equilibrate_oxygen(1.0)
+    apneic.equilibrate_blood_gases(5.0, apneic.vco2 / 1000.0)
+    for _ in range(360):
+        apneic.step(
+            1.0, ce_prop=3.0, ce_remi=2.0, ce_roc=10.0, fio2=1.0,
+            mech_rr=0.0, mech_vt_l=0.0, airway_patency=1.0, measured_breaths=True,
+            cardiac_output=5.0, unconscious=1.0,
+        )
+    assert 68.0 <= apneic.state.pa_co2 <= 75.0
+
+
 def test_zero_flow_retains_existing_tissue_co2_without_systemic_aerobic_production(patient):
     model = RespiratoryModel(patient)
     initial_tissue = model.gas_transport.tissue_co2_l

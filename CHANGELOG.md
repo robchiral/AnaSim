@@ -66,6 +66,10 @@
 - Atropine now raises pressure less, and ketamine raises it more after
   atropine or during pacing.
 - Above 65, propofol lowers blood pressure more slowly but further.
+- Hypoxic ventilatory drive now falls after age 62 to about 40% from age 75
+  onward, while CO₂ sensitivity falls much less. Surgical concentrations of
+  sevoflurane or propofol now abolish hypoxic hyperventilation while preserving
+  the CO₂ response.
 - Recalibrated respiratory muscle fatigue. Heavy loads take about twice as
   long to exhaust the muscles, most strength returns within 15 minutes of rest
   or pressure support, and a smaller deficit lasts up to a day.

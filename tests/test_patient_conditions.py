@@ -151,6 +151,57 @@ def test_copd_hypoxemia_is_ventilation_perfusion_mismatch_that_oxygen_corrects()
     assert engine.state.pao2 > 450
 
 
+def test_copd_controlled_and_high_flow_oxygen_responses():
+    """General COPD oxygen-response check motivated by DeGaute 1981 and Robinson 2000.
+
+    Controlled oxygen (FiO2 0.28) raises PaO2 and PvO2 with a modest PaCO2 rise
+    and pH fall (DeGaute's cardiac-index drop from 3.9 to 3.4 L/min/m^2 in
+    moderate hypoxemia vs 4.0 unchanged at PaO2 40 mmHg is not modeled). On 100%
+    O2, hypercapnic retention and wasted ventilation increase when severe
+    exacerbation lowers room-air PaO2 and narrows tidal volume toward dead space.
+    """
+    exac = _engine(age=64, weight=68, height=170, sex="male", copd_severity=1.0)
+    exac.set_bronchospasm(0.45)
+    exac.set_airway_mode(AirwayType.MASK)
+    exac.set_fgf(0.0, 15.0)
+    _advance(exac, 900)
+    air_pao2 = exac.state.pao2
+    air_pvo2 = exac.resp.state.pv_o2
+    air_paco2 = exac.state.pa_co2
+    air_ph = exac.state.ph
+
+    o2_flow_28 = 15.0 * (0.28 - 0.21) / 0.79
+    exac.set_fgf(o2_flow_28, 15.0 - o2_flow_28)
+    _advance(exac, 3600)
+    assert 48.0 < air_pao2 < 60.0 and air_paco2 > 45.0
+    assert 68.0 < exac.state.pao2 < 82.0
+    assert 4.0 < exac.resp.state.pv_o2 - air_pvo2 < 9.0
+    assert 2.0 < exac.state.pa_co2 - air_paco2 < 6.0
+    assert -0.045 < exac.state.ph - air_ph < -0.015
+
+    # 100% O2 (>= 20 min): mild hypoxemia vs severe hypoxemic exacerbation.
+    deltas = {}
+    wasted_shifts = {}
+    for label, bronch in (("mild", 0.0), ("severe_exac", 0.55)):
+        eng = _engine(age=64, weight=68, height=170, sex="male", copd_severity=1.0)
+        eng.set_bronchospasm(bronch)
+        eng.set_airway_mode(AirwayType.MASK)
+        eng.set_fgf(0.0, 15.0)
+        _advance(eng, 900)
+        paco2_air = eng.state.pa_co2
+        wasted_air = 1.0 - eng.resp.state.va / eng.resp.state.mv
+
+        eng.set_fgf(15.0, 0.0)
+        _advance(eng, 1500)
+        assert eng.state.pao2 > 450.0
+        deltas[label] = eng.state.pa_co2 - paco2_air
+        wasted_shifts[label] = (1.0 - eng.resp.state.va / eng.resp.state.mv) - wasted_air
+
+    assert deltas["mild"] <= 3.0
+    assert 5.0 < deltas["severe_exac"] < 10.0
+    assert wasted_shifts["severe_exac"] > 0.01 > wasted_shifts["mild"]
+
+
 def _gradient_kpa(state):
     """Room-air A-a gradient as Lindberg 1992 calculated it, with R = 0.8."""
     return (0.21 * (760.0 - 47.0) - state.pa_co2 / 0.8 - state.pao2) / 7.50062
