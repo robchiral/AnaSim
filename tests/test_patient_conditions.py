@@ -261,3 +261,237 @@ def test_combined_conditions_start_and_run_with_finite_drug_and_physiology_outpu
     assert 20 < state.map < 160 and 0 < state.co < 20
     assert 25 < state.pa_co2 < 50 and 7.25 < state.ph < 7.55
     assert 30 < state.bis < 65 and state.sao2 > 94
+
+
+def test_hypertensive_vs_normotensive_propofol_fentanyl_intubation_matches_sawano_2013():
+    """Sawano 2013 (n = 90, ages 65-67): under propofol 4 mcg/mL TCI, controlled
+    hypertensive patients (MAP ~120 mmHg) have larger absolute post-induction MAP
+    drops and higher post-intubation peaks than normotensive patients (MAP ~98
+    mmHg); fentanyl 2 mcg/kg keeps normotensive peak MAP near baseline whereas
+    hypertensives require 4 mcg/kg.
+    """
+    results: dict[tuple[str, float], tuple[float, float, float]] = {}
+    for label, base_map, base_hr in (("normo", 98.0, 74.0), ("htn", 120.0, 75.0)):
+        for fent_ug_kg in (0.0, 2.0, 4.0):
+            engine = SimulationEngine(
+                Patient(age=65, weight=57, height=160, sex="male", baseline_map=base_map, baseline_hr=base_hr),
+                SimulationConfig(mode="awake", tci_enabled=True, dt=1.0, rng_seed=1),
+            )
+            engine.start()
+            engine.set_airway_mode("Mask")
+            engine.set_fgf(10.0, 0.0)
+            engine.enable_tci("propofol", 4.0, mode="plasma")
+            for _ in range(60):
+                engine.step(1.0)
+            engine.give_drug_bolus("roc", 0.9 * 57.0)
+            engine.set_bag_mask_ventilation(True, rr=12, vt=0.45)
+            for _ in range(60):
+                engine.step(1.0)
+            if fent_ug_kg > 0.0:
+                engine.give_drug_bolus("fentanyl", fent_ug_kg * 57.0)
+            for _ in range(120):
+                engine.step(1.0)
+            pre_intub_drop = base_map - engine.state.map
+
+            engine.set_bag_mask_ventilation(False)
+            engine.set_airway_mode("ETT")
+            engine.set_vent_settings(mode="VCV", vt=0.45, rr=12, peep=5, ie="1:2")
+            engine.set_vent_power(True)
+            engine.start_disturbance("stim_intubation_pulse")
+            peak_map = 0.0
+            for _ in range(120):
+                engine.step(1.0)
+                peak_map = max(peak_map, engine.state.map)
+            for _ in range(240):
+                engine.step(2.0)
+            results[(label, fent_ug_kg)] = (pre_intub_drop, peak_map, engine.state.map)
+
+    for fent_ug_kg in (0.0, 2.0, 4.0):
+        assert results[("htn", fent_ug_kg)][0] > results[("normo", fent_ug_kg)][0] + 5.0
+        assert results[("htn", fent_ug_kg)][1] > results[("normo", fent_ug_kg)][1] + 10.0
+    assert results[("normo", 0.0)][1] > results[("normo", 2.0)][1] > results[("normo", 4.0)][1]
+    assert results[("htn", 0.0)][1] > results[("htn", 2.0)][1] > results[("htn", 4.0)][1]
+    assert results[("normo", 2.0)][1] == pytest.approx(103.0, abs=18.0)
+    assert results[("htn", 0.0)][1] == pytest.approx(144.0, abs=19.0)
+    assert results[("htn", 4.0)][1] < 115.0
+
+
+def test_ketamine_induction_in_atherosclerotic_disease_matches_balfors_1983():
+    """Bålfors 1983 (control arm, n = 8 atherosclerotic disease without
+    droperidol): ketamine 2 mg/kg over 1 min on FiO2 0.25 raises MAP (103 ->
+    146 +/- 25.5 SD) and HR (73 -> 84 +/- 11.3 SD) at 2-3 min without ischemia.
+    """
+    control = SimulationEngine(
+        Patient(age=57, weight=75, height=175, sex="male", baseline_map=103.0,
+                baseline_hr=73.0, coronary_flow_reserve=2.0),
+        SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+    )
+    control.start()
+    control.set_airway_mode("Mask")
+    control.set_fgf(0.5, 9.5)  # FiO2 ~0.25
+    for _ in range(120):
+        control.step(1.0)
+    control.set_drug_rate("ketamine", 2.0 * 60.0)
+    for _ in range(60):
+        control.step(1.0)
+    control.set_drug_rate("ketamine", 0.0)
+    for _ in range(150):
+        control.step(1.0)
+
+    assert control.state.map == pytest.approx(146.0, abs=2.0 * 25.5)
+    assert control.state.map > 120.0
+    assert control.state.hr == pytest.approx(84.0, abs=2.0 * 11.3)
+    assert control.state.hr > 80.0
+    assert control.state.coronary_supply_demand_ratio > 1.0
+    assert control.state.myocardial_ischemia < 0.01
+
+
+def test_labetalol_blunts_ketamine_pressor_and_chronotropic_response():
+    """Combined alpha/beta blockade with labetalol attenuates both the pressor
+    and tachycardic surges of a 2 mg/kg ketamine induction.
+    """
+    unblocked = SimulationEngine(
+        Patient(age=57, weight=75, height=175, sex="male", baseline_map=103.0,
+                baseline_hr=73.0, coronary_flow_reserve=2.0),
+        SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+    )
+    blocked = SimulationEngine(
+        Patient(age=57, weight=75, height=175, sex="male", baseline_map=103.0,
+                baseline_hr=73.0, coronary_flow_reserve=2.0),
+        SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+    )
+    for eng in (unblocked, blocked):
+        eng.start()
+    blocked.give_drug_bolus("labetalol", 40.0)
+    for eng in (unblocked, blocked):
+        for _ in range(120):
+            eng.step(1.0)
+        eng.set_drug_rate("ketamine", 2.0 * 60.0)
+        for _ in range(60):
+            eng.step(1.0)
+        eng.set_drug_rate("ketamine", 0.0)
+        for _ in range(150):
+            eng.step(1.0)
+
+    assert blocked.state.map < unblocked.state.map - 15.0
+    assert blocked.state.hr < unblocked.state.hr - 8.0
+
+
+def test_low_vs_normal_cardiac_output_propofol_fentanyl_matches_sherry_1995():
+    """Sherry 1995 (n = 39 cardiac surgery): propofol 8 mg/kg/h to LOC followed
+    by 4 mg/kg/h (T2) and fentanyl 15 mcg/kg (T3) lowers MAP in both normal- and
+    low-output patients, while elevated resting filling pressure in low-output
+    patients preserves stroke volume and attenuates the fractional fall in CI.
+    """
+    outcomes = {}
+    for condition, base_map, base_hr in (("none", 98.1, 70.2), ("hfref", 93.8, 63.8)):
+        engine = SimulationEngine(
+            Patient(age=60, weight=75, height=172, sex="male", heart_failure=condition,
+                    baseline_map=base_map, baseline_hr=base_hr),
+            SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+        )
+        engine.start()
+        engine.set_airway_mode("Mask")
+        engine.set_fgf(10.0, 0.0)
+        for _ in range(30):
+            engine.step(1.0)
+        bsa = engine.patient.bsa
+        base = (engine.state.map, engine.state.co / bsa, engine.state.sv)
+
+        engine.set_drug_rate("propofol", 8000.0 / 60.0)
+        t_loc = 0
+        while engine.state.loc < 0.5 and t_loc < 600:
+            engine.step(1.0)
+            t_loc += 1
+        assert 150 <= t_loc <= 420
+
+        engine.set_drug_rate("propofol", 4000.0 / 60.0)
+        engine.set_bag_mask_ventilation(True, rr=12, vt=0.50)
+        for _ in range(180):
+            engine.step(1.0)
+        t2 = (engine.state.map, engine.state.co / bsa, engine.state.sv)
+
+        engine.give_drug_bolus("fentanyl", 7.5 * 75.0)
+        for _ in range(60):
+            engine.step(1.0)
+        engine.give_drug_bolus("fentanyl", 7.5 * 75.0)
+        for _ in range(120):
+            engine.step(1.0)
+        t3 = (engine.state.map, engine.state.co / bsa, engine.state.sv)
+        outcomes[condition] = (
+            t2[0] / base[0] - 1.0,
+            t2[1] / base[1] - 1.0,
+            t2[2] / base[2] - 1.0,
+            t3[0] / base[0] - 1.0,
+            t3[1] / base[1] - 1.0,
+            t3[2] / base[2] - 1.0,
+        )
+
+    norm, low = outcomes["none"], outcomes["hfref"]
+    assert -0.30 < norm[0] < -0.05 and -0.30 < low[0] < -0.05
+    assert -0.35 < norm[3] < -0.10 and -0.35 < low[3] < -0.10
+    # Low-CO patients lose less fractional SV and CI than normal-CO patients.
+    assert low[2] > norm[2]
+    assert low[1] > norm[1]
+    assert low[5] > norm[5] + 0.04
+    assert low[4] > norm[4] + 0.04
+
+
+def test_end_stage_renal_disease_propofol_infusion_matches_ickx_1998():
+    """Ickx 1998 (n = 11 ESRD vs n = 9 controls): 3-stage propofol infusion
+    (21 -> 12 -> 6 mg/kg/h) with fentanyl 100 mcg and 60% N2O yields unchanged
+    steady-state propofol Cp (~3.1-3.5 mcg/mL), total body clearance, and
+    maintenance MAP in ESRD, with prompt emergence after infusion stop.
+    """
+    results = {}
+    for group, wt, ht, hb, rf, crcl in (
+        ("control", 72.6, 171.6, 14.2, 1.0, 102.8),
+        ("esrd", 62.3, 164.0, 9.9, 0.4, 7.3),
+    ):
+        engine = SimulationEngine(
+            Patient(age=45.0, weight=wt, height=ht, sex="female", baseline_hb=hb,
+                    renal_function=rf, creatinine_clearance_ml_min=crcl),
+            SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+        )
+        engine.start()
+        engine.set_airway_mode("Mask")
+        engine.set_fgf(10.0, 0.0)
+        for _ in range(30):
+            engine.step(1.0)
+        engine.give_drug_bolus("fentanyl", 100.0)
+        engine.set_drug_rate("propofol", 350.0)
+        for _ in range(300):
+            engine.step(1.0)
+        engine.give_drug_bolus("roc", 0.6 * wt)
+        engine.set_airway_mode("ETT")
+        engine.set_fgf(2.0, 0.0, 3.0)
+        engine.set_vent_settings(mode="VCV", vt=0.48, rr=11, peep=5, ie="1:2")
+        engine.set_vent_power(True)
+        engine.set_drug_rate("propofol", 200.0)
+        for _ in range(120):
+            engine.step(5.0)
+        engine.set_drug_rate("propofol", 100.0)
+        for _ in range(1260):
+            engine.step(5.0)
+        cp_maint = engine.state.propofol_cp
+        cl_ml_kg_min = engine.pk["propofol"].elimination_clearance * 1000.0 / wt
+        map_maint = engine.state.map
+
+        engine.set_drug_rate("propofol", 0.0)
+        engine.set_fgf(8.0, 0.0, 0.0)
+        wake_s = None
+        for elapsed in range(2, 1801, 2):
+            engine.step(2.0)
+            if engine.state.loc < 0.5:
+                wake_s = elapsed
+                break
+        assert wake_s is not None
+        results[group] = (cp_maint, cl_ml_kg_min, map_maint, wake_s)
+
+    ctrl, esrd = results["control"], results["esrd"]
+    assert ctrl[0] == pytest.approx(3.11, abs=0.74)
+    assert esrd[0] == pytest.approx(3.49, abs=0.97)
+    assert esrd[0] == pytest.approx(ctrl[0], rel=0.10)
+    assert esrd[1] == pytest.approx(ctrl[1], rel=0.10)
+    assert esrd[2] == pytest.approx(ctrl[2], abs=4.0)
+    assert 400 <= esrd[3] <= 1200 and 400 <= ctrl[3] <= 1200

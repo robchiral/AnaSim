@@ -279,6 +279,182 @@ class TestClinicalAcceptance:
 
         assert engine.state.map >= 65.0
 
+    @pytest.mark.parametrize("dt", [0.2, 1.0])
+    def test_anaphylaxis_plasma_escape_hemoconcentration_and_colloid_recovery(
+        self, engine_factory, advance_time, dt
+    ):
+        """Fisher 1986 (n = 22, Table 3): plasma escape during anaphylaxis causes
+        up to ~35% blood-volume loss within 10-15 min without red-cell loss,
+        raising Hb sharply until source control and volume replacement restore it.
+        """
+        untreated = engine_factory(
+            config=SimulationConfig(
+                mode="steady_state", maint_type="tiva", rng_seed=1, maintenance_fluid_ml_hr=0.0
+            ),
+            start=True,
+            age=45,
+            weight=70,
+            height=170,
+            baseline_hb=14.0,
+        )
+        advance_time(untreated, 60.0, dt=dt)
+        bv0 = untreated.hemo.blood_volume
+        rbc0 = untreated.hemo.red_cell_volume_ml
+        untreated.start_anaphylaxis()
+        advance_time(untreated, 600.0, dt=dt)
+
+        bv_loss_frac = 1.0 - untreated.hemo.blood_volume / bv0
+        assert 0.18 <= bv_loss_frac <= 0.35
+        assert untreated.hemo.red_cell_volume_ml == pytest.approx(rbc0, rel=1e-6)
+        assert untreated.state.hb_g_dl > 17.0
+        assert untreated.state.map < 55.0
+
+        treated = engine_factory(
+            config=SimulationConfig(
+                mode="steady_state", maint_type="tiva", rng_seed=1, maintenance_fluid_ml_hr=0.0
+            ),
+            start=True,
+            age=45,
+            weight=70,
+            height=170,
+            baseline_hb=14.0,
+        )
+        treated.fluid_infusion_rate_ml_min = 250.0
+        treated.start_anaphylaxis()
+        advance_time(treated, 180.0, dt=dt)
+        hb_hemoconcentrated = treated.state.hb_g_dl
+        assert hb_hemoconcentrated > 14.5
+
+        treated.give_drug_bolus("epi", 100.0)
+        treated.set_drug_rate("epi", 8.0)
+        treated.give_fluid(1000.0)
+        advance_time(treated, 300.0, dt=dt)
+        treated.stop_anaphylaxis()
+        treated.give_albumin(1500.0)
+        advance_time(treated, 900.0, dt=1.0)
+
+        assert treated.state.map >= 65.0
+        assert 13.5 <= treated.state.hb_g_dl < hb_hemoconcentrated - 0.3
+
+    @pytest.mark.parametrize("heart_failure", ["none", "hfref"])
+    def test_septic_shock_norepinephrine_preload_output_and_weaning(
+        self, engine_factory, advance_time, heart_failure
+    ):
+        """Hamzaoui 2010 (n = 105), Carelli 2026 (n = 30), and Persichini 2012
+        (n = 16): norepinephrine restores septic MAP while raising MCFP, RAP,
+        SV, and CI without adding tachycardia, and weaning reverses each change.
+        """
+        engine = engine_factory(
+            config=SimulationConfig(
+                mode="steady_state",
+                maint_type="tiva",
+                rng_seed=1,
+                maintenance_fluid_ml_hr=300.0,
+            ),
+            start=True,
+            age=65,
+            weight=75,
+            height=172,
+            sex="male",
+            heart_failure=heart_failure,
+        )
+        engine.set_vent_settings(mode="VCV", vt=0.45, rr=20, peep=6, ie="1:2")
+        engine.start_sepsis()
+        advance_time(engine, 900.0, dt=1.0)
+
+        bsa = engine.patient.bsa
+        pre_map = engine.state.map
+        pre_hr = engine.state.hr
+        pre_ci = engine.state.co / bsa
+        pre_sv = engine.state.sv
+        pre_mcfp = engine.hemo.state.mcfp
+        pre_rap = engine.hemo.state.rap
+        assert pre_map < 62.0
+
+        engine.set_drug_rate("nore", 0.24 * 75.0)
+        advance_time(engine, 600.0, dt=1.0)
+        mid_map = engine.state.map
+        mid_hr = engine.state.hr
+        mid_ci = engine.state.co / bsa
+        mid_sv = engine.state.sv
+        mid_mcfp = engine.hemo.state.mcfp
+        mid_rap = engine.hemo.state.rap
+
+        assert mid_map >= 65.0
+        assert mid_mcfp > pre_mcfp + 0.8
+        assert mid_rap > pre_rap + 0.2
+        assert mid_sv > pre_sv + 4.0
+        assert mid_ci > pre_ci * 1.08
+        assert mid_hr <= pre_hr + 2.0
+
+        # Carelli 2026: doubling NE raises MAP, CVP, and SV even in reduced LVEF.
+        engine.set_drug_rate("nore", 0.50 * 75.0)
+        advance_time(engine, 600.0, dt=1.0)
+        hi_map = engine.state.map
+        hi_ci = engine.state.co / bsa
+        hi_sv = engine.state.sv
+        hi_mcfp = engine.hemo.state.mcfp
+        hi_rap = engine.hemo.state.rap
+        assert hi_map > mid_map + 8.0
+        assert hi_mcfp > mid_mcfp + 0.3
+        assert hi_rap > mid_rap + 0.1
+        assert hi_sv > mid_sv
+        assert hi_ci >= mid_ci
+
+        # Persichini 2012: weaning NE reduces MAP, MCFP, RAP, and CI together.
+        engine.set_drug_rate("nore", 0.19 * 75.0)
+        advance_time(engine, 600.0, dt=1.0)
+        assert engine.state.map < hi_map - 10.0
+        assert engine.hemo.state.mcfp < hi_mcfp - 0.5
+        assert engine.hemo.state.rap < hi_rap - 0.15
+        assert engine.state.co / bsa < hi_ci
+
+    def test_septic_shock_preserves_partial_catecholamine_chronotropy(
+        self, engine_factory, advance_time
+    ):
+        """Hernández 2013 (n = 20): dobutamine 5 mcg/kg/min still increases HR and
+        CI in septic shock despite beta-adrenoceptor hyporesponsiveness, and
+        epinephrine relieves sinus bradycardia during full sepsis.
+        """
+        dobu = engine_factory(
+            config=SimulationConfig(
+                mode="steady_state", maint_type="tiva", rng_seed=1, maintenance_fluid_ml_hr=300.0
+            ),
+            start=True,
+            age=65,
+            weight=75,
+            height=172,
+            sex="male",
+        )
+        dobu.start_sepsis()
+        dobu.set_drug_rate("nore", 0.20 * 75.0)
+        advance_time(dobu, 600.0, dt=1.0)
+        bsa = dobu.patient.bsa
+        pre_hr, pre_ci = dobu.state.hr, dobu.state.co / bsa
+
+        dobu.set_drug_rate("dobu", 5.0)
+        advance_time(dobu, 900.0, dt=1.0)
+        assert dobu.state.hr > pre_hr + 4.0
+        assert dobu.state.co / bsa > pre_ci * 1.12
+
+        brady = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1),
+            start=True,
+        )
+        brady.start_sepsis()
+        advance_time(brady, 180.0, dt=1.0)
+        brady.set_rhythm("SINUS_BRADY")
+        advance_time(brady, 60.0, dt=1.0)
+        assert brady.state.hr == pytest.approx(50.0, abs=1.5)
+
+        brady.give_drug_bolus("epi", 50.0)
+        brady.set_drug_rate("epi", 10.0)
+        peak_hr = brady.state.hr
+        for _ in range(120):
+            brady.step(1.0)
+            peak_hr = max(peak_hr, brady.state.hr)
+        assert peak_hr > 85.0
+
     @pytest.mark.parametrize(("fluid", "urine_ml", "tolerance_ml"), [("crystalloid", 1000.0, 150.0), ("saline", 450.0, 100.0)])
     def test_awake_saline_is_excreted_more_slowly_than_ringers(self, engine_factory, fluid, urine_ml, tolerance_ml):
         """Reid 2003: 2 L over 1 h gave median 6 h urine of 1000 mL after Hartmann's

@@ -44,11 +44,17 @@
 - Extubation under light anesthesia can now trigger laryngospasm. Intubation
   of a responsive patient fails unless hypnosis is sustained or circulation
   has stopped.
-- Fluid loading no longer raises stroke volume in HFrEF, and pulmonary edema
-  starts at a higher filling pressure in chronic heart failure. Blood loss
-  draws interstitial fluid into plasma. High intrathoracic pressure reduces
-  preload further, and rapid AF and extreme tachycardia limit ventricular
-  filling.
+- Fluid loading no longer raises stroke volume in HFrEF, moderate preload loss
+  lowers it less, and pulmonary edema starts at a higher filling pressure in
+  chronic heart failure. Blood loss draws interstitial fluid into plasma. High
+  intrathoracic pressure reduces preload further, and rapid AF and extreme
+  tachycardia limit ventricular filling.
+- Norepinephrine now recruits venous volume, raising filling pressure and
+  preload, and septic shock blunts cardiac as well as vascular responses to
+  catecholamines.
+- Postoperative atelectasis now clears over hours of unintubated breathing,
+  faster after nonabdominal than abdominal surgery. A smaller residual lasts
+  past a day, and morbid obesity prevents clearance over 24 hours.
 - Hypothermia below 33 °C now slows HR, and below 30 °C it depresses
   contractility and can start VF.
 - Alpha and beta blockade now shift ephedrine's vascular and cardiac responses

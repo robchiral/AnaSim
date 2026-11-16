@@ -296,3 +296,129 @@ def test_closed_airway_gas_absorption_reduces_resting_lung_recoil_volume():
     assert engine.resp._apneic_gas_deficit_l > 0.15
     assert engine.aeration.frc < frc_0 - 0.10
     assert engine.aeration.relaxed_volume < relaxed_0 - 0.10
+
+
+def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_sizes():
+    """Strandberg 1986 Table 4 (~42% and ~11% left at 1 h and 24 h after hernia
+    repair vs ~64% and ~19% after cholecystectomy), Putensen-Himmer 1992 (6 h),
+    Eichenberger 2002 (24 h clearance at BMI 24 vs persistence at BMI 46.5), and
+    Östberg 2019 (preserved 30-min PaO2/FiO2 after nonabdominal surgery).
+    """
+    traces = []
+    site_6h = {}
+    site_24h = {}
+    for dt in (0.01, 0.1, 1.0):
+        # No clearance while unconscious, apneic, or intubated bypassing the glottis.
+        for unconscious, breathing, glottis in (
+            (1.0, True, True),
+            (0.0, False, True),
+            (0.0, True, False),
+        ):
+            gated = LungAeration(Patient(surgical_site="other"), recruited=0.9, atelectatic=0.30)
+            gated.unconscious = unconscious
+            gated.spontaneous_breathing = breathing
+            gated.glottic_intact = glottis
+            for _ in range(round(600.0 / dt)):
+                gated.advance(dt, 4.0 * dt)
+            assert gated.atelectatic >= 0.30 - 1e-12
+
+        site_1h = {}
+        for site in ("other", "lower_abdominal", "upper_abdominal"):
+            aeration = LungAeration(Patient(weight=70.0, height=170.0, surgical_site=site),
+                                    recruited=0.9, atelectatic=0.30)
+            aeration.spontaneous_breathing = True
+            for _ in range(round(3600.0 / dt)):
+                aeration.advance(dt, 0.0)
+            site_1h[site] = aeration.atelectatic
+            if dt == 1.0:
+                for _ in range(5 * 3600):
+                    aeration.advance(1.0, 0.0)
+                site_6h[site] = aeration.atelectatic
+                for _ in range(18 * 3600):
+                    aeration.advance(1.0, 0.0)
+                site_24h[site] = aeration.atelectatic
+
+        # Strandberg 1986 Table 4: hernia repair retained ~42% at 1 h vs ~64%
+        # after cholecystectomy.
+        assert 0.34 * 0.30 < site_1h["other"] < 0.48 * 0.30
+        assert 0.60 * 0.30 < site_1h["upper_abdominal"] < 0.78 * 0.30
+        assert site_1h["other"] < site_1h["lower_abdominal"] < site_1h["upper_abdominal"]
+        traces.append((site_1h["other"], site_1h["lower_abdominal"], site_1h["upper_abdominal"]))
+
+    for trace in traces[1:]:
+        assert trace == pytest.approx(traces[0], abs=1e-10)
+    assert site_6h["other"] < site_6h["lower_abdominal"] < site_6h["upper_abdominal"] < 0.10
+
+    # Strandberg 1986 Table 4 at 24 h: ~11% remaining after hernia repair and
+    # ~19% after cholecystectomy; recruiting pressure still reopens this residual.
+    assert site_24h["other"] / 0.30 == pytest.approx(0.11, abs=0.04)
+    assert site_24h["upper_abdominal"] / 0.30 == pytest.approx(0.19, abs=0.05)
+    assert site_24h["other"] < site_24h["lower_abdominal"] < site_24h["upper_abdominal"]
+
+    recruited_residual = LungAeration(Patient(surgical_site="upper_abdominal"),
+                                      recruited=0.9, atelectatic=site_24h["upper_abdominal"])
+    recruited_residual.spontaneous_breathing = True
+    for _ in range(40):
+        recruited_residual.advance(1.0, 45.0)
+    assert recruited_residual.atelectatic < 0.02
+
+    # Strandberg 1986 Table 2: collapse formed from an aerated baseline during
+    # spontaneous unintubated anesthesia populates the same 24-h persistent
+    # component as intubated paralyzed anesthesia.
+    retained_24h = []
+    for spont, glottis in ((False, False), (True, True)):
+        formed = LungAeration(Patient(surgical_site="upper_abdominal"), recruited=1.0, atelectatic=0.0)
+        formed.inert_fraction = 0.0
+        formed.unconscious = 0.85
+        formed.spontaneous_breathing = spont
+        formed.glottic_intact = glottis
+        for _ in range(300):
+            formed.advance(1.0, 0.0)
+        peak_formed = formed.atelectatic
+        assert peak_formed > 0.25
+        formed.unconscious = 0.0
+        formed.spontaneous_breathing = True
+        formed.glottic_intact = True
+        formed.inert_fraction = 0.79
+        for _ in range(24 * 3600):
+            formed.advance(1.0, 0.0)
+        retained_24h.append(formed.atelectatic / peak_formed)
+    assert retained_24h[1] == pytest.approx(retained_24h[0], abs=0.01)
+    assert retained_24h[1] == pytest.approx(0.19, abs=0.05)
+
+    # Eichenberger 2002: morbid obesity (BMI 46.5) retains postoperative atelectasis at 24 h.
+    obese = LungAeration(Patient(weight=134.0, height=170.0, surgical_site="lower_abdominal"),
+                         recruited=0.9, atelectatic=0.30)
+    obese.spontaneous_breathing = True
+    for _ in range(24 * 3600):
+        obese.advance(1.0, 0.0)
+    assert obese.atelectatic == pytest.approx(0.30, abs=1e-6)
+
+    # Östberg 2019: nonabdominal surgery with intraoperative PEEP 7 preserves
+    # 30-min room-air PaO2/FiO2 near awake baseline despite 100% O2 emergence.
+    awake = SimulationEngine(Patient(age=50, weight=78, height=175, surgical_site="other"),
+                             SimulationConfig(mode="awake", rng_seed=1))
+    awake.start()
+    for _ in range(180):
+        awake.step(1.0)
+    awake_pf = awake.state.pao2 / 0.21
+
+    postop = SimulationEngine(Patient(age=50, weight=78, height=175, surgical_site="other"),
+                              SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1))
+    postop.start()
+    postop.set_vent_settings(mode="VCV", vt=0.50, rr=12, peep=7, ie="1:2")
+    for _ in range(180):
+        postop.step(2.0)
+    postop.set_fgf(10.0, 0.0)
+    postop.set_drug_rate("propofol", 0.0)
+    postop.set_drug_rate("remi", 0.0)
+    for _ in range(1200):
+        if postop.state.bis > 70.0 and postop.resp.state.mv > 1.0:
+            postop.set_vent_power(False)
+        if postop.state.bis > 80.0 and postop.resp.state.mv > 3.0:
+            break
+        postop.step(1.0)
+    postop.set_airway_mode("None")
+    for _ in range(900):
+        postop.step(2.0)
+    assert postop.state.pao2 / 0.21 == pytest.approx(awake_pf, abs=45.0)

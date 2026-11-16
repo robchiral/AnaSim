@@ -21,12 +21,13 @@ Coronary disease reduces coronary flow reserve.
 
 Heart failure changes resting cardiac output, filling pressure, and sensitivity
 to loading conditions (Schwartzenberg 2012; Westermann 2008). With reduced
-ejection fraction (HFrEF), stroke volume is more sensitive to afterload and does
-not rise with fluid loading. With preserved ejection fraction (HFpEF), the
-ventricle is stiffer and fills less during tachycardia. Chronic left atrial
-hypertension increases lymphatic drainage, so pulmonary edema starts at a higher
-filling pressure. The reserve above the resting pressure is still smaller than
-in a normal heart.
+ejection fraction (HFrEF), stroke volume is more sensitive to afterload, does
+not rise with fluid loading, and falls less with moderate preload reduction
+(Sherry 1995). With preserved ejection fraction (HFpEF), the ventricle is
+stiffer and fills less during tachycardia. Chronic left atrial hypertension
+increases lymphatic drainage, so pulmonary edema starts at a higher filling
+pressure. The reserve above the resting pressure is still smaller than in a
+normal heart.
 
 COPD combines persistent obstruction, hyperinflation, gas trapping, dead space,
 and impaired gas exchange, with a normal resting PaCO₂. Acute bronchospasm adds
@@ -357,8 +358,13 @@ Anaphylaxis reduces the response to adrenergic drugs.
 
 The norepinephrine model includes endogenous secretion and a clearance that
 falls with plasma propofol up to 8 mcg/mL (Li 2024). Only concentrations above
-the resting endogenous level change HR, resistance, and stroke volume, and the
-effects on resistance and stroke volume increase with anesthetic depth.
+the resting endogenous level change HR, resistance, venous capacitance, and
+stroke volume, and the effects on resistance and stroke volume increase with
+anesthetic depth. Norepinephrine recruits unstressed venous blood, which raises
+filling pressure and preload (Persichini 2012; Hamzaoui 2010), and supports
+stroke volume in reduced-EF septic shock (Hamzaoui 2010; Carelli 2026). Septic
+shock halves vascular and cardiac responses to catecholamines (Bellissant 2000;
+Schotola 2012; Hernández 2013).
 
 ### Epinephrine
 
@@ -782,8 +788,13 @@ Recruitment and collapse change gas volume, shunt, and compliance. Inert gas in
 the alveoli slows repeated collapse. Atelectatic shunt changes separately from
 bulk FRC and compliance (Rothen 1995). Preoxygenation and apnea at induction
 leave a shunt of about 5%, and maintenance sessions start with this shunt. PEEP
-of 5 cmH₂O stops further collapse but does not reopen the lung, and atelectasis
-persists after emergence (Benoit 2002).
+of 5 cmH₂O stops further collapse but does not reopen the lung. Atelectasis
+persists during emergence and early recovery (Benoit 2002; Östberg 2019). Once
+the patient is awake and extubated, most of it clears over several hours,
+fastest after nonabdominal surgery and slowest after upper abdominal surgery
+(Strandberg 1986; Putensen-Himmer 1992). A smaller dependent fraction lasts
+past 24 hours and resolves over days (Strandberg 1986; Lindberg 1992), and
+morbid obesity prevents clearance over 24 hours (Eichenberger 2002).
 
 ## Temperature
 

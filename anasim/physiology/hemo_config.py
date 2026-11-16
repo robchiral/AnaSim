@@ -135,14 +135,16 @@ class HemodynamicConfig:
     ec50_int_sv: float = 4.0
 
     # Calibrated with Li PK in the Su circulation to de Keijzer 2026 infusion and
-    # Joachim 2024 bolus responses; these differ from either paper's own MAP-model
-    # parameters.
+    # Joachim 2024 bolus responses, with venous recruitment from Persichini 2012,
+    # Hamzaoui 2010, and Carelli 2026; these differ from either paper's MAP model.
     nore_c50: float = 25.0
     nore_emax_svr: float = 1.75
     nore_emax_hr: float = 60.0
     nore_emax_sv: float = 0.7
     nore_anesthetic_alpha_gain: float = 0.45
-    nore_anesthetic_sv_gain: float = 3.0
+    nore_anesthetic_sv_gain: float = 2.0
+    nore_venous_recruitment_fraction: float = 0.65
+    nore_venous_potency_ratio: float = 0.50
 
     # Sevoflurane, fitted to routine VitalDB bolus inductions: MAP a median 27%
     # below baseline before incision at end-tidal 1.6% and 19% during surgery,

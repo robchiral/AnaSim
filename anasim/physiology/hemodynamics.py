@@ -425,7 +425,13 @@ class HemodynamicModel:
                       * (1.0 - self._epi_venous_alpha) * min(available, self._baseline_stressed_volume))
         return min(self.blood_volume, available * self._venous_stressed_fraction + self._pressor_recruitment_ml)
 
-    def _update_venous_drug_effects(self, ce_prop: float, ce_phenyl: float, pressor_gain: float = 1.0) -> None:
+    def _update_venous_drug_effects(
+        self,
+        ce_prop: float,
+        ce_phenyl: float,
+        pressor_gain: float = 1.0,
+        ce_nore: float = 0.0,
+    ) -> None:
         """Venous drug effects, normalized to preserve Su's normal-volume response."""
         cfg = self.config
         propofol = clamp(ce_prop, 0.0, 6.5)
@@ -435,9 +441,15 @@ class HemodynamicModel:
         self.venous_return_resistance = self._baseline_venous_resistance * math.exp(
             -cfg.propofol_venous_resistance_slope * propofol
         )
-        recruitment = cfg.phenyl_venous_recruitment_fraction * self._baseline_stressed_volume * hill_function(
+        # Only exogenous norepinephrine above the propofol-shifted baseline recruits veins.
+        eff_nore = max(0.0, ce_nore - 1.5 * self._basal_nore_ce)
+        nore_recruitment = cfg.nore_venous_recruitment_fraction * self._baseline_stressed_volume * hill_function(
+            eff_nore, cfg.nore_c50 * cfg.nore_venous_potency_ratio, 1.0,
+        )
+        phenyl_recruitment = cfg.phenyl_venous_recruitment_fraction * self._baseline_stressed_volume * hill_function(
             max(0.0, ce_phenyl), cfg.phenyl_c50, cfg.phenyl_gamma,
         )
+        recruitment = nore_recruitment + phenyl_recruitment
         self._pressor_recruitment_ml = min(
             recruitment * pressor_gain,
             self.unstressed_volume + self._baseline_stressed_volume * (1.0 - stressed_fraction),
@@ -476,8 +488,11 @@ class HemodynamicModel:
         return self.lung_water_ml / self._pbw
 
     def _frank_starling(self, preload_factor: float, inotropy: float = 1.0) -> float:
-        """Preload response with a plateau at normal filling (Rebet 2016)."""
+        """Preload response with a plateau at normal filling (Rebet 2016; Sherry 1995)."""
         pf = clamp(preload_factor, 0.0, 1.0)
+        if self.patient.heart_failure == "hfref" and pf > 0.0:
+            # HFrEF starts on a flatter upper Starling limb (Sherry 1995).
+            pf += pf * pf * (1.0 - pf)
         normalized = (1.0 - math.exp(-2.0 * pf)) / self._frank_starling_baseline_raw
         return max(0.0, inotropy * normalized)
 
@@ -816,7 +831,9 @@ class HemodynamicModel:
         """Apply ventricular-arterial coupling (Asanoi 1989; Chen 1998)."""
         coupling = self.failure.coupling_ratio
         if coupling:
-            load = max(0.2, eff_tpr / self.base_tpr) / amiodarone_ees_factor
+            sepsis_ees = 1.0 - 0.35 * clamp01(self.sepsis_severity)
+            ees_support = 1.0 + 0.75 * max(0.0, non_phenyl_sv_factor - 1.0)
+            load = max(0.2, eff_tpr / self.base_tpr) / (amiodarone_ees_factor * sepsis_ees * ees_support)
             return sv * ((1.0 + coupling) / (1.0 + coupling * load))
         r0 = self.config.normal_coupling_ratio
         if r0 <= 0.0:
@@ -878,8 +895,9 @@ class HemodynamicModel:
         if anaph_sev is None:
             anaph_sev = clamp01(self.anaphylaxis_severity)
         if distributive_tpr_offset is None:
+            sepsis_drop_wood = cfg.sepsis_svr_drop_wood / self.failure.output_factor
             distributive_tpr_offset = -(
-                cfg.sepsis_svr_drop_wood * sepsis_sev + cfg.anaphylaxis_svr_drop_wood * anaph_sev
+                sepsis_drop_wood * sepsis_sev + cfg.anaphylaxis_svr_drop_wood * anaph_sev
             ) / 1000.0
 
         if hr_base is None:
@@ -1429,7 +1447,7 @@ class HemodynamicModel:
             self._epi_pressor_ce / alpha_dr, cfg.epi_c50_alpha * cfg.epi_venous_potency_ratio, cfg.epi_gamma_alpha
         )
         pressor_gain = 1.0 - clamp01(cfg.sepsis_pressor_resistance * sepsis_sev)
-        self._update_venous_drug_effects(ce_prop, ce_phenyl / alpha_dr, pressor_gain)
+        self._update_venous_drug_effects(ce_prop, ce_phenyl / alpha_dr, pressor_gain, ce_nore / alpha_dr)
 
         f_frank_starling = self._update_pulmonary_coupling(
             dt=dt,
@@ -1572,14 +1590,15 @@ class HemodynamicModel:
         mil_delta_hr, mil_sv_factor, mil_svr_factor = self._calc_hr_sv_svr_effects(
             ce_mil, cfg.mil_c50, cfg.mil_gamma, cfg.mil_emax_hr, cfg.mil_emax_sv, cfg.mil_emax_svr
         )
-        self._adrenergic_chrono = max(
-            0.0, self._epi_chrono_effect + nore_delta_hr + dobu_delta_hr + mil_delta_hr + ephedrine_hr
-        )
-
-        # SVR and SV factors multiply; chronotropy adds. Sepsis blunts catecholamines.
+        catechol_chrono = self._epi_chrono_effect + nore_delta_hr + dobu_delta_hr + ephedrine_hr
+        catechol_sv = epi_sv_factor * nore_sv_factor * dobu_sv_factor * ephedrine_sv
+        # SVR, SV, and HR adrenoceptor responses share septic blunting (Bellissant 2000; Hernández 2013).
         catechol_svr_factor = epi_svr_factor * nore_svr_factor * phenyl_svr_factor * ephedrine_svr
         if pressor_gain < 1.0:
             catechol_svr_factor = 1.0 + (catechol_svr_factor - 1.0) * pressor_gain
+            catechol_sv = 1.0 + (catechol_sv - 1.0) * pressor_gain
+            catechol_chrono *= pressor_gain
+        self._adrenergic_chrono = max(0.0, catechol_chrono + mil_delta_hr)
 
         # Blockade removes resting sympathetic tone; vagal block removes vagal
         # tone; ketamine adds sympathetic tone.
@@ -1592,7 +1611,7 @@ class HemodynamicModel:
             (1.0 - 0.15 * ket_raw * ket_exhaustion) *
             (1.0 - cfg.alpha_block_tpr * alpha_occ * resting_tone)
         )
-        agonist_sv = epi_sv_factor * nore_sv_factor * dobu_sv_factor * mil_sv_factor * ephedrine_sv
+        agonist_sv = catechol_sv * mil_sv_factor
         ket_sv = 1.0 + cfg.ketamine_emax_sv * ketamine * beta_response
         ket_loss = 1.0 - 0.28 * ket_raw * ket_exhaustion
         combined_sv_factor = (
@@ -1603,7 +1622,7 @@ class HemodynamicModel:
             / (1.0 + self._phenyl_afterload_gain * (phenyl_svr_factor - 1.0) * pressor_gain)
         )
         combined_delta_hr = (
-            self._epi_chrono_effect + nore_delta_hr + vaso_delta_hr + dobu_delta_hr + mil_delta_hr + ephedrine_hr
+            catechol_chrono + vaso_delta_hr + mil_delta_hr
             + (cfg.ketamine_emax_hr * ketamine_hr + cfg.sepsis_hr_increase * sepsis_sev) * sympathetic_hr_response
             - cfg.beta_block_hr * beta_occ * resting_tone * self.hr_star
             + vagal_hr
@@ -1639,7 +1658,8 @@ class HemodynamicModel:
         # heart's own output it holds its last value instead of winding up during arrest.
         self.dist_hr, self.dist_sv, self.dist_svr = dist_hr, dist_sv, dist_svr
         self.crisis_hr, self.crisis_svr = crisis_hr, crisis_svr
-        distributive_svr_drop = (cfg.sepsis_svr_drop_wood * sepsis_sev +
+        sepsis_drop_wood = cfg.sepsis_svr_drop_wood / self.failure.output_factor
+        distributive_svr_drop = (sepsis_drop_wood * sepsis_sev +
                                  cfg.anaphylaxis_svr_drop_wood * anaph_sev)
         distributive_tpr_offset = -distributive_svr_drop / 1000.0
         feedback_state = self._compute_state(
@@ -1736,7 +1756,7 @@ class HemodynamicModel:
         nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(cn, anesthetic_depth=anesthetic_depth)
         # Venous return at the drug's stressed volume, relative to the reference
         # that keeps Su's response, sets the steady-state preload.
-        self._update_venous_drug_effects(ce_prop, 0.0)
+        self._update_venous_drug_effects(ce_prop, 0.0, 1.0, cn)
 
         self.f_preload_pit = self._pit_preload_factor(pit)
         self._rv_pit_preload = self.f_preload_pit

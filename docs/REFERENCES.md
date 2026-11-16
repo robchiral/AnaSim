@@ -27,6 +27,7 @@ PCV-VG, pressure control with volume guarantee.
 - Chen et al. (1998). *J Am Coll Cardiol*. [Coupled systolic-ventricular and vascular stiffening with age](https://pubmed.ncbi.nlm.nih.gov/9809929/).
 - Schwartzenberg et al. (2012). *J Am Coll Cardiol*. [Hemodynamic responses to vasodilation in reduced- and preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/22281246/).
 - Westermann et al. (2008). *Circulation*. [Ventricular stiffness and filling during tachycardia in preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/18413502/).
+- Sherry et al. (1995). *J Cardiothorac Vasc Anesth*. [Propofol infusion in normal and low cardiac output states](https://pubmed.ncbi.nlm.nih.gov/7579104/).
 - Wagner et al. (1977). *J Clin Invest*. [Ventilation-perfusion inequality in COPD](https://pubmed.ncbi.nlm.nih.gov/833271/).
 - Dallmann et al. (2017). *Clin Pharmacokinet*. [Gestation-specific anatomical and physiological parameter regressions](https://pubmed.ncbi.nlm.nih.gov/28401479/).
 - Contreras et al. (1991). *Am Rev Respir Dis*. [Ventilatory drive, lung volumes, and respiratory muscles during pregnancy](https://pubmed.ncbi.nlm.nih.gov/1928958/).
@@ -48,6 +49,7 @@ PCV-VG, pressure control with volume guarantee.
 - Doufas et al. (2004). *Anesthesiology*. [Propofol induction rate and individualized pharmacodynamics](https://pubmed.ncbi.nlm.nih.gov/15505446/).
 - Servin et al. (1990). *Br J Anaesth*. [Propofol PK in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/2223333/).
 - Hiraoka et al. (2005). *Br J Clin Pharmacol*. [Renal extraction of propofol](https://pubmed.ncbi.nlm.nih.gov/16042671/).
+- Ickx et al. (1998). *Br J Anaesth*. [Propofol PK/PD in end-stage renal disease](https://pubmed.ncbi.nlm.nih.gov/10211008/).
 - Dershwitz et al. (1996). *Anesthesiology*. [Remifentanil PK/PD in liver disease](https://pubmed.ncbi.nlm.nih.gov/8638835/).
 - Hoke et al. (1997). *Anesthesiology*. [Remifentanil PK in renal failure](https://pubmed.ncbi.nlm.nih.gov/9316957/).
 - Minto et al. (1997). *Anesthesiology*. [Age and remifentanil EEG potency](https://pubmed.ncbi.nlm.nih.gov/9009935/).
@@ -298,6 +300,8 @@ PCV-VG, pressure control with volume guarantee.
 - de Keijzer et al. (2026). *Eur J Anaesthesiol*. [Norepinephrine response under general anesthesia](https://pubmed.ncbi.nlm.nih.gov/41481868/).
 - Joachim et al. (2024). *Br J Clin Pharmacol*. [Peripheral norepinephrine bolus PK/PD during general anesthesia](https://pubmed.ncbi.nlm.nih.gov/39039779/).
 - Persichini et al. (2012). *Crit Care Med*. [Norepinephrine and mean systemic pressure](https://pubmed.ncbi.nlm.nih.gov/22926333/).
+- Hamzaoui et al. (2010). *Crit Care*. [Early norepinephrine, preload, and cardiac output in septic shock](https://pubmed.ncbi.nlm.nih.gov/20670424/).
+- Carelli et al. (2026). *J Anesth Analg Crit Care*. [Norepinephrine and ventricular systolic function in septic shock](https://pubmed.ncbi.nlm.nih.gov/41699713/).
 
 ### Epinephrine
 
@@ -332,6 +336,7 @@ PCV-VG, pressure control with volume guarantee.
 - Daly et al. (1997). *Am J Cardiol*. [Dobutamine dose-concentration relationship](https://pubmed.ncbi.nlm.nih.gov/9165162/).
 - Pfizer. [Dobutamine injection prescribing information](https://www.pfizermedicalinformation.com/patient/dobutamine/clinical-pharmacology).
 - Magnani et al. (1977). *J Int Med Res*. [Dobutamine dose response](https://pubmed.ncbi.nlm.nih.gov/838109/).
+- Hernández et al. (2013). *Intensive Care Med*. [Dobutamine hemodynamics and perfusion in septic shock](https://pubmed.ncbi.nlm.nih.gov/23740284/).
 - Baim et al. (1983). *N Engl J Med*. [Milrinone hemodynamics](https://pubmed.ncbi.nlm.nih.gov/6888453/).
 - DailyMed (2026). [Milrinone injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=88f78780-399f-4780-be19-205739db1682).
 - Sum et al. (1983). *Clin Pharmacol Ther*. [Esmolol PK and beta blockade](https://pubmed.ncbi.nlm.nih.gov/6617063/).
@@ -450,6 +455,9 @@ PCV-VG, pressure control with volume guarantee.
 - Wahba et al. (1975). *Can Anaesth Soc J*. [Lung volumes after upper abdominal surgery](https://pubmed.ncbi.nlm.nih.gov/1095163/).
 - Lindberg et al. (1992). *Acta Anaesthesiol Scand*. [Atelectasis and A-a gradient after lower abdominal surgery](https://pubmed.ncbi.nlm.nih.gov/1514340/).
 - Putensen-Himmer et al. (1992). *Anesthesiology*. [FRC and blood gases after open and laparoscopic cholecystectomy](https://pubmed.ncbi.nlm.nih.gov/1416164/).
+- Strandberg et al. (1986). *Acta Anaesthesiol Scand*. [Atelectasis during anesthesia and in the postoperative period](https://pubmed.ncbi.nlm.nih.gov/3705902/).
+- Eichenberger et al. (2002). *Anesth Analg*. [Morbid obesity and postoperative atelectasis](https://pubmed.ncbi.nlm.nih.gov/12456460/).
+- Östberg et al. (2019). *Anesthesiology*. [PEEP during emergence and postoperative atelectasis](https://pubmed.ncbi.nlm.nih.gov/31107276/).
 - Eastwood et al. (2005). *Anesthesiology*. [Propofol and airway closing pressure](https://pubmed.ncbi.nlm.nih.gov/16129969/).
 - Hillman et al. (2009). *Anesthesiology*. [Airway collapse at loss of consciousness](https://pubmed.ncbi.nlm.nih.gov/19512872/).
 - Joffe et al. (2010). *Anesthesiology*. [One-handed versus two-handed facemask ventilation in apneic adults](https://pubmed.ncbi.nlm.nih.gov/20808210/).

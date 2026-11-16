@@ -138,6 +138,7 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
     )
     lung.effort.muscle.oxygen_fraction = engine.resp.oxygen_supply_fraction
     aeration.spontaneous_breathing = not resp.apnea and resp.vt > 100.0 and engine.airway_status.patency > 0.5
+    aeration.glottic_intact = engine.state.airway_mode != AirwayType.ETT
     # The patient's unassisted breathing sets inspiratory effort for the breaths that follow.
     lung.effort.set_drive(resp.effort_rr, resp.effort_vt / 1000.0)
     source: str | None
