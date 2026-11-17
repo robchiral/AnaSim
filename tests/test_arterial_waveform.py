@@ -108,3 +108,11 @@ def test_zero_flow_pea_runs_off_to_static_pressure_and_recovers_smoothly():
     ]
     assert min(recovery) >= 7.5 - 0.1
     assert recovery[20] < 60.0 < max(recovery[-100:])
+
+
+def test_near_venous_pressure_low_flow_clamps_windkessel_runoff_tau():
+    """High-CVP near-PEA beats use driving pressure (MAP - CVP) and clamp _runoff_tau_s <= 6 s."""
+    cycle = CardiacCycle(np.random.default_rng(3))
+    renderer = ArterialWaveformRenderer(age=60)
+    renderer.seed(cycle.seed(60.0, RhythmType.SINUS), 19.0, 1.5, static_pressure=18.0)
+    assert 0.25 <= renderer._runoff_tau_s <= 6.0

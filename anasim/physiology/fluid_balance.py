@@ -235,14 +235,7 @@ class FluidBalance:
         plasma_carbon = plasma_water * fluid.carbon
         sync.blood_carbon_in_mmol += plasma_carbon
         sync.blood_carbon_retained_mmol += plasma_carbon
-        organic_acid_per_l = fluid.lactate + 3.0 * fluid.citrate
-        inorganic_sid = fluid.sid + organic_acid_per_l
-        plasma_share = (self.plasma_l + plasma_water) / self.ecf_l if self.ecf_l > 0.0 else 0.0
-        blood_inc = (
-            plasma_water * inorganic_sid
-            - water * organic_acid_per_l * plasma_share
-            + cells * self.donor_rbc_base_meq_l
-        )
+        blood_inc = plasma_water * fluid.sid + cells * self.donor_rbc_base_meq_l
         sync.blood_base_in_meq += blood_inc
         sync.blood_base_retained_meq += blood_inc
         self._running_blood_base_meq = running_blood_base + blood_inc

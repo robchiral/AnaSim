@@ -10,10 +10,28 @@ from functools import lru_cache
 _RATE_UNIT_ALIASES: dict[str, str] = {
     "mg/s": "mg/sec",
     "mg/second": "mg/sec",
+    "mg/m": "mg/min",
+    "mg/minute": "mg/min",
     "mg/h": "mg/hr",
+    "mg/hour": "mg/hr",
     "ug/s": "ug/sec",
+    "ug/second": "ug/sec",
+    "ug/m": "ug/min",
+    "ug/minute": "ug/min",
+    "ug/h": "ug/hr",
+    "ug/hour": "ug/hr",
     "u/s": "u/sec",
+    "u/second": "u/sec",
+    "u/m": "u/min",
+    "u/minute": "u/min",
+    "u/h": "u/hr",
+    "u/hour": "u/hr",
     "mu/s": "mu/sec",
+    "mu/second": "mu/sec",
+    "mu/m": "mu/min",
+    "mu/minute": "mu/min",
+    "mu/h": "mu/hr",
+    "mu/hour": "mu/hr",
 }
 
 _RATE_CONVERSIONS: dict[tuple[str, str], float] = {
@@ -21,8 +39,10 @@ _RATE_CONVERSIONS: dict[tuple[str, str], float] = {
     ("mg/min", "mg/sec"): 1.0 / 60.0,
     ("mg/hr", "ug/sec"): 1000.0 / 3600.0,
     ("mg/min", "ug/sec"): 1000.0 / 60.0,
+    ("mg/sec", "ug/sec"): 1000.0,
     ("ug/hr", "ug/sec"): 1.0 / 3600.0,
     ("ug/min", "ug/sec"): 1.0 / 60.0,
+    ("ug/hr", "mg/sec"): 1.0 / 3600000.0,
     ("ug/min", "mg/sec"): 1.0 / 60000.0,
     ("u/hr", "mu/sec"): 1000.0 / 3600.0,
     ("u/min", "mu/sec"): 1000.0 / 60.0,
@@ -42,6 +62,12 @@ def normalize_rate_unit(unit: str) -> str:
     u = u.replace("mcg", "ug")
     u = u.replace("per", "/")
     u = u.replace(" ", "")
+    if "/kg/" in u:
+        base = u.replace("/kg/", "/")
+        norm_base = _RATE_UNIT_ALIASES.get(base, base)
+        if "/" in norm_base:
+            num, den = norm_base.split("/", 1)
+            return f"{num}/kg/{den}"
     return _RATE_UNIT_ALIASES.get(u, u)
 
 

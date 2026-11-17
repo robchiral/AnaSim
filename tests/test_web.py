@@ -566,3 +566,20 @@ def test_step_accumulator_executes_exact_sim_steps_across_float_boundaries():
     cmd(session, "speed", value=50)
     session.step(0.016)
     assert session.engine.state.time == pytest.approx(0.80, abs=1e-12)
+
+
+def test_first_spontaneous_breath_streams_loop_points_during_inspiration():
+    """Breath 1 on a facemask streams inspiratory loop points before exhalation begins."""
+    session = WebSession({**PATIENT, "mode": "awake"})
+    cmd(session, "airway", mode="Mask")
+    cmd(session, "run", running=True)
+    insp_streamed = False
+    for _ in range(30):
+        snap = parse(session.advance(0.1))
+        for run in snap["loop"]:
+            if any(f > 2.0 for f in run["flow"]) and all(f >= -0.5 for f in run["flow"]):
+                insp_streamed = True
+                break
+        if insp_streamed:
+            break
+    assert insp_streamed

@@ -550,6 +550,7 @@ export class Controls {
     $("c-compressions").onclick = () => this.send("compressions", { active: !this.state.compressions.active });
     this.synchronized = false;
     for (const button of $("c-sync").querySelectorAll("button")) {
+      setPressed(button, button.dataset.value === "false");
       button.onclick = () => {
         this.synchronized = button.dataset.value === "true";
         for (const other of $("c-sync").querySelectorAll("button")) setPressed(other, other === button);
@@ -669,9 +670,10 @@ export class Controls {
     }
     $("c-auto-laryngo").onchange = () => this.send("auto_laryngospasm", { enabled: $("c-auto-laryngo").checked });
 
+    $("c-hem-rate").value = "500";
     $("c-hemorrhage").onclick = () => this.send("hemorrhage", {
       active: !this.state.hemorrhage.active,
-      rate_ml_min: Number($("c-hem-rate").value),
+      rate_ml_min: Number($("c-hem-rate").value) || 500,
     });
     const rhythms = $("c-rhythm");
     rhythms.replaceChildren(...info.rhythms.map((name) => new Option(name, name)));
@@ -681,6 +683,22 @@ export class Controls {
     $("c-anaphylaxis").onclick = () => this.send("anaphylaxis", { active: !this.state.anaphylaxis });
     $("c-sepsis").onclick = () => this.send("sepsis", { active: !this.state.sepsis });
     $("c-mh").onclick = () => this.send("malignant_hyperthermia", { active: !this.state.malignant_hyperthermia });
+  }
+
+  syncHemorrhageRate(rate) {
+    const select = $("c-hem-rate");
+    const text = String(rate);
+    if (select.options) {
+      const observed = select.querySelector?.("option[data-observed]");
+      if (observed && observed.value !== text) observed.remove();
+      if (!Array.from(select.options).some(option => option.value === text)) {
+        const option = new Option(`${rate} mL/min`, text);
+        option.disabled = true;
+        option.dataset.observed = "true";
+        select.add(option);
+      }
+    }
+    setValue(select, text);
   }
 
   syncRhythm(rhythm) {
@@ -811,7 +829,7 @@ export class Controls {
 
     setPressed($("c-hemorrhage"), c.hemorrhage.active, c.hemorrhage.active ? "Stop bleeding" : "Start bleeding");
     $("c-hem-rate").disabled = c.hemorrhage.active;
-    if (c.hemorrhage.active) setValue($("c-hem-rate"), String(c.hemorrhage.rate));
+    if (c.hemorrhage.active) this.syncHemorrhageRate(c.hemorrhage.rate);
     this.syncRhythm(c.ecg_rhythm);
     setValue($("c-position"), c.position);
     setPressed($("c-anaphylaxis"), c.anaphylaxis, c.anaphylaxis ? "Stop anaphylaxis" : "Start anaphylaxis");

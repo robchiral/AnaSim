@@ -487,3 +487,40 @@ def test_loose_mask_bag_entrainment_continuous_washin_empty_cpap_and_vaporizer_g
     depleting.vaporizer.state.level = 0.01
     depleting.step(1.0)
     assert depleting.circuit.composition.fi_agent > 0.0 and depleting.vaporizer.state.level == 0.0
+
+
+def test_empty_circuit_loose_mask_apnea_dt_washin_and_startup_vaporizer_level(
+    engine_factory, advance_time
+):
+    """Apnea on a loose mask with an empty circuit entrains room air rather than phantom 100% O2;
+    apneic dead-space wash-in is dt-invariant; balanced startup preserves full vaporizer liquid.
+    """
+    apneic_loose = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=1), start=True)
+    apneic_loose.give_drug_bolus("roc", 70.0)
+    apneic_loose.set_vent_power(False)
+    apneic_loose.set_airway_mode("Mask")
+    apneic_loose.set_mask_seal(0.5)
+    apneic_loose.set_fgf(0.0, 0.0, 0.0)
+    apneic_loose.circuit.reservoir_volume = 0.0
+    apneic_loose.circuit.composition.fio2, apneic_loose.circuit.composition.fin2 = 1.0, 0.0
+    apneic_loose.step(0.2)
+    assert apneic_loose.state.fio2 == pytest.approx(0.21, abs=1e-4)
+
+    washin = []
+    for dt in (0.05, 0.2, 1.0):
+        e = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=1), start=True)
+        e.give_drug_bolus("roc", 90.0)
+        advance_time(e, 40.0, dt=dt)
+        e.set_airway_mode("ETT")
+        e.set_fgf(10.0, 0.0, 0.0)
+        e.circuit.composition.fio2, e.circuit.composition.fin2 = 1.0, 0.0
+        advance_time(e, 20.0, dt=dt)
+        washin.append(e._tracheal_fio2)
+    assert max(washin) - min(washin) < 0.015
+
+    balanced = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True
+    )
+    assert balanced.vaporizer.state.level == pytest.approx(250.0)
+    assert balanced.resp.gas_transport.consumed_o2_l == 0.0
+    assert balanced.resp.gas_transport.oxygen_from_air_l == 0.0

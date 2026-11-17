@@ -523,3 +523,44 @@ def test_intraoperative_crystalloid_loading_matches_ewaldsson_hahn_dilution_and_
         results[mode] = (uop_150, seq_150)
     assert results["volatile"][0] == pytest.approx(results["propofol"][0], abs=40.0)
     assert results["volatile"][1] == pytest.approx(results["propofol"][1], abs=45.0)
+
+
+def test_severe_acidosis_base_partition_and_transfusion_compartment_electroneutrality(engine_factory):
+    """Severe metabolic base loss partitions across blood and interstitial ECF without
+    pH bracket clipping, and packed RBC arrival keeps blood base electroneutral before redistribution.
+    """
+    acid = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    transport = acid.resp.gas_transport
+    blood_base_0 = transport.base_meq
+    interstitial_base_0 = transport.extracellular_base
+    acid.resp.remove_buffer_base(450.0)
+    acid.set_fgf(10.0, 0.0)
+    for _ in range(30):
+        acid.step(1.0)
+    assert 6.5 < acid.state.ph < 7.05
+    assert transport.base_meq < blood_base_0 - 50.0
+    assert transport.extracellular_base < interstitial_base_0 - 200.0
+
+    prbc = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    ph_before = prbc.state.ph
+    prbc.hemo.add_volume(600.0, hematocrit=0.60, label="blood")
+    prbc.step(0.1)
+    assert prbc.state.ph <= ph_before + 0.01
+
+    mh_cpr = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=2.0, rng_seed=1),
+        start=True,
+    )
+    mh_cpr.start_malignant_hyperthermia()
+    mh_cpr.fluid_infusion_rate_ml_min = 500.0
+    mh_cpr.give_saline(3000.0)
+    for _ in range(1500):
+        mh_cpr.step(2.0)
+        if mh_cpr.state.cardiac_arrest and not mh_cpr.state.chest_compressions:
+            mh_cpr.set_chest_compressions(True)
+            mh_cpr.give_drug_bolus("epinephrine", 1.0)
+    assert 5.0 <= mh_cpr.state.ph < 5.5
+    debt_before = mh_cpr.resp._unbuffered_acid_meq
+    assert debt_before > 0.0
+    mh_cpr.resp.remove_buffer_base(-50.0)
+    assert mh_cpr.resp._unbuffered_acid_meq == pytest.approx(max(0.0, debt_before - 50.0), abs=1e-6)

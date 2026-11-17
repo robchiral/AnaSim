@@ -169,3 +169,11 @@ def test_ephedrine_tachyphylaxis_and_competitive_blockade(patient):
         s_low = low_eph.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=300.0)
         s_high = high_eph.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=10000.0)
     assert s_high.hr > s_low.hr + 5.0 and s_high.hr < 150.0
+
+    norm_p, acid_p = HemodynamicModel(patient), HemodynamicModel(patient)
+    b_norm = norm_p.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ph=7.40)
+    b_acid = acid_p.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ph=6.90)
+    for _ in range(15):
+        r_norm = norm_p.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=400.0, ph=7.40)
+        r_acid = acid_p.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=400.0, ph=6.90)
+    assert (r_acid.map - b_acid.map) < 0.55 * (r_norm.map - b_norm.map)

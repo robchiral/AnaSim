@@ -67,6 +67,7 @@ class NativeTransport {
         if (data.type === "tick") this.running = Boolean(data.snap?.running && !data.snap?.ended);
         else if (data.type === "ready") this.running = false;
         this.onmessage({ data });
+        if (data.type === "result") await Promise.resolve();
         if (data.type === "error") stopped = true;
       }
       if (!stopped) this.timer = setTimeout(() => this.postMessage({ type: "poll" }), this.running ? 50 : 5000);

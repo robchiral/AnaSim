@@ -271,3 +271,35 @@ test("monitor rounds integer numerics to nearest whole number", () => {
   assert.equal(elements.get("v-bis").textContent, "80");
   monitor.destroy();
 });
+
+test("ecg sweep autoscales large CPR artifact and clamps drawn points inside lane bounds", () => {
+  setupPage();
+  const drawnY = [];
+  const ctx = {
+    setTransform() {}, clearRect() {}, beginPath() {}, stroke() {}, fillText() {},
+    moveTo(_x, y) { drawnY.push(y); }, lineTo(_x, y) { drawnY.push(y); },
+  };
+  const canvas = { clientWidth: 200, clientHeight: 80, width: 200, height: 80, getContext: () => ctx };
+  globalThis.document.querySelectorAll = selector => {
+    if (selector === ".wave") {
+      return ["ecg", "pleth", "art", "co2", "paw", "flow"].map(name => ({
+        dataset: { wave: name }, hidden: false, querySelector: () => canvas,
+      }));
+    }
+    return [];
+  };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => "#0f0" });
+  const monitor = new Monitor({
+    arterial_line: true, sample_interval: 0.01, nmb_history: [],
+    patient: { age: 40, sex: "male", weight: 70, renal_status: "Normal", hepatic_status: "Normal",
+      coronary_flow_reserve: 5, heart_failure: "none", surgical_site: "other" },
+  });
+  const ecg = monitor.sweeps.ecg;
+  ecg.resize();
+  drawnY.length = 0;
+  ecg.write([-1.2, 2.4]);
+  assert.ok(ecg.range[0] <= -1.0 && ecg.range[1] >= 2.5);
+  ecg.draw();
+  assert.ok(drawnY.length >= 2 && drawnY.every(y => y >= 22 && y <= 78));
+  monitor.destroy();
+});

@@ -172,3 +172,45 @@ print(json.dumps([on_state["is_tci"], zero_state["is_tci"], zero_state["rate"], 
   assert.equal(w.target.disabled, false);
   assert.equal(w.rate.disabled, true);
 });
+
+test("defibrillator sync buttons reset per session and hemorrhage select preserves observed rates", () => {
+  const pressed = new Map();
+  const modes = [false, true].map(value => ({
+    dataset: { value: String(value) },
+    disabled: false,
+    getAttribute(k) { return k === "aria-pressed" ? pressed.get(value) : null; },
+    setAttribute(k, v) { if (k === "aria-pressed") pressed.set(value, v); },
+  }));
+  const elements = new Map([
+    ["c-compressions", {}],
+    ["c-charge", {}],
+    ["c-shock", {}],
+    ["c-shock-feedback", { hidden: false }],
+    ["c-sync", { querySelectorAll: () => modes }],
+  ]);
+  globalThis.Option = class {
+    constructor(text, value) { this.text = text; this.value = value; this.dataset = {}; }
+  };
+  const hemOptions = [new Option("500", "500"), new Option("1000", "1000")];
+  elements.set("c-hem-rate", {
+    value: "500",
+    options: hemOptions,
+    add(opt) { hemOptions.push(opt); },
+    querySelector: () => hemOptions.find(o => o.dataset.observed === "true") ?? null,
+  });
+  globalThis.document = { getElementById: id => elements.get(id), activeElement: null };
+  const controls = Object.create(Controls.prototype);
+  controls.bindResuscitation();
+  assert.equal(pressed.get(false), "true");
+  assert.equal(pressed.get(true), "false");
+  modes[1].onclick();
+  assert.equal(controls.synchronized, true);
+  controls.bindResuscitation();
+  assert.equal(controls.synchronized, false);
+  assert.equal(pressed.get(false), "true");
+  assert.equal(pressed.get(true), "false");
+
+  controls.syncHemorrhageRate(750);
+  assert.equal(elements.get("c-hem-rate").value, "750");
+  assert.equal(hemOptions.some(o => o.value === "750" && o.dataset.observed === "true"), true);
+});

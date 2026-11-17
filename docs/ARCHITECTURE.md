@@ -75,9 +75,12 @@ every field and its units.
 
 `awake` starts from the patient's baseline values. `steady_state` starts a
 maintenance anesthetic from a 30-minute drug history, begins controlled
-ventilation, and lets the models settle. Vasopressor infusions start at zero, so
-mean arterial pressure (MAP) shows the untreated effect of the anesthetic. The
-session clock, recordings, and fluid totals start after initialization.
+ventilation, and lets the models settle. Startup targets and manual infusion
+rates use population kinetics and potency, so sampled variability and organ
+impairment affect the patient's concentrations rather than the pump settings.
+Vasopressor infusions start at zero, so mean arterial pressure (MAP) shows the
+untreated effect of the anesthetic. The session clock, recordings, and fluid
+totals start after initialization.
 
 The initial ventilator settings aim for the patient's resting PaCO₂. Tidal
 volume is adjusted first, within limits based on predicted body weight, and then
@@ -105,10 +108,11 @@ onset for crisis treatment, so the guide never asks for a repeat dose. In
 independent mode, the browser receives no step text, and safety warnings other
 than a failed intubation appear only in the debrief.
 
-Pressure objectives require both the displayed MAP and the current model MAP to
-reach the target. Without an arterial line, the cuff reading must be no more
-than one minute old. A missing or failed measurement does not satisfy a
-hypotension check. Anaphylaxis recovery also requires improved bronchospasm.
+Pressure objectives require spontaneous circulation without chest compressions,
+and both the displayed MAP and the current model MAP must reach the target.
+Without an arterial line, the cuff reading must be no more than one minute old.
+A missing or failed measurement does not satisfy a hypotension check.
+Anaphylaxis recovery also requires improved bronchospasm.
 
 Milestone outcomes, such as preoxygenation, stay credited once achieved.
 Extubation outcomes are checked when the tube is removed, and the rest must hold

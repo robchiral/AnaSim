@@ -34,8 +34,12 @@ function closeSession() {
   clearTimeout(timer);
   timer = null;
   if (session) {
-    session.destroy();
-    session = null;
+    try {
+      session.close();
+    } finally {
+      session.destroy();
+      session = null;
+    }
   }
 }
 

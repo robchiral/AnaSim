@@ -174,6 +174,9 @@ class WebSession:
         self._loop_sample: WaveformSample | None = None
         self._loop_pending: list[WaveformSample] = []  # Flow crossing awaiting confirmation by the breath counter.
         self._loop_breath: int | None = None
+        self._loop_vent_breath: int | None = None
+        self._loop_seq = 0
+        self._loop_has_exhaled = False
         self._loop_start = 0.0
         self._loop_index = 0
         self._loop_current: list[LoopPoint] = []
@@ -291,9 +294,10 @@ class WebSession:
                         self.case_run.observe(sim_step)
                 self._accumulator = max(0.0, self._accumulator - sim_step)
                 steps += 1
-                if engine.state.time >= self._next_trend_time - 1e-9:
+                trend_eps = 1e-9 * max(1.0, abs(engine.state.time))
+                if engine.state.time >= self._next_trend_time - trend_eps:
                     self._sample_trends()
-                    self._next_trend_time = math.floor(engine.state.time + 1e-9) + 1
+                    self._next_trend_time = math.floor(engine.state.time + trend_eps) + 1
             # Discard unsimulated time to prevent a later catch-up.
             if steps >= max_steps:
                 self._accumulator = 0.0
@@ -486,9 +490,12 @@ class WebSession:
                 self._loop_pending = [boundary]
             if self._loop_pending:
                 self._loop_pending.append(sample)
-                if sample.breath != self._loop_breath:
-                    boundary = self._loop_pending[0]._replace(breath=sample.breath)
-                    self._start_loop(boundary)
+                first_boundary = self._loop_pending[0]
+                inspired_l = sample.volume - first_boundary.volume
+                vent_advanced = sample.breath != self._loop_vent_breath
+                if vent_advanced or (not self._loop_has_exhaled and inspired_l >= 0.015) or inspired_l >= 0.060:
+                    boundary = first_boundary._replace(breath=sample.breath)
+                    self._start_loop(boundary, promote_previous=self._loop_has_exhaled)
                     pending = self._loop_pending[1:]
                 elif sample.flow <= 0:
                     pending = self._loop_pending
@@ -497,8 +504,12 @@ class WebSession:
                 for point in pending:
                     self._sample_loop(point, stride)
                 self._loop_pending = []
-            elif sample.breath != self._loop_breath and (previous.flow >= 0 or sample.flow >= 0):
-                self._start_loop(sample)
+            elif sample.breath != self._loop_vent_breath and (previous.flow >= 0 or sample.flow >= 0):
+                if not self._loop_has_exhaled and len(self._loop_current) > 2:
+                    self._loop_vent_breath = sample.breath
+                    self._sample_loop(sample, stride)
+                else:
+                    self._start_loop(sample, promote_previous=self._loop_has_exhaled)
             else:
                 self._sample_loop(sample, stride)
         # Apnea leaves one breath open; keep a sweep of it.
@@ -506,16 +517,22 @@ class WebSession:
         if len(self._loop_current) > limit:
             self._loop_current = self._loop_current[-limit:]
 
-    def _start_loop(self, boundary) -> None:
-        if len(self._loop_current) > 1:
+    def _start_loop(self, boundary, *, promote_previous: bool = True) -> None:
+        if promote_previous and len(self._loop_current) > 1:
             # Preserve changes in end-expiratory volume.
             self._append_loop_point(boundary.paw, boundary.flow, boundary.volume)
             self._loop_previous = (self._loop_breath, self._loop_current)
-        self._loop_breath, self._loop_start = boundary.breath, boundary.volume
+        self._loop_seq += 1
+        self._loop_breath = self._loop_seq
+        self._loop_vent_breath = boundary.breath
+        self._loop_has_exhaled = boundary.flow < -0.5
+        self._loop_start = boundary.volume
         self._loop_index, self._loop_current = 0, []
         self._append_loop_point(boundary.paw, boundary.flow, boundary.volume)
 
     def _sample_loop(self, sample, stride) -> None:
+        if sample.flow < -0.5:
+            self._loop_has_exhaled = True
         if self._loop_index % stride == 0:
             self._append_loop_point(sample.paw, sample.flow, sample.volume)
         self._loop_index += 1

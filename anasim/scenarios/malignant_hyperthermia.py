@@ -18,7 +18,9 @@ from .base import (
     monitor_value,
     require_all,
     require_infusion_started,
+    require_map_at_least,
     require_oxygen_flow,
+    require_oxygenation,
     require_tracheal_ventilation,
     stability_outcome,
 )
@@ -149,7 +151,15 @@ def create_malignant_hyperthermia() -> Scenario:
                     "of critical care monitoring, further dantrolene according to the local protocol, "
                     "and referral for MH testing."
                 ),
-                check_requirements=require_all(controlled, _require_etco2_normal, _require_temperature_managed),
+                check_requirements=require_all(
+                    _require_vaporizer_off,
+                    propofol,
+                    controlled,
+                    _require_etco2_normal,
+                    _require_temperature_managed,
+                    require_map_at_least(),
+                    require_oxygenation(),
+                ),
                 target_tab="Machine",
             ),
         ],
@@ -157,7 +167,7 @@ def create_malignant_hyperthermia() -> Scenario:
             CaseOutcome("triggers", "Sevoflurane stopped", lambda engine: _require_vaporizer_off(engine)[0],
                         "Stop volatile anesthetics and avoid succinylcholine."),
             CaseOutcome("oxygen", "High-flow oxygen given", lambda engine: oxygen(engine)[0],
-                        "Give 100% oxygen at high flow to wash out the volatile agent."),
+                        "Give 100% oxygen at high flow to wash out the volatile agent.", milestone=True),
             CaseOutcome("ventilation", "Ventilation increased", lambda engine: ventilation(engine)[0],
                         "Increase minute ventilation to 2-3 times baseline and follow EtCO₂.", milestone=True),
             CaseOutcome("anesthesia", "Propofol anesthesia started", lambda engine: propofol(engine)[0],

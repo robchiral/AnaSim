@@ -38,6 +38,7 @@ class CoronaryModel:
         *,
         sbp_mmhg: float | None = None,
         dbp_mmhg: float | None = None,
+        baseline_hb: float = 13.5,
     ):
         # Normalize reserve against the patient's resting SBP, diastolic
         # perfusion pressure (DBP - back pressure), diastolic time, and Hb 13.5 g/dL.
@@ -50,8 +51,8 @@ class CoronaryModel:
         ref_back = max(lap, min(20.0, 0.2 * ref_sbp))
         reference_cpp = max(10.0, ref_dbp - ref_back)
         self._supply_scale = reserve / (reference_cpp * self._diastolic_fraction(hr) * 13.5)
-        self.supply_demand_ratio = reserve
-        self.ischemia = 0.0
+        self.supply_demand_ratio = reserve * (max(0.0, baseline_hb) / 13.5)
+        self.ischemia = clamp01(1.0 - self.supply_demand_ratio)
         self.shock_stunning = 0.0
         self._shock_stun_tau_s = SHOCK_STUN_BASE_TAU_S
         self.energy_reserve = 1.0
@@ -104,8 +105,8 @@ class CoronaryModel:
             demand = max(work, 0.25 + 0.25 * activation_hr)
         if compressions:
             # Coronary flow occurs between compressions, against right-atrial/LA
-            # back-pressure plus critical myocardial wall closing pressure (~7 mmHg).
-            back_pressure = max(lap, venous_pressure + 7.0, 20.0)
+            # back-pressure plus myocardial wall closing margin (~12.8 mmHg above resting CVP).
+            back_pressure = max(lap, venous_pressure + 12.8, 20.0)
             diastolic_fraction = 1.0 - COMPRESSION_DUTY
         else:
             # Jeremy 1986 curvilinear low-pressure zero-flow pressure during ejection,

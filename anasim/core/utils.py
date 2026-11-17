@@ -1,5 +1,7 @@
 """Shared numeric helpers."""
 
+import math
+
 from anasim.core.constants import (
     CONCENTRATION_RATIO_SATURATION,
     GAMMA_MAX,
@@ -9,6 +11,8 @@ from anasim.core.constants import (
 
 def clamp(value: float, low: float, high: float) -> float:
     # Ordered comparisons retain min/max behavior for equal or non-finite bounds.
+    if math.isnan(value):
+        return value
     if low > high:
         low, high = high, low
     if value < high:
@@ -17,6 +21,8 @@ def clamp(value: float, low: float, high: float) -> float:
 
 
 def clamp01(value: float) -> float:
+    if math.isnan(value):
+        return 0.0
     if value < 1.0:
         return value if value > 0.0 else 0.0
     return 1.0

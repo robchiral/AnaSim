@@ -17,9 +17,11 @@ from .base import (
     ScenarioStep,
     create_observe_step,
     require_all,
+    require_etco2_above,
     require_map_at_least,
     require_oxygen_flow,
     require_oxygenation,
+    require_tracheal_ventilation,
     stability_outcome,
     tracheal_ventilation_confirmed,
 )
@@ -135,7 +137,13 @@ def create_cardiac_arrest() -> Scenario:
                 "titrate oxygen to SpO₂ 92-98%, look for the cause of arrest, obtain a 12-lead ECG, "
                 "and plan temperature control."
             ),
-            check_requirements=require_all(_require_rosc, require_map_at_least(), require_oxygenation()),
+            check_requirements=require_all(
+                _require_rosc,
+                require_map_at_least(),
+                require_oxygenation(),
+                require_tracheal_ventilation,
+                require_etco2_above(20),
+            ),
         ),
     ]
     return Scenario(

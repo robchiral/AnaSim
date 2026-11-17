@@ -319,12 +319,17 @@ class AnesthesiaVentilator:
     def _triggering(self) -> bool:
         return self._source == "spontaneous" or (self._source == "vent" and self.settings.mode in TRIGGERED)
 
-    def _pressure_cap(self, peep: float) -> float:
+    def _pressure_cap(self, peep: float, lung: RespiratoryMechanics | None = None) -> float:
         """Pmax above PEEP for volume-targeted breaths."""
         if self._source == "vent":
             return self.settings.p_max - peep
         if self._source == "bag":
-            return max(0.0, self._bag_p_max - peep)
+            cap = self._bag_p_max
+            if lung is not None and lung.aeration is not None and math.isfinite(cap):
+                trans = clamp01(lung.aeration.pressure_transmission)
+                if 0.05 < trans < 1.0 - 1e-6:
+                    cap = min(70.0, cap / trans)
+            return max(0.0, cap - peep)
         return math.inf
 
     def _vg_ceiling(self, peep: float) -> float:
@@ -614,6 +619,10 @@ class AnesthesiaVentilator:
         apnea_timeout = max(APNEA_S, 1.25 * period) if math.isfinite(period) else APNEA_S
         if not self._recent or self._since_measured >= apnea_timeout:
             self.monitors.rr_total = self.monitors.tv_exp = self.monitors.mv_exp = self.monitors.mv_supported = 0.0
+            if self._since_measured >= apnea_timeout:
+                baseline_paw = 0.0 if self._bellows_fraction <= 0.05 else self._configured_peep()
+                self.monitors.paw_mean_recent = baseline_paw
+                self.monitors.paw_mean = baseline_paw
             return
         # A breath that runs long, as in apnea, lowers the rate before it ends.
         span = max(total, total - self._recent[0][0] + self._since_measured)
@@ -652,12 +661,13 @@ class AnesthesiaVentilator:
         if b.kind == "SPONT":
             return self._driven_segment(lung, (0.0, 0.0), pmus, r_insp)
         if b.kind == "MANUAL":
+            cap = self._pressure_cap(b.peep, lung)
             if b.depleted:
-                if b.limited and recoil - pmus[0] > self._pressure_cap(b.peep):
-                    return self._driven_segment(lung, (self._pressure_cap(b.peep), 0.0), pmus)
+                if b.limited and recoil - pmus[0] > cap:
+                    return self._driven_segment(lung, (cap, 0.0), pmus)
                 return lung.flow_segment(0.0, pmus)
             if b.limited:
-                return self._driven_segment(lung, (self._pressure_cap(b.peep), 0.0), pmus)
+                return self._driven_segment(lung, (cap, 0.0), pmus)
             if not b.delivered:
                 return lung.sine_segment(b.target, b.ti, b.t, pmus)
             return lung.flow_segment(0.0, pmus)
@@ -748,6 +758,8 @@ class AnesthesiaVentilator:
         effort = lung.effort
         if not self.inspiring:
             self._rebase(lung, self._configured_peep())
+            if not self.breath_inspiring and lung.volume <= 1e-3 and lung.effort.pmus() == (0.0, 0.0):
+                lung.note_end_expiration(self._eff_baseline or 0.0)
         if not self.inspiring and self._due():
             self._start(lung, self._mandatory_type(), True)
         b = self._active_breath if self.inspiring else None
@@ -833,12 +845,18 @@ class AnesthesiaVentilator:
         if lung.aeration is not None:
             # Recoil plus tissue pressure excludes airway and circuit drops,
             # including the extra drop when expiratory flow is limited.
-            pressure_area = self._peep() * t + segment.distending_area(t)
-            shift = lung.update_aeration(t, pressure_area, self._eff_baseline or 0.0)
+            transmission = clamp01(lung.aeration.pressure_transmission)
+            peep_area = (self._eff_baseline or 0.0) * t
+            distending = segment.distending_area(t)
+            if self._source in ("vent", "bag") and (self._breath is None or self._breath.kind != "SPONT"):
+                distending *= transmission
+            shift = lung.update_aeration(t, peep_area + distending, self._eff_baseline or 0.0)
             if lung.aeration.elapsed == 0.0:
                 self._shift_breath_reference(shift)
         if not self.inspiring:
             self._rebase(lung, self._configured_peep())
+            if not self.breath_inspiring and lung.volume <= 1e-3 and lung.effort.pmus() == (0.0, 0.0):
+                lung.note_end_expiration(self._eff_baseline or 0.0)
         return t
 
     @staticmethod
@@ -896,7 +914,7 @@ class AnesthesiaVentilator:
     def _search(self, segment, h: float, watch: str):
         """Return (t, event) for the first crossing in [0, h], or (h, None)."""
         if watch == "limit":
-            cap = self._pressure_cap(self._active_breath.peep)
+            cap = self._pressure_cap(self._active_breath.peep, segment.lung)
             f = lambda t: segment.paw(t) - cap  # noqa: E731
             f0 = f(0.0)
             if f0 >= 0.0:
@@ -938,14 +956,19 @@ class AnesthesiaVentilator:
             detect_only = self._source == "spontaneous" or (self._source == "vent" and self.settings.mode == "CPAP")
             level = MEASURE_FLOW if watch == "measure" or detect_only else self.settings.trigger / 60.0
             f = lambda t: segment.flow(t) - level  # noqa: E731
-            if watch == "trigger" and not self._armed:
-                # Arm at the segment start when flow is already below the
-                # threshold, then catch a crossing within this same segment.
-                if f(0.0) < 0.0:
-                    self._armed = True
-                else:
+            if watch == "trigger":
+                pmus = segment.lung.effort.pmus()
+                if pmus[0] <= 0.0 and pmus[1] <= 0.0:
                     self._armed = f(h) < 0.0
                     return h, None
+                if not self._armed:
+                    # Arm at the segment start when flow is already below the
+                    # threshold, then catch a crossing within this same segment.
+                    if f(0.0) < 0.0:
+                        self._armed = True
+                    else:
+                        self._armed = f(h) < 0.0
+                        return h, None
         f0, fh = f(0.0), f(h)
         if f0 >= 0.0:
             return 0.0, watch
@@ -987,7 +1010,12 @@ class AnesthesiaVentilator:
             return
         if not b.mandatory and self._source == "vent" and self.settings.mode.startswith("SIMV"):
             window = self._sync_window_start()
-            if self._since_mandatory >= window - 1e-12 and segment.flow(t) >= self.settings.trigger / 60.0:
+            pmus = lung.effort.pmus()
+            if (
+                self._since_mandatory >= window - 1e-12
+                and segment.flow(t) >= self.settings.trigger / 60.0
+                and (pmus[0] > 0.0 or pmus[1] > 0.0)
+            ):
                 # An effort already in progress when the window opens is
                 # eligible too; waiting for a fresh flow crossing stacks breaths.
                 self._start(lung, MANDATORY[self.settings.mode], True)
@@ -1024,6 +1052,8 @@ class AnesthesiaVentilator:
                 ceiling = self._vg_ceiling(b.peep)
                 if not b.depleted and delivered_volume >= 0.9 * goal:
                     self._vg_pressure = min(max(end_paw - b.peep, VG_MIN), ceiling)
+                elif not b.depleted and b.limited:
+                    self._vg_pressure = ceiling
                 elif not b.depleted and self._volume_delivery < 1.0 - 1e-6 and delivered_volume > 0.0:
                     base_p = max(end_paw - b.peep, VG_MIN)
                     step_up = clamp(base_p * (goal / delivered_volume - 1.0), -VG_STEP, VG_STEP)
@@ -1079,7 +1109,7 @@ class AnesthesiaVentilator:
         if self._collect_samples:
             connected = self._source is not None
             lung = segment.lung
-            peep_volume = lung.compliance * self._baseline if connected else 0.0
+            peep_volume = lung.compliance * (self._eff_baseline or 0.0) if connected else 0.0
             volume_offset = lung.volume_offset
         for index, (start, end) in enumerate(itertools.pairwise(bounds)):
             if end <= start:
@@ -1123,4 +1153,4 @@ class AnesthesiaVentilator:
         segment, t = self._current or (self._segment(lung, lung.effort.pmus()), 0.0)
         self.paw = self._peep() + segment.paw(t)
         self.flow = segment.flow(t) * 60.0
-        self.volume = lung.volume + lung.compliance * (self._baseline or 0.0) + lung.volume_offset
+        self.volume = lung.volume + lung.compliance * (self._eff_baseline or 0.0) + lung.volume_offset

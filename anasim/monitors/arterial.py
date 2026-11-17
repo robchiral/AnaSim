@@ -248,7 +248,9 @@ class ArterialWaveformRenderer:
         self._systolic = self._diastolic + self._reference_pp
         self._next_shape = shape
         flow_ml_s = float(stroke_volume_ml) / sample.mean_rr_s
-        self._runoff_tau_s = max(mean_pressure, floor_p) / flow_ml_s * compliance
+        driving_p = max(0.0, mean_pressure - floor_p)
+        raw_tau = driving_p / flow_ml_s * compliance if flow_ml_s > 1e-6 and driving_p > 0.5 else NO_FLOW_TAU_S
+        self._runoff_tau_s = clamp(raw_tau, 0.25, 6.0)
 
     def _start_beat(self, sample: CardiacCycleSample, static_pressure: float = 0.0) -> None:
         """Rise from the previous beat's end pressure by this beat's stroke volume,

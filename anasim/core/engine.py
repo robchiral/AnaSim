@@ -38,7 +38,6 @@ from anasim.patient.pk_models import ANESTHETIZED_OUTPUT, NorepinephrinePK
 from anasim.patient.variability import sample_variability
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.arrhythmia import ArrhythmiaModel, antiarrhythmic_effects
-from anasim.physiology.blood_chemistry import plasma_bicarbonate
 from anasim.physiology.cerebral import CerebralModel
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
@@ -771,10 +770,9 @@ class SimulationEngine(DrugControllerMixin):
         """Draw an arterial sample; its result is ready after the analysis time."""
         state = self.state
         fluids = self.hemo.fluids
-        delta_t = 37.0 - state.temp_c
-        abg_ph = float(state.ph - 0.0147 * delta_t)
-        abg_paco2 = float(state.pa_co2 * (10.0 ** (0.019 * delta_t)))
-        abg_hco3 = state.hco3 if abs(delta_t) <= 1e-9 else float(plasma_bicarbonate(abg_ph, abg_paco2))
+        abg_ph = float(self.resp._blood_ph[1])
+        abg_paco2 = float(self.resp._blood_pressures[1])
+        abg_hco3 = float(state.hco3)
         result = BloodGasResult(
             drawn_at=state.time, ph=abg_ph, pa_co2=abg_paco2, pao2=self.resp.arterial_po2_at_37(),
             hco3=abg_hco3, base_excess=state.base_excess, lactate=state.lactate,
@@ -805,7 +803,7 @@ class SimulationEngine(DrugControllerMixin):
         if dt <= 0 or not self.running:
             return
         runtime_core.step_simulation(self, dt)
-        self.state.time += dt
+        self.state.time = round(self.state.time + dt, 9)
         output = self.output_buffer
         cutoff = self.state.time - OUTPUT_WINDOW_S
         while len(output) > 1 and output[0].time < cutoff:
@@ -843,11 +841,17 @@ class SimulationEngine(DrugControllerMixin):
             )
         model = self.prediction_model(key)
         target_fraction = 0.5
-        if model.basal_input_rate > 0.0 and model.elimination_clearance > 0.0:
-            basal_ce = model.basal_input_rate * 60.0 / model.elimination_clearance
-            if model.state.ce <= basal_ce + 1e-9:
-                return 0.0
-            target_fraction = (basal_ce + 0.5 * (model.state.ce - basal_ce)) / model.state.ce
+        if model.basal_input_rate > 0.0:
+            if model.circulation <= 0.0 or model.elimination_clearance <= 0.0:
+                basal_ref = model.basal_input_rate * 60.0 / max(1e-9, model.cl1 * model.cl1_scale)
+                if model.state.ce <= basal_ref + 1e-6:
+                    return 0.0
+            else:
+                basal_rate = model.basal_input_rate * clamp(model.circulation / 0.01, 0.0, 1.0)
+                basal_ce = basal_rate * 60.0 / model.elimination_clearance
+                if model.state.ce <= basal_ce + 1e-9:
+                    return 0.0
+                target_fraction = (basal_ce + 0.5 * (model.state.ce - basal_ce)) / model.state.ce
         return model.simulate_decay(target_fraction=target_fraction, max_seconds=max_seconds)
 
     def set_vent_power(self, on: bool):

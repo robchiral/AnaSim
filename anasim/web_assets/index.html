@@ -237,7 +237,7 @@
           <div class="wave" data-wave="co2"><canvas role="img" aria-label="Carbon dioxide waveform"></canvas><span class="wave-label co2">CO₂ <span class="wave-unit">mmHg</span></span><span class="sweep-label">20 s</span></div>
           <div class="lane-numerics">
             <div class="numeric big co2" data-alarm="EtCO2"><div class="numeric-head"><span class="numeric-title">EtCO₂</span><span class="numeric-unit">mmHg</span></div><output id="v-etco2">--</output></div>
-            <div class="numeric compact co2"><div class="numeric-head"><span class="numeric-title" id="v-rr-title">RR</span><span class="numeric-unit">/min</span></div><output id="v-rr">--</output></div>
+            <div class="numeric compact co2" data-alarm="RR"><div class="numeric-head"><span class="numeric-title" id="v-rr-title">RR</span><span class="numeric-unit">/min</span></div><output id="v-rr">--</output></div>
           </div>
         </div>
         <div class="monitor-lane respiratory-lane">
@@ -550,7 +550,8 @@
             <div class="inline">
               <select id="c-hem-rate" aria-label="Bleeding rate">
                 <option value="500">Mild (500 mL/min)</option>
-                <option value="1000">Moderate (1000 mL/min)</option>
+                <option value="800">Moderate (800 mL/min)</option>
+                <option value="1000">Brisk (1000 mL/min)</option>
                 <option value="2000">Severe (2000 mL/min)</option>
                 <option value="4000">Massive (4000 mL/min)</option>
               </select>

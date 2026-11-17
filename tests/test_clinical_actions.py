@@ -223,3 +223,31 @@ def test_airway_removal_and_stopping_ventilation_use_unassisted_breathing():
     disconnected = command(session, "airway", mode="None")
     assert disconnected["feedback"]["code"] == "ventilation_stopped"
     assert not engine.bag_mask_active
+
+
+def test_intubation_uses_unscaled_cardiovascular_hypnotic_ce():
+    """check_intubation evaluates cardiovascular_hypnotic_ce without BIS age_factor or EEG ceiling artifacts."""
+    from anasim.core.clinical_actions import check_intubation
+    from anasim.core.engine import SimulationEngine
+    from anasim.core.projection import cardiovascular_hypnotic_ce
+    from anasim.core.state import SimulationConfig
+    from anasim.patient.patient import Patient
+
+    young = SimulationEngine(Patient(age=20, weight=65, height=165, sex="female"), SimulationConfig(mode="awake"))
+    young.start()
+    young.pk["etomidate"].state.ce = 0.255
+    young.pk["succinylcholine"].state.ce = 5.0
+    young.step(0.01)
+    assert young.state.hypnotic_ce > 1.75
+    assert cardiovascular_hypnotic_ce(young) < 1.65
+    feedback = check_intubation(young)
+    assert feedback is not None and feedback.code == "intubation_awareness"
+
+    mid = SimulationEngine(Patient(age=40, weight=70, height=175, sex="male"), SimulationConfig(mode="awake"))
+    mid.start()
+    mid.pk["midazolam"].state.ce = 400.0
+    mid.pk["succinylcholine"].state.ce = 5.0
+    mid.step(0.01)
+    assert mid.state.hypnotic_ce < 1.5
+    assert cardiovascular_hypnotic_ce(mid) > 3.0
+    assert check_intubation(mid) is None

@@ -92,7 +92,7 @@ class LungAeration:
     def advance(self, dt: float, pressure_area: float) -> bool:
         """Accumulate distending pressure; change aeration at fixed physical times."""
         self.elapsed += dt
-        self.pressure_area += pressure_area * clamp01(self.pressure_transmission)
+        self.pressure_area += pressure_area
         if self.elapsed < self.INTERVAL - 1e-12:
             return False
         pressure = self.pressure_area / self.elapsed

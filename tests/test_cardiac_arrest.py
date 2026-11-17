@@ -725,3 +725,34 @@ def test_standstill_pea_equilibrates_lap_low_flow_cpr_supports_co_and_silent_cor
         eng.set_chest_compressions(True)
         advance_time(eng, 15.0, dt=1.0)
     assert silent_sinus.hemo.coronary.supply_demand_ratio > silent_vf.hemo.coronary.supply_demand_ratio + 0.05
+
+
+def test_pulseless_vt_intubation_and_shock_gating_and_sync_shock_projection(engine_factory, advance_time):
+    """Pulseless VT permits intubation and unsynchronized defibrillation without responsive-patient
+    warnings, and a mid-step synchronized shock projects post-shock MAP and HR immediately.
+    """
+    pvt = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    pvt.give_drug_bolus("lidocaine", 1600.0)
+    pvt.set_rhythm("VTACH")
+    advance_time(pvt, 20.0, dt=1.0)
+    assert not pvt.spontaneous_circulation
+    assert pvt.attempt_intubation() is None and pvt.state.airway_mode.value == "ETT"
+    pvt.charge_defibrillator()
+    advance_time(pvt, CHARGE_TIME_S, dt=1.0)
+    assert pvt.defibrillate(synchronized=False) == ShockResult.DELIVERED
+    assert pvt._last_shock_feedback is None
+    assert not pvt.state.spo2_signal_valid and pvt.state.spo2 == 0.0
+
+    svt = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    svt.set_rhythm("SVT")
+    advance_time(svt, 5.0, dt=0.5)
+    svt.charge_defibrillator()
+    advance_time(svt, CHARGE_TIME_S, dt=0.5)
+    assert svt.defibrillate(synchronized=True) == ShockResult.PENDING
+    for _ in range(5):
+        svt.step(0.5)
+        if svt.defibrillator.last_shock is not None:
+            assert svt.state.hr == pytest.approx(svt.hemo.state.hr, abs=1e-6)
+            assert svt.state.map == pytest.approx(svt.hemo.state.map, abs=1e-6)
+            break
+    assert svt.defibrillator.last_shock is not None

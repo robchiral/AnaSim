@@ -310,3 +310,33 @@ class TestCapnography:
         readout.update(0.5, capno.exhaling, capno.co2, inhaled_l=capno._inhaled,
                        dead_space_l=capno.dead_space, breath_index=capno.breath_index)
         assert readout.value == pytest.approx(38.0, abs=1.5)
+
+    def test_partial_obstruction_endpoint_and_apneic_end_tidal_gas_hold(self, engine_factory, advance_time):
+        """Partial airway narrowing does not scale the alveolar EtCO2 ceiling by patency,
+        and end-tidal gas fractions hold the last exhaled sample during apnea until timeout.
+        """
+        narrowed = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+        narrowed.set_airway_obstruction(0.45)
+        narrowed.set_vent_settings(rr=8, vt=0.65, peep=5.0, ie="1:3", mode="VCV")
+        advance_time(narrowed, 45.0, dt=0.1)
+        assert narrowed.airway_status.patency < 0.70
+        assert narrowed.state.display_etco2 == pytest.approx(narrowed.resp.state.etco2, abs=2.5)
+
+        sevo = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=0.2, rng_seed=1), start=True
+        )
+        advance_time(sevo, 15.0, dt=0.2)
+        sevo.give_drug_bolus("roc", 80.0)
+        sevo.set_vent_power(False)
+        advance_time(sevo, 3.0, dt=0.2)
+        held_sevo = sevo.state.et_sevo
+        held_o2 = sevo.state.et_o2
+        assert held_sevo > 1.0 and held_o2 > 25.0
+        sevo.pk_sevo.state.p_alv = 0.001
+        advance_time(sevo, 5.0, dt=0.2)
+        assert sevo.state.etco2_signal_valid
+        assert sevo.state.et_sevo == pytest.approx(held_sevo, rel=1e-4)
+        assert sevo.state.et_o2 == pytest.approx(held_o2, rel=1e-4)
+        advance_time(sevo, 12.0, dt=0.2)
+        assert not sevo.state.etco2_signal_valid
+        assert sevo.state.et_sevo == sevo.state.et_o2 == sevo.state.et_mac == 0.0

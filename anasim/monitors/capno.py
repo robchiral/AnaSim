@@ -156,7 +156,9 @@ class EtCO2Readout:
     def __init__(self, timeout_s: float = 15.0):
         self.timeout_s = timeout_s
         self.value = 0.0  # mmHg
+        self.et_gases: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
         self._peak = 0.0
+        self._peak_gases: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
         self._age_s = 0.0
         self._exhaling = True
         self._has_sample = False
@@ -172,13 +174,15 @@ class EtCO2Readout:
     def awaiting_first_breath(self) -> bool:
         return not self._ever_sampled and not self._has_sample and self._age_s < self.timeout_s
 
-    def seed(self, value: float) -> None:
+    def seed(self, value: float, *, et_gases: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)) -> None:
         self.value = value
         self._age_s = 0.0
         self._peak = 0.0
         self._has_sample = value > 0.0
         self._ever_sampled = self._has_sample
         self._latched = False
+        self.et_gases = et_gases if self._has_sample else (0.0, 0.0, 0.0, 0.0)
+        self._peak_gases = self.et_gases
 
     def interrupt(self, dt: float, disconnected: bool, *, idle_airway: bool = False) -> None:
         """Advance without exhaled gas at the sampling port."""
@@ -203,12 +207,14 @@ class EtCO2Readout:
         inhaled_l: float = 0.0,
         dead_space_l: float = 0.0,
         breath_index: int | None = None,
+        et_gases: tuple[float, float, float, float] | None = None,
     ) -> None:
         """Advance with one capnograph sample; ignore mid-expiration curare clefts."""
         self._age_s += dt
         if breath_index is not None and breath_index != self._last_breath_index:
             if self._peak > 1.0 and not self._latched:
                 self.value = self._peak
+                self.et_gases = self._peak_gases
                 self._age_s = 0.0
                 self._has_sample = True
                 self._ever_sampled = True
@@ -218,10 +224,15 @@ class EtCO2Readout:
         new_inspiration = not exhaling and dead_space_l > 0.0 and inhaled_l > dead_space_l
         if exhaling and co2 > self._peak:
             self._peak = co2
+            if et_gases is not None:
+                self._peak_gases = et_gases
+                if co2 > 1.0:
+                    self.et_gases = et_gases
             self._latched = False
         end_pause = self._exhaling and not exhaling and inhaled_l <= 0.0
         if (end_pause or new_inspiration) and self._peak > 1.0 and not self._latched:
             self.value = self._peak
+            self.et_gases = self._peak_gases
             self._age_s = 0.0
             self._has_sample = True
             self._ever_sampled = True
@@ -235,3 +246,4 @@ class EtCO2Readout:
     def _expire(self) -> None:
         if not self.valid:
             self.value = 0.0
+            self.et_gases = (0.0, 0.0, 0.0, 0.0)

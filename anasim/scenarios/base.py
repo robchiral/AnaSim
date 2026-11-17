@@ -19,6 +19,7 @@ from anasim.core.action_log import (
     ACTION_VAPORIZER,
 )
 from anasim.core.monitors import display_int
+from anasim.core.projection import dantrolene_twitch_fraction
 from anasim.core.state import AirwayType
 
 if TYPE_CHECKING:
@@ -399,6 +400,13 @@ def require_crisis_resolved_with_map(
 def require_map_at_least(threshold: float = 65) -> Requirement:
     def check(engine) -> tuple[bool, str]:
         state = engine.state
+        if (
+            state.cardiac_arrest
+            or state.chest_compressions
+            or engine.hemo.compressions
+            or not engine.spontaneous_circulation
+        ):
+            return False, "Confirm spontaneous perfusing rhythm"
         if not engine.config.arterial_line_enabled and (
             state.nibp_measurement_failed
             or state.nibp_timestamp is None
@@ -450,9 +458,11 @@ def require_bag_mask_started(engine) -> tuple[bool, str]:
 
 
 def neuromuscular_response(engine) -> tuple[str, float]:
-    """The more depressed of T1 height (phase I block) and TOF ratio, %."""
+    """The more depressed of NMBA T1 height (phase I block) and TOF ratio, %."""
     state = engine.state
-    return ("T1", state.twitch) if state.twitch < state.tof else ("TOF ratio", state.tof)
+    dantrolene_scale = max(0.01, dantrolene_twitch_fraction(state.dantrolene_ce))
+    nmba_t1 = min(100.0, state.twitch / dantrolene_scale)
+    return ("T1", nmba_t1) if nmba_t1 < state.tof else ("TOF ratio", state.tof)
 
 
 def require_tof_count_at_most(threshold: int) -> Requirement:
@@ -565,7 +575,15 @@ def create_reassess_step(
 
 def patient_stable(engine) -> bool:
     # Model values, so deterioration between cuff readings counts.
-    return engine.state.sao2 >= 94 and engine.state.map >= 65
+    state = engine.state
+    return (
+        not state.cardiac_arrest
+        and not state.chest_compressions
+        and not engine.hemo.compressions
+        and engine.spontaneous_circulation
+        and state.sao2 >= 94
+        and state.map >= 65
+    )
 
 
 def tracheal_ventilation_confirmed(engine) -> bool:

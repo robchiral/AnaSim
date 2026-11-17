@@ -12,7 +12,7 @@ from anasim.core.action_log import (
     ACTION_VAPORIZER,
 )
 from anasim.core.monitors import display_int
-from anasim.core.projection import sync_pk_state
+from anasim.core.projection import assisted_positive_pressure, sync_pk_state
 from anasim.core.state import AirwayType
 
 from .base import (
@@ -196,7 +196,7 @@ def _require_extubation_readiness(engine) -> tuple[bool, str]:
             if engine.state.spo2_signal_valid
             else "Awaiting valid SpO₂"
         )
-    if engine.vent.is_on or engine.bag_mask_active:
+    if assisted_positive_pressure(engine):
         msgs.append("Stop assisted ventilation")
     return not msgs, join_messages(msgs)
 
@@ -215,7 +215,7 @@ def _extubated_and_breathing(engine) -> bool:
     return (
         engine.state.airway_mode != AirwayType.ETT
         and not engine.resp.state.apnea
-        and not (engine.vent.is_on or engine.bag_mask_active)
+        and not assisted_positive_pressure(engine)
         and monitor_value(engine, "bis") > 80
         and engine.state.loc < 0.20
     )

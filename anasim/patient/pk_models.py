@@ -173,7 +173,8 @@ class MammillaryPK:
 
     def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
         """Advance with conserved midpoint steps across central, peripheral, and effect compartments."""
-        input_rate_per_sec += self.basal_input_rate
+        basal_gate = clamp(self.circulation / 0.01, 0.0, 1.0) if self.basal_input_rate > 0.0 else 0.0
+        input_rate_per_sec += self.basal_input_rate * basal_gate
         s = self.state
         if not input_rate_per_sec and not any(self._state_values(s)):
             return s  # Skip drugs with no input or residual concentration.
@@ -279,8 +280,9 @@ class MammillaryPK:
             return max_seconds / 60.0
         A, B = self.get_ss_matrices()
         transition = expm(A / 60.0)
-        equilibrium = (np.linalg.solve(-A, B[:, 0] * self.basal_input_rate * 60.0)
-                       if self.basal_input_rate else np.zeros(A.shape[0]))
+        basal_rate = self.basal_input_rate * clamp(self.circulation / 0.01, 0.0, 1.0)
+        equilibrium = (np.linalg.solve(-A, B[:, 0] * basal_rate * 60.0)
+                       if basal_rate else np.zeros(A.shape[0]))
         x = self.state_vector() - equilibrium
         for second in range(1, max_seconds + 1):
             x = transition @ x

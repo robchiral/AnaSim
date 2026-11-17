@@ -166,11 +166,11 @@
   congests the lungs and raises left atrial pressure. Without circulation,
   left atrial pressure settles at venous pressure and pulmonary edema stops
   forming.
-- VT with a pulse pressure below 5 mmHg and MAP below 25 mmHg now counts as
-  pulseless VT, and compressions restore its coronary supply at once. Asystole
-  from hyperkalemia or local anesthetic toxicity restarts only after
-  conduction recovers. Compressions during a perfusing rhythm show artifact on
-  the ECG.
+- VT with a pulse pressure of 3 mmHg or less, or below 5 mmHg with MAP below
+  25 mmHg, now counts as pulseless VT, and compressions restore its coronary
+  supply at once. Asystole from hyperkalemia or local anesthetic toxicity
+  restarts only after conduction recovers. Compressions during a perfusing
+  rhythm show artifact on the ECG.
 - Below 33 °C, cold-induced vasoconstriction and reflex tachycardia now
   weaken, and shivering fades below 31 °C. Alpha blockade blunts cold-induced
   vasoconstriction, and the core cools faster during arrest.
@@ -212,6 +212,16 @@
   irreversible cardiac arrest. Local commands update controls immediately,
   with less frequent polling while paused.
 - New or changed alarms now end an active audio silence.
+- Venous compliance now scales with baseline blood volume, and intrathoracic
+  pressure above mean systemic filling pressure stops venous return.
+  Atrioventricular conduction limits rapid ventricular rates in atrial
+  fibrillation.
+- Low-respiratory-rate alarms now sound during unassisted apnea. End-tidal gas
+  readings hold the last exhaled sample during brief apnea, and pressure-volume
+  and flow-volume loops draw from the start of the first breath.
+- Case blood pressure and stability checks now require spontaneous circulation
+  without chest compressions. Emergence accepts CPAP as unassisted breathing,
+  and neuromuscular recovery checks exclude weakness from dantrolene.
 
 ## 1.8 - 2026-11-06
 

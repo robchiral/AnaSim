@@ -119,3 +119,14 @@ def test_propofol_bolus_clearance_cap_and_hypovolemic_pressor_response(patient):
         maps.append(model_h.step(1.0, 3.5, 3.0, pk_h.state.ce, -2.0, 40.0, 95.0).map)
     assert min(maps) >= pre_nore.map - 0.1
     assert maps[-1] > pre_nore.map + 12.0
+
+
+def test_zero_flow_arrest_halts_endogenous_norepinephrine_spillover(patient):
+    """Zero-flow cardiac arrest halts basal sympathetic spillover into central plasma."""
+    pk = NorepinephrinePK(patient)
+    c1_0, ce_0 = pk.state.c1, pk.state.ce
+    pk.update_hemodynamics(1.0, 0.0, 0.0)
+    for _ in range(120):
+        pk.step(1.0, 0.0)
+    assert pk.state.c1 == pytest.approx(c1_0, abs=1e-12)
+    assert pk.state.ce == pytest.approx(ce_0, abs=1e-12)

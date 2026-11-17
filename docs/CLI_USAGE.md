@@ -100,10 +100,11 @@ step records at most one row. An interval shorter than `dt` still produces one
 row per step. Restarting a recording creates a new CSV file.
 
 `pa_co2` is arterial CO₂. `display_etco2` is the end-tidal CO₂ measurement with
-sensor effects, and `etco2_signal_valid` reports whether it is valid. `NaN` in
-`paw_plat` means that plateau pressure is unavailable. The [field
-groups](ARCHITECTURE.md#simulation-state) and [units](../anasim/core/state.py)
-describe the other columns.
+sensor effects, and `etco2_signal_valid` reports whether it is valid. When
+`spo2_signal_valid` or `etco2_signal_valid` is false, the corresponding
+displayed reading is `0`. `NaN` in `paw_plat` means that plateau pressure is
+unavailable. The [field groups](ARCHITECTURE.md#simulation-state) and
+[units](../anasim/core/state.py) describe the other columns.
 
 To reproduce a run, save the configuration, AnaSim version, random seed, `dt`,
 and intervention times.
@@ -147,7 +148,7 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 | `set_mask_seal(seal)` | Takes a fraction from 0 (open) to 1 (tight seal), whereas the browser shows percent |
 | `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
 | `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates such as propofol, remifentanil, and rocuronium in mcg/kg/min use total body weight; vasopressor rates are absolute |
-| `enable_tci()` | Requires `tci_enabled=True` |
+| `enable_tci(drug, target, mode="effect_site")` | Requires `tci_enabled=True`; a non-positive target stops TCI |
 | `set_drug_target(key, target)` | Preserves the active plasma or effect-site mode; `None` or a non-positive target stops TCI |
 | `give_blood(volume_ml, hematocrit=0.55)` | Queues packed red cells at 75 mL/min; donor hematocrit must be between 0.01 and 0.70 |
 | `give_lipid_emulsion(volume_ml)` | Gives 20% lipid emulsion over 2.5 simulated minutes |

@@ -20,6 +20,7 @@ from .projection import (
     mask_seal_factor,
     nmba_twitch_fraction,
     project_arterial,
+    project_hemodynamics,
     stimulus_tolerance,
 )
 from .state import AirwayType, WaveformSample
@@ -113,6 +114,7 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substep
     """Advance the capnograph with the gas that crossed the Y-piece; return CO2 at each waveform sample."""
     state = engine.state
     readout = engine.etco2_readout
+    et_gases = (state.et_o2, state.et_sevo, state.et_n2o, state.et_mac)
     if not _capno_sampling_possible(engine):
         engine.capno.reset()
         readout.interrupt(
@@ -124,7 +126,7 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substep
     else:
         capno = engine.capno
         airway = engine.airway_status
-        end_tidal = resp_state.etco2 * airway.patency
+        end_tidal = resp_state.etco2
         # Gas lost around a facemask never passes the sampling port, so a
         # large leak leaves dead-space gas at the port.
         port_share = delivered_fraction(engine)
@@ -141,14 +143,16 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substep
                 inhaled_l=capno._inhaled,
                 dead_space_l=capno.dead_space,
                 breath_index=capno.breath_index,
+                et_gases=et_gases,
             )
             elapsed += duration
             _hold(waves, value, elapsed, substeps, substep_dt)
         waves.extend([capno.co2] * (substeps - len(waves)))
     state.display_etco2 = float(readout.value)
     state.etco2_signal_valid = readout.valid
-    if not state.etco2_signal_valid:
-        state.et_o2 = state.et_sevo = state.et_n2o = state.et_mac = 0.0
+    state.et_o2, state.et_sevo, state.et_n2o, state.et_mac = (
+        readout.et_gases if state.etco2_signal_valid else (0.0, 0.0, 0.0, 0.0)
+    )
     return waves
 
 
@@ -190,6 +194,7 @@ def step_cardiac_monitors(
         if engine.step_defibrillator(engine.state.time + (index + 1) * substep_dt, cardiac_sample):
             # A shock can change the rhythm partway through a step; physiology follows on the next step.
             hemo_state = engine.hemo.state
+            project_hemodynamics(engine, hemo_state)
             rhythm = hemo_state.rhythm_type
             cardiac_sample = engine.cardiac_cycle.seed(hemo_state.hr, rhythm)
             if compressions:
@@ -270,7 +275,7 @@ def step_cardiac_monitors(
     state.spo2_signal_valid = engine.spo2_mon.signal_valid
     state.ecg_voltage, state.pleth_voltage, _ = waves[-1]
     project_arterial(state, arterial_sample, engine.art_line.reading)
-    state.spo2 = float(spo2_val)
+    state.spo2 = float(spo2_val) if state.spo2_signal_valid else 0.0
     return cardiac_sample, waves
 
 
@@ -300,7 +305,7 @@ def step_monitors(
     engine._tol_current = stimulus_tolerance(engine)
     cardiac_sample, cardiac_waves = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
 
-    update_nibp(engine, dt, hemo_state)
+    update_nibp(engine, dt, engine.hemo.state)
     engine.nmb.step(state.time + dt, state.twitch / 100.0, state.tof / 100.0)
 
     connected = state.airway_mode != AirwayType.NONE
@@ -381,6 +386,7 @@ def step_monitors(
             "MAP": map_alarm,
             "HR": display_int(state.display_hr),
             "EtCO2": etco2_alarm,
+            "RR": display_int(state.rr) if not (vent.is_on or engine.bag_mask_active) else None,
             "SpO2": display_int(state.display_spo2) if state.spo2_signal_valid else 0.0,
             "Ppeak": display_int(state.paw_peak),
             # The ventilator measures only gas returning through the circuit.

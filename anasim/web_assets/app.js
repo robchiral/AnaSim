@@ -369,7 +369,7 @@ function updateScenario(step) {
     setText(target, `Open ${tab.textContent.toLowerCase()}`);
   }
   const normalize = (text) => text.replace(/\s+/g, " ").trim().toLowerCase();
-  const repeated = normalize($("step-instruction").textContent).includes(normalize(step.status));
+  const repeated = normalize($("step-instruction").textContent) === normalize(step.status);
   setText(status, step.met || repeated ? "" : step.status);
   next.disabled = !step.met;
   setText(next, step.met && step.index === total - 1 ? "Finish and review" : "Continue");

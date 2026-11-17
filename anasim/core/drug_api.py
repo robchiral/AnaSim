@@ -63,6 +63,9 @@ class DrugControllerMixin:
         max_rate = _tci_max_rate(spec)
         if not self.config.tci_enabled:
             raise ValueError("TCI is disabled for this session")
+        if target <= 0.0:
+            self.disable_tci(spec.key)
+            return
         if spec.key in self._pump_needs_reset:
             self._pump_needs_reset.discard(spec.key)
             self.pump_pk[spec.key].reset()

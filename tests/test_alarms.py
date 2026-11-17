@@ -70,3 +70,15 @@ def test_pregnancy_adapts_low_etco2_alarm_limit(engine_factory, advance_time):
     assert gravid.alarms.thresholds["EtCO2_min"] <= 26.0
     advance_time(gravid, 15.0, dt=0.5)
     assert "EtCO2" not in gravid.state.alarms
+
+
+def test_unassisted_room_air_apnea_triggers_low_respiratory_rate_alarm(engine_factory, advance_time):
+    """Unassisted apnea without a circuit connection triggers the low-RR alarm after 15 s."""
+    engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    engine.give_drug_bolus("propofol", 200.0)
+    engine.give_drug_bolus("remi", 150.0)
+    advance_time(engine, 10.0, dt=0.5)
+    assert engine.state.rr == 0.0
+    assert "RR" not in engine.state.alarms
+    advance_time(engine, 12.0, dt=0.5)
+    assert engine.state.alarms["RR"]["low"] is True

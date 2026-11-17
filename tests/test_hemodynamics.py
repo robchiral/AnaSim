@@ -875,3 +875,50 @@ def test_hematocrit_bounds_lipid_retention_vasopressin_alpha_invariance_and_afib
         afib.step(1.0, 0, 0, 0, -2, 40, 95, ce_epi=3.0, ce_phenyl=60.0)
     assert afib.state.hr > 115.0
     assert afib.smoothed_baro_vasc == 0.0
+
+
+def test_body_size_mcfp_starling_collapse_afib_ceiling_and_eval_purity(engine_factory, advance_time):
+    """Venous compliance scales with baseline blood volume so resting MCFP matches across body size;
+    intrathoracic pressure above MCFP collapses venous return; AFib + high-dose epinephrine stays
+    below 205 bpm with forward CO; evaluate_state() does not mutate _stim_map; shock stunning stacks
+    multiplicatively with hypoxic depression.
+    """
+    small_hemo = HemodynamicModel(Patient(weight=50, height=155, sex="female"))
+    large_hemo = HemodynamicModel(Patient(weight=160, height=185, sex="male"))
+    assert small_hemo.mcfp_0 == pytest.approx(large_hemo.mcfp_0, rel=1e-6)
+
+    tamponade = _model()
+    for _ in range(60):
+        s_coll = tamponade.step(1.0, 0, 0, 0, pit=25.0, paco2=40.0, pao2=95.0)
+    assert s_coll.rap >= 25.0 and s_coll.co < 0.05
+
+    afib_epi = _model()
+    afib_epi.rhythm_type = RhythmType.AFIB
+    for _ in range(30):
+        s_af = afib_epi.step(1.0, 0, 0, 0, -2, 40, 95, ce_epi=25.0)
+    assert s_af.hr <= 205.0 and s_af.co > 1.5
+
+    eval_hemo = _model()
+    eval_hemo.step(1.0, 0, 0, 0, -2, 40, 95)
+    stim_before = eval_hemo._stim_map
+    for _ in range(10):
+        eval_hemo.evaluate_state(include_stim=True)
+    assert eval_hemo._stim_map == stim_before
+
+    normoxic, hypoxic = _model(), _model()
+    normoxic.coronary.shock_stunning = hypoxic.coronary.shock_stunning = 0.25
+    hypoxic.myocardial_hypoxia = 0.85
+    s_norm = normoxic.step(1.0, 0, 0, 0, -2, 40, 95)
+    s_hyp = hypoxic.step(1.0, 0, 0, 0, -2, 40, 30)
+    assert s_hyp.sv < 0.65 * s_norm.sv
+
+    hfref_eng = engine_factory(
+        heart_failure="hfref",
+        config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1),
+        start=True,
+    )
+    hfref_eng.set_drug_rate("phenyl", 100.0 / 60.0)
+    hfref_eng.give_fluid(1000.0)
+    advance_time(hfref_eng, 300.0, dt=1.0)
+    hs_hfref = hfref_eng.hemo.state
+    assert hs_hfref.rv_co == pytest.approx(hs_hfref.intrinsic_co, abs=0.25)

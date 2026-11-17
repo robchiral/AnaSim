@@ -6,11 +6,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from anasim.core.enums import RhythmType
-from anasim.core.runtime import ARREST_CO_L_MIN
+from anasim.core.runtime import is_perfusing
 from anasim.patient.pd import hypnotic_equivalent
 from anasim.patient.pd.anesthesia import PROPOFOL_LOC_TRANSFER
 
 from .projection import (
+    cardiovascular_hypnotic_ce,
     central_muscle_strength,
     loss_of_response,
     nmba_twitch_fraction,
@@ -45,12 +46,12 @@ def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
     in_arrest = (
         s.cardiac_arrest
         or hemo.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE)
-        or hemo.intrinsic_co <= ARREST_CO_L_MIN
+        or not is_perfusing(engine, hemo)
     )
     sustained_hypnosis = in_arrest or (
         unconscious >= 0.1
         and (
-            s.hypnotic_ce >= 1.2
+            cardiovascular_hypnotic_ce(engine) >= 1.2
             or s.mac >= 0.3
             or s.ketamine_ce >= 0.4
             or engine.cerebral.unresponsiveness >= 0.8
@@ -105,7 +106,7 @@ def check_ventilation_withdrawal(engine: SimulationEngine) -> ActionFeedback | N
 
 def check_shock(engine: SimulationEngine) -> ActionFeedback | None:
     hemo = engine.hemo.state
-    if hemo.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE) or hemo.intrinsic_co <= ARREST_CO_L_MIN:
+    if hemo.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE) or not is_perfusing(engine, hemo):
         return None
     unconscious, _ = _responsiveness(engine)
     if unconscious < 0.5:

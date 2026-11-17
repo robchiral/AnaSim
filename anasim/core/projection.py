@@ -41,6 +41,8 @@ class StepGasCache:
     sevo_uptake_l_min: float = 0.0
     circuit_fin2: float | None = None
     apneic_limit_l_min: float | None = None
+    reservoir_volume_l: float | None = None
+    bellows_fraction: float | None = None
 
 
 @dataclass(slots=True)
@@ -118,13 +120,16 @@ def mask_circuit_share(engine: SimulationEngine) -> float:
         unassisted = max(unsupported, spont_mv - supported) if seal < 1.0 else unsupported
         total_mv = supported + unassisted
         share = (supported + seal * unassisted) / total_mv if total_mv > 0.0 else seal
-    if seal < 0.999 and engine.circuit.bellows_fraction <= 0.05 and engine.state.va > 0.0:
-        avail_btps = (
-            max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow())
-            / engine.resp._btps_to_stpd
-        )
-        demand_btps = max(engine.state.va, spont_mv)
-        share = min(share, avail_btps / max(0.1, demand_btps))
+    if seal < 0.999 and engine.circuit.bellows_fraction <= 0.05:
+        avail_stpd = max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow())
+        if engine.state.va > 0.0:
+            avail_btps = avail_stpd / engine.resp._btps_to_stpd
+            demand_btps = max(engine.state.va, spont_mv)
+            share = min(share, avail_btps / max(0.1, demand_btps))
+        else:
+            resp = engine.resp
+            apneic_stpd = max(0.0, resp._pulmonary_o2_uptake - resp._pulmonary_co2_delivery)
+            share = min(share, avail_stpd / max(0.05, apneic_stpd)) if apneic_stpd > 1e-6 else 0.0
     return share
 
 
@@ -183,9 +188,15 @@ def circuit_ventilation(engine: SimulationEngine) -> tuple[float, float]:
     leak = mask_leak(engine)
     unsupported_mv = max(0.0, spirometry.mv_exp - spirometry.mv_supported)
     supported_mv = spirometry.mv_supported
+    cache = engine._step_gas
+    reservoir_vol = (
+        cache.reservoir_volume_l
+        if cache is not None and cache.reservoir_volume_l is not None
+        else engine.circuit.reservoir_volume
+    )
     max_deliverable_mv = (
         (
-            engine.circuit.reservoir_volume * rr
+            reservoir_vol * rr
             + max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow())
         )
         / engine.resp._btps_to_stpd
@@ -303,6 +314,26 @@ def central_muscle_strength(engine: SimulationEngine) -> float:
     )
 
 
+def cardiovascular_hypnotic_ce(engine: SimulationEngine) -> float:
+    """Propofol-equivalent Ce (mcg/mL) at the steady BIS site without EEG ceilings or BIS age scaling."""
+    bis_equiv = float(hypnotic_equivalent(
+        engine.pk["propofol"].state.ce,
+        engine.pk["etomidate"].state.ce,
+        engine.pk["midazolam"].state.ce,
+        engine.midazolam_c50,
+        engine.bis.age_factor,
+        bis=True,
+    ))
+    if abs(engine.state.hypnotic_ce - bis_equiv) > 1e-9:
+        return float(engine.state.hypnotic_ce)
+    return float(hypnotic_equivalent(
+        engine.pk["propofol"].state.ce,
+        engine.pk["etomidate"].state.ce,
+        engine.pk["midazolam"].state.ce,
+        engine.midazolam_c50,
+    ))
+
+
 def cardiovascular_response_fractions(engine: SimulationEngine, intensity: float) -> tuple[float, float]:
     """Pressure and HR stimulus fractions, separate from movement and EEG arousal.
 
@@ -313,7 +344,7 @@ def cardiovascular_response_fractions(engine: SimulationEngine, intensity: float
     """
     state = engine.state
     return engine.response.cardiovascular_response_fractions(
-        state.hypnotic_ce,
+        cardiovascular_hypnotic_ce(engine),
         opioid_equivalent(engine.pk["remi"].state.ce, 0.0, state.morphine_ce, state.hydromorphone_ce),
         mac_sevo=state.mac_sevo, mac_n2o=state.mac_n2o,
         ce_ketamine=state.ketamine_ce, ce_lidocaine=state.lidocaine_ce,
@@ -489,33 +520,29 @@ def advance_tracheal_fio2(engine: SimulationEngine, dt: float) -> float:
         engine._tracheal_fio2 = state.fio2
     else:
         # Without tidal breaths or prior denitrogenation, passive apneic mass
-        # flow (~0.2 L/min) must slowly displace nitrogen-filled upper-airway
-        # and anatomic dead space before fresh O2 reaches the carina.
+        # flow (~0.2 L/min) displaces nitrogen-filled upper-airway dead space
+        # continuously in proportion to delivered STPD inflow volume.
         patency = clamp01(engine.airway_status.patency)
         share = mask_circuit_share(engine) if sealed else 0.0
         sealed_circuit = sealed and share >= 0.999
-        circuit_starved = sealed_circuit and engine.circuit.deliverable_flow(dt) <= 1e-9
-        if patency > 0.0 and not circuit_starved:
+        avail_flow = engine.circuit.deliverable_flow(dt) if sealed_circuit else math.inf
+        if patency > 0.0 and avail_flow > 1e-9 and dt > 0.0:
             tau_apneic = 240.0 / max(0.1, patency)
-            engine._tracheal_fio2 += (state.fio2 - engine._tracheal_fio2) * -math.expm1(-dt / tau_apneic)
-        if sealed and share > 0.0:
-            comp = engine.circuit.composition
-            eff_v = max(
-                1.0,
-                engine.circuit.volume - (engine.circuit.reservoir_capacity - engine.circuit.reservoir_volume),
-            )
-            resp = engine.resp
-            frc_exp_stpd = max(0.0, engine.aeration.frc - resp.frc) * patency * resp._btps_to_stpd
-            apneic_demand_l_min = max(0.0, resp._pulmonary_o2_uptake - resp._pulmonary_co2_delivery)
-            step_demand_l = max(1e-6, apneic_demand_l_min * dt / 60.0 + frc_exp_stpd)
-            avail_n2_l = (
-                eff_v * max(0.0, 1.0 - comp.fio2 - comp.fi_agent - comp.fin2o)
-                + 0.79 * max(0.0, engine.circuit.fgf_air) * dt / 60.0
-            )
-            max_circuit_fn2 = clamp01(avail_n2_l / max(1e-9, share * step_demand_l))
-            max_trach_fn2 = share * max_circuit_fn2 + (1.0 - share) * 0.79
-            min_trach_fio2 = clamp01(1.0 - share * (comp.fi_agent + comp.fin2o) - max_trach_fn2)
-            engine._tracheal_fio2 = max(engine._tracheal_fio2, min(state.fio2, min_trach_fio2))
+            rate = 1.0 / tau_apneic
+            if sealed and share > 0.0:
+                comp = engine.circuit.composition
+                max_trach_fn2 = share * comp.fin2 + (1.0 - share) * 0.79
+                n2_free = clamp01(1.0 - max_trach_fn2 / 0.002)
+                if n2_free > 0.0:
+                    if engine.resp.alveolar_fn2 < 0.02 and max_trach_fn2 < 1e-4:
+                        min_trach_fio2 = clamp01(1.0 - share * (comp.fi_agent + comp.fin2o) - max_trach_fn2)
+                        engine._tracheal_fio2 = max(engine._tracheal_fio2, min(state.fio2, min_trach_fio2))
+                    resp = engine.resp
+                    frc_exp_stpd = max(0.0, engine.aeration.frc - resp.frc) * patency * resp._btps_to_stpd
+                    apneic_demand_l_min = max(0.0, resp._pulmonary_o2_uptake - resp._pulmonary_co2_delivery)
+                    inflow_l_s = min(avail_flow / 60.0, apneic_demand_l_min / 60.0 + frc_exp_stpd / dt)
+                    rate = (1.0 - n2_free) * rate + n2_free * (inflow_l_s / (0.030 / max(0.1, patency)))
+            engine._tracheal_fio2 += (state.fio2 - engine._tracheal_fio2) * -math.expm1(-rate * dt)
     return engine._tracheal_fio2
 
 
@@ -683,8 +710,8 @@ def build_snapshot_from_models(
         paw_mean=max(spirometry.paw_mean, engine._apl_pressure) * seal_scale if sealed else 0.0,
         peep=(spirometry.peep if assisted else engine._apl_pressure) * seal_scale if sealed else 0.0,
         compliance_dyn=(
-            spirometry.compliance_dyn
-            if assisted and kept > 1e-6
+            spirometry.compliance_dyn * (kept / seal_scale)
+            if assisted and kept > 1e-6 and seal_scale > 1e-6
             else math.nan
         ),
     )
@@ -777,7 +804,10 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     project_arterial(state, arterial_sample, art_reading)
     state.display_hr = float(cardiac_sample.display_hr)
     state.display_bis = float(bis_val)
-    engine.etco2_readout.seed(state.etco2)
+    engine.etco2_readout.seed(
+        state.etco2,
+        et_gases=(state.et_o2, state.et_sevo, state.et_n2o, state.et_mac),
+    )
     state.etco2_signal_valid = engine.etco2_readout.valid
     if not state.etco2_signal_valid:
         state.et_o2 = state.et_sevo = state.et_n2o = state.et_mac = 0.0

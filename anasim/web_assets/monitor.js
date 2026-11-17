@@ -5,7 +5,7 @@ import { NeuromuscularDisplay } from "./neuromuscular.js";
 const CARDIAC_SWEEP_S = 10;
 const RESPIRATORY_SWEEP_S = 20;
 const CHANNELS = {
-  ecg: { color: "--ecg", range: [-0.5, 1.5], seconds: CARDIAC_SWEEP_S },
+  ecg: { color: "--ecg", range: [-0.5, 1.5], autoScale: "ecg", scaleStep: 0.5, seconds: CARDIAC_SWEEP_S },
   pleth: { color: "--spo2", range: [-0.1, 1.4], seconds: CARDIAC_SWEEP_S },
   art: { color: "--abp", range: [0, 200], autoScale: "expand", scaleStep: 50, seconds: CARDIAC_SWEEP_S },
   co2: { color: "--co2", range: [0, 60], autoScale: "expand", scaleStep: 20, seconds: RESPIRATORY_SWEEP_S },
@@ -115,7 +115,7 @@ class Sweep {
     const plotH = height - top - 6;
     const y = (v) => top + plotH * (1 - (v - (lo - pad)) / (hi - lo + 2 * pad));
 
-    if (channel.autoScale) {
+    if (channel.autoScale && channel !== CHANNELS.ecg) {
       const ticks = lo < 0 ? [lo, 0, hi] : channel === CHANNELS.art ? [lo, (lo + hi) / 2, hi] : [lo, hi];
       ctx.font = "10px system-ui, sans-serif";
       ctx.textAlign = "right";
@@ -148,7 +148,7 @@ class Sweep {
         continue;
       }
       const px = AXIS_WIDTH + i * step;
-      const py = y(v);
+      const py = Math.min(Math.max(y(v), top), height - 2);
       if (pen) ctx.lineTo(px, py);
       else ctx.moveTo(px, py);
       pen = true;

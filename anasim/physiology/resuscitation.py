@@ -66,11 +66,12 @@ class Defibrillator:
         self.last_shock: tuple[float, bool] | None = None
 
     def status(self, time: float) -> str:
-        if self.ready_at is not None and time >= self.ready_at + CHARGE_HOLD_S - 1e-9:
+        eps = 1e-9 * max(1.0, abs(time))
+        if self.ready_at is not None and time >= self.ready_at + CHARGE_HOLD_S - eps:
             self.disarm()
         if self.ready_at is None:
             return "idle"
-        if time < self.ready_at - 1e-9:
+        if time < self.ready_at - eps:
             return "charging"
         return "waiting_for_r" if self.waiting_for_r else "ready"
 

@@ -423,3 +423,22 @@ def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_s
     for _ in range(900):
         postop.step(2.0)
     assert postop.state.pao2 / 0.21 == pytest.approx(awake_pf, abs=45.0)
+
+
+def test_disconnected_spontaneous_effort_transmits_distending_pressure_to_aeration():
+    """Unconnected spontaneous breathing transmits negative-pressure distension into LungAeration."""
+    breathing = SimulationEngine(Patient(), SimulationConfig(mode="awake", dt=0.1, rng_seed=1))
+    breathing.start()
+    breathing.aeration.recruited = 0.65
+    breathing.aeration.unconscious = 1.0
+    breathing.aeration.pressure_transmission = 0.0
+    breathing.resp_mech.effort.set_drive(18.0, 1.4)
+    apneic = SimulationEngine(Patient(), SimulationConfig(mode="awake", dt=0.1, rng_seed=1))
+    apneic.start()
+    apneic.aeration.recruited = 0.65
+    apneic.aeration.unconscious = 1.0
+    apneic.aeration.pressure_transmission = 0.0
+    for _ in range(300):
+        breathing.vent.step(0.1, breathing.resp_mech, None)
+        apneic.vent.step(0.1, apneic.resp_mech, None)
+    assert breathing.aeration.recruited > apneic.aeration.recruited + 0.02

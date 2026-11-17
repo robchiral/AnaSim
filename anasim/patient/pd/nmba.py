@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import copy
 import math
+
+import numpy as np
+from scipy.linalg import expm
 
 from anasim.core.utils import clamp, clamp01
 from anasim.patient.patient import Patient
@@ -114,12 +116,58 @@ class TOFModel:
             return 0.0
         if roc.circulation <= 0.0:
             return max_seconds / 60.0
-        rocuronium = copy.deepcopy(roc)
-        neuromuscular = copy.deepcopy(self)
+        ke0 = self.ke0 * (1.0 - self.sevo_ke0_reduction * clamp01(mac_sevo))
+        delivery_time = roc.circulation / 60.0
+        roc_n = 3 if roc.v3 > 0 else (2 if roc.v2 > 0 else 1)
+        t_roc = expm(roc.get_ss_matrices()[0][:roc_n, :roc_n] / 60.0)
+        x_roc = np.array([roc.state.c1, roc.state.c2, roc.state.c3][:roc_n], dtype=float)
+        ce = self.ce
+
+        sug, cplx = self.sugammadex, self.complex
+        has_sug = (
+            sug.state.c1 > 0.0
+            or sug.state.c2 > 0.0
+            or cplx.state.c1 > 0.0
+            or cplx.state.c2 > 0.0
+        )
+        if not has_sug:
+            exp_ke0 = math.exp(-ke0 * delivery_time)
+            for second in range(1, max_seconds + 1):
+                x_roc = t_roc @ x_roc
+                cp = float(x_roc[0])
+                ce = cp + (ce - cp) * exp_ke0
+                if ce <= target:
+                    return second / 60.0
+            return max_seconds / 60.0
+
+        t_sug = expm(sug.get_ss_matrices()[0][:2, :2] / 60.0)
+        t_cplx = expm(cplx.get_ss_matrices()[0][:2, :2] / 60.0)
+        x_sug = np.array([sug.state.c1, sug.state.c2], dtype=float)
+        x_cplx = np.array([cplx.state.c1, cplx.state.c2], dtype=float)
+        v_roc, v_sug = roc.v1, sug.v1
+        to_um = 1000.0 / MW_ROCURONIUM
+        dt_min = 1.0 / 60.0
         for second in range(1, max_seconds + 1):
-            rocuronium.step(1.0, 0.0)
-            neuromuscular.step_recovery(1.0, rocuronium, mac_sevo, mac_n2o)
-            if neuromuscular.ce <= target:
+            x_roc = t_roc @ x_roc
+            r_c1, s_c1, c_c1 = float(x_roc[0]), float(x_sug[0]), float(x_cplx[0])
+            if s_c1 > 0.0 or c_c1 > 0.0:
+                fastest = SUGAMMADEX_K1_PER_UM_MIN * max(s_c1 * v_sug / v_roc, r_c1 * to_um) + SUGAMMADEX_K2_PER_MIN
+                substeps = max(1, math.ceil(dt_min * fastest / 0.05))
+                h = dt_min / substeps
+                for _ in range(substeps):
+                    free_roc_um = r_c1 * to_um
+                    rate = SUGAMMADEX_K1_PER_UM_MIN * free_roc_um * s_c1 - SUGAMMADEX_K2_PER_MIN * c_c1
+                    flux = rate * v_sug * h
+                    flux = min(flux, free_roc_um * v_roc, s_c1 * v_sug)
+                    flux = max(flux, -c_c1 * v_sug)
+                    r_c1 -= flux / v_roc / to_um
+                    s_c1 -= flux / v_sug
+                    c_c1 += flux / v_sug
+                x_roc[0], x_sug[0], x_cplx[0] = r_c1, s_c1, c_c1
+            x_sug = t_sug @ x_sug
+            x_cplx = t_cplx @ x_cplx
+            ce = self._effect_site(ce, float(x_roc[0]), ke0, self.ks * float(x_sug[0]), delivery_time)
+            if ce <= target:
                 return second / 60.0
         return max_seconds / 60.0
 

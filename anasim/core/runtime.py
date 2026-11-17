@@ -16,6 +16,7 @@ from anasim.core.constants import (
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.machine.ventilator import VOLUME_TARGETED
+from anasim.monitors.arterial import MIN_PULSE_PRESSURE_MMHG
 from anasim.patient.pd.anesthesia import opioid_equivalent
 from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
 from anasim.patient.pk_models import MidazolamPK, PropofolPKEleveld
@@ -163,12 +164,20 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         )
         if bag_tautness > 0.0:
             target_ceiling = apl_ceiling * bag_tautness
+            frc_inflow_l_min = (
+                max(0.0, aeration.frc - engine.resp.frc)
+                * clamp01(engine.airway_status.patency)
+                * mask_circuit_share(engine)
+                * engine.resp._btps_to_stpd
+                * 60.0
+                / dt
+            )
             inflow_l_min = (
-                max(0.0, engine.circuit.last_spill_flow)
+                max(0.0, engine.circuit.last_spill_flow) + frc_inflow_l_min
                 if bag_full
                 else (
-                    engine.circuit.last_net_flow
-                    if engine.circuit.last_net_flow > 0.0
+                    engine.circuit.last_net_flow + frc_inflow_l_min
+                    if engine.circuit.last_net_flow + frc_inflow_l_min > 0.0
                     else min(engine.circuit.last_net_flow, -0.5 * engine._apl_pressure)
                 )
             )
@@ -184,6 +193,17 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         engine._apl_pressure *= math.exp(-dt / 0.4)
         if engine._apl_pressure < 1e-3:
             engine._apl_pressure = 0.0
+    cache = engine._step_gas
+    bellows_frac = (
+        cache.bellows_fraction
+        if cache is not None and cache.bellows_fraction is not None
+        else engine.circuit.bellows_fraction
+    )
+    reservoir_vol = (
+        cache.reservoir_volume_l
+        if cache is not None and cache.reservoir_volume_l is not None
+        else engine.circuit.reservoir_volume
+    )
     volume_delivery = (
         1.0 - mask_leak(engine) if assisted_positive_pressure(engine) else mask_seal_factor(engine)
     )
@@ -191,8 +211,8 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt),
         collect_samples=True, bag_p_max=engine.bag_mask_p_max,
         spontaneous_peep=engine._apl_pressure,
-        bellows_fraction=engine.circuit.bellows_fraction,
-        reservoir_volume=engine.circuit.reservoir_volume / engine.resp._btps_to_stpd,
+        bellows_fraction=bellows_frac,
+        reservoir_volume=reservoir_vol / engine.resp._btps_to_stpd,
         volume_delivery=volume_delivery,
         effort_cap=engine.hemo.config.effort_pressure_max,
     )
@@ -471,6 +491,8 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
             apneic_flow_limit_l_min=apneic_limit,
             lung_volume_l=target_lung_vol,
         )
+    pre_reservoir = circuit.reservoir_volume
+    pre_bellows = circuit.bellows_fraction
     circuit.step(
         dt,
         uptake_o2,
@@ -480,13 +502,16 @@ def step_machine(engine: SimulationEngine, dt: float) -> tuple[float, float]:
         leak_l_min=leak_l_min,
         rebreathed_share=rebreathed_share,
     )
+    sync_inspired_gas(engine)
     engine._step_gas = StepGasCache(
         tracheal_fio2=tracheal_fio2,
         n2o_uptake_l_min=n2o_uptake,
         sevo_uptake_l_min=sevo_uptake,
         lung_volume_l=target_lung_vol,
         circuit_fin2=circuit_fin2,
-        apneic_limit_l_min=None if apneic_limit is None else apneic_limit * circuit.last_uptake_scale,
+        apneic_limit_l_min=apneic_limit,
+        reservoir_volume_l=pre_reservoir,
+        bellows_fraction=pre_bellows,
     )
     return fi_sevo, fi_n2o
 
@@ -534,10 +559,11 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
 
     rates = engine.infusion_rates
     sim_time = state.time
+    time_eps = 1e-9 * max(1.0, abs(sim_time + dt))
     segmented_keys = {
         key
         for key, ctrl in engine.tci.items()
-        if dt > 0.0 and ctrl._next_update < sim_time + dt - 1e-9
+        if dt > 0.0 and ctrl._next_update < sim_time + dt - time_eps
     }
     for models in (engine.pk, engine.pump_pk):
         for key, model in models.items():
@@ -547,7 +573,7 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
         ctrl = engine.tci[key]
         t_cur = sim_time
         t_end = sim_time + dt
-        while t_cur < t_end - 1e-9:
+        while t_cur < t_end - time_eps:
             t_next = min(t_end, max(t_cur, ctrl._next_update))
             if t_next > t_cur + 1e-12:
                 seg_dt = t_next - t_cur
@@ -557,9 +583,9 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
                     engine.pump_pk[key].step(seg_dt, rate)
                 engine._tci_accumulators[key] = engine._tci_accumulators.get(key, 0.0) + seg_dt
                 t_cur = t_next
-            if t_cur < t_end - 1e-9:
+            if t_cur < t_end - time_eps:
                 engine._tci_accumulators[key] = _flush_tci_to_time(engine, key, ctrl, t_cur)
-                if ctrl._next_update <= t_cur + 1e-9:
+                if ctrl._next_update <= t_cur + time_eps:
                     break
     # Plasma binding and sugammadex-dependent effect-site efflux reduce free
     # rocuronium, which drives TOF and every muscle effect.
@@ -867,13 +893,15 @@ def _intrinsic_pulse_pressure(engine: SimulationEngine, hemo_state) -> float:
 def is_perfusing(engine: SimulationEngine, hemo_state=None) -> bool:
     """Whether the heart's own beats produce effective systemic perfusion."""
     state = engine.hemo.state if hemo_state is None else hemo_state
-    if state.intrinsic_co <= ARREST_CO_L_MIN:
+    if state.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE) or state.intrinsic_co <= ARREST_CO_L_MIN:
         return False
-    return not (
-        engine.hemo.rhythm_type == RhythmType.VTACH
-        and _intrinsic_pulse_pressure(engine, state) < ARREST_PULSE_PRESSURE_MMHG
-        and state.intrinsic_map < PULSELESS_VT_MAP_MMHG
-    )
+    if engine.hemo.rhythm_type == RhythmType.VTACH or state.rhythm_type == RhythmType.VTACH:
+        pp = _intrinsic_pulse_pressure(engine, state)
+        if pp <= MIN_PULSE_PRESSURE_MMHG or (
+            pp < ARREST_PULSE_PRESSURE_MMHG and state.intrinsic_map < PULSELESS_VT_MAP_MMHG
+        ):
+            return False
+    return True
 
 
 def step_lactate(engine: SimulationEngine, dt: float) -> None:
@@ -906,11 +934,15 @@ def check_cardiac_arrest(engine: SimulationEngine, dt: float) -> None:
     )
     intrinsic_map = hemo_state.intrinsic_map if state.chest_compressions else state.map
     no_pulse = pulse_pressure < ARREST_PULSE_PRESSURE_MMHG
+    pulseless_vt = rhythm == RhythmType.VTACH and (
+        pulse_pressure <= MIN_PULSE_PRESSURE_MMHG
+        or (no_pulse and intrinsic_map < PULSELESS_VT_MAP_MMHG)
+    )
     pulseless = (
         rhythm in (RhythmType.VFIB, RhythmType.ASYSTOLE)
         or state.hr < ARREST_HR_BPM
         or (state.intrinsic_co < ARREST_CO_L_MIN and no_pulse)
-        or (rhythm == RhythmType.VTACH and no_pulse and intrinsic_map < PULSELESS_VT_MAP_MMHG)
+        or pulseless_vt
     )
     engine._pulseless_s = engine._pulseless_s + dt if pulseless else 0.0
     if not pulseless:

@@ -17,6 +17,7 @@ from anasim.core.action_log import (
     ACTION_INFUSION_RATE,
     ACTION_INTUBATION_ATTEMPT,
     ACTION_LIPID_INFUSION,
+    ACTION_POSITION,
     ACTION_SHOCK,
     ACTION_TCI_TARGET,
     ACTION_VAPORIZER,
@@ -82,7 +83,13 @@ class CaseRun:
         state = self.engine.state
         self.lowest_map = min(self.lowest_map, float(state.map))
         self.lowest_spo2 = min(self.lowest_spo2, float(state.sao2))
-        self.hypotension_s += dt if state.map < 65.0 else 0.0
+        unperfused = (
+            state.map < 65.0
+            or state.chest_compressions
+            or self.engine.hemo.compressions
+            or not self.engine.spontaneous_circulation
+        )
+        self.hypotension_s += dt if unperfused else 0.0
         self.hypoxemia_s += dt if state.sao2 < 90.0 else 0.0
         if not force and state.time < self._next_check:
             return
@@ -237,6 +244,8 @@ def _describe(record: ActionRecord) -> str | None:
         return f"Chest compressions {'started' if label == 'on' else 'stopped'}"
     if action == ACTION_COOLING:
         return f"Surface cooling {'started' if label == 'on' else 'stopped'}"
+    if action == ACTION_POSITION:
+        return f"Position: {label.replace('_', ' ')}"
     if action == ACTION_SHOCK:
         return f"{'Synchronized shock' if label == 'synchronized' else 'Shock'} {amount:g} J delivered"
     return None

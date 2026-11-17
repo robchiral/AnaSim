@@ -169,19 +169,25 @@ class RespiratoryModel:
         self.co2_constant = self._atm_dry / self._btps_to_stpd / 1000.0
 
         # Without a configured VT, resting breaths carry the alveolar
-        # ventilation that holds PaCO2 at the set point.
+        # ventilation that holds 37 °C alpha-stat PaCO2 at the set point.
+        awake_metabolism = max(0.5, TEMP_METABOLIC_COEFFICIENT ** (37.0 - patient.baseline_temp))
+        self._awake_metabolism = awake_metabolism
+        self._temp_c = patient.baseline_temp
+        self._pco2_temp_scale_now = self._temperature_pco2_scale(patient.baseline_temp)
         self.rr_0 = patient.baseline_rr
         if patient.baseline_vt is not None:
             self.vt_0 = patient.baseline_vt
         elif self.rr_0 > 0.0:
-            resting_va = self.co2_constant * self.vco2 / self.paco2_setpoint
+            resting_va = self.co2_constant * self.vco2 * awake_metabolism / self.paco2_setpoint
             self.vt_0 = (self.vd_deadspace + resting_va / self.rr_0) * 1000.0
         else:
             self.vt_0 = 0.0
+        in_vivo_paco2 = self.paco2_setpoint * self._pco2_temp_scale_now
+        self._last_published_pa_co2 = in_vivo_paco2
         self.state = RespState(
             rr=self.rr_0, vt=self.vt_0, mv=self.rr_0 * self.vt_0 / 1000.0,
             effort_rr=self.rr_0, effort_vt=self.vt_0,
-            p_alveolar_co2=self.paco2_setpoint, pa_co2=self.paco2_setpoint,
+            p_alveolar_co2=self.paco2_setpoint, pa_co2=in_vivo_paco2,
         )
         # A residual gradient plus perfusion of poorly ventilated units. Awake,
         # their share of output rises with age (Gunnarsson 1991), giving Crapo
@@ -194,7 +200,7 @@ class RespiratoryModel:
         # a room-air PaO2 near 70 mmHg at age 65.
         self.aa_grad_base = 5.0
         self.low_vq_awake = 0.001 * max(0.0, patient.age - 34.0)
-        self.low_vq_copd = 0.13 * patient.copd_severity
+        self.low_vq_copd = 0.14 * patient.copd_severity
         self.low_vq_closure = 0.0025 * max(0.0, patient.age - 30.0)
         self.postoperative_closure = SURGICAL_SITE_CLOSURE[patient.surgical_site]
         self._anesthetized = 0.0  # Deepest unconsciousness so far; surgery follows it
@@ -211,6 +217,7 @@ class RespiratoryModel:
         self._extracellular_buffers: PlasmaBuffers | None = None
         self._donor_rbc_co2: float = 0.0
         self._urine_carbon_applied: float = 0.0
+        self._unbuffered_acid_meq: float = 0.0
         self._set_blood_composition(self.baseline_hb, self.baseline_hct)
         self.gas_transport = GasTransport(
             patient.weight, self.baseline_blood_volume_ml / 1000.0,
@@ -319,6 +326,9 @@ class RespiratoryModel:
             old_o2_amounts = [amt * keep_0 for amt in old_o2_amounts]
         if donor_o2_retained > 0.0:
             old_o2_amounts[2] += donor_o2_retained
+        if sync.water_shift_retained_l < 0.0:
+            lost_dissolved_o2 = -sync.water_shift_retained_l * self._o2_solubility_now * self._blood_po2[2]
+            old_o2_amounts[2] = max(0.0, old_o2_amounts[2] - lost_dissolved_o2)
 
         new_vol = blood_volume_ml / 1000.0
         transport.resize_blood(new_vol)
@@ -341,10 +351,19 @@ class RespiratoryModel:
 
         net_global_base_delta = fluids.base_meq - old_total_base
         ecf_metabolic_delta = net_global_base_delta - (sync.infuse_base_meq - bleed_base)
+        infuse_base_for_blood = blood_infuse_base
+        if self._unbuffered_acid_meq > 0.0 and sync.infuse_base_meq > 0.0:
+            repaid = min(self._unbuffered_acid_meq, sync.infuse_base_meq)
+            self._unbuffered_acid_meq -= repaid
+            fluids.base_meq -= repaid
+            blood_share = blood_infuse_base / sync.infuse_base_meq if sync.infuse_base_meq > 0.0 else 0.0
+            infuse_base_for_blood -= repaid * blood_share
+            if fluids._running_blood_base_meq is not None:
+                fluids._running_blood_base_meq -= repaid * blood_share
         plasma_share = clamp01(fluids.plasma_l / fluids.ecf_l) if fluids.ecf_l > 0.0 else 0.0
         target_blood_base = (
             keep_0 * old_blood_base
-            + blood_infuse_base
+            + infuse_base_for_blood
             + shift_base
             - urine_base
             + plasma_share * (ecf_metabolic_delta + urine_base)
@@ -362,7 +381,8 @@ class RespiratoryModel:
                 self._plasma_buffers, self._extracellular_buffers = plasma, interstitial
                 self._set_blood_composition(hb, hct)
                 break
-        fluids.blood_base_meq_l = blood_base / transport.blood_volume
+        self._rebalance_base_above_floor()
+        fluids.blood_base_meq_l = transport.blood_amount(transport.base) / transport.blood_volume
 
     @staticmethod
     def _composition(hb: float, hct: float, plasma: PlasmaBuffers, interstitial: PlasmaBuffers) -> tuple[float, ...]:
@@ -428,6 +448,7 @@ class RespiratoryModel:
 
     def equilibrate_blood_gases(self, cardiac_output: float, production_l_min: float) -> None:
         """Seed blood and tissues for a specified maintenance history."""
+        self._unbuffered_acid_meq = 0.0
         transport = self.gas_transport
         hb = self._oxygen_hb
         reference = self.chemistry.evaluate(self.patient.pregnancy.ph, self.paco2_setpoint, 0.98)
@@ -510,19 +531,20 @@ class RespiratoryModel:
         deficit_l: float | None = None,
     ) -> float:
         """Net outward tracheal gas evolution (STPD L) over dt when blood evolves more gas than it absorbs."""
+        del effective_va
         if dt <= 0.0:
             return 0.0
         patency = clamp01(airway_patency)
         if patency <= 0.0:
             return 0.0
-        apneic_gate = clamp01(1.0 - max(0.0, effective_va))
-        metabolic_net = (self._pulmonary_o2_uptake - self._pulmonary_co2_delivery) * apneic_gate
+        apneic_patency = clamp01(patency / 0.05)
+        metabolic_net = self._pulmonary_o2_uptake - self._pulmonary_co2_delivery
         net_blood_uptake = metabolic_net + n2o_uptake_l_min * self._btps_to_stpd
         if net_blood_uptake >= 0.0:
             return 0.0
         deficit = self._apneic_gas_deficit_l if deficit_l is None else max(0.0, deficit_l)
         evolved_l = -net_blood_uptake * dt / 60.0
-        return max(0.0, evolved_l - deficit) * patency
+        return max(0.0, evolved_l - deficit) * apneic_patency
 
     def _apneic_inflow_components(
         self,
@@ -534,11 +556,11 @@ class RespiratoryModel:
         deficit_l: float | None = None,
     ) -> tuple[float, float, float]:
         """Return (ongoing_o2_inflow, deficit_refill, n2o_inflow) in STPD L/min."""
+        del effective_va
         patency = clamp01(airway_patency)
         apneic_patency = clamp01(patency / 0.05)
-        apneic_gate = clamp01(1.0 - max(0.0, effective_va))
         n2o_stpd_l_min = n2o_uptake_l_min * self._btps_to_stpd
-        metabolic_net = (self._pulmonary_o2_uptake - self._pulmonary_co2_delivery) * apneic_gate
+        metabolic_net = self._pulmonary_o2_uptake - self._pulmonary_co2_delivery
         net_blood_uptake = metabolic_net + n2o_stpd_l_min
         if net_blood_uptake <= 0.0:
             apneic_inflow = 0.0
@@ -596,7 +618,7 @@ class RespiratoryModel:
         exchange = unit.ratio * self._gas_capacity_per_l * self._atm_dry / denominator
         target = venous_o2 + exchange * alveolar_po2
         bound_capacity = _O2_PER_HB * hb
-        lower, upper = 0.0, 800.0
+        lower, upper = 0.0, max(800.0, target / (solubility + exchange))
         pressure = min(max(unit.po2, 1e-6), upper)
         for _ in range(40):
             saturation, slope = self._saturation_gradient(pressure, p50)
@@ -797,10 +819,17 @@ class RespiratoryModel:
 
     def _publish_blood_gases(self) -> None:
         state = self.state
-        state.pa_co2, state.ph = self._blood_pressures[1], self._blood_ph[1]
+        delta_t = 37.0 - self._temp_c
+        pco2_scale = self._pco2_temp_scale_now
+        ph_shift = 0.0147 * delta_t
+        state.pa_co2 = self._blood_pressures[1] * pco2_scale
+        self._last_published_pa_co2 = state.pa_co2
+        state.ph = self._blood_ph[1] + ph_shift
         state.p_arterial_o2 = self._blood_po2[1]
         state.sao2 = 100.0 * self._blood_saturations[1]
-        state.pv_co2, state.pv_o2, state.venous_ph = self._blood_pressures[2], self._blood_po2[2], self._blood_ph[2]
+        state.pv_co2 = self._blood_pressures[2] * pco2_scale
+        state.pv_o2 = self._blood_po2[2]
+        state.venous_ph = self._blood_ph[2] + ph_shift
         self._p50 = self._blood_p50[1]
         self.buffer_base = self.gas_transport.base[1]
         if self.fluids is not None:
@@ -810,7 +839,7 @@ class RespiratoryModel:
 
     def _publish_base_excess(self) -> None:
         if self.fluids is not None:
-            self.state.base_excess = standard_base_excess(self.state.ph, self.state.hco3)
+            self.state.base_excess = standard_base_excess(self._blood_ph[1], self.state.hco3)
             return
         # Respiratory changes move base between blood and extracellular fluid,
         # so base excess uses their combined change from the resting reference.
@@ -831,11 +860,74 @@ class RespiratoryModel:
             self.gas_transport.oxygen[1], self._oxygen_hb, p50, self._blood_po2[1], solubility=_O2_SOLUBILITY
         )
 
+    def _rebalance_base_above_floor(self) -> None:
+        """Keep blood and interstitial buffer base above the pH 5.05 solver floor, tracking excess acid."""
+        transport = self.gas_transport
+        pco2_blood = max(200.0, *self._blood_pressures)
+        pco2_ext = max(200.0, self._extracellular_pco2)
+        min_blood = self.chemistry.evaluate(5.05, pco2_blood, 1.0).buffer_base
+        min_ext = extracellular_contents(5.05, pco2_ext, self.chemistry.extracellular_buffers)[1]
+        ext_floor = min_ext * transport.extracellular_volume
+        if transport.extracellular_base < ext_floor:
+            ext_deficit = ext_floor - transport.extracellular_base
+            transport.extracellular_base = ext_floor
+            blood_avail = (
+                max(0.0, (min(transport.base) - min_blood) * transport.blood_volume)
+                if transport.blood_volume > 0.0
+                else 0.0
+            )
+            from_blood = min(ext_deficit, blood_avail)
+            if from_blood > 0.0:
+                shift = from_blood / transport.blood_volume
+                transport.base = [b - shift for b in transport.base]
+                if self.fluids is not None and self.fluids._running_blood_base_meq is not None:
+                    self.fluids._running_blood_base_meq -= from_blood
+            unbuffered = ext_deficit - from_blood
+            if unbuffered > 0.0:
+                self._unbuffered_acid_meq += unbuffered
+                if self.fluids is not None:
+                    self.fluids.base_meq += unbuffered
+        if transport.blood_volume > 0.0 and min(transport.base) < min_blood:
+            blood_deficit_per_l = min_blood - min(transport.base)
+            blood_deficit = blood_deficit_per_l * transport.blood_volume
+            transport.base = [b + blood_deficit_per_l for b in transport.base]
+            if self.fluids is not None and self.fluids._running_blood_base_meq is not None:
+                self.fluids._running_blood_base_meq += blood_deficit
+            ext_avail = max(0.0, transport.extracellular_base - ext_floor)
+            from_ext = min(blood_deficit, ext_avail)
+            transport.extracellular_base -= from_ext
+            unbuffered = blood_deficit - from_ext
+            if unbuffered > 0.0:
+                self._unbuffered_acid_meq += unbuffered
+                if self.fluids is not None:
+                    self.fluids.base_meq += unbuffered
+
     def remove_buffer_base(self, meq: float) -> None:
-        """Remove buffer base from extracellular fluid; a negative amount adds base."""
-        self.gas_transport.extracellular_base -= meq
+        """Remove buffer base across extracellular fluid and blood; a negative amount adds base."""
+        if meq < 0.0 and self._unbuffered_acid_meq > 0.0:
+            repaid = min(self._unbuffered_acid_meq, -meq)
+            self._unbuffered_acid_meq -= repaid
+            meq += repaid
+            if abs(meq) <= 1e-15:
+                return
+        transport = self.gas_transport
         if self.fluids is not None:
+            plasma_share = clamp01(self.fluids.plasma_l / self.fluids.ecf_l) if self.fluids.ecf_l > 0.0 else 0.0
             self.fluids.base_meq -= meq
+        else:
+            total_vol = transport.blood_volume + transport.extracellular_volume
+            plasma_share = clamp01(transport.blood_volume / total_vol) if total_vol > 0.0 else 0.0
+        blood_delta = meq * plasma_share
+        if transport.blood_volume > 0.0 and blood_delta != 0.0:
+            shift = blood_delta / transport.blood_volume
+            transport.base = [b - shift for b in transport.base]
+        transport.extracellular_base -= meq - blood_delta
+        if self.fluids is not None and transport.blood_volume > 0.0:
+            if self.fluids._running_blood_base_meq is not None:
+                self.fluids._running_blood_base_meq -= blood_delta
+        self._rebalance_base_above_floor()
+        if self.fluids is not None and transport.blood_volume > 0.0:
+            self.fluids.blood_base_meq_l = transport.blood_amount(transport.base) / transport.blood_volume
         self._publish_base_excess()
 
     def central_nmba_block(self, ce_roc: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
@@ -1100,7 +1192,12 @@ class RespiratoryModel:
         self._metabolic_compensation += (target_compensation - self._metabolic_compensation) * -math.expm1(-dt / 120.0)
         baseline_gain = self.hcvr_slope_baseline / 2.2 * (0.42 / 7.2)
         gain = baseline_gain * prop_keep ** (self.prop_co2_gain_exponent - 1.0) * sevo_keep
-        co2_excess = max(0.0, state.pa_co2 * self._metabolic_compensation - self.paco2_setpoint)
+        sensed_paco2 = (
+            self._blood_pressures[1]
+            if state.pa_co2 == self._last_published_pa_co2
+            else state.pa_co2
+        )
+        co2_excess = max(0.0, sensed_paco2 * self._metabolic_compensation - self.paco2_setpoint)
         opioid_reference = 1.0 + gain * co2_excess
         long_opioid_keep = clamp01(opioid_controller_fraction)
         long_opioid_rate = clamp01(opioid_rate_fraction)
@@ -1117,17 +1214,17 @@ class RespiratoryModel:
             if long_opioid_keep < 1.0:
                 self._rate_pco2_reference = self._solve_resting_pco2(
                     1.0, 1.0, 1.0, 0.0, baseline_gain,
-                    0.0, 1.0, long_opioid_keep, long_opioid_rate,
+                    0.0, self._awake_metabolism, long_opioid_keep, long_opioid_rate,
                 )
             self._resting_pco2 = self._solve_resting_pco2(
                 prop_keep, sevo_keep, 1.0, unconscious, gain,
                 0.5 * max(0.0, ce_remi) / remi_c50,
-                min(1.0, max(0.1, float(metabolic_factor))),
+                min(self._awake_metabolism, max(0.1, float(metabolic_factor))),
                 long_opioid_keep, long_opioid_rate, sevo_rate=sevo_rate,
             )
             self._resting_age_s = 0.0
         effort_rr, effort_vt, drive_central = self._unassisted(
-            state.pa_co2, prop_keep, sevo_keep, muscle_factor,
+            sensed_paco2, prop_keep, sevo_keep, muscle_factor,
             unconscious, opioid_reference, resting_pco2=self._resting_pco2,
             hypoxic_drive=opioid_reference * self._step_hypoxic_control(dt, ce_prop, mac_sevo, mac_n2o),
             opioid_controller_fraction=long_opioid_keep, opioid_rate_fraction=long_opioid_rate,
@@ -1212,6 +1309,8 @@ class RespiratoryModel:
             if self.fluids is None:
                 shift = reference.buffer_base - previous_reference
                 transport.base = [base + shift for base in transport.base]
+        self._temp_c = temp_c
+        self._pco2_temp_scale_now = self._temperature_pco2_scale(temp_c)
         self._temperature_p50_now = self._temperature_p50(temp_c)
         self._o2_solubility_now = new_solubility
         self.shunt_fraction = clamp(shunt_fraction, 0.0, 0.95)
@@ -1343,13 +1442,12 @@ class RespiratoryModel:
             self._pulmonary_co2_delivery = max(0.0, delivered_co2 * 60.0 / dt) + actual_lung_prod_rate
         state.drive_central, state.muscle_factor = drive_central, muscle_factor
         state.rr, state.vt, state.mv = current_rr, current_vt, current_rr * current_vt / 1000.0
+        deficit_delta: float | None = None
         if dt > 0.0 and effective_va <= 1e-4:
-            # Absorbed gas not replaced from the airway shrinks the lung; partial pressures rise with the same amounts.
-            volume = self.gas_volume_l
             loss = gas_pressure - state.p_alveolar_o2 - state.p_alveolar_co2
             agent_fraction = clamp01(1.0 - (old_o2 + old_co2) / self._atm_dry - prev_fn2)
             washout_agent_l = washout_l * agent_fraction
-            absorbed_deficit = (
+            deficit_delta = (
                 refill_stpd_l
                 + gas_capacity * loss
                 + n2o_stpd_l_min * dt / 60.0
@@ -1357,7 +1455,18 @@ class RespiratoryModel:
                 + washout_agent_l
                 - inflow * (1.0 - fio2) * dt / 60.0
             )
-            self._apneic_gas_deficit_l = max(0.0, self._apneic_gas_deficit_l + absorbed_deficit)
+        elif dt > 0.0 and remaining_flow_limit is not None:
+            want_ongoing = max(
+                0.0,
+                (self._pulmonary_o2_uptake - self._pulmonary_co2_delivery) + n2o_stpd_l_min,
+            ) * clamp01(airway_patency / 0.05)
+            unmet_ongoing = max(0.0, want_ongoing - (apneic_inflow + n2o_inflow)) * dt / 60.0
+            if unmet_ongoing > 0.0:
+                deficit_delta = unmet_ongoing
+        if deficit_delta is not None:
+            # Absorbed gas not replaced from the airway shrinks the lung; partial pressures rise with the same amounts.
+            volume = self.gas_volume_l
+            self._apneic_gas_deficit_l = max(0.0, self._apneic_gas_deficit_l + deficit_delta)
             mech_shrink_btps = max(0.0, vol_before_absorb - self.gas_volume_l)
             if mech_shrink_btps > 0.0:
                 self._pending_mech_absorption_btps_l += mech_shrink_btps
@@ -1365,6 +1474,7 @@ class RespiratoryModel:
                 scale = volume / self.gas_volume_l
                 state.p_alveolar_o2 *= scale
                 state.p_alveolar_co2 *= scale
+                self._blood_pressures[0] = state.p_alveolar_co2
                 self.alveolar_fn2 = clamp01(self.alveolar_fn2 * scale)
         state.etco2 = max(0.0, state.p_alveolar_co2 - etco2_gradient)
         dilution = clamp01(1.0 - state.etco2 / state.p_alveolar_co2)
@@ -1517,6 +1627,11 @@ class RespiratoryModel:
         if rr < RR_APNEA_THRESHOLD or vt < max(100.0, VT_MIN):
             rr = vt = 0.0
         return rr, vt, drive
+
+    @staticmethod
+    def _temperature_pco2_scale(temp_c: float) -> float:
+        """Anaerobic Rosenthal/Bradley PCO2 ratio PCO2(temp_c) / PCO2(37 °C)."""
+        return 10.0 ** (-0.019 * (37.0 - temp_c))
 
     @staticmethod
     def _temperature_o2_solubility(temp_c: float) -> float:

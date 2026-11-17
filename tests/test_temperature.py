@@ -157,3 +157,17 @@ def test_thermal_etomidate_age_invariance_and_ischemic_bis_baseline_seed(engine_
     young.cerebral.ischemia = 0.8
     sync_monitor_baselines(young)
     assert young.bis.cortical_function == pytest.approx(young.cerebral.cortical_function, rel=1e-9)
+
+
+def test_hypothermic_abg_avoids_double_warming_and_preserves_37c_coordinates(engine_factory):
+    """draw_blood_gas() returns conserved 37 °C coordinates without double-warming."""
+    hypo = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True,
+        baseline_temp=31.0,
+    )
+    abg = hypo.draw_blood_gas()
+    assert abg.pa_co2 == pytest.approx(hypo.resp._blood_pressures[1], rel=1e-6)
+    assert abg.ph == pytest.approx(hypo.resp._blood_ph[1], abs=1e-6)
+    assert abg.pa_co2 > hypo.state.pa_co2 + 6.0
+    assert abg.ph < hypo.state.ph - 0.07

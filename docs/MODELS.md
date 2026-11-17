@@ -102,7 +102,8 @@ specified by each model:
 Below 30% of resting cardiac output, drug transport to organs, peripheral
 compartments, and effect sites falls in proportion to flow. A dose given during
 arrest therefore does not reach its effect sites until compressions circulate
-it. Esterase metabolism of remifentanil, succinylcholine, and esmolol continues
+it, and endogenous norepinephrine spillover into plasma stops without flow.
+Esterase metabolism of remifentanil, succinylcholine, and esmolol continues
 without flow, and sugammadex still binds rocuronium in plasma.
 
 ## Target-controlled infusion
@@ -322,13 +323,17 @@ directly on sepsis severity and persists under anesthesia.
 Blood loss lowers filling pressure and preload. Reflex venoconstriction and
 transcapillary refill from the interstitium partly compensate. Venous
 recruitment increases for losses above 30%, so slow class III and IV hemorrhage
-remains compensated until stressed volume is exhausted. High intrathoracic
-pressure from positive end-expiratory pressure (PEEP) or a closed adjustable
-pressure-limiting (APL) valve raises right atrial pressure and impedes venous
-return.
+remains compensated until stressed volume is exhausted. Venous compliance scales
+with baseline blood volume, so resting filling pressure is consistent across
+body sizes. High intrathoracic pressure from positive end-expiratory pressure
+(PEEP) or a closed adjustable pressure-limiting (APL) valve raises right atrial
+pressure and impedes venous return, and venous return stops when intrathoracic
+pressure exceeds mean systemic filling pressure.
 
-In untreated atrial fibrillation, the ventricular rate rises with sympathetic
-drive, and stroke volume falls further at rapid rates. In normal ventricles,
+In untreated atrial fibrillation, atrioventricular conduction limits the
+ventricular rate at high sympathetic drive, and stroke volume falls further at
+rapid rates.
+In normal ventricles,
 stroke volume falls when arterial resistance rises more than contractility. This
 follows ventriculo-arterial coupling with a resting ratio of arterial to
 ventricular elastance of 0.7 (Asanoi 1989; Chen 1998). Venous return limits
@@ -495,9 +500,9 @@ Arrest is confirmed when ventricular fibrillation (VF), pulseless ventricular
 tachycardia (VT), asystole, HR below 10 bpm, or pulseless electrical activity
 (PEA) lasts 15 seconds. In PEA, the ECG remains organized while the heart's own
 beats produce less than 0.3 L/min with a pulse pressure below 5 mmHg. VT is
-pulseless when pulse pressure is below 5 mmHg and MAP is below 25 mmHg. The
-simulation continues through arrest, so the learner can resuscitate and treat
-the cause.
+pulseless when pulse pressure is at most 3 mmHg, or below 5 mmHg with MAP below
+25 mmHg. The simulation continues through arrest, so the learner can resuscitate
+and treat the cause.
 
 ### Course of arrest
 
@@ -928,10 +933,11 @@ the GE Aisys CS2. The README defines the [mode names](../README.md#features).
 
 Mandatory breaths include gas already inspired during the patient's own effort.
 Changes to inspiratory settings take effect at the next breath, and PEEP applies
-during expiration. Tube obstruction raises airway resistance. Inflations without
-measurable expired volume do not count as breaths. Auto-PEEP falls as trapped gas
-escapes during expiration, including during a pause. Switching out of PSV clears
-apnea backup.
+during expiration. Flow triggering requires inspiratory muscle effort, so
+passive PEEP changes do not trigger breaths. Tube obstruction raises airway
+resistance. Inflations without measurable expired volume do not count as
+breaths. Auto-PEEP falls as trapped gas escapes during expiration, including
+during a pause. Switching out of PSV clears apnea backup.
 
 ### Bag and mask ventilation
 
@@ -1002,8 +1008,9 @@ negligible flow and relaxed respiratory muscles. Displayed PEEP is the airway
 pressure, while intrinsic PEEP affects plateau pressure and residual flow.
 
 [Capnography](../anasim/monitors/capno.py) includes dead-space transit time and
-analyzer delay. End-tidal values clear when valid exhaled gas stops, and gas
-that stays at the sampling port decays when flow stops. Once an airway is
+analyzer delay. End-tidal oxygen and anesthetic readings hold the last exhaled
+sample during brief apnea and clear when valid exhaled gas stops, while gas at
+the sampling port decays when flow stops. Once an airway is
 connected or assisted ventilation is on, end-tidal CO₂ alarms start after the
 first breath, or after the apnea timeout if no breath arrives. In pregnancy, the
 low EtCO₂ alarm limit falls with the expected PaCO₂. Gas lost around a facemask
@@ -1011,8 +1018,10 @@ does not pass the sampling port, so a large leak, especially with small breaths,
 leaves dead-space gas at the port and flattens the capnogram.
 
 Without an airway device, the impedance respiratory rate counts breathing
-efforts, including during obstruction. The gas monitor displays end-tidal
-age-adjusted MAC, while anesthetic effects use brain MAC.
+efforts, including during obstruction. During unassisted breathing, a low
+respiratory rate alarm sounds after 15 seconds below 5 breaths/min. The gas
+monitor displays end-tidal age-adjusted MAC, while anesthetic effects use brain
+MAC.
 
 ### BIS and neuromuscular monitoring
 

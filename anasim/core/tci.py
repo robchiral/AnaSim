@@ -189,7 +189,8 @@ class TCIController:
             self._time = sim_time
         if target is not None and target != self.target:
             self.set_target(target)
-        if self._time + 1e-9 >= self._next_update:
+        time_eps = 1e-9 * max(1.0, abs(self._time))
+        if self._time + time_eps >= self._next_update:
             self.sync_from_pk_model(self.pk_model, rel_tol=0.0, abs_tol=0.0)
             self.infusion_rate = self._control_rate()
             self._next_update = self._time + self.control_time

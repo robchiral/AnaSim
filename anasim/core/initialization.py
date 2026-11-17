@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy.linalg import expm
 from scipy.optimize import minimize
+
+from anasim.patient.patient import Patient
+from anasim.patient.pd import BISModel, ClinicalResponseModel
 
 from . import monitors as monitor_core
 from . import projection as projection_core
@@ -81,6 +84,7 @@ def _initialize_awake(engine: SimulationEngine) -> None:
     engine.thermal.settle_at_depth()
     engine.pk_nore.equilibrate_endogenous()
     engine.hemo.initialize_steady_state(0.0, 0.0, engine.pk_nore.state.ce, pit=engine.hemo.config.pit_0)
+    runtime_core.update_pk_covariates(engine, engine.hemo.state.co)
 
 
 def _initialize_steady_state(engine: SimulationEngine) -> None:
@@ -90,7 +94,7 @@ def _initialize_steady_state(engine: SimulationEngine) -> None:
     engine.state.airway_mode = AirwayType.ETT
     engine.resp.state.apnea = True
     _configure_controlled_ventilation(engine, targets)
-    _seed_steady_state_subsystems(engine, profile, targets)
+    nominal_pk = _seed_steady_state_subsystems(engine, profile, targets)
     projection_core.sync_state_from_models(engine)
     spec = engine.disturbances.spec
     if engine.disturbance_active and spec is not None and not spec.finite:
@@ -99,7 +103,7 @@ def _initialize_steady_state(engine: SimulationEngine) -> None:
         engine.disturbance_start_time = engine.state.time - spec.established_s
     if engine.config.tci_enabled:
         _attach_startup_controllers(engine, targets)
-    _run_hidden_settle(engine, profile, targets)
+    _run_hidden_settle(engine, profile, targets, nominal_pk=nominal_pk)
     runtime_core.update_pk_covariates(engine, engine.state.co)
     if engine.infusion_rates["nore"] <= 0.0:
         engine.pk_nore.equilibrate_endogenous()
@@ -118,8 +122,10 @@ def _select_profile(engine: SimulationEngine) -> StartupProfile:
 
 
 def _solve_startup_targets(engine: SimulationEngine, profile: StartupProfile) -> StartupTargets:
-    bis_model = engine.bis
-    response_model = engine.response
+    p = engine.patient
+    nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
+    bis_model = BISModel(nominal_patient)
+    response_model = ClinicalResponseModel(nominal_patient.age)
 
     def objective(x):
         primary_load = x[0]
@@ -176,13 +182,19 @@ def _seed_steady_state_subsystems(
     engine: SimulationEngine,
     profile: StartupProfile,
     targets: StartupTargets,
-) -> None:
+) -> dict[str, Any]:
     engine.set_vaporizer(0.0)
     engine.set_fgf(profile.fgf_o2_l_min, 0.0, 0.0)
     engine.infusion_rates["propofol"] = 0.0
     engine.infusion_rates["remi"] = 0.0
     engine.infusion_rates["nore"] = 0.0
 
+    p = engine.patient
+    nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
+    nominal_pk = {
+        key: get_drug_spec(key).pk_model(nominal_patient, engine.config)
+        for key in ("propofol", "remi")
+    }
     for key, target_ce in (("propofol", targets.prop_ce), ("remi", targets.remi_ce)):
         if target_ce <= 0.0:
             continue
@@ -191,10 +203,13 @@ def _seed_steady_state_subsystems(
                 engine, key, target_ce, profile.history_minutes,
             )
         else:
-            _seed_linear_history(
+            nom_model = nominal_pk[key]
+            rate_per_min = _seed_linear_history(
                 engine.pk[key], target_ce, profile.history_minutes, engine.pump_pk.get(key),
+                reference_model=nom_model,
             )
-            engine.infusion_rates[key] = _maintenance_rate(engine.pk[key], target_ce)
+            nom_model.set_state_vector(_infusion_history(nom_model, profile.history_minutes) * rate_per_min)
+            engine.infusion_rates[key] = _maintenance_rate(nom_model, target_ce)
     engine.resp.initialize_drug_effects(engine.pk["propofol"].state.ce_resp, engine.pk["remi"].state.ce_resp)
     prop_cp = engine.pk["propofol"].state.c1
     remi_cp = engine.pk["remi"].state.c1
@@ -256,6 +271,7 @@ def _seed_steady_state_subsystems(
         engine.hemo.state.co,
         _oxygen_uptake_l_min(engine, targets) * engine.resp.rq,
     )
+    return nominal_pk
 
 
 def _infusion_history(pk_model, duration_min: float) -> np.ndarray:
@@ -305,14 +321,18 @@ def _seed_tci_history(engine: SimulationEngine, key: str, target_ce: float, dura
     return rate
 
 
-def _seed_linear_history(pk_model, target_ce: float, duration_min: float, pump_model=None) -> float:
+def _seed_linear_history(pk_model, target_ce: float, duration_min: float, pump_model=None, *, reference_model=None) -> float:
     """Seed the state after a constant infusion that reaches target Ce; return the rate per minute.
 
-    If a pump model is given, it receives the same infusion.
+    If reference_model is given, nominal delivery follows it while pk_model and pump_model receive the same rate.
     """
-    history = _infusion_history(pk_model, duration_min)
-    rate_per_min = target_ce / float(history[-1])
-    pk_model.set_state_vector(history * rate_per_min)
+    reference = reference_model if reference_model is not None else pk_model
+    ref_history = _infusion_history(reference, duration_min)
+    rate_per_min = target_ce / float(ref_history[-1])
+    if reference is pk_model:
+        pk_model.set_state_vector(ref_history * rate_per_min)
+    else:
+        pk_model.set_state_vector(_infusion_history(pk_model, duration_min) * rate_per_min)
     if pump_model is not None:
         pump_model.set_state_vector(_infusion_history(pump_model, duration_min) * rate_per_min)
     return rate_per_min
@@ -364,14 +384,22 @@ def _seed_volatile_history(engine: SimulationEngine, target_mac: float, duration
     return fi_agent
 
 
-def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile, targets: StartupTargets) -> None:
+def _run_hidden_settle(
+    engine: SimulationEngine,
+    profile: StartupProfile,
+    targets: StartupTargets,
+    *,
+    nominal_pk: dict[str, Any] | None = None,
+) -> None:
     """Run a short settle for circuit and physiology transients without visible side effects."""
     saved_hemo_config = engine.hemo.config
     saved_maintenance_rate = engine.maintenance_fluid_rate_ml_min
     saved_time = engine.state.time
+    saved_vaporizer_level = engine.vaporizer.state.level
     engine.hemo.config = replace(saved_hemo_config, vol_clearance=0.0)
     engine.maintenance_fluid_rate_ml_min = 0.0
 
+    nom_pk = nominal_pk or {}
     steps = max(1, int(profile.settle_seconds / profile.settle_dt_seconds))
     for _ in range(steps):
         thermal = engine.thermal
@@ -379,12 +407,24 @@ def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile, target
             engine.patient.baseline_temp, projection_core.thermal_hypnotic_ce(engine), engine.state.mac,
         )
         runtime_core.update_pk_covariates(engine, engine.state.co)
+        if nom_pk:
+            v_ratio = engine.hemo.blood_volume / engine.hemo.blood_volume_0
+            co_ratio = max(0.0, engine.state.co) / max(0.1, engine.hemo.base_co_l_min)
+            for nom_model in nom_pk.values():
+                nom_model.update_hemodynamics(
+                    v_ratio, co_ratio, engine.hemo.renal_perfusion,
+                    blood_volume_l=engine.hemo.blood_volume_0 / 1000.0,
+                )
         if engine.config.tci_enabled:
             runtime_core.step_tci(engine, profile.settle_dt_seconds)
         else:
             for key, target_ce in (("propofol", targets.prop_ce), ("remi", targets.remi_ce)):
                 if target_ce > 0.0:
-                    engine.infusion_rates[key] = _maintenance_rate(engine.pk[key], target_ce)
+                    ref_model = nom_pk.get(key, engine.pk[key])
+                    rate = _maintenance_rate(ref_model, target_ce)
+                    engine.infusion_rates[key] = rate
+                    if ref_model is not engine.pk[key]:
+                        ref_model.step(profile.settle_dt_seconds, rate)
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)
         runtime_core.step_pk(engine, profile.settle_dt_seconds, fi_sevo, fi_n2o, engine.state.co)
         engine._tol_current = projection_core.stimulus_tolerance(engine)
@@ -408,6 +448,12 @@ def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile, target
 
     engine.hemo.config = saved_hemo_config
     engine.maintenance_fluid_rate_ml_min = saved_maintenance_rate
+    engine.vaporizer.state.level = saved_vaporizer_level
+    transport = engine.resp.gas_transport
+    transport.consumed_o2_l = 0.0
+    transport.produced_l = 0.0
+    transport.exhaled_l = 0.0
+    transport.oxygen_from_air_l = 0.0
     engine.state.temp_c = engine.patient.baseline_temp
     # Redistribution belongs to the maintenance history, not the visible start.
     engine.thermal.settle_at_depth()

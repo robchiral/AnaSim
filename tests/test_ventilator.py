@@ -1002,3 +1002,46 @@ def test_apneic_cpap_frc_occluded_rr_timeout_auto_peep_decay_and_mode_switch_res
     assert psv.vent._backup
     psv.vent.update_settings(mode="VCV", rr=12)
     assert not psv.vent._backup
+
+
+def test_paralyzed_peep_step_pcv_vg_ceiling_mask_cpap_baseline_and_apnea_paw_mean(
+    engine_factory, advance_time
+):
+    """Lowering PEEP in a paralyzed patient does not false-trigger PSV; pressure-limited
+    PCV-VG test breaths seed VG at the ceiling rather than VG_MIN; loose-mask CPAP keeps
+    zero baseline volume; bag p_max scales to patient mask pressure; apnea resets paw_mean.
+    """
+    paralyzed = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.05, rng_seed=1), start=True)
+    paralyzed.give_drug_bolus("roc", 100.0)
+    paralyzed.vent.update_settings(mode="PSV", rr=0, peep=10.0, p_support=12.0, trigger=1.0)
+    advance_time(paralyzed, 10.0, dt=0.05)
+    breaths_0 = paralyzed.vent.breath_count
+    paralyzed.vent.update_settings(mode="PSV", rr=0, peep=0.0, p_support=12.0, trigger=1.0)
+    advance_time(paralyzed, 5.0, dt=0.05)
+    assert paralyzed.vent.breath_count == breaths_0
+
+    vg = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    vg.give_drug_bolus("roc", 100.0)
+    vg.vent.update_settings(mode="PCV-VG", rr=12, tv=1200, peep=5.0, p_max=20.0)
+    advance_time(vg, 6.0, dt=0.1)
+    assert vg.vent._vg_pressure == pytest.approx(vg.vent._vg_ceiling(5.0), abs=0.5)
+
+    mask_cpap = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    mask_cpap.give_drug_bolus("roc", 100.0)
+    mask_cpap.set_airway_mode("Mask")
+    mask_cpap.set_mask_seal(0.5)
+    mask_cpap.vent.update_settings(mode="CPAP", rr=0, peep=10.0)
+    advance_time(mask_cpap, 20.0, dt=0.1)
+    assert mask_cpap.resp_mech.volume == pytest.approx(0.0, abs=5e-3)
+    assert mask_cpap.state.paw_mean == pytest.approx(5.0, abs=0.3)
+
+    bag_mask = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    bag_mask.give_drug_bolus("roc", 100.0)
+    bag_mask.set_vent_power(False)
+    bag_mask.set_airway_mode("Mask")
+    bag_mask.set_mask_seal(0.5)
+    bag_mask.set_fgf(10.0, 0.0)
+    bag_mask.set_bag_mask_settings(rr=12.0, vt=1.2, p_max=10.0)
+    bag_mask.set_bag_mask_ventilation(True)
+    advance_time(bag_mask, 15.0, dt=0.1)
+    assert bag_mask.state.paw_peak == pytest.approx(10.0, abs=0.5)

@@ -953,3 +953,27 @@ def test_anoxic_convergence_haldane_seed_psv_bronchospasm_and_deadspace_floor(en
     collapsed.step(1.0, ce_prop=4.0, ce_remi=2.0, ce_roc=10.0, airway_patency=0.0)
     assert collapsed.gas_volume_l == pytest.approx(collapsed.vd_deadspace)
     assert collapsed._pending_mech_absorption_btps_l == 0.0
+
+
+def test_tidal_dalton_conservation_and_partially_patent_apneic_oxygenation(patient):
+    """Tidal oxygen exchange includes passive volume shrinkage without apneic_gate drift,
+    and moderate upper-airway narrowing (patency=0.25) still permits apneic oxygenation.
+    """
+    tidal = RespiratoryModel(patient)
+    tidal.equilibrate_oxygen(1.0, fin2=0.0)
+    preview = tidal.oxygen_exchange_l_min(1.0, 4.5, 1.0, 0.0, dt=0.5)
+    o2_before = tidal.gas_transport.oxygen_from_air_l
+    tidal.step(0.5, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0, fio2=1.0,
+               mech_rr=12.0, mech_vt_l=0.52, measured_breaths=True)
+    actual = (tidal.gas_transport.oxygen_from_air_l - o2_before) * 120.0
+    assert actual == pytest.approx(preview, rel=0.03)
+    dry_sum = (tidal.state.p_alveolar_o2 + tidal.state.p_alveolar_co2) / tidal._atm_dry + tidal.alveolar_fn2
+    assert dry_sum == pytest.approx(1.0, abs=0.01)
+
+    o2_arm, air_arm = RespiratoryModel(patient), RespiratoryModel(patient)
+    for m in (o2_arm, air_arm):
+        m.equilibrate_oxygen(0.90, fin2=0.10)
+    for _ in range(300):
+        o2_arm.step(1.0, ce_prop=3.5, ce_remi=2.0, ce_roc=10.0, fio2=1.0, airway_patency=0.25, unconscious=1.0)
+        air_arm.step(1.0, ce_prop=3.5, ce_remi=2.0, ce_roc=10.0, fio2=0.21, airway_patency=0.25, unconscious=1.0)
+    assert o2_arm.state.sao2 > 97.0 and o2_arm.state.p_alveolar_o2 > air_arm.state.p_alveolar_o2 + 250.0

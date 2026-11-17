@@ -520,3 +520,57 @@ def test_emergence_normocapnia_covariates_and_stale_nibp_vasopressor_check(engin
     start_map.record(failed_nibp)
     assert start_map.value is None
     assert not require_hypotension_or_treatment(start_map, "hemorrhage", "Assess BP")(failed_nibp)[0]
+
+
+def test_cpr_pressure_gating_dantrolene_nmba_cpap_emergence_and_position_timeline(engine_factory):
+    """Chest compressions do not satisfy spontaneous MAP/stability checks; dantrolene weakness
+    does not report false NMBA T1 block; CPAP is accepted as unassisted breathing at emergence;
+    O2 recovery milestone persists when conserving flow; position changes appear in debriefs.
+    """
+    from anasim.scenarios.base import neuromuscular_response, patient_stable
+
+    cpr_session = WebSession({"scenario_id": "hemorrhage_response", "practice_mode": "independent"})
+    cpr_eng = cpr_session.engine
+    cpr_eng.set_rhythm("VFIB")
+    cpr_eng.set_chest_compressions(True)
+    cpr_eng.state.art_map = 72.0
+    cpr_eng.state.map = 72.0
+    cpr_eng.state.sao2 = 98.0
+    assert not require_map_at_least(65)(cpr_eng)[0]
+    assert not patient_stable(cpr_eng)
+    assert cpr_session.case_run is not None
+    cpr_session.case_run.observe(5.0, force=True)
+    assert cpr_session.case_run.hypotension_s >= 5.0
+
+    mh_eng = engine_factory(start=True)
+    mh_eng.give_drug_bolus("dantrolene", 175.0)
+    for _ in range(30):
+        mh_eng.step(1.0)
+    assert mh_eng.state.twitch < 85.0
+    _, val = neuromuscular_response(mh_eng)
+    assert val >= 99.0
+
+    em_eng = engine_factory(start=True)
+    _early_extubation(em_eng)
+    em_eng.set_airway_mode("ETT")
+    em_eng.vent.update_settings(mode="CPAP", rr=0, peep=5.0)
+    em_eng.set_vent_power(True)
+    assert _step(create_emergence("tiva"), "EXTUBATION_READINESS").check_requirements(em_eng)[0]
+
+    ox_session = WebSession({"scenario_id": "oxygen_supply_failure", "practice_mode": "independent"})
+    assert ox_session.case_run is not None
+    ox_session.engine.set_oxygen_supply_connected(True)
+    ox_session.engine.circuit.composition.fio2 = 0.90
+    ox_session.case_run.observe(force=True)
+    assert "oxygen" in ox_session.case_run.achieved_at
+    ox_session.engine.circuit.composition.fio2 = 0.55
+    ox_session.case_run.observe(force=True)
+    assert "oxygen" in ox_session.case_run.achieved_at
+
+    ob_session = WebSession({
+        "scenario_id": "hemorrhage_response", "practice_mode": "independent",
+        "sex": "female", "gestational_age_weeks": 39.0,
+    })
+    ob_session.command("position", '{"position": "left_lateral"}')
+    debrief = json.loads(ob_session.command("case_finish", "{}"))["debrief"]
+    assert any("Position: left lateral" in item["text"] for item in debrief["timeline"])

@@ -76,15 +76,16 @@ class NeuromuscularMonitor:
         self._next_start = time + self.interval
 
     def step(self, time: float, t1: float, ratio: float) -> None:
+        time_eps = 1e-9 * max(1.0, abs(time))
         if self._started is None:
-            if not self.automatic or time < self._next_start:
+            if not self.automatic or time + time_eps < self._next_start:
                 return
             self._begin(time)
         assert self._started is not None
         pulses = 4 if self.mode == "tof" else 1
         while len(self._responses) < pulses:
             index = len(self._responses)
-            if time + 1e-9 < self._started + PULSE_INTERVAL_S * index:
+            if time + time_eps < self._started + PULSE_INTERVAL_S * index:
                 return
             if index == 0:
                 self._train_t1 = clamp01(t1)
