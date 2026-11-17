@@ -118,9 +118,10 @@ drugs predicts from the patient's current PK.
 
 The pump does not know about hand boluses. A TCI program that starts after a
 manual rate assumes no drug on board, and a stopped program resumes from its own
-history. Setting a manual infusion rate turns off TCI for that drug. When
-maintenance is initialized, `tci_enabled` chooses between a 30-minute TCI
-history and manual rates.
+history. Changing a target preserves the active plasma or effect-site mode.
+Setting a manual infusion rate turns off TCI for that drug. When maintenance is
+initialized, `tci_enabled` chooses between a 30-minute TCI history and manual
+rates.
 
 Decrement times for propofol, remifentanil, and fentanyl use the pump model. The
 decrement time for rocuronium uses the patient's PK and neuromuscular model,
@@ -152,6 +153,9 @@ synergistically with propofol (Short 1992). Nitrous oxide and ketamine also affe
 responsiveness. Ketamine adds to opioid analgesia and, like lidocaine, reduces
 responses to stimulation. During propofol or sevoflurane anesthesia, ketamine
 raises BIS because it increases high-frequency EEG activity.
+
+Lidocaine reduces the anesthetic concentration needed to tolerate stimulation,
+but its effect alone is capped below surgical unresponsiveness.
 
 ## Stimulation
 
@@ -403,7 +407,8 @@ applied to intravenous use. Its peak responses are calibrated to Meng 2011, and
 its effect on pressure during induction was checked against Sjøen 2026. Alpha
 and beta blockade shift its vascular and cardiac concentration-response curves
 separately. With repeated doses, tachyphylaxis reduces the pressor and peak HR
-responses, while a smaller HR response remains.
+responses, while a smaller HR response remains and saturates at high
+concentrations.
 
 ### Atropine
 
@@ -620,7 +625,8 @@ excreted over 150 minutes (7% and 11% group medians in Ewaldsson and Hahn
 anesthetics. Saline is excreted more
 slowly than lactated Ringer's: after 2 L over an hour, healthy volunteers pass
 about half as much urine in 6 hours (Reid 2003). More of a 5% albumin infusion
-stays in the circulation at first.
+stays in the circulation at first. The model retains a quarter of infused lipid
+emulsion volume in the circulation.
 
 Fluid also leaves the circulation through capillary leak and other slow
 exchanges into a separate compartment, which slowly returns fluid when blood
@@ -658,11 +664,13 @@ hyperthermia, and severe acidemia below pH 7.15 move it into plasma.
 Ionized calcium depends on albumin, citrate, and pH (Thode 1983; Bolan 2001), so
 dilution and rapid transfusion lower it; after rapid transfusion slows or stops,
 ionized calcium rebounds partially as citrate redistributes and clears (Kahn
-1979), while unreplaced dilutional loss remains. Injected calcium mixes through extracellular fluid, and calcium
-above the patient's resting ionized pool is then cleared. One gram of calcium
-chloride therefore raises ionized calcium by about 0.4 mmol/L, and half of the
-rise is gone by 30 minutes (Ansari 2025). Calcium lost to dilution or bound by
-citrate is not replaced within a session (Bolan 2001).
+1979), while unreplaced dilutional loss remains. Injected calcium mixes through
+extracellular fluid, and calcium above the patient's resting ionized pool is
+then cleared. Shed blood removes calcium, including the fraction still mixing
+after an injection. One gram of calcium chloride therefore raises ionized
+calcium by about 0.4 mmol/L, and half of the rise is gone by 30 minutes (Ansari
+2025). Calcium lost to dilution or bound by citrate is not replaced within a
+session (Bolan 2001).
 
 ### Renal acid-base handling
 
@@ -762,13 +770,16 @@ When the airway is closed or circuit gas is exhausted, gas that is absorbed is
 not replaced. Lung gas volume shrinks, and absorption atelectasis follows.
 Without positive-pressure ventilation, the resting lung volume used for
 mechanics falls by the absorbed volume. Opening the airway refills the lungs
-with gas from the circuit (Laviola 2020).
+with gas from the circuit (Laviola 2020). The lung gas volume has a floor at
+anatomic dead space.
 
 During apnea with an open airway, circuit oxygen washes through anatomic dead
 space slowly unless earlier breathing removed its nitrogen. The circuit and
-lungs draw on one flow-limited supply of gas. Nitrous oxide wash-in adds
-convective inflow, which raises the uptake of alveolar oxygen and volatile
-agent. Its washout dilutes alveolar oxygen and CO₂ when inspired oxygen is low.
+lungs draw on one flow-limited supply of gas. Uptake of nitrous oxide and
+sevoflurane adds convective inflow, which raises uptake of the other alveolar
+gases. During washout, evolved gas first refills any volume lost to absorption,
+then flows outward, carrying oxygen, CO₂, and nitrogen with it. Nitrous oxide
+washout therefore dilutes alveolar oxygen and CO₂ when inspired oxygen is low.
 
 ### Oxygen delivery and lactate
 
@@ -880,7 +891,8 @@ limits spontaneous tidal volume, and persists under neuromuscular block.
 Dantrolene PK follows the Ryanodex label. Dantrolene controls the crisis and
 reduces twitch height without TOF fade, while leaving ventilation unchanged
 (Flewellen 1983). Once the crisis is controlled and triggering agents have
-cleared, it does not recur as dantrolene washes out.
+cleared, it does not recur as dantrolene washes out. Re-exposure to sevoflurane
+or succinylcholine can restart it.
 
 ## Anesthesia machine and ventilation
 
@@ -916,7 +928,10 @@ the GE Aisys CS2. The README defines the [mode names](../README.md#features).
 
 Mandatory breaths include gas already inspired during the patient's own effort.
 Changes to inspiratory settings take effect at the next breath, and PEEP applies
-during expiration. Tube obstruction raises airway resistance.
+during expiration. Tube obstruction raises airway resistance. Inflations without
+measurable expired volume do not count as breaths. Auto-PEEP falls as trapped gas
+escapes during expiration, including during a pause. Switching out of PSV clears
+apnea backup.
 
 ### Bag and mask ventilation
 
@@ -940,7 +955,8 @@ own effort draws. PCV-VG raises inspiratory pressure to make up for a mask leak.
 ### ECG, arterial pressure, and pulse oximetry
 
 ECG, arterial pressure, and plethysmography use the same beat timing, and HR is
-averaged over beat intervals.
+averaged over recent beat intervals. A long pause lowers the displayed HR and
+clears it after 8 seconds without a beat.
 
 The arterial waveform depends on MAP, stroke volume, and age-dependent arterial
 compliance (Mahdi 2017; Franklin 1997). Compliance increases as pressure falls
@@ -954,8 +970,12 @@ studies, pulse pressure rose with contractility even when stroke volume did not
 (Piccioli 2023). Catheter and transducer dynamics filter the arterial pressure
 measurements.
 
+At very low output, diastolic pressure stays at least as high as venous
+pressure. Pulse pressure falls with stroke volume, and mean pressure approaches
+this floor continuously.
+
 Pulse oximetry responds to rhythm and perfusion. Poor perfusion delays readings
-and reduces the plethysmograph amplitude.
+and reduces the plethysmograph amplitude, as does a narrow pulse pressure.
 
 Hyperkalemia peaks the T waves, flattens the P waves, widens the QRS complex,
 and progresses to asystole.
@@ -996,7 +1016,8 @@ age-adjusted MAC, while anesthetic effects use brain MAC.
 
 ### BIS and neuromuscular monitoring
 
-BIS includes Eleveld's age-dependent drug delay and display smoothing. Cortical
+BIS includes Eleveld's age-dependent drug delay and display smoothing. Sampled
+hypnotic sensitivity affects BIS under both propofol and sevoflurane. Cortical
 failure from cerebral ischemia appears after a delay of at most 20 seconds.
 High-BIS alarms apply only when the patient is paralyzed or under active
 anesthetic maintenance.

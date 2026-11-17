@@ -5,6 +5,7 @@ from itertools import pairwise
 from scipy.optimize import root_scalar
 
 from anasim.core.constants import (
+    ARREST_CO_L_MIN,
     BLOOD_VOLUME_MIN,
     CIRCULATION_LIMIT_FRACTION,
     HR_MAX,
@@ -14,6 +15,7 @@ from anasim.core.constants import (
 from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.conditions import HEART_FAILURE_PROFILES
+from anasim.patient.domain import bounded_number, finite_number
 from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import KETAMINE_MAC_EQUIVALENT
 from anasim.patient.pk_models import NorepinephrinePK
@@ -337,6 +339,8 @@ class HemodynamicModel:
         Retained volume also gives a transient Frank-Starling SV rise via tde_sv.
         """
         cfg = self.config
+        amount_ml = finite_number("amount_ml", amount_ml)
+        hematocrit = bounded_number("hematocrit", hematocrit, 0.0, MAX_HEMATOCRIT)
         self._cached_state = None
         if amount_ml == 0:
             return
@@ -369,7 +373,7 @@ class HemodynamicModel:
                 is_colloid = label in ("colloid", "lipid")
                 if is_colloid:
                     self.total_colloid_in_ml += amount_ml
-                    retention = cfg.colloid_retention_fraction
+                    retention = 0.25 if label == "lipid" else cfg.colloid_retention_fraction
                 else:
                     self.total_crystalloid_in_ml += amount_ml
                     retention = 1.0
@@ -625,25 +629,26 @@ class HemodynamicModel:
         function curve that is linear at low filling pressures.
         """
         cfg = self.config
-        beating = (
+        rhythm_beating = (
             not self._electrically_silent
             and self.rhythm_type not in PULSELESS_RHYTHMS
             and not self._compressions
         )
+        flow_activity = clamp01(self._last_intrinsic_co / ARREST_CO_L_MIN) if rhythm_beating else 0.0
+        beating = rhythm_beating and self._last_intrinsic_co > 0.0
         lv_pump_factor = min(
             1.0,
             self.failure.output_factor * (1.0 - self.coronary.injury),
         )
         pump_deficit = clamp01((0.35 - lv_pump_factor) / 0.15)
         filling_gate = clamp01((self._last_venous_preload - 0.45) / 0.20)
-        congestion_cap = 360.0 * (pump_deficit * pump_deficit) * filling_gate
+        congestion_cap = 360.0 * (pump_deficit * pump_deficit) * filling_gate * flow_activity
         if dt > 0.0:
-            if beating or self._compressions:
-                self._pulm_arrest_blend *= math.exp(-dt / 2.5)
-            else:
-                self._pulm_arrest_blend += (1.0 - self._pulm_arrest_blend) * -math.expm1(-dt / 5.0)
+            arrest_target = 0.0 if self._compressions else 1.0 - flow_activity
+            blend_tau = 2.5 if arrest_target < self._pulm_arrest_blend else 5.0
+            self._pulm_arrest_blend += (arrest_target - self._pulm_arrest_blend) * -math.expm1(-dt / blend_tau)
             if beating and congestion_cap > 0.0:
-                imbalance = self._last_rv_co - self._last_intrinsic_co
+                imbalance = self._last_rv_co * flow_activity - self._last_intrinsic_co
                 self._pulmonary_congestion_ml = clamp(
                     self._pulmonary_congestion_ml + imbalance * 1000.0 * (dt / 60.0),
                     0.0,
@@ -1051,7 +1056,7 @@ class HemodynamicModel:
                 300.0,
             )
             map_val = max(intrinsic_map, cpr_art_map)
-            if intrinsic_co <= 0.0:
+            if intrinsic_co < cpr_co:
                 rap_val = venous_pressure
                 lap_val = max(lap_val, rap_val)
                 rv_co_val = lv_inflow_val = co
@@ -1059,6 +1064,12 @@ class HemodynamicModel:
             # Without flow, pressures equilibrate at mean systemic filling pressure.
             venous_pressure = rap_val = self._last_mcfp
             rv_co_val = lv_inflow_val = 0.0
+        elif co < ARREST_CO_L_MIN:
+            arrest_share = 1.0 - clamp01(co / ARREST_CO_L_MIN)
+            guyton_vp = clamp(self._last_mcfp - co * self.venous_return_resistance, 0.0, self._last_mcfp)
+            venous_pressure = rap_val = self._last_rap + arrest_share * (guyton_vp - self._last_rap)
+            rv_co_val = self._last_rv_co + arrest_share * (co - self._last_rv_co)
+            lv_inflow_val = self._last_lv_inflow + arrest_share * (co - self._last_lv_inflow)
 
         result = HemoState(
             map=map_val,
@@ -1498,10 +1509,15 @@ class HemodynamicModel:
             baro_gain = cfg.baro_gain_brady * (1.0 - vagal) * self._age_vagal_baroreflex * reflex_intact
             if self.rhythm_type not in PULSELESS_RHYTHMS and not self._compressions:
                 rhythm_holds_rate_up = self._rhythm_rate(sinus_est - 1.0) > sinus_est - 1.0
+                rhythm_slowing_blocked = (
+                    clamp01(1.0 - (self._rhythm_rate(sinus_est) - self._rhythm_rate(sinus_est - 1.0)))
+                    if rhythm_holds_rate_up
+                    else 0.0
+                )
                 adrenergic_override = clamp01((self._adrenergic_chrono - 55.0) / 30.0) * clamp01(
                     (sensed_error - 65.0) / 30.0
                 )
-                blocked_share = max(1.0 if rhythm_holds_rate_up else vagal, adrenergic_override)
+                blocked_share = max(rhythm_slowing_blocked, vagal, adrenergic_override)
                 max_drop = cfg.baro_vasc_max * resting_tone * alpha_response
                 if blocked_share > 0.0 and max_drop > 1e-6 and cfg.baro_gain_vasc > 0.0 and sensed_error > 0.0:
                     vasc_gain = cfg.baro_gain_vasc * reflex_intact
@@ -1571,10 +1587,17 @@ class HemodynamicModel:
         ephedrine_svr = 1.0 + cfg.ephedrine_emax_svr * ephedrine_alpha_effect
         ephedrine_sv = 1.0 + cfg.ephedrine_emax_sv * ephedrine_beta_effect
         ephedrine_chrono_gate = (
-            (1.0 - beta_occ) * self._age_chronotropy * (1.0 - cfg.amiodarone_beta_reflex_block * amiodarone_hr)
+            self._age_chronotropy * (1.0 - cfg.amiodarone_beta_reflex_block * amiodarone_hr)
+        )
+        ephedrine_beta_conc = ephedrine / beta1_dr
+        sustained_hr_max = 0.40
+        sustained_hr_term = (
+            sustained_hr_max * ephedrine_beta_conc / (ephedrine_beta_conc + sustained_hr_max / cfg.ephedrine_hr_slope)
+            if cfg.ephedrine_hr_slope > 0.0 and ephedrine_beta_conc > 0.0
+            else 0.0
         )
         ephedrine_hr = (
-            cfg.ephedrine_hr_slope * (ephedrine / beta1_dr) + cfg.ephedrine_emax_hr * ephedrine_beta_effect
+            sustained_hr_term + cfg.ephedrine_emax_hr * ephedrine_beta_effect
         ) * self.base_hr * ephedrine_chrono_gate
         phenyl_svr_factor = self._calc_phenyl_effects(ce_phenyl / alpha_dr)
         vaso_delta_hr, _, vaso_svr_factor = self._calc_hr_sv_svr_effects(
@@ -1608,8 +1631,7 @@ class HemodynamicModel:
             dobu_svr_factor *
             mil_svr_factor *
             (1.0 + cfg.ketamine_emax_svr * ketamine * alpha_response) *
-            (1.0 - 0.15 * ket_raw * ket_exhaustion) *
-            (1.0 - cfg.alpha_block_tpr * alpha_occ * resting_tone)
+            (1.0 - 0.15 * ket_raw * ket_exhaustion)
         )
         agonist_sv = catechol_sv * mil_sv_factor
         ket_sv = 1.0 + cfg.ketamine_emax_sv * ketamine * beta_response
@@ -1630,7 +1652,9 @@ class HemodynamicModel:
         self.vasopressor_sv_factor = combined_sv_factor
         self._phenyl_svr_factor = 1.0 + (phenyl_svr_factor - 1.0) * pressor_gain
         self._non_phenyl_sv_factor = agonist_sv * ket_sv * ket_loss
-        self.delta_tpr_vasopressors = self.base_tpr * (combined_svr_factor - 1.0)
+        self.delta_tpr_vasopressors = self.base_tpr * (
+            combined_svr_factor - 1.0 - cfg.alpha_block_tpr * alpha_occ * resting_tone
+        )
 
         if self.rhythm_type in RHYTHM_SV_FACTOR or self._compressions:
             self._unstim_rate = 0.0

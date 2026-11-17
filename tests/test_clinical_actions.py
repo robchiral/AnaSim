@@ -218,3 +218,8 @@ def test_airway_removal_and_stopping_ventilation_use_unassisted_breathing():
     removed = command(session, "airway", mode="Mask")
     assert removed["feedback"]["code"] == "unsafe_airway_removal"
     assert engine.state.airway_mode.value == "Mask" and not engine.vent.is_on
+
+    command(session, "bag_mask", active=True)
+    disconnected = command(session, "airway", mode="None")
+    assert disconnected["feedback"]["code"] == "ventilation_stopped"
+    assert not engine.bag_mask_active

@@ -969,3 +969,36 @@ def test_pcv_vg_mask_leak_compensation_and_spontaneous_apl_cpap(engine_factory, 
     cpap.circuit.reservoir_volume = 0.0
     cpap.step(0.1)
     assert cpap.state.peep == pytest.approx(0.0, abs=0.2)
+
+
+def test_apneic_cpap_frc_occluded_rr_timeout_auto_peep_decay_and_mode_switch_reset(
+    engine_factory, advance_time
+):
+    """Apneic CPAP recruits FRC; complete occlusion times out displayed RR to zero;
+    auto-PEEP decays during expiratory pause; switching out of PSV clears backup state.
+    """
+    ap_cpap = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    ap_cpap.give_drug_bolus("roc", 100.0)
+    frc_5 = ap_cpap.resp.frc
+    ap_cpap.vent.update_settings(mode="CPAP", peep=12)
+    advance_time(ap_cpap, 10.0, dt=0.1)
+    assert ap_cpap.resp.frc > frc_5 + 0.25
+
+    occl = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    occl.set_airway_obstruction(1.0)
+    advance_time(occl, 25.0, dt=0.1)
+    assert occl.vent.monitors.rr_total == 0.0
+    assert occl.vent.monitors.tv_exp_mandatory < 1.0 and occl.state.alarms["VTe"]["low"]
+
+    pause = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    pause.vent.monitors.auto_peep = 8.0
+    pause.vent.update_settings(rr=0, peep=0)
+    advance_time(pause, 10.0, dt=0.1)
+    assert pause.vent.monitors.auto_peep < 0.5
+
+    psv = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    psv.vent.update_settings(mode="PSV", rr=12, p_insp=15)
+    advance_time(psv, 25.0, dt=0.1)
+    assert psv.vent._backup
+    psv.vent.update_settings(mode="VCV", rr=12)
+    assert not psv.vent._backup

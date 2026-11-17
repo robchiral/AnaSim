@@ -910,3 +910,46 @@ def test_oxygen_exchange_preview_accounts_for_vq_mismatch(patient):
     )
     actual_rate = (model.gas_transport.oxygen_from_air_l - before) * 600.0
     assert actual_rate == pytest.approx(mismatched, rel=0.05)
+
+
+def test_anoxic_convergence_haldane_seed_psv_bronchospasm_and_deadspace_floor(engine_factory):
+    """Anoxic FiO2=0 converges at PAO2>=0 without reversing O2 flux; equilibrate_oxygen
+    satisfies the dry-gas fraction sum with N2O; PSV increases VA monotonically above CPAP
+    in bronchospasm; mechanical absorption halts at rigid anatomic dead space.
+    """
+    anoxic = RespiratoryModel(Patient())
+    assert anoxic.oxygen_exchange_l_min(0.0, 4.0, 1.0, 0.0, dt=0.1) <= 0.0
+    for _ in range(400):
+        state = anoxic.step(
+            0.5, ce_prop=3.0, ce_remi=2.0, ce_roc=10.0, fio2=0.0,
+            mech_rr=12.0, mech_vt_l=0.5, measured_breaths=True, cardiac_output=5.0,
+        )
+    assert state.p_alveolar_o2 >= 0.0 and math.isfinite(state.ph)
+
+    haldane = RespiratoryModel(Patient())
+    haldane.equilibrate_oxygen(0.50, fin2=0.10)
+    dry_sum = (
+        (haldane.state.p_alveolar_o2 + haldane.state.p_alveolar_co2) / haldane._atm_dry
+        + haldane.alveolar_fn2
+        + 0.40
+    )
+    assert dry_sum == pytest.approx(1.0, abs=0.01)
+
+    psv_vas = []
+    for ps in (0, 2, 5, 10):
+        eng = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+        eng.set_airway_mode("ETT")
+        eng.vent.update_settings(mode="CPAP" if ps == 0 else "PSV", p_support=ps, peep=5, rr=0)
+        eng.set_vent_power(True)
+        eng.set_bronchospasm(0.7)
+        for _ in range(250):
+            eng.step(0.1)
+        psv_vas.append(eng.resp.state.va)
+    assert psv_vas[0] < psv_vas[1] < psv_vas[2] < psv_vas[3]
+
+    collapsed = RespiratoryModel(Patient())
+    collapsed._apneic_gas_deficit_l = 5.0
+    collapsed._pending_mech_absorption_btps_l = 0.0
+    collapsed.step(1.0, ce_prop=4.0, ce_remi=2.0, ce_roc=10.0, airway_patency=0.0)
+    assert collapsed.gas_volume_l == pytest.approx(collapsed.vd_deadspace)
+    assert collapsed._pending_mech_absorption_btps_l == 0.0

@@ -16,7 +16,7 @@ _MMHG_PER_KPA = 7.5006168270417
 MOLAR_GAS_VOLUME_STPD_L_MMOL = 0.022414
 _PLASMA_CO2_SOLUBILITY = 0.230 / _MMHG_PER_KPA  # mmol/L/mmHg
 _RBC_CO2_SOLUBILITY = 0.195 / _MMHG_PER_KPA  # mmol/L/mmHg
-_PH_RANGE = (6.0, 10.0)  # Numerical limits, wide enough for CO2-washed-out pulmonary blood.
+_PH_RANGE = (5.0, 10.0)  # Numerical limits, wide enough for severe arrest acidemia and CO2 washout.
 _LN_10 = math.log(10.0)
 # mmol/L or mEq/L; leaves pH within about 1e-9 and PCO2 within 1e-7 mmHg.
 _CONTENT_TOLERANCE = 1e-8
@@ -187,7 +187,7 @@ class BloodChemistry:
               initial_ph: float = 7.4) -> Equilibrium:
         """solve_ph without input checks or public state, for inner loops.
 
-        PCO2 must be positive, saturation a fraction, and initial_ph within 6.0 to 10.0.
+        PCO2 must be positive, saturation a fraction, and initial_ph within 5.0 to 10.0.
         """
         ph = initial_ph
         low, high = _PH_RANGE
@@ -207,7 +207,7 @@ class BloodChemistry:
             if candidate == ph:
                 break
             ph = candidate if low <= candidate <= high else (low + high) / 2.0
-        raise ValueError("buffer_base_meq_l requires a pH outside the solver range 6.0 to 10.0")
+        raise ValueError("buffer_base_meq_l requires a pH outside the solver range 5.0 to 10.0")
 
     def solve_contents(self, co2: float, base: float, saturation: float,
                        pco2: float, ph: float, extracellular_ratio: float = 0.0) -> FluidEquilibrium:

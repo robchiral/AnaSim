@@ -692,3 +692,36 @@ def test_post_shock_asystole_requires_cpr_after_prolonged_vf_and_primary_asystol
         unassisted.step(1.0)
         assert unassisted.hemo.rhythm_type == RhythmType.ASYSTOLE
         assert unassisted.state.intrinsic_co == 0.0
+
+
+def test_standstill_pea_equilibrates_lap_low_flow_cpr_supports_co_and_silent_coronary_demand(
+    engine_factory, advance_time
+):
+    """Standstill ischemic PEA equilibrates LAP to MCFP and keeps arterial pressure at or above
+    venous pressure; CPR overrides sub-CPR intrinsic flow; electrically silent sinus arrest does
+    not impose ventricular-fibrillation metabolic demand on the coronary model.
+    """
+    pea = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    lung_0 = pea.hemo.lung_water_ml
+    pea.hemo.coronary.injury = 1.0
+    advance_time(pea, 45.0, dt=0.1)
+    assert pea.state.lap == pytest.approx(pea.hemo._last_mcfp, abs=0.8)
+    assert pea.hemo.lung_water_ml == pytest.approx(lung_0, abs=0.1)
+    assert pea.state.art_map >= pea.hemo.state.venous_pressure - 0.5
+
+    low_pea = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    low_pea.hemo.coronary.injury = 0.96
+    advance_time(low_pea, 10.0, dt=0.1)
+    assert 0.0 < low_pea.state.intrinsic_co < 0.5
+    low_pea.set_chest_compressions(True)
+    advance_time(low_pea, 5.0, dt=0.1)
+    assert low_pea.state.co >= 1.0
+
+    silent_sinus = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    silent_vf = copy.deepcopy(silent_sinus)
+    silent_vf.set_rhythm("VFIB")
+    for eng in (silent_sinus, silent_vf):
+        eng.hemo.coronary.energy_reserve = 0.0
+        eng.set_chest_compressions(True)
+        advance_time(eng, 15.0, dt=1.0)
+    assert silent_sinus.hemo.coronary.supply_demand_ratio > silent_vf.hemo.coronary.supply_demand_ratio + 0.05

@@ -420,6 +420,35 @@ def test_session_continues_through_arrest_until_circulation_cannot_return(monkey
     assert not steps_after_end
     cmd(session, "run", running=True)
     assert not parse(session.advance(0.2))["running"]
+    with pytest.raises(ValueError, match="ended"):
+        cmd(session, "drug_bolus", key="epi", amount=100)
+
+
+def test_open_session_arrest_finalizes_recording_and_commands_enforce_upper_bounds(tmp_path):
+    session = WebSession({**PATIENT, "tci_enabled": True}, recordings_dir=str(tmp_path))
+    cmd(session, "run", running=True)
+    cmd(session, "record", active=True)
+    session.step(0.1)
+    session.engine.state.cardiac_arrest = True
+    session.engine.state.arrest_reason = "Asystole"
+    session.engine.hemo.coronary.injury = 1.0
+    session.step(0.1)
+    snap = session.snapshot()
+    assert snap["ended"] and not snap["recording"] and snap["download"] is not None
+
+    active = WebSession({**PATIENT, "tci_enabled": True})
+    for name, bad_args in (
+        ("fgf", {"o2": 20, "air": 0, "n2o": 0}),
+        ("drug_rate", {"key": "propofol", "rate": 2500}),
+        ("drug_target", {"key": "propofol", "target": 25}),
+        ("drug_bolus", {"key": "propofol", "amount": 5000}),
+        ("sugammadex", {"mg_per_kg": 40}),
+        ("fluid", {"kind": "crystalloid", "volume_ml": 6000}),
+        ("maintenance_fluid", {"ml_hr": 6000}),
+        ("hemorrhage", {"active": True, "rate_ml_min": 6000}),
+    ):
+        with pytest.raises(ValueError):
+            cmd(active, name, **bad_args)
 
 
 class _ShockSucceeds:

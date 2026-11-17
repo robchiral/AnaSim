@@ -165,3 +165,7 @@ def test_ephedrine_tachyphylaxis_and_competitive_blockade(patient):
     s_low = low_eph.step(0.5, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=300.0)
     s_high = high_eph.step(0.5, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=10000.0)
     assert s_high.svr > s_low.svr and s_high.sv > s_low.sv
+    for _ in range(20):
+        s_low = low_eph.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=300.0)
+        s_high = high_eph.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=10000.0)
+    assert s_high.hr > s_low.hr + 5.0 and s_high.hr < 150.0

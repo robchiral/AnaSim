@@ -226,25 +226,31 @@ class ArterialWaveformRenderer:
         return diastolic + pp, diastolic
 
     def _update_reference(
-        self, map_value: float, stroke_volume_ml: float, sample: CardiacCycleSample, pulse_pressure_factor: float
+        self,
+        map_value: float,
+        stroke_volume_ml: float,
+        sample: CardiacCycleSample,
+        pulse_pressure_factor: float,
+        static_pressure: float = 0.0,
     ) -> None:
         mean_pressure = max(0.0, float(map_value))
         if not sample.organized or mean_pressure <= 0.0 or stroke_volume_ml <= 0.0:
             self._mean_pressure = self._systolic = self._diastolic = self._reference_pp = 0.0
             return
 
+        floor_p = max(0.0, float(static_pressure))
         shape = self._build_shape(sample.rr_interval_s, sample.measured_hr)
-        compliance = self.compliance_at(mean_pressure)
+        compliance = self.compliance_at(max(mean_pressure, floor_p))
         requested_pp = float(stroke_volume_ml) * pulse_pressure_factor / compliance
         self._reference_pp = min(requested_pp, mean_pressure / shape.mean)
-        self._mean_pressure = mean_pressure
-        self._diastolic = max(0.0, mean_pressure - self._reference_pp * shape.mean)
+        self._diastolic = max(floor_p, mean_pressure - self._reference_pp * shape.mean)
+        self._mean_pressure = self._diastolic + self._reference_pp * shape.mean
         self._systolic = self._diastolic + self._reference_pp
         self._next_shape = shape
         flow_ml_s = float(stroke_volume_ml) / sample.mean_rr_s
-        self._runoff_tau_s = mean_pressure / flow_ml_s * compliance
+        self._runoff_tau_s = max(mean_pressure, floor_p) / flow_ml_s * compliance
 
-    def _start_beat(self, sample: CardiacCycleSample) -> None:
+    def _start_beat(self, sample: CardiacCycleSample, static_pressure: float = 0.0) -> None:
         """Rise from the previous beat's end pressure by this beat's stroke volume,
         then run off for this beat's R-R with the Windkessel time constant."""
         self._shape = self._next_shape
@@ -252,23 +258,81 @@ class ArterialWaveformRenderer:
         if self._mean_pressure <= 0.0:
             self._pulse_pressure = self._foot_pressure = self._end_pressure = self._windkessel_offset = 0.0
             return
+        floor_p = max(0.0, float(static_pressure))
         self._pulse_pressure = self._reference_pp * sample.stroke_fraction
         if self._recovering_from_no_flow:
             self._recovering_from_no_flow = False
             self._foot_pressure = self._pressure
             self._windkessel_offset = self._pressure - self._diastolic
         elif self._end_pressure > 0.0:
-            self._foot_pressure = self._end_pressure
+            self._foot_pressure = max(floor_p, self._end_pressure)
         else:
             self._foot_pressure = self._diastolic
             self._windkessel_offset = 0.0
         self._windkessel_offset *= math.exp(-sample.rr_interval_s / self._runoff_tau_s)
         if abs(self._windkessel_offset) < 1e-3:
             self._windkessel_offset = 0.0
+        above_floor = max(0.0, self._diastolic - floor_p)
         self._end_pressure = max(
-            0.0,
-            self._diastolic * math.exp(-(sample.rr_interval_s - sample.mean_rr_s) / self._runoff_tau_s)
+            floor_p,
+            floor_p
+            + above_floor * math.exp(-(sample.rr_interval_s - sample.mean_rr_s) / self._runoff_tau_s)
             + self._windkessel_offset,
+        )
+
+    def _waveform_pressure(self, sample: CardiacCycleSample) -> float:
+        delay_s = self.config.electromechanical_delay_s
+        if self._beat_pending:
+            phase = (self._beat_rr_s - delay_s + sample.elapsed_s) / self._beat_rr_s
+        else:
+            phase = ((sample.elapsed_s - delay_s) / self._beat_rr_s) % 1.0
+        phase = min(phase, 1.0 - 1e-9)
+        decay = self._diastolic_decay(phase)
+        return max(
+            0.0,
+            self._foot_pressure
+            + self._pulse_pressure * self._shape_value(phase, decay)
+            + (self._end_pressure - self._foot_pressure) * (1.0 - decay),
+        )
+
+    def seed(
+        self,
+        sample: CardiacCycleSample,
+        map_value: float,
+        stroke_volume_ml: float,
+        *,
+        static_pressure: float = 0.0,
+        pulse_pressure_factor: float = 1.0,
+    ) -> ArterialPressureSample:
+        """Seed steady-state arterial waveform parameters at the given cycle phase."""
+        self._initialized = False
+        self._recovering_from_no_flow = False
+        self._end_pressure = 0.0
+        self._windkessel_offset = 0.0
+        self._beat_pending = False
+        self._pressure = max(0.0, float(static_pressure))
+        if not sample.organized or map_value <= 0.0 or stroke_volume_ml <= 0.0:
+            return self.step(
+                sample,
+                map_value,
+                stroke_volume_ml,
+                dt=0.0,
+                static_pressure=static_pressure,
+                pulse_pressure_factor=pulse_pressure_factor,
+            )
+        self._update_reference(
+            map_value, stroke_volume_ml, sample, pulse_pressure_factor, static_pressure=static_pressure
+        )
+        self._start_beat(sample, static_pressure=static_pressure)
+        delay_s = self.config.electromechanical_delay_s
+        self._beat_pending = sample.elapsed_s < delay_s
+        self._initialized = True
+        self._pressure = pressure = float(self._waveform_pressure(sample))
+        return ArterialPressureSample(
+            pressure=pressure,
+            systolic=float(self._systolic),
+            diastolic=float(self._diastolic),
+            mean=float(self._mean_pressure),
         )
 
     def step(
@@ -283,7 +347,7 @@ class ArterialWaveformRenderer:
     ) -> ArterialPressureSample:
         """Render the beat; without pulsatile flow, pressure runs off to static_pressure over dt."""
         if not sample.organized or map_value <= 0.0 or stroke_volume_ml <= 0.0:
-            self._update_reference(0.0, 0.0, sample, 1.0)
+            self._update_reference(0.0, 0.0, sample, 1.0, static_pressure=static_pressure)
             self._pulse_pressure = self._foot_pressure = self._end_pressure = self._windkessel_offset = 0.0
             self._beat_pending = False
             self._recovering_from_no_flow = True
@@ -294,11 +358,13 @@ class ArterialWaveformRenderer:
 
         delay_s = self.config.electromechanical_delay_s
         if not self._initialized or sample.beat_started:
-            self._update_reference(map_value, stroke_volume_ml, sample, pulse_pressure_factor)
+            self._update_reference(
+                map_value, stroke_volume_ml, sample, pulse_pressure_factor, static_pressure=static_pressure
+            )
             self._beat_pending = True
         # The drawn beat changes at its upstroke, after the electromechanical delay.
         if self._beat_pending and (sample.elapsed_s >= delay_s or not self._initialized):
-            self._start_beat(sample)
+            self._start_beat(sample, static_pressure=static_pressure)
             self._beat_pending = False
         self._initialized = True
 
@@ -309,19 +375,7 @@ class ArterialWaveformRenderer:
                 self._pressure = pressure = float(pressure)
                 return ArterialPressureSample(pressure, pressure, pressure, pressure)
         else:
-            if self._beat_pending:
-                phase = (self._beat_rr_s - delay_s + sample.elapsed_s) / self._beat_rr_s
-            else:
-                phase = ((sample.elapsed_s - delay_s) / self._beat_rr_s) % 1.0
-            phase = min(phase, 1.0 - 1e-9)
-            decay = self._diastolic_decay(phase)
-            runoff = 1.0 - decay
-            pressure = max(
-                0.0,
-                self._foot_pressure
-                + self._pulse_pressure * self._shape_value(phase, decay)
-                + (self._end_pressure - self._foot_pressure) * runoff,
-            )
+            pressure = self._waveform_pressure(sample)
 
         self._pressure = pressure = float(pressure)
         return ArterialPressureSample(

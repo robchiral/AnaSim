@@ -51,7 +51,10 @@ class VolatilePK:
         # Tissue volumes (L) and shares of cardiac output: lean organs scale
         # with fat-free mass, while excess body mass expands the adipose depot.
         male = self.patient.sex == "male"
-        ffm_scale = _janmahasatian_ffm(self.patient.weight, self.patient.height, male) / _janmahasatian_ffm(70.0, 170.0, male)
+        ffm_scale = (
+            _janmahasatian_ffm(self.patient.weight, self.patient.height, male)
+            / _janmahasatian_ffm(70.0, 170.0, True)
+        )
         self.v_vrg = 7.0 * ffm_scale
         self.v_mus = 35.0 * ffm_scale
         self.v_fat = max(3.0, 14.0 * ffm_scale + 0.8 * max(0.0, self.patient.weight - 70.0 * ffm_scale))
@@ -125,37 +128,40 @@ class VolatilePK:
         k_fat = (q_fat / self.v_fat) / self.lambda_t_b_fat
         # Update all compartments from the same pressures so agent is
         # conserved; substep so no Euler weight exceeds 0.05.
-        fastest_rate = max(
-            (alveolar_vent + concentrating_inflow + washout_outflow + lambda_q) / v_frc,
-            k_vrg,
-            k_mus,
-            k_fat,
+        alveolar_rate = (
+            (alveolar_vent + concentrating_inflow + washout_outflow + lambda_q) / v_frc
+            if v_frc > 0.0
+            else 0.0
         )
+        fastest_rate = max(alveolar_rate, k_vrg, k_mus, k_fat)
         substeps = max(1, math.ceil(dt_min * fastest_rate / 0.05))
         interval = dt_min / substeps
         for _ in range(substeps):
             p_ven = self.f_vrg_frac * p_vrg + self.f_mus_frac * p_mus + self.f_fat_frac * p_fat
-            p_art = (1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven
-            airway_flux = (
-                alveolar_vent * (fi_agent - p_alv)
-                + concentrating_inflow * fi_agent
-                - washout_outflow * p_alv
-            )
-            next_p_alv = clamp01(p_alv + (airway_flux + lambda_q * (p_ven - p_alv)) / v_frc * interval)
-            if circuit_share >= 1.0 - 1e-9:
-                net_btps_l += (next_p_alv - p_alv) * v_frc + lambda_q * (p_alv - p_ven) * interval
-            else:
-                net_btps_l += circuit_share * (
-                    alveolar_vent * (branch_fi - p_alv)
-                    + concentrating_inflow * branch_fi
+            if v_frc > 0.0:
+                p_art = (1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven
+                airway_flux = (
+                    alveolar_vent * (fi_agent - p_alv)
+                    + concentrating_inflow * fi_agent
                     - washout_outflow * p_alv
-                ) * interval
-            p_alv = next_p_alv
+                )
+                next_p_alv = clamp01(p_alv + (airway_flux + lambda_q * (p_ven - p_alv)) / v_frc * interval)
+                if circuit_share >= 1.0 - 1e-9:
+                    net_btps_l += (next_p_alv - p_alv) * v_frc + lambda_q * (p_alv - p_ven) * interval
+                else:
+                    net_btps_l += circuit_share * (
+                        alveolar_vent * (branch_fi - p_alv)
+                        + concentrating_inflow * branch_fi
+                        - washout_outflow * p_alv
+                    ) * interval
+                p_alv = next_p_alv
+            else:
+                p_art = p_ven
             p_vrg += k_vrg * (p_art - p_vrg) * interval
             p_mus += k_mus * (p_art - p_mus) * interval
             p_fat += k_fat * (p_art - p_fat) * interval
         p_ven = self.f_vrg_frac * p_vrg + self.f_mus_frac * p_mus + self.f_fat_frac * p_fat
-        p_art = (1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven
+        p_art = ((1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
         return p_alv, p_vrg, p_mus, p_fat, p_ven, p_art, v_frc, net_btps_l
 
     def exchange_btps_l_min(

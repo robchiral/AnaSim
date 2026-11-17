@@ -206,3 +206,30 @@ def test_chest_compressions_add_110_per_minute_ecg_artifact_during_sinus_rhythm(
     assert len(periods) >= 4
     for period in periods:
         assert period == pytest.approx(60.0 / 110.0, abs=0.02)
+
+
+def test_display_hr_window_decay_rhythm_switch_flush_and_spo2_beat_latch(engine_factory):
+    """CardiacCycle decays display_hr during pauses, flushes stale intervals on set_rhythm,
+    and SpO2Monitor latches beat perfusion across a pulse without mid-beat jumps.
+    """
+    cycle = CardiacCycle(np.random.default_rng(1))
+    for _ in range(300):
+        sample = cycle.step(0.01, 80.0, RhythmType.SINUS)
+    assert sample.display_hr == pytest.approx(80.0, abs=1.0)
+    for _ in range(900):
+        sample = cycle.step(0.01, 12.0, RhythmType.SINUS_BRADY)
+    assert sample.display_hr < 20.0
+
+    eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    eng.set_rhythm("SVT")
+    eng.step(0.5)
+    assert eng.state.display_hr > 130.0
+
+    spo2 = SpO2Monitor()
+    beat = cycle.step(0.01, 75.0, RhythmType.SINUS)
+    while not beat.beat_started:
+        beat = cycle.step(0.01, 75.0, RhythmType.SINUS)
+    spo2.step(0.01, beat, 98.0, perfusion=0.20)
+    mid = cycle.step(0.01, 75.0, RhythmType.SINUS)
+    spo2.step(0.01, mid, 98.0, perfusion=1.0)
+    assert spo2._beat_perf == pytest.approx(0.20)

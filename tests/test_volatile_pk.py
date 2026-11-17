@@ -79,3 +79,16 @@ def test_high_ventilation_and_flow_substepping_preserves_volatile_uptake(patient
         coarse.step(1.0, 0.70, alveolar_vent_l=18.0, cardiac_output_l=12.0)
     assert coarse.state.p_alv == pytest.approx(fine.state.p_alv, rel=0.005)
     assert coarse.state.p_vrg == pytest.approx(fine.state.p_vrg, rel=0.005)
+
+
+def test_volatile_pk_sex_ffm_scaling_and_zero_lung_volume_guard(patient_factory):
+    """Male fat-free mass yields larger vessel-rich volume than a matched female,
+    and zero lung_volume_l integrates without ZeroDivisionError.
+    """
+    male = VolatilePK(patient_factory(age=40, weight=70, height=170, sex="male"), name="Sevo", lambda_b_g=0.65, mac_40=2.0)
+    female = VolatilePK(patient_factory(age=40, weight=70, height=170, sex="female"), name="Sevo", lambda_b_g=0.65, mac_40=2.0)
+    assert male.v_vrg > female.v_vrg * 1.15
+    assert female.v_fat > male.v_fat
+
+    male.step(0.1, 0.02, alveolar_vent_l=4.0, cardiac_output_l=5.0, lung_volume_l=0.0)
+    assert male.state.mac >= 0.0

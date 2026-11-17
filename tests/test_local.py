@@ -39,7 +39,9 @@ def test_native_session_recovers_waveforms_controls_and_recording(server, tmp_pa
     assert request(server, "init")[0]["type"] == "ready"
     request(server, "create", params={"mode": "awake"})
     request(server, "cmd", id=1, name="record", args={"active": True})
-    request(server, "cmd", id=2, name="airway", args={"mode": "Mask"})
+    mask_reply = request(server, "cmd", id=2, name="airway", args={"mode": "Mask"})
+    assert [msg["type"] for msg in mask_reply] == ["result", "tick"]
+    assert mask_reply[1]["snap"]["controls"]["airway"] == "Mask"
     request(server, "cmd", id=3, name="run", args={"running": True})
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:

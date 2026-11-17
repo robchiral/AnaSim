@@ -6,6 +6,7 @@ import pytest
 
 from anasim.core.state import SimulationConfig
 from anasim.core.tci import TCIController
+from anasim.patient.pd.anesthesia import BISModel, ClinicalResponseModel
 from anasim.patient.pk_models import ANESTHETIZED_OUTPUT, FentanylPK
 from anasim.physiology.hemodynamics import HemodynamicModel
 
@@ -439,3 +440,17 @@ def test_midazolam_induction_preserves_breathing_bis_and_thermoregulation_until_
     midaz.give_drug_bolus("fentanyl", 250.0)
     _advance(midaz, 420, dt=2.0)
     assert midaz.state.map < map_0 - 10.0
+
+
+def test_lidocaine_mac_sparing_awake_ceiling_and_extreme_bis_overflow_guard(patient):
+    """Systemic lidocaine spares sevoflurane MAC tolerance while capping lidocaine-only
+    tolerance below surgical unresponsiveness, and BISModel stays finite at extreme inputs.
+    """
+    crm = ClinicalResponseModel(40.0)
+    assert crm.tolerance(0.0, 0.0, ce_lidocaine=50.0) <= 0.251
+    assert crm.tolerance(0.0, 0.0, mac_sevo=1.0, ce_lidocaine=4.0) > (
+        crm.tolerance(0.0, 0.0, mac_sevo=1.0, ce_lidocaine=0.0) + 0.05
+    )
+    bis = BISModel(patient)
+    val = bis.compute_bis(1e9, 1e6, 0.0)
+    assert 0.0 <= val <= 100.0

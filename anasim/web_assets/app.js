@@ -305,6 +305,7 @@ function onTick(snap) {
   trends.update(snap);
   updateBar(snap);
   if (info.scenario) updateScenario(snap.scenario);
+  if (snap.ended) casePanel.freezeControls();
   if (snap.download) download(snap.download.filename, snap.download.csv);
   if (snap.notice) alertDialog("Recording failed", snap.notice);
   if (snap.ended && snap.arrest_reason && !arrestShown && !snap.scenario?.debrief) {

@@ -132,3 +132,12 @@ def test_deepcopy_during_active_recording_and_json_alarm_serialization(awake_eng
     assert rows
     parsed_alarms = json.loads(rows[-1]["alarms"])
     assert isinstance(parsed_alarms, dict) and "BIS" in parsed_alarms
+
+    recorder = awake_engine.recorder
+    recorder.start()
+    first_path = recorder.file_path
+    recorder.stop()
+    recorder.start()
+    second_path = recorder.file_path
+    recorder.stop()
+    assert first_path != second_path

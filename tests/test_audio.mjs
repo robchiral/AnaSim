@@ -183,7 +183,7 @@ test("alarms use existing flags, clear promptly, and silence expires after two r
 });
 
 test("the compact alarm control appears only for running alarms and retains silence across pause", async t => {
-  const { audio, elements, advance, snap } = setup(t);
+  const { audio, elements, notes, advance, snap } = setup(t);
   await audio.setEnabled(true);
   const alarm = () => snap(undefined, { alarms: { SpO2: "low" } });
   audio.update(alarm());
@@ -205,6 +205,14 @@ test("the compact alarm control appears only for running alarms and retains sile
   elements.get("alarm-silence").onclick();
   assert.equal(audio.countdown.hidden, true);
   assert.equal(audio.silence.attributes["aria-label"], "Silence alarms for 2 minutes");
+
+  // Silencing one alarm is broken immediately when a new unacknowledged alarm fires.
+  audio.silence.onclick();
+  assert.equal(audio.countdown.hidden, false);
+  const silencedCount = notes("alarm").length;
+  audio.update(snap(undefined, { alarms: { SpO2: "low", MV: "low" } }));
+  assert.equal(audio.countdown.hidden, true);
+  assert.equal(notes("alarm").length, silencedCount + 3);
 });
 
 test("pause, end, hidden pages, stale data, errors, and new sessions stop scheduled audio", async t => {

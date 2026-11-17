@@ -346,8 +346,13 @@ def test_reversible_protein_free_water_shift_and_calcium_chloride_acid_load(
 
     base_0 = fluids.base_meq
     engine.give_calcium_chloride(2000.0)
+    unmixed_0 = fluids.calcium_unmixed_mmol
+    exo_0 = fluids.exogenous_calcium_mmol
+    fluids.bleed(1000.0, hematocrit=0.40)
+    assert fluids.calcium_unmixed_mmol < unmixed_0 * 0.92
+    assert fluids.exogenous_calcium_mmol < exo_0
     advance_time(engine, 600.0, dt=2.0)
-    assert fluids.base_meq < base_0 - 1.5
+    assert fluids.base_meq < base_0 - 1.0
 
 
 def test_rapid_saline_resuscitation_lowers_ph_monotonically(engine_factory, advance_time):

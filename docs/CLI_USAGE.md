@@ -97,7 +97,7 @@ these patient conditions.
 [`SimulationState`](../anasim/core/state.py) values. `time` is the elapsed
 simulation time in seconds. The default interval is 1 second, and each engine
 step records at most one row. An interval shorter than `dt` still produces one
-row per step.
+row per step. Restarting a recording creates a new CSV file.
 
 `pa_co2` is arterial CO₂. `display_etco2` is the end-tidal CO₂ measurement with
 sensor effects, and `etco2_signal_valid` reports whether it is valid. `NaN` in
@@ -148,6 +148,8 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 | `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
 | `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates such as propofol, remifentanil, and rocuronium in mcg/kg/min use total body weight; vasopressor rates are absolute |
 | `enable_tci()` | Requires `tci_enabled=True` |
+| `set_drug_target(key, target)` | Preserves the active plasma or effect-site mode; `None` or a non-positive target stops TCI |
+| `give_blood(volume_ml, hematocrit=0.55)` | Queues packed red cells at 75 mL/min; donor hematocrit must be between 0.01 and 0.70 |
 | `give_lipid_emulsion(volume_ml)` | Gives 20% lipid emulsion over 2.5 simulated minutes |
 | `set_lipid_infusion(ml_min)` | Sets a 20% lipid emulsion infusion from 0 to 200 mL/min |
 | `give_calcium_chloride(mg)` | Gives calcium chloride dihydrate up to 10,000 mg; 1 g contains 6.8 mmol calcium |

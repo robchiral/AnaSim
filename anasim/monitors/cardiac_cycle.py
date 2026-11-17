@@ -156,8 +156,26 @@ class CardiacCycle:
         return self._sample(beat_started=self._organized)
 
     def _update_display_hr(self) -> None:
+        if self._elapsed_s >= 8.0:
+            self._recent_rr.clear()
+            self._display_hr = 0.0
+            return
+        while len(self._recent_rr) > 1 and sum(self._recent_rr) - self._recent_rr[0] + self._elapsed_s >= 8.0:
+            self._recent_rr.popleft()
         recent = self._recent_rr
-        self._display_hr = 60.0 * len(recent) / sum(recent) if recent else self._measured_hr
+        if not recent:
+            if self._elapsed_s > max(1.5 * self._mean_rr_s, 1.0):
+                self._display_hr = min(self._measured_hr, 60.0 / self._elapsed_s)
+            else:
+                self._display_hr = self._measured_hr
+            return
+        total = sum(recent)
+        last_rr = recent[-1]
+        if self._elapsed_s > 1.5 * last_rr:
+            span = max(total, total - recent[0] + self._elapsed_s)
+            self._display_hr = min(60.0 * len(recent) / span, 60.0 / self._elapsed_s)
+        else:
+            self._display_hr = 60.0 * len(recent) / total
 
     def clear_rate_history(self) -> None:
         """Discard prior R-R intervals when an unsynchronized shock changes the rhythm."""
@@ -205,7 +223,7 @@ class CardiacCycle:
             self._rr_interval_s = self._next_rr(hr, rhythm_type)
             beat_started = True
 
-        if beat_started:
+        if beat_started or self._elapsed_s > 0.0:
             self._update_display_hr()
         return self._sample(beat_started=seeded_beat or beat_started)
 

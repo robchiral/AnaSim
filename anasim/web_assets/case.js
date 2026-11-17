@@ -39,6 +39,14 @@ export class CasePanel {
     for (const [control, disabled] of this.disabledControls) control.disabled = disabled;
   }
 
+  freezeControls() {
+    $("clinical-feedback").hidden = true;
+    for (const control of document.querySelectorAll('[data-panel] input, [data-panel] select, [data-panel] button, #nmb-measure, #nmb-mode, #nmb-repeat, #measure-nibp, #speed, #record')) {
+      if (!this.disabledControls.has(control)) this.disabledControls.set(control, control.disabled);
+      control.disabled = true;
+    }
+  }
+
   update(state, waiting) {
     const independent = state.mode === "independent";
     $("case-guide").hidden = independent || state.complete;
@@ -70,11 +78,7 @@ export class CasePanel {
     }
     $("case-actions").hidden = state.complete;
     if (state.complete) {
-      $("clinical-feedback").hidden = true;
-      for (const control of document.querySelectorAll('[data-panel] input, [data-panel] select, [data-panel] button, #nmb-measure, #nmb-mode, #nmb-repeat, #measure-nibp, #record')) {
-        if (!this.disabledControls.has(control)) this.disabledControls.set(control, control.disabled);
-        control.disabled = true;
-      }
+      this.freezeControls();
       if (!this.reviewRendered) {
         this.reviewRendered = true;
         this.renderReview(state.debrief);

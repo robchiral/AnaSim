@@ -204,13 +204,20 @@ class AnesthesiaVentilator:
         self._backup = False
         self._vg_pressure: float | None = None
         self._armed = False
-        # (duration s, VTe L, pressure area cmH2O·s, supported VTe L)
-        self._recent: deque[tuple[float, float, float, float]] = deque(maxlen=RECENT_BREATHS)
-        self._recent_totals = (0.0, 0.0, 0.0, 0.0)
+        # (duration s, VTe L, pressure area cmH2O·s, supported VTe L, mandatory VTe L)
+        self._recent: deque[tuple[float, float, float, float, float]] = deque(maxlen=RECENT_BREATHS)
+        self._recent_totals = (0.0, 0.0, 0.0, 0.0, 0.0)
+        self._attempted_breath = False
+
+    @property
+    def mandatory_share(self) -> float:
+        """Fraction of recent expired volume delivered by mandatory or manual breaths."""
+        volume = self._recent_totals[1]
+        return min(1.0, self._recent_totals[4] / volume) if volume > 0.0 else 0.0
 
     @property
     def has_measured_breath(self) -> bool:
-        return bool(self._recent)
+        return bool(self._recent) or self._attempted_breath
 
     @property
     def breath_inspiring(self) -> bool:
@@ -254,7 +261,14 @@ class AnesthesiaVentilator:
             and self.settings.p_max <= new_peep
         ):
             values["p_max"] = max(40.0, float(new_peep) + 10.0)
+        prev_mode = self.settings.mode
         self.settings = replace(self.settings, **values)
+        if self.settings.mode != prev_mode:
+            self._backup = False
+            self._since_breath = 0.0
+            period = self._mandatory_period()
+            if math.isfinite(period):
+                self._since_mandatory = min(self._since_mandatory, period)
 
     # --- Configuration of the active source --------------------------------
 
@@ -384,13 +398,29 @@ class AnesthesiaVentilator:
         if self._source == "vent" and self.settings.mode != self._mode:
             if MANDATORY.get(self.settings.mode) == "VG" and (self._mode is None or MANDATORY.get(self._mode) != "VG"):
                 self._vg_pressure = None
+            self._backup = False
+            self._since_breath = 0.0
+            self._since_mandatory = max(0.0, self._since_mandatory)
             self._mode = self.settings.mode
+        elif self._source == "vent" and self._since_mandatory < 0.0:
+            period = self._mandatory_period()
+            if math.isfinite(period):
+                self._since_mandatory = max(-period, self._since_mandatory)
         lung.effort.start(lung, self._series_resistance())
         remaining = dt
         while remaining > 1e-12:
             remaining -= self._advance(remaining, lung)
-        self._update_rates()
+        self._update_rates(lung)
         self._sample(lung)
+        if (
+            self._source is not None
+            and not self.inspiring
+            and not self.breath_inspiring
+            and lung.effort.pmus() == (0.0, 0.0)
+            and abs(self.flow) < 0.05
+            and abs(lung.elastic_pressure) < 0.05
+        ):
+            lung.note_end_expiration(self._eff_baseline or 0.0)
 
     def _switch(self, source, lung) -> None:
         self._source = source
@@ -401,7 +431,8 @@ class AnesthesiaVentilator:
         self._measured = None
         self._since_measured = 0.0
         self._recent.clear()
-        self._recent_totals = (0.0, 0.0, 0.0, 0.0)
+        self._recent_totals = (0.0, 0.0, 0.0, 0.0, 0.0)
+        self._attempted_breath = False
         self.monitors = VentMonitors()
         self.monitors.peep = self._configured_peep()
         self.pressure_limited = False
@@ -513,11 +544,12 @@ class AnesthesiaVentilator:
             else:
                 self._since_mandatory = 0.0
 
-    def _finish(self, lung) -> None:
-        """Record the breath that ends as the next one starts."""
+    def _finish(self, lung) -> bool:
+        """Record the breath that ends as the next one starts; return True if flow reached spirometry threshold."""
         b = self._measured
         if self._source is None or b is None or b.t <= 0.0:
-            return
+            return False
+        self._attempted_breath = True
         m = self.monitors
         vte = b.expired
         m.paw_peak = b.paw_peak
@@ -528,10 +560,12 @@ class AnesthesiaVentilator:
         m.tv_exp = vte * 1000.0
         if b.kind != "SPONT":
             driving = b.paw_peak - self._paw_end
-            m.compliance_dyn = m.tv_exp / driving if driving > 0.5 else math.nan
+            m.compliance_dyn = m.tv_exp / driving if driving > 0.5 and vte >= MIN_EXPIRATION_L else math.nan
         if b.mandatory:
             m.tv_exp_mandatory = m.tv_exp
             m.paw_plat = b.plat
+        if vte < MIN_EXPIRATION_L:
+            return False
         if b.kind == "SPONT":
             supported_vte = 0.0
         elif not b.mandatory and b.pmus_area > 0.0:
@@ -539,10 +573,12 @@ class AnesthesiaVentilator:
             supported_vte = vte * (clamp01(b.support_area / total_drive) if total_drive > 1e-9 else 1.0)
         else:
             supported_vte = vte
-        self._recent.append((b.t, vte, b.area, supported_vte))
-        durations, volumes, areas, supported = zip(*self._recent, strict=True)
-        self._recent_totals = (sum(durations), sum(volumes), sum(areas), sum(supported))
+        mandatory_vte = vte if b.mandatory else 0.0
+        self._recent.append((b.t, vte, b.area, supported_vte, mandatory_vte))
+        durations, volumes, areas, supported, mandatory = zip(*self._recent, strict=True)
+        self._recent_totals = (sum(durations), sum(volumes), sum(areas), sum(supported), sum(mandatory))
         self.breath_count += 1
+        return True
 
     def _begin_measurement(self, lung, kind: str, mandatory: bool) -> None:
         # A scheduled inflation before a spontaneous breath has exhaled belongs
@@ -553,19 +589,23 @@ class AnesthesiaVentilator:
             # inspired in this breath when PS or a mandatory stroke takes over.
             b.kind, b.mandatory = kind, mandatory
             return
-        self._finish(lung)
+        had_prior = b is not None
+        counted = self._finish(lung)
         lung.note_end_expiration(self._eff_baseline or 0.0)
         self._bag_ref_volume = lung.volume
         self._measured = MeasuredBreath(kind, mandatory)
-        self._since_measured = 0.0
+        if not had_prior or counted:
+            self._since_measured = 0.0
 
-    def _update_rates(self) -> None:
-        total, volume, area, supported = self._recent_totals
+    def _update_rates(self, lung=None) -> None:
+        if lung is not None and not self.inspiring and not self.breath_inspiring:
+            self.monitors.auto_peep = min(self.monitors.auto_peep, max(0.0, lung.elastic_pressure))
+        total, volume, area, supported, _ = self._recent_totals
         window_t, window_area = total, area
         current = self._measured
         if current is not None and (not self._recent or current.t > self._recent[0][0]):
             # A breath that outlasts the oldest one replaces it, so pauses lower the mean.
-            oldest_t, _, oldest_area, _ = self._recent[0] if self._recent else (0.0, 0.0, 0.0, 0.0)
+            oldest_t, _, oldest_area, _, _ = self._recent[0] if self._recent else (0.0, 0.0, 0.0, 0.0, 0.0)
             window_t += current.t - oldest_t
             window_area += current.area - oldest_area
         if window_t > 0.0:
@@ -769,7 +809,7 @@ class AnesthesiaVentilator:
         segment.commit(t)
         self._paw_end = self._peep() + segment.paw(t)
         if effort.clock < effort.ti:
-            assistance = seg_area if b is not None and b.kind != "SPONT" else 0.0
+            assistance = seg_area * self._volume_delivery if b is not None and b.kind != "SPONT" else 0.0
             effort.note_assistance(t, assistance)
         effort.advance(t, lung, self._series_resistance())
         self._since_mandatory += t

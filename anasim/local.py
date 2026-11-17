@@ -118,7 +118,8 @@ class LocalServer(ThreadingHTTPServer):
                 result["value"] = json.loads(self.session.command(message["name"], json.dumps(message.get("args", {}))))
             except Exception as error:  # reported like the browser worker does
                 result["error"] = str(error)
-            return [result]
+                return [result]
+            return [result, {"type": "tick", "snap": self.session.snapshot()}]
         raise ValueError(f"Unknown message: {kind!r}")
 
     def server_close(self):

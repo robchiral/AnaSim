@@ -28,6 +28,7 @@ class NativeTransport {
     this.client = crypto.randomUUID();
     this.queue = Promise.resolve();
     this.timer = null;
+    this.running = false;
     this.failed = false;
     window.addEventListener("pagehide", () => {
       clearTimeout(this.timer);
@@ -63,10 +64,12 @@ class NativeTransport {
       if (!response.ok) throw new Error(messages.error);
       let stopped = false;
       for (const data of messages) {
+        if (data.type === "tick") this.running = Boolean(data.snap?.running && !data.snap?.ended);
+        else if (data.type === "ready") this.running = false;
         this.onmessage({ data });
         if (data.type === "error") stopped = true;
       }
-      if (!stopped) this.timer = setTimeout(() => this.postMessage({ type: "poll" }), 50);
+      if (!stopped) this.timer = setTimeout(() => this.postMessage({ type: "poll" }), this.running ? 50 : 5000);
     } catch (error) {
       this.failed = true;
       const text = `${error.message}. Reload to reconnect. Local recordings remain on disk.`;

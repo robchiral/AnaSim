@@ -38,6 +38,7 @@ class StepGasCache:
     tracheal_fio2: float
     n2o_uptake_l_min: float
     lung_volume_l: float
+    sevo_uptake_l_min: float = 0.0
     circuit_fin2: float | None = None
     apneic_limit_l_min: float | None = None
 
@@ -86,12 +87,13 @@ def mask_circuit_share(engine: SimulationEngine) -> float:
     seal = engine.mask_seal
     if seal <= 0.0:
         return 0.0
-    # Room air enters around a loose mask only during unsupported inspiration.
-    # A pressurized mask leaks outward.
+    # Room air enters around a loose mask during unsupported inspiration or
+    # whenever positive-pressure delivery falls short of spontaneous demand.
     spirometry = engine.vent.monitors
     supported = spirometry.mv_supported * (1.0 - mask_leak(engine))
     unsupported = max(0.0, spirometry.mv_exp - spirometry.mv_supported)
-    if supported + unsupported <= 0.0:
+    spont_mv = engine.resp.state.mv if not engine.resp.state.apnea else 0.0
+    if not engine.vent.has_measured_breath and supported + unsupported <= 0.0:
         pressurized = (
             (
                 (assisted_positive_pressure(engine) or (engine.vent.is_on and engine.vent.settings.peep > 0.0))
@@ -99,12 +101,30 @@ def mask_circuit_share(engine: SimulationEngine) -> float:
             )
             or engine._apl_pressure > 0.0
         )
-        share = 1.0 if pressurized else seal
+        if pressurized and seal < 1.0 and spont_mv > 0.0 and assisted_positive_pressure(engine):
+            if engine.bag_mask_active and not engine.vent.is_on:
+                est_sup = engine.bag_mask_rr * engine.bag_mask_vt
+            elif engine.vent.is_on and engine.vent.settings.rr > 0.0:
+                est_sup = engine.vent.settings.rr * engine.vent.settings.tv / 1000.0
+            else:
+                est_sup = 0.0
+            est_delivered = est_sup * (1.0 - mask_leak(engine))
+            unassisted_est = max(0.0, spont_mv - est_delivered)
+            total_est = est_delivered + unassisted_est
+            share = (est_delivered + seal * unassisted_est) / total_est if total_est > 0.0 else seal
+        else:
+            share = 1.0 if pressurized else seal
     else:
-        share = (supported + seal * unsupported) / (supported + unsupported)
+        unassisted = max(unsupported, spont_mv - supported) if seal < 1.0 else unsupported
+        total_mv = supported + unassisted
+        share = (supported + seal * unassisted) / total_mv if total_mv > 0.0 else seal
     if seal < 0.999 and engine.circuit.bellows_fraction <= 0.05 and engine.state.va > 0.0:
-        avail = max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow())
-        share = min(share, avail / max(0.1, engine.state.va))
+        avail_btps = (
+            max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow())
+            / engine.resp._btps_to_stpd
+        )
+        demand_btps = max(engine.state.va, spont_mv)
+        share = min(share, avail_btps / max(0.1, demand_btps))
     return share
 
 
@@ -163,12 +183,18 @@ def circuit_ventilation(engine: SimulationEngine) -> tuple[float, float]:
     leak = mask_leak(engine)
     unsupported_mv = max(0.0, spirometry.mv_exp - spirometry.mv_supported)
     supported_mv = spirometry.mv_supported
-    if assisted:
-        max_deliverable_mv = (
+    max_deliverable_mv = (
+        (
             engine.circuit.reservoir_volume * rr
-            + max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow()) / engine.resp._btps_to_stpd
+            + max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow())
         )
+        / engine.resp._btps_to_stpd
+    )
+    sealed_airway = engine.state.airway_mode != AirwayType.MASK or engine.mask_seal >= 0.999
+    if assisted:
         supported_mv = min(supported_mv, max_deliverable_mv)
+    if sealed_airway:
+        unsupported_mv = min(unsupported_mv, max(0.0, max_deliverable_mv - supported_mv))
     mv_lung = supported_mv * (1.0 - leak) + unsupported_mv
     # Unassisted negative-pressure effort draws room air around a loose mask
     # whenever positive-pressure circuit delivery falls below unassisted MV.
@@ -249,7 +275,6 @@ def thermal_hypnotic_ce(engine: SimulationEngine) -> float:
     etomidate = (
         max(0.0, state.etomidate_ce)
         * PROPOFOL_LOSS_OF_RESPONSE
-        * engine.bis.age_factor
         / ETOMIDATE_LOSS_OF_RESPONSE
     )
     midaz = max(0.0, state.midazolam_ce)
@@ -467,21 +492,29 @@ def advance_tracheal_fio2(engine: SimulationEngine, dt: float) -> float:
         # flow (~0.2 L/min) must slowly displace nitrogen-filled upper-airway
         # and anatomic dead space before fresh O2 reaches the carina.
         patency = clamp01(engine.airway_status.patency)
-        sealed_circuit = sealed and mask_circuit_share(engine) >= 0.999
+        share = mask_circuit_share(engine) if sealed else 0.0
+        sealed_circuit = sealed and share >= 0.999
         circuit_starved = sealed_circuit and engine.circuit.deliverable_flow(dt) <= 1e-9
         if patency > 0.0 and not circuit_starved:
             tau_apneic = 240.0 / max(0.1, patency)
             engine._tracheal_fio2 += (state.fio2 - engine._tracheal_fio2) * -math.expm1(-dt / tau_apneic)
-        if sealed_circuit:
+        if sealed and share > 0.0:
             comp = engine.circuit.composition
             eff_v = max(
                 1.0,
                 engine.circuit.volume - (engine.circuit.reservoir_capacity - engine.circuit.reservoir_volume),
             )
-            vd_stpd = max(1e-6, engine.resp.vd_deadspace * engine.resp._btps_to_stpd)
-            avail_n2_l = eff_v * comp.fin2 + 0.79 * max(0.0, engine.circuit.fgf_air) * dt / 60.0
-            max_trach_fn2 = clamp01(avail_n2_l / vd_stpd)
-            min_trach_fio2 = clamp01(1.0 - comp.fi_agent - comp.fin2o - max_trach_fn2)
+            resp = engine.resp
+            frc_exp_stpd = max(0.0, engine.aeration.frc - resp.frc) * patency * resp._btps_to_stpd
+            apneic_demand_l_min = max(0.0, resp._pulmonary_o2_uptake - resp._pulmonary_co2_delivery)
+            step_demand_l = max(1e-6, apneic_demand_l_min * dt / 60.0 + frc_exp_stpd)
+            avail_n2_l = (
+                eff_v * max(0.0, 1.0 - comp.fio2 - comp.fi_agent - comp.fin2o)
+                + 0.79 * max(0.0, engine.circuit.fgf_air) * dt / 60.0
+            )
+            max_circuit_fn2 = clamp01(avail_n2_l / max(1e-9, share * step_demand_l))
+            max_trach_fn2 = share * max_circuit_fn2 + (1.0 - share) * 0.79
+            min_trach_fio2 = clamp01(1.0 - share * (comp.fi_agent + comp.fin2o) - max_trach_fn2)
             engine._tracheal_fio2 = max(engine._tracheal_fio2, min(state.fio2, min_trach_fio2))
     return engine._tracheal_fio2
 
@@ -529,18 +562,28 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         apneic_limit: float | None = cache.apneic_limit_l_min
     else:
         apneic_limit = engine.circuit.deliverable_flow_l_min if sealed and share >= 0.999 else None
-    n2o_uptake = (
-        cache.n2o_uptake_l_min
-        if cache is not None
-        else engine.pk_n2o.alveolar_uptake_l_min(cardiac_output, engine.aeration.shunt_fraction)
-    )
+    if sealed and share >= 0.999 and dt > 0.0 and engine.circuit.last_uptake_scale < 1.0 - 1e-6:
+        assisted_rr *= engine.circuit.last_uptake_scale
+    if cache is not None:
+        agent_uptake = cache.n2o_uptake_l_min + cache.sevo_uptake_l_min
+    else:
+        shunt_now = engine.aeration.shunt_fraction
+        agent_uptake = (
+            engine.pk_n2o.alveolar_uptake_l_min(cardiac_output, shunt_now)
+            + engine.pk_sevo.alveolar_uptake_l_min(cardiac_output, shunt_now)
+        )
     lung_volume_l = cache.lung_volume_l if cache is not None else engine.aeration.frc
     loose_starved_mask = peep_scale < 0.999 and engine.circuit.bellows_fraction < 1.0
     spirometry = engine.vent.monitors
     supported_share = (
-        clamp01(spirometry.mv_supported / spirometry.mv_exp)
+        engine.vent.mandatory_share
         if spirometry.mv_exp > 0.0
-        else (1.0 if assisted_positive_pressure(engine) else 0.0)
+        else (
+            1.0
+            if assisted_positive_pressure(engine)
+            and not (engine.vent.is_on and engine.vent.settings.mode == "PSV" and not engine.vent._backup)
+            else 0.0
+        )
     )
     resp_state = engine.resp.step(
         dt,
@@ -591,7 +634,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         central_drive_fraction=engine.cerebral.respiratory_drive * engine.toxicity.respiratory_drive,
         ketamine_cp=engine.pk["ketamine"].state.c1,
         mac_n2o=state.mac_n2o,
-        n2o_uptake_l_min=n2o_uptake,
+        n2o_uptake_l_min=agent_uptake,
         fin2=inspired_fn2,
         apneic_flow_limit_l_min=apneic_limit,
         mech_supported_fraction=supported_share,
@@ -693,7 +736,7 @@ def step_coronary_from_state(
     hemo.coronary.step(
         dt, state.hr, coronary_sbp, coronary_dbp, max(state.lap, hemo_state.venous_pressure), hemo.hb_conc,
         sao2, hemo.myocardial_hypoxia,
-        fibrillating=hemo.rhythm_type == RhythmType.VFIB, compressions=hemo.compressions,
+        fibrillating=hemo_state.rhythm_type == RhythmType.VFIB, compressions=hemo.compressions,
         venous_pressure=hemo_state.venous_pressure,
         intrinsic_sbp=intrinsic_sbp,
     )
@@ -707,15 +750,17 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     loc_val = loss_of_response(engine)
     tol_val = stimulus_tolerance(engine)
     engine._tol_current = tol_val
-    raw_bis = engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo, state.ketamine_ce) * engine.bis.cortical_function
+    cortical = engine.cerebral.cortical_function
+    drug_bis = engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo, state.ketamine_ce)
+    raw_bis = drug_bis * cortical
     bis_val = clamp(
-        raw_bis + runtime_core.stimulus_effects(engine, 0.0).bis * engine.bis.cortical_function,
+        raw_bis + runtime_core.stimulus_effects(engine, 0.0).bis * cortical,
         0.0,
         100.0,
     )
     hemo_state = engine.hemo.state
     cardiac_sample = engine.cardiac_cycle.seed(state.hr, hemo_state.rhythm_type)
-    arterial_sample = engine.arterial_waveform.step(
+    arterial_sample = engine.arterial_waveform.seed(
         cardiac_sample,
         state.map,
         state.sv,
@@ -743,7 +788,7 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     else:
         engine.spo2_mon.display_saturation = None
         state.spo2 = state.display_spo2 = 0.0
-    engine.bis.initialize(raw_bis)
+    engine.bis.initialize(drug_bis, cortical_function=cortical)
     engine.smooth_bis = state.bis
 
 

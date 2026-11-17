@@ -17,7 +17,9 @@ from anasim.scenarios import (
     create_sepsis_response,
 )
 from anasim.scenarios.base import (
+    CrisisStartMAP,
     format_unmet_int,
+    require_hypotension_or_treatment,
     require_map_at_least,
     require_vasopressor_if_hypotensive,
 )
@@ -510,3 +512,11 @@ def test_emergence_normocapnia_covariates_and_stale_nibp_vasopressor_check(engin
     check = require_vasopressor_if_hypotensive("nore", fail_message="Start norepinephrine")
     met, msg = check(no_art)
     assert not met and "measure blood pressure again" in msg.lower()
+
+    failed_nibp = engine_factory(config=SimulationConfig(arterial_line_enabled=False, rng_seed=1))
+    failed_nibp.state.nibp_map = 0.0
+    failed_nibp.state.nibp_timestamp = None
+    start_map = CrisisStartMAP()
+    start_map.record(failed_nibp)
+    assert start_map.value is None
+    assert not require_hypotension_or_treatment(start_map, "hemorrhage", "Assess BP")(failed_nibp)[0]

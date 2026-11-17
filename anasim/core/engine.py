@@ -42,7 +42,7 @@ from anasim.physiology.blood_chemistry import plasma_bicarbonate
 from anasim.physiology.cerebral import CerebralModel
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
-from anasim.physiology.hemodynamics import HemodynamicModel
+from anasim.physiology.hemodynamics import MAX_HEMATOCRIT, HemodynamicModel
 from anasim.physiology.lactate import LactateModel
 from anasim.physiology.lung import LungAeration
 from anasim.physiology.malignant_hyperthermia import (
@@ -382,10 +382,11 @@ class SimulationEngine(DrugControllerMixin):
 
     def give_blood(self, volume_ml: float = 300.0, hematocrit: float = 0.55):
         """Queue packed red cells at 75 mL/min."""
+        hct = bounded_number("blood hematocrit", hematocrit, 0.01, MAX_HEMATOCRIT)
         self._queue_infusion(
             volume_ml,
             self.blood_infusion_rate_ml_min,
-            hematocrit=hematocrit,
+            hematocrit=hct,
             label="blood",
         )
 
@@ -598,8 +599,8 @@ class SimulationEngine(DrugControllerMixin):
         self.actions.record(
             self.state.time, ACTION_AIRWAY, label=self.state.airway_mode.value
         )
-        if self.state.airway_mode == AirwayType.NONE:
-            self.bag_mask_active = False
+        if self.state.airway_mode == AirwayType.NONE and self.bag_mask_active:
+            self.set_bag_mask_ventilation(False)
 
     def set_mask_seal(self, seal: float):
         """Set the facemask seal fraction, from 0 (open leak) to 1 (tight seal)."""
@@ -637,6 +638,7 @@ class SimulationEngine(DrugControllerMixin):
             raise ValueError(f"Unknown rhythm: {rhythm_name!r}")
         self.hemo.rhythm_type = rhythm
         self.arrhythmias.reset()
+        self.cardiac_cycle.clear_rate_history()
         self.hemo.invalidate_state_cache()
 
     def set_chest_compressions(self, active: bool):

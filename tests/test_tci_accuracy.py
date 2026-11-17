@@ -377,3 +377,32 @@ def test_controller_ignores_subpulse_effect_noise_and_rebuilds_on_pk_drift(patie
     pk_prop.effect_input_fraction = 0.5
     assert ctrl.sync_from_pk_model(pk_prop) is True
     assert ctrl.sync_from_pk_model(pk_prop) is False
+
+
+def test_plasma_mode_retargeting_pump_co_reset_and_non_divisor_dt_segmentation(engine_factory):
+    """set_drug_target preserves active plasma-mode TCI; resetting pump_pk["fentanyl"]
+    retains anesthetized CO scaling; non-divisor dt=1.9 s matches dt=0.1 s across TCI pulses.
+    """
+    plasma_eng = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True)
+    plasma_eng.enable_tci("propofol", 3.0, mode="plasma")
+    plasma_eng.set_drug_target("propofol", 4.5)
+    assert plasma_eng.tci["propofol"].target_compartment == "plasma"
+
+    fent_eng = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True)
+    k10_ref = fent_eng.pump_pk["fentanyl"].k10
+    fent_eng.give_drug_bolus("fentanyl", 100.0)
+    fent_eng.set_drug_rate("fentanyl", 0.0)
+    fent_eng.enable_tci("fentanyl", 2.0)
+    assert fent_eng.pump_pk["fentanyl"].k10 == pytest.approx(k10_ref, rel=1e-9)
+
+    c1_endpoints = []
+    for step_dt in (0.1, 1.9):
+        eng = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, dt=0.1, rng_seed=1), start=True)
+        eng.enable_tci("propofol", 4.0)
+        elapsed = 0.0
+        while elapsed < 12.0 - 1e-9:
+            step = min(step_dt, 12.0 - elapsed)
+            eng.step(step)
+            elapsed += step
+        c1_endpoints.append(eng.pk["propofol"].state.c1)
+    assert c1_endpoints[0] == pytest.approx(c1_endpoints[1], rel=1e-3)

@@ -49,11 +49,25 @@ class DataRecorder:
         memo[id(self)] = clone
         return clone
 
+    def _allocate_path(self) -> None:
+        base_ns = time.time_ns()
+        candidate = f"anasim_log_{base_ns}.csv"
+        path = Path(self.output_dir) / candidate
+        suffix = 1
+        while path.exists():
+            candidate = f"anasim_log_{base_ns}_{suffix}.csv"
+            path = Path(self.output_dir) / candidate
+            suffix += 1
+        self.filename = candidate
+        self.file_path = str(path)
+
     def start(self):
         if self.is_recording:
             return
         try:
             os.makedirs(self.output_dir, exist_ok=True)
+            if Path(self.file_path).exists():
+                self._allocate_path()
             self.file = file = open(self.file_path, 'x', newline='', encoding='utf-8')
             self.writer = writer = csv.writer(file)
             writer.writerow(STATE_FIELD_NAMES)

@@ -24,7 +24,13 @@ export class MonitorAudio {
     if (this.toggle.disabled) this.toggle.title = "Sound is unavailable in this browser.";
     this.toggle.onclick = () => this.setEnabled(!this.enabled);
     this.silence.onclick = () => {
-      this.silencedUntil = this.silencedUntil > performance.now() ? 0 : performance.now() + SILENCE_MS;
+      if (this.silencedUntil > performance.now()) {
+        this.silencedUntil = 0;
+        this.silencedAlarms.clear();
+      } else {
+        this.silencedUntil = performance.now() + SILENCE_MS;
+        this.silencedAlarms = new Map(Object.entries(this.snapshot?.alarms ?? {}));
+      }
       this.stopNotes("alarm");
       this.nextAlarm = 0;
       this.refresh();
@@ -89,6 +95,7 @@ export class MonitorAudio {
   resetSession(sampleInterval) {
     this.sampleInterval = sampleInterval;
     this.silencedUntil = 0;
+    this.silencedAlarms = new Map();
     this.stopPlayback();
   }
 
@@ -151,6 +158,13 @@ export class MonitorAudio {
   }
 
   refresh() {
+    if (this.snapshot && performance.now() < this.silencedUntil &&
+        Object.entries(this.snapshot.alarms).some(([name, side]) => this.silencedAlarms.get(name) !== side)) {
+      this.silencedUntil = 0;
+      this.silencedAlarms.clear();
+    } else if (performance.now() >= this.silencedUntil && this.silencedAlarms.size > 0) {
+      this.silencedAlarms.clear();
+    }
     this.syncControls();
     if (!this.playing()) {
       this.stopNotes();

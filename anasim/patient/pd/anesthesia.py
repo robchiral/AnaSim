@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from collections import deque
 
+from anasim.core.constants import CONCENTRATION_RATIO_SATURATION
 from anasim.core.utils import clamp01, hill_function
 from anasim.patient.patient import Patient
 from anasim.patient.variability import TYPICAL, OpioidRateVariability
@@ -170,7 +171,8 @@ class BISModel:
 
     def __init__(self, patient: Patient):
         self.age_factor = math.exp(-0.00634837 * (patient.age - 35.0))
-        self.c50 = 3.079446890954557 * self.age_factor * patient.variability.propofol.ce50
+        self.c50_typical = 3.079446890954557 * self.age_factor
+        self.c50 = self.c50_typical * patient.variability.propofol.ce50
         self.baseline = 92.9824
         self.gamma_above = 1.4736185873429664
         self.gamma_below = 1.8939053122841638
@@ -180,20 +182,26 @@ class BISModel:
         self.mac50 = 1.0 / sevo_units
         self.initialize(self.baseline)
 
-    def initialize(self, bis: float) -> None:
+    def initialize(self, bis: float, cortical_function: float = 1.0) -> None:
         self._clock = 0.0
         self._drug_history: deque[tuple[float, float]] = deque([(0.0, bis)])
-        self._cortical_history: deque[tuple[float, float]] = deque([(0.0, 1.0)])
-        self.cortical_function = 1.0
+        cortical = clamp01(cortical_function)
+        self._cortical_history: deque[tuple[float, float]] = deque([(0.0, cortical)])
+        self.cortical_function = cortical
 
     def compute_bis(
         self, ce_prop: float, mac_sevo: float = 0.0, ce_ketamine: float = 0.0,
     ) -> float:
-        ce_equivalent = max(0.0, ce_prop) + self.c50 * max(0.0, mac_sevo) / self.mac50
+        ce_equivalent = max(0.0, ce_prop) + self.c50_typical * max(0.0, mac_sevo) / self.mac50
         # NONMEM's smooth slope transition is on the concentration scale.
-        switch = 1.0 / (1.0 + math.exp(-30.0 * max(-20.0, ce_equivalent - self.c50)))
+        switch = 1.0 / (1.0 + math.exp(-30.0 * max(-20.0, min(20.0, ce_equivalent - self.c50))))
         gamma = switch * self.gamma_above + (1.0 - switch) * self.gamma_below
-        drug_bis = self.baseline / (1.0 + (ce_equivalent / self.c50)**gamma)
+        ratio = ce_equivalent / self.c50 if self.c50 > 0.0 else 0.0
+        drug_bis = (
+            0.0
+            if ratio > CONCENTRATION_RATIO_SATURATION * 1e6
+            else self.baseline / (1.0 + ratio**gamma)
+        )
         if ce_ketamine > 0.0:
             ket_effect = hill_function(ce_ketamine, 0.4, 1.5)
             ket_shift = (
@@ -309,8 +317,11 @@ class ClinicalResponseModel:
     ) -> float:
         """Probability of no response to a stimulus; laryngoscopy by default."""
         units = self._noxious_units(ce_prop, mac_sevo, mac_n2o, ce_ketamine)
-        tolerance = self._probability(units, ce_remi, intensity, ce_ketamine=ce_ketamine)
-        lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
+        lidocaine_sparing = min(0.30, 0.030 * max(0.0, ce_lidocaine))
+        tolerance = self._probability(
+            units, ce_remi, intensity * (1.0 - lidocaine_sparing), ce_ketamine=ce_ketamine,
+        )
+        lidocaine_block = min(0.25, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
         return 1.0 - (1.0 - tolerance) * (1.0 - lidocaine_block)
 
     def cardiovascular_response_fractions(

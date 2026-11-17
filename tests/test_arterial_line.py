@@ -1,4 +1,5 @@
 import math
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -229,3 +230,39 @@ def test_nonpulsatile_baseline_sync_uses_filling_pressure(engine_factory):
     state = engine.state
     assert math.isnan(state.art_sbp) and math.isnan(state.art_dbp)
     assert (state.art_pressure, state.art_map) == pytest.approx((engine.hemo.state.mcfp,) * 2, abs=1e-6)
+
+
+@pytest.mark.parametrize("static_pressure", [5.0, 12.0])
+@pytest.mark.parametrize("method", ["seed", "step"])
+def test_low_flow_pressure_falls_continuously_to_venous_pressure(static_pressure, method):
+    cycle = CardiacCycle(np.random.default_rng(1))
+    beat = cycle.seed(75.0, RhythmType.SINUS)
+    pressures = []
+    for mean in (90.0, static_pressure + 0.01, static_pressure, static_pressure - 0.01, 1.0, 0.0):
+        renderer = ArterialWaveformRenderer(age=40)
+        sample = getattr(renderer, method)(beat, mean, 0.8 * mean, static_pressure=static_pressure)
+        assert sample.diastolic >= static_pressure
+        if mean > 0.0:
+            assert sample.systolic > sample.diastolic
+        pressures.append(sample.mean)
+
+    assert pressures[0] == pytest.approx(90.0)
+    assert all(after <= before for before, after in pairwise(pressures))
+    assert pressures[1] - pressures[3] <= 0.02 + 1e-9
+    assert pressures[-1] == pytest.approx(static_pressure)
+
+
+def test_surgical_steady_state_seeds_arterial_renderer_without_first_beat_overshoot(engine_factory):
+    """The first live beats stay near the seeded surgical baseline."""
+    engine = engine_factory(
+        config=SimulationConfig(
+            mode="steady_state", disturbance_profile="stim_sustained_surgery", dt=0.05, rng_seed=1
+        ),
+        start=True,
+    )
+    sbp_0 = engine.state.art_sbp
+    peaks = []
+    for _ in range(60):
+        engine.step(0.05)
+        peaks.append(engine.state.art_sbp)
+    assert max(peaks) - sbp_0 < 8.0

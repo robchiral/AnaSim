@@ -51,6 +51,7 @@ class SpO2Monitor:
         self._template = _PPG_TEMPLATE.tolist()  # Python floats avoid NumPy scalar arithmetic per sample.
         self._template_max_index = _PPG_TEMPLATE.size - 1
         self._beat_amplitude = 1.0
+        self._beat_perf = 1.0
         self._beat_rr_s: float | None = None
         self._beat_pending = False
 
@@ -73,6 +74,7 @@ class SpO2Monitor:
             self._beat_pending |= cycle.beat_started
             if self._beat_rr_s is None or (self._beat_pending and cycle.elapsed_s >= delay_s):
                 self._beat_amplitude = cycle.stroke_fraction
+                self._beat_perf = perf
                 self._beat_rr_s = cycle.rr_interval_s
                 self._beat_pending = False
             if self._beat_pending:
@@ -80,9 +82,10 @@ class SpO2Monitor:
             else:
                 phase = ((cycle.elapsed_s - delay_s) / self._beat_rr_s) % 1.0
             idx = int(phase * self._template_max_index)
-            pleth_voltage = self._template[idx] * perf * self._beat_amplitude
+            pleth_voltage = 0.0 if perf <= 0.0 else self._template[idx] * self._beat_perf * self._beat_amplitude
         else:
             self._beat_amplitude = 1.0
+            self._beat_perf = 0.0
             self._beat_rr_s = None
             self._beat_pending = False
             pleth_voltage = 0.0

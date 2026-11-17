@@ -433,3 +433,57 @@ def test_apneic_deadspace_washin_and_closed_circuit_multigas_dt_invariance(
         ))
     for ep in endpoints[1:]:
         assert ep == pytest.approx(endpoints[0], abs=0.004)
+
+
+def test_loose_mask_bag_entrainment_continuous_washin_empty_cpap_and_vaporizer_guards(
+    engine_factory, advance_time
+):
+    """Loose mask with minimal bag rate entrains room air; apneic tracheal FiO2
+    is continuous across mask_seal=0.998 vs 1.0; empty-reservoir CPAP extracts no
+    phantom O2; sevoflurane_enabled=False and empty-vaporizer final step conserve agent.
+    """
+    loose = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+    loose.set_airway_mode("Mask")
+    loose.set_mask_seal(0.10)
+    loose.set_fgf(10.0, 0.0, 0.0)
+    loose.set_bag_mask_settings(2.0, 0.1)
+    loose.set_bag_mask_ventilation(True)
+    advance_time(loose, 45.0, dt=0.1)
+    assert loose.state.fio2 < 0.50
+
+    trach = []
+    for seal in (0.998, 1.0):
+        ap = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+        ap.set_vent_power(False)
+        ap.set_airway_mode("Mask")
+        ap.set_mask_seal(seal)
+        ap.set_fgf(10.0, 0.0, 0.0)
+        advance_time(ap, 30.0, dt=0.1)
+        trach.append(ap._tracheal_fio2)
+    assert trach[0] == pytest.approx(trach[1], abs=0.02)
+
+    empty = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+    empty.set_airway_mode("ETT")
+    empty.set_fgf(0.0, 0.0, 0.0)
+    empty.circuit.reservoir_volume = 0.0
+    empty.vent.update_settings(mode="CPAP", peep=5)
+    empty.set_vent_power(True)
+    o2_before = empty.resp.gas_transport.oxygen_from_air_l
+    empty.step(0.1)
+    assert empty.resp.gas_transport.oxygen_from_air_l - o2_before < 1e-5
+
+    disabled = engine_factory(
+        config=SimulationConfig(mode="awake", sevoflurane_enabled=False, dt=1.0, rng_seed=1), start=True
+    )
+    disabled.vaporizer.set_concentration(8.0)
+    disabled.set_fgf(10.0, 0.0, 0.0)
+    level_0 = disabled.vaporizer.state.level
+    disabled.step(1.0)
+    assert disabled.vaporizer.state.level == level_0 and not disabled.circuit.vaporizer_on
+
+    depleting = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
+    depleting.set_fgf(10.0, 0.0, 0.0)
+    depleting.set_vaporizer(8.0)
+    depleting.vaporizer.state.level = 0.01
+    depleting.step(1.0)
+    assert depleting.circuit.composition.fi_agent > 0.0 and depleting.vaporizer.state.level == 0.0

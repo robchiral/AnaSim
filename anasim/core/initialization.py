@@ -393,7 +393,7 @@ def _run_hidden_settle(engine: SimulationEngine, profile: StartupProfile, target
         projection_core.project_runtime_physiology(engine, physiology)
         hemo_state = physiology.hemo_state
         cardiac_sample = engine.cardiac_cycle.seed(engine.state.hr, hemo_state.rhythm_type)
-        arterial_sample = engine.arterial_waveform.step(
+        arterial_sample = engine.arterial_waveform.seed(
             cardiac_sample,
             engine.state.map,
             engine.state.sv,

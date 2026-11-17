@@ -50,6 +50,9 @@ the start of the step, and the physiology models update these values for the
 next step. The engine then advances the clock, stores waveform samples, and
 writes the recording.
 
+If a TCI rate change falls within a step, PK advances to that time before the
+controller selects the next rate.
+
 ### Simulation state
 
 `SimulationState` holds physiological values and monitor measurements.
@@ -104,13 +107,15 @@ than a failed intubation appear only in the debrief.
 
 Pressure objectives require both the displayed MAP and the current model MAP to
 reach the target. Without an arterial line, the cuff reading must be no more
-than one minute old. Anaphylaxis recovery also requires improved bronchospasm.
+than one minute old. A missing or failed measurement does not satisfy a
+hypotension check. Anaphylaxis recovery also requires improved bronchospasm.
 
 Milestone outcomes, such as preoxygenation, stay credited once achieved.
 Extubation outcomes are checked when the tube is removed, and the rest must hold
 when the case ends. Ending the case, finishing the last guided step, or
 irreversible cardiac arrest pauses the model, stops recording, and freezes the
-debrief.
+controls and debrief. Open simulations also stop recording and disable treatment
+controls at irreversible arrest.
 
 ### Action checks
 
@@ -142,11 +147,16 @@ monitors sample waveforms every 10 ms within each step.
 
 The local Python server runs the session on its own clock and saves CSV
 recordings to disk. It accepts requests from the same origin under a
-session-specific path on 127.0.0.1.
+session-specific path on 127.0.0.1. Each successful command returns an updated
+snapshot. The browser polls every 50 ms while running and every 5 seconds while
+paused.
 
 The hosted app runs Python, NumPy, and SciPy in a Pyodide worker, and stopping a
 recording downloads the CSV. [`build_web.py`](../scripts/build_web.py) builds
 the hosted bundle, and [pages.yml](../.github/workflows/pages.yml) publishes it.
+
+Optional monitor audio follows pleth pulses and alarm flags. Alarm silence lasts
+2 minutes of real time. A new alarm or a change between high and low ends it.
 
 ## Validation
 

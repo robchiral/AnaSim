@@ -153,3 +153,5 @@ def test_invalid_or_unsolvable_chemistry_is_rejected():
         model.equilibrate(ph=7.4, pco2_mmhg=0.0, oxygen_saturation=0.98)
     with pytest.raises(ValueError, match="outside the solver range"):
         model.solve_ph(pco2_mmhg=40.0, oxygen_saturation=0.98, buffer_base_meq_l=0.0)
+    severe = model.solve_ph(pco2_mmhg=120.0, oxygen_saturation=0.50, buffer_base_meq_l=5.0)
+    assert 5.0 <= severe.ph < 6.0

@@ -267,12 +267,21 @@ class FluidBalance:
         plasma_albumin = self.plasma_albumin_g / self.plasma_l
         plasma_calcium = (free_calcium * (1.0 + _albumin_binding(plasma_albumin, self.ph))
                           + self._citrate_calcium(free_calcium))
+        central_ca_l = _CALCIUM_CENTRAL_FRACTION * self.ecf_l
+        central_ca_frac = min(1.0, max(0.0, water / central_ca_l)) if central_ca_l > 0.0 else 1.0
+        resting_plasma_ca = self.calcium_set_point * (1.0 + _albumin_binding(plasma_albumin, self.resting_ph))
+        shed_ca = min(self.amounts["calcium"], water * plasma_calcium)
         for ion in _IONS:
             if ion == "calcium":
-                self.amounts[ion] -= water * plasma_calcium
+                self.amounts[ion] = max(0.0, self.amounts[ion] - shed_ca)
             else:
                 self.amounts[ion] *= 1.0 - fraction
-        self.exogenous_calcium_mmol *= max(0.0, 1.0 - fraction)
+        self.calcium_unmixed_mmol *= 1.0 - central_ca_frac
+        shed_excess_ca = max(0.0, shed_ca - water * resting_plasma_ca)
+        self.exogenous_calcium_mmol = max(
+            0.0,
+            min(self.exogenous_calcium_mmol * max(0.0, 1.0 - fraction), self.exogenous_calcium_mmol - shed_excess_ca),
+        )
         self.citrate_mmol *= 1.0 - water / self.citrate_volume_l
         self.d_lactate_mmol *= 1.0 - water / self.lactate_volume_l
         self.plasma_albumin_g *= 1.0 - water / self.plasma_l

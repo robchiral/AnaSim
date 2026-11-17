@@ -204,10 +204,8 @@ def test_complete_dantrolene_rescue_sustains_remission_until_reexposed(engine_fa
     engine.state.dantrolene_ce = 0.0
     engine.set_vaporizer(2.0)
     engine.set_fgf(6, 0)
-    _run(engine, 60)
-    engine.start_malignant_hyperthermia()
-    _run(engine, 120)
-    assert engine.malignant_hyperthermia.severity > 0.05
+    _run(engine, 180)
+    assert engine.malignant_hyperthermia.active and engine.malignant_hyperthermia.severity > 0.05
 
     early_stop = engine_factory(
         config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=2), start=True

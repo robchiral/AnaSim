@@ -835,3 +835,43 @@ def test_respiratory_hemodynamic_coupling_and_alpha_blocked_cold_tone(
         model.thermal.temp_c = 33.0
         advance_time(model, 300.0, dt=1.0)
     assert cold_blocked.hemo.tpr_tone < cold_unblocked.hemo.tpr_tone - 0.0005
+
+
+def test_hematocrit_bounds_lipid_retention_vasopressin_alpha_invariance_and_afib_baroreflex(
+    engine_factory, advance_time
+):
+    """Blood/volume hematocrit inputs reject invalid values; 20% lipid uses 0.25 vascular
+    retention; labetalol alpha-1 block does not attenuate vasopressin SVR rise; hypertensive
+    AFib above the 110 bpm RVR floor slows rate without engaging ectopic baro_vasc.
+    """
+    hemo = _model()
+    for bad_hct in (-0.1, 1.2, float("nan")):
+        with pytest.raises(ValueError, match="hematocrit"):
+            hemo.add_volume(100.0, hematocrit=bad_hct)
+    eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    with pytest.raises(ValueError, match="hematocrit"):
+        eng.give_blood(300.0, hematocrit=0.0)
+
+    lipid_hemo = _model()
+    bv0 = lipid_hemo.blood_volume
+    lipid_hemo.add_volume(100.0, hematocrit=0.0, label="lipid")
+    assert lipid_hemo.blood_volume - bv0 == pytest.approx(25.0, abs=0.5)
+
+    unblocked, blocked = _model(), _model()
+    unblocked.step(1.0, 0, 0, 0, -2, 40, 95, ce_labetalol=0.0, ce_vaso=0.0)
+    u0_delta = unblocked.delta_tpr_vasopressors
+    unblocked.step(1.0, 0, 0, 0, -2, 40, 95, ce_labetalol=0.0, ce_vaso=40.0)
+    u1_delta = unblocked.delta_tpr_vasopressors
+    blocked.step(1.0, 0, 0, 0, -2, 40, 95, ce_labetalol=500.0, ce_vaso=0.0)
+    b0_delta = blocked.delta_tpr_vasopressors
+    blocked.step(1.0, 0, 0, 0, -2, 40, 95, ce_labetalol=500.0, ce_vaso=40.0)
+    b1_delta = blocked.delta_tpr_vasopressors
+    assert (u1_delta - u0_delta) == pytest.approx(b1_delta - b0_delta, rel=1e-9)
+
+    afib = _model()
+    afib.rhythm_type = RhythmType.AFIB
+    afib.smoothed_epi_hr = 35.0
+    for _ in range(5):
+        afib.step(1.0, 0, 0, 0, -2, 40, 95, ce_epi=3.0, ce_phenyl=60.0)
+    assert afib.state.hr > 115.0
+    assert afib.smoothed_baro_vasc == 0.0

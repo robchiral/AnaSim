@@ -2,7 +2,7 @@
 
 from anasim.patient.domain import finite_number
 from anasim.patient.patient import Patient
-from anasim.patient.pk_models import MammillaryPK
+from anasim.patient.pk_models import ANESTHETIZED_OUTPUT, MammillaryPK
 
 from .action_log import ACTION_INFUSION_RATE, ACTION_TCI_TARGET, ActionLog
 from .drug_registry import (
@@ -66,6 +66,7 @@ class DrugControllerMixin:
         if spec.key in self._pump_needs_reset:
             self._pump_needs_reset.discard(spec.key)
             self.pump_pk[spec.key].reset()
+            self.pump_pk[spec.key].update_hemodynamics(1.0, ANESTHETIZED_OUTPUT)
         pk_model = self.prediction_model(spec.key)
         controller = self.tci.get(spec.key)
         target_compartment = (spec.fixed_tci_mode or TCIMode(mode)).value
@@ -128,10 +129,13 @@ class DrugControllerMixin:
 
     def set_drug_target(self, key: str, target: float | None):
         """Set a TCI target; None or a non-positive target disables TCI."""
+        spec = get_drug_spec(key)
         if target is None or finite_number("target", target) <= 0:
-            self.disable_tci(key)
+            self.disable_tci(spec.key)
         else:
-            self.enable_tci(key, target)
+            controller = self.tci.get(spec.key)
+            mode = controller.target_compartment if controller is not None else TCIMode.EFFECT_SITE.value
+            self.enable_tci(spec.key, target, mode=mode)
 
     def get_drug_state(self, key: str) -> dict:
         """Return the current user-unit rate and TCI target; zero for bolus-only drugs."""

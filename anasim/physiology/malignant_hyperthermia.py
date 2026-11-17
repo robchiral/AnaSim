@@ -28,6 +28,7 @@ class MalignantHyperthermia:
 
     def __init__(self):
         self._active = False
+        self._susceptible = False
         self.severity = 0.0
         self._controlled = False
 
@@ -38,10 +39,14 @@ class MalignantHyperthermia:
     @active.setter
     def active(self, value: bool) -> None:
         self._active = bool(value)
+        self._susceptible = self._active
         self._controlled = False
 
     def step(self, dt: float, *, sevo_mac: float, succinylcholine_cp: float,
              dantrolene_ce: float) -> None:
+        if not self._active and self._susceptible and (sevo_mac > 0.05 or succinylcholine_cp > 0.01):
+            self._active = True
+            self._controlled = False
         if self._active:
             inhibition = hill_function(dantrolene_ce, 1.5, 3.0)
             if (
@@ -74,7 +79,8 @@ class MalignantHyperthermia:
             self.severity += (growth / rate - self.severity) * -math.expm1(-dt * rate)
         if self._active and self._controlled and not exposed and self.severity < 1e-3:
             self.severity = 0.0
-            self.active = False
+            self._active = False
+            self._controlled = False
 
     @property
     def excess_metabolism(self) -> float:

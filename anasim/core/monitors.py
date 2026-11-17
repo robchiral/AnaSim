@@ -3,9 +3,9 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from anasim.core.constants import ARREST_CO_L_MIN, ARREST_PULSE_PRESSURE_MMHG
+from anasim.core.constants import ARREST_CO_L_MIN
 from anasim.machine.ventilator import VOLUME_TARGETED
-from anasim.monitors.arterial import ArterialPressureSample
+from anasim.monitors.arterial import MIN_PULSE_PRESSURE_MMHG, ArterialPressureSample
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
@@ -23,7 +23,7 @@ from .projection import (
     stimulus_tolerance,
 )
 from .state import AirwayType, WaveformSample
-from .utils import clamp
+from .utils import clamp, clamp01
 
 if TYPE_CHECKING:
     from .engine import SimulationEngine
@@ -248,14 +248,15 @@ def step_cardiac_monitors(
                                       hyperkalemia_block=engine.hemo.hyperkalemia_block,
                                       compression_phase=comp_sample.phase if compressions else None)
         pulse_pressure = arterial_sample.systolic - arterial_sample.diastolic
+        pp_gate = (
+            clamp01((pulse_pressure - MIN_PULSE_PRESSURE_MMHG) / 4.0)
+            if math.isfinite(pulse_pressure)
+            else 0.0
+        )
         spo2_perfusion = (
             0.0
-            if not compressions and (
-                hemo_state.intrinsic_co < ARREST_CO_L_MIN
-                or not math.isfinite(pulse_pressure)
-                or pulse_pressure < ARREST_PULSE_PRESSURE_MMHG
-            )
-            else perfusion
+            if not compressions and (hemo_state.intrinsic_co < ARREST_CO_L_MIN or pp_gate <= 0.0)
+            else (perfusion if compressions else perfusion * pp_gate)
         )
         pleth, spo2_val = engine.spo2_mon.step(
             substep_dt,

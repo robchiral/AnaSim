@@ -1,5 +1,6 @@
 """Case definitions and the requirement helpers for guided steps."""
 
+import math
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
@@ -343,7 +344,8 @@ class CrisisStartMAP:
         self.value: float | None = None
 
     def record(self, engine) -> None:
-        self.value = monitor_value(engine, "map")
+        val = monitor_value(engine, "map")
+        self.value = val if math.isfinite(val) and val > 0.0 else None
 
 
 def require_hypotension_or_treatment(
@@ -365,8 +367,8 @@ def require_hypotension_or_treatment(
         )
         controlled = engine.actions.since_event(event_name, ACTION_EVENT_STOP, labels=(event_name,))
         treated = any(record.amount > 0 for record in (*fluids, *pressor_actions)) or bool(controlled)
-        met = treated or map_val < threshold
-        shown_map = max(int(display_int(map_val)), round(threshold))
+        met = treated or (math.isfinite(map_val) and 0.0 < map_val < threshold)
+        shown_map = max(int(display_int(map_val)), round(threshold)) if map_val > 0.0 else 0
         return met, "" if met else f"MAP: {shown_map}/<{threshold:.0f} mmHg; {prompt}"
     return check
 

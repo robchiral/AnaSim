@@ -1,5 +1,6 @@
 """Sampled patients: a repeatable seed and plausible responses to induction."""
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -8,7 +9,8 @@ import pytest
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
-from anasim.patient.variability import TYPICAL
+from anasim.patient.pd.anesthesia import BISModel
+from anasim.patient.variability import TYPICAL, sample_variability
 from anasim.web import WebSession
 
 ADULT: dict[str, Any] = dict(age=45, weight=75, height=172, sex="male", baseline_map=95, baseline_hr=75)
@@ -132,3 +134,12 @@ def test_sampled_patients_split_at_sevoflurane_mac_bar(sevo, fewest, most):
     in 95% at 6.26%. Bounds are the 95% binomial range for 20 patients."""
     responders = sum(_incision_rise(seed, sevo) > 0.15 for seed in range(1, 21))
     assert fewest <= responders <= most
+
+
+def test_sevoflurane_bis_preserves_interindividual_sensitivity_spread():
+    """Individual hypnotic sensitivity shifts BIS during volatile-only exposure."""
+    base = sample_variability(1)
+    sensitive, resistant = Patient(**ADULT), Patient(**ADULT)
+    sensitive.variability = replace(base, propofol=replace(base.propofol, ce50=0.7))
+    resistant.variability = replace(base, propofol=replace(base.propofol, ce50=1.4))
+    assert BISModel(resistant).compute_bis(0.0, 1.0, 0.0) > BISModel(sensitive).compute_bis(0.0, 1.0, 0.0) + 8.0

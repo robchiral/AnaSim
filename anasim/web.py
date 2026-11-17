@@ -307,6 +307,10 @@ class WebSession:
                 self._pause()
                 if self.case_run is not None:
                     self._finish_case("cardiac_arrest")
+                else:
+                    download = self._cmd_record(False)
+                    if download is not None:
+                        self._download = download
 
     def close(self) -> None:
         """Pause and finish any recording before disconnect or shutdown."""
@@ -660,6 +664,10 @@ class WebSession:
                     raise ValueError("The case has ended. Start a new session to continue.")
             if name in EVENT_COMMANDS:
                 raise ValueError("Case events are controlled by the case. Use the available case actions.")
+        elif self.ended:
+            stopping = name == "run" or (name == "record" and not args.get("active"))
+            if not (name in ENDED_CASE_COMMANDS or stopping):
+                raise ValueError("The session has ended. Start a new session to continue.")
         handler = getattr(self, f"_cmd_{name}", None)
         if handler is None:
             raise ValueError(f"Unknown command: {name!r}")
@@ -684,10 +692,15 @@ class WebSession:
         target = AirwayType(mode)
         if target == AirwayType.ETT:
             return self._clinical_result(self.engine.attempt_intubation())
+        was_assisted = (self.engine.state.airway_mode != AirwayType.NONE) and (
+            self.engine.vent.is_on or self.engine.bag_mask_active
+        )
         feedback = check_airway_removal(self.engine) if self.engine.state.airway_mode == AirwayType.ETT else None
         if self.case_run is not None and self.engine.state.airway_mode == AirwayType.ETT:
             self.case_run.record_transition("extubation")
         self.engine.set_airway_mode(mode)
+        if feedback is None and target == AirwayType.NONE and was_assisted:
+            feedback = check_ventilation_withdrawal(self.engine)
         return self._clinical_result(feedback)
 
     def _cmd_mask_seal(self, percent: float):
@@ -717,7 +730,11 @@ class WebSession:
         return {"feedback": None}
 
     def _cmd_fgf(self, o2: float, air: float, n2o: float):
-        self.engine.set_fgf(o2, air, n2o)
+        self.engine.set_fgf(
+            domain.bounded_number("oxygen flow", o2, 0.0, 15.0, unit="L/min"),
+            domain.bounded_number("air flow", air, 0.0, 15.0, unit="L/min"),
+            domain.bounded_number("nitrous oxide flow", n2o, 0.0, 15.0, unit="L/min"),
+        )
 
     def _cmd_oxygen_supply(self, connected: bool):
         self.engine.set_oxygen_supply_connected(connected)
@@ -757,9 +774,7 @@ class WebSession:
         self.engine.vent.update_settings(**fields)
 
     def _cmd_drug_rate(self, key: str, rate: float):
-        rate = float(rate)
-        if not math.isfinite(rate):
-            raise ValueError("Infusion rate must be finite")
+        rate = domain.bounded_number("infusion rate", rate, 0.0, 2000.0)
         spec = get_drug_spec(key)
         previous = self.engine.get_drug_state(key)["rate"]
         self.engine.set_drug_rate(key, rate)
@@ -771,11 +786,10 @@ class WebSession:
     def _cmd_drug_target(self, key: str, target: float | None):
         if not self.engine.config.tci_enabled:
             raise ValueError("TCI is disabled for this session")
-        if target is not None:
-            target = float(target)
-            if not math.isfinite(target):
-                raise ValueError("TCI target must be finite")
         spec = get_drug_spec(key)
+        if target is not None:
+            upper = spec.tci_range[1] if spec.tci_range is not None else 1000.0
+            target = domain.bounded_number("TCI target", target, 0.0, upper)
         previous = self.engine.get_drug_state(key)["target"]
         self.engine.set_drug_target(key, target)
         applied = self.engine.get_drug_state(key)
@@ -787,10 +801,10 @@ class WebSession:
         return self._clinical_result(feedback, self._medication_receipt(spec.key, text))
 
     def _cmd_drug_bolus(self, key: str, amount: float):
-        amount = float(amount)
-        if not math.isfinite(amount) or amount <= 0:
-            raise ValueError("Bolus amount must be positive and finite")
         spec = get_drug_spec(key)
+        amount = domain.bounded_number("bolus amount", amount, 0.0, spec.max_bolus)
+        if amount <= 0:
+            raise ValueError("Bolus amount must be positive and finite")
         feedback = check_drug_administration(self.engine, spec.key)
         self.engine.give_drug_bolus(key, amount)
         return self._clinical_result(
@@ -798,8 +812,8 @@ class WebSession:
         )
 
     def _cmd_sugammadex(self, mg_per_kg: float):
-        mg_per_kg = float(mg_per_kg)
-        if not math.isfinite(mg_per_kg) or mg_per_kg <= 0:
+        mg_per_kg = domain.bounded_number("sugammadex dose", mg_per_kg, 0.0, 32.0, unit="mg/kg")
+        if mg_per_kg <= 0:
             raise ValueError("Sugammadex dose must be positive and finite")
         amount = mg_per_kg * self.engine.patient.weight
         self.engine.give_drug_bolus("sugammadex", amount)
@@ -820,8 +834,9 @@ class WebSession:
     def _cmd_fluid(self, kind: str, volume_ml: float):
         if kind not in FLUIDS:
             raise ValueError(f"Unknown fluid: {kind!r}")
-        volume = float(volume_ml)
-        if not math.isfinite(volume) or volume <= 0:
+        max_volume = 3000.0 if kind == "lipid" else 5000.0
+        volume = domain.bounded_number("fluid volume", volume_ml, 0.0, max_volume, unit="mL")
+        if volume <= 0:
             raise ValueError("Fluid volume must be positive and finite")
         method, label = FLUIDS[kind]
         getattr(self.engine, method)(volume)
@@ -871,7 +886,9 @@ class WebSession:
         return {"shock": {"time": engine.state.time, "text": text}}
 
     def _cmd_maintenance_fluid(self, ml_hr: float):
-        self.engine.set_continuous_fluid_rate(domain.finite_number("maintenance fluid rate", ml_hr))
+        self.engine.set_continuous_fluid_rate(
+            domain.bounded_number("maintenance fluid rate", ml_hr, 0.0, 5000.0, unit="mL/hr")
+        )
 
     def _cmd_disturbance_profile(self, profile: str | None):
         if profile is None:
@@ -900,7 +917,9 @@ class WebSession:
 
     def _cmd_hemorrhage(self, active: bool, rate_ml_min: float = 500.0):
         if active:
-            self.engine.start_hemorrhage(rate_ml_min)
+            self.engine.start_hemorrhage(
+                domain.bounded_number("hemorrhage rate", rate_ml_min, 0.0, 5000.0, unit="mL/min")
+            )
         else:
             self.engine.stop_hemorrhage()
 

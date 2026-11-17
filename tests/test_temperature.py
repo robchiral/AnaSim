@@ -1,5 +1,6 @@
 import pytest
 
+from anasim.core.projection import sync_monitor_baselines, thermal_hypnotic_ce
 from anasim.core.state import SimulationConfig
 
 
@@ -142,3 +143,17 @@ def test_zero_flow_arrest_accelerates_passive_core_cooling(engine_factory):
     _advance(perfused, 600, dt=2.0)
     _advance(arrested, 600, dt=2.0)
     assert arrested.state.temp_c < perfused.state.temp_c - 0.05
+
+
+def test_thermal_etomidate_age_invariance_and_ischemic_bis_baseline_seed(engine_factory):
+    """Etomidate thermal redistribution equivalent does not double-scale with BIS age_factor,
+    and sync_monitor_baselines seeds BIS cortical_function from cerebral ischemia.
+    """
+    young = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), age=25)
+    elderly = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), age=80)
+    young.state.etomidate_ce = elderly.state.etomidate_ce = 0.4
+    assert thermal_hypnotic_ce(young) == pytest.approx(thermal_hypnotic_ce(elderly), rel=1e-9)
+
+    young.cerebral.ischemia = 0.8
+    sync_monitor_baselines(young)
+    assert young.bis.cortical_function == pytest.approx(young.cerebral.cortical_function, rel=1e-9)

@@ -198,6 +198,20 @@
   before onset. Case blood pressure checks no longer accept an outdated cuff
   reading, and hints in the independent emergence case skip completed steps.
 - `--record-interval 0` now records every step.
+- Arterial pressure now falls continuously toward venous pressure at very low
+  cardiac output. Maintenance starts without a first-beat pressure overshoot,
+  HR falls during prolonged pauses, and weak pulses reduce the SpO₂ signal.
+- Occluded inflations no longer count as breaths. Auto-PEEP falls during
+  expiratory pauses, and switching out of PSV clears apnea backup.
+- Inhaled-agent uptake and washout now share the lung's gas-volume balance
+  with oxygen and nitrogen. Washout gas first refills volume lost to absorption
+  before flowing out of the lungs.
+- TCI target changes now preserve plasma or effect-site mode, and pump rate
+  changes keep their timing when simulation steps cross an update.
+- Open simulations now stop recording and lock treatment controls at
+  irreversible cardiac arrest. Local commands update controls immediately,
+  with less frequent polling while paused.
+- New or changed alarms now end an active audio silence.
 
 ## 1.8 - 2026-11-06
 
