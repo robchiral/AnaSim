@@ -123,9 +123,9 @@ class FluidBalance:
                         "magnesium": 0.8 * self.ecf_l, "phosphate": self.ecf_l}
         self.plasma_albumin_g = 42.0 * self.plasma_l
         self.interstitial_albumin_g = 14.0 * self.interstitial_l
-        # Wooten 2003's plasma-equivalent buffer, 23.5 mmol/L at twice the blood volume,
-        # stays as a fixed cellular pool; interstitial protein alone is too weak for the
-        # whole-body CO2 responses of Brackett 1965 and Arbus 1969.
+        # Plasma-equivalent buffer (23.5 mmol/L, Rees 2010) across twice the blood
+        # volume (Wooten 2010) stays as a fixed cellular pool; interstitial protein
+        # alone is too weak for the whole-body CO2 responses of Brackett 1965 and Arbus 1969.
         self.cell_buffer_mmol = 23.5 * 2.0 * blood_volume_ml / 1000.0
         self.citrate_mmol = 0.0
         self.calcium_unmixed_mmol = 0.0
@@ -325,7 +325,8 @@ class FluidBalance:
         )
 
     def _metabolize_buffers(self, minutes: float, hepatic_function: float, oxygen_supply: float) -> None:
-        # Kramer 2003: control Vdss 21 L and clearance 710 mL/min.
+        # Kramer 2003: control Vdss 21 L and clearance 710 mL/min, consistent with
+        # intraoperative massive-transfusion citrate in Kahn 1979.
         # The liver/perfusion scaling and D-isomer kinetics are reduced-model assumptions.
         citrate_rate = (0.710 * self.weight / 70.0 / self.citrate_volume_l
                         * (0.25 + 0.75 * hepatic_function * oxygen_supply))
@@ -417,8 +418,9 @@ class FluidBalance:
 
     def _clear_calcium(self, minutes: float) -> None:
         self.calcium_unmixed_mmol *= math.exp(-_CALCIUM_MIXING_PER_MIN * minutes)
-        # Bolan 2001: total calcium held steady through 90 min of citrate-induced
-        # hypocalcemia, so only calcium above the normal resting pool is cleared.
+        # Bolan 2001: elevated PTH did not restore citrate-induced calcium loss
+        # within 90 min; clearing only calcium above the resting pool is a
+        # reduced-model simplification (omitting citrate-bound calciuria).
         excess = (self.amounts["calcium"] + self.calcium_unmixed_mmol / _CALCIUM_CENTRAL_FRACTION
                   - self.ecf_l * self._total_calcium(self.calcium_set_point, self.resting_ph))
         if excess > 0.0:

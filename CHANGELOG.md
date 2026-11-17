@@ -70,6 +70,10 @@
   onward, while CO₂ sensitivity falls much less. Surgical concentrations of
   sevoflurane or propofol now abolish hypoxic hyperventilation while preserving
   the CO₂ response.
+- Acute hypercapnia now increases hypoxic cerebral blood-flow reserve, and
+  hypocapnia reduces it, with cerebrospinal fluid adaptation over hours.
+  Extreme CO₂ narcosis depresses medullary breathing toward shallow
+  hypoventilation, and recovery slows after coma lasting longer than an hour.
 - Recalibrated respiratory muscle fatigue. Heavy loads take about twice as
   long to exhaust the muscles, most strength returns within 15 minutes of rest
   or pressure support, and a smaller deficit lasts up to a day.

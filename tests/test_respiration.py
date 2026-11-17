@@ -501,8 +501,9 @@ def test_opioids_reduce_the_equilibrated_co2_response(patient):
 
 
 def test_sevoflurane_spontaneous_ventilation_nmba_potentiation_and_apnea(engine_factory, advance_time):
-    """Pandit 1999 & Doi 1987: 0.1 MAC preserves MV, 1.4 MAC causes rapid shallow
-    breathing with PaCO2 ~55 mmHg and potentiates central rocuronium block, and >2 MAC causes apnea.
+    """Sevoflurane preserves MV at 0.1 MAC (Pandit 1999), causes rapid shallow
+    breathing with PaCO2 ~55 mmHg at 1.4 MAC (Doi and Ikeda 1987), potentiates
+    rocuronium block (Kleijn 2011), and causes apnea above 2 MAC.
     """
     sevo_01 = engine_factory(config=SimulationConfig(sevoflurane_enabled=True, rng_seed=1), start=True)
     sevo_14 = engine_factory(config=SimulationConfig(sevoflurane_enabled=True, rng_seed=1), start=True)

@@ -21,7 +21,11 @@ PCV-VG, pressure control with volume guarantee.
 - Astrup et al. (1981). *Stroke*. [Thresholds in cerebral ischemia: the ischemic penumbra](https://pubmed.ncbi.nlm.nih.gov/6272455/).
 - Jones et al. (1981). *J Neurosurg*. [Thresholds of focal cerebral ischemia in awake monkeys](https://pubmed.ncbi.nlm.nih.gov/7241187/).
 - de Vries et al. (1998). *Anesth Analg*. [Cerebral oxygen uptake and EEG during defibrillation threshold testing](https://pubmed.ncbi.nlm.nih.gov/9661538/).
-- Westlake et al. (1955). *Q J Med*. [Carbon dioxide narcosis in emphysema](https://doi.org/10.1093/oxfordjournals.qjmed.a066724).
+- Brian (1998). *Anesthesiology*. [Carbon dioxide and the cerebral circulation](https://pubmed.ncbi.nlm.nih.gov/9605698/).
+- Battisti-Charbonney et al. (2011). *J Physiol*. [The cerebrovascular response to carbon dioxide in humans](https://pubmed.ncbi.nlm.nih.gov/21521758/).
+- Willie et al. (2015). *J Cereb Blood Flow Metab*. [Regulation of brain blood flow and oxygen delivery in elite breath-hold divers](https://pubmed.ncbi.nlm.nih.gov/25370857/).
+- Westlake et al. (1955). *Q J Med*. [Carbon dioxide narcosis in emphysema](https://pubmed.ncbi.nlm.nih.gov/14395425/).
+- Sieker and Hickam (1956). *Medicine (Baltimore)*. [Carbon dioxide intoxication: clinical syndrome, etiology, and management](https://pubmed.ncbi.nlm.nih.gov/13407339/).
 - Turnbull et al. (2008). *Anaesthesia*. [The influence of changes in end-tidal carbon dioxide upon the Bispectral Index](https://pubmed.ncbi.nlm.nih.gov/18412642/).
 - Asanoi et al. (1989). *Circ Res*. [Ventriculoarterial coupling in normal and failing heart in humans](https://pubmed.ncbi.nlm.nih.gov/2752553/).
 - Chen et al. (1998). *J Am Coll Cardiol*. [Coupled systolic-ventricular and vascular stiffening with age](https://pubmed.ncbi.nlm.nih.gov/9809929/).
@@ -149,6 +153,8 @@ PCV-VG, pressure control with volume guarantee.
 - Nickalls and Mapleson (2003). *Br J Anaesth*. [Sevoflurane MAC](https://pubmed.ncbi.nlm.nih.gov/12878613/).
 - Yasuda et al. (1991). *Anesth Analg*. [Sevoflurane and isoflurane uptake and washout](https://pubmed.ncbi.nlm.nih.gov/1994760/).
 - Carpenter et al. (1986). *Anesth Analg*. [Inhaled anesthetic kinetics in humans](https://pubmed.ncbi.nlm.nih.gov/3706798/).
+- Epstein et al. (1964). *Anesthesiology*. [Concentration effect and the second gas effect](https://pubmed.ncbi.nlm.nih.gov/14156577/).
+- Fink (1955). *Anesthesiology*. [Diffusion anoxia](https://pubmed.ncbi.nlm.nih.gov/13238868/).
 - Goto et al. (2000). *Anesthesiology*. [Nitrous oxide MAC at awakening](https://pubmed.ncbi.nlm.nih.gov/11046204/).
 - Katoh et al. (1997). *Br J Anaesth*. [Sevoflurane-nitrous oxide interaction at awakening](https://pubmed.ncbi.nlm.nih.gov/9389264/).
 
@@ -170,6 +176,7 @@ PCV-VG, pressure control with volume guarantee.
 - Barr et al. (1999). *Br J Anaesth*. [Nitrous oxide hypnosis and BIS](https://pubmed.ncbi.nlm.nih.gov/10562773/).
 - Hirota et al. (1999). *Eur J Anaesthesiol*. [Nitrous oxide and BIS](https://pubmed.ncbi.nlm.nih.gov/10713872/).
 - Ozcan et al. (2010). *J Neurosurg Anesthesiol*. [Nitrous oxide effects on BIS and entropy](https://pubmed.ncbi.nlm.nih.gov/20844378/).
+- Hans et al. (2005). *Br J Anaesth*. [Ketamine effects on BIS and spectral entropy during sevoflurane anesthesia](https://pubmed.ncbi.nlm.nih.gov/15591328/).
 
 ## Stimulation responses
 
@@ -251,7 +258,7 @@ PCV-VG, pressure control with volume guarantee.
 
 - Johnson et al. (2014). *J Appl Physiol*. [Hemodynamic responses to graded blood loss in awake humans](https://pubmed.ncbi.nlm.nih.gov/24876357/).
 - Martin et al. (1990). *Acta Anaesthesiol Scand*. [Vascular resistance in septic shock](https://pubmed.ncbi.nlm.nih.gov/2389659/).
-- Melo and Peters (1999). *Crit Care*. [Vascular resistance in septic shock](https://pubmed.ncbi.nlm.nih.gov/11056727/).
+- Melo and Peters (1999). *Crit Care*. [Low systemic vascular resistance in critical illness](https://pubmed.ncbi.nlm.nih.gov/11056727/).
 - Bellissant and Annane (2000). *Clin Pharmacol Ther*. [Pressor hyporesponsiveness in septic shock](https://pubmed.ncbi.nlm.nih.gov/11014411/).
 - Margarson and Soni (2002). *J Appl Physiol*. [Albumin leakage in septic shock](https://pubmed.ncbi.nlm.nih.gov/11960967/).
 - Fisher (1986). *Anaesth Intensive Care*. [Plasma escape during anaphylaxis](https://pubmed.ncbi.nlm.nih.gov/2869715/).
@@ -359,11 +366,16 @@ PCV-VG, pressure control with volume guarantee.
 ## Fluids
 
 - Reid et al. (2003). *Clin Sci (Lond)*. [Urine after 2 L saline or Hartmann's](https://pubmed.ncbi.nlm.nih.gov/12519083/).
+- Ewaldsson and Hahn (2001). *Br J Anaesth*. [Volume kinetics of Ringer's solution during induction of spinal and general anaesthesia](https://pubmed.ncbi.nlm.nih.gov/11517124/).
+- Ewaldsson and Hahn (2005). *Anesthesiology*. [Kinetics and extravascular retention of acetated Ringer's solution during isoflurane or propofol anesthesia](https://pubmed.ncbi.nlm.nih.gov/16129968/).
 - Hahn (2010). *Anesthesiology*. [Crystalloid volume kinetics](https://pubmed.ncbi.nlm.nih.gov/20613481/).
 - Hahn (2017). *Anesth Analg*. [Arterial pressure, age, and crystalloid elimination](https://pubmed.ncbi.nlm.nih.gov/28452823/).
 - Hahn and Nemme (2020). *BMC Anesthesiol*. [Fluid retention after anesthesia induction](https://pubmed.ncbi.nlm.nih.gov/32334513/).
 - Hahn (2021). *Perioper Med (Lond)*. [Crystalloid distribution during anesthesia-induced hypotension](https://pubmed.ncbi.nlm.nih.gov/34629113/).
+- Hahn (2024). *Front Physiol*. [Sequential recruitment of body fluid spaces for increasing volumes of crystalloid fluid](https://pubmed.ncbi.nlm.nih.gov/39263627/).
+- Philbin and Coggins (1978). *Anesthesiology*. [Plasma antidiuretic hormone levels in cardiac surgical patients during morphine and halothane anesthesia](https://pubmed.ncbi.nlm.nih.gov/686433/).
 - Scheingraber et al. (1999). *Anesthesiology*. [Hyperchloremic acidosis after rapid saline infusion](https://pubmed.ncbi.nlm.nih.gov/10319771/).
+- Kahn et al. (1979). *Anesth Analg*. [Massive blood replacement: correlation of ionized calcium, citrate, and hydrogen ion concentration](https://pubmed.ncbi.nlm.nih.gov/36816/).
 - Kramer et al. (2003). *Crit Care Med*. [Citrate pharmacokinetics in critically ill patients](https://pubmed.ncbi.nlm.nih.gov/14530750/).
 - Rabcuka et al. (2025). *Transfusion*. [Acid-base and metabolite changes in stored red cell concentrates](https://pubmed.ncbi.nlm.nih.gov/41122829/).
 - Thode et al. (1983). *Scand J Clin Lab Invest Suppl*. [Relation between pH and ionized calcium in vitro and in vivo](https://pubmed.ncbi.nlm.nih.gov/6578581/).
@@ -426,7 +438,8 @@ PCV-VG, pressure control with volume guarantee.
 - Rees et al. (2010). *Eur J Appl Physiol*. [Plasma and red-cell acid-base chemistry with oxygen-dependent buffering](https://pubmed.ncbi.nlm.nih.gov/19841930/).
 - Figge et al. (2018). *J Crit Care*. [Albumin and phosphate charge in plasma acid-base chemistry](https://pubmed.ncbi.nlm.nih.gov/29080515/).
 - O'Neill and Robbins (2017). *J Appl Physiol*. [Blood CO₂ transport and the magnitude of the Haldane effect](https://pubmed.ncbi.nlm.nih.gov/27881667/).
-- Wooten (2003). *J Appl Physiol*. [Acid-base balance in multicompartment systems and the extracellular buffer approximation](https://pubmed.ncbi.nlm.nih.gov/12923118/).
+- Wooten (2003). *J Appl Physiol*. [Acid-base balance in multicompartment blood systems](https://pubmed.ncbi.nlm.nih.gov/12923118/).
+- Wooten (2010). *J Clin Monit Comput*. [Multicompartment interstitial-blood acid-base balance and extracellular standard base excess](https://pubmed.ncbi.nlm.nih.gov/20354772/).
 - Brackett et al. (1965). *N Engl J Med*. [Whole-body acute hypercapnic buffering](https://pubmed.ncbi.nlm.nih.gov/14219220/).
 - Arbus et al. (1969). *N Engl J Med*. [Human acute respiratory alkalosis ranges](https://pubmed.ncbi.nlm.nih.gov/5782512/).
 - Crapo et al. (1999). *Am J Respir Crit Care Med*. [Arterial blood gas and A-a gradient reference values](https://pubmed.ncbi.nlm.nih.gov/10556115/).

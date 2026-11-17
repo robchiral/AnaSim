@@ -3,10 +3,11 @@
 Concentrations are mcg/mL. Volunteer infusions and overdose reports set the
 concentration ranges for sympathetic stimulation, seizures, coma, and cardiac
 depression (Foldes 1960; Jorfeldt 1968; Tucker and Boas 1971; Armstrong 1988).
-Lipid emulsion reduces delivery to the effect sites, leaving total plasma
-concentration unchanged (Heinonen 2015), and lessens contractile depression
-(Fettiplace 2014). The response curves, acidemia effect, anticonvulsant
-suppression, and arrest thresholds are calibrations.
+Lipid emulsion lowers unentrapped exposure (Heinonen 2015), represented here as
+reduced effect-site delivery without altering central PK, and lessens
+contractile depression based on rat bupivacaine resuscitation (Fettiplace 2014).
+The response curves, conduction and arrhythmia relief, acidemia effect,
+anticonvulsant suppression, and arrest thresholds are calibrations.
 """
 
 import math
@@ -55,7 +56,8 @@ class LocalAnestheticToxicity:
 
     @property
     def effect_input_fraction(self) -> float:
-        # Heinonen 2015 found about 23% lower 30-min unentrapped AUC in volunteers.
+        # Calibrated to match Heinonen 2015's 23% lower 30-min unentrapped
+        # volunteer lidocaine AUC (mostly from larger distribution volume).
         return 1.0 - 0.35 * self.lipid_effect
 
     def step(self, dt: float, *, neural_ce: float, cardiac_ce: float, ph: float,

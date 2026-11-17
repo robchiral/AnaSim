@@ -14,7 +14,7 @@ class HeartFailureProfile:
 
 
 # Schwartzenberg 2012, Table 2: HFrEF PCWP and Ea/Ees for both profiles.
-# Westermann 2008, Tables 3-4: HFpEF EDP, stiffness constant, and rate
+# Westermann 2008, Tables 3 and 5: HFpEF EDP, stiffness constant, and rate
 # sensitivity. Output factors, HFrEF stiffness, and rate gains are calibrations.
 HEART_FAILURE_PROFILES = {
     "none": HeartFailureProfile(),
@@ -68,9 +68,9 @@ def pregnancy_factors(gestational_age_weeks: float) -> PregnancyFactors:
     early = min(fa / 12.0, 1.0)
     late = max(0.0, min((gestational_age_weeks - 13.0) / 24.0, 1.0))
     compression = max(0.0, min((gestational_age_weeks - 20.0) / 16.0, 1.0))
-    # Maternal plasma expansion (Dallmann 2017 Eq. 29) plus 1 L of late-pregnancy
-    # interstitial water, relative to a 12 L nonpregnant extracellular space
-    # (Ansari 2025).
+    # Maternal plasma expansion (Dallmann 2017 Eq. 29) plus a calibrated 1 L of
+    # late-pregnancy interstitial water relative to a 12 L nonpregnant ECF,
+    # matching cesarean calcium dilution in Ansari 2025.
     extracellular = 1.0 + ((plasma - 2.36) + late) / 12.0
     # Contreras 1991: FRC 2184 mL at week 37 and 2524 mL postpartum. Heart
     # rate, metabolic rise, compensated PCO2, and the time courses are calibrations.

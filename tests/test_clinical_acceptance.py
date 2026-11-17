@@ -169,7 +169,7 @@ def test_propofol_alone_in_a_young_adult():
 
 @pytest.mark.parametrize("drug,amount,map_rise,hr_change", [
     ("phenyl", 100.0, (15.0, 25.0), (-15.0, -5.0)),
-    # Meng 2011: 0.1 mg/kg under TIVA raised MAP 24-28 mmHg and HR 2-8 bpm.
+    # Sjøen 2026 used 0.1 mg/kg; Meng 2011 (5-20 mg boluses under TIVA) raised MAP 24-28 mmHg and HR 2-8 bpm.
     ("ephedrine", 0.1, (15.0, 30.0), (0.0, 10.0)),
 ])
 def test_vasopressor_boluses_under_tiva(engine_factory, drug, amount, map_rise, hr_change):

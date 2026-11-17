@@ -10,8 +10,8 @@ from .resuscitation import COMPRESSION_DUTY
 # whereas arrest-level depletion recovers over about a minute (Park 1994; Weisfeldt 2002).
 REPERFUSION_FAST_TAU_S = 3.5
 REPERFUSION_SLOW_TAU_S = 60.0
-# High-energy countershocks transiently depress stroke volume by ~10-12%,
-# resolving over a few minutes of coronary perfusion (Tokano 1998).
+# Countershocks transiently depress stroke volume by ~10-15%, resolving over a
+# few minutes of coronary perfusion (calibrated from 27-34 J ICD shocks in Tokano 1998).
 SHOCK_STUN_PER_200J = 0.12
 SHOCK_STUN_MAX = 0.25
 SHOCK_STUN_BASE_TAU_S = 90.0

@@ -284,7 +284,7 @@ class TestClinicalAcceptance:
         self, engine_factory, advance_time, dt
     ):
         """Fisher 1986 (n = 22, Table 3): plasma escape during anaphylaxis causes
-        up to ~35% blood-volume loss within 10-15 min without red-cell loss,
+        up to ~35% blood-volume loss within 10 min without red-cell loss,
         raising Hb sharply until source control and volume replacement restore it.
         """
         untreated = engine_factory(
@@ -735,8 +735,8 @@ def test_atrial_fibrillation_then_sinus_bradycardia(engine_factory):
 
     An irregular R-R sequence alone lowers CO about 15% at the same rate (Clark 1997),
     on top of the lost atrial kick, so AF at about 110 bpm should not raise CO or MAP.
-    When AF ends in sinus bradycardia, SV stays about the same (Hogue 1996), so CO
-    falls; awake, reflex vasoconstriction limits the fall in MAP.
+    In sinus bradycardia, SV varies little with atrial rate (Hogue 1996), so switching
+    from AF to sinus bradycardia lowers CO; awake, reflex vasoconstriction limits the fall in MAP.
     """
     engine = engine_factory(
         config=SimulationConfig(mode="awake", rng_seed=7, arterial_line_enabled=True), start=True

@@ -12,7 +12,7 @@ from anasim.patient.pd.anesthesia import (
 
 
 def test_n2o_washin_deepens_hypnosis_and_neuromuscular_block(engine_factory, advance_time):
-    """Fiset 1991: N2O potentiates a partial rocuronium block."""
+    """N2O wash-in deepens hypnosis and potentiates partial nondepolarizing block (calibrated from vecuronium in Fiset 1991)."""
     endpoints = []
     for n2o_flow in (0.0, 8.0):
         engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=123), start=True)
@@ -63,8 +63,9 @@ def test_n2o_and_sevoflurane_interaction_by_endpoint():
 
 
 def test_n2o_second_gas_concentrating_effect_and_fink_diffusion_hypoxia(engine_factory, advance_time):
-    """Epstein 1964 & Fink 1955: high-flow N2O accelerates early sevoflurane wash-in,
-    and switching from 75% N2O to room air transiently dilutes alveolar O2 unless O2 is given.
+    """Second-gas concentrating effect (Epstein 1964, halothane) and diffusion hypoxia (Fink 1955):
+    high-flow N2O accelerates early sevoflurane wash-in, and switching from 75% N2O to room air
+    transiently dilutes alveolar O2 unless O2 is given.
     """
     sevo_air = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
     sevo_n2o = copy.deepcopy(sevo_air)

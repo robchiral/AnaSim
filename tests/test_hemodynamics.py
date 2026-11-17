@@ -193,8 +193,8 @@ def _pressures(model, renderer, cycle, state, seed=False):
 
 def test_ebert_propofol_induction_without_opioid():
     """Ebert 1992, unpremedicated patients aged about 37: propofol 2.5 mg/kg
-    then 200 mcg/kg/min lowered SBP 26 and DBP 9 mmHg (MAP 16%) by 3-4 min, and
-    HR rose 11 bpm. The model's falls run about 5 points deeper, with SBP still
+    then 200 mcg/kg/min lowered SBP 27 and DBP 7-8 mmHg (MAP 16%) by 3-4 min, and
+    HR rose 12 bpm. The model's falls run about 5 points deeper, with SBP still
     falling more than DBP; its HR rises less.
     """
     patient = Patient(age=37, weight=81, height=176, sex="male", baseline_map=88.4, baseline_hr=61.5)

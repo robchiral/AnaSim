@@ -22,9 +22,10 @@ Coronary disease reduces coronary flow reserve.
 Heart failure changes resting cardiac output, filling pressure, and sensitivity
 to loading conditions (Schwartzenberg 2012; Westermann 2008). With reduced
 ejection fraction (HFrEF), stroke volume is more sensitive to afterload, does
-not rise with fluid loading, and falls less with moderate preload reduction
-(Sherry 1995). With preserved ejection fraction (HFpEF), the ventricle is
-stiffer and fills less during tachycardia. Chronic left atrial hypertension
+not rise with fluid loading, and falls less when induction reduces preload,
+consistent with low-output cardiac surgical patients in Sherry 1995. With preserved
+ejection fraction (HFpEF), the ventricle is stiffer and fills less during
+tachycardia. Chronic left atrial hypertension
 increases lymphatic drainage, so pulmonary edema starts at a higher filling
 pressure. The reserve above the resting pressure is still smaller than in a
 normal heart.
@@ -36,7 +37,8 @@ respiratory compliance and increases airway resistance (Pelosi 1998).
 
 Pregnancy changes maternal blood volume, extracellular water, cardiac output,
 renal filtration, FRC, heart rate, metabolism, and resting PaCO₂ according to
-gestational age (Dallmann 2017; Contreras 1991; Ansari 2025). In later
+gestational age (Dallmann 2017; Contreras 1991), with late-pregnancy
+interstitial water calibrated to cesarean calcium dilution (Ansari 2025). In later
 pregnancy, the supine position reduces venous return and the left lateral
 position restores it (Humphries 2019). Drug responses use the same calibrations
 as in other adults.
@@ -65,12 +67,12 @@ clinical effects.
 
 | Drug | Model |
 |------|-------|
-| Propofol | Eleveld 2018 arterial model with its opioid-regimen covariate |
+| Propofol | Eleveld 2018 arterial model with its opioid-regimen covariate. Cirrhosis enlarges its volumes (Servin 1990) |
 | Remifentanil | Eleveld 2017 |
 | Fentanyl | Bae 2020 up to 70 kg; at higher weights it scales with pharmacokinetic mass (Shibutani 2004). Clearance scales with hepatic function |
 | Morphine and hydromorphone | Meissner 2025, scaled with fat-free mass, age, and hepatic and renal function |
 | Lidocaine | Foong 2025. Cirrhosis enlarges its volumes and lowers hepatic clearance (Thomson 1973) |
-| Rocuronium | Scaled with adjusted weight toward ideal body weight in obesity (Meyhoff 2009). Cirrhosis enlarges its volumes and lowers hepatic clearance (Khuenl-Brady 1996; Magorian 1995) |
+| Rocuronium | Scaled with adjusted weight toward ideal body weight in obesity (Meyhoff 2009). Cirrhosis enlarges its volumes (Khuenl-Brady 1996; Magorian 1995), and hepatic clearance scales with liver function as a model assumption |
 
 Inhaled agents move between lung, blood, and tissue compartments. Lean tissue
 volumes scale with fat-free mass, and the fat volume grows with excess weight.
@@ -144,9 +146,9 @@ in stepped inductions, which are higher in older patients (Lysakowski 2009).
 For the clinical response curves, fentanyl, morphine, and hydromorphone are
 converted to remifentanil equivalents, and etomidate and midazolam to propofol
 equivalents. Potency depends on the patient and on the effect. Midazolam alone
-lowers BIS only to the sedation range and causes little ventilatory depression
-in a patient who is breathing unassisted (Marty 1986), but it is synergistic
-with propofol (Short 1992). Nitrous oxide and ketamine also affect
+lowers BIS only to a calibrated sedation floor and preserves spontaneous
+breathing with a moderate rise in PaCO₂ (Marty 1986), while acting
+synergistically with propofol (Short 1992). Nitrous oxide and ketamine also affect
 responsiveness. Ketamine adds to opioid analgesia and, like lidocaine, reduces
 responses to stimulation. During propofol or sevoflurane anesthesia, ketamine
 raises BIS because it increases high-frequency EEG activity.
@@ -186,8 +188,9 @@ during surgery, and emergence begins after surgery.
 ## Neuromuscular block
 
 The [neuromuscular model](../anasim/patient/pd/nmba.py) uses Kleijn 2011 for
-rocuronium and sugammadex. Sevoflurane and nitrous oxide strengthen rocuronium
-block at both peripheral and central muscles (Kleijn 2011; Fiset 1991).
+rocuronium and sugammadex. Sevoflurane strengthens rocuronium block (Kleijn
+2011), and nitrous oxide adds a calibrated potentiation (after vecuronium data
+in Fiset 1991); AnaSim applies both at peripheral and central muscles.
 Sugammadex binds free plasma rocuronium and speeds its removal from the effect
 site, and the complex is cleared at the rate of sugammadex. Both drugs use
 measured creatinine clearance when it is supplied and otherwise an estimate from
@@ -272,8 +275,9 @@ makes it larger at the doses used in these trials.
 Sevoflurane lowers stroke volume, vascular resistance, and HR. The fall in
 pressure was fitted to routine bolus inductions in VitalDB, in which the falls
 did not depend on the opioid dose. Most of the fall comes from stroke volume. In
-unstimulated volunteers, cardiac index fell 28% at 1 and 1.5 MAC, and resistance
-fell 4% and 16% (Malan 1995). Ebert 1995's volunteers had larger falls in
+unstimulated volunteers on controlled ventilation, cardiac index fell 29% at 1
+and 1.5 MAC, while resistance fell 3% and 15% and decreased significantly only
+at 2 MAC (Malan 1995). Ebert 1995's volunteers had larger falls in
 pressure and no change in HR, and the model is within two standard deviations of
 their pressures.
 
@@ -282,8 +286,9 @@ gradual fall in MAP over 10 minutes of sevoflurane by mask after propofol in
 Ebert's study. The effects of propofol and sevoflurane on resistance and stroke
 volume combine as independent fractions.
 
-Midazolam causes mild vasodilation and venous pooling, which increase when it is
-combined with opioids (Marty 1986; Heikkilä 1984). Etomidate changes vascular
+Midazolam causes mild vasodilation and venous pooling (after forearm
+vasodilation in Marty 1986), and combining it with opioids lowers stroke volume
+and pressure further (Heikkilä 1984). Etomidate changes vascular
 resistance and stroke volume very little. Nitrous oxide causes mild sympathetic
 vasoconstriction and slightly depresses contractility.
 
@@ -417,7 +422,8 @@ fixed increase, including after atropine (Bovill 1972). Baroreflex gain falls at
 anesthetic concentrations, based on rat data (Akine 2001). A calibrated offset
 of up to 20 mmHg reduces reflex slowing and vasodilation, to fit pressure rises
 after atropine and during pacing. Beta blockade leaves a pressor response, and
-alpha blockade reduces it (Bovill 1972; Bålfors 1983).
+alpha blockade reduces it, modeled after droperidol pretreatment (Bovill 1972;
+Bålfors 1983).
 
 Sympathetic reserve is exhausted by severe blood loss, septic shock, profound
 hypotension, severe acidemia, or myocardial energy failure. Ketamine then loses
@@ -429,8 +435,9 @@ its sympathetic effect and lowers contractility and vascular resistance directly
 Rapid boluses of intravenous amiodarone briefly lower vascular resistance and
 blood pressure, mostly through the polysorbate 80 solvent. Slower infusions
 lower pressure much less (Munoz 1988). Contractility falls over several minutes,
-so patients with HFrEF lose more cardiac output and blood pressure than patients
-with a normal left ventricle (Kosinski 1984). Sinus rate slows over 15 to 30
+reducing cardiac output in HFrEF (Kosinski 1984) and leaving a small 15- to
+30-minute fall after vasodilation wears off in a normal left ventricle (Munoz
+1988; acute output rose in Kosinski's four normal-EF patients). Sinus rate slows over 15 to 30
 minutes (Munoz 1988), and sympathetic HR reflexes weaken over the same period.
 
 ## Heart and brain oxygen supply
@@ -444,23 +451,38 @@ mismatch between supply and demand causes reversible contractile depression and
 ST depression.
 
 Cerebral oxygen supply falls with MAP below 50 mmHg and with arterial oxygen
-content below two-thirds of baseline. Brain oxygen stores buffer a fall in
-supply for a few seconds. As tissue oxygen falls from 60% to 35% of normal
-(Astrup 1981), responsiveness, airway tone, and BIS fail (Nebout 2013), and
-near-complete failure stops breathing. After circulation stops, this failure
-begins at about 4 seconds, and the EEG is flat at about 11 seconds (de Vries
-1998). Function recovers within about two minutes after supply returns.
+content. Hypoxia increases normocapnic cerebral blood flow by up to half as a
+model calibration, and acute hypercapnia augments hypoxic vasodilation
+(Battisti-Charbonney 2011) up to twice baseline flow, preserving oxygen
+delivery during hypercapnic hypoxemia (Willie 2015). Acute hypocapnia constricts
+cerebral vessels, reducing reserve during hypoxemia or anemia without causing
+ischemic failure in a normoxic brain (Brian 1998). Cerebrospinal fluid bicarbonate
+adapts with a 6-hour time constant, consistent with blood-flow recovery over
+4 to 12 hours of sustained PaCO₂ change. Severe hypotension makes flow pressure-limited;
+restoring pressure raises supply up to the hypocapnic flow ceiling (Brian 1998).
+Brain oxygen stores buffer a fall in supply for a few seconds. Electrical
+function ramps down from 60% of normal supply to failure at 35% (Astrup 1981),
+so responsiveness, airway tone, and BIS
+fail (Nebout 2013), and near-complete failure stops breathing. After circulation
+stops, this decline begins at about 4 seconds and reaches a flat EEG at about
+11 seconds (11 ± 2 s in de Vries 1998). Function recovers within about two
+minutes after supply returns.
 
 Below 20% of normal, neurons are injured, and injury is slower when more supply
 remains (Jones 1981). After the equivalent of 5 minutes without supply, the
 patient remains comatose, although BIS and breathing can recover.
 
 CO₂ narcosis reduces responsiveness and airway tone without anoxic injury. Its
-severity depends on both PaCO₂ and pH (Westlake 1955). With acidemia, it rises
-as PaCO₂ increases from 60 to 100 mmHg and pH falls from 7.3 to 7.1. In
-compensated hypercapnia, it rises as PaCO₂ increases from 100 to 140 mmHg. Onset
-and recovery have a 30-second time constant. CO₂ does not change BIS directly:
-BIS was unchanged at EtCO₂ 3-12 kPa under propofol anesthesia (Turnbull 2008).
+severity depends on both PaCO₂ and pH (Westlake 1955; Sieker and Hickam 1956).
+With acidemia, it rises as PaCO₂ increases from 60 to 100 mmHg and pH falls from
+7.3 to 7.1. In compensated hypercapnia, it rises as PaCO₂ increases from 100 to
+140 mmHg. At deeper hypercapnic coma, medullary respiratory drive is also
+depressed toward shallow hypoventilation (Westlake 1955; Sieker and Hickam
+1956). Prolonged coma lasting longer than an hour lags blood-gas correction
+(Sieker and Hickam 1956); as teaching calibrations, onset uses a 30-second time
+constant, and recovery slows from 30 seconds after brief narcosis up to 30
+minutes after prolonged coma. CO₂ does not change BIS directly: BIS was
+unchanged at EtCO₂ 3-12 kPa under propofol anesthesia (Turnbull 2008).
 
 ## Cardiac arrest and resuscitation
 
@@ -521,7 +543,8 @@ A first 200 J biphasic shock terminates VF about 9 times in 10 (Stiell 2007;
 Koster 2008). AnaSim uses this rate for coarse VF and pulseless VT, with lower
 calibrated rates for fine VF or hypoxic arrest. Each shock also causes mild
 contractile stunning that reduces stroke volume by about 10% and resolves over
-several minutes of coronary perfusion (Tokano 1998).
+several minutes of coronary perfusion, calibrated from internal defibrillator
+shocks in Tokano 1998.
 
 After brief VF, conversion is directly to sinus rhythm, and arterial pressure
 recovers over 5 to 20 seconds as beats refill the arterial tree and reversible
@@ -578,21 +601,26 @@ sympathetic rise in HR and pressure. Neuromuscular block hides convulsions
 without stopping the seizure.
 
 Lipid emulsion reduces lidocaine delivery to its effect sites by about a fifth,
-as it reduced unentrapped exposure in volunteers (Heinonen 2015). It also
-lessens conduction block, arrhythmogenic stress, and contractile depression
-(Fettiplace 2014).
+calibrated to the 23% reduction in 30-minute unentrapped volunteer exposure
+(mostly from larger tissue distribution; Heinonen 2015). It also lessens
+contractile depression, based on rat bupivacaine resuscitation (Fettiplace
+2014), with calibrated reductions in conduction block and arrhythmogenic stress.
 
 ## Fluids
 
 ### Volume kinetics
 
 Lactated Ringer's and 0.9% saline move between blood and the interstitium (Hahn
-2017). Distribution slows when MAP is low, so fluid given during hypotension
-after induction stays in the circulation longer (Hahn 2021). Urine output
-depends on MAP, age, and renal function. Saline is excreted more slowly than
-lactated Ringer's: after 2 L over an hour, healthy volunteers pass about half as
-much urine in 6 hours (Reid 2003). More of a 5% albumin infusion stays in the
-circulation at first.
+2017; Hahn 2024). Distribution slows when MAP is low, so fluid given during
+hypotension after induction stays in the circulation longer (Ewaldsson and Hahn
+2001; Hahn 2021). Urine output depends on MAP, age, and renal function; under
+volatile or propofol anesthesia, about 8% of a 25 mL/kg Ringer's load is
+excreted over 150 minutes (7% and 11% group medians in Ewaldsson and Hahn
+2005), with similar plasma dilution and extravascular retention across
+anesthetics. Saline is excreted more
+slowly than lactated Ringer's: after 2 L over an hour, healthy volunteers pass
+about half as much urine in 6 hours (Reid 2003). More of a 5% albumin infusion
+stays in the circulation at first.
 
 Fluid also leaves the circulation through capillary leak and other slow
 exchanges into a separate compartment, which slowly returns fluid when blood
@@ -619,19 +647,22 @@ Ringer's does not (Scheingraber 1999). Packed red cells have the composition of
 a 3-week-old unit, at pH 6.5 and PCO₂ 98 mmHg with supernatant potassium 38 and
 lactate 22.5 mmol/L (Rabcuka 2025), so rapid transfusion adds acid, CO₂, and
 potassium. Lactate from Ringer's and packed cells, and citrate from packed
-cells, return base as they are metabolized (Kramer 2003).
+cells, return base as they are metabolized (Kramer 2003; Kahn 1979); cirrhosis
+lowers citrate clearance (Kramer 2003), and scaling with liver function and
+oxygen supply is a model assumption.
 
 Potassium exchanges with a large cellular pool over minutes. Epinephrine moves
 it into cells. Succinylcholine (Martyn and Richtsfeld 2006), malignant
 hyperthermia, and severe acidemia below pH 7.15 move it into plasma.
 
 Ionized calcium depends on albumin, citrate, and pH (Thode 1983; Bolan 2001), so
-dilution and rapid transfusion lower it. Injected calcium mixes through
-extracellular fluid, and calcium above the patient's resting ionized pool is
-then cleared. One gram of calcium chloride therefore raises ionized calcium by
-about 0.4 mmol/L, and half of the rise is gone by 30 minutes (Ansari 2025).
-Calcium lost to dilution or bound by citrate is not replaced within a session
-(Bolan 2001).
+dilution and rapid transfusion lower it; after rapid transfusion slows or stops,
+ionized calcium rebounds partially as citrate redistributes and clears (Kahn
+1979), while unreplaced dilutional loss remains. Injected calcium mixes through extracellular fluid, and calcium
+above the patient's resting ionized pool is then cleared. One gram of calcium
+chloride therefore raises ionized calcium by about 0.4 mmol/L, and half of the
+rise is gone by 30 minutes (Ansari 2025). Calcium lost to dilution or bound by
+citrate is not replaced within a session (Bolan 2001).
 
 ### Renal acid-base handling
 
@@ -639,7 +670,9 @@ The kidneys excrete the daily fixed acid load when urine output and renal
 perfusion allow. Over about a day, they also move bicarbonate toward the chronic
 compensation for the current PaCO₂: 0.48 mmol/L per mmHg in hypercapnia up to
 70 mmHg (González 2018) and 0.4 mmol/L per mmHg in hypocapnia (Krapf 1991).
-Chloride moves in the opposite direction to bicarbonate.
+Chloride moves in the opposite direction to bicarbonate, while urinary sodium
+follows extracellular strong-ion balance without antidiuretic hormone regulation
+(Reid 2003; Philbin and Coggins 1978).
 
 ## Respiratory control
 
@@ -647,9 +680,10 @@ Chloride moves in the opposite direction to bicarbonate.
 effects, CO₂ feedback, hypoxic drive, and muscle strength.
 
 Propofol reduces tidal volume, and opioids mainly reduce respiratory rate.
-Sevoflurane causes rapid shallow breathing that progresses to apnea near 2 MAC
-(Doi and Ikeda 1987). Rapid high-dose ketamine boluses briefly depress central
-drive (Bourke 1987). Hypocapnia and neuromuscular block suppress respiratory
+Sevoflurane causes rapid shallow breathing at surgical concentrations (Doi and
+Ikeda 1987) and progresses to apnea near 2 MAC. Ketamine shifts the
+steady-state CO₂ response slightly (Bourke 1987), and rapid high-dose boluses
+briefly depress central drive. Hypocapnia and neuromuscular block suppress respiratory
 effort, and rising CO₂ can restore breathing during opioid administration. Under
 anesthesia, the apneic threshold moves with the resting PaCO₂ that the drugs
 produce (Hickey 1971).
@@ -771,7 +805,8 @@ CO₂, oxygen, and buffer base. Bleeding, transfusion, fluids, and urine change
 the total buffer base by the amounts that they carry.
 
 The interstitium buffers with its albumin and phosphate and with a fixed
-cellular buffer, the extracellular buffer of Wooten 2003. With these buffers,
+cellular buffer using the plasma weak-acid parameters of Rees 2010 across twice
+the blood volume (Wooten 2003 and 2010). With these buffers,
 acute changes in PaCO₂ move pH and bicarbonate within the human ranges of
 Brackett 1965 and Arbus 1969, and standard base excess changes little. Standard
 base excess is calculated from arterial pH and bicarbonate with the Van Slyke
@@ -815,9 +850,10 @@ change metabolic demand and heat production, warming adds heat, and surface
 cooling removes it. Heat production falls with oxygen delivery, so the core
 cools faster during arrest.
 
-General anesthetics, including etomidate and ketamine, inhibit active
-regulation, increase heat loss, and redistribute heat from the core to the
-periphery (Matsukawa 1995). Midazolam shifts thermoregulatory thresholds much
+General anesthetics inhibit active thermoregulation, lower metabolic heat
+production, and redistribute heat from the core to the periphery (measured under
+propofol-fentanyl in Matsukawa 1995; extended to sevoflurane, etomidate, and
+ketamine as a model assumption). Midazolam shifts thermoregulatory thresholds much
 less (Kurz 1995). Cooling from redistribution in the first hour is smaller in
 heavier patients, who have higher ratios of weight to surface area (Kurz 1995).
 
@@ -829,7 +865,8 @@ reduce shivering.
 
 [Malignant hyperthermia](../anasim/physiology/malignant_hyperthermia.py) (MH)
 can start during sevoflurane anesthesia or after succinylcholine. Onset after a
-volatile anesthetic varies and often comes in the second or third hour (Visoiu
+volatile anesthetic varies (median 45 minutes with sevoflurane without
+succinylcholine, and into the second or third hour with other agents in Visoiu
 2014), so the instructor or case sets the time. Skeletal muscle hypermetabolism
 continues after the trigger is removed.
 
@@ -909,7 +946,8 @@ The arterial waveform depends on MAP, stroke volume, and age-dependent arterial
 compliance (Mahdi 2017; Franklin 1997). Compliance increases as pressure falls
 (Langewouters 1984), so pulse pressure narrows during hypotension and widens
 with vasopressors. Under propofol, systolic pressure falls about twice as much
-as diastolic pressure (three times as much in Ebert 1992 and Jeleazcov 2015).
+as diastolic pressure (about three to four times as much in Ebert 1992 and
+Jeleazcov 2015).
 Epinephrine's inotropic effect widens pulse pressure more than its effect on
 stroke volume alone would, without changing MAP or flow. In human inotrope
 studies, pulse pressure rose with contractility even when stroke volume did not

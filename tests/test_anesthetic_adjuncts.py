@@ -208,11 +208,12 @@ def test_bovill_ketamine_hr_and_map_rises_after_iv_atropine(engine_factory, dt):
 def test_ketamine_pressor_response_persists_during_pacing_and_beta_block_until_alpha_blocked(
     engine_factory, monkeypatch,
 ):
-    """Tweed 1972 Table 3 (n=6): right atrial pacing at 1.5x resting HR lowered
-    SVI 29% and SVR 16% with a 5.5 mmHg pressure rise, and ketamine 2 mg/kg over
-    1 min then raised CI 26-34%, SVR 19-32%, and aortic pressure 17-24.5 mmHg.
-    Bovill 1972 and Bålfors 1983: beta blockade leaves a substantial pressor
-    response, whereas alpha-adrenergic blockade attenuates it.
+    """Tweed 1972 Table 3: right atrial pacing at 1.5x resting HR (n=6 vs n=3
+    unpaced) lowered SVI 29% and SVR 16% with a 5.5 mmHg pressure rise, and
+    ketamine 2 mg/kg over 1 min then raised CI 26-34% and aortic pressure
+    17-24.5 mmHg (SVR +19-32%, NS). Bovill 1972 and Bålfors 1983: beta blockade
+    leaves a substantial pressor response, whereas droperidol (modeled here via
+    alpha-adrenergic blockade) attenuates it.
     """
     paced = _awake(engine_factory, age=39, weight=72.3, height=172, sex="male", baseline_hr=73.5, baseline_map=89.0)
     unpaced_sv, unpaced_svr, unpaced_map = paced.state.sv, paced.state.svr, paced.state.map
@@ -411,8 +412,10 @@ def test_ketamine_raises_ga_bis_and_depresses_catecholamine_depleted_shock(engin
 
 
 def test_midazolam_induction_preserves_breathing_bis_and_thermoregulation_until_opioid(engine_factory):
-    """Marty 1986, Kurz 1995, & Heikkilä 1984: 0.3 mg/kg midazolam on room air preserves
-    spontaneous breathing, BIS > 65, and core temperature, while adding fentanyl lowers MAP.
+    """0.3 mg/kg midazolam preserves spontaneous breathing with moderate PaCO2 rise
+    (Marty 1986, with nasal O2) and causes little core cooling (Kurz 1995), while
+    AnaSim caps midazolam-only BIS above 65 and lowers MAP further when combined
+    with an opioid (consistent with midazolam-fentanyl hypotension in Heikkilä 1984).
     """
     midaz = engine_factory(
         config=SimulationConfig(mode="awake", rng_seed=1),

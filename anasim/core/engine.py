@@ -278,7 +278,7 @@ class SimulationEngine(DrugControllerMixin):
         self.resp = RespiratoryModel(self.patient)
         self.resp.attach_fluid_balance(self.hemo.fluids, self.hemo.config.donor_mchc_g_dl)
         self.lactate = LactateModel(self.patient.weight, self.patient.hepatic_function)
-        self.cerebral = CerebralModel(self.patient.baseline_hb)
+        self.cerebral = CerebralModel(self.patient.baseline_hb, self.resp.paco2_setpoint)
         self.toxicity = LocalAnestheticToxicity(self.patient.weight)
         if self.config.mode == "steady_state":
             self.aeration = LungAeration(self.patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)

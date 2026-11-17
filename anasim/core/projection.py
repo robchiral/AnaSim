@@ -587,8 +587,8 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         shunt_fraction=engine.aeration.shunt_fraction,
         temp_c=state.temp_c,
         airway_pressure=engine.resp_mech.peep,
-        # Brainstem drive persists until cerebral failure is nearly complete.
-        central_drive_fraction=(1.0 - engine.cerebral.dysfunction ** 8) * engine.toxicity.respiratory_drive,
+        # Brainstem drive persists until cerebral failure is nearly complete or CO2 narcosis is extreme.
+        central_drive_fraction=engine.cerebral.respiratory_drive * engine.toxicity.respiratory_drive,
         ketamine_cp=engine.pk["ketamine"].state.c1,
         mac_n2o=state.mac_n2o,
         n2o_uptake_l_min=n2o_uptake,

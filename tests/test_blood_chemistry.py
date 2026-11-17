@@ -73,7 +73,7 @@ def test_co2_capacity_matches_solved_buffering():
 
 
 def test_haldane_effect_matches_independent_blood_transport_reference():
-    """O'Neill and Robbins 2017 Table 3 gives 6.28 mL CO2/dL at PCO2 40.
+    """O'Neill and Robbins 2017 Table 3: 6.28 mL CO2/dL (Visser 1960) and 6.34 model output at PCO2 40.
 
     Compare fully oxygenated and deoxygenated blood at fixed buffer base.
     The 5% tolerance allows for the different blood-chemistry parameterization.

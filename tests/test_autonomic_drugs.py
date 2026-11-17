@@ -129,8 +129,8 @@ def test_glycopyrrolate_raises_rate_and_blocks_vagal_bradycardia(engine_factory)
     assert engine.state.hr - base_hr > 8.0
     _advance(engine, 240)
     assert engine.pk["glyco"].state.c1 == pytest.approx(11.8, rel=0.25)
-    # Under remifentanil-propofol, methylatropine raised peak HR by a median
-    # 22 bpm (IQR 6-36; Poterman 2017).
+    # Poterman 2017: under remifentanil-propofol, methylatropine HR rose from
+    # mean 80 +/- 14 bpm to a peak median 102 bpm (IQR 86-116).
     assert engine.state.hr - base_hr < 36.0
 
     base_hr = engine.state.hr

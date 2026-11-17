@@ -86,8 +86,9 @@ def test_endurance_and_recovery_are_step_size_invariant(dt):
 
 def test_recovery_has_fast_and_persistent_phases():
     """Aubier 1981, Laghi 1995, and Travaline 1997: high-frequency fatigue resolves
-    within 10-15 min, leaving about 20-25% Pdi,max loss at 30 min, 13-17% at 3 h,
-    and a small low-frequency deficit at 24 h.
+    within 10-15 min, leaving about 20-25% Pdi,max loss at 30 min, 13-17% at 3 h
+    (Travaline 1997), and a small 24-h low-frequency deficit (Laghi 1995; complete
+    by 20-25 h in Travaline 1997).
     """
     muscle = RespiratoryFatigue()
     # Laghi 1995: 30 min of resistive breathing at 60% Pmax, duty 0.5, 15 breaths/min.
@@ -117,7 +118,7 @@ def test_recovery_has_fast_and_persistent_phases():
     assert 80.0 <= muscle.available_pressure <= 90.0
 
     _rest(muscle, 21 * 3600)
-    # Laghi 1995 and Travaline 1997: small low-frequency deficit at 24 h.
+    # Laghi 1995: small low-frequency deficit remaining at 24 h.
     assert 0.03 < muscle.fatigue < 0.08
 
 

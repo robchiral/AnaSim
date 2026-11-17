@@ -72,7 +72,8 @@ class TOFModel:
         # Kleijn's sevoflurane covariate, applied in proportion to brain MAC.
         self.sevo_ke0_reduction = 0.567
         self.sevo_ec50_reduction = 0.395
-        # Nitrous oxide EC50 multiplier at 1 MAC (Fiset 1991).
+        # Calibrated nitrous oxide EC50 multiplier at 1 MAC (70% N2O lowered
+        # vecuronium ED50 13% in Fiset 1991).
         self.f_n2o = 0.6
         # The central site (diaphragm and laryngeal adductors) equilibrates
         # faster than the adductor pollicis (t1/2 ke0 2.7 vs 4.4 min; Plaud 1995).

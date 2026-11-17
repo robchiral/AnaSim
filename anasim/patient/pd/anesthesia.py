@@ -46,8 +46,8 @@ PROPOFOL_LOC_TRANSFER = 1.3
 PROPOFOL_LOSS_OF_RESPONSE = 6.68 * 0.48
 MIDAZOLAM_MAX_PROPOFOL_EQUIVALENT = 2.0 * PROPOFOL_LOSS_OF_RESPONSE
 MIDAZOLAM_BIS_MAX_PROPOFOL_EQUIVALENT = 0.85 * PROPOFOL_LOSS_OF_RESPONSE
-# Marty 1986: 0.3 mg/kg IV midazolam on room air raised PaCO2 ~4 mmHg without
-# apnea > 15 s; central depression has a ceiling until combined with propofol or opioids.
+# Marty 1986: 0.3 mg/kg IV midazolam with low-flow nasal O2 raised PaCO2 from
+# 38 to 45-46 mmHg while preserving spontaneous breathing; the ceiling is a calibration.
 MIDAZOLAM_RESPIRATORY_MAX_PROPOFOL_EQUIVALENT = 1.25
 # Short 1992: midazolam with propofol needs 37% less than additive doses for
 # hypnosis, an interaction coefficient of 3.7 at equal shares. The propofol

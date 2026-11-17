@@ -51,7 +51,7 @@ def buffer_coefficients(ph: float) -> tuple[float, float, float, float]:
 class PlasmaBuffers:
     albumin_g_l: float
     phosphate_mmol_l: float
-    cellular_mmol_l: float = 0.0  # Weak acid at pK 6.96, Wooten 2003's extracellular buffer.
+    cellular_mmol_l: float = 0.0  # Weak acid at pK 6.96 (Rees 2010), for extracellular buffering (Wooten 2010).
 
     def contents(self, ph: float) -> tuple[float, float]:
         albumin, albumin_ph, phosphate, phosphate_ph = buffer_coefficients(ph)

@@ -76,10 +76,10 @@ def _effect_site_trace(pk, rate, site: str, duration_s: int, every_s: int = 5) -
 
 
 def test_vt_conversion_matches_somberg_and_scheinman_protocols(patient_factory):
-    """Somberg 2002: amiodarone converts sustained VT with a pulse in about
-    two-thirds of patients within an hour, and lidocaine in about a quarter.
-    Scheinman 1995: median conversion is near 51 min at 1000 mg/24 h, and slower
-    at 125 mg/24 h (0.94 h in Scheinman alone and 3.11 h in its pooled analysis).
+    """Somberg 2002: immediate VT termination was 78% on amiodarone vs 27% on
+    lidocaine (67% vs 9% alive and VT-free at 1 h). Scheinman 1995: median
+    conversion was 0.85 h (51 min) at 1000 mg/24 h vs 0.94 h at 125 mg/24 h
+    (1.42 vs 3.11 h pooled with Kowey, P = 0.15); AnaSim separates the two doses.
     """
     def two_boluses(mg: float, maintenance_mg_min: float):
         return lambda s: maintenance_mg_min / 60.0 + (mg / 120.0 if s <= 120 or 600 < s <= 720 else 0.0)
@@ -333,7 +333,8 @@ def test_post_shock_asystole_incidence_duration_and_competing_refibrillation(dt)
 def test_acute_amiodarone_hemodynamics_follow_rate_and_lv_function(engine_factory):
     """Munoz 1988 and Kosinski 1984: rapid IV boluses briefly lower pressure
     with reflex HR support and maintained output, HR and output fall modestly by
-    15-30 min, and HFrEF loses substantially more cardiac output after a bolus.
+    15-30 min in preserved LV function (Munoz 1988; acute CI rose 12.5% in
+    Kosinski's 4 normal-EF patients), while HFrEF loses ~19% cardiac output (Kosinski 1984).
     """
     def run_infusion(hf: str, dose_mg: float, duration_s: int, total_s: int) -> dict[int, tuple[float, float, float]]:
         engine = engine_factory(

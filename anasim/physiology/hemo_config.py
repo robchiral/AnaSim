@@ -153,8 +153,8 @@ class HemodynamicConfig:
     # unchanged) and bound the model within 2 SD; their gradual fall over 10
     # minutes of mask sevoflurane after propofol (Fig. 1) sets the 14-min
     # half-time. Most of the fall comes from stroke volume: in unstimulated
-    # volunteers, cardiac index fell 28% at 1 and 1.5 MAC and SVR fell 4% and
-    # 16% (Malan 1995).
+    # volunteers on controlled ventilation, cardiac index fell 29% at 1 and 1.5
+    # MAC while SVR fell 3% and 15% (non-significant until 2 MAC; Malan 1995).
     ke0_sevo: float = 0.05
     sevo_emax_tpr: float = -0.4
     sevo_ec50_tpr: float = 0.9
@@ -200,7 +200,8 @@ class HemodynamicConfig:
     vol_clearance: float | None = None
     # Urine output (mL/kg/hr), scaled by MAP and renal function.
     uop_ml_kg_hr: float = 0.5
-    # Hahn 2017 kinetics scaled to Reid 2003's 6 h urine after 2 L of Hartmann's.
+    # Hahn 2017 kinetics scaled to Reid 2003's 6 h urine after 2 L of Hartmann's;
+    # gives ~8% 150-min intraoperative excretion (Ewaldsson and Hahn 2005: 7-11%).
     crystalloid_renal_scale: float = 0.28
     colloid_retention_fraction: float = 0.80
     blood_retention_fraction: float = 1.0

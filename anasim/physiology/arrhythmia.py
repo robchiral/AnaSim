@@ -17,9 +17,9 @@ from anasim.core.enums import RhythmType
 from anasim.core.utils import clamp01
 
 VENTRICULAR_RHYTHMS = frozenset({RhythmType.VTACH, RhythmType.VFIB})
-# mcg/mL. Lidocaine's label gives 1.5-6 mcg/mL. Amiodarone's C50 sets the gap
-# in VT conversion time between the pooled 125 and 1000 mg/24 h arms in
-# Scheinman 1995.
+# mcg/mL. Lidocaine's label gives 1.5-6 mcg/mL. Amiodarone's C50 is calibrated
+# so 1000 mg/24 h converts VT faster than 125 mg/24 h (pooled trend 1.42 vs
+# 3.11 h in Scheinman 1995; P = 0.15).
 LIDOCAINE_C50 = 1.5
 AMIODARONE_C50 = 0.4
 LIDOCAINE_VT_CONVERSION_RATE = 1.0 / 8500.0

@@ -466,8 +466,8 @@ class RemifentanilPKEleveld(MammillaryPK):
             cl3=0.124 * (v3 / 5.03)**0.75 * aging_fast * eta.q3,
             ke0=1.09 * math.exp(-0.0289 * (age - 35.0)) * eta.ke0,
             additional_effect_sites=(("ce_resp", math.log(2.0) / 0.53),),
-            # Swine bled 48 mL/kg had 58% lower central clearance and half the
-            # V1, with unchanged distribution clearances (Johnson 2001).
+            # Swine bled 48 mL/kg had 58% lower central clearance, half the V1,
+            # and 62% lower V2, with unchanged distribution clearances (Johnson 2001).
             cl1_deficit_exponent=0.8,
             intravascular_clearance=True,
             **_NO_CO_COVARIATE,
@@ -829,6 +829,8 @@ class RocuroniumPK(MammillaryPK):
             "cl2": 0.279 * size**0.75,
         }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.4))
+        # Rocuronium clearance in cirrhosis was unchanged in Khuenl-Brady 1996
+        # and Magorian 1995; scaling hepatic capacity here is a model assumption.
         clearance_scale, renal_fraction = renal_capacity_scaling(
             patient, self.RENAL_FRACTION, hepatic_fraction=0.7
         )

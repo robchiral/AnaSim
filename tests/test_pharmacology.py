@@ -407,9 +407,10 @@ def test_rocuronium_spontaneous_recovery_slows_with_age(patient_factory):
     assert 40 * 60 < recovery[30] < 80 * 60
     assert recovery[70] > recovery[30] + 10 * 60
 
-    # Meyhoff 2009: in morbidly obese women (132 kg, 173 cm), 0.6 mg/kg IBW (42 mg)
-    # recovers TOF 0.9 around 52 min while 0.6 mg/kg IBW + 40% excess (56 mg) is prolonged.
-    obese_pt = patient_factory(age=41, weight=132.0, height=173.0, sex="female")
+    # Meyhoff 2009: in morbid obesity (IBW cohort median 132 kg, 173 cm, age 37),
+    # 0.6 mg/kg IBW (42 mg, median TOF 0.9 at 63 min, range 43-107) recovers
+    # meaningfully faster than 0.6 mg/kg IBW + 40% excess (56 mg, median 76 min).
+    obese_pt = patient_factory(age=37, weight=132.0, height=173.0, sex="female")
     ibw_trace = _tof_trace(obese_pt, 42.0 / 132.0, 6000)
     cbw40_trace = _tof_trace(obese_pt, 56.0 / 132.0, 6000)
     ibw_rec = _first_second(ibw_trace, lambda x: x >= 90.0, start=180)

@@ -187,7 +187,7 @@ def test_calcium_binding_follows_ph_and_citrate_and_deficits_persist():
     assert -0.26 < slope < -0.12
     assert fluids.ionized_calcium(7.2) > baseline > alkalotic
     # Bolan 2001 Fig. 2A: ionized calcium 1.272 - 0.251 x serum citrate during
-    # plateletpheresis, as total calcium fell 3% by the highest citrate (1.9 mmol/L).
+    # plateletpheresis, while 90-min total calcium fell 3% (highest group mean citrate 1.9 mmol/L).
     total = fluids.amounts["calcium"]
     for citrate in (0.5, 1.0, 1.5, 2.0):
         fluids.citrate_mmol = citrate * fluids.citrate_volume_l
@@ -409,3 +409,112 @@ def test_lipid_partition_donor_prbc_oxygen_and_zero_flow_crystalloid_kinetics(
     ck = CrystalloidKinetics(central_ml=0.0, interstitial_ml=500.0)
     ck.step(60.0, 0.0, 40.0, 1.0, 1000.0, circulation=0.0)
     assert ck.central_ml == 0.0 and ck.interstitial_ml == pytest.approx(500.0)
+
+
+def test_citrate_clearance_and_massive_transfusion_calcium_and_acid_base_rebound(engine_factory):
+    """Kramer 2003 & Kahn 1979: hepatic impairment slows citrate clearance (~48% of control),
+    and during normovolemic massive transfusion ionized calcium reaches its nadir at peak
+    transfusion rate and rebounds partially as transfusion slows and citrate yields bicarbonate.
+    """
+    outcomes = {}
+    for label, hep in (("control", 1.0), ("cirrhotic", 0.31)):
+        fine = FluidBalance(72.0, 5040.0, 2000.0)
+        coarse = FluidBalance(72.0, 5040.0, 2000.0)
+        infused_mmol = 0.5 * 72.0 * 2.0
+        for fb, dt_s, n_steps in ((fine, 1.0, 7200), (coarse, 60.0, 120)):
+            cit_per_step = (0.5 * 72.0 / 3600.0) * dt_s
+            for _ in range(n_steps):
+                fb.citrate_mmol += cit_per_step
+                fb.step(
+                    dt_s, ph=7.42, paco2=40.0, resting_paco2=40.0, renal_function=1.0,
+                    renal_perfusion=1.0, hepatic_function=hep, oxygen_supply=1.0, epinephrine=0.0,
+                )
+        cmax_fine = fine.citrate_mmol / fine.citrate_volume_l
+        cmax_coarse = coarse.citrate_mmol / coarse.citrate_volume_l
+        assert cmax_fine == pytest.approx(cmax_coarse, abs=0.015)
+        outcomes[label] = (cmax_fine, fine.citrate_mmol / infused_mmol, fine.base_meq)
+    assert 0.70 < outcomes["control"][0] < 1.05
+    assert outcomes["cirrhotic"][0] > 1.5 * outcomes["control"][0]
+    assert outcomes["cirrhotic"][1] > 1.5 * outcomes["control"][1]
+    assert outcomes["control"][2] > outcomes["cirrhotic"][2] + 30.0
+
+    # Kahn 1979 pattern: rapid normovolemic replacement (60 mL/kg/h for 45 min, ~3.15 L)
+    # followed by 45 min after transfusion ends at controlled normocapnia without CaCl2.
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        age=52.0, weight=70.0, height=170.0, sex="male", baseline_hb=12.5, start=True,
+    )
+    base_ica = engine.state.ionized_calcium
+    rate_ml_s = 60.0 * 70.0 / 3600.0
+    for phase in ("transfusion", "post_transfusion"):
+        for sec in range(2700):
+            if phase == "transfusion":
+                engine.hemo.add_volume(-rate_ml_s)
+                engine.hemo.add_volume(rate_ml_s, hematocrit=0.55, label="blood")
+            if sec % 30 == 0:
+                settings = engine.vent.settings
+                deadspace = engine.resp.vd_deadspace
+                vt = deadspace + (settings.tv / 1000.0 - deadspace) * engine.state.pa_co2 / 40.0
+                engine.set_vent_settings(rr=settings.rr, vt=vt, peep=settings.peep, ie="1:2", mode="VCV")
+            engine.step(1.0)
+        if phase == "transfusion":
+            peak_cit = engine.hemo.fluids.citrate_mmol / engine.hemo.fluids.citrate_volume_l
+            peak_ica = engine.state.ionized_calcium
+            peak_be = engine.state.base_excess
+    end_cit = engine.hemo.fluids.citrate_mmol / engine.hemo.fluids.citrate_volume_l
+    assert 0.25 < peak_cit < 0.55 and end_cit < 0.30 * peak_cit
+    assert peak_ica < base_ica - 0.15
+    assert peak_ica + 0.02 < engine.state.ionized_calcium < base_ica - 0.05
+    assert engine.state.base_excess > peak_be + 0.6
+
+
+def test_intraoperative_crystalloid_loading_matches_ewaldsson_hahn_dilution_and_urine(engine_factory):
+    """Ewaldsson and Hahn 2005: 25 mL/kg Ringer's over 30 min under volatile or propofol
+    anesthesia expands plasma ~30% at 30 min and ~15-20% at 150 min, with ~7-11% urinary
+    excretion and similar extravascular retention across anesthetics.
+    """
+    results = {}
+    for mode, age, weight in (("volatile", 50.0, 68.5), ("propofol", 57.0, 68.7)):
+        engine = engine_factory(
+            config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+            sex="female", age=age, weight=weight, height=167.4, baseline_hb=12.8, start=True,
+        )
+        engine.give_drug_bolus("propofol", 2.0 * weight)
+        engine.give_drug_bolus("fentanyl", 150.0)
+        engine.give_drug_bolus("roc", 0.55 * weight)
+        if mode == "volatile":
+            engine.set_vaporizer(2.0)
+        else:
+            engine.set_drug_rate("propofol", 9.5 * 1000.0 / 60.0)
+        engine.set_airway_mode("ETT")
+        engine.set_fgf(2.0, 2.0)
+        engine.set_vent_settings(mode="VCV", rr=12, vt=0.45, peep=0, ie="1:2")
+        engine.set_vent_power(True)
+        for _ in range(600):
+            engine.step(1.0)
+        engine.set_fgf(0.4, 0.4)
+        uop_0 = engine.state.urine_out_ml
+        pv_0 = engine.hemo.fluids.plasma_l
+        seq_0 = engine.hemo.total_third_space_ml
+        na_0 = engine.state.sodium
+        infused = 25.0 * weight
+        dil_30 = 0.0
+        for sec in range(9000):
+            if sec in (1800, 4500):
+                engine.give_drug_bolus("fentanyl", 125.0)
+            if sec < 1800:
+                engine.hemo.add_volume(infused / 1800.0, label="crystalloid")
+            engine.hemo.add_volume(-100.0 / 9000.0)
+            engine.step(1.0)
+            if sec == 1799:
+                dil_30 = (engine.hemo.fluids.plasma_l - pv_0) / pv_0
+        dil_150 = (engine.hemo.fluids.plasma_l - pv_0) / pv_0
+        uop_150 = engine.state.urine_out_ml - uop_0
+        seq_150 = engine.hemo.total_third_space_ml - seq_0
+        assert 0.25 < dil_30 < 0.38
+        assert 0.12 < dil_150 < 0.22
+        assert 0.06 * infused < uop_150 < 0.13 * infused
+        assert engine.state.sodium == pytest.approx(na_0, abs=1.5)
+        results[mode] = (uop_150, seq_150)
+    assert results["volatile"][0] == pytest.approx(results["propofol"][0], abs=40.0)
+    assert results["volatile"][1] == pytest.approx(results["propofol"][1], abs=45.0)

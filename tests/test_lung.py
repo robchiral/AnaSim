@@ -131,16 +131,17 @@ def test_copd_and_airway_closure_have_separate_oxygen_responses_across_step_size
 
 @pytest.mark.parametrize(("fio2", "flow", "vco2", "vo2", "paco2", "shunt", "low_flow", "pao2", "sem"), [
     (0.21, 6.68, 224.0, 256.0, 36.8, 0.008, 0.116, 77.0, 8.1),
-    (1.0, 6.44, 239.0, 274.0, 39.8, 0.021, 0.235, 487.0, 40.0),
+    (1.0, 6.44, 224.0, 256.0, 39.8, 0.021, 0.235, 487.0, 40.0),
 ])
 def test_acute_asthma_oxygen_exchange_matches_ballester_1989(
     fio2, flow, vco2, vo2, paco2, shunt, low_flow, pao2, sem,
 ):
     """Table 5: five patients on air and after 20 min of 100% oxygen.
 
-    Use the measured flow, metabolism, shunt, and low V/Q perfusion, with
-    ventilation set for the measured PaCO2. Hb was not reported, so the
-    default is used. Bands are 2 SEM.
+    Use the measured flow, air-breathing metabolism (VO2 and VCO2 were not
+    reported on 100% O2), shunt, and low V/Q perfusion, with ventilation set
+    for the measured PaCO2. Hb was not reported, so the default is used. Bands
+    are 2 SEM.
     """
     model = RespiratoryModel(Patient(age=40, weight=62, height=157, sex="female"))
     model.vco2, model.rq = vco2, vco2 / vo2
@@ -302,7 +303,7 @@ def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_s
     """Strandberg 1986 Table 4 (~42% and ~11% left at 1 h and 24 h after hernia
     repair vs ~64% and ~19% after cholecystectomy), Putensen-Himmer 1992 (6 h),
     Eichenberger 2002 (24 h clearance at BMI 24 vs persistence at BMI 46.5), and
-    Östberg 2019 (preserved 30-min PaO2/FiO2 after nonabdominal surgery).
+    Östberg 2019 (preserved ~40-min PaO2/FiO2 after nonabdominal surgery).
     """
     traces = []
     site_6h = {}
@@ -394,16 +395,16 @@ def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_s
         obese.advance(1.0, 0.0)
     assert obese.atelectatic == pytest.approx(0.30, abs=1e-6)
 
-    # Östberg 2019: nonabdominal surgery with intraoperative PEEP 7 preserves
-    # 30-min room-air PaO2/FiO2 near awake baseline despite 100% O2 emergence.
-    awake = SimulationEngine(Patient(age=50, weight=78, height=175, surgical_site="other"),
+    # Östberg 2019: nonabdominal surgery with intraoperative PEEP 7 (BMI < 25)
+    # preserves ~40-min room-air PaO2/FiO2 near awake baseline despite 100% O2 emergence.
+    awake = SimulationEngine(Patient(age=50, weight=74, height=175, surgical_site="other"),
                              SimulationConfig(mode="awake", rng_seed=1))
     awake.start()
     for _ in range(180):
         awake.step(1.0)
     awake_pf = awake.state.pao2 / 0.21
 
-    postop = SimulationEngine(Patient(age=50, weight=78, height=175, surgical_site="other"),
+    postop = SimulationEngine(Patient(age=50, weight=74, height=175, surgical_site="other"),
                               SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1))
     postop.start()
     postop.set_vent_settings(mode="VCV", vt=0.50, rr=12, peep=7, ie="1:2")

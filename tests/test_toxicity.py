@@ -210,7 +210,7 @@ def test_lipid_rescue_gradually_reduces_cardiac_toxicity_during_supported_ventil
 
 
 def test_lidocaine_post_distribution_kinetics_and_subconvulsive_infusions(engine_factory, patient_factory):
-    """Tucker and Boas 1971 (3 mg/kg over 3 or 19 min) and Rowland 1971 (110 mg bolus + 0.75 mg/min)."""
+    """Tucker and Boas 1971 (3 mg/kg over 3 min [n=5] or 19 min [n=1]) and Rowland 1971 (110 mg bolus + 0.75 mg/min)."""
     patient = patient_factory(age=30, weight=69, height=175, sex="male")
     pk = LidocainePK(patient)
     # Foong's model relates HCl dose to base plasma concentration; Tucker's mean was 0.93 L/min.
@@ -316,7 +316,9 @@ def test_one_hour_overdose_in_hfref_stays_in_sinus_rhythm_and_recovers(engine_fa
 
 
 def test_volunteer_lipid_protocol_reduces_effective_lidocaine_auc(engine_factory):
-    """Heinonen 2015: lipid reduces 30-min unentrapped lidocaine AUC by 23%.
+    """Heinonen 2015: lipid reduces 30-min unentrapped lidocaine AUC by 23%
+    (from larger tissue distribution plus ~6% plasma entrapment), modeled here
+    as reduced effect-site input.
 
     Both arms receive 1.5 mL/kg over 1 min before 1 mg/kg lidocaine,
     then 0.25 mL/kg/min of the same study fluid for 30 min.
