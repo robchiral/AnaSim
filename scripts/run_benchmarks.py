@@ -79,6 +79,8 @@ BENCHMARKS = {
     'engine': ('awake', 'steady_state', 'conditions', 'tci', 'app'),
     'tci': ('propofol', 'norepinephrine'),
     'monitor': ('sinus', 'afib'),
+    'prediction': ('propofol',),
+    'stimulus': ('intubation',),
 }
 
 
@@ -107,6 +109,7 @@ def build_step(name):
         PropofolPKEleveld,
         RemifentanilPKEleveld,
     )
+    from anasim.physiology.disturbances import Disturbances
     from anasim.physiology.hemodynamics import HemodynamicModel
     from anasim.physiology.resp_mech import RespiratoryMechanics
     from anasim.physiology.respiration import RespiratoryModel
@@ -116,6 +119,20 @@ def build_step(name):
     if case not in BENCHMARKS[group]:
         raise ValueError(f'Unknown benchmark: {name}')
     patient = Patient()
+
+    if group == 'prediction':
+        model = PropofolPKEleveld(patient)
+        model.step(600.0, 0.12)
+        return lambda i: model.simulate_decay(max_seconds=7200)
+
+    if group == 'stimulus':
+        stimulus = Disturbances('stim_intubation_pulse')
+
+        def step_stimulus(i):
+            start = (i % 3000) * 0.1
+            return stimulus.compute_average(start, start + 0.1)
+
+        return step_stimulus
 
     if group == 'monitor':
         engine = SimulationEngine(patient, SimulationConfig(mode='awake', rng_seed=123))
@@ -264,8 +281,7 @@ def _aggregate_results(results: list[BenchmarkResult]) -> list[BenchmarkResult]:
 def _format_slowest(results: list[BenchmarkResult], limit: int = 5) -> str:
     if not results:
         return ""
-    ranked = sorted(results, key=lambda r: r.us_per_step, reverse=True)
-    ranked = ranked[: min(limit, len(ranked))]
+    ranked = sorted(results, key=lambda r: r.us_per_step, reverse=True)[:limit]
     lines = ["Slowest (avg us/step):"]
     for result in ranked:
         lines.append(f"  {result.name}: {result.us_per_step:.2f} us/step")
@@ -277,7 +293,6 @@ def _parse_bench_list(value: str, available: list[str]) -> list[str]:
         return list(available)
 
     requested = [item.strip() for item in value.split(",") if item.strip()]
-    available_keys = available
     selected: list[str] = []
     unknown: list[str] = []
 
@@ -286,7 +301,7 @@ def _parse_bench_list(value: str, available: list[str]) -> list[str]:
             selected.append(name)
             continue
         prefix = f"{name}."
-        matches = [key for key in available_keys if key.startswith(prefix)]
+        matches = [key for key in available if key.startswith(prefix)]
         if matches:
             selected.extend(matches)
         else:

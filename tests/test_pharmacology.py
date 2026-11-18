@@ -132,6 +132,13 @@ def test_decay_prediction_preserves_basal_input_and_live_concentrations():
     np.testing.assert_array_equal(model.state_vector(), initial)
 
 
+def test_decay_prediction_reports_first_crossing_before_redistribution():
+    model = MammillaryPK(v1=1.0, cl1=0.05, ke0=4.0, v2=10.0, cl2=0.2)
+    model.set_state_vector([0.0, 4.0, 1.0])
+    # Ce drops below 0.5 at 12 s, then rises above 1 as peripheral drug returns.
+    assert model.simulate_decay(max_seconds=120) == 12 / 60
+
+
 def test_remifentanil_reference_pk_and_context_insensitive_offset():
     """Eleveld 2017 Table 3; Egan 1993 and Kapila 1995 report a 3-5 min offset."""
     model = RemifentanilPKEleveld(Patient(age=35, weight=70, height=170, sex="male"))

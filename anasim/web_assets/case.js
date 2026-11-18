@@ -1,11 +1,5 @@
 // Case briefing, actions, hints, and the end-of-case review. Guided steps stay in app.js.
-const $ = (id) => document.getElementById(id);
-const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
-
-function caseTime(seconds) {
-  const total = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
+import { $, minutesSeconds, setText } from "./display.js";
 
 function node(tag, text, className) {
   const el = document.createElement(tag);
@@ -92,7 +86,7 @@ export class CasePanel {
     const hints = `${report.hints_used} ${report.hints_used === 1 ? "hint" : "hints"} used`;
     setText($("case-review-title"), report.name);
     setText($("case-review-summary"), [
-      independent ? "On my own" : "Step-by-step guide", `${caseTime(report.duration)} elapsed`, ...(independent ? [hints] : []),
+      independent ? "On my own" : "Step-by-step guide", `${minutesSeconds(report.duration)} elapsed`, ...(independent ? [hints] : []),
     ].join(", "));
     const content = [];
     if (report.reason === "cardiac_arrest") content.push(node("p", "The case ended at irreversible cardiac arrest.", "case-safety"));
@@ -100,14 +94,14 @@ export class CasePanel {
     content.push(pairs([
       ["Lowest MAP", `${physiology.lowest_map} mmHg`],
       ["Lowest oxygen saturation", `${physiology.lowest_spo2}%`],
-      ["MAP below 65 mmHg", caseTime(physiology.hypotension_s)],
-      ["Oxygen saturation below 90%", caseTime(physiology.hypoxemia_s)],
+      ["MAP below 65 mmHg", minutesSeconds(physiology.hypotension_s)],
+      ["Oxygen saturation below 90%", minutesSeconds(physiology.hypoxemia_s)],
     ], "case-metrics"));
     content.push(node("h3", "Outcomes"));
     content.push(pairs(report.outcomes.map((outcome) => [outcome.label, outcome.achieved ? "Yes" : "No"]), "case-metrics"));
     content.push(node("h3", "Safety events"));
     if (report.safety_events.length) {
-      content.push(pairs(report.safety_events.map((event) => [caseTime(event.time), event.text]), "case-log case-safety"));
+      content.push(pairs(report.safety_events.map((event) => [minutesSeconds(event.time), event.text]), "case-log case-safety"));
     } else content.push(node("p", "No critical unsafe actions recorded."));
     if (report.learning_points.length) {
       content.push(node("h3", "Review"));
@@ -117,7 +111,7 @@ export class CasePanel {
     }
     const timeline = node("details", undefined, "case-timeline");
     timeline.append(node("summary", "Timeline"));
-    timeline.append(pairs(report.timeline.map((entry) => [caseTime(entry.time), entry.text]), "case-log"));
+    timeline.append(pairs(report.timeline.map((entry) => [minutesSeconds(entry.time), entry.text]), "case-log"));
     content.push(timeline);
     $("case-review-content").replaceChildren(...content);
   }

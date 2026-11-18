@@ -176,7 +176,7 @@ def steady_window(case: dict, trk: dict, half_s: float = 60.0) -> dict | None:
 def template(signal: np.ndarray, rr: float) -> np.ndarray | None:
     """Median breath aligned where pressure leaves PEEP."""
     n = round(60.0 / rr / WAVE_DT)
-    peep, peak = np.percentile(signal, 10), np.percentile(signal, 99)
+    peep, peak = np.percentile(signal, [10, 99])
     level = peep + 0.3 * (peak - peep)
     breaths = []
     for i in np.flatnonzero((signal[:-1] < level) & (signal[1:] >= level)):
@@ -200,11 +200,12 @@ def features(tpl: np.ndarray, ti: float, vt_ml: float, pause: float) -> dict:
     r = (ppeak - pplat) / flow
     c = vt_ml / (pplat - peep)  # mL/cmH2O
     window = (t >= 0) & (t <= min(0.4, 0.8 * t_flow))
+    onset_time, onset_pressure = t[window], tpl[window]
 
     def onset_error(params):
         tau, shift = params
-        s = np.clip(t[window] - shift, 0, None)
-        return peep + r * flow * (1 - np.exp(-s / tau)) + flow * s * 1000 / c - tpl[window]
+        s = np.clip(onset_time - shift, 0, None)
+        return peep + r * flow * (1 - np.exp(-s / tau)) + flow * s * 1000 / c - onset_pressure
 
     tau_knee = least_squares(onset_error, [0.05, 0.0], bounds=([0.002, -0.03], [0.5, 0.05])).x[0]
     # Expiratory tail: P - PEEP = A exp(-t / tau_e), with A = R_exp x initial expiratory flow.
@@ -244,7 +245,8 @@ def segment_rmse(sim: np.ndarray, real: np.ndarray, ti: float, t_flow: float) ->
         "exp_tail": (t > ti + 0.4) & (t <= ti + 2.0),
     }
     n = min(len(sim), len(real))
-    return {k: float(np.sqrt(np.mean((sim[:n] - real[:n])[m[:n]] ** 2))) for k, m in masks.items()}
+    squared_error = (sim[:n] - real[:n]) ** 2
+    return {k: float(np.sqrt(np.mean(squared_error[m[:n]]))) for k, m in masks.items()}
 
 
 def capnogram_shape(co2: np.ndarray, period: float) -> dict:
@@ -254,7 +256,7 @@ def capnogram_shape(co2: np.ndarray, period: float) -> dict:
     by case, so nothing here refers to airway pressure.
     """
     n = len(co2)
-    lo, hi = np.percentile(co2, 3), np.percentile(co2, 97)
+    lo, hi = np.percentile(co2, [3, 97])
     amplitude = hi - lo
     above = co2 > lo + 0.5 * amplitude
     fall_end = np.flatnonzero(above & ~np.roll(above, -1))[0]

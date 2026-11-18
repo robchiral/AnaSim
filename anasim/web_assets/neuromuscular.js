@@ -1,4 +1,5 @@
-const $ = (id) => document.getElementById(id);
+import { $, setText } from "./display.js";
+
 const TREND_S = 900;
 
 export class NeuromuscularDisplay {
@@ -36,13 +37,13 @@ export class NeuromuscularDisplay {
         quality = reading.ratio >= 90 ? "recovered" : "";
       }
     }
-    $("nmb-title").textContent = title;
-    $("nmb-value").textContent = value;
-    $("nmb-detail").textContent = detail;
+    setText($("nmb-title"), title);
+    setText($("nmb-value"), value);
+    setText($("nmb-detail"), detail);
     // Automatic readings are at most one interval old, so show the countdown instead.
-    $("nmb-status").textContent = nmb.measuring ? `Pulse ${nmb.pulses}/${single ? 1 : 4}` :
+    setText($("nmb-status"), nmb.measuring ? `Pulse ${nmb.pulses}/${single ? 1 : 4}` :
       nmb.next !== null ? `Next ${Math.ceil(nmb.next)} s` :
-      reading ? `${Math.floor(Math.max(0, time - reading.time))} s ago` : "";
+      reading ? `${Math.floor(Math.max(0, time - reading.time))} s ago` : "");
     $("nmb-result").dataset.quality = quality;
     $("nmb-mode").value = nmb.mode;
     $("nmb-mode").disabled = ended || nmb.measuring;

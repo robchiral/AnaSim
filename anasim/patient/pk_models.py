@@ -17,7 +17,7 @@ from typing import TypedDict
 import numpy as np
 from scipy.linalg import expm
 
-from anasim.core.utils import clamp
+from anasim.core.utils import clamp, fill_response_rows
 
 from .patient import Patient
 
@@ -276,7 +276,7 @@ class MammillaryPK:
         ce_target = self.state.ce * target_fraction
         if ce_target <= 0.0:
             return 0.0
-        if self.circulation == 0.0:
+        if self.circulation == 0.0 or max_seconds <= 0:
             return max_seconds / 60.0
         A, B = self.get_ss_matrices()
         transition = expm(A / 60.0)
@@ -284,10 +284,17 @@ class MammillaryPK:
         equilibrium = (np.linalg.solve(-A, B[:, 0] * basal_rate * 60.0)
                        if basal_rate else np.zeros(A.shape[0]))
         x = self.state_vector() - equilibrium
-        for second in range(1, max_seconds + 1):
-            x = transition @ x
-            if x[-1] + equilibrium[-1] <= ce_target:
-                return second / 60.0
+        # Check every second in each block, including when Ce initially rises.
+        block = min(128, max_seconds)
+        response = np.empty((block, len(x)))
+        fill_response_rows(response, transition, -1)
+        advance = np.linalg.matrix_power(transition, block)
+        for start in range(0, max_seconds, block):
+            count = min(block, max_seconds - start)
+            crossed = np.flatnonzero(response[:count] @ x + equilibrium[-1] <= ce_target)
+            if crossed.size:
+                return (start + int(crossed[0]) + 1) / 60.0
+            x = advance @ x
         return max_seconds / 60.0
 
 

@@ -115,7 +115,7 @@ class LocalServer(ThreadingHTTPServer):
             try:
                 if self.session is None or self.error:
                     raise ValueError("The simulation has stopped. Start a new session to continue.")
-                result["value"] = json.loads(self.session.command(message["name"], json.dumps(message.get("args", {}))))
+                result["value"] = self.session.apply_command(message["name"], message.get("args", {}))
             except Exception as error:  # reported like the browser worker does
                 result["error"] = str(error)
                 return [result]

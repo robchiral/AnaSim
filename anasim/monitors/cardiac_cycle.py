@@ -160,8 +160,6 @@ class CardiacCycle:
             self._recent_rr.clear()
             self._display_hr = 0.0
             return
-        while len(self._recent_rr) > 1 and sum(self._recent_rr) - self._recent_rr[0] + self._elapsed_s >= 8.0:
-            self._recent_rr.popleft()
         recent = self._recent_rr
         if not recent:
             if self._elapsed_s > max(1.5 * self._mean_rr_s, 1.0):
@@ -170,6 +168,9 @@ class CardiacCycle:
                 self._display_hr = self._measured_hr
             return
         total = sum(recent)
+        while len(recent) > 1 and total - recent[0] + self._elapsed_s >= 8.0:
+            recent.popleft()
+            total = sum(recent)
         last_rr = recent[-1]
         if self._elapsed_s > 1.5 * last_rr:
             span = max(total, total - recent[0] + self._elapsed_s)
@@ -203,15 +204,8 @@ class CardiacCycle:
             seeded_beat = sample.beat_started
 
         if not organized:
-            self._rhythm_type = rhythm_type
-            self._organized = False
-            self._elapsed_s = 0.0
-            self._measured_hr = 0.0
-            self._recent_rr.clear()
             return self._sample(beat_started=False)
 
-        self._rhythm_type = rhythm_type
-        self._organized = True
         self._mean_rr_s = self._mean_rr(hr)
         self._elapsed_s += dt
         beat_started = False

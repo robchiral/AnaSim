@@ -1,18 +1,11 @@
 // Page controller: loading, setup, and the running session.
+import { $, setText } from "./display.js";
 import { Controls } from "./controls.js";
 import { Monitor } from "./monitor.js";
 import { MonitorAudio } from "./audio.js";
 import { Trends } from "./trends.js";
 import { connect } from "./transport.js";
 import { CasePanel } from "./case.js";
-
-const $ = (id) => document.getElementById(id);
-
-// Per-tick writes must skip unchanged text: replacing a button's text node
-// mid-press makes Safari drop the click.
-function setText(el, text) {
-  if (el.textContent !== text) el.textContent = text;
-}
 
 let transport;
 const audio = new MonitorAudio();

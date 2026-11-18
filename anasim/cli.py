@@ -62,7 +62,7 @@ def run_headless(args):
                 if engine.irreversible_arrest:
                     break
                 if i % 100 == 0:
-                    state = engine.get_latest_state()
+                    state = engine.state
                     hr = state.display_hr
                     _, _, map_val = state.monitored_blood_pressure(
                         sim_config.arterial_line_enabled

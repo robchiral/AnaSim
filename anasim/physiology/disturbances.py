@@ -1,13 +1,8 @@
 import math
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 
 import numpy as np
-
-_PROFILE_COL_TIME = 0
-_PROFILE_COL_BIS = 1
-_PROFILE_COL_HR = 2
-_PROFILE_COL_SVR = 3
-_PROFILE_COL_SV = 4
 
 
 @dataclass(frozen=True)
@@ -40,12 +35,12 @@ class DisturbanceProfileSpec:
     @property
     def duration_s(self) -> float | None:
         """Return the endpoint for a finite profile."""
-        return float(self.points[-1, _PROFILE_COL_TIME]) if self.finite else None
+        return float(self.points[-1, 0]) if self.finite else None
 
     @property
     def established_s(self) -> float:
         """Elapsed time after which a sustained profile has reached its plateau."""
-        return max(float(self.points[-1, _PROFILE_COL_TIME]), 5.0 * self.tonic_onset_s)
+        return max(float(self.points[-1, 0]), 5.0 * self.tonic_onset_s)
 
     def tonic_svr(self, elapsed_s: float, tpr_wood: float) -> float:
         """Unblocked vasoconstriction (Wood units) `elapsed_s` into the profile."""
@@ -106,7 +101,6 @@ class Disturbances:
 
     def __init__(self, dist_profile: str | None = None):
         self.spec = None
-        self._plateau_start = math.inf
         self._plateau = DisturbanceEffects()
 
         if dist_profile is None:
@@ -116,14 +110,13 @@ class Disturbances:
         except KeyError as exc:
             choices = ", ".join(PROFILE_SPECS)
             raise ValueError(f"dist_profile must be one of {choices} or None") from exc
-        last = self.spec.points[-1]
-        self._plateau_start = float(last[_PROFILE_COL_TIME])
-        self._plateau = DisturbanceEffects(
-            bis=float(last[_PROFILE_COL_BIS]),
-            svr=float(last[_PROFILE_COL_SVR]),
-            sv=float(last[_PROFILE_COL_SV]),
-            hr=float(last[_PROFILE_COL_HR]),
-        )
+        self._times, *self._columns = np.ascontiguousarray(self.spec.points.T)
+        self._plateau = self._effects(column[-1] for column in self._columns)
+
+    @staticmethod
+    def _effects(values) -> DisturbanceEffects:
+        bis, hr, svr, sv = values
+        return DisturbanceEffects(bis=float(bis), hr=float(hr), svr=float(svr), sv=float(sv))
 
     def stimulates_airway(self, elapsed_s: float) -> bool:
         """Return whether airway instrumentation is still under way."""
@@ -136,41 +129,21 @@ class Disturbances:
 
     def compute_dist(self, time: float) -> DisturbanceEffects:
         """Return the BIS, HR, SVR, and SV deltas `time` seconds into the profile."""
-        if self.spec is None:
-            return DisturbanceEffects()
-        if time >= self._plateau_start:
+        if self.spec is None or time >= self._times[-1]:
             return self._plateau
-
-        points = self.spec.points
-        profile_time = points[:, _PROFILE_COL_TIME]
-        return DisturbanceEffects(
-            bis=float(np.interp(time, profile_time, points[:, _PROFILE_COL_BIS])),
-            svr=float(np.interp(time, profile_time, points[:, _PROFILE_COL_SVR])),
-            sv=float(np.interp(time, profile_time, points[:, _PROFILE_COL_SV])),
-            hr=float(np.interp(time, profile_time, points[:, _PROFILE_COL_HR])),
-        )
+        return self._effects(np.interp(time, self._times, column) for column in self._columns)
 
     def compute_average(self, start_s: float, end_s: float) -> DisturbanceEffects:
         """Return the time-weighted average effect over one simulation step."""
-        if self.spec is None or end_s <= start_s:
-            return self.compute_dist(start_s)
-        if start_s >= self._plateau_start:
+        if self.spec is None or start_s >= self._times[-1]:
             return self._plateau
+        if end_s <= start_s:
+            return self.compute_dist(start_s)
 
-        points = self.spec.points
-        profile_time = points[:, _PROFILE_COL_TIME]
-        internal_points = profile_time[(profile_time > start_s) & (profile_time < end_s)]
-        sample_times = np.concatenate(([start_s], internal_points, [end_s]))
-        widths = np.diff(sample_times)
-
-        def average(column: int) -> float:
-            values = np.interp(sample_times, profile_time, points[:, column])
-            area = np.sum((values[:-1] + values[1:]) * widths * 0.5)
-            return float(area / (end_s - start_s))
-
-        return DisturbanceEffects(
-            bis=average(_PROFILE_COL_BIS),
-            svr=average(_PROFILE_COL_SVR),
-            sv=average(_PROFILE_COL_SV),
-            hr=average(_PROFILE_COL_HR),
-        )
+        first = bisect_right(self._times, start_s)
+        last = bisect_left(self._times, end_s)
+        times = np.array([start_s, *self._times[first:last], end_s])
+        values = np.array([np.interp(times, self._times, column) for column in self._columns])
+        widths = np.diff(times)
+        area = np.sum((values[:, :-1] + values[:, 1:]) * widths * 0.5, axis=1)
+        return self._effects(area / (end_s - start_s))

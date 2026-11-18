@@ -1,15 +1,12 @@
 // Recorded monitor measurements, shown in the sidebar without covering the loops.
+import { minutesSeconds } from "./display.js";
+
 const WINDOW_S = 1800;
 const SERIES = {
   map: { color: "--abp", range: [40, 120] },
   hr: { color: "--ecg", range: [30, 150] },
   etco2: { color: "--co2", range: [0, 60] },
   bis: { color: "--bis", range: [0, 100] },
-};
-
-const stamp = (seconds) => {
-  const total = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 };
 
 export class Trends {
@@ -54,6 +51,7 @@ export class Trends {
 
   draw() {
     const style = getComputedStyle(document.documentElement);
+    const font = `11px ${getComputedStyle(document.body).fontFamily}`;
     const color = (name) => style.getPropertyValue(name).trim();
     const end = Math.max(1, this.time);
     const start = Math.max(0, end - Number(this.window.value));
@@ -65,23 +63,32 @@ export class Trends {
       const height = canvas.clientHeight;
       if (!width || !height) continue;
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
+      const pixelWidth = Math.round(width * dpr), pixelHeight = Math.round(height * dpr);
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
       const ctx = canvas.getContext("2d");
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
       const discrete = key === "map" && !this.arterial;
-      const values = samples.filter((sample) => !discrete || (
-        Number.isFinite(sample.map_time) && sample.map_time >= start && sample.map_time <= end
-      )).map((sample) => sample[key]).filter(Number.isFinite);
-      const low = Math.floor(Math.min(series.range[0], ...values) / 10) * 10;
-      const high = Math.ceil(Math.max(series.range[1], ...values) / 10) * 10;
+      let [min, max] = series.range;
+      let count = 0, lastSample;
+      for (const sample of samples) {
+        if (!Number.isFinite(sample[key])) continue;
+        if (discrete && !(Number.isFinite(sample.map_time) && sample.map_time >= start && sample.map_time <= end)) continue;
+        min = Math.min(min, sample[key]);
+        max = Math.max(max, sample[key]);
+        count++;
+        lastSample = sample;
+      }
+      const low = Math.floor(min / 10) * 10;
+      const high = Math.ceil(max / 10) * 10;
       const left = 32;
       const right = width - 8;
       const top = 12;
       const bottom = height - 24;
       const x = (time) => left + (time - start) / (end - start) * (right - left);
       const y = (value) => bottom - (value - low) / (high - low) * (bottom - top);
-      ctx.font = `11px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.font = font;
       ctx.lineWidth = 1;
       ctx.strokeStyle = color("--monitor-rule");
       ctx.fillStyle = color("--text-dim");
@@ -99,7 +106,7 @@ export class Trends {
       if (middle - start >= clearance && end - middle >= clearance) labels.push([middle, "center"]);
       for (const [time, alignment] of labels) {
         ctx.textAlign = alignment;
-        ctx.fillText(stamp(time), x(time), height - 7);
+        ctx.fillText(minutesSeconds(time), x(time), height - 7);
       }
       let connected = false;
       let cuffTime = null;
@@ -128,13 +135,12 @@ export class Trends {
       }
       if (discrete) ctx.fill();
       else ctx.stroke();
-      if (!discrete && values.length === 1) {
-        const sample = samples.find((point) => Number.isFinite(point[key]));
+      if (!discrete && count === 1) {
         ctx.beginPath();
-        ctx.arc(x(sample.time), y(sample[key]), 2.5, 0, Math.PI * 2);
+        ctx.arc(x(lastSample.time), y(lastSample[key]), 2.5, 0, Math.PI * 2);
         ctx.fill();
       }
-      if (!values.length) {
+      if (!count) {
         ctx.fillStyle = color("--text-dim");
         ctx.textAlign = "center";
         ctx.fillText("No readings", (left + right) / 2, (top + bottom) / 2);

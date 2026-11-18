@@ -445,12 +445,13 @@ class WebSession:
     def _new_waves(self) -> dict:
         """Return samples newer than the last snapshot, at most one sweep."""
         buffer = self.engine.output_buffer
+        limit = round(WAVE_WINDOW_S / self.engine.waveform_interval)
         samples = []
         for sample in reversed(buffer):
             if sample.time <= self._last_wave_time:
                 break
             samples.append(sample)
-            if len(samples) >= round(WAVE_WINDOW_S / self.engine.waveform_interval):
+            if len(samples) >= limit:
                 break
         if samples:
             self._last_wave_time = samples[0].time
@@ -479,7 +480,7 @@ class WebSession:
             # The filtered flow crossing can precede or follow breath detection.
             # Retain it until the counter confirms a breath; a small cleft that
             # returns to expiration stays in the existing loop.
-            if previous is not None and previous.flow <= 0 < sample.flow:
+            if previous.flow <= 0 < sample.flow:
                 fraction = -previous.flow / (sample.flow - previous.flow)
                 boundary = sample._replace(
                     time=previous.time + fraction * (sample.time - previous.time),
@@ -672,8 +673,11 @@ class WebSession:
     # --- Commands -------------------------------------------------------
 
     def command(self, name: str, args_json: str = "{}") -> str:
-        """Apply one learner control; return its JSON result (usually null)."""
-        args = json.loads(args_json or "{}")
+        """JSON command entry point for the Pyodide worker."""
+        return json.dumps(self.apply_command(name, json.loads(args_json or "{}")))
+
+    def apply_command(self, name: str, args: dict):
+        """Apply one learner control and return its result."""
         if self.case_run is not None:
             if self.case_run.report is not None:
                 stopping = (name == "record" and not args.get("active")) or (name == "run" and not args.get("running"))
@@ -691,7 +695,7 @@ class WebSession:
         result = handler(**args)
         if self.case_run is not None:
             self.case_run.observe(force=True)
-        return json.dumps(result)
+        return result
 
     def _cmd_run(self, running: bool):
         if running and not self.ended:

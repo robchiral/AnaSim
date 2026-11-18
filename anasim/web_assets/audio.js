@@ -1,4 +1,6 @@
 // Optional monitor tones, driven by the displayed pleth and alarm flags.
+import { $, minutesSeconds, setText } from "./display.js";
+
 const PULSE_GAP_S = 0.25;
 const ALARM_REPEAT_S = 5;
 const SILENCE_MS = 120_000;
@@ -6,7 +8,6 @@ const STALE_MS = 1000;
 
 export class MonitorAudio {
   constructor() {
-    const $ = (id) => document.getElementById(id);
     this.toggle = $("sound-toggle");
     this.silence = $("alarm-silence");
     this.countdown = $("alarm-countdown");
@@ -194,16 +195,12 @@ export class MonitorAudio {
     this.silence.hidden = !this.playing() || Number(this.sliders.alarm.value) === 0 ||
       !Object.keys(this.snapshot.alarms).length;
     this.silence.setAttribute("aria-pressed", String(remaining > 0));
-    const countdown = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
+    const countdown = minutesSeconds(remaining);
     this.countdown.hidden = remaining === 0;
-    this.setText(this.countdown, remaining ? countdown : "");
+    setText(this.countdown, remaining ? countdown : "");
     const alarmLabel = remaining ? `Resume alarms (${countdown} remaining)` : "Silence alarms for 2 minutes";
     this.silence.setAttribute("aria-label", alarmLabel);
     this.silence.title = alarmLabel;
-  }
-
-  setText(element, text) {
-    if (element.textContent !== text) element.textContent = text;
   }
 
   tone(channel, frequency, time, duration) {

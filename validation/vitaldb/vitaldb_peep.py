@@ -83,11 +83,11 @@ def audit(cache=CACHE):
             raise FileNotFoundError(f"Cached VitalDB metadata required: {cache / name}")
     vitaldb_ventilation.CACHE = cache
     counts, rejected, rows, exclusions = Counter(), Counter(), [], []
+    required = [*SETTINGS, *NUMERICS]
     for case, tracks in domain_cases(COMPLIANCE_TRACKS):
         counts["eligible_cases"] += 1
         if "Primus/SET_INSP_PRES" in tracks:
             continue
-        required = [*SETTINGS, *NUMERICS]
         if not all(name in tracks and (cache / (tracks[name] + ".csv")).exists() for name in required):
             continue
         counts["cached_complete_cases"] += 1
@@ -97,7 +97,9 @@ def audit(cache=CACHE):
         candidates = [i for i in changes if settled <= times[i] - 120 and times[i] + 120 <= incision]
         if not candidates:
             continue
-        series = {name: load_track(tracks[name]) for name in required}
+        series = {name: (times, peep) if name == "Primus/SET_INTER_PEEP" else load_track(tracks[name])
+                  for name in required}
+        wave = None
         for i in candidates:
             counts["candidate_steps"] += 1
             stamp = times[i]
@@ -125,7 +127,8 @@ def audit(cache=CACHE):
             if wave_name not in tracks or not (cache / (tracks[wave_name] + ".csv")).exists():
                 rejected["pressure_waveform_not_cached"] += 1
                 continue
-            wave = load_track(tracks[wave_name], wave=True)
+            if wave is None:
+                wave = load_track(tracks[wave_name], wave=True)
             before_wave, before_reason = waveform_window(wave, stamp - 120, stamp - 30, before)
             after_wave, after_reason = waveform_window(wave, stamp + 30, stamp + 120, after)
             if before_reason or after_reason:

@@ -5,7 +5,7 @@ import math
 import numpy as np
 from scipy.linalg import expm
 
-from anasim.core.utils import clamp
+from anasim.core.utils import clamp, fill_response_rows
 from anasim.patient.domain import finite_number
 
 PREDICTION_HORIZON_S = 600.0
@@ -80,26 +80,13 @@ class TCIController:
         steps = int(PREDICTION_HORIZON_S / PREDICTION_GRID_S)
         pulse_steps = math.floor(self.control_time / PREDICTION_GRID_S)
         partial_time = self.control_time - pulse_steps * PREDICTION_GRID_S
-        partial_input = np.zeros_like(B_grid)
-        if partial_time > 0.0:
-            _, B_partial = _discretize(A, B, partial_time)
-            partial_input = expm(A * (PREDICTION_GRID_S - partial_time)) @ B_partial
         predictions = steps + int(partial_time > 0.0)
         self._free_response = np.empty((predictions, self.n_state))
         self._unit_response = np.zeros(predictions)
         self._basal_response = np.zeros(predictions)
         self.basal_input_rate = pk_model.basal_input_rate
-        # Build C A^k in doubling blocks; each advances all earlier rows by A^filled.
         response = self._free_response[:steps]
-        response[0] = A_grid[self.target_id]
-        advance = A_grid
-        filled = 1
-        while filled < steps:
-            count = min(filled, steps - filled)
-            response[filled:filled + count] = response[:count] @ advance
-            filled += count
-            if filled < steps:
-                advance = advance @ advance
+        fill_response_rows(response, A_grid, self.target_id)
 
         # The pump pulse sums the impulse response C A^k B over its active steps.
         impulse = np.empty(steps)
@@ -109,6 +96,8 @@ class TCIController:
         if pulse_steps:
             unit[:] = np.convolve(impulse, np.ones(min(pulse_steps, steps)))[:steps]
         if partial_time > 0.0 and pulse_steps < steps:
+            _, B_partial = _discretize(A, B, partial_time)
+            partial_input = expm(A * (PREDICTION_GRID_S - partial_time)) @ B_partial
             unit[pulse_steps] += partial_input[self.target_id, 0]
             unit[pulse_steps + 1:] += response[:steps - pulse_steps - 1] @ partial_input[:, 0]
         if self.basal_input_rate:

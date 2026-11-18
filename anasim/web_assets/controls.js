@@ -1,13 +1,9 @@
 // Machine, medication, circulation, and event controls.
 // Numeric settings remain drafts until explicitly applied.
+import { $, minutesSeconds, setText } from "./display.js";
 import { SettingsEditor } from "./settings.js";
 
-const $ = (id) => document.getElementById(id);
 const editors = new WeakMap();
-
-function setText(el, text) {
-  if (el.textContent !== text) el.textContent = text;
-}
 
 function setValue(input, value) {
   if (editors.has(input)) {
@@ -30,10 +26,6 @@ function readNumber(input) {
 }
 
 const round = (value, digits = 1) => Number(value.toFixed(digits));
-const clock = (seconds) => {
-  const whole = Math.floor(seconds);
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
-};
 const signed = (value) => {
   const text = value.toFixed(1);
   return Number(text) > 0 ? `+${text}` : Number(text) === 0 ? "0.0" : text;
@@ -163,7 +155,7 @@ export class Controls {
     for (const entry of this.history) {
       const row = document.createElement("li");
       const time = document.createElement("time");
-      time.textContent = clock(entry.time);
+      time.textContent = minutesSeconds(entry.time);
       row.append(time, entry.text);
       list.prepend(row);
     }
@@ -586,7 +578,7 @@ export class Controls {
 
   showShockReceipt(receipt) {
     const feedback = $("c-shock-feedback");
-    setText(feedback, `${clock(receipt.time)} ${receipt.text}`);
+    setText(feedback, `${minutesSeconds(receipt.time)} ${receipt.text}`);
     feedback.hidden = false;
     clearTimeout(this.shockFeedbackTimer);
     this.shockFeedbackTimer = setTimeout(() => { feedback.hidden = true; }, 6000);
@@ -612,7 +604,7 @@ export class Controls {
     const status = $("abg-pending");
     status.hidden = pending === 0;
     if (pending > 0) {
-      const next = clock(Math.ceil(this.bloodGases[ready.length].ready_at - this.time));
+      const next = minutesSeconds(Math.ceil(this.bloodGases[ready.length].ready_at - this.time));
       setText(status, pending === 1 ? `Result in ${next}` : `${pending} samples in analysis; next result in ${next}`);
     }
     if (ready.length === this.shownBloodGases) return;
@@ -627,7 +619,7 @@ export class Controls {
     };
     const table = $("abg-results").querySelector("table");
     const header = document.createElement("tr");
-    header.append(cell("th", "Drawn", "col"), ...newest.map((result) => cell("th", clock(result.drawn_at), "col")));
+    header.append(cell("th", "Drawn", "col"), ...newest.map((result) => cell("th", minutesSeconds(result.drawn_at), "col")));
     table.tHead.replaceChildren(header);
     table.tBodies[0].replaceChildren(...bloodGasRows.map(([label, unit, key, format]) => {
       const row = document.createElement("tr");
@@ -775,7 +767,7 @@ export class Controls {
     const compressions = c.compressions;
     setPressed($("c-compressions"), compressions.active, compressions.active ? "Stop compressions" : "Start compressions");
     $("c-compressions-status").hidden = !compressions.active;
-    if (compressions.active) setText($("c-compressions-status"), `Compressing for ${clock(time - compressions.since)}`);
+    if (compressions.active) setText($("c-compressions-status"), `Compressing for ${minutesSeconds(time - compressions.since)}`);
     this.syncDefibrillator(c.defibrillator);
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");

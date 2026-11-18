@@ -1,4 +1,5 @@
 // Waveform sweeps and monitor numerics.
+import { minutesSeconds, setText } from "./display.js";
 import { NeuromuscularDisplay } from "./neuromuscular.js";
 
 // Slower respiratory sweeps show several breaths.
@@ -198,18 +199,24 @@ class Loops {
 
   draw() {
     const [pv, fv] = this.canvases;
-    const loops = [this.previous, this.current].filter(Boolean);
-    const all = (key) => loops.flatMap((loop) => loop[key]);
-    const maxVolume = niceCeil(Math.max(250, ...all("volume")), 250);
-    const minVolume = Math.min(0, ...all("volume"));
+    let minVolume = 0, maxVolume = 250, minPressure = 0, maxPressure = 2, flowExtent = 10;
+    for (const loop of [this.previous, this.current]) {
+      if (!loop) continue;
+      minVolume = Math.min(minVolume, ...loop.volume);
+      maxVolume = Math.max(maxVolume, ...loop.volume);
+      minPressure = Math.min(minPressure, ...loop.paw);
+      maxPressure = Math.max(maxPressure, ...loop.paw);
+      for (const flow of loop.flow) flowExtent = Math.max(flowExtent, Math.abs(flow));
+    }
+    maxVolume = niceCeil(maxVolume, 250);
     // Plot padding covers small excursions below the breath's starting volume.
     // Larger changes, such as an effort during mandatory expiration, need a negative scale.
     const volumeFloor = minVolume >= -LOOP_PADDING * maxVolume ? 0 : -niceCeil(-minVolume, 250);
-    const pressureExtent = Math.max(2, ...all("paw").map(Math.abs));
+    const pressureExtent = Math.max(-minPressure, maxPressure);
     const pressureStep = pressureExtent <= 5 ? 1 : pressureExtent <= 20 ? 2 : 5;
-    const minPaw = -niceCeil(-Math.min(0, ...all("paw")), pressureStep);
-    const maxPaw = niceCeil(Math.max(2, ...all("paw")), pressureStep);
-    const maxFlow = niceCeil(Math.max(10, ...all("flow").map(Math.abs)), 10);
+    const minPaw = -niceCeil(-minPressure, pressureStep);
+    const maxPaw = niceCeil(maxPressure, pressureStep);
+    const maxFlow = niceCeil(flowExtent, 10);
     const desired = { pressure: [minPaw, maxPaw], volume: [volumeFloor, maxVolume], flow: [-maxFlow, maxFlow] };
     // Expand immediately; shrink on a new breath using both retained loops.
     for (const key of Object.keys(desired)) {
@@ -380,8 +387,7 @@ export class Monitor {
   }
 
   set(id, text) {
-    const el = this.fields[id];
-    if (el.textContent !== text) el.textContent = text;
+    setText(this.fields[id], text);
   }
 
   updateNumerics(v) {
@@ -399,9 +405,8 @@ export class Monitor {
     } else {
       this.set("v-nibp", `${whole(v.nibp[0])}/${whole(v.nibp[1])} (${whole(v.nibp[2])})`);
     }
-    const age = Math.floor(v.nibp_age);
     const reading = v.nibp_age === null ? "No reading" :
-      `${Math.floor(age / 60)}:${String(age % 60).padStart(2, "0")} ago`;
+      `${minutesSeconds(v.nibp_age)} ago`;
     const status = v.nibp_cuff !== null ? `Cuff ${whole(v.nibp_cuff)} mmHg` :
       v.nibp_failed ? "Measurement failed" : "";
     this.set("v-nibp-status", status ? `${status}, ${reading.toLowerCase()}` : reading);

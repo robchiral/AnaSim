@@ -121,6 +121,8 @@ class NeuromuscularMonitor:
 
     def trend_history(self, after: float = -math.inf) -> list[list]:
         """Rows of [time, mode, TOF ratio or T1 %, low signal] newer than `after`."""
+        if not self.history or self.history[-1].time <= after:
+            return []
         return [
             [r.time, r.mode, r.ratio if r.mode == "tof" else r.t1, r.low_signal]
             for r in self.history if r.time > after

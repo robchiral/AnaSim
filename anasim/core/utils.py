@@ -2,6 +2,8 @@
 
 import math
 
+import numpy as np
+
 from anasim.core.constants import (
     CONCENTRATION_RATIO_SATURATION,
     GAMMA_MAX,
@@ -21,11 +23,22 @@ def clamp(value: float, low: float, high: float) -> float:
 
 
 def clamp01(value: float) -> float:
-    if math.isnan(value):
-        return 0.0
-    if value < 1.0:
-        return value if value > 0.0 else 0.0
-    return 1.0
+    if value > 0.0:
+        return value if value < 1.0 else 1.0
+    return 0.0  # Includes NaN.
+
+
+def fill_response_rows(rows: np.ndarray, transition: np.ndarray, target: int) -> None:
+    """Fill row k with the target row of transition raised to power k + 1."""
+    rows[0] = transition[target]
+    advance = transition
+    filled = 1
+    while filled < len(rows):
+        count = min(filled, len(rows) - filled)
+        rows[filled:filled + count] = rows[:count] @ advance
+        filled += count
+        if filled < len(rows):
+            advance = advance @ advance
 
 
 def hill_function(c: float, c50: float, gamma: float) -> float:
