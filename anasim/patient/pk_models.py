@@ -22,7 +22,7 @@ from anasim.core.utils import clamp, fill_response_rows
 from .patient import Patient
 
 
-@dataclass
+@dataclass(slots=True)
 class PKState:
     """Compartment concentrations. Unused peripheral compartments stay at zero."""
 
@@ -37,6 +37,16 @@ class PKState:
     ce_hr: float = 0.0  # Ketamine and amiodarone chronotropy
     ce_transit: float = 0.0  # Transit before the primary effect site
     ce_neuro: float = 0.0  # Local anesthetic CNS exposure
+
+
+def _pow(base: float, exp: float) -> float:
+    if exp == 0.0:
+        return 1.0
+    if exp == 1.0:
+        return base
+    if exp == 2.0:
+        return base * base
+    return base ** exp
 
 
 class MammillaryPK:
@@ -90,9 +100,11 @@ class MammillaryPK:
         self.distribution_deficit_exponent = distribution_deficit_exponent
         self.distribution_co_exponent = distribution_co_exponent
         self.ce_input = "ce_transit" if effect_site_transit_rate is not None else "c1"
+        self._has_transit = effect_site_transit_rate is not None
         transit = (("ce_transit", effect_site_transit_rate),) if effect_site_transit_rate is not None else ()
         # The primary site is last so TCI and decay predictions target it.
         self.effect_sites = (*transit, *additional_effect_sites, ("ce", ke0))
+        self._extra_site_names = tuple(name for name, _ in self.effect_sites[:-1])
         self._max_effect_rate = max(rate for _, rate in self.effect_sites)
         self.state_fields = (
             ("c1",) + (("c2",) if v2 > 0 else ()) + (("c3",) if v3 > 0 else ())
@@ -145,14 +157,17 @@ class MammillaryPK:
         """
         vascular = self.v1_base if blood_volume_l is None else min(self.v1_base, blood_volume_l)
         new_v1 = (self.v1_base + vascular * (v_ratio - 1.0)) * self.v1_scale
-        self.state.c1 *= self.v1 / new_v1
+        if self.state.c1:
+            self.state.c1 *= self.v1 / new_v1
         self.v1 = new_v1
         deficit = min(1.0, v_ratio)
-        nonrenal = (1.0 - self.renal_fraction) * co_ratio ** self.cl1_co_exponent
+        nonrenal = (1.0 - self.renal_fraction) * _pow(co_ratio, self.cl1_co_exponent)
         self.cl1 = self.cl1_base * (nonrenal + self.renal_fraction * renal_perfusion)
-        self.cl1 *= deficit ** self.cl1_deficit_exponent
-        distribution_scale = co_ratio ** self.distribution_co_exponent
-        distribution_scale *= deficit ** self.distribution_deficit_exponent
+        if deficit < 1.0 and self.cl1_deficit_exponent:
+            self.cl1 *= _pow(deficit, self.cl1_deficit_exponent)
+        distribution_scale = _pow(co_ratio, self.distribution_co_exponent)
+        if deficit < 1.0 and self.distribution_deficit_exponent:
+            distribution_scale *= _pow(deficit, self.distribution_deficit_exponent)
         self.cl2 = self.cl2_base * distribution_scale * self.cl2_scale
         self.cl3 = self.cl3_base * distribution_scale * self.cl3_scale
 
@@ -173,12 +188,19 @@ class MammillaryPK:
 
     def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
         """Advance with conserved midpoint steps across central, peripheral, and effect compartments."""
-        basal_gate = clamp(self.circulation / 0.01, 0.0, 1.0) if self.basal_input_rate > 0.0 else 0.0
-        input_rate_per_sec += self.basal_input_rate * basal_gate
+        if self.basal_input_rate > 0.0:
+            input_rate_per_sec += self.basal_input_rate * clamp(self.circulation / 0.01, 0.0, 1.0)
         s = self.state
-        if not input_rate_per_sec and not any(self._state_values(s)):
-            return s  # Skip drugs with no input or residual concentration.
         v1, v2, v3 = self.v1, self.v2, self.v3
+        if (
+            not input_rate_per_sec
+            and s.c1 == 0.0
+            and s.ce == 0.0
+            and (v2 <= 0.0 or s.c2 == 0.0)
+            and (v3 <= 0.0 or s.c3 == 0.0)
+            and (not self._extra_site_names or all(getattr(s, name) == 0.0 for name in self._extra_site_names))
+        ):
+            return s  # Skip drugs with no input or residual concentration.
         circulation = self.circulation
         cl2 = self.cl2 * circulation if v2 > 0 else 0.0
         cl3 = self.cl3 * circulation if v3 > 0 else 0.0
@@ -193,6 +215,10 @@ class MammillaryPK:
         half_dt_min = 0.5 * dt_min
         input_per_min = input_rate_per_sec * 60.0
         effect_frac = self.effect_input_fraction
+        single_site = len(self.effect_sites) == 1
+        primary_rc = self.effect_sites[0][1] * circulation if single_site else 0.0
+        scaled_sites = () if single_site else tuple((name, rate * circulation) for name, rate in self.effect_sites)
+        has_transit = self._has_transit and self.ce_input == "ce_transit"
         for _ in range(substeps):
             c1, c2, c3 = s.c1, s.c2, s.c3
             flux2_0 = cl2 * (c1 - c2)
@@ -201,25 +227,28 @@ class MammillaryPK:
             c1_mid = c1 + (input_per_min - elim_0 - flux2_0 - flux3_0) / v1 * half_dt_min
             c2_mid = c2 + flux2_0 / v2 * half_dt_min if v2 > 0 else 0.0
             c3_mid = c3 + flux3_0 / v3 * half_dt_min if v3 > 0 else 0.0
-            if len(self.effect_sites) == 1:
-                _, rate = self.effect_sites[0]
+            if single_site:
                 ce = s.ce
-                ce_mid = ce + rate * circulation * (c1 * effect_frac - ce) * half_dt_min
-                s.ce = ce + rate * circulation * (c1_mid * effect_frac - ce_mid) * dt_min
+                ce_mid = ce + primary_rc * (c1 * effect_frac - ce) * half_dt_min
+                s.ce = ce + primary_rc * (c1_mid * effect_frac - ce_mid) * dt_min
+            elif not has_transit:
+                c1_eff_0 = c1 * effect_frac
+                c1_eff_mid = c1_mid * effect_frac
+                for name, rc in scaled_sites:
+                    ce = getattr(s, name)
+                    ce_mid = ce + rc * (c1_eff_0 - ce) * half_dt_min
+                    setattr(s, name, ce + rc * (c1_eff_mid - ce_mid) * dt_min)
             else:
                 c1_eff_0 = c1 * effect_frac
                 c1_eff_mid = c1_mid * effect_frac
                 transit_0 = transit_mid = 0.0
-                for name, rate in self.effect_sites:
+                for name, rc in scaled_sites:
                     ce = getattr(s, name)
-                    if name == "ce" and self.ce_input == "ce_transit":
-                        src_0, src_mid = transit_0, transit_mid
-                    else:
-                        src_0, src_mid = c1_eff_0, c1_eff_mid
-                    ce_mid = ce + rate * circulation * (src_0 - ce) * half_dt_min
+                    src_0, src_mid = (transit_0, transit_mid) if name == "ce" else (c1_eff_0, c1_eff_mid)
+                    ce_mid = ce + rc * (src_0 - ce) * half_dt_min
                     if name == "ce_transit":
                         transit_0, transit_mid = ce, ce_mid
-                    setattr(s, name, ce + rate * circulation * (src_mid - ce_mid) * dt_min)
+                    setattr(s, name, ce + rc * (src_mid - ce_mid) * dt_min)
             flux2_mid = cl2 * (c1_mid - c2_mid)
             flux3_mid = cl3 * (c1_mid - c3_mid)
             elim_mid = elimination_cl * c1_mid
@@ -442,6 +471,8 @@ class PropofolPKEleveld(MammillaryPK):
         the covariate at the studied 225 ng/mL. This transfer is an assumption.
         """
         cp = clamp(concentration_ng_ml, 0.0, 225.0)
+        if cp == 0.0 and self.cl1_scale == 1.0 and self.cl2_scale == 1.0 and self.cl3_scale == 1.0:
+            return False
         return self._set_interaction_scales(
             cl1=math.exp(-0.000820 * cp),
             cl2=math.exp(-0.00274 * cp),
@@ -662,6 +693,11 @@ class MidazolamPK(MammillaryPK):
             cl3=v1 * 0.065,
             ke0=0.11 - 0.03 * years,
         )
+        self._propofol_cp_ng_ml = 0.0
+
+    def reset(self) -> None:
+        super().reset()
+        self._propofol_cp_ng_ml = 0.0
 
     def update_propofol(self, concentration_ug_ml: float) -> bool:
         """Lichtenbelt 2010 Table 2, propofol-only covariates on V1, CL and Q2.
@@ -670,11 +706,16 @@ class MidazolamPK(MammillaryPK):
         the covariate at the studied 1.2 mcg/mL. This transfer is an assumption.
         """
         cp_ng_ml = 1000.0 * clamp(concentration_ug_ml, 0.0, 1.2)
-        return self._set_interaction_scales(
+        if cp_ng_ml == self._propofol_cp_ng_ml:
+            return False
+        changed = self._set_interaction_scales(
             v1=math.exp(-0.000453 * cp_ng_ml),
             cl1=math.exp(-0.000205 * cp_ng_ml),
             cl2=math.exp(-0.000232 * cp_ng_ml),
         )
+        if changed:
+            self._propofol_cp_ng_ml = cp_ng_ml
+        return changed
 
 
 class EtomidatePK(MammillaryPK):
@@ -894,7 +935,7 @@ class NorepinephrinePK(MammillaryPK):
     def update_propofol(self, propofol_conc_ug_ml: float) -> None:
         """Set the clearance covariate, capping bolus peaks at 8 µg/mL."""
         cp = clamp(propofol_conc_ug_ml, 0.0, 8.0)
-        self.cl1_scale = math.exp(self.PROPOFOL_CL_THETA * cp / 100.0)
+        self.cl1_scale = 1.0 if cp == 0.0 else math.exp(self.PROPOFOL_CL_THETA * cp / 100.0)
 
 
 class EpinephrinePK(MammillaryPK):

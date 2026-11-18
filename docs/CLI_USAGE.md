@@ -19,8 +19,8 @@ For installation and the browser interface, see the [README](../README.md).
 ## Headless runs
 
 Headless runs accept a flat JSON object. Omitted fields use their defaults, and
-unknown fields are rejected. The CLI argument `--mode` selects the interface,
-and the JSON field `mode` selects the patient's initial state.
+unknown fields are rejected. On the command line, `--mode` selects the
+interface; in JSON, `mode` selects the patient's starting state.
 
 Save this configuration as `patient_config.json` for balanced maintenance.
 
@@ -64,7 +64,7 @@ anasim --mode headless --duration 60 --config patient_config.json \
 | `coronary_flow_reserve` | 5.0 | Ratio of maximal to resting coronary flow, 1 to 5; `5` is normal |
 | `heart_failure` | `"none"` | `"none"`, `"hfref"` (reduced EF), or `"hfpef"` (preserved EF) |
 | `copd_severity` | 0.0 | Severity of a mixed obstructive and emphysematous profile, 0 to 1; this is not a GOLD stage |
-| `surgical_site` | `"other"` | `"other"`, `"lower_abdominal"`, or `"upper_abdominal"`; abdominal surgery keeps part of the airway closure under anesthesia after emergence |
+| `surgical_site` | `"other"` | `"other"`, `"lower_abdominal"`, or `"upper_abdominal"`; abdominal surgery keeps part of the anesthetic airway closure after emergence and slows postoperative clearance of atelectasis |
 | `gestational_age_weeks` | 0.0 | `0` for no pregnancy, or 4 to 40 weeks for a female patient |
 | `position` | `"supine"` | `"supine"` or `"left_lateral"`; affects venous return from 20 weeks of pregnancy |
 
@@ -80,7 +80,7 @@ these patient conditions.
 | Field | Default | Meaning |
 |-------|---------|---------|
 | `mode` | `"awake"` | `"awake"` or `"steady_state"`; see [initialization](ARCHITECTURE.md#initialization) |
-| `maint_type` | `"tiva"` | `"tiva"` (total intravenous anesthesia) or `"balanced"` maintenance for steady-state initialization |
+| `maint_type` | `"tiva"` | `"tiva"` (propofol-remifentanil) or `"balanced"` (sevoflurane-remifentanil) maintenance for steady-state initialization |
 | `concomitant_opioids` | `true` | Whether the patient receives opioids, a covariate in the Eleveld propofol PK model; steady-state initialization requires `true` |
 | `tci_enabled` | `false` | Enable target-controlled infusion (TCI) and use it at maintenance startup |
 | `dt` | 0.01 | Engine step in seconds, above 0 and at most 2.0 |
@@ -142,16 +142,17 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 
 | Method | Notes |
 |--------|-------|
-| `set_vent_settings(vt=...)` | Takes liters, whereas `Patient.baseline_vt` takes mL |
+| `set_vent_settings(rr, vt, peep, ie, mode, ...)` | Takes tidal volume `vt` in liters, whereas `Patient.baseline_vt` takes mL |
 | `set_vent_power(True)` | Starts the ventilator after you apply its settings |
 | `set_bag_mask_ventilation(True, rr, vt, p_max)` | Takes a rate of 1 to 40 breaths/min, a tidal volume of 0.05 to 1.2 L, and a pressure limit of 5 to 70 cmH₂O (default 20); omitted settings keep their last values |
 | `set_mask_seal(seal)` | Takes a fraction from 0 (open) to 1 (tight seal), whereas the browser shows percent |
 | `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
-| `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates such as propofol, remifentanil, and rocuronium in mcg/kg/min use total body weight; vasopressor rates are absolute |
+| `give_drug_bolus(drug, amount)` | Gives a bolus in the [registry's units](../anasim/core/drug_registry.py), or `"sugammadex"` in mg |
+| `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates (propofol, remifentanil, rocuronium, dobutamine, milrinone, esmolol, ketamine, and lidocaine) use total body weight; other infusion rates are not weight-scaled |
 | `enable_tci(drug, target, mode="effect_site")` | Requires `tci_enabled=True`; a non-positive target stops TCI |
 | `set_drug_target(key, target)` | Preserves the active plasma or effect-site mode; `None` or a non-positive target stops TCI |
 | `give_blood(volume_ml, hematocrit=0.55)` | Queues packed red cells at 75 mL/min; donor hematocrit must be between 0.01 and 0.70 |
-| `give_lipid_emulsion(volume_ml)` | Gives 20% lipid emulsion over 2.5 simulated minutes |
+| `give_lipid_emulsion(volume_ml)` | Gives up to 3,000 mL of 20% lipid emulsion over 2.5 simulated minutes |
 | `set_lipid_infusion(ml_min)` | Sets a 20% lipid emulsion infusion from 0 to 200 mL/min |
 | `give_calcium_chloride(mg)` | Gives calcium chloride dihydrate up to 10,000 mg; 1 g contains 6.8 mmol calcium |
 | `charge_defibrillator()` | Charges to 200 J in 5 simulated seconds and holds the charge for 60 seconds |

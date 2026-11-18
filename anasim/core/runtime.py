@@ -918,7 +918,8 @@ def step_lactate(engine: SimulationEngine, dt: float) -> None:
         infused_lactate_mmol=fluids.infused_l_lactate_mmol,
     )
     resp.oxygen_deficit_l = 0.0
-    resp.remove_buffer_base(base_removed)
+    if base_removed != 0.0:
+        resp.remove_buffer_base(base_removed)
 
 
 def check_cardiac_arrest(engine: SimulationEngine, dt: float) -> None:

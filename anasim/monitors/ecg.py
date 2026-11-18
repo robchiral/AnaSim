@@ -100,6 +100,8 @@ _MORPHOLOGIES = {
 class _DriftingOscillator:
     """Sine whose frequency wanders around a mean, so the trace never repeats."""
 
+    __slots__ = ("freq_hz", "mean_hz", "phase", "sd_hz", "tau_s")
+
     def __init__(self, mean_hz: float, sd_hz: float, tau_s: float = 0.5):
         self.mean_hz = mean_hz
         self.sd_hz = sd_hz
@@ -127,7 +129,7 @@ class ECGMonitor:
         self._f_envelope = _DriftingOscillator(0.3, 0.1, tau_s=2.0)
         self._rhythm: RhythmType | None = None
         self._rr_s = (0.0, 0.0, 0.0)
-        self._waves: list[tuple[float, float, float, float]] = []
+        self._waves: list[tuple[float, float, float, float, float]] = []
         self._st_window: tuple[float, float, float] | None = None
         self._st_scale = 1.0
         self._vulnerable_window: tuple[float, float] | None = None
@@ -160,11 +162,13 @@ class ECGMonitor:
         elif cycle.rhythm_type == RhythmType.VTACH:
             self._vulnerable_window = (0.075, 0.185)
         beats = ((-rr_into_current, rr_into_prev), (0.0, rr_into_current), (rr_to_next, rr_to_next))
-        self._waves = [
-            (r_time + offset, amplitude, width, _WAVE_CUTOFF_SIGMAS * width)
-            for r_time, preceding_rr in beats
-            for offset, amplitude, width in morphology.waves(preceding_rr, p_scale, wide, peaked_t)
-        ]
+        waves: list[tuple[float, float, float, float, float]] = []
+        for r_time, preceding_rr in beats:
+            for offset, amplitude, width in morphology.waves(preceding_rr, p_scale, wide, peaked_t):
+                center = r_time + offset
+                cutoff = _WAVE_CUTOFF_SIGMAS * width
+                waves.append((center - cutoff, center + cutoff, center, amplitude, -0.5 / (width * width)))
+        self._waves = waves
 
     def vulnerable(self, cycle: CardiacCycleSample) -> bool:
         """Whether an unsynchronized discharge falls around this beat's T peak."""
@@ -208,10 +212,10 @@ class ECGMonitor:
 
         val = 0.0
         t = cycle.elapsed_s
-        for center, amplitude, width, cutoff in self._waves:
-            offset = t - center
-            if -cutoff < offset < cutoff:
-                val += amplitude * math.exp(-0.5 * (offset / width) ** 2)
+        for low, high, center, amplitude, neg_half_inv_var in self._waves:
+            if low < t < high:
+                offset = t - center
+                val += amplitude * math.exp(neg_half_inv_var * offset * offset)
         if st_depression_mv > 0.0:
             val -= st_depression_mv * self._st_scale * self._st_profile(t)
 

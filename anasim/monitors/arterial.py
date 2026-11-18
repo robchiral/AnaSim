@@ -117,6 +117,7 @@ class ArterialWaveformRenderer:
             cfg.diastolic_fast_weight * math.exp(-cfg.diastolic_fast_rate)
             + (1.0 - cfg.diastolic_fast_weight) * math.exp(-cfg.diastolic_slow_rate)
         )
+        self._diastolic_integral = self._diastolic_normalized_integral()
         self._initialized = False
         # Mean-beat pressures, latched at each R wave.
         self._mean_pressure = 0.0
@@ -163,7 +164,7 @@ class ArterialWaveformRenderer:
         area += 0.5 * (notch_height + dicrotic_height) * (dicrotic_phase - notch_phase)
         area += (
             dicrotic_height
-            * self._diastolic_normalized_integral()
+            * self._diastolic_integral
             * (1.0 - dicrotic_phase)
         )
         return _PulseShape(
@@ -423,6 +424,10 @@ class ArterialLineMonitor:
         self._pressure = 0.0
         self._velocity = 0.0
         self._coefficient_cache: dict[tuple[float, float, float], tuple[float, ...]] = {}
+        self._last_dt = -1.0
+        self._last_freq = -1.0
+        self._last_damp = -1.0
+        self._last_coeffs: tuple[float, ...] = ()
         self._initialized = False
         self._previous_pressure = 0.0
         self._running_min = math.inf
@@ -437,6 +442,7 @@ class ArterialLineMonitor:
         self._pending_duration = 0.0
         self._recent_beats: deque[tuple[float, float, float, float]] = deque()
         self._window_slices: deque[tuple[float, float]] = deque()
+        self._window_duration = 0.0
         self._slice_integral = 0.0
         self._slice_duration = 0.0
         self._since_last_pulse_s = 0.0
@@ -447,9 +453,17 @@ class ArterialLineMonitor:
         self._latest_map = 0.0
 
     def _coefficients(self, dt: float) -> tuple[float, ...]:
+        if (
+            dt == self._last_dt
+            and self.natural_frequency_hz == self._last_freq
+            and self.damping_ratio == self._last_damp
+        ):
+            return self._last_coeffs
         cache_key = (float(dt), self.natural_frequency_hz, self.damping_ratio)
         cached = self._coefficient_cache.get(cache_key)
         if cached is not None:
+            self._last_dt, self._last_freq, self._last_damp = cache_key
+            self._last_coeffs = cached
             return cached
 
         omega = 2.0 * math.pi * self.natural_frequency_hz
@@ -467,6 +481,8 @@ class ArterialLineMonitor:
         if len(self._coefficient_cache) >= 16:
             self._coefficient_cache.pop(next(iter(self._coefficient_cache)))
         self._coefficient_cache[cache_key] = coefficients
+        self._last_dt, self._last_freq, self._last_damp = cache_key
+        self._last_coeffs = coefficients
         return coefficients
 
     def seed(self, sample: ArterialPressureSample) -> ArterialPressureSample:
@@ -479,6 +495,7 @@ class ArterialLineMonitor:
         self._clear_pending()
         self._recent_beats.clear()
         self._window_slices.clear()
+        self._window_duration = 0.0
         self._slice_integral = 0.0
         self._slice_duration = 0.0
         self._pulsatile_rr_s = 0.0
@@ -511,15 +528,16 @@ class ArterialLineMonitor:
         self._slice_integral += step_integral
         self._slice_duration += dt
         if self._slice_duration >= _MAP_SLICE_S - 1e-12:
-            self._window_slices.append((self._slice_integral, self._slice_duration))
+            slices = self._window_slices
+            slices.append((self._slice_integral, self._slice_duration))
+            total_dur = self._window_duration + self._slice_duration
             self._slice_integral = 0.0
             self._slice_duration = 0.0
-            while (
-                len(self._window_slices) > 1
-                and sum(s[1] for s in self._window_slices) - self._window_slices[0][1]
-                >= window_s - 1e-9
-            ):
-                self._window_slices.popleft()
+            popped = False
+            while len(slices) > 1 and total_dur - slices[0][1] >= window_s - 1e-9:
+                total_dur -= slices.popleft()[1]
+                popped = True
+            self._window_duration = sum(s[1] for s in slices) if popped else total_dur
 
     def _continuous_map(self, fallback: float) -> float:
         window_s = min(self.numeric_window_s, NONPULSATILE_MAP_WINDOW_S)

@@ -7,7 +7,7 @@ from .patient import Patient
 from .pk_models import _janmahasatian_ffm
 
 
-@dataclass
+@dataclass(slots=True)
 class VolatileState:
     """Partial pressures as fractions of an atmosphere (0.02 is 2%).
 
@@ -181,6 +181,16 @@ class VolatilePK:
         """Return net circuit uptake (BTPS L/min) matching step() over dt without mutating state."""
         if dt <= 0.0 or circuit_share <= 0.0:
             return 0.0
+        s = self.state
+        if (
+            fi_agent <= 0.0
+            and (circuit_fi_agent is None or circuit_fi_agent <= 0.0)
+            and s.p_alv == 0.0
+            and s.p_vrg == 0.0
+            and s.p_mus == 0.0
+            and s.p_fat == 0.0
+        ):
+            return 0.0
         net_btps_l = self._integrate(
             dt,
             fi_agent,
@@ -208,6 +218,17 @@ class VolatilePK:
         draw additional inspired gas into FRC.
         """
         state = self.state
+        if (
+            fi_agent <= 0.0
+            and state.p_alv == 0.0
+            and state.p_vrg == 0.0
+            and state.p_mus == 0.0
+            and state.p_fat == 0.0
+        ):
+            if lung_volume_l is not None:
+                self.frc = lung_volume_l
+            state.p_ven = state.p_art = state.mac = 0.0
+            return
         (
             state.p_alv,
             state.p_vrg,

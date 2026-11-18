@@ -1,6 +1,6 @@
 import math
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
 from anasim.core.utils import clamp01
 
@@ -12,7 +12,7 @@ PULSE_INTERVAL_S = 0.5  # 2 Hz train
 DEFAULT_REPEAT_S = {"tof": 20.0, "single": 10.0}
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class TwitchReading:
     time: float
     mode: str
@@ -21,6 +21,17 @@ class TwitchReading:
     ratio: float | None
     t1: float | None
     low_signal: bool
+
+    def to_dict(self) -> dict:
+        return {
+            "time": self.time,
+            "mode": self.mode,
+            "responses": self.responses,
+            "count": self.count,
+            "ratio": self.ratio,
+            "t1": self.t1,
+            "low_signal": self.low_signal,
+        }
 
 
 class NeuromuscularMonitor:
@@ -116,7 +127,7 @@ class NeuromuscularMonitor:
             "pulses": len(self._responses) if self._started is not None else 0,
             "wait": max(0.0, self._last_start + MIN_REPEAT_S - time),
             "next": max(0.0, self._next_start - time) if self.automatic else None,
-            "reading": None if self.reading is None else asdict(self.reading),
+            "reading": None if self.reading is None else self.reading.to_dict(),
         }
 
     def trend_history(self, after: float = -math.inf) -> list[list]:

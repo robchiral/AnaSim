@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from anasim.core.enums import RhythmType
 
 
-@dataclass
+@dataclass(slots=True)
 class HemoState:
     """Hemodynamic outputs and the internal model variables behind them."""
 

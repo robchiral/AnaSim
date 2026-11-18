@@ -79,7 +79,7 @@ BENCHMARKS = {
     'engine': ('awake', 'steady_state', 'conditions', 'tci', 'app'),
     'tci': ('propofol', 'norepinephrine'),
     'monitor': ('sinus', 'afib'),
-    'prediction': ('propofol',),
+    'prediction': ('propofol', 'rocuronium'),
     'stimulus': ('intubation',),
 }
 
@@ -103,11 +103,13 @@ def build_step(name):
     from anasim.core.tci import TCIController
     from anasim.machine.ventilator import AnesthesiaVentilator
     from anasim.patient.patient import Patient
+    from anasim.patient.pd.nmba import TOFModel
     from anasim.patient.pk_models import (
         MorphinePK,
         NorepinephrinePK,
         PropofolPKEleveld,
         RemifentanilPKEleveld,
+        RocuroniumPK,
     )
     from anasim.physiology.disturbances import Disturbances
     from anasim.physiology.hemodynamics import HemodynamicModel
@@ -121,6 +123,14 @@ def build_step(name):
     patient = Patient()
 
     if group == 'prediction':
+        if case == 'rocuronium':
+            roc = RocuroniumPK(patient)
+            roc.state.c1 = 42.0 / roc.v1
+            tof = TOFModel(patient)
+            for _ in range(300):
+                roc.step(1.0, 0.0)
+                tof.step_recovery(1.0, roc)
+            return lambda i: tof.simulate_decay(roc, max_seconds=7200)
         model = PropofolPKEleveld(patient)
         model.step(600.0, 0.12)
         return lambda i: model.simulate_decay(max_seconds=7200)

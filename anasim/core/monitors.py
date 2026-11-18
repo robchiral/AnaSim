@@ -48,6 +48,8 @@ def waveform_substeps(dt: float) -> int:
 
 def _hold(waves: list, value, elapsed: float, substeps: int, substep_dt: float) -> None:
     """Assign the latest value to each waveform sample time that `elapsed` has reached, except the last."""
+    if substeps <= 1:
+        return
     while len(waves) < substeps - 1 and elapsed >= (len(waves) + 1) * substep_dt - 1e-9:
         waves.append(value)
 
@@ -184,19 +186,30 @@ def step_cardiac_monitors(
     else:
         engine.compression_clock.stop()
 
+    cardiac_cycle = engine.cardiac_cycle
+    art_waveform = engine.arterial_waveform
+    art_line = engine.art_line
+    ecg_mon = engine.ecg
+    spo2_mon = engine.spo2_mon
+    defib = engine.defibrillator
+    sodium_block = engine.toxicity.conduction_block
+    potassium = engine.state.potassium
+    hyperk_block = engine.hemo.hyperkalemia_block
+    start_time = engine.state.time
+
     for index in range(substeps):
-        cardiac_sample = engine.cardiac_cycle.step(
+        cardiac_sample = cardiac_cycle.step(
             substep_dt,
             hemo_state.hr,
             rhythm,
             conduction_failure,
         )
-        if engine.step_defibrillator(engine.state.time + (index + 1) * substep_dt, cardiac_sample):
+        if defib.waiting_for_r and engine.step_defibrillator(start_time + (index + 1) * substep_dt, cardiac_sample):
             # A shock can change the rhythm partway through a step; physiology follows on the next step.
             hemo_state = engine.hemo.state
             project_hemodynamics(engine, hemo_state)
             rhythm = hemo_state.rhythm_type
-            cardiac_sample = engine.cardiac_cycle.seed(hemo_state.hr, rhythm)
+            cardiac_sample = cardiac_cycle.seed(hemo_state.hr, rhythm)
             if compressions:
                 compression_sbp, compression_dbp = compression_pressures(
                     hemo_state.cpr_perfusion_map, hemo_state.venous_pressure
@@ -208,7 +221,7 @@ def step_cardiac_monitors(
         if compressions:
             comp_sample = engine.compression_clock.step(substep_dt, rhythm)
             if hemo_state.intrinsic_co > 0.0:
-                intrinsic_art = engine.arterial_waveform.step(
+                intrinsic_art = art_waveform.step(
                     cardiac_sample,
                     hemo_state.intrinsic_map,
                     hemo_state.sv,
@@ -228,12 +241,12 @@ def step_cardiac_monitors(
                 pulse_sample = cardiac_sample if intrinsic_art.mean >= compression_mean else comp_sample
             else:
                 pulse_sample = comp_sample
-                arterial_sample = engine.arterial_waveform.step_compressions(
+                arterial_sample = art_waveform.step_compressions(
                     pulse_sample, compression_sbp, compression_dbp,
                 )
         else:
             pulse_sample = cardiac_sample
-            arterial_sample = engine.arterial_waveform.step(
+            arterial_sample = art_waveform.step(
                 cardiac_sample,
                 hemo_state.map,
                 hemo_state.sv,
@@ -241,17 +254,17 @@ def step_cardiac_monitors(
                 static_pressure=hemo_state.venous_pressure,
                 pulse_pressure_factor=hemo_state.pulse_pressure_factor,
             )
-        engine.art_line.advance(
+        art_line.advance(
             substep_dt,
             pulse_sample,
             arterial_sample,
         )
-        ecg_voltage = engine.ecg.step(substep_dt, cardiac_sample, st_depression,
-                                      conduction_failure=conduction_failure,
-                                      sodium_block=engine.toxicity.conduction_block,
-                                      potassium=engine.state.potassium,
-                                      hyperkalemia_block=engine.hemo.hyperkalemia_block,
-                                      compression_phase=comp_sample.phase if compressions else None)
+        ecg_voltage = ecg_mon.step(substep_dt, cardiac_sample, st_depression,
+                                   conduction_failure=conduction_failure,
+                                   sodium_block=sodium_block,
+                                   potassium=potassium,
+                                   hyperkalemia_block=hyperk_block,
+                                   compression_phase=comp_sample.phase if compressions else None)
         pulse_pressure = arterial_sample.systolic - arterial_sample.diastolic
         pp_gate = (
             clamp01((pulse_pressure - MIN_PULSE_PRESSURE_MMHG) / 4.0)
@@ -263,18 +276,18 @@ def step_cardiac_monitors(
             if not compressions and (hemo_state.intrinsic_co < ARREST_CO_L_MIN or pp_gate <= 0.0)
             else (perfusion if compressions else perfusion * pp_gate)
         )
-        pleth, spo2_val = engine.spo2_mon.step(
+        pleth, spo2_val = spo2_mon.step(
             substep_dt,
             pulse_sample,
             saturation=sao2,
             perfusion=spo2_perfusion,
         )
-        waves.append((float(ecg_voltage), float(pleth), engine.art_line.pressure))
+        waves.append((float(ecg_voltage), float(pleth), art_line.pressure))
 
     state = engine.state
-    state.spo2_signal_valid = engine.spo2_mon.signal_valid
+    state.spo2_signal_valid = spo2_mon.signal_valid
     state.ecg_voltage, state.pleth_voltage, _ = waves[-1]
-    project_arterial(state, arterial_sample, engine.art_line.reading)
+    project_arterial(state, arterial_sample, art_line.reading)
     state.spo2 = float(spo2_val) if state.spo2_signal_valid else 0.0
     return cardiac_sample, waves
 

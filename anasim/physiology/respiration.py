@@ -31,16 +31,17 @@ _HB_G_DL_PER_MMOL_L = 1.61145  # Heme monomer, 16.1145 g/mmol.
 _CO2_L_PER_MMOL = MOLAR_GAS_VOLUME_STPD_L_MMOL  # STPD.
 _O2_PER_HB = 0.0134  # STPD L O2 per L blood per g/dL Hb (1.34 mL/g).
 _O2_SOLUBILITY = 0.000031  # STPD L O2 per L blood per mmHg.
+_O2_EXP_DECAY = math.log(10.0) / 29.25
 
 
-@dataclass
+@dataclass(slots=True)
 class _LowVQUnit:
     ratio: float
     share: float = 0.0  # Fraction of nonshunted pulmonary blood flow.
     po2: float = 40.0  # Previous solution, mmHg.
 
 
-@dataclass
+@dataclass(slots=True)
 class RespState:
     """Respiratory outputs. Gas tensions in mmHg, EtO2 in %, VT in mL, MV and VA in L/min."""
 
@@ -234,6 +235,8 @@ class RespiratoryModel:
         self._resting_pco2: float | None = None
         self._rate_pco2_reference = self.paco2_setpoint
         self._resting_age_s = 0.0
+        self._rate_pco2_cache: tuple[tuple[float, ...], float] | None = None
+        self._resting_pco2_cache: tuple[tuple[float, ...], float] | None = None
         # Perfusion effect on deadspace fraction (low flow increases VD/VT).
         self.perfusion_deadspace_gain = 0.25
 
@@ -244,6 +247,8 @@ class RespiratoryModel:
             hb_g_dl / _HB_G_DL_PER_MMOL_L, hematocrit,
             plasma_buffers=self._plasma_buffers, extracellular_buffers=self._extracellular_buffers,
         )
+        self._min_blood_base_200 = self.chemistry.evaluate(5.05, 200.0, 1.0).buffer_base
+        self._min_ext_base_200 = extracellular_contents(5.05, 200.0, self.chemistry.extracellular_buffers)[1]
         reference = self.chemistry.evaluate(self.patient.pregnancy.ph, self.paco2_setpoint, 0.98)
         self.buffer_base = self._reference_buffer_base = reference.buffer_base
         return reference
@@ -681,7 +686,6 @@ class RespiratoryModel:
         if content <= 0.0:
             return 0.0
         bound_capacity = _O2_PER_HB * hb
-        exponent_decay = math.log(10.0) / 29.25
         lower, upper = 0.0, max(760.0, content / solubility)
         pressure = max(1e-6, min(upper, previous))
         for _ in range(24):
@@ -694,7 +698,7 @@ class RespiratoryModel:
             if abs(residual) < 1e-12:
                 return pressure
             saturation_derivative = saturation * (1.0 - saturation) * (
-                exponent / pressure + exponent_decay * correction * math.log(pressure / p50))
+                exponent / pressure + _O2_EXP_DECAY * correction * math.log(pressure / p50))
             derivative = bound_capacity * saturation_derivative + solubility
             if residual > 0.0:
                 upper = pressure
@@ -710,17 +714,18 @@ class RespiratoryModel:
     def _resolve_blood_pool(self, index: int, hb: float) -> None:
         transport = self.gas_transport
         carbon, base = transport.co2[index], transport.base[index]
-        # Start from the saturation that carries the new O2 content at the previous affinity.
-        pco2, ph, p50 = self._blood_pressures[index], self._blood_ph[index], self._blood_p50[index]
+        # Start from the saturation that carries the new O2 content at the pool's current pH and PCO2.
+        pco2, ph = self._blood_pressures[index], self._blood_ph[index]
+        p50 = self._acid_base_p50(ph, pco2)
         po2 = self._po2_from_content(
             transport.oxygen[index], hb, p50, self._blood_po2[index], solubility=self._o2_solubility_now
         )
         saturation = self._saturation_at_p50(po2, p50)
         # Alternate single CO2 and O2 updates; saturation barely moves once O2 content is fixed.
-        for iteration in range(24):
+        for _ in range(24):
             iterate = self.chemistry.iterate_contents(carbon, base, saturation, pco2, ph)
-            if iterate.converged and iteration:
-                break  # Saturation was last updated at this pH and PCO2.
+            if iterate.converged:
+                break  # Saturation was already evaluated at this pH and PCO2.
             ph, pco2 = iterate.ph, iterate.pco2
             p50 = self._acid_base_p50(ph, pco2)
             po2 = self._po2_from_content(
@@ -865,8 +870,16 @@ class RespiratoryModel:
         transport = self.gas_transport
         pco2_blood = max(200.0, *self._blood_pressures)
         pco2_ext = max(200.0, self._extracellular_pco2)
-        min_blood = self.chemistry.evaluate(5.05, pco2_blood, 1.0).buffer_base
-        min_ext = extracellular_contents(5.05, pco2_ext, self.chemistry.extracellular_buffers)[1]
+        min_blood = (
+            self._min_blood_base_200
+            if pco2_blood == 200.0
+            else self.chemistry.evaluate(5.05, pco2_blood, 1.0).buffer_base
+        )
+        min_ext = (
+            self._min_ext_base_200
+            if pco2_ext == 200.0
+            else extracellular_contents(5.05, pco2_ext, self.chemistry.extracellular_buffers)[1]
+        )
         ext_floor = min_ext * transport.extracellular_volume
         if transport.extracellular_base < ext_floor:
             ext_deficit = ext_floor - transport.extracellular_base
@@ -1211,17 +1224,36 @@ class RespiratoryModel:
             # The RR curve includes the infusion's CO2 rise. Extra rate feedback
             # starts above the resting PCO2 predicted for the long opioid alone.
             self._rate_pco2_reference = self.paco2_setpoint
-            if long_opioid_keep < 1.0:
-                self._rate_pco2_reference = self._solve_resting_pco2(
-                    1.0, 1.0, 1.0, 0.0, baseline_gain,
-                    0.0, self._awake_metabolism, long_opioid_keep, long_opioid_rate,
-                )
-            self._resting_pco2 = self._solve_resting_pco2(
-                prop_keep, sevo_keep, 1.0, unconscious, gain,
-                0.5 * max(0.0, ce_remi) / remi_c50,
-                min(self._awake_metabolism, max(0.1, float(metabolic_factor))),
-                long_opioid_keep, long_opioid_rate, sevo_rate=sevo_rate,
+            common_state = (
+                self._metabolic_compensation, self._central_drive_fraction,
+                self.vco2, self.rr_0, self.vt_0, self.vd_deadspace,
             )
+            if long_opioid_keep < 1.0:
+                rate_key = (*common_state, baseline_gain, long_opioid_keep, long_opioid_rate)
+                if self._rate_pco2_cache is not None and self._rate_pco2_cache[0] == rate_key:
+                    self._rate_pco2_reference = self._rate_pco2_cache[1]
+                else:
+                    self._rate_pco2_reference = self._solve_resting_pco2(
+                        1.0, 1.0, 1.0, 0.0, baseline_gain,
+                        0.0, self._awake_metabolism, long_opioid_keep, long_opioid_rate,
+                    )
+                    self._rate_pco2_cache = (rate_key, self._rate_pco2_reference)
+            opioid_shift = 0.5 * max(0.0, ce_remi) / remi_c50
+            met_for_resting = min(self._awake_metabolism, max(0.1, float(metabolic_factor)))
+            resting_key = (
+                *common_state, self._rate_pco2_reference,
+                prop_keep, sevo_keep, unconscious, gain, opioid_shift, met_for_resting,
+                long_opioid_keep, long_opioid_rate, sevo_rate,
+            )
+            if self._resting_pco2_cache is not None and self._resting_pco2_cache[0] == resting_key:
+                self._resting_pco2 = self._resting_pco2_cache[1]
+            else:
+                self._resting_pco2 = self._solve_resting_pco2(
+                    prop_keep, sevo_keep, 1.0, unconscious, gain,
+                    opioid_shift, met_for_resting,
+                    long_opioid_keep, long_opioid_rate, sevo_rate=sevo_rate,
+                )
+                self._resting_pco2_cache = (resting_key, self._resting_pco2)
             self._resting_age_s = 0.0
         effort_rr, effort_vt, drive_central = self._unassisted(
             sensed_paco2, prop_keep, sevo_keep, muscle_factor,
@@ -1586,7 +1618,7 @@ class RespiratoryModel:
         co2_exponent = self.CO2_RESPONSE_EXPONENT * self.hcvr_slope_baseline / 2.2
         if sevo_keep < 1.0:
             co2_exponent *= 0.25 + 0.75 * sevo_keep
-        co2_response = (max(self.paco2_setpoint, pco2) / self.paco2_setpoint) ** co2_exponent
+        co2_response = 1.0 if pco2 <= self.paco2_setpoint else (pco2 / self.paco2_setpoint) ** co2_exponent
         response_fraction = controller / opioid_reference * co2_response
         drive = min(self.MAX_ALVEOLAR_DRIVE,
                     response_fraction * prop_keep * sevo_keep * self._metabolic_compensation)
@@ -1600,29 +1632,32 @@ class RespiratoryModel:
                 + 0.3 * hypoxic_drive,
             )
         rate_fraction *= opioid_rate_fraction * (0.6 + 0.4 * prop_keep) * sevo_rate
-        rate_fraction *= math.sqrt(self._metabolic_compensation)
+        if self._metabolic_compensation != 1.0:
+            rate_fraction *= math.sqrt(self._metabolic_compensation)
         if controller == 0.0 or prop_keep * sevo_keep <= 1e-4:
             rate_fraction = 0.0
         rr = min(self.RR_MAX, self.rr_0 * rate_fraction)
+        va_base = self.va_baseline
         # Add dead space after allocating the alveolar demand to breaths.
         # Applying drug depression to total VT would subtract dead space twice.
-        vt = (self.vd_deadspace + self.va_baseline * drive / rr) * 1000.0 if rr > 0.0 else 0.0
+        vt = (self.vd_deadspace + va_base * drive / rr) * 1000.0 if rr > 0.0 else 0.0
         vt *= muscle_factor
-        central_keep = math.sqrt(self._central_drive_fraction)
-        rr *= central_keep
-        vt *= central_keep
+        if self._central_drive_fraction != 1.0:
+            central_keep = math.sqrt(self._central_drive_fraction)
+            rr *= central_keep
+            vt *= central_keep
 
         # Unconscious breathing stops APNEIC_GAP below the resting PaCO2, which
         # drugs raise; awake, hypocapnia below the set point weakens effort.
         resting = self.paco2_setpoint if resting_pco2 is None else max(self.paco2_setpoint, resting_pco2)
-        below_resting = max(0.0, resting - pco2)
+        below_resting = resting - pco2
         if below_resting > 0.0:
             kept = math.sqrt(1.0 - unconscious * clamp01(below_resting / self.APNEIC_GAP))
             rr *= kept
             vt *= kept
-        below = max(0.0, self.paco2_setpoint - pco2)
+        below = self.paco2_setpoint - pco2
         if below > 0.0:
-            awake_kept = 1.0 / (1.0 + self.AWAKE_HYPOCAPNIC_GAIN * self.hcvr_slope_baseline * below / self.va_baseline)
+            awake_kept = 1.0 / (1.0 + self.AWAKE_HYPOCAPNIC_GAIN * self.hcvr_slope_baseline * below / va_base)
             vt *= unconscious + (1.0 - unconscious) * awake_kept
         if rr < RR_APNEA_THRESHOLD or vt < max(100.0, VT_MIN):
             rr = vt = 0.0
@@ -1671,7 +1706,7 @@ class RespiratoryModel:
             return 0.0, 0.0
         correction = 1.20 * 10.0**(-pao2 / 29.25)
         exponent = 2.82 - correction
-        exponent_derivative = math.log(10.0) * correction / 29.25
+        exponent_derivative = _O2_EXP_DECAY * correction
         sat = 1.0 / (1.0 + (p50 / pao2)**exponent)
         derivative = sat * (1.0 - sat) * (exponent / pao2 + exponent_derivative * math.log(pao2 / p50))
         return sat, derivative

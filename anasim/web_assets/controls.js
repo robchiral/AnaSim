@@ -194,7 +194,8 @@ export class Controls {
   bindMachine() {
     $("c-bair").onchange = () => this.send("bair_hugger", { target_c: Number($("c-bair").value) });
     $("c-cooling").onclick = () => this.send("surface_cooling", { on: !this.state.surface_cooling });
-    for (const button of $("c-airway").querySelectorAll("button")) {
+    this.airwayButtons = [...$("c-airway").querySelectorAll("button")];
+    for (const button of this.airwayButtons) {
       button.onclick = () => this.send("airway", { mode: button.dataset.value });
     }
     this.maskSealEditor = this.editSettings(
@@ -381,7 +382,12 @@ export class Controls {
       card: lipid, name: `Lipid emulsion 20% ${medicationSearchTerms.lipid}`, feedback: $("c-lipid-feedback"),
     });
     for (const group of this.medicationGroups) {
-      for (const key of group.keys) group.section.append(this.medicationRows.get(key).card);
+      const groupLower = group.name.toLowerCase();
+      for (const key of group.keys) {
+        const row = this.medicationRows.get(key);
+        row.searchText = `${row.name.toLowerCase()} ${groupLower}`;
+        group.section.append(row.card);
+      }
     }
     for (const button of document.querySelectorAll("[data-sugammadex]")) {
       button.onclick = () => this.performAction(button, "sugammadex", { mg_per_kg: Number(button.dataset.sugammadex) });
@@ -408,7 +414,7 @@ export class Controls {
       let groupMatches = false;
       for (const key of group.keys) {
         const row = this.medicationRows.get(key);
-        const matches = `${row.name} ${group.name}`.toLowerCase().includes(query);
+        const matches = !query || row.searchText.includes(query);
         row.card.hidden = !matches;
         groupMatches ||= matches;
       }
@@ -541,11 +547,12 @@ export class Controls {
   bindResuscitation() {
     $("c-compressions").onclick = () => this.send("compressions", { active: !this.state.compressions.active });
     this.synchronized = false;
-    for (const button of $("c-sync").querySelectorAll("button")) {
+    this.syncButtons = [...$("c-sync").querySelectorAll("button")];
+    for (const button of this.syncButtons) {
       setPressed(button, button.dataset.value === "false");
       button.onclick = () => {
         this.synchronized = button.dataset.value === "true";
-        for (const other of $("c-sync").querySelectorAll("button")) setPressed(other, other === button);
+        for (const other of this.syncButtons) setPressed(other, other === button);
       };
     }
     const shock = $("c-shock");
@@ -568,7 +575,9 @@ export class Controls {
       : { idle: "Not charged", ready: "Ready, 200 J", waiting_for_r: "Waiting for an R wave" }[status]);
     setText($("c-charge"), status === "idle" ? "Charge" : "Disarm");
     $("c-shock").disabled = status !== "ready";
-    for (const button of $("c-sync").querySelectorAll("button")) button.disabled = status === "waiting_for_r";
+    for (const button of (this.syncButtons ??= [...$("c-sync").querySelectorAll("button")])) {
+      button.disabled = status === "waiting_for_r";
+    }
     const lastShock = defibrillator.last_shock;
     if (lastShock && lastShock.time !== this.lastShockTime) {
       this.lastShockTime = lastShock.time;
@@ -695,6 +704,7 @@ export class Controls {
 
   syncRhythm(rhythm) {
     const select = $("c-rhythm");
+    if (select.value === rhythm) return;
     const observed = select.querySelector("option[data-observed]");
     if (observed && observed.value !== rhythm) observed.remove();
     if (!Array.from(select.options).some(option => option.value === rhythm)) {
@@ -749,7 +759,7 @@ export class Controls {
     this.showBloodGases();
     this.showClinicalFeedback(c.clinical_feedback);
 
-    for (const button of $("c-airway").querySelectorAll("button")) {
+    for (const button of (this.airwayButtons ??= [...$("c-airway").querySelectorAll("button")])) {
       setPressed(button, button.dataset.value === c.airway);
     }
     if (c.airway !== "Mask") this.maskSealEditor.cancel();

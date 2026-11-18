@@ -59,17 +59,20 @@ class Sweep {
     const end = start + values.length;
     for (let i = 0; i < this.gap; i++) this.data[(end + i) % size] = NaN;
     this.writeIndex = end % size;
-    this.updateScale(values.length);
+    this.updateScale(values);
   }
 
-  updateScale(samples) {
+  updateScale(values) {
+    const samples = values.length;
     const { channel, data, range } = this;
     if (!channel.autoScale || !samples) return;
     let lo = Infinity, hi = -Infinity;
-    for (const value of data) {
-      if (Number.isFinite(value)) {
-        lo = Math.min(lo, value);
-        hi = Math.max(hi, value);
+    const source = channel.autoScale === "expand" ? values : data;
+    for (let i = 0; i < source.length; i++) {
+      const value = source[i];
+      if (value !== null && Number.isFinite(value)) {
+        if (value < lo) lo = value;
+        if (value > hi) hi = value;
       }
     }
     if (lo === Infinity) {

@@ -5,7 +5,7 @@ import math
 import numpy as np
 from scipy.linalg import expm
 
-from anasim.core.utils import clamp, clamp01
+from anasim.core.utils import clamp, clamp01, fill_response_rows
 from anasim.patient.patient import Patient
 from anasim.patient.pk_models import MammillaryPK, rocuronium_adjusted_weight
 
@@ -114,7 +114,7 @@ class TOFModel:
         target = self.ce * 0.5
         if target <= 0.0:
             return 0.0
-        if roc.circulation <= 0.0:
+        if roc.circulation <= 0.0 or max_seconds <= 0:
             return max_seconds / 60.0
         ke0 = self.ke0 * (1.0 - self.sevo_ke0_reduction * clamp01(mac_sevo))
         delivery_time = roc.circulation / 60.0
@@ -132,12 +132,23 @@ class TOFModel:
         )
         if not has_sug:
             exp_ke0 = math.exp(-ke0 * delivery_time)
-            for second in range(1, max_seconds + 1):
-                x_roc = t_roc @ x_roc
-                cp = float(x_roc[0])
-                ce = cp + (ce - cp) * exp_ke0
-                if ce <= target:
-                    return second / 60.0
+            transition = np.zeros((roc_n + 1, roc_n + 1))
+            transition[:roc_n, :roc_n] = t_roc
+            transition[-1, :roc_n] = (1.0 - exp_ke0) * t_roc[0]
+            transition[-1, -1] = exp_ke0
+            x = np.empty(roc_n + 1)
+            x[:roc_n] = x_roc
+            x[-1] = ce
+            block = min(128, max_seconds)
+            response = np.empty((block, roc_n + 1))
+            fill_response_rows(response, transition, -1)
+            advance = np.linalg.matrix_power(transition, block)
+            for start in range(0, max_seconds, block):
+                count = min(block, max_seconds - start)
+                crossed = np.flatnonzero(response[:count] @ x <= target)
+                if crossed.size:
+                    return (start + int(crossed[0]) + 1) / 60.0
+                x = advance @ x
             return max_seconds / 60.0
 
         t_sug = expm(sug.get_ss_matrices()[0][:2, :2] / 60.0)
@@ -145,25 +156,14 @@ class TOFModel:
         x_sug = np.array([sug.state.c1, sug.state.c2], dtype=float)
         x_cplx = np.array([cplx.state.c1, cplx.state.c2], dtype=float)
         v_roc, v_sug = roc.v1, sug.v1
-        to_um = 1000.0 / MW_ROCURONIUM
         dt_min = 1.0 / 60.0
         for second in range(1, max_seconds + 1):
             x_roc = t_roc @ x_roc
             r_c1, s_c1, c_c1 = float(x_roc[0]), float(x_sug[0]), float(x_cplx[0])
             if s_c1 > 0.0 or c_c1 > 0.0:
-                fastest = SUGAMMADEX_K1_PER_UM_MIN * max(s_c1 * v_sug / v_roc, r_c1 * to_um) + SUGAMMADEX_K2_PER_MIN
-                substeps = max(1, math.ceil(dt_min * fastest / 0.05))
-                h = dt_min / substeps
-                for _ in range(substeps):
-                    free_roc_um = r_c1 * to_um
-                    rate = SUGAMMADEX_K1_PER_UM_MIN * free_roc_um * s_c1 - SUGAMMADEX_K2_PER_MIN * c_c1
-                    flux = rate * v_sug * h
-                    flux = min(flux, free_roc_um * v_roc, s_c1 * v_sug)
-                    flux = max(flux, -c_c1 * v_sug)
-                    r_c1 -= flux / v_roc / to_um
-                    s_c1 -= flux / v_sug
-                    c_c1 += flux / v_sug
-                x_roc[0], x_sug[0], x_cplx[0] = r_c1, s_c1, c_c1
+                x_roc[0], x_sug[0], x_cplx[0] = self._step_plasma_binding(
+                    r_c1, s_c1, c_c1, v_roc, v_sug, dt_min,
+                )
             x_sug = t_sug @ x_sug
             x_cplx = t_cplx @ x_cplx
             ce = self._effect_site(ce, float(x_roc[0]), ke0, self.ks * float(x_sug[0]), delivery_time)
@@ -198,26 +198,31 @@ class TOFModel:
         target = ke0 * cp / rate
         return target + (ce - target) * math.exp(-rate * dt_min)
 
-    def _bind_in_plasma(self, dt_min: float, roc: MammillaryPK) -> None:
+    @staticmethod
+    def _step_plasma_binding(
+        r_c1: float, s_c1: float, c_c1: float, v_roc: float, v_sug: float, dt_min: float,
+    ) -> tuple[float, float, float]:
         """Association k1 Croc Csug and dissociation k2 Ccplx in the sugammadex central volume."""
-        sugammadex, complex_ = self.sugammadex, self.complex
-        v_sug = sugammadex.v1
         to_um = 1000.0 / MW_ROCURONIUM
-        fastest = SUGAMMADEX_K1_PER_UM_MIN * max(
-            sugammadex.state.c1 * v_sug / roc.v1, roc.state.c1 * to_um
-        ) + SUGAMMADEX_K2_PER_MIN
+        fastest = SUGAMMADEX_K1_PER_UM_MIN * max(s_c1 * v_sug / v_roc, r_c1 * to_um) + SUGAMMADEX_K2_PER_MIN
         substeps = max(1, math.ceil(dt_min * fastest / 0.05))
         h = dt_min / substeps
         for _ in range(substeps):
-            free_roc_um = roc.state.c1 * to_um
-            rate = (SUGAMMADEX_K1_PER_UM_MIN * free_roc_um * sugammadex.state.c1
-                    - SUGAMMADEX_K2_PER_MIN * complex_.state.c1)
+            free_roc_um = r_c1 * to_um
+            rate = SUGAMMADEX_K1_PER_UM_MIN * free_roc_um * s_c1 - SUGAMMADEX_K2_PER_MIN * c_c1
             flux = rate * v_sug * h  # umol bound this substep
-            flux = min(flux, free_roc_um * roc.v1, sugammadex.state.c1 * v_sug)
-            flux = max(flux, -complex_.state.c1 * v_sug)
-            roc.state.c1 -= flux / roc.v1 / to_um
-            sugammadex.state.c1 -= flux / v_sug
-            complex_.state.c1 += flux / v_sug
+            flux = min(flux, free_roc_um * v_roc, s_c1 * v_sug)
+            flux = max(flux, -c_c1 * v_sug)
+            r_c1 -= flux / v_roc / to_um
+            s_c1 -= flux / v_sug
+            c_c1 += flux / v_sug
+        return r_c1, s_c1, c_c1
+
+    def _bind_in_plasma(self, dt_min: float, roc: MammillaryPK) -> None:
+        sugammadex, complex_ = self.sugammadex, self.complex
+        roc.state.c1, sugammadex.state.c1, complex_.state.c1 = self._step_plasma_binding(
+            roc.state.c1, sugammadex.state.c1, complex_.state.c1, roc.v1, sugammadex.v1, dt_min,
+        )
 
     def potentiation_factor(self, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """Relative NMBA EC50 multiplier under volatile and nitrous oxide anesthesia."""

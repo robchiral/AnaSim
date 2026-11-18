@@ -15,7 +15,7 @@ class LungAeration:
     Most FRC loss reflects diaphragm displacement (Hedenstierna 2015).
     After a preoxygenated induction without PEEP, shunt averages about 5%
     (Gunnarsson 1991 4.8%, Tokics 1996 5.0%, Rothen 1995 6.5%). Atelectasis
-    persists early after emergence (Benoit 2002) and clears over hours to days
+    persists early after emergence (Benoît 2002) and clears over hours to days
     of awake unintubated breathing (Strandberg 1986; Eichenberger 2002). Lung
     water above 3 mL/kg floods alveoli. PEEP 13 vs 3 cmH2O reduced flooding by
     about 70% (Malo 1984).

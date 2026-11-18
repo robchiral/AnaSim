@@ -87,6 +87,7 @@ class CardiacCycle:
         self._stroke_fraction = 1.0
         self._measured_hr = 70.0
         self._recent_rr: deque[float] = deque(maxlen=DISPLAY_HR_BEATS)
+        self._recent_rr_total = 0.0
         self._display_hr = self._measured_hr
         self._agonal_spread = 0.0
 
@@ -142,7 +143,7 @@ class CardiacCycle:
     def _restart(self, hr: float, rhythm_type: RhythmType) -> CardiacCycleSample:
         self._initialized = True
         self._rhythm_type = rhythm_type
-        self._organized = rhythm_type in ORGANIZED_RHYTHMS and hr > 0.0
+        self._organized = (rhythm_type is RhythmType.SINUS or rhythm_type in ORGANIZED_RHYTHMS) and hr > 0.0
         self._elapsed_s = 0.0
         self._stroke_fraction = 1.0
         if self._organized:
@@ -152,12 +153,14 @@ class CardiacCycle:
         else:
             self._measured_hr = 0.0
             self._recent_rr.clear()
+            self._recent_rr_total = 0.0
         self._update_display_hr()
         return self._sample(beat_started=self._organized)
 
     def _update_display_hr(self) -> None:
         if self._elapsed_s >= 8.0:
             self._recent_rr.clear()
+            self._recent_rr_total = 0.0
             self._display_hr = 0.0
             return
         recent = self._recent_rr
@@ -167,10 +170,13 @@ class CardiacCycle:
             else:
                 self._display_hr = self._measured_hr
             return
-        total = sum(recent)
+        total = self._recent_rr_total
+        popped = False
         while len(recent) > 1 and total - recent[0] + self._elapsed_s >= 8.0:
-            recent.popleft()
-            total = sum(recent)
+            total -= recent.popleft()
+            popped = True
+        if popped:
+            total = self._recent_rr_total = sum(recent)
         last_rr = recent[-1]
         if self._elapsed_s > 1.5 * last_rr:
             span = max(total, total - recent[0] + self._elapsed_s)
@@ -181,10 +187,12 @@ class CardiacCycle:
     def clear_rate_history(self) -> None:
         """Discard prior R-R intervals when an unsynchronized shock changes the rhythm."""
         self._recent_rr.clear()
+        self._recent_rr_total = 0.0
 
     def seed(self, hr: float, rhythm_type: RhythmType) -> CardiacCycleSample:
         """Initialize timing at a ventricular depolarization."""
         self._recent_rr.clear()
+        self._recent_rr_total = 0.0
         return self._restart(hr, rhythm_type)
 
     def step(self, dt: float, hr: float, rhythm_type: RhythmType,
@@ -192,11 +200,15 @@ class CardiacCycle:
         """Advance the beat clock and report any beat boundaries crossed."""
         if dt <= 0.0:
             raise ValueError("cardiac cycle dt must be greater than zero")
-        self._agonal_spread = AGONAL_RR_SPREAD * clamp01((conduction_failure - AGONAL_FAILURE) / (1.0 - AGONAL_FAILURE))
+        self._agonal_spread = (
+            0.0
+            if conduction_failure <= AGONAL_FAILURE
+            else AGONAL_RR_SPREAD * clamp01((conduction_failure - AGONAL_FAILURE) / (1.0 - AGONAL_FAILURE))
+        )
 
-        organized = rhythm_type in ORGANIZED_RHYTHMS and hr > 0.0
+        organized = (rhythm_type is RhythmType.SINUS or rhythm_type in ORGANIZED_RHYTHMS) and hr > 0.0
         seeded_beat = False
-        if not self._initialized or rhythm_type != self._rhythm_type or organized != self._organized:
+        if not self._initialized or rhythm_type is not self._rhythm_type or organized != self._organized:
             # A rhythm change keeps the monitor's rate history.
             sample = self._restart(hr, rhythm_type)
             if not sample.organized:
@@ -216,6 +228,8 @@ class CardiacCycle:
             self._stroke_fraction = self._beat_stroke_fraction(self._rr_interval_s, rhythm_type)
             self._rr_interval_s = self._next_rr(hr, rhythm_type)
             beat_started = True
+        if beat_started:
+            self._recent_rr_total = sum(self._recent_rr)
 
         if beat_started or self._elapsed_s > 0.0:
             self._update_display_hr()

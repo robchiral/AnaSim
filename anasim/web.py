@@ -609,7 +609,7 @@ class WebSession:
                 "p_max": round(vent.p_max),
                 "trigger": round(vent.trigger, 1),
             },
-            "drugs": {spec.key: engine.get_drug_state(spec.key) for spec in engine.get_controllable_drugs()},
+            "drugs": {spec.key: engine._drug_state_for_spec(spec) for spec in engine.get_controllable_drugs()},
             "maintenance_ml_hr": engine.get_continuous_fluid_rate(),
             "disturbance": {"profile": engine.disturbance_profile, "active": bool(
                 engine.disturbance_active and engine.disturbance_profile

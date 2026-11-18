@@ -44,6 +44,9 @@ class MalignantHyperthermia:
 
     def step(self, dt: float, *, sevo_mac: float, succinylcholine_cp: float,
              dantrolene_ce: float) -> None:
+        if not self._active and not self._susceptible and self.severity == 0.0:
+            self._controlled = False
+            return
         if not self._active and self._susceptible and (sevo_mac > 0.05 or succinylcholine_cp > 0.01):
             self._active = True
             self._controlled = False

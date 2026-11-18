@@ -6,8 +6,7 @@ explains how the studies are used.
 
 Abbreviations: PK, pharmacokinetics; PD, pharmacodynamics; BIS, bispectral
 index; MAC, minimum alveolar concentration; TCI, target-controlled infusion;
-TOF, train-of-four; SIMV, synchronized intermittent mandatory ventilation;
-PCV-VG, pressure control with volume guarantee.
+SIMV, synchronized intermittent mandatory ventilation.
 
 ## Patient conditions
 
@@ -15,18 +14,18 @@ PCV-VG, pressure control with volume guarantee.
 - Wilson et al. (1987). *Circulation*. [Coronary lesion geometry and flow reserve](https://pubmed.ncbi.nlm.nih.gov/3829334/).
 - Arthurs et al. (2016). *Am J Physiol Heart Circ Physiol*. [Coronary blood-flow control and myocardial oxygen balance](https://pubmed.ncbi.nlm.nih.gov/26945076/).
 - Harasawa et al. (1992). *Circ Res*. [Basal metabolism and unloaded myocardial oxygen consumption](https://pubmed.ncbi.nlm.nih.gov/1628397/).
-- Jeremy et al. (1986). *Cardiovasc Res*. [Left ventricular diastolic pressure and the coronary pressure-flow relation during vasodilation](https://pubmed.ncbi.nlm.nih.gov/3802128/).
+- Jeremy et al. (1986). *Cardiovasc Res*. [Diastolic ventricular pressure and the coronary pressure-flow relation](https://pubmed.ncbi.nlm.nih.gov/3802128/).
 - Nanto et al. (2001). *Jpn Circ J*. [Coronary zero-flow pressure in humans](https://pubmed.ncbi.nlm.nih.gov/11548878/).
 - Nebout et al. (2013). *Ann Fr Anesth Reanim*. [BIS for early detection of cerebral hypoperfusion](https://pubmed.ncbi.nlm.nih.gov/23953319/).
-- Astrup et al. (1981). *Stroke*. [Thresholds in cerebral ischemia: the ischemic penumbra](https://pubmed.ncbi.nlm.nih.gov/6272455/).
+- Astrup et al. (1981). *Stroke*. [Cerebral ischemia thresholds and the ischemic penumbra](https://pubmed.ncbi.nlm.nih.gov/6272455/).
 - Jones et al. (1981). *J Neurosurg*. [Thresholds of focal cerebral ischemia in awake monkeys](https://pubmed.ncbi.nlm.nih.gov/7241187/).
 - de Vries et al. (1998). *Anesth Analg*. [Cerebral oxygen uptake and EEG during defibrillation threshold testing](https://pubmed.ncbi.nlm.nih.gov/9661538/).
 - Brian (1998). *Anesthesiology*. [Carbon dioxide and the cerebral circulation](https://pubmed.ncbi.nlm.nih.gov/9605698/).
-- Battisti-Charbonney et al. (2011). *J Physiol*. [The cerebrovascular response to carbon dioxide in humans](https://pubmed.ncbi.nlm.nih.gov/21521758/).
-- Willie et al. (2015). *J Cereb Blood Flow Metab*. [Regulation of brain blood flow and oxygen delivery in elite breath-hold divers](https://pubmed.ncbi.nlm.nih.gov/25370857/).
+- Battisti-Charbonney et al. (2011). *J Physiol*. [Cerebrovascular response to CO₂ in humans](https://pubmed.ncbi.nlm.nih.gov/21521758/).
+- Willie et al. (2015). *J Cereb Blood Flow Metab*. [Brain blood flow and oxygen delivery in breath-hold divers](https://pubmed.ncbi.nlm.nih.gov/25370857/).
 - Westlake et al. (1955). *Q J Med*. [Carbon dioxide narcosis in emphysema](https://pubmed.ncbi.nlm.nih.gov/14395425/).
-- Sieker and Hickam (1956). *Medicine (Baltimore)*. [Carbon dioxide intoxication: clinical syndrome, etiology, and management](https://pubmed.ncbi.nlm.nih.gov/13407339/).
-- Turnbull et al. (2008). *Anaesthesia*. [The influence of changes in end-tidal carbon dioxide upon the Bispectral Index](https://pubmed.ncbi.nlm.nih.gov/18412642/).
+- Sieker and Hickam (1956). *Medicine (Baltimore)*. [Clinical syndrome of carbon dioxide intoxication](https://pubmed.ncbi.nlm.nih.gov/13407339/).
+- Turnbull et al. (2008). *Anaesthesia*. [End-tidal CO₂ and BIS](https://pubmed.ncbi.nlm.nih.gov/18412642/).
 - Asanoi et al. (1989). *Circ Res*. [Ventriculoarterial coupling in normal and failing heart in humans](https://pubmed.ncbi.nlm.nih.gov/2752553/).
 - Chen et al. (1998). *J Am Coll Cardiol*. [Coupled systolic-ventricular and vascular stiffening with age](https://pubmed.ncbi.nlm.nih.gov/9809929/).
 - Schwartzenberg et al. (2012). *J Am Coll Cardiol*. [Hemodynamic responses to vasodilation in reduced- and preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/22281246/).
@@ -45,21 +44,10 @@ PCV-VG, pressure control with volume guarantee.
 
 - Eleveld et al. (2017). *Anesthesiology*. [Remifentanil PK/PD](https://pubmed.ncbi.nlm.nih.gov/28509794/).
 - Eleveld et al. (2018). *Br J Anaesth*. [Propofol PK/PD](https://pubmed.ncbi.nlm.nih.gov/29661412/) and [correction](https://pubmed.ncbi.nlm.nih.gov/30032904/).
-- Vellinga et al. (2021). *Br J Anaesth*. [Prospective Eleveld propofol PK/PD validation](https://pubmed.ncbi.nlm.nih.gov/33317804/).
-- Kim et al. (2023). *J Pharmacokinet Pharmacodyn*. [Propofol PK/PD model and Eleveld validation in Korean elderly subjects](https://pubmed.ncbi.nlm.nih.gov/36522561/).
-- Coetzee et al. (2024). *Br J Anaesth*. [Agreement between Eleveld-predicted and measured BIS during TIVA](https://pubmed.ncbi.nlm.nih.gov/39179443/).
-- Sørensen et al. (2011). *Acta Anaesthesiol Scand*. [Onset time and hemodynamic response after thiopental versus propofol in the elderly](https://pubmed.ncbi.nlm.nih.gov/21342151/).
-- Sahinovic et al. (2020). *Anesth Analg*. [EEG monitor delay relative to Schnider-predicted propofol effect-site concentrations](https://pubmed.ncbi.nlm.nih.gov/32925339/).
-- Dahaba et al. (2020). *J Pharmacokinet Pharmacodyn*. [Age covariates in propofol-BIS pharmacodynamics](https://pubmed.ncbi.nlm.nih.gov/32100175/).
-- Struys et al. (2007). *Anesthesiology*. [Propofol administration rate and apparent plasma-effect-site equilibration](https://pubmed.ncbi.nlm.nih.gov/17721240/).
-- Doufas et al. (2004). *Anesthesiology*. [Propofol induction rate and individualized pharmacodynamics](https://pubmed.ncbi.nlm.nih.gov/15505446/).
 - Servin et al. (1990). *Br J Anaesth*. [Propofol PK in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/2223333/).
-- Hiraoka et al. (2005). *Br J Clin Pharmacol*. [Renal extraction of propofol](https://pubmed.ncbi.nlm.nih.gov/16042671/).
 - Ickx et al. (1998). *Br J Anaesth*. [Propofol PK/PD in end-stage renal disease](https://pubmed.ncbi.nlm.nih.gov/10211008/).
 - Dershwitz et al. (1996). *Anesthesiology*. [Remifentanil PK/PD in liver disease](https://pubmed.ncbi.nlm.nih.gov/8638835/).
 - Hoke et al. (1997). *Anesthesiology*. [Remifentanil PK in renal failure](https://pubmed.ncbi.nlm.nih.gov/9316957/).
-- Minto et al. (1997). *Anesthesiology*. [Age and remifentanil EEG potency](https://pubmed.ncbi.nlm.nih.gov/9009935/).
-- Kim et al. (2018). *Clin Interv Aging*. [Age and remifentanil for emergence cough](https://pubmed.ncbi.nlm.nih.gov/29881261/).
 
 ### Hemorrhagic shock
 
@@ -67,7 +55,6 @@ PCV-VG, pressure control with volume guarantee.
 - Johnson et al. (2001). *Anesthesiology*. [Remifentanil PK/PD in hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/11176098/).
 - Johnson et al. (2004). *Anesthesiology*. [Propofol after hemorrhagic shock and crystalloid resuscitation](https://pubmed.ncbi.nlm.nih.gov/15329589/).
 - Kurita et al. (2011). *Br J Anaesth*. [Remifentanil and propofol across stages of hemorrhage](https://pubmed.ncbi.nlm.nih.gov/21862493/).
-- Egan and Johnson (2020). *Anesth Analg*. [Intravenous anesthetics in hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/32149755/).
 
 ### Other opioids
 
@@ -113,14 +100,13 @@ PCV-VG, pressure control with volume guarantee.
 - Tucker and Boas (1971). *Anesthesiology*. [Lidocaine kinetics and intravenous regional anesthesia](https://pubmed.ncbi.nlm.nih.gov/5556244/).
 - Rowland et al. (1971). *Ann N Y Acad Sci*. [Lidocaine kinetics in healthy subjects](https://pubmed.ncbi.nlm.nih.gov/5285383/).
 - Stenson et al. (1971). *Circulation*. [Hepatic blood flow, cardiac output, and blood lidocaine levels](https://pubmed.ncbi.nlm.nih.gov/5540706/).
-- Thomson et al. (1973). *Ann Intern Med*. [Lidocaine pharmacokinetics in heart failure, liver disease, and renal failure](https://pubmed.ncbi.nlm.nih.gov/4694036/).
+- Thomson et al. (1973). *Ann Intern Med*. [Lidocaine PK in heart failure, liver disease, and renal failure](https://pubmed.ncbi.nlm.nih.gov/4694036/).
 - Foldes et al. (1960). *JAMA*. [Intravenous local anesthetic toxicity in man](https://pubmed.ncbi.nlm.nih.gov/13823696/).
 - Jorfeldt et al. (1968). *Acta Anaesthesiol Scand*. [Central circulation and respiration during local anesthetic infusion](https://pubmed.ncbi.nlm.nih.gov/4896937/).
-- Armstrong et al. (1988). *Ther Drug Monit*. [Clinical response and total and unbound plasma concentrations after lidocaine overdose](https://pubmed.ncbi.nlm.nih.gov/3201537/).
+- Armstrong et al. (1988). *Ther Drug Monit*. [Clinical response and plasma concentrations after lidocaine overdose](https://pubmed.ncbi.nlm.nih.gov/3201537/).
 - Heinonen et al. (2015). *Basic Clin Pharmacol Toxicol*. [Lipid emulsion and lidocaine toxicity in volunteers](https://pubmed.ncbi.nlm.nih.gov/25207682/).
 - Fettiplace et al. (2014). *Anesthesiology*. [Cardiotonic effect of lipid emulsion in cardiac toxicity](https://pubmed.ncbi.nlm.nih.gov/24496123/).
 - Neal et al. (2021). *Reg Anesth Pain Med*. [ASRA 2020 LAST checklist](https://pubmed.ncbi.nlm.nih.gov/33148630/).
-- American Society of Regional Anesthesia and Pain Medicine (2020). [LAST checklist](https://asra.com/docs/default-source/guidelines-articles/local-anesthetic-systemic-toxicity-rgb.pdf).
 - Himes et al. (1977). *Anesthesiology*. [Lidocaine and anesthetic requirement](https://pubmed.ncbi.nlm.nih.gov/911052/).
 - Hans et al. (2010). *Br J Anaesth*. [Lidocaine reduces propofol requirements during stimulation](https://pubmed.ncbi.nlm.nih.gov/20650919/).
 - Altermatt et al. (2012). *Br J Anaesth*. [Lidocaine during propofol maintenance and recovery](https://pubmed.ncbi.nlm.nih.gov/22490315/).
@@ -142,8 +128,6 @@ PCV-VG, pressure control with volume guarantee.
 - Egan et al. (1993). *Anesthesiology*. [Remifentanil context-sensitive half-time](https://pubmed.ncbi.nlm.nih.gov/7902032/).
 - Kapila et al. (1995). *Anesthesiology*. [Remifentanil offset and ventilation recovery](https://pubmed.ncbi.nlm.nih.gov/7486182/).
 - Grundmann et al. (2001). *Acta Anaesthesiol Scand*. [Propofol-remifentanil recovery](https://pubmed.ncbi.nlm.nih.gov/11207468/).
-- Kwon et al. (2018). *Korean J Anesthesiol*. [Hypercapnia and propofol emergence](https://pubmed.ncbi.nlm.nih.gov/29690757/).
-- Varvel et al. (1992). *J Pharmacokinet Biopharm*. [TCI performance metrics](https://pubmed.ncbi.nlm.nih.gov/1588504/).
 - Shafer and Gregg (1992). *J Pharmacokinet Biopharm*. [Effect-site and plasma-targeted TCI](https://pubmed.ncbi.nlm.nih.gov/1629794/).
 
 ## Inhaled anesthetics
@@ -153,8 +137,6 @@ PCV-VG, pressure control with volume guarantee.
 - Nickalls and Mapleson (2003). *Br J Anaesth*. [Sevoflurane MAC](https://pubmed.ncbi.nlm.nih.gov/12878613/).
 - Yasuda et al. (1991). *Anesth Analg*. [Sevoflurane and isoflurane uptake and washout](https://pubmed.ncbi.nlm.nih.gov/1994760/).
 - Carpenter et al. (1986). *Anesth Analg*. [Inhaled anesthetic kinetics in humans](https://pubmed.ncbi.nlm.nih.gov/3706798/).
-- Epstein et al. (1964). *Anesthesiology*. [Concentration effect and the second gas effect](https://pubmed.ncbi.nlm.nih.gov/14156577/).
-- Fink (1955). *Anesthesiology*. [Diffusion anoxia](https://pubmed.ncbi.nlm.nih.gov/13238868/).
 - Goto et al. (2000). *Anesthesiology*. [Nitrous oxide MAC at awakening](https://pubmed.ncbi.nlm.nih.gov/11046204/).
 - Katoh et al. (1997). *Br J Anaesth*. [Sevoflurane-nitrous oxide interaction at awakening](https://pubmed.ncbi.nlm.nih.gov/9389264/).
 
@@ -164,13 +146,12 @@ PCV-VG, pressure control with volume guarantee.
 - Hannivoort et al. (2016). *Br J Anaesth*. [Propofol-sevoflurane-remifentanil interaction for laryngoscopy](https://pubmed.ncbi.nlm.nih.gov/27106965/).
 - Heyse et al. (2012). *Anesthesiology*. [Sevoflurane-remifentanil interaction for clinical responses](https://pubmed.ncbi.nlm.nih.gov/22222473/).
 - Kuizenga et al. (2019). *Anesthesiology*. [Propofol and sevoflurane with remifentanil for clinical responses](https://pubmed.ncbi.nlm.nih.gov/31567365/).
-- Schnider et al. (1999). *Anesthesiology*. [Age and propofol Ce50 for loss of consciousness](https://pubmed.ncbi.nlm.nih.gov/10360845/).
+- Schnider et al. (1999). *Anesthesiology*. [Age and propofol Ce₅₀ for loss of consciousness](https://pubmed.ncbi.nlm.nih.gov/10360845/).
 - Lysakowski et al. (2009). *Br J Anaesth*. [BIS at propofol loss of consciousness in young and elderly patients](https://pubmed.ncbi.nlm.nih.gov/19542103/).
 - Kanazawa et al. (2017). *J Anesth*. [Volatile anesthetics and BIS](https://pubmed.ncbi.nlm.nih.gov/28791477/).
 - Ryu et al. (2018). *Anesthesiology*. [BIS and surgical pleth index during stimulation](https://pubmed.ncbi.nlm.nih.gov/29509579/).
 - Ryu et al. (2018). *Br J Anaesth*. [Remifentanil requirements with volatile anesthetics](https://pubmed.ncbi.nlm.nih.gov/30336856/).
 - Paraskeva et al. (2005). *J Clin Anesth*. [Sevoflurane and BIS](https://pubmed.ncbi.nlm.nih.gov/16427526/).
-- Schwab et al. (2004). *Anesth Analg*. [BIS response to sevoflurane](https://pubmed.ncbi.nlm.nih.gov/15562061/).
 - Olofsen et al. (2002). *Anesthesiology*. [Remifentanil-sevoflurane BIS interaction](https://pubmed.ncbi.nlm.nih.gov/11873028/).
 - Schumacher et al. (2009). *Anesthesiology*. [Additive propofol-sevoflurane interaction on BIS](https://pubmed.ncbi.nlm.nih.gov/19741484/).
 - Barr et al. (1999). *Br J Anaesth*. [Nitrous oxide hypnosis and BIS](https://pubmed.ncbi.nlm.nih.gov/10562773/).
@@ -186,23 +167,16 @@ PCV-VG, pressure control with volume guarantee.
 - Ebert et al. (1995). *Anesthesiology*. [Sympathetic and hemodynamic responses to sevoflurane and intubation](https://pubmed.ncbi.nlm.nih.gov/7605024/).
 - Bullington et al. (1989). *Anesth Analg*. [Age and the sympathetic response to intubation](https://pubmed.ncbi.nlm.nih.gov/2541638/).
 - Billard et al. (1994). *Anesthesiology*. [Hemodynamic response to induction and intubation with propofol and fentanyl](https://pubmed.ncbi.nlm.nih.gov/7992907/).
-- Hayakawa-Fujii et al. (2001). *J Anesth*. [Hemodynamic stability during induction and intubation with propofol plus fentanyl, ketamine, and fentanyl-ketamine](https://pubmed.ncbi.nlm.nih.gov/14569434/).
+- Hayakawa-Fujii et al. (2001). *J Anesth*. [Induction and intubation hemodynamics with propofol, fentanyl, and ketamine](https://pubmed.ncbi.nlm.nih.gov/14569434/).
 - Sawano et al. (2013). *J Anesth*. [Fentanyl dose, hemodynamics, and cardiac output during induction and intubation](https://pubmed.ncbi.nlm.nih.gov/23314694/).
 
 ## Neuromuscular block
 
 - Kleijn et al. (2011). *Br J Clin Pharmacol*. [Sugammadex PK/PD](https://pubmed.ncbi.nlm.nih.gov/21535448/).
-- Ploeger et al. (2009). *Anesthesiology*. [Sugammadex PK/PD modeling](https://pubmed.ncbi.nlm.nih.gov/19104176/).
-- Pühringer et al. (2010). *Br J Anaesth*. [Sugammadex reversal times](https://pubmed.ncbi.nlm.nih.gov/20876699/).
-- Nguyen-Lee et al. (2018). *Curr Anesthesiol Rep*. [Sugammadex PK review](https://doi.org/10.1007/s40140-018-0266-5).
-- Wierda et al. (1991). *Can J Anaesth*. [Rocuronium PK](https://pubmed.ncbi.nlm.nih.gov/1829656/).
 - Khuenl-Brady and Sparr (1996). *Clin Pharmacokinet*. [Rocuronium clinical PK review](https://pubmed.ncbi.nlm.nih.gov/8877248/).
-- Masui et al. (2018). *J Anesth*. [Rocuronium PD covariates](https://pubmed.ncbi.nlm.nih.gov/30099599/).
 - Sasakawa et al. (2016). *J Anesth*. [Predictive ability of six rocuronium PK models](https://pubmed.ncbi.nlm.nih.gov/27098255/).
 - Varrique et al. (2016). *J Pharm Pharmacol*. [Rocuronium PK/PD in young and elderly patients](https://pubmed.ncbi.nlm.nih.gov/27545305/).
 - Magorian et al. (1995). *Anesth Analg*. [Rocuronium PK in liver disease](https://pubmed.ncbi.nlm.nih.gov/7893030/).
-- Robertson et al. (2005). *Eur J Anaesthesiol*. [Rocuronium PK in renal failure](https://pubmed.ncbi.nlm.nih.gov/15816565/).
-- Magorian et al. (1993). *Anesthesiology*. [Rocuronium onset](https://pubmed.ncbi.nlm.nih.gov/7902034/).
 - Meyhoff et al. (2009). *Anesth Analg*. [Ideal versus corrected body weight for rocuronium in obese patients](https://pubmed.ncbi.nlm.nih.gov/19690247/).
 - Roy et al. (2002). *Anesthesiology*. [Succinylcholine concentration-effect model](https://pubmed.ncbi.nlm.nih.gov/12411790/).
 - Kopman et al. (2003). *Anesthesiology*. [Succinylcholine dose, onset, and twitch recovery](https://pubmed.ncbi.nlm.nih.gov/14576537/).
@@ -210,9 +184,7 @@ PCV-VG, pressure control with volume guarantee.
 - Dhonneur et al. (1999). *Anesthesiology*. [Succinylcholine and rocuronium at the larynx, diaphragm, and adductor pollicis](https://pubmed.ncbi.nlm.nih.gov/10201662/).
 - Cantineau et al. (1994). *Anesthesiology*. [Rocuronium effects at the diaphragm](https://pubmed.ncbi.nlm.nih.gov/8092503/).
 - Plaud et al. (1995). *Clin Pharmacol Ther*. [Rocuronium laryngeal effect-site kinetics](https://pubmed.ncbi.nlm.nih.gov/7648768/).
-- Wright et al. (1994). *Anesthesiology*. [Laryngeal sensitivity to rocuronium](https://pubmed.ncbi.nlm.nih.gov/7978469/).
 - Eikermann et al. (2003). *Anesthesiology*. [Respiratory recovery after neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/12766640/).
-- Eikermann et al. (2007). *Am J Respir Crit Care Med*. [Airway collapse during partial neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/17023729/).
 - Herbstreit et al. (2009). *Anesthesiology*. [Residual block and pharyngeal closing pressure](https://pubmed.ncbi.nlm.nih.gov/19417617/).
 - Fiset et al. (1991). *Can J Anaesth*. [Nitrous oxide and neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/1683819/).
 - Bissinger et al. (1993). *Anasthesiol Intensivmed Notfallmed Schmerzther*. [Curare clefts and neuromuscular monitoring](https://pubmed.ncbi.nlm.nih.gov/7902740/).
@@ -227,7 +199,6 @@ PCV-VG, pressure control with volume guarantee.
 - Jeleazcov et al. (2015). *Br J Anaesth*. [Propofol arterial pressure effect sites in volunteers](https://pubmed.ncbi.nlm.nih.gov/25627394/).
 - Kazama et al. (1999). *Anesthesiology*. [Propofol equilibration for SBP and BIS by age](https://pubmed.ncbi.nlm.nih.gov/10360846/).
 - Claeys et al. (1988). *Br J Anaesth*. [Hemodynamic changes during anesthesia induced and maintained with propofol](https://pubmed.ncbi.nlm.nih.gov/3257393/).
-- He et al. (2024). *J Biomed Res*. [Echocardiographic hemodynamics during remimazolam versus propofol induction in elderly patients](https://pubmed.ncbi.nlm.nih.gov/37907250/).
 - Hino et al. (2019). *J Anesth*. [Age-stratified propofol and thiopental induction with remifentanil](https://pubmed.ncbi.nlm.nih.gov/31228006/).
 - Oh et al. (2025). *Drug Des Devel Ther*. [Blood pressure during propofol TCI induction in patients aged 65 and over](https://pubmed.ncbi.nlm.nih.gov/41180601/).
 - van den Berg et al. (2021). *J Clin Monit Comput*. [Hemodynamics at equipotent propofol-remifentanil pairs](https://pubmed.ncbi.nlm.nih.gov/32488680/).
@@ -258,7 +229,6 @@ PCV-VG, pressure control with volume guarantee.
 
 - Johnson et al. (2014). *J Appl Physiol*. [Hemodynamic responses to graded blood loss in awake humans](https://pubmed.ncbi.nlm.nih.gov/24876357/).
 - Martin et al. (1990). *Acta Anaesthesiol Scand*. [Vascular resistance in septic shock](https://pubmed.ncbi.nlm.nih.gov/2389659/).
-- Melo and Peters (1999). *Crit Care*. [Low systemic vascular resistance in critical illness](https://pubmed.ncbi.nlm.nih.gov/11056727/).
 - Bellissant and Annane (2000). *Clin Pharmacol Ther*. [Pressor hyporesponsiveness in septic shock](https://pubmed.ncbi.nlm.nih.gov/11014411/).
 - Margarson and Soni (2002). *J Appl Physiol*. [Albumin leakage in septic shock](https://pubmed.ncbi.nlm.nih.gov/11960967/).
 - Fisher (1986). *Anaesth Intensive Care*. [Plasma escape during anaphylaxis](https://pubmed.ncbi.nlm.nih.gov/2869715/).
@@ -275,8 +245,8 @@ PCV-VG, pressure control with volume guarantee.
 
 - Koster et al. (2008). *Resuscitation*. [Recurrent VF during advanced life support](https://pubmed.ncbi.nlm.nih.gov/18556106/).
 - van Alem et al. (2003). *Resuscitation*. [VF recurrence and patient outcome](https://pubmed.ncbi.nlm.nih.gov/14625108/).
-- Stiell et al. (2007). *Circulation*. [Fixed lower versus escalating higher biphasic energy in out-of-hospital cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/17353443/).
-- Pierce et al. (2015). *Resuscitation*. [Post-shock rhythms and duration of pulselessness after out-of-hospital cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/25597505/).
+- Stiell et al. (2007). *Circulation*. [Fixed versus escalating biphasic energy in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/17353443/).
+- Pierce et al. (2015). *Resuscitation*. [Post-shock rhythms and pulselessness in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/25597505/).
 - Dhanani et al. (2021). *N Engl J Med*. [Resumption of cardiac activity after withdrawal of life-sustaining measures](https://pubmed.ncbi.nlm.nih.gov/33503343/).
 - Somberg et al. (2002). *Am J Cardiol*. [IV lidocaine versus amiodarone for incessant VT](https://pubmed.ncbi.nlm.nih.gov/12372573/).
 - Scheinman et al. (1995). *Circulation*. [Dose-ranging IV amiodarone in life-threatening ventricular tachyarrhythmias](https://pubmed.ncbi.nlm.nih.gov/7586313/).
@@ -289,8 +259,6 @@ PCV-VG, pressure control with volume guarantee.
 - Corino et al. (2015). *J Cardiovasc Electrophysiol*. [R-R variability in atrial fibrillation](https://pubmed.ncbi.nlm.nih.gov/25367150/).
 - Hogue et al. (1996). *Anesthesiology*. [Post-induction bradycardia and atrial pacing](https://pubmed.ncbi.nlm.nih.gov/8694384/).
 - Mort (2004). *J Clin Anesth*. [Hypoxemia and intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/15590254/).
-- De Jong et al. (2018). *Crit Care Med*. [Intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/29261566/).
-- Heffner et al. (2013). *Resuscitation*. [Cardiac arrest during emergency airway management](https://pubmed.ncbi.nlm.nih.gov/23911630/).
 - Weisfeldt and Becker (2002). *JAMA*. [Three-phase time-sensitive model of resuscitation after cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12479769/).
 - Paradis et al. (1990). *JAMA*. [Coronary perfusion pressure and return of spontaneous circulation in human CPR](https://pubmed.ncbi.nlm.nih.gov/2386557/).
 - Meaney et al. (2013). *Circulation*. [Cardiopulmonary resuscitation quality](https://pubmed.ncbi.nlm.nih.gov/23801105/).
@@ -329,13 +297,10 @@ PCV-VG, pressure control with volume guarantee.
 
 ### Phenylephrine and ephedrine
 
-- Anderson et al. (2017). *Paediatr Anaesth*. [Phenylephrine PK](https://pubmed.ncbi.nlm.nih.gov/28868789/).
-- US Food and Drug Administration (2012). [Clinical pharmacology review of phenylephrine, NDA 203826](https://www.accessdata.fda.gov/drugsatfda_docs/nda/2012/203826_phenylephrine_toc.cfm).
-- Hengstmann and Goronzy (1982). *Eur J Clin Pharmacol*. [Phenylephrine PK](https://pubmed.ncbi.nlm.nih.gov/7056280/).
+- US Food and Drug Administration (2012). [Clinical pharmacology review of phenylephrine, NDA 203826](https://www.accessdata.fda.gov/drugsatfda_docs/nda/203826_phenylephrine_toc.cfm).
 - Rebet et al. (2016). *Eur J Anaesthesiol*. [Preload-dependent phenylephrine cardiac-output responses](https://pubmed.ncbi.nlm.nih.gov/27164015/).
 - Meng et al. (2011). *Br J Anaesth*. [Phenylephrine and ephedrine boluses under propofol-remifentanil anesthesia](https://pubmed.ncbi.nlm.nih.gov/21642644/).
 - Persky et al. (2004). *Br J Clin Pharmacol*. [Oral ephedrine PK and cardiovascular tolerance](https://pubmed.ncbi.nlm.nih.gov/15089807/).
-- Dings et al. (2026). *Pharmaceutics*. [Ephedrine hemodynamic time course during cesarean section](https://pubmed.ncbi.nlm.nih.gov/41900782/).
 - Sjøen et al. (2026). *Acta Anaesthesiol Scand*. [Vasopressor boluses during propofol-remifentanil induction](https://pubmed.ncbi.nlm.nih.gov/41144827/) and [correction](https://pubmed.ncbi.nlm.nih.gov/41326972/).
 
 ### Other vasoactive drugs
@@ -343,7 +308,6 @@ PCV-VG, pressure control with volume guarantee.
 - DailyMed (2025). [Vasopressin injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=971f9b1c-6094-4f80-920b-cb5d7e62950a).
 - Kates and Leier (1978). *Clin Pharmacol Ther*. [Dobutamine PK in heart failure](https://pubmed.ncbi.nlm.nih.gov/699477/).
 - Daly et al. (1997). *Am J Cardiol*. [Dobutamine dose-concentration relationship](https://pubmed.ncbi.nlm.nih.gov/9165162/).
-- Pfizer. [Dobutamine injection prescribing information](https://www.pfizermedicalinformation.com/patient/dobutamine/clinical-pharmacology).
 - Magnani et al. (1977). *J Int Med Res*. [Dobutamine dose response](https://pubmed.ncbi.nlm.nih.gov/838109/).
 - Hernández et al. (2013). *Intensive Care Med*. [Dobutamine hemodynamics and perfusion in septic shock](https://pubmed.ncbi.nlm.nih.gov/23740284/).
 - Baim et al. (1983). *N Engl J Med*. [Milrinone hemodynamics](https://pubmed.ncbi.nlm.nih.gov/6888453/).
@@ -366,22 +330,21 @@ PCV-VG, pressure control with volume guarantee.
 ## Fluids
 
 - Reid et al. (2003). *Clin Sci (Lond)*. [Urine after 2 L saline or Hartmann's](https://pubmed.ncbi.nlm.nih.gov/12519083/).
-- Ewaldsson and Hahn (2001). *Br J Anaesth*. [Volume kinetics of Ringer's solution during induction of spinal and general anaesthesia](https://pubmed.ncbi.nlm.nih.gov/11517124/).
-- Ewaldsson and Hahn (2005). *Anesthesiology*. [Kinetics and extravascular retention of acetated Ringer's solution during isoflurane or propofol anesthesia](https://pubmed.ncbi.nlm.nih.gov/16129968/).
-- Hahn (2010). *Anesthesiology*. [Crystalloid volume kinetics](https://pubmed.ncbi.nlm.nih.gov/20613481/).
+- Ewaldsson and Hahn (2001). *Br J Anaesth*. [Ringer's volume kinetics during spinal and general anesthesia induction](https://pubmed.ncbi.nlm.nih.gov/11517124/).
+- Ewaldsson and Hahn (2005). *Anesthesiology*. [Acetated Ringer's kinetics during isoflurane or propofol anesthesia](https://pubmed.ncbi.nlm.nih.gov/16129968/).
 - Hahn (2017). *Anesth Analg*. [Arterial pressure, age, and crystalloid elimination](https://pubmed.ncbi.nlm.nih.gov/28452823/).
 - Hahn and Nemme (2020). *BMC Anesthesiol*. [Fluid retention after anesthesia induction](https://pubmed.ncbi.nlm.nih.gov/32334513/).
 - Hahn (2021). *Perioper Med (Lond)*. [Crystalloid distribution during anesthesia-induced hypotension](https://pubmed.ncbi.nlm.nih.gov/34629113/).
-- Hahn (2024). *Front Physiol*. [Sequential recruitment of body fluid spaces for increasing volumes of crystalloid fluid](https://pubmed.ncbi.nlm.nih.gov/39263627/).
-- Philbin and Coggins (1978). *Anesthesiology*. [Plasma antidiuretic hormone levels in cardiac surgical patients during morphine and halothane anesthesia](https://pubmed.ncbi.nlm.nih.gov/686433/).
+- Hahn (2024). *Front Physiol*. [Fluid-space recruitment with increasing crystalloid volumes](https://pubmed.ncbi.nlm.nih.gov/39263627/).
+- Philbin and Coggins (1978). *Anesthesiology*. [Antidiuretic hormone during anesthesia and cardiac surgery](https://pubmed.ncbi.nlm.nih.gov/686433/).
 - Scheingraber et al. (1999). *Anesthesiology*. [Hyperchloremic acidosis after rapid saline infusion](https://pubmed.ncbi.nlm.nih.gov/10319771/).
-- Kahn et al. (1979). *Anesth Analg*. [Massive blood replacement: correlation of ionized calcium, citrate, and hydrogen ion concentration](https://pubmed.ncbi.nlm.nih.gov/36816/).
-- Kramer et al. (2003). *Crit Care Med*. [Citrate pharmacokinetics in critically ill patients](https://pubmed.ncbi.nlm.nih.gov/14530750/).
+- Kahn et al. (1979). *Anesth Analg*. [Ionized calcium, citrate, and pH during massive transfusion](https://pubmed.ncbi.nlm.nih.gov/36816/).
+- Kramer et al. (2003). *Crit Care Med*. [Citrate PK in critically ill patients](https://pubmed.ncbi.nlm.nih.gov/14530750/).
 - Rabcuka et al. (2025). *Transfusion*. [Acid-base and metabolite changes in stored red cell concentrates](https://pubmed.ncbi.nlm.nih.gov/41122829/).
 - Thode et al. (1983). *Scand J Clin Lab Invest Suppl*. [Relation between pH and ionized calcium in vitro and in vivo](https://pubmed.ncbi.nlm.nih.gov/6578581/).
 - Bolan et al. (2001). *Transfusion*. [Citrate, ionized calcium, and PTH during plateletpheresis](https://pubmed.ncbi.nlm.nih.gov/11552076/).
-- Ansari et al. (2025). *Anesthesiology*. [Pharmacokinetics of intravenous calcium during cesarean delivery](https://pubmed.ncbi.nlm.nih.gov/39361822/).
-- Denlinger et al. (1975). *Anesthesiology*. [Cardiovascular responses to intravenous calcium during halothane anesthesia](https://pubmed.ncbi.nlm.nih.gov/1119707/).
+- Ansari et al. (2025). *Anesthesiology*. [IV calcium PK during cesarean delivery](https://pubmed.ncbi.nlm.nih.gov/39361822/).
+- Denlinger et al. (1975). *Anesthesiology*. [Cardiovascular responses to IV calcium during halothane anesthesia](https://pubmed.ncbi.nlm.nih.gov/1119707/).
 - Lang et al. (1988). *Ann Intern Med*. [Left ventricular contractility and blood ionized calcium](https://pubmed.ncbi.nlm.nih.gov/3248127/).
 - González et al. (2018). *Kidney Int Rep*. [Secondary response to chronic respiratory acidosis](https://pubmed.ncbi.nlm.nih.gov/30197983/).
 - Krapf et al. (1991). *N Engl J Med*. [Renal response to chronic respiratory alkalosis](https://pubmed.ncbi.nlm.nih.gov/1902283/).
@@ -396,33 +359,25 @@ PCV-VG, pressure control with volume guarantee.
 - Peterson et al. (1981). *Am Rev Respir Dis*. [Aging and ventilatory and occlusion-pressure responses to hypoxia and hypercapnia](https://pubmed.ncbi.nlm.nih.gov/7294501/).
 - Poulin et al. (1993). *J Appl Physiol*. [Ventilatory sensitivity to CO₂ in hyperoxia and hypoxia in older humans](https://pubmed.ncbi.nlm.nih.gov/8307881/).
 - García-Río et al. (2007). *Respir Med*. [Age and hypoxic and hypercapnic inspiratory drive](https://pubmed.ncbi.nlm.nih.gov/17643972/).
-- Lhuissier et al. (2012). *J Physiol*. [Ageing and cardiorespiratory response to hypoxia](https://pubmed.ncbi.nlm.nih.gov/22907053/).
-- Egan et al. (2004). *Br J Anaesth*. [Remifentanil bolus respiratory effects by age](https://pubmed.ncbi.nlm.nih.gov/14970134/).
+- Lhuissier et al. (2012). *J Physiol*. [Aging and cardiorespiratory response to hypoxia](https://pubmed.ncbi.nlm.nih.gov/22907053/).
 - Bouillon et al. (2004). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).
 - Olofsen et al. (2010). *Anesthesiology*. [Dynamic remifentanil respiratory effects in awake and propofol-sedated volunteers](https://pubmed.ncbi.nlm.nih.gov/20461001/).
 - Babenco et al. (2000). *Anesthesiology*. [Remifentanil bolus ventilatory control](https://pubmed.ncbi.nlm.nih.gov/10691225/).
-- Lee et al. (2011). *Korean J Anesthesiol*. [Propofol effect-site EC₅₀ for respiratory depression](https://pubmed.ncbi.nlm.nih.gov/21927681/).
 - Blouin et al. (1993). *Anesthesiology*. [Propofol depresses hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8267192/).
 - Nieuwenhuijs et al. (2000). *Anesthesiology*. [Acute and sustained hypoxic responses during propofol sedation](https://pubmed.ncbi.nlm.nih.gov/10638898/).
-- Knill and Gelb (1978). *Anesthesiology*. [Ventilatory responses to hypoxia and hypercapnia during halothane sedation and anesthesia](https://pubmed.ncbi.nlm.nih.gov/697078/).
+- Knill and Gelb (1978). *Anesthesiology*. [Hypoxic and hypercapnic ventilatory responses during halothane](https://pubmed.ncbi.nlm.nih.gov/697078/).
 - Sarton et al. (1996). *Anesthesiology*. [Sevoflurane, stimulation, and hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8712445/).
 - Nieuwenhuijs et al. (2001). *Anesthesiology*. [Propofol effects on ventilatory control](https://pubmed.ncbi.nlm.nih.gov/11605929/).
-- Glass et al. (1999). *Anesthesiology*. [Remifentanil ventilatory depression and CO₂](https://pubmed.ncbi.nlm.nih.gov/10360852/).
 - Pandit et al. (1999). *Br J Anaesth*. [Sevoflurane and hypercapnic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/10618930/).
 - Doi and Ikeda (1987). *Anesth Analg*. [Sevoflurane and CO₂ response](https://pubmed.ncbi.nlm.nih.gov/3826666/).
 - Hickey et al. (1971). *Anesthesiology*. [Apneic threshold under anesthesia](https://pubmed.ncbi.nlm.nih.gov/4932620/).
 - Patrick et al. (1995). *J Appl Physiol*. [Awake breathing during hypocapnia](https://pubmed.ncbi.nlm.nih.gov/8847274/).
 - Georgopoulos et al. (1997). *Am J Respir Crit Care Med*. [CO₂ feedback during awake pressure support](https://pubmed.ncbi.nlm.nih.gov/9196108/).
-- Duffin (2011). *Respir Physiol Neurobiol*. [Ventilatory response modeling](https://pubmed.ncbi.nlm.nih.gov/21514404/).
-- Miyamura et al. (1980). *Jpn J Physiol*. [Hypercapnic ventilatory response variability](https://pubmed.ncbi.nlm.nih.gov/6790801/).
 - Clark and von Euler (1972). *J Physiol*. [Volume feedback on inspiratory duration](https://pubmed.ncbi.nlm.nih.gov/5033464/).
 - Polacheck et al. (1980). *J Appl Physiol*. [Vagal inflation feedback under anesthesia](https://pubmed.ncbi.nlm.nih.gov/7440275/).
 - Tobin et al. (1983). *Chest*. [Breathing pattern of normal subjects](https://pubmed.ncbi.nlm.nih.gov/6872603/).
 - Leung et al. (1997). *Am J Respir Crit Care Med*. [SIMV and pressure-support effort unloading](https://pubmed.ncbi.nlm.nih.gov/9196100/).
 - Graves et al. (1986). *Am J Physiol*. [Patient-ventilator synchronization under anesthesia](https://pubmed.ncbi.nlm.nih.gov/3706575/).
-- Christie and Smith (1992). *Anesth Analg*. [Pressure support during general anesthesia](https://pubmed.ncbi.nlm.nih.gov/1632530/).
-- Lim et al. (2012). *Paediatr Anaesth*. [Pediatric pressure support with an LMA](https://pubmed.ncbi.nlm.nih.gov/22380745/).
-- Capdevila et al. (2014). *PLoS One*. [Pressure support and LMA recovery](https://pubmed.ncbi.nlm.nih.gov/25536515/).
 
 ## Gas exchange and blood chemistry
 
@@ -439,7 +394,7 @@ PCV-VG, pressure control with volume guarantee.
 - Figge et al. (2018). *J Crit Care*. [Albumin and phosphate charge in plasma acid-base chemistry](https://pubmed.ncbi.nlm.nih.gov/29080515/).
 - O'Neill and Robbins (2017). *J Appl Physiol*. [Blood CO₂ transport and the magnitude of the Haldane effect](https://pubmed.ncbi.nlm.nih.gov/27881667/).
 - Wooten (2003). *J Appl Physiol*. [Acid-base balance in multicompartment blood systems](https://pubmed.ncbi.nlm.nih.gov/12923118/).
-- Wooten (2010). *J Clin Monit Comput*. [Multicompartment interstitial-blood acid-base balance and extracellular standard base excess](https://pubmed.ncbi.nlm.nih.gov/20354772/).
+- Wooten (2010). *J Clin Monit Comput*. [Interstitial-blood acid-base balance and extracellular base excess](https://pubmed.ncbi.nlm.nih.gov/20354772/).
 - Brackett et al. (1965). *N Engl J Med*. [Whole-body acute hypercapnic buffering](https://pubmed.ncbi.nlm.nih.gov/14219220/).
 - Arbus et al. (1969). *N Engl J Med*. [Human acute respiratory alkalosis ranges](https://pubmed.ncbi.nlm.nih.gov/5782512/).
 - Crapo et al. (1999). *Am J Respir Crit Care Med*. [Arterial blood gas and A-a gradient reference values](https://pubmed.ncbi.nlm.nih.gov/10556115/).
@@ -452,12 +407,10 @@ PCV-VG, pressure control with volume guarantee.
 - Taskar et al. (1995). *Chest*. [CO₂ elimination after ventilation changes](https://pubmed.ncbi.nlm.nih.gov/7606958/).
 - Sasse et al. (1996). *Chest*. [Arterial blood gas changes during room-air breath-holding from FRC](https://pubmed.ncbi.nlm.nih.gov/8874252/).
 - Weil et al. (1986). *N Engl J Med*. [Arterial and mixed venous acid-base differences during CPR](https://pubmed.ncbi.nlm.nih.gov/3088448/).
-- Kobayashi and Yokoyama (1994). *Masui*. [Blood gas changes during apnea](https://pubmed.ncbi.nlm.nih.gov/7933492/).
 - Benumof et al. (1997). *Anesthesiology*. [Desaturation after preoxygenation](https://pubmed.ncbi.nlm.nih.gov/9357902/).
 - Nimmagadda et al. (2017). *Anesth Analg*. [Preoxygenation endpoints](https://pubmed.ncbi.nlm.nih.gov/28099321/).
 - Hardman et al. (2000). *Anesth Analg*. [Hypoxemia during apnea](https://pubmed.ncbi.nlm.nih.gov/10702447/).
 - Laviola et al. (2020). *Br J Anaesth*. [Oxygen fraction during passive airway rescue](https://pubmed.ncbi.nlm.nih.gov/32008701/).
-- Farmery and Roe (1996). *Br J Anaesth*. [Model of oxyhemoglobin desaturation during apnea](https://pubmed.ncbi.nlm.nih.gov/8777112/).
 - Stock et al. (1989). *J Clin Anesth*. [Blood gases during airway obstruction](https://pubmed.ncbi.nlm.nih.gov/2516732/).
 
 ## Lung aeration and airway patency
@@ -472,7 +425,7 @@ PCV-VG, pressure control with volume guarantee.
 - Rothen et al. (1999). *Br J Anaesth*. [Time course of recruitment](https://pubmed.ncbi.nlm.nih.gov/10472221/).
 - Bates and Irvin (2002). *J Appl Physiol*. [Recruitment and derecruitment dynamics](https://pubmed.ncbi.nlm.nih.gov/12133882/).
 - Malo et al. (1984). *J Appl Physiol*. [PEEP and shunt in pulmonary edema](https://pubmed.ncbi.nlm.nih.gov/6389451/).
-- Benoit et al. (2002). *Anesth Analg*. [Inspired O₂ before extubation and postoperative atelectasis](https://pubmed.ncbi.nlm.nih.gov/12456458/).
+- Benoît et al. (2002). *Anesth Analg*. [Inspired O₂ before extubation and postoperative atelectasis](https://pubmed.ncbi.nlm.nih.gov/12456458/).
 - Wahba et al. (1975). *Can Anaesth Soc J*. [Lung volumes after upper abdominal surgery](https://pubmed.ncbi.nlm.nih.gov/1095163/).
 - Lindberg et al. (1992). *Acta Anaesthesiol Scand*. [Atelectasis and A-a gradient after lower abdominal surgery](https://pubmed.ncbi.nlm.nih.gov/1514340/).
 - Putensen-Himmer et al. (1992). *Anesthesiology*. [FRC and blood gases after open and laparoscopic cholecystectomy](https://pubmed.ncbi.nlm.nih.gov/1416164/).
@@ -493,7 +446,6 @@ PCV-VG, pressure control with volume guarantee.
 ## Temperature
 
 - Sessler (2000). *Anesthesiology*. [Perioperative heat balance](https://pubmed.ncbi.nlm.nih.gov/10691247/).
-- Sessler (2016). *Lancet*. [Review of perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/26775126/).
 - Matsukawa et al. (1995). *Anesthesiology*. [Heat redistribution after induction](https://pubmed.ncbi.nlm.nih.gov/7879935/).
 - Frank et al. (1997). *JAMA*. [Perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/9087467/).
 - Kurz et al. (1995). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
@@ -511,8 +463,7 @@ PCV-VG, pressure control with volume guarantee.
 - Giosa et al. (2024). *J Clin Med*. [Plateau pressure, residual flow, and patient effort](https://pubmed.ncbi.nlm.nih.gov/39685913/).
 - Lee et al. (2022). *Sci Data*. [VitalDB waveforms and numerics](https://pubmed.ncbi.nlm.nih.gov/35676300/).
 - Jonson et al. (1993). *J Appl Physiol*. [Human tissue viscoelasticity](https://pubmed.ncbi.nlm.nih.gov/8376259/).
-- D'Angelo et al. (1989). *J Appl Physiol*. [Respiratory stress adaptation](https://pubmed.ncbi.nlm.nih.gov/2606863/).
-- Pelosi et al. (1998). *Anesth Analg*. [Body mass index, functional residual capacity, and compliance under anesthesia](https://pubmed.ncbi.nlm.nih.gov/9728848/).
+- Pelosi et al. (1998). *Anesth Analg*. [Body mass index, FRC, and compliance under anesthesia](https://pubmed.ncbi.nlm.nih.gov/9728848/).
 - Dräger. [Evita 4 SW 4.n instructions for use](https://www.draeger.com/Content/Documents/Content/IfU_Evita_4_SW_4.n_EN_9039485.pdf).
 - Feigenwinter and Zbinden (1991). *Anaesthesist*. [Circle-system resistance](https://pubmed.ncbi.nlm.nih.gov/1952036/).
 
@@ -537,9 +488,9 @@ PCV-VG, pressure control with volume guarantee.
 - Blink Device Company (2024). [TwitchView operating manual](https://www.blinkdc.com/hubfs/PN00211%20TwitchView%20IFU%20Rev%20N.pdf).
 - Thilen et al. (2023). *Anesthesiology*. [ASA guidelines for monitoring and antagonism of neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/36520073/).
 - ANZAAG and ANZCA (2022). [Immediate management of perioperative anaphylaxis in adults](https://www.anzca.edu.au/getContentAsset/d38d29ae-74f0-4136-8372-1d342c594e11/80feb437-d24d-46b8-a858-4a2a28b9b970/Anaphylaxis-Card-1-Adult-Immediate-Management-2022.pdf?language=en).
-- Surviving Sepsis Campaign (2026). [International guidelines for management of sepsis and septic shock](https://sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-campaign-international-guidelines-for-management-of-sepsis-and-septic-shock-2026).
+- Prescott et al. (2026). *Crit Care Med*. [Surviving Sepsis Campaign guidelines for sepsis and septic shock](https://pubmed.ncbi.nlm.nih.gov/41869847/).
 - Kietaibl et al. (2023). *Eur J Anaesthesiol*. [ESAIC guidelines for severe perioperative bleeding](https://pubmed.ncbi.nlm.nih.gov/36855941/).
 - Xing et al. (2018). *Pain Med*. [Lidocaine pretreatment for propofol injection pain](https://pubmed.ncbi.nlm.nih.gov/28525614/).
 - Anesthesia Patient Safety Foundation (2019). [Nitrogen contamination of an operating room oxygen pipeline](https://www.apsf.org/article/nitrogen-contamination-of-operating-room-oxygen-pipeline/).
 - Malignant Hyperthermia Association of the United States. [Managing a crisis](https://www.mhaus.org/healthcare-professionals/managing-a-crisis/).
-- European Malignant Hyperthermia Group (2024). [Recognising and managing a malignant hyperthermia crisis](https://www.emhg.org/recommendations-1/2024/11/4/recognising-and-managing-a-malignant-hyperthermia-crisis-v2024).
+- Glahn et al. (2025). *Br J Anaesth*. [European Malignant Hyperthermia Group guidelines for malignant hyperthermia crisis](https://pubmed.ncbi.nlm.nih.gov/39482150/).

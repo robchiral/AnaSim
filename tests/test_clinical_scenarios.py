@@ -130,7 +130,7 @@ class TestClinicalAcceptance:
         assert ventilation_time is not None and 180 <= ventilation_time <= 900
         assert bis_70_time is not None and 180 <= bis_70_time <= 900
         assert bis_80_time is not None and bis_80_time <= 1200
-        # Atelectasis from induction persists after emergence (Benoit 2002).
+        # Atelectasis from induction persists after emergence (Benoît 2002).
         assert engine.aeration.shunt_fraction >= shunt
 
     def test_class_iii_hemorrhage_and_blood_rescue(

@@ -635,9 +635,10 @@ class HemodynamicModel:
         function curve that is linear at low filling pressures.
         """
         cfg = self.config
+        rhythm = self._rhythm_type
         rhythm_beating = (
             not self._electrically_silent
-            and self.rhythm_type not in PULSELESS_RHYTHMS
+            and rhythm not in PULSELESS_RHYTHMS
             and not self._compressions
         )
         flow_activity = clamp01(self._last_intrinsic_co / ARREST_CO_L_MIN) if rhythm_beating else 0.0
@@ -771,8 +772,11 @@ class HemodynamicModel:
         return delta_hr, sv_factor, svr_factor
 
     def _rhythm_sv_factor(self, current_hr: float) -> float:
-        factor = RHYTHM_SV_FACTOR.get(self.rhythm_type, 1.0)
-        if self.rhythm_type == RhythmType.AFIB:
+        rhythm = self._rhythm_type
+        if rhythm is RhythmType.SINUS:
+            return 1.0
+        factor = RHYTHM_SV_FACTOR.get(rhythm, 1.0)
+        if rhythm is RhythmType.AFIB:
             excess = max(0.0, current_hr - 90.0)
             eff_excess = min(excess, 80.0) + 0.25 * max(0.0, excess - 80.0)
             return factor / (1.0 + 0.006 * eff_excess + 0.00018 * eff_excess * eff_excess)
@@ -914,40 +918,26 @@ class HemodynamicModel:
                 sv += hr_vr_gate * (vr_sv_cap - sv)
         return sv
 
-    def _compute_state(
+    def _compute_intrinsic(
         self,
-        preload_sv_factor: float | None = None,
-        sepsis_sev: float | None = None,
-        anaph_sev: float | None = None,
-        distributive_tpr_offset: float | None = None,
-        hr_base: float | None = None,
+        preload_sv_factor: float,
+        sepsis_sev: float,
+        distributive_tpr_offset: float,
+        hr_base: float,
         *,
-        _include_stim: bool = True,
-        _update_stim: bool = False,
-        _cache: bool = True,
-    ) -> HemoState:
+        include_stim: bool = True,
+    ) -> tuple[float, float, float, float, float, bool]:
         cfg = self.config
-        if sepsis_sev is None:
-            sepsis_sev = clamp01(self.sepsis_severity)
-        if anaph_sev is None:
-            anaph_sev = clamp01(self.anaphylaxis_severity)
-        if distributive_tpr_offset is None:
-            sepsis_drop_wood = cfg.sepsis_svr_drop_wood / self.failure.output_factor
-            distributive_tpr_offset = -(
-                sepsis_drop_wood * sepsis_sev + cfg.anaphylaxis_svr_drop_wood * anaph_sev
-            ) / 1000.0
-
-        if hr_base is None:
-            hr_base = self._calc_hr()
-        eff_dist_hr = self.dist_hr if _include_stim else 0.0
-        eff_dist_sv = self.dist_sv if _include_stim else 0.0
-        eff_dist_svr = self.dist_svr if _include_stim else 0.0
-        eff_crisis_hr = self.crisis_hr if _include_stim else 0.0
-        eff_crisis_svr = self.crisis_svr if _include_stim else 0.0
+        rhythm = self._rhythm_type
+        eff_dist_hr = self.dist_hr if include_stim else 0.0
+        eff_dist_sv = self.dist_sv if include_stim else 0.0
+        eff_dist_svr = self.dist_svr if include_stim else 0.0
+        eff_crisis_hr = self.crisis_hr if include_stim else 0.0
+        eff_crisis_svr = self.crisis_svr if include_stim else 0.0
         sinus_hr = clamp(hr_base + eff_crisis_hr + eff_dist_hr, HR_MIN, HR_MAX)
         current_hr = self._rhythm_rate(sinus_hr)
         reflex_tpr_factor = 1.0
-        if self.rhythm_type != RhythmType.SINUS and self.smoothed_baro_hr > 0.0:
+        if rhythm is not RhythmType.SINUS and self.smoothed_baro_hr > 0.0:
             # When the rhythm holds rate low during hypotension, vasoconstriction compensates.
             reflex_hr = self.smoothed_baro_hr
             blocked_hr = max(0.0, reflex_hr - (current_hr - self._rhythm_rate(sinus_hr - reflex_hr)))
@@ -959,7 +949,7 @@ class HemodynamicModel:
 
         term = self._hr_sv_factor(current_hr)
         if (
-            self.rhythm_type not in RHYTHM_SV_FACTOR
+            (rhythm is RhythmType.SINUS or rhythm not in RHYTHM_SV_FACTOR)
             and (self._unstim_rate > 0.0 or self._unstim_rate_unloaded > 0.0)
         ):
             preload_avail = (
@@ -985,8 +975,6 @@ class HemodynamicModel:
             eff_tde_sv = tde_cap * math.tanh(self.tde_sv / max(1e-6, tde_cap))
         raw_sv = (self.sv_star + eff_tde_sv) * term + eff_dist_sv
 
-        if preload_sv_factor is None:
-            preload_sv_factor = self._last_preload_sv_factor
         # TPR floor of about 6 Wood units.
         endogenous_tpr = self.tpr * (1.0 - self.smoothed_baro_vasc) * reflex_tpr_factor
         eff_tpr = max(
@@ -1016,19 +1004,21 @@ class HemodynamicModel:
         # Reversible O2-supply shortfalls share one ceiling so global hypoxemia
         # is not counted twice; countershock stunning, permanent injury, and
         # electrical failure apply multiplicatively on top.
+        coronary = self.coronary
         reversible_o2_loss = max(
-            0.50 * self.coronary.ischemia,
+            0.50 * coronary.ischemia,
             cfg.hypoxia_sv_depression * self.myocardial_hypoxia,
         )
         coronary_sv_keep = (
             (1.0 - reversible_o2_loss)
-            * (1.0 - self.coronary.shock_stunning)
-            * (1.0 - self.coronary.injury)
-            * self.coronary.electrical_factor
+            * (1.0 - coronary.shock_stunning)
+            * (1.0 - coronary.injury)
+            * coronary.electrical_factor
         )
         current_sv = max(0.0, current_sv) * coronary_sv_keep * self.acidosis_factor
 
-        current_sv *= self._rhythm_sv_factor(current_hr)
+        if rhythm is not RhythmType.SINUS:
+            current_sv *= self._rhythm_sv_factor(current_hr)
         current_sv *= (
             (1.0 - self.toxic_contractility_loss)
             * self._ca_sv_factor
@@ -1037,40 +1027,82 @@ class HemodynamicModel:
         )
 
         electrically_silent = self._electrically_silent
-        if electrically_silent or self.rhythm_type in PULSELESS_RHYTHMS or current_hr <= 0.0:
+        if (
+            electrically_silent
+            or (rhythm is not RhythmType.SINUS and rhythm in PULSELESS_RHYTHMS)
+            or current_hr <= 0.0
+        ):
             current_hr = current_sv = 0.0
         elif current_sv > 0.0:
             current_sv = self._cap_sv_by_venous_return(
                 current_sv, eff_tpr, current_hr, self.vasopressor_sv_factor,
             )
         if current_hr <= 0.0 or current_sv <= 0.0:
-            intrinsic_co = intrinsic_map = co = map_val = perfusion_map = svr_val = 0.0
-            if _include_stim and _update_stim:
-                self._stim_map = 0.0
+            intrinsic_co = intrinsic_map = 0.0
         else:
-            intrinsic_co = co = current_hr * current_sv / 1000.0
-            intrinsic_map = map_val = perfusion_map = clamp(current_hr * current_sv * eff_tpr, 0.0, 300.0)
-            svr_val = map_val / co
-            if _include_stim and _update_stim:
-                if (
-                    eff_dist_hr != 0.0
-                    or eff_dist_sv != 0.0
-                    or eff_dist_svr != 0.0
-                    or eff_crisis_hr != 0.0
-                    or eff_crisis_svr != 0.0
-                ):
-                    unstim = self._compute_state(
-                        preload_sv_factor=preload_sv_factor,
-                        sepsis_sev=sepsis_sev,
-                        anaph_sev=anaph_sev,
-                        distributive_tpr_offset=distributive_tpr_offset,
-                        hr_base=hr_base,
-                        _include_stim=False,
-                        _cache=False,
-                    )
-                    self._stim_map = clamp(intrinsic_map - unstim.intrinsic_map, 0.0, intrinsic_map)
-                else:
-                    self._stim_map = 0.0
+            intrinsic_co = current_hr * current_sv / 1000.0
+            intrinsic_map = clamp(current_hr * current_sv * eff_tpr, 0.0, 300.0)
+        return current_hr, current_sv, eff_tpr, intrinsic_co, intrinsic_map, electrically_silent
+
+    def _compute_state(
+        self,
+        preload_sv_factor: float | None = None,
+        sepsis_sev: float | None = None,
+        anaph_sev: float | None = None,
+        distributive_tpr_offset: float | None = None,
+        hr_base: float | None = None,
+        *,
+        _include_stim: bool = True,
+        _update_stim: bool = False,
+        _cache: bool = True,
+    ) -> HemoState:
+        cfg = self.config
+        if sepsis_sev is None:
+            sepsis_sev = clamp01(self._sepsis_severity)
+        if anaph_sev is None:
+            anaph_sev = clamp01(self._anaphylaxis_severity)
+        if distributive_tpr_offset is None:
+            sepsis_drop_wood = cfg.sepsis_svr_drop_wood / self.failure.output_factor
+            distributive_tpr_offset = -(
+                sepsis_drop_wood * sepsis_sev + cfg.anaphylaxis_svr_drop_wood * anaph_sev
+            ) / 1000.0
+        if hr_base is None:
+            hr_base = self._calc_hr()
+        if preload_sv_factor is None:
+            preload_sv_factor = self._last_preload_sv_factor
+
+        current_hr, current_sv, eff_tpr, intrinsic_co, intrinsic_map, electrically_silent = self._compute_intrinsic(
+            preload_sv_factor,
+            sepsis_sev,
+            distributive_tpr_offset,
+            hr_base,
+            include_stim=_include_stim,
+        )
+        co = intrinsic_co
+        map_val = perfusion_map = intrinsic_map
+        svr_val = map_val / co if co > 0.0 else 0.0
+        if _include_stim and _update_stim:
+            if (
+                current_hr <= 0.0
+                or current_sv <= 0.0
+                or (
+                    self.dist_hr == 0.0
+                    and self.dist_sv == 0.0
+                    and self.dist_svr == 0.0
+                    and self.crisis_hr == 0.0
+                    and self.crisis_svr == 0.0
+                )
+            ):
+                self._stim_map = 0.0
+            else:
+                _, _, _, _, unstim_map, _ = self._compute_intrinsic(
+                    preload_sv_factor,
+                    sepsis_sev,
+                    distributive_tpr_offset,
+                    hr_base,
+                    include_stim=False,
+                )
+                self._stim_map = clamp(intrinsic_map - unstim_map, 0.0, intrinsic_map)
         venous_pressure = self._last_rap
         rap_val = self._last_rap
         lap_val = self._effective_lap()
@@ -1116,6 +1148,7 @@ class HemodynamicModel:
             rv_co_val = self._last_rv_co + arrest_share * (co - self._last_rv_co)
             lv_inflow_val = self._last_lv_inflow + arrest_share * (co - self._last_lv_inflow)
 
+        rhythm = self._rhythm_type
         result = HemoState(
             map=map_val,
             hr=current_hr,
@@ -1137,8 +1170,8 @@ class HemodynamicModel:
             lv_inflow=lv_inflow_val,
             preload_factor=self._last_preload_factor,
             rhythm_type=RhythmType.ASYSTOLE
-            if (electrically_silent or (current_hr <= 0.0 and self.rhythm_type != RhythmType.VFIB))
-            else self.rhythm_type,
+            if (electrically_silent or (current_hr <= 0.0 and rhythm is not RhythmType.VFIB))
+            else rhythm,
             compressions=self._compressions,
             intrinsic_co=intrinsic_co,
             intrinsic_map=intrinsic_map,
@@ -1152,14 +1185,17 @@ class HemodynamicModel:
 
     def _rhythm_rate(self, sinus_hr: float) -> float:
         """Ventricular rate from the underlying sinus rate; untreated AF with RVR is 110-180+ bpm."""
-        fixed = FIXED_RHYTHM_RATE.get(self.rhythm_type)
+        rhythm = self._rhythm_type
+        if rhythm is RhythmType.SINUS:
+            return sinus_hr
+        fixed = FIXED_RHYTHM_RATE.get(rhythm)
         if fixed is not None:
             return fixed
-        if self.rhythm_type == RhythmType.AFIB:
+        if rhythm is RhythmType.AFIB:
             excess_sinus = max(0.0, sinus_hr - 76.0)
             rvr_drive = 110.0 + 95.0 * math.tanh(1.25 * excess_sinus / 95.0)
             return min(HR_MAX, max(sinus_hr, rvr_drive * (1.0 - self.config.beta_block_af_rate * self._beta_occupancy)))
-        if self.rhythm_type == RhythmType.SINUS_BRADY:
+        if rhythm is RhythmType.SINUS_BRADY:
             return min(sinus_hr, 50.0 + self.config.glyco_brady_relief * self._vagal_block + self._adrenergic_chrono)
         return sinus_hr
 
@@ -1267,8 +1303,8 @@ class HemodynamicModel:
         self.toxic_contractility_loss = clamp01(toxic_contractility_loss)
         dt_min = dt / 60.0
         delivery_time = dt_min * circulation
-        sepsis_sev = clamp01(self.sepsis_severity)
-        anaph_sev = clamp01(self.anaphylaxis_severity)
+        sepsis_sev = clamp01(self._sepsis_severity)
+        anaph_sev = clamp01(self._anaphylaxis_severity)
 
         # Hemodynamic effect sites: propofol's arterial, cardiac, and venous
         # effects follow Kazama 1999's SBP equilibration. Reflex depression
@@ -1279,14 +1315,17 @@ class HemodynamicModel:
         self.ce_remi_vagal += (remifentanil - self.ce_remi_vagal) * -math.expm1(-self._ke0_opioid_cv * delivery_time)
         self.ce_sevo += (mac_sevo - self.ce_sevo) * -math.expm1(-cfg.ke0_sevo * delivery_time)
         ce_prop = self.ce_prop_cv * self._prop_cv_potency
-        adjunct_midaz = hill_function(max(0.0, ce_midazolam), 100.0, 1.2)
-        adjunct_depth = adjunct_midaz + hill_function(max(0.0, ce_etomidate), 0.35, 1.5)
+        adjunct_midaz = hill_function(ce_midazolam, 100.0, 1.2) if ce_midazolam > 0.0 else 0.0
+        adjunct_etom = hill_function(ce_etomidate, 0.35, 1.5) if ce_etomidate > 0.0 else 0.0
+        adjunct_depth = adjunct_midaz + adjunct_etom
         anesthetic_depth = clamp01(self.ce_sevo + cp_prop / 4.0 + adjunct_depth)
         midaz_venous = (
             1.35
             * cfg.propofol_sympathetic_cp
             * adjunct_midaz
             * (0.45 + 0.55 * hill_function(self.ce_opioid_cv, 1.0, 1.0))
+            if adjunct_midaz > 0.0
+            else 0.0
         )
         self._sympathetic_venous_depth += (
             clamp01(max(0.0, cp_prop + midaz_venous) / cfg.propofol_sympathetic_cp)
@@ -1311,12 +1350,12 @@ class HemodynamicModel:
         self.hyperkalemia_block = clamp01((eff_k - 6.2) / 3.0)
         self.hyperkalemia_arrhythmia = clamp01((eff_k - 6.8) / 2.2)
 
-        if self.rhythm_type == RhythmType.ASYSTOLE:
+        if self._rhythm_type is RhythmType.ASYSTOLE:
             coronary = self.coronary
             # Primary asystole uses a calibrated CPR recovery timer;
             # post-shock asystole escapes in ArrhythmiaModel.
             can_restart = (
-                self.compressions
+                self._compressions
                 and not self.post_shock_asystole
                 and coronary.supply_demand_ratio >= 1.0
                 and coronary.energy_reserve > 0.0
@@ -1337,21 +1376,28 @@ class HemodynamicModel:
         ce_ephedrine = ce_ephedrine_raw * self.acidosis_factor
 
         # Antagonist dose ratios; esmolol is beta-1 selective.
-        labetalol_beta = max(0.0, ce_labetalol) / cfg.labetalol_kb_beta
-        beta1_dr = 1.0 + max(0.0, ce_esmolol) / cfg.esmolol_kb + labetalol_beta
-        beta2_dr = 1.0 + labetalol_beta
-        alpha_dr = 1.0 + max(0.0, ce_labetalol) / cfg.labetalol_kb_alpha
-        self._beta_occupancy = beta_occ = 1.0 - 1.0 / beta1_dr
-        alpha_occ = 1.0 - 1.0 / alpha_dr
-        glyco = hill_function(max(0.0, ce_glyco), cfg.glyco_c50, cfg.glyco_gamma)
-        atropine = hill_function(max(0.0, ce_atropine), cfg.atropine_c50, cfg.atropine_gamma)
-        self._vagal_block = vagal = 1.0 - (1.0 - glyco) * (1.0 - atropine)
-        atropine_hr = cfg.atropine_emax_hr * atropine / (1.0 + max(0.0, cp_prop) / cfg.atropine_propofol_cp50)
-        glyco_hr = cfg.glyco_emax_hr * glyco
-        vagal_hr = max(glyco_hr, glyco_hr * (1.0 - atropine) + atropine_hr)
+        if ce_esmolol > 0.0 or ce_labetalol > 0.0:
+            labetalol_beta = max(0.0, ce_labetalol) / cfg.labetalol_kb_beta
+            beta1_dr = 1.0 + max(0.0, ce_esmolol) / cfg.esmolol_kb + labetalol_beta
+            beta2_dr = 1.0 + labetalol_beta
+            alpha_dr = 1.0 + max(0.0, ce_labetalol) / cfg.labetalol_kb_alpha
+            self._beta_occupancy = beta_occ = 1.0 - 1.0 / beta1_dr
+            alpha_occ = 1.0 - 1.0 / alpha_dr
+        else:
+            beta1_dr = beta2_dr = alpha_dr = 1.0
+            self._beta_occupancy = beta_occ = alpha_occ = 0.0
+        if ce_glyco > 0.0 or ce_atropine > 0.0:
+            glyco = hill_function(ce_glyco, cfg.glyco_c50, cfg.glyco_gamma) if ce_glyco > 0.0 else 0.0
+            atropine = hill_function(ce_atropine, cfg.atropine_c50, cfg.atropine_gamma) if ce_atropine > 0.0 else 0.0
+            self._vagal_block = vagal = 1.0 - (1.0 - glyco) * (1.0 - atropine)
+            atropine_hr = cfg.atropine_emax_hr * atropine / (1.0 + max(0.0, cp_prop) / cfg.atropine_propofol_cp50)
+            glyco_hr = cfg.glyco_emax_hr * glyco
+            vagal_hr = max(glyco_hr, glyco_hr * (1.0 - atropine) + atropine_hr)
+        else:
+            self._vagal_block = vagal = vagal_hr = 0.0
         resting_tone = 1.0 - cfg.sympathetic_anesthetic_depression * anesthetic_depth
-        amiodarone = hill_function(max(0.0, ce_amiodarone), cfg.amiodarone_c50, 1.0)
-        amiodarone_hr = hill_function(max(0.0, ce_amiodarone_hr), cfg.amiodarone_c50, 1.0)
+        amiodarone = hill_function(ce_amiodarone, cfg.amiodarone_c50, 1.0) if ce_amiodarone > 0.0 else 0.0
+        amiodarone_hr = hill_function(ce_amiodarone_hr, cfg.amiodarone_c50, 1.0) if ce_amiodarone_hr > 0.0 else 0.0
         # Shares of sympathetic reflex and stimulation responses left after
         # block. Age and amiodarone reduce the HR share.
         beta_response = 1.0 - cfg.beta_block_reflex * beta_occ
@@ -1480,30 +1526,44 @@ class HemodynamicModel:
             self._drug_tpr *= 1.0 + 0.09 * n2o_level * resting_tone * alpha_response
             self._drug_sv *= 1.0 - 0.08 * n2o_level
         ce_amio_vasc = max(0.0, ce_amiodarone_vasc)
-        self._amiodarone_vasc_adapted += (ce_amio_vasc - self._amiodarone_vasc_adapted) * (
-            -math.expm1(-60.0 * delivery_time / cfg.amiodarone_vasc_adaptation_s)
-        )
-        amiodarone_vasc = hill_function(
-            max(0.0, ce_amio_vasc - self._amiodarone_vasc_adapted), cfg.amiodarone_vasc_c50, cfg.amiodarone_vasc_gamma
-        )
-        self._amiodarone_ees_factor = 1.0 - cfg.amiodarone_ees_reduction * amiodarone
-        self._drug_hr *= 1.0 - cfg.amiodarone_hr_reduction * amiodarone_hr
-        self._drug_sv *= 1.0 - cfg.amiodarone_sv_reduction * amiodarone
-        self._drug_tpr *= 1.0 - cfg.amiodarone_tpr_reduction * amiodarone_vasc
+        if ce_amio_vasc > 0.0 or self._amiodarone_vasc_adapted != 0.0 or amiodarone > 0.0 or amiodarone_hr > 0.0:
+            self._amiodarone_vasc_adapted += (ce_amio_vasc - self._amiodarone_vasc_adapted) * (
+                -math.expm1(-60.0 * delivery_time / cfg.amiodarone_vasc_adaptation_s)
+            )
+            amiodarone_vasc = hill_function(
+                max(0.0, ce_amio_vasc - self._amiodarone_vasc_adapted),
+                cfg.amiodarone_vasc_c50, cfg.amiodarone_vasc_gamma,
+            )
+            self._amiodarone_ees_factor = 1.0 - cfg.amiodarone_ees_reduction * amiodarone
+            self._drug_hr *= 1.0 - cfg.amiodarone_hr_reduction * amiodarone_hr
+            self._drug_sv *= 1.0 - cfg.amiodarone_sv_reduction * amiodarone
+            self._drug_tpr *= 1.0 - cfg.amiodarone_tpr_reduction * amiodarone_vasc
+        else:
+            self._amiodarone_ees_factor = 1.0
 
         # Positive intrathoracic pressure reduces venous return; spontaneous
         # negative pressure modestly augments it.
         self.f_preload_pit = self._pit_preload_factor(pit)
 
-        self._epi_pressor_ce += (max(0.0, ce_epi) - self._epi_pressor_ce) * (
-            -math.expm1(-dt / cfg.epi_tau_pressor_s)
+        epi_active = (
+            ce_epi > 0.0
+            or self._epi_pressor_ce != 0.0
+            or self._epi_high_pressor_ce != 0.0
+            or self._epi_beta2_effect != 0.0
+            or self._epi_chrono_effect != 0.0
         )
-        self._epi_high_pressor_ce += (max(0.0, ce_epi) - self._epi_high_pressor_ce) * (
-            -math.expm1(-dt / cfg.epi_tau_alpha_high_s)
-        )
-        self._epi_venous_alpha = hill_function(
-            self._epi_pressor_ce / alpha_dr, cfg.epi_c50_alpha * cfg.epi_venous_potency_ratio, cfg.epi_gamma_alpha
-        )
+        if epi_active:
+            self._epi_pressor_ce += (max(0.0, ce_epi) - self._epi_pressor_ce) * (
+                -math.expm1(-dt / cfg.epi_tau_pressor_s)
+            )
+            self._epi_high_pressor_ce += (max(0.0, ce_epi) - self._epi_high_pressor_ce) * (
+                -math.expm1(-dt / cfg.epi_tau_alpha_high_s)
+            )
+            self._epi_venous_alpha = hill_function(
+                self._epi_pressor_ce / alpha_dr, cfg.epi_c50_alpha * cfg.epi_venous_potency_ratio, cfg.epi_gamma_alpha
+            )
+        else:
+            self._epi_venous_alpha = 0.0
         pressor_gain = 1.0 - clamp01(cfg.sepsis_pressor_resistance * sepsis_sev)
         nore_scale = self.acidosis_factor / agonist_shift
         self._update_venous_drug_effects(
@@ -1526,24 +1586,27 @@ class HemodynamicModel:
         chemo_hr_boost = (cfg.g_hr_co2 * e_co2 + cfg.g_hr_o2 * e_o2) * sympathetic_hr_response
         chemo_tpr_factor = 1.0 + cfg.k_tpr_co2 * e_co2
 
-        vol_deficit_ket = max(0.0, (self.blood_volume_0 - self.blood_volume) / max(1.0, self.blood_volume_0))
-        ket_exhaustion = max(
-            clamp01((vol_deficit_ket - 0.28) / 0.12),
-            clamp01((sepsis_sev - 0.30) / 0.35),
-            clamp01((45.0 - map_prev) / 20.0),
-            clamp01(self.coronary.energy_failure / 0.40),
-            clamp01((7.15 - ph) / 0.20),
-            clamp01(1.0 - circulation),
-        )
-        ket_scale = resting_tone * (1.0 - ket_exhaustion)
-        ket_raw = hill_function(max(0.0, ce_ketamine), cfg.ketamine_c50, cfg.ketamine_gamma)
-        ketamine = ket_raw * ket_scale
         ce_ket_hr = ce_ketamine if ce_ketamine_hr is None else ce_ketamine_hr
-        ketamine_hr = (
-            ketamine
-            if ce_ketamine_hr is None
-            else hill_function(max(0.0, ce_ket_hr), cfg.ketamine_c50, cfg.ketamine_gamma) * ket_scale
-        )
+        if ce_ketamine > 0.0 or ce_ket_hr > 0.0:
+            vol_deficit_ket = max(0.0, (self.blood_volume_0 - self.blood_volume) / max(1.0, self.blood_volume_0))
+            ket_exhaustion = max(
+                clamp01((vol_deficit_ket - 0.28) / 0.12),
+                clamp01((sepsis_sev - 0.30) / 0.35),
+                clamp01((45.0 - map_prev) / 20.0),
+                clamp01(self.coronary.energy_failure / 0.40),
+                clamp01((7.15 - ph) / 0.20),
+                clamp01(1.0 - circulation),
+            )
+            ket_scale = resting_tone * (1.0 - ket_exhaustion)
+            ket_raw = hill_function(max(0.0, ce_ketamine), cfg.ketamine_c50, cfg.ketamine_gamma)
+            ketamine = ket_raw * ket_scale
+            ketamine_hr = (
+                ketamine
+                if ce_ketamine_hr is None
+                else hill_function(max(0.0, ce_ket_hr), cfg.ketamine_c50, cfg.ketamine_gamma) * ket_scale
+            )
+        else:
+            ket_exhaustion = ket_raw = ketamine = ketamine_hr = 0.0
         sinus_est = clamp(self._calc_hr() + crisis_hr + dist_hr, HR_MIN, HR_MAX)
 
         # Fast baroreflex. Propofol depresses both limbs (Sato 2005). Anesthetic
@@ -1555,11 +1618,12 @@ class HemodynamicModel:
         tachycardia_depth = clamp01(reflex_depth + self.ce_opioid_cv / cfg.opioid_reflex_ce)
         sensed_error = map_prev - self._stim_map - self._baro_setpoint
         baro_vasc = 0.0
+        rhythm = self._rhythm_type
         if sensed_error > 0.0:
             sensed_error = max(0.0, sensed_error - cfg.ketamine_baro_shift * ketamine_hr)
             reflex_intact = 1.0 - cfg.baro_anesthetic_depression * reflex_depth
             baro_gain = cfg.baro_gain_brady * (1.0 - vagal) * self._age_vagal_baroreflex * reflex_intact
-            if self.rhythm_type not in PULSELESS_RHYTHMS and not self._compressions:
+            if (rhythm is RhythmType.SINUS or rhythm not in PULSELESS_RHYTHMS) and not self._compressions:
                 rhythm_holds_rate_up = self._rhythm_rate(sinus_est - 1.0) > sinus_est - 1.0
                 rhythm_slowing_blocked = (
                     clamp01(1.0 - (self._rhythm_rate(sinus_est) - self._rhythm_rate(sinus_est - 1.0)))
@@ -1606,57 +1670,64 @@ class HemodynamicModel:
 
         # Vascular relaxation develops alongside the cardiac response. An
         # instantaneous beta-2 effect otherwise produces a spurious early dip.
-        beta2_target = cfg.epi_emax_svr_beta * hill_function(ce_epi / beta2_dr, cfg.epi_c50_beta2, 1.0)
-        self._epi_beta2_effect += (beta2_target - self._epi_beta2_effect) * (
-            -math.expm1(-dt / cfg.epi_tau_beta2_s)
-        )
-        epi_delta_hr, epi_sv_factor, epi_svr_factor = self._calc_epi_effects(
-            ce_epi, self._epi_pressor_ce, self._epi_high_pressor_ce, beta1_dr, alpha_dr
-        )
-        self._epi_pulse_factor = 1.0 + cfg.epi_pulse_gain * (epi_sv_factor - 1.0)
-        self._epi_chrono_effect += (epi_delta_hr - self._epi_chrono_effect) * (
-            -math.expm1(-dt / cfg.epi_tau_hr_s)
-        )
+        if epi_active:
+            beta2_target = cfg.epi_emax_svr_beta * hill_function(ce_epi / beta2_dr, cfg.epi_c50_beta2, 1.0)
+            self._epi_beta2_effect += (beta2_target - self._epi_beta2_effect) * (
+                -math.expm1(-dt / cfg.epi_tau_beta2_s)
+            )
+            epi_delta_hr, epi_sv_factor, epi_svr_factor = self._calc_epi_effects(
+                ce_epi, self._epi_pressor_ce, self._epi_high_pressor_ce, beta1_dr, alpha_dr
+            )
+            self._epi_pulse_factor = 1.0 + cfg.epi_pulse_gain * (epi_sv_factor - 1.0)
+            self._epi_chrono_effect += (epi_delta_hr - self._epi_chrono_effect) * (
+                -math.expm1(-dt / cfg.epi_tau_hr_s)
+            )
+        else:
+            epi_sv_factor = epi_svr_factor = self._epi_pulse_factor = 1.0
         nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(
             ce_nore_raw, beta1_dr, alpha_dr, anesthetic_depth, nore_scale=nore_scale,
         )
-        self._ephedrine_tolerance_ce += (ce_ephedrine_raw - self._ephedrine_tolerance_ce) * (
-            -math.expm1(-math.log(2.0) * dt_min / cfg.ephedrine_tolerance_half_min)
-        )
-        ephedrine_raw = ce_ephedrine_raw / agonist_shift
-        ephedrine = max(0.0, ce_ephedrine) / agonist_shift
-        tol_raw = self._ephedrine_tolerance_ce / agonist_shift
-        tol_alpha = cfg.ephedrine_tolerance_max * hill_function(
-            tol_raw / alpha_dr,
-            cfg.ephedrine_tolerance_c50, cfg.ephedrine_tolerance_gamma,
-        )
-        tol_beta = cfg.ephedrine_tolerance_max * hill_function(
-            tol_raw / beta1_dr,
-            cfg.ephedrine_tolerance_c50, cfg.ephedrine_tolerance_gamma,
-        )
-        ephedrine_alpha_effect = self.acidosis_factor * max(
-            0.0,
-            hill_function(ephedrine_raw / alpha_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol_alpha,
-        )
-        ephedrine_beta_effect = self.acidosis_factor * max(
-            0.0,
-            hill_function(ephedrine_raw / beta1_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol_beta,
-        )
-        ephedrine_svr = 1.0 + cfg.ephedrine_emax_svr * ephedrine_alpha_effect
-        ephedrine_sv = 1.0 + cfg.ephedrine_emax_sv * ephedrine_beta_effect
-        ephedrine_chrono_gate = (
-            self._age_chronotropy * (1.0 - cfg.amiodarone_beta_reflex_block * amiodarone_hr)
-        )
-        ephedrine_beta_conc = ephedrine / beta1_dr
-        sustained_hr_max = 0.40
-        sustained_hr_term = (
-            sustained_hr_max * ephedrine_beta_conc / (ephedrine_beta_conc + sustained_hr_max / cfg.ephedrine_hr_slope)
-            if cfg.ephedrine_hr_slope > 0.0 and ephedrine_beta_conc > 0.0
-            else 0.0
-        )
-        ephedrine_hr = (
-            sustained_hr_term + cfg.ephedrine_emax_hr * ephedrine_beta_effect
-        ) * self.base_hr * ephedrine_chrono_gate
+        if ce_ephedrine_raw > 0.0 or self._ephedrine_tolerance_ce != 0.0:
+            self._ephedrine_tolerance_ce += (ce_ephedrine_raw - self._ephedrine_tolerance_ce) * (
+                -math.expm1(-math.log(2.0) * dt_min / cfg.ephedrine_tolerance_half_min)
+            )
+            ephedrine_raw = ce_ephedrine_raw / agonist_shift
+            ephedrine = max(0.0, ce_ephedrine) / agonist_shift
+            tol_raw = self._ephedrine_tolerance_ce / agonist_shift
+            tol_alpha = cfg.ephedrine_tolerance_max * hill_function(
+                tol_raw / alpha_dr,
+                cfg.ephedrine_tolerance_c50, cfg.ephedrine_tolerance_gamma,
+            )
+            tol_beta = cfg.ephedrine_tolerance_max * hill_function(
+                tol_raw / beta1_dr,
+                cfg.ephedrine_tolerance_c50, cfg.ephedrine_tolerance_gamma,
+            )
+            ephedrine_alpha_effect = self.acidosis_factor * max(
+                0.0,
+                hill_function(ephedrine_raw / alpha_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol_alpha,
+            )
+            ephedrine_beta_effect = self.acidosis_factor * max(
+                0.0,
+                hill_function(ephedrine_raw / beta1_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol_beta,
+            )
+            ephedrine_svr = 1.0 + cfg.ephedrine_emax_svr * ephedrine_alpha_effect
+            ephedrine_sv = 1.0 + cfg.ephedrine_emax_sv * ephedrine_beta_effect
+            ephedrine_chrono_gate = (
+                self._age_chronotropy * (1.0 - cfg.amiodarone_beta_reflex_block * amiodarone_hr)
+            )
+            ephedrine_beta_conc = ephedrine / beta1_dr
+            sustained_hr_max = 0.40
+            sustained_hr_term = (
+                sustained_hr_max * ephedrine_beta_conc / (ephedrine_beta_conc + sustained_hr_max / cfg.ephedrine_hr_slope)
+                if cfg.ephedrine_hr_slope > 0.0 and ephedrine_beta_conc > 0.0
+                else 0.0
+            )
+            ephedrine_hr = (
+                sustained_hr_term + cfg.ephedrine_emax_hr * ephedrine_beta_effect
+            ) * self.base_hr * ephedrine_chrono_gate
+        else:
+            ephedrine_svr = ephedrine_sv = 1.0
+            ephedrine_hr = 0.0
         phenyl_svr_factor = self._calc_phenyl_effects(ce_phenyl / alpha_dr)
         vaso_delta_hr, _, vaso_svr_factor = self._calc_hr_sv_svr_effects(
             ce_vaso, cfg.vaso_c50, cfg.vaso_gamma, cfg.vaso_emax_hr, 0.0, cfg.vaso_emax_svr
@@ -1714,7 +1785,7 @@ class HemodynamicModel:
             combined_svr_factor - 1.0 - cfg.alpha_block_tpr * alpha_occ * resting_tone
         )
 
-        if self.rhythm_type in RHYTHM_SV_FACTOR or self._compressions:
+        if (rhythm is not RhythmType.SINUS and rhythm in RHYTHM_SV_FACTOR) or self._compressions:
             self._unstim_rate = 0.0
         else:
             rhythm_hr = self._rhythm_rate(sinus_est)
@@ -1744,14 +1815,14 @@ class HemodynamicModel:
         distributive_svr_drop = (sepsis_drop_wood * sepsis_sev +
                                  cfg.anaphylaxis_svr_drop_wood * anaph_sev)
         distributive_tpr_offset = -distributive_svr_drop / 1000.0
-        feedback_state = self._compute_state(
-            preload_sv_factor=f_frank_starling,
-            sepsis_sev=sepsis_sev,
-            anaph_sev=anaph_sev,
-            distributive_tpr_offset=distributive_tpr_offset,
+        _, _, _, fb_co, fb_map, _ = self._compute_intrinsic(
+            f_frank_starling,
+            sepsis_sev,
+            distributive_tpr_offset,
+            self._calc_hr(),
         )
-        if feedback_state.intrinsic_co > 0.0:
-            rmap = clamp((feedback_state.intrinsic_map - self._stim_map) * self._inv_base_rmap_denom, 0.1, 5.0)
+        if fb_co > 0.0:
+            rmap = clamp((fb_map - self._stim_map) * self._inv_base_rmap_denom, 0.1, 5.0)
             self._rmap_fb = rmap ** cfg.fb
         rmap_fb = self._rmap_fb
 
@@ -1762,7 +1833,7 @@ class HemodynamicModel:
             self.ce_sevo
             + cp_prop / 4.0
             + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
-            + hill_function(max(0.0, ce_etomidate), 0.35, 1.5)
+            + adjunct_etom
             + 0.40 * adjunct_midaz
         )
         base_vc_threshold = min(36.5, self.patient.baseline_temp - 0.5)

@@ -14,6 +14,7 @@ from anasim.core.recorder import RecordingError
 from anasim.web import WebSession, catalog
 
 ASSETS = Path(__file__).with_name("web_assets")
+ASSET_NAMES = frozenset(p.name for p in ASSETS.iterdir() if p.is_file())
 # Fixed types: Windows registry mappings can serve .js as text/plain, which blocks modules.
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json"}
 DISCONNECT_SECONDS = 120.0
@@ -166,7 +167,7 @@ class LocalHandler(BaseHTTPRequestHandler):
         route = self.route()
         if route == "runtime.json":
             self.reply(200, {"backend": "native"})
-        elif route is not None and (not route or ("/" not in route and route in {p.name for p in ASSETS.iterdir()})):
+        elif route is not None and (not route or ("/" not in route and route in ASSET_NAMES)):
             path = ASSETS / (route or "index.html")
             self.reply(200, path.read_bytes(), CONTENT_TYPES.get(path.suffix, "application/octet-stream"))
         else:

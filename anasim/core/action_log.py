@@ -46,6 +46,7 @@ class ActionLog:
 
     def __init__(self) -> None:
         self._records: list[ActionRecord] = []
+        self._totals: dict[tuple[str, str], float] = {}
         self._case_start_index = 0
 
     @property
@@ -59,11 +60,15 @@ class ActionLog:
         label: str = "",
         amount: float = 0.0,
     ) -> None:
-        self._records.append(ActionRecord(float(time), action, label, float(amount)))
+        amt = float(amount)
+        self._records.append(ActionRecord(float(time), action, label, amt))
+        if amt != 0.0:
+            key = (action, label)
+            self._totals[key] = self._totals.get(key, 0.0) + amt
 
     def total(self, action: str, label: str) -> float:
         """Sum the amounts of all matching actions, including setup."""
-        return sum(r.amount for r in self._records if r.action == action and r.label == label)
+        return self._totals.get((action, label), 0.0)
 
     def begin_case(self, case_id: str, time: float) -> None:
         """Exclude setup actions from later case queries."""

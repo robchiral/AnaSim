@@ -140,19 +140,23 @@ class DrugControllerMixin:
             mode = controller.target_compartment if controller is not None else TCIMode.EFFECT_SITE.value
             self.enable_tci(spec.key, target, mode=mode)
 
-    def get_drug_state(self, key: str) -> dict:
-        """Return the current user-unit rate and TCI target; zero for bolus-only drugs."""
-        spec = get_drug_spec(key)
+    def _drug_state_for_spec(self, spec: DrugSpec) -> dict:
         controller = self.tci.get(spec.key)
         rate = 0.0
         if spec.has_infusion:
-            user_unit, model_unit = _rate_units(spec)
-            rate = convert_rate(self.infusion_rates[spec.key], model_unit, user_unit, weight_kg=self.patient.weight)
+            raw_rate = self.infusion_rates[spec.key]
+            if raw_rate != 0.0:
+                user_unit, model_unit = _rate_units(spec)
+                rate = convert_rate(raw_rate, model_unit, user_unit, weight_kg=self.patient.weight)
         return {
             "rate": rate,
             "target": controller.target if controller else 0.0,
             "is_tci": controller is not None,
         }
+
+    def get_drug_state(self, key: str) -> dict:
+        """Return the current user-unit rate and TCI target; zero for bolus-only drugs."""
+        return self._drug_state_for_spec(get_drug_spec(key))
 
 
 def _unavailable(spec: DrugSpec, control: str) -> ValueError:

@@ -1,6 +1,5 @@
 """Anesthesia workstation ventilation and spirometry."""
 
-import itertools
 import math
 from bisect import bisect_right
 from collections import deque
@@ -99,7 +98,7 @@ class VentSettings:
         return f"1:{max(1, round(1.0 / self.ie_ratio))}"
 
 
-@dataclass
+@dataclass(slots=True)
 class VentMonitors:
     """Spirometry at the airway: pressures cmH2O, volumes mL, MV L/min, compliance mL/cmH2O."""
 
@@ -117,7 +116,7 @@ class VentMonitors:
     compliance_dyn: float = math.nan  # VTe / (Ppeak - PEEP)
 
 
-@dataclass
+@dataclass(slots=True)
 class Breath:
     kind: str  # VC, PC, VG, PS, SPONT (detected, unsupported), or MANUAL
     mandatory: bool
@@ -138,7 +137,7 @@ class Breath:
     depleted: bool = False  # Reservoir gas exhausted during this inspiration
 
 
-@dataclass
+@dataclass(slots=True)
 class MeasuredBreath:
     kind: str
     mandatory: bool
@@ -412,6 +411,10 @@ class AnesthesiaVentilator:
             if math.isfinite(period):
                 self._since_mandatory = max(-period, self._since_mandatory)
         lung.effort.start(lung, self._series_resistance())
+        if not self.inspiring:
+            self._rebase(lung, self._configured_peep())
+            if not self.breath_inspiring and lung.volume <= 1e-3 and lung.effort.pmus() == (0.0, 0.0):
+                lung.note_end_expiration(self._eff_baseline or 0.0)
         remaining = dt
         while remaining > 1e-12:
             remaining -= self._advance(remaining, lung)
@@ -731,35 +734,44 @@ class AnesthesiaVentilator:
         """Time to the next scheduled change of segment."""
         b = self._breath
         if b is not None and b.inspiring:
-            ends = [b.ti]
-            if b.kind == "VC" and not b.limited and not b.delivered and not b.depleted:
-                ends.append(b.flow_end)
-            if b.kind in ("PC", "VG", "PS"):
-                ends.append(RISE_TIME)
+            bt = b.t
+            best: float | None = b.ti - bt if b.ti > bt + 1e-12 else None
+            if b.kind == "VC" and not b.limited and not b.delivered and not b.depleted and b.flow_end > bt + 1e-12:
+                dt = b.flow_end - bt
+                best = dt if best is None or dt < best else best
+            if b.kind in ("PC", "VG", "PS") and RISE_TIME > bt + 1e-12:
+                dt = RISE_TIME - bt
+                best = dt if best is None or dt < best else best
             if not b.mandatory and self._source == "vent" and self.settings.mode.startswith("SIMV"):
-                window = self._sync_window_start()
-                ends.append(b.t + window - self._since_mandatory)
-            return min((end - b.t for end in ends if end > b.t + 1e-12), default=0.0)
+                end = bt + self._sync_window_start() - self._since_mandatory
+                if end > bt + 1e-12:
+                    dt = end - bt
+                    best = dt if best is None or dt < best else best
+            return 0.0 if best is None else best
         period = self._mandatory_period()
         mode = self.settings.mode
-        times = []
+        best = math.inf
         if self._mandatory_type() is not None:
-            times.append(period - self._since_mandatory)
+            dt = period - self._since_mandatory
+            if dt > 1e-12:
+                best = dt
             if self._source == "vent" and mode.startswith("SIMV"):
-                times.append(self._sync_window_start() - self._since_mandatory)
+                dt = self._sync_window_start() - self._since_mandatory
+                if dt > 1e-12 and dt < best:
+                    best = dt
         elif self._source == "vent" and mode == "PSV" and self.settings.rr > 0.0:
-            times.append(self.apnea_backup_s - self._since_breath)
+            dt = self.apnea_backup_s - self._since_breath
+            if dt > 1e-12:
+                best = dt
         knot = bisect_right(VALVE_KNOTS, self._since_exhalation + 1e-12)
         if knot < len(VALVE_KNOTS) and self._valve_coefficient() > 0.0:
-            times.append(VALVE_KNOTS[knot] - self._since_exhalation)
-        return min((t for t in times if t > 1e-12), default=math.inf)
+            dt = VALVE_KNOTS[knot] - self._since_exhalation
+            if dt > 1e-12 and dt < best:
+                best = dt
+        return best
 
     def _advance(self, available: float, lung) -> float:
         effort = lung.effort
-        if not self.inspiring:
-            self._rebase(lung, self._configured_peep())
-            if not self.breath_inspiring and lung.volume <= 1e-3 and lung.effort.pmus() == (0.0, 0.0):
-                lung.note_end_expiration(self._eff_baseline or 0.0)
         if not self.inspiring and self._due():
             self._start(lung, self._mandatory_type(), True)
         b = self._active_breath if self.inspiring else None
@@ -804,14 +816,14 @@ class AnesthesiaVentilator:
             reached = None if level is None else self._volume_reached(segment, t, level, sign)
             if reached is not None and (event is None or reached < t - 1e-12):
                 t, event = reached, name
-        self._measure(segment, t)
+        seg_area = segment.area(t)
+        self._measure(segment, t, seg_area)
         p0, slope = pmus
         pmus_seg_area = p0 * t + 0.5 * slope * t * t
         self.muscle_pressure_area += pmus_seg_area
         self.capped_muscle_pressure_area += self._capped_pmus_area(
             p0, slope, t, self._effort_cap, pmus_seg_area
         )
-        seg_area = segment.area(t)
         if self._measured is not None and self._measured.inspiring:
             self._measured.pmus_area += max(0.0, pmus_seg_area)
             if b is not None and b.kind != "SPONT":
@@ -823,7 +835,7 @@ class AnesthesiaVentilator:
         if effort.clock < effort.ti:
             assistance = seg_area * self._volume_delivery if b is not None and b.kind != "SPONT" else 0.0
             effort.note_assistance(t, assistance)
-        effort.advance(t, lung, self._series_resistance())
+        effort.advance(t, lung, self._series_resistance(), pmus_seg_area)
         self._since_mandatory += t
         self._since_breath += t
         self._since_measured += t
@@ -1090,20 +1102,27 @@ class AnesthesiaVentilator:
 
     # --- Measurement ---------------------------------------------------------
 
-    def _measure(self, segment, t: float) -> None:
+    def _measure(self, segment, t: float, seg_area: float) -> None:
         b = self._breath
         if t <= 0.0:
             return
         # Split gas movement at a reversal even when it occurs within one outer
         # step. Subsamples keep analyzer and airway-sensor timing independent of it.
         f0, f1 = segment.flow(0.0), segment.flow(t)
-        bounds = [0.0]
+        v0, vt = segment.volume(0.0), segment.volume(t)
         if f0 * f1 < 0.0:
-            bounds.append(find_root(segment.flow, 0.0, t, f0, f1))
-        bounds.append(t)
-        volumes = [segment.volume(u) for u in bounds]
+            t_rev = find_root(segment.flow, 0.0, t, f0, f1)
+            v_rev = segment.volume(t_rev)
+            intervals: tuple[tuple[float, float, float, float], ...] = (
+                (0.0, t_rev, v0, v_rev),
+                (t_rev, t, v_rev, vt),
+            )
+            min_vol = min(v0, v_rev, vt)
+        else:
+            intervals = ((0.0, t, v0, vt),)
+            min_vol = v0 if v0 <= vt else vt
         # Flow reversals bound monotonic volume intervals.
-        segment.lung.effort.note_volume(min(volumes))
+        segment.lung.effort.note_volume(min_vol)
         measured = self._measured
         peep = self._peep()
         if self._collect_samples:
@@ -1111,10 +1130,10 @@ class AnesthesiaVentilator:
             lung = segment.lung
             peep_volume = lung.compliance * (self._eff_baseline or 0.0) if connected else 0.0
             volume_offset = lung.volume_offset
-        for index, (start, end) in enumerate(itertools.pairwise(bounds)):
+        for start, end, vol_start, vol_end in intervals:
             if end <= start:
                 continue  # A reversal rounded to an existing boundary moves no gas.
-            change = volumes[index + 1] - volumes[index]
+            change = vol_end - vol_start
             if measured is not None:
                 if change >= 0.0:
                     measured.inspired += change
@@ -1123,7 +1142,7 @@ class AnesthesiaVentilator:
                     measured.inspiring = False
             if self._collect_samples:
                 n = max(1, math.ceil((end - start) / 0.01))
-                previous, previous_volume = start, volumes[index]
+                previous, previous_volume = start, vol_start
                 for i in range(1, n + 1):
                     u = start + (end - start) * i / n
                     volume, flow, paw = segment.sample(u)
@@ -1134,18 +1153,18 @@ class AnesthesiaVentilator:
                                          volume + peep_volume + volume_offset if connected else 0.0))
                     previous, previous_volume = u, volume
         if measured is not None:
-            paw = [segment.paw(0.0), segment.paw(t)]
+            peak_paw = max(segment.paw(0.0), segment.paw(t))
             d0, d1 = segment.dpaw(0.0), segment.dpaw(t)
             if d0 > 0.0 > d1:
-                paw.append(segment.paw(find_root(segment.dpaw, 0.0, t, d0, d1)))
-            measured.paw_peak = max(measured.paw_peak, peep + max(paw))
-            measured.area += segment.area(t) + peep * t
+                peak_paw = max(peak_paw, segment.paw(find_root(segment.dpaw, 0.0, t, d0, d1)))
+            measured.paw_peak = max(measured.paw_peak, peep + peak_paw)
+            measured.area += seg_area + peep * t
             measured.t += t
         if b is None or not b.inspiring:
             return
-        volume = volumes[-1]
+        volume = vt
         if f0 > 0.0 > f1:
-            volume = max(volume, volumes[1])
+            volume = max(volume, v_rev)
         b.v_max = max(b.v_max, volume)
 
     def _sample(self, lung) -> None:

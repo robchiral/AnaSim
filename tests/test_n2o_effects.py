@@ -62,9 +62,8 @@ def test_n2o_and_sevoflurane_interaction_by_endpoint():
         )
 
 
-def test_n2o_second_gas_concentrating_effect_and_fink_diffusion_hypoxia(engine_factory, advance_time):
-    """Second-gas concentrating effect (Epstein 1964, halothane) and diffusion hypoxia (Fink 1955):
-    high-flow N2O accelerates early sevoflurane wash-in, and switching from 75% N2O to room air
+def test_n2o_second_gas_concentrating_effect_and_diffusion_hypoxia(engine_factory, advance_time):
+    """High-flow N2O accelerates early sevoflurane wash-in, and switching from 75% N2O to room air
     transiently dilutes alveolar O2 unless O2 is given.
     """
     sevo_air = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)

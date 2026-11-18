@@ -14,7 +14,7 @@ def _decay_integral(rate: float, minutes: float) -> float:
     return minutes if rate <= 1e-12 else -math.expm1(-rate * minutes) / rate
 
 
-@dataclass
+@dataclass(slots=True)
 class CrystalloidKinetics:
     """Infused volume in plasma and exchanging interstitium (mL)."""
 

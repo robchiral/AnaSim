@@ -226,12 +226,19 @@ class BloodChemistry:
                          pco2: float, ph: float, extracellular_ratio: float = 0.0) -> ContentIterate:
         """One damped Newton step of solve_contents, for solves coupled to saturation."""
         blood = self.evaluate(ph, pco2, saturation)
-        if extracellular_ratio:
-            fluid_co2, fluid_base, fluid_ph, fluid_pco2 = extracellular_contents(
-                ph, pco2, self.extracellular_buffers,
-            )
-        else:
-            fluid_co2 = fluid_base = fluid_ph = fluid_pco2 = 0.0
+        if not extracellular_ratio:
+            carbon_residual = blood.total_co2 - co2
+            base_residual = blood.buffer_base - base
+            if max(abs(carbon_residual), abs(base_residual)) < _CONTENT_TOLERANCE:
+                return ContentIterate(blood, True, ph, pco2)
+            determinant = blood.base_ph * blood.content_co2 - blood.base_co2 * blood.content_ph
+            ph_change = (base_residual * blood.content_co2 - carbon_residual * blood.base_co2) / determinant
+            pressure_change = (carbon_residual * blood.base_ph - base_residual * blood.content_ph) / determinant
+            fraction = step_fraction(ph, ph_change, pco2, pressure_change)
+            return ContentIterate(blood, False, ph - fraction * ph_change, pco2 - fraction * pressure_change)
+        fluid_co2, fluid_base, fluid_ph, fluid_pco2 = extracellular_contents(
+            ph, pco2, self.extracellular_buffers,
+        )
         # Residuals per liter of blood plus fluid keep the tolerance independent of aliquot size.
         blood_weight = 1.0 / (1.0 + extracellular_ratio)
         fluid_weight = extracellular_ratio * blood_weight

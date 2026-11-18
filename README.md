@@ -42,15 +42,15 @@ Use Apply to confirm changes to settings.
 
 | Feature | Supported controls and measurements |
 |---------|-------------------------------------|
-| Patient variation | Age, body size, renal and hepatic function, coronary disease, heart failure, COPD, obesity, pregnancy with maternal positioning, and optional random variation in drug response |
+| Patient variation | Age, body size, renal and hepatic function, coronary disease, heart failure, COPD, obesity, pregnancy with maternal positioning, and optional individual variation in drug kinetics and response |
 | Anesthesia | Propofol, remifentanil, fentanyl, hydromorphone, morphine, midazolam, etomidate, ketamine, lidocaine, sevoflurane, nitrous oxide, rocuronium, succinylcholine, and sugammadex |
 | Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, ephedrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, atropine, glycopyrrolate, and amiodarone |
-| Anesthesia machine | Facemask with adjustable seal or tracheal tube, fresh gas flow, vaporizer, and bag-mask ventilation with an adjustable pressure limit |
+| Anesthesia machine | Facemask with adjustable seal or tracheal tube, fresh gas flow, vaporizer, and manual bag ventilation with an adjustable pressure-limiting (APL) valve |
 | Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
 | Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF) and single-twitch monitoring, temperature, arterial blood gases, fluid balance, trends, and alarms |
 | Treatments | Fluids and blood, chest compressions, defibrillation and synchronized cardioversion, lipid emulsion, dantrolene, calcium chloride, forced-air warming, and surface cooling |
 | Events | Surgical stimulation, airway obstruction, bronchospasm, laryngospasm, arrhythmias, hemorrhage, anaphylaxis, sepsis, malignant hyperthermia, lidocaine toxicity, and oxygen supply failure |
-| Cases | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, and crisis cases that use these events, each guided or independent with a debrief |
+| Cases | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, and crisis cases for oxygen supply failure, hemorrhage, anaphylaxis, septic shock, malignant hyperthermia, and cardiac arrest, each in guided or independent mode with a debrief |
 
 Depending on the drug, delivery options include boluses, manual infusions, and
 target-controlled infusion (TCI) to a plasma or effect-site target.

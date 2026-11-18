@@ -2,8 +2,8 @@
 
 These scripts compare AnaSim's ventilation, gas exchange, propofol and BIS,
 sevoflurane uptake, and hemodynamics with patient recordings from VitalDB. Run
-them from the repository root after the [contributor
-setup](../../CONTRIBUTING.md#setup). Tracks that are not yet cached are
+them from the repository root after completing the [contributor
+setup](../../CONTRIBUTING.md#setup). Any VitalDB tracks not yet cached are
 downloaded into `validation/vitaldb/.vitaldb_cache/`.
 
 ```bash
@@ -73,24 +73,24 @@ pneumoperitoneum. All errors are the model value minus the recorded value.
 surgery in patients aged 18 to 85, including patients who received ephedrine or
 phenylephrine. From the start of propofol to incision, each cuff reading is
 compared with the model's average MAP over the 40 seconds before the reading
-appeared, which is roughly how long the cuff takes to measure. Each patient's
-readings are used only up to the first one that might have led to treatment (MAP
-below 65 mmHg, SBP below 90, or HR below 45), so any treatment given afterward
-does not affect the result.
+appeared, which matches typical cuff measurement duration. Each patient's
+readings are used only up to the first one that could prompt treatment (MAP
+below 65 mmHg, systolic pressure below 90 mmHg, or HR below 45 bpm), so any
+vasopressor given afterward does not affect the induction score.
 
-The script estimates the mean error with a model that allows each patient their
-own offset, and it gets confidence intervals by resampling patients. The report
-breaks the error down by treatment, type of surgery, and age, compares the
-recorded and model course of MAP in all patients and those aged 70 and over, and
-scores MAP and HR during surgery in untreated patients.
+The script estimates the mean error with a model that gives each patient an
+individual offset, and it computes confidence intervals by resampling patients.
+The report breaks the error down by treatment, type of surgery, and age,
+compares the recorded and model course of MAP in all patients and in those aged
+70 and over, and scores MAP and HR during surgery in untreated patients.
 
-`vitaldb_sevo.py` replays induction as it is usually taught in the United
-States: a propofol bolus with fentanyl and sevoflurane. Propofol is timed from
-the recorded fall in BIS, 30 s later than the model's BIS latency suggests,
-because model BIS falls about that much later than recorded BIS in the TIVA
-cases. Intubation is placed at 2.5 minutes, shortly before the ventilator
-settings first appear. This script uses the same scoring as the TIVA script and
-also reports MAP and HR during surgery.
+`vitaldb_sevo.py` replays bolus propofol induction with fentanyl and sevoflurane
+maintenance. Because pump start times are not recorded for hand boluses,
+propofol onset is inferred from the recorded fall in BIS and placed 30 seconds
+later than the model's own BIS latency implies, matching the median BIS lag seen
+in the TIVA cases. Intubation is placed 2.5 minutes after propofol, shortly
+before ventilator settings first appear. This script uses the same pre-treatment
+scoring as `vitaldb_tiva.py` and also reports MAP and HR during surgery.
 
 ### Current results
 

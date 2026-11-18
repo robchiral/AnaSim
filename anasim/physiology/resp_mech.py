@@ -94,6 +94,8 @@ class RespiratoryMechanics:
     @property
     def expiratory_obstruction(self) -> float:
         """Combined acute bronchospasm and chronic obstruction, 0-1."""
+        if self.bronchospasm == 0.0 and self.chronic_obstruction == 0.0:
+            return 0.0
         return 1.0 - (1.0 - self.bronchospasm) * (1.0 - self.chronic_obstruction)
 
     @property
@@ -159,7 +161,7 @@ class RespiratoryMechanics:
 class FlowSegment:
     """Flow is set; Paw = R x flow + V/C + P2 - Pmus. Times are seconds from the segment start."""
 
-    __slots__ = ("asymptote", "elastance", "lung", "m0", "m1", "p20", "q", "tau", "v0")
+    __slots__ = ("asymptote", "elastance", "last_exp", "last_t", "lung", "m0", "m1", "p20", "q", "tau", "v0")
 
     def __init__(self, lung: RespiratoryMechanics, q: float, pmus: tuple[float, float]):
         self.lung = lung
@@ -169,6 +171,18 @@ class FlowSegment:
         self.elastance = 1.0 / lung.compliance
         self.tau = lung.viscoelastic_tau
         self.asymptote = lung.viscoelastic_ratio * self.elastance * q * self.tau
+        self.last_t: float | None = None
+        self.last_exp = 1.0
+
+    def _exp(self, t: float) -> float:
+        if t == 0.0:
+            return 1.0
+        if t == self.last_t:
+            return self.last_exp
+        val = math.exp(-t / self.tau)
+        self.last_t = t
+        self.last_exp = val
+        return val
 
     def volume(self, t: float) -> float:
         return self.v0 + self.q * t
@@ -177,7 +191,7 @@ class FlowSegment:
         return self.q
 
     def p2(self, t: float) -> float:
-        return self.asymptote + (self.p20 - self.asymptote) * math.exp(-t / self.tau)
+        return self.asymptote + (self.p20 - self.asymptote) * self._exp(t)
 
     def paw(self, t: float) -> float:
         return (self.lung.resistance * self.flow(t) + self.elastance * self.volume(t) + self.p2(t)
@@ -190,24 +204,24 @@ class FlowSegment:
         return volume, flow, paw
 
     def dpaw(self, t: float) -> float:
-        return self.elastance * self.q + (self.asymptote - self.p20) / self.tau * math.exp(-t / self.tau) - self.m1
+        return self.elastance * self.q + (self.asymptote - self.p20) / self.tau * self._exp(t) - self.m1
+
+    def _volume_area(self, t: float) -> float:
+        return self.v0 * t + 0.5 * self.q * t * t
 
     def area(self, t: float) -> float:
         """Integral of Paw over [0, t]."""
-        volume_area = self.v0 * t + 0.5 * self.q * t * t
-        return self._paw_area(t, volume_area)
-
-    def _paw_area(self, t: float, volume_area: float) -> float:
         # dP2/dt = E2 x flow - P2/tau integrates to tau (E2 dV - dP2).
         dv = self.volume(t) - self.v0
         p2_area = self.tau * (self.lung.viscoelastic_ratio * self.elastance * dv - (self.p2(t) - self.p20))
-        return (self.lung.resistance * dv + self.elastance * volume_area + p2_area
+        return (self.lung.resistance * dv + self.elastance * self._volume_area(t) + p2_area
                 - self.m0 * t - 0.5 * self.m1 * t * t)
 
     def distending_area(self, t: float) -> float:
         """Integral of static recoil plus tissue pressure, above PEEP."""
-        return (self.area(t) + self.m0 * t + 0.5 * self.m1 * t * t
-                - self.lung.resistance * (self.volume(t) - self.v0))
+        dv = self.volume(t) - self.v0
+        p2_area = self.tau * (self.lung.viscoelastic_ratio * self.elastance * dv - (self.p2(t) - self.p20))
+        return self.elastance * self._volume_area(t) + p2_area
 
     def commit(self, t: float) -> None:
         self.lung.volume, self.lung.p2 = self.volume(t), self.p2(t)
@@ -239,7 +253,7 @@ class SineSegment(FlowSegment):
         return self.amplitude * self.w * math.sin(self.w * (self.u0 + t))
 
     def p2(self, t: float) -> float:
-        return self.offset * math.exp(-t / self.tau) + self.gain * self._forced(self.u0 + t)
+        return self.offset * self._exp(t) + self.gain * self._forced(self.u0 + t)
 
     def dpaw(self, t: float) -> float:
         flow = self.flow(t)
@@ -247,11 +261,10 @@ class SineSegment(FlowSegment):
         dp2 = self.lung.viscoelastic_ratio * self.elastance * flow - self.p2(t) / self.tau
         return self.lung.resistance * dflow + self.elastance * flow + dp2 - self.m1
 
-    def area(self, t: float) -> float:
+    def _volume_area(self, t: float) -> float:
         u0, u1 = self.u0, self.u0 + t
-        volume_area = (self.v0 + self.amplitude * math.cos(self.w * u0)) * t - self.amplitude * (
+        return (self.v0 + self.amplitude * math.cos(self.w * u0)) * t - self.amplitude * (
             math.sin(self.w * u1) - math.sin(self.w * u0)) / self.w
-        return self._paw_area(t, volume_area)
 
 
 class PressureSegment:
@@ -265,14 +278,14 @@ class PressureSegment:
     """
 
     __slots__ = (
-        "a11",
-        "a12",
-        "a21",
-        "a22",
-        "az",
+        "az1",
         "d0",
         "d1",
         "elastance",
+        "gaz1",
+        "gy1",
+        "gy2",
+        "gz1",
         "last",
         "last_t",
         "lung",
@@ -288,8 +301,9 @@ class PressureSegment:
         "start",
         "v0",
         "w",
-        "y0",
-        "z0",
+        "y1",
+        "y2",
+        "z1",
     )
 
     def __init__(self, lung: RespiratoryMechanics, pressure, pmus, series_resistance):
@@ -302,24 +316,28 @@ class PressureSegment:
         tau = lung.viscoelastic_tau
         e2 = lung.viscoelastic_ratio * e
         rt = self.rt = lung.resistance + series_resistance
-        self.a11, self.a12 = -e / rt, -1.0 / rt
-        self.a21, self.a22 = -e2 * e / rt, -e2 / rt - 1.0 / tau
-        self.s = 0.5 * (self.a11 + self.a22)
+        a11, a12 = -e / rt, -1.0 / rt
+        a21, a22 = -e2 * e / rt, -e2 / rt - 1.0 / tau
+        s = self.s = 0.5 * (a11 + a22)
         determinant = e / (rt * tau)
-        self.w = math.sqrt(max(0.0, self.s * self.s - determinant))
+        self.w = math.sqrt(max(0.0, s * s - determinant))
         # Slow drive changes leave V lagging by (R + R2) / E behind D/E.
         self.slope = self.d1 / e
         self.pv = self.d0 / e - (rt + e2 * tau) * self.d1 / (e * e)
         self.pp = e2 * tau * self.d1 / e
-        self.y0 = (self.v0 - self.pv, self.p20 - self.pp)
-        self.z0 = self._apply(self.y0)
-        self.az = self._apply(self.z0)
-        self.start = (self.v0, self.p20, self.z0[0] + self.slope, self.az[0])
+        y1 = self.y1 = self.v0 - self.pv
+        y2 = self.y2 = self.p20 - self.pp
+        z1 = self.z1 = a11 * y1 + a12 * y2
+        z2 = a21 * y1 + a22 * y2
+        az1 = self.az1 = a11 * z1 + a12 * z2
+        az2 = a21 * z1 + a22 * z2
+        self.gy1 = z1 - s * y1
+        self.gy2 = z2 - s * y2
+        self.gz1 = az1 - s * z1
+        self.gaz1 = a11 * az1 + a12 * az2 - s * az1
+        self.start = (self.v0, self.p20, z1 + self.slope, az1)
         self.last_t: float | None = None
         self.last: tuple[float, float, float, float] | None = None
-
-    def _apply(self, x):
-        return self.a11 * x[0] + self.a12 * x[1], self.a21 * x[0] + self.a22 * x[1]
 
     def _evaluate(self, t: float):
         """(V, P2, flow, d flow/dt) at t, using exp(At) x = e^{st} (cosh(wt) x + sinh(wt)/w (A - sI) x)."""
@@ -327,19 +345,19 @@ class PressureSegment:
             return self.start
         if t == self.last_t:
             return self.last
-        s, wt = self.s, self.w * t
+        s, w = self.s, self.w
+        wt = w * t
         if wt < 1e-4:
             decay = math.exp(s * t)
             c, g = decay * (1.0 + 0.5 * wt * wt), decay * t * (1.0 + wt * wt / 6.0)
         else:
-            fast, slow = math.exp((s + self.w) * t), math.exp((s - self.w) * t)
-            c, g = 0.5 * (fast + slow), 0.5 * (fast - slow) / self.w
-        (y1, y2), (z1, z2), (az1, az2) = self.y0, self.z0, self.az
+            fast, slow = math.exp((s + w) * t), math.exp((s - w) * t)
+            c, g = 0.5 * (fast + slow), 0.5 * (fast - slow) / w
         self.last_t = t
-        self.last = (c * y1 + g * (z1 - s * y1) + self.pv + self.slope * t,
-                     c * y2 + g * (z2 - s * y2) + self.pp,
-                     c * z1 + g * (az1 - s * z1) + self.slope,
-                     c * az1 + g * (self.a11 * az1 + self.a12 * az2 - s * az1))
+        self.last = (c * self.y1 + g * self.gy1 + self.pv + self.slope * t,
+                     c * self.y2 + g * self.gy2 + self.pp,
+                     c * self.z1 + g * self.gz1 + self.slope,
+                     c * self.az1 + g * self.gaz1)
         return self.last
 
     def state(self, t: float):
@@ -439,6 +457,8 @@ class PatientEffort:
         self._release_slope = 0.0
         self._knots: tuple[float, ...] = (math.inf,)
         self._values: tuple[float, ...] = (0.0, 0.0)
+        self._unit_clock = -1.0
+        self._unit_cached = (0.0, 0.0)
 
     def set_drive(self, rr: float, vt_l: float) -> None:
         """Rate and unassisted volume for the breaths that follow."""
@@ -453,17 +473,30 @@ class PatientEffort:
         """Seconds to the next change of slope, where segments must split."""
         if self._waiting:
             return self._wait_end - self.clock
+        if len(self._knots) == 1 and self._knots[0] == math.inf:
+            return math.inf
         i = bisect_right(self._knots, self.clock + 1e-12)
         return self._knots[i] - self.clock if i < len(self._knots) else math.inf
 
     def pmus(self) -> tuple[float, float]:
         """(value, slope) at the current time until the next breakpoint."""
-        value, slope = self._unit_drive(self.clock)
+        if self.amplitude == 0.0:
+            return 0.0, 0.0
+        if self.clock == self._unit_clock:
+            value, slope = self._unit_cached
+        else:
+            value, slope = self._unit_drive(self.clock)
+            self._unit_clock = self.clock
+            self._unit_cached = (value, slope)
         return self.amplitude * value, self.amplitude * slope
 
-    def advance(self, dt: float, lung: RespiratoryMechanics, series_resistance: float) -> None:
-        pressure, slope = self.pmus()
-        self.muscle.step(dt, pressure * dt + 0.5 * slope * dt * dt)
+    def advance(
+        self, dt: float, lung: RespiratoryMechanics, series_resistance: float, pmus_area: float | None = None,
+    ) -> None:
+        if pmus_area is None:
+            pressure, slope = self.pmus()
+            pmus_area = pressure * dt + 0.5 * slope * dt * dt
+        self.muscle.step(dt, pmus_area)
         self.clock += dt
         if self._waiting:
             if self.clock >= self._wait_end - 1e-12:
@@ -496,6 +529,7 @@ class PatientEffort:
         self.ti = self.clock
         self._knots = self._knots[:kept] + (self.clock,)
         self._values = self._values[:kept + 1] + (value,)
+        self._unit_clock = -1.0
         self._relax(value)
 
     def onset_volume(self) -> float | None:
@@ -527,6 +561,7 @@ class PatientEffort:
         self.support_pressure = (max(0.0, self._assistance_area / self._assistance_time)
                                  if self._assistance_time > 0.0 else 0.0)
         self._assistance_area = self._assistance_time = 0.0
+        self._unit_clock = -1.0
         if self.rr <= 0.0 or self.target_vt <= 0.0:
             self.clock, self.period, self.amplitude = 0.0, math.inf, 0.0
             self.ti = self.release = 0.0

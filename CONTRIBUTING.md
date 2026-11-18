@@ -2,7 +2,8 @@
 
 ## Setup
 
-Use Python 3.10 or later. Browser tests and Pyodide also require Node.js 22.
+Use Python 3.10 or later. Browser tests and Pyodide checks also require Node.js
+22.
 
 ```bash
 git clone https://github.com/robchiral/AnaSim.git
@@ -17,8 +18,8 @@ structure and [CLI and Python usage](docs/CLI_USAGE.md) for scripted runs.
 
 ## Checks
 
-Run these commands for changes to shared Python code. They include the native
-Python and Pyodide test suites. Pyodide is the Python runtime of the hosted app.
+Run these commands after changing shared Python code. They run both the native
+Python test suite and the Pyodide suite used by the hosted browser app.
 
 ```bash
 ruff check .
@@ -63,9 +64,10 @@ anasim
 python scripts/build_web.py --serve
 ```
 
-The hosted preview runs at `http://localhost:8000/` and needs internet access to
-load Pyodide. Rebuild it after Python changes. In both versions, check the
-changed interface, settings edits, recordings, and starting a new session.
+The hosted preview runs at `http://localhost:8000/` and requires internet access
+to load Pyodide. Re-run `build_web.py` after Python changes. In both versions,
+check the changed controls, settings edits, CSV recordings, and starting a new
+session.
 
 Regenerate the README demo after interface changes that affect it.
 

@@ -12,6 +12,9 @@ from anasim.core.constants import (
 
 
 def clamp(value: float, low: float, high: float) -> float:
+    # Fast path for finite interior values; NaN or inverted bounds evaluate False.
+    if low < value < high:
+        return value
     # Ordered comparisons retain min/max behavior for equal or non-finite bounds.
     if math.isnan(value):
         return value

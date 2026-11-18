@@ -76,24 +76,52 @@ class Capnograph:
             remaining = max(0.0, self._breath_volume - leaving - self.dead_space)
             pco2 = max(0.0, end_tidal - slope * remaining)
             self._exhaled_alveolar += exhaled
-            self._push(self._column, exhaled, pco2, right=True)
-            for volume, slug_co2 in self._take(self._column, exhaled, left=True):
-                self._push(self._window, volume, slug_co2, right=True)
-                self._window_volume += volume
-                self._window_co2 += volume * slug_co2
+            col = self._column
+            win = self._window
+            self._push(col, exhaled, pco2, right=True)
+            rem = exhaled
+            while rem > 1e-12 and col:
+                slug = col[0]
+                part = rem if rem < slug[0] else slug[0]
+                slug_co2 = slug[1]
+                self._push(win, part, slug_co2, right=True)
+                self._window_volume += part
+                self._window_co2 += part * slug_co2
+                slug[0] -= part
+                rem -= part
+                if slug[0] <= 1e-12:
+                    col.popleft()
             excess = self._window_volume - self.PHASE_II_VOLUME
             if excess > 0.0:
-                for volume, slug_co2 in self._take(self._window, excess, left=True):
-                    self._window_volume -= volume
-                    self._window_co2 -= volume * slug_co2
+                while excess > 1e-12 and win:
+                    slug = win[0]
+                    part = excess if excess < slug[0] else slug[0]
+                    self._window_volume -= part
+                    self._window_co2 -= part * slug[1]
+                    slug[0] -= part
+                    excess -= part
+                    if slug[0] <= 1e-12:
+                        win.popleft()
             sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
         elif active_flow:
             inhaled = -exhaled
             self._inhaled += inhaled
             # Gas moves into the alveoli and fresh gas refills the column from the Y-piece.
-            moved = sum(part for part, _ in self._take(self._column, inhaled, left=False))
-            self._push(self._column, moved, 0.0, right=False)
-            self._window.clear()
+            col = self._column
+            if not (len(col) == 1 and col[0][1] == 0.0):
+                rem = inhaled
+                moved = 0.0
+                while rem > 1e-12 and col:
+                    slug = col[-1]
+                    part = rem if rem < slug[0] else slug[0]
+                    moved += part
+                    slug[0] -= part
+                    rem -= part
+                    if slug[0] <= 1e-12:
+                        col.pop()
+                self._push(col, moved, 0.0, right=False)
+            if self._window:
+                self._window.clear()
             self._window_volume = self._window_co2 = 0.0
             sample = 0.0
         else:
@@ -130,20 +158,6 @@ class Capnograph:
             column.append([volume, pco2])
         else:
             column.appendleft([volume, pco2])
-
-    @staticmethod
-    def _take(column: deque, volume: float, left: bool) -> list:
-        """Remove volume from one end and return the removed slugs in order."""
-        taken = []
-        while volume > 1e-12 and column:
-            slug = column[0] if left else column[-1]
-            part = min(volume, slug[0])
-            taken.append((part, slug[1]))
-            slug[0] -= part
-            volume -= part
-            if slug[0] <= 1e-12:
-                column.popleft() if left else column.pop()
-        return taken
 
 
 class EtCO2Readout:

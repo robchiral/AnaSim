@@ -47,6 +47,8 @@ class LocalAnestheticToxicity:
         self.total_lipid_ml += amount_ml
 
     def step_lipid(self, dt: float, circulation: float) -> None:
+        if self.lipid_ml == 0.0 and self.lipid_effect == 0.0:
+            return
         # Lipid acts and clears only as blood circulates.
         self.lipid_ml *= math.exp(-math.log(2.0) * dt * circulation / self.LIPID_HALF_TIME_S)
         target = self.lipid_ml / (self.lipid_ml + 1.5 * self.weight)
@@ -64,6 +66,17 @@ class LocalAnestheticToxicity:
              propofol_ce: float, midazolam_ce: float, mac_sevo: float,
              motor_strength: float, cortical_function: float,
              mac_n2o: float = 0.0) -> None:
+        if (
+            neural_ce <= 0.0
+            and cardiac_ce <= 0.0
+            and self.seizure_activity == 0.0
+            and self.sympathetic_drive == 0.0
+            and self.neural_depression == 0.0
+            and self.conduction_block == 0.0
+            and self.contractility_loss == 0.0
+            and self.cardiac_stress == 0.0
+        ):
+            return
         acidemia = 1.0 + 0.5 * clamp01((7.35 - ph) / 0.35)
         neural = max(0.0, neural_ce) * acidemia
         cardiac = max(0.0, cardiac_ce) * acidemia

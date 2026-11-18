@@ -30,25 +30,29 @@ configuration, units, and scripted runs.
 
 ### Step order
 
-Each call to `SimulationEngine.step()` does the following:
+Each call to `SimulationEngine.step()` runs the following sequence:
 
-1. Update shivering, then calculate anesthetic depth, metabolic rate, and
-   stimulation tolerance.
-2. Apply stimulation, hemorrhage, fluids, and other clinical events.
-3. Update pharmacokinetic (PK) parameters for blood volume, cardiac output, and
-   drug interactions, then calculate target-controlled infusion (TCI) rates.
-4. Update the airway, vaporizer, and breathing circuit.
-5. Update drug concentrations, inhaled anesthetic uptake, neuromuscular block,
-   lidocaine toxicity, and malignant hyperthermia.
+1. Update shivering, then calculate thermal anesthetic depth, metabolic rate,
+   and stimulation tolerance.
+2. Advance stimulation, hemorrhage, fluids, anaphylaxis, and sepsis.
+3. Update pharmacokinetic (PK) parameters for blood volume, cardiac output,
+   renal perfusion, and drug interactions, then calculate target-controlled
+   infusion (TCI) rates.
+4. Update airway complications, the vaporizer, and the breathing circuit.
+5. Update lipid emulsion, intravenous drug concentrations, inhaled anesthetic
+   uptake, neuromuscular block, lidocaine toxicity, and malignant hyperthermia,
+   then apply toxicity, malignant hyperthermia, and sepsis effects on
+   metabolism, heat production, and chest-wall stiffness.
 6. Advance breathing mechanics, gas exchange, hemodynamics, and cardiac rhythm.
-7. Copy outputs into `SimulationState`, then update brain function,
-   measurements, and alarms.
-8. Update temperature, then check for cardiac arrest.
+7. Copy physiology outputs into `SimulationState`, then update cerebral
+   oxygenation and function, monitor measurements, and alarms.
+8. Update core temperature, check for cardiac arrest, and clear completed finite
+   stimuli.
 
-PK and circuit calculations use the cardiac output and alveolar ventilation from
-the start of the step, and the physiology models update these values for the
-next step. The engine then advances the clock, stores waveform samples, and
-writes the recording.
+PK and circuit calculations use the cardiac output and ventilation from the
+start of the step, and the physiology models update those values for the next
+step. The engine then advances the clock, trims the 20-second waveform buffer,
+and writes a CSV row when due.
 
 If a TCI rate change falls within a step, PK advances to that time before the
 controller selects the next rate.
@@ -98,10 +102,10 @@ such as requesting hemostasis, guided steps, and debrief outcomes. `CaseRun` in
 tracks outcomes, and builds the debrief in both practice modes. Case sessions
 hide the instructor event controls that open simulation provides.
 
-Crises start 30 simulated seconds into the case. Anaphylaxis and sepsis reach
-full severity over 45 and 60 seconds, while hemorrhage and malignant
-hyperthermia develop over several minutes. In the anaphylaxis case, crystalloid
-boluses run at 500 mL/min.
+Crises start 30 simulated seconds into the case. In their cases, anaphylaxis and
+sepsis reach full severity over 45 and 60 seconds, while hemorrhage and
+malignant hyperthermia develop over several minutes. In the anaphylaxis case,
+crystalloid boluses run at 500 mL/min.
 
 Guided requirements count actions from the start of the case, or from crisis
 onset for crisis treatment, so the guide never asks for a repeat dose. In
@@ -124,21 +128,25 @@ controls at irreversible arrest.
 ### Action checks
 
 Selecting the tracheal tube calls `SimulationEngine.attempt_intubation`, which
-adds a brief intubation stimulus to any surgical stimulation. The tube is not
-placed when central muscle strength is above 0.5 and either loss of response or
-laryngoscopy tolerance is below 0.1. This check does not apply when hypnosis is
-sustained or circulation has stopped.
+triggers a brief intubation stimulus whether or not placement succeeds. When
+circulation continues and central muscle strength is above 0.5, placement fails
+if loss of response is below 0.1, or if laryngoscopy tolerance is below 0.1
+without sustained hypnosis. Placement succeeds during cardiac arrest or
+nonperfusing rhythms.
 
-[`clinical_actions.py`](../anasim/core/clinical_actions.py) shows a warning but
-lets the action proceed when:
+[`clinical_actions.py`](../anasim/core/clinical_actions.py) shows a warning
+without blocking the action when:
 
-- the tube is placed in a responsive patient
-- a neuromuscular blocker is given to a responsive patient without an induction
-  dose in plasma
-- the tube is removed during apnea, reactive Stage II anesthesia, or residual neuromuscular block (train-of-four ratio or
-  blocker T1 below 90%, excluding weakness from dantrolene)
+- the tube is placed in a responsive patient (loss of response below 0.1) whose
+  central muscle strength is 0.5 or lower
+- rocuronium or succinylcholine is given to a responsive patient without an
+  induction dose already in plasma
+- the tube is removed during apnea, reactive Stage II anesthesia, or incomplete
+  neuromuscular recovery (train-of-four ratio or blocker T1 below 90%, excluding
+  weakness from dantrolene)
 - assisted ventilation stops during apnea
-- a shock is delivered to a responsive patient with spontaneous circulation
+- a shock is delivered to a responsive patient (loss of response below 0.5) with
+  spontaneous circulation
 
 ### Session transport
 
@@ -180,4 +188,4 @@ intubation response between stroke volume and vascular resistance. Ebert 1992
 and 1995 set the peak HR and MAP response, and Hayakawa-Fujii 2001 is an
 independent check. The replay also compares induction changes with Sjøen 2023
 and 2024 and Poterman 2017. `--sensitivity` compares assumed propofol loading
-histories at Sawano's plasma target.
+histories at the plasma target in Sawano 2013.
