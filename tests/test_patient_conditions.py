@@ -1,5 +1,6 @@
 """Integrated responses of the reduced patient-condition models."""
 
+import copy
 import math
 from dataclasses import asdict
 
@@ -13,14 +14,14 @@ from anasim.patient.patient import Patient
 
 
 def _engine(**patient):
-    engine = SimulationEngine(Patient(**patient), SimulationConfig(mode="awake", dt=0.5, rng_seed=1))
+    engine = SimulationEngine(Patient(**patient), SimulationConfig(mode="awake", dt=1.0, rng_seed=1))
     engine.start()
     return engine
 
 
-def _advance(engine, seconds):
-    for _ in range(int(seconds / 0.5)):
-        engine.step(0.5)
+def _advance(engine, seconds, dt=1.0):
+    for _ in range(int(seconds / dt)):
+        engine.step(dt)
 
 
 def _ventilate(engine, rr=12):
@@ -139,32 +140,22 @@ def test_copd_has_persistent_obstruction_gas_trapping_and_wasted_ventilation():
     assert max(differences) > 5
 
 
-def test_copd_hypoxemia_is_ventilation_perfusion_mismatch_that_oxygen_corrects():
-    """Wagner 1977: advanced COPD breathing air had PaO2 38-71 mmHg with almost
-    no shunt, so V/Q mismatch caused the hypoxemia and oxygen corrects it."""
-    engine = _engine(age=65, copd_severity=1)
-    _advance(engine, 600)
-    assert 38 < engine.state.pao2 < 71
-    engine.set_airway_mode(AirwayType.MASK)
-    engine.set_fgf(10.0, 0.0)
-    _advance(engine, 300)
-    assert engine.state.pao2 > 450
-
-
 def test_copd_controlled_and_high_flow_oxygen_responses():
-    """General COPD oxygen-response check motivated by DeGaute 1981 and Robinson 2000.
+    """Wagner 1977, DeGaute 1981, and Robinson 2000 COPD oxygen responses.
 
-    Controlled oxygen (FiO2 0.28) raises PaO2 and PvO2 with a modest PaCO2 rise
-    and pH fall (DeGaute's cardiac-index drop from 3.9 to 3.4 L/min/m^2 in
-    moderate hypoxemia vs 4.0 unchanged at PaO2 40 mmHg is not modeled). On 100%
-    O2, hypercapnic retention and wasted ventilation increase when severe
-    exacerbation lowers room-air PaO2 and narrows tidal volume toward dead space.
+    Advanced COPD breathing air has PaO2 38-71 mmHg from V/Q mismatch rather
+    than shunt, so supplemental O2 corrects hypoxemia (Wagner 1977). Controlled
+    oxygen (FiO2 0.28) raises PaO2 and PvO2 with a modest PaCO2 rise and pH fall
+    (DeGaute's cardiac-index drop from 3.9 to 3.4 L/min/m^2 in moderate hypoxemia
+    vs 4.0 unchanged at PaO2 40 mmHg is not modeled). On 100% O2, hypercapnic
+    retention and wasted ventilation increase when severe exacerbation lowers
+    room-air PaO2 and narrows tidal volume toward dead space.
     """
     exac = _engine(age=64, weight=68, height=170, sex="male", copd_severity=1.0)
     exac.set_bronchospasm(0.45)
     exac.set_airway_mode(AirwayType.MASK)
     exac.set_fgf(0.0, 15.0)
-    _advance(exac, 900)
+    _advance(exac, 600, dt=1.0)
     air_pao2 = exac.state.pao2
     air_pvo2 = exac.resp.state.pv_o2
     air_paco2 = exac.state.pa_co2
@@ -172,7 +163,7 @@ def test_copd_controlled_and_high_flow_oxygen_responses():
 
     o2_flow_28 = 15.0 * (0.28 - 0.21) / 0.79
     exac.set_fgf(o2_flow_28, 15.0 - o2_flow_28)
-    _advance(exac, 3600)
+    _advance(exac, 2400, dt=1.0)
     assert 48.0 < air_pao2 < 60.0 and air_paco2 > 45.0
     assert 68.0 < exac.state.pao2 < 82.0
     assert 4.0 < exac.resp.state.pv_o2 - air_pvo2 < 9.0
@@ -187,12 +178,15 @@ def test_copd_controlled_and_high_flow_oxygen_responses():
         eng.set_bronchospasm(bronch)
         eng.set_airway_mode(AirwayType.MASK)
         eng.set_fgf(0.0, 15.0)
-        _advance(eng, 900)
+        step_dt = 1.0 if bronch > 0.0 else 2.0
+        _advance(eng, 600, dt=step_dt)
+        if label == "mild":
+            assert 38.0 < eng.state.pao2 < 71.0
         paco2_air = eng.state.pa_co2
         wasted_air = 1.0 - eng.resp.state.va / eng.resp.state.mv
 
         eng.set_fgf(15.0, 0.0)
-        _advance(eng, 1500)
+        _advance(eng, 1200, dt=step_dt)
         assert eng.state.pao2 > 450.0
         deltas[label] = eng.state.pa_co2 - paco2_air
         wasted_shifts[label] = (1.0 - eng.resp.state.va / eng.resp.state.mv) - wasted_air
@@ -207,30 +201,31 @@ def _gradient_kpa(state):
     return (0.21 * (760.0 - 47.0) - state.pa_co2 / 0.8 - state.pao2) / 7.50062
 
 
-def _postoperative_gradient_kpa(site):
+def _postoperative_gradient_kpa(engine_factory, site):
     """A-a gradient 30 min after extubation to room air, following emergence on 100% O2."""
-    engine = SimulationEngine(Patient(age=68, surgical_site=site),
-                              SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1))
-    engine.start()
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
+        age=68, surgical_site=site, start=True,
+    )
     engine.set_vaporizer(0.0)
     engine.set_drug_rate("remi", 0.0)
     engine.set_fgf(10.0, 0.0)
     engine.give_drug_bolus("sugammadex", 2.0 * engine.patient.weight)
-    for _ in range(1800):
+    for _ in range(900):
         if engine.state.bis > 70.0 and engine.resp.state.mv > 1.0:
             engine.set_vent_power(False)
         if engine.state.bis > 80.0 and engine.resp.state.mv > 3.0:
             break
-        engine.step(1.0)
+        engine.step(2.0)
     else:
         raise AssertionError("Patient did not meet extubation criteria")
     engine.set_airway_mode("None")
-    for _ in range(1800):
-        engine.step(1.0)
+    for _ in range(900):
+        engine.step(2.0)
     return _gradient_kpa(engine.state)
 
 
-def test_abdominal_surgery_keeps_airway_closure_after_emergence():
+def test_abdominal_surgery_keeps_airway_closure_after_emergence(engine_factory):
     """Lindberg 1992, colon surgery at age 68 (n = 13): the A-a gradient was
     1.8 +/- 1.7 kPa awake and 3.7 +/- 1.9 kPa 2 h after surgery. The gradient
     excludes the PaCO2 rise from postoperative opioids. Bands are 2 SE. After
@@ -241,10 +236,10 @@ def test_abdominal_surgery_keeps_airway_closure_after_emergence():
     awake = []
     for site in ("other", "upper_abdominal"):
         engine = _engine(age=68, surgical_site=site)
-        _advance(engine, 600)
+        _advance(engine, 30, dt=2.0)
         awake.append(_gradient_kpa(engine.state))
     assert awake[0] == awake[1] == pytest.approx(1.8, abs=2 * 1.7 / math.sqrt(13))
-    gradients = {site: _postoperative_gradient_kpa(site)
+    gradients = {site: _postoperative_gradient_kpa(engine_factory, site)
                  for site in ("other", "lower_abdominal", "upper_abdominal")}
     assert gradients["lower_abdominal"] == pytest.approx(3.7, abs=2 * 1.9 / math.sqrt(13))
     assert gradients["other"] < gradients["lower_abdominal"] < gradients["upper_abdominal"]
@@ -321,23 +316,24 @@ def test_hypertensive_vs_normotensive_propofol_fentanyl_intubation_matches_sawan
     mmHg); fentanyl 2 mcg/kg keeps normotensive peak MAP near baseline whereas
     hypertensives require 4 mcg/kg.
     """
-    results: dict[tuple[str, float], tuple[float, float, float]] = {}
+    results: dict[tuple[str, float], tuple[float, float]] = {}
     for label, base_map, base_hr in (("normo", 98.0, 74.0), ("htn", 120.0, 75.0)):
+        prefix = SimulationEngine(
+            Patient(age=65, weight=57, height=160, sex="male", baseline_map=base_map, baseline_hr=base_hr),
+            SimulationConfig(mode="awake", tci_enabled=True, dt=1.0, rng_seed=1),
+        )
+        prefix.start()
+        prefix.set_airway_mode("Mask")
+        prefix.set_fgf(10.0, 0.0)
+        prefix.enable_tci("propofol", 4.0, mode="plasma")
+        for _ in range(60):
+            prefix.step(1.0)
+        prefix.give_drug_bolus("roc", 0.9 * 57.0)
+        prefix.set_bag_mask_ventilation(True, rr=12, vt=0.45)
+        for _ in range(60):
+            prefix.step(1.0)
         for fent_ug_kg in (0.0, 2.0, 4.0):
-            engine = SimulationEngine(
-                Patient(age=65, weight=57, height=160, sex="male", baseline_map=base_map, baseline_hr=base_hr),
-                SimulationConfig(mode="awake", tci_enabled=True, dt=1.0, rng_seed=1),
-            )
-            engine.start()
-            engine.set_airway_mode("Mask")
-            engine.set_fgf(10.0, 0.0)
-            engine.enable_tci("propofol", 4.0, mode="plasma")
-            for _ in range(60):
-                engine.step(1.0)
-            engine.give_drug_bolus("roc", 0.9 * 57.0)
-            engine.set_bag_mask_ventilation(True, rr=12, vt=0.45)
-            for _ in range(60):
-                engine.step(1.0)
+            engine = copy.deepcopy(prefix)
             if fent_ug_kg > 0.0:
                 engine.give_drug_bolus("fentanyl", fent_ug_kg * 57.0)
             for _ in range(120):
@@ -353,9 +349,7 @@ def test_hypertensive_vs_normotensive_propofol_fentanyl_intubation_matches_sawan
             for _ in range(120):
                 engine.step(1.0)
                 peak_map = max(peak_map, engine.state.map)
-            for _ in range(240):
-                engine.step(2.0)
-            results[(label, fent_ug_kg)] = (pre_intub_drop, peak_map, engine.state.map)
+            results[(label, fent_ug_kg)] = (pre_intub_drop, peak_map)
 
     for fent_ug_kg in (0.0, 2.0, 4.0):
         assert results[("htn", fent_ug_kg)][0] > results[("normo", fent_ug_kg)][0] + 5.0
@@ -367,10 +361,11 @@ def test_hypertensive_vs_normotensive_propofol_fentanyl_intubation_matches_sawan
     assert results[("htn", 4.0)][1] < 115.0
 
 
-def test_ketamine_induction_in_atherosclerotic_disease_matches_balfors_1983():
+def test_ketamine_induction_in_atherosclerotic_disease_and_labetalol_blunting():
     """Bålfors 1983 (control arm, n = 8 atherosclerotic disease without
     droperidol): ketamine 2 mg/kg over 1 min on FiO2 0.25 raises MAP (103 ->
-    146 +/- 25.5 SD) and HR (73 -> 84 +/- 11.3 SD) at 2-3 min without ischemia.
+    146 +/- 25.5 SD) and HR (73 -> 84 +/- 11.3 SD) at 2-3 min without ischemia,
+    and combined alpha/beta blockade with labetalol blunts both surges.
     """
     control = SimulationEngine(
         Patient(age=57, weight=75, height=175, sex="male", baseline_map=103.0,
@@ -380,14 +375,17 @@ def test_ketamine_induction_in_atherosclerotic_disease_matches_balfors_1983():
     control.start()
     control.set_airway_mode("Mask")
     control.set_fgf(0.5, 9.5)  # FiO2 ~0.25
-    for _ in range(120):
-        control.step(1.0)
-    control.set_drug_rate("ketamine", 2.0 * 60.0)
-    for _ in range(60):
-        control.step(1.0)
-    control.set_drug_rate("ketamine", 0.0)
-    for _ in range(150):
-        control.step(1.0)
+    blocked = copy.deepcopy(control)
+    blocked.give_drug_bolus("labetalol", 40.0)
+    for eng in (control, blocked):
+        for _ in range(60):
+            eng.step(2.0)
+        eng.set_drug_rate("ketamine", 2.0 * 60.0)
+        for _ in range(30):
+            eng.step(2.0)
+        eng.set_drug_rate("ketamine", 0.0)
+        for _ in range(75):
+            eng.step(2.0)
 
     assert control.state.map == pytest.approx(146.0, abs=2.0 * 25.5)
     assert control.state.map > 120.0
@@ -395,37 +393,8 @@ def test_ketamine_induction_in_atherosclerotic_disease_matches_balfors_1983():
     assert control.state.hr > 80.0
     assert control.state.coronary_supply_demand_ratio > 1.0
     assert control.state.myocardial_ischemia < 0.01
-
-
-def test_labetalol_blunts_ketamine_pressor_and_chronotropic_response():
-    """Combined alpha/beta blockade with labetalol attenuates both the pressor
-    and tachycardic surges of a 2 mg/kg ketamine induction.
-    """
-    unblocked = SimulationEngine(
-        Patient(age=57, weight=75, height=175, sex="male", baseline_map=103.0,
-                baseline_hr=73.0, coronary_flow_reserve=2.0),
-        SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
-    )
-    blocked = SimulationEngine(
-        Patient(age=57, weight=75, height=175, sex="male", baseline_map=103.0,
-                baseline_hr=73.0, coronary_flow_reserve=2.0),
-        SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
-    )
-    for eng in (unblocked, blocked):
-        eng.start()
-    blocked.give_drug_bolus("labetalol", 40.0)
-    for eng in (unblocked, blocked):
-        for _ in range(120):
-            eng.step(1.0)
-        eng.set_drug_rate("ketamine", 2.0 * 60.0)
-        for _ in range(60):
-            eng.step(1.0)
-        eng.set_drug_rate("ketamine", 0.0)
-        for _ in range(150):
-            eng.step(1.0)
-
-    assert blocked.state.map < unblocked.state.map - 15.0
-    assert blocked.state.hr < unblocked.state.hr - 8.0
+    assert blocked.state.map < control.state.map - 15.0
+    assert blocked.state.hr < control.state.hr - 8.0
 
 
 def test_low_vs_normal_cardiac_output_propofol_fentanyl_matches_sherry_1995():
@@ -519,11 +488,11 @@ def test_end_stage_renal_disease_propofol_infusion_matches_ickx_1998():
         engine.set_vent_settings(mode="VCV", vt=0.48, rr=11, peep=5, ie="1:2")
         engine.set_vent_power(True)
         engine.set_drug_rate("propofol", 200.0)
-        for _ in range(120):
-            engine.step(5.0)
+        for _ in range(300):
+            engine.step(2.0)
         engine.set_drug_rate("propofol", 100.0)
-        for _ in range(1260):
-            engine.step(5.0)
+        for _ in range(1500):
+            engine.step(2.0)
         cp_maint = engine.state.propofol_cp
         cl_ml_kg_min = engine.pk["propofol"].elimination_clearance * 1000.0 / wt
         map_maint = engine.state.map

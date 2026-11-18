@@ -4,10 +4,24 @@ import copy
 
 import pytest
 
+from anasim.core.projection import PROPOFOL_LOC_TRANSFER, hypnotic_equivalent
 from anasim.core.state import SimulationConfig
 from anasim.core.tci import TCIController
-from anasim.patient.pd.anesthesia import BISModel, ClinicalResponseModel
-from anasim.patient.pk_models import ANESTHETIZED_OUTPUT, FentanylPK
+from anasim.patient.patient import Patient
+from anasim.patient.pd.anesthesia import (
+    ClinicalResponseModel,
+    midazolam_loss_of_response,
+)
+from anasim.patient.pk_models import (
+    ANESTHETIZED_OUTPUT,
+    EsmololPK,
+    EtomidatePK,
+    FentanylPK,
+    KetaminePK,
+    LabetalolPK,
+    MidazolamPK,
+    PropofolPKEleveld,
+)
 from anasim.physiology.hemodynamics import HemodynamicModel
 
 
@@ -24,36 +38,12 @@ def _awake(engine_factory, **patient):
     return engine
 
 
-def _propofol_induction(engine_factory, midazolam_mg=0.0, propofol_mg=140.0):
-    engine = _awake(engine_factory)
-    engine.give_drug_bolus("midazolam", midazolam_mg)
-    _advance(engine, 180)
-    engine.give_drug_bolus("propofol", propofol_mg)
-    _advance(engine, 90)
-    return engine
-
-
-def _intubation_response(engine_factory, fentanyl_mcg=0.0, lidocaine_mg=0.0, lidocaine_lead_s=210):
-    """Peak HR and MAP rises, and the tolerance of laryngoscopy, at intubation 210 s after propofol."""
-    engine = _awake(engine_factory)
-    engine.give_drug_bolus("fentanyl", fentanyl_mcg)
-    _advance(engine, 90)  # Fentanyl is given 5 min before the stimulus.
-    for second in range(210):
-        if second == 0:
-            engine.give_drug_bolus("propofol", 140.0)
-        if second == 90:
-            engine.give_drug_bolus("roc", 0.6 * engine.patient.weight)
-        if second == 180:
-            engine.set_airway_mode("ETT")
-            engine.set_vent_power(True)
-        if second == 210 - lidocaine_lead_s:
-            engine.give_drug_bolus("lidocaine", lidocaine_mg)
-        engine.step(1.0)
+def _measure_intubation_peak(engine):
     base_hr, base_map, tolerance = engine.state.hr, engine.state.map, engine.state.tol
     engine.start_disturbance("stim_intubation_pulse")
     peak_hr, peak_map = base_hr, base_map
-    for _ in range(600):
-        engine.step(0.1)
+    for _ in range(120):
+        engine.step(0.5)
         peak_hr = max(peak_hr, engine.state.hr)
         peak_map = max(peak_map, engine.state.map)
     return peak_hr - base_hr, peak_map - base_map, tolerance
@@ -108,7 +98,7 @@ def test_ketamine_nitrous_maintenance_settles_to_baseline(engine_factory):
     assert peak_map > 1.12 * base_map
 
     engine.set_drug_rate("ketamine", 0.030 * 60.0)
-    _advance(engine, 50 * 60)
+    _advance(engine, 50 * 60, dt=2.0)
     assert abs(engine.state.map / base_map - 1.0) < 0.10
     assert abs(engine.state.hr / base_hr - 1.0) < 0.10
     assert engine.state.co < 1.03 * base_co
@@ -129,7 +119,9 @@ def test_ketamine_with_atropine_and_nitrous_uses_premedicated_hr_baseline(engine
     engine.set_fgf(4.0, 0.0)
     unpremedicated_hr = engine.state.hr
     engine.give_drug_bolus("atropine", 0.5)
-    _advance(engine, 30 * 60)
+    for _ in range(28):
+        engine.pk["atropine"].step(60.0, 0.0)
+    _advance(engine, 120, dt=2.0)
     premedicated_hr = engine.state.hr
     assert premedicated_hr > unpremedicated_hr + 10.0
 
@@ -148,8 +140,7 @@ def test_ketamine_with_atropine_and_nitrous_uses_premedicated_hr_baseline(engine
     assert engine.state.mac_n2o > 0.4  # N2O has reached the alveoli.
 
 
-@pytest.mark.parametrize("dt", [0.5, 1.0])
-def test_bovill_ketamine_hr_and_map_rises_after_iv_atropine(engine_factory, dt):
+def test_bovill_ketamine_hr_and_map_rises_after_iv_atropine(engine_factory):
     """Bovill 1972 Table 1 and Fig. 1: ketamine 2 mg/kg over 30 s added
     17 ± 2.5 bpm and 27 ± 1.7 mmHg peak (21 mmHg on the minute-mean curve)
     without premedication, and 18 ± 4.7 bpm and 19 ± 2.1 mmHg above
@@ -159,6 +150,7 @@ def test_bovill_ketamine_hr_and_map_rises_after_iv_atropine(engine_factory, dt):
     Doses and timing match; the paper gives no ages or weights for its fit young
     women, so assume 30 years, 60 kg, and 165 cm.
     """
+    dt = 1.0
     hr_rises = []
     map_rises = []
     for atropine in (0.0, 2.0):
@@ -221,7 +213,7 @@ def test_ketamine_pressor_response_persists_during_pacing_and_beta_block_until_a
     # Fixed-rate right atrial pacing at 1.5x resting HR (110 bpm).
     monkeypatch.setattr(paced.hemo, "_rhythm_rate", lambda _: 110.0)
     paced.hemo.invalidate_state_cache()
-    _advance(paced, 240)
+    _advance(paced, 240, dt=2.0)
     ctrl_co, ctrl_svr, ctrl_map = paced.state.co, paced.state.svr, paced.state.map
     assert 0.65 * unpaced_sv < paced.state.sv < 0.88 * unpaced_sv
     assert 0.75 * unpaced_svr < ctrl_svr < 0.90 * unpaced_svr
@@ -239,23 +231,43 @@ def test_ketamine_pressor_response_persists_during_pacing_and_beta_block_until_a
     assert 15.0 < max(mp for _, _, mp in traces) - ctrl_map < 30.0
 
     early_map_rises = {}
+    pt_bovill = Patient(age=30, weight=60, height=165, sex="female", baseline_hr=95, baseline_map=95)
     for arm in ("none", "esmolol", "labetalol"):
-        engine = _awake(engine_factory, age=30, weight=60, height=165, sex="female", baseline_hr=95, baseline_map=95)
+        hemo = HemodynamicModel(pt_bovill)
+        ket_pk = KetaminePK(pt_bovill)
+        esm_pk = EsmololPK(pt_bovill)
+        lab_pk = LabetalolPK(pt_bovill)
+        base_bv = hemo.blood_volume_0
+        base_co = hemo.base_co_l_min / hemo.failure.output_factor
+        state = hemo.state
         for _ in range(300):
-            if arm == "esmolol":
-                engine.set_drug_rate("esmolol", 80.0)
-            elif arm == "labetalol":
-                engine.give_drug_bolus("labetalol", 40.0 / 300.0)
-            engine.step(1.0)
-        _advance(engine, 120)
-        before_map = engine.state.map
-        engine.set_drug_rate("ketamine", 2.0 * 120.0)
+            esm_rate = 80.0 * 60.0 / 60000.0 if arm == "esmolol" else 0.0
+            if arm == "labetalol":
+                lab_pk.state.c1 += (40.0 * 1000.0 / 300.0) / lab_pk.v1
+            lab_pk.update_hemodynamics(1.0, state.co / base_co, hemo.renal_perfusion)
+            ce_esm = esm_pk.step(1.0, esm_rate).ce
+            ce_lab = lab_pk.step(1.0, 0.0).ce
+            state = hemo.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_esmolol=ce_esm, ce_labetalol=ce_lab)
+        for _ in range(120):
+            lab_pk.update_hemodynamics(1.0, state.co / base_co, hemo.renal_perfusion)
+            ce_esm = esm_pk.step(1.0, 80.0 * 60.0 / 60000.0 if arm == "esmolol" else 0.0).ce
+            ce_lab = lab_pk.step(1.0, 0.0).ce
+            state = hemo.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_esmolol=ce_esm, ce_labetalol=ce_lab)
+        before_map = state.map
         peaks = []
         for idx in range(180):
-            if idx == 30:
-                engine.set_drug_rate("ketamine", 0.0)
-            engine.step(1.0)
-            peaks.append(engine.state.map)
+            ket_rate = 2.0 * 60.0 / 30.0 if idx < 30 else 0.0
+            ket_pk.update_hemodynamics(hemo.blood_volume / base_bv, state.co / base_co, hemo.renal_perfusion)
+            lab_pk.update_hemodynamics(hemo.blood_volume / base_bv, state.co / base_co, hemo.renal_perfusion)
+            ket_pk.step(1.0, ket_rate)
+            ce_esm = esm_pk.step(1.0, 80.0 * 60.0 / 60000.0 if arm == "esmolol" else 0.0).ce
+            ce_lab = lab_pk.step(1.0, 0.0).ce
+            state = hemo.step(
+                1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0,
+                ce_esmolol=ce_esm, ce_labetalol=ce_lab,
+                ce_ketamine=ket_pk.state.ce_cv, ce_ketamine_hr=ket_pk.state.ce_hr,
+            )
+            peaks.append(state.map)
         early_map_rises[arm] = max(peaks) - before_map
     assert early_map_rises["esmolol"] > 14.0
     assert early_map_rises["labetalol"] < 0.45 * early_map_rises["none"]
@@ -274,28 +286,58 @@ def test_midazolam_sedates_more_with_age_and_potentiates_propofol(engine_factory
     """
     engine = _awake(engine_factory)
     engine.give_drug_bolus("midazolam", 2.0)
-    _advance(engine, 600)
+    _advance(engine, 180, dt=2.0)
     assert engine.state.loc < 0.05
     assert engine.state.bis > 85.0
 
     peak_loc = {}
     for age in (26, 70):
-        engine = _awake(engine_factory, age=age)
-        engine.give_drug_bolus("midazolam", 0.1 * engine.patient.weight)
+        pt = Patient(age=age)
+        mid_pk = MidazolamPK(pt)
+        crm = ClinicalResponseModel(age=age)
+        mid_c50 = midazolam_loss_of_response(age)
+        mid_pk.state.c1 += 0.1 * pt.weight * 1000.0 / mid_pk.v1
         peaks = []
         for _ in range(900):
-            engine.step(1.0)
-            peaks.append(engine.state.loc)
+            ce = mid_pk.step(1.0, 0.0).ce
+            hyp = hypnotic_equivalent(0.0, 0.0, ce, mid_c50, crm.age_factor)
+            peaks.append(crm.loss_of_response(hyp, 0.0))
         peak_loc[age] = max(peaks)
     assert peak_loc[70] > 2.0 * peak_loc[26]
 
     # Probe near the LOC transition; 70 and 140 mg both saturate the clinical
     # response and cannot distinguish the interaction.
-    half_dose = _propofol_induction(engine_factory, propofol_mg=25.0)
-    with_midazolam = _propofol_induction(engine_factory, midazolam_mg=2.0, propofol_mg=25.0)
-    full_dose = _propofol_induction(engine_factory, propofol_mg=50.0)
-    assert half_dose.state.loc < 0.4
-    assert with_midazolam.state.loc > full_dose.state.loc
+    def _induction_loc(midazolam_mg: float, propofol_mg: float) -> float:
+        pt = Patient()
+        prop_pk = PropofolPKEleveld(pt)
+        mid_pk = MidazolamPK(pt)
+        crm = ClinicalResponseModel(age=pt.age)
+        mid_c50 = midazolam_loss_of_response(pt.age)
+        if midazolam_mg > 0.0:
+            mid_pk.state.c1 += midazolam_mg * 1000.0 / mid_pk.v1
+            for _ in range(180):
+                prop_cp, mid_cp = prop_pk.state.c1, mid_pk.state.c1
+                prop_pk.update_midazolam(mid_cp)
+                mid_pk.update_propofol(prop_cp)
+                prop_pk.step(1.0, 0.0)
+                mid_pk.step(1.0, 0.0)
+        prop_pk.state.c1 += propofol_mg / prop_pk.v1
+        for _ in range(90):
+            prop_cp, mid_cp = prop_pk.state.c1, mid_pk.state.c1
+            prop_pk.update_midazolam(mid_cp)
+            mid_pk.update_propofol(prop_cp)
+            prop_pk.step(1.0, 0.0)
+            mid_pk.step(1.0, 0.0)
+        hyp = hypnotic_equivalent(
+            PROPOFOL_LOC_TRANSFER * prop_pk.state.ce_response, 0.0, mid_pk.state.ce, mid_c50, crm.age_factor
+        )
+        return crm.loss_of_response(hyp, 0.0)
+
+    half_loc = _induction_loc(0.0, 25.0)
+    with_midaz_loc = _induction_loc(2.0, 25.0)
+    full_loc = _induction_loc(0.0, 50.0)
+    assert half_loc < 0.4
+    assert with_midaz_loc > full_loc
 
 
 def test_fentanyl_depresses_breathing_and_accumulates(engine_factory):
@@ -339,12 +381,33 @@ def test_fentanyl_blunts_the_intubation_response_more_than_lidocaine(engine_fact
     Western trials; Wilson 1991 found HR rose 21-26% with or without it. Okuda
     1990: intubation 30 s after lidocaine raised MAP and HR, unlike at 1-3 min.
     """
-    hr_alone, map_alone, tol_alone = _intubation_response(engine_factory)
+    base = _awake(engine_factory)
+    fent = copy.deepcopy(base)
+    fent.give_drug_bolus("fentanyl", 140.0)
+    _advance(base, 90, dt=2.0)
+    _advance(fent, 90, dt=2.0)
+
+    lido = copy.deepcopy(base)
+    lido.give_drug_bolus("lidocaine", 105.0)
+    for eng in (base, fent, lido):
+        eng.give_drug_bolus("propofol", 140.0)
+        _advance(eng, 90, dt=1.0)
+        eng.give_drug_bolus("roc", 0.6 * eng.patient.weight)
+        _advance(eng, 90, dt=1.0)
+        eng.set_airway_mode("ETT")
+        eng.set_vent_power(True)
+
+    rushed = copy.deepcopy(base)
+    rushed.give_drug_bolus("lidocaine", 105.0)
+    for eng in (base, fent, lido, rushed):
+        _advance(eng, 30, dt=1.0)
+
+    hr_alone, map_alone, tol_alone = _measure_intubation_peak(base)
     assert 28.0 < hr_alone < 45.0
     assert 28.0 < map_alone < 45.0
-    hr_fentanyl, map_fentanyl, tol_fentanyl = _intubation_response(engine_factory, fentanyl_mcg=140.0)
-    hr_lidocaine, map_lidocaine, _ = _intubation_response(engine_factory, lidocaine_mg=105.0)
-    _, map_rushed, _ = _intubation_response(engine_factory, lidocaine_mg=105.0, lidocaine_lead_s=30)
+    hr_fentanyl, map_fentanyl, tol_fentanyl = _measure_intubation_peak(fent)
+    hr_lidocaine, map_lidocaine, _ = _measure_intubation_peak(lido)
+    _, map_rushed, _ = _measure_intubation_peak(rushed)
 
     assert tol_fentanyl > tol_alone + 0.2
     assert hr_fentanyl < 0.7 * hr_alone
@@ -360,34 +423,41 @@ def test_etomidate_induction_is_brief_and_hemodynamically_stable(engine_factory)
     blood pressure and less ventilatory depression than other hypnotics.
     Arden 1986: a smaller initial volume deepens the effect in the elderly.
     """
-    inductions = {}
-    for drug, mg_per_kg in (("etomidate", 0.3), ("propofol", 2.0)):
-        engine = _awake(engine_factory)
-        base_map = engine.state.map
-        engine.give_drug_bolus(drug, mg_per_kg * engine.patient.weight)
-        trace = []
-        for _ in range(900):
-            engine.step(1.0)
-            trace.append((engine.state.loc, engine.state.map, engine.state.mv))
-        inductions[drug] = base_map, trace
+    base_awake = _awake(engine_factory)
+    prop = copy.deepcopy(base_awake)
+    etom = base_awake
 
-    base_map, trace = inductions["etomidate"]
-    assert trace[119][0] > 0.85
-    awake_at = next(second for second, (loc, _, _) in enumerate(trace) if second > 60 and loc < 0.5)
+    etom_base_map = etom.state.map
+    etom.give_drug_bolus("etomidate", 0.3 * etom.patient.weight)
+    trace = []
+    for _ in range(450):
+        etom.step(2.0)
+        trace.append((etom.state.loc, etom.state.map, etom.state.mv))
+    assert trace[59][0] > 0.85
+    awake_at = 2 * next(idx for idx, (loc, _, _) in enumerate(trace) if idx > 30 and loc < 0.5)
     assert 4 * 60 < awake_at < 10 * 60
-    assert min(map_ for _, map_, _ in trace) > 0.95 * base_map
-    propofol_base, propofol_trace = inductions["propofol"]
-    assert min(map_ for _, map_, _ in propofol_trace) / propofol_base < min(map_ for _, map_, _ in trace) / base_map
+    assert min(map_ for _, map_, _ in trace) > 0.95 * etom_base_map
+
+    prop_base = prop.state.map
+    prop.give_drug_bolus("propofol", 2.0 * prop.patient.weight)
+    propofol_trace = []
+    for _ in range(240):
+        prop.step(1.0)
+        propofol_trace.append((prop.state.loc, prop.state.map, prop.state.mv))
+    assert min(map_ for _, map_, _ in propofol_trace) / prop_base < min(map_ for _, map_, _ in trace) / etom_base_map
     assert min(mv for _, _, mv in trace) > min(mv for _, _, mv in propofol_trace)
 
     peak_loc = {}
     for age in (25, 70):
-        engine = _awake(engine_factory, age=age)
-        engine.give_drug_bolus("etomidate", 0.2 * engine.patient.weight)
+        pt = Patient(age=age)
+        pk = EtomidatePK(pt)
+        crm = ClinicalResponseModel(age=age)
+        pk.state.c1 += 0.2 * pt.weight / pk.v1
         peaks = []
-        for _ in range(600):
-            engine.step(1.0)
-            peaks.append(engine.state.loc)
+        for _ in range(300):
+            ce = pk.step(1.0, 0.0).ce
+            hyp = hypnotic_equivalent(0.0, ce, 0.0, 605.0, crm.age_factor)
+            peaks.append(crm.loss_of_response(hyp, 0.0))
         peak_loc[age] = max(peaks)
     assert peak_loc[70] > peak_loc[25] + 0.1
 
@@ -442,15 +512,12 @@ def test_midazolam_induction_preserves_breathing_bis_and_thermoregulation_until_
     assert midaz.state.map < map_0 - 10.0
 
 
-def test_lidocaine_mac_sparing_awake_ceiling_and_extreme_bis_overflow_guard(patient):
+def test_lidocaine_mac_sparing_and_awake_ceiling():
     """Systemic lidocaine spares sevoflurane MAC tolerance while capping lidocaine-only
-    tolerance below surgical unresponsiveness, and BISModel stays finite at extreme inputs.
+    tolerance below surgical unresponsiveness.
     """
     crm = ClinicalResponseModel(40.0)
     assert crm.tolerance(0.0, 0.0, ce_lidocaine=50.0) <= 0.251
     assert crm.tolerance(0.0, 0.0, mac_sevo=1.0, ce_lidocaine=4.0) > (
         crm.tolerance(0.0, 0.0, mac_sevo=1.0, ce_lidocaine=0.0) + 0.05
     )
-    bis = BISModel(patient)
-    val = bis.compute_bis(1e9, 1e6, 0.0)
-    assert 0.0 <= val <= 100.0

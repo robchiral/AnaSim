@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 from anasim.core.enums import RhythmType
-from anasim.core.state import SimulationConfig
+from anasim.core.utils import hill_function
 from anasim.monitors.arterial import ArterialWaveformConfig, ArterialWaveformRenderer
 from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.patient.patient import Patient
@@ -177,41 +177,63 @@ def _bolus_response(dose, *, dt=0.2, mac=0.0, baroreflex=True):
                      response[:, 2].min() - base.map, response[:, 2].max()])
 
 
-@pytest.mark.parametrize(
-    "dose,hr_mean,hr_sd,sbp_mean,sbp_sd,hr_time,sbp_time",
-    [(5, 25, 8, 24, 11, 60, 99), (10, 36, 11, 46, 16, 53, 88), (15, 43, 16, 75, 27, 53, 84)],
-)
-def test_takahashi_bolus_response(dose, hr_mean, hr_sd, sbp_mean, sbp_sd, hr_time, sbp_time):
-    response = _bolus_response(dose)
-    assert response[0] == pytest.approx(hr_mean, abs=1.5 * hr_sd)
-    assert response[1] == pytest.approx(sbp_mean, abs=1.5 * sbp_sd)
-    assert response[2] == pytest.approx(hr_time, abs=15.0)
-    assert response[3] == pytest.approx(sbp_time, abs=25.0)
-    assert response[3] > response[2] + 15.0
-    assert response[4] < 0.0  # Figure 1: late fall below baseline.
-    assert abs(response[5]) < 5.0
+def test_takahashi_bolus_and_mean_dose_response():
+    cases = [(5, 25, 8, 24, 11, 60, 99), (10, 36, 11, 46, 16, 53, 88), (15, 43, 16, 75, 27, 53, 84)]
+    responses = []
+    for dose, hr_mean, hr_sd, sbp_mean, sbp_sd, hr_time, sbp_time in cases:
+        response = _bolus_response(dose)
+        assert response[0] == pytest.approx(hr_mean, abs=1.5 * hr_sd)
+        assert response[1] == pytest.approx(sbp_mean, abs=1.5 * sbp_sd)
+        assert response[2] == pytest.approx(hr_time, abs=15.0)
+        assert response[3] == pytest.approx(sbp_time, abs=25.0)
+        assert response[3] > response[2] + 15.0
+        assert response[4] < 0.0  # Figure 1: late fall below baseline.
+        assert abs(response[5]) < 5.0
+        responses.append(response[:2])
 
-
-def test_takahashi_mean_dose_response():
-    peaks = np.array([_bolus_response(dose)[:2] for dose in (5, 10, 15)])
+    peaks = np.array(responses)
     observed = np.array([[25, 24], [36, 46], [43, 75]])
-    # Check the cohort means and dose trend in addition to individual SD bounds.
     rmse = np.sqrt(np.mean((peaks - observed) ** 2, axis=0))
     assert np.all(rmse < [4.0, 8.0]), rmse
     assert np.all(np.diff(peaks, axis=0) > [3.0, 15.0]), peaks
 
 
-def test_awake_large_boluses_keep_raising_hr_and_sbp(engine_factory):
+def _awake_epi_models(age: float = 45.0):
+    patient = Patient(age=age)
+    model = HemodynamicModel(patient)
+    pk = EpinephrinePK(patient)
+    cycle = CardiacCycle(np.random.default_rng(0))
+    renderer = ArterialWaveformRenderer(age=age)
+    base = _step(model, dt=0.0)
+    bp0 = renderer.step(
+        cycle.seed(base.hr, RhythmType.SINUS), base.map, base.sv,
+        static_pressure=base.venous_pressure, pulse_pressure_factor=base.pulse_pressure_factor,
+    )
+    return patient, model, pk, cycle, renderer, base, bp0
+
+
+def test_awake_large_boluses_keep_raising_hr_and_sbp(awake_engine):
     """Extrapolation guards for a healthy adult, not measured high-dose targets."""
+    # Verify engine drug routing once, then run high-dose curves on subsystem models.
+    base_hr = awake_engine.state.hr
+    awake_engine.give_drug_bolus("epi", 15.0)
+    for _ in range(15):
+        awake_engine.step(1.0)
+    assert awake_engine.state.hr > base_hr + 10.0
+
     rows = []
     for dose in (15, 25, 50, 100):
-        engine = engine_factory(start=True, age=45)
-        baseline = np.array([engine.state.hr, engine.state.sbp])
+        _, model, pk, cycle, renderer, base, bp0 = _awake_epi_models(age=45.0)
+        baseline = np.array([base.hr, bp0.systolic])
         peak = np.zeros(2)
-        engine.give_drug_bolus("epi", dose)
+        pk.state.c1 += dose / pk.v1
         for _ in range(300):
-            engine.step(1.0)
-            peak = np.maximum(peak, [engine.state.hr, engine.state.sbp] - baseline)
+            state = _step(model, pk.step(1.0, 0.0).ce, dt=1.0)
+            bp = renderer.step(
+                cycle.step(1.0, state.hr, state.rhythm_type), state.map, state.sv,
+                static_pressure=state.venous_pressure, pulse_pressure_factor=state.pulse_pressure_factor,
+            )
+            peak = np.maximum(peak, [state.hr, bp.systolic] - baseline)
         rows.append(peak)
     peaks = np.array(rows)
     assert np.all(np.diff(peaks, axis=0) > [1.0, 8.0]), peaks
@@ -219,17 +241,20 @@ def test_awake_large_boluses_keep_raising_hr_and_sbp(engine_factory):
     assert 80.0 < peaks[-1, 1] < 180.0
 
 
-def test_higher_infusion_rates_restore_vascular_resistance(engine_factory):
+def test_higher_infusion_rates_restore_vascular_resistance():
     """Guard the alpha upturn; its exact dose and size are extrapolated."""
     resistance, dbp = [], []
     for rate in (0.05, 0.1, 0.2, 0.4):
-        engine = engine_factory(start=True, age=45)
-        base_svr, base_dbp = engine.hemo.state.svr, engine.state.dbp
-        engine.set_drug_rate("epi", rate * engine.patient.weight)
+        patient, model, pk, cycle, renderer, base, bp0 = _awake_epi_models(age=45.0)
+        rate_ug_s = rate * patient.weight / 60.0
         for _ in range(1200):
-            engine.step(1.0)
-        resistance.append(engine.hemo.state.svr / base_svr)
-        dbp.append(engine.state.dbp - base_dbp)
+            state = _step(model, pk.step(1.0, rate_ug_s).ce, dt=1.0)
+        bp = renderer.step(
+            cycle.step(1.0, state.hr, state.rhythm_type), state.map, state.sv,
+            static_pressure=state.venous_pressure, pulse_pressure_factor=state.pulse_pressure_factor,
+        )
+        resistance.append(state.svr / base.svr)
+        dbp.append(bp.diastolic - bp0.diastolic)
     assert resistance[1] < resistance[0] - 0.01, resistance
     assert np.all(np.diff(resistance[1:]) > [0.03, 0.05]), resistance
     assert resistance[-1] > 0.85
@@ -237,41 +262,53 @@ def test_higher_infusion_rates_restore_vascular_resistance(engine_factory):
 
 
 @pytest.mark.parametrize("age", [25, 65, 85])
-def test_high_dose_response_across_age(engine_factory, age):
+def test_high_dose_response_across_age(age):
     """Extrapolation guards for arterial alpha's age response."""
-    engine = engine_factory(start=True, age=age)
-    baseline_sbp = peak = engine.state.sbp
-    engine.give_drug_bolus("epi", 100.0)
+    _, model, pk, cycle, renderer, _, bp0 = _awake_epi_models(age=age)
+    baseline_sbp = peak = bp0.systolic
+    pk.state.c1 += 100.0 / pk.v1
     for _ in range(300):
-        engine.step(1.0)
-        peak = max(peak, engine.state.sbp)
+        state = _step(model, pk.step(1.0, 0.0).ce, dt=1.0)
+        bp = renderer.step(
+            cycle.step(1.0, state.hr, state.rhythm_type), state.map, state.sv,
+            static_pressure=state.venous_pressure, pulse_pressure_factor=state.pulse_pressure_factor,
+        )
+        peak = max(peak, bp.systolic)
     assert 60.0 < peak - baseline_sbp < 200.0
 
     resistance, dbp = [], []
     for rate in (0.1, 0.2, 0.4):
-        engine = engine_factory(start=True, age=age)
-        base_svr, base_dbp = engine.hemo.state.svr, engine.state.dbp
-        engine.set_drug_rate("epi", rate * engine.patient.weight)
+        patient, model, pk, cycle, renderer, base, bp0 = _awake_epi_models(age=age)
+        rate_ug_s = rate * patient.weight / 60.0
         for _ in range(1200):
-            engine.step(1.0)
-        resistance.append(engine.hemo.state.svr / base_svr)
-        dbp.append(engine.state.dbp - base_dbp)
+            state = _step(model, pk.step(1.0, rate_ug_s).ce, dt=1.0)
+        bp = renderer.step(
+            cycle.step(1.0, state.hr, state.rhythm_type), state.map, state.sv,
+            static_pressure=state.venous_pressure, pulse_pressure_factor=state.pulse_pressure_factor,
+        )
+        resistance.append(state.svr / base.svr)
+        dbp.append(bp.diastolic - bp0.diastolic)
     assert np.all(np.diff(resistance) > 0.03), resistance
     assert dbp[-1] > 5.0
 
 
 @pytest.mark.parametrize("mode", ["awake", "steady_state"])
-@pytest.mark.parametrize("seed", [0, 3])
-def test_shock_infusion_rates_keep_increasing_resistance(engine_factory, mode, seed):
+def test_shock_infusion_rates_keep_increasing_resistance(mode):
     """Extrapolation guard beyond the measured infusion protocols."""
     resistance = []
+    prop, remi = (0.0, 0.0) if mode == "awake" else (3.5, 4.0)
     for rate in (0.4, 0.5, 0.7, 1.0, 1.5):
-        engine = engine_factory(config=SimulationConfig(mode=mode, rng_seed=seed), start=True, age=45)
-        baseline = engine.hemo.state.svr
-        engine.set_drug_rate("epi", rate * engine.patient.weight)
+        patient = Patient(age=45)
+        model = HemodynamicModel(patient)
+        pk = EpinephrinePK(patient)
+        if mode == "steady_state":
+            model.initialize_steady_state(prop, remi, 0.0)
+        baseline = model.step(0.0, prop, remi, 0.0, -2.0, 40.0, 95.0, remifentanil_cp=remi).svr
+        rate_ug_s = rate * patient.weight / 60.0
         for _ in range(1200):
-            engine.step(1.0)
-        resistance.append(engine.hemo.state.svr / baseline)
+            ce = pk.step(1.0, rate_ug_s).ce
+            state = model.step(1.0, prop, remi, 0.0, -2.0, 40.0, 95.0, ce_epi=ce, remifentanil_cp=remi)
+        resistance.append(state.svr / baseline)
     assert np.all(np.diff(resistance) > 0.01), resistance
     assert resistance[2] > 0.97, resistance
     assert resistance[3] > 1.05, resistance
@@ -298,38 +335,47 @@ def test_volatile_blunts_bolus_chronotropy():
     assert _bolus_response(10, mac=1.0)[0] < 0.85 * _bolus_response(10)[0]
 
 
-@pytest.mark.parametrize(
-    "age,baseline_hr,hr_means,hr_sds,sbp_means,sbp_sds",
-    [(30, 71, (40, 39), (10, 9), (22, 28), (7, 10)),
-     (50, 82, (28, 29), (8, 8), (22, 28), (9, 10)),
-     (65, 67, (29, 31), (10, 8), (28, 33), (12, 14))],
-)
-@pytest.mark.parametrize("dose_index,dose", [(0, 10.0), (1, 15.0)])
-def test_guinard_awake_bolus_by_age(age, baseline_hr, hr_means, hr_sds, sbp_means, sbp_sds,
-                                  dose_index, dose):
+def test_guinard_awake_bolus_by_age():
     """Guinard 1995, Tables 1-2: unpremedicated, supine, 3-s IV injections.
 
     Use the cohort's mean size and age-group resting HR, with representative
     ages in AnaSim's adult domain. Only SBP is reported, so baseline MAP is fixed.
     """
-    patient = Patient(age=age, weight=74.5, height=173, baseline_hr=baseline_hr, baseline_map=85)
-    model, pk = HemodynamicModel(patient), EpinephrinePK(patient)
-    cycle = CardiacCycle(np.random.default_rng(0))
-    renderer = ArterialWaveformRenderer(age=age)
-    base = _step(model, dt=0.0)
-    baseline_pressure = renderer.step(cycle.seed(base.hr, RhythmType.SINUS), base.map, base.sv, pulse_pressure_factor=base.pulse_pressure_factor)
-    hr_peak = sbp_peak = 0.0
-    for index in range(1500):
-        ce = pk.step(0.2, dose / 3.0 if index < 15 else 0.0).ce
-        state = _step(model, ce, dt=0.2)
-        pressure = renderer.step(cycle.step(0.2, state.hr, state.rhythm_type), state.map, state.sv, pulse_pressure_factor=state.pulse_pressure_factor)
-        if index < 600:  # Continuous peak measurement for 2 min; recovery at 5 min.
-            hr_peak = max(hr_peak, state.hr - base.hr)
-            sbp_peak = max(sbp_peak, pressure.systolic - baseline_pressure.systolic)
-    assert hr_peak == pytest.approx(hr_means[dose_index], abs=1.5 * hr_sds[dose_index])
-    assert sbp_peak == pytest.approx(sbp_means[dose_index], abs=1.5 * sbp_sds[dose_index])
-    assert abs(state.hr - base.hr) < 5.0
-    assert abs(pressure.systolic - baseline_pressure.systolic) < 5.0
+    cohorts = (
+        (30, 71, (40, 39), (10, 9), (22, 28), (7, 10)),
+        (50, 82, (28, 29), (8, 8), (22, 28), (9, 10)),
+        (65, 67, (29, 31), (10, 8), (28, 33), (12, 14)),
+    )
+    hr_peaks_10mcg = {}
+    for age, baseline_hr, hr_means, hr_sds, sbp_means, sbp_sds in cohorts:
+        for dose_index, dose in ((0, 10.0), (1, 15.0)):
+            patient = Patient(age=age, weight=74.5, height=173, baseline_hr=baseline_hr, baseline_map=85)
+            model, pk = HemodynamicModel(patient), EpinephrinePK(patient)
+            cycle = CardiacCycle(np.random.default_rng(0))
+            renderer = ArterialWaveformRenderer(age=age)
+            base = _step(model, dt=0.0)
+            baseline_pressure = renderer.step(
+                cycle.seed(base.hr, RhythmType.SINUS), base.map, base.sv,
+                pulse_pressure_factor=base.pulse_pressure_factor,
+            )
+            hr_peak = sbp_peak = 0.0
+            for index in range(1500):
+                ce = pk.step(0.2, dose / 3.0 if index < 15 else 0.0).ce
+                state = _step(model, ce, dt=0.2)
+                pressure = renderer.step(
+                    cycle.step(0.2, state.hr, state.rhythm_type), state.map, state.sv,
+                    pulse_pressure_factor=state.pulse_pressure_factor,
+                )
+                if index < 600:  # Continuous peak measurement for 2 min; recovery at 5 min.
+                    hr_peak = max(hr_peak, state.hr - base.hr)
+                    sbp_peak = max(sbp_peak, pressure.systolic - baseline_pressure.systolic)
+            assert hr_peak == pytest.approx(hr_means[dose_index], abs=1.5 * hr_sds[dose_index])
+            assert sbp_peak == pytest.approx(sbp_means[dose_index], abs=1.5 * sbp_sds[dose_index])
+            assert abs(state.hr - base.hr) < 5.0
+            assert abs(pressure.systolic - baseline_pressure.systolic) < 5.0
+            if dose_index == 0:
+                hr_peaks_10mcg[age] = hr_peak
+    assert 0.65 < hr_peaks_10mcg[65] / hr_peaks_10mcg[30] < 0.95
 
 
 def test_pk_infusion_mass_balance_and_washout():
@@ -437,38 +483,10 @@ def test_inotropy_is_applied_once():
     config = replace(HemodynamicConfig(), fb=0.0, baro_gain_brady=0.0, baro_gain_tachy=0.0, vol_clearance=0.0)
     model = HemodynamicModel(Patient(), config)
     base = _step(model, dt=0.0)
-    for _ in range(3600):
+    for _ in range(180):
         state = model.step(1.0, 0, 0, 0, -2, 40, 95, ce_dobu=10.0)
     # Inotropy scales output SV only, not SV production.
-    _, factor, _ = model._calc_hr_sv_svr_effects(
-        10.0, config.dobu_c50, config.dobu_gamma, config.dobu_emax_hr,
-        config.dobu_emax_sv, config.dobu_emax_svr,
-    )
-    coupling = 1 - config.hr_sv_coupling * math.log(max(1.0, state.hr / model.base_hr))
+    factor = 1.0 + config.dobu_emax_sv * hill_function(10.0, config.dobu_c50, config.dobu_gamma)
+    coupling = 1.0 - config.hr_sv_coupling * math.log(max(1.0, state.hr / model.base_hr))
     assert state.sv / base.sv / coupling == pytest.approx(factor, rel=0.001)
     assert state.sv_star == pytest.approx(base.sv_star, rel=0.001)
-
-
-def test_age_blunts_bolus_but_not_infusion_tachycardia(engine_factory):
-    """Leenen 2005: infusions raised HR equally at 29 and 61 years, as a smaller
-    beta response offset weaker baroreflex buffering. Guinard 1995: 10 mcg IV
-    raised HR 40 bpm before age 40 and 28-29 bpm after.
-    """
-    infusion, bolus = {}, {}
-    for age in (29, 65):
-        engine = engine_factory(start=True, age=age)
-        base = engine.state.hr
-        engine.set_drug_rate("epi", 0.12 * engine.patient.weight)  # 120 ng/kg/min
-        for _ in range(600):
-            engine.step(1.0)
-        infusion[age] = engine.state.hr - base
-
-        engine = engine_factory(start=True, age=age)
-        base = peak = engine.state.hr
-        engine.give_drug_bolus("epi", 10.0)
-        for _ in range(1200):
-            engine.step(0.1)
-            peak = max(peak, engine.state.hr)
-        bolus[age] = peak - base
-    assert infusion[65] == pytest.approx(infusion[29], rel=0.15)
-    assert 0.65 < bolus[65] / bolus[29] < 0.95

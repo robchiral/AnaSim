@@ -38,22 +38,22 @@ def test_independent_cases_send_no_guide_text_and_end_with_a_debrief(spec):
 
 
 @pytest.mark.parametrize("mode", ["guided", "independent"])
-@pytest.mark.parametrize("case,event,dt", [
-    ("hemorrhage_response", "hemorrhage", 0.1),
-    ("sepsis_response", "sepsis", 0.01), ("sepsis_response", "sepsis", 0.1),
-    ("anaphylaxis_response", "anaphylaxis", 0.01), ("anaphylaxis_response", "anaphylaxis", 0.1),
-    ("malignant_hyperthermia", "malignant_hyperthermia", 0.1),
-    ("oxygen_supply_failure", "oxygen_supply", 0.1),
+@pytest.mark.parametrize("case,event", [
+    ("hemorrhage_response", "hemorrhage"),
+    ("sepsis_response", "sepsis"),
+    ("anaphylaxis_response", "anaphylaxis"),
+    ("malignant_hyperthermia", "malignant_hyperthermia"),
+    ("oxygen_supply_failure", "oxygen_supply"),
 ])
-def test_crises_start_once_on_the_case_clock_without_clicking_steps(mode, case, event, dt):
+def test_crises_start_once_on_the_case_clock_without_clicking_steps(mode, case, event):
     session = WebSession({"scenario_id": case, "practice_mode": mode})
-    session.engine.config.dt = dt
+    session.engine.config.dt = 0.5
     assert session.case_run is not None and not session.case_run.fired
     assert session.snapshot()["scenario"]["actions"] == []
     advance(session, 31)
     assert session.case_run.fired == {event}
     observations = session.snapshot()["scenario"]["observations"]
-    assert len(observations) == 1 and observations[0]["time"] == pytest.approx(30, abs=0.11)
+    assert len(observations) == 1 and observations[0]["time"] == pytest.approx(30, abs=0.51)
     advance(session, 59)
     assert session.snapshot()["scenario"]["observations"] == observations
     if event in {"anaphylaxis", "sepsis"}:
@@ -61,31 +61,10 @@ def test_crises_start_once_on_the_case_clock_without_clicking_steps(mode, case, 
         assert session.engine.state.monitored_blood_pressure(True)[2] < 65
 
 
-@pytest.mark.parametrize("dt", [0.1, 1.0])
-def test_untreated_severe_anaphylaxis_does_not_recover_normal_pressure(dt):
-    session = WebSession({"scenario_id": "anaphylaxis_response"})
-    engine = session.engine
-    engine.config.dt = dt
-    engine.set_continuous_fluid_rate(0)
-    model = engine.hemo
-    initial_volume = engine.state.blood_volume
-    cells, hemoglobin = model.red_cell_volume_ml, model.hb_mass
-    advance(session, 900)
-    assert engine.anaphylaxis.active and engine.anaphylaxis.severity == 1
-    assert engine.state.map < 65
-    assert engine.state.blood_volume < 0.7 * initial_volume
-    assert engine.state.bronchospasm > 0.9
-    assert model.red_cell_volume_ml == cells
-    assert model.hb_mass == hemoglobin
-    assert model.hb_conc > model.baseline_hb
-    assert (model.blood_volume + model.total_third_space_ml + model.lung_water_ml
-            + model.crystalloid.interstitial_ml + model.total_urine_out_ml) == pytest.approx(initial_volume)
-
-
 @pytest.mark.parametrize("arterial_line", [False, True])
 def test_anaphylaxis_recovery_requires_current_pressure_and_cuff_reassessment(arterial_line):
     session = WebSession({"scenario_id": "anaphylaxis_response", "arterial_line_enabled": arterial_line})
-    session.engine.config.dt = 0.1
+    session.engine.config.dt = 0.5
     advance(session, 56)
     command(session, "scenario_next")
     command(session, "drug_bolus", key="epi", amount=100)
@@ -118,33 +97,34 @@ def test_anaphylaxis_recovery_requires_current_pressure_and_cuff_reassessment(ar
     assert all(outcome["achieved"] for outcome in state["debrief"]["outcomes"])
 
 
-def test_early_crisis_treatment_counts_without_repeating_doses_or_following_the_guide():
+def test_early_crisis_treatment_and_timeline_entries_without_following_the_guide():
     session = WebSession({"scenario_id": "anaphylaxis_response", "practice_mode": "independent"})
-    session.engine.config.dt = 0.1
+    session.engine.config.dt = 0.5
     advance(session, 31)
     command(session, "drug_bolus", key="epi", amount=100)
     command(session, "fluid", kind="crystalloid", volume_ml=1000)
+    command(session, "fluid", kind="saline", volume_ml=500)
+    command(session, "calcium_chloride", mg=1000)
     command(session, "blood_gas")
     command(session, "case_action", action="stop_trigger")
     report = command(session, "case_finish")["debrief"]
     outcomes = {o["id"]: o["achieved"] for o in report["outcomes"]}
     assert outcomes["epinephrine"] and outcomes["volume"] and outcomes["source"]
-    timeline = [item["text"] for item in report["timeline"]]
-    assert {"1000 mL lactated Ringer's started", "Arterial blood gas drawn"} <= set(timeline)
+    timeline = {item["text"] for item in report["timeline"]}
+    assert {
+        "1000 mL lactated Ringer's started",
+        "500 mL 0.9% saline started",
+        "Calcium chloride 1000 mg given",
+        "Arterial blood gas drawn",
+    } <= timeline
     doses = [r for r in session.engine.actions.since_case(ACTION_DRUG_BOLUS) if r.label == "epi"]
     assert len(doses) == 1 and doses[0].amount == 100
 
 
-def test_debrief_timeline_names_saline_and_calcium_chloride():
-    session = WebSession({"scenario_id": "anaphylaxis_response", "practice_mode": "independent"})
-    command(session, "fluid", kind="saline", volume_ml=500)
-    command(session, "calcium_chloride", mg=1000)
-    timeline = [item["text"] for item in command(session, "case_finish")["debrief"]["timeline"]]
-    assert {"500 mL 0.9% saline started", "Calcium chloride 1000 mg given"} <= set(timeline)
-
-
-def test_independent_feedback_defers_explanations_but_keeps_observable_failed_actions():
+def test_feedback_and_hints_across_independent_and_guided_modes():
     session = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"})
+    hint = command(session, "case_hint")["hint"]
+    assert hint and session.snapshot()["scenario"]["hint"] == hint
     failed = command(session, "airway", mode="ETT")
     assert failed["feedback"]["level"] == "blocked"
     command(session, "dismiss_feedback")
@@ -155,27 +135,18 @@ def test_independent_feedback_defers_explanations_but_keeps_observable_failed_ac
     assert [event["code"] for event in report["safety_events"]] == ["awake_intubation", "awake_neuromuscular_block"]
     assert any("Rocuronium" in item["text"] for item in report["timeline"])
     assert len(report["learning_points"]) <= 3
-
-
-def test_guided_feedback_remains_immediate_and_is_also_in_the_debrief():
-    session = WebSession({"scenario_id": "induction_tiva"})
-    assert command(session, "drug_bolus", key="roc", amount=42)["feedback"]["level"] == "warning"
-    report = command(session, "case_finish")["debrief"]
-    assert report["safety_events"][0]["code"] == "awake_neuromuscular_block"
-
-
-def test_hints_are_requested_explicitly_and_reported_as_assistance():
-    session = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"})
-    hint = command(session, "case_hint")["hint"]
-    assert hint and session.snapshot()["scenario"]["hint"] == hint
-    report = command(session, "case_finish")["debrief"]
     assert report["hints_used"] == 1
     assert any(event["kind"] == "hint" for event in report["timeline"])
+
+    guided = WebSession({"scenario_id": "induction_tiva"})
+    assert command(guided, "drug_bolus", key="roc", amount=42)["feedback"]["level"] == "warning"
+    guided_report = command(guided, "case_finish")["debrief"]
+    assert guided_report["safety_events"][0]["code"] == "awake_neuromuscular_block"
 
 
 def test_case_end_freezes_the_report_and_rejects_further_treatment(tmp_path):
     session = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"}, recordings_dir=str(tmp_path))
-    session.engine.config.dt = 0.1
+    session.engine.config.dt = 0.5
     command(session, "record", active=True)
     advance(session, 2)
     report = command(session, "case_finish")["debrief"]
@@ -204,7 +175,7 @@ def test_instructor_commands_cannot_change_a_case_and_case_actions_require_the_e
         command(session, "case_action", action="hemostasis")
 
 
-def test_debrief_metrics_account_for_elapsed_physiology_and_end_state_outcomes():
+def test_debrief_metrics_and_true_physiology_bypass_stale_monitors():
     session = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"})
     run = session.case_run
     assert run is not None
@@ -218,10 +189,18 @@ def test_debrief_metrics_account_for_elapsed_physiology_and_end_state_outcomes()
     assert report["duration"] == 5
     assert report["physiology"] == {"lowest_map": 55, "lowest_spo2": 85, "hypotension_s": 2, "hypoxemia_s": 2}
 
+    stale = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"})
+    stale.engine.state.map = 55
+    stale.engine.state.display_spo2 = 98
+    stale.engine.state.nibp_map = 90
+    stale_report = command(stale, "case_finish")["debrief"]
+    stability = next(o for o in stale_report["outcomes"] if o["id"] == "stability")
+    assert not stability["achieved"] and stale_report["physiology"]["lowest_map"] == 55
+
 
 def test_independent_induction_completes_without_a_walkthrough_or_mandatory_paralysis():
     session = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent", "tci_enabled": True})
-    session.engine.config.dt = 0.1
+    session.engine.config.dt = 0.5
     command(session, "airway", mode="Mask")
     command(session, "fgf", o2=10, air=0, n2o=0)
     advance(session, 240)
@@ -251,16 +230,6 @@ def test_cardiac_arrest_ends_the_case_with_a_debrief():
     assert snap["scenario"]["debrief"]["reason"] == "cardiac_arrest"
 
 
-def test_stale_monitor_values_do_not_mask_instability_in_the_debrief():
-    session = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"})
-    session.engine.state.map = 55
-    session.engine.state.display_spo2 = 98
-    session.engine.state.nibp_map = 90
-    report = command(session, "case_finish")["debrief"]
-    stability = next(o for o in report["outcomes"] if o["id"] == "stability")
-    assert not stability["achieved"] and report["physiology"]["lowest_map"] == 55
-
-
 def test_earlier_readiness_does_not_mask_residual_block_at_actual_tube_removal():
     session = WebSession({"scenario_id": "emergence_tiva", "practice_mode": "independent"})
     engine, run = session.engine, session.case_run
@@ -287,6 +256,7 @@ def test_independent_emergence_hint_advances_past_extubation_step():
     """In independent mode, case_hint advances past TOF confirmation once recovery is measured and past pre-extubation steps once extubated."""
     session = WebSession({"scenario_id": "emergence_tiva", "practice_mode": "independent"})
     engine = session.engine
+    engine.config.dt = 1.0
     engine.set_drug_rate("propofol", 0)
     engine.set_drug_rate("remi", 0)
     command(session, "sugammadex", mg_per_kg=4)

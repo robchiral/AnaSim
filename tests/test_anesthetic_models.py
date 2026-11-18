@@ -29,6 +29,7 @@ def test_published_response_thresholds_and_bis_delay():
     assert bis.compute_bis(3.07944689) == pytest.approx(46.4912, abs=0.001)
     assert bis.compute_bis(1.0) > 80.0
     assert bis.compute_bis(6.0) < 30.0
+    assert 0.0 <= bis.compute_bis(1e9, 1e6, 0.0) <= 100.0
     assert bis.delay == pytest.approx(21.116, abs=0.01)
     # Eleveld's delay applies before the displayed BIS responds.
     assert bis.step(20.0, bis.c50) == bis.baseline
@@ -107,15 +108,15 @@ def test_remifentanil_blunts_arousal_without_changing_baseline_bis(engine_factor
         engine.enable_tci("propofol", 2.0)
         if remi_target:
             engine.enable_tci("remi", remi_target)
-        for _ in range(900):
-            engine.step(1.0)
+        for _ in range(240):
+            engine.step(2.0)
         baseline = engine.state.bis
         loc, tolerance = engine.state.loc, engine.state.tol
         breathing = engine.resp.state.mv
         engine.start_disturbance("stim_intubation_pulse")
         peak = baseline
-        for _ in range(500):
-            engine.step(0.1)
+        for _ in range(100):
+            engine.step(0.5)
             peak = max(peak, engine.state.bis)
         outcomes.append((baseline, loc, tolerance, breathing, peak - baseline))
     alone, combined = outcomes
@@ -136,7 +137,7 @@ def test_older_patients_lose_responsiveness_at_lower_propofol_and_higher_bis(eng
     ventilation, and Eleveld TCI in place of the study's Schnider TCI.
     """
     at_loss = {}
-    for age, weight, height in ((35, 76, 173), (78, 71, 166)):
+    for age, weight, height, start_target in ((35, 76, 173, 1.5), (78, 71, 166, 1.0)):
         engine = engine_factory(
             config=SimulationConfig(mode="awake", tci_enabled=True, concomitant_opioids=False, rng_seed=2),
             start=True, age=age, weight=weight, height=height,
@@ -144,18 +145,18 @@ def test_older_patients_lose_responsiveness_at_lower_propofol_and_higher_bis(eng
         engine.set_airway_mode("ETT")
         engine.set_vent_power(True)
         steps = []
-        for target in np.arange(0.5, 4.6, 0.5):
+        for target in np.arange(start_target, 4.6, 0.5):
             engine.enable_tci("propofol", target)
-            for _ in range(900):
-                engine.step(1.0)
+            for _ in range(450):
+                engine.step(2.0)
                 if abs(engine.state.propofol_cp - engine.state.propofol_ce) < 0.05:
                     break
             else:
                 pytest.fail("propofol Cp/Ce did not equilibrate before the 5-min hold")
             readings = []
-            for second in range(300):
-                engine.step(1.0)
-                if second >= 270:
+            for step_idx in range(150):
+                engine.step(2.0)
+                if step_idx >= 135:
                     readings.append((engine.state.loc, engine.state.propofol_ce, engine.state.bis))
             steps.append(np.mean(readings, axis=0))
             if steps[-1][0] > 0.5:

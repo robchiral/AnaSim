@@ -19,14 +19,14 @@ def test_displayed_waveforms_follow_mode_control_and_actual_gas_movement(awake_e
     engine.set_vent_power(True)
     if passive:
         engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
-    for _ in range(600):
-        engine.step(0.1)
+    for _ in range(120 if passive else 40):
+        engine.step(0.5)
 
     start_volume, previous_flow = engine.state.volume, engine.state.flow
     integrated, positive_time, rises = 0.0, 0.0, []
     above = engine.state.capno_co2 > 15.0
     low, high, checked = 60.0, 0.0, 0
-    for _ in range(1500):
+    for _ in range(1100):
         engine.step(0.01)
         state, breath = engine.state, engine.vent._breath
         integrated += 0.01 * (previous_flow + state.flow) / 120.0

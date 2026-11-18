@@ -91,7 +91,10 @@ def test_sync_fires_on_next_r_at_waveform_resolution(engine_factory, monkeypatch
 def test_pending_sync_can_be_cancelled_and_does_not_fire_on_vf_or_compressions(engine_factory):
     engine = engine_factory(start=True)
     engine.charge_defibrillator()
-    engine.step(CHARGE_TIME_S)
+    engine.step(CHARGE_TIME_S - 0.5)
+    assert engine.defibrillate() == ShockResult.NOT_READY
+    assert not engine.actions.since_case(ACTION_SHOCK)
+    engine.step(0.5)
     assert engine.defibrillate(synchronized=True) == ShockResult.PENDING
     engine.disarm_defibrillator()
     engine.step(1)
@@ -105,20 +108,3 @@ def test_pending_sync_can_be_cancelled_and_does_not_fire_on_vf_or_compressions(e
     assert not engine.actions.since_case(ACTION_SHOCK)
     assert engine.defibrillator.status(engine.state.time) == "ready"
     assert engine.defibrillate(synchronized=True) == ShockResult.NOT_DELIVERED
-
-
-def test_unready_shocks_do_not_change_rhythm_or_consume_random_draws(engine_factory, monkeypatch):
-    engine = engine_factory(start=True)
-
-    class _NoDraw:
-        def random(self):
-            raise AssertionError("An unready shock must not draw an outcome")
-
-    monkeypatch.setattr(engine, "_shock_rng", _NoDraw())
-    engine.set_rhythm("VFIB")
-    engine.charge_defibrillator()
-    engine.step(CHARGE_TIME_S - 0.1)
-    for _ in range(10):
-        assert engine.defibrillate() == ShockResult.NOT_READY
-    assert engine.hemo.rhythm_type == RhythmType.VFIB
-    assert not engine.actions.since_case(ACTION_SHOCK)

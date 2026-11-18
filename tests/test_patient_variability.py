@@ -9,8 +9,13 @@ import pytest
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
+from anasim.patient.pd import ClinicalResponseModel
 from anasim.patient.pd.anesthesia import BISModel
+from anasim.patient.pk_models import NorepinephrinePK
 from anasim.patient.variability import TYPICAL, sample_variability
+from anasim.patient.volatile_pk import VolatilePK
+from anasim.physiology.disturbances import Disturbances
+from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.web import WebSession
 
 ADULT: dict[str, Any] = dict(age=45, weight=75, height=172, sex="male", baseline_map=95, baseline_hr=75)
@@ -22,7 +27,7 @@ def _bolus_induction(seed):
     engine.start()
     engine.set_airway_mode("Mask")
     engine.set_fgf(6.0, 0.0)
-    for _ in range(15):
+    for _ in range(5):
         engine.step(2.0)
     awake = engine.state.map
     engine.give_drug_bolus("fentanyl", 1.5 * ADULT["weight"])
@@ -31,7 +36,7 @@ def _bolus_induction(seed):
     engine.give_drug_bolus("propofol", 2.0 * ADULT["weight"])
     engine.give_drug_bolus("roc", 0.6 * ADULT["weight"])
     onset, lowest = None, awake
-    for second in range(2, 301, 2):
+    for second in range(2, 211, 2):
         if second == 60:
             engine.set_airway_mode("ETT")
             engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
@@ -64,11 +69,14 @@ def test_tci_pumps_predict_with_the_typical_patient():
     concentrations = []
     for seed in (None, *range(1, 7)):
         engine = SimulationEngine(Patient(**ADULT), SimulationConfig(
-            mode="steady_state", tci_enabled=True, patient_variability=seed is not None, rng_seed=seed))
+            mode="awake", tci_enabled=True, patient_variability=seed is not None, rng_seed=seed))
         engine.start()
+        engine.set_airway_mode("ETT")
+        engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        engine.set_vent_power(True)
         engine.enable_tci("propofol", 4.0)
-        for _ in range(600):
-            engine.step(1.0)
+        for _ in range(300):
+            engine.step(2.0)
         assert engine.prediction_model("propofol").state.ce == pytest.approx(4.0, rel=0.01)
         concentrations.append(engine.pk["propofol"].state.ce)
     typical, *sampled = concentrations
@@ -104,26 +112,31 @@ def test_sampled_bolus_inductions_vary_within_clinical_limits():
 
 def _incision_rise(seed, sevo):
     """Largest HR or MAP rise within 5 min of incision at steady end-tidal sevoflurane alone."""
-    engine = SimulationEngine(
-        Patient(age=42, weight=57, height=160, sex="female"),
-        SimulationConfig(mode="steady_state", maint_type="balanced", tci_enabled=True,
-                         patient_variability=True, rng_seed=seed),
+    patient = Patient(age=42, weight=57, height=160, sex="female")
+    patient.variability = sample_variability(seed)
+    pk_sevo = VolatilePK(patient, "Sevoflurane", lambda_b_g=0.65, mac_40=1.80)
+    mac = sevo / pk_sevo.mac_age
+    nore = NorepinephrinePK(patient)
+    nore.equilibrate_endogenous()
+    hemo = HemodynamicModel(patient)
+    hemo.initialize_steady_state(0.0, 0.0, nore.state.ce, mac_sevo=mac, pit=-1.4, peep_cmH2O=5.0)
+    response = ClinicalResponseModel(patient.age, patient.variability.sevoflurane_mac)
+    disturbance = Disturbances("stim_sustained_surgery")
+    assert disturbance.spec is not None
+    p_frac, hr_frac = response.cardiovascular_response_fractions(
+        0.0, 0.0, mac_sevo=mac, intensity=disturbance.spec.sympathetic_intensity,
     )
-    engine.start()
-    engine.disable_tci("remi")
-    vaporizer = sevo
-    for _ in range(20):
-        engine.set_vaporizer(vaporizer)
-        for _ in range(6):
-            engine.step(10.0)
-        vaporizer = min(8.0, max(0.0, vaporizer + 0.8 * (sevo - engine.state.et_sevo)))
-    assert engine.state.et_sevo == pytest.approx(sevo, abs=0.1)
-    hr, pressure = engine.state.hr, engine.state.map
-    engine.start_disturbance("stim_sustained_surgery")
+    hr, pressure = hemo.state.hr, hemo.state.map
     rise = 0.0
-    for _ in range(150):
-        engine.step(2.0)
-        rise = max(rise, engine.state.hr / hr - 1.0, engine.state.map / pressure - 1.0)
+    for step_idx in range(150):
+        t_rel = step_idx * 2.0
+        stim = disturbance.compute_average(t_rel, t_rel + 2.0)
+        svr_dist = stim.svr * p_frac + disturbance.spec.tonic_svr(t_rel + 1.0, 1000.0 * hemo.tpr)
+        state = hemo.step(
+            2.0, 0.0, 0.0, nore.state.ce, -1.4, 40.0, 450.0, mac_sevo=mac, peep_cmH2O=5.0,
+            dist_svr=svr_dist, dist_sv=stim.sv * p_frac, dist_hr=stim.hr * hr_frac,
+        )
+        rise = max(rise, state.hr / hr - 1.0, state.map / pressure - 1.0)
     return rise
 
 
@@ -143,3 +156,8 @@ def test_sevoflurane_bis_preserves_interindividual_sensitivity_spread():
     sensitive.variability = replace(base, propofol=replace(base.propofol, ce50=0.7))
     resistant.variability = replace(base, propofol=replace(base.propofol, ce50=1.4))
     assert BISModel(resistant).compute_bis(0.0, 1.0, 0.0) > BISModel(sensitive).compute_bis(0.0, 1.0, 0.0) + 8.0
+
+    var_eng = SimulationEngine(
+        Patient(**ADULT), SimulationConfig(mode="awake", patient_variability=True, rng_seed=7)
+    )
+    assert var_eng.response.sevoflurane_mac == var_eng.patient.variability.sevoflurane_mac

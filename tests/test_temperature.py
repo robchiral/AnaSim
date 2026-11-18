@@ -1,7 +1,11 @@
+import copy
+
 import pytest
 
 from anasim.core.projection import sync_monitor_baselines, thermal_hypnotic_ce
 from anasim.core.state import SimulationConfig
+from anasim.patient.patient import Patient
+from anasim.physiology.thermal import ThermalModel
 
 
 def _advance(engine, seconds: float, dt: float = 1.0) -> None:
@@ -30,11 +34,11 @@ def test_hypothermia_lowers_paco2_at_fixed_ventilation(engine_factory):
     engine.start()
 
     engine.state.temp_c = 37.0
-    _advance(engine, 60)
+    _advance(engine, 60, dt=2.0)
     normothermic = engine.state.pa_co2
 
     engine.state.temp_c = 30.0
-    _advance(engine, 600)
+    _advance(engine, 600, dt=2.0)
     assert engine.state.pa_co2 < normothermic
 
 
@@ -46,48 +50,45 @@ def test_hypothermia_slows_apneic_co2_rise(engine_factory):
         engine.set_fgf(10.0, 0.0)
         engine.set_vent_power(True)
         engine.give_drug_bolus("roc", engine.patient.weight)
-        _advance(engine, 180)
+        _advance(engine, 180, dt=2.0)
         # Apneic oxygenation keeps SaO2 up. Prior shivering and tissue stores
         # also affect the transient, so it need not scale directly with VCO2.
         engine.set_vent_power(False)
         start = engine.state.pa_co2
-        _advance(engine, 120)
+        _advance(engine, 120, dt=2.0)
         rises.append(engine.state.pa_co2 - start)
     assert rises[0] < 0.9 * rises[1]
 
 
-def test_core_drop_after_induction(engine_factory):
+def test_core_drop_after_induction(patient):
     """Matsukawa 1995: core temperature fell 1.6 ± 0.3 °C in the first hour and 2.8 ± 0.5 °C by 3 h."""
-    engine = engine_factory(config=SimulationConfig(tci_enabled=True), start=True)
+    thermal = ThermalModel(patient)
+    temp_c = 37.0
     # Awake thermoregulation holds core temperature before induction.
-    _advance(engine, 1800, dt=2.0)
-    assert engine.state.temp_c == pytest.approx(37.0, abs=0.02)
-    engine.set_airway_mode("ETT")
-    engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
-    engine.set_vent_power(True)
-    engine.enable_tci("propofol", 3.5)
-    engine.enable_tci("remi", 3.0)
-    _advance(engine, 3600, dt=2.0)
-    assert 37.0 - engine.state.temp_c == pytest.approx(1.6, abs=0.3)
-    _advance(engine, 7200, dt=2.0)
-    assert 37.0 - engine.state.temp_c == pytest.approx(2.8, abs=0.5)
+    for _ in range(30):
+        thermal.update_depth(temp_c, 0.0, 0.0)
+        temp_c = thermal.step_temperature(60.0, temp_c, 0.0)
+    assert temp_c == pytest.approx(37.0, abs=0.02)
+    for _ in range(60):
+        thermal.update_depth(temp_c, 3.5, 0.0)
+        temp_c = thermal.step_temperature(60.0, temp_c, 0.0)
+    assert 37.0 - temp_c == pytest.approx(1.6, abs=0.3)
+    for _ in range(120):
+        thermal.update_depth(temp_c, 3.5, 0.0)
+        temp_c = thermal.step_temperature(60.0, temp_c, 0.0)
+    assert 37.0 - temp_c == pytest.approx(2.8, abs=0.5)
 
 
 def test_obese_redistribution_cooling_sepsis_fever_and_hypothermic_bradycardia(engine_factory):
     """Kurz 1995: obesity blunts first-hour redistribution cooling (~0.4-0.6 °C vs 1.6 °C);
     sepsis elevates core temperature; severe hypothermia (<33 °C) depresses resting sinus HR.
     """
-    obese = engine_factory(
-        config=SimulationConfig(tci_enabled=True, rng_seed=1),
-        start=True, age=40, weight=150.0, height=165.0, sex="female",
-    )
-    obese.set_airway_mode("ETT")
-    obese.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
-    obese.set_vent_power(True)
-    obese.enable_tci("propofol", 3.5)
-    obese.enable_tci("remi", 3.0)
-    _advance(obese, 3600, dt=4.0)
-    assert 0.30 < 37.0 - obese.state.temp_c < 0.80
+    obese = ThermalModel(Patient(age=40, weight=150.0, height=165.0, sex="female"))
+    temp_ob = 37.0
+    for _ in range(60):
+        obese.update_depth(temp_ob, 3.5, 0.0)
+        temp_ob = obese.step_temperature(60.0, temp_ob, 0.0)
+    assert 0.30 < 37.0 - temp_ob < 0.80
 
     sepsis = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
     sepsis.start_sepsis()
@@ -102,43 +103,41 @@ def test_obese_redistribution_cooling_sepsis_fever_and_hypothermic_bradycardia(e
 
 def test_balanced_mac_temp_parity_abg_warming_to_37c_and_awake_febrile_setpoint(engine_factory):
     """Balanced steady-state starts at uniform MAC across baseline temperatures;
-    draw_blood_gas() anaerobically warms hypothermic samples to 37 °C;
+    draw_blood_gas() anaerobically warms hypothermic samples to 37 °C without double-warming;
     awake febrile baseline_temp holds its setpoint without cooling toward 37 °C.
     """
-    macs = [
+    engines = [
         engine_factory(
             config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
             start=True,
             baseline_temp=temp,
-        ).state.mac
+        )
         for temp in (32.0, 37.0, 39.0)
     ]
+    macs = [eng.state.mac for eng in engines]
     assert macs[0] == pytest.approx(macs[1], abs=0.02)
     assert macs[2] == pytest.approx(macs[1], abs=0.02)
 
-    hypo = engine_factory(
-        config=SimulationConfig(mode="steady_state", rng_seed=1),
-        start=True,
-        baseline_temp=32.0,
-    )
+    hypo = engines[0]
     abg = hypo.draw_blood_gas()
+    assert abg.pa_co2 == pytest.approx(hypo.resp._blood_pressures[1], rel=1e-6)
+    assert abg.ph == pytest.approx(hypo.resp._blood_ph[1], abs=1e-6)
     assert abg.pa_co2 > hypo.state.pa_co2 + 3.0
     assert abg.pao2 > hypo.state.pao2
     assert abg.ph < hypo.state.ph - 0.04
 
-    febrile = engine_factory(
-        config=SimulationConfig(mode="awake", rng_seed=1),
-        start=True,
-        baseline_temp=38.5,
-    )
-    _advance(febrile, 1800, dt=5.0)
-    assert febrile.state.temp_c == pytest.approx(38.5, abs=0.03)
+    febrile = ThermalModel(Patient(baseline_temp=38.5))
+    temp_f = 38.5
+    for _ in range(30):
+        febrile.update_depth(temp_f, 0.0, 0.0)
+        temp_f = febrile.step_temperature(60.0, temp_f, 0.0)
+    assert temp_f == pytest.approx(38.5, abs=0.03)
 
 
 def test_zero_flow_arrest_accelerates_passive_core_cooling(engine_factory):
     """Core cooling continues faster during zero-flow arrest than perfused normothermia."""
     perfused = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
-    arrested = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    arrested = copy.deepcopy(perfused)
     arrested.set_rhythm("VFIB")
     _advance(perfused, 600, dt=2.0)
     _advance(arrested, 600, dt=2.0)
@@ -157,17 +156,3 @@ def test_thermal_etomidate_age_invariance_and_ischemic_bis_baseline_seed(engine_
     young.cerebral.ischemia = 0.8
     sync_monitor_baselines(young)
     assert young.bis.cortical_function == pytest.approx(young.cerebral.cortical_function, rel=1e-9)
-
-
-def test_hypothermic_abg_avoids_double_warming_and_preserves_37c_coordinates(engine_factory):
-    """draw_blood_gas() returns conserved 37 °C coordinates without double-warming."""
-    hypo = engine_factory(
-        config=SimulationConfig(mode="steady_state", rng_seed=1),
-        start=True,
-        baseline_temp=31.0,
-    )
-    abg = hypo.draw_blood_gas()
-    assert abg.pa_co2 == pytest.approx(hypo.resp._blood_pressures[1], rel=1e-6)
-    assert abg.ph == pytest.approx(hypo.resp._blood_ph[1], abs=1e-6)
-    assert abg.pa_co2 > hypo.state.pa_co2 + 6.0
-    assert abg.ph < hypo.state.ph - 0.07

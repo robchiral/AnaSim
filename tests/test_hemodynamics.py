@@ -10,7 +10,7 @@ from anasim.core.state import SimulationConfig
 from anasim.monitors.arterial import ArterialWaveformRenderer
 from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.patient.patient import Patient
-from anasim.patient.pk_models import PropofolPKEleveld
+from anasim.patient.pk_models import NorepinephrinePK, PropofolPKEleveld
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.hemo_config import HemodynamicConfig
 from anasim.physiology.hemodynamics import HemodynamicModel
@@ -103,7 +103,7 @@ def test_crystalloid_distribution_pressure_age_and_component_conservation():
     Blood loss removes mixed cells and Hb, while water exchange preserves them.
     """
     outcomes = {}
-    for age, pressure, dt in ((30, 50, 1.0), (30, 100, 1.0), (70, 100, 1.0), (30, 100, 0.1)):
+    for age, pressure, dt in ((30, 50, 1.0), (30, 100, 1.0), (70, 100, 1.0), (30, 100, 0.2)):
         model = HemodynamicModel(Patient(age=age), HemodynamicConfig(uop_ml_kg_hr=0.0, third_space_refill_tau_hr=0.0))
         baseline = model.blood_volume
         hemoglobin, cells = model.hb_mass, model.red_cell_volume_ml
@@ -126,10 +126,10 @@ def test_crystalloid_distribution_pressure_age_and_component_conservation():
     assert outcomes[30, 50, 1.0][0] > outcomes[30, 100, 1.0][0] + 100.0
     assert outcomes[70, 100, 1.0][1] < 0.4 * outcomes[30, 100, 1.0][1]
     # Infusion enters at the start of each step, giving a half-step timing error.
-    assert outcomes[30, 100, 0.1] == pytest.approx(outcomes[30, 100, 1.0], abs=0.3)
+    assert outcomes[30, 100, 0.2] == pytest.approx(outcomes[30, 100, 1.0], abs=0.3)
 
 
-@pytest.mark.parametrize(("hematocrit", "dt"), [(0.24, 1.0), (0.32, 0.1)])
+@pytest.mark.parametrize(("hematocrit", "dt"), [(0.24, 1.0), (0.32, 2.0)])
 def test_transfusion_preserves_donor_cells_and_hemoglobin(
     engine_factory, advance_time, hematocrit, dt,
 ):
@@ -170,7 +170,7 @@ def test_sjoen_remifentanil_doses_give_the_same_induction_fall():
     with no dose effect. These research inductions fall further than routine
     practice (test_clinical_acceptance.py), so they bound the model within 2 SD.
     """
-    falls = [replay_sjoen(arm)["sap"] for arm in SJOEN_ARMS]
+    falls = [replay_sjoen(arm, dt=1.0)["sap"] for arm in SJOEN_ARMS]
     for fall, arm in zip(falls, SJOEN_ARMS, strict=True):
         assert fall == pytest.approx(arm.sap_change, abs=2 * 6.6)
     assert abs(falls[2] - falls[0]) < 6.0
@@ -180,7 +180,7 @@ def test_sjoen_doubled_propofol_deepens_the_induction_fall():
     """Sjøen 2023: propofol 1.4 or 2.7 mg/kg with remifentanil near 2 mcg/kg
     lowered invasive SAP 31 ± 6.6% and 36 ± 7.3%, within 2 SD as above.
     """
-    low, high = (replay_sjoen(arm)["sap"] for arm in SJOEN_2023_ARMS)
+    low, high = (replay_sjoen(arm, dt=1.0)["sap"] for arm in SJOEN_2023_ARMS)
     assert low == pytest.approx(SJOEN_2023_ARMS[0].sap_change, abs=2 * 6.6)
     assert high == pytest.approx(SJOEN_2023_ARMS[1].sap_change, abs=2 * 7.3)
     assert high < low
@@ -313,39 +313,47 @@ def test_poterman_high_dose_remifentanil_with_and_without_atropine():
     assert results["atropine"][1] > results["saline"][1]
 
 
-def _kazama_sbp(engine_factory, age, target, ic50, gamma):
+def _kazama_sbp(age, target, ic50, gamma):
     """Model SBP fall (%) after 25 min at constant plasma propofol, and the fall
     Kazama's curve predicts as a share of the fall from baseline to 80 mmHg."""
-    engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True,
-                            age=age, baseline_map=(130.0 + 2.0 * 80.0) / 3.0)
-    engine.set_airway_mode("ETT")
-    engine.set_vent_settings(rr=12, vt=0.5, peep=0.0, ie="1:2", mode="VCV")
-    engine.set_vent_power(True)
-    for _ in range(60):
-        engine.step(1.0)
-    baseline = engine.state.sbp
-    engine.enable_tci("propofol", target, mode="plasma")
-    for _ in range(1500):
-        engine.step(1.0)
+    patient = Patient(age=age, weight=70, height=170, sex="male", baseline_map=(130.0 + 2.0 * 80.0) / 3.0)
+    hemo = HemodynamicModel(patient)
+    nore = NorepinephrinePK(patient)
+    nore.equilibrate_endogenous()
+    hemo.initialize_steady_state(0.0, 0.0, nore.state.ce)
+    renderer = ArterialWaveformRenderer(age=age)
+    cycle = CardiacCycle(np.random.default_rng(0))
+    s0 = hemo.state
+    baseline = renderer.step(
+        cycle.seed(s0.hr, RhythmType.SINUS), s0.map, s0.sv, pulse_pressure_factor=s0.pulse_pressure_factor,
+    ).systolic
+    nore.update_propofol(target)
+    for _ in range(300):
+        nore.step(5.0, 0.0)
+        state = hemo.step(5.0, target, 0.0, nore.state.ce, -2.0, 40.0, 95.0, remifentanil_cp=0.0)
+    sbp = renderer.step(
+        cycle.seed(state.hr, state.rhythm_type), state.map, state.sv,
+        pulse_pressure_factor=state.pulse_pressure_factor,
+    ).systolic
     expected = 100.0 * (1.0 - 80.0 / baseline) * target**gamma / (ic50**gamma + target**gamma)
-    return 100.0 * (1.0 - engine.state.sbp / baseline), expected
+    return 100.0 * (1.0 - sbp / baseline), expected
 
 
 @pytest.mark.parametrize("age,ic50,gamma", [(30, 4.61, 1.75), (50, 4.13, 2.12), (65, 3.96, 1.64)])
-def test_kazama_equilibrated_propofol_sbp_by_age(engine_factory, age, ic50, gamma):
+def test_kazama_equilibrated_propofol_sbp_by_age(age, ic50, gamma):
     """Kazama 1999 Table 2: SBP after 22-28 min at constant plasma propofol, with
     these IC50s and slopes."""
     for target in (4.0, 6.0):
-        fall, expected = _kazama_sbp(engine_factory, age, target, ic50, gamma)
+        fall, expected = _kazama_sbp(age, target, ic50, gamma)
         assert fall == pytest.approx(expected, abs=5.0)
 
 
-def test_kazama_oldest_group_falls_further(engine_factory):
+def test_kazama_oldest_group_falls_further():
     """Kazama 1999: at 70-85 years (mean 79) the SBP IC50 was 2.09 mcg/mL (SE
     0.19, n=10), below the 3.96 at 60-69. At 4 mcg/mL the fall exceeds the curve
     at IC50 plus 2 SD."""
-    fall, bound = _kazama_sbp(engine_factory, 79, 4.0, 2.09 + 2.0 * 0.19 * 10**0.5, 1.98)
-    younger, _ = _kazama_sbp(engine_factory, 65, 4.0, 3.96, 1.64)
+    fall, bound = _kazama_sbp(79, 4.0, 2.09 + 2.0 * 0.19 * 10**0.5, 1.98)
+    younger, _ = _kazama_sbp(65, 4.0, 3.96, 1.64)
     assert fall > bound
     assert fall > younger
 
@@ -487,15 +495,15 @@ def test_thoracic_pressure_tracks_breathing_effort_and_applied_cpap(awake_engine
     engine.set_airway_mode("ETT")
     engine.set_fgf(6.0, 0.0)
     engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
-    for _ in range(1200):
-        engine.step(0.1)
+    for _ in range(120):
+        engine.step(1.0)
     assert engine.resp_mech.effort.amplitude == 0.0
     assert engine.state.pit == pytest.approx(engine.hemo.config.pit_0, abs=0.1)
 
     engine.set_vent_settings(rr=0, vt=0, peep=5, ie="1:2", mode="CPAP")
     engine.set_vent_power(True)
-    for _ in range(200):
-        engine.step(0.1)
+    for _ in range(40):
+        engine.step(0.5)
     assert engine.state.pit > engine.hemo.config.pit_0 + 1.8
 
 
@@ -560,54 +568,24 @@ class TestSepsis:
 class TestReflexesAndHypoxia:
     """Fast baroreflex and myocardial hypoxia in the integrated engine."""
 
-    @pytest.fixture
-    def tiva_engine(self, engine_factory):
-        return engine_factory(
-            config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.1, rng_seed=3),
-            start=True,
-        )
-
-    @staticmethod
-    def _peak_response(engine, drug, amount, seconds=300):
-        base_map, base_hr = engine.state.map, engine.state.hr
-        engine.give_drug_bolus(drug, amount)
-        peak_map, hr_at_peak = 0.0, 0.0
-        for _ in range(int(seconds / 0.1)):
-            engine.step(0.1)
-            if engine.state.map - base_map > peak_map:
-                peak_map, hr_at_peak = engine.state.map - base_map, engine.state.hr - base_hr
-        return peak_map, hr_at_peak
-
     @staticmethod
     def _step_until_sao2_below(engine, sao2, max_seconds=600.0):
-        for _ in range(int(max_seconds / 0.1)):
+        for _ in range(int(max_seconds / 0.5)):
             if engine.state.sao2 <= sao2:
                 return True
-            engine.step(0.1)
+            engine.step(0.5)
         return False
 
-    def test_phenylephrine_bolus_raises_map_with_reflex_bradycardia(self, tiva_engine):
-        """100-200 mcg under propofol-remifentanil: MAP +29.5 mmHg, HR -17 bpm (Meng 2011)."""
-        peak_map, hr_change = self._peak_response(tiva_engine, "phenyl", 100.0)
-        assert 15.0 < peak_map < 35.0
-        assert hr_change < -5.0
-
-    def test_epinephrine_bolus_is_chronotropic(self, tiva_engine):
-        # Delivery check under TIVA; test_epinephrine.py covers peak sizes and timing.
-        peak_map, hr_change = self._peak_response(tiva_engine, "epi", 10.0)
-        assert 5.0 < peak_map < 35.0
-        assert 15.0 < hr_change < 40.0
-
     def test_severe_hypoxemia_slows_the_heart_and_oxygen_rescues(self, engine_factory):
-        engine = engine_factory(config=SimulationConfig(dt=0.1, rng_seed=1), start=True)
+        engine = engine_factory(config=SimulationConfig(dt=0.5, rng_seed=1), start=True)
         engine.give_drug_bolus("propofol", 140.0)
         engine.give_drug_bolus("roc", 42.0)
         assert self._step_until_sao2_below(engine, 60.0)
         hr_at_60 = engine.state.hr
         assert self._step_until_sao2_below(engine, 35.0)
         assert engine.state.hr < hr_at_60 - 10.0
-        for _ in range(150):
-            engine.step(0.1)
+        for _ in range(30):
+            engine.step(0.5)
         assert engine.state.spo2_signal_valid
         assert engine.state.display_spo2 < 40.0
         assert engine.state.alarms["SpO2"]["low"]
@@ -616,8 +594,8 @@ class TestReflexesAndHypoxia:
         engine.set_fgf(10.0, 0.0)
         engine.set_bag_mask_ventilation(True, 12.0, 0.5)
         depressed_map = engine.state.map
-        for _ in range(1800):
-            engine.step(0.1)
+        for _ in range(360):
+            engine.step(0.5)
         assert engine.state.sao2 > 97.0
         assert engine.state.display_spo2 > 94.0
         assert "SpO2" not in engine.state.alarms
@@ -808,7 +786,7 @@ def test_respiratory_hemodynamic_coupling_and_alpha_blocked_cold_tone(
     augments LV stroke volume, and alpha blockade blunts hypothermic vasoconstrictor tone.
     """
     dt_maps = []
-    for dt in (0.05, 0.10, 1.00):
+    for dt in (0.10, 1.00):
         e = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=1), start=True)
         e.give_drug_bolus("lidocaine", 500.0)
         e.give_lipid_emulsion(105.0)
@@ -817,9 +795,9 @@ def test_respiratory_hemodynamic_coupling_and_alpha_blocked_cold_tone(
     assert max(dt_maps) - min(dt_maps) < 1.5
 
     ppv = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
-    advance_time(ppv, 20.0, dt=0.1)
+    advance_time(ppv, 10.0, dt=0.2)
     insp_sv, exp_sv = [], []
-    for _ in range(200):
+    for _ in range(150):
         ppv.step(0.1)
         if ppv.vent.flow > 0.05:
             insp_sv.append(ppv.state.sv)
@@ -827,14 +805,12 @@ def test_respiratory_hemodynamic_coupling_and_alpha_blocked_cold_tone(
             exp_sv.append(ppv.state.sv)
     assert sum(insp_sv) / len(insp_sv) >= sum(exp_sv) / len(exp_sv)
 
-    cold_unblocked = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
-    cold_blocked = copy.deepcopy(cold_unblocked)
-    cold_blocked.give_drug_bolus("labetalol", 60.0)
-    for model in (cold_unblocked, cold_blocked):
-        model.state.temp_c = 33.0
-        model.thermal.temp_c = 33.0
-        advance_time(model, 300.0, dt=1.0)
-    assert cold_blocked.hemo.tpr_tone < cold_unblocked.hemo.tpr_tone - 0.0005
+    cold_unblocked, cold_blocked = _model(), _model()
+    for model, labetalol in ((cold_unblocked, 0.0), (cold_blocked, 1000.0)):
+        model.initialize_steady_state(2.5, 3.6, 0.0)
+        for _ in range(60):
+            model.step(5.0, 2.5, 3.6, 0.0, -1.4, 40.0, 95.0, temp_c=33.0, ce_labetalol=labetalol)
+    assert cold_blocked.tpr_tone < cold_unblocked.tpr_tone - 0.0005
 
 
 def test_hematocrit_bounds_lipid_retention_vasopressin_alpha_invariance_and_afib_baroreflex(

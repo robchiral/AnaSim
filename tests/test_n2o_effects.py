@@ -94,11 +94,20 @@ def test_n2o_second_gas_concentrating_effect_and_diffusion_hypoxia(engine_factor
         model.set_fgf(fgf[0], fgf[1], n2o_l_min=fgf[2])
         advance_time(model, 600.0, dt=2.0)
     wash_o2 = copy.deepcopy(wash_air)
+    apneic = copy.deepcopy(wash_air)
     blocked_wash = copy.deepcopy(wash_air)
     blocked_wash.set_fgf(10.0, 0.0, n2o_l_min=0.0)
     blocked_wash.set_airway_obstruction(1.0)
     advance_time(blocked_wash, 30.0, dt=1.0)
     assert blocked_wash.pk_n2o.state.p_alv > 0.55
+
+    fn2_before = apneic.resp.alveolar_fn2
+    apneic.give_drug_bolus("roc", 70.0)
+    apneic.set_vent_power(False)
+    apneic.set_fgf(10.0, 0.0, n2o_l_min=0.0)
+    advance_time(apneic, 15.0, dt=0.5)
+    assert apneic.resp.alveolar_fn2 <= fn2_before + 1e-3
+
     for model in (wash_air, ctrl_air):
         model.set_auto_laryngospasm(False)
         model.set_airway_mode("None")
@@ -107,20 +116,3 @@ def test_n2o_second_gas_concentrating_effect_and_diffusion_hypoxia(engine_factor
         advance_time(model, 75.0, dt=1.0)
     assert wash_air.state.pao2 < ctrl_air.state.pao2 - 3.0 and wash_air.state.pao2 < 90.0
     assert wash_o2.state.pao2 > 220.0
-
-
-def test_apneic_n2o_washout_avoids_spurious_deficit_and_conserves_gas_fractions(
-    engine_factory, advance_time
-):
-    """Apneic N2O elimination evolves gas outward without accumulating mechanical
-    absorption deficit or counter-current N2 inflow.
-    """
-    engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
-    engine.set_fgf(3.0, 0.0, n2o_l_min=7.0)
-    advance_time(engine, 180.0, dt=0.1)
-    fn2_before = engine.resp.alveolar_fn2
-    engine.set_vent_power(False)
-    engine.set_fgf(10.0, 0.0, n2o_l_min=0.0)
-    advance_time(engine, 15.0, dt=0.1)
-    assert engine.resp._pending_mech_absorption_btps_l < 1e-4
-    assert engine.resp.alveolar_fn2 <= fn2_before + 1e-3

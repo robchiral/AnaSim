@@ -678,6 +678,7 @@ export class Controls {
     });
     const rhythms = $("c-rhythm");
     rhythms.replaceChildren(...info.rhythms.map((name) => new Option(name, name)));
+    this.observedRhythm = null;
     rhythms.onchange = () => this.send("rhythm", { name: rhythms.value });
     $("c-position-row").hidden = info.patient.gestational_age_weeks === 0;
     $("c-position").onchange = () => this.send("position", { position: $("c-position").value });
@@ -704,14 +705,17 @@ export class Controls {
 
   syncRhythm(rhythm) {
     const select = $("c-rhythm");
+    if (this.observedRhythm && this.observedRhythm.value !== rhythm) {
+      this.observedRhythm.remove();
+      this.observedRhythm = null;
+    }
     if (select.value === rhythm) return;
-    const observed = select.querySelector("option[data-observed]");
-    if (observed && observed.value !== rhythm) observed.remove();
     if (!Array.from(select.options).some(option => option.value === rhythm)) {
       const option = new Option(rhythm, rhythm);
       option.disabled = true;
       option.dataset.observed = "true";
       select.add(option);
+      this.observedRhythm = option;
     }
     // Rhythm is a live observation, including while this control has focus.
     select.value = rhythm;

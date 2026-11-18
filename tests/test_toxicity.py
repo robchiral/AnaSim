@@ -1,3 +1,4 @@
+import copy
 import math
 
 import numpy as np
@@ -11,6 +12,7 @@ from anasim.monitors.cardiac_cycle import CardiacCycle
 from anasim.monitors.ecg import ECGMonitor, displayed_rhythm
 from anasim.patient.pk_models import LidocainePK
 from anasim.physiology.arrhythmia import antiarrhythmic_effects
+from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.physiology.toxicity import LocalAnestheticToxicity
 
 
@@ -120,11 +122,8 @@ def test_sodium_block_widens_qrs_without_implying_ischemic_p_wave_loss():
     assert waveforms[1][-1] > waveforms[0][-1] + 0.1
     assert displayed_rhythm(RhythmType.SINUS, 0, 0.8) == "Wide-complex rhythm"
     assert displayed_rhythm(RhythmType.SINUS, 0, 0.995) == "Asystole"
-
-
-@pytest.mark.parametrize(("failure", "label"), [(0.8, "Idioventricular rhythm"), (0.98, "Agonal rhythm")])
-def test_toxic_qrs_widening_does_not_hide_terminal_escape_rhythms(failure, label):
-    assert displayed_rhythm(RhythmType.SINUS, failure, 0.8) == label
+    assert displayed_rhythm(RhythmType.SINUS, 0.8, 0.8) == "Idioventricular rhythm"
+    assert displayed_rhythm(RhythmType.SINUS, 0.98, 0.8) == "Agonal rhythm"
 
 
 def _ventilated(engine_factory):
@@ -209,7 +208,7 @@ def test_lipid_rescue_gradually_reduces_cardiac_toxicity_during_supported_ventil
     assert outcomes[1][2] < outcomes[0][2] - 0.15
 
 
-def test_lidocaine_post_distribution_kinetics_and_subconvulsive_infusions(engine_factory, patient_factory):
+def test_lidocaine_post_distribution_kinetics_and_subconvulsive_infusions(patient_factory):
     """Tucker and Boas 1971 (3 mg/kg over 3 min [n=5] or 19 min [n=1]) and Rowland 1971 (110 mg bolus + 0.75 mg/min)."""
     patient = patient_factory(age=30, weight=69, height=175, sex="male")
     pk = LidocainePK(patient)
@@ -223,21 +222,19 @@ def test_lidocaine_post_distribution_kinetics_and_subconvulsive_infusions(engine
     assert 0.80 < plateau_hcl < 1.20 and pk.state.c1 / 0.8654 < 0.40
 
     for minutes, weight in ((3, 69), (19, 75)):
-        engine = engine_factory(
-            age=30, weight=weight, height=175, sex="male",
-            config=SimulationConfig(mode="awake", rng_seed=1), start=True,
-        )
+        pt = patient_factory(age=30, weight=weight, height=175, sex="male")
+        lido = LidocainePK(pt)
+        tox = LocalAnestheticToxicity(weight)
         duration = minutes * 60
-        engine.set_drug_rate("lidocaine", 3.0 * 60.0 / minutes)
+        rate_mg_s = 3.0 * weight / duration
         c1_10m = c1_30m = peak_c1 = 0.0
         convulsed = False
         for second in range(1, max(duration + 60, 1800) + 1):
-            if second == duration + 1:
-                engine.set_drug_rate("lidocaine", 0.0)
-            engine.step(1)
-            c1 = engine.pk["lidocaine"].state.c1
+            lido.step(1.0, rate_mg_s if second <= duration else 0.0)
+            _step(tox, seconds=1.0, neural_ce=lido.state.ce_neuro, cardiac_ce=lido.state.ce_cv)
+            c1 = lido.state.c1
             peak_c1 = max(peak_c1, c1)
-            convulsed = convulsed or engine.state.convulsions
+            convulsed = convulsed or (tox.convulsion_intensity > 0.2)
             if second == 600:
                 c1_10m = c1
             elif second == 1800:
@@ -259,10 +256,10 @@ def test_awake_convulsive_infusion_raises_rate_and_pressure_then_recovers(engine
     engine.set_drug_rate("lidocaine", 30.0)
     pre_hr = pre_sbp = peak_hr = 0.0
     convulsed = False
-    for second in range(1, 768 + 1140 + 1):
-        if second == 769:
+    for second in range(2, 768 + 1140 + 1, 2):
+        if second == 770:
             engine.set_drug_rate("lidocaine", 0.0)
-        engine.step(1)
+        engine.step(2.0)
         if not convulsed and not engine.state.convulsions:
             pre_hr = max(pre_hr, engine.state.hr)
             pre_sbp = max(pre_sbp, engine.state.sbp)
@@ -293,8 +290,8 @@ def test_one_hour_overdose_in_hfref_stays_in_sinus_rhythm_and_recovers(engine_fa
     for minute in range(1, 241):
         if minute == 61:
             engine.set_drug_rate("lidocaine", 0.0)
-        for _ in range(60):
-            engine.step(1)
+        for _ in range(30):
+            engine.step(2.0)
         rhythm = displayed_rhythm(
             engine.hemo.rhythm_type, engine.hemo.coronary.energy_failure, engine.toxicity.conduction_block
         )
@@ -308,6 +305,7 @@ def test_one_hour_overdose_in_hfref_stays_in_sinus_rhythm_and_recovers(engine_fa
             engine.give_drug_bolus("midazolam", 5)
         elif minute == 120:
             engine.give_drug_bolus("midazolam", 5)
+
     assert 45 < map_60m < 75
     assert 14.5 < c1_75m < 20.5 and loc_75m > 0.7
     # Recovery follows the model's faster washout, not Armstrong's 3.8 h total half-life.
@@ -315,7 +313,7 @@ def test_one_hour_overdose_in_hfref_stays_in_sinus_rhythm_and_recovers(engine_fa
     assert engine.state.loc < 0.05 and engine.toxicity.respiratory_drive > 0.95
 
 
-def test_volunteer_lipid_protocol_reduces_effective_lidocaine_auc(engine_factory):
+def test_volunteer_lipid_protocol_reduces_effective_lidocaine_auc(patient_factory):
     """Heinonen 2015: lipid reduces 30-min unentrapped lidocaine AUC by 23%
     (from larger tissue distribution plus ~6% plasma entrapment), modeled here
     as reduced effect-site input.
@@ -323,41 +321,96 @@ def test_volunteer_lipid_protocol_reduces_effective_lidocaine_auc(engine_factory
     Both arms receive 1.5 mL/kg over 1 min before 1 mg/kg lidocaine,
     then 0.25 mL/kg/min of the same study fluid for 30 min.
     """
+    patient = patient_factory(age=25, weight=75, height=180, sex="male")
     bolus_ml = 1.5 * 75
     infusion_ml_min = 0.25 * 75
     aucs = []
     for use_lipid in (False, True):
-        engine = engine_factory(
-            age=25, weight=75, height=180, sex="male",
-            config=SimulationConfig(mode="awake", rng_seed=1, maintenance_fluid_ml_hr=0), start=True,
-        )
-        # The study bolus takes 1 min; give_lipid_emulsion() takes 2.5 min.
-        if use_lipid:
-            engine.set_lipid_infusion(bolus_ml)
-        else:
-            engine.set_continuous_fluid_rate(bolus_ml * 60)
+        hemo = HemodynamicModel(patient)
+        lido = LidocainePK(patient)
+        tox = LocalAnestheticToxicity(75.0)
+        base_bv = hemo.blood_volume_0
+        base_co = hemo.base_co_l_min / hemo.failure.output_factor
         for _ in range(60):
-            engine.step(1)
+            if use_lipid:
+                hemo.add_volume(bolus_ml / 60.0, retention_fraction=0.25, label="lipid")
+                tox.add_lipid(bolus_ml / 60.0)
+            else:
+                hemo.add_volume(bolus_ml / 60.0, label="crystalloid")
+            state = hemo.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0)
+            hemo.fluids.step(
+                1.0, ph=7.4, paco2=40.0, resting_paco2=40.0, renal_function=1.0,
+                renal_perfusion=hemo.renal_perfusion, hepatic_function=1.0,
+                oxygen_supply=1.0, epinephrine=0.0,
+            )
+            lido.update_hemodynamics(
+                hemo.blood_volume / base_bv, state.co / base_co, hemo.renal_perfusion,
+                blood_volume_l=base_bv / 1000.0,
+            )
+            tox.step_lipid(1.0, lido.circulation)
+            lido.effect_input_fraction = tox.effect_input_fraction
+            lido.step(1.0, 0.0)
         if use_lipid:
-            assert engine.toxicity.total_lipid_ml == pytest.approx(bolus_ml)
-            engine.set_lipid_infusion(infusion_ml_min)
+            assert tox.total_lipid_ml == pytest.approx(bolus_ml)
         else:
-            assert engine.hemo.total_crystalloid_in_ml == pytest.approx(bolus_ml)
-            engine.set_continuous_fluid_rate(infusion_ml_min * 60)
-        engine.give_drug_bolus("lidocaine", 75)
+            assert hemo.total_crystalloid_in_ml == pytest.approx(bolus_ml)
+
+        lido.state.c1 += 75.0 / lido.v1
         auc = 0.0
         for _ in range(1800):
-            engine.step(1)
-            auc += engine.pk["lidocaine"].state.c1 * engine.toxicity.effect_input_fraction / 60.0
-        total_ml = engine.toxicity.total_lipid_ml if use_lipid else engine.hemo.total_crystalloid_in_ml
+            if use_lipid:
+                hemo.add_volume(infusion_ml_min / 60.0, retention_fraction=0.25, label="lipid")
+                tox.add_lipid(infusion_ml_min / 60.0)
+            else:
+                hemo.add_volume(infusion_ml_min / 60.0, label="crystalloid")
+            state = hemo.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0)
+            hemo.fluids.step(
+                1.0, ph=7.4, paco2=40.0, resting_paco2=40.0, renal_function=1.0,
+                renal_perfusion=hemo.renal_perfusion, hepatic_function=1.0,
+                oxygen_supply=1.0, epinephrine=0.0,
+            )
+            lido.update_hemodynamics(
+                hemo.blood_volume / base_bv, state.co / base_co, hemo.renal_perfusion,
+                blood_volume_l=base_bv / 1000.0,
+            )
+            tox.step_lipid(1.0, lido.circulation)
+            lido.effect_input_fraction = tox.effect_input_fraction
+            lido.step(1.0, 0.0)
+            auc += lido.state.c1 * tox.effect_input_fraction / 60.0
+        total_ml = tox.total_lipid_ml if use_lipid else hemo.total_crystalloid_in_ml
         assert total_ml == pytest.approx(bolus_ml + infusion_ml_min * 30)
         aucs.append(auc)
     reduction = 1.0 - aucs[1] / aucs[0]
     assert 0.19 < reduction < 0.26
 
 
-def test_lipid_is_delivered_over_time_accounted_as_fluid_and_can_be_stopped(engine_factory):
-    engine = _ventilated(engine_factory)
+def test_lipid_is_delivered_over_time_accounted_as_fluid_and_sheds_proportionally(engine_factory):
+    engine = engine_factory(
+        config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=7), start=True,
+    )
+    engine.set_airway_mode("ETT")
+    engine.set_fgf(10, 0)
+    engine.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5, ie="1:2")
+    engine.set_vent_power(True)
+
+    bolus_arm = copy.deepcopy(engine)
+    infusion_arm = copy.deepcopy(engine)
+    bolus_arm.give_lipid_emulsion(100.0)
+    infusion_arm.set_lipid_infusion(40.0)
+    for _ in range(150):
+        bolus_arm.step(1.0)
+        infusion_arm.step(1.0)
+    infusion_arm.set_lipid_infusion(0.0)
+    assert bolus_arm.hemo.blood_volume == pytest.approx(infusion_arm.hemo.blood_volume, abs=1e-6)
+    assert bolus_arm.hemo.fluids.ecf_l == pytest.approx(infusion_arm.hemo.fluids.ecf_l, abs=1e-6)
+    lipid_before = bolus_arm.toxicity.lipid_ml
+    bv_before = bolus_arm.hemo.blood_volume
+    bolus_arm.hemo.add_volume(-1000.0)
+    bolus_arm.step(0.1)
+    assert bolus_arm.toxicity.lipid_ml / lipid_before == pytest.approx(
+        (bv_before - 1000.0) / bv_before, rel=1e-3
+    )
+
     fluids = engine.hemo.fluids
     sodium, body_water = engine.state.sodium, fluids.ecf_l + fluids.icf_l
     engine.give_lipid_emulsion(100)
@@ -379,32 +432,3 @@ def test_lipid_is_delivered_over_time_accounted_as_fluid_and_can_be_stopped(engi
     for invalid in (math.nan, math.inf, -1):
         with pytest.raises(ValueError):
             engine.set_lipid_infusion(invalid)
-
-
-def test_lipid_bolus_and_infusion_match_compartment_volumes_and_shed_proportionally(engine_factory):
-    """Equal lipid doses via bolus vs infusion produce identical blood and ECF volumes
-    and shed intravascular lipid proportionally during hemorrhage (#27).
-    """
-    import copy
-
-    bolus_arm = engine_factory(
-        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
-        start=True,
-    )
-    infusion_arm = copy.deepcopy(bolus_arm)
-    bolus_arm.give_lipid_emulsion(100.0)
-    infusion_arm.set_lipid_infusion(40.0)
-    for _ in range(150):
-        bolus_arm.step(1.0)
-        infusion_arm.step(1.0)
-    infusion_arm.set_lipid_infusion(0.0)
-    assert bolus_arm.hemo.blood_volume == pytest.approx(infusion_arm.hemo.blood_volume, abs=1e-6)
-    assert bolus_arm.hemo.fluids.ecf_l == pytest.approx(infusion_arm.hemo.fluids.ecf_l, abs=1e-6)
-
-    lipid_before = bolus_arm.toxicity.lipid_ml
-    bv_before = bolus_arm.hemo.blood_volume
-    bolus_arm.hemo.add_volume(-1000.0)
-    bolus_arm.step(0.1)
-    assert bolus_arm.toxicity.lipid_ml / lipid_before == pytest.approx(
-        (bv_before - 1000.0) / bv_before, rel=1e-3
-    )

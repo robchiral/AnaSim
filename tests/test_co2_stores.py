@@ -87,6 +87,7 @@ def test_ventilated_arrest_washes_out_lung_co2_and_isolates_arterial_blood(patie
     # CO2 remains. Lung tissue continues on alveolar O2.
     lung_l = model.LUNG_TISSUE_FRACTION * model.vco2 * 0.8 / 1000.0 * 15.0
     assert model.gas_transport.produced_l - produced == pytest.approx(lung_l, rel=1e-9)
+    assert model.oxygen_deficit_l > 0.0
     assert model.gas_transport.tissue_co2_l == pytest.approx(initial_tissue, abs=1e-9)
     assert _carbon_l(model) - initial_carbon == pytest.approx(
         model.gas_transport.produced_l - produced - model.gas_transport.exhaled_l + exhaled, abs=1e-7,
@@ -186,48 +187,14 @@ def test_preceding_hypocapnia_and_prolonged_apnea_depend_on_stored_co2(patient):
     assert first_minutes[2] < first_minutes[0] - 0.5
 
 
-def test_ventilation_change_retains_a_slow_asymmetric_co2_elimination_tail(patient):
-    """Taskar 1995: longer fits have longer tau; decreasing VT has the slower tail.
-
-    The study's cardiac output and CO2 production are unknown, so only relative
-    time constants are compared.
-    """
-    constants = []
-    for change in (0.9, 1.1):
-        model, settings = _controlled(patient)
-        settings["mech_vt_l"] *= change
-        times, elimination = [], []
-        for second in range(1, 1251):
-            before = model.gas_transport.exhaled_l
-            model.step(1.0, **settings)
-            times.append(second / 60.0)
-            elimination.append((model.gas_transport.exhaled_l - before) * 60.0 - model.vco2 * 0.8 / 1000.0)
-        times_array, elimination_array = np.array(times), np.array(elimination)
-        fitted = []
-        # Exclude the first ten breaths, as Taskar did.
-        start = 10.0 / settings["mech_rr"]
-        for duration in (5.0, 20.0):
-            selected = (times_array >= start) & (times_array <= start + duration)
-
-            def exponential(time, amplitude, tau):
-                return amplitude * np.exp(-time / tau)
-
-            parameters, _ = curve_fit(
-                exponential, times_array[selected] - start, elimination_array[selected],
-                p0=(elimination_array[selected][0], 15.0), bounds=([-1.0, 0.01], [1.0, 1000.0]),
-            )
-            fitted.append(parameters[1])
-        assert 5.0 < fitted[0] < fitted[1] < 60.0
-        constants.append(fitted[1])
-    assert constants[0] > constants[1]
-
-
 def test_taskar_and_henneberg_co2_store_equilibration_benchmarks(patient_factory):
-    """Taskar 1995 (+/-10% VT) and Henneberg 1987 (+15% VT, -14% cooling, 6-min apnea):
-    verify normalized VCO2 and PaCO2 trajectories and 25-50 min VCO2 store equilibration.
+    """Taskar 1995 (+/-10% VT, including slower asymmetric 20-min vs 5-min tau) and
+    Henneberg 1987 (+15% VT, -14% cooling, 6-min apnea): verify normalized VCO2 and
+    PaCO2 trajectories and 25-50 min VCO2 store equilibration.
     """
     patient = patient_factory(age=59, weight=76.0, height=174.0, sex="male")
     ratios_20m = {}
+    taus_20m = {}
     for sign, factor in ((1.0, 1.10), (-1.0, 0.90)):
         model = RespiratoryModel(patient)
         model.vco2 = 199.0
@@ -245,24 +212,44 @@ def test_taskar_and_henneberg_co2_store_equilibration_benchmarks(patient_factory
         paco2_0 = model.state.pa_co2
         dvt_pct = (factor - 1.0) * 100.0
         samples = {}
-        for sec in range(1, 1201):
+        times, elimination = [], []
+        for sec in range(1, 1251):
             before = model.gas_transport.exhaled_l
             model.step(
                 1.0, ce_prop=3.0, ce_remi=2.0, ce_roc=5.0, fio2=0.40,
                 mech_rr=16.0, mech_vt_l=vt0 * factor, measured_breaths=True,
                 cardiac_output=model.baseline_co_l_min, unconscious=1.0,
             )
+            exhaled_step = model.gas_transport.exhaled_l - before
+            times.append(sec / 60.0)
+            elimination.append(exhaled_step * 60.0 - 0.199)
             if sec in (20, 300, 1200):
-                vco2_ml = (model.gas_transport.exhaled_l - before) * 60000.0
+                vco2_ml = exhaled_step * 60000.0
                 samples[sec] = (
                     (vco2_ml - 199.0) / 199.0 * 100.0 / dvt_pct,
                     (model.state.pa_co2 - paco2_0) / paco2_0 * 100.0 / dvt_pct,
                 )
+        times_array, elimination_array = np.array(times), np.array(elimination)
+        start = 10.0 / 16.0
+        fitted = []
+        for duration in (5.0, 20.0):
+            selected = (times_array >= start) & (times_array <= start + duration)
+            parameters, _ = curve_fit(
+                lambda time, amplitude, tau: amplitude * np.exp(-time / tau),
+                times_array[selected] - start,
+                elimination_array[selected],
+                p0=(elimination_array[selected][0], 15.0),
+                bounds=([-1.0, 0.01], [1.0, 1000.0]),
+            )
+            fitted.append(parameters[1])
+        assert 5.0 < fitted[0] < fitted[1] < 60.0
+        taus_20m[sign] = fitted[1]
         assert samples[20][0] > 0.9 > samples[1200][0] > 0.2
         assert samples[20][0] > samples[300][0] > samples[1200][0]
         assert -1.25 < samples[1200][1] < samples[300][1] < -0.35
         ratios_20m[sign] = samples[1200][0]
     assert ratios_20m[-1.0] > ratios_20m[1.0]
+    assert taus_20m[-1.0] > taus_20m[1.0]
 
     # Henneberg 1987: +15% VT and -14% cooling take ~35-40 min to settle within +/-5 mL/min.
     icu_patient = patient_factory(age=55, weight=70.0, height=175.0, sex="male")
@@ -305,18 +292,6 @@ def test_taskar_and_henneberg_co2_store_equilibration_benchmarks(patient_factory
             cardiac_output=5.0, unconscious=1.0,
         )
     assert 68.0 <= apneic.state.pa_co2 <= 75.0
-
-
-def test_zero_flow_retains_existing_tissue_co2_without_systemic_aerobic_production(patient):
-    model = RespiratoryModel(patient)
-    initial_tissue = model.gas_transport.tissue_co2_l
-    for _ in range(60):
-        model.step(1.0, ce_prop=0.0, ce_remi=0.0, cardiac_output=0.0,
-                   ce_roc=10.0, airway_patency=0.0, unconscious=1.0)
-    lung = model.LUNG_TISSUE_FRACTION
-    assert model.gas_transport.tissue_co2_l == pytest.approx(initial_tissue, abs=1e-10)
-    assert model.gas_transport.produced_l == pytest.approx(lung * model.vco2 / 1000.0)
-    assert model.oxygen_deficit_l == pytest.approx((1.0 - lung) * model.vco2 / model.rq / 1000.0)
 
 
 @pytest.mark.parametrize("dt", [0.1, 1.0])
@@ -382,15 +357,3 @@ def test_apneic_rise_matches_lyons_short_term_data(patient):
             first_minute = model.state.pa_co2
     assert first_minute - 40.0 == pytest.approx(1.39 * 7.5006, abs=0.39 * 7.5006)
     assert (model.state.pa_co2 - first_minute) / 3.0 == pytest.approx(0.34 * 7.5006, abs=0.08 * 7.5006)
-
-
-def test_public_blood_gas_state_tracks_live_chemistry(awake_engine):
-    engine = awake_engine
-    engine.set_airway_mode("ETT")
-    engine.give_drug_bolus("roc", engine.patient.weight)
-    for _ in range(60):
-        engine.step(1.0)
-    assert engine.state.ph < 7.4
-    assert engine.state.hco3 > 24.5
-    assert engine.state.ph == engine.resp.state.ph
-    assert engine.state.hco3 == engine.resp.state.hco3

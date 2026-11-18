@@ -2,10 +2,10 @@
 
 import pytest
 
-from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.machine.ventilator import AnesthesiaVentilator
 from anasim.patient.patient import Patient
+from anasim.physiology.lung import LungAeration
 from anasim.physiology.resp_mech import ExpiratorySegment, RespiratoryMechanics
 
 
@@ -47,28 +47,42 @@ def test_obstructed_expiration_is_scooped_and_flow_limited():
     assert flows[1] < 0.98 * chord
 
 
-def test_longer_expiration_and_bronchospasm_relief_reduce_intrinsic_peep_across_step_sizes():
+def test_longer_expiration_and_bronchospasm_relief_reduce_intrinsic_peep_across_step_sizes(engine_factory):
     traces = []
+    patient = Patient()
     for dt in (0.01, 0.1, 1.0):
-        engine = SimulationEngine(Patient(), SimulationConfig(mode="steady_state", dt=dt, rng_seed=123))
-        engine.start()
-        engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
+        aeration = LungAeration(patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
+        aeration.unconscious = 1.0
+        lung = RespiratoryMechanics(resistance=patient.airway_resistance(), aeration=aeration)
+        vent = AnesthesiaVentilator()
         trace = []
         for rr, ie, bronch in ((24, "1:1", 1.0), (24, "1:4", 1.0), (8, "1:4", 1.0), (24, "1:1", 0.0)):
-            engine.set_bronchospasm(bronch)
-            engine.set_vent_settings(mode="VCV", rr=rr, vt=0.5, ie=ie, peep=5, p_max=60)
-            for _ in range(round(90 / dt)):
-                engine.step(dt)
-            trace.append((engine.vent.monitors.auto_peep, engine.aeration.frc, engine.state.vt))
-        short, longer, slow, relieved = trace
-        assert short[0] > 5.0
-        assert longer[0] < 0.75 * short[0]
-        assert longer[1] < short[1] - 0.2
-        assert slow[0] < 0.3 * longer[0]
-        assert relieved[0] < 0.5 * short[0]
-        assert relieved[1] < short[1] - 0.3
-        assert all(endpoint[2] == pytest.approx(500.0, abs=2.0) for endpoint in trace)
+            lung.bronchospasm = bronch
+            lung.bronch_resistance = 20.0 * bronch
+            lung.resistance = patient.airway_resistance() + 20.0 * bronch
+            vent.update_settings(mode="VCV", rr=rr, tv=500, ie=ie, peep=5, p_max=60)
+            for _ in range(round(60 / dt)):
+                vent.step(dt, lung, "vent")
+            trace.append((vent.monitors.auto_peep, aeration.frc, vent.monitors.tv_exp))
         traces.append(trace)
     for trace in traces[1:]:
         for actual, reference in zip(trace, traces[0], strict=True):
             assert actual == pytest.approx(reference, abs=1e-8)
+
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=123), start=True)
+    engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
+    eng_trace = []
+    for rr, ie, bronch in ((24, "1:1", 1.0), (24, "1:4", 1.0), (8, "1:4", 1.0), (24, "1:1", 0.0)):
+        engine.set_bronchospasm(bronch)
+        engine.set_vent_settings(mode="VCV", rr=rr, vt=0.5, ie=ie, peep=5, p_max=60)
+        for _ in range(60):
+            engine.step(1.0)
+        eng_trace.append((engine.vent.monitors.auto_peep, engine.aeration.frc, engine.state.vt))
+    short, longer, slow, relieved = eng_trace
+    assert short[0] > 5.0
+    assert longer[0] < 0.75 * short[0]
+    assert longer[1] < short[1] - 0.2
+    assert slow[0] < 0.3 * longer[0]
+    assert relieved[0] < 0.5 * short[0]
+    assert relieved[1] < short[1] - 0.3
+    assert all(endpoint[2] == pytest.approx(500.0, abs=2.0) for endpoint in eng_trace)

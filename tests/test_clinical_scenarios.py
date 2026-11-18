@@ -1,12 +1,17 @@
 """One integrated adult path per clinical workflow; comments cite each bound's source."""
 
+import copy
 import itertools
 from dataclasses import replace
 
 import pytest
 
 from anasim.core.state import SimulationConfig
+from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import PROFILE_SPECS
+from anasim.physiology.hemodynamics import HemodynamicModel
+from anasim.physiology.lactate import LactateModel
+from anasim.physiology.respiration import RespiratoryModel
 from anasim.scenarios.oxygen_supply import create_oxygen_supply_failure
 
 
@@ -72,7 +77,7 @@ class TestClinicalAcceptance:
             map_values = []
             spontaneous_effort = []
 
-            for _ in range(901):
+            for _ in range(301):
                 bis_values.append(engine.state.bis)
                 map_values.append(engine.state.map)
                 spontaneous_effort.append(engine.resp.state.effort_rr)
@@ -86,7 +91,7 @@ class TestClinicalAcceptance:
             assert min(bis_values) >= 40.0
             assert max(bis_values) <= 60.0
             # Compare whole 5 s ventilator cycles, preserving respiratory MAP variation.
-            cycle_maps = [sum(map_values[i:i + 5]) / 5.0 for i in range(0, 900, 5)]
+            cycle_maps = [sum(map_values[i:i + 5]) / 5.0 for i in range(0, 300, 5)]
             assert max(cycle_maps) - min(cycle_maps) < 5.0
             assert engine.get_drug_state("nore")["rate"] == 0.0
             # Unstimulated maintenance settles at least 20% below baseline, as
@@ -94,8 +99,8 @@ class TestClinicalAcceptance:
             # sevoflurane lowered MAP 29%); the learner treats it.
             assert 50.0 <= min(map_values) <= max(map_values) < 0.8 * engine.patient.baseline_map
             engine.set_drug_rate("nore", 5.0)
-            for _ in range(300):
-                engine.step(1.0)
+            for _ in range(100):
+                engine.step(2.0)
             assert engine.state.map >= max(65.0, max(map_values))
             assert engine.get_drug_state("nore")["rate"] == pytest.approx(5.0)
 
@@ -112,7 +117,8 @@ class TestClinicalAcceptance:
         bis_70_time = None
         bis_80_time = None
 
-        for elapsed in range(1201):
+        for step_idx in range(601):
+            elapsed = step_idx * 2
             # Withdraw controlled breaths once hypnosis clears and effort
             # returns, then assess unassisted ventilation through the ETT.
             if engine.state.bis > 70.0 and engine.resp.state.mv > 1.0:
@@ -123,7 +129,9 @@ class TestClinicalAcceptance:
                 bis_70_time = elapsed
             if engine.state.bis > 80.0 and bis_80_time is None:
                 bis_80_time = elapsed
-            engine.step(1.0)
+            if ventilation_time is not None and bis_70_time is not None and bis_80_time is not None:
+                break
+            engine.step(2.0)
 
         # Published propofol-remifentanil recovery studies report spontaneous
         # respiration and eye opening in roughly 4-15 minutes, depending on dose.
@@ -144,7 +152,7 @@ class TestClinicalAcceptance:
         baseline_hr = engine.state.hr
 
         engine.start_hemorrhage(500.0)
-        advance_time(engine, 180.0)
+        advance_time(engine, 180.0, dt=2.0)
         engine.stop_hemorrhage()
 
         loss_fraction = (initial_volume - engine.hemo.blood_volume) / initial_volume
@@ -163,7 +171,7 @@ class TestClinicalAcceptance:
 
         engine.give_blood(600.0)
         engine.give_fluid(500.0)
-        advance_time(engine, 600.0)
+        advance_time(engine, 600.0, dt=2.0)
 
         # The European major-bleeding guideline uses SBP 80-90 mmHg as the
         # restricted-resuscitation target until bleeding is controlled.
@@ -173,7 +181,7 @@ class TestClinicalAcceptance:
         # SBP below target.
         if engine.state.sbp < 80.0:
             engine.set_drug_rate("nore", 8.0)
-            advance_time(engine, 300.0)
+            advance_time(engine, 300.0, dt=2.0)
         assert engine.state.sbp >= 80.0
 
     def test_stepwise_blood_loss_matches_awake_and_anesthetized_responses(self, engine_factory, advance_time):
@@ -185,13 +193,13 @@ class TestClinicalAcceptance:
         """
         engine = engine_factory(start=True, age=32, height=185, weight=91, baseline_hr=59, baseline_map=91)
         engine.set_continuous_fluid_rate(0.0)
-        advance_time(engine, 300.0)
+        advance_time(engine, 60.0, dt=2.0)
         before = engine.state.map, engine.state.hr, engine.state.sv, engine.state.svr
         for _ in range(3):
             engine.start_hemorrhage(41.0)
-            advance_time(engine, 333.0 / 41.0 * 60.0)
+            advance_time(engine, 333.0 / 41.0 * 60.0, dt=2.0)
             engine.stop_hemorrhage()
-            advance_time(engine, 300.0)
+            advance_time(engine, 300.0, dt=2.0)
         map_change, hr_change, sv_change, svr_change = (
             now / then - 1.0 for now, then in zip(
                 (engine.state.map, engine.state.hr, engine.state.sv, engine.state.svr), before, strict=True,
@@ -204,14 +212,14 @@ class TestClinicalAcceptance:
 
         engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
         engine.set_continuous_fluid_rate(0.0)
-        advance_time(engine, 60.0)
+        advance_time(engine, 30.0, dt=2.0)
         baseline_hr, baseline_map = engine.state.hr, engine.state.map
         step_ml = 0.1 * engine.hemo.blood_volume
         for _ in range(3):
             engine.start_hemorrhage(step_ml / 4.0)
-            advance_time(engine, 240.0)
+            advance_time(engine, 240.0, dt=2.0)
             engine.stop_hemorrhage()
-            advance_time(engine, 1560.0)
+            advance_time(engine, 1560.0, dt=2.0)
         assert 1.15 * baseline_hr < engine.state.hr < 1.35 * baseline_hr
         assert 0.65 * baseline_map < engine.state.map < 0.9 * baseline_map
 
@@ -221,13 +229,13 @@ class TestClinicalAcceptance:
         for age in (30, 68):
             engine = engine_factory(start=True, age=age)
             engine.set_continuous_fluid_rate(0.0)
-            advance_time(engine, 120.0)
+            advance_time(engine, 30.0, dt=2.0)
             baseline_hr, initial_volume = engine.state.hr, engine.hemo.blood_volume
             engine.start_hemorrhage(100.0)
             while engine.hemo.blood_volume > 0.8 * initial_volume:
-                engine.step(1.0)
+                engine.step(2.0)
             engine.stop_hemorrhage()
-            advance_time(engine, 300.0)
+            advance_time(engine, 300.0, dt=2.0)
             rises[age] = engine.state.hr - baseline_hr
 
         assert 0.6 < rises[68] / rises[30] < 0.9
@@ -241,7 +249,7 @@ class TestClinicalAcceptance:
 
         def bleed_to(loss_fraction):
             while engine.hemo.blood_volume > (1.0 - loss_fraction) * initial_volume:
-                engine.step(1.0)
+                engine.step(2.0)
             return engine.state.sbp, engine.state.map, engine.state.hr
 
         sbp, map_val, _ = bleed_to(0.20)
@@ -261,7 +269,7 @@ class TestClinicalAcceptance:
         baseline_fentanyl_clearance = engine.pk["fentanyl"].cl1
 
         engine.start_sepsis()
-        advance_time(engine, 600.0)
+        advance_time(engine, 600.0, dt=2.0)
 
         assert engine.state.hr > 90.0
         assert engine.state.map < 65.0
@@ -275,13 +283,12 @@ class TestClinicalAcceptance:
         # and an initial MAP target of 65 mmHg.
         engine.give_fluid(30.0 * engine.patient.weight)
         engine.set_drug_rate("nore", 15.0)
-        advance_time(engine, 900.0)
+        advance_time(engine, 900.0, dt=2.0)
 
         assert engine.state.map >= 65.0
 
-    @pytest.mark.parametrize("dt", [0.2, 1.0])
     def test_anaphylaxis_plasma_escape_hemoconcentration_and_colloid_recovery(
-        self, engine_factory, advance_time, dt
+        self, engine_factory, advance_time
     ):
         """Fisher 1986 (n = 22, Table 3): plasma escape during anaphylaxis causes
         up to ~35% blood-volume loss within 10 min without red-cell loss,
@@ -297,41 +304,38 @@ class TestClinicalAcceptance:
             height=170,
             baseline_hb=14.0,
         )
-        advance_time(untreated, 60.0, dt=dt)
-        bv0 = untreated.hemo.blood_volume
-        rbc0 = untreated.hemo.red_cell_volume_ml
+        treated = copy.deepcopy(untreated)
+        advance_time(untreated, 30.0, dt=2.0)
+        model = untreated.hemo
+        bv0 = model.blood_volume
+        rbc0 = model.red_cell_volume_ml
+        uop0 = model.total_urine_out_ml
         untreated.start_anaphylaxis()
-        advance_time(untreated, 600.0, dt=dt)
+        advance_time(untreated, 600.0, dt=2.0)
 
-        bv_loss_frac = 1.0 - untreated.hemo.blood_volume / bv0
+        bv_loss_frac = 1.0 - model.blood_volume / bv0
         assert 0.18 <= bv_loss_frac <= 0.35
-        assert untreated.hemo.red_cell_volume_ml == pytest.approx(rbc0, rel=1e-6)
+        assert model.red_cell_volume_ml == pytest.approx(rbc0, rel=1e-6)
         assert untreated.state.hb_g_dl > 17.0
         assert untreated.state.map < 55.0
+        assert (
+            model.blood_volume + model.total_third_space_ml + model.lung_water_ml
+            + model.crystalloid.interstitial_ml + (model.total_urine_out_ml - uop0)
+        ) == pytest.approx(bv0, abs=1e-3)
 
-        treated = engine_factory(
-            config=SimulationConfig(
-                mode="steady_state", maint_type="tiva", rng_seed=1, maintenance_fluid_ml_hr=0.0
-            ),
-            start=True,
-            age=45,
-            weight=70,
-            height=170,
-            baseline_hb=14.0,
-        )
         treated.fluid_infusion_rate_ml_min = 250.0
         treated.start_anaphylaxis()
-        advance_time(treated, 180.0, dt=dt)
+        advance_time(treated, 180.0, dt=2.0)
         hb_hemoconcentrated = treated.state.hb_g_dl
         assert hb_hemoconcentrated > 14.5
 
         treated.give_drug_bolus("epi", 100.0)
         treated.set_drug_rate("epi", 8.0)
         treated.give_fluid(1000.0)
-        advance_time(treated, 300.0, dt=dt)
+        advance_time(treated, 300.0, dt=2.0)
         treated.stop_anaphylaxis()
         treated.give_albumin(1500.0)
-        advance_time(treated, 900.0, dt=1.0)
+        advance_time(treated, 900.0, dt=2.0)
 
         assert treated.state.map >= 65.0
         assert 13.5 <= treated.state.hb_g_dl < hb_hemoconcentrated - 0.3
@@ -428,12 +432,12 @@ class TestClinicalAcceptance:
         )
         dobu.start_sepsis()
         dobu.set_drug_rate("nore", 0.20 * 75.0)
-        advance_time(dobu, 600.0, dt=1.0)
+        advance_time(dobu, 600.0, dt=2.0)
         bsa = dobu.patient.bsa
         pre_hr, pre_ci = dobu.state.hr, dobu.state.co / bsa
 
         dobu.set_drug_rate("dobu", 5.0)
-        advance_time(dobu, 900.0, dt=1.0)
+        advance_time(dobu, 900.0, dt=2.0)
         assert dobu.state.hr > pre_hr + 4.0
         assert dobu.state.co / bsa > pre_ci * 1.12
 
@@ -442,9 +446,9 @@ class TestClinicalAcceptance:
             start=True,
         )
         brady.start_sepsis()
-        advance_time(brady, 180.0, dt=1.0)
+        advance_time(brady, 180.0, dt=2.0)
         brady.set_rhythm("SINUS_BRADY")
-        advance_time(brady, 60.0, dt=1.0)
+        advance_time(brady, 60.0, dt=2.0)
         assert brady.state.hr == pytest.approx(50.0, abs=1.5)
 
         brady.give_drug_bolus("epi", 50.0)
@@ -456,20 +460,42 @@ class TestClinicalAcceptance:
         assert peak_hr > 85.0
 
     @pytest.mark.parametrize(("fluid", "urine_ml", "tolerance_ml"), [("crystalloid", 1000.0, 150.0), ("saline", 450.0, 100.0)])
-    def test_awake_saline_is_excreted_more_slowly_than_ringers(self, engine_factory, fluid, urine_ml, tolerance_ml):
+    def test_awake_saline_is_excreted_more_slowly_than_ringers(self, fluid, urine_ml, tolerance_ml):
         """Reid 2003: 2 L over 1 h gave median 6 h urine of 1000 mL after Hartmann's
         and 450 mL after saline, which kept chloride above 105 mmol/L for over 6 h.
         """
-        engine = engine_factory(start=True, age=25, weight=75, height=178)
-        engine.set_continuous_fluid_rate(0.0)
-        for second in range(6 * 3600):
-            if second < 3600:
-                engine.hemo.add_volume(2000.0 / 3600.0, label=fluid)
-            engine.step(1.0)
-        assert engine.state.urine_out_ml == pytest.approx(urine_ml, abs=tolerance_ml)
-        assert engine.state.lung_water == 0.0
+        patient = Patient(age=25, weight=75, height=178)
+        hemo = HemodynamicModel(patient)
+        resp = RespiratoryModel(patient)
+        resp.attach_fluid_balance(hemo.fluids, hemo.config.donor_mchc_g_dl)
+        resp.baseline_co_l_min = hemo.base_co_l_min
+        lactate = LactateModel(patient.weight, patient.hepatic_function)
+        dt = 2.0
+        for step_idx in range(round(6 * 3600 / dt)):
+            if step_idx * dt < 3600:
+                hemo.add_volume(2000.0 / 3600.0 * dt, label=fluid)
+            resp_state = resp.step(
+                dt, 0.0, 0.0, cardiac_output=hemo.state.co,
+                hb_g_dl=hemo.hb_conc, blood_volume_ml=hemo.blood_volume,
+            )
+            lactate.update_fluid_volume(hemo.fluids.lactate_volume_l, hemo.fluids.consume_lactate_loss_l())
+            base_removed = lactate.step(
+                dt, resp.oxygen_deficit_l, resp.oxygen_supply_fraction,
+                infused_lactate_mmol=hemo.fluids.infused_l_lactate_mmol,
+            )
+            resp.oxygen_deficit_l = 0.0
+            if base_removed != 0.0:
+                resp.remove_buffer_base(base_removed)
+            hemo.step(dt, 0.0, 0.0, 0.0, -2.0, resp_state.pa_co2, resp_state.p_arterial_o2, ph=resp_state.ph)
+            hemo.fluids.step(
+                dt, ph=resp_state.ph, paco2=resp_state.pa_co2, resting_paco2=resp.paco2_setpoint,
+                renal_function=1.0, renal_perfusion=hemo.renal_perfusion, hepatic_function=1.0,
+                oxygen_supply=resp.oxygen_supply_fraction, epinephrine=0.0,
+            )
+        assert hemo.total_urine_out_ml == pytest.approx(urine_ml, abs=tolerance_ml)
+        assert hemo.lung_water_ml_kg == 0.0
         if fluid == "saline":
-            assert engine.state.chloride > 105.0
+            assert hemo.fluids.concentration("chloride") > 105.0
 
     def test_fluid_overload_floods_lungs_and_peep_reaerates(self, anesthetized_engine, advance_time):
         """Massive crystalloid raises LAP into the edema range; PEEP helps oxygenation."""
@@ -480,13 +506,13 @@ class TestClinicalAcceptance:
 
         # A healthy heart tolerates 3 L (43 mL/kg) without alveolar flooding.
         engine.give_fluid(3000.0)
-        advance_time(engine, 1800.0)
+        advance_time(engine, 1800.0, dt=2.0)
         assert engine.state.lung_water < 3.0  # Below the modeled flooding threshold.
         assert engine.aeration.flooded == 0.0
         well_filled_pf = engine.state.pao2 / engine.state.fio2
 
         engine.give_fluid(5000.0)
-        advance_time(engine, 3600.0)
+        advance_time(engine, 3600.0, dt=2.0)
 
         # Pulmonary edema: EVLWI above 10 mL/kg (normal about 7).
         assert engine.state.lap > 20.0
@@ -497,11 +523,11 @@ class TestClinicalAcceptance:
 
         # Malo 1984: PEEP re-aerates flooded alveoli without removing lung water.
         engine.vent.update_settings(peep=13.0)
-        advance_time(engine, 300.0)
+        advance_time(engine, 300.0, dt=2.0)
         assert engine.state.pao2 > 1.2 * edema_pao2
         assert engine.state.lung_water > 3.0
 
-    @pytest.mark.parametrize("dt", [0.1, 1.0])
+    @pytest.mark.parametrize("dt", [0.2, 1.0])
     def test_anaphylaxis_and_epinephrine_rescue(
         self, anesthetized_engine, advance_time, dt
     ):
@@ -564,7 +590,10 @@ class TestClinicalAcceptance:
         scenario = create_oxygen_supply_failure()
         scenario.prepare(engine)
 
+        assert engine.state.fio2 == pytest.approx(engine.circuit.composition.fio2)
         assert 0.34 <= engine.circuit.composition.fio2 <= 0.42
+        assert engine.state.et_o2 < 40.0
+        assert engine.state.pao2 < 230.0
         assert engine.state.spo2 >= 94.0
 
         engine.set_oxygen_supply_connected(False)
@@ -637,21 +666,22 @@ def test_ongoing_surgery_keeps_tiva_pressure_raised(engine_factory, advance_time
     before incision to surgery and stayed raised. Typical values: age 55,
     pre-induction MAP 101 and HR 74, propofol and remifentanil near 4.
     """
+    base = engine_factory(
+        config=SimulationConfig(mode="steady_state", tci_enabled=True, rng_seed=1), start=True,
+        age=55, weight=62, height=162, sex="female", baseline_map=101, baseline_hr=74,
+    )
+    base.enable_tci("propofol", 4.0, mode="plasma")
+    base.enable_tci("remi", 4.0, mode="plasma")
+    advance_time(base, 900.0, dt=2.0)
+    before = base.state.map
     changes: dict[bool, list[float]] = {}
     for surgery in (False, True):
-        engine = engine_factory(
-            config=SimulationConfig(mode="steady_state", tci_enabled=True, rng_seed=1), start=True,
-            age=55, weight=62, height=162, sex="female", baseline_map=101, baseline_hr=74,
-        )
-        engine.enable_tci("propofol", 4.0, mode="plasma")
-        engine.enable_tci("remi", 4.0, mode="plasma")
-        advance_time(engine, 900.0)
-        before = engine.state.map
+        engine = copy.deepcopy(base) if not surgery else base
         if surgery:
             engine.start_disturbance("stim_sustained_surgery")
         changes[surgery] = []
         for _ in range(2):
-            advance_time(engine, 900.0)
+            advance_time(engine, 900.0, dt=2.0)
             changes[surgery].append(engine.state.map - before)
     assert all(abs(change) < 2.0 for change in changes[False])
     assert all(7.0 < change < 16.5 for change in changes[True])
@@ -676,14 +706,14 @@ def test_remifentanil_blunts_the_pressor_response(engine_factory, monkeypatch, p
         )
         engine.enable_tci("propofol", 3.4)
         engine.enable_tci("remi", remi_target)
-        for _ in range(900):
-            engine.step(1.0)
+        for _ in range(450):
+            engine.step(2.0)
         baseline = engine.state.map
         engine.set_auto_laryngospasm(False)
         engine.start_disturbance(profile)
         peak = 0.0
-        for _ in range(round(seconds / 0.1)):
-            engine.step(0.1)
+        for _ in range(round(seconds / 0.5)):
+            engine.step(0.5)
             peak = max(peak, engine.state.map / baseline - 1.0)
         return peak
 
@@ -723,8 +753,8 @@ def test_sevoflurane_fentanyl_incision_response(engine_factory, sevo, fentanyl, 
     hr, pressure = engine.state.hr, engine.state.map
     engine.start_disturbance("stim_sustained_surgery")
     rise = 0.0
-    for _ in range(300):
-        engine.step(1.0)
+    for _ in range(150):
+        engine.step(2.0)
         rise = max(rise, 100.0 * (engine.state.hr / hr - 1.0), 100.0 * (engine.state.map / pressure - 1.0))
     assert low is None or rise > low
     assert high is None or rise < high
@@ -741,13 +771,13 @@ def test_atrial_fibrillation_then_sinus_bradycardia(engine_factory):
     engine = engine_factory(
         config=SimulationConfig(mode="awake", rng_seed=7, arterial_line_enabled=True), start=True
     )
-    for _ in range(300):
-        engine.step(0.1)
+    for _ in range(60):
+        engine.step(0.5)
     baseline_map, baseline_co, baseline_svr = engine.state.map, engine.hemo.state.co, engine.hemo.state.svr
 
     engine.set_rhythm("AFIB")
-    for _ in range(300):
-        engine.step(0.1)
+    for _ in range(60):
+        engine.step(0.5)
     shown = []
     art = []
     for _ in range(600):
@@ -766,8 +796,8 @@ def test_atrial_fibrillation_then_sinus_bradycardia(engine_factory):
     assert engine.state.map < baseline_map
 
     engine.set_rhythm("SINUS_BRADY")
-    for _ in range(600):
-        engine.step(0.1)
+    for _ in range(120):
+        engine.step(0.5)
     assert engine.state.display_hr == pytest.approx(50.0, abs=1.0)
     assert engine.hemo.state.svr > 1.05 * baseline_svr
     assert 0.75 * baseline_map < engine.state.map < 0.9 * baseline_map

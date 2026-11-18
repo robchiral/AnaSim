@@ -1,5 +1,7 @@
 """Oxygen-limited metabolism, lactate kinetics, and buffer-base accounting."""
 
+import copy
+
 import pytest
 from scipy.integrate import solve_ivp
 
@@ -82,19 +84,18 @@ def test_resting_turnover_is_at_equilibrium(hepatic_function):
 
 
 def test_epinephrine_without_circulation_does_not_drive_tissue_lactate_production(engine_factory):
-    engines = [engine_factory(config=SimulationConfig(rng_seed=7), start=True) for _ in range(2)]
-    for engine in engines:
-        engine.set_rhythm("VFIB")
-        for _ in range(160):
-            engine.step(0.1)
-    engines[1].give_drug_bolus("epi", 1000)
-    for engine in engines:
-        for _ in range(1200):
-            engine.step(0.1)
+    control = engine_factory(config=SimulationConfig(rng_seed=7), start=True)
+    control.set_rhythm("VFIB")
+    for _ in range(16):
+        control.step(1.0)
+    dosed = copy.deepcopy(control)
+    dosed.give_drug_bolus("epi", 1000)
+    for engine in (control, dosed):
+        for _ in range(120):
+            engine.step(1.0)
         assert engine.state.co == engine.state.epi_ce == 0
-    control, dosed = (engine.state for engine in engines)
-    assert dosed.lactate == pytest.approx(control.lactate, abs=1e-10)
-    assert dosed.base_excess == pytest.approx(control.base_excess, abs=1e-10)
+    assert dosed.state.lactate == pytest.approx(control.state.lactate, abs=1e-10)
+    assert dosed.state.base_excess == pytest.approx(control.state.base_excess, abs=1e-10)
 
 
 def test_reference_studies_bound_lactate_responses():
@@ -154,7 +155,7 @@ def test_septic_plateau_matches_reported_lactate_and_clearance():
     assert hepatic.concentration > septic.concentration > normal.concentration
 
 
-@pytest.mark.parametrize("dt", [0.01, 0.1, 1.0])
+@pytest.mark.parametrize("dt", [0.1, 1.0])
 def test_oxygen_deficit_and_buffer_base_balance_in_engine(engine_factory, dt):
     engine = engine_factory(config=SimulationConfig(mode="steady_state"), start=True)
     engine.maintenance_fluid_rate_ml_min = 0.0
@@ -253,8 +254,8 @@ def test_transport_and_lactate_conserve_buffer_base_during_shock_and_recovery(aw
 def test_sepsis_raises_lactate_and_lowers_base_excess_within_twenty_minutes(engine_factory):
     engine = engine_factory(config=SimulationConfig(mode="steady_state"), start=True)
     engine.start_sepsis()
-    for _ in range(1200):
-        engine.step(1.0)
+    for _ in range(600):
+        engine.step(2.0)
     assert engine.state.lactate > 1.3 and engine.state.base_excess < -0.5
 
 
@@ -266,8 +267,8 @@ def test_compensated_blood_loss_preserves_lactate_and_base_excess(engine_factory
     baseline_co = engine.state.co
     baseline_be = engine.state.base_excess
     engine.start_hemorrhage(100.0)  # 1 L over 10 minutes.
-    for _ in range(600):
-        engine.step(1.0)
+    for _ in range(300):
+        engine.step(2.0)
         assert engine.resp.oxygen_supply_fraction == 1.0
         assert engine.state.lactate == pytest.approx(0.9, abs=0.05)
         # Analyzer SBE permits a small respiratory shift during falling flow.

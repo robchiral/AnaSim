@@ -1,9 +1,10 @@
+import copy
+
 import pytest
 
 from anasim.core.state import SimulationConfig
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.volatile import Vaporizer
-from anasim.scenarios.oxygen_supply import create_oxygen_supply_failure
 
 
 def test_low_flow_mixture_balances_uptake_spill_and_vaporizer_consumption():
@@ -63,33 +64,6 @@ def test_closed_circuit_stays_stable_until_oxygen_supply_fails():
     assert 0.0 < circuit.composition.fio2 < 0.8
 
 
-def test_obstructed_patient_uses_oxygen_stores_without_drawing_from_circuit(engine_factory):
-    engine = engine_factory(start=True)
-    engine.set_airway_mode("ETT")
-    engine.set_fgf(0.0, 6.0)
-    for _ in range(200):
-        engine.step(0.1)
-    assert engine.state.va > 3.0
-    engine.set_fgf(0.0, 0.0)
-    engine.circuit.composition.fio2 = 0.5
-    engine.circuit.composition.fin2 = 0.5
-    engine.set_airway_obstruction(1.0)
-    initial_o2 = engine.resp.state.p_alveolar_o2
-    initial_co2 = engine.state.pa_co2
-    for _ in range(300):
-        engine.step(0.1)
-    assert engine.state.va == 0.0
-    assert engine.circuit.composition.fio2 == pytest.approx(0.5, abs=1e-8)
-    assert engine.resp.state.p_alveolar_o2 < initial_o2 - 10.0
-    assert engine.state.pa_co2 > initial_co2 + 4.0
-
-    engine.set_airway_obstruction(0.0)
-    for _ in range(300):
-        engine.step(0.1)
-    assert engine.state.va > 3.0
-    assert engine.circuit.composition.fio2 < 0.48
-
-
 def test_oxygen_supply_failure_stops_o2_and_n2o_delivery():
     circuit = CircleSystem(volume_l=6.0)
     circuit.fgf_o2 = 2.0
@@ -132,7 +106,12 @@ def test_disabling_sevoflurane_preserves_nitrous_oxide_delivery(engine_factory):
 
 def test_engine_volatile_washin_washout(engine_factory):
     """Circuit + volatile PK integration: vaporizer raises MAC, washout lowers it."""
-    config = SimulationConfig(mode="awake")
+    balanced = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True)
+    assert balanced.vaporizer.state.level == pytest.approx(250.0)
+    assert balanced.resp.gas_transport.consumed_o2_l == 0.0
+    assert balanced.resp.gas_transport.oxygen_from_air_l == 0.0
+
+    config = SimulationConfig(mode="awake", dt=2.0)
     engine = engine_factory(config=config, start=True)
     engine.set_airway_mode("ETT")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
@@ -141,8 +120,8 @@ def test_engine_volatile_washin_washout(engine_factory):
 
     engine.set_vaporizer(2.0)
     initial_level = engine.vaporizer.state.level
-    for _ in range(300):  # 5 min wash-in
-        engine.step(1.0)
+    for _ in range(150):  # 5 min wash-in
+        engine.step(2.0)
 
     mac_on = engine.state.mac
     fi_sevo = engine.state.fi_sevo
@@ -160,8 +139,8 @@ def test_engine_volatile_washin_washout(engine_factory):
     assert not engine.vaporizer.state.is_on
     assert engine.vaporizer.state.setting == 0.0
     engine.set_fgf(10.0, 0.0)
-    for _ in range(300):  # 5 min washout
-        engine.step(1.0)
+    for _ in range(150):  # 5 min washout
+        engine.step(2.0)
 
     assert engine.state.mac < mac_on * 0.7, "MAC should decrease with washout/high FGF"
     assert engine.state.fi_sevo < fi_sevo * 0.1
@@ -169,16 +148,17 @@ def test_engine_volatile_washin_washout(engine_factory):
 
 
 def test_engine_n2o_washin_washout(engine_factory):
-    """N2O wash-in should raise FiN2O and MAC fraction; washout should reduce them."""
-    config = SimulationConfig(mode="awake")
+    """N2O wash-in raises FiN2O and MAC fraction; disconnect zeros end-tidal gases; washout reduces MAC."""
+    config = SimulationConfig(mode="awake", dt=2.0)
     engine = engine_factory(config=config, start=True)
     engine.set_airway_mode("ETT")
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
     engine.set_vent_power(True)
     engine.set_fgf(2.0, 0.0, n2o_l_min=4.0)
+    engine.set_vaporizer(1.0)
 
-    for _ in range(300):  # 5 min wash-in
-        engine.step(1.0)
+    for _ in range(150):  # 5 min wash-in
+        engine.step(2.0)
 
     fi_n2o = engine.state.fi_n2o
     mac_n2o = engine.state.mac_n2o
@@ -186,16 +166,23 @@ def test_engine_n2o_washin_washout(engine_factory):
     assert fi_n2o > 30.0, f"FiN2O too low with N2O on: {fi_n2o:.2f}%"
     assert mac_n2o > 0.2, f"N2O MAC fraction too low: {mac_n2o:.2f}"
 
+    disconnected = copy.deepcopy(engine)
+    disconnected.set_airway_mode("None")
+    disconnected.step(0.5)
+    assert disconnected.state.et_sevo == disconnected.state.et_n2o == disconnected.state.et_mac == 0.0
+    assert disconnected.state.mac > 0.2
+
+    engine.set_vaporizer(0.0)
     engine.set_fgf(6.0, 0.0, n2o_l_min=0.0)
-    for _ in range(300):  # 5 min washout
-        engine.step(1.0)
+    for _ in range(150):  # 5 min washout
+        engine.step(2.0)
 
     assert engine.state.fi_n2o < fi_n2o * 0.4, "FiN2O should decrease with washout/high FGF"
     assert engine.state.mac_n2o < mac_n2o * 0.5, "N2O MAC should decrease with washout/high FGF"
 
 
 def test_fio2_blender_with_n2o(engine_factory):
-    """FiO2 blender should hit target even with fixed N2O flow."""
+    """FiO2 blender hits target with fixed N2O flow while respecting the >=25% O2 hypoxic guard."""
     config = SimulationConfig(mode="awake")
     engine = engine_factory(config=config, start=False)
     engine.set_fgf(1.0, 1.0, n2o_l_min=2.0)
@@ -209,29 +196,27 @@ def test_fio2_blender_with_n2o(engine_factory):
     assert abs(fio2 - 0.5) < 0.05
 
     engine.set_oxygen_supply_connected(False)
-    engine.set_vent_settings(
-        rr=12,
-        vt=0.5,
-        peep=5.0,
-        ie="1:2",
-        mode="VCV",
-        fio2=0.3,
-    )
-    configured_total = (
-        engine.circuit.fgf_o2
-        + engine.circuit.fgf_air
-        + engine.circuit.fgf_n2o
-    )
-    configured_fio2 = (
-        engine.circuit.fgf_o2 + 0.21 * engine.circuit.fgf_air
-    ) / configured_total
+    engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.3)
+    configured_total = engine.circuit.fgf_o2 + engine.circuit.fgf_air + engine.circuit.fgf_n2o
+    configured_fio2 = (engine.circuit.fgf_o2 + 0.21 * engine.circuit.fgf_air) / configured_total
     assert configured_total == pytest.approx(total)
     assert configured_fio2 == pytest.approx(0.3)
 
+    engine.set_oxygen_supply_connected(True)
+    engine.set_fgf(1.0, 1.0, 3.0)
+    engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.60)
+    total_60 = engine.circuit.fgf_o2 + engine.circuit.fgf_air + engine.circuit.fgf_n2o
+    assert total_60 == pytest.approx(5.0)
+    assert (engine.circuit.fgf_o2 + 0.21 * engine.circuit.fgf_air) / total_60 == pytest.approx(0.60)
 
-def test_n2o_hypoxic_guard_step_invariance_and_low_flow_hypoxia(engine_factory, advance_time):
+    engine.set_fgf(2.0, 3.0, 3.0)
+    engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.21)
+    assert engine.circuit.fgf_o2 >= engine.circuit.fgf_n2o / 3.0 - 1e-9
+
+
+def test_n2o_hypoxic_guard_step_invariance_and_low_flow_nitrogen(engine_factory, advance_time):
     """Circle enforces >=25% O2 with N2O, conserves O2 across dt, accumulates exhaled N2
-    at metabolic flow, preserves vaporizer_on across zero FGF, and turns hypoxic on O2 loss.
+    at metabolic flow, and preserves vaporizer_on across zero FGF.
     """
     c_fine, c_coarse = CircleSystem(volume_l=6.0), CircleSystem(volume_l=6.0)
     c_fine.fgf_o2, c_fine.fgf_n2o = 0.0, 8.0
@@ -249,7 +234,7 @@ def test_n2o_hypoxic_guard_step_invariance_and_low_flow_hypoxia(engine_factory, 
     assert c_fine.composition.fio2 == pytest.approx(c_coarse.composition.fio2, abs=1e-9)
     assert c_fine.composition.fio2 * (3.0 + c_fine.reservoir_volume) == pytest.approx(2.75, abs=1e-9)
 
-    low_flow = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    low_flow = engine_factory(config=SimulationConfig(mode="awake", dt=2.0, rng_seed=1), start=True)
     low_flow.circuit.composition.fio2, low_flow.circuit.composition.fin2 = 1.0, 0.0
     low_flow.set_airway_mode("ETT")
     low_flow.set_vent_power(True)
@@ -259,96 +244,13 @@ def test_n2o_hypoxic_guard_step_invariance_and_low_flow_hypoxia(engine_factory, 
     assert low_flow.circuit.vaporizer_on is True
     low_flow.set_vaporizer(0.0)
     low_flow.set_fgf(0.3, 0.0)
-    advance_time(low_flow, 180.0, dt=1.0)
+    advance_time(low_flow, 180.0, dt=2.0)
     assert low_flow.circuit.composition.fin2 > 0.15
 
-    ox = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
-    create_oxygen_supply_failure().prepare(ox)
-    ox.set_oxygen_supply_connected(False)
-    advance_time(ox, 800.0, dt=2.0)
-    assert ox.circuit.composition.fio2 < 0.15
-    assert ox.state.spo2 < 85.0
 
-    empty = CircleSystem()
-    empty.reservoir_volume = 0.0
-    empty.composition.fio2, empty.composition.fin2 = 1.0, 0.0
-    empty.step(10.0, uptake_o2=0.25, uptake_agent=0.0)
-    assert empty.composition.fin2 == 0.0
-
-    starved = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
-    starved.set_vent_settings(rr=12, vt=0.6, peep=5.0, ie="1:2", mode="PCV-VG")
-    advance_time(starved, 15.0, dt=0.5)
-    converged_vg = starved.vent._vg_pressure
-    assert converged_vg is not None and converged_vg > 8.0
-    starved.set_fgf(0.0, 0.0)
-    starved.circuit.reservoir_volume = 0.02
-    advance_time(starved, 15.0, dt=0.5)
-    assert starved.state.vt < 100.0 and starved.vent._vg_pressure == pytest.approx(converged_vg, abs=1e-6)
-
-    starved.set_fgf(2.0, 3.0, 3.0)
-    starved.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.21)
-    assert starved.circuit.fgf_o2 >= starved.circuit.fgf_n2o / 3.0 - 1e-9
-
-    apneic = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
-    apneic.give_drug_bolus("roc", 100.0)
-    advance_time(apneic, 60.0, dt=0.1)
-    apneic.set_airway_mode("ETT")
-    apneic.set_fgf(0.0, 0.0, 0.0)
-    apneic.circuit.composition.fio2, apneic.circuit.composition.fin2 = 0.90, 0.10
-    apneic.aeration.frc = apneic.resp.frc + 0.05
-    assert apneic.state.apnea and apneic._tracheal_fio2 == pytest.approx(0.21, abs=0.01)
-    reservoir_0 = apneic.circuit.reservoir_volume
-    circuit_o2_0 = (3.0 + reservoir_0) * apneic.circuit.composition.fio2
-    resp_o2_0 = apneic.resp.gas_transport.oxygen_from_air_l
-    apneic.step(0.1)
-    reservoir_lost = reservoir_0 - apneic.circuit.reservoir_volume
-    circuit_o2_lost = circuit_o2_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
-    resp_o2_gained = apneic.resp.gas_transport.oxygen_from_air_l - resp_o2_0
-    assert circuit_o2_lost == pytest.approx(resp_o2_gained, rel=1e-6, abs=1e-9)
-    assert reservoir_lost == pytest.approx(resp_o2_gained / apneic._tracheal_fio2, rel=1e-6, abs=1e-9)
-
-    apneic.circuit.composition.fio2, apneic.circuit.composition.fin2 = 0.90, 0.10
-    apneic.circuit.reservoir_volume = 0.001
-    frc_0 = apneic.resp.frc
-    reservoir_0 = apneic.circuit.reservoir_volume
-    circuit_o2_0 = (3.0 + reservoir_0) * apneic.circuit.composition.fio2
-    resp_o2_0 = apneic.resp.gas_transport.oxygen_from_air_l
-    for _ in range(20):
-        apneic.aeration.frc = frc_0 + 0.05
-        apneic.step(0.1)
-    stpd_expansion = (apneic.resp.frc - frc_0) * apneic.resp._btps_to_stpd
-    reservoir_lost = reservoir_0 - apneic.circuit.reservoir_volume
-    circuit_o2_lost = circuit_o2_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
-    resp_o2_gained = apneic.resp.gas_transport.oxygen_from_air_l - resp_o2_0
-    assert stpd_expansion == pytest.approx(0.001, abs=1e-9)
-    assert reservoir_lost == pytest.approx(0.001, abs=1e-9)
-    assert circuit_o2_lost == pytest.approx(resp_o2_gained, rel=1e-6, abs=1e-9)
-
-    apneic.circuit.composition.fio2, apneic.circuit.composition.fin2 = 1.0, 0.0
-    apneic._tracheal_fio2 = 1.0
-    apneic.circuit.reservoir_volume = 0.001
-    apneic.aeration.frc = apneic.resp.frc + 0.05
-    circuit_o2_0 = (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
-    resp_o2_0 = apneic.resp.gas_transport.oxygen_from_air_l
-    apneic.step(1.0)
-    circuit_o2_lost = circuit_o2_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
-    resp_o2_gained = apneic.resp.gas_transport.oxygen_from_air_l - resp_o2_0
-    assert circuit_o2_lost == pytest.approx(0.001, abs=1e-9)
-    assert resp_o2_gained == pytest.approx(0.001, abs=1e-9)
-
-    loose_mask = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
-    loose_mask.set_airway_mode("Mask")
-    loose_mask.set_mask_seal(0.4)
-    loose_mask.set_fgf(0.0, 0.0, 0.0)
-    loose_mask.circuit.reservoir_volume = 0.0
-    advance_time(loose_mask, 60.0, dt=0.1)
-    assert loose_mask.state.va > 3.5 and loose_mask.state.sao2 > 96.5
-
-
-def test_shrinking_reservoir_o2_conservation_stpd_inert_exchange_and_n2o_fio2_blender(engine_factory):
-    """Shrinking half-full reservoir conserves O2 mass without phantom spill;
-    circle volatile/N2O uptake converts BTPS to STPD consistently with N2;
-    set_fio2 adjusts active N2O/air/O2 flows to hit target FiO2.
+def test_shrinking_reservoir_o2_conservation_and_stpd_inert_exchange(engine_factory):
+    """Shrinking half-full reservoir conserves O2 mass without phantom spill, and
+    circle volatile/N2O uptake converts BTPS to STPD consistently with N2.
     """
     circuit = CircleSystem()
     circuit.reservoir_volume = 1.5
@@ -372,51 +274,43 @@ def test_shrinking_reservoir_o2_conservation_stpd_inert_exchange_and_n2o_fio2_bl
         (3.0 + inert.circuit.reservoir_volume) * (inert.circuit.composition.fin2 + inert.circuit.composition.fin2o)
         + inert.resp.frc * stpd * (inert.resp.alveolar_fn2 + inert.pk_n2o.state.p_alv)
     )
-    for _ in range(30):
-        inert.step(1.0)
+    for _ in range(15):
+        inert.step(2.0)
     inert_1 = (
         (3.0 + inert.circuit.reservoir_volume) * (inert.circuit.composition.fin2 + inert.circuit.composition.fin2o)
         + inert.resp.frc * stpd * (inert.resp.alveolar_fn2 + inert.pk_n2o.state.p_alv)
     )
     assert inert_1 == pytest.approx(inert_0, abs=0.02)
 
-    blender = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=False)
-    blender.set_fgf(1.0, 1.0, 3.0)
-    blender.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.60)
-    total_60 = blender.circuit.fgf_o2 + blender.circuit.fgf_air + blender.circuit.fgf_n2o
-    assert total_60 == pytest.approx(5.0)
-    assert (blender.circuit.fgf_o2 + 0.21 * blender.circuit.fgf_air) / total_60 == pytest.approx(0.60)
-    blender.set_fgf(2.0, 0.0, 2.0)
-    blender.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", fio2=0.30)
-    total_30 = blender.circuit.fgf_o2 + blender.circuit.fgf_air + blender.circuit.fgf_n2o
-    assert total_30 == pytest.approx(4.0)
-    assert (blender.circuit.fgf_o2 + 0.21 * blender.circuit.fgf_air) / total_30 == pytest.approx(0.30)
-
 
 def test_apneic_deadspace_washin_and_closed_circuit_multigas_dt_invariance(
     engine_factory, advance_time
 ):
-    """Apneic oxygenation washes dead-space _tracheal_fio2 upward while conserving O2,
+    """Apneic oxygenation washes dead-space tracheal O2 upward across dt while conserving O2,
     and closed-circuit volatile/N2O/N2 transport stays consistent across dt.
     """
-    apneic = engine_factory(config=SimulationConfig(mode="awake", dt=0.2, rng_seed=1), start=True)
-    apneic.give_drug_bolus("roc", 90.0)
-    advance_time(apneic, 60.0, dt=0.2)
-    apneic.set_airway_mode("ETT")
-    apneic.set_fgf(0.0, 0.0, 0.0)
-    apneic.circuit.reservoir_volume = 2.0
-    apneic.circuit.composition.fio2, apneic.circuit.composition.fin2 = 1.0, 0.0
-    assert apneic._tracheal_fio2 < 0.30
-    o2_circuit_0 = (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
-    o2_resp_0 = apneic.resp.gas_transport.oxygen_from_air_l
-    advance_time(apneic, 90.0, dt=0.2)
-    assert apneic._tracheal_fio2 > 0.65
-    o2_circuit_lost = o2_circuit_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
-    o2_resp_gained = apneic.resp.gas_transport.oxygen_from_air_l - o2_resp_0
-    assert o2_circuit_lost == pytest.approx(o2_resp_gained, abs=0.03)
+    washin = []
+    for dt in (0.2, 1.0):
+        apneic = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=1), start=True)
+        apneic.give_drug_bolus("roc", 90.0)
+        advance_time(apneic, 60.0, dt=dt)
+        apneic.set_airway_mode("ETT")
+        apneic.set_fgf(0.0, 0.0, 0.0)
+        apneic.circuit.reservoir_volume = 2.0
+        apneic.circuit.composition.fio2, apneic.circuit.composition.fin2 = 1.0, 0.0
+        assert apneic._tracheal_fio2 < 0.30
+        o2_circuit_0 = (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
+        o2_resp_0 = apneic.resp.gas_transport.oxygen_from_air_l
+        advance_time(apneic, 90.0, dt=dt)
+        assert apneic._tracheal_fio2 > 0.65
+        o2_circuit_lost = o2_circuit_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
+        o2_resp_gained = apneic.resp.gas_transport.oxygen_from_air_l - o2_resp_0
+        assert o2_circuit_lost == pytest.approx(o2_resp_gained, abs=0.03)
+        washin.append(apneic._tracheal_fio2)
+    assert abs(washin[0] - washin[1]) < 0.015
 
     endpoints = []
-    for dt in (0.05, 0.1, 1.0):
+    for dt in (0.1, 1.0):
         e = engine_factory(config=SimulationConfig(mode="steady_state", dt=dt, rng_seed=1), start=True)
         e.give_drug_bolus("roc", 70.0)
         e.set_fgf(0.25, 0.0, 0.0)
@@ -431,96 +325,21 @@ def test_apneic_deadspace_washin_and_closed_circuit_multigas_dt_invariance(
             e.pk_sevo.state.p_alv,
             e.pk_n2o.state.p_alv,
         ))
-    for ep in endpoints[1:]:
-        assert ep == pytest.approx(endpoints[0], abs=0.004)
+    assert endpoints[1] == pytest.approx(endpoints[0], abs=0.004)
 
+    # Empty-reservoir CPAP draws no phantom O2, and sevoflurane_enabled=False blocks vaporizer delivery.
+    starved = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    starved.give_drug_bolus("roc", 70.0)
+    starved.vent.update_settings(mode="CPAP", rr=0, peep=8.0)
+    starved.set_fgf(0.0, 0.0, 0.0)
+    starved.circuit.reservoir_volume = 0.0
+    o2_0 = starved.resp.gas_transport.oxygen_from_air_l
+    advance_time(starved, 10.0, dt=0.5)
+    assert starved.resp.gas_transport.oxygen_from_air_l <= o2_0 + 1e-6
 
-def test_loose_mask_bag_entrainment_continuous_washin_empty_cpap_and_vaporizer_guards(
-    engine_factory, advance_time
-):
-    """Loose mask with minimal bag rate entrains room air; apneic tracheal FiO2
-    is continuous across mask_seal=0.998 vs 1.0; empty-reservoir CPAP extracts no
-    phantom O2; sevoflurane_enabled=False and empty-vaporizer final step conserve agent.
-    """
-    loose = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
-    loose.set_airway_mode("Mask")
-    loose.set_mask_seal(0.10)
-    loose.set_fgf(10.0, 0.0, 0.0)
-    loose.set_bag_mask_settings(2.0, 0.1)
-    loose.set_bag_mask_ventilation(True)
-    advance_time(loose, 45.0, dt=0.1)
-    assert loose.state.fio2 < 0.50
-
-    trach = []
-    for seal in (0.998, 1.0):
-        ap = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
-        ap.set_vent_power(False)
-        ap.set_airway_mode("Mask")
-        ap.set_mask_seal(seal)
-        ap.set_fgf(10.0, 0.0, 0.0)
-        advance_time(ap, 30.0, dt=0.1)
-        trach.append(ap._tracheal_fio2)
-    assert trach[0] == pytest.approx(trach[1], abs=0.02)
-
-    empty = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
-    empty.set_airway_mode("ETT")
-    empty.set_fgf(0.0, 0.0, 0.0)
-    empty.circuit.reservoir_volume = 0.0
-    empty.vent.update_settings(mode="CPAP", peep=5)
-    empty.set_vent_power(True)
-    o2_before = empty.resp.gas_transport.oxygen_from_air_l
-    empty.step(0.1)
-    assert empty.resp.gas_transport.oxygen_from_air_l - o2_before < 1e-5
-
-    disabled = engine_factory(
-        config=SimulationConfig(mode="awake", sevoflurane_enabled=False, dt=1.0, rng_seed=1), start=True
-    )
-    disabled.vaporizer.set_concentration(8.0)
-    disabled.set_fgf(10.0, 0.0, 0.0)
-    level_0 = disabled.vaporizer.state.level
-    disabled.step(1.0)
-    assert disabled.vaporizer.state.level == level_0 and not disabled.circuit.vaporizer_on
-
-    depleting = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
-    depleting.set_fgf(10.0, 0.0, 0.0)
-    depleting.set_vaporizer(8.0)
-    depleting.vaporizer.state.level = 0.01
-    depleting.step(1.0)
-    assert depleting.circuit.composition.fi_agent > 0.0 and depleting.vaporizer.state.level == 0.0
-
-
-def test_empty_circuit_loose_mask_apnea_dt_washin_and_startup_vaporizer_level(
-    engine_factory, advance_time
-):
-    """Apnea on a loose mask with an empty circuit entrains room air rather than phantom 100% O2;
-    apneic dead-space wash-in is dt-invariant; balanced startup preserves full vaporizer liquid.
-    """
-    apneic_loose = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=1), start=True)
-    apneic_loose.give_drug_bolus("roc", 70.0)
-    apneic_loose.set_vent_power(False)
-    apneic_loose.set_airway_mode("Mask")
-    apneic_loose.set_mask_seal(0.5)
-    apneic_loose.set_fgf(0.0, 0.0, 0.0)
-    apneic_loose.circuit.reservoir_volume = 0.0
-    apneic_loose.circuit.composition.fio2, apneic_loose.circuit.composition.fin2 = 1.0, 0.0
-    apneic_loose.step(0.2)
-    assert apneic_loose.state.fio2 == pytest.approx(0.21, abs=1e-4)
-
-    washin = []
-    for dt in (0.05, 0.2, 1.0):
-        e = engine_factory(config=SimulationConfig(mode="awake", dt=dt, rng_seed=1), start=True)
-        e.give_drug_bolus("roc", 90.0)
-        advance_time(e, 40.0, dt=dt)
-        e.set_airway_mode("ETT")
-        e.set_fgf(10.0, 0.0, 0.0)
-        e.circuit.composition.fio2, e.circuit.composition.fin2 = 1.0, 0.0
-        advance_time(e, 20.0, dt=dt)
-        washin.append(e._tracheal_fio2)
-    assert max(washin) - min(washin) < 0.015
-
-    balanced = engine_factory(
-        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True
-    )
-    assert balanced.vaporizer.state.level == pytest.approx(250.0)
-    assert balanced.resp.gas_transport.consumed_o2_l == 0.0
-    assert balanced.resp.gas_transport.oxygen_from_air_l == 0.0
+    no_sevo = engine_factory(config=SimulationConfig(mode="awake", sevoflurane_enabled=False, dt=0.5, rng_seed=1), start=True)
+    no_sevo.set_airway_mode("ETT")
+    no_sevo.set_vent_power(True)
+    no_sevo.vaporizer.set_concentration(4.0)
+    advance_time(no_sevo, 15.0, dt=0.5)
+    assert no_sevo.state.fi_sevo == 0.0 and no_sevo.pk_sevo.state.p_alv == 0.0

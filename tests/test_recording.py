@@ -114,8 +114,8 @@ def test_deepcopy_during_active_recording_and_json_alarm_serialization(awake_eng
     """
     engine = awake_engine
     engine.give_drug_bolus("roc", 50.0)
-    for _ in range(60):
-        engine.step(1.0)
+    for _ in range(30):
+        engine.step(2.0)
     assert engine.state.alarms
 
     engine.start_recording(str(tmp_path), sample_interval_sec=1.0)

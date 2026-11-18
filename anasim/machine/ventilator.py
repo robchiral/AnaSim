@@ -1110,7 +1110,8 @@ class AnesthesiaVentilator:
         # step. Subsamples keep analyzer and airway-sensor timing independent of it.
         f0, f1 = segment.flow(0.0), segment.flow(t)
         v0, vt = segment.volume(0.0), segment.volume(t)
-        if f0 * f1 < 0.0:
+        v_rev = vt
+        if (f0 > 0.0 > f1) or (f0 < 0.0 < f1):
             t_rev = find_root(segment.flow, 0.0, t, f0, f1)
             v_rev = segment.volume(t_rev)
             intervals: tuple[tuple[float, float, float, float], ...] = (

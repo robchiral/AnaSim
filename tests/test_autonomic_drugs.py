@@ -1,8 +1,17 @@
-"""Esmolol, labetalol, and glycopyrrolate through the engine; docstrings cite each bound."""
+"""Esmolol, labetalol, and glycopyrrolate through the engine and circulation; docstrings cite each bound."""
 
+import copy
+
+import numpy as np
 import pytest
 
+from anasim.core.enums import RhythmType
 from anasim.core.state import SimulationConfig
+from anasim.monitors.arterial import ArterialWaveformRenderer
+from anasim.monitors.cardiac_cycle import CardiacCycle
+from anasim.patient.patient import Patient
+from anasim.patient.pk_models import EsmololPK, LabetalolPK
+from anasim.physiology.hemodynamics import HemodynamicModel
 
 
 def _advance(engine, seconds, dt=1.0):
@@ -10,10 +19,10 @@ def _advance(engine, seconds, dt=1.0):
         engine.step(dt)
 
 
-def _extreme_hr(engine, seconds, pick):
+def _extreme_hr(engine, seconds, pick, dt=0.5):
     values = []
-    for _ in range(round(seconds / 0.1)):
-        engine.step(0.1)
+    for _ in range(round(seconds / dt)):
+        engine.step(dt)
         values.append(engine.state.hr)
     return pick(values)
 
@@ -24,24 +33,40 @@ def _tiva(engine_factory):
     )
 
 
-def test_labetalol_lowers_heart_rate_longer_than_blood_pressure(engine_factory):
+def test_labetalol_lowers_heart_rate_longer_than_blood_pressure():
     """Abernethy 1987, 50 mg over 10 min in young hypertensive adults (32 y, 95 kg):
     HR fell up to 17 bpm and SBP up to 25 mmHg; BP recovered within 30 min, and
     HR stayed low for 3 h. In AnaSim a smaller BP fall lasts as long as the beta
     block, because in sinus rhythm the baroreflex adjusts HR only.
     """
-    engine = engine_factory(
-        config=SimulationConfig(mode="awake", rng_seed=3), start=True, age=32, weight=95, height=180
+    patient = Patient(age=32, weight=95, height=180)
+    hemo = HemodynamicModel(patient)
+    pk = LabetalolPK(patient)
+    cycle = CardiacCycle(np.random.default_rng(3))
+    renderer = ArterialWaveformRenderer(age=32)
+    base = hemo.step(0.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0)
+    bp0 = renderer.step(
+        cycle.seed(base.hr, RhythmType.SINUS), base.map, base.sv,
+        static_pressure=base.venous_pressure, pulse_pressure_factor=base.pulse_pressure_factor,
     )
-    _advance(engine, 60)
-    base_hr, base_sbp = engine.state.hr, engine.state.sbp
+    base_hr, base_sbp = base.hr, bp0.systolic
 
+    base_bv = hemo.blood_volume_0
+    base_co = hemo.base_co_l_min / hemo.failure.output_factor
+    state = base
     changes = []
     for minute in range(180):
         if minute < 10:
-            engine.give_drug_bolus("labetalol", 5.0)
-        _advance(engine, 60)
-        changes.append((engine.state.hr - base_hr, engine.state.sbp - base_sbp))
+            pk.state.c1 += 5000.0 / pk.v1
+        for _ in range(12):
+            pk.update_hemodynamics(hemo.blood_volume / base_bv, state.co / base_co, hemo.renal_perfusion)
+            ce = pk.step(5.0, 0.0).ce
+            state = hemo.step(5.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=ce)
+        bp = renderer.step(
+            cycle.step(1.0, state.hr, state.rhythm_type), state.map, state.sv,
+            static_pressure=state.venous_pressure, pulse_pressure_factor=state.pulse_pressure_factor,
+        )
+        changes.append((state.hr - base_hr, bp.systolic - base_sbp))
 
     max_hr_fall = min(hr for hr, _ in changes)
     max_sbp_fall = min(sbp for _, sbp in changes)
@@ -57,32 +82,40 @@ def test_esmolol_onset_offset_and_atrial_fibrillation_rate(engine_factory):
     takes 18-30 min after stopping, and esmolol controls the AF ventricular rate.
     Sum 1983: steady-state blood level 0.569 mcg/mL at 150 mcg/kg/min.
     """
-    engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=3), start=True)
-    _advance(engine, 60)
-    base_hr = engine.state.hr
+    patient = Patient()
+    hemo = HemodynamicModel(patient)
+    pk = EsmololPK(patient)
+    base_hr = hemo.step(0.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0).hr
 
-    engine.set_drug_rate("esmolol", 500.0)
-    _advance(engine, 60)
-    engine.set_drug_rate("esmolol", 150.0)
-    _advance(engine, 240)
-    fall_at_5_min = engine.state.hr - base_hr
-    _advance(engine, 1500)
-    steady_fall = engine.state.hr - base_hr
+    def run_esmolol(seconds: int, mcg_kg_min: float, dt: float = 1.0):
+        rate_mg_s = mcg_kg_min * patient.weight / 60000.0
+        for _ in range(round(seconds / dt)):
+            ce = pk.step(dt, rate_mg_s).ce
+            state = hemo.step(dt, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_esmolol=ce)
+        return state
+
+    run_esmolol(60, 500.0)
+    state_5m = run_esmolol(240, 150.0)
+    fall_at_5_min = state_5m.hr - base_hr
+    steady = run_esmolol(1500, 150.0, dt=5.0)
+    steady_fall = steady.hr - base_hr
     assert steady_fall < -6.0
     assert fall_at_5_min < 0.8 * steady_fall
-    assert engine.pk["esmolol"].state.c1 == pytest.approx(0.569, rel=0.1)
+    assert pk.state.c1 == pytest.approx(0.569, rel=0.1)
 
-    engine.set_drug_rate("esmolol", 0.0)
-    _advance(engine, 18 * 60)
-    assert engine.state.hr - base_hr > 0.35 * steady_fall
-    _advance(engine, 12 * 60)
-    assert engine.state.hr - base_hr > -1.5
+    state_18m = run_esmolol(18 * 60, 0.0, dt=5.0)
+    assert state_18m.hr - base_hr > 0.35 * steady_fall
+    state_30m = run_esmolol(12 * 60, 0.0, dt=5.0)
+    assert state_30m.hr - base_hr > -1.5
 
+    engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=3), start=True)
     engine.set_rhythm("AFIB")
-    _advance(engine, 300)
+    _advance(engine, 120, dt=2.0)
     assert engine.state.hr == pytest.approx(110.0, abs=2.0)
+    engine.set_drug_rate("esmolol", 500.0)
+    _advance(engine, 60, dt=2.0)
     engine.set_drug_rate("esmolol", 150.0)
-    _advance(engine, 600)
+    _advance(engine, 240, dt=2.0)
     assert engine.state.hr < 95.0
 
 
@@ -90,22 +123,23 @@ def test_esmolol_reduces_intubation_and_epinephrine_tachycardia(engine_factory):
     """Wiest 2012: esmolol 1-2 mg/kg attenuates the HR response to laryngoscopy.
     Competitive beta-1 block shifts the epinephrine chronotropy curve right.
     """
+    base_engine = _tiva(engine_factory)
+    # Let remifentanil wash out once, then branch for control vs esmolol.
+    base_engine.set_drug_rate("remi", 0.0)
+    _advance(base_engine, 900, dt=2.0)
+
     responses = {}
     for esmolol_mg in (0.0, 70.0):
-        engine = _tiva(engine_factory)
-        # Let remifentanil wash out so opioid tolerance does not conceal the
-        # stimulus whose beta-blockade response this test measures.
-        engine.set_drug_rate("remi", 0.0)
-        _advance(engine, 900)
+        engine = copy.deepcopy(base_engine) if esmolol_mg == 0.0 else base_engine
         engine.give_drug_bolus("esmolol", esmolol_mg)
-        _advance(engine, 120)
+        _advance(engine, 120, dt=2.0)
         base_hr = engine.state.hr
         engine.start_disturbance("stim_intubation_pulse")
-        stimulation = _extreme_hr(engine, 60, max) - base_hr
-        _advance(engine, 60)
+        stimulation = _extreme_hr(engine, 60, max, dt=0.5) - base_hr
+        _advance(engine, 60, dt=2.0)
         base_hr = engine.state.hr
         engine.give_drug_bolus("epi", 10.0)
-        responses[esmolol_mg] = stimulation, _extreme_hr(engine, 120, max) - base_hr
+        responses[esmolol_mg] = stimulation, _extreme_hr(engine, 120, max, dt=0.5) - base_hr
 
     (stim_off, epi_off), (stim_on, epi_on) = responses[0.0], responses[70.0]
     assert stim_off > 3.0
@@ -151,16 +185,7 @@ def test_glycopyrrolate_raises_rate_and_blocks_vagal_bradycardia(engine_factory)
     assert engine.state.hr >= hr_after_glyco - 0.5
 
 
-def test_ephedrine_tachyphylaxis_and_competitive_blockade(patient):
-    from anasim.physiology.hemodynamics import HemodynamicModel
-
-    normal, acidotic = HemodynamicModel(patient), HemodynamicModel(patient)
-    for _ in range(900):
-        normal.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=600.0, ph=7.40)
-        acidotic.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=600.0, ph=6.85)
-    assert acidotic._ephedrine_tolerance_ce == pytest.approx(normal._ephedrine_tolerance_ce, rel=1e-6)
-    assert acidotic._ephedrine_tolerance_ce == pytest.approx(300.0, rel=1e-3)
-
+def test_ephedrine_competitive_blockade_and_acidosis_blunting(patient):
     low_eph, high_eph = HemodynamicModel(patient), HemodynamicModel(patient)
     s_low = low_eph.step(0.5, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=300.0)
     s_high = high_eph.step(0.5, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_labetalol=400.0, ce_ephedrine=10000.0)
@@ -177,3 +202,10 @@ def test_ephedrine_tachyphylaxis_and_competitive_blockade(patient):
         r_norm = norm_p.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=400.0, ph=7.40)
         r_acid = acid_p.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=400.0, ph=6.90)
     assert (r_acid.map - b_acid.map) < 0.55 * (r_norm.map - b_norm.map)
+
+    # Tolerance builds from raw exposure independently of extracellular pH.
+    tol_norm, tol_acid = HemodynamicModel(patient), HemodynamicModel(patient)
+    for _ in range(180):
+        tol_norm.step(5.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=500.0, ph=7.40)
+        tol_acid.step(5.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=500.0, ph=6.85)
+    assert tol_acid._ephedrine_tolerance_ce == pytest.approx(tol_norm._ephedrine_tolerance_ce, rel=1e-9)

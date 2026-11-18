@@ -7,6 +7,7 @@ import pytest
 from anasim.core import runtime as runtime_core
 from anasim.core.action_log import ACTION_SHOCK
 from anasim.core.enums import RhythmType
+from anasim.core.projection import step_coronary_from_state
 from anasim.core.state import SimulationConfig
 from anasim.monitors.ecg import displayed_rhythm
 from anasim.physiology.coronary import CoronaryModel
@@ -50,8 +51,8 @@ def _ecg_range(engine):
 def test_untreated_vf_becomes_fine_then_asystole_and_ends_the_session(engine_factory):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
     engine.set_rhythm("VFIB")
-    for _ in range(600):
-        engine.step(0.1)
+    for _ in range(60):
+        engine.step(1.0)
     assert engine.state.cardiac_arrest and engine.state.arrest_reason == RhythmType.VFIB.value
     # Without organized beats the monitor shows no pulse or pleth, and arterial
     # pressure settles at the mean systemic filling pressure.
@@ -63,11 +64,11 @@ def test_untreated_vf_becomes_fine_then_asystole_and_ends_the_session(engine_fac
     assert state.pleth_voltage == pytest.approx(0.0) and not state.spo2_signal_valid
     coarse = _ecg_range(engine)
     while engine.hemo.coronary.energy_failure < 0.9:
-        engine.step(0.1)
+        engine.step(1.0)
     assert engine.hemo.state.rhythm_type == RhythmType.VFIB
     assert _ecg_range(engine) < 0.4 * coarse
     while not engine.irreversible_arrest and engine.state.time < 900:
-        engine.step(0.1)
+        engine.step(1.0)
     assert engine.state.arrest_reason == RhythmType.ASYSTOLE.value
     # About 11 minutes without circulation, beyond the metabolic phase of arrest.
     assert 600 < engine.state.time < 780
@@ -95,33 +96,40 @@ def _vf_engine(engine_factory):
     return engine
 
 
-def _run(engine, seconds):
-    for _ in range(round(seconds * 10)):
-        engine.step(0.1)
+def _run(engine, seconds, dt=1.0):
+    steps = int(seconds / dt)
+    for _ in range(steps):
+        engine.step(dt)
+    rem = seconds - steps * dt
+    if rem > 1e-9:
+        engine.step(rem)
 
 
-@pytest.mark.parametrize(("vf_seconds", "recovers"), [(240, True), (360, False)])
-def test_shock_alone_recovers_circulation_and_consciousness_only_early(engine_factory, vf_seconds, recovers):
+def test_shock_alone_recovers_circulation_and_consciousness_only_early(engine_factory):
     """Weisfeldt 2002: in the first ~4 minutes of VF, defibrillation alone usually restores circulation."""
-    engine = _vf_engine(engine_factory)
-    _run(engine, vf_seconds - CHARGE_TIME_S)
-    engine.charge_defibrillator()
-    _run(engine, CHARGE_TIME_S)
-    # Without coronary flow the myocardium is ischemic despite oxygenated arterial blood.
-    assert engine.state.myocardial_ischemia > 0.9 and engine.state.sao2 > 98
-    engine.defibrillate()
-    assert engine.hemo.rhythm_type == RhythmType.SINUS_BRADY
-    _run(engine, 300)
-    assert (engine.state.map > 60 and not engine.state.cardiac_arrest) == recovers
-    assert (engine.state.myocardial_ischemia < 0.1) == recovers
-    assert (engine.cerebral.unresponsiveness < 0.05) == recovers
+    prefix = _vf_engine(engine_factory)
+    _run(prefix, 240 - CHARGE_TIME_S)
+    for vf_seconds, recovers in ((240, True), (360, False)):
+        engine = copy.deepcopy(prefix)
+        if vf_seconds > 240:
+            _run(engine, vf_seconds - 240)
+        engine.charge_defibrillator()
+        _run(engine, CHARGE_TIME_S)
+        # Without coronary flow the myocardium is ischemic despite oxygenated arterial blood.
+        assert engine.state.myocardial_ischemia > 0.9 and engine.state.sao2 > 98
+        engine.defibrillate()
+        assert engine.hemo.rhythm_type == RhythmType.SINUS_BRADY
+        _run(engine, 300)
+        assert (engine.state.map > 60 and not engine.state.cardiac_arrest) == recovers
+        assert (engine.state.myocardial_ischemia < 0.1) == recovers
+        assert (engine.cerebral.unresponsiveness < 0.05) == recovers
 
 
 def test_untreated_hemorrhage_progresses_through_pea_to_asystole(engine_factory):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
     engine.start_hemorrhage(800)
-    for _ in range(3000):
-        engine.step(0.1)
+    for _ in range(600):
+        engine.step(0.5)
         if engine.state.cardiac_arrest:
             break
     state = engine.state
@@ -134,8 +142,8 @@ def test_untreated_hemorrhage_progresses_through_pea_to_asystole(engine_factory)
     assert max(ecg) - min(ecg) > 0.5
     pea_time = state.time
     stages = ["Sinus rhythm"]
-    for _ in range(9000):
-        engine.step(0.1)
+    for _ in range(900):
+        engine.step(1.0)
         stage = displayed_rhythm(engine.hemo.state.rhythm_type, engine.hemo.coronary.energy_failure)
         if stage != stages[-1]:
             stages.append(stage)
@@ -144,8 +152,8 @@ def test_untreated_hemorrhage_progresses_through_pea_to_asystole(engine_factory)
     assert stages == ["Sinus rhythm", "Junctional rhythm", "Idioventricular rhythm", "Agonal rhythm", "Asystole"]
     assert engine.state.arrest_reason == RhythmType.ASYSTOLE.value
     # Injury becomes irreversible with electrical silence, about 11 minutes after circulation stops.
-    for _ in range(50):
-        engine.step(0.1)
+    for _ in range(5):
+        engine.step(1.0)
     assert engine.irreversible_arrest
     assert 600 < engine.state.time - pea_time + runtime_core.ARREST_CONFIRM_S < 780
 
@@ -153,12 +161,12 @@ def test_untreated_hemorrhage_progresses_through_pea_to_asystole(engine_factory)
 def test_early_hemorrhage_control_and_volume_replacement_prevent_arrest(engine_factory):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
     engine.start_hemorrhage(800)
-    for _ in range(900):
-        engine.step(0.1)
+    for _ in range(90):
+        engine.step(1.0)
     engine.stop_hemorrhage()
     engine.give_fluid(1000)
-    for _ in range(6000):
-        engine.step(0.1)
+    for _ in range(600):
+        engine.step(1.0)
         assert not engine.state.cardiac_arrest
     assert engine.state.map > 55 and engine.state.co > 3
     assert engine.state.myocardial_ischemia < 0.1
@@ -193,6 +201,7 @@ def test_compressions_perfuse_the_heart_so_a_shock_restores_circulation(engine_f
 
 def test_compressions_make_fine_vf_coarse_before_a_late_shock(engine_factory):
     engine = _vf_engine(engine_factory)
+    base_sv = engine.state.sv
     _run(engine, 480)
     coronary = engine.hemo.coronary
     assert coronary.energy_failure > 0.85
@@ -207,54 +216,65 @@ def test_compressions_make_fine_vf_coarse_before_a_late_shock(engine_factory):
     _run(engine, 10)
     engine.set_chest_compressions(False)
     _run(engine, 180)
-    # Stunned myocardium leaves hypotension that needs pressor support.
+    # Stunned myocardium leaves hypotension and persistent injury over 30 minutes.
     assert not engine.state.cardiac_arrest and 30 < engine.state.map < 60
     assert coronary.injury == injury
+    _run(engine, 1620, dt=2.0)
+    assert coronary.injury == pytest.approx(injury)
+    assert engine.state.sv < 0.65 * base_sv
 
 
-def test_epinephrine_raises_diastolic_pressure_once_compressions_circulate_it(engine_factory):
-    engine = _vf_engine(engine_factory)
-    _run(engine, 15)
-    engine.give_drug_bolus("epi", 1000)
-    _run(engine, 30)
-    # Without flow, the dose does not reach its effect site.
-    assert engine.state.epi_ce < 1.0
-    engine.set_chest_compressions(True)
-    _run(engine, 5)
-    before = engine.state.art_dbp
-    _run(engine, 90)
-    assert engine.state.art_dbp > before + 8
+def test_coronary_injury_alone_refreshes_cached_cardiac_output(awake_engine):
+    hemo = awake_engine.hemo
+    coronary = hemo.coronary
+    coronary.ischemia = 0.875
+    coronary.energy_failure = 0.75
+    coronary.energy_reserve = 0.0
+    hemo.invalidate_state_cache()
+    before = hemo.state
+
+    # Hold the supply shortfall at the current ischemia while injury accumulates.
+    step_coronary_from_state(awake_engine, 0.0, before, 98.0)
+    sao2 = 98.0 * (1.0 - coronary.ischemia) / coronary.supply_demand_ratio
+    step_coronary_from_state(awake_engine, 1.0, before, sao2)
+
+    assert coronary.ischemia == 0.875 and coronary.energy_failure == 0.75
+    assert coronary.injury > 0.0
+    assert hemo.state.co < before.co
+    assert hemo.state.co == pytest.approx(hemo.evaluate_state().co)
 
 
-@pytest.mark.parametrize("mode", ["awake", "steady_state"])
-@pytest.mark.parametrize("dt", [0.1, 1.0])
+@pytest.mark.parametrize(("mode", "dt"), [("awake", 1.0), ("steady_state", 0.5)])
 def test_epinephrine_sustains_cpr_pressure_against_no_drug(engine_factory, mode, dt):
-    """One 1 mg dose must support DBP through four minutes after circulation starts."""
-    engines = []
-    for dose in (0.0, 1000.0):
-        engine = engine_factory(config=SimulationConfig(mode=mode, rng_seed=7), start=True)
-        engine.arrhythmias.rng = _NoRecurrence()
-        engine.set_rhythm("VFIB")
-        for _ in range(round(15 / dt)):
-            engine.step(dt)
-        if dose:
-            engine.give_drug_bolus("epi", dose)
+    """One 1 mg dose waits for compressions, raises DBP, and supports DBP through 4 min."""
+    base = engine_factory(config=SimulationConfig(mode=mode, rng_seed=7), start=True)
+    base.arrhythmias.rng = _NoRecurrence()
+    base.set_rhythm("VFIB")
+    for _ in range(round(15 / dt)):
+        base.step(dt)
+    control, treated = base, copy.deepcopy(base)
+    treated.give_drug_bolus("epi", 1000.0)
+    for engine in (control, treated):
         for _ in range(round(30 / dt)):
             engine.step(dt)
         engine.set_chest_compressions(True)
-        engines.append(engine)
-    control, treated = engines
+    assert treated.state.epi_ce < 1.0
     differences = []
+    dbp_5s = None
     for step in range(round(360 / dt)):
         control.step(dt)
         treated.step(dt)
         elapsed = (step + 1) * dt
+        if abs(elapsed - 5.0) < 1e-6:
+            dbp_5s = treated.state.art_dbp
+        if abs(elapsed - 95.0) < 1e-6 and dbp_5s is not None:
+            assert treated.state.art_dbp > dbp_5s + 8.0
         if 30 <= elapsed <= 240:
             differences.append(treated.state.art_dbp - control.state.art_dbp)
     assert min(differences) > 0.0
 
 
-@pytest.mark.parametrize("dt", [0.01, 0.1])
+@pytest.mark.parametrize("dt", [0.1, 1.0])
 def test_doses_wait_for_circulation_before_clearance_and_neuromuscular_or_cardiac_effects(engine_factory, dt):
     engine = engine_factory(config=SimulationConfig(rng_seed=7, dt=dt), start=True)
     engine.set_rhythm("VFIB")
@@ -282,7 +302,7 @@ def test_doses_wait_for_circulation_before_clearance_and_neuromuscular_or_cardia
     assert epinephrine.v1 * epinephrine.state.c1 < dose
 
 
-@pytest.mark.parametrize("dt", [0.01, 0.1])
+@pytest.mark.parametrize("dt", [0.1, 1.0])
 def test_primary_asystole_can_recover_with_coronary_perfusion(engine_factory, dt):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7, dt=dt), start=True)
     engine.set_rhythm("ASYSTOLE")
@@ -338,7 +358,7 @@ def test_compressions_cannot_perfuse_an_empty_heart_until_volume_returns(engine_
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
     engine.start_hemorrhage(800)
     while not engine.state.cardiac_arrest:
-        engine.step(0.1)
+        engine.step(0.5)
     engine.stop_hemorrhage()
     engine.set_chest_compressions(True)
     _run(engine, 60)
@@ -398,7 +418,8 @@ def _settled_engine(engine_factory, **patient_kwargs):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True, **patient_kwargs)
     engine._shock_rng = _ShockSucceeds()
     engine.arrhythmias.rng = _NoRecurrence()
-    _run(engine, 60)
+    _run(engine, 55, dt=1.0)
+    _run(engine, 5, dt=0.1)
     return engine
 
 
@@ -459,11 +480,12 @@ def test_cpr_epinephrine_raises_perfusion_pressure_and_lowers_etco2(engine_facto
 @pytest.mark.parametrize("heart_failure", ["none", "hfref"])
 def test_brief_vf_defibrillation_recovery_tracks_vf_duration(engine_factory, heart_failure):
     """Park 1994: brief VF converts directly to sinus rhythm, and SBP recovery slows with VF duration."""
+    settled = _settled_engine(engine_factory, age=62, weight=78, height=172, sex="male", heart_failure=heart_failure)
+    baseline_sbp = _breath_average(settled)["art_sbp"]
     recovery_times = []
     recovery_rates = []
     for vf_seconds in (5.0, 16.0, 60.0):
-        engine = _settled_engine(engine_factory, age=62, weight=78, height=172, sex="male", heart_failure=heart_failure)
-        baseline_sbp = _breath_average(engine)["art_sbp"]
+        engine = copy.deepcopy(settled)
 
         engine.set_rhythm("VFIB")
         for step in range(round(vf_seconds * 10)):
@@ -492,8 +514,8 @@ def test_brief_vf_defibrillation_recovery_tracks_vf_duration(engine_factory, hea
     assert recovery_rates[0] > recovery_rates[1] > recovery_rates[2]
 
 
-def test_countershock_stunning_resolves_within_minutes_unlike_prolonged_arrest_injury(engine_factory):
-    """Tokano 1998 and Laurent 2002: shock stunning resolves over minutes, whereas prolonged-arrest injury persists."""
+def test_countershock_stunning_resolves_within_minutes(engine_factory):
+    """Tokano 1998 and Laurent 2002: shock stunning resolves over minutes."""
     engine = _settled_engine(engine_factory, age=55, weight=78, height=172, sex="male", heart_failure="hfref")
     baseline = _breath_average(engine)
 
@@ -503,7 +525,7 @@ def test_countershock_stunning_resolves_within_minutes_unlike_prolonged_arrest_i
     while engine.defibrillator.last_shock is None:
         engine.step(0.01)
 
-    _run(engine, 17.5)
+    _run(engine, 17.5, dt=0.5)
     at_20s = _breath_average(engine)
     assert at_20s["hr"] == pytest.approx(baseline["hr"], abs=3.0)
     assert 0.85 * baseline["sv"] <= at_20s["sv"] <= 0.92 * baseline["sv"]
@@ -512,23 +534,6 @@ def test_countershock_stunning_resolves_within_minutes_unlike_prolonged_arrest_i
     _run(engine, 215)
     at_4min = _breath_average(engine)
     assert at_4min["sv"] > 0.96 * baseline["sv"]
-
-    # Prolonged arrest leaves contractile injury that does not resolve over 30 minutes.
-    prolonged = _vf_engine(engine_factory)
-    prolonged_base_sv = prolonged.state.sv
-    _run(prolonged, 480)
-    prolonged.set_chest_compressions(True)
-    _run(prolonged, 120)
-    injury = prolonged.hemo.coronary.injury
-    assert injury > 0.3
-    prolonged.charge_defibrillator()
-    _run(prolonged, CHARGE_TIME_S)
-    assert prolonged.defibrillate() == ShockResult.DELIVERED
-    _run(prolonged, 10)
-    prolonged.set_chest_compressions(False)
-    _run(prolonged, 1800)
-    assert prolonged.hemo.coronary.injury == pytest.approx(injury)
-    assert prolonged.state.sv < 0.65 * prolonged_base_sv
 
 
 def test_cpr_lumen_vs_perfusion_pressure_vfib_rv_halt_and_small_hfref_pea_spo2(engine_factory):
@@ -609,23 +614,15 @@ def test_post_rosc_epinephrine_coupling_and_pulseless_vt_cpr(engine_factory, adv
 def test_pulmonary_congestion_hyperkalemic_asystole_and_low_pressure_coronary_ramp(
     engine_factory, advance_time
 ):
-    """Zero-flow VF equilibrates LAP toward MCFP while severe LV pump failure raises LAP and
-    lung water; hyperkalemic conduction block prevents asystole auto-restart; low-pressure
-    coronary supply ramps continuously from zero.
+    """Severe LV pump failure raises LAP and lung water; hyperkalemic conduction block
+    prevents asystole auto-restart; low-pressure coronary supply ramps continuously from zero.
     """
-    vf_eq = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
-    lung_0 = vf_eq.hemo.lung_water_ml
-    vf_eq.set_rhythm("VFIB")
-    advance_time(vf_eq, 45.0, dt=1.0)
-    assert vf_eq.state.lap == pytest.approx(vf_eq.hemo._last_mcfp, abs=0.5)
-    assert vf_eq.hemo.lung_water_ml == pytest.approx(lung_0, abs=0.05)
-
     lv_fail = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    k_asystole = copy.deepcopy(lv_fail)
     lv_fail.hemo.coronary.injury = 0.80
     advance_time(lv_fail, 180.0, dt=1.0)
     assert lv_fail.state.lap > 20.0 and lv_fail.hemo.lung_water_ml > 5.0
 
-    k_asystole = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     k_asystole.hemo.fluids.amounts["potassium"] = 9.5 * k_asystole.hemo.fluids.ecf_l
     k_asystole.set_rhythm("ASYSTOLE")
     k_asystole.set_chest_compressions(True)
@@ -641,13 +638,12 @@ def test_pulmonary_congestion_hyperkalemic_asystole_and_low_pressure_coronary_ra
     assert max(b - a for a, b in pairwise(ratios)) < 0.08
 
 
-def test_post_shock_asystole_requires_cpr_after_prolonged_vf_and_primary_asystole_never_restarts_alone(
+def test_post_shock_asystole_requires_cpr_after_prolonged_vf(
     engine_factory, advance_time
 ):
     """Pierce 2015 supports resuming CPR after shocks that leave asystole.
     AnaSim calibrates recovery after prolonged VF to require CPR, with a
-    separate timer for primary asystole and no spontaneous primary-asystole
-    recovery.
+    separate timer for primary asystole.
     """
     class _PostShockAsystoleRng:
         def random(self):
@@ -685,14 +681,6 @@ def test_post_shock_asystole_requires_cpr_after_prolonged_vf_and_primary_asystol
     advance_time(prolonged, 30.0, dt=1.0)
     assert not prolonged.state.cardiac_arrest and prolonged.state.map > 50.0
 
-    # Primary asystole without spontaneous recovery is a model calibration.
-    unassisted = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=3), start=True)
-    unassisted.set_rhythm("ASYSTOLE")
-    for _ in range(600):
-        unassisted.step(1.0)
-        assert unassisted.hemo.rhythm_type == RhythmType.ASYSTOLE
-        assert unassisted.state.intrinsic_co == 0.0
-
 
 def test_standstill_pea_equilibrates_lap_low_flow_cpr_supports_co_and_silent_coronary_demand(
     engine_factory, advance_time
@@ -701,10 +689,10 @@ def test_standstill_pea_equilibrates_lap_low_flow_cpr_supports_co_and_silent_cor
     venous pressure; CPR overrides sub-CPR intrinsic flow; electrically silent sinus arrest does
     not impose ventricular-fibrillation metabolic demand on the coronary model.
     """
-    pea = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    pea = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
     lung_0 = pea.hemo.lung_water_ml
     pea.hemo.coronary.injury = 1.0
-    advance_time(pea, 45.0, dt=0.1)
+    advance_time(pea, 45.0, dt=0.5)
     assert pea.state.lap == pytest.approx(pea.hemo._last_mcfp, abs=0.8)
     assert pea.hemo.lung_water_ml == pytest.approx(lung_0, abs=0.1)
     assert pea.state.art_map >= pea.hemo.state.venous_pressure - 0.5

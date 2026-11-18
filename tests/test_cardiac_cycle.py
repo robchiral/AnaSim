@@ -1,3 +1,4 @@
+import copy
 from dataclasses import replace
 from itertools import pairwise
 
@@ -188,7 +189,7 @@ def test_pulse_oximeter_blanks_on_dropout_and_reacquires_without_clearing_alarm(
 def test_chest_compressions_add_110_per_minute_ecg_artifact_during_sinus_rhythm(engine_factory):
     """Chest compressions during perfusing sinus rhythm generate 110 /min ECG compression artifact."""
     cpr_only = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
-    no_cpr = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    no_cpr = copy.deepcopy(cpr_only)
     cpr_only.set_chest_compressions(True)
     for _ in range(6):
         cpr_only.step(0.5)
@@ -208,9 +209,9 @@ def test_chest_compressions_add_110_per_minute_ecg_artifact_during_sinus_rhythm(
         assert period == pytest.approx(60.0 / 110.0, abs=0.02)
 
 
-def test_display_hr_window_decay_rhythm_switch_flush_and_spo2_beat_latch(engine_factory):
-    """CardiacCycle decays display_hr during pauses, flushes stale intervals on set_rhythm,
-    and SpO2Monitor latches beat perfusion across a pulse without mid-beat jumps.
+def test_display_hr_window_decay_and_rhythm_switch_flush(awake_engine, advance_time):
+    """CardiacCycle decays display_hr during pauses, engine.set_rhythm flushes stale intervals,
+    and SpO2Monitor latches peripheral perfusion at beat upstroke.
     """
     cycle = CardiacCycle(np.random.default_rng(1))
     for _ in range(300):
@@ -220,16 +221,14 @@ def test_display_hr_window_decay_rhythm_switch_flush_and_spo2_beat_latch(engine_
         sample = cycle.step(0.01, 12.0, RhythmType.SINUS_BRADY)
     assert sample.display_hr < 20.0
 
-    eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
-    eng.set_rhythm("SVT")
-    eng.step(0.5)
-    assert eng.state.display_hr > 130.0
+    advance_time(awake_engine, 8.0, dt=0.5)
+    awake_engine.set_rhythm("SVT")
+    awake_engine.step(0.5)
+    assert awake_engine.state.display_hr > 130.0
 
     spo2 = SpO2Monitor()
-    beat = cycle.step(0.01, 75.0, RhythmType.SINUS)
-    while not beat.beat_started:
-        beat = cycle.step(0.01, 75.0, RhythmType.SINUS)
-    spo2.step(0.01, beat, 98.0, perfusion=0.20)
-    mid = cycle.step(0.01, 75.0, RhythmType.SINUS)
-    spo2.step(0.01, mid, 98.0, perfusion=1.0)
+    b0 = cycle.seed(60.0, RhythmType.SINUS)
+    spo2.step(0.01, b0, 98.0, 0.20)
+    b1 = cycle.step(0.10, 60.0, RhythmType.SINUS)
+    spo2.step(0.10, b1, 98.0, 1.00)
     assert spo2._beat_perf == pytest.approx(0.20)

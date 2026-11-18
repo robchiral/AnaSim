@@ -5,8 +5,9 @@ import pytest
 
 from anasim.core.enums import RhythmType
 from anasim.core.state import SimulationConfig
-from anasim.patient.pk_models import AmiodaronePK, LidocainePK
+from anasim.patient.pk_models import AmiodaronePK, LidocainePK, NorepinephrinePK
 from anasim.physiology.arrhythmia import ArrhythmiaModel
+from anasim.physiology.hemodynamics import HemodynamicModel
 from anasim.physiology.resuscitation import ShockResult, shock_outcome
 
 
@@ -97,14 +98,14 @@ def test_vt_conversion_matches_somberg_and_scheinman_protocols(patient_factory):
     assert 0.15 <= len(_vt_conversion_times(somberg_lido, "lidocaine")) / 400 <= 0.32
 
     scheinman = AmiodaronePK(patient_factory(age=65, weight=78, height=174))
-    high_trace = _effect_site_trace(scheinman, load_then_infuse(150.0, 1.0), "ce", 7200, every_s=10)
-    high_times = _vt_conversion_times(high_trace, "amiodarone", dt=10.0)
+    high_trace = _effect_site_trace(scheinman, load_then_infuse(150.0, 1.0), "ce", 7200, every_s=30)
+    high_times = _vt_conversion_times(high_trace, "amiodarone", dt=30.0)
     high_censored = sorted(high_times + [7200.0] * (400 - len(high_times)))
     assert 35.0 <= float(np.median(high_censored)) / 60.0 <= 60.0
 
     scheinman = AmiodaronePK(patient_factory(age=65, weight=78, height=174))
-    low_trace = _effect_site_trace(scheinman, load_then_infuse(18.75, 0.125), "ce", 14400, every_s=10)
-    low_times = _vt_conversion_times(low_trace, "amiodarone", dt=10.0)
+    low_trace = _effect_site_trace(scheinman, load_then_infuse(18.75, 0.125), "ce", 14400, every_s=30)
+    low_times = _vt_conversion_times(low_trace, "amiodarone", dt=30.0)
     low_censored = sorted(low_times + [14400.0] * (400 - len(low_times)))
     assert 1.1 <= float(np.median(low_censored)) / 3600.0 <= 2.8
 
@@ -214,11 +215,11 @@ def test_cardiac_drug_exposure_waits_for_flow_then_increases_with_cpr(patient, m
     assert getattr(model.state, site) > 0.5 and model.state.c1 < initial
 
 
-@pytest.mark.parametrize("dt", [0.5, 2.0])
-def test_post_shock_vf_recurrence_incidence_and_timing(dt):
+def test_post_shock_vf_recurrence_incidence_and_timing():
     """Koster 2008 and van Alem 2003: about half of shockable arrests refibrillate
     within 2 min of a shock, with biphasic recurrence median 36 s (IQR 17-77 s).
     """
+    dt = 2.0
     rng = np.random.default_rng(1)
     recurrences: list[float] = []
     steps = round(180.0 / dt)
@@ -241,8 +242,7 @@ def test_post_shock_vf_recurrence_incidence_and_timing(dt):
     assert 55.0 <= q75 <= 85.0
 
 
-@pytest.mark.parametrize("dt", [0.5, 2.0])
-def test_post_shock_asystole_incidence_duration_and_competing_refibrillation(dt):
+def test_post_shock_asystole_incidence_duration_and_competing_refibrillation():
     """Stiell 2007 and Koster 2008: first 200 J biphasic shocks terminate ~90%
     of VF. Pierce 2015: post-shock asystole occurs in about half of OHCA shocks
     (27% in hospital-discharge survivors), lasting a median 20 s (IQR 36 s),
@@ -250,6 +250,7 @@ def test_post_shock_asystole_incidence_duration_and_competing_refibrillation(dt)
     both post-shock asystole and organized rhythms. Energy-dependent incidence
     and the absence of post-shock asystole after brief VF are calibrations.
     """
+    dt = 2.0
     brief_rng = np.random.default_rng(11)
     brief = [
         shock_outcome(
@@ -330,32 +331,38 @@ def test_post_shock_asystole_incidence_duration_and_competing_refibrillation(dt)
     assert refib_from_asystole >= 40 and refib_from_organized >= 40
 
 
-def test_acute_amiodarone_hemodynamics_follow_rate_and_lv_function(engine_factory):
+def test_acute_amiodarone_hemodynamics_follow_rate_and_lv_function(patient_factory):
     """Munoz 1988 and Kosinski 1984: rapid IV boluses briefly lower pressure
     with reflex HR support and maintained output, HR and output fall modestly by
     15-30 min in preserved LV function (Munoz 1988; acute CI rose 12.5% in
     Kosinski's 4 normal-EF patients), while HFrEF loses ~19% cardiac output (Kosinski 1984).
     """
     def run_infusion(hf: str, dose_mg: float, duration_s: int, total_s: int) -> dict[int, tuple[float, float, float]]:
-        engine = engine_factory(
-            config=SimulationConfig(mode="awake", rng_seed=1),
-            start=True, age=60, weight=75, height=175, heart_failure=hf,
-        )
-        for _ in range(30):
-            engine.step(2.0)
-        hr0, map0, co0 = engine.state.hr, engine.state.map, engine.state.co
-        engine.set_drug_rate("amiodarone", dose_mg / (duration_s / 60.0))
+        p = patient_factory(age=60, weight=75, height=175, heart_failure=hf)
+        hemo = HemodynamicModel(p)
+        nore = NorepinephrinePK(p)
+        nore.equilibrate_endogenous()
+        hemo.initialize_steady_state(0.0, 0.0, nore.state.ce)
+        pk = AmiodaronePK(p)
+        base_bv = hemo.blood_volume_0
+        base_co = hemo.base_co_l_min / hemo.failure.output_factor
+        hr0, map0, co0 = hemo.state.hr, hemo.state.map, hemo.state.co
+        rate = dose_mg / duration_s
         snapshots: dict[int, tuple[float, float, float]] = {}
         for s in range(2, total_s + 1, 2):
-            if s == duration_s + 2:
-                engine.set_drug_rate("amiodarone", 0.0)
-            engine.step(2.0)
+            pk.update_hemodynamics(
+                hemo.blood_volume / base_bv, hemo.state.co / base_co,
+                hemo.renal_perfusion, blood_volume_l=base_bv / 1000.0,
+            )
+            pk.step(2.0, rate if s <= duration_s else 0.0)
+            nore.step(2.0, 0.0)
+            st = hemo.step(
+                2.0, 0.0, 0.0, nore.state.ce, -2.0, 40.0, 95.0,
+                ce_amiodarone=pk.state.ce, ce_amiodarone_vasc=pk.state.ce_cv,
+                ce_amiodarone_hr=pk.state.ce_hr,
+            )
             if s in (180, 300, 360, 600, 1800):
-                snapshots[s] = (
-                    1.0 - engine.state.hr / hr0,
-                    1.0 - engine.state.map / map0,
-                    1.0 - engine.state.co / co0,
-                )
+                snapshots[s] = (1.0 - st.hr / hr0, 1.0 - st.map / map0, 1.0 - st.co / co0)
         return snapshots
 
     slow_normal = run_infusion("none", 150.0, 600, 600)

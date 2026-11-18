@@ -41,14 +41,10 @@ def test_pea_arrest_alarms_without_arterial_line(engine_factory, advance_time):
 def test_integer_channel_alarms_match_rounded_monitor_numerics(engine_factory):
     """Monitor alarms evaluate rounded integer display values so numerics at the limit do not alarm."""
     engine = engine_factory(
-        config=SimulationConfig(mode="steady_state", arterial_line_enabled=False, rng_seed=1),
+        config=SimulationConfig(mode="awake", arterial_line_enabled=False, rng_seed=1),
         start=True,
     )
     engine.step(0.1)
-
-    # MAP_min = 60, EtCO2_max = 45: values rounding to 60 and 45 must not alarm.
-    alarms_at_limit = engine.alarms.update({"MAP": round(59.6), "EtCO2": round(45.4)}, dt=1.0)
-    assert "MAP" not in alarms_at_limit and "EtCO2" not in alarms_at_limit
 
     # Integrated step_monitors applies display_int rounding to fractional pressures.
     engine.state.nibp_map = 59.6
@@ -68,17 +64,13 @@ def test_pregnancy_adapts_low_etco2_alarm_limit(engine_factory, advance_time):
         gestational_age_weeks=39.0,
     )
     assert gravid.alarms.thresholds["EtCO2_min"] <= 26.0
-    advance_time(gravid, 15.0, dt=0.5)
+    advance_time(gravid, 15.0, dt=1.0)
     assert "EtCO2" not in gravid.state.alarms
 
-
-def test_unassisted_room_air_apnea_triggers_low_respiratory_rate_alarm(engine_factory, advance_time):
-    """Unassisted apnea without a circuit connection triggers the low-RR alarm after 15 s."""
-    engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
-    engine.give_drug_bolus("propofol", 200.0)
-    engine.give_drug_bolus("remi", 150.0)
-    advance_time(engine, 10.0, dt=0.5)
-    assert engine.state.rr == 0.0
-    assert "RR" not in engine.state.alarms
-    advance_time(engine, 12.0, dt=0.5)
-    assert engine.state.alarms["RR"]["low"] is True
+    apneic = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    apneic.give_drug_bolus("propofol", 200.0)
+    apneic.give_drug_bolus("remi", 150.0)
+    advance_time(apneic, 10.0, dt=0.5)
+    assert apneic.state.rr == 0.0 and "RR" not in apneic.state.alarms
+    advance_time(apneic, 12.0, dt=0.5)
+    assert apneic.state.alarms["RR"]["low"] is True

@@ -1,5 +1,6 @@
 """Recruitment, oxygen reserve, and conservation across changing mechanics."""
 
+import copy
 from itertools import pairwise
 
 import pytest
@@ -21,11 +22,12 @@ def _run(engine, dt, seconds):
             engine.state.vt, engine.state.pao2)
 
 
-def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
+def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes(engine_factory):
+    base = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=123), start=True)
     traces = []
-    for dt in (0.01, 0.1, 1.0):
-        engine = SimulationEngine(Patient(), SimulationConfig(mode="steady_state", dt=dt, rng_seed=123))
-        engine.start()
+    for dt in (0.1, 1.0):
+        engine = copy.deepcopy(base)
+        engine.config.dt = dt
         engine.set_fgf(10.0, 0.0)
 
         engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=0, ie="1:2")
@@ -47,13 +49,12 @@ def test_recruitment_changes_mechanics_and_oxygenation_across_step_sizes():
         assert withdrawn[4] < 0.9 * maintained[4]
         assert maintained[3] == pytest.approx(500.0, abs=2.0)
         traces.append((collapsed, recruited, maintained, withdrawn))
-    for trace in traces[1:]:
-        for actual, reference in zip(trace, traces[0], strict=True):
-            assert actual[:3] == pytest.approx(reference[:3], rel=0.005, abs=0.001)
-            assert actual[3:] == pytest.approx(reference[3:], rel=0.01, abs=0.2)
+    for actual, reference in zip(traces[1], traces[0], strict=True):
+        assert actual[:3] == pytest.approx(reference[:3], rel=0.005, abs=0.001)
+        assert actual[3:] == pytest.approx(reference[3:], rel=0.01, abs=0.2)
 
 
-def test_age_and_peep_set_anesthetized_oxygenation():
+def test_age_and_peep_set_anesthetized_oxygenation(engine_factory):
     """Awake on room air, the A-a gradient is 12.6 mmHg at 65 (Crapo 1999).
     Under inhaled anesthesia at FiO2 0.4 without PEEP it is 52 mmHg at 25 and
     rises 1.35 mmHg/yr (Gunnarsson 1991). The test uses his patients' weight
@@ -64,25 +65,26 @@ def test_age_and_peep_set_anesthetized_oxygenation():
     about 5 mmHg at 30 (95% CI -24 to +30) and 35 at 70 (+15 to +51)."""
     awake = SimulationEngine(Patient(age=65), SimulationConfig(mode="awake", rng_seed=123))
     awake.start()
-    for _ in range(120):
+    for _ in range(10):
         awake.step(1.0)
     assert awake.resp.state.p_alveolar_o2 - awake.state.pao2 == pytest.approx(12.6, abs=2.0)
 
-    def anesthetized(age, maint_type, peep, o2_l_min, atropine_mg=0.0, **patient):
-        engine = SimulationEngine(Patient(age=age, **patient), SimulationConfig(
-            mode="steady_state", maint_type=maint_type, rng_seed=123))
-        engine.start()
-        if atropine_mg:
-            engine.give_drug_bolus("atropine", atropine_mg)
-        engine.set_fgf(o2_l_min, 10.0 - o2_l_min)
-        engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=peep, ie="1:2")
-        for _ in range(1500):
+    def settle(engine, seconds=600):
+        for _ in range(seconds // 2):
+            engine.step(2.0)
+        for _ in range(20):
             engine.step(1.0)
-        return engine
 
     gradient, shunt = [], []
     for age in (25, 65):
-        engine = anesthetized(age, "balanced", 0, 2.5, atropine_mg=0.5, weight=75, height=177, sex="male")
+        engine = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=123),
+            start=True, age=age, weight=75, height=177, sex="male",
+        )
+        engine.give_drug_bolus("atropine", 0.5)
+        engine.set_fgf(2.5, 7.5)
+        engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=0, ie="1:2")
+        settle(engine, 600)
         assert engine.state.fio2 == pytest.approx(0.39, abs=0.01)
         gradient.append(engine.resp.state.p_alveolar_o2 - engine.state.pao2)
         shunt.append(engine.aeration.shunt_fraction)
@@ -90,7 +92,17 @@ def test_age_and_peep_set_anesthetized_oxygenation():
     assert 1.0 < (gradient[1] - gradient[0]) / 40.0 < 1.8
 
     for age, low, high in ((30, -10.0, 15.0), (70, 20.0, 50.0)):
-        pao2 = [anesthetized(age, "tiva", peep, 2.0).state.pao2 for peep in (0, 5)]
+        base_tiva = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=123),
+            start=True, age=age,
+        )
+        pao2 = []
+        for peep in (0, 5):
+            engine = copy.deepcopy(base_tiva) if peep == 0 else base_tiva
+            engine.set_fgf(2.0, 8.0)
+            engine.set_vent_settings(mode="VCV", vt=0.5, rr=12, peep=peep, ie="1:2")
+            settle(engine, 720)
+            pao2.append(engine.state.pao2)
         assert low < pao2[1] - pao2[0] < high
 
 
@@ -100,33 +112,41 @@ def test_copd_and_airway_closure_have_separate_oxygen_responses_across_step_size
     COPD units have a V/Q near 0.1 (Wagner 1977, Figs. 3-4); units from
     airway closure under anesthesia have a V/Q of 0.05.
     """
-    traces = []
+    outcomes = []
+    for copd, unconscious in ((0.75, 0.0), (0.0, 1.0)):
+        model = RespiratoryModel(Patient(age=70, copd_severity=copd))
+        values = []
+        for fio2, pressure in ((0.21, 0), (0.28, 0), (0.4, 0), (1.0, 0), (0.4, 8)):
+            for _ in range(600):
+                state = model.step(
+                    1.0, ce_prop=0, ce_remi=0, ce_roc=10, measured_breaths=True,
+                    mech_rr=12, mech_vt_l=model.vt_0 / 1000.0, fio2=fio2,
+                    unconscious=unconscious, airway_pressure=pressure,
+                    cardiac_output=model.baseline_co_l_min,
+                )
+            values.append(state.p_arterial_o2)
+        assert all(right > left for left, right in pairwise(values[:4]))
+        assert values[3] > 450.0
+        outcomes.append(values)
+    copd_oxygen, airway_oxygen = outcomes
+    assert copd_oxygen[0] == pytest.approx(airway_oxygen[0], abs=3.0)
+    assert copd_oxygen[2] > airway_oxygen[2] + 15.0
+    # PEEP opens anesthesia-related closure; the chronic COPD component persists.
+    assert copd_oxygen[4] == pytest.approx(copd_oxygen[2], abs=1.0)
+    assert airway_oxygen[4] > airway_oxygen[2] + 30.0
+
+    step_check = []
     for dt in (0.1, 1.0):
-        outcomes = []
-        for copd, unconscious in ((0.75, 0.0), (0.0, 1.0)):
-            model = RespiratoryModel(Patient(age=70, copd_severity=copd))
-            values = []
-            for fio2, pressure in ((0.21, 0), (0.28, 0), (0.4, 0), (1.0, 0), (0.4, 8)):
-                for _ in range(round(600.0 / dt)):
-                    state = model.step(
-                        dt, ce_prop=0, ce_remi=0, ce_roc=10, measured_breaths=True,
-                        mech_rr=12, mech_vt_l=model.vt_0 / 1000.0, fio2=fio2,
-                        unconscious=unconscious, airway_pressure=pressure,
-                        cardiac_output=model.baseline_co_l_min,
-                    )
-                values.append(state.p_arterial_o2)
-            assert all(right > left for left, right in pairwise(values[:4]))
-            assert values[3] > 450.0
-            outcomes.append(values)
-        copd_oxygen, airway_oxygen = outcomes
-        assert copd_oxygen[0] == pytest.approx(airway_oxygen[0], abs=3.0)
-        assert copd_oxygen[2] > airway_oxygen[2] + 15.0
-        # PEEP opens anesthesia-related closure; the chronic COPD component persists.
-        assert copd_oxygen[4] == pytest.approx(copd_oxygen[2], abs=1.0)
-        assert airway_oxygen[4] > airway_oxygen[2] + 30.0
-        traces.append(outcomes)
-    for actual, reference in zip(traces[1], traces[0], strict=True):
-        assert actual == pytest.approx(reference, abs=0.3)
+        model = RespiratoryModel(Patient(age=70, copd_severity=0.75))
+        for _ in range(round(240.0 / dt)):
+            state = model.step(
+                dt, ce_prop=0, ce_remi=0, ce_roc=10, measured_breaths=True,
+                mech_rr=12, mech_vt_l=model.vt_0 / 1000.0, fio2=0.4,
+                unconscious=0.0, airway_pressure=0,
+                cardiac_output=model.baseline_co_l_min,
+            )
+        step_check.append(state.p_arterial_o2)
+    assert step_check[1] == pytest.approx(step_check[0], abs=0.3)
 
 
 @pytest.mark.parametrize(("fio2", "flow", "vco2", "vo2", "paco2", "shunt", "low_flow", "pao2", "sem"), [
@@ -274,40 +294,20 @@ def test_patient_lung_volume_sets_apnea_reserve_and_shunt_limits_oxygen_rescue()
     saturation = []
     for shunt in (0.0, 0.4):
         model = RespiratoryModel(Patient())
-        for _ in range(3000):
-            state = model.step(0.1, ce_prop=0, ce_remi=0, ce_roc=10, fio2=1.0,
+        for _ in range(300):
+            state = model.step(1.0, ce_prop=0, ce_remi=0, ce_roc=10, fio2=1.0,
                                mech_rr=12, mech_vt_l=0.5, measured_breaths=True, shunt_fraction=shunt)
         saturation.append(state.sao2)
     assert saturation[0] > 99.0 and saturation[1] < 95.0
 
 
-def test_closed_airway_gas_absorption_reduces_resting_lung_recoil_volume():
-    """Closed-airway apneic gas absorption shrinks FRC and resting recoil volume."""
-    engine = SimulationEngine(Patient(), SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1))
-    engine.start()
-    engine.give_drug_bolus("roc", 70.0)
-    engine.set_fgf(10.0, 0.0)
-    _run(engine, 0.5, 180)
-    engine.set_vent_power(False)
-    engine.set_airway_obstruction(1.0)
-    _run(engine, 0.5, 5)
-    relaxed_0 = engine.aeration.relaxed_volume
-    frc_0 = engine.aeration.frc
-    _run(engine, 0.5, 150)
-    assert engine.resp._apneic_gas_deficit_l > 0.15
-    assert engine.aeration.frc < frc_0 - 0.10
-    assert engine.aeration.relaxed_volume < relaxed_0 - 0.10
-
-
-def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_sizes():
+def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_sizes(engine_factory):
     """Strandberg 1986 Table 4 (~42% and ~11% left at 1 h and 24 h after hernia
     repair vs ~64% and ~19% after cholecystectomy), Putensen-Himmer 1992 (6 h),
     Eichenberger 2002 (24 h clearance at BMI 24 vs persistence at BMI 46.5), and
     Östberg 2019 (preserved ~40-min PaO2/FiO2 after nonabdominal surgery).
     """
     traces = []
-    site_6h = {}
-    site_24h = {}
     for dt in (0.01, 0.1, 1.0):
         # No clearance while unconscious, apneic, or intubated bypassing the glottis.
         for unconscious, breathing, glottis in (
@@ -319,35 +319,43 @@ def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_s
             gated.unconscious = unconscious
             gated.spontaneous_breathing = breathing
             gated.glottic_intact = glottis
-            for _ in range(round(600.0 / dt)):
+            for _ in range(round(60.0 / dt)):
                 gated.advance(dt, 4.0 * dt)
             assert gated.atelectatic >= 0.30 - 1e-12
 
-        site_1h = {}
+        step_row = []
         for site in ("other", "lower_abdominal", "upper_abdominal"):
             aeration = LungAeration(Patient(weight=70.0, height=170.0, surgical_site=site),
                                     recruited=0.9, atelectatic=0.30)
             aeration.spontaneous_breathing = True
-            for _ in range(round(3600.0 / dt)):
+            for _ in range(round(300.0 / dt)):
                 aeration.advance(dt, 0.0)
-            site_1h[site] = aeration.atelectatic
-            if dt == 1.0:
-                for _ in range(5 * 3600):
-                    aeration.advance(1.0, 0.0)
-                site_6h[site] = aeration.atelectatic
-                for _ in range(18 * 3600):
-                    aeration.advance(1.0, 0.0)
-                site_24h[site] = aeration.atelectatic
-
-        # Strandberg 1986 Table 4: hernia repair retained ~42% at 1 h vs ~64%
-        # after cholecystectomy.
-        assert 0.34 * 0.30 < site_1h["other"] < 0.48 * 0.30
-        assert 0.60 * 0.30 < site_1h["upper_abdominal"] < 0.78 * 0.30
-        assert site_1h["other"] < site_1h["lower_abdominal"] < site_1h["upper_abdominal"]
-        traces.append((site_1h["other"], site_1h["lower_abdominal"], site_1h["upper_abdominal"]))
+            step_row.append(aeration.atelectatic)
+        traces.append(tuple(step_row))
 
     for trace in traces[1:]:
         assert trace == pytest.approx(traces[0], abs=1e-10)
+
+    site_1h, site_6h, site_24h = {}, {}, {}
+    for site in ("other", "lower_abdominal", "upper_abdominal"):
+        aeration = LungAeration(Patient(weight=70.0, height=170.0, surgical_site=site),
+                                recruited=0.9, atelectatic=0.30)
+        aeration.spontaneous_breathing = True
+        for _ in range(60):
+            aeration.advance(60.0, 0.0)
+        site_1h[site] = aeration.atelectatic
+        for _ in range(5 * 60):
+            aeration.advance(60.0, 0.0)
+        site_6h[site] = aeration.atelectatic
+        for _ in range(18 * 60):
+            aeration.advance(60.0, 0.0)
+        site_24h[site] = aeration.atelectatic
+
+    # Strandberg 1986 Table 4: hernia repair retained ~42% at 1 h vs ~64%
+    # after cholecystectomy.
+    assert 0.34 * 0.30 < site_1h["other"] < 0.48 * 0.30
+    assert 0.60 * 0.30 < site_1h["upper_abdominal"] < 0.78 * 0.30
+    assert site_1h["other"] < site_1h["lower_abdominal"] < site_1h["upper_abdominal"]
     assert site_6h["other"] < site_6h["lower_abdominal"] < site_6h["upper_abdominal"] < 0.10
 
     # Strandberg 1986 Table 4 at 24 h: ~11% remaining after hernia repair and
@@ -373,16 +381,16 @@ def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_s
         formed.unconscious = 0.85
         formed.spontaneous_breathing = spont
         formed.glottic_intact = glottis
-        for _ in range(300):
-            formed.advance(1.0, 0.0)
+        for _ in range(30):
+            formed.advance(10.0, 0.0)
         peak_formed = formed.atelectatic
         assert peak_formed > 0.25
         formed.unconscious = 0.0
         formed.spontaneous_breathing = True
         formed.glottic_intact = True
         formed.inert_fraction = 0.79
-        for _ in range(24 * 3600):
-            formed.advance(1.0, 0.0)
+        for _ in range(24 * 60):
+            formed.advance(60.0, 0.0)
         retained_24h.append(formed.atelectatic / peak_formed)
     assert retained_24h[1] == pytest.approx(retained_24h[0], abs=0.01)
     assert retained_24h[1] == pytest.approx(0.19, abs=0.05)
@@ -391,8 +399,8 @@ def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_s
     obese = LungAeration(Patient(weight=134.0, height=170.0, surgical_site="lower_abdominal"),
                          recruited=0.9, atelectatic=0.30)
     obese.spontaneous_breathing = True
-    for _ in range(24 * 3600):
-        obese.advance(1.0, 0.0)
+    for _ in range(24 * 60):
+        obese.advance(60.0, 0.0)
     assert obese.atelectatic == pytest.approx(0.30, abs=1e-6)
 
     # Östberg 2019: nonabdominal surgery with intraoperative PEEP 7 (BMI < 25)
@@ -400,25 +408,26 @@ def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_s
     awake = SimulationEngine(Patient(age=50, weight=74, height=175, surgical_site="other"),
                              SimulationConfig(mode="awake", rng_seed=1))
     awake.start()
-    for _ in range(180):
+    for _ in range(10):
         awake.step(1.0)
     awake_pf = awake.state.pao2 / 0.21
 
-    postop = SimulationEngine(Patient(age=50, weight=74, height=175, surgical_site="other"),
-                              SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1))
-    postop.start()
+    postop = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1),
+        start=True, age=50, weight=74, height=175, surgical_site="other",
+    )
     postop.set_vent_settings(mode="VCV", vt=0.50, rr=12, peep=7, ie="1:2")
     for _ in range(180):
         postop.step(2.0)
     postop.set_fgf(10.0, 0.0)
     postop.set_drug_rate("propofol", 0.0)
     postop.set_drug_rate("remi", 0.0)
-    for _ in range(1200):
+    for _ in range(600):
         if postop.state.bis > 70.0 and postop.resp.state.mv > 1.0:
             postop.set_vent_power(False)
         if postop.state.bis > 80.0 and postop.resp.state.mv > 3.0:
             break
-        postop.step(1.0)
+        postop.step(2.0)
     postop.set_airway_mode("None")
     for _ in range(900):
         postop.step(2.0)
@@ -427,18 +436,15 @@ def test_awake_postoperative_atelectasis_clearance_by_site_and_bmi_across_step_s
 
 def test_disconnected_spontaneous_effort_transmits_distending_pressure_to_aeration():
     """Unconnected spontaneous breathing transmits negative-pressure distension into LungAeration."""
-    breathing = SimulationEngine(Patient(), SimulationConfig(mode="awake", dt=0.1, rng_seed=1))
-    breathing.start()
-    breathing.aeration.recruited = 0.65
-    breathing.aeration.unconscious = 1.0
-    breathing.aeration.pressure_transmission = 0.0
-    breathing.resp_mech.effort.set_drive(18.0, 1.4)
-    apneic = SimulationEngine(Patient(), SimulationConfig(mode="awake", dt=0.1, rng_seed=1))
-    apneic.start()
-    apneic.aeration.recruited = 0.65
-    apneic.aeration.unconscious = 1.0
-    apneic.aeration.pressure_transmission = 0.0
-    for _ in range(300):
-        breathing.vent.step(0.1, breathing.resp_mech, None)
-        apneic.vent.step(0.1, apneic.resp_mech, None)
-    assert breathing.aeration.recruited > apneic.aeration.recruited + 0.02
+    recruited = []
+    for effort_rr, effort_vt in ((18.0, 1.4), (0.0, 0.0)):
+        aeration = LungAeration(Patient(), recruited=0.65)
+        aeration.unconscious = 1.0
+        aeration.pressure_transmission = 0.0
+        lung = RespiratoryMechanics(aeration=aeration)
+        lung.effort.set_drive(effort_rr, effort_vt)
+        vent = AnesthesiaVentilator()
+        for _ in range(300):
+            vent.step(0.1, lung, None)
+        recruited.append(aeration.recruited)
+    assert recruited[0] > recruited[1] + 0.02

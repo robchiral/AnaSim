@@ -21,7 +21,7 @@ def advance(engine, seconds, dt=0.5):
         engine.step(dt)
 
 
-@pytest.mark.parametrize("dt", [0.01, 0.1, 0.5])
+@pytest.mark.parametrize("dt", [0.1, 0.5])
 def test_awake_intubation_fails_with_feedback_and_a_pressor_response(dt):
     session = WebSession({"mode": "awake"})
     engine = session.engine
@@ -75,13 +75,13 @@ def test_anesthetized_intubation_needs_no_muscle_block_and_starts_only_once():
     command(session, "bag_mask", active=True)
     command(session, "drug_target", key="propofol", target=4)
     command(session, "drug_target", key="remi", target=4)
-    advance(engine, 300)
+    advance(engine, 300, 2.0)
     assert engine.state.tof == engine.state.twitch == 100
     assert engine.state.loc > 0.9 and engine.state.tol > 0.9
     assert command(session, "airway", mode="ETT") is None
     assert engine.state.airway_mode.value == "ETT" and not engine.bag_mask_active
     started = engine.intubation_start_time
-    advance(engine, 10)
+    advance(engine, 10, 1.0)
     command(session, "airway", mode="ETT")
     assert engine.intubation_start_time == started
     assert len([r for r in engine.actions.records if r.action == ACTION_INTUBATION_ATTEMPT]) == 1
@@ -96,7 +96,7 @@ def test_awake_paralysis_does_not_supply_hypnosis_or_block_the_pressor_response(
     result = command(session, "drug_bolus", key="ROC", amount=56)
     assert result["feedback"]["code"] == "awake_neuromuscular_block"
     assert result["medication"]["key"] == "roc"
-    advance(engine, 120)
+    advance(engine, 120, 1.0)
     assert engine.state.tof < 1 and engine.state.loc == 0
     result = command(session, "airway", mode="ETT")
     assert result["feedback"]["code"] == "intubation_awareness"
@@ -154,7 +154,7 @@ def test_small_hypnotic_dose_does_not_silence_an_awake_paralysis_warning():
     lidocaine = WebSession({"mode": "awake"}).engine
     lidocaine.start()
     lidocaine.give_drug_bolus("lidocaine", 120.0)
-    advance(lidocaine, 180.0)
+    advance(lidocaine, 180.0, 2.0)
     assert lidocaine.state.loc == 0.0 and lidocaine.state.tol >= 0.1
     lido_fb = check_intubation(lidocaine)
     assert lido_fb is not None and lido_fb.blocked and lido_fb.code == "awake_intubation"

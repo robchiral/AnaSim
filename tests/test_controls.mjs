@@ -3,6 +3,33 @@ import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { Controls } from "../anasim/web_assets/controls.js";
 
+const { states: DEFIB_STATES, pyState: TCI_STOP_STATE } = JSON.parse(execFileSync("python3", ["-B", "-c", `
+import json
+from anasim.web import WebSession
+s = WebSession(dict(age=40, weight=70, height=170, sex="male", mode="awake", tci_enabled=True))
+states = []
+def save(): states.append(s.snapshot()["controls"]["defibrillator"])
+save()
+s.command("charge_defibrillator")
+save()
+s.engine.start()
+for _ in range(50): s.engine.step(0.1)
+save()
+s.command("shock", '{"synchronized": true}')
+save()
+for _ in range(10): s.engine.step(0.1)
+save()
+s.command("drug_target", '{"key": "propofol", "target": 3.0}')
+on_state = s.snapshot()["controls"]["drugs"]["propofol"]
+s.command("drug_target", '{"key": "propofol", "target": 0}')
+zero_controls = s.snapshot()["controls"]
+zero_state = zero_controls["drugs"]["propofol"]
+print(json.dumps({
+    "states": states,
+    "pyState": [on_state["is_tci"], zero_state["is_tci"], zero_state["rate"], zero_controls],
+}))
+`], { cwd: new URL("..", import.meta.url), encoding: "utf8" }));
+
 test("lipid controls submit doses and clear the receipt for a new session", async () => {
   const elements = new Map();
   for (const id of ["c-lipid-bolus", "c-lipid-give", "c-lipid-feedback", "c-lipid-rate",
@@ -41,24 +68,7 @@ test("defibrillator controls follow charging, pending R waves, and actual delive
   }));
   elements.set("c-sync", { querySelectorAll: () => modes });
   globalThis.document = { getElementById: id => elements.get(id) };
-  const states = JSON.parse(execFileSync("python3", ["-B", "-c", `
-import json
-from anasim.web import WebSession
-s = WebSession(dict(age=40,weight=70,height=170,sex="male",mode="awake"))
-states = []
-def save(): states.append(s.snapshot()["controls"]["defibrillator"])
-save()
-s.command("charge_defibrillator")
-save()
-s.engine.start()
-for _ in range(500): s.engine.step(.01)
-save()
-s.command("shock", '{"synchronized": true}')
-save()
-for _ in range(100): s.engine.step(.01)
-save()
-print(json.dumps(states))
-`], { cwd: new URL("..", import.meta.url), encoding: "utf8" }));
+  const states = DEFIB_STATES;
   const controls = Object.create(Controls.prototype);
   const commands = [];
   controls.send = async name => { commands.push(name); };
@@ -144,17 +154,7 @@ test("stopping a TCI infusion resets target to null and clears is_tci in engine"
   await stopBtn.onclick();
   assert.deepEqual(sent[1], ["drug_rate", { key: "propofol", rate: 0 }]);
 
-  const pyState = JSON.parse(execFileSync("python3", ["-B", "-c", `
-import json
-from anasim.web import WebSession
-s = WebSession(dict(age=40, weight=70, height=170, sex="male", mode="awake", tci_enabled=True))
-s.command("drug_target", '{"key": "propofol", "target": 3.0}')
-on_state = s.snapshot()["controls"]["drugs"]["propofol"]
-s.command("drug_target", '{"key": "propofol", "target": 0}')
-zero_controls = s.snapshot()["controls"]
-zero_state = zero_controls["drugs"]["propofol"]
-print(json.dumps([on_state["is_tci"], zero_state["is_tci"], zero_state["rate"], zero_controls]))
-`], { cwd: new URL("..", import.meta.url), encoding: "utf8" }));
+  const pyState = TCI_STOP_STATE;
   assert.deepEqual(pyState.slice(0, 3), [true, false, 0]);
 
   controls.weight = 70;
@@ -213,4 +213,27 @@ test("defibrillator sync buttons reset per session and hemorrhage select preserv
   controls.syncHemorrhageRate(750);
   assert.equal(elements.get("c-hem-rate").value, "750");
   assert.equal(hemOptions.some(o => o.value === "750" && o.dataset.observed === "true"), true);
+
+  const rhythmOptions = [new Option("Sinus rhythm", "Sinus rhythm")];
+  for (const opt of rhythmOptions) opt.remove = () => rhythmOptions.splice(rhythmOptions.indexOf(opt), 1);
+  globalThis.Option = class {
+    constructor(text, value) {
+      this.text = text;
+      this.value = value;
+      this.dataset = {};
+      this.remove = () => rhythmOptions.splice(rhythmOptions.indexOf(this), 1);
+    }
+  };
+  elements.set("c-rhythm", {
+    value: "Sinus rhythm",
+    options: rhythmOptions,
+    add(opt) { rhythmOptions.push(opt); },
+  });
+  controls.syncRhythm("Agonal rhythm");
+  assert.equal(elements.get("c-rhythm").value, "Agonal rhythm");
+  assert.equal(rhythmOptions.some(o => o.value === "Agonal rhythm" && o.dataset.observed === "true"), true);
+  // User manually picks Sinus rhythm in the dropdown before snapshot arrives.
+  elements.get("c-rhythm").value = "Sinus rhythm";
+  controls.syncRhythm("Sinus rhythm");
+  assert.equal(rhythmOptions.some(o => o.dataset.observed === "true"), false);
 });

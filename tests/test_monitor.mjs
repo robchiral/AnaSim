@@ -5,6 +5,44 @@ import test from "node:test";
 import { Monitor } from "../anasim/web_assets/monitor.js";
 import { NeuromuscularDisplay } from "../anasim/web_assets/neuromuscular.js";
 
+const PY_FIXTURES = JSON.parse(execFileSync("python3", ["-B", "-c", `
+import json
+from anasim.monitors.neuromuscular import NeuromuscularMonitor
+from anasim.web import WebSession
+session = WebSession({"age": 40, "weight": 70, "height": 170, "sex": "male", "mode": "awake"})
+info = json.loads(session.info())
+snapshots = []
+for mode, t1, ratio, baseline in [("tof", 1, 1, True), ("tof", .2, .09, True),
+                                  ("tof", .1, 1, True), ("single", .125, 1, True),
+                                  ("single", .4, 1, False)]:
+    monitor = NeuromuscularMonitor()
+    if baseline:
+        monitor.establish_baseline(1)
+    monitor.set_mode(mode, 0)
+    for time in [0, .5, 1, 1.5]:
+        monitor.step(time, t1, ratio)
+    session.engine.nmb = monitor
+    session.engine.state.time = 1.5
+    snapshots.append(session.snapshot())
+
+arrest_session = WebSession({"age": 40, "weight": 70, "height": 170, "sex": "male", "mode": "awake"})
+arrest_session.engine.config.dt = 0.5
+arrest_session.command("run", json.dumps({"running": True}))
+arrest_session.command("speed", json.dumps({"value": 5}))
+arrest_session.engine.set_rhythm("VFIB")
+for _ in range(15):
+    arrest_session.step(0.2)
+arrest_session.command("compressions", json.dumps({"active": True}))
+for _ in range(10):
+    arrest_session.step(0.2)
+cpr = arrest_session.snapshot()
+arrest_session.command("compressions", json.dumps({"active": False}))
+for _ in range(10):
+    arrest_session.step(0.2)
+stopped = arrest_session.snapshot()
+print(json.dumps({"info": info, "snapshots": snapshots, "cpr": cpr, "stopped": stopped}))
+`], { cwd: new URL("..", import.meta.url), encoding: "utf8" }));
+
 function setupPage() {
   const page = readFileSync(new URL("../anasim/web_assets/index.html", import.meta.url), "utf8");
   const elements = new Map([...page.matchAll(/<([\w-]+)\b[^>]*\bid="([^"]+)"[^>]*>/g)].map(
@@ -45,26 +83,7 @@ function setupPage() {
 test("monitor renders sampled TOF counts, qualified ratios, and selected single twitch", () => {
   const { elements } = setupPage();
 
-  const { info, snapshots } = JSON.parse(execFileSync("python3", ["-c", `
-import json
-from anasim.monitors.neuromuscular import NeuromuscularMonitor
-from anasim.web import WebSession
-session = WebSession({"age": 40, "weight": 70, "height": 170, "sex": "male"})
-snapshots = []
-for mode, t1, ratio, baseline in [("tof", 1, 1, True), ("tof", .2, .09, True),
-                                  ("tof", .1, 1, True), ("single", .125, 1, True),
-                                  ("single", .4, 1, False)]:
-    monitor = NeuromuscularMonitor()
-    if baseline:
-        monitor.establish_baseline(1)
-    monitor.set_mode(mode, 0)
-    for time in [0, .5, 1, 1.5]:
-        monitor.step(time, t1, ratio)
-    session.engine.nmb = monitor
-    session.engine.state.time = 1.5
-    snapshots.append(session.snapshot())
-print(json.dumps({"info": json.loads(session.info()), "snapshots": snapshots}))
-`], { cwd: new URL("..", import.meta.url), encoding: "utf8" }));
+  const { info, snapshots } = PY_FIXTURES;
   const monitor = new Monitor(info);
   monitor.update(snapshots[0]);
   assert.equal(elements.get("nmb-title").textContent, "TOF ratio");
@@ -104,30 +123,14 @@ test("monitor blanks arterial systolic and diastolic numerics while retaining st
     return [];
   };
 
-  const { info, cpr, stopped } = JSON.parse(execFileSync("python3", ["-c", `
-import json
-from anasim.web import WebSession
-session = WebSession({"age": 40, "weight": 70, "height": 170, "sex": "male", "mode": "steady_state"})
-session.command("run", json.dumps({"running": True}))
-session.engine.set_rhythm("VFIB")
-for _ in range(150):
-    session.step(0.1)
-session.command("compressions", json.dumps({"active": True}))
-for _ in range(100):
-    session.step(0.1)
-cpr = session.snapshot()
-session.command("compressions", json.dumps({"active": False}))
-for _ in range(100):
-    session.step(0.1)
-stopped = session.snapshot()
-print(json.dumps({"info": json.loads(session.info()), "cpr": cpr, "stopped": stopped}))
-`], { cwd: new URL("..", import.meta.url), encoding: "utf8" }));
+  const { info, cpr, stopped } = PY_FIXTURES;
 
   const monitor = new Monitor(info);
   monitor.update(cpr);
   assert.match(elements.get("v-art").textContent, /^\d+\/\d+$/);
 
   monitor.update(stopped);
+  assert.equal(stopped.arrest_reason, "Ventricular fibrillation");
   assert.deepEqual(stopped.vitals.art.slice(0, 2), [null, null]);
   assert.equal(elements.get("v-art").textContent, "--/--");
   assert.match(elements.get("v-art-map").textContent, /^\d+$/);

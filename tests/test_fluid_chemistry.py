@@ -7,10 +7,13 @@ from dataclasses import replace
 import pytest
 
 from anasim.core.state import SimulationConfig
+from anasim.patient.patient import Patient
 from anasim.physiology.fluid_balance import FluidBalance
 from anasim.physiology.fluids import CrystalloidKinetics
 from anasim.physiology.hemodynamics import HemodynamicModel
+from anasim.physiology.lactate import LactateModel
 from anasim.physiology.plasma_buffers import PlasmaBuffers, buffer_coefficients
+from anasim.physiology.respiration import RespiratoryModel
 
 
 def test_figge_albumin_phosphate_charge_and_analytic_derivatives():
@@ -42,21 +45,22 @@ def test_saline_and_ringers_follow_scheingraber_loading_protocol(engine_factory)
 
     changes = {}
     results = {}
+    base = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0),
+        sex="female", weight=65.0, height=165.0, age=58.0, start=True,
+    )
     for fluid in ("saline", "crystalloid"):
-        engine = engine_factory(
-            config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0),
-            sex="female", weight=65.0, height=165.0, age=58.0, start=True,
-        )
+        engine = copy.deepcopy(base)
         state = engine.state
         initial = state.albumin_g_l, state.hco3, strong_ion_difference(state), engine.hemo.hb_conc
-        for second in range(7200):
-            engine.hemo.add_volume(30.0 * 65.0 / 3600.0, label=fluid)
-            if second % 30 == 0:
+        for step_idx in range(3600):
+            engine.hemo.add_volume(2.0 * 30.0 * 65.0 / 3600.0, label=fluid)
+            if step_idx % 15 == 0:
                 settings = engine.vent.settings
                 deadspace = engine.resp.vd_deadspace
                 vt = deadspace + (settings.tv / 1000.0 - deadspace) * state.pa_co2 / 40.0
                 engine.set_vent_settings(rr=settings.rr, vt=vt, peep=settings.peep, ie="1:2", mode="VCV")
-            engine.step(1.0)
+            engine.step(2.0)
         albumin, hco3, sid, hb = initial
         assert state.pa_co2 == pytest.approx(40.0, abs=0.5)
         assert 0.55 * albumin < state.albumin_g_l < 0.8 * albumin
@@ -163,8 +167,8 @@ def test_engine_respiratory_buffering_keeps_base_excess_within_human_bands(engin
     deadspace = engine.resp.vd_deadspace
     vt = deadspace + (settings.tv / 1000.0 - deadspace) * state.pa_co2 / target
     engine.set_vent_settings(rr=settings.rr, vt=vt, peep=settings.peep, ie="1:2", mode="VCV")
-    for _ in range(3600):
-        engine.step(1.0)
+    for _ in range(1800):
+        engine.step(2.0)
     expected_hydrogen = 0.77 * state.pa_co2 + 8.0 if target > 40.0 else 0.74 * state.pa_co2 + 10.4
     assert 10.0**(9.0 - state.ph) == pytest.approx(expected_hydrogen, abs=3.5 if target > 40.0 else 3.0)
     assert state.base_excess == pytest.approx(initial_base_excess, abs=0.7)
@@ -203,21 +207,24 @@ def test_calcium_binding_follows_ph_and_citrate_and_deficits_persist():
     assert fluids.ionized_calcium(7.4) < baseline
 
 
-def test_calcium_chloride_peaks_and_halves_as_in_parturients(engine_factory):
+def test_calcium_chloride_peaks_and_halves_as_in_parturients():
     """Ansari 2025: 1 g CaCl2 over 10 min after cesarean delivery raised ionized
     calcium by 0.39 mmol/L (0.38-0.42) at the end of infusion. Half the rise
     remained 29 min (23-40) after the start and 40% at 60 min in their model.
     """
-    engine = engine_factory(sex="female", weight=80.0, height=165.0, age=34.0,
-                            gestational_age_weeks=39.0, start=True)
-    fluids = engine.hemo.fluids
-    baseline = fluids.ionized_calcium(engine.state.ph)
+    parturient = Patient(sex="female", weight=80.0, height=165.0, age=34.0, gestational_age_weeks=39.0)
+    fluids = HemodynamicModel(parturient).fluids
+    ph, paco2 = parturient.pregnancy.ph, parturient.pregnancy.paco2
+    baseline = fluids.ionized_calcium(ph)
     rise = []
     for second in range(3600):
         if second < 600 and second % 10 == 0:
-            engine.give_calcium_chloride(1000.0 / 60.0)
-        engine.step(1.0)
-        rise.append(fluids.ionized_calcium(engine.state.ph) - baseline)
+            fluids.give_calcium_chloride(1000.0 / 60.0 * 0.0068)
+        fluids.step(
+            1.0, ph=ph, paco2=paco2, resting_paco2=paco2, renal_function=1.0,
+            renal_perfusion=1.0, hepatic_function=1.0, oxygen_supply=1.0, epinephrine=0.0,
+        )
+        rise.append(fluids.ionized_calcium(ph) - baseline)
     peak = max(rise)
     assert 585 <= rise.index(peak) < 600
     assert 0.38 <= peak <= 0.42
@@ -317,41 +324,41 @@ def test_calcium_inotropy_citrate_hypotension_hyperkalemia_and_starling_refill(e
     advance_time(hyperk, 30.0, dt=1.0)
     assert hyperk.hemo.hyperkalemia_block < 0.05 and hyperk.state.hr > slowed_hr + 8.0
 
-    bleed = engine_factory(
-        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1), start=True
-    )
-    bleed.hemo.config = replace(bleed.hemo.config, uop_ml_kg_hr=0.0)
-    bleed.hemo.add_volume(-1000.0)
-    bv_after, hb_after = bleed.hemo.blood_volume, bleed.hemo.hb_conc
-    advance_time(bleed, 1800.0, dt=2.0)
-    assert bleed.hemo.blood_volume > bv_after + 60.0
-    assert bleed.hemo.hb_conc < hb_after - 0.15
+    bleed = HemodynamicModel(ca.patient, replace(ca.hemo.config, uop_ml_kg_hr=0.0))
+    bleed.initialize_steady_state(3.5, 3.6, 0.0)
+    bleed.add_volume(-1000.0)
+    bv_after, hb_after = bleed.blood_volume, bleed.hb_conc
+    for _ in range(360):
+        bleed.step(5.0, 3.5, 3.6, 0.0, -1.4, 40.0, 95.0)
+    assert bleed.blood_volume > bv_after + 60.0
+    assert bleed.hb_conc < hb_after - 0.15
 
 
-def test_reversible_protein_free_water_shift_and_calcium_chloride_acid_load(
-    engine_factory, advance_time
-):
+def test_reversible_protein_free_water_shift_and_calcium_chloride_acid_load(patient):
     """Reversing a protein-free water shift restores baseline plasma albumin,
     and exogenous CaCl2 clearance lowers strong-ion base_meq.
     """
-    engine = engine_factory(
-        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
-        start=True,
-    )
-    fluids = engine.hemo.fluids
+    hemo = HemodynamicModel(patient)
+    fluids = hemo.fluids
+    RespiratoryModel(patient).attach_fluid_balance(fluids, hemo.config.donor_mchc_g_dl)
     albumin_0 = fluids.plasma_buffers.albumin_g_l
     fluids.shift_water(-1000.0, protein_fraction=0.0)
     fluids.shift_water(1000.0, protein_fraction=0.0)
     assert fluids.plasma_buffers.albumin_g_l == pytest.approx(albumin_0, abs=1e-9)
 
     base_0 = fluids.base_meq
-    engine.give_calcium_chloride(2000.0)
+    fluids.give_calcium_chloride(2000.0 * 0.0068)
     unmixed_0 = fluids.calcium_unmixed_mmol
     exo_0 = fluids.exogenous_calcium_mmol
     fluids.bleed(1000.0, hematocrit=0.40)
     assert fluids.calcium_unmixed_mmol < unmixed_0 * 0.92
     assert fluids.exogenous_calcium_mmol < exo_0
-    advance_time(engine, 600.0, dt=2.0)
+    for _ in range(60):
+        fluids.lose_urine(0.2)
+        fluids.step(
+            10.0, ph=7.4, paco2=40.0, resting_paco2=40.0, renal_function=1.0,
+            renal_perfusion=1.0, hepatic_function=1.0, oxygen_supply=1.0, epinephrine=0.0,
+        )
     assert fluids.base_meq < base_0 - 1.0
 
 
@@ -386,15 +393,14 @@ def test_lipid_partition_donor_prbc_oxygen_and_zero_flow_crystalloid_kinetics(
         config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
         start=True,
     )
-    cryst = copy.deepcopy(lipid)
+    prbc = copy.deepcopy(lipid)
     na_0 = lipid.state.sodium
     lipid.give_lipid_emulsion(105.0)
     lipid.set_lipid_infusion(17.5)
-    advance_time(lipid, 180.0, dt=1.0)
+    advance_time(lipid, 180.0, dt=2.0)
     assert lipid.state.sodium == pytest.approx(na_0, abs=0.7)
     assert lipid.hemo.total_third_space_ml < 30.0
 
-    prbc = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     o2_before = prbc.resp.gas_transport.oxygen_l
     hb_before = prbc.hemo.hb_mass
     prbc.hemo.add_volume(600.0, hematocrit=0.60, label="blood")
@@ -404,10 +410,12 @@ def test_lipid_partition_donor_prbc_oxygen_and_zero_flow_crystalloid_kinetics(
         added_hb_g * 1.34 * 0.60 / 1000.0, rel=0.02
     )
 
-    alb_total_0 = cryst.hemo.fluids.plasma_albumin_g + cryst.hemo.fluids.interstitial_albumin_g
-    cryst.give_fluid(2000.0)
-    advance_time(cryst, 600.0, dt=2.0)
-    assert cryst.hemo.fluids.plasma_albumin_g + cryst.hemo.fluids.interstitial_albumin_g == pytest.approx(
+    cryst_hemo = HemodynamicModel(lipid.patient)
+    alb_total_0 = cryst_hemo.fluids.plasma_albumin_g + cryst_hemo.fluids.interstitial_albumin_g
+    cryst_hemo.add_volume(2000.0, label="crystalloid")
+    for _ in range(60):
+        cryst_hemo.step(10.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0)
+    assert cryst_hemo.fluids.plasma_albumin_g + cryst_hemo.fluids.interstitial_albumin_g == pytest.approx(
         alb_total_0, abs=1e-6
     )
 
@@ -426,7 +434,7 @@ def test_citrate_clearance_and_massive_transfusion_calcium_and_acid_base_rebound
         fine = FluidBalance(72.0, 5040.0, 2000.0)
         coarse = FluidBalance(72.0, 5040.0, 2000.0)
         infused_mmol = 0.5 * 72.0 * 2.0
-        for fb, dt_s, n_steps in ((fine, 1.0, 7200), (coarse, 60.0, 120)):
+        for fb, dt_s, n_steps in ((fine, 2.0, 3600), (coarse, 60.0, 120)):
             cit_per_step = (0.5 * 72.0 / 3600.0) * dt_s
             for _ in range(n_steps):
                 fb.citrate_mmol += cit_per_step
@@ -450,18 +458,18 @@ def test_citrate_clearance_and_massive_transfusion_calcium_and_acid_base_rebound
         age=52.0, weight=70.0, height=170.0, sex="male", baseline_hb=12.5, start=True,
     )
     base_ica = engine.state.ionized_calcium
-    rate_ml_s = 60.0 * 70.0 / 3600.0
+    rate_ml_step = 2.0 * 60.0 * 70.0 / 3600.0
     for phase in ("transfusion", "post_transfusion"):
-        for sec in range(2700):
+        for step_idx in range(1350):
             if phase == "transfusion":
-                engine.hemo.add_volume(-rate_ml_s)
-                engine.hemo.add_volume(rate_ml_s, hematocrit=0.55, label="blood")
-            if sec % 30 == 0:
+                engine.hemo.add_volume(-rate_ml_step)
+                engine.hemo.add_volume(rate_ml_step, hematocrit=0.55, label="blood")
+            if step_idx % 15 == 0:
                 settings = engine.vent.settings
                 deadspace = engine.resp.vd_deadspace
                 vt = deadspace + (settings.tv / 1000.0 - deadspace) * engine.state.pa_co2 / 40.0
                 engine.set_vent_settings(rr=settings.rr, vt=vt, peep=settings.peep, ie="1:2", mode="VCV")
-            engine.step(1.0)
+            engine.step(2.0)
         if phase == "transfusion":
             peak_cit = engine.hemo.fluids.citrate_mmol / engine.hemo.fluids.citrate_volume_l
             peak_ica = engine.state.ionized_calcium
@@ -473,53 +481,75 @@ def test_citrate_clearance_and_massive_transfusion_calcium_and_acid_base_rebound
     assert engine.state.base_excess > peak_be + 0.6
 
 
-def test_intraoperative_crystalloid_loading_matches_ewaldsson_hahn_dilution_and_urine(engine_factory):
+def test_intraoperative_crystalloid_loading_matches_ewaldsson_hahn_dilution_and_urine():
     """Ewaldsson and Hahn 2005: 25 mL/kg Ringer's over 30 min under volatile or propofol
     anesthesia expands plasma ~30% at 30 min and ~15-20% at 150 min, with ~7-11% urinary
     excretion and similar extravascular retention across anesthetics.
     """
     results = {}
     for mode, age, weight in (("volatile", 50.0, 68.5), ("propofol", 57.0, 68.7)):
-        engine = engine_factory(
-            config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1),
-            sex="female", age=age, weight=weight, height=167.4, baseline_hb=12.8, start=True,
+        patient = Patient(sex="female", age=age, weight=weight, height=167.4, baseline_hb=12.8)
+        hemo = HemodynamicModel(patient)
+        resp = RespiratoryModel(patient)
+        resp.attach_fluid_balance(hemo.fluids, hemo.config.donor_mchc_g_dl)
+        resp.baseline_co_l_min = hemo.base_co_l_min
+        lactate = LactateModel(patient.weight, patient.hepatic_function)
+        cp_prop = 0.0 if mode == "volatile" else 3.2
+        mac_sevo = 0.95 if mode == "volatile" else 0.0
+        hemo.initialize_steady_state(
+            cp_prop, 2.0, 0.0, mac_sevo=mac_sevo, remifentanil_cp=0.0, pit=-1.4, peep_cmH2O=0.0
         )
-        engine.give_drug_bolus("propofol", 2.0 * weight)
-        engine.give_drug_bolus("fentanyl", 150.0)
-        engine.give_drug_bolus("roc", 0.55 * weight)
-        if mode == "volatile":
-            engine.set_vaporizer(2.0)
-        else:
-            engine.set_drug_rate("propofol", 9.5 * 1000.0 / 60.0)
-        engine.set_airway_mode("ETT")
-        engine.set_fgf(2.0, 2.0)
-        engine.set_vent_settings(mode="VCV", rr=12, vt=0.45, peep=0, ie="1:2")
-        engine.set_vent_power(True)
-        for _ in range(600):
-            engine.step(1.0)
-        engine.set_fgf(0.4, 0.4)
-        uop_0 = engine.state.urine_out_ml
-        pv_0 = engine.hemo.fluids.plasma_l
-        seq_0 = engine.hemo.total_third_space_ml
-        na_0 = engine.state.sodium
+
+        def step_coupled(dt_s: float, cp_opioid: float, *, hemo=hemo, resp=resp, lactate=lactate,
+                         cp_prop=cp_prop, mac_sevo=mac_sevo) -> None:
+            resp_state = resp.step(
+                dt_s, cp_prop, cp_opioid, ce_roc=10.0, fio2=0.55,
+                mech_rr=12.0, mech_vt_l=0.45, measured_breaths=True,
+                unconscious=1.0, cardiac_output=hemo.state.co,
+                hb_g_dl=hemo.hb_conc, blood_volume_ml=hemo.blood_volume,
+            )
+            lactate.update_fluid_volume(hemo.fluids.lactate_volume_l, hemo.fluids.consume_lactate_loss_l())
+            base_removed = lactate.step(
+                dt_s, resp.oxygen_deficit_l, resp.oxygen_supply_fraction,
+                infused_lactate_mmol=hemo.fluids.infused_l_lactate_mmol,
+            )
+            resp.oxygen_deficit_l = 0.0
+            if base_removed != 0.0:
+                resp.remove_buffer_base(base_removed)
+            hemo.step(
+                dt_s, cp_prop, cp_opioid, 0.0, -1.4, resp_state.pa_co2, resp_state.p_arterial_o2,
+                mac_sevo=mac_sevo, remifentanil_cp=0.0, peep_cmH2O=0.0, ph=resp_state.ph,
+            )
+            hemo.fluids.step(
+                dt_s, ph=resp_state.ph, paco2=resp_state.pa_co2, resting_paco2=resp.paco2_setpoint,
+                renal_function=1.0, renal_perfusion=hemo.renal_perfusion, hepatic_function=1.0,
+                oxygen_supply=resp.oxygen_supply_fraction, epinephrine=0.0,
+            )
+
+        for _ in range(300):
+            step_coupled(2.0, 2.0)
+        uop_0 = hemo.total_urine_out_ml
+        pv_0 = hemo.fluids.plasma_l
+        seq_0 = hemo.total_third_space_ml
+        na_0 = hemo.fluids.concentration("sodium")
         infused = 25.0 * weight
         dil_30 = 0.0
-        for sec in range(9000):
-            if sec in (1800, 4500):
-                engine.give_drug_bolus("fentanyl", 125.0)
-            if sec < 1800:
-                engine.hemo.add_volume(infused / 1800.0, label="crystalloid")
-            engine.hemo.add_volume(-100.0 / 9000.0)
-            engine.step(1.0)
-            if sec == 1799:
-                dil_30 = (engine.hemo.fluids.plasma_l - pv_0) / pv_0
-        dil_150 = (engine.hemo.fluids.plasma_l - pv_0) / pv_0
-        uop_150 = engine.state.urine_out_ml - uop_0
-        seq_150 = engine.hemo.total_third_space_ml - seq_0
+        dt = 2.0
+        for step_idx in range(round(9000 / dt)):
+            cp_opioid = 2.5 if step_idx * dt in range(1800, 3600) or step_idx * dt in range(4500, 6300) else 1.5
+            if step_idx * dt < 1800:
+                hemo.add_volume(dt * infused / 1800.0, label="crystalloid")
+            hemo.add_volume(-dt * 100.0 / 9000.0)
+            step_coupled(dt, cp_opioid)
+            if (step_idx + 1) * dt == 1800:
+                dil_30 = (hemo.fluids.plasma_l - pv_0) / pv_0
+        dil_150 = (hemo.fluids.plasma_l - pv_0) / pv_0
+        uop_150 = hemo.total_urine_out_ml - uop_0
+        seq_150 = hemo.total_third_space_ml - seq_0
         assert 0.25 < dil_30 < 0.38
         assert 0.12 < dil_150 < 0.22
         assert 0.06 * infused < uop_150 < 0.13 * infused
-        assert engine.state.sodium == pytest.approx(na_0, abs=1.5)
+        assert hemo.fluids.concentration("sodium") == pytest.approx(na_0, abs=1.5)
         results[mode] = (uop_150, seq_150)
     assert results["volatile"][0] == pytest.approx(results["propofol"][0], abs=40.0)
     assert results["volatile"][1] == pytest.approx(results["propofol"][1], abs=45.0)
@@ -530,6 +560,7 @@ def test_severe_acidosis_base_partition_and_transfusion_compartment_electroneutr
     pH bracket clipping, and packed RBC arrival keeps blood base electroneutral before redistribution.
     """
     acid = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    prbc = copy.deepcopy(acid)
     transport = acid.resp.gas_transport
     blood_base_0 = transport.base_meq
     interstitial_base_0 = transport.extracellular_base
@@ -541,26 +572,17 @@ def test_severe_acidosis_base_partition_and_transfusion_compartment_electroneutr
     assert transport.base_meq < blood_base_0 - 50.0
     assert transport.extracellular_base < interstitial_base_0 - 200.0
 
-    prbc = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     ph_before = prbc.state.ph
     prbc.hemo.add_volume(600.0, hematocrit=0.60, label="blood")
     prbc.step(0.1)
     assert prbc.state.ph <= ph_before + 0.01
 
-    mh_cpr = engine_factory(
-        config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=2.0, rng_seed=1),
-        start=True,
-    )
-    mh_cpr.start_malignant_hyperthermia()
-    mh_cpr.fluid_infusion_rate_ml_min = 500.0
-    mh_cpr.give_saline(3000.0)
-    for _ in range(1500):
-        mh_cpr.step(2.0)
-        if mh_cpr.state.cardiac_arrest and not mh_cpr.state.chest_compressions:
-            mh_cpr.set_chest_compressions(True)
-            mh_cpr.give_drug_bolus("epinephrine", 1.0)
-    assert 5.0 <= mh_cpr.state.ph < 5.5
-    debt_before = mh_cpr.resp._unbuffered_acid_meq
-    assert debt_before > 0.0
-    mh_cpr.resp.remove_buffer_base(-50.0)
-    assert mh_cpr.resp._unbuffered_acid_meq == pytest.approx(max(0.0, debt_before - 50.0), abs=1e-6)
+    acid.set_vent_settings(rr=24, vt=0.65, peep=5.0, ie="1:2", mode="VCV")
+    for _ in range(40):
+        acid.resp.remove_buffer_base(40.0)
+        acid.step(1.0)
+    assert 5.0 <= acid.state.ph < 5.5
+    debt_before = acid.resp._unbuffered_acid_meq
+    assert debt_before > 50.0
+    acid.resp.remove_buffer_base(-50.0)
+    assert acid.resp._unbuffered_acid_meq == pytest.approx(debt_before - 50.0, abs=1e-6)

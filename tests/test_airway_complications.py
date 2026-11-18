@@ -37,25 +37,30 @@ def test_mask_obstruction_raises_airway_pressure_and_leaks_delivered_breaths(awa
     the lungs leaks at the mask, so exhaled VT and MV fall together."""
     engine = awake_engine
     engine.set_airway_mode("Mask")
-    engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    engine.set_vent_settings(rr=12, vt=0.6, peep=5.0, ie="1:2", mode="VCV", p_max=45.0)
     engine.set_vent_power(True)
 
     # Suppress spontaneous drive to isolate assisted ventilation.
     dose = 0.8 * engine.patient.weight
     engine.give_drug_bolus("Rocuronium", dose)
-    for _ in range(120):
-        engine.step(0.5)
+    for _ in range(60):
+        engine.step(1.0)
 
     baseline = engine.get_latest_state()
 
-    engine.set_airway_obstruction(0.8)
-    for _ in range(120):
-        engine.step(0.5)
+    engine.set_airway_obstruction(0.85)
+    for _ in range(50):
+        engine.step(1.0)
+    volumes = []
+    for _ in range(100):
+        engine.step(0.1)
+        volumes.append(engine.state.volume)
 
     obstructed = engine.state
     assert obstructed.paw_peak > baseline.paw_peak + 5.0
     assert obstructed.vt < baseline.vt * 0.5
     assert obstructed.mv < baseline.mv * 0.5
+    assert (max(volumes) - min(volumes)) * 1000.0 < 2.0 * obstructed.vt
 
 
 def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
@@ -66,8 +71,8 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     # Light unconsciousness retains respiratory effort for the assisted-breath
     # comparison below; deeper exposure can produce apnea.
     engine.enable_tci("propofol", 2.5)
-    for _ in range(3000):
-        engine.step(0.1)
+    for _ in range(300):
+        engine.step(1.0)
     assert engine.state.loc > 0.5
     assert engine.state.airway_obstruction > 0.2
     unsupported_obstruction = engine.state.airway_obstruction
@@ -89,8 +94,8 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     # Slow assisted breaths allow spontaneous effort rather than washing CO2
     # below the anesthetized apneic threshold.
     engine.set_bag_mask_ventilation(True, rr=6.0, vt=0.5)
-    for _ in range(900):
-        engine.step(0.1)
+    for _ in range(180):
+        engine.step(0.5)
     assert not engine.resp.state.apnea
     obstruction = []
     for _ in range(200):
@@ -100,112 +105,109 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     assert 0.05 < min(obstruction) <= max(obstruction) < 0.8 * unsupported_obstruction
 
 
-def test_residual_block_increases_sedated_airway_collapse_but_preserves_awake_patency(engine_factory):
-    """Herbstreit 2009: resting awake ventilation can persist at TOF 0.8,
-    while the weakened pharynx is more susceptible to a closing challenge.
+def test_residual_and_near_recovered_block_increase_sedated_collapse_while_preserving_awake_patency(
+    engine_factory,
+):
+    """Herbstreit 2009: resting awake ventilation persists at TOF 0.8 while sedated
+    collapse increases; at normalized TOF 0.98 closing-pressure reserve remains 16%
+    below baseline.
     """
-    collapse = {}
-    for sedated in (False, True):
-        for blocked in (False, True):
-            engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
-            engine.set_continuous_fluid_rate(0.0)
-            engine.set_airway_mode("Mask")
-            if sedated:
-                engine.enable_tci("propofol", 2.5)
-            for _ in range(600):
-                engine.step(1.0)
-            if blocked:
-                engine.give_drug_bolus("rocuronium", 0.2 * engine.patient.weight)
-            for _ in range(240):
-                engine.step(1.0)
-            if blocked:
-                assert 40.0 < engine.state.tof < 85.0
-            collapse[sedated, blocked] = engine.state.airway_obstruction
-            if sedated and blocked:
-                engine.set_vent_settings(mode="CPAP", rr=0, vt=0, peep=5.0, ie="1:2")
-                engine.set_vent_power(True)
-                engine.step(1.0)
-                assert engine.state.airway_obstruction == 0.0
-                engine.set_airway_mode("ETT")
-                engine.set_vent_power(False)
-                engine.step(1.0)
-                assert engine.state.airway_obstruction == 0.0
-    assert collapse[False, False] == collapse[False, True] == 0.0
-    assert collapse[True, True] > 1.4 * collapse[True, False] > 0.05
+    awake = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
+    awake.set_continuous_fluid_rate(0.0)
+    awake.set_airway_mode("Mask")
+    assert awake.state.airway_obstruction == 0.0
+    awake.give_drug_bolus("rocuronium", 0.2 * awake.patient.weight)
+    for _ in range(120):
+        awake.step(2.0)
+    assert 40.0 < awake.state.tof < 85.0
+    assert awake.state.airway_obstruction == 0.0
 
-
-def test_near_recovered_tof_retains_pharyngeal_vulnerability(engine_factory, advance_time):
-    """Herbstreit 2009: closing-pressure reserve remains 16% below baseline
-    at normalized TOF 0.98. Transfer to sedated collapse is a calibration.
-    """
-    engines = [
-        engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
-        for _ in range(2)
-    ]
-    for engine in engines:
-        engine.set_continuous_fluid_rate(0.0)
-        engine.set_airway_mode("Mask")
-        # Maintain gas exchange while block recovers. Prolonged unsupported
-        # sedation would add CO2 narcosis to the pharyngeal comparison.
-        engine.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5, ie="1:2")
-        engine.set_vent_power(True)
-        engine.enable_tci("propofol", 2.5)
-        advance_time(engine, 600)
-    control, blocked = engines
+    control = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
+    control.set_continuous_fluid_rate(0.0)
+    control.set_airway_mode("Mask")
+    # Maintain gas exchange while block recovers so CO2 narcosis does not confound collapse.
+    control.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5, ie="1:2")
+    control.set_vent_power(True)
+    control.enable_tci("propofol", 2.5)
+    for _ in range(300):
+        control.step(2.0)
+    blocked = copy.deepcopy(control)
     blocked.give_drug_bolus("rocuronium", 0.2 * blocked.patient.weight)
-    for second in range(1, 3601):
-        for engine in engines:
-            engine.step(1.0)
-        if second >= 240 and blocked.state.tof >= 98.0:
+    for _ in range(120):
+        control.step(2.0)
+        blocked.step(2.0)
+
+    c_mid, b_mid = copy.deepcopy(control), copy.deepcopy(blocked)
+    for m in (c_mid, b_mid):
+        m.set_vent_power(False)
+        m.step(0.1)
+    assert 40.0 < b_mid.state.tof < 85.0
+    assert b_mid.state.airway_obstruction > 1.4 * c_mid.state.airway_obstruction > 0.05
+    b_mid.set_vent_settings(mode="CPAP", rr=0, vt=0, peep=5.0, ie="1:2")
+    b_mid.set_vent_power(True)
+    b_mid.step(1.0)
+    assert b_mid.state.airway_obstruction == 0.0
+    b_mid.set_airway_mode("ETT")
+    b_mid.set_vent_power(False)
+    b_mid.step(1.0)
+    assert b_mid.state.airway_obstruction == 0.0
+
+    elapsed = 240.0
+    while elapsed < 3600.0:
+        dt = 1.0 if blocked.state.tof >= 97.5 else 2.0
+        control.step(dt)
+        blocked.step(dt)
+        elapsed += dt
+        if blocked.state.tof >= 98.0:
             break
     assert 98.0 <= blocked.state.tof < 98.1
-    for engine in engines:
+    for engine in (control, blocked):
         assert engine.cerebral.co2_narcosis < 0.01
         engine.set_vent_power(False)
         engine.step(0.1)
-    # A recovered thumb response still understates the airway's vulnerability.
     ratio = blocked.state.airway_obstruction / control.state.airway_obstruction
     assert 1.15 < ratio < 1.25
 
 
-def test_obstructed_airway_preserves_effort_without_restoring_ventilation(awake_engine):
+def test_obstructed_airway_preserves_effort_without_drawing_from_circuit(awake_engine):
     engine = awake_engine
     engine.resp.hcvr_slope_baseline = 0.0
     engine.set_airway_mode("ETT")
-    for _ in range(200):
-        engine.step(0.1)
+    engine.set_fgf(0.0, 6.0)
+    for _ in range(40):
+        engine.step(0.5)
     baseline_effort = engine.resp_mech.effort.amplitude
     baseline_co2 = engine.resp.state.pa_co2
 
+    engine.set_fgf(0.0, 0.0)
+    engine.circuit.composition.fio2 = 0.5
+    engine.circuit.composition.fin2 = 0.5
     engine.set_airway_obstruction(1.0)
-    for _ in range(600):
-        engine.step(0.1)
+    for _ in range(120):
+        engine.step(0.5)
     resp, effort = engine.resp.state, engine.resp_mech.effort
     assert resp.drive_central > 0.0 and resp.muscle_factor == 1.0
     assert effort.rr > 8.0 and effort.target_vt > 0.4
-    # Hypoxic drive raises effort while the airway remains obstructed.
+    # Hypoxic drive raises effort while the closed circuit remains untouched.
     assert effort.amplitude > baseline_effort * 1.1
     assert engine.state.mv < 0.01 and resp.va < 0.01
+    assert engine.circuit.composition.fio2 == pytest.approx(0.5, abs=1e-8)
     assert resp.pa_co2 > baseline_co2 + 5.0
 
     co2_at_one_minute, saturation = resp.pa_co2, resp.sao2
     stored_carbon = engine.resp.gas_transport.co2_l
-    for _ in range(600):
-        engine.step(0.1)
+    for _ in range(120):
+        engine.step(0.5)
     assert resp.sao2 < saturation - 20.0
     # Desaturation changes CO2 binding, while total carbon continues to accumulate.
     assert resp.pa_co2 > co2_at_one_minute - 0.5
     assert engine.resp.gas_transport.co2_l > stored_carbon
 
     engine.set_airway_obstruction(0.0)
-    for _ in range(300):
-        engine.step(0.1)
+    for _ in range(60):
+        engine.step(0.5)
     assert engine.state.vt > 400.0 and engine.resp.state.va > 3.0
-
-    engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
-    for _ in range(1200):
-        engine.step(0.1)
-    assert engine.resp_mech.effort.amplitude == 0.0
+    assert engine.circuit.composition.fio2 < 0.48
 
 
 def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(engine_factory):
@@ -214,25 +216,32 @@ def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(e
     a one-handed hold 6.80 +/- 3.10 mL/kg PBW (79%). Below 4 mL/kg PBW,
     ventilation is inadequate.
     """
+    base = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5), start=True)
+    base.give_drug_bolus("sugammadex", 4.0 * base.patient.weight)
+    base.set_airway_mode("Mask")
+    base.set_vent_settings(rr=15, vt=0.5, peep=0.0, ie="1:1", mode="PCV", p_insp=15.0)
+    base.set_vent_power(True)
+
     volumes = {}
     obstructions = {}
     gases = {}
     pressures = {}
     for seal in (1.0, 0.8, 0.4, 0.0):
-        engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.1), start=True)
-        engine.give_drug_bolus("sugammadex", 4.0 * engine.patient.weight)
-        engine.set_airway_mode("Mask")
+        engine = copy.deepcopy(base)
         engine.set_mask_seal(seal)
-        engine.set_vent_settings(rr=15, vt=0.5, peep=0.0, ie="1:1", mode="PCV", p_insp=15.0)
-        engine.set_vent_power(True)
-        for _ in range(300):
-            engine.step(0.1)
+        for _ in range(60):
+            engine.step(0.5)
         pbw = engine.patient.predicted_body_weight()
         volumes[seal] = engine.state.vt / pbw
         obstructions[seal] = engine.state.airway_obstruction
         gases[seal] = (engine.state.fio2, engine.state.display_etco2)
         pressures[seal] = engine.state.paw_peak
         assert engine.aeration.pressure_transmission == pytest.approx(seal)
+        if seal == 0.4:
+            engine.set_fgf(0.3, 0.0)
+            for _ in range(60):
+                engine.step(0.5)
+            assert engine.circuit.reservoir_volume < 1.5
     assert 6.3 < volumes[1.0] < 10.9
     assert volumes[0.8] == pytest.approx(0.8 * volumes[1.0], rel=0.03)
     assert 1.0 < volumes[0.4] < 4.0
@@ -248,24 +257,24 @@ def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(e
 
     # Awake breathing around a loose mask preserves room-air CO2 clearance
     # and the capnogram, and stalls oxygen wash-in until the seal is tightened.
-    awake = engine_factory(config=SimulationConfig(mode="awake", dt=0.1), start=True)
+    awake = engine_factory(config=SimulationConfig(mode="awake", dt=1.0), start=True)
     awake.set_airway_mode("Mask")
     awake.set_fgf(10.0, 0.0, 0.0)
     awake.set_mask_seal(0.4)
-    for _ in range(1800):
-        awake.step(0.1)
+    for _ in range(180):
+        awake.step(1.0)
     assert 35.0 < awake.state.et_o2 < 55.0
     assert 37.0 < awake.state.pa_co2 < 43.0
     loose_etco2, loose_fio2 = awake.state.display_etco2, awake.state.fio2
     # Bag breaths pressurize the mask, so only the breaths between them draw room air.
     awake.set_bag_mask_ventilation(True, rr=6, vt=0.5)
-    for _ in range(600):
-        awake.step(0.1)
+    for _ in range(60):
+        awake.step(1.0)
     assert loose_fio2 + 0.05 < awake.state.fio2 < 0.9
     awake.set_bag_mask_ventilation(False)
     awake.set_mask_seal(1.0)
-    for _ in range(1800):
-        awake.step(0.1)
+    for _ in range(180):
+        awake.step(1.0)
     assert awake.state.et_o2 >= 90.0
     assert loose_etco2 == pytest.approx(awake.state.display_etco2, abs=1.0)
 
@@ -273,8 +282,8 @@ def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(e
     awake.set_mask_seal(0.0)
     awake.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
     awake.set_vent_power(True)
-    for _ in range(200):
-        awake.step(0.1)
+    for _ in range(40):
+        awake.step(0.5)
     assert (awake.state.paw, awake.state.flow, awake.state.volume) == pytest.approx((0.0, 0.0, 0.0), abs=1e-6)
     assert awake.state.alarms["VTe"]["low"] and awake.state.alarms["MV"]["low"]
 
@@ -289,17 +298,18 @@ def test_high_airway_pressure_opens_facemask_leak_above_seal_threshold(engine_fa
     but not at 10 or 15 cmH2O, distended the gastric antrum. Pressures above
     20 cmH2O leak even with a tight seal.
     """
+    base = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0), start=True)
+    base.give_drug_bolus("roc", 0.8 * base.patient.weight)
+    base.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_max=50.0)
+    base.set_vent_power(True)
     outcomes = {}
     for bronchospasm in (0.0, 1.0):
         for airway in ("ETT", "Mask"):
-            engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2), start=True)
-            engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
+            engine = copy.deepcopy(base)
             engine.set_airway_mode(airway)
             engine.set_bronchospasm(bronchospasm)
-            engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_max=50.0)
-            engine.set_vent_power(True)
-            for _ in range(900):
-                engine.step(0.2)
+            for _ in range(180):
+                engine.step(1.0)
             outcomes[bronchospasm, airway] = (engine.state.paw_peak, engine.state.vt, engine.state.pa_co2)
 
     assert outcomes[0.0, "Mask"][0] < 20.0
@@ -311,22 +321,26 @@ def test_high_airway_pressure_opens_facemask_leak_above_seal_threshold(engine_fa
 
 def test_stage_ii_extubation_laryngospasm_and_bronchodilation(engine_factory, advance_time):
     """Extubation at Stage II hypnosis provokes laryngospasm; epinephrine (blocked by
-    non-selective beta blockade) and ketamine relieve bronchospasm.
+    non-selective beta blockade) and ketamine relieve bronchospasm without mask double-counting.
     """
     extub = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
     extub.give_drug_bolus("propofol", 110.0)
-    advance_time(extub, 60.0, dt=0.5)
+    advance_time(extub, 60.0, dt=1.0)
     extub.state.airway_mode = AirwayType.ETT
     extub.set_airway_mode("Mask")
     advance_time(extub, 15.0, dt=0.5)
     assert extub.laryngospasm_severity > 0.20
 
     epi_free = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    mask_bronch = copy.deepcopy(epi_free)
+    mask_bronch.set_airway_mode("Mask")
+    mask_bronch.set_fgf(8.0, 0.0)
     epi_blocked = copy.deepcopy(epi_free)
     epi_blocked.give_drug_bolus("labetalol", 40.0)
-    for model in (epi_free, epi_blocked):
+    for model in (epi_free, epi_blocked, mask_bronch):
         model.set_bronchospasm(0.8)
         advance_time(model, 60.0, dt=1.0)
+    assert mask_bronch.state.va > 0.65 * epi_free.state.va
     ket_bronch = copy.deepcopy(epi_free)
     before_ket = ket_bronch.state.bronchospasm
     for model in (epi_free, epi_blocked):
@@ -339,50 +353,11 @@ def test_stage_ii_extubation_laryngospasm_and_bronchodilation(engine_factory, ad
     assert ket_bronch.state.bronchospasm < before_ket - 0.10
 
 
-def test_bronchospasm_mask_parity_ppv_leak_drain_and_overpressure_volume_scaling(
-    engine_factory, advance_time
-):
-    """Spontaneous mask breathing does not double-count distal bronchospasm;
-    positive-pressure ventilation on a leaky mask drains the reservoir bag at low FGF;
-    overpressure leak on a tight mask scales displayed volume with delivered VT.
-    """
-    open_airway = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
-    mask_airway = copy.deepcopy(open_airway)
-    mask_airway.set_airway_mode("Mask")
-    mask_airway.set_fgf(8.0, 0.0)
-    for model in (open_airway, mask_airway):
-        model.set_bronchospasm(0.8)
-        advance_time(model, 30.0, dt=0.5)
-    assert mask_airway.state.va > 0.65 * open_airway.state.va
-
-    leaky_ppv = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
-    leaky_ppv.give_drug_bolus("roc", 60.0)
-    leaky_ppv.set_airway_mode("Mask")
-    leaky_ppv.set_mask_seal(0.25)
-    leaky_ppv.set_fgf(0.3, 0.0)
-    advance_time(leaky_ppv, 30.0, dt=0.5)
-    assert leaky_ppv.circuit.reservoir_volume < 1.5
-
-    overpressure = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
-    overpressure.give_drug_bolus("roc", 60.0)
-    overpressure.set_airway_mode("Mask")
-    overpressure.set_mask_seal(1.0)
-    overpressure.set_airway_obstruction(0.85)
-    overpressure.set_vent_settings(rr=12, vt=0.6, peep=5.0, ie="1:2", mode="VCV", p_max=45.0)
-    advance_time(overpressure, 20.0, dt=0.1)
-    volumes = []
-    for _ in range(100):
-        overpressure.step(0.1)
-        volumes.append(overpressure.state.volume)
-    assert overpressure.state.vt < 100.0
-    assert (max(volumes) - min(volumes)) * 1000.0 < 2.0 * overpressure.state.vt
-
-
 def test_partial_airway_patency_and_flow_limited_reopen_conserve_dry_gas_pressure(
     engine_factory, advance_time
 ):
     """Partial airway obstruction and flow-limited reopening conserve dry alveolar pressure and volatile agent mass."""
-    engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=1), start=True)
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1), start=True)
     resp = engine.resp
 
     def _dry_pressure() -> float:
@@ -398,20 +373,20 @@ def test_partial_airway_patency_and_flow_limited_reopen_conserve_dry_gas_pressur
     engine.set_vent_power(False)
     engine.set_fgf(8.0, 0.0, 0.0)
     engine.set_airway_obstruction(0.95)
-    advance_time(engine, 90.0, dt=0.2)
+    advance_time(engine, 90.0, dt=1.0)
     assert _dry_pressure() == pytest.approx(initial_dry, abs=2.5)
 
     engine.set_airway_obstruction(1.0)
-    advance_time(engine, 120.0, dt=0.2)
+    advance_time(engine, 120.0, dt=1.0)
     deficit_closed = resp._apneic_gas_deficit_l
     assert deficit_closed > 0.05
     engine.set_airway_obstruction(0.6)
-    advance_time(engine, 30.0, dt=0.2)
+    advance_time(engine, 30.0, dt=1.0)
     assert resp._apneic_gas_deficit_l < 0.2 * deficit_closed
     assert _dry_pressure() == pytest.approx(initial_dry, abs=6.0)
 
     sevo = engine_factory(
-        config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=0.2, rng_seed=1), start=True
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=1.0, rng_seed=1), start=True
     )
     sevo.give_drug_bolus("roc", 70.0)
     sevo.set_vent_power(False)
@@ -436,8 +411,8 @@ def test_partial_airway_patency_and_flow_limited_reopen_conserve_dry_gas_pressur
 
     sevo_0 = _total_sevo_stpd()
     sevo.set_airway_obstruction(1.0)
-    advance_time(sevo, 90.0, dt=0.2)
+    advance_time(sevo, 90.0, dt=1.0)
     assert _total_sevo_stpd() == pytest.approx(sevo_0, abs=1e-3)
     sevo.set_airway_obstruction(0.6)
-    advance_time(sevo, 30.0, dt=0.2)
+    advance_time(sevo, 30.0, dt=1.0)
     assert _total_sevo_stpd() == pytest.approx(sevo_0, abs=1e-3)

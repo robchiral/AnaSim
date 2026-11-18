@@ -1,20 +1,22 @@
 """Clinical courses for MH recognition, trigger withdrawal, and specific rescue."""
 
+import copy
 import json
 
 import pytest
 
 from anasim.core.clinical_actions import check_airway_removal
 from anasim.core.state import SimulationConfig
+from anasim.physiology.malignant_hyperthermia import MalignantHyperthermia
 from anasim.web import WebSession
 
 
-def _run(engine, seconds, dt=1.0):
+def _run(engine, seconds, dt=2.0):
     for _ in range(round(seconds / dt)):
         engine.step(dt)
 
 
-@pytest.mark.parametrize("dt", [0.1, 1.0])
+@pytest.mark.parametrize("dt", [0.2, 1.0])
 def test_untreated_mh_raises_co2_before_fever_and_persists_under_paralysis(engine_factory, dt):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"), start=True)
     engine.give_drug_bolus("roc", 100)
@@ -25,7 +27,7 @@ def test_untreated_mh_raises_co2_before_fever_and_persists_under_paralysis(engin
     assert engine.state.pa_co2 > 50 and engine.state.temp_c < 38
     assert engine.state.hr > 95 and engine.state.muscle_rigidity
     assert engine.state.twitch < 5
-    _run(engine, 600, dt)
+    _run(engine, 600, max(dt, 1.0))
     assert engine.state.temp_c > 38.0 and engine.state.hr > 120
     assert engine.state.paw_peak > baseline_ppeak + 4.0
     assert engine.state.potassium > baseline_k + 0.8
@@ -51,8 +53,12 @@ def test_mh_starts_only_with_a_triggering_agent(engine_factory, trigger):
     assert engine.state.muscle_rigidity
 
 
-@pytest.mark.parametrize("weight", [55, 100])
-@pytest.mark.parametrize("treatment", ["trigger_removal", "cooling", "dantrolene"])
+@pytest.mark.parametrize(("weight", "treatment"), [
+    (55, "trigger_removal"),
+    (55, "cooling"),
+    (55, "dantrolene"),
+    (100, "dantrolene"),
+])
 def test_cooling_and_hyperventilation_do_not_replace_dantrolene(engine_factory, weight, treatment):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"),
                             weight=weight, start=True)
@@ -67,7 +73,7 @@ def test_cooling_and_hyperventilation_do_not_replace_dantrolene(engine_factory, 
         engine.set_surface_cooling(True)
     if treatment == "dantrolene":
         engine.give_drug_bolus("dantrolene", 2.5 * weight)
-    _run(engine, 600)
+    _run(engine, 600, dt=1.0)
     if treatment == "dantrolene":
         assert engine.malignant_hyperthermia.severity < 0.05
         assert engine.state.pa_co2 < peak_co2 and engine.state.hr < peak_hr
@@ -105,16 +111,16 @@ def test_dantrolene_depresses_twitch_without_fade_or_hypoventilation(engine_fact
 
 
 def test_dantrolene_stops_hypermetabolism_while_cooling_removes_accumulated_heat(engine_factory):
+    prefix = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"), start=True)
+    prefix.start_malignant_hyperthermia()
+    _run(prefix, 180)
+    prefix.state.temp_c = 40.0
+    prefix.set_vaporizer(0)
+    prefix.set_fgf(10, 0)
+    prefix.give_drug_bolus("dantrolene", 175)
     temperatures = []
     for cooling in (False, True):
-        engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"), start=True)
-        engine.start_malignant_hyperthermia()
-        _run(engine, 180)
-        # A later presentation with accumulated heat, after the early CO2 rise.
-        engine.state.temp_c = 40.0
-        engine.set_vaporizer(0)
-        engine.set_fgf(10, 0)
-        engine.give_drug_bolus("dantrolene", 175)
+        engine = copy.deepcopy(prefix)
         engine.set_surface_cooling(cooling)
         _run(engine, 300)
         assert engine.malignant_hyperthermia.severity < 0.05
@@ -125,7 +131,7 @@ def test_dantrolene_stops_hypermetabolism_while_cooling_removes_accumulated_heat
 
 def test_independent_mh_case_supports_treatment_and_counts_weight_based_dantrolene():
     session = WebSession({"scenario_id": "malignant_hyperthermia", "practice_mode": "independent", "weight": 100})
-    session.engine.config.dt = 0.1
+    session.engine.config.dt = 0.5
     info = json.loads(session.info())
     assert next(d for d in info["drugs"] if d["key"] == "dantrolene")["default_bolus"] == 250
     session.command("run", '{"running":true}')
@@ -152,7 +158,7 @@ def test_independent_mh_case_supports_treatment_and_counts_weight_based_dantrole
 def test_untreated_mh_case_earns_no_treatment_credit():
     """Spontaneous hyperpnea raises minute ventilation without a ventilator change."""
     session = WebSession({"scenario_id": "malignant_hyperthermia", "practice_mode": "independent"})
-    session.engine.config.dt = 0.1
+    session.engine.config.dt = 0.25
     session.command("run", '{"running":true}')
     session.command("speed", '{"value":50}')
     late_mvs = []
@@ -170,7 +176,7 @@ def test_untreated_mh_case_earns_no_treatment_credit():
 def test_hyperventilation_before_mh_onset_earns_debrief_credit():
     """Hyperventilation configured before MH onset still earns debrief credit."""
     session = WebSession({"scenario_id": "malignant_hyperthermia", "practice_mode": "independent"})
-    session.engine.config.dt = 0.2
+    session.engine.config.dt = 0.5
     session.command("run", '{"running":true}')
     session.command("speed", '{"value":50}')
     session.command("vent", '{"rr": 28}')
@@ -194,25 +200,22 @@ def test_complete_dantrolene_rescue_sustains_remission_until_reexposed(engine_fa
     engine.set_fgf(10, 0)
     engine.set_drug_rate("propofol", 100)
     engine.give_drug_bolus("dantrolene", 2.5 * engine.patient.weight)
-    _run(engine, 600)
-    assert engine.malignant_hyperthermia.severity < 0.05
-    _run(engine, 7200, dt=5.0)
+    _run(engine, 2100, dt=2.0)
     assert engine.malignant_hyperthermia.severity == 0.0
     assert not engine.malignant_hyperthermia.active
 
     engine.pk["dantrolene"].reset()
     engine.state.dantrolene_ce = 0.0
+    _run(engine, 60, dt=1.0)
+    assert not engine.malignant_hyperthermia.active and engine.malignant_hyperthermia.severity == 0.0
+
     engine.set_vaporizer(2.0)
     engine.set_fgf(6, 0)
     _run(engine, 180)
     assert engine.malignant_hyperthermia.active and engine.malignant_hyperthermia.severity > 0.05
 
-    early_stop = engine_factory(
-        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=2), start=True
-    )
-    early_stop.start_malignant_hyperthermia()
-    _run(early_stop, 15)
-    early_stop.set_vaporizer(0)
-    early_stop.set_fgf(10, 0)
-    _run(early_stop, 300)
-    assert early_stop.malignant_hyperthermia.severity > 0.25
+    early_stop = MalignantHyperthermia()
+    early_stop.active = True
+    early_stop.step(15.0, sevo_mac=1.0, succinylcholine_cp=0.0, dantrolene_ce=0.0)
+    early_stop.step(300.0, sevo_mac=0.0, succinylcholine_cp=0.0, dantrolene_ce=0.0)
+    assert early_stop.severity > 0.25

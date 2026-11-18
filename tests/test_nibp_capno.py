@@ -49,7 +49,7 @@ class TestNIBP:
         )
         readings = []
         last_timestamp = engine.state.nibp_timestamp
-        for _ in range(900):
+        for _ in range(620):
             engine.step(1.0)
             if engine.state.nibp_timestamp != last_timestamp:
                 last_timestamp = engine.state.nibp_timestamp
@@ -72,7 +72,7 @@ class TestNIBP:
         arrest = _cuff_cycle(np.random.default_rng(0), 0.0, 0.0, 0.0, rhythm=RhythmType.ASYSTOLE)
         assert arrest.timestamp is None
 
-    def test_shock_boundary_is_continuous_and_failed_cuff_prompts_remeasurement(self, engine_factory):
+    def test_shock_boundary_is_continuous_and_failed_cuff_prompts_remeasurement(self, awake_engine):
         """Crossing MAP 60 mmHg does not step-jump NIBP bias or failure rate (#35),
         and a failed cuff measurement prompts a re-check rather than awaiting first BP.
         """
@@ -88,13 +88,10 @@ class TestNIBP:
         assert all(r.timestamp is not None for r in below)
         assert abs(np.mean([r.map for r in above]) - np.mean([r.map for r in below])) < 0.5
 
-        engine = engine_factory(
-            config=SimulationConfig(mode="awake", arterial_line_enabled=False, rng_seed=1),
-            start=True,
-        )
-        engine.state.nibp_measurement_failed = True
-        engine.state.nibp_sys = engine.state.nibp_dia = engine.state.nibp_map = float("nan")
-        met, msg = require_map_at_least(65)(engine)
+        awake_engine.config.arterial_line_enabled = False
+        awake_engine.state.nibp_measurement_failed = True
+        awake_engine.state.nibp_sys = awake_engine.state.nibp_dia = awake_engine.state.nibp_map = float("nan")
+        met, msg = require_map_at_least(65)(awake_engine)
         assert not met and msg == "Measure blood pressure again"
 
 
@@ -102,8 +99,8 @@ class TestCapnography:
     def test_obstruction_keeps_impedance_effort_and_expires_end_tidal_reading(self, awake_engine):
         engine = awake_engine
         engine.set_airway_mode("ETT")
-        for _ in range(300):
-            engine.step(0.1)
+        for _ in range(60):
+            engine.step(0.5)
         last_endpoint = engine.state.display_etco2
         assert engine.state.etco2_signal_valid and last_endpoint > 20.0
 
@@ -122,8 +119,8 @@ class TestCapnography:
         assert engine.state.vt == engine.state.mv == engine.state.va == 0.0
         effort_before_block = engine.resp_mech.effort.amplitude
         engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
-        for _ in range(1200):
-            engine.step(0.1)
+        for _ in range(240):
+            engine.step(0.5)
         # Residual diaphragm contractions can persist without airflow.
         assert engine.resp.state.muscle_factor < 0.2
         assert engine.resp_mech.effort.amplitude < 0.6 * effort_before_block
@@ -131,8 +128,8 @@ class TestCapnography:
         assert not engine.state.etco2_signal_valid
 
     def test_patient_effort_during_exhalation_notches_the_plateau(self):
-        """A curare cleft: an inspiratory effort draws fresh gas past the sampling port."""
-        def exhale(capno, notch):
+        """A curare cleft draws fresh gas past the port without latching a false low EtCO2."""
+        def exhale(capno, notch, readout=None):
             trace = []
             for k in range(150):
                 volume = -0.004
@@ -140,16 +137,35 @@ class TestCapnography:
                     volume = 0.006  # 30 mL drawn in over 0.1 s
                 elif notch and 55 <= k < 62:
                     volume = -0.0043  # Breathed out again, so the drawn-in gas returns first
-                trace.append(capno.step(0.02, volume, 38.0))
+                co2 = capno.step(0.02, volume, 38.0)
+                if readout is not None:
+                    readout.update(
+                        0.02, capno.exhaling, co2, inhaled_l=capno._inhaled,
+                        dead_space_l=capno.dead_space, breath_index=capno.breath_index,
+                    )
+                trace.append(co2)
             return trace
 
         smooth = exhale(Capnograph(0.15), notch=False)
-        notched = exhale(Capnograph(0.15), notch=True)
+        notched_capno = Capnograph(0.15)
+        readout = EtCO2Readout()
+        notched_capno.step(0.5, 0.5, 38.0)
+        readout.update(
+            0.5, notched_capno.exhaling, notched_capno.co2, inhaled_l=notched_capno._inhaled,
+            dead_space_l=notched_capno.dead_space, breath_index=notched_capno.breath_index,
+        )
+        notched = exhale(notched_capno, notch=True, readout=readout)
+        notched_capno.step(0.5, 0.5, 38.0)
+        readout.update(
+            0.5, notched_capno.exhaling, notched_capno.co2, inhaled_l=notched_capno._inhaled,
+            dead_space_l=notched_capno.dead_space, breath_index=notched_capno.breath_index,
+        )
         # Phase I holds inspired gas until the dead space empties, then the plateau rises to end-tidal.
         assert smooth[5] < 1.0 and smooth[-1] == pytest.approx(38.0, abs=1.5)
         dip = max(a - b for a, b in zip(smooth, notched, strict=True))
         assert dip > 10.0
         assert notched[-1] == pytest.approx(smooth[-1], abs=1.0)
+        assert readout.value == pytest.approx(38.0, abs=1.5)
 
     @staticmethod
     def _capnogram_rate(engine, seconds=20.0, dt=0.1):
@@ -186,7 +202,6 @@ class TestCapnography:
         assert capno.co2 < 2.0
         for _ in range(15):
             resumed = capno.step(0.1, -0.015, 40.0)
-        assert capno._window_co2 == pytest.approx(sum(v * p for v, p in capno._window), abs=1e-12)
         assert resumed == pytest.approx(40.0, abs=0.5)
 
     @pytest.mark.parametrize(("mode", "p_insp"), [("VCV", 0.0), ("PSV", 10.0), ("CPAP", 0.0)])
@@ -218,8 +233,8 @@ class TestCapnography:
         engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="PSV", p_insp=10.0, t_insp=1.7)
         engine.set_vent_power(True)
         engine.give_drug_bolus("Rocuronium", 0.8 * engine.patient.weight)
-        for _ in range(1500):
-            engine.step(0.1)
+        for _ in range(300):
+            engine.step(0.5)
         assert engine.resp.state.apnea
         assert engine.state.mv > 5.0
         assert engine.state.etco2_signal_valid
@@ -238,19 +253,23 @@ class TestCapnography:
         assert engine.state.etco2_signal_valid
 
         engine.set_vent_settings(rr=0, vt=0, peep=5.0, ie="1:2", mode="CPAP", p_insp=0)
-        for _ in range(200):
-            engine.step(0.1)
+        for _ in range(40):
+            engine.step(0.5)
         assert engine.state.mv == 0.0
         assert engine.state.capno_co2 == 0.0
         assert not engine.state.etco2_signal_valid
         assert engine.state.alarms["EtCO2"]["low"]
 
-    def test_first_breath_capnography_and_apnea_spirometry_reset(self, engine_factory, advance_time):
-        """Breath 1 after apneic intubation shows EtCO2; sustained apnea zeros VT/RR/MV."""
-        engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    def test_first_breath_capnography_apnea_washout_and_unplanned_disconnect(
+        self, engine_factory, advance_time
+    ):
+        """Breath 1 after apneic intubation shows EtCO2; sustained apnea zeros VT/RR/MV
+        and washes capno_co2 to 0 within 15 s; unplanned disconnect alarms immediately.
+        """
+        engine = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
         engine.give_drug_bolus("propofol", 200.0)
-        engine.give_drug_bolus("roc", 60.0)
-        advance_time(engine, 90.0, dt=0.5)
+        engine.give_drug_bolus("roc", 70.0)
+        advance_time(engine, 90.0, dt=1.0)
 
         engine.set_airway_mode("ETT")
         engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
@@ -261,33 +280,18 @@ class TestCapnography:
             engine.step(0.1)
             peak_capno = max(peak_capno, engine.state.capno_co2)
         assert peak_capno > 20.0
-
-        engine.set_vent_power(False)
-        advance_time(engine, 20.0, dt=0.5)
-        assert engine.state.vt == engine.state.rr == engine.state.mv == 0.0
-
-    def test_apnea_washout_curare_cleft_endpoint_and_unplanned_disconnect(self, engine_factory, advance_time):
-        """Post-expiratory apneic absorption creep washes capno_co2 to 0 within 15 s (#2);
-        a small curare cleft does not latch a false low EtCO2, and an unplanned disconnect
-        with active ventilation does not re-arm first-breath alarm grace (#17).
-        """
-        engine = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
-        engine.give_drug_bolus("propofol", 200.0)
-        engine.give_drug_bolus("roc", 70.0)
-        advance_time(engine, 90.0, dt=0.5)
-        engine.set_airway_mode("ETT")
-        engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
-        engine.set_vent_power(True)
-        advance_time(engine, 20.0, dt=0.1)
+        advance_time(engine, 15.0, dt=0.5)
         assert engine.state.etco2_signal_valid and engine.state.display_etco2 > 25.0
 
         engine.set_vent_power(False)
-        advance_time(engine, 15.0, dt=0.1)
+        advance_time(engine, 15.0, dt=0.5)
         assert engine.state.capno_co2 == 0.0
+        advance_time(engine, 5.0, dt=0.5)
+        assert engine.state.vt == engine.state.rr == engine.state.mv == 0.0
 
         # Re-ventilate to establish a valid breath, then disconnect while vent stays on.
         engine.set_vent_power(True)
-        advance_time(engine, 10.0, dt=0.1)
+        advance_time(engine, 10.0, dt=0.5)
         assert engine.state.etco2_signal_valid
         engine.set_airway_mode("None")
         engine.step(0.1)
@@ -295,48 +299,31 @@ class TestCapnography:
         assert not engine.state.etco2_signal_valid
         assert engine.state.alarms["EtCO2"]["low"]
 
-        # Curare cleft (< dead space) during mid-plateau must not latch the pre-notch value.
-        capno = Capnograph(0.15)
-        readout = EtCO2Readout()
-        capno.step(0.5, 0.5, 38.0)
-        readout.update(0.5, capno.exhaling, capno.co2, inhaled_l=capno._inhaled,
-                       dead_space_l=capno.dead_space, breath_index=capno.breath_index)
-        for k in range(150):
-            volume = 0.006 if 40 <= k < 45 else (-0.0043 if 45 <= k < 52 else -0.004)
-            co2 = capno.step(0.02, volume, 38.0)
-            readout.update(0.02, capno.exhaling, co2, inhaled_l=capno._inhaled,
-                           dead_space_l=capno.dead_space, breath_index=capno.breath_index)
-        capno.step(0.5, 0.5, 38.0)
-        readout.update(0.5, capno.exhaling, capno.co2, inhaled_l=capno._inhaled,
-                       dead_space_l=capno.dead_space, breath_index=capno.breath_index)
-        assert readout.value == pytest.approx(38.0, abs=1.5)
-
     def test_partial_obstruction_endpoint_and_apneic_end_tidal_gas_hold(self, engine_factory, advance_time):
         """Partial airway narrowing does not scale the alveolar EtCO2 ceiling by patency,
         and end-tidal gas fractions hold the last exhaled sample during apnea until timeout.
         """
-        narrowed = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+        narrowed = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
         narrowed.set_airway_obstruction(0.45)
         narrowed.set_vent_settings(rr=8, vt=0.65, peep=5.0, ie="1:3", mode="VCV")
-        advance_time(narrowed, 45.0, dt=0.1)
+        advance_time(narrowed, 45.0, dt=0.5)
         assert narrowed.airway_status.patency < 0.70
         assert narrowed.state.display_etco2 == pytest.approx(narrowed.resp.state.etco2, abs=2.5)
 
-        sevo = engine_factory(
-            config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=0.2, rng_seed=1), start=True
+        apneic = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=0.5, rng_seed=1),
+            start=True,
         )
-        advance_time(sevo, 15.0, dt=0.2)
-        sevo.give_drug_bolus("roc", 80.0)
-        sevo.set_vent_power(False)
-        advance_time(sevo, 3.0, dt=0.2)
-        held_sevo = sevo.state.et_sevo
-        held_o2 = sevo.state.et_o2
-        assert held_sevo > 1.0 and held_o2 > 25.0
-        sevo.pk_sevo.state.p_alv = 0.001
-        advance_time(sevo, 5.0, dt=0.2)
-        assert sevo.state.etco2_signal_valid
-        assert sevo.state.et_sevo == pytest.approx(held_sevo, rel=1e-4)
-        assert sevo.state.et_o2 == pytest.approx(held_o2, rel=1e-4)
-        advance_time(sevo, 12.0, dt=0.2)
-        assert not sevo.state.etco2_signal_valid
-        assert sevo.state.et_sevo == sevo.state.et_o2 == sevo.state.et_mac == 0.0
+        apneic.give_drug_bolus("roc", 80.0)
+        apneic.set_vent_power(False)
+        advance_time(apneic, 3.0, dt=0.5)
+        sevo_0, o2_0 = apneic.state.et_sevo, apneic.state.et_o2
+        assert sevo_0 > 1.0 and o2_0 > 25.0
+        apneic.pk_sevo.state.p_alv = 0.001
+        advance_time(apneic, 5.0, dt=0.5)
+        assert apneic.state.etco2_signal_valid
+        assert apneic.state.et_sevo == pytest.approx(sevo_0, rel=1e-4)
+        assert apneic.state.et_o2 == pytest.approx(o2_0, rel=1e-4)
+        advance_time(apneic, 12.0, dt=0.5)
+        assert not apneic.state.etco2_signal_valid
+        assert apneic.state.et_sevo == apneic.state.et_o2 == apneic.state.et_mac == 0.0

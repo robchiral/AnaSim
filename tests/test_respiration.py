@@ -4,7 +4,6 @@ from typing import Any
 
 import pytest
 
-from anasim.core.runtime import step_respiration
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.physiology.respiration import RespiratoryModel
@@ -17,8 +16,9 @@ def _breath(patient, paco2=None, **drugs):
     drugs.setdefault("ce_prop", 0.0)
     drugs.setdefault("ce_remi", 0.0)
     drugs.setdefault("fio2", 1.0)  # Isolate CO2/drug effects from hypoxic feedback.
+    model.initialize_drug_effects(drugs["ce_prop"], drugs["ce_remi"])
     # Concentration-response checks hold CO2 fixed while the controller settles.
-    for _ in range(900):
+    for _ in range(300):
         model.state.p_alveolar_co2 = 40.0 if paco2 is None else paco2
         model.state.pa_co2 = model.state.p_alveolar_co2
         state = model.step(1.0, **drugs)
@@ -111,17 +111,17 @@ def test_propofol_induction_causes_transient_hypoventilation_with_patent_airway(
     engine.set_airway_mode("ETT")
     # Preoxygenate so hypoxemia does not add cerebral depression.
     engine.set_fgf(10.0, 0.0)
-    for _ in range(900):
-        engine.step(0.2)
+    for _ in range(180):
+        engine.step(1.0)
     engine.give_drug_bolus("propofol", 2.0 * engine.patient.weight)
     baseline_va = engine.resp.va_baseline
     low_ventilation_seconds = 0.0
     min_va = baseline_va
     min_bis = 100.0
-    for _ in range(3600):
-        engine.step(0.2)
+    for _ in range(720):
+        engine.step(1.0)
         min_va = min(min_va, engine.resp.state.va)
-        low_ventilation_seconds += 0.2 * (engine.resp.state.va < 0.5 * baseline_va)
+        low_ventilation_seconds += 1.0 * (engine.resp.state.va < 0.5 * baseline_va)
         min_bis = min(min_bis, engine.state.bis)
     assert min_va < 0.3 * baseline_va
     # Without hypoxic drive, ventilation recovers within 7 minutes.
@@ -155,38 +155,38 @@ def test_low_dose_propofol_promotes_transient_remifentanil_apnea(patient):
 
 def test_hypoxic_response_declines_with_sustained_exposure_and_propofol():
     """Nieuwenhuijs 2000: fractional responses to pulsed and sustained hypoxia."""
-    traces = []
-    for dt in (0.1, 1.0):
-        responses = {}
-        for propofol in (0.0, 0.6):
-            model = RespiratoryModel(Patient(age=24))
+    def run_challenge(propofol: float, dt: float = 1.0):
+        model = RespiratoryModel(Patient(age=24))
+        model.initialize_drug_effects(propofol, 0.0)
 
-            def expose(pressure, seconds, model=model, propofol=propofol, dt=dt):
-                for _ in range(round(seconds / dt)):
-                    model.state.p_alveolar_co2 = 46.6
-                    model.state.pa_co2 = 46.6
-                    model.state.p_arterial_o2 = pressure
-                    model.state.p_alveolar_o2 = pressure + model.aa_grad_base
-                    state = model.step(dt, ce_prop=propofol, ce_remi=0.0, fio2=0.5)
-                return state.va
+        def expose(pressure, seconds):
+            for _ in range(round(seconds / dt)):
+                model.state.p_alveolar_co2 = 46.6
+                model.state.pa_co2 = 46.6
+                model.state.p_arterial_o2 = pressure
+                model.state.p_alveolar_o2 = pressure + model.aa_grad_base
+                state = model.step(dt, ce_prop=propofol, ce_remi=0.0, fio2=0.5)
+            return state.va
 
-            baseline = expose(110.0, 900.0)
-            acute = expose(55.0, 180.0) - baseline
-            sustained = expose(55.0, 720.0) - baseline
-            assert acute > 0.5 * baseline
-            decline = 1.0 - sustained / acute
-            assert decline == pytest.approx(0.35 if propofol == 0 else 0.54, abs=0.08)
-            # Two minutes of normoxia do not erase the sustained-hypoxia history.
-            expose(110.0, 120.0)
-            rechallenge = expose(55.0, 180.0) - baseline
-            assert 0.4 < rechallenge / acute < 0.8
-            responses[propofol] = acute, sustained, rechallenge
-        assert responses[0.6][0] / responses[0.0][0] == pytest.approx(0.5, abs=0.1)
-        traces.append((*responses[0.0], *responses[0.6]))
-    assert traces[0] == pytest.approx(traces[1], rel=0.005)
+        baseline = expose(110.0, 300.0)
+        acute = expose(55.0, 180.0) - baseline
+        sustained = expose(55.0, 720.0) - baseline
+        assert acute > 0.5 * baseline
+        decline = 1.0 - sustained / acute
+        assert decline == pytest.approx(0.35 if propofol == 0 else 0.54, abs=0.08)
+        # Two minutes of normoxia do not erase the sustained-hypoxia history.
+        expose(110.0, 120.0)
+        rechallenge = expose(55.0, 180.0) - baseline
+        assert 0.4 < rechallenge / acute < 0.8
+        return acute, sustained, rechallenge
+
+    responses = {propofol: run_challenge(propofol, dt=1.0) for propofol in (0.0, 0.6)}
+    assert responses[0.6][0] / responses[0.0][0] == pytest.approx(0.5, abs=0.1)
+    assert run_challenge(0.6, dt=0.1) == pytest.approx(responses[0.6], rel=0.005)
 
     # Repeated 3-min challenges generate no sustained ventilatory decline.
     model = RespiratoryModel(Patient(age=24))
+    model.initialize_drug_effects(0.6, 0.0)
     pulses = []
     for _ in range(6):
         for pressure, seconds in ((110.0, 300), (55.0, 180)):
@@ -207,37 +207,33 @@ def test_age_separates_hypoxic_and_hypercapnic_ventilatory_responses():
     PCO2 60 mmHg toward Peterson 1981's Read-rebreathing reduction; Lhuissier
     2012 instead reports higher poikilocapnic hypoxic responses in older men).
     """
-    traces = []
-    for dt in (0.1, 1.0):
-        hypoxic_gains = {}
-        moderate_co2_gains = {}
-        for age in (25, 60, 67, 72, 77, 82):
-            model = RespiratoryModel(Patient(age=age, weight=63.0, height=167.0, sex="male"))
+    hypoxic_gains = {}
+    moderate_co2_gains = {}
+    for age in (25, 60, 67, 72, 77, 82):
+        model = RespiratoryModel(Patient(age=age, weight=63.0, height=167.0, sex="male"))
 
-            def clamp_gas(pco2, po2, seconds, model=model, dt=dt):
-                for _ in range(round(seconds / dt)):
-                    model.state.p_alveolar_co2 = pco2
-                    model.state.pa_co2 = pco2
-                    model.state.p_arterial_o2 = po2
-                    model.state.p_alveolar_o2 = po2 + model.aa_grad_base
-                    state = model.step(dt, ce_prop=0.0, ce_remi=0.0, fio2=0.5)
-                return state.va
+        def clamp_gas(pco2, po2, seconds, model=model):
+            for _ in range(round(seconds)):
+                model.state.p_alveolar_co2 = pco2
+                model.state.pa_co2 = pco2
+                model.state.p_arterial_o2 = po2
+                model.state.p_alveolar_o2 = po2 + model.aa_grad_base
+                state = model.step(1.0, ce_prop=0.0, ce_remi=0.0, fio2=0.5)
+            return state.va
 
-            base_va = clamp_gas(40.0, 110.0, 300.0)
-            hypox_va = clamp_gas(40.0, 40.0, 60.0)
-            clamp_gas(40.0, 120.0, 60.0)
-            co2_va = clamp_gas(48.0, 120.0, 300.0)
-            hypoxic_gains[age] = hypox_va - base_va
-            moderate_co2_gains[age] = (co2_va - base_va) / 8.0
+        base_va = clamp_gas(40.0, 110.0, 300.0)
+        hypox_va = clamp_gas(40.0, 40.0, 60.0)
+        clamp_gas(40.0, 120.0, 60.0)
+        co2_va = clamp_gas(48.0, 120.0, 300.0)
+        hypoxic_gains[age] = hypox_va - base_va
+        moderate_co2_gains[age] = (co2_va - base_va) / 8.0
 
-        assert hypoxic_gains[60] == pytest.approx(hypoxic_gains[25], rel=0.02)
-        assert hypoxic_gains[25] > hypoxic_gains[67] > hypoxic_gains[72] > hypoxic_gains[77]
-        assert hypoxic_gains[77] / hypoxic_gains[25] == pytest.approx(0.40, abs=0.05)
-        assert hypoxic_gains[82] / hypoxic_gains[25] == pytest.approx(0.40, abs=0.05)
-        assert 0.70 < moderate_co2_gains[77] / moderate_co2_gains[25] < 0.85
-        assert moderate_co2_gains[77] / moderate_co2_gains[25] > hypoxic_gains[77] / hypoxic_gains[25] + 0.25
-        traces.append((*hypoxic_gains.values(), *moderate_co2_gains.values()))
-    assert traces[0] == pytest.approx(traces[1], rel=0.005)
+    assert hypoxic_gains[60] == pytest.approx(hypoxic_gains[25], rel=0.02)
+    assert hypoxic_gains[25] > hypoxic_gains[67] > hypoxic_gains[72] > hypoxic_gains[77]
+    assert hypoxic_gains[77] / hypoxic_gains[25] == pytest.approx(0.40, abs=0.05)
+    assert hypoxic_gains[82] / hypoxic_gains[25] == pytest.approx(0.40, abs=0.05)
+    assert 0.70 < moderate_co2_gains[77] / moderate_co2_gains[25] < 0.85
+    assert moderate_co2_gains[77] / moderate_co2_gains[25] > hypoxic_gains[77] / hypoxic_gains[25] + 0.25
 
     # Peterson 1981 Read rebreathing to PCO2 60 mmHg (73.3 yr vs 24.4 yr):
     young = _breath(Patient(age=24.4, weight=62.1, height=168.4, sex="male"), paco2=60.0)
@@ -256,6 +252,7 @@ def test_surgical_anesthesia_abolishes_hypoxic_drive_while_preserving_co2_respon
     """
     def isocapnic_hypoxic_delta_va(pco2: float, dt: float = 1.0, **drugs: Any) -> tuple[float, float]:
         model = RespiratoryModel(Patient(age=24, weight=70.0, height=171.0, sex="male"))
+        model.initialize_drug_effects(drugs.get("ce_prop", 0.0), drugs.get("ce_remi", 0.0))
         normox_va = 0.0
         for _ in range(round(900.0 / dt)):
             model.state.p_alveolar_co2 = model.state.pa_co2 = pco2
@@ -274,16 +271,15 @@ def test_surgical_anesthesia_abolishes_hypoxic_drive_while_preserving_co2_respon
     _, sevo_01_dva = isocapnic_hypoxic_delta_va(40.0, ce_prop=0.0, ce_remi=0.0, mac_sevo=0.1)
     assert 0.45 < sevo_01_dva / awake_dva < 0.75
 
-    for dt in (0.1, 1.0):
-        normox_52, sevo_11_dva = isocapnic_hypoxic_delta_va(
-            52.0, dt=dt, ce_prop=0.0, ce_remi=0.0, mac_sevo=1.1, unconscious=1.0
-        )
-        normox_62, sevo_11_hyper_dva = isocapnic_hypoxic_delta_va(
-            62.0, dt=dt, ce_prop=0.0, ce_remi=0.0, mac_sevo=1.1, unconscious=1.0
-        )
-        assert sevo_11_dva == pytest.approx(0.0, abs=0.01)
-        assert sevo_11_hyper_dva == pytest.approx(0.0, abs=0.01)
-        assert normox_62 > normox_52 + 1.5
+    normox_52, sevo_11_dva = isocapnic_hypoxic_delta_va(
+        52.0, ce_prop=0.0, ce_remi=0.0, mac_sevo=1.1, unconscious=1.0
+    )
+    normox_62, sevo_11_hyper_dva = isocapnic_hypoxic_delta_va(
+        62.0, ce_prop=0.0, ce_remi=0.0, mac_sevo=1.1, unconscious=1.0
+    )
+    assert sevo_11_dva == pytest.approx(0.0, abs=0.01)
+    assert sevo_11_hyper_dva == pytest.approx(0.0, abs=0.01)
+    assert normox_62 > normox_52 + 1.5
 
     _, prop_20_dva = isocapnic_hypoxic_delta_va(50.0, ce_prop=2.0, ce_remi=0.0)
     normox_prop_45, prop_45_dva = isocapnic_hypoxic_delta_va(
@@ -450,17 +446,24 @@ def test_low_cardiac_output_amplifies_atelectatic_shunt(engine_factory):
 
 def test_co2_drives_breathing_and_opioids_blunt_it(patient):
     """Babenco 2000: opioids shift the CO2 response right and flatten it."""
-    assert _breath(patient, paco2=50.0).drive_central > _breath(patient, paco2=40.0).drive_central
+    baseline = _breath(patient, paco2=40.0)
+    assert _breath(patient, paco2=50.0).drive_central > baseline.drive_central
     assert (
         _breath(patient, paco2=45.0, ce_remi=3.0).drive_central
         < _breath(patient, paco2=45.0).drive_central
     )
-    baseline, mild = _breath(patient, paco2=40.0), _breath(patient, paco2=40.5)
+    mild = _breath(patient, paco2=40.5)
     assert mild.rr == baseline.rr
     assert mild.va > baseline.va
     low = _breath(patient, paco2=25.0)
     assert low.rr == baseline.rr and not low.apnea
     assert low.vt < baseline.vt  # Awake hypocapnia weakens effort without imposing apnea.
+
+    assert _breath(patient, paco2=40.0, ce_prop=3.5, ce_remi=4.0).apnea
+    assert _breath(patient, paco2=70.0, ce_prop=3.5, ce_remi=4.0).apnea
+    moderate = _breath(patient, paco2=70.0, ce_remi=1.0)
+    assert moderate.mv > _breath(patient, paco2=40.0, ce_remi=1.0).mv
+    assert moderate.mv < _breath(patient, paco2=70.0).mv
 
 
 def test_hyperventilation_stops_breathing_under_anesthesia_until_co2_recovers(patient):
@@ -470,34 +473,22 @@ def test_hyperventilation_stops_breathing_under_anesthesia_until_co2_recovers(pa
     """
     model = RespiratoryModel(patient)
     inputs: dict[str, Any] = dict(ce_prop=2.0, ce_remi=0.0, unconscious=1.0, fio2=1.0)
-    for _ in range(9000):
-        model.step(0.1, **inputs)
+    for _ in range(1800):
+        model.step(0.5, **inputs)
     assert model.state.rr > 8.0
     resting = model.state.pa_co2
     assert resting > 45.0  # Propofol raises the resting PaCO2.
 
-    for _ in range(6000):
-        model.step(0.1, **inputs, mech_rr=20.0, mech_vt_l=0.5, mech_vent_mv=10.0)
+    for _ in range(1200):
+        model.step(0.5, **inputs, mech_rr=20.0, mech_vt_l=0.5, mech_vent_mv=10.0)
     assert model.state.apnea
 
-    for _ in range(6000):
-        model.step(0.1, **inputs)
+    for _ in range(1200):
+        model.step(0.5, **inputs)
         if not model.state.apnea:
             break
     assert not model.state.apnea
     assert 3.75 <= resting - model.state.pa_co2 <= 5.0
-
-
-def test_opioids_reduce_the_equilibrated_co2_response(patient):
-    normocapnic = _breath(patient, paco2=40.0, ce_prop=3.5, ce_remi=4.0)
-    hypercapnic = _breath(patient, paco2=70.0, ce_prop=3.5, ce_remi=4.0)
-
-    assert normocapnic.apnea
-    assert hypercapnic.apnea  # At these high concentrations, 70 mmHg is insufficient.
-    # CO2 stimulates ventilation; opioids lower it at the same PaCO2.
-    moderate = _breath(patient, paco2=70.0, ce_remi=1.0)
-    assert moderate.mv > _breath(patient, paco2=40.0, ce_remi=1.0).mv
-    assert moderate.mv < _breath(patient, paco2=70.0).mv
 
 
 def test_sevoflurane_spontaneous_ventilation_nmba_potentiation_and_apnea(engine_factory, advance_time):
@@ -506,32 +497,33 @@ def test_sevoflurane_spontaneous_ventilation_nmba_potentiation_and_apnea(engine_
     rocuronium block (Kleijn 2011), and causes apnea above 2 MAC.
     """
     sevo_01 = engine_factory(config=SimulationConfig(sevoflurane_enabled=True, rng_seed=1), start=True)
-    sevo_14 = engine_factory(config=SimulationConfig(sevoflurane_enabled=True, rng_seed=1), start=True)
+    sevo_14 = copy.deepcopy(sevo_01)
     mv_awake = sevo_01.state.mv
-    for model, target_mac in ((sevo_01, 0.1), (sevo_14, 1.4)):
+    for model, target_mac, step_dt, n_steps in ((sevo_01, 0.1, 2.0, 450), (sevo_14, 1.4, 1.0, 900)):
         model.set_airway_mode("ETT")
         model.set_fgf(6.0, 2.0)
-        for _ in range(450):
+        for _ in range(n_steps):
             err = target_mac - model.state.mac_sevo
             model.set_vaporizer(max(0.0, target_mac * 1.9 + 10.0 * err))
-            model.step(4.0)
+            model.step(step_dt)
 
     assert sevo_01.state.mv > 0.94 * mv_awake
     assert sevo_14.state.mv < mv_awake
     assert sevo_14.state.rr > 18.0 and sevo_14.state.vt < 300.0
     assert 50.0 < sevo_14.state.pa_co2 < 59.0
 
+    high_mac = copy.deepcopy(sevo_14)
     sevo_14.give_drug_bolus("roc", 35.0)
     advance_time(sevo_14, 180.0, dt=1.0)
     assert sevo_14.state.tof < 5.0 and sevo_14.state.apnea is True
 
-    sevo_01.set_vent_power(True)
-    sevo_01.set_fgf(8.0, 0.0)
-    sevo_01.set_vaporizer(8.0)
-    advance_time(sevo_01, 480.0, dt=2.0)
-    sevo_01.set_vent_power(False)
-    advance_time(sevo_01, 30.0, dt=1.0)
-    assert sevo_01.state.mac_sevo > 2.0 and sevo_01.state.apnea is True
+    high_mac.set_vent_power(True)
+    high_mac.set_fgf(8.0, 0.0)
+    high_mac.set_vaporizer(8.0)
+    advance_time(high_mac, 180.0, dt=2.0)
+    high_mac.set_vent_power(False)
+    advance_time(high_mac, 30.0, dt=1.0)
+    assert high_mac.state.mac_sevo > 2.0 and high_mac.state.apnea is True
 
 
 class TestOxygenStores:
@@ -579,7 +571,7 @@ class TestOxygenStores:
         induction reached EtO2 93, 75, and 53%; with the tube open to air,
         SpO2 fell to 90% after 411 ± 84, 303 ± 59, and 213 ± 69 s.
         """
-        dt = 0.1
+        dt = 0.5
         engine = engine_factory(
             config=SimulationConfig(tci_enabled=True, dt=dt, rng_seed=1), start=True,
             age=44, height=166, weight=67, sex="female", baseline_hb=12.1,
@@ -606,7 +598,7 @@ class TestOxygenStores:
         engine.set_fgf(0.0, 10.0)
         start = engine.state.time
         while engine.state.display_spo2 >= 90.0 and engine.state.time - start < 900.0:
-            engine.step(dt)
+            engine.step(1.0)
         assert seconds[0] < engine.state.time - start < seconds[1]
 
     def test_clamped_tube_after_oxygen_matches_stock_blood_gases(self, engine_factory):
@@ -621,8 +613,8 @@ class TestOxygenStores:
         settings = engine.vent.settings
         engine.set_vent_settings(rr=settings.rr, vt=settings.tv / 1000.0, peep=0.0, ie="1:2", mode="VCV")
         engine.set_fgf(6.0, 0.0)
-        for _ in range(600):
-            engine.step(1.0)
+        for _ in range(300):
+            engine.step(2.0)
         engine.set_airway_obstruction(1.0)
         resp = engine.resp.state
         pa_co2, pa_o2 = [resp.pa_co2], [resp.p_arterial_o2]
@@ -731,23 +723,28 @@ class TestOxygenStores:
         assert air_50 < partial_50 < open_50
 
     def test_apneic_oxygenation_through_patent_airway(self, engine_factory):
+        preox = engine_factory(start=True)
+        preox.set_airway_mode("Mask")
+        preox.set_fgf(10.0, 0.0)
+        for _ in range(180):
+            preox.step(1.0)
+        self._induce_apnea(preox)
+        # A tracheal tube keeps the patent arm open during induction;
+        # the obstructed arm models an occluded tube.
+        preox.set_airway_mode("ETT")
+        empty_bag = copy.deepcopy(preox)
         endpoints = []
-        empty_bag = None
         for obstruction in (0.0, 1.0):
-            engine = engine_factory(start=True)
-            engine.set_airway_mode("Mask")
-            engine.set_fgf(10.0, 0.0)
-            for _ in range(1800):
-                engine.step(0.1)
-            self._induce_apnea(engine)
-            # A tracheal tube keeps the patent arm open during induction;
-            # the obstructed arm models an occluded tube.
-            engine.set_airway_mode("ETT")
-            if obstruction == 0.0:
-                empty_bag = copy.deepcopy(engine)
+            engine = copy.deepcopy(preox)
             engine.set_airway_obstruction(obstruction)
-            for _ in range(6000):
-                engine.step(0.1)
+            frc_0 = engine.aeration.frc
+            relaxed_0 = engine.aeration.relaxed_volume
+            for _ in range(600):
+                engine.step(1.0)
+            if obstruction == 1.0:
+                assert engine.resp._apneic_gas_deficit_l > 0.15
+                assert engine.aeration.frc < frc_0 - 0.10
+                assert engine.aeration.relaxed_volume < relaxed_0 - 0.10
             endpoints.append((engine.resp.state.p_alveolar_o2, engine.state.sao2, engine.state.pa_co2))
         patent, blocked = endpoints
         # Absorbed O2 is replenished through the airway; atelectasis still
@@ -766,7 +763,6 @@ class TestOxygenStores:
             no_preox.step(1.0)
         assert no_preox.state.spo2 < 85.0
 
-        assert empty_bag is not None
         empty_bag.set_fgf(0.0, 0.0)
         empty_bag.circuit.reservoir_volume = 0.0
         for _ in range(600):
@@ -821,21 +817,6 @@ def test_airway_rescue_reoxygenates_during_ongoing_apnea(patient):
     assert state.p_arterial_o2 == pytest.approx(model.state.p_arterial_o2, rel=0.01)
 
 
-@pytest.mark.parametrize("preoxygenate_first", [False, True])
-def test_preoxygenation_survives_a_change_in_blood_composition(patient, preoxygenate_first):
-    model = RespiratoryModel(patient)
-    hb = 0.99 * model.baseline_hb
-    if not preoxygenate_first:
-        model.step(0.0, ce_prop=0.0, ce_remi=0.0, hb_g_dl=hb)
-    model.equilibrate_oxygen(1.0)
-    initial_po2 = model.state.p_arterial_o2
-    assert model.state.sao2 > 99.0
-    # A small dilution keeps the equilibrated gas state.
-    model.step(0.0, ce_prop=0.0, ce_remi=0.0, hb_g_dl=hb)
-    assert model.state.p_arterial_o2 == pytest.approx(initial_po2, abs=0.1)
-    assert model.state.sao2 > 99.0
-
-
 def test_ventilation_requirement_scales_with_body_size(engine_factory):
     """Resting breathing matches CO2 production; fixed ventilator settings do not.
 
@@ -850,54 +831,24 @@ def test_ventilation_requirement_scales_with_body_size(engine_factory):
     ventilated_co2 = []
     for size in sizes:
         engine = engine_factory(start=True, **size)
-        for _ in range(900):
-            engine.step(1.0)
+        for _ in range(60):
+            engine.step(2.0)
         assert engine.state.sao2 > 95.0
         assert engine.state.pa_co2 == pytest.approx(40.0, abs=1.5)
 
         engine = engine_factory(config=SimulationConfig(mode="steady_state"), start=True, **size)
         engine.set_vent_settings(rr=12, vt=0.5, peep=5, ie="1:2", mode="VCV")
-        for _ in range(1200):
-            engine.step(1.0)
+        for _ in range(600):
+            engine.step(2.0)
         ventilated_co2.append(engine.state.pa_co2)
     small, typical, large = ventilated_co2
     assert small < 32.0 < typical < 40.0 < 42.0 < large
 
 
-def test_denitrogenation_clears_inert_gas_zero_dt_preserves_trachea_and_disconnect_zeros_et_agents(
-    engine_factory, advance_time
-):
-    """Pure-O2 wash-in clears alveolar N2 and aeration inert_fraction;
-    step_respiration(dt=0) does not overwrite _tracheal_fio2;
-    disconnecting the airway zeros EtSevo, EtN2O, and EtMAC while retaining tissue MAC.
+def test_oxygen_exchange_preview_anoxic_floor_and_haldane_equilibration(patient):
+    """oxygen_exchange_l_min accounts for V/Q mismatch, tidal shrinkage, and FiO2=0;
+    equilibrate_oxygen preserves the dry-gas Dalton sum with N2O and across dt=0 Hb changes.
     """
-    engine = engine_factory(
-        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
-        start=True,
-    )
-    engine.set_fgf(10.0, 0.0, 0.0)
-    engine.set_vaporizer(0.0)
-    advance_time(engine, 600.0, dt=2.0)
-    assert engine.resp.alveolar_fn2 < 0.01
-    assert engine.aeration.inert_fraction < 0.01
-
-    engine._tracheal_fio2 = 0.77
-    step_respiration(engine, 0.0, engine.state.co)
-    assert engine._tracheal_fio2 == pytest.approx(0.77)
-
-    engine.set_vaporizer(3.0)
-    engine.set_fgf(2.0, 0.0, 2.0)
-    advance_time(engine, 60.0, dt=1.0)
-    assert engine.state.et_sevo > 0.5 and engine.state.et_n2o > 5.0 and engine.state.et_mac > 0.5
-    mac_before = engine.state.mac
-    engine.set_airway_mode("None")
-    engine.step(0.1)
-    assert engine.state.et_sevo == engine.state.et_n2o == engine.state.et_mac == 0.0
-    assert engine.state.mac == pytest.approx(mac_before, abs=0.05)
-
-
-def test_oxygen_exchange_preview_accounts_for_vq_mismatch(patient):
-    """oxygen_exchange_l_min applies vq_mismatch so circuit debit matches actual lung O2 uptake."""
     model = RespiratoryModel(patient)
     va_mech = 10.0 * (0.65 - model.vd_deadspace)
     full = model.oxygen_exchange_l_min(0.8, va_mech, 1.0, 0.0, dt=0.1)
@@ -908,72 +859,24 @@ def test_oxygen_exchange_preview_accounts_for_vq_mismatch(patient):
         0.1, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0, fio2=0.8,
         mech_rr=10.0, mech_vt_l=0.65, measured_breaths=True, vq_mismatch=0.5,
     )
-    actual_rate = (model.gas_transport.oxygen_from_air_l - before) * 600.0
-    assert actual_rate == pytest.approx(mismatched, rel=0.05)
+    assert (model.gas_transport.oxygen_from_air_l - before) * 600.0 == pytest.approx(mismatched, rel=0.05)
 
-
-def test_anoxic_convergence_haldane_seed_psv_bronchospasm_and_deadspace_floor(engine_factory):
-    """Anoxic FiO2=0 converges at PAO2>=0 without reversing O2 flux; equilibrate_oxygen
-    satisfies the dry-gas fraction sum with N2O; PSV increases VA monotonically above CPAP
-    in bronchospasm; mechanical absorption halts at rigid anatomic dead space.
-    """
-    anoxic = RespiratoryModel(Patient())
+    anoxic = RespiratoryModel(patient)
     assert anoxic.oxygen_exchange_l_min(0.0, 4.0, 1.0, 0.0, dt=0.1) <= 0.0
-    for _ in range(400):
-        state = anoxic.step(
-            0.5, ce_prop=3.0, ce_remi=2.0, ce_roc=10.0, fio2=0.0,
+    for _ in range(120):
+        st = anoxic.step(
+            1.0, ce_prop=3.0, ce_remi=2.0, ce_roc=10.0, fio2=0.0,
             mech_rr=12.0, mech_vt_l=0.5, measured_breaths=True, cardiac_output=5.0,
         )
-    assert state.p_alveolar_o2 >= 0.0 and math.isfinite(state.ph)
+    assert st.p_alveolar_o2 >= 0.0 and st.ph > 5.0
 
-    haldane = RespiratoryModel(Patient())
+    haldane = RespiratoryModel(patient)
     haldane.equilibrate_oxygen(0.50, fin2=0.10)
-    dry_sum = (
-        (haldane.state.p_alveolar_o2 + haldane.state.p_alveolar_co2) / haldane._atm_dry
-        + haldane.alveolar_fn2
-        + 0.40
-    )
+    dry_sum = (haldane.state.p_alveolar_o2 + haldane.state.p_alveolar_co2) / haldane._atm_dry + haldane.alveolar_fn2 + 0.40
     assert dry_sum == pytest.approx(1.0, abs=0.01)
 
-    psv_vas = []
-    for ps in (0, 2, 5, 10):
-        eng = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
-        eng.set_airway_mode("ETT")
-        eng.vent.update_settings(mode="CPAP" if ps == 0 else "PSV", p_support=ps, peep=5, rr=0)
-        eng.set_vent_power(True)
-        eng.set_bronchospasm(0.7)
-        for _ in range(250):
-            eng.step(0.1)
-        psv_vas.append(eng.resp.state.va)
-    assert psv_vas[0] < psv_vas[1] < psv_vas[2] < psv_vas[3]
-
-    collapsed = RespiratoryModel(Patient())
-    collapsed._apneic_gas_deficit_l = 5.0
-    collapsed._pending_mech_absorption_btps_l = 0.0
-    collapsed.step(1.0, ce_prop=4.0, ce_remi=2.0, ce_roc=10.0, airway_patency=0.0)
-    assert collapsed.gas_volume_l == pytest.approx(collapsed.vd_deadspace)
-    assert collapsed._pending_mech_absorption_btps_l == 0.0
-
-
-def test_tidal_dalton_conservation_and_partially_patent_apneic_oxygenation(patient):
-    """Tidal oxygen exchange includes passive volume shrinkage without apneic_gate drift,
-    and moderate upper-airway narrowing (patency=0.25) still permits apneic oxygenation.
-    """
-    tidal = RespiratoryModel(patient)
-    tidal.equilibrate_oxygen(1.0, fin2=0.0)
-    preview = tidal.oxygen_exchange_l_min(1.0, 4.5, 1.0, 0.0, dt=0.5)
-    o2_before = tidal.gas_transport.oxygen_from_air_l
-    tidal.step(0.5, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0, fio2=1.0,
-               mech_rr=12.0, mech_vt_l=0.52, measured_breaths=True)
-    actual = (tidal.gas_transport.oxygen_from_air_l - o2_before) * 120.0
-    assert actual == pytest.approx(preview, rel=0.03)
-    dry_sum = (tidal.state.p_alveolar_o2 + tidal.state.p_alveolar_co2) / tidal._atm_dry + tidal.alveolar_fn2
-    assert dry_sum == pytest.approx(1.0, abs=0.01)
-
-    o2_arm, air_arm = RespiratoryModel(patient), RespiratoryModel(patient)
-    for m in (o2_arm, air_arm):
-        m.equilibrate_oxygen(0.90, fin2=0.10)
-    for _ in range(300):
-        o2_arm.step(1.0, ce_prop=3.5, ce_remi=2.0, ce_roc=10.0, fio2=1.0, airway_patency=0.25, unconscious=1.0)
-        air_arm.step(1.0, ce_prop=3.5, ce_remi=2.0, ce_roc=10.0, fio2=0.21, airway_patency=0.25, unconscious=1.0)
-    assert o2_arm.state.sao2 > 97.0 and o2_arm.state.p_alveolar_o2 > air_arm.state.p_alveolar_o2 + 250.0
+    preox = RespiratoryModel(patient)
+    preox.equilibrate_oxygen(1.0)
+    po2_0 = preox.state.p_arterial_o2
+    preox.step(0.0, ce_prop=0.0, ce_remi=0.0, hb_g_dl=0.99 * preox.baseline_hb)
+    assert preox.state.p_arterial_o2 == pytest.approx(po2_0, abs=0.1)

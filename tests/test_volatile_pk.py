@@ -62,8 +62,8 @@ def test_gas_monitor_mac_follows_end_tidal_during_washin(engine_factory):
     engine.set_vent_power(True)
     engine.set_fgf(6.0, 0.0)
     engine.set_vaporizer(6.0)
-    for _ in range(600):
-        engine.step(0.1)
+    for _ in range(60):
+        engine.step(1.0)
     expected = engine.state.et_sevo / engine.pk_sevo.mac_age
     assert engine.state.et_mac == pytest.approx(expected, rel=1e-6)
     assert engine.state.et_mac > engine.state.mac

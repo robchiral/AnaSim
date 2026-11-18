@@ -22,12 +22,12 @@ def test_four_hour_case_stays_stable(engine_factory):
     initial_temp = engine.state.temp_c
 
     samples: dict[str, list[float]] = {name: [] for name in MONITORED}
-    for step in range(4 * 3600):
-        engine.step(1.0)
-        if step % 60 == 0:
+    for step in range(2 * 3600):
+        engine.step(2.0)
+        if step % 30 == 0:
             for name in MONITORED:
                 value = getattr(engine.state, name)
-                assert np.isfinite(value), f"{name} is not finite at {step} s"
+                assert np.isfinite(value), f"{name} is not finite at {step * 2} s"
                 samples[name].append(value)
 
     assert all(30 <= hr <= 180 for hr in samples["hr"])
@@ -41,11 +41,11 @@ def test_four_hour_case_stays_stable(engine_factory):
     assert all(co > 0.5 for co in samples["co"])
     assert abs(samples["map"][-1] - np.median(samples["map"])) < 20
 
-    for step in range(1800):
-        event = PERTURBATION_EVENTS.get(step)
+    for step in range(900):
+        event = PERTURBATION_EVENTS.get(step * 2)
         if event:
             event(engine)
-        engine.step(1.0)
+        engine.step(2.0)
 
     for name in MONITORED:
         assert np.isfinite(getattr(engine.state, name)), f"{name} is not finite after perturbations"

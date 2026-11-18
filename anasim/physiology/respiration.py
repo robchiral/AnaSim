@@ -731,10 +731,7 @@ class RespiratoryModel:
             po2 = self._po2_from_content(
                 transport.oxygen[index], hb, p50, po2, solubility=self._o2_solubility_now
             )
-            updated = self._saturation_at_p50(po2, p50)
-            if iterate.converged and abs(updated - saturation) < 1e-10:
-                break
-            saturation = updated
+            saturation = self._saturation_at_p50(po2, p50)
         else:
             raise RuntimeError("Blood O2/CO2 equilibrium did not converge")
         self._blood_pressures[index], self._blood_ph[index] = pco2, ph
@@ -1227,6 +1224,7 @@ class RespiratoryModel:
             common_state = (
                 self._metabolic_compensation, self._central_drive_fraction,
                 self.vco2, self.rr_0, self.vt_0, self.vd_deadspace,
+                self.paco2_setpoint, self.hcvr_slope_baseline, self._awake_metabolism,
             )
             if long_opioid_keep < 1.0:
                 rate_key = (*common_state, baseline_gain, long_opioid_keep, long_opioid_rate)

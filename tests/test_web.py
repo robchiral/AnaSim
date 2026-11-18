@@ -282,6 +282,7 @@ def test_medication_acknowledgments_reflect_accepted_actions_and_survive_reload(
 
 def test_blood_gas_reports_values_at_the_draw_after_analysis_and_survives_reload():
     session = WebSession({**PATIENT, "mode": "steady_state"})
+    session.engine.config.dt = 0.25
     cmd(session, "run", running=True)
     run_seconds(session, 30, tick_s=10.0)
     state = session.engine.state
@@ -396,6 +397,7 @@ def test_recording_returns_the_session_as_csv_even_after_a_failure(tmp_path):
 def test_session_continues_through_arrest_until_circulation_cannot_return(monkeypatch):
     session = WebSession(PATIENT)
     engine = session.engine
+    engine.config.dt = 0.5
     steps_after_end = []
     step = engine.step
 
@@ -490,6 +492,7 @@ def test_resuscitation_commands_reach_the_engine_and_warn_on_awake_cardioversion
 
 def test_lipid_bolus_and_infusion_reach_the_engine_and_round_trip_through_controls():
     session = WebSession({**PATIENT, "mode": "awake"})
+    session.engine.config.dt = 0.5
     receipt = cmd(session, "fluid", kind="lipid", volume_ml=100)
     assert "20% lipid emulsion over 2.5 min" in receipt["fluid"]["text"]
     cmd(session, "lipid_rate", ml_min=17.5)

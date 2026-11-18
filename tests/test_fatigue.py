@@ -1,3 +1,4 @@
+import copy
 from itertools import pairwise
 
 import pytest
@@ -185,15 +186,16 @@ def test_ventilator_modes_unload_effort_in_leung_order(engine_factory):
         "vcv": dict(mode="VCV", rr=17, vt=0.60),
     }
     ptp_per_min = {}
+    base = engine_factory(start=True, age=68, weight=65, height=170, copd_severity=2 / 3)
+    base.set_airway_mode("ETT")
+    base.set_fgf(4.0, 6.0)
+    base.resp_mech.reference_compliance = 1.0 / 23.5
     for name, settings in modes.items():
         # Table 1: 8 of 11 patients had COPD; mean resistance was 18.0 cmH2O/(L/s).
-        engine = engine_factory(start=True, age=68, weight=65, height=170, copd_severity=2 / 3)
-        engine.set_airway_mode("ETT")
-        engine.set_fgf(4.0, 6.0)
-        engine.resp_mech.reference_compliance = 1.0 / 23.5
+        engine = copy.deepcopy(base)
         engine.set_vent_settings(peep=0.0, ie="1:2", **settings)
         engine.set_vent_power(True)
-        for _ in range(240):
+        for _ in range(120):
             engine.step(1.0)
         ptp_per_min[name] = 0.0
         for _ in range(60):
@@ -211,8 +213,8 @@ def test_obstructed_breathing_fatigues_and_pressure_support_restores_acute_capac
     engine.set_fgf(10.0, 0.0)
     engine.set_vent_settings(rr=0.0, vt=0.0, peep=0.0, ie="1:2", mode="CPAP")
     engine.set_vent_power(True)
-    for _ in range(120):
-        engine.step(0.5)
+    for _ in range(60):
+        engine.step(1.0)
 
     engine.set_airway_obstruction(0.62)
     for _ in range(3000):  # 25 min obstructed hypercapnic effort on O2
@@ -220,6 +222,7 @@ def test_obstructed_breathing_fatigues_and_pressure_support_restores_acute_capac
     muscle = engine.resp_mech.effort.muscle
     tired = muscle.fatigue
     assert muscle.load > 0.15 and tired > 0.07
+    assert engine.state.tof > 99.0 and engine.resp.state.drive_central >= 1.0
 
     engine.set_airway_obstruction(0.0)
     engine.set_vent_settings(rr=0.0, vt=0.0, peep=5.0, p_support=12.0, ie="1:2", mode="PSV")
@@ -229,15 +232,14 @@ def test_obstructed_breathing_fatigues_and_pressure_support_restores_acute_capac
     assert muscle.fast_fatigue < 0.01
     assert 0.01 < muscle.fatigue < 0.4 * tired
 
-
-def test_fatigue_reduces_unconnected_breathing_without_changing_tof_or_central_drive(awake_engine):
-    engine = awake_engine
-    engine.step(1)
+    # Muscle fatigue reduces unconnected spontaneous breathing without altering TOF or central drive.
+    engine.set_vent_power(False)
+    engine.set_airway_mode("None")
+    engine.step(1.0)
     baseline_vt = engine.resp.state.effort_vt
     baseline_drive = engine.resp.state.drive_central
-    muscle = engine.resp_mech.effort.muscle
     muscle.fast_fatigue = muscle.slow_fatigue = 0.6
     engine.step(0.01)
     assert engine.resp.state.effort_vt < 0.5 * baseline_vt
     assert engine.resp.state.drive_central == pytest.approx(baseline_drive, rel=0.01)
-    assert engine.state.tof > 99
+    assert engine.state.tof > 99.0

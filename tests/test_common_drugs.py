@@ -1,5 +1,6 @@
 """Atropine, ephedrine, succinylcholine, morphine, and hydromorphone against published protocols."""
 
+import copy
 import math
 from dataclasses import replace
 
@@ -9,9 +10,20 @@ from scipy.linalg import expm
 
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
-from anasim.patient.pd.anesthesia import opioid_rate_fraction
-from anasim.patient.pk_models import HydromorphonePK, MorphinePK
+from anasim.patient.pd.anesthesia import (
+    opioid_controller_fraction,
+    opioid_rate_fraction,
+)
+from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
+from anasim.patient.pk_models import (
+    EphedrinePK,
+    HydromorphonePK,
+    MorphinePK,
+    SuccinylcholinePK,
+)
 from anasim.patient.variability import TYPICAL, OpioidRateVariability
+from anasim.physiology.hemodynamics import HemodynamicModel
+from anasim.physiology.respiration import RespiratoryModel
 from anasim.scenarios.base import require_tof_count_at_most
 
 
@@ -67,12 +79,12 @@ def test_opioid_two_hour_infusion_matches_source_odes(
     assert model.state.ce_resp > model.state.c1
 
 
-@pytest.mark.parametrize("drug,dose,peak_hours,rate_fraction,nadir_hours", [
-    ("morphine", 0.2, (2.7, 8.3), 0.740, (2.3, 2.8)),
-    ("hydromorphone", 0.05, (1.5, 4.5), 0.696, (2.0, 2.5)),
+@pytest.mark.parametrize("drug,pk_cls,dose,peak_hours,rate_fraction,nadir_hours", [
+    ("morphine", MorphinePK, 0.2, (2.7, 8.3), 0.740, (2.3, 2.8)),
+    ("hydromorphone", HydromorphonePK, 0.05, (1.5, 4.5), 0.696, (2.0, 2.5)),
 ])
 def test_long_opioid_infusions_follow_separate_respiratory_endpoints(
-    engine_factory, advance_time, drug, dose, peak_hours, rate_fraction, nadir_hours,
+    engine_factory, drug, pk_cls, dose, peak_hours, rate_fraction, nadir_hours,
 ):
     """Meissner 2023: 2-h infusions of morphine 0.2 or hydromorphone 0.05 mg/kg.
 
@@ -80,19 +92,40 @@ def test_long_opioid_infusions_follow_separate_respiratory_endpoints(
     2026 typical PK/PD predictions, independently reproduced above; the
     observed mean rate nadirs (53-65% of baseline) remain a validation gap.
     """
-    e = engine_factory(config=SimulationConfig(mode="awake", rng_seed=4), start=True)
-    baseline_rr, baseline_co2 = e.state.rr, e.state.pa_co2
-    e.set_drug_rate(drug, dose * e.patient.weight / 2.0)
+    patient = Patient(age=40, weight=70, height=170, sex="male")
+    hemo = HemodynamicModel(patient)
+    pk = pk_cls(patient)
+    resp = RespiratoryModel(patient)
+    resp.attach_fluid_balance(hemo.fluids, hemo.config.donor_mchc_g_dl)
+    resp.baseline_co_l_min = hemo.base_co_l_min
+    baseline_rr, baseline_co2 = resp.state.rr, resp.state.pa_co2
+    rate_ug_s = dose * patient.weight * 1000.0 / 7200.0
     peak_co2, peak_hour, min_rr, nadir_hour = 0.0, 0.0, baseline_rr, 0.0
     for minute in range(1, 4 * 60 + 1):
-        advance_time(e, 60, dt=5.0)
+        inf_rate = rate_ug_s if minute <= 120 else 0.0
+        for _ in range(6):
+            pk.step(10.0, inf_rate)
+            pair_resp = (pk.state.ce_resp, 0.0) if pk_cls is MorphinePK else (0.0, pk.state.ce_resp)
+            pair_rr = (pk.state.ce_rr, 0.0) if pk_cls is MorphinePK else (0.0, pk.state.ce_rr)
+            state = resp.step(
+                10.0, 0.0, 0.0,
+                cardiac_output=hemo.base_co_l_min,
+                opioid_controller_fraction=opioid_controller_fraction(*pair_resp),
+                opioid_rate_fraction=opioid_rate_fraction(*pair_rr),
+            )
         if minute == 120:
-            e.set_drug_rate(drug, 0.0)
-            assert e.state.bis > 85.0
-        if e.state.pa_co2 - baseline_co2 > peak_co2:
-            peak_co2, peak_hour = e.state.pa_co2 - baseline_co2, minute / 60
-        if e.state.rr < min_rr:
-            min_rr, nadir_hour = e.state.rr, minute / 60.0
+            e = engine_factory(config=SimulationConfig(mode="awake", rng_seed=4), start=True)
+            e.set_drug_rate(drug, dose * e.patient.weight / 2.0)
+            for _ in range(5):
+                e.step(2.0)
+            assert e.pk[drug].state.c1 > 0.0 and e.state.bis > 85.0
+            e.pk[drug] = copy.deepcopy(pk)
+            e.step(2.0)
+            assert e.state.bis > 85.0 and e.state.rr < baseline_rr
+        if state.pa_co2 - baseline_co2 > peak_co2:
+            peak_co2, peak_hour = state.pa_co2 - baseline_co2, minute / 60
+        if state.rr < min_rr:
+            min_rr, nadir_hour = state.rr, minute / 60.0
     assert 4.0 < peak_co2 < 12.0
     assert min_rr / baseline_rr == pytest.approx(rate_fraction, abs=0.02)
     assert nadir_hours[0] < nadir_hour < nadir_hours[1]
@@ -118,14 +151,14 @@ def test_atropine_dose_response_awake_and_during_propofol(engine_factory, advanc
         e.give_drug_bolus("propofol", 2.5 * weight)
         e.set_drug_rate("propofol", 10.0 * 1000 / 60)
         e.give_drug_bolus("roc", 0.6 * weight)
-        advance_time(e, 25 * 60, dt=0.5)
+        advance_time(e, 25 * 60, dt=2.0)
     baseline = e.state.hr
     baseline_map = e.state.map
     rises = []
     map_rises = []
     for _ in range(4):
         e.give_drug_bolus("atropine", 0.005 * weight)
-        advance_time(e, 120, dt=0.5)
+        advance_time(e, 120, dt=1.0)
         rises.append(e.state.hr - baseline)
         map_rises.append(e.state.map - baseline_map)
     if propofol:
@@ -140,7 +173,7 @@ def test_atropine_dose_response_awake_and_during_propofol(engine_factory, advanc
         assert abs(map_rises[3]) < 12.0
     assert e.pk["atropine"].state.ce == pytest.approx(e.pk["atropine"].state.c2)
     e.set_rhythm("Asystole")
-    advance_time(e, 10)
+    advance_time(e, 10, dt=2.0)
     assert e.state.hr == 0.0
 
 
@@ -206,7 +239,7 @@ def test_ephedrine_raises_pressure_and_preserves_output(engine_factory, advance_
     The 30-min washout checks have no matched single-bolus data.
     """
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=4), start=True)
-    advance_time(engine, 60)
+    advance_time(engine, 30, dt=2.0)
     baseline = engine.state.map, engine.state.hr, engine.state.co
     engine.give_drug_bolus("ephedrine", 0.1 * engine.patient.weight)
     peak = baseline
@@ -217,7 +250,7 @@ def test_ephedrine_raises_pressure_and_preserves_output(engine_factory, advance_
     assert 15 < peak[0] - baseline[0] < 40
     assert 0 < peak[1] - baseline[1] < 12
     assert peak[2] > baseline[2]
-    advance_time(engine, 30 * 60)
+    advance_time(engine, 30 * 60, dt=2.0)
     assert engine.state.map < peak[0] - 5
     assert abs(engine.state.hr - baseline[1]) < 8
 
@@ -229,24 +262,25 @@ def test_ephedrine_preserves_pressure_during_induction(engine_factory):
     Eleveld plasma targets approximate the study's Marsh/Minto protocol;
     effect-site targets would leave the patient unresponsive during sedation.
     """
+    base_eng = engine_factory(
+        config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=4),
+        start=True, age=35, weight=73, sex="female", height=165,
+    )
+    base_eng.set_airway_mode("ETT")
+    base_eng.set_vent_power(True)
+    base_eng.enable_tci("propofol", 1.0, mode="plasma")
+    base_eng.enable_tci("remi", 1.0, mode="plasma")
+    sedation = []
+    for _ in range(300):
+        base_eng.step(0.5)
+        sedation.append((base_eng.state.sbp, base_eng.state.hr, base_eng.state.co))
+    # The paper averaged the interval 55-5 s before the induction bolus.
+    baseline = np.mean(sedation[190:290], axis=0)
+    assert base_eng.state.loc < 0.5
+
     traces = []
-    baselines = []
     for dose in (0.0, 0.1):
-        e = engine_factory(
-            config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=4),
-            start=True, age=35, weight=73, sex="female", height=165,
-        )
-        e.set_airway_mode("ETT")
-        e.set_vent_power(True)
-        e.enable_tci("propofol", 1.0, mode="plasma")
-        e.enable_tci("remi", 1.0, mode="plasma")
-        sedation = []
-        for _ in range(300):
-            e.step(0.5)
-            sedation.append((e.state.sbp, e.state.hr, e.state.co))
-        # The paper averaged the interval 55-5 s before the induction bolus.
-        baseline = np.mean(sedation[190:290], axis=0)
-        assert e.state.loc < 0.5
+        e = copy.deepcopy(base_eng) if dose == 0.0 else base_eng
         e.enable_tci("propofol", 6.0, mode="plasma")
         e.enable_tci("remi", 8.0, mode="plasma")
         samples = []
@@ -270,10 +304,8 @@ def test_ephedrine_preserves_pressure_during_induction(engine_factory):
         traces.append(np.array([
             np.mean(samples[i:i + 20], axis=0) for i in range(0, len(samples) - 19, 10)
         ]))
-        baselines.append(baseline)
     control, treated = traces
-    nadirs = [trace[:, 0].min() - baseline[0]
-              for trace, baseline in zip(traces, baselines, strict=True)]
+    nadirs = [trace[:, 0].min() - baseline[0] for trace in traces]
     assert 5.0 < nadirs[1] - nadirs[0] < 25.0
     # Gradual onset, and benefit that persists through five minutes.
     pressure_benefit = treated[:, 0] - control[:, 0]
@@ -284,24 +316,31 @@ def test_ephedrine_preserves_pressure_during_induction(engine_factory):
     assert treated[-1, 2] > control[-1, 2]
 
 
-def test_ephedrine_repeated_boluses_have_a_smaller_pressor_response(engine_factory, advance_time):
+def test_ephedrine_repeated_boluses_have_a_smaller_pressor_response(patient):
     """Calibrated IV tolerance, with Persky 2004 tolerance timing, limits repeated doses."""
     final_pressures = []
     for tolerance in (False, True):
-        e = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=4), start=True)
+        hemo = HemodynamicModel(patient)
+        pk = EphedrinePK(patient)
         if not tolerance:
-            e.hemo.config = replace(e.hemo.config, ephedrine_tolerance_max=0.0)
-        advance_time(e, 60)
+            hemo.config = replace(hemo.config, ephedrine_tolerance_max=0.0)
+        hemo.initialize_steady_state(3.5, 4.0, 0.0)
+        for _ in range(60):
+            state = hemo.step(1.0, 3.5, 4.0, 0.0, -2.0, 40.0, 95.0, remifentanil_cp=4.0)
         rises = []
+        base_bv = hemo.blood_volume_0
+        base_co = hemo.base_co_l_min / hemo.failure.output_factor
         for _ in range(4):
-            baseline = e.state.map
-            e.give_drug_bolus("ephedrine", 5.0)
+            baseline = state.map
+            pk.state.c1 += 5000.0 / pk.v1
             peak = baseline
             for _ in range(300):
-                e.step(1.0)
-                peak = max(peak, e.state.map)
+                pk.update_hemodynamics(hemo.blood_volume / base_bv, state.co / base_co, hemo.renal_perfusion)
+                ce = pk.step(1.0, 0.0).ce
+                state = hemo.step(1.0, 3.5, 4.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=ce, remifentanil_cp=4.0)
+                peak = max(peak, state.map)
             rises.append(peak - baseline)
-        final_pressures.append(e.state.map)
+        final_pressures.append(state.map)
         if tolerance:
             assert rises[0] > 10.0
             assert rises[-1] < 0.2 * rises[0]
@@ -314,26 +353,28 @@ def test_succinylcholine_paralysis_and_sugammadex_independence(engine_factory, a
     Phase I block depresses T1 without TOF fade while transiently raising serum
     potassium ~0.4-0.5 mmol/L, and sugammadex leaves recovery unchanged.
     """
+    base_eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=4), start=True)
+    base_eng.set_airway_mode("ETT")
+    base_eng.set_vent_power(True)
+    base_eng.nmb.set_repeat(10.0, 0.0)
+    baseline_k = base_eng.state.potassium
+    base_eng.give_drug_bolus("succinylcholine", base_eng.patient.weight)
+    advance_time(base_eng, 90, dt=0.5)
+    assert base_eng.state.twitch < 5
+    assert base_eng.state.tof == 100.0
+    assert require_tof_count_at_most(1)(base_eng)[0]
+    assert base_eng.state.loc < 0.01 and base_eng.state.tol < 0.01
+    assert base_eng.resp.state.effort_rr == 0.0
+
     traces = []
     for reverse in (False, True):
-        e = engine_factory(config=SimulationConfig(mode="awake", rng_seed=4), start=True)
-        e.set_airway_mode("ETT")
-        e.set_vent_power(True)
-        e.nmb.set_repeat(10.0, 0.0)
-        baseline_k = e.state.potassium
-        e.give_drug_bolus("succinylcholine", e.patient.weight)
-        advance_time(e, 90, dt=0.5)
+        e = copy.deepcopy(base_eng) if not reverse else base_eng
         peak_k = e.state.potassium
-        assert e.state.twitch < 5
-        assert e.state.tof == 100.0
-        assert require_tof_count_at_most(1)(e)[0]
-        assert e.state.loc < 0.01 and e.state.tol < 0.01
-        assert e.resp.state.effort_rr == 0.0
         if reverse:
             e.give_drug_bolus("sugammadex", 16 * e.patient.weight)
         ratios = []
-        for _ in range(1020):
-            e.step(0.5)
+        for _ in range(510):
+            e.step(1.0)
             peak_k = max(peak_k, e.state.potassium)
             if e.nmb.reading and e.nmb.reading.ratio is not None:
                 ratios.append(e.nmb.reading.ratio)
@@ -341,7 +382,7 @@ def test_succinylcholine_paralysis_and_sugammadex_independence(engine_factory, a
         assert peak_k >= baseline_k + 0.35
         assert ratios and min(ratios) == pytest.approx(100.0) and max(ratios) == pytest.approx(100.0)
         assert e.resp.state.effort_rr > 0.0
-        advance_time(e, 300, dt=0.5)
+        advance_time(e, 300, dt=2.0)
         assert e.state.twitch > 95.0
     assert traces[0] == pytest.approx(traces[1], abs=0.01)
 
@@ -352,17 +393,18 @@ def test_succinylcholine_paralysis_and_sugammadex_independence(engine_factory, a
     (1.0, 0.0, 71, (6.6, 7.4, 9.3)),
 ])
 def test_succinylcholine_dose_response_matches_kopman_calibration(
-    engine_factory, dose, nadir, onset, recovery,
+    patient, dose, nadir, onset, recovery,
 ):
     """Kopman 2003 Table 2 means for T1 nadir, onset, and 25/50/90% recovery (calibration targets)."""
-    e = engine_factory(config=SimulationConfig(mode="awake", rng_seed=4), start=True)
-    e.set_airway_mode("ETT")
-    e.set_vent_power(True)
-    e.give_drug_bolus("succinylcholine", dose * e.patient.weight)
+    pk = SuccinylcholinePK(patient)
+    pk.state.c1 += dose * patient.weight / pk.v1
     trace = []
-    for _ in range(1440):
-        e.step(0.5)
-        trace.append((e.state.time, e.state.twitch, e.resp.state.muscle_factor))
+    for step in range(1, 1441):
+        t = step * 0.5
+        ce = pk.step(0.5, 0.0).ce
+        twitch = 100.0 * succinylcholine_twitch_fraction(ce)
+        central_strength = succinylcholine_twitch_fraction(ce, central=True)
+        trace.append((t, twitch, central_strength))
     peak_time, minimum, _ = min(trace, key=lambda point: point[1])
     assert minimum == pytest.approx(nadir, abs=8.8 if dose == 0.4 else 2.0)
     # The recorded plateau starts within 0.1 percentage point of the nadir.

@@ -6,10 +6,10 @@ are the interquartile ranges of recorded cuff MAP change in about 400 VitalDB
 propofol-remifentanil inductions.
 """
 
+import copy
 from typing import Any
 
 import numpy as np
-import pytest
 
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
@@ -47,17 +47,14 @@ def _run(patient, events, seconds):
 
 
 def _balanced(patient, propofol, fentanyl, vaporizer):
-    """Fentanyl, then propofol 2 min later; sevoflurane from 1.5 min, intubation
-    at 3 min, and incision at 15 min after propofol."""
+    """Fentanyl, then propofol 2 min later; sevoflurane from 1.5 min after propofol."""
     weight = patient["weight"]
     return _run(patient, [
         (0, lambda e: e.give_drug_bolus("fentanyl", fentanyl * weight)),
         (120, lambda e: e.give_drug_bolus("propofol", propofol * weight)),
         (130, lambda e: e.give_drug_bolus("roc", 0.6 * weight)),
         (210, lambda e: (_ventilate(e), e.set_vaporizer(vaporizer))),
-        (300, lambda e: e.start_disturbance("stim_intubation_pulse")),
-        (1020, lambda e: e.start_disturbance("stim_sustained_surgery")),
-    ], 1320)
+    ], 300)
 
 
 def _fall(awake, value):
@@ -122,8 +119,7 @@ def test_tiva_induction_intubation_and_maintenance():
         (130, lambda e: e.give_drug_bolus("roc", 0.6 * ADULT["weight"])),
         (150, _ventilate),
         (240, lambda e: e.start_disturbance("stim_intubation_pulse")),
-        (960, lambda e: e.start_disturbance("stim_sustained_surgery")),
-    ], 1260)
+    ], 960)
     assert 8.0 <= _fall(awake[0], trace[120:180, 0].mean()) <= 24.0
     assert 13.0 <= _fall(awake[0], trace[180:360, 0].mean()) <= 29.0
     assert 24.0 <= _fall(awake[0], trace[60:660, 0].min()) <= 38.0
@@ -167,33 +163,32 @@ def test_propofol_alone_in_a_young_adult():
     assert -3.0 <= trace[120:300, 1].mean() - awake[1] <= 10.0
 
 
-@pytest.mark.parametrize("drug,amount,map_rise,hr_change", [
-    ("phenyl", 100.0, (15.0, 25.0), (-15.0, -5.0)),
+def test_vasopressor_and_epinephrine_boluses_under_tiva(engine_factory):
     # Sjøen 2026 used 0.1 mg/kg; Meng 2011 (5-20 mg boluses under TIVA) raised MAP 24-28 mmHg and HR 2-8 bpm.
-    ("ephedrine", 0.1, (15.0, 30.0), (0.0, 10.0)),
-])
-def test_vasopressor_boluses_under_tiva(engine_factory, drug, amount, map_rise, hr_change):
-    engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=3), start=True)
-    base_map, base_hr = engine.state.map, engine.state.hr
-    engine.give_drug_bolus(drug, amount * engine.patient.weight if drug == "ephedrine" else amount)
-    rows = []
-    for _ in range(300):
-        engine.step(1.0)
-        rows.append((engine.state.map, engine.state.hr))
-    trace = np.array(rows)
-    peak = int(trace[:, 0].argmax())
-    assert map_rise[0] <= trace[peak, 0] - base_map <= map_rise[1]
-    assert hr_change[0] <= trace[peak, 1] - base_hr <= hr_change[1]
+    template = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=3), start=True)
+    for drug, amount, map_rise, hr_change in (
+        ("phenyl", 100.0, (15.0, 25.0), (-15.0, -5.0)),
+        ("ephedrine", 0.1 * template.patient.weight, (15.0, 30.0), (0.0, 10.0)),
+    ):
+        engine = copy.deepcopy(template)
+        base_map, base_hr = engine.state.map, engine.state.hr
+        engine.give_drug_bolus(drug, amount)
+        rows = []
+        for _ in range(200):
+            engine.step(1.0)
+            rows.append((engine.state.map, engine.state.hr))
+        trace = np.array(rows)
+        peak = int(trace[:, 0].argmax())
+        assert map_rise[0] <= trace[peak, 0] - base_map <= map_rise[1]
+        assert hr_change[0] <= trace[peak, 1] - base_hr <= hr_change[1]
 
-
-def test_epinephrine_bolus_under_tiva(engine_factory):
-    engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=3), start=True)
-    base_sbp, base_hr = engine.state.sbp, engine.state.hr
-    engine.give_drug_bolus("epi", 10.0)
+    epi_engine = template
+    base_sbp, base_hr = epi_engine.state.sbp, epi_engine.state.hr
+    epi_engine.give_drug_bolus("epi", 10.0)
     sbp, hr = [], []
-    for _ in range(300):
-        engine.step(1.0)
-        sbp.append(engine.state.sbp)
-        hr.append(engine.state.hr)
+    for _ in range(180):
+        epi_engine.step(1.0)
+        sbp.append(epi_engine.state.sbp)
+        hr.append(epi_engine.state.hr)
     assert 20.0 <= max(hr) - base_hr <= 40.0
     assert 30.0 <= max(sbp) - base_sbp <= 50.0

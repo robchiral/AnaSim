@@ -281,6 +281,7 @@ class HemodynamicModel:
             dbp_mmhg=dbp_mmhg,
             baseline_hb=self.baseline_hb,
         )
+        self.invalidate_state_cache()
 
     def invalidate_state_cache(self) -> None:
         """Drop the cached state after an external change."""
@@ -1997,10 +1998,15 @@ class HemodynamicModel:
         self._non_phenyl_sv_factor = nore_sv_factor
         self.delta_tpr_vasopressors = self.base_tpr * (nore_svr_factor - 1.0)
 
+        self._cached_state = None
         state = self.step(
             0.0, cp_prop, cp_remi, ce_nore, pit, self._paco2_set, 95.0, 0, 0, 0,
             mac_sevo=mac_sevo, remifentanil_cp=remifentanil_cp,
             temp_c=base_temp, peep_cmH2O=peep_cmH2O, ph=self.patient.pregnancy.ph,
+        )
+        map_denom = max(1e-3, self.config.renal_map_norm - self.config.renal_map_min)
+        self.renal_perfusion = clamp01((state.perfusion_map - self.config.renal_map_min) / map_denom) * (
+            1.0 - 0.12 * clamp01(self._sepsis_severity)
         )
         self._baro_setpoint = state.map
         return state

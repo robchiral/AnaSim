@@ -122,7 +122,7 @@ def test_propofol_bolus_clearance_cap_and_hypovolemic_pressor_response(patient):
 
 
 def test_zero_flow_arrest_halts_endogenous_norepinephrine_spillover(patient):
-    """Zero-flow cardiac arrest halts basal sympathetic spillover into central plasma."""
+    """Zero-flow cardiac arrest halts basal sympathetic spillover, and reset restores baseline."""
     pk = NorepinephrinePK(patient)
     c1_0, ce_0 = pk.state.c1, pk.state.ce
     pk.update_hemodynamics(1.0, 0.0, 0.0)
@@ -130,3 +130,8 @@ def test_zero_flow_arrest_halts_endogenous_norepinephrine_spillover(patient):
         pk.step(1.0, 0.0)
     assert pk.state.c1 == pytest.approx(c1_0, abs=1e-12)
     assert pk.state.ce == pytest.approx(ce_0, abs=1e-12)
+
+    pk.state.c1 = 40.0
+    pk.reset()
+    assert pk.state.c1 == pytest.approx(c1_0)
+    assert pk.circulation == 1.0 and pk.cl1_scale == 1.0

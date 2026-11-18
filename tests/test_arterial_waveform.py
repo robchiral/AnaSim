@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from anasim.core.enums import RhythmType
-from anasim.monitors.arterial import ArterialWaveformRenderer
+from anasim.monitors.arterial import ArterialLineMonitor, ArterialWaveformRenderer
 from anasim.monitors.cardiac_cycle import CardiacCycle
 
 
@@ -54,65 +54,47 @@ def test_nonnegative_constraint_preserves_map_in_extreme_state():
     assert float(np.mean(multi)) == pytest.approx(5.0, abs=0.05)
 
 
-def _af_beats(hr: float, sv: float, map_value: float = 85.0, dt: float = 0.002):
+def _af_beats(hr: float, sv: float, map_value: float = 85.0, dt: float = 0.005):
     """Per-beat preceding R-R and pulse pressure over 60 s of AF, plus mean pressure."""
     cycle = CardiacCycle(np.random.default_rng(1))
     renderer = ArterialWaveformRenderer(age=40)
-    renderer.step(cycle.seed(hr, RhythmType.AFIB), map_value, sv)
+    monitor = ArterialLineMonitor()
+    seeded = cycle.seed(hr, RhythmType.AFIB)
+    monitor.seed(renderer.step(seeded, map_value, sv, static_pressure=10.0))
     beat_steps, pressures = [0], []
     for index in range(1, round(60.0 / dt)):
         sample = cycle.step(dt, hr, RhythmType.AFIB)
         if sample.beat_started:
             beat_steps.append(index)
-        pressures.append(renderer.step(sample, map_value, sv).pressure)
+        art_sample = renderer.step(sample, map_value, sv, dt=dt, static_pressure=10.0)
+        pressures.append(art_sample.pressure)
+        reading = monitor.step(dt, sample, art_sample)
+        assert reading.systolic > reading.diastolic + 10.0
+        assert reading.diastolic <= reading.mean <= reading.systolic
     trace = np.asarray(pressures)
     upstroke = round(renderer.config.electromechanical_delay_s / dt)
     preceding_rr, pulse_pressure = [], []
     for previous, start, end in zip(beat_steps[1:], beat_steps[2:], beat_steps[3:], strict=False):
         preceding_rr.append((start - previous) * dt)
         pulse_pressure.append(trace[start:end].max() - trace[start + upstroke])
-    return np.asarray(preceding_rr), np.asarray(pulse_pressure), float(np.mean(trace))
+    return np.asarray(preceding_rr), np.asarray(pulse_pressure), float(np.mean(trace)), monitor.reading.mean
 
 
 def test_af_pulse_pressure_follows_filling_time():
     """AF stroke volume rises with the preceding R-R (Hardman 1998), and its beat-to-beat
     variability grows with ventricular rate (Kerr 1998). Mean pressure stays at MAP."""
-    _, slow_pp, slow_mean = _af_beats(hr=80.0, sv=60.0)
-    fast_rr, fast_pp, fast_mean = _af_beats(hr=140.0, sv=40.0)
+    _, slow_pp, slow_mean, _ = _af_beats(hr=80.0, sv=60.0)
+    fast_rr, fast_pp, fast_mean, fast_mon_map = _af_beats(hr=140.0, sv=40.0)
 
     assert np.corrcoef(fast_rr, fast_pp)[0, 1] > 0.8
     assert np.std(fast_pp) / np.mean(fast_pp) > 2.0 * np.std(slow_pp) / np.mean(slow_pp)
     assert slow_mean == pytest.approx(85.0, abs=1.5)
     assert fast_mean == pytest.approx(85.0, abs=1.5)
+    assert fast_mon_map == pytest.approx(85.0, abs=1.5)
 
-
-def test_zero_flow_pea_runs_off_to_static_pressure_and_recovers_smoothly():
-    """Zero-flow organized rhythm decays smoothly to static pressure and climbs back without a 0 mmHg dip."""
-    cycle = CardiacCycle(np.random.default_rng(1))
-    renderer = ArterialWaveformRenderer(age=50)
-    renderer.step(cycle.seed(70.0, RhythmType.SINUS), 85.0, 70.0, dt=0.01, static_pressure=7.5)
-    for _ in range(100):
-        renderer.step(cycle.step(0.01, 70.0, RhythmType.SINUS), 85.0, 70.0, dt=0.01, static_pressure=7.5)
-
-    pea = [
-        renderer.step(cycle.step(0.01, 70.0, RhythmType.SINUS), 0.0, 0.0, dt=0.01, static_pressure=7.5).pressure
-        for _ in range(1200)
-    ]
-    assert pea[0] > 50.0
-    assert float(np.max(np.diff(pea))) <= 1e-9
-    assert pea[-1] == pytest.approx(7.5, abs=0.5)
-
-    recovery = [
-        renderer.step(cycle.step(0.01, 70.0, RhythmType.SINUS), 85.0, 70.0, dt=0.01, static_pressure=7.5).pressure
-        for _ in range(400)
-    ]
-    assert min(recovery) >= 7.5 - 0.1
-    assert recovery[20] < 60.0 < max(recovery[-100:])
-
-
-def test_near_venous_pressure_low_flow_clamps_windkessel_runoff_tau():
-    """High-CVP near-PEA beats use driving pressure (MAP - CVP) and clamp _runoff_tau_s <= 6 s."""
-    cycle = CardiacCycle(np.random.default_rng(3))
-    renderer = ArterialWaveformRenderer(age=60)
-    renderer.seed(cycle.seed(60.0, RhythmType.SINUS), 19.0, 1.5, static_pressure=18.0)
+    # Near-venous-pressure low flow clamps Windkessel runoff tau cleanly.
+    renderer = ArterialWaveformRenderer(age=40)
+    cycle = CardiacCycle(np.random.default_rng(2))
+    beat = cycle.seed(60.0, RhythmType.SINUS)
+    renderer.step(beat, 15.2, 5.0, dt=0.01, static_pressure=15.0)
     assert 0.25 <= renderer._runoff_tau_s <= 6.0

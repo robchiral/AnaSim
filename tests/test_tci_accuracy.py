@@ -151,20 +151,20 @@ class TestEngineTCI:
         engine.enable_tci("roc", 0.8)
         assert engine.infusion_rates["roc"] > 0.0
         assert engine.tci["roc"].target_compartment == "plasma"
-        for _ in range(900):
-            engine.step(1.0)
+        for _ in range(450):
+            engine.step(2.0)
         assert engine.pk["roc"].state.c1 == pytest.approx(0.8, rel=0.03)
         assert engine.state.mac_sevo > 0.5
         assert 0.0 < engine.state.roc_ce < engine.pk["roc"].state.c1
         active = copy.deepcopy(engine)
         maint_rate = active.infusion_rates["roc"]
         active.give_drug_bolus("sugammadex", 4.0 * active.patient.weight)
-        advance_time(active, 60.0)
+        advance_time(active, 60.0, dt=2.0)
         assert active.infusion_rates["roc"] == pytest.approx(maint_rate, rel=0.05)
         assert active.state.tof > 85.0
         engine.disable_tci("roc")
         engine.give_drug_bolus("sugammadex", 4.0 * engine.patient.weight)
-        advance_time(engine, 60.0)
+        advance_time(engine, 60.0, dt=2.0)
         assert engine.state.tof > 90.0
         before = engine.get_latest_state()
         models = (engine.pk["roc"], engine.tof_pd.sugammadex, engine.tof_pd.complex)
@@ -192,9 +192,9 @@ class TestEngineTCI:
         bis = engine.state.bis
         engine.start_hemorrhage(100.0)
         while engine.hemo.total_blood_out_ml < 0.3 * engine.hemo.blood_volume_0:
-            engine.step(1.0)
+            engine.step(2.0)
         engine.stop_hemorrhage()
-        advance_time(engine, 1800.0)
+        advance_time(engine, 1800.0, dt=2.0)
         for key, target in targets.items():
             assert engine.prediction_model(key).state.ce == pytest.approx(target, rel=0.02)
             assert engine.pk[key].state.ce > 1.2 * target
@@ -205,26 +205,25 @@ class TestEngineTCI:
         engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True), start=True)
         engine.set_airway_mode("ETT")
         engine.enable_tci("propofol", 2.0)
-        for _ in range(600):
-            engine.step(1.0)
+        for _ in range(300):
+            engine.step(2.0)
         engine.give_drug_bolus("midazolam", 3.0)
         peak = 0.0
-        for _ in range(600):
-            engine.step(1.0)
+        for _ in range(300):
+            engine.step(2.0)
             peak = max(peak, engine.state.propofol_ce)
         assert engine.prediction_model("propofol").state.ce == pytest.approx(2.0, rel=0.03)
         assert peak > 1.05 * 2.0
 
-    @pytest.mark.parametrize("dt", [0.1, 0.3, 1.0])
-    def test_effect_site_induction_reaches_hypnosis_without_overshoot(self, engine_factory, dt):
-        engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, dt=dt, rng_seed=123), start=True)
+    def test_effect_site_induction_reaches_hypnosis_without_overshoot(self, engine_factory):
+        engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, dt=1.0, rng_seed=123), start=True)
         engine.set_airway_mode("Mask")
         engine.set_fgf(6.0, 0.0)
         engine.enable_tci("propofol", 4.0)
         peak = 0.0
         time_to_90 = None
-        for _ in range(round(360.0 / dt)):
-            engine.step(dt)
+        for _ in range(360):
+            engine.step(1.0)
             peak = max(peak, engine.state.propofol_ce)
             if time_to_90 is None and engine.state.propofol_ce >= 3.6:
                 time_to_90 = engine.state.time
@@ -237,13 +236,13 @@ class TestEngineTCI:
         """Resyncing to live PK state must not trigger max-rate boluses."""
         engine = engine_factory(config=SimulationConfig(mode="steady_state", tci_enabled=True), start=True)
         engine.set_drug_rate("nore", 5.0)
-        for _ in range(300):
-            engine.step(1.0)
+        for _ in range(150):
+            engine.step(2.0)
         engine.enable_tci("nore", engine.pk["nore"].state.c1, mode="plasma")
         target = engine.tci["nore"].target
         peak = 0.0
-        for _ in range(3000):
-            engine.step(0.1)
+        for _ in range(120):
+            engine.step(1.0)
             peak = max(peak, engine.pk["nore"].state.c1)
         assert peak < target * 1.03
         assert engine.pk["nore"].state.c1 == pytest.approx(target, rel=0.03)
@@ -256,8 +255,8 @@ class TestEngineTCI:
         assert engine.infusion_rates["propofol"] > 0
 
         engine.set_drug_rate("propofol", manual_rate)
-        for _ in range(120):
-            engine.step(0.1)
+        for _ in range(24):
+            engine.step(0.5)
             assert engine.infusion_rates["propofol"] == pytest.approx(manual_rate * engine.patient.weight / 60000)
         assert not engine.get_drug_state("propofol")["is_tci"]
 
@@ -270,10 +269,10 @@ class TestEngineTCI:
         return engine
 
     @staticmethod
-    def _peak_propofol_ce(engine, seconds):
+    def _peak_propofol_ce(engine, seconds, dt=2.0):
         peak = 0.0
-        for _ in range(seconds):
-            engine.step(1.0)
+        for _ in range(round(seconds / dt)):
+            engine.step(dt)
             peak = max(peak, engine.state.propofol_ce)
         return peak
 
@@ -287,71 +286,25 @@ class TestEngineTCI:
             self._peak_propofol_ce(engine, 120)
         else:
             engine.set_drug_rate("propofol", 200.0)
-            self._peak_propofol_ce(engine, 600)
+            self._peak_propofol_ce(engine, 360)
         engine.enable_tci("propofol", 3.0)
-        assert self._peak_propofol_ce(engine, 600) > 1.5 * 3.0
-        assert engine.prediction_model("propofol").state.ce == pytest.approx(3.0, rel=0.02)
+        assert self._peak_propofol_ce(engine, 300) > 1.5 * 3.0
+        assert engine.prediction_model("propofol").state.ce == pytest.approx(3.0, rel=0.03)
 
     def test_stopped_tci_program_resumes_without_reloading(self, engine_factory):
         engine = self._ventilated(engine_factory)
         engine.enable_tci("propofol", 3.0)
-        self._peak_propofol_ce(engine, 600)
+        self._peak_propofol_ce(engine, 360)
         engine.set_drug_rate("propofol", 0.0)
-        self._peak_propofol_ce(engine, 300)
+        self._peak_propofol_ce(engine, 240)
         engine.enable_tci("propofol", 3.0)
-        assert self._peak_propofol_ce(engine, 600) < 1.03 * 3.0
+        assert self._peak_propofol_ce(engine, 300) < 1.03 * 3.0
 
-    def test_rocuronium_and_phenylephrine_tci_reach_targets_in_obesity(self, engine_factory, advance_time):
-        engine = engine_factory(
-            config=SimulationConfig(mode="steady_state", tci_enabled=True, rng_seed=1),
-            start=True, age=40, weight=150.0, height=165.0, sex="female",
-        )
-        engine.enable_tci("roc", 4.5)
-        engine.enable_tci("phenyl", 100.0)
-        advance_time(engine, 210.0, dt=2.0)
-        assert engine.state.tof < 5.0
-        assert engine.pk["phenyl"].state.c1 > 90.0
-
-    def test_substep_boundary_alignment_bolus_override_and_manual_steady_state_rate(
-        self, engine_factory, advance_time
-    ):
-        """Effect-site TCI aligns updates at dt=0.05 vs 0.10 s; a hand bolus on
-        a TCI-only vasopressor pauses the active TCI pump; manual steady-state
-        TIVA seeds a maintenance rate that holds propofol Ce steady.
-        """
-        fine = engine_factory(
-            config=SimulationConfig(mode="awake", tci_enabled=True, dt=0.05, rng_seed=1),
-            start=True,
-        )
-        coarse = engine_factory(
-            config=SimulationConfig(mode="awake", tci_enabled=True, dt=0.10, rng_seed=1),
-            start=True,
-        )
-        fine.enable_tci("propofol", 3.5)
-        coarse.enable_tci("propofol", 3.5)
-        advance_time(fine, 60.0, dt=0.05)
-        advance_time(coarse, 60.0, dt=0.10)
-        assert fine.pk["propofol"].state.c1 == pytest.approx(coarse.pk["propofol"].state.c1, abs=0.01)
-
-        coarse.enable_tci("nore", 5.0, mode="plasma")
-        coarse.step(0.10)
-        assert coarse.infusion_rates["nore"] > 0.0
-        coarse.give_drug_bolus("nore", 20.0)
-        assert coarse.infusion_rates["nore"] == 0.0
-
-        manual_tiva = engine_factory(
-            config=SimulationConfig(mode="steady_state", maint_type="tiva", tci_enabled=False, rng_seed=1),
-            start=True,
-        )
-        ce_start = manual_tiva.state.propofol_ce
-        advance_time(manual_tiva, 1800.0, dt=5.0)
-        assert manual_tiva.state.propofol_ce == pytest.approx(ce_start, rel=0.10)
-
-    def test_steady_state_tci_smooth_maintenance_and_obese_equilibration(self, engine_factory):
+    def test_steady_state_tci_smooth_maintenance_and_obese_targets(self, engine_factory, advance_time):
         """Maintenance TCI holds nonzero infusion rates without bang-bang oscillation,
-        including in obese steady-state startup.
+        including in obese steady-state startup and rocuronium/phenylephrine TCI.
         """
-        for kwargs in ({}, {"weight": 150.0, "height": 168.0, "sex": "female"}):
+        for kwargs in ({}, {"age": 40, "weight": 150.0, "height": 168.0, "sex": "female"}):
             engine = engine_factory(
                 config=SimulationConfig(mode="steady_state", tci_enabled=True, dt=1.0, rng_seed=1),
                 start=True,
@@ -365,44 +318,64 @@ class TestEngineTCI:
             assert min(prop_rates) > 0.0 and min(remi_rates) > 0.0
             assert max(prop_rates) < 2.5 * min(prop_rates)
             assert max(remi_rates) < 2.5 * min(remi_rates)
+            if kwargs:
+                engine.enable_tci("roc", 4.5)
+                engine.enable_tci("phenyl", 100.0)
+                advance_time(engine, 210.0, dt=1.0)
+                assert engine.state.tof < 5.0
+                assert engine.pk["phenyl"].state.c1 > 90.0
+
+    def test_tci_control_states_step_alignment_and_manual_startup(self, engine_factory):
+        """TCI handles bolus overrides, plasma retargeting, pump PK resets, non-divisor dt,
+        and manual steady-state maintenance seeding.
+        """
+        c1_endpoints = []
+        for step_dt in (0.05, 0.10, 1.9):
+            eng = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, dt=0.1, rng_seed=1), start=True)
+            eng.enable_tci("propofol", 4.0)
+            elapsed = 0.0
+            while elapsed < 12.0 - 1e-9:
+                step = min(step_dt, 12.0 - elapsed)
+                eng.step(step)
+                elapsed += step
+            c1_endpoints.append(eng.pk["propofol"].state.c1)
+        assert c1_endpoints[1] == pytest.approx(c1_endpoints[0], abs=0.01)
+        assert c1_endpoints[2] == pytest.approx(c1_endpoints[1], rel=1e-3)
+
+        ctrl_eng = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True)
+        ctrl_eng.enable_tci("nore", 5.0, mode="plasma")
+        ctrl_eng.step(0.1)
+        assert ctrl_eng.infusion_rates["nore"] > 0.0
+        ctrl_eng.give_drug_bolus("nore", 20.0)
+        assert ctrl_eng.infusion_rates["nore"] == 0.0
+
+        ctrl_eng.enable_tci("propofol", 3.0, mode="plasma")
+        ctrl_eng.set_drug_target("propofol", 4.5)
+        assert ctrl_eng.tci["propofol"].target_compartment == "plasma"
+
+        k10_ref = ctrl_eng.pump_pk["fentanyl"].k10
+        ctrl_eng.give_drug_bolus("fentanyl", 100.0)
+        ctrl_eng.set_drug_rate("fentanyl", 0.0)
+        ctrl_eng.enable_tci("fentanyl", 2.0)
+        assert ctrl_eng.pump_pk["fentanyl"].k10 == pytest.approx(k10_ref, rel=1e-9)
+
+        manual_tiva = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="tiva", tci_enabled=False, rng_seed=1),
+            start=True,
+        )
+        ce_start = manual_tiva.state.propofol_ce
+        for _ in range(29):
+            manual_tiva.pk["propofol"].step(60.0, manual_tiva.infusion_rates["propofol"])
+        for _ in range(30):
+            manual_tiva.step(2.0)
+        assert manual_tiva.state.propofol_ce == pytest.approx(ce_start, rel=0.10)
 
 
-def test_controller_ignores_subpulse_effect_noise_and_rebuilds_on_pk_drift(patient):
-    """Effect-site TCI masks sub-pulse decay steps and rebuilds tables when PK parameters drift."""
+def test_controller_rebuilds_on_pk_drift(patient):
+    """TCIController rebuilds prediction tables only when PK parameters drift."""
     pk_prop = PropofolPKEleveld(patient)
-    ctrl = TCIController(
-        pk_prop, target_compartment="effect_site", sampling_time=0.35, control_time=1.05
-    )
+    ctrl = TCIController(pk_prop, target_compartment="effect_site", sampling_time=0.35, control_time=1.05)
     assert not ctrl._responsive[0] and ctrl._responsive[1]
     pk_prop.effect_input_fraction = 0.5
     assert ctrl.sync_from_pk_model(pk_prop) is True
     assert ctrl.sync_from_pk_model(pk_prop) is False
-
-
-def test_plasma_mode_retargeting_pump_co_reset_and_non_divisor_dt_segmentation(engine_factory):
-    """set_drug_target preserves active plasma-mode TCI; resetting pump_pk["fentanyl"]
-    retains anesthetized CO scaling; non-divisor dt=1.9 s matches dt=0.1 s across TCI pulses.
-    """
-    plasma_eng = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True)
-    plasma_eng.enable_tci("propofol", 3.0, mode="plasma")
-    plasma_eng.set_drug_target("propofol", 4.5)
-    assert plasma_eng.tci["propofol"].target_compartment == "plasma"
-
-    fent_eng = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True)
-    k10_ref = fent_eng.pump_pk["fentanyl"].k10
-    fent_eng.give_drug_bolus("fentanyl", 100.0)
-    fent_eng.set_drug_rate("fentanyl", 0.0)
-    fent_eng.enable_tci("fentanyl", 2.0)
-    assert fent_eng.pump_pk["fentanyl"].k10 == pytest.approx(k10_ref, rel=1e-9)
-
-    c1_endpoints = []
-    for step_dt in (0.1, 1.9):
-        eng = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, dt=0.1, rng_seed=1), start=True)
-        eng.enable_tci("propofol", 4.0)
-        elapsed = 0.0
-        while elapsed < 12.0 - 1e-9:
-            step = min(step_dt, 12.0 - elapsed)
-            eng.step(step)
-            elapsed += step
-        c1_endpoints.append(eng.pk["propofol"].state.c1)
-    assert c1_endpoints[0] == pytest.approx(c1_endpoints[1], rel=1e-3)

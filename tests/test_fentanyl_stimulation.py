@@ -1,5 +1,6 @@
 """Fentanyl and stimulation cardiovascular calibration, with induction and intubation replays."""
 
+import copy
 from types import SimpleNamespace
 
 import numpy as np
@@ -119,69 +120,60 @@ def test_sawano_normotensive_pressure_and_flow_calibration(case, ci_sd, svi_sd):
     assert max(point.hr for point in predicted[5:]) <= predicted[4].hr + 1.0
 
 
-def _replay_hayakawa(engine_factory, intubation_minutes):
-    """Hayakawa-Fujii 2001 PF arm, Table 1 and Figures 1-2; not used for calibration.
-
-    Fentanyl 3 mcg/kg precedes propofol 2 mg/kg by 60 s; intubation is 4-5 min
-    after propofol. Returns states 3 min after induction, 1 min after
-    intubation, and 3 min after intubation.
-
-    Only the age range (40-65) is reported; assume its midpoint, 60 kg, 165 cm,
-    and male sex, with controlled ventilation from baseline. Assume an immediate
-    bolus, then 6 mg/kg/h and 50% N2O from intubation.
-    """
-    engine = engine_factory(
-        config=SimulationConfig(mode="awake", rng_seed=4), start=True,
-        age=52.5, weight=60, height=165, sex="male", baseline_hr=71,
-        baseline_map=77.0 + (134.0 - 77.0) / 3.0,
-    )
-    engine.set_airway_mode("ETT")
-    engine.set_vent_settings(rr=12, vt=0.6, peep=0.0, ie="1:2", mode="VCV")
-    engine.set_vent_power(True)
-    engine.set_fgf(6.0, 0.0)
-    engine.set_continuous_fluid_rate(10.0 * engine.patient.weight)
-    engine.give_drug_bolus("fentanyl", 3.0 * engine.patient.weight)
-    intubation = 60.0 + intubation_minutes * 60.0
-    readings = {}
-
-    def reading():
-        state = engine.state
-        return SimpleNamespace(sbp=state.sbp, map=state.map, hr=state.hr, co=state.co)
-
-    for index in range(round((intubation + 180.0) / 0.5)):
-        time = index * 0.5
-        if time == 60.0:
-            engine.give_drug_bolus("propofol", 2.0 * engine.patient.weight)
-        if time == intubation:
-            engine.start_disturbance("stim_intubation_pulse")
-            engine.set_drug_rate("propofol", 100.0)  # mcg/kg/min = 6 mg/kg/h.
-            engine.set_fgf(3.0, 0.0, n2o_l_min=3.0)
-        engine.step(0.5)
-        if time + 0.5 == 240.0:  # Before instrumentation.
-            readings["induction"] = reading()
-        if time + 0.5 == intubation + 60.0:
-            readings["intubation"] = reading()
-    readings["after"] = reading()
-    return readings
-
-
-@pytest.mark.parametrize("intubation_minutes", [4.0, 5.0])
-def test_hayakawa_propofol_fentanyl_pressure_hr_and_flow(engine_factory, intubation_minutes):
+def test_hayakawa_propofol_fentanyl_pressure_hr_and_flow(engine_factory):
     """Hayakawa-Fujii 2001 Table 1: SBP/DBP 102/57, HR 67, and CO 4.4 L/min
     3 min after induction; MAP near 94 and HR near 72 in the first minute after
     intubation; SBP/DBP 110/61, HR 70, and CO 5.2 L/min 3 min after
     intubation. Bounds allow the reported SD.
     """
-    readings = _replay_hayakawa(engine_factory, intubation_minutes)
-    induction, intubation, after = readings["induction"], readings["intubation"], readings["after"]
-    # MAP = (SBP + 2 DBP) / 3; bounds allow fully correlated BP SDs.
+    base = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=4), start=True,
+        age=52.5, weight=60, height=165, sex="male", baseline_hr=71,
+        baseline_map=77.0 + (134.0 - 77.0) / 3.0,
+    )
+    base.set_airway_mode("ETT")
+    base.set_vent_settings(rr=12, vt=0.6, peep=0.0, ie="1:2", mode="VCV")
+    base.set_vent_power(True)
+    base.set_fgf(6.0, 0.0)
+    base.set_continuous_fluid_rate(10.0 * base.patient.weight)
+    base.give_drug_bolus("fentanyl", 3.0 * base.patient.weight)
+
+    def reading(eng):
+        s = eng.state
+        return SimpleNamespace(sbp=s.sbp, map=s.map, hr=s.hr, co=s.co)
+
+    induction = None
+    for index in range(600):
+        time = index * 0.5
+        if time == 60.0:
+            base.give_drug_bolus("propofol", 2.0 * base.patient.weight)
+        base.step(0.5)
+        if time + 0.5 == 240.0:
+            induction = reading(base)
+    assert induction is not None
     assert induction.sbp == pytest.approx(102.0, abs=13.0)
     assert induction.map == pytest.approx((102.0 + 2.0 * 57.0) / 3.0, abs=11.0)
     assert induction.hr == pytest.approx(67.0, abs=11.0)
     assert induction.co == pytest.approx(4.4, abs=1.2)
-    assert intubation.map == pytest.approx(94.0, abs=20.0)
-    assert intubation.hr == pytest.approx(72.0, abs=11.0)
-    assert after.sbp == pytest.approx(110.0, abs=20.0)
-    assert after.map == pytest.approx((110.0 + 2.0 * 61.0) / 3.0, abs=16.0)
-    assert after.hr == pytest.approx(70.0, abs=11.0)
-    assert after.co == pytest.approx(5.2, abs=1.3)
+
+    for intubation_minutes in (4.0, 5.0):
+        engine = copy.deepcopy(base) if intubation_minutes == 4.0 else base
+        if intubation_minutes == 5.0:
+            for _ in range(120):
+                engine.step(0.5)
+        engine.start_disturbance("stim_intubation_pulse")
+        engine.set_drug_rate("propofol", 100.0)  # mcg/kg/min = 6 mg/kg/h.
+        engine.set_fgf(3.0, 0.0, n2o_l_min=3.0)
+        intubation = None
+        for idx in range(360):
+            engine.step(0.5)
+            if (idx + 1) * 0.5 == 60.0:
+                intubation = reading(engine)
+        after = reading(engine)
+        assert intubation is not None
+        assert intubation.map == pytest.approx(94.0, abs=20.0)
+        assert intubation.hr == pytest.approx(72.0, abs=11.0)
+        assert after.sbp == pytest.approx(110.0, abs=20.0)
+        assert after.map == pytest.approx((110.0 + 2.0 * 61.0) / 3.0, abs=16.0)
+        assert after.hr == pytest.approx(70.0, abs=11.0)
+        assert after.co == pytest.approx(5.2, abs=1.3)

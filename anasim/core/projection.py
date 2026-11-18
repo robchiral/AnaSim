@@ -760,13 +760,18 @@ def step_coronary_from_state(
         if hemo_state.intrinsic_co <= 0.05
         else state.sbp * (clamp01(hemo_state.intrinsic_map / max(1.0, state.map)) if hemo.compressions else 1.0)
     )
-    hemo.coronary.step(
+    coronary = hemo.coronary
+    before = (coronary.ischemia, coronary.shock_stunning, coronary.injury, coronary.energy_failure)
+    coronary.step(
         dt, state.hr, coronary_sbp, coronary_dbp, max(state.lap, hemo_state.venous_pressure), hemo.hb_conc,
         sao2, hemo.myocardial_hypoxia,
         fibrillating=hemo_state.rhythm_type == RhythmType.VFIB, compressions=hemo.compressions,
         venous_pressure=hemo_state.venous_pressure,
         intrinsic_sbp=intrinsic_sbp,
     )
+    after = (coronary.ischemia, coronary.shock_stunning, coronary.injury, coronary.energy_failure)
+    if after != before:
+        hemo.invalidate_state_cache()
 
 
 def sync_monitor_baselines(engine: SimulationEngine) -> None:

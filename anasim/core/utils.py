@@ -33,6 +33,8 @@ def clamp01(value: float) -> float:
 
 def fill_response_rows(rows: np.ndarray, transition: np.ndarray, target: int) -> None:
     """Fill row k with the target row of transition raised to power k + 1."""
+    if len(rows) == 0:
+        return
     rows[0] = transition[target]
     advance = transition
     filled = 1

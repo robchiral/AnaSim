@@ -1,8 +1,12 @@
+import math
+
 import pytest
 
 from anasim.core.drug_registry import DRUG_REGISTRY, get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
+from anasim.core.units import convert_rate
+from anasim.core.utils import clamp, clamp01
 from anasim.patient.patient import Patient
 
 
@@ -59,32 +63,39 @@ def test_boluses_deliver_the_prescribed_mass_to_each_pk_model(engine):
         )
 
 
-def test_controls_a_drug_lacks_fail_explicitly(engine):
+def test_controls_a_drug_lacks_or_invalid_inputs_fail_explicitly(engine):
     assert engine.get_drug_state("glyco") == {"rate": 0.0, "target": 0.0, "is_tci": False}
     with pytest.raises(ValueError, match="Glycopyrrolate has no infusion"):
         engine.set_drug_rate("glyco", 1.0)
     with pytest.raises(ValueError, match="Esmolol has no target-controlled infusion"):
         engine.set_drug_target("esmolol", 1.0)
 
-    assert get_drug_spec("amiodarone").default_bolus == pytest.approx(150.0)
+    tci_eng = SimulationEngine(
+        Patient(age=45, weight=70, height=170, sex="male"),
+        SimulationConfig(mode="awake", tci_enabled=True, dt=0.5),
+    )
+    for bad in (math.nan, math.inf):
+        with pytest.raises(ValueError):
+            tci_eng.set_drug_rate("propofol", bad)
+        with pytest.raises(ValueError):
+            tci_eng.enable_tci("propofol", bad)
+        with pytest.raises(ValueError):
+            tci_eng.set_drug_target("propofol", bad)
+
+    assert math.isnan(clamp(math.nan, 0.0, 1.0))
+    assert clamp01(math.nan) == 0.0
     assert get_drug_spec("milri").max_bolus >= 5000.0
     assert get_drug_spec("vaso").max_bolus <= 50.0
+    assert get_drug_spec("amiodarone").default_bolus == 150.0
 
 
-def test_rate_unit_aliases_clamp_nan_zero_tci_target_and_cirrhosis_startup_ce():
-    """Rate converter normalizes /kg/ and hr aliases; clamp preserves NaN while clamp01
-    returns 0.0; enable_tci(..., 0) disables TCI; manual startup uses nominal PK at current CO.
+def test_rate_unit_aliases_zero_tci_target_and_cirrhosis_startup_ce(engine_factory):
+    """Rate converter normalizes /kg/ and hr aliases; enable_tci(..., 0) disables TCI;
+    manual startup uses nominal PK at current CO.
     """
-    import math
-
-    from anasim.core.units import convert_rate
-    from anasim.core.utils import clamp, clamp01
-
     assert convert_rate(60.0, "mg/kg/hr", "mg/sec", weight_kg=70.0) == pytest.approx(70.0 / 60.0)
     assert convert_rate(70.0 / 60.0, "mg/sec", "mg/kg/h", weight_kg=70.0) == pytest.approx(60.0)
     assert convert_rate(3.6, "mg/hr", "ug/sec") == pytest.approx(1.0)
-    assert math.isnan(clamp(math.nan, 0.0, 1.0))
-    assert clamp01(math.nan) == 0.0
 
     tci_eng = SimulationEngine(
         Patient(age=45, weight=70, height=170, sex="male"),
@@ -95,9 +106,8 @@ def test_rate_unit_aliases_clamp_nan_zero_tci_target_and_cirrhosis_startup_ce():
     tci_eng.enable_tci("propofol", 0.0)
     assert tci_eng.get_drug_state("propofol") == {"rate": 0.0, "target": 0.0, "is_tci": False}
 
-    cirr = SimulationEngine(
-        Patient(age=55, weight=70, height=172, sex="male", hepatic_function=0.5, heart_failure="hfref"),
-        SimulationConfig(mode="steady_state", maint_type="tiva", tci_enabled=False, rng_seed=1),
+    cirr = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="tiva", tci_enabled=False, rng_seed=1),
+        start=True, age=55, weight=70, height=172, sex="male", hepatic_function=0.5, heart_failure="hfref",
     )
-    cirr.start()
     assert 40.0 <= cirr.state.bis <= 58.0
