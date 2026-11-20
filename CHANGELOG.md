@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.9 - 2026-11-19
+
 - AnaSim now supports adults up to 85 years old.
 - The app now runs about four times faster at high simulation speeds.
 - Blood gases now report sodium, potassium, chloride, and ionized calcium.
