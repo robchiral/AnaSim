@@ -52,12 +52,14 @@ class RespState:
     apnea: bool = False
     p_alveolar_co2: float = 40.0
     pa_co2: float = 40.0
+    pa_co2_37: float = 40.0
     etco2: float = 40.0
     eto2: float = 14.0
     p_alveolar_o2: float = 100.0
     p_arterial_o2: float = 95.0
     sao2: float = 98.0  # %
     ph: float = 7.4  # In-vivo blood gas values at patient temperature.
+    ph_37: float = 7.4  # 37 °C alpha-stat arterial pH.
     hco3: float = 24.5  # Plasma bicarbonate, mmol/L.
     base_excess: float = 0.0  # Standard (extracellular) base excess, mmol/L.
     pv_co2: float = 46.0
@@ -188,7 +190,7 @@ class RespiratoryModel:
         self.state = RespState(
             rr=self.rr_0, vt=self.vt_0, mv=self.rr_0 * self.vt_0 / 1000.0,
             effort_rr=self.rr_0, effort_vt=self.vt_0,
-            p_alveolar_co2=self.paco2_setpoint, pa_co2=in_vivo_paco2,
+            p_alveolar_co2=in_vivo_paco2, pa_co2=in_vivo_paco2, pa_co2_37=self.paco2_setpoint,
         )
         # A residual gradient plus perfusion of poorly ventilated units. Awake,
         # their share of output rises with age (Gunnarsson 1991), giving Crapo
@@ -464,7 +466,8 @@ class RespiratoryModel:
         extraction = systemic / self.rq / cardiac_output
         oxygen, capillary, saturation = self._seed_capillary_oxygen(extraction)
         transport.oxygen = [oxygen, oxygen, max(0.0, oxygen - extraction)]
-        arterial = self.chemistry.solve(self.state.p_alveolar_co2, saturation, reference.buffer_base)
+        pco2_37 = self.state.p_alveolar_co2 / self._pco2_temp_scale_now
+        arterial = self.chemistry.solve(pco2_37, saturation, reference.buffer_base)
         venous_co2 = arterial.total_co2 + systemic / _CO2_L_PER_MMOL / cardiac_output
         transport.co2 = [arterial.total_co2, arterial.total_co2, venous_co2]
         venous_po2 = self._po2_from_content(
@@ -480,7 +483,7 @@ class RespiratoryModel:
         self._reference_extracellular_base = base
         self._extracellular_ph = venous.blood.ph
         self._extracellular_pco2 = venous.pco2
-        self._blood_pressures[0], self._blood_ph[0] = self.state.p_alveolar_co2, arterial.ph
+        self._blood_pressures[0], self._blood_ph[0] = pco2_37, arterial.ph
         self._blood_po2[0], self._blood_saturations[0] = capillary, saturation
         self._resolve_blood_pool(1, hb)
         self._resolve_blood_pool(2, hb)
@@ -776,7 +779,8 @@ class RespiratoryModel:
         state, transport = self.state, self.gas_transport
         pulmonary = flow * (1.0 - self.shunt_fraction)
         volume = transport.volumes[0] + pulmonary
-        pco2, po2 = state.p_alveolar_co2, state.p_alveolar_o2
+        pco2 = self._blood_pressures[0]
+        po2 = state.p_alveolar_o2
         ph, p50 = self._blood_ph[0], self._blood_p50[0]
         base = transport.base[0]
         carbon_volume = _CO2_L_PER_MMOL * (volume - pulmonary * carbon_plan.venous_gain)
@@ -784,7 +788,7 @@ class RespiratoryModel:
         for _ in range(24):
             saturation = self._capillary_oxygen(po2, hb, p50, aa_gradient, low)[3]
             chemical = self.chemistry.evaluate(ph, pco2, saturation)
-            # Newton step in pH and PCO2 for fixed buffer base and conserved CO2.
+            # Newton step in 37 °C pH and PCO2 for fixed buffer base and conserved CO2.
             base_residual = chemical.buffer_base - base
             venous_co2 = carbon_plan.venous_base + carbon_plan.venous_gain * chemical.total_co2
             residual = gas_capacity * pco2 + _CO2_L_PER_MMOL * (volume * chemical.total_co2 - pulmonary * venous_co2) - carbon
@@ -824,8 +828,10 @@ class RespiratoryModel:
         delta_t = 37.0 - self._temp_c
         pco2_scale = self._pco2_temp_scale_now
         ph_shift = 0.0147 * delta_t
+        state.pa_co2_37 = self._blood_pressures[1]
         state.pa_co2 = self._blood_pressures[1] * pco2_scale
         self._last_published_pa_co2 = state.pa_co2
+        state.ph_37 = self._blood_ph[1]
         state.ph = self._blood_ph[1] + ph_shift
         state.p_arterial_o2 = self._blood_po2[1]
         state.sao2 = 100.0 * self._blood_saturations[1]
@@ -1145,7 +1151,8 @@ class RespiratoryModel:
              n2o_uptake_l_min: float = 0.0,
              fin2: float | None = None,
              apneic_flow_limit_l_min: float | None = None,
-             mech_supported_fraction: float = 1.0) -> RespState:
+             mech_supported_fraction: float = 1.0,
+             mech_va_l_min: float | None = None) -> RespState:
         """Advance ventilatory control and blood-lung gas exchange by dt seconds."""
         transport = self.gas_transport
         blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else blood_volume_ml
@@ -1170,6 +1177,7 @@ class RespiratoryModel:
                     n2o_uptake_l_min=n2o_uptake_l_min, fin2=fin2,
                     apneic_flow_limit_l_min=apneic_flow_limit_l_min,
                     mech_supported_fraction=mech_supported_fraction,
+                    mech_va_l_min=mech_va_l_min,
                 )
             return self.state
         state = self.state
@@ -1293,9 +1301,18 @@ class RespiratoryModel:
         if measured_breaths:
             # Measured ventilation already includes the patient's breaths, so a
             # separate neural rate would count extra gas.
-            total_va_l_min = ref_rr_mech * vt_mech_avail
+            total_va_l_min = (
+                max(0.0, mech_va_l_min) * mech_bronch_eff
+                if mech_va_l_min is not None
+                else ref_rr_mech * vt_mech_avail
+            )
         else:
-            total_va_l_min = effective_rate * (max(vt_mech_avail, vt_spont_avail) if mech_rr > 0 else vt_spont_avail)
+            mech_va_avail = (
+                max(0.0, mech_va_l_min) * mech_bronch_eff
+                if mech_va_l_min is not None
+                else effective_rate * vt_mech_avail
+            )
+            total_va_l_min = max(mech_va_avail, effective_rate * vt_spont_avail) if mech_rr > 0 else effective_rate * vt_spont_avail
         if airway_patency <= 0.0:
             total_va_l_min = 0.0
         state.va = total_va_l_min
@@ -1367,7 +1384,7 @@ class RespiratoryModel:
         )
         gas_capacity = self.gas_volume_l * self._gas_capacity_per_l
         gas_stpd_l = self.gas_volume_l * self._btps_to_stpd
-        lung_co2 = gas_capacity * state.p_alveolar_co2
+        lung_co2 = gas_capacity * self._blood_pressures[0]
         lung_o2 = gas_capacity * state.p_alveolar_o2
         lung_n2 = gas_stpd_l * self.alveolar_fn2
         target_fn2 = clamp01(1.0 - fio2) if fin2 is None else clamp01(fin2)
@@ -1383,12 +1400,12 @@ class RespiratoryModel:
             lung_n2 += exhaled_vc * self._btps_to_stpd * gas_n2
             transport.oxygen_from_air_l += delta_o2
             if exhaled_vc < 0.0:
-                lost_co2 = -exhaled_vc * self._gas_capacity_per_l * state.p_alveolar_co2
+                lost_co2 = -exhaled_vc * self._gas_capacity_per_l * self._blood_pressures[0]
                 lung_co2 -= lost_co2
                 transport.exhaled_l += lost_co2
         if volume_change != 0.0:
             self.frc += volume_change
-        old_co2, old_o2 = state.p_alveolar_co2, state.p_alveolar_o2
+        old_co2, old_o2 = self._blood_pressures[0], state.p_alveolar_o2
         prev_fn2 = self.alveolar_fn2
         deficit_before_refill = self._apneic_gas_deficit_l
         vol_before_absorb = self._gas_volume_at(self.frc, deficit_before_refill)
@@ -1506,8 +1523,11 @@ class RespiratoryModel:
                 state.p_alveolar_co2 *= scale
                 self._blood_pressures[0] = state.p_alveolar_co2
                 self.alveolar_fn2 = clamp01(self.alveolar_fn2 * scale)
-        state.etco2 = max(0.0, state.p_alveolar_co2 - etco2_gradient)
-        dilution = clamp01(1.0 - state.etco2 / state.p_alveolar_co2)
+        # Publish temperature-corrected in-vivo alveolar CO2 and EtCO2 so EtCO2 stays below in-vivo PaCO2.
+        alveolar_co2_in_vivo = state.p_alveolar_co2 * self._pco2_temp_scale_now
+        state.p_alveolar_co2 = alveolar_co2_in_vivo
+        state.etco2 = max(0.0, alveolar_co2_in_vivo - etco2_gradient)
+        dilution = clamp01(1.0 - state.etco2 / alveolar_co2_in_vivo) if alveolar_co2_in_vivo > 0.0 else 0.0
         state.eto2 = 100.0 * (state.p_alveolar_o2
                              + dilution * (fio2 * self._atm_dry - state.p_alveolar_o2)) / self._atm_dry
         return state

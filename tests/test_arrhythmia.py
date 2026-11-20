@@ -450,3 +450,20 @@ def test_sinus_bradycardia_chronotropy_extreme_tachycardia_and_afib_rvr_control(
     advance_time(afib, 90.0, dt=1.0)
     assert afib.state.hr < rvr_hr - 25.0
     assert afib.state.sv > rvr_sv * 1.25 and afib.state.co > rvr_co * 1.05
+
+
+def test_post_shock_escape_preserves_positive_remaining_recurrence_hazard():
+    """Winning an escape event during post-shock asystole restores unelapsed recurrence hazard."""
+    model = ArrhythmiaModel(np.random.default_rng(1))
+    rhythm = model.after_shock(
+        RhythmType.VFIB, RhythmType.ASYSTOLE, ischemia=1.0, hypoxia=0.0,
+        energy_failure=0.2, energy_reserve=0.4,
+    )
+    model._remaining["escape"] = 0.001
+    model._remaining["recurrence"] = 0.002
+    model.step(
+        10.0, rhythm, ischemia=1.0, hypoxia=0.0, energy_failure=0.2,
+        electrically_silent=False, perfusing=False, lidocaine=0.0,
+        amiodarone=0.0, energy_reserve=0.4,
+    )
+    assert model._remaining.get("recurrence", 1.0) > 0.0

@@ -125,6 +125,11 @@ class MammillaryPK:
         return self.cl1 * self.cl1_scale * transport
 
     @property
+    def effective_basal_input_rate(self) -> float:
+        transport = 1.0 if self.intravascular_clearance else self.circulation
+        return self.basal_input_rate * transport
+
+    @property
     def k12(self) -> float:
         return self.cl2 * self.circulation / self.v1
 
@@ -189,7 +194,7 @@ class MammillaryPK:
     def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
         """Advance with conserved midpoint steps across central, peripheral, and effect compartments."""
         if self.basal_input_rate > 0.0:
-            input_rate_per_sec += self.basal_input_rate * clamp(self.circulation / 0.01, 0.0, 1.0)
+            input_rate_per_sec += self.effective_basal_input_rate
         s = self.state
         v1, v2, v3 = self.v1, self.v2, self.v3
         if (
@@ -309,7 +314,7 @@ class MammillaryPK:
             return max_seconds / 60.0
         A, B = self.get_ss_matrices()
         transition = expm(A / 60.0)
-        basal_rate = self.basal_input_rate * clamp(self.circulation / 0.01, 0.0, 1.0)
+        basal_rate = self.effective_basal_input_rate
         equilibrium = (np.linalg.solve(-A, B[:, 0] * basal_rate * 60.0)
                        if basal_rate else np.zeros(A.shape[0]))
         x = self.state_vector() - equilibrium
@@ -925,7 +930,7 @@ class NorepinephrinePK(MammillaryPK):
 
     def equilibrate_endogenous(self) -> None:
         """Seed secretion without an exogenous infusion at the current clearance."""
-        endogenous_conc = self.endogenous_ug_min / self.elimination_clearance
+        endogenous_conc = self.endogenous_ug_min / (self.cl1 * self.cl1_scale)
         self.set_state_vector([endogenous_conc] * len(self.state_fields))
 
     def reset(self) -> None:

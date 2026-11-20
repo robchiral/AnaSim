@@ -744,3 +744,23 @@ def test_pulseless_vt_intubation_and_shock_gating_and_sync_shock_projection(engi
             assert svt.state.map == pytest.approx(svt.hemo.state.map, abs=1e-6)
             break
     assert svt.defibrillator.last_shock is not None
+
+
+def test_electrical_silence_transitions_to_asystole_and_arrest_predicates_agree(engine_factory, advance_time):
+    """Prolonged electrical silence transitions rhythm_type to ASYSTOLE, is_perfusing matches
+    check_cardiac_arrest for severe bradycardia, and step_respiration uses live hemo CO."""
+    eng = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    eng.hemo.fluids.amounts["potassium"] += 120.0
+    advance_time(eng, 25.0, dt=1.0)
+    assert eng.hemo.rhythm_type == RhythmType.ASYSTOLE
+
+    brady = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    hs_brady = copy.copy(brady.hemo.state)
+    hs_brady.hr = 5.0
+    assert not runtime_core.is_perfusing(brady, hs_brady)
+
+    live_co = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    live_co.set_rhythm("VFIB")
+    assert live_co.hemo.state.co == 0.0
+    live_co.step(0.5)
+    assert live_co.resp.oxygen_supply_fraction == 0.0

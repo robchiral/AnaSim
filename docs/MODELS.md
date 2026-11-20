@@ -1,7 +1,8 @@
 # AnaSim models
 
 This guide describes how AnaSim models the patient, drugs, physiology,
-anesthesia machine, and monitors, and which studies each model is based on.
+anesthesia machine, monitors, and clinical cases, and which studies each model
+is based on.
 The [architecture guide](ARCHITECTURE.md) covers the code structure and step
 order, and [Model references](REFERENCES.md) lists the studies.
 
@@ -108,9 +109,9 @@ specified by each model:
 Below 30% of resting cardiac output, drug transport to organs, peripheral
 compartments, and effect sites falls in proportion to flow. A dose given during
 arrest therefore does not reach its effect sites until compressions circulate
-it, and endogenous norepinephrine spillover into plasma stops without flow.
-Esterase metabolism of remifentanil, succinylcholine, and esmolol continues
-without flow, and sugammadex still binds rocuronium in plasma.
+it, and endogenous norepinephrine spillover falls with flow and stops during
+arrest. Esterase metabolism of remifentanil, succinylcholine, and esmolol
+continues without flow, and sugammadex still binds rocuronium in plasma.
 
 ## Target-controlled infusion
 
@@ -188,6 +189,11 @@ inhaled agents, fentanyl and remifentanil also lower the concentration needed to
 block the response and blunt the HR rise. This agrees with opioid reductions in
 volatile MAC and MAC-BAR (Katoh 1999; Lang 1996). Other opioids are converted to
 remifentanil equivalents.
+
+Peak HR and MAP responses to intubation follow Ebert 1992 and 1995. Billard
+1994 and Sawano 2013 set the HR recovery and the split of the intubation
+response between stroke volume and vascular resistance, and Hayakawa-Fujii 2001
+is an independent check.
 
 Surgery also increases vascular resistance by 15%, and anesthetics do not reduce
 this increase. Its size comes from the rise in MAP from before incision to
@@ -314,11 +320,13 @@ vasoconstriction and slightly depresses contractility.
 MAP feedback changes HR or vascular resistance, depending on rhythm, anesthetic
 depth, blood gases, and stimulation. When muscarinic block or a fixed rhythm
 prevents slowing, high MAP lowers endogenous vascular resistance (Weissler 1957;
-Tweed 1972). Anesthesia reduces the baroreflex and the tachycardia of hemorrhage
-(Ebert 1992; Sellgren 1994). Older patients have lower cardiovagal gain and less
-reflex tachycardia, while baroreflex control of vascular resistance is preserved
+Tweed 1972). Vascular compensation for a rate-limited rhythm stops during
+pulseless rhythms, electrical silence, chest compressions, and anoxic failure.
+Anesthesia reduces the baroreflex and the tachycardia of hemorrhage (Ebert 1992;
+Sellgren 1994). Older patients have lower cardiovagal gain and less reflex
+tachycardia, while baroreflex control of vascular resistance is preserved
 (Kardos 2001; Laitinen 2004; Monahan 2007). Severe hypoxia lowers HR and
-contractility.
+contractility and blunts reflex tachycardia.
 
 Under propofol, MAP has little effect on HR (Garraza-Obaldia 2024). Slow
 compensatory tachycardia therefore decreases with anesthetic depth, while
@@ -351,23 +359,25 @@ resting ratio of arterial to ventricular elastance of 0.7 (Asanoi 1989; Chen
 inotropic and vasoconstrictor stimulation, and short diastolic filling reduces
 it further above 170 bpm.
 
-Severe left ventricular failure shifts blood into the pulmonary circulation.
-Left atrial pressure, lung water, and right ventricular afterload then rise
-until the outputs of the two ventricles match. Without circulation, left atrial
-pressure equilibrates with mean systemic filling pressure, and fluid stops
-filtering into the lungs.
+Severe left ventricular failure, whether chronic or from acute reversible
+depression, shifts blood into the pulmonary circulation. Left atrial pressure,
+lung water, and right ventricular afterload then rise until the outputs of the
+two ventricles match. Without circulation, left atrial pressure equilibrates
+with mean systemic filling pressure, and fluid stops filtering into the lungs.
 
 ### Acidemia, electrolytes, and hypothermia
 
-Below pH 7.2, contractility and the response to adrenergic drugs fall linearly
-to 30% at pH 6.8. This is extrapolated from isolated failing human myocardium
-(Schotola 2012).
+Below an in-vivo pH of 7.2, contractility and the response to adrenergic drugs
+fall linearly to 30% at pH 6.8. This is extrapolated from isolated failing
+human myocardium (Schotola 2012).
 
 Hypocalcemia lowers contractility and vascular resistance. Intravenous calcium
 restores contractility without raising systemic vascular resistance above
 baseline (Denlinger 1975; Lang 1988). Hyperkalemia slows conduction, depresses
 contractility, and can trigger ventricular arrhythmias or asystole. Elevated
-ionized calcium raises the potassium threshold for these effects.
+ionized calcium raises the potassium threshold for these effects. Prolonged
+electrical silence from hyperkalemia or local anesthetic toxicity transitions
+to asystole after 15 seconds.
 
 Core temperatures below 33 °C slow HR and weaken cold-induced vasoconstriction
 and reflex tachycardia. Temperatures below 30 °C depress contractility and
@@ -425,7 +435,8 @@ Ephedrine uses the oral disposition and tolerance reported by Persky 2004,
 applied to intravenous use. Its peak responses are calibrated to Meng 2011, and
 its effect on pressure during induction was checked against Sjøen 2026. Alpha
 and beta blockade shift its vascular and cardiac concentration-response curves
-separately. With repeated doses, tachyphylaxis reduces the pressor and peak HR
+separately. With repeated doses, presynaptic tachyphylaxis builds from ephedrine
+exposure regardless of receptor blockade. It reduces the pressor and peak HR
 responses, while a smaller HR response remains and saturates at high
 concentrations.
 
@@ -569,10 +580,10 @@ injury is complete, about 11 minutes after circulation stops.
 ### Chest compressions
 
 [Chest compressions](../anasim/physiology/resuscitation.py) at 110/min pump a
-fifth of resting cardiac output at normal filling and vascular resistance, and
-little after major blood loss. This flow and vascular resistance set arterial
-pressure between compressions. Each compression adds a pressure pulse that does
-not produce flow.
+quarter of resting cardiac output at normal filling and vascular resistance,
+about a fifth under anesthesia, and little after major blood loss. This flow and
+vascular resistance set arterial pressure between compressions. Each compression
+adds a pressure pulse that does not produce flow.
 
 Coronary flow occurs between compressions, against venous and left atrial
 back-pressure plus myocardial closing pressure. The energy reserve recovers when
@@ -672,10 +683,12 @@ arrhythmogenic stress.
 Lactated Ringer's and 0.9% saline move between blood and the interstitium (Hahn
 2017; Hahn 2024). Distribution slows when MAP is low, so fluid given during
 hypotension after induction stays in the circulation longer (Ewaldsson and Hahn
-2001; Hahn 2021). Urine output depends on MAP, age, and renal function; under
-volatile or propofol anesthesia, about 8% of a 25 mL/kg Ringer's load is
-excreted over 150 minutes (7% and 11% group medians in Ewaldsson and Hahn 2005),
-with similar plasma dilution and extravascular retention across anesthetics.
+2001; Hahn 2021). Pressure scaling of distribution and urinary elimination is
+capped above 105 mmHg, and the urinary elimination rate has an upper bound.
+Urine output depends on MAP, age, and renal function; under volatile or propofol
+anesthesia, about 8% of a 25 mL/kg Ringer's load is excreted over 150 minutes
+(7% and 11% group medians in Ewaldsson and Hahn 2005), with similar plasma
+dilution and extravascular retention across anesthetics.
 Saline is excreted more slowly than lactated Ringer's: after 2 L over an hour,
 healthy volunteers pass about half as much urine in 6 hours (Reid 2003). More of
 a 5% albumin infusion stays in the circulation at first. The model retains a
@@ -706,20 +719,23 @@ Ringer's does not (Scheingraber 1999). Packed red cells have the composition of
 a 3-week-old unit, at pH 6.5 and PCO₂ 98 mmHg with supernatant potassium
 38 mmol/L and lactate 22.5 mmol/L (Rabcuka 2025), so rapid transfusion adds
 acid, CO₂, and potassium. Lactate from Ringer's and packed cells, and citrate
-from packed cells, return base as they are metabolized (Kramer 2003; Kahn 1979);
-cirrhosis lowers citrate clearance (Kramer 2003), and scaling with liver
-function and oxygen supply is a model assumption.
+from packed cells, return base as they are metabolized (Kramer 2003; Kahn 1979).
+Cirrhosis lowers citrate clearance (Kramer 2003); scaling citrate and D-lactate
+clearance with liver function and stopping it when oxygen supply fails are model
+assumptions.
 
 Potassium exchanges with a large cellular pool over minutes. Epinephrine moves
-it into cells. Succinylcholine (Martyn and Richtsfeld 2006), malignant
-hyperthermia, and severe acidemia below pH 7.15 move it into plasma.
+it into cells when circulation is present. Succinylcholine (Martyn and
+Richtsfeld 2006), malignant hyperthermia, and severe acidemia below pH 7.15 move
+it into plasma.
 
-Ionized calcium depends on albumin, citrate, and pH (Thode 1983; Bolan 2001), so
-dilution and rapid transfusion lower it. When rapid transfusion slows or stops,
-ionized calcium rebounds partially as citrate redistributes and clears (Kahn
-1979), while unreplaced dilutional loss remains. Injected calcium mixes through
-extracellular fluid, and calcium above the patient's resting ionized pool is
-then cleared. Shed blood removes calcium, including the fraction still mixing
+Ionized calcium depends on albumin, citrate, and 37 °C pH (Thode 1983; Bolan
+2001), so dilution and rapid transfusion lower it without shifting during
+hypothermia. When rapid transfusion slows or stops, ionized calcium rebounds
+partially as citrate redistributes and clears (Kahn 1979), while unreplaced
+dilutional loss remains. Injected calcium mixes through extracellular fluid and
+clears in proportion to circulation, so a dose given during arrest waits until
+flow returns. Shed blood removes calcium, including the fraction still mixing
 after an injection. One gram of calcium chloride therefore raises ionized
 calcium by about 0.4 mmol/L, and half of the rise is gone by 30 minutes (Ansari
 2025). Calcium lost to dilution or bound by citrate is not replaced within a
@@ -849,8 +865,9 @@ Epinephrine and sepsis increase aerobic lactate production (Grip 2015; Revelly
 2005). Lactate has a volume of distribution of 0.26 L/kg (Levraut 1998). Its
 elimination follows Michaelis-Menten kinetics, so clearance falls as the
 concentration rises. The model assumes that the liver provides 60% of the
-elimination capacity. This hepatic portion is reduced in proportion to liver
-function and to the fraction of oxygen demand that is met.
+elimination capacity. This hepatic portion scales with liver function and with
+the fraction of oxygen demand that is met. The extrahepatic portion holds down
+to 15% of oxygen demand and falls linearly to zero when oxygen delivery stops.
 
 Each mmol of endogenous lactate that accumulates above the resting amount
 removes 1 mmol of buffer base, and clearance of this lactate returns the base.
@@ -860,9 +877,12 @@ measure only the L-isomer, half of the racemic lactate in Ringer's.
 
 ### Acid-base
 
-The blood gas model includes respiratory, lactic, and fluid-related acid-base
-disturbances at 37 °C. [Blood buffering](../anasim/physiology/blood_chemistry.py)
-is based on Rees 2010, with plasma albumin and phosphate charge from Figge 2018.
+The blood gas model solves respiratory, lactic, and fluid-related acid-base
+disturbances at 37 °C, then shifts arterial pH, PaCO₂, alveolar CO₂, and EtCO₂
+to the patient's core temperature. Ionized calcium and renal compensation use
+the 37 °C values, while myocardial acidosis uses in-vivo pH. [Blood
+buffering](../anasim/physiology/blood_chemistry.py) is based on Rees 2010, with
+plasma albumin and phosphate charge from Figge 2018.
 Oxygen affinity uses the temperature, pH, and PCO₂ terms of Dash 2016 at a
 reference 2,3-DPG level. Gas exchange and changes in oxygen affinity conserve
 CO₂, oxygen, and buffer base. Bleeding, transfusion, fluids, and urine change
@@ -959,7 +979,9 @@ excess gas that spills from the circuit.
 
 When patient uptake exceeds the inflow of fresh gas and vapor, the reservoir
 empties. The circuit is sealed, so no room air enters. As the bellows collapses,
-delivered breaths are capped by the remaining gas.
+delivered breaths are capped by remaining gas plus fresh gas flow during
+inspiration, and CPAP pressure and airway splinting drop to zero once the
+bellows is empty without fresh gas flow.
 
 Vaporizer output depends on flow, the dial setting, and the remaining agent. A
 proportioning system limits nitrous oxide flow to three times the delivered
@@ -986,7 +1008,15 @@ during expiration. Flow triggering requires inspiratory muscle effort, so
 passive PEEP changes do not trigger breaths. Tube obstruction raises airway
 resistance. Inflations without measurable expired volume do not count as
 breaths. Auto-PEEP falls as trapped gas escapes during expiration, including
-during a pause. Switching out of PSV clears apnea backup.
+during a pause. Switching out of mandatory modes or an apnea timeout clears
+stale pressure and compliance readings. Switching out of PSV clears apnea
+backup, and the apnea timeout starts a backup breath immediately.
+
+At maintenance startup, initial ventilator settings aim for the patient's
+resting PaCO₂. Tidal volume is adjusted first within limits based on predicted
+body weight, followed by respiratory rate. Patients with COPD use a lower rate
+limit to allow time for expiration; with severe obstruction or obesity, PaCO₂
+can remain above the target.
 
 ### Bag and mask ventilation
 
@@ -1001,11 +1031,16 @@ pharynx open. A loose mask loses part of each assisted breath, lowers this
 pressure, and reduces the measured airway pressure, flow, and volume. Pressures
 above 20 cmH₂O leak even with a tight seal (Bouvet 2014). A full seal delivers
 the tidal volume of two-handed mask ventilation, and an 80% seal delivers that
-of a one-handed hold (Joffe 2010). Room air enters around a loose mask during
-unsupported breaths, or when assisted breaths deliver less than the patient's
-own effort draws. PCV-VG raises inspiratory pressure to make up for a mask leak.
+of a one-handed hold (Joffe 2010). Room air enters around a loose mask in
+proportion to the leak during unsupported breaths, or when assisted breaths
+deliver less than the patient's own effort draws. PCV-VG raises inspiratory
+pressure to make up for a mask leak.
 
 ## Monitors
+
+Optional monitor audio follows plethysmograph pulses and active alarms. Alarm
+silence lasts 2 minutes of real time and ends early if a new alarm sounds or
+alarm priority changes between high and low.
 
 ### ECG, arterial pressure, and pulse oximetry
 
@@ -1093,3 +1128,49 @@ As in a blood gas analyzer, pH, PaCO₂, and PaO₂ are warmed anaerobically to
 than in vivo and pH is lower. The report also includes bicarbonate, standard
 base excess, lactate, sodium, potassium, chloride, ionized calcium, SaO₂,
 hemoglobin, and FiO₂. Glucose is not modeled.
+
+## Cases and clinical actions
+
+### Cases
+
+Crises start 30 simulated seconds into a case. In their cases, anaphylaxis and
+sepsis reach full severity over 45 and 60 seconds, while hemorrhage and
+malignant hyperthermia develop over several minutes. In the anaphylaxis case,
+crystalloid boluses run at 500 mL/min.
+
+Guided requirements count actions from the start of the case, or from crisis
+onset for crisis treatment, so the guide does not ask for a repeat dose. In
+independent mode, step text is hidden, and safety warnings other than a failed
+intubation appear only in the debrief.
+
+Pressure objectives require spontaneous circulation without chest compressions,
+and both the displayed MAP and the current model MAP must reach the target.
+Without an arterial line, the cuff reading must be at most one minute old, and
+a missing or failed reading does not satisfy a hypotension check. Anaphylaxis
+recovery also requires improved bronchospasm.
+
+Milestone outcomes, such as preoxygenation, stay credited once achieved.
+Extubation outcomes are checked when the tube is removed, and the remaining
+outcomes must hold when the case ends.
+
+### Clinical action checks
+
+Selecting the tracheal tube triggers a brief intubation stimulus whether or not
+placement succeeds. When circulation continues and central muscle strength is
+above 0.5, placement fails if loss of response is below 0.1, or if laryngoscopy
+tolerance is below 0.1 without sustained hypnosis. Placement succeeds during
+cardiac arrest or nonperfusing rhythms.
+
+[`clinical_actions.py`](../anasim/core/clinical_actions.py) warns without
+blocking the action when:
+
+- the tube is placed in a responsive patient (loss of response below 0.1) whose
+  central muscle strength is 0.5 or lower
+- rocuronium or succinylcholine is given to a responsive patient without an
+  induction dose already in plasma
+- the tube is removed during apnea, reactive Stage II anesthesia, or incomplete
+  neuromuscular recovery (TOF ratio or blocker T1 below 90%, excluding weakness
+  from dantrolene)
+- assisted ventilation stops during apnea
+- a shock is delivered to a responsive patient (loss of response below 0.5)
+  with spontaneous circulation

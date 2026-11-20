@@ -208,8 +208,11 @@ def step_cardiac_monitors(
             # A shock can change the rhythm partway through a step; physiology follows on the next step.
             hemo_state = engine.hemo.state
             project_hemodynamics(engine, hemo_state)
-            rhythm = hemo_state.rhythm_type
-            cardiac_sample = cardiac_cycle.seed(hemo_state.hr, rhythm)
+            new_rhythm = hemo_state.rhythm_type
+            perfusion = clamp(hemo_state.co / engine.hemo.base_co_l_min, 0.0, 1.0)
+            if new_rhythm != rhythm:
+                rhythm = new_rhythm
+                cardiac_sample = cardiac_cycle.seed(hemo_state.hr, rhythm)
             if compressions:
                 compression_sbp, compression_dbp = compression_pressures(
                     hemo_state.cpr_perfusion_map, hemo_state.venous_pressure
@@ -232,6 +235,8 @@ def step_cardiac_monitors(
                 comp_u = comp_sample.phase / COMPRESSION_DUTY
                 comp_shape = math.sin(math.pi * comp_u) if comp_u < 1.0 else 0.0
                 comp_p = compression_dbp + (compression_sbp - compression_dbp) * comp_shape
+                if compression_mean > intrinsic_art.mean:
+                    art_waveform.note_compression_baseline(compression_dbp)
                 arterial_sample = ArterialPressureSample(
                     pressure=float(max(intrinsic_art.pressure, comp_p)),
                     systolic=float(max(intrinsic_art.systolic, compression_sbp)),
@@ -342,9 +347,14 @@ def step_monitors(
     bis_display_source = clamp(bis_val + disturbances.bis * engine.bis.cortical_function, 0.0, 100.0)
     state.bis = float(bis_display_source)
 
-    raw_bis = state.bis + float(engine.rng.normal(0.0, BIS_NOISE_SD))
-    alpha_bis = 1.0 - math.exp(-dt / BIS_DISPLAY_TAU_S)
-    engine.smooth_bis = float((1 - alpha_bis) * engine.smooth_bis + alpha_bis * raw_bis)
+    decay_bis = math.exp(-dt / BIS_DISPLAY_TAU_S)
+    bis_signal = engine.smooth_bis - engine._bis_noise
+    bis_signal = decay_bis * bis_signal + (1.0 - decay_bis) * state.bis
+    engine._bis_noise = (
+        decay_bis * engine._bis_noise
+        + float(engine.rng.normal(0.0, BIS_NOISE_SD)) * math.sqrt(max(0.0, 1.0 - decay_bis * decay_bis))
+    )
+    engine.smooth_bis = float(bis_signal + engine._bis_noise)
 
     display_hr = max(0.0, cardiac_sample.display_hr)
     display_bis = clamp(engine.smooth_bis, 0.0, 100.0)

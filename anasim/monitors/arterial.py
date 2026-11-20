@@ -124,6 +124,7 @@ class ArterialWaveformRenderer:
         self._systolic = 0.0
         self._diastolic = 0.0
         self._reference_pp = 0.0
+        self._reference_mean_rr_s = 60.0 / 70.0
         self._runoff_tau_s = 1.0
         self._next_shape = self._build_shape(60.0 / 70.0, 70.0)
         # The drawn beat, latched at its pressure upstroke.
@@ -226,6 +227,25 @@ class ArterialWaveformRenderer:
         diastolic = max(0.0, mean_pressure - pp * shape.mean)
         return diastolic + pp, diastolic
 
+    def reference_pulse_pressure(
+        self,
+        map_value: float,
+        stroke_volume_ml: float,
+        hr: float,
+        *,
+        pulse_pressure_factor: float = 1.0,
+        static_pressure: float = 0.0,
+    ) -> float:
+        """Expected steady pulse pressure (mmHg) matching _update_reference()."""
+        mean_pressure = max(0.0, float(map_value))
+        if mean_pressure <= 0.0 or stroke_volume_ml <= 0.0 or hr <= 0.0:
+            return 0.0
+        floor_p = max(0.0, float(static_pressure))
+        shape = self._build_shape(60.0 / float(hr), float(hr))
+        compliance = self.compliance_at(max(mean_pressure, floor_p))
+        requested_pp = float(stroke_volume_ml) * float(pulse_pressure_factor) / compliance
+        return min(requested_pp, mean_pressure / shape.mean)
+
     def _update_reference(
         self,
         map_value: float,
@@ -248,6 +268,7 @@ class ArterialWaveformRenderer:
         self._mean_pressure = self._diastolic + self._reference_pp * shape.mean
         self._systolic = self._diastolic + self._reference_pp
         self._next_shape = shape
+        self._reference_mean_rr_s = sample.mean_rr_s
         flow_ml_s = float(stroke_volume_ml) / sample.mean_rr_s
         driving_p = max(0.0, mean_pressure - floor_p)
         raw_tau = driving_p / flow_ml_s * compliance if flow_ml_s > 1e-6 and driving_p > 0.5 else NO_FLOW_TAU_S
@@ -276,10 +297,15 @@ class ArterialWaveformRenderer:
         if abs(self._windkessel_offset) < 1e-3:
             self._windkessel_offset = 0.0
         above_floor = max(0.0, self._diastolic - floor_p)
+        runoff_exponent = clamp(
+            -(sample.rr_interval_s - self._reference_mean_rr_s) / self._runoff_tau_s,
+            -20.0,
+            1.5,
+        )
         self._end_pressure = max(
             floor_p,
             floor_p
-            + above_floor * math.exp(-(sample.rr_interval_s - sample.mean_rr_s) / self._runoff_tau_s)
+            + above_floor * math.exp(runoff_exponent)
             + self._windkessel_offset,
         )
 
@@ -400,6 +426,14 @@ class ArterialWaveformRenderer:
         self._end_pressure = self._windkessel_offset = 0.0
         mean = diastolic + (systolic - diastolic) * 2.0 * COMPRESSION_DUTY / math.pi
         return ArterialPressureSample(float(pressure), float(systolic), float(diastolic), float(mean))
+
+    def note_compression_baseline(self, diastolic: float) -> None:
+        """Keep the arterial runoff baseline at least at the compression relaxation pressure."""
+        baseline = float(diastolic)
+        if baseline > self._pressure:
+            self._pressure = baseline
+            self._recovering_from_no_flow = True
+            self._end_pressure = max(self._end_pressure, baseline)
 
 
 class ArterialLineMonitor:

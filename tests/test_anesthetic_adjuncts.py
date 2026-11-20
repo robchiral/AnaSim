@@ -9,6 +9,7 @@ from anasim.core.state import SimulationConfig
 from anasim.core.tci import TCIController
 from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import (
+    PROPOFOL_LOSS_OF_RESPONSE,
     ClinicalResponseModel,
     midazolam_loss_of_response,
 )
@@ -521,3 +522,18 @@ def test_lidocaine_mac_sparing_and_awake_ceiling():
     assert crm.tolerance(0.0, 0.0, mac_sevo=1.0, ce_lidocaine=4.0) > (
         crm.tolerance(0.0, 0.0, mac_sevo=1.0, ce_lidocaine=0.0) + 0.05
     )
+
+
+def test_short_1992_equal_share_propofol_midazolam_isobole():
+    """Short 1992: equal C50 shares of propofol and midazolam (0.315 each, 37% less than additive)
+    produce 50% loss of response."""
+    crm = ClinicalResponseModel(40.0)
+    m_c50 = midazolam_loss_of_response(40.0)
+    eq = hypnotic_equivalent(
+        0.315 * PROPOFOL_LOSS_OF_RESPONSE * crm.age_factor,
+        0.0,
+        0.315 * m_c50,
+        m_c50,
+        crm.age_factor,
+    )
+    assert crm.loss_of_response(eq, 0.0) == pytest.approx(0.5, abs=0.02)

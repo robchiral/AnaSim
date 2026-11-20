@@ -180,6 +180,9 @@ class ArrhythmiaModel:
             self._recovering_brady = following == RhythmType.SINUS_BRADY
             self._brady_s = dt - earliest if self._recovering_brady else 0.0
             self._remaining.pop("escape", None)
+            for name, rate, _ in events:
+                if name in self._remaining and rate > 0.0:
+                    self._remaining[name] = max(1e-9, self._remaining[name] + rate * (dt - earliest))
             self._rhythm = following
         elif following != rhythm:
             self._post_shock_asystole = False

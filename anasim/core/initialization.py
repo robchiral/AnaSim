@@ -10,6 +10,7 @@ from scipy.optimize import minimize
 
 from anasim.patient.patient import Patient
 from anasim.patient.pd import BISModel, ClinicalResponseModel
+from anasim.physiology.disturbances import DisturbanceEffects
 
 from . import monitors as monitor_core
 from . import projection as projection_core
@@ -428,7 +429,12 @@ def _run_hidden_settle(
         fi_sevo, fi_n2o = runtime_core.step_machine(engine, profile.settle_dt_seconds)
         runtime_core.step_pk(engine, profile.settle_dt_seconds, fi_sevo, fi_n2o, engine.state.co)
         engine._tol_current = projection_core.stimulus_tolerance(engine)
-        stimulus = runtime_core.stimulus_effects(engine, profile.settle_dt_seconds)
+        spec = engine.disturbances.spec
+        stimulus = (
+            DisturbanceEffects()
+            if spec is None or spec.finite
+            else runtime_core.stimulus_effects(engine, profile.settle_dt_seconds)
+        )
         physiology = runtime_core.step_physiology(engine, profile.settle_dt_seconds, stimulus)
         projection_core.project_runtime_physiology(engine, physiology)
         hemo_state = physiology.hemo_state

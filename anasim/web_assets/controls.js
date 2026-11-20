@@ -215,7 +215,7 @@ export class Controls {
       $("c-bag-settings"),
     );
     $("c-vent-power").onclick = () => this.send("vent_power", { on: !this.state.vent.on });
-    this.editSettings(
+    this.ventEditor = this.editSettings(
       ["c-vent-mode", "c-ie", ...Object.values(ventInputs)].map($),
       () => {
         const mode = $("c-vent-mode").value;
@@ -233,12 +233,19 @@ export class Controls {
   }
 
   applyVentMode(mode) {
+    const used = ventFields[mode];
+    const pending = Boolean(this.ventEditor?.pending);
+    for (const el of document.querySelectorAll("#c-vent-settings [data-vent]")) {
+      const unused = !used.includes(el.dataset.vent);
+      el.hidden = unused;
+      if (!pending) {
+        for (const input of el.querySelectorAll?.("input, select") ?? []) {
+          input.disabled = unused;
+        }
+      }
+    }
     if (this.displayedVentMode === mode) return;
     this.displayedVentMode = mode;
-    const used = ventFields[mode];
-    for (const el of document.querySelectorAll("#c-vent-settings [data-vent]")) {
-      el.hidden = !used.includes(el.dataset.vent);
-    }
     $("c-rr-label").textContent = mode === "PSV" ? "Backup RR" : "RR";
     $("c-pinsp-label").textContent = mode === "PSV" ? "Backup Pinsp" : "Pinsp";
   }

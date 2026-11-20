@@ -222,6 +222,34 @@
 - Case blood pressure and stability checks now require spontaneous circulation
   without chest compressions. Emergence accepts CPAP as unassisted breathing,
   and neuromuscular recovery checks exclude weakness from dantrolene.
+- Controlled ventilation with spontaneous effort no longer inflates FRC across
+  breaths, alveolar ventilation deducts dead space per breath, and bronchospasm
+  reduces ventilation during PSV. High fresh gas flow sustains breaths when the
+  reservoir empties, empty-bellows CPAP drops PEEP to zero, loose-mask
+  entrainment scales with the leak, and PSV apnea backup starts a breath
+  immediately.
+- During apnea on a sealed circuit, gas leaves at circuit composition and
+  tracheal FiO₂ rises smoothly at trace nitrogen. Hypothermic EtCO₂ stays at or
+  below in-vivo PaCO₂, while ionized calcium and renal compensation use 37 °C
+  values.
+- Endogenous norepinephrine spillover and its TCI basal rate now scale with
+  flow below 30% cardiac output, and propofol-midazolam synergy matches the
+  equal-share isobole of Short 1992. Baroreflex vasoconstriction stops during
+  pulseless arrest, compressions, and anoxia; reversible LV depression causes
+  pulmonary congestion; distributive SVR drops scale with baseline resistance;
+  and sepsis blunts dobutamine vasodilation.
+- Prolonged electrical silence becomes asystole after 15 seconds. Without
+  circulation or oxygen delivery, IV calcium waits for flow, and potassium
+  uptake plus lactate, citrate, and D-lactate clearance stop. Crystalloid
+  pressure scaling is capped above 105 mmHg, prolonged hypercapnic narcosis
+  slows breathing recovery, and CPR cerebral perfusion no longer subtracts
+  venous pressure twice.
+- Recovery from severe bradycardia no longer stalls HR or spikes the arterial
+  waveform, PEA compression handoff runs off smoothly, and TCI induction,
+  sugammadex reversal, and BIS jitter stay consistent across step sizes.
+  Immediate ROSC advances the cardiac arrest case without requiring
+  compressions, and hidden ventilator inputs in the browser no longer block
+  applying settings.
 
 ## 1.8 - 2026-11-06
 

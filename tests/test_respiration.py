@@ -880,3 +880,21 @@ def test_oxygen_exchange_preview_anoxic_floor_and_haldane_equilibration(patient)
     po2_0 = preox.state.p_arterial_o2
     preox.step(0.0, ce_prop=0.0, ce_remi=0.0, hb_g_dl=0.99 * preox.baseline_hb)
     assert preox.state.p_arterial_o2 == pytest.approx(po2_0, abs=0.1)
+
+
+def test_apneic_tracheal_fio2_washin_is_smooth_across_trace_circuit_nitrogen(engine_factory):
+    """Trace nitrogen in an O2-flushed circuit does not create a discontinuous wash-in cliff."""
+    deltas = []
+    for fin2 in (0.0005, 0.002):
+        eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+        eng.set_airway_mode("ETT")
+        eng.give_drug_bolus("roc", 70.0)
+        eng.set_fgf(10.0, 0.0)
+        eng.circuit.composition.fio2 = 1.0 - fin2
+        eng.circuit.composition.fin2 = fin2
+        eng.resp.state.apnea = True
+        eng._tracheal_fio2 = 0.21
+        eng.step(1.0)
+        deltas.append(eng._tracheal_fio2 - 0.21)
+    assert deltas[0] > 0.0 and deltas[1] > 0.0
+    assert deltas[0] / deltas[1] < 2.0

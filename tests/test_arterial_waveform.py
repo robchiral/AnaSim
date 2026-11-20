@@ -1,7 +1,10 @@
+import math
+
 import numpy as np
 import pytest
 
 from anasim.core.enums import RhythmType
+from anasim.core.state import SimulationConfig
 from anasim.monitors.arterial import ArterialLineMonitor, ArterialWaveformRenderer
 from anasim.monitors.cardiac_cycle import CardiacCycle
 
@@ -98,3 +101,40 @@ def test_af_pulse_pressure_follows_filling_time():
     beat = cycle.seed(60.0, RhythmType.SINUS)
     renderer.step(beat, 15.2, 5.0, dt=0.01, static_pressure=15.0)
     assert 0.25 <= renderer._runoff_tau_s <= 6.0
+
+
+def test_sudden_hr_acceleration_reference_pp_and_pea_compression_runoff(engine_factory):
+    """Sudden bradycardia-to-tachycardia transitions keep Windkessel pressure bounded,
+    reference_pulse_pressure matches _update_reference, and stopping PEA compressions
+    runs off smoothly from the compression diastolic baseline."""
+    cycle = CardiacCycle(np.random.default_rng(1))
+    renderer = ArterialWaveformRenderer(age=40)
+    sample = cycle.seed(15.0, RhythmType.SINUS_BRADY)
+    renderer.step(sample, 40.0, 60.0, dt=0.01, static_pressure=8.0)
+    for _ in range(5):
+        sample = cycle.step(0.01, 15.0, RhythmType.SINUS_BRADY)
+        renderer.step(sample, 40.0, 60.0, dt=0.01, static_pressure=8.0)
+    peak = 0.0
+    for _ in range(300):
+        sample = cycle.step(0.01, 150.0, RhythmType.SINUS)
+        art = renderer.step(sample, 90.0, 70.0, dt=0.01, static_pressure=8.0)
+        peak = max(peak, art.pressure)
+    assert math.isfinite(peak) and peak < 250.0
+
+    ref_sample = cycle.seed(75.0, RhythmType.SINUS)
+    renderer.seed(ref_sample, 50.0, 45.0, static_pressure=12.0, pulse_pressure_factor=0.6)
+    assert renderer.reference_pulse_pressure(
+        50.0, 45.0, 75.0, pulse_pressure_factor=0.6, static_pressure=12.0
+    ) == pytest.approx(renderer._reference_pp, abs=1e-6)
+
+    pea = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    pea.hemo.add_volume(-2600.0)
+    for _ in range(30):
+        pea.step(1.0)
+    pea.set_chest_compressions(True)
+    for _ in range(10):
+        pea.step(0.5)
+    dbp_before = pea.state.art_dbp
+    pea.set_chest_compressions(False)
+    pea.step(0.01)
+    assert pea.state.art_pressure >= dbp_before - 5.0

@@ -237,3 +237,31 @@ test("defibrillator sync buttons reset per session and hemorrhage select preserv
   controls.syncRhythm("Sinus rhythm");
   assert.equal(rhythmOptions.some(o => o.dataset.observed === "true"), false);
 });
+
+test("applyVentMode disables hidden ventilator inputs so unused invalid values cannot block Apply", () => {
+  const tvInput = { disabled: false };
+  const psInput = { disabled: false };
+  const rows = [
+    { dataset: { vent: "tv" }, hidden: false, querySelectorAll: () => [tvInput] },
+    { dataset: { vent: "p_support" }, hidden: false, querySelectorAll: () => [psInput] },
+  ];
+  const labels = new Map([
+    ["c-rr-label", { textContent: "" }],
+    ["c-pinsp-label", { textContent: "" }],
+  ]);
+  globalThis.document = {
+    getElementById: id => labels.get(id),
+    querySelectorAll: sel => (sel === "#c-vent-settings [data-vent]" ? rows : []),
+  };
+  const controls = Object.create(Controls.prototype);
+  controls.ventEditor = { pending: false };
+  controls.applyVentMode("CPAP");
+  assert.equal(rows[0].hidden, true);
+  assert.equal(tvInput.disabled, true);
+  assert.equal(psInput.disabled, true);
+  controls.applyVentMode("PSV");
+  assert.equal(rows[0].hidden, true);
+  assert.equal(tvInput.disabled, true);
+  assert.equal(rows[1].hidden, false);
+  assert.equal(psInput.disabled, false);
+});

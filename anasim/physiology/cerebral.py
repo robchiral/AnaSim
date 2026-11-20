@@ -75,13 +75,11 @@ class CerebralModel:
         hypercapnia = clamp01((pa_co2 - 60.0) / 40.0)
         acidemia = clamp01((7.3 - ph) / 0.2)
         target_co2 = max(clamp01((pa_co2 - 100.0) / 40.0), hypercapnia * acidemia)
-        if target_co2 >= self.co2_narcosis:
-            co2_tau = self.CO2_RESPONSE_TAU_S
-        else:
-            prolonged = clamp01(
-                (self.hypercapnic_coma_s - self.PROLONGED_NARCOSIS_ONSET_S) / self.PROLONGED_NARCOSIS_SPAN_S
-            )
-            co2_tau = self.CO2_RESPONSE_TAU_S + (self.CO2_RECOVERY_MAX_TAU_S - self.CO2_RESPONSE_TAU_S) * prolonged
+        prolonged = clamp01(
+            (self.hypercapnic_coma_s - self.PROLONGED_NARCOSIS_ONSET_S) / self.PROLONGED_NARCOSIS_SPAN_S
+        )
+        recovery_tau = self.CO2_RESPONSE_TAU_S + (self.CO2_RECOVERY_MAX_TAU_S - self.CO2_RESPONSE_TAU_S) * prolonged
+        co2_tau = self.CO2_RESPONSE_TAU_S if target_co2 >= self.co2_narcosis else recovery_tau
         self.co2_narcosis += (target_co2 - self.co2_narcosis) * -math.expm1(-dt / co2_tau)
         if self.co2_narcosis >= 0.5 and target_co2 >= 0.5:
             self.hypercapnic_coma_s = min(
@@ -97,7 +95,7 @@ class CerebralModel:
             clamp01((pa_co2 - 90.0) / 40.0) * clamp01((7.22 - ph) / 0.14),
         )
         target_resp_dep = 0.95 * medullary_co2 * medullary_co2
-        resp_tau = self.CO2_RESPONSE_TAU_S if target_resp_dep >= self.co2_respiratory_depression else co2_tau
+        resp_tau = self.CO2_RESPONSE_TAU_S if target_resp_dep >= self.co2_respiratory_depression else recovery_tau
         self.co2_respiratory_depression += (
             (target_resp_dep - self.co2_respiratory_depression) * -math.expm1(-dt / resp_tau)
         )

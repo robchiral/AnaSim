@@ -113,6 +113,6 @@ def test_n2o_second_gas_concentrating_effect_and_diffusion_hypoxia(engine_factor
         model.set_airway_mode("None")
     wash_o2.set_fgf(10.0, 0.0, n2o_l_min=0.0)
     for model in (wash_air, ctrl_air, wash_o2):
-        advance_time(model, 75.0, dt=1.0)
+        advance_time(model, 90.0, dt=1.0)
     assert wash_air.state.pao2 < ctrl_air.state.pao2 - 3.0 and wash_air.state.pao2 < 90.0
     assert wash_o2.state.pao2 > 220.0

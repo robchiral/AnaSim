@@ -218,14 +218,28 @@ class CardiacCycle:
         if not organized:
             return self._sample(beat_started=False)
 
-        self._mean_rr_s = self._mean_rr(hr)
+        prev_mean_rr = self._mean_rr_s
+        new_mean_rr = self._mean_rr(hr)
+        self._mean_rr_s = new_mean_rr
+        if prev_mean_rr > 0.0 and new_mean_rr < prev_mean_rr:
+            # Rescale remaining wait proportionally when HR accelerates so recovery
+            # from agonal bradycardia does not stall behind a stale long R-R interval.
+            remaining = self._rr_interval_s - self._elapsed_s
+            if remaining > 0.0:
+                self._rr_interval_s = self._elapsed_s + remaining * (new_mean_rr / prev_mean_rr)
         self._elapsed_s += dt
         beat_started = False
         while self._elapsed_s >= self._rr_interval_s:
-            self._elapsed_s -= self._rr_interval_s
-            self._measured_hr = 60.0 / self._rr_interval_s
-            self._recent_rr.append(self._rr_interval_s)
-            self._stroke_fraction = self._beat_stroke_fraction(self._rr_interval_s, rhythm_type)
+            completed_rr = self._rr_interval_s
+            self._elapsed_s -= completed_rr
+            if completed_rr < 8.0:
+                self._measured_hr = 60.0 / completed_rr
+                self._recent_rr.append(completed_rr)
+            else:
+                self._recent_rr.clear()
+                self._recent_rr_total = 0.0
+                self._measured_hr = 60.0 / new_mean_rr
+            self._stroke_fraction = self._beat_stroke_fraction(completed_rr, rhythm_type)
             self._rr_interval_s = self._next_rr(hr, rhythm_type)
             beat_started = True
         if beat_started:

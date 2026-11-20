@@ -298,3 +298,9 @@ def test_volume_changes_preserve_lactate_buffer_base_accounting(engine_factory):
         shock.step(5.0, 0.0, 1.0)
     assert shock.concentration == pytest.approx(0.9, abs=1e-3)
     assert shock.base_removed_mmol == pytest.approx(0.0, abs=1e-3)
+
+    # Complete arrest (oxygen_supply == 0) halts oxidative clearance without division by zero.
+    arrest = LactateModel(70.0)
+    arrest.endogenous_mmol = 100.0
+    arrest.step(60.0, 0.0, 0.0)
+    assert arrest.endogenous_mmol >= 100.0

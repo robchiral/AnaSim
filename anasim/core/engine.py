@@ -4,10 +4,14 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from anasim.core.constants import BAG_P_MAX_DEFAULT, AirwayTuning
+from anasim.core.constants import (
+    BAG_P_MAX_DEFAULT,
+    CIRCULATION_LIMIT_FRACTION,
+    AirwayTuning,
+)
 from anasim.core.enums import RhythmType
 from anasim.core.recorder import DataRecorder
-from anasim.core.utils import clamp
+from anasim.core.utils import clamp, clamp01
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.ventilator import AnesthesiaVentilator
 from anasim.machine.volatile import Vaporizer
@@ -175,6 +179,7 @@ class SimulationEngine(DrugControllerMixin):
         self.airway_status = AirwayStatus()
 
         self.smooth_bis = 98.0
+        self._bis_noise = 0.0
         self.etco2_readout = EtCO2Readout()
         self._tol_current = 0.0
         self._pk_hemo_scale_cache: tuple[float, float, float] | None = None
@@ -375,8 +380,10 @@ class SimulationEngine(DrugControllerMixin):
         dose = bounded_number("calcium chloride dose", mg, 0.0, 10000.0, unit="mg")
         if dose == 0.0:
             raise ValueError("calcium chloride dose must be greater than zero")
-        self.hemo.fluids.give_calcium_chloride(dose * 0.0068)
-        self.state.ionized_calcium = float(self.hemo.fluids.ionized_calcium(self.state.ph))
+        base_co = max(0.1, self.hemo.base_co_l_min)
+        circulation = clamp01(self.hemo.state.co / (CIRCULATION_LIMIT_FRACTION * base_co))
+        self.hemo.fluids.give_calcium_chloride(dose * 0.0068, circulation=circulation)
+        self.state.ionized_calcium = float(self.hemo.fluids.ionized_calcium(self.resp.state.ph_37))
         self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="calcium_chloride", amount=dose)
 
     def give_blood(self, volume_ml: float = 300.0, hematocrit: float = 0.55):
@@ -847,8 +854,7 @@ class SimulationEngine(DrugControllerMixin):
                 if model.state.ce <= basal_ref + 1e-6:
                     return 0.0
             else:
-                basal_rate = model.basal_input_rate * clamp(model.circulation / 0.01, 0.0, 1.0)
-                basal_ce = basal_rate * 60.0 / model.elimination_clearance
+                basal_ce = model.effective_basal_input_rate * 60.0 / model.elimination_clearance
                 if model.state.ce <= basal_ce + 1e-9:
                     return 0.0
                 target_fraction = (basal_ce + 0.5 * (model.state.ce - basal_ce)) / model.state.ce

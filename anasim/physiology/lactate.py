@@ -84,6 +84,8 @@ class LactateModel:
     def _midpoint_factors(
         amount: float, source: float, capacity: float, km: float, minutes: float
     ) -> tuple[float, float]:
+        if capacity <= 1e-12:
+            return 1.0, minutes
         rate = capacity / (km + amount)
         half_loss = -math.expm1(-rate * minutes / 2.0)
         midpoint = amount * (1.0 - half_loss) + source * (half_loss / rate)
@@ -115,7 +117,8 @@ class LactateModel:
         )
         anaerobic = ANAEROBIC_PER_O2 * max(0.0, oxygen_deficit_l) / O2_L_PER_MMOL
         supply = clamp01(supply_fraction)
-        capacity = self.vmax_mmol_min * (1.0 - HEPATIC_SHARE + HEPATIC_SHARE * self.hepatic_function * supply)
+        extrahepatic = (1.0 - HEPATIC_SHARE) * clamp01(supply / 0.15)
+        capacity = self.vmax_mmol_min * (extrahepatic + HEPATIC_SHARE * self.hepatic_function * supply)
         endogenous_source = aerobic + anaerobic / minutes
         infused_source = infused / minutes
         total = self.endogenous_mmol + self.infused_mmol

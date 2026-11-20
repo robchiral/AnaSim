@@ -898,3 +898,50 @@ def test_body_size_mcfp_starling_collapse_afib_ceiling_and_eval_purity(engine_fa
     advance_time(hfref_eng, 300.0, dt=1.0)
     hs_hfref = hfref_eng.hemo.state
     assert hs_hfref.rv_co == pytest.approx(hs_hfref.intrinsic_co, abs=0.25)
+
+
+def test_arrest_svr_hypothermia_baroreflex_reversible_lv_and_septic_scaling():
+    """VFIB omits baroreflex SVR boost; severe hypothermia blunts hemorrhage tachycardia;
+    reversible LV depression engages pulmonary-congestion RV backpressure; sepsis blunts
+    dobutamine vasodilation and scales distributive TPR drops with baseline TPR."""
+    vf = _model()
+    vf.rhythm_type = RhythmType.VFIB
+    for _ in range(60):
+        s_vf = vf.step(1.0, 0, 0, 0, -2, 40, 95)
+    assert s_vf.svr <= vf.base_tpr * 16.67 * 1.15
+
+    hypo = _model()
+    hypo.add_volume(-1200.0)
+    for _ in range(60):
+        s_hypo = hypo.step(1.0, 0, 0, 0, -2, 40, 95, temp_c=26.0)
+    assert s_hypo.hr < 55.0
+
+    last_lv = _model()
+    for _ in range(180):
+        s_lv = last_lv.step(2.0, 0, 0, 0, -2, 40, 95, toxic_contractility_loss=0.65)
+    assert last_lv._pulmonary_congestion_ml > 20.0
+    assert s_lv.rv_co == pytest.approx(s_lv.intrinsic_co, abs=0.30)
+
+    normal_d, septic_d = _model(), _model()
+    septic_d.sepsis_severity = 1.0
+    s_n0 = normal_d.step(1.0, 0, 0, 0, -2, 40, 95)
+    s_s0 = septic_d.step(1.0, 0, 0, 0, -2, 40, 95)
+    for _ in range(60):
+        s_n1 = normal_d.step(1.0, 0, 0, 0, -2, 40, 95, ce_dobu=100.0)
+        s_s1 = septic_d.step(1.0, 0, 0, 0, -2, 40, 95, ce_dobu=100.0)
+    assert (s_s0.svr - s_s1.svr) / s_s0.svr < (s_n0.svr - s_n1.svr) / s_n0.svr
+
+    normo = HemodynamicModel(Patient(baseline_map=85.0))
+    htn = HemodynamicModel(Patient(baseline_map=130.0))
+    normo_svr0, htn_svr0 = normo.state.svr, htn.state.svr
+    normo.sepsis_severity = htn.sepsis_severity = 1.0
+    for _ in range(30):
+        sn = normo.step(1.0, 0, 0, 0, -2, 40, 95)
+        sh = htn.step(1.0, 0, 0, 0, -2, 40, 95)
+    assert sn.svr / normo_svr0 == pytest.approx(sh.svr / htn_svr0, abs=0.05)
+
+    eph_a, eph_b = _model(), _model()
+    for _ in range(60):
+        eph_a.step(1.0, 0, 0, 0, -2, 40, 95, ce_ephedrine=80.0)
+        eph_b.step(1.0, 0, 0, 0, -2, 40, 95, ce_ephedrine=80.0, ce_labetalol=300.0)
+    assert eph_a._ephedrine_tolerance_ce == pytest.approx(eph_b._ephedrine_tolerance_ce, rel=1e-9)

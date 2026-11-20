@@ -85,7 +85,7 @@ def test_oxygenated_hypoventilation_impairs_response_and_ventilation_reverses_it
     assert state.sao2 > 98 and state.map > 65 and state.twitch < 1
     assert state.loc > 0.6 and state.bis > 80
     assert engine.cerebral.anoxic_s == 0
-    engine.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5, ie="1:2")
+    engine.set_vent_settings(mode="VCV", rr=15, vt=0.5, peep=5, ie="1:2")
     for _ in range(600):
         engine.step(2.0)
     assert state.pa_co2 < 50 and state.loc < 0.01
@@ -216,3 +216,30 @@ def test_extreme_hypercapnia_depresses_medullary_drive_and_prolonged_coma_lags_r
     assert engine.state.loc > 0.95 and engine.state.bis > 80.0
     assert engine.resp.state.mv < 0.3 * stim_mv
     assert engine.state.pa_co2 > stim_paco2 + 12.0
+
+
+def test_prolonged_co2_narcosis_delays_respiratory_recovery_and_cpr_preserves_cerebral_cpp(
+    engine_factory, monkeypatch
+):
+    """Prolonged hypercapnic narcosis applies the prolonged recovery time constant to respiratory
+    drive as well as coma, and CPR supplies venous + cpr_perfusion_map so cerebral CPP is not double-subtracted."""
+    brain = CerebralModel(13.5)
+    brain.step(7200.0, 90.0, 13.5, 98.0, 140.0, 7.05)
+    brain.step(300.0, 90.0, 13.5, 98.0, 42.0, 7.39)
+    assert brain.respiratory_drive < 0.5
+
+    cpr = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    cpr.set_rhythm("VFIB")
+    cpr.set_chest_compressions(True)
+    seen_maps: list[float] = []
+    orig_step = CerebralModel.step
+
+    def capture(dt, map_val, *args, **kwargs):
+        seen_maps.append(map_val)
+        return orig_step(cpr.cerebral, dt, map_val, *args, **kwargs)
+
+    monkeypatch.setattr(cpr.cerebral, "step", capture)
+    for _ in range(10):
+        cpr.step(1.0)
+    hs = cpr.hemo.state
+    assert seen_maps[-1] == pytest.approx(hs.venous_pressure + hs.cpr_perfusion_map, abs=1e-6)

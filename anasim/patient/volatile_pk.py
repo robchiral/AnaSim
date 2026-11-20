@@ -64,6 +64,7 @@ class VolatilePK:
 
         self.state = VolatileState()
         self.frc = patient.functional_residual_capacity()
+        self.last_blood_uptake_l_min = 0.0
 
     def mac_at_temp(self, temp_c: float = 37.0) -> float:
         """Age- and temperature-adjusted MAC (% atm); falls ~5% per °C of hypothermia."""
@@ -88,7 +89,7 @@ class VolatilePK:
         exhaled_volume_change_l: float | None,
         circuit_share: float = 1.0,
         circuit_fi_agent: float | None = None,
-    ) -> tuple[float, float, float, float, float, float, float, float]:
+    ) -> tuple[float, float, float, float, float, float, float, float, float]:
         dt_min = dt / 60.0
         q_co = cardiac_output_l
         q_vrg = q_co * self.f_vrg_frac
@@ -106,6 +107,7 @@ class VolatilePK:
         p_fat = self.state.p_fat
         v_frc = self.frc
         net_btps_l = 0.0
+        blood_uptake_btps_l = 0.0
         # FRC dPalv/dt = VA (Fi - Palv) + U_companion Fi + (1-s) Q lambda_bg (Pven - Palv).
         # Arterial blood mixes end-capillary and shunted venous blood.
         if lung_volume_l is not None:
@@ -145,9 +147,11 @@ class VolatilePK:
                     + concentrating_inflow * fi_agent
                     - washout_outflow * p_alv
                 )
+                step_blood = lambda_q * (p_alv - p_ven) * interval
+                blood_uptake_btps_l += step_blood
                 next_p_alv = clamp01(p_alv + (airway_flux + lambda_q * (p_ven - p_alv)) / v_frc * interval)
                 if circuit_share >= 1.0 - 1e-9:
-                    net_btps_l += (next_p_alv - p_alv) * v_frc + lambda_q * (p_alv - p_ven) * interval
+                    net_btps_l += (next_p_alv - p_alv) * v_frc + step_blood
                 else:
                     net_btps_l += circuit_share * (
                         alveolar_vent * (branch_fi - p_alv)
@@ -162,7 +166,7 @@ class VolatilePK:
             p_fat += k_fat * (p_art - p_fat) * interval
         p_ven = self.f_vrg_frac * p_vrg + self.f_mus_frac * p_mus + self.f_fat_frac * p_fat
         p_art = ((1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
-        return p_alv, p_vrg, p_mus, p_fat, p_ven, p_art, v_frc, net_btps_l
+        return p_alv, p_vrg, p_mus, p_fat, p_ven, p_art, v_frc, net_btps_l, blood_uptake_btps_l
 
     def exchange_btps_l_min(
         self,
@@ -228,6 +232,7 @@ class VolatilePK:
             if lung_volume_l is not None:
                 self.frc = lung_volume_l
             state.p_ven = state.p_art = state.mac = 0.0
+            self.last_blood_uptake_l_min = 0.0
             return
         (
             state.p_alv,
@@ -238,6 +243,7 @@ class VolatilePK:
             state.p_art,
             self.frc,
             _,
+            blood_uptake_btps_l,
         ) = self._integrate(
             dt,
             fi_agent,
@@ -249,4 +255,5 @@ class VolatilePK:
             passive_inflow_l_min,
             exhaled_volume_change_l,
         )
+        self.last_blood_uptake_l_min = blood_uptake_btps_l / (dt / 60.0) if dt > 0.0 else 0.0
         state.mac = (state.p_vrg * 100.0) / self.mac_at_temp(temp_c)

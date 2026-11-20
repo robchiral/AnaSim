@@ -1,5 +1,8 @@
 """Results should not depend on the outer simulation step."""
 
+import copy
+
+import numpy as np
 import pytest
 
 from anasim.core.state import SimulationConfig
@@ -54,3 +57,44 @@ def test_tci_maintenance_concentrations_match_across_step_sizes(engine_factory):
         traces.append((engine.state.propofol_ce, engine.state.remi_ce))
     for trace in traces[1:]:
         assert trace == pytest.approx(traces[0], rel=0.01)
+
+
+def test_tci_bolus_sugammadex_coupling_and_bis_display_noise_are_step_size_invariant(engine_factory):
+    """TCI induction, sugammadex reversal coupling, and BIS display noise variance remain consistent across dt."""
+    # TCI induction mass/time conservation across dt=0.1 vs 1.0 s.
+    tci_fine = engine_factory(
+        config=SimulationConfig(mode="awake", tci_enabled=True, dt=0.1, rng_seed=1), start=True
+    )
+    tci_fine.enable_tci("propofol", 3.0)
+    tci_coarse = copy.deepcopy(tci_fine)
+    for _ in range(100):
+        tci_fine.step(0.1)
+    for _ in range(10):
+        tci_coarse.step(1.0)
+    assert tci_coarse.state.propofol_ce == pytest.approx(tci_fine.state.propofol_ce, abs=0.05)
+
+    # Sugammadex-rocuronium binding substeps keep TOF recovery invariant across dt=0.05 vs 1.0 s.
+    sug_fine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    sug_fine.give_drug_bolus("roc", 70.0)
+    for _ in range(60):
+        sug_fine.step(1.0)
+    sug_coarse = copy.deepcopy(sug_fine)
+    sug_fine.give_drug_bolus("sugammadex", 140.0)
+    sug_coarse.give_drug_bolus("sugammadex", 140.0)
+    for _ in range(600):
+        sug_fine.step(0.05)
+    for _ in range(30):
+        sug_coarse.step(1.0)
+    assert sug_coarse.state.tof == pytest.approx(sug_fine.state.tof, abs=2.0)
+
+    # OU BIS display noise keeps stationary jitter SD consistent across dt=0.05 vs 1.0 s.
+    sds = []
+    for dt in (0.05, 1.0):
+        eng = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=42), start=True)
+        diffs = []
+        for _ in range(round(300.0 / dt)):
+            eng.step(dt)
+            if eng.state.time > 60.0:
+                diffs.append(eng.smooth_bis - eng.state.bis)
+        sds.append(float(np.std(diffs)))
+    assert 0.5 < sds[0] / sds[1] < 2.0

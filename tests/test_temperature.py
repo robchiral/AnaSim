@@ -156,3 +156,15 @@ def test_thermal_etomidate_age_invariance_and_ischemic_bis_baseline_seed(engine_
     young.cerebral.ischemia = 0.8
     sync_monitor_baselines(young)
     assert young.bis.cortical_function == pytest.approx(young.cerebral.cortical_function, rel=1e-9)
+
+
+def test_hypothermia_preserves_etco2_gradient_and_alpha_stat_ionized_calcium(engine_factory):
+    """During hypothermia, published EtCO2 stays at or below in-vivo PaCO2 and ionized calcium
+    tracks 37 C alpha-stat pH rather than shifting artificially with in-vivo pH."""
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    ica_37 = engine.state.ionized_calcium
+    engine.thermal.core_temp = 30.0
+    engine.state.temp_c = 30.0
+    _advance(engine, 10, dt=1.0)
+    assert engine.state.etco2 <= engine.state.pa_co2
+    assert engine.state.ionized_calcium == pytest.approx(ica_37, abs=0.05)

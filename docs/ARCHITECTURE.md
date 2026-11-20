@@ -79,74 +79,31 @@ every field and its units.
 
 `awake` starts from the patient's baseline values. `steady_state` starts a
 maintenance anesthetic from a 30-minute drug history, begins controlled
-ventilation, and lets the models settle. Startup targets and manual infusion
-rates use population kinetics and potency, so sampled variability and organ
-impairment affect the patient's concentrations rather than the pump settings.
-Vasopressor infusions start at zero, so mean arterial pressure (MAP) shows the
-untreated effect of the anesthetic. The session clock, recordings, and fluid
-totals start after initialization.
-
-The initial ventilator settings aim for the patient's resting PaCO₂. Tidal
-volume is adjusted first, within limits based on predicted body weight, and then
-respiratory rate. Patients with COPD have a lower rate limit to allow time for
-expiration. With severe obstruction or obesity, PaCO₂ can remain above the
-target.
+ventilation, and lets the models settle before resetting the session clock,
+recordings, and fluid totals. Sustained surgical stimulation settles with the
+maintenance state, while finite pulses such as intubation begin when the
+session starts. Startup targets and manual infusion rates use population
+kinetics and potency, so sampled variability and organ impairment affect the
+patient's concentrations rather than the pump settings, and vasopressors start
+at zero.
 
 ## Browser app
 
-### Cases
+### Cases and action checks
 
-Each scenario file defines one case: a briefing, timed events, case actions
-such as requesting hemostasis, guided steps, and debrief outcomes. `CaseRun` in
-[`scenarios/runtime.py`](../anasim/scenarios/runtime.py) starts the events,
-tracks outcomes, and builds the debrief in both practice modes. Case sessions
-hide the instructor event controls that open simulation provides.
+Each scenario file defines a briefing, timed events, case actions such as
+requesting hemostasis, guided steps, and debrief outcomes. `CaseRun` in
+[`scenarios/runtime.py`](../anasim/scenarios/runtime.py) starts timed events,
+tracks objectives in guided or independent mode, and builds the debrief while
+hiding instructor event controls. Ending a case, finishing the last guided
+step, or reaching irreversible cardiac arrest pauses the model, stops
+recording, and locks the controls and debrief. Open simulations also stop
+recording and disable treatment controls at irreversible arrest.
 
-Crises start 30 simulated seconds into the case. In their cases, anaphylaxis and
-sepsis reach full severity over 45 and 60 seconds, while hemorrhage and
-malignant hyperthermia develop over several minutes. In the anaphylaxis case,
-crystalloid boluses run at 500 mL/min.
-
-Guided requirements count actions from the start of the case, or from crisis
-onset for crisis treatment, so the guide never asks for a repeat dose. In
-independent mode, the browser receives no step text, and safety warnings other
-than a failed intubation appear only in the debrief.
-
-Pressure objectives require spontaneous circulation without chest compressions,
-and both the displayed MAP and the current model MAP must reach the target.
-Without an arterial line, the cuff reading must be no more than one minute old.
-A missing or failed measurement does not satisfy a hypotension check.
-Anaphylaxis recovery also requires improved bronchospasm.
-
-Milestone outcomes, such as preoxygenation, stay credited once achieved.
-Extubation outcomes are checked when the tube is removed, and the rest must hold
-when the case ends. Ending the case, finishing the last guided step, or
-irreversible cardiac arrest pauses the model, stops recording, and freezes the
-controls and debrief. Open simulations also stop recording and disable treatment
-controls at irreversible arrest.
-
-### Action checks
-
-Selecting the tracheal tube calls `SimulationEngine.attempt_intubation`, which
-triggers a brief intubation stimulus whether or not placement succeeds. When
-circulation continues and central muscle strength is above 0.5, placement fails
-if loss of response is below 0.1, or if laryngoscopy tolerance is below 0.1
-without sustained hypnosis. Placement succeeds during cardiac arrest or
-nonperfusing rhythms.
-
-[`clinical_actions.py`](../anasim/core/clinical_actions.py) shows a warning
-without blocking the action when:
-
-- the tube is placed in a responsive patient (loss of response below 0.1) whose
-  central muscle strength is 0.5 or lower
-- rocuronium or succinylcholine is given to a responsive patient without an
-  induction dose already in plasma
-- the tube is removed during apnea, reactive Stage II anesthesia, or incomplete
-  neuromuscular recovery (train-of-four ratio or blocker T1 below 90%, excluding
-  weakness from dantrolene)
-- assisted ventilation stops during apnea
-- a shock is delivered to a responsive patient (loss of response below 0.5) with
-  spontaneous circulation
+[`clinical_actions.py`](../anasim/core/clinical_actions.py) evaluates
+intubation placement and clinical safety warnings before actions run. The
+[model guide](MODELS.md#cases-and-clinical-actions) documents case timing,
+objective checks, and action rules.
 
 ### Session transport
 
@@ -167,25 +124,17 @@ The hosted app runs Python, NumPy, and SciPy in a Pyodide worker, and stopping a
 recording downloads the CSV. [`build_web.py`](../scripts/build_web.py) builds
 the hosted bundle, and [pages.yml](../.github/workflows/pages.yml) publishes it.
 
-Optional monitor audio follows pleth pulses and alarm flags. Alarm silence lasts
-2 minutes of real time. A new alarm or a change between high and low ends it.
-
 ## Validation
 
 Tests cover published equations, conservation of gas and drugs, monitor
-behavior, and complete clinical scenarios, in native Python and in Pyodide.
+behavior, and complete clinical scenarios in native Python and in Pyodide.
 Acceptance tests check standard teaching cases (balanced and total intravenous
 induction, intubation, incision, and vasopressor boluses) against ranges from
-VitalDB recordings and published studies. [Recorded-case
-comparisons](../validation/vitaldb/README.md) compare anesthetic, respiratory,
-and hemodynamic components with VitalDB data.
+VitalDB recordings and published studies.
 
-The [intubation replay](../validation/intubation.py) (`python -m
-validation.intubation`) prints absolute and incremental errors in systolic
-pressure, heart rate (HR), MAP, and cardiac output against Billard 1994 and
-Sawano 2013. These two studies set the HR recovery and the split of the
-intubation response between stroke volume and vascular resistance. Ebert 1992
-and 1995 set the peak HR and MAP response, and Hayakawa-Fujii 2001 is an
-independent check. The replay also compares induction changes with Sjøen 2023
-and 2024 and Poterman 2017. `--sensitivity` compares assumed propofol loading
-histories at the plasma target in Sawano 2013.
+Offline scripts compare model outputs against clinical datasets and published
+cohorts: [recorded-case comparisons](../validation/vitaldb/README.md) replay
+VitalDB cases across anesthetic, respiratory, and hemodynamic components, and
+the [intubation replay](../validation/intubation.py) (`python -m
+validation.intubation`, with `--sensitivity` for loading-history checks) prints
+induction and intubation errors against published trials.

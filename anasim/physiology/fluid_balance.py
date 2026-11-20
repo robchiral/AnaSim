@@ -3,6 +3,8 @@
 import math
 from dataclasses import dataclass
 
+from anasim.core.utils import clamp01
+
 from .blood_chemistry import (
     _MMHG_PER_KPA,
     _PLASMA_CO2_SOLUBILITY,
@@ -136,6 +138,8 @@ class FluidBalance:
         self.cell_k_mmol = 140.0 * self.icf_l
         self.cell_na_mmol = 10.0 * self.icf_l
         self.exogenous_calcium_mmol = 0.0
+        self.pending_calcium_mmol = 0.0
+        self._circulation = 1.0
         self._cell_solute = self.icf_l * self._extracellular_solute() / self.ecf_l
         self.d_lactate_mmol = 0.0
         self.infused_l_lactate_mmol = 0.0
@@ -312,13 +316,19 @@ class FluidBalance:
     def step(self, dt: float, *, ph: float, paco2: float, resting_paco2: float,
              renal_function: float, renal_perfusion: float, hepatic_function: float,
              oxygen_supply: float, epinephrine: float,
-             succinylcholine_ce: float = 0.0, mh_severity: float = 0.0) -> None:
+             succinylcholine_ce: float = 0.0, mh_severity: float = 0.0,
+             circulation: float = 1.0) -> None:
         self.ph = ph
+        self._circulation = clamp01(circulation)
         self._equilibrate_cell_water()
         if dt <= 0.0:
             return
+        if self.pending_calcium_mmol > 0.0 and self._circulation > 0.0:
+            delivered = self.pending_calcium_mmol * -math.expm1(-self._circulation * dt / 5.0)
+            self.pending_calcium_mmol -= delivered
+            self._deliver_calcium(delivered)
         minutes = dt / 60.0
-        self._clear_calcium(minutes)
+        self._clear_calcium(minutes * self._circulation)
         self._metabolize_buffers(minutes, hepatic_function, oxygen_supply)
         self._renal_balance(minutes, ph, paco2, resting_paco2, renal_function, renal_perfusion)
         self._exchange_potassium(
@@ -330,12 +340,13 @@ class FluidBalance:
         # Kramer 2003: control Vdss 21 L and clearance 710 mL/min, consistent with
         # intraoperative massive-transfusion citrate in Kahn 1979.
         # The liver/perfusion scaling and D-isomer kinetics are reduced-model assumptions.
+        oxy = clamp01(oxygen_supply)
         citrate_rate = (0.710 * self.weight / 70.0 / self.citrate_volume_l
-                        * (0.25 + 0.75 * hepatic_function * oxygen_supply))
+                        * (0.25 + 0.75 * hepatic_function) * oxy)
         citrate_removed = self.citrate_mmol * -math.expm1(-citrate_rate * minutes)
         self.citrate_mmol -= citrate_removed
         d_removed = self.d_lactate_mmol * -math.expm1(
-            -0.012 * self.weight / self.lactate_volume_l * hepatic_function * minutes,
+            -0.012 * self.weight / self.lactate_volume_l * hepatic_function * oxy * minutes,
         )
         self.d_lactate_mmol -= d_removed
         self.base_meq += 3.0 * citrate_removed + d_removed
@@ -412,6 +423,8 @@ class FluidBalance:
         partition = 35.0 * (1.0 + beta) / efflux
         target_k = total * self.ecf_l / (self.ecf_l + self.icf_l * partition)
         moved = (self.amounts["potassium"] - target_k) * -math.expm1(-minutes / 5.0)
+        if moved > 0.0:
+            moved *= self._circulation
         moved = min(self.cell_na_mmol, max(-self.cell_k_mmol, moved))
         self.amounts["potassium"] -= moved
         self.cell_k_mmol += moved
@@ -452,8 +465,15 @@ class FluidBalance:
         b = _CITRATE_KD * a + self.citrate_mmol / self.citrate_volume_l - total
         return 2.0 * _CITRATE_KD * total / (b + math.sqrt(b * b + 4.0 * a * _CITRATE_KD * total))
 
-    def give_calcium_chloride(self, mmol: float) -> None:
+    def _deliver_calcium(self, mmol: float) -> None:
         self.amounts["calcium"] += mmol
         self.amounts["chloride"] += 2.0 * mmol
         self.exogenous_calcium_mmol += mmol
         self.calcium_unmixed_mmol += mmol * (1.0 - _CALCIUM_CENTRAL_FRACTION)
+
+    def give_calcium_chloride(self, mmol: float, circulation: float | None = None) -> None:
+        circ = self._circulation if circulation is None else clamp01(circulation)
+        if circ >= 1.0:
+            self._deliver_calcium(mmol)
+        else:
+            self.pending_calcium_mmol += mmol

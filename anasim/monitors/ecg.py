@@ -196,7 +196,7 @@ class ECGMonitor:
             angle = 2.0 * math.pi * compression_phase
             artifact = _COMPRESSION_ARTIFACT_MV * (math.sin(angle) + 0.3 * math.sin(2.0 * angle + 0.5))
         rhythm_type = cycle.rhythm_type
-        if rhythm_type == RhythmType.ASYSTOLE:
+        if rhythm_type == RhythmType.ASYSTOLE or (rhythm_type != RhythmType.VFIB and not cycle.organized):
             self._rhythm = None
             return self.rng.random() * 0.02 - 0.01 + artifact
 

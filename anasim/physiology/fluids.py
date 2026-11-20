@@ -3,11 +3,15 @@
 import math
 from dataclasses import dataclass
 
-from anasim.core.utils import clamp01
+from anasim.core.utils import clamp, clamp01
 
 # Saline's urinary elimination relative to Ringer's, fitted to Reid 2003: 2 L over 1 h gave
 # median 6 h urine of 450 mL after saline and 1000 mL after Hartmann's.
 SALINE_ELIMINATION = 0.25
+# Renal autoregulation limits glomerular filtration pressure above normotension;
+# cap Hahn's power laws near the upper end of the fitted perioperative range.
+_HAHN_MAP_MAX_MMHG = 105.0
+_MAX_CRYSTALLOID_K10_PER_MIN = 0.025
 
 
 def _decay_integral(rate: float, minutes: float) -> float:
@@ -39,12 +43,14 @@ class CrystalloidKinetics:
         # Distribution slows with arterial pressure, as at anesthesia induction
         # (Hahn 2021: exponent 2.34), around Hahn 2017's reference pressure.
         flow_scale = clamp01(circulation)
-        k12 = 0.0956 * (max(0.0, map_mmHg) / 81.3)**2.34
+        eff_map = clamp(map_mmHg, 0.0, _HAHN_MAP_MAX_MMHG)
+        k12 = 0.0956 * (eff_map / 81.3)**2.34
         k21, kb = 0.0506 * flow_scale, 0.0052 * flow_scale
-        k10 = (
-            0.0065 * (max(0.0, map_mmHg) / 81.3)**5.2 * (age / 40.0)**-1.5 * elimination_scale
+        raw_k10 = (
+            0.0065 * (eff_map / 81.3)**5.2 * (age / 40.0)**-1.5 * elimination_scale
             * (1.0 - (1.0 - SALINE_ELIMINATION) * self.saline_fraction)
         ) if urinary_elimination else 0.0
+        k10 = min(raw_k10, _MAX_CRYSTALLOID_K10_PER_MIN)
         central = min(self.central_ml, max(0.0, available_ml))
         # Preserve the minimum blood volume and remaining red cells.
         protected = self.central_ml - central

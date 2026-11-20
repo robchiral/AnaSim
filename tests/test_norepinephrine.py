@@ -11,6 +11,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
+from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.patient.pk_models import NorepinephrinePK
 from anasim.physiology.hemo_config import HemodynamicConfig
@@ -135,3 +136,19 @@ def test_zero_flow_arrest_halts_endogenous_norepinephrine_spillover(patient):
     pk.reset()
     assert pk.state.c1 == pytest.approx(c1_0)
     assert pk.circulation == 1.0 and pk.cl1_scale == 1.0
+
+    # Equilibrating endogenous norepinephrine at zero circulation neither divides by zero
+    # nor inflates basal concentration, and TCI mirrors effective_basal_input_rate.
+    pk.circulation = 0.0
+    pk.equilibrate_endogenous()
+    assert math.isfinite(pk.state.c1) and pk.state.c1 == pytest.approx(c1_0, rel=1e-6)
+    assert pk.effective_basal_input_rate == 0.0
+
+
+def test_norepinephrine_tci_uses_circulation_scaled_basal_input(engine_factory):
+    engine = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True)
+    engine.pk["nore"].circulation = 0.5
+    engine.enable_tci("nore", 2.0, mode="plasma")
+    assert engine.tci["nore"].basal_input_rate == pytest.approx(
+        engine.pk["nore"].effective_basal_input_rate, rel=1e-9
+    )

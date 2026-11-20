@@ -232,3 +232,22 @@ def test_display_hr_window_decay_and_rhythm_switch_flush(awake_engine, advance_t
     b1 = cycle.step(0.10, 60.0, RhythmType.SINUS)
     spo2.step(0.10, b1, 98.0, 1.00)
     assert spo2._beat_perf == pytest.approx(0.20)
+
+
+def test_agonal_hr_recovery_rescales_pending_interval_and_zero_hr_ecg_flatlines():
+    """Recovering from agonal bradycardia rescales the pending R-R interval without a long stall,
+    and an unorganized non-VF cycle (hr == 0) renders baseline ECG noise without stale QRS waves."""
+    cycle = CardiacCycle(np.random.default_rng(1))
+    cycle.seed(1.0, RhythmType.SINUS_BRADY)
+    for _ in range(1000):
+        cycle.step(0.01, 1.0, RhythmType.SINUS_BRADY)
+    for _ in range(300):
+        sample = cycle.step(0.01, 80.0, RhythmType.SINUS)
+    assert 70.0 <= sample.display_hr <= 90.0
+
+    ecg = ECGMonitor(np.random.default_rng(1))
+    s_on = cycle.seed(70.0, RhythmType.SINUS)
+    ecg.step(0.01, s_on)
+    s_zero = cycle.step(0.01, 0.0, RhythmType.SINUS)
+    assert not s_zero.organized
+    assert max(abs(ecg.step(0.01, s_zero)) for _ in range(50)) <= 0.02

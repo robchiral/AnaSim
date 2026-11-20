@@ -416,3 +416,27 @@ def test_partial_airway_patency_and_flow_limited_reopen_conserve_dry_gas_pressur
     sevo.set_airway_obstruction(0.6)
     advance_time(sevo, 30.0, dt=1.0)
     assert _total_sevo_stpd() == pytest.approx(sevo_0, abs=1e-3)
+
+
+def test_psv_bronchospasm_reduces_va_and_mask_leak_entrainment_scales_smoothly(engine_factory, advance_time):
+    """Bronchospasm lowers alveolar ventilation during PSV, and a 99% facemask seal does not
+    bypass empty-reservoir starvation via a discontinuous room-air leak cliff."""
+    psv_a = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    psv_a.set_airway_mode("ETT")
+    psv_a.set_fgf(6.0, 0.0)
+    psv_a.set_vent_settings(mode="PSV", rr=0, vt=0.0, peep=5.0, p_support=12.0, ie="1:2")
+    psv_a.set_vent_power(True)
+    advance_time(psv_a, 30.0, dt=1.0)
+    psv_b = copy.deepcopy(psv_a)
+    psv_b.set_bronchospasm(0.8)
+    advance_time(psv_a, 30.0, dt=1.0)
+    advance_time(psv_b, 30.0, dt=1.0)
+    assert psv_b.state.va < 0.75 * psv_a.state.va
+
+    starved = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    starved.set_airway_mode("Mask")
+    starved.set_fgf(0.0, 0.0)
+    starved.circuit.reservoir_volume = 0.0
+    starved.set_mask_seal(0.99)
+    advance_time(starved, 10.0, dt=0.5)
+    assert starved.state.va < 0.5

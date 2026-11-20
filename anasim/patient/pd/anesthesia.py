@@ -51,10 +51,11 @@ MIDAZOLAM_BIS_MAX_PROPOFOL_EQUIVALENT = 0.85 * PROPOFOL_LOSS_OF_RESPONSE
 # 38 to 45-46 mmHg while preserving spontaneous breathing; the ceiling is a calibration.
 MIDAZOLAM_RESPIRATORY_MAX_PROPOFOL_EQUIVALENT = 1.25
 # Short 1992: midazolam with propofol needs 37% less than additive doses for
-# hypnosis, an interaction coefficient of 3.7 at equal shares. The propofol
-# share in the interaction is capped at loss of response, the endpoint Short
-# measured.
-MIDAZOLAM_PROPOFOL_SYNERGY = 3.7
+# hypnosis (u_p = u_m = 0.315 at the 50% isobole). Because midazolam converts
+# through a saturating Hill-1 curve (2 u_m / (1 + u_m) = 0.479 at u_m = 0.315),
+# an interaction coefficient of 1.364 hits P(LOC) = 0.50 at equal shares. The
+# propofol share is capped at loss of response, the endpoint Short measured.
+MIDAZOLAM_PROPOFOL_SYNERGY = 1.364
 
 # Etomidate (mcg/mL whole blood) converts to propofol at equal
 # loss-of-response concentrations: the plasma OAA/S Ce50 is 0.554 mcg/mL

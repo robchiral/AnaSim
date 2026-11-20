@@ -18,8 +18,9 @@ from anasim.core.utils import clamp01
 COMPRESSION_RATE = 110.0  # /min, within the guideline 100-120
 # Share of resting cardiac output at normal filling and vascular resistance;
 # less when underfilled or when pressor afterload impedes passive forward flow
-# (Paradis 1990; Cantineau 1994; Kim 2025).
-COMPRESSION_OUTPUT_FRACTION = 0.2
+# (Paradis 1990; Cantineau 1994; Kim 2025). Calibrated so anesthetized adult
+# compressions produce ~20% resting output and ~70/25 mmHg arterial pressure.
+COMPRESSION_OUTPUT_FRACTION = 0.25
 COMPRESSION_AFTERLOAD_COUPLING = 0.45
 # Each compression raises arterial and venous pressure together, so the pulse
 # adds to arterial pressure without driving flow.

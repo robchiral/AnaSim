@@ -914,3 +914,57 @@ def test_pcv_vg_mask_leak_compensation_and_spontaneous_apl_cpap(engine_factory, 
     cpap.circuit.reservoir_volume = 0.0
     cpap.step(0.5)
     assert cpap.state.peep == pytest.approx(0.0, abs=0.2)
+
+
+def test_awake_vcv_frc_conservation_per_breath_va_fresh_flow_and_mode_cleanup(engine_factory, advance_time):
+    """Spontaneous efforts during VCV do not pump phantom FRC ventilation; alveolar_ventilation
+    computes per-breath dead space; high FGF sustains VCV with an empty reservoir; empty-bellows
+    CPAP collapses PEEP; mode switching clears stale spirometry; PSV apnea backup fires immediately."""
+    vcv = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    vcv.set_airway_mode("ETT")
+    vcv.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    vcv.set_vent_power(True)
+    vcv.set_fgf(0.0, 8.0)
+    pos_df = 0.0
+    prev_frc = vcv.aeration.frc
+    for _ in range(300):
+        vcv.step(1.0)
+        df = vcv.aeration.frc - prev_frc
+        if df > 0.0:
+            pos_df += df
+        prev_frc = vcv.aeration.frc
+    assert pos_df / 5.0 < 0.15
+
+    vent = AnesthesiaVentilator()
+    vent._recent.extend([(2.5, 0.08, 12.5, 0.0, 0.0), (2.5, 0.60, 12.5, 0.60, 0.60)])
+    vent._recent_totals = (5.0, 0.68, 25.0, 0.60, 0.60)
+    vent.monitors.rr_total = 24.0
+    vent.monitors.mv_exp = 8.16
+    vent.monitors.mv_supported = 7.20
+    assert vent.alveolar_ventilation(0.15) == pytest.approx(60.0 * (0.60 - 0.15) / 5.0, abs=1e-6)
+
+    lung = RespiratoryMechanics()
+    vent2 = AnesthesiaVentilator()
+    vent2.update_settings(mode="VCV", rr=12, tv=500, peep=5, ie="1:2")
+    for _ in range(20):
+        vent2.step(1.0, lung, "vent", bellows_fraction=0.0, reservoir_volume=0.0, fresh_flow_l_s=0.3)
+    assert vent2.monitors.tv_exp > 350.0
+    assert not math.isnan(vent2.monitors.paw_plat)
+    vent2.update_settings(mode="CPAP", rr=0, tv=0, peep=5)
+    vent2.step(1.0, lung, "vent")
+    assert math.isnan(vent2.monitors.paw_plat) and math.isnan(vent2.monitors.compliance_dyn)
+
+    cpap = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    cpap.set_airway_mode("ETT")
+    cpap.set_vent_settings(mode="CPAP", rr=0, vt=0, peep=10.0, ie="1:2")
+    cpap.set_vent_power(True)
+    cpap.set_fgf(0.0, 0.0)
+    cpap.circuit.reservoir_volume = 0.0
+    advance_time(cpap, 5.0, dt=1.0)
+    assert cpap.state.peep == 0.0
+
+    psv = AnesthesiaVentilator()
+    psv_lung = RespiratoryMechanics()
+    psv.update_settings(mode="PSV", rr=12, p_insp=15, p_support=8, peep=5)
+    psv.step(psv.apnea_backup_s + 0.1, psv_lung, "vent")
+    assert psv.inspiring and psv._breath is not None and psv._breath.kind == "PC"

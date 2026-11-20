@@ -586,3 +586,33 @@ def test_severe_acidosis_base_partition_and_transfusion_compartment_electroneutr
     assert debt_before > 50.0
     acid.resp.remove_buffer_base(-50.0)
     assert acid.resp._unbuffered_acid_meq == pytest.approx(debt_before - 50.0, abs=1e-6)
+
+
+def test_arrest_gates_calcium_delivery_and_aerobic_anion_clearance_and_hypertension_caps_k10():
+    """Zero circulation buffers IV calcium until flow returns, zero O2 halts citrate and D-lactate
+    oxidative clearance, and severe hypertension caps Hahn 2017 crystalloid k10."""
+    fb = FluidBalance(70.0, 5000.0, 2000.0)
+    fb.citrate_mmol = 10.0
+    fb.d_lactate_mmol = 10.0
+    ca_0 = fb.ionized_calcium(7.4)
+    fb.give_calcium_chloride(6.8, circulation=0.0)
+    fb.step(
+        30.0, ph=7.4, paco2=40.0, resting_paco2=40.0, renal_function=1.0,
+        renal_perfusion=0.0, hepatic_function=1.0, oxygen_supply=0.0,
+        epinephrine=0.0, circulation=0.0,
+    )
+    assert fb.ionized_calcium(7.4) == pytest.approx(ca_0, abs=1e-6)
+    assert fb.pending_calcium_mmol == pytest.approx(6.8)
+    assert fb.citrate_mmol == pytest.approx(10.0) and fb.d_lactate_mmol == pytest.approx(10.0)
+
+    fb.step(
+        30.0, ph=7.4, paco2=40.0, resting_paco2=40.0, renal_function=1.0,
+        renal_perfusion=0.5, hepatic_function=1.0, oxygen_supply=0.5,
+        epinephrine=0.0, circulation=0.5,
+    )
+    assert fb.ionized_calcium(7.4) > ca_0 + 0.1 and fb.pending_calcium_mmol < 1.0
+    assert fb.citrate_mmol < 10.0 and fb.d_lactate_mmol < 10.0
+
+    ck = CrystalloidKinetics(central_ml=1000.0, interstitial_ml=0.0)
+    ck.step(60.0, 0.0, 220.0, 1.0, 1000.0)
+    assert ck.central_ml > 50.0

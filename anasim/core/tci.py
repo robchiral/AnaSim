@@ -84,7 +84,7 @@ class TCIController:
         self._free_response = np.empty((predictions, self.n_state))
         self._unit_response = np.zeros(predictions)
         self._basal_response = np.zeros(predictions)
-        self.basal_input_rate = pk_model.basal_input_rate
+        self.basal_input_rate = pk_model.effective_basal_input_rate
         response = self._free_response[:steps]
         fill_response_rows(response, A_grid, self.target_id)
 

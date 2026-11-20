@@ -80,8 +80,16 @@ def _require_rosc(engine) -> tuple[bool, str]:
     return True, ""
 
 
+def _require_start_compressions_or_rosc(engine) -> tuple[bool, str]:
+    if _circulation_restored(engine):
+        return True, ""
+    return require_all(
+        _require_action(ACTION_COMPRESSIONS, "on", "Start chest compressions"),
+        require_oxygen_flow(),
+    )(engine)
+
+
 def create_cardiac_arrest() -> Scenario:
-    compressions = _require_action(ACTION_COMPRESSIONS, "on", "Start chest compressions")
     shock = _require_action(ACTION_SHOCK, "unsynchronized", "Deliver an unsynchronized shock")
     steps = [
         create_observe_step(EVENT, instruction="Follow the ECG, arterial pressure, oxygenation, and capnography."),
@@ -97,7 +105,7 @@ def create_cardiac_arrest() -> Scenario:
                 "of at least 25 mmHg between compressions perfuses the heart, and EtCO₂ below "
                 "10 mmHg suggests poor flow."
             ),
-            check_requirements=require_all(compressions, require_oxygen_flow()),
+            check_requirements=_require_start_compressions_or_rosc,
             target_tab="Circulation",
         ),
         ScenarioStep(

@@ -44,6 +44,8 @@ class RespiratoryMechanics:
         self.viscoelastic_tau = 0.82  # s
         self.volume = 0.0  # L
         self._unrefilled_absorption_l = 0.0  # L BTPS subatmospheric gas loss awaiting refill
+        self._prev_ee_excess_l: float | None = None
+        self._mandatory_ventilating = False
         self.p2 = 0.0  # cmH2O
         self.effort = PatientEffort()
 
@@ -76,6 +78,8 @@ class RespiratoryMechanics:
         absorbed = self._clamp_absorption()
         absolute = self._absolute_volume(peep)
         aeration.frc = min(aeration.frc, absolute + absorbed)
+        if self._prev_ee_excess_l is not None:
+            self._prev_ee_excess_l = min(self._prev_ee_excess_l, max(0.0, self.volume))
         if not aeration.advance(dt, pressure_area):
             return 0.0
         recoil, compliance = aeration.static_mechanics(absolute)
@@ -87,9 +91,24 @@ class RespiratoryMechanics:
         self.effort.shift_volume_reference(shift)
         return shift
 
-    def note_end_expiration(self, peep: float) -> None:
-        if self.aeration is not None:
-            self.aeration.frc = self._absolute_volume(peep) + self._clamp_absorption()
+    def note_end_expiration(self, peep: float, *, settled: bool = False) -> None:
+        if self.aeration is None:
+            return
+        absorbed = self._clamp_absorption()
+        static_frc = self.aeration.reference_volume + self.volume_offset + self.compliance * peep + absorbed
+        dual_source = self._mandatory_ventilating and self.effort.rr > 0.0 and self.effort.amplitude > 0.0
+        if settled or self.volume <= 0.0 or not dual_source:
+            self._prev_ee_excess_l = max(0.0, self.volume)
+            self.aeration.frc = static_frc + self.volume
+            return
+        excess = self.volume
+        prev = self._prev_ee_excess_l
+        self._prev_ee_excess_l = excess
+        # Require sustained end-expiratory hyperinflation across consecutive breaths
+        # so single-breath phase overlap between spontaneous and mandatory breaths
+        # does not ratchet FRC up and down.
+        eff_excess = excess if prev is None else min(excess, prev)
+        self.aeration.frc = static_frc + eff_excess
 
     @property
     def expiratory_obstruction(self) -> float:
@@ -558,8 +577,10 @@ class PatientEffort:
         return self._values[i] + slope * (t - start), slope
 
     def _begin(self, lung: RespiratoryMechanics, series_resistance: float) -> None:
-        self.support_pressure = (max(0.0, self._assistance_area / self._assistance_time)
-                                 if self._assistance_time > 0.0 else 0.0)
+        if self._assistance_time > 0.0:
+            self.support_pressure = max(0.0, self._assistance_area / self._assistance_time)
+        elif not (self.period < math.inf and self.ti <= 1e-9):
+            self.support_pressure = 0.0
         self._assistance_area = self._assistance_time = 0.0
         self._unit_clock = -1.0
         if self.rr <= 0.0 or self.target_vt <= 0.0:
@@ -570,7 +591,8 @@ class PatientEffort:
             return
         self.clock = 0.0
         self.period = 60.0 / self.rr
-        lung.note_end_expiration(lung.peep)
+        if not lung._mandatory_ventilating:
+            lung.note_end_expiration(lung.peep)
         self._trough = lung.volume
         self._reference_shift = 0.0
         recoil = self.target_vt / lung.compliance
@@ -587,7 +609,7 @@ class PatientEffort:
         self._relax(self._values[-1])
         requested = unloading * self.target_vt / self._unit_volume(lung, series_resistance)
         recoil_ee = (
-            lung.aeration.static_mechanics(lung.aeration.frc)[0]
+            lung.aeration.static_mechanics(lung._absolute_volume(lung.peep) + lung._clamp_absorption())[0]
             if lung.aeration is not None
             else lung.peep + lung.elastic_pressure
         )

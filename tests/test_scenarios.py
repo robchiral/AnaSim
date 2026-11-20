@@ -10,6 +10,7 @@ from anasim.core.state import SimulationConfig
 from anasim.monitors.neuromuscular import TwitchReading
 from anasim.scenarios import (
     SCENARIO_REGISTRY,
+    create_cardiac_arrest,
     create_emergence,
     create_hemorrhage_response,
     create_sepsis_response,
@@ -19,6 +20,7 @@ from anasim.scenarios.base import (
     format_unmet_int,
     neuromuscular_response,
     patient_stable,
+    require_crisis_resolved_with_map,
     require_hypotension_or_treatment,
     require_map_at_least,
     require_vasopressor_if_hypotensive,
@@ -544,3 +546,30 @@ def test_emergence_gating_normocapnia_covariates_and_cpr_or_nmba_checks(engine_f
     ox_session.engine.circuit.composition.fio2 = 0.55
     ox_session.case_run.observe(force=True)
     assert "oxygen" in ox_session.case_run.achieved_at
+
+
+def test_cardiac_arrest_step2_rosc_progression_stability_hint_and_finite_settle(engine_factory):
+    """Immediate ROSC satisfies cardiac_arrest Step 2 without forcing compressions on a beating heart,
+    require_crisis_resolved_with_map emits a non-empty hint on instability, and hidden settle skips
+    finite disturbances."""
+    scen = create_cardiac_arrest()
+    eng = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    scen.events[0].apply(eng)
+    eng.set_rhythm("SINUS")
+    eng.step(0.5)
+    step2 = _step(scen, "START_COMPRESSIONS")
+    assert step2.check_requirements(eng)[0]
+
+    req = require_crisis_resolved_with_map("hemorrhage")
+    eng.state.display_spo2 = 93.0
+    eng.state.sao2 = 93.0
+    eng.state.etco2 = 35.0
+    ok, msg = req(eng)
+    assert not ok and bool(msg)
+
+    finite = engine_factory(
+        config=SimulationConfig(mode="steady_state", disturbance_profile="stim_intubation_pulse", rng_seed=1),
+        start=True,
+    )
+    assert finite.disturbances.spec is not None and finite.disturbances.spec.finite
+    assert finite.state.map < 110.0

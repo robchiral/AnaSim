@@ -6,6 +6,7 @@ from scipy.optimize import root_scalar
 
 from anasim.core.constants import (
     ARREST_CO_L_MIN,
+    ARREST_CONFIRM_S,
     BLOOD_VOLUME_MIN,
     CIRCULATION_LIMIT_FRACTION,
     HR_MAX,
@@ -36,6 +37,7 @@ from .toxicity import SILENT_BLOCK
 
 MAX_HEMATOCRIT = 0.7
 _REFERENCE_BLOOD_VOLUME_ML = Patient().estimate_blood_volume()
+_REFERENCE_BASE_TPR = 0.01658  # Reference adult resting TPR (mmHg·min/mL; ~16.6 Wood units)
 
 # Ventricular rates set by the rhythm: SVT 150-220, VT 150-250 bpm.
 FIXED_RHYTHM_RATE = {
@@ -261,6 +263,7 @@ class HemodynamicModel:
             patient.baseline_temp
         )
         self._asystole_recovery_s = 0.0
+        self._silent_arrest_s = 0.0
         self.post_shock_asystole = False
         self._compressions = False
         self.f_preload_pit = 1.0
@@ -329,6 +332,7 @@ class HemodynamicModel:
         if value != self._rhythm_type:
             self._rhythm_type = value
             self._asystole_recovery_s = 0.0
+            self._silent_arrest_s = 0.0
             self.invalidate_state_cache()
 
     def add_volume(
@@ -646,11 +650,21 @@ class HemodynamicModel:
         beating = rhythm_beating and self._last_intrinsic_co > 0.0
         normal_base_co = max(0.1, self.base_co_l_min / self.failure.output_factor)
         lv_output_ratio = self._last_intrinsic_co / normal_base_co
+        reversible_o2_loss = max(
+            0.50 * self.coronary.ischemia,
+            cfg.hypoxia_sv_depression * self.myocardial_hypoxia,
+        )
         structural_factor = (
             self.failure.output_factor
+            * (1.0 - reversible_o2_loss)
+            * (1.0 - self.coronary.shock_stunning)
             * (1.0 - self.coronary.injury)
             * (1.0 - self.toxic_contractility_loss)
             * self.acidosis_factor
+            * min(1.0, self._ca_sv_factor)
+            * self._hypothermia_sv_factor
+            * (1.0 - 0.55 * self.hyperkalemia_block)
+            * self._amiodarone_ees_factor
         )
         lv_pump_factor = min(1.0, structural_factor, lv_output_ratio)
         lap_congested = self._last_lap > self._lung_water_threshold
@@ -738,7 +752,7 @@ class HemodynamicModel:
         f_frank_starling = self._frank_starling(lv_preload)
 
         base_lap = self._lap(f_preload)
-        raw_lap = base_lap + congestion_lap * clamp01((0.45 - structural_factor) / 0.15)
+        raw_lap = base_lap + congestion_lap
         self._last_lap = 36.0 + 12.0 * math.tanh((raw_lap - 36.0) / 12.0) if raw_lap > 36.0 else raw_lap
         self._last_mcfp = mcfp
         self._last_rap = rap
@@ -938,13 +952,20 @@ class HemodynamicModel:
         sinus_hr = clamp(hr_base + eff_crisis_hr + eff_dist_hr, HR_MIN, HR_MAX)
         current_hr = self._rhythm_rate(sinus_hr)
         reflex_tpr_factor = 1.0
-        if rhythm is not RhythmType.SINUS and self.smoothed_baro_hr > 0.0:
+        if (
+            rhythm is not RhythmType.SINUS
+            and rhythm not in PULSELESS_RHYTHMS
+            and not self._electrically_silent
+            and not self._compressions
+            and self.smoothed_baro_hr > 0.0
+        ):
             # When the rhythm holds rate low during hypotension, vasoconstriction compensates.
             reflex_hr = self.smoothed_baro_hr
             blocked_hr = max(0.0, reflex_hr - (current_hr - self._rhythm_rate(sinus_hr - reflex_hr)))
             # Blocked drug chronotropy must not dilute the vascular reflex.
             reflex_hr_base = max(hr_base + eff_crisis_hr + eff_dist_hr - reflex_hr - self.smoothed_epi_hr, HR_MIN)
-            reflex_tpr_gain = self._venous_tone * (1.0 - sepsis_sev) * self.acidosis_factor
+            anoxic_intact = (1.0 - self.myocardial_hypoxia) * (1.0 - self.coronary.energy_failure)
+            reflex_tpr_gain = self._venous_tone * (1.0 - sepsis_sev) * self.acidosis_factor * anoxic_intact
             reflex_tpr_factor = 1.0 + (blocked_hr / reflex_hr_base) * reflex_tpr_gain
         current_hr = self._effective_beating_hr(current_hr)
 
@@ -976,10 +997,11 @@ class HemodynamicModel:
             eff_tde_sv = tde_cap * math.tanh(self.tde_sv / max(1e-6, tde_cap))
         raw_sv = (self.sv_star + eff_tde_sv) * term + eff_dist_sv
 
-        # TPR floor of about 6 Wood units.
+        # TPR floor scales with patient baseline TPR (~6 Wood units for reference adult).
+        tpr_floor = 0.006 * (self.base_tpr / _REFERENCE_BASE_TPR)
         endogenous_tpr = self.tpr * (1.0 - self.smoothed_baro_vasc) * reflex_tpr_factor
         eff_tpr = max(
-            0.006,
+            tpr_floor,
             (
                 endogenous_tpr
                 + self.delta_tpr_vasopressors
@@ -1045,6 +1067,14 @@ class HemodynamicModel:
             intrinsic_map = clamp(current_hr * current_sv * eff_tpr, 0.0, 300.0)
         return current_hr, current_sv, eff_tpr, intrinsic_co, intrinsic_map, electrically_silent
 
+    def _distributive_tpr_offset(self, sepsis_sev: float, anaph_sev: float) -> float:
+        cfg = self.config
+        tpr_scale = self.base_tpr / _REFERENCE_BASE_TPR
+        return -(
+            cfg.sepsis_svr_drop_wood * sepsis_sev
+            + cfg.anaphylaxis_svr_drop_wood * anaph_sev
+        ) * tpr_scale / 1000.0
+
     def _compute_state(
         self,
         preload_sv_factor: float | None = None,
@@ -1057,16 +1087,12 @@ class HemodynamicModel:
         _update_stim: bool = False,
         _cache: bool = True,
     ) -> HemoState:
-        cfg = self.config
         if sepsis_sev is None:
             sepsis_sev = clamp01(self._sepsis_severity)
         if anaph_sev is None:
             anaph_sev = clamp01(self._anaphylaxis_severity)
         if distributive_tpr_offset is None:
-            sepsis_drop_wood = cfg.sepsis_svr_drop_wood / self.failure.output_factor
-            distributive_tpr_offset = -(
-                sepsis_drop_wood * sepsis_sev + cfg.anaphylaxis_svr_drop_wood * anaph_sev
-            ) / 1000.0
+            distributive_tpr_offset = self._distributive_tpr_offset(sepsis_sev, anaph_sev)
         if hr_base is None:
             hr_base = self._calc_hr()
         if preload_sv_factor is None:
@@ -1245,6 +1271,7 @@ class HemodynamicModel:
              sodium_block: float = 0.0, toxic_contractility_loss: float = 0.0,
              temp_c: float = 37.0, peep_cmH2O: float | None = None, sao2: float = 98.0,
              remifentanil_cp: float | None = None, ph: float = 7.4,
+             ph_37: float | None = None,
              ce_midazolam: float = 0.0, ce_etomidate: float = 0.0,
              mac_n2o: float = 0.0,
              crisis_hr: float = 0.0, crisis_svr: float = 0.0) -> HemoState:
@@ -1338,7 +1365,7 @@ class HemodynamicModel:
         self.acidosis_factor = 1.0 - 0.7 * clamp01((7.2 - ph) / 0.4)
         self._hypothermia_hr_factor, self._hypothermia_sv_factor = self._hypothermia_factors(temp_c)
         base_ica = self.fluids.calcium_set_point
-        ica = self.fluids.ionized_calcium(ph)
+        ica = self.fluids.ionized_calcium(ph if ph_37 is None else ph_37)
         potassium = self.fluids.concentration("potassium")
         # Lang 1988 & Denlinger 1975: blood ionized calcium drives myocardial
         # contractility directly without hypercalcemic vasoconstriction.
@@ -1350,6 +1377,13 @@ class HemodynamicModel:
         eff_k = potassium - ca_protection
         self.hyperkalemia_block = clamp01((eff_k - 6.2) / 3.0)
         self.hyperkalemia_arrhythmia = clamp01((eff_k - 6.8) / 2.2)
+
+        if self._electrically_silent and self._rhythm_type not in PULSELESS_RHYTHMS:
+            self._silent_arrest_s += dt
+            if self._silent_arrest_s >= ARREST_CONFIRM_S:
+                self.rhythm_type = RhythmType.ASYSTOLE
+        else:
+            self._silent_arrest_s = 0.0
 
         if self._rhythm_type is RhythmType.ASYSTOLE:
             coronary = self.coronary
@@ -1370,7 +1404,6 @@ class HemodynamicModel:
                 self.rhythm_type = RhythmType.SINUS
         ce_ephedrine_raw = max(0.0, ce_ephedrine)
         ce_nore_raw = max(0.0, ce_nore)
-        ce_nore = ce_nore_raw * self.acidosis_factor
         ce_epi *= self.acidosis_factor
         ce_phenyl *= self.acidosis_factor
         ce_dobu *= self.acidosis_factor
@@ -1417,7 +1450,6 @@ class HemodynamicModel:
         # Severe anaphylaxis blunts adrenergic agonists; vasopressin acts on V1 receptors.
         agonist_shift = 1.0 + cfg.anaphylaxis_agonist_shift * anaph_sev
         ce_epi /= agonist_shift
-        ce_nore /= agonist_shift
         ce_phenyl /= agonist_shift
         ce_dobu /= agonist_shift
 
@@ -1617,6 +1649,7 @@ class HemodynamicModel:
         # raise vagal tone, suppressing reflex tachycardia but not slowing.
         reflex_depth = clamp01(anesthetic_depth + max(0.0, ce_ket_hr) / KETAMINE_MAC_EQUIVALENT)
         tachycardia_depth = clamp01(reflex_depth + self.ce_opioid_cv / cfg.opioid_reflex_ce)
+        eff_tachy_depth = max(tachycardia_depth, clamp01((32.0 - temp_c) / 6.0))
         sensed_error = map_prev - self._stim_map - self._baro_setpoint
         baro_vasc = 0.0
         rhythm = self._rhythm_type
@@ -1641,7 +1674,7 @@ class HemodynamicModel:
                     baro_vasc = max_drop * math.tanh(vasc_gain * sensed_error / max_drop) * blocked_share
         else:
             baro_gain = cfg.baro_gain_tachy * sympathetic_hr_response
-            baro_gain *= 1.0 - cfg.baro_anesthetic_depression * tachycardia_depth
+            baro_gain *= 1.0 - cfg.baro_anesthetic_depression * eff_tachy_depth
         baro_hr = clamp(-baro_gain * sensed_error, -cfg.baro_max_hr_change, cfg.baro_max_hr_change)
         # Baroreceptor firing ceases below ~50 mmHg, so arrest does not reset the setpoint toward zero.
         reset_target = max(min(50.0, self._baro_setpoint), map_prev - self._stim_map)
@@ -1694,22 +1727,19 @@ class HemodynamicModel:
             )
             ephedrine_raw = ce_ephedrine_raw / agonist_shift
             ephedrine = max(0.0, ce_ephedrine) / agonist_shift
-            tol_raw = self._ephedrine_tolerance_ce / agonist_shift
-            tol_alpha = cfg.ephedrine_tolerance_max * hill_function(
-                tol_raw / alpha_dr,
-                cfg.ephedrine_tolerance_c50, cfg.ephedrine_tolerance_gamma,
-            )
-            tol_beta = cfg.ephedrine_tolerance_max * hill_function(
-                tol_raw / beta1_dr,
+            # Presynaptic catecholamine depletion depends on raw ephedrine exposure,
+            # not postsynaptic receptor blockade or anaphylaxis agonist shift.
+            tol = cfg.ephedrine_tolerance_max * hill_function(
+                self._ephedrine_tolerance_ce,
                 cfg.ephedrine_tolerance_c50, cfg.ephedrine_tolerance_gamma,
             )
             ephedrine_alpha_effect = self.acidosis_factor * max(
                 0.0,
-                hill_function(ephedrine_raw / alpha_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol_alpha,
+                hill_function(ephedrine_raw / alpha_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol,
             )
             ephedrine_beta_effect = self.acidosis_factor * max(
                 0.0,
-                hill_function(ephedrine_raw / beta1_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol_beta,
+                hill_function(ephedrine_raw / beta1_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol,
             )
             ephedrine_svr = 1.0 + cfg.ephedrine_emax_svr * ephedrine_alpha_effect
             ephedrine_sv = 1.0 + cfg.ephedrine_emax_sv * ephedrine_beta_effect
@@ -1746,7 +1776,9 @@ class HemodynamicModel:
         catechol_chrono = self._epi_chrono_effect + nore_delta_hr + dobu_delta_hr + ephedrine_hr
         catechol_sv = epi_sv_factor * nore_sv_factor * dobu_sv_factor * ephedrine_sv
         # SVR, SV, and HR adrenoceptor responses share septic blunting (Bellissant 2000; Hernández 2013).
-        catechol_svr_factor = epi_svr_factor * nore_svr_factor * phenyl_svr_factor * ephedrine_svr
+        catechol_svr_factor = (
+            epi_svr_factor * nore_svr_factor * phenyl_svr_factor * ephedrine_svr * dobu_svr_factor
+        )
         if pressor_gain < 1.0:
             catechol_svr_factor = 1.0 + (catechol_svr_factor - 1.0) * pressor_gain
             catechol_sv = 1.0 + (catechol_sv - 1.0) * pressor_gain
@@ -1758,7 +1790,6 @@ class HemodynamicModel:
         combined_svr_factor = (
             catechol_svr_factor *
             vaso_svr_factor *
-            dobu_svr_factor *
             mil_svr_factor *
             (1.0 + cfg.ketamine_emax_svr * ketamine * alpha_response) *
             (1.0 - 0.15 * ket_raw * ket_exhaustion)
@@ -1812,10 +1843,7 @@ class HemodynamicModel:
         # heart's own output it holds its last value instead of winding up during arrest.
         self.dist_hr, self.dist_sv, self.dist_svr = dist_hr, dist_sv, dist_svr
         self.crisis_hr, self.crisis_svr = crisis_hr, crisis_svr
-        sepsis_drop_wood = cfg.sepsis_svr_drop_wood / self.failure.output_factor
-        distributive_svr_drop = (sepsis_drop_wood * sepsis_sev +
-                                 cfg.anaphylaxis_svr_drop_wood * anaph_sev)
-        distributive_tpr_offset = -distributive_svr_drop / 1000.0
+        distributive_tpr_offset = self._distributive_tpr_offset(sepsis_sev, anaph_sev)
         _, _, _, fb_co, fb_map, _ = self._compute_intrinsic(
             f_frank_starling,
             sepsis_sev,
@@ -1853,8 +1881,12 @@ class HemodynamicModel:
         tpr_production = self.kin_tpr * tpr_fb * eff_chemo_tpr * eff_hemorrhage_tpr * eff_thermo_tpr
         d_tpr_tone = tpr_production - cfg.kout * self.tpr_tone
         d_sv_tone = self.kin_sv * sv_fb - cfg.kout * self.sv_tone
-        eff_tachy_depth = max(tachycardia_depth, clamp01((32.0 - temp_c) / 6.0))
-        hr_feedback = self._hr_feedback(rmap_fb, eff_tachy_depth)
+        raw_hr_fb = self._hr_feedback(rmap_fb, eff_tachy_depth)
+        hr_feedback = (
+            1.0 + (raw_hr_fb - 1.0) * anoxic_intact * sympathetic_hr_response
+            if raw_hr_fb > 1.0
+            else raw_hr_fb
+        )
         eff_hemorrhage_hr = 1.0 + (hemorrhage_hr_mult - 1.0) * anoxic_intact
         d_hr_tone = self.kin_hr * hr_feedback * eff_hemorrhage_hr - cfg.kout * self.hr_tone
 
