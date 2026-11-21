@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from anasim.monitors.ecg import st_analyzable_scale
 from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
 from anasim.patient.pd.anesthesia import (
     ETOMIDATE_LOSS_OF_RESPONSE,
@@ -11,6 +12,7 @@ from anasim.patient.pd.anesthesia import (
     LARYNGOSCOPY_INTENSITY,
     PROPOFOL_LOC_TRANSFER,
     PROPOFOL_LOSS_OF_RESPONSE,
+    hypothermia_narcosis_fraction,
     opioid_controller_fraction,
     opioid_rate_fraction,
 )
@@ -38,8 +40,8 @@ class StepGasCache:
     tracheal_fio2: float
     n2o_uptake_l_min: float
     lung_volume_l: float
+    tracheal_fin2: float
     sevo_uptake_l_min: float = 0.0
-    circuit_fin2: float | None = None
     apneic_limit_l_min: float | None = None
     reservoir_volume_l: float | None = None
     bellows_fraction: float | None = None
@@ -137,18 +139,21 @@ def mask_leak(engine: SimulationEngine) -> float:
     """Fraction of an assisted breath lost around a mask or into the stomach.
 
     Leakage applies only to positive-pressure breaths on a facemask, from an
-    imperfect mask seal, upper airway obstruction, or peak pressure above the
-    seal threshold.
+    imperfect mask seal or peak pressure above the seal threshold.
     """
     if not assisted_positive_pressure(engine) or engine.state.airway_mode != AirwayType.MASK:
         return 0.0
     seal = engine.mask_seal
     if seal <= 0.0:
         return 1.0
-    paw_peak = engine.vent.monitors.paw_peak
+    delivered_peak = engine.vent.monitors.paw_peak * seal
     threshold = engine.airway_tuning.mask_seal_pressure * seal
-    overpressure = engine.airway_tuning.mask_overpressure_leak * max(0.0, paw_peak - threshold) / max(paw_peak, 1.0)
-    kept = seal * engine.airway_status.patency * (1.0 - overpressure)
+    overpressure = (
+        engine.airway_tuning.mask_overpressure_leak
+        * max(0.0, delivered_peak - threshold)
+        / max(delivered_peak, 1.0)
+    )
+    kept = seal * (1.0 - overpressure)
     return 1.0 - clamp01(kept)
 
 
@@ -294,8 +299,14 @@ def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> floa
         mac_n2o=state.mac_n2o,
         ce_ketamine=state.ketamine_ce if ketamine else 0.0,
     )
-    return (1.0 - (1.0 - drug_response) * (1.0 - engine.cerebral.unresponsiveness)
-            * (1.0 - engine.toxicity.unresponsiveness))
+    cold_narcosis = hypothermia_narcosis_fraction(state.temp_c)
+    return (
+        1.0
+        - (1.0 - drug_response)
+        * (1.0 - engine.cerebral.unresponsiveness)
+        * (1.0 - engine.toxicity.unresponsiveness)
+        * (1.0 - cold_narcosis)
+    )
 
 
 def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY_INTENSITY) -> float:
@@ -435,11 +446,7 @@ def sync_neuromuscular_state(engine: SimulationEngine) -> None:
 def sync_inspired_gas(engine: SimulationEngine) -> tuple[float, float]:
     """Project inspired gas at the airway and return (Fi sevo, Fi N2O) as fractions."""
     state = engine.state
-    composition = engine.circuit.composition
-    circuit_share = mask_circuit_share(engine)
-    fio2 = 0.21 + circuit_share * (composition.fio2 - 0.21)
-    fi_sevo = circuit_share * composition.fi_agent
-    fi_n2o = circuit_share * composition.fin2o
+    fio2, fi_sevo, fi_n2o, _ = inspired_gas_mixture(engine)
     state.fio2 = float(fio2)
     state.fi_sevo = float(fi_sevo * 100.0)
     state.fi_n2o = float(fi_n2o * 100.0)
@@ -469,10 +476,22 @@ def project_arterial(
     """Copy the ideal pulse landmarks and the catheter reading into the public snapshot."""
     state.sbp = float(arterial_sample.systolic)
     state.dbp = float(arterial_sample.diastolic)
+    if state.map < state.dbp or state.map > state.sbp:
+        state.map = float(arterial_sample.mean)
     state.art_pressure = float(art_reading.pressure)
     state.art_sbp = float(art_reading.systolic)
     state.art_dbp = float(art_reading.diastolic)
     state.art_map = float(art_reading.mean)
+
+
+def _projected_st_depression(hemo, hemo_state: HemoState) -> float:
+    st_scale = st_analyzable_scale(
+        hemo_state.rhythm_type,
+        hemo.coronary.energy_failure,
+        hemo.sodium_block,
+        hemo.hyperkalemia_block,
+    )
+    return float(hemo.coronary.st_depression_mv * st_scale)
 
 
 def project_hemodynamics(engine: SimulationEngine, hemo_state: HemoState) -> None:
@@ -489,6 +508,7 @@ def project_hemodynamics(engine: SimulationEngine, hemo_state: HemoState) -> Non
     state.svr = float(hemo_state.svr)
     state.co = float(hemo_state.co)
     state.intrinsic_co = float(hemo_state.intrinsic_co)
+    state.rhythm_type = hemo_state.rhythm_type
     state.chest_compressions = hemo_state.compressions
     state.blood_volume = float(engine.hemo.blood_volume)
     state.hb_g_dl = float(engine.hemo.hb_conc)
@@ -502,7 +522,7 @@ def project_hemodynamics(engine: SimulationEngine, hemo_state: HemoState) -> Non
     state.lap = float(hemo_state.lap)
     state.myocardial_ischemia = float(engine.hemo.coronary.ischemia)
     state.coronary_supply_demand_ratio = float(engine.hemo.coronary.supply_demand_ratio)
-    state.st_depression_mv = float(engine.hemo.coronary.st_depression_mv)
+    state.st_depression_mv = _projected_st_depression(engine.hemo, hemo_state)
     state.lung_water = float(engine.hemo.lung_water_ml_kg)
 
 
@@ -548,59 +568,76 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
 DEADSPACE_APNEIC_STPD_L = 0.030
 
 
-def advance_tracheal_fio2(
+def inspired_gas_mixture(engine: SimulationEngine) -> tuple[float, float, float, float]:
+    """Return airway-opening (fio2, fi_agent, fin2o, fin2) summing to 1."""
+    if circuit_connected(engine):
+        share = mask_circuit_share(engine)
+        if share > 0.0:
+            comp = engine.circuit.composition
+            o2 = share * comp.fio2 + (1.0 - share) * 0.21
+            sevo = share * comp.fi_agent
+            n2o = share * comp.fin2o
+            n2 = max(0.0, 1.0 - o2 - sevo - n2o)
+            return (o2, sevo, n2o, n2)
+    return (0.21, 0.0, 0.0, 0.79)
+
+
+def advance_tracheal_gas(
     engine: SimulationEngine, dt: float, *, inflow_stpd_l_min: float | None = None
-) -> float:
-    """Advance dead-space tracheal FiO2 and return the step-average FiO2 delivered to alveoli."""
-    state = engine.state
+) -> tuple[float, float, float, float]:
+    """Advance conserved dead-space gas and return step-average (O2, sevo, N2O, N2)."""
+    old = engine._tracheal_gas
     if dt <= 0.0:
-        return engine._tracheal_fio2
+        return old
     sealed = circuit_connected(engine)
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if sealed else (0.0, 0.0)
     assisted_breaths = sealed and (engine.vent.is_on or engine.bag_mask_active) and assisted_rr * assisted_vt_l > 0.05
-    spont_breaths = not engine.resp.state.apnea and state.va > 0.1
+    spont_breaths = not engine.resp.state.apnea and engine.state.va > 0.1
+    target = inspired_gas_mixture(engine)
     if assisted_breaths or spont_breaths:
-        engine._tracheal_fio2 = state.fio2
-        return state.fio2
-    # During apnea, convective bulk STPD inflow displaces the conserved
-    # anatomic dead-space buffer symmetrically for any circuit gas composition.
+        engine._tracheal_gas = target
+        return target
+    # During apnea, convective bulk STPD inflow flushes the conserved dead-space
+    # buffer symmetrically across all gas species so circuit, dead space, and lung
+    # share one exact mass balance.
     patency = clamp01(engine.airway_status.patency)
     share = mask_circuit_share(engine) if sealed else 0.0
     sealed_circuit = sealed and share >= 0.999
     avail_flow = engine.circuit.deliverable_flow(dt) if sealed_circuit else math.inf
-    old_fio2 = engine._tracheal_fio2
-    target_fio2 = state.fio2
     if patency <= 0.0 or avail_flow <= 1e-9:
-        return old_fio2
+        return old
     if inflow_stpd_l_min is None:
         resp = engine.resp
-        frc_exp_stpd = max(0.0, engine.aeration.frc - resp.frc) * patency * resp._btps_to_stpd
+        frc_exp_stpd = (
+            max(0.0, engine.aeration.frc - resp.frc)
+            * resp._exchangeable_frc_fraction
+            * patency
+            * resp._btps_to_stpd
+        )
         apneic_inflow, refill_l_min, _ = resp._apneic_inflow_components(
             patency, 0.0, 0.0, dt, avail_flow if sealed_circuit else None,
         )
         inflow_l_s = min(avail_flow / 60.0, (apneic_inflow + refill_l_min) / 60.0 + frc_exp_stpd / dt)
     else:
         inflow_l_s = min(avail_flow / 60.0, max(0.0, inflow_stpd_l_min) / 60.0)
-    # Nitrogen in the airway/circuit slows passive apneic wash-in; downward room-air
-    # entrainment flushes dead space at the convective bulk inflow rate, while upward
-    # wash-in blends smoothly from diffusive exchange to convective inflow as N2 clears.
-    fast_rate = inflow_l_s / DEADSPACE_APNEIC_STPD_L
-    if target_fio2 <= old_fio2:
-        rate = fast_rate
-    else:
-        comp = engine.circuit.composition
-        max_trach_fn2 = share * comp.fin2 + (1.0 - share) * 0.79 if sealed and share > 0.0 else 0.79
-        preox_clear = clamp01((0.60 - engine.resp.alveolar_fn2) / 0.30)
-        pure_o2 = clamp01(1.0 - max_trach_fn2 / 0.01)
-        n2_clear = max(preox_clear, pure_o2)
-        slow_rate = max(0.1, patency) / 240.0
-        rate = (1.0 - n2_clear) * slow_rate + n2_clear * fast_rate
-    u = rate * dt
+    u = (inflow_l_s / DEADSPACE_APNEIC_STPD_L) * dt
     if u > 1e-9:
-        avg_fio2 = target_fio2 + (old_fio2 - target_fio2) * (-math.expm1(-u) / u)
-        engine._tracheal_fio2 = target_fio2 + (old_fio2 - target_fio2) * math.exp(-u)
-        return avg_fio2
-    return old_fio2
+        decay = math.exp(-u)
+        avg_w = -math.expm1(-u) / u
+        avg = (
+            target[0] + (old[0] - target[0]) * avg_w,
+            target[1] + (old[1] - target[1]) * avg_w,
+            target[2] + (old[2] - target[2]) * avg_w,
+            target[3] + (old[3] - target[3]) * avg_w,
+        )
+        engine._tracheal_gas = (
+            target[0] + (old[0] - target[0]) * decay,
+            target[1] + (old[1] - target[1]) * decay,
+            target[2] + (old[2] - target[2]) * decay,
+            target[3] + (old[3] - target[3]) * decay,
+        )
+        return avg
+    return old
 
 
 def circuit_inspired_mixture(
@@ -638,16 +675,13 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
     cache = engine._step_gas if dt > 0.0 else None
     if dt > 0.0:
         engine._step_gas = None
-    tracheal_fio2 = cache.tracheal_fio2 if cache is not None else advance_tracheal_fio2(engine, dt)
     share = mask_circuit_share(engine)
-    if share > 0.0:
-        if cache is not None and cache.circuit_fin2 is not None:
-            circuit_fin2 = cache.circuit_fin2
-        else:
-            _, _, _, circuit_fin2 = circuit_inspired_mixture(engine.circuit.composition, tracheal_fio2, share)
-        inspired_fn2 = share * circuit_fin2 + (1.0 - share) * 0.79
+    if cache is not None:
+        tracheal_fio2 = cache.tracheal_fio2
+        inspired_fn2 = cache.tracheal_fin2
     else:
-        inspired_fn2 = 0.79
+        avg_gas = advance_tracheal_gas(engine, dt)
+        tracheal_fio2, inspired_fn2 = avg_gas[0], avg_gas[3]
     if cache is not None and cache.apneic_limit_l_min is not None:
         apneic_limit: float | None = cache.apneic_limit_l_min
     else:
@@ -698,9 +732,9 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         ce_roc=engine.tof_pd.ce_central / engine.tof_pd.potentiation_factor(state.mac_sevo, state.mac_n2o),
         neuromuscular_strength=(
             succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True)
-            * (1.0 - engine.resp_mech.effort.muscle.fatigue)
             * engine.malignant_hyperthermia.respiratory_excursion_fraction
         ),
+        muscle_fatigue=engine.resp_mech.effort.muscle.fatigue,
         mac_sevo=state.mac_sevo,
         mech_rr=assisted_rr,
         mech_vt_l=assisted_vt_l,
@@ -817,7 +851,10 @@ def step_coronary_from_state(
     if hemo.compressions:
         if hemo_state.cpr_perfusion_map <= 0.0:
             hemo_state = hemo.evaluate_state(include_stim=False)
-        cpr_sbp, cpr_dbp = compression_pressures(hemo_state.cpr_perfusion_map, hemo_state.venous_pressure)
+        cpr_sbp, cpr_dbp = compression_pressures(
+            hemo_state.cpr_perfusion_map, hemo_state.venous_pressure,
+            filling_factor=hemo.cpr_filling_factor,
+        )
         coronary_sbp = max(coronary_sbp, cpr_sbp) if hemo_state.intrinsic_co > 0.0 else cpr_sbp
         coronary_dbp = max(coronary_dbp, cpr_dbp) if hemo_state.intrinsic_co > 0.0 else cpr_dbp
     intrinsic_sbp = (
@@ -848,7 +885,9 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     tol_val = stimulus_tolerance(engine)
     engine._tol_current = tol_val
     cortical = engine.cerebral.cortical_function
-    drug_bis = engine.bis.compute_bis(state.hypnotic_ce, state.mac_sevo, state.ketamine_ce)
+    drug_bis = engine.bis.compute_bis(
+        state.hypnotic_ce, state.mac_sevo, state.ketamine_ce, state.opioid_ce, temp_c=state.temp_c,
+    )
     raw_bis = drug_bis * cortical
     bis_val = clamp(
         raw_bis + runtime_core.stimulus_effects(engine, 0.0).bis * cortical,
@@ -898,7 +937,7 @@ def sync_state_from_models(engine: SimulationEngine) -> None:
     state = engine.state
     state.temp_c = float(state.temp_c)
     sync_inspired_gas(engine)
-    engine._tracheal_fio2 = state.fio2
+    engine._tracheal_gas = inspired_gas_mixture(engine)
     sync_inhaled_agents(engine)
     sync_pk_state(engine)
     state.shivering = float(engine.thermal.shiver_level)
@@ -917,4 +956,4 @@ def sync_state_from_models(engine: SimulationEngine) -> None:
     step_coronary_from_state(engine, 0.0, hemo_state, resp_state.sao2)
     state.myocardial_ischemia = float(hemo.coronary.ischemia)
     state.coronary_supply_demand_ratio = float(hemo.coronary.supply_demand_ratio)
-    state.st_depression_mv = float(hemo.coronary.st_depression_mv)
+    state.st_depression_mv = _projected_st_depression(hemo, hemo_state)

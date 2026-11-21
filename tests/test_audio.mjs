@@ -256,3 +256,31 @@ test("failed audio activation leaves the simulation usable and can be retried", 
   assert.equal(audio.status.hidden, true);
   assert.equal(contexts.length, 1);
 });
+
+test("lethal rhythm alarms break active bradycardia silence and play high-priority cadence", async t => {
+  const { audio, notes, advance, snap } = setup(t);
+  await audio.setEnabled(true);
+  audio.update(snap(0, { alarms: { HR: "low" } }));
+  assert.equal(notes("alarm").length, 3);
+  audio.silence.onclick();
+  assert.equal(audio.countdown.hidden, false);
+  const silencedCount = notes("alarm").length;
+  audio.update(snap(1, { alarms: { HR: "low", Asystole: "high" } }));
+  assert.equal(audio.countdown.hidden, true, "lethal rhythm breaks active bradycardia silence");
+  assert.equal(notes("alarm").length, silencedCount + 5, "high-priority alarm plays 5-tone cadence");
+
+  // Escalating from an actively sounding routine alarm to VF plays high-priority cadence immediately.
+  audio.resetSession(0.05);
+  const baseCount = notes("alarm").length;
+  audio.update(snap(2, { alarms: { HR: "low" } }));
+  assert.equal(notes("alarm").length, baseCount + 3);
+  const routineNotes = notes("alarm").slice(baseCount);
+  advance(200);
+  const vfTime = performance.now() / 1000;
+  audio.update(snap(2.2, { alarms: { HR: "low", VFIB: "high" } }));
+  assert.ok(routineNotes.every(note => !note.connected), "escalating to VF cancels remaining routine tones");
+  const vfNotes = notes("alarm").slice(baseCount + 3);
+  assert.equal(vfNotes.length, 5, "VF escalation plays 5-tone high-priority cadence immediately");
+  assert.equal(vfNotes[0].frequency.value, 960);
+  assert.ok(Math.abs(vfNotes[0].startTime - vfTime) < 1e-6);
+});

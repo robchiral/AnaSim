@@ -2,6 +2,7 @@ import copy
 import math
 from itertools import pairwise
 
+import numpy as np
 import pytest
 
 from anasim.core import runtime as runtime_core
@@ -11,7 +12,7 @@ from anasim.core.projection import step_coronary_from_state
 from anasim.core.state import SimulationConfig
 from anasim.monitors.ecg import displayed_rhythm
 from anasim.physiology.coronary import CoronaryModel
-from anasim.physiology.resuscitation import CHARGE_TIME_S, ShockResult
+from anasim.physiology.resuscitation import CHARGE_TIME_S, ShockResult, shock_outcome
 
 
 def _hold(engine, seconds, hr=None, map_value=None, co=None):
@@ -626,6 +627,7 @@ def test_pulmonary_congestion_hyperkalemic_asystole_and_low_pressure_coronary_ra
     k_asystole.hemo.fluids.amounts["potassium"] = 9.5 * k_asystole.hemo.fluids.ecf_l
     k_asystole.set_rhythm("ASYSTOLE")
     k_asystole.set_chest_compressions(True)
+    k_asystole.give_drug_bolus("epi", 1000.0)
     advance_time(k_asystole, 40.0, dt=1.0)
     assert k_asystole.hemo.rhythm_type == RhythmType.ASYSTOLE
 
@@ -764,3 +766,55 @@ def test_electrical_silence_transitions_to_asystole_and_arrest_predicates_agree(
     assert live_co.hemo.state.co == 0.0
     live_co.step(0.5)
     assert live_co.resp.oxygen_supply_fraction == 0.0
+
+
+def test_asystole_rosc_and_defib_respect_hypothermia_hyperkalemia_and_pressor(
+    engine_factory, advance_time
+):
+    """Primary asystole restart requires reversible causes addressed + pressor; cold/hyperK block defib."""
+    no_epi = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
+    no_epi.set_rhythm("ASYSTOLE")
+    advance_time(no_epi, 16.0, dt=1.0)
+    no_epi.set_chest_compressions(True)
+    advance_time(no_epi, 90.0, dt=1.0)
+    assert no_epi.hemo.rhythm_type == RhythmType.ASYSTOLE
+
+    cold = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=7),
+        start=True,
+        baseline_temp=27.5,
+    )
+    cold.set_rhythm("ASYSTOLE")
+    advance_time(cold, 16.0, dt=1.0)
+    cold.set_chest_compressions(True)
+    cold.give_drug_bolus("epi", 1000.0)
+    advance_time(cold, 90.0, dt=1.0)
+    assert cold.hemo.rhythm_type == RhythmType.ASYSTOLE
+
+    def defib_successes(temp_c: float = 37.0, hyperkalemia_block: float = 0.0) -> int:
+        return sum(
+            shock_outcome(
+                RhythmType.VFIB, synchronized=False, energy_failure=0.0,
+                electrically_silent=False, vulnerable=False, antiarrhythmic=0.0,
+                rng=np.random.default_rng(i), temp_c=temp_c, hyperkalemia_block=hyperkalemia_block,
+            ) != RhythmType.VFIB
+            for i in range(100)
+        )
+
+    assert defib_successes() > 80
+    assert defib_successes(temp_c=27.0) < 20
+    assert defib_successes(hyperkalemia_block=0.85) < 25
+
+
+def test_critical_cad_develops_ischemia_and_st_depression_during_hypotension():
+    """Critical CAD (CFR 1.3) stays non-ischemic at baseline but develops ischemia at MAP 50."""
+    cor = CoronaryModel(1.3, 70.0, 90.0, 9.0, sbp_mmhg=120.0, dbp_mmhg=72.0)
+    cor.step(1.0, 70.0, 120.0, 72.0, 9.0, 13.5, 98.0)
+    assert cor.supply_demand_ratio >= 1.0
+    assert cor.st_depression_mv == 0.0
+
+    for _ in range(90):
+        cor.step(1.0, 70.0, 67.0, 40.0, 9.0, 13.5, 98.0)
+    assert cor.supply_demand_ratio < 0.75
+    assert cor.ischemia > 0.25
+    assert cor.st_depression_mv > 0.07

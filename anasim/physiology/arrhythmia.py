@@ -24,6 +24,7 @@ LIDOCAINE_C50 = 1.5
 AMIODARONE_C50 = 0.4
 LIDOCAINE_VT_CONVERSION_RATE = 1.0 / 8500.0
 AMIODARONE_VT_CONVERSION_RATE = 1.0 / 3200.0
+AMIODARONE_AF_CONVERSION_RATE = 1.0 / 3600.0
 ISCHEMIC_ONSET_RATE = 1.0 / 600.0
 HYPERK_ONSET_RATE = 1.0 / 90.0
 HYPOTHERMIC_ONSET_RATE = 1.0 / 120.0
@@ -133,7 +134,7 @@ class ArrhythmiaModel:
         if rhythm == RhythmType.ASYSTOLE:
             recurrence = (REFIBRILLATION_RATE * self._post_shock_stress * math.sqrt(stress) * viable
                           * math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S))
-            pacemaker = clamp01(1.0 - 1.15 * energy_failure)
+            pacemaker = clamp01(1.0 - 1.15 * energy_failure) * (1.0 - 0.90 * hypotherm) * (1.0 - 0.90 * hyperk)
             if energy_reserve <= 0.0 and not compressions:
                 pacemaker *= clamp01((0.35 - energy_failure) / 0.35)
             escape_target = (
@@ -159,8 +160,15 @@ class ArrhythmiaModel:
                 + HYPERK_ONSET_RATE * hyperk**2
                 + HYPOTHERMIC_ONSET_RATE * hypotherm**2
             ) if perfusing else 0.0
-            events = (("recurrence", recurrence, RhythmType.VFIB),
-                      ("onset", onset, RhythmType.VTACH))
+            af_conversion = (
+                amio * AMIODARONE_AF_CONVERSION_RATE
+                if rhythm == RhythmType.AFIB and perfusing and hyperk < 0.2 else 0.0
+            )
+            events = (
+                ("recurrence", recurrence, RhythmType.VFIB),
+                ("onset", onset, RhythmType.VTACH),
+                ("af_conversion", af_conversion, RhythmType.SINUS),
+            )
         earliest = math.inf
         winner = ""
         following: RhythmType = rhythm

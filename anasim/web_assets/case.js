@@ -35,7 +35,7 @@ export class CasePanel {
 
   freezeControls() {
     $("clinical-feedback").hidden = true;
-    for (const control of document.querySelectorAll('[data-panel] input, [data-panel] select, [data-panel] button, #nmb-measure, #nmb-mode, #nmb-repeat, #measure-nibp, #speed, #record')) {
+    for (const control of document.querySelectorAll('[data-panel]:not([data-panel="Trends"]) input, [data-panel]:not([data-panel="Trends"]) select, [data-panel]:not([data-panel="Trends"]) button, #nmb-measure, #nmb-mode, #nmb-repeat, #measure-nibp, #speed, #record')) {
       if (!this.disabledControls.has(control)) this.disabledControls.set(control, control.disabled);
       control.disabled = true;
     }

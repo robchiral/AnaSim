@@ -36,8 +36,8 @@ Each call to `SimulationEngine.step()` runs the following sequence:
    and stimulation tolerance.
 2. Advance stimulation, hemorrhage, fluids, anaphylaxis, and sepsis.
 3. Update pharmacokinetic (PK) parameters for blood volume, cardiac output,
-   renal perfusion, and drug interactions, then calculate target-controlled
-   infusion (TCI) rates.
+   renal perfusion, core temperature, and drug interactions, then calculate
+   target-controlled infusion (TCI) rates.
 4. Update airway complications, the vaporizer, and the breathing circuit.
 5. Update lipid emulsion, intravenous drug concentrations, inhaled anesthetic
    uptake, neuromuscular block, lidocaine toxicity, and malignant hyperthermia,
@@ -63,7 +63,7 @@ controller selects the next rate.
 
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
-| Physiology | `map`, `hr`, `co`, `intrinsic_co`, `sao2`, `pa_co2`, `pao2` | Values that the models and the cardiac arrest check use; `intrinsic_co` excludes chest compressions |
+| Physiology | `map`, `hr`, `co`, `intrinsic_co`, `rhythm_type`, `sao2`, `pa_co2`, `pao2` | Values that the models and the cardiac arrest check use; `intrinsic_co` excludes chest compressions |
 | Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate`, `sodium`, `potassium`, `chloride`, `ionized_calcium`, `albumin_g_l` | Arterial plasma pH and bicarbonate at patient temperature, standard base excess, and plasma lactate, electrolytes, and albumin |
 | Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after measurement and processing effects |
 | Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Breath pressures and exhaled gas measurements |

@@ -209,3 +209,33 @@ def test_ephedrine_competitive_blockade_and_acidosis_blunting(patient):
         tol_norm.step(5.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=500.0, ph=7.40)
         tol_acid.step(5.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_ephedrine=500.0, ph=6.85)
     assert tol_acid._ephedrine_tolerance_ce == pytest.approx(tol_norm._ephedrine_tolerance_ce, rel=1e-9)
+
+
+def test_atropine_exceeds_glycopyrrolate_under_propofol_and_ephedrine_repeats_at_one_hour(
+    engine_factory, advance_time
+):
+    """Under propofol, atropine raises HR more than glycopyrrolate; ephedrine retains >55% effect at 1 h."""
+    tiva_a = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    tiva_g = copy.deepcopy(tiva_a)
+    tiva_a.give_drug_bolus("atropine", 1.0)
+    tiva_g.give_drug_bolus("glyco", 0.4)
+    advance_time(tiva_a, 300.0, dt=1.0)
+    advance_time(tiva_g, 300.0, dt=1.0)
+    assert tiva_a.state.hr > tiva_g.state.hr
+
+    eph = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=4), start=True)
+    advance_time(eph, 30.0, dt=1.0)
+    m0 = eph.state.map
+    eph.give_drug_bolus("ephedrine", 10.0)
+    peak1 = m0
+    for _ in range(300):
+        eph.step(1.0)
+        peak1 = max(peak1, eph.state.map)
+    advance_time(eph, 3300.0, dt=2.0)
+    m1 = eph.state.map
+    eph.give_drug_bolus("ephedrine", 10.0)
+    peak2 = m1
+    for _ in range(300):
+        eph.step(1.0)
+        peak2 = max(peak2, eph.state.map)
+    assert (peak2 - m1) > 0.55 * (peak1 - m0)

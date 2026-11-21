@@ -616,3 +616,125 @@ def test_arrest_gates_calcium_delivery_and_aerobic_anion_clearance_and_hypertens
     ck = CrystalloidKinetics(central_ml=1000.0, interstitial_ml=0.0)
     ck.step(60.0, 0.0, 220.0, 1.0, 1000.0)
     assert ck.central_ml > 50.0
+
+
+def test_prbc_massive_transfusion_acute_acidosis_then_alkalosis(engine_factory, advance_time):
+    """Stored PRBCs cause immediate Rabcuka 2025 acidemia then post-transfusion alkalosis (Kahn 1979)."""
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+    )
+    be0 = engine.draw_blood_gas().base_excess
+    for _ in range(300):
+        engine.hemo.add_volume(10.0, hematocrit=0.55, label="blood")
+        engine.step(1.0)
+    acute = engine.draw_blood_gas()
+    assert acute.base_excess < be0 - 2.0
+
+    advance_time(engine, 4.0 * 3600.0, dt=5.0)
+    late = engine.draw_blood_gas()
+    assert late.base_excess > be0 + 1.5
+    assert engine.hemo.fluids.stored_rbc_acid_mmol < 1.0
+
+
+def test_acidemia_does_not_mask_hyperkalemia_membrane_block(engine_factory):
+    """Acidemia dissociates calcium without stabilizing membranes against K+; exogenous CaCl2 does."""
+    base = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    acidemic = copy.deepcopy(base)
+    treated = copy.deepcopy(base)
+
+    for eng in (base, acidemic, treated):
+        eng.hemo.fluids.amounts["potassium"] = 7.4 * eng.hemo.fluids.ecf_l
+
+    base.hemo.step(1.0, 0.0, 0.0, 0.0, pit=-1.4, paco2=40.0, pao2=95.0, ph=7.40, ph_37=7.40)
+    acidemic.hemo.step(1.0, 0.0, 0.0, 0.0, pit=-1.4, paco2=95.0, pao2=95.0, ph=6.95, ph_37=6.95)
+    assert acidemic.hemo.fluids.ionized_calcium(6.95) > base.hemo.fluids.ionized_calcium(7.40) + 0.15
+    assert acidemic.hemo.hyperkalemia_block >= base.hemo.hyperkalemia_block - 1e-6
+
+    treated.give_calcium_chloride(2000.0)
+    for _ in range(30):
+        treated.step(1.0)
+    assert treated.hemo.hyperkalemia_block < base.hemo.hyperkalemia_block - 0.25
+
+
+def test_low_flow_high_mcfp_crystalloid_extravasation_and_prbc_supernatant(patient):
+    """Elevated venous hydrostatic pressure extravasates crystalloid in low flow; PRBC supernatant equilibrates."""
+    kinetics = CrystalloidKinetics()
+    kinetics.infuse(1000.0, saline=False)
+    dv, urine, seq = kinetics.step(
+        60.0, map_mmHg=15.0, age=40.0, elimination_scale=1.0,
+        available_ml=500.0, circulation=0.0, mcfp_mmHg=16.0,
+    )
+    assert dv < -5.0 and kinetics.interstitial_ml > 5.0 and urine == 0.0 and seq == 0.0
+
+    kinetics.central_ml = 0.0
+    kinetics.interstitial_ml = 800.0
+    dv2, urine2, seq2 = kinetics.step(
+        60.0, map_mmHg=15.0, age=40.0, elimination_scale=1.0,
+        available_ml=500.0, circulation=0.0, mcfp_mmHg=16.0,
+    )
+    assert dv2 == 0.0 and urine2 == 0.0 and seq2 == 0.0
+
+    hemo = HemodynamicModel(patient)
+    hemo.initialize_steady_state(0.0, 0.0, 0.0)
+    rbc0 = hemo.red_cell_volume_ml
+    hemo.add_volume(1000.0, hematocrit=0.55, label="blood")
+    assert hemo.red_cell_volume_ml == rbc0 + 550.0
+    assert hemo.crystalloid.central_ml > 400.0
+    for _ in range(300):
+        hemo.step(1.0, 0.0, 0.0, 0.0, pit=-1.4, paco2=40.0, pao2=95.0)
+    assert hemo.red_cell_volume_ml == rbc0 + 550.0
+    assert hemo.crystalloid.interstitial_ml > 50.0
+
+
+def test_calcium_chloride_slow_push_and_mh_ph_hypoxia_potassium_kinetics(engine_factory):
+    """Standard 1-2 g CaCl2 IV pushes peak smoothly; MH rhabdo K+ persists and pH/hypoxia shift K+."""
+    e1 = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    e2 = copy.deepcopy(e1)
+    e1.give_calcium_chloride(1000.0)
+    e2.give_calcium_chloride(2000.0)
+    peak1 = e1.state.ionized_calcium
+    peak2 = e2.state.ionized_calcium
+    for _ in range(300):
+        e1.step(1.0)
+        e2.step(1.0)
+        peak1 = max(peak1, e1.state.ionized_calcium)
+        peak2 = max(peak2, e2.state.ionized_calcium)
+    assert 1.55 < peak1 < 1.85
+    assert 2.00 < peak2 < 2.45
+
+    mh = FluidBalance(70.0, 4900.0, 1984.5)
+    k0 = mh.concentration("potassium")
+    for _ in range(30):
+        mh.step(
+            60.0, ph=7.4, paco2=40.0, resting_paco2=40.0, renal_function=1.0,
+            renal_perfusion=1.0, hepatic_function=1.0, oxygen_supply=1.0,
+            epinephrine=0.0, mh_severity=0.9,
+        )
+    assert mh.concentration("potassium") > k0 + 1.0
+    for _ in range(10):
+        mh.step(
+            60.0, ph=7.4, paco2=40.0, resting_paco2=40.0, renal_function=1.0,
+            renal_perfusion=1.0, hepatic_function=1.0, oxygen_supply=1.0,
+            epinephrine=0.0, mh_severity=0.0,
+        )
+    assert mh.concentration("potassium") > k0 + 0.8
+
+    acid = FluidBalance(70.0, 4900.0, 1984.5)
+    alk = FluidBalance(70.0, 4900.0, 1984.5)
+    hypox = FluidBalance(70.0, 4900.0, 1984.5)
+    acid.step(
+        1800.0, ph=7.20, paco2=40.0, resting_paco2=40.0, renal_function=0.0,
+        renal_perfusion=1.0, hepatic_function=1.0, oxygen_supply=1.0, epinephrine=0.0,
+    )
+    alk.step(
+        1800.0, ph=7.60, paco2=40.0, resting_paco2=40.0, renal_function=0.0,
+        renal_perfusion=1.0, hepatic_function=1.0, oxygen_supply=1.0, epinephrine=0.0,
+    )
+    hypox.step(
+        1800.0, ph=7.40, paco2=40.0, resting_paco2=40.0, renal_function=0.0,
+        renal_perfusion=1.0, hepatic_function=1.0, oxygen_supply=0.15, epinephrine=0.0,
+    )
+    assert acid.concentration("potassium") > k0 + 0.25
+    assert alk.concentration("potassium") < k0 - 0.20
+    assert hypox.concentration("potassium") > k0 + 0.40

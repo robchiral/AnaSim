@@ -193,6 +193,7 @@ export class Controls {
 
   bindMachine() {
     $("c-bair").onchange = () => this.send("bair_hugger", { target_c: Number($("c-bair").value) });
+    $("c-fluid-warmer").onclick = () => this.send("fluid_warmer", { enabled: !this.state.fluid_warmer });
     $("c-cooling").onclick = () => this.send("surface_cooling", { on: !this.state.surface_cooling });
     this.airwayButtons = [...$("c-airway").querySelectorAll("button")];
     for (const button of this.airwayButtons) {
@@ -207,6 +208,7 @@ export class Controls {
     this.editSettings([$("c-o2"), $("c-air"), $("c-n2o")], fgf, $("c-o2").closest(".fresh-gas-settings"));
     this.editSettings([$("c-vap")], () => this.send("vaporizer", { percent: readNumber($("c-vap")) }));
     $("c-bag").onclick = () => this.send("bag_mask", { active: !this.state.bag_mask });
+    this.editSettings([$("c-apl")], () => this.send("apl", { cmh2o: readNumber($("c-apl")) }), $("c-apl-settings"));
     this.editSettings(
       [$("c-bag-rr"), $("c-bag-tv"), $("c-bag-pmax")],
       () => this.send("bag_settings", {
@@ -792,6 +794,8 @@ export class Controls {
     this.syncDefibrillator(c.defibrillator);
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
+    $("c-apl-settings").hidden = c.airway === "None" || c.vent.on || c.bag_mask;
+    setValue($("c-apl"), c.apl);
     $("c-bag-settings").hidden = !c.bag_mask;
     setValue($("c-bag-rr"), c.bag.rr);
     setValue($("c-bag-tv"), c.bag.tv);
@@ -829,6 +833,7 @@ export class Controls {
     $("running-infusions").hidden = !running;
 
     setValue($("c-bair"), String(c.bair_hugger));
+    setPressed($("c-fluid-warmer"), c.fluid_warmer, c.fluid_warmer ? "Fluid warmer: On (37 °C)" : "Fluid warmer: Off");
     setValue($("c-maint"), round(c.maintenance_ml_hr, 0));
     const profile = c.disturbance.profile ?? "";
     setValue($("c-disturbance"), profile);

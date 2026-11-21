@@ -43,7 +43,8 @@ VG_STEP = 3.0  # Largest VG pressure change per breath, cmH2O
 VG_MIN = 2.0  # cmH2O above PEEP
 VG_MARGIN = 5.0  # GE volume-guarantee pressure targets stay this far below Pmax
 EVENT_STEP = 0.02  # s; longest interval searched for one trigger or cycling crossing
-RECENT_BREATHS = 4  # Breaths averaged for RR and MV
+RECENT_BREATHS = 4  # Minimum breaths retained when rolling window is satisfied
+RECENT_WINDOW_S = 15.0  # Minimum rolling time window for RR, MV, and VA
 APNEA_S = 15.0  # RR and MV read zero after this long without a breath
 MEASURE_FLOW = 0.05  # L/s; detects inspiration independently of ventilator trigger eligibility.
 MIN_EXPIRATION_L = 0.05  # A breath exhaling less is still in progress; brief reversals neither end nor start one.
@@ -206,8 +207,10 @@ class AnesthesiaVentilator:
         self._vg_pressure: float | None = None
         self._armed = False
         # (duration s, VTe L, pressure area cmH2O·s, supported VTe L, mandatory VTe L)
-        self._recent: deque[tuple[float, float, float, float, float]] = deque(maxlen=RECENT_BREATHS)
+        self._recent: deque[tuple[float, float, float, float, float]] = deque()
         self._recent_totals = (0.0, 0.0, 0.0, 0.0, 0.0)
+        self._mandatory_paw_peak = 0.0
+        self._mandatory_peak_age_s = math.inf
         self._attempted_breath = False
 
     def alveolar_ventilation(
@@ -250,6 +253,11 @@ class AnesthesiaVentilator:
         """Fraction of recent expired volume delivered by mandatory or manual breaths."""
         volume = self._recent_totals[1]
         return min(1.0, self._recent_totals[4] / volume) if volume > 0.0 else 0.0
+
+    @property
+    def mandatory_period_s(self) -> float | None:
+        """Configured mandatory breath period (s), or None in spontaneous-only modes."""
+        return self._mandatory_period() if self._mandatory_type() is not None else None
 
     @property
     def has_measured_breath(self) -> bool:
@@ -472,8 +480,11 @@ class AnesthesiaVentilator:
             if MANDATORY.get(self.settings.mode) is None:
                 self.monitors.paw_plat = math.nan
                 self.monitors.tv_exp_mandatory = math.nan
+                self._mandatory_paw_peak = 0.0
+                self._mandatory_peak_age_s = math.inf
             if self.settings.mode == "CPAP":
                 self.monitors.compliance_dyn = math.nan
+            self.pressure_limited = False
             self._backup = False
             self._since_breath = 0.0
             self._since_mandatory = max(0.0, self._since_mandatory)
@@ -513,6 +524,8 @@ class AnesthesiaVentilator:
         self._since_measured = 0.0
         self._recent.clear()
         self._recent_totals = (0.0, 0.0, 0.0, 0.0, 0.0)
+        self._mandatory_paw_peak = 0.0
+        self._mandatory_peak_age_s = math.inf
         self._attempted_breath = False
         self.monitors = VentMonitors()
         self.monitors.peep = self._configured_peep()
@@ -636,7 +649,21 @@ class AnesthesiaVentilator:
         self._attempted_breath = True
         m = self.monitors
         vte = b.expired
-        m.paw_peak = b.paw_peak
+        period = self.mandatory_period_s
+        if b.mandatory:
+            self._mandatory_paw_peak = b.paw_peak
+            self._mandatory_peak_age_s = 0.0
+            m.paw_peak = b.paw_peak
+        elif (
+            period is not None
+            and math.isfinite(period)
+            and self._mandatory_peak_age_s <= max(APNEA_S, 1.25 * period)
+        ):
+            # Interposed spontaneous breaths must not overwrite a recent mandatory
+            # peak below the latched plateau pressure or drop active Ppeak alarms.
+            m.paw_peak = max(b.paw_peak, self._mandatory_paw_peak)
+        else:
+            m.paw_peak = b.paw_peak
         m.paw_mean = b.area / b.t
         if self._breath is None or not self._breath.inspiring:
             m.peep = self._paw_end
@@ -659,6 +686,10 @@ class AnesthesiaVentilator:
             supported_vte = vte
         mandatory_vte = vte if b.mandatory else 0.0
         self._recent.append((b.t, vte, b.area, supported_vte, mandatory_vte))
+        window_s = max(RECENT_WINDOW_S, period) if period is not None and math.isfinite(period) else RECENT_WINDOW_S
+        total_dur = sum(entry[0] for entry in self._recent)
+        while len(self._recent) > RECENT_BREATHS and total_dur - self._recent[0][0] >= window_s - 1e-6:
+            total_dur -= self._recent.popleft()[0]
         durations, volumes, areas, supported, mandatory = zip(*self._recent, strict=True)
         self._recent_totals = (sum(durations), sum(volumes), sum(areas), sum(supported), sum(mandatory))
         self.breath_count += 1
@@ -699,8 +730,14 @@ class AnesthesiaVentilator:
             window_area += current.area - oldest_area
         if window_t > 0.0:
             self.monitors.paw_mean_recent = window_area / window_t
-        period = self._mandatory_period() if self._mandatory_type() is not None else math.inf
-        apnea_timeout = max(APNEA_S, 1.25 * period) if math.isfinite(period) else APNEA_S
+        period = self.mandatory_period_s
+        if period is not None and math.isfinite(period):
+            apnea_timeout = max(APNEA_S, 1.25 * period)
+        elif self._recent:
+            recent_period = min(25.0, self._recent[-1][0])
+            apnea_timeout = max(APNEA_S, 1.25 * recent_period)
+        else:
+            apnea_timeout = APNEA_S
         if not self._recent or self._since_measured >= apnea_timeout:
             self.monitors.rr_total = self.monitors.tv_exp = self.monitors.mv_exp = self.monitors.mv_supported = 0.0
             if self._since_measured >= apnea_timeout:
@@ -709,6 +746,8 @@ class AnesthesiaVentilator:
                 self.monitors.paw_mean = baseline_paw
                 if self._since_breath >= apnea_timeout:
                     self.monitors.paw_peak = baseline_paw
+                    self._mandatory_paw_peak = 0.0
+                    self._mandatory_peak_age_s = math.inf
                 self.monitors.paw_plat = math.nan
                 self.monitors.compliance_dyn = math.nan
                 self.monitors.tv_exp_mandatory = 0.0 if self._mandatory_type() is not None else math.nan
@@ -950,6 +989,7 @@ class AnesthesiaVentilator:
         self._since_breath += t
         self._since_measured += t
         self._since_exhalation += t
+        self._mandatory_peak_age_s += t
         if b is not None:
             b.t += t
         # The segment still describes the present unless something changed at its end.

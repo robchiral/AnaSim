@@ -177,3 +177,28 @@ def test_hayakawa_propofol_fentanyl_pressure_hr_and_flow(engine_factory):
         assert after.map == pytest.approx((110.0 + 2.0 * 61.0) / 3.0, abs=16.0)
         assert after.hr == pytest.approx(70.0, abs=11.0)
         assert after.co == pytest.approx(5.2, abs=1.3)
+
+
+def test_opioids_without_propofol_cause_bradycardia_and_fentanyl_blunts_ketamine_pressor(
+    engine_factory, advance_time
+):
+    """Awake fentanyl slows HR without raising SV/MAP, and fentanyl blunts ketamine intubation surge."""
+    awake = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    awake.set_airway_mode("ETT")
+    awake.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5.0, ie="1:2")
+    awake.set_vent_power(True)
+    advance_time(awake, 60.0, dt=1.0)
+    hr0, map0, sv0 = awake.state.hr, awake.state.map, awake.state.sv
+    awake.give_drug_bolus("fentanyl", 350.0)
+    advance_time(awake, 180.0, dt=1.0)
+    assert awake.state.hr < hr0 - 1.5
+    assert awake.state.sv <= sv0 + 3.0
+    assert awake.state.map <= map0 + 1.0
+
+    p_ket, _ = awake.response.cardiovascular_response_fractions(
+        0.0, 0.0, ce_ketamine=1.5, intensity=1.0, ce_fentanyl=0.0,
+    )
+    p_kf, _ = awake.response.cardiovascular_response_fractions(
+        0.0, 0.0, ce_ketamine=1.5, intensity=1.0, ce_fentanyl=6.7,
+    )
+    assert p_kf < 0.65 * p_ket

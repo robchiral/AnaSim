@@ -292,7 +292,7 @@
           <output id="v-nibp-status" class="measurement-status"></output>
         </div>
         <div class="numeric compact bis" data-alarm="BIS"><div class="numeric-head"><span class="numeric-title">BIS</span></div><output id="v-bis">--</output></div>
-        <div class="numeric compact temp"><div class="numeric-head"><span class="numeric-title">Temp</span><span class="numeric-unit">°C</span></div><output id="v-temp">--</output></div>
+        <div class="numeric compact temp" data-alarm="Temp"><div class="numeric-head"><span class="numeric-title">Temp</span><span class="numeric-unit">°C</span></div><output id="v-temp">--</output></div>
         <div class="panel-io"><div class="io-head"><span>Fluid balance</span><output id="v-net">--</output></div><div class="io-detail" id="v-io">IV --, PRBC --, urine --, loss -- mL</div></div>
       </div>
       <section class="nmb-panel" aria-label="Neuromuscular monitor">
@@ -415,10 +415,13 @@
           </div>
           <div class="manual-ventilation">
             <button type="button" class="btn toggle" id="c-bag" aria-pressed="false">Start bag ventilation</button>
+            <div class="vent-settings" id="c-apl-settings">
+              <div class="control-setting"><div class="control-setting-head"><label for="c-apl">APL</label><span>cmH₂O</span></div><input id="c-apl" aria-label="Spontaneous APL valve, cmH₂O (0 is open)" type="number" min="0" max="70" step="1"></div>
+            </div>
             <div class="vent-settings" id="c-bag-settings">
               <div class="control-setting"><div class="control-setting-head"><label for="c-bag-rr">Bag rate</label><span>/min</span></div><input id="c-bag-rr" aria-label="Bag ventilation rate, breaths/min" type="number" min="1" max="40" step="1"></div>
               <div class="control-setting"><div class="control-setting-head"><label for="c-bag-tv">Bag Vt</label><span>mL</span></div><input id="c-bag-tv" aria-label="Bag ventilation tidal volume, mL" type="number" min="50" max="1200" step="50"></div>
-              <div class="control-setting"><div class="control-setting-head"><label for="c-bag-pmax">APL</label><span>cmH₂O</span></div><input id="c-bag-pmax" aria-label="Bag pressure limit, cmH₂O" type="number" min="5" max="70" step="1"></div>
+              <div class="control-setting"><div class="control-setting-head"><label for="c-bag-pmax">Bag Pmax</label><span>cmH₂O</span></div><input id="c-bag-pmax" aria-label="Bag peak pressure limit, cmH₂O" type="number" min="5" max="70" step="1"></div>
             </div>
           </div>
         </fieldset>
@@ -451,6 +454,7 @@
               <option value="43">High (43 °C)</option>
             </select>
           </label>
+          <button type="button" class="btn toggle" id="c-fluid-warmer" aria-pressed="false">Fluid warmer: Off</button>
           <button type="button" class="btn toggle t-warning" id="c-cooling" aria-pressed="false">Start surface cooling</button>
         </fieldset>
       </div>

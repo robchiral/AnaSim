@@ -6,7 +6,9 @@ from .base import (
     CaseOutcome,
     Scenario,
     ScenarioStep,
+    format_unmet_int,
     infusion_running,
+    monitor_value,
     require_airway_selected,
     require_all,
     require_bag_mask_started,
@@ -28,6 +30,15 @@ from .base import (
     stability_outcome,
     tracheal_ventilation_confirmed,
 )
+
+
+def _require_balanced_handover_depth(engine) -> tuple[bool, str]:
+    """Allow BIS 30-60 while the induction propofol bolus overlaps early sevoflurane wash-in."""
+    bis = monitor_value(engine, "bis")
+    low = 30.0 if engine.state.propofol_ce > 0.3 else 40.0
+    met = low <= bis <= 60.0
+    shown_bis = format_unmet_int(bis, low=low, high=60.0)
+    return met, "" if met else f"BIS: {shown_bis}/{int(low)}-60"
 
 
 def _maintained(engine) -> bool:
@@ -247,7 +258,8 @@ def create_induction_balanced() -> Scenario:
             title="Begin maintenance",
             instruction=(
                 "Reduce fresh gas to <b>2 L/min</b>, for example O₂ 1 L/min and air "
-                "1 L/min. Titrate sevoflurane to end-tidal <b>0.7-1 MAC</b> and BIS 40-60 (1 MAC is "
+                "1 L/min. Titrate sevoflurane to end-tidal <b>0.7-1 MAC</b> and BIS 30-60 as the "
+                "induction propofol bolus wears off (targeting 40-60 once settled; 1 MAC is "
                 "about 2% at age 40). Keep <b>MAP ≥ 65</b>; treat post-induction "
                 "hypotension after assessing anesthetic depth, volume, and HR. "
                 "Phenylephrine 50-100 mcg IV is one option for vasodilatory hypotension.<br><br>"
@@ -256,7 +268,7 @@ def create_induction_balanced() -> Scenario:
             check_requirements=require_all(
                 require_fgf_reduced(2.0),
                 require_mac_above(0.7),
-                require_maintenance_depth,
+                _require_balanced_handover_depth,
                 require_map_at_least(65),
                 require_tracheal_ventilation,
                 require_oxygenation(),

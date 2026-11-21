@@ -54,6 +54,7 @@ CONFIG_FIELDS = (
     "maint_type",
     "tci_enabled",
     "arterial_line_enabled",
+    "fluid_warmer_enabled",
     "patient_variability",
 )
 
@@ -595,6 +596,7 @@ class WebSession:
                 "tv": round(engine.bag_mask_vt * 1000.0),
                 "p_max": round(engine.bag_mask_p_max),
             },
+            "apl": round(engine.apl_cmh2o),
             "vent": {
                 "on": engine.vent.is_on,
                 "mode": vent.mode,
@@ -628,6 +630,7 @@ class WebSession:
                 max(engine.toxicity.conduction_block, engine.hemo.hyperkalemia_block),
             ),
             "bair_hugger": engine.state.bair_hugger_target,
+            "fluid_warmer": engine.state.fluid_warmer,
         }
 
     # --- Scenario -------------------------------------------------------
@@ -773,6 +776,9 @@ class WebSession:
 
     def _cmd_bag_settings(self, rr: float, tv: float, p_max: float | None = None):
         self.engine.set_bag_mask_settings(rr, domain.finite_number("bag tidal volume", tv) / 1000.0, p_max=p_max)
+
+    def _cmd_apl(self, cmh2o: float):
+        self.engine.set_apl_valve(cmh2o)
 
     def _cmd_vent_power(self, on: bool):
         assisted = self.engine.vent.is_on or self.engine.bag_mask_active
@@ -964,6 +970,9 @@ class WebSession:
 
     def _cmd_bair_hugger(self, target_c: float):
         self.engine.set_bair_hugger(target_c)
+
+    def _cmd_fluid_warmer(self, enabled: bool):
+        self.engine.set_fluid_warmer(enabled)
 
     def _cmd_scenario_next(self):
         if self.scenario is None or self.case_run is None or self.case_run.mode != "guided":

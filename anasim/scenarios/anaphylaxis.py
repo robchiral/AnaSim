@@ -12,6 +12,7 @@ from .base import (
     bolus_given_in_case,
     create_observe_step,
     crisis_outcomes,
+    equilibrate_maintenance_fio2,
     require_all,
     require_crisis_resolved_with_map,
     require_fluid_bolus,
@@ -24,6 +25,34 @@ from .base import (
 def _prepare(engine) -> None:
     # Brown 2004 gave 1000 mL saline over 1-3 min.
     engine.fluid_infusion_rate_ml_min = 500.0
+    # Start on realistic air/O2 maintenance (~40% FiO2) so severe bronchospasm
+    # produces both high airway pressures and visible desaturation unless treated.
+    equilibrate_maintenance_fio2(engine, target_fio2=0.40, min_air_l_min=1.4, air_vo2_factor=5.0)
+
+
+def _epinephrine_instruction(engine) -> str:
+    if engine.config.maint_type == "balanced" or engine.circuit.vaporizer_on:
+        anesthetic_line = (
+            "If hypotensive, turn off the volatile anesthetic and vasodilating infusions, "
+            "and consider an amnestic agent such as midazolam."
+        )
+    else:
+        anesthetic_line = (
+            "If hypotensive, reduce or pause vasodilating intravenous infusions (such as propofol), "
+            "and consider an amnestic agent such as midazolam."
+        )
+    return (
+        "Abrupt hypotension and bronchospasm with rising airway pressure suggest anaphylaxis; "
+        "HR and skin signs vary. Call for help and pause the procedure.<br><br>"
+        "Give <b>epinephrine 50-100 mcg IV</b> promptly for this severe reaction "
+        "with IV access and continuous monitoring. Repeat and titrate to response; "
+        "start an infusion if repeated boluses are needed (for example, "
+        "0.05 mcg/kg/min = 3.5 mcg/min for 70 kg).<br><br>"
+        "Give <b>100% oxygen</b>: set O₂ 10 L/min, air and N₂O 0 L/min. "
+        "Maintain ventilation and assess the airway while treating circulation. "
+        "Select <b>Stop suspected trigger</b> promptly, alongside resuscitation. "
+        f"{anesthetic_line}"
+    )
 
 
 def _start(engine) -> None:
@@ -62,19 +91,7 @@ def create_anaphylaxis_scenario() -> Scenario:
         ScenarioStep(
             id="EPINEPHRINE",
             title="Give epinephrine",
-            instruction=(
-                "Abrupt hypotension and bronchospasm with rising airway pressure suggest anaphylaxis; "
-                "HR and skin signs vary. Call for help and pause the procedure.<br><br>"
-                "Give <b>epinephrine 50-100 mcg IV</b> promptly for this severe reaction "
-                "with IV access and continuous monitoring. Repeat and titrate to response; "
-                "start an infusion if repeated boluses are needed (for example, "
-                "0.05 mcg/kg/min = 3.5 mcg/min for 70 kg).<br><br>"
-                "Give <b>100% oxygen</b>: set O₂ 10 L/min, air and N₂O 0 L/min. "
-                "Maintain ventilation and assess the airway while treating circulation. "
-                "Select <b>Stop suspected trigger</b> promptly, alongside resuscitation. "
-                "If hypotensive, turn off the volatile anesthetic and vasodilating infusions, "
-                "and consider an amnestic agent such as midazolam."
-            ),
+            instruction=_epinephrine_instruction,
             check_requirements=require_all(
                 epinephrine,
                 require_oxygen_flow(),

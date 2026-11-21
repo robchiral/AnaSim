@@ -586,3 +586,14 @@ def test_first_spontaneous_breath_streams_loop_points_during_inspiration():
         if insp_streamed:
             break
     assert insp_streamed
+
+
+def test_web_apl_and_fluid_warmer_command_round_trips():
+    session = WebSession({**PATIENT, "mode": "awake"})
+    assert session.snapshot()["controls"]["apl"] == 0
+    assert session.snapshot()["controls"]["fluid_warmer"] is False
+    cmd(session, "apl", cmh2o=15)
+    cmd(session, "fluid_warmer", enabled=True)
+    snap = session.snapshot()["controls"]
+    assert snap["apl"] == 15
+    assert snap["fluid_warmer"] is True

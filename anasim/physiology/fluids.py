@@ -35,19 +35,26 @@ class CrystalloidKinetics:
     def step(
         self, dt_s: float, map_mmHg: float, age: float, elimination_scale: float,
         available_ml: float, *, urinary_elimination: bool = True,
-        circulation: float = 1.0,
+        circulation: float = 1.0, mcfp_mmHg: float = 0.0,
     ) -> tuple[float, float, float]:
         """Advance exact kinetics; return vascular change, urine, and sequestration (mL)."""
         if dt_s <= 0.0 or self.central_ml + self.interstitial_ml == 0.0:
             return 0.0, 0.0, 0.0
         # Distribution slows with arterial pressure, as at anesthesia induction
         # (Hahn 2021: exponent 2.34), around Hahn 2017's reference pressure.
+        # During low-flow/arrest states with elevated venous filling pressure (MCFP),
+        # venous/capillary hydrostatic filtration continues to extravasate crystalloid.
         flow_scale = clamp01(circulation)
         eff_map = clamp(map_mmHg, 0.0, _HAHN_MAP_MAX_MMHG)
-        k12 = 0.0956 * (eff_map / 81.3)**2.34
+        k12_venous = (
+            0.018 * clamp01((mcfp_mmHg - 8.0) / 10.0) * clamp01((60.0 - eff_map) / 40.0)
+            if mcfp_mmHg > 8.0 and eff_map < 60.0
+            else 0.0
+        )
+        k12 = 0.0956 * (eff_map / 81.3)**2.34 + k12_venous
         k21, kb = 0.0506 * flow_scale, 0.0052 * flow_scale
         raw_k10 = (
-            0.0065 * (eff_map / 81.3)**5.2 * (age / 40.0)**-1.5 * elimination_scale
+            0.0065 * (eff_map / 81.3)**5.2 * (age / 40.0)**-1.5 * elimination_scale * flow_scale
             * (1.0 - (1.0 - SALINE_ELIMINATION) * self.saline_fraction)
         ) if urinary_elimination else 0.0
         k10 = min(raw_k10, _MAX_CRYSTALLOID_K10_PER_MIN)

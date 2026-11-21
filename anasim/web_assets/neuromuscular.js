@@ -33,7 +33,7 @@ export class NeuromuscularDisplay {
           quality = "low";
         }
       } else {
-        value = `${Math.round(reading.ratio)}%`;
+        value = `${Math.floor(reading.ratio)}%`;
         quality = reading.ratio >= 90 ? "recovered" : "";
       }
     }

@@ -463,6 +463,7 @@ class PatientEffort:
         self.rr = 0.0
         self.target_vt = 0.0  # L
         self.amplitude = 0.0  # cmH2O
+        self._load_scale = 1.0  # Reciprocal surviving muscle capacity for fatigue load scaling
         self.clock = 0.0  # s since this breath began
         self.period = math.inf
         self.ti = self.release = 0.0
@@ -515,7 +516,7 @@ class PatientEffort:
         if pmus_area is None:
             pressure, slope = self.pmus()
             pmus_area = pressure * dt + 0.5 * slope * dt * dt
-        self.muscle.step(dt, pmus_area)
+        self.muscle.step(dt, pmus_area, load_scale=self._load_scale)
         self.clock += dt
         if self._waiting:
             if self.clock >= self._wait_end - 1e-12:
@@ -585,6 +586,7 @@ class PatientEffort:
         self._unit_clock = -1.0
         if self.rr <= 0.0 or self.target_vt <= 0.0:
             self.clock, self.period, self.amplitude = 0.0, math.inf, 0.0
+            self._load_scale = 1.0
             self.ti = self.release = 0.0
             self._knots, self._values = (math.inf,), (0.0, 0.0)
             self.support_pressure = 0.0
@@ -616,6 +618,13 @@ class PatientEffort:
         # Diaphragmatic length-tension capacity collapses at severe hyperinflation near TLC.
         hyperinflation_scale = min(1.0, max(0.0, 1.0 - max(0.0, recoil_ee - 15.0) / 35.0))
         self.amplitude = min(requested, self.muscle.available_pressure * hyperinflation_scale)
+        # Measure load against surviving capacity so fatigued muscles under
+        # persistent obstruction cannot spuriously rest and recover.
+        self._load_scale = (
+            1.0 / max(0.50, 1.0 - 0.6 * self.muscle.fatigue)
+            if self.amplitude > 1e-6 and self.muscle.fatigue > 0.0
+            else 1.0
+        )
 
     def _relax(self, value: float) -> None:
         """Append relaxation from a unit value at Ti to zero over the release time.

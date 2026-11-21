@@ -143,8 +143,10 @@ class FluidBalance:
         self._cell_solute = self.icf_l * self._extracellular_solute() / self.ecf_l
         self.d_lactate_mmol = 0.0
         self.infused_l_lactate_mmol = 0.0
+        self.stored_rbc_acid_mmol = 0.0
         self.base_meq = 0.0
         self.donor_rbc_base_meq_l = 0.0
+        self.donor_rbc_normal_base_meq_l = 0.0
         self.blood_base_meq_l = 0.0
         self.renal_base_meq = 0.0
         self.net_acid_excretion_mmol = 0.0
@@ -154,6 +156,8 @@ class FluidBalance:
         self._blood_sync = PendingBloodSync()
         self._running_blood_base_meq: float | None = None
         self.lactate_loss_pending_l = 0.0
+        self._lysed_k_mmol = 0.0
+        self._ca_push_tau_s = 5.0
 
     @property
     def interstitial_l(self) -> float:
@@ -196,9 +200,18 @@ class FluidBalance:
             self._running_blood_base_meq = (self.plasma_l + self.red_cells_l) * self.blood_base_meq_l
         return self._running_blood_base_meq
 
-    def seed_base(self, base_meq: float, donor_rbc_base_meq_l: float, blood_base_meq_l: float) -> None:
+    def seed_base(
+        self,
+        base_meq: float,
+        donor_rbc_base_meq_l: float,
+        blood_base_meq_l: float,
+        donor_rbc_normal_base_meq_l: float | None = None,
+    ) -> None:
         self.base_meq = base_meq
         self.donor_rbc_base_meq_l = donor_rbc_base_meq_l
+        self.donor_rbc_normal_base_meq_l = (
+            donor_rbc_base_meq_l if donor_rbc_normal_base_meq_l is None else donor_rbc_normal_base_meq_l
+        )
         self.blood_base_meq_l = blood_base_meq_l
         self._running_blood_base_meq = None
 
@@ -234,6 +247,16 @@ class FluidBalance:
         sync.infuse_base_meq += total_base_in
         self.citrate_mmol += water * fluid.citrate
         self.infused_l_lactate_mmol += water * fluid.lactate * fluid.l_lactate_fraction
+        if cells > 0.0:
+            # Stored RBCs carry intracellular L-lactate equilibrated with supernatant
+            # plus a reversible storage-acid deficit relative to pH 7.4 RBCs; clearing
+            # these with citrate restores Stewart electroneutrality and reproduces
+            # post-transfusion metabolic alkalosis (Kahn 1979) without losing the
+            # immediate Rabcuka 2025 acid load.
+            rbc_l_lactate = cells * fluid.lactate * fluid.l_lactate_fraction
+            self.infused_l_lactate_mmol += rbc_l_lactate
+            rbc_deficit = max(0.0, self.donor_rbc_normal_base_meq_l - self.donor_rbc_base_meq_l)
+            self.stored_rbc_acid_mmol += max(0.0, cells * rbc_deficit - rbc_l_lactate)
         self.d_lactate_mmol += water * fluid.lactate * (1.0 - fluid.l_lactate_fraction)
         plasma_water = retained_ml / 1000.0 - cells
         plasma_carbon = plasma_water * fluid.carbon
@@ -281,6 +304,8 @@ class FluidBalance:
         )
         self.citrate_mmol *= 1.0 - water / self.citrate_volume_l
         self.d_lactate_mmol *= 1.0 - water / self.lactate_volume_l
+        self.stored_rbc_acid_mmol *= keep
+        self._lysed_k_mmol *= 1.0 - fraction
         self.plasma_albumin_g *= 1.0 - water / self.plasma_l
         self.ecf_l -= water
         self.plasma_l -= water
@@ -324,7 +349,7 @@ class FluidBalance:
         if dt <= 0.0:
             return
         if self.pending_calcium_mmol > 0.0 and self._circulation > 0.0:
-            delivered = self.pending_calcium_mmol * -math.expm1(-self._circulation * dt / 5.0)
+            delivered = self.pending_calcium_mmol * -math.expm1(-self._circulation * dt / self._ca_push_tau_s)
             self.pending_calcium_mmol -= delivered
             self._deliver_calcium(delivered)
         minutes = dt / 60.0
@@ -334,6 +359,7 @@ class FluidBalance:
         self._exchange_potassium(
             minutes, epinephrine, ph=ph,
             succinylcholine_ce=succinylcholine_ce, mh_severity=mh_severity,
+            oxygen_supply=oxygen_supply,
         )
 
     def _metabolize_buffers(self, minutes: float, hepatic_function: float, oxygen_supply: float) -> None:
@@ -349,7 +375,10 @@ class FluidBalance:
             -0.012 * self.weight / self.lactate_volume_l * hepatic_function * oxy * minutes,
         )
         self.d_lactate_mmol -= d_removed
-        self.base_meq += 3.0 * citrate_removed + d_removed
+        rbc_acid_rate = 0.045 * (0.25 + 0.75 * hepatic_function) * oxy
+        rbc_acid_removed = self.stored_rbc_acid_mmol * -math.expm1(-rbc_acid_rate * minutes)
+        self.stored_rbc_acid_mmol -= rbc_acid_removed
+        self.base_meq += 3.0 * citrate_removed + d_removed + rbc_acid_removed
 
     def _renal_balance(self, minutes: float, ph: float, paco2: float, resting_paco2: float,
                        renal_function: float, renal_perfusion: float) -> None:
@@ -408,20 +437,44 @@ class FluidBalance:
                             ("calcium", calcium), ("magnesium", magnesium),
                             ("phosphate", phosphate)):
             self.amounts[ion] -= amount
+        if self._lysed_k_mmol > 0.0 and potassium > 0.0:
+            basal_k_urine = urine * 25.0
+            self._lysed_k_mmol = max(0.0, self._lysed_k_mmol - max(0.0, potassium - basal_k_urine))
 
     def _exchange_potassium(
         self, minutes: float, epinephrine: float, *, ph: float = 7.4,
         succinylcholine_ce: float = 0.0, mh_severity: float = 0.0,
+        oxygen_supply: float = 1.0,
     ) -> None:
-        # Exchange with a finite cellular pool; mild pH changes do not shift K+.
+        # Reversible transcellular K+ shifts (beta-2, succinylcholine, bidirectional pH)
+        # plus cumulative rhabdomyolytic (MH) and severe hypoxic cellular K+ leak that
+        # persists after crisis arrest until cleared renally or shifted by beta-2 agonists.
+        if mh_severity > 0.0:
+            self._lysed_k_mmol += 0.075 * self.weight * (mh_severity ** 2) * minutes
+        if oxygen_supply < 0.50:
+            hypox = clamp01((0.50 - oxygen_supply) / 0.50)
+            self._lysed_k_mmol += 0.015 * self.weight * hypox * minutes
+        # Slow passive redistribution/cellular recovery over hours once lysis stops.
+        if self._lysed_k_mmol > 0.0 and mh_severity <= 0.05 and oxygen_supply >= 0.50:
+            self._lysed_k_mmol *= math.exp(-minutes / 240.0)
+        self._lysed_k_mmol = min(self._lysed_k_mmol, 0.5 * self.cell_k_mmol)
+
         total = self.cell_k_mmol + self.amounts["potassium"]
         beta = 0.20 * epinephrine**2 / (epinephrine**2 + 0.6**2)
         sux_ce = max(0.0, succinylcholine_ce)
         sux = 0.22 * sux_ce**2 / (sux_ce**2 + 1.5**2)
-        acid = 0.80 * max(0.0, 7.15 - ph)
-        efflux = 1.0 + sux + 0.70 * max(0.0, mh_severity) ** 2 + acid
-        partition = 35.0 * (1.0 + beta) / efflux
-        target_k = total * self.ecf_l / (self.ecf_l + self.icf_l * partition)
+        delta_ph = ph - self.resting_ph
+        if delta_ph < 0.0:
+            ph_efflux = 0.65 * (-delta_ph) + 0.80 * max(0.0, 7.15 - ph)
+            ph_uptake = 0.0
+        else:
+            ph_efflux = 0.0
+            ph_uptake = 0.65 * delta_ph
+        efflux = 1.0 + sux + ph_efflux
+        partition = 35.0 * (1.0 + beta + ph_uptake) / efflux
+        intact_total = max(0.0, total - self._lysed_k_mmol)
+        lysed_ecf_share = self._lysed_k_mmol / (1.0 + beta + ph_uptake)
+        target_k = intact_total * self.ecf_l / (self.ecf_l + self.icf_l * partition) + lysed_ecf_share
         moved = (self.amounts["potassium"] - target_k) * -math.expm1(-minutes / 5.0)
         if moved > 0.0:
             moved *= self._circulation
@@ -471,9 +524,24 @@ class FluidBalance:
         self.exogenous_calcium_mmol += mmol
         self.calcium_unmixed_mmol += mmol * (1.0 - _CALCIUM_CENTRAL_FRACTION)
 
-    def give_calcium_chloride(self, mmol: float, circulation: float | None = None) -> None:
+    def give_calcium_chloride(
+        self, mmol: float, circulation: float | None = None, *, bolus_push_s: float = 0.0,
+    ) -> None:
         circ = self._circulation if circulation is None else clamp01(circulation)
-        if circ >= 1.0:
+        if circ >= 1.0 and bolus_push_s <= 0.0:
             self._deliver_calcium(mmol)
+            return
+        added = mmol
+        if circ >= 1.0:
+            # Deliver an initial central pass immediately and push the remainder
+            # over the slow bolus time constant (10% CaCl2 is given over 1-3 min).
+            immediate = 0.40 * mmol
+            self._deliver_calcium(immediate)
+            added = mmol - immediate
+        tau = max(5.0, bolus_push_s)
+        prev = self.pending_calcium_mmol
+        if prev + added > 0.0:
+            self._ca_push_tau_s = (prev * self._ca_push_tau_s + added * tau) / (prev + added)
         else:
-            self.pending_calcium_mmol += mmol
+            self._ca_push_tau_s = tau
+        self.pending_calcium_mmol = prev + added

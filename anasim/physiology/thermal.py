@@ -40,11 +40,41 @@ class ThermalModel:
             self.heat_production_basal * basal_temp_factor
             / max(1.0, patient.baseline_temp - self.tuning.ambient_temp_c)
         )
+        self.baseline_temp = patient.baseline_temp
         self.redistributed_heat_j = 0.0  # Core heat moved to the periphery
         self.depth_index = 0.0
         self.shiver_level = 0.0
         self.metabolic_factor = 1.0
         self.extra_heat_w = 0.0
+        self._pending_fluid_heat_j = 0.0
+
+    def add_fluid_heat_j(
+        self, volume_ml: float, infusate_temp_c: float, core_temp_c: float, *, is_blood: bool = False,
+    ) -> None:
+        """Accumulate sensible heat transfer (J) from infused fluids or blood products."""
+        if volume_ml <= 0.0:
+            return
+        specific_heat_j_per_ml_c = 3.85 if is_blood else 4.186
+        self._pending_fluid_heat_j += volume_ml * specific_heat_j_per_ml_c * (infusate_temp_c - core_temp_c)
+
+    def target_shivering(
+        self, temp_c: float, bis: float, opioid_effect: float, muscle_factor: float,
+        unconscious: float = 0.0, *, perfusing: bool = True,
+    ) -> float:
+        """Equilibrium shivering intensity (0-1) from cold, emergence, opioids, muscle strength, and perfusion."""
+        if not perfusing or temp_c <= 29.0:
+            return 0.0
+        depth_factor = clamp01(self.depth_index)
+        threshold = SHIVER_BASE_THRESHOLD - SHIVER_DEPTH_DROP_MAX * depth_factor - SHIVER_REMI_DROP_MAX * opioid_effect
+        temp_deficit = max(0.0, threshold - temp_c)
+        cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
+        if temp_c < 31.0:
+            # Severe hypothermia progressively abolishes central shivering thermogenesis by 29 °C.
+            cold_drive *= clamp01((temp_c - 29.0) / 2.0)
+
+        emergence_bis = clamp01((bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
+        emergence = min(emergence_bis, clamp01(1.0 - unconscious))
+        return clamp01(cold_drive * emergence * muscle_factor)
 
     def depth_and_metabolism(
         self, temp_c: float, prop_ce: float, mac: float, shiver_level: float = 0.0,
@@ -78,21 +108,15 @@ class ThermalModel:
 
     def step_shivering(
         self, dt: float, temp_c: float, bis: float, opioid_effect: float, muscle_factor: float,
-        unconscious: float = 0.0,
+        unconscious: float = 0.0, *, perfusing: bool = True,
     ) -> float:
         """Advance shivering intensity (0-1) from cold, emergence, opioid effect, and muscle strength."""
-        depth_factor = clamp01(self.depth_index)
-        threshold = SHIVER_BASE_THRESHOLD - SHIVER_DEPTH_DROP_MAX * depth_factor - SHIVER_REMI_DROP_MAX * opioid_effect
-        temp_deficit = max(0.0, threshold - temp_c)
-        cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
-        if temp_c < 31.0:
-            # Severe hypothermia progressively impairs central shivering thermogenesis.
-            cold_drive *= clamp01(0.2 + 0.8 * (temp_c - 28.0) / 3.0)
-
-        emergence_bis = clamp01((bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
-        emergence = min(emergence_bis, clamp01(1.0 - unconscious))
-
-        target = cold_drive * emergence * muscle_factor
+        if not perfusing:
+            self.shiver_level = 0.0
+            return 0.0
+        target = self.target_shivering(
+            temp_c, bis, opioid_effect, muscle_factor, unconscious=unconscious, perfusing=perfusing,
+        )
         tau = SHIVER_TAU_ON if target > self.shiver_level else SHIVER_TAU_OFF
         self.shiver_level += (target - self.shiver_level) * -math.expm1(-dt / tau)
         self.shiver_level = clamp01(self.shiver_level)
@@ -100,7 +124,9 @@ class ThermalModel:
 
     def step_temperature(self, dt: float, temp_c: float, warmer_target_c: float,
                          surface_cooling: bool = False, *,
-                         oxygen_supply_fraction: float = 1.0) -> float:
+                         oxygen_supply_fraction: float = 1.0,
+                         sepsis_severity: float = 0.0,
+                         perfusing: bool = True) -> float:
         """Return core temperature after metabolic heat, environmental loss, and redistribution.
 
         A forced-air warmer target of 0 °C is off.
@@ -120,6 +146,20 @@ class ThermalModel:
         conductance = self.awake_conductance + (anesthetized - self.awake_conductance) * depth_factor
         heat_loss = conductance * (temp_c - tuning.ambient_temp_c)
 
+        # Active sweating and cutaneous vasodilation regulate fever above the
+        # hypothalamus's setpoint (shifted upward by sepsis and anesthesia; Sessler 2000).
+        sweating_w = 0.0
+        if perfusing:
+            febrile_setpoint = max(self.baseline_temp, 37.0) + 1.8 * clamp01(sepsis_severity)
+            sweat_threshold = febrile_setpoint + 0.25 + 1.2 * depth_factor
+            if temp_c > sweat_threshold:
+                sweating_w = (
+                    140.0
+                    * (self.surface_area / 1.9)
+                    * (1.0 - 0.45 * depth_factor)
+                    * (temp_c - sweat_threshold)
+                )
+
         # Anesthetic vasodilation moves core heat to the periphery over the first
         # hour (Matsukawa 1995). Vasoconstriction on lightening traps it peripherally,
         # so the core deficit does not reverse.
@@ -135,5 +175,11 @@ class ThermalModel:
         if surface_cooling:
             cooling = (tuning.surface_cooling_w_per_c * self.surface_area / 1.9
                        * max(0.0, temp_c - tuning.temp_min_c))
-        net_heat_w = production + warming - heat_loss - redistribution_w - cooling
-        return clamp(temp_c + net_heat_w * dt / self.heat_capacity, tuning.temp_min_c, tuning.temp_max_c)
+        fluid_heat_j = self._pending_fluid_heat_j
+        self._pending_fluid_heat_j = 0.0
+        net_heat_w = production + warming - heat_loss - sweating_w - redistribution_w - cooling
+        return clamp(
+            temp_c + (net_heat_w * dt + fluid_heat_j) / self.heat_capacity,
+            tuning.temp_min_c,
+            tuning.temp_max_c,
+        )

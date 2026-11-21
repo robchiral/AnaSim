@@ -11,10 +11,13 @@ ARREST_HR_BPM = 10.0
 # PEA: negligible forward flow and pulse pressure with an organized rhythm.
 ARREST_CO_L_MIN = 0.3
 ARREST_PULSE_PRESSURE_MMHG = 5.0
+ARREST_MAP_MMHG = 20.0
 PULSELESS_VT_MAP_MMHG = 25.0
 ARREST_CONFIRM_S = 15.0
 
-BAG_P_MAX_DEFAULT = 20.0  # cmH2O; open APL during spontaneous breathing
+BAG_P_MAX_DEFAULT = 20.0  # cmH2O; default manual bag peak pressure limit
+APL_DEFAULT_CMH2O = 0.0  # cmH2O; 0 = fully open APL valve during spontaneous breathing
+APL_RANGE_CMH2O = (0.0, 70.0)
 
 CMH2O_TO_MMHG = 0.7356
 
@@ -32,12 +35,13 @@ TEMP_METABOLIC_COEFFICIENT = 0.93
 # TPR rises about 10% per °C below the vasoconstriction threshold (Frank 1997).
 TEMP_TPR_COEFFICIENT = 0.10
 
-# Shivering starts near 36.5 °C when awake, is suppressed by anesthetics and
-# opioids, and can raise metabolic rate 3-5 times.
-SHIVER_BASE_THRESHOLD = 36.5
+# Shivering starts near 35.8 °C when awake (~0.7-1.0 °C below vasoconstriction;
+# Kurz 1995), is suppressed by anesthetics and opioids, and can raise metabolic
+# rate 3-4 times.
+SHIVER_BASE_THRESHOLD = 35.8
 SHIVER_DEPTH_DROP_MAX = 2.0
 SHIVER_REMI_DROP_MAX = 0.8
-SHIVER_DELTA_FULL = 1.5
+SHIVER_DELTA_FULL = 1.3
 SHIVER_BIS_ON = 60.0
 SHIVER_BIS_FULL = 80.0
 SHIVER_MAX_MULTIPLIER = 3.0

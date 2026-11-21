@@ -11,6 +11,7 @@ from anasim.patient.variability import TYPICAL, OpioidRateVariability
 # Sevoflurane potency on the BIS response surface is anchored to BIS ~41 at
 # 1 MAC (Kanazawa 2017; Ryu 2018), which gives BIS ~30 at 1.5 MAC (Paraskeva 2005).
 SEVO_BIS_AT_1_MAC = 41.0
+OPIOID_NARCOSIS_THRESHOLD = 4.0  # ng/mL remifentanil-equivalent above analgesic range
 
 # Fentanyl counts as remifentanil at 1.37/1.67 of its concentration: a 50%
 # isoflurane MAC reduction needs 1.37 ng/mL remifentanil (Lang 1996) and 1.67
@@ -89,6 +90,13 @@ LIDOCAINE_BLOCK_PER_MCG_ML = 0.042
 N2O_SEVO_AWAKE_INTERACTION = 0.135 * (11.06 / 0.1677) / 16.653
 
 
+def hypothermia_narcosis_fraction(temp_c: float) -> float:
+    """Loss of consciousness (0-1) from direct hypothermic cerebral depression below 33 °C."""
+    if temp_c >= 33.0:
+        return 0.0
+    return clamp01((33.0 - temp_c) / 5.5) ** 1.6
+
+
 def midazolam_loss_of_response(age: float) -> float:
     """Midazolam Ce (ng/mL) for loss of response, log-linear in age (Albrecht 1999)."""
     return 499.0 * (210.0 / 499.0) ** ((age - 26.0) / 45.0)
@@ -163,9 +171,9 @@ def opioid_rate_fraction(
 
 
 class BISModel:
-    """Eleveld 2018 BIS, with a calibrated additive sevoflurane contribution.
+    """Eleveld 2018 BIS with calibrated sevoflurane, ketamine, high-dose opioid,
+    and hypothermia adjustments.
 
-    Opioids affect stimulation-related arousal outside this baseline curve.
     The published age-dependent delay includes monitor processing, so cortical
     failure from ischemia shows after the same delay.
     """
@@ -191,7 +199,12 @@ class BISModel:
         self.cortical_function = cortical
 
     def compute_bis(
-        self, ce_prop: float, mac_sevo: float = 0.0, ce_ketamine: float = 0.0,
+        self,
+        ce_prop: float,
+        mac_sevo: float = 0.0,
+        ce_ketamine: float = 0.0,
+        ce_opioid: float = 0.0,
+        temp_c: float = 37.0,
     ) -> float:
         ce_equivalent = max(0.0, ce_prop) + self.c50_typical * max(0.0, mac_sevo) / self.mac50
         # NONMEM's smooth slope transition is on the concentration scale.
@@ -203,6 +216,10 @@ class BISModel:
             if ratio > CONCENTRATION_RATIO_SATURATION * 1e6
             else self.baseline / (1.0 + ratio**gamma)
         )
+        # Pure high-dose opioid EEG slowing above normal analgesic exposure.
+        opioid_excess = max(0.0, ce_opioid - OPIOID_NARCOSIS_THRESHOLD)
+        if opioid_excess > 0.0:
+            drug_bis *= 1.0 - 0.38 * hill_function(opioid_excess, 8.0, 2.0)
         if ce_ketamine > 0.0:
             ket_effect = hill_function(ce_ketamine, 0.4, 1.5)
             ket_shift = (
@@ -212,6 +229,9 @@ class BISModel:
                 * clamp01((self.baseline - drug_bis) / 25.0)
             )
             drug_bis = min(self.baseline, drug_bis + ket_shift)
+        if temp_c < 34.0:
+            # Hypothermia progressively slows cortical EEG activity below 34 °C.
+            drug_bis *= 1.0 - 0.55 * (clamp01((34.0 - temp_c) / 9.0) ** 1.3)
         return drug_bis
 
     @staticmethod
@@ -233,7 +253,7 @@ class BISModel:
 
     def step(
         self, dt: float, ce_prop: float, mac_sevo: float = 0.0, cortical_function: float = 1.0,
-        ce_ketamine: float = 0.0,
+        ce_ketamine: float = 0.0, ce_opioid: float = 0.0, temp_c: float = 37.0,
     ) -> float:
         """Return the delayed BIS after dt seconds; cortical_function (0-1) scales it.
 
@@ -241,7 +261,10 @@ class BISModel:
         """
         self._clock += dt
         bis = self._advance_delay_queue(
-            self._drug_history, self._clock, self.compute_bis(ce_prop, mac_sevo, ce_ketamine), self.delay,
+            self._drug_history,
+            self._clock,
+            self.compute_bis(ce_prop, mac_sevo, ce_ketamine, ce_opioid, temp_c=temp_c),
+            self.delay,
         )
         self.cortical_function = self._advance_delay_queue(
             self._cortical_history, self._clock, cortical_function, self.ischemia_delay,
@@ -302,7 +325,11 @@ class ClinicalResponseModel:
         interaction = N2O_SEVO_AWAKE_INTERACTION * min(sevo_awake, 1.0) * min(n2o_awake, 1.0)
         units += intensity * (sevo_awake + n2o_awake - interaction)
         units += intensity * max(0.0, ce_ketamine) / KETAMINE_LOSS_OF_RESPONSE
-        return self._probability(units, ce_remi, intensity)
+        p_base = self._probability(units, ce_remi, intensity)
+        # High-dose opioid narcosis above analgesic range (EC50 ~10 ng/mL remi-equiv).
+        opioid_excess = max(0.0, ce_remi - OPIOID_NARCOSIS_THRESHOLD)
+        p_opioid = hill_function(opioid_excess, 6.0, 2.2) if opioid_excess > 0.0 else 0.0
+        return 1.0 - (1.0 - p_base) * (1.0 - p_opioid)
 
     def _noxious_units(self, ce_prop: float, mac_sevo: float, mac_n2o: float,
                        ce_ketamine: float) -> float:
@@ -377,7 +404,14 @@ class ClinicalResponseModel:
         # Ratio of survival probabilities, evaluated without subtracting near-one values.
         remaining = (1.0 + baseline) / (1.0 + effect) * (1.0 - lidocaine_block)
         pressure_exposure = (ce_fentanyl / FENTANYL_PRESSURE_C50)**FENTANYL_PRESSURE_GAMMA
-        pressure = remaining * math.exp(-math.log(2.0) * pressure_exposure * max(0.0, ce_prop) / 3.4)
+        # Fentanyl blunts the laryngoscopy pressor response directly and alongside
+        # propofol or ketamine; inhaled agents already incorporate fentanyl via MAC_BAR.
+        direct_fent_floor = 0.65 * (1.0 - clamp01(inhaled_mac / 0.5))
+        fent_pressure_scale = max(
+            direct_fent_floor,
+            max(0.0, ce_prop) / 3.4 + 1.2 * max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT,
+        )
+        pressure = remaining * math.exp(-math.log(2.0) * pressure_exposure * fent_pressure_scale)
         inhaled_hr_weight = clamp01(inhaled_mac / 0.25) if inhaled_mac > 0.0 else 0.0
         hr_fent = ce_fentanyl + inhaled_hr_weight * (ce_remi / FENTANYL_REMI_POTENCY)
         hr = remaining / (1.0 + (hr_fent / FENTANYL_HR_C50)**FENTANYL_HR_GAMMA)
@@ -386,5 +420,5 @@ class ClinicalResponseModel:
 
 __all__ = [
     "LARYNGOSCOPY_INTENSITY", "BISModel", "ClinicalResponseModel", "hypnotic_equivalent",
-    "midazolam_loss_of_response", "opioid_equivalent",
+    "hypothermia_narcosis_fraction", "midazolam_loss_of_response", "opioid_equivalent",
 ]

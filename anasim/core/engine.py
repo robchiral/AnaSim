@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from anasim.core.constants import (
+    APL_DEFAULT_CMH2O,
+    APL_RANGE_CMH2O,
     BAG_P_MAX_DEFAULT,
     CIRCULATION_LIMIT_FRACTION,
     AirwayTuning,
@@ -49,6 +51,7 @@ from anasim.physiology.hemodynamics import MAX_HEMATOCRIT, HemodynamicModel
 from anasim.physiology.lactate import LactateModel
 from anasim.physiology.lung import LungAeration
 from anasim.physiology.malignant_hyperthermia import (
+    SUCCINYLCHOLINE_TRIGGER_WINDOW_S,
     MalignantHyperthermia,
     triggering_exposure,
 )
@@ -160,6 +163,8 @@ class SimulationEngine(DrugControllerMixin):
         self.bag_mask_rr = 12.0  # breaths/min
         self.bag_mask_vt = 0.5  # L
         self.bag_mask_p_max = BAG_P_MAX_DEFAULT  # cmH2O
+        self.apl_cmh2o = APL_DEFAULT_CMH2O  # cmH2O; 0 = open during spontaneous breathing
+        self._last_succinylcholine_time: float | None = None
 
         self.active_hemorrhage = False
         self.hemorrhage_rate_ml_min = 500.0
@@ -182,13 +187,13 @@ class SimulationEngine(DrugControllerMixin):
         self._bis_noise = 0.0
         self.etco2_readout = EtCO2Readout()
         self._tol_current = 0.0
-        self._pk_hemo_scale_cache: tuple[float, float, float] | None = None
+        self._pk_hemo_scale_cache: tuple[float, float, float, float] | None = None
         self._pk_blood_out_ml = 0.0
         self.current_mean_paw = 0.0
         self.current_mean_effort = 0.0
         self._apl_pressure = 0.0
         self._extubation_stimulus_until = 0.0
-        self._tracheal_fio2 = 0.21
+        self._tracheal_gas: tuple[float, float, float, float] = (0.21, 0.0, 0.0, 0.79)
         self._step_gas: projection_core.StepGasCache | None = None
 
         # Independent generators keep each monitor's noise reproducible.
@@ -214,6 +219,7 @@ class SimulationEngine(DrugControllerMixin):
         """Seed the public state from the initialized subsystems."""
         self._step_gas = None
         self.state.temp_c = self.patient.baseline_temp
+        self.state.fluid_warmer = self.config.fluid_warmer_enabled
         initialize_engine_state(self)
         self.actions = ActionLog()
         projection_core.sync_state_from_models(self)
@@ -234,6 +240,23 @@ class SimulationEngine(DrugControllerMixin):
     def get_continuous_fluid_rate(self) -> float:
         """Return current continuous IV fluid rate in mL/hr."""
         return self.maintenance_fluid_rate_ml_min * 60.0
+
+    @property
+    def _tracheal_fio2(self) -> float:
+        return self._tracheal_gas[0]
+
+    @_tracheal_fio2.setter
+    def _tracheal_fio2(self, value: float) -> None:
+        o2 = clamp01(float(value))
+        _, sevo, n2o, _ = self._tracheal_gas
+        rem = max(0.0, 1.0 - o2)
+        other = sevo + n2o
+        if other > rem and other > 0.0:
+            scale = rem / other
+            sevo *= scale
+            n2o *= scale
+        n2 = max(0.0, rem - sevo - n2o)
+        self._tracheal_gas = (o2, sevo, n2o, n2)
 
     def initialize_models(self):
         """Build the subsystem models selected by the configuration."""
@@ -281,8 +304,12 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo = HemodynamicModel(self.patient)
         self.resp = RespiratoryModel(self.patient)
         self.resp.attach_fluid_balance(self.hemo.fluids, self.hemo.config.donor_mchc_g_dl)
+        self.pk_sevo.frc = self.resp.gas_volume_l
+        self.pk_n2o.frc = self.resp.gas_volume_l
         self.lactate = LactateModel(self.patient.weight, self.patient.hepatic_function)
-        self.cerebral = CerebralModel(self.patient.baseline_hb, self.resp.paco2_setpoint)
+        self.cerebral = CerebralModel(
+            self.patient.baseline_hb, self.resp.paco2_setpoint, self.patient.baseline_map,
+        )
         self.toxicity = LocalAnestheticToxicity(self.patient.weight)
         if self.config.mode == "steady_state":
             self.aeration = LungAeration(self.patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
@@ -382,7 +409,7 @@ class SimulationEngine(DrugControllerMixin):
             raise ValueError("calcium chloride dose must be greater than zero")
         base_co = max(0.1, self.hemo.base_co_l_min)
         circulation = clamp01(self.hemo.state.co / (CIRCULATION_LIMIT_FRACTION * base_co))
-        self.hemo.fluids.give_calcium_chloride(dose * 0.0068, circulation=circulation)
+        self.hemo.fluids.give_calcium_chloride(dose * 0.0068, circulation=circulation, bolus_push_s=90.0)
         self.state.ionized_calcium = float(self.hemo.fluids.ionized_calcium(self.resp.state.ph_37))
         self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="calcium_chloride", amount=dose)
 
@@ -460,6 +487,8 @@ class SimulationEngine(DrugControllerMixin):
         model = self.pk[spec.key]
         dose = amount * spec.bolus_model_scale
         model.state.c1 += dose / model.v1
+        if spec.key == "succinylcholine":
+            self._last_succinylcholine_time = self.state.time
         self.sync_active_tci_from_pk(spec.key)
         self.actions.record(
             self.state.time, ACTION_DRUG_BOLUS, label=spec.key, amount=amount
@@ -521,7 +550,14 @@ class SimulationEngine(DrugControllerMixin):
 
     def start_malignant_hyperthermia(self):
         """Start the crisis now; onset after a trigger varies, so the instructor or case sets it."""
-        if not triggering_exposure(self.state.mac_sevo, self.pk["succinylcholine"].state.c1):
+        recent_sux = (
+            self._last_succinylcholine_time is not None
+            and 0.0 <= self.state.time - self._last_succinylcholine_time <= SUCCINYLCHOLINE_TRIGGER_WINDOW_S
+        )
+        if not triggering_exposure(
+            self.state.mac_sevo, self.pk["succinylcholine"].state.c1,
+            recent_succinylcholine=recent_sux,
+        ):
             raise ValueError("Malignant hyperthermia requires sevoflurane anesthesia or recent succinylcholine.")
         self._log_event("malignant_hyperthermia", True)
         self.malignant_hyperthermia.active = True
@@ -562,6 +598,10 @@ class SimulationEngine(DrugControllerMixin):
     def set_bair_hugger(self, target_c: float):
         """Set the forced-air warmer target (°C); 0 turns it off."""
         self.state.bair_hugger_target = bounded_number("warmer target", target_c, 0.0, 43.0, unit="°C")
+
+    def set_fluid_warmer(self, enabled: bool):
+        """Turn the IV fluid and blood warmer (37 °C) on or off."""
+        self.state.fluid_warmer = bool(enabled)
 
     def set_surface_cooling(self, on: bool):
         """Start or stop surface cooling; it continues until stopped."""
@@ -708,6 +748,8 @@ class SimulationEngine(DrugControllerMixin):
             hypoxia=hypoxia,
             perfusing=runtime_core.is_perfusing(self),
             energy_reserve=self.hemo.coronary.energy_reserve,
+            temp_c=self.state.temp_c,
+            hyperkalemia_block=self.hemo.hyperkalemia_block,
         )
         self.defibrillator.consume(time, synchronized)
         self.actions.record(time, ACTION_SHOCK,
@@ -757,6 +799,10 @@ class SimulationEngine(DrugControllerMixin):
             else bounded_number("bag pressure limit", p_max, *BAG_P_MAX_RANGE, unit="cmH2O")
         )
         self.bag_mask_rr, self.bag_mask_vt, self.bag_mask_p_max = validated_rr, validated_vt, validated_p_max
+
+    def set_apl_valve(self, cmh2o: float):
+        """Set the spontaneous-breathing APL valve (cmH2O); 0 is fully open."""
+        self.apl_cmh2o = bounded_number("APL valve", cmh2o, *APL_RANGE_CMH2O, unit="cmH2O")
 
     def start(self):
         self.running = True
@@ -827,7 +873,10 @@ class SimulationEngine(DrugControllerMixin):
     @property
     def spontaneous_circulation(self) -> bool:
         """The heart's own beats perfuse now; arrest is flagged only after 15 s without them."""
-        return self._pulseless_s == 0.0
+        return (
+            self._pulseless_s == 0.0
+            and self.hemo.state.rhythm_type not in (RhythmType.VFIB, RhythmType.ASYSTOLE)
+        )
 
     @property
     def irreversible_arrest(self) -> bool:
@@ -846,7 +895,11 @@ class SimulationEngine(DrugControllerMixin):
                 self.pk["roc"], max_seconds=max_seconds,
                 mac_sevo=self.pk_sevo.state.mac, mac_n2o=self.pk_n2o.state.mac,
             )
-        model = self.prediction_model(key)
+        pump_model = self.pump_pk.get(key)
+        if pump_model is not None and (key in self.tci or pump_model.state.ce > 1e-12):
+            model = pump_model
+        else:
+            model = self.pk[key]
         target_fraction = 0.5
         if model.basal_input_rate > 0.0:
             if model.circulation <= 0.0 or model.elimination_clearance <= 0.0:

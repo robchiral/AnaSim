@@ -121,9 +121,10 @@ class TestCapnography:
         engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
         for _ in range(240):
             engine.step(0.5)
-        # Residual diaphragm contractions can persist without airflow.
+        # Residual diaphragm contractions are physically capped by remaining muscle capacity.
         assert engine.resp.state.muscle_factor < 0.2
-        assert engine.resp_mech.effort.amplitude < 0.6 * effort_before_block
+        assert engine.resp_mech.effort.amplitude < effort_before_block
+        assert engine.resp_mech.effort.amplitude <= engine.resp_mech.effort.muscle.available_pressure + 0.1
         assert engine.state.vt == engine.state.mv == engine.state.va == 0.0
         assert not engine.state.etco2_signal_valid
 
@@ -327,3 +328,45 @@ class TestCapnography:
         advance_time(apneic, 12.0, dt=0.5)
         assert not apneic.state.etco2_signal_valid
         assert apneic.state.et_sevo == apneic.state.et_o2 == apneic.state.et_mac == 0.0
+
+    def test_slow_vcv_rate_keeps_etco2_valid(self, engine_factory, advance_time):
+        """Slow VCV (RR 3.5/min, 17.1 s period) does not blank EtCO2 or fire false LOW EtCO2."""
+        slow = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+        slow.set_vent_settings(mode="VCV", rr=3.5, vt=0.65, peep=5.0, ie="1:2")
+        advance_time(slow, 60.0, dt=0.5)
+        for _ in range(60):
+            slow.step(0.5)
+            assert slow.state.etco2_signal_valid
+            assert slow.state.display_etco2 > 30.0
+            assert not slow.state.alarms.get("EtCO2", {}).get("low")
+
+
+def test_nibp_deflation_sweep_invalidation_and_afib_scatter():
+    """VF during most of cuff deflation fails even if sinus returns on the final step;
+    AFib exhibits modest oscillometric scatter and occasional retry failure."""
+    mon = NIBPMonitor(rng=np.random.default_rng(1))
+    mon.trigger()
+    t = 0.0
+    while mon.is_cycling:
+        t += 0.5
+        rhythm = RhythmType.VFIB if t < 10.8 else RhythmType.SINUS
+        p_map, p_sys, p_dia = (8.0, 8.0, 8.0) if rhythm == RhythmType.VFIB else (80.0, 105.0, 65.0)
+        mon.step(0.5, t, p_map, p_sys, p_dia, rhythm)
+    assert mon.measurement_failed and mon.latest_reading.timestamp is None
+
+    rng = np.random.default_rng(7)
+    afib_maps = []
+    afib_failures = 0
+    for _ in range(40):
+        m = NIBPMonitor(rng=rng)
+        m.trigger()
+        t = 0.0
+        while m.is_cycling:
+            t += 0.5
+            m.step(0.5, t, 85.0, 115.0, 70.0, RhythmType.AFIB)
+        if m.measurement_failed:
+            afib_failures += 1
+        else:
+            afib_maps.append(m.latest_reading.map)
+    assert afib_failures >= 1
+    assert np.std(afib_maps) > 1.5

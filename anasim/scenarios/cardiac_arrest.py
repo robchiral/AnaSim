@@ -89,22 +89,61 @@ def _require_start_compressions_or_rosc(engine) -> tuple[bool, str]:
     )(engine)
 
 
+def _observe_instruction(engine) -> str:
+    if engine.config.arterial_line_enabled:
+        return "Follow the ECG, arterial pressure, oxygenation, and capnography."
+    return "Follow the ECG, pulse oximetry, blood pressure, and capnography."
+
+
+def _start_compressions_instruction(engine) -> str:
+    if engine.config.arterial_line_enabled:
+        recognition = "Ventricular fibrillation with loss of the arterial pulse is cardiac arrest."
+        feedback = (
+            "Use the arterial line and capnography to judge compressions: diastolic pressure "
+            "of at least 25 mmHg between compressions perfuses the heart, and EtCO₂ below "
+            "10 mmHg suggests poor flow."
+        )
+    else:
+        recognition = "Ventricular fibrillation with loss of the pulse oximeter plethysmograph and abrupt drop in EtCO₂ is cardiac arrest."
+        feedback = (
+            "Use capnography to judge compression quality: EtCO₂ below "
+            "10 mmHg suggests poor flow."
+        )
+    return (
+        f"{recognition} Call for help and the defibrillator, turn off anesthetic agents "
+        "(volatile vaporizer and intravenous infusions), and start <b>chest compressions</b> immediately. "
+        "Give <b>100% oxygen</b>: set O₂ 10 L/min, air and N₂O 0 L/min, and keep ventilating "
+        "through the tracheal tube at about 10 breaths/min.<br><br>"
+        f"{feedback}"
+    )
+
+
+def _continue_cycles_instruction(engine) -> str:
+    rosc_cue = (
+        "An organized rhythm with arterial pulsations and a sudden rise in EtCO₂ indicates "
+        "return of circulation."
+        if engine.config.arterial_line_enabled
+        else "An organized rhythm with a returning pulse and a sudden rise in EtCO₂ indicates "
+        "return of circulation."
+    )
+    return (
+        "Every 2 minutes, pause compressions briefly to check the rhythm. Shock VF again "
+        "and resume compressions at once. Give <b>epinephrine 1 mg</b> (1000 mcg) after the "
+        "second shock and every 3-5 minutes while VF persists. After the third shock, give "
+        "<b>amiodarone 300 mg</b> or <b>lidocaine 1-1.5 mg/kg</b>, then amiodarone 150 mg "
+        "or lidocaine 0.5-0.75 mg/kg if VF persists. VF can recur after a successful "
+        f"shock.<br><br>{rosc_cue}"
+    )
+
+
 def create_cardiac_arrest() -> Scenario:
     shock = _require_action(ACTION_SHOCK, "unsynchronized", "Deliver an unsynchronized shock")
     steps = [
-        create_observe_step(EVENT, instruction="Follow the ECG, arterial pressure, oxygenation, and capnography."),
+        create_observe_step(EVENT, instruction=_observe_instruction),
         ScenarioStep(
             id="START_COMPRESSIONS",
             title="Start chest compressions",
-            instruction=(
-                "Ventricular fibrillation with loss of the arterial pulse is cardiac arrest. "
-                "Call for help and the defibrillator, and start <b>chest compressions</b> immediately. "
-                "Give <b>100% oxygen</b>: set O₂ 10 L/min, air and N₂O 0 L/min, and keep ventilating "
-                "through the tracheal tube at about 10 breaths/min.<br><br>"
-                "Use the arterial line and capnography to judge compressions: diastolic pressure "
-                "of at least 25 mmHg between compressions perfuses the heart, and EtCO₂ below "
-                "10 mmHg suggests poor flow."
-            ),
+            instruction=_start_compressions_instruction,
             check_requirements=_require_start_compressions_or_rosc,
             target_tab="Circulation",
         ),
@@ -123,16 +162,7 @@ def create_cardiac_arrest() -> Scenario:
         ScenarioStep(
             id="CONTINUE_CYCLES",
             title="Continue the resuscitation cycle",
-            instruction=(
-                "Every 2 minutes, pause compressions briefly to check the rhythm. Shock VF again "
-                "and resume compressions at once. Give <b>epinephrine 1 mg</b> (1000 mcg) after the "
-                "second shock and every 3-5 minutes while VF persists. After the third shock, give "
-                "<b>amiodarone 300 mg</b> or <b>lidocaine 1-1.5 mg/kg</b>, then amiodarone 150 mg "
-                "or lidocaine 0.5-0.75 mg/kg if VF persists. VF can recur after a successful "
-                "shock.<br><br>"
-                "An organized rhythm with arterial pulsations and a sudden rise in EtCO₂ indicates "
-                "return of circulation."
-            ),
+            instruction=_continue_cycles_instruction,
             check_requirements=_require_epinephrine_or_rosc,
             target_tab="Medications",
         ),
@@ -159,7 +189,7 @@ def create_cardiac_arrest() -> Scenario:
         name="Cardiac arrest",
         briefing=CRISIS_BRIEFING,
         steps=steps,
-        events=(CaseEvent(EVENT, CRISIS_ONSET_S, "The ECG changes abruptly and the arterial waveform flattens.", _start),),
+        events=(CaseEvent(EVENT, CRISIS_ONSET_S, "The ECG changes abruptly and the pulse is lost.", _start),),
         outcomes=(
             CaseOutcome("compressions", "Compressions within 1 minute of arrest",
                         _within(ACTION_COMPRESSIONS, "on", 60.0),

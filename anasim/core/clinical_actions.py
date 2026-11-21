@@ -1,4 +1,4 @@
-"""Hazard checks for learner actions; only an awake, reactive intubation attempt fails."""
+"""Hazard checks for learner actions; awake reactive or severe-laryngospasm intubation attempts fail."""
 
 from __future__ import annotations
 
@@ -38,22 +38,32 @@ def _responsiveness(engine: SimulationEngine) -> tuple[float, float]:
     return loss_of_response(engine), stimulus_tolerance(engine)
 
 
+def _in_arrest(engine: SimulationEngine) -> bool:
+    hemo = engine.hemo.state
+    return (
+        engine.state.cardiac_arrest
+        or hemo.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE)
+        or not is_perfusing(engine, hemo)
+    )
+
+
 def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
     unconscious, tolerance = _responsiveness(engine)
     strength = central_muscle_strength(engine)
     s = engine.state
-    hemo = engine.hemo.state
-    in_arrest = (
-        s.cardiac_arrest
-        or hemo.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE)
-        or not is_perfusing(engine, hemo)
-    )
+    in_arrest = _in_arrest(engine)
+    if engine.laryngospasm_severity >= 0.5 and strength > 0.5:
+        return ActionFeedback(
+            "laryngospasm_blocked",
+            "Severe laryngospasm closes the vocal cords; tube not placed.",
+            blocked=True,
+        )
     sustained_hypnosis = in_arrest or (
         unconscious >= 0.1
         and (
-            cardiovascular_hypnotic_ce(engine) >= 1.2
-            or s.mac >= 0.3
-            or s.ketamine_ce >= 0.4
+            cardiovascular_hypnotic_ce(engine) >= 1.65
+            or s.mac >= 0.5
+            or s.ketamine_ce >= 0.8
             or engine.cerebral.unresponsiveness >= 0.8
             or engine.toxicity.unresponsiveness >= 0.8
         )
@@ -118,7 +128,20 @@ def check_shock(engine: SimulationEngine) -> ActionFeedback | None:
 
 
 def check_drug_administration(engine: SimulationEngine, key: str) -> ActionFeedback | None:
+    if key == "succinylcholine":
+        if engine.malignant_hyperthermia.active or engine.malignant_hyperthermia.susceptible:
+            return ActionFeedback(
+                "succinylcholine_in_mh",
+                "Succinylcholine is contraindicated in malignant hyperthermia.",
+            )
+        if engine.state.potassium >= 5.5:
+            return ActionFeedback(
+                "succinylcholine_in_hyperkalemia",
+                "Succinylcholine risks hyperkalemic cardiac arrest when serum potassium is elevated.",
+            )
     if key in {"roc", "succinylcholine"}:
+        if _in_arrest(engine):
+            return None
         unconscious, _ = _responsiveness(engine)
         if unconscious < 0.1 and not _induction_in_progress(engine):
             return ActionFeedback(

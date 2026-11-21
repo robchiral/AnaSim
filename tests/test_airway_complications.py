@@ -226,7 +226,7 @@ def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(e
     obstructions = {}
     gases = {}
     pressures = {}
-    for seal in (1.0, 0.8, 0.4, 0.0):
+    for seal in (1.0, 0.8, 0.4, 0.2, 0.0):
         engine = copy.deepcopy(base)
         engine.set_mask_seal(seal)
         for _ in range(60):
@@ -249,11 +249,11 @@ def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(e
     assert pressures[0.4] < 0.5 * pressures[1.0]
     assert obstructions[1.0] == 0.0
     assert 0.1 < obstructions[0.4] < obstructions[0.0]
-    # Pressurized breaths leak outward, so only circuit gas is inspired. Too
-    # little exhaled gas reaches the sampling port to clear the dead space.
+    # Pressurized breaths leak outward, so only circuit gas is inspired. With a
+    # very loose seal, too little exhaled gas reaches the port to clear dead space.
     assert gases[0.4][0] == pytest.approx(gases[1.0][0])
     assert gases[0.8][1] > gases[1.0][1] - 2.0
-    assert gases[0.4][1] < 5.0
+    assert gases[0.2][1] < 5.0
 
     # Awake breathing around a loose mask preserves room-air CO2 clearance
     # and the capnogram, and stalls oxygen wash-in until the seal is tightened.
@@ -440,3 +440,29 @@ def test_psv_bronchospasm_reduces_va_and_mask_leak_entrainment_scales_smoothly(e
     starved.set_mask_seal(0.99)
     advance_time(starved, 10.0, dt=0.5)
     assert starved.state.va < 0.5
+
+
+def test_succinylcholine_preserves_apneic_oxygenation_and_severe_awake_block_obstructs(
+    engine_factory, advance_time
+):
+    """Succinylcholine does not seal the airway airtight; severe awake TOF < 10% causes obstruction."""
+    sux = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1),
+        start=True, weight=115.0, height=170.0,
+    )
+    sux.set_airway_mode("Mask")
+    sux.set_fgf(10.0, 0.0)
+    advance_time(sux, 180.0, dt=1.0)
+    sux.give_drug_bolus("propofol", 200.0)
+    sux.give_drug_bolus("succinylcholine", 120.0)
+    advance_time(sux, 180.0, dt=1.0)
+    assert sux.airway_status.patency >= 0.10
+    assert sux.state.sao2 > 95.0
+
+    awake_roc = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    awake_roc.set_airway_mode("Mask")
+    awake_roc.give_drug_bolus("rocuronium", 25.0)
+    advance_time(awake_roc, 240.0, dt=1.0)
+    assert awake_roc.state.tof < 10.0
+    assert awake_roc.state.loc < 0.05
+    assert awake_roc.state.airway_obstruction > 0.3

@@ -171,6 +171,11 @@ test("stopping a TCI infusion resets target to null and clears is_tci in engine"
   assert.equal(w.mode.value, "tci");
   assert.equal(w.target.disabled, false);
   assert.equal(w.rate.disabled, true);
+  assert.equal(stubs.get("c-apl-settings").hidden, true, "APL stays hidden without an airway");
+  controls.sync({ ...pyState[3], airway: "Mask", bag_mask: false, vent: { ...pyState[3].vent, on: false } }, 0);
+  assert.equal(stubs.get("c-apl-settings").hidden, false, "APL shows during spontaneous breathing on mask");
+  controls.sync({ ...pyState[3], airway: "Mask", bag_mask: true, vent: { ...pyState[3].vent, on: false } }, 0);
+  assert.equal(stubs.get("c-apl-settings").hidden, true, "APL hides while manual bag ventilation is active");
 });
 
 test("defibrillator sync buttons reset per session and hemorrhage select preserves observed rates", () => {

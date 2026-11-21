@@ -36,24 +36,36 @@ _PPG_TEMPLATE = _build_ppg_template()
 
 
 class SpO2Monitor:
-    """Finger pulse oximeter: delayed pleth and a lagging saturation reading."""
+    """Finger pulse oximeter: delayed pleth, circulatory transit lag, and multi-beat lock."""
 
-    def __init__(self, response_tau_s: float = 4.0, peripheral_delay_s: float = 0.18):
+    def __init__(
+        self,
+        response_tau_s: float = 2.0,
+        peripheral_delay_s: float = 0.18,
+        transport_delay_s: float = 6.5,
+    ):
         self.response_tau_s = response_tau_s
         self.peripheral_delay_s = peripheral_delay_s
+        self.transport_delay_s = transport_delay_s
         if self.response_tau_s <= 0.0:
             raise ValueError("response_tau_s must be greater than zero")
         if self.peripheral_delay_s < 0.0:
             raise ValueError("peripheral_delay_s cannot be negative")
+        if self.transport_delay_s < 0.0:
+            raise ValueError("transport_delay_s cannot be negative")
         self.display_saturation: float | None = None
         self.signal_valid = True
         self._reacquire_s = 0.0
+        self._valid_beats = 0
+        self._valid_s = 0.0
+        self._transit: list[float] | None = None
         self._template = _PPG_TEMPLATE.tolist()  # Python floats avoid NumPy scalar arithmetic per sample.
         self._template_max_index = _PPG_TEMPLATE.size - 1
         self._beat_amplitude = 1.0
         self._beat_perf = 1.0
         self._beat_rr_s: float | None = None
         self._beat_pending = False
+        self._has_pulse = False
 
     def step(
         self,
@@ -61,15 +73,25 @@ class SpO2Monitor:
         cycle: CardiacCycleSample,
         saturation: float,
         perfusion: float = 1.0,
+        *,
+        cpr_artifact: bool = False,
+        delay_scale: float = 1.0,
     ) -> tuple[float, float]:
         """Return (pleth voltage, displayed saturation %)."""
         if dt <= 0.0:
             raise ValueError("SpO2 monitor dt must be greater than zero")
 
         perf = clamp01(perfusion)
-        if cycle.organized:
+        target = clamp(saturation, 0.0, 100.0)
+        if self._transit is None:
+            self._transit = [target, target, target, target]
+        if self.display_saturation is None:
+            self.display_saturation = target
+
+        if cycle.organized and not cpr_artifact:
             # Each pulse starts at its upstroke with the beat's stroke volume, and the
-            # previous pulse keeps its own timing until then.
+            # previous pulse keeps its own timing until then. On the first beat after
+            # loss of pulse, wait until peripheral_delay_s before rendering the upstroke.
             delay_s = self.peripheral_delay_s
             self._beat_pending |= cycle.beat_started
             if self._beat_rr_s is None or (self._beat_pending and cycle.elapsed_s >= delay_s):
@@ -77,36 +99,69 @@ class SpO2Monitor:
                 self._beat_perf = perf
                 self._beat_rr_s = cycle.rr_interval_s
                 self._beat_pending = False
-            if self._beat_pending:
-                phase = min((self._beat_rr_s - delay_s + cycle.elapsed_s) / self._beat_rr_s, 1.0)
+            if not self._has_pulse and cycle.elapsed_s >= delay_s:
+                self._has_pulse = True
+
+            if perf <= 0.0 or not self._has_pulse:
+                pleth_voltage = 0.0
             else:
-                phase = ((cycle.elapsed_s - delay_s) / self._beat_rr_s) % 1.0
-            idx = int(phase * self._template_max_index)
-            pleth_voltage = 0.0 if perf <= 0.0 else self._template[idx] * self._beat_perf * self._beat_amplitude
+                if self._beat_pending:
+                    phase = min((self._beat_rr_s - delay_s + cycle.elapsed_s) / self._beat_rr_s, 1.0)
+                else:
+                    phase = ((cycle.elapsed_s - delay_s) / self._beat_rr_s) % 1.0
+                idx = int(phase * self._template_max_index)
+                pleth_voltage = self._template[idx] * self._beat_perf * self._beat_amplitude
         else:
             self._beat_amplitude = 1.0
             self._beat_perf = 0.0
             self._beat_rr_s = None
             self._beat_pending = False
+            self._has_pulse = False
             pleth_voltage = 0.0
 
-        self.signal_valid = cycle.organized and perf >= 0.08
-        if not self.signal_valid:
+        # Advance lung-to-finger arterial O2 transit while forward perfusion exists;
+        # delay lengthens with vasoconstriction, hypothermia, or low CO (MacLeod 2005).
+        if cycle.organized and perf > 0.0 and not cpr_artifact:
+            eff_delay = clamp(self.transport_delay_s * max(0.5, delay_scale), 0.0, 120.0)
+            if eff_delay <= 0.0:
+                self._transit = [target, target, target, target]
+            else:
+                stage_tau = eff_delay / 4.0
+                step_alpha = -math.expm1(-dt / stage_tau)
+                prev = target
+                transit = self._transit
+                for i in range(4):
+                    transit[i] += step_alpha * (prev - transit[i])
+                    prev = transit[i]
+
+        usable = cycle.organized and perf >= 0.08 and not cpr_artifact
+        if not usable:
+            self.signal_valid = False
+            self._valid_beats = 0
+            self._valid_s = 0.0
             self._reacquire_s = _REACQUIRE_WINDOW_S
-            return pleth_voltage, self.display_saturation if self.display_saturation is not None else 0.0
+            return pleth_voltage, self.display_saturation
 
-        target = clamp(saturation, 0.0, 100.0)
-        if self.display_saturation is None:
-            self.display_saturation = target
-            self._reacquire_s = 0.0
+        if not self.signal_valid:
+            self._valid_s += dt
+            if cycle.beat_started:
+                self._valid_beats += 1
+            if (self._valid_beats >= 2 and self._valid_s >= 1.2) or self._valid_s >= 2.5:
+                self.signal_valid = True
+                # Stagnant peripheral blood during pulse loss does not hold stale
+                # pre-arrest saturation above current arterial saturation on return.
+                self._transit = [min(val, target) for val in self._transit]
+            else:
+                return pleth_voltage, self.display_saturation
 
-        # Re-acquired pulses lock onto current saturation immediately;
-        # steady tracking trails arterial saturation, more slowly with poor perfusion.
+        finger_sat = self._transit[-1]
+        # Re-acquired pulses lock onto current peripheral saturation rapidly;
+        # steady tracking trails finger arterial saturation with perfusion-dependent averaging.
         if self._reacquire_s > 0.0:
             tau = _REACQUIRE_TAU_S
             self._reacquire_s = max(0.0, self._reacquire_s - dt)
         else:
             tau = self.response_tau_s * (1.0 + 2.0 * (1.0 - perf))
-        alpha = 1.0 - math.exp(-dt / tau)
-        self.display_saturation += alpha * (target - self.display_saturation)
+        alpha = -math.expm1(-dt / tau)
+        self.display_saturation += alpha * (finger_sat - self.display_saturation)
         return pleth_voltage, self.display_saturation

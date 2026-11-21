@@ -10,6 +10,7 @@ from scipy.optimize import minimize
 
 from anasim.patient.patient import Patient
 from anasim.patient.pd import BISModel, ClinicalResponseModel
+from anasim.patient.pd.anesthesia import hypothermia_narcosis_fraction
 from anasim.physiology.disturbances import DisturbanceEffects
 
 from . import monitors as monitor_core
@@ -81,10 +82,21 @@ def _initialize_awake(engine: SimulationEngine) -> None:
     engine.resp.state.apnea = False
     engine.set_vent_power(False)
     engine.set_vaporizer(0.0)
-    engine.thermal.update_depth(engine.patient.baseline_temp, 0.0, 0.0)
+    base_temp = engine.patient.baseline_temp
+    engine.thermal.update_depth(base_temp, 0.0, 0.0)
     engine.thermal.settle_at_depth()
+    awake_bis = engine.bis.compute_bis(0.0, temp_c=base_temp)
+    awake_unconscious = hypothermia_narcosis_fraction(base_temp)
+    engine.thermal.shiver_level = engine.thermal.target_shivering(
+        base_temp, awake_bis, 0.0, 1.0, unconscious=awake_unconscious, perfusing=True,
+    )
+    engine.thermal.update_depth(base_temp, 0.0, 0.0)
     engine.pk_nore.equilibrate_endogenous()
-    engine.hemo.initialize_steady_state(0.0, 0.0, engine.pk_nore.state.ce, pit=engine.hemo.config.pit_0)
+    engine.hemo.initialize_steady_state(
+        0.0, 0.0, engine.pk_nore.state.ce,
+        pit=engine.hemo.config.pit_0,
+        shivering=engine.thermal.shiver_level,
+    )
     runtime_core.update_pk_covariates(engine, engine.hemo.state.co)
 
 
@@ -358,17 +370,19 @@ def _seed_volatile_history(engine: SimulationEngine, target_mac: float, duration
     p_art = corrected_mac * target_mac / 100.0
     q_co = max(engine.hemo.state.co, 0.1)
     shunt = clamp(engine.aeration.shunt_fraction, 0.0, 0.9)
+    f_vrg, f_mus, f_fat = pk.flow_fractions(q_co)
     flows = {
-        "p_vrg": (q_co * pk.f_vrg_frac, pk.v_vrg, pk.lambda_t_b_vrg),
-        "p_mus": (q_co * pk.f_mus_frac, pk.v_mus, pk.lambda_t_b_mus),
-        "p_fat": (q_co * pk.f_fat_frac, pk.v_fat, pk.lambda_t_b_fat),
+        "p_vrg": (q_co * f_vrg, pk.v_vrg, pk.lambda_t_b_vrg),
+        "p_mus": (q_co * f_mus, pk.v_mus, pk.lambda_t_b_mus),
+        "p_fat": (q_co * f_fat, pk.v_fat, pk.lambda_t_b_fat),
     }
     for name, (flow, volume, partition) in flows.items():
         setattr(state, name, p_art * -math.expm1(-flow / volume / partition * duration_min))
+    state.p_brain = state.p_vrg
     state.p_ven = sum(flow * getattr(state, name) for name, (flow, _, _) in flows.items()) / q_co
     state.p_alv = clamp01((p_art - shunt * state.p_ven) / max(0.1, 1.0 - shunt))
     state.p_art = (1.0 - shunt) * state.p_alv + shunt * state.p_ven
-    state.mac = state.p_vrg * 100.0 / corrected_mac
+    state.mac = state.p_brain * 100.0 / corrected_mac
 
     # Lung balance VA (Fi - FA) = (1 - s) Q λ (FA - Fv), then STPD circle balance
     # vapor_flow - uptake = (FGF + vapor_flow - total_uptake) * Fi.

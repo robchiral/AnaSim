@@ -5,19 +5,25 @@ supply. Electrical function ramps down from 60% to complete failure at 35% of
 normal supply, and neurons are injured below 20% (Astrup 1981), more slowly when
 more supply remains (Jones 1981). Oxygen stores delay failure: after circulatory
 arrest, it starts at about 4 s and the EEG is flat at about 11 s (de Vries
-1998, 11 +/- 2 s to isoelectric EEG). Acute electrical suppression can recover
-while coma persists.
+1998, 11 +/- 2 s to isoelectric EEG). Brief arrest allows electrical recovery,
+whereas prolonged anoxia causes graded permanent cortical and brainstem injury
+alongside permanent coma after 5 equivalent anoxic minutes.
 """
 
 import math
 
-from anasim.core.utils import clamp01
+from anasim.core.constants import TEMP_METABOLIC_COEFFICIENT
+from anasim.core.utils import clamp, clamp01
 
 
 class CerebralModel:
     # Time without supply after which coma persists, a teaching threshold.
     # Supply of 10-20% counts partially.
     COMA_EXPOSURE_S = 300.0
+    CORTICAL_INJURY_ONSET_S = 240.0
+    CORTICAL_INJURY_SPAN_S = 80.0
+    BRAINSTEM_INJURY_ONSET_S = 300.0
+    BRAINSTEM_INJURY_SPAN_S = 300.0
     TISSUE_OXYGEN_TAU_S = 6.0
     # CSF bicarbonate adapts over 4-12 h of sustained PaCO2 change (Brian 1998);
     # tau = 6 h is a model time constant.
@@ -31,24 +37,48 @@ class CerebralModel:
     PROLONGED_NARCOSIS_SPAN_S = 5400.0
     CO2_RECOVERY_MAX_TAU_S = 1800.0
 
-    def __init__(self, baseline_hb: float, baseline_paco2: float = 40.0):
+    def __init__(self, baseline_hb: float, baseline_paco2: float = 40.0, baseline_map: float = 90.0):
         self.baseline_hb = baseline_hb
+        self.baseline_map = baseline_map
         self.csf_paco2 = max(15.0, baseline_paco2)
         self.tissue_oxygen = 1.0  # Share of normal
         self.dysfunction = 0.0
         self.anoxic_s = 0.0
+        self.cortical_injury = 0.0
+        self.brainstem_injury = 0.0
         self.co2_narcosis = 0.0
         self.co2_respiratory_depression = 0.0
         self.hypercapnic_coma_s = 0.0
 
-    def step(self, dt: float, map_mmhg: float, hb: float, saturation: float,
-             pa_co2: float, ph: float) -> None:
+    def step(
+        self,
+        dt: float,
+        map_mmhg: float,
+        hb: float,
+        saturation: float,
+        pa_co2: float,
+        ph: float,
+        *,
+        venous_pressure: float = 10.0,
+        flow_ceiling: float | None = None,
+        temp_c: float = 37.0,
+        anesthetic_depth: float = 0.0,
+        metabolic_stress: float = 0.0,
+    ) -> None:
         if dt <= 0.0:
             return
-        # Normal supply is maintained above MAP 50. Partial chronic CBF adaptation
-        # mitigates mild anemia, while severe baseline anemia reduces reserve.
+        # Normal supply is maintained above CPP 40 mmHg (MAP 50 at ICP 10 mmHg),
+        # shifted rightward in chronic hypertension. Elevated venous outflow
+        # pressure reduces CPP without adding phantom gain.
         self.csf_paco2 += (max(15.0, pa_co2) - self.csf_paco2) * -math.expm1(-dt / self.CSF_ADAPTATION_TAU_S)
-        pressure = clamp01((map_mmhg - 10.0) / 40.0)
+        outflow_pressure = max(10.0, venous_pressure)
+        htn_excess = max(0.0, self.baseline_map - 90.0)
+        cpp_lower_limit = 40.0 + 0.85 * htn_excess
+        ccp_shift = 0.25 * htn_excess
+        cpp = map_mmhg - outflow_pressure
+        pressure = clamp01((cpp - ccp_shift) / max(1.0, cpp_lower_limit - ccp_shift))
+        if flow_ceiling is not None:
+            pressure = min(pressure, clamp01(flow_ceiling))
         reference_hb = max(self.baseline_hb, 13.0 - 0.35 * max(0.0, 13.0 - self.baseline_hb))
         oxygen = max(0.0, hb * saturation) / (reference_hb * 98.0)
         # Normocapnic hypoxia adds up to 50% flow (calibrated); acute hypercapnia
@@ -64,9 +94,34 @@ class CerebralModel:
             hypocapnia = clamp01((40.0 - effective_paco2) / 20.0)
             cbf = base_cbf * (1.0 - 0.38 * hypocapnia)
             supply = min(pressure * min(1.0, base_cbf * oxygen), cbf * oxygen)
-        self.tissue_oxygen += (supply - self.tissue_oxygen) * -math.expm1(-dt / self.TISSUE_OXYGEN_TAU_S)
+
+        # CMRO2 scales with temperature Q10 (~7%/°C), anesthetic suppression, and
+        # hypermetabolic stress (seizures/MH). Hypothermia slows both acute
+        # oxygen store depletion and ischemic injury; normothermic anesthesia
+        # preserves the ~11 s arrest EEG flattening (de Vries 1998).
+        temp_q10 = TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 22.0, 42.0))
+        cmro2 = max(
+            0.20,
+            temp_q10
+            * (1.0 - 0.35 * clamp01(anesthetic_depth))
+            * (1.0 + 0.80 * clamp01(metabolic_stress)),
+        )
+        supply_ratio = min(1.0, supply / cmro2) if supply > 0.0 else 0.0
+        o2_tau = self.TISSUE_OXYGEN_TAU_S / max(0.35, temp_q10)
+        self.tissue_oxygen += (supply_ratio - self.tissue_oxygen) * -math.expm1(-dt / o2_tau)
         target = clamp01((0.6 - self.tissue_oxygen) / 0.25)
-        self.anoxic_s += dt * clamp01(2.0 - self.tissue_oxygen / 0.1)
+        self.anoxic_s += dt * cmro2 * clamp01(2.0 - self.tissue_oxygen / 0.1)
+        # Prolonged global anoxia beyond ~4 min causes irreversible cortical
+        # suppression before caudal brainstem failure (Weisfeldt 2002;
+        # Hofmeijer 2015; Jorgensen 1981 Part II).
+        self.cortical_injury = max(
+            self.cortical_injury,
+            clamp01((self.anoxic_s - self.CORTICAL_INJURY_ONSET_S) / self.CORTICAL_INJURY_SPAN_S),
+        )
+        self.brainstem_injury = max(
+            self.brainstem_injury,
+            clamp01((self.anoxic_s - self.BRAINSTEM_INJURY_ONSET_S) / self.BRAINSTEM_INJURY_SPAN_S),
+        )
         tau = 3.0 if target > self.dysfunction else 30.0
         self.dysfunction += (target - self.dysfunction) * -math.expm1(-dt / tau)
         # Acute hypercapnia impairs response more with acidemia; compensated
@@ -102,17 +157,17 @@ class CerebralModel:
 
     @property
     def cortical_function(self) -> float:
-        """Cortical electrical function for BIS; persistent coma and CO2 leave it unchanged (Turnbull 2008 for EtCO2 3-12 kPa under propofol)."""
-        return 1.0 - self.dysfunction
+        """Cortical electrical function for BIS; CO2 narcosis leaves it unchanged (Turnbull 2008)."""
+        return (1.0 - self.dysfunction) * (1.0 - self.cortical_injury)
 
     @property
     def respiratory_drive(self) -> float:
-        """Medullary drive remaining after severe hypoxia/ischemia or extreme CO2 narcosis."""
-        return (1.0 - self.dysfunction ** 8) * (1.0 - self.co2_respiratory_depression)
+        """Medullary drive remaining after severe hypoxia/ischemia, brainstem injury, or extreme CO2 narcosis."""
+        return (1.0 - self.dysfunction ** 8) * (1.0 - self.brainstem_injury) * (1.0 - self.co2_respiratory_depression)
 
     @property
     def unresponsiveness(self) -> float:
-        """Loss of response from oxygen failure, persistent coma, or CO2 narcosis."""
+        """Loss of response from oxygen failure, postanoxic injury, or CO2 narcosis."""
         if self.anoxic_s >= self.COMA_EXPOSURE_S:
             return 1.0
-        return 1.0 - (1.0 - self.dysfunction) * (1.0 - self.co2_narcosis)
+        return 1.0 - (1.0 - self.dysfunction) * (1.0 - self.cortical_injury) * (1.0 - self.co2_narcosis)

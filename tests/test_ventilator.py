@@ -821,12 +821,12 @@ def test_obstructed_bag_ventilation_stops_at_the_pressure_limit(engine_factory):
 
 
 def test_closed_apl_traps_fresh_gas_and_depresses_circulation(engine_factory, advance_time):
-    """Spontaneous/manual mode with APL closed (>20 cmH2O) traps continuous FGF and lowers MAP."""
+    """Spontaneous/manual mode with APL closed traps continuous FGF and lowers MAP."""
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     engine.set_vent_power(False)
     engine.set_airway_mode("ETT")
     engine.set_fgf(10.0, 0.0)
-    engine.set_bag_mask_settings(rr=12, vt=0.5, p_max=70.0)
+    engine.set_apl_valve(70.0)
     base_map = engine.state.map
     advance_time(engine, 45.0, dt=0.5)
     assert engine.state.peep > 45.0 and engine.state.paw_mean > 45.0
@@ -836,7 +836,7 @@ def test_closed_apl_traps_fresh_gas_and_depresses_circulation(engine_factory, ad
     engine.set_mask_seal(0.5)
     advance_time(engine, 5.0, dt=0.5)
     assert engine.state.peep == pytest.approx(10.0, abs=0.5)
-    engine.set_bag_mask_settings(rr=12, vt=0.5, p_max=20.0)
+    engine.set_apl_valve(0.0)
     advance_time(engine, 5.0, dt=0.5)
     assert engine.state.peep == pytest.approx(0.0, abs=0.05)
 
@@ -907,7 +907,7 @@ def test_pcv_vg_mask_leak_compensation_and_spontaneous_apl_cpap(engine_factory, 
     cpap = engine_factory(config=SimulationConfig(mode="awake", dt=0.5, rng_seed=1), start=True)
     cpap.set_airway_mode("Mask")
     cpap.set_fgf(8.0, 0.0)
-    cpap.set_bag_mask_settings(rr=12.0, vt=0.5, p_max=10.0)
+    cpap.set_apl_valve(10.0)
     advance_time(cpap, 15.0, dt=0.5)
     assert cpap.state.peep == pytest.approx(10.0, abs=0.5)
     cpap.set_fgf(0.0, 0.0)
@@ -968,3 +968,40 @@ def test_awake_vcv_frc_conservation_per_breath_va_fresh_flow_and_mode_cleanup(en
     psv.update_settings(mode="PSV", rr=12, p_insp=15, p_support=8, peep=5)
     psv.step(psv.apnea_backup_s + 0.1, psv_lung, "vent")
     assert psv.inspiring and psv._breath is not None and psv._breath.kind == "PC"
+
+
+def test_apl_decoupled_from_bag_pmax_and_monotonic(engine_factory, advance_time):
+    """Manual bag Pmax does not apply spontaneous CPAP; APL is monotonic across 20 cmH2O."""
+    engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    engine.set_airway_mode("ETT")
+    engine.set_fgf(8.0, 0.0)
+    engine.set_bag_mask_settings(rr=12.0, vt=0.5, p_max=35.0)
+    advance_time(engine, 15.0, dt=0.5)
+    assert engine.state.peep == pytest.approx(0.0, abs=0.2)
+
+    peeps = []
+    for apl in (15.0, 20.0, 30.0):
+        engine.set_apl_valve(apl)
+        advance_time(engine, 15.0, dt=0.5)
+        peeps.append(engine.state.peep)
+    assert peeps[0] == pytest.approx(15.0, abs=0.5)
+    assert peeps[1] == pytest.approx(20.0, abs=0.5)
+    assert peeps[2] > 24.0
+
+
+def test_interposed_spontaneous_breaths_preserve_va_ppeak_and_etco2(engine_factory, advance_time):
+    """Interposed spontaneous breaths on VCV never invert Pplat > Ppeak, drop VA, or fire LOW EtCO2."""
+    mh = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
+        start=True,
+    )
+    mh.set_vent_settings(mode="VCV", rr=6.0, vt=0.6, peep=5.0, ie="1:2", p_max=50.0)
+    mh.start_malignant_hyperthermia()
+    advance_time(mh, 480.0, dt=1.0)
+    assert mh.vent.monitors.rr_total > 6.5
+    for _ in range(40):
+        mh.step(0.5)
+        assert mh.state.va > 1.0
+        if not math.isnan(mh.state.paw_plat):
+            assert mh.state.paw_peak >= mh.state.paw_plat - 0.1
+        assert not mh.state.alarms.get("EtCO2", {}).get("low")

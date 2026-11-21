@@ -1,10 +1,24 @@
 import math
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from anasim.core.utils import clamp01
 
 from .patient import Patient
 from .pk_models import _janmahasatian_ffm
+
+
+class _IntegrationResult(NamedTuple):
+    p_alv: float
+    p_vrg: float
+    p_brain: float
+    p_mus: float
+    p_fat: float
+    p_ven: float
+    p_art: float
+    v_frc: float
+    net_btps_l: float
+    blood_uptake_btps_l: float
 
 
 @dataclass(slots=True)
@@ -18,9 +32,10 @@ class VolatileState:
     p_art: float = 0.0
     p_ven: float = 0.0  # Mixed venous
     p_vrg: float = 0.0  # Vessel-rich group, including brain
+    p_brain: float = 0.0  # Autoregulated brain compartment for MAC effect site
     p_mus: float = 0.0
     p_fat: float = 0.0
-    mac: float = 0.0  # Brain MAC: VRG pressure over the age-adjusted MAC
+    mac: float = 0.0  # Brain MAC: cerebral pressure over the age-adjusted MAC
 
 
 class VolatilePK:
@@ -44,9 +59,13 @@ class VolatilePK:
         self.lambda_t_b_mus = 2.5 if lambda_t_b_mus is None else lambda_t_b_mus
         self.lambda_t_b_fat = 50.0 if lambda_t_b_fat is None else lambda_t_b_fat
 
-        # Age-adjusted MAC (Mapleson 1996).
+        # Age- and pregnancy-adjusted MAC (Mapleson 1996; Gin and Chan 1994).
         self.mac_40 = mac_40
-        self.mac_age = self.mac_40 * (10 ** (-0.00269 * (self.patient.age - 40)))
+        self.mac_age = (
+            self.mac_40
+            * (10 ** (-0.00269 * (self.patient.age - 40)))
+            * self.patient.pregnancy.mac_factor
+        )
 
         # Tissue volumes (L) and shares of cardiac output: lean organs scale
         # with fat-free mass, while excess body mass expands the adipose depot.
@@ -55,6 +74,7 @@ class VolatilePK:
             _janmahasatian_ffm(self.patient.weight, self.patient.height, male)
             / _janmahasatian_ffm(70.0, 170.0, True)
         )
+        self._base_co = 5.0 * ffm_scale
         self.v_vrg = 7.0 * ffm_scale
         self.v_mus = 35.0 * ffm_scale
         self.v_fat = max(3.0, 14.0 * ffm_scale + 0.8 * max(0.0, self.patient.weight - 70.0 * ffm_scale))
@@ -65,6 +85,14 @@ class VolatilePK:
         self.state = VolatileState()
         self.frc = patient.functional_residual_capacity()
         self.last_blood_uptake_l_min = 0.0
+
+    def flow_fractions(self, cardiac_output_l: float) -> tuple[float, float, float]:
+        """Organ CO shares; low CO shifts flow from muscle and fat toward VRG."""
+        co_ratio = clamp01(cardiac_output_l / max(0.5, self._base_co))
+        shift = 0.70 * clamp01((1.0 - co_ratio) / 0.65)
+        f_mus = self.f_mus_frac * (1.0 - shift)
+        f_fat = self.f_fat_frac * (1.0 - shift)
+        return 1.0 - f_mus - f_fat, f_mus, f_fat
 
     def mac_at_temp(self, temp_c: float = 37.0) -> float:
         """Age- and temperature-adjusted MAC (% atm); falls ~5% per °C of hypothermia."""
@@ -89,12 +117,13 @@ class VolatilePK:
         exhaled_volume_change_l: float | None,
         circuit_share: float = 1.0,
         circuit_fi_agent: float | None = None,
-    ) -> tuple[float, float, float, float, float, float, float, float, float]:
+    ) -> _IntegrationResult:
         dt_min = dt / 60.0
-        q_co = cardiac_output_l
-        q_vrg = q_co * self.f_vrg_frac
-        q_mus = q_co * self.f_mus_frac
-        q_fat = q_co * self.f_fat_frac
+        q_co = max(0.0, cardiac_output_l)
+        f_vrg, f_mus, f_fat = self.flow_fractions(q_co)
+        q_vrg = q_co * f_vrg
+        q_mus = q_co * f_mus
+        q_fat = q_co * f_fat
         alveolar_vent = max(0.0, alveolar_vent_l)
         branch_fi = fi_agent / circuit_share if circuit_fi_agent is None else circuit_fi_agent
         concentrating_inflow = (
@@ -103,6 +132,7 @@ class VolatilePK:
         washout_outflow = max(0.0, -companion_uptake_l_min)
         p_alv = self.state.p_alv
         p_vrg = self.state.p_vrg
+        p_brain = self.state.p_brain
         p_mus = self.state.p_mus
         p_fat = self.state.p_fat
         v_frc = self.frc
@@ -128,6 +158,16 @@ class VolatilePK:
         k_vrg = (q_vrg / self.v_vrg) / self.lambda_t_b_vrg
         k_mus = (q_mus / self.v_mus) / self.lambda_t_b_mus
         k_fat = (q_fat / self.v_fat) / self.lambda_t_b_fat
+        # Cerebral autoregulation preserves brain equilibration rate during
+        # moderate low-CO shock so faster alveolar wash-in accelerates brain MAC.
+        if q_co <= 0.0:
+            k_brain = 0.0
+        elif q_co >= self._base_co:
+            k_brain = k_vrg
+        else:
+            co_ratio = q_co / max(0.5, self._base_co)
+            autoreg = min(1.0, (co_ratio / 0.35) ** 0.75)
+            k_brain = max(k_vrg, (self._base_co * self.f_vrg_frac * autoreg / self.v_vrg) / self.lambda_t_b_vrg)
         # Update all compartments from the same pressures so agent is
         # conserved; substep so no Euler weight exceeds 0.05.
         alveolar_rate = (
@@ -135,11 +175,11 @@ class VolatilePK:
             if v_frc > 0.0
             else 0.0
         )
-        fastest_rate = max(alveolar_rate, k_vrg, k_mus, k_fat)
+        fastest_rate = max(alveolar_rate, k_vrg, k_brain, k_mus, k_fat)
         substeps = max(1, math.ceil(dt_min * fastest_rate / 0.05))
         interval = dt_min / substeps
         for _ in range(substeps):
-            p_ven = self.f_vrg_frac * p_vrg + self.f_mus_frac * p_mus + self.f_fat_frac * p_fat
+            p_ven = f_vrg * p_vrg + f_mus * p_mus + f_fat * p_fat
             if v_frc > 0.0:
                 p_art = (1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven
                 airway_flux = (
@@ -162,11 +202,14 @@ class VolatilePK:
             else:
                 p_art = p_ven
             p_vrg += k_vrg * (p_art - p_vrg) * interval
+            p_brain += k_brain * (p_art - p_brain) * interval
             p_mus += k_mus * (p_art - p_mus) * interval
             p_fat += k_fat * (p_art - p_fat) * interval
-        p_ven = self.f_vrg_frac * p_vrg + self.f_mus_frac * p_mus + self.f_fat_frac * p_fat
+        p_ven = f_vrg * p_vrg + f_mus * p_mus + f_fat * p_fat
         p_art = ((1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
-        return p_alv, p_vrg, p_mus, p_fat, p_ven, p_art, v_frc, net_btps_l, blood_uptake_btps_l
+        return _IntegrationResult(
+            p_alv, p_vrg, p_brain, p_mus, p_fat, p_ven, p_art, v_frc, net_btps_l, blood_uptake_btps_l,
+        )
 
     def exchange_btps_l_min(
         self,
@@ -207,7 +250,7 @@ class VolatilePK:
             exhaled_volume_change_l,
             circuit_share,
             circuit_fi_agent,
-        )[7]
+        ).net_btps_l
         return net_btps_l / (dt / 60.0)
 
     def step(self, dt: float, fi_agent: float, alveolar_vent_l: float, cardiac_output_l: float,
@@ -226,6 +269,7 @@ class VolatilePK:
             fi_agent <= 0.0
             and state.p_alv == 0.0
             and state.p_vrg == 0.0
+            and state.p_brain == 0.0
             and state.p_mus == 0.0
             and state.p_fat == 0.0
         ):
@@ -237,6 +281,7 @@ class VolatilePK:
         (
             state.p_alv,
             state.p_vrg,
+            state.p_brain,
             state.p_mus,
             state.p_fat,
             state.p_ven,
@@ -256,4 +301,4 @@ class VolatilePK:
             exhaled_volume_change_l,
         )
         self.last_blood_uptake_l_min = blood_uptake_btps_l / (dt / 60.0) if dt > 0.0 else 0.0
-        state.mac = (state.p_vrg * 100.0) / self.mac_at_temp(temp_c)
+        state.mac = (state.p_brain * 100.0) / self.mac_at_temp(temp_c)

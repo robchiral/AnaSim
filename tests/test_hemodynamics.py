@@ -945,3 +945,62 @@ def test_arrest_svr_hypothermia_baroreflex_reversible_lv_and_septic_scaling():
         eph_a.step(1.0, 0, 0, 0, -2, 40, 95, ce_ephedrine=80.0)
         eph_b.step(1.0, 0, 0, 0, -2, 40, 95, ce_ephedrine=80.0, ce_labetalol=300.0)
     assert eph_a._ephedrine_tolerance_ce == pytest.approx(eph_b._ephedrine_tolerance_ce, rel=1e-9)
+
+
+def test_venous_recruitment_floor_prevents_pressor_reversal_of_exsanguination(patient):
+    """Severe >50% blood loss cannot be reversed to normotensive CO/MAP by pressors without volume."""
+    hemo = HemodynamicModel(patient)
+    hemo.add_volume(-0.60 * hemo.blood_volume_0)
+    for _ in range(30):
+        st = hemo.step(
+            1.0, 0.0, 0.0, 200.0, -2.0, 40.0, 95.0,
+            ce_phenyl=200.0, ce_epi=50.0,
+        )
+    assert st.mcfp < 0.5
+    assert st.co < 0.3
+    assert st.map < 15.0
+
+
+def test_acute_anemia_compensation_renal_uop_and_oncotic_lung_water(engine_factory, advance_time, patient):
+    """Acute normovolemic anemia raises CO; renal UOP responds to MAP/CO/volume; low albumin/sepsis promote EVLW."""
+    anem = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    co0 = anem.state.co
+    anem.hemo.add_volume(-2200.0)
+    anem.hemo.add_volume(2200.0, label="colloid", retention_fraction=1.0)
+    advance_time(anem, 180.0, dt=1.0)
+    assert anem.state.hb_g_dl < 8.0
+    assert anem.state.co > 1.25 * co0
+
+    def steady_model() -> HemodynamicModel:
+        model = HemodynamicModel(patient)
+        model.initialize_steady_state(0.0, 0.0, 0.0)
+        return model
+
+    norm = steady_model()
+    norm.step(60.0, 0.0, 0.0, 0.0, pit=-1.4, paco2=40.0, pao2=95.0)
+    uop_norm = norm.total_urine_out_ml
+
+    assert norm._compute_renal_perfusion(28.0, norm.base_co_l_min, 0.0) == 0.0
+
+    hypov = steady_model()
+    hypov.add_volume(-1000.0)
+    hypov.step(60.0, 0.0, 0.0, 0.0, pit=-1.4, paco2=40.0, pao2=95.0)
+    assert hypov.renal_perfusion < norm.renal_perfusion * 0.75
+    assert hypov.total_urine_out_ml < uop_norm * 0.75
+
+    hyperv = steady_model()
+    hyperv.add_volume(1500.0, label="colloid")
+    hyperv.step(60.0, 0.0, 0.0, 0.0, pit=-1.4, paco2=40.0, pao2=95.0)
+    assert hyperv.total_urine_out_ml > uop_norm * 1.15
+
+    normal_lw, hypoalb, septic = steady_model(), steady_model(), steady_model()
+    for model in (normal_lw, hypoalb, septic):
+        model.add_volume(1100.0, label="colloid")
+    hypoalb.fluids.plasma_albumin_g *= 0.45
+    septic.sepsis_severity = 0.8
+    for _ in range(120):
+        normal_lw.step(5.0, 0.0, 0.0, 0.0, pit=-1.4, paco2=40.0, pao2=95.0)
+        hypoalb.step(5.0, 0.0, 0.0, 0.0, pit=-1.4, paco2=40.0, pao2=95.0)
+        septic.step(5.0, 0.0, 0.0, 0.0, pit=-1.4, paco2=40.0, pao2=95.0)
+    assert hypoalb.lung_water_ml > normal_lw.lung_water_ml + 5.0
+    assert septic.lung_water_ml > normal_lw.lung_water_ml + 5.0

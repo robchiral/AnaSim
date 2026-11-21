@@ -58,8 +58,8 @@ anasim --mode headless --duration 60 --config patient_config.json \
 | `baseline_map` | 90 | Mean arterial pressure, at least 20 mmHg |
 | `baseline_rr` | 12 | Respiratory rate, at least 0 breaths/min |
 | `baseline_vt` | `null` | Tidal volume, at least 50 mL; `null` uses the volume that keeps resting PaCO₂ at 40 mmHg (lower in pregnancy) |
-| `renal_function` | 1.0 | Renal function factor, 0.4 to 1.0; `1.0` is normal |
-| `creatinine_clearance_ml_min` | `null` | Absolute creatinine clearance for rocuronium and sugammadex, 4.3 to 221 mL/min; `null` estimates it from age and renal function |
+| `renal_function` | 1.0 | Renal function factor, 0.05 to 1.0; `1.0` is normal |
+| `creatinine_clearance_ml_min` | `null` | Absolute creatinine clearance for rocuronium and sugammadex, 4.3 to 221 mL/min; `null` estimates it from age and renal function. When `renal_function` is left at `1.0`, supplying this field also derives `renal_function` for other renally cleared drugs |
 | `hepatic_function` | 1.0 | Hepatic function factor, 0.5 to 1.0; `1.0` is normal |
 | `coronary_flow_reserve` | 5.0 | Ratio of maximal to resting coronary flow, 1 to 5; `5` is normal |
 | `heart_failure` | `"none"` | `"none"`, `"hfref"` (reduced EF), or `"hfpef"` (preserved EF) |
@@ -87,6 +87,7 @@ these patient conditions.
 | `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
 | `patient_variability` | `false` | Sample individual drug kinetics and responses; `rng_seed` fixes the sampled patient |
 | `arterial_line_enabled` | `true` | Display continuous arterial pressure |
+| `fluid_warmer_enabled` | `false` | Warm infused fluids (crystalloids, albumin, lipid emulsion) and packed red cells to 37 °C |
 | `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr; `null` uses 1 mL/kg/hr |
 | `sevoflurane_enabled` | `true` | Enable the sevoflurane vaporizer; `"balanced"` requires `true` |
 | `disturbance_profile` | `null` | `"stim_intubation_pulse"`, `"stim_sustained_surgery"`, or `null` |
@@ -144,7 +145,8 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 |--------|-------|
 | `set_vent_settings(rr, vt, peep, ie, mode, ...)` | Takes tidal volume `vt` in liters, whereas `Patient.baseline_vt` takes mL |
 | `set_vent_power(True)` | Starts the ventilator after you apply its settings |
-| `set_bag_mask_ventilation(True, rr, vt, p_max)` | Takes a rate of 1 to 40 breaths/min, a tidal volume of 0.05 to 1.2 L, and a pressure limit of 5 to 70 cmH₂O (default 20); omitted settings keep their last values |
+| `set_bag_mask_ventilation(True, rr, vt, p_max)` | Takes a rate of 1 to 40 breaths/min, a tidal volume of 0.05 to 1.2 L, and a manual bag peak pressure limit of 5 to 70 cmH₂O (default 20); omitted settings keep their last values |
+| `set_apl_valve(cmh2o)` | Sets the spontaneous-breathing APL valve from 0 (open) to 70 cmH₂O |
 | `set_mask_seal(seal)` | Takes a fraction from 0 (open) to 1 (tight seal), whereas the browser shows percent |
 | `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
 | `give_drug_bolus(drug, amount)` | Gives a bolus in the [registry's units](../anasim/core/drug_registry.py), or `"sugammadex"` in mg |
@@ -155,6 +157,7 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 | `give_lipid_emulsion(volume_ml)` | Gives up to 3,000 mL of 20% lipid emulsion over 2.5 simulated minutes |
 | `set_lipid_infusion(ml_min)` | Sets a 20% lipid emulsion infusion from 0 to 200 mL/min |
 | `give_calcium_chloride(mg)` | Gives calcium chloride dihydrate up to 10,000 mg; 1 g contains 6.8 mmol calcium |
+| `set_fluid_warmer(enabled)` | Turns the 37 °C intravenous fluid and blood warmer on or off |
 | `charge_defibrillator()` | Charges to 200 J in 5 simulated seconds and holds the charge for 60 seconds |
 | `disarm_defibrillator()` | Cancels a charge or a pending synchronized shock |
 | `defibrillate(synchronized=False)` | Returns a `ShockResult`: `NOT_READY` without a charge, `NOT_DELIVERED` in synchronized mode without R waves, `PENDING` until the next R wave, or `DELIVERED`. `rng_seed` fixes outcomes |

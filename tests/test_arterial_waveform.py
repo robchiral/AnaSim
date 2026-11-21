@@ -128,7 +128,7 @@ def test_sudden_hr_acceleration_reference_pp_and_pea_compression_runoff(engine_f
     ) == pytest.approx(renderer._reference_pp, abs=1e-6)
 
     pea = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
-    pea.hemo.add_volume(-2600.0)
+    pea.hemo.add_volume(-2000.0)
     for _ in range(30):
         pea.step(1.0)
     pea.set_chest_compressions(True)
@@ -138,3 +138,22 @@ def test_sudden_hr_acceleration_reference_pp_and_pea_compression_runoff(engine_f
     pea.set_chest_compressions(False)
     pea.step(0.01)
     assert pea.state.art_pressure >= dbp_before - 5.0
+
+
+def test_pressure_invariants_and_exsanguinated_cpr_pulse(engine_factory, advance_time):
+    """DBP <= MAP <= SBP across arrest; an empty heart generates negligible CPR pulse."""
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    engine.set_rhythm("VFIB")
+    advance_time(engine, 30.0, dt=0.5)
+    assert engine.state.dbp <= engine.state.map <= engine.state.sbp
+    assert engine.state.map == pytest.approx(engine.state.art_map, abs=0.2)
+    assert engine.state.rhythm_type == RhythmType.VFIB
+
+    empty = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    empty.hemo.add_volume(-4500.0)
+    empty.set_rhythm("ASYSTOLE")
+    advance_time(empty, 15.0, dt=0.5)
+    empty.set_chest_compressions(True)
+    advance_time(empty, 15.0, dt=0.5)
+    assert empty.state.sbp - empty.state.dbp < 5.0
+    assert math.isnan(empty.state.art_sbp)

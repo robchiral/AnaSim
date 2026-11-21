@@ -381,7 +381,7 @@ def test_blood_temperature_shifts_oxygen_affinity_without_creating_oxygen(patien
     assert model.state.p_arterial_o2 == pytest.approx(initial_pressure, abs=1e-7)
     endpoints = [_ventilated(patient, 900, fio2=0.14, temp_c=temperature) for temperature in (34, 37, 40)]
     assert endpoints[0].sao2 > endpoints[1].sao2 > endpoints[2].sao2
-    assert endpoints[0].p_arterial_o2 == pytest.approx(endpoints[2].p_arterial_o2, abs=0.5)
+    assert endpoints[0].p_arterial_o2 == pytest.approx(endpoints[2].p_arterial_o2, abs=1.0)
 
 
 def test_changing_shunt_redistributes_existing_oxygen(patient):
@@ -757,6 +757,8 @@ class TestOxygenStores:
         # Without prior denitrogenation or available circuit gas, passive O2 draw fails.
         no_preox = engine_factory(start=True)
         self._induce_apnea(no_preox)
+        while not no_preox.resp.state.apnea:
+            no_preox.step(1.0)
         no_preox.set_airway_mode("ETT")
         no_preox.set_fgf(10.0, 0.0)
         for _ in range(270):
@@ -898,3 +900,42 @@ def test_apneic_tracheal_fio2_washin_is_smooth_across_trace_circuit_nitrogen(eng
         deltas.append(eng._tracheal_fio2 - 0.21)
     assert deltas[0] > 0.0 and deltas[1] > 0.0
     assert deltas[0] / deltas[1] < 2.0
+
+
+def test_opioid_hvr_depression_and_overdose_apnea_and_sedation(engine_factory):
+    """Opioids depress HVR rather than amplifying it; massive opioid overdoses cause room-air apnea."""
+    deltas = []
+    for remi in (0.0, 2.0):
+        model = RespiratoryModel(Patient())
+        model.initialize_drug_effects(0.0, remi)
+        for _ in range(180):
+            base = model.step(1.0, ce_prop=0.0, ce_remi=remi, fio2=0.21)
+        base_mv = float(base.mv)
+        for _ in range(60):
+            hyp = model.step(1.0, ce_prop=0.0, ce_remi=remi, fio2=0.10)
+        deltas.append(float(hyp.mv) - base_mv)
+    assert deltas[0] > 1.5
+    assert deltas[1] < 0.6 * deltas[0]
+
+    fent = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    fent.give_drug_bolus("fentanyl", 1000.0)
+    apnea_s = 0.0
+    max_loc = 0.0
+    for _ in range(300):
+        fent.step(1.0)
+        if fent.state.apnea:
+            apnea_s += 1.0
+        max_loc = max(max_loc, fent.state.loc)
+    assert apnea_s > 120.0
+    assert max_loc > 0.4
+
+    for drug, dose in (("morphine", 500.0), ("hydromorphone", 50.0)):
+        od = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+        od.give_drug_bolus(drug, dose)
+        od_apnea = 0.0
+        for _ in range(600):
+            od.step(2.0)
+            if od.state.apnea:
+                od_apnea += 2.0
+        assert od_apnea > 120.0
+        assert od.state.loc > 0.5

@@ -22,6 +22,7 @@ from .base import (
     Scenario,
     ScenarioStep,
     action_taken_in_case,
+    check_etco2_range,
     format_unmet_int,
     infusion_running,
     join_messages,
@@ -74,14 +75,7 @@ def _assess_instruction(engine) -> str:
 
 
 def _require_normocapnia(engine) -> tuple[bool, str]:
-    if not engine.state.etco2_signal_valid:
-        return False, "Awaiting exhaled CO₂"
-    low, high = _normocapnia_bounds(engine)
-    etco2 = monitor_value(engine, "etco2")
-    rounded = int(display_int(etco2))
-    met = low <= rounded <= high
-    shown_etco2 = format_unmet_int(etco2, low=low, high=high)
-    return met, "" if met else f"EtCO₂: {shown_etco2}/{low}-{high} mmHg"
+    return check_etco2_range(engine, *_normocapnia_bounds(engine))
 
 
 def _require_agents_stopped_balanced() -> Requirement:

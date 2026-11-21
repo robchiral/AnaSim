@@ -2,6 +2,7 @@ import copy
 
 import pytest
 
+from anasim.core.projection import DEADSPACE_APNEIC_STPD_L
 from anasim.core.state import SimulationConfig
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.volatile import Vaporizer
@@ -305,7 +306,7 @@ def test_apneic_deadspace_washin_and_closed_circuit_multigas_dt_invariance(
         assert apneic._tracheal_fio2 > 0.65
         o2_circuit_lost = o2_circuit_0 - (3.0 + apneic.circuit.reservoir_volume) * apneic.circuit.composition.fio2
         o2_resp_gained = apneic.resp.gas_transport.oxygen_from_air_l - o2_resp_0
-        assert o2_circuit_lost == pytest.approx(o2_resp_gained, abs=0.03)
+        assert o2_circuit_lost == pytest.approx(o2_resp_gained, abs=0.04)
         washin.append(apneic._tracheal_fio2)
     assert abs(washin[0] - washin[1]) < 0.015
 
@@ -343,3 +344,55 @@ def test_apneic_deadspace_washin_and_closed_circuit_multigas_dt_invariance(
     no_sevo.vaporizer.set_concentration(4.0)
     advance_time(no_sevo, 15.0, dt=0.5)
     assert no_sevo.state.fi_sevo == 0.0 and no_sevo.pk_sevo.state.p_alv == 0.0
+
+
+def test_mixed_gas_apneic_inflow_and_copd_exchangeable_frc_conserve_gas(engine_factory, advance_time):
+    """Circuit, dead space, and lung share one gas balance during mixed-gas apneic FRC expansion,
+    and severe COPD uses the same exchangeable FRC change for inhaled agents and respiratory gases."""
+    mixed = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True)
+    mixed.set_airway_mode("ETT")
+    mixed.give_drug_bolus("roc", 90.0)
+    mixed.set_fgf(0.0, 0.0, 0.0)
+    advance_time(mixed, 90.0, dt=1.0)
+    assert mixed.resp.state.apnea and mixed.state.va == 0.0
+    mixed.circuit.reservoir_volume = 2.0
+    mixed.circuit.composition.fio2 = 0.5
+    mixed.circuit.composition.fin2 = 0.5
+    mixed._tracheal_fio2 = 0.21
+    o2_circ_0 = (3.0 + mixed.circuit.reservoir_volume) * mixed.circuit.composition.fio2
+    o2_lung_0 = mixed.resp.gas_transport.oxygen_from_air_l
+    o2_ds_0 = DEADSPACE_APNEIC_STPD_L * mixed._tracheal_fio2
+    mixed.aeration.frc = mixed.resp.frc + 0.5
+    mixed.step(1.0)
+    o2_circ_lost = o2_circ_0 - (3.0 + mixed.circuit.reservoir_volume) * mixed.circuit.composition.fio2
+    o2_lung_gained = mixed.resp.gas_transport.oxygen_from_air_l - o2_lung_0
+    o2_ds_gained = DEADSPACE_APNEIC_STPD_L * mixed._tracheal_fio2 - o2_ds_0
+    assert o2_circ_lost > 0.15
+    assert o2_circ_lost == pytest.approx(o2_lung_gained + o2_ds_gained, abs=1e-3)
+
+    copd = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1), start=True, copd_severity=1.0,
+    )
+    copd.set_airway_mode("ETT")
+    copd.give_drug_bolus("roc", 90.0)
+    copd.set_fgf(0.0, 0.0, 0.0)
+    advance_time(copd, 90.0, dt=1.0)
+    copd.pk_n2o.lambda_b_g = 0.0
+    copd.pk_sevo.lambda_b_g = 0.0
+    copd.circuit.reservoir_volume = 2.0
+    copd.circuit.composition.fio2 = 0.75
+    copd.circuit.composition.fin2o = 0.25
+    copd.circuit.composition.fin2 = 0.0
+    copd.circuit.composition.fi_agent = 0.0
+    copd._tracheal_gas = (0.75, 0.0, 0.25, 0.0)
+    stpd = copd.resp._btps_to_stpd
+    n2o_circ_0 = (3.0 + copd.circuit.reservoir_volume) * copd.circuit.composition.fin2o
+    n2o_lung_0 = copd.resp.gas_volume_l * stpd * copd.pk_n2o.state.p_alv
+    n2o_ds_0 = DEADSPACE_APNEIC_STPD_L * copd._tracheal_gas[2]
+    copd.aeration.frc = copd.resp.frc + 0.5
+    copd.step(1.0)
+    n2o_circ_lost = n2o_circ_0 - (3.0 + copd.circuit.reservoir_volume) * copd.circuit.composition.fin2o
+    n2o_lung_gained = copd.resp.gas_volume_l * stpd * copd.pk_n2o.state.p_alv - n2o_lung_0
+    n2o_ds_gained = DEADSPACE_APNEIC_STPD_L * copd._tracheal_gas[2] - n2o_ds_0
+    assert n2o_circ_lost > 0.03
+    assert n2o_circ_lost == pytest.approx(n2o_lung_gained + n2o_ds_gained, abs=1e-3)

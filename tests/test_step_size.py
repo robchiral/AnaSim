@@ -98,3 +98,19 @@ def test_tci_bolus_sugammadex_coupling_and_bis_display_noise_are_step_size_invar
                 diffs.append(eng.smooth_bis - eng.state.bis)
         sds.append(float(np.std(diffs)))
     assert 0.5 < sds[0] / sds[1] < 2.0
+
+
+def test_hemodynamic_substepping_preserves_ph37_ionized_calcium(engine_factory):
+    """HemodynamicModel.step() forwards ph_37 during dt > 1.0 substepping."""
+    results = []
+    for dt in (0.5, 2.0):
+        engine = engine_factory(
+            config=SimulationConfig(mode="awake", dt=dt, rng_seed=1),
+            start=True,
+            baseline_temp=30.0,
+        )
+        for _ in range(round(60.0 / dt)):
+            engine.step(dt)
+        results.append((engine.state.map, engine.hemo._ca_sv_factor))
+    assert results[1][0] == pytest.approx(results[0][0], abs=0.15)
+    assert results[1][1] == pytest.approx(results[0][1], abs=1e-4)

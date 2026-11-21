@@ -448,3 +448,16 @@ def test_disconnected_spontaneous_effort_transmits_distending_pressure_to_aerati
             vent.step(0.1, lung, None)
         recruited.append(aeration.recruited)
     assert recruited[0] > recruited[1] + 0.02
+
+
+def test_obese_peep5_develops_atelectasis_on_high_fio2(engine_factory, advance_time):
+    """Morbid obesity (BMI 45) raises closing pressure so PEEP 5 on FiO2 1.0 still forms atelectasis."""
+    obese = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True, weight=130.0, height=170.0,
+    )
+    obese.set_fgf(10.0, 0.0)
+    obese.set_vent_settings(mode="VCV", rr=12.0, vt=0.5, peep=5.0, ie="1:2")
+    advance_time(obese, 300.0, dt=1.0)
+    assert obese.aeration.atelectatic > 0.08
+    assert obese.aeration.shunt_fraction > 0.015

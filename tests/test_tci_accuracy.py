@@ -379,3 +379,13 @@ def test_controller_rebuilds_on_pk_drift(patient):
     pk_prop.effect_input_fraction = 0.5
     assert ctrl.sync_from_pk_model(pk_prop) is True
     assert ctrl.sync_from_pk_model(pk_prop) is False
+
+
+def test_hand_bolus_csht_uses_live_pk_when_tci_disabled(engine_factory, advance_time):
+    """Hand boluses without TCI report non-zero context-sensitive half-time from live PK."""
+    bolus = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=False, rng_seed=1), start=True)
+    bolus.give_drug_bolus("propofol", 150.0)
+    bolus.give_drug_bolus("fentanyl", 200.0)
+    advance_time(bolus, 120.0, dt=1.0)
+    assert bolus.get_predicted_csht("propofol") > 1.0
+    assert bolus.get_predicted_csht("fentanyl") > 5.0

@@ -1,7 +1,11 @@
 """Sevoflurane uptake and washout (Carpenter 1986; Yasuda 1991)."""
 
+import copy
+
 import pytest
 
+from anasim.core.state import SimulationConfig
+from anasim.patient.patient import Patient
 from anasim.patient.volatile_pk import VolatilePK
 
 
@@ -92,3 +96,29 @@ def test_volatile_pk_sex_ffm_scaling_and_zero_lung_volume_guard(patient_factory)
 
     male.step(0.1, 0.02, alveolar_vent_l=4.0, cardiac_output_l=5.0, lung_volume_l=0.0)
     assert male.state.mac >= 0.0
+
+
+def test_low_cardiac_output_accelerates_brain_volatile_equilibration(engine_factory, advance_time):
+    """Low cardiac output / hemorrhagic shock accelerates alveolar wash-in and brain MAC equilibration."""
+    p = Patient()
+    pk_norm = VolatilePK(p, "Sevoflurane", 0.65, mac_40=2.0)
+    pk_low = VolatilePK(p, "Sevoflurane", 0.65, mac_40=2.0)
+    for _ in range(300):
+        pk_norm.step(1.0, 0.02, 4.0, 5.0)
+        pk_low.step(1.0, 0.02, 4.0, 2.0)
+    assert pk_low.state.p_alv > pk_norm.state.p_alv
+    assert pk_low.state.mac > pk_norm.state.mac + 0.05
+
+    healthy = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    shocked = copy.deepcopy(healthy)
+    shocked.hemo.add_volume(-1800.0)
+    for eng in (healthy, shocked):
+        eng.set_airway_mode("ETT")
+        eng.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        eng.set_vent_power(True)
+        eng.set_fgf(6.0, 0.0)
+        eng.set_vaporizer(6.0)
+    advance_time(healthy, 180.0, dt=1.0)
+    advance_time(shocked, 180.0, dt=1.0)
+    assert shocked.state.co < healthy.state.co * 0.65
+    assert shocked.state.mac_sevo > healthy.state.mac_sevo

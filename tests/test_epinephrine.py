@@ -20,6 +20,7 @@ import numpy as np
 import pytest
 
 from anasim.core.enums import RhythmType
+from anasim.core.state import SimulationConfig
 from anasim.core.utils import hill_function
 from anasim.monitors.arterial import ArterialWaveformConfig, ArterialWaveformRenderer
 from anasim.monitors.cardiac_cycle import CardiacCycle
@@ -490,3 +491,16 @@ def test_inotropy_is_applied_once():
     coupling = 1.0 - config.hr_sv_coupling * math.log(max(1.0, state.hr / model.base_hr))
     assert state.sv / base.sv / coupling == pytest.approx(factor, rel=0.001)
     assert state.sv_star == pytest.approx(base.sv_star, rel=0.001)
+
+
+def test_epinephrine_venous_return_co_cap_and_bolus_offset(engine_factory, advance_time):
+    """High-dose epinephrine stays bounded by Guyton venous return and 100 mcg bolus avoids delayed bradycardia."""
+    epi_inf = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    epi_inf.set_drug_rate("epi", 0.3 * epi_inf.patient.weight)
+    advance_time(epi_inf, 300.0, dt=1.0)
+    assert epi_inf.state.co < 11.5
+
+    epi_bolus = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    epi_bolus.give_drug_bolus("epi", 100.0)
+    advance_time(epi_bolus, 300.0, dt=1.0)
+    assert epi_bolus.state.hr > 58.0

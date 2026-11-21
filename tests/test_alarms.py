@@ -74,3 +74,58 @@ def test_pregnancy_adapts_low_etco2_alarm_limit(engine_factory, advance_time):
     assert apneic.state.rr == 0.0 and "RR" not in apneic.state.alarms
     advance_time(apneic, 12.0, dt=0.5)
     assert apneic.state.alarms["RR"]["low"] is True
+
+
+def test_ppeak_temperature_lethal_rhythm_alarms_and_st_blanking(engine_factory, advance_time):
+    """Default VCV Ppeak alarms at 40 cmH2O limit and clears on mode switch; low bag Pmax does not false-alarm;
+    Temp, PEA Arrest, and lethal rhythms alarm; ST blanks in VF/asystole."""
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    engine.set_airway_obstruction(1.0)
+    advance_time(engine, 10.0, dt=0.2)
+    assert engine.state.alarms.get("Ppeak", {}).get("high") is True
+
+    engine.set_airway_obstruction(0.0)
+    engine.set_vent_settings(mode="PCV", rr=12, vt=0.5, p_insp=12.0, peep=5.0, ie="1:2")
+    advance_time(engine, 6.0, dt=0.2)
+    assert "Ppeak" not in engine.state.alarms
+
+    engine.set_vent_power(False)
+    engine.set_bag_mask_settings(rr=12.0, vt=0.8, p_max=20.0)
+    engine.set_bag_mask_ventilation(True)
+    engine.set_airway_obstruction(0.95)
+    advance_time(engine, 10.0, dt=0.2)
+    assert engine.vent.pressure_limited is True
+    assert "Ppeak" not in engine.state.alarms
+    engine.set_airway_obstruction(0.0)
+    engine.set_bag_mask_ventilation(False)
+    engine.set_vent_power(True)
+
+    engine.state.temp_c = 39.2
+    engine.step(0.5)
+    assert engine.state.alarms.get("Temp", {}).get("high") is True
+
+    engine.state.temp_c = 34.5
+    engine.step(0.5)
+    assert engine.state.alarms.get("Temp", {}).get("low") is True
+
+    engine.set_rhythm("VFIB")
+    advance_time(engine, 60.0, dt=1.0)
+    assert engine.state.alarms.get("VFIB", {}).get("high") is True
+    assert engine.state.st_depression_mv == 0.0
+    assert engine.hemo.coronary.st_depression_mv > 0.1
+
+    engine.set_rhythm("ASYSTOLE")
+    engine.step(1.0)
+    assert engine.state.alarms.get("Asystole", {}).get("high") is True
+    assert engine.state.st_depression_mv == 0.0
+
+    # PEA Arrest alarm toggles on the exact step cardiac_arrest changes (no 1-step lag).
+    pea = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    pea.hemo.coronary.injury = 0.99
+    pea.hemo.add_volume(-2500.0)
+    for _ in range(30):
+        pea.step(1.0)
+        assert ("Arrest" in pea.state.alarms) == pea.state.cardiac_arrest
+        if pea.state.cardiac_arrest:
+            break
+    assert pea.state.cardiac_arrest is True and pea.state.alarms.get("Arrest", {}).get("high") is True

@@ -87,6 +87,8 @@ def test_repeat_dantrolene_controls_an_undertreated_crisis(engine_factory):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced"), start=True)
     engine.start_malignant_hyperthermia()
     _run(engine, 180)
+    engine.set_vaporizer(0)
+    engine.set_fgf(10, 0)
     engine.give_drug_bolus("dantrolene", 0.25 * engine.patient.weight)
     _run(engine, 180)
     undertreated = engine.malignant_hyperthermia.severity
@@ -219,3 +221,43 @@ def test_complete_dantrolene_rescue_sustains_remission_until_reexposed(engine_fa
     early_stop.step(15.0, sevo_mac=1.0, succinylcholine_cp=0.0, dantrolene_ce=0.0)
     early_stop.step(300.0, sevo_mac=0.0, succinylcholine_cp=0.0, dantrolene_ce=0.0)
     assert early_stop.severity > 0.25
+
+
+def test_delayed_post_succinylcholine_mh_trigger_and_continuous_sevo_resistance(engine_factory, advance_time):
+    """Succinylcholine allows delayed MH onset beyond 10 min; continuous sevoflurane opposes dantrolene."""
+    mh = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1), start=True)
+    mh.give_drug_bolus("succinylcholine", 100.0)
+    advance_time(mh, 600.0, dt=2.0)
+    assert mh.pk["succinylcholine"].state.c1 < 0.01
+    mh.start_malignant_hyperthermia()
+    assert mh.malignant_hyperthermia.active is True
+
+    sevo_on = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True)
+    sevo_on.start_malignant_hyperthermia()
+    advance_time(sevo_on, 180.0, dt=2.0)
+    sevo_off = copy.deepcopy(sevo_on)
+
+    sevo_on.give_drug_bolus("dantrolene", 2.5 * sevo_on.patient.weight)
+    sevo_off.set_vaporizer(0.0)
+    sevo_off.set_fgf(10.0, 0.0)
+    sevo_off.give_drug_bolus("dantrolene", 2.5 * sevo_off.patient.weight)
+    advance_time(sevo_on, 900.0, dt=2.0)
+    advance_time(sevo_off, 900.0, dt=2.0)
+    assert sevo_on.malignant_hyperthermia.severity > 0.30
+    assert sevo_off.malignant_hyperthermia.severity < 0.05
+
+
+def test_mh_case_post_onset_succinylcholine_fails_triggers_and_logs_warning():
+    """Giving succinylcholine after MH crisis onset fails the triggers outcome and logs a safety event."""
+    session = WebSession({"scenario_id": "malignant_hyperthermia", "practice_mode": "independent"})
+    session.engine.config.dt = 0.5
+    session.command("run", '{"running":true}')
+    session.command("speed", '{"value":50}')
+    for _ in range(40):
+        session.step(0.1)
+    session.command("vaporizer", '{"percent":0}')
+    session.command("drug_bolus", '{"key":"succinylcholine","amount":100}')
+    report = json.loads(session.command("case_finish"))["debrief"]
+    outcomes = {o["id"]: o["achieved"] for o in report["outcomes"]}
+    assert outcomes["triggers"] is False
+    assert any(event["code"] == "succinylcholine_in_mh" for event in report["safety_events"])

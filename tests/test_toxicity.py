@@ -167,7 +167,8 @@ def test_large_overdose_depresses_circulation_before_myocardial_energy_is_exhaus
     engine.give_drug_bolus("lidocaine", 2000)
     for _ in range(60):
         engine.step(1)
-    assert engine.state.map < 10 and engine.state.intrinsic_co < 0.3
+    assert engine.hemo.state.perfusion_map < 10 and engine.state.intrinsic_co < 0.3
+    assert engine.state.dbp <= engine.state.map <= engine.state.sbp
     assert engine.hemo.coronary.energy_reserve > 0.5
     assert engine.toxicity.conduction_block > 0.5
     hypoxia, energy_failure, _ = runtime_core.myocardial_substrate(engine)
@@ -202,10 +203,16 @@ def test_lipid_rescue_gradually_reduces_cardiac_toxicity_during_supported_ventil
             engine.step(1)
             if rescue and i == 31:
                 assert engine.toxicity.lipid_effect < 0.01
-        outcomes.append((engine.state.map, engine.toxicity.conduction_block, engine.toxicity.contractility_loss))
+        outcomes.append((
+            engine.hemo.state.perfusion_map,
+            engine.state.map,
+            engine.toxicity.conduction_block,
+            engine.toxicity.contractility_loss,
+        ))
     assert outcomes[1][0] > outcomes[0][0] + 10
-    assert 0.3 < outcomes[1][1] < outcomes[0][1]  # Rescue leaves substantial toxicity.
-    assert outcomes[1][2] < outcomes[0][2] - 0.15
+    assert outcomes[1][1] > outcomes[0][1]
+    assert 0.3 < outcomes[1][2] < outcomes[0][2]  # Rescue leaves substantial toxicity.
+    assert outcomes[1][3] < outcomes[0][3] - 0.15
 
 
 def test_lidocaine_post_distribution_kinetics_and_subconvulsive_infusions(patient_factory):

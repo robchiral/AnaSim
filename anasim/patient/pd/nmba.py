@@ -74,9 +74,9 @@ class TOFModel:
         # Kleijn's sevoflurane covariate, applied in proportion to brain MAC.
         self.sevo_ke0_reduction = 0.567
         self.sevo_ec50_reduction = 0.395
-        # Calibrated nitrous oxide EC50 multiplier at 1 MAC (70% N2O lowered
-        # vecuronium ED50 13% in Fiset 1991).
-        self.f_n2o = 0.6
+        # Calibrated nitrous oxide EC50 multiplier at 1 MAC (70% N2O = 0.67 MAC
+        # lowered vecuronium ED50 13% in Fiset 1991).
+        self.f_n2o = 0.81
         # The central site (diaphragm and laryngeal adductors) equilibrates
         # faster than the adductor pollicis (t1/2 ke0 2.7 vs 4.4 min; Plaud 1995).
         self.central_ke0_ratio = 4.4 / 2.7
@@ -88,12 +88,17 @@ class TOFModel:
         self.complex = _sugammadex_pk(self.patient)
         # Rocuronium (mg/L) at the adductor pollicis and central effect sites.
         self.ce = self.ce_central = 0.0
+        self._temp_c = self.patient.baseline_temp
 
     def update_hemodynamics(
-        self, v_ratio: float, co_ratio: float, renal_perfusion: float, blood_volume_l: float | None = None,
+        self, v_ratio: float, co_ratio: float, renal_perfusion: float,
+        blood_volume_l: float | None = None, temp_c: float = 37.0,
     ) -> None:
+        self._temp_c = temp_c
         for model in (self.sugammadex, self.complex):
-            model.update_hemodynamics(v_ratio, co_ratio, renal_perfusion, blood_volume_l=blood_volume_l)
+            model.update_hemodynamics(
+                v_ratio, co_ratio, renal_perfusion, blood_volume_l=blood_volume_l, temp_c=temp_c,
+            )
 
     def give_sugammadex(self, dose_mg: float) -> None:
         self.sugammadex.state.c1 += dose_mg / MW_SUGAMMADEX * 1000.0 / self.sugammadex.v1
@@ -102,6 +107,10 @@ class TOFModel:
         """Plasma rocuronium held in the complex, mg/L on the rocuronium V1 basis."""
         volume_scale = 1.0 if roc_v1 <= 0.0 else self.complex.v1 / roc_v1
         return self.complex.state.c1 * volume_scale * MW_ROCURONIUM / 1000.0
+
+    def _effective_ke0(self, mac_sevo: float) -> float:
+        temp_ke0 = 1.5 ** ((clamp(self._temp_c, 25.0, 37.0) - 37.0) / 10.0) if self._temp_c < 37.0 else 1.0
+        return self.ke0 * (1.0 - self.sevo_ke0_reduction * clamp01(mac_sevo)) * temp_ke0
 
     def simulate_decay(
         self, roc: MammillaryPK, *, max_seconds: int = 7200,
@@ -116,7 +125,7 @@ class TOFModel:
             return 0.0
         if roc.circulation <= 0.0 or max_seconds <= 0:
             return max_seconds / 60.0
-        ke0 = self.ke0 * (1.0 - self.sevo_ke0_reduction * clamp01(mac_sevo))
+        ke0 = self._effective_ke0(mac_sevo)
         delivery_time = roc.circulation / 60.0
         roc_n = 3 if roc.v3 > 0 else (2 if roc.v2 > 0 else 1)
         t_roc = expm(roc.get_ss_matrices()[0][:roc_n, :roc_n] / 60.0)
@@ -180,7 +189,7 @@ class TOFModel:
         sugammadex.step(dt_sec, 0.0)
         complex_.step(dt_sec, 0.0)
 
-        ke0 = self.ke0 * (1.0 - self.sevo_ke0_reduction * clamp01(mac_sevo))
+        ke0 = self._effective_ke0(mac_sevo)
         removal = self.ks * sugammadex.state.c1
         cp = roc.state.c1
         delivery_time = dt_min * roc.circulation
@@ -225,11 +234,17 @@ class TOFModel:
         )
 
     def potentiation_factor(self, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
-        """Relative NMBA EC50 multiplier under volatile and nitrous oxide anesthesia."""
-        factor = (1.0 - self.sevo_ec50_reduction * clamp01(mac_sevo)) * (
-            1.0 - (1.0 - self.f_n2o) * clamp01(mac_n2o)
+        """Relative NMBA EC50 multiplier under volatile, nitrous oxide, and hypothermia (Smeulers 1995)."""
+        t = self._temp_c
+        # Smeulers 1995 Table 2: plasma concentration at Tw = 5% roughly halved
+        # from 35.6 °C (1489 ng/mL) to 27.7 °C (751 ng/mL).
+        temp_ec50 = 1.0 - 0.50 * clamp01((36.0 - t) / 9.0) if t < 36.0 else 1.0
+        factor = (
+            (1.0 - self.sevo_ec50_reduction * clamp01(mac_sevo))
+            * (1.0 - (1.0 - self.f_n2o) * clamp01(mac_n2o))
+            * temp_ec50
         )
-        return clamp(factor, 0.2, 1.0)
+        return clamp(factor, 0.15, 1.0)
 
     def _ec50(self, mac_sevo: float, mac_n2o: float) -> float:
         return ROCURONIUM_TOF_EC50 * self.potentiation_factor(mac_sevo, mac_n2o)

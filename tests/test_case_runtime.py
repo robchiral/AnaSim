@@ -281,3 +281,15 @@ def test_independent_emergence_hint_advances_past_extubation_step():
     command(premature, "airway", mode="Mask")
     premature_hint = command(premature, "case_hint")["hint"]
     assert premature_hint and "before extubation" not in premature_hint.lower()
+
+
+def test_post_rosc_compressions_with_adequate_map_do_not_accrue_hypotension():
+    """Continuing guideline post-shock CPR after ROSC with MAP >= 65 does not count as hypotension."""
+    session = WebSession({"scenario_id": "cardiac_arrest", "practice_mode": "independent"})
+    assert session.case_run is not None
+    session.engine.set_rhythm("SINUS")
+    session.engine.set_chest_compressions(True)
+    session.engine.state.map = 82.0
+    session.engine._pulseless_s = 0.0
+    session.case_run.observe(120.0, force=True)
+    assert session.case_run.hypotension_s == 0.0

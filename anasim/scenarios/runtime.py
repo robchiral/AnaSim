@@ -42,6 +42,8 @@ SAFETY_REVIEW = {
     "unsafe_airway_removal": "Confirm ventilation, neuromuscular recovery, and a safe anesthetic plane before removing the tube.",
     "ventilation_stopped": "Maintain assisted ventilation while the patient is apneic.",
     "shock_while_responsive": "Give sedation or anesthesia before cardioversion in a responsive patient.",
+    "succinylcholine_in_mh": "Avoid succinylcholine in malignant hyperthermia.",
+    "succinylcholine_in_hyperkalemia": "Avoid succinylcholine when serum potassium is elevated.",
 }
 
 
@@ -85,8 +87,6 @@ class CaseRun:
         self.lowest_spo2 = min(self.lowest_spo2, float(state.sao2))
         unperfused = (
             state.map < 65.0
-            or state.chest_compressions
-            or self.engine.hemo.compressions
             or not self.engine.spontaneous_circulation
         )
         self.hypotension_s += dt if unperfused else 0.0

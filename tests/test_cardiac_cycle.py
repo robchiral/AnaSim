@@ -82,10 +82,18 @@ def test_pulse_oximeter_requires_perfusion_and_an_organized_pulse():
         assert pleth == 0.0
         assert saturation == 98.0
 
+    # Multi-beat confirmation prevents single-sample reacquisition, then tracks finger transit.
     sample = cycle.seed(60.0, RhythmType.SINUS)
     _, saturation = spo2.step(0.1, sample, 50.0, 1.0)
+    assert not spo2.signal_valid
+    for _ in range(30):
+        sample = cycle.step(0.1, 60.0, RhythmType.SINUS)
+        _, saturation = spo2.step(0.1, sample, 50.0, 1.0)
     assert spo2.signal_valid
-    assert 50.0 < saturation < 98.0
+    for _ in range(150):
+        sample = cycle.step(0.1, 60.0, RhythmType.SINUS)
+        _, saturation = spo2.step(0.1, sample, 50.0, 1.0)
+    assert 50.0 < saturation < 95.0
 
 
 def test_shared_cycle_orders_qrs_art_and_pleth():
@@ -162,8 +170,9 @@ def test_batched_monitor_updates_preserve_waveforms_readings_and_noise(engine_fa
 
 
 def test_pulse_oximeter_blanks_on_dropout_and_reacquires_without_clearing_alarm():
-    """SpO2 dropout blanks UI vitals without clearing the low-SpO2 alarm and rapidly reacquires current SaO2."""
-    for dt, reacquire_steps in ((0.5, 4), (0.05, 3)):
+    """SpO2 dropout blanks UI vitals without clearing the low-SpO2 alarm, requires
+    multi-beat confirmation to reacquire, and tracks current SaO2 after finger transit."""
+    for dt in (0.5, 0.05):
         session = WebSession({"mode": "awake"})
         engine = session.engine
         engine.config.dt = dt
@@ -177,13 +186,17 @@ def test_pulse_oximeter_blanks_on_dropout_and_reacquires_without_clearing_alarm(
 
         engine.resp.gas_transport.oxygen[1] *= 0.82
         engine.set_rhythm("SINUS")
-        for _ in range(reacquire_steps):
+        # Single brief sample does not latch a valid pulse oximeter reading.
+        engine.step(dt)
+        assert not engine.state.spo2_signal_valid
+        assert engine.state.alarms["SpO2"]["low"]
+        # Reacquires after multi-beat confirmation (~2-3 s) without clearing low-SpO2 alarm.
+        for _ in range(round(3.0 / dt)):
             engine.step(dt)
             assert engine.state.alarms["SpO2"]["low"]
         assert engine.state.spo2_signal_valid
         assert engine.state.display_spo2 < 90.0
-        if dt == 0.5:
-            assert engine.state.display_spo2 == pytest.approx(engine.state.sao2, abs=2.0)
+        assert engine.state.display_spo2 == pytest.approx(engine.state.sao2, abs=4.0)
 
 
 def test_chest_compressions_add_110_per_minute_ecg_artifact_during_sinus_rhythm(engine_factory):
@@ -251,3 +264,76 @@ def test_agonal_hr_recovery_rescales_pending_interval_and_zero_hr_ecg_flatlines(
     s_zero = cycle.step(0.01, 0.0, RhythmType.SINUS)
     assert not s_zero.organized
     assert max(abs(ecg.step(0.01, s_zero)) for _ in range(50)) <= 0.02
+
+
+def test_spo2_cpr_invalidation_vasoconstriction_dropout_first_beat_and_transit(engine_factory, advance_time):
+    """CPR invalidates numeric SpO2; 28 C + phenylephrine drops pleth; first beat waits for peripheral_delay_s;
+    vasoconstriction lengthens lung-to-finger transit (MacLeod 2005)."""
+    cpr = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    cpr.set_rhythm("VFIB")
+    cpr.set_chest_compressions(True)
+    advance_time(cpr, 15.0, dt=0.5)
+    assert not cpr.state.spo2_signal_valid
+    assert cpr.state.spo2 == 0.0
+
+    cold_vaso = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1), start=True, baseline_temp=28.0,
+    )
+    cold_vaso.give_drug_bolus("phenyl", 1000.0)
+    advance_time(cold_vaso, 45.0, dt=0.5)
+    assert not cold_vaso.state.spo2_signal_valid
+
+    cycle = CardiacCycle(np.random.default_rng(1))
+    spo2 = SpO2Monitor()
+    s_vf = cycle.seed(0.0, RhythmType.VFIB)
+    spo2.step(0.5, s_vf, 98.0, 0.0)
+    s_first = cycle.seed(60.0, RhythmType.SINUS)
+    pleth_0, _ = spo2.step(0.01, s_first, 98.0, 1.0)
+    assert pleth_0 == 0.0 and not spo2.signal_valid
+
+    fast_mon, slow_mon = SpO2Monitor(), SpO2Monitor()
+    c_fast, c_slow = CardiacCycle(np.random.default_rng(2)), CardiacCycle(np.random.default_rng(2))
+    fast_mon.step(0.1, c_fast.seed(70.0, RhythmType.SINUS), 98.0, 1.0, delay_scale=1.0)
+    slow_mon.step(0.1, c_slow.seed(70.0, RhythmType.SINUS), 98.0, 0.4, delay_scale=4.0)
+    for _ in range(150):
+        sf = c_fast.step(0.1, 70.0, RhythmType.SINUS)
+        ss = c_slow.step(0.1, 70.0, RhythmType.SINUS)
+        _, v_fast = fast_mon.step(0.1, sf, 75.0, 1.0, delay_scale=1.0)
+        _, v_slow = slow_mon.step(0.1, ss, 75.0, 0.4, delay_scale=4.0)
+    assert v_fast < v_slow - 6.0
+
+
+def test_hyperkalemia_ecg_keeps_upright_t_prolongs_pr_and_improves_with_calcium(engine_factory, advance_time):
+    """Severe hyperkalemia widens QRS and prolongs PR without inverting the T wave;
+    IV calcium lowers effective potassium rather than spiking T waves."""
+    def sample_beat(potassium: float, hyperk_block: float) -> np.ndarray:
+        cycle = CardiacCycle(np.random.default_rng(3))
+        ecg = ECGMonitor(np.random.default_rng(4))
+        s = cycle.seed(60.0, RhythmType.SINUS)
+        trace = []
+        for idx in range(1000):
+            if idx:
+                s = cycle.step(0.001, 60.0, RhythmType.SINUS)
+            trace.append(ecg.step(0.001, s, potassium=potassium, hyperkalemia_block=hyperk_block))
+        return np.array(trace)
+
+    normal = sample_beat(4.0, 0.0)
+    mild_k = sample_beat(6.8, 0.20)
+    severe_k = sample_beat(8.5, 0.77)
+    t_window = slice(180, 500)
+    assert severe_k[t_window].max() > 0.30
+    assert severe_k[t_window].min() > -0.15
+    qrs_width_norm = int(np.sum(normal[:120] > 0.5 * normal[:120].max()))
+    qrs_width_severe = int(np.sum(severe_k[:120] > 0.5 * severe_k[:120].max()))
+    assert qrs_width_severe > 1.5 * qrs_width_norm
+    p_norm_idx = int(np.argmax(normal[700:920]))
+    p_mild_idx = int(np.argmax(mild_k[700:920]))
+    assert p_mild_idx < p_norm_idx - 25
+
+    eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    eng.hemo.fluids.amounts["potassium"] = 7.8 * eng.hemo.fluids.ecf_l
+    advance_time(eng, 10.0, dt=1.0)
+    eff_before = eng.hemo.effective_potassium
+    eng.give_calcium_chloride(1000.0)
+    advance_time(eng, 90.0, dt=1.0)
+    assert eng.hemo.effective_potassium < eff_before - 0.5

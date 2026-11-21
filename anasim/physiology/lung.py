@@ -68,7 +68,8 @@ class LungAeration:
         self.frc = self.reference_volume * recruited
         self.reference_compliance = patient.respiratory_compliance()
         self.opening_midpoint = 31.0 + 0.35 * (patient.bmi - 24.0)
-        self.closing_pressure = 5.0
+        # Closing pressure rises with BMI alongside airway opening pressure (Pelosi 1998; Hedenstierna 2015).
+        self.closing_pressure = 5.0 + 0.30 * max(0.0, patient.bmi - 25.0)
         self.lung_water = 0.0  # mL/kg predicted body weight above normal
         self.flooded = 0.0
         self.chest_wall_stiffness = 1.0

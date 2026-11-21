@@ -5,6 +5,7 @@ THRESHOLDS = {
     "SpO2_min": 90, "SpO2_max": 100,
     "EtCO2_min": 30, "EtCO2_max": 45,
     "RR_min": 5,
+    "Temp_min": 35.5, "Temp_max": 38.0,
     # Ventilator and gas monitor: cmH2O, L/min, and %.
     "Ppeak_max": 40,
     "MV_min": 2.0,
@@ -22,6 +23,7 @@ DEFAULT_DELAYS = {
     "SpO2": 5,
     "EtCO2": 0,
     "RR": 15,
+    "Temp": 0,
     "Ppeak": 0,
     "MV": 15,
     "VTe": 10,

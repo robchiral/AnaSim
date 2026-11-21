@@ -5,6 +5,8 @@ from typing import NamedTuple
 
 from anasim.patient.domain import finite_number
 
+from .enums import RhythmType
+
 CONFIG_CHOICES = {
     "mode": {"awake", "steady_state"},
     "maint_type": {"tiva", "balanced"},
@@ -27,6 +29,7 @@ class SimulationConfig:
     maintenance_fluid_ml_hr: float | None = None
 
     arterial_line_enabled: bool = True
+    fluid_warmer_enabled: bool = False
     # Sample PK/PD from published variability; otherwise the typical patient.
     patient_variability: bool = False
     rng_seed: int | None = None
@@ -37,6 +40,7 @@ class SimulationConfig:
             "sevoflurane_enabled",
             "concomitant_opioids",
             "arterial_line_enabled",
+            "fluid_warmer_enabled",
             "patient_variability",
         ):
             if not isinstance(getattr(self, name), bool):
@@ -92,6 +96,7 @@ class SimulationState:
     time: float = 0.0
     cardiac_arrest: bool = False
     arrest_reason: str = ""
+    rhythm_type: RhythmType = RhythmType.SINUS
     chest_compressions: bool = False
 
     # Effect-site (ce) and plasma (cp) concentrations: propofol, etomidate,
@@ -252,6 +257,7 @@ class SimulationState:
     fio2: float = 0.21
     temp_c: float = 37.0
     bair_hugger_target: float = 0.0  # °C; 0 is off
+    fluid_warmer: bool = False
     oxygen_delivery_ratio: float = 1.0
     shivering: float = 0.0
 

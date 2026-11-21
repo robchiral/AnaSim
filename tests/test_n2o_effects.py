@@ -4,11 +4,13 @@ import itertools
 import pytest
 
 from anasim.core.state import SimulationConfig
+from anasim.patient.patient import Patient
 from anasim.patient.pd.anesthesia import (
     SEVO_BIS_AT_1_MAC,
     BISModel,
     ClinicalResponseModel,
 )
+from anasim.patient.pd.nmba import TOFModel
 
 
 def test_n2o_washin_deepens_hypnosis_and_neuromuscular_block(engine_factory, advance_time):
@@ -116,3 +118,13 @@ def test_n2o_second_gas_concentrating_effect_and_diffusion_hypoxia(engine_factor
         advance_time(model, 90.0, dt=1.0)
     assert wash_air.state.pao2 < ctrl_air.state.pao2 - 3.0 and wash_air.state.pao2 < 90.0
     assert wash_o2.state.pao2 > 220.0
+
+
+def test_n2o_potentiates_rocuronium_less_than_equipotent_sevoflurane():
+    """Fiset 1991: 1 MAC N2O potentiates rocuronium substantially less than 1 MAC sevoflurane."""
+    tof = TOFModel(Patient())
+    assert 0.78 <= tof.f_n2o <= 0.85
+    tof_ctrl = tof.compute_tof_from_ce(0.85, mac_sevo=0.0, mac_n2o=0.0)
+    tof_n2o = tof.compute_tof_from_ce(0.85, mac_sevo=0.0, mac_n2o=1.0)
+    tof_sevo = tof.compute_tof_from_ce(0.85, mac_sevo=1.0, mac_n2o=0.0)
+    assert tof_sevo < tof_n2o < tof_ctrl

@@ -92,9 +92,9 @@ class HemodynamicConfig:
     # after equilibration; Su's 0.033 overstates the older SV effect.
     age_emax_sv: float = 0.015
     ec50_remi_tpr: float = 4.59
-    # A quarter of Su's -1.0: Garraza-Obaldia 2024 found no direct
-    # remifentanil effect on MAP.
-    emax_remi_tpr: float = -0.25
+    # Garraza-Obaldia 2024 found minimal direct remifentanil effect on MAP;
+    # keep mild direct vasodilation now that the positive SV slope is removed.
+    emax_remi_tpr: float = -0.14
     # Propofol pressure equilibration half-times (min) by age-group midpoint.
     # Young volunteers took 10-13 min (Jeleazcov 2015), longer than Kazama 1999's
     # estimates below 60; these values fit inductions without opioid (Ebert 1992
@@ -116,20 +116,19 @@ class HemodynamicConfig:
     remi_vagal_c50: float = 0.5  # ng/mL
     opioid_cv_saturation: float = 2.5  # ng/mL remifentanil equivalent
     gamma_remi_tpr: float = 1.0
-    # Half of Su's 0.033. Su's volunteers breathed spontaneously, so the positive
-    # slope likely includes hypercapnia, which the chemoreflex models; Sawano
-    # 2013 HR and glycopyrrolate responses bound the reduction.
-    sl_remi_hr: float = 0.015
-    sl_remi_sv: float = 0.058
+    # Direct opioid effects without propofol: zero spurious positive SV rise and
+    # modest central vagal bradycardia across awake/balanced/etomidate states.
+    sl_remi_hr: float = -0.020
+    sl_remi_sv: float = 0.0
     # Opioid interactions on resistance, HR, and stroke volume. Fitted so routine
     # propofol-remifentanil induction falls as VitalDB recordings do (median 31%
     # at the lowest reading, 27% before incision), with research inductions at
     # higher doses (Sjøen 2023 and 2024, Poterman 2017, Sawano 2013) within 2 SD
     # of their reported falls.
     int_tpr: float = 0.65
-    int_hr: float = -0.09
+    int_hr: float = -0.055
     ec50_int_hr: float = 0.20
-    int_sv: float = -0.2
+    int_sv: float = -0.068
     # Su shares the direct SV EC50 (0.44); a higher EC50 makes the stroke-volume
     # interaction grow with propofol dose, as the higher-dose trials fall further.
     ec50_int_sv: float = 4.0
@@ -157,7 +156,7 @@ class HemodynamicConfig:
     # MAC while SVR fell 3% and 15% (non-significant until 2 MAC; Malan 1995).
     ke0_sevo: float = 0.05
     sevo_emax_tpr: float = -0.4
-    sevo_ec50_tpr: float = 0.9
+    sevo_ec50_tpr: float = 1.05
     sevo_gamma_tpr: float = 2.5
     sevo_emax_sv: float = -0.5
     sevo_ec50_sv: float = 0.6
@@ -166,6 +165,10 @@ class HemodynamicConfig:
 
     # Blood volume, preload, and fluid balance.
     unstressed_volume_fraction: float = 0.70
+    # Non-recruitable anatomical unstressed vascular floor (heart chambers,
+    # arteries, pulmonary bed, microcirculation) that neither endogenous
+    # venoconstriction nor exogenous pressors can empty during hemorrhage.
+    min_unstressed_volume_fraction: float = 0.48
     venous_compliance: float = 100.0  # mL/mmHg
     mcfp_floor: float = 1.0
     # Reflex venoconstriction returns this share of a blood-volume deficit to
@@ -206,10 +209,6 @@ class HemodynamicConfig:
     colloid_retention_fraction: float = 0.80
     blood_retention_fraction: float = 1.0
     donor_mchc_g_dl: float = 100.0 / 3.0  # Normal donor red cells; Hb = Hct / 0.03.
-    # Teaching pressure-response curve: most basal output remains at MAP 60 and
-    # tapers to zero near circulatory collapse.
-    renal_map_min: float = 20.0
-    renal_map_norm: float = 65.0
     # Interstitial fluid returns only while blood volume is below its 30% share.
     third_space_refill_tau_hr: float = 6.0
     interstitial_refill_fraction: float = 0.30
@@ -266,12 +265,14 @@ class HemodynamicConfig:
     sepsis_leak_fraction_per_hr: float = 0.067
     sepsis_pooling_fraction: float = 0.06  # Fraction of baseline volume made unstressed
 
+    anaphylaxis_hr_increase: float = 24.0  # bpm; direct H2/endogenous sympathetic drive
     anaphylaxis_svr_drop_wood: float = 10.0
     # Fisher 1986 inferred plasma escape up to 35% of blood volume within 10 min.
     anaphylaxis_leak_fraction_per_min: float = 0.03
-    # Full severity shifts adrenergic agonist responses 2.7-fold to the right, so
-    # 50-100 mcg epinephrine boluses (ANZAAG and ANZCA 2022) restore pressure
-    # briefly without overshoot. Calibrated.
+    # Full anaphylaxis blunts catecholamine vascular/cardiac efficacy while
+    # right-shifting non-epinephrine agonists (1 + 1.7 = 2.7-fold) without
+    # shifting epinephrine rightward into low-dose beta-2 dominance.
+    anaphylaxis_pressor_resistance: float = 0.45
     anaphylaxis_agonist_shift: float = 1.7
 
     # Epinephrine: exogenous arterial concentrations in ng/mL. Responses and
@@ -319,9 +320,9 @@ class HemodynamicConfig:
     phenyl_afterload_gain: float = 0.5  # Acute SV loss per relative arterial resistance gain
 
     # Vasopressin (mU/L), from 0.01-0.07 U/min dosing and label PK.
-    vaso_c50: float = 20.0
-    vaso_gamma: float = 1.5
-    vaso_emax_svr: float = 0.60
+    vaso_c50: float = 18.0
+    vaso_gamma: float = 1.4
+    vaso_emax_svr: float = 1.05
     vaso_emax_hr: float = -6.0
 
     # Dobutamine (ng/mL); stress-echo plasma levels 27-403 ng/mL (Daly 1997).
@@ -337,6 +338,7 @@ class HemodynamicConfig:
     mil_emax_hr: float = 6.0
     mil_emax_sv: float = 0.45
     mil_emax_svr: float = -0.35
+    mil_venous_pooling_fraction: float = 0.22
 
     # Adrenoceptor blockade. Competitive antagonists divide the agonist
     # concentration by the dose ratio 1 + sum(C / Kb), so higher agonist doses
@@ -360,6 +362,7 @@ class HemodynamicConfig:
     sympathetic_anesthetic_depression: float = 0.5
     # Slower AV conduction lowers the AF ventricular rate.
     beta_block_af_rate: float = 0.3
+    amiodarone_af_rate: float = 0.32
 
     # Glycopyrrolate (ng/mL): 11.8 ng/mL prevented the oculocardiac reflex in
     # 19 of 20 patients, and 3.1 ng/mL was insufficient (Ali-Melkkilä 1993).
@@ -367,7 +370,7 @@ class HemodynamicConfig:
     # bradycardia, and raises the sinus bradycardia rate.
     glyco_c50: float = 4.0
     glyco_gamma: float = 2.0
-    glyco_emax_hr: float = 20.0
+    glyco_emax_hr: float = 44.0
     glyco_brady_relief: float = 30.0  # bpm added to the 50 bpm sinus bradycardia rate
 
     # Hinderling 1985 II tissue-linked response and Hill slope. Potency and
@@ -391,14 +394,14 @@ class HemodynamicConfig:
     # potency and maximum are calibrated.
     # HR combines Persky's sustained slope (fraction of baseline per ng/mL)
     # with a peak response that shares the vascular tolerance.
-    ephedrine_c50: float = 25.0
+    ephedrine_c50: float = 72.0
     ephedrine_gamma: float = 1.9
     ephedrine_emax_svr: float = 0.4
     ephedrine_emax_sv: float = 0.2
-    ephedrine_hr_slope: float = 0.0014
+    ephedrine_hr_slope: float = 0.00050
     ephedrine_emax_hr: float = 0.4
     ephedrine_tolerance_half_min: float = 15.0
-    ephedrine_tolerance_c50: float = 20.0
+    ephedrine_tolerance_c50: float = 64.0
     ephedrine_tolerance_gamma: float = 3.7
     ephedrine_tolerance_max: float = 0.9
 

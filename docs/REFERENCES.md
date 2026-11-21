@@ -19,6 +19,8 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Nebout et al. (2013). *Ann Fr Anesth Reanim*. [BIS for early detection of cerebral hypoperfusion](https://pubmed.ncbi.nlm.nih.gov/23953319/).
 - Astrup et al. (1981). *Stroke*. [Cerebral ischemia thresholds and the ischemic penumbra](https://pubmed.ncbi.nlm.nih.gov/6272455/).
 - Jones et al. (1981). *J Neurosurg*. [Thresholds of focal cerebral ischemia in awake monkeys](https://pubmed.ncbi.nlm.nih.gov/7241187/).
+- Jørgensen and Malchow-Møller (1981). *Resuscitation*. [EEG and neurological signs in persistent postanoxic coma](https://pubmed.ncbi.nlm.nih.gov/7255953/).
+- Hofmeijer et al. (2015). *Neurology*. [Early EEG and outcome prediction in postanoxic coma](https://pubmed.ncbi.nlm.nih.gov/26070341/).
 - de Vries et al. (1998). *Anesth Analg*. [Cerebral oxygen uptake and EEG during defibrillation threshold testing](https://pubmed.ncbi.nlm.nih.gov/9661538/).
 - Brian (1998). *Anesthesiology*. [Carbon dioxide and the cerebral circulation](https://pubmed.ncbi.nlm.nih.gov/9605698/).
 - Battisti-Charbonney et al. (2011). *J Physiol*. [Cerebrovascular response to CO₂ in humans](https://pubmed.ncbi.nlm.nih.gov/21521758/).
@@ -37,6 +39,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Dallmann et al. (2017). *Clin Pharmacokinet*. [Gestation-specific anatomical and physiological parameter regressions](https://pubmed.ncbi.nlm.nih.gov/28401479/).
 - Contreras et al. (1991). *Am Rev Respir Dis*. [Ventilatory drive, lung volumes, and respiratory muscles during pregnancy](https://pubmed.ncbi.nlm.nih.gov/1928958/).
 - Humphries et al. (2019). *J Matern Fetal Neonatal Med*. [Supine positioning and maternal hemodynamics in late pregnancy](https://pubmed.ncbi.nlm.nih.gov/29772936/).
+- Gin and Chan (1994). *Anesthesiology*. [Decreased isoflurane MAC in pregnant humans](https://pubmed.ncbi.nlm.nih.gov/7943833/).
 
 ## Intravenous drug models
 
@@ -55,6 +58,11 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Johnson et al. (2001). *Anesthesiology*. [Remifentanil PK/PD in hemorrhagic shock](https://pubmed.ncbi.nlm.nih.gov/11176098/).
 - Johnson et al. (2004). *Anesthesiology*. [Propofol after hemorrhagic shock and crystalloid resuscitation](https://pubmed.ncbi.nlm.nih.gov/15329589/).
 - Kurita et al. (2011). *Br J Anaesth*. [Remifentanil and propofol across stages of hemorrhage](https://pubmed.ncbi.nlm.nih.gov/21862493/).
+
+### Obesity and hypothermia
+
+- Ingrande and Lemmens (2010). *Br J Anaesth*. [Anesthetic dose adjustment in morbid obesity](https://pubmed.ncbi.nlm.nih.gov/21148651/).
+- Leslie et al. (1995). *Anesth Analg*. [Mild hypothermia, propofol PK, and atracurium duration](https://pubmed.ncbi.nlm.nih.gov/7726398/).
 
 ### Other opioids
 
@@ -187,6 +195,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Eikermann et al. (2003). *Anesthesiology*. [Respiratory recovery after neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/12766640/).
 - Herbstreit et al. (2009). *Anesthesiology*. [Residual block and pharyngeal closing pressure](https://pubmed.ncbi.nlm.nih.gov/19417617/).
 - Fiset et al. (1991). *Can J Anaesth*. [Nitrous oxide and neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/1683819/).
+- Smeulers et al. (1995). *J Cardiothorac Vasc Anesth*. [Hypothermic cardiopulmonary bypass and rocuronium PK/PD](https://pubmed.ncbi.nlm.nih.gov/8664462/).
 - Bissinger et al. (1993). *Anasthesiol Intensivmed Notfallmed Schmerzther*. [Curare clefts and neuromuscular monitoring](https://pubmed.ncbi.nlm.nih.gov/7902740/).
 
 ## Hemodynamics
@@ -228,6 +237,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 ### Blood loss and shock
 
 - Johnson et al. (2014). *J Appl Physiol*. [Hemodynamic responses to graded blood loss in awake humans](https://pubmed.ncbi.nlm.nih.gov/24876357/).
+- Ickx et al. (2000). *Anesthesiology*. [Cardiovascular response to acute normovolemic anemia under anesthesia](https://pubmed.ncbi.nlm.nih.gov/11020756/).
 - Martin et al. (1990). *Acta Anaesthesiol Scand*. [Vascular resistance in septic shock](https://pubmed.ncbi.nlm.nih.gov/2389659/).
 - Bellissant and Annane (2000). *Clin Pharmacol Ther*. [Pressor hyporesponsiveness in septic shock](https://pubmed.ncbi.nlm.nih.gov/11014411/).
 - Margarson and Soni (2002). *J Appl Physiol*. [Albumin leakage in septic shock](https://pubmed.ncbi.nlm.nih.gov/11960967/).
@@ -301,6 +311,8 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Rebet et al. (2016). *Eur J Anaesthesiol*. [Preload-dependent phenylephrine cardiac-output responses](https://pubmed.ncbi.nlm.nih.gov/27164015/).
 - Meng et al. (2011). *Br J Anaesth*. [Phenylephrine and ephedrine boluses under propofol-remifentanil anesthesia](https://pubmed.ncbi.nlm.nih.gov/21642644/).
 - Persky et al. (2004). *Br J Clin Pharmacol*. [Oral ephedrine PK and cardiovascular tolerance](https://pubmed.ncbi.nlm.nih.gov/15089807/).
+- Michelsen et al. (1998). *Anesth Analg*. [Prophylactic ephedrine during propofol induction](https://pubmed.ncbi.nlm.nih.gov/9495396/).
+- Rådström et al. (1995). *Acta Anaesthesiol Scand*. [Ephedrine effects on oxygen consumption and cardiac output](https://pubmed.ncbi.nlm.nih.gov/8607315/).
 - Sjøen et al. (2026). *Acta Anaesthesiol Scand*. [Vasopressor boluses during propofol-remifentanil induction](https://pubmed.ncbi.nlm.nih.gov/41144827/) and [correction](https://pubmed.ncbi.nlm.nih.gov/41326972/).
 
 ### Other vasoactive drugs
@@ -365,6 +377,9 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Babenco et al. (2000). *Anesthesiology*. [Remifentanil bolus ventilatory control](https://pubmed.ncbi.nlm.nih.gov/10691225/).
 - Blouin et al. (1993). *Anesthesiology*. [Propofol depresses hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8267192/).
 - Nieuwenhuijs et al. (2000). *Anesthesiology*. [Acute and sustained hypoxic responses during propofol sedation](https://pubmed.ncbi.nlm.nih.gov/10638898/).
+- Weil et al. (1975). *N Engl J Med*. [Diminished hypoxic and hypercapnic ventilatory responses after morphine](https://pubmed.ncbi.nlm.nih.gov/1128555/).
+- Bailey et al. (1990). *Anesthesiology*. [Hypoxemia and apnea after sedation with midazolam and fentanyl](https://pubmed.ncbi.nlm.nih.gov/2122773/).
+- Dahan et al. (1998). *Anesthesiology*. [Morphine effects on ventilatory control in men and women](https://pubmed.ncbi.nlm.nih.gov/9579498/).
 - Knill and Gelb (1978). *Anesthesiology*. [Hypoxic and hypercapnic ventilatory responses during halothane](https://pubmed.ncbi.nlm.nih.gov/697078/).
 - Sarton et al. (1996). *Anesthesiology*. [Sevoflurane, stimulation, and hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8712445/).
 - Nieuwenhuijs et al. (2001). *Anesthesiology*. [Propofol effects on ventilatory control](https://pubmed.ncbi.nlm.nih.gov/11605929/).
@@ -450,6 +465,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Frank et al. (1997). *JAMA*. [Perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/9087467/).
 - Kurz et al. (1995). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
 - Kurz et al. (1995). *Anesth Analg*. [Midazolam and thermoregulatory control](https://pubmed.ncbi.nlm.nih.gov/7618734/).
+- Ralley et al. (1988). *Can J Anaesth*. [Shivering, oxygen consumption, and CO₂ production during rewarming](https://pubmed.ncbi.nlm.nih.gov/3135952/).
 
 ## Malignant hyperthermia
 
@@ -480,6 +496,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Tanaka et al. (2014). *J Clin Monit Comput*. [Capnographic detection of respiratory pauses](https://pubmed.ncbi.nlm.nih.gov/24420342/).
 - Poorzargar et al. (2022). *J Clin Monit Comput*. [Pulse oximetry in poor perfusion](https://pubmed.ncbi.nlm.nih.gov/35119597/).
 - Broome et al. (1992). *Anaesthesia*. [Finger pulse-oximeter response delay during anesthesia](https://pubmed.ncbi.nlm.nih.gov/1536395/).
+- MacLeod et al. (2005). *Anaesthesia*. [Finger pulse-oximeter desaturation delay during mild hypothermia](https://pubmed.ncbi.nlm.nih.gov/15601275/).
 
 ## Scenario guidance
 

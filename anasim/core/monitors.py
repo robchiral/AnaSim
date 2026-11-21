@@ -4,6 +4,7 @@ import math
 from typing import TYPE_CHECKING
 
 from anasim.core.constants import ARREST_CO_L_MIN
+from anasim.core.enums import RhythmType
 from anasim.machine.ventilator import VOLUME_TARGETED
 from anasim.monitors.arterial import MIN_PULSE_PRESSURE_MMHG, ArterialPressureSample
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
@@ -136,6 +137,12 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substep
         elapsed = 0.0
         substep_dt = dt / substeps
         samples = engine.vent.samples or [(dt, 0.0, 0.0, 0.0, 0.0)]
+        mandatory_period = engine.vent.mandatory_period_s
+        expected_period_s: float | None = (
+            mandatory_period
+            if mandatory_period is not None
+            else (60.0 / resp_state.rr if resp_state.rr > 0.0 else None)
+        )
         for duration, change, _, _, _ in samples:
             value = capno.step(duration, change * port_share, end_tidal, obstruction=airway.capno_obstruction)
             readout.update(
@@ -146,6 +153,7 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substep
                 dead_space_l=capno.dead_space,
                 breath_index=capno.breath_index,
                 et_gases=et_gases,
+                expected_period_s=expected_period_s,
             )
             elapsed += duration
             _hold(waves, value, elapsed, substeps, substep_dt)
@@ -156,6 +164,23 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substep
         readout.et_gases if state.etco2_signal_valid else (0.0, 0.0, 0.0, 0.0)
     )
     return waves
+
+
+def _peripheral_perfusion(
+    hemo_state, base_co: float, base_svr: float, temp_factor: float,
+) -> tuple[float, float]:
+    """Return (pleth perfusion 0-1, SpO2 circulatory transit delay scale)."""
+    co_ratio = hemo_state.co / base_co
+    svr_ratio = hemo_state.svr / base_svr
+    vaso_factor = 1.0 / (1.0 + max(0.0, svr_ratio - 1.0) ** 1.4 * 1.4)
+    map_factor = clamp01((hemo_state.map - 12.0) / 10.0) * (0.35 + 0.65 * clamp01((hemo_state.map - 20.0) / 40.0))
+    perfusion = clamp(co_ratio, 0.0, 1.0) * vaso_factor * temp_factor * map_factor
+    delay_scale = clamp(
+        1.0 / max(0.08, clamp(co_ratio, 0.15, 1.5) * vaso_factor * temp_factor),
+        0.75,
+        12.0,
+    )
+    return perfusion, delay_scale
 
 
 def step_cardiac_monitors(
@@ -171,14 +196,16 @@ def step_cardiac_monitors(
     substep_dt = dt / substeps
     waves = []
     rhythm = hemo_state.rhythm_type
-    co_ratio = hemo_state.co / engine.hemo.base_co_l_min
-    perfusion = clamp(co_ratio, 0.0, 1.0)
+    base_co = engine.hemo.base_co_l_min
+    base_svr = max(1.0, engine.hemo.base_tpr * 1000.0)
+    temp_factor = clamp(1.0 - 0.14 * max(0.0, 36.0 - engine.state.temp_c), 0.12, 1.0)
+    perfusion, spo2_delay_scale = _peripheral_perfusion(hemo_state, base_co, base_svr, temp_factor)
     st_depression = engine.hemo.coronary.st_depression_mv
     conduction_failure = engine.hemo.coronary.energy_failure
     compressions = hemo_state.compressions
     if compressions:
         compression_sbp, compression_dbp = compression_pressures(
-            hemo_state.cpr_perfusion_map, hemo_state.venous_pressure
+            hemo_state.cpr_perfusion_map, hemo_state.venous_pressure, filling_factor=engine.hemo.cpr_filling_factor,
         )
         compression_mean = (
             compression_dbp + (compression_sbp - compression_dbp) * 2.0 * COMPRESSION_DUTY / math.pi
@@ -193,7 +220,7 @@ def step_cardiac_monitors(
     spo2_mon = engine.spo2_mon
     defib = engine.defibrillator
     sodium_block = engine.toxicity.conduction_block
-    potassium = engine.state.potassium
+    potassium = engine.hemo.effective_potassium
     hyperk_block = engine.hemo.hyperkalemia_block
     start_time = engine.state.time
 
@@ -209,13 +236,14 @@ def step_cardiac_monitors(
             hemo_state = engine.hemo.state
             project_hemodynamics(engine, hemo_state)
             new_rhythm = hemo_state.rhythm_type
-            perfusion = clamp(hemo_state.co / engine.hemo.base_co_l_min, 0.0, 1.0)
+            perfusion, spo2_delay_scale = _peripheral_perfusion(hemo_state, base_co, base_svr, temp_factor)
             if new_rhythm != rhythm:
                 rhythm = new_rhythm
                 cardiac_sample = cardiac_cycle.seed(hemo_state.hr, rhythm)
             if compressions:
                 compression_sbp, compression_dbp = compression_pressures(
-                    hemo_state.cpr_perfusion_map, hemo_state.venous_pressure
+                    hemo_state.cpr_perfusion_map, hemo_state.venous_pressure,
+                    filling_factor=engine.hemo.cpr_filling_factor,
                 )
                 compression_mean = (
                     compression_dbp + (compression_sbp - compression_dbp) * 2.0 * COMPRESSION_DUTY / math.pi
@@ -237,10 +265,20 @@ def step_cardiac_monitors(
                 comp_p = compression_dbp + (compression_sbp - compression_dbp) * comp_shape
                 if compression_mean > intrinsic_art.mean:
                     art_waveform.note_compression_baseline(compression_dbp)
+                art_sbp = (
+                    compression_sbp
+                    if not math.isfinite(intrinsic_art.systolic)
+                    else max(intrinsic_art.systolic, compression_sbp)
+                )
+                art_dbp = (
+                    compression_dbp
+                    if not math.isfinite(intrinsic_art.diastolic)
+                    else max(intrinsic_art.diastolic, compression_dbp)
+                )
                 arterial_sample = ArterialPressureSample(
                     pressure=float(max(intrinsic_art.pressure, comp_p)),
-                    systolic=float(max(intrinsic_art.systolic, compression_sbp)),
-                    diastolic=float(max(intrinsic_art.diastolic, compression_dbp)),
+                    systolic=float(art_sbp),
+                    diastolic=float(art_dbp),
                     mean=float(max(intrinsic_art.mean, compression_mean)),
                 )
                 pulse_sample = cardiac_sample if intrinsic_art.mean >= compression_mean else comp_sample
@@ -278,14 +316,16 @@ def step_cardiac_monitors(
         )
         spo2_perfusion = (
             0.0
-            if not compressions and (hemo_state.intrinsic_co < ARREST_CO_L_MIN or pp_gate <= 0.0)
-            else (perfusion if compressions else perfusion * pp_gate)
+            if compressions or hemo_state.intrinsic_co < ARREST_CO_L_MIN or pp_gate <= 0.0
+            else perfusion * pp_gate
         )
         pleth, spo2_val = spo2_mon.step(
             substep_dt,
             pulse_sample,
             saturation=sao2,
             perfusion=spo2_perfusion,
+            cpr_artifact=compressions,
+            delay_scale=spo2_delay_scale,
         )
         waves.append((float(ecg_voltage), float(pleth), art_line.pressure))
 
@@ -314,6 +354,8 @@ def step_monitors(
         mac_sevo=mac_sevo,
         cortical_function=engine.cerebral.cortical_function,
         ce_ketamine=state.ketamine_ce,
+        ce_opioid=state.opioid_ce,
+        temp_c=state.temp_c,
     )
     substeps = waveform_substeps(dt)
     substep_dt = dt / substeps
@@ -403,6 +445,12 @@ def step_monitors(
         if (connected or vent.is_on or engine.bag_mask_active) and not engine.etco2_readout.awaiting_first_breath
         else None
     )
+    ppeak_val = display_int(state.paw_peak)
+    ppeak_limit = engine.alarms.thresholds["Ppeak_max"]
+    if connected and (vent.is_on or engine.bag_mask_active) and vent.pressure_limited and ppeak_val == ppeak_limit:
+        ppeak_alarm = ppeak_limit + 1.0
+    else:
+        ppeak_alarm = ppeak_val
     state.alarms = engine.alarms.update(
         {
             "BIS": bis_alarm,
@@ -410,8 +458,9 @@ def step_monitors(
             "HR": display_int(state.display_hr),
             "EtCO2": etco2_alarm,
             "RR": display_int(state.rr) if not (vent.is_on or engine.bag_mask_active) else None,
+            "Temp": round(state.temp_c, 1),
             "SpO2": display_int(state.display_spo2) if state.spo2_signal_valid else 0.0,
-            "Ppeak": display_int(state.paw_peak),
+            "Ppeak": ppeak_alarm,
             # The ventilator measures only gas returning through the circuit.
             "MV": (round(state.mv, 1) if connected else 0.0) if vent.is_on else None,
             "VTe": vte_percent,
@@ -419,6 +468,15 @@ def step_monitors(
         },
         dt=dt,
     )
+    rhythm = engine.hemo.state.rhythm_type
+    if rhythm == RhythmType.ASYSTOLE:
+        state.alarms["Asystole"] = {"low": False, "high": True}
+    elif rhythm == RhythmType.VFIB:
+        state.alarms["VFIB"] = {"low": False, "high": True}
+    elif rhythm == RhythmType.VTACH:
+        state.alarms["VTACH"] = {"low": False, "high": True}
+    elif state.cardiac_arrest:
+        state.alarms["Arrest"] = {"low": False, "high": True}
     start, breath = state.time, vent.breath_count
     engine.output_buffer.extend(
         WaveformSample(start + dt if index == substeps - 1 else start + (index + 1) * substep_dt,

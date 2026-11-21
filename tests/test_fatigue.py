@@ -3,6 +3,7 @@ from itertools import pairwise
 
 import pytest
 
+from anasim.core.state import SimulationConfig
 from anasim.machine.ventilator import AnesthesiaVentilator
 from anasim.physiology.fatigue import RespiratoryFatigue
 from anasim.physiology.resp_mech import RespiratoryMechanics
@@ -243,3 +244,27 @@ def test_obstructed_breathing_fatigues_and_pressure_support_restores_acute_capac
     assert engine.resp.state.effort_vt < 0.5 * baseline_vt
     assert engine.resp.state.drive_central == pytest.approx(baseline_drive, rel=0.01)
     assert engine.state.tof > 99.0
+
+
+def test_fatigue_under_obstruction_does_not_recover_and_partial_nmba_increases_load(
+    engine_factory, advance_time
+):
+    """Seeded fatigue under fixed 85% obstruction does not recover; partial NMBA increases load."""
+    obs = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    obs.set_airway_mode("ETT")
+    obs.set_fgf(0.0, 10.0)
+    obs.set_airway_obstruction(0.85)
+    advance_time(obs, 120.0, dt=0.5)
+    obs.resp_mech.effort.muscle.fast_fatigue = 0.50
+    advance_time(obs, 120.0, dt=0.5)
+    assert obs.resp_mech.effort.muscle.fast_fatigue >= 0.50
+
+    nmba = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    nmba.set_airway_mode("ETT")
+    nmba.set_fgf(10.0, 0.0)
+    nmba.set_airway_obstruction(0.45)
+    advance_time(nmba, 30.0, dt=0.5)
+    load_before = nmba.resp_mech.effort.muscle.load
+    nmba.give_drug_bolus("rocuronium", 22.0)
+    advance_time(nmba, 120.0, dt=0.5)
+    assert nmba.resp_mech.effort.muscle.load > load_before * 1.4

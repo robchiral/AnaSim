@@ -357,3 +357,24 @@ def test_apneic_rise_matches_lyons_short_term_data(patient):
             first_minute = model.state.pa_co2
     assert first_minute - 40.0 == pytest.approx(1.39 * 7.5006, abs=0.39 * 7.5006)
     assert (model.state.pa_co2 - first_minute) / 3.0 == pytest.approx(0.34 * 7.5006, abs=0.08 * 7.5006)
+
+
+def test_in_vivo_alveolar_co2_mass_balance_across_temperature(patient_factory):
+    """Alveolar CO2 equilibrates at in-vivo PACO2 = 0.863 * VCO2 / VA across 30-41 C."""
+    for temp_c in (30.0, 41.0):
+        model = RespiratoryModel(patient_factory(baseline_temp=temp_c))
+        met = 1.07 ** (temp_c - 37.0)
+        va = 4.5
+        vt = model.vd_deadspace + va / 12.0
+        for _ in range(3600):
+            st = model.step(
+                1.0, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0,
+                measured_breaths=True, mech_rr=12.0, mech_vt_l=vt,
+                fio2=1.0, cardiac_output=5.0, metabolic_factor=met,
+                temp_c=temp_c, unconscious=1.0,
+            )
+        expected_in_vivo = model.co2_constant * model.vco2 * met / va
+        expected_37 = expected_in_vivo / model._temperature_pco2_scale(temp_c)
+        assert st.p_alveolar_co2 == pytest.approx(expected_in_vivo, abs=0.8)
+        assert st.pa_co2_37 == pytest.approx(expected_37, abs=1.0)
+        assert st.etco2 <= st.p_alveolar_co2 + 0.1

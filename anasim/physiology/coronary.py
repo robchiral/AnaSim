@@ -46,9 +46,10 @@ class CoronaryModel:
         ref_dbp = 0.8 * map_mmhg if dbp_mmhg is None else max(0.0, dbp_mmhg)
         self._reference_rpp = hr * ref_sbp
         self._reference_hr = hr
-        # Coronary zero-flow pressure exceeds venous pressure (Nanto 2001). At
-        # rest it is calibrated to 20 mmHg (falling at very low SBP as in step()).
-        ref_back = max(lap, min(20.0, 0.2 * ref_sbp))
+        self._reserve = reserve
+        self._ref_dbp = ref_dbp
+        # Coronary zero-flow pressure exceeds venous pressure (Nanto 2001).
+        ref_back = self._zero_flow_pressure(ref_sbp, lap)
         reference_cpp = max(10.0, ref_dbp - ref_back)
         self._supply_scale = reserve / (reference_cpp * self._diastolic_fraction(hr) * 13.5)
         self.supply_demand_ratio = reserve * (max(0.0, baseline_hb) / 13.5)
@@ -69,6 +70,12 @@ class CoronaryModel:
         new_stun = min(SHOCK_STUN_MAX, 1.0 - (1.0 - prev) * (1.0 - SHOCK_STUN_PER_200J * scale))
         self._shock_stun_tau_s = (prev * self._shock_stun_tau_s + (new_stun - prev) * tau) / new_stun
         self.shock_stunning = new_stun
+
+    @staticmethod
+    def _zero_flow_pressure(sbp_mmhg: float, lap: float) -> float:
+        """Coronary zero-flow back-pressure: 15-20 mmHg across perioperative
+        hypotension, falling curvilinearly in extreme shock (Jeremy 1986)."""
+        return max(lap, min(20.0, 0.2 * sbp_mmhg + 6.0 * clamp01((sbp_mmhg - 45.0) / 30.0)))
 
     @staticmethod
     def _diastolic_fraction(hr: float) -> float:
@@ -102,20 +109,26 @@ class CoronaryModel:
             activation_hr = hr / self._reference_hr
             if compressions and activation_hr > 1.5:
                 activation_hr += clamp01((35.0 - active_sbp) / 15.0) * (1.5 - activation_hr)
-            demand = max(work, 0.25 + 0.25 * activation_hr)
+            demand = max(work, 0.35 + 0.30 * activation_hr)
         if compressions:
             # Coronary flow occurs between compressions, against right-atrial/LA
             # back-pressure plus myocardial wall closing margin (~12.8 mmHg above resting CVP).
             back_pressure = max(lap, venous_pressure + 12.8, 20.0)
             diastolic_fraction = 1.0 - COMPRESSION_DUTY
         else:
-            # Jeremy 1986 curvilinear low-pressure zero-flow pressure during ejection,
-            # rising smoothly to diastolic pressure as pulse pressure collapses (<7 mmHg).
-            base_bp = max(lap, min(20.0, 0.2 * sbp_val))
+            base_bp = self._zero_flow_pressure(sbp_val, lap)
             pulseless_blend = clamp01((7.0 - (sbp_val - dbp_val)) / 4.0)
             back_pressure = base_bp + pulseless_blend * max(0.0, dbp_val - base_bp)
             diastolic_fraction = self._diastolic_fraction(hr)
         pressure = max(0.0, dbp_val - back_pressure)
+        if not compressions and self._reserve < 2.5:
+            # Fixed epicardial stenosis exhausts distal autoregulatory dilation, so
+            # flow falls steeply as aortic diastolic pressure drops below ~58-60 mmHg.
+            stenosis = clamp01((2.5 - self._reserve) / 1.5)
+            dbp_knee = min(60.0, 0.85 * self._ref_dbp)
+            if dbp_val < dbp_knee:
+                dbp_deficit = clamp01((dbp_knee - dbp_val) / 25.0)
+                pressure *= 1.0 - 0.55 * stenosis * (dbp_deficit ** 1.3)
         oxygen = hb * clamp(saturation / 98.0, 0.0, 1.05)
         self.supply_demand_ratio = self._supply_scale * pressure * diastolic_fraction * oxygen / demand
         target = clamp01(1.0 - self.supply_demand_ratio)

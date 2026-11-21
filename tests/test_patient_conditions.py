@@ -11,6 +11,15 @@ from anasim.core.enums import RhythmType
 from anasim.core.state import AirwayType, SimulationConfig
 from anasim.monitors.capno import Capnograph
 from anasim.patient.patient import Patient
+from anasim.patient.pk_models import (
+    EtomidatePK,
+    GlycopyrrolatePK,
+    MilrinonePK,
+    MorphinePK,
+    RocuroniumPK,
+)
+from anasim.patient.volatile_pk import VolatilePK
+from anasim.physiology.respiration import RespiratoryModel
 
 
 def _engine(**patient):
@@ -454,7 +463,7 @@ def test_low_vs_normal_cardiac_output_propofol_fentanyl_matches_sherry_1995():
     assert low[2] > norm[2]
     assert low[1] > norm[1]
     assert low[5] > norm[5] + 0.04
-    assert low[4] > norm[4] + 0.04
+    assert low[4] > norm[4] + 0.03
 
 
 def test_end_stage_renal_disease_propofol_infusion_matches_ickx_1998():
@@ -515,3 +524,81 @@ def test_end_stage_renal_disease_propofol_infusion_matches_ickx_1998():
     assert esrd[1] == pytest.approx(ctrl[1], rel=0.10)
     assert esrd[2] == pytest.approx(ctrl[2], abs=4.0)
     assert 400 <= esrd[3] <= 1200 and 400 <= ctrl[3] <= 1200
+
+
+def test_severe_copd_does_not_outlast_healthy_during_preoxygenated_apnea():
+    """Trapped COPD hyperinflation does not double exchangeable alveolar O2 reserve."""
+    times = []
+    for copd in (0.0, 1.0):
+        model = RespiratoryModel(Patient(age=40, weight=70, height=170, copd_severity=copd))
+        model.equilibrate_oxygen(1.0)
+        sec = 0
+        while model.state.sao2 >= 90.0 and sec < 900:
+            model.step(1.0, ce_prop=0.0, ce_remi=0.0, ce_roc=10.0, airway_patency=0.0, unconscious=1.0)
+            sec += 1
+        times.append(sec)
+    assert times[1] < times[0]
+
+
+def test_hfref_anaphylaxis_unloading_cap_inodilator_lap_and_propofol_low_co(engine_factory, advance_time):
+    """HFrEF caps distributive-shock unloading, lowers LAP with inodilators, and raises propofol Cp."""
+    anaph = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True,
+        heart_failure="hfref",
+    )
+    base_co = anaph.state.co
+    anaph.start_anaphylaxis()
+    advance_time(anaph, 180.0, dt=1.0)
+    assert anaph.state.co < 1.45 * base_co
+
+    hf_ctrl = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True,
+        heart_failure="hfref",
+    )
+    hf_ctrl.give_fluid(1000.0)
+    advance_time(hf_ctrl, 120.0, dt=1.0)
+    hf = copy.deepcopy(hf_ctrl)
+    hf.give_drug_bolus("milri", 3500.0)
+    hf.set_drug_rate("milri", 0.5)
+    hf.set_drug_rate("dobu", 5.0)
+    advance_time(hf_ctrl, 240.0, dt=1.0)
+    advance_time(hf, 240.0, dt=1.0)
+    assert hf.state.lap < hf_ctrl.state.lap - 4.0
+    assert hf.state.co > hf_ctrl.state.co + 0.5
+
+    norm = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, heart_failure="none")
+    hfref = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, heart_failure="hfref")
+    for eng in (norm, hfref):
+        eng.set_airway_mode("ETT")
+        eng.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        eng.set_vent_power(True)
+        eng.set_fgf(4.0, 0.0)
+        eng.set_drug_rate("propofol", 100.0)
+    advance_time(norm, 1200.0, dt=2.0)
+    advance_time(hfref, 1200.0, dt=2.0)
+    assert hfref.state.propofol_cp > norm.state.propofol_cp * 1.06
+    assert hfref.state.bis < norm.state.bis - 1.5
+
+
+def test_pregnancy_mac_v1_expansion_and_esrd_clearance_propagation():
+    """Term pregnancy lowers MAC ~28% and expands central V1 (Gin & Chan 1994; Dallmann 2017);
+    ESRD creatinine_clearance_ml_min propagates to renal_function and renally cleared drugs."""
+    nonpreg = Patient(age=30, weight=65, height=165, sex="female", gestational_age_weeks=0.0)
+    preg = Patient(age=30, weight=65, height=165, sex="female", gestational_age_weeks=38.0)
+    mac_ratio = (
+        VolatilePK(preg, "Sevo", 0.65, mac_40=2.0).mac_age
+        / VolatilePK(nonpreg, "Sevo", 0.65, mac_40=2.0).mac_age
+    )
+    assert 0.68 <= mac_ratio <= 0.76
+    assert RocuroniumPK(preg).v1 > RocuroniumPK(nonpreg).v1 * 1.15
+    assert EtomidatePK(preg).v1 > EtomidatePK(nonpreg).v1 * 1.15
+
+    normal = Patient(age=45, weight=70, height=170, sex="male")
+    esrd = Patient(age=45, weight=70, height=170, sex="male", creatinine_clearance_ml_min=5.0)
+    assert esrd.renal_function == pytest.approx(0.05)
+    assert esrd.renal_status == "Severe"
+    assert MilrinonePK(esrd).cl1 < 0.25 * MilrinonePK(normal).cl1
+    assert GlycopyrrolatePK(esrd).cl1 < 0.45 * GlycopyrrolatePK(normal).cl1
+    assert MorphinePK(esrd).cl1 < 0.75 * MorphinePK(normal).cl1

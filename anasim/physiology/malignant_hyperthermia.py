@@ -6,7 +6,7 @@ are calibrated to a teaching course.
 
 import math
 
-from anasim.core.utils import hill_function
+from anasim.core.utils import clamp, hill_function
 
 
 def dantrolene_twitch_fraction(concentration: float) -> float:
@@ -19,8 +19,13 @@ def dantrolene_twitch_fraction(concentration: float) -> float:
     return 1.0 - 0.75 * hill_function(concentration, 1.0, 2.0)
 
 
-def triggering_exposure(sevo_mac: float, succinylcholine_cp: float) -> bool:
-    return sevo_mac > 0.001 or succinylcholine_cp > 0.01
+SUCCINYLCHOLINE_TRIGGER_WINDOW_S = 3600.0
+
+
+def triggering_exposure(
+    sevo_mac: float, succinylcholine_cp: float, *, recent_succinylcholine: bool = False,
+) -> bool:
+    return sevo_mac > 0.001 or succinylcholine_cp > 0.01 or recent_succinylcholine
 
 
 class MalignantHyperthermia:
@@ -42,6 +47,10 @@ class MalignantHyperthermia:
         self._susceptible = self._active
         self._controlled = False
 
+    @property
+    def susceptible(self) -> bool:
+        return self._susceptible
+
     def step(self, dt: float, *, sevo_mac: float, succinylcholine_cp: float,
              dantrolene_ce: float) -> None:
         if not self._active and not self._susceptible and self.severity == 0.0:
@@ -51,7 +60,13 @@ class MalignantHyperthermia:
             self._active = True
             self._controlled = False
         if self._active:
-            inhibition = hill_function(dantrolene_ce, 1.5, 3.0)
+            # Active volatile anesthetic (>0.25 MAC) and succinylcholine
+            # competitively oppose dantrolene at RyR1, preventing crisis control
+            # while triggering agents continue, without altering untreated onset.
+            active_sevo = max(0.0, sevo_mac - 0.25)
+            trigger_drive = clamp(active_sevo / 0.55, 0.0, 2.5) + clamp(succinylcholine_cp / 0.4, 0.0, 2.0)
+            dantrolene_ic50 = 1.5 * (1.0 + 4.5 * trigger_drive)
+            inhibition = hill_function(dantrolene_ce, dantrolene_ic50, 3.0)
             if (
                 inhibition > 0.5
                 and self.severity < 0.02

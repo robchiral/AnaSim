@@ -10,9 +10,13 @@ from anasim.core.state import SimulationConfig
 from anasim.monitors.neuromuscular import TwitchReading
 from anasim.scenarios import (
     SCENARIO_REGISTRY,
+    create_anaphylaxis_scenario,
     create_cardiac_arrest,
     create_emergence,
     create_hemorrhage_response,
+    create_induction_balanced,
+    create_malignant_hyperthermia,
+    create_oxygen_supply_failure,
     create_sepsis_response,
 )
 from anasim.scenarios.base import (
@@ -26,6 +30,7 @@ from anasim.scenarios.base import (
     require_vasopressor_if_hypotensive,
 )
 from anasim.scenarios.emergence import _require_normocapnia
+from anasim.scenarios.malignant_hyperthermia import _require_etco2_normal
 from anasim.web import WebSession
 
 # Browser commands for each objective; TCI targets become manual rates when disabled.
@@ -38,7 +43,10 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
             ("drug_rate", {"key": "propofol", "rate": 120}),
         ],
         "DANTROLENE": [("drug_bolus", {"key": "dantrolene", "amount": 175})],
-        "STABILIZE": [("bair_hugger", {"target_c": 0})],
+        "STABILIZE": [
+            ("bair_hugger", {"target_c": 0}),
+            ("vent", {"rr": 12}),
+        ],
     },
     "hemorrhage_response": {
         "GIVE_FLUIDS": [("fluid", {"kind": "crystalloid", "volume_ml": 500})],
@@ -539,11 +547,29 @@ def test_emergence_gating_normocapnia_covariates_and_cpr_or_nmba_checks(engine_f
 
     ox_session = WebSession({"scenario_id": "oxygen_supply_failure", "practice_mode": "independent"})
     assert ox_session.case_run is not None
+    ox_session.engine.start()
+    # Raising O2 flow before the 30 s supply failure must not award premature recovery credit.
+    ox_session.engine.set_fgf(10.0, 0.0, 0.0)
+    for _ in range(5):
+        ox_session.case_run.before_step()
+        ox_session.engine.step(1.0)
+        ox_session.case_run.observe(1.0, force=True)
+    assert ox_session.engine.circuit.composition.fio2 > 0.40
+    assert "oxygen" not in ox_session.case_run.achieved_at
+    # After the supply fails, recovery stays uncredited until backup oxygen is connected.
+    for _ in range(30):
+        ox_session.case_run.before_step()
+        ox_session.engine.step(1.0)
+        ox_session.case_run.observe(1.0, force=True)
+    assert not ox_session.engine.circuit.oxygen_supply_connected
+    assert "oxygen" not in ox_session.case_run.achieved_at
     ox_session.engine.set_oxygen_supply_connected(True)
-    ox_session.engine.circuit.composition.fio2 = 0.90
+    ox_session.engine.circuit.composition.fio2 = 0.55
+    ox_session.engine.state.sao2 = 98.0
     ox_session.case_run.observe(force=True)
     assert "oxygen" in ox_session.case_run.achieved_at
-    ox_session.engine.circuit.composition.fio2 = 0.55
+    # Milestone stays credited even if FiO2 subsequently drops below the 40% recovery threshold.
+    ox_session.engine.circuit.composition.fio2 = 0.35
     ox_session.case_run.observe(force=True)
     assert "oxygen" in ox_session.case_run.achieved_at
 
@@ -573,3 +599,79 @@ def test_cardiac_arrest_step2_rosc_progression_stability_hint_and_finite_settle(
     )
     assert finite.disturbances.spec is not None and finite.disturbances.spec.finite
     assert finite.state.map < 110.0
+
+
+def test_scenario_patient_scaling_and_mh_recovery_checks(engine_factory, advance_time):
+    """O2 supply failure and anaphylaxis equilibrate baseline FiO2 across weights;
+    MH starts with forced-air warming, caps COPD hyperventilation, and checks 30-45 mmHg EtCO2."""
+    obese_ox = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True, age=40, weight=200, height=185, sex="male",
+    )
+    ox_scen = create_oxygen_supply_failure()
+    ox_scen.prepare(obese_ox)
+    advance_time(obese_ox, 25.0, dt=1.0)
+    assert 0.34 <= obese_ox.state.fio2 <= 0.43
+    assert obese_ox.state.sao2 >= 95.0
+    assert "FiO2" not in obese_ox.state.alarms
+
+    ana_scen = create_anaphylaxis_scenario()
+    ana_eng = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1), start=True)
+    ana_scen.prepare(ana_eng)
+    assert 0.35 <= ana_eng.state.fio2 <= 0.45
+    assert "volatile" not in _step(ana_scen, "EPINEPHRINE").instruction_for(ana_eng).lower()
+
+    mh_scen = create_malignant_hyperthermia()
+    copd_obese = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
+        start=True, age=60, weight=200, height=185, sex="male", copd_severity=1.0,
+    )
+    mh_scen.prepare(copd_obese)
+    mh_scen.events[0].apply(copd_obese)
+    assert copd_obese.state.bair_hugger_target == pytest.approx(38.0)
+    copd_obese.state.etco2_signal_valid = True
+    copd_obese.state.display_etco2 = 19.0
+    assert _require_etco2_normal(copd_obese)[0] is False
+    copd_obese.state.display_etco2 = 38.0
+    assert _require_etco2_normal(copd_obese)[0] is True
+    stop_step = _step(mh_scen, "STOP_TRIGGERS")
+    copd_obese.set_vaporizer(0.0)
+    copd_obese.set_fgf(10.0, 0.0, 0.0)
+    copd_obese.set_drug_rate("propofol", 120.0)
+    copd_obese.set_vent_settings(rr=24, vt=0.6, peep=5.0, ie="1:2", mode="VCV")
+    copd_obese.state.mv = 14.0
+    assert stop_step.check_requirements(copd_obese)[0] is True
+
+
+def test_balanced_handover_bis_mode_text_and_shock_cuff_checks(engine_factory):
+    """Balanced induction accepts transitional BIS 30-60 only while propofol washes out;
+    cardiac arrest hides arterial-line prompts when disabled; failed shock NIBP satisfies crisis MAP check."""
+    bal_scen = create_induction_balanced()
+    maint_step = _step(bal_scen, "MAINTENANCE")
+    bal = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True)
+    bal.set_fgf(1.0, 1.0, 0.0)
+    bal.state.et_mac = 0.8
+    bal.state.propofol_ce = 1.2
+    bal.state.display_bis = 35.0
+    bal.state.art_map = 75.0
+    bal.state.map = 75.0
+    bal.state.spo2_signal_valid = True
+    bal.state.display_spo2 = 98.0
+    assert maint_step.check_requirements(bal)[0] is True
+    bal.state.propofol_ce = 0.2
+    assert maint_step.check_requirements(bal)[0] is False
+
+    ca_scen = create_cardiac_arrest()
+    no_art = engine_factory(config=SimulationConfig(mode="steady_state", arterial_line_enabled=False, rng_seed=1), start=True)
+    start_cpr_text = _step(ca_scen, "START_COMPRESSIONS").instruction_for(no_art).lower()
+    assert "arterial line" not in start_cpr_text
+    assert "anesthetic" in start_cpr_text
+
+    no_art.state.nibp_measurement_failed = True
+    no_art.state.nibp_map = 0.0
+    no_art.state.map = 22.0
+    start_map = CrisisStartMAP()
+    assert require_hypotension_or_treatment(start_map, "hemorrhage", "Assess BP")(no_art)[0] is True
+    no_art.state.nibp_measurement_failed = False
+    ok, msg = require_hypotension_or_treatment(start_map, "hemorrhage", "Assess BP")(no_art)
+    assert not ok and "MAP: 0/" not in msg

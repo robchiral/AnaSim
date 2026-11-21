@@ -12,10 +12,12 @@ from anasim.patient.pk_models import (
     AtropinePK,
     EpinephrinePK,
     EsmololPK,
+    EtomidatePK,
     FentanylPK,
     GlycopyrrolatePK,
     HydromorphonePK,
     KetaminePK,
+    LabetalolPK,
     LidocainePK,
     MammillaryPK,
     MidazolamPK,
@@ -525,3 +527,36 @@ class TestNeuromuscularEffectSite:
         roc_zero.circulation = 0.0
         tof_zero.ce = 3.0
         assert tof_zero.simulate_decay(roc_zero, max_seconds=1800) == pytest.approx(30.0)
+
+
+def test_obesity_lean_pk_scaling_prevents_200kg_underdosing_and_extreme_clearances(engine_factory):
+    """Ingrande 2010: Lean-weight scaling prevents 200 kg supraphysiologic clearances and induction failure."""
+    p70 = Patient(age=40, weight=70, height=175, sex="male")
+    p200 = Patient(age=40, weight=200, height=185, sex="male")
+    assert EtomidatePK(p200).cl1 < 2.8
+    assert LabetalolPK(p200).cl1 < 2.3
+    assert KetaminePK(p200).cl1 < 2.4
+    assert AtropinePK(p200).v1 < 1.9 * AtropinePK(p70).v1
+
+    eto = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1),
+        start=True, age=40, weight=200, height=185, sex="male",
+    )
+    eto.give_drug_bolus("etomidate", 25.0)
+    max_loc = 0.0
+    for _ in range(180):
+        eto.step(1.0)
+        max_loc = max(max_loc, eto.state.loc)
+    assert max_loc > 0.80
+
+    atr = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1),
+        start=True, age=40, weight=200, height=185, sex="male", baseline_hr=50.0,
+    )
+    hr0 = atr.state.hr
+    atr.give_drug_bolus("atropine", 1.0)
+    peak_hr = hr0
+    for _ in range(240):
+        atr.step(1.0)
+        peak_hr = max(peak_hr, atr.state.hr)
+    assert peak_hr > hr0 + 10.0

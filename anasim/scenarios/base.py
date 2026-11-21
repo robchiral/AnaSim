@@ -14,12 +14,11 @@ from anasim.core.action_log import (
     ACTION_FGF,
     ACTION_FLUID,
     ACTION_INFUSION_RATE,
-    ACTION_OXYGEN_SUPPLY,
     ACTION_TCI_TARGET,
     ACTION_VAPORIZER,
 )
 from anasim.core.monitors import display_int
-from anasim.core.projection import dantrolene_twitch_fraction
+from anasim.core.projection import dantrolene_twitch_fraction, sync_state_from_models
 from anasim.core.state import AirwayType
 
 if TYPE_CHECKING:
@@ -28,6 +27,7 @@ if TYPE_CHECKING:
 ControlTab = Literal["Machine", "Medications", "Circulation"]
 Requirement = Callable[["SimulationEngine"], tuple[bool, str]]
 Condition = Callable[["SimulationEngine"], bool]
+Instruction = str | Callable[["SimulationEngine"], str]
 
 MONITOR_BP_INDEX = {"sbp": 0, "dbp": 1, "map": 2}
 MONITOR_DISPLAY_FIELD = {
@@ -45,7 +45,7 @@ _STALE_BP_MESSAGE = "Measure blood pressure again"
 class ScenarioStep:
     id: str
     title: str
-    instruction: str | Callable[["SimulationEngine"], str]
+    instruction: Instruction
     check_requirements: Requirement
     target_tab: ControlTab | None = None
     # Runs once, the first time the requirements are met.
@@ -368,9 +368,18 @@ def require_hypotension_or_treatment(
         )
         controlled = engine.actions.since_event(event_name, ACTION_EVENT_STOP, labels=(event_name,))
         treated = any(record.amount > 0 for record in (*fluids, *pressor_actions)) or bool(controlled)
-        met = treated or (math.isfinite(map_val) and 0.0 < map_val < threshold)
-        shown_map = max(int(display_int(map_val)), round(threshold)) if map_val > 0.0 else 0
-        return met, "" if met else f"MAP: {shown_map}/<{threshold:.0f} mmHg; {prompt}"
+        failed_cuff_in_shock = (
+            not engine.config.arterial_line_enabled
+            and engine.state.nibp_measurement_failed
+            and engine.state.map < threshold
+        )
+        met = treated or failed_cuff_in_shock or (math.isfinite(map_val) and 0.0 < map_val < threshold)
+        if met:
+            return True, ""
+        if not math.isfinite(map_val) or map_val <= 0.0:
+            return False, f"{_STALE_BP_MESSAGE}; {prompt}"
+        shown_map = max(int(display_int(map_val)), round(threshold))
+        return False, f"MAP: {shown_map}/<{threshold:.0f} mmHg; {prompt}"
     return check
 
 
@@ -519,15 +528,15 @@ def require_fgf_reduced(max_total_l_min: float) -> Requirement:
     return check
 
 
-def require_oxygen_supply_action(connected: bool, fail_message: str) -> Requirement:
-    """Require an oxygen supply action and the corresponding current state."""
-    label = "connected" if connected else "disconnected"
-
-    def check(engine) -> tuple[bool, str]:
-        acted = action_taken_in_case(engine, ACTION_OXYGEN_SUPPLY, label)
-        met = acted and engine.circuit.oxygen_supply_connected == connected
-        return met, "" if met else fail_message
-    return check
+def check_etco2_range(engine, low: int, high: int) -> tuple[bool, str]:
+    """Require a valid displayed EtCO2 within the inclusive [low, high] mmHg bounds."""
+    if not engine.state.etco2_signal_valid:
+        return False, "Awaiting exhaled CO₂"
+    etco2 = monitor_value(engine, "etco2")
+    rounded = int(display_int(etco2))
+    met = low <= rounded <= high
+    shown_etco2 = format_unmet_int(etco2, low=low, high=high)
+    return met, "" if met else f"EtCO₂: {shown_etco2}/{low}-{high} mmHg"
 
 
 def require_all(*checks: Requirement) -> Requirement:
@@ -541,16 +550,41 @@ def require_all(*checks: Requirement) -> Requirement:
     return combined
 
 
+def equilibrate_maintenance_fio2(
+    engine, *, target_fio2: float, min_air_l_min: float, air_vo2_factor: float,
+) -> None:
+    """Set air/O2 fresh-gas flows for target_fio2 given patient VO2 and equilibrate circuit and lung."""
+    vo2 = max(0.15, engine.resp._pulmonary_o2_uptake)
+    fgf_air = max(min_air_l_min, air_vo2_factor * vo2)
+    fgf_o2 = vo2 + fgf_air * (target_fio2 - 0.21) / (1.0 - target_fio2)
+    engine.set_fgf(round(fgf_o2, 3), round(fgf_air, 3), 0.0)
+    circuit = engine.circuit
+    circuit.equilibrate(engine.resp._pulmonary_o2_uptake, circuit.composition.fi_agent)
+    baseline_fio2 = circuit.composition.fio2
+    engine.resp.equilibrate_oxygen(
+        baseline_fio2, 1.0, engine.vent.settings.peep, fin2=circuit.composition.fin2,
+    )
+    sync_state_from_models(engine)
+
+
 def create_observe_step(
     label: str,
     action: str = ACTION_EVENT_START,
-    instruction: str = "Follow blood pressure, oxygenation, capnography, and airway pressure.",
+    instruction: Instruction = (
+        "Follow blood pressure, oxygenation, capnography, and airway pressure."
+    ),
 ) -> ScenarioStep:
     """Wait for the case event; the learner cannot start it."""
+    suffix = " The case progresses automatically while the simulation runs."
+    full_instruction: Instruction = (
+        (lambda engine: f"{instruction(engine)}{suffix}")
+        if callable(instruction)
+        else f"{instruction}{suffix}"
+    )
     return ScenarioStep(
         id="OBSERVE",
         title="Observe the patient",
-        instruction=f"{instruction} The case progresses automatically while the simulation runs.",
+        instruction=full_instruction,
         check_requirements=lambda engine: (action_taken_in_case(engine, action, label), ""),
     )
 

@@ -45,10 +45,13 @@ CARDIOVERSION_SUCCESS = {
 R_ON_T_PROBABILITY = 0.15
 
 
-def compression_pressures(perfusion_pressure: float, venous_pressure: float) -> tuple[float, float]:
+def compression_pressures(
+    perfusion_pressure: float, venous_pressure: float, *, filling_factor: float = 1.0,
+) -> tuple[float, float]:
     """Arterial pressure at the compression peak and between compressions (mmHg)."""
     relaxation = venous_pressure + perfusion_pressure
-    return relaxation + COMPRESSION_PULSE_MMHG, relaxation
+    pulse = COMPRESSION_PULSE_MMHG * clamp01(filling_factor)
+    return relaxation + pulse, relaxation
 
 
 class ShockResult(Enum):
@@ -93,24 +96,31 @@ class Defibrillator:
 def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: float,
                   electrically_silent: bool, vulnerable: bool, antiarrhythmic: float,
                   rng: np.random.Generator, hypoxia: float = 0.0,
-                  perfusing: bool = True, energy_reserve: float = 1.0) -> RhythmType:
+                  perfusing: bool = True, energy_reserve: float = 1.0,
+                  temp_c: float = 37.0, hyperkalemia_block: float = 0.0) -> RhythmType:
     """Return the rhythm after a discharge.
 
     A terminated arrhythmia becomes sinus rhythm, or transient post-shock
     asystole after prolonged pulseless arrest (Pierce 2015); whether an
     organized rhythm perfuses depends on the myocardium's energy state.
+    Deep hypothermia (<30 C) and severe hyperkalemia sharply reduce electrical
+    conversion probability until the underlying cause is treated.
     """
     if electrically_silent:
         return RhythmType.ASYSTOLE
     if rhythm == RhythmType.ASYSTOLE:
         return rhythm
     depletion = max(energy_failure, 0.8 * clamp01(hypoxia))
+    hypothermia_penalty = clamp01((30.5 - temp_c) / 3.0)
+    hyperk_penalty = clamp01((hyperkalemia_block - 0.40) / 0.45)
+    reversible_cause_scale = (1.0 - 0.90 * hypothermia_penalty) * (1.0 - 0.85 * hyperk_penalty)
     if not synchronized and rhythm != RhythmType.VFIB and perfusing and vulnerable and rng.random() < R_ON_T_PROBABILITY:
         return RhythmType.VFIB
     if rhythm == RhythmType.VFIB or (rhythm == RhythmType.VTACH and (not perfusing or not synchronized)):
         success = DEFIBRILLATION_SUCCESS * (1.0 - FINE_VF_SUCCESS_LOSS * depletion)
         # Either drug reduced the shocks needed (Kudenchuk 2016). The effect size is a calibration.
         success += 0.5 * (1.0 - success) * clamp01(antiarrhythmic)
+        success *= reversible_cause_scale
         u = rng.random()
         if u >= success:
             return rhythm
@@ -120,5 +130,5 @@ def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: flo
             if u >= success * (1.0 - asystole_share):
                 return RhythmType.ASYSTOLE
         return RhythmType.SINUS
-    success = CARDIOVERSION_SUCCESS.get(rhythm, 0.0) * (1.0 - 0.5 * depletion)
+    success = CARDIOVERSION_SUCCESS.get(rhythm, 0.0) * (1.0 - 0.5 * depletion) * reversible_cause_scale
     return RhythmType.SINUS if success and rng.random() < success else rhythm

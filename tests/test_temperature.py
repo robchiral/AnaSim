@@ -163,8 +163,76 @@ def test_hypothermia_preserves_etco2_gradient_and_alpha_stat_ionized_calcium(eng
     tracks 37 C alpha-stat pH rather than shifting artificially with in-vivo pH."""
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     ica_37 = engine.state.ionized_calcium
-    engine.thermal.core_temp = 30.0
     engine.state.temp_c = 30.0
     _advance(engine, 10, dt=1.0)
     assert engine.state.etco2 <= engine.state.pa_co2
     assert engine.state.ionized_calcium == pytest.approx(ica_37, abs=0.05)
+
+
+def test_hypothermia_cold_narcosis_and_bradypnea(engine_factory, advance_time):
+    """Severe hypothermia (27.5 C) induces cold narcosis and hypothermic bradypnea."""
+    cold = engine_factory(
+        config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+        baseline_temp=27.5,
+    )
+    advance_time(cold, 120.0, dt=1.0)
+    assert cold.state.loc > 0.85
+    assert cold.state.bis < 65.0
+    assert cold.state.rr < 9.0
+    assert cold.state.pa_co2 > 28.0
+
+
+def test_iv_fluid_and_prbc_thermal_load_and_fluid_warmer(engine_factory, advance_time):
+    """Unwarmed crystalloid and cold PRBC cool core temperature; enabling the fluid warmer prevents cooling."""
+    unwarmed = engine_factory(
+        config=SimulationConfig(mode="steady_state", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+    )
+    warmed = copy.deepcopy(unwarmed)
+    warmed.set_fluid_warmer(True)
+    for eng in (unwarmed, warmed):
+        eng.give_fluid(2000.0)
+        eng.give_blood(600.0)
+    advance_time(unwarmed, 1200.0, dt=2.0)
+    advance_time(warmed, 1200.0, dt=2.0)
+    assert unwarmed.state.temp_c < warmed.state.temp_c - 0.55
+
+
+def test_hypothermia_slows_propofol_pk_and_rocuronium_recovery(engine_factory):
+    """Leslie 1995 & Smeulers 1995: Mild hypothermia (33 C vs 37 C) raises propofol Cp and prolongs rocuronium."""
+    warm = engine_factory(
+        config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+        baseline_temp=37.0,
+    )
+    cold = engine_factory(
+        config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+        baseline_temp=33.0,
+    )
+    for eng in (warm, cold):
+        eng.set_airway_mode("ETT")
+        eng.set_vent_settings(rr=12, vt=0.5, peep=5, ie="1:2", mode="VCV")
+        eng.set_vent_power(True)
+        eng.set_drug_rate("propofol", 100.0)
+        eng.give_drug_bolus("roc", 0.6 * eng.patient.weight)
+
+    for _ in range(1800):
+        warm.state.temp_c = 37.0
+        cold.state.temp_c = 33.0
+        warm.step(2.0)
+        cold.step(2.0)
+    assert cold.state.propofol_cp > warm.state.propofol_cp * 1.15
+    assert cold.state.tof < warm.state.tof - 15.0
+
+
+def test_awake_sepsis_fever_plateaus_with_active_sweating(engine_factory, advance_time):
+    """Active sweating and cutaneous vasodilation regulate awake sepsis fever near 38.5-39.8 C."""
+    sepsis = engine_factory(
+        config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+    )
+    sepsis.start_sepsis()
+    advance_time(sepsis, 6.0 * 3600.0, dt=10.0)
+    assert 38.0 < sepsis.state.temp_c < 39.8

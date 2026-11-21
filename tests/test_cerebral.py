@@ -20,7 +20,9 @@ def test_severe_supply_failure_suppresses_responsiveness_bis_and_breathing_until
     brain.step(600, 60, 13.5, 90, 40, 7.4)
     assert brain.dysfunction == 0
     step = CerebralModel.step
-    monkeypatch.setattr(brain, "step", lambda dt, *_: step(brain, dt, map_mmhg, brain.baseline_hb, saturation, 40, 7.4))
+    monkeypatch.setattr(
+        brain, "step", lambda dt, *_, **__: step(brain, dt, map_mmhg, brain.baseline_hb, saturation, 40, 7.4)
+    )
     # Function starts to fail after a few seconds; BIS shows it after the monitor's processing delay.
     _run(awake_engine, 4)
     assert brain.dysfunction < 0.1
@@ -38,13 +40,21 @@ def test_severe_supply_failure_suppresses_responsiveness_bis_and_breathing_until
     assert feedback is not None and feedback.blocked
 
 
-def test_persistent_coma_does_not_force_flat_bis_after_oxygen_and_breathing_return(awake_engine):
+def test_persistent_coma_suppresses_postanoxic_bis_while_preserving_partial_brainstem_drive(awake_engine):
+    """Hofmeijer 2015 & Jorgensen 1981 Part II: 5 min normothermic anoxia causes
+    sustained postanoxic cortical EEG suppression (low BIS) and unresponsiveness
+    while more ischemia-resistant brainstem respiratory movements can still return;
+    prolonged 10 min anoxia suppresses both cortical and brainstem activity."""
     brain = awake_engine.cerebral
     brain.step(CerebralModel.COMA_EXPOSURE_S, 0, 13.5, 98, 40, 7.4)
     brain.step(600, 90, 13.5, 98, 40, 7.4)
     _run(awake_engine, 30)
-    assert awake_engine.state.bis > 80 and awake_engine.state.loc > 0.95
+    assert awake_engine.state.bis < 35 and awake_engine.state.loc > 0.95
     assert awake_engine.resp.state.effort_rr > 5
+
+    brain.step(360.0, 0, 13.5, 98, 40, 7.4)
+    brain.step(600.0, 90, 13.5, 98, 40, 7.4)
+    assert brain.cortical_function == 0.0 and brain.respiratory_drive == 0.0
 
 
 @pytest.mark.parametrize(("pa_co2", "ph", "low", "high"), [
@@ -203,13 +213,13 @@ def test_extreme_hypercapnia_depresses_medullary_drive_and_prolonged_coma_lags_r
     engine.set_fgf(6.0, 0.0)
     step = CerebralModel.step
     monkeypatch.setattr(
-        engine.cerebral, "step", lambda dt, *_: step(engine.cerebral, dt, 90.0, 13.5, 99.0, 90.0, 7.22)
+        engine.cerebral, "step", lambda dt, *_, **__: step(engine.cerebral, dt, 90.0, 13.5, 99.0, 90.0, 7.22)
     )
     for _ in range(180):
         engine.step(1.0)
     stim_mv, stim_paco2 = engine.resp.state.mv, engine.state.pa_co2
     monkeypatch.setattr(
-        engine.cerebral, "step", lambda dt, *_: step(engine.cerebral, dt, 90.0, 13.5, 99.0, 140.0, 7.04)
+        engine.cerebral, "step", lambda dt, *_, **__: step(engine.cerebral, dt, 90.0, 13.5, 99.0, 140.0, 7.04)
     )
     for _ in range(240):
         engine.step(1.0)
@@ -222,7 +232,8 @@ def test_prolonged_co2_narcosis_delays_respiratory_recovery_and_cpr_preserves_ce
     engine_factory, monkeypatch
 ):
     """Prolonged hypercapnic narcosis applies the prolonged recovery time constant to respiratory
-    drive as well as coma, and CPR supplies venous + cpr_perfusion_map so cerebral CPP is not double-subtracted."""
+    drive as well as coma, and CPR passes venous_pressure and a forward-flow ceiling so
+    cerebral CPP is not double-subtracted or inflated to wake a VFIB patient."""
     brain = CerebralModel(13.5)
     brain.step(7200.0, 90.0, 13.5, 98.0, 140.0, 7.05)
     brain.step(300.0, 90.0, 13.5, 98.0, 42.0, 7.39)
@@ -231,15 +242,55 @@ def test_prolonged_co2_narcosis_delays_respiratory_recovery_and_cpr_preserves_ce
     cpr = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     cpr.set_rhythm("VFIB")
     cpr.set_chest_compressions(True)
-    seen_maps: list[float] = []
+    seen_calls: list[tuple[float, float, float | None]] = []
     orig_step = CerebralModel.step
 
     def capture(dt, map_val, *args, **kwargs):
-        seen_maps.append(map_val)
+        seen_calls.append((map_val, kwargs.get("venous_pressure", 10.0), kwargs.get("flow_ceiling")))
         return orig_step(cpr.cerebral, dt, map_val, *args, **kwargs)
 
     monkeypatch.setattr(cpr.cerebral, "step", capture)
     for _ in range(10):
         cpr.step(1.0)
     hs = cpr.hemo.state
-    assert seen_maps[-1] == pytest.approx(hs.venous_pressure + hs.cpr_perfusion_map, abs=1e-6)
+    last_map, last_vp, last_cap = seen_calls[-1]
+    assert last_map == pytest.approx(hs.venous_pressure + hs.cpr_perfusion_map, abs=1e-6)
+    assert last_vp == pytest.approx(hs.venous_pressure, abs=1e-6)
+    assert last_cap is not None and 0.15 < last_cap <= 0.35
+
+
+def test_cpr_cerebral_perfusion_does_not_wake_vfib_patient_and_limits_anoxia(
+    engine_factory, advance_time
+):
+    """CPR slows anoxic injury without inflating CPP by venous pressure or waking a VFIB patient."""
+    engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    engine.set_airway_mode("ETT")
+    engine.set_vent_settings(mode="VCV", rr=10, vt=0.5, peep=0.0, ie="1:2", fio2=1.0)
+    engine.set_vent_power(True)
+    engine.set_rhythm("VFIB")
+    advance_time(engine, 15.0, dt=1.0)
+    engine.set_chest_compressions(True)
+    engine.give_drug_bolus("epi", 1000.0)
+    advance_time(engine, 120.0, dt=1.0)
+    assert engine.cerebral.tissue_oxygen <= 0.36
+    assert engine.state.bis < 20.0
+    assert engine.cerebral.respiratory_drive < 0.05
+    assert engine.cerebral.anoxic_s < 40.0
+
+
+def test_cerebral_cmro2_neuroprotection_and_chronic_htn_autoregulation(engine_factory):
+    """Hypothermia reduces anoxic exposure via CMRO2 Q10; chronic hypertension shifts autoregulation right."""
+    normo = CerebralModel(13.5)
+    hypo = CerebralModel(13.5)
+    normo.step(300.0, 0.0, 13.5, 98.0, 40.0, 7.4, temp_c=37.0)
+    hypo.step(300.0, 0.0, 13.5, 98.0, 40.0, 7.4, temp_c=26.0)
+    assert hypo.anoxic_s < 0.65 * normo.anoxic_s
+    assert hypo.cortical_injury < normo.cortical_injury
+
+    normotensive = CerebralModel(13.5, baseline_map=90.0)
+    hypertensive = CerebralModel(13.5, baseline_map=140.0)
+    normotensive.step(120.0, 62.0, 13.5, 98.0, 40.0, 7.4)
+    hypertensive.step(120.0, 62.0, 13.5, 98.0, 40.0, 7.4)
+    assert normotensive.dysfunction == 0.0
+    assert hypertensive.dysfunction > 0.10
+    assert engine_factory(baseline_map=140.0).cerebral.baseline_map == 140.0

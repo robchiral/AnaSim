@@ -5,10 +5,15 @@ import json
 import pytest
 
 from anasim.core.action_log import ACTION_AIRWAY, ACTION_INTUBATION_ATTEMPT
-from anasim.core.clinical_actions import check_intubation, check_shock
+from anasim.core.clinical_actions import (
+    check_drug_administration,
+    check_intubation,
+    check_shock,
+)
 from anasim.core.enums import RhythmType
 from anasim.core.projection import loss_of_response
 from anasim.core.runtime import stimulus_effects
+from anasim.core.state import SimulationConfig
 from anasim.web import WebSession
 
 
@@ -251,3 +256,51 @@ def test_intubation_uses_unscaled_cardiovascular_hypnotic_ce():
     assert mid.state.hypnotic_ce < 1.5
     assert cardiovascular_hypnotic_ce(mid) > 3.0
     assert check_intubation(mid) is None
+
+
+def test_laryngospasm_blocks_intubation_and_asystole_cannot_laryngospasm(engine_factory, advance_time):
+    """Severe laryngospasm and light ketamine sedation block intubation; asystole cannot spasm."""
+    spasm = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    spasm.give_drug_bolus("propofol", 140.0)
+    advance_time(spasm, 45.0, dt=0.5)
+    spasm.laryngospasm_severity = 0.85
+    fb = check_intubation(spasm)
+    assert fb is not None and fb.blocked and fb.code == "laryngospasm_blocked"
+
+    ket = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    ket.give_drug_bolus("ketamine", 30.0)
+    advance_time(ket, 60.0, dt=1.0)
+    fb_ket = check_intubation(ket)
+    assert fb_ket is not None and fb_ket.blocked
+
+    sinus = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    sinus.set_airway_mode("Mask")
+    sinus.start_disturbance("stim_intubation_pulse")
+    advance_time(sinus, 10.0, dt=0.2)
+    assert sinus.laryngospasm_severity > 0.5
+
+    arrest = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    arrest.set_airway_mode("Mask")
+    arrest.set_rhythm("ASYSTOLE")
+    advance_time(arrest, 30.0, dt=1.0)
+    arrest.start_disturbance("stim_intubation_pulse")
+    advance_time(arrest, 10.0, dt=0.2)
+    assert arrest.laryngospasm_severity < 0.05
+
+
+def test_drug_administration_arrest_exemption_and_succinylcholine_contraindications(engine_factory):
+    """Arrest exempts awake NMBA warning; succinylcholine warns in MH and hyperkalemia."""
+    arrest = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    arrest.set_rhythm("VFIB")
+    arrest.step(0.5)
+    assert check_drug_administration(arrest, "succinylcholine") is None
+
+    mh = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True)
+    mh.start_malignant_hyperthermia()
+    fb_mh = check_drug_administration(mh, "succinylcholine")
+    assert fb_mh is not None and fb_mh.code == "succinylcholine_in_mh"
+
+    hyperk = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    hyperk.state.potassium = 6.2
+    fb_k = check_drug_administration(hyperk, "succinylcholine")
+    assert fb_k is not None and fb_k.code == "succinylcholine_in_hyperkalemia"

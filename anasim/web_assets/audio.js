@@ -3,6 +3,8 @@ import { $, minutesSeconds, setText } from "./display.js";
 
 const PULSE_GAP_S = 0.25;
 const ALARM_REPEAT_S = 5;
+const HIGH_PRIORITY_REPEAT_S = 3.5;
+const HIGH_PRIORITY_ALARMS = new Set(["Asystole", "VFIB", "VTACH", "Arrest"]);
 const SILENCE_MS = 120_000;
 const STALE_MS = 1000;
 
@@ -34,6 +36,7 @@ export class MonitorAudio {
       }
       this.stopNotes("alarm");
       this.nextAlarm = 0;
+      this.lastAlarmHighPriority = false;
       this.refresh();
     };
     for (const [name, slider] of Object.entries(this.sliders)) {
@@ -75,6 +78,7 @@ export class MonitorAudio {
       if (!this.enabled) return;
       if (this.timer === null) this.timer = setInterval(() => this.refresh(), 100);
       this.nextAlarm = 0;
+      this.lastAlarmHighPriority = false;
       this.refresh();
     } catch {
       this.enabled = false;
@@ -108,6 +112,7 @@ export class MonitorAudio {
     this.lastSampleTime = -Infinity;
     this.lastPulse = -Infinity;
     this.nextAlarm = 0;
+    this.lastAlarmHighPriority = false;
     this.stopNotes();
     this.syncControls();
   }
@@ -170,19 +175,36 @@ export class MonitorAudio {
     if (!this.playing()) {
       this.stopNotes();
       this.nextAlarm = 0;
+      this.lastAlarmHighPriority = false;
       return;
     }
-    const alarm = Object.keys(this.snapshot.alarms).length > 0 &&
+    const alarmKeys = Object.keys(this.snapshot.alarms);
+    const alarm = alarmKeys.length > 0 &&
       Number(this.sliders.alarm.value) > 0 && performance.now() >= this.silencedUntil;
     if (!alarm) {
       this.stopNotes("alarm");
       this.nextAlarm = 0;
+      this.lastAlarmHighPriority = false;
       return;
+    }
+    const highPriority = alarmKeys.some((name) => HIGH_PRIORITY_ALARMS.has(name));
+    if (highPriority && !this.lastAlarmHighPriority) {
+      // Interrupt lower-priority cadence immediately when a lethal rhythm or arrest alarm starts.
+      this.stopNotes("alarm");
+      this.nextAlarm = 0;
+    } else if (!highPriority) {
+      this.lastAlarmHighPriority = false;
     }
     const now = this.context.currentTime;
     if (now >= this.nextAlarm) {
-      for (const offset of [0, 0.22, 0.44]) this.tone("alarm", 780, now + offset, 0.14);
-      this.nextAlarm = now + ALARM_REPEAT_S;
+      if (highPriority) {
+        for (const offset of [0, 0.16, 0.32, 0.64, 0.80]) this.tone("alarm", 960, now + offset, 0.12);
+        this.nextAlarm = now + HIGH_PRIORITY_REPEAT_S;
+      } else {
+        for (const offset of [0, 0.22, 0.44]) this.tone("alarm", 780, now + offset, 0.14);
+        this.nextAlarm = now + ALARM_REPEAT_S;
+      }
+      this.lastAlarmHighPriority = highPriority;
     }
   }
 

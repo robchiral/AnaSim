@@ -68,8 +68,8 @@ class Patient:
         self._validate_demographics()
         self._calculate_metrics()
         self._validate_body_composition()
-        self._validate_organ_function()
         self._validate_conditions()
+        self._validate_organ_function()
 
     def _validate_demographics(self):
         """Normalize categorical values and enforce supported numeric inputs."""
@@ -132,6 +132,11 @@ class Patient:
                 "creatinine_clearance_ml_min", self.creatinine_clearance_ml_min,
                 *CREATININE_CLEARANCE_RANGE_ML_MIN, unit="mL/min",
             )
+            if self.renal_function == 1.0:
+                normal_crcl = max(1.0, (183.0 - 1.34 * self.age) * self.pregnancy.filtration)
+                inferred = self.creatinine_clearance_ml_min / normal_crcl
+                lo, hi = RENAL_FUNCTION_RANGE
+                self.renal_function = min(hi, max(lo, inferred))
         self.hepatic_function = bounded_number(
             "hepatic_function", self.hepatic_function, *HEPATIC_FUNCTION_RANGE
         )

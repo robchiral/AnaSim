@@ -39,12 +39,16 @@ class RespiratoryFatigue:
     def available_pressure(self) -> float:
         return self.MAX_PRESSURE * self.muscle_strength * (1.0 - self.fatigue)
 
-    def step(self, dt: float, pressure_area: float) -> None:
+    def step(self, dt: float, pressure_area: float, *, load_scale: float = 1.0) -> None:
         """Integrate actual positive muscle pressure, including isometric effort."""
         if dt <= 0.0:  # Mechanics also advances zero-duration boundary events.
             return
         reference = self.MAX_PRESSURE * self.muscle_strength
-        load = max(0.0, pressure_area) / (dt * reference) if reference > 0.0 else 0.0
+        load = (
+            max(0.0, pressure_area) * max(1.0, load_scale) / (dt * reference)
+            if reference > 0.0
+            else 0.0
+        )
         self.load += (load - self.load) * -math.expm1(-dt / self.LOAD_TAU_S)
         oxygen = clamp01(self.oxygen_fraction)
         sustainable = self.SUSTAINABLE_LOAD * oxygen

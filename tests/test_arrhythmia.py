@@ -467,3 +467,15 @@ def test_post_shock_escape_preserves_positive_remaining_recurrence_hazard():
         amiodarone=0.0, energy_reserve=0.4,
     )
     assert model._remaining.get("recurrence", 1.0) > 0.0
+
+
+def test_amiodarone_slows_afib_ventricular_rate_below_untreated_floor(patient):
+    """Amiodarone AV-nodal slowing lowers AFib ventricular rate below the 110 bpm untreated floor."""
+    afib = HemodynamicModel(patient)
+    afib.rhythm_type = RhythmType.AFIB
+    for _ in range(30):
+        af_base = afib.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0)
+    for _ in range(30):
+        af_amio = afib.step(1.0, 0.0, 0.0, 0.0, -2.0, 40.0, 95.0, ce_amiodarone_hr=8.0)
+    assert af_base.hr >= 109.0
+    assert af_amio.hr < 95.0

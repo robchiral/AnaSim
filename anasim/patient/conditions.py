@@ -45,6 +45,7 @@ class PregnancyFactors:
     paco2: float = 40.0
     ph: float = 7.4
     supine_output_loss: float = 0.0
+    mac_factor: float = 1.0
 
 
 def pregnancy_factors(gestational_age_weeks: float) -> PregnancyFactors:
@@ -86,4 +87,6 @@ def pregnancy_factors(gestational_age_weeks: float) -> PregnancyFactors:
         ph=7.4 + 0.04 * early,
         # Humphries 2019: supine CO is 16.4% below left lateral at 35 to 38 weeks.
         supine_output_loss=0.164 * compression,
+        # Gin and Chan 1994: isoflurane MAC falls 28% in early pregnancy (8-12 wk).
+        mac_factor=1.0 - 0.28 * early,
     )

@@ -115,7 +115,7 @@ def test_invalid_patient_values_are_rejected():
         ({"baseline_hb": 5.9}, "baseline_hb"),
         ({"baseline_hct": 0.61}, "baseline_hct"),
         ({"baseline_hb": 8.0, "baseline_hct": 0.42}, "grossly inconsistent"),
-        ({"renal_function": 0.39}, "renal_function"),
+        ({"renal_function": 0.04}, "renal_function"),
         ({"creatinine_clearance_ml_min": float("nan")}, "creatinine_clearance_ml_min"),
         ({"creatinine_clearance_ml_min": True}, "creatinine_clearance_ml_min"),
         ({"creatinine_clearance_ml_min": 4.2}, "creatinine_clearance_ml_min"),

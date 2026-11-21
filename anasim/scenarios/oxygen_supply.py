@@ -1,7 +1,6 @@
 """Oxygen supply failure recognition and response scenario."""
 
 from anasim.core.action_log import ACTION_FGF, ACTION_OXYGEN_SUPPLY
-from anasim.core.projection import sync_state_from_models
 
 from .base import (
     CRISIS_ONSET_S,
@@ -12,11 +11,11 @@ from .base import (
     ScenarioStep,
     action_taken_in_case,
     create_observe_step,
+    equilibrate_maintenance_fio2,
     format_unmet_int,
     join_messages,
     require_all,
     require_oxygen_flow,
-    require_oxygen_supply_action,
     require_oxygenation,
     require_tracheal_ventilation,
     stability_outcome,
@@ -25,18 +24,31 @@ from .base import (
 
 
 def _prepare_oxygen_supply_failure(engine) -> None:
-    """Start on low-flow air/oxygen maintenance so O2 loss causes hypoxic rebreathing."""
+    """Start on low-flow air/oxygen maintenance (~38% FiO2 across weights) so O2 loss causes hypoxic rebreathing."""
     engine.set_oxygen_supply_connected(True)
-    engine.set_fgf(0.45, 0.75, 0.0)
+    equilibrate_maintenance_fio2(engine, target_fio2=0.385, min_air_l_min=0.75, air_vo2_factor=3.5)
 
-    circuit = engine.circuit
-    circuit.equilibrate(engine.resp._pulmonary_o2_uptake, circuit.composition.fi_agent)
-    baseline_fio2 = circuit.composition.fio2
-    engine.resp.equilibrate_oxygen(
-        baseline_fio2, 1.0, engine.vent.settings.peep, fin2=circuit.composition.fin2
+
+def _backup_oxygen_reconnected(engine) -> bool:
+    """Return whether backup oxygen was connected after a supply failure in this case."""
+    if not engine.circuit.oxygen_supply_connected:
+        return False
+    saw_failure = False
+    for record in engine.actions.since_case(ACTION_OXYGEN_SUPPLY):
+        if record.label == "disconnected":
+            saw_failure = True
+        elif record.label == "connected" and saw_failure:
+            return True
+    return False
+
+
+def _oxygen_outcome_recovered(engine) -> bool:
+    """Accept either high-flow washout or safe cylinder-conserving O2 recovery once backup is connected."""
+    return (
+        _backup_oxygen_reconnected(engine)
+        and engine.circuit.composition.fio2 >= 0.40
+        and engine.state.sao2 >= 94.0
     )
-    engine._tracheal_fio2 = baseline_fio2
-    sync_state_from_models(engine)
 
 
 def _require_oxygen_recovery(engine) -> tuple[bool, str]:
@@ -57,7 +69,6 @@ def _require_oxygen_recovery(engine) -> tuple[bool, str]:
 
 
 def create_oxygen_supply_failure() -> Scenario:
-    backup_connected = require_oxygen_supply_action(True, "Connect backup oxygen")
     return Scenario(
         id="oxygen_supply_failure",
         name="O₂ supply failure",
@@ -77,10 +88,10 @@ def create_oxygen_supply_failure() -> Scenario:
             completed_label="Backup oxygen connected",
         ),),
         outcomes=(
-            CaseOutcome("supply", "Oxygen supply restored", lambda engine: backup_connected(engine)[0],
+            CaseOutcome("supply", "Oxygen supply restored", _backup_oxygen_reconnected,
                         "Restore oxygen delivery using a verified backup source."),
             CaseOutcome("oxygen", "Circuit oxygen concentration recovered",
-                        lambda engine: _require_oxygen_recovery(engine)[0],
+                        _oxygen_outcome_recovered,
                         "Verify delivered oxygen at the circuit analyzer after changing the supply.",
                         milestone=True),
             CaseOutcome("ventilation", "Tracheal ventilation maintained", tracheal_ventilation_confirmed,
@@ -106,7 +117,10 @@ def create_oxygen_supply_failure() -> Scenario:
                     "The machine's auxiliary O₂ outlet shares its supply and is not an independent source."
                 ),
                 check_requirements=require_all(
-                    backup_connected,
+                    lambda engine: (
+                        _backup_oxygen_reconnected(engine),
+                        "" if _backup_oxygen_reconnected(engine) else "Connect backup oxygen",
+                    ),
                     lambda engine: (
                         action_taken_in_case(engine, ACTION_FGF),
                         "Set fresh gas flow for this case",

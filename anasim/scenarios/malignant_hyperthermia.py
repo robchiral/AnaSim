@@ -13,9 +13,9 @@ from .base import (
     CaseOutcome,
     Scenario,
     ScenarioStep,
+    check_etco2_range,
     create_observe_step,
     format_unmet_int,
-    monitor_value,
     require_all,
     require_infusion_started,
     require_map_at_least,
@@ -42,6 +42,11 @@ def _require_vaporizer_off(engine) -> tuple[bool, str]:
     return met, "" if met else "Turn off sevoflurane"
 
 
+def _triggers_avoided(engine) -> bool:
+    sux_post = engine.actions.since_event("malignant_hyperthermia", ACTION_DRUG_BOLUS, labels=("succinylcholine",))
+    return _require_vaporizer_off(engine)[0] and not sux_post
+
+
 def _require_controlled(engine) -> tuple[bool, str]:
     met = engine.malignant_hyperthermia.severity < 0.05
     return met, "" if met else "Signs of MH persist; repeat dantrolene"
@@ -60,12 +65,7 @@ def _require_temperature_managed(engine) -> tuple[bool, str]:
 
 
 def _require_etco2_normal(engine) -> tuple[bool, str]:
-    if not engine.state.etco2_signal_valid:
-        return False, "Awaiting exhaled CO₂"
-    etco2 = monitor_value(engine, "etco2")
-    met = etco2 < 45.0
-    shown_etco2 = max(int(display_int(etco2)), 45)
-    return met, "" if met else f"EtCO₂: {shown_etco2}/<45 mmHg"
+    return check_etco2_range(engine, 30, 45)
 
 
 def create_malignant_hyperthermia() -> Scenario:
@@ -74,6 +74,8 @@ def create_malignant_hyperthermia() -> Scenario:
 
     def capture_baseline(engine) -> None:
         nonlocal onset_vent, onset_mv
+        if engine.state.bair_hugger_target <= 0.0:
+            engine.set_bair_hugger(38.0)
         onset_vent, onset_mv = replace(engine.vent.settings), engine.state.mv
 
     def start(engine) -> None:
@@ -88,7 +90,9 @@ def create_malignant_hyperthermia() -> Scenario:
         )
         if not (engine.vent.is_on and increased):
             return False, "Increase the ventilator rate or tidal volume"
-        mv, target = engine.state.mv, 2.0 * onset_mv
+        cap = 13.0 if engine.patient.copd_severity >= 0.5 else 15.0
+        target = min(2.0 * onset_mv, max(cap, onset_mv + 2.0))
+        mv = engine.state.mv
         met = mv >= target
         return met, "" if met else f"Minute ventilation: {mv:.1f}/{target:.1f}+ L/min"
 
@@ -143,6 +147,7 @@ def create_malignant_hyperthermia() -> Scenario:
                 title="Stabilize and reassess",
                 instruction=(
                     "Follow EtCO₂, HR, rigidity, blood gases, and core temperature. "
+                    "Reduce ventilation toward normocapnia (<b>EtCO₂ 30-45 mmHg</b>) as hypermetabolism resolves. "
                     "Turn off the forced-air warmer. Start <b>surface cooling</b> if core temperature "
                     "exceeds 39 °C or rises rapidly, and stop it below 38 °C.<br><br>"
                     "In practice, check potassium, CK, myoglobin, glucose, coagulation, and urine output. "
@@ -164,7 +169,7 @@ def create_malignant_hyperthermia() -> Scenario:
             ),
         ],
         outcomes=(
-            CaseOutcome("triggers", "Sevoflurane stopped", lambda engine: _require_vaporizer_off(engine)[0],
+            CaseOutcome("triggers", "Triggering agents stopped and avoided", _triggers_avoided,
                         "Stop volatile anesthetics and avoid succinylcholine."),
             CaseOutcome("oxygen", "High-flow oxygen given", lambda engine: oxygen(engine)[0],
                         "Give 100% oxygen at high flow to wash out the volatile agent.", milestone=True),
