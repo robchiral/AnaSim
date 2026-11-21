@@ -599,8 +599,9 @@ flow pressure-limited; restoring pressure raises supply up to the hypocapnic
 flow ceiling (Brian 1998).
 
 Cerebral oxygen demand scales with temperature (about 7% per °C), anesthetic
-depth, and hypermetabolic stress from seizures or malignant hyperthermia, so
-hypothermia slows both acute oxygen depletion and ischemic injury. Brain oxygen
+depth, and seizure activity, with flow-metabolism coupling raising cerebral
+blood flow up to twice baseline when pressure and oxygen content allow.
+Hypothermia slows both acute oxygen depletion and ischemic injury. Brain oxygen
 stores buffer a fall in supply for a few seconds. Electrical function ramps down
 from 60% of normal supply to failure at 35% (Astrup 1981), so responsiveness,
 airway tone, and BIS fail (Nebout 2013), and near-complete failure stops
@@ -1161,11 +1162,12 @@ Optional monitor audio follows plethysmograph pulses and active alarms. Alarm
 silence lasts 2 minutes of real time and ends early if a new alarm sounds or an
 active alarm switches between its low and high limits. Lethal rhythm and arrest
 alarms (Asystole, VFIB, VTACH, and Arrest) are raised as distinct alarms, so
-they break prior silence and play a faster, higher-pitched cadence that
-interrupts routine alarms. Core temperature alarms fire outside 35.5 to 38.0 °C,
-and high peak airway pressure alarms trigger above 40 cmH₂O, or at 40 cmH₂O when
-a volume-targeted or manual breath is pressure-limited before delivering its
-target volume.
+they highlight the heart-rate display with a rhythm alarm label, break prior
+silence, and play a faster, higher-pitched cadence that interrupts routine
+alarms. Core temperature alarms fire outside 35.5 to 38.0 °C,
+and high peak airway pressure alarms trigger above 40 cmH₂O, or when a
+pressure-limited ventilator breath reaches its pressure limit (or a manual bag
+breath reaches 40 cmH₂O) before delivering its target volume.
 
 ### ECG, arterial pressure, and pulse oximetry
 
@@ -1281,8 +1283,9 @@ anaphylaxis cases equilibrate baseline fresh gas flows of air and oxygen to
 resting oxygen consumption (about 38 to 40% FiO₂ across patient weights). The
 malignant hyperthermia case begins with the forced-air warmer on at 38 °C, caps
 the hyperventilation target at 15 L/min (13 L/min in moderate-to-severe COPD, or
-at least 2 L/min above baseline), requires recovery EtCO₂ of 30 to 45 mmHg in
-the guided stabilization step, and fails the trigger-avoidance outcome if
+at least 2 L/min above baseline), requires recovery EtCO₂ within patient-adjusted
+normocapnic bounds (30 to 45 mmHg in nonpregnant adults without COPD) in the
+guided stabilization step, and fails the trigger-avoidance outcome if
 succinylcholine is given after crisis onset.
 
 Guided requirements count actions from the start of the case, or from crisis

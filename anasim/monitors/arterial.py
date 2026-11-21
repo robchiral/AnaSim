@@ -9,7 +9,10 @@ import numpy as np
 from scipy.linalg import expm
 
 from anasim.core.utils import clamp
-from anasim.physiology.resuscitation import COMPRESSION_DUTY
+from anasim.physiology.resuscitation import (
+    compression_mean_pressure,
+    compression_waveform_pressure,
+)
 
 from .cardiac_cycle import CardiacCycleSample
 
@@ -406,25 +409,23 @@ class ArterialWaveformRenderer:
         else:
             pressure = self._waveform_pressure(sample)
 
-        self._pressure = pressure = float(pressure)
+        self._pressure = pressure
         return ArterialPressureSample(
             pressure=pressure,
-            systolic=float(self._systolic),
-            diastolic=float(self._diastolic),
-            mean=float(self._mean_pressure),
+            systolic=self._systolic,
+            diastolic=self._diastolic,
+            mean=self._mean_pressure,
         )
 
     def step_compressions(self, sample: CardiacCycleSample, systolic: float, diastolic: float) -> ArterialPressureSample:
         """Render a compression pulse over the relaxation pressure between compressions."""
-        compression = sample.phase / COMPRESSION_DUTY
-        shape = math.sin(math.pi * compression) if compression < 1.0 else 0.0
-        pressure = diastolic + (systolic - diastolic) * shape
+        pressure = compression_waveform_pressure(sample.phase, systolic, diastolic)
         # Stopping compressions releases pressure to the relaxation level.
         self._pressure = float(diastolic)
         # Organized beats restart from their own diastolic pressure after compressions.
         self._initialized = self._recovering_from_no_flow = False
         self._end_pressure = self._windkessel_offset = 0.0
-        mean = diastolic + (systolic - diastolic) * 2.0 * COMPRESSION_DUTY / math.pi
+        mean = compression_mean_pressure(systolic, diastolic)
         return ArterialPressureSample(float(pressure), float(systolic), float(diastolic), float(mean))
 
     def note_compression_baseline(self, diastolic: float) -> None:

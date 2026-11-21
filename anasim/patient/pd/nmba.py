@@ -114,7 +114,7 @@ class TOFModel:
 
     def simulate_decay(
         self, roc: MammillaryPK, *, max_seconds: int = 7200,
-        mac_sevo: float = 0.0, mac_n2o: float = 0.0,
+        mac_sevo: float = 0.0,
     ) -> float:
         """Minutes for adductor pollicis rocuronium to halve with infusions stopped.
 
@@ -182,16 +182,27 @@ class TOFModel:
 
     def step_recovery(self, dt_sec: float, roc: MammillaryPK, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """Advance binding and the effect sites after the rocuronium PK step; return TOF %."""
-        dt_min = dt_sec / 60.0
         sugammadex, complex_ = self.sugammadex, self.complex
+        cp = roc.state.c1
+        if (
+            cp == 0.0
+            and self.ce == 0.0
+            and self.ce_central == 0.0
+            and sugammadex.state.c1 == 0.0
+            and sugammadex.state.c2 == 0.0
+            and complex_.state.c1 == 0.0
+            and complex_.state.c2 == 0.0
+        ):
+            return 100.0
+        dt_min = dt_sec / 60.0
         if sugammadex.state.c1 > 0.0 or complex_.state.c1 > 0.0:
             self._bind_in_plasma(dt_min, roc)
+            cp = roc.state.c1
         sugammadex.step(dt_sec, 0.0)
         complex_.step(dt_sec, 0.0)
 
         ke0 = self._effective_ke0(mac_sevo)
         removal = self.ks * sugammadex.state.c1
-        cp = roc.state.c1
         delivery_time = dt_min * roc.circulation
         self.ce = self._effect_site(self.ce, cp, ke0, removal, delivery_time)
         ratio = self.central_ke0_ratio

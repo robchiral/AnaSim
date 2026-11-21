@@ -528,6 +528,15 @@ def require_fgf_reduced(max_total_l_min: float) -> Requirement:
     return check
 
 
+def normocapnia_bounds(engine, *, baseline_low: float = 35.0) -> tuple[int, int]:
+    """Expected displayed EtCO2 range (mmHg) adjusted for resting PaCO2 (pregnancy) and COPD dead space."""
+    paco2_drop = max(0.0, 40.0 - engine.resp.paco2_setpoint)
+    copd_shift = 4.0 * max(0.0, engine.patient.copd_severity)
+    low = max(20, round(baseline_low - paco2_drop - copd_shift))
+    high = max(low + 8, round(45.0 - paco2_drop))
+    return low, high
+
+
 def check_etco2_range(engine, low: int, high: int) -> tuple[bool, str]:
     """Require a valid displayed EtCO2 within the inclusive [low, high] mmHg bounds."""
     if not engine.state.etco2_signal_valid:

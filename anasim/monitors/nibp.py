@@ -2,9 +2,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from anasim.core.enums import RhythmType
-
-MIN_PULSE_PRESSURE_MMHG = 5.0
+from anasim.core.constants import ARREST_PULSE_PRESSURE_MMHG
+from anasim.core.enums import PULSELESS_RHYTHMS, RhythmType
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,8 +88,8 @@ class NIBPMonitor:
         # Accumulate hemodynamic validity and pressures across the active deflation sweep.
         deflation_time = (self.cuff_pressure - 50.0) / self._deflation_rate
         sweep_dt = min(remaining, max(0.0, deflation_time))
-        arrest_rhythm = rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE)
-        pulseless_pea = (true_sys - true_dia) < MIN_PULSE_PRESSURE_MMHG
+        arrest_rhythm = rhythm_type in PULSELESS_RHYTHMS
+        pulseless_pea = (true_sys - true_dia) < ARREST_PULSE_PRESSURE_MMHG
         step_disrupted = arrest_rhythm or compressions or pulseless_pea or true_map <= 30.0
         if sweep_dt > 0.0:
             if self._deflation_dt <= 0.0:

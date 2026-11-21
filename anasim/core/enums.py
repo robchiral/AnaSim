@@ -9,3 +9,6 @@ class RhythmType(Enum):
     VTACH = "Ventricular tachycardia"
     VFIB = "Ventricular fibrillation"
     ASYSTOLE = "Asystole"
+
+
+PULSELESS_RHYTHMS = frozenset((RhythmType.VFIB, RhythmType.ASYSTOLE))

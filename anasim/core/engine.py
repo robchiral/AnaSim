@@ -8,10 +8,9 @@ from anasim.core.constants import (
     APL_DEFAULT_CMH2O,
     APL_RANGE_CMH2O,
     BAG_P_MAX_DEFAULT,
-    CIRCULATION_LIMIT_FRACTION,
     AirwayTuning,
 )
-from anasim.core.enums import RhythmType
+from anasim.core.enums import PULSELESS_RHYTHMS, RhythmType
 from anasim.core.recorder import DataRecorder
 from anasim.core.utils import clamp, clamp01
 from anasim.machine.circuit import CircleSystem
@@ -269,6 +268,9 @@ class SimulationEngine(DrugControllerMixin):
 
         # Intravenous drug PK, keyed like the drug registry.
         self.pk = {spec.key: spec.pk_model(self.patient, self.config) for spec in DRUG_REGISTRY}
+        self._pk_sync_entries = tuple(
+            (self.pk[spec.key], spec.ce_field, spec.cp_field) for spec in DRUG_REGISTRY
+        )
         p = self.patient
         pump_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
         self.pump_pk = {key: get_drug_spec(key).pk_model(pump_patient, self.config) for key in POPULATION_TCI_DRUGS}
@@ -407,8 +409,7 @@ class SimulationEngine(DrugControllerMixin):
         dose = bounded_number("calcium chloride dose", mg, 0.0, 10000.0, unit="mg")
         if dose == 0.0:
             raise ValueError("calcium chloride dose must be greater than zero")
-        base_co = max(0.1, self.hemo.base_co_l_min)
-        circulation = clamp01(self.hemo.state.co / (CIRCULATION_LIMIT_FRACTION * base_co))
+        circulation = self.hemo.circulation_fraction()
         self.hemo.fluids.give_calcium_chloride(dose * 0.0068, circulation=circulation, bolus_push_s=90.0)
         self.state.ionized_calcium = float(self.hemo.fluids.ionized_calcium(self.resp.state.ph_37))
         self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="calcium_chloride", amount=dose)
@@ -712,7 +713,7 @@ class SimulationEngine(DrugControllerMixin):
         if status != "ready":
             return ShockResult.NOT_READY
         if synchronized:
-            if self.hemo.state.hr <= 0.0 or self.hemo.state.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE):
+            if self.hemo.state.hr <= 0.0 or self.hemo.state.rhythm_type in PULSELESS_RHYTHMS:
                 return ShockResult.NOT_DELIVERED
             device.waiting_for_r = True
             return ShockResult.PENDING
@@ -823,8 +824,8 @@ class SimulationEngine(DrugControllerMixin):
         """Draw an arterial sample; its result is ready after the analysis time."""
         state = self.state
         fluids = self.hemo.fluids
-        abg_ph = float(self.resp._blood_ph[1])
-        abg_paco2 = float(self.resp._blood_pressures[1])
+        abg_ph = float(self.resp.state.ph_37)
+        abg_paco2 = float(self.resp.state.pa_co2_37)
         abg_hco3 = float(state.hco3)
         result = BloodGasResult(
             drawn_at=state.time, ph=abg_ph, pa_co2=abg_paco2, pao2=self.resp.arterial_po2_at_37(),
@@ -875,7 +876,7 @@ class SimulationEngine(DrugControllerMixin):
         """The heart's own beats perfuse now; arrest is flagged only after 15 s without them."""
         return (
             self._pulseless_s == 0.0
-            and self.hemo.state.rhythm_type not in (RhythmType.VFIB, RhythmType.ASYSTOLE)
+            and self.hemo.state.rhythm_type not in PULSELESS_RHYTHMS
         )
 
     @property
@@ -893,7 +894,7 @@ class SimulationEngine(DrugControllerMixin):
         if key == "roc":
             return self.tof_pd.simulate_decay(
                 self.pk["roc"], max_seconds=max_seconds,
-                mac_sevo=self.pk_sevo.state.mac, mac_n2o=self.pk_n2o.state.mac,
+                mac_sevo=self.pk_sevo.state.mac,
             )
         pump_model = self.pump_pk.get(key)
         if pump_model is not None and (key in self.tci or pump_model.state.ce > 1e-12):

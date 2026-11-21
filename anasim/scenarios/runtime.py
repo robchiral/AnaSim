@@ -37,6 +37,7 @@ PracticeMode = Literal["guided", "independent"]
 
 SAFETY_REVIEW = {
     "awake_intubation": "Establish appropriate intubating conditions before airway instrumentation.",
+    "laryngospasm_blocked": "Treat severe laryngospasm before attempting tracheal intubation.",
     "intubation_awareness": "Neuromuscular block does not establish hypnosis.",
     "awake_neuromuscular_block": "Establish hypnosis before administering a neuromuscular blocker.",
     "unsafe_airway_removal": "Confirm ventilation, neuromuscular recovery, and a safe anesthetic plane before removing the tube.",
@@ -177,7 +178,7 @@ class CaseRun:
              "time": self.achieved_at.get(o.id)} for o in self.scenario.outcomes
         ]
         points = list(dict.fromkeys(
-            [SAFETY_REVIEW[event["code"]] for event in self.safety]
+            [SAFETY_REVIEW.get(event["code"], event["text"]) for event in self.safety]
             + [o.review for o in self.scenario.outcomes if o.id not in self.achieved_at]
         ))[:3]
         self.report = {

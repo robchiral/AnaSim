@@ -441,11 +441,24 @@ export class Monitor {
   }
 
   updateAlarms(alarms) {
+    const rhythmAlarm = [
+      ["Asystole", "ASYSTOLE"],
+      ["VFIB", "VFIB"],
+      ["VTACH", "VTACH"],
+      ["Arrest", "ARREST"],
+    ].find(([key]) => alarms[key]);
+    const badge = this.fields?.["v-rhythm-alarm"];
+    if (badge) {
+      badge.hidden = !rhythmAlarm;
+      setText(badge, rhythmAlarm ? rhythmAlarm[1] : "");
+    }
     for (const box of this.alarmBoxes) {
       const name = box.dataset.alarm;
-      const level = name ? alarms[name] : undefined;
-      box.classList.toggle("alarm-low", level === "low");
+      const critical = name === "HR" && Boolean(rhythmAlarm);
+      const level = critical ? "high" : (name ? alarms[name] : undefined);
+      box.classList.toggle("alarm-low", !critical && level === "low");
       box.classList.toggle("alarm-high", level === "high");
+      box.classList.toggle("alarm-critical", critical);
     }
   }
 }

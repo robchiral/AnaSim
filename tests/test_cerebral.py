@@ -294,3 +294,19 @@ def test_cerebral_cmro2_neuroprotection_and_chronic_htn_autoregulation(engine_fa
     assert normotensive.dysfunction == 0.0
     assert hypertensive.dysfunction > 0.10
     assert engine_factory(baseline_map=140.0).cerebral.baseline_map == 140.0
+
+
+def test_normoxic_normotensive_hyperthermia_preserves_cortical_function_while_hypoxia_worsens():
+    """Neurovascular flow-metabolism coupling preserves cerebral oxygenation during normoxic,
+    normotensive hyperthermia/MH, while hypoxic or hypotensive fever still accelerates injury."""
+    warm_normoxic = CerebralModel(13.5)
+    warm_normoxic.step(300.0, 85.0, 13.5, 99.0, 40.0, 7.4, temp_c=40.5)
+    assert warm_normoxic.cortical_function > 0.99
+    assert warm_normoxic.unresponsiveness < 0.01
+
+    normo_hypoxic = CerebralModel(13.5)
+    warm_hypoxic = CerebralModel(13.5)
+    normo_hypoxic.step(180.0, 22.0, 13.5, 50.0, 40.0, 7.35, temp_c=37.0)
+    warm_hypoxic.step(180.0, 22.0, 13.5, 50.0, 40.0, 7.35, temp_c=40.5)
+    assert warm_hypoxic.anoxic_s > normo_hypoxic.anoxic_s
+    assert warm_hypoxic.tissue_oxygen < normo_hypoxic.tissue_oxygen

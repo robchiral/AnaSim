@@ -66,6 +66,23 @@ class PendingBloodSync:
         self.albumin_shift_retained_g *= keep
         self.blood_urine_l *= keep
 
+    def reset(self) -> None:
+        self.retention_factor = 1.0
+        self.transfused_cells_l = 0.0
+        self.retained_cells_l = 0.0
+        self.carbon_mmol = 0.0
+        self.blood_carbon_in_mmol = 0.0
+        self.blood_carbon_retained_mmol = 0.0
+        self.blood_base_in_meq = 0.0
+        self.blood_base_retained_meq = 0.0
+        self.infuse_base_meq = 0.0
+        self.water_shift_total_l = 0.0
+        self.water_shift_retained_l = 0.0
+        self.albumin_shift_total_g = 0.0
+        self.albumin_shift_retained_g = 0.0
+        self.blood_urine_l = 0.0
+        self.bled_base_est_meq = 0.0
+
 
 # A 3-week-old SAGM unit (Rabcuka 2025, Table 3): pH 6.5 and CO2 13.0 kPa, with
 # supernatant potassium 38 and lactate 22.5 mmol/L. Sodium is the additive's
@@ -154,6 +171,7 @@ class FluidBalance:
         self.bicarbonate_excreted_mmol = 0.0
         self.urine_pending_l = 0.0
         self._blood_sync = PendingBloodSync()
+        self._spare_blood_sync = PendingBloodSync()
         self._running_blood_base_meq: float | None = None
         self.lactate_loss_pending_l = 0.0
         self._lysed_k_mmol = 0.0
@@ -187,13 +205,22 @@ class FluidBalance:
         self.icf_l -= moved
 
     @property
+    def plasma_albumin_g_l(self) -> float:
+        return self.plasma_albumin_g / self.plasma_l
+
+    @property
     def plasma_buffers(self) -> PlasmaBuffers:
-        return PlasmaBuffers(self.plasma_albumin_g / self.plasma_l, self.concentration("phosphate"))
+        return PlasmaBuffers(self.plasma_albumin_g_l, self.concentration("phosphate"))
 
     @property
     def interstitial_buffers(self) -> PlasmaBuffers:
         return PlasmaBuffers(self.interstitial_albumin_g / self.interstitial_l,
                              self.concentration("phosphate"), self.cell_buffer_mmol / self.interstitial_l)
+
+    def adjust_running_blood_base(self, delta_meq: float) -> None:
+        """Apply an external correction to the running blood base estimate if initialized."""
+        if self._running_blood_base_meq is not None:
+            self._running_blood_base_meq += delta_meq
 
     def _ensure_running_blood_base(self) -> float:
         if self._running_blood_base_meq is None:
@@ -218,7 +245,10 @@ class FluidBalance:
     def consume_blood_sync(self) -> PendingBloodSync:
         """Return and reset accumulated vascular transfers for respiratory synchronization."""
         sync = self._blood_sync
-        self._blood_sync = PendingBloodSync()
+        spare = self._spare_blood_sync
+        spare.reset()
+        self._blood_sync = spare
+        self._spare_blood_sync = sync
         self._running_blood_base_meq = None
         return sync
 

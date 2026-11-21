@@ -144,7 +144,12 @@ export class Controls {
     try {
       return await this.send(name, args);
     } finally {
-      button.disabled = false;
+      if (!this.ended) {
+        button.disabled = false;
+        if (this.state?.defibrillator && (button.id === "c-shock" || button.id === "c-charge")) {
+          this.syncDefibrillator(this.state.defibrillator);
+        }
+      }
     }
   }
 
@@ -753,8 +758,9 @@ export class Controls {
     setText($("clinical-feedback-text"), feedback?.message ?? "");
   }
 
-  sync(c, time) {
+  sync(c, time, ended = false) {
     this.state = c;
+    this.ended = Boolean(ended);
     const observations = [];
     if (c.convulsions) observations.push("Generalized convulsions");
     if (c.muscle_rigidity) observations.push("Generalized muscle rigidity");

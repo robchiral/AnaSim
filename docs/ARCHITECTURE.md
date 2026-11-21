@@ -111,8 +111,10 @@ The local and hosted apps share `web_assets/` and
 [`WebSession`](../anasim/web.py), which applies commands and returns
 measurements, waveforms, controls, and case state. Commands are processed in
 order, and the simulation speed setting converts elapsed real time into
-simulation time. The session advances the engine in 0.05-second steps, and the
-monitors sample waveforms every 10 ms within each step.
+simulation time. The session advances the engine in 0.05-second steps at low
+speed and coarser steps (up to 0.5 seconds) above 4x speed while stopping at
+scheduled events, trend updates, and recording intervals; monitors sample
+waveforms every 10 ms within each step.
 
 The local Python server runs the session on its own clock and saves CSV
 recordings to disk. It accepts requests from the same origin under a

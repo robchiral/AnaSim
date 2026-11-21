@@ -416,7 +416,11 @@ def _run_hidden_settle(
 
     nom_pk = nominal_pk or {}
     steps = max(1, int(profile.settle_seconds / profile.settle_dt_seconds))
-    for _ in range(steps):
+    # Capnograph and EtCO2 readout latch within ~2-3 breaths (~15 s), so only
+    # collect 100 Hz airway samples during the final settle window.
+    capno_start = max(0, steps - math.ceil(15.0 / profile.settle_dt_seconds))
+    for step_idx in range(steps):
+        collect_capno = step_idx >= capno_start
         thermal = engine.thermal
         thermal.depth_index, thermal.metabolic_factor = thermal.depth_and_metabolism(
             engine.patient.baseline_temp, projection_core.thermal_hypnotic_ce(engine), engine.state.mac,
@@ -449,7 +453,9 @@ def _run_hidden_settle(
             if spec is None or spec.finite
             else runtime_core.stimulus_effects(engine, profile.settle_dt_seconds)
         )
-        physiology = runtime_core.step_physiology(engine, profile.settle_dt_seconds, stimulus)
+        physiology = runtime_core.step_physiology(
+            engine, profile.settle_dt_seconds, stimulus, collect_samples=collect_capno,
+        )
         projection_core.project_runtime_physiology(engine, physiology)
         hemo_state = physiology.hemo_state
         cardiac_sample = engine.cardiac_cycle.seed(engine.state.hr, hemo_state.rhythm_type)
@@ -461,9 +467,10 @@ def _run_hidden_settle(
             pulse_pressure_factor=hemo_state.pulse_pressure_factor,
         )
         projection_core.project_arterial(engine.state, arterial_sample, engine.art_line.seed(arterial_sample))
-        engine.state.capno_co2 = float(
-            monitor_core.compute_capno_value(engine, physiology.resp_state, profile.settle_dt_seconds)[-1]
-        )
+        if collect_capno:
+            engine.state.capno_co2 = float(
+                monitor_core.compute_capno_value(engine, physiology.resp_state, profile.settle_dt_seconds)[-1]
+            )
         engine.state.time += profile.settle_dt_seconds
 
     engine.hemo.config = saved_hemo_config

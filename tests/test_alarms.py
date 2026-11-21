@@ -129,3 +129,42 @@ def test_ppeak_temperature_lethal_rhythm_alarms_and_st_blanking(engine_factory, 
         if pea.state.cardiac_arrest:
             break
     assert pea.state.cardiac_arrest is True and pea.state.alarms.get("Arrest", {}).get("high") is True
+
+
+def test_ppeak_and_vte_alarms_cover_lowered_pmax_loose_mask_disconnect_and_mode_switch(
+    engine_factory, advance_time
+):
+    """Pressure-limited VCV alarms at lowered p_max and loose mask, empty-bellows PCV-VG stays silent,
+    AirwayType.NONE disconnect fires VTe, and PCV->VCV mode switch does not false-alarm VTe."""
+    low_pmax = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    low_pmax.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5.0, ie="1:2", p_max=30.0)
+    low_pmax.set_airway_obstruction(1.0)
+    advance_time(low_pmax, 10.0, dt=0.2)
+    assert low_pmax.state.alarms.get("Ppeak", {}).get("high") is True
+
+    loose = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    loose.set_airway_mode("Mask")
+    loose.set_mask_seal(0.5)
+    loose.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5.0, ie="1:2", p_max=40.0)
+    loose.set_airway_obstruction(1.0)
+    advance_time(loose, 10.0, dt=0.2)
+    assert loose.state.alarms.get("Ppeak", {}).get("high") is True
+
+    empty_vg = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    empty_vg.set_vent_settings(mode="PCV-VG", rr=12, vt=0.5, peep=5.0, ie="1:2", p_max=40.0)
+    empty_vg.set_fgf(0.0, 0.0, 0.0)
+    empty_vg.circuit.reservoir_volume = 0.0
+    advance_time(empty_vg, 15.0, dt=0.5)
+    assert "Ppeak" not in empty_vg.state.alarms
+
+    disc = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    disc.set_airway_mode("None")
+    advance_time(disc, 12.0, dt=0.5)
+    assert disc.state.alarms.get("VTe", {}).get("low") is True
+
+    switched = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    switched.set_vent_settings(mode="PCV", rr=12, vt=0.5, p_insp=14.0, peep=5.0, ie="1:2")
+    advance_time(switched, 12.0, dt=0.5)
+    switched.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=5.0, ie="1:2")
+    advance_time(switched, 12.0, dt=0.5)
+    assert "VTe" not in switched.state.alarms

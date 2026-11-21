@@ -263,6 +263,42 @@ class WebSession:
         self.step(real_dt)
         return json.dumps(self.snapshot())
 
+    def _step_cap(self) -> float:
+        """Maximum outer engine step (s) for the current speed; waveforms remain 100 Hz."""
+        base = self.engine.config.dt
+        recorder = self.engine.recorder
+        if recorder is not None and recorder.is_recording and recorder.sample_interval_sec < 0.5:
+            return base
+        if self.speed > 25.0:
+            return max(base, 0.50)
+        if self.speed > 10.0:
+            return max(base, 0.25)
+        if self.speed > 4.0:
+            return max(base, 0.10)
+        return base
+
+    def _next_step_dt(self, base: float, cap: float) -> float:
+        """Choose a step that is a multiple of base without crossing trend or case-event boundaries."""
+        if cap <= base + 1e-12:
+            return base
+        limit = min(cap, self._accumulator + 1e-12)
+        engine = self.engine
+        now = engine.state.time
+        to_trend = self._next_trend_time - now
+        if to_trend > base - 1e-12:
+            limit = min(limit, to_trend + 1e-12)
+        if self.case_run is not None:
+            for event in self.case_run.scenario.events:
+                if event.id not in self.case_run.fired:
+                    to_event = (self.case_run.started_at + event.at) - now
+                    if to_event > base - 1e-12:
+                        limit = min(limit, to_event + 1e-12)
+        recorder = engine.recorder
+        if recorder is not None and recorder.is_recording and recorder.sample_interval_sec >= base:
+            limit = min(limit, recorder.sample_interval_sec + 1e-12)
+        steps = max(1, math.floor(limit / base))
+        return round(steps * base, 12)
+
     def step(self, real_dt: float) -> None:
         """Advance without consuming snapshots, for the native server clock."""
         engine = self.engine
@@ -270,14 +306,16 @@ class WebSession:
             start_time = engine.state.time
             clamped = min(max(float(real_dt), 0.0), MAX_REAL_DT_S)
             self._accumulator += clamped * self.speed
-            sim_step = engine.config.dt
-            max_steps = max(100, math.ceil(MAX_REAL_DT_S * SPEED_RANGE[1] / sim_step))
+            base_step = engine.config.dt
+            cap_step = self._step_cap()
+            max_steps = max(100, math.ceil(MAX_REAL_DT_S * SPEED_RANGE[1] / base_step))
             steps = 0
             while (
-                self._accumulator >= sim_step - 1e-12
+                self._accumulator >= base_step - 1e-12
                 and steps < max_steps
                 and not engine.irreversible_arrest
             ):
+                sim_step = self._next_step_dt(base_step, cap_step)
                 try:
                     if self.case_run is not None:
                         self.case_run.before_step()
@@ -847,9 +885,9 @@ class WebSession:
         return self._medication_receipt("sugammadex", f"Sugammadex {amount:.0f} mg given ({mg_per_kg:g} mg/kg)")
 
     def _cmd_calcium_chloride(self, mg: float):
-        mg = float(mg)
-        self.engine.give_calcium_chloride(mg)
-        return self._medication_receipt("calcium_chloride", f"Calcium chloride {mg:g} mg given")
+        dose = domain.bounded_number("calcium chloride dose", mg, 0.0, 10000.0, unit="mg")
+        self.engine.give_calcium_chloride(dose)
+        return self._medication_receipt("calcium_chloride", f"Calcium chloride {dose:g} mg given")
 
     def _medication_receipt(self, key: str, text: str) -> dict:
         """Acknowledge a completed action and retain it across local page reloads."""

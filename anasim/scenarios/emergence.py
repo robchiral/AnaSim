@@ -28,6 +28,7 @@ from .base import (
     join_messages,
     monitor_value,
     neuromuscular_response,
+    normocapnia_bounds,
     require_all,
     require_infusions_stopped,
     require_maintenance_depth,
@@ -55,17 +56,8 @@ def _residual_block(minutes: int):
     return prepare
 
 
-def _normocapnia_bounds(engine) -> tuple[int, int]:
-    """Expected maintenance EtCO2 range, adjusted for pregnancy hypocapnia and COPD dead space."""
-    paco2_drop = max(0.0, 40.0 - engine.resp.paco2_setpoint)
-    copd_shift = 4.0 * max(0.0, engine.patient.copd_severity)
-    low = max(20, round(35.0 - paco2_drop - copd_shift))
-    high = max(low + 8, round(45.0 - paco2_drop))
-    return low, high
-
-
 def _assess_instruction(engine) -> str:
-    low, high = _normocapnia_bounds(engine)
+    low, high = normocapnia_bounds(engine)
     return (
         f"Confirm <b>BIS 40-60</b>, <b>MAP ≥ 65 mmHg</b>, and valid <b>EtCO₂ {low}-{high} mmHg</b>. "
         "Treat hypotension and adjust ventilation as needed. In practice, confirm surgery is complete, "
@@ -75,7 +67,7 @@ def _assess_instruction(engine) -> str:
 
 
 def _require_normocapnia(engine) -> tuple[bool, str]:
-    return check_etco2_range(engine, *_normocapnia_bounds(engine))
+    return check_etco2_range(engine, *normocapnia_bounds(engine))
 
 
 def _require_agents_stopped_balanced() -> Requirement:

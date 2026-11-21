@@ -120,18 +120,17 @@ class CardiacCycle:
         return min(1.5, _filling(preceding_rr_s) / max(average, 0.05))
 
     def _sample(self, *, beat_started: bool) -> CardiacCycleSample:
-        phase = 0.0
-        if self._organized:
-            phase = self._elapsed_s / self._rr_interval_s
+        organized = self._organized
+        phase = (self._elapsed_s / self._rr_interval_s) % 1.0 if organized else 0.0
         return CardiacCycleSample(
-            phase=float(phase % 1.0),
+            phase=phase,
             beat_started=beat_started,
-            rr_interval_s=float(self._rr_interval_s),
-            mean_rr_s=float(self._mean_rr_s),
-            stroke_fraction=float(self._stroke_fraction if self._organized else 0.0),
-            measured_hr=float(self._measured_hr if self._organized else 0.0),
-            display_hr=float(self._display_hr if self._organized else 0.0),
-            organized=self._organized,
+            rr_interval_s=self._rr_interval_s,
+            mean_rr_s=self._mean_rr_s,
+            stroke_fraction=self._stroke_fraction if organized else 0.0,
+            measured_hr=self._measured_hr if organized else 0.0,
+            display_hr=self._display_hr if organized else 0.0,
+            organized=organized,
             rhythm_type=self._rhythm_type,
         )
 
@@ -245,7 +244,13 @@ class CardiacCycle:
         if beat_started:
             self._recent_rr_total = sum(self._recent_rr)
 
-        if beat_started or self._elapsed_s > 0.0:
+        recent = self._recent_rr
+        if beat_started or (
+            self._elapsed_s > 1.5 * recent[-1]
+            or (len(recent) > 1 and self._recent_rr_total - recent[0] + self._elapsed_s >= 8.0)
+            if recent
+            else self._elapsed_s > max(1.5 * self._mean_rr_s, 1.0)
+        ):
             self._update_display_hr()
         return self._sample(beat_started=seeded_beat or beat_started)
 

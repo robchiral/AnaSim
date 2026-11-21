@@ -71,6 +71,11 @@ class TCIController:
         self._load_pk_model(pk_model)
         self.sync_state_estimate(pk_model)
 
+    @property
+    def next_update_time(self) -> float:
+        """Simulation time (s) of the next scheduled TCI rate update."""
+        return self._next_update
+
     def _load_pk_model(self, pk_model) -> None:
         A_min, B = pk_model.get_ss_matrices()
         A = A_min / 60.0  # B already maps a per-second input to concentration per second.

@@ -66,6 +66,10 @@ class SpO2Monitor:
         self._beat_rr_s: float | None = None
         self._beat_pending = False
         self._has_pulse = False
+        self._transit_key = (-1.0, -1.0)
+        self._transit_alpha = 0.0
+        self._resp_key = (-1.0, -1.0)
+        self._resp_alpha = 0.0
 
     def step(
         self,
@@ -127,7 +131,11 @@ class SpO2Monitor:
                 self._transit = [target, target, target, target]
             else:
                 stage_tau = eff_delay / 4.0
-                step_alpha = -math.expm1(-dt / stage_tau)
+                key = (dt, stage_tau)
+                if key != self._transit_key:
+                    self._transit_key = key
+                    self._transit_alpha = -math.expm1(-dt / stage_tau)
+                step_alpha = self._transit_alpha
                 prev = target
                 transit = self._transit
                 for i in range(4):
@@ -162,6 +170,9 @@ class SpO2Monitor:
             self._reacquire_s = max(0.0, self._reacquire_s - dt)
         else:
             tau = self.response_tau_s * (1.0 + 2.0 * (1.0 - perf))
-        alpha = -math.expm1(-dt / tau)
-        self.display_saturation += alpha * (finger_sat - self.display_saturation)
+        resp_key = (dt, tau)
+        if resp_key != self._resp_key:
+            self._resp_key = resp_key
+            self._resp_alpha = -math.expm1(-dt / tau)
+        self.display_saturation += self._resp_alpha * (finger_sat - self.display_saturation)
         return pleth_voltage, self.display_saturation

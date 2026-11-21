@@ -24,7 +24,6 @@ class CircleSystem:
         self.last_net_flow = 0.0  # L/min
         self.last_spill_flow = 0.0  # L/min
         self.last_uptake_scale = 1.0
-        self.last_uptake_o2 = 0.0
         self.composition = GasComposition()
         self.fgf_o2 = 2.0  # L/min
         self.fgf_air = 0.0
@@ -140,7 +139,6 @@ class CircleSystem:
                 uptake_n2 *= uptake_scale
             leak_l_min *= uptake_scale
         self.last_uptake_scale = uptake_scale
-        self.last_uptake_o2 = uptake_o2
         bag_flow = total_fgf + vapor_flow - uptake_o2 - uptake_agent - uptake_n2o - uptake_n2 - leak_l_min
         self.last_net_flow = bag_flow
         self.reservoir_volume = min(

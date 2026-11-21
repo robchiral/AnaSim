@@ -235,7 +235,26 @@ class BloodChemistry:
             ph_change = (base_residual * blood.content_co2 - carbon_residual * blood.base_co2) / determinant
             pressure_change = (carbon_residual * blood.base_ph - base_residual * blood.content_ph) / determinant
             fraction = step_fraction(ph, ph_change, pco2, pressure_change)
-            return ContentIterate(blood, False, ph - fraction * ph_change, pco2 - fraction * pressure_change)
+            new_ph = ph - fraction * ph_change
+            new_pco2 = pco2 - fraction * pressure_change
+            if fraction == 1.0 and abs(ph_change) < 2e-6 and abs(pressure_change) < 2e-4:
+                # Quadratic Newton error and Bohr-Haldane shift are below _CONTENT_TOLERANCE.
+                updated = Equilibrium(
+                    new_ph,
+                    blood.rbc_ph - 0.77 * ph_change,
+                    blood.plasma_bicarbonate * (1.0 - _LN_10 * ph_change - pressure_change / pco2),
+                    blood.rbc_bicarbonate,
+                    blood.plasma_base,
+                    blood.rbc_base,
+                    blood.buffer_base - blood.base_ph * ph_change - blood.base_co2 * pressure_change,
+                    blood.total_co2 - blood.content_ph * ph_change - blood.content_co2 * pressure_change,
+                    blood.base_ph,
+                    blood.base_co2,
+                    blood.content_ph,
+                    blood.content_co2,
+                )
+                return ContentIterate(updated, True, new_ph, new_pco2)
+            return ContentIterate(blood, False, new_ph, new_pco2)
         fluid_co2, fluid_base, fluid_ph, fluid_pco2 = extracellular_contents(
             ph, pco2, self.extracellular_buffers,
         )
@@ -254,7 +273,25 @@ class BloodChemistry:
         ph_change = (base_residual * c_p - carbon_residual * b_p) / determinant
         pressure_change = (carbon_residual * b_ph - base_residual * c_ph) / determinant
         fraction = step_fraction(ph, ph_change, pco2, pressure_change)
-        return ContentIterate(blood, False, ph - fraction * ph_change, pco2 - fraction * pressure_change)
+        new_ph = ph - fraction * ph_change
+        new_pco2 = pco2 - fraction * pressure_change
+        if fraction == 1.0 and abs(ph_change) < 2e-6 and abs(pressure_change) < 2e-4:
+            updated = Equilibrium(
+                new_ph,
+                blood.rbc_ph - 0.77 * ph_change,
+                blood.plasma_bicarbonate * (1.0 - _LN_10 * ph_change - pressure_change / pco2),
+                blood.rbc_bicarbonate,
+                blood.plasma_base,
+                blood.rbc_base,
+                blood.buffer_base - blood.base_ph * ph_change - blood.base_co2 * pressure_change,
+                blood.total_co2 - blood.content_ph * ph_change - blood.content_co2 * pressure_change,
+                blood.base_ph,
+                blood.base_co2,
+                blood.content_ph,
+                blood.content_co2,
+            )
+            return ContentIterate(updated, True, new_ph, new_pco2)
+        return ContentIterate(blood, False, new_ph, new_pco2)
 
     @staticmethod
     def _gas_inputs(pco2_mmhg: float, oxygen_saturation: float) -> tuple[float, float]:

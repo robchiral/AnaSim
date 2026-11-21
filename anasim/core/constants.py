@@ -21,9 +21,9 @@ APL_RANGE_CMH2O = (0.0, 70.0)
 
 CMH2O_TO_MMHG = 0.7356
 
-# Spontaneous rates below 2 breaths/min count as apnea.
+# Spontaneous rates below 2 breaths/min or tidal volumes below 100 mL count as apnea.
 RR_APNEA_THRESHOLD = 2.0
-VT_MIN = 50.0  # mL; smaller breaths count as apnea
+VT_MIN = 100.0  # mL; smaller breaths count as apnea
 
 # Hill function guards.
 HILL_EPSILON = 1e-12

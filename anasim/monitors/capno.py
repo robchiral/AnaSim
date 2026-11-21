@@ -21,7 +21,17 @@ class Capnograph:
 
     def __init__(self, dead_space_l: float):
         self.dead_space = dead_space_l
+        self._last_dt = -1.0
+        self._last_z = 0.0
+        self._last_decay = 1.0
+        self._last_noflow_dt = -1.0
+        self._last_noflow_decay = 1.0
         self.reset()
+
+    @property
+    def inhaled_l(self) -> float:
+        """Cumulative inspired gas volume (L) during the current inspiration."""
+        return self._inhaled
 
     def reset(self) -> None:
         """Discard the airway gas and analyzer history when exhaled gas is unavailable."""
@@ -126,14 +136,21 @@ class Capnograph:
             sample = 0.0
         else:
             if self._no_flow_s > 1.5:
-                self._decay_window(math.exp(-dt / 1.8))
+                if dt != self._last_noflow_dt:
+                    self._last_noflow_dt = dt
+                    self._last_noflow_decay = math.exp(-dt / 1.8)
+                self._decay_window(self._last_noflow_decay)
                 sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
             else:
                 sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else self._stages[0]
         # Exact coupled response of two identical first-order stages to a
         # constant sample, using both stages' values at the interval start.
-        z = dt / self.ANALYZER_TAU
-        decay = math.exp(-z)
+        if dt != self._last_dt:
+            self._last_dt = dt
+            self._last_z = dt / self.ANALYZER_TAU
+            self._last_decay = math.exp(-self._last_z)
+        z = self._last_z
+        decay = self._last_decay
         first, second = self._stages
         self._stages[0] = sample + (first - sample) * decay
         self._stages[1] = sample + (second - sample + z * (first - sample)) * decay

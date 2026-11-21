@@ -270,3 +270,33 @@ test("applyVentMode disables hidden ventilator inputs so unused invalid values c
   assert.equal(rows[1].hidden, false);
   assert.equal(psInput.disabled, false);
 });
+
+test("performAction does not re-enable shock after status becomes idle or session ends", async () => {
+  const elements = new Map();
+  for (const id of ["c-compressions", "c-charge", "c-shock", "c-shock-feedback", "c-defibrillator-status"]) {
+    elements.set(id, { id, disabled: false, hidden: false, textContent: "" });
+  }
+  const modes = [false, true].map(value => ({
+    dataset: { value: String(value) }, disabled: false,
+    getAttribute() {}, setAttribute() {},
+  }));
+  elements.set("c-sync", { querySelectorAll: () => modes });
+  globalThis.document = { getElementById: id => elements.get(id) };
+  const controls = Object.create(Controls.prototype);
+  controls.ended = false;
+  controls.state = { defibrillator: DEFIB_STATES[2] };
+  controls.send = async () => {
+    controls.state = { defibrillator: DEFIB_STATES[0] };
+    controls.syncDefibrillator(DEFIB_STATES[0]);
+  };
+  await controls.performAction(elements.get("c-shock"), "shock", { synchronized: false });
+  assert.equal(elements.get("c-shock").disabled, true);
+
+  const genericBtn = { id: "c-generic", disabled: false };
+  controls.send = async () => {
+    controls.ended = true;
+    genericBtn.disabled = true;
+  };
+  await controls.performAction(genericBtn, "fluid", { kind: "crystalloid", volume_ml: 250 });
+  assert.equal(genericBtn.disabled, true);
+});

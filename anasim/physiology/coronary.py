@@ -162,15 +162,6 @@ class CoronaryModel:
         self.energy_failure += (failure_target - self.energy_failure) * -math.expm1(-dt / failure_tau)
 
     @property
-    def contractility_factor(self) -> float:
-        return (
-            (1.0 - 0.50 * self.ischemia)
-            * (1.0 - self.shock_stunning)
-            * (1.0 - self.injury)
-            * self.electrical_factor
-        )
-
-    @property
     def irreversible(self) -> bool:
         """Injury leaves no contraction to recover."""
         return self.injury >= 0.99

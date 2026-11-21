@@ -396,3 +396,30 @@ def test_mixed_gas_apneic_inflow_and_copd_exchangeable_frc_conserve_gas(engine_f
     n2o_ds_gained = DEADSPACE_APNEIC_STPD_L * copd._tracheal_gas[2] - n2o_ds_0
     assert n2o_circ_lost > 0.03
     assert n2o_circ_lost == pytest.approx(n2o_lung_gained + n2o_ds_gained, abs=1e-3)
+
+
+def test_loose_mask_low_va_preserves_inspired_agents_and_equilibrate_oxygen_sums_to_one(engine_factory):
+    """Loose mask with shallow spontaneous breathing (1e-4 < VA <= 0.1) keeps circuit agents instead
+    of zeroing them, and equilibrate_oxygen alveolar gas fractions sum to unity."""
+    from anasim.core.runtime import step_machine
+
+    eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    eng.resp.equilibrate_oxygen(0.21)
+    frac_sum = (
+        (eng.resp.state.p_alveolar_o2 + eng.resp.state.p_alveolar_co2) / eng.resp._atm_dry
+        + eng.resp.alveolar_fn2
+    )
+    assert frac_sum == pytest.approx(1.0, abs=1e-12)
+
+    eng.set_airway_mode("Mask")
+    eng.set_mask_seal(0.5)
+    eng.circuit.composition.fio2 = 0.45
+    eng.circuit.composition.fi_agent = 0.05
+    eng.circuit.composition.fin2o = 0.50
+    eng.circuit.composition.fin2 = 0.0
+    eng._tracheal_gas = (0.95, 0.0, 0.0, 0.05)
+    eng.state.va = 0.05
+    eng.resp.state.apnea = False
+    fi_sevo, fi_n2o = step_machine(eng, 0.05)
+    assert fi_sevo == pytest.approx(0.025, abs=1e-6)
+    assert fi_n2o == pytest.approx(0.25, abs=1e-6)

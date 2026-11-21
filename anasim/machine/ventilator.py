@@ -9,6 +9,7 @@ from anasim.core.utils import clamp, clamp01
 from anasim.patient.domain import finite_number
 from anasim.physiology.resp_mech import (
     ExpiratorySegment,
+    FlowSegment,
     RespiratoryMechanics,
     find_root,
 )
@@ -482,6 +483,8 @@ class AnesthesiaVentilator:
                 self.monitors.tv_exp_mandatory = math.nan
                 self._mandatory_paw_peak = 0.0
                 self._mandatory_peak_age_s = math.inf
+            elif self.settings.mode in VOLUME_TARGETED and self._mode not in VOLUME_TARGETED:
+                self.monitors.tv_exp_mandatory = math.nan
             if self.settings.mode == "CPAP":
                 self.monitors.compliance_dyn = math.nan
             self.pressure_limited = False
@@ -699,7 +702,7 @@ class AnesthesiaVentilator:
         # A scheduled inflation before a spontaneous breath has exhaled belongs
         # to the same measured breath; controller timing stays separate.
         b = self._measured
-        if b is not None and b.expired < MIN_EXPIRATION_L and not b.mandatory:
+        if b is not None and not b.mandatory and (b.inspiring or (b.expired < MIN_EXPIRATION_L and kind != "SPONT")):
             # Detection can precede the support trigger. Keep gas already
             # inspired in this breath when PS or a mandatory stroke takes over.
             b.kind, b.mandatory = kind, mandatory
@@ -741,6 +744,10 @@ class AnesthesiaVentilator:
         if not self._recent or self._since_measured >= apnea_timeout:
             self.monitors.rr_total = self.monitors.tv_exp = self.monitors.mv_exp = self.monitors.mv_supported = 0.0
             if self._since_measured >= apnea_timeout:
+                self._recent.clear()
+                self._recent_totals = (0.0, 0.0, 0.0, 0.0, 0.0)
+                if self._measured is not None and not self.inspiring and not self._measured.inspiring:
+                    self._measured = None
                 baseline_paw = 0.0 if self._bellows_fraction <= 0.05 else self._configured_peep()
                 self.monitors.paw_mean_recent = baseline_paw
                 self.monitors.paw_mean = baseline_paw
@@ -911,6 +918,19 @@ class AnesthesiaVentilator:
             knot = math.floor((self._since_exhalation + 1e-12) / interval)
             h = min(h, (knot + 1) * interval - self._since_exhalation)
         pmus = effort.pmus()
+        # A fresh spontaneous effort discards any already-exhaled sub-threshold
+        # unassisted breath so obstructed shallow efforts never merge into one VTe.
+        if (
+            self._source is not None
+            and not self.inspiring
+            and effort.clock <= 1e-9
+            and pmus[1] > 0.0
+            and self._measured is not None
+            and not self._measured.inspiring
+            and not self._measured.mandatory
+            and 1e-6 < self._measured.expired < MIN_EXPIRATION_L
+        ):
+            self._measured = None
         segment = self._segment(lung, pmus)
         watch = self._watch()
         observe = (self._source is not None and pmus[1] > 0.0
@@ -923,7 +943,16 @@ class AnesthesiaVentilator:
         can_deplete = (
             b is not None and b.inspiring and not b.depleted and math.isfinite(avail_vol)
         )
-        if watch is not None or observe or passive_inspiration or onset is not None or can_deplete:
+        # Analytical FlowSegment/PressureSegment searches for "limit" and
+        # passive-lung depletion stay exact over full segment spans; keep
+        # EVENT_STEP for trigger/cycle/zero_flow and active-effort watches.
+        if (
+            observe
+            or passive_inspiration
+            or onset is not None
+            or watch in ("trigger", "cycle", "zero_flow")
+            or (can_deplete and pmus != (0.0, 0.0))
+        ):
             h = min(h, EVENT_STEP)
         t, event = (h, None) if watch is None else self._search(segment, h, watch)
         if can_deplete:
@@ -1038,6 +1067,14 @@ class AnesthesiaVentilator:
     @staticmethod
     def _volume_reached(segment, t: float, level: float, sign: float) -> float | None:
         """First time in [0, t] at which volume rises (sign 1) or falls (sign -1) to level."""
+        if isinstance(segment, FlowSegment):
+            f0 = sign * (segment.v0 - level) + 1e-12
+            if f0 >= 0.0:
+                return 0.0
+            ft = sign * (segment.v0 + segment.q * t - level) + 1e-12
+            if ft < 0.0 or sign * segment.q <= 0.0:
+                return None
+            return clamp((level - segment.v0 - sign * 1e-12) / segment.q, 0.0, t)
         # Count thresholds reached within roundoff, including constant-flow plateaus.
         f = lambda u: sign * (segment.volume(u) - level) + 1e-12  # noqa: E731
         f0, ft = f(0.0), f(t)

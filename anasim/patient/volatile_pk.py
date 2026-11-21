@@ -5,7 +5,7 @@ from typing import NamedTuple
 from anasim.core.utils import clamp01
 
 from .patient import Patient
-from .pk_models import _janmahasatian_ffm
+from .pk_models import janmahasatian_ffm
 
 
 class _IntegrationResult(NamedTuple):
@@ -71,8 +71,8 @@ class VolatilePK:
         # with fat-free mass, while excess body mass expands the adipose depot.
         male = self.patient.sex == "male"
         ffm_scale = (
-            _janmahasatian_ffm(self.patient.weight, self.patient.height, male)
-            / _janmahasatian_ffm(70.0, 170.0, True)
+            janmahasatian_ffm(self.patient.weight, self.patient.height, male)
+            / janmahasatian_ffm(70.0, 170.0, True)
         )
         self._base_co = 5.0 * ffm_scale
         self.v_vrg = 7.0 * ffm_scale
@@ -211,6 +211,49 @@ class VolatilePK:
             p_alv, p_vrg, p_brain, p_mus, p_fat, p_ven, p_art, v_frc, net_btps_l, blood_uptake_btps_l,
         )
 
+    def preview_exchange(
+        self,
+        dt: float,
+        fi_agent: float,
+        alveolar_vent_l: float,
+        cardiac_output_l: float,
+        lung_volume_l: float | None = None,
+        shunt_fraction: float = 0.0,
+        companion_uptake_l_min: float = 0.0,
+        passive_inflow_l_min: float = 0.0,
+        circuit_share: float = 1.0,
+        circuit_fi_agent: float | None = None,
+        exhaled_volume_change_l: float | None = None,
+    ) -> tuple[float, _IntegrationResult | None]:
+        """Return (circuit uptake BTPS L/min, integration result) without mutating state."""
+        if dt <= 0.0 or circuit_share <= 0.0:
+            return 0.0, None
+        s = self.state
+        if (
+            fi_agent <= 0.0
+            and (circuit_fi_agent is None or circuit_fi_agent <= 0.0)
+            and s.p_alv == 0.0
+            and s.p_vrg == 0.0
+            and s.p_brain == 0.0
+            and s.p_mus == 0.0
+            and s.p_fat == 0.0
+        ):
+            return 0.0, None
+        result = self._integrate(
+            dt,
+            fi_agent,
+            alveolar_vent_l,
+            cardiac_output_l,
+            lung_volume_l,
+            shunt_fraction,
+            companion_uptake_l_min,
+            passive_inflow_l_min,
+            exhaled_volume_change_l,
+            circuit_share,
+            circuit_fi_agent,
+        )
+        return result.net_btps_l / (dt / 60.0), result
+
     def exchange_btps_l_min(
         self,
         dt: float,
@@ -226,32 +269,28 @@ class VolatilePK:
         exhaled_volume_change_l: float | None = None,
     ) -> float:
         """Return net circuit uptake (BTPS L/min) matching step() over dt without mutating state."""
-        if dt <= 0.0 or circuit_share <= 0.0:
-            return 0.0
-        s = self.state
-        if (
-            fi_agent <= 0.0
-            and (circuit_fi_agent is None or circuit_fi_agent <= 0.0)
-            and s.p_alv == 0.0
-            and s.p_vrg == 0.0
-            and s.p_mus == 0.0
-            and s.p_fat == 0.0
-        ):
-            return 0.0
-        net_btps_l = self._integrate(
-            dt,
-            fi_agent,
-            alveolar_vent_l,
-            cardiac_output_l,
-            lung_volume_l,
-            shunt_fraction,
-            companion_uptake_l_min,
-            passive_inflow_l_min,
-            exhaled_volume_change_l,
-            circuit_share,
-            circuit_fi_agent,
-        ).net_btps_l
-        return net_btps_l / (dt / 60.0)
+        return self.preview_exchange(
+            dt, fi_agent, alveolar_vent_l, cardiac_output_l,
+            lung_volume_l=lung_volume_l, shunt_fraction=shunt_fraction,
+            companion_uptake_l_min=companion_uptake_l_min,
+            passive_inflow_l_min=passive_inflow_l_min,
+            circuit_share=circuit_share, circuit_fi_agent=circuit_fi_agent,
+            exhaled_volume_change_l=exhaled_volume_change_l,
+        )[0]
+
+    def commit_integration(self, result: _IntegrationResult, dt: float, temp_c: float = 37.0) -> None:
+        """Apply a previously previewed integration result to state."""
+        state = self.state
+        state.p_alv = result.p_alv
+        state.p_vrg = result.p_vrg
+        state.p_brain = result.p_brain
+        state.p_mus = result.p_mus
+        state.p_fat = result.p_fat
+        state.p_ven = result.p_ven
+        state.p_art = result.p_art
+        self.frc = result.v_frc
+        self.last_blood_uptake_l_min = result.blood_uptake_btps_l / (dt / 60.0) if dt > 0.0 else 0.0
+        state.mac = (state.p_brain * 100.0) / self.mac_at_temp(temp_c)
 
     def step(self, dt: float, fi_agent: float, alveolar_vent_l: float, cardiac_output_l: float,
              temp_c: float = 37.0, lung_volume_l: float | None = None, shunt_fraction: float = 0.0,
@@ -278,18 +317,7 @@ class VolatilePK:
             state.p_ven = state.p_art = state.mac = 0.0
             self.last_blood_uptake_l_min = 0.0
             return
-        (
-            state.p_alv,
-            state.p_vrg,
-            state.p_brain,
-            state.p_mus,
-            state.p_fat,
-            state.p_ven,
-            state.p_art,
-            self.frc,
-            _,
-            blood_uptake_btps_l,
-        ) = self._integrate(
+        result = self._integrate(
             dt,
             fi_agent,
             alveolar_vent_l,
@@ -300,5 +328,4 @@ class VolatilePK:
             passive_inflow_l_min,
             exhaled_volume_change_l,
         )
-        self.last_blood_uptake_l_min = blood_uptake_btps_l / (dt / 60.0) if dt > 0.0 else 0.0
-        state.mac = (state.p_brain * 100.0) / self.mac_at_temp(temp_c)
+        self.commit_integration(result, dt, temp_c=temp_c)

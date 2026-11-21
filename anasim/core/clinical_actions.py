@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from anasim.core.enums import RhythmType
+from anasim.core.enums import PULSELESS_RHYTHMS
 from anasim.core.runtime import is_perfusing
 from anasim.patient.pd import hypnotic_equivalent
 from anasim.patient.pd.anesthesia import PROPOFOL_LOC_TRANSFER
@@ -42,7 +42,7 @@ def _in_arrest(engine: SimulationEngine) -> bool:
     hemo = engine.hemo.state
     return (
         engine.state.cardiac_arrest
-        or hemo.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE)
+        or hemo.rhythm_type in PULSELESS_RHYTHMS
         or not is_perfusing(engine, hemo)
     )
 
@@ -116,7 +116,7 @@ def check_ventilation_withdrawal(engine: SimulationEngine) -> ActionFeedback | N
 
 def check_shock(engine: SimulationEngine) -> ActionFeedback | None:
     hemo = engine.hemo.state
-    if hemo.rhythm_type in (RhythmType.VFIB, RhythmType.ASYSTOLE) or not is_perfusing(engine, hemo):
+    if hemo.rhythm_type in PULSELESS_RHYTHMS or not is_perfusing(engine, hemo):
         return None
     unconscious, _ = _responsiveness(engine)
     if unconscious < 0.5:

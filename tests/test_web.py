@@ -597,3 +597,6 @@ def test_web_apl_and_fluid_warmer_command_round_trips():
     snap = session.snapshot()["controls"]
     assert snap["apl"] == 15
     assert snap["fluid_warmer"] is True
+
+    with pytest.raises(ValueError, match="calcium chloride dose"):
+        cmd(session, "calcium_chloride", mg=True)

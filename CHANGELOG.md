@@ -36,8 +36,9 @@
 - Added post-transfusion alkalosis and slowed intravenous calcium chloride
   delivery after its initial central pass.
 - Added dedicated arrest and lethal rhythm alarms (`Asystole`, `VFIB`, `VTACH`,
-  `Arrest`) that break prior alarm silence and play a faster, higher-pitched
-  cadence, along with core temperature alarms (35.5 to 38.0 °C).
+  `Arrest`) that highlight the heart-rate display with a rhythm banner, break
+  prior alarm silence, and play a faster, higher-pitched cadence, along with
+  core temperature alarms (35.5 to 38.0 °C).
 - Added perfusion-dependent finger SpO₂ transit delay, blanked SpO₂ and pleth
   during CPR, averaged NIBP across the deflation sweep with variability in
   atrial fibrillation, added capnography peak hold and slow-rate timeouts, and
@@ -45,6 +46,9 @@
 - Updated case starting FiO₂, debrief targets, intubation blocking during severe
   laryngospasm, and succinylcholine warnings in MH or hyperkalemia, and kept the
   Trends panel open after case lock.
+- Sped up high-speed web playback (about four times faster at 50x), maintenance
+  startup, and per-step execution across blood chemistry, inhaled uptake,
+  hemodynamics, and monitors.
 
 ## 1.9 - 2026-11-19
 

@@ -1005,3 +1005,35 @@ def test_interposed_spontaneous_breaths_preserve_va_ppeak_and_etco2(engine_facto
         if not math.isnan(mh.state.paw_plat):
             assert mh.state.paw_peak >= mh.state.paw_plat - 0.1
         assert not mh.state.alarms.get("EtCO2", {}).get("low")
+
+
+def test_apnea_clears_stale_vte_and_obstructed_subthreshold_breaths_do_not_merge():
+    """Apnea timeout clears stale pre-apnea VTe history, and severely obstructed sub-threshold
+    spontaneous breaths do not accumulate across cycles into a phantom large VTe."""
+    lung = RespiratoryMechanics()
+    vent = AnesthesiaVentilator()
+    lung.effort.set_drive(12.0, 0.5)
+    for _ in range(40):
+        vent.step(0.5, lung, "spontaneous")
+    assert 400.0 < vent.monitors.tv_exp < 600.0
+
+    lung.effort.set_drive(0.0, 0.0)
+    for _ in range(50):
+        vent.step(0.5, lung, "spontaneous")
+    assert vent.monitors.rr_total == 0.0 and vent.monitors.tv_exp == 0.0
+
+    lung.effort.set_drive(12.0, 0.5)
+    max_vt = 0.0
+    for _ in range(30):
+        vent.step(0.5, lung, "spontaneous")
+        max_vt = max(max_vt, vent.monitors.tv_exp)
+    assert 350.0 < max_vt < 650.0
+
+    obs_lung = RespiratoryMechanics(resistance=1200.0)
+    obs_vent = AnesthesiaVentilator()
+    obs_lung.effort.set_drive(18.0, 0.5)
+    obs_max_vt = 0.0
+    for _ in range(80):
+        obs_vent.step(0.5, obs_lung, "spontaneous")
+        obs_max_vt = max(obs_max_vt, obs_vent.monitors.tv_exp)
+    assert obs_max_vt == 0.0

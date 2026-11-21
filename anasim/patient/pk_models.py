@@ -105,6 +105,12 @@ class MammillaryPK:
         # The primary site is last so TCI and decay predictions target it.
         self.effect_sites = (*transit, *additional_effect_sites, ("ce", ke0))
         self._extra_site_names = tuple(name for name, _ in self.effect_sites[:-1])
+        self._extra_site_0 = (
+            attrgetter(self._extra_site_names[0]) if len(self._extra_site_names) == 1 else None
+        )
+        self._extra_getter = (
+            attrgetter(*self._extra_site_names) if len(self._extra_site_names) > 1 else None
+        )
         self._max_effect_rate = max(rate for _, rate in self.effect_sites)
         self.state_fields = (
             ("c1",) + (("c2",) if v2 > 0 else ()) + (("c3",) if v3 > 0 else ())
@@ -115,6 +121,17 @@ class MammillaryPK:
         self.circulation = 1.0  # Share of normal transport
         self.temp_dist_scale = 1.0
         self.update_hemodynamics(1.0, 1.0)
+
+    def has_mass(self) -> bool:
+        """Whether any compartment or effect site holds a nonzero concentration."""
+        s = self.state
+        if s.c1 or s.ce or s.c2 or s.c3:
+            return True
+        if self._extra_site_0 is not None:
+            return bool(self._extra_site_0(s))
+        if self._extra_getter is not None:
+            return any(self._extra_getter(s))
+        return False
 
     @property
     def k10(self) -> float:
@@ -155,6 +172,7 @@ class MammillaryPK:
     def update_hemodynamics(
         self, v_ratio: float, co_ratio: float, renal_perfusion: float = 1.0,
         blood_volume_l: float | None = None, temp_c: float = 37.0,
+        *, temp_met: float | None = None, temp_dist: float | None = None,
     ) -> None:
         """Rescale effective V1 without creating or removing central drug mass.
 
@@ -169,9 +187,10 @@ class MammillaryPK:
             self.state.c1 *= self.v1 / new_v1
         self.v1 = new_v1
         deficit = min(1.0, v_ratio)
-        clamped_t = clamp(temp_c, 25.0, 38.5)
-        temp_met = 2.0 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
-        temp_dist = 1.6 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
+        if temp_met is None or temp_dist is None:
+            clamped_t = clamp(temp_c, 25.0, 38.5)
+            temp_met = 2.0 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
+            temp_dist = 1.6 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
         self.temp_dist_scale = temp_dist
         nonrenal = (1.0 - self.renal_fraction) * _pow(co_ratio, self.cl1_co_exponent) * temp_met
         self.cl1 = self.cl1_base * (nonrenal + self.renal_fraction * renal_perfusion)
@@ -203,16 +222,10 @@ class MammillaryPK:
         if self.basal_input_rate > 0.0:
             input_rate_per_sec += self.effective_basal_input_rate
         s = self.state
+        if not (input_rate_per_sec or s.c1 or s.ce or s.c2 or s.c3):
+            if not self._extra_site_names or all(getattr(s, name) == 0.0 for name in self._extra_site_names):
+                return s  # Skip drugs with no input or residual concentration.
         v1, v2, v3 = self.v1, self.v2, self.v3
-        if (
-            not input_rate_per_sec
-            and s.c1 == 0.0
-            and s.ce == 0.0
-            and (v2 <= 0.0 or s.c2 == 0.0)
-            and (v3 <= 0.0 or s.c3 == 0.0)
-            and (not self._extra_site_names or all(getattr(s, name) == 0.0 for name in self._extra_site_names))
-        ):
-            return s  # Skip drugs with no input or residual concentration.
         circulation = self.circulation
         effect_transport = circulation * self.temp_dist_scale
         cl2 = self.cl2 * circulation if v2 > 0 else 0.0
@@ -413,7 +426,7 @@ def _sigmoid(x: float, x50: float, gamma: float) -> float:
     return x**gamma / (x50**gamma + x**gamma)
 
 
-def _janmahasatian_ffm(weight: float, height: float, male: bool) -> float:
+def janmahasatian_ffm(weight: float, height: float, male: bool) -> float:
     """Adult fat-free mass, kg; height is in cm."""
     bmi = weight / (height / 100.0) ** 2
     denominator = 6680.0 + 216.0 * bmi if male else 8780.0 + 244.0 * bmi
@@ -426,7 +439,7 @@ def _eleveld_ffm(age: float, weight: float, height: float, male: bool) -> float:
         maturation = 0.88 + 0.12 / (1.0 + (age / 13.4) ** -12.7)
     else:
         maturation = 1.11 - 0.11 / (1.0 + (age / 7.1) ** -1.1)
-    return maturation * _janmahasatian_ffm(weight, height, male)
+    return maturation * janmahasatian_ffm(weight, height, male)
 
 
 def _lean_weight_kg(patient: Patient) -> float:
@@ -441,8 +454,8 @@ def _lean_weight_kg(patient: Patient) -> float:
     if patient.weight <= ref_w:
         return patient.weight
     male = patient.sex == "male"
-    ref_ffm = _janmahasatian_ffm(ref_w, patient.height, male)
-    actual_ffm = _janmahasatian_ffm(patient.weight, patient.height, male)
+    ref_ffm = janmahasatian_ffm(ref_w, patient.height, male)
+    actual_ffm = janmahasatian_ffm(patient.weight, patient.height, male)
     return ref_w + max(0.0, actual_ffm - ref_ffm)
 
 
@@ -510,13 +523,15 @@ class PropofolPKEleveld(MammillaryPK):
     def update_hemodynamics(
         self, v_ratio: float, co_ratio: float, renal_perfusion: float = 1.0,
         blood_volume_l: float | None = None, temp_c: float = 37.0,
+        *, temp_met: float | None = None, temp_dist: float | None = None,
     ) -> None:
         # Eleveld parameters apply at anesthetized output (including opioid-TIVA
         # CO ~0.75-0.82); scale downward for normovolemic low-CO states (HFrEF,
         # cardiogenic shock) without shifting normodynamic TIVA clearance.
         low_co_ratio = min(1.0, co_ratio / 0.75)
         super().update_hemodynamics(
-            v_ratio, low_co_ratio, renal_perfusion, blood_volume_l=blood_volume_l, temp_c=temp_c,
+            v_ratio, low_co_ratio, renal_perfusion, blood_volume_l=blood_volume_l,
+            temp_c=temp_c, temp_met=temp_met, temp_dist=temp_dist,
         )
 
     def update_midazolam(self, concentration_ng_ml: float) -> bool:
@@ -619,7 +634,7 @@ def _meissner_opioid_params(
     renal_fraction: float,
 ) -> tuple[_CompartmentParams, float]:
     male = patient.sex == "male"
-    size = _janmahasatian_ffm(patient.weight, patient.height, male) / _janmahasatian_ffm(70.0, 170.0, male)
+    size = janmahasatian_ffm(patient.weight, patient.height, male) / janmahasatian_ffm(70.0, 170.0, male)
     rate_scale = size ** -0.25
     age_scale = max(0.5, 1.0 - 0.006 * max(0.0, patient.age - 40.0))
     organ_scale, active_renal = renal_capacity_scaling(
@@ -905,7 +920,7 @@ class LidocainePK(MammillaryPK):
 
     def __init__(self, patient: Patient):
         size = patient.weight / 70.0
-        lean_size = _janmahasatian_ffm(patient.weight, patient.height, patient.sex == "male") / 56.1
+        lean_size = janmahasatian_ffm(patient.weight, patient.height, patient.sex == "male") / 56.1
         flow = lean_size**0.75 / ANESTHETIZED_OUTPUT
         peripheral_vd = hepatic_vd_multiplier(patient, 1.95)
         super().__init__(

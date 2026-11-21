@@ -8,6 +8,7 @@ Koster 2008; Pierce 2015). Pulseless VT responses, penalties for fine VF or
 hypoxia, synchronized cardioversion, and R-on-T risk are calibrations.
 """
 
+import math
 from enum import Enum
 
 import numpy as np
@@ -52,6 +53,18 @@ def compression_pressures(
     relaxation = venous_pressure + perfusion_pressure
     pulse = COMPRESSION_PULSE_MMHG * clamp01(filling_factor)
     return relaxation + pulse, relaxation
+
+
+def compression_mean_pressure(systolic: float, diastolic: float) -> float:
+    """Mean arterial pressure over a half-sine chest compression cycle (mmHg)."""
+    return diastolic + (systolic - diastolic) * 2.0 * COMPRESSION_DUTY / math.pi
+
+
+def compression_waveform_pressure(phase: float, systolic: float, diastolic: float) -> float:
+    """Instantaneous arterial pressure at normalized compression cycle phase [0, 1)."""
+    compression = phase / COMPRESSION_DUTY
+    shape = math.sin(math.pi * compression) if compression < 1.0 else 0.0
+    return diastolic + (systolic - diastolic) * shape
 
 
 class ShockResult(Enum):

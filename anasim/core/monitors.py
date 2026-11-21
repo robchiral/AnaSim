@@ -10,7 +10,11 @@ from anasim.monitors.arterial import MIN_PULSE_PRESSURE_MMHG, ArterialPressureSa
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
 from anasim.physiology.disturbances import DisturbanceEffects
-from anasim.physiology.resuscitation import COMPRESSION_DUTY, compression_pressures
+from anasim.physiology.resuscitation import (
+    compression_mean_pressure,
+    compression_pressures,
+    compression_waveform_pressure,
+)
 
 from .projection import (
     central_muscle_strength,
@@ -149,7 +153,7 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substep
                 duration,
                 capno.exhaling,
                 value,
-                inhaled_l=capno._inhaled,
+                inhaled_l=capno.inhaled_l,
                 dead_space_l=capno.dead_space,
                 breath_index=capno.breath_index,
                 et_gases=et_gases,
@@ -207,9 +211,7 @@ def step_cardiac_monitors(
         compression_sbp, compression_dbp = compression_pressures(
             hemo_state.cpr_perfusion_map, hemo_state.venous_pressure, filling_factor=engine.hemo.cpr_filling_factor,
         )
-        compression_mean = (
-            compression_dbp + (compression_sbp - compression_dbp) * 2.0 * COMPRESSION_DUTY / math.pi
-        )
+        compression_mean = compression_mean_pressure(compression_sbp, compression_dbp)
     else:
         engine.compression_clock.stop()
 
@@ -245,9 +247,7 @@ def step_cardiac_monitors(
                     hemo_state.cpr_perfusion_map, hemo_state.venous_pressure,
                     filling_factor=engine.hemo.cpr_filling_factor,
                 )
-                compression_mean = (
-                    compression_dbp + (compression_sbp - compression_dbp) * 2.0 * COMPRESSION_DUTY / math.pi
-                )
+                compression_mean = compression_mean_pressure(compression_sbp, compression_dbp)
         # Compressions, when running, envelope any weaker intrinsic beat rather than adding onto MAP.
         if compressions:
             comp_sample = engine.compression_clock.step(substep_dt, rhythm)
@@ -260,9 +260,7 @@ def step_cardiac_monitors(
                     static_pressure=hemo_state.venous_pressure,
                     pulse_pressure_factor=hemo_state.pulse_pressure_factor,
                 )
-                comp_u = comp_sample.phase / COMPRESSION_DUTY
-                comp_shape = math.sin(math.pi * comp_u) if comp_u < 1.0 else 0.0
-                comp_p = compression_dbp + (compression_sbp - compression_dbp) * comp_shape
+                comp_p = compression_waveform_pressure(comp_sample.phase, compression_sbp, compression_dbp)
                 if compression_mean > intrinsic_art.mean:
                     art_waveform.note_compression_baseline(compression_dbp)
                 art_sbp = (
@@ -409,7 +407,7 @@ def step_monitors(
     vent = engine.vent
     # Volume-targeted breaths alarm when they deliver less than the set VT.
     vte_percent = None
-    if connected and vent.is_on and vent.settings.mode in VOLUME_TARGETED and vent.settings.tv > 0.0:
+    if vent.is_on and vent.settings.mode in VOLUME_TARGETED and vent.settings.tv > 0.0:
         if not sealed:
             vte_percent = 0.0
         else:
@@ -447,10 +445,20 @@ def step_monitors(
     )
     ppeak_val = display_int(state.paw_peak)
     ppeak_limit = engine.alarms.thresholds["Ppeak_max"]
-    if connected and (vent.is_on or engine.bag_mask_active) and vent.pressure_limited and ppeak_val == ppeak_limit:
-        ppeak_alarm = ppeak_limit + 1.0
-    else:
-        ppeak_alarm = ppeak_val
+    vent_pressure_alarm = (
+        connected
+        and vent.is_on
+        and vent.pressure_limited
+        and display_int(vent.monitors.paw_peak) >= min(ppeak_limit, display_int(vent.settings.p_max))
+    )
+    bag_pressure_alarm = (
+        connected
+        and not vent.is_on
+        and engine.bag_mask_active
+        and vent.pressure_limited
+        and ppeak_val == ppeak_limit
+    )
+    ppeak_alarm = ppeak_limit + 1.0 if (vent_pressure_alarm or bag_pressure_alarm) else ppeak_val
     state.alarms = engine.alarms.update(
         {
             "BIS": bis_alarm,

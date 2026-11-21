@@ -21,7 +21,6 @@ from anasim.physiology.malignant_hyperthermia import dantrolene_twitch_fraction
 from anasim.physiology.resuscitation import compression_pressures
 
 from .constants import CMH2O_TO_MMHG
-from .drug_registry import DRUG_REGISTRY
 from .enums import RhythmType
 from .state import AirwayType, SimulationState
 from .utils import clamp, clamp01
@@ -29,8 +28,9 @@ from .utils import clamp, clamp01
 if TYPE_CHECKING:
     from anasim.machine.circuit import GasComposition
     from anasim.monitors.arterial import ArterialPressureSample
+    from anasim.patient.volatile_pk import _IntegrationResult
     from anasim.physiology.hemo_types import HemoState
-    from anasim.physiology.respiration import RespState
+    from anasim.physiology.respiration import PassiveExchangeTerms, RespState
 
     from .engine import SimulationEngine
 
@@ -45,6 +45,11 @@ class StepGasCache:
     apneic_limit_l_min: float | None = None
     reservoir_volume_l: float | None = None
     bellows_fraction: float | None = None
+    exchange: PassiveExchangeTerms | None = None
+    va: float = 0.0
+    co: float = 0.0
+    sevo_result: _IntegrationResult | None = None
+    n2o_result: _IntegrationResult | None = None
 
 
 @dataclass(slots=True)
@@ -405,12 +410,16 @@ def cardiovascular_response_fractions(engine: SimulationEngine, intensity: float
 def sync_pk_state(engine: SimulationEngine) -> None:
     """Synchronize PK concentrations from subsystem states to public state."""
     state = engine.state
-    for spec in DRUG_REGISTRY:
-        pk_state = engine.pk[spec.key].state
-        if spec.ce_field is not None:
-            setattr(state, spec.ce_field, float(pk_state.ce))
-        if spec.cp_field is not None:
-            setattr(state, spec.cp_field, float(pk_state.c1))
+    for model, ce_field, cp_field in engine._pk_sync_entries:
+        pk_state = model.state
+        if ce_field is not None:
+            val = pk_state.ce
+            if val or getattr(state, ce_field):
+                setattr(state, ce_field, float(val))
+        if cp_field is not None:
+            val = pk_state.c1
+            if val or getattr(state, cp_field):
+                setattr(state, cp_field, float(val))
     state.roc_ce = float(engine.tof_pd.ce)
     state.roc_cp = float(engine.pk["roc"].state.c1 + engine.tof_pd.bound_rocuronium(engine.pk["roc"].v1))
     state.opioid_ce = float(opioid_equivalent(
@@ -438,9 +447,7 @@ def sync_neuromuscular_state(engine: SimulationEngine) -> None:
     """T1 height includes phase I block, which depresses all four twitches without fade."""
     s = engine.state
     s.tof = float(engine.tof_pd.compute_tof_from_ce(s.roc_ce, s.mac_sevo, s.mac_n2o))
-    roc_twitch = 1.0 - engine.tof_pd.twitch_block(s.roc_ce, s.mac_sevo, s.mac_n2o)
-    s.twitch = (100.0 * roc_twitch * succinylcholine_twitch_fraction(s.succinylcholine_ce)
-                * dantrolene_twitch_fraction(s.dantrolene_ce))
+    s.twitch = 100.0 * nmba_twitch_fraction(engine) * dantrolene_twitch_fraction(s.dantrolene_ce)
 
 
 def sync_inspired_gas(engine: SimulationEngine) -> tuple[float, float]:
@@ -545,7 +552,7 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     state.potassium = fluids.concentration("potassium")
     state.chloride = fluids.concentration("chloride")
     state.ionized_calcium = fluids.ionized_calcium(resp_state.ph_37)
-    state.albumin_g_l = fluids.plasma_buffers.albumin_g_l
+    state.albumin_g_l = fluids.plasma_albumin_g_l
     state.phosphate = fluids.concentration("phosphate")
     state.alveolar_co2 = float(resp_state.p_alveolar_co2)
     state.pao2 = float(resp_state.p_arterial_o2)
@@ -592,15 +599,15 @@ def advance_tracheal_gas(
     sealed = circuit_connected(engine)
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if sealed else (0.0, 0.0)
     assisted_breaths = sealed and (engine.vent.is_on or engine.bag_mask_active) and assisted_rr * assisted_vt_l > 0.05
-    spont_breaths = not engine.resp.state.apnea and engine.state.va > 0.1
+    patency = clamp01(engine.airway_status.patency)
+    effective_va = engine.resp.effective_va(engine.state.va, engine.airway_status.vq_mismatch) if patency > 0.0 else 0.0
     target = inspired_gas_mixture(engine)
-    if assisted_breaths or spont_breaths:
+    if assisted_breaths or effective_va > 1e-4:
         engine._tracheal_gas = target
         return target
     # During apnea, convective bulk STPD inflow flushes the conserved dead-space
     # buffer symmetrically across all gas species so circuit, dead space, and lung
     # share one exact mass balance.
-    patency = clamp01(engine.airway_status.patency)
     share = mask_circuit_share(engine) if sealed else 0.0
     sealed_circuit = sealed and share >= 0.999
     avail_flow = engine.circuit.deliverable_flow(dt) if sealed_circuit else math.inf
@@ -608,16 +615,11 @@ def advance_tracheal_gas(
         return old
     if inflow_stpd_l_min is None:
         resp = engine.resp
-        frc_exp_stpd = (
-            max(0.0, engine.aeration.frc - resp.frc)
-            * resp._exchangeable_frc_fraction
-            * patency
-            * resp._btps_to_stpd
+        terms = resp.passive_exchange_terms(
+            engine.aeration.frc, patency, 0.0, dt, avail_flow if sealed_circuit else None,
         )
-        apneic_inflow, refill_l_min, _ = resp._apneic_inflow_components(
-            patency, 0.0, 0.0, dt, avail_flow if sealed_circuit else None,
-        )
-        inflow_l_s = min(avail_flow / 60.0, (apneic_inflow + refill_l_min) / 60.0 + frc_exp_stpd / dt)
+        frc_inflow_l_s = max(0.0, terms.exhaled_vc_btps_l) * resp.btps_to_stpd / dt
+        inflow_l_s = min(avail_flow / 60.0, terms.passive_stpd_l_min / 60.0 + frc_inflow_l_s)
     else:
         inflow_l_s = min(avail_flow / 60.0, max(0.0, inflow_stpd_l_min) / 60.0)
     u = (inflow_l_s / DEADSPACE_APNEIC_STPD_L) * dt

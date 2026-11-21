@@ -306,3 +306,43 @@ test("ecg sweep autoscales large CPR artifact and clamps drawn points inside lan
   assert.ok(drawnY.length >= 2 && drawnY.every(y => y >= 22 && y <= 78));
   monitor.destroy();
 });
+
+test("monitor highlights HR tile and shows rhythm badge for lethal rhythm and arrest alarms", () => {
+  const { elements } = setupPage();
+  const hrClasses = new Set();
+  const hrTile = {
+    dataset: { alarm: "HR" },
+    classList: {
+      toggle(name, force) { force ? hrClasses.add(name) : hrClasses.delete(name); },
+    },
+  };
+  globalThis.document.querySelectorAll = selector => {
+    if (selector === ".monitor output") return [...elements.values()].filter(el => el.tag === "output");
+    if (selector === ".monitor [data-alarm]") return [hrTile];
+    return [];
+  };
+  const monitor = new Monitor({
+    arterial_line: true, sample_interval: 0.01, nmb_history: [],
+    patient: { age: 40, sex: "male", weight: 70, renal_status: "Normal", hepatic_status: "Normal",
+      coronary_flow_reserve: 5, heart_failure: "none", surgical_site: "other" },
+  });
+  const badge = elements.get("v-rhythm-alarm");
+  for (const [key, expected] of [
+    ["Asystole", "ASYSTOLE"],
+    ["VFIB", "VFIB"],
+    ["VTACH", "VTACH"],
+    ["Arrest", "ARREST"],
+  ]) {
+    monitor.updateAlarms({ [key]: { high: true, low: false } });
+    assert.equal(hrClasses.has("alarm-critical"), true);
+    assert.equal(hrClasses.has("alarm-high"), true);
+    assert.equal(badge.hidden, false);
+    assert.equal(badge.textContent, expected);
+  }
+  monitor.updateAlarms({});
+  assert.equal(hrClasses.has("alarm-critical"), false);
+  assert.equal(hrClasses.has("alarm-high"), false);
+  assert.equal(badge.hidden, true);
+  assert.equal(badge.textContent, "");
+  monitor.destroy();
+});

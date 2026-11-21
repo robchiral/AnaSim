@@ -81,22 +81,8 @@ class CerebralModel:
             pressure = min(pressure, clamp01(flow_ceiling))
         reference_hb = max(self.baseline_hb, 13.0 - 0.35 * max(0.0, 13.0 - self.baseline_hb))
         oxygen = max(0.0, hb * saturation) / (reference_hb * 98.0)
-        # Normocapnic hypoxia adds up to 50% flow (calibrated); acute hypercapnia
-        # augments hypoxic vasodilation (Battisti-Charbonney 2011) up to twice
-        # baseline flow (Willie 2015), and hypocapnia lowers the flow ceiling
-        # until hypotension limits perfusion (Brian 1998).
-        effective_paco2 = max(10.0, pa_co2) * 40.0 / self.csf_paco2
-        base_cbf = min(1.5, 1.0 + 1.5 * max(0.0, 1.0 - oxygen))
-        if effective_paco2 >= 40.0:
-            cbf = min(2.0, base_cbf + 0.5 * clamp01((effective_paco2 - 40.0) / 30.0))
-            supply = pressure * min(1.0, cbf * oxygen)
-        else:
-            hypocapnia = clamp01((40.0 - effective_paco2) / 20.0)
-            cbf = base_cbf * (1.0 - 0.38 * hypocapnia)
-            supply = min(pressure * min(1.0, base_cbf * oxygen), cbf * oxygen)
-
         # CMRO2 scales with temperature Q10 (~7%/°C), anesthetic suppression, and
-        # hypermetabolic stress (seizures/MH). Hypothermia slows both acute
+        # cerebral hypermetabolic stress (seizures). Hypothermia slows both acute
         # oxygen store depletion and ischemic injury; normothermic anesthesia
         # preserves the ~11 s arrest EEG flattening (de Vries 1998).
         temp_q10 = TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 22.0, 42.0))
@@ -106,6 +92,24 @@ class CerebralModel:
             * (1.0 - 0.35 * clamp01(anesthetic_depth))
             * (1.0 + 0.80 * clamp01(metabolic_stress)),
         )
+        # Flow-metabolism coupling raises CBF up to 2x baseline to meet fever or
+        # seizure demand when perfusion pressure and arterial oxygen allow;
+        # normocapnic hypoxia adds up to 50% flow (calibrated), acute hypercapnia
+        # augments hypoxic vasodilation (Battisti-Charbonney 2011) up to twice
+        # baseline flow (Willie 2015), and hypocapnia lowers the flow ceiling
+        # until hypotension limits perfusion (Brian 1998).
+        metabolic_demand = max(1.0, cmro2)
+        demand_cbf = min(2.0, metabolic_demand)
+        effective_paco2 = max(10.0, pa_co2) * 40.0 / self.csf_paco2
+        base_cbf = min(2.0, max(demand_cbf, min(1.5, 1.0 + 1.5 * max(0.0, 1.0 - oxygen))))
+        if effective_paco2 >= 40.0:
+            cbf = min(2.0, base_cbf + 0.5 * clamp01((effective_paco2 - 40.0) / 30.0))
+            supply = pressure * min(metabolic_demand, cbf * oxygen)
+        else:
+            hypocapnia = clamp01((40.0 - effective_paco2) / 20.0)
+            cbf = base_cbf * (1.0 - 0.38 * hypocapnia)
+            supply = min(pressure * min(metabolic_demand, base_cbf * oxygen), cbf * oxygen)
+
         supply_ratio = min(1.0, supply / cmro2) if supply > 0.0 else 0.0
         o2_tau = self.TISSUE_OXYGEN_TAU_S / max(0.35, temp_q10)
         self.tissue_oxygen += (supply_ratio - self.tissue_oxygen) * -math.expm1(-dt / o2_tau)

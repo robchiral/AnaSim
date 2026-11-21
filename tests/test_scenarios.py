@@ -675,3 +675,61 @@ def test_balanced_handover_bis_mode_text_and_shock_cuff_checks(engine_factory):
     no_art.state.nibp_measurement_failed = False
     ok, msg = require_hypotension_or_treatment(start_map, "hemorrhage", "Assess BP")(no_art)
     assert not ok and "MAP: 0/" not in msg
+
+
+def test_safety_review_covers_all_feedback_codes_and_mh_onset_and_pregnancy(engine_factory):
+    """Every ActionFeedback code appears in SAFETY_REVIEW (including laryngospasm_blocked),
+    pregnant MH Step 3 uses pregnancy normocapnia, and pre-onset MH actions do not latch milestones."""
+    import ast
+    from pathlib import Path
+
+    from anasim.scenarios.runtime import SAFETY_REVIEW
+
+    tree = ast.parse(Path("anasim/core/clinical_actions.py").read_text())
+    feedback_codes = {
+        node.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "ActionFeedback"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    }
+    assert feedback_codes <= set(SAFETY_REVIEW)
+
+    indep = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"})
+    indep.engine.laryngospasm_severity = 0.9
+    fb_resp = json.loads(indep.command("airway", json.dumps({"mode": "ETT"})))
+    assert fb_resp["feedback"]["code"] == "laryngospasm_blocked"
+    debrief = json.loads(indep.command("case_finish", "{}"))["debrief"]
+    assert any("laryngospasm" in note.lower() for note in debrief["learning_points"])
+
+    preg_mh = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1),
+        start=True, sex="female", gestational_age_weeks=38.0,
+    )
+    mh_scen = create_malignant_hyperthermia()
+    preg_mh.state.etco2_signal_valid = True
+    preg_mh.state.display_etco2 = 27.0
+    assert _require_etco2_normal(preg_mh)[0] is True
+    assert "22-37" in _step(mh_scen, "STABILIZE").instruction_for(preg_mh)
+
+    mh_session = WebSession({"scenario_id": "malignant_hyperthermia", "practice_mode": "independent"})
+    assert mh_session.case_run is not None
+    mh_session.engine.start()
+    mh_session.engine.set_fgf(10.0, 0.0, 0.0)
+    mh_session.engine.set_vent_settings(rr=24, vt=0.6, peep=5.0, ie="1:2", mode="VCV")
+    mh_session.engine.state.mv = 14.0
+    for _ in range(5):
+        mh_session.case_run.before_step()
+        mh_session.engine.step(1.0)
+        mh_session.case_run.observe(1.0, force=True)
+    assert "oxygen" not in mh_session.case_run.achieved_at
+    assert "ventilation" not in mh_session.case_run.achieved_at
+    for _ in range(30):
+        mh_session.case_run.before_step()
+        mh_session.engine.step(1.0)
+        mh_session.case_run.observe(1.0, force=True)
+    assert "oxygen" in mh_session.case_run.achieved_at
+    assert "ventilation" in mh_session.case_run.achieved_at

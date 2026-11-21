@@ -10,6 +10,9 @@ class AirwaySensor:
 
     def __init__(self, tau_s: float = 0.02):
         self.tau_s = tau_s
+        self._last_key = (-1.0, -1.0)
+        self._last_z = 0.0
+        self._last_decay = 1.0
         self.seed(0.0, 0.0, 0.0)
 
     def seed(self, paw: float, flow: float, volume: float) -> None:
@@ -23,19 +26,28 @@ class AirwaySensor:
 
     def step(self, dt: float, paw: float, volume: float, volume_change: float) -> tuple[float, float, float]:
         """Filter pressure, interval-mean flow, and a volume ramp with the same gas movement."""
-        z = dt / self.tau_s
-        decay = math.exp(-z)
+        tau_s = self.tau_s
+        key = (dt, tau_s)
+        if key != self._last_key:
+            self._last_key = key
+            self._last_z = dt / tau_s
+            self._last_decay = math.exp(-self._last_z)
+        z = self._last_z
+        decay = self._last_decay
         flow = 60.0 * volume_change / dt
-        for i, source in enumerate((paw, flow)):
-            first, second = self._stage1[i], self._stage2[i]
-            self._stage1[i] = source + (first - source) * decay
-            self._stage2[i] = source + (second - source + z * (first - source)) * decay
+        s1 = self._stage1
+        s2 = self._stage2
+        f0 = s1[0] - paw
+        s1[0] = paw + f0 * decay
+        s2[0] = paw + (s2[0] - paw + z * f0) * decay
+        f1 = s1[1] - flow
+        s1[1] = flow + f1 * decay
+        s2[1] = flow + (s2[1] - flow + z * f1) * decay
         # Filter the volume ramp exactly from the interval-mean flow.
-        first, second = self._stage1[2], self._stage2[2]
+        first, second = s1[2], s2[2]
         start, slope = volume - volume_change, volume_change / dt
-        ramp = slope * self.tau_s
-        self._stage1[2] = volume - ramp + (first - start + ramp) * decay
-        self._stage2[2] = volume - 2.0 * ramp + (second - start + 2.0 * ramp
-                                              + z * (first - start + ramp)) * decay
-        paw, flow, volume = self._stage2
-        return paw, flow, volume
+        ramp = slope * tau_s
+        diff = first - start + ramp
+        s1[2] = volume - ramp + diff * decay
+        s2[2] = volume - 2.0 * ramp + (second - start + 2.0 * ramp + z * diff) * decay
+        return s2[0], s2[1], s2[2]

@@ -168,7 +168,8 @@ class GasTransport:
             ph_change = (self.base[2] - blood.buffer_base) / blood.base_ph
             # A Newton step this small from the last pH leaves a quadratic error below the solver tolerance.
             if abs(ph_change) > 1e-5:
-                blood = chemistry.solve(pco2, saturation, self.base[2], blood.ph)
+                next_ph = min(10.0, max(5.0, blood.ph + ph_change))
+                blood = chemistry.solve(pco2, saturation, self.base[2], next_ph)
                 ph_change = 0.0
             self._tissue_ph[index] = blood.ph + ph_change
             relations.append((blood.total_co2 + blood.content_ph * ph_change, blood.co2_capacity))

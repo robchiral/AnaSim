@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 
-from anasim.core.action_log import ACTION_DRUG_BOLUS
+from anasim.core.action_log import ACTION_DRUG_BOLUS, ACTION_EVENT_START
 from anasim.core.monitors import display_int
 from anasim.machine.ventilator import VentSettings
 
@@ -13,9 +13,11 @@ from .base import (
     CaseOutcome,
     Scenario,
     ScenarioStep,
+    action_taken_in_case,
     check_etco2_range,
     create_observe_step,
     format_unmet_int,
+    normocapnia_bounds,
     require_all,
     require_infusion_started,
     require_map_at_least,
@@ -64,8 +66,27 @@ def _require_temperature_managed(engine) -> tuple[bool, str]:
     return not messages, ", ".join(messages)
 
 
+def _mh_normocapnia_bounds(engine) -> tuple[int, int]:
+    return normocapnia_bounds(engine, baseline_low=30.0)
+
+
 def _require_etco2_normal(engine) -> tuple[bool, str]:
-    return check_etco2_range(engine, 30, 45)
+    return check_etco2_range(engine, *_mh_normocapnia_bounds(engine))
+
+
+def _stabilize_instruction(engine) -> str:
+    low, high = _mh_normocapnia_bounds(engine)
+    return (
+        "Follow EtCO₂, HR, rigidity, blood gases, and core temperature. "
+        f"Reduce ventilation toward normocapnia (<b>EtCO₂ {low}-{high} mmHg</b>) as hypermetabolism resolves. "
+        "Turn off the forced-air warmer. Start <b>surface cooling</b> if core temperature "
+        "exceeds 39 °C or rises rapidly, and stop it below 38 °C.<br><br>"
+        "In practice, check potassium, CK, myoglobin, glucose, coagulation, and urine output. "
+        "Treat hyperkalemia with calcium, sodium bicarbonate, and glucose with insulin; "
+        "do not give calcium channel blockers with dantrolene. Arrange at least 24 hours "
+        "of critical care monitoring, further dantrolene according to the local protocol, "
+        "and referral for MH testing."
+    )
 
 
 def create_malignant_hyperthermia() -> Scenario:
@@ -145,17 +166,7 @@ def create_malignant_hyperthermia() -> Scenario:
             ScenarioStep(
                 id="STABILIZE",
                 title="Stabilize and reassess",
-                instruction=(
-                    "Follow EtCO₂, HR, rigidity, blood gases, and core temperature. "
-                    "Reduce ventilation toward normocapnia (<b>EtCO₂ 30-45 mmHg</b>) as hypermetabolism resolves. "
-                    "Turn off the forced-air warmer. Start <b>surface cooling</b> if core temperature "
-                    "exceeds 39 °C or rises rapidly, and stop it below 38 °C.<br><br>"
-                    "In practice, check potassium, CK, myoglobin, glucose, coagulation, and urine output. "
-                    "Treat hyperkalemia with calcium, sodium bicarbonate, and glucose with insulin; "
-                    "do not give calcium channel blockers with dantrolene. Arrange at least 24 hours "
-                    "of critical care monitoring, further dantrolene according to the local protocol, "
-                    "and referral for MH testing."
-                ),
+                instruction=_stabilize_instruction,
                 check_requirements=require_all(
                     _require_vaporizer_off,
                     propofol,
@@ -171,10 +182,22 @@ def create_malignant_hyperthermia() -> Scenario:
         outcomes=(
             CaseOutcome("triggers", "Triggering agents stopped and avoided", _triggers_avoided,
                         "Stop volatile anesthetics and avoid succinylcholine."),
-            CaseOutcome("oxygen", "High-flow oxygen given", lambda engine: oxygen(engine)[0],
-                        "Give 100% oxygen at high flow to wash out the volatile agent.", milestone=True),
-            CaseOutcome("ventilation", "Ventilation increased", lambda engine: ventilation(engine)[0],
-                        "Increase minute ventilation to 2-3 times baseline and follow EtCO₂.", milestone=True),
+            CaseOutcome(
+                "oxygen", "High-flow oxygen given",
+                lambda engine: (
+                    action_taken_in_case(engine, ACTION_EVENT_START, "malignant_hyperthermia")
+                    and oxygen(engine)[0]
+                ),
+                "Give 100% oxygen at high flow to wash out the volatile agent.", milestone=True,
+            ),
+            CaseOutcome(
+                "ventilation", "Ventilation increased",
+                lambda engine: (
+                    action_taken_in_case(engine, ACTION_EVENT_START, "malignant_hyperthermia")
+                    and ventilation(engine)[0]
+                ),
+                "Increase minute ventilation to 2-3 times baseline and follow EtCO₂.", milestone=True,
+            ),
             CaseOutcome("anesthesia", "Propofol anesthesia started", lambda engine: propofol(engine)[0],
                         "Maintain anesthesia with propofol after stopping the volatile agent."),
             CaseOutcome("dantrolene", "Dantrolene given", lambda engine: _require_dantrolene(engine)[0],
