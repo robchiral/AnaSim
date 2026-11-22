@@ -9,6 +9,13 @@ import { CasePanel } from "./case.js";
 
 let transport;
 const audio = new MonitorAudio();
+const narrowWorkspace = window.matchMedia("(max-width: 900px)");
+const workspace = $("workspace");
+const toolsToggle = $("session-tools-toggle");
+const sessionTools = $("session-tools");
+const speed = $("speed");
+const speedPresets = [...document.querySelectorAll(".speed-preset")];
+const audioOptions = $("session-options");
 const compactMonitor = window.matchMedia("(max-width: 720px)");
 function syncMonitorDetails() {
   for (const id of ["respiratory-loops", "nmb-history"]) $(id).open = !compactMonitor.matches;
@@ -22,7 +29,6 @@ let monitor = null;
 let controls = null;
 let casePanel = null;
 let trends = null;
-let trendReturnTab = "Machine";
 let last = null;
 let arrestShown = false;
 let cshtTimer = null;
@@ -30,9 +36,23 @@ const pending = new Map();
 let nextId = 1;
 
 function show(screen) {
-  $("session-options").open = false;
-  if (screen !== "app") audio.stopPlayback();
+  const wasHidden = $(screen).hidden;
+  audioOptions.open = false;
+  setToolsOpen(false);
+  if (screen !== "app") {
+    $("trends-dialog").close();
+    audio.stopPlayback();
+  }
   for (const id of ["loading", "setup", "app"]) $(id).hidden = id !== screen;
+  if (wasHidden) {
+    window.scrollTo(0, 0);
+    $(screen === "setup" ? "setup-title" : "run").focus({ preventScroll: true });
+  }
+}
+
+function setToolsOpen(open) {
+  if (open) audioOptions.open = false;
+  toolsToggle.setAttribute("aria-expanded", String(open));
 }
 
 function send(name, args = {}) {
@@ -58,14 +78,12 @@ function onMessage({ data }) {
         segment.dataset.state = index < data.stage - 1 ? "complete" : index === data.stage - 1 ? "active" : "";
       }
       $("loading-status").textContent = data.label;
-      $("loading-stage").textContent = `${data.stage} / 3`;
       break;
     }
     case "load_error":
       $("loading-status").textContent = `AnaSim could not load: ${data.message}`;
       $("loading-status").classList.add("error");
       $("loading-progress").hidden = true;
-      $("loading-stage").hidden = true;
       break;
     case "ready":
       catalog = data.catalog;
@@ -105,15 +123,86 @@ function onMessage({ data }) {
 
 // --- Setup ------------------------------------------------------------
 
+const PATIENT_PRESETS = {
+  healthy: {
+    age: 40, sex: "male", weight: 70, height: 170, baseline_hb: 13.5,
+    renal_function: "1.0", creatinine_clearance_ml_min: "", hepatic_function: "1.0",
+    coronary_flow_reserve: "5", heart_failure: "none", copd_severity: "0",
+    surgical_site: "other", pregnant: false, gestational_age_weeks: 28, position: "supine",
+  },
+  elderly_cad: {
+    age: 76, sex: "male", weight: 74, height: 172, baseline_hb: 11.8,
+    renal_function: "0.8", creatinine_clearance_ml_min: "", hepatic_function: "1.0",
+    coronary_flow_reserve: "2", heart_failure: "hfpef", copd_severity: "0",
+    surgical_site: "upper_abdominal", pregnant: false, gestational_age_weeks: 28, position: "supine",
+  },
+  obese_copd: {
+    age: 64, sex: "male", weight: 128, height: 174, baseline_hb: 14.8,
+    renal_function: "1.0", creatinine_clearance_ml_min: "", hepatic_function: "1.0",
+    coronary_flow_reserve: "5", heart_failure: "none", copd_severity: "0.65",
+    surgical_site: "lower_abdominal", pregnant: false, gestational_age_weeks: 28, position: "supine",
+  },
+  obstetric: {
+    age: 31, sex: "female", weight: 64, height: 165, baseline_hb: 11.2,
+    renal_function: "1.0", creatinine_clearance_ml_min: "", hepatic_function: "1.0",
+    coronary_flow_reserve: "5", heart_failure: "none", copd_severity: "0",
+    surgical_site: "lower_abdominal", pregnant: true, gestational_age_weeks: 38, position: "supine",
+  },
+};
+
+function buildCaseBrowser(scenarios) {
+  const browser = $("case-browser");
+  browser.replaceChildren();
+  const groups = [
+    { key: "routine", title: "Routine" },
+    { key: "crisis", title: "Crisis" },
+  ];
+  let first = true;
+  for (const group of groups) {
+    const matching = scenarios.filter((s) => (s.category ?? "routine") === group.key);
+    if (!matching.length) continue;
+    const section = document.createElement("div");
+    section.className = "case-group";
+    const heading = document.createElement("div");
+    heading.className = "case-group-title";
+    heading.textContent = group.title;
+    section.append(heading);
+    const list = document.createElement("div");
+    list.className = "case-list";
+    for (const scenario of matching) {
+      const item = document.createElement("label");
+      item.className = "case-item";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "scenario_id";
+      radio.value = scenario.id;
+      if (first) {
+        radio.checked = true;
+        first = false;
+      }
+      const title = document.createElement("span");
+      title.className = "case-item-title";
+      title.textContent = scenario.label;
+      const meta = document.createElement("span");
+      meta.className = "case-item-meta";
+      const startTag = scenario.start_mode === "awake" ? "Awake" : "Maintenance";
+      const maintTag = scenario.maint_type === "balanced" ? "Sevo" : "TIVA";
+      meta.textContent = `${startTag} · ${maintTag}`;
+      item.append(radio, title, meta);
+      list.append(item);
+    }
+    section.append(list);
+    browser.append(section);
+  }
+}
+
 function buildSetup() {
   const form = $("setup-form");
-  $("version").textContent = `AnaSim ${catalog.version}`;
+  $("version").textContent = `v${catalog.version}`;
   for (const [name, [min, max]] of Object.entries(catalog.ranges)) {
     Object.assign(form.elements[name], { min, max });
   }
-  form.elements.scenario_id.replaceChildren(
-    ...catalog.scenarios.map((scenario) => new Option(scenario.label, scenario.id)),
-  );
+  buildCaseBrowser(catalog.scenarios);
 
   const syncMaintenance = () => {
     $("maintenance-row").hidden = form.elements.mode.value !== "steady_state";
@@ -125,11 +214,12 @@ function buildSetup() {
     const isCase = form.elements.session.value === "case";
     $("case-fields").hidden = !isCase;
     $("initial-state").hidden = isCase;
-    const scenario = catalog.scenarios.find((s) => s.id === form.elements.scenario_id.value);
-    setText($("case-summary"), scenario.summary);
+    const selectedId = form.elements.scenario_id.value;
+    const scenario = catalog.scenarios.find((s) => s.id === selectedId) ?? catalog.scenarios[0];
+    if (scenario) setText($("case-summary"), scenario.summary);
   };
   for (const radio of form.elements.session) radio.onchange = syncSession;
-  form.elements.scenario_id.onchange = syncSession;
+  $("case-browser").addEventListener("change", syncSession);
   syncSession();
 
   const syncPregnancy = () => {
@@ -137,7 +227,7 @@ function buildSetup() {
     $("pregnancy-choice").hidden = !female;
     if (!female) form.elements.pregnant.checked = false;
     const pregnant = form.elements.pregnant.checked;
-    form.elements.weight.closest("label").firstChild.textContent = pregnant ? "Pre-pregnancy weight " : "Weight ";
+    setText($("weight-label"), pregnant ? "Pre-preg weight" : "Weight");
     $("gestation-row").hidden = !pregnant;
     $("position-row").hidden = !pregnant;
   };
@@ -145,7 +235,36 @@ function buildSetup() {
   form.elements.pregnant.onchange = syncPregnancy;
   syncPregnancy();
 
-  // Collapsed sections summarize their settings; options list only changes from the defaults.
+  const presetButtons = [...form.querySelectorAll("[data-preset]")];
+  const syncPresetHighlight = () => {
+    const f = form.elements;
+    for (const button of presetButtons) {
+      const preset = PATIENT_PRESETS[button.dataset.preset];
+      const matches = Object.entries(preset).every(([key, val]) => {
+        if (!preset.pregnant && (key === "gestational_age_weeks" || key === "position")) return true;
+        const field = f[key];
+        if (!field) return true;
+        return field.type === "checkbox" ? field.checked === Boolean(val) : String(field.value) === String(val);
+      });
+      button.setAttribute("aria-pressed", String(matches));
+    }
+  };
+  for (const button of presetButtons) {
+    button.onclick = () => {
+      const preset = PATIENT_PRESETS[button.dataset.preset];
+      const f = form.elements;
+      for (const [key, val] of Object.entries(preset)) {
+        const field = f[key];
+        if (!field) continue;
+        if (field.type === "checkbox") field.checked = Boolean(val);
+        else field.value = String(val);
+      }
+      syncPregnancy();
+      syncSummaries();
+      $("setup-error").hidden = true;
+    };
+  }
+
   const syncSummaries = () => {
     const f = form.elements;
     const severity = (field) => field.selectedOptions[0].textContent.split(" (")[0].toLowerCase();
@@ -153,6 +272,11 @@ function buildSetup() {
       const text = items.join(", ");
       return text ? text.charAt(0).toUpperCase() + text.slice(1) : empty;
     };
+    const w = f.weight.valueAsNumber;
+    const h = f.height.valueAsNumber;
+    const bmi = w > 0 && h > 0 ? w / ((h / 100) ** 2) : NaN;
+    setText($("setup-bmi"), Number.isFinite(bmi) ? bmi.toFixed(1) : "--");
+
     const organs = [];
     if (Number(f.renal_function.value) !== 1) organs.push(`${severity(f.renal_function)} renal impairment`);
     if (f.creatinine_clearance_ml_min.value !== "") organs.push(`CrCl ${f.creatinine_clearance_ml_min.value} mL/min`);
@@ -165,13 +289,7 @@ function buildSetup() {
     if (f.surgical_site.value !== "other") conditions.push(`${severity(f.surgical_site)} surgery`);
     if (f.pregnant.checked) conditions.push(`${f.gestational_age_weeks.value} weeks pregnant`);
     setText($("clinical-conditions-summary"), list(conditions, "None"));
-    const patient = `${f.age.value}-year-old ${f.sex.value}, ${f.weight.value} kg`;
-    setText($("patient-summary"), list([patient, ...organs, ...conditions]));
-    const options = [];
-    if (f.tci_enabled.checked) options.push("TCI allowed");
-    if (f.patient_variability.checked) options.push("individual drug response");
-    if (!f.arterial_line_enabled.checked) options.push("no arterial line");
-    setText($("options-summary"), list(options, "Defaults"));
+    syncPresetHighlight();
   };
   const onSetupEdit = () => {
     syncSummaries();
@@ -203,7 +321,8 @@ function readSetup(form) {
     const input = f[name];
     const value = Number(input.value);
     if (input.value === "" || !Number.isFinite(value) || value < Number(input.min) || value > Number(input.max)) {
-      const label = input.closest("label").firstChild.textContent.trim();
+      const labelEl = input.closest("label");
+      const label = (labelEl.querySelector(".param-head > span:first-child") ?? labelEl.firstChild).textContent.trim();
       setupError(`${label} must be between ${input.min} and ${input.max}.`);
       for (let details = input.closest("details"); details; details = details.parentElement.closest("details")) {
         details.open = true;
@@ -260,20 +379,24 @@ function startSession(sessionInfo) {
   $("setup-start").textContent = SETUP_START_LABEL;
   $("setup-cancel").hidden = false;
   show("app");
+  workspace.scrollTop = 0;
 
   monitor = new Monitor(info);
   controls = new Controls(info, command);
-  casePanel = new CasePanel(command, newSession);
-  controls.onViewChanged = () => {
-    if (last?.scenario) updateScenario(last.scenario);
-  };
+  casePanel = new CasePanel(command, newSession, info);
   trends = new Trends(info);
-  trendReturnTab = "Machine";
+  controls.onViewChanged = (tabChanged) => {
+    if (last?.scenario) updateScenario(last.scenario);
+    if (tabChanged && narrowWorkspace.matches) {
+      const panel = workspace.querySelector(".tab-panel:not([hidden])");
+      const tabsEdge = workspace.getBoundingClientRect().top + controls.tabList.offsetHeight;
+      if (panel.getBoundingClientRect().top < tabsEdge) panel.scrollIntoView({ block: "start" });
+    }
+  };
   controls.onMedicationsShown = refreshCsht;
   clearInterval(cshtTimer);
   cshtTimer = setInterval(refreshCsht, 5000);
 
-  const speed = $("speed");
   [speed.min, speed.max] = info.speed_range;
   speed.value = "1";
   $("record").title = info.recordings_dir
@@ -316,7 +439,7 @@ function updateBar(snap) {
   const status = $("status");
   let label, variant;
   if (snap.ended) {
-    [label, variant] = ["Session ended", "primary"];
+    [label, variant] = ["Ended", "primary"];
   } else if (snap.running) {
     [label, variant] = ["Pause", "outlined"];
   } else if (snap.time > 0) {
@@ -327,13 +450,18 @@ function updateBar(snap) {
   setText(run, label);
   run.className = `btn ${variant}`;
   run.disabled = snap.ended;
-  if (document.activeElement !== $("speed")) $("speed").value = String(snap.speed);
+  if (document.activeElement !== speed) speed.value = String(snap.speed);
+  speed.disabled = snap.ended;
+  for (const preset of speedPresets) {
+    preset.setAttribute("aria-pressed", String(Number(preset.dataset.speed) === snap.speed));
+    preset.disabled = snap.ended;
+  }
   const achieved = snap.achieved_speed >= 10 ? Math.round(snap.achieved_speed) : snap.achieved_speed;
-  setText(status, snap.running && snap.lagging ? `Actual speed ${achieved}×` : "");
+  setText(status, snap.running && snap.lagging ? `Actual ${achieved}×` : "");
 
   const record = $("record");
   record.setAttribute("aria-pressed", String(snap.recording));
-  setText(record, snap.recording ? "Stop recording" : "Record CSV");
+  setText(record, snap.recording ? "Stop recording" : "Record");
   $("recording-status").hidden = !snap.recording;
 
   const total = Math.floor(snap.time);
@@ -342,13 +470,12 @@ function updateBar(snap) {
 }
 
 function updateScenario(step) {
-  casePanel.update(step, !last?.running && last?.time === 0);
+  casePanel.update(step);
   if (step.mode === "independent" || step.complete) return;
   const total = info.scenario.total;
   const status = $("step-status");
   const next = $("step-next");
   const target = $("step-target");
-  next.hidden = false;
   setText($("step-title"), step.title);
   // Instructions are authored in anasim/scenarios with simple <b>, <i>, and <br> markup.
   if ($("step-instruction").dataset.instruction !== step.instruction) {
@@ -361,8 +488,10 @@ function updateScenario(step) {
     const tab = controls.tabs.find((button) => button.dataset.tab === step.target_tab);
     setText(target, `Open ${tab.textContent.toLowerCase()}`);
   }
-  const normalize = (text) => text.replace(/\s+/g, " ").trim().toLowerCase();
-  const repeated = normalize($("step-instruction").textContent) === normalize(step.status);
+  const normalize = (text) => text.replace(/\s+/g, " ").trim().toLowerCase().replace(/\.$/, "");
+  const instruction = normalize($("step-instruction").textContent);
+  const cue = normalize(step.status);
+  const repeated = instruction === cue || instruction.startsWith(`${cue} `) || instruction.startsWith(`${cue}.`);
   setText(status, step.met || repeated ? "" : step.status);
   next.disabled = !step.met;
   setText(next, step.met && step.index === total - 1 ? "Finish and review" : "Continue");
@@ -370,8 +499,10 @@ function updateScenario(step) {
 
 $("step-next").onclick = () => command("scenario_next");
 $("step-target").onclick = () => {
-  const tab = last?.scenario?.target_tab;
-  if (tab) controls.openTab(tab);
+  const target = last?.scenario?.target_tab;
+  if (!target) return;
+  controls.openTab(target);
+  controls.tabs.find((tab) => tab.dataset.tab === target).focus();
 };
 
 $("run").onclick = () => last && command("run", { running: !last.running });
@@ -379,48 +510,58 @@ $("measure-nibp").onclick = () => command("nibp");
 $("nmb-mode").onchange = () => command("nmb_mode", { mode: $("nmb-mode").value });
 $("nmb-repeat").onchange = () => command("nmb_repeat", { seconds: Number($("nmb-repeat").value) });
 $("nmb-measure").onclick = () => command("nmb_measure");
-$("speed").onchange = () => {
-  const input = $("speed");
-  const value = Math.min(Math.max(Number(input.value) || 1, Number(input.min)), Number(input.max));
-  input.value = String(value);
+speed.onchange = () => {
+  const value = Math.min(Math.max(Number(speed.value) || 1, Number(speed.min)), Number(speed.max));
+  speed.value = String(value);
   command("speed", { value });
 };
+speed.onkeydown = (event) => {
+  if (event.key === "Enter") speed.blur();
+};
+for (const preset of speedPresets) {
+  preset.onclick = () => {
+    const value = Number(preset.dataset.speed);
+    speed.value = String(value);
+    command("speed", { value });
+  };
+}
 $("record").onclick = async () => {
-  $("session-options").open = false;
+  audioOptions.open = false;
+  if (narrowWorkspace.matches) toolsToggle.focus();
+  setToolsOpen(false);
   if (!last) return;
   const result = await command("record", { active: !last.recording });
   if (result && result.csv) download(result.filename, result.csv);
 };
 $("new-session").onclick = () => {
-  $("session-options").open = false;
+  audioOptions.open = false;
+  setToolsOpen(false);
   newSession();
 };
-$("show-trends").onclick = () => {
-  $("session-options").open = false;
-  if (controls.currentTab !== "Trends") trendReturnTab = controls.currentTab;
-  controls.openTab("Trends");
-  trends.requestDraw();
-  $("close-trends").focus();
+toolsToggle.onclick = () => {
+  const open = toolsToggle.getAttribute("aria-expanded") !== "true";
+  setToolsOpen(open);
+  if (open) $("record").focus();
 };
-$("close-trends").onclick = () => {
-  controls.openTab(trendReturnTab);
-  $("session-options").querySelector("summary").focus();
-};
-$("trends-panel").addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    $("close-trends").click();
-  }
+document.addEventListener("focusin", (event) => {
+  if (event.target !== toolsToggle && !sessionTools.contains(event.target)) setToolsOpen(false);
+});
+narrowWorkspace.addEventListener("change", () => setToolsOpen(false));
+sessionTools.parentElement.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || toolsToggle.getAttribute("aria-expanded") !== "true") return;
+  setToolsOpen(false);
+  toolsToggle.focus();
 });
 document.addEventListener("pointerdown", (event) => {
-  const options = $("session-options");
-  if (!options.contains(event.target)) options.open = false;
+  if (!audioOptions.contains(event.target)) audioOptions.open = false;
+  if (!toolsToggle.contains(event.target) && !sessionTools.contains(event.target)) setToolsOpen(false);
 });
-$("session-options").addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    $("session-options").open = false;
-    $("session-options").querySelector("summary").focus();
-  }
+audioOptions.querySelector("summary").onclick = () => setToolsOpen(false);
+audioOptions.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !audioOptions.open) return;
+  event.preventDefault();
+  audioOptions.open = false;
+  audioOptions.querySelector("summary").focus();
 });
 
 async function newSession() {

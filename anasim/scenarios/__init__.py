@@ -40,7 +40,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "induction_tiva",
         "TIVA induction",
-        "Awake before induction: propofol and rocuronium induction, intubation, and propofol-remifentanil maintenance.",
+        "Preoxygenate, induce with propofol and rocuronium, intubate, and start propofol-remifentanil maintenance.",
         "awake",
         "tiva",
         create_induction_tiva,
@@ -48,7 +48,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "induction_balanced",
         "Balanced induction",
-        "Awake before induction: fentanyl, propofol, and rocuronium induction, intubation, and sevoflurane maintenance.",
+        "Preoxygenate, induce with fentanyl, propofol, and rocuronium, intubate, and start sevoflurane maintenance.",
         "awake",
         "balanced",
         create_induction_balanced,
@@ -56,7 +56,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "emergence_tiva",
         "TIVA emergence",
-        "End of surgery under TIVA: reverse residual block, wake the patient, and extubate.",
+        "End of surgery: reverse residual neuromuscular block, wake the patient, and extubate.",
         "steady_state",
         "tiva",
         _create_emergence_tiva,
@@ -64,7 +64,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "emergence_balanced",
         "Inhalational emergence",
-        "End of surgery under sevoflurane: reverse residual block, wake the patient, and extubate.",
+        "End of surgery: reverse residual neuromuscular block, wash out sevoflurane, and extubate.",
         "steady_state",
         "balanced",
         _create_emergence_balanced,
@@ -72,7 +72,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "oxygen_supply_failure",
         "O₂ supply failure",
-        "During surgery under TIVA: the pipeline oxygen supply fails.",
+        "Pipeline oxygen supply fails during surgery.",
         "steady_state",
         "tiva",
         create_oxygen_supply_failure,
@@ -81,7 +81,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "hemorrhage_response",
         "Hemorrhage response",
-        "During surgery under TIVA: brisk surgical bleeding.",
+        "Brisk surgical bleeding causes hypovolemic shock.",
         "steady_state",
         "tiva",
         create_hemorrhage_response,
@@ -90,7 +90,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "anaphylaxis_response",
         "Anaphylaxis response",
-        "During surgery under TIVA: severe anaphylaxis after an antibiotic dose.",
+        "Severe anaphylaxis after an intraoperative antibiotic dose.",
         "steady_state",
         "tiva",
         create_anaphylaxis_scenario,
@@ -99,7 +99,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "sepsis_response",
         "Septic shock response",
-        "During surgery under TIVA: septic shock from an intra-abdominal infection.",
+        "Intraoperative septic shock from an intra-abdominal infection.",
         "steady_state",
         "tiva",
         create_sepsis_response,
@@ -108,7 +108,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "malignant_hyperthermia",
         "Malignant hyperthermia",
-        "During surgery under sevoflurane: rising EtCO₂, tachycardia, and muscle rigidity.",
+        "Rising EtCO₂, tachycardia, and muscle rigidity under sevoflurane.",
         "steady_state",
         "balanced",
         create_malignant_hyperthermia,
@@ -117,7 +117,7 @@ SCENARIO_REGISTRY = (
     ScenarioSpec(
         "cardiac_arrest",
         "Cardiac arrest",
-        "During surgery under TIVA: ventricular fibrillation.",
+        "Sudden ventricular fibrillation during surgery.",
         "steady_state",
         "tiva",
         create_cardiac_arrest,

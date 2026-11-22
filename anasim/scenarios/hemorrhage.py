@@ -24,7 +24,7 @@ def _require_volume_replacement(engine) -> tuple[bool, str]:
         met, _ = require_fluid_bolus(volume, labels=labels, event_name="hemorrhage")(engine)
         if met:
             return True, ""
-    return False, "Start 500 mL crystalloid or one 300 mL red-cell unit"
+    return False, "Give 500 mL crystalloid or 1 unit PRBC (300 mL)"
 
 
 def create_hemorrhage_response() -> Scenario:
@@ -40,10 +40,10 @@ def create_hemorrhage_response() -> Scenario:
             id="RECOGNIZE_SHOCK",
             title="Recognize hypovolemic shock",
             instruction=(
-                "Treat brisk blood loss promptly; do not wait for hypotension. "
-                "A falling MAP, narrowing pulse pressure, and falling EtCO₂ can indicate reduced flow. "
-                "Anesthesia and beta blockade can blunt tachycardia. "
-                "This objective accepts early volume replacement or bleeding control, or the developing pressure fall."
+                "Treat brisk blood loss early without waiting for hypotension. "
+                "Falling MAP, narrowing pulse pressure, and dropping EtCO₂ signal low cardiac output; "
+                "anesthesia and beta blockers can blunt tachycardia.<br><br>"
+                "<i>Begin volume replacement or hemostasis right away, or watch pressure fall.</i>"
             ),
             check_requirements=require_hypotension_or_treatment(
                 start_map, "hemorrhage", "replace volume and control bleeding", pressors=("nore", "phenyl"),
@@ -53,8 +53,8 @@ def create_hemorrhage_response() -> Scenario:
             id="STOP_BLEEDING",
             title="Control the bleeding source",
             instruction=(
-                "Call for help and select <b>Request surgical hemostasis</b>. "
-                "In practice, hemorrhage control and resuscitation proceed together."
+                "Call for help and select <b>Request surgical hemostasis</b>.<br><br>"
+                "<i>Control bleeding and resuscitate in parallel.</i>"
             ),
             check_requirements=require_crisis_stopped("hemorrhage", "Request surgical hemostasis"),
         ),
@@ -62,11 +62,9 @@ def create_hemorrhage_response() -> Scenario:
             id="GIVE_FLUIDS",
             title="Replace circulating volume",
             instruction=(
-                "Start <b>500 mL crystalloid</b> as a bridge while blood is obtained, "
-                "or give a red-cell unit (<b>300 mL</b> in this simulator). "
-                "Reassess blood loss and perfusion. Use blood products early for major "
-                "hemorrhage and activate the local massive transfusion protocol when needed. "
-                "In practice, use coagulation tests and ionized calcium to guide component therapy and calcium replacement."
+                "Give <b>500 mL crystalloid</b> as a bridge or start <b>PRBC (300 mL)</b>. "
+                "Use blood products early in major hemorrhage and activate the massive transfusion protocol when needed.<br><br>"
+                "<i>Guide component therapy and calcium replacement with coagulation tests and ionized calcium.</i>"
             ),
             check_requirements=_require_volume_replacement,
             target_tab="Circulation",
@@ -75,10 +73,9 @@ def create_hemorrhage_response() -> Scenario:
             id="START_VASOPRESSOR",
             title="Start vasopressor",
             instruction=(
-                "If <b>MAP remains below 65 mmHg</b>, start or adjust norepinephrine "
-                "while replacing volume. A starting rate of 0.05-0.1 mcg/kg/min is "
-                "3.5-7 mcg/min for 70 kg; enter the absolute rate in the drug control and titrate to response. "
-                "Continue without adding a vasopressor if pressure has recovered."
+                "If <b>MAP < 65 mmHg</b>, start or adjust <b>norepinephrine</b> in mcg/min while replacing volume "
+                "(0.05-0.1 mcg/kg/min = 3.5-7 mcg/min for 70 kg) and titrate to response. "
+                "Skip this if pressure has already recovered."
             ),
             check_requirements=require_vasopressor_if_hypotensive(
                 "nore", "phenyl",
@@ -90,10 +87,9 @@ def create_hemorrhage_response() -> Scenario:
         create_reassess_step(
             "hemorrhage",
             "Request surgical hemostasis",
-            "Hemorrhage controlled",
-            "Persistent tachycardia or hypotension warrants reassessment for continued bleeding, "
-            "inadequate replacement, or another cause. In practice, also assess hemoglobin, "
-            "coagulation, temperature, calcium, and tissue perfusion."
+            "hemorrhage is controlled",
+            "<i>If tachycardia or hypotension persists, look for ongoing bleeding, inadequate volume replacement, "
+            "or another cause. Follow hemoglobin, coagulation, temperature, calcium, and perfusion.</i>",
         ),
     ]
 

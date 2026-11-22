@@ -592,7 +592,7 @@ class TestReflexesAndHypoxia:
 
         engine.set_airway_mode("Mask")
         engine.set_fgf(10.0, 0.0)
-        engine.set_bag_mask_ventilation(True, 12.0, 0.5)
+        engine.set_bag_mask_ventilation(True, 12.0, 0.5, p_max=20.0)
         depressed_map = engine.state.map
         for _ in range(360):
             engine.step(0.5)

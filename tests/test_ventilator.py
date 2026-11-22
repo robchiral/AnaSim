@@ -1,3 +1,4 @@
+import copy
 import itertools
 import math
 from dataclasses import asdict
@@ -63,7 +64,7 @@ def test_rejected_ventilator_updates_preserve_settings_and_gas_flows(awake_engin
 def test_bag_mask_ventilates_paralysis_only_through_an_airway(awake_engine, advance_time):
     engine = awake_engine
     engine.give_drug_bolus("Rocuronium", 0.8 * engine.patient.weight)
-    engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.6)
+    engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.6, p_max=20.0)
     advance_time(engine, 120.0, dt=0.25)
     # Residual contractions can move dead-space gas without effective ventilation.
     assert engine.state.mv < 0.5 * 12.0 * 0.6
@@ -795,29 +796,44 @@ def test_bag_pressure_limit_caps_manual_breaths_across_step_sizes():
     assert vent.monitors.tv_exp == pytest.approx(500.0, rel=0.02)
     assert not vent.pressure_limited
 
-    for bad in (0.0, -5.0, math.nan):
+    for bad in (-5.0, math.nan):
         with pytest.raises(ValueError):
             vent.step(0.1, lung, "bag", bag=(12.0, 0.5), bag_p_max=bad)
 
 
-def test_obstructed_bag_ventilation_stops_at_the_pressure_limit(engine_factory):
+def test_apl_limits_manual_bagging_with_an_obstructed_airway(engine_factory, advance_time):
     engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1), start=True)
     engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
     engine.set_vent_power(False)
     engine.set_airway_mode("ETT")
     engine.set_airway_obstruction(0.9)
     engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.5)
-    for _ in range(300):
-        engine.step(0.1)
+    advance_time(engine, 30.0, dt=0.1)
+    assert engine.state.paw_peak == pytest.approx(0.0, abs=0.1)
+    assert engine.state.vt < 5.0
+
+    engine.set_apl_valve(20.0)
+    advance_time(engine, 30.0, dt=0.1)
     assert engine.state.paw_peak == pytest.approx(20.0, abs=0.1)
     assert 40.0 < engine.state.vt < 80.0
     assert engine.vent.pressure_limited
 
-    engine.set_bag_mask_settings(rr=12.0, vt=0.5, p_max=40.0)
-    for _ in range(300):
-        engine.step(0.1)
+    engine.set_apl_valve(40.0)
+    advance_time(engine, 30.0, dt=0.1)
     assert engine.state.paw_peak == pytest.approx(40.0, abs=0.1)
     assert 90.0 < engine.state.vt < 130.0
+    pressurized_volume = engine.state.vt
+
+    engine.set_apl_valve(0.0)
+    advance_time(engine, 30.0, dt=0.1)
+    assert engine.state.paw_peak == pytest.approx(0.0, abs=0.1)
+    assert engine.state.vt < 0.5 * pressurized_volume
+
+    engine.set_vent_settings(mode="PCV", rr=12.0, vt=0.5, peep=5.0, ie="1:2", p_insp=15.0)
+    engine.set_vent_power(True)
+    advance_time(engine, 30.0, dt=0.1)
+    assert engine.state.peep == pytest.approx(5.0, abs=0.2)
+    assert engine.state.paw_peak == pytest.approx(20.0, abs=0.2)
 
 
 def test_closed_apl_traps_fresh_gas_and_depresses_circulation(engine_factory, advance_time):
@@ -970,12 +986,11 @@ def test_awake_vcv_frc_conservation_per_breath_va_fresh_flow_and_mode_cleanup(en
     assert psv.inspiring and psv._breath is not None and psv._breath.kind == "PC"
 
 
-def test_apl_decoupled_from_bag_pmax_and_monotonic(engine_factory, advance_time):
-    """Manual bag Pmax does not apply spontaneous CPAP; APL is monotonic across 20 cmH2O."""
+def test_apl_controls_spontaneous_circuit_pressure(engine_factory, advance_time):
     engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
     engine.set_airway_mode("ETT")
     engine.set_fgf(8.0, 0.0)
-    engine.set_bag_mask_settings(rr=12.0, vt=0.5, p_max=35.0)
+    engine.set_bag_mask_settings(rr=12.0, vt=0.5)
     advance_time(engine, 15.0, dt=0.5)
     assert engine.state.peep == pytest.approx(0.0, abs=0.2)
 
@@ -1037,3 +1052,154 @@ def test_apnea_clears_stale_vte_and_obstructed_subthreshold_breaths_do_not_merge
         obs_vent.step(0.5, obs_lung, "spontaneous")
         obs_max_vt = max(obs_max_vt, obs_vent.monitors.tv_exp)
     assert obs_max_vt == 0.0
+
+
+def test_closed_apl_remains_hazardous_during_bagging_and_routine_apl_builds_peep(
+    engine_factory, advance_time
+):
+    """Unified manual/spontaneous APL circuit: routine APL 20 yields modest PEEP and full VT,
+    loose masks lower both Paw and VT without inflating circuit pressure, and closing APL to
+    70 cmH2O with high FGF depresses MAP even while actively bagging."""
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=1), start=True)
+    engine.give_drug_bolus("roc", 0.8 * engine.patient.weight)
+    engine.set_vent_power(False)
+    engine.set_airway_mode("Mask")
+    engine.set_fgf(10.0, 0.0)
+    engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.5, p_max=20.0)
+    advance_time(engine, 40.0, dt=0.2)
+    assert engine.state.peep < 2.0
+    assert 10.0 < engine.state.paw_peak <= 20.5
+    assert 450.0 < engine.state.vt < 550.0
+
+    # Raising APL to 25 cmH2O builds ~5 cmH2O baseline PEEP while maintaining full VT.
+    engine.set_apl_valve(25.0)
+    advance_time(engine, 20.0, dt=0.2)
+    assert 3.5 < engine.state.peep < 7.0
+    assert 450.0 < engine.state.vt < 550.0
+
+    # A 50% facemask leak with obstruction reduces displayed Paw and VT rather than dividing APL by seal.
+    obs_tight = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=1), start=True)
+    obs_tight.give_drug_bolus("roc", 0.8 * obs_tight.patient.weight)
+    obs_tight.set_vent_power(False)
+    obs_tight.set_airway_mode("Mask")
+    obs_tight.set_fgf(10.0, 0.0)
+    obs_tight.set_airway_obstruction(0.8)
+    obs_tight.set_bag_mask_ventilation(True, rr=12.0, vt=0.5, p_max=20.0)
+    obs_loose = copy.deepcopy(obs_tight)
+    obs_loose.set_mask_seal(0.5)
+    advance_time(obs_tight, 30.0, dt=0.2)
+    advance_time(obs_loose, 30.0, dt=0.2)
+    assert obs_tight.state.paw_peak == pytest.approx(20.0, abs=0.5)
+    assert obs_loose.state.paw_peak <= 10.5
+    assert obs_loose.state.vt < 0.65 * obs_tight.state.vt
+
+    # Starting bag ventilation with APL closed at 70 cmH2O does not cure trapped FGF or hypotension.
+    closed = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    closed.give_drug_bolus("roc", 0.8 * closed.patient.weight)
+    closed.set_vent_power(False)
+    closed.set_airway_mode("ETT")
+    closed.set_fgf(10.0, 0.0)
+    closed.set_apl_valve(70.0)
+    base_map = closed.state.map
+    closed.set_bag_mask_ventilation(True, rr=12.0, vt=0.5)
+    advance_time(closed, 45.0, dt=0.5)
+    assert closed.state.peep > 40.0
+    assert closed.state.paw_peak > 65.0
+    assert closed.state.alarms.get("Ppeak", {}).get("high") is True
+    assert closed.state.map < 0.70 * base_map
+
+    closed.set_apl_valve(0.0)
+    advance_time(closed, 10.0, dt=0.5)
+    assert closed.state.peep == pytest.approx(0.0, abs=0.2)
+
+
+def test_manual_bag_timing_synchronization_open_apl_and_single_breath(engine_factory, advance_time):
+    """Slow manual rate caps squeeze duration at BAG_TI_MAX_S; open APL leaves spontaneous
+    breathing unimpeded and alarms in apnea; active bagging synchronizes with spontaneous efforts;
+    deliver_manual_breath delivers one squeeze without enabling continuous bagging."""
+    lung = RespiratoryMechanics()
+    vent = AnesthesiaVentilator()
+    vent.step(0.1, lung, "bag", bag=(4.0, 0.5), bag_p_max=20.0)
+    assert vent._breath is not None and vent._breath.ti == pytest.approx(ventilator.BAG_TI_MAX_S)
+
+    # Open APL during spontaneous breathing neither clamps flow nor counts breaths as supported PPV.
+    spont = engine_factory(config=SimulationConfig(mode="awake", dt=0.2, rng_seed=1), start=True)
+    spont.set_airway_mode("ETT")
+    spont.set_bag_mask_ventilation(True, rr=12.0, vt=0.5, p_max=0.0)
+    advance_time(spont, 30.0, dt=0.2)
+    assert spont.state.rr > 8.0 and spont.state.vt > 350.0
+    assert spont.vent.monitors.mv_supported == 0.0
+
+    # Active bagging synchronizes with spontaneous breaths without double-stacking volume.
+    spont.set_apl_valve(15.0)
+    advance_time(spont, 30.0, dt=0.2)
+    assert 350.0 < spont.state.vt < 650.0
+
+    # Open APL during apnea triggers the low-RR alarm after 15 s.
+    apneic = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    apneic.give_drug_bolus("roc", 0.8 * apneic.patient.weight)
+    apneic.set_vent_power(False)
+    apneic.set_airway_mode("ETT")
+    apneic.set_bag_mask_ventilation(True, rr=12.0, vt=0.5, p_max=0.0)
+    advance_time(apneic, 35.0, dt=0.5)
+    assert apneic.state.rr == 0.0
+    assert apneic.state.alarms.get("RR", {}).get("low") is True
+
+    # Single manual breath delivers one breath then stops without repeating.
+    apneic.set_bag_mask_ventilation(False)
+    apneic.set_apl_valve(20.0)
+    apneic.set_fgf(2.0, 0.0)
+    advance_time(apneic, 5.0, dt=0.5)
+    breaths_before = apneic.vent.breath_count
+    apneic.deliver_manual_breath()
+    advance_time(apneic, 10.0, dt=0.2)
+    assert apneic.bag_mask_active is False
+    assert apneic.vent.breath_count == breaths_before + 1
+    assert apneic.state.paw_peak >= 12.0
+    advance_time(apneic, 10.0, dt=0.2)
+    assert apneic.vent.breath_count == breaths_before + 1
+
+
+def test_o2_flush_refills_bag_dilutes_agent_pressurizes_closed_apl_and_needs_o2_supply(
+    engine_factory, advance_time
+):
+    """O2 flush bypasses the vaporizer to refill a collapsed reservoir, boosts FiO2 while diluting
+    sevoflurane, spikes circuit pressure against a closed APL, and delivers nothing without O2 supply."""
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=0.2, rng_seed=1),
+        start=True,
+    )
+    engine.set_vent_power(False)
+    engine.set_airway_mode("ETT")
+    engine.set_fgf(0.5, 4.5, 0.0)
+    engine.set_vaporizer(4.0)
+    advance_time(engine, 60.0, dt=0.2)
+    engine.circuit.reservoir_volume = 0.2
+    fio2_before = engine.circuit.composition.fio2
+    sevo_before = engine.circuit.composition.fi_agent
+
+    engine.trigger_o2_flush(1.5)
+    advance_time(engine, 1.6, dt=0.2)
+    assert engine.circuit.reservoir_volume > 1.1
+    assert engine.circuit.composition.fio2 > fio2_before + 0.08
+    assert engine.circuit.composition.fi_agent < sevo_before * 0.90
+
+    # Flushing against a closed APL spikes baseline circuit pressure rapidly.
+    engine.circuit.reservoir_volume = engine.circuit.reservoir_capacity
+    engine.set_apl_valve(60.0)
+    engine._apl_pressure = 0.0
+    engine.trigger_o2_flush(2.0)
+    advance_time(engine, 2.0, dt=0.2)
+    assert engine._apl_pressure > 10.0
+
+    # Without an O2 supply, O2 flush adds no gas to an empty bag.
+    engine.set_apl_valve(0.0)
+    engine.set_fgf(0.0, 0.0, 0.0)
+    advance_time(engine, 10.0, dt=0.2)
+    engine.set_oxygen_supply_connected(False)
+    engine.circuit.reservoir_volume = 0.1
+    res_before = engine.circuit.reservoir_volume
+    engine.trigger_o2_flush(1.5)
+    advance_time(engine, 1.6, dt=0.2)
+    assert engine.circuit.delivered_o2_flush_flow() == 0.0
+    assert engine.circuit.reservoir_volume < res_before + 0.05

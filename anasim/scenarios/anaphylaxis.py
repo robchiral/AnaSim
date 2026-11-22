@@ -33,25 +33,21 @@ def _prepare(engine) -> None:
 def _epinephrine_instruction(engine) -> str:
     if engine.config.maint_type == "balanced" or engine.circuit.vaporizer_on:
         anesthetic_line = (
-            "If hypotensive, turn off the volatile anesthetic and vasodilating infusions, "
-            "and consider an amnestic agent such as midazolam."
+            "If hypotension persists, turn off the volatile agent and vasodilating infusions, "
+            "and consider midazolam for amnesia."
         )
     else:
         anesthetic_line = (
-            "If hypotensive, reduce or pause vasodilating intravenous infusions (such as propofol), "
-            "and consider an amnestic agent such as midazolam."
+            "If hypotension persists, reduce or pause vasodilating infusions such as propofol, "
+            "and consider midazolam for amnesia."
         )
     return (
-        "Abrupt hypotension and bronchospasm with rising airway pressure suggest anaphylaxis; "
-        "HR and skin signs vary. Call for help and pause the procedure.<br><br>"
-        "Give <b>epinephrine 50-100 mcg IV</b> promptly for this severe reaction "
-        "with IV access and continuous monitoring. Repeat and titrate to response; "
-        "start an infusion if repeated boluses are needed (for example, "
-        "0.05 mcg/kg/min = 3.5 mcg/min for 70 kg).<br><br>"
-        "Give <b>100% oxygen</b>: set O₂ 10 L/min, air and N₂O 0 L/min. "
-        "Maintain ventilation and assess the airway while treating circulation. "
-        "Select <b>Stop suspected trigger</b> promptly, alongside resuscitation. "
-        f"{anesthetic_line}"
+        "Sudden hypotension with bronchospasm and rising airway pressure suggests anaphylaxis. "
+        "Call for help, pause surgery, and select <b>Stop suspected trigger</b>.<br><br>"
+        "Give <b>epinephrine 50-100 mcg IV</b> promptly and repeat to response; start an infusion "
+        "if repeated boluses are needed (for example, 3.5 mcg/min = 0.05 mcg/kg/min for 70 kg). "
+        "Set <b>100% oxygen</b> (O₂ 10 L/min, air and N₂O 0 L/min in Machine) and keep ventilating.<br><br>"
+        f"<i>{anesthetic_line}</i>"
     )
 
 
@@ -103,9 +99,8 @@ def create_anaphylaxis_scenario() -> Scenario:
             id="FLUIDS",
             title="Give fluids",
             instruction=(
-                "Start a rapid <b>1000 mL crystalloid bolus</b> for this severe adult "
-                "reaction, alongside epinephrine. Reassess and repeat as needed; "
-                "vasodilation and capillary leak can require substantial volume."
+                "Give a rapid <b>1000 mL crystalloid bolus</b> alongside epinephrine. "
+                "Reassess and repeat as needed; capillary leak often requires large volumes."
             ),
             check_requirements=fluids,
             target_tab="Circulation",
@@ -114,11 +109,10 @@ def create_anaphylaxis_scenario() -> Scenario:
             id="STABILIZE",
             title="Stabilize and reassess",
             instruction=(
-                "Select <b>Stop suspected trigger</b> to model the reaction subsiding after "
-                "trigger removal and treatment. Continue support and confirm <b>MAP ≥ 65 mmHg</b>; "
-                "reassess oxygenation, capnography, and airway pressure. "
-                "Persistent hypotension or bronchospasm requires further epinephrine, fluids, and escalation. "
-                "In practice, arrange tryptase sampling and allergy follow-up."
+                "Select <b>Stop suspected trigger</b> if not already done, and continue support until "
+                "<b>MAP ≥ 65 mmHg</b> and airway pressure improves. Give more epinephrine and fluids "
+                "if hypotension or bronchospasm persists.<br><br>"
+                "<i>Arrange serial tryptase levels and allergy follow-up after stabilization.</i>"
             ),
             check_requirements=require_all(
                 require_crisis_resolved_with_map("anaphylaxis", fail_crisis="Stop the suspected trigger"),

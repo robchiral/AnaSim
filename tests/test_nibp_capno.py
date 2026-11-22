@@ -1,4 +1,8 @@
 
+import copy
+import math
+from itertools import pairwise
+
 import numpy as np
 import pytest
 
@@ -339,6 +343,178 @@ class TestCapnography:
             assert slow.state.etco2_signal_valid
             assert slow.state.display_etco2 > 30.0
             assert not slow.state.alarms.get("EtCO2", {}).get("low")
+
+    def test_arrest_etco2_washout_is_monotonic_and_cpr_couples_to_airway_waveforms(
+        self, engine_factory, advance_time
+    ):
+        """Rapid no-flow EtCO2 washout declines monotonically without bouncing upward;
+        110/min CPR mechanically couples into Paw, Flow, and CO2 oscillations when sealed,
+        produces sub-dead-space passive ripples with apnea timeout when the ventilator is off,
+        and clears cleanly when disconnected."""
+        washout = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+        washout.set_rhythm("ASYSTOLE")
+        readings = []
+        for _ in range(200):
+            washout.step(0.5)
+            if washout.state.etco2_signal_valid:
+                readings.append(washout.state.display_etco2)
+        assert readings and readings[0] > 30.0 and readings[-1] < 5.0
+        for prev, curr in pairwise(readings):
+            assert curr <= prev + 1e-6
+
+        cpr = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=1), start=True)
+        cpr.set_rhythm("ASYSTOLE")
+        cpr.set_chest_compressions(True)
+        advance_time(cpr, 40.0, dt=0.2)
+        cpr.output_buffer.clear()
+        advance_time(cpr, 5.0, dt=0.2)
+        samples = list(cpr.output_buffer)
+        paws = [s.paw for s in samples]
+        flows = [s.flow for s in samples]
+        co2s = [s.capno_co2 for s in samples]
+        assert max(paws) > 35.0 and cpr.state.paw_peak > 35.0
+        assert math.isnan(cpr.state.paw_plat)
+        assert max(flows) > 15.0 and min(flows) < -35.0
+        assert 15.0 <= cpr.state.display_etco2 <= 25.0
+        assert cpr.state.display_etco2 == pytest.approx(cpr.state.etco2, abs=5.5)
+        plateau = [c for c in co2s if c > 4.0]
+        assert max(plateau) - min(plateau) > 5.0
+
+        # Apneic CPR shows passive compression Paw/Flow/CO2 ripples without fake breaths or EtCO2 lock.
+        cpr.set_vent_power(False)
+        advance_time(cpr, 25.0, dt=0.2)
+        cpr.output_buffer.clear()
+        advance_time(cpr, 3.0, dt=0.2)
+        apneic = list(cpr.output_buffer)
+        assert max(s.paw for s in apneic) > 1.0 and min(s.paw for s in apneic) < 0.0
+        assert max(s.flow for s in apneic) > 3.0 and min(s.flow for s in apneic) < -8.0
+        assert max(s.capno_co2 for s in apneic) < 10.0
+        assert cpr.state.rr == 0.0 and cpr.state.mv == 0.0
+        assert not cpr.state.etco2_signal_valid
+
+        # Disconnecting removes Y-piece compression signals completely.
+        cpr.set_airway_mode("None")
+        advance_time(cpr, 1.0, dt=0.2)
+        cpr.output_buffer.clear()
+        advance_time(cpr, 2.0, dt=0.2)
+        disc = list(cpr.output_buffer)
+        assert all(abs(s.paw) < 0.05 and abs(s.flow) < 0.2 and s.capno_co2 == 0.0 for s in disc)
+
+    def test_cpr_respiratory_modes_airway_closure_auto_trigger_and_dt_invariance(
+        self, engine_factory, advance_time
+    ):
+        """Coupled CPR mechanics reproduce mode-specific Ppeak/VT responses (Neumamm 2021;
+        Orlob 2021), PEEP-dependent airway closure and thoracic distension (Grieco 2019;
+        Lesimple 2022), PSV recoil auto-triggering (Neumamm 2021), and dt-invariance."""
+        # 1. VCV vs PCV under CPR (Neumamm 2021; Orlob 2021).
+        base_pcv = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=7), start=True)
+        base_pcv.set_rhythm("ASYSTOLE")
+        base_pcv.set_vent_settings(mode="PCV", rr=10, vt=0.60, peep=0.0, ie="1:5", p_insp=16.0, p_max=100.0)
+        advance_time(base_pcv, 30.0, dt=0.2)
+        pcv_ppeak_0, pcv_vt_0 = base_pcv.state.paw_peak, base_pcv.state.vt
+        cpr_pcv = copy.deepcopy(base_pcv)
+        cpr_pcv.set_chest_compressions(True)
+        advance_time(cpr_pcv, 30.0, dt=0.2)
+        assert cpr_pcv.state.paw_peak > pcv_ppeak_0 + 10.0
+        assert cpr_pcv.state.vt < 0.90 * pcv_vt_0
+
+        vcv_low_pmax = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=7), start=True)
+        vcv_low_pmax.set_rhythm("ASYSTOLE")
+        vcv_low_pmax.set_vent_settings(mode="VCV", rr=12, vt=0.50, peep=5.0, ie="1:2", p_max=40.0)
+        vcv_low_pmax.set_chest_compressions(True)
+        advance_time(vcv_low_pmax, 30.0, dt=0.2)
+        assert vcv_low_pmax.vent.pressure_limited
+        vcv_low_pmax.set_vent_settings(mode="VCV", rr=12, vt=0.50, peep=5.0, ie="1:2", p_max=60.0)
+        advance_time(vcv_low_pmax, 20.0, dt=0.2)
+        assert not vcv_low_pmax.vent.pressure_limited
+        assert 450.0 < vcv_low_pmax.state.vt < 560.0
+
+        # 2. PEEP-dependent airway closure (Grieco 2019) & thoracic distension (Lesimple 2022).
+        def cpr_exp_metrics(peep: float, vt: float = 0.50, bronch: float = 0.0, **patient_kw):
+            eng = engine_factory(
+                config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=7),
+                start=True,
+                **patient_kw,
+            )
+            if bronch > 0.0:
+                eng.set_bronchospasm(bronch)
+            eng.set_rhythm("ASYSTOLE")
+            eng.set_vent_settings(mode="VCV", rr=10, vt=vt, peep=peep, ie="1:5", p_max=65.0)
+            eng.set_chest_compressions(True)
+            advance_time(eng, 40.0, dt=0.2)
+            eng.output_buffer.clear()
+            advance_time(eng, 6.0, dt=0.2)
+            buf = list(eng.output_buffer)
+            i_vmax = max(range(len(buf)), key=lambda i: buf[i].volume)
+            late = [buf[(i_vmax + k) % len(buf)] for k in range(250, 450)]
+            exp_dpaw = max(x.paw for x in late) - peep
+            co2s = [buf[(i_vmax + k) % len(buf)].capno_co2 for k in range(30, 480)]
+            pks = [
+                co2s[i] for i in range(1, len(co2s) - 1)
+                if co2s[i] >= co2s[i - 1] and co2s[i] > co2s[i + 1] and co2s[i] > 2.0
+            ]
+            trs = [
+                co2s[i] for i in range(1, len(co2s) - 1)
+                if co2s[i] <= co2s[i - 1] and co2s[i] < co2s[i + 1] and co2s[i] > 0.3
+            ]
+            aois = [(p - t) / p for p, t in zip(pks, trs, strict=False) if p > 2.0]
+            aoi = sum(aois) / len(aois) if aois else 0.0
+            # Time from peak lung inflation until expiratory flow first turns positive (recoil).
+            t_pos = next(
+                (k * 0.01 for k in range(10, 480) if buf[(i_vmax + k) % len(buf)].flow > 0.5),
+                5.0,
+            )
+            return exp_dpaw, aoi, eng.state.display_etco2, eng.state.etco2, t_pos
+
+        dpaw_0, aoi_0, disp_0, et_0, _ = cpr_exp_metrics(0.0)
+        dpaw_5, aoi_5, disp_5, et_5, _ = cpr_exp_metrics(5.0)
+        dpaw_10, aoi_10, disp_10, et_10, _ = cpr_exp_metrics(10.0)
+        assert dpaw_0 < dpaw_5 < dpaw_10
+        assert aoi_0 < aoi_5
+        assert aoi_10 > aoi_0 + 0.15
+        for disp, true_et in ((disp_0, et_0), (disp_5, et_5), (disp_10, et_10)):
+            assert disp == pytest.approx(true_et, abs=3.5)
+
+        # Obesity raises airway closing pressure, causing closure at PEEP 5 that opens at PEEP 10.
+        dpaw_ob5, aoi_ob5, _, _, _ = cpr_exp_metrics(5.0, weight=110, height=170)
+        dpaw_ob10, aoi_ob10, _, _, _ = cpr_exp_metrics(10.0, weight=110, height=170)
+        assert dpaw_ob5 < dpaw_5 - 2.0
+        assert dpaw_ob10 > dpaw_ob5 + 3.0 and aoi_ob10 > aoi_ob5 + 0.15
+
+        # Thoracic distension (larger VT or longer RC time constant) delays recoil oscillations.
+        _, _, _, _, t_pos_small = cpr_exp_metrics(5.0, vt=0.35)
+        _, _, _, _, t_pos_large = cpr_exp_metrics(5.0, vt=0.85)
+        _, _, _, _, t_pos_slow = cpr_exp_metrics(5.0, vt=0.65, bronch=0.45)
+        assert t_pos_large > t_pos_small + 0.35
+        assert t_pos_slow > t_pos_large + 0.8
+
+        # 3. PSV chest-recoil auto-triggering stops when flow trigger is raised above recoil flow.
+        psv_low = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=7), start=True)
+        psv_low.set_rhythm("ASYSTOLE")
+        psv_low.set_vent_settings(mode="PSV", rr=10, vt=0.50, ie="1:2", p_support=8.0, p_insp=15.0, peep=5.0, trigger=3.0)
+        psv_low.set_chest_compressions(True)
+        advance_time(psv_low, 30.0, dt=0.2)
+        assert psv_low.state.rr > 40.0
+
+        psv_high = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=7), start=True)
+        psv_high.set_rhythm("ASYSTOLE")
+        psv_high.set_vent_settings(mode="PSV", rr=10, vt=0.50, ie="1:2", p_support=8.0, p_insp=15.0, peep=5.0, trigger=20.0)
+        psv_high.set_chest_compressions(True)
+        advance_time(psv_high, 40.0, dt=0.2)
+        assert psv_high.state.rr == pytest.approx(10.0, abs=1.5)
+        assert psv_high.state.etco2_signal_valid
+
+        # 4. Step-size (dt) invariance during active CPR.
+        results = []
+        for dt in (0.1, 1.0):
+            eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=dt, rng_seed=7), start=True)
+            eng.set_rhythm("ASYSTOLE")
+            eng.set_vent_settings(mode="VCV", rr=12, vt=0.50, peep=5.0, ie="1:2", p_max=40.0)
+            eng.set_chest_compressions(True)
+            advance_time(eng, 40.0, dt=dt)
+            results.append((eng.state.vt, eng.state.paw_peak, eng.state.display_etco2, eng.state.art_dbp))
+        for a, b in zip(*results, strict=True):
+            assert a == pytest.approx(b, abs=0.5)
 
 
 def test_nibp_deflation_sweep_invalidation_and_afib_scatter():

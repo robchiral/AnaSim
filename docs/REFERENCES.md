@@ -274,6 +274,13 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Meaney et al. (2013). *Circulation*. [Cardiopulmonary resuscitation quality](https://pubmed.ncbi.nlm.nih.gov/23801105/).
 - Cantineau et al. (1994). *Am J Emerg Med*. [Epinephrine and end-tidal carbon dioxide during prehospital CPR](https://pubmed.ncbi.nlm.nih.gov/8179728/).
 - Kim et al. (2025). *Resuscitation*. [Real-time arterial pressure responses to epinephrine during CPR](https://pubmed.ncbi.nlm.nih.gov/40250548/).
+- Deakin et al. (2007). *Resuscitation*. [Passive ventilation during compression-only CPR](https://pubmed.ncbi.nlm.nih.gov/17507138/).
+- Cordioli et al. (2016). *J Appl Physiol*. [Ventilation strategies and lung volume during chest compressions](https://pubmed.ncbi.nlm.nih.gov/26586906/).
+- Duchatelet et al. (2018). *Resuscitation*. [Reversed airflow from chest compressions during ventilation](https://pubmed.ncbi.nlm.nih.gov/29604395/).
+- Grieco et al. (2019). *Am J Respir Crit Care Med*. [Intrathoracic airway closure, CO₂ oscillations, and ventilation during CPR](https://pubmed.ncbi.nlm.nih.gov/30257100/).
+- Neumamm et al. (2021). *Am J Emerg Med*. [Mechanical ventilation modes and triggering during simulated CPR](https://pubmed.ncbi.nlm.nih.gov/34265507/).
+- Orlob et al. (2021). *Scand J Trauma Resusc Emerg Med*. [Mechanical ventilation reliability and net tidal volume during continuous chest compressions](https://pubmed.ncbi.nlm.nih.gov/34321068/).
+- Lesimple et al. (2022). *Crit Care*. [Capnogram patterns of airway closure and thoracic distension during CPR](https://pubmed.ncbi.nlm.nih.gov/36151559/).
 - Park et al. (1994). *Pacing Clin Electrophysiol*. [Systolic arterial pressure recovery after ventricular fibrillation in humans](https://pubmed.ncbi.nlm.nih.gov/7521035/).
 - Tokano et al. (1998). *J Cardiovasc Electrophysiol*. [Ventricular shock strength and cardiac hemodynamics](https://pubmed.ncbi.nlm.nih.gov/9727657/).
 - Laurent et al. (2002). *J Am Coll Cardiol*. [Reversible myocardial dysfunction in survivors of out-of-hospital cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12505221/).

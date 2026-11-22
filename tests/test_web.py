@@ -96,7 +96,8 @@ def test_ventilator_and_bag_settings_survive_handover():
     cmd(session, "mask_seal", percent=80)
     controls = parse(session.advance(0.0))["controls"]
     vent, bag = controls["vent"], controls["bag"]
-    assert not vent["on"] and bag == {"rr": 20, "tv": 400, "p_max": 25}
+    assert not vent["on"] and bag == {"rr": 20, "tv": 400}
+    assert controls["apl"] == 25
     assert controls["mask_seal"] == 80
     assert (vent["mode"], vent["p_insp"], vent["peep"], vent["p_max"], vent["trigger"]) == ("PCV", 18, 8, 35, 2.5)
     invalid_updates = (
@@ -118,13 +119,14 @@ def test_ventilator_and_bag_settings_survive_handover():
         {"rr": 41, "tv": 400},
         {"rr": 20, "tv": 1300},
         {"rr": 20, "tv": float("nan")},
-        {"rr": 20, "tv": 400, "p_max": 4},
+        {"rr": 20, "tv": 400, "p_max": -1},
         {"rr": 20, "tv": 400, "p_max": 71},
         {"rr": 20, "tv": 400, "p_max": float("nan")},
     ):
         with pytest.raises(ValueError):
             cmd(session, "bag_settings", **bad)
-        assert parse(session.advance(0.0))["controls"]["bag"] == bag
+        unchanged = parse(session.advance(0.0))["controls"]
+        assert unchanged["bag"] == bag and unchanged["apl"] == 25
     for bad_seal in (-1, 101, float("nan")):
         with pytest.raises(ValueError):
             cmd(session, "mask_seal", percent=bad_seal)
@@ -154,6 +156,7 @@ def test_ventilator_and_bag_settings_survive_handover():
     snap = run_seconds(session, 60)[-1]
     settings = session.engine.vent.settings
     assert not snap["controls"]["bag_mask"] and snap["controls"]["bag"] == bag
+    assert snap["controls"]["apl"] == 25
     assert (settings.mode, settings.p_insp, settings.peep) == ("PCV", 18, 8)
     assert 25 <= snap["vitals"]["etco2"] <= 50
 
@@ -592,11 +595,31 @@ def test_web_apl_and_fluid_warmer_command_round_trips():
     session = WebSession({**PATIENT, "mode": "awake"})
     assert session.snapshot()["controls"]["apl"] == 0
     assert session.snapshot()["controls"]["fluid_warmer"] is False
-    cmd(session, "apl", cmh2o=15)
+    assert session.snapshot()["controls"]["reservoir"]["state"] == "normal"
+    assert session.snapshot()["controls"]["o2_flush"] is False
+    cmd(session, "apl", cmh2o=0.5)
     cmd(session, "fluid_warmer", enabled=True)
     snap = session.snapshot()["controls"]
-    assert snap["apl"] == 15
+    assert snap["apl"] == 0.5
     assert snap["fluid_warmer"] is True
+
+    cmd(session, "airway", mode="Mask")
+    cmd(session, "apl", cmh2o=20.0)
+    cmd(session, "run", running=True)
+    session.engine.circuit.reservoir_volume = 0.0
+    assert session.snapshot()["controls"]["reservoir"]["state"] == "empty"
+    cmd(session, "o2_flush")
+    assert session.snapshot()["controls"]["o2_flush"] is True
+    for _ in range(40):
+        session.engine.step(0.05)
+    assert session.snapshot()["controls"]["reservoir"]["fill"] > 0.3
+    assert session.snapshot()["controls"]["o2_flush"] is False
+
+    breaths_before = session.engine.vent.breath_count
+    cmd(session, "bag_breath")
+    for _ in range(120):
+        session.engine.step(0.05)
+    assert session.engine.vent.breath_count >= breaths_before + 1
 
     with pytest.raises(ValueError, match="calcium chloride dose"):
         cmd(session, "calcium_chloride", mg=True)

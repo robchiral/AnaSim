@@ -11,8 +11,8 @@ export class SettingsEditor {
     this.toolbar = document.createElement("div");
     this.toolbar.className = "setting-actions";
     this.toolbar.hidden = true;
-    this.toolbar.innerHTML = `<button type="button" class="btn small primary">Apply</button>
-      <button type="button" class="btn small outlined">Cancel</button>`;
+    this.toolbar.innerHTML = `<button type="button" class="btn primary">Apply</button>
+      <button type="button" class="btn outlined">Cancel</button>`;
     [this.applyButton, this.cancelButton] = this.toolbar.children;
     container.append(this.toolbar);
     this.applyButton.onclick = () => this.submit();

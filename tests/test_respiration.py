@@ -589,11 +589,12 @@ class TestOxygenStores:
         engine.enable_tci("propofol", 8.0, mode="plasma")
         advance(30.0)
         engine.give_drug_bolus("roc", 30)
-        engine.set_bag_mask_ventilation(True, rr=9, vt=0.55)
+        engine.set_bag_mask_ventilation(True, rr=9, vt=0.55, p_max=20.0)
         advance(180.0)
         assert engine.state.et_o2 == pytest.approx(eto2, abs=5.0)
 
         engine.set_bag_mask_ventilation(False)
+        engine.set_apl_valve(0.0)
         engine.set_airway_mode("ETT")
         engine.set_fgf(0.0, 10.0)
         start = engine.state.time

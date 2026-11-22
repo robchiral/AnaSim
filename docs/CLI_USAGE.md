@@ -145,8 +145,10 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 |--------|-------|
 | `set_vent_settings(rr, vt, peep, ie, mode, ...)` | Takes tidal volume `vt` in liters, whereas `Patient.baseline_vt` takes mL |
 | `set_vent_power(True)` | Starts the ventilator after you apply its settings |
-| `set_bag_mask_ventilation(True, rr, vt, p_max)` | Takes a rate of 1 to 40 breaths/min, a tidal volume of 0.05 to 1.2 L, and a manual bag peak pressure limit of 5 to 70 cmH₂O (default 20); omitted settings keep their last values |
-| `set_apl_valve(cmh2o)` | Sets the spontaneous-breathing APL valve from 0 (open) to 70 cmH₂O |
+| `set_bag_mask_ventilation(True, rr, vt, p_max)` | Starts bag ventilation. Optional settings are rate (1 to 40 breaths/min), tidal volume (0.05 to 1.2 L), and APL pressure limit (0 to 70 cmH₂O). Omitted settings keep their values. |
+| `deliver_manual_breath()` | Queues a single manual squeeze at the current bag tidal volume and APL setting while the ventilator and continuous bagging are off. |
+| `set_apl_valve(cmh2o)` | Sets the APL valve for bag ventilation and spontaneous breathing. The default is 0 cmH₂O (fully open). |
+| `trigger_o2_flush(duration_s=1.5)` | Delivers 45 L/min pure O₂ bypassing the vaporizer for `duration_s` seconds (0.1 to 10 s), requiring an active O₂ supply. |
 | `set_mask_seal(seal)` | Takes a fraction from 0 (open) to 1 (tight seal), whereas the browser shows percent |
 | `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
 | `give_drug_bolus(drug, amount)` | Gives a bolus in the [registry's units](../anasim/core/drug_registry.py), or `"sugammadex"` in mg |

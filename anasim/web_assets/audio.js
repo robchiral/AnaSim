@@ -223,6 +223,8 @@ export class MonitorAudio {
     const alarmLabel = remaining ? `Resume alarms (${countdown} remaining)` : "Silence alarms for 2 minutes";
     this.silence.setAttribute("aria-label", alarmLabel);
     this.silence.title = alarmLabel;
+    const banner = $("alarm-banner");
+    if (banner) banner.dataset.silenced = remaining > 0 ? "true" : "false";
   }
 
   tone(channel, frequency, time, duration) {

@@ -78,7 +78,10 @@ def circuit_connected(engine: SimulationEngine) -> bool:
 
 def assisted_positive_pressure(engine: SimulationEngine) -> bool:
     """Whether positive-pressure tidal or support breaths are active."""
-    return (engine.vent.is_on and engine.vent.settings.mode != "CPAP") or engine.bag_mask_active
+    return (
+        (engine.vent.is_on and engine.vent.settings.mode != "CPAP")
+        or (engine.apl_cmh2o > 0.0 and (engine.bag_mask_active or engine.vent.manual_breath_active))
+    )
 
 
 def mask_seal_factor(engine: SimulationEngine) -> float:
@@ -128,7 +131,7 @@ def mask_circuit_share(engine: SimulationEngine) -> float:
         total_mv = supported + unassisted
         share = (supported + seal * unassisted) / total_mv if total_mv > 0.0 else seal
     if seal < 0.999 and engine.circuit.bellows_fraction <= 0.05:
-        avail_stpd = max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow())
+        avail_stpd = engine.circuit.total_inflow()
         if engine.state.va > 0.0:
             avail_btps = avail_stpd / engine.resp._btps_to_stpd
             demand_btps = max(engine.state.va, spont_mv)
@@ -186,7 +189,7 @@ def _circuit_delivery_limits(engine: SimulationEngine, rr: float) -> tuple[float
     max_deliverable_mv = (
         (
             reservoir_vol * rr
-            + max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow())
+            + engine.circuit.total_inflow()
         )
         / engine.resp._btps_to_stpd
     )
@@ -598,7 +601,11 @@ def advance_tracheal_gas(
         return old
     sealed = circuit_connected(engine)
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if sealed else (0.0, 0.0)
-    assisted_breaths = sealed and (engine.vent.is_on or engine.bag_mask_active) and assisted_rr * assisted_vt_l > 0.05
+    assisted_breaths = (
+        sealed
+        and (engine.vent.is_on or assisted_positive_pressure(engine))
+        and assisted_rr * assisted_vt_l > 0.05
+    )
     patency = clamp01(engine.airway_status.patency)
     effective_va = engine.resp.effective_va(engine.state.va, engine.airway_status.vq_mismatch) if patency > 0.0 else 0.0
     target = inspired_gas_mixture(engine)
@@ -787,7 +794,7 @@ def build_snapshot_from_models(
     """Build the respiratory projection shared by initialization and runtime."""
     connected = engine.state.airway_mode != AirwayType.NONE
     sealed = circuit_connected(engine)
-    assisted = sealed and (engine.vent.is_on or engine.bag_mask_active)
+    assisted = sealed and (engine.vent.is_on or assisted_positive_pressure(engine))
     rr_display, vt_display_ml, mv_display_l_min = measured_ventilation(
         engine, connected, resp_state.rr, resp_state.vt / 1000.0
     )

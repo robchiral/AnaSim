@@ -7,7 +7,7 @@ import numpy as np
 from anasim.core.constants import (
     APL_DEFAULT_CMH2O,
     APL_RANGE_CMH2O,
-    BAG_P_MAX_DEFAULT,
+    O2_FLUSH_DURATION_S,
     AirwayTuning,
 )
 from anasim.core.enums import PULSELESS_RHYTHMS, RhythmType
@@ -81,6 +81,7 @@ from .action_log import (
     ACTION_FLUID,
     ACTION_INTUBATION_ATTEMPT,
     ACTION_LIPID_INFUSION,
+    ACTION_O2_FLUSH,
     ACTION_OXYGEN_SUPPLY,
     ACTION_POSITION,
     ACTION_SHOCK,
@@ -104,7 +105,6 @@ from .tci import TCIController
 OUTPUT_WINDOW_S = 20.0  # Waveform history kept in output_buffer
 BAG_RR_RANGE = (1.0, 40.0)  # breaths/min
 BAG_VT_RANGE_L = (0.05, 1.2)
-BAG_P_MAX_RANGE = (5.0, 70.0)  # cmH2O
 
 
 @dataclass(slots=True)
@@ -161,8 +161,9 @@ class SimulationEngine(DrugControllerMixin):
         self.bag_mask_active = False
         self.bag_mask_rr = 12.0  # breaths/min
         self.bag_mask_vt = 0.5  # L
-        self.bag_mask_p_max = BAG_P_MAX_DEFAULT  # cmH2O
-        self.apl_cmh2o = APL_DEFAULT_CMH2O  # cmH2O; 0 = open during spontaneous breathing
+        self.apl_cmh2o = APL_DEFAULT_CMH2O
+        self._o2_flush_remaining_s = 0.0
+        self._manual_breath_requested = False
         self._last_succinylcholine_time: float | None = None
 
         self.active_hemorrhage = False
@@ -648,6 +649,8 @@ class SimulationEngine(DrugControllerMixin):
         )
         if self.state.airway_mode == AirwayType.NONE and self.bag_mask_active:
             self.set_bag_mask_ventilation(False)
+        if self.state.airway_mode == AirwayType.NONE:
+            self._manual_breath_requested = False
 
     def set_mask_seal(self, seal: float):
         """Set the facemask seal fraction, from 0 (open leak) to 1 (tight seal)."""
@@ -774,10 +777,10 @@ class SimulationEngine(DrugControllerMixin):
         vt: float | None = None,
         p_max: float | None = None,
     ):
-        """Start or stop manual bag ventilation at rr breaths/min, vt liters, and p_max cmH2O.
+        """Start or stop manual bag ventilation at rr breaths/min and vt liters.
 
-        Omitted settings keep their last values. Bag ventilation works only
-        through a mask or ETT and yields to the ventilator.
+        Pass p_max to set the APL valve in cmH2O. Omitted settings keep their
+        values. Bag ventilation requires a mask or ETT and yields to the ventilator.
         """
         if rr is not None or vt is not None or p_max is not None:
             self.set_bag_mask_settings(
@@ -791,19 +794,29 @@ class SimulationEngine(DrugControllerMixin):
         )
 
     def set_bag_mask_settings(self, rr: float, vt: float, p_max: float | None = None):
-        """Set the bag rate (breaths/min), tidal volume (L), and pressure limit (cmH2O) without starting or stopping it."""
+        """Set bag rate and volume, optionally setting the APL valve."""
         validated_rr = bounded_number("bag rate", rr, *BAG_RR_RANGE, unit="breaths/min")
         validated_vt = bounded_number("bag tidal volume", vt, *BAG_VT_RANGE_L, unit="L")
-        validated_p_max = (
-            self.bag_mask_p_max
-            if p_max is None
-            else bounded_number("bag pressure limit", p_max, *BAG_P_MAX_RANGE, unit="cmH2O")
-        )
-        self.bag_mask_rr, self.bag_mask_vt, self.bag_mask_p_max = validated_rr, validated_vt, validated_p_max
+        if p_max is not None:
+            self.set_apl_valve(p_max)
+        self.bag_mask_rr, self.bag_mask_vt = validated_rr, validated_vt
 
     def set_apl_valve(self, cmh2o: float):
-        """Set the spontaneous-breathing APL valve (cmH2O); 0 is fully open."""
+        """Set the APL valve for bagging and spontaneous breathing. Zero is fully open."""
         self.apl_cmh2o = bounded_number("APL valve", cmh2o, *APL_RANGE_CMH2O, unit="cmH2O")
+
+    def deliver_manual_breath(self):
+        """Queue a single manual bag squeeze at the current bag tidal volume and APL setting."""
+        if self.state.airway_mode == AirwayType.NONE or self.vent.is_on or self.bag_mask_active:
+            return
+        self._manual_breath_requested = True
+        self.actions.record(self.state.time, ACTION_BAG_MASK, label="breath")
+
+    def trigger_o2_flush(self, duration_s: float = O2_FLUSH_DURATION_S):
+        """Deliver a pure oxygen flush bypassing the vaporizer for duration_s seconds."""
+        duration = bounded_number("O2 flush duration", duration_s, 0.1, 10.0, unit="s")
+        self._o2_flush_remaining_s = max(self._o2_flush_remaining_s, duration)
+        self.actions.record(self.state.time, ACTION_O2_FLUSH, amount=duration)
 
     def start(self):
         self.running = True
@@ -916,9 +929,12 @@ class SimulationEngine(DrugControllerMixin):
 
     def set_vent_power(self, on: bool):
         """Start or stop the ventilator; its settings persist while it is off."""
-        if self.vent.is_on != bool(on):
+        on = bool(on)
+        if self.vent.is_on != on:
             self.actions.record(self.state.time, ACTION_VENTILATION, label="on" if on else "off")
-        self.vent.is_on = bool(on)
+        self.vent.is_on = on
+        if on:
+            self._manual_breath_requested = False
 
     def set_vent_settings(self, rr: float, vt: float, peep: float, ie: str,
                           mode: str, p_insp: float | None = None, fio2: float | None = None, **extra):

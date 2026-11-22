@@ -97,11 +97,11 @@ test("monitor renders sampled TOF counts, qualified ratios, and selected single 
 
   monitor.update(snapshots[2]);
   assert.equal(elements.get("nmb-value").textContent, "4/4");
-  assert.equal(elements.get("nmb-detail").textContent, "Low signal, ratio 100%");
+  assert.equal(elements.get("nmb-detail").textContent, "Low signal");
   assert.equal(elements.get("nmb-result").dataset.quality, "low");
 
   monitor.update(snapshots[3]);
-  assert.equal(elements.get("nmb-title").textContent, "T1");
+  assert.equal(elements.get("nmb-title").textContent, "T1 / baseline");
   assert.equal(elements.get("nmb-value").textContent, "13%");
   assert.equal(elements.get("nmb-t2").hidden, true);
 
@@ -193,26 +193,26 @@ test("neuromuscular trends scroll retained readings, expire old results, and pre
     return [...markup.matchAll(/M([^ ]+) ([^h]+)h0/g)].map(([, x, y]) => [Number(x) + offset, Number(y)]);
   };
   display.update(nmb, [], 900, false);
-  assert.deepEqual(positions(), [[20, 20], [60, 11.5]]);
-  assert.match(markup, /class="low"/);
+  assert.deepEqual(positions(), [[20, 20]], "low-signal ratios stay out of the recovery trend");
   display.update(nmb, [], 910, false);
-  assert.deepEqual(positions(), [[18, 20], [58, 11.5]]);
+  assert.deepEqual(positions(), [[18, 20]]);
   display.update(nmb, [[300, "tof", 75, true]], 910, false);
   assert.equal(replacements, 1, "clock updates and replayed readings must reuse the paths");
 
   display.update(nmb, [[400, "tof", 90, false]], 920, false);
-  assert.equal(positions().length, 3);
+  assert.equal(positions().length, 2);
   display.update({ ...nmb, mode: "single" }, [], 920, false);
   assert.deepEqual(positions(), [[36, 28.5]]);
-  assert.doesNotMatch(markup, /class="low"/);
-  assert.equal(elements.get("nmb-trend-label").textContent, "T1, past 15 min");
-  assert.equal(elements.get("nmb-trend").attributes["aria-label"], "T1 over the past 15 minutes");
+  assert.equal(elements.get("nmb-trend-label").textContent, "T1 history");
+  assert.equal(elements.get("nmb-history").dataset.mode, "single");
+  assert.equal(elements.get("nmb-trend").attributes["aria-label"], "T1 as a percentage of baseline over the past 15 minutes");
   display.update({ ...nmb, mode: "single" }, [], 1100, false);
   assert.deepEqual(positions(), [[0, 28.5]], "the left boundary remains inclusive");
   display.update({ ...nmb, mode: "single" }, [], 1101, false);
   assert.equal(markup, "", "results older than fifteen minutes must disappear");
+  assert.equal(elements.get("nmb-trend-body").hidden, true);
   display.update(nmb, [], 1101, false);
-  assert.equal(positions().length, 2, "switching modes must retain the other mode's recent readings");
+  assert.equal(positions().length, 1, "switching modes must retain the other mode's recent readings");
 });
 
 test("monitor rounds integer numerics to nearest whole number", () => {
@@ -307,8 +307,10 @@ test("ecg sweep autoscales large CPR artifact and clamps drawn points inside lan
   monitor.destroy();
 });
 
-test("monitor highlights HR tile and shows rhythm badge for lethal rhythm and arrest alarms", () => {
+test("monitor highlights HR tile and banner for lethal rhythm and arrest alarms without ECG strip labels", () => {
   const { elements } = setupPage();
+  assert.equal(elements.has("v-rhythm-alarm"), false);
+  assert.equal(elements.has("v-st"), false);
   const hrClasses = new Set();
   const hrTile = {
     dataset: { alarm: "HR" },
@@ -326,23 +328,64 @@ test("monitor highlights HR tile and shows rhythm badge for lethal rhythm and ar
     patient: { age: 40, sex: "male", weight: 70, renal_status: "Normal", hepatic_status: "Normal",
       coronary_flow_reserve: 5, heart_failure: "none", surgical_site: "other" },
   });
-  const badge = elements.get("v-rhythm-alarm");
+  const bannerText = elements.get("alarm-banner-text");
   for (const [key, expected] of [
     ["Asystole", "ASYSTOLE"],
     ["VFIB", "VFIB"],
     ["VTACH", "VTACH"],
-    ["Arrest", "ARREST"],
+    ["Arrest", "CARDIAC ARREST"],
   ]) {
-    monitor.updateAlarms({ [key]: { high: true, low: false } });
+    monitor.updateAlarms({ [key]: { high: true, low: false }, HR: "low" });
     assert.equal(hrClasses.has("alarm-critical"), true);
     assert.equal(hrClasses.has("alarm-high"), true);
-    assert.equal(badge.hidden, false);
-    assert.equal(badge.textContent, expected);
+    assert.equal(bannerText.textContent, expected);
   }
   monitor.updateAlarms({});
   assert.equal(hrClasses.has("alarm-critical"), false);
   assert.equal(hrClasses.has("alarm-high"), false);
-  assert.equal(badge.hidden, true);
-  assert.equal(badge.textContent, "");
+  assert.equal(bannerText.textContent, "");
+  monitor.destroy();
+});
+
+test("monitor renders alarm limits from session info and prioritizes alarm banner states", () => {
+  const { elements } = setupPage();
+  const { info } = PY_FIXTURES;
+  const monitor = new Monitor(info);
+  assert.equal(elements.get("lim-hr").textContent, "120\n45");
+  assert.equal(elements.get("lim-map").textContent, "110\n60");
+  assert.equal(elements.get("lim-spo2").textContent, "100\n90");
+  assert.equal(elements.get("lim-ppeak").textContent, "40");
+
+  const banner = elements.get("alarm-banner");
+  const bannerText = elements.get("alarm-banner-text");
+  monitor.updateAlarms({}, { o2_connected: true }, false);
+  assert.equal(banner.dataset.severity, "normal");
+  assert.equal(bannerText.textContent, "");
+
+  monitor.updateAlarms({ MAP: "low", EtCO2: "high" }, { o2_connected: true }, false);
+  assert.equal(banner.dataset.severity, "warning");
+  assert.equal(bannerText.textContent, "MAP LOW · EtCO₂ HIGH");
+
+  monitor.updateAlarms({ MAP: "low" }, { o2_connected: false }, false);
+  assert.equal(banner.dataset.severity, "critical");
+  assert.equal(bannerText.textContent, "O₂ SUPPLY DISCONNECTED · +1 alarm");
+
+  monitor.updateAlarms({ SpO2: "low" }, { o2_connected: true }, false, { spo2: null });
+  assert.equal(banner.dataset.severity, "critical");
+  assert.equal(bannerText.textContent, "SpO₂ NO SIGNAL");
+
+  monitor.updateAlarms(
+    { Asystole: "high", HR: "low", SpO2: "low", MAP: "low", EtCO2: "low" },
+    { o2_connected: true },
+    false,
+    { spo2: null },
+  );
+  assert.equal(banner.dataset.severity, "critical");
+  assert.equal(bannerText.textContent, "ASYSTOLE · +3 alarms");
+  assert.equal(banner.title, "ASYSTOLE · SpO₂ NO SIGNAL · MAP LOW · EtCO₂ LOW");
+
+  monitor.updateAlarms({}, { o2_connected: true }, true);
+  assert.equal(banner.dataset.severity, "ended");
+  assert.equal(bannerText.textContent, "Session ended");
   monitor.destroy();
 });

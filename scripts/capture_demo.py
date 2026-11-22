@@ -96,13 +96,19 @@ def preoxygenate(page):
     page.locator(".fresh-gas-settings").get_by_role("button", name="Apply", exact=True).click()
 
 
+def mask_ventilate(page):
+    enter(page.locator("#c-apl"), 20)
+    page.locator(".manual-ventilation").get_by_role("button", name="Apply", exact=True).click()
+    page.click("#c-bag")
+
+
 # Objectives not listed here complete by waiting.
 ACTIONS = {
     "APPLY_MASK": lambda page: page.click('#c-airway [data-value="Mask"]'),
     "SET_FGF_PREOX": preoxygenate,
     "START_ANALGESIA": lambda page: start_infusion(page, "Remifentanil", 0.2),
     "INDUCE": induce,
-    "MASK_VENTILATE": lambda page: page.click("#c-bag"),
+    "MASK_VENTILATE": mask_ventilate,
     "GIVE_NMB": lambda page: give_bolus(page, "Rocuronium", 42),
     "INTUBATE": lambda page: page.click('#c-airway [data-value="ETT"]'),
     "CONFIRM_ETT": lambda page: page.click("#c-vent-power"),
@@ -122,7 +128,7 @@ def start_session(page, url):
     page.goto(url)
     page.check('input[name="session"][value="case"]')
     page.check('input[name="guidance"][value="guided"]')
-    page.select_option('select[name="scenario_id"]', "induction_tiva")
+    page.check('input[name="scenario_id"][value="induction_tiva"]')
     page.click("#setup-start")
     page.wait_for_selector("#app", state="visible")
     enter(page.locator("#speed"), SPEED)

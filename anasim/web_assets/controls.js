@@ -30,22 +30,53 @@ const signed = (value) => {
   const text = value.toFixed(1);
   return Number(text) > 0 ? `+${text}` : Number(text) === 0 ? "0.0" : text;
 };
-// Blood gas report rows: label, unit, result field, and display format.
+// Blood gas report rows: label, unit, field, formatter, adult reference range, [low, high].
 const bloodGasRows = [
-  ["pH", "", "ph", (value) => value.toFixed(2)],
-  ["PaCO₂", "mmHg", "pa_co2", (value) => value.toFixed(0)],
-  ["PaO₂", "mmHg", "pao2", (value) => value.toFixed(0)],
-  ["HCO₃⁻", "mmol/L", "hco3", (value) => value.toFixed(1)],
-  ["Base excess", "mmol/L", "base_excess", signed],
-  ["Lactate", "mmol/L", "lactate", (value) => value.toFixed(1)],
-  ["Na⁺", "mmol/L", "sodium", (value) => value.toFixed(0)],
-  ["K⁺", "mmol/L", "potassium", (value) => value.toFixed(1)],
-  ["Cl⁻", "mmol/L", "chloride", (value) => value.toFixed(0)],
-  ["Ionized Ca²⁺", "mmol/L", "ionized_calcium", (value) => value.toFixed(2)],
-  ["SaO₂", "%", "sao2", (value) => value.toFixed(1)],
-  ["Hb", "g/dL", "hb", (value) => value.toFixed(1)],
-  ["FiO₂", "%", "fio2", (value) => (value * 100).toFixed(0)],
+  ["pH", "", "ph", (value) => value.toFixed(2), "7.35–7.45", 7.35, 7.45],
+  ["PaCO₂", "mmHg", "pa_co2", (value) => value.toFixed(0), "35–45", 35, 45],
+  ["PaO₂", "mmHg", "pao2", (value) => value.toFixed(0), "≥80", 80, null],
+  ["HCO₃⁻", "mmol/L", "hco3", (value) => value.toFixed(1), "22–26", 22, 26],
+  ["Base excess", "mmol/L", "base_excess", signed, "−2 to +2", -2, 2],
+  ["Lactate", "mmol/L", "lactate", (value) => value.toFixed(1), "<2.0", null, 2.0],
+  ["Na⁺", "mmol/L", "sodium", (value) => value.toFixed(0), "135–145", 135, 145],
+  ["K⁺", "mmol/L", "potassium", (value) => value.toFixed(1), "3.5–5.0", 3.5, 5.0],
+  ["Cl⁻", "mmol/L", "chloride", (value) => value.toFixed(0), "98–107", 98, 107],
+  ["Ionized Ca²⁺", "mmol/L", "ionized_calcium", (value) => value.toFixed(2), "1.15–1.30", 1.15, 1.30],
+  ["SaO₂", "%", "sao2", (value) => value.toFixed(1), "≥95", 95, null],
+  ["Hb", "g/dL", "hb", (value) => value.toFixed(1), "12.0–17.5", 12.0, 17.5],
+  ["FiO₂", "%", "fio2", (value) => (value * 100).toFixed(0), "—", null, null],
 ];
+
+// ISO 26825 / ASTM D4774 syringe-label drug color categories.
+const ISO_DRUG_CLASS = {
+  propofol: "induction",
+  etomidate: "induction",
+  ketamine: "induction",
+  midazolam: "benzo",
+  fentanyl: "opioid",
+  remi: "opioid",
+  hydromorphone: "opioid",
+  morphine: "opioid",
+  roc: "nmba",
+  succinylcholine: "nmba",
+  sugammadex: "reversal",
+  phenyl: "vasopressor",
+  ephedrine: "vasopressor",
+  nore: "vasopressor",
+  vaso: "vasopressor",
+  dobu: "vasopressor",
+  milri: "vasopressor",
+  esmolol: "vasopressor",
+  labetalol: "vasopressor",
+  epi: "vasopressor",
+  atropine: "anticholinergic",
+  glyco: "anticholinergic",
+  lidocaine: "local",
+  amiodarone: "local",
+  dantrolene: "rescue",
+  lipid: "rescue",
+  calcium_chloride: "rescue",
+};
 // Four significant figures keep small rates visible without long decimals.
 const rateText = (value) => String(Number(value.toPrecision(4)));
 // Displayed rates: whole numbers from 10 up, two significant figures below.
@@ -148,6 +179,10 @@ export class Controls {
         button.disabled = false;
         if (this.state?.defibrillator && (button.id === "c-shock" || button.id === "c-charge")) {
           this.syncDefibrillator(this.state.defibrillator);
+        } else if (this.state && button.id === "c-bag-breath") {
+          button.disabled = this.state.airway === "None" || this.state.vent.on || this.state.bag_mask;
+        } else if (this.state && button.id === "c-o2-flush") {
+          button.disabled = !this.state.o2_connected;
         }
       }
     }
@@ -180,18 +215,39 @@ export class Controls {
   // --- Tabs ---------------------------------------------------------
 
   bindTabs() {
-    this.tabs = [...document.querySelectorAll(".tabs button")];
+    this.tabList = document.querySelector(".tabs");
+    this.tabs = [...this.tabList.querySelectorAll("button")];
     for (const tab of this.tabs) tab.onclick = () => this.openTab(tab.dataset.tab);
+    this.tabList.onkeydown = (event) => {
+      const visible = this.tabs.filter((tab) => !tab.hidden);
+      const index = visible.indexOf(event.target);
+      if (index === -1) return;
+      let next;
+      switch (event.key) {
+        case "ArrowLeft": next = visible.at(index - 1); break;
+        case "ArrowRight": next = visible[(index + 1) % visible.length]; break;
+        case "Home": next = visible[0]; break;
+        case "End": next = visible.at(-1); break;
+        default: return;
+      }
+      event.preventDefault();
+      this.openTab(next.dataset.tab);
+      next.focus();
+    };
     this.openTab("Machine");
   }
 
   openTab(name) {
-    document.querySelector(".tabs").hidden = name === "Trends";
-    for (const tab of this.tabs) tab.setAttribute("aria-selected", String(tab.dataset.tab === name));
+    const tabChanged = this.currentTab !== name;
+    for (const tab of this.tabs) {
+      const selected = tab.dataset.tab === name;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    }
     for (const panel of document.querySelectorAll(".tab-panel")) panel.hidden = panel.dataset.panel !== name;
     this.currentTab = name;
     if (name === "Medications") this.onMedicationsShown?.();
-    this.onViewChanged?.();
+    this.onViewChanged?.(tabChanged);
   }
 
   // --- Machine ------------------------------------------------------
@@ -207,17 +263,19 @@ export class Controls {
     this.maskSealEditor = this.editSettings(
       [$("c-mask-seal")],
       () => this.send("mask_seal", { percent: readNumber($("c-mask-seal")) }),
-      $("c-mask-seal").parentElement,
+      $("c-mask-seal").closest(".airway-extras"),
     );
     const fgf = () => this.send("fgf", { o2: readNumber($("c-o2")), air: readNumber($("c-air")), n2o: readNumber($("c-n2o")) });
     this.editSettings([$("c-o2"), $("c-air"), $("c-n2o")], fgf, $("c-o2").closest(".fresh-gas-settings"));
-    this.editSettings([$("c-vap")], () => this.send("vaporizer", { percent: readNumber($("c-vap")) }));
+    this.editSettings([$("c-vap")], () => this.send("vaporizer", { percent: readNumber($("c-vap")) }), $("c-vap-actions"));
     $("c-bag").onclick = () => this.send("bag_mask", { active: !this.state.bag_mask });
-    this.editSettings([$("c-apl")], () => this.send("apl", { cmh2o: readNumber($("c-apl")) }), $("c-apl-settings"));
+    $("c-bag-breath").onclick = () => this.performAction($("c-bag-breath"), "bag_breath");
+    $("c-o2-flush").onclick = () => this.performAction($("c-o2-flush"), "o2_flush");
+    this.editSettings([$("c-apl")], () => this.send("apl", { cmh2o: readNumber($("c-apl")) }), $("c-apl").closest(".manual-ventilation"));
     this.editSettings(
-      [$("c-bag-rr"), $("c-bag-tv"), $("c-bag-pmax")],
+      [$("c-bag-rr"), $("c-bag-tv")],
       () => this.send("bag_settings", {
-        rr: readNumber($("c-bag-rr")), tv: readNumber($("c-bag-tv")), p_max: readNumber($("c-bag-pmax")),
+        rr: readNumber($("c-bag-rr")), tv: readNumber($("c-bag-tv")),
       }),
       $("c-bag-settings"),
     );
@@ -284,22 +342,32 @@ export class Controls {
       const tci = spec.tci_unit !== null;
       const card = document.createElement("details");
       card.className = "drug-card";
+      card.dataset.iso = ISO_DRUG_CLASS[spec.key] ?? "local";
+      const idPrefix = `drug-${spec.key}`;
       card.innerHTML = `
         <summary><span class="drug-name"></span><span class="drug-strength"></span></summary>
         <div class="drug-controls">
-        ${tci ? `<label class="inline">Infusion mode
-          <select class="infusion-mode"><option value="rate">Manual rate</option><option value="tci">TCI</option></select>
-        </label>` : ""}
+        ${tci ? `<div class="control-setting">
+          <div class="control-setting-head"><label for="${idPrefix}-mode">Infusion mode</label></div>
+          <select id="${idPrefix}-mode" class="infusion-mode"><option value="rate">Manual rate</option><option value="tci">TCI</option></select>
+        </div>` : ""}
         ${infusion ? `<div class="inputs${tci ? "" : " manual-rate"}">
-          <label>Infusion rate</label>
-          ${tci ? '<label class="target-label"></label>' : ""}
-          <span class="unit-input"><input class="rate" type="number" min="0" max="2000" step="any"><span class="rate-unit"></span></span>
-          ${tci ? '<span class="unit-input"><input class="target" type="number" step="0.1"><span class="target-unit"></span></span>' : ""}
+          <div class="control-setting">
+            <div class="control-setting-head"><label for="${idPrefix}-rate">Infusion rate</label><span class="rate-unit"></span></div>
+            <input id="${idPrefix}-rate" class="rate" type="number" min="0" max="2000" step="any">
+          </div>
+          ${tci ? `<div class="control-setting">
+            <div class="control-setting-head"><label for="${idPrefix}-target" class="target-label"></label><span class="target-unit"></span></div>
+            <input id="${idPrefix}-target" class="target" type="number" step="0.1">
+          </div>` : ""}
         </div>` : ""}
         ${infusion ? '<div class="infusion-actions"></div>' : ""}
         <div class="bolus">
-          <span class="unit-input"><input class="bolus-amount" type="number" min="0" max="1000" step="any"><span class="bolus-unit"></span></span>
-          <button type="button" class="btn outlined">Give bolus</button>
+          <div class="bolus-field">
+            <div class="control-setting-head"><label for="${idPrefix}-bolus">Bolus</label><span class="bolus-unit"></span></div>
+            <input id="${idPrefix}-bolus" class="bolus-amount" type="number" min="0" max="1000" step="any">
+          </div>
+          <button type="button" class="btn">Give bolus</button>
         </div>
         <p class="medication-feedback" role="status" hidden></p>
         <p class="csht" hidden></p>
@@ -370,8 +438,9 @@ export class Controls {
     }
     const reversal = document.createElement("details");
     reversal.className = "drug-card";
+    reversal.dataset.iso = ISO_DRUG_CLASS.sugammadex;
     reversal.innerHTML = `
-      <summary>Sugammadex</summary>
+      <summary><span class="drug-name">Sugammadex</span></summary>
       <div class="drug-controls">
         <button type="button" class="btn outlined full" data-sugammadex="2">Moderate block: 2 mg/kg</button>
         <button type="button" class="btn outlined full" data-sugammadex="4">Deep block: 4 mg/kg</button>
@@ -383,8 +452,9 @@ export class Controls {
     });
     const calcium = document.createElement("details");
     calcium.className = "drug-card";
+    calcium.dataset.iso = ISO_DRUG_CLASS.calcium_chloride;
     calcium.innerHTML = `
-      <summary>Calcium chloride</summary>
+      <summary><span class="drug-name">Calcium chloride</span></summary>
       <div class="drug-controls">
         <button type="button" class="btn outlined full" data-calcium="1000">Give 1 g</button>
         <p class="medication-feedback" role="status" hidden></p>
@@ -445,11 +515,15 @@ export class Controls {
   buildRunningInfusion(key, w) {
     const row = document.createElement("div");
     row.className = "running-infusion";
+    if (row.dataset) row.dataset.iso = ISO_DRUG_CLASS[key] ?? "local";
     row.hidden = true;
     row.innerHTML = `
-      <div><span class="infusion-name"></span><output></output></div>
-      <button type="button" class="btn small outlined infusion-adjust">Adjust</button>
-      <button type="button" class="btn small outlined infusion-stop">Stop</button>
+      <div class="pump-info">
+        <span class="infusion-name"></span>
+        <output></output>
+      </div>
+      <button type="button" class="btn outlined infusion-adjust">Adjust</button>
+      <button type="button" class="btn outlined infusion-stop">Stop</button>
       <div class="infusion-editor" hidden></div>`;
     row.querySelector(".infusion-name").textContent = w.spec.generic_name;
     row.querySelector(".infusion-name").title = w.spec.name;
@@ -566,9 +640,13 @@ export class Controls {
       setPressed(button, button.dataset.value === "false");
       button.onclick = () => {
         this.synchronized = button.dataset.value === "true";
+        const syncBadge = $("defib-sync-badge");
+        if (syncBadge) syncBadge.hidden = !this.synchronized;
         for (const other of this.syncButtons) setPressed(other, other === button);
       };
     }
+    const syncBadge = $("defib-sync-badge");
+    if (syncBadge) syncBadge.hidden = true;
     const shock = $("c-shock");
     const charge = $("c-charge");
     charge.onclick = () => this.performAction(charge,
@@ -584,8 +662,21 @@ export class Controls {
 
   syncDefibrillator(defibrillator) {
     const status = defibrillator.status;
+    const defibModule = $("defib-module");
+    if (defibModule?.dataset) defibModule.dataset.status = status;
+    const syncBadge = $("defib-sync-badge");
+    if (syncBadge) syncBadge.hidden = !this.synchronized;
+    const chargeTrack = $("defib-charge-track");
+    if (chargeTrack) chargeTrack.hidden = status === "idle";
+    const chargeBar = $("defib-charge-bar");
+    if (chargeBar?.style) {
+      const fill = status === "idle" ? 0
+        : status === "charging" ? Math.min(100, Math.max(8, (1 - defibrillator.charge_remaining / 5) * 100))
+        : 100;
+      chargeBar.style.setProperty("--fill", `${fill.toFixed(0)}%`);
+    }
     setText($("c-defibrillator-status"), status === "charging"
-      ? `Charging, ${Math.ceil(defibrillator.charge_remaining)} s remaining`
+      ? `Charging, ${Math.ceil(Math.max(0, defibrillator.charge_remaining - 1e-6))} s remaining`
       : { idle: "Not charged", ready: "Ready, 200 J", waiting_for_r: "Waiting for an R wave" }[status]);
     setText($("c-charge"), status === "idle" ? "Charge" : "Disarm");
     $("c-shock").disabled = status !== "ready";
@@ -642,9 +733,13 @@ export class Controls {
     };
     const table = $("abg-results").querySelector("table");
     const header = document.createElement("tr");
-    header.append(cell("th", "Drawn", "col"), ...newest.map((result) => cell("th", minutesSeconds(result.drawn_at), "col")));
+    header.append(
+      cell("th", "Analyte", "col"),
+      cell("th", "Ref", "col"),
+      ...newest.map((result) => cell("th", minutesSeconds(result.drawn_at), "col")),
+    );
     table.tHead.replaceChildren(header);
-    table.tBodies[0].replaceChildren(...bloodGasRows.map(([label, unit, key, format]) => {
+    table.tBodies[0].replaceChildren(...bloodGasRows.map(([label, unit, key, format, refLabel, low, high]) => {
       const row = document.createElement("tr");
       const name = cell("th", label, "row");
       if (unit) {
@@ -652,7 +747,25 @@ export class Controls {
         span.className = "unit";
         name.append(span);
       }
-      row.append(name, ...newest.map((result) => cell("td", result[key] === null ? "—" : format(result[key]))));
+      const refCell = cell("td", refLabel);
+      refCell.className = "abg-ref";
+      const strictHigh = refLabel.startsWith("<");
+      row.append(name, refCell, ...newest.map((result) => {
+        const raw = result[key];
+        if (raw === null) return cell("td", "—");
+        const shown = format(raw);
+        const value = Number(shown);
+        const td = cell("td", shown);
+        const flag = low !== null && value < low ? "L"
+          : high !== null && (strictHigh ? value >= high : value > high) ? "H" : "";
+        if (flag) {
+          td.className = flag === "H" ? "abg-high" : "abg-low";
+          const badge = cell("span", flag);
+          badge.className = "abg-flag";
+          td.append(badge);
+        }
+        return td;
+      }));
       return row;
     }));
   }
@@ -680,9 +793,20 @@ export class Controls {
     profiles.onchange = () => this.send("disturbance_profile", { profile: profiles.value || null });
     $("c-disturb").onclick = () => this.send("disturbance", { active: !this.state.disturbance.active });
 
-    for (const [id, command] of [["c-obstruction", "obstruction"], ["c-bronchospasm", "bronchospasm"]]) {
-      this.editSettings([$(id)], () => this.send(command, { percent: readNumber($(id)) }), $(id).parentElement);
-    }
+    const obstruction = $("c-obstruction"), bronchospasm = $("c-bronchospasm");
+    this.editSettings([obstruction, bronchospasm], async () => {
+      const updates = [];
+      if (readNumber(obstruction) !== round(this.state.obstruction, 0)) {
+        updates.push(["obstruction", readNumber(obstruction)]);
+      }
+      if (readNumber(bronchospasm) !== round(this.state.bronchospasm, 0)) {
+        updates.push(["bronchospasm", readNumber(bronchospasm)]);
+      }
+      for (const [command, percent] of updates) {
+        if (await this.send(command, { percent }) === undefined) return undefined;
+      }
+      return true;
+    }, obstruction.closest(".vent-settings"));
     $("c-auto-laryngo").onchange = () => this.send("auto_laryngospasm", { enabled: $("c-auto-laryngo").checked });
 
     $("c-hem-rate").value = "500";
@@ -787,11 +911,27 @@ export class Controls {
     setValue($("c-o2"), round(c.fgf.o2));
     setValue($("c-air"), round(c.fgf.air));
     setValue($("c-n2o"), round(c.fgf.n2o));
+    const deliveredO2 = c.o2_connected ? c.fgf.o2 : 0;
+    const deliveredN2o = c.o2_connected ? Math.min(c.fgf.n2o, 3 * deliveredO2) : 0;
+    const totalFgf = deliveredO2 + c.fgf.air + deliveredN2o;
+    const barO2 = $("fgf-bar-o2");
+    if (barO2?.style) barO2.style.setProperty("--fill", `${Math.min(100, (deliveredO2 / 15) * 100).toFixed(0)}%`);
+    if (barO2?.dataset) barO2.dataset.fault = String(!c.o2_connected);
+    const barAir = $("fgf-bar-air");
+    if (barAir?.style) barAir.style.setProperty("--fill", `${Math.min(100, (c.fgf.air / 15) * 100).toFixed(0)}%`);
+    const barN2o = $("fgf-bar-n2o");
+    if (barN2o?.style) barN2o.style.setProperty("--fill", `${Math.min(100, (deliveredN2o / 15) * 100).toFixed(0)}%`);
+    const totalFgfEl = $("c-total-fgf");
+    if (totalFgfEl) setText(totalFgfEl, `${totalFgf.toFixed(1)} L/min`);
+    const o2Alert = $("c-o2-supply-alert");
+    if (o2Alert) o2Alert.hidden = c.o2_connected;
     const fio2 = $("c-fio2");
     setText(fio2, `${Math.round(c.circuit_fio2 * 100)}%`);
     fio2.className = "fio2" + (!c.o2_connected || c.circuit_fio2 < 0.21 ? " bad" : c.circuit_fio2 < 0.3 ? " warn" : "");
     setPressed($("c-o2-supply"), !c.o2_connected, c.o2_connected ? "Disconnect O₂ supply" : "Connect backup O₂");
     setValue($("c-vap"), round(c.vaporizer));
+    const vapBar = $("vap-bar");
+    if (vapBar?.style) vapBar.style.setProperty("--fill", `${Math.min(100, Math.max(0, (c.vaporizer / 8) * 100)).toFixed(0)}%`);
 
     const compressions = c.compressions;
     setPressed($("c-compressions"), compressions.active, compressions.active ? "Stop compressions" : "Start compressions");
@@ -800,12 +940,47 @@ export class Controls {
     this.syncDefibrillator(c.defibrillator);
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
-    $("c-apl-settings").hidden = c.airway === "None" || c.vent.on || c.bag_mask;
+    const aplStandby = c.airway === "None" || c.vent.on;
+    const aplOpenNoPressure = !aplStandby && c.bag_mask && c.apl === 0;
+    const aplState = $("c-apl-state");
+    setText(aplState, aplStandby ? "Standby" : c.apl === 0 ? "Open" : "");
+    aplState.className = aplOpenNoPressure ? "warn" : "";
     setValue($("c-apl"), c.apl);
+    const reservoir = c.reservoir ?? { fill: 1, pressure: 0, state: "normal" };
+    const bagFill = $("c-bag-fill");
+    if (bagFill?.style) bagFill.style.setProperty("--fill", `${Math.round(reservoir.fill * 100)}%`);
+    if (bagFill?.dataset) bagFill.dataset.state = reservoir.state;
+    const bagState = $("c-bag-state");
+    let bagLabel = "Normal";
+    let bagClass = "";
+    if (reservoir.state === "empty") {
+      bagLabel = "Empty";
+      bagClass = "bad";
+    } else if (reservoir.state === "low") {
+      bagLabel = "Low";
+      bagClass = "warn";
+    } else if (reservoir.state === "high") {
+      bagLabel = `High · ${Math.round(reservoir.pressure)} cmH₂O`;
+      bagClass = "bad";
+    } else if (reservoir.state === "tense") {
+      bagLabel = `Tense · ${Math.round(reservoir.pressure)} cmH₂O`;
+      bagClass = "warn";
+    } else if (aplOpenNoPressure) {
+      bagLabel = "No pressure";
+      bagClass = "warn";
+    }
+    setText(bagState, bagLabel);
+    bagState.className = bagClass;
+    const bagBreath = $("c-bag-breath");
+    if (bagBreath) bagBreath.disabled = this.ended || aplStandby || c.bag_mask;
+    const o2Flush = $("c-o2-flush");
+    if (o2Flush) {
+      setPressed(o2Flush, Boolean(c.o2_flush), c.o2_flush ? "O₂ flushing…" : "O₂ flush");
+      o2Flush.disabled = this.ended || !c.o2_connected;
+    }
     $("c-bag-settings").hidden = !c.bag_mask;
     setValue($("c-bag-rr"), c.bag.rr);
     setValue($("c-bag-tv"), c.bag.tv);
-    setValue($("c-bag-pmax"), c.bag.p_max);
     const vent = c.vent;
     setPressed($("c-vent-power"), vent.on, vent.on ? "Stop ventilator" : "Start ventilator");
     setValue($("c-vent-mode"), vent.mode);

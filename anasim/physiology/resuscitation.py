@@ -9,6 +9,7 @@ hypoxia, synchronized cardioversion, and R-on-T risk are calibrations.
 """
 
 import math
+from bisect import bisect_right
 from enum import Enum
 
 import numpy as np
@@ -27,6 +28,32 @@ COMPRESSION_AFTERLOAD_COUPLING = 0.45
 # adds to arterial pressure without driving flow.
 COMPRESSION_PULSE_MMHG = 45.0
 COMPRESSION_DUTY = 0.5  # Share of each cycle spent compressing
+COMPRESSION_PERIOD_S = 60.0 / COMPRESSION_RATE
+# Effective thoracic pressure drive and sub-FRC / airway-closure respiratory
+# coupling during 110/min sternal compressions, calibrated to adult CPR
+# mechanics and capnography studies (Deakin 2007; Cordioli 2016; Duchatelet
+# 2018; Grieco 2019; Neumamm 2021; Orlob 2021; Lesimple 2022).
+COMPRESSION_PRESSURE_CMH2O = 31.0  # Effective pleural/thoracic pulse amplitude
+COMPRESSION_SUB_FRC_COMPLIANCE_FRAC = 0.28  # Stiffened sub-equilibrium compliance fraction
+COMPRESSION_SUB_FRC_KNEE_L = 0.16  # Smooth transition scale below PEEP equilibrium (L)
+COMPRESSION_AIRWAY_CLOSURE_R = 96.0  # Peak small-airway closure resistance below AOP (cmH2O/(L/s))
+COMPRESSION_CLOSURE_OFFSET_CMH2O = 1.9  # Logistic midpoint shift below LungAeration.closing_pressure
+COMPRESSION_CLOSURE_WIDTH_CMH2O = 1.35  # Logistic transition width around airway opening pressure
+COMPRESSION_VALVE_INSP_REV_R = 20.0  # Ventilator inspiratory relief backflow impedance (cmH2O/(L/s))
+COMPRESSION_VALVE_EXP_OUT_R = 14.0  # Ventilator expiratory valve surge impedance (cmH2O/(L/s))
+COMPRESSION_VALVE_EXP_IN_R = 3.5  # Ventilator demand-valve recoil impedance (cmH2O/(L/s))
+COMPRESSION_BAG_OUT_R = 8.0  # Circle/APL outward compression impedance (cmH2O/(L/s))
+COMPRESSION_BAG_IN_R = 3.0  # Circle/bag inward recoil impedance (cmH2O/(L/s))
+_COMPRESSION_DRIVE_SEGMENTS = 8
+_COMPRESSION_ACTIVE_S = COMPRESSION_PERIOD_S * COMPRESSION_DUTY
+_COMPRESSION_KNOTS = (
+    tuple(_COMPRESSION_ACTIVE_S * i / _COMPRESSION_DRIVE_SEGMENTS for i in range(1, _COMPRESSION_DRIVE_SEGMENTS + 1))
+    + (COMPRESSION_PERIOD_S,)
+)
+_COMPRESSION_VALUES = (
+    tuple(math.sin(math.pi * i / _COMPRESSION_DRIVE_SEGMENTS) for i in range(_COMPRESSION_DRIVE_SEGMENTS + 1))
+    + (0.0,)
+)
 
 SHOCK_ENERGY_J = 200.0  # Biphasic
 # The ZOLL R Series charges to 200 J in under 7 s and disarms 60 s after charging.
@@ -65,6 +92,27 @@ def compression_waveform_pressure(phase: float, systolic: float, diastolic: floa
     compression = phase / COMPRESSION_DUTY
     shape = math.sin(math.pi * compression) if compression < 1.0 else 0.0
     return diastolic + (systolic - diastolic) * shape
+
+
+def compression_pressure_drive(elapsed_s: float) -> tuple[float, float, float]:
+    """Return (pressure_cmh2o, slope_cmh2o_s, time_to_next_knot_s) for CPR thoracic compression.
+
+    Piecewise-linearized half-sine pulse across COMPRESSION_DUTY of the cycle so
+    exact respiratory segments stay dt-invariant and phase-locked to compressions.
+    """
+    t = elapsed_s % COMPRESSION_PERIOD_S
+    if t >= COMPRESSION_PERIOD_S - 1e-12:
+        t = 0.0
+    i = bisect_right(_COMPRESSION_KNOTS, t + 1e-12)
+    if i >= len(_COMPRESSION_KNOTS):
+        t = 0.0
+        i = 0
+    start = _COMPRESSION_KNOTS[i - 1] if i > 0 else 0.0
+    end = _COMPRESSION_KNOTS[i]
+    v0, v1 = _COMPRESSION_VALUES[i], _COMPRESSION_VALUES[i + 1]
+    slope = (v1 - v0) / (end - start)
+    value = v0 + slope * (t - start)
+    return COMPRESSION_PRESSURE_CMH2O * value, COMPRESSION_PRESSURE_CMH2O * slope, end - t
 
 
 class ShockResult(Enum):

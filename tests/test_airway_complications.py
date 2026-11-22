@@ -87,13 +87,14 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
     engine.step(0.1)
     assert engine.state.airway_obstruction == 0.0
 
-    # When bag breaths alternate with spontaneous ones, the mean pressure across
-    # both holds the airway open, so obstruction does not switch with the type of
-    # the last breath.
+    # When low-APL bag breaths alternate with spontaneous ones, the mean pressure
+    # across both partially holds the airway open without switching with the type
+    # of the last breath. Raising APL to 20 cmH2O adds baseline CPAP/PEEP and
+    # fully relieves pharyngeal collapse.
     engine.set_vent_power(False)
-    # Slow assisted breaths allow spontaneous effort rather than washing CO2
-    # below the anesthetized apneic threshold.
-    engine.set_bag_mask_ventilation(True, rr=6.0, vt=0.5)
+    engine.set_fgf(4.0, 0.0)
+    # Slow assisted breaths at low APL allow spontaneous effort without continuous CPAP.
+    engine.set_bag_mask_ventilation(True, rr=6.0, vt=0.5, p_max=10.0)
     for _ in range(180):
         engine.step(0.5)
     assert not engine.resp.state.apnea
@@ -103,6 +104,13 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
         obstruction.append(engine.state.airway_obstruction)
     # Switching would alternate between full relief and unsupported collapse (> 0.2).
     assert 0.05 < min(obstruction) <= max(obstruction) < 0.8 * unsupported_obstruction
+
+    engine.set_fgf(10.0, 0.0)
+    engine.set_apl_valve(20.0)
+    for _ in range(60):
+        engine.step(0.5)
+    assert engine.state.peep >= 5.0
+    assert engine.state.airway_obstruction == 0.0
 
 
 def test_residual_and_near_recovered_block_increase_sedated_collapse_while_preserving_awake_patency(
@@ -267,11 +275,12 @@ def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(e
     assert 37.0 < awake.state.pa_co2 < 43.0
     loose_etco2, loose_fio2 = awake.state.display_etco2, awake.state.fio2
     # Bag breaths pressurize the mask, so only the breaths between them draw room air.
-    awake.set_bag_mask_ventilation(True, rr=6, vt=0.5)
+    awake.set_bag_mask_ventilation(True, rr=6, vt=0.5, p_max=20.0)
     for _ in range(60):
         awake.step(1.0)
     assert loose_fio2 + 0.05 < awake.state.fio2 < 0.9
     awake.set_bag_mask_ventilation(False)
+    awake.set_apl_valve(0.0)
     awake.set_mask_seal(1.0)
     for _ in range(180):
         awake.step(1.0)

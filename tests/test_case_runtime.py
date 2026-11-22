@@ -121,6 +121,19 @@ def test_early_crisis_treatment_and_timeline_entries_without_following_the_guide
     assert len(doses) == 1 and doses[0].amount == 100
 
 
+def test_manual_breath_and_o2_flush_appear_accurately_in_case_timeline():
+    session = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"})
+    command(session, "airway", mode="Mask")
+    command(session, "apl", cmh2o=20)
+    command(session, "bag_breath")
+    command(session, "o2_flush")
+    report = command(session, "case_finish")["debrief"]
+    timeline = [item["text"] for item in report["timeline"]]
+    assert "Manual breath delivered" in timeline
+    assert "O₂ flush delivered" in timeline
+    assert "Bag ventilation stopped" not in timeline
+
+
 def test_feedback_and_hints_across_independent_and_guided_modes():
     session = WebSession({"scenario_id": "induction_tiva", "practice_mode": "independent"})
     hint = command(session, "case_hint")["hint"]

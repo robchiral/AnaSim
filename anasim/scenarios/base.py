@@ -175,7 +175,7 @@ def require_fgf_set_for_preox(engine) -> tuple[bool, str]:
     action_met = action_taken_in_case(engine, ACTION_FGF)
     if not state_met:
         return False, message
-    return action_met, "" if action_met else "Set fresh gas flow for this case"
+    return action_met, "" if action_met else "Set fresh gas flow"
 
 
 def require_preoxygenation(engine) -> tuple[bool, str]:
@@ -266,7 +266,7 @@ def require_fluid_bolus(
         if volume_requested > 0.0:
             shown_vol = format_unmet_int(volume_requested, low=min_ml)
             return False, f"{fail_prefix} ({shown_vol}/{min_ml:.0f} mL requested)"
-        return False, f"{fail_prefix} ({min_ml:.0f} mL via Circulation tab)"
+        return False, f"{fail_prefix} ({min_ml:.0f} mL)"
     return check
 
 
@@ -280,7 +280,7 @@ def require_infusion_started(*drug_keys: str, fail_message: str, event_name: str
             return True, ""
         if infusion_running(engine, *drug_keys):
             control = "infusion rate or TCI target" if engine.config.tci_enabled else "infusion rate"
-            return False, f"Set the {control} for this case"
+            return False, f"Adjust the {control}"
         return False, fail_message
     return check
 
@@ -461,6 +461,8 @@ def require_oxygenation(min_spo2: float = 94.0) -> Requirement:
 
 def require_bag_mask_started(engine) -> tuple[bool, str]:
     """Require bag-mask ventilation to be started during this case."""
+    if engine.apl_cmh2o == 0.0:
+        return False, "Set the APL valve above 0"
     started = action_taken_in_case(engine, ACTION_BAG_MASK, "on")
     met = started and engine.bag_mask_active
     return met, "" if met else "Start bag ventilation"

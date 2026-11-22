@@ -338,7 +338,7 @@ def test_hypertensive_vs_normotensive_propofol_fentanyl_intubation_matches_sawan
         for _ in range(60):
             prefix.step(1.0)
         prefix.give_drug_bolus("roc", 0.9 * 57.0)
-        prefix.set_bag_mask_ventilation(True, rr=12, vt=0.45)
+        prefix.set_bag_mask_ventilation(True, rr=12, vt=0.45, p_max=20.0)
         for _ in range(60):
             prefix.step(1.0)
         for fent_ug_kg in (0.0, 2.0, 4.0):
@@ -435,7 +435,7 @@ def test_low_vs_normal_cardiac_output_propofol_fentanyl_matches_sherry_1995():
         assert 150 <= t_loc <= 420
 
         engine.set_drug_rate("propofol", 4000.0 / 60.0)
-        engine.set_bag_mask_ventilation(True, rr=12, vt=0.50)
+        engine.set_bag_mask_ventilation(True, rr=12, vt=0.50, p_max=20.0)
         for _ in range(180):
             engine.step(1.0)
         t2 = (engine.state.map, engine.state.co / bsa, engine.state.sv)

@@ -1104,7 +1104,10 @@ bellows is empty without fresh gas flow.
 Vaporizer output depends on flow, the dial setting, and the remaining agent. A
 proportioning system limits nitrous oxide flow to three times the delivered
 oxygen flow, and oxygen supply failure stops delivery of both oxygen and nitrous
-oxide.
+oxide. The O₂ flush valve delivers 45 L/min of pure oxygen from the oxygen
+supply directly into the circuit, bypassing the vaporizer; it refills a
+collapsed reservoir bag, dilutes circuit volatile agent and N₂O, and raises
+circuit pressure if the APL valve is closed.
 
 ### Ventilator
 
@@ -1138,23 +1141,33 @@ can remain above the target.
 
 ### Bag and mask ventilation
 
-Manual bag breaths stop at the bag peak pressure limit (5 to 70 cmH₂O, default
-20 cmH₂O), so obstruction or bronchospasm lowers the delivered volume. The
-spontaneous-breathing APL valve is controlled separately (0 to 70 cmH₂O, default
-0 for open) whenever an airway is connected and neither the ventilator nor
-manual bag ventilation is active. It builds continuous airway pressure during
-unassisted spontaneous breathing once the reservoir bag is more than half full,
-capped by the APL setting or the mask leak threshold.
+The APL valve governs both the peak pressure limit and baseline circuit
+pressure across manual bagging and unassisted spontaneous breathing once the
+reservoir bag is more than half full. With the valve fully open (0 cmH₂O), bag
+squeezes generate no positive airway pressure and spontaneous breathing is
+unimpeded. Higher settings allow positive pressure up to the APL limit, so
+obstruction or bronchospasm reduces delivered volume. At routine settings up to
+20 cmH₂O, regular squeezes vent surplus fresh gas so baseline PEEP stays low;
+when APL is set above 20 cmH₂O, fresh gas flow exceeds the bagging venting
+rate, or squeezing stops, surplus gas builds baseline PEEP/CPAP up to the APL
+or mask-seal ceiling. Leaving APL closed (40 to 70 cmH₂O) with high fresh gas
+flow therefore builds high PEEP and depresses arterial pressure even during
+active bagging. Manual breaths synchronize with patient efforts in a trigger
+window, cap squeeze duration at 1.6 seconds, release immediately upon reaching
+target volume, and can also be delivered as a single squeeze. Mechanical
+ventilation isolates the APL valve and uses the ventilator's own pressure
+settings.
 
-During mask ventilation, the mean airway pressure over recent breaths holds the
-pharynx open. A loose mask loses part of each assisted breath, lowers this
-pressure, and reduces the measured airway pressure, flow, and volume. Delivered
-mask pressures above 20 cmH₂O leak even with a tight seal (Bouvet 2014). A full
-seal delivers the tidal volume of two-handed mask ventilation, and an 80% seal
-delivers that of a one-handed hold (Joffe 2010). Room air enters around a loose
-mask in proportion to the leak during unsupported breaths, or when assisted
-breaths deliver less than the patient's own effort draws. PCV-VG raises
-inspiratory pressure to make up for a mask leak.
+During mask ventilation, baseline APL pressure and the mean airway pressure
+over recent breaths hold the pharynx open. A loose mask loses part of each
+assisted breath and continuous CPAP pressure, lowers airway pressure, and
+reduces measured flow and volume. Delivered mask pressures above 20 cmH₂O leak
+even with a tight seal (Bouvet 2014). A full seal delivers the tidal volume of
+two-handed mask ventilation, and an 80% seal delivers that of a one-handed hold
+(Joffe 2010). Room air enters around a loose mask in proportion to the leak
+during unsupported breaths, or when assisted breaths deliver less than the
+patient's own effort draws. PCV-VG raises inspiratory pressure to make up for a
+mask leak.
 
 ## Monitors
 
@@ -1212,6 +1225,29 @@ follows the catheter pressure. During chest compressions, arterial pressure
 follows the compressions, the ECG shows compression artifact, and numeric SpO₂
 and plethysmography remain blank.
 
+Chest compressions couple directly into [respiratory mechanics](../anasim/physiology/resp_mech.py)
+and [ventilation](../anasim/machine/ventilator.py) as a 110/min half-sine
+thoracic pressure pulse. Below end-expiratory equilibrium, chest-wall and lung
+stiffness rises (Cordioli 2016), and airway closure resistance increases below
+the patient's BMI-dependent closing pressure (Grieco 2019). Compressions raise
+peak pressure and clip inspiratory flow at `Pmax` in VCV (Orlob 2021), reverse
+inspiratory flow and lower delivered tidal volume in PCV and manual bag
+ventilation (Duchatelet 2018; Neumamm 2021), and can auto-trigger flow-triggered
+PSV or SIMV until trigger sensitivity is raised (Neumamm 2021). Spirometry
+reports net tidal excursion rather than summed oscillatory flow (Orlob 2021)
+and blanks static plateau pressure; hemodynamic intrathoracic pressure excludes
+extrapulmonary compression spikes while keeping the venous-return cost of PEEP,
+hyperventilation, and thoracic distension (Lesimple 2022).
+
+In [capnography](../anasim/monitors/capno.py), bidirectional flow drives
+compression-synchronous CO₂ oscillations. Airway closure at low PEEP or high BMI
+blunts recoil oscillations until PEEP exceeds closing pressure (Grieco 2019),
+while large tidal volumes or slow emptying delay them until lung volume nears
+FRC (Lesimple 2022). Numeric EtCO₂ tracks the maximal expired CO₂ between
+breaths (Grieco 2019); during apneic compression-only CPR, sub-dead-space
+strokes produce low-amplitude CO₂ ripples while spirometry stays at zero and
+apnea timeout blanks numeric EtCO₂ (Deakin 2007).
+
 Noninvasive blood pressure (NIBP) raises its cuff inflation pressure when
 systolic pressure is high and averages pressure across the active deflation
 sweep. It fails when VF, asystole, PEA, profound hypotension, or chest
@@ -1242,10 +1278,10 @@ pass the sampling port, so a large leak, especially with small breaths, leaves
 dead-space gas at the port and flattens the capnogram.
 
 Without an airway device, the impedance respiratory rate counts breathing
-efforts, including during obstruction. During unassisted breathing, a low
-respiratory rate alarm sounds after 15 seconds below 5 breaths/min. The gas
-monitor displays end-tidal age-adjusted MAC, while anesthetic effects use brain
-MAC.
+efforts, including during obstruction. Whenever the ventilator is off (including
+manual mode with an open APL valve or failed mask seal), a low respiratory rate
+alarm sounds after 15 seconds below 5 breaths/min. The gas monitor displays
+end-tidal age-adjusted MAC, while anesthetic effects use brain MAC.
 
 ### BIS and neuromuscular monitoring
 

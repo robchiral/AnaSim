@@ -117,7 +117,14 @@ def _capno_sampling_possible(engine: SimulationEngine) -> bool:
     )
 
 
-def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substeps: int = 1) -> list[float]:
+def compute_capno_value(
+    engine: SimulationEngine,
+    resp_state,
+    dt: float,
+    substeps: int = 1,
+    *,
+    cpr_oscillating: bool = False,
+) -> list[float]:
     """Advance the capnograph with the gas that crossed the Y-piece; return CO2 at each waveform sample."""
     state = engine.state
     readout = engine.etco2_readout
@@ -140,15 +147,21 @@ def compute_capno_value(engine: SimulationEngine, resp_state, dt: float, substep
         waves = []
         elapsed = 0.0
         substep_dt = dt / substeps
-        samples = engine.vent.samples or [(dt, 0.0, 0.0, 0.0, 0.0)]
         mandatory_period = engine.vent.mandatory_period_s
         expected_period_s: float | None = (
             mandatory_period
             if mandatory_period is not None
             else (60.0 / resp_state.rr if resp_state.rr > 0.0 else None)
         )
+        samples = engine.vent.samples or [(dt, 0.0, 0.0, 0.0, 0.0)]
         for duration, change, _, _, _ in samples:
-            value = capno.step(duration, change * port_share, end_tidal, obstruction=airway.capno_obstruction)
+            value = capno.step(
+                duration,
+                change * port_share,
+                end_tidal,
+                obstruction=airway.capno_obstruction,
+                cpr_oscillating=cpr_oscillating,
+            )
             readout.update(
                 duration,
                 capno.exhaling,
@@ -357,11 +370,12 @@ def step_monitors(
     )
     substeps = waveform_substeps(dt)
     substep_dt = dt / substeps
-    capno_waves = compute_capno_value(engine, resp_state, dt, substeps)
-
     loc_val = loss_of_response(engine)
     engine._tol_current = stimulus_tolerance(engine)
     cardiac_sample, cardiac_waves = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
+    capno_waves = compute_capno_value(
+        engine, resp_state, dt, substeps, cpr_oscillating=hemo_state.compressions,
+    )
 
     update_nibp(engine, dt, engine.hemo.state)
     engine.nmb.step(state.time + dt, state.twitch / 100.0, state.tof / 100.0)
@@ -465,7 +479,7 @@ def step_monitors(
             "MAP": map_alarm,
             "HR": display_int(state.display_hr),
             "EtCO2": etco2_alarm,
-            "RR": display_int(state.rr) if not (vent.is_on or engine.bag_mask_active) else None,
+            "RR": display_int(state.rr) if not vent.is_on else None,
             "Temp": round(state.temp_c, 1),
             "SpO2": display_int(state.display_spo2) if state.spo2_signal_valid else 0.0,
             "Ppeak": ppeak_alarm,

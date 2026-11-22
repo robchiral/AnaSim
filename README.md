@@ -13,9 +13,6 @@ patient monitor and anesthesia machine.
 
 ![AnaSim patient monitor and controls during guided induction](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/anasim_demo.gif)
 
-> [!WARNING]
-> Do not use AnaSim to guide clinical care.
-
 ## Run AnaSim
 
 Open [robche.com/AnaSim](https://robche.com/AnaSim/) in your browser.
@@ -45,7 +42,7 @@ Use Apply to confirm changes to settings.
 | Patient variation | Age, body size, renal and hepatic function, coronary disease, heart failure, COPD, obesity, pregnancy with maternal positioning, and optional individual variation in drug kinetics and response |
 | Anesthesia | Propofol, remifentanil, fentanyl, hydromorphone, morphine, midazolam, etomidate, ketamine, lidocaine, sevoflurane, nitrous oxide, rocuronium, succinylcholine, and sugammadex |
 | Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, ephedrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, atropine, glycopyrrolate, and amiodarone |
-| Anesthesia machine | Facemask with adjustable seal or tracheal tube, fresh gas flow, vaporizer, spontaneous-breathing adjustable pressure-limiting (APL) valve, and manual bag ventilation |
+| Anesthesia machine | Facemask with adjustable seal or tracheal tube, fresh gas flow, vaporizer, and an adjustable pressure-limiting (APL) valve for bag ventilation and spontaneous breathing |
 | Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
 | Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF) and single-twitch monitoring, temperature, arterial blood gases, fluid balance, trends, and alarms |
 | Treatments | Fluids and blood, chest compressions, defibrillation and synchronized cardioversion, lipid emulsion, dantrolene, calcium chloride, fluid warming, forced-air warming, and surface cooling |
@@ -97,8 +94,3 @@ AnaSim 1.6 and later use the proprietary, source-available
 
 Contact [Robert Chen](mailto:rob@robche.com) for paid licenses or written fee
 waivers. The license terms allow you to share copies.
-
-Early AnaSim versions adapted code from
-[Python Anesthesia Simulator](https://github.com/AnesthesiaSimulation/Python_Anesthesia_Simulator),
-licensed under GPL-3.0. Those implementations have since been substantially
-rewritten. Third-party material retains its own terms.

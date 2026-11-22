@@ -97,42 +97,38 @@ def _observe_instruction(engine) -> str:
 
 def _start_compressions_instruction(engine) -> str:
     if engine.config.arterial_line_enabled:
-        recognition = "Ventricular fibrillation with loss of the arterial pulse is cardiac arrest."
+        recognition = "VF with loss of arterial pulse is cardiac arrest."
         feedback = (
-            "Use the arterial line and capnography to judge compressions: diastolic pressure "
-            "of at least 25 mmHg between compressions perfuses the heart, and EtCO₂ below "
-            "10 mmHg suggests poor flow."
+            "<i>Judge CPR quality with the arterial line and capnography: "
+            "target diastolic pressure ≥ 25 mmHg and EtCO₂ ≥ 10 mmHg.</i>"
         )
     else:
-        recognition = "Ventricular fibrillation with loss of the pulse oximeter plethysmograph and abrupt drop in EtCO₂ is cardiac arrest."
+        recognition = "VF with loss of the pleth waveform and an abrupt EtCO₂ drop is cardiac arrest."
         feedback = (
-            "Use capnography to judge compression quality: EtCO₂ below "
-            "10 mmHg suggests poor flow."
+            "<i>Judge CPR quality with capnography: EtCO₂ below 10 mmHg suggests poor flow.</i>"
         )
     return (
-        f"{recognition} Call for help and the defibrillator, turn off anesthetic agents "
-        "(volatile vaporizer and intravenous infusions), and start <b>chest compressions</b> immediately. "
-        "Give <b>100% oxygen</b>: set O₂ 10 L/min, air and N₂O 0 L/min, and keep ventilating "
-        "through the tracheal tube at about 10 breaths/min.<br><br>"
+        f"{recognition} Call for help and the defibrillator, stop all anesthetic agents, "
+        "and start <b>chest compressions</b> immediately. Set <b>100% oxygen</b> "
+        "(O₂ 10 L/min, air and N₂O 0 L/min in Machine) and ventilate at about 10 breaths/min.<br><br>"
         f"{feedback}"
     )
 
 
 def _continue_cycles_instruction(engine) -> str:
     rosc_cue = (
-        "An organized rhythm with arterial pulsations and a sudden rise in EtCO₂ indicates "
+        "An organized rhythm with arterial pulsations and a sudden EtCO₂ rise indicates "
         "return of circulation."
         if engine.config.arterial_line_enabled
-        else "An organized rhythm with a returning pulse and a sudden rise in EtCO₂ indicates "
+        else "An organized rhythm with a returning pulse and a sudden EtCO₂ rise indicates "
         "return of circulation."
     )
     return (
-        "Every 2 minutes, pause compressions briefly to check the rhythm. Shock VF again "
-        "and resume compressions at once. Give <b>epinephrine 1 mg</b> (1000 mcg) after the "
-        "second shock and every 3-5 minutes while VF persists. After the third shock, give "
-        "<b>amiodarone 300 mg</b> or <b>lidocaine 1-1.5 mg/kg</b>, then amiodarone 150 mg "
-        "or lidocaine 0.5-0.75 mg/kg if VF persists. VF can recur after a successful "
-        f"shock.<br><br>{rosc_cue}"
+        "Check rhythm every 2 minutes, shock persistent VF, and resume compressions immediately. "
+        "Give <b>epinephrine 1 mg</b> (1000 mcg) after the second shock and every 3-5 minutes. "
+        "After the third shock, give <b>amiodarone 300 mg</b> or <b>lidocaine 1-1.5 mg/kg</b> "
+        "(repeat amiodarone 150 mg or lidocaine 0.5-0.75 mg/kg if VF persists).<br><br>"
+        f"<i>{rosc_cue} VF can recur after a successful shock.</i>"
     )
 
 
@@ -151,10 +147,10 @@ def create_cardiac_arrest() -> Scenario:
             id="DEFIBRILLATE",
             title="Defibrillate",
             instruction=(
-                "Charge the defibrillator while continuing compressions. Once ready, clear the patient and "
-                "deliver an <b>unsynchronized 200 J shock</b>, then resume compressions immediately "
-                "for 2 minutes before checking the rhythm. Synchronized mode does not fire in VF, "
-                "since there is no R wave to time the shock to."
+                "Charge the defibrillator during compressions. When ready, clear the patient, "
+                "deliver an <b>unsynchronized 200 J shock</b>, and resume compressions immediately "
+                "for 2 minutes.<br><br>"
+                "<i>Synchronized mode will not fire in VF because there is no R wave.</i>"
             ),
             check_requirements=shock,
             target_tab="Circulation",
@@ -170,10 +166,10 @@ def create_cardiac_arrest() -> Scenario:
             id="POST_ARREST",
             title="Stabilize after return of circulation",
             instruction=(
-                "Stop compressions once an organized rhythm perfuses. Support <b>MAP ≥ 65 mmHg</b> "
-                "with norepinephrine or epinephrine and ventilate to normal PaCO₂. In practice, "
-                "titrate oxygen to SpO₂ 92-98%, look for the cause of arrest, obtain a 12-lead ECG, "
-                "and plan temperature control."
+                "Stop compressions once a perfusing rhythm returns. Maintain <b>MAP ≥ 65 mmHg</b> "
+                "with norepinephrine or epinephrine and ventilate to normocapnia.<br><br>"
+                "<i>Titrate oxygen to SpO₂ 92-98%, investigate the cause, get a 12-lead ECG, "
+                "and plan temperature control.</i>"
             ),
             check_requirements=require_all(
                 _require_rosc,

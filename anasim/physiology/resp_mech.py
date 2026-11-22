@@ -70,14 +70,15 @@ class RespiratoryMechanics:
         assert self.aeration is not None
         return self.aeration.reference_volume + self.volume_offset + self.compliance * peep + self.volume
 
-    def update_aeration(self, dt: float, pressure_area: float, peep: float) -> float:
+    def update_aeration(self, dt: float, pressure_area: float, peep: float, *, cpr_active: bool = False) -> float:
         """Return the coordinate shift after updating the static curve, conserving gas volume."""
         aeration = self.aeration
         if aeration is None:
             return 0.0
         absorbed = self._clamp_absorption()
         absolute = self._absolute_volume(peep)
-        aeration.frc = min(aeration.frc, absolute + absorbed)
+        if not cpr_active:
+            aeration.frc = min(aeration.frc, absolute + absorbed)
         if self._prev_ee_excess_l is not None:
             self._prev_ee_excess_l = min(self._prev_ee_excess_l, max(0.0, self.volume))
         if not aeration.advance(dt, pressure_area):
@@ -88,20 +89,24 @@ class RespiratoryMechanics:
         self.compliance, self.volume = compliance, volume
         self.volume_offset = absolute - aeration.reference_volume - compliance * peep - volume
         self._clamp_absorption()
+        if cpr_active:
+            static_frc = aeration.reference_volume + self.volume_offset + self.compliance * peep + self._unrefilled_absorption_l
+            aeration.frc = min(aeration.frc, static_frc)
         self.effort.shift_volume_reference(shift)
         return shift
 
-    def note_end_expiration(self, peep: float, *, settled: bool = False) -> None:
+    def note_end_expiration(self, peep: float, *, settled: bool = False, cpr_active: bool = False) -> None:
         if self.aeration is None:
             return
         absorbed = self._clamp_absorption()
         static_frc = self.aeration.reference_volume + self.volume_offset + self.compliance * peep + absorbed
+        volume = max(0.0, self.volume) if cpr_active else self.volume
         dual_source = self._mandatory_ventilating and self.effort.rr > 0.0 and self.effort.amplitude > 0.0
-        if settled or self.volume <= 0.0 or not dual_source:
-            self._prev_ee_excess_l = max(0.0, self.volume)
-            self.aeration.frc = static_frc + self.volume
+        if settled or volume <= 0.0 or not dual_source:
+            self._prev_ee_excess_l = max(0.0, volume)
+            self.aeration.frc = static_frc + volume
             return
-        excess = self.volume
+        excess = volume
         prev = self._prev_ee_excess_l
         self._prev_ee_excess_l = excess
         # Require sustained end-expiratory hyperinflation across consecutive breaths
@@ -138,21 +143,72 @@ class RespiratoryMechanics:
         """Static recoil pressure above PEEP, as an end-expiratory hold measures it."""
         return self.volume / self.compliance
 
-    def flow_segment(self, flow: float, pmus: tuple[float, float] = (0.0, 0.0)) -> "FlowSegment":
+    def flow_segment(
+        self,
+        flow: float,
+        pmus: tuple[float, float] = (0.0, 0.0),
+        *,
+        elastance: float | None = None,
+        airway_resistance: float | None = None,
+        recoil_offset: float = 0.0,
+        cpr_pressure: tuple[float, float] = (0.0, 0.0),
+    ) -> "FlowSegment":
         """Constant inspiratory flow (L/s) set by the ventilator, or a pause at zero flow."""
-        return FlowSegment(self, flow, pmus)
+        return FlowSegment(
+            self, flow, pmus,
+            elastance=elastance, airway_resistance=airway_resistance,
+            recoil_offset=recoil_offset, cpr_pressure=cpr_pressure,
+        )
 
-    def sine_segment(self, volume: float, duration: float, start: float,
-                     pmus: tuple[float, float] = (0.0, 0.0)) -> "SineSegment":
+    def sine_segment(
+        self,
+        volume: float,
+        duration: float,
+        start: float,
+        pmus: tuple[float, float] = (0.0, 0.0),
+        *,
+        elastance: float | None = None,
+        airway_resistance: float | None = None,
+        recoil_offset: float = 0.0,
+        cpr_pressure: tuple[float, float] = (0.0, 0.0),
+    ) -> "SineSegment":
         """Half-sine flow delivering volume (L) over duration, from start seconds in."""
-        return SineSegment(self, volume, duration, start, pmus)
+        return SineSegment(
+            self, volume, duration, start, pmus,
+            elastance=elastance, airway_resistance=airway_resistance,
+            recoil_offset=recoil_offset, cpr_pressure=cpr_pressure,
+        )
 
-    def pressure_segment(self, pressure: tuple[float, float], pmus: tuple[float, float] = (0.0, 0.0),
-                         series_resistance: float = 0.0) -> "PressureSegment":
+    def pressure_segment(
+        self,
+        pressure: tuple[float, float],
+        pmus: tuple[float, float] = (0.0, 0.0),
+        series_resistance: float = 0.0,
+        *,
+        elastance: float | None = None,
+        airway_resistance: float | None = None,
+        recoil_offset: float = 0.0,
+        cpr_pressure: tuple[float, float] = (0.0, 0.0),
+        cpr_valve_resistance: float = 0.0,
+    ) -> "PressureSegment":
         """Pressure p0 + p1 t applied through series_resistance, such as a circuit limb."""
-        return PressureSegment(self, pressure, pmus, series_resistance)
+        return PressureSegment(
+            self, pressure, pmus, series_resistance,
+            elastance=elastance, airway_resistance=airway_resistance,
+            recoil_offset=recoil_offset, cpr_pressure=cpr_pressure,
+            cpr_valve_resistance=cpr_valve_resistance,
+        )
 
-    def expiration_parameters(self, pressure, pmus, series_resistance) -> tuple[float, float, bool]:
+    def expiration_parameters(
+        self,
+        pressure,
+        pmus,
+        series_resistance,
+        *,
+        extra_resistance: float = 0.0,
+        cpr_pressure: float = 0.0,
+        static_recoil: float | None = None,
+    ) -> tuple[float, float, bool]:
         """Expiratory resistance and a recoil-dependent flow ceiling.
 
         Narrowed airways lose radial traction as the lung empties. A simplified
@@ -164,32 +220,66 @@ class RespiratoryMechanics:
         if self.aeration is not None:
             inflation += self.volume_offset + self.aeration.reference_volume - self.aeration.relaxed_volume
         scale = 10.0 * self.reference_compliance
-        resistance = (self.resistance + 2.0 * (self.bronch_resistance + self.chronic_resistance)
+        resistance = (self.resistance + extra_resistance
+                      + 2.0 * (self.bronch_resistance + self.chronic_resistance)
                       / (1.0 + max(0.0, inflation) / scale) ** 2)
         ceiling_resistance = resistance * (1.0 + 0.75 * self.expiratory_obstruction ** 2)
-        recoil = self.elastic_pressure + self.p2
-        free_flow = (pressure[0] + pmus[0] - recoil) / (resistance + series_resistance)
+        recoil = (self.elastic_pressure if static_recoil is None else static_recoil) + self.p2
+        free_flow = (pressure[0] + pmus[0] - cpr_pressure - recoil) / (resistance + series_resistance)
         if free_flow >= 0.0:
-            # Effort can draw gas through the open circuit before a trigger.
-            return self.resistance, ceiling_resistance, False
+            # Effort or chest recoil can draw gas through the open circuit before a trigger.
+            return self.resistance + extra_resistance, ceiling_resistance, False
         ceiling = (self.peep + recoil + 5.0) / ceiling_resistance
         limited = ceiling > 0.0 and free_flow < -ceiling
         return resistance, ceiling_resistance, limited
 
 
 class FlowSegment:
-    """Flow is set; Paw = R x flow + V/C + P2 - Pmus. Times are seconds from the segment start."""
+    """Flow is set; Paw = R x flow + V/C + P2 - Pmus + Pcpr. Times are seconds from the segment start."""
 
-    __slots__ = ("asymptote", "elastance", "last_exp", "last_t", "lung", "m0", "m1", "p20", "q", "tau", "v0")
+    __slots__ = (
+        "asymptote",
+        "cpr0",
+        "cpr1",
+        "e2",
+        "elastance",
+        "last_exp",
+        "last_t",
+        "lung",
+        "m0",
+        "m1",
+        "p20",
+        "q",
+        "recoil_offset",
+        "resistance",
+        "tau",
+        "v0",
+    )
 
-    def __init__(self, lung: RespiratoryMechanics, q: float, pmus: tuple[float, float]):
+    def __init__(
+        self,
+        lung: RespiratoryMechanics,
+        q: float,
+        pmus: tuple[float, float],
+        *,
+        elastance: float | None = None,
+        airway_resistance: float | None = None,
+        recoil_offset: float = 0.0,
+        cpr_pressure: tuple[float, float] = (0.0, 0.0),
+    ):
         self.lung = lung
         self.v0, self.p20 = lung.volume, lung.p2
         self.q = q
-        self.m0, self.m1 = pmus
-        self.elastance = 1.0 / lung.compliance
+        self.recoil_offset = recoil_offset
+        self.cpr0, self.cpr1 = cpr_pressure
+        self.m0 = pmus[0] - recoil_offset - self.cpr0
+        self.m1 = pmus[1] - self.cpr1
+        base_elastance = 1.0 / lung.compliance
+        self.elastance = base_elastance if elastance is None else elastance
+        self.e2 = lung.viscoelastic_ratio * base_elastance
+        self.resistance = lung.resistance if airway_resistance is None else airway_resistance
         self.tau = lung.viscoelastic_tau
-        self.asymptote = lung.viscoelastic_ratio * self.elastance * q * self.tau
+        self.asymptote = self.e2 * q * self.tau
         self.last_t: float | None = None
         self.last_exp = 1.0
 
@@ -213,13 +303,13 @@ class FlowSegment:
         return self.asymptote + (self.p20 - self.asymptote) * self._exp(t)
 
     def paw(self, t: float) -> float:
-        return (self.lung.resistance * self.flow(t) + self.elastance * self.volume(t) + self.p2(t)
+        return (self.resistance * self.flow(t) + self.elastance * self.volume(t) + self.p2(t)
                 - self.m0 - self.m1 * t)
 
     def sample(self, t: float) -> tuple[float, float, float]:
         """Return lung volume, flow, and airway pressure with one evaluation of each."""
         volume, flow = self.volume(t), self.flow(t)
-        paw = self.lung.resistance * flow + self.elastance * volume + self.p2(t) - self.m0 - self.m1 * t
+        paw = self.resistance * flow + self.elastance * volume + self.p2(t) - self.m0 - self.m1 * t
         return volume, flow, paw
 
     def dpaw(self, t: float) -> float:
@@ -232,15 +322,19 @@ class FlowSegment:
         """Integral of Paw over [0, t]."""
         # dP2/dt = E2 x flow - P2/tau integrates to tau (E2 dV - dP2).
         dv = self.volume(t) - self.v0
-        p2_area = self.tau * (self.lung.viscoelastic_ratio * self.elastance * dv - (self.p2(t) - self.p20))
-        return (self.lung.resistance * dv + self.elastance * self._volume_area(t) + p2_area
+        p2_area = self.tau * (self.e2 * dv - (self.p2(t) - self.p20))
+        return (self.resistance * dv + self.elastance * self._volume_area(t) + p2_area
                 - self.m0 * t - 0.5 * self.m1 * t * t)
+
+    def ventilator_area(self, t: float) -> float:
+        """Integral of Paw excluding external chest-compression pressure over [0, t]."""
+        return self.area(t) - (self.cpr0 * t + 0.5 * self.cpr1 * t * t)
 
     def distending_area(self, t: float) -> float:
         """Integral of static recoil plus tissue pressure, above PEEP."""
         dv = self.volume(t) - self.v0
-        p2_area = self.tau * (self.lung.viscoelastic_ratio * self.elastance * dv - (self.p2(t) - self.p20))
-        return self.elastance * self._volume_area(t) + p2_area
+        p2_area = self.tau * (self.e2 * dv - (self.p2(t) - self.p20))
+        return self.elastance * self._volume_area(t) + self.recoil_offset * t + p2_area
 
     def commit(self, t: float) -> None:
         self.lung.volume, self.lung.p2 = self.volume(t), self.p2(t)
@@ -251,13 +345,29 @@ class SineSegment(FlowSegment):
 
     __slots__ = ("amplitude", "gain", "offset", "u0", "w")
 
-    def __init__(self, lung, volume, duration, start, pmus):
-        super().__init__(lung, 0.0, pmus)
+    def __init__(
+        self,
+        lung,
+        volume,
+        duration,
+        start,
+        pmus,
+        *,
+        elastance: float | None = None,
+        airway_resistance: float | None = None,
+        recoil_offset: float = 0.0,
+        cpr_pressure: tuple[float, float] = (0.0, 0.0),
+    ):
+        super().__init__(
+            lung, 0.0, pmus,
+            elastance=elastance, airway_resistance=airway_resistance,
+            recoil_offset=recoil_offset, cpr_pressure=cpr_pressure,
+        )
         self.w = math.pi / duration
         self.amplitude = 0.5 * volume
         self.u0 = start
         # P2 = offset exp(-t/tau) + gain F(u), with F the particular solution for sin(w u).
-        self.gain = lung.viscoelastic_ratio * self.elastance * self.amplitude * self.w
+        self.gain = self.e2 * self.amplitude * self.w
         self.offset = self.p20 - self.gain * self._forced(start)
 
     def _forced(self, u: float) -> float:
@@ -277,8 +387,8 @@ class SineSegment(FlowSegment):
     def dpaw(self, t: float) -> float:
         flow = self.flow(t)
         dflow = self.amplitude * self.w * self.w * math.cos(self.w * (self.u0 + t))
-        dp2 = self.lung.viscoelastic_ratio * self.elastance * flow - self.p2(t) / self.tau
-        return self.lung.resistance * dflow + self.elastance * flow + dp2 - self.m1
+        dp2 = self.e2 * flow - self.p2(t) / self.tau
+        return self.resistance * dflow + self.elastance * flow + dp2 - self.m1
 
     def _volume_area(self, t: float) -> float:
         u0, u1 = self.u0, self.u0 + t
@@ -289,8 +399,8 @@ class SineSegment(FlowSegment):
 class PressureSegment:
     """Pressure P(t) = p0 + p1 t drives flow through the series and airway resistances.
 
-    With x = (V, P2) and drive D = P + Pmus, x' = A x + b D. For a linear
-    drive the solution is exp(At)(x0 - p) + p + q t, with the particular
+    With x = (V, P2) and drive D = P + Pmus - Pcpr - recoil_offset, x' = A x + b D.
+    For a linear drive the solution is exp(At)(x0 - p) + p + q t, with the particular
     solution p + q t below. Paw at the airway is P - series resistance x flow.
     The ventilator queries the same few times repeatedly, so the start and the
     latest time are kept.
@@ -313,7 +423,9 @@ class PressureSegment:
         "p20",
         "pp",
         "pv",
+        "recoil_offset",
         "rs",
+        "rs_cpr",
         "rt",
         "s",
         "slope",
@@ -325,16 +437,33 @@ class PressureSegment:
         "z1",
     )
 
-    def __init__(self, lung: RespiratoryMechanics, pressure, pmus, series_resistance):
+    def __init__(
+        self,
+        lung: RespiratoryMechanics,
+        pressure,
+        pmus,
+        series_resistance,
+        *,
+        elastance: float | None = None,
+        airway_resistance: float | None = None,
+        recoil_offset: float = 0.0,
+        cpr_pressure: tuple[float, float] = (0.0, 0.0),
+        cpr_valve_resistance: float = 0.0,
+    ):
         self.lung = lung
         self.v0, self.p20 = lung.volume, lung.p2
         self.p0, self.p1 = pressure
-        self.d0, self.d1 = self.p0 + pmus[0], self.p1 + pmus[1]
+        self.recoil_offset = recoil_offset
+        self.d0 = self.p0 + pmus[0] - recoil_offset - cpr_pressure[0]
+        self.d1 = self.p1 + pmus[1] - cpr_pressure[1]
         self.rs = series_resistance
-        e = self.elastance = 1.0 / lung.compliance
+        self.rs_cpr = cpr_valve_resistance
+        base_elastance = 1.0 / lung.compliance
+        e = self.elastance = base_elastance if elastance is None else elastance
         tau = lung.viscoelastic_tau
-        e2 = lung.viscoelastic_ratio * e
-        rt = self.rt = lung.resistance + series_resistance
+        e2 = lung.viscoelastic_ratio * base_elastance
+        r_aw = lung.resistance if airway_resistance is None else airway_resistance
+        rt = self.rt = r_aw + series_resistance
         a11, a12 = -e / rt, -1.0 / rt
         a21, a22 = -e2 * e / rt, -e2 / rt - 1.0 / tau
         s = self.s = 0.5 * (a11 + a22)
@@ -404,8 +533,13 @@ class PressureSegment:
     def area(self, t: float) -> float:
         return self.p0 * t + 0.5 * self.p1 * t * t - self.rs * (self.volume(t) - self.v0)
 
+    def ventilator_area(self, t: float) -> float:
+        """Integral of ventilator-driven Paw excluding CPR compression valve surges."""
+        rs_non_cpr = self.rs - self.rs_cpr
+        return self.p0 * t + 0.5 * self.p1 * t * t - rs_non_cpr * (self.volume(t) - self.v0)
+
     def distending_area(self, t: float) -> float:
-        return self.d0 * t + 0.5 * self.d1 * t * t - self.rt * (self.volume(t) - self.v0)
+        return (self.d0 + self.recoil_offset) * t + 0.5 * self.d1 * t * t - self.rt * (self.volume(t) - self.v0)
 
     def commit(self, t: float) -> None:
         self.lung.volume, self.lung.p2 = self.state(t)
@@ -421,14 +555,35 @@ class ExpiratorySegment(PressureSegment):
 
     __slots__ = ()
 
-    def __init__(self, lung, pressure, pmus, series_resistance, parameters):
+    def __init__(
+        self,
+        lung,
+        pressure,
+        pmus,
+        series_resistance,
+        parameters,
+        *,
+        elastance: float | None = None,
+        recoil_offset: float = 0.0,
+        cpr_pressure: tuple[float, float] = (0.0, 0.0),
+        cpr_valve_resistance: float = 0.0,
+    ):
         resistance, ceiling_resistance, limited = parameters
         if limited:
-            super().__init__(lung, (-lung.peep - 5.0, 0.0), (0.0, 0.0), ceiling_resistance - lung.resistance)
+            super().__init__(
+                lung, (-lung.peep - 5.0, 0.0), (0.0, 0.0), ceiling_resistance - lung.resistance,
+                elastance=elastance, recoil_offset=recoil_offset,
+            )
         else:
-            super().__init__(lung, pressure, pmus, resistance - lung.resistance + series_resistance)
+            super().__init__(
+                lung, pressure, pmus, series_resistance,
+                elastance=elastance, airway_resistance=resistance,
+                recoil_offset=recoil_offset, cpr_pressure=cpr_pressure,
+                cpr_valve_resistance=cpr_valve_resistance,
+            )
         self.p0, self.p1 = pressure
         self.rs = series_resistance
+        self.rs_cpr = cpr_valve_resistance
 
 
 class PatientEffort:

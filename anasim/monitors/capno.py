@@ -15,12 +15,19 @@ class Capnograph:
     # Fitted to Dräger Primus recordings; see docs/REFERENCES.md#ventilator-waveforms.
     ANALYZER_TAU = 0.12  # s, each of two first-order stages
     PHASE_II_VOLUME = 0.10  # L, spread of path dead spaces
-    PHASE_III_SLOPE = 20.0  # mmHg/L
+    PHASE_III_SLOPE = 20.0  # mmHg/L at normal alveolar PCO2
+    PHASE_III_REF_ETCO2 = 38.0  # mmHg; slope scales proportionally below normal PCO2
     MIN_FLOW_L_S = 0.002  # L/s (0.12 L/min); analyzer no-flow floor
     PASSIVE_CREEP_L_S = 0.015  # L/s (0.9 L/min); post-expiratory apneic drift
+    # Y-piece sampling adapter washout volume and conducting-airway oscillatory
+    # mixing scale during shallow flow reversals (Deakin 2007; Grieco 2019; Lesimple 2022).
+    PORT_WASH_VOL = 0.007  # L
+    STREAM_MIX_VOL = 0.45  # L
+    STREAM_FRESH_FRAC = 0.25
 
     def __init__(self, dead_space_l: float):
         self.dead_space = dead_space_l
+        self._col_len = max(1e-3, self.dead_space - 0.5 * self.PHASE_II_VOLUME)
         self._last_dt = -1.0
         self._last_z = 0.0
         self._last_decay = 1.0
@@ -37,23 +44,35 @@ class Capnograph:
         """Discard the airway gas and analyzer history when exhaled gas is unavailable."""
         # (volume L, PCO2 mmHg) slugs from the Y-piece inward; the column is
         # shorter than the dead space by half the phase II spread.
-        self._column = deque([[max(1e-3, self.dead_space - 0.5 * self.PHASE_II_VOLUME), 0.0]])
+        self._column = deque([[self._col_len, 0.0]])
         self._window: deque[list[float]] = deque()  # Recently exhaled gas, Y-piece end first
         self._window_volume = self._window_co2 = 0.0  # L and L x mmHg
         self._exhaled_alveolar = 0.0
         self._breath_volume = 0.0  # Inspired volume of the current breath, L.
         self._inhaled = 0.0
+        self._port_co2 = 0.0
+        self._reentry_co2 = 0.0
         self.breath_index = 0
         self._no_flow_s = 0.0
         self._stages = [0.0, 0.0]
         self.co2 = 0.0
         self.exhaling = False
 
-    def step(self, dt: float, volume_change: float, end_tidal: float, obstruction: float = 0.0) -> float:
+    def step(
+        self,
+        dt: float,
+        volume_change: float,
+        end_tidal: float,
+        obstruction: float = 0.0,
+        *,
+        cpr_oscillating: bool = False,
+    ) -> float:
         """Advance by dt with net lung volume change volume_change (L); return displayed PCO2.
 
         end_tidal is the PCO2 reached by the current breath. Obstruction (0-1)
         steepens phase III; previous breath sizes do not change its endpoint.
+        When cpr_oscillating is True, rapid 110/min bidirectional flow reversals
+        apply Y-piece port mixing and conducting-airway oscillatory dispersion.
         """
         exhaled = -volume_change
         passive_creep = (
@@ -74,12 +93,18 @@ class Capnograph:
                 self._breath_volume = self._inhaled
                 self._exhaled_alveolar = 0.0
                 self.breath_index += 1
+                self._inhaled = 0.0
+            elif cpr_oscillating:
+                # A brief compression reversal pushes the fresh-gas front back
+                # without erasing prior inspiratory progress in the same breath.
+                self._inhaled = max(0.0, self._inhaled - exhaled)
             else:
                 # A small effort interrupts this expiration. Its returning gas
                 # must not advance the alveolar concentration profile twice.
                 self._exhaled_alveolar = max(0.0, self._exhaled_alveolar - self._inhaled)
-            self._inhaled = 0.0
-            slope = self.PHASE_III_SLOPE * (1.0 + 3.0 * obstruction)
+                self._inhaled = 0.0
+            slope_scale = min(1.0, max(0.0, end_tidal) / self.PHASE_III_REF_ETCO2) if cpr_oscillating else 1.0
+            slope = self.PHASE_III_SLOPE * slope_scale * (1.0 + 3.0 * obstruction)
             # Allow for transit through dead space, using this inspiration's
             # volume. Bound the source concentration at the current endpoint.
             leaving = self._exhaled_alveolar + 0.5 * exhaled
@@ -113,33 +138,54 @@ class Capnograph:
                     if slug[0] <= 1e-12:
                         win.popleft()
             sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
+            self._port_co2 = sample
+            if sample > self._reentry_co2:
+                self._reentry_co2 = sample
         elif active_flow:
             inhaled = -exhaled
+            prev_inhaled = self._inhaled
             self._inhaled += inhaled
-            # Gas moves into the alveoli and fresh gas refills the column from the Y-piece.
+            if cpr_oscillating:
+                self._exhaled_alveolar = max(0.0, self._exhaled_alveolar - inhaled)
             col = self._column
-            if not (len(col) == 1 and col[0][1] == 0.0):
-                rem = inhaled
-                moved = 0.0
-                while rem > 1e-12 and col:
-                    slug = col[-1]
-                    part = rem if rem < slug[0] else slug[0]
-                    moved += part
-                    slug[0] -= part
-                    rem -= part
-                    if slug[0] <= 1e-12:
-                        col.pop()
-                self._push(col, moved, 0.0, right=False)
-            if self._window:
-                self._window.clear()
-            self._window_volume = self._window_co2 = 0.0
-            sample = 0.0
+            if not cpr_oscillating or self._inhaled > self.dead_space:
+                # Laminar inspiration or full breath (> dead_space) flushes the column cleanly.
+                if cpr_oscillating and prev_inhaled <= self.dead_space:
+                    col.clear()
+                    col.append([self._col_len, 0.0])
+                elif not (len(col) == 1 and col[0][1] == 0.0):
+                    self._shift_column_inward(col, inhaled, 0.0)
+                if self._window:
+                    self._window.clear()
+                self._window_volume = self._window_co2 = 0.0
+                self._port_co2 = 0.0
+                self._reentry_co2 = 0.0
+                sample = 0.0
+            else:
+                # Rapid CPR decompression reversal (<= dead_space): fresh gas washes
+                # the Y-piece port proportionally to inward volume, while oscillatory
+                # mixing preserves CO2 return on the subsequent compression stroke.
+                xw = inhaled / self.PORT_WASH_VOL
+                avg_wash = -math.expm1(-xw) / xw if xw > 1e-6 else 1.0 - 0.5 * xw
+                sample = self._port_co2 * avg_wash
+                self._port_co2 *= math.exp(-xw)
+                xm = inhaled / self.STREAM_MIX_VOL
+                avg_mix = -math.expm1(-xm) / xm if xm > 1e-6 else 1.0 - 0.5 * xm
+                c_enter = (1.0 - self.STREAM_FRESH_FRAC) * self._reentry_co2 * avg_mix
+                self._reentry_co2 *= math.exp(-xm)
+                if not (len(col) == 1 and col[0][1] == 0.0 and c_enter == 0.0):
+                    self._shift_column_inward(col, inhaled, c_enter)
+                if self._window:
+                    self._window.clear()
+                self._window_volume = self._window_co2 = 0.0
         else:
             if self._no_flow_s > 1.5:
                 if dt != self._last_noflow_dt:
                     self._last_noflow_dt = dt
                     self._last_noflow_decay = math.exp(-dt / 1.8)
                 self._decay_window(self._last_noflow_decay)
+                self._port_co2 *= self._last_noflow_decay
+                self._reentry_co2 *= self._last_noflow_decay
                 sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else 0.0
             else:
                 sample = self._window_co2 / self._window_volume if self._window_volume > 0.0 else self._stages[0]
@@ -156,6 +202,8 @@ class Capnograph:
         self._stages[1] = sample + (second - sample + z * (first - sample)) * decay
         if self._no_flow_s > 1.5 and self._stages[1] < 0.25 and sample < 0.25:
             self._decay_window(0.0)
+            self._port_co2 = 0.0
+            self._reentry_co2 = 0.0
             self._stages[0] = self._stages[1] = 0.0
         self.co2 = self._stages[1]
         return self.co2
@@ -165,6 +213,20 @@ class Capnograph:
         for slug in self._window:
             slug[1] *= factor
             self._window_co2 += slug[0] * slug[1]
+
+    @classmethod
+    def _shift_column_inward(cls, column: deque, inhaled: float, pco2: float) -> None:
+        rem = inhaled
+        moved = 0.0
+        while rem > 1e-12 and column:
+            slug = column[-1]
+            part = rem if rem < slug[0] else slug[0]
+            moved += part
+            slug[0] -= part
+            rem -= part
+            if slug[0] <= 1e-12:
+                column.pop()
+        cls._push(column, moved, pco2, right=False)
 
     @staticmethod
     def _push(column: deque, volume: float, pco2: float, right: bool) -> None:
@@ -201,6 +263,7 @@ class EtCO2Readout:
         self._ever_sampled = False
         self._latched = False
         self._last_breath_index = 0
+        self._latched_breath_index: int | None = None
 
     @property
     def valid(self) -> bool:
@@ -220,6 +283,7 @@ class EtCO2Readout:
         self._has_sample = value > 0.0
         self._ever_sampled = self._has_sample
         self._latched = False
+        self._latched_breath_index = None
         self.et_gases = et_gases if self._has_sample else (0.0, 0.0, 0.0, 0.0)
         self._peak_gases = self.et_gases
         self._recent_peaks.clear()
@@ -243,22 +307,38 @@ class EtCO2Readout:
             self._recent_peaks.clear()
             self._last_interval_s = 0.0
             self._effective_timeout_s = self.timeout_s
+            self._latched_breath_index = None
         self._expire()
 
-    def _latch_peak(self) -> None:
-        if self._has_sample and self._age_s > 0.5:
-            self._last_interval_s = min(25.0, self._age_s)
-        self._recent_peaks.append((self._clock, self._peak, self._peak_gases))
+    def _latch_peak(self, breath_index: int | None = None) -> None:
+        same_breath = (
+            breath_index is not None
+            and breath_index == self._latched_breath_index
+            and bool(self._recent_peaks)
+        )
+        if same_breath:
+            if self._peak <= self._recent_peaks[-1][1]:
+                return
+            self._recent_peaks[-1] = (self._clock, self._peak, self._peak_gases)
+        else:
+            if self._has_sample and self._age_s > 0.5:
+                self._last_interval_s = min(25.0, self._age_s)
+            self._recent_peaks.append((self._clock, self._peak, self._peak_gases))
+            self._latched_breath_index = breath_index
         while len(self._recent_peaks) > 1 and self._clock - self._recent_peaks[0][0] > self.peak_window_s:
             self._recent_peaks.popleft()
         best = max(self._recent_peaks, key=lambda entry: entry[1])
         # Track the newest valid breath unless it is a shallow interposed breath
-        # (<70% of a recent full breath in the rolling window).
-        if self._peak >= 0.70 * best[1]:
+        # (<70% of both the rolling window maximum and the currently displayed value).
+        # Never step upward when an incoming breath is lower than the current display.
+        if self._peak >= 0.70 * best[1] or (self._has_sample and self._peak >= 0.70 * self.value):
             best = self._recent_peaks[-1]
+        elif self._has_sample and self.value < best[1]:
+            best = (self._clock, self.value, self.et_gases)
         self.value = best[1]
         self.et_gases = best[2]
-        self._age_s = 0.0
+        if not same_breath:
+            self._age_s = 0.0
         self._has_sample = True
         self._ever_sampled = True
 
@@ -289,7 +369,7 @@ class EtCO2Readout:
         )
         if breath_index is not None and breath_index != self._last_breath_index:
             if self._peak > 1.0 and not self._latched:
-                self._latch_peak()
+                self._latch_peak(self._last_breath_index)
             self._last_breath_index = breath_index
             self._peak = 0.0
             self._latched = False
@@ -303,7 +383,7 @@ class EtCO2Readout:
             self._latched = False
         end_pause = self._exhaling and not exhaling and inhaled_l <= 0.0
         if (end_pause or new_inspiration) and self._peak > 1.0 and not self._latched:
-            self._latch_peak()
+            self._latch_peak(breath_index)
             self._latched = True
         if new_inspiration or (end_pause and dead_space_l <= 0.0):
             self._peak = 0.0

@@ -17,6 +17,7 @@ from anasim.core.action_log import (
     ACTION_INFUSION_RATE,
     ACTION_INTUBATION_ATTEMPT,
     ACTION_LIPID_INFUSION,
+    ACTION_O2_FLUSH,
     ACTION_POSITION,
     ACTION_SHOCK,
     ACTION_TCI_TARGET,
@@ -36,7 +37,7 @@ if TYPE_CHECKING:
 PracticeMode = Literal["guided", "independent"]
 
 SAFETY_REVIEW = {
-    "awake_intubation": "Establish appropriate intubating conditions before airway instrumentation.",
+    "awake_intubation": "Establish adequate anesthesia before attempting intubation.",
     "laryngospasm_blocked": "Treat severe laryngospasm before attempting tracheal intubation.",
     "intubation_awareness": "Neuromuscular block does not establish hypnosis.",
     "awake_neuromuscular_block": "Establish hypnosis before administering a neuromuscular blocker.",
@@ -140,10 +141,10 @@ class CaseRun:
     def request_hint(self) -> str:
         self.observe(force=True)
         if self.scenario.events and not self.fired:
-            text = "Observe the monitors and clinical information as the case progresses."
+            text = "Watch the monitors as the case progresses."
         else:
             pending = next((o for o in self.scenario.outcomes if self._needs_hint(o)), None)
-            text = pending.review if pending is not None else "Reassess the patient and decide whether the case is ready to end."
+            text = pending.review if pending is not None else "Reassess the patient, then end the case when ready."
         self.hint = text
         self.hints.append({"time": self.elapsed, "text": text})
         return text
@@ -236,9 +237,13 @@ def _describe(record: ActionRecord) -> str | None:
         return "Intubation unsuccessful" if label == "failed" else "Tracheal tube placed"
     if action == ACTION_AIRWAY and label != "ETT":  # Placement appears as the intubation attempt.
         return f"Airway connection: {label}"
+    if action == ACTION_BAG_MASK and label == "breath":
+        return "Manual breath delivered"
     if action in {ACTION_BAG_MASK, ACTION_VENTILATION}:
         source = "Bag ventilation" if action == ACTION_BAG_MASK else "Ventilator"
         return f"{source} {'started' if label == 'on' else 'stopped'}"
+    if action == ACTION_O2_FLUSH:
+        return "O₂ flush delivered"
     if action == ACTION_FGF:
         return f"{label.upper()} flow {amount:g} L/min"
     if action == ACTION_COMPRESSIONS:

@@ -33,10 +33,9 @@ def create_sepsis_response() -> Scenario:
             id="RECOGNIZE_WARM_SHOCK",
             title="Recognize septic shock",
             instruction=(
-                "Recognize falling pressure and impaired perfusion in the setting of infection; "
-                "begin treatment before profound hypotension develops. "
-                "Vasodilation is the main mechanism in this case; HR may rise, but tachycardia is variable. "
-                "In practice, assess perfusion and consider blood loss, anesthetic effects, and other causes of hypotension."
+                "Falling blood pressure with active infection suggests septic shock; treat before severe hypotension develops. "
+                "Vasodilation drives the drop here, and tachycardia is variable.<br><br>"
+                "<i>Also consider blood loss, anesthetic depth, and other causes of hypotension.</i>"
             ),
             check_requirements=require_hypotension_or_treatment(
                 start_map, "sepsis", "begin fluid resuscitation and support pressure",
@@ -46,10 +45,9 @@ def create_sepsis_response() -> Scenario:
             id="GIVE_FLUIDS",
             title="Give fluids",
             instruction=(
-                "Start a <b>500 mL crystalloid bolus</b> in Circulation and reassess "
-                "the response. Balanced crystalloid is preferred in practice; the simulator's crystalloid is lactated Ringer's. "
-                "An initial 30 mL/kg over the first 3 hours is a guideline starting point, "
-                "with further fluid guided by perfusion and response."
+                "Give a <b>500 mL crystalloid bolus</b> (lactated Ringer's is preferred over 0.9% saline) "
+                "and reassess the response.<br><br>"
+                "<i>Initial sepsis resuscitation starts around 30 mL/kg over 3 hours, with further fluid guided by perfusion.</i>"
             ),
             check_requirements=fluids,
             target_tab="Circulation",
@@ -58,10 +56,9 @@ def create_sepsis_response() -> Scenario:
             id="START_VASOPRESSOR",
             title="Start vasopressor",
             instruction=(
-                "If <b>MAP remains below 65 mmHg</b>, start or adjust norepinephrine. "
-                "A starting rate of 0.05-0.1 mcg/kg/min is 3.5-7 mcg/min for 70 kg; "
-                "enter the absolute rate and titrate to pressure and perfusion. "
-                "Start vasopressors alongside fluids in severe hypotension. If pressure has recovered, continue without adding one."
+                "If <b>MAP < 65 mmHg</b>, start or adjust <b>norepinephrine</b> in mcg/min "
+                "(0.05-0.1 mcg/kg/min = 3.5-7 mcg/min for 70 kg) and titrate to pressure and perfusion. "
+                "Start pressors alongside fluids in severe hypotension; skip this if pressure has already recovered."
             ),
             check_requirements=require_vasopressor_if_hypotensive(
                 "nore", fail_message="Start or adjust norepinephrine for persistent hypotension",
@@ -73,19 +70,18 @@ def create_sepsis_response() -> Scenario:
             id="SOURCE_CONTROL",
             title="Request source control",
             instruction=(
-                "Select <b>Request surgical source control</b> to let the simulated inflammatory "
-                "effects subside. Continue hemodynamic support as the patient recovers. "
-                "In practice, obtain blood cultures without delaying antibiotics, and give antibiotics "
-                "immediately (ideally within 1 hour for shock). Shock can persist after both."
+                "Select <b>Request surgical source control</b> and continue hemodynamic support as the patient stabilizes.<br><br>"
+                "<i>Draw blood cultures without delaying broad-spectrum antibiotics, ideally within 1 hour; "
+                "shock can persist after both.</i>"
             ),
             check_requirements=require_crisis_stopped("sepsis", "Request surgical source control"),
         ),
         create_reassess_step(
             "sepsis",
             "Request surgical source control",
-            "Infection treatment underway",
-            "Reassess the response before giving more fluid and wean vasopressors as perfusion improves. "
-            "Lactate, urine output, examination, and bedside ultrasound inform reassessment in practice."
+            "source control is underway",
+            "<i>Reassess response before giving more fluid and wean vasopressors as perfusion improves. "
+            "Follow lactate, urine output, exam, and bedside ultrasound.</i>",
         ),
     ]
 

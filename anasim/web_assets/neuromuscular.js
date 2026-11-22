@@ -20,19 +20,21 @@ export class NeuromuscularDisplay {
     const reading = nmb.reading;
     const single = nmb.mode === "single";
     const label = single ? "T1" : "TOF ratio";
-    let title = label, value = "--", detail = reading ? "" : "Awaiting measurement", quality = "";
+    let title = single ? "T1 / baseline" : "TOF";
+    let value = "--", detail = "", quality = "";
     if (reading) {
       if (single) {
         value = reading.t1 === null ? "--" : `${Math.round(reading.t1)}%`;
-        detail = reading.t1 === null ? "Baseline unavailable" : "Of baseline";
+        if (reading.t1 === null) detail = "Baseline unavailable";
       } else if (reading.ratio === null || reading.low_signal) {
         title = "TOF count";
         value = `${reading.count}/4`;
         if (reading.low_signal) {
-          detail = `Low signal, ratio ${Math.round(reading.ratio)}%`;
+          detail = "Low signal";
           quality = "low";
         }
       } else {
+        title = label;
         value = `${Math.floor(reading.ratio)}%`;
         quality = reading.ratio >= 90 ? "recovered" : "";
       }
@@ -41,7 +43,8 @@ export class NeuromuscularDisplay {
     setText($("nmb-value"), value);
     setText($("nmb-detail"), detail);
     // Automatic readings are at most one interval old, so show the countdown instead.
-    setText($("nmb-status"), nmb.measuring ? `Pulse ${nmb.pulses}/${single ? 1 : 4}` :
+    const stimulation = single ? "Stimulating" : `Pulse ${nmb.pulses}/4`;
+    setText($("nmb-status"), nmb.measuring ? stimulation :
       nmb.next !== null ? `Next ${Math.ceil(nmb.next)} s` :
       reading ? `${Math.floor(Math.max(0, time - reading.time))} s ago` : "");
     $("nmb-result").dataset.quality = quality;
@@ -52,16 +55,20 @@ export class NeuromuscularDisplay {
     $("nmb-measure").disabled = ended || nmb.measuring || nmb.wait > 0;
 
     const reference = nmb.baseline ?? 1;
-    $("nmb-baseline").hidden = nmb.baseline === null;
+    const bars = $("nmb-bars");
+    bars.hidden = !reading;
     for (let i = 0; i < 4; i++) {
       const bar = $(`nmb-t${i + 1}`);
       bar.hidden = single && i > 0;
       const amplitude = reading?.responses[i] ?? 0;
       bar.style.setProperty("--height", `${Math.min(100, 100 * amplitude / reference)}%`);
     }
-    $("nmb-bars").setAttribute("aria-label", reading ? reading.responses.map(
-      (response, index) => `T${index + 1} ${Math.round(100 * response / reference)}${nmb.baseline === null ? " units" : "% of baseline"}`,
-    ).join(", ") : "No twitch responses measured");
+    if (reading) {
+      const scale = nmb.baseline === null ? "% of model maximum" : "% of baseline";
+      bars.setAttribute("aria-label", reading.responses.map(
+        (response, index) => `T${index + 1} ${Math.round(100 * response / reference)}${scale}`,
+      ).join(", "));
+    }
 
     const cutoff = time - TREND_S;
     let expired = 0;
@@ -71,15 +78,20 @@ export class NeuromuscularDisplay {
       trendChanged = true;
     }
     if (trendChanged) {
-      const points = this.history.filter(([, mode, result]) => mode === nmb.mode && result !== null);
-      $("nmb-trend-points").innerHTML = points.map(([timestamp, , result, low]) => {
+      const points = this.history.filter(([, mode, result, low]) => mode === nmb.mode && result !== null && !low);
+      $("nmb-trend-points").innerHTML = points.map(([timestamp, , result]) => {
         const x = timestamp / TREND_S * 180;
         const y = 37 - Math.min(100, Math.max(0, result)) / 100 * 34;
-        return `<path d="M${x.toFixed(2)} ${y.toFixed(2)}h0"${low ? ' class="low"' : ""}/>`;
+        return `<path d="M${x.toFixed(2)} ${y.toFixed(2)}h0"/>`;
       }).join("");
       this.trendMode = nmb.mode;
-      $("nmb-trend").setAttribute("aria-label", `${label} over the past 15 minutes`);
-      $("nmb-trend-label").textContent = `${label}, past 15 min`;
+      $("nmb-history").dataset.mode = nmb.mode;
+      const metric = single ? "T1 as a percentage of baseline" : label;
+      $("nmb-trend").setAttribute("aria-label", `${metric} over the past 15 minutes`);
+      setText($("nmb-trend-label"), `${label} history`);
+      setText($("nmb-trend-empty"), single ? "No T1 readings" : "No ratio readings");
+      $("nmb-trend-body").hidden = points.length === 0;
+      $("nmb-trend-empty").hidden = points.length > 0;
     }
     if (this.trendTime !== time) {
       // Keep each reading's path and move the time window as a group.

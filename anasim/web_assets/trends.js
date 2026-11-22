@@ -1,27 +1,35 @@
-// Recorded monitor measurements, shown in the sidebar without covering the loops.
+// Recorded vital signs from the patient monitor.
 import { minutesSeconds } from "./display.js";
 
 const WINDOW_S = 1800;
 const SERIES = {
-  map: { color: "--abp", range: [40, 120] },
-  hr: { color: "--ecg", range: [30, 150] },
-  etco2: { color: "--co2", range: [0, 60] },
-  bis: { color: "--bis", range: [0, 100] },
+  map: { color: "--abp", range: [40, 120], minKey: "MAP_min", maxKey: "MAP_max" },
+  hr: { color: "--ecg", range: [30, 150], minKey: "HR_min", maxKey: "HR_max" },
+  etco2: { color: "--co2", range: [0, 60], minKey: "EtCO2_min", maxKey: "EtCO2_max" },
+  bis: { color: "--bis", range: [0, 100], minKey: "BIS_min", maxKey: "BIS_max" },
 };
 
 export class Trends {
   constructor(info) {
-    this.panel = document.getElementById("trends-panel");
+    this.dialog = document.getElementById("trends-dialog");
     this.window = document.getElementById("trend-window");
     this.window.value = "900";
     this.arterial = info.arterial_line;
+    this.thresholds = info.alarm_thresholds ?? {};
     document.getElementById("trend-map-label").textContent = this.arterial ? "ART MAP" : "NIBP MAP";
     this.samples = [...info.trends];
     this.time = this.samples.at(-1).time;
     this.frame = null;
-    this.canvases = [...this.panel.querySelectorAll("canvas")];
+    this.canvases = [...this.dialog.querySelectorAll("canvas")];
     this.listeners = new AbortController();
-    this.window.addEventListener("change", () => this.requestDraw(), { signal: this.listeners.signal });
+    const signal = this.listeners.signal;
+    const trigger = document.getElementById("show-trends");
+    trigger.addEventListener("click", () => {
+      trigger.focus({ preventScroll: true });
+      this.dialog.showModal();
+      this.requestDraw();
+    }, { signal });
+    this.window.addEventListener("change", () => this.requestDraw(), { signal });
     this.observer = new ResizeObserver(() => this.requestDraw());
     for (const canvas of this.canvases) this.observer.observe(canvas);
   }
@@ -29,6 +37,7 @@ export class Trends {
   destroy() {
     this.listeners.abort();
     this.observer.disconnect();
+    this.dialog.close();
     if (this.frame !== null) cancelAnimationFrame(this.frame);
   }
 
@@ -42,16 +51,16 @@ export class Trends {
   }
 
   requestDraw() {
-    if (this.panel.hidden || this.frame !== null) return;
+    if (!this.dialog.open || this.frame !== null) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = null;
-      if (!this.panel.hidden) this.draw();
+      if (this.dialog.open) this.draw();
     });
   }
 
   draw() {
     const style = getComputedStyle(document.documentElement);
-    const font = `11px ${getComputedStyle(document.body).fontFamily}`;
+    const font = `10px ${getComputedStyle(document.body).fontFamily}`;
     const color = (name) => style.getPropertyValue(name).trim();
     const end = Math.max(1, this.time);
     const start = Math.max(0, end - Number(this.window.value));
@@ -82,37 +91,57 @@ export class Trends {
       }
       const low = Math.floor(min / 10) * 10;
       const high = Math.ceil(max / 10) * 10;
-      const left = 32;
+      const left = 34;
       const right = width - 8;
       const top = 12;
-      const bottom = height - 24;
+      const bottom = height - 22;
       const x = (time) => left + (time - start) / (end - start) * (right - left);
       const y = (value) => bottom - (value - low) / (high - low) * (bottom - top);
+
       ctx.font = font;
       ctx.lineWidth = 1;
       ctx.strokeStyle = color("--monitor-rule");
       ctx.fillStyle = color("--text-dim");
       ctx.textAlign = "right";
       for (const value of [low, (low + high) / 2, high]) {
+        const py = Math.round(y(value)) + 0.5;
         ctx.beginPath();
-        ctx.moveTo(left, y(value));
-        ctx.lineTo(right, y(value));
+        ctx.moveTo(left, py);
+        ctx.lineTo(right, py);
         ctx.stroke();
-        ctx.fillText(String(value), left - 5, y(value) + 4);
+        ctx.fillText(String(value), left - 5, py + 3);
       }
+
+      // Dashed alarm-limit guides when within the displayed range.
+      const limitLo = this.thresholds[series.minKey];
+      const limitHi = this.thresholds[series.maxKey];
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = "rgba(242, 183, 5, 0.30)";
+      for (const lim of [limitLo, limitHi]) {
+        if (lim !== undefined && lim > low && lim < high) {
+          const ly = Math.round(y(lim)) + 0.5;
+          ctx.beginPath();
+          ctx.moveTo(left, ly);
+          ctx.lineTo(right, ly);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+
       const middle = Math.round((start + end) / 120) * 60;
       const labels = [[start, "left"], [end, "right"]];
       const clearance = (end - start) / 4;
       if (middle - start >= clearance && end - middle >= clearance) labels.push([middle, "center"]);
       for (const [time, alignment] of labels) {
         ctx.textAlign = alignment;
-        ctx.fillText(minutesSeconds(time), x(time), height - 7);
+        ctx.fillText(minutesSeconds(time), x(time), height - 6);
       }
       let connected = false;
       let cuffTime = null;
       ctx.strokeStyle = color(series.color);
       ctx.fillStyle = color(series.color);
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.7;
       ctx.beginPath();
       for (const sample of samples) {
         const value = sample[key];

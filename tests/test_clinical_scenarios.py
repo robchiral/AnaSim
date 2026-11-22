@@ -650,7 +650,7 @@ class TestClinicalAcceptance:
         assert rescue_co2 > baseline_co2 + 5.0
         assert rescue_spo2 < baseline_spo2 - 10.0
 
-        engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.55)
+        engine.set_bag_mask_ventilation(True, rr=12.0, vt=0.55, p_max=20.0)
         for _ in range(120):
             engine.step(1.0)
 

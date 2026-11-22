@@ -20,8 +20,10 @@ from anasim.core.clinical_actions import (
 from anasim.core.drug_registry import get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
+from anasim.core.projection import assisted_positive_pressure
 from anasim.core.recorder import RecordingError
 from anasim.core.state import AirwayType, SimulationConfig, WaveformSample
+from anasim.core.utils import clamp01
 from anasim.monitors.blood_gas import BloodGasResult
 from anasim.monitors.ecg import displayed_rhythm
 from anasim.patient import domain
@@ -94,7 +96,14 @@ def catalog() -> str:
     return json.dumps({
         "version": __version__,
         "scenarios": [
-            {"id": spec.id, "label": spec.label, "summary": spec.summary}
+            {
+                "id": spec.id,
+                "label": spec.label,
+                "summary": spec.summary,
+                "category": "crisis" if spec.surgery else "routine",
+                "start_mode": spec.start_mode,
+                "maint_type": spec.maint_type,
+            }
             for spec in SCENARIO_REGISTRY
         ],
         "ranges": {
@@ -211,10 +220,12 @@ class WebSession:
         engine = self.engine
         patient = engine.patient
         return json.dumps({
+            "version": __version__,
             "patient": {
                 "age": patient.age,
                 "sex": patient.sex,
                 "weight": patient.weight,
+                "height": patient.height,
                 "renal_status": patient.renal_status,
                 "creatinine_clearance_ml_min": patient.creatinine_clearance_ml_min,
                 "hepatic_status": patient.hepatic_status,
@@ -225,6 +236,7 @@ class WebSession:
                 "gestational_age_weeks": patient.gestational_age_weeks,
             },
             "arterial_line": engine.config.arterial_line_enabled,
+            "alarm_thresholds": dict(engine.alarms.thresholds),
             "recordings_dir": self._recordings_dir if self.retain_recordings else None,
             "sample_interval": engine.waveform_interval,
             "speed_range": SPEED_RANGE,
@@ -431,7 +443,7 @@ class WebSession:
         # Spirometry needs gas through the circuit, Pplat a positive-pressure
         # breath, and end-tidal values an exhaled breath.
         connected = s.airway_mode != AirwayType.NONE
-        assisted = connected and (engine.vent.is_on or engine.bag_mask_active)
+        assisted = connected and (engine.vent.is_on or assisted_positive_pressure(engine))
         exhaled = s.etco2_signal_valid
         nibp_ts = (
             engine.nibp.failed_timestamp
@@ -603,6 +615,30 @@ class WebSession:
             run["volume"].append(volume)
         return out
 
+    def _reservoir_status(self) -> dict:
+        engine = self.engine
+        circuit = engine.circuit
+        fill = clamp01(circuit.reservoir_volume / max(1e-6, circuit.reservoir_capacity))
+        connected = engine.state.airway_mode != AirwayType.NONE and (
+            engine.state.airway_mode != AirwayType.MASK or engine.mask_seal > 0.0
+        )
+        pressure = engine._apl_pressure if connected and not engine.vent.is_on else 0.0
+        if circuit.bellows_fraction <= 0.05:
+            state = "empty"
+        elif fill < 0.35:
+            state = "low"
+        elif not engine.vent.is_on and connected and pressure >= 25.0:
+            state = "high"
+        elif not engine.vent.is_on and connected and pressure >= 12.0:
+            state = "tense"
+        else:
+            state = "normal"
+        return {
+            "fill": round(fill, 3),
+            "pressure": round(pressure, 1),
+            "state": state,
+        }
+
     def _controls(self) -> dict:
         engine = self.engine
         circuit = engine.circuit
@@ -619,6 +655,7 @@ class WebSession:
             "position": engine.hemo.position,
             "fgf": {"o2": circuit.fgf_o2, "air": circuit.fgf_air, "n2o": circuit.fgf_n2o},
             "o2_connected": circuit.oxygen_supply_connected,
+            "o2_flush": engine._o2_flush_remaining_s > 0.0,
             "circuit_fio2": _num(circuit.composition.fio2, 4),
             "vaporizer": engine.vaporizer.state.setting,
             "bag_mask": engine.bag_mask_active,
@@ -632,9 +669,9 @@ class WebSession:
             "bag": {
                 "rr": round(engine.bag_mask_rr),
                 "tv": round(engine.bag_mask_vt * 1000.0),
-                "p_max": round(engine.bag_mask_p_max),
             },
-            "apl": round(engine.apl_cmh2o),
+            "reservoir": self._reservoir_status(),
+            "apl": engine.apl_cmh2o,
             "vent": {
                 "on": engine.vent.is_on,
                 "mode": vent.mode,
@@ -817,6 +854,12 @@ class WebSession:
 
     def _cmd_apl(self, cmh2o: float):
         self.engine.set_apl_valve(cmh2o)
+
+    def _cmd_bag_breath(self):
+        self.engine.deliver_manual_breath()
+
+    def _cmd_o2_flush(self):
+        self.engine.trigger_o2_flush()
 
     def _cmd_vent_power(self, on: bool):
         assisted = self.engine.vent.is_on or self.engine.bag_mask_active

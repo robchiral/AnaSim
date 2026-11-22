@@ -15,9 +15,10 @@ ARREST_MAP_MMHG = 20.0
 PULSELESS_VT_MAP_MMHG = 25.0
 ARREST_CONFIRM_S = 15.0
 
-BAG_P_MAX_DEFAULT = 20.0  # cmH2O; default manual bag peak pressure limit
-APL_DEFAULT_CMH2O = 0.0  # cmH2O; 0 = fully open APL valve during spontaneous breathing
+APL_DEFAULT_CMH2O = 0.0  # Fully open
 APL_RANGE_CMH2O = (0.0, 70.0)
+O2_FLUSH_FLOW_L_MIN = 45.0  # L/min pure O2 bypassing vaporizer (ISO 80601-2-13: 35-75 L/min)
+O2_FLUSH_DURATION_S = 1.5  # s per button press (~1.1 L pulse)
 
 CMH2O_TO_MMHG = 0.7356
 

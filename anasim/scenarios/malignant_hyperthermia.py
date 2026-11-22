@@ -77,15 +77,13 @@ def _require_etco2_normal(engine) -> tuple[bool, str]:
 def _stabilize_instruction(engine) -> str:
     low, high = _mh_normocapnia_bounds(engine)
     return (
-        "Follow EtCO₂, HR, rigidity, blood gases, and core temperature. "
-        f"Reduce ventilation toward normocapnia (<b>EtCO₂ {low}-{high} mmHg</b>) as hypermetabolism resolves. "
-        "Turn off the forced-air warmer. Start <b>surface cooling</b> if core temperature "
-        "exceeds 39 °C or rises rapidly, and stop it below 38 °C.<br><br>"
-        "In practice, check potassium, CK, myoglobin, glucose, coagulation, and urine output. "
-        "Treat hyperkalemia with calcium, sodium bicarbonate, and glucose with insulin; "
-        "do not give calcium channel blockers with dantrolene. Arrange at least 24 hours "
-        "of critical care monitoring, further dantrolene according to the local protocol, "
-        "and referral for MH testing."
+        f"Wean ventilation toward <b>EtCO₂ {low}-{high} mmHg</b> as hypermetabolism resolves. "
+        "Turn off the <b>forced-air warmer</b>. Start <b>surface cooling</b> if temperature exceeds 39 °C "
+        "or rises rapidly, and stop below 38 °C.<br><br>"
+        "<i>Monitor blood gases, potassium, CK, myoglobin, glucose, coagulation, and urine output. "
+        "Treat hyperkalemia with calcium, sodium bicarbonate, and insulin with glucose; avoid calcium channel "
+        "blockers with dantrolene. Arrange at least 24 hours of ICU monitoring, redosing per protocol, "
+        "and MH testing referral.</i>"
     )
 
 
@@ -129,7 +127,7 @@ def create_malignant_hyperthermia() -> Scenario:
         briefing=CRISIS_BRIEFING,
         events=(CaseEvent(
             "malignant_hyperthermia", CRISIS_ONSET_S,
-            "EtCO₂ begins to rise although the ventilator settings are unchanged.", start,
+            "EtCO₂ rises despite unchanged ventilator settings.", start,
         ),),
         steps=[
             create_observe_step("malignant_hyperthermia"),
@@ -137,14 +135,12 @@ def create_malignant_hyperthermia() -> Scenario:
                 id="STOP_TRIGGERS",
                 title="Stop triggers and hyperventilate",
                 instruction=(
-                    "Unexplained rising EtCO₂, tachycardia, and muscle rigidity suggest MH; "
-                    "temperature often rises later. Call for help and the MH cart, "
-                    "and ask the surgeon to stop.<br><br>"
-                    "Turn off sevoflurane and avoid succinylcholine. Give <b>100% oxygen</b>: "
-                    "set O₂ 10 L/min, air and N₂O 0 L/min. Increase minute ventilation to "
-                    "<b>2-3 times baseline</b> and follow EtCO₂. Start <b>propofol</b> to "
-                    "maintain anesthesia. In practice, add activated charcoal filters if available; "
-                    "do not delay treatment to change the machine."
+                    "Unexplained rising EtCO₂, tachycardia, and rigidity suggest MH; temperature often rises late. "
+                    "Call for help and the MH cart, and ask the surgeon to stop.<br><br>"
+                    "Turn off <b>sevoflurane</b> and avoid succinylcholine. Set <b>100% oxygen</b> "
+                    "(O₂ 10 L/min, air and N₂O 0 L/min), increase minute ventilation to <b>2-3 times baseline</b>, "
+                    "and start <b>propofol</b> in Drugs.<br><br>"
+                    "<i>Add activated charcoal filters if available; do not delay treatment to change the machine.</i>"
                 ),
                 check_requirements=require_all(
                     _require_vaporizer_off, oxygen,
@@ -156,9 +152,9 @@ def create_malignant_hyperthermia() -> Scenario:
                 id="DANTROLENE",
                 title="Give dantrolene",
                 instruction=(
-                    "Give <b>dantrolene 2.5 mg/kg IV</b> rapidly (175 mg for 70 kg). "
-                    "Repeat until EtCO₂, HR, and rigidity improve. Doses above 10 mg/kg are "
-                    "occasionally needed; if signs persist, reconsider the diagnosis."
+                    "Give <b>dantrolene 2.5 mg/kg IV</b> rapidly (175 mg for 70 kg), and repeat until "
+                    "EtCO₂, HR, and rigidity improve.<br><br>"
+                    "<i>Doses above 10 mg/kg are occasionally needed; if signs persist, reconsider the diagnosis.</i>"
                 ),
                 check_requirements=_require_dantrolene,
                 target_tab="Medications",

@@ -82,6 +82,8 @@ test("defibrillator controls follow charging, pending R waves, and actual delive
   controls.state = { defibrillator: states[1] };
   controls.syncDefibrillator(states[1]);
   assert.match(elements.get("c-defibrillator-status").textContent, /Charging/);
+  controls.syncDefibrillator({ ...states[1], charge_remaining: 5 + 1e-12 });
+  assert.equal(elements.get("c-defibrillator-status").textContent, "Charging, 5 s remaining");
   assert.equal(elements.get("c-shock").disabled, true);
   await elements.get("c-charge").onclick();
   assert.equal(commands.at(-1), "disarm_defibrillator");
@@ -171,11 +173,65 @@ test("stopping a TCI infusion resets target to null and clears is_tci in engine"
   assert.equal(w.mode.value, "tci");
   assert.equal(w.target.disabled, false);
   assert.equal(w.rate.disabled, true);
-  assert.equal(stubs.get("c-apl-settings").hidden, true, "APL stays hidden without an airway");
+  assert.equal(stubs.get("c-apl-state").textContent, "Standby", "APL stays available for presetting without an airway");
+  assert.equal(stubs.get("c-bag-breath").disabled, true, "single breath disabled without airway");
   controls.sync({ ...pyState[3], airway: "Mask", bag_mask: false, vent: { ...pyState[3].vent, on: false } }, 0);
-  assert.equal(stubs.get("c-apl-settings").hidden, false, "APL shows during spontaneous breathing on mask");
-  controls.sync({ ...pyState[3], airway: "Mask", bag_mask: true, vent: { ...pyState[3].vent, on: false } }, 0);
-  assert.equal(stubs.get("c-apl-settings").hidden, true, "APL hides while manual bag ventilation is active");
+  assert.equal(stubs.get("c-apl-state").textContent, "Open", "APL applies during spontaneous breathing on mask");
+  assert.equal(stubs.get("c-bag-breath").disabled, false, "single breath available on mask with vent and bagging off");
+  assert.equal(stubs.get("c-bag-state").textContent, "Normal");
+  controls.sync({ ...pyState[3], airway: "Mask", bag_mask: false, vent: { ...pyState[3].vent, on: true } }, 0);
+  assert.equal(stubs.get("c-apl-state").textContent, "Standby", "the ventilator uses its own pressure setting");
+  assert.equal(stubs.get("c-bag-breath").disabled, true, "single breath disabled while ventilator is on");
+  controls.sync({ ...pyState[3], airway: "Mask", bag_mask: true, apl: 0, vent: { ...pyState[3].vent, on: false } }, 0);
+  assert.equal(stubs.get("c-apl-state").textContent, "Open", "APL also limits bag ventilation");
+  assert.equal(stubs.get("c-apl-state").className, "warn");
+  assert.equal(stubs.get("c-bag-state").textContent, "No pressure");
+  assert.equal(stubs.get("c-bag-breath").disabled, true, "single breath disabled during continuous bagging");
+  controls.sync({
+    ...pyState[3],
+    airway: "ETT",
+    bag_mask: true,
+    apl: 70,
+    o2_connected: false,
+    o2_flush: false,
+    reservoir: { fill: 1, pressure: 48, state: "high" },
+    vent: { ...pyState[3].vent, on: false },
+  }, 0);
+  assert.equal(stubs.get("c-bag-state").textContent, "High · 48 cmH₂O");
+  assert.equal(stubs.get("c-bag-state").className, "bad");
+  assert.equal(stubs.get("c-o2-flush").disabled, true, "O2 flush disabled when O2 supply disconnected");
+  controls.sync({
+    ...pyState[3],
+    airway: "Mask",
+    bag_mask: false,
+    o2_connected: true,
+    o2_flush: true,
+    reservoir: { fill: 0, pressure: 0, state: "empty" },
+    vent: { ...pyState[3].vent, on: false },
+  }, 0);
+  assert.equal(stubs.get("c-bag-state").textContent, "Empty");
+  assert.equal(stubs.get("c-o2-flush").disabled, false);
+  assert.equal(stubs.get("c-o2-flush").textContent, "O₂ flushing…");
+
+  // O2 fail-safe and 25% O2 guard cap delivered N2O in total FGF and flowmeter bar.
+  for (const id of ["fgf-bar-o2", "fgf-bar-air", "fgf-bar-n2o"]) {
+    const props = {};
+    stubs.set(id, { style: { setProperty(k, v) { props[k] = v; } }, props, dataset: {} });
+  }
+  controls.sync({
+    ...pyState[3],
+    fgf: { o2: 6, air: 0, n2o: 4 },
+    o2_connected: false,
+  }, 0);
+  assert.equal(stubs.get("c-total-fgf").textContent, "0.0 L/min");
+  assert.equal(stubs.get("fgf-bar-n2o").props["--fill"], "0%");
+  controls.sync({
+    ...pyState[3],
+    fgf: { o2: 1, air: 0, n2o: 6 },
+    o2_connected: true,
+  }, 0);
+  assert.equal(stubs.get("c-total-fgf").textContent, "4.0 L/min");
+  assert.equal(stubs.get("fgf-bar-n2o").props["--fill"], "20%");
 });
 
 test("defibrillator sync buttons reset per session and hemorrhage select preserves observed rates", () => {
@@ -299,4 +355,41 @@ test("performAction does not re-enable shock after status becomes idle or sessio
   };
   await controls.performAction(genericBtn, "fluid", { kind: "crystalloid", volume_ml: 250 });
   assert.equal(genericBtn.disabled, true);
+});
+
+test("blood gas H/L flags match displayed rounded values and strict upper bounds", () => {
+  const makeEl = (tag) => ({
+    tag, className: "", textContent: "", children: [],
+    append(...nodes) { this.children.push(...nodes); },
+    replaceChildren(...nodes) { this.children = [...nodes]; },
+  });
+  const tHead = makeEl("thead");
+  const tBody = makeEl("tbody");
+  const table = { tHead, tBodies: [tBody] };
+  const elements = new Map([
+    ["abg-pending", { hidden: false, textContent: "" }],
+    ["abg-results", { hidden: false, querySelector: () => table }],
+  ]);
+  globalThis.document = {
+    getElementById: (id) => elements.get(id),
+    createElement: makeEl,
+  };
+  const controls = Object.create(Controls.prototype);
+  controls.time = 120;
+  controls.shownBloodGases = null;
+  controls.bloodGases = [{
+    drawn_at: 0, ready_at: 120,
+    ph: 7.348, pa_co2: 45.4, pao2: 100, hco3: 24.0, base_excess: 0.0,
+    lactate: 1.98, sodium: 140, potassium: 4.0, chloride: 104,
+    ionized_calcium: 1.20, sao2: 99.0, hb: 13.5, fio2: 0.5,
+  }];
+  controls.showBloodGases();
+  const rowByName = new Map(tBody.children.map((tr) => [tr.children[0].textContent, tr.children[2]]));
+  assert.equal(rowByName.get("pH").textContent, "7.35");
+  assert.equal(rowByName.get("pH").className, "");
+  assert.equal(rowByName.get("PaCO₂").textContent, "45");
+  assert.equal(rowByName.get("PaCO₂").className, "");
+  assert.equal(rowByName.get("Lactate").textContent, "2.0");
+  assert.equal(rowByName.get("Lactate").className, "abg-high");
+  assert.equal(rowByName.get("Lactate").children[0].textContent, "H");
 });

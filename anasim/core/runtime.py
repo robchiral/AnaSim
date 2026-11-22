@@ -10,12 +10,13 @@ from anasim.core.constants import (
     ARREST_HR_BPM,
     ARREST_MAP_MMHG,
     ARREST_PULSE_PRESSURE_MMHG,
+    O2_FLUSH_FLOW_L_MIN,
     PULSELESS_VT_MAP_MMHG,
     VT_MIN,
 )
 from anasim.core.enums import PULSELESS_RHYTHMS, RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
-from anasim.machine.ventilator import VOLUME_TARGETED
+from anasim.machine.ventilator import BAG_TI_MAX_S, VOLUME_TARGETED
 from anasim.monitors.arterial import MIN_PULSE_PRESSURE_MMHG
 from anasim.patient.pd.anesthesia import opioid_equivalent
 from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
@@ -60,6 +61,10 @@ logger = logging.getLogger(__name__)
 # spontaneous inspiratory effort is breath-averaged across step sizes.
 MEAN_PAW_TAU_S = 0.25
 MEAN_EFFORT_TAU_S = 1.5
+# Typical one-handed bag squeeze pressure that can vent surplus FGF through the
+# APL valve; APL settings above 20 cmH2O (or FGF exceeding squeeze rate) trap
+# gas and raise baseline PEEP.
+BAG_VENT_PRESSURE_CMH2O = 20.0
 
 
 def step_simulation(engine: SimulationEngine, dt: float) -> None:
@@ -150,6 +155,71 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
         engine.intubation_start_time = None
 
 
+def _manual_breath_delta_p(lung, vt_l: float, ti_s: float) -> float:
+    """Peak airway pressure swing (cmH2O above PEEP) for a half-sine manual squeeze."""
+    if vt_l <= 0.0 or ti_s <= 1e-6:
+        return 0.0
+    c = max(0.005, lung.compliance)
+    r = max(0.0, lung.resistance)
+    w = math.pi / ti_s
+    elastance = 1.0 / c
+    tau = max(1e-3, lung.viscoelastic_tau)
+    rate = 1.0 / tau
+    gain = lung.viscoelastic_ratio * elastance * 0.5 * w / (rate * rate + w * w)
+    theta = math.pi - math.atan(r * c * w)
+    peak = 0.0
+    for t in (0.5 * ti_s, theta / w, 0.85 * ti_s, ti_s):
+        wt = w * t
+        flow = 0.5 * w * math.sin(wt)
+        vol = 0.5 * (1.0 - math.cos(wt))
+        p2 = gain * (rate * math.sin(wt) - w * math.cos(wt) + w * math.exp(-rate * t))
+        paw = r * flow + elastance * vol + p2
+        if paw > peak:
+            peak = paw
+    return vt_l * peak
+
+
+def _advance_apl_pressure(
+    pressure: float,
+    dt: float,
+    inflow_l_min: float,
+    c_sys: float,
+    target_ceiling: float,
+    *,
+    peep_vent: float | None = None,
+    vent_max_l_min: float = 0.0,
+) -> float:
+    """Advance bag/APL baseline pressure over dt with optional squeeze venting above peep_vent."""
+    r_in = (inflow_l_min / 60.0) / c_sys
+    if peep_vent is None or vent_max_l_min <= 0.0:
+        return clamp(pressure + r_in * dt, 0.0, target_ceiling)
+    r_vent = (vent_max_l_min / 60.0) / c_sys
+    rem = dt
+    p = pressure
+    if p < peep_vent - 1e-12:
+        if r_in <= 0.0:
+            return clamp(p + r_in * rem, 0.0, target_ceiling)
+        t_hit = (peep_vent - p) / r_in
+        if rem <= t_hit:
+            return clamp(p + r_in * rem, 0.0, target_ceiling)
+        p = peep_vent
+        rem -= t_hit
+    if p > peep_vent + 1e-12:
+        r_net = r_in - r_vent
+        if r_net >= 0.0:
+            return clamp(p + r_net * rem, 0.0, target_ceiling)
+        t_hit = (peep_vent - p) / r_net
+        if rem <= t_hit:
+            return clamp(p + r_net * rem, 0.0, target_ceiling)
+        p = peep_vent
+        rem -= t_hit
+    if r_in > r_vent:
+        p += (r_in - r_vent) * rem
+    elif r_in < 0.0:
+        p += r_in * rem
+    return clamp(p, 0.0, target_ceiling)
+
+
 def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_active: bool,
                    bag_mask_active: bool, *, collect_samples: bool = True) -> None:
     """Advance breathing through the workstation: ventilator, bag, or the patient's own effort."""
@@ -183,8 +253,14 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         source = "bag"
     else:
         source = "spontaneous" if connected else None
+    single_breath = (
+        engine._manual_breath_requested
+        and source == "spontaneous"
+        and engine.apl_cmh2o > 0.0
+    )
+    engine._manual_breath_requested = False
     bag_full = engine.circuit.reservoir_volume >= engine.circuit.reservoir_capacity - 1e-6
-    if source == "spontaneous" and engine.apl_cmh2o > 0.0:
+    if source in ("spontaneous", "bag") and engine.apl_cmh2o > 0.0:
         apl_ceiling = (
             min(engine.apl_cmh2o, engine.airway_tuning.mask_seal_pressure)
             if engine.state.airway_mode == AirwayType.MASK
@@ -216,11 +292,26 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
                     else min(engine.circuit.last_net_flow, -0.5 * engine._apl_pressure)
                 )
             )
-            excess_l_s = inflow_l_min / 60.0
-            engine._apl_pressure = clamp(
-                engine._apl_pressure + excess_l_s * dt / (0.05 + max(0.01, lung.compliance)),
-                0.0,
+            peep_vent: float | None = None
+            vent_max_l_min = 0.0
+            if source == "bag" and engine.bag_mask_rr > 0.0:
+                period = 60.0 / engine.bag_mask_rr
+                ti = min(BAG_TI_MAX_S, period / 3.0)
+                delta_p = _manual_breath_delta_p(lung, engine.bag_mask_vt, ti)
+                peep_vent = max(0.0, engine.apl_cmh2o - max(delta_p, BAG_VENT_PRESSURE_CMH2O))
+                vent_max_l_min = max(engine.bag_mask_vt, 1.0) * engine.bag_mask_rr
+            elif single_breath or engine.vent.manual_breath_active:
+                delta_p = _manual_breath_delta_p(lung, engine.bag_mask_vt, BAG_TI_MAX_S)
+                peep_vent = max(0.0, engine.apl_cmh2o - max(delta_p, BAG_VENT_PRESSURE_CMH2O))
+                vent_max_l_min = max(engine.bag_mask_vt, 1.0) * 60.0 / BAG_TI_MAX_S
+            engine._apl_pressure = _advance_apl_pressure(
+                engine._apl_pressure,
+                dt,
+                inflow_l_min,
+                0.05 + max(0.01, lung.compliance),
                 target_ceiling,
+                peep_vent=peep_vent,
+                vent_max_l_min=vent_max_l_min,
             )
         else:
             engine._apl_pressure = 0.0
@@ -240,17 +331,19 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         else engine.circuit.reservoir_volume
     )
     volume_delivery = (
-        1.0 - mask_leak(engine) if assisted_positive_pressure(engine) else mask_seal_factor(engine)
+        1.0 - mask_leak(engine)
+        if (assisted_positive_pressure(engine) or single_breath)
+        else mask_seal_factor(engine)
     )
     fresh_flow_btps_l_s = (
-        max(0.0, engine.circuit.fgf_total() + engine.circuit.vapor_flow())
+        engine.circuit.total_inflow()
         / engine.resp._btps_to_stpd
         / 60.0
     )
     mask_leak_gap = 1.0 - seal_scale
     engine.vent.step(
         dt, lung, source, bag=(engine.bag_mask_rr, engine.bag_mask_vt),
-        collect_samples=collect_samples, bag_p_max=engine.bag_mask_p_max,
+        collect_samples=collect_samples, bag_p_max=engine.apl_cmh2o,
         spontaneous_peep=engine._apl_pressure,
         bellows_fraction=bellows_frac,
         reservoir_volume=reservoir_vol / engine.resp._btps_to_stpd,
@@ -258,6 +351,8 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
         effort_cap=engine.hemo.config.effort_pressure_max,
         fresh_flow_l_s=fresh_flow_btps_l_s,
         mask_leak_gap=mask_leak_gap,
+        trigger_manual_breath=single_breath,
+        cpr_active=engine.hemo.compressions,
     )
 
 
@@ -417,6 +512,12 @@ def step_machine(
     circuit = engine.circuit
     resp = engine.resp
     btps_to_stpd = resp.btps_to_stpd
+    if engine._o2_flush_remaining_s > 0.0 and dt > 0.0:
+        flush_dt = min(dt, engine._o2_flush_remaining_s)
+        circuit.o2_flush_flow = O2_FLUSH_FLOW_L_MIN * (flush_dt / dt)
+        engine._o2_flush_remaining_s = max(0.0, engine._o2_flush_remaining_s - dt)
+    else:
+        circuit.o2_flush_flow = 0.0
     delivered_setting = (
         engine.vaporizer.step(dt, circuit.fgf_total()) if engine.config.sevoflurane_enabled else 0.0
     )
@@ -443,19 +544,23 @@ def step_machine(
                 supported_mv = engine.vent.monitors.mv_supported
             elif engine.vent.is_on and engine.vent.settings.mode in VOLUME_TARGETED:
                 supported_mv = engine.vent.settings.rr * engine.vent.settings.tv / 1000.0
-            elif engine.bag_mask_active and not engine.vent.is_on:
+            elif engine.bag_mask_active and not engine.vent.is_on and engine.apl_cmh2o > 0.0:
                 supported_mv = engine.bag_mask_rr * engine.bag_mask_vt
             else:
                 supported_mv = 0.0
             leak_l_min = max(0.0, supported_mv) * mask_leak(engine) * btps_to_stpd
-        elif engine.mask_seal < 0.999:
+        if engine.mask_seal < 0.999:
             cpap_cmh2o = (
                 engine.vent.settings.peep
                 if engine.vent.is_on and engine.vent.settings.mode == "CPAP"
-                else (engine._apl_pressure if not engine.vent.is_on and not engine.bag_mask_active else 0.0)
+                else (engine._apl_pressure if not engine.vent.is_on else 0.0)
             )
             if cpap_cmh2o > 0.0:
-                leak_l_min = 0.45 * cpap_cmh2o * (1.0 - engine.mask_seal) * btps_to_stpd
+                exp_share = 1.0
+                if engine.bag_mask_active and not engine.vent.is_on and engine.bag_mask_rr > 0.0 and engine.apl_cmh2o > 0.0:
+                    period = 60.0 / engine.bag_mask_rr
+                    exp_share = max(0.0, 1.0 - min(BAG_TI_MAX_S, period / 3.0) / period)
+                leak_l_min += exp_share * 0.45 * cpap_cmh2o * (1.0 - engine.mask_seal) * btps_to_stpd
     rebreathed_share = 1.0
     exchange = None
     va = 0.0
@@ -470,7 +575,7 @@ def step_machine(
         raw_va = max(0.0, engine.state.va) if patency > 0.0 else 0.0
         va = resp.effective_va(raw_va, airway.vq_mismatch)
         va_circuit = va * circuit_share
-        fresh_btps = max(0.0, circuit.fgf_total() + circuit.vapor_flow()) / btps_to_stpd
+        fresh_btps = circuit.total_inflow() / btps_to_stpd
         rebreathed_share = (
             clamp01(1.0 - fresh_btps / max(0.1, va_circuit))
             if va_circuit > 0.0
@@ -836,7 +941,7 @@ def update_airway_complications(
             if vent.settings.mode != "CPAP":
                 splint_pressure = max(splint_pressure, vent.monitors.paw_mean_recent)
         elif engine.bag_mask_active:
-            splint_pressure = vent.monitors.paw_mean_recent
+            splint_pressure = max(engine._apl_pressure, vent.monitors.paw_mean_recent)
         else:
             splint_pressure = engine._apl_pressure
         splint_pressure *= engine.mask_seal * clamp01(engine.circuit.bellows_fraction / 0.05)
@@ -960,11 +1065,7 @@ def step_physiology(
     pit_estimate = compute_pit_estimate(engine, dt)
     hemo_pit = compute_pit_estimate(engine, dt, smoothed=True)
 
-    applied_peep = (
-        engine.resp_mech.peep
-        if vent_active
-        else (0.0 if bag_mask_active or not connected else engine._apl_pressure * mask_seal_factor(engine))
-    )
+    applied_peep = engine.resp_mech.peep if connected else 0.0
     intrinsic_peep = (
         spirometry.auto_peep
         if connected

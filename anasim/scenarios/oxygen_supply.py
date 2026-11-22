@@ -96,25 +96,23 @@ def create_oxygen_supply_failure() -> Scenario:
                         milestone=True),
             CaseOutcome("ventilation", "Tracheal ventilation maintained", tracheal_ventilation_confirmed,
                         "Maintain ventilation while restoring the oxygen supply."),
-            stability_outcome("Confirm patient recovery as well as restoration of the equipment supply."),
+            stability_outcome("Confirm both oxygen supply restoration and patient recovery."),
         ),
         steps=[
             create_observe_step(
                 "disconnected", ACTION_OXYGEN_SUPPLY,
-                "Follow circuit FiO₂ and the patient's oxygenation. The circuit oxygen analyzer "
-                "should warn of supply trouble before pulse oximetry changes.",
+                "Watch circuit FiO₂ and SpO₂. Circuit FiO₂ drops before pulse oximetry changes.",
             ),
             ScenarioStep(
                 id="CONNECT_BACKUP_OXYGEN",
                 title="Move to backup oxygen",
                 instruction=(
-                    "Act on the supply failure immediately; do not wait for FiO₂ or SpO₂ to fall. "
-                    "Call for help and select <b>Connect backup oxygen</b>. Then set O₂ to "
-                    "<b>10 L/min</b>, and set air and N₂O to <b>0 L/min</b> to flush the circuit. "
-                    "In this simulator, the oxygen-pressure fail-safe also stops N₂O; the air source continues. "
-                    "If machine oxygen delivery is uncertain in practice, disconnect the patient "
-                    "and use a self-inflating bag with independent oxygen, or room air until it is available. "
-                    "The machine's auxiliary O₂ outlet shares its supply and is not an independent source."
+                    "Act immediately without waiting for FiO₂ or SpO₂ to fall. Call for help, "
+                    "select <b>Connect backup oxygen</b>, and set <b>O₂ 10 L/min</b> with air and N₂O at "
+                    "<b>0 L/min</b> to flush the circuit.<br><br>"
+                    "<i>The fail-safe cuts N₂O, not air. If machine oxygen delivery remains uncertain, "
+                    "disconnect the patient and ventilate with a self-inflating bag and an independent "
+                    "oxygen cylinder (not the machine's auxiliary O₂ outlet).</i>"
                 ),
                 check_requirements=require_all(
                     lambda engine: (
@@ -123,7 +121,7 @@ def create_oxygen_supply_failure() -> Scenario:
                     ),
                     lambda engine: (
                         action_taken_in_case(engine, ACTION_FGF),
-                        "Set fresh gas flow for this case",
+                        "Set fresh gas flow",
                     ),
                     require_oxygen_flow(),
                 ),
@@ -133,10 +131,8 @@ def create_oxygen_supply_failure() -> Scenario:
                 id="CONFIRM_RECOVERY",
                 title="Confirm oxygen recovery",
                 instruction=(
-                    "Continue ventilation and confirm circuit FiO₂ reaches "
-                    "<b>85%</b> with SpO₂ at least <b>94%</b>. "
-                    "Once oxygen delivery is restored, reduce flow to conserve the cylinder "
-                    "and arrange a reliable ongoing supply. Cylinder depletion is not modeled."
+                    "Continue ventilation until circuit <b>FiO₂ ≥ 85%</b> and <b>SpO₂ ≥ 94%</b>.<br><br>"
+                    "<i>Once recovered, reduce flow to conserve cylinder oxygen and secure a reliable supply.</i>"
                 ),
                 check_requirements=require_all(
                     _require_oxygen_recovery,

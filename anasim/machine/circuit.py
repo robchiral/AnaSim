@@ -28,6 +28,7 @@ class CircleSystem:
         self.fgf_o2 = 2.0  # L/min
         self.fgf_air = 0.0
         self.fgf_n2o = 0.0
+        self.o2_flush_flow = 0.0  # L/min; bypasses vaporizer and N2O proportioning
         self.oxygen_supply_connected = True
         self.vaporizer_setting = 0.0  # %
         self.vaporizer_on = False
@@ -40,6 +41,10 @@ class CircleSystem:
     def delivered_o2_flow(self) -> float:
         """Return oxygen flow reaching the circuit from the supply."""
         return self.fgf_o2 if self.oxygen_supply_connected else 0.0
+
+    def delivered_o2_flush_flow(self) -> float:
+        """Return pure O2 flush flow reaching the circuit (bypasses vaporizer)."""
+        return max(0.0, self.o2_flush_flow) if self.oxygen_supply_connected else 0.0
 
     def delivered_n2o_flow(self) -> float:
         """Return N2O flow after the oxygen-pressure fail-safe and 25% O2 guard."""
@@ -56,6 +61,12 @@ class CircleSystem:
         fg_agent = self.vaporizer_setting / 100.0 if self.vaporizer_on else 0.0
         return max(0.0, self.fgf_total()) * fg_agent / max(1e-6, 1.0 - fg_agent)
 
+    def total_inflow(self, vapor_flow: float | None = None) -> float:
+        """Return total fresh gas inflow including O2 flush and added vapor, L/min."""
+        if vapor_flow is None:
+            vapor_flow = self.vapor_flow()
+        return max(0.0, self.fgf_total()) + self.delivered_o2_flush_flow() + vapor_flow
+
     def deliverable_flow(self, dt: float, vapor_flow: float | None = None) -> float:
         """Maximum gas flow (L/min) available from fresh gas plus the reservoir over dt."""
         if vapor_flow is None:
@@ -65,7 +76,7 @@ class CircleSystem:
             if dt > 0.0
             else (math.inf if self.reservoir_volume > 0.0 else 0.0)
         )
-        return max(0.0, self.fgf_total()) + vapor_flow + reservoir_rate
+        return self.total_inflow(vapor_flow) + reservoir_rate
 
     def equilibrate(self, uptake_o2: float, fi_agent: float = 0.0) -> None:
         """Set steady composition at the supplied agent fraction and zero N2O uptake."""
@@ -100,12 +111,14 @@ class CircleSystem:
         rebreathing.
         """
         delivered_o2 = self.delivered_o2_flow()
+        delivered_flush = self.delivered_o2_flush_flow()
         delivered_n2o = self.delivered_n2o_flow()
         total_fgf = max(0.0, delivered_o2 + self.fgf_air + delivered_n2o)
         leak_l_min = max(0.0, leak_l_min)
         rebreathed_share = clamp01(rebreathed_share)
 
         # The dial specifies vapor as a fraction of carrier plus added vapor.
+        # O2 flush bypasses the vaporizer and dilutes circuit agent and N2O.
         fg_agent = self.vaporizer_setting / 100.0 if self.vaporizer_on else 0.0
         vapor_flow = total_fgf * fg_agent / (1.0 - fg_agent)
         dt_min = dt / 60.0
@@ -139,7 +152,10 @@ class CircleSystem:
                 uptake_n2 *= uptake_scale
             leak_l_min *= uptake_scale
         self.last_uptake_scale = uptake_scale
-        bag_flow = total_fgf + vapor_flow - uptake_o2 - uptake_agent - uptake_n2o - uptake_n2 - leak_l_min
+        bag_flow = (
+            total_fgf + delivered_flush + vapor_flow
+            - uptake_o2 - uptake_agent - uptake_n2o - uptake_n2 - leak_l_min
+        )
         self.last_net_flow = bag_flow
         self.reservoir_volume = min(
             self.reservoir_capacity,
@@ -155,7 +171,7 @@ class CircleSystem:
         )
         spill = spill_bulk - bypassed_n2
         total_vent = spill + leak_l_min
-        o2_flow = delivered_o2 + 0.21 * self.fgf_air
+        o2_flow = delivered_o2 + delivered_flush + 0.21 * self.fgf_air
         eff_volume = max(1.0, self.volume - (self.reservoir_capacity - prev_reservoir))
         next_eff_volume = max(1.0, self.volume - (self.reservoir_capacity - self.reservoir_volume))
         eff_change_rate = (next_eff_volume - eff_volume) / dt_min if dt_min > 0.0 else 0.0

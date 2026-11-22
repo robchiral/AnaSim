@@ -1,4 +1,4 @@
-// Waveform sweeps and monitor numerics.
+// Waveform sweeps, alarm banner, and bedside monitor numerics.
 import { minutesSeconds, setText } from "./display.js";
 import { NeuromuscularDisplay } from "./neuromuscular.js";
 
@@ -10,12 +10,26 @@ const CHANNELS = {
   pleth: { color: "--spo2", range: [-0.1, 1.4], seconds: CARDIAC_SWEEP_S },
   art: { color: "--abp", range: [0, 200], autoScale: "expand", scaleStep: 50, seconds: CARDIAC_SWEEP_S },
   co2: { color: "--co2", range: [0, 60], autoScale: "expand", scaleStep: 20, seconds: RESPIRATORY_SWEEP_S },
-  paw: { color: "--vent", range: [-5, 40], autoScale: "pressure", seconds: RESPIRATORY_SWEEP_S },
+  paw: { color: "--paw", range: [-5, 40], autoScale: "pressure", seconds: RESPIRATORY_SWEEP_S },
   // Symmetric flow bounds keep zero centered and incomplete exhalation visible.
-  flow: { color: "--vent", range: [-90, 90], autoScale: "flow", seconds: RESPIRATORY_SWEEP_S },
+  flow: { color: "--flow", range: [-90, 90], autoScale: "flow", seconds: RESPIRATORY_SWEEP_S },
 };
-const AXIS_WIDTH = 32;
-const GAP_FRACTION = 0.014;
+const AXIS_WIDTH = 36;
+const GAP_FRACTION = 0.016;
+
+const ALARM_LABELS = {
+  HR: "HR",
+  MAP: "MAP",
+  SpO2: "SpO₂",
+  EtCO2: "EtCO₂",
+  RR: "RR",
+  Ppeak: "Ppeak",
+  MV: "MV",
+  VTe: "VTe",
+  FiO2: "FiO₂",
+  BIS: "BIS",
+  Temp: "Temp",
+};
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const whole = (value) => (value === null ? "--" : String(Math.round(value)));
@@ -53,8 +67,8 @@ class Sweep {
     const size = this.data.length;
     const start = this.writeIndex;
     for (let i = 0; i < values.length; i++) {
-      const v = values[i];
-      this.data[(start + i) % size] = v === null ? NaN : v;
+      const sample = values[i];
+      this.data[(start + i) % size] = sample === null ? NaN : sample;
     }
     const end = start + values.length;
     for (let i = 0; i < this.gap; i++) this.data[(end + i) % size] = NaN;
@@ -117,47 +131,64 @@ class Sweep {
     const pad = (hi - lo) * 0.03;
     const top = 22;
     const plotH = height - top - 6;
-    const y = (v) => top + plotH * (1 - (v - (lo - pad)) / (hi - lo + 2 * pad));
+    const y = (val) => top + plotH * (1 - (val - (lo - pad)) / (hi - lo + 2 * pad));
 
     if (channel.autoScale && channel !== CHANNELS.ecg) {
       const ticks = lo < 0 ? [lo, 0, hi] : channel === CHANNELS.art ? [lo, (lo + hi) / 2, hi] : [lo, hi];
-      ctx.font = "10px system-ui, sans-serif";
+      ctx.font = "10px system-ui, -apple-system, sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
+      let lastLabelY = -Infinity;
       for (const t of ticks) {
         const ty = Math.round(y(t)) + 0.5;
-        ctx.strokeStyle = "rgba(240, 244, 248, 0.14)";
+        const isZeroLine = channel === CHANNELS.flow && t === 0;
+        ctx.strokeStyle = isZeroLine ? "rgba(215, 220, 226, 0.24)" : "rgba(200, 206, 214, 0.09)";
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(AXIS_WIDTH - 3, ty);
-        // The flow zero line makes incomplete exhalation visible.
-        ctx.lineTo(channel === CHANNELS.flow && t === 0 ? width : AXIS_WIDTH + 2, ty);
+        ctx.lineTo(width - 4, ty);
         ctx.stroke();
+        const labelY = Math.min(Math.max(ty, 7), height - 7);
+        // Skip crowding an intermediate zero label onto a nearby lower bound (e.g. Paw -2 and 0).
+        if (t === 0 && lo < 0 && Math.abs(labelY - lastLabelY) < 11) continue;
         ctx.fillStyle = this.labelColor;
-        ctx.fillText(String(t), AXIS_WIDTH - 6, Math.min(Math.max(ty, 7), height - 7));
+        ctx.fillText(String(t), AXIS_WIDTH - 6, labelY);
+        lastLabelY = labelY;
       }
     }
 
     const plotW = width - AXIS_WIDTH;
     const step = plotW / (data.length - 1);
     ctx.strokeStyle = this.color;
-    ctx.lineWidth = 1.6;
+    ctx.lineWidth = 1.75;
     ctx.lineJoin = "round";
     ctx.beginPath();
     let pen = false;
     for (let i = 0; i < data.length; i++) {
-      const v = data[i];
-      if (Number.isNaN(v)) {
+      const val = data[i];
+      if (Number.isNaN(val)) {
         pen = false;
         continue;
       }
       const px = AXIS_WIDTH + i * step;
-      const py = Math.min(Math.max(y(v), top), height - 2);
+      const py = Math.min(Math.max(y(val), top), height - 2);
       if (pen) ctx.lineTo(px, py);
       else ctx.moveTo(px, py);
       pen = true;
     }
     ctx.stroke();
+
+    // Crisp write-head dot just before the sweep erase bar.
+    const headIndex = (this.writeIndex - 1 + data.length) % data.length;
+    const headVal = data[headIndex];
+    if (ctx.arc && ctx.fill && !Number.isNaN(headVal)) {
+      const hx = AXIS_WIDTH + headIndex * step;
+      const hy = Math.min(Math.max(y(headVal), top), height - 2);
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 1.9, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -231,11 +262,11 @@ class Loops {
     this.ranges = desired;
     this.newBreath = false;
     const traces = (x, y) => [
-      this.previous && { xs: this.previous[x], ys: this.previous[y], alpha: 0.35 },
+      this.previous && { xs: this.previous[x], ys: this.previous[y], alpha: 0.30 },
       this.current && { xs: this.current[x], ys: this.current[y], alpha: 1, head: true },
     ].filter(Boolean);
-    plotLoop(pv, traces("paw", "volume"), desired.pressure, desired.volume, "cmH₂O", "mL");
-    plotLoop(fv, traces("volume", "flow"), desired.volume, desired.flow, "mL", "L/min");
+    plotLoop(pv, traces("paw", "volume"), desired.pressure, desired.volume, "cmH₂O", "mL", "--paw");
+    plotLoop(fv, traces("volume", "flow"), desired.volume, desired.flow, "mL", "L/min", "--flow");
   }
 }
 
@@ -243,48 +274,63 @@ function niceCeil(value, step) {
   return Math.ceil(value / step) * step;
 }
 
-const LOOP_PADDING = 0.03;
-let loopColors = null;
+const LOOP_PADDING = 0.04;
+const loopColors = {};
 
-function plotLoop(canvas, traces, [x0, x1], [y0, y1], xUnit, yUnit) {
+function plotLoop(canvas, traces, [x0, x1], [y0, y1], xUnit, yUnit, traceVar) {
   const dpr = window.devicePixelRatio || 1;
   const { clientWidth: w, clientHeight: h } = canvas;
   if (!w || !h) return;
-  loopColors ??= { label: css("--text-dim"), trace: css("--vent") };
+  loopColors.label ??= css("--text-dim");
+  const traceColor = (loopColors[traceVar] ??= css(traceVar) || "#DCE4EC");
   const width = Math.round(w * dpr), height = Math.round(h * dpr);
   if (canvas.width !== width || canvas.height !== height) [canvas.width, canvas.height] = [width, height];
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const left = 26, right = w - 8, top = 16, bottom = h - 18;
+  const left = 28, right = w - 8, top = 16, bottom = h - 18;
   const xPad = LOOP_PADDING * (x1 - x0), yPad = LOOP_PADDING * (y1 - y0);
   const px = (x) => left + (right - left) * (x - x0 + xPad) / (x1 - x0 + 2 * xPad);
   const py = (y) => bottom - (bottom - top) * (y - y0 + yPad) / (y1 - y0 + 2 * yPad);
+
+  // Subtle calibrated reference frame.
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = "rgba(240, 244, 248, 0.15)";
+  ctx.strokeStyle = "rgba(200, 206, 214, 0.09)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(px(0), top);
-  ctx.lineTo(px(0), bottom);
-  ctx.moveTo(left, py(0));
-  ctx.lineTo(right, py(0));
+  ctx.rect(left + 0.5, top + 0.5, right - left - 1, bottom - top - 1);
+  ctx.moveTo(left, Math.round((top + bottom) / 2) + 0.5);
+  ctx.lineTo(right, Math.round((top + bottom) / 2) + 0.5);
+  ctx.moveTo(Math.round((left + right) / 2) + 0.5, top);
+  ctx.lineTo(Math.round((left + right) / 2) + 0.5, bottom);
   ctx.stroke();
+
+  // Prominent zero axes.
+  ctx.strokeStyle = "rgba(215, 220, 226, 0.24)";
+  ctx.beginPath();
+  ctx.moveTo(Math.round(px(0)) + 0.5, top);
+  ctx.lineTo(Math.round(px(0)) + 0.5, bottom);
+  ctx.moveTo(left, Math.round(py(0)) + 0.5);
+  ctx.lineTo(right, Math.round(py(0)) + 0.5);
+  ctx.stroke();
+
   ctx.fillStyle = loopColors.label;
-  ctx.font = "11px system-ui, sans-serif";
+  ctx.font = "10px system-ui, -apple-system, sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
-  ctx.fillText(`${x1} ${xUnit}`, px(x1), h - 1);
+  ctx.fillText(`${x1} ${xUnit}`, right, h - 1);
   ctx.textAlign = "left";
-  ctx.fillText(String(x0), px(x0), h - 1);
+  ctx.fillText(String(x0), left, h - 1);
   ctx.textBaseline = "top";
   ctx.fillText(`${y1} ${yUnit}`, left, 1);
-  if (y0 < 0) ctx.fillText(String(y0), 1, bottom - 10);
+  if (y0 < 0) ctx.fillText(String(y0), 2, bottom - 10);
+
   ctx.save();
   ctx.beginPath();
   ctx.rect(left, top, right - left, bottom - top);
   ctx.clip();
-  ctx.strokeStyle = ctx.fillStyle = loopColors.trace;
-  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = ctx.fillStyle = traceColor;
+  ctx.lineWidth = 1.7;
   ctx.lineJoin = "round";
   for (const { xs, ys, alpha, head } of traces) {
     if (xs.length < 2) continue;
@@ -293,7 +339,6 @@ function plotLoop(canvas, traces, [x0, x1], [y0, y1], xUnit, yUnit) {
     xs.forEach((x, i) => (i ? ctx.lineTo(px(x), py(ys[i])) : ctx.moveTo(px(x), py(ys[i]))));
     ctx.stroke();
     if (head) {
-      // Mark the newest point so the trace reads as live.
       ctx.beginPath();
       ctx.arc(px(xs.at(-1)), py(ys.at(-1)), 2.5, 0, 2 * Math.PI);
       ctx.fill();
@@ -302,12 +347,21 @@ function plotLoop(canvas, traces, [x0, x1], [y0, y1], xUnit, yUnit) {
   ctx.restore();
 }
 
+function formatLimitPair(minVal, maxVal, digits = 0) {
+  const fmt = (num) => (digits ? Number(num).toFixed(digits) : String(Math.round(num)));
+  if (minVal !== undefined && maxVal !== undefined) return `${fmt(maxVal)}\n${fmt(minVal)}`;
+  if (maxVal !== undefined) return fmt(maxVal);
+  if (minVal !== undefined) return fmt(minVal);
+  return "";
+}
+
 export class Monitor {
   constructor(info) {
     this.arterialLine = info.arterial_line;
     this.dirty = false;
     this.frame = null;
     this.sweeps = {};
+
     const arterialLane = document.getElementById("art-lane");
     arterialLane.hidden = !this.arterialLine;
     const lanes = [...document.querySelectorAll(".monitor-lane")].filter((lane) => !lane.hidden);
@@ -324,16 +378,22 @@ export class Monitor {
     document.querySelector("#n-art").dataset.alarm = this.arterialLine ? "MAP" : "";
 
     const p = info.patient;
-    const parts = [`${Math.round(p.age)}-year-old ${p.sex}, ${Number(p.weight.toFixed(1))} kg`];
-    if (p.renal_status !== "Normal") parts.push(`${p.renal_status.toLowerCase()} renal impairment`);
-    if (p.creatinine_clearance_ml_min != null) parts.push(`CrCl ${Math.round(p.creatinine_clearance_ml_min)} mL/min`);
-    if (p.hepatic_status !== "Normal") parts.push(`${p.hepatic_status.toLowerCase()} hepatic impairment`);
-    if (p.coronary_flow_reserve < 5) parts.push("coronary disease");
+    const sexTag = p.sex === "female" ? "F" : "M";
+    const bmi = p.height ? `BMI ${(p.weight / ((p.height / 100) ** 2)).toFixed(1)}` : "";
+    const parts = [];
+    if (bmi) parts.push(bmi);
+    if (p.renal_status !== "Normal") parts.push(`${p.renal_status.toLowerCase()} renal`);
+    if (p.creatinine_clearance_ml_min != null) parts.push(`CrCl ${Math.round(p.creatinine_clearance_ml_min)}`);
+    if (p.hepatic_status !== "Normal") parts.push(`${p.hepatic_status.toLowerCase()} hepatic`);
+    if (p.coronary_flow_reserve < 5) parts.push("CAD");
     if (p.heart_failure !== "none") parts.push(p.heart_failure === "hfref" ? "HFrEF" : "HFpEF");
     if (p.copd_severity > 0) parts.push("COPD");
-    if (p.surgical_site !== "other") parts.push(`${p.surgical_site === "upper_abdominal" ? "upper" : "lower"} abdominal surgery`);
-    if (p.gestational_age_weeks > 0) parts.push(`${p.gestational_age_weeks} weeks pregnant`);
-    document.getElementById("patient-info").textContent = parts.join(", ");
+    if (p.surgical_site !== "other") parts.push(`${p.surgical_site === "upper_abdominal" ? "upper" : "lower"} abd`);
+    if (p.gestational_age_weeks > 0) parts.push(`G ${p.gestational_age_weeks} wk`);
+    document.getElementById("session-patient-summary").textContent = `${Math.round(p.age)}y ${sexTag} · ${Number(p.weight.toFixed(1))} kg`;
+    document.getElementById("session-patient-details").textContent = parts.join(" · ");
+
+    this.populateLimits(info.alarm_thresholds ?? {});
 
     this.fields = {};
     for (const el of document.querySelectorAll(".monitor output")) this.fields[el.id] = el;
@@ -341,9 +401,30 @@ export class Monitor {
     this.fields["v-rr-title"] = document.getElementById("v-rr-title");
     this.fields["v-io"] = document.getElementById("v-io");
     this.alarmBoxes = [...document.querySelectorAll(".monitor [data-alarm]")];
+    this.alarmBanner = document.getElementById("alarm-banner");
+    this.alarmBannerText = document.getElementById("alarm-banner-text");
     this.loops = new Loops(() => this.requestDraw());
     this.nmb = new NeuromuscularDisplay(info.nmb_history);
     this.requestDraw();
+  }
+
+  populateLimits(t) {
+    const entries = [
+      ["lim-hr", formatLimitPair(t.HR_min, t.HR_max)],
+      ["lim-map", formatLimitPair(t.MAP_min, t.MAP_max)],
+      ["lim-spo2", formatLimitPair(t.SpO2_min, t.SpO2_max)],
+      ["lim-etco2", formatLimitPair(t.EtCO2_min, t.EtCO2_max)],
+      ["lim-rr", formatLimitPair(t.RR_min, undefined)],
+      ["lim-ppeak", formatLimitPair(undefined, t.Ppeak_max)],
+      ["lim-mv", formatLimitPair(t.MV_min, undefined, 1)],
+      ["lim-fio2", t.FiO2_min !== undefined ? `≥${Math.round(t.FiO2_min)}` : ""],
+      ["lim-bis", formatLimitPair(t.BIS_min, t.BIS_max)],
+      ["lim-temp", formatLimitPair(t.Temp_min, t.Temp_max, 1)],
+    ];
+    for (const [id, text] of entries) {
+      const el = document.getElementById(id);
+      if (el) setText(el, text);
+    }
   }
 
   destroy() {
@@ -366,7 +447,7 @@ export class Monitor {
     this.updateNumerics(snap.vitals);
     this.nmb.update(snap.nmb, snap.nmb_trend, snap.time, snap.ended);
     document.getElementById("measure-nibp").disabled = snap.ended || snap.vitals.nibp_cuff !== null;
-    this.updateAlarms(snap.alarms);
+    this.updateAlarms(snap.alarms, snap.controls, snap.ended, snap.vitals);
     if (this.dirty || this.loops.dirty) this.requestDraw();
   }
 
@@ -395,8 +476,6 @@ export class Monitor {
 
   updateNumerics(v) {
     this.set("v-hr", whole(v.hr));
-    this.fields["v-st"].hidden = v.st_depression_mv < 0.03;
-    this.set("v-st", `ST -${(10 * v.st_depression_mv).toFixed(1)} mm`);
     this.set("v-spo2", whole(v.spo2));
     this.set("v-spo2-unit", v.spo2 === null ? "No signal" : "%");
     if (this.arterialLine) {
@@ -422,7 +501,7 @@ export class Monitor {
     const net = v.net_fluid ?? 0;
     this.set("v-net", `${net >= 0 ? "+" : "−"}${Math.abs(net).toFixed(0)} mL`);
     this.set("v-io",
-      `IV ${fixed(v.fluid_in, 0)}, PRBC ${fixed(v.blood_in, 0)}, urine ${fixed(v.urine_out, 0)}, loss ${fixed(v.blood_out, 0)} mL`);
+      `IV\u00a0${fixed(v.fluid_in, 0)} · PRBC\u00a0${fixed(v.blood_in, 0)} · Urine\u00a0${fixed(v.urine_out, 0)} · Loss\u00a0${fixed(v.blood_out, 0)}\u00a0mL`);
 
     this.set("v-ppeak", whole(v.ppeak));
     this.set("v-pplat", whole(v.pplat));
@@ -440,25 +519,65 @@ export class Monitor {
     this.set("v-mac", fixed(v.et_mac, 1));
   }
 
-  updateAlarms(alarms) {
+  updateAlarms(alarms, controls = null, ended = false, vitals = null) {
+    const active = alarms ?? {};
     const rhythmAlarm = [
       ["Asystole", "ASYSTOLE"],
       ["VFIB", "VFIB"],
       ["VTACH", "VTACH"],
-      ["Arrest", "ARREST"],
-    ].find(([key]) => alarms[key]);
-    const badge = this.fields?.["v-rhythm-alarm"];
-    if (badge) {
-      badge.hidden = !rhythmAlarm;
-      setText(badge, rhythmAlarm ? rhythmAlarm[1] : "");
-    }
+      ["Arrest", "CARDIAC ARREST"],
+    ].find(([key]) => active[key]);
     for (const box of this.alarmBoxes) {
       const name = box.dataset.alarm;
       const critical = name === "HR" && Boolean(rhythmAlarm);
-      const level = critical ? "high" : (name ? alarms[name] : undefined);
-      box.classList.toggle("alarm-low", !critical && level === "low");
-      box.classList.toggle("alarm-high", level === "high");
-      box.classList.toggle("alarm-critical", critical);
+      const raw = name ? active[name] : undefined;
+      const side = typeof raw === "string" ? raw : raw?.low ? "low" : raw?.high ? "high" : undefined;
+      const level = critical ? "high" : side;
+      box.classList?.toggle("alarm-low", !critical && level === "low");
+      box.classList?.toggle("alarm-high", level === "high");
+      box.classList?.toggle("alarm-critical", critical);
+    }
+
+    if (this.alarmBanner && this.alarmBannerText) {
+      const highPriority = [];
+      const mediumPriority = [];
+      if (rhythmAlarm) highPriority.push(rhythmAlarm[1]);
+      if (controls && controls.o2_connected === false) highPriority.push("O₂ SUPPLY DISCONNECTED");
+
+      const spo2SignalLost = vitals?.spo2 === null;
+      for (const [key, raw] of Object.entries(active)) {
+        if (key === "Asystole" || key === "VFIB" || key === "VTACH" || key === "Arrest") continue;
+        if (key === "HR" && rhythmAlarm) continue;
+        const side = typeof raw === "string" ? raw : raw?.low ? "low" : raw?.high ? "high" : "";
+        if (!side) continue;
+        if (key === "SpO2" && side === "low" && spo2SignalLost) {
+          if (rhythmAlarm) mediumPriority.push("SpO₂ NO SIGNAL");
+          else highPriority.push("SpO₂ NO SIGNAL");
+          continue;
+        }
+        const label = ALARM_LABELS[key] ?? key;
+        const text = `${label} ${side.toUpperCase()}`;
+        if ((key === "SpO2" && side === "low") || (key === "FiO2" && side === "low")) {
+          highPriority.push(text);
+        } else {
+          mediumPriority.push(text);
+        }
+      }
+
+      const allLabels = [...highPriority, ...mediumPriority];
+      this.alarmBanner.title = allLabels.join(" · ");
+      if (highPriority.length) {
+        this.alarmBanner.dataset.severity = "critical";
+        const count = mediumPriority.length;
+        const extra = count ? ` · +${count} ${count === 1 ? "alarm" : "alarms"}` : "";
+        setText(this.alarmBannerText, `${highPriority.join(" · ")}${extra}`);
+      } else if (mediumPriority.length) {
+        this.alarmBanner.dataset.severity = "warning";
+        setText(this.alarmBannerText, mediumPriority.join(" · "));
+      } else {
+        this.alarmBanner.dataset.severity = ended ? "ended" : "normal";
+        setText(this.alarmBannerText, ended ? "Session ended" : "");
+      }
     }
   }
 }
