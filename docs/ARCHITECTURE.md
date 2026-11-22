@@ -1,142 +1,152 @@
 # AnaSim architecture
 
-AnaSim combines models of the patient, drugs, physiology, anesthesia machine,
-and monitors in one simulation engine. Each model keeps its own state. At every
-step, the runtime updates the models in a fixed order and copies their outputs
-into `SimulationState`.
+AnaSim brings models of the patient, drugs, physiology, anesthesia machine, and
+monitors together inside one simulation engine. Each model keeps its own
+internal state. On every step, the runtime updates the models in a fixed order
+and copies their outputs into `SimulationState`.
 
-This guide covers the code structure, the step order, the browser app, and
-validation. The [model guide](MODELS.md) explains what each model does and which
-studies it is based on, and [CLI and Python usage](CLI_USAGE.md) covers
+This guide covers the code structure, step order, browser app, and validation
+workflow. The [model guide](MODELS.md) explains what each model represents and
+which studies it is based on, and [CLI and Python usage](CLI_USAGE.md) covers
 configuration, units, and scripted runs.
 
 ## Main modules
 
 | Module | Responsibility |
 |--------|----------------|
-| [`engine.py`](../anasim/core/engine.py) | Creates the models, applies controls, and records simulation output |
-| [`runtime.py`](../anasim/core/runtime.py) | Advances the models in step order |
-| [`projection.py`](../anasim/core/projection.py) and [`state.py`](../anasim/core/state.py) | Copy model outputs into the shared state and define its fields |
-| [`initialization.py`](../anasim/core/initialization.py) | Sets up awake and maintenance starting states |
-| [`patient/`](../anasim/patient/) and [`drug_registry.py`](../anasim/core/drug_registry.py) | Define patient characteristics, drug models, delivery units, pump limits, and interface metadata |
+| [`engine.py`](../anasim/core/engine.py) | Builds the models, applies user controls, advances the clock, and records simulation output |
+| [`runtime.py`](../anasim/core/runtime.py) | Runs the per-step model sequence |
+| [`projection.py`](../anasim/core/projection.py) and [`state.py`](../anasim/core/state.py) | Copy model outputs into `SimulationState` and define its fields |
+| [`initialization.py`](../anasim/core/initialization.py) | Initializes awake and steady-state maintenance sessions |
+| [`patient/`](../anasim/patient/) and [`drug_registry.py`](../anasim/core/drug_registry.py) | Define patient parameters, drug models, units, pump limits, and UI metadata |
 | [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, fluids, respiration, gas exchange, and temperature |
 | [`machine/`](../anasim/machine/) | Models the breathing circuit, vaporizer, and ventilator |
 | [`monitors/`](../anasim/monitors/) and [`core/monitors.py`](../anasim/core/monitors.py) | Produce measurements, waveforms, and alarms |
-| [`scenarios/`](../anasim/scenarios/) | Defines cases, with their events, guided steps, and debrief outcomes |
+| [`scenarios/`](../anasim/scenarios/) | Defines cases, events, pre-case setup, guided steps, and debrief outcomes |
 | [`web.py`](../anasim/web.py) and [`web_assets/`](../anasim/web_assets/) | Connect the engine and cases to the browser interface |
-| [`cli.py`](../anasim/cli.py) and [`local.py`](../anasim/local.py) | Run headless simulations and the local server |
+| [`cli.py`](../anasim/cli.py) and [`local.py`](../anasim/local.py) | Run headless simulations and the local web server |
 
 ## Runtime
 
 ### Step order
 
-Each call to `SimulationEngine.step()` runs the following sequence:
+Each call to `SimulationEngine.step()` runs these stages in order:
 
-1. Update shivering, then calculate thermal anesthetic depth, metabolic rate,
-   and stimulation tolerance.
-2. Advance stimulation, hemorrhage, fluids, anaphylaxis, and sepsis.
-3. Update pharmacokinetic (PK) parameters for blood volume, cardiac output,
-   renal perfusion, core temperature, and drug interactions, then calculate
-   target-controlled infusion (TCI) rates.
+1. Update shivering, then compute thermal anesthetic depth, metabolic rate, and
+   stimulation tolerance.
+2. Advance stimulation, hemorrhage, fluid infusions, anaphylaxis, and sepsis.
+3. Update pharmacokinetic (PK) covariates for blood volume, cardiac output,
+   renal perfusion, core temperature, and drug interactions, then step
+   target-controlled infusion (TCI) controllers.
 4. Update airway complications, the vaporizer, and the breathing circuit.
-5. Update lipid emulsion, intravenous drug concentrations, inhaled anesthetic
+5. Advance lipid emulsion, intravenous drug concentrations, inhaled anesthetic
    uptake, neuromuscular block, lidocaine toxicity, and malignant hyperthermia,
    then apply toxicity, malignant hyperthermia, and sepsis effects on
    metabolism, heat production, and chest-wall stiffness.
-6. Advance breathing mechanics, gas exchange, hemodynamics, and cardiac rhythm.
+6. Advance respiratory mechanics, gas exchange, hemodynamics, and cardiac
+   rhythm.
 7. Copy physiology outputs into `SimulationState`, then update cerebral
    oxygenation and function, monitor measurements, and alarms.
-8. Update core temperature, check for cardiac arrest, and clear completed finite
-   stimuli.
+8. Update core temperature, check for cardiac arrest, and clear any completed
+   finite stimuli.
 
-PK and circuit calculations use the cardiac output and ventilation from the
-start of the step, and the physiology models update those values for the next
-step. The engine then advances the clock, trims the 20-second waveform buffer,
-and writes a CSV row when due.
+PK and circuit updates use the cardiac output and ventilation from the start of
+the step, and the physiology models compute updated values for the next step.
+After the model sequence finishes, the engine advances the clock, trims the
+20-second waveform buffer, and logs a CSV row when recording is active.
 
-If a TCI rate change falls within a step, PK advances to that time before the
-controller selects the next rate.
+When a TCI rate update falls inside a step, PK advances up to that boundary
+before the controller chooses the next rate.
 
 ### Simulation state
 
-`SimulationState` holds physiological values and monitor measurements.
+`SimulationState` stores both underlying physiological values and processed
+monitor measurements.
 
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
-| Physiology | `map`, `hr`, `co`, `intrinsic_co`, `rhythm_type`, `sao2`, `pa_co2`, `pao2` | Values that the models and the cardiac arrest check use; `intrinsic_co` excludes chest compressions |
-| Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate`, `sodium`, `potassium`, `chloride`, `ionized_calcium`, `albumin_g_l` | Arterial plasma pH and bicarbonate at patient temperature, standard base excess, and plasma lactate, electrolytes, and albumin |
-| Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after measurement and processing effects |
-| Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Breath pressures and exhaled gas measurements |
-| Fluids | `blood_volume`, `urine_out_ml`, `net_fluid_ml`, `lap`, `lung_water` | Circulating volume, fluid balance, filling pressure, and excess lung water |
+| Physiology | `map`, `hr`, `co`, `intrinsic_co`, `rhythm_type`, `sao2`, `pa_co2`, `pao2` | Values used by the models and cardiac arrest checks; `intrinsic_co` excludes chest compressions |
+| Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate`, `sodium`, `potassium`, `chloride`, `ionized_calcium`, `albumin_g_l` | Arterial pH at patient temperature, 37 °C plasma bicarbonate and standard base excess, and plasma lactate, electrolytes, and albumin |
+| Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after sensor dynamics, sampling, and smoothing |
+| Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Airway pressures and exhaled gas readings |
+| Fluids | `blood_volume`, `urine_out_ml`, `net_fluid_ml`, `lap`, `lung_water` | Circulating volume, fluid balance, left atrial pressure, and excess lung water |
 
-Monitors take the physiological values and add sensor dynamics, sampling, and
-averaging. Pressure displays and scenario objectives use whichever blood
-pressure monitor is configured, arterial or noninvasive (NIBP). CSV recordings
-include both the physiological values and the measurements. `state.py` defines
-every field and its units.
+Monitors derive displayed readings from physiological values by applying sensor
+dynamics, sampling intervals, and averaging. Pressure displays and case
+objectives follow whichever blood pressure monitor is configured, arterial line
+or noninvasive cuff (NIBP). CSV recordings capture both underlying physiology
+and monitor measurements. Every field and its units are defined in `state.py`.
 
 ### Initialization
 
-`awake` starts from the patient's baseline values. `steady_state` starts a
-maintenance anesthetic from a 30-minute drug history, begins controlled
-ventilation, and lets the models settle before resetting the session clock,
-recordings, and fluid totals. Sustained surgical stimulation settles with the
-maintenance state, while finite pulses such as intubation begin when the
-session starts. Startup targets and manual infusion rates use population
-kinetics and potency, so sampled variability and organ impairment affect the
-patient's concentrations rather than the pump settings, and vasopressors start
-at zero.
+`awake` starts directly from the patient's resting baseline. `steady_state`
+builds a maintenance anesthetic from a 30-minute drug history, starts
+controlled ventilation, and settles the coupled models before resetting the
+clock, recordings, and fluid totals. Sustained surgical stimulation settles
+with the maintenance state, whereas finite pulses such as intubation start at
+time zero. Startup TCI targets and manual infusion rates use population
+kinetics and potency, so sampled variability and organ impairment change the
+patient's actual concentrations rather than the initial pump settings, and
+vasopressors start at zero.
+
+Slow-onset cases and emergence add a hidden pre-case simulation phase on top of
+this baseline (`preroll_scenario` in `scenarios/base.py`). That phase advances
+the physiology with lightweight scalar monitor updates, finishes with a brief
+full-rate settle so waveforms and alarms latch cleanly, records negative-time
+trend history for the Trends display, and resets the visible clock, buffers,
+and action log back to 0:00.
 
 ## Browser app
 
 ### Cases and action checks
 
-Each scenario file defines a briefing, timed events, case actions such as
-requesting hemostasis, guided steps, and debrief outcomes. `CaseRun` in
-[`scenarios/runtime.py`](../anasim/scenarios/runtime.py) starts timed events,
-tracks objectives in guided or independent mode, and builds the debrief while
-hiding instructor event controls. Ending a case, finishing the last guided
-step, or reaching irreversible cardiac arrest pauses the model, stops
-recording, and locks the controls and debrief. Open simulations also stop
+Each scenario defines a briefing, timed or monitor-gated events, case actions
+such as requesting hemostasis, guided steps, and debrief outcomes. `CaseRun` in
+[`scenarios/runtime.py`](../anasim/scenarios/runtime.py) fires events, tracks
+guided steps or independent-mode outcomes, hides instructor event controls, and
+compiles the debrief. Ending a case, completing the final guided step, or
+reaching irreversible cardiac arrest pauses the simulation, stops recording,
+and locks treatment controls and the debrief. Open simulations also stop
 recording and disable treatment controls at irreversible arrest.
 
-[`clinical_actions.py`](../anasim/core/clinical_actions.py) evaluates
-intubation placement and clinical safety warnings before actions run. The
-[model guide](MODELS.md#cases-and-clinical-actions) documents case timing,
+[`clinical_actions.py`](../anasim/core/clinical_actions.py) checks intubation
+conditions and clinical safety warnings before actions take effect. The
+[model guide](MODELS.md#cases-and-clinical-actions) describes case behavior,
 objective checks, and action rules.
 
 ### Session transport
 
-The local and hosted apps share `web_assets/` and
-[`WebSession`](../anasim/web.py), which applies commands and returns
-measurements, waveforms, controls, and case state. Commands are processed in
-order, and the simulation speed setting converts elapsed real time into
-simulation time. The session advances the engine in 0.05-second steps at low
-speed and coarser steps (up to 0.5 seconds) above 4x speed while stopping at
-scheduled events, trend updates, and recording intervals; monitors sample
-waveforms every 10 ms within each step.
+Both the local and hosted apps share `web_assets/` and
+[`WebSession`](../anasim/web.py), which handles JSON commands and returns
+snapshots of measurements, waveforms, controls, and case state. Commands run in
+order, and the simulation speed multiplies elapsed wall time into simulated
+time. `WebSession` steps the engine in 0.05-second increments up to 4x speed
+and coarser steps (up to 0.5 seconds) at higher speeds, stopping at scheduled
+events, trend boundaries, and recording intervals while monitors continue to
+sample waveforms every 10 ms.
 
-The local Python server runs the session on its own clock and saves CSV
-recordings to disk. It accepts requests from the same origin under a
-session-specific path on 127.0.0.1. Each successful command returns an updated
-snapshot. The browser polls every 50 ms while running and every 5 seconds while
-paused.
+The local Python server owns the simulation clock and writes CSV recordings to
+disk. It binds to `127.0.0.1` under a random session-specific URL path and
+accepts only same-origin requests. Each successful command returns an updated
+snapshot, and the browser polls every 50 ms while running and every 5 seconds
+while paused.
 
-The hosted app runs Python, NumPy, and SciPy in a Pyodide worker, and stopping a
-recording downloads the CSV. [`build_web.py`](../scripts/build_web.py) builds
-the hosted bundle, and [pages.yml](../.github/workflows/pages.yml) publishes it.
+The hosted app runs Python, NumPy, and SciPy inside a Pyodide web worker, and
+stopping a recording triggers a CSV download.
+[`build_web.py`](../scripts/build_web.py) assembles the hosted bundle, and
+[pages.yml](../.github/workflows/pages.yml) publishes it.
 
 ## Validation
 
-Tests cover published equations, conservation of gas and drugs, monitor
-behavior, and complete clinical scenarios in native Python and in Pyodide.
-Acceptance tests check standard teaching cases (balanced and total intravenous
+Automated tests check published equations, gas and drug conservation, monitor
+behavior, and end-to-end clinical cases in native Python and in Pyodide.
+Acceptance tests verify standard teaching scenarios (balanced and TIVA
 induction, intubation, incision, and vasopressor boluses) against ranges from
-VitalDB recordings and published studies.
+VitalDB recordings and published trials.
 
-Offline scripts compare model outputs against clinical datasets and published
-cohorts: [recorded-case comparisons](../validation/vitaldb/README.md) replay
-VitalDB cases across anesthetic, respiratory, and hemodynamic components, and
-the [intubation replay](../validation/intubation.py) (`python -m
-validation.intubation`, with `--sensitivity` for loading-history checks) prints
-induction and intubation errors against published trials.
+Offline validation scripts compare model runs against clinical cohorts:
+[recorded-case comparisons](../validation/vitaldb/README.md) replay VitalDB
+cases across anesthetic, respiratory, and hemodynamic endpoints, and the
+[intubation replay](../validation/intubation.py) (`python -m validation.intubation`,
+with `--sensitivity` for loading-history checks) reports induction and
+intubation errors against published studies.

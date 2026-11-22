@@ -29,6 +29,7 @@ from .base import (
     monitor_value,
     neuromuscular_response,
     normocapnia_bounds,
+    preroll_scenario,
     require_all,
     require_infusions_stopped,
     require_maintenance_depth,
@@ -40,12 +41,33 @@ from .base import (
 # Rocuronium 0.6 mg/kg at induction leaves a TOF count of 2 at the start.
 # Sevoflurane potentiates rocuronium and slows recovery (Kleijn 2011).
 ROCURONIUM_DOSE_MG_KG = 0.6
-ROCURONIUM_MINUTES = {"balanced": 60, "tiva": 35}
+ROCURONIUM_MINUTES = {"balanced": 52, "tiva": 35}
 
 
-def _residual_block(minutes: int):
-    """Seed the induction rocuronium history with inhaled agents at their current MAC."""
+def _prepare_emergence(maint_type: Literal["balanced", "tiva"], minutes: int):
+    """Taper maintenance into late surgical closure and seed residual rocuronium block."""
     def prepare(engine) -> None:
+        # Taper anesthetics and ease respiratory rate slightly as during skin closure so
+        # emergence starts near upper maintenance depth (BIS ~55-57) with mid-normocapnic EtCO2.
+        closure_rr = max(8.0, round(engine.vent.settings.rr * 0.88, 1))
+        engine.vent.update_settings(rr=closure_rr)
+        if maint_type == "balanced":
+            engine.set_fgf(1.0, 1.0, 0.0)
+            engine.set_vaporizer(round(engine.vaporizer.state.setting * 0.62, 2))
+            if engine.config.tci_enabled and engine.get_drug_state("remi")["target"] > 0:
+                engine.set_drug_target("remi", round(engine.get_drug_state("remi")["target"] * 0.70, 2))
+            else:
+                engine.infusion_rates["remi"] *= 0.70
+            preroll_scenario(engine, 480.0, dt=5.0, settle_s=15.0, sample_interval_s=10.0)
+        else:
+            if engine.config.tci_enabled:
+                engine.set_drug_target("propofol", round(engine.get_drug_state("propofol")["target"] * 0.84, 2))
+                engine.set_drug_target("remi", round(engine.get_drug_state("remi")["target"] * 0.65, 2))
+            else:
+                engine.infusion_rates["propofol"] *= 0.64
+                engine.infusion_rates["remi"] *= 0.65
+            preroll_scenario(engine, 480.0, dt=5.0, settle_s=15.0, sample_interval_s=10.0)
+
         roc, tof = engine.pk["roc"], engine.tof_pd
         mac_sevo, mac_n2o = engine.pk_sevo.state.mac, engine.pk_n2o.state.mac
         roc.state.c1 += ROCURONIUM_DOSE_MG_KG * engine.patient.weight / roc.v1
@@ -288,8 +310,8 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             id="EXTUBATION_READINESS",
             title="Assess readiness for extubation",
             instruction=(
-                "Stop the ventilator while keeping the tracheal tube in place, and be ready to assist breathing. "
-                "Confirm <b>BIS > 80</b>, spontaneous <b>RR > 8/min</b>, exhaled "
+                "Stop the ventilator (or switch to <b>CPAP</b>) while keeping the tracheal tube in place, "
+                "and be ready to assist breathing. Confirm <b>BIS > 80</b>, spontaneous <b>RR > 8/min</b>, exhaled "
                 "<b>VT > 5 mL/kg predicted body weight</b>, <b>TOF ratio ≥ 90%</b>, and <b>SpO₂ > 95%</b>.<br><br>"
                 "<i>At the bedside, also confirm command following, airway reflexes, and the extubation plan; "
                 "BIS alone does not establish readiness.</i>"
@@ -307,7 +329,7 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
             id="EXTUBATE",
             title="Extubate",
             instruction=(
-                "With readiness confirmed and the ventilator off, select <b>Facemask</b> "
+                "With readiness confirmed, select <b>Facemask</b> "
                 "to extubate and give oxygen. Reassess breathing and airway patency immediately."
             ),
             check_requirements=require_all(_require_extubation_readiness, _require_tube_removed),
@@ -338,8 +360,11 @@ def create_emergence(maint_type: Literal["balanced", "tiva"] = "balanced") -> Sc
     return Scenario(
         id=scenario_id,
         name="Emergence sequence",
-        briefing="Surgery is complete. Awaken the patient, prepare for extubation, and establish recovery care.",
+        briefing=(
+            "Skin closure is finishing and anesthetics have been lightened. "
+            "Reverse residual block, awaken the patient, and extubate when ready."
+        ),
         steps=steps,
         outcomes=OUTCOMES,
-        setup_engine=_residual_block(rocuronium_minutes),
+        setup_engine=_prepare_emergence(maint_type, rocuronium_minutes),
     )

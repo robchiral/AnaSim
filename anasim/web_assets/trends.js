@@ -1,6 +1,11 @@
 // Recorded vital signs from the patient monitor.
 import { minutesSeconds } from "./display.js";
 
+function trendTime(seconds) {
+  if (seconds < 0) return `-${minutesSeconds(Math.abs(Math.round(seconds)))}`;
+  return minutesSeconds(seconds);
+}
+
 const WINDOW_S = 1800;
 const SERIES = {
   map: { color: "--abp", range: [40, 120], minKey: "MAP_min", maxKey: "MAP_max" },
@@ -62,8 +67,9 @@ export class Trends {
     const style = getComputedStyle(document.documentElement);
     const font = `10px ${getComputedStyle(document.body).fontFamily}`;
     const color = (name) => style.getPropertyValue(name).trim();
-    const end = Math.max(1, this.time);
-    const start = Math.max(0, end - Number(this.window.value));
+    const earliest = this.samples.length ? this.samples[0].time : 0;
+    const end = earliest < 0 ? Math.max(0, this.time) : Math.max(1, this.time);
+    const start = Math.max(Math.min(0, earliest), end - Number(this.window.value));
     const samples = this.samples.filter((sample) => sample.time >= start);
     for (const canvas of this.canvases) {
       const key = canvas.dataset.trend;
@@ -135,7 +141,7 @@ export class Trends {
       if (middle - start >= clearance && end - middle >= clearance) labels.push([middle, "center"]);
       for (const [time, alignment] of labels) {
         ctx.textAlign = alignment;
-        ctx.fillText(minutesSeconds(time), x(time), height - 6);
+        ctx.fillText(trendTime(time), x(time), height - 6);
       }
       let connected = false;
       let cuffTime = null;

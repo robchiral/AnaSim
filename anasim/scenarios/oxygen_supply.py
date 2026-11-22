@@ -24,9 +24,9 @@ from .base import (
 
 
 def _prepare_oxygen_supply_failure(engine) -> None:
-    """Start on low-flow air/oxygen maintenance (~38% FiO2 across weights) so O2 loss causes hypoxic rebreathing."""
+    """Start on low-flow air/oxygen maintenance (~35% FiO2 across weights) so O2 loss causes hypoxic rebreathing."""
     engine.set_oxygen_supply_connected(True)
-    equilibrate_maintenance_fio2(engine, target_fio2=0.385, min_air_l_min=0.75, air_vo2_factor=3.5)
+    equilibrate_maintenance_fio2(engine, target_fio2=0.35, min_air_l_min=0.75, air_vo2_factor=3.5)
 
 
 def _backup_oxygen_reconnected(engine) -> bool:

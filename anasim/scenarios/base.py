@@ -5,6 +5,8 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from anasim.core import monitors as monitor_core
+from anasim.core import runtime as runtime_core
 from anasim.core.action_log import (
     ACTION_AIRWAY,
     ACTION_BAG_MASK,
@@ -16,10 +18,16 @@ from anasim.core.action_log import (
     ACTION_INFUSION_RATE,
     ACTION_TCI_TARGET,
     ACTION_VAPORIZER,
+    ActionLog,
 )
 from anasim.core.monitors import display_int
-from anasim.core.projection import dantrolene_twitch_fraction, sync_state_from_models
-from anasim.core.state import AirwayType
+from anasim.core.projection import (
+    dantrolene_twitch_fraction,
+    project_arterial,
+    sync_state_from_models,
+)
+from anasim.core.state import AirwayType, WaveformSample
+from anasim.monitors.neuromuscular import NeuromuscularMonitor
 
 if TYPE_CHECKING:
     from anasim.core.engine import SimulationEngine
@@ -74,9 +82,10 @@ class CaseOutcome:
 @dataclass(frozen=True)
 class CaseEvent:
     id: str
-    at: float  # Seconds of simulated time after the case starts
-    cue: str
+    at: float  # Earliest simulated seconds after the case starts
+    cue: str  # Empty string for silent physiological onset events
     apply: Callable[["SimulationEngine"], None]
+    when: Condition | None = None  # Optional physiological gate after `at`
 
 
 @dataclass(frozen=True)
@@ -578,12 +587,169 @@ def equilibrate_maintenance_fio2(
     sync_state_from_models(engine)
 
 
+def _preroll_trend_point(
+    engine,
+    rel_time: float,
+    *,
+    last_nibp: tuple[float, float] | None,
+) -> dict:
+    """Format one pre-case trend point matching WebSession._sample_trends()."""
+    state = engine.state
+    arterial = engine.config.arterial_line_enabled
+    if arterial:
+        map_val = round(float(state.art_map), 1) if math.isfinite(state.art_map) else None
+        map_time: float | None = round(rel_time, 3)
+    elif last_nibp is not None:
+        map_val = round(last_nibp[0], 1) if math.isfinite(last_nibp[0]) else None
+        map_time = round(last_nibp[1], 3)
+    else:
+        map_val = None
+        map_time = None
+    etco2 = round(float(state.display_etco2), 1) if (state.etco2_signal_valid and math.isfinite(state.display_etco2)) else None
+    hr = round(float(state.display_hr), 1) if math.isfinite(state.display_hr) else None
+    bis = round(float(state.display_bis), 1) if math.isfinite(state.display_bis) else None
+    return {
+        "time": round(rel_time, 3),
+        "hr": hr,
+        "etco2": etco2,
+        "bis": bis,
+        "map": map_val,
+        "map_time": map_time,
+    }
+
+
+def preroll_scenario(
+    engine,
+    duration_s: float,
+    *,
+    dt: float = 2.0,
+    settle_s: float = 15.0,
+    sample_interval_s: float = 5.0,
+    reset_fluid_totals: bool = True,
+    preserve_blood_out: bool = False,
+    record_trends: bool = True,
+    on_step: Callable[["SimulationEngine", float], None] | None = None,
+) -> None:
+    """Advance an engine through pre-case pathology, seed Trends, and reset case time to 0."""
+    if duration_s <= 0.0:
+        return
+    was_running = engine.running
+    engine.running = True
+    settle = min(max(0.0, settle_s), duration_s)
+    fast_duration = max(0.0, duration_s - settle)
+    nibp_interval = max(60.0, float(engine.nibp.interval))
+
+    trends: list[dict] = []
+    last_nibp: tuple[float, float] | None = (float(engine.state.map), -duration_s)
+    next_nibp_elapsed = nibp_interval
+    next_sample_elapsed = 0.0
+
+    def maybe_record(elapsed: float) -> None:
+        nonlocal last_nibp, next_nibp_elapsed, next_sample_elapsed
+        if not record_trends or elapsed >= duration_s - 1e-6:
+            return
+        rel_time = elapsed - duration_s
+        if elapsed >= next_nibp_elapsed - 1e-6:
+            last_nibp = (float(engine.state.map), rel_time)
+            next_nibp_elapsed += nibp_interval
+        if elapsed >= next_sample_elapsed - 1e-6:
+            trends.append(_preroll_trend_point(engine, rel_time, last_nibp=last_nibp))
+            next_sample_elapsed += sample_interval_s
+
+    elapsed = 0.0
+    maybe_record(0.0)
+    while elapsed < fast_duration - 1e-9:
+        step_dt = min(dt, fast_duration - elapsed)
+        runtime_core.step_simulation(engine, step_dt, update_monitors=False)
+        engine.state.time = round(engine.state.time + step_dt, 9)
+        elapsed += step_dt
+        if on_step is not None:
+            on_step(engine, elapsed)
+        maybe_record(elapsed)
+
+    # Re-seed beat-synchronous monitors to the pre-rolled hemodynamics before the
+    # short 100 Hz settle that latches capnography, arterial line, SpO2, and alarms.
+    hemo_state = engine.hemo.state
+    cardiac_sample = engine.cardiac_cycle.seed(hemo_state.hr, hemo_state.rhythm_type)
+    arterial_sample = engine.arterial_waveform.seed(
+        cardiac_sample,
+        hemo_state.map,
+        hemo_state.sv,
+        static_pressure=hemo_state.venous_pressure,
+        pulse_pressure_factor=hemo_state.pulse_pressure_factor,
+    )
+    project_arterial(engine.state, arterial_sample, engine.art_line.seed(arterial_sample))
+    engine.alarms._violation_s.clear()
+    engine.state.alarms = {}
+
+    while elapsed < duration_s - 1e-9:
+        step_dt = min(1.0, duration_s - elapsed)
+        engine.step(step_dt)
+        elapsed += step_dt
+        if on_step is not None:
+            on_step(engine, elapsed)
+        maybe_record(elapsed)
+
+    # Reset visible clock, ephemeral monitor buffers, and setup actions back to t = 0.
+    state = engine.state
+    state.time = 0.0
+    engine._next_nibp_time = 0.0
+    monitor_core.seed_nibp_reading(engine)
+    nmb_baseline = engine.nmb.baseline
+    engine.nmb = NeuromuscularMonitor()
+    engine.nmb.baseline = nmb_baseline
+    for key in engine.tci:
+        engine._recompute_tci(key, 0.0)
+    engine._tci_accumulators.clear()
+    spec = engine.disturbances.spec
+    if engine.disturbance_active and spec is not None and not spec.finite:
+        engine.disturbance_start_time = -spec.established_s
+    engine.intubation_start_time = None
+    engine._extubation_stimulus_until = 0.0
+    engine._last_succinylcholine_time = None
+    engine.compressions_started_at = None
+    engine._pulseless_s = 0.0
+    engine.vent.breath_count = 0
+    engine.blood_gases.clear()
+    if reset_fluid_totals:
+        hemo = engine.hemo
+        hemo.total_crystalloid_in_ml = 0.0
+        hemo.total_colloid_in_ml = 0.0
+        hemo.total_blood_in_ml = 0.0
+        hemo.total_urine_out_ml = 0.0
+        if not preserve_blood_out:
+            hemo.total_blood_out_ml = 0.0
+            engine._pk_blood_out_ml = 0.0
+        state.fluid_in_ml = 0.0
+        state.colloid_in_ml = 0.0
+        state.blood_in_ml = 0.0
+        state.urine_out_ml = 0.0
+        state.blood_out_ml = float(hemo.total_blood_out_ml)
+        state.net_fluid_ml = -state.blood_out_ml
+    transport = engine.resp.gas_transport
+    transport.consumed_o2_l = 0.0
+    transport.produced_l = 0.0
+    transport.exhaled_l = 0.0
+    transport.oxygen_from_air_l = 0.0
+    engine.output_buffer.clear()
+    engine.output_buffer.append(WaveformSample(
+        0.0, state.ecg_voltage, state.pleth_voltage, state.capno_co2, state.art_pressure,
+        state.paw, state.flow, state.volume, 0,
+    ))
+    engine.actions = ActionLog()
+    engine.running = was_running
+    if record_trends:
+        engine._preroll_trends = trends
+
+
 def create_observe_step(
     label: str,
     action: str = ACTION_EVENT_START,
     instruction: Instruction = (
         "Follow blood pressure, oxygenation, capnography, and airway pressure."
     ),
+    *,
+    check: Requirement | None = None,
 ) -> ScenarioStep:
     """Wait for the case event; the learner cannot start it."""
     suffix = " The case progresses automatically while the simulation runs."
@@ -596,7 +762,7 @@ def create_observe_step(
         id="OBSERVE",
         title="Observe the patient",
         instruction=full_instruction,
-        check_requirements=lambda engine: (action_taken_in_case(engine, action, label), ""),
+        check_requirements=check or (lambda engine: (action_taken_in_case(engine, action, label), "")),
     )
 
 

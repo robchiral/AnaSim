@@ -1,5 +1,6 @@
 import pytest
 
+from anasim.core.state import SimulationConfig
 from anasim.physiology.disturbances import Disturbances
 
 
@@ -12,3 +13,12 @@ from anasim.physiology.disturbances import Disturbances
 def test_average_retains_ramps_and_plateaus_across_step_boundaries(profile, start, end, expected):
     effects = Disturbances(profile).compute_average(start, end)
     assert (effects.bis, effects.hr, effects.svr, effects.sv) == pytest.approx(expected)
+
+
+def test_steady_state_settle_skips_finite_disturbance(engine_factory):
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", disturbance_profile="stim_intubation_pulse", rng_seed=1),
+        start=True,
+    )
+    assert engine.disturbances.spec is not None and engine.disturbances.spec.finite
+    assert engine.state.map < 110.0

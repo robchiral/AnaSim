@@ -154,6 +154,7 @@ class SimulationEngine(DrugControllerMixin):
         self.alarms = AlarmSystem(thresholds=alarm_thresholds)
 
         self.output_buffer: deque[WaveformSample] = deque()
+        self._preroll_trends: list[dict] = []
         self.recorder: DataRecorder | None = None
         self._tci_accumulators: dict[str, float] = {}
         self.running = False

@@ -2101,11 +2101,17 @@ class HemodynamicModel:
             thermo_tpr_mult = self._thermo_tpr_mult(temp_c, vasoconstriction_threshold)
 
             # Turnover equations; inotropy and preload act on output SV only.
-            # Terminal anoxia, receptor blockade, and severe acidemia blunt compensatory vasoconstriction.
+            # Terminal anoxia, receptor blockade, severe acidemia, and distributive
+            # vasoplegia blunt compensatory vasoconstriction and slow inotropic rebound.
             anoxic_intact = (1.0 - self.myocardial_hypoxia) * (1.0 - self.coronary.energy_failure)
-            symp_vasc_gate = anoxic_intact * alpha_response * self.acidosis_factor
+            distributive_intact = (1.0 - sepsis_sev) * (1.0 - anaph_sev)
+            symp_vasc_gate = anoxic_intact * alpha_response * self.acidosis_factor * distributive_intact
             tpr_fb = 1.0 + (rmap_fb - 1.0) * symp_vasc_gate if rmap_fb > 1.0 else rmap_fb
-            sv_fb = 1.0 + (rmap_fb - 1.0) * anoxic_intact * beta_response if rmap_fb > 1.0 else rmap_fb
+            sv_fb = (
+                1.0 + (rmap_fb - 1.0) * anoxic_intact * beta_response * pressor_gain
+                if rmap_fb > 1.0
+                else rmap_fb
+            )
             eff_chemo_tpr = 1.0 + (chemo_tpr_factor - 1.0) * symp_vasc_gate
             eff_thermo_tpr = 1.0 + (thermo_tpr_mult - 1.0) * symp_vasc_gate
             eff_hemorrhage_tpr = 1.0 + (hemorrhage_tpr_mult - 1.0) * anoxic_intact * self.acidosis_factor

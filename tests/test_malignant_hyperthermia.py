@@ -164,29 +164,15 @@ def test_untreated_mh_case_earns_no_treatment_credit():
     session.command("run", '{"running":true}')
     session.command("speed", '{"value":50}')
     late_mvs = []
-    for step_idx in range(180):
+    for step_idx in range(120):
         session.step(0.1)
-        if step_idx >= 170:
+        if step_idx >= 110:
             assert not session.engine.resp.state.apnea
             late_mvs.append(session.engine.state.mv)
     assert min(late_mvs) > 10
     assert session.engine.state.mv > 10
     report = json.loads(session.command("case_finish"))["debrief"]
     assert not any(o["achieved"] for o in report["outcomes"] if o["id"] != "stability")
-
-
-def test_hyperventilation_before_mh_onset_earns_debrief_credit():
-    """Hyperventilation configured before MH onset still earns debrief credit."""
-    session = WebSession({"scenario_id": "malignant_hyperthermia", "practice_mode": "independent"})
-    session.engine.config.dt = 0.5
-    session.command("run", '{"running":true}')
-    session.command("speed", '{"value":50}')
-    session.command("vent", '{"rr": 28}')
-    for _ in range(50):
-        session.step(0.2)
-    report = json.loads(session.command("case_finish"))["debrief"]
-    outcomes = {o["id"]: o["achieved"] for o in report["outcomes"]}
-    assert outcomes["ventilation"] is True
 
 
 def test_complete_dantrolene_rescue_sustains_remission_until_reexposed(engine_factory):

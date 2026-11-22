@@ -1,5 +1,6 @@
 """Adult general anesthesia inductions with volatile or TIVA maintenance."""
 
+from anasim.core.action_log import ACTION_DRUG_BOLUS
 from anasim.core.projection import loss_of_response
 
 from .base import (
@@ -20,7 +21,6 @@ from .base import (
     require_infusion_running,
     require_infusion_started,
     require_mac_above,
-    require_maintenance_depth,
     require_map_at_least,
     require_oxygenation,
     require_preoxygenation,
@@ -36,6 +36,17 @@ def _require_balanced_handover_depth(engine) -> tuple[bool, str]:
     """Allow BIS 30-60 while the induction propofol bolus overlaps early sevoflurane wash-in."""
     bis = monitor_value(engine, "bis")
     low = 30.0 if engine.state.propofol_ce > 0.3 else 40.0
+    met = low <= bis <= 60.0
+    shown_bis = format_unmet_int(bis, low=low, high=60.0)
+    return met, "" if met else f"BIS: {shown_bis}/{int(low)}-60"
+
+
+def _require_tiva_handover_depth(engine) -> tuple[bool, str]:
+    """Allow BIS 30-60 while a manual propofol induction bolus clears into maintenance."""
+    bis = monitor_value(engine, "bis")
+    boluses = engine.actions.since_case(ACTION_DRUG_BOLUS, labels=("propofol",))
+    recent_bolus = bool(boluses) and (engine.state.time - boluses[-1].time <= 600.0)
+    low = 30.0 if recent_bolus else 40.0
     met = low <= bis <= 60.0
     shown_bis = format_unmet_int(bis, low=low, high=60.0)
     return met, "" if met else f"BIS: {shown_bis}/{int(low)}-60"
@@ -325,7 +336,8 @@ def create_induction_tiva() -> Scenario:
             id="MAINTENANCE",
             title="Confirm maintenance",
             instruction=(
-                "Keep propofol and remifentanil running, titrated to <b>BIS 40-60</b> and <b>MAP ≥ 65 mmHg</b>. "
+                "Keep propofol and remifentanil running, titrated to <b>BIS 40-60</b> "
+                "(30-60 while the induction bolus clears) and <b>MAP ≥ 65 mmHg</b>. "
                 "Reduce fresh gas to <b>2 L/min</b> in Machine with at least 1 L/min O₂."
             ),
             tci_instruction=(
@@ -337,7 +349,7 @@ def create_induction_tiva() -> Scenario:
                 require_infusion_running("propofol", "Propofol infusion not running"),
                 require_infusion_running("remi", "Remifentanil infusion not running"),
                 require_fgf_reduced(2.0),
-                require_maintenance_depth,
+                _require_tiva_handover_depth,
                 require_map_at_least(65),
                 require_tracheal_ventilation,
                 require_oxygenation(),

@@ -4,20 +4,19 @@ from dataclasses import replace
 
 from anasim.core.action_log import ACTION_DRUG_BOLUS, ACTION_EVENT_START
 from anasim.core.monitors import display_int
+from anasim.core.utils import clamp, hill_function
 from anasim.machine.ventilator import VentSettings
 
 from .base import (
-    CRISIS_BRIEFING,
-    CRISIS_ONSET_S,
     CaseEvent,
     CaseOutcome,
     Scenario,
     ScenarioStep,
     action_taken_in_case,
     check_etco2_range,
-    create_observe_step,
     format_unmet_int,
     normocapnia_bounds,
+    preroll_scenario,
     require_all,
     require_infusion_started,
     require_map_at_least,
@@ -26,6 +25,8 @@ from .base import (
     require_tracheal_ventilation,
     stability_outcome,
 )
+
+_MH_PREROLL_S = 210.0
 
 
 def _require_dantrolene(engine) -> tuple[bool, str]:
@@ -51,7 +52,15 @@ def _triggers_avoided(engine) -> bool:
 
 def _require_controlled(engine) -> tuple[bool, str]:
     met = engine.malignant_hyperthermia.severity < 0.05
-    return met, "" if met else "Signs of MH persist; repeat dantrolene"
+    if met:
+        return True, ""
+    sux_cp = engine.pk["succinylcholine"].state.c1
+    active_sevo = max(0.0, engine.pk_sevo.state.mac - 0.25)
+    trigger_drive = clamp(active_sevo / 0.55, 0.0, 2.5) + clamp(sux_cp / 0.4, 0.0, 2.0)
+    inhibition = hill_function(engine.state.dantrolene_ce, 1.5 * (1.0 + 4.5 * trigger_drive), 3.0)
+    if inhibition >= 0.30 and not engine.circuit.vaporizer_on and sux_cp <= 0.01:
+        return False, "MH resolving; continue monitoring EtCO₂, HR, and rigidity"
+    return False, "Signs of MH persist; repeat dantrolene"
 
 
 def _require_temperature_managed(engine) -> tuple[bool, str]:
@@ -95,12 +104,19 @@ def create_malignant_hyperthermia() -> Scenario:
         nonlocal onset_vent, onset_mv
         if engine.state.bair_hugger_target <= 0.0:
             engine.set_bair_hugger(38.0)
+        # Routine low-flow air/oxygen maintenance so high-flow 100% O2 is required for washout.
+        engine.set_fgf(1.0, 1.0, 0.0)
         onset_vent, onset_mv = replace(engine.vent.settings), engine.state.mv
+        engine.start_malignant_hyperthermia()
+        preroll_scenario(engine, _MH_PREROLL_S, dt=2.0, settle_s=15.0, sample_interval_s=5.0)
 
     def start(engine) -> None:
         if onset_vent is None:
             capture_baseline(engine)
-        engine.start_malignant_hyperthermia()
+        if engine.malignant_hyperthermia.active:
+            engine.actions.record(engine.state.time, ACTION_EVENT_START, label="malignant_hyperthermia")
+        else:
+            engine.start_malignant_hyperthermia()
 
     def ventilation(engine) -> tuple[bool, str]:
         settings, before = engine.vent.settings, onset_vent
@@ -124,13 +140,16 @@ def create_malignant_hyperthermia() -> Scenario:
         id="malignant_hyperthermia",
         name="Malignant hyperthermia",
         setup_engine=capture_baseline,
-        briefing=CRISIS_BRIEFING,
+        briefing=(
+            "Forty minutes into sevoflurane anesthesia for surgery. "
+            "Monitor the patient and manage any deterioration."
+        ),
         events=(CaseEvent(
-            "malignant_hyperthermia", CRISIS_ONSET_S,
-            "EtCO₂ rises despite unchanged ventilator settings.", start,
+            "malignant_hyperthermia", 0.0,
+            "EtCO₂ has risen despite unchanged ventilator settings, with tachycardia and muscle rigidity.",
+            start,
         ),),
         steps=[
-            create_observe_step("malignant_hyperthermia"),
             ScenarioStep(
                 id="STOP_TRIGGERS",
                 title="Stop triggers and hyperventilate",

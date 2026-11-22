@@ -67,7 +67,43 @@ MEAN_EFFORT_TAU_S = 1.5
 BAG_VENT_PRESSURE_CMH2O = 20.0
 
 
-def step_simulation(engine: SimulationEngine, dt: float) -> None:
+def _step_monitors_light(
+    engine: SimulationEngine,
+    dt: float,
+    hemo_state,
+    resp_state,
+    disturbances: DisturbanceEffects,
+) -> None:
+    """Fast scalar monitor update for hidden scenario prerolls without 100 Hz waveforms."""
+    state = engine.state
+    state.respiratory_fatigue = float(engine.resp_mech.effort.muscle.fatigue)
+    bis_val = engine.bis.step(
+        dt,
+        state.hypnotic_ce,
+        mac_sevo=engine.pk_sevo.state.mac,
+        cortical_function=engine.cerebral.cortical_function,
+        ce_ketamine=state.ketamine_ce,
+        ce_opioid=state.opioid_ce,
+        temp_c=state.temp_c,
+    )
+    state.bis = float(clamp(bis_val + disturbances.bis * engine.bis.cortical_function, 0.0, 100.0))
+    engine.smooth_bis = state.bis
+    engine._bis_noise = 0.0
+    state.display_bis = state.bis
+    state.loc = float(loss_of_response(engine))
+    engine._tol_current = stimulus_tolerance(engine)
+    state.tol = float(engine._tol_current)
+    state.display_hr = float(max(0.0, hemo_state.hr))
+    state.art_map = float(hemo_state.map)
+    state.art_sbp = float(state.sbp)
+    state.art_dbp = float(state.dbp)
+    state.display_etco2 = float(resp_state.etco2)
+    state.etco2_signal_valid = state.airway_mode != AirwayType.NONE
+    state.spo2 = state.display_spo2 = float(state.sao2)
+    state.spo2_signal_valid = hemo_state.co > ARREST_CO_L_MIN
+
+
+def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: bool = True) -> None:
     if dt <= 0.0:
         return
     state = engine.state
@@ -110,7 +146,7 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
     state.muscle_rigidity = mh.rigidity
     state.seizure_activity = toxicity.seizure_activity
     state.convulsions = toxicity.convulsion_intensity > 0.2
-    physiology = step_physiology(engine, dt, disturbances)
+    physiology = step_physiology(engine, dt, disturbances, collect_samples=update_monitors)
     project_runtime_physiology(engine, physiology)
     hemo_state = physiology.hemo_state
     if hemo_state.compressions and hemo_state.co > 0.0:
@@ -144,7 +180,10 @@ def step_simulation(engine: SimulationEngine, dt: float) -> None:
         anesthetic_depth=clamp01(engine.thermal.depth_index),
         metabolic_stress=clamp01(state.seizure_activity),
     )
-    step_monitors(engine, dt, physiology.hemo_state, physiology.resp_state, disturbances)
+    if update_monitors:
+        step_monitors(engine, dt, physiology.hemo_state, physiology.resp_state, disturbances)
+    else:
+        _step_monitors_light(engine, dt, physiology.hemo_state, physiology.resp_state, disturbances)
     step_temperature(engine, dt)
     check_cardiac_arrest(engine, dt)
     if disturbance_complete and engine.disturbance_active:

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { Monitor } from "../anasim/web_assets/monitor.js";
 import { NeuromuscularDisplay } from "../anasim/web_assets/neuromuscular.js";
+import { Trends } from "../anasim/web_assets/trends.js";
 
 const PY_FIXTURES = JSON.parse(execFileSync("python3", ["-B", "-c", `
 import json
@@ -388,4 +389,55 @@ test("monitor renders alarm limits from session info and prioritizes alarm banne
   assert.equal(banner.dataset.severity, "ended");
   assert.equal(bannerText.textContent, "Session ended");
   monitor.destroy();
+});
+
+test("trends render negative pre-case history at session start", () => {
+  const labels = [];
+  const ctx = {
+    setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {},
+    stroke() {}, arc() {}, fill() {}, save() {}, restore() {}, setLineDash() {},
+    fillText(text) { labels.push(text); },
+  };
+  const canvas = {
+    dataset: { trend: "etco2" }, clientWidth: 240, clientHeight: 100, width: 240, height: 100,
+    getContext: () => ctx,
+  };
+  const dialog = {
+    open: true,
+    close() { this.open = false; },
+    showModal() { this.open = true; },
+    querySelectorAll: () => [canvas],
+  };
+  const windowSelect = new EventTarget();
+  windowSelect.value = "900";
+  const trigger = new EventTarget();
+  trigger.focus = () => {};
+  const mapLabel = { textContent: "" };
+  globalThis.document = {
+    documentElement: {},
+    body: {},
+    getElementById: id => ({
+      "trends-dialog": dialog,
+      "trend-window": windowSelect,
+      "trend-map-label": mapLabel,
+      "show-trends": trigger,
+    }[id] ?? null),
+  };
+  globalThis.getComputedStyle = () => ({ fontFamily: "sans-serif", getPropertyValue: () => "#0f0" });
+  globalThis.window = { devicePixelRatio: 1 };
+  globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+  const trends = new Trends({
+    arterial_line: true,
+    alarm_thresholds: { EtCO2_min: 30, EtCO2_max: 45 },
+    trends: [
+      { time: -210, hr: 60, etco2: 35, bis: 45, map: 80, map_time: -210 },
+      { time: -105, hr: 80, etco2: 43, bis: 45, map: 100, map_time: -105 },
+      { time: 0, hr: 101, etco2: 52, bis: 45, map: 117, map_time: 0 },
+    ],
+  });
+  trends.draw();
+  assert.equal(labels.includes("-3:30"), true);
+  assert.equal(labels.includes("0:00"), true);
+  assert.equal(labels.includes("No readings"), false);
+  trends.destroy();
 });

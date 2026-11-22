@@ -2,7 +2,6 @@
 
 from .base import (
     CRISIS_BRIEFING,
-    CRISIS_ONSET_S,
     CaseAction,
     CaseEvent,
     CaseOutcome,
@@ -21,13 +20,7 @@ from .base import (
     require_tracheal_ventilation,
 )
 
-
-def _prepare(engine) -> None:
-    # Brown 2004 gave 1000 mL saline over 1-3 min.
-    engine.fluid_infusion_rate_ml_min = 500.0
-    # Start on realistic air/O2 maintenance (~40% FiO2) so severe bronchospasm
-    # produces both high airway pressures and visible desaturation unless treated.
-    equilibrate_maintenance_fio2(engine, target_fio2=0.40, min_air_l_min=1.4, air_vo2_factor=5.0)
+_ANAPHYLAXIS_ONSET_S = 15.0
 
 
 def _epinephrine_instruction(engine) -> str:
@@ -51,11 +44,6 @@ def _epinephrine_instruction(engine) -> str:
     )
 
 
-def _start(engine) -> None:
-    engine.anaphylaxis.onset_rate = 1.0 / 45.0
-    engine.start_anaphylaxis()
-
-
 def _require_bronchospasm_improved(engine) -> tuple[bool, str]:
     improved = engine.state.bronchospasm < 0.5
     return improved, "" if improved else "Continue treating bronchospasm and reassess airway pressure"
@@ -75,6 +63,46 @@ def _require_epinephrine_started() -> Requirement:
 
 
 def create_anaphylaxis_scenario() -> Scenario:
+    baseline_map = 90.0
+    baseline_ppeak = 18.0
+    onset_started = False
+    crisis_visible = False
+
+    def prepare(engine) -> None:
+        nonlocal baseline_map, baseline_ppeak
+        # Brown 2004 gave 1000 mL saline over 1-3 min.
+        engine.fluid_infusion_rate_ml_min = 500.0
+        # Start on realistic air/O2 maintenance (~40% FiO2) so severe bronchospasm
+        # produces both high airway pressures and visible desaturation unless treated.
+        equilibrate_maintenance_fio2(engine, target_fio2=0.40, min_air_l_min=1.4, air_vo2_factor=5.0)
+        baseline_map = float(engine.state.map)
+        baseline_ppeak = float(engine.state.paw_peak)
+        # Set high-pressure alarm ~15 cmH2O above baseline (as in routine OR setup)
+        # so severe anaphylactic bronchospasm triggers a visible Ppeak alarm.
+        engine.alarms.thresholds["Ppeak_max"] = min(40, max(34, round(baseline_ppeak + 14)))
+
+    def start(engine) -> None:
+        nonlocal onset_started
+        onset_started = True
+        engine.anaphylaxis.onset_rate = 1.0 / 45.0
+        engine.start_anaphylaxis()
+
+    def crisis_apparent(engine) -> bool:
+        if not onset_started:
+            return False
+        if engine.anaphylaxis.severity >= 0.90:
+            return True
+        if engine.anaphylaxis.severity < 0.55:
+            return False
+        return (
+            engine.state.map < min(68.0, baseline_map - 20.0)
+            or engine.state.paw_peak >= baseline_ppeak + 6.0
+        )
+
+    def mark_visible(_engine) -> None:
+        nonlocal crisis_visible
+        crisis_visible = True
+
     epinephrine = _require_epinephrine_started()
     fluids = require_fluid_bolus(
         1000.0,
@@ -83,7 +111,10 @@ def create_anaphylaxis_scenario() -> Scenario:
         event_name="anaphylaxis",
     )
     steps = [
-        create_observe_step("anaphylaxis"),
+        create_observe_step(
+            "anaphylaxis",
+            check=lambda _engine: (crisis_visible, ""),
+        ),
         ScenarioStep(
             id="EPINEPHRINE",
             title="Give epinephrine",
@@ -125,16 +156,21 @@ def create_anaphylaxis_scenario() -> Scenario:
         id="anaphylaxis_response",
         name="Anaphylaxis response",
         briefing=CRISIS_BRIEFING,
-        setup_engine=_prepare,
+        setup_engine=prepare,
         steps=steps,
-        events=(CaseEvent(
-            "anaphylaxis", CRISIS_ONSET_S,
-            "Shortly after an antibiotic dose, blood pressure falls and airway pressure rises.",
-            _start,
-        ),),
+        events=(
+            CaseEvent("anaphylaxis_onset", _ANAPHYLAXIS_ONSET_S, "", start),
+            CaseEvent(
+                "anaphylaxis", _ANAPHYLAXIS_ONSET_S,
+                "Shortly after an antibiotic dose, blood pressure falls and airway pressure rises.",
+                mark_visible,
+                when=crisis_apparent,
+            ),
+        ),
         actions=(CaseAction(
             "stop_trigger", "Stop suspected trigger",
-            lambda engine: engine.stop_anaphylaxis(), lambda engine: engine.anaphylaxis.active,
+            lambda engine: engine.stop_anaphylaxis(),
+            lambda engine: engine.anaphylaxis.active and (crisis_visible or engine.anaphylaxis.severity >= 0.55),
             completed_label="Suspected trigger stopped",
         ),),
         outcomes=(

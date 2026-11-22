@@ -66,6 +66,7 @@ class CaseRun:
         self.hypotension_s = self.hypoxemia_s = 0.0
         self._next_check = self.started_at
         self.report: dict | None = None
+        self.before_step()
         self.observe(force=True)
 
     @property
@@ -76,10 +77,15 @@ class CaseRun:
         if self.report is not None:
             return
         for event in self.scenario.events:
-            if event.id not in self.fired and self.elapsed >= event.at - 1e-9:
+            if (
+                event.id not in self.fired
+                and self.elapsed >= event.at - 1e-9
+                and (event.when is None or event.when(self.engine))
+            ):
                 self.fired.add(event.id)
                 event.apply(self.engine)
-                self.observations.append({"time": self.elapsed, "text": event.cue})
+                if event.cue:
+                    self.observations.append({"time": self.elapsed, "text": event.cue})
 
     def observe(self, dt: float = 0.0, *, force: bool = False) -> None:
         if self.report is not None:
@@ -140,7 +146,7 @@ class CaseRun:
 
     def request_hint(self) -> str:
         self.observe(force=True)
-        if self.scenario.events and not self.fired:
+        if any(event.cue for event in self.scenario.events) and not self.observations:
             text = "Watch the monitors as the case progresses."
         else:
             pending = next((o for o in self.scenario.outcomes if self._needs_hint(o)), None)

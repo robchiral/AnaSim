@@ -212,6 +212,8 @@ class WebSession:
                 self._begin_step()
         self._trend_history: deque[dict] = deque(maxlen=TREND_WINDOW_S + 1)
         self._trend_pending: deque[dict] = deque(maxlen=TREND_WINDOW_S + 1)
+        if self.engine._preroll_trends:
+            self._trend_history.extend(self.engine._preroll_trends)
         self._next_trend_time = math.floor(self.engine.state.time) + 1
         self._sample_trends()
 

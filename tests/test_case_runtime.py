@@ -48,24 +48,69 @@ def test_independent_cases_send_no_guide_text_and_end_with_a_debrief(spec):
 def test_crises_start_once_on_the_case_clock_without_clicking_steps(mode, case, event):
     session = WebSession({"scenario_id": case, "practice_mode": mode})
     session.engine.config.dt = 0.5
-    assert session.case_run is not None and not session.case_run.fired
+    assert session.case_run is not None
     assert session.snapshot()["scenario"]["actions"] == []
-    advance(session, 31)
-    assert session.case_run.fired == {event}
-    observations = session.snapshot()["scenario"]["observations"]
-    assert len(observations) == 1 and observations[0]["time"] == pytest.approx(30, abs=0.51)
-    advance(session, 59)
-    assert session.snapshot()["scenario"]["observations"] == observations
-    if event in {"anaphylaxis", "sepsis"}:
+    if event == "malignant_hyperthermia":
+        # MH starts pre-established on low-flow maintenance with visible signs and seeded trends.
+        assert session.case_run.fired == {"malignant_hyperthermia"}
+        assert session.engine.malignant_hyperthermia.active
+        assert session.engine.state.display_etco2 > 45.0 and session.engine.state.muscle_rigidity
+        assert json.loads(session.info())["trends"][0]["time"] < 0.0
+        observations = session.snapshot()["scenario"]["observations"]
+        assert len(observations) == 1 and observations[0]["time"] == pytest.approx(0, abs=0.01)
+        advance(session, 60)
+        assert session.snapshot()["scenario"]["observations"] == observations
+        return
+
+    assert not session.case_run.fired
+    if event == "sepsis":
+        assert session.engine.state.temp_c > 38.0 and session.engine.state.lactate >= 2.0
+        assert json.loads(session.info())["trends"][0]["time"] < 0.0
+        advance(session, 16)
+        assert session.case_run.fired == {"sepsis_decompensation"}
+        first_obs = session.snapshot()["scenario"]["observations"]
+        assert len(first_obs) == 1 and first_obs[0]["time"] == pytest.approx(15, abs=0.51)
+        advance(session, 74)
+        assert session.case_run.fired == {"sepsis_decompensation", "sepsis_hypotension"}
+        observations = session.snapshot()["scenario"]["observations"]
+        assert len(observations) == 2 and observations[1]["time"] > observations[0]["time"]
         assert session.engine.state.map < 65
         assert session.engine.state.monitored_blood_pressure(True)[2] < 65
+        advance(session, 30)
+        assert session.snapshot()["scenario"]["observations"] == observations
+    elif event == "anaphylaxis":
+        advance(session, 20)
+        assert session.case_run.fired == {"anaphylaxis_onset"}
+        assert session.snapshot()["scenario"]["observations"] == []
+        advance(session, 35)
+        assert session.case_run.fired == {"anaphylaxis_onset", "anaphylaxis"}
+        observations = session.snapshot()["scenario"]["observations"]
+        assert len(observations) == 1 and observations[0]["time"] > 30
+        advance(session, 35)
+        assert session.snapshot()["scenario"]["observations"] == observations
+        assert session.engine.state.map < 65
+        assert session.engine.state.monitored_blood_pressure(True)[2] < 65
+        assert session.engine.state.alarms.get("Ppeak", {}).get("high") is True
+        assert session.engine.state.alarms.get("MAP", {}).get("low") is True
+    else:
+        if event == "hemorrhage":
+            assert 500.0 <= session.engine.state.blood_out_ml <= 850.0
+            assert session.engine.state.map > 65.0
+            assert json.loads(session.info())["trends"][0]["time"] < 0.0
+        onset = 20 if event == "hemorrhage" else 30
+        advance(session, onset + 1)
+        assert session.case_run.fired == {event}
+        observations = session.snapshot()["scenario"]["observations"]
+        assert len(observations) == 1 and observations[0]["time"] == pytest.approx(onset, abs=0.51)
+        advance(session, 59)
+        assert session.snapshot()["scenario"]["observations"] == observations
 
 
 @pytest.mark.parametrize("arterial_line", [False, True])
 def test_anaphylaxis_recovery_requires_current_pressure_and_cuff_reassessment(arterial_line):
     session = WebSession({"scenario_id": "anaphylaxis_response", "arterial_line_enabled": arterial_line})
     session.engine.config.dt = 0.5
-    advance(session, 56)
+    advance(session, 41)
     command(session, "scenario_next")
     command(session, "drug_bolus", key="epi", amount=100)
     command(session, "fgf", o2=10, air=0, n2o=0)
@@ -100,7 +145,7 @@ def test_anaphylaxis_recovery_requires_current_pressure_and_cuff_reassessment(ar
 def test_early_crisis_treatment_and_timeline_entries_without_following_the_guide():
     session = WebSession({"scenario_id": "anaphylaxis_response", "practice_mode": "independent"})
     session.engine.config.dt = 0.5
-    advance(session, 31)
+    advance(session, 42)
     command(session, "drug_bolus", key="epi", amount=100)
     command(session, "fluid", kind="crystalloid", volume_ml=1000)
     command(session, "fluid", kind="saline", volume_ml=500)

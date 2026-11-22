@@ -10,7 +10,7 @@ THRESHOLDS = {
     "Ppeak_max": 40,
     "MV_min": 2.0,
     "VTe_min": 90,  # % of the set VT in volume-targeted modes
-    "FiO2_min": 21,
+    "FiO2_min": 25,
 }
 
 # Seconds a limit must stay violated before the alarm sounds. The MV delay

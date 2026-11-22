@@ -486,7 +486,7 @@ def step_monitors(
             # The ventilator measures only gas returning through the circuit.
             "MV": (round(state.mv, 1) if connected else 0.0) if vent.is_on else None,
             "VTe": vte_percent,
-            "FiO2": display_int(state.fio2 * 100.0),
+            "FiO2": display_int(state.fio2 * 100.0) if connected else None,
         },
         dt=dt,
     )

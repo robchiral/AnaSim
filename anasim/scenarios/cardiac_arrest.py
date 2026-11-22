@@ -16,6 +16,7 @@ from .base import (
     Scenario,
     ScenarioStep,
     create_observe_step,
+    infusion_running,
     require_all,
     require_etco2_above,
     require_map_at_least,
@@ -27,11 +28,39 @@ from .base import (
 )
 
 EVENT = "ventricular_fibrillation"
+_ANESTHETIC_INFUSIONS = ("propofol", "remi", "fentanyl", "midazolam", "ketamine", "etomidate")
+
+
+class _RefractoryShockRNG:
+    """Force initial shocks to fail so learners practice multi-cycle ACLS and epinephrine."""
+
+    def __init__(self, base_rng, fail_shocks: int = 2) -> None:
+        self._base = base_rng
+        self._remaining_failures = fail_shocks
+
+    def random(self) -> float:
+        if self._remaining_failures > 0:
+            self._remaining_failures -= 1
+            return 0.999999
+        return float(self._base.random())
+
+    def __getattr__(self, name: str):
+        return getattr(self._base, name)
 
 
 def _start(engine) -> None:
     engine.actions.record(engine.state.time, ACTION_EVENT_START, label=EVENT)
+    if not isinstance(engine._shock_rng, _RefractoryShockRNG):
+        engine._shock_rng = _RefractoryShockRNG(engine._shock_rng, fail_shocks=2)
     engine.set_rhythm("VFIB")
+
+
+def _anesthetics_stopped(engine) -> tuple[bool, str]:
+    running_iv = infusion_running(engine, *_ANESTHETIC_INFUSIONS)
+    volatile_on = engine.circuit.vaporizer_on and engine.circuit.vaporizer_setting > 0.0
+    if not running_iv and not volatile_on:
+        return True, ""
+    return False, "Stop all anesthetic infusions and volatile agents"
 
 
 def _onset(engine) -> float | None:
@@ -85,6 +114,7 @@ def _require_start_compressions_or_rosc(engine) -> tuple[bool, str]:
         return True, ""
     return require_all(
         _require_action(ACTION_COMPRESSIONS, "on", "Start chest compressions"),
+        _anesthetics_stopped,
         require_oxygen_flow(),
     )(engine)
 
@@ -130,6 +160,23 @@ def _continue_cycles_instruction(engine) -> str:
         "(repeat amiodarone 150 mg or lidocaine 0.5-0.75 mg/kg if VF persists).<br><br>"
         f"<i>{rosc_cue} VF can recur after a successful shock.</i>"
     )
+
+
+def _epinephrine_outcome(engine) -> bool:
+    onset = _onset(engine)
+    if onset is None:
+        return False
+    doses = [
+        r for r in engine.actions.since_case(ACTION_DRUG_BOLUS, labels=("epi",))
+        if r.time >= onset
+    ]
+    if sum(r.amount for r in doses) >= 1000.0:
+        return True
+    shocks = [
+        r for r in engine.actions.since_case(ACTION_SHOCK, labels=("unsynchronized",))
+        if r.time >= onset
+    ]
+    return _circulation_restored(engine) and len(shocks) < 2
 
 
 def create_cardiac_arrest() -> Scenario:
@@ -190,9 +237,16 @@ def create_cardiac_arrest() -> Scenario:
             CaseOutcome("compressions", "Compressions within 1 minute of arrest",
                         _within(ACTION_COMPRESSIONS, "on", 60.0),
                         "Start compressions as soon as arrest is recognized.", milestone=True),
+            CaseOutcome("anesthetics", "Anesthetic agents stopped",
+                        lambda engine: _onset(engine) is not None and _anesthetics_stopped(engine)[0],
+                        "Stop all anesthetic infusions and volatile agents during cardiac arrest.", milestone=True),
             CaseOutcome("defibrillation", "First shock within 2 minutes of arrest",
                         _within(ACTION_SHOCK, "unsynchronized", 120.0),
                         "Defibrillate VF as soon as a defibrillator is available.", milestone=True),
+            CaseOutcome("epinephrine", "Epinephrine 1 mg given for persistent VF",
+                        _epinephrine_outcome,
+                        "Give epinephrine 1 mg (1000 mcg) after the second shock for persistent VF.",
+                        milestone=True),
             CaseOutcome("rosc", "Circulation restored", _circulation_restored,
                         "Shockable rhythms respond best to early defibrillation with good compressions."),
             CaseOutcome("ventilation", "Tracheal ventilation maintained", tracheal_ventilation_confirmed,
