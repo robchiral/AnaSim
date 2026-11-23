@@ -158,6 +158,11 @@ class ECGMonitor:
         self._st_window: tuple[float, float, float] | None = None
         self._st_scale = 1.0
         self._vulnerable_window: tuple[float, float] | None = None
+        self._shock_artifact_s = 0.0
+
+    def trigger_shock_artifact(self) -> None:
+        """Start a brief defibrillation discharge artifact and amplifier recovery transient."""
+        self._shock_artifact_s = 0.25
 
     def _place_beats(
         self, cycle: CardiacCycleSample, conduction_failure: float, sodium_block: float,
@@ -171,7 +176,7 @@ class ECGMonitor:
         self._rhythm = cycle.rhythm_type
 
         morphology = _MORPHOLOGIES[cycle.rhythm_type]
-        hyperk = clamp01(hyperkalemia_block)
+        hyperk = 0.0 if cycle.rhythm_type == RhythmType.VTACH else clamp01(hyperkalemia_block)
         p_scale = (1.0 - _ramp(conduction_failure, _P_FADE)) * (1.0 - clamp01(hyperk / 0.4))
         pr_shift_s = 0.10 * clamp01(hyperk / 0.4)
         ischemic_wide = max(_ramp(conduction_failure, _QRS_WIDENING), clamp01(sodium_block))
@@ -222,23 +227,34 @@ class ECGMonitor:
         compression_phase, 0-1 through each chest compression, adds compression artifact.
         """
         artifact = 0.0
+        shock_spike: float | None = None
+        if self._shock_artifact_s > 0.0:
+            elapsed_shock = 0.25 - self._shock_artifact_s
+            self._shock_artifact_s = max(0.0, self._shock_artifact_s - dt)
+            if elapsed_shock < 0.03:
+                shock_spike = 2.5 if elapsed_shock < 0.015 else -1.8
+            else:
+                artifact += -0.8 * math.exp(-(elapsed_shock - 0.03) / 0.06)
         if compression_phase is not None:
             angle = 2.0 * math.pi * compression_phase
-            artifact = _COMPRESSION_ARTIFACT_MV * (math.sin(angle) + 0.3 * math.sin(2.0 * angle + 0.5))
+            artifact += _COMPRESSION_ARTIFACT_MV * (math.sin(angle) + 0.3 * math.sin(2.0 * angle + 0.5))
         rhythm_type = cycle.rhythm_type
         if rhythm_type == RhythmType.ASYSTOLE or (rhythm_type != RhythmType.VFIB and not cycle.organized):
             self._rhythm = None
-            return self.rng.random() * 0.02 - 0.01 + artifact
+            return shock_spike if shock_spike is not None else self.rng.random() * 0.02 - 0.01 + artifact
 
         if rhythm_type == RhythmType.VFIB:
             self._rhythm = None
             # Coarse VF becomes fine as the myocardium exhausts its energy.
             amplitude = 0.3 * (1.0 - 0.85 * conduction_failure) * (1.0 + 0.35 * self._vf_envelope.step(dt, self.rng))
             val = amplitude * (self._vf_main.step(dt, self.rng) + 0.5 * self._vf_slow.step(dt, self.rng))
-            return val + self.rng.random() * 0.10 - 0.05 + artifact
+            return shock_spike if shock_spike is not None else val + self.rng.random() * 0.10 - 0.05 + artifact
 
         if cycle.beat_started or rhythm_type != self._rhythm:
             self._place_beats(cycle, conduction_failure, sodium_block, potassium, hyperkalemia_block)
+
+        if shock_spike is not None:
+            return shock_spike
 
         val = 0.0
         t = cycle.elapsed_s

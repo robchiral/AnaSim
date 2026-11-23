@@ -9,7 +9,9 @@ DETECTION_THRESHOLD = 0.05
 LOW_SIGNAL_THRESHOLD = 0.20
 MIN_REPEAT_S = 10.0
 PULSE_INTERVAL_S = 0.5  # 2 Hz train
-DEFAULT_REPEAT_S = {"tof": 20.0, "single": 10.0}
+DEFAULT_REPEAT_S = {"tof": 20.0, "single": 10.0, "ptc": 60.0}
+PTC_MAX_COUNT = 15
+PTC_MIN_REPEAT_S = 60.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +52,7 @@ class NeuromuscularMonitor:
         self._responses: list[float] = []
         self._train_t1: float = 0.0
         self._train_ratio: float = 1.0
+        self._deep_block_ratio: float = 0.0
 
     def establish_baseline(self, t1: float) -> None:
         """Record the reference response only before appreciable block."""
@@ -58,7 +61,7 @@ class NeuromuscularMonitor:
 
     def set_mode(self, mode: str, time: float) -> None:
         if mode not in DEFAULT_REPEAT_S:
-            raise ValueError("Choose TOF or single twitch")
+            raise ValueError("Choose TOF, single twitch, or PTC")
         if self._started is not None:
             raise ValueError("Wait for stimulation to finish")
         if mode == self.mode:
@@ -66,19 +69,21 @@ class NeuromuscularMonitor:
         self.mode = mode
         self.interval = DEFAULT_REPEAT_S[mode]
         self.reading = None
-        self._next_start = max(time, self._last_start + MIN_REPEAT_S)
+        min_gap = PTC_MIN_REPEAT_S if mode == "ptc" else MIN_REPEAT_S
+        self._next_start = max(time, self._last_start + min_gap)
 
     def set_repeat(self, seconds: float, time: float) -> None:
         if seconds not in (0, 10, 20, 30, 60):
             raise ValueError("Repeat must be off, 10, 20, 30, or 60 seconds")
         self.automatic = seconds != 0
         if self.automatic:
-            self.interval = seconds
-            self._next_start = max(time, self._last_start + seconds)
+            self.interval = max(PTC_MIN_REPEAT_S, seconds) if self.mode == "ptc" else seconds
+            self._next_start = max(time, self._last_start + self.interval)
 
     def measure(self, time: float) -> None:
-        if self._started is not None or time < self._last_start + MIN_REPEAT_S:
-            raise ValueError(f"Wait at least {MIN_REPEAT_S:.0f} seconds between stimulations")
+        min_gap = PTC_MIN_REPEAT_S if self.mode == "ptc" else MIN_REPEAT_S
+        if self._started is not None or time < self._last_start + min_gap:
+            raise ValueError(f"Wait at least {min_gap:.0f} seconds between stimulations")
         self._begin(time)
 
     def _begin(self, time: float) -> None:
@@ -86,13 +91,25 @@ class NeuromuscularMonitor:
         self._responses = []
         self._next_start = time + self.interval
 
-    def step(self, time: float, t1: float, ratio: float) -> None:
+    def step(self, time: float, t1: float, ratio: float, *, deep_block_ratio: float = 0.0) -> None:
         time_eps = 1e-9 * max(1.0, abs(time))
         if self._started is None:
             if not self.automatic or time + time_eps < self._next_start:
                 return
             self._begin(time)
         assert self._started is not None
+        if self.mode == "ptc":
+            # 5 s 50 Hz tetanus + 3 s pause + 15 single 1 Hz twitches; complete in 2 s sim time
+            # for responsive bedside interaction while enforcing the 60 s PTC repeat interval.
+            if not self._responses:
+                self._train_t1 = clamp01(t1)
+                self._train_ratio = clamp01(ratio)
+                self._deep_block_ratio = max(0.0, float(deep_block_ratio))
+                self._responses.append(self._train_t1)
+            if time + time_eps < self._started + 2.0:
+                return
+            self._finish(time)
+            return
         pulses = 4 if self.mode == "tof" else 1
         while len(self._responses) < pulses:
             index = len(self._responses)
@@ -101,11 +118,34 @@ class NeuromuscularMonitor:
             if index == 0:
                 self._train_t1 = clamp01(t1)
                 self._train_ratio = clamp01(ratio)
+                self._deep_block_ratio = max(0.0, float(deep_block_ratio))
             # Geometric interpolation supplies T2/T3 between the modeled T1/T4.
             self._responses.append(self._train_t1 * self._train_ratio ** (index / 3.0))
         self._finish(time)
 
     def _finish(self, time: float) -> None:
+        if self.mode == "ptc":
+            # Post-tetanic count (0-15) reflects deep non-depolarizing receptor occupancy
+            # when TOF count is 0 (Viby-Mogensen 1981; Thilen 2023).
+            if self._train_t1 >= DETECTION_THRESHOLD:
+                ptc = PTC_MAX_COUNT
+            elif self._deep_block_ratio > 0.0:
+                # Around Ce/EC50 ~ 1.6 (T1 just disappearing) PTC is ~12-15;
+                # above ~3.5x EC50 (intense block) PTC reaches 0.
+                frac = clamp01((3.5 - self._deep_block_ratio) / 2.0)
+                ptc = round(PTC_MAX_COUNT * frac)
+            else:
+                ptc = 0
+            responses = tuple(1.0 if i < ptc else 0.0 for i in range(4))
+            self.reading = TwitchReading(
+                time, "ptc", responses, ptc,
+                ratio=None,
+                t1=None if self.baseline is None else 100.0 * self._train_t1 / self.baseline,
+                low_signal=False,
+            )
+            self.history.append(self.reading)
+            self._started = None
+            return
         responses = tuple(self._responses)
         count = sum(value >= DETECTION_THRESHOLD for value in responses)
         complete_train = self.mode == "tof" and count == 4
@@ -119,22 +159,28 @@ class NeuromuscularMonitor:
         self._started = None
 
     def snapshot(self, time: float) -> dict:
+        min_gap = PTC_MIN_REPEAT_S if self.mode == "ptc" else MIN_REPEAT_S
         return {
             "mode": self.mode,
             "repeat": self.interval if self.automatic else 0,
             "baseline": self.baseline,
             "measuring": self._started is not None,
             "pulses": len(self._responses) if self._started is not None else 0,
-            "wait": max(0.0, self._last_start + MIN_REPEAT_S - time),
+            "wait": max(0.0, self._last_start + min_gap - time),
             "next": max(0.0, self._next_start - time) if self.automatic else None,
             "reading": None if self.reading is None else self.reading.to_dict(),
         }
 
     def trend_history(self, after: float = -math.inf) -> list[list]:
-        """Rows of [time, mode, TOF ratio or T1 %, low signal] newer than `after`."""
+        """Rows of [time, mode, TOF ratio / T1 % / PTC count, low signal] newer than `after`."""
         if not self.history or self.history[-1].time <= after:
             return []
         return [
-            [r.time, r.mode, r.ratio if r.mode == "tof" else r.t1, r.low_signal]
+            [
+                r.time,
+                r.mode,
+                r.ratio if r.mode == "tof" else (r.count if r.mode == "ptc" else r.t1),
+                r.low_signal,
+            ]
             for r in self.history if r.time > after
         ]

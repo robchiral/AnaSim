@@ -132,11 +132,17 @@ class Patient:
                 "creatinine_clearance_ml_min", self.creatinine_clearance_ml_min,
                 *CREATININE_CLEARANCE_RANGE_ML_MIN, unit="mL/min",
             )
+            normal_crcl = max(1.0, (183.0 - 1.34 * self.age) * self.pregnancy.filtration)
+            lo, hi = RENAL_FUNCTION_RANGE
+            inferred = min(hi, max(lo, self.creatinine_clearance_ml_min / normal_crcl))
             if self.renal_function == 1.0:
-                normal_crcl = max(1.0, (183.0 - 1.34 * self.age) * self.pregnancy.filtration)
-                inferred = self.creatinine_clearance_ml_min / normal_crcl
-                lo, hi = RENAL_FUNCTION_RANGE
-                self.renal_function = min(hi, max(lo, inferred))
+                self.renal_function = inferred
+            elif abs(self.renal_function - inferred) > 0.45:
+                raise ValueError(
+                    f"renal_function={self.renal_function:.2f} and "
+                    f"creatinine_clearance_ml_min={self.creatinine_clearance_ml_min:.1f} mL/min "
+                    "are grossly inconsistent"
+                )
         self.hepatic_function = bounded_number(
             "hepatic_function", self.hepatic_function, *HEPATIC_FUNCTION_RANGE
         )

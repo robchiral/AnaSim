@@ -19,13 +19,18 @@ export class NeuromuscularDisplay {
     }
     const reading = nmb.reading;
     const single = nmb.mode === "single";
-    const label = single ? "T1" : "TOF ratio";
-    let title = single ? "T1 / baseline" : "TOF";
+    const ptc = nmb.mode === "ptc";
+    const label = single ? "T1" : ptc ? "PTC" : "TOF ratio";
+    let title = single ? "T1 / baseline" : ptc ? "PTC" : "TOF";
     let value = "--", detail = "", quality = "";
     if (reading) {
       if (single) {
         value = reading.t1 === null ? "--" : `${Math.round(reading.t1)}%`;
         if (reading.t1 === null) detail = "Baseline unavailable";
+      } else if (ptc) {
+        title = "PTC";
+        value = `${reading.count}/15`;
+        detail = reading.count === 0 ? "Intense block" : reading.count < 15 ? "Deep block" : "TOF detectable";
       } else if (reading.ratio === null || reading.low_signal) {
         title = "TOF count";
         value = `${reading.count}/4`;
@@ -36,14 +41,16 @@ export class NeuromuscularDisplay {
       } else {
         title = label;
         value = `${Math.floor(reading.ratio)}%`;
-        quality = reading.ratio >= 90 ? "recovered" : "";
+        const t1Depressed = reading.t1 !== null && reading.t1 < 90;
+        if (t1Depressed) detail = `T1 ${Math.round(reading.t1)}%`;
+        quality = reading.ratio >= 90 && !t1Depressed ? "recovered" : "";
       }
     }
     setText($("nmb-title"), title);
     setText($("nmb-value"), value);
     setText($("nmb-detail"), detail);
     // Automatic readings are at most one interval old, so show the countdown instead.
-    const stimulation = single ? "Stimulating" : `Pulse ${nmb.pulses}/4`;
+    const stimulation = single ? "Stimulating" : ptc ? "PTC stimulating" : `Pulse ${nmb.pulses}/4`;
     setText($("nmb-status"), nmb.measuring ? stimulation :
       nmb.next !== null ? `Next ${Math.ceil(nmb.next)} s` :
       reading ? `${Math.floor(Math.max(0, time - reading.time))} s ago` : "");
@@ -56,7 +63,7 @@ export class NeuromuscularDisplay {
 
     const reference = nmb.baseline ?? 1;
     const bars = $("nmb-bars");
-    bars.hidden = !reading;
+    bars.hidden = !reading || ptc;
     for (let i = 0; i < 4; i++) {
       const bar = $(`nmb-t${i + 1}`);
       bar.hidden = single && i > 0;
@@ -79,17 +86,18 @@ export class NeuromuscularDisplay {
     }
     if (trendChanged) {
       const points = this.history.filter(([, mode, result, low]) => mode === nmb.mode && result !== null && !low);
+      const scaleMax = ptc ? 15 : 100;
       $("nmb-trend-points").innerHTML = points.map(([timestamp, , result]) => {
         const x = timestamp / TREND_S * 180;
-        const y = 37 - Math.min(100, Math.max(0, result)) / 100 * 34;
+        const y = 37 - Math.min(scaleMax, Math.max(0, result)) / scaleMax * 34;
         return `<path d="M${x.toFixed(2)} ${y.toFixed(2)}h0"/>`;
       }).join("");
       this.trendMode = nmb.mode;
       $("nmb-history").dataset.mode = nmb.mode;
-      const metric = single ? "T1 as a percentage of baseline" : label;
+      const metric = single ? "T1 as a percentage of baseline" : ptc ? "Post-tetanic count" : label;
       $("nmb-trend").setAttribute("aria-label", `${metric} over the past 15 minutes`);
       setText($("nmb-trend-label"), `${label} history`);
-      setText($("nmb-trend-empty"), single ? "No T1 readings" : "No ratio readings");
+      setText($("nmb-trend-empty"), single ? "No T1 readings" : ptc ? "No PTC readings" : "No ratio readings");
       $("nmb-trend-body").hidden = points.length === 0;
       $("nmb-trend-empty").hidden = points.length > 0;
     }

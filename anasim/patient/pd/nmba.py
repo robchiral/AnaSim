@@ -7,7 +7,11 @@ from scipy.linalg import expm
 
 from anasim.core.utils import clamp, clamp01, fill_response_rows
 from anasim.patient.patient import Patient
-from anasim.patient.pk_models import MammillaryPK, rocuronium_adjusted_weight
+from anasim.patient.pk_models import (
+    MammillaryPK,
+    _pregnancy_v1,
+    rocuronium_adjusted_weight,
+)
 
 MW_ROCURONIUM = 609.7
 MW_SUGAMMADEX = 2178.0
@@ -35,6 +39,28 @@ def succinylcholine_twitch_fraction(ce: float, *, central: bool = False) -> floa
     return 1.0 / (1.0 + (max(0.0, ce) / ec50) ** 4.0)
 
 
+def succinylcholine_laryngeal_spasm_factor(ce_central: float) -> float:
+    """Residual laryngeal adductor spasm strength (0-1) under succinylcholine.
+
+    Sub-intubating IV doses (0.1-0.3 mg/kg; Chung 1993) relax glottic spasm
+    without paralyzing the diaphragm.
+    """
+    return 1.0 / (1.0 + (max(0.0, ce_central) / 0.55) ** 2.2)
+
+
+def succinylcholine_phase2_tof_fraction(phase2_exposure: float) -> float:
+    """Phase II fade (TOF fraction 0-1) from cumulative succinylcholine exposure.
+
+    Single intubating doses (<=1.5 mg/kg; exposure < 32 mcg*min/mL) remain pure
+    Phase I (TOF 100%); cumulative 3-5 mg/kg produces Phase II fade with
+    TOF <= 0.30 (Lee 1975).
+    """
+    excess = max(0.0, phase2_exposure - 32.0)
+    if excess <= 0.0:
+        return 1.0
+    return 1.0 / (1.0 + (excess / 20.0) ** 2.2)
+
+
 def _sugammadex_pk(patient: Patient) -> MammillaryPK:
     """Kleijn 2011 sugammadex PK (umol, umol/L); the complex shares it.
 
@@ -47,7 +73,7 @@ def _sugammadex_pk(patient: Patient) -> MammillaryPK:
     w_v1 = min(w, (1.0 + 0.00354 * 74.5) / (2.0 * 0.00354))
     crcl = patient.creatinine_clearance()
     return MammillaryPK(
-        v1=4.42 * (w_v1 / 70.0) * (1.0 - 0.00354 * (w_v1 - 74.5)),
+        v1=_pregnancy_v1(patient, 4.42 * (w_v1 / 70.0) * (1.0 - 0.00354 * (w_v1 - 74.5))),
         cl1=0.093 * (2.0 * crcl / (crcl + 119.0)) ** 1.29 * (1.0 + 0.00378 * (w - 74.5)),
         v2=6.35 * size * math.exp(-0.00305 * (crcl - 119.0)),
         cl2=0.206 * size**0.75,
@@ -86,8 +112,11 @@ class TOFModel:
     def reset(self) -> None:
         self.sugammadex = _sugammadex_pk(self.patient)
         self.complex = _sugammadex_pk(self.patient)
-        # Rocuronium (mg/L) at the adductor pollicis and central effect sites.
+        # Rocuronium (mg/L) at the adductor pollicis and central effect sites,
+        # plus perijunctional buffer for sub-therapeutic sugammadex rebound (Eleveld 2007).
         self.ce = self.ce_central = 0.0
+        self._ce_peri = 0.0
+        self._sugammadex_given = False
         self._temp_c = self.patient.baseline_temp
 
     def update_hemodynamics(
@@ -101,6 +130,8 @@ class TOFModel:
             )
 
     def give_sugammadex(self, dose_mg: float) -> None:
+        if dose_mg > 0.0:
+            self._sugammadex_given = True
         self.sugammadex.state.c1 += dose_mg / MW_SUGAMMADEX * 1000.0 / self.sugammadex.v1
 
     def bound_rocuronium(self, roc_v1: float) -> float:
@@ -166,6 +197,8 @@ class TOFModel:
         x_cplx = np.array([cplx.state.c1, cplx.state.c2], dtype=float)
         v_roc, v_sug = roc.v1, sug.v1
         dt_min = 1.0 / 60.0
+        ce_peri = self._ce_peri
+        sug_given = self._sugammadex_given
         for second in range(1, max_seconds + 1):
             x_roc = t_roc @ x_roc
             r_c1, s_c1, c_c1 = float(x_roc[0]), float(x_sug[0]), float(x_cplx[0])
@@ -175,10 +208,43 @@ class TOFModel:
                 )
             x_sug = t_sug @ x_sug
             x_cplx = t_cplx @ x_cplx
-            ce = self._effect_site(ce, float(x_roc[0]), ke0, self.ks * float(x_sug[0]), delivery_time)
+            sug_c1 = float(x_sug[0])
+            removal = self._sugammadex_removal(sug_c1)
+            roc_c2 = float(x_roc[1]) if roc_n >= 2 else 0.0
+            ce_peri, back_flux = self._step_peri_and_backflux(
+                ce, ce_peri, roc_c2, sug_c1, delivery_time, sug_given=sug_given, update_peri=roc_n >= 2,
+            )
+            ce = self._effect_site(ce, float(x_roc[0]), ke0, removal, delivery_time, back_flux=back_flux, peri_ce=ce_peri)
             if ce <= target:
                 return second / 60.0
         return max_seconds / 60.0
+
+    def _sugammadex_removal(self, s_c1: float) -> float:
+        """Junctional rocuronium encapsulation rate (min^-1) for plasma sugammadex s_c1."""
+        return 0.58 * self.ks * s_c1 + 0.22 * s_c1 / (s_c1 + 0.30) if s_c1 > 0.0 else 0.0
+
+    def _step_peri_and_backflux(
+        self,
+        ce: float,
+        ce_peri: float,
+        roc_c2: float,
+        s_c1: float,
+        delivery_time: float,
+        *,
+        sug_given: bool,
+        update_peri: bool = True,
+    ) -> tuple[float, float]:
+        """Advance the perijunctional rocuronium buffer and return (new_ce_peri, back_flux)."""
+        k_peri_in = 0.12
+        peri_rate = k_peri_in + 0.25 * self.ks * s_c1
+        if update_peri and delivery_time > 0.0 and peri_rate > 0.0:
+            peri_target = k_peri_in * roc_c2 / peri_rate
+            ce_peri = peri_target + (ce_peri - peri_target) * math.exp(-peri_rate * delivery_time)
+        back_flux = 0.0
+        if sug_given and ce_peri > ce:
+            rebound_gate = 1.0 / (1.0 + (s_c1 / 0.20) ** 2) if s_c1 > 0.0 else 1.0
+            back_flux = 0.14 * rebound_gate
+        return ce_peri, back_flux
 
     def step_recovery(self, dt_sec: float, roc: MammillaryPK, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """Advance binding and the effect sites after the rocuronium PK step; return TOF %."""
@@ -202,20 +268,36 @@ class TOFModel:
         complex_.step(dt_sec, 0.0)
 
         ke0 = self._effective_ke0(mac_sevo)
-        removal = self.ks * sugammadex.state.c1
+        s_c1 = sugammadex.state.c1
+        # Rapid saturable junctional encapsulation plus linear Kleijn efflux
+        # reproduces rapid partial reversal and redistribution rebound after
+        # sub-therapeutic sugammadex doses (Eleveld 2007) while preserving
+        # Kleijn 2011 2/4/16 mg/kg reversal times.
+        removal = self._sugammadex_removal(s_c1)
         delivery_time = dt_min * roc.circulation
-        self.ce = self._effect_site(self.ce, cp, ke0, removal, delivery_time)
+        self._ce_peri, back_flux = self._step_peri_and_backflux(
+            self.ce, self._ce_peri, roc.state.c2, s_c1, delivery_time,
+            sug_given=self._sugammadex_given,
+        )
+        self.ce = self._effect_site(self.ce, cp, ke0, removal, delivery_time, back_flux=back_flux, peri_ce=self._ce_peri)
         ratio = self.central_ke0_ratio
-        self.ce_central = self._effect_site(self.ce_central, cp, ke0 * ratio, removal * ratio, delivery_time)
+        central_back = back_flux * ratio if self._sugammadex_given and self._ce_peri > self.ce_central else 0.0
+        self.ce_central = self._effect_site(
+            self.ce_central, cp, ke0 * ratio, removal * ratio, delivery_time,
+            back_flux=central_back, peri_ce=self._ce_peri,
+        )
         return self.compute_tof_from_ce(self.ce, mac_sevo, mac_n2o)
 
     @staticmethod
-    def _effect_site(ce: float, cp: float, ke0: float, removal: float, dt_min: float) -> float:
-        """Exact step of dCe/dt = ke0 (Cp - Ce) - removal Ce at constant inputs."""
-        rate = ke0 + removal
+    def _effect_site(
+        ce: float, cp: float, ke0: float, removal: float, dt_min: float,
+        *, back_flux: float = 0.0, peri_ce: float = 0.0,
+    ) -> float:
+        """Exact step of dCe/dt = ke0 (Cp - Ce) - removal Ce + back_flux (peri - Ce)."""
+        rate = ke0 + removal + back_flux
         if rate <= 0.0:
             return ce
-        target = ke0 * cp / rate
+        target = (ke0 * cp + back_flux * peri_ce) / rate
         return target + (ce - target) * math.exp(-rate * dt_min)
 
     @staticmethod
@@ -250,8 +332,10 @@ class TOFModel:
         # Smeulers 1995 Table 2: plasma concentration at Tw = 5% roughly halved
         # from 35.6 °C (1489 ng/mL) to 27.7 °C (751 ng/mL).
         temp_ec50 = 1.0 - 0.50 * clamp01((36.0 - t) / 9.0) if t < 36.0 else 1.0
+        sevo_mac = max(0.0, mac_sevo)
+        sevo_eff = sevo_mac if sevo_mac <= 1.0 else 1.0 + 0.55 * (sevo_mac - 1.0) / (1.0 + 0.35 * (sevo_mac - 1.0))
         factor = (
-            (1.0 - self.sevo_ec50_reduction * clamp01(mac_sevo))
+            max(0.25, 1.0 - self.sevo_ec50_reduction * sevo_eff)
             * (1.0 - (1.0 - self.f_n2o) * clamp01(mac_n2o))
             * temp_ec50
         )
@@ -288,4 +372,10 @@ class TOFModel:
         return 1.0 - reduction
 
 
-__all__ = ["ROCURONIUM_T1_EC50", "TOFModel", "succinylcholine_twitch_fraction"]
+__all__ = [
+    "ROCURONIUM_T1_EC50",
+    "TOFModel",
+    "succinylcholine_laryngeal_spasm_factor",
+    "succinylcholine_phase2_tof_fraction",
+    "succinylcholine_twitch_fraction",
+]

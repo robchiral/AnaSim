@@ -100,18 +100,22 @@ def _require_agents_stopped_balanced() -> Requirement:
 
     def check(engine) -> tuple[bool, str]:
         gas_off = not engine.circuit.vaporizer_on or engine.circuit.vaporizer_setting < 0.1
-        high_flow = engine.circuit.fgf_total() > 6.0
+        high_o2_flow = (
+            engine.circuit.fgf_total() > 6.0
+            and engine.circuit.delivered_o2_flow() >= 6.0
+            and engine.circuit.fgf_n2o <= 0.1
+        )
         vaporizer_records = engine.actions.since_case(ACTION_VAPORIZER)
         vaporizer_stopped = any(record.amount < 0.1 for record in vaporizer_records)
         flow_changed = action_taken_in_case(engine, ACTION_FGF)
         opioid_stopped, opioid_message = opioid_check(engine)
-        if gas_off and high_flow and vaporizer_stopped and flow_changed and opioid_stopped:
+        if gas_off and high_o2_flow and vaporizer_stopped and flow_changed and opioid_stopped:
             return True, ""
         msgs = []
         if not gas_off or not vaporizer_stopped:
             msgs.append("Turn off sevoflurane")
-        if not high_flow or not flow_changed:
-            msgs.append("Set FGF above 6 L/min")
+        if not high_o2_flow or not flow_changed:
+            msgs.append("Set high O₂ flow (> 6 L/min, N₂O off)")
         if not opioid_stopped:
             msgs.append(opioid_message)
         return False, join_messages(msgs)

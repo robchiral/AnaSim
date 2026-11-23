@@ -70,8 +70,9 @@ def create_anaphylaxis_scenario() -> Scenario:
 
     def prepare(engine) -> None:
         nonlocal baseline_map, baseline_ppeak
-        # Brown 2004 gave 1000 mL saline over 1-3 min.
-        engine.fluid_infusion_rate_ml_min = 500.0
+        # Deliver 1000 mL crystalloid over ~4 min so rapid resuscitation alongside
+        # IV epinephrine boluses avoids extreme overshoot hypertension.
+        engine.fluid_infusion_rate_ml_min = 250.0
         # Start on realistic air/O2 maintenance (~40% FiO2) so severe bronchospasm
         # produces both high airway pressures and visible desaturation unless treated.
         equilibrate_maintenance_fio2(engine, target_fio2=0.40, min_air_l_min=1.4, air_vo2_factor=5.0)
@@ -103,11 +104,20 @@ def create_anaphylaxis_scenario() -> Scenario:
         nonlocal crisis_visible
         crisis_visible = True
 
+    def stop_trigger(engine) -> None:
+        nonlocal crisis_visible
+        crisis_visible = True
+        engine.stop_anaphylaxis()
+
+    def _require_crisis_subsided(engine) -> tuple[bool, str]:
+        subsided = engine.anaphylaxis.severity < 0.35
+        return subsided, "" if subsided else "Continue support while anaphylaxis subsides"
+
     epinephrine = _require_epinephrine_started()
     fluids = require_fluid_bolus(
         1000.0,
-        labels=("crystalloid", "saline"),
-        fail_prefix="Start crystalloid resuscitation",
+        labels=("crystalloid", "saline", "colloid"),
+        fail_prefix="Start fluid resuscitation",
         event_name="anaphylaxis",
     )
     steps = [
@@ -148,6 +158,7 @@ def create_anaphylaxis_scenario() -> Scenario:
             check_requirements=require_all(
                 require_crisis_resolved_with_map("anaphylaxis", fail_crisis="Stop the suspected trigger"),
                 _require_bronchospasm_improved,
+                _require_crisis_subsided,
             ),
         ),
     ]
@@ -169,7 +180,7 @@ def create_anaphylaxis_scenario() -> Scenario:
         ),
         actions=(CaseAction(
             "stop_trigger", "Stop suspected trigger",
-            lambda engine: engine.stop_anaphylaxis(),
+            stop_trigger,
             lambda engine: engine.anaphylaxis.active and (crisis_visible or engine.anaphylaxis.severity >= 0.55),
             completed_label="Suspected trigger stopped",
         ),),

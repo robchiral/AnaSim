@@ -98,6 +98,24 @@ def run_headless(args):
     end_real = time.perf_counter()
     if engine.irreversible_arrest:
         print(f"Stopped at {engine.state.time:.1f}s: irreversible cardiac arrest ({engine.state.arrest_reason})")
+    state = engine.state
+    _, _, final_map = state.monitored_blood_pressure(sim_config.arterial_line_enabled)
+    final_map_valid = (
+        math.isfinite(final_map)
+        if sim_config.arterial_line_enabled
+        else (
+            state.nibp_timestamp is not None
+            and not state.nibp_measurement_failed
+            and math.isfinite(final_map)
+        )
+    )
+    final_map_text = f"{final_map:.1f}" if final_map_valid else "--"
+    final_spo2_text = f"{state.display_spo2:.1f}" if state.spo2_signal_valid else "--"
+    final_etco2_text = f"{state.display_etco2:.1f}" if state.etco2_signal_valid else "--"
+    print(
+        f"Final ({state.time:.2f}s) | HR: {state.display_hr:.1f} | MAP: {final_map_text} "
+        f"| SpO2: {final_spo2_text} | EtCO2: {final_etco2_text} | BIS: {state.display_bis:.1f}"
+    )
     print(f"Simulation completed in {end_real - start_real:.2f} seconds of real time")
 
 

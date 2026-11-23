@@ -296,12 +296,12 @@ class HemodynamicConfig:
     epi_gamma_alpha: float = 4.4
     # Primary arterial alpha acts below the high-concentration component.
     epi_emax_svr_alpha: float = 0.46
-    # A gradual alpha response at higher concentrations also supports CPR.
-    # High-dose behavior and this component's lag are extrapolated.
-    epi_c50_alpha_high: float = 25.0
-    epi_gamma_alpha_high: float = 2.0
+    # A gradual alpha response at higher concentrations also supports CPR and
+    # crosses over net SVR above baseline around 0.35-0.5 mcg/kg/min.
+    epi_c50_alpha_high: float = 13.0
+    epi_gamma_alpha_high: float = 3.2
     epi_tau_alpha_high_s: float = 180.0
-    epi_emax_svr_alpha_high: float = 1.05
+    epi_emax_svr_alpha_high: float = 1.15
     epi_tau_hr_s: float = 15.515422502151596
     epi_tau_beta2_s: float = 10.000898034308412
     epi_tau_pressor_s: float = 35.01803824066735
@@ -325,20 +325,24 @@ class HemodynamicConfig:
     vaso_emax_svr: float = 1.05
     vaso_emax_hr: float = -6.0
 
-    # Dobutamine (ng/mL); stress-echo plasma levels 27-403 ng/mL (Daly 1997).
+    # Dobutamine (ng/mL): Magnani 1977 (2.5-10 mcg/kg/min), Daly 1997 (5-30 mcg/kg/min,
+    # 27-403 ng/mL, HR 76->120 bpm), Hernandez 2013 (5 mcg/kg/min septic shock).
     dobu_c50: float = 80.0
     dobu_gamma: float = 1.3
-    dobu_emax_hr: float = 15.0
+    dobu_c50_hr: float = 210.0
+    dobu_gamma_hr: float = 2.0
+    dobu_emax_hr: float = 68.0
     dobu_emax_sv: float = 0.35
     dobu_emax_svr: float = -0.25
 
-    # Milrinone (ng/mL); therapeutic plasma range 100-300 ng/mL (label).
+    # Milrinone (ng/mL): Baim 1983 (SVR -35%, CI +53%, MAP -6% in HFrEF; vasodilatory
+    # hypotension on rapid bolus in normal/HFpEF hearts).
     mil_c50: float = 150.0
     mil_gamma: float = 1.2
-    mil_emax_hr: float = 6.0
-    mil_emax_sv: float = 0.45
-    mil_emax_svr: float = -0.35
-    mil_venous_pooling_fraction: float = 0.22
+    mil_emax_hr: float = 10.0
+    mil_emax_sv: float = 0.34
+    mil_emax_svr: float = -0.52
+    mil_venous_pooling_fraction: float = 0.34
 
     # Adrenoceptor blockade. Competitive antagonists divide the agonist
     # concentration by the dose ratio 1 + sum(C / Kb), so higher agonist doses
@@ -381,9 +385,9 @@ class HemodynamicConfig:
     # supports filling before unloading over several minutes, whereas preload
     # depletion removes that reserve (Weissler 1957; Berry 1959) and adrenergic
     # drive restores stroke volume at fixed rate (Ross 1965).
-    atropine_c50: float = 2.4  # ng/mL
-    atropine_gamma: float = 3.4
-    atropine_emax_hr: float = 60.0
+    atropine_c50: float = 1.80  # ng/mL
+    atropine_gamma: float = 2.2
+    atropine_emax_hr: float = 58.0
     atropine_propofol_cp50: float = 1.6
     unstim_sv_reservoir: float = 0.28
     unstim_sv_unload: float = 0.18

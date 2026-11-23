@@ -116,6 +116,7 @@ function onMessage({ data }) {
         last = { ...last, running: false, ended: true, recording: false };
         updateBar(last);
       }
+      casePanel?.freezeControls();
       alertDialog("Simulation stopped", data.message);
       break;
   }

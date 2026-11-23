@@ -1111,7 +1111,7 @@ select.setting-edited { color: #FCE181; }
 .monitor-detail-toggle { display: none; }
 .nmb-trend { display: flex; align-items: start; gap: var(--sp-1); min-width: 0; }
 .nmb-ref-tag { font-size: var(--text-xs); color: var(--ok); }
-.nmb-history[data-mode="single"] :is(.nmb-trend-threshold, .nmb-ref-tag) { display: none; }
+.nmb-history:is([data-mode="single"], [data-mode="ptc"]) :is(.nmb-trend-threshold, .nmb-ref-tag) { display: none; }
 .nmb-trend svg { display: block; flex: 1; min-width: 0; height: 32px; }
 .nmb-trend path { vector-effect: non-scaling-stroke; }
 .nmb-trend-guide { stroke: var(--monitor-rule); fill: none; }

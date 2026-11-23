@@ -58,7 +58,7 @@ class AirwayTuning:
     laryngospasm_tau_off: float = 8.0
     # Added resistance at full severity, cmH2O/(L/s).
     upper_resistance_gain: float = 40.0
-    bronch_resistance_gain: float = 20.0
+    bronch_resistance_gain: float = 21.0
     # Epinephrine bronchodilation (Larsson 1985); C50 and maximum are calibrated.
     epi_bronchodilation_c50: float = 1.0  # ng/mL
     epi_bronchodilation_max: float = 0.9
@@ -68,7 +68,7 @@ class AirwayTuning:
     capno_obstruction_upper_weight: float = 1.0
     capno_obstruction_bronch_weight: float = 0.7
     vq_mismatch_bronch_weight: float = 0.85
-    vq_mismatch_upper_weight: float = 0.25
+    vq_mismatch_upper_weight: float = 0.0
 
     # Upper-airway obstruction at full loss of consciousness without an ETT or
     # positive pressure. Scales with LOC because collapsibility rises abruptly

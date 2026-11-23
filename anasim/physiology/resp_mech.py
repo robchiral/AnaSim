@@ -792,6 +792,12 @@ class PatientEffort:
         self._knots += tuple(self.ti + self.release * s for s in steps) + (self.period,)
         self._values += tuple(value * (1.0 - s) ** 2 * (1.0 + (2.0 + m) * s) for s in steps) + (0.0,)
 
+    @staticmethod
+    def _effective_effort_resistance(lung: RespiratoryMechanics) -> float:
+        """Load-compensated resistance under severe acute airway obstruction."""
+        acute_added = max(0.0, lung.resistance - lung.reference_resistance)
+        return lung.reference_resistance + min(30.0, 0.45 * max(0.0, acute_added - 66.0))
+
     def _sine_flow_pressure(self, lung: RespiratoryMechanics, series_resistance: float, t: float) -> float:
         """Muscle pressure that draws a unit volume as half-sine flow over Ti, starting at rest."""
         w = math.pi / self.ti
@@ -802,11 +808,12 @@ class PatientEffort:
         # Tissue stress solves dP2/dt = E2 x flow - P2/tau2 from P2 = 0.
         gain = lung.viscoelastic_ratio * elastance * 0.5 * w / (rate * rate + w * w)
         p2 = gain * (rate * math.sin(w * t) - w * math.cos(w * t) + w * math.exp(-rate * t))
-        return (lung.reference_resistance + series_resistance) * flow + elastance * volume + p2
+        eff_r = self._effective_effort_resistance(lung)
+        return (eff_r + series_resistance) * flow + elastance * volume + p2
 
     def _unit_volume(self, lung: RespiratoryMechanics, series_resistance: float) -> float:
         """Peak volume from rest for a unit amplitude, breathing at the baseline pressure."""
-        scratch = RespiratoryMechanics(lung.compliance, lung.reference_resistance)
+        scratch = RespiratoryMechanics(lung.compliance, self._effective_effort_resistance(lung))
         scratch.viscoelastic_ratio, scratch.viscoelastic_tau = lung.viscoelastic_ratio, lung.viscoelastic_tau
         start = 0.0
         for end in self._knots:

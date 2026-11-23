@@ -180,7 +180,8 @@ def _configure_controlled_ventilation(engine: SimulationEngine, targets: Startup
     _depth_index, metabolic_factor = engine.thermal.depth_and_metabolism(
         engine.patient.baseline_temp, targets.prop_ce, targets.mac,
     )
-    target_va = resp.co2_constant * resp.vco2 * metabolic_factor / resp.paco2_setpoint
+    target_paco2 = resp.paco2_setpoint * resp._pco2_temp_scale_now
+    target_va = resp.co2_constant * resp.vco2 * metabolic_factor / max(10.0, target_paco2)
     # Body mass raises CO2 production without enlarging the lungs, so VT stops
     # at 8 mL/kg predicted body weight and the rate rises instead.
     max_vt = min(0.8, 0.008 * engine.patient.predicted_body_weight())
@@ -203,6 +204,8 @@ def _seed_steady_state_subsystems(
     engine.infusion_rates["nore"] = 0.0
 
     p = engine.patient
+    engine.state.temp_c = p.baseline_temp
+    runtime_core.update_pk_covariates(engine, engine.hemo.base_co_l_min)
     nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
     nominal_pk = {
         key: get_drug_spec(key).pk_model(nominal_patient, engine.config)
@@ -415,6 +418,8 @@ def _run_hidden_settle(
     engine.maintenance_fluid_rate_ml_min = 0.0
 
     nom_pk = nominal_pk or {}
+    p = engine.patient
+    nominal_bv_l = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex).estimate_blood_volume() / 1000.0
     steps = max(1, int(profile.settle_seconds / profile.settle_dt_seconds))
     # Capnograph and EtCO2 readout latch within ~2-3 breaths (~15 s), so only
     # collect 100 Hz airway samples during the final settle window.
@@ -427,12 +432,13 @@ def _run_hidden_settle(
         )
         runtime_core.update_pk_covariates(engine, engine.state.co)
         if nom_pk:
-            v_ratio = engine.hemo.blood_volume / engine.hemo.blood_volume_0
-            co_ratio = max(0.0, engine.state.co) / max(0.1, engine.hemo.base_co_l_min)
+            # Keep nominal manual-infusion reference free of patient disease covariates
+            # while still matching normal anesthetized cardiac-output suppression.
+            co_ratio = clamp(max(0.0, engine.state.co) / max(0.1, engine.hemo.base_co_l_min), 0.75, 1.0)
             for nom_model in nom_pk.values():
                 nom_model.update_hemodynamics(
-                    v_ratio, co_ratio, engine.hemo.renal_perfusion,
-                    blood_volume_l=engine.hemo.blood_volume_0 / 1000.0,
+                    1.0, co_ratio, 1.0,
+                    blood_volume_l=nominal_bv_l,
                 )
         if engine.config.tci_enabled:
             runtime_core.step_tci(engine, profile.settle_dt_seconds)

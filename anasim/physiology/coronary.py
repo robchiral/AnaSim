@@ -74,8 +74,12 @@ class CoronaryModel:
     @staticmethod
     def _zero_flow_pressure(sbp_mmhg: float, lap: float) -> float:
         """Coronary zero-flow back-pressure: 15-20 mmHg across perioperative
-        hypotension, falling curvilinearly in extreme shock (Jeremy 1986)."""
-        return max(lap, min(20.0, 0.2 * sbp_mmhg + 6.0 * clamp01((sbp_mmhg - 45.0) / 30.0)))
+        hypotension, falling curvilinearly in extreme shock (Jeremy 1986; Nanto 2001).
+        Above 25 mmHg LAP, subepicardial flow persists against venous pressure even
+        as subendocardial perfusion falls, moderating effective whole-wall back-pressure.
+        """
+        eff_lap = 25.0 + 0.60 * (lap - 25.0) if lap > 25.0 else lap
+        return max(eff_lap, min(20.0, 0.2 * sbp_mmhg + 6.0 * clamp01((sbp_mmhg - 45.0) / 30.0)))
 
     @staticmethod
     def _diastolic_fraction(hr: float) -> float:

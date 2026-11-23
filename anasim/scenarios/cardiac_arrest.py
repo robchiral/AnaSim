@@ -221,7 +221,7 @@ def create_cardiac_arrest() -> Scenario:
             check_requirements=require_all(
                 _require_rosc,
                 require_map_at_least(),
-                require_oxygenation(),
+                require_oxygenation(92.0),
                 require_tracheal_ventilation,
                 require_etco2_above(20),
             ),

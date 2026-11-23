@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING
 from anasim.core.enums import PULSELESS_RHYTHMS
 from anasim.core.runtime import is_perfusing
 from anasim.patient.pd import hypnotic_equivalent
-from anasim.patient.pd.anesthesia import PROPOFOL_LOC_TRANSFER
+from anasim.patient.pd.anesthesia import (
+    PROPOFOL_LOC_TRANSFER,
+    hypothermia_narcosis_fraction,
+)
 
 from .projection import (
     cardiovascular_hypnotic_ce,
@@ -66,6 +69,8 @@ def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
             or s.ketamine_ce >= 0.8
             or engine.cerebral.unresponsiveness >= 0.8
             or engine.toxicity.unresponsiveness >= 0.8
+            or hypothermia_narcosis_fraction(s.temp_c) >= 0.8
+            or unconscious >= 0.85
         )
     )
     if not sustained_hypnosis and (unconscious < 0.1 or tolerance < 0.1) and strength > 0.5:

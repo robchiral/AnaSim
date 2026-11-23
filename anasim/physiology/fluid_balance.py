@@ -131,11 +131,18 @@ class FluidBalance:
     """
 
     def __init__(self, weight: float, blood_volume_ml: float, red_cell_volume_ml: float,
-                 resting_ph: float = 7.4, extracellular_water: float = 1.0):
+                 resting_ph: float = 7.4, extracellular_water: float = 1.0,
+                 excess_fat_kg: float = 0.0):
         self.weight = weight
         self.plasma_l = (blood_volume_ml - red_cell_volume_ml) / 1000.0
         self.red_cells_l = red_cell_volume_ml / 1000.0
-        self.ecf_l = max(0.2 * weight * extracellular_water, self.plasma_l + 0.1 * weight)
+        # Adipose tissue has a much higher ECW/ICW ratio and lower total water
+        # than lean mass (Waki 1991); parameterize excess adipose above BMI 25 at
+        # 11% ECW and 3% ICW so normal-BMI patients (excess_fat_kg = 0) are unchanged.
+        fat_kg = max(0.0, min(weight * 0.75, excess_fat_kg))
+        base_mass = weight - fat_kg
+        base_ecf = (0.2 * base_mass + 0.11 * fat_kg) * extracellular_water
+        self.ecf_l = max(base_ecf, self.plasma_l + 0.1 * base_mass + 0.05 * fat_kg)
         self.initial_ecf_l = self.ecf_l
         self.amounts = {"sodium": 140.0 * self.ecf_l, "potassium": 4.0 * self.ecf_l,
                         "chloride": 104.0 * self.ecf_l, "calcium": 0.0,
@@ -151,12 +158,13 @@ class FluidBalance:
         self.amounts["calcium"] = self.ecf_l * self._total_calcium(_IONIZED_CALCIUM, 7.4)
         self.ph = self.resting_ph = resting_ph
         self.calcium_set_point = self.ionized_calcium(resting_ph)
-        self.icf_l = 0.4 * weight
+        self.icf_l = 0.4 * base_mass + 0.03 * fat_kg
         self.cell_k_mmol = 140.0 * self.icf_l
         self.cell_na_mmol = 10.0 * self.icf_l
         self.exogenous_calcium_mmol = 0.0
         self.pending_calcium_mmol = 0.0
         self._circulation = 1.0
+        self._arterial_k = 4.0
         self._cell_solute = self.icf_l * self._extracellular_solute() / self.ecf_l
         self.d_lactate_mmol = 0.0
         self.infused_l_lactate_mmol = 0.0
@@ -191,6 +199,13 @@ class FluidBalance:
 
     def concentration(self, ion: str) -> float:
         return self.amounts[ion] / self.ecf_l
+
+    @property
+    def arterial_potassium(self) -> float:
+        """Arterial-sample potassium (mmol/L); lags tissue efflux during zero-flow arrest."""
+        if self._circulation >= 0.99:
+            return self.concentration("potassium")
+        return self._arterial_k
 
     def _extracellular_solute(self) -> float:
         return self.amounts["sodium"] + self.amounts["potassium"]
@@ -372,33 +387,40 @@ class FluidBalance:
              renal_function: float, renal_perfusion: float, hepatic_function: float,
              oxygen_supply: float, epinephrine: float,
              succinylcholine_ce: float = 0.0, mh_severity: float = 0.0,
-             circulation: float = 1.0) -> None:
+             circulation: float = 1.0, lactate_acid_meq_l: float = 0.0) -> None:
         self.ph = ph
         self._circulation = clamp01(circulation)
         self._equilibrate_cell_water()
         if dt <= 0.0:
+            if self._circulation >= 0.99:
+                self._arterial_k = self.concentration("potassium")
             return
         if self.pending_calcium_mmol > 0.0 and self._circulation > 0.0:
             delivered = self.pending_calcium_mmol * -math.expm1(-self._circulation * dt / self._ca_push_tau_s)
             self.pending_calcium_mmol -= delivered
             self._deliver_calcium(delivered)
         minutes = dt / 60.0
-        self._clear_calcium(minutes * self._circulation)
+        self._clear_calcium(minutes * self._circulation, renal_function=renal_function)
         self._metabolize_buffers(minutes, hepatic_function, oxygen_supply)
         self._renal_balance(minutes, ph, paco2, resting_paco2, renal_function, renal_perfusion)
         self._exchange_potassium(
-            minutes, epinephrine, ph=ph,
+            minutes, epinephrine, ph=ph, paco2=paco2, resting_paco2=resting_paco2,
             succinylcholine_ce=succinylcholine_ce, mh_severity=mh_severity,
-            oxygen_supply=oxygen_supply,
+            oxygen_supply=oxygen_supply, lactate_acid_meq_l=lactate_acid_meq_l,
         )
+        ecf_k = self.concentration("potassium")
+        if self._circulation >= 0.99:
+            self._arterial_k = ecf_k
+        elif self._circulation > 0.0:
+            self._arterial_k += (ecf_k - self._arterial_k) * -math.expm1(-dt * self._circulation / 20.0)
 
     def _metabolize_buffers(self, minutes: float, hepatic_function: float, oxygen_supply: float) -> None:
-        # Kramer 2003: control Vdss 21 L and clearance 710 mL/min, consistent with
-        # intraoperative massive-transfusion citrate in Kahn 1979.
-        # The liver/perfusion scaling and D-isomer kinetics are reduced-model assumptions.
+        # Kramer 2003: control Vdss 21 L and clearance 710 mL/min, with cirrhotic
+        # clearance ~48% of control (matched at hepatic_function = 0.5).
+        # The perfusion scaling and D-isomer kinetics are reduced-model assumptions.
         oxy = clamp01(oxygen_supply)
-        citrate_rate = (0.710 * self.weight / 70.0 / self.citrate_volume_l
-                        * (0.25 + 0.75 * hepatic_function) * oxy)
+        hepatic_citrate = 0.05 + 0.95 * (max(0.0, hepatic_function) ** 1.15)
+        citrate_rate = 0.710 * self.weight / 70.0 / self.citrate_volume_l * hepatic_citrate * oxy
         citrate_removed = self.citrate_mmol * -math.expm1(-citrate_rate * minutes)
         self.citrate_mmol -= citrate_removed
         d_removed = self.d_lactate_mmol * -math.expm1(
@@ -473,8 +495,9 @@ class FluidBalance:
 
     def _exchange_potassium(
         self, minutes: float, epinephrine: float, *, ph: float = 7.4,
+        paco2: float = 40.0, resting_paco2: float = 40.0,
         succinylcholine_ce: float = 0.0, mh_severity: float = 0.0,
-        oxygen_supply: float = 1.0,
+        oxygen_supply: float = 1.0, lactate_acid_meq_l: float = 0.0,
     ) -> None:
         # Reversible transcellular K+ shifts (beta-2, succinylcholine, bidirectional pH)
         # plus cumulative rhabdomyolytic (MH) and severe hypoxic cellular K+ leak that
@@ -495,7 +518,24 @@ class FluidBalance:
         sux = 0.22 * sux_ce**2 / (sux_ce**2 + 1.5**2)
         delta_ph = ph - self.resting_ph
         if delta_ph < 0.0:
-            ph_efflux = 0.65 * (-delta_ph) + 0.80 * max(0.0, 7.15 - ph)
+            # Adrogue & Madias 1981; Orringer 1977: mineral metabolic acidemia
+            # drives substantial K+ efflux (~0.4-0.6 mEq/L per 0.1 pH), acute
+            # respiratory acidemia causes a modest shift (~0.10-0.13 mEq/L per
+            # 0.1 pH), and organic/lactic acidemia causes negligible direct shift.
+            eff_paco2 = max(10.0, paco2)
+            ref_paco2 = max(10.0, resting_paco2)
+            resting_hco3 = plasma_bicarbonate(self.resting_ph, ref_paco2)
+            acute_hco3 = max(1.0, resting_hco3 + 0.10 * max(0.0, eff_paco2 - ref_paco2))
+            resp_ph = 6.1 + math.log10(acute_hco3 / (_PLASMA_CO2_SOLUBILITY * eff_paco2))
+            resp_drop = min(-delta_ph, max(0.0, self.resting_ph - resp_ph))
+            metab_drop = max(0.0, -delta_ph - resp_drop)
+            organic_drop = min(metab_drop, 0.015 * max(0.0, lactate_acid_meq_l))
+            mineral_drop = max(0.0, metab_drop - organic_drop)
+            ph_efflux = (
+                0.65 * mineral_drop
+                + 0.45 * max(0.0, mineral_drop - 0.25)
+                + 0.15 * resp_drop
+            )
             ph_uptake = 0.0
         else:
             ph_efflux = 0.0
@@ -514,7 +554,7 @@ class FluidBalance:
         self.amounts["sodium"] += moved
         self.cell_na_mmol -= moved
 
-    def _clear_calcium(self, minutes: float) -> None:
+    def _clear_calcium(self, minutes: float, *, renal_function: float = 1.0) -> None:
         self.calcium_unmixed_mmol *= math.exp(-_CALCIUM_MIXING_PER_MIN * minutes)
         # Bolan 2001: elevated PTH did not restore citrate-induced calcium loss
         # within 90 min; clearing only calcium above the resting pool is a
@@ -522,7 +562,8 @@ class FluidBalance:
         excess = (self.amounts["calcium"] + self.calcium_unmixed_mmol / _CALCIUM_CENTRAL_FRACTION
                   - self.ecf_l * self._total_calcium(self.calcium_set_point, self.resting_ph))
         if excess > 0.0:
-            cleared = excess * -math.expm1(-_CALCIUM_CLEARANCE_PER_MIN * minutes)
+            clearance_rate = _CALCIUM_CLEARANCE_PER_MIN * (0.25 + 0.75 * clamp01(renal_function))
+            cleared = excess * -math.expm1(-clearance_rate * minutes)
             self.amounts["calcium"] -= cleared
             exo_cleared = min(cleared, self.exogenous_calcium_mmol)
             self.exogenous_calcium_mmol -= exo_cleared

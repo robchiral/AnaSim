@@ -202,7 +202,9 @@ def test_compressions_perfuse_the_heart_so_a_shock_restores_circulation(engine_f
 
 def test_compressions_make_fine_vf_coarse_before_a_late_shock(engine_factory):
     engine = _vf_engine(engine_factory)
+    engine.set_rhythm("SINUS")
     base_sv = engine.state.sv
+    engine.set_rhythm("VFIB")
     _run(engine, 480)
     coronary = engine.hemo.coronary
     assert coronary.energy_failure > 0.85

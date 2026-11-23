@@ -401,6 +401,7 @@ export class Controls {
       if (infusion) {
         card.querySelector(".rate-unit").textContent = spec.rate_unit;
         w.rate.value = "0";
+        w.rate.max = String(spec.max_rate ?? 2000);
         w.rate.setAttribute("aria-label", `${spec.name} infusion rate (${spec.rate_unit})`);
       }
       if (tci) {
@@ -574,7 +575,9 @@ export class Controls {
   }
 
   needsCsht() {
-    return this.currentTab === "Medications" && halfTimeDrugs.some((key) => this.drugs[key].card.open);
+    return this.currentTab === "Medications" && halfTimeDrugs.some(
+      (key) => this.drugs[key].card.open || !this.drugs[key].runningEditor?.hidden,
+    );
   }
 
   showCsht(values) {
@@ -972,7 +975,10 @@ export class Controls {
     setText(bagState, bagLabel);
     bagState.className = bagClass;
     const bagBreath = $("c-bag-breath");
-    if (bagBreath) bagBreath.disabled = this.ended || aplStandby || c.bag_mask;
+    if (bagBreath) {
+      bagBreath.disabled = this.ended || aplStandby || c.bag_mask;
+      setText(bagBreath, `Give breath (${c.bag.tv} mL)`);
+    }
     const o2Flush = $("c-o2-flush");
     if (o2Flush) {
       setPressed(o2Flush, Boolean(c.o2_flush), c.o2_flush ? "O₂ flushing…" : "O₂ flush");
@@ -994,7 +1000,7 @@ export class Controls {
       if (w.mode) {
         const idleMode = w.editor.values?.get(w.mode) ?? w.mode.value;
         setValue(w.mode, d.is_tci ? "tci" : d.rate > 0 ? "rate" : idleMode);
-        setValue(w.target, round(d.target));
+        setValue(w.target, round(d.target, 2));
       }
       if (w.rate) {
         this.syncDrugInputs(w);
@@ -1005,7 +1011,7 @@ export class Controls {
         w.runningRow.hidden = !active;
         if (active) {
           setText(w.runningValue, d.is_tci
-            ? `${w.spec.target_label}: ${round(d.target)} ${w.spec.tci_unit}, rate ${shortRate(d.rate)} ${w.spec.rate_unit}`
+            ? `${w.spec.target_label}: ${round(d.target, 2)} ${w.spec.tci_unit}, rate ${shortRate(d.rate)} ${w.spec.rate_unit}`
             : `${shortRate(d.rate)} ${w.spec.rate_unit}`);
         }
         running ||= active;

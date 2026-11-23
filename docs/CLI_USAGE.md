@@ -18,9 +18,10 @@ For installation and the browser interface, see the [README](../README.md).
 
 ## Headless runs
 
-Headless runs accept a flat JSON object. Omitted fields use their defaults, and
-unknown fields are rejected. On the command line, `--mode` selects the
-interface; in JSON, `mode` selects the patient's starting state.
+Headless runs accept a flat JSON object and print a final monitored-vitals
+summary when the run ends. Omitted fields use their defaults, and unknown fields
+are rejected. On the command line, `--mode` selects the interface; in JSON,
+`mode` selects the patient's starting state.
 
 Save this configuration as `patient_config.json` for balanced maintenance.
 
@@ -69,11 +70,12 @@ anasim --mode headless --duration 60 --config patient_config.json \
 | `position` | `"supine"` | `"supine"` or `"left_lateral"`; affects venous return from 20 weeks of pregnancy |
 
 Patient ranges are inclusive, and patient inputs and `dt` must be finite. If you
-set `baseline_hct`, it must be within 0.12 of `0.03 * baseline_hb`. During
-pregnancy, hemoglobin and hematocrit are the measured starting values.
-`engine.set_position("left_lateral")` changes position during a run. The [model
-guide](MODELS.md#supported-patient-domain) describes how the models represent
-these patient conditions.
+set `baseline_hct`, it must be within 0.12 of `0.03 * baseline_hb`, and setting
+both `renal_function` and `creatinine_clearance_ml_min` rejects grossly
+inconsistent combinations. During pregnancy, hemoglobin and hematocrit are the
+measured starting values. `engine.set_position("left_lateral")` changes position
+during a run. The [model guide](MODELS.md#supported-patient-domain) describes
+how the models represent these patient conditions.
 
 ### Initialization and runtime
 
@@ -155,7 +157,7 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 | `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates (propofol, remifentanil, rocuronium, dobutamine, milrinone, esmolol, ketamine, and lidocaine) use total body weight; other infusion rates are not weight-scaled |
 | `enable_tci(drug, target, mode="effect_site")` | Requires `tci_enabled=True`; a non-positive target stops TCI |
 | `set_drug_target(key, target)` | Preserves the active plasma or effect-site mode; `None` or a non-positive target stops TCI |
-| `give_blood(volume_ml, hematocrit=0.55)` | Queues packed red cells at 75 mL/min; donor hematocrit must be between 0.01 and 0.70 |
+| `give_blood(volume_ml, hematocrit=0.55)` | Queues packed red cells at 75 mL/min on the blood channel; donor hematocrit must be between 0.01 and 0.70. Repeated fluid, blood, or lipid boluses drain sequentially on their own channel rather than multiplying delivery rate |
 | `give_lipid_emulsion(volume_ml)` | Gives up to 3,000 mL of 20% lipid emulsion over 2.5 simulated minutes |
 | `set_lipid_infusion(ml_min)` | Sets a 20% lipid emulsion infusion from 0 to 200 mL/min |
 | `give_calcium_chloride(mg)` | Gives calcium chloride dihydrate up to 10,000 mg; 1 g contains 6.8 mmol calcium |

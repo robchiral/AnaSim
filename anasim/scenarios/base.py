@@ -144,17 +144,17 @@ def require_airway_selected(airway_type: str) -> Requirement:
     return check
 
 
-def _fgf_preox_state(engine) -> tuple[bool, str]:
+def _fgf_preox_state(engine, *, min_o2: float = 8.0) -> tuple[bool, str]:
     """Return whether current fresh gas flow is adequate for preoxygenation."""
     delivered_o2 = engine.circuit.delivered_o2_flow()
-    o2_ok = delivered_o2 >= 8.0
+    o2_ok = delivered_o2 >= min_o2
     air_ok = engine.circuit.fgf_air < 1.0
     n2o_ok = engine.circuit.fgf_n2o <= 0.1
     if o2_ok and air_ok and n2o_ok:
         return True, ""
     msgs = []
     if not o2_ok:
-        msgs.append(f"Delivered O₂: {round(delivered_o2, 1):g}/8+ L/min")
+        msgs.append(f"Delivered O₂: {round(delivered_o2, 1):g}/{min_o2:g}+ L/min")
     if not air_ok:
         msgs.append(f"Air: {round(engine.circuit.fgf_air, 1):g}/0 L/min")
     if not n2o_ok:
@@ -189,7 +189,7 @@ def require_fgf_set_for_preox(engine) -> tuple[bool, str]:
 
 def require_preoxygenation(engine) -> tuple[bool, str]:
     """Require oxygen by mask until the gas monitor shows end-tidal O₂ ≥ 90%."""
-    flow_ok, message = _fgf_preox_state(engine)
+    flow_ok, message = _fgf_preox_state(engine, min_o2=6.0)
     if not flow_ok:
         return False, message
     if engine.state.airway_mode != AirwayType.MASK:
@@ -382,10 +382,20 @@ def require_hypotension_or_treatment(
             and engine.state.nibp_measurement_failed
             and engine.state.map < threshold
         )
-        met = treated or failed_cuff_in_shock or (math.isfinite(map_val) and 0.0 < map_val < threshold)
+        stale_cuff = (
+            not engine.config.arterial_line_enabled
+            and not engine.state.nibp_measurement_failed
+            and (
+                engine.state.nibp_timestamp is None
+                or engine.state.time - engine.state.nibp_timestamp > 60.0
+            )
+        )
+        met = treated or failed_cuff_in_shock or (
+            not stale_cuff and math.isfinite(map_val) and 0.0 < map_val < threshold
+        )
         if met:
             return True, ""
-        if not math.isfinite(map_val) or map_val <= 0.0:
+        if stale_cuff or not math.isfinite(map_val) or map_val <= 0.0:
             return False, f"{_STALE_BP_MESSAGE}; {prompt}"
         shown_map = max(int(display_int(map_val)), round(threshold))
         return False, f"MAP: {shown_map}/<{threshold:.0f} mmHg; {prompt}"
@@ -694,6 +704,10 @@ def preroll_scenario(
     state = engine.state
     state.time = 0.0
     engine._next_nibp_time = 0.0
+    engine.nibp.is_cycling = False
+    engine.nibp.is_inflating = False
+    engine.nibp.cuff_pressure = 0.0
+    engine.nibp._reset_sweep()
     monitor_core.seed_nibp_reading(engine)
     nmb_baseline = engine.nmb.baseline
     engine.nmb = NeuromuscularMonitor()

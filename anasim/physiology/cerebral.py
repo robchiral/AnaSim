@@ -20,8 +20,8 @@ class CerebralModel:
     # Time without supply after which coma persists, a teaching threshold.
     # Supply of 10-20% counts partially.
     COMA_EXPOSURE_S = 300.0
-    CORTICAL_INJURY_ONSET_S = 240.0
-    CORTICAL_INJURY_SPAN_S = 80.0
+    CORTICAL_INJURY_ONSET_S = 245.0
+    CORTICAL_INJURY_SPAN_S = 55.0
     BRAINSTEM_INJURY_ONSET_S = 300.0
     BRAINSTEM_INJURY_SPAN_S = 300.0
     TISSUE_OXYGEN_TAU_S = 6.0
@@ -64,6 +64,7 @@ class CerebralModel:
         temp_c: float = 37.0,
         anesthetic_depth: float = 0.0,
         metabolic_stress: float = 0.0,
+        volatile_luxury: float = 0.0,
     ) -> None:
         if dt <= 0.0:
             return
@@ -84,37 +85,40 @@ class CerebralModel:
         # CMRO2 scales with temperature Q10 (~7%/°C), anesthetic suppression, and
         # cerebral hypermetabolic stress (seizures). Hypothermia slows both acute
         # oxygen store depletion and ischemic injury; normothermic anesthesia
-        # preserves the ~11 s arrest EEG flattening (de Vries 1998).
+        # preserves the ~11 s arrest EEG flattening (de Vries 1998) and does not
+        # shift the cellular ischemic threshold (Astrup 1981).
         temp_q10 = TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 22.0, 42.0))
+        ischemic_rate = max(0.20, temp_q10 * (1.0 + 0.80 * clamp01(metabolic_stress)))
         cmro2 = max(
             0.20,
-            temp_q10
-            * (1.0 - 0.35 * clamp01(anesthetic_depth))
-            * (1.0 + 0.80 * clamp01(metabolic_stress)),
+            ischemic_rate * (1.0 - 0.35 * clamp01(anesthetic_depth)),
         )
-        # Flow-metabolism coupling raises CBF up to 2x baseline to meet fever or
-        # seizure demand when perfusion pressure and arterial oxygen allow;
-        # normocapnic hypoxia adds up to 50% flow (calibrated), acute hypercapnia
-        # augments hypoxic vasodilation (Battisti-Charbonney 2011) up to twice
-        # baseline flow (Willie 2015), and hypocapnia lowers the flow ceiling
-        # until hypotension limits perfusion (Brian 1998).
-        metabolic_demand = max(1.0, cmro2)
-        demand_cbf = min(2.0, metabolic_demand)
+        # Kaisti 2003: propofol preserves CBF-CMRO2 coupling (constant OEF),
+        # whereas sevoflurane adds modest luxury perfusion (~15-18% higher CBF/CMRO2).
+        # Normocapnic hypoxia dilates up to 1.5x resting CBF, hypercapnia augments
+        # hypoxic vasodilation up to 2x (Battisti-Charbonney 2011; Willie 2015),
+        # and hypocapnia lowers the flow ceiling until pressure limits perfusion (Brian 1998).
+        resting_cbf = min(2.0, cmro2 * (1.0 + 0.18 * clamp01(volatile_luxury)))
         effective_paco2 = max(10.0, pa_co2) * 40.0 / self.csf_paco2
-        base_cbf = min(2.0, max(demand_cbf, min(1.5, 1.0 + 1.5 * max(0.0, 1.0 - oxygen))))
+        hypoxic_cbf = min(2.0, resting_cbf * min(1.5, 1.0 + 1.5 * max(0.0, 1.0 - oxygen)))
+        base_cbf = max(resting_cbf, hypoxic_cbf)
         if effective_paco2 >= 40.0:
-            cbf = min(2.0, base_cbf + 0.5 * clamp01((effective_paco2 - 40.0) / 30.0))
-            supply = pressure * min(metabolic_demand, cbf * oxygen)
+            cbf = min(2.0, base_cbf + 0.5 * resting_cbf * clamp01((effective_paco2 - 40.0) / 30.0))
+            supply = pressure * min(resting_cbf, cbf * oxygen)
         else:
             hypocapnia = clamp01((40.0 - effective_paco2) / 20.0)
             cbf = base_cbf * (1.0 - 0.38 * hypocapnia)
-            supply = min(pressure * min(metabolic_demand, base_cbf * oxygen), cbf * oxygen)
+            supply = min(pressure * min(resting_cbf, base_cbf * oxygen), cbf * oxygen)
 
         supply_ratio = min(1.0, supply / cmro2) if supply > 0.0 else 0.0
         o2_tau = self.TISSUE_OXYGEN_TAU_S / max(0.35, temp_q10)
         self.tissue_oxygen += (supply_ratio - self.tissue_oxygen) * -math.expm1(-dt / o2_tau)
         target = clamp01((0.6 - self.tissue_oxygen) / 0.25)
-        self.anoxic_s += dt * cmro2 * clamp01(2.0 - self.tissue_oxygen / 0.1)
+        severe_anoxia = clamp01(2.0 - self.tissue_oxygen / 0.10)
+        # Prolonged low-flow CPR (20-42% supply) slowly accumulates penumbral injury
+        # while still permitting short resuscitation without permanent deficit.
+        penumbra_anoxia = 0.18 * (clamp01((0.42 - self.tissue_oxygen) / 0.22) ** 1.5)
+        self.anoxic_s += dt * ischemic_rate * max(severe_anoxia, penumbra_anoxia)
         # Prolonged global anoxia beyond ~4 min causes irreversible cortical
         # suppression before caudal brainstem failure (Weisfeldt 2002;
         # Hofmeijer 2015; Jorgensen 1981 Part II).

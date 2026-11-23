@@ -412,6 +412,7 @@ export class Monitor {
     const entries = [
       ["lim-hr", formatLimitPair(t.HR_min, t.HR_max)],
       ["lim-map", formatLimitPair(t.MAP_min, t.MAP_max)],
+      ["lim-nibp-map", formatLimitPair(t.MAP_min, t.MAP_max)],
       ["lim-spo2", formatLimitPair(t.SpO2_min, t.SpO2_max)],
       ["lim-etco2", formatLimitPair(t.EtCO2_min, t.EtCO2_max)],
       ["lim-rr", formatLimitPair(t.RR_min, undefined)],
@@ -546,7 +547,7 @@ export class Monitor {
 
       const spo2SignalLost = vitals?.spo2 === null;
       for (const [key, raw] of Object.entries(active)) {
-        if (key === "Asystole" || key === "VFIB" || key === "VTACH" || key === "Arrest") continue;
+        if (key === "Asystole" || key === "VFIB" || key === "VTACH" || key === "Arrest" || key === "O2Supply") continue;
         if (key === "HR" && rhythmAlarm) continue;
         const side = typeof raw === "string" ? raw : raw?.low ? "low" : raw?.high ? "high" : "";
         if (!side) continue;

@@ -136,6 +136,7 @@ class RespiratoryModel:
         # Olofsen 2010: a linear opioid shift allows apnea at finite Ce.
         self.c50_remi = 1.6
         self.gamma_remi = 1.0  # Used by the separate shivering response.
+        self._opioid_drive_fraction = 1.0
         self._ventilatory_drive = 1.0
         self._metabolic_compensation = 1.0
         self._central_drive_fraction = 1.0
@@ -1037,19 +1038,24 @@ class RespiratoryModel:
                 if self.fluids is not None:
                     self.fluids.base_meq += unbuffered
         if transport.blood_volume > 0.0 and min(transport.base) < min_blood:
-            blood_deficit_per_l = min_blood - min(transport.base)
-            blood_deficit = blood_deficit_per_l * transport.blood_volume
-            transport.base = [b + blood_deficit_per_l for b in transport.base]
-            if self.fluids is not None:
-                self.fluids.adjust_running_blood_base(blood_deficit)
-            ext_avail = max(0.0, transport.extracellular_base - ext_floor)
-            from_ext = min(blood_deficit, ext_avail)
-            transport.extracellular_base -= from_ext
-            unbuffered = blood_deficit - from_ext
-            if unbuffered > 0.0:
-                self._unbuffered_acid_meq += unbuffered
+            blood_deficit = 0.0
+            updated_base = list(transport.base)
+            for idx, base_conc in enumerate(updated_base):
+                if base_conc < min_blood:
+                    blood_deficit += (min_blood - base_conc) * transport.volumes[idx]
+                    updated_base[idx] = min_blood
+            transport.base = updated_base
+            if blood_deficit > 0.0:
                 if self.fluids is not None:
-                    self.fluids.base_meq += unbuffered
+                    self.fluids.adjust_running_blood_base(blood_deficit)
+                ext_avail = max(0.0, transport.extracellular_base - ext_floor)
+                from_ext = min(blood_deficit, ext_avail)
+                transport.extracellular_base -= from_ext
+                unbuffered = blood_deficit - from_ext
+                if unbuffered > 0.0:
+                    self._unbuffered_acid_meq += unbuffered
+                    if self.fluids is not None:
+                        self.fluids.base_meq += unbuffered
 
     def remove_buffer_base(self, meq: float, *, venous_only: bool = False) -> None:
         """Remove buffer base across extracellular fluid and blood; a negative amount adds base."""
@@ -1324,16 +1330,17 @@ class RespiratoryModel:
         # Above therapeutic opioid analgesia (long_opioid_keep < OPIOID_OVERDOSE_THRESHOLD),
         # morphine and hydromorphone shift the apneic threshold and flatten CO2 sensitivity.
         long_opioid_shift = (
-            4.5 * (self.OPIOID_OVERDOSE_THRESHOLD - long_opioid_keep) / max(0.05, long_opioid_keep)
+            7.5 * (self.OPIOID_OVERDOSE_THRESHOLD - long_opioid_keep) / max(0.05, long_opioid_keep)
             if long_opioid_keep < self.OPIOID_OVERDOSE_THRESHOLD
             else 0.0
         )
         opioid_shift = 0.5 * max(0.0, ce_remi) / remi_c50 + long_opioid_shift
         resistive_keep = 1.0 / (1.0 + 1.25 * (1.0 - ventilation_efficiency))
-        vd = self.vd_deadspace
+        vd = self.vd_deadspace + 0.0025 * max(0.0, airway_pressure - 12.0)
         # Assisted volumes arrive net of any mask leak; upper-airway stenosis
         # increases turbulent dead-space mixing while distal bronchospasm lowers
-        # alveolar exchange efficiency after anatomic dead space.
+        # alveolar exchange efficiency on supported breaths without double-counting
+        # mechanics resistance on spontaneous breaths or V/Q dead space downstream.
         upper_eff = max(0.1, 1.0 - 0.2 * (1.0 - airway_patency))
         bronch_eff = clamp01(ventilation_efficiency / upper_eff)
         mech_bronch_eff = 1.0 - clamp01(mech_supported_fraction) * (1.0 - bronch_eff)
@@ -1410,10 +1417,13 @@ class RespiratoryModel:
             )
             co2_excess = max(0.0, sensed_paco2 * self._metabolic_compensation - self.paco2_setpoint)
             opioid_reference = 1.0 + gain * co2_excess
-            target_drive = opioid_reference * long_opioid_keep - opioid_shift
-            # Keep the controller signed during apnea. Clipping its internal state
-            # discards drug inhibition and makes recovery too early.
-            self._ventilatory_drive += alpha_drive * (target_drive - self._ventilatory_drive)
+            target_fraction = long_opioid_keep - opioid_shift / opioid_reference
+            # Lag the fractional opioid controller rather than total CO2 drive so
+            # drug-free CO2 swings do not produce a 150 s rebound overshoot while
+            # clamped-CO2 opioid kinetics match Olofsen 2010 identically.
+            if sub_dt > 0.0:
+                self._opioid_drive_fraction += alpha_drive * (target_fraction - self._opioid_drive_fraction)
+                self._ventilatory_drive = opioid_reference * self._opioid_drive_fraction
             self._resting_age_s += sub_dt
             if self._resting_pco2 is None or self._resting_age_s >= self.RESTING_PCO2_INTERVAL_S:
                 # The RR curve includes the infusion's CO2 rise. Extra rate feedback
@@ -1459,17 +1469,24 @@ class RespiratoryModel:
                 sub_dt, ce_prop, mac_sevo, mac_n2o,
                 ce_remi=ce_remi, long_opioid_keep=long_opioid_keep,
             )
-            # Compute neural demand with NMBA transmission loss but without fatigue so
-            # fatigued muscles still drive mechanics against obstruction instead of unloading.
+            # Preserve higher neural recruitment during shallow/moderate partial
+            # block (>50% central strength) so weakened muscles load realistic TTdi
+            # and trigger PSV, while deep paralysis (<=12.5%) silences transmission.
+            nmba_exp = 1.0 - 0.30 * clamp01((nmba_factor - 0.50) / 0.35)
+            nmba_transmission = (nmba_factor ** nmba_exp) * clamp01((nmba_factor - 0.125) / 0.035)
             neural_rr, neural_vt, drive_central = self._unassisted(
-                sensed_paco2, prop_keep, sevo_keep, nmba_factor,
+                sensed_paco2, prop_keep, sevo_keep, nmba_transmission,
                 unconscious, opioid_reference, resting_pco2=self._resting_pco2,
                 hypoxic_drive=hypoxic_drive,
                 opioid_controller_fraction=long_opioid_keep, opioid_rate_fraction=long_opioid_rate,
                 sevo_rate=sevo_rate,
             )
             effort_rr = neural_rr
-            effort_vt = neural_vt * fatigue_keep
+            effort_vt = (
+                neural_vt * (nmba_factor / max(1e-6, nmba_transmission)) * fatigue_keep
+                if nmba_transmission > 0.0
+                else 0.0
+            )
             if effort_rr < RR_APNEA_THRESHOLD or effort_vt < VT_MIN:
                 effort_rr = effort_vt = 0.0
             state.effort_rr, state.effort_vt = effort_rr, effort_vt
@@ -1510,7 +1527,12 @@ class RespiratoryModel:
                 total_va_l_min = 0.0
             state.va = total_va_l_min
 
-            effective_va = total_va_l_min * (1.0 - 0.6 * vq_mismatch)
+            zone1_frac = clamp01(
+                0.015 * max(0.0, airway_pressure - 12.0) * (1.0 + 1.5 * clamp01(1.0 - perfusion_ratio))
+            )
+            applied_bronch_eff = mech_bronch_eff if (measured_breaths or mech_rr > 0) else bronch_eff
+            vq_va_residual = min(1.0, (1.0 - 0.6 * vq_mismatch) / max(0.1, applied_bronch_eff))
+            effective_va = total_va_l_min * vq_va_residual * (1.0 - zone1_frac)
             # EtCO2 samples diluted alveolar CO2. The PaCO2-EtCO2 gap widens
             # with dead space, V/Q mismatch, obstruction, and low cardiac output
             # (Russell 1990; Lujan 2008; Kim 2019).
@@ -1522,7 +1544,7 @@ class RespiratoryModel:
                 vt_for_gradient_l = current_vt / 1000.0
             vt_l = max(0.05, vt_for_gradient_l)
             vd_vt = min(0.95, vd / vt_l)
-            vd_vt_excess = max(0.0, vd_vt - 0.30 + perfusion_excess)
+            vd_vt_excess = max(0.0, vd_vt - 0.30 + perfusion_excess + 0.5 * zone1_frac)
             etco2_gradient = min(
                 20.0, 4.0 + 15.0 * vd_vt_excess + 8.0 * vq_mismatch + 6.0 * (1.0 - ventilation_efficiency)
             )
@@ -1745,7 +1767,8 @@ class RespiratoryModel:
     def initialize_drug_effects(self, ce_prop: float, ce_remi: float) -> None:
         """Seed the signed ventilatory controller for a maintenance history."""
         remi_c50 = self.c50_remi * (1.0 - 0.32 * ce_prop / (1.0 + ce_prop))
-        self._ventilatory_drive = 1.0 - 0.5 * ce_remi / remi_c50
+        self._opioid_drive_fraction = 1.0 - 0.5 * ce_remi / remi_c50
+        self._ventilatory_drive = self._opioid_drive_fraction
 
     def _solve_resting_pco2(
         self, prop_keep: float, sevo_keep: float, muscle_factor: float,
@@ -1835,6 +1858,11 @@ class RespiratoryModel:
                 + 0.3 * hypoxic_drive,
             )
         rate_fraction *= opioid_rate_fraction * (0.6 + 0.4 * prop_keep) * sevo_rate
+        if opioid_controller_fraction < self.OPIOID_OVERDOSE_THRESHOLD:
+            overdose_rate_scale = 1.0 - 0.85 * clamp01(
+                (self.OPIOID_OVERDOSE_THRESHOLD - opioid_controller_fraction) / 0.075
+            )
+            rate_fraction *= overdose_rate_scale
         if self._metabolic_compensation != 1.0:
             rate_fraction *= math.sqrt(self._metabolic_compensation)
         if controller == 0.0 or prop_keep * sevo_keep <= 1e-4:
@@ -1857,8 +1885,11 @@ class RespiratoryModel:
         # drugs raise; awake, hypocapnia below the set point weakens effort.
         resting = self.paco2_setpoint if resting_pco2 is None else max(self.paco2_setpoint, resting_pco2)
         below_resting = resting - pco2
-        if below_resting > 0.0:
-            kept = math.sqrt(1.0 - unconscious * clamp01(below_resting / self.APNEIC_GAP))
+        # Active carotid-body hypoxic drive lowers the unconscious apneic threshold
+        # under light sedation without affecting normoxic (100% O2) or deep GA apnea.
+        eff_below_resting = max(0.0, below_resting - 9.0 * hypoxic_drive)
+        if eff_below_resting > 0.0:
+            kept = math.sqrt(1.0 - unconscious * clamp01(eff_below_resting / self.APNEIC_GAP))
             rr *= kept
             vt *= kept
         below = self.paco2_setpoint - pco2

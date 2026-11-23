@@ -25,7 +25,14 @@ class ThermalModel:
     def __init__(self, patient: Patient, tuning: ThermalTuning | None = None):
         self.tuning = tuning or ThermalTuning()
         self.heat_production_basal = 70.0 * (patient.weight / 70.0) ** 0.75 * patient.pregnancy.metabolism  # W
-        self.heat_capacity = patient.weight * self.tuning.specific_heat_j_kg_k  # J/K
+        # Excess adipose tissue above BMI 25 has lower specific heat (~2300 J/kg/K)
+        # than normal body composition (~3470 J/kg/K).
+        normal_weight = 25.0 * (patient.height / 100.0) ** 2
+        excess_fat = max(0.0, patient.weight - normal_weight)
+        base_mass = patient.weight - excess_fat
+        self.heat_capacity = (
+            base_mass * self.tuning.specific_heat_j_kg_k + excess_fat * 2300.0
+        )  # J/K
         self.surface_area = patient.bsa  # m^2
         # Kurz 1995 (Anesth Analg 80:562): first-hour redistribution core cooling
         # falls linearly with weight-to-surface-area ratio (~1.6 °C near 38 kg/m²
@@ -35,7 +42,7 @@ class ThermalModel:
         # Awake vasomotor tone holds core temperature at baseline: heat loss
         # matches basal production there. Anesthesia replaces it with the
         # passive vasodilated conductance in proportion to depth.
-        basal_temp_factor = max(0.5, TEMP_METABOLIC_COEFFICIENT ** (37.0 - patient.baseline_temp))
+        basal_temp_factor = max(0.25, TEMP_METABOLIC_COEFFICIENT ** (37.0 - patient.baseline_temp))
         self.awake_conductance = (
             self.heat_production_basal * basal_temp_factor
             / max(1.0, patient.baseline_temp - self.tuning.ambient_temp_c)
@@ -62,15 +69,15 @@ class ThermalModel:
         unconscious: float = 0.0, *, perfusing: bool = True,
     ) -> float:
         """Equilibrium shivering intensity (0-1) from cold, emergence, opioids, muscle strength, and perfusion."""
-        if not perfusing or temp_c <= 29.0:
+        if not perfusing or temp_c <= 31.0:
             return 0.0
         depth_factor = clamp01(self.depth_index)
         threshold = SHIVER_BASE_THRESHOLD - SHIVER_DEPTH_DROP_MAX * depth_factor - SHIVER_REMI_DROP_MAX * opioid_effect
         temp_deficit = max(0.0, threshold - temp_c)
         cold_drive = clamp01(temp_deficit / SHIVER_DELTA_FULL)
-        if temp_c < 31.0:
-            # Severe hypothermia progressively abolishes central shivering thermogenesis by 29 °C.
-            cold_drive *= clamp01((temp_c - 29.0) / 2.0)
+        if temp_c < 33.0:
+            # Brown 2012 (NEJM): shivering peaks in mild hypothermia and ceases near 32 °C (HT I -> II).
+            cold_drive *= clamp01((temp_c - 31.0) / 2.0)
 
         emergence_bis = clamp01((bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
         emergence = min(emergence_bis, clamp01(1.0 - unconscious))
@@ -84,7 +91,7 @@ class ThermalModel:
         depth_index = mac + prop_ce / tuning.depth_propofol_scale
         metabolic_factor = TEMP_METABOLIC_COEFFICIENT ** (37.0 - temp_c)
         metabolic_factor *= 1.0 - tuning.metabolic_reduction_max * clamp01(depth_index)
-        metabolic_factor = max(0.5, metabolic_factor) * (1.0 + SHIVER_MAX_MULTIPLIER * shiver_level)
+        metabolic_factor = max(0.25, metabolic_factor) * (1.0 + SHIVER_MAX_MULTIPLIER * shiver_level)
         return depth_index, metabolic_factor
 
     def update_depth(self, temp_c: float, prop_ce: float, mac: float) -> None:
@@ -136,7 +143,7 @@ class ThermalModel:
 
         aerobic_gate = clamp(oxygen_supply_fraction, 0.12, 1.0)
         production = (
-            self.heat_production_basal * max(0.5, self.metabolic_factor) * aerobic_gate
+            self.heat_production_basal * max(0.25, self.metabolic_factor) * aerobic_gate
             + self.extra_heat_w
         )
         anesthetized = max(
@@ -144,7 +151,22 @@ class ThermalModel:
             tuning.anesthetized_conductance_w_per_c * self.surface_area / 1.9,
         )
         conductance = self.awake_conductance + (anesthetized - self.awake_conductance) * depth_factor
-        heat_loss = conductance * (temp_c - tuning.ambient_temp_c)
+        # Phase-3 thermoregulatory vasoconstriction (Sessler 2000; Kurz 1995):
+        # once core temperature falls below the anesthetized vasoconstriction
+        # threshold (~34.3-34.6 °C at 1 MAC), cutaneous constriction limits
+        # further passive heat loss to establish a thermal plateau.
+        if perfusing:
+            vasoconst_threshold = self.baseline_temp - 0.3 - 2.4 * depth_factor
+            if temp_c < vasoconst_threshold:
+                vasoparesis = clamp(1.0 - 0.18 * max(0.0, 32.5 - temp_c), 0.2, 1.0)
+                vasoconst = clamp01((vasoconst_threshold - temp_c) / 1.0) * vasoparesis
+                plateau_conductance = 0.72 * self.awake_conductance
+                conductance = conductance + (plateau_conductance - conductance) * vasoconst
+        # Forced-air warming blankets shield ~60% of BSA from ambient room air
+        # while delivering convective heat transfer (Giesbrecht 1994).
+        warmer_active = warmer_target_c > 0.0
+        exposed_fraction = 0.40 if warmer_active else 1.0
+        heat_loss = conductance * exposed_fraction * (temp_c - tuning.ambient_temp_c)
 
         # Active sweating and cutaneous vasodilation regulate fever above the
         # hypothalamus's setpoint (shifted upward by sepsis and anesthesia; Sessler 2000).
@@ -162,14 +184,21 @@ class ThermalModel:
 
         # Anesthetic vasodilation moves core heat to the periphery over the first
         # hour (Matsukawa 1995). Vasoconstriction on lightening traps it peripherally,
-        # so the core deficit does not reverse.
-        deficit_gap = self.redistribution_target_j(self.depth_index) - self.redistributed_heat_j
-        redistribution_w = max(0.0, deficit_gap) / tuning.redistribution_tau_s
-        self.redistributed_heat_j += redistribution_w * dt
+        # and zero-flow arrest halts convective redistribution.
+        if perfusing:
+            deficit_gap = self.redistribution_target_j(self.depth_index) - self.redistributed_heat_j
+            redistribution_w = max(0.0, deficit_gap) / tuning.redistribution_tau_s
+            self.redistributed_heat_j += redistribution_w * dt
+        else:
+            redistribution_w = 0.0
 
         warming = 0.0
-        if warmer_target_c > 0:
-            warming = tuning.bair_hugger_gain_w_per_c * max(0.0, warmer_target_c - temp_c)
+        if warmer_active:
+            warming = (
+                tuning.bair_hugger_gain_w_per_c
+                * (self.surface_area / 1.9)
+                * (warmer_target_c - temp_c)
+            )
 
         cooling = 0.0
         if surface_cooling:

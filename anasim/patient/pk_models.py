@@ -37,6 +37,7 @@ class PKState:
     ce_hr: float = 0.0  # Ketamine and amiodarone chronotropy
     ce_transit: float = 0.0  # Transit before the primary effect site
     ce_neuro: float = 0.0  # Local anesthetic CNS exposure
+    ce_central: float = 0.0  # Faster central/laryngeal effect site (succinylcholine)
 
 
 def _pow(base: float, exp: float) -> float:
@@ -660,6 +661,10 @@ class MorphinePK(MammillaryPK):
     and multiplied by it for hydromorphone. Volumes scale with Janmahasatian
     fat-free mass and rate constants with FFM**-0.25 around a 70 kg, 170 cm
     reference (Meissner 2025), with age and hepatic/renal clearance scaling.
+    Active morphine-6-glucuronide (M6G) accumulates in renal impairment
+    (Osborne 1993: M6G AUC(0-12) ~5x normal in nondialysis kidney failure),
+    adding excess CNS/respiratory activity above the normal-GFR baseline
+    already folded into Olofsen's morphine PD.
     """
 
     def __init__(self, patient: Patient):
@@ -668,7 +673,9 @@ class MorphinePK(MammillaryPK):
             hepatic_fraction=0.65, renal_fraction=0.35,
         )
         super().__init__(
-            **params, **_NO_CO_COVARIATE,
+            **params,
+            cl1_co_exponent=0.7,
+            distribution_co_exponent=0.0,
             renal_fraction=renal_fraction,
             ke0=math.log(2.0) / (0.73 / 1.02 * 60.0),
             additional_effect_sites=(
@@ -676,6 +683,67 @@ class MorphinePK(MammillaryPK):
                 ("ce_rr", math.log(2.0) / (2.2 / 0.736 * patient.variability.opioid_rate.half_time * 60.0)),
             ),
         )
+        self._hepatic_function = patient.hepatic_function
+        self._renal_capacity = patient.renal_clearance_factor
+        self._renal_perfusion = 1.0
+        self._m6g_actual = 0.0
+        self._m6g_normal = 0.0
+        self._m6g_ce_actual = 0.0
+        self._m6g_ce_normal = 0.0
+
+    @property
+    def m6g_excess_ce(self) -> float:
+        """Excess active M6G effect-site concentration (morphine ng/mL equiv) in renal failure."""
+        return max(0.0, self._m6g_ce_actual - self._m6g_ce_normal)
+
+    def reset(self) -> None:
+        super().reset()
+        self._renal_perfusion = 1.0
+        self._m6g_actual = 0.0
+        self._m6g_normal = 0.0
+        self._m6g_ce_actual = 0.0
+        self._m6g_ce_normal = 0.0
+
+    def update_hemodynamics(
+        self, v_ratio: float, co_ratio: float, renal_perfusion: float = 1.0,
+        blood_volume_l: float | None = None, temp_c: float = 37.0,
+        *, temp_met: float | None = None, temp_dist: float | None = None,
+    ) -> None:
+        self._renal_perfusion = max(0.0, renal_perfusion)
+        super().update_hemodynamics(
+            v_ratio, co_ratio, renal_perfusion,
+            blood_volume_l=blood_volume_l, temp_c=temp_c,
+            temp_met=temp_met, temp_dist=temp_dist,
+        )
+
+    def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
+        state = super().step(dt_sec, input_rate_per_sec)
+        if dt_sec > 0.0 and (state.c1 > 0.0 or self._m6g_actual > 0.0 or self._m6g_normal > 0.0
+                             or self._m6g_ce_actual > 0.0 or self._m6g_ce_normal > 0.0):
+            dt_min = dt_sec / 60.0
+            circ = self.circulation
+            # Hepatic glucuronidation produces M6G proportional to hepatic clearance;
+            # M6G clears almost entirely by GFR (Osborne 1993: normal t1/2 2.6 +/- 0.7 h SD;
+            # modeled with a calibrated 2 h reference half-life).
+            k_form = 0.011 * self._hepatic_function * circ
+            k_elim_norm = (math.log(2.0) / 120.0) * circ
+            eff_gfr = 0.18 + 0.82 * clamp(self._renal_capacity * self._renal_perfusion, 0.0, 1.0)
+            k_elim_act = (math.log(2.0) / 120.0) * eff_gfr * circ
+            # Scale M6G activity so severe renal failure (~4.8-5.0x M6G AUC(0-12); Osborne 1993)
+            # builds clinically significant delayed respiratory depression over 2-6 h.
+            inflow = 0.28 * k_form * state.c1
+            if k_elim_norm > 0.0:
+                target_n = inflow / k_elim_norm
+                self._m6g_normal = target_n + (self._m6g_normal - target_n) * math.exp(-k_elim_norm * dt_min)
+            if k_elim_act > 0.0:
+                target_a = inflow / k_elim_act
+                self._m6g_actual = target_a + (self._m6g_actual - target_a) * math.exp(-k_elim_act * dt_min)
+            # Slow blood-brain barrier equilibration of M6G (t1/2 ~3.5 h).
+            ke0_m6g = (math.log(2.0) / 210.0) * circ
+            alpha_ce = -math.expm1(-ke0_m6g * dt_min)
+            self._m6g_ce_normal += (self._m6g_normal - self._m6g_ce_normal) * alpha_ce
+            self._m6g_ce_actual += (self._m6g_actual - self._m6g_ce_actual) * alpha_ce
+        return state
 
 
 class HydromorphonePK(MammillaryPK):
@@ -688,7 +756,9 @@ class HydromorphonePK(MammillaryPK):
             hepatic_fraction=0.85, renal_fraction=0.15,
         )
         super().__init__(
-            **params, **_NO_CO_COVARIATE,
+            **params,
+            cl1_co_exponent=0.7,
+            distribution_co_exponent=0.0,
             renal_fraction=renal_fraction,
             ke0=math.log(2.0) / (0.73 * 1.02 * 60.0),
             additional_effect_sites=(
@@ -729,12 +799,14 @@ class EphedrinePK(MammillaryPK):
     def __init__(self, patient: Patient):
         lean_w = _lean_weight_kg(patient)
         lean_size = lean_w / 70.0
+        clearance_scale, renal_fraction = renal_capacity_scaling(patient, 0.70)
         super().__init__(
             v1=_pregnancy_v1(patient, 1.15 * lean_w),
-            cl1=0.47 * 70.0 / 60.0 * lean_size**0.75,
+            cl1=0.47 * 70.0 / 60.0 * lean_size**0.75 * clearance_scale,
             v2=2.85 * lean_w,
             cl2=4.0 * lean_size**0.75,
             ke0=0.9,
+            renal_fraction=renal_fraction,
             **_NO_CO_COVARIATE,
         )
 
@@ -744,13 +816,32 @@ class SuccinylcholinePK(MammillaryPK):
 
     Transit and effect-site rates (1/min) fit Table 2 twitch time courses at
     0.4-1 mg/kg. Concentrations are mcg/mL; hydrolysis has no organ/flow covariate.
+    A faster central/laryngeal site (`ce_central`, Dhonneur 1999; Chung 1993)
+    mediates rapid glottic/diaphragmatic onset, and cumulative effect-site
+    exposure tracks Phase II desensitization (Lee 1975).
     """
 
     def __init__(self, patient: Patient):
         params = _from_rate_constants(0.009 * patient.weight, 5.0, 2.9, 1.6, 0.0, 0.0)
         params["v1"] = _pregnancy_v1(patient, params["v1"])
-        super().__init__(**params, ke0=0.4, effect_site_transit_rate=1.3,
-                         intravascular_clearance=True, **_NO_CO_COVARIATE)
+        super().__init__(
+            **params, ke0=0.4, effect_site_transit_rate=1.3,
+            additional_effect_sites=(("ce_central", 0.50),),
+            intravascular_clearance=True, **_NO_CO_COVARIATE,
+        )
+        self.phase2_exposure = 0.0  # Cumulative mcg*min/mL exposure driving Phase II fade
+
+    def reset(self) -> None:
+        super().reset()
+        self.phase2_exposure = 0.0
+
+    def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
+        state = super().step(dt_sec, input_rate_per_sec)
+        if dt_sec > 0.0 and (state.ce > 0.0 or self.phase2_exposure > 0.0):
+            dt_min = dt_sec / 60.0
+            decay = math.exp(-math.log(2.0) * dt_min / 30.0)
+            self.phase2_exposure = self.phase2_exposure * decay + state.ce * dt_min
+        return state
 
 
 class MidazolamPK(MammillaryPK):
@@ -776,6 +867,7 @@ class MidazolamPK(MammillaryPK):
             v3=7.9 * tbw_size * 0.065 / 0.0083,
             cl3=7.9 * 0.065 * lean_size**0.75,
             ke0=0.11 - 0.03 * years,
+            cl1_co_exponent=0.2,
         )
         self._propofol_cp_ng_ml = 0.0
 
@@ -875,6 +967,7 @@ class DantrolenePK(MammillaryPK):
             v1=_pregnancy_v1(patient, 19.45 * size), v2=16.95 * size,
             cl1=2.5 / 60.0 * size**0.75 * organ_clearance_scaler(patient, hepatic_fraction=1.0),
             cl2=0.4 * size**0.75, ke0=math.log(2.0) / 0.75,
+            cl1_co_exponent=0.2,
         )
 
 
@@ -897,6 +990,7 @@ class AmiodaronePK(MammillaryPK):
             cl1=0.22 * 70.0 / 60.0 * lean_flow * organ_clearance_scaler(patient, hepatic_fraction=1.0),
             cl2=0.71 * 70.0 / 60.0 * lean_flow, ke0=math.log(2.0) / 2.5,
             additional_effect_sites=(("ce_cv", math.log(2.0) / 0.25), ("ce_hr", math.log(2.0) / 18.0)),
+            cl1_co_exponent=0.2,
         )
 
 
@@ -1095,16 +1189,21 @@ class DobutaminePK(MammillaryPK):
 
 
 class MilrinonePK(MammillaryPK):
-    """DailyMed label: Vd 0.38-0.45 L/kg, CL 0.13 L/kg/h, mostly renal."""
+    """Two-compartment IV milrinone PK: V1 0.155 L/kg, Vdss 0.45 L/kg, CL 0.13 L/kg/h
+    (Baim 1983, mean +/- SEM: peak 392 +/- 23 ng/mL at 5 min, 180 +/- 19 ng/mL at 30 min,
+    terminal t1/2 136 min; DailyMed label).
+    """
 
     def __init__(self, patient: Patient):
         lean_w = _lean_weight_kg(patient)
         lean_flow = (lean_w / 70.0) ** 0.75
         clearance_scale, renal_fraction = renal_capacity_scaling(patient, 0.9)
         super().__init__(
-            v1=_pregnancy_v1(patient, 0.45 * lean_w),
+            v1=_pregnancy_v1(patient, 0.155 * lean_w),
             cl1=0.13 * 70.0 / 60.0 * lean_flow * clearance_scale,
-            ke0=0.12,
+            v2=0.295 * lean_w,
+            cl2=0.28 * lean_flow,
+            ke0=0.25,
             renal_fraction=renal_fraction,
         )
 

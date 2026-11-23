@@ -334,7 +334,7 @@ class SimulationEngine(DrugControllerMixin):
 
         self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)
         self.compression_clock = CompressionClock()
-        self.arterial_waveform = ArterialWaveformRenderer(self.patient.age)
+        self.arterial_waveform = ArterialWaveformRenderer(self.patient.age, bsa=self.patient.bsa)
         resting_sbp, resting_dbp = self.arterial_waveform.steady_pressures(
             self.patient.baseline_map, self.hemo.base_sv, self.hemo.base_hr,
         )
@@ -648,6 +648,9 @@ class SimulationEngine(DrugControllerMixin):
         self.actions.record(
             self.state.time, ACTION_AIRWAY, label=self.state.airway_mode.value
         )
+        if self.state.airway_mode == AirwayType.ETT:
+            self.laryngospasm_severity = 0.0
+            self.state.laryngospasm = 0.0
         if self.state.airway_mode == AirwayType.NONE and self.bag_mask_active:
             self.set_bag_mask_ventilation(False)
         if self.state.airway_mode == AirwayType.NONE:
@@ -679,18 +682,23 @@ class SimulationEngine(DrugControllerMixin):
             return "moderate"
         return "severe"
 
-    def set_rhythm(self, rhythm_name: str):
-        normalized = str(rhythm_name).upper()
-        rhythm = next(
-            (item for item in RhythmType if item.value == rhythm_name or item.name == normalized),
-            None,
-        )
+    def set_rhythm(self, rhythm_name: str | RhythmType):
+        rhythm: RhythmType | None
+        if isinstance(rhythm_name, RhythmType):
+            rhythm = rhythm_name
+        else:
+            normalized = str(rhythm_name).upper()
+            rhythm = next(
+                (item for item in RhythmType if item.value == rhythm_name or item.name == normalized),
+                None,
+            )
         if rhythm is None:
             raise ValueError(f"Unknown rhythm: {rhythm_name!r}")
         self.hemo.rhythm_type = rhythm
         self.arrhythmias.reset()
         self.cardiac_cycle.clear_rate_history()
         self.hemo.invalidate_state_cache()
+        projection_core.project_hemodynamics(self, self.hemo.state)
 
     def set_chest_compressions(self, active: bool):
         """Start or stop chest compressions at the guideline rate."""
@@ -699,6 +707,7 @@ class SimulationEngine(DrugControllerMixin):
             self.compressions_started_at = self.state.time if active else None
             self.actions.record(self.state.time, ACTION_COMPRESSIONS, label="on" if active else "off")
         self.hemo.compressions = active
+        projection_core.project_hemodynamics(self, self.hemo.state)
 
     def charge_defibrillator(self) -> None:
         """Start a 5-second charge to 200 J."""
@@ -757,6 +766,7 @@ class SimulationEngine(DrugControllerMixin):
             hyperkalemia_block=self.hemo.hyperkalemia_block,
         )
         self.defibrillator.consume(time, synchronized)
+        self.ecg.trigger_shock_artifact()
         self.actions.record(time, ACTION_SHOCK,
                             label="synchronized" if synchronized else "unsynchronized", amount=SHOCK_ENERGY_J)
         self.hemo.coronary.apply_shock(SHOCK_ENERGY_J)
@@ -766,10 +776,12 @@ class SimulationEngine(DrugControllerMixin):
                 prev_rhythm, rhythm, ischemia=self.hemo.coronary.ischemia,
                 hypoxia=hypoxia, energy_failure=energy_failure,
                 energy_reserve=self.hemo.coronary.energy_reserve,
+                perfusing=runtime_core.is_perfusing(self),
             )
         self.hemo.invalidate_state_cache()
         if not synchronized and self.hemo.rhythm_type != prev_rhythm:
             self.cardiac_cycle.clear_rate_history()
+        projection_core.project_hemodynamics(self, self.hemo.state)
 
     def set_bag_mask_ventilation(
         self,
@@ -843,9 +855,10 @@ class SimulationEngine(DrugControllerMixin):
         abg_hco3 = float(state.hco3)
         result = BloodGasResult(
             drawn_at=state.time, ph=abg_ph, pa_co2=abg_paco2, pao2=self.resp.arterial_po2_at_37(),
-            hco3=abg_hco3, base_excess=state.base_excess, lactate=state.lactate,
+            hco3=abg_hco3, base_excess=state.base_excess,
+            lactate=float(self.lactate.arterial_concentration),
             sodium=float(fluids.concentration("sodium")),
-            potassium=float(fluids.concentration("potassium")),
+            potassium=float(fluids.arterial_potassium),
             chloride=float(fluids.concentration("chloride")),
             ionized_calcium=float(fluids.ionized_calcium(abg_ph)),
             sao2=state.sao2, hb=float(self.hemo.hb_conc), fio2=state.fio2,
@@ -910,7 +923,7 @@ class SimulationEngine(DrugControllerMixin):
                 self.pk["roc"], max_seconds=max_seconds,
                 mac_sevo=self.pk_sevo.state.mac,
             )
-        pump_model = self.pump_pk.get(key)
+        pump_model = self.pump_pk.get(key) if self.config.tci_enabled else None
         if pump_model is not None and (key in self.tci or pump_model.state.ce > 1e-12):
             model = pump_model
         else:

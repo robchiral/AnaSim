@@ -70,6 +70,10 @@ class LungAeration:
         self.opening_midpoint = 31.0 + 0.35 * (patient.bmi - 24.0)
         # Closing pressure rises with BMI alongside airway opening pressure (Pelosi 1998; Hedenstierna 2015).
         self.closing_pressure = 5.0 + 0.30 * max(0.0, patient.bmi - 25.0)
+        bmi_factor = clamp01((patient.bmi - 30.0) / 20.0)
+        self.min_recruited = self.MIN_RECRUITED - 0.22 * bmi_factor
+        self.atelectasis_shunt = self.ATELECTASIS_SHUNT + 0.10 * bmi_factor
+        self.collapse_deficit = 0.0
         self.lung_water = 0.0  # mL/kg predicted body weight above normal
         self.flooded = 0.0
         self.chest_wall_stiffness = 1.0
@@ -87,8 +91,12 @@ class LungAeration:
 
     @property
     def shunt_fraction(self) -> float:
-        # Atelectatic and flooded units retain perfusion; no instantaneous oxygen benefit from PEEP.
-        return self.ATELECTASIS_SHUNT * self.atelectatic + (1.0 - self.atelectatic) * self.flooded
+        # Atelectatic and flooded units retain perfusion; closed-airway O2 absorption
+        # collapse adds shunt once gas volume falls past closing capacity (~55% of FRC).
+        base_shunt = self.atelectasis_shunt * self.atelectatic + (1.0 - self.atelectatic) * self.flooded
+        eff_collapse = clamp01((clamp01(self.collapse_deficit) - 0.36) / 0.54)
+        collapse_shunt = 0.55 * (eff_collapse ** 1.5)
+        return min(0.70, base_shunt + (1.0 - base_shunt) * collapse_shunt)
 
     def advance(self, dt: float, pressure_area: float) -> bool:
         """Accumulate distending pressure; change aeration at fixed physical times."""
@@ -98,11 +106,11 @@ class LungAeration:
             return False
         pressure = self.pressure_area / self.elapsed
         fraction = 1.0 / (1.0 + math.exp((self.opening_midpoint - pressure) / self.OPENING_WIDTH))
-        target = self.MIN_RECRUITED + (1.0 - self.MIN_RECRUITED) * fraction
+        target = self.min_recruited + (1.0 - self.min_recruited) * fraction
         opening = self.OPENING_RATE if target > self.recruited else 0.0
         spontaneous = 0.02 * (1.0 - self.unconscious) if self.spontaneous_breathing else 0.0
         closing = max(0.0, self.closing_pressure - pressure) / 300.0
-        minimum = 1.0 - (1.0 - self.MIN_RECRUITED) * self.unconscious
+        minimum = 1.0 - (1.0 - self.min_recruited) * self.unconscious
         if self.recruited <= minimum:
             closing = 0.0
         rate = opening + spontaneous + closing
@@ -117,7 +125,7 @@ class LungAeration:
         awake_active = self.spontaneous_breathing and self.glottic_intact
         awake_reopening = self.awake_clearance_rate * (1.0 - self.unconscious) if awake_active else 0.0
         persistent_rate = self.persistent_clearance_rate * (1.0 - self.unconscious) if awake_active else 0.0
-        closed_max = (1.0 - self.MIN_RECRUITED) * self.unconscious
+        closed_max = (1.0 - self.min_recruited) * self.unconscious
         raw_absorption = self.ABSORPTION_RATE * math.exp(-self.INERT_GAS_PROTECTION * self.inert_fraction)
         raw_absorption *= max(0.0, self.closing_pressure - pressure) / self.closing_pressure
         absorption = raw_absorption if self.atelectatic < closed_max else 0.0
@@ -167,7 +175,7 @@ class LungAeration:
         """Static recoil and tangent compliance at an absolute gas volume (L)."""
         compliance = self.static_compliance
         inflation = (volume - self.relaxed_volume) / compliance
-        excess = max(0.0, inflation - 25.0)
-        recoil = inflation + excess ** 3 / 1200.0
-        tangent = compliance / (1.0 + excess * excess / 400.0)
+        excess = max(0.0, inflation - 16.0)
+        recoil = inflation + excess ** 3 / 1400.0
+        tangent = compliance / (1.0 + 3.0 * excess * excess / 1400.0)
         return recoil, tangent

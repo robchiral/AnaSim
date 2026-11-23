@@ -58,7 +58,14 @@ def _require_controlled(engine) -> tuple[bool, str]:
     active_sevo = max(0.0, engine.pk_sevo.state.mac - 0.25)
     trigger_drive = clamp(active_sevo / 0.55, 0.0, 2.5) + clamp(sux_cp / 0.4, 0.0, 2.0)
     inhibition = hill_function(engine.state.dantrolene_ce, 1.5 * (1.0 + 4.5 * trigger_drive), 3.0)
-    if inhibition >= 0.30 and not engine.circuit.vaporizer_on and sux_cp <= 0.01:
+    doses = engine.actions.since_event("malignant_hyperthermia", ACTION_DRUG_BOLUS, labels=("dantrolene",))
+    given = sum(dose.amount for dose in doses)
+    recent_full_dose = (
+        bool(doses)
+        and given >= 2.5 * engine.patient.weight - 0.1
+        and (engine.state.time - doses[-1].time <= 90.0)
+    )
+    if (inhibition >= 0.30 or recent_full_dose) and not engine.circuit.vaporizer_on and sux_cp <= 0.01:
         return False, "MH resolving; continue monitoring EtCO₂, HR, and rigidity"
     return False, "Signs of MH persist; repeat dantrolene"
 
@@ -87,12 +94,12 @@ def _stabilize_instruction(engine) -> str:
     low, high = _mh_normocapnia_bounds(engine)
     return (
         f"Wean ventilation toward <b>EtCO₂ {low}-{high} mmHg</b> as hypermetabolism resolves. "
-        "Turn off the <b>forced-air warmer</b>. Start <b>surface cooling</b> if temperature exceeds 39 °C "
-        "or rises rapidly, and stop below 38 °C.<br><br>"
+        "Turn off the <b>forced-air warmer</b>. Start <b>surface cooling</b> if temperature is 38 °C or higher "
+        "or rises rapidly, and stop cooling once below 38 °C.<br><br>"
         "<i>Monitor blood gases, potassium, CK, myoglobin, glucose, coagulation, and urine output. "
-        "Treat hyperkalemia with calcium, sodium bicarbonate, and insulin with glucose; avoid calcium channel "
-        "blockers with dantrolene. Arrange at least 24 hours of ICU monitoring, redosing per protocol, "
-        "and MH testing referral.</i>"
+        "Treat hyperkalemia with calcium and insulin with glucose (and bicarbonate per local protocol); "
+        "avoid calcium channel blockers with dantrolene. Arrange at least 24 hours of ICU monitoring, "
+        "redosing per protocol, and MH testing referral.</i>"
     )
 
 
@@ -132,7 +139,9 @@ def create_malignant_hyperthermia() -> Scenario:
         return met, "" if met else f"Minute ventilation: {mv:.1f}/{target:.1f}+ L/min"
 
     propofol = require_infusion_started(
-        "propofol", fail_message="Start propofol", event_name="malignant_hyperthermia",
+        "propofol", "midazolam", "ketamine",
+        fail_message="Start propofol (or non-triggering TIVA)",
+        event_name="malignant_hyperthermia",
     )
     oxygen = require_oxygen_flow(10.0)
     controlled = require_all(_require_dantrolene, _require_controlled)

@@ -13,7 +13,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Gobel et al. (1978). *Circulation*. [Rate-pressure product and myocardial oxygen consumption in angina](https://pubmed.ncbi.nlm.nih.gov/624164/).
 - Wilson et al. (1987). *Circulation*. [Coronary lesion geometry and flow reserve](https://pubmed.ncbi.nlm.nih.gov/3829334/).
 - Arthurs et al. (2016). *Am J Physiol Heart Circ Physiol*. [Coronary blood-flow control and myocardial oxygen balance](https://pubmed.ncbi.nlm.nih.gov/26945076/).
-- Harasawa et al. (1992). *Circ Res*. [Basal metabolism and unloaded myocardial oxygen consumption](https://pubmed.ncbi.nlm.nih.gov/1628397/).
+- Harasawa et al. (1992). *Circ Res*. [Basal metabolism and unloaded myocardial oxygen consumption](https://doi.org/10.1161/01.res.71.2.414).
 - Jeremy et al. (1986). *Cardiovasc Res*. [Diastolic ventricular pressure and the coronary pressure-flow relation](https://pubmed.ncbi.nlm.nih.gov/3802128/).
 - Nanto et al. (2001). *Jpn Circ J*. [Coronary zero-flow pressure in humans](https://pubmed.ncbi.nlm.nih.gov/11548878/).
 - Nebout et al. (2013). *Ann Fr Anesth Reanim*. [BIS for early detection of cerebral hypoperfusion](https://pubmed.ncbi.nlm.nih.gov/23953319/).
@@ -25,6 +25,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Brian (1998). *Anesthesiology*. [Carbon dioxide and the cerebral circulation](https://pubmed.ncbi.nlm.nih.gov/9605698/).
 - Battisti-Charbonney et al. (2011). *J Physiol*. [Cerebrovascular response to CO₂ in humans](https://pubmed.ncbi.nlm.nih.gov/21521758/).
 - Willie et al. (2015). *J Cereb Blood Flow Metab*. [Brain blood flow and oxygen delivery in breath-hold divers](https://pubmed.ncbi.nlm.nih.gov/25370857/).
+- Kaisti et al. (2003). *Anesthesiology*. [Regional cerebral blood flow and oxygen consumption under sevoflurane and propofol](https://pubmed.ncbi.nlm.nih.gov/12960544/).
 - Westlake et al. (1955). *Q J Med*. [Carbon dioxide narcosis in emphysema](https://pubmed.ncbi.nlm.nih.gov/14395425/).
 - Sieker and Hickam (1956). *Medicine (Baltimore)*. [Clinical syndrome of carbon dioxide intoxication](https://pubmed.ncbi.nlm.nih.gov/13407339/).
 - Turnbull et al. (2008). *Anaesthesia*. [End-tidal CO₂ and BIS](https://pubmed.ncbi.nlm.nih.gov/18412642/).
@@ -74,6 +75,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Meissner et al. (2023). *Anesthesiology*. [Morphine and hydromorphone effects and respiratory time courses](https://pubmed.ncbi.nlm.nih.gov/37014986/).
 - Meissner et al. (2025). *Br J Anaesth*. [Morphine and hydromorphone population PK](https://pubmed.ncbi.nlm.nih.gov/39592363/).
 - Olofsen et al. (2026). *Br J Anaesth*. [Morphine and hydromorphone PD for each endpoint](https://pubmed.ncbi.nlm.nih.gov/41656122/), [supplement](https://ars.els-cdn.com/content/image/1-s2.0-S0007091225009134-mmc1.docx), and [correction](https://pubmed.ncbi.nlm.nih.gov/42150960/).
+- Osborne et al. (1993). *Clin Pharmacol Ther*. [Morphine and morphine-6-glucuronide pharmacokinetics in kidney failure](https://pubmed.ncbi.nlm.nih.gov/8354025/).
 
 ### Midazolam and etomidate
 
@@ -115,6 +117,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Heinonen et al. (2015). *Basic Clin Pharmacol Toxicol*. [Lipid emulsion and lidocaine toxicity in volunteers](https://pubmed.ncbi.nlm.nih.gov/25207682/).
 - Fettiplace et al. (2014). *Anesthesiology*. [Cardiotonic effect of lipid emulsion in cardiac toxicity](https://pubmed.ncbi.nlm.nih.gov/24496123/).
 - Neal et al. (2021). *Reg Anesth Pain Med*. [ASRA 2020 LAST checklist](https://pubmed.ncbi.nlm.nih.gov/33148630/).
+- Hiller et al. (2009). *Anesthesiology*. [Epinephrine threshold effect during lipid resuscitation from bupivacaine overdose](https://pubmed.ncbi.nlm.nih.gov/19704251/).
 - Himes et al. (1977). *Anesthesiology*. [Lidocaine and anesthetic requirement](https://pubmed.ncbi.nlm.nih.gov/911052/).
 - Hans et al. (2010). *Br J Anaesth*. [Lidocaine reduces propofol requirements during stimulation](https://pubmed.ncbi.nlm.nih.gov/20650919/).
 - Altermatt et al. (2012). *Br J Anaesth*. [Lidocaine during propofol maintenance and recovery](https://pubmed.ncbi.nlm.nih.gov/22490315/).
@@ -145,6 +148,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Nickalls and Mapleson (2003). *Br J Anaesth*. [Sevoflurane MAC](https://pubmed.ncbi.nlm.nih.gov/12878613/).
 - Yasuda et al. (1991). *Anesth Analg*. [Sevoflurane and isoflurane uptake and washout](https://pubmed.ncbi.nlm.nih.gov/1994760/).
 - Carpenter et al. (1986). *Anesth Analg*. [Inhaled anesthetic kinetics in humans](https://pubmed.ncbi.nlm.nih.gov/3706798/).
+- Lockwood et al. (1997). *Br J Anaesth*. [Effect of temperature on volatile anesthetic blood-gas solubility](https://pubmed.ncbi.nlm.nih.gov/9389273/).
 - Goto et al. (2000). *Anesthesiology*. [Nitrous oxide MAC at awakening](https://pubmed.ncbi.nlm.nih.gov/11046204/).
 - Katoh et al. (1997). *Br J Anaesth*. [Sevoflurane-nitrous oxide interaction at awakening](https://pubmed.ncbi.nlm.nih.gov/9389264/).
 
@@ -166,6 +170,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Hirota et al. (1999). *Eur J Anaesthesiol*. [Nitrous oxide and BIS](https://pubmed.ncbi.nlm.nih.gov/10713872/).
 - Ozcan et al. (2010). *J Neurosurg Anesthesiol*. [Nitrous oxide effects on BIS and entropy](https://pubmed.ncbi.nlm.nih.gov/20844378/).
 - Hans et al. (2005). *Br J Anaesth*. [Ketamine effects on BIS and spectral entropy during sevoflurane anesthesia](https://pubmed.ncbi.nlm.nih.gov/15591328/).
+- Pilge et al. (2006). *Anesthesiology*. [Calculation time delay of BIS and EEG depth-of-anesthesia indices](https://pubmed.ncbi.nlm.nih.gov/16508396/).
 
 ## Stimulation responses
 
@@ -181,6 +186,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 ## Neuromuscular block
 
 - Kleijn et al. (2011). *Br J Clin Pharmacol*. [Sugammadex PK/PD](https://pubmed.ncbi.nlm.nih.gov/21535448/).
+- Eleveld et al. (2007). *Anesth Analg*. [Temporary rebound of neuromuscular block after low-dose sugammadex](https://pubmed.ncbi.nlm.nih.gov/17312212/).
 - Khuenl-Brady and Sparr (1996). *Clin Pharmacokinet*. [Rocuronium clinical PK review](https://pubmed.ncbi.nlm.nih.gov/8877248/).
 - Sasakawa et al. (2016). *J Anesth*. [Predictive ability of six rocuronium PK models](https://pubmed.ncbi.nlm.nih.gov/27098255/).
 - Varrique et al. (2016). *J Pharm Pharmacol*. [Rocuronium PK/PD in young and elderly patients](https://pubmed.ncbi.nlm.nih.gov/27545305/).
@@ -189,6 +195,8 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Roy et al. (2002). *Anesthesiology*. [Succinylcholine concentration-effect model](https://pubmed.ncbi.nlm.nih.gov/12411790/).
 - Kopman et al. (2003). *Anesthesiology*. [Succinylcholine dose, onset, and twitch recovery](https://pubmed.ncbi.nlm.nih.gov/14576537/).
 - Martyn and Richtsfeld (2006). *Anesthesiology*. [Succinylcholine-induced hyperkalemia](https://pubmed.ncbi.nlm.nih.gov/16394702/).
+- Chung and Rowbottom (1993). *Anaesthesia*. [Small-dose intravenous succinylcholine for laryngospasm](https://pubmed.ncbi.nlm.nih.gov/8460802/).
+- Lee (1975). *Br J Anaesth*. [Phase II dual block and train-of-four fade after succinylcholine](https://pubmed.ncbi.nlm.nih.gov/1201162/).
 - Dhonneur et al. (1999). *Anesthesiology*. [Succinylcholine and rocuronium at the larynx, diaphragm, and adductor pollicis](https://pubmed.ncbi.nlm.nih.gov/10201662/).
 - Cantineau et al. (1994). *Anesthesiology*. [Rocuronium effects at the diaphragm](https://pubmed.ncbi.nlm.nih.gov/8092503/).
 - Plaud et al. (1995). *Clin Pharmacol Ther*. [Rocuronium laryngeal effect-site kinetics](https://pubmed.ncbi.nlm.nih.gov/7648768/).
@@ -197,6 +205,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Fiset et al. (1991). *Can J Anaesth*. [Nitrous oxide and neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/1683819/).
 - Smeulers et al. (1995). *J Cardiothorac Vasc Anesth*. [Hypothermic cardiopulmonary bypass and rocuronium PK/PD](https://pubmed.ncbi.nlm.nih.gov/8664462/).
 - Bissinger et al. (1993). *Anasthesiol Intensivmed Notfallmed Schmerzther*. [Curare clefts and neuromuscular monitoring](https://pubmed.ncbi.nlm.nih.gov/7902740/).
+- Viby-Mogensen et al. (1981). *Anesthesiology*. [Post-tetanic count for evaluating deep neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/7294384/).
 
 ## Hemodynamics
 
@@ -367,6 +376,9 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Lang et al. (1988). *Ann Intern Med*. [Left ventricular contractility and blood ionized calcium](https://pubmed.ncbi.nlm.nih.gov/3248127/).
 - González et al. (2018). *Kidney Int Rep*. [Secondary response to chronic respiratory acidosis](https://pubmed.ncbi.nlm.nih.gov/30197983/).
 - Krapf et al. (1991). *N Engl J Med*. [Renal response to chronic respiratory alkalosis](https://pubmed.ncbi.nlm.nih.gov/1902283/).
+- Waki et al. (1991). *Am J Physiol*. [Extracellular and intracellular fluid distribution in obesity](https://pubmed.ncbi.nlm.nih.gov/1872382/).
+- Adrogué and Madias (1981). *Am J Med*. [Plasma potassium changes during acute acid-base disturbances](https://pubmed.ncbi.nlm.nih.gov/7025622/).
+- Orringer et al. (1977). *N Engl J Med*. [Lactic acidosis and plasma potassium after generalized seizures](https://pubmed.ncbi.nlm.nih.gov/19702/).
 
 ## Respiratory control
 
@@ -473,6 +485,8 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Kurz et al. (1995). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
 - Kurz et al. (1995). *Anesth Analg*. [Midazolam and thermoregulatory control](https://pubmed.ncbi.nlm.nih.gov/7618734/).
 - Ralley et al. (1988). *Can J Anaesth*. [Shivering, oxygen consumption, and CO₂ production during rewarming](https://pubmed.ncbi.nlm.nih.gov/3135952/).
+- Giesbrecht et al. (1994). *Anesthesiology*. [Forced-air patient warming heat transfer](https://pubmed.ncbi.nlm.nih.gov/8141463/).
+- Brown et al. (2012). *N Engl J Med*. [Accidental hypothermia physiology and management](https://pubmed.ncbi.nlm.nih.gov/23150960/).
 
 ## Malignant hyperthermia
 
@@ -487,6 +501,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Lee et al. (2022). *Sci Data*. [VitalDB waveforms and numerics](https://pubmed.ncbi.nlm.nih.gov/35676300/).
 - Jonson et al. (1993). *J Appl Physiol*. [Human tissue viscoelasticity](https://pubmed.ncbi.nlm.nih.gov/8376259/).
 - Pelosi et al. (1998). *Anesth Analg*. [Body mass index, FRC, and compliance under anesthesia](https://pubmed.ncbi.nlm.nih.gov/9728848/).
+- Jardin et al. (1985). *Chest*. [Airway-to-pleural pressure transmission and lung and chest-wall compliance](https://pubmed.ncbi.nlm.nih.gov/3902386/).
 - Dräger. [Evita 4 SW 4.n instructions for use](https://www.draeger.com/Content/Documents/Content/IfU_Evita_4_SW_4.n_EN_9039485.pdf).
 - Feigenwinter and Zbinden (1991). *Anaesthesist*. [Circle-system resistance](https://pubmed.ncbi.nlm.nih.gov/1952036/).
 

@@ -139,12 +139,17 @@ def opioid_equivalent(remi: float, fentanyl: float, morphine: float = 0.0, hydro
     """Remifentanil equivalent (ng/mL).
 
     Morphine and hydromorphone add their Olofsen 2026 Table 1 limit-temperature
-    shifts at a calibrated 1.01 ng/mL per degree C.
+    shifts at a calibrated 1.01 ng/mL per degree C, plus supratherapeutic
+    overdose narcosis scaling above normal analgesic peaks (>45 ng/mL morphine,
+    >12 ng/mL hydromorphone).
     """
-    morphine_shift = (max(0.0, morphine) / (14.9 / 0.316)) ** (0.83 / 0.863)
-    hydromorphone_shift = (max(0.0, hydromorphone) / (14.9 * 0.316)) ** (0.83 * 0.863)
+    m = max(0.0, morphine)
+    h = max(0.0, hydromorphone)
+    morphine_shift = (m / (14.9 / 0.316)) ** (0.83 / 0.863)
+    hydromorphone_shift = (h / (14.9 * 0.316)) ** (0.83 * 0.863)
+    overdose_bonus = 0.045 * max(0.0, m - 45.0) + 0.20 * max(0.0, h - 12.0)
     return (max(0.0, remi) + FENTANYL_REMI_POTENCY * max(0.0, fentanyl)
-            + 1.01 * (morphine_shift + hydromorphone_shift))
+            + 1.01 * (morphine_shift + hydromorphone_shift) + overdose_bonus)
 
 
 def opioid_controller_fraction(morphine: float, hydromorphone: float) -> float:
@@ -186,14 +191,32 @@ class BISModel:
         self.gamma_above = 1.4736185873429664
         self.gamma_below = 1.8939053122841638
         self.delay = 15.0 + math.exp(0.0517399 * patient.age)
+        self.monitor_delay = min(self.delay, 18.0)
         self.ischemia_delay = min(self.delay, 20.0)
         sevo_units = (self.baseline / SEVO_BIS_AT_1_MAC - 1.0) ** (1.0 / self.gamma_above)
         self.mac50 = 1.0 / sevo_units
         self.initialize(self.baseline)
 
-    def initialize(self, bis: float, cortical_function: float = 1.0) -> None:
+    def initialize(
+        self,
+        bis: float,
+        cortical_function: float = 1.0,
+        *,
+        ce_prop: float = 0.0,
+        mac_sevo: float = 0.0,
+        ce_ketamine: float = 0.0,
+        ce_opioid: float = 0.0,
+        temp_c: float = 37.0,
+    ) -> None:
         self._clock = 0.0
-        self._drug_history: deque[tuple[float, float]] = deque([(0.0, bis)])
+        self._prop_history: deque[tuple[float, float]] = deque([(0.0, max(0.0, ce_prop))])
+        self._sevo_history: deque[tuple[float, float]] = deque([(0.0, max(0.0, mac_sevo))])
+        self._ket_history: deque[tuple[float, float]] = deque([(0.0, max(0.0, ce_ketamine))])
+        self._opioid_history: deque[tuple[float, float]] = deque([(0.0, max(0.0, ce_opioid))])
+        self._temp_history: deque[tuple[float, float]] = deque([(0.0, float(temp_c))])
+        self._arousal_history: deque[tuple[float, float]] = deque([(0.0, 0.0)])
+        init_base = self.compute_bis(ce_prop, mac_sevo, ce_ketamine, ce_opioid, temp_c=temp_c)
+        self._init_offset_history: deque[tuple[float, float]] = deque([(0.0, float(bis) - init_base)])
         cortical = clamp01(cortical_function)
         self._cortical_history: deque[tuple[float, float]] = deque([(0.0, cortical)])
         self.cortical_function = cortical
@@ -254,22 +277,27 @@ class BISModel:
     def step(
         self, dt: float, ce_prop: float, mac_sevo: float = 0.0, cortical_function: float = 1.0,
         ce_ketamine: float = 0.0, ce_opioid: float = 0.0, temp_c: float = 37.0,
+        disturbance_bis: float = 0.0,
     ) -> float:
         """Return the delayed BIS after dt seconds; cortical_function (0-1) scales it.
 
-        The delayed cortical function is kept in self.cortical_function.
+        Propofol uses Eleveld's age-dependent delay; volatile, adjunct, temperature,
+        and noxious-arousal effects use the age-independent monitor processing delay
+        (Pilge 2006). The delayed cortical function is kept in self.cortical_function.
         """
         self._clock += dt
-        bis = self._advance_delay_queue(
-            self._drug_history,
-            self._clock,
-            self.compute_bis(ce_prop, mac_sevo, ce_ketamine, ce_opioid, temp_c=temp_c),
-            self.delay,
-        )
+        d_prop = self._advance_delay_queue(self._prop_history, self._clock, max(0.0, ce_prop), self.delay)
+        d_sevo = self._advance_delay_queue(self._sevo_history, self._clock, max(0.0, mac_sevo), self.monitor_delay)
+        d_ket = self._advance_delay_queue(self._ket_history, self._clock, max(0.0, ce_ketamine), self.monitor_delay)
+        d_opioid = self._advance_delay_queue(self._opioid_history, self._clock, max(0.0, ce_opioid), self.monitor_delay)
+        d_temp = self._advance_delay_queue(self._temp_history, self._clock, float(temp_c), self.monitor_delay)
+        d_arousal = self._advance_delay_queue(self._arousal_history, self._clock, float(disturbance_bis), self.monitor_delay)
+        d_init_offset = self._advance_delay_queue(self._init_offset_history, self._clock, 0.0, self.monitor_delay)
+        bis = self.compute_bis(d_prop, d_sevo, d_ket, d_opioid, temp_c=d_temp) + d_init_offset
         self.cortical_function = self._advance_delay_queue(
             self._cortical_history, self._clock, cortical_function, self.ischemia_delay,
         )
-        return bis * self.cortical_function
+        return max(0.0, min(100.0, (bis + d_arousal) * self.cortical_function))
 
 
 class ClinicalResponseModel:
@@ -287,8 +315,10 @@ class ClinicalResponseModel:
         # Heyse 2012 found one sevoflurane C50 shift for all clinical endpoints.
         self.sevoflurane_mac = sevoflurane_mac
         # Schnider 1999 LOC Ce50 = 2.9 - 0.022 x age mcg/mL, scaled relative
-        # to Bouillon's median age of 33.5. This age term applies only to LOC.
+        # to Bouillon's median age of 33.5. Noxious tolerance uses Eleveld's
+        # gentler hypnotic age slope so elderly TIVA setup does not raise opioid targets.
         self.age_factor = (2.9 - 0.022 * age) / (2.9 - 0.022 * 33.5)
+        self.noxious_age_factor = math.exp(-0.00634837 * (age - 33.5))
         self.c50_prop = 6.68
         self.c50_remi = 1.01
         self.gamma_prop = 6.9
@@ -336,7 +366,10 @@ class ClinicalResponseModel:
         # MAC fractions add at the laryngoscopy endpoint.
         mac = (max(0.0, mac_sevo) / self.sevoflurane_mac + max(0.0, mac_n2o)
                + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT)
-        return max(0.0, ce_prop) / self.c50_prop + LARYNGOSCOPY_INTENSITY * mac * self.mac_reference / 2.59
+        return (
+            max(0.0, ce_prop) / (self.c50_prop * self.noxious_age_factor)
+            + LARYNGOSCOPY_INTENSITY * mac * self.mac_reference / 2.59
+        )
 
     def tolerance(
         self, ce_prop: float, ce_remi: float, mac_sevo: float = 0.0,

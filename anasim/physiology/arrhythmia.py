@@ -25,6 +25,8 @@ AMIODARONE_C50 = 0.4
 LIDOCAINE_VT_CONVERSION_RATE = 1.0 / 8500.0
 AMIODARONE_VT_CONVERSION_RATE = 1.0 / 3200.0
 AMIODARONE_AF_CONVERSION_RATE = 1.0 / 3600.0
+BETA_BLOCK_SVT_CONVERSION_RATE = 1.0 / 90.0
+AMIODARONE_SVT_CONVERSION_RATE = 1.0 / 300.0
 ISCHEMIC_ONSET_RATE = 1.0 / 600.0
 HYPERK_ONSET_RATE = 1.0 / 90.0
 HYPOTHERMIC_ONSET_RATE = 1.0 / 120.0
@@ -72,7 +74,7 @@ class ArrhythmiaModel:
 
     def after_shock(self, before: RhythmType, after: RhythmType, *,
                     ischemia: float, hypoxia: float, energy_failure: float,
-                    energy_reserve: float = 0.0) -> RhythmType:
+                    energy_reserve: float = 0.0, perfusing: bool = True) -> RhythmType:
         """Return the rhythm after a terminating shock. The myocardial substrate persists."""
         if before not in VENTRICULAR_RHYTHMS or after in VENTRICULAR_RHYTHMS:
             return after
@@ -80,10 +82,14 @@ class ArrhythmiaModel:
         # for post-shock bradycardia or early refibrillation (Park 1994; Tokano 1998).
         depletion = clamp01((0.80 - energy_reserve) / 0.50)
         stress = clamp01(max(ischemia * depletion, hypoxia))
+        new_stress = clamp01((stress - 0.25) / 0.75)
+        decayed_stress = self._post_shock_stress * math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S)
         if before == RhythmType.VFIB:
-            self._post_shock_stress = clamp01((stress - 0.25) / 0.75)
+            self._post_shock_stress = new_stress
+        elif not perfusing:
+            self._post_shock_stress = max(decayed_stress, new_stress)
         else:
-            self._post_shock_stress *= math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S)
+            self._post_shock_stress = decayed_stress
         self._post_shock_s = 0.0
         self._brady_s = 0.0
         self._remaining.clear()
@@ -102,7 +108,8 @@ class ArrhythmiaModel:
              energy_failure: float, electrically_silent: bool, perfusing: bool,
              lidocaine: float, amiodarone: float, hyperkalemia: float = 0.0,
              hypothermia: float = 0.0, energy_reserve: float = 1.0,
-             compressions: bool = False) -> RhythmType:
+             compressions: bool = False, hr: float | None = None,
+             beta_block: float = 0.0) -> RhythmType:
         if rhythm != self._rhythm:
             self._rhythm = rhythm
             self._remaining.clear()
@@ -114,7 +121,8 @@ class ArrhythmiaModel:
         stress = clamp01(max(ischemia, hypoxia))
         if self._recovering_brady:
             self._brady_s += dt
-            if self._brady_s >= POST_SHOCK_BRADY_S and stress < 0.5 and energy_failure < 0.2:
+            rate_recovered = hr is not None and hr >= 65.0
+            if rate_recovered or (self._brady_s >= POST_SHOCK_BRADY_S and stress < 0.5 and energy_failure < 0.2):
                 self._recovering_brady = False
                 rhythm = RhythmType.SINUS
                 self._rhythm = rhythm
@@ -164,10 +172,15 @@ class ArrhythmiaModel:
                 amio * AMIODARONE_AF_CONVERSION_RATE
                 if rhythm == RhythmType.AFIB and perfusing and hyperk < 0.2 else 0.0
             )
+            svt_conversion = (
+                max(clamp01(beta_block) * BETA_BLOCK_SVT_CONVERSION_RATE, amio * AMIODARONE_SVT_CONVERSION_RATE)
+                if rhythm == RhythmType.SVT and perfusing and hyperk < 0.2 else 0.0
+            )
             events = (
                 ("recurrence", recurrence, RhythmType.VFIB),
                 ("onset", onset, RhythmType.VTACH),
                 ("af_conversion", af_conversion, RhythmType.SINUS),
+                ("svt_conversion", svt_conversion, RhythmType.SINUS),
             )
         earliest = math.inf
         winner = ""

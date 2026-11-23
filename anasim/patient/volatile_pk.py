@@ -60,12 +60,12 @@ class VolatilePK:
         self.lambda_t_b_fat = 50.0 if lambda_t_b_fat is None else lambda_t_b_fat
 
         # Age- and pregnancy-adjusted MAC (Mapleson 1996; Gin and Chan 1994).
+        # Monitor gas analyzers display age-adjusted EtMAC without pregnancy scaling.
         self.mac_40 = mac_40
-        self.mac_age = (
-            self.mac_40
-            * (10 ** (-0.00269 * (self.patient.age - 40)))
-            * self.patient.pregnancy.mac_factor
-        )
+        self.mac_age_monitor = self.mac_40 * (10 ** (-0.00269 * (self.patient.age - 40)))
+        self.mac_age = self.mac_age_monitor * self.patient.pregnancy.mac_factor
+        # Temperature dependence of blood:gas solubility (Lockwood 1997: -4.5%/°C sevoflurane).
+        self._lambda_temp_slope = 0.045 if name.lower().startswith("sevo") else 0.020
 
         # Tissue volumes (L) and shares of cardiac output: lean organs scale
         # with fat-free mass, while excess body mass expands the adipose depot.
@@ -99,9 +99,17 @@ class VolatilePK:
         temp_factor = max(0.5, 1.0 - 0.05 * (37.0 - temp_c))
         return self.mac_age * temp_factor
 
-    def alveolar_uptake_l_min(self, cardiac_output_l: float, shunt_fraction: float = 0.0) -> float:
+    def lambda_b_g_at_temp(self, temp_c: float = 37.0) -> float:
+        """Blood:gas partition coefficient at core temperature (Lockwood 1997)."""
+        if temp_c == 37.0:
+            return self.lambda_b_g
+        return self.lambda_b_g * math.exp(-self._lambda_temp_slope * (temp_c - 37.0))
+
+    def alveolar_uptake_l_min(
+        self, cardiac_output_l: float, shunt_fraction: float = 0.0, temp_c: float = 37.0,
+    ) -> float:
         """Instantaneous pulmonary capillary uptake from alveoli (positive into blood, L/min)."""
-        lambda_q = max(0.0, cardiac_output_l) * (1.0 - shunt_fraction) * self.lambda_b_g
+        lambda_q = max(0.0, cardiac_output_l) * (1.0 - shunt_fraction) * self.lambda_b_g_at_temp(temp_c)
         return lambda_q * (self.state.p_alv - self.state.p_ven)
 
     def _integrate(
@@ -117,6 +125,7 @@ class VolatilePK:
         exhaled_volume_change_l: float | None,
         circuit_share: float = 1.0,
         circuit_fi_agent: float | None = None,
+        temp_c: float = 37.0,
     ) -> _IntegrationResult:
         dt_min = dt / 60.0
         q_co = max(0.0, cardiac_output_l)
@@ -152,7 +161,7 @@ class VolatilePK:
                 agent_vol = v_frc * p_alv
             v_frc = lung_volume_l
             p_alv = clamp01(agent_vol / v_frc) if v_frc > 0.0 else 0.0
-        lambda_q = q_co * (1.0 - shunt_fraction) * self.lambda_b_g
+        lambda_q = q_co * (1.0 - shunt_fraction) * self.lambda_b_g_at_temp(temp_c)
         # Tissue rate constant k = (flow / volume) / lambda (1/min). A high
         # partition coefficient slows equilibration: VRG in minutes, fat in hours.
         k_vrg = (q_vrg / self.v_vrg) / self.lambda_t_b_vrg
@@ -224,6 +233,7 @@ class VolatilePK:
         circuit_share: float = 1.0,
         circuit_fi_agent: float | None = None,
         exhaled_volume_change_l: float | None = None,
+        temp_c: float = 37.0,
     ) -> tuple[float, _IntegrationResult | None]:
         """Return (circuit uptake BTPS L/min, integration result) without mutating state."""
         if dt <= 0.0 or circuit_share <= 0.0:
@@ -251,6 +261,7 @@ class VolatilePK:
             exhaled_volume_change_l,
             circuit_share,
             circuit_fi_agent,
+            temp_c=temp_c,
         )
         return result.net_btps_l / (dt / 60.0), result
 
@@ -327,5 +338,6 @@ class VolatilePK:
             companion_uptake_l_min,
             passive_inflow_l_min,
             exhaled_volume_change_l,
+            temp_c=temp_c,
         )
         self.commit_integration(result, dt, temp_c=temp_c)

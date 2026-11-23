@@ -38,12 +38,18 @@ EPINEPHRINE_EC50_NG_ML = 0.6
 # value in hyperlactatemic septic patients (Levraut 1998), so sepsis does not
 # change elimination capacity.
 SEPSIS_PRODUCTION = 1.4
+# Convulsive skeletal-muscle anaerobic glycolysis during full generalized
+# convulsions (Orringer 1977), attenuated as muscle acidifies during sustained status.
+SEIZURE_LACTATE_MMOL_KG_MIN = 0.15
+# Skeletal-muscle anaerobic glycolysis during fulminant malignant hyperthermia.
+MH_LACTATE_MMOL_KG_MIN = 0.14
 
 
 class LactateModel:
     """Endogenous and infused lactate in one volume, with associated buffer base."""
 
     def __init__(self, weight_kg: float, hepatic_function: float = 1.0):
+        self._weight_kg = weight_kg
         self.volume_l = DISTRIBUTION_L_PER_KG * weight_kg
         self.hepatic_function = hepatic_function
         self.km_mmol = CLEARANCE_KM_MMOL_L * self.volume_l
@@ -53,6 +59,8 @@ class LactateModel:
         self._normoxic_capacity = capacity
         self.resting_mmol = self.basal_mmol_min * self.km_mmol / (capacity - self.basal_mmol_min)
         self._resting_conc = self.resting_mmol / self.volume_l
+        self._arterial_conc = self._resting_conc
+        self._circulation = 1.0
         self._resting_pool_mmol = self.resting_mmol
         self.endogenous_mmol = self.resting_mmol
         self.infused_mmol = 0.0
@@ -62,8 +70,20 @@ class LactateModel:
 
     @property
     def concentration(self) -> float:
-        """Plasma lactate, mmol/L."""
+        """Whole-body plasma lactate, mmol/L."""
         return (self.endogenous_mmol + self.infused_mmol) / self.volume_l
+
+    @property
+    def arterial_concentration(self) -> float:
+        """Arterial-sample lactate, mmol/L; lags tissue/venous accumulation during zero-flow arrest."""
+        if self._circulation >= 0.99:
+            return self.concentration
+        return self._arterial_conc
+
+    @property
+    def excess_endogenous_mmol_l(self) -> float:
+        """Endogenous lactate concentration above resting baseline, mmol/L."""
+        return max(0.0, (self.endogenous_mmol - self._resting_pool_mmol) / max(1e-6, self.volume_l))
 
     def update_fluid_volume(self, volume_l: float, lost_plasma_l: float) -> None:
         remaining = 1.0 - lost_plasma_l / self.volume_l
@@ -74,6 +94,8 @@ class LactateModel:
         self.volume_l = volume_l
         self.km_mmol = CLEARANCE_KM_MMOL_L * volume_l
         self.resting_mmol = self._resting_conc * volume_l
+        if self._circulation >= 0.99:
+            self._arterial_conc = self.concentration
 
     @property
     def base_removed_mmol(self) -> float:
@@ -95,18 +117,26 @@ class LactateModel:
 
     def step(self, dt: float, oxygen_deficit_l: float, supply_fraction: float,
              epinephrine_ng_ml: float = 0.0, sepsis_severity: float = 0.0,
-             infused_lactate_mmol: float = 0.0) -> float:
+             infused_lactate_mmol: float = 0.0, *,
+             convulsion_intensity: float = 0.0,
+             mh_severity: float = 0.0,
+             circulation: float = 1.0) -> float:
         """Advance dt seconds and return net buffer base removed, mmol.
 
         Args:
             oxygen_deficit_l: Unmet O2 demand over the step, STPD L.
             supply_fraction: Share of O2 demand met, 0-1.
-            epinephrine_ng_ml: Epinephrine effect-site concentration.
+            epinephrine_ng_ml: Beta-2-effective epinephrine concentration.
             sepsis_severity: 0-1.
             infused_lactate_mmol: Cumulative L-lactate delivered in IV fluids.
+            convulsion_intensity: Active skeletal-muscle convulsion intensity, 0-1.
+            mh_severity: Active malignant hyperthermia severity, 0-1.
+            circulation: Systemic perfusion fraction (0-1) governing arterial wash-in.
         """
         if dt <= 0.0:
             return 0.0
+        circ = clamp01(circulation)
+        self._circulation = circ
         infused = max(0.0, infused_lactate_mmol - self._delivered_mmol)
         self._delivered_mmol = infused_lactate_mmol
         minutes = dt / 60.0
@@ -116,10 +146,22 @@ class LactateModel:
             + SEPSIS_PRODUCTION * sepsis_severity
         )
         anaerobic = ANAEROBIC_PER_O2 * max(0.0, oxygen_deficit_l) / O2_L_PER_MMOL
+        convulsion = clamp01(convulsion_intensity)
+        seizure_rate = 0.0
+        if convulsion > 0.0:
+            excess_conc = max(0.0, self.concentration - self._resting_conc)
+            seizure_rate = (
+                SEIZURE_LACTATE_MMOL_KG_MIN
+                * self._weight_kg
+                * (convulsion * convulsion)
+                / (1.0 + excess_conc / 6.0)
+            )
+        mh = clamp01(mh_severity)
+        mh_rate = MH_LACTATE_MMOL_KG_MIN * self._weight_kg * mh * mh if mh > 0.0 else 0.0
         supply = clamp01(supply_fraction)
         extrahepatic = (1.0 - HEPATIC_SHARE) * clamp01(supply / 0.15)
         capacity = self.vmax_mmol_min * (extrahepatic + HEPATIC_SHARE * self.hepatic_function * supply)
-        endogenous_source = aerobic + anaerobic / minutes
+        endogenous_source = aerobic + anaerobic / minutes + seizure_rate + mh_rate
         infused_source = infused / minutes
         total = self.endogenous_mmol + self.infused_mmol
         # Predict the midpoint amount, then freeze Michaelis-Menten clearance
@@ -142,4 +184,9 @@ class LactateModel:
         excess_after = max(0.0, self.endogenous_mmol - self._resting_pool_mmol)
         removed = (excess_after - excess_before) - cleared_infused
         self._base_removed_mmol += removed
+        whole_body_conc = self.concentration
+        if circ >= 0.99:
+            self._arterial_conc = whole_body_conc
+        elif circ > 0.0:
+            self._arterial_conc += (whole_body_conc - self._arterial_conc) * -math.expm1(-dt * circ / 20.0)
         return removed

@@ -89,8 +89,11 @@ def create_sepsis_response() -> Scenario:
         hypotension_noted = True
 
     def request_source_control(engine) -> None:
+        nonlocal hypotension_noted
         # Surgical drainage addresses the infectious focus, but established vasoplegia
         # persists intraoperatively and continues to require hemodynamic support.
+        # Acting early on decompensation also advances the observe step.
+        hypotension_noted = True
         engine.sepsis.onset_rate = 0.0
 
     def require_source_control(engine) -> tuple[bool, str]:
@@ -203,7 +206,8 @@ def create_sepsis_response() -> Scenario:
         outcomes=(
             CaseOutcome("volume", "Volume replacement started", lambda engine: fluids(engine)[0],
                         "Replace circulating volume while treating septic shock.", milestone=True),
-            CaseOutcome("vasopressor", "Norepinephrine started", lambda engine: vasopressor(engine)[0],
+            CaseOutcome("vasopressor", "Norepinephrine started",
+                        lambda engine: vasopressor(engine)[0] or require_map_at_least(65)(engine)[0],
                         "Start norepinephrine promptly when fluid resuscitation does not restore MAP ≥ 65 mmHg.",
                         milestone=True),
             CaseOutcome("source", "Cause addressed", _source_control_requested,

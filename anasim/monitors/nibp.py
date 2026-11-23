@@ -151,7 +151,8 @@ class NIBPMonitor:
             meas_sys = max(40.0, meas_sys + map_jitter + 0.5 * pp_jitter)
             meas_dia = max(20.0, meas_dia + map_jitter - 0.5 * pp_jitter)
         if meas_dia >= meas_sys:
-            meas_dia = meas_sys - 10.0
+            meas_dia = max(10.0, meas_sys - 10.0)
+        meas_map = min(max(meas_map, meas_dia + 1.0), meas_sys - 1.0)
 
         self.latest_reading = NIBPReading(meas_sys, meas_dia, meas_map, completed_at)
         return self.cuff_pressure

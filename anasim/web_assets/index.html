@@ -406,7 +406,10 @@
               <span class="numeric-title">NIBP <span class="numeric-unit">mmHg</span></span>
               <button type="button" class="btn small" id="measure-nibp" aria-label="Measure noninvasive blood pressure">Measure</button>
             </div>
-            <output id="v-nibp">--/-- (--)</output>
+            <div class="numeric-body">
+              <span class="numeric-limits" id="lim-nibp-map"></span>
+              <output id="v-nibp">--/-- (--)</output>
+            </div>
             <output id="v-nibp-status" class="measurement-status"></output>
           </div>
           <div class="numeric compact bis" data-alarm="BIS">
@@ -486,7 +489,7 @@
           </div>
         </div>
         <div class="nmb-controls">
-          <select id="nmb-mode" aria-label="Stimulation" title="TOF measures fade (T4/T1). Single twitch measures response height relative to baseline."><option value="tof">TOF</option><option value="single">Single twitch</option></select>
+          <select id="nmb-mode" aria-label="Stimulation" title="TOF measures fade (T4/T1). Single twitch measures T1 relative to baseline. PTC counts post-tetanic twitches (0-15) during deep block."><option value="tof">TOF</option><option value="single">Single twitch</option><option value="ptc">PTC</option></select>
           <select id="nmb-repeat" aria-label="Repeat"><option value="0">Manual</option><option value="10">Every 10 s</option><option value="20" selected>Every 20 s</option><option value="30">Every 30 s</option><option value="60">Every 60 s</option></select>
           <button type="button" class="btn small" id="nmb-measure" aria-label="Measure neuromuscular response">Measure</button>
         </div>

@@ -25,7 +25,7 @@ from anasim.core.recorder import RecordingError
 from anasim.core.state import AirwayType, SimulationConfig, WaveformSample
 from anasim.core.utils import clamp01
 from anasim.monitors.blood_gas import BloodGasResult
-from anasim.monitors.ecg import displayed_rhythm
+from anasim.monitors.ecg import displayed_rhythm, st_analyzable_scale
 from anasim.patient import domain
 from anasim.patient.patient import Patient
 from anasim.physiology.disturbances import list_disturbance_profiles
@@ -135,6 +135,42 @@ def _blood_gas(result: BloodGasResult) -> dict:
         "chloride": _num(result.chloride, 1), "ionized_calcium": _num(result.ionized_calcium, 2),
         "fio2": _num(result.fio2, 3),
     }
+
+
+_DRUG_RATE_LIMITS: dict[str, float] = {
+    "propofol": 500.0,
+    "remi": 5.0,
+    "fentanyl": 1000.0,
+    "morphine": 100.0,
+    "hydromorphone": 20.0,
+    "midazolam": 50.0,
+    "roc": 50.0,
+    "nore": 500.0,
+    "phenyl": 500.0,
+    "epi": 200.0,
+    "dobu": 100.0,
+    "milri": 5.0,
+    "esmolol": 1000.0,
+    "vaso": 1.0,
+}
+_UNIT_RATE_LIMITS: dict[str, float] = {
+    "U/min": 1.0,
+    "u/min": 1.0,
+    "mcg/kg/min": 500.0,
+    "mcg/min": 1000.0,
+    "mcg/kg/hr": 25.0,
+    "mg/kg/hr": 25.0,
+    "mg/min": 50.0,
+    "mg/hr": 500.0,
+}
+
+
+def _max_display_rate(spec) -> float:
+    if spec.key in _DRUG_RATE_LIMITS:
+        return _DRUG_RATE_LIMITS[spec.key]
+    if spec.rate_unit in _UNIT_RATE_LIMITS:
+        return _UNIT_RATE_LIMITS[spec.rate_unit]
+    return 2000.0
 
 
 def _target_label(spec) -> str:
@@ -248,6 +284,7 @@ class WebSession:
                     "name": spec.name,
                     "generic_name": spec.generic_name,
                     "rate_unit": spec.rate_unit,
+                    "max_rate": _max_display_rate(spec) if spec.has_infusion else None,
                     "bolus_unit": spec.bolus_unit,
                     "default_bolus": spec.default_bolus_for(patient.weight),
                     "max_bolus": spec.max_bolus,
@@ -452,9 +489,15 @@ class WebSession:
             if (s.nibp_measurement_failed and engine.nibp.failed_timestamp is not None)
             else s.nibp_timestamp
         )
+        st_scale = st_analyzable_scale(
+            engine.hemo.state.rhythm_type,
+            engine.hemo.coronary.energy_failure,
+            engine.toxicity.conduction_block,
+            engine.hemo.hyperkalemia_block,
+        )
         return {
             "hr": _num(s.display_hr, 1),
-            "st_depression_mv": _num(s.st_depression_mv, 2),
+            "st_depression_mv": _num(s.st_depression_mv, 2) if st_scale > 0.01 else None,
             "spo2": _num(s.display_spo2, 1) if s.spo2_signal_valid else None,
             "art": [_num(s.art_sbp, 1), _num(s.art_dbp, 1), _num(s.art_map, 1)],
             "nibp": None if (s.nibp_timestamp is None or s.nibp_measurement_failed) else [
@@ -884,8 +927,8 @@ class WebSession:
         self.engine.vent.update_settings(**fields)
 
     def _cmd_drug_rate(self, key: str, rate: float):
-        rate = domain.bounded_number("infusion rate", rate, 0.0, 2000.0)
         spec = get_drug_spec(key)
+        rate = domain.bounded_number("infusion rate", rate, 0.0, _max_display_rate(spec))
         previous = self.engine.get_drug_state(key)["rate"]
         self.engine.set_drug_rate(key, rate)
         applied = self.engine.get_drug_state(key)["rate"]
@@ -958,6 +1001,9 @@ class WebSession:
 
     def _cmd_lipid_rate(self, ml_min: float):
         self.engine.set_lipid_infusion(ml_min)
+        applied = self.engine.lipid_infusion_ml_min
+        text = f"20% lipid infusion {applied:g} mL/min" if applied > 0 else "20% lipid infusion stopped"
+        return self._medication_receipt("lipid", text)
 
     def _cmd_compressions(self, active: bool):
         self.engine.set_chest_compressions(bool(active))

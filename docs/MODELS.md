@@ -30,21 +30,23 @@ reduces preload, consistent with findings in low-output cardiac surgical
 patients (Sherry 1995). Vasodilation raises stroke volume up to a ceiling
 around a third above baseline (Schwartzenberg 2012). In heart failure with
 preserved ejection fraction (HFpEF), the stiffer ventricle fills poorly during
-tachycardia. In both forms of heart failure, inotropes and inodilators unload
-high left atrial pressure. Chronic left atrial hypertension increases pulmonary
-lymphatic drainage, so pulmonary edema begins at a higher filling pressure,
-though the margin above resting pressure remains narrower than in a normal
-heart.
+tachycardia and gains little stroke volume from arterial vasodilation
+(Schwartzenberg 2012). In both forms of heart failure, inotropes and inodilators
+unload high left atrial pressure. Chronic left atrial hypertension increases
+pulmonary lymphatic drainage, so pulmonary edema begins at a higher filling
+pressure, though the margin above resting pressure remains narrower than in a
+normal heart.
 
 COPD combines persistent airflow obstruction, hyperinflation, gas trapping,
-increased dead space, and impaired gas exchange while keeping resting PaCO₂
-normal. Trapped gas in hyperinflated alveoli is modeled separately from the
-rapidly exchangeable alveolar oxygen store, so severe COPD does not prolong
-apneic oxygenation beyond that of a healthy lung. Acute bronchospasm adds on
-top of baseline obstruction. Obesity lowers supine functional residual capacity
-(FRC) and respiratory compliance, raises airway resistance, and increases the
-airway pressures required to keep alveoli open (Pelosi 1998; Hedenstierna and
-Edmark 2015).
+increased dead space, elevated baseline pulmonary vascular resistance, and
+impaired gas exchange while keeping resting PaCO₂ normal. Trapped gas in
+hyperinflated alveoli is modeled separately from the rapidly exchangeable
+alveolar oxygen store, so severe COPD does not prolong apneic oxygenation beyond
+that of a healthy lung. Acute bronchospasm adds on top of baseline obstruction.
+Obesity lowers supine functional residual capacity (FRC), minimum recruited lung
+volume, and respiratory compliance, raises airway resistance and atelectatic
+shunt, and increases the airway pressures required to keep alveoli open (Pelosi
+1998; Hedenstierna and Edmark 2015).
 
 Pregnancy alters maternal blood volume, extracellular water, cardiac output,
 renal filtration, FRC, heart rate, metabolism, and resting PaCO₂ according to
@@ -85,7 +87,7 @@ its clinical actions.
 | Propofol | Eleveld 2018 arterial model with its opioid covariate; cirrhosis enlarges distribution volumes (Servin 1990) |
 | Remifentanil | Eleveld 2017 |
 | Fentanyl | Bae 2020 up to 70 kg, scaled by pharmacokinetic mass at higher weights (Shibutani 2004); clearance scales with hepatic function |
-| Morphine and hydromorphone | Meissner 2025, scaled with fat-free mass, age, and hepatic and renal function |
+| Morphine and hydromorphone | Meissner 2025, scaled with fat-free mass, age, and hepatic and renal function; renal impairment also accumulates active morphine-6-glucuronide (Osborne 1993) |
 | Midazolam | Albrecht 1999, with age-dependent distribution and effect-site equilibration; clearance scales with hepatic function |
 | Etomidate | Arden 1986, with age-dependent central volume and clearance; clearance scales with hepatic function (Van Hamme 1978) |
 | Ketamine | Kamp 2020, with hepatic clearance scaling and separate cardiovascular and heart-rate effect sites (Kamp 2021; Bovill and Dundee 1972) |
@@ -106,8 +108,9 @@ vessel-rich organs while cerebral autoregulation maintains brain uptake, so
 hemorrhagic shock speeds up the rise in brain MAC. Clinical effects depend on
 brain partial pressure, expressed as age- and pregnancy-adjusted MAC (Davis and
 Mapleson 1981; Yasuda 1991; Mapleson 1996; Nickalls and Mapleson 2003; Gin and
-Chan 1994). Nitrous oxide uptake concentrates other gases in the alveoli, and
-its washout dilutes them.
+Chan 1994). Hypothermia increases volatile blood-gas solubility (Lockwood 1997),
+slowing both uptake and washout. Nitrous oxide uptake concentrates other gases
+in the alveoli, and its washout dilutes them.
 
 When blood volume changes, the vascular share of each drug's central volume
 scales accordingly. Shed blood removes drug at the current plasma
@@ -117,8 +120,10 @@ whereas fluid shifts conserve drug mass.
 Clearance responds to organ function, circulation, temperature, and drug
 interactions:
 
-- Fentanyl and lidocaine clearances were measured during anesthesia and surgery,
-  so they are anchored to anesthetized cardiac output (Bae 2020; Foong 2025).
+- Fentanyl, lidocaine, morphine, and hydromorphone clearances scale with cardiac
+  output, with fentanyl and lidocaine anchored to anesthetized output (Bae 2020;
+  Foong 2025). Low-extraction hepatic drugs (midazolam, dantrolene, and
+  amiodarone) decline more gently as cardiac output falls.
 - Renal perfusion scales only the fraction of renal clearance remaining after
   chronic renal impairment.
 - Blood loss lowers propofol and remifentanil clearance, and volume replacement
@@ -162,9 +167,10 @@ manual infusions.
 
 Decrement times for propofol, remifentanil, and fentanyl come from the pump
 model while TCI or pump history is active, and otherwise from the patient's
-live PK model. Rocuronium decrement time uses the patient's full PK and
-neuromuscular state, including sugammadex and inhaled agents. Norepinephrine
-decrement time is the time to fall halfway back to the endogenous baseline.
+live PK model (including sessions with TCI disabled). Rocuronium decrement time
+uses the patient's full PK and neuromuscular state, including sugammadex
+back-flux and inhaled agents. Norepinephrine decrement time is the time to fall
+halfway back to the endogenous baseline.
 
 ## Anesthetic drug effects
 
@@ -173,7 +179,7 @@ drive.
 
 | Endpoint | Model |
 |----------|-------|
-| Baseline BIS | Eleveld 2018 propofol response with age-dependent potency and delay, combined with a calibrated sevoflurane response |
+| Baseline BIS | Eleveld 2018 propofol response with age-dependent potency and delay, combined with a calibrated sevoflurane response and an age-independent monitor calculation lag (Pilge 2006) |
 | Clinical responsiveness | Bouillon 2004 curves for shaking or shouting and for laryngoscopy, with the age effect from Schnider 1999 and calibrated propofol scaling |
 | Ventilatory depression | Bouillon 2004 propofol response combined with opioid and CO₂ control from Olofsen 2010 |
 
@@ -182,7 +188,8 @@ to shaking or shouting, and `tol` is the probability of no response to
 laryngoscopy. Sevoflurane thresholds follow Kuizenga 2019 and Hannivoort 2016.
 Propofol potency for loss of response is scaled so patients become unresponsive
 at the BIS values reported in stepped inductions, which are higher in older
-adults (Lysakowski 2009).
+adults (Lysakowski 2009), and propofol tolerance of laryngoscopy also rises
+gently with age.
 
 For clinical responsiveness, other opioids convert to remifentanil equivalents,
 and etomidate and midazolam convert to propofol equivalents, with potencies
@@ -197,8 +204,9 @@ sevoflurane anesthesia it raises BIS by increasing high-frequency EEG activity
 Lidocaine lowers the anesthetic concentration needed to blunt surgical
 stimulation (Himes 1977; Hans 2010), though lidocaine alone does not produce
 surgical unresponsiveness. Opioids well above analgesic concentrations add
-direct sedation and EEG slowing, and moderate core hypothermia directly
-depresses consciousness and BIS.
+direct sedation and EEG slowing, and moderate-to-severe core hypothermia
+directly depresses consciousness, laryngoscopy responsiveness, and BIS (Brown
+2012).
 
 ## Stimulation
 
@@ -242,14 +250,17 @@ start during surgery, whereas emergence cases start after surgery ends.
 
 The [neuromuscular model](../anasim/patient/pd/nmba.py) uses Kleijn 2011 for
 rocuronium and sugammadex. Sevoflurane strengthens rocuronium block (Kleijn
-2011), and nitrous oxide adds a smaller potentiation based on vecuronium data
-(Fiset 1991); AnaSim applies both at peripheral and central muscles.
-Hypothermia slows rocuronium equilibration and increases sensitivity (Smeulers
-1995). Sugammadex binds free rocuronium in plasma, accelerates washout from the
-effect site, and clears the bound complex at the rate of sugammadex. Both drugs
-use measured creatinine clearance when provided, or estimate it from age and
-renal function; when creatinine clearance is supplied with default renal
-function, it also scales renal function for other renally cleared drugs.
+2011), extending gently above 1 MAC, and nitrous oxide adds a smaller
+potentiation based on vecuronium data (Fiset 1991); AnaSim applies both at
+peripheral and central muscles. Hypothermia slows rocuronium equilibration and
+increases sensitivity (Smeulers 1995). Sugammadex binds free rocuronium in
+plasma, accelerates saturable washout from the effect site, and clears the bound
+complex at the rate of sugammadex. A perijunctional rocuronium buffer reproduces
+transient rebound weakness when a sub-therapeutic sugammadex dose clears unbound
+plasma drug before peripheral stores empty (Eleveld 2007). Both drugs use
+measured creatinine clearance when provided, or estimate it from age and renal
+function; when creatinine clearance is supplied with default renal function, it
+also scales renal function for other renally cleared drugs.
 
 Train-of-four (TOF) reflects the adductor pollicis. The diaphragm and larynx
 equilibrate faster and require higher rocuronium concentrations (Cantineau
@@ -263,8 +274,11 @@ airway pressure otherwise keep the airway open.
 
 Succinylcholine uses the PK model of Roy 2002, with twitch onset and recovery
 calibrated to Kopman 2003 and central muscle sensitivity to Dhonneur 1999. Its
-phase I block reduces single-twitch height without TOF fade and releases
-potassium from skeletal muscle (Martyn and Richtsfeld 2006).
+faster central effect site relieves laryngospasm rapidly at sub-intubating doses
+(Chung and Rowbottom 1993). Phase I block reduces single-twitch height without
+TOF fade and releases potassium from skeletal muscle (Martyn and Richtsfeld
+2006), while high cumulative exposure produces Phase II block with TOF fade (Lee
+1975).
 
 ## Hemodynamics
 
@@ -394,7 +408,9 @@ pressure.
 
 In untreated atrial fibrillation, atrioventricular nodal conduction limits peak
 ventricular rate and rapid rates further reduce stroke volume. Amiodarone and
-beta-blockers both slow the ventricular rate. In normal hearts, stroke volume
+beta-blockers slow the ventricular rate in atrial fibrillation and
+supraventricular tachycardia, and can convert perfusing supraventricular
+tachycardia back to sinus rhythm. In normal hearts, stroke volume
 falls when arterial resistance rises faster than contractility, following
 ventriculo-arterial coupling (Asanoi 1989; Chen 1998). High heart rates and
 strong inotropic or vasoconstrictor stimulation are capped by venous return,
@@ -422,30 +438,33 @@ resting pH so acidemia does not artificially mask hyperkalemic arrhythmia.
 Sustained electrical silence from hyperkalemia or local anesthetic toxicity
 progresses to asystole.
 
-Moderate-to-severe core hypothermia slows HR, blunts cold vasoconstriction and
-reflex tachycardia, depresses contractility, and increases the risk of
-ventricular fibrillation. Active shivering increases sympathetic drive, HR,
-contractility, and skeletal-muscle blood flow to meet metabolic demand (Ralley
-1988).
+Moderate-to-severe core hypothermia slows HR (reaching roughly half of baseline
+near 28 °C; Brown 2012), blunts cold vasoconstriction and reflex tachycardia,
+depresses contractility, and increases the risk of ventricular fibrillation.
+Active shivering increases sympathetic drive, HR, contractility, and
+skeletal-muscle blood flow to meet metabolic demand (Ralley 1988).
 
 ## Cardiovascular drugs
 
 Vasoactive drugs act on vascular resistance, venous capacitance, stroke volume,
-and HR. Adrenergic and muscarinic antagonists modify both drug effects and
-autonomic reflexes. Anaphylaxis lowers catecholamine vascular and cardiac
-efficacy directly rather than shifting epinephrine into beta-2 dominance.
+and HR, with alpha-1 vasoconstrictors sharing a common smooth-muscle saturation
+ceiling so stacked pressors cannot raise vascular resistance without bound.
+Adrenergic and muscarinic antagonists modify both drug effects and autonomic
+reflexes. Anaphylaxis lowers catecholamine vascular and cardiac efficacy
+directly rather than shifting epinephrine into beta-2 dominance.
 
 ### Norepinephrine
 
 The norepinephrine model includes endogenous secretion and a clearance that
 falls as plasma propofol rises (Li 2024). Only concentrations above the resting
 endogenous level change HR, vascular resistance, venous capacitance, and stroke
-volume, and its vascular and stroke-volume effects grow stronger under
-anesthesia. Norepinephrine recruits unstressed venous volume to raise filling
-pressure and preload (Persichini 2012; Hamzaoui 2010), and it supports stroke
-volume in septic shock with reduced ejection fraction (Hamzaoui 2010; Carelli
-2026). Septic shock roughly halves both vascular and cardiac responses to
-catecholamines (Bellissant and Annane 2000; Schotola 2012; Hernández 2013).
+volume. Its vascular and stroke-volume effects grow stronger under anesthesia,
+with the anesthetized stroke-volume gain saturating at high doses.
+Norepinephrine recruits unstressed venous volume to raise filling pressure and
+preload (Persichini 2012; Hamzaoui 2010), and it supports stroke volume in
+septic shock with reduced ejection fraction (Hamzaoui 2010; Carelli 2026).
+Septic shock roughly halves both vascular and cardiac responses to catecholamines
+(Bellissant and Annane 2000; Schotola 2012; Hernández 2013).
 
 ### Epinephrine
 
@@ -462,11 +481,12 @@ lower sensitivity, while boluses produce smaller HR spikes in older patients.
 
 Under propofol, epinephrine recruits pooled venous blood at lower
 concentrations than those needed for arterial constriction. A slower,
-higher-concentration alpha-adrenergic component maintains vascular resistance
-during shock infusions and supports diastolic pressure during CPR, washing out
-faster during normal circulation than during low-flow CPR. The
-concentration-response curve is calibrated up to the highest volunteer infusion
-studied in Ensinger 1992 (0.22 mcg/kg/min).
+higher-concentration alpha-adrenergic component raises vascular resistance above
+baseline during high-dose shock infusions and supports diastolic pressure during
+CPR while keeping brief bolus MAP peaks bounded; it washes out faster during
+normal circulation than during low-flow CPR. The concentration-response curve is
+calibrated up to the highest volunteer infusion studied in Ensinger 1992 (0.22
+mcg/kg/min).
 
 ### Phenylephrine and ephedrine
 
@@ -476,13 +496,14 @@ recruits venous volume and raises afterload, its net effect on cardiac output
 depends on the patient's preload reserve (Rebet 2016).
 
 Ephedrine uses a two-compartment intravenous distribution model (Michelsen
-1998; Rådström 1995) that preserves the distribution volume, terminal
-half-life, and tolerance behavior of Persky 2004. Peak effects follow Meng
-2011, and post-induction responses are checked against Sjøen 2026 so a single
-10 mg bolus still retains pressor effect an hour later. Alpha and beta blockade
-shift its vascular and cardiac curves separately. Repeated doses build
-presynaptic tachyphylaxis regardless of receptor blockade, reducing pressor and
-peak HR responses while leaving a smaller saturating HR effect.
+1998; Rådström 1995) with renal clearance scaled to renal function, preserving
+the distribution volume, terminal half-life, and tolerance behavior of Persky
+2004. Peak effects follow Meng 2011, and post-induction responses are checked
+against Sjøen 2026 so a single 10 mg bolus still retains pressor effect an hour
+later. Alpha and beta blockade shift its vascular and cardiac curves separately.
+Repeated doses build presynaptic tachyphylaxis regardless of receptor blockade,
+reducing pressor and peak HR responses while leaving a smaller saturating HR
+effect.
 
 ### Other vasoactive drugs
 
@@ -491,12 +512,14 @@ with mild HR slowing via V1 receptors, calibrated to vasodilatory-shock
 infusions around 0.04 U/min. Because it bypasses adrenoceptors, its effect is
 preserved during adrenergic blockade, acidemia, anaphylaxis, and septic shock.
 
-Dobutamine (Kates and Leier 1978) and milrinone (DailyMed 2026, largely renally
-cleared) raise stroke volume and HR while lowering systemic vascular resistance
-(Daly 1997; Magnani 1977; Baim 1983). Milrinone also adds venodilation that
-lowers high filling pressure. Because dobutamine acts through beta receptors,
-beta blockade, acidemia, anaphylaxis, and septic shock blunt its response
-(Hernández 2013), whereas milrinone keeps its effect in those states.
+Dobutamine (Kates and Leier 1978) and milrinone (two-compartment kinetics from
+Baim 1983 and DailyMed 2026, largely renally cleared) raise stroke volume and HR
+while lowering systemic vascular resistance (Daly 1997; Magnani 1977; Baim
+1983). Dobutamine's heart-rate curve rises progressively across stress-dose
+infusions, while milrinone adds stronger arterial vasodilation and venodilation
+that lowers high filling pressure. Because dobutamine acts through beta
+receptors, beta blockade, acidemia, anaphylaxis, and septic shock blunt its
+response (Hernández 2013), whereas milrinone keeps its effect in those states.
 
 Esmolol uses blood-esterase PK and selective beta-1 blockade from Sum 1983
 (Wiest and Haney 2012), so clearance is independent of cardiac output and organ
@@ -506,7 +529,9 @@ higher intravenous potency at beta than alpha receptors (Hafsa 2022).
 Competitive antagonists scale effective agonist concentrations according to
 receptor occupancy, so higher agonist doses can overcome blockade. Antagonist
 occupancy also lowers resting sympathetic tone, reflex and stimulation
-responses, and ventricular rate in atrial fibrillation.
+responses, and ventricular rate in atrial fibrillation and supraventricular
+tachycardia. Labetalol's beta-2 blockade also blunts epinephrine-driven
+hypokalemia and hyperlactatemia.
 
 ### Antimuscarinics
 
@@ -549,9 +574,9 @@ infusions lower pressure much less (Munoz 1988). Contractility declines over
 several minutes, lowering cardiac output in HFrEF (Kosinski 1984) and producing
 a small delayed dip after vasodilation resolves in normal hearts (Munoz 1988).
 Over 15 to 30 minutes, amiodarone slows sinus rate and ventricular rate in
-atrial fibrillation (Munoz 1988), weakens sympathetic HR reflexes, and adds a
-modest rate of pharmacological conversion from atrial fibrillation to sinus
-rhythm.
+atrial fibrillation and supraventricular tachycardia (Munoz 1988), weakens
+sympathetic HR reflexes, and adds a modest rate of pharmacological conversion to
+sinus rhythm.
 
 ## Heart and brain oxygen supply
 
@@ -560,10 +585,11 @@ that remains even when mechanical work stops (Harasawa 1992); fibrillating
 myocardium still consumes most of a beating heart's resting demand. Coronary
 supply depends on diastolic pressure above the coronary zero-flow pressure
 (Nanto 2001; Jeremy 1986), diastolic duration, coronary flow reserve, and
-arterial oxygen content. When coronary flow reserve is reduced, flow drops
-steeply below the autoregulatory pressure threshold. Persistent mismatch
-between supply and demand causes reversible contractile depression and ST
-depression.
+arterial oxygen content; above 25 mmHg left atrial pressure, preserved
+subepicardial perfusion moderates further increases in whole-wall zero-flow
+pressure. When coronary flow reserve is reduced, flow drops steeply below the
+autoregulatory pressure threshold. Persistent mismatch between supply and demand
+causes reversible contractile depression and ST depression.
 
 Cerebral oxygen supply falls when cerebral perfusion pressure drops below the
 lower autoregulatory limit (about 40 mmHg in normotensive adults, shifted
@@ -581,21 +607,24 @@ returns flow up to the current CO₂ ceiling (Brian 1998).
 
 Cerebral oxygen demand changes with core temperature (roughly 7% per °C),
 anesthetic depth, and seizure activity, with flow-metabolism coupling raising
-blood flow when pressure and oxygen content allow. Hypothermia slows both acute
-oxygen depletion and ischemic injury. Brain oxygen stores buffer a sudden loss
-of circulation for a few seconds before electrical activity fails (Astrup
-1981), causing loss of consciousness, airway tone, BIS, and finally respiratory
-drive (Nebout 2013). At normothermia, EEG flattens in about 11 seconds after
-circulation stops (de Vries 1998) and recovers within roughly 2 minutes once
-perfusion returns.
+blood flow when pressure and oxygen content allow. Propofol keeps cerebral blood
+flow coupled to metabolic demand, whereas sevoflurane adds modest luxury
+perfusion for a similar drop in oxygen consumption (Kaisti 2003); anesthetic
+suppression does not shift the cellular ischemic threshold itself (Astrup 1981).
+Hypothermia slows both acute oxygen depletion and ischemic injury. Brain oxygen
+stores buffer a sudden loss of circulation for a few seconds before electrical
+activity fails (Astrup 1981), causing loss of consciousness, airway tone, BIS,
+and finally respiratory drive (Nebout 2013). At normothermia, EEG flattens in
+about 11 seconds after circulation stops (de Vries 1998) and recovers within
+roughly 2 minutes once perfusion returns.
 
-Prolonged severe hypoxia accumulates ischemic neuronal injury in proportion to
-metabolic demand (Jones 1981). After roughly 4 minutes without perfusion,
-cortical injury progressively suppresses postanoxic EEG and BIS even after
-circulation returns (Weisfeldt and Becker 2002; Hofmeijer 2015; Jørgensen and
-Malchow-Møller 1981). Around 5 minutes, unresponsiveness progresses to
-permanent coma, and longer arrest progressively abolishes brainstem respiratory
-drive.
+Prolonged severe hypoxia or sustained low-flow CPR accumulates ischemic neuronal
+injury in proportion to metabolic demand (Jones 1981). After roughly 4 minutes
+without perfusion, cortical injury progressively suppresses postanoxic EEG and
+BIS even after circulation returns (Weisfeldt and Becker 2002; Hofmeijer 2015;
+Jørgensen and Malchow-Møller 1981). Around 5 minutes, unresponsiveness
+progresses to permanent coma, and longer arrest progressively abolishes
+brainstem respiratory drive.
 
 CO₂ narcosis depresses responsiveness and airway tone without anoxic injury.
 Its severity depends on both PaCO₂ and pH (Westlake 1955; Sieker and Hickam
@@ -634,8 +663,10 @@ complete, around 11 minutes after circulation stops.
 [Chest compressions](../anasim/physiology/resuscitation.py) at 110/min generate
 roughly a quarter of resting cardiac output when filling and vascular tone are
 normal, about a fifth under anesthesia, and very little after severe
-hemorrhage. Forward flow and vascular resistance set diastolic pressure between
-compressions, and each compression adds a pulse scaled by cardiac filling.
+hemorrhage, with passive venous filling anchored to normal resting output rather
+than a failing-heart baseline. Forward flow and vascular resistance set
+diastolic pressure between compressions, and each compression adds a pulse
+scaled by cardiac filling.
 
 Coronary perfusion happens between compressions against venous, left atrial,
 and myocardial closing pressures. Myocardial energy recovers when diastolic
@@ -651,10 +682,13 @@ flow and EtCO₂ at fixed ventilation (Cantineau 1994).
 Although transient cardiac activity occasionally resumed without intervention
 after withdrawal of life support, no patient regained consciousness or survived
 (Dhanani 2021). As a teaching calibration, AnaSim requires sustained chest
-compressions with adequate coronary perfusion, viable myocardium, a vasopressor
-on board, and correction of severe hypothermia, acidemia, hypoxia,
-hyperkalemia, or local anesthetic conduction block before beats return from
-primary asystole. Interrupting compressions or losing perfusion resets the
+compressions with adequate coronary perfusion, viable myocardium, and correction
+of severe hypothermia, acidemia, hypoxia, hyperkalemia, or local anesthetic
+conduction block before beats return from primary asystole. Most primary
+asystole also requires a vasopressor on board, whereas reversible
+conduction-block asystole from local anesthetic toxicity (after lipid emulsion;
+Hiller 2009) or hyperkalemia (after calcium) can restart with compressions once
+the block clears. Interrupting compressions or losing perfusion resets the
 recovery interval.
 
 ### Defibrillation and cardioversion
@@ -670,7 +704,8 @@ After brief VF, successful defibrillation returns directly to sinus rhythm, and
 arterial pressure recovers over 5 to 20 seconds as beats refill the arterial
 tree, taking longer after longer arrest (Park 1994). After prolonged arrest,
 terminating shocks often produce transient post-shock asystole before escape
-beats or refibrillation (Pierce 2015), and cardiac output remains limited by
+beats or refibrillation (Pierce 2015), recovering post-shock bradycardia returns
+to sinus rhythm once heart rate improves, and cardiac output remains limited by
 energy depletion and myocardial injury (Laurent 2002). A late shock without CPR
 therefore leaves PEA or asystole, and delayed resuscitation leaves persistent
 post-arrest hypotension.
@@ -689,9 +724,9 @@ charge or pending synchronized shock.
 
 [Severe ischemia, hypoxia, hyperkalemia, or deep
 hypothermia](../anasim/physiology/arrhythmia.py) in a beating heart can trigger
-VT or VF. After a successful shock, VF frequently recurs over the next 2
-minutes if myocardial ischemia or hypoxia persists (Koster 2008; van Alem
-2003).
+VT or VF. After a successful shock for VF or pulseless VT, arrhythmia frequently
+recurs over the next 2 minutes if myocardial ischemia or hypoxia persists
+(Koster 2008; van Alem 2003).
 
 Amiodarone (Korth-Bradley 1996) and lidocaine can convert sustained perfusing
 VT over tens of minutes when potassium is not severely elevated, with
@@ -741,6 +776,8 @@ similar dilution and retention across volatile and propofol anesthesia
 (Ewaldsson and Hahn 2005). Normal saline is excreted more slowly than lactated
 Ringer's (Reid 2003). A larger fraction of 5% albumin stays intravascular
 initially, and a quarter of infused lipid emulsion volume remains in plasma.
+Queued fluid, blood, and lipid boluses drain sequentially on separate
+intravenous channels.
 
 Fluid also leaves the circulation through capillary leak into a third-space
 compartment that slowly returns fluid when blood volume falls. Anaphylaxis
@@ -760,9 +797,10 @@ pulmonary edema and accelerate filtration.
 [Fluid balance](../anasim/physiology/fluid_balance.py) tracks sodium,
 potassium, chloride, calcium, magnesium, and phosphate in a single
 extracellular compartment, and tracks albumin separately in plasma and the
-interstitium. Water shifts between extracellular fluid and cells to equalize
-tonicity, so free water from lactated Ringer's and lipid emulsion distributes
-across total body water.
+interstitium. Excess adipose tissue above a BMI of 25 adds less extracellular
+and intracellular water per kilogram than lean mass (Waki 1991). Water shifts
+between extracellular fluid and cells to equalize tonicity, so free water from
+lactated Ringer's and lipid emulsion distributes across total body water.
 
 Each fluid contributes its own ions, albumin, and buffer base according to its
 strong ion difference. Large volumes of 0.9% saline therefore produce
@@ -776,22 +814,27 @@ clearance (Kramer 2003); scaling citrate and D-lactate clearance with liver
 function and halting clearance when oxygen delivery fails are model
 assumptions.
 
-Potassium exchanges with a large intracellular pool over minutes. Acidemia
-shifts potassium into plasma, alkalemia and circulating epinephrine shift it
-into cells, and succinylcholine releases potassium into plasma (Martyn and
-Richtsfeld 2006). Malignant hyperthermia and severe hypoxia release cumulative
-cellular potassium that clears slowly over hours after the insult resolves.
+Potassium exchanges with a large intracellular pool over minutes. Mineral
+metabolic acidemia shifts potassium into plasma much more strongly than acute
+respiratory acidemia, whereas lactic acidemia causes negligible direct potassium
+shift (Adrogué and Madias 1981; Orringer 1977). Alkalemia and circulating
+epinephrine shift potassium into cells (blunted by labetalol's beta-2 blockade),
+and succinylcholine releases potassium into plasma (Martyn and Richtsfeld 2006).
+Malignant hyperthermia and severe hypoxia release cumulative cellular potassium
+that clears slowly over hours after the insult resolves.
 
 Ionized calcium depends on albumin, citrate, and 37 °C pH (Thode 1983; Bolan
 2001), so dilution and rapid citrated transfusion lower it without shifting
 during hypothermia. Once rapid transfusion stops, ionized calcium rebounds
 partially as citrate redistributes and clears (Kahn 1979), while dilutional
 losses persist. Intravenous calcium chloride mixes into extracellular fluid and
-clears in proportion to circulation, so a dose given during arrest waits for
-flow; a 1 g bolus raises ionized calcium by about 0.4 mmol/L, with half of the
-rise gone by 30 minutes (Ansari 2025). Shed blood removes calcium, and calcium
-lost to dilution or bound by citrate is not replaced by endogenous stores
-within a session (Bolan 2001).
+clears in proportion to circulation and renal function, so a dose given during
+arrest waits for flow; a 1 g bolus raises ionized calcium by about 0.4 mmol/L,
+with half of the rise gone by 30 minutes (Ansari 2025). Shed blood removes
+calcium, and calcium lost to dilution or bound by citrate is not replaced by
+endogenous stores within a session (Bolan 2001). During zero-flow cardiac
+arrest, arterial electrolyte and lactate readings lag behind venous changes
+until circulation resumes.
 
 ### Renal acid-base handling
 
@@ -814,7 +857,8 @@ steady-state CO₂ response slightly (Bourke 1987), while rapid high-dose boluse
 briefly depress central drive. Hypocapnia and neuromuscular block suppress
 respiratory effort, and rising CO₂ can restore breathing during opioid
 administration. Under anesthesia, the apneic threshold shifts alongside the
-drug-elevated resting PaCO₂ (Hickey 1971).
+drug-elevated resting PaCO₂ (Hickey 1971), while active hypoxic drive lowers it
+during light sedation on room air.
 
 For morphine and hydromorphone, respiratory rate is modeled separately from
 overall ventilatory drive (Olofsen 2026), combining Olofsen's fractional opioid
@@ -831,7 +875,8 @@ remains (Knill and Gelb 1978; Blouin 1993; Sarton 1996; Nieuwenhuijs 2000; Weil
 method (García-Río 2007; Poulin 1993; Peterson 1981; Lhuissier 2012); as a
 calibration, acute hypoxic sensitivity declines substantially in older adults
 while CO₂ sensitivity declines much less. During airway obstruction, airflow is
-restricted while inspiratory effort continues.
+restricted while inspiratory effort continues, with partial load compensation
+during severe acute obstruction.
 
 Metabolic acidosis lowers the PaCO₂ setpoint over a couple of minutes, though
 anesthetics and opioids still limit the ventilatory response.
@@ -863,7 +908,8 @@ share grows with age to reproduce the normal sea-level A-a gradient on room air
 (Crapo 1999). Bronchospasm and COPD add further low-V/Q mismatch without much
 true shunt (Wagner 1977), so supplemental oxygen corrects most hypoxemia while
 potentially blunting hypoxic drive and displacing CO₂ from hemoglobin (DeGaute
-1981; Robinson 2000).
+1981; Robinson 2000). High PEEP can also overdistend aerated units and add
+alveolar dead space, widening the PaCO₂-to-EtCO₂ gradient.
 
 In unconscious patients, dependent airways close at end-expiration, especially
 after age 30; PEEP of about 6 cmH₂O (higher in obesity) keeps them open
@@ -887,8 +933,9 @@ pulmonary blood flow still leaves a trace alveolar PCO₂.
 
 When the airway is closed or circuit gas runs out, gas absorbed from the
 alveoli is not replaced, causing lung volume to shrink down toward anatomic
-dead space and producing absorption atelectasis. Opening the airway lets
-circuit gas refill the lungs (Laviola 2020).
+dead space and adding absorption atelectasis and shunt once volume falls below
+closing capacity. Opening the airway lets circuit gas refill the lungs (Laviola
+2020).
 
 During apnea with an open airway, passive convective inflow moves gas through a
 shared dead-space buffer so circuit, dead space, and alveoli conserve mass
@@ -905,11 +952,13 @@ threshold, oxygen uptake and aerobic CO₂ production drop in proportion to
 delivery, and the oxygen debt produces [lactate](../anasim/physiology/lactate.py)
 at a rate fitted to hemorrhagic shock data in dogs (Dunham 1991).
 
-Epinephrine and sepsis increase aerobic lactate production (Grip 2015; Revelly
-2005). Lactate has a distribution volume of 0.26 L/kg (Levraut 1998) and clears
-with saturable Michaelis-Menten kinetics. The liver provides the majority of
-clearance, scaled by hepatic function and oxygen delivery, while extrahepatic
-clearance holds until severe hypoxia and stops when oxygen delivery ceases.
+Epinephrine, sepsis, severe vasoplegic hypotension (MAP below 40 mmHg),
+malignant hyperthermia, and lidocaine convulsions also raise lactate production
+(Grip 2015; Revelly 2005; Orringer 1977). Lactate has a distribution volume of
+0.26 L/kg (Levraut 1998) and clears with saturable Michaelis-Menten kinetics.
+The liver provides the majority of clearance, scaled by hepatic function and
+oxygen delivery, while extrahepatic clearance holds until severe hypoxia and
+stops when oxygen delivery ceases.
 
 Endogenous lactate removes buffer base one-for-one as it accumulates and
 returns that base when cleared. During hypoxic low-flow states, lactic acid
@@ -942,8 +991,11 @@ late pregnancy.
 
 The [mechanics model](../anasim/physiology/resp_mech.py) combines airway
 resistance, compliance, tissue viscoelasticity, and inspiratory muscle
-pressure, scaled to body size and lung conditions. Airway and muscle pressures
-set the intrathoracic pressure transmitted to venous return.
+pressure, scaled to body size and lung conditions. Alveolar pressure (including
+trapped auto-PEEP during severe expiratory obstruction, rather than proximal
+pressure behind an obstructed airway) transmits to the pleural space in
+proportion to chest-wall-to-total elastance (Jardin 1985), setting the
+intrathoracic pressure transmitted to venous return.
 
 Ventilator assistance lowers inspiratory muscle effort, anesthesia ends
 inspiratory effort earlier as the lung inflates, and severe hyperinflation
@@ -975,25 +1027,30 @@ obesity prevents clearance over 24 hours (Eichenberger 2002).
 Awake thermoregulation defends core temperature, with sweating and cutaneous
 vasodilation regulating fever above a hypothalamic setpoint shifted upward by
 sepsis and anesthesia (Sessler 2000). Basal heat production scales with body
-weight to the 0.75 power. Temperature and sepsis alter metabolic heat
-production, active warming adds heat, surface cooling removes it, and unwarmed
-intravenous fluids or refrigerated packed red cells cool the core unless the
-37 °C fluid warmer is on. Heat production falls with oxygen delivery, so core
-temperature drops faster during arrest.
+weight to the 0.75 power, and excess body fat lowers mean specific heat
+capacity. Temperature and sepsis alter metabolic heat production (scaling down
+toward a quarter of baseline in deep hypothermia), forced-air warming shields
+roughly 60% of body surface area from room loss while delivering convective heat
+(Giesbrecht 1994), surface cooling removes heat, and unwarmed intravenous fluids
+or refrigerated packed red cells cool the core unless the 37 °C fluid warmer is
+on. Thermoregulatory vasoconstriction limits peripheral heat loss below the
+vasoconstriction threshold (Sessler 2000; Kurz 1995), and heat production falls
+with oxygen delivery so core temperature drops faster during arrest.
 
 General anesthetics suppress thermoregulation, reduce metabolic heat
-production, and redistribute heat from the core to the periphery. This
-redistribution follows propofol-fentanyl data (Matsukawa 1995) and is extended
-to sevoflurane, etomidate, and ketamine as a model assumption; midazolam shifts
-thermoregulatory thresholds much less (Kurz 1995). First-hour redistribution
-cooling is smaller in heavier patients because of their higher mass-to-surface
-ratio (Kurz 1995).
+production, and redistribute heat from the core to the periphery; redistribution
+slows with cardiac output and halts during cardiac arrest. This redistribution
+follows propofol-fentanyl data (Matsukawa 1995) and is extended to sevoflurane,
+etomidate, and ketamine as a model assumption; midazolam shifts thermoregulatory
+thresholds much less (Kurz 1995). First-hour redistribution cooling is smaller
+in heavier patients because of their higher mass-to-surface ratio (Kurz 1995).
 
 Cold patients shiver below about 35.8 °C once awake or emerging (Kurz 1995),
 and awake sessions that begin hypothermic start with active shivering. Opioids,
-neuromuscular block, and deep hypothermia suppress shivering, and it stops
-during cardiac arrest. Shivering increases oxygen consumption, CO₂ production,
-and sympathetic circulatory drive (Ralley 1988).
+neuromuscular block, and deep hypothermia (below about 32 °C; Brown 2012)
+suppress shivering, and it stops during cardiac arrest. Shivering increases
+oxygen consumption, CO₂ production, and sympathetic circulatory drive (Ralley
+1988).
 
 ## Malignant hyperthermia
 
@@ -1029,11 +1086,11 @@ gas in a 6 L circuit containing a 3 L reservoir bag and bellows, tracking
 oxygen, volatile agent, nitrous oxide, nitrogen, and gas vented through the
 scavenger.
 
-When patient uptake exceeds fresh gas and vapor inflow, the reservoir empties
-without drawing in room air. As the bellows collapses, delivered breaths are
-limited to the remaining circuit gas plus inspiratory fresh gas flow, and CPAP
-or airway splinting drops to zero once the bellows is empty without fresh gas
-flow.
+When patient uptake exceeds fresh gas and vapor inflow, or when the ventilator
+runs into an open circuit or zero mask seal, the reservoir empties without
+drawing in room air. As the bellows collapses, delivered breaths are limited to
+the remaining circuit gas plus inspiratory fresh gas flow, and CPAP or airway
+splinting drops to zero once the bellows is empty without fresh gas flow.
 
 Vaporizer output depends on fresh gas flow, dial setting, and remaining agent.
 A proportioning system limits nitrous oxide to three times the delivered oxygen
@@ -1060,7 +1117,8 @@ Mandatory breaths include volume already drawn by the patient's own effort.
 Inspiratory setting changes take effect on the next breath, and PEEP applies
 during expiration. Flow triggering requires active muscle effort rather than
 passive PEEP shifts. Tracheal tube obstruction raises airway resistance, and
-inflations without measurable exhaled volume do not count as breaths. Auto-PEEP
+inflations without measurable exhaled volume do not count as breaths and blank
+plateau pressure. Auto-PEEP
 decays as trapped gas empties during expiration or pauses. Leaving mandatory
 modes or hitting an apnea timeout clears stale pressure and compliance
 readings; leaving PSV clears apnea backup, and apnea timeout immediately
@@ -1102,7 +1160,8 @@ Optional monitor audio plays plethysmograph pulse tones and active alarms.
 Alarm silence lasts 2 minutes of real time and ends early if a new alarm sounds
 or an active alarm flips between low and high limits. Lethal rhythm and arrest
 alarms (Asystole, VFIB, VTACH, and Arrest) highlight the HR tile with a rhythm
-label, break prior silence, and sound a faster, higher-pitched cadence. Core
+label, and along with oxygen pipeline failure (O2Supply) break prior silence and
+sound a faster, higher-pitched cadence. Core
 temperature alarms outside 35.5 to 38.0 °C, and peak airway pressure alarms
 above 40 cmH₂O or when a pressure-limited ventilator or manual bag breath hits
 its limit before delivering target volume.
@@ -1111,11 +1170,14 @@ its limit before delivering target volume.
 
 ECG, arterial pressure, and plethysmography share the same cardiac beat timing,
 with HR averaged over recent beats. A prolonged pause lowers displayed HR and
-blanks it after 8 seconds without a beat. ST depression blanks during
-non-analyzable rhythms (VF, asystole, VT, and wide-complex conduction block).
+blanks it after 8 seconds without a beat. ECG renders a brief discharge artifact
+during defibrillation and preserves ventricular tachycardia amplitude during
+hyperkalemia. ST depression blanks during non-analyzable rhythms (VF, asystole,
+VT, and wide-complex conduction block).
 
-The arterial waveform reflects MAP, stroke volume, and age-dependent arterial
-compliance (Mahdi 2017; Franklin 1997). Compliance increases as pressure drops
+The arterial waveform reflects MAP, stroke volume, body surface area, and
+age-dependent arterial compliance (Mahdi 2017; Franklin 1997), keeping beat-foot
+continuity across rhythm transitions. Compliance increases as pressure drops
 (Langewouters 1984), so pulse pressure narrows in hypotension and widens with
 vasopressors. Under propofol, systolic pressure falls roughly twice as much as
 diastolic pressure (compared with three to four times in Ebert 1992 and
@@ -1169,9 +1231,10 @@ blanks numeric EtCO₂ (Deakin 2007).
 Noninvasive blood pressure (NIBP) raises cuff inflation pressure when systolic
 pressure is high and averages pressure over the deflation sweep. Measurement
 fails when VF, asystole, PEA, profound hypotension, or chest compressions
-disrupt the sweep, while atrial fibrillation adds scatter and occasional
-failure. A failed reading blanks displayed NIBP values and triggers a low-MAP
-alarm.
+disrupt the sweep, while atrial fibrillation adds scatter and occasional failure
+while keeping DBP at or below MAP and SBP. A failed reading blanks displayed
+NIBP values, triggers a low-MAP alarm, and automatically retries after 20
+seconds.
 
 ### Airway pressure, flow, and gases
 
@@ -1185,8 +1248,10 @@ negligible flow and relaxed respiratory muscles. Displayed PEEP reflects airway
 pressure, while intrinsic PEEP affects plateau pressure and residual flow.
 
 [Capnography](../anasim/monitors/capno.py) models dead-space transit time and
-analyzer delay. A rolling peak window holds full-breath readings across shallow
-interposed breaths, and the no-breath timeout extends automatically at slow
+analyzer delay. Phase III upslope scales with EtCO₂ across breaths, a rolling
+peak window holds full-breath readings across shallow interposed breaths,
+shallow sub-dead-space breaths refresh the trace without reporting false
+full-breath readings, and the no-breath timeout extends automatically at slow
 rates. End-tidal oxygen and anesthetic values hold the last exhaled sample
 during brief apnea and clear when exhaled gas stops, while gas at the sampling
 port decays without flow. Once an airway is connected or assisted ventilation
@@ -1199,23 +1264,30 @@ Without an airway device, impedance respiratory rate counts breathing efforts
 even during obstruction. Whenever the ventilator is off (including manual mode
 with an open APL valve or failed mask seal), a low respiratory rate alarm
 sounds after 15 seconds below 5 breaths/min. A low FiO₂ alarm triggers below
-25% while the patient is connected to the breathing circuit and stays silent
-when disconnected on room air. The gas monitor displays end-tidal age-adjusted
-MAC, whereas anesthetic effects depend on brain MAC.
+25% while the patient is connected to a sealed breathing circuit and stays
+silent when disconnected on room air or with a zero mask seal. The gas monitor
+displays end-tidal age-adjusted MAC (without pregnancy scaling), whereas
+anesthetic effects depend on brain MAC.
 
 ### BIS and neuromuscular monitoring
 
-BIS includes Eleveld's age-dependent drug delay and display smoothing, and
-sampled hypnotic sensitivity affects BIS under both propofol and sevoflurane.
-Cortical failure from cerebral ischemia appears on BIS within 20 seconds.
-High-BIS alarms apply only when the patient is paralyzed or under active
-anesthetic maintenance.
+BIS applies Eleveld's age-dependent delay to propofol while routing sevoflurane,
+adjuncts, temperature, and arousal shifts through an age-independent monitor
+calculation delay capped at 18 seconds (Pilge 2006), and sampled hypnotic
+sensitivity affects BIS under both propofol and sevoflurane. Cortical failure
+from cerebral ischemia appears on BIS within 20 seconds. High-BIS alarms apply
+only when the patient is paralyzed or under active anesthetic maintenance, and
+stay silent during rapid induction once the patient is already deeply
+unconscious while the delayed display catches up.
 
-The [neuromuscular monitor](../anasim/monitors/neuromuscular.py) measures TOF
-or single twitch on demand or on an interval. TOF reports twitch count and,
-when all four twitches return, the T4/T1 ratio rounded down to a whole
-percentage so values below 90% never display as 90%. Weak-twitch ratios are
-flagged, and single twitch reports T1 relative to an unblocked baseline.
+The [neuromuscular monitor](../anasim/monitors/neuromuscular.py) measures TOF,
+post-tetanic count (PTC; Viby-Mogensen 1981), or single twitch on demand or on
+an interval. TOF reports twitch count and, when all four twitches return, the
+T4/T1 ratio rounded down to a whole percentage so values below 90% never display
+as 90%, alongside depressed T1 height so recovery is not marked complete while
+T1 remains below 90%. Weak-twitch ratios are flagged, PTC counts 0 to 15
+post-tetanic twitches during deep block with a 60-second minimum repeat
+interval, and single twitch reports T1 relative to an unblocked baseline.
 
 ### Arterial blood gases
 
@@ -1251,20 +1323,23 @@ scripted shortcuts. Requesting surgical source control in sepsis logs the
 action without clearing established vasoplegia, so fluid resuscitation and
 norepinephrine remain necessary. Malignant hyperthermia and balanced emergence
 start on routine low-flow air/oxygen maintenance so high-flow oxygen washout is
-mechanically required, and oxygen supply failure equilibrates baseline FiO₂ so
-the circuit low-FiO₂ alarm warns before arterial desaturation.
+mechanically required; malignant hyperthermia accepts non-triggering TIVA
+(propofol, midazolam, or ketamine) for maintenance, aligns surface cooling at
+38 °C, and allows a brief grace window after dantrolene before flagging
+persistent crisis signs. Oxygen supply failure equilibrates baseline FiO₂ so the
+circuit low-FiO₂ alarm warns before arterial desaturation.
 
 Guided checks count learner actions from case start, or from crisis onset for
 crisis management, so prompt treatment does not require repeat dosing. Both
-balanced and manual TIVA induction accept transitional BIS depth during
-maintenance handover while an induction propofol bolus clears. Pressure
-objectives require spontaneous circulation without compressions and verify both
-displayed and true model MAP, using a current cuff reading when no arterial
-line is placed (a failed cuff reading during true hypotension still satisfies
-checks at crisis onset). Debrief hypotension time sums periods with MAP below 65
-mmHg or without spontaneous circulation. Milestone outcomes remain credited once
-achieved, extubation outcomes are evaluated when the tube is removed, and
-remaining outcomes must hold at case end.
+balanced and TIVA induction (manual or TCI) accept transitional BIS depth during
+maintenance handover while induction doses equilibrate. Pressure objectives
+require spontaneous circulation without compressions and verify both displayed
+and true model MAP, requiring a current cuff reading within 60 seconds when no
+arterial line is placed (a failed cuff reading during true hypotension still
+satisfies checks at crisis onset). Debrief hypotension time sums periods with
+MAP below 65 mmHg or without spontaneous circulation. Milestone outcomes remain
+credited once achieved, extubation outcomes are evaluated when the tube is
+removed, and remaining outcomes must hold at case end.
 
 ### Clinical action checks
 

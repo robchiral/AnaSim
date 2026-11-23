@@ -95,6 +95,6 @@ class ActionLog:
             if record.action == ACTION_EVENT_START and record.label == event_name:
                 return tuple(
                     item for item in self._records[index + 1:]
-                    if item.action in actions and (labels is None or item.label in labels)
+                    if (not actions or item.action in actions) and (labels is None or item.label in labels)
                 )
         return ()

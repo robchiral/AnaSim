@@ -16,12 +16,16 @@ from anasim.patient.pd.anesthesia import (
     opioid_controller_fraction,
     opioid_rate_fraction,
 )
-from anasim.patient.pd.nmba import succinylcholine_twitch_fraction
+from anasim.patient.pd.nmba import (
+    succinylcholine_phase2_tof_fraction,
+    succinylcholine_twitch_fraction,
+)
+from anasim.patient.pk_models import MorphinePK, SuccinylcholinePK
 from anasim.physiology.malignant_hyperthermia import dantrolene_twitch_fraction
 from anasim.physiology.resuscitation import compression_pressures
 
 from .constants import CMH2O_TO_MMHG
-from .enums import RhythmType
+from .enums import PULSELESS_RHYTHMS, RhythmType
 from .state import AirwayType, SimulationState
 from .utils import clamp, clamp01
 
@@ -359,6 +363,16 @@ def nmba_twitch_fraction(engine: SimulationEngine) -> float:
     )
 
 
+def succinylcholine_central_ce(engine: SimulationEngine) -> float:
+    """Central/laryngeal succinylcholine effect-site concentration, falling back to peripheral Ce."""
+    sux_state = engine.pk["succinylcholine"].state
+    return (
+        sux_state.ce_central
+        if (sux_state.ce_central > 0.0 or sux_state.c1 > 0.0)
+        else sux_state.ce
+    )
+
+
 def central_muscle_strength(engine: SimulationEngine) -> float:
     """Remaining central respiratory/airway strength after either muscle blocker."""
     state = engine.state
@@ -367,7 +381,7 @@ def central_muscle_strength(engine: SimulationEngine) -> float:
         engine.tof_pd.ce_central / potentiation, state.mac_sevo, state.mac_n2o,
     )
     return clamp01(1.0 - block) * succinylcholine_twitch_fraction(
-        state.succinylcholine_ce, central=True,
+        succinylcholine_central_ce(engine), central=True,
     )
 
 
@@ -425,6 +439,10 @@ def sync_pk_state(engine: SimulationEngine) -> None:
                 setattr(state, cp_field, float(val))
     state.roc_ce = float(engine.tof_pd.ce)
     state.roc_cp = float(engine.pk["roc"].state.c1 + engine.tof_pd.bound_rocuronium(engine.pk["roc"].v1))
+    morphine_pk = engine.pk["morphine"]
+    m6g_excess = morphine_pk.m6g_excess_ce if isinstance(morphine_pk, MorphinePK) else 0.0
+    if m6g_excess > 0.0:
+        state.morphine_ce = float(morphine_pk.state.ce + m6g_excess)
     state.opioid_ce = float(opioid_equivalent(
         engine.pk["remi"].state.ce, state.fentanyl_ce, state.morphine_ce, state.hydromorphone_ce,
     ))
@@ -449,7 +467,10 @@ def sync_pk_state(engine: SimulationEngine) -> None:
 def sync_neuromuscular_state(engine: SimulationEngine) -> None:
     """T1 height includes phase I block, which depresses all four twitches without fade."""
     s = engine.state
-    s.tof = float(engine.tof_pd.compute_tof_from_ce(s.roc_ce, s.mac_sevo, s.mac_n2o))
+    sux_pk = engine.pk["succinylcholine"]
+    phase2_exposure = sux_pk.phase2_exposure if isinstance(sux_pk, SuccinylcholinePK) else 0.0
+    phase2_fade = succinylcholine_phase2_tof_fraction(phase2_exposure)
+    s.tof = float(engine.tof_pd.compute_tof_from_ce(s.roc_ce, s.mac_sevo, s.mac_n2o) * phase2_fade)
     s.twitch = 100.0 * nmba_twitch_fraction(engine) * dantrolene_twitch_fraction(s.dantrolene_ce)
 
 
@@ -474,7 +495,8 @@ def sync_inhaled_agents(engine: SimulationEngine) -> None:
         state.et_sevo = float(sevo.p_alv * 100.0)
         state.et_n2o = float(n2o.p_alv * 100.0)
         state.et_mac = float(
-            sevo.p_alv * 100.0 / engine.pk_sevo.mac_age + n2o.p_alv * 100.0 / engine.pk_n2o.mac_age
+            sevo.p_alv * 100.0 / engine.pk_sevo.mac_age_monitor
+            + n2o.p_alv * 100.0 / engine.pk_n2o.mac_age_monitor
         )
     else:
         state.et_sevo = state.et_n2o = state.et_mac = 0.0
@@ -486,8 +508,12 @@ def project_arterial(
     """Copy the ideal pulse landmarks and the catheter reading into the public snapshot."""
     state.sbp = float(arterial_sample.systolic)
     state.dbp = float(arterial_sample.diastolic)
-    if state.map < state.dbp or state.map > state.sbp:
-        state.map = float(arterial_sample.mean)
+    if state.co > 0.0 and state.rhythm_type not in PULSELESS_RHYTHMS:
+        if state.map < state.dbp or state.map > state.sbp:
+            state.map = float(arterial_sample.mean)
+    else:
+        state.sbp = max(state.sbp, state.map)
+        state.dbp = min(state.dbp, state.map)
     state.art_pressure = float(art_reading.pressure)
     state.art_sbp = float(art_reading.systolic)
     state.art_dbp = float(art_reading.diastolic)
@@ -709,8 +735,8 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
     else:
         shunt_now = engine.aeration.shunt_fraction
         agent_uptake = (
-            engine.pk_n2o.alveolar_uptake_l_min(cardiac_output, shunt_now)
-            + engine.pk_sevo.alveolar_uptake_l_min(cardiac_output, shunt_now)
+            engine.pk_n2o.alveolar_uptake_l_min(cardiac_output, shunt_now, temp_c=state.temp_c)
+            + engine.pk_sevo.alveolar_uptake_l_min(cardiac_output, shunt_now, temp_c=state.temp_c)
         )
     lung_volume_l = cache.lung_volume_l if cache is not None else engine.aeration.frc
     spirometry = engine.vent.monitors
@@ -719,6 +745,8 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         if spirometry.mv_exp > 0.0
         else (1.0 if assisted_positive_pressure(engine) else 0.0)
     )
+    morphine_pk = engine.pk["morphine"]
+    m6g_excess = morphine_pk.m6g_excess_ce if isinstance(morphine_pk, MorphinePK) else 0.0
     resp_state = engine.resp.step(
         dt,
         ce_prop=hypnotic_equivalent(
@@ -730,17 +758,17 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         ),
         ce_remi=opioid_equivalent(engine.pk["remi"].state.ce_resp, state.fentanyl_ce),
         opioid_controller_fraction=opioid_controller_fraction(
-            engine.pk["morphine"].state.ce_resp, engine.pk["hydromorphone"].state.ce_resp,
+            morphine_pk.state.ce_resp + m6g_excess, engine.pk["hydromorphone"].state.ce_resp,
         ),
         opioid_rate_fraction=opioid_rate_fraction(
-            engine.pk["morphine"].state.ce_rr, engine.pk["hydromorphone"].state.ce_rr,
+            morphine_pk.state.ce_rr + m6g_excess, engine.pk["hydromorphone"].state.ce_rr,
             variability=engine.patient.variability.opioid_rate,
         ),
         mech_vent_mv=assisted_rr * assisted_vt_l,
         fio2=tracheal_fio2,
         ce_roc=engine.tof_pd.ce_central / engine.tof_pd.potentiation_factor(state.mac_sevo, state.mac_n2o),
         neuromuscular_strength=(
-            succinylcholine_twitch_fraction(state.succinylcholine_ce, central=True)
+            succinylcholine_twitch_fraction(succinylcholine_central_ce(engine), central=True)
             * engine.malignant_hyperthermia.respiratory_excursion_fraction
         ),
         muscle_fatigue=engine.resp_mech.effort.muscle.fatigue,
@@ -836,7 +864,7 @@ def project_runtime_physiology(engine: SimulationEngine, snapshot: PhysiologySte
 
 
 def compute_pit_estimate(engine: SimulationEngine, dt: float, *, smoothed: bool = False) -> float:
-    """Estimate intrathoracic pressure (mmHg) from airway pressure and inspiratory effort."""
+    """Estimate intrathoracic pressure (mmHg) from alveolar pressure and inspiratory effort."""
     hemo_cfg = engine.hemo.config
     raw_effort = (
         engine.current_mean_effort
@@ -844,8 +872,20 @@ def compute_pit_estimate(engine: SimulationEngine, dt: float, *, smoothed: bool 
         else engine.vent.capped_muscle_pressure_area / dt
     )
     effort_pressure = min(raw_effort, hemo_cfg.effort_pressure_max)
+    # Alveolar-to-pleural pressure transmission follows Ecw / (EL + Ecw) (Jardin 1985):
+    # stiff lungs transmit less alveolar pressure to the thorax, stiff chest walls transmit more.
+    aeration = engine.aeration
+    cw_stiff = max(0.5, aeration.chest_wall_stiffness)
+    lung_comp_ratio = clamp(
+        engine.resp_mech.compliance * cw_stiff / max(1e-6, aeration.reference_compliance),
+        0.15,
+        1.35,
+    )
+    el_ecw_ratio = clamp(cw_stiff * lung_comp_ratio, 0.15, 2.5)
+    trans_scale = clamp(el_ecw_ratio / (0.63 + 0.37 * el_ecw_ratio), 0.30, 1.35)
     return hemo_cfg.pit_0 + CMH2O_TO_MMHG * (
-        hemo_cfg.paw_transmission * engine.current_mean_paw - hemo_cfg.effort_transmission * effort_pressure
+        hemo_cfg.paw_transmission * trans_scale * engine.current_mean_paw
+        - hemo_cfg.effort_transmission * effort_pressure
     )
 
 
@@ -936,7 +976,15 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     else:
         engine.spo2_mon.display_saturation = None
         state.spo2 = state.display_spo2 = 0.0
-    engine.bis.initialize(drug_bis, cortical_function=cortical)
+    engine.bis.initialize(
+        drug_bis,
+        cortical_function=cortical,
+        ce_prop=state.hypnotic_ce,
+        mac_sevo=state.mac_sevo,
+        ce_ketamine=state.ketamine_ce,
+        ce_opioid=state.opioid_ce,
+        temp_c=state.temp_c,
+    )
     engine.smooth_bis = state.bis
     engine._bis_noise = 0.0
 

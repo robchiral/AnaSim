@@ -214,6 +214,7 @@ class AnesthesiaVentilator:
         self.muscle_pressure_area = 0.0
         self.capped_muscle_pressure_area = 0.0
         self.airway_pressure_area = 0.0
+        self.alveolar_pressure_area = 0.0
         self._effort_cap = 20.0
         self._collect_samples = False
         self._paw_end = 0.0
@@ -472,6 +473,7 @@ class AnesthesiaVentilator:
         self.muscle_pressure_area = 0.0
         self.capped_muscle_pressure_area = 0.0
         self.airway_pressure_area = 0.0
+        self.alveolar_pressure_area = 0.0
         self._effort_cap = max(0.0, float(effort_cap))
         self._collect_samples = collect_samples
         new_cpr = bool(cpr_active)
@@ -751,14 +753,14 @@ class AnesthesiaVentilator:
         peep_end = self._peep() if b.cpr_oscillating else self._paw_end
         if self._breath is None or not self._breath.inspiring:
             m.peep = peep_end
-            m.auto_peep = max(0.0, lung.elastic_pressure) if b.cpr_oscillating else lung.elastic_pressure
+            m.auto_peep = max(0.0, lung.elastic_pressure)
         m.tv_exp = vte * 1000.0
         if b.kind != "SPONT":
             driving = b.paw_peak - peep_end
             m.compliance_dyn = m.tv_exp / driving if driving > 0.5 and vte >= MIN_EXPIRATION_L else math.nan
         if b.mandatory:
             m.tv_exp_mandatory = m.tv_exp
-            m.paw_plat = b.plat
+            m.paw_plat = b.plat if vte >= MIN_EXPIRATION_L else math.nan
         if vte < MIN_EXPIRATION_L:
             return False
         if b.kind == "SPONT":
@@ -1221,6 +1223,19 @@ class AnesthesiaVentilator:
             self.airway_pressure_area += self._peep() * t + (
                 segment.ventilator_area(t) if self._cpr_active else seg_area
             )
+        peep_eff = self._eff_baseline or 0.0
+        if self._source in ("vent", "bag") or peep_eff > 0.0 or self.manual_breath_active:
+            transmission = clamp01(lung.aeration.pressure_transmission) if lung.aeration is not None else 1.0
+            dist_palv = segment.distending_area(t)
+            if self._breath is None or self._breath.kind != "SPONT":
+                dist_palv *= transmission
+            self.alveolar_pressure_area += max(0.0, peep_eff * t + dist_palv - pmus_seg_area)
+        elif (
+            lung.expiratory_obstruction > 0.0
+            and lung._prev_ee_excess_l is not None
+            and lung._prev_ee_excess_l > 0.5 * lung.compliance
+        ):
+            self.alveolar_pressure_area += (lung._prev_ee_excess_l / lung.compliance) * t
         segment.commit(t)
         self._paw_end = self._peep() + segment.paw(t)
         if effort.clock < effort.ti:

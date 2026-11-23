@@ -2,6 +2,7 @@
 import { minutesSeconds } from "./display.js";
 
 function trendTime(seconds) {
+  if (Math.abs(seconds) < 0.5) return "0:00";
   if (seconds < 0) return `-${minutesSeconds(Math.abs(Math.round(seconds)))}`;
   return minutesSeconds(seconds);
 }

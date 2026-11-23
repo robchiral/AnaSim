@@ -79,7 +79,9 @@ def _quintic_smoothstep(value: float) -> float:
 class ArterialWaveformRenderer:
     """Render an arterial pulse after Mahdi 2017, constrained by Su's MAP and stroke volume."""
 
-    def __init__(self, age: float, config: ArterialWaveformConfig | None = None):
+    def __init__(
+        self, age: float, config: ArterialWaveformConfig | None = None, *, bsa: float = 1.8,
+    ):
         self.config = ArterialWaveformConfig() if config is None else config
         if self.config.compliance_ref_ml_mmhg <= 0.0:
             raise ValueError("compliance_ref_ml_mmhg must be greater than zero")
@@ -113,7 +115,8 @@ class ArterialWaveformRenderer:
             self.config.compliance_age_min_factor,
             self.config.compliance_age_max_factor,
         )
-        self.arterial_compliance = self.config.compliance_ref_ml_mmhg * age_factor
+        size_factor = max(0.5, float(bsa)) / 1.8
+        self.arterial_compliance = self.config.compliance_ref_ml_mmhg * age_factor * size_factor
         cfg = self.config
         # Unnormalized decay at the end of diastole.
         self._diastolic_end = (
@@ -221,14 +224,7 @@ class ArterialWaveformRenderer:
 
     def steady_pressures(self, map_value: float, stroke_volume_ml: float, hr: float) -> tuple[float, float]:
         """Steady-state (systolic, diastolic) pressures (mmHg) at fixed MAP, SV, and HR."""
-        mean_pressure = max(0.0, float(map_value))
-        if mean_pressure <= 0.0 or stroke_volume_ml <= 0.0 or hr <= 0.0:
-            return 0.0, 0.0
-        shape = self._build_shape(60.0 / float(hr), float(hr))
-        compliance = self.compliance_at(mean_pressure)
-        pp = min(float(stroke_volume_ml) / compliance, mean_pressure / shape.mean)
-        diastolic = max(0.0, mean_pressure - pp * shape.mean)
-        return diastolic + pp, diastolic
+        return self.reference_pressures(map_value, stroke_volume_ml, hr)
 
     def reference_pulse_pressure(
         self,
@@ -248,6 +244,27 @@ class ArterialWaveformRenderer:
         compliance = self.compliance_at(max(mean_pressure, floor_p))
         requested_pp = float(stroke_volume_ml) * float(pulse_pressure_factor) / compliance
         return min(requested_pp, mean_pressure / shape.mean)
+
+    def reference_pressures(
+        self,
+        map_value: float,
+        stroke_volume_ml: float,
+        hr: float,
+        *,
+        pulse_pressure_factor: float = 1.0,
+        static_pressure: float = 0.0,
+    ) -> tuple[float, float]:
+        """Expected steady (systolic, diastolic) pressures (mmHg) matching _update_reference()."""
+        mean_pressure = max(0.0, float(map_value))
+        floor_p = max(0.0, float(static_pressure))
+        if mean_pressure <= 0.0 or stroke_volume_ml <= 0.0 or hr <= 0.0:
+            return floor_p, floor_p
+        shape = self._build_shape(60.0 / float(hr), float(hr))
+        compliance = self.compliance_at(max(mean_pressure, floor_p))
+        requested_pp = float(stroke_volume_ml) * float(pulse_pressure_factor) / compliance
+        pp = min(requested_pp, mean_pressure / shape.mean)
+        diastolic = max(floor_p, mean_pressure - pp * shape.mean)
+        return diastolic + pp, diastolic
 
     def _update_reference(
         self,
@@ -292,7 +309,7 @@ class ArterialWaveformRenderer:
             self._foot_pressure = self._pressure
             self._windkessel_offset = self._pressure - self._diastolic
         elif self._end_pressure > 0.0:
-            self._foot_pressure = max(floor_p, self._end_pressure)
+            self._foot_pressure = max(floor_p, self._pressure if self._pressure > 0.0 else self._end_pressure)
         else:
             self._foot_pressure = self._diastolic
             self._windkessel_offset = 0.0

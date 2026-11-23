@@ -86,6 +86,7 @@ def update_nibp(engine: SimulationEngine, dt: float, hemo_state) -> None:
         engine._next_nibp_time = state.time + engine.nibp.interval
 
     prev_ts = state.nibp_timestamp
+    was_cycling = engine.nibp.is_cycling
     cuff_p = engine.nibp.step(
         dt,
         state.time + dt,
@@ -99,6 +100,10 @@ def update_nibp(engine: SimulationEngine, dt: float, hemo_state) -> None:
     state.nibp_is_cycling = engine.nibp.is_cycling
     state.nibp_measurement_failed = engine.nibp.measurement_failed
     state.nibp_cuff_pressure = float(cuff_p)
+    # Bedside oscillometric monitors automatically schedule one prompt retry after
+    # a failed measurement (without looping faster than 20 s).
+    if was_cycling and not engine.nibp.is_cycling and engine.nibp.measurement_failed:
+        engine._next_nibp_time = min(engine._next_nibp_time, state.time + dt + 20.0)
 
     latest = engine.nibp.latest_reading
     if latest.timestamp is not None and latest.timestamp != prev_ts:
@@ -185,6 +190,7 @@ def compute_capno_value(
 
 def _peripheral_perfusion(
     hemo_state, base_co: float, base_svr: float, temp_factor: float,
+    *, cold_delay_factor: float | None = None,
 ) -> tuple[float, float]:
     """Return (pleth perfusion 0-1, SpO2 circulatory transit delay scale)."""
     co_ratio = hemo_state.co / base_co
@@ -192,8 +198,9 @@ def _peripheral_perfusion(
     vaso_factor = 1.0 / (1.0 + max(0.0, svr_ratio - 1.0) ** 1.4 * 1.4)
     map_factor = clamp01((hemo_state.map - 12.0) / 10.0) * (0.35 + 0.65 * clamp01((hemo_state.map - 20.0) / 40.0))
     perfusion = clamp(co_ratio, 0.0, 1.0) * vaso_factor * temp_factor * map_factor
+    delay_temp = temp_factor if cold_delay_factor is None else cold_delay_factor
     delay_scale = clamp(
-        1.0 / max(0.08, clamp(co_ratio, 0.15, 1.5) * vaso_factor * temp_factor),
+        1.0 / max(0.08, clamp(co_ratio, 0.15, 1.5) * vaso_factor * delay_temp),
         0.75,
         12.0,
     )
@@ -216,7 +223,12 @@ def step_cardiac_monitors(
     base_co = engine.hemo.base_co_l_min
     base_svr = max(1.0, engine.hemo.base_tpr * 1000.0)
     temp_factor = clamp(1.0 - 0.14 * max(0.0, 36.0 - engine.state.temp_c), 0.12, 1.0)
-    perfusion, spo2_delay_scale = _peripheral_perfusion(hemo_state, base_co, base_svr, temp_factor)
+    # Peripheral cold vasoconstriction slows finger SpO2 transit more steeply than
+    # core temperature drops (MacLeod 2005).
+    cold_delay_factor = clamp(1.0 - 0.45 * max(0.0, 36.0 - engine.state.temp_c), 0.10, 1.0)
+    perfusion, spo2_delay_scale = _peripheral_perfusion(
+        hemo_state, base_co, base_svr, temp_factor, cold_delay_factor=cold_delay_factor,
+    )
     st_depression = engine.hemo.coronary.st_depression_mv
     conduction_failure = engine.hemo.coronary.energy_failure
     compressions = hemo_state.compressions
@@ -251,7 +263,9 @@ def step_cardiac_monitors(
             hemo_state = engine.hemo.state
             project_hemodynamics(engine, hemo_state)
             new_rhythm = hemo_state.rhythm_type
-            perfusion, spo2_delay_scale = _peripheral_perfusion(hemo_state, base_co, base_svr, temp_factor)
+            perfusion, spo2_delay_scale = _peripheral_perfusion(
+                hemo_state, base_co, base_svr, temp_factor, cold_delay_factor=cold_delay_factor,
+            )
             if new_rhythm != rhythm:
                 rhythm = new_rhythm
                 cardiac_sample = cardiac_cycle.seed(hemo_state.hr, rhythm)
@@ -367,6 +381,7 @@ def step_monitors(
         ce_ketamine=state.ketamine_ce,
         ce_opioid=state.opioid_ce,
         temp_c=state.temp_c,
+        disturbance_bis=disturbances.bis,
     )
     substeps = waveform_substeps(dt)
     substep_dt = dt / substeps
@@ -378,7 +393,11 @@ def step_monitors(
     )
 
     update_nibp(engine, dt, engine.hemo.state)
-    engine.nmb.step(state.time + dt, state.twitch / 100.0, state.tof / 100.0)
+    deep_block_ratio = state.roc_ce / max(1e-6, engine.tof_pd._ec50(state.mac_sevo, state.mac_n2o))
+    engine.nmb.step(
+        state.time + dt, state.twitch / 100.0, state.tof / 100.0,
+        deep_block_ratio=deep_block_ratio,
+    )
 
     connected = state.airway_mode != AirwayType.NONE
     sealed = circuit_connected(engine)
@@ -398,7 +417,7 @@ def step_monitors(
         _hold(airway_waves, airway_wave, elapsed, substeps, substep_dt)
     airway_waves.extend([airway_wave] * (substeps - len(airway_waves)))
     state.paw, state.flow, state.volume = (float(value) for value in airway_wave)
-    bis_display_source = clamp(bis_val + disturbances.bis * engine.bis.cortical_function, 0.0, 100.0)
+    bis_display_source = clamp(bis_val, 0.0, 100.0)
     state.bis = float(bis_display_source)
 
     decay_bis = math.exp(-dt / BIS_DISPLAY_TAU_S)
@@ -446,7 +465,18 @@ def step_monitors(
         )
     )
     bis_int = display_int(state.display_bis)
-    bis_alarm = bis_int if (paralyzed or maintaining or bis_int <= engine.alarms.thresholds["BIS_max"]) else None
+    # During induction/RSI, suppress transient BIS HIGH alarms while the patient is
+    # already deeply unconscious (LOC >= 0.80) and undelayed hypnotic BIS is < 65,
+    # waiting only for Eleveld/display smoothing to catch up.
+    raw_bis = engine.bis.compute_bis(
+        state.hypnotic_ce, mac_sevo, state.ketamine_ce, state.opioid_ce, temp_c=state.temp_c,
+    )
+    inducing_lag = not engine._bis_anesthetized and loc_val >= 0.80 and raw_bis < 65.0
+    bis_alarm = (
+        bis_int
+        if ((paralyzed and not inducing_lag) or maintaining or bis_int <= engine.alarms.thresholds["BIS_max"])
+        else None
+    )
     map_alarm = (
         display_int(state.art_map)
         if engine.config.arterial_line_enabled
@@ -486,10 +516,12 @@ def step_monitors(
             # The ventilator measures only gas returning through the circuit.
             "MV": (round(state.mv, 1) if connected else 0.0) if vent.is_on else None,
             "VTe": vte_percent,
-            "FiO2": display_int(state.fio2 * 100.0) if connected else None,
+            "FiO2": display_int(state.fio2 * 100.0) if sealed else None,
         },
         dt=dt,
     )
+    if not engine.circuit.oxygen_supply_connected:
+        state.alarms["O2Supply"] = {"low": True, "high": False}
     rhythm = engine.hemo.state.rhythm_type
     if rhythm == RhythmType.ASYSTOLE:
         state.alarms["Asystole"] = {"low": False, "high": True}

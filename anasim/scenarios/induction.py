@@ -1,6 +1,6 @@
 """Adult general anesthesia inductions with volatile or TIVA maintenance."""
 
-from anasim.core.action_log import ACTION_DRUG_BOLUS
+from anasim.core.action_log import ACTION_DRUG_BOLUS, ACTION_TCI_TARGET
 from anasim.core.projection import loss_of_response
 
 from .base import (
@@ -42,11 +42,16 @@ def _require_balanced_handover_depth(engine) -> tuple[bool, str]:
 
 
 def _require_tiva_handover_depth(engine) -> tuple[bool, str]:
-    """Allow BIS 30-60 while a manual propofol induction bolus clears into maintenance."""
+    """Allow BIS 30-60 while a manual or TCI propofol induction loading dose settles."""
     bis = monitor_value(engine, "bis")
     boluses = engine.actions.since_case(ACTION_DRUG_BOLUS, labels=("propofol",))
+    tci_starts = [
+        r for r in engine.actions.since_case(ACTION_TCI_TARGET, labels=("propofol",))
+        if r.amount > 0.0
+    ]
     recent_bolus = bool(boluses) and (engine.state.time - boluses[-1].time <= 600.0)
-    low = 30.0 if recent_bolus else 40.0
+    recent_tci = bool(tci_starts) and (engine.state.time - tci_starts[0].time <= 600.0)
+    low = 30.0 if (recent_bolus or recent_tci) else 40.0
     met = low <= bis <= 60.0
     shown_bis = format_unmet_int(bis, low=low, high=60.0)
     return met, "" if met else f"BIS: {shown_bis}/{int(low)}-60"

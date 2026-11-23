@@ -48,6 +48,7 @@ class NativeTransport {
   }
 
   async request(message) {
+    if (message.type === "create") this.failed = false;
     if (this.failed) {
       if (message.type === "cmd") this.onmessage({ data: {
         type: "result", id: message.id, error: "Connection closed. Reload to reconnect.",

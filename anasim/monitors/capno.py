@@ -103,7 +103,7 @@ class Capnograph:
                 # must not advance the alveolar concentration profile twice.
                 self._exhaled_alveolar = max(0.0, self._exhaled_alveolar - self._inhaled)
                 self._inhaled = 0.0
-            slope_scale = min(1.0, max(0.0, end_tidal) / self.PHASE_III_REF_ETCO2) if cpr_oscillating else 1.0
+            slope_scale = min(1.0, max(0.0, end_tidal) / self.PHASE_III_REF_ETCO2)
             slope = self.PHASE_III_SLOPE * slope_scale * (1.0 + 3.0 * obstruction)
             # Allow for transit through dead space, using this inspiration's
             # volume. Bound the source concentration at the current endpoint.
@@ -374,6 +374,16 @@ class EtCO2Readout:
             self._peak = 0.0
             self._latched = False
         new_inspiration = not exhaling and dead_space_l > 0.0 and inhaled_l > dead_space_l
+        # Shallow breaths that move less than dead_space_l past the port (e.g. partial
+        # mask leak or shallow ETT breaths) still cycle a measurable capnogram (> 3 mmHg);
+        # let them refresh the peak on exhalation end without validating apneic CPR ripples.
+        shallow_cycle = (
+            not exhaling
+            and self._exhaling
+            and dead_space_l > 0.0
+            and 0.0 < inhaled_l <= dead_space_l
+            and self._peak > 3.0
+        )
         if exhaling and co2 > self._peak:
             self._peak = co2
             if et_gases is not None:
@@ -382,10 +392,10 @@ class EtCO2Readout:
                     self.et_gases = et_gases
             self._latched = False
         end_pause = self._exhaling and not exhaling and inhaled_l <= 0.0
-        if (end_pause or new_inspiration) and self._peak > 1.0 and not self._latched:
+        if (end_pause or new_inspiration or shallow_cycle) and self._peak > 1.0 and not self._latched:
             self._latch_peak(breath_index)
             self._latched = True
-        if new_inspiration or (end_pause and dead_space_l <= 0.0):
+        if new_inspiration or shallow_cycle or (end_pause and dead_space_l <= 0.0):
             self._peak = 0.0
             self._latched = False
         self._exhaling = exhaling
