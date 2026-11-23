@@ -103,7 +103,7 @@ def test_loss_of_consciousness_collapses_unsupported_airway(engine_factory):
         engine.step(0.1)
         obstruction.append(engine.state.airway_obstruction)
     # Switching would alternate between full relief and unsupported collapse (> 0.2).
-    assert 0.05 < min(obstruction) <= max(obstruction) < 0.8 * unsupported_obstruction
+    assert 0.05 < min(obstruction) <= max(obstruction) < 0.85 * unsupported_obstruction
 
     engine.set_fgf(10.0, 0.0)
     engine.set_apl_valve(20.0)

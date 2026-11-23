@@ -1,18 +1,199 @@
 {
   "counts": {
-    "eligible_cases": 1405,
-    "cached_complete_cases": 83,
-    "candidate_steps": 16,
-    "numeric_eligible_steps": 6,
-    "retained_steps": 3,
-    "retained_patients": 3
+    "fetched_peep_tracks": 3001,
+    "eligible_cases": 3640,
+    "cases_with_candidate_step": 349,
+    "candidate_steps": 396,
+    "numeric_eligible_steps": 20,
+    "retained_steps": 15,
+    "retained_patients": 15
   },
   "rejected": {
-    "pressure_waveform_failed": 3,
-    "unstable_or_missing_window": 9,
-    "other_setting_changed": 1
+    "unstable_or_missing_window": 346,
+    "setting_gap": 18,
+    "tidal_volume_changed": 2,
+    "other_setting_changed": 10,
+    "pressure_waveform_failed": 5
+  },
+  "summary": {
+    "mean_log_gain_per_cmh2o": 0.028880335195469294,
+    "median_log_gain_per_cmh2o": 0.03190892218578194,
+    "ci_95": [
+      0.02083550534762228,
+      0.03761549536178963
+    ]
   },
   "exclusions": [
+    {
+      "case": 33,
+      "time": 454.729,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 41,
+      "time": 572.854,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 71,
+      "time": 244.655,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 94,
+      "time": 1117.16,
+      "before": "Primus/TV: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 94,
+      "time": 3123.57,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 94,
+      "time": 3130.14,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 119,
+      "time": 1061.36,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 121,
+      "time": 1687.16,
+      "before": null,
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 166,
+      "time": 1311.0,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 194,
+      "time": 1827.38,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 263,
+      "time": 878.193,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 294,
+      "time": 343.374,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 306,
+      "time": 2700.5,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 313,
+      "time": 200.995,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 350,
+      "time": 1746.23,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 399,
+      "time": 882.46,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 431,
+      "time": 1142.67,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 438,
+      "time": 503.986,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 500,
+      "time": 1587.26,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 508,
+      "time": 467.478,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 538,
+      "time": 942.344,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 565,
+      "time": 442.016,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 575,
+      "time": 764.708,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 591,
+      "time": 1612.15,
+      "before": null,
+      "after": "pressure waveform: control shape or mechanics outside comparison range",
+      "waveforms": {
+        "before": {
+          "peep": 0.91773,
+          "r": 7.98649544836957,
+          "c": 46.717211388716706,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 5.9142600000000005,
+          "r": 12.576778732394363,
+          "c": 60.19739658977508,
+          "volume_control": false
+        }
+      }
+    },
+    {
+      "case": 629,
+      "time": 2572.32,
+      "before": null,
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 640,
+      "time": 892.052,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
     {
       "case": 703,
       "time": 1365.8,
@@ -34,15 +215,1059 @@
       }
     },
     {
+      "case": 733,
+      "time": 1529.01,
+      "before": null,
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 735,
+      "time": 506.05,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 774,
+      "time": 617.61,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 826,
+      "time": 1013.58,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 832,
+      "time": 2070.63,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 838,
+      "time": 1068.35,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 853,
+      "time": 489.691,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 856,
+      "time": 419.815,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 888,
+      "time": 676.128,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 896,
+      "time": 706.656,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 898,
+      "time": 1843.49,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 898,
+      "time": 2506.93,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 920,
+      "time": 1959.35,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 938,
+      "time": 1327.37,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 948,
+      "time": 457.504,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 948,
+      "time": 2253.77,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 970,
+      "time": 2197.87,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": null
+    },
+    {
+      "case": 1049,
+      "time": 812.613,
+      "before": null,
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 1049,
+      "time": 1493.22,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1068,
+      "time": 623.452,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1120,
+      "time": 496.059,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1121,
+      "time": 1494.79,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/TV: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 1129,
+      "time": 1422.34,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1151,
+      "time": 392.373,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1211,
+      "time": 1323.26,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 1223,
+      "time": 122.272,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1236,
+      "time": 418.309,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
       "case": 1239,
       "time": 646.388,
       "before": "Primus/SET_TV_L: setting changed in window",
       "after": "Primus/PPLAT_MBAR: numeric unstable in window"
     },
     {
+      "case": 1244,
+      "time": 984.708,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1267,
+      "time": 2098.06,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 1270,
+      "time": 469.366,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 1284,
+      "time": 1082.81,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
       "case": 1311,
       "time": 1496.39,
       "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 1315,
+      "time": 650.998,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 1325,
+      "time": 515.859,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1351,
+      "time": 313.039,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 1360,
+      "time": 612.361,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 1374,
+      "time": 731.498,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1415,
+      "time": 710.463,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 1422,
+      "time": 631.991,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 1452,
+      "time": 1454.71,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 1462,
+      "time": 480.03,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PEEP_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 1467,
+      "time": 434.258,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1510,
+      "time": 268.214,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 1512,
+      "time": 822.363,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 1515,
+      "time": 1330.44,
+      "before": null,
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1548,
+      "time": 406.655,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 1565,
+      "time": 1309.94,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 1589,
+      "time": 668.772,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1590,
+      "time": 1086.03,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 1599,
+      "time": 646.742,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1600,
+      "time": 139.184,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1606,
+      "time": 1020.48,
+      "before": null,
+      "after": "Primus/SET_INTER_PEEP: setting changed in window"
+    },
+    {
+      "case": 1606,
+      "time": 1090.21,
+      "before": "Primus/SET_INTER_PEEP: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 1606,
+      "time": 1419.81,
+      "before": null,
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 1624,
+      "time": 259.74,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1635,
+      "time": 303.382,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1641,
+      "time": 1131.87,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 1652,
+      "time": 1422.01,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 1671,
+      "time": 2219.28,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 1672,
+      "time": 611.763,
+      "before": "Primus/SET_TV_L: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1677,
+      "time": 1370.81,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1678,
+      "time": 939.307,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1703,
+      "time": 3506.39,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 1703,
+      "time": 3551.0,
+      "before": "Primus/SET_INTER_PEEP: setting changed in window",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 1739,
+      "time": 713.079,
+      "before": null,
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1739,
+      "time": 1008.19,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 1751,
+      "time": 1365.58,
+      "before": "Primus/TV: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_INTER_PEEP: setting changed in window"
+    },
+    {
+      "case": 1751,
+      "time": 1422.68,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1766,
+      "time": 966.742,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1794,
+      "time": 832.506,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1812,
+      "time": 427.529,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 1848,
+      "time": 1069.69,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 1871,
+      "time": 422.022,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 1885,
+      "time": 243.325,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 1896,
+      "time": 2274.54,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": null
+    },
+    {
+      "case": 1919,
+      "time": 445.401,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 1938,
+      "time": 441.582,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 1944,
+      "time": 2827.55,
+      "before": null,
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1944,
+      "time": 3070.45,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 1964,
+      "time": 1431.06,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 1964,
+      "time": 1438.8,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 1979,
+      "time": 677.15,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2001,
+      "time": 248.049,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2012,
+      "time": 498.831,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2025,
+      "time": 1153.91,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2066,
+      "time": 988.271,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2077,
+      "time": 409.009,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 2087,
+      "time": 1747.02,
+      "before": null,
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2106,
+      "time": 1500.78,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": null
+    },
+    {
+      "case": 2124,
+      "time": 399.335,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2130,
+      "time": 649.455,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 2140,
+      "time": 1889.59,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 2141,
+      "time": 1319.48,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_INTER_PEEP: setting changed in window"
+    },
+    {
+      "case": 2141,
+      "time": 1412.92,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 2151,
+      "time": 899.374,
+      "before": null,
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2153,
+      "time": 289.007,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2159,
+      "time": 753.286,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 2159,
+      "time": 957.141,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": "Primus/SET_INTER_PEEP: setting changed in window"
+    },
+    {
+      "case": 2159,
+      "time": 1076.32,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 2161,
+      "time": 2803.49,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2171,
+      "time": 1368.0,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2171,
+      "time": 1750.96,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2172,
+      "time": 3712.93,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2197,
+      "time": 319.346,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2199,
+      "time": 1316.95,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 2260,
+      "time": 503.592,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 2291,
+      "time": 1139.4,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2297,
+      "time": 1076.07,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2325,
+      "time": 33.047,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 2347,
+      "time": 348.406,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2400,
+      "time": 2073.49,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2424,
+      "time": 443.878,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2458,
+      "time": 1286.93,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 2458,
+      "time": 2190.86,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2462,
+      "time": 976.871,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2517,
+      "time": 655.536,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 2522,
+      "time": 701.013,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 2543,
+      "time": 410.896,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2583,
+      "time": 1350.78,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2585,
+      "time": 1795.13,
+      "before": null,
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2588,
+      "time": 2104.1,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 2588,
+      "time": 2112.13,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 2621,
+      "time": 1509.85,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 2634,
+      "time": 649.243,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 2663,
+      "time": 305.684,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2688,
+      "time": 337.371,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 2705,
+      "time": 1159.39,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 2706,
+      "time": 466.271,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 2719,
+      "time": 1261.33,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2722,
+      "time": 439.859,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 2722,
+      "time": 2729.12,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2748,
+      "time": 323.57,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 2770,
+      "time": 539.418,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 2816,
+      "time": 564.812,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": "Primus/SET_INTER_PEEP: setting changed in window"
+    },
+    {
+      "case": 2816,
+      "time": 677.559,
+      "before": "Primus/SET_INTER_PEEP: setting changed in window",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 2842,
+      "time": 1909.58,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 2898,
+      "time": 287.233,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2904,
+      "time": 704.277,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 2947,
+      "time": 537.185,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 2960,
+      "time": 2384.45,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2960,
+      "time": 2398.77,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2960,
+      "time": 2732.19,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 2962,
+      "time": 654.611,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3012,
+      "time": 605.168,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 3041,
+      "time": 875.904,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 3058,
+      "time": 1824.65,
+      "before": null,
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 3058,
+      "time": 2053.65,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 3123,
+      "time": 1678.56,
+      "before": null,
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3125,
+      "time": 2462.08,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/SET_INTER_PEEP: setting changed in window"
+    },
+    {
+      "case": 3125,
+      "time": 2555.09,
+      "before": "Primus/SET_INTER_PEEP: setting changed in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3148,
+      "time": 1765.48,
+      "before": "Primus/SET_TV_L: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3173,
+      "time": 835.424,
+      "before": null,
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3206,
+      "time": 1580.5,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 3222,
+      "time": 1541.36,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 3224,
+      "time": 346.245,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 3234,
+      "time": 2447.52,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 3294,
+      "time": 1667.31,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 3300,
+      "time": 1337.86,
+      "before": "Primus/SET_TV_L: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 3307,
+      "time": 1423.4,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 3308,
+      "time": 282.747,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3327,
+      "time": 943.194,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3327,
+      "time": 1425.7,
+      "before": null,
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3330,
+      "time": 571.479,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3370,
+      "time": 879.333,
+      "before": "Primus/TV: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3381,
+      "time": 529.883,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3382,
+      "time": 929.455,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3383,
+      "time": 440.187,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 3387,
+      "time": 1479.8,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 3388,
+      "time": 723.208,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 3431,
+      "time": 1521.25,
+      "before": null,
+      "after": "Primus/PEEP_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3459,
+      "time": 255.246,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 3474,
+      "time": 392.763,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 3488,
+      "time": 3860.37,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 3504,
+      "time": 696.568,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 3506,
+      "time": 593.631,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
       "after": null
     },
     {
@@ -66,10 +1291,414 @@
       }
     },
     {
+      "case": 3571,
+      "time": 589.801,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3581,
+      "time": 420.251,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3597,
+      "time": 365.007,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3667,
+      "time": 1103.1,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3669,
+      "time": 2020.13,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 3674,
+      "time": 961.067,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 3679,
+      "time": 311.081,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 3684,
+      "time": 245.638,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3703,
+      "time": 115.007,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3727,
+      "time": 272.166,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3757,
+      "time": 707.967,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3793,
+      "time": 301.774,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 3818,
+      "time": 1878.43,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3839,
+      "time": 910.669,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3841,
+      "time": 601.34,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 3858,
+      "time": 513.11,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3879,
+      "time": 1309.84,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3917,
+      "time": 1411.67,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 3943,
+      "time": 2009.42,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 3943,
+      "time": 2143.04,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 3956,
+      "time": 469.254,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 3985,
+      "time": 1116.11,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 4034,
+      "time": 2018.11,
+      "before": "Primus/PEEP_MBAR: numeric unstable in window",
+      "after": "Primus/PEEP_MBAR: numeric unstable in window"
+    },
+    {
       "case": 4054,
       "time": 2331.08,
       "before": "Primus/TV: numeric unstable in window",
       "after": null
+    },
+    {
+      "case": 4059,
+      "time": 781.076,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 4064,
+      "time": 441.464,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4071,
+      "time": 873.167,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4119,
+      "time": 427.904,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4152,
+      "time": 1232.13,
+      "before": null,
+      "after": "pressure waveform: control shape or mechanics outside comparison range",
+      "waveforms": {
+        "before": {
+          "peep": 0.71379,
+          "r": 11.017166866746702,
+          "c": 49.21126104890287,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 5.0985000000000005,
+          "r": 12.137473880597016,
+          "c": 57.62245039470304,
+          "volume_control": false
+        }
+      }
+    },
+    {
+      "case": 4160,
+      "time": 956.55,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 4174,
+      "time": 292.951,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 4189,
+      "time": 523.308,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4204,
+      "time": 262.667,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 4251,
+      "time": 1531.35,
+      "before": null,
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 4286,
+      "time": 1093.66,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4291,
+      "time": 485.437,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 4295,
+      "time": 1096.21,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 4309,
+      "time": 292.47,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 4340,
+      "time": 487.472,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 4341,
+      "time": 475.991,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 4423,
+      "time": 666.876,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4431,
+      "time": 683.657,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 4447,
+      "time": 485.615,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 4473,
+      "time": 758.673,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 4484,
+      "time": 365.533,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 4570,
+      "time": 1241.75,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 4588,
+      "time": 502.787,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 4593,
+      "time": 1426.48,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4605,
+      "time": 1044.78,
+      "before": "Primus/TV: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 4605,
+      "time": 1058.95,
+      "before": "Primus/TV: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 4690,
+      "time": 755.9,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 4704,
+      "time": 315.765,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 4725,
+      "time": 193.133,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4787,
+      "time": 527.627,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 4787,
+      "time": 534.873,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 4809,
+      "time": 414.372,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 4809,
+      "time": 1455.16,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4810,
+      "time": 2078.14,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4825,
+      "time": 1330.17,
+      "before": null,
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 4850,
+      "time": 2206.35,
+      "before": null,
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 4850,
+      "time": 2338.56,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 4864,
+      "time": 547.973,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4888,
+      "time": 665.622,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 4888,
+      "time": 1415.8,
+      "before": null,
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 4958,
+      "time": 524.274,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 5019,
+      "time": 283.349,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
     },
     {
       "case": 5023,
@@ -82,6 +1711,396 @@
       "time": 2529.49,
       "before": "Primus/PPLAT_MBAR: numeric unstable in window",
       "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5141,
+      "time": 564.677,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 5146,
+      "time": 1972.88,
+      "before": null,
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 5148,
+      "time": 795.994,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/RR_CO2: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 5153,
+      "time": 1837.32,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5217,
+      "time": 1195.91,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5235,
+      "time": 1409.02,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 5343,
+      "time": 376.308,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 5346,
+      "time": 1953.52,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 5346,
+      "time": 2635.69,
+      "before": null,
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 5351,
+      "time": 1467.13,
+      "before": null,
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 5357,
+      "time": 290.034,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 5370,
+      "time": 1715.65,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 5372,
+      "time": 1224.05,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 5398,
+      "time": 1108.21,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 5439,
+      "time": 1730.05,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": null
+    },
+    {
+      "case": 5483,
+      "time": 379.089,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 5493,
+      "time": 843.773,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 5504,
+      "time": 470.656,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 5521,
+      "time": 435.213,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5535,
+      "time": 438.559,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5546,
+      "time": 425.89,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 5558,
+      "time": 1404.81,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5559,
+      "time": 516.206,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 5585,
+      "time": 1025.34,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 5595,
+      "time": 1329.71,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 5612,
+      "time": 2888.96,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 5613,
+      "time": 957.324,
+      "before": "Primus/SET_RR_IPPV: setting changed in window",
+      "after": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values"
+    },
+    {
+      "case": 5644,
+      "time": 1485.22,
+      "before": null,
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 5661,
+      "time": 1240.2,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 5661,
+      "time": 2032.63,
+      "before": "inadequate driving pressure, volume, or agreement with settings",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 5709,
+      "time": 665.125,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 5712,
+      "time": 1015.32,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 5714,
+      "time": 523.787,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 5716,
+      "time": 370.452,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 5746,
+      "time": 1027.33,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 5751,
+      "time": 700.902,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 5758,
+      "time": 555.551,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5823,
+      "time": 455.85,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5823,
+      "time": 1190.69,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 5868,
+      "time": 644.472,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5899,
+      "time": 1425.7,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 5907,
+      "time": 745.738,
+      "before": "Primus/TV: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 5918,
+      "time": 1124.11,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 5939,
+      "time": 294.997,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5980,
+      "time": 2095.14,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 5986,
+      "time": 1422.42,
+      "before": null,
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 5997,
+      "time": 1351.71,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 6001,
+      "time": 1245.43,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 6002,
+      "time": 298.517,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 6015,
+      "time": 783.862,
+      "before": null,
+      "after": "Primus/PEEP_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 6045,
+      "time": 500.252,
+      "before": null,
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 6053,
+      "time": 1183.91,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": null
+    },
+    {
+      "case": 6056,
+      "time": 856.907,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 6083,
+      "time": 369.261,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 6090,
+      "time": 1131.31,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 6144,
+      "time": 578.382,
+      "before": null,
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 6169,
+      "time": 521.319,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 6185,
+      "time": 2084.11,
+      "before": "Primus/SET_TV_L: setting changed in window",
+      "after": null
+    },
+    {
+      "case": 6201,
+      "time": 431.376,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 6234,
+      "time": 893.214,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_INTER_PEEP: setting changed in window"
+    },
+    {
+      "case": 6234,
+      "time": 960.702,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 6236,
+      "time": 273.433,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 6242,
+      "time": 311.467,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 6265,
+      "time": 1106.3,
+      "before": null,
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 6276,
+      "time": 387.134,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
     },
     {
       "case": 6277,
@@ -126,11 +2145,206 @@
       "time": 3285.46,
       "before": "Primus/SET_INTER_PEEP: setting changed in window",
       "after": null
+    },
+    {
+      "case": 6312,
+      "time": 1411.22,
+      "before": null,
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 6318,
+      "time": 1629.57,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": null
+    },
+    {
+      "case": 6322,
+      "time": 1434.39,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 6322,
+      "time": 1456.76,
+      "before": "Primus/PPLAT_MBAR: numeric unstable in window",
+      "after": "inadequate driving pressure, volume, or agreement with settings"
+    },
+    {
+      "case": 6324,
+      "time": 1144.34,
+      "before": "Primus/TV: numeric unstable in window",
+      "after": "Primus/PPLAT_MBAR: numeric unstable in window"
+    },
+    {
+      "case": 6326,
+      "time": 916.26,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
+    },
+    {
+      "case": 6340,
+      "time": 372.566,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_TV_L: setting changed in window"
+    },
+    {
+      "case": 6365,
+      "time": 1452.91,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/TV: numeric unstable in window"
+    },
+    {
+      "case": 6379,
+      "time": 379.37,
+      "before": "Primus/SET_INTER_PEEP: insufficient coverage or nonfinite values",
+      "after": "Primus/SET_RR_IPPV: setting changed in window"
     }
   ],
   "rows": [
     {
+      "case": 87,
+      "subjectid": "2568",
+      "bmi": 38.62,
+      "pft": "Restrictive",
+      "time": 622.002,
+      "before": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 14.0,
+        "SET_TV_L": 0.45,
+        "SET_INSP_TM": 1.5,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 442.0,
+        "PPLAT_MBAR": 27.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 14.0,
+        "compliance": 19.70276462774256
+      },
+      "after": {
+        "SET_INTER_PEEP": 8.0,
+        "SET_RR_IPPV": 14.0,
+        "SET_TV_L": 0.45,
+        "SET_INSP_TM": 1.5,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 435.0,
+        "PPLAT_MBAR": 29.0,
+        "PEEP_MBAR": 8.0,
+        "RR_CO2": 14.0,
+        "compliance": 20.314097984000895
+      },
+      "waveforms": {
+        "before": {
+          "peep": 5.302440000000001,
+          "r": 17.908192873303175,
+          "c": 25.724677852245485,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 8.489002500000002,
+          "r": 23.813511206896557,
+          "c": 30.041975891832312,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.010185388215292978
+    },
+    {
+      "case": 1402,
+      "subjectid": "4282",
+      "bmi": 21.04,
+      "pft": "Normal",
+      "time": 1020.5,
+      "before": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 13.0,
+        "SET_TV_L": 0.4,
+        "SET_INSP_TM": 1.6,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 468.0,
+        "PPLAT_MBAR": 12.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 13.0,
+        "compliance": 38.246543100912035
+      },
+      "after": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 13.0,
+        "SET_TV_L": 0.4,
+        "SET_INSP_TM": 1.6,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 448.0,
+        "PPLAT_MBAR": 14.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 13.0,
+        "compliance": 48.81610059603587
+      },
+      "waveforms": {
+        "before": {
+          "peep": 1.1216700000000002,
+          "r": 7.294776923076924,
+          "c": 51.71363574207824,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 5.0985000000000005,
+          "r": 7.620436607142858,
+          "c": 65.81946147780117,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.04880140178982383
+    },
+    {
+      "case": 1462,
+      "subjectid": "4221",
+      "bmi": 29.57,
+      "pft": "Normal",
+      "time": 2144.28,
+      "before": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 15.0,
+        "SET_TV_L": 0.35,
+        "SET_INSP_TM": 1.3,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 342.0,
+        "PPLAT_MBAR": 17.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 15.0,
+        "compliance": 27.949396881435717
+      },
+      "after": {
+        "SET_INTER_PEEP": 7.0,
+        "SET_RR_IPPV": 15.0,
+        "SET_TV_L": 0.35,
+        "SET_INSP_TM": 1.3,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 343.0,
+        "PPLAT_MBAR": 19.0,
+        "PEEP_MBAR": 7.0,
+        "RR_CO2": 15.0,
+        "compliance": 28.031120264129974
+      },
+      "waveforms": {
+        "before": {
+          "peep": 5.174977500000001,
+          "r": 13.895648684210528,
+          "c": 41.19460748133821,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 7.188885,
+          "r": 16.811672011661816,
+          "c": 45.35372267454736,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.001459855051667423
+    },
+    {
       "case": 1679,
+      "subjectid": "4950",
+      "bmi": 22.12,
+      "pft": "Obstructive",
       "time": 963.152,
       "before": {
         "SET_INTER_PEEP": 0.0,
@@ -173,7 +2387,102 @@
       "log_gain_per_cmh2o": 0.03353885695695683
     },
     {
+      "case": 2907,
+      "subjectid": "3494",
+      "bmi": 23.36,
+      "pft": "Normal",
+      "time": 568.603,
+      "before": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 16.0,
+        "SET_TV_L": 0.44,
+        "SET_INSP_TM": 1.4,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 446.5,
+        "PPLAT_MBAR": 12.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 16.0,
+        "compliance": 36.48949037298552
+      },
+      "after": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 16.0,
+        "SET_TV_L": 0.44,
+        "SET_INSP_TM": 1.4,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 441.5,
+        "PPLAT_MBAR": 15.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 16.0,
+        "compliance": 43.29704815141708
+      },
+      "waveforms": {
+        "before": {
+          "peep": 0.3507768,
+          "r": 7.450145157446816,
+          "c": 42.572648866589276,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 4.47362784,
+          "r": 7.018455367610416,
+          "c": 47.68677472034012,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.03421203530428309
+    },
+    {
+      "case": 3016,
+      "subjectid": "3272",
+      "bmi": 28.38,
+      "pft": "Restrictive",
+      "time": 602.182,
+      "before": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 12.0,
+        "SET_TV_L": 0.55,
+        "SET_INSP_TM": 1.7,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 575.0,
+        "PPLAT_MBAR": 16.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 12.0,
+        "compliance": 35.24320878689811
+      },
+      "after": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 12.0,
+        "SET_TV_L": 0.55,
+        "SET_INSP_TM": 1.7,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 548.0,
+        "PPLAT_MBAR": 18.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 12.0,
+        "compliance": 41.33945881518697
+      },
+      "waveforms": {
+        "before": {
+          "peep": 0.24228072,
+          "r": 11.201323988034781,
+          "c": 44.09093714348029,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 4.69062,
+          "r": 13.752472096642334,
+          "c": 53.96232614764379,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.03190892218578194
+    },
+    {
       "case": 3225,
+      "subjectid": "1298",
+      "bmi": 27.22,
+      "pft": "Normal",
       "time": 1495.1,
       "before": {
         "SET_INTER_PEEP": 0.0,
@@ -216,7 +2525,56 @@
       "log_gain_per_cmh2o": 0.03378209177953933
     },
     {
+      "case": 3725,
+      "subjectid": "5977",
+      "bmi": 29.19,
+      "pft": "Normal",
+      "time": 1972.88,
+      "before": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 14.0,
+        "SET_TV_L": 0.55,
+        "SET_INSP_TM": 1.5,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 552.5,
+        "PPLAT_MBAR": 20.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 14.0,
+        "compliance": 36.12173515086136
+      },
+      "after": {
+        "SET_INTER_PEEP": 7.0,
+        "SET_RR_IPPV": 14.0,
+        "SET_TV_L": 0.55,
+        "SET_INSP_TM": 1.5,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 550.0,
+        "PPLAT_MBAR": 21.0,
+        "PEEP_MBAR": 7.0,
+        "RR_CO2": 14.0,
+        "compliance": 38.52673755586377
+      },
+      "waveforms": {
+        "before": {
+          "peep": 5.047515000000001,
+          "r": 12.14642647058824,
+          "c": 49.36911410140505,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 7.1379,
+          "r": 14.078812500000012,
+          "c": 54.07261411349302,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.03222885816078008
+    },
+    {
       "case": 4054,
+      "subjectid": "5344",
+      "bmi": 22.66,
+      "pft": "Normal",
       "time": 2869.36,
       "before": {
         "SET_INTER_PEEP": 5.0,
@@ -257,6 +2615,282 @@
         }
       },
       "log_gain_per_cmh2o": 0.027169264993049013
+    },
+    {
+      "case": 4694,
+      "subjectid": "2815",
+      "bmi": 23.84,
+      "pft": "Normal",
+      "time": 1756.22,
+      "before": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 12.0,
+        "SET_TV_L": 0.52,
+        "SET_INSP_TM": 1.7,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 533.0,
+        "PPLAT_MBAR": 14.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 12.0,
+        "compliance": 37.33591112231889
+      },
+      "after": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 12.0,
+        "SET_TV_L": 0.52,
+        "SET_INSP_TM": 1.7,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 529.0,
+        "PPLAT_MBAR": 17.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 12.0,
+        "compliance": 43.23166944526168
+      },
+      "waveforms": {
+        "before": {
+          "peep": 0.81576,
+          "r": 6.205438874296434,
+          "c": 46.3388967830199,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 5.0985000000000005,
+          "r": 9.142603213610588,
+          "c": 59.6298888900161,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.029323537503942627
+    },
+    {
+      "case": 4887,
+      "subjectid": "4466",
+      "bmi": 20.11,
+      "pft": "Normal",
+      "time": 1495.15,
+      "before": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 10.0,
+        "SET_TV_L": 0.4,
+        "SET_INSP_TM": 2.0,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 421.0,
+        "PPLAT_MBAR": 10.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 10.0,
+        "compliance": 41.28665293713837
+      },
+      "after": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 10.0,
+        "SET_TV_L": 0.4,
+        "SET_INSP_TM": 2.0,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 412.0,
+        "PPLAT_MBAR": 14.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 10.0,
+        "compliance": 44.893378226711555
+      },
+      "waveforms": {
+        "before": {
+          "peep": 0.71379,
+          "r": 8.90118171021378,
+          "c": 55.3564061726995,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 5.0985000000000005,
+          "r": 12.548250000000014,
+          "c": 66.41760066417604,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.01675020626499425
+    },
+    {
+      "case": 5351,
+      "subjectid": "5652",
+      "bmi": 29.21,
+      "pft": "Normal",
+      "time": 2457.83,
+      "before": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 13.0,
+        "SET_TV_L": 0.4,
+        "SET_INSP_TM": 1.6,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 409.0,
+        "PPLAT_MBAR": 16.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 13.0,
+        "compliance": 36.463487478491885
+      },
+      "after": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 13.0,
+        "SET_TV_L": 0.4,
+        "SET_INSP_TM": 1.6,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 413.5,
+        "PPLAT_MBAR": 16.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 13.0,
+        "compliance": 25.34446405805629
+      },
+      "waveforms": {
+        "before": {
+          "peep": 5.0985000000000005,
+          "r": 9.828013202933986,
+          "c": 43.303466911029496,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 0.91773,
+          "r": 10.20933010882709,
+          "c": 30.89610856601148,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.07275021820409328
+    },
+    {
+      "case": 5400,
+      "subjectid": "4873",
+      "bmi": 24.13,
+      "pft": "Normal",
+      "time": 1070.28,
+      "before": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 12.0,
+        "SET_TV_L": 0.5,
+        "SET_INSP_TM": 1.7,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 497.0,
+        "PPLAT_MBAR": 10.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 12.0,
+        "compliance": 48.73982543885456
+      },
+      "after": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 12.0,
+        "SET_TV_L": 0.5,
+        "SET_INSP_TM": 1.7,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 486.0,
+        "PPLAT_MBAR": 14.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 12.0,
+        "compliance": 52.95675198587819
+      },
+      "waveforms": {
+        "before": {
+          "peep": 0.91773,
+          "r": 8.538397424547288,
+          "c": 71.88764813990349,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 5.0985000000000005,
+          "r": 10.593549999999995,
+          "c": 83.61592418822872,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.01659582269233827
+    },
+    {
+      "case": 5540,
+      "subjectid": "694",
+      "bmi": 26.18,
+      "pft": "Normal",
+      "time": 1371.59,
+      "before": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 14.0,
+        "SET_TV_L": 0.42,
+        "SET_INSP_TM": 1.6,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 411.5,
+        "PPLAT_MBAR": 12.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 14.0,
+        "compliance": 33.62917197868654
+      },
+      "after": {
+        "SET_INTER_PEEP": 5.0,
+        "SET_RR_IPPV": 14.0,
+        "SET_TV_L": 0.42,
+        "SET_INSP_TM": 1.6,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 405.0,
+        "PPLAT_MBAR": 15.0,
+        "PEEP_MBAR": 5.0,
+        "RR_CO2": 14.0,
+        "compliance": 39.717563989408646
+      },
+      "waveforms": {
+        "before": {
+          "peep": 0.81576,
+          "r": 7.538098177399757,
+          "c": 43.2182129846574,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 5.0985000000000005,
+          "r": 13.052160000000002,
+          "c": 59.27994625284873,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.03327992075667384
+    },
+    {
+      "case": 6186,
+      "subjectid": "4136",
+      "bmi": 25.55,
+      "pft": "Normal",
+      "time": 1133.39,
+      "before": {
+        "SET_INTER_PEEP": 10.0,
+        "SET_RR_IPPV": 17.0,
+        "SET_TV_L": 0.3,
+        "SET_INSP_TM": 1.1,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 294.0,
+        "PPLAT_MBAR": 19.0,
+        "PEEP_MBAR": 10.0,
+        "RR_CO2": 17.0,
+        "compliance": 32.035566016148536
+      },
+      "after": {
+        "SET_INTER_PEEP": 0.0,
+        "SET_RR_IPPV": 17.0,
+        "SET_TV_L": 0.3,
+        "SET_INSP_TM": 1.1,
+        "SET_INSP_PAUSE": 10.0,
+        "TV": 292.0,
+        "PPLAT_MBAR": 10.0,
+        "PEEP_MBAR": 0.0,
+        "RR_CO2": 17.0,
+        "compliance": 28.63587329606747
+      },
+      "waveforms": {
+        "before": {
+          "peep": 10.095030000000001,
+          "r": 19.800909183673483,
+          "c": 81.60002664490673,
+          "volume_control": true
+        },
+        "after": {
+          "peep": 0.91773,
+          "r": 9.795405821917813,
+          "c": 39.407165086331375,
+          "volume_control": true
+        }
+      },
+      "log_gain_per_cmh2o": 0.01121864807282261
     }
   ]
 }

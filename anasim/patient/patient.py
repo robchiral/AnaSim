@@ -199,7 +199,7 @@ class Patient:
         gives way to Pelosi's saturating curve. The COPD rise is a calibration.
         """
         bmi = min(self.bmi, 32.0)
-        apparent = 0.0475 * (self.predicted_body_weight() / 60.0) ** 0.62 * math.exp(-0.0277 * (bmi - 23.0))
+        apparent = 0.0484 * (self.predicted_body_weight() / 60.0) ** 0.69 * math.exp(-0.0230 * (bmi - 23.0))
         if self.bmi > 32.0:
             apparent *= (233.3 * math.exp(-0.086 * self.bmi) + 40.0) / (233.3 * math.exp(-0.086 * 32.0) + 40.0)
         return 1.09 * apparent * (1.0 + 0.6 * self.copd_severity)

@@ -80,7 +80,7 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["scipy.*"]
+module = ["scipy.*", "matplotlib", "matplotlib.*"]
 ignore_missing_imports = true
 
 [tool.ruff]

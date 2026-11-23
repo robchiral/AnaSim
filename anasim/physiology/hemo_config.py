@@ -94,7 +94,7 @@ class HemodynamicConfig:
     ec50_remi_tpr: float = 4.59
     # Garraza-Obaldia 2024 found minimal direct remifentanil effect on MAP;
     # keep mild direct vasodilation now that the positive SV slope is removed.
-    emax_remi_tpr: float = -0.14
+    emax_remi_tpr: float = -0.12
     # Propofol pressure equilibration half-times (min) by age-group midpoint.
     # Young volunteers took 10-13 min (Jeleazcov 2015), longer than Kazama 1999's
     # estimates below 60; these values fit inductions without opioid (Ebert 1992
@@ -160,7 +160,7 @@ class HemodynamicConfig:
     sevo_gamma_tpr: float = 2.5
     sevo_emax_sv: float = -0.5
     sevo_ec50_sv: float = 0.6
-    sevo_emax_hr: float = -0.2
+    sevo_emax_hr: float = -0.14
     sevo_ec50_hr: float = 0.5
 
     # Blood volume, preload, and fluid balance.
@@ -188,7 +188,7 @@ class HemodynamicConfig:
     # 2022; output-driven falls, Fairfield 1991 and Sjøen 2024). It follows
     # plasma depth with this half-time (min); epinephrine's alpha tone reverses it.
     propofol_sympathetic_pooling: float = 0.3
-    propofol_sympathetic_half_time: float = 3.0
+    propofol_sympathetic_half_time: float = 5.0
     propofol_sympathetic_cp: float = 3.0  # Plasma mcg/mL for full depth
     # Propofol's resistance effect and venous pooling scale with pre-induction
     # MAP around the reference (fractional gain per mmHg), since higher pressure

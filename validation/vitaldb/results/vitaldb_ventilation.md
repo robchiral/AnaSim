@@ -1,14 +1,14 @@
 # VitalDB ventilation comparisons
 
-Generated 2026-10-30.
+Generated 2026-11-23.
 
-These comparisons use 40 volume-control windows recorded on the Dräger Primus, from 1384 eligible
-cases. The cases are adults within AnaSim's supported range who had general anesthesia with an oral tube and open
-surgery in the supine position. Each case contributes one steady window during surgery.
-Another 6 windows were skipped, either because their breaths did not peak at the end of flow and exhale at the
-set inspiratory time (pressure-regulated breaths) or because they gave implausible mechanics.
-Fitted values use the 20 calibration windows and are checked on the 20 held-out windows.
-Values are median (IQR).
+These comparisons use 60 volume-control windows recorded on the Dräger Primus, from 1637 eligible
+unique-subject cases inside AnaSim's patient domain (general anesthesia, oral single-lumen tube, open surgery,
+supine; 53 fall inside the prior age ≤ 70 / BMI ≤ 32 subset). Each case contributes one steady window
+during surgery. Another 12 windows were skipped because breaths did not peak at end-flow and exhale at
+the set inspiratory time (pressure-regulated breaths) or gave implausible mechanics.
+Fitted values use all 60 windows and are evaluated out-of-fold via 5-fold patient-grouped
+cross-validation. Values are median (IQR).
 
 Source: VitalDB (Lee et al., *Scientific Data*, 2022), used under CC BY-NC-SA 4.0 and its data use agreement.
 
@@ -17,7 +17,7 @@ Source: VitalDB (Lee et al., *Scientific Data*, 2022), used under CC BY-NC-SA 4.
 | Setting | Recordings | AnaSim default |
 |---|---|---|
 | Inspiratory pause (% of Ti) | 10 (10–10) | 10 |
-| Pmax (cmH₂O) | 40.8 (33.7–40.8) | 40 |
+| Pmax (cmH₂O) | 40.8 (40.8–40.8) | 40 |
 
 ## Mechanics from the recorded airway pressure
 
@@ -27,73 +27,81 @@ drop and plateau. The other quantities are then predictions. Tissue viscoelastic
 
 | Quantity | Recordings | Single compartment | With tissue viscoelasticity |
 |---|---|---|---|
-| Resistance from end-of-flow drop (cmH₂O/(L/s)) | 9.21 (8.03–11.6) | matched | matched |
-| Plateau compliance (mL/cmH₂O) | 36.2 (32–48.8) | matched | matched |
-| Expiratory tail decay / RC | 0.62 (0.435–0.966) | 1.02 (0.855–1.08) | 0.978 (0.838–1.07) |
-| Expiratory limb resistance (cmH₂O/(L/s)) | 2.89 (1.94–3.83) | 1.68 (1.45–3.52) | 1.46 (1.33–2.95) |
-| Inspiratory knee time constant (ms) | 64.4 (56.3–77.2) | 31.9 (28.9–35.3) | 47.2 (38–51.7) |
+| Resistance from end-of-flow drop (cmH₂O/(L/s)) | 9.58 (8.59–11.7) | matched | matched |
+| Plateau compliance (mL/cmH₂O) | 45.9 (35.2–56) | matched | matched |
+| Expiratory tail decay / RC | 0.908 (0.49–1.27) | 0.975 (0.812–1.04) | 0.948 (0.784–1.01) |
+| Expiratory limb resistance (cmH₂O/(L/s)) | 3.39 (2.34–3.96) | 1.55 (1.41–3.28) | 1.39 (1.29–2.98) |
+| Inspiratory knee time constant (ms) | 68.8 (54.1–86.1) | 31 (30–34.5) | 41.8 (36.8–49.1) |
 
-Tail values use windows whose expiratory tail reached 0.5 cmH₂O (24 recorded). In the other windows, Paw returned to PEEP within 0.2 s.
+Tail values use windows whose expiratory tail reached 0.5 cmH₂O (29 recorded). In the other windows, Paw returned to PEEP within 0.2 s.
 
-Circuit limb resistance fitted on the calibration windows (whole-breath RMSE): 1 0.410, 1.5 0.441, 2 0.489, 2.5 0.528, 3 0.584, 3.5 0.666. Best 1; AnaSim uses 1 cmH₂O/(L/s).
+Circuit limb resistance fitted on all windows (whole-breath RMSE): 1 0.425, 1.5 0.471, 2 0.521, 2.5 0.562, 3 0.613, 3.5 0.654. Best 1; CV stability: 1 cmH₂O/(L/s) (5/5 folds); AnaSim uses 1 cmH₂O/(L/s).
 
 ## Breath shape (RMSE, cmH₂O)
 
-Airway sensor time constant fitted on the calibration windows (transition RMSE): 10 ms 1.02, 15 ms 0.72, 20 ms 0.65, 25 ms 0.71, 30 ms 0.77, 40 ms 0.83. Best 20 ms; AnaSim uses 20 ms.
+Airway sensor time constant fitted on all windows (transition RMSE): 10 ms 0.90, 15 ms 0.76, 20 ms 0.67, 25 ms 0.72, 30 ms 0.75, 40 ms 0.85. Best 20 ms; CV stability: 20 ms (4/5 folds), 25 ms (1/5 folds); AnaSim uses 20 ms.
 
-| Segment (held-out) | Single compartment | With tissue viscoelasticity |
+| Segment (5-fold out-of-fold, n=60) | Single compartment | With tissue viscoelasticity |
 |---|---|---|
-| onset | 0.55 | 0.55 |
-| ramp | 0.44 | 0.38 |
-| end_flow | 0.66 | 0.60 |
-| exp_fall | 0.85 | 0.78 |
-| exp_tail | 0.22 | 0.20 |
-| whole | 0.46 | 0.42 |
+| onset | 0.59 | 0.59 |
+| ramp | 0.43 | 0.34 |
+| end_flow | 0.69 | 0.66 |
+| exp_fall | 0.67 | 0.67 |
+| exp_tail | 0.27 | 0.27 |
+| whole | 0.45 | 0.42 |
 
-Tissue viscoelasticity lowered whole-breath RMSE in 15 of 20 held-out windows.
+Tissue viscoelasticity lowered whole-breath RMSE in 41 of 60 out-of-fold windows.
 
 ## Pressure-control rise
 
-10-90% Paw rise of 20 recorded pressure-control breaths: 0.23 (0.207–0.263) s.
+10-90% Paw rise of 40 recorded pressure-control breaths: 0.249 (0.213–0.283) s.
 AnaSim through the airway sensor: 0.15 s ramp 0.136 s, 0.2 s ramp 0.170 s, 0.25 s ramp 0.207 s, 0.3 s ramp 0.244 s, 0.35 s ramp 0.283 s. AnaSim uses a 0.28 s ramp.
 
 ## Capnogram shape
 
-Features come from the CO₂ track alone. Each capnograph parameter was fitted in turn on the calibration
-windows, to the one feature that it sets (median absolute error): ANALYZER_TAU 0.08: 0.151, 0.09: 0.117, 0.1: 0.084, 0.11: 0.051, 0.12: 0.020, 0.13: 0.023, 0.14: 0.051, 0.15: 0.082, 0.16: 0.113 (best 0.12); PHASE_II_VOLUME 0.05: 0.082, 0.075: 0.081, 0.1: 0.082, 0.125: 0.083, 0.15: 0.088, 0.175: 0.097, 0.2: 0.110, 0.25: 0.127 (best 0.075); PHASE_III_SLOPE 5: 2.771, 10: 2.269, 15: 1.851, 20: 1.456, 25: 1.262, 30: 1.466 (best 25).
+Features come from the CO₂ track alone. Each capnograph parameter was fitted in turn on all windows
+to the one feature that it sets (median absolute error): ANALYZER_TAU 0.08: 0.154, 0.09: 0.120, 0.1: 0.087, 0.11: 0.053, 0.12: 0.031, 0.13: 0.038, 0.14: 0.065, 0.15: 0.091, 0.16: 0.120 (best 0.12); PHASE_II_VOLUME 0.05: 0.099, 0.075: 0.102, 0.1: 0.098, 0.125: 0.096, 0.15: 0.104, 0.175: 0.107, 0.2: 0.115, 0.25: 0.119 (best 0.125); PHASE_III_SLOPE 5: 1.931, 10: 1.359, 15: 0.872, 20: 0.865, 25: 1.052, 30: 1.220 (best 20).
+CV stability (5 folds): ANALYZER_TAU: 0.12 (4/5 folds), 0.13 (1/5 folds); PHASE_II_VOLUME: 0.125 (2/5 folds), 0.05 (2/5 folds), 0.075 (1/5 folds); PHASE_III_SLOPE: 15 (4/5 folds), 20 (1/5 folds).
 AnaSim uses ANALYZER_TAU 0.12 s, PHASE_II_VOLUME 0.1 L,
-and PHASE_III_SLOPE 20 mmHg/L. The held-out check below uses the fitted
-values. The series dead space is the respiratory model's 2.2 mL/kg. It was not fitted, so the share
-of each breath above 50% tests it.
+and PHASE_III_SLOPE 20 mmHg/L. The out-of-fold check below uses each
+fold's training-fitted values and AnaSim's PBW-based series dead space (2.2 mL/kg PBW, unfitted).
 
-| Feature (held-out) | Recordings | AnaSim | Paired difference |
+| Feature (5-fold out-of-fold, n=60) | Recordings | AnaSim | Paired difference |
 |---|---|---|---|
-| Fall 90-10% (s) | 0.416 (0.397–0.446) | 0.403 (0.403–0.403) | -0.0136 (-0.0427–0.00614) |
-| Rise 10-90% (s) | 0.565 (0.534–0.608) | 0.564 (0.515–0.693) | -0.0115 (-0.0569–0.171) |
-| Share of breath above 50% | 0.598 (0.559–0.618) | 0.596 (0.576–0.621) | 0.0155 (-0.0053–0.0351) |
-| Phase III slope (% of plateau/s) | 3.4 (2.2–6.28) | 3.28 (2.4–5.2) | -0.193 (-1.77–0.99) |
+| Fall 90-10% (s) | 0.423 (0.393–0.466) | 0.403 (0.403–0.403) | -0.012 (-0.0626–0.0177) |
+| Rise 10-90% (s) | 0.544 (0.495–0.613) | 0.532 (0.499–0.599) | -0.00412 (-0.0706–0.0712) |
+| Share of breath above 50% | 0.595 (0.574–0.614) | 0.605 (0.592–0.618) | 0.00965 (-0.00359–0.0264) |
+| Phase III slope (% of plateau/s) | 3.14 (2.38–4.18) | 2.64 (1.79–3.43) | -0.532 (-1.45–0.278) |
 
 ## Compliance by patient
 
-Plateau compliance TV/(Pplat - PEEP) before incision in 586 cases from numeric tracks:
-PEEP 0-2 32.9 (28–37.8), PEEP 4-6 45.9 (39.4–51.7) mL/cmH₂O.
+Plateau compliance TV/(Pplat - PEEP) before incision in 2602 supine cases from numeric tracks:
+PEEP 0-2 32.8 (28–37.8), PEEP 4-6 47.7 (40.6–55.3) mL/cmH₂O.
 
 log C = a + b log(PBW/60) + c (BMI - 23) + d PEEP over all cases (bootstrap 95% CI):
-b = 0.60 (0.50 to 0.70), c = -0.0263 (-0.0318 to -0.0206) per kg/m²,
-d = 0.065 (0.058 to 0.072) per cmH₂O. C at PBW 60 kg, BMI 23, PEEP 5:
-46.3 mL/cmH₂O. Age adds -0.0012 per year.
+b = 0.69 (0.64 to 0.74), c = -0.0230 (-0.0256 to -0.0209) per kg/m²,
+d = 0.072 (0.068 to 0.074) per cmH₂O. C at PBW 60 kg, BMI 23, PEEP 5:
+48.4 mL/cmH₂O. Age adds -0.0012 per year.
 
-Held-out cases at PEEP 4-6 (n = 91), mean absolute error in mL/cmH₂O:
-constant 8.12, body-size fit 7.26,
-AnaSim 7.32 (median bias -1.06).
-AnaSim's default patient: static 53.1, plateau 47.4 mL/cmH₂O.
+5-fold out-of-fold cases at PEEP 4-6 (n = 1013), mean absolute error in mL/cmH₂O:
+constant 8.68, body-size fit 7.45,
+AnaSim 7.58 (median bias -1.91).
+AnaSim's default patient: static 54.8, plateau 48.8 mL/cmH₂O.
+
+| Compliance subgroup (PEEP 4-6) | n | Recorded (mL/cmH₂O) | AnaSim MAE | AnaSim median bias |
+|---|---:|---|---:|---:|
+| Legacy core (open supine, age ≤ 70, BMI ≤ 32) | 397 | 46.3 (39.8–53.9) | 7.64 | -1.07 |
+| BMI under 30 | 956 | 48.3 (41.3–55.9) | 7.73 | -2.00 |
+| BMI 30 and over | 57 | 36.2 (32.1–42.6) | 4.98 | -1.21 |
+| PFT Normal | 838 | 47.8 (40.8–55.4) | 7.37 | -2.48 |
+| PFT Obstructive | 126 | 48.7 (42.1–57.7) | 8.76 | -0.99 |
 
 ## End-tidal O₂
 
 | | Recordings | AnaSim |
 |---|---|---|
-| FiO₂ (%) | 35 (34–37) | 37 (36.1–39) |
-| FiO₂ - EtO₂ (%) | 6 (5–6) | 5.37 (4.32–6.23) |
+| FiO₂ (%) | 35 (34–36) | 37.3 (35.9–38) |
+| FiO₂ - EtO₂ (%) | 6 (5–6) | 4.95 (4.58–5.86) |
 
-Paired difference, AnaSim minus recorded: -0.415 (-1.14–0.563); mean absolute 1.09
+Paired difference, AnaSim minus recorded: -0.438 (-1.17–0.309); mean absolute 0.87
 percentage points (the Primus reports whole percent).

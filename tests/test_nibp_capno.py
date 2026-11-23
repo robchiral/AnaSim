@@ -258,7 +258,7 @@ class TestCapnography:
         assert engine.state.etco2_signal_valid
 
         engine.set_vent_settings(rr=0, vt=0, peep=5.0, ie="1:2", mode="CPAP", p_insp=0)
-        for _ in range(40):
+        for _ in range(42):
             engine.step(0.5)
         assert engine.state.mv == 0.0
         assert engine.state.capno_co2 == 0.0

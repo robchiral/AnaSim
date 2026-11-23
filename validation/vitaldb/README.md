@@ -1,96 +1,87 @@
-# VitalDB validation
+# VitalDB comparisons
 
 These scripts compare AnaSim's ventilation, gas exchange, propofol and BIS,
-sevoflurane uptake, and hemodynamics with patient recordings from VitalDB. Run
-them from the repository root after completing the [contributor
-setup](../../CONTRIBUTING.md#setup). Any VitalDB tracks not yet cached are
-downloaded into `validation/vitaldb/.vitaldb_cache/`.
+sevoflurane uptake, and hemodynamics with VitalDB recordings used for model
+development and calibration. Run them from the repository root after completing
+the [contributor setup](../../CONTRIBUTING.md#setup). Uncached tracks download
+into `validation/vitaldb/.vitaldb_cache/`.
 
 ```bash
-python validation/vitaldb/vitaldb_ventilation.py
-python validation/vitaldb/vitaldb_peep.py
-python validation/vitaldb/vitaldb_anesthetics.py --figures
-python validation/vitaldb/vitaldb_tiva.py
-python validation/vitaldb/vitaldb_sevo.py
+python -m validation.vitaldb.vitaldb_ventilation
+python -m validation.vitaldb.vitaldb_peep
+python -m validation.vitaldb.vitaldb_anesthetics --figures
+python -m validation.vitaldb.vitaldb_tiva
+python -m validation.vitaldb.vitaldb_sevo
 ```
 
-Each script writes its report to `results/`. The source data come from VitalDB
-(Lee et al., *Scientific Data*, 2022) and are used under CC BY-NC-SA 4.0 and the
-VitalDB data use agreement.
+Each script writes its report to `results/`, uses unique subjects inside
+AnaSim's adult patient domain (general anesthesia, oral single-lumen tube, age
+18 to 85 years, weight 50 to 200 kg, height 150 to 200 cm, BMI 18 to 60 kg/m²),
+passes preoperative hemoglobin and Cockcroft-Gault creatinine clearance when
+recorded, and retains a legacy-core subgroup row. Shared data loading, replay,
+and cross-validation helpers live in `vitaldb_data.py` and `vitaldb_replay.py`.
+
+The source data come from VitalDB (Lee et al., *Scientific Data*, 2022) and are
+used under CC BY-NC-SA 4.0 and the VitalDB data use agreement.
 
 ## Ventilation and PEEP
 
-`vitaldb_ventilation.py` writes `results/vitaldb_ventilation.md`. It fits
-parameters on one set of cases and checks them on another. Rerun it after
-changing respiratory mechanics, airway pressure, or capnography. To plot
-ventilation overlays, install Matplotlib and add `--figure
-validation/vitaldb/results/overlay.png` to the command.
+`vitaldb_ventilation.py` writes `results/vitaldb_ventilation.md`. It evaluates
+circuit resistance, airway sensor lag, capnography, and pre-incision supine
+compliance with 5-fold patient-grouped cross-validation and full-cohort fits.
+Compliance includes all eligible supine cases by default; pass `--cases 0` or
+`--pcv-cases 0` to remove waveform caps, `--folds` to change fold count, or
+`--figure validation/vitaldb/results/overlay.png` (requires Matplotlib) for
+breath overlays.
 
-`vitaldb_peep.py` audits the recorded PEEP steps before incision that are used
-to calibrate recruitment, and writes `results/vitaldb_peep.json`. It reads only
-cached tracks, so its counts depend on what has been downloaded. It needs cached
-copies of `cases.csv` and `trks.csv`. Use `--cache PATH` to read from a different
-cache directory.
+`vitaldb_peep.py` audits pre-incision PEEP steps and writes
+`results/vitaldb_peep.json`. By default it reads only cached tracks; pass
+`--fetch` to screen `Primus/SET_INTER_PEEP` first and download remaining tracks
+only for cases with a candidate step. Use `--cache PATH` to read another cache
+directory.
 
 ## Anesthetic drugs
 
-`vitaldb_anesthetics.py` passes recorded propofol delivery through the PK and
-BIS models, and recorded inspired sevoflurane through the uptake model, without
-changing any model parameters. It checks each case's input history and signal
-quality, compares each phase of the anesthetic with a simple baseline, and
-reports errors for each patient. The sevoflurane comparison assumes values for
-cardiac output and FRC and includes runs that vary cardiac output. If the
-comparison shows an equation or unit error, correct it from the primary papers
-listed in [Model references](../../docs/REFERENCES.md#intravenous-drug-models).
+`vitaldb_anesthetics.py` replays recorded propofol delivery (with syringe-change
+volume resets unwrapped) through the PK and BIS models, and recorded inspired
+sevoflurane through the uptake model, without fitting parameters. By default it
+screens all eligible cases (`--tiva-cases 0 --sevo-cases 0`) and writes
+`results/vitaldb_anesthetics.md`, per-patient CSV errors, and JSON metadata.
 
 The report gives each patient's mean absolute BIS error. Published studies
-usually report the median absolute prediction error (MDAPE) and process the BIS
-signal differently, so their numbers cannot be compared directly with these.
-
-By default the script samples 100 propofol-remifentanil cases and 40 sevoflurane
-cases.
+usually report median absolute prediction error (MDAPE) with different BIS
+filtering, so those numbers are not directly comparable.
 
 | Option | Effect |
 |--------|--------|
-| `--tiva-cases`, `--sevo-cases` | Change the sample sizes |
-| `--seed` | Changes the order of candidates |
-| `--cache`, `--output` | Change the data and report directories |
-| `--dt 0.5` | Runs the replay with a smaller time step |
-| `--figures` | Plots patients across the range of errors; requires Matplotlib |
-
-The script writes `results/vitaldb_anesthetics.md`, a CSV of per-patient errors,
-and a JSON file with run settings and exclusions.
+| `--tiva-cases`, `--sevo-cases` | Limit retained sample sizes (`0` uses all eligible cases) |
+| `--cohorts` | Run `both`, `tiva`, or `sevo` |
+| `--seed` | Changes candidate ordering and bootstrap seed |
+| `--cache`, `--output` | Change data and report directories |
+| `--dt 0.5` | Runs with a smaller time step |
+| `--figures` | Writes representative overlays (requires Matplotlib) |
 
 ## Hemodynamics
 
-The two hemodynamic scripts run the full engine with each patient's recorded
-anesthetic delivery, fluids, and blood loss. Each patient starts from their own
-pre-induction cuff MAP and HR, and intubation and surgical stimulation are added
-at the corresponding times. The replays do not include patient positioning or
-pneumoperitoneum. All errors are the model value minus the recorded value.
+The two hemodynamic scripts drive the full engine across eligible ASA 1 to 3
+patients (normotensive and hypertensive) with recorded drug delivery, fluids,
+blood loss, pre-induction cuff MAP and HR, and intubation and surgical
+stimulation. Positioning and pneumoperitoneum are not modeled. Errors are model
+minus recorded.
 
-`vitaldb_tiva.py` replays every eligible propofol-remifentanil case in general
-surgery in patients aged 18 to 85, including patients who received ephedrine or
-phenylephrine. From the start of propofol to incision, each cuff reading is
-compared with the model's average MAP over the 40 seconds before the reading
-appeared, which matches typical cuff measurement duration. Each patient's
-readings are used only up to the first one that could prompt treatment (MAP
-below 65 mmHg, systolic pressure below 90 mmHg, or HR below 45 bpm), so any
-vasopressor given afterward does not affect the induction score.
-
-The script estimates the mean error with a model that gives each patient an
-individual offset, and it computes confidence intervals by resampling patients.
-The report breaks the error down by treatment, type of surgery, and age,
-compares the recorded and model course of MAP in all patients and in those aged
-70 and over, and scores MAP and HR during surgery in untreated patients.
+`vitaldb_tiva.py` replays propofol-remifentanil cases, including treated
+patients. From propofol to incision, each cuff reading is compared with model
+MAP averaged over the preceding 40 seconds and stops at the first reading that
+could prompt treatment (MAP below 65 mmHg, SBP below 90, or HR below 45).
 
 `vitaldb_sevo.py` replays bolus propofol induction with fentanyl and sevoflurane
-maintenance. Because pump start times are not recorded for hand boluses,
-propofol onset is inferred from the recorded fall in BIS and placed 30 seconds
-later than the model's own BIS latency implies, matching the median BIS lag seen
-in the TIVA cases. Intubation is placed 2.5 minutes after propofol, shortly
-before ventilator settings first appear. This script uses the same pre-treatment
-scoring as `vitaldb_tiva.py` and also reports MAP and HR during surgery.
+maintenance. Propofol onset is inferred from recorded BIS and shifted 30 seconds
+later than model BIS latency implies, matching the TIVA BIS lag; intubation is
+placed 2.5 minutes after propofol.
+
+Both scripts fit a patient-offset likelihood model with patient bootstrap 95%
+intervals, report 5-fold fold stability, and accept `--override '{...}'` or
+`--cv-grid '{"field": [v1, v2]}'` (`--folds 5`) for cross-validated sweeps.
 
 ### Current results
 
@@ -98,20 +89,22 @@ MAP error, in mmHg with 95% CI:
 
 | Report | Patients | Window | MAP error |
 |---|---:|---|---|
-| TIVA | 333 | Propofol to incision | -1.8 (-2.8 to -0.7) |
-| TIVA, untreated | 123 | Surgery | -1.6 (-3.8 to 0.8) |
-| Sevoflurane | 29 | Propofol to incision | -4.8 (-8.9 to -0.6) |
-| Sevoflurane, untreated | 12 | Surgery | 3.7 (-4.4 to 11.2) |
+| TIVA (all) | 511 | Propofol to incision | -3.3 (-4.3 to -2.5) |
+| TIVA (legacy core) | 330 | Propofol to incision | -3.0 (-4.0 to -2.1) |
+| TIVA, untreated | 182 | Surgery | -3.5 (-5.2 to -1.7) |
+| Sevoflurane (all) | 136 | Propofol to incision | -6.8 (-8.9 to -4.8) |
+| Sevoflurane (legacy core) | 29 | Propofol to incision | -6.2 (-10.1 to -2.1) |
+| Sevoflurane, untreated | 48 | Surgery | -3.1 (-7.9 to 1.4) |
 
 Median fall in MAP from the pre-induction value:
 
 | Report | 1 to 2 minutes | Lowest reading in 10 minutes | Before incision |
 |---|---|---|---|
-| TIVA, recorded | 17% | 32% | 28% |
-| TIVA, model | 15% | 30% | 28% |
-| Sevoflurane, recorded | 16% | 29% | 27% |
-| Sevoflurane, model | 14% | 32% | 28% |
+| TIVA, recorded | 18% | 33% | 29% |
+| TIVA, model | 18% | 30% | 29% |
+| Sevoflurane, recorded | 17% | 29% | 27% |
+| Sevoflurane, model | 14% | 32% | 29% |
 
-In the sevoflurane cases, model HR was within 3 bpm of the recordings. At 2 to 5
-minutes, the recorded fall in MAP was smaller than the model's (13% compared
-with 19%).
+Untreated HR error was `+0.1` bpm (induction) and `-0.1` bpm (surgery) in TIVA,
+and `-5.4` bpm at 5 to 10 minutes and `-2.7` bpm during surgery in sevoflurane,
+where 2 to 5 minute MAP fell `18%` versus `15%`.

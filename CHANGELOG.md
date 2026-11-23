@@ -49,6 +49,10 @@
 - Sped up high-speed web playback (about four times faster at 50x), maintenance
   startup, and per-step execution across blood chemistry, inhaled uptake,
   hemodynamics, and monitors.
+- Expanded VitalDB comparisons across the full adult patient domain with
+  preoperative labs and 5-fold patient-grouped cross-validation, and
+  recalibrated respiratory compliance, propofol venous pooling kinetics,
+  direct opioid vasodilation, and sevoflurane heart-rate depression.
 
 ## 1.9 - 2026-11-19
 
