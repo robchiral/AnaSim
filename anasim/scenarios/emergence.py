@@ -41,7 +41,7 @@ from .base import (
 # Rocuronium 0.6 mg/kg at induction leaves a TOF count of 2 at the start.
 # Sevoflurane potentiates rocuronium and slows recovery (Kleijn 2011).
 ROCURONIUM_DOSE_MG_KG = 0.6
-ROCURONIUM_MINUTES = {"balanced": 52, "tiva": 35}
+ROCURONIUM_MINUTES = {"balanced": 55, "tiva": 35}
 
 
 def _prepare_emergence(maint_type: Literal["balanced", "tiva"], minutes: int):

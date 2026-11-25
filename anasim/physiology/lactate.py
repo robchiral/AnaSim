@@ -65,6 +65,7 @@ class LactateModel:
         self.endogenous_mmol = self.resting_mmol
         self.infused_mmol = 0.0
         self.cleared_infused_mmol = 0.0
+        self.last_cleared_infused_mmol = 0.0
         self._delivered_mmol = 0.0
         self._base_removed_mmol = 0.0
 
@@ -134,6 +135,7 @@ class LactateModel:
             circulation: Systemic perfusion fraction (0-1) governing arterial wash-in.
         """
         if dt <= 0.0:
+            self.last_cleared_infused_mmol = 0.0
             return 0.0
         circ = clamp01(circulation)
         self._circulation = circ
@@ -175,6 +177,7 @@ class LactateModel:
         self.infused_mmol = infused_before * decay + infused_source * retained
         cleared_infused = infused_before + infused - self.infused_mmol
         self.cleared_infused_mmol += cleared_infused
+        self.last_cleared_infused_mmol = cleared_infused
         rest_decay, rest_retained = self._midpoint_factors(
             self._resting_pool_mmol, self.basal_mmol_min, self._normoxic_capacity, self.km_mmol, minutes
         )

@@ -602,3 +602,27 @@ def test_pregnancy_mac_v1_expansion_and_esrd_clearance_propagation():
     assert MilrinonePK(esrd).cl1 < 0.25 * MilrinonePK(normal).cl1
     assert GlycopyrrolatePK(esrd).cl1 < 0.45 * GlycopyrrolatePK(normal).cl1
     assert MorphinePK(esrd).cl1 < 0.75 * MorphinePK(normal).cl1
+
+
+def test_hfref_severe_cad_tolerates_750ml_crystalloid_without_arrest(engine_factory, advance_time):
+    """A 750 mL crystalloid bolus in HFrEF + severe CAD should not trigger flash edema arrest."""
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1), start=True,
+        age=72, weight=80, height=175, sex="male",
+        heart_failure="hfref", coronary_flow_reserve=1.8,
+    )
+    engine.give_fluid(750.0)
+    advance_time(engine, 900.0, dt=2.0)
+    assert not engine.state.cardiac_arrest
+    assert engine.state.lung_water < 3.0
+
+
+def test_morbid_obesity_steady_state_startup_avoids_ppeak_alarm(engine_factory, advance_time):
+    """Morbidly obese steady-state startup uses lung-protective VT without triggering a Ppeak alarm."""
+    obese = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1), start=True,
+        age=45, weight=170.0, height=170.0, sex="male",
+    )
+    advance_time(obese, 30.0, dt=0.5)
+    assert obese.state.paw_peak < 39.0
+    assert "Ppeak" not in obese.state.alarms

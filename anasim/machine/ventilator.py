@@ -66,6 +66,7 @@ MEASURE_FLOW = 0.05  # L/s; detects inspiration independently of ventilator trig
 MIN_EXPIRATION_L = 0.05  # A breath exhaling less is still in progress; brief reversals neither end nor start one.
 PLATEAU_FLOW = 0.5 / 60.0  # L/s; negligible end-inspiratory flow for a pressure breath
 PLATEAU_PRESSURE = 0.5  # cmH2O; maximum residual resistive drop or muscle pressure
+MIN_CIRCUIT_PAW = -10.0  # cmH2O; sub-atmospheric relief valve floor (ISO 80601-2-13)
 
 
 @dataclass
@@ -542,7 +543,17 @@ class AnesthesiaVentilator:
             self.pressure_limited = False
             self._backup = False
             self._since_breath = 0.0
-            self._since_mandatory = max(0.0, self._since_mandatory)
+            period = self._mandatory_period()
+            if (
+                self._mandatory_type() is not None
+                and math.isfinite(period)
+                and (self.inspiring or lung.volume > 0.05)
+            ):
+                # Wait for passive exhalation to finish instead of stacking a full
+                # mandatory stroke onto an unexhaled breath after PSV -> VCV switch.
+                self._since_mandatory = max(0.0, min(self._since_mandatory, period - 1.5))
+            else:
+                self._since_mandatory = max(0.0, self._since_mandatory)
             self._mode = self.settings.mode
         elif self._source in ("vent", "bag") and self._since_mandatory < 0.0:
             period = self._mandatory_period()
@@ -590,6 +601,7 @@ class AnesthesiaVentilator:
             lung.note_end_expiration(self._eff_baseline or 0.0, settled=True)
 
     def _switch(self, source, lung) -> None:
+        prev_source = self._source
         self._source = source
         self._mode = self.settings.mode if source == "vent" else None
         self._vg_pressure = None
@@ -613,7 +625,15 @@ class AnesthesiaVentilator:
         mandatory = self._mandatory_type()
         lung._mandatory_ventilating = mandatory is not None
         if mandatory is not None:
-            self._start(lung, mandatory, True)
+            if prev_source in ("bag", "vent") and lung.volume > 0.15:
+                # Let an in-progress mandatory/bag breath finish exhaling before
+                # delivering the next mandatory stroke (prevents breath stacking).
+                period = self._mandatory_period()
+                self._since_mandatory = max(0.0, period - 1.5) if math.isfinite(period) else 0.0
+                self.inspiring = False
+                self._armed = False
+            else:
+                self._start(lung, mandatory, True)
         else:
             self.inspiring = False
             self._armed = False
@@ -1168,9 +1188,22 @@ class AnesthesiaVentilator:
         watch = self._watch()
         if watch == "zero_flow" and self._cpr_active and pmus[0] > 0.0:
             watch = None
-        observe = (self._source is not None and pmus[1] > 0.0
-                   and (self._measured is None or (not self._measured.inspiring
-                        and self._measured.expired >= MIN_EXPIRATION_L)))
+        mandatory_exhaling = (
+            self._measured is not None
+            and self._measured.mandatory
+            and not self._measured.inspiring
+            and self._measured.expired < max(MIN_EXPIRATION_L, 0.75 * self._measured.inspired)
+            and lung.volume > 0.10
+        )
+        observe = (
+            self._source is not None
+            and pmus[1] > 0.0
+            and not mandatory_exhaling
+            and (
+                self._measured is None
+                or (not self._measured.inspiring and self._measured.expired >= MIN_EXPIRATION_L)
+            )
+        )
         passive_inspiration = (not self.inspiring and self._measured is not None
                                and self._measured.kind == "SPONT" and self._measured.inspiring)
         onset = effort.onset_volume()
@@ -1237,7 +1270,8 @@ class AnesthesiaVentilator:
         ):
             self.alveolar_pressure_area += (lung._prev_ee_excess_l / lung.compliance) * t
         segment.commit(t)
-        self._paw_end = self._peep() + segment.paw(t)
+        raw_paw_end = self._peep() + segment.paw(t)
+        self._paw_end = max(MIN_CIRCUIT_PAW, raw_paw_end) if self._source is not None else raw_paw_end
         if effort.clock < effort.ti:
             if b is not None and b.kind != "SPONT":
                 assistance = seg_area * self._volume_delivery
@@ -1555,8 +1589,9 @@ class AnesthesiaVentilator:
                 elif not b.depleted and b.limited:
                     self._vg_pressure = ceiling
                 elif not b.depleted and self._volume_delivery < 1.0 - 1e-6 and delivered_volume > 0.0:
+                    eff_vol = max(delivered_volume, volume / 1.45)
                     base_p = max(est_end_paw - b.peep, VG_MIN)
-                    step_up = clamp(base_p * (goal / delivered_volume - 1.0), -VG_STEP, VG_STEP)
+                    step_up = clamp(base_p * (goal / eff_vol - 1.0), -VG_STEP, VG_STEP)
                     self._vg_pressure = min(max(base_p + step_up, VG_MIN), ceiling)
                 elif self._vg_pressure is None:
                     self._vg_pressure = min(max(self.settings.p_insp, VG_MIN), ceiling)
@@ -1570,24 +1605,31 @@ class AnesthesiaVentilator:
             if flow <= PLATEAU_FLOW and flow * segment.lung.resistance <= PLATEAU_PRESSURE:
                 b.plat = end_paw
             if b.kind == "VG":
-                self._adjust_vg(delivered_volume, b)
+                # Cap leak compensation against runaway ghost inflation on severe
+                # facemask leaks while still compensating moderate leaks (<= 1.45x VT).
+                vg_vol = max(delivered_volume, volume / 1.45) if self._volume_delivery < 1.0 - 1e-6 else delivered_volume
+                self._adjust_vg(vg_vol, b, delivered_volume=delivered_volume)
         if segment.lung.effort.pmus()[0] > PLATEAU_PRESSURE or self._cpr_active:
             b.plat = math.nan
         if b.mandatory and self._active_measurement.mandatory:
             self._active_measurement.plat = b.plat
 
-    def _adjust_vg(self, volume: float, b: Breath) -> None:
+    def _adjust_vg(self, volume: float, b: Breath, *, delivered_volume: float | None = None) -> None:
         """Move Pinsp toward the set VT by at most VG_STEP, retaining the Pmax margin."""
         goal = self.settings.tv / 1000.0
+        actual_delivered = volume if delivered_volume is None else delivered_volume
         if b.depleted:
-            self.pressure_limited = volume < 0.9 * goal
+            self.pressure_limited = actual_delivered < 0.9 * goal
             return
         pressure = self._vg_pressure if self._vg_pressure is not None else b.target
         if volume > 0.0:
             pressure += min(max(pressure * (goal / volume - 1.0), -VG_STEP), VG_STEP)
         ceiling = self._vg_ceiling(b.peep)
         self._vg_pressure = min(max(pressure, VG_MIN), ceiling)
-        self.pressure_limited = self._vg_pressure >= ceiling and volume < 0.9 * goal
+        self.pressure_limited = (
+            (self._vg_pressure >= ceiling or actual_delivered < volume - 1e-6)
+            and actual_delivered < 0.9 * goal
+        )
 
     # --- Measurement ---------------------------------------------------------
 
@@ -1646,7 +1688,7 @@ class AnesthesiaVentilator:
                     volume, flow, paw = segment.sample(u)
                     dv = volume - previous_volume
                     self.samples.append((u - previous, dv,
-                                         peep + paw if connected else 0.0,
+                                         max(MIN_CIRCUIT_PAW, peep + paw) if connected else 0.0,
                                          flow * 60.0 if connected else 0.0,
                                          volume + peep_volume + volume_offset if connected else 0.0))
                     previous, previous_volume = u, volume
@@ -1669,5 +1711,7 @@ class AnesthesiaVentilator:
         """Airway pressure and flow at the end of the step."""
         segment, t = self._current or (self._segment(lung, lung.effort.pmus()), 0.0)
         self.paw = self._peep() + segment.paw(t)
+        if self._source is not None:
+            self.paw = max(MIN_CIRCUIT_PAW, self.paw)
         self.flow = segment.flow(t) * 60.0
         self.volume = lung.volume + lung.compliance * (self._eff_baseline or 0.0) + lung.volume_offset

@@ -68,6 +68,7 @@ def test_untreated_vf_becomes_fine_then_asystole_and_ends_the_session(engine_fac
         engine.step(1.0)
     assert engine.hemo.state.rhythm_type == RhythmType.VFIB
     assert _ecg_range(engine) < 0.4 * coarse
+    assert engine.state.ph <= 7.45 and engine.state.lactate >= 1.5
     while not engine.irreversible_arrest and engine.state.time < 900:
         engine.step(1.0)
     assert engine.state.arrest_reason == RhythmType.ASYSTOLE.value
@@ -580,6 +581,7 @@ def test_post_rosc_epinephrine_coupling_and_pulseless_vt_cpr(engine_factory, adv
     CPR in pulseless VT restores coronary supply on step 1 while untreated VT arrests.
     """
     rosc = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=7), start=True)
+    rosc._shock_rng = _ShockSucceeds()
     rosc.set_rhythm("VFIB")
     _run(rosc, 60)
     rosc.set_chest_compressions(True)
@@ -751,12 +753,23 @@ def test_pulseless_vt_intubation_and_shock_gating_and_sync_shock_projection(engi
 
 
 def test_electrical_silence_transitions_to_asystole_and_arrest_predicates_agree(engine_factory, advance_time):
-    """Prolonged electrical silence transitions rhythm_type to ASYSTOLE, is_perfusing matches
+    """Prolonged electrical silence latches rhythm_type to ASYSTOLE, is_perfusing matches
     check_cardiac_arrest for severe bradycardia, and step_respiration uses live hemo CO."""
     eng = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     eng.hemo.fluids.amounts["potassium"] += 120.0
     advance_time(eng, 25.0, dt=1.0)
     assert eng.hemo.rhythm_type == RhythmType.ASYSTOLE
+
+    silent_vf = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    silent_vf.set_rhythm(RhythmType.VFIB)
+    silent_vf.hemo.coronary.ischemia = 1.0
+    silent_vf.hemo.coronary.energy_reserve = 0.0
+    silent_vf.hemo.coronary.energy_failure = 1.0
+    advance_time(silent_vf, 20.0, dt=1.0)
+    assert silent_vf.hemo.rhythm_type == RhythmType.ASYSTOLE
+    silent_vf.hemo.coronary.energy_reserve = 0.2
+    advance_time(silent_vf, 5.0, dt=1.0)
+    assert silent_vf.hemo.rhythm_type == RhythmType.ASYSTOLE
 
     brady = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
     hs_brady = copy.copy(brady.hemo.state)
@@ -820,3 +833,21 @@ def test_critical_cad_develops_ischemia_and_st_depression_during_hypotension():
     assert cor.supply_demand_ratio < 0.75
     assert cor.ischemia > 0.25
     assert cor.st_depression_mv > 0.07
+
+
+def test_hfref_cpr_perfusion_matches_normal_heart_without_output_inflation(engine_factory, advance_time):
+    """HFrEF chest compressions should not generate higher CPR MAP than a normal heart."""
+    normal = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1), start=True,
+        age=65, weight=75, height=172, sex="male",
+    )
+    hfref = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1), start=True,
+        age=65, weight=75, height=172, sex="male", heart_failure="hfref",
+    )
+    for eng in (normal, hfref):
+        eng.set_rhythm(RhythmType.VFIB)
+        eng.set_chest_compressions(True)
+        advance_time(eng, 45.0, dt=1.0)
+
+    assert hfref.hemo.state.cpr_perfusion_map <= normal.hemo.state.cpr_perfusion_map + 3.0

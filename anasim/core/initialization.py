@@ -97,6 +97,11 @@ def _initialize_awake(engine: SimulationEngine) -> None:
         pit=engine.hemo.config.pit_0,
         shivering=engine.thermal.shiver_level,
     )
+    if base_temp != 37.0 or engine.thermal.shiver_level > 0.0:
+        engine.resp.equilibrate_blood_gases(
+            engine.hemo.state.co,
+            engine.resp.vco2 * max(0.25, engine.thermal.metabolic_factor) / 1000.0,
+        )
     runtime_core.update_pk_covariates(engine, engine.hemo.state.co)
 
 
@@ -183,8 +188,10 @@ def _configure_controlled_ventilation(engine: SimulationEngine, targets: Startup
     target_paco2 = resp.paco2_setpoint * resp._pco2_temp_scale_now
     target_va = resp.co2_constant * resp.vco2 * metabolic_factor / max(10.0, target_paco2)
     # Body mass raises CO2 production without enlarging the lungs, so VT stops
-    # at 8 mL/kg predicted body weight and the rate rises instead.
-    max_vt = min(0.8, 0.008 * engine.patient.predicted_body_weight())
+    # at 8 mL/kg predicted body weight (tapering to 6 mL/kg PBW in severe obesity
+    # to avoid excessive peak pressures) and the rate rises instead.
+    vt_per_kg_pbw = 0.008 - 0.002 * clamp01((engine.patient.bmi - 35.0) / 15.0)
+    max_vt = min(0.8, vt_per_kg_pbw * engine.patient.predicted_body_weight())
     vent_vt = clamp(resp.vd_deadspace + target_va / baseline_rr, 0.25, max_vt)
     target_rr = target_va / max(0.05, vent_vt - resp.vd_deadspace)
     vent_rr = min(rate_limit, max(baseline_rr, target_rr))
@@ -391,7 +398,8 @@ def _seed_volatile_history(engine: SimulationEngine, target_mac: float, duration
     # vapor_flow - uptake = (FGF + vapor_flow - total_uptake) * Fi.
     settings = engine.vent.settings
     va = settings.rr * max(0.0, settings.tv / 1000.0 - engine.resp.vd_deadspace) * engine.airway_status.ventilation_efficiency
-    uptake_btps = q_co * (1.0 - shunt) * pk.lambda_b_g * (state.p_alv - state.p_ven)
+    pk._temp_c = float(engine.patient.baseline_temp)
+    uptake_btps = q_co * (1.0 - shunt) * pk.lambda_b_g_at_temp(engine.patient.baseline_temp) * (state.p_alv - state.p_ven)
     fi_agent = clamp01(state.p_alv + uptake_btps / max(va, 0.1))
     uptake_stpd = uptake_btps * engine.resp._btps_to_stpd
     fgf = max(engine.circuit.fgf_total(), 0.1)
@@ -428,7 +436,9 @@ def _run_hidden_settle(
         collect_capno = step_idx >= capno_start
         thermal = engine.thermal
         thermal.depth_index, thermal.metabolic_factor = thermal.depth_and_metabolism(
-            engine.patient.baseline_temp, projection_core.thermal_hypnotic_ce(engine), engine.state.mac,
+            engine.patient.baseline_temp,
+            projection_core.thermal_hypnotic_ce(engine),
+            projection_core.thermal_mac(engine),
         )
         runtime_core.update_pk_covariates(engine, engine.state.co)
         if nom_pk:
@@ -464,6 +474,18 @@ def _run_hidden_settle(
         )
         projection_core.project_runtime_physiology(engine, physiology)
         hemo_state = physiology.hemo_state
+        engine.cerebral.step(
+            profile.settle_dt_seconds,
+            hemo_state.perfusion_map,
+            engine.state.hb_g_dl,
+            engine.state.sao2,
+            physiology.resp_state.pa_co2_37,
+            physiology.resp_state.ph_37,
+            venous_pressure=hemo_state.venous_pressure,
+            temp_c=engine.state.temp_c,
+            anesthetic_depth=clamp01(engine.thermal.depth_index),
+            volatile_luxury=clamp01(engine.state.mac_sevo + 0.5 * engine.state.mac_n2o),
+        )
         cardiac_sample = engine.cardiac_cycle.seed(engine.state.hr, hemo_state.rhythm_type)
         arterial_sample = engine.arterial_waveform.seed(
             cardiac_sample,

@@ -372,7 +372,7 @@ class TestEngineTCI:
 
 
 def test_controller_rebuilds_on_pk_drift(patient):
-    """TCIController rebuilds prediction tables only when PK parameters drift."""
+    """TCIController rebuilds prediction tables only when PK parameters or temperature scale drift."""
     pk_prop = PropofolPKEleveld(patient)
     ctrl = TCIController(pk_prop, target_compartment="effect_site", sampling_time=0.35, control_time=1.05)
     assert not ctrl._responsive[0] and ctrl._responsive[1]
@@ -380,12 +380,29 @@ def test_controller_rebuilds_on_pk_drift(patient):
     assert ctrl.sync_from_pk_model(pk_prop) is True
     assert ctrl.sync_from_pk_model(pk_prop) is False
 
+    pk_nore = NorepinephrinePK(patient)
+    nore_ctrl = TCIController(pk_nore, target_compartment="plasma", sampling_time=1.0)
+    pk_nore.update_hemodynamics(1.0, 1.0, 1.0, temp_c=31.0)
+    assert nore_ctrl.sync_from_pk_model(pk_nore) is True
 
-def test_hand_bolus_csht_uses_live_pk_when_tci_disabled(engine_factory, advance_time):
-    """Hand boluses without TCI report non-zero context-sensitive half-time from live PK."""
-    bolus = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=False, rng_seed=1), start=True)
-    bolus.give_drug_bolus("propofol", 150.0)
-    bolus.give_drug_bolus("fentanyl", 200.0)
-    advance_time(bolus, 120.0, dt=1.0)
-    assert bolus.get_predicted_csht("propofol") > 1.0
-    assert bolus.get_predicted_csht("fentanyl") > 5.0
+
+def test_manual_csht_uses_live_pk_without_polluting_pump_pk(engine_factory, advance_time):
+    """Manual boluses and infusions report CSHT from live PK without polluting population pump_pk."""
+    manual = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=False, rng_seed=1), start=True)
+    manual.set_airway_mode("ETT")
+    manual.set_vent_power(True)
+    manual.give_drug_bolus("propofol", 150.0)
+    manual.give_drug_bolus("fentanyl", 200.0)
+    advance_time(manual, 120.0, dt=1.0)
+    assert manual.get_predicted_csht("propofol") > 1.0
+    assert manual.get_predicted_csht("fentanyl") > 5.0
+
+    manual.set_drug_rate("propofol", 10.0)
+    advance_time(manual, 480.0, dt=2.0)
+    assert 2.0 < manual.get_predicted_csht("propofol") < 30.0
+
+    tci_eng = engine_factory(config=SimulationConfig(mode="awake", tci_enabled=True, rng_seed=1), start=True)
+    tci_eng.set_drug_rate("propofol", 150.0)
+    advance_time(tci_eng, 180.0, dt=1.0)
+    assert tci_eng.pump_pk["propofol"].state.ce == 0.0
+    assert tci_eng.get_predicted_csht("propofol") > 1.0

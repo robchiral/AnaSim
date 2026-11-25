@@ -283,4 +283,15 @@ test("lethal rhythm alarms break active bradycardia silence and play high-priori
   assert.equal(vfNotes.length, 5, "VF escalation plays 5-tone high-priority cadence immediately");
   assert.equal(vfNotes[0].frequency.value, 960);
   assert.ok(Math.abs(vfNotes[0].startTime - vfTime) < 1e-6);
+
+  // Silencing VF, achieving ROSC (alarm clears), and re-arresting into VF breaks silence immediately.
+  audio.silence.onclick();
+  assert.equal(audio.countdown.hidden, false);
+  const afterSilence = notes("alarm").length;
+  advance(500);
+  audio.update(snap(2.7, { alarms: {} }));
+  advance(500);
+  audio.update(snap(3.2, { alarms: { VFIB: "high" } }));
+  assert.equal(audio.countdown.hidden, true, "recurrent VFIB after resolution must break active silence");
+  assert.equal(notes("alarm").length, afterSilence + 5, "recurrent VFIB plays 5-tone high-priority cadence");
 });

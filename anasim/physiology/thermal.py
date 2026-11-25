@@ -81,7 +81,10 @@ class ThermalModel:
 
         emergence_bis = clamp01((bis - SHIVER_BIS_ON) / (SHIVER_BIS_FULL - SHIVER_BIS_ON))
         emergence = min(emergence_bis, clamp01(1.0 - unconscious))
-        return clamp01(cold_drive * emergence * muscle_factor)
+        # Anesthetics lower the shivering threshold above and attenuate gain rather than
+        # imposing a hard zero gate when core temperature falls below the anesthetized threshold.
+        anesthetic_gain = 0.35 + 0.65 * emergence
+        return clamp01(cold_drive * anesthetic_gain * muscle_factor)
 
     def depth_and_metabolism(
         self, temp_c: float, prop_ce: float, mac: float, shiver_level: float = 0.0,
@@ -133,7 +136,8 @@ class ThermalModel:
                          surface_cooling: bool = False, *,
                          oxygen_supply_fraction: float = 1.0,
                          sepsis_severity: float = 0.0,
-                         perfusing: bool = True) -> float:
+                         perfusing: bool = True,
+                         opioid_effect: float = 0.0) -> float:
         """Return core temperature after metabolic heat, environmental loss, and redistribution.
 
         A forced-air warmer target of 0 °C is off.
@@ -156,7 +160,9 @@ class ThermalModel:
         # threshold (~34.3-34.6 °C at 1 MAC), cutaneous constriction limits
         # further passive heat loss to establish a thermal plateau.
         if perfusing:
-            vasoconst_threshold = self.baseline_temp - 0.3 - 2.4 * depth_factor
+            vasoconst_threshold = (
+                self.baseline_temp - 0.3 - 2.4 * depth_factor - SHIVER_REMI_DROP_MAX * clamp01(opioid_effect)
+            )
             if temp_c < vasoconst_threshold:
                 vasoparesis = clamp(1.0 - 0.18 * max(0.0, 32.5 - temp_c), 0.2, 1.0)
                 vasoconst = clamp01((vasoconst_threshold - temp_c) / 1.0) * vasoparesis

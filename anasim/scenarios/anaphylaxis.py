@@ -181,7 +181,7 @@ def create_anaphylaxis_scenario() -> Scenario:
         actions=(CaseAction(
             "stop_trigger", "Stop suspected trigger",
             stop_trigger,
-            lambda engine: engine.anaphylaxis.active and (crisis_visible or engine.anaphylaxis.severity >= 0.55),
+            lambda engine: engine.anaphylaxis.active and (crisis_visible or crisis_apparent(engine)),
             completed_label="Suspected trigger stopped",
         ),),
         outcomes=(

@@ -36,7 +36,8 @@ def test_severe_acidemia_reduces_output_and_adrenergic_rescue(patient):
 def test_acidemia_blunts_catecholamine_emax_while_vasopressin_remains_potent(
     engine_factory, advance_time, patient
 ):
-    """Severe acidemia depresses catecholamine vascular Emax while vasopressin remains potent."""
+    """Severe acidemia depresses catecholamine vascular Emax without inverting epinephrine,
+    while vasopressin remains potent."""
     def svr_increment(ph: float, *, ce_nore: float = 0.0, ce_vaso: float = 0.0) -> float:
         base = HemodynamicModel(patient)
         treated = HemodynamicModel(patient)
@@ -47,6 +48,12 @@ def test_acidemia_blunts_catecholamine_emax_while_vasopressin_remains_potent(
 
     assert svr_increment(6.85, ce_nore=200.0) < 0.70 * svr_increment(7.40, ce_nore=200.0)
     assert svr_increment(6.85, ce_vaso=40.0) > 0.85 * svr_increment(7.40, ce_vaso=40.0)
+
+    epi_base, epi_acid = HemodynamicModel(patient), HemodynamicModel(patient)
+    for _ in range(30):
+        s0 = epi_base.step(1.0, 3.0, 3.0, 0.0, -2.0, 40.0, 95.0, ph=6.85)
+        s1 = epi_acid.step(1.0, 3.0, 3.0, 0.0, -2.0, 40.0, 95.0, ph=6.85, ce_epi=15.0)
+    assert s1.map > s0.map + 2.0
 
     vaso_eng = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     vaso_eng.start_sepsis()

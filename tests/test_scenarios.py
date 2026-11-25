@@ -739,3 +739,30 @@ def test_safety_review_covers_all_feedback_codes():
     assert fb_resp["feedback"]["code"] == "laryngospasm_blocked"
     debrief = json.loads(indep.command("case_finish", "{}"))["debrief"]
     assert any("laryngospasm" in note.lower() for note in debrief["learning_points"])
+
+
+def _web_advance(session: WebSession, seconds: float) -> None:
+    session.command("speed", json.dumps({"value": 50}))
+    session.command("run", json.dumps({"running": True}))
+    remaining = seconds
+    while remaining > 1e-8:
+        interval = min(remaining, 10.0)
+        session.step(interval / 50.0)
+        remaining -= interval
+
+
+def test_sepsis_and_anaphylaxis_early_actions_do_not_soft_lock_step1():
+    """Clicking source control or stop trigger early must still satisfy Guided Step 1."""
+    sepsis = WebSession({"scenario_id": "sepsis_response"})
+    sepsis.engine.config.dt = 0.5
+    _web_advance(sepsis, 16.0)
+    sepsis.command("case_action", json.dumps({"action": "source_control"}))
+    scen_s = sepsis.snapshot()["scenario"]
+    assert scen_s["id"] == "OBSERVE" and scen_s["met"] is True
+
+    anaph = WebSession({"scenario_id": "anaphylaxis_response"})
+    anaph.engine.config.dt = 0.5
+    _web_advance(anaph, 41.0)
+    anaph.command("case_action", json.dumps({"action": "stop_trigger"}))
+    scen_a = anaph.snapshot()["scenario"]
+    assert scen_a["id"] == "OBSERVE" and scen_a["met"] is True

@@ -253,13 +253,17 @@ class EtCO2Readout:
         self.et_gases: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
         self._peak = 0.0
         self._peak_gases: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+        self._exhale_gases: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
+        self._saw_exhale_gases = False
         self._age_s = 0.0
+        self._gas_age_s = 0.0
         self._clock = 0.0
         self._last_interval_s = 0.0
         self._effective_timeout_s = timeout_s
         self._recent_peaks: deque[tuple[float, float, tuple[float, float, float, float]]] = deque()
         self._exhaling = True
         self._has_sample = False
+        self._has_gas_sample = False
         self._ever_sampled = False
         self._latched = False
         self._last_breath_index = 0
@@ -270,22 +274,31 @@ class EtCO2Readout:
         return self._has_sample and self._age_s <= self._effective_timeout_s
 
     @property
+    def gas_valid(self) -> bool:
+        """Whether end-tidal O2/volatile/N2O/MAC readings have a fresh completed breath."""
+        return self._has_gas_sample and self._gas_age_s <= self._effective_timeout_s
+
+    @property
     def awaiting_first_breath(self) -> bool:
         return not self._ever_sampled and not self._has_sample and self._age_s < self._effective_timeout_s
 
     def seed(self, value: float, *, et_gases: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)) -> None:
         self.value = value
         self._age_s = 0.0
+        self._gas_age_s = 0.0
         self._clock = 0.0
         self._last_interval_s = 0.0
         self._effective_timeout_s = self.timeout_s
         self._peak = 0.0
         self._has_sample = value > 0.0
+        self._has_gas_sample = self._has_sample
         self._ever_sampled = self._has_sample
         self._latched = False
         self._latched_breath_index = None
         self.et_gases = et_gases if self._has_sample else (0.0, 0.0, 0.0, 0.0)
         self._peak_gases = self.et_gases
+        self._exhale_gases = self.et_gases
+        self._saw_exhale_gases = False
         self._recent_peaks.clear()
         if self._has_sample:
             self._recent_peaks.append((0.0, value, self.et_gases))
@@ -296,13 +309,17 @@ class EtCO2Readout:
         self._peak = 0.0
         self._exhaling = False
         self._latched = False
+        self._saw_exhale_gases = False
         if disconnected:
             self._has_sample = False
+            self._has_gas_sample = False
         if idle_airway:
             self._age_s = 0.0
+            self._gas_age_s = 0.0
             self._ever_sampled = False
         else:
             self._age_s += dt
+            self._gas_age_s += dt
         if disconnected or idle_airway:
             self._recent_peaks.clear()
             self._last_interval_s = 0.0
@@ -310,9 +327,19 @@ class EtCO2Readout:
             self._latched_breath_index = None
         self._expire()
 
-    def _latch_peak(self, breath_index: int | None = None) -> None:
+    def _latch_gas_only(self) -> None:
+        """Refresh end-tidal O2/agent readings on a full breath with < 1 mmHg CO2 (e.g. arrest)."""
+        if not self._saw_exhale_gases:
+            return
+        self.et_gases = self._exhale_gases
+        self._gas_age_s = 0.0
+        self._has_gas_sample = True
+        self._saw_exhale_gases = False
+
+    def _latch_peak(self, breath_index: int | None = None, *, shallow: bool = False) -> None:
         same_breath = (
-            breath_index is not None
+            not shallow
+            and breath_index is not None
             and breath_index == self._latched_breath_index
             and bool(self._recent_peaks)
         )
@@ -339,7 +366,10 @@ class EtCO2Readout:
         self.et_gases = best[2]
         if not same_breath:
             self._age_s = 0.0
+            self._gas_age_s = 0.0
         self._has_sample = True
+        self._has_gas_sample = True
+        self._saw_exhale_gases = False
         self._ever_sampled = True
 
     def update(
@@ -353,10 +383,12 @@ class EtCO2Readout:
         breath_index: int | None = None,
         et_gases: tuple[float, float, float, float] | None = None,
         expected_period_s: float | None = None,
+        cpr_oscillating: bool = False,
     ) -> None:
         """Advance with one capnograph sample; ignore mid-expiration curare clefts."""
         self._clock += dt
         self._age_s += dt
+        self._gas_age_s += dt
         period_hint = (
             min(25.0, expected_period_s)
             if expected_period_s is not None and math.isfinite(expected_period_s) and expected_period_s > 0.0
@@ -370,6 +402,8 @@ class EtCO2Readout:
         if breath_index is not None and breath_index != self._last_breath_index:
             if self._peak > 1.0 and not self._latched:
                 self._latch_peak(self._last_breath_index)
+            elif not self._latched:
+                self._latch_gas_only()
             self._last_breath_index = breath_index
             self._peak = 0.0
             self._latched = False
@@ -378,12 +412,16 @@ class EtCO2Readout:
         # mask leak or shallow ETT breaths) still cycle a measurable capnogram (> 3 mmHg);
         # let them refresh the peak on exhalation end without validating apneic CPR ripples.
         shallow_cycle = (
-            not exhaling
+            not cpr_oscillating
+            and not exhaling
             and self._exhaling
             and dead_space_l > 0.0
             and 0.0 < inhaled_l <= dead_space_l
             and self._peak > 3.0
         )
+        if exhaling and et_gases is not None:
+            self._exhale_gases = et_gases
+            self._saw_exhale_gases = True
         if exhaling and co2 > self._peak:
             self._peak = co2
             if et_gases is not None:
@@ -392,9 +430,13 @@ class EtCO2Readout:
                     self.et_gases = et_gases
             self._latched = False
         end_pause = self._exhaling and not exhaling and inhaled_l <= 0.0
-        if (end_pause or new_inspiration or shallow_cycle) and self._peak > 1.0 and not self._latched:
-            self._latch_peak(breath_index)
-            self._latched = True
+        if (end_pause or new_inspiration or shallow_cycle) and not self._latched:
+            if self._peak > 1.0:
+                self._latch_peak(breath_index, shallow=shallow_cycle)
+                self._latched = True
+            elif new_inspiration:
+                self._latch_gas_only()
+                self._latched = True
         if new_inspiration or shallow_cycle or (end_pause and dead_space_l <= 0.0):
             self._peak = 0.0
             self._latched = False
@@ -404,5 +446,6 @@ class EtCO2Readout:
     def _expire(self) -> None:
         if not self.valid:
             self.value = 0.0
-            self.et_gases = (0.0, 0.0, 0.0, 0.0)
             self._recent_peaks.clear()
+        if not self.gas_valid:
+            self.et_gases = (0.0, 0.0, 0.0, 0.0)

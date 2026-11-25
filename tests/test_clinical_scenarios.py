@@ -597,6 +597,8 @@ class TestClinicalAcceptance:
         assert engine.state.spo2 >= 94.0
 
         engine.set_oxygen_supply_connected(False)
+        engine.step(0.5)
+        assert engine.state.alarms.get("O2Supply", {}).get("low") is True
         warning_time = _first_time(
             engine,
             240,
@@ -620,6 +622,7 @@ class TestClinicalAcceptance:
         )
 
         assert recovery_time is not None
+        assert "O2Supply" not in engine.state.alarms
         assert engine.state.spo2 >= 94.0
 
     def test_propofol_remifentanil_respiratory_depression_and_bag_mask_rescue(

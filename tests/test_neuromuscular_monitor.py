@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from anasim.core.state import SimulationConfig
 from anasim.monitors.neuromuscular import NeuromuscularMonitor
 from anasim.web import WebSession
 
@@ -106,3 +107,32 @@ def test_phase_i_web_monitor_keeps_selected_mode_and_survives_reconnect(advance_
     session.replay_waves()
     assert session.snapshot()["nmb"] == snap
     assert json.loads(session.info())["nmb_history"] == engine.nmb.trend_history()
+
+
+def test_ptc_mode_timing_and_lockout(engine_factory, advance_time):
+    """PTC runs 10 s after a zero TOF count, reports 0-15 counts in deep block, and enforces 60 s lockout."""
+    nmb = NeuromuscularMonitor()
+    nmb.set_repeat(0, 0.0)
+    nmb.measure(0.0)
+    for t in (0.0, 0.5, 1.0, 1.5):
+        nmb.step(t, 0.0, 0.0, deep_block_ratio=2.0)
+    nmb.set_mode("ptc", 10.0)
+    nmb.measure(10.0)
+    nmb.step(10.0, 0.0, 0.0, deep_block_ratio=2.0)
+    nmb.step(12.0, 0.0, 0.0, deep_block_ratio=2.0)
+    nmb.set_mode("tof", 25.0)
+    with pytest.raises(ValueError, match="60"):
+        nmb.measure(25.0)
+    nmb.measure(70.0)
+
+    engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    engine.give_drug_bolus("rocuronium", 45.0)
+    advance_time(engine, 120.0, dt=2.0)
+    engine.nmb.set_mode("ptc", engine.state.time)
+    advance_time(engine, 65.0, dt=1.0)
+    reading = engine.nmb.reading
+    assert reading is not None
+    assert reading.mode == "ptc"
+    assert 0 <= reading.count <= 15
+    with pytest.raises(ValueError, match="60"):
+        engine.nmb.measure(engine.state.time)

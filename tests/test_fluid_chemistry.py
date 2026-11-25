@@ -738,3 +738,76 @@ def test_calcium_chloride_slow_push_and_mh_ph_hypoxia_potassium_kinetics(engine_
     assert acid.concentration("potassium") > k0 + 0.25
     assert alk.concentration("potassium") < k0 - 0.20
     assert hypox.concentration("potassium") > k0 + 0.40
+
+
+def test_labetalol_blunts_epinephrine_hypokalemia_and_lactate(engine_factory, advance_time):
+    """Non-selective beta-2 blockade (labetalol) should attenuate epinephrine K+ and lactate shifts."""
+    ctrl = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    blocked = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+
+    blocked.give_drug_bolus("labetalol", 40.0)
+    advance_time(ctrl, 60.0, dt=1.0)
+    advance_time(blocked, 60.0, dt=1.0)
+
+    k0_ctrl, lac0_ctrl = ctrl.state.potassium, ctrl.state.lactate
+    k0_blk, lac0_blk = blocked.state.potassium, blocked.state.lactate
+
+    ctrl.set_drug_rate("epi", 10.0)
+    blocked.set_drug_rate("epi", 10.0)
+    advance_time(ctrl, 600.0, dt=2.0)
+    advance_time(blocked, 600.0, dt=2.0)
+
+    ctrl_k_drop = k0_ctrl - ctrl.state.potassium
+    blk_k_drop = k0_blk - blocked.state.potassium
+    ctrl_lac_rise = ctrl.state.lactate - lac0_ctrl
+    blk_lac_rise = blocked.state.lactate - lac0_blk
+
+    assert ctrl_k_drop > 0.25
+    assert blk_k_drop < 0.55 * ctrl_k_drop
+    assert ctrl_lac_rise > 0.6
+    assert blk_lac_rise < 0.55 * ctrl_lac_rise
+
+
+def test_lactated_ringers_oxidation_preserves_paco2_vs_saline(engine_factory, advance_time):
+    """Exogenous lactate oxidation adds metabolic CO2 rather than scavenging endogenous CO2."""
+    lr = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    ns = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    for eng in (lr, ns):
+        eng.fluid_infusion_rate_ml_min = 40.0
+    lr.give_fluid(3000.0)
+    ns.give_saline(3000.0)
+    advance_time(lr, 5400.0, dt=5.0)
+    advance_time(ns, 5400.0, dt=5.0)
+    assert lr.state.pa_co2 > ns.state.pa_co2 + 0.3
+
+
+def test_volume_expansion_drives_natriuresis(engine_factory, advance_time):
+    """Crystalloid volume expansion increases urinary sodium excretion (Reid 2003; Chowdhury 2012)."""
+    rest = engine_factory(
+        config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1), start=True,
+    )
+    expanded = engine_factory(
+        config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1), start=True,
+    )
+    na0_rest = rest.hemo.fluids.amounts["sodium"]
+    na0_exp = expanded.hemo.fluids.amounts["sodium"]
+    expanded.give_fluid(2000.0)
+    advance_time(rest, 10800.0, dt=5.0)
+    advance_time(expanded, 10800.0, dt=5.0)
+    na_excr_rest = na0_rest - rest.hemo.fluids.amounts["sodium"]
+    na_excr_exp = na0_exp + 2.0 * 130.0 - expanded.hemo.fluids.amounts["sodium"]
+    assert na_excr_exp > na_excr_rest + 35.0
+
+
+def test_succinylcholine_potassium_efflux_peaks_within_five_minutes(engine_factory):
+    """Succinylcholine produces a +0.3 to +0.85 mEq/L potassium rise peaking in 2-5 min (Martyn 2006)."""
+    sux = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    k0 = sux.state.potassium
+    sux.give_drug_bolus("succinylcholine", 105.0)
+    peak_k, peak_t = k0, 0.0
+    for _ in range(210):
+        sux.step(2.0)
+        if sux.state.potassium > peak_k:
+            peak_k, peak_t = sux.state.potassium, sux.state.time
+    assert 0.30 < peak_k - k0 < 0.85
+    assert 90.0 <= peak_t <= 330.0

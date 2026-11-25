@@ -78,8 +78,7 @@ class CerebralModel:
         ccp_shift = 0.25 * htn_excess
         cpp = map_mmhg - outflow_pressure
         pressure = clamp01((cpp - ccp_shift) / max(1.0, cpp_lower_limit - ccp_shift))
-        if flow_ceiling is not None:
-            pressure = min(pressure, clamp01(flow_ceiling))
+        cpr_cap = clamp01(flow_ceiling) if flow_ceiling is not None else None
         reference_hb = max(self.baseline_hb, 13.0 - 0.35 * max(0.0, 13.0 - self.baseline_hb))
         oxygen = max(0.0, hb * saturation) / (reference_hb * 98.0)
         # CMRO2 scales with temperature Q10 (~7%/°C), anesthetic suppression, and
@@ -109,6 +108,10 @@ class CerebralModel:
             hypocapnia = clamp01((40.0 - effective_paco2) / 20.0)
             cbf = base_cbf * (1.0 - 0.38 * hypocapnia)
             supply = min(pressure * min(resting_cbf, base_cbf * oxygen), cbf * oxygen)
+        if cpr_cap is not None:
+            # Passive CPR flow ceiling is referenced to normothermic awake resting CBF
+            # (1.0), so hypothermic CMRO2 reduction still protects oxygen balance.
+            supply = min(supply, cpr_cap * oxygen)
 
         supply_ratio = min(1.0, supply / cmro2) if supply > 0.0 else 0.0
         o2_tau = self.TISSUE_OXYGEN_TAU_S / max(0.35, temp_q10)

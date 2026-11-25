@@ -108,6 +108,10 @@ class HemodynamicModel:
         years = patient.age - cfg.age_reference
         self._age_chronotropy = 1.0 + cfg.age_sympathetic_hr * years
         self._age_vagal_baroreflex = math.exp(cfg.age_vagal_baroreflex * years)
+        # Dauchot & Gravenstein 1971; Jose & Collison 1970: maximal vagolytic HR
+        # gain declines with age alongside intrinsic heart rate (118.1 - 0.57 * age),
+        # anchored at reference age 40 (Ali-Melkkilä 1993; Poterman 2017).
+        self._age_antimuscarinic = clamp(1.0 - 0.010 * (patient.age - 40.0), 0.50, 1.15)
         # Resting endogenous norepinephrine (Li 2024 Eq. 2) is already embodied in
         # baseline MAP/HR and resting sympathetic tone; exogenous increments act above it.
         self._basal_nore_ce = NorepinephrinePK.resting_concentration(patient.age)
@@ -529,12 +533,8 @@ class HemodynamicModel:
         return clamp01(self._last_cpr_filling)
 
     def lumen_map(self, intrinsic_map: float, venous_pressure: float) -> float:
-        """Mean arterial lumen pressure (mmHg) anchored above venous outflow pressure."""
-        return clamp(
-            venous_pressure + max(0.0, intrinsic_map - min(venous_pressure, self.config.rap_baseline)),
-            0.0,
-            300.0,
-        )
+        """Mean arterial lumen pressure (mmHg), floored at venous equilibrium pressure."""
+        return clamp(max(intrinsic_map, venous_pressure), 0.0, 300.0)
 
     @staticmethod
     def _shivering_drive(shiver: float, chronotropy: float, beta_response: float) -> tuple[float, float, float]:
@@ -816,11 +816,13 @@ class HemodynamicModel:
         congestion_lap = self._pulmonary_congestion_ml / 10.0
         rv_backpressure_factor = 1.0 / (1.0 + 0.14 * max(0.0, congestion_lap - 2.0) ** 1.25)
         vr_rap = cfg.rap_baseline * min(1.0, mcfp / self.mcfp_0)
-        starling_keep = (
+        pit_starling_gate = clamp01((pit - 2.0) / 3.0)
+        raw_starling_keep = (
             clamp01((mcfp - pit) / max(1.0, 0.35 * mcfp))
-            if pit > 4.0 and pit > 0.65 * mcfp
+            if pit > 0.65 * mcfp
             else 1.0
         )
+        starling_keep = 1.0 - pit_starling_gate * (1.0 - raw_starling_keep)
         delta_p = max(0.0, mcfp - vr_rap) * starling_keep
         vr_flow_l_min = delta_p / max(0.1, self.venous_return_resistance)
         vr_flow_factor = vr_flow_l_min * self._inv_base_co_l_min
@@ -1086,7 +1088,7 @@ class HemodynamicModel:
             self._last_mcfp / eff_rvr * ref_scale * max(0.0, self.f_preload_pit) * vr_headroom,
         )
         vr_sv_cap = max_vr_co * 1000.0 / hr
-        vaso_high_svr_gate = hyperdynamic_gate * clamp01((tpr_ratio_vr - 1.15) / 0.25)
+        vaso_high_svr_gate = hyperdynamic_gate * clamp01((tpr_ratio_vr - 1.15) / 1.0)
         if vaso_high_svr_gate > 0.0:
             vaso_floor = sv * 1.10 / max(1.10, vaso_sv_factor)
             vaso_target = max(vr_sv_cap, vaso_floor)
@@ -1524,9 +1526,9 @@ class HemodynamicModel:
         self._hypothermia_hr_factor, self._hypothermia_sv_factor = self._hypothermia_factors(temp_c)
         ce_ephedrine_raw = max(0.0, ce_ephedrine)
         ce_nore_raw = max(0.0, ce_nore)
-        eff_ce_epi = ce_epi * self.acidosis_factor
-        # Severe anaphylaxis blunts catecholamine efficacy (via pressor_gain below)
-        # without dividing epinephrine concentrations into beta-2 dominance.
+        # Acidemia and anaphylaxis blunt epinephrine efficacy via catechol_gain
+        # without dividing concentration into steep alpha vs beta-2 inversion.
+        eff_ce_epi = ce_epi
         agonist_shift = 1.0 + cfg.anaphylaxis_agonist_shift * anaph_sev
         eff_ce_phenyl = ce_phenyl * self.acidosis_factor / agonist_shift
         eff_ce_dobu = ce_dobu * self.acidosis_factor / agonist_shift
@@ -1548,8 +1550,8 @@ class HemodynamicModel:
             atropine = hill_function(ce_atropine, cfg.atropine_c50, cfg.atropine_gamma) if ce_atropine > 0.0 else 0.0
             self._vagal_block = vagal = 1.0 - (1.0 - glyco) * (1.0 - atropine)
             prop_vagal_scale = 1.0 / (1.0 + max(0.0, self.ce_prop_cv) / cfg.atropine_propofol_cp50)
-            atropine_hr = cfg.atropine_emax_hr * atropine * prop_vagal_scale
-            glyco_hr = cfg.glyco_emax_hr * glyco * prop_vagal_scale
+            atropine_hr = cfg.atropine_emax_hr * atropine * prop_vagal_scale * self._age_antimuscarinic
+            glyco_hr = cfg.glyco_emax_hr * glyco * prop_vagal_scale * self._age_antimuscarinic
             vagal_hr = max(glyco_hr, glyco_hr * (1.0 - atropine) + atropine_hr)
         else:
             self._vagal_block = vagal = vagal_hr = 0.0
@@ -1667,7 +1669,7 @@ class HemodynamicModel:
             # Membrane protection against hyperkalemia depends on exogenous calcium or
             # true pH-independent calcium excess, never acidemia-dissociated iCa.
             ica_membrane = self.fluids.ionized_calcium(self.fluids.resting_ph)
-            potassium = self.fluids.concentration("potassium")
+            potassium = self.fluids.arterial_potassium
             # Lang 1988 & Denlinger 1975: blood ionized calcium drives myocardial
             # contractility directly without hypercalcemic vasoconstriction.
             hypocalcemia = clamp01((base_ica - ica) / 0.70)
@@ -1680,7 +1682,7 @@ class HemodynamicModel:
             self.hyperkalemia_block = clamp01((eff_k - 6.2) / 3.0)
             self.hyperkalemia_arrhythmia = clamp01((eff_k - 6.8) / 2.2)
 
-            if self._electrically_silent and self._rhythm_type not in PULSELESS_RHYTHMS:
+            if self._electrically_silent and self._rhythm_type is not RhythmType.ASYSTOLE:
                 self._silent_arrest_s += sub_dt
                 if self._silent_arrest_s >= ARREST_CONFIRM_S:
                     toxic_cause = (
@@ -1725,7 +1727,12 @@ class HemodynamicModel:
                 if self._asystole_recovery_s >= cfg.asystole_recovery_time_s:
                     self.rhythm_type = RhythmType.SINUS
 
-            resting_tone = 1.0 - cfg.sympathetic_anesthetic_depression * anesthetic_depth
+            # Resting sympathetic tone withdraws alongside actual cardiovascular
+            # anesthetic depression (not raw propofol bolus Cp or etomidate).
+            cv_symp_depth = clamp01(
+                self.ce_sevo + max(ce_prop / 4.0, self._sympathetic_venous_depth) + adjunct_midaz
+            )
+            resting_tone = 1.0 - cfg.sympathetic_anesthetic_depression * cv_symp_depth
             map_prev = self._prev_map
             self.renal_perfusion = self._compute_renal_perfusion(map_prev, co_prev, sepsis_sev)
             renal_factor = self.renal_perfusion * self.patient.renal_clearance_factor
@@ -2156,16 +2163,18 @@ class HemodynamicModel:
 
             # Thermoregulatory vasoconstriction below 36.5 °C. Anesthesia lowers the
             # threshold by up to 2.5 °C at 1 MAC or propofol 4 mcg/mL (Sessler 2000),
-            # whereas 300 ng/mL midazolam lowers it by 0.8 °C (37.1 to 36.3 °C; Kurz 1995).
+            # 300 ng/mL midazolam lowers it by 0.8 °C (Kurz 1995), opioids lower it
+            # alongside shivering (Kurz 1995), and ketamine largely preserves tone (Ikeda 2001).
             thermo_depth = clamp01(
                 self.ce_sevo
                 + 0.5 * max(0.0, mac_n2o)
                 + cp_prop / 4.0
-                + max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
+                + 0.15 * max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT
                 + adjunct_etom
                 + 0.40 * adjunct_midaz
             )
-            vasoconstriction_threshold = base_vc_threshold - 2.5 * thermo_depth
+            opioid_thermo = hill_function(self.ce_opioid_cv, 3.0, 1.5) if self.ce_opioid_cv > 0.0 else 0.0
+            vasoconstriction_threshold = base_vc_threshold - 2.5 * thermo_depth - 0.8 * opioid_thermo
             thermo_tpr_mult = self._thermo_tpr_mult(temp_c, vasoconstriction_threshold)
 
             # Turnover equations; inotropy and preload act on output SV only.

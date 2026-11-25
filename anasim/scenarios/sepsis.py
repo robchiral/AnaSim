@@ -38,7 +38,8 @@ def _prepare_septic_patient(engine) -> None:
     leak_ml = _PRE_LEAK_FRACTION * engine.hemo.blood_volume_0
     engine.hemo.blood_volume -= leak_ml
     engine.hemo.total_third_space_ml += leak_ml
-    engine.hemo.fluids.shift_water(-leak_ml)
+    engine.hemo._protein_third_space_ml += leak_ml
+    engine.hemo.fluids.shift_water(-leak_ml, protein_fraction=1.0)
     engine.hemo.invalidate_state_cache()
     lactate_mmol = _PRE_LACTATE_ADD_MMOL_L * engine.lactate.volume_l
     engine.lactate.endogenous_mmol += lactate_mmol

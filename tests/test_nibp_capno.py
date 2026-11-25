@@ -77,7 +77,7 @@ class TestNIBP:
         assert arrest.timestamp is None
 
     def test_shock_boundary_is_continuous_and_failed_cuff_prompts_remeasurement(self, awake_engine):
-        """Crossing MAP 60 mmHg does not step-jump NIBP bias or failure rate (#35),
+        """Crossing MAP 60 mmHg does not step-jump NIBP bias or failure rate,
         and a failed cuff measurement prompts a re-check rather than awaiting first BP.
         """
         above = [
@@ -97,6 +97,54 @@ class TestNIBP:
         awake_engine.state.nibp_sys = awake_engine.state.nibp_dia = awake_engine.state.nibp_map = float("nan")
         met, msg = require_map_at_least(65)(awake_engine)
         assert not met and msg == "Measure blood pressure again"
+
+    def test_deflation_sweep_invalidation_and_afib_scatter_and_ordering(self):
+        """VF during cuff deflation fails even if sinus returns on the final step;
+        AFib exhibits modest oscillometric scatter, occasional retry failure, and DBP <= MAP <= SBP."""
+        mon = NIBPMonitor(rng=np.random.default_rng(1))
+        mon.trigger()
+        t = 0.0
+        while mon.is_cycling:
+            t += 0.5
+            rhythm = RhythmType.VFIB if t < 10.8 else RhythmType.SINUS
+            p_map, p_sys, p_dia = (8.0, 8.0, 8.0) if rhythm == RhythmType.VFIB else (80.0, 105.0, 65.0)
+            mon.step(0.5, t, p_map, p_sys, p_dia, rhythm)
+        assert mon.measurement_failed and mon.latest_reading.timestamp is None
+
+        rng = np.random.default_rng(7)
+        afib_maps = []
+        afib_failures = 0
+        for _ in range(40):
+            m = NIBPMonitor(rng=rng)
+            m.trigger()
+            t = 0.0
+            while m.is_cycling:
+                t += 0.5
+                m.step(0.5, t, 85.0, 115.0, 70.0, RhythmType.AFIB)
+            if m.measurement_failed:
+                afib_failures += 1
+            else:
+                r = m.latest_reading
+                assert r.diastolic <= r.map <= r.systolic
+                afib_maps.append(r.map)
+        assert afib_failures >= 1
+        assert np.std(afib_maps) > 1.5
+
+        # Narrow pulse pressure under AFib still preserves DBP <= MAP <= SBP.
+        narrow = NIBPMonitor(rng=np.random.default_rng(42))
+        t = 0.0
+        valid = 0
+        for _ in range(40):
+            narrow.trigger()
+            for _ in range(20):
+                t += 1.0
+                narrow.step(1.0, t, 64.0, 72.0, 60.0, RhythmType.AFIB)
+            if not narrow.measurement_failed:
+                valid += 1
+                r = narrow.latest_reading
+                assert r.diastolic <= r.map <= r.systolic
+            t += 5.0
+        assert valid >= 20
 
 
 class TestCapnography:
@@ -347,20 +395,28 @@ class TestCapnography:
     def test_arrest_etco2_washout_is_monotonic_and_cpr_couples_to_airway_waveforms(
         self, engine_factory, advance_time
     ):
-        """Rapid no-flow EtCO2 washout declines monotonically without bouncing upward;
+        """Rapid no-flow EtCO2 washout declines monotonically while keeping live end-tidal gases;
         110/min CPR mechanically couples into Paw, Flow, and CO2 oscillations when sealed,
         produces sub-dead-space passive ripples with apnea timeout when the ventilator is off,
         and clears cleanly when disconnected."""
-        washout = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+        washout = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=0.5, rng_seed=1),
+            start=True,
+        )
         washout.set_rhythm("ASYSTOLE")
+        assert washout.state.dbp <= washout.state.map <= washout.state.sbp
+        assert washout.state.sbp == pytest.approx(washout.hemo.state.venous_pressure)
         readings = []
-        for _ in range(200):
+        for _ in range(360):
             washout.step(0.5)
             if washout.state.etco2_signal_valid:
                 readings.append(washout.state.display_etco2)
         assert readings and readings[0] > 30.0 and readings[-1] < 5.0
         for prev, curr in pairwise(readings):
             assert curr <= prev + 1e-6
+        assert washout.etco2_readout.gas_valid
+        assert washout.state.et_o2 > 50.0
+        assert washout.state.et_sevo > 0.5
 
         cpr = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=1), start=True)
         cpr.set_rhythm("ASYSTOLE")
@@ -516,33 +572,16 @@ class TestCapnography:
         for a, b in zip(*results, strict=True):
             assert a == pytest.approx(b, abs=0.5)
 
+    def test_shallow_breathing_and_zero_co2_gas_valid_behavior(self):
+        """Shallow breathing (>3 mmHg) stays valid past 20 s; unsampled zero-CO2 cycles do not set gas_valid."""
+        empty_ro = EtCO2Readout()
+        empty_ro.update(0.5, False, 0.0, inhaled_l=0.4, dead_space_l=0.15, breath_index=1)
+        assert not empty_ro.gas_valid
 
-def test_nibp_deflation_sweep_invalidation_and_afib_scatter():
-    """VF during most of cuff deflation fails even if sinus returns on the final step;
-    AFib exhibits modest oscillometric scatter and occasional retry failure."""
-    mon = NIBPMonitor(rng=np.random.default_rng(1))
-    mon.trigger()
-    t = 0.0
-    while mon.is_cycling:
-        t += 0.5
-        rhythm = RhythmType.VFIB if t < 10.8 else RhythmType.SINUS
-        p_map, p_sys, p_dia = (8.0, 8.0, 8.0) if rhythm == RhythmType.VFIB else (80.0, 105.0, 65.0)
-        mon.step(0.5, t, p_map, p_sys, p_dia, rhythm)
-    assert mon.measurement_failed and mon.latest_reading.timestamp is None
-
-    rng = np.random.default_rng(7)
-    afib_maps = []
-    afib_failures = 0
-    for _ in range(40):
-        m = NIBPMonitor(rng=rng)
-        m.trigger()
-        t = 0.0
-        while m.is_cycling:
-            t += 0.5
-            m.step(0.5, t, 85.0, 115.0, 70.0, RhythmType.AFIB)
-        if m.measurement_failed:
-            afib_failures += 1
-        else:
-            afib_maps.append(m.latest_reading.map)
-    assert afib_failures >= 1
-    assert np.std(afib_maps) > 1.5
+        ro = EtCO2Readout()
+        for _ in range(10):
+            for _ in range(15):
+                ro.update(0.1, True, 18.0, inhaled_l=0.0, dead_space_l=0.15, breath_index=0)
+            for _ in range(10):
+                ro.update(0.1, False, 0.0, inhaled_l=0.08, dead_space_l=0.15, breath_index=0)
+        assert ro.valid and ro.value == pytest.approx(18.0)

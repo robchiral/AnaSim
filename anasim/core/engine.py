@@ -39,7 +39,11 @@ from anasim.patient.pd import (
     TOFModel,
     midazolam_loss_of_response,
 )
-from anasim.patient.pk_models import ANESTHETIZED_OUTPUT, NorepinephrinePK
+from anasim.patient.pk_models import (
+    ANESTHETIZED_OUTPUT,
+    NorepinephrinePK,
+    janmahasatian_ffm,
+)
 from anasim.patient.variability import sample_variability
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.arrhythmia import ArrhythmiaModel, antiarrhythmic_effects
@@ -60,6 +64,7 @@ from anasim.physiology.resuscitation import (
     SHOCK_ENERGY_J,
     Defibrillator,
     ShockResult,
+    compression_pressures,
     shock_outcome,
 )
 from anasim.physiology.thermal import ThermalModel
@@ -203,8 +208,9 @@ class SimulationEngine(DrugControllerMixin):
         self._nibp_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         self._cardiac_rng = np.random.default_rng(self.rng.integers(0, 2**32 - 1))
         # Derived without drawing from self.rng, so the other streams keep their seeds.
+        # [seed, 1] is reserved for sample_variability().
         seed = self.config.rng_seed
-        self._shock_rng = np.random.default_rng(None if seed is None else [seed, 1])
+        self._shock_rng = np.random.default_rng(None if seed is None else [seed, 3])
         self.arrhythmias = ArrhythmiaModel(np.random.default_rng(None if seed is None else [seed, 2]))
 
         self._pulseless_s = 0.0
@@ -314,7 +320,13 @@ class SimulationEngine(DrugControllerMixin):
         self.cerebral = CerebralModel(
             self.patient.baseline_hb, self.resp.paco2_setpoint, self.patient.baseline_map,
         )
-        self.toxicity = LocalAnestheticToxicity(self.patient.weight)
+        # Scale lipid rescue volume/EC50 with fat-free mass matching LidocainePK
+        # (equals TBW for the 70 kg, 170 cm male reference adult).
+        ref_ffm = janmahasatian_ffm(70.0, 170.0, True)
+        patient_ffm = janmahasatian_ffm(
+            self.patient.weight, self.patient.height, self.patient.sex == "male",
+        )
+        self.toxicity = LocalAnestheticToxicity(70.0 * patient_ffm / ref_ffm)
         if self.config.mode == "steady_state":
             self.aeration = LungAeration(self.patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
         else:
@@ -599,8 +611,11 @@ class SimulationEngine(DrugControllerMixin):
             self.set_disturbance_profile(None)
 
     def set_bair_hugger(self, target_c: float):
-        """Set the forced-air warmer target (°C); 0 turns it off."""
-        self.state.bair_hugger_target = bounded_number("warmer target", target_c, 0.0, 43.0, unit="°C")
+        """Set the forced-air warmer target (°C); 0 turns it off, active range 32-43 °C."""
+        val = bounded_number("warmer target", target_c, 0.0, 43.0, unit="°C")
+        if 0.0 < val < 32.0:
+            raise ValueError("warmer target must be 0 °C (off) or between 32 and 43 °C")
+        self.state.bair_hugger_target = val
 
     def set_fluid_warmer(self, enabled: bool):
         """Turn the IV fluid and blood warmer (37 °C) on or off."""
@@ -638,13 +653,14 @@ class SimulationEngine(DrugControllerMixin):
             raise ValueError(
                 f"Unsupported airway mode {mode_str!r}; choose one of: {choices}"
             ) from exc
-        if (
-            previous_mode == AirwayType.ETT
-            and self.state.airway_mode != AirwayType.ETT
-            and self.state.loc >= 0.20
-            and self._tol_current < 0.65
-        ):
-            self._extubation_stimulus_until = self.state.time + 25.0
+        if previous_mode == AirwayType.ETT and self.state.airway_mode != AirwayType.ETT:
+            projection_core.sync_inhaled_agents(self)
+            projection_core.sync_pk_state(self)
+            if (
+                projection_core.loss_of_response(self) >= 0.20
+                and projection_core.extubation_tolerance(self) < 0.65
+            ):
+                self._extubation_stimulus_until = self.state.time + 25.0
         self.actions.record(
             self.state.time, ACTION_AIRWAY, label=self.state.airway_mode.value
         )
@@ -682,6 +698,43 @@ class SimulationEngine(DrugControllerMixin):
             return "moderate"
         return "severe"
 
+    def _sync_cardiac_state(self) -> None:
+        """Project immediate rhythm, compression, or post-shock changes into public hemodynamic landmarks."""
+        self.hemo.post_shock_asystole = self.arrhythmias.post_shock_asystole
+        hemo_state = self.hemo.state
+        projection_core.project_hemodynamics(self, hemo_state)
+        if hemo_state.compressions:
+            cpr_sbp, cpr_dbp = compression_pressures(
+                hemo_state.cpr_perfusion_map,
+                hemo_state.venous_pressure,
+                filling_factor=self.hemo.cpr_filling_factor,
+            )
+            if hemo_state.intrinsic_co > 0.0 and hemo_state.rhythm_type not in PULSELESS_RHYTHMS:
+                i_sbp, i_dbp = self.arterial_waveform.reference_pressures(
+                    hemo_state.intrinsic_map,
+                    hemo_state.sv,
+                    hemo_state.hr,
+                    pulse_pressure_factor=hemo_state.pulse_pressure_factor,
+                    static_pressure=hemo_state.venous_pressure,
+                )
+                sbp, dbp = max(i_sbp, cpr_sbp), max(i_dbp, cpr_dbp)
+            else:
+                sbp, dbp = cpr_sbp, cpr_dbp
+        elif hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.co <= 0.0 or hemo_state.hr <= 0.0:
+            sbp = dbp = float(hemo_state.venous_pressure)
+        else:
+            sbp, dbp = self.arterial_waveform.reference_pressures(
+                hemo_state.map,
+                hemo_state.sv,
+                hemo_state.hr,
+                pulse_pressure_factor=hemo_state.pulse_pressure_factor,
+                static_pressure=hemo_state.venous_pressure,
+            )
+        self.state.sbp = float(max(sbp, self.state.map))
+        self.state.dbp = float(min(dbp, self.state.map))
+        if hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.hr <= 0.0:
+            self.state.display_hr = 0.0
+
     def set_rhythm(self, rhythm_name: str | RhythmType):
         rhythm: RhythmType | None
         if isinstance(rhythm_name, RhythmType):
@@ -698,7 +751,7 @@ class SimulationEngine(DrugControllerMixin):
         self.arrhythmias.reset()
         self.cardiac_cycle.clear_rate_history()
         self.hemo.invalidate_state_cache()
-        projection_core.project_hemodynamics(self, self.hemo.state)
+        self._sync_cardiac_state()
 
     def set_chest_compressions(self, active: bool):
         """Start or stop chest compressions at the guideline rate."""
@@ -707,7 +760,7 @@ class SimulationEngine(DrugControllerMixin):
             self.compressions_started_at = self.state.time if active else None
             self.actions.record(self.state.time, ACTION_COMPRESSIONS, label="on" if active else "off")
         self.hemo.compressions = active
-        projection_core.project_hemodynamics(self, self.hemo.state)
+        self._sync_cardiac_state()
 
     def charge_defibrillator(self) -> None:
         """Start a 5-second charge to 200 J."""
@@ -781,7 +834,7 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo.invalidate_state_cache()
         if not synchronized and self.hemo.rhythm_type != prev_rhythm:
             self.cardiac_cycle.clear_rate_history()
-        projection_core.project_hemodynamics(self, self.hemo.state)
+        self._sync_cardiac_state()
 
     def set_bag_mask_ventilation(
         self,
@@ -923,7 +976,11 @@ class SimulationEngine(DrugControllerMixin):
                 self.pk["roc"], max_seconds=max_seconds,
                 mac_sevo=self.pk_sevo.state.mac,
             )
-        pump_model = self.pump_pk.get(key) if self.config.tci_enabled else None
+        pump_model = (
+            self.pump_pk.get(key)
+            if self.config.tci_enabled and key not in self._pump_needs_reset
+            else None
+        )
         if pump_model is not None and (key in self.tci or pump_model.state.ce > 1e-12):
             model = pump_model
         else:

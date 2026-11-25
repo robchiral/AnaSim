@@ -81,7 +81,7 @@ class MalignantHyperthermia:
             exposed = sevo_mac > sevo_threshold or succinylcholine_cp > 0.01
             if exposed:
                 self._controlled = False
-            recovery = inhibition / 45.0
+            recovery = inhibition / 42.0
             if self._controlled:
                 growth = 0.0
                 recovery = max(recovery, 1.0 / 180.0)

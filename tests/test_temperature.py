@@ -236,3 +236,20 @@ def test_awake_sepsis_fever_plateaus_with_active_sweating(engine_factory, advanc
     sepsis.start_sepsis()
     advance_time(sepsis, 6.0 * 3600.0, dt=10.0)
     assert 38.0 < sepsis.state.temp_c < 39.8
+
+
+def test_ketamine_spares_redistribution_hypothermia_vs_propofol(engine_factory, advance_time):
+    """Ketamine preserves vasoconstriction and loses less core heat than propofol (Ikeda 2001)."""
+    ket = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    prop = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    for eng in (ket, prop):
+        eng.set_airway_mode("ETT")
+        eng.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        eng.set_vent_power(True)
+    ket.give_drug_bolus("ketamine", 140.0)
+    ket.set_drug_rate("ketamine", 30.0)
+    prop.give_drug_bolus("propofol", 140.0)
+    prop.set_drug_rate("propofol", 120.0)
+    advance_time(ket, 3600.0, dt=5.0)
+    advance_time(prop, 3600.0, dt=5.0)
+    assert ket.state.temp_c > prop.state.temp_c + 0.25

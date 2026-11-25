@@ -4,7 +4,7 @@ import math
 from collections import deque
 
 from anasim.core.constants import CONCENTRATION_RATIO_SATURATION
-from anasim.core.utils import clamp01, hill_function
+from anasim.core.utils import clamp, clamp01, hill_function
 from anasim.patient.patient import Patient
 from anasim.patient.variability import TYPICAL, OpioidRateVariability
 
@@ -75,8 +75,10 @@ ETOMIDATE_RESPIRATORY_PROPOFOL_RATIO = 2.0  # Calibrated independently of clinic
 KETAMINE_LOSS_OF_RESPONSE = 0.64
 KETAMINE_MAC_EQUIVALENT = 3.5
 
-# Bouillon 2004 pre-opioid intensity of laryngoscopy for movement.
+# Bouillon 2004 pre-opioid intensity of laryngoscopy for movement, and smooth
+# extubation airway-reflex intensity (Inomata 1999; Lee 2009).
 LARYNGOSCOPY_INTENSITY = 0.83
+EXTUBATION_INTENSITY = 0.44
 
 # Lidocaine blunts stimulation without a baseline hypnotic or BIS effect
 # (Hans 2010; Altermatt 2012). The 4.2% attenuation per mcg/mL is calibrated
@@ -203,6 +205,7 @@ class BISModel:
         cortical_function: float = 1.0,
         *,
         ce_prop: float = 0.0,
+        ce_adjunct: float = 0.0,
         mac_sevo: float = 0.0,
         ce_ketamine: float = 0.0,
         ce_opioid: float = 0.0,
@@ -210,12 +213,13 @@ class BISModel:
     ) -> None:
         self._clock = 0.0
         self._prop_history: deque[tuple[float, float]] = deque([(0.0, max(0.0, ce_prop))])
+        self._adjunct_history: deque[tuple[float, float]] = deque([(0.0, max(0.0, ce_adjunct))])
         self._sevo_history: deque[tuple[float, float]] = deque([(0.0, max(0.0, mac_sevo))])
         self._ket_history: deque[tuple[float, float]] = deque([(0.0, max(0.0, ce_ketamine))])
         self._opioid_history: deque[tuple[float, float]] = deque([(0.0, max(0.0, ce_opioid))])
         self._temp_history: deque[tuple[float, float]] = deque([(0.0, float(temp_c))])
         self._arousal_history: deque[tuple[float, float]] = deque([(0.0, 0.0)])
-        init_base = self.compute_bis(ce_prop, mac_sevo, ce_ketamine, ce_opioid, temp_c=temp_c)
+        init_base = self.compute_bis(max(0.0, ce_prop) + max(0.0, ce_adjunct), mac_sevo, ce_ketamine, ce_opioid, temp_c=temp_c)
         self._init_offset_history: deque[tuple[float, float]] = deque([(0.0, float(bis) - init_base)])
         cortical = clamp01(cortical_function)
         self._cortical_history: deque[tuple[float, float]] = deque([(0.0, cortical)])
@@ -277,23 +281,27 @@ class BISModel:
     def step(
         self, dt: float, ce_prop: float, mac_sevo: float = 0.0, cortical_function: float = 1.0,
         ce_ketamine: float = 0.0, ce_opioid: float = 0.0, temp_c: float = 37.0,
-        disturbance_bis: float = 0.0,
+        disturbance_bis: float = 0.0, *, ce_adjunct: float = 0.0,
     ) -> float:
         """Return the delayed BIS after dt seconds; cortical_function (0-1) scales it.
 
-        Propofol uses Eleveld's age-dependent delay; volatile, adjunct, temperature,
-        and noxious-arousal effects use the age-independent monitor processing delay
-        (Pilge 2006). The delayed cortical function is kept in self.cortical_function.
+        Propofol uses Eleveld's age-dependent delay; non-propofol IV hypnotics,
+        volatile, adjunct, temperature, and noxious-arousal effects use the
+        age-independent monitor processing delay (Pilge 2006). The delayed
+        cortical function is kept in self.cortical_function.
         """
         self._clock += dt
         d_prop = self._advance_delay_queue(self._prop_history, self._clock, max(0.0, ce_prop), self.delay)
+        d_adjunct = self._advance_delay_queue(
+            self._adjunct_history, self._clock, max(0.0, ce_adjunct), self.monitor_delay,
+        )
         d_sevo = self._advance_delay_queue(self._sevo_history, self._clock, max(0.0, mac_sevo), self.monitor_delay)
         d_ket = self._advance_delay_queue(self._ket_history, self._clock, max(0.0, ce_ketamine), self.monitor_delay)
         d_opioid = self._advance_delay_queue(self._opioid_history, self._clock, max(0.0, ce_opioid), self.monitor_delay)
         d_temp = self._advance_delay_queue(self._temp_history, self._clock, float(temp_c), self.monitor_delay)
         d_arousal = self._advance_delay_queue(self._arousal_history, self._clock, float(disturbance_bis), self.monitor_delay)
         d_init_offset = self._advance_delay_queue(self._init_offset_history, self._clock, 0.0, self.monitor_delay)
-        bis = self.compute_bis(d_prop, d_sevo, d_ket, d_opioid, temp_c=d_temp) + d_init_offset
+        bis = self.compute_bis(d_prop + d_adjunct, d_sevo, d_ket, d_opioid, temp_c=d_temp) + d_init_offset
         self.cortical_function = self._advance_delay_queue(
             self._cortical_history, self._clock, cortical_function, self.ischemia_delay,
         )
@@ -400,13 +408,16 @@ class ClinicalResponseModel:
         """
         ce_fentanyl = max(0.0, ce_fentanyl)
         ce_remi = max(0.0, ce_remi)
-        inhaled_mac = max(0.0, mac_sevo) / self.sevoflurane_mac + max(0.0, mac_n2o)
+        sevo_mac = max(0.0, mac_sevo) / self.sevoflurane_mac
         prop_units = max(0.0, ce_prop) / self.c50_prop
         ket_units = LARYNGOSCOPY_INTENSITY * max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT * self.mac_reference / 2.59
-        effective_fent_mac_bar = ce_fentanyl + (ce_remi / FENTANYL_REMI_POTENCY if inhaled_mac > 0.0 else 0.0)
-        inhaled_shift = 1.0 + (effective_fent_mac_bar / FENTANYL_MAC_BAR_C50)**FENTANYL_MAC_BAR_GAMMA
+        # Daniel 1998: Katoh's volatile MAC-BAR opioid shift applies to volatile
+        # agents while N2O adds linearly (~0.55 MAC) without multiplying by shift.
+        remi_as_fent = ce_remi / FENTANYL_REMI_POTENCY
+        effective_fent_mac_bar = ce_fentanyl + (remi_as_fent if sevo_mac > 0.0 else 0.0)
+        inhaled_shift = 1.0 + (min(effective_fent_mac_bar, 8.0) / FENTANYL_MAC_BAR_C50)**FENTANYL_MAC_BAR_GAMMA
         opioid_boost = 1.0 + (ce_remi / (self.c50_remi * intensity)) ** self.gamma_remi
-        inhaled_units = self._noxious_units(0.0, mac_sevo * inhaled_shift, mac_n2o * inhaled_shift, 0.0)
+        inhaled_units = self._noxious_units(0.0, mac_sevo * inhaled_shift, mac_n2o, 0.0)
         ket_analgesia = 1.0 + 0.25 * (max(0.0, ce_ketamine) / 0.65) ** 1.1
         additive_scaled = (ket_units * opioid_boost + inhaled_units) * ket_analgesia / intensity
         slope_boost = opioid_boost * ket_analgesia
@@ -436,22 +447,45 @@ class ClinicalResponseModel:
         lidocaine_block = min(1.0, LIDOCAINE_BLOCK_PER_MCG_ML * max(0.0, ce_lidocaine))
         # Ratio of survival probabilities, evaluated without subtracting near-one values.
         remaining = (1.0 + baseline) / (1.0 + effect) * (1.0 - lidocaine_block)
-        pressure_exposure = (ce_fentanyl / FENTANYL_PRESSURE_C50)**FENTANYL_PRESSURE_GAMMA
+        # Kazama 1997 fentanyl fits were calibrated at intubation intensity (1.64);
+        # milder stimuli (e.g. incision 1.25) require proportionally less fentanyl.
+        intensity_scale = clamp(intensity / 1.64, 0.5, 1.5)
+        fent_p_c50 = FENTANYL_PRESSURE_C50 * intensity_scale
+        fent_hr_c50 = FENTANYL_HR_C50 * intensity_scale
+        pressure_exposure = (ce_fentanyl / fent_p_c50)**FENTANYL_PRESSURE_GAMMA
         # Fentanyl blunts the laryngoscopy pressor response directly and alongside
-        # propofol or ketamine; inhaled agents already incorporate fentanyl via MAC_BAR.
-        direct_fent_floor = 0.65 * (1.0 - clamp01(inhaled_mac / 0.5))
+        # propofol or ketamine; volatile agents already incorporate fentanyl via MAC_BAR.
+        direct_fent_floor = 0.65 * (1.0 - clamp01(sevo_mac / 0.5))
         fent_pressure_scale = max(
             direct_fent_floor,
             max(0.0, ce_prop) / 3.4 + 1.2 * max(0.0, ce_ketamine) / KETAMINE_MAC_EQUIVALENT,
         )
         pressure = remaining * math.exp(-math.log(2.0) * pressure_exposure * fent_pressure_scale)
-        inhaled_hr_weight = clamp01(inhaled_mac / 0.25) if inhaled_mac > 0.0 else 0.0
-        hr_fent = ce_fentanyl + inhaled_hr_weight * (ce_remi / FENTANYL_REMI_POTENCY)
-        hr = remaining / (1.0 + (hr_fent / FENTANYL_HR_C50)**FENTANYL_HR_GAMMA)
+        # Monotonic direct-opioid ceiling so lone high-dose remifentanil/morphine
+        # blunts stimulation without distorting the calibrated propofol-remifentanil
+        # intubation curve (Albertin 2005; VitalDB TIVA).
+        lone_remi = 1.0 / (1.0 + (ce_remi / (12.0 * intensity_scale)) ** 3.0)
+        lone_opioid_p = (
+            math.exp(-math.log(2.0) * (ce_fentanyl / fent_p_c50)**FENTANYL_PRESSURE_GAMMA * 0.65)
+            * lone_remi
+            * (1.0 - lidocaine_block)
+        )
+        pressure = min(pressure, lone_opioid_p)
+        sevo_hr_weight = clamp01(sevo_mac / 0.25) if sevo_mac > 0.0 else 0.0
+        iv_opioid_share = clamp01(max(0.0, ce_prop) / 2.5 + max(0.0, ce_ketamine) / 1.5)
+        hr_fent = ce_fentanyl + sevo_hr_weight * (1.0 - 0.5 * iv_opioid_share) * remi_as_fent
+        hr = remaining / (1.0 + (hr_fent / fent_hr_c50)**FENTANYL_HR_GAMMA)
+        lone_opioid_hr = (
+            (1.0 - lidocaine_block)
+            / (1.0 + (ce_fentanyl / fent_hr_c50)**FENTANYL_HR_GAMMA)
+            * lone_remi
+        )
+        hr = min(hr, lone_opioid_hr)
         return pressure, hr
 
 
 __all__ = [
-    "LARYNGOSCOPY_INTENSITY", "BISModel", "ClinicalResponseModel", "hypnotic_equivalent",
-    "hypothermia_narcosis_fraction", "midazolam_loss_of_response", "opioid_equivalent",
+    "EXTUBATION_INTENSITY", "LARYNGOSCOPY_INTENSITY", "BISModel", "ClinicalResponseModel",
+    "hypnotic_equivalent", "hypothermia_narcosis_fraction", "midazolam_loss_of_response",
+    "opioid_equivalent",
 ]

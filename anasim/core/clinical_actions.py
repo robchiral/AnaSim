@@ -16,6 +16,7 @@ from anasim.patient.pd.anesthesia import (
 from .projection import (
     cardiovascular_hypnotic_ce,
     central_muscle_strength,
+    extubation_tolerance,
     loss_of_response,
     nmba_twitch_fraction,
     stimulus_tolerance,
@@ -92,13 +93,13 @@ def check_airway_removal(engine: SimulationEngine) -> ActionFeedback | None:
     sync_inhaled_agents(engine)
     sync_pk_state(engine)
     unconscious = loss_of_response(engine)
-    tolerance = stimulus_tolerance(engine)
+    extub_tol = extubation_tolerance(engine)
     reasons = []
     if engine.resp.state.apnea:
         reasons.append("the patient is apneic")
     if min(engine.state.tof, 100.0 * nmba_twitch_fraction(engine)) < 90.0:
         reasons.append("neuromuscular recovery is incomplete")
-    if unconscious >= 0.20 and tolerance < 0.65:
+    if unconscious >= 0.20 and extub_tol < 0.65:
         reasons.append("airway reflexes are reactive (Stage II)")
     if reasons:
         return ActionFeedback(

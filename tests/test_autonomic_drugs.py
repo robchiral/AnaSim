@@ -239,3 +239,74 @@ def test_atropine_exceeds_glycopyrrolate_under_propofol_and_ephedrine_repeats_at
         eph.step(1.0)
         peak2 = max(peak2, eph.state.map)
     assert (peak2 - m1) > 0.55 * (peak1 - m0)
+
+
+def test_awake_hfref_milrinone_unloads_svr_and_raises_co(engine_factory, advance_time):
+    """Baim 1983: 50 mcg/kg load over 10 min + 0.5 mcg/kg/min in awake HFrEF raises CO and lowers SVR."""
+    engine = engine_factory(
+        config=SimulationConfig(mode="awake", rng_seed=1), start=True,
+        age=65, weight=75, height=172, sex="male", heart_failure="hfref",
+    )
+    base_co = engine.state.co
+    base_svr = engine.state.svr
+    base_map = engine.state.map
+
+    # milri rate unit is mcg/kg/min: 5.0 mcg/kg/min for 10 min = 50 mcg/kg load.
+    engine.set_drug_rate("milri", 5.0)
+    advance_time(engine, 600.0, dt=2.0)
+    engine.set_drug_rate("milri", 0.5)
+    advance_time(engine, 600.0, dt=2.0)
+
+    assert engine.state.co > base_co * 1.25
+    assert engine.state.svr < base_svr * 0.80
+    assert abs(engine.state.map - base_map) < 10.0
+
+    # By contrast, a rapid 50 mcg/kg milrinone bolus in a normal anesthetized heart lowers MAP.
+    normal = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1), start=True,
+        age=65, weight=75, height=172, sex="male",
+    )
+    norm_map0 = normal.state.map
+    normal.give_drug_bolus("milri", 50.0 * 75.0)
+    advance_time(normal, 300.0, dt=2.0)
+    assert normal.state.map < norm_map0 - 8.0
+
+
+def test_atropine_chronotropic_response_declines_with_age(engine_factory, advance_time):
+    """Older adults have smaller peak HR rises after atropine (Jose 1970; Dauchot 1971)."""
+    young = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, age=25)
+    elderly = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, age=75)
+    for eng in (young, elderly):
+        eng.give_drug_bolus("atropine", 1.0)
+        advance_time(eng, 120.0, dt=1.0)
+    young_rise = young.state.hr - young.patient.baseline_hr
+    assert young_rise > 25.0
+    assert (elderly.state.hr - elderly.patient.baseline_hr) < 0.78 * young_rise
+
+
+def test_beta_blockers_do_not_spike_map_under_induction_drugs(engine_factory, advance_time):
+    """Esmolol and labetalol do not paradoxically raise MAP during propofol or etomidate induction."""
+    for hypnotic, h_dose, blockers in (
+        ("propofol", 140.0, (("labetalol", 20.0),)),
+        ("etomidate", 20.0, (("esmolol", 50.0), ("labetalol", 20.0))),
+    ):
+        ctrl = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+        ctrl.set_airway_mode("ETT")
+        ctrl.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        ctrl.set_vent_power(True)
+        ctrl.give_drug_bolus(hypnotic, h_dose)
+        advance_time(ctrl, 60.0, dt=2.0)
+
+        treated = []
+        for blocker, b_dose in blockers:
+            arm = copy.deepcopy(ctrl)
+            arm.give_drug_bolus(blocker, b_dose)
+            treated.append(arm)
+
+        max_excess = [-1e9] * len(treated)
+        for _ in range(90):
+            ctrl.step(2.0)
+            for idx, arm in enumerate(treated):
+                arm.step(2.0)
+                max_excess[idx] = max(max_excess[idx], arm.state.map - ctrl.state.map)
+        assert all(excess <= 0.5 for excess in max_excess)

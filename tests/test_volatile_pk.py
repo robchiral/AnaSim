@@ -122,3 +122,13 @@ def test_low_cardiac_output_accelerates_brain_volatile_equilibration(engine_fact
     advance_time(shocked, 180.0, dt=1.0)
     assert shocked.state.co < healthy.state.co * 0.65
     assert shocked.state.mac_sevo > healthy.state.mac_sevo
+
+
+def test_cooling_conserves_dissolved_volatile_mass():
+    """Cooling increases blood-gas solubility, lowering tissue partial pressure for conserved mass."""
+    vpk = VolatilePK(Patient(), "Sevoflurane", lambda_b_g=0.65, mac_40=1.80)
+    for _ in range(180):
+        vpk.step(10.0, 0.02, 4.5, 5.0, temp_c=37.0)
+    p_vrg_37 = vpk.state.p_vrg
+    vpk.step(1.0, 0.0, 0.0, 5.0, temp_c=32.0)
+    assert 0.70 * p_vrg_37 < vpk.state.p_vrg < p_vrg_37

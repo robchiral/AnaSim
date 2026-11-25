@@ -34,12 +34,14 @@ from .projection import (
     StepGasCache,
     advance_tracheal_gas,
     assisted_positive_pressure,
+    bis_hypnotic_components,
     build_snapshot_from_models,
     cardiovascular_response_fractions,
     central_muscle_strength,
     circuit_connected,
     circuit_inspired_mixture,
     compute_pit_estimate,
+    extubation_tolerance,
     loss_of_response,
     mask_circuit_share,
     mask_leak,
@@ -53,6 +55,7 @@ from .projection import (
     sync_inspired_gas,
     sync_pk_state,
     thermal_hypnotic_ce,
+    thermal_mac,
 )
 from .state import AirwayStatus, AirwayType
 
@@ -81,15 +84,17 @@ def _step_monitors_light(
     """Fast scalar monitor update for hidden scenario prerolls without 100 Hz waveforms."""
     state = engine.state
     state.respiratory_fatigue = float(engine.resp_mech.effort.muscle.fatigue)
+    prop_bis, adjunct_bis = bis_hypnotic_components(engine)
     bis_val = engine.bis.step(
         dt,
-        state.hypnotic_ce,
+        prop_bis,
         mac_sevo=engine.pk_sevo.state.mac,
         cortical_function=engine.cerebral.cortical_function,
         ce_ketamine=state.ketamine_ce,
         ce_opioid=state.opioid_ce,
         temp_c=state.temp_c,
         disturbance_bis=disturbances.bis,
+        ce_adjunct=adjunct_bis,
     )
     state.bis = float(clamp(bis_val, 0.0, 100.0))
     engine.smooth_bis = state.bis
@@ -131,10 +136,11 @@ def _step_monitors_light(
     state.art_map = float(hemo_state.map)
     state.art_sbp = float(sbp)
     state.art_dbp = float(dbp)
-    state.display_etco2 = float(resp_state.etco2)
-    state.etco2_signal_valid = state.airway_mode != AirwayType.NONE
-    state.spo2 = state.display_spo2 = float(state.sao2)
-    state.spo2_signal_valid = hemo_state.co > ARREST_CO_L_MIN
+    connected = state.airway_mode != AirwayType.NONE
+    state.display_etco2 = float(resp_state.etco2) if connected else 0.0
+    state.etco2_signal_valid = connected
+    state.spo2_signal_valid = hemo_state.co > ARREST_CO_L_MIN and not hemo_state.compressions
+    state.spo2 = state.display_spo2 = float(state.sao2) if state.spo2_signal_valid else 0.0
 
 
 def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: bool = True) -> None:
@@ -142,7 +148,7 @@ def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: boo
         return
     state = engine.state
     update_shivering(engine, dt)
-    engine.thermal.update_depth(state.temp_c, thermal_hypnotic_ce(engine), state.mac)
+    engine.thermal.update_depth(state.temp_c, thermal_hypnotic_ce(engine), thermal_mac(engine))
     engine._tol_current = stimulus_tolerance(engine)
 
     disturbance_complete = _disturbance_completes_during_step(engine, dt)
@@ -160,8 +166,11 @@ def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: boo
     toxicity.step_lipid(dt, lidocaine.circulation)
     lidocaine.effect_input_fraction = toxicity.effect_input_fraction
     step_pk(engine, dt, fi_sevo, fi_n2o, cardiac_output)
+    tox_circ = engine.hemo.circulation_fraction(cardiac_output)
+    tox_ph = state.ph * tox_circ + min(state.ph, engine.resp.state.venous_ph) * (1.0 - tox_circ)
     toxicity.step(
-        dt, neural_ce=lidocaine.state.ce_neuro, cardiac_ce=lidocaine.state.ce_cv, ph=state.ph,
+        dt, neural_ce=lidocaine.state.ce_neuro, cardiac_ce=lidocaine.state.ce_cv,
+        ph=tox_ph,
         propofol_ce=state.propofol_ce, midazolam_ce=state.midazolam_ce,
         mac_sevo=state.mac_sevo, motor_strength=state.twitch / 100.0,
         cortical_function=engine.cerebral.cortical_function,
@@ -194,22 +203,22 @@ def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: boo
         )
         cpr_driving_map = hemo_state.venous_pressure + hemo_state.cpr_perfusion_map
         cerebral_map = (1.0 - cpr_share) * intrinsic_art_map + cpr_share * cpr_driving_map
-        base_co_ref = engine.hemo.normal_base_co_l_min
+        base_co_ref = engine.hemo.base_co_l_min
         # Closed-chest CPR delivers ~20-34% of normal CBF: enough to protect against
         # rapid anoxic injury (Astrup 1981 >20% threshold) without restoring cortical
         # wakefulness (>35% electrical threshold).
         cpr_cbf_cap = clamp(1.35 * (hemo_state.co / max(0.1, base_co_ref)), 0.0, 0.34)
         flow_ceiling: float | None = 1.0 - cpr_share * (1.0 - cpr_cbf_cap)
     else:
-        cerebral_map = hemo_state.map
+        cerebral_map = hemo_state.perfusion_map
         flow_ceiling = None
     engine.cerebral.step(
         dt,
         cerebral_map,
         state.hb_g_dl,
         state.sao2,
-        state.pa_co2,
-        state.ph,
+        physiology.resp_state.pa_co2_37,
+        physiology.resp_state.ph_37,
         venous_pressure=hemo_state.venous_pressure,
         flow_ceiling=flow_ceiling,
         temp_c=state.temp_c,
@@ -454,6 +463,7 @@ def update_shivering(engine: SimulationEngine, dt: float) -> None:
 def step_temperature(engine: SimulationEngine, dt: float) -> None:
     """Update core temperature from metabolic heat, environmental loss, fluids, and redistribution."""
     state = engine.state
+    remi_effect = hill_function(state.opioid_ce, engine.resp.c50_remi, engine.resp.gamma_remi)
     state.temp_c = float(engine.thermal.step_temperature(
         dt,
         state.temp_c,
@@ -462,6 +472,7 @@ def step_temperature(engine: SimulationEngine, dt: float) -> None:
         oxygen_supply_fraction=engine.resp.oxygen_supply_fraction,
         sepsis_severity=engine.sepsis.severity,
         perfusing=is_perfusing(engine),
+        opioid_effect=remi_effect,
     ))
 
 
@@ -675,7 +686,7 @@ def step_machine(
         airway = engine.airway_status
         patency = clamp01(airway.patency)
         raw_va = max(0.0, engine.state.va) if patency > 0.0 else 0.0
-        va = resp.effective_va(raw_va, airway.vq_mismatch)
+        va = resp.exchange_va(raw_va, airway.vq_mismatch)
         va_circuit = va * circuit_share
         fresh_btps = circuit.total_inflow() / btps_to_stpd
         rebreathed_share = (
@@ -727,7 +738,7 @@ def step_machine(
                 circuit_fin2, raw_va, airway.patency, airway.vq_mismatch, dt,
                 apneic_flow_limit_l_min=apneic_limit, n2o_uptake_l_min=agent_uptake,
                 lung_volume_l=target_lung_vol, cardiac_output=co_now, shunt_fraction=shunt_now,
-                exchange=terms,
+                exchange=terms, effective_va_l_min=va,
             )
         else:
             mixing = va * dt / (120.0 * terms.gas_vol_l) if terms.gas_vol_l > 0.0 else 0.0
@@ -745,7 +756,7 @@ def step_machine(
             n2o_uptake_l_min=agent_uptake,
             apneic_flow_limit_l_min=apneic_limit,
             lung_volume_l=target_lung_vol,
-            exchange=terms,
+            exchange=terms, effective_va_l_min=va,
         )
         # During apneic bulk inflow, gas enters the conserved dead-space buffer at
         # circuit composition and leaves into the alveoli at tracheal composition.
@@ -791,7 +802,7 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
     airway = engine.airway_status
     resp = engine.resp
     patency = clamp01(airway.patency)
-    va = resp.effective_va(state.va, airway.vq_mismatch) if patency > 0.0 else 0.0
+    va = resp.exchange_va(state.va, airway.vq_mismatch) if patency > 0.0 else 0.0
     cache = engine._step_gas
     if cache is not None and cache.exchange is not None:
         terms = cache.exchange
@@ -877,7 +888,9 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
         for key, model in engine.pump_pk.items():
             if segmented_keys and key in segmented_keys:
                 continue
-            rate = rates.get(key, 0.0)
+            if key in engine._pump_needs_reset:
+                continue
+            rate = rates.get(key, 0.0) if key in engine.tci else 0.0
             if rate or model.basal_input_rate or model.has_mass():
                 model.step(dt, rate)
     for key in segmented_keys:
@@ -1057,9 +1070,11 @@ def update_airway_complications(
         and not state.cardiac_arrest
         and rhythm_now not in PULSELESS_RHYTHMS
     )
+    extub_tol = extubation_tolerance(engine)
     laryng_target = 0.0
     if state.airway_mode != AirwayType.ETT and stim_active and brainstem_viable:
-        light_factor = clamp01(1.0 - tol)
+        active_tol = tol if (dist_stim or intub_stim) else extub_tol
+        light_factor = clamp01(1.0 - active_tol)
         laryng_target = clamp01(light_factor * laryng_cap * engine.cerebral.respiratory_drive)
 
     if state.airway_mode == AirwayType.ETT:
@@ -1069,7 +1084,7 @@ def update_airway_complications(
             brainstem_viable
             and state.loc >= 0.20
             and splint_pressure < 10.0
-            and tol < 0.65
+            and extub_tol < 0.65
         )
         # Smoothly shorten spasm persistence as laryngeal neuromuscular tone weakens,
         # and cap active spasm rapidly when succinylcholine or rocuronium relaxes the vocal cords.
@@ -1213,7 +1228,7 @@ def step_physiology(
         opioid_equivalent(state.remi_cp, state.fentanyl_ce, state.morphine_ce, state.hydromorphone_ce),
         state.nore_ce,
         pit=hemo_pit,
-        paco2=resp_state.pa_co2,
+        paco2=resp_state.pa_co2_37,
         pao2=resp_state.p_arterial_o2,
         dist_hr=disturbances.hr,
         dist_sv=disturbances.sv,
@@ -1277,6 +1292,7 @@ def step_physiology(
         compressions=hemo.compressions,
         hr=hemo_state.hr,
         beta_block=hemo._beta_occupancy,
+        toxic_stress=engine.toxicity.cardiac_stress,
     )
     if rhythm != hemo.rhythm_type:
         hemo.rhythm_type = rhythm
@@ -1372,6 +1388,8 @@ def step_lactate(engine: SimulationEngine, dt: float) -> None:
             base_removed,
             venous_only=(base_removed > 0.0 and resp.oxygen_supply_fraction < 0.99),
         )
+    if engine.lactate.last_cleared_infused_mmol > 0.0:
+        resp.add_organic_carbon(0.85 * engine.lactate.last_cleared_infused_mmol)
 
 
 def check_cardiac_arrest(engine: SimulationEngine, dt: float) -> None:

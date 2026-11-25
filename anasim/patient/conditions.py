@@ -42,6 +42,7 @@ class PregnancyFactors:
     heart_rate: float = 1.0
     metabolism: float = 1.0
     frc: float = 1.0
+    compliance: float = 1.0
     paco2: float = 40.0
     ph: float = 7.4
     supine_output_loss: float = 0.0
@@ -83,6 +84,8 @@ def pregnancy_factors(gestational_age_weeks: float) -> PregnancyFactors:
         heart_rate=1.0 + 0.20 * early,
         metabolism=1.0 + 0.20 * fa / 38.0,
         frc=1.0 - (1.0 - 2184.0 / 2524.0) * late,
+        # Marx 1970: supine term pregnancy lowers total compliance ~16% via chest-wall stiffness.
+        compliance=1.0 - 0.16 * late,
         paco2=40.0 - 8.0 * early,
         ph=7.4 + 0.04 * early,
         # Humphries 2019: supine CO is 16.4% below left lateral at 35 to 38 weeks.

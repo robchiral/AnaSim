@@ -55,12 +55,21 @@ class RespiratoryMechanics:
         return peep * max(0.0, min(1.0, self.aeration.pressure_transmission))
 
     def absorb_gas(self, volume_l: float) -> None:
-        """Remove unreplaced alveolar gas absorbed into blood (BTPS L)."""
+        """Remove unreplaced alveolar gas absorbed into blood (BTPS L).
+
+        Clamps sub-atmospheric circuit/lung recoil at a -8 cmH2O negative-pressure
+        relief threshold (ISO 80601-2-13) so empty-bellows zero-FGF absorption
+        cannot build unphysical deep vacuum.
+        """
         if volume_l <= 0.0:
             return
-        self.volume -= volume_l
-        self._unrefilled_absorption_l += volume_l
-        self.effort.shift_volume_reference(-volume_l)
+        min_vol = -(self.peep + 8.0) * self.compliance
+        applied = min(volume_l, max(0.0, self.volume - min_vol))
+        if applied <= 0.0:
+            return
+        self.volume -= applied
+        self._unrefilled_absorption_l += applied
+        self.effort.shift_volume_reference(-applied)
 
     def _clamp_absorption(self) -> float:
         self._unrefilled_absorption_l = min(self._unrefilled_absorption_l, max(0.0, -self.volume))
@@ -772,11 +781,16 @@ class PatientEffort:
         )
         # Diaphragmatic length-tension capacity collapses at severe hyperinflation near TLC.
         hyperinflation_scale = min(1.0, max(0.0, 1.0 - max(0.0, recoil_ee - 15.0) / 35.0))
-        self.amplitude = min(requested, self.muscle.available_pressure * hyperinflation_scale)
-        # Measure load against surviving capacity so fatigued muscles under
-        # persistent obstruction cannot spuriously rest and recover.
+        # Apply fatigue continuously to inspiratory drive so connected (ETT/Mask)
+        # breaths match unconnected effort_vt without an extubation cliff, while
+        # _load_scale preserves relative neural load on fatigued fibers.
+        fatigue_keep = max(0.0, 1.0 - self.muscle.fatigue)
+        self.amplitude = min(
+            requested * fatigue_keep,
+            self.muscle.available_pressure * hyperinflation_scale,
+        )
         self._load_scale = (
-            1.0 / max(0.50, 1.0 - 0.6 * self.muscle.fatigue)
+            1.0 / max(0.25, fatigue_keep)
             if self.amplitude > 1e-6 and self.muscle.fatigue > 0.0
             else 1.0
         )

@@ -109,8 +109,8 @@ def test_headless_recording_failure_exits_unsuccessfully(tmp_path, inject_file, 
 
 
 def test_deepcopy_during_active_recording_and_json_alarm_serialization(awake_engine, tmp_path):
-    """Deepcopying an active recording engine detaches the copy's recorder (#34),
-    and CSV alarm dictionaries serialize as valid JSON (#43).
+    """Deepcopying an active recording engine detaches the copy's recorder,
+    and CSV alarm dictionaries serialize as valid JSON.
     """
     engine = awake_engine
     engine.give_drug_bolus("roc", 50.0)

@@ -47,8 +47,10 @@ def _t_wave(preceding_rr_s: float, wide: float) -> tuple[float, float]:
     return 0.62 * qt + (_stretch(wide) - 1.0) * _J_POINT_S, 0.12 * qt * (1.0 + 0.5 * wide)
 
 
-def displayed_rhythm(rhythm: RhythmType, conduction_failure: float, sodium_block: float = 0.0) -> str:
-    """Observed rhythm with ischemic slowing or sodium-channel block."""
+def displayed_rhythm(
+    rhythm: RhythmType, conduction_failure: float, sodium_block: float = 0.0, *, hr: float | None = None,
+) -> str:
+    """Observed rhythm with ischemic slowing, sodium-channel block, or treated bradycardia."""
     if rhythm in (RhythmType.VTACH, RhythmType.VFIB, RhythmType.ASYSTOLE):
         return rhythm.value
     if sodium_block >= SILENT_BLOCK:
@@ -61,6 +63,8 @@ def displayed_rhythm(rhythm: RhythmType, conduction_failure: float, sodium_block
         return "Wide-complex rhythm"
     if conduction_failure >= JUNCTIONAL_FAILURE and rhythm != RhythmType.AFIB:
         return "Junctional rhythm"
+    if rhythm == RhythmType.SINUS_BRADY and hr is not None and hr >= 60.0:
+        return RhythmType.SINUS.value
     return rhythm.value
 
 

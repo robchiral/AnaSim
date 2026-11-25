@@ -560,3 +560,70 @@ def test_obesity_lean_pk_scaling_prevents_200kg_underdosing_and_extreme_clearanc
         atr.step(1.0)
         peak_hr = max(peak_hr, atr.state.hr)
     assert peak_hr > hr0 + 10.0
+
+
+def test_low_dose_sugammadex_produces_recurarization_rebound(patient):
+    """Eleveld 2007: subtherapeutic 0.5 mg/kg sugammadex under deep rocuronium rebounds."""
+    roc = RocuroniumPK(patient)
+    pd = TOFModel(patient)
+    roc.state.c1 += 0.9 * patient.weight / roc.v1
+    for _ in range(252):
+        roc.step(10.0, 0.0)
+        tof = pd.step_recovery(10.0, roc)
+    assert tof < 5.0
+
+    pd.give_sugammadex(0.5 * patient.weight)
+    peak_tof = 0.0
+    min_after_tof = 100.0
+    for step_idx in range(1, 361):
+        roc.step(5.0, 0.0)
+        tof = pd.step_recovery(5.0, roc)
+        if step_idx <= 60:
+            peak_tof = max(peak_tof, tof)
+        else:
+            min_after_tof = min(min_after_tof, tof)
+    assert peak_tof > 50.0
+    assert min_after_tof < peak_tof - 8.0
+
+
+def test_sevoflurane_slows_rocuronium_washout_more_than_tiva(engine_factory, advance_time):
+    """Sevoflurane slows rocuronium effect-site washout relative to propofol TIVA (Lowry 1998)."""
+    tiva = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1), start=True)
+    sevo = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True)
+    for eng in (tiva, sevo):
+        eng.give_drug_bolus("roc", 42.0)
+        advance_time(eng, 180.0, dt=1.0)
+    advance_time(tiva, 600.0, dt=2.0)
+    advance_time(sevo, 600.0, dt=2.0)
+    assert sevo.tof_pd.ce > tiva.tof_pd.ce
+
+
+def test_morphine_overdose_causes_apnea_and_esrd_accumulates_m6g(engine_factory, advance_time):
+    """High-dose morphine causes apnea; ESRD accumulates active M6G with longer CSHT and deeper late depression."""
+    overdose = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    overdose.give_drug_bolus("morphine", 40.0)
+    apnea_seen = False
+    for _ in range(1650):
+        overdose.step(2.0)
+        if overdose.state.rr == 0.0 or overdose.state.apnea:
+            apnea_seen = True
+    assert apnea_seen
+    assert overdose.state.pa_co2 > 75.0
+
+    normal_renal = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    esrd = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, renal_function=0.05)
+    normal_renal.give_drug_bolus("morphine", 20.0)
+    esrd.give_drug_bolus("morphine", 20.0)
+    # Advance morphine PK through 6 h so M6G accumulates in ESRD, then verify CSHT and full-engine respiration.
+    norm_pk = normal_renal.pk["morphine"]
+    esrd_pk = esrd.pk["morphine"]
+    assert isinstance(norm_pk, MorphinePK) and isinstance(esrd_pk, MorphinePK)
+    for _ in range(360):
+        norm_pk.step(60.0, 0.0)
+        esrd_pk.step(60.0, 0.0)
+    assert esrd_pk.m6g_excess_ce > norm_pk.m6g_excess_ce + 8.0
+    assert esrd_pk.simulate_decay(max_seconds=28800) > norm_pk.simulate_decay(max_seconds=28800) + 30.0
+    advance_time(normal_renal, 600.0, dt=2.0)
+    advance_time(esrd, 600.0, dt=2.0)
+    assert esrd.state.pa_co2 > normal_renal.state.pa_co2 + 8.0
+    assert esrd.state.sao2 < normal_renal.state.sao2 - 20.0

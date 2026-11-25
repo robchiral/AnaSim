@@ -127,7 +127,14 @@ def test_anaphylaxis_recovery_requires_current_pressure_and_cuff_reassessment(ar
     assert not session.snapshot()["scenario"]["complete"]
 
     command(session, "drug_rate", key="epi", rate=6)
-    advance(session, 200)
+    max_sbp = 0.0
+    for _ in range(20):
+        advance(session, 2)
+        max_sbp = max(max_sbp, session.engine.state.sbp)
+        if session.engine.anaphylaxis.severity >= 0.35:
+            assert not session.snapshot()["scenario"]["met"]
+    assert max_sbp < 260.0
+    advance(session, 160)
     if not arterial_line:
         assert session.engine.state.map >= 65
         assert session.snapshot()["scenario"]["status"] == "Measure blood pressure again"

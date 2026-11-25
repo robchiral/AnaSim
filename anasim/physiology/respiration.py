@@ -96,8 +96,11 @@ class RespiratoryModel:
     """Ventilatory control, anesthetic respiratory depression, and CO2 and O2 exchange."""
 
     # Under anesthesia the apneic threshold is 4-5 mmHg below resting PaCO2,
-    # independent of agent and depth (Hickey 1971).
+    # independent of agent and depth (Hickey 1971); above resting 50 mmHg it
+    # softens so propofol induction apnea duration matches Claeys 1988.
     APNEIC_GAP = 4.5  # mmHg
+    APNEIC_RESTING_KNEE = 50.0  # mmHg
+    APNEIC_RESTING_SPAN = 3.0  # mmHg (soft ceiling ~53 mmHg -> threshold ~48.5 mmHg)
     LOW_VQ_RATIO = 0.05  # Age, airway closure, and bronchospasm; fitted to Gunnarsson 1991
     COPD_VQ_RATIO = 0.1  # Low V/Q mode in COPD (Wagner 1977, Figs. 3-4)
     LOW_VQ_AIRWAY = 0.2  # Share of output at full airway V/Q mismatch; room-air PaO2 near 64 mmHg at 40
@@ -202,7 +205,7 @@ class RespiratoryModel:
         # Without a configured VT, resting breaths carry the alveolar
         # ventilation that holds 37 °C alpha-stat PaCO2 at the set point.
         # Below 35 °C, baseline respiratory rate slows with hypothermic metabolism.
-        awake_metabolism = max(0.5, TEMP_METABOLIC_COEFFICIENT ** (37.0 - patient.baseline_temp))
+        awake_metabolism = max(0.25, TEMP_METABOLIC_COEFFICIENT ** (37.0 - patient.baseline_temp))
         self._awake_metabolism = awake_metabolism
         self._temp_c = patient.baseline_temp
         self._init_temp_vent_scale = self._hypothermic_vent_scale(patient.baseline_temp)
@@ -254,6 +257,7 @@ class RespiratoryModel:
         self._extracellular_buffers: PlasmaBuffers | None = None
         self._donor_rbc_co2: float = 0.0
         self._urine_carbon_applied: float = 0.0
+        self._organic_carbon_applied: float = 0.0
         self._unbuffered_acid_meq: float = 0.0
         self._set_blood_composition(self.baseline_hb, self.baseline_hct)
         self.gas_transport = GasTransport(
@@ -270,6 +274,7 @@ class RespiratoryModel:
         self._resting_pco2: float | None = None
         self._rate_pco2_reference = self.paco2_setpoint
         self._resting_age_s = 0.0
+        self._last_va_ratio = 1.0
         self._rate_pco2_cache: tuple[tuple[float, ...], float] | None = None
         self._resting_pco2_cache: tuple[tuple[float, ...], float] | None = None
         # Perfusion effect on deadspace fraction (low flow increases VD/VT).
@@ -333,6 +338,12 @@ class RespiratoryModel:
 
         urine_carbon = fluids.bicarbonate_excreted_mmol - self._urine_carbon_applied
         self._urine_carbon_applied = fluids.bicarbonate_excreted_mmol
+        organic_carbon = fluids.metabolized_organic_carbon_mmol - self._organic_carbon_applied
+        self._organic_carbon_applied = fluids.metabolized_organic_carbon_mmol
+        if organic_carbon != 0.0:
+            plasma_share_co2 = clamp01(fluids.plasma_l / fluids.ecf_l) if fluids.ecf_l > 0.0 else 0.0
+            added_carbon += organic_carbon
+            blood_infuse_carbon += plasma_share_co2 * organic_carbon
 
         pi_conc = fluids.concentration("phosphate")
 
@@ -557,6 +568,7 @@ class RespiratoryModel:
             plasma_carbon = donor.plasma_bicarbonate * (1.0 + 10.0**(6.1 - STORED_BLOOD_PH))
             self._donor_rbc_co2 = (donor.total_co2 - 0.45 * plasma_carbon) / 0.55
             self._urine_carbon_applied = 0.0
+            self._organic_carbon_applied = self.fluids.metabolized_organic_carbon_mmol
 
     def _gas_volume_at(self, frc_l: float, deficit_l: float) -> float:
         return max(
@@ -1087,6 +1099,22 @@ class RespiratoryModel:
             self.fluids.blood_base_meq_l = transport.blood_amount(transport.base) / transport.blood_volume
         self._publish_base_excess()
 
+    def add_organic_carbon(self, mmol: float) -> None:
+        """Add bicarbonate/CO2 carbon produced by aerobic oxidation of exogenous organic anions."""
+        if mmol <= 0.0:
+            return
+        transport = self.gas_transport
+        if self.fluids is not None:
+            plasma_share = clamp01(self.fluids.plasma_l / self.fluids.ecf_l) if self.fluids.ecf_l > 0.0 else 0.0
+        else:
+            total_vol = transport.blood_volume + transport.extracellular_volume
+            plasma_share = clamp01(transport.blood_volume / total_vol) if total_vol > 0.0 else 0.0
+        blood_delta = mmol * plasma_share
+        if transport.blood_volume > 0.0 and blood_delta != 0.0:
+            shift = blood_delta / transport.blood_volume
+            transport.co2 = [c + shift for c in transport.co2]
+        transport.extracellular_co2 += mmol - blood_delta
+
     def central_nmba_block(self, ce_roc: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
         """Diaphragmatic/central neuromuscular block fraction (0-1) from potentiated free rocuronium."""
         if ce_roc <= 0.0:
@@ -1159,6 +1187,15 @@ class RespiratoryModel:
             fn2 = clamp01(lung_n2 / gas_stpd_l)
         return lung_n2, fn2, washout_n2_l
 
+    def exchange_va(self, alveolar_ventilation: float, vq_mismatch: float) -> float:
+        """Return effective alveolar ventilation matching step() (no double-counted bronchospasm, includes zone-1)."""
+        va = max(0.0, alveolar_ventilation)
+        if va <= 0.0:
+            return 0.0
+        if self.state.va > 1e-9:
+            return va * self._last_va_ratio
+        return self.effective_va(va, vq_mismatch)
+
     def oxygen_exchange_l_min(
         self, fio2: float, alveolar_ventilation: float,
         airway_patency: float, vq_mismatch: float, dt: float = 1.0,
@@ -1167,11 +1204,16 @@ class RespiratoryModel:
         lung_volume_l: float | None = None,
         *,
         exchange: PassiveExchangeTerms | None = None,
+        effective_va_l_min: float | None = None,
     ) -> float:
         """Net O2 transport from inspired gas into the lung and blood stores, STPD L/min."""
         if airway_patency <= 0.0:
             return 0.0
-        ventilation = self.effective_va(alveolar_ventilation, vq_mismatch)
+        ventilation = (
+            max(0.0, effective_va_l_min)
+            if effective_va_l_min is not None
+            else self.effective_va(alveolar_ventilation, vq_mismatch)
+        )
         terms = (
             exchange
             if exchange is not None
@@ -1222,13 +1264,18 @@ class RespiratoryModel:
         shunt_fraction: float = 0.0,
         *,
         exchange: PassiveExchangeTerms | None = None,
+        effective_va_l_min: float | None = None,
     ) -> float:
         """Net N2 transport from inspired gas into the lung gas store, STPD L/min."""
         if airway_patency <= 0.0 or dt <= 0.0:
             return 0.0
         patency = clamp01(airway_patency)
         target_fn2 = clamp01(target_fn2)
-        ventilation = self.effective_va(alveolar_ventilation, vq_mismatch)
+        ventilation = (
+            max(0.0, effective_va_l_min)
+            if effective_va_l_min is not None
+            else self.effective_va(alveolar_ventilation, vq_mismatch)
+        )
         count = self._substep_count(dt, cardiac_output, shunt_fraction)
         sub_dt = dt / count
         start_frc = self.frc
@@ -1284,6 +1331,7 @@ class RespiratoryModel:
              opioid_rate_fraction: float = 1.0, airway_pressure: float = 0.0,
              central_drive_fraction: float = 1.0,
              ketamine_cp: float = 0.0,
+             ketamine_ce: float = 0.0,
              mac_n2o: float = 0.0,
              n2o_uptake_l_min: float = 0.0,
              fin2: float | None = None,
@@ -1317,7 +1365,11 @@ class RespiratoryModel:
         airway_patency = clamp01(airway_patency)
         ventilation_efficiency = clamp01(ventilation_efficiency)
         unconscious = clamp01(unconscious)
-        ket_bolus_keep = 1.0 / (1.0 + max(0.0, ketamine_cp - 10.0) / 8.0)
+        # Rapid high-dose IV ketamine push (Cp > 6.5 mcg/mL under Kamp 2020 V1)
+        # can cause brief central depression; steady-state ketamine shifts the
+        # CO2 response rightward ~2 mmHg without flattening its slope (Bourke 1987).
+        ket_bolus_keep = 1.0 / (1.0 + max(0.0, ketamine_cp - 6.5) / 5.0)
+        ket_co2_shift = 2.0 * clamp01(max(0.0, ketamine_ce) / 2.2)
         self._central_drive_fraction = clamp01(central_drive_fraction * ket_bolus_keep)
 
         # At Ce_prop=1 the opioid C50 is 0.84 * 1.6 ng/mL (Olofsen).
@@ -1403,11 +1455,15 @@ class RespiratoryModel:
             )
             step_old_pco2_scale = old_pco2_scale if substep_idx == 0 else pco2_scale
 
-            # Base deficit lowers the defended PCO2 by the usual 1.2 mmHg per mmol/L
-            # over about two minutes. Base excess, unlike bicarbonate, does not
-            # fall with respiratory alkalosis.
-            deficit = max(0.0, self._reference_base_excess - state.base_excess)
-            compensated_pco2 = max(10.0, self.paco2_setpoint - 1.2 * deficit)
+            # Base deficit lowers the defended PCO2 by 1.2 mmHg per mmol/L;
+            # metabolic alkalosis raises it by 0.70 mmHg per mmol/L via reduced VT
+            # (Javaheri 1982). Base excess, unlike bicarbonate, is stable during
+            # acute respiratory shifts.
+            be_delta = state.base_excess - self._reference_base_excess
+            if be_delta < 0.0:
+                compensated_pco2 = max(10.0, self.paco2_setpoint + 1.2 * be_delta)
+            else:
+                compensated_pco2 = min(self.paco2_setpoint + 15.0, self.paco2_setpoint + 0.70 * be_delta)
             target_compensation = self.paco2_setpoint / compensated_pco2
             self._metabolic_compensation += (target_compensation - self._metabolic_compensation) * alpha_comp
             sensed_paco2 = (
@@ -1415,7 +1471,8 @@ class RespiratoryModel:
                 if state.pa_co2 == self._last_published_pa_co2
                 else state.pa_co2
             )
-            co2_excess = max(0.0, sensed_paco2 * self._metabolic_compensation - self.paco2_setpoint)
+            eff_sensed_paco2 = max(10.0, sensed_paco2 - ket_co2_shift)
+            co2_excess = max(0.0, eff_sensed_paco2 * self._metabolic_compensation - self.paco2_setpoint)
             opioid_reference = 1.0 + gain * co2_excess
             target_fraction = long_opioid_keep - opioid_shift / opioid_reference
             # Lag the fractional opioid controller rather than total CO2 drive so
@@ -1475,7 +1532,7 @@ class RespiratoryModel:
             nmba_exp = 1.0 - 0.30 * clamp01((nmba_factor - 0.50) / 0.35)
             nmba_transmission = (nmba_factor ** nmba_exp) * clamp01((nmba_factor - 0.125) / 0.035)
             neural_rr, neural_vt, drive_central = self._unassisted(
-                sensed_paco2, prop_keep, sevo_keep, nmba_transmission,
+                eff_sensed_paco2, prop_keep, sevo_keep, nmba_transmission,
                 unconscious, opioid_reference, resting_pco2=self._resting_pco2,
                 hypoxic_drive=hypoxic_drive,
                 opioid_controller_fraction=long_opioid_keep, opioid_rate_fraction=long_opioid_rate,
@@ -1532,7 +1589,8 @@ class RespiratoryModel:
             )
             applied_bronch_eff = mech_bronch_eff if (measured_breaths or mech_rr > 0) else bronch_eff
             vq_va_residual = min(1.0, (1.0 - 0.6 * vq_mismatch) / max(0.1, applied_bronch_eff))
-            effective_va = total_va_l_min * vq_va_residual * (1.0 - zone1_frac)
+            self._last_va_ratio = vq_va_residual * (1.0 - zone1_frac)
+            effective_va = total_va_l_min * self._last_va_ratio
             # EtCO2 samples diluted alveolar CO2. The PaCO2-EtCO2 gap widens
             # with dead space, V/Q mismatch, obstruction, and low cardiac output
             # (Russell 1990; Lujan 2008; Kim 2019).
@@ -1863,7 +1921,7 @@ class RespiratoryModel:
                 (self.OPIOID_OVERDOSE_THRESHOLD - opioid_controller_fraction) / 0.075
             )
             rate_fraction *= overdose_rate_scale
-        if self._metabolic_compensation != 1.0:
+        if self._metabolic_compensation > 1.0:
             rate_fraction *= math.sqrt(self._metabolic_compensation)
         if controller == 0.0 or prop_keep * sevo_keep <= 1e-4:
             rate_fraction = 0.0
@@ -1882,8 +1940,15 @@ class RespiratoryModel:
             vt *= central_keep
 
         # Unconscious breathing stops APNEIC_GAP below the resting PaCO2, which
-        # drugs raise; awake, hypocapnia below the set point weakens effort.
+        # drugs raise (Hickey 1971); above 50 mmHg the apneic setpoint softens
+        # so bolus induction peaks match Claeys 1988 without trapping deep apnea.
         resting = self.paco2_setpoint if resting_pco2 is None else max(self.paco2_setpoint, resting_pco2)
+        if resting > self.APNEIC_RESTING_KNEE:
+            capped = self.APNEIC_RESTING_KNEE + self.APNEIC_RESTING_SPAN * math.tanh(
+                (resting - self.APNEIC_RESTING_KNEE) / self.APNEIC_RESTING_SPAN
+            )
+            overdose_lift = clamp01((self.OPIOID_OVERDOSE_THRESHOLD - opioid_controller_fraction) / 0.04)
+            resting = capped + (resting - capped) * overdose_lift
         below_resting = resting - pco2
         # Active carotid-body hypoxic drive lowers the unconscious apneic threshold
         # under light sedation without affecting normoxic (100% O2) or deep GA apnea.

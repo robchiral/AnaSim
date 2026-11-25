@@ -90,7 +90,9 @@ test("defibrillator controls follow charging, pending R waves, and actual delive
 
   controls.syncDefibrillator(states[2]);
   assert.equal(elements.get("c-shock").disabled, false);
+  controls.synchronized = false;
   controls.syncDefibrillator(states[3]);
+  assert.equal(controls.synchronized, true);
   assert.equal(elements.get("c-shock").disabled, true);
   assert.ok(modes.every(button => button.disabled));
   assert.equal(elements.get("c-shock-feedback").hidden, true);

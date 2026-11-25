@@ -8,6 +8,7 @@ from anasim.monitors.ecg import st_analyzable_scale
 from anasim.patient.pd import hypnotic_equivalent, opioid_equivalent
 from anasim.patient.pd.anesthesia import (
     ETOMIDATE_LOSS_OF_RESPONSE,
+    EXTUBATION_INTENSITY,
     KETAMINE_MAC_EQUIVALENT,
     LARYNGOSCOPY_INTENSITY,
     PROPOFOL_LOC_TRANSFER,
@@ -17,6 +18,7 @@ from anasim.patient.pd.anesthesia import (
     opioid_rate_fraction,
 )
 from anasim.patient.pd.nmba import (
+    TOF_FADE_EXPONENT,
     succinylcholine_phase2_tof_fraction,
     succinylcholine_twitch_fraction,
 )
@@ -212,6 +214,7 @@ def circuit_ventilation(engine: SimulationEngine) -> tuple[float, float]:
         and resp.apnea
         and not engine.vent.inspiring
         and not engine.vent.breath_inspiring
+        and not (engine.vent._measured is not None and engine.vent._measured.kind == "MANUAL")
     ):
         return 0.0, 0.0
     leak_gap = 1.0 - engine.mask_seal if engine.state.airway_mode == AirwayType.MASK else 0.0
@@ -245,6 +248,7 @@ def circuit_alveolar_ventilation(
         and resp.apnea
         and not engine.vent.inspiring
         and not engine.vent.breath_inspiring
+        and not (engine.vent._measured is not None and engine.vent._measured.kind == "MANUAL")
     ):
         return 0.0
     leak_gap = 1.0 - engine.mask_seal if engine.state.airway_mode == AirwayType.MASK else 0.0
@@ -321,20 +325,80 @@ def loss_of_response(engine: SimulationEngine, *, ketamine: bool = True) -> floa
     )
 
 
+def _combine_coma_tolerance(engine: SimulationEngine, drug_tolerance: float) -> float:
+    """Combine drug stimulus tolerance with non-drug coma (hypothermia, cerebral, toxicity)."""
+    cold_narcosis = hypothermia_narcosis_fraction(engine.state.temp_c)
+    return clamp01(
+        1.0
+        - (1.0 - clamp01(drug_tolerance))
+        * (1.0 - engine.cerebral.unresponsiveness)
+        * (1.0 - engine.toxicity.unresponsiveness)
+        * (1.0 - cold_narcosis)
+    )
+
+
 def stimulus_tolerance(engine: SimulationEngine, intensity: float = LARYNGOSCOPY_INTENSITY) -> float:
     """Probability of no response to a noxious stimulus of the given Bouillon intensity; laryngoscopy by default."""
     state = engine.state
-    return clamp01(
-        engine.response.tolerance(
-            state.hypnotic_response_ce,
-            state.opioid_ce,
-            mac_sevo=state.mac_sevo,
-            mac_n2o=state.mac_n2o,
-            ce_ketamine=state.ketamine_ce,
-            ce_lidocaine=state.lidocaine_ce,
-            intensity=intensity,
-        )
+    drug_tol = engine.response.tolerance(
+        state.hypnotic_response_ce,
+        state.opioid_ce,
+        mac_sevo=state.mac_sevo,
+        mac_n2o=state.mac_n2o,
+        ce_ketamine=state.ketamine_ce,
+        ce_lidocaine=state.lidocaine_ce,
+        intensity=intensity,
     )
+    return _combine_coma_tolerance(engine, drug_tol)
+
+
+def extubation_tolerance(engine: SimulationEngine) -> float:
+    """Airway-reflex tolerance for smooth extubation (Inomata 1999; Lee 2009).
+
+    Uses the shallower of the fast clinical-response site and the steady BIS
+    site (unscaled by BIS age/ceiling) so neither an early propofol bolus spike
+    nor sluggish emergence washout masks reactive Stage II airway reflexes.
+    """
+    state = engine.state
+    steady_hyp = float(hypnotic_equivalent(
+        engine.pk["propofol"].state.ce,
+        engine.pk["etomidate"].state.ce,
+        engine.pk["midazolam"].state.ce,
+        engine.midazolam_c50,
+        engine.response.noxious_age_factor,
+    ))
+    eff_hyp = min(state.hypnotic_response_ce, steady_hyp)
+    drug_tol = engine.response.tolerance(
+        eff_hyp,
+        state.opioid_ce,
+        mac_sevo=state.mac_sevo,
+        mac_n2o=state.mac_n2o,
+        ce_ketamine=state.ketamine_ce,
+        ce_lidocaine=state.lidocaine_ce,
+        intensity=EXTUBATION_INTENSITY,
+    )
+    return _combine_coma_tolerance(engine, drug_tol)
+
+
+def bis_hypnotic_components(engine: SimulationEngine) -> tuple[float, float]:
+    """Split BIS hypnotic equivalent into (propofol_ce, non_propofol_adjunct_ce).
+
+    Propofol uses Eleveld's age-dependent BIS delay while etomidate/midazolam
+    use the age-independent monitor processing delay (Pilge 2006). Preserves
+    direct test overrides of state.hypnotic_ce.
+    """
+    prop_ce = max(0.0, float(engine.pk["propofol"].state.ce))
+    expected = float(hypnotic_equivalent(
+        prop_ce,
+        engine.pk["etomidate"].state.ce,
+        engine.pk["midazolam"].state.ce,
+        engine.midazolam_c50,
+        engine.bis.age_factor,
+        bis=True,
+    ))
+    if abs(engine.state.hypnotic_ce - expected) > 1e-9:
+        return max(0.0, float(engine.state.hypnotic_ce)), 0.0
+    return prop_ce, max(0.0, expected - prop_ce)
 
 
 def thermal_hypnotic_ce(engine: SimulationEngine) -> float:
@@ -342,6 +406,8 @@ def thermal_hypnotic_ce(engine: SimulationEngine) -> float:
 
     Kurz 1995 (Anesth Analg 81:393): 300 ng/mL plasma midazolam lowers the
     shivering threshold by 0.6 °C (35.9 to 35.3 °C), far less than general anesthetics.
+    Ikeda 2001: ketamine preserves peripheral vasoconstriction and limits 1st-h
+    core redistribution drop (~0.5 °C vs 1.4 °C with propofol).
     """
     state = engine.state
     etomidate = (
@@ -350,16 +416,31 @@ def thermal_hypnotic_ce(engine: SimulationEngine) -> float:
         / ETOMIDATE_LOSS_OF_RESPONSE
     )
     midaz = max(0.0, state.midazolam_ce)
-    ketamine = engine.thermal.tuning.depth_propofol_scale * max(0.0, state.ketamine_ce) / KETAMINE_MAC_EQUIVALENT
+    ketamine = 0.25 * engine.thermal.tuning.depth_propofol_scale * max(0.0, state.ketamine_ce) / KETAMINE_MAC_EQUIVALENT
     return max(0.0, state.propofol_ce) + etomidate + ketamine + 1.80 * midaz / (midaz + 150.0)
+
+
+def thermal_mac(engine: SimulationEngine) -> float:
+    """Thermoregulatory MAC equivalent (N2O impairs thermoregulation half as much as sevoflurane)."""
+    state = engine.state
+    return max(0.0, state.mac_sevo) + 0.5 * max(0.0, state.mac_n2o)
+
+
+def _succinylcholine_phase2_exposure(engine: SimulationEngine) -> float:
+    sux_pk = engine.pk["succinylcholine"]
+    return sux_pk.phase2_exposure if isinstance(sux_pk, SuccinylcholinePK) else 0.0
 
 
 def nmba_twitch_fraction(engine: SimulationEngine) -> float:
     """Remaining peripheral T1 twitch fraction from neuromuscular blockers alone."""
     s = engine.state
+    phase2_t1 = succinylcholine_phase2_tof_fraction(_succinylcholine_phase2_exposure(engine)) ** (
+        1.0 / TOF_FADE_EXPONENT
+    )
     return (
         (1.0 - engine.tof_pd.twitch_block(s.roc_ce, s.mac_sevo, s.mac_n2o))
         * succinylcholine_twitch_fraction(s.succinylcholine_ce)
+        * phase2_t1
     )
 
 
@@ -380,8 +461,13 @@ def central_muscle_strength(engine: SimulationEngine) -> float:
     block = engine.resp.central_nmba_block(
         engine.tof_pd.ce_central / potentiation, state.mac_sevo, state.mac_n2o,
     )
-    return clamp01(1.0 - block) * succinylcholine_twitch_fraction(
-        succinylcholine_central_ce(engine), central=True,
+    phase2_central = succinylcholine_phase2_tof_fraction(
+        _succinylcholine_phase2_exposure(engine)
+    ) ** 0.35
+    return (
+        clamp01(1.0 - block)
+        * succinylcholine_twitch_fraction(succinylcholine_central_ce(engine), central=True)
+        * phase2_central
     )
 
 
@@ -461,15 +547,14 @@ def sync_pk_state(engine: SimulationEngine) -> None:
     state.hypnotic_response_ce = float(hypnotic_equivalent(
         engine.pk["propofol"].state.ce_response, engine.pk["etomidate"].state.ce,
         engine.pk["midazolam"].state.ce, engine.midazolam_c50,
+        engine.response.noxious_age_factor,
     ))
 
 
 def sync_neuromuscular_state(engine: SimulationEngine) -> None:
     """T1 height includes phase I block, which depresses all four twitches without fade."""
     s = engine.state
-    sux_pk = engine.pk["succinylcholine"]
-    phase2_exposure = sux_pk.phase2_exposure if isinstance(sux_pk, SuccinylcholinePK) else 0.0
-    phase2_fade = succinylcholine_phase2_tof_fraction(phase2_exposure)
+    phase2_fade = succinylcholine_phase2_tof_fraction(_succinylcholine_phase2_exposure(engine))
     s.tof = float(engine.tof_pd.compute_tof_from_ce(s.roc_ce, s.mac_sevo, s.mac_n2o) * phase2_fade)
     s.twitch = 100.0 * nmba_twitch_fraction(engine) * dantrolene_twitch_fraction(s.dantrolene_ce)
 
@@ -633,7 +718,7 @@ def advance_tracheal_gas(
         and assisted_rr * assisted_vt_l > 0.05
     )
     patency = clamp01(engine.airway_status.patency)
-    effective_va = engine.resp.effective_va(engine.state.va, engine.airway_status.vq_mismatch) if patency > 0.0 else 0.0
+    effective_va = engine.resp.exchange_va(engine.state.va, engine.airway_status.vq_mismatch) if patency > 0.0 else 0.0
     target = inspired_gas_mixture(engine)
     if assisted_breaths or effective_va > 1e-4:
         engine._tracheal_gas = target
@@ -701,8 +786,9 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
     assisted_rr, assisted_vt_l = circuit_ventilation(engine) if sealed else (0.0, 0.0)
     airway = engine.airway_status
     upper_eff = max(0.1, 1.0 - 0.2 * (1.0 - clamp01(airway.patency)))
+    vd_peep = engine.resp.vd_deadspace + 0.0025 * max(0.0, engine.resp_mech.peep - 12.0)
     mech_va_l_min = (
-        circuit_alveolar_ventilation(engine, engine.resp.vd_deadspace, upper_eff)
+        circuit_alveolar_ventilation(engine, vd_peep, upper_eff)
         if sealed
         else None
     )
@@ -786,7 +872,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         hematocrit=engine.hemo.get_hematocrit(),
         blood_volume_ml=engine.hemo.blood_volume,
         cardiac_output=cardiac_output,
-        metabolic_factor=max(0.5, engine.thermal.metabolic_factor),
+        metabolic_factor=max(0.25, engine.thermal.metabolic_factor),
         unconscious=state.loc,
         lung_volume_l=lung_volume_l,
         shunt_fraction=engine.aeration.shunt_fraction,
@@ -795,6 +881,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         # Brainstem drive persists until cerebral failure is nearly complete or CO2 narcosis is extreme.
         central_drive_fraction=engine.cerebral.respiratory_drive * engine.toxicity.respiratory_drive,
         ketamine_cp=engine.pk["ketamine"].state.c1,
+        ketamine_ce=state.ketamine_ce,
         mac_n2o=state.mac_n2o,
         n2o_uptake_l_min=agent_uptake,
         fin2=inspired_fn2,
@@ -906,6 +993,8 @@ def step_coronary_from_state(
         )
         coronary_sbp = max(coronary_sbp, cpr_sbp) if hemo_state.intrinsic_co > 0.0 else cpr_sbp
         coronary_dbp = max(coronary_dbp, cpr_dbp) if hemo_state.intrinsic_co > 0.0 else cpr_dbp
+    elif hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.co <= 0.0:
+        coronary_sbp = coronary_dbp = hemo_state.venous_pressure
     intrinsic_sbp = (
         0.0
         if hemo_state.intrinsic_co <= 0.05
@@ -967,7 +1056,7 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
         et_gases=(state.et_o2, state.et_sevo, state.et_n2o, state.et_mac),
     )
     state.etco2_signal_valid = engine.etco2_readout.valid
-    if not state.etco2_signal_valid:
+    if not engine.etco2_readout.gas_valid:
         state.et_o2 = state.et_sevo = state.et_n2o = state.et_mac = 0.0
     state.display_etco2 = float(state.etco2)
     if state.spo2_signal_valid:
@@ -976,10 +1065,12 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     else:
         engine.spo2_mon.display_saturation = None
         state.spo2 = state.display_spo2 = 0.0
+    prop_bis, adjunct_bis = bis_hypnotic_components(engine)
     engine.bis.initialize(
         drug_bis,
         cortical_function=cortical,
-        ce_prop=state.hypnotic_ce,
+        ce_prop=prop_bis,
+        ce_adjunct=adjunct_bis,
         mac_sevo=state.mac_sevo,
         ce_ketamine=state.ketamine_ce,
         ce_opioid=state.opioid_ce,
@@ -998,7 +1089,7 @@ def sync_state_from_models(engine: SimulationEngine) -> None:
     sync_inhaled_agents(engine)
     sync_pk_state(engine)
     state.shivering = float(engine.thermal.shiver_level)
-    engine.thermal.update_depth(state.temp_c, thermal_hypnotic_ce(engine), state.mac)
+    engine.thermal.update_depth(state.temp_c, thermal_hypnotic_ce(engine), thermal_mac(engine))
     engine.thermal.metabolic_factor *= engine.toxicity.metabolic_factor
     engine.thermal.metabolic_factor += (
         engine.malignant_hyperthermia.excess_metabolism + 0.25 * engine.sepsis.severity

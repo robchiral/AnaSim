@@ -439,3 +439,12 @@ def test_lipid_is_delivered_over_time_accounted_as_fluid_and_sheds_proportionall
     for invalid in (math.nan, math.inf, -1):
         with pytest.raises(ValueError):
             engine.set_lipid_infusion(invalid)
+
+
+def test_last_seizures_generate_lactic_acidosis(engine_factory, advance_time):
+    """Sustained LAST convulsions should produce substantial skeletal-muscle lactate."""
+    engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    lac0 = engine.state.lactate
+    engine.give_drug_bolus("lidocaine", 500.0)
+    advance_time(engine, 300.0, dt=1.0)
+    assert engine.state.lactate > lac0 + 1.0

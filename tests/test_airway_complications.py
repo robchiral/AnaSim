@@ -475,3 +475,22 @@ def test_succinylcholine_preserves_apneic_oxygenation_and_severe_awake_block_obs
     assert awake_roc.state.tof < 10.0
     assert awake_roc.state.loc < 0.05
     assert awake_roc.state.airway_obstruction > 0.3
+
+
+def test_succinylcholine_laryngospasm_relief_is_dose_responsive(engine_factory, advance_time):
+    """Higher succinylcholine rescue doses should break laryngospasm faster via central NMJ."""
+    times = {}
+    for dose_mg in (10.0, 50.0):
+        eng = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+        eng.give_drug_bolus("propofol", 100.0)
+        advance_time(eng, 45.0, dt=1.0)
+        eng.laryngospasm_severity = 0.95
+        eng.give_drug_bolus("succinylcholine", dose_mg)
+        relieved_t = None
+        for t in range(1, 91):
+            eng.step(1.0)
+            if relieved_t is None and eng.laryngospasm_severity < 0.25:
+                relieved_t = t
+        times[dose_mg] = relieved_t
+    assert times[50.0] is not None
+    assert times[10.0] is None or times[50.0] < times[10.0]

@@ -41,7 +41,8 @@ def test_opioid_slows_rate_and_propofol_reduces_depth(patient):
 
 
 def test_remifentanil_step_matches_olofsen_2010_equations_at_fixed_co2(patient):
-    """Eqs. 2 and 6: at baseline CO2, Ce 1.6 ng/mL gives a first-order decline toward 50%."""
+    """Eqs. 2 and 6: at baseline CO2, Ce 1.6 ng/mL gives a first-order decline toward 50%,
+    and without opioids a PaCO2 drop produces no spurious opioid-lag rebound."""
     model = RespiratoryModel(patient)
     baseline = model.state.mv
     for second in range(1, 301):
@@ -50,6 +51,15 @@ def test_remifentanil_step_matches_olofsen_2010_equations_at_fixed_co2(patient):
         state = model.step(1.0, ce_prop=0.0, ce_remi=1.6, fio2=1.0)
         if second in (30, 150, 300):
             assert state.mv / baseline == pytest.approx(0.5 + 0.5 * math.exp(-second / 150.0), abs=1e-10)
+
+    drug_free = RespiratoryModel(patient)
+    drug_free.state.pa_co2 = 60.0
+    for _ in range(30):
+        drug_free.step(1.0, ce_prop=0.0, ce_remi=0.0, fio2=0.21)
+    drug_free.state.pa_co2 = 40.0
+    for _ in range(10):
+        drug_free.step(1.0, ce_prop=0.0, ce_remi=0.0, fio2=0.21)
+    assert drug_free._opioid_drive_fraction == pytest.approx(1.0, abs=1e-4)
 
 
 def test_bradypnea_preserves_controller_ventilation_until_apnea(patient):
@@ -405,20 +415,26 @@ def test_changing_shunt_redistributes_existing_oxygen(patient):
         assert stored_oxygen() + model.gas_transport.consumed_o2_l == pytest.approx(initial, abs=1e-8)
 
 
-def test_low_cardiac_output_widens_the_paco2_etco2_gap(patient):
+def test_low_flow_shallow_breaths_and_high_peep_widen_paco2_etco2_gap(
+    patient, engine_factory, advance_time
+):
+    """Low cardiac output, shallow measured breaths, and high PEEP widen the PaCO2-EtCO2 gradient."""
     normal = _ventilated(patient, 30.0, fio2=0.5)
     low_flow = _ventilated(patient, 30.0, fio2=0.5, cardiac_output=0.5)
     assert low_flow.etco2 < normal.etco2
     assert low_flow.pa_co2 - low_flow.etco2 > normal.pa_co2 - normal.etco2 + 3.0
 
-
-def test_measured_shallow_breaths_widen_the_co2_gap(patient):
-    """Measured breaths set the dead-space fraction, not the unassisted pattern."""
-    state = RespiratoryModel(patient).step(
+    shallow = RespiratoryModel(patient).step(
         0.0, ce_prop=0.0, ce_remi=0.0, measured_breaths=True,
         mech_rr=12.0, mech_vt_l=0.2, mech_vent_mv=2.4,
     )
-    assert state.pa_co2 - state.etco2 > 10.0
+    assert shallow.pa_co2 - shallow.etco2 > 10.0
+
+    engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    base_grad = engine.state.pa_co2 - engine.state.etco2
+    engine.vent.update_settings(peep=20.0)
+    advance_time(engine, 120.0, dt=2.0)
+    assert engine.state.pa_co2 - engine.state.etco2 > base_grad + 2.0
 
 
 def test_low_cardiac_output_amplifies_atelectatic_shunt(engine_factory):
@@ -940,3 +956,26 @@ def test_opioid_hvr_depression_and_overdose_apnea_and_sedation(engine_factory):
                 od_apnea += 2.0
         assert od_apnea > 120.0
         assert od.state.loc > 0.5
+
+
+def test_light_propofol_room_air_bolus_survives_via_hypoxic_rescue(engine_factory, advance_time):
+    """A 90 mg propofol room-air bolus should recover breathing without hypoxic cardiac arrest."""
+    engine = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    engine.give_drug_bolus("propofol", 90.0)
+    advance_time(engine, 600.0, dt=2.0)
+    assert not engine.state.cardiac_arrest
+    assert engine.state.rr > 0.0
+
+
+def test_metabolic_alkalosis_raises_paco2_via_lower_tidal_volume(patient):
+    """Metabolic alkalosis elevates PaCO2 through lower VT at steady RR (Javaheri 1982)."""
+    resp = RespiratoryModel(patient)
+    # NaHCO3 adds equimolar buffer base and total CO2.
+    resp.remove_buffer_base(-140.0)
+    resp.add_organic_carbon(140.0)
+    for _ in range(600):
+        resp.step(1.0, 0.0, 0.0, 0.0, 0.21, cardiac_output=5.0)
+    assert resp.state.base_excess > 6.0
+    assert resp.state.pa_co2 > 44.0
+    assert abs(resp.state.rr - resp.rr_0) < 0.5
+    assert resp.state.vt < resp.vt_0 - 30.0

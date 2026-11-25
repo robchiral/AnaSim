@@ -1,6 +1,7 @@
 import pytest
 
 from anasim.core.engine import SimulationEngine
+from anasim.core.monitors import waveform_substeps
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 
@@ -34,6 +35,7 @@ def test_output_buffer_holds_one_respiratory_sweep_of_10_ms_samples(patient):
     _run_for(engine, 22.0)
     span = engine.output_buffer[-1].time - engine.output_buffer[0].time
     assert 19.8 <= span <= 20.0 + 1e-9
+    assert waveform_substeps(0.3) == 30
 
 
 def test_peep_reduces_preload_without_automatically_recruiting_lung():
@@ -73,8 +75,8 @@ def test_positive_pressure_reduces_preload_vs_spontaneous(engine):
 
 
 def test_zero_step_is_noop_and_config_validates_booleans_and_max_dt(engine):
-    """step_simulation(dt=0) does not advance state or raise (#33), and SimulationConfig
-    rejects non-boolean flags and dt > 2.0 s (#37).
+    """step_simulation(dt=0) does not advance state or raise, and SimulationConfig
+    rejects non-boolean flags and dt > 2.0 s.
     """
     from anasim.core.runtime import step_simulation
 

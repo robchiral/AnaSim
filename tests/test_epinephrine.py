@@ -311,6 +311,8 @@ def test_shock_infusion_rates_keep_increasing_resistance(mode):
             state = model.step(1.0, prop, remi, 0.0, -2.0, 40.0, 95.0, ce_epi=ce, remifentanil_cp=remi)
         resistance.append(state.svr / baseline)
     assert np.all(np.diff(resistance) > 0.01), resistance
+    if mode == "steady_state":
+        assert resistance[1] > 1.0, resistance
     assert resistance[2] > 0.97, resistance
     assert resistance[3] > 1.05, resistance
 

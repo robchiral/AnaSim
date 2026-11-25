@@ -613,10 +613,12 @@ def test_kinked_tube_reaches_pmax_and_alarms_low_volume(awake_engine, advance_ti
     assert engine.state.vt == pytest.approx(500.0, rel=0.01)
     assert "VTe" not in engine.state.alarms
 
+    pit_base = engine.state.pit
     engine.set_airway_obstruction(1.0)
     engine.set_bronchospasm(1.0)
     advance_time(engine, 40.0, dt=0.1)
     assert engine.state.paw_peak == pytest.approx(30.0, abs=0.01)
+    assert engine.state.pit <= pit_base + 1.5
     assert engine.state.vt < 450.0
     assert engine.vent.pressure_limited
     assert engine.state.alarms["VTe"]["low"]
@@ -858,8 +860,9 @@ def test_closed_apl_traps_fresh_gas_and_depresses_circulation(engine_factory, ad
 
 
 def test_partial_reservoir_caps_all_modes_and_edge_guards(engine_factory, advance_time):
-    """Partially depleted reservoir caps VCV/PCV/PCV-VG; bradypneic VCV retains spirometry;
-    lowering PEEP in a paralyzed patient does not false-trigger PSV; occluded VCV times out RR.
+    """Partially depleted reservoir caps VCV/PCV/PCV-VG; empty reservoir clamps negative Paw;
+    bradypneic VCV retains spirometry; lowering PEEP when paralyzed does not false-trigger PSV;
+    occluded VCV times out RR.
     """
     delivered = []
     for mode in ("VCV", "PCV", "PCV-VG"):
@@ -881,6 +884,16 @@ def test_partial_reservoir_caps_all_modes_and_edge_guards(engine_factory, advanc
     for _ in range(100):
         vg_vent.step(0.1, vg_lung, "vent", reservoir_volume=0.0)
     assert vg_vent._vg_pressure == pytest.approx(vg_before)
+
+    # Empty circuit reservoir under zero fresh gas flow clamps airway pressure via relief valve.
+    starved = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    starved.set_fgf(0.0, 0.0, 0.0)
+    starved.circuit.reservoir_volume = 0.0
+    min_paw = 0.0
+    for _ in range(60):
+        starved.step(0.5)
+        min_paw = min(min_paw, starved.state.paw)
+    assert min_paw >= -10.5
 
     slow_vent = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
     slow_vent.give_drug_bolus("roc", 70.0)

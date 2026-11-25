@@ -8,6 +8,7 @@ import pytest
 
 from anasim import web
 from anasim.core.drug_registry import DRUG_REGISTRY
+from anasim.core.enums import RhythmType
 from anasim.machine.ventilator import MODES
 from anasim.scenarios import SCENARIO_REGISTRY
 from anasim.web import WebSession
@@ -442,9 +443,11 @@ def test_open_session_arrest_finalizes_recording_and_commands_enforce_upper_boun
     assert snap["ended"] and not snap["recording"] and snap["download"] is not None
 
     active = WebSession({**PATIENT, "tci_enabled": True})
+    assert cmd(active, "drug_rate", key="fentanyl", rate=100.0)["medication"]["key"] == "fentanyl"
     for name, bad_args in (
         ("fgf", {"o2": 20, "air": 0, "n2o": 0}),
         ("drug_rate", {"key": "propofol", "rate": 2500}),
+        ("drug_rate", {"key": "vaso", "rate": 5.0}),
         ("drug_target", {"key": "propofol", "target": 25}),
         ("drug_bolus", {"key": "propofol", "amount": 5000}),
         ("sugammadex", {"mg_per_kg": 40}),
@@ -623,3 +626,20 @@ def test_web_apl_and_fluid_warmer_command_round_trips():
 
     with pytest.raises(ValueError, match="calcium chloride dose"):
         cmd(session, "calcium_chloride", mg=True)
+
+
+def test_vfib_blanks_st_and_hr_in_web_snapshot_while_asystole_shows_zero_hr():
+    """Web JSON blanks ST and HR on VFIB while keeping state floats and showing 0 HR in asystole."""
+    session = WebSession({"mode": "steady_state"})
+    session.engine.set_rhythm("ASYSTOLE")
+    assert session.snapshot()["vitals"]["hr"] == 0.0
+    session.engine.start()
+    session.engine.set_rhythm(RhythmType.VFIB)
+    session.engine.step(0.5)
+    assert session.engine.state.st_depression_mv == 0.0
+    snap = session.snapshot()["vitals"]
+    assert snap["st_depression_mv"] is None
+    assert snap["hr"] is None
+    session.engine.set_rhythm("ASYSTOLE")
+    session.engine.step(0.5)
+    assert session.snapshot()["vitals"]["hr"] == 0.0

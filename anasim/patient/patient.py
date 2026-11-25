@@ -178,9 +178,9 @@ class Patient:
             raise ValueError("position must be 'supine' or 'left_lateral'")
         minimum, maximum = GESTATIONAL_AGE_RANGE_WEEKS
         weeks = bounded_number("gestational_age_weeks", self.gestational_age_weeks, 0.0, maximum, unit="weeks")
-        if weeks and (self.sex != "female" or weeks < minimum):
+        if weeks and (self.sex != "female" or weeks < minimum or self.age > 55.0):
             raise ValueError(
-                f"gestational_age_weeks must be 0, or {minimum:g} to {maximum:g} weeks in a female patient"
+                f"gestational_age_weeks must be 0, or {minimum:g} to {maximum:g} weeks in a female patient aged <= 55"
             )
         self.gestational_age_weeks = weeks
         self.pregnancy = pregnancy_factors(weeks)
@@ -202,7 +202,7 @@ class Patient:
         apparent = 0.0484 * (self.predicted_body_weight() / 60.0) ** 0.69 * math.exp(-0.0230 * (bmi - 23.0))
         if self.bmi > 32.0:
             apparent *= (233.3 * math.exp(-0.086 * self.bmi) + 40.0) / (233.3 * math.exp(-0.086 * 32.0) + 40.0)
-        return 1.09 * apparent * (1.0 + 0.6 * self.copd_severity)
+        return 1.09 * apparent * (1.0 + 0.6 * self.copd_severity) * self.pregnancy.compliance
 
     def functional_residual_capacity(self) -> float:
         """Supine FRC (L), scaled by lung size, BMI, COPD, and pregnancy.

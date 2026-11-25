@@ -716,34 +716,86 @@ class MorphinePK(MammillaryPK):
             temp_met=temp_met, temp_dist=temp_dist,
         )
 
+    _M6G_K_FORM_BASE = 0.011
+    _M6G_POTENCY_WEIGHT = 0.28
+    _M6G_ELIM_T_HALF_MIN = 120.0
+    _M6G_CE_T_HALF_MIN = 210.0
+    _M6G_NONRENAL_SHARE = 0.18
+
+    def _m6g_step_factors(self, dt_min: float) -> tuple[float, float, float, float, float, float]:
+        """Return (k_form, k_elim_norm, k_elim_act, decay_norm, decay_act, alpha_ce) for dt_min."""
+        circ = self.circulation
+        k_form = self._M6G_K_FORM_BASE * self._hepatic_function * circ
+        k_elim_ref = (math.log(2.0) / self._M6G_ELIM_T_HALF_MIN) * circ
+        eff_gfr = self._M6G_NONRENAL_SHARE + (1.0 - self._M6G_NONRENAL_SHARE) * clamp(
+            self._renal_capacity * self._renal_perfusion, 0.0, 1.0,
+        )
+        k_elim_act = k_elim_ref * eff_gfr
+        decay_norm = math.exp(-k_elim_ref * dt_min)
+        decay_act = math.exp(-k_elim_act * dt_min)
+        ke0_m6g = (math.log(2.0) / self._M6G_CE_T_HALF_MIN) * circ
+        alpha_ce = -math.expm1(-ke0_m6g * dt_min)
+        return k_form, k_elim_ref, k_elim_act, decay_norm, decay_act, alpha_ce
+
     def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
         state = super().step(dt_sec, input_rate_per_sec)
         if dt_sec > 0.0 and (state.c1 > 0.0 or self._m6g_actual > 0.0 or self._m6g_normal > 0.0
                              or self._m6g_ce_actual > 0.0 or self._m6g_ce_normal > 0.0):
-            dt_min = dt_sec / 60.0
-            circ = self.circulation
             # Hepatic glucuronidation produces M6G proportional to hepatic clearance;
             # M6G clears almost entirely by GFR (Osborne 1993: normal t1/2 2.6 +/- 0.7 h SD;
-            # modeled with a calibrated 2 h reference half-life).
-            k_form = 0.011 * self._hepatic_function * circ
-            k_elim_norm = (math.log(2.0) / 120.0) * circ
-            eff_gfr = 0.18 + 0.82 * clamp(self._renal_capacity * self._renal_perfusion, 0.0, 1.0)
-            k_elim_act = (math.log(2.0) / 120.0) * eff_gfr * circ
-            # Scale M6G activity so severe renal failure (~4.8-5.0x M6G AUC(0-12); Osborne 1993)
-            # builds clinically significant delayed respiratory depression over 2-6 h.
-            inflow = 0.28 * k_form * state.c1
+            # modeled with a calibrated 2 h reference half-life and ~3.5 h BBB t1/2).
+            k_form, k_elim_norm, k_elim_act, decay_norm, decay_act, alpha_ce = self._m6g_step_factors(dt_sec / 60.0)
+            inflow = self._M6G_POTENCY_WEIGHT * k_form * state.c1
             if k_elim_norm > 0.0:
                 target_n = inflow / k_elim_norm
-                self._m6g_normal = target_n + (self._m6g_normal - target_n) * math.exp(-k_elim_norm * dt_min)
+                self._m6g_normal = target_n + (self._m6g_normal - target_n) * decay_norm
             if k_elim_act > 0.0:
                 target_a = inflow / k_elim_act
-                self._m6g_actual = target_a + (self._m6g_actual - target_a) * math.exp(-k_elim_act * dt_min)
-            # Slow blood-brain barrier equilibration of M6G (t1/2 ~3.5 h).
-            ke0_m6g = (math.log(2.0) / 210.0) * circ
-            alpha_ce = -math.expm1(-ke0_m6g * dt_min)
+                self._m6g_actual = target_a + (self._m6g_actual - target_a) * decay_act
             self._m6g_ce_normal += (self._m6g_normal - self._m6g_ce_normal) * alpha_ce
             self._m6g_ce_actual += (self._m6g_actual - self._m6g_ce_actual) * alpha_ce
         return state
+
+    def simulate_decay(self, target_fraction: float = 0.5, max_seconds: int = 3600) -> float:
+        """Return minutes for total active morphine + excess M6G effect-site concentration to decay."""
+        if (
+            self._m6g_actual <= 1e-12
+            and self._m6g_normal <= 1e-12
+            and self._m6g_ce_actual <= 1e-12
+            and self._m6g_ce_normal <= 1e-12
+            and self._renal_capacity * self._renal_perfusion >= 0.999
+        ):
+            return super().simulate_decay(target_fraction=target_fraction, max_seconds=max_seconds)
+        total_ce = self.state.ce + self.m6g_excess_ce
+        ce_target = total_ce * target_fraction
+        if ce_target <= 0.0:
+            return 0.0
+        if self.circulation == 0.0 or max_seconds <= 0:
+            return max_seconds / 60.0
+        A, _ = self.get_ss_matrices()
+        transition = expm(A / 60.0)
+        x = self.state_vector()
+        k_form, k_elim_norm, k_elim_act, decay_norm, decay_act, alpha_ce = self._m6g_step_factors(1.0 / 60.0)
+        m6g_n = self._m6g_normal
+        m6g_a = self._m6g_actual
+        m6g_ce_n = self._m6g_ce_normal
+        m6g_ce_a = self._m6g_ce_actual
+        ce_idx = self.state_fields.index("ce")
+        for sec in range(1, max_seconds + 1):
+            x = transition @ x
+            c1 = max(0.0, float(x[0]))
+            inflow = self._M6G_POTENCY_WEIGHT * k_form * c1
+            if k_elim_norm > 0.0:
+                target_n = inflow / k_elim_norm
+                m6g_n = target_n + (m6g_n - target_n) * decay_norm
+            if k_elim_act > 0.0:
+                target_a = inflow / k_elim_act
+                m6g_a = target_a + (m6g_a - target_a) * decay_act
+            m6g_ce_n += (m6g_n - m6g_ce_n) * alpha_ce
+            m6g_ce_a += (m6g_a - m6g_ce_a) * alpha_ce
+            if float(x[ce_idx]) + max(0.0, m6g_ce_a - m6g_ce_n) <= ce_target:
+                return sec / 60.0
+        return max_seconds / 60.0
 
 
 class HydromorphonePK(MammillaryPK):

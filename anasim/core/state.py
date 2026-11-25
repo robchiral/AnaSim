@@ -184,7 +184,7 @@ class SimulationState:
     sodium: float = 140.0  # mmol/L
     potassium: float = 4.0  # mmol/L
     chloride: float = 104.0  # mmol/L
-    ionized_calcium: float = 1.2  # mmol/L, at the sample's actual pH
+    ionized_calcium: float = 1.2  # mmol/L, at 37 °C alpha-stat pH
     albumin_g_l: float = 42.0
     phosphate: float = 1.0  # mmol/L
     alveolar_co2: float = 40.0

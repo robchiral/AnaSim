@@ -267,7 +267,10 @@ class TOFModel:
         sugammadex.step(dt_sec, 0.0)
         complex_.step(dt_sec, 0.0)
 
-        ke0 = self._effective_ke0(mac_sevo)
+        ke0_out = self._effective_ke0(mac_sevo)
+        # Lowry 1998: sevoflurane deepens block and prolongs washout/recovery (Kleijn 2011)
+        # without delaying initial bolus onset (0.96 vs 1.02 min).
+        ke0_in = self._effective_ke0(0.0)
         s_c1 = sugammadex.state.c1
         # Rapid saturable junctional encapsulation plus linear Kleijn efflux
         # reproduces rapid partial reversal and redistribution rebound after
@@ -279,13 +282,23 @@ class TOFModel:
             self.ce, self._ce_peri, roc.state.c2, s_c1, delivery_time,
             sug_given=self._sugammadex_given,
         )
-        self.ce = self._effect_site(self.ce, cp, ke0, removal, delivery_time, back_flux=back_flux, peri_ce=self._ce_peri)
+        ke0_peri = ke0_in if cp > self.ce else ke0_out
+        self.ce = self._effect_site(self.ce, cp, ke0_peri, removal, delivery_time, back_flux=back_flux, peri_ce=self._ce_peri)
         ratio = self.central_ke0_ratio
         central_back = back_flux * ratio if self._sugammadex_given and self._ce_peri > self.ce_central else 0.0
+        ke0_cent = ke0_in if cp > self.ce_central else ke0_out
         self.ce_central = self._effect_site(
-            self.ce_central, cp, ke0 * ratio, removal * ratio, delivery_time,
+            self.ce_central, cp, ke0_cent * ratio, removal * ratio, delivery_time,
             back_flux=central_back, peri_ce=self._ce_peri,
         )
+        # Clear prior sugammadex rebound flag once drug, complex, and perijunctional
+        # rocuronium have washed out so much later doses are unaffected.
+        if (
+            self._sugammadex_given
+            and max(s_c1, sugammadex.state.c2, complex_.state.c1, complex_.state.c2) < 1e-3
+            and max(cp, self.ce, self.ce_central, self._ce_peri) < 0.05
+        ):
+            self._sugammadex_given = False
         return self.compute_tof_from_ce(self.ce, mac_sevo, mac_n2o)
 
     @staticmethod

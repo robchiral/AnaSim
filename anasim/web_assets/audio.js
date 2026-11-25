@@ -164,10 +164,14 @@ export class MonitorAudio {
   }
 
   refresh() {
-    if (this.snapshot && performance.now() < this.silencedUntil &&
-        Object.entries(this.snapshot.alarms).some(([name, side]) => this.silencedAlarms.get(name) !== side)) {
-      this.silencedUntil = 0;
-      this.silencedAlarms.clear();
+    if (this.snapshot && performance.now() < this.silencedUntil) {
+      for (const name of HIGH_PRIORITY_ALARMS) {
+        if (!(name in this.snapshot.alarms)) this.silencedAlarms.delete(name);
+      }
+      if (Object.entries(this.snapshot.alarms).some(([name, side]) => this.silencedAlarms.get(name) !== side)) {
+        this.silencedUntil = 0;
+        this.silencedAlarms.clear();
+      }
     } else if (performance.now() >= this.silencedUntil && this.silencedAlarms.size > 0) {
       this.silencedAlarms.clear();
     }

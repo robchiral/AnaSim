@@ -27,7 +27,7 @@ def _pk_signature(pk_model) -> tuple[float, ...]:
         float(getattr(pk_model, name))
         for name in (
             "v1", "v2", "v3", "elimination_clearance", "cl2", "cl3", "ke0",
-            "basal_input_rate", "circulation", "effect_input_fraction",
+            "basal_input_rate", "circulation", "effect_input_fraction", "temp_dist_scale",
         )
     )
 

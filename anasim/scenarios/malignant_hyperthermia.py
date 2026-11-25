@@ -1,5 +1,6 @@
 """Malignant hyperthermia during sevoflurane anesthesia."""
 
+import math
 from dataclasses import replace
 
 from anasim.core.action_log import ACTION_DRUG_BOLUS, ACTION_EVENT_START
@@ -132,11 +133,15 @@ def create_malignant_hyperthermia() -> Scenario:
         )
         if not (engine.vent.is_on and increased):
             return False, "Increase the ventilator rate or tidal volume"
-        cap = 13.0 if engine.patient.copd_severity >= 0.5 else 15.0
-        target = min(2.0 * onset_mv, max(cap, onset_mv + 2.0))
+        cap = 13.0 if (engine.patient.copd_severity >= 0.5 or engine.patient.bmi >= 38.0) else 15.0
+        target = min(2.0 * onset_mv, min(15.0, max(cap, onset_mv + 2.0)))
         mv = engine.state.mv
         met = mv >= target
-        return met, "" if met else f"Minute ventilation: {mv:.1f}/{target:.1f}+ L/min"
+        if met:
+            return True, ""
+        shown_target = round(target, 1)
+        shown_mv = min(math.floor(mv * 10.0) / 10.0, max(0.0, round(shown_target - 0.1, 1)))
+        return False, f"Minute ventilation: {shown_mv:.1f}/{shown_target:.1f}+ L/min"
 
     propofol = require_infusion_started(
         "propofol", "midazolam", "ketamine",

@@ -61,9 +61,10 @@ class LungAeration:
         self.unconscious = 0.0
         self.spontaneous_breathing = False
         self.glottic_intact = True
-        obesity_clearance = clamp01((40.0 - patient.bmi) / 12.0)
-        self.awake_clearance_rate = obesity_clearance / self.AWAKE_CLEARANCE_TAU_S[patient.surgical_site]
-        self.persistent_clearance_rate = obesity_clearance / self.PERSISTENT_CLEARANCE_TAU_S
+        self.surgical_site = patient.surgical_site
+        self._obesity_clearance = clamp01((40.0 - patient.bmi) / 12.0)
+        self.awake_clearance_rate = self._obesity_clearance / self.AWAKE_CLEARANCE_TAU_S[patient.surgical_site]
+        self.persistent_clearance_rate = self._obesity_clearance / self.PERSISTENT_CLEARANCE_TAU_S
         self.reference_volume = patient.functional_residual_capacity()
         self.frc = self.reference_volume * recruited
         self.reference_compliance = patient.respiratory_compliance()
@@ -108,21 +109,33 @@ class LungAeration:
         fraction = 1.0 / (1.0 + math.exp((self.opening_midpoint - pressure) / self.OPENING_WIDTH))
         target = self.min_recruited + (1.0 - self.min_recruited) * fraction
         opening = self.OPENING_RATE if target > self.recruited else 0.0
-        spontaneous = 0.02 * (1.0 - self.unconscious) if self.spontaneous_breathing else 0.0
+        awake_active = self.spontaneous_breathing and self.glottic_intact
+        # Postoperative FRC recovery tracks site- and BMI-dependent atelectasis
+        # clearance (Wahba 1975; Putensen-Himmer 1992; Eichenberger 2002) rather
+        # than rebounding in <1 min across upper-abdominal or morbidly obese lungs.
+        spontaneous_cap = max(self.recruited, 1.0 - self.atelectatic)
+        if awake_active and self.recruited < spontaneous_cap - 1e-12:
+            spont_base_rate = (
+                max(self.awake_clearance_rate, 0.002 * self._obesity_clearance)
+                if self.surgical_site == "other"
+                else self.awake_clearance_rate
+            )
+            spontaneous = spont_base_rate * (1.0 - self.unconscious)
+        else:
+            spontaneous = 0.0
         closing = max(0.0, self.closing_pressure - pressure) / 300.0
         minimum = 1.0 - (1.0 - self.min_recruited) * self.unconscious
         if self.recruited <= minimum:
             closing = 0.0
         rate = opening + spontaneous + closing
         if rate > 0.0:
-            equilibrium = (opening * target + spontaneous + closing * minimum) / rate
+            equilibrium = (opening * target + spontaneous * spontaneous_cap + closing * minimum) / rate
             self.recruited = equilibrium + (self.recruited - equilibrium) * math.exp(-rate * self.elapsed)
         # Gas composition changes shunt separately from bulk compliance (Rothen 1995).
         closed_target = 1.0 - target
         s = self.persistent_share
         reopening = self.OPENING_RATE if self.atelectatic > closed_target else 0.0
         reopening_p = self.OPENING_RATE if self.persistent_atelectatic > s * closed_target else 0.0
-        awake_active = self.spontaneous_breathing and self.glottic_intact
         awake_reopening = self.awake_clearance_rate * (1.0 - self.unconscious) if awake_active else 0.0
         persistent_rate = self.persistent_clearance_rate * (1.0 - self.unconscious) if awake_active else 0.0
         closed_max = (1.0 - self.min_recruited) * self.unconscious

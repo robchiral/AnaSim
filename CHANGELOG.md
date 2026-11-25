@@ -53,6 +53,22 @@
   preoperative labs and 5-fold patient-grouped cross-validation, and
   recalibrated respiratory compliance, propofol venous pooling kinetics,
   direct opioid vasodilation, and sevoflurane heart-rate depression.
+- Scaled atropine and glycopyrrolate heart-rate responses with age, removed
+  acidemic epinephrine beta-2 inversion, preserved hypothermic CPR cerebral
+  protection, and added non-perfusing local anesthetic arrhythmias with
+  fat-free-mass lipid scaling.
+- Separated smooth extubation airway-reflex tolerance from laryngoscopy,
+  combined non-drug coma into airway tolerance, conserved volatile tissue mass
+  across temperature changes, and slowed rocuronium washout under sevoflurane
+  without delaying bolus onset.
+- Added metabolic alkalosis hypoventilation, term-pregnancy compliance
+  reduction, exogenous lactate and citrate oxidation CO₂, volume-expansion
+  natriuresis, ketamine redistribution sparing, and opioid vasoconstriction
+  threshold shifts.
+- Kept end-tidal O₂ and agent readings live during ventilated zero-CO₂ arrest,
+  enforced the 60-second post-tetanic neuromuscular lockout across modes,
+  blanked displayed HR during ventricular fibrillation, and broke active alarm
+  silence when lethal rhythm or oxygen-supply alarms recur after clearing.
 
 ## 1.9 - 2026-11-19
 

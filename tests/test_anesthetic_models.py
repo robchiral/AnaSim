@@ -45,7 +45,7 @@ def test_published_response_thresholds_and_bis_delay():
     assert remi_hr == pytest.approx(fent_hr, rel=0.02)
 
     bis_85 = BISModel(Patient(age=85, weight=70, height=170, sex="male"))
-    assert bis_85.delay > 90.0 and bis_85.ischemia_delay == pytest.approx(20.0)
+    assert bis_85.delay > 90.0 and bis_85.monitor_delay <= 18.0 and bis_85.ischemia_delay == pytest.approx(20.0)
     for _ in range(250):
         val = bis_85.step(0.1, bis_85.c50, cortical_function=0.2)
     assert bis_85.cortical_function == pytest.approx(0.2)
@@ -178,6 +178,8 @@ def test_induction_uses_separate_clinical_and_bis_sites(awake_engine):
     clinical_onset = bis_onset = None
     for second in range(720):
         engine.step(1.0)
+        if second < 120:
+            assert not engine.state.alarms.get("BIS", {}).get("high")
         if clinical_onset is None and engine.state.loc > 0.95:
             clinical_onset = second
             assert engine.pk["propofol"].state.ce_response > engine.pk["propofol"].state.ce

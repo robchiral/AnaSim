@@ -39,6 +39,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Robinson et al. (2000). *Am J Respir Crit Care Med*. [Hypoventilation and V/Q redistribution in oxygen-induced hypercapnia in COPD](https://pubmed.ncbi.nlm.nih.gov/10806149/).
 - Dallmann et al. (2017). *Clin Pharmacokinet*. [Gestation-specific anatomical and physiological parameter regressions](https://pubmed.ncbi.nlm.nih.gov/28401479/).
 - Contreras et al. (1991). *Am Rev Respir Dis*. [Ventilatory drive, lung volumes, and respiratory muscles during pregnancy](https://pubmed.ncbi.nlm.nih.gov/1928958/).
+- Marx et al. (1970). *Br J Anaesth*. [Static compliance before and after vaginal delivery](https://pubmed.ncbi.nlm.nih.gov/5504452/).
 - Humphries et al. (2019). *J Matern Fetal Neonatal Med*. [Supine positioning and maternal hemodynamics in late pregnancy](https://pubmed.ncbi.nlm.nih.gov/29772936/).
 - Gin and Chan (1994). *Anesthesiology*. [Decreased isoflurane MAC in pregnant humans](https://pubmed.ncbi.nlm.nih.gov/7943833/).
 
@@ -177,6 +178,9 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Albertin et al. (2005). *Anesth Analg*. [Remifentanil blunting the hemodynamic response to intubation and incision](https://pubmed.ncbi.nlm.nih.gov/15976218/).
 - Kazama et al. (1997). *Anesthesiology*. [Propofol-fentanyl interaction and cardiovascular responses to noxious stimuli](https://pubmed.ncbi.nlm.nih.gov/9286884/).
 - Katoh et al. (1999). *Anesthesiology*. [Fentanyl reduction of sevoflurane MAC and MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/9952144/).
+- Daniel et al. (1998). *Anesthesiology*. [Fentanyl and nitrous oxide effects on volatile MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/9447854/).
+- Inomata et al. (1999). *Br J Anaesth*. [End-tidal sevoflurane concentration for smooth tracheal extubation](https://pubmed.ncbi.nlm.nih.gov/10562778/).
+- Lee et al. (2009). *Br J Anaesth*. [Remifentanil effect-site concentration for smooth emergence with propofol](https://pubmed.ncbi.nlm.nih.gov/19411668/).
 - Ebert et al. (1995). *Anesthesiology*. [Sympathetic and hemodynamic responses to sevoflurane and intubation](https://pubmed.ncbi.nlm.nih.gov/7605024/).
 - Bullington et al. (1989). *Anesth Analg*. [Age and the sympathetic response to intubation](https://pubmed.ncbi.nlm.nih.gov/2541638/).
 - Billard et al. (1994). *Anesthesiology*. [Hemodynamic response to induction and intubation with propofol and fentanyl](https://pubmed.ncbi.nlm.nih.gov/7992907/).
@@ -186,6 +190,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 ## Neuromuscular block
 
 - Kleijn et al. (2011). *Br J Clin Pharmacol*. [Sugammadex PK/PD](https://pubmed.ncbi.nlm.nih.gov/21535448/).
+- Lowry et al. (1998). *Anesth Analg*. [Rocuronium onset and recovery under sevoflurane, isoflurane, and propofol](https://pubmed.ncbi.nlm.nih.gov/9768798/).
 - Eleveld et al. (2007). *Anesth Analg*. [Temporary rebound of neuromuscular block after low-dose sugammadex](https://pubmed.ncbi.nlm.nih.gov/17312212/).
 - Khuenl-Brady and Sparr (1996). *Clin Pharmacokinet*. [Rocuronium clinical PK review](https://pubmed.ncbi.nlm.nih.gov/8877248/).
 - Sasakawa et al. (2016). *J Anesth*. [Predictive ability of six rocuronium PK models](https://pubmed.ncbi.nlm.nih.gov/27098255/).
@@ -206,6 +211,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Smeulers et al. (1995). *J Cardiothorac Vasc Anesth*. [Hypothermic cardiopulmonary bypass and rocuronium PK/PD](https://pubmed.ncbi.nlm.nih.gov/8664462/).
 - Bissinger et al. (1993). *Anasthesiol Intensivmed Notfallmed Schmerzther*. [Curare clefts and neuromuscular monitoring](https://pubmed.ncbi.nlm.nih.gov/7902740/).
 - Viby-Mogensen et al. (1981). *Anesthesiology*. [Post-tetanic count for evaluating deep neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/7294384/).
+- Fuchs-Buder et al. (2007). *Acta Anaesthesiol Scand*. [Good clinical research practice for neuromuscular block monitoring](https://pubmed.ncbi.nlm.nih.gov/17635389/).
 
 ## Hemodynamics
 
@@ -353,11 +359,14 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Yamaguchi et al. (1988). *Can J Anaesth*. [Atropine HR response during anesthesia](https://pubmed.ncbi.nlm.nih.gov/3168130/).
 - Horiguchi and Nishikawa (2002). *Anesth Analg*. [Atropine dose-response awake and during propofol anesthesia](https://pubmed.ncbi.nlm.nih.gov/12145057/).
 - Ali-Melkkilä et al. (1993). *Acta Anaesthesiol Scand*. [Anticholinergic PK/PD review](https://pubmed.ncbi.nlm.nih.gov/8249551/).
+- Jose and Collison (1970). *Cardiovasc Res*. [Normal range and age dependence of intrinsic heart rate](https://pubmed.ncbi.nlm.nih.gov/4192616/).
+- Dauchot and Gravenstein (1971). *Clin Pharmacol Ther*. [Age dependence of ECG and heart-rate responses to atropine](https://pubmed.ncbi.nlm.nih.gov/5554942/).
 - Du et al. (2025). *J Drug Deliv Sci Technol*. [Glycopyrrolate population PK](https://doi.org/10.1016/j.jddst.2025.106692).
 
 ## Fluids
 
 - Reid et al. (2003). *Clin Sci (Lond)*. [Urine after 2 L saline or Hartmann's](https://pubmed.ncbi.nlm.nih.gov/12519083/).
+- Chowdhury et al. (2012). *Ann Surg*. [Renal perfusion and excretion after 2 L saline versus Plasma-Lyte 148](https://pubmed.ncbi.nlm.nih.gov/22580944/).
 - Ewaldsson and Hahn (2001). *Br J Anaesth*. [Ringer's volume kinetics during spinal and general anesthesia induction](https://pubmed.ncbi.nlm.nih.gov/11517124/).
 - Ewaldsson and Hahn (2005). *Anesthesiology*. [Acetated Ringer's kinetics during isoflurane or propofol anesthesia](https://pubmed.ncbi.nlm.nih.gov/16129968/).
 - Hahn (2017). *Anesth Analg*. [Arterial pressure, age, and crystalloid elimination](https://pubmed.ncbi.nlm.nih.gov/28452823/).
@@ -412,6 +421,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Tobin et al. (1983). *Chest*. [Breathing pattern of normal subjects](https://pubmed.ncbi.nlm.nih.gov/6872603/).
 - Leung et al. (1997). *Am J Respir Crit Care Med*. [SIMV and pressure-support effort unloading](https://pubmed.ncbi.nlm.nih.gov/9196100/).
 - Graves et al. (1986). *Am J Physiol*. [Patient-ventilator synchronization under anesthesia](https://pubmed.ncbi.nlm.nih.gov/3706575/).
+- Javaheri et al. (1982). *Chest*. [Compensatory hypoventilation in metabolic alkalosis](https://pubmed.ncbi.nlm.nih.gov/6799256/).
 
 ## Gas exchange and blood chemistry
 
@@ -423,6 +433,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Levraut et al. (1998). *Am J Respir Crit Care Med*. [Lactate distribution and impaired clearance in stable septic patients](https://pubmed.ncbi.nlm.nih.gov/9563714/).
 - Grip et al. (2015). *Clin Sci (Lond)*. [Whole-body and muscle lactate kinetics during epinephrine infusion](https://pubmed.ncbi.nlm.nih.gov/25828264/).
 - Zitek et al. (2018). *J Emerg Med*. [Serum lactate after 30 mL/kg of lactated Ringer's](https://pubmed.ncbi.nlm.nih.gov/30037514/).
+- Chioléro et al. (1993). *Am J Clin Nutr*. [Energy expenditure and substrate oxidation during sodium lactate infusion](https://pubmed.ncbi.nlm.nih.gov/8237873/).
 - Dash et al. (2016). *Eur J Appl Physiol*. [Hemoglobin dissociation curves across oxygen tension, temperature, pH, and PCO₂](https://pubmed.ncbi.nlm.nih.gov/26298270/).
 - Rees et al. (2010). *Eur J Appl Physiol*. [Plasma and red-cell acid-base chemistry with oxygen-dependent buffering](https://pubmed.ncbi.nlm.nih.gov/19841930/).
 - Figge et al. (2018). *J Crit Care*. [Albumin and phosphate charge in plasma acid-base chemistry](https://pubmed.ncbi.nlm.nih.gov/29080515/).
@@ -484,6 +495,8 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Frank et al. (1997). *JAMA*. [Perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/9087467/).
 - Kurz et al. (1995). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
 - Kurz et al. (1995). *Anesth Analg*. [Midazolam and thermoregulatory control](https://pubmed.ncbi.nlm.nih.gov/7618734/).
+- Kurz et al. (1995). *Anesthesiology*. [Alfentanil effects on sweating, vasoconstriction, and shivering thresholds](https://pubmed.ncbi.nlm.nih.gov/7631951/).
+- Ikeda et al. (2001). *Anesth Analg*. [Ketamine induction reduces redistribution hypothermia](https://pubmed.ncbi.nlm.nih.gov/11574360/).
 - Ralley et al. (1988). *Can J Anaesth*. [Shivering, oxygen consumption, and CO₂ production during rewarming](https://pubmed.ncbi.nlm.nih.gov/3135952/).
 - Giesbrecht et al. (1994). *Anesthesiology*. [Forced-air patient warming heat transfer](https://pubmed.ncbi.nlm.nih.gov/8141463/).
 - Brown et al. (2012). *N Engl J Med*. [Accidental hypothermia physiology and management](https://pubmed.ncbi.nlm.nih.gov/23150960/).

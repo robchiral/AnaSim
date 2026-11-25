@@ -20,7 +20,7 @@ from anasim.core.clinical_actions import (
 from anasim.core.drug_registry import get_drug_spec
 from anasim.core.engine import SimulationEngine
 from anasim.core.enums import RhythmType
-from anasim.core.projection import assisted_positive_pressure
+from anasim.core.projection import assisted_positive_pressure, circuit_connected
 from anasim.core.recorder import RecordingError
 from anasim.core.state import AirwayType, SimulationConfig, WaveformSample
 from anasim.core.utils import clamp01
@@ -483,7 +483,7 @@ class WebSession:
         # breath, and end-tidal values an exhaled breath.
         connected = s.airway_mode != AirwayType.NONE
         assisted = connected and (engine.vent.is_on or assisted_positive_pressure(engine))
-        exhaled = s.etco2_signal_valid
+        exhaled = s.etco2_signal_valid or engine.etco2_readout.gas_valid
         nibp_ts = (
             engine.nibp.failed_timestamp
             if (s.nibp_measurement_failed and engine.nibp.failed_timestamp is not None)
@@ -496,7 +496,7 @@ class WebSession:
             engine.hemo.hyperkalemia_block,
         )
         return {
-            "hr": _num(s.display_hr, 1),
+            "hr": None if engine.hemo.state.rhythm_type == RhythmType.VFIB else _num(s.display_hr, 1),
             "st_depression_mv": _num(s.st_depression_mv, 2) if st_scale > 0.01 else None,
             "spo2": _num(s.display_spo2, 1) if s.spo2_signal_valid else None,
             "art": [_num(s.art_sbp, 1), _num(s.art_dbp, 1), _num(s.art_map, 1)],
@@ -664,9 +664,7 @@ class WebSession:
         engine = self.engine
         circuit = engine.circuit
         fill = clamp01(circuit.reservoir_volume / max(1e-6, circuit.reservoir_capacity))
-        connected = engine.state.airway_mode != AirwayType.NONE and (
-            engine.state.airway_mode != AirwayType.MASK or engine.mask_seal > 0.0
-        )
+        connected = circuit_connected(engine)
         pressure = engine._apl_pressure if connected and not engine.vent.is_on else 0.0
         if circuit.bellows_fraction <= 0.05:
             state = "empty"
@@ -707,6 +705,7 @@ class WebSession:
             "compressions": {"active": engine.hemo.compressions, "since": engine.compressions_started_at},
             "defibrillator": {
                 "status": engine.defibrillator.status(engine.state.time),
+                "synchronized": engine.defibrillator.waiting_for_r,
                 "charge_remaining": max(0.0, engine.defibrillator.ready_at - engine.state.time)
                 if engine.defibrillator.ready_at is not None else 0.0,
                 "last_shock": self._shock_receipt(),
@@ -748,6 +747,7 @@ class WebSession:
                 engine.hemo.state.rhythm_type,
                 engine.hemo.coronary.energy_failure,
                 max(engine.toxicity.conduction_block, engine.hemo.hyperkalemia_block),
+                hr=engine.state.hr,
             ),
             "bair_hugger": engine.state.bair_hugger_target,
             "fluid_warmer": engine.state.fluid_warmer,

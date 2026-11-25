@@ -3,6 +3,8 @@ from itertools import pairwise
 import pytest
 
 from anasim.core.clinical_actions import check_intubation
+from anasim.core.enums import RhythmType
+from anasim.core.projection import extubation_tolerance, stimulus_tolerance
 from anasim.core.state import SimulationConfig
 from anasim.physiology.cerebral import CerebralModel
 
@@ -278,14 +280,23 @@ def test_cpr_cerebral_perfusion_does_not_wake_vfib_patient_and_limits_anoxia(
     assert engine.cerebral.anoxic_s < 40.0
 
 
-def test_cerebral_cmro2_neuroprotection_and_chronic_htn_autoregulation(engine_factory):
-    """Hypothermia reduces anoxic exposure via CMRO2 Q10; chronic hypertension shifts autoregulation right."""
+def test_cerebral_cmro2_neuroprotection_and_chronic_htn_autoregulation(engine_factory, advance_time):
+    """Hypothermia reduces anoxic exposure via CMRO2 Q10 (including during CPR);
+    chronic hypertension shifts autoregulation right."""
     normo = CerebralModel(13.5)
     hypo = CerebralModel(13.5)
     normo.step(300.0, 0.0, 13.5, 98.0, 40.0, 7.4, temp_c=37.0)
     hypo.step(300.0, 0.0, 13.5, 98.0, 40.0, 7.4, temp_c=26.0)
     assert hypo.anoxic_s < 0.65 * normo.anoxic_s
     assert hypo.cortical_injury < normo.cortical_injury
+
+    cpr_norm = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True, baseline_temp=37.0)
+    cpr_cold = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True, baseline_temp=28.0)
+    for eng in (cpr_norm, cpr_cold):
+        eng.set_rhythm(RhythmType.VFIB)
+        eng.set_chest_compressions(True)
+        advance_time(eng, 180.0, dt=2.0)
+    assert cpr_cold.cerebral.anoxic_s < 0.7 * cpr_norm.cerebral.anoxic_s
 
     normotensive = CerebralModel(13.5, baseline_map=90.0)
     hypertensive = CerebralModel(13.5, baseline_map=140.0)
@@ -310,3 +321,11 @@ def test_normoxic_normotensive_hyperthermia_preserves_cortical_function_while_hy
     warm_hypoxic.step(180.0, 22.0, 13.5, 50.0, 40.0, 7.35, temp_c=40.5)
     assert warm_hypoxic.anoxic_s > normo_hypoxic.anoxic_s
     assert warm_hypoxic.tissue_oxygen < normo_hypoxic.tissue_oxygen
+
+
+def test_non_drug_coma_raises_stimulus_and_extubation_tolerance(engine_factory):
+    """Severe cerebral dysfunction suppresses laryngoscopy and extubation airway reflexes."""
+    coma = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1))
+    coma.cerebral.dysfunction = 0.95
+    assert stimulus_tolerance(coma) >= 0.94
+    assert extubation_tolerance(coma) >= 0.94

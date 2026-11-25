@@ -84,6 +84,7 @@ class VolatilePK:
 
         self.state = VolatileState()
         self.frc = patient.functional_residual_capacity()
+        self._temp_c = float(patient.baseline_temp)
         self.last_blood_uptake_l_min = 0.0
 
     def flow_fractions(self, cardiac_output_l: float) -> tuple[float, float, float]:
@@ -144,6 +145,16 @@ class VolatilePK:
         p_brain = self.state.p_brain
         p_mus = self.state.p_mus
         p_fat = self.state.p_fat
+        # Conserve dissolved body volatile mass when temperature alters solubility.
+        # Lipid (fat) solubility varies roughly half as steeply with temperature as blood.
+        if temp_c != self._temp_c:
+            new_lambda = self.lambda_b_g_at_temp(temp_c)
+            if new_lambda > 0.0:
+                sol_scale = self.lambda_b_g_at_temp(self._temp_c) / new_lambda
+                p_vrg = clamp01(p_vrg * sol_scale)
+                p_brain = clamp01(p_brain * sol_scale)
+                p_mus = clamp01(p_mus * sol_scale)
+                p_fat = clamp01(p_fat * (sol_scale ** 0.5))
         v_frc = self.frc
         net_btps_l = 0.0
         blood_uptake_btps_l = 0.0
@@ -278,6 +289,7 @@ class VolatilePK:
         circuit_share: float = 1.0,
         circuit_fi_agent: float | None = None,
         exhaled_volume_change_l: float | None = None,
+        temp_c: float = 37.0,
     ) -> float:
         """Return net circuit uptake (BTPS L/min) matching step() over dt without mutating state."""
         return self.preview_exchange(
@@ -287,6 +299,7 @@ class VolatilePK:
             passive_inflow_l_min=passive_inflow_l_min,
             circuit_share=circuit_share, circuit_fi_agent=circuit_fi_agent,
             exhaled_volume_change_l=exhaled_volume_change_l,
+            temp_c=temp_c,
         )[0]
 
     def commit_integration(self, result: _IntegrationResult, dt: float, temp_c: float = 37.0) -> None:
@@ -300,6 +313,7 @@ class VolatilePK:
         state.p_ven = result.p_ven
         state.p_art = result.p_art
         self.frc = result.v_frc
+        self._temp_c = float(temp_c)
         self.last_blood_uptake_l_min = result.blood_uptake_btps_l / (dt / 60.0) if dt > 0.0 else 0.0
         state.mac = (state.p_brain * 100.0) / self.mac_at_temp(temp_c)
 

@@ -47,12 +47,17 @@ class NeuromuscularMonitor:
         self.reading: TwitchReading | None = None
         self.history: deque[TwitchReading] = deque(maxlen=90)
         self._last_start = -math.inf
+        self._last_mode: str | None = None
         self._next_start = 0.0
         self._started: float | None = None
         self._responses: list[float] = []
         self._train_t1: float = 0.0
         self._train_ratio: float = 1.0
         self._deep_block_ratio: float = 0.0
+
+    def _min_repeat_s(self) -> float:
+        """Minimum quiet period after the previous stimulation (Fuchs-Buder 2007)."""
+        return PTC_MIN_REPEAT_S if self._last_mode == "ptc" else MIN_REPEAT_S
 
     def establish_baseline(self, t1: float) -> None:
         """Record the reference response only before appreciable block."""
@@ -69,8 +74,7 @@ class NeuromuscularMonitor:
         self.mode = mode
         self.interval = DEFAULT_REPEAT_S[mode]
         self.reading = None
-        min_gap = PTC_MIN_REPEAT_S if mode == "ptc" else MIN_REPEAT_S
-        self._next_start = max(time, self._last_start + min_gap)
+        self._next_start = max(time, self._last_start + self._min_repeat_s())
 
     def set_repeat(self, seconds: float, time: float) -> None:
         if seconds not in (0, 10, 20, 30, 60):
@@ -78,16 +82,17 @@ class NeuromuscularMonitor:
         self.automatic = seconds != 0
         if self.automatic:
             self.interval = max(PTC_MIN_REPEAT_S, seconds) if self.mode == "ptc" else seconds
-            self._next_start = max(time, self._last_start + self.interval)
+            self._next_start = max(time, self._last_start + max(self.interval, self._min_repeat_s()))
 
     def measure(self, time: float) -> None:
-        min_gap = PTC_MIN_REPEAT_S if self.mode == "ptc" else MIN_REPEAT_S
+        min_gap = self._min_repeat_s()
         if self._started is not None or time < self._last_start + min_gap:
             raise ValueError(f"Wait at least {min_gap:.0f} seconds between stimulations")
         self._begin(time)
 
     def _begin(self, time: float) -> None:
         self._started = self._last_start = time
+        self._last_mode = self.mode
         self._responses = []
         self._next_start = time + self.interval
 
@@ -159,7 +164,7 @@ class NeuromuscularMonitor:
         self._started = None
 
     def snapshot(self, time: float) -> dict:
-        min_gap = PTC_MIN_REPEAT_S if self.mode == "ptc" else MIN_REPEAT_S
+        min_gap = self._min_repeat_s()
         return {
             "mode": self.mode,
             "repeat": self.interval if self.automatic else 0,

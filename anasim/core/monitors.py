@@ -17,6 +17,7 @@ from anasim.physiology.resuscitation import (
 )
 
 from .projection import (
+    bis_hypnotic_components,
     central_muscle_strength,
     circuit_connected,
     delivered_fraction,
@@ -48,7 +49,7 @@ def display_int(value: float) -> float:
 
 def waveform_substeps(dt: float) -> int:
     """Waveform samples in a step of dt; beat-synchronous monitors advance once per sample."""
-    return math.ceil(dt / WAVEFORM_MAX_INTERVAL_S)
+    return max(1, math.ceil(dt / WAVEFORM_MAX_INTERVAL_S - 1e-12))
 
 
 def _hold(waves: list, value, elapsed: float, substeps: int, substep_dt: float) -> None:
@@ -176,6 +177,7 @@ def compute_capno_value(
                 breath_index=capno.breath_index,
                 et_gases=et_gases,
                 expected_period_s=expected_period_s,
+                cpr_oscillating=cpr_oscillating,
             )
             elapsed += duration
             _hold(waves, value, elapsed, substeps, substep_dt)
@@ -183,7 +185,7 @@ def compute_capno_value(
     state.display_etco2 = float(readout.value)
     state.etco2_signal_valid = readout.valid
     state.et_o2, state.et_sevo, state.et_n2o, state.et_mac = (
-        readout.et_gases if state.etco2_signal_valid else (0.0, 0.0, 0.0, 0.0)
+        readout.et_gases if readout.gas_valid else (0.0, 0.0, 0.0, 0.0)
     )
     return waves
 
@@ -223,9 +225,9 @@ def step_cardiac_monitors(
     base_co = engine.hemo.base_co_l_min
     base_svr = max(1.0, engine.hemo.base_tpr * 1000.0)
     temp_factor = clamp(1.0 - 0.14 * max(0.0, 36.0 - engine.state.temp_c), 0.12, 1.0)
-    # Peripheral cold vasoconstriction slows finger SpO2 transit more steeply than
-    # core temperature drops (MacLeod 2005).
-    cold_delay_factor = clamp(1.0 - 0.45 * max(0.0, 36.0 - engine.state.temp_c), 0.10, 1.0)
+    # Peripheral cold vasoconstriction slows finger SpO2 transit smoothly (~2.1x
+    # at 35 °C without a sharp cutoff at 34 °C; MacLeod 2005).
+    cold_delay_factor = max(0.10, 1.0 / (1.0 + 0.85 * max(0.0, 36.5 - engine.state.temp_c) ** 1.35))
     perfusion, spo2_delay_scale = _peripheral_perfusion(
         hemo_state, base_co, base_svr, temp_factor, cold_delay_factor=cold_delay_factor,
     )
@@ -373,15 +375,17 @@ def step_monitors(
     state = engine.state
     mac_sevo = engine.pk_sevo.state.mac
     state.respiratory_fatigue = float(engine.resp_mech.effort.muscle.fatigue)
+    prop_bis, adjunct_bis = bis_hypnotic_components(engine)
     bis_val = engine.bis.step(
         dt,
-        state.hypnotic_ce,
+        prop_bis,
         mac_sevo=mac_sevo,
         cortical_function=engine.cerebral.cortical_function,
         ce_ketamine=state.ketamine_ce,
         ce_opioid=state.opioid_ce,
         temp_c=state.temp_c,
         disturbance_bis=disturbances.bis,
+        ce_adjunct=adjunct_bis,
     )
     substeps = waveform_substeps(dt)
     substep_dt = dt / substeps
@@ -500,7 +504,7 @@ def step_monitors(
         and not vent.is_on
         and engine.bag_mask_active
         and vent.pressure_limited
-        and ppeak_val == ppeak_limit
+        and ppeak_val >= ppeak_limit
     )
     ppeak_alarm = ppeak_limit + 1.0 if (vent_pressure_alarm or bag_pressure_alarm) else ppeak_val
     state.alarms = engine.alarms.update(

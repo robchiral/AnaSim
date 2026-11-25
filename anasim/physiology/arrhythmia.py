@@ -109,7 +109,7 @@ class ArrhythmiaModel:
              lidocaine: float, amiodarone: float, hyperkalemia: float = 0.0,
              hypothermia: float = 0.0, energy_reserve: float = 1.0,
              compressions: bool = False, hr: float | None = None,
-             beta_block: float = 0.0) -> RhythmType:
+             beta_block: float = 0.0, toxic_stress: float = 0.0) -> RhythmType:
         if rhythm != self._rhythm:
             self._rhythm = rhythm
             self._remaining.clear()
@@ -119,7 +119,7 @@ class ArrhythmiaModel:
                 self._post_shock_asystole = False
         self._post_shock_s += dt
         stress = clamp01(max(ischemia, hypoxia))
-        if self._recovering_brady:
+        if rhythm == RhythmType.SINUS_BRADY and self._recovering_brady:
             self._brady_s += dt
             rate_recovered = hr is not None and hr >= 65.0
             if rate_recovered or (self._brady_s >= POST_SHOCK_BRADY_S and stress < 0.5 and energy_failure < 0.2):
@@ -162,12 +162,16 @@ class ArrhythmiaModel:
         else:
             recurrence = (REFIBRILLATION_RATE * self._post_shock_stress * math.sqrt(stress) * viable
                           * math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S))
-            # Without the heart's own output, as in PEA, ischemia leads to asystole.
+            # Without the heart's own output, as in PEA, ischemia leads to asystole;
+            # severe ATP-replete local anesthetic toxicity can still trigger VT/VF.
+            toxic_substrate = clamp01((toxic_stress - 0.75) / 0.25) * viable
             onset = (
                 ISCHEMIC_ONSET_RATE * substrate
                 + HYPERK_ONSET_RATE * hyperk**2
                 + HYPOTHERMIC_ONSET_RATE * hypotherm**2
-            ) if perfusing else 0.0
+            ) if perfusing else (
+                (1.0 / 240.0) * toxic_substrate
+            )
             af_conversion = (
                 amio * AMIODARONE_AF_CONVERSION_RATE
                 if rhythm == RhythmType.AFIB and perfusing and hyperk < 0.2 else 0.0
@@ -194,8 +198,8 @@ class ArrhythmiaModel:
             self._remaining[name] -= rate * dt
             if time_to_event <= dt and time_to_event < earliest:
                 earliest, winner, following = time_to_event, name, target
-                if name == "onset" and self.rng.random() < VF_ONSET_SHARE:
-                    following = RhythmType.VFIB
+        if winner == "onset" and self.rng.random() < VF_ONSET_SHARE:
+            following = RhythmType.VFIB
         if winner == "escape":
             self._post_shock_asystole = False
             self._recovering_brady = following == RhythmType.SINUS_BRADY

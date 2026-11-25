@@ -49,16 +49,16 @@ shunt, and increases the airway pressures required to keep alveoli open (Pelosi
 1998; Hedenstierna and Edmark 2015).
 
 Pregnancy alters maternal blood volume, extracellular water, cardiac output,
-renal filtration, FRC, heart rate, metabolism, and resting PaCO₂ according to
-gestational age (Dallmann 2017; Contreras 1991), with late-pregnancy
-interstitial water calibrated against cesarean calcium dilution data (Ansari
-2025). In late pregnancy, the supine position compresses venous return and the
-left lateral position restores it (Humphries 2019). Pregnancy lowers the
-minimum alveolar concentration (MAC) of inhaled anesthetics by up to 28% by 14
-weeks (Gin and Chan 1994), and it expands the central distribution volume of
-intravenous drugs in proportion to maternal blood volume and extracellular
-water (Dallmann 2017). Other drug responses use the standard adult
-calibrations.
+renal filtration, FRC, respiratory compliance, heart rate, metabolism, and
+resting PaCO₂ according to gestational age (Dallmann 2017; Contreras 1991;
+Marx 1970), with late-pregnancy interstitial water calibrated against cesarean
+calcium dilution data (Ansari 2025). In late pregnancy, the supine position
+compresses venous return and the left lateral position restores it (Humphries
+2019). Pregnancy lowers the minimum alveolar concentration (MAC) of inhaled
+anesthetics by up to 28% by 14 weeks (Gin and Chan 1994), and it expands the
+central distribution volume of intravenous drugs in proportion to maternal blood
+volume and extracellular water (Dallmann 2017). Other drug responses use the
+standard adult calibrations.
 
 ### Patient variability
 
@@ -109,7 +109,8 @@ hemorrhagic shock speeds up the rise in brain MAC. Clinical effects depend on
 brain partial pressure, expressed as age- and pregnancy-adjusted MAC (Davis and
 Mapleson 1981; Yasuda 1991; Mapleson 1996; Nickalls and Mapleson 2003; Gin and
 Chan 1994). Hypothermia increases volatile blood-gas solubility (Lockwood 1997),
-slowing both uptake and washout. Nitrous oxide uptake concentrates other gases
+conserving dissolved tissue anesthetic mass as temperature changes and slowing
+both uptake and washout. Nitrous oxide uptake concentrates other gases
 in the alveoli, and its washout dilutes them.
 
 When blood volume changes, the vascular share of each drug's central volume
@@ -228,9 +229,13 @@ concentration.
 Fentanyl's effects on intubation pressure and HR are fitted separately to
 Kazama 1997, and fentanyl blunts the pressor response alongside both propofol
 and ketamine. With inhaled agents, fentanyl and remifentanil also reduce the
-anesthetic concentration required to block pressor and HR surges, matching
-opioid reductions in volatile MAC and MAC-BAR (Katoh 1999; Lang 1996). Other
-opioids are converted to remifentanil equivalents.
+volatile concentration required to block pressor and HR surges, matching
+opioid reductions in volatile MAC and MAC-BAR, while nitrous oxide contributes
+additively (Katoh 1999; Daniel 1998; Lang 1996). Smooth tracheal extubation
+uses a lower airway-reflex intensity than laryngoscopy (Inomata 1999; Lee
+2009), and non-drug coma (cerebral ischemia or CO₂ narcosis) suppresses
+airway-reflex reactivity alongside anesthetic drugs. Other opioids are
+converted to remifentanil equivalents.
 
 Peak HR and MAP surges at intubation follow Ebert 1992 and 1995. The HR
 recovery and the split between stroke volume and vascular resistance follow
@@ -249,11 +254,12 @@ start during surgery, whereas emergence cases start after surgery ends.
 ## Neuromuscular block
 
 The [neuromuscular model](../anasim/patient/pd/nmba.py) uses Kleijn 2011 for
-rocuronium and sugammadex. Sevoflurane strengthens rocuronium block (Kleijn
-2011), extending gently above 1 MAC, and nitrous oxide adds a smaller
-potentiation based on vecuronium data (Fiset 1991); AnaSim applies both at
-peripheral and central muscles. Hypothermia slows rocuronium equilibration and
-increases sensitivity (Smeulers 1995). Sugammadex binds free rocuronium in
+rocuronium and sugammadex. Sevoflurane strengthens rocuronium block and slows
+effect-site washout during recovery while preserving bolus onset speed (Kleijn
+2011; Lowry 1998), extending gently above 1 MAC, and nitrous oxide adds a
+smaller potentiation based on vecuronium data (Fiset 1991); AnaSim applies both
+at peripheral and central muscles. Hypothermia slows rocuronium equilibration
+and increases sensitivity (Smeulers 1995). Sugammadex binds free rocuronium in
 plasma, accelerates saturable washout from the effect site, and clears the bound
 complex at the rate of sugammadex. A perijunctional rocuronium buffer reproduces
 transient rebound weakness when a sub-therapeutic sugammadex dose clears unbound
@@ -536,7 +542,9 @@ hypokalemia and hyperlactatemia.
 ### Antimuscarinics
 
 Atropine links its HR effect to its peripheral compartment (Hinderling 1985),
-scaling the renally excreted fraction with renal function. Volatile and opioid
+scaling the renally excreted fraction with renal function. Its chronotropic gain
+declines with age alongside the fall in intrinsic heart rate (Jose and Collison
+1970; Dauchot and Gravenstein 1971). Volatile and opioid
 anesthetics leave the HR increase intact (Yamaguchi 1988), whereas propofol
 blunts the peak HR rise of both atropine and glycopyrrolate without reducing
 vagal blockade (Horiguchi and Nishikawa 2002). Glycopyrrolate uses
@@ -839,10 +847,12 @@ until circulation resumes.
 ### Renal acid-base handling
 
 When urine output and renal perfusion allow, the kidneys excrete daily fixed
-acid and gradually adjust bicarbonate toward chronic compensation for sustained
-hypercapnia (González 2018) or hypocapnia (Krapf 1991). Chloride moves opposite
-to bicarbonate, while urinary sodium follows extracellular strong-ion balance
-without antidiuretic hormone regulation (Reid 2003; Philbin and Coggins 1978).
+acid, excrete excess sodium and bicarbonate during volume expansion and
+alkalemia, and gradually adjust bicarbonate toward chronic compensation for
+sustained hypercapnia (González 2018) or hypocapnia (Krapf 1991). Chloride
+moves opposite to bicarbonate, while urinary sodium follows extracellular
+strong-ion balance and volume load without antidiuretic hormone regulation
+(Reid 2003; Chowdhury 2012; Philbin and Coggins 1978).
 
 ## Respiratory control
 
@@ -878,8 +888,10 @@ while CO₂ sensitivity declines much less. During airway obstruction, airflow i
 restricted while inspiratory effort continues, with partial load compensation
 during severe acute obstruction.
 
-Metabolic acidosis lowers the PaCO₂ setpoint over a couple of minutes, though
-anesthetics and opioids still limit the ventilatory response.
+Metabolic acidosis lowers the PaCO₂ setpoint over a couple of minutes, and
+metabolic alkalosis raises it by roughly 0.7 mmHg per mmol/L of excess base
+chiefly through smaller tidal volume (Javaheri 1982), though anesthetics and
+opioids still limit the ventilatory response.
 
 [Respiratory muscles fatigue](../anasim/physiology/fatigue.py) when sustained
 inspiratory load, such as breathing against an obstructed airway, exceeds a
@@ -965,7 +977,8 @@ returns that base when cleared. During hypoxic low-flow states, lactic acid
 consumes buffer base primarily in venous blood, raising venous PCO₂ and
 reproducing the arterial-to-venous acid-base divergence seen during ventilated
 CPR (Weil 1986). Lactated Ringer's raises measured lactate without adding acid
-and generates base as it is metabolized (Zitek 2018); blood gas analyzers
+and generates base and oxidized CO₂ as exogenous lactate and citrate are
+metabolized (Zitek 2018; Chioléro 1993); blood gas analyzers
 report only the L-isomer, which is half of the racemic lactate in Ringer's.
 
 ### Acid-base
@@ -1040,10 +1053,13 @@ with oxygen delivery so core temperature drops faster during arrest.
 General anesthetics suppress thermoregulation, reduce metabolic heat
 production, and redistribute heat from the core to the periphery; redistribution
 slows with cardiac output and halts during cardiac arrest. This redistribution
-follows propofol-fentanyl data (Matsukawa 1995) and is extended to sevoflurane,
-etomidate, and ketamine as a model assumption; midazolam shifts thermoregulatory
-thresholds much less (Kurz 1995). First-hour redistribution cooling is smaller
-in heavier patients because of their higher mass-to-surface ratio (Kurz 1995).
+follows propofol-fentanyl data (Matsukawa 1995) and is extended to sevoflurane
+and etomidate as a model assumption, whereas ketamine largely preserves
+peripheral vasoconstriction and spares redistribution cooling (Ikeda 2001) and
+midazolam shifts thermoregulatory thresholds much less (Kurz 1995). Opioids
+lower both vasoconstriction and shivering thresholds (Kurz 1995). First-hour
+redistribution cooling is smaller in heavier patients because of their higher
+mass-to-surface ratio (Kurz 1995).
 
 Cold patients shiver below about 35.8 °C once awake or emerging (Kurz 1995),
 and awake sessions that begin hypothermic start with active shivering. Opioids,
@@ -1160,8 +1176,9 @@ Optional monitor audio plays plethysmograph pulse tones and active alarms.
 Alarm silence lasts 2 minutes of real time and ends early if a new alarm sounds
 or an active alarm flips between low and high limits. Lethal rhythm and arrest
 alarms (Asystole, VFIB, VTACH, and Arrest) highlight the HR tile with a rhythm
-label, and along with oxygen pipeline failure (O2Supply) break prior silence and
-sound a faster, higher-pitched cadence. Core
+label (leaving HR blank during ventricular fibrillation), and along with oxygen
+pipeline failure (O2Supply) break prior silence, re-break silence if they recur
+after clearing, and sound a faster, higher-pitched cadence. Core
 temperature alarms outside 35.5 to 38.0 °C, and peak airway pressure alarms
 above 40 cmH₂O or when a pressure-limited ventilator or manual bag breath hits
 its limit before delivering target volume.
@@ -1253,7 +1270,8 @@ peak window holds full-breath readings across shallow interposed breaths,
 shallow sub-dead-space breaths refresh the trace without reporting false
 full-breath readings, and the no-breath timeout extends automatically at slow
 rates. End-tidal oxygen and anesthetic values hold the last exhaled sample
-during brief apnea and clear when exhaled gas stops, while gas at the sampling
+during brief apnea and clear when exhaled gas stops, while staying live during
+ventilated zero-flow arrest even when EtCO₂ reads zero; gas at the sampling
 port decays without flow. Once an airway is connected or assisted ventilation
 runs, EtCO₂ alarms activate after the first breath or after apnea timeout, with
 the low EtCO₂ limit lowered during pregnancy to match expected PaCO₂. Gas
@@ -1286,8 +1304,10 @@ an interval. TOF reports twitch count and, when all four twitches return, the
 T4/T1 ratio rounded down to a whole percentage so values below 90% never display
 as 90%, alongside depressed T1 height so recovery is not marked complete while
 T1 remains below 90%. Weak-twitch ratios are flagged, PTC counts 0 to 15
-post-tetanic twitches during deep block with a 60-second minimum repeat
-interval, and single twitch reports T1 relative to an unblocked baseline.
+post-tetanic twitches during deep block and imposes a 60-second post-tetanic
+lockout before subsequent stimulation while allowing PTC soon after a zero TOF
+count (Fuchs-Buder 2007), and single twitch reports T1 relative to an unblocked
+baseline.
 
 ### Arterial blood gases
 

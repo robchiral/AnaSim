@@ -667,6 +667,11 @@ export class Controls {
     const status = defibrillator.status;
     const defibModule = $("defib-module");
     if (defibModule?.dataset) defibModule.dataset.status = status;
+    const syncButtons = (this.syncButtons ??= [...$("c-sync").querySelectorAll("button")]);
+    if (defibrillator.synchronized || status === "waiting_for_r") {
+      this.synchronized = true;
+      for (const button of syncButtons) setPressed(button, button.dataset.value === "true");
+    }
     const syncBadge = $("defib-sync-badge");
     if (syncBadge) syncBadge.hidden = !this.synchronized;
     const chargeTrack = $("defib-charge-track");
@@ -683,7 +688,7 @@ export class Controls {
       : { idle: "Not charged", ready: "Ready, 200 J", waiting_for_r: "Waiting for an R wave" }[status]);
     setText($("c-charge"), status === "idle" ? "Charge" : "Disarm");
     $("c-shock").disabled = status !== "ready";
-    for (const button of (this.syncButtons ??= [...$("c-sync").querySelectorAll("button")])) {
+    for (const button of syncButtons) {
       button.disabled = status === "waiting_for_r";
     }
     const lastShock = defibrillator.last_shock;
