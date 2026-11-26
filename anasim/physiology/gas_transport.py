@@ -47,6 +47,7 @@ class GasTransport:
         if blood_volume_l <= 0.0:
             raise ValueError("Blood gas transport requires a positive blood volume")
         self.capillary_fraction = 0.070 * weight / 70.0 / blood_volume_l
+        self._blood_volume = 0.0
         self.resize_blood(blood_volume_l)
         # Normal pulmonary capillary volume is about 60-75 mL. The arterial
         # share is a reduced-compartment assumption. Without a fluid balance, the
@@ -75,8 +76,11 @@ class GasTransport:
         self.produced_l = self.exhaled_l = self.consumed_o2_l = self.oxygen_from_air_l = 0.0
 
     def resize_blood(self, volume: float) -> None:
+        if volume == self._blood_volume:
+            return
         if volume <= 0.0:
             raise ValueError("Blood gas transport requires a positive blood volume")
+        self._blood_volume = volume
         pulmonary = self.capillary_fraction * volume
         arterial = 0.2 * volume
         self.volumes = (pulmonary, arterial, volume - pulmonary - arterial)
@@ -84,11 +88,11 @@ class GasTransport:
     def blood_amount(self, concentrations: list[float]) -> float:
         """Amount in the three blood pools at the given concentrations per liter."""
         pulmonary, arterial, venous = self.volumes
-        return sum((pulmonary * concentrations[0], arterial * concentrations[1], venous * concentrations[2]))
+        return pulmonary * concentrations[0] + arterial * concentrations[1] + venous * concentrations[2]
 
     @property
     def blood_volume(self) -> float:
-        return sum(self.volumes)
+        return self._blood_volume
 
     @property
     def tissue_co2_l(self) -> float:
@@ -125,31 +129,38 @@ class GasTransport:
         cp, ca, cv = values
         pulmonary, bypass = flow * (1.0 - shunt), flow * shunt
         rhs_a = va * ca + pulmonary * (cp - ca) + bypass * (cv - ca)
+        if not relations:
+            if flow == 0.0 and source == 0.0:
+                return TransportPlan(ca, 0.0, cv, 0.0)
+            denom_v = vv + flow
+            av = (vv * cv + flow * (ca - cv) + source) / denom_v
+            bv = flow / denom_v
+            denominator = va + flow - bypass * bv
+            aa = (rhs_a + bypass * av) / denominator
+            ba = pulmonary / denominator
+            return TransportPlan(aa, ba, av + bv * aa, bv * ba)
         bases, gains = [], []
         partitions, offsets = [], []
-        if relations:
-            outgoing = venous_base = venous_gain = 0.0
-            for amount, capacity, (content, slope), fraction, metabolism in zip(
-                self.tissue_co2, self.capacities, relations, self.PERFUSION, self.METABOLISM, strict=True,
-            ):
-                volume = capacity / slope
-                offset = content - slope * amount / capacity
-                exchange = flow * fraction
-                base = (amount + volume * offset + exchange * (ca - content) + source * metabolism) / (volume + exchange)
-                gain = exchange / (volume + exchange)
-                partitions.append(volume)
-                offsets.append(offset)
-                bases.append(base)
-                gains.append(gain)
-                outgoing += fraction * content
-                venous_base += fraction * base
-                venous_gain += fraction * gain
-            rhs_v = vv * cv + flow * (outgoing - cv)
-            av = (rhs_v + flow * venous_base) / (vv + flow)
-            bv = flow * venous_gain / (vv + flow)
-        else:
-            av = (vv * cv + flow * (ca - cv) + source) / (vv + flow)
-            bv = flow / (vv + flow)
+        outgoing = venous_base = venous_gain = 0.0
+        for amount, capacity, (content, slope), fraction, metabolism in zip(
+            self.tissue_co2, self.capacities, relations, self.PERFUSION, self.METABOLISM, strict=True,
+        ):
+            volume = capacity / slope
+            offset = content - slope * amount / capacity
+            exchange = flow * fraction
+            base = (amount + volume * offset + exchange * (ca - content) + source * metabolism) / (volume + exchange)
+            gain = exchange / (volume + exchange)
+            partitions.append(volume)
+            offsets.append(offset)
+            bases.append(base)
+            gains.append(gain)
+            outgoing += fraction * content
+            venous_base += fraction * base
+            venous_gain += fraction * gain
+        rhs_v = vv * cv + flow * (outgoing - cv)
+        denom_v = vv + flow
+        av = (rhs_v + flow * venous_base) / denom_v
+        bv = flow * venous_gain / denom_v
         denominator = va + flow - bypass * bv
         aa = (rhs_a + bypass * av) / denominator
         ba = pulmonary / denominator

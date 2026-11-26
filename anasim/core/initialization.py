@@ -91,6 +91,8 @@ def _initialize_awake(engine: SimulationEngine) -> None:
         base_temp, awake_bis, 0.0, 1.0, unconscious=awake_unconscious, perfusing=True,
     )
     engine.thermal.update_depth(base_temp, 0.0, 0.0)
+    engine.state.temp_c = base_temp
+    runtime_core.update_pk_covariates(engine, engine.hemo.base_co_l_min)
     engine.pk_nore.equilibrate_endogenous()
     engine.hemo.initialize_steady_state(
         0.0, 0.0, engine.pk_nore.state.ce,
@@ -102,17 +104,33 @@ def _initialize_awake(engine: SimulationEngine) -> None:
             engine.hemo.state.co,
             engine.resp.vco2 * max(0.25, engine.thermal.metabolic_factor) / 1000.0,
         )
+    if engine.thermal.shiver_level > 0.0:
+        # Equilibrate chemoreflex ventilation to elevated shivering CO2 production.
+        met_factor = max(0.25, engine.thermal.metabolic_factor)
+        co = engine.hemo.state.co
+        hb = engine.hemo.hb_conc
+        hct = engine.hemo.get_hematocrit()
+        bv = engine.hemo.blood_volume
+        for _ in range(180):
+            engine.resp.step(
+                2.0, 0.0, 0.0, fio2=0.21, cardiac_output=co,
+                metabolic_factor=met_factor, temp_c=base_temp,
+                hb_g_dl=hb, hematocrit=hct, blood_volume_ml=bv,
+                unconscious=awake_unconscious,
+            )
     runtime_core.update_pk_covariates(engine, engine.hemo.state.co)
 
 
 def _initialize_steady_state(engine: SimulationEngine) -> None:
+    p = engine.patient
+    nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
     profile = _select_profile(engine)
-    targets = _solve_startup_targets(engine, profile)
+    targets = _solve_startup_targets(engine, profile, nominal_patient=nominal_patient)
 
     engine.state.airway_mode = AirwayType.ETT
     engine.resp.state.apnea = True
     _configure_controlled_ventilation(engine, targets)
-    nominal_pk = _seed_steady_state_subsystems(engine, profile, targets)
+    nominal_pk = _seed_steady_state_subsystems(engine, profile, targets, nominal_patient=nominal_patient)
     projection_core.sync_state_from_models(engine)
     spec = engine.disturbances.spec
     if engine.disturbance_active and spec is not None and not spec.finite:
@@ -121,7 +139,7 @@ def _initialize_steady_state(engine: SimulationEngine) -> None:
         engine.disturbance_start_time = engine.state.time - spec.established_s
     if engine.config.tci_enabled:
         _attach_startup_controllers(engine, targets)
-    _run_hidden_settle(engine, profile, targets, nominal_pk=nominal_pk)
+    _run_hidden_settle(engine, profile, targets, nominal_pk=nominal_pk, nominal_patient=nominal_patient)
     runtime_core.update_pk_covariates(engine, engine.state.co)
     if engine.infusion_rates["nore"] <= 0.0:
         engine.pk_nore.equilibrate_endogenous()
@@ -139,9 +157,12 @@ def _select_profile(engine: SimulationEngine) -> StartupProfile:
     return TIVA_PROFILE
 
 
-def _solve_startup_targets(engine: SimulationEngine, profile: StartupProfile) -> StartupTargets:
-    p = engine.patient
-    nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
+def _solve_startup_targets(
+    engine: SimulationEngine, profile: StartupProfile, *, nominal_patient: Patient | None = None,
+) -> StartupTargets:
+    if nominal_patient is None:
+        p = engine.patient
+        nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
     bis_model = BISModel(nominal_patient)
     response_model = ClinicalResponseModel(nominal_patient.age)
 
@@ -186,7 +207,11 @@ def _configure_controlled_ventilation(engine: SimulationEngine, targets: Startup
         engine.patient.baseline_temp, targets.prop_ce, targets.mac,
     )
     target_paco2 = resp.paco2_setpoint * resp._pco2_temp_scale_now
-    target_va = resp.co2_constant * resp.vco2 * metabolic_factor / max(10.0, target_paco2)
+    target_va = (
+        resp.co2_constant * resp.vco2 * metabolic_factor
+        / max(10.0, target_paco2)
+        / (1.0 - resp.copd_alveolar_deadspace)
+    )
     # Body mass raises CO2 production without enlarging the lungs, so VT stops
     # at 8 mL/kg predicted body weight (tapering to 6 mL/kg PBW in severe obesity
     # to avoid excessive peak pressures) and the rate rises instead.
@@ -203,6 +228,8 @@ def _seed_steady_state_subsystems(
     engine: SimulationEngine,
     profile: StartupProfile,
     targets: StartupTargets,
+    *,
+    nominal_patient: Patient | None = None,
 ) -> dict[str, Any]:
     engine.set_vaporizer(0.0)
     engine.set_fgf(profile.fgf_o2_l_min, 0.0, 0.0)
@@ -213,7 +240,8 @@ def _seed_steady_state_subsystems(
     p = engine.patient
     engine.state.temp_c = p.baseline_temp
     runtime_core.update_pk_covariates(engine, engine.hemo.base_co_l_min)
-    nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
+    if nominal_patient is None:
+        nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
     nominal_pk = {
         key: get_drug_spec(key).pk_model(nominal_patient, engine.config)
         for key in ("propofol", "remi")
@@ -256,43 +284,32 @@ def _seed_steady_state_subsystems(
     )
     fi_agent = 0.0
     if profile.primary_hypnotic == "volatile":
+        _seed_volatile_history(engine, targets.mac, profile.history_minutes)
+        # Start at the untreated anesthetic steady state so the hidden settle
+        # handles only circuit and monitor transients.
+        mac_sevo_alv = engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
+        engine.hemo.initialize_steady_state(
+            prop_cp,
+            remi_cp,
+            engine.pk_nore.state.ce,
+            mac_sevo=mac_sevo_alv,
+            remifentanil_cp=remi_cp,
+            pit=pit_init,
+            peep_cmH2O=peep_init,
+        )
         fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
-    engine.circuit.equilibrate(_oxygen_uptake_l_min(engine, targets), fi_agent)
+    o2_uptake = _oxygen_uptake_l_min(engine, targets)
+    engine.circuit.equilibrate(o2_uptake, fi_agent)
     engine.resp.equilibrate_oxygen(
         engine.circuit.composition.fio2,
         1.0,
         engine.vent.settings.peep,
         fin2=engine.circuit.composition.fin2,
     )
-    # Start at the untreated anesthetic steady state so the hidden settle
-    # handles only circuit and monitor transients.
-    mac_sevo_alv = (
-        engine.pk_sevo.state.p_alv * 100.0 / engine.pk_sevo.mac_age
-        if profile.primary_hypnotic == "volatile"
-        else 0.0
-    )
-    engine.hemo.initialize_steady_state(
-        prop_cp,
-        remi_cp,
-        engine.pk_nore.state.ce,
-        mac_sevo=mac_sevo_alv,
-        remifentanil_cp=remi_cp,
-        pit=pit_init,
-        peep_cmH2O=peep_init,
-    )
-    if profile.primary_hypnotic == "volatile":
-        fi_agent = _seed_volatile_history(engine, targets.mac, profile.history_minutes)
-        engine.circuit.equilibrate(_oxygen_uptake_l_min(engine, targets), fi_agent)
-        engine.resp.equilibrate_oxygen(
-            engine.circuit.composition.fio2,
-            1.0,
-            engine.vent.settings.peep,
-            fin2=engine.circuit.composition.fin2,
-        )
     # Tissue CO2 belongs to the same maintenance history as the seeded drugs.
     engine.resp.equilibrate_blood_gases(
         engine.hemo.state.co,
-        _oxygen_uptake_l_min(engine, targets) * engine.resp.rq,
+        o2_uptake * engine.resp.rq,
     )
     return nominal_pk
 
@@ -397,7 +414,12 @@ def _seed_volatile_history(engine: SimulationEngine, target_mac: float, duration
     # Lung balance VA (Fi - FA) = (1 - s) Q λ (FA - Fv), then STPD circle balance
     # vapor_flow - uptake = (FGF + vapor_flow - total_uptake) * Fi.
     settings = engine.vent.settings
-    va = settings.rr * max(0.0, settings.tv / 1000.0 - engine.resp.vd_deadspace) * engine.airway_status.ventilation_efficiency
+    va = (
+        settings.rr
+        * max(0.0, settings.tv / 1000.0 - engine.resp.vd_deadspace)
+        * (1.0 - engine.resp.copd_alveolar_deadspace)
+        * engine.airway_status.ventilation_efficiency
+    )
     pk._temp_c = float(engine.patient.baseline_temp)
     uptake_btps = q_co * (1.0 - shunt) * pk.lambda_b_g_at_temp(engine.patient.baseline_temp) * (state.p_alv - state.p_ven)
     fi_agent = clamp01(state.p_alv + uptake_btps / max(va, 0.1))
@@ -416,6 +438,7 @@ def _run_hidden_settle(
     targets: StartupTargets,
     *,
     nominal_pk: dict[str, Any] | None = None,
+    nominal_patient: Patient | None = None,
 ) -> None:
     """Run a short settle for circuit and physiology transients without visible side effects."""
     saved_hemo_config = engine.hemo.config
@@ -426,8 +449,10 @@ def _run_hidden_settle(
     engine.maintenance_fluid_rate_ml_min = 0.0
 
     nom_pk = nominal_pk or {}
-    p = engine.patient
-    nominal_bv_l = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex).estimate_blood_volume() / 1000.0
+    if nominal_patient is None:
+        p = engine.patient
+        nominal_patient = Patient(age=p.age, weight=p.weight, height=p.height, sex=p.sex)
+    nominal_bv_l = nominal_patient.estimate_blood_volume() / 1000.0
     steps = max(1, int(profile.settle_seconds / profile.settle_dt_seconds))
     # Capnograph and EtCO2 readout latch within ~2-3 breaths (~15 s), so only
     # collect 100 Hz airway samples during the final settle window.
@@ -486,15 +511,9 @@ def _run_hidden_settle(
             anesthetic_depth=clamp01(engine.thermal.depth_index),
             volatile_luxury=clamp01(engine.state.mac_sevo + 0.5 * engine.state.mac_n2o),
         )
-        cardiac_sample = engine.cardiac_cycle.seed(engine.state.hr, hemo_state.rhythm_type)
-        arterial_sample = engine.arterial_waveform.seed(
-            cardiac_sample,
-            engine.state.map,
-            engine.state.sv,
-            static_pressure=hemo_state.venous_pressure,
-            pulse_pressure_factor=hemo_state.pulse_pressure_factor,
+        projection_core.seed_arterial_monitors(
+            engine, hemo_state, hr=engine.state.hr, map_mmhg=engine.state.map, sv_ml=engine.state.sv,
         )
-        projection_core.project_arterial(engine.state, arterial_sample, engine.art_line.seed(arterial_sample))
         if collect_capno:
             engine.state.capno_co2 = float(
                 monitor_core.compute_capno_value(engine, physiology.resp_state, profile.settle_dt_seconds)[-1]

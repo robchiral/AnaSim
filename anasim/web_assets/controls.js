@@ -82,8 +82,8 @@ const rateText = (value) => String(Number(value.toPrecision(4)));
 // Displayed rates: whole numbers from 10 up, two significant figures below.
 const shortRate = (value) => (value >= 10 ? Math.round(value) : Number(value.toPrecision(2)));
 
-// Settings each ventilator mode uses, as on a GE Aisys. PSV uses RR and Pinsp
-// for apnea backup breaths and Tinsp as the longest supported breath.
+// Settings each ventilator mode uses (GE Carestation mode layout).
+// PSV uses RR, Pinsp, and Tinsp for apnea backup breaths.
 const ventFields = {
   "VCV": ["rr", "tv", "ie", "pause", "p_max"],
   "PCV": ["rr", "p_insp", "ie"],
@@ -268,6 +268,8 @@ export class Controls {
     const fgf = () => this.send("fgf", { o2: readNumber($("c-o2")), air: readNumber($("c-air")), n2o: readNumber($("c-n2o")) });
     this.editSettings([$("c-o2"), $("c-air"), $("c-n2o")], fgf, $("c-o2").closest(".fresh-gas-settings"));
     this.editSettings([$("c-vap")], () => this.send("vaporizer", { percent: readNumber($("c-vap")) }), $("c-vap-actions"));
+    const vapRefill = $("c-vap-refill");
+    if (vapRefill) vapRefill.onclick = () => this.performAction(vapRefill, "refill_vaporizer");
     $("c-bag").onclick = () => this.send("bag_mask", { active: !this.state.bag_mask });
     $("c-bag-breath").onclick = () => this.performAction($("c-bag-breath"), "bag_breath");
     $("c-o2-flush").onclick = () => this.performAction($("c-o2-flush"), "o2_flush");
@@ -298,8 +300,9 @@ export class Controls {
   }
 
   applyVentMode(mode) {
-    const used = ventFields[mode];
     const pending = Boolean(this.ventEditor?.pending);
+    if (this.displayedVentMode === mode && this.displayedVentPending === pending) return;
+    const used = ventFields[mode];
     for (const el of document.querySelectorAll("#c-vent-settings [data-vent]")) {
       const unused = !used.includes(el.dataset.vent);
       el.hidden = unused;
@@ -309,6 +312,7 @@ export class Controls {
         }
       }
     }
+    this.displayedVentPending = pending;
     if (this.displayedVentMode === mode) return;
     this.displayedVentMode = mode;
     $("c-rr-label").textContent = mode === "PSV" ? "Backup RR" : "RR";
@@ -638,6 +642,8 @@ export class Controls {
   bindResuscitation() {
     $("c-compressions").onclick = () => this.send("compressions", { active: !this.state.compressions.active });
     this.synchronized = false;
+    this.lastShockTime = null;
+    this.lastDefibStatus = "idle";
     this.syncButtons = [...$("c-sync").querySelectorAll("button")];
     for (const button of this.syncButtons) {
       setPressed(button, button.dataset.value === "false");
@@ -665,13 +671,21 @@ export class Controls {
 
   syncDefibrillator(defibrillator) {
     const status = defibrillator.status;
+    const lastShock = defibrillator.last_shock;
+    const shockDelivered = Boolean(lastShock && lastShock.time !== this.lastShockTime);
     const defibModule = $("defib-module");
     if (defibModule?.dataset) defibModule.dataset.status = status;
     const syncButtons = (this.syncButtons ??= [...$("c-sync").querySelectorAll("button")]);
     if (defibrillator.synchronized || status === "waiting_for_r") {
       this.synchronized = true;
       for (const button of syncButtons) setPressed(button, button.dataset.value === "true");
+    } else if (shockDelivered || (this.lastDefibStatus === "waiting_for_r" && status === "idle")) {
+      // Auto-reset synchronized cardioversion after shock delivery or disarm so
+      // a subsequent shock in ventricular fibrillation cannot wait for an R wave.
+      this.synchronized = false;
+      for (const button of syncButtons) setPressed(button, button.dataset.value === "false");
     }
+    this.lastDefibStatus = status;
     const syncBadge = $("defib-sync-badge");
     if (syncBadge) syncBadge.hidden = !this.synchronized;
     const chargeTrack = $("defib-charge-track");
@@ -691,8 +705,7 @@ export class Controls {
     for (const button of syncButtons) {
       button.disabled = status === "waiting_for_r";
     }
-    const lastShock = defibrillator.last_shock;
-    if (lastShock && lastShock.time !== this.lastShockTime) {
+    if (shockDelivered) {
       this.lastShockTime = lastShock.time;
       this.showShockReceipt(lastShock);
     }
@@ -836,6 +849,11 @@ export class Controls {
   syncHemorrhageRate(rate) {
     const select = $("c-hem-rate");
     const text = String(rate);
+    if (this.observedHemorrhageRate && this.observedHemorrhageRate.value !== text) {
+      this.observedHemorrhageRate.remove?.();
+      this.observedHemorrhageRate = null;
+    }
+    if (select.value === text) return;
     if (select.options) {
       const observed = select.querySelector?.("option[data-observed]");
       if (observed && observed.value !== text) observed.remove();
@@ -844,6 +862,7 @@ export class Controls {
         option.disabled = true;
         option.dataset.observed = "true";
         select.add(option);
+        this.observedHemorrhageRate = option;
       }
     }
     setValue(select, text);
@@ -940,6 +959,16 @@ export class Controls {
     setValue($("c-vap"), round(c.vaporizer));
     const vapBar = $("vap-bar");
     if (vapBar?.style) vapBar.style.setProperty("--fill", `${Math.min(100, Math.max(0, (c.vaporizer / 8) * 100)).toFixed(0)}%`);
+    const vapLevel = $("c-vap-level");
+    if (vapLevel && c.vaporizer_level !== undefined) {
+      setText(vapLevel, c.vaporizer_level <= 0 ? "Empty" : `${Math.round(c.vaporizer_level)} mL`);
+      vapLevel.className = c.vaporizer_level <= 0 ? "bad" : c.vaporizer_level < 50 ? "warn" : "";
+    }
+    const vapRefill = $("c-vap-refill");
+    if (vapRefill && c.vaporizer_level !== undefined) {
+      vapRefill.hidden = c.vaporizer_level >= 200;
+      vapRefill.disabled = this.ended;
+    }
 
     const compressions = c.compressions;
     setPressed($("c-compressions"), compressions.active, compressions.active ? "Stop compressions" : "Start compressions");

@@ -31,13 +31,13 @@ HILL_EPSILON = 1e-12
 GAMMA_MAX = 20.0
 CONCENTRATION_RATIO_SATURATION = 100.0
 
-# VCO2 falls about 7% per °C below 37 °C (Sessler 2000).
+# Metabolic rate (VO2/VCO2) changes about 7% per °C around 37 °C.
 TEMP_METABOLIC_COEFFICIENT = 0.93
-# TPR rises about 10% per °C below the vasoconstriction threshold (Frank 1997).
+# Calibrated 10% TPR rise per °C below the vasoconstriction threshold (cold vasoconstriction; Frank 1997).
 TEMP_TPR_COEFFICIENT = 0.10
 
 # Shivering starts near 35.8 °C when awake (~0.7-1.0 °C below vasoconstriction;
-# Kurz 1995), is suppressed by anesthetics and opioids, and can raise metabolic
+# Kurz 1995b, 1995c), is suppressed by anesthetics and opioids, and can raise metabolic
 # rate 3-4 times.
 SHIVER_BASE_THRESHOLD = 35.8
 SHIVER_DEPTH_DROP_MAX = 2.0
@@ -77,8 +77,8 @@ class AirwayTuning:
     unsupported_collapse_max: float = 0.4
     # Airway pressure that fully relieves this collapse (calibrated).
     collapse_relief_pressure: float = 5.0  # cmH2O
-    # Bouvet 2014: facemask ventilation distends the gastric antrum from
-    # 20 cmH2O. The share of pressure above this lost at the mask is calibrated.
+    # Bouvet 2014: gastric insufflation rises near 15-20 cmH2O during facemask
+    # ventilation; external leak above 20 cmH2O is a calibration.
     mask_seal_pressure: float = 20.0  # cmH2O at full seal
     mask_overpressure_leak: float = 0.5
 

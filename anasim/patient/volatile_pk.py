@@ -35,7 +35,7 @@ class VolatileState:
     p_brain: float = 0.0  # Autoregulated brain compartment for MAC effect site
     p_mus: float = 0.0
     p_fat: float = 0.0
-    mac: float = 0.0  # Brain MAC: cerebral pressure over the age-adjusted MAC
+    mac: float = 0.0  # Brain MAC: cerebral partial pressure over age-, pregnancy-, and temperature-adjusted MAC
 
 
 class VolatilePK:
@@ -96,7 +96,7 @@ class VolatilePK:
         return 1.0 - f_mus - f_fat, f_mus, f_fat
 
     def mac_at_temp(self, temp_c: float = 37.0) -> float:
-        """Age- and temperature-adjusted MAC (% atm); falls ~5% per °C of hypothermia."""
+        """Age-, pregnancy-, and temperature-adjusted MAC (% atm); changes 5% per °C around 37 °C (0.5x floor)."""
         temp_factor = max(0.5, 1.0 - 0.05 * (37.0 - temp_c))
         return self.mac_age * temp_factor
 
@@ -147,14 +147,13 @@ class VolatilePK:
         p_fat = self.state.p_fat
         # Conserve dissolved body volatile mass when temperature alters solubility.
         # Lipid (fat) solubility varies roughly half as steeply with temperature as blood.
-        if temp_c != self._temp_c:
-            new_lambda = self.lambda_b_g_at_temp(temp_c)
-            if new_lambda > 0.0:
-                sol_scale = self.lambda_b_g_at_temp(self._temp_c) / new_lambda
-                p_vrg = clamp01(p_vrg * sol_scale)
-                p_brain = clamp01(p_brain * sol_scale)
-                p_mus = clamp01(p_mus * sol_scale)
-                p_fat = clamp01(p_fat * (sol_scale ** 0.5))
+        lambda_bg_now = self.lambda_b_g_at_temp(temp_c)
+        if temp_c != self._temp_c and lambda_bg_now > 0.0:
+            sol_scale = self.lambda_b_g_at_temp(self._temp_c) / lambda_bg_now
+            p_vrg = clamp01(p_vrg * sol_scale)
+            p_brain = clamp01(p_brain * sol_scale)
+            p_mus = clamp01(p_mus * sol_scale)
+            p_fat = clamp01(p_fat * math.sqrt(sol_scale))
         v_frc = self.frc
         net_btps_l = 0.0
         blood_uptake_btps_l = 0.0
@@ -172,12 +171,16 @@ class VolatilePK:
                 agent_vol = v_frc * p_alv
             v_frc = lung_volume_l
             p_alv = clamp01(agent_vol / v_frc) if v_frc > 0.0 else 0.0
-        lambda_q = q_co * (1.0 - shunt_fraction) * self.lambda_b_g_at_temp(temp_c)
+        one_minus_shunt = 1.0 - shunt_fraction
+        lambda_q = q_co * one_minus_shunt * lambda_bg_now
         # Tissue rate constant k = (flow / volume) / lambda (1/min). A high
         # partition coefficient slows equilibration: VRG in minutes, fat in hours.
+        # Fat solubility scales with sqrt(lambda_b_g), so fat:blood partition scales
+        # inversely with sqrt(lambda_b_g) to conserve dissolved mass across temperature.
+        fat_tb_scale = math.sqrt(self.lambda_b_g / lambda_bg_now) if lambda_bg_now > 0.0 else 1.0
         k_vrg = (q_vrg / self.v_vrg) / self.lambda_t_b_vrg
         k_mus = (q_mus / self.v_mus) / self.lambda_t_b_mus
-        k_fat = (q_fat / self.v_fat) / self.lambda_t_b_fat
+        k_fat = (q_fat / self.v_fat) / (self.lambda_t_b_fat * fat_tb_scale)
         # Cerebral autoregulation preserves brain equilibration rate during
         # moderate low-CO shock so faster alveolar wash-in accelerates brain MAC.
         if q_co <= 0.0:
@@ -198,37 +201,55 @@ class VolatilePK:
         fastest_rate = max(alveolar_rate, k_vrg, k_brain, k_mus, k_fat)
         substeps = max(1, math.ceil(dt_min * fastest_rate / 0.05))
         interval = dt_min / substeps
+        k_vrg_dt = k_vrg * interval
+        k_brain_dt = k_brain * interval
+        k_mus_dt = k_mus * interval
+        k_fat_dt = k_fat * interval
+        lambda_q_dt = lambda_q * interval
+        inv_frc_dt = interval / v_frc if v_frc > 0.0 else 0.0
+        full_circuit = circuit_share >= 1.0 - 1e-9
+        circuit_share_dt = circuit_share * interval
         for _ in range(substeps):
             p_ven = f_vrg * p_vrg + f_mus * p_mus + f_fat * p_fat
             if v_frc > 0.0:
-                p_art = (1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven
+                p_art = one_minus_shunt * p_alv + shunt_fraction * p_ven
                 airway_flux = (
                     alveolar_vent * (fi_agent - p_alv)
                     + concentrating_inflow * fi_agent
                     - washout_outflow * p_alv
                 )
-                step_blood = lambda_q * (p_alv - p_ven) * interval
+                step_blood = lambda_q_dt * (p_alv - p_ven)
                 blood_uptake_btps_l += step_blood
-                next_p_alv = clamp01(p_alv + (airway_flux + lambda_q * (p_ven - p_alv)) / v_frc * interval)
-                if circuit_share >= 1.0 - 1e-9:
+                next_p_alv = clamp01(p_alv + (airway_flux + lambda_q * (p_ven - p_alv)) * inv_frc_dt)
+                if full_circuit:
                     net_btps_l += (next_p_alv - p_alv) * v_frc + step_blood
                 else:
-                    net_btps_l += circuit_share * (
+                    net_btps_l += circuit_share_dt * (
                         alveolar_vent * (branch_fi - p_alv)
                         + concentrating_inflow * branch_fi
                         - washout_outflow * p_alv
-                    ) * interval
+                    )
                 p_alv = next_p_alv
             else:
                 p_art = p_ven
-            p_vrg += k_vrg * (p_art - p_vrg) * interval
-            p_brain += k_brain * (p_art - p_brain) * interval
-            p_mus += k_mus * (p_art - p_mus) * interval
-            p_fat += k_fat * (p_art - p_fat) * interval
+            p_vrg += k_vrg_dt * (p_art - p_vrg)
+            p_brain += k_brain_dt * (p_art - p_brain)
+            p_mus += k_mus_dt * (p_art - p_mus)
+            p_fat += k_fat_dt * (p_art - p_fat)
         p_ven = f_vrg * p_vrg + f_mus * p_mus + f_fat * p_fat
-        p_art = ((1.0 - shunt_fraction) * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
+        p_art = (one_minus_shunt * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
         return _IntegrationResult(
             p_alv, p_vrg, p_brain, p_mus, p_fat, p_ven, p_art, v_frc, net_btps_l, blood_uptake_btps_l,
+        )
+
+    def _is_empty(self) -> bool:
+        s = self.state
+        return (
+            s.p_alv == 0.0
+            and s.p_vrg == 0.0
+            and s.p_brain == 0.0
+            and s.p_mus == 0.0
+            and s.p_fat == 0.0
         )
 
     def preview_exchange(
@@ -249,16 +270,7 @@ class VolatilePK:
         """Return (circuit uptake BTPS L/min, integration result) without mutating state."""
         if dt <= 0.0 or circuit_share <= 0.0:
             return 0.0, None
-        s = self.state
-        if (
-            fi_agent <= 0.0
-            and (circuit_fi_agent is None or circuit_fi_agent <= 0.0)
-            and s.p_alv == 0.0
-            and s.p_vrg == 0.0
-            and s.p_brain == 0.0
-            and s.p_mus == 0.0
-            and s.p_fat == 0.0
-        ):
+        if fi_agent <= 0.0 and (circuit_fi_agent is None or circuit_fi_agent <= 0.0) and self._is_empty():
             return 0.0, None
         result = self._integrate(
             dt,
@@ -275,32 +287,6 @@ class VolatilePK:
             temp_c=temp_c,
         )
         return result.net_btps_l / (dt / 60.0), result
-
-    def exchange_btps_l_min(
-        self,
-        dt: float,
-        fi_agent: float,
-        alveolar_vent_l: float,
-        cardiac_output_l: float,
-        lung_volume_l: float | None = None,
-        shunt_fraction: float = 0.0,
-        companion_uptake_l_min: float = 0.0,
-        passive_inflow_l_min: float = 0.0,
-        circuit_share: float = 1.0,
-        circuit_fi_agent: float | None = None,
-        exhaled_volume_change_l: float | None = None,
-        temp_c: float = 37.0,
-    ) -> float:
-        """Return net circuit uptake (BTPS L/min) matching step() over dt without mutating state."""
-        return self.preview_exchange(
-            dt, fi_agent, alveolar_vent_l, cardiac_output_l,
-            lung_volume_l=lung_volume_l, shunt_fraction=shunt_fraction,
-            companion_uptake_l_min=companion_uptake_l_min,
-            passive_inflow_l_min=passive_inflow_l_min,
-            circuit_share=circuit_share, circuit_fi_agent=circuit_fi_agent,
-            exhaled_volume_change_l=exhaled_volume_change_l,
-            temp_c=temp_c,
-        )[0]
 
     def commit_integration(self, result: _IntegrationResult, dt: float, temp_c: float = 37.0) -> None:
         """Apply a previously previewed integration result to state."""
@@ -329,14 +315,7 @@ class VolatilePK:
         draw additional inspired gas into FRC.
         """
         state = self.state
-        if (
-            fi_agent <= 0.0
-            and state.p_alv == 0.0
-            and state.p_vrg == 0.0
-            and state.p_brain == 0.0
-            and state.p_mus == 0.0
-            and state.p_fat == 0.0
-        ):
+        if fi_agent <= 0.0 and self._is_empty():
             if lung_volume_l is not None:
                 self.frc = lung_volume_l
             state.p_ven = state.p_art = state.mac = 0.0

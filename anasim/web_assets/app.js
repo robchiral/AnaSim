@@ -470,6 +470,10 @@ function updateBar(snap) {
   setText($("clock"), `${pad(Math.floor(total / 3600))}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`);
 }
 
+function normalizeStepText(text) {
+  return text.replace(/\s+/g, " ").trim().toLowerCase().replace(/\.$/, "");
+}
+
 function updateScenario(step) {
   casePanel.update(step);
   if (step.mode === "independent" || step.complete) return;
@@ -477,11 +481,13 @@ function updateScenario(step) {
   const status = $("step-status");
   const next = $("step-next");
   const target = $("step-target");
+  const instructionEl = $("step-instruction");
   setText($("step-title"), step.title);
   // Instructions are authored in anasim/scenarios with simple <b>, <i>, and <br> markup.
-  if ($("step-instruction").dataset.instruction !== step.instruction) {
-    $("step-instruction").innerHTML = step.instruction;
-    $("step-instruction").dataset.instruction = step.instruction;
+  if (instructionEl.dataset.instruction !== step.instruction) {
+    instructionEl.innerHTML = step.instruction;
+    instructionEl.dataset.instruction = step.instruction;
+    instructionEl.dataset.normalizedInstruction = normalizeStepText(instructionEl.textContent);
   }
   setText($("scenario-count"), `Step ${step.index + 1} of ${total}`);
   target.hidden = !step.target_tab || controls.currentTab === step.target_tab;
@@ -489,9 +495,8 @@ function updateScenario(step) {
     const tab = controls.tabs.find((button) => button.dataset.tab === step.target_tab);
     setText(target, `Open ${tab.textContent.toLowerCase()}`);
   }
-  const normalize = (text) => text.replace(/\s+/g, " ").trim().toLowerCase().replace(/\.$/, "");
-  const instruction = normalize($("step-instruction").textContent);
-  const cue = normalize(step.status);
+  const instruction = instructionEl.dataset.normalizedInstruction ?? normalizeStepText(instructionEl.textContent);
+  const cue = normalizeStepText(step.status);
   const repeated = instruction === cue || instruction.startsWith(`${cue} `) || instruction.startsWith(`${cue}.`);
   setText(status, step.met || repeated ? "" : step.status);
   next.disabled = !step.met;

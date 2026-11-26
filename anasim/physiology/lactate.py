@@ -1,6 +1,7 @@
 """Whole-body lactate kinetics and the associated acid load.
 
-Lactate has a volume of distribution of 0.26 L/kg (Levraut 1998) and a resting
+Lactate has a distribution volume anchored to 0.26 L/kg (stable septic ICU
+patients in Levraut 1998, scaled to lean mass here) and a resting
 clearance of 12 mL/kg/min. With a resting concentration of 0.9 mmol/L, basal
 production is 10.8 umol/kg/min (Revelly 2005; Grip 2015). Elimination follows
 Michaelis-Menten kinetics, so apparent clearance falls as lactate rises.
@@ -15,7 +16,7 @@ isomer; the fluid balance model handles D-lactate and the other ions.
 
 import math
 
-from anasim.core.utils import clamp01
+from anasim.core.utils import clamp, clamp01
 
 from .blood_chemistry import MOLAR_GAS_VOLUME_STPD_L_MMOL
 
@@ -48,13 +49,20 @@ MH_LACTATE_MMOL_KG_MIN = 0.14
 class LactateModel:
     """Endogenous and infused lactate in one volume, with associated buffer base."""
 
-    def __init__(self, weight_kg: float, hepatic_function: float = 1.0):
-        self._weight_kg = weight_kg
-        self.volume_l = DISTRIBUTION_L_PER_KG * weight_kg
+    def __init__(
+        self,
+        weight_kg: float,
+        hepatic_function: float = 1.0,
+        *,
+        lean_mass_kg: float | None = None,
+        volume_l: float | None = None,
+    ):
+        self._lean_mass_kg = weight_kg if lean_mass_kg is None else lean_mass_kg
+        self.volume_l = DISTRIBUTION_L_PER_KG * self._lean_mass_kg if volume_l is None else volume_l
         self.hepatic_function = hepatic_function
         self.km_mmol = CLEARANCE_KM_MMOL_L * self.volume_l
-        self.vmax_mmol_min = CLEARANCE_L_KG_MIN * weight_kg * (CLEARANCE_KM_MMOL_L + RESTING_MMOL_L)
-        self.basal_mmol_min = CLEARANCE_L_KG_MIN * weight_kg * RESTING_MMOL_L
+        self.vmax_mmol_min = CLEARANCE_L_KG_MIN * self._lean_mass_kg * (CLEARANCE_KM_MMOL_L + RESTING_MMOL_L)
+        self.basal_mmol_min = CLEARANCE_L_KG_MIN * self._lean_mass_kg * RESTING_MMOL_L
         capacity = self.vmax_mmol_min * (1.0 - HEPATIC_SHARE + HEPATIC_SHARE * hepatic_function)
         self._normoxic_capacity = capacity
         self.resting_mmol = self.basal_mmol_min * self.km_mmol / (capacity - self.basal_mmol_min)
@@ -76,7 +84,7 @@ class LactateModel:
 
     @property
     def arterial_concentration(self) -> float:
-        """Arterial-sample lactate, mmol/L; lags tissue/venous accumulation during zero-flow arrest."""
+        """Arterial-sample lactate, mmol/L; frozen during zero-flow arrest and lags tissue/venous accumulation during low flow."""
         if self._circulation >= 0.99:
             return self.concentration
         return self._arterial_conc
@@ -121,7 +129,8 @@ class LactateModel:
              infused_lactate_mmol: float = 0.0, *,
              convulsion_intensity: float = 0.0,
              mh_severity: float = 0.0,
-             circulation: float = 1.0) -> float:
+             circulation: float = 1.0,
+             temp_c: float = 37.0) -> float:
         """Advance dt seconds and return net buffer base removed, mmol.
 
         Args:
@@ -133,36 +142,49 @@ class LactateModel:
             convulsion_intensity: Active skeletal-muscle convulsion intensity, 0-1.
             mh_severity: Active malignant hyperthermia severity, 0-1.
             circulation: Systemic perfusion fraction (0-1) governing arterial wash-in.
+            temp_c: Core temperature (°C) scaling enzymatic hepatic/extrahepatic clearance.
         """
         if dt <= 0.0:
             self.last_cleared_infused_mmol = 0.0
             return 0.0
         circ = clamp01(circulation)
+        if self._circulation >= 0.99 and circ < 0.99:
+            self._arterial_conc = self.concentration
         self._circulation = circ
         infused = max(0.0, infused_lactate_mmol - self._delivered_mmol)
         self._delivered_mmol = infused_lactate_mmol
         minutes = dt / 60.0
-        epinephrine = max(0.0, epinephrine_ng_ml) ** 2
-        aerobic = self.basal_mmol_min * (
-            1.0 + EPINEPHRINE_EMAX * epinephrine / (EPINEPHRINE_EC50_NG_ML ** 2 + epinephrine)
-            + SEPSIS_PRODUCTION * sepsis_severity
-        )
+        temp_q10 = 2.0 ** ((clamp(temp_c, 22.0, 42.0) - 37.0) / 10.0) if temp_c != 37.0 else 1.0
+        basal_now = self.basal_mmol_min * temp_q10
+        if epinephrine_ng_ml > 0.0:
+            epi_sq = epinephrine_ng_ml * epinephrine_ng_ml
+            epi_term = EPINEPHRINE_EMAX * epi_sq / (EPINEPHRINE_EC50_NG_ML ** 2 + epi_sq)
+        else:
+            epi_term = 0.0
+        aerobic = basal_now * (1.0 + epi_term + SEPSIS_PRODUCTION * sepsis_severity)
         anaerobic = ANAEROBIC_PER_O2 * max(0.0, oxygen_deficit_l) / O2_L_PER_MMOL
         convulsion = clamp01(convulsion_intensity)
+        excess_conc = max(0.0, self.concentration - self._resting_conc)
         seizure_rate = 0.0
         if convulsion > 0.0:
-            excess_conc = max(0.0, self.concentration - self._resting_conc)
             seizure_rate = (
                 SEIZURE_LACTATE_MMOL_KG_MIN
-                * self._weight_kg
+                * self._lean_mass_kg
                 * (convulsion * convulsion)
                 / (1.0 + excess_conc / 6.0)
             )
         mh = clamp01(mh_severity)
-        mh_rate = MH_LACTATE_MMOL_KG_MIN * self._weight_kg * mh * mh if mh > 0.0 else 0.0
+        mh_rate = (
+            MH_LACTATE_MMOL_KG_MIN
+            * self._lean_mass_kg
+            * (mh * mh)
+            / (1.0 + excess_conc / 10.0)
+            if mh > 0.0
+            else 0.0
+        )
         supply = clamp01(supply_fraction)
         extrahepatic = (1.0 - HEPATIC_SHARE) * clamp01(supply / 0.15)
-        capacity = self.vmax_mmol_min * (extrahepatic + HEPATIC_SHARE * self.hepatic_function * supply)
+        capacity = self.vmax_mmol_min * temp_q10 * (extrahepatic + HEPATIC_SHARE * self.hepatic_function * supply)
         endogenous_source = aerobic + anaerobic / minutes + seizure_rate + mh_rate
         infused_source = infused / minutes
         total = self.endogenous_mmol + self.infused_mmol
@@ -179,17 +201,14 @@ class LactateModel:
         self.cleared_infused_mmol += cleared_infused
         self.last_cleared_infused_mmol = cleared_infused
         rest_decay, rest_retained = self._midpoint_factors(
-            self._resting_pool_mmol, self.basal_mmol_min, self._normoxic_capacity, self.km_mmol, minutes
+            self._resting_pool_mmol, basal_now, self._normoxic_capacity * temp_q10, self.km_mmol, minutes
         )
         resting_before = self._resting_pool_mmol
-        self._resting_pool_mmol = resting_before * rest_decay + self.basal_mmol_min * rest_retained
+        self._resting_pool_mmol = resting_before * rest_decay + basal_now * rest_retained
         excess_before = max(0.0, before - resting_before)
         excess_after = max(0.0, self.endogenous_mmol - self._resting_pool_mmol)
         removed = (excess_after - excess_before) - cleared_infused
         self._base_removed_mmol += removed
-        whole_body_conc = self.concentration
-        if circ >= 0.99:
-            self._arterial_conc = whole_body_conc
-        elif circ > 0.0:
-            self._arterial_conc += (whole_body_conc - self._arterial_conc) * -math.expm1(-dt * circ / 20.0)
+        if 0.0 < circ < 0.99:
+            self._arterial_conc += (self.concentration - self._arterial_conc) * -math.expm1(-dt * circ / 20.0)
         return removed

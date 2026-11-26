@@ -220,6 +220,8 @@ class ECGMonitor:
         if self._st_window is None:
             return 0.0
         j_point, t_onset, t_end = self._st_window
+        if t <= j_point - 0.01 or t >= t_end:
+            return 0.0
         return _ramp(t, (j_point - 0.01, j_point + 0.01)) * (1.0 - _ramp(t, (t_onset, t_end)))
 
     def step(self, dt: float, cycle: CardiacCycleSample, st_depression_mv: float = 0.0,

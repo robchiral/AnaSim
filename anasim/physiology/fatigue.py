@@ -2,10 +2,12 @@
 
 Mean muscle pressure as a fraction of maximum approximates the diaphragm
 tension-time index. Loads up to about 0.15 are sustainable, and endurance falls
-steeply above that (Bellemare and Grassino 1982). The fast component recovers
-within minutes (Aubier 1981; Rohrbach 2003), and the persistent component lasts
-up to 24 hours (Laghi 1995; Travaline 1997). The maximum pressure, the course of
-fatigue during loading, and the oxygen scaling are calibrations.
+steeply above that (Bellemare and Grassino 1982). High-frequency fatigue
+(Aubier 1981) and repeat endurance time (Rohrbach 2003) recover within minutes,
+whereas low-frequency contractile depression recovers more slowly and persists
+up to 24 hours after heavy loading (Laghi 1995; Travaline 1997). The maximum
+pressure, the course of fatigue during loading, and the oxygen scaling are
+calibrations.
 """
 
 import math
@@ -43,6 +45,13 @@ class RespiratoryFatigue:
         """Integrate actual positive muscle pressure, including isometric effort."""
         if dt <= 0.0:  # Mechanics also advances zero-duration boundary events.
             return
+        if (
+            pressure_area <= 0.0
+            and self.load == 0.0
+            and self.fast_fatigue == 0.0
+            and self.slow_fatigue == 0.0
+        ):
+            return
         reference = self.MAX_PRESSURE * self.muscle_strength
         load = (
             max(0.0, pressure_area) * max(1.0, load_scale) / (dt * reference)
@@ -53,7 +62,7 @@ class RespiratoryFatigue:
         oxygen = clamp01(self.oxygen_fraction)
         sustainable = self.SUSTAINABLE_LOAD * oxygen
         excess = max(0.0, self.load - sustainable) / self.SUSTAINABLE_LOAD
-        loss = excess ** self.EXCESS_EXPONENT / self.LOSS_TIME_S
+        loss = excess ** self.EXCESS_EXPONENT / self.LOSS_TIME_S if excess > 0.0 else 0.0
         rest = clamp01(1.0 - self.load / self.SUSTAINABLE_LOAD)
         self.fast_fatigue = self._advance(self.fast_fatigue, dt, loss, oxygen * rest / self.FAST_RECOVERY_S)
         self.slow_fatigue = self._advance(self.slow_fatigue, dt, loss, oxygen * rest / self.SLOW_RECOVERY_S)
@@ -63,5 +72,6 @@ class RespiratoryFatigue:
         rate = loss + recovery
         if rate > 0.0:
             target = loss / rate
-            return fatigue + (target - fatigue) * -math.expm1(-dt * rate)
+            if target != fatigue:
+                return fatigue + (target - fatigue) * -math.expm1(-dt * rate)
         return fatigue

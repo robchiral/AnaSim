@@ -10,11 +10,9 @@ Only deidentified case summaries are saved in Git.
 
 from __future__ import annotations
 
-import argparse
+import functools
 import json
 import sys
-from concurrent.futures import ProcessPoolExecutor
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,47 +23,38 @@ REPO_ROOT = ROOT.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from validation.vitaldb import vitaldb_data  # noqa: E402
 from validation.vitaldb.vitaldb_data import (  # noqa: E402
-    CACHE,
     REMI_RATES,
     REMI_UG_PER_ML,
     VASOACTIVE,
     Excluded,
     amount,
     delivered_volume,
-    domain_cases,
     is_legacy_hemo_core,
     numeric_track,
-    optional_float,
     patient_from_case,
     time_grid,
 )
 from validation.vitaldb.vitaldb_replay import (  # noqa: E402
     BOOTSTRAP,
     CUFF_WINDOW_S,
-    SENSITIVITY,
-    STOP,
-    apply_hemo_override,
-    course,
     course_table,
-    cuff_model,
     cv_grid_lines,
-    cv_hemodynamic_grid,
-    cv_hemodynamic_stability,
     cv_stability_lines,
     delivery,
     estimate,
-    expand_override_grid,
+    hemo_period_line,
     hemo_subgroup_rows,
+    hemo_summary_table_lines,
     mean_ci,
     pre_induction,
     procedure,
     readings,
     report_footer,
     report_header,
-    rule_stats,
+    run_hemo_cli,
     run_hemodynamic_replay,
+    score_cuff_summary,
     treated,
     window_medians,
 )
@@ -97,11 +86,6 @@ def peak(series: np.ndarray, samples: int = 15) -> float:
     return float(np.median(np.lib.stride_tricks.sliding_window_view(series, samples), axis=1).max())
 
 
-def _worker_init(override: dict[str, Any], cache: Path) -> None:
-    vitaldb_data.CACHE = cache
-    apply_hemo_override(override)
-
-
 def evaluate(candidate, dt: float) -> dict[str, Any]:
     case, tracks = candidate
     row: dict[str, Any] = dict(
@@ -114,16 +98,17 @@ def evaluate(candidate, dt: float) -> dict[str, Any]:
         hypertensive=case["preop_htn"] == "1",
         legacy_core=is_legacy_hemo_core(case),
     )
+    load = functools.cache(numeric_track)
     try:
-        rate, volume, remi, remi_name, start, end, onset, stop = delivery(tracks)
+        rate, volume, remi, remi_name, start, end, onset, stop = delivery(tracks, track_loader=load)
         opstart, opend = float(case["opstart"]), float(case["opend"])
         incision = min(opstart, stop, end)
         if incision - onset < 300:
             raise Excluded("less than five minutes from induction to incision")
-        times, cuff_map, cuff_sbp, cuff_hr = readings(tracks, onset, incision)
+        times, cuff_map, cuff_sbp, cuff_hr = readings(tracks, onset, incision, track_loader=load)
         if not len(times):
             raise Excluded("no cuff reading between induction and incision")
-        baseline_map, baseline_hr = pre_induction(tracks, onset)
+        baseline_map, baseline_hr = pre_induction(tracks, onset, track_loader=load)
         patient = patient_from_case(case, baseline_map=baseline_map, baseline_hr=baseline_hr)
         maintenance = (opstart + 900.0, min(opend, stop, end))
         has_maintenance = incision == opstart and maintenance[1] - maintenance[0] >= 600
@@ -151,25 +136,11 @@ def evaluate(candidate, dt: float) -> dict[str, Any]:
     except Excluded as error:
         return {**row, "exclusion": str(error)}
 
-    model_map = cuff_model(times, grid, predicted[:, 0])
-    errors, seconds = model_map - cuff_map, times - onset
-    summary: dict[str, Any] = {
-        **row,
-        "age": float(patient.age),
-        "bmi": round(float(patient.bmi), 2),
-        "baseline_map": baseline_map,
-        "has_preop_hb": optional_float(case, "preop_hb") is not None,
-        "has_preop_cr": patient.creatinine_clearance_ml_min is not None,
-        "readings": len(times),
-        "median_error": float(np.median(errors)),
-    }
-    for rule, limits in (("primary", STOP), ("sensitivity", SENSITIVITY)):
-        summary[rule] = rule_stats(errors, seconds, cuff_map, cuff_sbp, cuff_hr, limits)
-    summary["posting"] = rule_stats(
-        np.interp(times, grid, predicted[:, 0]) - cuff_map, seconds, cuff_map, cuff_sbp, cuff_hr, STOP,
+    summary = score_cuff_summary(
+        row, patient, case, times=times, cuff_map=cuff_map, cuff_sbp=cuff_sbp, cuff_hr=cuff_hr,
+        grid=grid, predicted_map=predicted[:, 0], onset=onset, incision=incision, baseline_map=baseline_map,
     )
-    summary["course"] = course(seconds, cuff_map, model_map, baseline_map, incision - onset)
-    hr_time, hr_value = numeric_track(tracks["Solar8000/HR"])
+    hr_time, hr_value = load(tracks["Solar8000/HR"])
     window = (hr_time >= onset + 180.0) & (hr_time < min(onset + 600.0, incision)) & (hr_value >= 40) & (hr_value <= 160)
     if window.sum() >= 30:
         model_hr = np.interp(hr_time[window], grid, predicted[:, 1])
@@ -178,8 +149,8 @@ def evaluate(candidate, dt: float) -> dict[str, Any]:
             peak_error=peak(model_hr) - peak(hr_value[window]),
         )
     if has_maintenance:
-        summary["before_incision"] = window_medians(tracks, grid, predicted, onset + 600.0, incision)
-        summary["maintenance"] = window_medians(tracks, grid, predicted, *maintenance)
+        summary["before_incision"] = window_medians(tracks, grid, predicted, onset + 600.0, incision, track_loader=load)
+        summary["maintenance"] = window_medians(tracks, grid, predicted, *maintenance, track_loader=load)
     return summary
 
 
@@ -207,29 +178,12 @@ def report(data: dict[str, Any], settings: dict[str, Any]) -> str:
         f"{BOOTSTRAP} patient bootstrap resamples.", "",
         f"Eligible candidates: {data['eligible']}. Retained: {len(rows)}.", "",
         "## From propofol to incision", "",
-        "| Patients | n | Readings | Mean error, mmHg (95% CI) | Patient SD | Reading SD |",
-        "|---|---:|---:|---|---:|---:|",
+        *hemo_summary_table_lines(groups, rng),
     ]
-    for label, group in groups:
-        if len(group) < 5:
-            continue
-        [(mean, low, high)], between, within, used = estimate(group, "primary", False, rng)
-        lines.append(
-            f"| {label} | {len(group)} | {used} | {mean:.1f} ({low:.1f} to {high:.1f}) | {between:.1f} | {within:.1f} |"
-        )
     if rows:
         [(mean, low, high)], _, _, _ = estimate(rows, "sensitivity", False, rng)
         lines += ["", f"Sensitivity stopping rule, all patients: {mean:.1f} ({low:.1f} to {high:.1f}) mmHg."]
-        by_period, _, _, _ = estimate(rows, "primary", True, rng)
-        lines += [
-            "",
-            "By time after propofol, all patients: "
-            + "; ".join(
-                f"{name} {m:.1f} ({lo:.1f} to {hi:.1f})"
-                for name, (m, lo, hi) in zip(("before 10 min", "from 10 min"), by_period, strict=True)
-            )
-            + " mmHg.",
-        ]
+        lines += hemo_period_line(rows, rng)
         [(mean, low, high)], _, _, _ = estimate(rows, "posting", False, rng)
         lines += ["", f"Compared with model MAP when each reading appears, all patients: {mean:.1f} ({low:.1f} to {high:.1f}) mmHg."]
         lines += cv_stability_lines(data.get("cv_stability"))
@@ -266,66 +220,16 @@ def report(data: dict[str, Any], settings: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _run_pool(pool, dt: float, workers: int, override: dict[str, Any], cache: Path) -> list[dict[str, Any]]:
-    with ProcessPoolExecutor(workers, initializer=_worker_init, initargs=(override, cache)) as executor:
-        return list(executor.map(evaluate, pool, [dt] * len(pool), chunksize=4))
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--override", default="{}", help="JSON HemodynamicConfig fields for single-config comparison")
-    parser.add_argument("--cv-grid", default="{}", help="JSON dict of {field: [values]} for k-fold CV parameter sweep")
-    parser.add_argument("--folds", type=int, default=5, help="Patient-grouped stratified CV folds")
-    parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--seed", type=int, default=20261024)
-    parser.add_argument("--dt", type=float, default=1.0)
-    parser.add_argument("--cache", type=Path, default=CACHE)
-    parser.add_argument("--output", type=Path, default=ROOT / "results")
-    args = parser.parse_args()
-    vitaldb_data.CACHE = args.cache
-    override = json.loads(args.override)
-    grid_spec = json.loads(args.cv_grid)
-
-    pool = [
-        (case, trk)
-        for case, trk in domain_cases(REQUIRED, open_supine_only=False, cache=args.cache)
-        if eligible(case, trk)
-    ]
-    results = _run_pool(pool, args.dt, args.workers, override, args.cache)
-    rows = [r for r in results if "exclusion" not in r]
-    exclusions = [r for r in results if "exclusion" in r]
-    data: dict[str, Any] = dict(
-        eligible=len(pool),
-        rows=rows,
-        exclusions=exclusions,
-        cv_stability=cv_hemodynamic_stability(rows, n_folds=args.folds, seed=args.seed),
+    run_hemo_cli(
+        description=__doc__.splitlines()[0],
+        stem_name="vitaldb_tiva",
+        required_tracks=REQUIRED,
+        eligible_fn=eligible,
+        evaluate_fn=evaluate,
+        report_fn=report,
+        default_output=ROOT / "results",
     )
-    if grid_spec:
-        retained_ids = {r["caseid"] for r in rows}
-        retained_pool = [item for item in pool if int(item[0]["caseid"]) in retained_ids]
-        candidates = expand_override_grid(grid_spec)
-        candidate_results = []
-        for cand in candidates:
-            merged = {**override, **cand}
-            if merged == override:
-                candidate_results.append((merged, rows))
-            else:
-                cand_res = _run_pool(retained_pool, args.dt, args.workers, merged, args.cache)
-                candidate_results.append((merged, [r for r in cand_res if "exclusion" not in r]))
-        data["cv_grid"] = cv_hemodynamic_grid(candidate_results, n_folds=args.folds, seed=args.seed)
-
-    settings = dict(
-        generated=datetime.now(timezone.utc).date().isoformat(),
-        dt=args.dt,
-        seed=args.seed,
-        folds=args.folds,
-        override=override,
-    )
-    args.output.mkdir(parents=True, exist_ok=True)
-    stem = args.output / "vitaldb_tiva"
-    stem.with_suffix(".json").write_text(json.dumps(dict(settings=settings, **data), indent=2, allow_nan=False) + "\n")
-    stem.with_suffix(".md").write_text(report(data, settings))
-    print(f"Report: {stem.with_suffix('.md')}", flush=True)
 
 
 if __name__ == "__main__":

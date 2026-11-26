@@ -4,36 +4,22 @@ These studies are the sources for the model parameters, calibrations, and
 scenario guidance. The sections follow the [model guide](MODELS.md), which
 explains how the studies are used.
 
-Abbreviations: PK, pharmacokinetics; PD, pharmacodynamics; BIS, bispectral
-index; MAC, minimum alveolar concentration; TCI, target-controlled infusion;
-SIMV, synchronized intermittent mandatory ventilation.
+Abbreviations: PK, pharmacokinetics; PD, pharmacodynamics; IV, intravenous; HR,
+heart rate; BIS, bispectral index; MAC, minimum alveolar concentration; TCI,
+target-controlled infusion; CPR, cardiopulmonary resuscitation; VF, ventricular
+fibrillation; VT, ventricular tachycardia; EEG, electroencephalogram; FRC,
+functional residual capacity; PEEP, positive end-expiratory pressure; V/Q,
+ventilation-perfusion; SIMV, synchronized intermittent mandatory ventilation.
 
 ## Patient conditions
 
-- Gobel et al. (1978). *Circulation*. [Rate-pressure product and myocardial oxygen consumption in angina](https://pubmed.ncbi.nlm.nih.gov/624164/).
-- Wilson et al. (1987). *Circulation*. [Coronary lesion geometry and flow reserve](https://pubmed.ncbi.nlm.nih.gov/3829334/).
-- Arthurs et al. (2016). *Am J Physiol Heart Circ Physiol*. [Coronary blood-flow control and myocardial oxygen balance](https://pubmed.ncbi.nlm.nih.gov/26945076/).
-- Harasawa et al. (1992). *Circ Res*. [Basal metabolism and unloaded myocardial oxygen consumption](https://doi.org/10.1161/01.res.71.2.414).
-- Jeremy et al. (1986). *Cardiovasc Res*. [Diastolic ventricular pressure and the coronary pressure-flow relation](https://pubmed.ncbi.nlm.nih.gov/3802128/).
-- Nanto et al. (2001). *Jpn Circ J*. [Coronary zero-flow pressure in humans](https://pubmed.ncbi.nlm.nih.gov/11548878/).
-- Nebout et al. (2013). *Ann Fr Anesth Reanim*. [BIS for early detection of cerebral hypoperfusion](https://pubmed.ncbi.nlm.nih.gov/23953319/).
-- Astrup et al. (1981). *Stroke*. [Cerebral ischemia thresholds and the ischemic penumbra](https://pubmed.ncbi.nlm.nih.gov/6272455/).
-- Jones et al. (1981). *J Neurosurg*. [Thresholds of focal cerebral ischemia in awake monkeys](https://pubmed.ncbi.nlm.nih.gov/7241187/).
-- Jørgensen and Malchow-Møller (1981). *Resuscitation*. [EEG and neurological signs in persistent postanoxic coma](https://pubmed.ncbi.nlm.nih.gov/7255953/).
-- Hofmeijer et al. (2015). *Neurology*. [Early EEG and outcome prediction in postanoxic coma](https://pubmed.ncbi.nlm.nih.gov/26070341/).
-- de Vries et al. (1998). *Anesth Analg*. [Cerebral oxygen uptake and EEG during defibrillation threshold testing](https://pubmed.ncbi.nlm.nih.gov/9661538/).
-- Brian (1998). *Anesthesiology*. [Carbon dioxide and the cerebral circulation](https://pubmed.ncbi.nlm.nih.gov/9605698/).
-- Battisti-Charbonney et al. (2011). *J Physiol*. [Cerebrovascular response to CO₂ in humans](https://pubmed.ncbi.nlm.nih.gov/21521758/).
-- Willie et al. (2015). *J Cereb Blood Flow Metab*. [Brain blood flow and oxygen delivery in breath-hold divers](https://pubmed.ncbi.nlm.nih.gov/25370857/).
-- Kaisti et al. (2003). *Anesthesiology*. [Regional cerebral blood flow and oxygen consumption under sevoflurane and propofol](https://pubmed.ncbi.nlm.nih.gov/12960544/).
-- Westlake et al. (1955). *Q J Med*. [Carbon dioxide narcosis in emphysema](https://pubmed.ncbi.nlm.nih.gov/14395425/).
-- Sieker and Hickam (1956). *Medicine (Baltimore)*. [Clinical syndrome of carbon dioxide intoxication](https://pubmed.ncbi.nlm.nih.gov/13407339/).
-- Turnbull et al. (2008). *Anaesthesia*. [End-tidal CO₂ and BIS](https://pubmed.ncbi.nlm.nih.gov/18412642/).
 - Asanoi et al. (1989). *Circ Res*. [Ventriculoarterial coupling in normal and failing heart in humans](https://pubmed.ncbi.nlm.nih.gov/2752553/).
 - Chen et al. (1998). *J Am Coll Cardiol*. [Coupled systolic-ventricular and vascular stiffening with age](https://pubmed.ncbi.nlm.nih.gov/9809929/).
 - Schwartzenberg et al. (2012). *J Am Coll Cardiol*. [Hemodynamic responses to vasodilation in reduced- and preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/22281246/).
 - Westermann et al. (2008). *Circulation*. [Ventricular stiffness and filling during tachycardia in preserved-EF heart failure](https://pubmed.ncbi.nlm.nih.gov/18413502/).
 - Sherry et al. (1995). *J Cardiothorac Vasc Anesth*. [Propofol infusion in normal and low cardiac output states](https://pubmed.ncbi.nlm.nih.gov/7579104/).
+- Fowler et al. (1986). *Circulation*. [Beta-adrenergic receptor down-regulation and subsensitivity in heart failure](https://pubmed.ncbi.nlm.nih.gov/3022962/).
+- Steen et al. (1978). *Circulation*. [Dopamine, dobutamine, and epinephrine after cardiopulmonary bypass](https://pubmed.ncbi.nlm.nih.gov/618630/).
 - Wagner et al. (1977). *J Clin Invest*. [Ventilation-perfusion inequality in COPD](https://pubmed.ncbi.nlm.nih.gov/833271/).
 - DeGaute et al. (1981). *Am Rev Respir Dis*. [Controlled oxygen therapy in acute exacerbation of COPD](https://pubmed.ncbi.nlm.nih.gov/6789729/).
 - Robinson et al. (2000). *Am J Respir Crit Care Med*. [Hypoventilation and V/Q redistribution in oxygen-induced hypercapnia in COPD](https://pubmed.ncbi.nlm.nih.gov/10806149/).
@@ -48,6 +34,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 ### Propofol and remifentanil
 
 - Eleveld et al. (2017). *Anesthesiology*. [Remifentanil PK/PD](https://pubmed.ncbi.nlm.nih.gov/28509794/).
+- Egan et al. (1998). *Anesthesiology*. [Remifentanil PK in obese versus lean patients](https://pubmed.ncbi.nlm.nih.gov/9743391/).
 - Eleveld et al. (2018). *Br J Anaesth*. [Propofol PK/PD](https://pubmed.ncbi.nlm.nih.gov/29661412/) and [correction](https://pubmed.ncbi.nlm.nih.gov/30032904/).
 - Servin et al. (1990). *Br J Anaesth*. [Propofol PK in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/2223333/).
 - Ickx et al. (1998). *Br J Anaesth*. [Propofol PK/PD in end-stage renal disease](https://pubmed.ncbi.nlm.nih.gov/10211008/).
@@ -76,7 +63,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Meissner et al. (2023). *Anesthesiology*. [Morphine and hydromorphone effects and respiratory time courses](https://pubmed.ncbi.nlm.nih.gov/37014986/).
 - Meissner et al. (2025). *Br J Anaesth*. [Morphine and hydromorphone population PK](https://pubmed.ncbi.nlm.nih.gov/39592363/).
 - Olofsen et al. (2026). *Br J Anaesth*. [Morphine and hydromorphone PD for each endpoint](https://pubmed.ncbi.nlm.nih.gov/41656122/), [supplement](https://ars.els-cdn.com/content/image/1-s2.0-S0007091225009134-mmc1.docx), and [correction](https://pubmed.ncbi.nlm.nih.gov/42150960/).
-- Osborne et al. (1993). *Clin Pharmacol Ther*. [Morphine and morphine-6-glucuronide pharmacokinetics in kidney failure](https://pubmed.ncbi.nlm.nih.gov/8354025/).
+- Osborne et al. (1993). *Clin Pharmacol Ther*. [Morphine and morphine-6-glucuronide PK in kidney failure](https://pubmed.ncbi.nlm.nih.gov/8354025/).
 
 ### Midazolam and etomidate
 
@@ -90,6 +77,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Van Hamme et al. (1978). *Anesthesiology*. [Etomidate PK](https://pubmed.ncbi.nlm.nih.gov/697083/).
 - Kaneda et al. (2011). *J Clin Pharmacol*. [Etomidate PK/PD](https://pubmed.ncbi.nlm.nih.gov/20498288/).
 - Valk and Struys (2021). *Clin Pharmacokinet*. [Etomidate pharmacology review](https://pubmed.ncbi.nlm.nih.gov/34060021/).
+- Choi et al. (1985). *Anesthesiology*. [Ventilatory effects of etomidate and methohexital](https://pubmed.ncbi.nlm.nih.gov/3920932/).
 
 ### Ketamine
 
@@ -106,7 +94,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 
 ### Lidocaine
 
-- DailyMed (2026). [Lidocaine injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ad1ef0a8-88db-4648-c098-d009eaeb4e5b).
+- DailyMed (2026a). [Lidocaine injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ad1ef0a8-88db-4648-c098-d009eaeb4e5b).
 - Foong et al. (2025). *Pharm Res*. [Lidocaine population PK in surgical patients](https://pubmed.ncbi.nlm.nih.gov/40021547/).
 - Tucker and Boas (1971). *Anesthesiology*. [Lidocaine kinetics and intravenous regional anesthesia](https://pubmed.ncbi.nlm.nih.gov/5556244/).
 - Rowland et al. (1971). *Ann N Y Acad Sci*. [Lidocaine kinetics in healthy subjects](https://pubmed.ncbi.nlm.nih.gov/5285383/).
@@ -132,7 +120,6 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Korth-Bradley et al. (1996). *J Clin Pharmacol*. [Population PK of IV amiodarone in refractory VT/VF](https://pubmed.ncbi.nlm.nih.gov/8877675/).
 - Kosinski et al. (1984). *J Am Coll Cardiol*. [Hemodynamic effects of IV amiodarone](https://pubmed.ncbi.nlm.nih.gov/6470338/).
 - Munoz et al. (1988). *Eur Heart J*. [IV amiodarone with and without Tween 80](https://pubmed.ncbi.nlm.nih.gov/3280316/).
-- DailyMed (2024). [Amiodarone injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=51772745-9ea9-42cd-97e6-7266f41ae3ca).
 
 ## Drug timing and TCI performance
 
@@ -155,7 +142,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 
 ## Anesthetic depth and responsiveness
 
-- Bouillon et al. (2004). *Anesthesiology*. [Propofol-remifentanil interaction for hypnosis, BIS, and tolerance of laryngoscopy](https://pubmed.ncbi.nlm.nih.gov/15166553/).
+- Bouillon et al. (2004a). *Anesthesiology*. [Propofol-remifentanil interaction for hypnosis, BIS, and tolerance of laryngoscopy](https://pubmed.ncbi.nlm.nih.gov/15166553/).
 - Hannivoort et al. (2016). *Br J Anaesth*. [Propofol-sevoflurane-remifentanil interaction for laryngoscopy](https://pubmed.ncbi.nlm.nih.gov/27106965/).
 - Heyse et al. (2012). *Anesthesiology*. [Sevoflurane-remifentanil interaction for clinical responses](https://pubmed.ncbi.nlm.nih.gov/22222473/).
 - Kuizenga et al. (2019). *Anesthesiology*. [Propofol and sevoflurane with remifentanil for clinical responses](https://pubmed.ncbi.nlm.nih.gov/31567365/).
@@ -163,7 +150,6 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Lysakowski et al. (2009). *Br J Anaesth*. [BIS at propofol loss of consciousness in young and elderly patients](https://pubmed.ncbi.nlm.nih.gov/19542103/).
 - Kanazawa et al. (2017). *J Anesth*. [Volatile anesthetics and BIS](https://pubmed.ncbi.nlm.nih.gov/28791477/).
 - Ryu et al. (2018). *Anesthesiology*. [BIS and surgical pleth index during stimulation](https://pubmed.ncbi.nlm.nih.gov/29509579/).
-- Ryu et al. (2018). *Br J Anaesth*. [Remifentanil requirements with volatile anesthetics](https://pubmed.ncbi.nlm.nih.gov/30336856/).
 - Paraskeva et al. (2005). *J Clin Anesth*. [Sevoflurane and BIS](https://pubmed.ncbi.nlm.nih.gov/16427526/).
 - Olofsen et al. (2002). *Anesthesiology*. [Remifentanil-sevoflurane BIS interaction](https://pubmed.ncbi.nlm.nih.gov/11873028/).
 - Schumacher et al. (2009). *Anesthesiology*. [Additive propofol-sevoflurane interaction on BIS](https://pubmed.ncbi.nlm.nih.gov/19741484/).
@@ -180,6 +166,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Katoh et al. (1999). *Anesthesiology*. [Fentanyl reduction of sevoflurane MAC and MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/9952144/).
 - Daniel et al. (1998). *Anesthesiology*. [Fentanyl and nitrous oxide effects on volatile MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/9447854/).
 - Inomata et al. (1999). *Br J Anaesth*. [End-tidal sevoflurane concentration for smooth tracheal extubation](https://pubmed.ncbi.nlm.nih.gov/10562778/).
+- Kimura et al. (1994). *Anesth Analg*. [End-tidal sevoflurane concentration for tracheal intubation](https://pubmed.ncbi.nlm.nih.gov/7639383/).
 - Lee et al. (2009). *Br J Anaesth*. [Remifentanil effect-site concentration for smooth emergence with propofol](https://pubmed.ncbi.nlm.nih.gov/19411668/).
 - Ebert et al. (1995). *Anesthesiology*. [Sympathetic and hemodynamic responses to sevoflurane and intubation](https://pubmed.ncbi.nlm.nih.gov/7605024/).
 - Bullington et al. (1989). *Anesth Analg*. [Age and the sympathetic response to intubation](https://pubmed.ncbi.nlm.nih.gov/2541638/).
@@ -196,6 +183,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Sasakawa et al. (2016). *J Anesth*. [Predictive ability of six rocuronium PK models](https://pubmed.ncbi.nlm.nih.gov/27098255/).
 - Varrique et al. (2016). *J Pharm Pharmacol*. [Rocuronium PK/PD in young and elderly patients](https://pubmed.ncbi.nlm.nih.gov/27545305/).
 - Magorian et al. (1995). *Anesth Analg*. [Rocuronium PK in liver disease](https://pubmed.ncbi.nlm.nih.gov/7893030/).
+- van Miert et al. (1997). *Br J Clin Pharmacol*. [Rocuronium PK/PD in hepatic cirrhosis](https://pubmed.ncbi.nlm.nih.gov/9278198/).
 - Meyhoff et al. (2009). *Anesth Analg*. [Ideal versus corrected body weight for rocuronium in obese patients](https://pubmed.ncbi.nlm.nih.gov/19690247/).
 - Roy et al. (2002). *Anesthesiology*. [Succinylcholine concentration-effect model](https://pubmed.ncbi.nlm.nih.gov/12411790/).
 - Kopman et al. (2003). *Anesthesiology*. [Succinylcholine dose, onset, and twitch recovery](https://pubmed.ncbi.nlm.nih.gov/14576537/).
@@ -203,12 +191,13 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Chung and Rowbottom (1993). *Anaesthesia*. [Small-dose intravenous succinylcholine for laryngospasm](https://pubmed.ncbi.nlm.nih.gov/8460802/).
 - Lee (1975). *Br J Anaesth*. [Phase II dual block and train-of-four fade after succinylcholine](https://pubmed.ncbi.nlm.nih.gov/1201162/).
 - Dhonneur et al. (1999). *Anesthesiology*. [Succinylcholine and rocuronium at the larynx, diaphragm, and adductor pollicis](https://pubmed.ncbi.nlm.nih.gov/10201662/).
-- Cantineau et al. (1994). *Anesthesiology*. [Rocuronium effects at the diaphragm](https://pubmed.ncbi.nlm.nih.gov/8092503/).
+- Cantineau et al. (1994a). *Anesthesiology*. [Rocuronium effects at the diaphragm](https://pubmed.ncbi.nlm.nih.gov/8092503/).
 - Plaud et al. (1995). *Clin Pharmacol Ther*. [Rocuronium laryngeal effect-site kinetics](https://pubmed.ncbi.nlm.nih.gov/7648768/).
 - Eikermann et al. (2003). *Anesthesiology*. [Respiratory recovery after neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/12766640/).
 - Herbstreit et al. (2009). *Anesthesiology*. [Residual block and pharyngeal closing pressure](https://pubmed.ncbi.nlm.nih.gov/19417617/).
 - Fiset et al. (1991). *Can J Anaesth*. [Nitrous oxide and neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/1683819/).
 - Smeulers et al. (1995). *J Cardiothorac Vasc Anesth*. [Hypothermic cardiopulmonary bypass and rocuronium PK/PD](https://pubmed.ncbi.nlm.nih.gov/8664462/).
+- Caldwell et al. (2000). *Anesthesiology*. [Temperature-dependent PK/PD of vecuronium](https://pubmed.ncbi.nlm.nih.gov/10638903/).
 - Bissinger et al. (1993). *Anasthesiol Intensivmed Notfallmed Schmerzther*. [Curare clefts and neuromuscular monitoring](https://pubmed.ncbi.nlm.nih.gov/7902740/).
 - Viby-Mogensen et al. (1981). *Anesthesiology*. [Post-tetanic count for evaluating deep neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/7294384/).
 - Fuchs-Buder et al. (2007). *Acta Anaesthesiol Scand*. [Good clinical research practice for neuromuscular block monitoring](https://pubmed.ncbi.nlm.nih.gov/17635389/).
@@ -233,7 +222,6 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Zucker et al. (2022). *BMC Anesthesiol*. [Mean systemic filling pressure during propofol induction](https://pubmed.ncbi.nlm.nih.gov/35869445/).
 - Fairfield et al. (1991). *Br J Anaesth*. [Echocardiographic hemodynamics after propofol 2.5 mg/kg](https://pubmed.ncbi.nlm.nih.gov/1751277/).
 - Morley et al. (2010). *Anesth Analg*. [Fasting, baseline pressure, and hypotension during propofol induction](https://pubmed.ncbi.nlm.nih.gov/20861421/).
-- Ebert et al. (1995). *Anesth Analg*. [Sevoflurane cardiovascular responses](https://pubmed.ncbi.nlm.nih.gov/7486143/).
 - Malan et al. (1995). *Anesthesiology*. [Sevoflurane cardiac output and vascular resistance in volunteers](https://pubmed.ncbi.nlm.nih.gov/7486177/).
 
 ### Reflexes and age
@@ -247,7 +235,6 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Monahan (2007). *Am J Physiol Regul Integr Comp Physiol*. [Aging and baroreflex function](https://pubmed.ncbi.nlm.nih.gov/17442786/).
 - Kardos et al. (2001). *Hypertension*. [Spontaneous baroreflex sensitivity by age in 1134 adults](https://pubmed.ncbi.nlm.nih.gov/11244017/).
 - Leenen et al. (2005). *Am J Physiol Heart Circ Physiol*. [Aging and cardiac responses to epinephrine](https://pubmed.ncbi.nlm.nih.gov/15626690/).
-- Ross et al. (1965). *Circulation*. [Right atrial pacing at rest, during exercise, and with isoproterenol](https://pubmed.ncbi.nlm.nih.gov/5825546/).
 
 ### Blood loss and shock
 
@@ -259,47 +246,14 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Fisher (1986). *Anaesth Intensive Care*. [Plasma escape during anaphylaxis](https://pubmed.ncbi.nlm.nih.gov/2869715/).
 - Brown et al. (2004). *Emerg Med J*. [IV epinephrine and rapid saline for sting anaphylaxis](https://pubmed.ncbi.nlm.nih.gov/14988337/).
 - Schotola et al. (2012). *Crit Care*. [Acidosis and the adrenergic response of human failing myocardium](https://pubmed.ncbi.nlm.nih.gov/22889236/).
+- Meybohm et al. (2007). *J Trauma*. [Norepinephrine and vasopressin during severe hemorrhage](https://pubmed.ncbi.nlm.nih.gov/17414341/).
+- Maas et al. (2013). *Crit Care Med*. [Preload dependence of norepinephrine cardiac output responses](https://pubmed.ncbi.nlm.nih.gov/23128382/).
 
 ### Pulmonary circulation
 
 - Segeroth et al. (2023). *Eur Heart J Cardiovasc Imaging*. [Pulmonary transit time](https://pubmed.ncbi.nlm.nih.gov/36662127/).
 - Koganov et al. (1997). *Crit Care Med*. [PEEP raises pulmonary vascular resistance](https://pubmed.ncbi.nlm.nih.gov/9187594/).
 - Carlsson et al. (1985). *Acta Anaesthesiol Scand*. [Hypoxic pulmonary vasoconstriction](https://pubmed.ncbi.nlm.nih.gov/3993324/).
-
-### Arrhythmias and cardiac arrest
-
-- Koster et al. (2008). *Resuscitation*. [Recurrent VF during advanced life support](https://pubmed.ncbi.nlm.nih.gov/18556106/).
-- van Alem et al. (2003). *Resuscitation*. [VF recurrence and patient outcome](https://pubmed.ncbi.nlm.nih.gov/14625108/).
-- Stiell et al. (2007). *Circulation*. [Fixed versus escalating biphasic energy in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/17353443/).
-- Pierce et al. (2015). *Resuscitation*. [Post-shock rhythms and pulselessness in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/25597505/).
-- Dhanani et al. (2021). *N Engl J Med*. [Resumption of cardiac activity after withdrawal of life-sustaining measures](https://pubmed.ncbi.nlm.nih.gov/33503343/).
-- Somberg et al. (2002). *Am J Cardiol*. [IV lidocaine versus amiodarone for incessant VT](https://pubmed.ncbi.nlm.nih.gov/12372573/).
-- Scheinman et al. (1995). *Circulation*. [Dose-ranging IV amiodarone in life-threatening ventricular tachyarrhythmias](https://pubmed.ncbi.nlm.nih.gov/7586313/).
-- Kudenchuk et al. (2016). *N Engl J Med*. [Amiodarone, lidocaine, or placebo in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/27043165/).
-- Salcido et al. (2018). *Resuscitation*. [Antiarrhythmic administration and rearrest in ALPS](https://pubmed.ncbi.nlm.nih.gov/29803703/).
-- American Heart Association (2025). [Adult cardiac arrest algorithm](https://cpr.heart.org/-/media/CPR-Files/CPR-Guidelines-Files/2025-Algorithms/Algorithm-ACLS-CA-250527.pdf).
-- Clark et al. (1997). *J Am Coll Cardiol*. [Atrial fibrillation and cardiac output](https://pubmed.ncbi.nlm.nih.gov/9316536/).
-- Hardman et al. (1998). *Cardiovasc Res*. [Atrial fibrillation and stroke volume](https://pubmed.ncbi.nlm.nih.gov/9683909/).
-- Kerr et al. (1998). *Am J Cardiol*. [Stroke-volume variability in atrial fibrillation](https://pubmed.ncbi.nlm.nih.gov/9874054/).
-- Corino et al. (2015). *J Cardiovasc Electrophysiol*. [R-R variability in atrial fibrillation](https://pubmed.ncbi.nlm.nih.gov/25367150/).
-- Hogue et al. (1996). *Anesthesiology*. [Post-induction bradycardia and atrial pacing](https://pubmed.ncbi.nlm.nih.gov/8694384/).
-- Mort (2004). *J Clin Anesth*. [Hypoxemia and intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/15590254/).
-- Weisfeldt and Becker (2002). *JAMA*. [Three-phase time-sensitive model of resuscitation after cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12479769/).
-- Paradis et al. (1990). *JAMA*. [Coronary perfusion pressure and return of spontaneous circulation in human CPR](https://pubmed.ncbi.nlm.nih.gov/2386557/).
-- Meaney et al. (2013). *Circulation*. [Cardiopulmonary resuscitation quality](https://pubmed.ncbi.nlm.nih.gov/23801105/).
-- Cantineau et al. (1994). *Am J Emerg Med*. [Epinephrine and end-tidal carbon dioxide during prehospital CPR](https://pubmed.ncbi.nlm.nih.gov/8179728/).
-- Kim et al. (2025). *Resuscitation*. [Real-time arterial pressure responses to epinephrine during CPR](https://pubmed.ncbi.nlm.nih.gov/40250548/).
-- Deakin et al. (2007). *Resuscitation*. [Passive ventilation during compression-only CPR](https://pubmed.ncbi.nlm.nih.gov/17507138/).
-- Cordioli et al. (2016). *J Appl Physiol*. [Ventilation strategies and lung volume during chest compressions](https://pubmed.ncbi.nlm.nih.gov/26586906/).
-- Duchatelet et al. (2018). *Resuscitation*. [Reversed airflow from chest compressions during ventilation](https://pubmed.ncbi.nlm.nih.gov/29604395/).
-- Grieco et al. (2019). *Am J Respir Crit Care Med*. [Intrathoracic airway closure, CO₂ oscillations, and ventilation during CPR](https://pubmed.ncbi.nlm.nih.gov/30257100/).
-- Neumamm et al. (2021). *Am J Emerg Med*. [Mechanical ventilation modes and triggering during simulated CPR](https://pubmed.ncbi.nlm.nih.gov/34265507/).
-- Orlob et al. (2021). *Scand J Trauma Resusc Emerg Med*. [Mechanical ventilation reliability and net tidal volume during continuous chest compressions](https://pubmed.ncbi.nlm.nih.gov/34321068/).
-- Lesimple et al. (2022). *Crit Care*. [Capnogram patterns of airway closure and thoracic distension during CPR](https://pubmed.ncbi.nlm.nih.gov/36151559/).
-- Park et al. (1994). *Pacing Clin Electrophysiol*. [Systolic arterial pressure recovery after ventricular fibrillation in humans](https://pubmed.ncbi.nlm.nih.gov/7521035/).
-- Tokano et al. (1998). *J Cardiovasc Electrophysiol*. [Ventricular shock strength and cardiac hemodynamics](https://pubmed.ncbi.nlm.nih.gov/9727657/).
-- Laurent et al. (2002). *J Am Coll Cardiol*. [Reversible myocardial dysfunction in survivors of out-of-hospital cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12505221/).
-- ZOLL (2023). [R Series operator's guide](https://www.zoll.com/-/media/product-materials/product-manuals/r-series/05/9650-0912-05-sf_r.ashx).
 
 ## Cardiovascular drugs
 
@@ -314,14 +268,13 @@ SIMV, synchronized intermittent mandatory ventilation.
 
 ### Epinephrine
 
-- Ensinger et al. (1992). *Eur J Anaesthesiol*. [Arterial epinephrine clearance](https://pubmed.ncbi.nlm.nih.gov/1425612/).
-- Ensinger et al. (1992). *Eur J Clin Pharmacol*. [Arterial and peripheral venous catecholamine concentrations](https://pubmed.ncbi.nlm.nih.gov/1425886/).
+- Ensinger et al. (1992a). *Eur J Anaesthesiol*. [Arterial epinephrine clearance](https://pubmed.ncbi.nlm.nih.gov/1425612/).
+- Ensinger et al. (1992b). *Eur J Clin Pharmacol*. [Arterial and peripheral venous catecholamine concentrations](https://pubmed.ncbi.nlm.nih.gov/1425886/).
 - Esler et al. (1995). *J Clin Endocrinol Metab*. [Aging and arterial epinephrine clearance](https://pubmed.ncbi.nlm.nih.gov/7852502/).
 - Marker et al. (1998). *Am J Physiol*. [Epinephrine clearance and infusion responses in older adults](https://pubmed.ncbi.nlm.nih.gov/9814995/).
 - Clutter et al. (1980). *J Clin Invest*. [Epinephrine cardiovascular effects](https://pubmed.ncbi.nlm.nih.gov/6995479/).
 - Stratton et al. (1985). *J Appl Physiol*. [Epinephrine infusion hemodynamics](https://pubmed.ncbi.nlm.nih.gov/3988675/).
 - Freyschuss et al. (1986). *Clin Sci (Lond)*. [Arterial epinephrine concentrations and hemodynamics](https://pubmed.ncbi.nlm.nih.gov/3956110/).
-- Piccioli et al. (2023). *Front Cardiovasc Med*. [Contractility and pulse pressure during dobutamine](https://pubmed.ncbi.nlm.nih.gov/37424904/).
 - Pan et al. (1986). *J Pharmacol Exp Ther*. [Aging and beta-adrenergic vascular relaxation](https://pubmed.ncbi.nlm.nih.gov/3025419/).
 - Hogikyan and Supiano (1994). *Am J Physiol*. [Aging and arterial alpha-adrenergic responsiveness](https://pubmed.ncbi.nlm.nih.gov/8203510/).
 - Takahashi et al. (2002). *Anesth Analg*. [IV epinephrine bolus response](https://pubmed.ncbi.nlm.nih.gov/11867404/).
@@ -345,23 +298,83 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Magnani et al. (1977). *J Int Med Res*. [Dobutamine dose response](https://pubmed.ncbi.nlm.nih.gov/838109/).
 - Hernández et al. (2013). *Intensive Care Med*. [Dobutamine hemodynamics and perfusion in septic shock](https://pubmed.ncbi.nlm.nih.gov/23740284/).
 - Baim et al. (1983). *N Engl J Med*. [Milrinone hemodynamics](https://pubmed.ncbi.nlm.nih.gov/6888453/).
-- DailyMed (2026). [Milrinone injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=88f78780-399f-4780-be19-205739db1682).
+- DailyMed (2026b). [Milrinone injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=88f78780-399f-4780-be19-205739db1682).
 - Sum et al. (1983). *Clin Pharmacol Ther*. [Esmolol PK and beta blockade](https://pubmed.ncbi.nlm.nih.gov/6617063/).
 - Wiest and Haney (2012). *Clin Pharmacokinet*. [Esmolol pharmacology review](https://pubmed.ncbi.nlm.nih.gov/22515557/).
 - Abernethy et al. (1987). *Am J Cardiol*. [Labetalol PK/PD and age](https://pubmed.ncbi.nlm.nih.gov/3661438/).
-- Hafsa et al. (2022). *Pharmaceutics*. [Labetalol kinetics and antagonist potency](https://pubmed.ncbi.nlm.nih.gov/36365181/).
+- Richards et al. (1977). *Br Heart J*. [Antihypertensive pharmacology of IV labetalol](https://pubmed.ncbi.nlm.nih.gov/12778/).
+- Hafsa et al. (2022). *Pharmaceutics*. [Labetalol physiologically based PK](https://pubmed.ncbi.nlm.nih.gov/36365181/).
 
 ### Antimuscarinics
 
 - Weissler et al. (1957). *J Clin Invest*. [Posture, atropine, and cardiac output](https://pubmed.ncbi.nlm.nih.gov/13491696/).
 - Berry et al. (1959). *Am Heart J*. [Cardiac output, stroke volume, and central venous pressure after atropine](https://pubmed.ncbi.nlm.nih.gov/13670093/).
+- Ross et al. (1965). *Circulation*. [Right atrial pacing at rest, during exercise, and with isoproterenol](https://pubmed.ncbi.nlm.nih.gov/5825546/).
 - Hinderling et al. (1985). *J Pharm Sci*. [Atropine PK](https://pubmed.ncbi.nlm.nih.gov/4032240/) and [peripheral-compartment PD](https://pubmed.ncbi.nlm.nih.gov/4032241/).
 - Yamaguchi et al. (1988). *Can J Anaesth*. [Atropine HR response during anesthesia](https://pubmed.ncbi.nlm.nih.gov/3168130/).
 - Horiguchi and Nishikawa (2002). *Anesth Analg*. [Atropine dose-response awake and during propofol anesthesia](https://pubmed.ncbi.nlm.nih.gov/12145057/).
 - Ali-Melkkilä et al. (1993). *Acta Anaesthesiol Scand*. [Anticholinergic PK/PD review](https://pubmed.ncbi.nlm.nih.gov/8249551/).
-- Jose and Collison (1970). *Cardiovasc Res*. [Normal range and age dependence of intrinsic heart rate](https://pubmed.ncbi.nlm.nih.gov/4192616/).
-- Dauchot and Gravenstein (1971). *Clin Pharmacol Ther*. [Age dependence of ECG and heart-rate responses to atropine](https://pubmed.ncbi.nlm.nih.gov/5554942/).
+- Jose and Collison (1970). *Cardiovasc Res*. [Normal range and age dependence of intrinsic HR](https://pubmed.ncbi.nlm.nih.gov/4192616/).
+- Dauchot and Gravenstein (1971). *Clin Pharmacol Ther*. [Age dependence of ECG and HR responses to atropine](https://pubmed.ncbi.nlm.nih.gov/5554942/).
 - Du et al. (2025). *J Drug Deliv Sci Technol*. [Glycopyrrolate population PK](https://doi.org/10.1016/j.jddst.2025.106692).
+
+## Heart and brain oxygen supply
+
+- Gobel et al. (1978). *Circulation*. [Rate-pressure product and myocardial oxygen consumption in angina](https://pubmed.ncbi.nlm.nih.gov/624164/).
+- Wilson et al. (1987). *Circulation*. [Coronary lesion geometry and flow reserve](https://pubmed.ncbi.nlm.nih.gov/3829334/).
+- Arthurs et al. (2016). *Am J Physiol Heart Circ Physiol*. [Coronary blood-flow control and myocardial oxygen balance](https://pubmed.ncbi.nlm.nih.gov/26945076/).
+- Harasawa et al. (1992). *Circ Res*. [Basal metabolism and unloaded myocardial oxygen consumption](https://pubmed.ncbi.nlm.nih.gov/1628397/).
+- Jeremy et al. (1986). *Cardiovasc Res*. [Diastolic ventricular pressure and the coronary pressure-flow relation](https://pubmed.ncbi.nlm.nih.gov/3802128/).
+- Nanto et al. (2001). *Jpn Circ J*. [Coronary zero-flow pressure in humans](https://pubmed.ncbi.nlm.nih.gov/11548878/).
+- Nebout et al. (2013). *Ann Fr Anesth Reanim*. [BIS for early detection of cerebral hypoperfusion](https://pubmed.ncbi.nlm.nih.gov/23953319/).
+- Astrup et al. (1981). *Stroke*. [Cerebral ischemia thresholds and the ischemic penumbra](https://pubmed.ncbi.nlm.nih.gov/6272455/).
+- Jones et al. (1981). *J Neurosurg*. [Thresholds of focal cerebral ischemia in awake monkeys](https://pubmed.ncbi.nlm.nih.gov/7241187/).
+- Jørgensen and Malchow-Møller (1981). *Resuscitation*. [EEG and neurological signs in persistent postanoxic coma](https://pubmed.ncbi.nlm.nih.gov/7255953/).
+- Hofmeijer et al. (2015). *Neurology*. [Early EEG and outcome prediction in postanoxic coma](https://pubmed.ncbi.nlm.nih.gov/26070341/).
+- de Vries et al. (1998). *Anesth Analg*. [Cerebral oxygen uptake and EEG during defibrillation threshold testing](https://pubmed.ncbi.nlm.nih.gov/9661538/).
+- Brian (1998). *Anesthesiology*. [CO₂ and the cerebral circulation](https://pubmed.ncbi.nlm.nih.gov/9605698/).
+- Battisti-Charbonney et al. (2011). *J Physiol*. [Cerebrovascular response to CO₂ in humans](https://pubmed.ncbi.nlm.nih.gov/21521758/).
+- Willie et al. (2015). *J Cereb Blood Flow Metab*. [Brain blood flow and oxygen delivery in breath-hold divers](https://pubmed.ncbi.nlm.nih.gov/25370857/).
+- Kaisti et al. (2003). *Anesthesiology*. [Regional cerebral blood flow and oxygen consumption under sevoflurane and propofol](https://pubmed.ncbi.nlm.nih.gov/12960544/).
+- Westlake et al. (1955). *Q J Med*. [CO₂ narcosis in emphysema](https://pubmed.ncbi.nlm.nih.gov/14395425/).
+- Sieker and Hickam (1956). *Medicine (Baltimore)*. [Clinical syndrome of CO₂ intoxication](https://pubmed.ncbi.nlm.nih.gov/13407339/).
+- Turnbull et al. (2008). *Anaesthesia*. [End-tidal CO₂ and BIS](https://pubmed.ncbi.nlm.nih.gov/18412642/).
+
+## Cardiac arrest and resuscitation
+
+- Koster et al. (2008). *Resuscitation*. [Recurrent VF during advanced life support](https://pubmed.ncbi.nlm.nih.gov/18556106/).
+- van Alem et al. (2003). *Resuscitation*. [VF recurrence and patient outcome](https://pubmed.ncbi.nlm.nih.gov/14625108/).
+- Stiell et al. (2007). *Circulation*. [Fixed versus escalating biphasic energy in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/17353443/).
+- Pierce et al. (2015). *Resuscitation*. [Post-shock rhythms and pulselessness in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/25597505/).
+- Dhanani et al. (2021). *N Engl J Med*. [Resumption of cardiac activity after withdrawal of life-sustaining measures](https://pubmed.ncbi.nlm.nih.gov/33503343/).
+- Somberg et al. (2002). *Am J Cardiol*. [IV lidocaine versus amiodarone for incessant VT](https://pubmed.ncbi.nlm.nih.gov/12372573/).
+- Scheinman et al. (1995). *Circulation*. [Dose-ranging IV amiodarone in life-threatening ventricular tachyarrhythmias](https://pubmed.ncbi.nlm.nih.gov/7586313/).
+- Kudenchuk et al. (2016). *N Engl J Med*. [Amiodarone, lidocaine, or placebo in cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/27043165/).
+- Salcido et al. (2018). *Resuscitation*. [Antiarrhythmic administration and rearrest in ALPS](https://pubmed.ncbi.nlm.nih.gov/29803703/).
+- American Heart Association (2025). [Adult cardiac arrest algorithm](https://cpr.heart.org/-/media/CPR-Files/CPR-Guidelines-Files/2025-Algorithms/Algorithm-ACLS-CA-250527.pdf).
+- Clark et al. (1997). *J Am Coll Cardiol*. [Atrial fibrillation and cardiac output](https://pubmed.ncbi.nlm.nih.gov/9316536/).
+- Hardman et al. (1998). *Cardiovasc Res*. [Atrial fibrillation and stroke volume](https://pubmed.ncbi.nlm.nih.gov/9683909/).
+- Kerr et al. (1998). *Am J Cardiol*. [Stroke-volume variability in atrial fibrillation](https://pubmed.ncbi.nlm.nih.gov/9874054/).
+- Corino et al. (2015). *J Cardiovasc Electrophysiol*. [R-R variability in atrial fibrillation](https://pubmed.ncbi.nlm.nih.gov/25367150/).
+- Hogue et al. (1996). *Anesthesiology*. [Post-induction bradycardia and atrial pacing](https://pubmed.ncbi.nlm.nih.gov/8694384/).
+- Mort (2004). *J Clin Anesth*. [Hypoxemia and intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/15590254/).
+- Weisfeldt and Becker (2002). *JAMA*. [Three-phase time-sensitive model of resuscitation after cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12479769/).
+- Paradis et al. (1990). *JAMA*. [Coronary perfusion pressure and return of spontaneous circulation in human CPR](https://pubmed.ncbi.nlm.nih.gov/2386557/).
+- Meaney et al. (2013). *Circulation*. [CPR quality](https://pubmed.ncbi.nlm.nih.gov/23801105/).
+- Michael et al. (1984). *Circulation*. [Epinephrine augmentation of cerebral and myocardial perfusion during CPR](https://pubmed.ncbi.nlm.nih.gov/6697465/).
+- Cantineau et al. (1994b). *Am J Emerg Med*. [Epinephrine and end-tidal CO₂ during prehospital CPR](https://pubmed.ncbi.nlm.nih.gov/8179728/).
+- Kim et al. (2025). *Resuscitation*. [Real-time arterial pressure responses to epinephrine during CPR](https://pubmed.ncbi.nlm.nih.gov/40250548/).
+- Deakin et al. (2007). *Resuscitation*. [Passive ventilation during compression-only CPR](https://pubmed.ncbi.nlm.nih.gov/17507138/).
+- Cordioli et al. (2016). *J Appl Physiol*. [Ventilation strategies and lung volume during chest compressions](https://pubmed.ncbi.nlm.nih.gov/26586906/).
+- Duchatelet et al. (2018). *Resuscitation*. [Reversed airflow from chest compressions during ventilation](https://pubmed.ncbi.nlm.nih.gov/29604395/).
+- Grieco et al. (2019). *Am J Respir Crit Care Med*. [Intrathoracic airway closure, CO₂ oscillations, and ventilation during CPR](https://pubmed.ncbi.nlm.nih.gov/30257100/).
+- Neumamm et al. (2021). *Am J Emerg Med*. [Mechanical ventilation modes and triggering during simulated CPR](https://pubmed.ncbi.nlm.nih.gov/34265507/).
+- Orlob et al. (2021). *Scand J Trauma Resusc Emerg Med*. [Mechanical ventilation reliability and net tidal volume during continuous chest compressions](https://pubmed.ncbi.nlm.nih.gov/34321068/).
+- Lesimple et al. (2022). *Crit Care*. [Capnogram patterns of airway closure and thoracic distension during CPR](https://pubmed.ncbi.nlm.nih.gov/36151559/).
+- Park et al. (1994). *Pacing Clin Electrophysiol*. [Systolic arterial pressure recovery after ventricular fibrillation in humans](https://pubmed.ncbi.nlm.nih.gov/7521035/).
+- Tokano et al. (1998). *J Cardiovasc Electrophysiol*. [Ventricular shock strength and cardiac hemodynamics](https://pubmed.ncbi.nlm.nih.gov/9727657/).
+- Laurent et al. (2002). *J Am Coll Cardiol*. [Reversible myocardial dysfunction in survivors of out-of-hospital cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12505221/).
+- ZOLL (2023). [R Series operator's guide](https://www.zoll.com/-/media/product-materials/product-manuals/r-series/05/9650-0912-05-sf_r.ashx).
 
 ## Fluids
 
@@ -373,10 +386,14 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Hahn and Nemme (2020). *BMC Anesthesiol*. [Fluid retention after anesthesia induction](https://pubmed.ncbi.nlm.nih.gov/32334513/).
 - Hahn (2021). *Perioper Med (Lond)*. [Crystalloid distribution during anesthesia-induced hypotension](https://pubmed.ncbi.nlm.nih.gov/34629113/).
 - Hahn (2024). *Front Physiol*. [Fluid-space recruitment with increasing crystalloid volumes](https://pubmed.ncbi.nlm.nih.gov/39263627/).
+- Drobin and Hahn (1999). *Anesthesiology*. [Volume kinetics of Ringer's solution in hypovolemic volunteers](https://pubmed.ncbi.nlm.nih.gov/9915316/).
+- Vane et al. (2004). *Anesthesiology*. [Crystalloid volume kinetics during adrenergic stimulation](https://pubmed.ncbi.nlm.nih.gov/15505449/).
+- Li et al. (2012). *Crit Care*. [Diuretic effects of esmolol and phenylephrine during intravenous anesthesia](https://pubmed.ncbi.nlm.nih.gov/22289281/).
 - Philbin and Coggins (1978). *Anesthesiology*. [Antidiuretic hormone during anesthesia and cardiac surgery](https://pubmed.ncbi.nlm.nih.gov/686433/).
 - Scheingraber et al. (1999). *Anesthesiology*. [Hyperchloremic acidosis after rapid saline infusion](https://pubmed.ncbi.nlm.nih.gov/10319771/).
 - Kahn et al. (1979). *Anesth Analg*. [Ionized calcium, citrate, and pH during massive transfusion](https://pubmed.ncbi.nlm.nih.gov/36816/).
 - Kramer et al. (2003). *Crit Care Med*. [Citrate PK in critically ill patients](https://pubmed.ncbi.nlm.nih.gov/14530750/).
+- Ludbrook and Wynn (1958). *Br Med J*. [Citrate intoxication during hypothermia](https://pubmed.ncbi.nlm.nih.gov/13572825/).
 - Rabcuka et al. (2025). *Transfusion*. [Acid-base and metabolite changes in stored red cell concentrates](https://pubmed.ncbi.nlm.nih.gov/41122829/).
 - Thode et al. (1983). *Scand J Clin Lab Invest Suppl*. [Relation between pH and ionized calcium in vitro and in vivo](https://pubmed.ncbi.nlm.nih.gov/6578581/).
 - Bolan et al. (2001). *Transfusion*. [Citrate, ionized calcium, and PTH during plateletpheresis](https://pubmed.ncbi.nlm.nih.gov/11552076/).
@@ -400,7 +417,7 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Poulin et al. (1993). *J Appl Physiol*. [Ventilatory sensitivity to CO₂ in hyperoxia and hypoxia in older humans](https://pubmed.ncbi.nlm.nih.gov/8307881/).
 - García-Río et al. (2007). *Respir Med*. [Age and hypoxic and hypercapnic inspiratory drive](https://pubmed.ncbi.nlm.nih.gov/17643972/).
 - Lhuissier et al. (2012). *J Physiol*. [Aging and cardiorespiratory response to hypoxia](https://pubmed.ncbi.nlm.nih.gov/22907053/).
-- Bouillon et al. (2004). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).
+- Bouillon et al. (2004b). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).
 - Olofsen et al. (2010). *Anesthesiology*. [Dynamic remifentanil respiratory effects in awake and propofol-sedated volunteers](https://pubmed.ncbi.nlm.nih.gov/20461001/).
 - Babenco et al. (2000). *Anesthesiology*. [Remifentanil bolus ventilatory control](https://pubmed.ncbi.nlm.nih.gov/10691225/).
 - Blouin et al. (1993). *Anesthesiology*. [Propofol depresses hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8267192/).
@@ -493,9 +510,10 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Sessler (2000). *Anesthesiology*. [Perioperative heat balance](https://pubmed.ncbi.nlm.nih.gov/10691247/).
 - Matsukawa et al. (1995). *Anesthesiology*. [Heat redistribution after induction](https://pubmed.ncbi.nlm.nih.gov/7879935/).
 - Frank et al. (1997). *JAMA*. [Perioperative thermoregulation](https://pubmed.ncbi.nlm.nih.gov/9087467/).
-- Kurz et al. (1995). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
-- Kurz et al. (1995). *Anesth Analg*. [Midazolam and thermoregulatory control](https://pubmed.ncbi.nlm.nih.gov/7618734/).
-- Kurz et al. (1995). *Anesthesiology*. [Alfentanil effects on sweating, vasoconstriction, and shivering thresholds](https://pubmed.ncbi.nlm.nih.gov/7631951/).
+- Kurz et al. (1995a). *Anesth Analg*. [Morphometric influences on intraoperative core temperature](https://pubmed.ncbi.nlm.nih.gov/7864426/).
+- Kurz et al. (1995b). *Anesth Analg*. [Midazolam and thermoregulatory control](https://pubmed.ncbi.nlm.nih.gov/7618734/).
+- Kurz et al. (1995c). *Anesthesiology*. [Alfentanil effects on sweating, vasoconstriction, and shivering thresholds](https://pubmed.ncbi.nlm.nih.gov/7631951/).
+- Ozaki et al. (1997). *Anesth Analg*. [Age and vasoconstriction threshold during sevoflurane anesthesia](https://pubmed.ncbi.nlm.nih.gov/9141926/).
 - Ikeda et al. (2001). *Anesth Analg*. [Ketamine induction reduces redistribution hypothermia](https://pubmed.ncbi.nlm.nih.gov/11574360/).
 - Ralley et al. (1988). *Can J Anaesth*. [Shivering, oxygen consumption, and CO₂ production during rewarming](https://pubmed.ncbi.nlm.nih.gov/3135952/).
 - Giesbrecht et al. (1994). *Anesthesiology*. [Forced-air patient warming heat transfer](https://pubmed.ncbi.nlm.nih.gov/8141463/).
@@ -523,9 +541,12 @@ SIMV, synchronized intermittent mandatory ventilation.
 - Mahdi et al. (2017). *Physiol Meas*. [Synthetic arterial pressure waveform](https://pubmed.ncbi.nlm.nih.gov/28176674/).
 - Franklin et al. (1997). *Circulation*. [Pulse pressure by age in the Framingham Heart Study](https://pubmed.ncbi.nlm.nih.gov/9236450/).
 - Langewouters et al. (1984). *J Biomech*. [Pressure dependence of human aortic compliance](https://pubmed.ncbi.nlm.nih.gov/6480618/).
+- Piccioli et al. (2023). *Front Cardiovasc Med*. [Contractility and pulse pressure during dobutamine](https://pubmed.ncbi.nlm.nih.gov/37424904/).
 - Saugel et al. (2020). *Crit Care*. [Arterial catheter frequency response and damping](https://pubmed.ncbi.nlm.nih.gov/32331527/).
 - Russell et al. (1990). *Can J Anaesth*. [Arterial to end-tidal CO₂ gradient during postoperative support](https://pubmed.ncbi.nlm.nih.gov/2115404/).
 - Lujan et al. (2008). *Med Sci Monit*. [Arterial to end-tidal CO₂ gradient in airway obstruction](https://pubmed.ncbi.nlm.nih.gov/18758420/).
+- Yaron et al. (1996). *Ann Emerg Med*. [Capnographic slope and airway obstruction in asthma](https://pubmed.ncbi.nlm.nih.gov/8839525/).
+- Blanch et al. (1999). *Eur Respir J*. [Volumetric capnography and Phase III slope in acute lung injury](https://pubmed.ncbi.nlm.nih.gov/10414403/).
 - Idris et al. (1994). *Ann Emerg Med*. [End-tidal CO₂ during extremely low cardiac output](https://pubmed.ncbi.nlm.nih.gov/8135436/).
 - Kim et al. (2019). *Am J Emerg Med*. [Arterial to end-tidal CO₂ gap after cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/29685358/).
 - Tanaka et al. (2014). *J Clin Monit Comput*. [Capnographic detection of respiratory pauses](https://pubmed.ncbi.nlm.nih.gov/24420342/).

@@ -28,8 +28,8 @@ import math
 import random
 import sys
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -54,6 +54,7 @@ from validation.vitaldb import vitaldb_data  # noqa: E402
 from validation.vitaldb.vitaldb_data import (  # noqa: E402
     CACHE,
     CM_PER_MBAR,
+    DEFAULT_WORKERS,
     WAVE_DT,
     domain_cases,
     is_legacy_core,
@@ -335,15 +336,116 @@ def compare_paw_case(w: dict[str, Any], viscoelastic: bool, sensor_tau: float) -
     }
 
 
-def compare_paw(cases: list[dict[str, Any]], viscoelastic: bool, sensor_tau: float) -> dict[str, list[float]]:
-    """Per-case errors and predicted features with matched mechanics."""
-    keys = (*SEGMENTS, "whole", "transitions", "knee", "tau_e_ratio", "r_exp")
-    results: dict[str, list[float]] = {k: [] for k in keys}
-    for w in cases:
-        row = compare_paw_case(w, viscoelastic, sensor_tau)
-        for k in keys:
+def _paw_payload(w: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "template": w["template"],
+        "features": w["features"],
+        "SET_RR_IPPV": w["SET_RR_IPPV"],
+        "SET_INSP_TM": w["SET_INSP_TM"],
+        "TV": w["TV"],
+        "SET_INSP_PAUSE": w["SET_INSP_PAUSE"],
+    }
+
+
+def _capno_payload(w: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "features": w["features"],
+        "patient": w["patient"],
+        "SET_RR_IPPV": w["SET_RR_IPPV"],
+        "SET_INSP_TM": w["SET_INSP_TM"],
+        "TV": w["TV"],
+        "SET_INSP_PAUSE": w["SET_INSP_PAUSE"],
+        "ETCO2": w["ETCO2"],
+    }
+
+
+def _eto2_payload(w: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "patient": w["patient"],
+        "SET_RR_IPPV": w["SET_RR_IPPV"],
+        "SET_INSP_TM": w["SET_INSP_TM"],
+        "TV": w["TV"],
+        "SET_INTER_PEEP": w["SET_INTER_PEEP"],
+        "FIO2": w["FIO2"],
+    }
+
+
+def _compare_paw_task(args: tuple[dict[str, Any], bool, float, float]) -> dict[str, float]:
+    w, viscoelastic, sensor_tau, circuit_resistance = args
+    with _override_attr(ventilator, "CIRCUIT_RESISTANCE", circuit_resistance):
+        return compare_paw_case(w, viscoelastic, sensor_tau)
+
+
+def _capnogram_task(args: tuple[dict[str, Any], dict[str, float]]) -> dict[str, float]:
+    w, params = args
+    return capnogram_case_features(w, params)
+
+
+def _pcv_ramp_task(ramp: float) -> tuple[float, float]:
+    with _override_attr(ventilator, "RISE_TIME", ramp):
+        lung = RespiratoryMechanics(compliance=0.045, resistance=10.0)
+        vent = AnesthesiaVentilator()
+        vent.update_settings(rr=12, peep=5, p_insp=18, ie="1:2", mode="PCV")
+        sensor = AirwaySensor()
+        dt = WAVE_DT / 4
+        paw: list[float] = []
+        for k in range(int(45 / dt)):
+            before = vent.volume
+            vent.step(dt, lung, "vent")
+            p_meas = sensor.step(dt, vent.paw, vent.volume, vent.volume - before)[0]
+            if k % 4 == 3:
+                paw.append(p_meas)
+        tpl_sim = template(np.array(paw[int(10 / WAVE_DT):]), 12)
+        assert tpl_sim is not None
+        return ramp, rise_10_90(tpl_sim, 5 / 3)
+
+
+def _compliance_sim_task(args: tuple[Patient, float]) -> float:
+    patient, tv_ml = args
+    return anasim_plateau_compliance(patient, tv_ml)
+
+
+_PAW_KEYS = (*SEGMENTS, "whole", "transitions", "knee", "tau_e_ratio", "r_exp")
+
+
+def _pool_map(
+    executor: ProcessPoolExecutor | None,
+    fn,
+    tasks,
+    *,
+    chunksize: int = 1,
+) -> list[Any]:
+    if executor is None:
+        return [fn(task) for task in tasks]
+    return list(executor.map(fn, tasks, chunksize=chunksize))
+
+
+def _pack_paw_rows(rows: list[dict[str, float]]) -> dict[str, list[float]]:
+    results: dict[str, list[float]] = {k: [] for k in _PAW_KEYS}
+    for row in rows:
+        for k in _PAW_KEYS:
             results[k].append(row[k])
     return results
+
+
+def _compare_paw_batch(
+    cases: list[dict[str, Any]],
+    configs: list[tuple[Any, bool, float, float]],
+    executor: ProcessPoolExecutor | None,
+) -> dict[Any, dict[str, list[float]]]:
+    """Run multiple (viscoelastic, sensor_tau, circuit_resistance) evaluations across one process pool batch."""
+    payloads = [_paw_payload(w) for w in cases]
+    tasks = [
+        (payload, viscoelastic, sensor_tau, circuit_resistance)
+        for _tag, viscoelastic, sensor_tau, circuit_resistance in configs
+        for payload in payloads
+    ]
+    all_rows = _pool_map(executor, _compare_paw_task, tasks, chunksize=2)
+    n = len(cases)
+    return {
+        tag: _pack_paw_rows(all_rows[idx * n:(idx + 1) * n])
+        for idx, (tag, *_rest) in enumerate(configs)
+    }
 
 
 def capnogram_case_features(w: dict[str, Any], params: dict[str, float]) -> dict[str, float]:
@@ -356,27 +458,53 @@ def capnogram_case_features(w: dict[str, Any], params: dict[str, float]) -> dict
     return capnogram_shape(cyclic_breath(co2, w["SET_RR_IPPV"]), 60 / w["SET_RR_IPPV"])
 
 
+def _populate_capno_cache(
+    cases: list[dict[str, Any]],
+    missing: list[tuple[int, dict[str, float], tuple[int, tuple[tuple[str, float], ...]]]],
+    cache: dict[tuple[int, tuple[tuple[str, float], ...]], dict[str, float]],
+    executor: ProcessPoolExecutor | None,
+) -> None:
+    if not missing:
+        return
+    dedup: dict[tuple[int, tuple[tuple[str, float], ...]], tuple[int, dict[str, float]]] = {}
+    for i, trial, key in missing:
+        if key not in cache and key not in dedup:
+            dedup[key] = (i, trial)
+    if not dedup:
+        return
+    keys = list(dedup)
+    tasks = [(_capno_payload(cases[i]), trial) for i, trial in dedup.values()]
+    chunksize = max(1, min(4, len(tasks) // 16 or 1))
+    results = _pool_map(executor, _capnogram_task, tasks, chunksize=chunksize)
+    for key, res in zip(keys, results, strict=True):
+        cache[key] = res
+
+
 def fit_capnograph_subset(
     cases: list[dict[str, Any]],
     indices: list[int],
     base_params: dict[str, float],
     cache: dict[tuple[int, tuple[tuple[str, float], ...]], dict[str, float]],
+    *,
+    executor: ProcessPoolExecutor | None = None,
 ) -> tuple[dict[str, float], dict[str, dict[float, float]]]:
     """Fit each capnograph parameter sequentially on ``indices``, reusing cached per-case sims."""
     current = dict(base_params)
     grids: dict[str, dict[float, float]] = {}
     for name, values, feature in CAPNOGRAPH_GRIDS:
         recorded = np.array([cases[i]["capnogram"][feature] for i in indices])
+        trials = [(value, {**current, name: value}) for value in values]
+        missing = [
+            (i, trial, (i, tuple(sorted(trial.items()))))
+            for _value, trial in trials
+            for i in indices
+            if (i, tuple(sorted(trial.items()))) not in cache
+        ]
+        _populate_capno_cache(cases, missing, cache, executor)
         grid: dict[float, float] = {}
-        for value in values:
-            trial = {**current, name: value}
+        for value, trial in trials:
             key_tail = tuple(sorted(trial.items()))
-            sims = []
-            for i in indices:
-                cache_key = (i, key_tail)
-                if cache_key not in cache:
-                    cache[cache_key] = capnogram_case_features(cases[i], trial)
-                sims.append(cache[cache_key][feature])
+            sims = [cache[(i, key_tail)][feature] for i in indices]
             grid[value] = float(np.nanmedian(np.abs(np.array(sims) - recorded)))
         best = min(grid, key=lambda k: grid[k])
         current[name] = best
@@ -399,7 +527,9 @@ def rise_10_90(tpl: np.ndarray, ti: float) -> float:
     return cross(0.9) - cross(0.1)
 
 
-def pcv_rise_time(max_cases: int, *, seed: int = 4) -> tuple[list[float], dict[float, float]]:
+def pcv_rise_time(
+    max_cases: int, *, seed: int = 4, executor: ProcessPoolExecutor | None = None,
+) -> tuple[list[float], dict[float, float]]:
     """10-90% Paw rise of recorded pressure-control breaths, and AnaSim's for each pressure ramp."""
     candidates = domain_cases(PCV_TRACKS, open_supine_only=False)
     random.Random(seed).shuffle(candidates)
@@ -421,24 +551,7 @@ def pcv_rise_time(max_cases: int, *, seed: int = 4) -> tuple[list[float], dict[f
             print(f"pressure control case {case['caseid']} ({len(recorded)}/{max_cases or 'all'})", flush=True)
         if max_cases and len(recorded) == max_cases:
             break
-    simulated: dict[float, float] = {}
-    for ramp in RISE_TIMES:
-        with _override_attr(ventilator, "RISE_TIME", ramp):
-            lung = RespiratoryMechanics(compliance=0.045, resistance=10.0)
-            vent = AnesthesiaVentilator()
-            vent.update_settings(rr=12, peep=5, p_insp=18, ie="1:2", mode="PCV")
-            sensor = AirwaySensor()
-            dt = WAVE_DT / 4
-            paw: list[float] = []
-            for k in range(int(45 / dt)):
-                before = vent.volume
-                vent.step(dt, lung, "vent")
-                p_meas = sensor.step(dt, vent.paw, vent.volume, vent.volume - before)[0]
-                if k % 4 == 3:
-                    paw.append(p_meas)
-            tpl_sim = template(np.array(paw[int(10 / WAVE_DT):]), 12)
-            assert tpl_sim is not None
-            simulated[ramp] = rise_10_90(tpl_sim, 5 / 3)
+    simulated = dict(_pool_map(executor, _pcv_ramp_task, RISE_TIMES))
     return recorded, simulated
 
 
@@ -452,7 +565,14 @@ def anasim_plateau_compliance(patient: Patient, tv_ml: float) -> float:
     return vent.monitors.tv_exp / (vent.monitors.paw_plat - vent.monitors.peep)
 
 
-def compliance_by_patient(max_cases: int, *, n_folds: int = 5, seed: int = 3) -> dict[str, Any]:
+def compliance_by_patient(
+    max_cases: int,
+    *,
+    n_folds: int = 5,
+    seed: int = 3,
+    workers: int = DEFAULT_WORKERS,
+    executor: ProcessPoolExecutor | None = None,
+) -> dict[str, Any]:
     """Pre-incision plateau compliance across supine patients with patient-grouped k-fold CV."""
     candidates = domain_cases(
         COMPLIANCE_TRACKS,
@@ -490,7 +610,7 @@ def compliance_by_patient(max_cases: int, *, n_folds: int = 5, seed: int = 3) ->
             "patient": patient,
         }
 
-    with ThreadPoolExecutor(8) as pool:
+    with ThreadPoolExecutor(min(16, max(8, workers))) as pool:
         rows = [r for r in pool.map(measure, pool_items) if r is not None]
 
     def design(rs, peep=None):
@@ -523,12 +643,13 @@ def compliance_by_patient(max_cases: int, *, n_folds: int = 5, seed: int = 3) ->
         const_pool = [r["c"] for r in train_rows if 4 <= r["peep"] < 6]
         constant_fold = float(np.median(const_pool)) if const_pool else float(np.median([r["c"] for r in train_rows]))
         scaled_fold = np.exp(design(val_peep5, 5.0) @ beta_fold)
-        anasim_fold = [anasim_plateau_compliance(r["patient"], r["tv"]) for r in val_peep5]
         oof_measured.extend(r["c"] for r in val_peep5)
         oof_constant.extend([constant_fold] * len(val_peep5))
         oof_scaled.extend(float(v) for v in scaled_fold)
-        oof_anasim.extend(float(v) for v in anasim_fold)
         oof_rows.extend(val_peep5)
+
+    sim_tasks = [(r["patient"], r["tv"]) for r in oof_rows]
+    oof_anasim = _pool_map(executor, _compliance_sim_task, sim_tasks, chunksize=16)
 
     measured = np.array(oof_measured)
     constant = np.array(oof_constant)
@@ -630,11 +751,14 @@ def main() -> None:
     parser.add_argument("--compliance-cases", type=int, default=0, help="Pre-incision compliance cases (0 = all)")
     parser.add_argument("--pcv-cases", type=int, default=40, help="PCV rise-time cases (0 = all)")
     parser.add_argument("--folds", type=int, default=5, help="Patient-grouped cross-validation folds")
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--cache", type=Path, default=CACHE)
     parser.add_argument("--output", type=Path, default=ROOT / "results")
     parser.add_argument("--figure", type=Path, help="Write real and simulated breath overlays to this PNG")
     args = parser.parse_args()
+    if args.workers < 1:
+        parser.error("--workers must be >= 1")
     vitaldb_data.CACHE = args.cache
 
     production_capno = {name: getattr(Capnograph, name) for name, _, _ in CAPNOGRAPH_GRIDS}
@@ -671,63 +795,80 @@ def main() -> None:
         strata=lambda w: w["patient"].bmi >= 30.0,
     )
 
-    print("circuit limb", flush=True)
-    limb_per_case: dict[float, list[float]] = {}
-    for resistance in LIMB_RESISTANCES:
-        with _override_attr(ventilator, "CIRCUIT_RESISTANCE", resistance):
-            limb_per_case[resistance] = compare_paw(cases, True, production_tau)["whole"]
-    limb_grid = {r: median(vals) for r, vals in limb_per_case.items()}
-    limb_fold_choices = [
-        min(LIMB_RESISTANCES, key=lambda r: median([limb_per_case[r][i] for i in train_idx]))
-        for train_idx, _ in splits
-    ]
+    pool_ctx = ProcessPoolExecutor(max_workers=args.workers) if args.workers > 1 else nullcontext(None)
+    with pool_ctx as executor:
+        print("circuit limb", flush=True)
+        limb_full = _compare_paw_batch(
+            cases,
+            [(r, True, production_tau, r) for r in LIMB_RESISTANCES],
+            executor,
+        )
+        limb_per_case: dict[float, list[float]] = {r: limb_full[r]["whole"] for r in LIMB_RESISTANCES}
+        limb_grid = {r: median(vals) for r, vals in limb_per_case.items()}
+        limb_fold_choices = [
+            min(LIMB_RESISTANCES, key=lambda r: median([limb_per_case[r][i] for i in train_idx]))
+            for train_idx, _ in splits
+        ]
 
-    print("airway sensor", flush=True)
-    sensor_per_case: dict[float, dict[str, list[float]]] = {}
-    for tau in SENSOR_TAUS:
-        sensor_per_case[tau] = compare_paw(cases, True, tau)
-    sensor_grid = {tau: median(res["transitions"]) for tau, res in sensor_per_case.items()}
-    sensor_fold_choices = [
-        min(SENSOR_TAUS, key=lambda tau: median([sensor_per_case[tau]["transitions"][i] for i in train_idx]))
-        for train_idx, _ in splits
-    ]
+        print("airway sensor & breath shape", flush=True)
+        sensor_configs: list[tuple[Any, bool, float, float]] = [
+            (("tau", tau), True, tau, production_limb)
+            for tau in SENSOR_TAUS
+            if not (tau == production_tau and production_limb in limb_full)
+        ]
+        sensor_configs.append(("single", False, production_tau, production_limb))
+        sensor_batch = _compare_paw_batch(cases, sensor_configs, executor)
+        sensor_per_case: dict[float, dict[str, list[float]]] = {}
+        for tau in SENSOR_TAUS:
+            if tau == production_tau and production_limb in limb_full:
+                sensor_per_case[tau] = limb_full[production_limb]
+            else:
+                sensor_per_case[tau] = sensor_batch[("tau", tau)]
+        sensor_grid = {tau: median(res["transitions"]) for tau, res in sensor_per_case.items()}
+        sensor_fold_choices = [
+            min(SENSOR_TAUS, key=lambda tau: median([sensor_per_case[tau]["transitions"][i] for i in train_idx]))
+            for train_idx, _ in splits
+        ]
 
-    print("breath shape (out-of-fold)", flush=True)
-    single_all = compare_paw(cases, False, production_tau)
-    viscous_prod = sensor_per_case[production_tau]
-    keys = (*SEGMENTS, "whole", "transitions", "knee", "tau_e_ratio", "r_exp")
-    viscous_oof: dict[str, list[float]] = {k: [0.0] * len(cases) for k in keys}
-    for (_, val_idx), chosen_tau in zip(splits, sensor_fold_choices, strict=True):
-        for i in val_idx:
-            for k in keys:
-                viscous_oof[k][i] = sensor_per_case[chosen_tau][k][i]
+        single_all = sensor_batch["single"]
+        viscous_prod = sensor_per_case[production_tau]
+        viscous_oof: dict[str, list[float]] = {k: [0.0] * len(cases) for k in _PAW_KEYS}
+        for (_, val_idx), chosen_tau in zip(splits, sensor_fold_choices, strict=True):
+            for i in val_idx:
+                for k in _PAW_KEYS:
+                    viscous_oof[k][i] = sensor_per_case[chosen_tau][k][i]
 
-    print("capnograph (5-fold CV + full fit)", flush=True)
-    capno_cache: dict[tuple[int, tuple[tuple[str, float], ...]], dict[str, float]] = {}
-    capno_oof: list[dict[str, float]] = [{} for _ in cases]
-    capno_fold_choices: dict[str, list[float]] = {name: [] for name, _, _ in CAPNOGRAPH_GRIDS}
-    for train_idx, val_idx in splits:
-        fold_params, _ = fit_capnograph_subset(cases, train_idx, production_capno, capno_cache)
-        for name in capno_fold_choices:
-            capno_fold_choices[name].append(fold_params[name])
-        key_tail = tuple(sorted(fold_params.items()))
-        for i in val_idx:
-            cache_key = (i, key_tail)
-            if cache_key not in capno_cache:
-                capno_cache[cache_key] = capnogram_case_features(cases[i], fold_params)
+        print("capnograph (5-fold CV + full fit)", flush=True)
+        capno_cache: dict[tuple[int, tuple[tuple[str, float], ...]], dict[str, float]] = {}
+        capno_oof: list[dict[str, float]] = [{} for _ in cases]
+        capno_fold_choices: dict[str, list[float]] = {name: [] for name, _, _ in CAPNOGRAPH_GRIDS}
+        oof_pending: list[tuple[int, dict[str, float], tuple[int, tuple[tuple[str, float], ...]]]] = []
+        for train_idx, val_idx in splits:
+            fold_params, _ = fit_capnograph_subset(cases, train_idx, production_capno, capno_cache, executor=executor)
+            for name in capno_fold_choices:
+                capno_fold_choices[name].append(fold_params[name])
+            key_tail = tuple(sorted(fold_params.items()))
+            for i in val_idx:
+                oof_pending.append((i, fold_params, (i, key_tail)))
+        _populate_capno_cache(cases, oof_pending, capno_cache, executor)
+        for i, _params, cache_key in oof_pending:
             capno_oof[i] = capno_cache[cache_key]
-    full_capno_params, capno_grids = fit_capnograph_subset(
-        cases, list(range(len(cases))), production_capno, capno_cache,
-    )
+        full_capno_params, capno_grids = fit_capnograph_subset(
+            cases, list(range(len(cases))), production_capno, capno_cache, executor=executor,
+        )
 
-    print("pressure control rise", flush=True)
-    pcv_recorded, pcv_simulated = pcv_rise_time(args.pcv_cases)
+        print("pressure control rise", flush=True)
+        pcv_recorded, pcv_simulated = pcv_rise_time(args.pcv_cases, executor=executor)
 
-    print("compliance by patient", flush=True)
-    compliance = compliance_by_patient(args.compliance_cases, n_folds=args.folds)
+        print("compliance by patient", flush=True)
+        compliance = compliance_by_patient(
+            args.compliance_cases, n_folds=args.folds, workers=args.workers, executor=executor,
+        )
 
-    print("end-tidal O2", flush=True)
-    fio2_sim, gap_sim = zip(*(engine_eto2_gap(w) for w in cases), strict=True)
+        print("end-tidal O2", flush=True)
+        eto2_inputs = [_eto2_payload(w) for w in cases]
+        eto2_results = _pool_map(executor, engine_eto2_gap, eto2_inputs, chunksize=2)
+        fio2_sim, gap_sim = zip(*eto2_results, strict=True)
     gap_real = [w["FIO2"] - w["FEO2"] for w in cases]
     paired = np.array(gap_sim) - np.array(gap_real)
 

@@ -646,8 +646,8 @@ def test_engine_uses_measured_tidal_volume_for_gas_exchange(awake_engine, mode):
 
 def test_plateau_compliance_scales_with_lung_size_and_bmi(engine_factory):
     """VT/(Pplat - PEEP) at PEEP 5 for a 170 cm, 70 kg man lies in the interquartile
-    range of Dräger Primus recordings at PEEP 4-6 (VitalDB, 181 adults: 40.5-53.9
-    mL/cmH2O). It rises with lung size and falls with BMI (Pelosi 1998)."""
+    range of Dräger Primus recordings at PEEP 4-6 (VitalDB initial 181-adult snapshot:
+    40.5-53.9 mL/cmH2O; expanded n=1013 cohort: 40.6-55.3). It rises with lung size and falls with BMI (Pelosi 1998)."""
 
     def plateau_compliance(**patient):
         engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True, **patient)
@@ -1216,3 +1216,45 @@ def test_o2_flush_refills_bag_dilutes_agent_pressurizes_closed_apl_and_needs_o2_
     advance_time(engine, 1.6, dt=0.2)
     assert engine.circuit.delivered_o2_flush_flow() == 0.0
     assert engine.circuit.reservoir_volume < res_before + 0.05
+
+
+def test_peep_change_preserves_effort_empty_bellows_collapses_peep_and_engine_mutex_guards(
+    engine_factory, advance_time
+):
+    """PEEP transitions preserve spontaneous effort, empty bellows at zero FGF collapses PEEP in VCV,
+    PCV-VG tv=0 stays idle, deliver_manual_breath ignores APL=0, and vent/bag are mutually exclusive."""
+    spont = engine_factory(config=SimulationConfig(mode="awake", dt=0.1, rng_seed=1), start=True)
+    spont.set_airway_mode("ETT")
+    spont.set_vent_settings(mode="CPAP", rr=12, vt=0.5, peep=0.0, ie="1:2")
+    spont.set_vent_power(True)
+    advance_time(spont, 20.0, dt=0.1)
+    spont.set_vent_settings(mode="CPAP", rr=12, vt=0.5, peep=10.0, ie="1:2")
+    advance_time(spont, 20.0, dt=0.1)
+    assert spont.state.rr > 8.0 and spont.state.vt > 350.0
+    assert abs(spont.resp_mech.effort._reference_shift) < 1e-6
+
+    empty_vcv = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    empty_vcv.set_vent_settings(mode="VCV", rr=12, vt=0.5, peep=8.0, ie="1:2")
+    empty_vcv.set_fgf(0.0, 0.0, 0.0)
+    empty_vcv.circuit.reservoir_volume = 0.0
+    advance_time(empty_vcv, 120.0, dt=0.5)
+    assert empty_vcv.state.peep < 0.5
+
+    vg_zero = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.1, rng_seed=1), start=True)
+    vg_zero.set_vent_settings(mode="PCV-VG", rr=12, vt=0.0, peep=5.0, ie="1:2")
+    advance_time(vg_zero, 20.0, dt=0.1)
+    assert vg_zero.state.vt < 10.0
+
+    mutex = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    mutex.set_airway_mode("ETT")
+    mutex.set_vent_power(True)
+    mutex.set_bag_mask_ventilation(True)
+    assert not mutex.vent.is_on and mutex.bag_mask_active
+    mutex.set_vent_power(True)
+    assert mutex.vent.is_on and not mutex.bag_mask_active
+    mutex.set_vent_power(False)
+    mutex.set_apl_valve(0.0)
+    n_actions = len(mutex.actions.records)
+    mutex.deliver_manual_breath()
+    assert not mutex._manual_breath_requested
+    assert len(mutex.actions.records) == n_actions

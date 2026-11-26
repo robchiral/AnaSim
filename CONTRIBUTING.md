@@ -33,9 +33,9 @@ Each type of change also needs the checks below.
 
 | Change | Relevant checks |
 |--------|-----------------|
-| Physiology, pharmacology, or ventilation | Clinical scenarios and tests of the affected subsystem at several step sizes |
+| Physiology, pharmacology, or ventilation | `pytest -m "invariant or clinical" -q`, `python -m tests.intubation_replays`, and tests of the affected subsystem at several step sizes |
 | Browser commands or state fields | `tests/test_web.py`, `tests/test_state_semantics.py`, and local and hosted browser previews |
-| Settings controls or monitor display | `node --test tests/*.mjs` and browser checks |
+| Settings controls or monitor display | `node --test tests/test_*.mjs` and browser checks |
 | Cases | `tests/test_scenarios.py`, `tests/test_case_runtime.py`, and complete browser runs of the changed case in both modes |
 | Local server | `tests/test_local.py` in native Python |
 | Documentation | Run changed examples and check links |

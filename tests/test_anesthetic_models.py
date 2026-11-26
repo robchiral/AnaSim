@@ -19,7 +19,7 @@ from anasim.web import WebSession, catalog
 
 
 def test_published_response_thresholds_and_bis_delay():
-    # Bouillon 2004 Bayesian table at the cohort's median age: 50% no response
+    # Bouillon 2004a Bayesian table at the cohort's median age: 50% no response
     # with propofol alone.
     response = ClinicalResponseModel(age=33.5)
     assert response.loss_of_response(3.2064, 0.0) == pytest.approx(0.5)
@@ -64,7 +64,7 @@ def test_published_response_thresholds_and_bis_delay():
 
 def test_deeper_iv_hypnosis_preserves_cardiovascular_stimulation(engine_factory):
     """Kazama 1997: propofol alone does not change the BP or HR rise to
-    stimulation; opioids, volatiles, and lidocaine still blunt it.
+    stimulation. Opioids, volatiles, and lidocaine still blunt it in AnaSim.
     """
     engine = engine_factory(start=True)
     engine.start_disturbance("stim_intubation_pulse")

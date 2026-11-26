@@ -14,12 +14,14 @@ python -m validation.vitaldb.vitaldb_tiva
 python -m validation.vitaldb.vitaldb_sevo
 ```
 
-Each script writes its report to `results/`, uses unique subjects inside
+Each script writes its report to `results/` and screens unique subjects inside
 AnaSim's adult patient domain (general anesthesia, oral single-lumen tube, age
-18 to 85 years, weight 50 to 200 kg, height 150 to 200 cm, BMI 18 to 60 kg/m²),
-passes preoperative hemoglobin and Cockcroft-Gault creatinine clearance when
-recorded, and retains a legacy-core subgroup row. Shared data loading, replay,
-and cross-validation helpers live in `vitaldb_data.py` and `vitaldb_replay.py`.
+18 to 85 years, weight 50 to 200 kg, height 150 to 200 cm, BMI 18 to 60 kg/m²).
+The replay and compliance scripts pass preoperative hemoglobin and
+Cockcroft-Gault creatinine clearance into `Patient` when recorded and retain a
+legacy-core subgroup row. Shared data loading, replay, and cross-validation
+helpers live in `vitaldb_data.py` and `vitaldb_replay.py`. CPU-bound scripts
+accept `--workers N` (defaulting to the available CPU count).
 
 The source data come from VitalDB (Lee et al., *Scientific Data*, 2022) and are
 used under CC BY-NC-SA 4.0 and the VitalDB data use agreement.
@@ -74,14 +76,15 @@ patients. From propofol to incision, each cuff reading is compared with model
 MAP averaged over the preceding 40 seconds and stops at the first reading that
 could prompt treatment (MAP below 65 mmHg, SBP below 90, or HR below 45).
 
-`vitaldb_sevo.py` replays bolus propofol induction with fentanyl and sevoflurane
-maintenance. Propofol onset is inferred from recorded BIS and shifted 30 seconds
-later than model BIS latency implies, matching the TIVA BIS lag; intubation is
-placed 2.5 minutes after propofol.
+`vitaldb_sevo.py` replays bolus propofol induction with fentanyl (when given),
+remifentanil infusions (when present), and inspired sevoflurane maintenance.
+Propofol onset is inferred from recorded BIS and shifted 30 seconds later than
+model BIS latency implies, matching the TIVA BIS lag; intubation is placed 2.5
+minutes after propofol.
 
 Both scripts fit a patient-offset likelihood model with patient bootstrap 95%
-intervals, report 5-fold fold stability, and accept `--override '{...}'` or
-`--cv-grid '{"field": [v1, v2]}'` (`--folds 5`) for cross-validated sweeps.
+intervals, report 5-fold cross-validation stability, and accept `--override '{...}'`
+or `--cv-grid '{"field": [v1, v2]}'` (`--folds 5`) for cross-validated sweeps.
 
 ### Current results
 
@@ -89,22 +92,22 @@ MAP error, in mmHg with 95% CI:
 
 | Report | Patients | Window | MAP error |
 |---|---:|---|---|
-| TIVA (all) | 511 | Propofol to incision | -3.3 (-4.3 to -2.5) |
-| TIVA (legacy core) | 330 | Propofol to incision | -3.0 (-4.0 to -2.1) |
-| TIVA, untreated | 182 | Surgery | -3.5 (-5.2 to -1.7) |
-| Sevoflurane (all) | 136 | Propofol to incision | -6.8 (-8.9 to -4.8) |
-| Sevoflurane (legacy core) | 29 | Propofol to incision | -6.2 (-10.1 to -2.1) |
-| Sevoflurane, untreated | 48 | Surgery | -3.1 (-7.9 to 1.4) |
+| TIVA (all) | 511 | Propofol to incision | -3.4 (-4.4 to -2.6) |
+| TIVA (legacy core) | 330 | Propofol to incision | -3.1 (-4.1 to -2.2) |
+| TIVA, untreated | 182 | Surgery | -3.5 (-5.2 to -1.8) |
+| Sevoflurane (all) | 136 | Propofol to incision | -7.0 (-9.1 to -4.9) |
+| Sevoflurane (legacy core) | 29 | Propofol to incision | -6.3 (-10.3 to -2.3) |
+| Sevoflurane, untreated | 48 | Surgery | -4.0 (-8.9 to 0.6) |
 
 Median fall in MAP from the pre-induction value:
 
 | Report | 1 to 2 minutes | Lowest reading in 10 minutes | Before incision |
 |---|---|---|---|
 | TIVA, recorded | 18% | 33% | 29% |
-| TIVA, model | 18% | 30% | 29% |
+| TIVA, model | 19% | 30% | 29% |
 | Sevoflurane, recorded | 17% | 29% | 27% |
 | Sevoflurane, model | 14% | 32% | 29% |
 
 Untreated HR error was `+0.1` bpm (induction) and `-0.1` bpm (surgery) in TIVA,
 and `-5.4` bpm at 5 to 10 minutes and `-2.7` bpm during surgery in sevoflurane,
-where 2 to 5 minute MAP fell `18%` versus `15%`.
+where 2 to 5 minute MAP fell `18%` in the model versus `15%` recorded.

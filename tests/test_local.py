@@ -81,7 +81,7 @@ def test_disconnect_timeout_and_shutdown_finish_recordings(server, tmp_path):
     request(server, "create", params={})
     request(server, "cmd", id=1, name="record", args={"active": True})
     with server.lock:
-        # Background-tab timer throttling (~30 s gap) must not drop the active session (#21).
+        # Background-tab timer throttling (~30 s gap) must not drop the active session.
         server.last_seen -= 30
         server.last_tick -= 1
         server.service_actions()

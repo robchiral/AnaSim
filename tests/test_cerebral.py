@@ -43,10 +43,11 @@ def test_severe_supply_failure_suppresses_responsiveness_bis_and_breathing_until
 
 
 def test_persistent_coma_suppresses_postanoxic_bis_while_preserving_partial_brainstem_drive(awake_engine):
-    """Hofmeijer 2015 & Jorgensen 1981 Part II: 5 min normothermic anoxia causes
-    sustained postanoxic cortical EEG suppression (low BIS) and unresponsiveness
-    while more ischemia-resistant brainstem respiratory movements can still return;
-    prolonged 10 min anoxia suppresses both cortical and brainstem activity."""
+    """Calibrated to postanoxic EEG and brainstem recovery (Hofmeijer 2015;
+    Jørgensen and Malchow-Møller 1981): 5 min normothermic anoxia causes
+    sustained cortical EEG suppression (low BIS) and unresponsiveness while more
+    ischemia-resistant brainstem respiratory drive can still return; prolonged
+    anoxia (11 min total) suppresses both."""
     brain = awake_engine.cerebral
     brain.step(CerebralModel.COMA_EXPOSURE_S, 0, 13.5, 98, 40, 7.4)
     brain.step(600, 90, 13.5, 98, 40, 7.4)
@@ -329,3 +330,15 @@ def test_non_drug_coma_raises_stimulus_and_extubation_tolerance(engine_factory):
     coma.cerebral.dysfunction = 0.95
     assert stimulus_tolerance(coma) >= 0.94
     assert extubation_tolerance(coma) >= 0.94
+
+
+def test_hypothermic_cpr_stays_apneic_and_isoelectric_while_preserving_neuroprotection():
+    """29 C CPR stays below the cortical/brainstem CBF threshold (CPR flow fraction from Michael 1984) while hypothermia slows anoxic injury."""
+    warm = CerebralModel(13.5)
+    cold = CerebralModel(13.5)
+    for _ in range(180):
+        warm.step(1.0, 35.0, 13.5, 95.0, 40.0, 7.35, temp_c=37.0, flow_ceiling=0.30)
+        cold.step(1.0, 35.0, 13.5, 95.0, 40.0, 7.35, temp_c=29.0, flow_ceiling=0.30)
+    assert cold.cortical_function < 0.05
+    assert cold.respiratory_drive < 1e-6
+    assert cold.anoxic_s < warm.anoxic_s * 0.5

@@ -6,8 +6,8 @@ from anasim.core.utils import clamp, clamp01
 
 from .resuscitation import COMPRESSION_DUTY
 
-# Reversible oxygen debt after brief VF clears over seconds once beats return,
-# whereas arrest-level depletion recovers over about a minute (Park 1994; Weisfeldt 2002).
+# Calibrated reperfusion time constants: brief-VF recovery takes seconds (Park 1994),
+# whereas prolonged arrest-level depletion recovers over about a minute (Weisfeldt and Becker 2002).
 REPERFUSION_FAST_TAU_S = 3.5
 REPERFUSION_SLOW_TAU_S = 60.0
 # Countershocks transiently depress stroke volume by ~10-15%, resolving over a
@@ -16,8 +16,8 @@ SHOCK_STUN_PER_200J = 0.12
 SHOCK_STUN_MAX = 0.25
 SHOCK_STUN_BASE_TAU_S = 90.0
 SHOCK_STUN_ISCHEMIC_TAU_S = 300.0
-# Ischemic injury that reperfusion does not reverse within a session builds up
-# over about 7 minutes once the energy reserve is exhausted (Laurent 2002).
+# Session-permanent ischemic injury builds up over about 7 minutes once the
+# energy reserve is exhausted (calibration; reversible post-arrest stunning in Laurent 2002).
 INJURY_TIME_S = 420.0
 
 
@@ -74,9 +74,9 @@ class CoronaryModel:
     @staticmethod
     def _zero_flow_pressure(sbp_mmhg: float, lap: float) -> float:
         """Coronary zero-flow back-pressure: 15-20 mmHg across perioperative
-        hypotension, falling curvilinearly in extreme shock (Jeremy 1986; Nanto 2001).
-        Above 25 mmHg LAP, subepicardial flow persists against venous pressure even
-        as subendocardial perfusion falls, moderating effective whole-wall back-pressure.
+        hypotension, falling toward zero in extreme shock (canine data in Jeremy 1986;
+        Nanto 2001). Above 25 mmHg LAP, a model calibration moderates further whole-wall
+        back-pressure rises to reflect preserved subepicardial perfusion.
         """
         eff_lap = 25.0 + 0.60 * (lap - 25.0) if lap > 25.0 else lap
         return max(eff_lap, min(20.0, 0.2 * sbp_mmhg + 6.0 * clamp01((sbp_mmhg - 45.0) / 30.0)))
@@ -108,7 +108,7 @@ class CoronaryModel:
             # oxygen, less as its energy fails.
             demand = 0.25 + 0.5 * (1.0 - self.energy_failure)
         else:
-            # Basal and activation metabolism persist when mechanical work falls (Harasawa 1992).
+            # Basal and activation metabolism persist when mechanical work falls (isolated canine heart data in Harasawa 1992).
             work = hr * active_sbp / self._reference_rpp
             activation_hr = hr / self._reference_hr
             if compressions and activation_hr > 1.5:
@@ -121,7 +121,7 @@ class CoronaryModel:
             diastolic_fraction = 1.0 - COMPRESSION_DUTY
         else:
             base_bp = self._zero_flow_pressure(sbp_val, lap)
-            pulseless_blend = clamp01((7.0 - (sbp_val - dbp_val)) / 4.0)
+            pulseless_blend = clamp01((4.95 - (sbp_val - dbp_val)) / 1.65)
             back_pressure = base_bp + pulseless_blend * max(0.0, dbp_val - base_bp)
             diastolic_fraction = self._diastolic_fraction(hr)
         pressure = max(0.0, dbp_val - back_pressure)
@@ -136,14 +136,15 @@ class CoronaryModel:
         oxygen = hb * clamp(saturation / 98.0, 0.0, 1.05)
         self.supply_demand_ratio = self._supply_scale * pressure * diastolic_fraction * oxygen / demand
         target = clamp01(1.0 - self.supply_demand_ratio)
-        if fibrillating or compressions:
-            tau_off = REPERFUSION_SLOW_TAU_S
-        else:
-            tau_off = REPERFUSION_FAST_TAU_S + (REPERFUSION_SLOW_TAU_S - REPERFUSION_FAST_TAU_S) * (
-                1.0 - self.energy_reserve
-            )
-        tau = 15.0 if target > self.ischemia else tau_off
-        self.ischemia += (target - self.ischemia) * -math.expm1(-dt / tau)
+        if target != self.ischemia:
+            if fibrillating or compressions:
+                tau_off = REPERFUSION_SLOW_TAU_S
+            else:
+                tau_off = REPERFUSION_FAST_TAU_S + (REPERFUSION_SLOW_TAU_S - REPERFUSION_FAST_TAU_S) * (
+                    1.0 - self.energy_reserve
+                )
+            tau = 15.0 if target > self.ischemia else tau_off
+            self.ischemia += (target - self.ischemia) * -math.expm1(-dt / tau)
         if self.shock_stunning > 0.0:
             reperfusion = clamp01(self.supply_demand_ratio)
             self.shock_stunning *= math.exp(-dt * reperfusion / self._shock_stun_tau_s)
@@ -152,18 +153,20 @@ class CoronaryModel:
                 self._shock_stun_tau_s = SHOCK_STUN_BASE_TAU_S
         # Severe oxygen limitation from either cause first depletes an energy
         # reserve, so a perfusing rhythm can return within about 4 minutes of
-        # no flow, as in the electrical phase of arrest (Weisfeldt 2002).
+        # no flow, as in the electrical phase of arrest (Weisfeldt and Becker 2002).
         # Excitation then fails and injury accumulates. The timing is a teaching calibration.
         severity = clamp01((max(self.ischemia, hypoxia) - 0.5) / 0.5)
-        self.energy_reserve = clamp01(
-            self.energy_reserve + dt * ((1.0 - severity) * (1.0 - self.energy_reserve) / 120.0 - severity / 240.0)
-        )
+        if severity > 0.0 or self.energy_reserve < 1.0:
+            self.energy_reserve = clamp01(
+                self.energy_reserve + dt * ((1.0 - severity) * (1.0 - self.energy_reserve) / 120.0 - severity / 240.0)
+            )
         exhausted = self.energy_reserve <= 0.0
         if exhausted:
             self.injury = min(1.0, self.injury + dt * severity / INJURY_TIME_S)
         failure_target = severity if exhausted else 0.0
-        failure_tau = 90.0 if failure_target > self.energy_failure else 60.0
-        self.energy_failure += (failure_target - self.energy_failure) * -math.expm1(-dt / failure_tau)
+        if failure_target != self.energy_failure:
+            failure_tau = 90.0 if failure_target > self.energy_failure else 60.0
+            self.energy_failure += (failure_target - self.energy_failure) * -math.expm1(-dt / failure_tau)
 
     @property
     def irreversible(self) -> bool:

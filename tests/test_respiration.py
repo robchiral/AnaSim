@@ -83,7 +83,7 @@ def test_bradypnea_preserves_controller_ventilation_until_apnea(patient):
 
 @pytest.mark.parametrize("ce_prop", [2.0, 3.0, 6.0])
 def test_bouillon_spontaneous_steady_state_co2_and_alveolar_ventilation(patient, ce_prop):
-    """Bouillon 2004 Eq. 18, with and without its CO2-production correction."""
+    """Bouillon 2004b Eq. 18, with and without its CO2-production correction."""
     keep = 1.0 / (1.0 + (ce_prop / 1.33)**1.68)
     for production in (1.0, 0.7 + 0.3 * keep):
         model = RespiratoryModel(patient)
@@ -255,10 +255,10 @@ def test_age_separates_hypoxic_and_hypercapnic_ventilatory_responses():
 
 
 def test_surgical_anesthesia_abolishes_hypoxic_drive_while_preserving_co2_response():
-    """Knill and Gelb 1978, Sarton 1996, and Blouin 1993:
-    0.1 MAC sevoflurane and low-dose propofol partially preserve acute hypoxic drive,
-    whereas >=1.1 MAC volatile or surgical propofol anesthesia abolishes hypoxic
-    hyperventilation while retaining hypercapnic ventilatory drive.
+    """0.1 MAC sevoflurane (Sarton 1996) and low-dose propofol (Blouin 1993) partially
+    preserve acute hypoxic drive, whereas >=1.1 MAC volatile or surgical propofol
+    anesthesia abolishes hypoxic hyperventilation (extended from 1.1 MAC halothane
+    in Knill and Gelb 1978) while retaining hypercapnic ventilatory drive.
     """
     def isocapnic_hypoxic_delta_va(pco2: float, dt: float = 1.0, **drugs: Any) -> tuple[float, float]:
         model = RespiratoryModel(Patient(age=24, weight=70.0, height=171.0, sex="male"))
@@ -979,3 +979,53 @@ def test_metabolic_alkalosis_raises_paco2_via_lower_tidal_volume(patient):
     assert resp.state.pa_co2 > 44.0
     assert abs(resp.state.rr - resp.rr_0) < 0.5
     assert resp.state.vt < resp.vt_0 - 30.0
+
+
+def test_zero_flow_iv_isolation_hypothermic_p50_step_invariance_copd_and_capno_slope(
+    engine_factory, advance_time
+):
+    """Zero-flow arrest isolates arterial gases from IV fluids, hypothermic P50 uses in-vivo pH/PCO2,
+    coupled hyperpnea+VCV is step-size invariant, COPD uses parallel alveolar dead space, and
+    obstructive capnography reproduces clinical Phase III steepening (Yaron 1996; upper scale anchored to volumetric ALI data in Blanch 1999)."""
+    from anasim.monitors.capno import Capnograph
+
+    vf = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    vf.set_rhythm("VFIB")
+    advance_time(vf, 5.0, dt=0.5)
+    ph0, co2_0, sao2_0, hco3_0 = vf.state.ph, vf.state.pa_co2, vf.state.sao2, vf.state.hco3
+    vf.give_saline(2000.0)
+    vf.give_blood(700.0)
+    advance_time(vf, 10.0, dt=0.5)
+    assert abs(vf.state.ph - ph0) < 0.005
+    assert abs(vf.state.pa_co2 - co2_0) < 0.2
+    assert abs(vf.state.sao2 - sao2_0) < 0.05
+    assert vf.state.hco3 == pytest.approx(hco3_0, abs=1e-6)
+
+    cold = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True, baseline_temp=30.0)
+    assert cold.resp._p50 < 19.0
+    assert cold.resp.arterial_po2_at_37() > cold.state.pao2
+
+    paco2s, mvs = [], []
+    for dt in (0.1, 1.0):
+        mh = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=dt, rng_seed=1),
+            start=True,
+        )
+        mh.start_malignant_hyperthermia()
+        advance_time(mh, 180.0, dt=dt)
+        paco2s.append(mh.state.pa_co2)
+        mvs.append(mh.state.mv)
+    assert abs(paco2s[0] - paco2s[1]) < 1.0
+    assert abs(mvs[0] - mvs[1]) < 0.3
+
+    copd = RespiratoryModel(Patient(copd_severity=1.0))
+    assert copd.copd_alveolar_deadspace > 0.15
+    assert copd.vd_deadspace < 0.20
+
+    obs_cap = Capnograph(0.15)
+    assert obs_cap.PHASE_III_SLOPE >= 8.0
+    for _ in range(100):
+        obs_cap.step(0.01, 0.005, 40.0)
+    vals = [obs_cap.step(0.01, -0.003, 40.0, obstruction=0.5) for _ in range(180)]
+    slope = (vals[160] - vals[90]) / 0.7
+    assert slope > 8.0

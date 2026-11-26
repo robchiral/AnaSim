@@ -2,8 +2,9 @@
 
 Pressure below the autoregulatory range and low arterial oxygen content reduce
 supply. Electrical function ramps down from 60% to complete failure at 35% of
-normal supply, and neurons are injured below 20% (Astrup 1981), more slowly when
-more supply remains (Jones 1981). Oxygen stores delay failure: after circulatory
+normal supply. Severe injury accumulates below 20% supply (primate focal-ischemia
+thresholds in Astrup 1981; slower when more supply remains in Jones 1981), with
+slow penumbral injury modeled between 20% and 42%. Oxygen stores delay failure: after circulatory
 arrest, it starts at about 4 s and the EEG is flat at about 11 s (de Vries
 1998, 11 +/- 2 s to isoelectric EEG). Brief arrest allows electrical recovery,
 whereas prolonged anoxia causes graded permanent cortical and brainstem injury
@@ -40,6 +41,11 @@ class CerebralModel:
     def __init__(self, baseline_hb: float, baseline_paco2: float = 40.0, baseline_map: float = 90.0):
         self.baseline_hb = baseline_hb
         self.baseline_map = baseline_map
+        htn_excess = max(0.0, baseline_map - 90.0)
+        self._ccp_shift = 0.25 * htn_excess
+        self._cpp_span = max(1.0, (40.0 + 0.85 * htn_excess) - self._ccp_shift)
+        reference_hb = max(baseline_hb, 13.0 - 0.35 * max(0.0, 13.0 - baseline_hb))
+        self._inv_ref_o2 = 1.0 / (reference_hb * 98.0)
         self.csf_paco2 = max(15.0, baseline_paco2)
         self.tissue_oxygen = 1.0  # Share of normal
         self.dysfunction = 0.0
@@ -71,22 +77,20 @@ class CerebralModel:
         # Normal supply is maintained above CPP 40 mmHg (MAP 50 at ICP 10 mmHg),
         # shifted rightward in chronic hypertension. Elevated venous outflow
         # pressure reduces CPP without adding phantom gain.
-        self.csf_paco2 += (max(15.0, pa_co2) - self.csf_paco2) * -math.expm1(-dt / self.CSF_ADAPTATION_TAU_S)
+        target_csf = max(15.0, pa_co2)
+        if target_csf != self.csf_paco2:
+            self.csf_paco2 += (target_csf - self.csf_paco2) * -math.expm1(-dt / self.CSF_ADAPTATION_TAU_S)
         outflow_pressure = max(10.0, venous_pressure)
-        htn_excess = max(0.0, self.baseline_map - 90.0)
-        cpp_lower_limit = 40.0 + 0.85 * htn_excess
-        ccp_shift = 0.25 * htn_excess
         cpp = map_mmhg - outflow_pressure
-        pressure = clamp01((cpp - ccp_shift) / max(1.0, cpp_lower_limit - ccp_shift))
+        pressure = clamp01((cpp - self._ccp_shift) / self._cpp_span)
         cpr_cap = clamp01(flow_ceiling) if flow_ceiling is not None else None
-        reference_hb = max(self.baseline_hb, 13.0 - 0.35 * max(0.0, 13.0 - self.baseline_hb))
-        oxygen = max(0.0, hb * saturation) / (reference_hb * 98.0)
+        oxygen = max(0.0, hb * saturation) * self._inv_ref_o2
         # CMRO2 scales with temperature Q10 (~7%/°C), anesthetic suppression, and
         # cerebral hypermetabolic stress (seizures). Hypothermia slows both acute
         # oxygen store depletion and ischemic injury; normothermic anesthesia
         # preserves the ~11 s arrest EEG flattening (de Vries 1998) and does not
-        # shift the cellular ischemic threshold (Astrup 1981).
-        temp_q10 = TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 22.0, 42.0))
+        # shift the cellular ischemic threshold (barbiturate focal-ischemia data in Astrup 1981).
+        temp_q10 = TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 22.0, 42.0)) if temp_c != 37.0 else 1.0
         ischemic_rate = max(0.20, temp_q10 * (1.0 + 0.80 * clamp01(metabolic_stress)))
         cmro2 = max(
             0.20,
@@ -94,8 +98,8 @@ class CerebralModel:
         )
         # Kaisti 2003: propofol preserves CBF-CMRO2 coupling (constant OEF),
         # whereas sevoflurane adds modest luxury perfusion (~15-18% higher CBF/CMRO2).
-        # Normocapnic hypoxia dilates up to 1.5x resting CBF, hypercapnia augments
-        # hypoxic vasodilation up to 2x (Battisti-Charbonney 2011; Willie 2015),
+        # Normocapnic hypoxia dilates up to 1.5x resting CBF (calibration), hypercapnia
+        # augments hypoxic vasodilation up to 2x (Battisti-Charbonney 2011; Willie 2015),
         # and hypocapnia lowers the flow ceiling until pressure limits perfusion (Brian 1998).
         resting_cbf = min(2.0, cmro2 * (1.0 + 0.18 * clamp01(volatile_luxury)))
         effective_paco2 = max(10.0, pa_co2) * 40.0 / self.csf_paco2
@@ -114,57 +118,73 @@ class CerebralModel:
             supply = min(supply, cpr_cap * oxygen)
 
         supply_ratio = min(1.0, supply / cmro2) if supply > 0.0 else 0.0
-        o2_tau = self.TISSUE_OXYGEN_TAU_S / max(0.35, temp_q10)
-        self.tissue_oxygen += (supply_ratio - self.tissue_oxygen) * -math.expm1(-dt / o2_tau)
-        target = clamp01((0.6 - self.tissue_oxygen) / 0.25)
-        severe_anoxia = clamp01(2.0 - self.tissue_oxygen / 0.10)
-        # Prolonged low-flow CPR (20-42% supply) slowly accumulates penumbral injury
-        # while still permitting short resuscitation without permanent deficit.
-        penumbra_anoxia = 0.18 * (clamp01((0.42 - self.tissue_oxygen) / 0.22) ** 1.5)
-        self.anoxic_s += dt * ischemic_rate * max(severe_anoxia, penumbra_anoxia)
-        # Prolonged global anoxia beyond ~4 min causes irreversible cortical
-        # suppression before caudal brainstem failure (Weisfeldt 2002;
-        # Hofmeijer 2015; Jorgensen 1981 Part II).
-        self.cortical_injury = max(
-            self.cortical_injury,
-            clamp01((self.anoxic_s - self.CORTICAL_INJURY_ONSET_S) / self.CORTICAL_INJURY_SPAN_S),
-        )
-        self.brainstem_injury = max(
-            self.brainstem_injury,
-            clamp01((self.anoxic_s - self.BRAINSTEM_INJURY_ONSET_S) / self.BRAINSTEM_INJURY_SPAN_S),
-        )
-        tau = 3.0 if target > self.dysfunction else 30.0
-        self.dysfunction += (target - self.dysfunction) * -math.expm1(-dt / tau)
+        if supply_ratio != self.tissue_oxygen:
+            o2_tau = self.TISSUE_OXYGEN_TAU_S / max(0.35, temp_q10)
+            self.tissue_oxygen += (supply_ratio - self.tissue_oxygen) * -math.expm1(-dt / o2_tau)
+        # During passive CPR, hypothermia/anesthesia reduce CMRO2 and protect against
+        # anoxic injury without restoring cortical wakefulness or spontaneous tidal breathing.
+        electrical_o2 = min(self.tissue_oxygen, cpr_cap * oxygen) if cpr_cap is not None else self.tissue_oxygen
+        target = clamp01((0.6 - electrical_o2) / 0.25)
+        if self.tissue_oxygen < 0.42:
+            severe_anoxia = clamp01(2.0 - self.tissue_oxygen / 0.10)
+            # Prolonged low-flow CPR (20-42% supply) slowly accumulates penumbral injury
+            # while still permitting short resuscitation without permanent deficit.
+            penumbra_anoxia = 0.18 * (clamp01((0.42 - self.tissue_oxygen) / 0.22) ** 1.5)
+            self.anoxic_s += dt * ischemic_rate * max(severe_anoxia, penumbra_anoxia)
+            # Beyond ~4 min of global anoxia (the electrical-to-circulatory boundary in
+            # Weisfeldt and Becker 2002), cortical suppression (Hofmeijer 2015;
+            # Jørgensen and Malchow-Møller 1981) precedes caudal brainstem failure.
+            self.cortical_injury = max(
+                self.cortical_injury,
+                clamp01((self.anoxic_s - self.CORTICAL_INJURY_ONSET_S) / self.CORTICAL_INJURY_SPAN_S),
+            )
+            self.brainstem_injury = max(
+                self.brainstem_injury,
+                clamp01((self.anoxic_s - self.BRAINSTEM_INJURY_ONSET_S) / self.BRAINSTEM_INJURY_SPAN_S),
+            )
+        if target != self.dysfunction:
+            tau = 3.0 if target > self.dysfunction else 30.0
+            self.dysfunction += (target - self.dysfunction) * -math.expm1(-dt / tau)
         # Acute hypercapnia impairs response more with acidemia; compensated
         # retention does so only above 100 mmHg. Gating pH by PaCO2 keeps
         # metabolic acidosis from causing narcosis.
-        hypercapnia = clamp01((pa_co2 - 60.0) / 40.0)
-        acidemia = clamp01((7.3 - ph) / 0.2)
-        target_co2 = max(clamp01((pa_co2 - 100.0) / 40.0), hypercapnia * acidemia)
-        prolonged = clamp01(
-            (self.hypercapnic_coma_s - self.PROLONGED_NARCOSIS_ONSET_S) / self.PROLONGED_NARCOSIS_SPAN_S
+        if pa_co2 > 60.0:
+            hypercapnia = clamp01((pa_co2 - 60.0) / 40.0)
+            acidemia = clamp01((7.3 - ph) / 0.2)
+            target_co2 = max(clamp01((pa_co2 - 100.0) / 40.0), hypercapnia * acidemia)
+        else:
+            target_co2 = 0.0
+        prolonged = (
+            clamp01((self.hypercapnic_coma_s - self.PROLONGED_NARCOSIS_ONSET_S) / self.PROLONGED_NARCOSIS_SPAN_S)
+            if self.hypercapnic_coma_s > self.PROLONGED_NARCOSIS_ONSET_S
+            else 0.0
         )
         recovery_tau = self.CO2_RESPONSE_TAU_S + (self.CO2_RECOVERY_MAX_TAU_S - self.CO2_RESPONSE_TAU_S) * prolonged
-        co2_tau = self.CO2_RESPONSE_TAU_S if target_co2 >= self.co2_narcosis else recovery_tau
-        self.co2_narcosis += (target_co2 - self.co2_narcosis) * -math.expm1(-dt / co2_tau)
+        if target_co2 != self.co2_narcosis:
+            co2_tau = self.CO2_RESPONSE_TAU_S if target_co2 >= self.co2_narcosis else recovery_tau
+            self.co2_narcosis += (target_co2 - self.co2_narcosis) * -math.expm1(-dt / co2_tau)
         if self.co2_narcosis >= 0.5 and target_co2 >= 0.5:
             self.hypercapnic_coma_s = min(
                 self.PROLONGED_NARCOSIS_ONSET_S + self.PROLONGED_NARCOSIS_SPAN_S,
                 self.hypercapnic_coma_s + dt * clamp01((self.co2_narcosis - 0.5) / 0.3),
             )
-        elif target_co2 < 0.5:
+        elif target_co2 < 0.5 and self.hypercapnic_coma_s > 0.0:
             self.hypercapnic_coma_s *= math.exp(-dt / (2.0 * self.CO2_RECOVERY_MAX_TAU_S))
         # Deeper hypercapnic coma depresses medullary breathing toward shallow
         # hypoventilation (Westlake 1955; Sieker and Hickam 1956).
-        medullary_co2 = max(
-            clamp01((pa_co2 - 110.0) / 35.0),
-            clamp01((pa_co2 - 90.0) / 40.0) * clamp01((7.22 - ph) / 0.14),
-        )
-        target_resp_dep = 0.95 * medullary_co2 * medullary_co2
-        resp_tau = self.CO2_RESPONSE_TAU_S if target_resp_dep >= self.co2_respiratory_depression else recovery_tau
-        self.co2_respiratory_depression += (
-            (target_resp_dep - self.co2_respiratory_depression) * -math.expm1(-dt / resp_tau)
-        )
+        if pa_co2 > 90.0:
+            medullary_co2 = max(
+                clamp01((pa_co2 - 110.0) / 35.0),
+                clamp01((pa_co2 - 90.0) / 40.0) * clamp01((7.22 - ph) / 0.14),
+            )
+            target_resp_dep = 0.95 * medullary_co2 * medullary_co2
+        else:
+            target_resp_dep = 0.0
+        if target_resp_dep != self.co2_respiratory_depression:
+            resp_tau = self.CO2_RESPONSE_TAU_S if target_resp_dep >= self.co2_respiratory_depression else recovery_tau
+            self.co2_respiratory_depression += (
+                (target_resp_dep - self.co2_respiratory_depression) * -math.expm1(-dt / resp_tau)
+            )
 
     @property
     def cortical_function(self) -> float:

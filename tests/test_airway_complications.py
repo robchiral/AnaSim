@@ -304,8 +304,8 @@ def test_mask_seal_scales_ventilation_splinting_preoxygenation_and_capnography(e
 
 def test_high_airway_pressure_opens_facemask_leak_above_seal_threshold(engine_factory):
     """Bouvet 2014: facemask pressure-controlled ventilation at 20 and 25 cmH2O,
-    but not at 10 or 15 cmH2O, distended the gastric antrum. Pressures above
-    20 cmH2O leak even with a tight seal.
+    but not at 10 or 15 cmH2O, distended the gastric antrum. AnaSim opens a
+    mask leak above 20 cmH2O even with a tight seal.
     """
     base = engine_factory(config=SimulationConfig(mode="steady_state", dt=1.0), start=True)
     base.give_drug_bolus("roc", 0.8 * base.patient.weight)

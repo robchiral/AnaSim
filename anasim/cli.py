@@ -8,6 +8,7 @@ from dataclasses import fields
 from pathlib import Path
 
 from anasim.core.engine import SimulationConfig, SimulationEngine
+from anasim.core.enums import RhythmType
 from anasim.core.recorder import RecordingError
 from anasim.patient.patient import Patient
 
@@ -63,7 +64,7 @@ def run_headless(args):
                     break
                 if i % 100 == 0:
                     state = engine.state
-                    hr = state.display_hr
+                    hr_text = "--" if state.rhythm_type == RhythmType.VFIB else f"{state.display_hr:.1f}"
                     _, _, map_val = state.monitored_blood_pressure(
                         sim_config.arterial_line_enabled
                     )
@@ -78,7 +79,7 @@ def run_headless(args):
                     )
                     map_text = f"{map_val:.1f}" if map_valid else "--"
                     spo2_text = f"{state.display_spo2:.1f}" if state.spo2_signal_valid else "--"
-                    print(f"Time: {state.time:.2f}s | HR: {hr:.1f} | MAP: {map_text} | SpO2: {spo2_text}")
+                    print(f"Time: {state.time:.2f}s | HR: {hr_text} | MAP: {map_text} | SpO2: {spo2_text}")
             else:
                 remainder = args.duration - steps * sim_config.dt
                 if remainder > 1e-12:
@@ -109,11 +110,12 @@ def run_headless(args):
             and math.isfinite(final_map)
         )
     )
+    final_hr_text = "--" if state.rhythm_type == RhythmType.VFIB else f"{state.display_hr:.1f}"
     final_map_text = f"{final_map:.1f}" if final_map_valid else "--"
     final_spo2_text = f"{state.display_spo2:.1f}" if state.spo2_signal_valid else "--"
     final_etco2_text = f"{state.display_etco2:.1f}" if state.etco2_signal_valid else "--"
     print(
-        f"Final ({state.time:.2f}s) | HR: {state.display_hr:.1f} | MAP: {final_map_text} "
+        f"Final ({state.time:.2f}s) | HR: {final_hr_text} | MAP: {final_map_text} "
         f"| SpO2: {final_spo2_text} | EtCO2: {final_etco2_text} | BIS: {state.display_bis:.1f}"
     )
     print(f"Simulation completed in {end_real - start_real:.2f} seconds of real time")

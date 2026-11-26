@@ -13,8 +13,7 @@ class GasComposition:
 
 
 class CircleSystem:
-    """Well-mixed circle with patient uptake and spill of surplus fresh gas.
-    """
+    """Well-mixed circle with patient uptake and spill of surplus fresh gas."""
 
     def __init__(self, volume_l: float = 6.0):
         self.volume = volume_l  # Including the bag
@@ -58,14 +57,21 @@ class CircleSystem:
 
     def vapor_flow(self) -> float:
         """Return vaporizer output flow added to fresh carrier gas, L/min."""
-        fg_agent = self.vaporizer_setting / 100.0 if self.vaporizer_on else 0.0
+        if not self.vaporizer_on or self.vaporizer_setting <= 0.0:
+            return 0.0
+        fg_agent = self.vaporizer_setting / 100.0
         return max(0.0, self.fgf_total()) * fg_agent / max(1e-6, 1.0 - fg_agent)
 
     def total_inflow(self, vapor_flow: float | None = None) -> float:
         """Return total fresh gas inflow including O2 flush and added vapor, L/min."""
+        fgf = max(0.0, self.fgf_total())
         if vapor_flow is None:
-            vapor_flow = self.vapor_flow()
-        return max(0.0, self.fgf_total()) + self.delivered_o2_flush_flow() + vapor_flow
+            if self.vaporizer_on and self.vaporizer_setting > 0.0 and fgf > 0.0:
+                fg_agent = self.vaporizer_setting / 100.0
+                vapor_flow = fgf * fg_agent / max(1e-6, 1.0 - fg_agent)
+            else:
+                vapor_flow = 0.0
+        return fgf + self.delivered_o2_flush_flow() + vapor_flow
 
     def deliverable_flow(self, dt: float, vapor_flow: float | None = None) -> float:
         """Maximum gas flow (L/min) available from fresh gas plus the reservoir over dt."""
@@ -105,7 +111,7 @@ class CircleSystem:
     ):
         """Advance dt seconds. Uptakes are L/min and negative during washout.
 
-        V dF/dt = supplied gas - uptake - spill*F for each gas.
+        d(V F)/dt = supplied gas - uptake - (spill + leak) * F for each gas.
         Spill and outward circuit leaks leave at the current circuit composition,
         except exhaled N2 vented directly at the expiratory APL valve before
         rebreathing.
@@ -120,11 +126,16 @@ class CircleSystem:
         # The dial specifies vapor as a fraction of carrier plus added vapor.
         # O2 flush bypasses the vaporizer and dilutes circuit agent and N2O.
         fg_agent = self.vaporizer_setting / 100.0 if self.vaporizer_on else 0.0
-        vapor_flow = total_fgf * fg_agent / (1.0 - fg_agent)
+        vapor_flow = total_fgf * fg_agent / (1.0 - fg_agent) if fg_agent > 0.0 else 0.0
         dt_min = dt / 60.0
         prev_reservoir = self.reservoir_volume
         # Record pre-debit capacity so downstream lung exchange receives this step's gas.
-        self.deliverable_flow_l_min = self.deliverable_flow(dt, vapor_flow)
+        reservoir_rate = (
+            prev_reservoir * 60.0 / dt
+            if dt > 0.0
+            else (math.inf if prev_reservoir > 0.0 else 0.0)
+        )
+        self.deliverable_flow_l_min = total_fgf + delivered_flush + vapor_flow + reservoir_rate
         avail = (
             self.deliverable_flow_l_min
             - min(0.0, uptake_o2)

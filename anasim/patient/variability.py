@@ -30,7 +30,7 @@ ELEVELD_REMIFENTANIL_OMEGA = {
     "cl": 0.0197,
     "q2": 0.0547,
     "q3": 0.285,
-    "ke0": 0.379,
+    "ke0": 0.947,
 }
 # Bae 2020 Table 2 CVs. The paper does not define CV; this assumes
 # CV = sqrt(exp(variance) - 1). ke0 is from another study and is not sampled.

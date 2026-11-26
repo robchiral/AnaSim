@@ -121,7 +121,7 @@ def test_n2o_second_gas_concentrating_effect_and_diffusion_hypoxia(engine_factor
 
 
 def test_n2o_potentiates_rocuronium_less_than_equipotent_sevoflurane():
-    """Fiset 1991: 1 MAC N2O potentiates rocuronium substantially less than 1 MAC sevoflurane."""
+    """1 MAC N2O potentiates rocuronium substantially less than 1 MAC sevoflurane (N2O scaling calibrated from vecuronium in Fiset 1991)."""
     tof = TOFModel(Patient())
     assert 0.78 <= tof.f_n2o <= 0.85
     tof_ctrl = tof.compute_tof_from_ce(0.85, mac_sevo=0.0, mac_n2o=0.0)

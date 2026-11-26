@@ -10,7 +10,7 @@ from anasim.core.projection import cardiovascular_response_fractions, stimulus_t
 from anasim.core.runtime import step_disturbances
 from anasim.core.state import SimulationConfig
 from anasim.patient.pd.anesthesia import opioid_equivalent
-from validation.intubation import (
+from tests.intubation_replays import (
     BILLARD_CASES,
     SAWANO_CASES,
     replay_billard,
@@ -18,6 +18,7 @@ from validation.intubation import (
 )
 
 
+@pytest.mark.clinical
 @pytest.mark.parametrize("fentanyl,propofol,baseline_sbp,increase,reference,hr,hr_percent,hr_reference", [
     (1.2, 16.4, 92.8, 19.5, 92.3 * 0.245, 70.3, 8.5, 83.7 * 0.203),
     (1.2, 32.6, 79.6, 20.2, 70.3 * 0.287, 60.4, 13.2, 65.2 * 0.199),
@@ -67,13 +68,14 @@ def test_fentanyl_stimulation_transfer_with_other_anesthetics(engine_factory):
     assert 0.0 < combined_hr < fentanyl_hr < control_hr
 
 
+@pytest.mark.clinical
 def test_billard_bolus_pressure_and_hr_calibration():
     """Billard 1994 Tables 1-3: bolus transfer of the Kazama fentanyl fit, before
     and 1 min after intubation averaged over 10 s, for all four propofol doses.
 
     These cohorts also calibrate the stimulus profile, so the RMSE bounds guard
     the calibration. SBP rises remain too small at every fentanyl dose, and HR
-    rises with fentanyl 6-7 bpm too small. python -m validation.intubation
+    rises with fentanyl 6-7 bpm too small. python -m tests.intubation_replays
     prints the full errors.
     """
     pressure_rises, hr_rises = [], []
@@ -95,6 +97,7 @@ def test_billard_bolus_pressure_and_hr_calibration():
     assert hr_rise_rmse < 8.0
 
 
+@pytest.mark.clinical
 @pytest.mark.parametrize("case,ci_sd,svi_sd", [
     (SAWANO_CASES[0], 1.4, 16.0),
     (SAWANO_CASES[1], 1.1, 7.0),
@@ -120,6 +123,7 @@ def test_sawano_normotensive_pressure_and_flow_calibration(case, ci_sd, svi_sd):
     assert max(point.hr for point in predicted[5:]) <= predicted[4].hr + 1.0
 
 
+@pytest.mark.clinical
 def test_hayakawa_propofol_fentanyl_pressure_hr_and_flow(engine_factory):
     """Hayakawa-Fujii 2001 Table 1: SBP/DBP 102/57, HR 67, and CO 4.4 L/min
     3 min after induction; MAP near 94 and HR near 72 in the first minute after

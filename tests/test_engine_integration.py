@@ -3,7 +3,6 @@ import pytest
 from anasim.core.engine import SimulationEngine
 from anasim.core.monitors import waveform_substeps
 from anasim.core.state import SimulationConfig
-from anasim.patient.patient import Patient
 
 
 @pytest.fixture
@@ -38,12 +37,11 @@ def test_output_buffer_holds_one_respiratory_sweep_of_10_ms_samples(patient):
     assert waveform_substeps(0.3) == 30
 
 
-def test_peep_reduces_preload_without_automatically_recruiting_lung():
-    engine = SimulationEngine(
-        Patient(age=40, weight=70, height=170, sex="male"),
-        SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5, rng_seed=123),
+def test_peep_reduces_preload_without_automatically_recruiting_lung(engine_factory):
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=0.5, rng_seed=123),
+        start=True,
     )
-    engine.start()
 
     engine.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
     _run_for(engine, 60.0, dt=0.5)

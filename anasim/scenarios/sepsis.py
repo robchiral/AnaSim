@@ -61,6 +61,7 @@ def create_sepsis_response() -> Scenario:
     start_map = CrisisStartMAP()
     decompensation_started = False
     hypotension_noted = False
+    observe_done = False
     fluids = require_fluid_bolus(500, labels=("crystalloid", "saline"), event_name="sepsis")
     vasopressor = require_infusion_started(
         "nore", fail_message="Start or adjust norepinephrine for persistent hypotension",
@@ -85,17 +86,21 @@ def create_sepsis_response() -> Scenario:
         threshold = 65.0 if start_map.value is None else min(65.0, start_map.value - 10.0)
         return engine.state.map < threshold
 
-    def mark_hypotension(_engine) -> None:
-        nonlocal hypotension_noted
+    def mark_hypotension(engine) -> None:
+        nonlocal hypotension_noted, observe_done
         hypotension_noted = True
+        observe_done = True
+        if _source_control_requested(engine):
+            engine.sepsis.onset_rate = 0.0
 
     def request_source_control(engine) -> None:
-        nonlocal hypotension_noted
-        # Surgical drainage addresses the infectious focus, but established vasoplegia
-        # persists intraoperatively and continues to require hemodynamic support.
-        # Acting early on decompensation also advances the observe step.
-        hypotension_noted = True
-        engine.sepsis.onset_rate = 0.0
+        nonlocal observe_done
+        # Surgical drainage addresses the infectious focus, but endotoxin release
+        # already underway still produces septic shock and ongoing vasoplegia.
+        # Acting early on decompensation advances the observe step without aborting shock.
+        observe_done = True
+        if hypotension_noted:
+            engine.sepsis.onset_rate = 0.0
 
     def require_source_control(engine) -> tuple[bool, str]:
         met = _source_control_requested(engine)
@@ -108,7 +113,7 @@ def create_sepsis_response() -> Scenario:
                 "The patient has intra-abdominal sepsis and is febrile with mild tachycardia. "
                 "Follow blood pressure, heart rate, and perfusion closely as surgery proceeds."
             ),
-            check=lambda _engine: (hypotension_noted, ""),
+            check=lambda _engine: (observe_done, ""),
         ),
         ScenarioStep(
             id="RECOGNIZE_WARM_SHOCK",
@@ -208,7 +213,9 @@ def create_sepsis_response() -> Scenario:
             CaseOutcome("volume", "Volume replacement started", lambda engine: fluids(engine)[0],
                         "Replace circulating volume while treating septic shock.", milestone=True),
             CaseOutcome("vasopressor", "Norepinephrine started",
-                        lambda engine: vasopressor(engine)[0] or require_map_at_least(65)(engine)[0],
+                        lambda engine: vasopressor(engine)[0] or (
+                            decompensation_started and hypotension_noted and require_map_at_least(65)(engine)[0]
+                        ),
                         "Start norepinephrine promptly when fluid resuscitation does not restore MAP ≥ 65 mmHg.",
                         milestone=True),
             CaseOutcome("source", "Cause addressed", _source_control_requested,

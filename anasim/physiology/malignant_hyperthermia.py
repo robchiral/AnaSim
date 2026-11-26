@@ -28,6 +28,13 @@ def triggering_exposure(
     return sevo_mac > 0.001 or succinylcholine_cp > 0.01 or recent_succinylcholine
 
 
+def dantrolene_inhibition(sevo_mac: float, succinylcholine_cp: float, dantrolene_ce: float) -> float:
+    """Fractional RyR1 suppression by dantrolene under competitive volatile/succinylcholine opposition."""
+    active_sevo = max(0.0, sevo_mac - 0.25)
+    trigger_drive = clamp(active_sevo / 0.55, 0.0, 2.5) + clamp(succinylcholine_cp / 0.4, 0.0, 2.0)
+    return hill_function(dantrolene_ce, 1.5 * (1.0 + 4.5 * trigger_drive), 3.0)
+
+
 class MalignantHyperthermia:
     """Crisis severity, 0-1."""
 
@@ -36,6 +43,7 @@ class MalignantHyperthermia:
         self._susceptible = False
         self.severity = 0.0
         self._controlled = False
+        self._suppression_dwell_s = 0.0
 
     @property
     def active(self) -> bool:
@@ -46,6 +54,7 @@ class MalignantHyperthermia:
         self._active = bool(value)
         self._susceptible = self._active
         self._controlled = False
+        self._suppression_dwell_s = 0.0
 
     @property
     def susceptible(self) -> bool:
@@ -63,20 +72,21 @@ class MalignantHyperthermia:
             # Active volatile anesthetic (>0.25 MAC) and succinylcholine
             # competitively oppose dantrolene at RyR1, preventing crisis control
             # while triggering agents continue, without altering untreated onset.
-            active_sevo = max(0.0, sevo_mac - 0.25)
-            trigger_drive = clamp(active_sevo / 0.55, 0.0, 2.5) + clamp(succinylcholine_cp / 0.4, 0.0, 2.0)
-            dantrolene_ic50 = 1.5 * (1.0 + 4.5 * trigger_drive)
-            inhibition = hill_function(dantrolene_ce, dantrolene_ic50, 3.0)
+            inhibition = dantrolene_inhibition(sevo_mac, succinylcholine_cp, dantrolene_ce)
             if (
-                inhibition > 0.5
+                inhibition > 0.70
                 and self.severity < 0.02
                 and sevo_mac <= 0.05
                 and succinylcholine_cp <= 0.01
             ):
-                self._controlled = True
+                self._suppression_dwell_s += dt
+                if self._suppression_dwell_s >= 360.0:
+                    self._controlled = True
+            else:
+                self._suppression_dwell_s = 0.0
             # Trigger removal alone does not abort an established crisis, whereas
-            # full suppression after trigger elimination resolves without relapse
-            # despite trace post-washout adipose sevoflurane.
+            # sustained full suppression after trigger elimination resolves without
+            # relapse despite trace post-washout adipose sevoflurane.
             sevo_threshold = 0.05 if self._controlled else 0.001
             exposed = sevo_mac > sevo_threshold or succinylcholine_cp > 0.01
             if exposed:
@@ -95,7 +105,7 @@ class MalignantHyperthermia:
         rate = growth + recovery
         if rate > 0.0:
             self.severity += (growth / rate - self.severity) * -math.expm1(-dt * rate)
-        if self._active and self._controlled and not exposed and self.severity < 1e-3:
+        if self._active and self._controlled and self.severity < 1e-3:
             self.severity = 0.0
             self._active = False
             self._controlled = False

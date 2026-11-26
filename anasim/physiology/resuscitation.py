@@ -1,8 +1,8 @@
 """Chest compressions and electrical therapy.
 
 Compressions are calibrated to adult CPR targets: forward flow near a fifth of
-resting output, and diastolic pressure near the 25 mmHg needed for coronary
-perfusion (Paradis 1990; Meaney 2013). First-shock biphasic VF termination and
+resting output, and diastolic pressure near the 25 mmHg CPR target (Meaney 2013),
+providing >=15 mmHg coronary perfusion pressure (Paradis 1990). First-shock biphasic VF termination and
 post-shock asystole follow out-of-hospital arrest recordings (Stiell 2007;
 Koster 2008; Pierce 2015). Pulseless VT responses, penalties for fine VF or
 hypoxia, synchronized cardioversion, and R-on-T risk are calibrations.
@@ -19,8 +19,9 @@ from anasim.core.utils import clamp01
 
 COMPRESSION_RATE = 110.0  # /min, within the guideline 100-120
 # Share of resting cardiac output at normal filling and vascular resistance;
-# less when underfilled or when pressor afterload impedes passive forward flow
-# (Paradis 1990; Cantineau 1994; Kim 2025). Calibrated so anesthetized adult
+# less when underfilled or when pressor afterload lowers forward flow (modeling
+# the post-epinephrine EtCO2 drop in Cantineau 1994b alongside diastolic pressure
+# rises in Kim 2025 and CPP targets in Paradis 1990). Calibrated so anesthetized adult
 # compressions produce ~20% resting output and ~70/25 mmHg arterial pressure.
 COMPRESSION_OUTPUT_FRACTION = 0.25
 COMPRESSION_AFTERLOAD_COUPLING = 0.45
@@ -164,7 +165,7 @@ def shock_outcome(rhythm: RhythmType, *, synchronized: bool, energy_failure: flo
     A terminated arrhythmia becomes sinus rhythm, or transient post-shock
     asystole after prolonged pulseless arrest (Pierce 2015); whether an
     organized rhythm perfuses depends on the myocardium's energy state.
-    Deep hypothermia (<30 C) and severe hyperkalemia sharply reduce electrical
+    Deep hypothermia (<30.5 °C) and severe hyperkalemia sharply reduce electrical
     conversion probability until the underlying cause is treated.
     """
     if electrically_silent:

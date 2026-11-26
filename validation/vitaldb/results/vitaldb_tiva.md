@@ -1,6 +1,6 @@
 # VitalDB TIVA hemodynamics
 
-Generated 2026-11-23.
+Generated 2026-11-25.
 
 ## Methods
 
@@ -24,37 +24,37 @@ Eligible candidates: 1664. Retained: 511.
 
 | Patients | n | Readings | Mean error, mmHg (95% CI) | Patient SD | Reading SD |
 |---|---:|---:|---|---:|---:|
-| All patients | 511 | 2788 | -3.3 (-4.3 to -2.5) | 7.5 | 12.4 |
-| Legacy core (GenSurg, ASA 1-2, normotensive, BMI ≤ 32) | 330 | 1733 | -3.0 (-4.0 to -2.1) | 7.0 | 12.1 |
-| Untreated | 282 | 1772 | -4.9 (-6.0 to -4.0) | 7.3 | 12.0 |
-| Pressor-treated | 229 | 1016 | -1.2 (-2.4 to 0.2) | 7.3 | 13.0 |
-| Normotensive | 370 | 1949 | -3.4 (-4.3 to -2.5) | 7.1 | 12.1 |
-| Hypertensive | 141 | 839 | -3.3 (-5.0 to -1.4) | 8.6 | 12.9 |
-| ASA 1-2 | 470 | 2593 | -3.2 (-4.1 to -2.3) | 7.3 | 12.4 |
-| ASA 3 | 41 | 195 | -4.5 (-8.4 to -0.7) | 9.3 | 12.0 |
-| BMI under 30 | 486 | 2648 | -3.4 (-4.2 to -2.5) | 7.6 | 12.4 |
-| BMI 30 and over | 25 | 140 | -2.1 (-5.2 to 0.4) | 4.8 | 12.3 |
-| Open, supine | 265 | 1399 | -3.1 (-4.3 to -1.8) | 7.5 | 12.6 |
-| Laparoscopic or robotic, supine | 115 | 607 | -1.8 (-3.5 to -0.2) | 6.6 | 11.7 |
-| Other positions | 131 | 782 | -5.1 (-6.8 to -3.5) | 8.0 | 12.5 |
-| Age under 45 | 99 | 504 | -2.5 (-4.1 to -0.9) | 6.4 | 11.8 |
-| Age 45-59 | 173 | 962 | -3.2 (-4.4 to -1.8) | 6.5 | 12.0 |
-| Age 60-69 | 154 | 884 | -3.4 (-4.9 to -1.9) | 7.9 | 12.2 |
-| Age 70 and over | 85 | 438 | -4.5 (-7.4 to -2.0) | 9.6 | 14.0 |
+| All patients | 511 | 2788 | -3.4 (-4.4 to -2.6) | 7.5 | 12.4 |
+| Legacy core (GenSurg, ASA 1-2, normotensive, BMI ≤ 32) | 330 | 1733 | -3.1 (-4.1 to -2.2) | 6.9 | 12.1 |
+| Untreated | 282 | 1772 | -5.0 (-6.1 to -4.1) | 7.3 | 12.0 |
+| Pressor-treated | 229 | 1016 | -1.2 (-2.5 to 0.1) | 7.2 | 13.0 |
+| Normotensive | 370 | 1949 | -3.5 (-4.4 to -2.6) | 7.1 | 12.1 |
+| Hypertensive | 141 | 839 | -3.3 (-5.1 to -1.4) | 8.5 | 13.0 |
+| ASA 1-2 | 470 | 2593 | -3.3 (-4.2 to -2.4) | 7.3 | 12.4 |
+| ASA 3 | 41 | 195 | -4.5 (-8.5 to -0.8) | 9.3 | 12.0 |
+| BMI under 30 | 486 | 2648 | -3.5 (-4.3 to -2.6) | 7.6 | 12.4 |
+| BMI 30 and over | 25 | 140 | -2.2 (-5.2 to 0.4) | 4.8 | 12.3 |
+| Open, supine | 265 | 1399 | -3.2 (-4.4 to -1.9) | 7.5 | 12.6 |
+| Laparoscopic or robotic, supine | 115 | 607 | -1.9 (-3.6 to -0.3) | 6.6 | 11.7 |
+| Other positions | 131 | 782 | -5.2 (-6.9 to -3.6) | 8.0 | 12.6 |
+| Age under 45 | 99 | 504 | -2.7 (-4.2 to -1.0) | 6.4 | 11.8 |
+| Age 45-59 | 173 | 962 | -3.3 (-4.5 to -1.9) | 6.5 | 12.0 |
+| Age 60-69 | 154 | 884 | -3.5 (-5.0 to -1.9) | 7.9 | 12.3 |
+| Age 70 and over | 85 | 438 | -4.6 (-7.5 to -2.1) | 9.6 | 14.0 |
 
-Sensitivity stopping rule, all patients: -3.8 (-4.6 to -2.9) mmHg.
+Sensitivity stopping rule, all patients: -3.9 (-4.7 to -3.0) mmHg.
 
-By time after propofol, all patients: before 10 min -3.8 (-4.7 to -2.8); from 10 min -0.7 (-1.9 to 0.6) mmHg.
+By time after propofol, all patients: before 10 min -3.9 (-4.8 to -3.0); from 10 min -0.7 (-1.9 to 0.6) mmHg.
 
-Compared with model MAP when each reading appears, all patients: -4.6 (-5.4 to -3.7) mmHg.
+Compared with model MAP when each reading appears, all patients: -4.7 (-5.5 to -3.8) mmHg.
 
-5-fold stratified fold means: -2.8, -3.5, -3.3, -4.0, -2.9 mmHg (mean -3.3, SD 0.5).
+5-fold stratified fold means: -2.9, -3.6, -3.4, -4.1, -3.0 mmHg (mean -3.4, SD 0.5).
 
 Change in MAP from pre-induction, all readings without stopping, median (IQR):
 
 | Measure | Patients | Recorded | Model |
 |---|---:|---|---|
-| 1-2 min | 331 | -18% (-24 to -9) | -18% (-21 to -16) |
+| 1-2 min | 331 | -18% (-24 to -9) | -19% (-21 to -16) |
 | 2-5 min | 487 | -22% (-30 to -13) | -26% (-29 to -22) |
 | lowest in 10 min | 510 | -33% (-40 to -25) | -30% (-33 to -26) |
 | 10 min before incision | 441 | -29% (-37 to -21) | -29% (-33 to -25) |
@@ -68,13 +68,13 @@ Change in MAP from pre-induction, all readings without stopping, patients aged 7
 | lowest in 10 min | 85 | -37% (-45 to -26) | -33% (-36 to -31) |
 | 10 min before incision | 69 | -32% (-39 to -24) | -33% (-36 to -30) |
 
-ECG HR error 3-10 minutes after propofol, untreated: per-patient median 0.1 (-1.1 to 1.3), n=281; highest 30-s median 0.5 (-1.4 to 2.3), n=281 bpm.
+ECG HR error 3-10 minutes after propofol, untreated: per-patient median 0.1 (-1.1 to 1.3), n=281; highest 30-s median 0.3 (-1.7 to 2.1), n=281 bpm.
 
 ## Surgery
 
-Untreated patients, from 15 minutes after incision to the end of surgery: MAP error -3.5 (-5.2 to -1.7), n=182 mmHg; HR error -0.1 (-1.7 to 1.9), n=182 bpm. Arterial MAP is used when recorded.
+Untreated patients, from 15 minutes after incision to the end of surgery: MAP error -3.5 (-5.2 to -1.8), n=182 mmHg; HR error -0.1 (-1.8 to 1.9), n=182 bpm. Arterial MAP is used when recorded.
 
-MAP rise from the last 10 minutes before incision to surgery: recorded 11.0 (9.4 to 12.8), n=182, model 9.5 (9.0 to 9.9), n=182 mmHg.
+MAP rise from the last 10 minutes before incision to surgery: recorded 11.0 (9.4 to 12.8), n=182, model 9.4 (8.9 to 9.9), n=182 mmHg.
 
 Exclusions:
 

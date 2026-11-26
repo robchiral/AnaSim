@@ -1,4 +1,4 @@
-"""Sevoflurane uptake and washout (Carpenter 1986; Yasuda 1991)."""
+"""Volatile anesthetic uptake and washout (multicompartment kinetics from Carpenter 1986; sevoflurane data from Yasuda 1991)."""
 
 import copy
 
@@ -132,3 +132,33 @@ def test_cooling_conserves_dissolved_volatile_mass():
     p_vrg_37 = vpk.state.p_vrg
     vpk.step(1.0, 0.0, 0.0, 5.0, temp_c=32.0)
     assert 0.70 * p_vrg_37 < vpk.state.p_vrg < p_vrg_37
+
+
+def test_fat_partition_temperature_cycle_conserves_volatile_mass():
+    """Cooling and rewarming in a closed system conserves dissolved volatile mass across all compartments."""
+    vpk = VolatilePK(Patient(), "Sevoflurane", lambda_b_g=0.65, mac_40=1.80)
+    for _ in range(180):
+        vpk.step(10.0, 0.02, 4.5, 5.0, temp_c=37.0)
+    s0 = vpk.state
+
+    def total_mass(temp_c: float) -> float:
+        l_bg = vpk.lambda_b_g_at_temp(temp_c)
+        fat_scale = (l_bg / vpk.lambda_b_g) ** 0.5
+        s = vpk.state
+        return (
+            vpk.frc * s.p_alv
+            + vpk.v_vrg * vpk.lambda_t_b_vrg * l_bg * s.p_vrg
+            + vpk.v_mus * vpk.lambda_t_b_mus * l_bg * s.p_mus
+            + vpk.v_fat * vpk.lambda_t_b_fat * vpk.lambda_b_g * fat_scale * s.p_fat
+        )
+
+    m0 = total_mass(37.0)
+    assert s0.p_fat > 0.0
+    for _ in range(60):
+        vpk.step(5.0, 0.0, 0.0, 5.0, temp_c=30.0)
+    m_cold = total_mass(30.0)
+    for _ in range(60):
+        vpk.step(5.0, 0.0, 0.0, 5.0, temp_c=37.0)
+    m_rewarm = total_mass(37.0)
+    assert m_cold == pytest.approx(m0, rel=1e-3)
+    assert m_rewarm == pytest.approx(m0, rel=1e-3)

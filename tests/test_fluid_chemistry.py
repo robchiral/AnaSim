@@ -294,7 +294,7 @@ def test_saline_loading_and_bleeding_preserve_carbon_and_charge(engine_factory):
 
 
 def test_calcium_inotropy_citrate_hypotension_hyperkalemia_and_starling_refill(engine_factory, advance_time):
-    """Denlinger 1975 & Lang 1988: CaCl2 raises SV and CO without vasoconstriction,
+    """CaCl2 raises SV and CO without vasoconstriction (Denlinger 1975; Lang 1988),
     reverses citrate hypocalcemic hypotension, and antagonizes hyperkalemic conduction block;
     unresuscitated hemorrhage recruits transcapillary interstitial refill with hemodilution.
     """
@@ -385,7 +385,7 @@ def test_rapid_saline_resuscitation_lowers_ph_monotonically(engine_factory, adva
 def test_lipid_partition_donor_prbc_oxygen_and_zero_flow_crystalloid_kinetics(
     engine_factory, advance_time
 ):
-    """20% lipid emulsion stays extracellular without hyponatremia or excess third-spacing;
+    """20% lipid emulsion distributes its free water across total body water without severe hyponatremia or excess third-spacing;
     stored pRBC transfusion adds venous-saturated donor O2; crystalloid third-space refill
     remains protein-free; crystalloid k21 return halts at zero circulation.
     """
@@ -482,9 +482,9 @@ def test_citrate_clearance_and_massive_transfusion_calcium_and_acid_base_rebound
 
 
 def test_intraoperative_crystalloid_loading_matches_ewaldsson_hahn_dilution_and_urine():
-    """Ewaldsson and Hahn 2005: 25 mL/kg Ringer's over 30 min under volatile or propofol
-    anesthesia expands plasma ~30% at 30 min and ~15-20% at 150 min, with ~7-11% urinary
-    excretion and similar extravascular retention across anesthetics.
+    """Ewaldsson and Hahn 2005: 25 mL/kg acetated Ringer's over 30 min under isoflurane or propofol
+    (replayed with balanced crystalloid and sevoflurane/propofol) expands plasma ~30% at 30 min
+    and ~15-20% at 150 min, with ~7-11% urinary excretion and similar extravascular retention across anesthetics.
     """
     results = {}
     for mode, age, weight in (("volatile", 50.0, 68.5), ("propofol", 57.0, 68.7)):
@@ -811,3 +811,51 @@ def test_succinylcholine_potassium_efflux_peaks_within_five_minutes(engine_facto
             peak_k, peak_t = sux.state.potassium, sux.state.time
     assert 0.30 < peak_k - k0 < 0.85
     assert 90.0 <= peak_t <= 330.0
+
+
+def test_drobin_hemorrhage_retention_ludbrook_citrate_lactic_k_and_lean_mass_scaling(
+    engine_factory, advance_time
+):
+    """Hemorrhage suppresses crystalloid elimination (Drobin 1999), hypothermia slows citrate clearance
+    (Ludbrook 1958), pure lactic acidosis keeps direct K+ shift minimal, and obesity scales pools by lean mass."""
+    uops = []
+    for bleed in (0.0, 900.0):
+        eng = engine_factory(config=SimulationConfig(mode="awake", dt=2.0, rng_seed=1), start=True)
+        if bleed > 0.0:
+            eng.hemo.add_volume(-bleed)
+            advance_time(eng, 60.0, dt=2.0)
+        u0 = eng.state.urine_out_ml
+        for _ in range(30):
+            eng.give_fluid(1750.0 / 30.0)
+            advance_time(eng, 60.0, dt=2.0)
+        advance_time(eng, 90.0 * 60.0, dt=2.0)
+        uops.append(eng.state.urine_out_ml - u0)
+    assert uops[1] < uops[0] * 0.72
+
+    warm = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, baseline_temp=37.0)
+    cold = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, baseline_temp=28.5)
+    warm.hemo.fluids.citrate_mmol = 12.0
+    cold.hemo.fluids.citrate_mmol = 12.0
+    for _ in range(300):
+        warm.state.temp_c = 37.0
+        cold.state.temp_c = 28.5
+        warm.step(2.0)
+        cold.step(2.0)
+    warm_removed = 12.0 - warm.hemo.fluids.citrate_mmol
+    cold_removed = 12.0 - cold.hemo.fluids.citrate_mmol
+    assert cold_removed < warm_removed * 0.75
+    assert abs(cold.lactate.concentration - cold.lactate._resting_conc) < 0.05
+
+    lac = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    k0 = lac.state.potassium
+    lac_add = 12.0 * lac.lactate.volume_l
+    lac.lactate.endogenous_mmol += lac_add
+    lac.resp.remove_buffer_base(lac_add)
+    advance_time(lac, 120.0, dt=1.0)
+    assert lac.state.ph < 7.25
+    assert abs(lac.state.potassium - k0) < 0.25
+
+    lean = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), weight=70.0, height=185.0)
+    obese = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), weight=200.0, height=185.0)
+    assert obese.lactate.volume_l < lean.lactate.volume_l * 2.3
+    assert obese.hemo.fluids.citrate_volume_l < lean.hemo.fluids.citrate_volume_l * 2.3

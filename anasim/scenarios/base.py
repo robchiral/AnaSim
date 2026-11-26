@@ -23,7 +23,7 @@ from anasim.core.action_log import (
 from anasim.core.monitors import display_int
 from anasim.core.projection import (
     dantrolene_twitch_fraction,
-    project_arterial,
+    seed_arterial_monitors,
     sync_state_from_models,
 )
 from anasim.core.state import AirwayType, WaveformSample
@@ -516,7 +516,7 @@ def require_etco2_above(threshold: float = 20) -> Requirement:
 
 
 def require_tracheal_ventilation(engine) -> tuple[bool, str]:
-    """Require controlled ventilation through the tracheal tube."""
+    """Require the ventilator to be running through the tracheal tube."""
     if engine.state.airway_mode != AirwayType.ETT:
         return False, "Select Tracheal tube"
     return engine.vent.is_on, "" if engine.vent.is_on else "Start the ventilator"
@@ -679,16 +679,7 @@ def preroll_scenario(
 
     # Re-seed beat-synchronous monitors to the pre-rolled hemodynamics before the
     # short 100 Hz settle that latches capnography, arterial line, SpO2, and alarms.
-    hemo_state = engine.hemo.state
-    cardiac_sample = engine.cardiac_cycle.seed(hemo_state.hr, hemo_state.rhythm_type)
-    arterial_sample = engine.arterial_waveform.seed(
-        cardiac_sample,
-        hemo_state.map,
-        hemo_state.sv,
-        static_pressure=hemo_state.venous_pressure,
-        pulse_pressure_factor=hemo_state.pulse_pressure_factor,
-    )
-    project_arterial(engine.state, arterial_sample, engine.art_line.seed(arterial_sample))
+    seed_arterial_monitors(engine, engine.hemo.state)
     engine.alarms._violation_s.clear()
     engine.state.alarms = {}
 
@@ -704,10 +695,7 @@ def preroll_scenario(
     state = engine.state
     state.time = 0.0
     engine._next_nibp_time = 0.0
-    engine.nibp.is_cycling = False
-    engine.nibp.is_inflating = False
-    engine.nibp.cuff_pressure = 0.0
-    engine.nibp._reset_sweep()
+    engine.nibp.reset()
     monitor_core.seed_nibp_reading(engine)
     nmb_baseline = engine.nmb.baseline
     engine.nmb = NeuromuscularMonitor()

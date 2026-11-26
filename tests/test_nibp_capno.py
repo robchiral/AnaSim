@@ -461,7 +461,7 @@ class TestCapnography:
     ):
         """Coupled CPR mechanics reproduce mode-specific Ppeak/VT responses (Neumamm 2021;
         Orlob 2021), PEEP-dependent airway closure and thoracic distension (Grieco 2019;
-        Lesimple 2022), PSV recoil auto-triggering (Neumamm 2021), and dt-invariance."""
+        Lesimple 2022), PSV recoil auto-triggering (extended from Neumamm 2021), and dt-invariance."""
         # 1. VCV vs PCV under CPR (Neumamm 2021; Orlob 2021).
         base_pcv = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.2, rng_seed=7), start=True)
         base_pcv.set_rhythm("ASYSTOLE")

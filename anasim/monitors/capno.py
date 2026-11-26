@@ -12,15 +12,16 @@ class Capnograph:
     Inspiration draws fresh gas past the sampling port.
     """
 
-    # Fitted to Dräger Primus recordings; see docs/REFERENCES.md#ventilator-waveforms.
+    # Fitted to Dräger Primus VitalDB recordings (5-fold CV choice: 15 mmHg/L)
+    # with obstructive steepening calibrated to Yaron 1996.
     ANALYZER_TAU = 0.12  # s, each of two first-order stages
     PHASE_II_VOLUME = 0.10  # L, spread of path dead spaces
-    PHASE_III_SLOPE = 20.0  # mmHg/L at normal alveolar PCO2
+    PHASE_III_SLOPE = 15.0  # mmHg/L at normal alveolar PCO2
     PHASE_III_REF_ETCO2 = 38.0  # mmHg; slope scales proportionally below normal PCO2
     MIN_FLOW_L_S = 0.002  # L/s (0.12 L/min); analyzer no-flow floor
     PASSIVE_CREEP_L_S = 0.015  # L/s (0.9 L/min); post-expiratory apneic drift
-    # Y-piece sampling adapter washout volume and conducting-airway oscillatory
-    # mixing scale during shallow flow reversals (Deakin 2007; Grieco 2019; Lesimple 2022).
+    # Calibrated Y-piece washout volume and conducting-airway oscillatory mixing
+    # parameters for CPR flow reversals (Deakin 2007; Grieco 2019; Lesimple 2022).
     PORT_WASH_VOL = 0.007  # L
     STREAM_MIX_VOL = 0.45  # L
     STREAM_FRESH_FRAC = 0.25
@@ -104,7 +105,7 @@ class Capnograph:
                 self._exhaled_alveolar = max(0.0, self._exhaled_alveolar - self._inhaled)
                 self._inhaled = 0.0
             slope_scale = min(1.0, max(0.0, end_tidal) / self.PHASE_III_REF_ETCO2)
-            slope = self.PHASE_III_SLOPE * slope_scale * (1.0 + 3.0 * obstruction)
+            slope = self.PHASE_III_SLOPE * slope_scale * (1.0 + 3.5 * obstruction)
             # Allow for transit through dead space, using this inspiration's
             # volume. Bound the source concentration at the current endpoint.
             leaving = self._exhaled_alveolar + 0.5 * exhaled
@@ -385,7 +386,7 @@ class EtCO2Readout:
         expected_period_s: float | None = None,
         cpr_oscillating: bool = False,
     ) -> None:
-        """Advance with one capnograph sample; ignore mid-expiration curare clefts."""
+        """Advance with one capnograph sample, latching completed and shallow breaths."""
         self._clock += dt
         self._age_s += dt
         self._gas_age_s += dt

@@ -36,7 +36,7 @@ def _prepare_hemorrhage(engine) -> None:
 
 
 def _require_volume_replacement(engine) -> tuple[bool, str]:
-    """Require 1000 mL crystalloid, 2 units PRBC (600 mL), or an equivalent combination."""
+    """Require 1000 mL crystalloid, 500 mL colloid, 2 units PRBC (600 mL), or an equivalent combination."""
     records = engine.actions.since_event(
         "hemorrhage", ACTION_FLUID, labels=("crystalloid", "saline", "colloid", "blood"),
     )

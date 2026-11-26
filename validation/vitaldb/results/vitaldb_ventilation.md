@@ -1,6 +1,6 @@
 # VitalDB ventilation comparisons
 
-Generated 2026-11-23.
+Generated 2026-11-25.
 
 These comparisons use 60 volume-control windows recorded on the Dräger Primus, from 1637 eligible
 unique-subject cases inside AnaSim's patient domain (general anesthesia, oral single-lumen tube, open surgery,
@@ -60,18 +60,18 @@ AnaSim through the airway sensor: 0.15 s ramp 0.136 s, 0.2 s ramp 0.170 s, 0.25 
 ## Capnogram shape
 
 Features come from the CO₂ track alone. Each capnograph parameter was fitted in turn on all windows
-to the one feature that it sets (median absolute error): ANALYZER_TAU 0.08: 0.154, 0.09: 0.120, 0.1: 0.087, 0.11: 0.053, 0.12: 0.031, 0.13: 0.038, 0.14: 0.065, 0.15: 0.091, 0.16: 0.120 (best 0.12); PHASE_II_VOLUME 0.05: 0.099, 0.075: 0.102, 0.1: 0.098, 0.125: 0.096, 0.15: 0.104, 0.175: 0.107, 0.2: 0.115, 0.25: 0.119 (best 0.125); PHASE_III_SLOPE 5: 1.931, 10: 1.359, 15: 0.872, 20: 0.865, 25: 1.052, 30: 1.220 (best 20).
-CV stability (5 folds): ANALYZER_TAU: 0.12 (4/5 folds), 0.13 (1/5 folds); PHASE_II_VOLUME: 0.125 (2/5 folds), 0.05 (2/5 folds), 0.075 (1/5 folds); PHASE_III_SLOPE: 15 (4/5 folds), 20 (1/5 folds).
+to the one feature that it sets (median absolute error): ANALYZER_TAU 0.08: 0.153, 0.09: 0.120, 0.1: 0.087, 0.11: 0.053, 0.12: 0.031, 0.13: 0.038, 0.14: 0.065, 0.15: 0.091, 0.16: 0.120 (best 0.12); PHASE_II_VOLUME 0.05: 0.070, 0.075: 0.068, 0.1: 0.071, 0.125: 0.075, 0.15: 0.083, 0.175: 0.084, 0.2: 0.089, 0.25: 0.092 (best 0.075); PHASE_III_SLOPE 5: 1.893, 10: 1.313, 15: 0.805, 20: 1.006, 25: 1.055, 30: 1.302 (best 15).
+CV stability (5 folds): ANALYZER_TAU: 0.12 (4/5 folds), 0.13 (1/5 folds); PHASE_II_VOLUME: 0.075 (3/5 folds), 0.05 (2/5 folds); PHASE_III_SLOPE: 15 (5/5 folds).
 AnaSim uses ANALYZER_TAU 0.12 s, PHASE_II_VOLUME 0.1 L,
-and PHASE_III_SLOPE 20 mmHg/L. The out-of-fold check below uses each
+and PHASE_III_SLOPE 15 mmHg/L. The out-of-fold check below uses each
 fold's training-fitted values and AnaSim's PBW-based series dead space (2.2 mL/kg PBW, unfitted).
 
 | Feature (5-fold out-of-fold, n=60) | Recordings | AnaSim | Paired difference |
 |---|---|---|---|
-| Fall 90-10% (s) | 0.423 (0.393–0.466) | 0.403 (0.403–0.403) | -0.012 (-0.0626–0.0177) |
-| Rise 10-90% (s) | 0.544 (0.495–0.613) | 0.532 (0.499–0.599) | -0.00412 (-0.0706–0.0712) |
-| Share of breath above 50% | 0.595 (0.574–0.614) | 0.605 (0.592–0.618) | 0.00965 (-0.00359–0.0264) |
-| Phase III slope (% of plateau/s) | 3.14 (2.38–4.18) | 2.64 (1.79–3.43) | -0.532 (-1.45–0.278) |
+| Fall 90-10% (s) | 0.423 (0.393–0.466) | 0.403 (0.403–0.403) | -0.012 (-0.0626–0.0179) |
+| Rise 10-90% (s) | 0.544 (0.495–0.613) | 0.507 (0.484–0.584) | -0.0176 (-0.0982–0.0522) |
+| Share of breath above 50% | 0.595 (0.574–0.614) | 0.606 (0.594–0.62) | 0.011 (-0.00171–0.0256) |
+| Phase III slope (% of plateau/s) | 3.14 (2.38–4.18) | 2.61 (1.88–3.35) | -0.569 (-1.55–0.134) |
 
 ## Compliance by patient
 
@@ -103,5 +103,5 @@ AnaSim's default patient: static 54.8, plateau 48.8 mL/cmH₂O.
 | FiO₂ (%) | 35 (34–36) | 37.3 (35.9–38) |
 | FiO₂ - EtO₂ (%) | 6 (5–6) | 4.95 (4.58–5.86) |
 
-Paired difference, AnaSim minus recorded: -0.438 (-1.17–0.309); mean absolute 0.87
+Paired difference, AnaSim minus recorded: -0.437 (-1.17–0.31); mean absolute 0.87
 percentage points (the Primus reports whole percent).

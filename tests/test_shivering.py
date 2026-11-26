@@ -55,7 +55,7 @@ def test_shivering_recruits_hr_and_co_without_severe_lactic_acidosis(engine_fact
 
 
 def test_shivering_threshold_arrest_cutoff_and_awake_init(engine_factory):
-    """Normothermic 36.1 C stays quiet; 35.0 C seeds awake shivering; <=29 C and VFIB stop shivering."""
+    """Normothermic 36.1 C stays quiet; 35.0 C seeds awake shivering; <=31 C and VFIB stop shivering."""
     normo = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, baseline_temp=36.1)
     normo.step(60.0)
     assert normo.state.shivering == 0.0

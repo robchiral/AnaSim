@@ -22,7 +22,7 @@ ADULT: dict[str, Any] = dict(age=45, weight=75, height=172, sex="male", baseline
 
 
 def _bolus_induction(seed):
-    """Seconds from propofol 2 mg/kg (after fentanyl 1.5 mcg/kg) to BIS < 60, and the MAP nadir (% fall) in 5 min."""
+    """Seconds from propofol 2 mg/kg (after fentanyl 1.5 mcg/kg) to BIS < 60, and the MAP nadir (% fall) in 3.5 min after propofol."""
     engine = SimulationEngine(Patient(**ADULT), SimulationConfig(patient_variability=seed is not None, rng_seed=seed))
     engine.start()
     engine.set_airway_mode("Mask")
@@ -97,8 +97,8 @@ def test_sampled_opioid_c25_reduces_engine_rate_by_one_quarter(drug, c25):
 def test_sampled_bolus_inductions_vary_within_clinical_limits():
     """Propofol 2 mg/kg after fentanyl in 20 sampled adults. A few slow responders
     need more propofol. Pressure falls stay within routine practice (VitalDB TIVA
-    lowest reading in 10 min, 1st-99th percentile 6-53%), and the typical patient
-    sits mid-population."""
+    lowest reading in 10 min, 1st-99th percentile 6-54% in legacy core and 7-59%
+    overall), and the typical patient sits mid-population."""
     typical_onset, typical_fall = _bolus_induction(None)
     results = [_bolus_induction(seed) for seed in range(1, 21)]
     onsets = np.array([onset for onset, _ in results if onset is not None and onset <= 180])

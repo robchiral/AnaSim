@@ -1,4 +1,4 @@
-"""Induction and intubation replays. Run with python -m validation.intubation.
+"""Induction and intubation replays. Run with python -m tests.intubation_replays.
 
 Billard 1994 supplies SBP and HR. Sawano 2013 adds MAP, HR, CI, and SVI in
 normotensive patients. Sjøen 2023 and 2024 randomize propofol and remifentanil

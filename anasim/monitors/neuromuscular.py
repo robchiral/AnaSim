@@ -37,7 +37,7 @@ class TwitchReading:
 
 
 class NeuromuscularMonitor:
-    """TOF and single-twitch monitor that samples the modeled adductor pollicis response."""
+    """TOF, PTC, and single-twitch monitor that samples the modeled adductor pollicis response."""
 
     def __init__(self):
         self.mode = "tof"
@@ -56,7 +56,7 @@ class NeuromuscularMonitor:
         self._deep_block_ratio: float = 0.0
 
     def _min_repeat_s(self) -> float:
-        """Minimum quiet period after the previous stimulation (Fuchs-Buder 2007)."""
+        """Minimum quiet period after the previous stimulation (shortened from Fuchs-Buder 2007 for simulation usability)."""
         return PTC_MIN_REPEAT_S if self._last_mode == "ptc" else MIN_REPEAT_S
 
     def establish_baseline(self, t1: float) -> None:

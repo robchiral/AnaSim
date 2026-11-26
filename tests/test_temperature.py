@@ -80,7 +80,7 @@ def test_core_drop_after_induction(patient):
 
 
 def test_obese_redistribution_cooling_sepsis_fever_and_hypothermic_bradycardia(engine_factory):
-    """Kurz 1995: obesity blunts first-hour redistribution cooling (~0.4-0.6 °C vs 1.6 °C);
+    """Kurz 1995a: obesity blunts first-hour redistribution cooling (~0.4-0.6 °C vs 1.4-1.6 °C);
     sepsis elevates core temperature; severe hypothermia (<33 °C) depresses resting sinus HR.
     """
     obese = ThermalModel(Patient(age=40, weight=150.0, height=165.0, sex="female"))
@@ -200,7 +200,7 @@ def test_iv_fluid_and_prbc_thermal_load_and_fluid_warmer(engine_factory, advance
 
 
 def test_hypothermia_slows_propofol_pk_and_rocuronium_recovery(engine_factory):
-    """Leslie 1995 & Smeulers 1995: Mild hypothermia (33 C vs 37 C) raises propofol Cp and prolongs rocuronium."""
+    """Mild hypothermia (33 C vs 37 C) raises propofol Cp (Leslie 1995) and prolongs rocuronium (extrapolated from vecuronium in Caldwell 2000 and hypothermic CPB in Smeulers 1995)."""
     warm = engine_factory(
         config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1),
         start=True,
@@ -228,7 +228,7 @@ def test_hypothermia_slows_propofol_pk_and_rocuronium_recovery(engine_factory):
 
 
 def test_awake_sepsis_fever_plateaus_with_active_sweating(engine_factory, advance_time):
-    """Active sweating and cutaneous vasodilation regulate awake sepsis fever near 38.5-39.8 C."""
+    """Active sweating and cutaneous vasodilation regulate awake sepsis fever within 38.0-39.8 C."""
     sepsis = engine_factory(
         config=SimulationConfig(mode="awake", maintenance_fluid_ml_hr=0.0, rng_seed=1),
         start=True,
@@ -253,3 +253,26 @@ def test_ketamine_spares_redistribution_hypothermia_vs_propofol(engine_factory, 
     advance_time(ket, 3600.0, dt=5.0)
     advance_time(prop, 3600.0, dt=5.0)
     assert ket.state.temp_c > prop.state.temp_c + 0.25
+
+
+def test_hypothermic_start_vasoconstriction_elderly_ozaki_shift_and_shivering_equilibration(
+    engine_factory,
+):
+    """Cold awake startups retain physiological vasoconstriction and equilibrated shivering MV,
+    and elderly patients show lower anesthetized vasoconstriction thresholds (Ozaki 1997)."""
+    cold = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), baseline_temp=35.0)
+    assert cold.state.shivering > 0.35
+    assert cold.state.mv > 8.5
+    assert cold.state.pa_co2 < 46.0
+
+    # At 34.1 C under 1 MAC sevoflurane, a 30-year-old is below vasoconstriction threshold (~34.3 C)
+    # while a 75-year-old's threshold is shifted ~0.55 C lower in AnaSim (calibrated from Ozaki 1997), cooling faster.
+    young = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), age=30)
+    old = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), age=75)
+    t_y = young.thermal.step_temperature(600.0, 34.1, 0.0)
+    t_o = old.thermal.step_temperature(600.0, 34.1, 0.0)
+    assert t_y > t_o + 0.01
+
+    # Starting hypothermic awake (35.0 C) still vasoconstricts relative to a 37.0 C threshold anchor.
+    cold_t = cold.thermal.step_temperature(600.0, 35.0, 0.0)
+    assert cold_t > 35.0

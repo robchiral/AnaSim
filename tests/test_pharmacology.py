@@ -189,7 +189,7 @@ def test_reciprocal_propofol_midazolam_pk_preserves_mass_and_reverses(patient):
 
 
 def test_hemorrhage_increases_anesthetic_exposure_and_resuscitation_restores_pk(patient):
-    """Johnson 2001/2003/2004: swine-informed shock covariates, unchanged remi PD."""
+    """Johnson 2001, 2003, 2004: swine-informed hemorrhagic shock PK covariates; crystalloid resuscitation restores clearance (propofol data in Johnson 2004, extended to remifentanil)."""
     for model_type in (PropofolPKEleveld, RemifentanilPKEleveld):
         normal, shock = model_type(patient), model_type(patient)
         shock.update_hemodynamics(0.5, 0.4, blood_volume_l=patient.estimate_blood_volume() / 1000.0)
@@ -494,7 +494,7 @@ class TestNeuromuscularEffectSite:
         assert engine.state.etco2_signal_valid
 
     def test_diaphragm_recovers_before_adductor_pollicis(self, anesthetized_engine):
-        """The diaphragm needs about 1.8x the adductor concentration (Cantineau 1994)."""
+        """The diaphragm needs about 1.8x the adductor concentration (Cantineau 1994a)."""
         engine = anesthetized_engine
         engine.give_drug_bolus("roc", 0.6 * engine.patient.weight)
         for _ in range(60):
@@ -587,7 +587,7 @@ def test_low_dose_sugammadex_produces_recurarization_rebound(patient):
 
 
 def test_sevoflurane_slows_rocuronium_washout_more_than_tiva(engine_factory, advance_time):
-    """Sevoflurane slows rocuronium effect-site washout relative to propofol TIVA (Lowry 1998)."""
+    """Sevoflurane slows rocuronium effect-site washout relative to propofol TIVA (Kleijn 2011; Lowry 1998)."""
     tiva = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1), start=True)
     sevo = engine_factory(config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True)
     for eng in (tiva, sevo):
@@ -627,3 +627,64 @@ def test_morphine_overdose_causes_apnea_and_esrd_accumulates_m6g(engine_factory,
     advance_time(esrd, 600.0, dt=2.0)
     assert esrd.state.pa_co2 > normal_renal.state.pa_co2 + 8.0
     assert esrd.state.sao2 < normal_renal.state.sao2 - 20.0
+
+
+def test_rocuronium_hypothermia_cirrhosis_remifentanil_obesity_phase2_and_etomidate_seizures(
+    engine_factory, advance_time
+):
+    """Hypothermia slows rocuronium onset (extrapolated from vecuronium in Caldwell 2000), cirrhosis expands V1/V2 (Khuenl-Brady and Sparr 1996; Magorian 1995),
+    Eleveld remifentanil V3 caps in extreme obesity (Egan 1998) with Table 5 ke0 omega,
+    succinylcholine Phase II fades central strength, and etomidate suppresses LAST seizures."""
+    from anasim.patient.variability import ELEVELD_REMIFENTANIL_OMEGA
+    from anasim.physiology.toxicity import LocalAnestheticToxicity
+
+    onsets = []
+    for temp in (37.0, 33.0):
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="tiva", rng_seed=1),
+            start=True,
+            baseline_temp=temp,
+        )
+        eng.give_drug_bolus("roc", 0.6 * eng.patient.weight)
+        t95 = 300.0
+        for step_idx in range(1, 301):
+            eng.state.temp_c = temp
+            eng.step(1.0)
+            if eng.state.twitch < 5.0:
+                t95 = float(step_idx)
+                break
+        onsets.append(t95)
+    assert onsets[1] > onsets[0] + 15.0
+
+    roc_norm = RocuroniumPK(Patient())
+    roc_cirr = RocuroniumPK(Patient(hepatic_function=0.5))
+    assert roc_cirr.v1 > roc_norm.v1 * 1.10
+    assert roc_cirr.v2 > roc_norm.v2 * 1.25
+
+    remi_obese = RemifentanilPKEleveld(Patient(weight=200.0, height=185.0))
+    assert remi_obese.v3 < 4.5
+    assert ELEVELD_REMIFENTANIL_OMEGA["ke0"] == pytest.approx(0.947)
+
+    sux_eng = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    for _ in range(8):
+        sux_eng.give_drug_bolus("succinylcholine", 100.0)
+        advance_time(sux_eng, 45.0, dt=1.0)
+    advance_time(sux_eng, 600.0, dt=2.0)
+    assert sux_eng.state.tof < 70.0
+    assert sux_eng.resp.state.muscle_factor < 0.90
+
+    tox_awake = LocalAnestheticToxicity(70.0)
+    tox_etom = LocalAnestheticToxicity(70.0)
+    for _ in range(30):
+        tox_awake.step(
+            1.0, neural_ce=9.0, cardiac_ce=9.0, ph=7.4,
+            propofol_ce=0.0, midazolam_ce=0.0, mac_sevo=0.0,
+            motor_strength=1.0, cortical_function=1.0,
+        )
+        tox_etom.step(
+            1.0, neural_ce=9.0, cardiac_ce=9.0, ph=7.4,
+            propofol_ce=0.0, midazolam_ce=0.0, mac_sevo=0.0,
+            motor_strength=1.0, cortical_function=1.0, etomidate_ce=0.6,
+        )
+    assert tox_awake.seizure_activity > 0.5
+    assert tox_etom.seizure_activity < tox_awake.seizure_activity * 0.35

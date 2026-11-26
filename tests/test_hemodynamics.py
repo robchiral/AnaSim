@@ -14,7 +14,7 @@ from anasim.patient.pk_models import NorepinephrinePK, PropofolPKEleveld
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.hemo_config import HemodynamicConfig
 from anasim.physiology.hemodynamics import HemodynamicModel
-from validation.intubation import (
+from tests.intubation_replays import (
     POTERMAN_ARMS,
     SJOEN_2023_ARMS,
     SJOEN_ARMS,
@@ -164,6 +164,7 @@ def test_transfusion_preserves_donor_cells_and_hemoglobin(
     assert engine.state.hct * engine.state.blood_volume == pytest.approx(expected_cells_ml * remaining_fraction)
 
 
+@pytest.mark.clinical
 def test_sjoen_remifentanil_doses_give_the_same_induction_fall():
     """Sjøen 2024: remifentanil doses giving peak effect-site concentrations of 2,
     4, and 8 ng/mL with propofol 1.8 mg/kg lowered invasive SAP 30-32% (SD 6-7%),
@@ -176,6 +177,7 @@ def test_sjoen_remifentanil_doses_give_the_same_induction_fall():
     assert abs(falls[2] - falls[0]) < 6.0
 
 
+@pytest.mark.clinical
 def test_sjoen_doubled_propofol_deepens_the_induction_fall():
     """Sjøen 2023: propofol 1.4 or 2.7 mg/kg with remifentanil near 2 mcg/kg
     lowered invasive SAP 31 ± 6.6% and 36 ± 7.3%, within 2 SD as above.
@@ -191,6 +193,7 @@ def _pressures(model, renderer, cycle, state, seed=False):
     return renderer.step(sample, state.map, state.sv)
 
 
+@pytest.mark.clinical
 def test_ebert_propofol_induction_without_opioid():
     """Ebert 1992, unpremedicated patients aged about 37: propofol 2.5 mg/kg
     then 200 mcg/kg/min lowered SBP 27 and DBP 7-8 mmHg (MAP 16%) by 3-4 min, and
@@ -212,6 +215,7 @@ def test_ebert_propofol_induction_without_opioid():
     assert sbp_fall > 1.5 * dbp_fall
 
 
+@pytest.mark.clinical
 @pytest.mark.parametrize("age", [62.4, 75.0])
 def test_claeys_propofol_induction_and_maintenance_without_opioid(age):
     """Claeys 1988 Table II (n=10, ages 50-75, mean 62.4 ± 7.6, lorazepam 1 mg
@@ -250,6 +254,7 @@ def test_claeys_propofol_induction_and_maintenance_without_opioid(age):
             assert pressure.diastolic == pytest.approx(obs_dbp, abs=sd_dbp)
 
 
+@pytest.mark.clinical
 def test_morley_propofol_fall_grows_with_preinduction_pressure():
     """Morley 2010, non-hypertensive adults aged about 38 without opioid: propofol
     40 mg/kg/h until BIS 50 (mean 2.0 mg/kg, so 3 min), then 8 mg/kg/h. The
@@ -273,6 +278,7 @@ def test_morley_propofol_fall_grows_with_preinduction_pressure():
     assert 0.2 < (falls[115.0] - falls[80.0]) / 35.0 < 0.45
 
 
+@pytest.mark.clinical
 def test_van_den_berg_equipotent_propofol_remifentanil_pairs():
     """van den Berg 2021: after 11 min at propofol/remifentanil effect-site
     pairs of 8.6/1, 5.9/2, 3.6/4, and 2.0/8 (equal predicted tolerance of
@@ -295,6 +301,7 @@ def test_van_den_berg_equipotent_propofol_remifentanil_pairs():
     assert readings[0][1] > readings[3][1] + 5.0
 
 
+@pytest.mark.clinical
 def test_poterman_high_dose_remifentanil_with_and_without_atropine():
     """Poterman 2017 Table 2: propofol Ce 2.5 mcg/mL and remifentanil Ce 8 ng/mL
     lowered MAP by a median 37 mmHg (IQR 31-41) and HR by 19 ± 11 bpm at 10 min.
@@ -339,6 +346,7 @@ def _kazama_sbp(age, target, ic50, gamma):
     return 100.0 * (1.0 - sbp / baseline), expected
 
 
+@pytest.mark.clinical
 @pytest.mark.parametrize("age,ic50,gamma", [(30, 4.61, 1.75), (50, 4.13, 2.12), (65, 3.96, 1.64)])
 def test_kazama_equilibrated_propofol_sbp_by_age(age, ic50, gamma):
     """Kazama 1999 Table 2: SBP after 22-28 min at constant plasma propofol, with
@@ -348,6 +356,7 @@ def test_kazama_equilibrated_propofol_sbp_by_age(age, ic50, gamma):
         assert fall == pytest.approx(expected, abs=5.0)
 
 
+@pytest.mark.clinical
 def test_kazama_oldest_group_falls_further():
     """Kazama 1999: at 70-85 years (mean 79) the SBP IC50 was 2.09 mcg/mL (SE
     0.19, n=10), below the 3.96 at 60-69. At 4 mcg/mL the fall exceeds the curve

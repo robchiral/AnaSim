@@ -217,6 +217,14 @@ class Loops {
 
   update(runs) {
     for (const run of runs ?? []) {
+      if (run.reset) {
+        this.previous = null;
+        this.current = null;
+        this.ranges = null;
+        this.newBreath = true;
+        this.dirty = true;
+        continue;
+      }
       if (run.breath !== this.current?.breath) {
         if (this.current?.paw.length > 1) this.previous = this.current;
         this.current = { breath: run.breath, paw: [], flow: [], volume: [] };
@@ -236,11 +244,17 @@ class Loops {
     let minVolume = 0, maxVolume = 250, minPressure = 0, maxPressure = 2, flowExtent = 10;
     for (const loop of [this.previous, this.current]) {
       if (!loop) continue;
-      minVolume = Math.min(minVolume, ...loop.volume);
-      maxVolume = Math.max(maxVolume, ...loop.volume);
-      minPressure = Math.min(minPressure, ...loop.paw);
-      maxPressure = Math.max(maxPressure, ...loop.paw);
-      for (const flow of loop.flow) flowExtent = Math.max(flowExtent, Math.abs(flow));
+      const { volume, paw, flow } = loop;
+      for (let i = 0; i < volume.length; i++) {
+        const v = volume[i];
+        if (v < minVolume) minVolume = v;
+        if (v > maxVolume) maxVolume = v;
+        const p = paw[i];
+        if (p < minPressure) minPressure = p;
+        if (p > maxPressure) maxPressure = p;
+        const absFlow = Math.abs(flow[i]);
+        if (absFlow > flowExtent) flowExtent = absFlow;
+      }
     }
     maxVolume = niceCeil(maxVolume, 250);
     // Plot padding covers small excursions below the breath's starting volume.
@@ -355,6 +369,17 @@ function formatLimitPair(minVal, maxVal, digits = 0) {
   return "";
 }
 
+const RHYTHM_ALARMS = [
+  ["Asystole", "ASYSTOLE"],
+  ["VFIB", "VFIB"],
+  ["VTACH", "VTACH"],
+  ["Arrest", "CARDIAC ARREST"],
+];
+
+function alarmSide(raw) {
+  return typeof raw === "string" ? raw : raw?.low ? "low" : raw?.high ? "high" : "";
+}
+
 export class Monitor {
   constructor(info) {
     this.arterialLine = info.arterial_line;
@@ -403,6 +428,7 @@ export class Monitor {
     this.alarmBoxes = [...document.querySelectorAll(".monitor [data-alarm]")];
     this.alarmBanner = document.getElementById("alarm-banner");
     this.alarmBannerText = document.getElementById("alarm-banner-text");
+    this.measureNibpBtn = document.getElementById("measure-nibp");
     this.loops = new Loops(() => this.requestDraw());
     this.nmb = new NeuromuscularDisplay(info.nmb_history);
     this.requestDraw();
@@ -447,7 +473,7 @@ export class Monitor {
     this.loops.update(snap.loop);
     this.updateNumerics(snap.vitals);
     this.nmb.update(snap.nmb, snap.nmb_trend, snap.time, snap.ended);
-    document.getElementById("measure-nibp").disabled = snap.ended || snap.vitals.nibp_cuff !== null;
+    if (this.measureNibpBtn) this.measureNibpBtn.disabled = snap.ended || snap.vitals.nibp_cuff !== null;
     this.updateAlarms(snap.alarms, snap.controls, snap.ended, snap.vitals);
     if (this.dirty || this.loops.dirty) this.requestDraw();
   }
@@ -522,17 +548,11 @@ export class Monitor {
 
   updateAlarms(alarms, controls = null, ended = false, vitals = null) {
     const active = alarms ?? {};
-    const rhythmAlarm = [
-      ["Asystole", "ASYSTOLE"],
-      ["VFIB", "VFIB"],
-      ["VTACH", "VTACH"],
-      ["Arrest", "CARDIAC ARREST"],
-    ].find(([key]) => active[key]);
+    const rhythmAlarm = RHYTHM_ALARMS.find(([key]) => active[key]);
     for (const box of this.alarmBoxes) {
       const name = box.dataset.alarm;
       const critical = name === "HR" && Boolean(rhythmAlarm);
-      const raw = name ? active[name] : undefined;
-      const side = typeof raw === "string" ? raw : raw?.low ? "low" : raw?.high ? "high" : undefined;
+      const side = name ? alarmSide(active[name]) : "";
       const level = critical ? "high" : side;
       box.classList?.toggle("alarm-low", !critical && level === "low");
       box.classList?.toggle("alarm-high", level === "high");
@@ -549,7 +569,7 @@ export class Monitor {
       for (const [key, raw] of Object.entries(active)) {
         if (key === "Asystole" || key === "VFIB" || key === "VTACH" || key === "Arrest" || key === "O2Supply") continue;
         if (key === "HR" && rhythmAlarm) continue;
-        const side = typeof raw === "string" ? raw : raw?.low ? "low" : raw?.high ? "high" : "";
+        const side = alarmSide(raw);
         if (!side) continue;
         if (key === "SpO2" && side === "low" && spo2SignalLost) {
           if (rhythmAlarm) mediumPriority.push("SpO₂ NO SIGNAL");

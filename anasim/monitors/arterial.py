@@ -41,9 +41,9 @@ class ArterialWaveformConfig:
     compliance_age_max_factor: float = 1.0
     # Arterial compliance rises as distending pressure falls (Langewouters 1984),
     # so pulse pressure narrows with MAP at a fixed stroke volume; the reference
-    # compliance applies at MAP 93 mmHg. Propofol lowers SBP about three times
-    # as much as DBP (Ebert 1992; Jeleazcov 2015); steeper exponents than 0.5
-    # break the epinephrine bolus SBP fits.
+    # compliance applies at MAP 93 mmHg. Propofol lowers SBP roughly three to
+    # four times as much as DBP in Ebert 1992 and Jeleazcov 2015 (exponent 0.5
+    # gives roughly twice as much; steeper exponents break epinephrine bolus SBP fits).
     compliance_pressure_ref_mmhg: float = 93.0
     compliance_pressure_exponent: float = 0.5
     electromechanical_delay_s: float = 0.04
@@ -226,6 +226,21 @@ class ArterialWaveformRenderer:
         """Steady-state (systolic, diastolic) pressures (mmHg) at fixed MAP, SV, and HR."""
         return self.reference_pressures(map_value, stroke_volume_ml, hr)
 
+    def _steady_pp_and_shape(
+        self,
+        mean_pressure: float,
+        floor_p: float,
+        stroke_volume_ml: float,
+        hr: float,
+        pulse_pressure_factor: float,
+    ) -> tuple[float, float]:
+        """Return (steady pulse pressure, shape mean) matching _update_reference()."""
+        hr_f = float(hr)
+        shape = self._build_shape(60.0 / hr_f, hr_f)
+        compliance = self.compliance_at(max(mean_pressure, floor_p))
+        requested_pp = float(stroke_volume_ml) * float(pulse_pressure_factor) / compliance
+        return min(requested_pp, mean_pressure / shape.mean), shape.mean
+
     def reference_pulse_pressure(
         self,
         map_value: float,
@@ -239,11 +254,10 @@ class ArterialWaveformRenderer:
         mean_pressure = max(0.0, float(map_value))
         if mean_pressure <= 0.0 or stroke_volume_ml <= 0.0 or hr <= 0.0:
             return 0.0
-        floor_p = max(0.0, float(static_pressure))
-        shape = self._build_shape(60.0 / float(hr), float(hr))
-        compliance = self.compliance_at(max(mean_pressure, floor_p))
-        requested_pp = float(stroke_volume_ml) * float(pulse_pressure_factor) / compliance
-        return min(requested_pp, mean_pressure / shape.mean)
+        pp, _ = self._steady_pp_and_shape(
+            mean_pressure, max(0.0, float(static_pressure)), stroke_volume_ml, hr, pulse_pressure_factor,
+        )
+        return pp
 
     def reference_pressures(
         self,
@@ -259,11 +273,10 @@ class ArterialWaveformRenderer:
         floor_p = max(0.0, float(static_pressure))
         if mean_pressure <= 0.0 or stroke_volume_ml <= 0.0 or hr <= 0.0:
             return floor_p, floor_p
-        shape = self._build_shape(60.0 / float(hr), float(hr))
-        compliance = self.compliance_at(max(mean_pressure, floor_p))
-        requested_pp = float(stroke_volume_ml) * float(pulse_pressure_factor) / compliance
-        pp = min(requested_pp, mean_pressure / shape.mean)
-        diastolic = max(floor_p, mean_pressure - pp * shape.mean)
+        pp, shape_mean = self._steady_pp_and_shape(
+            mean_pressure, floor_p, stroke_volume_ml, hr, pulse_pressure_factor,
+        )
+        diastolic = max(floor_p, mean_pressure - pp * shape_mean)
         return diastolic + pp, diastolic
 
     def _update_reference(

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import argparse
 import itertools
 import json
 from collections import Counter
 from collections.abc import Callable, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -16,7 +20,10 @@ from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
 from anasim.physiology import hemodynamics
+from validation.vitaldb import vitaldb_data
 from validation.vitaldb.vitaldb_data import (
+    CACHE,
+    DEFAULT_WORKERS,
     REMI_RATES,
     REMI_UG_PER_ML,
     SOURCE,
@@ -24,9 +31,11 @@ from validation.vitaldb.vitaldb_data import (
     Excluded,
     amount,
     covered,
+    domain_cases,
     held,
     kfold_splits,
     numeric_track,
+    optional_float,
 )
 
 SAMPLE_SECONDS = 5.0
@@ -62,7 +71,10 @@ __all__ = [
     "estimate",
     "expand_override_grid",
     "fit",
+    "hemo_period_line",
     "hemo_subgroup_rows",
+    "hemo_summary_table_lines",
+    "hemo_worker_init",
     "mean_ci",
     "pre_induction",
     "procedure",
@@ -70,7 +82,10 @@ __all__ = [
     "report_footer",
     "report_header",
     "rule_stats",
+    "run_hemo_cli",
+    "run_hemo_pool",
     "run_hemodynamic_replay",
+    "score_cuff_summary",
     "treated",
     "window_medians",
 ]
@@ -255,7 +270,6 @@ def run_hemodynamic_replay(
     propofol_mg_s: np.ndarray,
     remi_ug_s: np.ndarray,
     inspired_sevo: np.ndarray | None = None,
-    end_tidal_sevo: np.ndarray | None = None,
 ) -> np.ndarray:
     """Drive the full AnaSim engine with recorded anesthetic delivery, fluids, blood loss, and surgery.
 
@@ -275,10 +289,9 @@ def run_hemodynamic_replay(
     engine.set_airway_mode("Mask")
     engine.set_fgf(6.0, 0.0)
 
-    fi_state = {"now": 0.0, "end_tidal": np.nan}
+    fi_state = {"now": 0.0}
     if inspired_sevo is not None:
         pk_preview = engine.pk_sevo.preview_exchange
-        pk_commit = engine.pk_sevo.commit_integration
         pk_step = engine.pk_sevo.step
 
         def sevo_preview(dt, _fi, va, co, *args, **kwargs):
@@ -286,19 +299,10 @@ def run_hemodynamic_replay(
                 kwargs["circuit_fi_agent"] = fi_state["now"]
             return pk_preview(dt, fi_state["now"], va, co, *args, **kwargs)
 
-        def sevo_commit(result, dt, *args, **kwargs):
-            pk_commit(result, dt, *args, **kwargs)
-            if np.isfinite(fi_state["end_tidal"]):
-                engine.pk_sevo.state.p_alv = fi_state["end_tidal"] / 100.0
-
         def sevo_step(dt, _fi, va, co, **kwargs):
-            state = pk_step(dt, fi_state["now"], va, co, **kwargs)
-            if np.isfinite(fi_state["end_tidal"]):
-                engine.pk_sevo.state.p_alv = fi_state["end_tidal"] / 100.0
-            return state
+            return pk_step(dt, fi_state["now"], va, co, **kwargs)
 
         engine.pk_sevo.preview_exchange = sevo_preview  # type: ignore[assignment,method-assign]
-        engine.pk_sevo.commit_integration = sevo_commit  # type: ignore[method-assign]
         engine.pk_sevo.step = sevo_step  # type: ignore[assignment,method-assign]
 
     colloid_ml_min = amount(case, "intraop_colloid") / duration_h / 60.0
@@ -322,8 +326,6 @@ def run_hemodynamic_replay(
             next_colloid += 300.0
         if inspired_sevo is not None:
             fi_state["now"] = float(inspired_sevo[i - 1]) / 100.0
-        if end_tidal_sevo is not None:
-            fi_state["end_tidal"] = float(end_tidal_sevo[i - 1])
         engine.infusion_rates["propofol"] = float(propofol_mg_s[i - 1])
         engine.infusion_rates["remi"] = float(remi_ug_s[i - 1])
         engine.step(float(dt))
@@ -567,3 +569,162 @@ def report_footer(exclusions: list[dict[str, Any]]) -> list[str]:
         "",
     ]
     return lines
+
+
+def score_cuff_summary(
+    row: dict[str, Any],
+    patient: Patient,
+    case: dict[str, Any],
+    *,
+    times: np.ndarray,
+    cuff_map: np.ndarray,
+    cuff_sbp: np.ndarray,
+    cuff_hr: np.ndarray,
+    grid: np.ndarray,
+    predicted_map: np.ndarray,
+    onset: float,
+    incision: float,
+    baseline_map: float,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build standard pre-incision cuff summary fields shared by TIVA and sevoflurane replays."""
+    model_map = cuff_model(times, grid, predicted_map)
+    errors, seconds = model_map - cuff_map, times - onset
+    summary: dict[str, Any] = {
+        **row,
+        "age": float(patient.age),
+        "bmi": round(float(patient.bmi), 2),
+        "baseline_map": baseline_map,
+        "has_preop_hb": optional_float(case, "preop_hb") is not None,
+        "has_preop_cr": patient.creatinine_clearance_ml_min is not None,
+        "readings": len(times),
+        **(extra or {}),
+        "median_error": float(np.median(errors)),
+    }
+    for rule, limits in (("primary", STOP), ("sensitivity", SENSITIVITY)):
+        summary[rule] = rule_stats(errors, seconds, cuff_map, cuff_sbp, cuff_hr, limits)
+    summary["posting"] = rule_stats(
+        np.interp(times, grid, predicted_map) - cuff_map, seconds, cuff_map, cuff_sbp, cuff_hr, STOP,
+    )
+    summary["course"] = course(seconds, cuff_map, model_map, baseline_map, incision - onset)
+    return summary
+
+
+def hemo_summary_table_lines(
+    groups: Sequence[tuple[str, list[dict[str, Any]]]], rng: np.random.Generator,
+) -> list[str]:
+    """Render the standard stratified MAP error table."""
+    lines = [
+        "| Patients | n | Readings | Mean error, mmHg (95% CI) | Patient SD | Reading SD |",
+        "|---|---:|---:|---|---:|---:|",
+    ]
+    for label, group in groups:
+        if len(group) < 5:
+            continue
+        [(mean, low, high)], between, within, used = estimate(group, "primary", False, rng)
+        lines.append(
+            f"| {label} | {len(group)} | {used} | {mean:.1f} ({low:.1f} to {high:.1f}) | {between:.1f} | {within:.1f} |"
+        )
+    return lines
+
+
+def hemo_period_line(rows: list[dict[str, Any]], rng: np.random.Generator) -> list[str]:
+    """Render the before-10-min / from-10-min summary line."""
+    by_period, _, _, _ = estimate(rows, "primary", True, rng)
+    return [
+        "",
+        "By time after propofol, all patients: "
+        + "; ".join(
+            f"{name} {m:.1f} ({lo:.1f} to {hi:.1f})"
+            for name, (m, lo, hi) in zip(("before 10 min", "from 10 min"), by_period, strict=True)
+        )
+        + " mmHg.",
+    ]
+
+
+def hemo_worker_init(override: dict[str, Any], cache: Path) -> None:
+    vitaldb_data.CACHE = cache
+    apply_hemo_override(override)
+
+
+def run_hemo_pool(
+    evaluate_fn: Callable[[Any, float], dict[str, Any]],
+    pool: Sequence[Any],
+    dt: float,
+    workers: int,
+    override: dict[str, Any],
+    cache: Path,
+) -> list[dict[str, Any]]:
+    if workers <= 1:
+        hemo_worker_init(override, cache)
+        return [evaluate_fn(item, dt) for item in pool]
+    chunksize = max(1, min(4, len(pool) // (workers * 2) or 1))
+    with ProcessPoolExecutor(workers, initializer=hemo_worker_init, initargs=(override, cache)) as executor:
+        return list(executor.map(evaluate_fn, pool, [dt] * len(pool), chunksize=chunksize))
+
+
+def run_hemo_cli(
+    *,
+    description: str,
+    stem_name: str,
+    required_tracks: Sequence[str],
+    eligible_fn: Callable[[dict[str, str], dict[str, str]], bool],
+    evaluate_fn: Callable[[Any, float], dict[str, Any]],
+    report_fn: Callable[[dict[str, Any], dict[str, Any]], str],
+    default_output: Path,
+) -> None:
+    """Shared CLI entrypoint for VitalDB hemodynamic replay scripts."""
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--override", default="{}", help="JSON HemodynamicConfig fields for model comparisons")
+    parser.add_argument("--cv-grid", default="{}", help="JSON dict of {field: [values]} for k-fold CV parameter sweep")
+    parser.add_argument("--folds", type=int, default=5, help="Patient-grouped stratified CV folds")
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    parser.add_argument("--seed", type=int, default=20261024)
+    parser.add_argument("--dt", type=float, default=1.0)
+    parser.add_argument("--cache", type=Path, default=CACHE)
+    parser.add_argument("--output", type=Path, default=default_output)
+    args = parser.parse_args()
+    vitaldb_data.CACHE = args.cache
+    override = json.loads(args.override)
+    grid_spec = json.loads(args.cv_grid)
+
+    pool = [
+        (case, trk)
+        for case, trk in domain_cases(required_tracks, open_supine_only=False, cache=args.cache)
+        if eligible_fn(case, trk)
+    ]
+    results = run_hemo_pool(evaluate_fn, pool, args.dt, args.workers, override, args.cache)
+    rows = [r for r in results if "exclusion" not in r]
+    exclusions = [r for r in results if "exclusion" in r]
+    data: dict[str, Any] = dict(
+        eligible=len(pool),
+        rows=rows,
+        exclusions=exclusions,
+        cv_stability=cv_hemodynamic_stability(rows, n_folds=args.folds, seed=args.seed),
+    )
+    if grid_spec:
+        retained_ids = {r["caseid"] for r in rows}
+        retained_pool = [item for item in pool if int(item[0]["caseid"]) in retained_ids]
+        candidates = expand_override_grid(grid_spec)
+        candidate_results = []
+        for cand in candidates:
+            merged = {**override, **cand}
+            if merged == override:
+                candidate_results.append((merged, rows))
+            else:
+                cand_res = run_hemo_pool(evaluate_fn, retained_pool, args.dt, args.workers, merged, args.cache)
+                candidate_results.append((merged, [r for r in cand_res if "exclusion" not in r]))
+        data["cv_grid"] = cv_hemodynamic_grid(candidate_results, n_folds=args.folds, seed=args.seed)
+
+    settings = dict(
+        generated=datetime.now(timezone.utc).date().isoformat(),
+        dt=args.dt,
+        seed=args.seed,
+        folds=args.folds,
+        override=override,
+    )
+    args.output.mkdir(parents=True, exist_ok=True)
+    stem = args.output / stem_name
+    stem.with_suffix(".json").write_text(json.dumps(dict(settings=settings, **data), indent=2, allow_nan=False) + "\n")
+    stem.with_suffix(".md").write_text(report_fn(data, settings))
+    print(f"Report: {stem.with_suffix('.md')}", flush=True)

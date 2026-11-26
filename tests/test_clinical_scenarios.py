@@ -37,7 +37,7 @@ class TestClinicalAcceptance:
         engine.set_airway_mode("Mask")
         advance_time(engine, 5.0, dt=0.1)
 
-        # DailyMed: 2-2.5 mg/kg propofol for induction in healthy adults.
+        # Propofol prescribing information: 2-2.5 mg/kg for induction in healthy adults.
         engine.give_drug_bolus("Propofol", 2.0 * engine.patient.weight)
         hypnosis_time = _first_time(engine, 120, lambda e: e.state.bis <= 60.0)
 
@@ -417,8 +417,8 @@ class TestClinicalAcceptance:
         self, engine_factory, advance_time
     ):
         """Hernández 2013 (n = 20): dobutamine 5 mcg/kg/min still increases HR and
-        CI in septic shock despite beta-adrenoceptor hyporesponsiveness, and
-        epinephrine relieves sinus bradycardia during full sepsis.
+        CI in septic shock despite beta-adrenoceptor hyporesponsiveness. Also verifies
+        that epinephrine relieves sinus bradycardia during full sepsis.
         """
         dobu = engine_factory(
             config=SimulationConfig(
@@ -665,7 +665,7 @@ class TestClinicalAcceptance:
 
 def test_ongoing_surgery_keeps_tiva_pressure_raised(engine_factory, advance_time):
     """VitalDB TIVA (validation/vitaldb/results/vitaldb_tiva.md): in untreated
-    patients, MAP rose 11.8 mmHg (95% CI 9.7-13.7, n=114) from the 10 minutes
+    patients, MAP rose 11.0 mmHg (95% CI 9.4-12.8, n=182) from the 10 minutes
     before incision to surgery and stayed raised. Typical values: age 55,
     pre-induction MAP 101 and HR 74, propofol and remifentanil near 4.
     """
@@ -697,7 +697,7 @@ def test_ongoing_surgery_keeps_tiva_pressure_raised(engine_factory, advance_time
 def test_remifentanil_blunts_the_pressor_response(engine_factory, monkeypatch, profile, ce50, seconds):
     """Albertin 2005: at propofol 3.4 mcg/mL (BIS 40-50), remifentanil blocked a
     15% HR or MAP rise in half of patients at 5.0 ng/mL for intubation and
-    2.1 ng/mL for skin incision. Blocking movement takes far less (Bouillon 2004).
+    2.1 ng/mL for skin incision. Blocking movement takes far less (Bouillon 2004a).
     Surgery's unblocked tone is calibrated separately and removed here.
     """
     monkeypatch.setitem(PROFILE_SPECS, profile, replace(PROFILE_SPECS[profile], tonic_svr_fraction=0.0))

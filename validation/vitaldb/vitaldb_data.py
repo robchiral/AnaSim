@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import functools
 import gzip
 import io
 import math
@@ -36,6 +37,7 @@ from anasim.patient.domain import (  # noqa: E402
 from anasim.patient.patient import Patient  # noqa: E402
 
 CACHE = ROOT / ".vitaldb_cache"
+DEFAULT_WORKERS = os.cpu_count() or 8
 API = "https://api.vitaldb.net"
 SOURCE = "https://doi.org/10.1038/s41597-022-01411-5"
 WAVE_DT = 1.0 / 62.5  # Dräger Primus waveform interval (s)
@@ -78,10 +80,8 @@ def fetch(name: str, url: str, *, cache: Path | None = None) -> str:
         if last_error is not None:
             raise last_error
     raw = path.read_bytes()
-    try:
+    if raw.startswith(b"\x1f\x8b"):
         raw = gzip.decompress(raw)
-    except OSError:
-        pass
     return raw.decode("utf-8-sig")
 
 
@@ -100,7 +100,9 @@ def load_track(tid: str, wave: bool = False, *, cache: Path | None = None) -> tu
     """Waveform rows carry a time only at segment starts; numeric rows always do."""
     times, values = [], []
     t = None
-    for line in fetch(f"{tid}.csv", f"{API}/{tid}", cache=cache).splitlines()[1:]:
+    lines = iter(fetch(f"{tid}.csv", f"{API}/{tid}", cache=cache).splitlines())
+    next(lines, None)
+    for line in lines:
         stamp, _, value = line.partition(",")
         if stamp:
             t = float(stamp)
@@ -181,7 +183,7 @@ def amount(case: dict[str, Any], key: str) -> float:
 
 
 def cockcroft_gault_crcl(age: float, weight: float, height: float, sex: str, scr_mg_dl: float) -> float:
-    """Cockcroft-Gault CrCl (mL/min) using adjusted body weight above IBW in obesity."""
+    """Cockcroft-Gault CrCl (mL/min) using adjusted body weight whenever actual weight exceeds IBW."""
     height_in = height / 2.54
     ibw = (50.0 if sex == "male" else 45.5) + 2.3 * (height_in - 60.0)
     ibw = max(40.0, ibw)
@@ -313,6 +315,21 @@ def is_legacy_hemo_core(case: dict[str, Any]) -> bool:
     )
 
 
+@functools.lru_cache(maxsize=4)
+def _load_catalog(
+    cache_dir: Path, trks_mtime: int, cases_mtime: int,
+) -> tuple[dict[int, dict[str, str]], tuple[dict[str, str], ...]]:
+    del trks_mtime, cases_mtime
+    tracks: dict[int, dict[str, str]] = {}
+    for row in csv.DictReader(io.StringIO(fetch("trks.csv", f"{API}/trks", cache=cache_dir))):
+        tracks.setdefault(int(row["caseid"]), {})[row["tname"]] = row["tid"]
+    all_cases = tuple(sorted(
+        csv.DictReader(io.StringIO(fetch("cases.csv", f"{API}/cases", cache=cache_dir))),
+        key=lambda row: int(row["caseid"]),
+    ))
+    return tracks, all_cases
+
+
 def domain_cases(
     required: Sequence[str],
     *,
@@ -330,13 +347,14 @@ def domain_cases(
     retains all oral single-lumen general anesthetics inside AnaSim's patient domain.
     """
     restrict_open_supine = typical_only if open_supine_only is None else open_supine_only
-    tracks: dict[int, dict[str, str]] = {}
-    for row in csv.DictReader(io.StringIO(fetch("trks.csv", f"{API}/trks", cache=cache))):
-        tracks.setdefault(int(row["caseid"]), {})[row["tname"]] = row["tid"]
-    all_cases = sorted(
-        csv.DictReader(io.StringIO(fetch("cases.csv", f"{API}/cases", cache=cache))),
-        key=lambda row: int(row["caseid"]),
-    )
+    cache_dir = (CACHE if cache is None else cache).resolve()
+    trks_path = cache_dir / "trks.csv"
+    cases_path = cache_dir / "cases.csv"
+    if not trks_path.exists():
+        fetch("trks.csv", f"{API}/trks", cache=cache_dir)
+    if not cases_path.exists():
+        fetch("cases.csv", f"{API}/cases", cache=cache_dir)
+    tracks, all_cases = _load_catalog(cache_dir, trks_path.stat().st_mtime_ns, cases_path.stat().st_mtime_ns)
     out: list[tuple[dict[str, str], dict[str, str]]] = []
     seen_subjects: set[str] = set()
     for case in all_cases:

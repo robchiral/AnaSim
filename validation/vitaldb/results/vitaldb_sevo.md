@@ -1,6 +1,6 @@
 # VitalDB bolus induction with sevoflurane
 
-Generated 2026-11-23.
+Generated 2026-11-25.
 
 ## Methods
 
@@ -20,27 +20,27 @@ Eligible candidates: 993. Retained: 136 (80 with fentanyl, 51 with remifentanil)
 
 | Patients | n | Readings | Mean error, mmHg (95% CI) | Patient SD | Reading SD |
 |---|---:|---:|---|---:|---:|
-| All patients | 136 | 753 | -6.8 (-8.9 to -4.8) | 8.7 | 18.0 |
-| Legacy core (open supine, age ≤ 70, ASA 1-2, normotensive, BMI ≤ 32) | 29 | 168 | -6.2 (-10.1 to -2.1) | 7.5 | 16.5 |
-| Untreated | 57 | 388 | -9.9 (-12.6 to -7.0) | 7.3 | 19.1 |
-| Pressor-treated | 79 | 365 | -4.1 (-6.8 to -1.2) | 9.2 | 16.7 |
-| Normotensive | 100 | 607 | -8.7 (-11.1 to -6.3) | 8.5 | 18.4 |
-| Hypertensive | 36 | 146 | -1.0 (-4.7 to 3.1) | 6.8 | 16.2 |
-| ASA 1-2 | 128 | 717 | -7.2 (-9.5 to -5.2) | 8.5 | 18.2 |
-| ASA 3 | 8 | 36 | -0.5 (-7.5 to 8.1) | 8.6 | 13.1 |
-| BMI under 30 | 127 | 702 | -6.7 (-9.1 to -4.4) | 8.9 | 18.0 |
-| BMI 30 and over | 9 | 51 | -8.4 (-15.2 to -2.4) | 5.6 | 18.0 |
-| Open, supine | 45 | 261 | -5.0 (-8.3 to -2.0) | 6.8 | 16.2 |
-| Laparoscopic or robotic, supine | 43 | 215 | -8.3 (-12.5 to -3.5) | 9.0 | 19.2 |
-| Other positions | 48 | 277 | -7.4 (-11.1 to -3.1) | 9.4 | 18.8 |
-| Age under 45 | 23 | 129 | -5.0 (-10.3 to 0.7) | 9.2 | 17.4 |
-| Age 45-59 | 60 | 342 | -7.3 (-10.6 to -4.1) | 9.2 | 18.3 |
-| Age 60-69 | 36 | 183 | -8.9 (-13.3 to -4.6) | 7.8 | 19.3 |
-| Age 70 and over | 17 | 99 | -3.7 (-7.8 to 0.2) | 5.3 | 15.3 |
+| All patients | 136 | 753 | -7.0 (-9.1 to -4.9) | 8.7 | 18.0 |
+| Legacy core (open supine, age ≤ 70, ASA 1-2, normotensive, BMI ≤ 32) | 29 | 168 | -6.3 (-10.3 to -2.3) | 7.5 | 16.5 |
+| Untreated | 57 | 388 | -10.1 (-12.8 to -7.2) | 7.4 | 19.1 |
+| Pressor-treated | 79 | 365 | -4.2 (-6.9 to -1.3) | 9.3 | 16.7 |
+| Normotensive | 100 | 607 | -8.9 (-11.3 to -6.5) | 8.5 | 18.4 |
+| Hypertensive | 36 | 146 | -1.2 (-4.9 to 2.9) | 6.7 | 16.2 |
+| ASA 1-2 | 128 | 717 | -7.4 (-9.7 to -5.4) | 8.5 | 18.2 |
+| ASA 3 | 8 | 36 | -0.6 (-7.6 to 8.0) | 8.7 | 13.1 |
+| BMI under 30 | 127 | 702 | -6.8 (-9.3 to -4.6) | 8.9 | 18.0 |
+| BMI 30 and over | 9 | 51 | -8.5 (-15.5 to -2.5) | 5.8 | 18.1 |
+| Open, supine | 45 | 261 | -5.2 (-8.5 to -2.1) | 6.9 | 16.2 |
+| Laparoscopic or robotic, supine | 43 | 215 | -8.4 (-12.6 to -3.7) | 9.1 | 19.2 |
+| Other positions | 48 | 277 | -7.6 (-11.3 to -3.3) | 9.4 | 18.8 |
+| Age under 45 | 23 | 129 | -5.2 (-10.5 to 0.6) | 9.3 | 17.4 |
+| Age 45-59 | 60 | 342 | -7.5 (-10.8 to -4.3) | 9.2 | 18.3 |
+| Age 60-69 | 36 | 183 | -9.1 (-13.4 to -4.7) | 7.8 | 19.2 |
+| Age 70 and over | 17 | 99 | -3.9 (-8.0 to -0.1) | 5.0 | 15.4 |
 
-By time after propofol, all patients: before 10 min -7.5 (-9.9 to -5.2); from 10 min -3.4 (-7.0 to -0.1) mmHg.
+By time after propofol, all patients: before 10 min -7.6 (-10.0 to -5.4); from 10 min -3.6 (-7.3 to -0.3) mmHg.
 
-5-fold stratified fold means: -8.4, -3.7, -5.5, -6.4, -10.0 mmHg (mean -6.8, SD 2.5).
+5-fold stratified fold means: -8.6, -3.9, -5.7, -6.5, -10.1 mmHg (mean -7.0, SD 2.5).
 
 Change in MAP from pre-induction, all readings without stopping, median (IQR):
 
@@ -55,9 +55,9 @@ End-tidal sevoflurane before incision, median: recorded 1.60%, model 1.72% (n=12
 
 End-tidal sevoflurane surgery, median: recorded 1.90%, model 2.05% (n=124).
 
-ECG HR error (model minus recorded, per-patient medians, untreated): 0-5 min 0.1 (-1.9 to 2.2), n=57; 5-10 min -5.4 (-8.8 to -1.7), n=57; 10 min to incision 2.2 (-0.5 to 4.9), n=56 bpm.
+ECG HR error (model minus recorded, per-patient medians, untreated): 0-5 min 0.1 (-1.9 to 2.1), n=57; 5-10 min -5.4 (-8.8 to -1.7), n=57; 10 min to incision 2.3 (-0.4 to 5.0), n=56 bpm.
 
-Surgery from 15 min after incision, untreated: MAP -3.1 (-7.9 to 1.4), n=48 mmHg; HR -2.7 (-5.6 to 0.4), n=48 bpm.
+Surgery from 15 min after incision, untreated: MAP -4.0 (-8.9 to 0.6), n=48 mmHg; HR -2.7 (-5.6 to 0.4), n=48 bpm.
 
 Exclusions:
 

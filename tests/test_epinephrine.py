@@ -1,7 +1,7 @@
 """Epinephrine calibration against published cohort responses.
 
 Infusion: Freyschuss 1986 (arterial samples, basal 0.27 nmol/L, mean age 24),
-Ensinger 1992 (arterial concentration-response through 23.9 nmol/L),
+Ensinger 1992b (arterial concentration-response through 23.9 nmol/L),
 Esler 1995 (brachial arterial tracer clearance across age), Marker 1998
 (sequential infusions across age), and Leenen 2005 (cardiac responses across
 age with and without neuronal uptake and reflex buffering), plus Stratton 1985
@@ -62,7 +62,7 @@ def test_freyschuss_arterial_infusion_steps():
 
 
 def test_ensinger_arterial_concentration_response():
-    """Ensinger 1992, Eur J Clin Pharmacol Table 2: five 30-min steps.
+    """Ensinger 1992b, Eur J Clin Pharmacol Table 2: five 30-min steps.
 
     Use arterial increments to isolate PD from clearance. Body dimensions are
     range midpoints; resting pressure matches the cohort. Bounds use 1.5 of
@@ -506,3 +506,43 @@ def test_epinephrine_venous_return_co_cap_and_bolus_offset(engine_factory, advan
     epi_bolus.give_drug_bolus("epi", 100.0)
     advance_time(epi_bolus, 300.0, dt=1.0)
     assert epi_bolus.state.hr > 58.0
+
+
+def test_severe_hemorrhage_vasopressors_hfref_beta_reserve_and_tanaka_hr_cap(engine_factory, advance_time):
+    """Severe hemorrhage bounds venous recruitment (Meybohm 2007; Maas 2013), epinephrine avoids
+    paradoxical MAP collapse, HFrEF blunts beta-1 reserve (Fowler 1986), and age caps sinus HR."""
+    bleed_pe = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
+    bleed_pe.hemo.add_volume(-0.45 * bleed_pe.hemo.blood_volume_0)
+    advance_time(bleed_pe, 30.0, dt=1.0)
+    bleed_pe.give_drug_bolus("phenyl", 200.0)
+    peak_pe_map = 0.0
+    for _ in range(120):
+        bleed_pe.step(1.0)
+        peak_pe_map = max(peak_pe_map, bleed_pe.state.map)
+    assert peak_pe_map < 35.0
+
+    bleed_epi = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    bleed_epi.hemo.add_volume(-0.35 * bleed_epi.hemo.blood_volume_0)
+    advance_time(bleed_epi, 60.0, dt=1.0)
+    pre_epi_map = bleed_epi.state.map
+    bleed_epi.set_drug_rate("epi", 15.0)
+    min_epi_map = pre_epi_map
+    for _ in range(180):
+        bleed_epi.step(1.0)
+        min_epi_map = min(min_epi_map, bleed_epi.state.map)
+    assert min_epi_map >= pre_epi_map - 3.0
+
+    norm = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    hf = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, heart_failure="hfref")
+    for eng in (norm, hf):
+        eng.set_drug_rate("epi", 7.0)
+    advance_time(norm, 240.0, dt=1.0)
+    advance_time(hf, 240.0, dt=1.0)
+    assert hf.state.hr - hf.hemo.base_hr < norm.state.hr - norm.hemo.base_hr
+    assert hf.state.co / hf.hemo.base_co_l_min < norm.state.co / norm.hemo.base_co_l_min
+
+    elderly = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True, age=80)
+    elderly.give_drug_bolus("atropine", 2.0)
+    elderly.set_drug_rate("epi", 25.0)
+    advance_time(elderly, 240.0, dt=1.0)
+    assert elderly.state.hr < 190.0

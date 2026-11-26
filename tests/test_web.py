@@ -643,3 +643,19 @@ def test_vfib_blanks_st_and_hr_in_web_snapshot_while_asystole_shows_zero_hr():
     session.engine.set_rhythm("ASYSTOLE")
     session.engine.step(0.5)
     assert session.snapshot()["vitals"]["hr"] == 0.0
+
+
+def test_disconnect_emits_loop_reset_and_vaporizer_refill_round_trips():
+    """Disconnecting the airway resets retained spirometry loops and refill_vaporizer restores level."""
+    session = WebSession({**PATIENT, "mode": "steady_state"})
+    cmd(session, "run", running=True)
+    run_seconds(session, 6)
+    _ = session.snapshot()
+    cmd(session, "airway", mode="None")
+    disc = session.snapshot()
+    assert disc["loop"] == [{"reset": True}]
+
+    session.engine.vaporizer.state.level = 12.5
+    assert session.snapshot()["controls"]["vaporizer_level"] == pytest.approx(12.5)
+    cmd(session, "refill_vaporizer")
+    assert session.snapshot()["controls"]["vaporizer_level"] == pytest.approx(250.0)

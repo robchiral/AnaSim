@@ -1,19 +1,22 @@
 """Standard cases an attending would recognize in healthy adults.
 
 Ranges sit between published inductions, which often use higher doses,
-VitalDB recordings of routine practice, and clinical experience. TIVA ranges
-are the interquartile ranges of recorded cuff MAP change in about 400 VitalDB
-propofol-remifentanil inductions.
+VitalDB recordings of routine practice, and clinical experience. TIVA ranges come from the interquartile ranges of recorded cuff MAP change in
+the initial VitalDB propofol-remifentanil calibration cohort (expanded to n=511
+in validation/vitaldb/results/vitaldb_tiva.md).
 """
 
 import copy
 from typing import Any
 
 import numpy as np
+import pytest
 
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
+
+pytestmark = pytest.mark.clinical
 
 ADULT: dict[str, Any] = dict(age=45, weight=75, height=172, sex="male", baseline_map=95, baseline_hr=75)
 OLDER: dict[str, Any] = dict(age=70, weight=72, height=168, sex="male", baseline_map=105, baseline_hr=70)
@@ -62,7 +65,8 @@ def _fall(awake, value):
 
 
 def test_propofol_fentanyl_sevoflurane_induction_intubation_and_incision():
-    """The typical VitalDB bolus induction with sevoflurane (83 recorded cases):
+    """The typical VitalDB bolus induction with sevoflurane (initial 83-case snapshot;
+    expanded to n=136 in validation/vitaldb/results/vitaldb_sevo.md):
     age 55, 63 kg, fentanyl 1.4 mcg/kg, then propofol 1.8 mg/kg, end-tidal
     sevoflurane about 1.6% before incision and 1.9% during surgery, incision at
     24 min. Ranges are the recorded interquartile ranges: MAP -19% at 1-2 min,
@@ -108,9 +112,10 @@ def test_older_patient_falls_further():
 
 def test_tiva_induction_intubation_and_maintenance():
     """Remifentanil effect-site 3 ng/mL, then propofol effect-site 4 mcg/mL;
-    intubation 3 min and incision 15 min after propofol starts. VitalDB medians:
-    -16% at 1-2 min, -21% at 2-5 min, lowest reading -31% in the first 10 min,
-    -27% over the 10 min before incision. Remifentanil 3 ng/mL leaves most of
+    intubation 3 min and incision 15 min after propofol starts. Initial VitalDB
+    TIVA snapshot medians: -16% at 1-2 min, -21% at 2-5 min, lowest reading -31%
+    in the first 10 min, -27% over the 10 min before incision (expanded n=511
+    cohort: -18%, -22%, -33%, -29%). Remifentanil 3 ng/mL leaves most of
     the intubation response (Albertin 2005: 5 ng/mL blocked a 15% rise in half
     of patients at propofol 3.4 mcg/mL)."""
     awake, trace = _run(ADULT, [
@@ -131,7 +136,8 @@ def test_tiva_induction_intubation_and_maintenance():
 
 
 def test_tiva_induction_in_an_older_patient():
-    """VitalDB TIVA patients aged 70-84 (n=33; median 75 years, 60 kg, MAP 106)
+    """Initial VitalDB TIVA cohort aged 70-84 (n=33; median 75 years, 60 kg, MAP 106;
+    expanded to n=85 aged 70+ in validation/vitaldb/results/vitaldb_tiva.md)
     received the same weight-based delivery as younger patients: remifentanil
     1.1 mcg/kg over 3 min, then propofol 1.3 mg/kg, 240 mcg/kg/min from 2 to 5
     min, and 150 after. Ranges are their recorded interquartile ranges of cuff

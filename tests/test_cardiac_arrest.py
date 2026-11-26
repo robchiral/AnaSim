@@ -428,7 +428,7 @@ def _settled_engine(engine_factory, **patient_kwargs):
 
 
 def test_cpr_epinephrine_raises_perfusion_pressure_and_lowers_etco2(engine_factory):
-    """Paradis 1990, Cantineau 1994, Kim 2025: IV epinephrine raises CPR DBP/CPP while afterload lowers flow and EtCO2."""
+    """IV epinephrine raises CPR arterial DBP and CPP (Michael 1984; Kim 2025) while higher afterload lowers forward flow and EtCO2 (Cantineau 1994b)."""
     cfg = SimulationConfig(mode="steady_state", rng_seed=7)
 
     def cpr_patient():
@@ -467,7 +467,7 @@ def test_cpr_epinephrine_raises_perfusion_pressure_and_lowers_etco2(engine_facto
     assert engine.state.co < pre_co - 0.10
     assert 1.5 < etco2_drop < 4.5
 
-    # Low-flow CPR with low baseline EtCO2 shows a smaller absolute EtCO2 drop (Cantineau 1994).
+    # Low-flow CPR with low baseline EtCO2 shows a smaller absolute EtCO2 drop (Cantineau 1994b).
     low_flow = cpr_patient()
     low_flow.hemo.add_volume(-2200)
     low_flow.set_rhythm("VFIB")
@@ -519,7 +519,7 @@ def test_brief_vf_defibrillation_recovery_tracks_vf_duration(engine_factory, hea
 
 
 def test_countershock_stunning_resolves_within_minutes(engine_factory):
-    """Tokano 1998 and Laurent 2002: shock stunning resolves over minutes."""
+    """Tokano 1998: acute defibrillation countershock stunning resolves over minutes."""
     engine = _settled_engine(engine_factory, age=55, weight=78, height=172, sex="male", heart_failure="hfref")
     baseline = _breath_average(engine)
 
@@ -851,3 +851,39 @@ def test_hfref_cpr_perfusion_matches_normal_heart_without_output_inflation(engin
         advance_time(eng, 45.0, dt=1.0)
 
     assert hfref.hemo.state.cpr_perfusion_map <= normal.hemo.state.cpr_perfusion_map + 3.0
+
+
+def test_perfusing_vtach_arrest_tone_freeze_windkessel_and_hfref_cpr_lap(engine_factory, advance_time):
+    """Healthy VT stays perfusing, unresuscitated arrest freezes tone and Starling refill without
+    phantom Windkessel pulse pressure, and HFrEF CPR keeps passive LAP equilibrated."""
+    vt = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    vt.set_rhythm("VTACH")
+    advance_time(vt, 60.0, dt=1.0)
+    assert vt.spontaneous_circulation is True
+    assert vt.state.map > 40.0 and vt.state.sbp - vt.state.dbp > 4.5
+    assert vt.hemo.coronary.supply_demand_ratio > 0.9
+
+    asys = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=0.1, maintenance_fluid_ml_hr=0.0, rng_seed=1),
+        start=True,
+    )
+    asys.hemo.add_volume(-1000.0)
+    asys.hemo.rhythm_type = RhythmType.ASYSTOLE
+    asys.hemo.invalidate_state_cache()
+    asys.step(0.1)
+    assert asys.state.sbp == pytest.approx(asys.state.dbp, abs=1e-6)
+    assert asys.state.sbp == pytest.approx(asys.state.map, abs=1e-6)
+    tpr_before, bv_before = asys.hemo.tpr_tone, asys.hemo.blood_volume
+    advance_time(asys, 120.0, dt=1.0)
+    assert asys.hemo.tpr_tone == pytest.approx(tpr_before, rel=0.01)
+    assert asys.hemo.blood_volume <= bv_before + 1.0
+
+    hf = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1), start=True, heart_failure="hfref",
+    )
+    hf.give_fluid(500.0)
+    hf.set_rhythm("VFIB")
+    hf.set_chest_compressions(True)
+    advance_time(hf, 60.0, dt=1.0)
+    assert hf.hemo.state.lap < 24.0
+    assert hf.hemo.coronary.supply_demand_ratio > 0.65

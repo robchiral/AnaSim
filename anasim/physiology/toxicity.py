@@ -3,8 +3,9 @@
 Concentrations are mcg/mL. Volunteer infusions and overdose reports set the
 concentration ranges for sympathetic stimulation, seizures, coma, and cardiac
 depression (Foldes 1960; Jorfeldt 1968; Tucker and Boas 1971; Armstrong 1988).
-Lipid emulsion lowers unentrapped exposure (Heinonen 2015), represented here as
-reduced effect-site delivery without altering central PK, and lessens
+Lipid emulsion lowers unentrapped venous plasma exposure in volunteers
+(Heinonen 2015, without CNS symptom reduction), used here as a heuristic
+reduction in effect-site delivery without altering central PK, and lessens
 contractile depression based on rat bupivacaine resuscitation (Fettiplace 2014).
 The response curves, conduction and arrhythmia relief, acidemia effect,
 anticonvulsant suppression, and arrest thresholds are calibrations.
@@ -65,7 +66,7 @@ class LocalAnestheticToxicity:
     def step(self, dt: float, *, neural_ce: float, cardiac_ce: float, ph: float,
              propofol_ce: float, midazolam_ce: float, mac_sevo: float,
              motor_strength: float, cortical_function: float,
-             mac_n2o: float = 0.0) -> None:
+             mac_n2o: float = 0.0, etomidate_ce: float = 0.0) -> None:
         if (
             neural_ce <= 0.0
             and cardiac_ce <= 0.0
@@ -85,6 +86,7 @@ class LocalAnestheticToxicity:
         inhaled_mac = max(0.0, mac_sevo) + 0.5 * max(0.0, mac_n2o)
         remaining_excitation = ((1.0 - hill_function(midazolam_ce, 30.0, 2.0))
                                 * (1.0 - hill_function(propofol_ce, 1.5, 2.0))
+                                * (1.0 - hill_function(etomidate_ce, 0.25, 2.0))
                                 * (1.0 - hill_function(inhaled_mac, 0.75, 2.0)))
         cortical = clamp01(cortical_function)
         target = excitation * remaining_excitation * cortical

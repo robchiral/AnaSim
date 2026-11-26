@@ -247,3 +247,19 @@ def test_mh_case_post_onset_succinylcholine_fails_triggers_and_logs_warning():
     outcomes = {o["id"]: o["achieved"] for o in report["outcomes"]}
     assert outcomes["triggers"] is False
     assert any(event["code"] == "succinylcholine_in_mh" for event in report["safety_events"])
+
+
+def test_subtherapeutic_dantrolene_does_not_latch_permanent_remission(engine_factory):
+    """Subtherapeutic 1.0 mg/kg dantrolene fails the sustained suppression dwell and relapses."""
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", rng_seed=1), start=True
+    )
+    engine.start_malignant_hyperthermia()
+    _run(engine, 120)
+    engine.set_vaporizer(0)
+    engine.set_fgf(10, 0)
+    engine.set_drug_rate("propofol", 100)
+    engine.give_drug_bolus("dantrolene", 1.0 * engine.patient.weight)
+    _run(engine, 2100, dt=2.0)
+    assert engine.malignant_hyperthermia.active is True
+    assert engine.malignant_hyperthermia.severity > 0.03

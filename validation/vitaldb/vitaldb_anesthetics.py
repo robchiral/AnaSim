@@ -15,7 +15,8 @@ import math
 import random
 import sys
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,7 @@ from anasim.core.state import SimulationConfig  # noqa: E402
 from validation.vitaldb import vitaldb_data  # noqa: E402
 from validation.vitaldb.vitaldb_data import (  # noqa: E402
     CACHE,
+    DEFAULT_WORKERS,
     REMI_RATES,
     SOURCE,
     Excluded,
@@ -49,6 +51,7 @@ from validation.vitaldb.vitaldb_data import (  # noqa: E402
     time_grid,
 )
 from validation.vitaldb.vitaldb_replay import delivery  # noqa: E402
+from validation.vitaldb.vitaldb_replay import mean_ci as _replay_mean_ci  # noqa: E402
 
 TIVA_TRACKS = [
     "Orchestra/PPF20_RATE", "Orchestra/PPF20_VOL", "BIS/BIS",
@@ -85,7 +88,7 @@ def patient_for(case: dict[str, Any]):
 
 
 def replay_propofol(patient, grid: np.ndarray, volume: np.ndarray) -> np.ndarray:
-    """PPF20 is 20 mg/mL; model input is mg/s and effect-site output is mcg/mL."""
+    """Replay PPF20 (20 mg/mL; PK input mg/s, Ce mcg/mL) and return smoothed BIS."""
     engine = SimulationEngine(patient, SimulationConfig(mode="awake", concomitant_opioids=True))
     pk, bis = engine.pk["propofol"], engine.bis
     predicted = np.empty(len(grid))
@@ -264,6 +267,15 @@ def evaluate(candidate, kind: str, dt: float) -> dict[str, Any]:
     return result
 
 
+def _worker_init(cache: Path) -> None:
+    vitaldb_data.CACHE = cache
+
+
+def _evaluate_task(args: tuple[tuple[dict[str, Any], dict[str, str]], str, float]) -> dict[str, Any]:
+    candidate, kind, dt = args
+    return evaluate(candidate, kind, dt)
+
+
 def cohort(kind: str, requested: int, seed: int, workers: int, dt: float) -> dict[str, Any]:
     candidates = domain_cases(TIVA_TRACKS if kind == "tiva" else SEVO_TRACKS, open_supine_only=False)
     initial = len(candidates)
@@ -277,21 +289,49 @@ def cohort(kind: str, requested: int, seed: int, workers: int, dt: float) -> dic
     random.Random(seed).shuffle(candidates)
     selected: list[dict[str, Any]] = []
     exclusions: list[dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        for offset in range(0, len(candidates), workers):
+    target = str(requested) if requested else "all"
+
+    def _consume(results: list[dict[str, Any]]) -> None:
+        for result in results:
             if requested and len(selected) >= requested:
                 break
-            batch = candidates[offset:offset + workers]
-            results = list(pool.map(lambda candidate: evaluate(candidate, kind, dt), batch))
-            for result in results:
-                if requested and len(selected) >= requested:
-                    break
+            if "exclusion" in result:
+                exclusions.append(result)
+            else:
+                selected.append(result)
+
+    pool_ctx = (
+        ProcessPoolExecutor(max_workers=workers, initializer=_worker_init, initargs=(vitaldb_data.CACHE,))
+        if workers > 1
+        else nullcontext(None)
+    )
+    with pool_ctx as pool:
+        if not requested and pool is not None:
+            tasks = [(candidate, kind, dt) for candidate in candidates]
+            chunksize = max(1, min(4, len(tasks) // (workers * 2) or 1))
+            report_every = max(workers * 4, 64)
+            for idx, result in enumerate(pool.map(_evaluate_task, tasks, chunksize=chunksize), 1):
                 if "exclusion" in result:
                     exclusions.append(result)
                 else:
                     selected.append(result)
-            target = str(requested) if requested else "all"
-            print(f"{kind}: retained {len(selected)}/{target}; screened {len(selected) + len(exclusions)}", flush=True)
+                if idx % report_every == 0 or idx == len(tasks):
+                    print(f"{kind}: retained {len(selected)}/{target}; screened {idx}", flush=True)
+        else:
+            batch_size = 32 if pool is None else max(workers * 2, 16)
+            for offset in range(0, len(candidates), batch_size):
+                if requested and len(selected) >= requested:
+                    break
+                batch = candidates[offset:offset + batch_size]
+                if pool is None:
+                    results = [evaluate(candidate, kind, dt) for candidate in batch]
+                else:
+                    results = list(pool.map(_evaluate_task, [(c, kind, dt) for c in batch], chunksize=1))
+                _consume(results)
+                print(
+                    f"{kind}: retained {len(selected)}/{target}; screened {len(selected) + len(exclusions)}",
+                    flush=True,
+                )
     return dict(
         requested=requested,
         track_eligible=initial,
@@ -302,10 +342,7 @@ def cohort(kind: str, requested: int, seed: int, workers: int, dt: float) -> dic
 
 
 def mean_ci(values, rng) -> str:
-    arr = np.asarray(values, dtype=float)
-    means = np.mean(rng.choice(arr, size=(2000, len(arr)), replace=True), axis=1)
-    low, high = np.percentile(means, [2.5, 97.5])
-    return f"{np.mean(arr):.2f} ({low:.2f} to {high:.2f})"
+    return _replay_mean_ci(values, rng, n_boot=2000, digits=2, include_n=False)
 
 
 def _subgroup_table(rows: list[dict[str, Any]], rng) -> list[str]:
@@ -485,7 +522,7 @@ def main() -> None:
     parser.add_argument("--tiva-cases", type=int, default=0, help="Max TIVA patients (0 = all eligible)")
     parser.add_argument("--sevo-cases", type=int, default=0, help="Max sevoflurane patients (0 = all eligible)")
     parser.add_argument("--cohorts", choices=("both", "tiva", "sevo"), default="both")
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     parser.add_argument("--seed", type=int, default=20261013)
     parser.add_argument("--dt", type=float, default=1.0)
     parser.add_argument("--cache", type=Path, default=CACHE)

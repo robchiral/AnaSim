@@ -18,7 +18,7 @@ def case():
 
 
 def test_patient_from_case_accepts_expanded_domain_and_wires_preop_labs(comparison, case):
-    # Obesity and older adults within AnaSim's domain are now accepted.
+    # Obesity and older adults within AnaSim's domain are accepted.
     obese = comparison.patient_for({**case, "weight": "110", "height": "190"})
     assert obese.weight == pytest.approx(110.0)
     obese2 = comparison.patient_for({**case, "weight": "100", "height": "170", "age": "82"})

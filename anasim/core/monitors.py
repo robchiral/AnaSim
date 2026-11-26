@@ -130,6 +130,7 @@ def compute_capno_value(
     substeps: int = 1,
     *,
     cpr_oscillating: bool = False,
+    port_share: float | None = None,
 ) -> list[float]:
     """Advance the capnograph with the gas that crossed the Y-piece; return CO2 at each waveform sample."""
     state = engine.state
@@ -149,7 +150,8 @@ def compute_capno_value(
         end_tidal = resp_state.etco2
         # Gas lost around a facemask never passes the sampling port, so a
         # large leak leaves dead-space gas at the port.
-        port_share = delivered_fraction(engine)
+        if port_share is None:
+            port_share = delivered_fraction(engine)
         waves = []
         elapsed = 0.0
         substep_dt = dt / substeps
@@ -225,8 +227,8 @@ def step_cardiac_monitors(
     base_co = engine.hemo.base_co_l_min
     base_svr = max(1.0, engine.hemo.base_tpr * 1000.0)
     temp_factor = clamp(1.0 - 0.14 * max(0.0, 36.0 - engine.state.temp_c), 0.12, 1.0)
-    # Peripheral cold vasoconstriction slows finger SpO2 transit smoothly (~2.1x
-    # at 35 °C without a sharp cutoff at 34 °C; MacLeod 2005).
+    # Calibrated cold vasoconstriction delay on finger SpO2 transit (~2.5x transit
+    # scale, ~2.1x total lag at 35 °C; delayed finger response in MacLeod 2005).
     cold_delay_factor = max(0.10, 1.0 / (1.0 + 0.85 * max(0.0, 36.5 - engine.state.temp_c) ** 1.35))
     perfusion, spo2_delay_scale = _peripheral_perfusion(
         hemo_state, base_co, base_svr, temp_factor, cold_delay_factor=cold_delay_factor,
@@ -392,21 +394,25 @@ def step_monitors(
     loc_val = loss_of_response(engine)
     engine._tol_current = stimulus_tolerance(engine)
     cardiac_sample, cardiac_waves = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
+    connected = state.airway_mode != AirwayType.NONE
+    sealed = circuit_connected(engine)
+    seal_scale = mask_seal_factor(engine)
+    kept = delivered_fraction(engine) if sealed else 0.0
     capno_waves = compute_capno_value(
-        engine, resp_state, dt, substeps, cpr_oscillating=hemo_state.compressions,
+        engine, resp_state, dt, substeps, cpr_oscillating=hemo_state.compressions, port_share=kept,
     )
 
     update_nibp(engine, dt, engine.hemo.state)
-    deep_block_ratio = state.roc_ce / max(1e-6, engine.tof_pd._ec50(state.mac_sevo, state.mac_n2o))
+    deep_block_ratio = (
+        state.roc_ce / max(1e-6, engine.tof_pd._ec50(state.mac_sevo, state.mac_n2o))
+        if engine.nmb.mode == "ptc" and state.roc_ce > 0.0
+        else 0.0
+    )
     engine.nmb.step(
         state.time + dt, state.twitch / 100.0, state.tof / 100.0,
         deep_block_ratio=deep_block_ratio,
     )
 
-    connected = state.airway_mode != AirwayType.NONE
-    sealed = circuit_connected(engine)
-    seal_scale = mask_seal_factor(engine)
-    kept = delivered_fraction(engine) if sealed else 0.0
     airway_wave = engine.airway_sensor.reading
     airway_waves: list[tuple[float, float, float]] = []
     elapsed = 0.0
@@ -420,7 +426,8 @@ def step_monitors(
         elapsed += duration
         _hold(airway_waves, airway_wave, elapsed, substeps, substep_dt)
     airway_waves.extend([airway_wave] * (substeps - len(airway_waves)))
-    state.paw, state.flow, state.volume = (float(value) for value in airway_wave)
+    paw_w, flow_w, vol_w = airway_wave
+    state.paw, state.flow, state.volume = float(paw_w), float(flow_w), float(vol_w)
     bis_display_source = clamp(bis_val, 0.0, 100.0)
     state.bis = float(bis_display_source)
 
@@ -454,33 +461,41 @@ def step_monitors(
         engine._bis_anesthetized = True
     elif not connected and state.display_bis >= 80.0:
         engine._bis_anesthetized = False
-    paralyzed = (
-        state.tof < 90.0
-        or nmba_twitch_fraction(engine) < 0.90
-        or central_muscle_strength(engine) < 0.85
-    )
-    maintaining = engine._bis_anesthetized and (
-        engine.disturbance_active
-        or engine.vaporizer.state.is_on
-        or engine.circuit.fgf_n2o > 0.0
-        or any(
-            engine.infusion_rates.get(k, 0.0) > 0.0 or (k in engine.tci and engine.tci[k].target > 0.0)
-            for k in ("propofol", "midazolam", "ketamine")
-        )
-    )
     bis_int = display_int(state.display_bis)
-    # During induction/RSI, suppress transient BIS HIGH alarms while the patient is
-    # already deeply unconscious (LOC >= 0.80) and undelayed hypnotic BIS is < 65,
-    # waiting only for Eleveld/display smoothing to catch up.
-    raw_bis = engine.bis.compute_bis(
-        state.hypnotic_ce, mac_sevo, state.ketamine_ce, state.opioid_ce, temp_c=state.temp_c,
-    )
-    inducing_lag = not engine._bis_anesthetized and loc_val >= 0.80 and raw_bis < 65.0
-    bis_alarm = (
-        bis_int
-        if ((paralyzed and not inducing_lag) or maintaining or bis_int <= engine.alarms.thresholds["BIS_max"])
-        else None
-    )
+    if bis_int <= engine.alarms.thresholds["BIS_max"]:
+        bis_alarm: float | None = bis_int
+    else:
+        maintaining = engine._bis_anesthetized and (
+            engine.disturbance_active
+            or engine.vaporizer.state.is_on
+            or engine.circuit.fgf_n2o > 0.0
+            or any(
+                engine.infusion_rates.get(k, 0.0) > 0.0 or (k in engine.tci and engine.tci[k].target > 0.0)
+                for k in ("propofol", "midazolam", "ketamine")
+            )
+        )
+        if maintaining:
+            bis_alarm = bis_int
+        else:
+            paralyzed = (
+                state.tof < 90.0
+                or nmba_twitch_fraction(engine) < 0.90
+                or central_muscle_strength(engine) < 0.85
+            )
+            if paralyzed:
+                # During induction/RSI, suppress transient BIS HIGH alarms while the patient is
+                # already deeply unconscious (LOC >= 0.80) and undelayed hypnotic BIS is < 65,
+                # waiting only for Eleveld/display smoothing to catch up.
+                inducing_lag = (
+                    not engine._bis_anesthetized
+                    and loc_val >= 0.80
+                    and engine.bis.compute_bis(
+                        state.hypnotic_ce, mac_sevo, state.ketamine_ce, state.opioid_ce, temp_c=state.temp_c,
+                    ) < 65.0
+                )
+                bis_alarm = None if inducing_lag else bis_int
+            else:
+                bis_alarm = None
     map_alarm = (
         display_int(state.art_map)
         if engine.config.arterial_line_enabled
@@ -536,9 +551,16 @@ def step_monitors(
     elif state.cardiac_arrest:
         state.alarms["Arrest"] = {"low": False, "high": True}
     start, breath = state.time, vent.breath_count
-    engine.output_buffer.extend(
-        WaveformSample(start + dt if index == substeps - 1 else start + (index + 1) * substep_dt,
-                       ecg, pleth, float(co2), art, float(paw), float(flow), float(volume), breath)
-        for index, ((ecg, pleth, art), co2, (paw, flow, volume)) in enumerate(
-            zip(cardiac_waves, capno_waves, airway_waves, strict=True))
-    )
+    if substeps == 1:
+        ecg, pleth, art = cardiac_waves[0]
+        paw, flow, volume = airway_waves[0]
+        engine.output_buffer.append(WaveformSample(
+            start + dt, ecg, pleth, float(capno_waves[0]), art, float(paw), float(flow), float(volume), breath,
+        ))
+    else:
+        engine.output_buffer.extend(
+            WaveformSample(start + dt if index == substeps - 1 else start + (index + 1) * substep_dt,
+                           ecg, pleth, float(co2), art, float(paw), float(flow), float(volume), breath)
+            for index, ((ecg, pleth, art), co2, (paw, flow, volume)) in enumerate(
+                zip(cardiac_waves, capno_waves, airway_waves, strict=True))
+        )

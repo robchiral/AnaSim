@@ -39,7 +39,7 @@ from .base import (
 )
 
 # Rocuronium 0.6 mg/kg at induction leaves a TOF count of 2 at the start.
-# Sevoflurane potentiates rocuronium and slows recovery (Kleijn 2011).
+# Sevoflurane potentiates rocuronium and slows recovery (Kleijn 2011; Lowry 1998).
 ROCURONIUM_DOSE_MG_KG = 0.6
 ROCURONIUM_MINUTES = {"balanced": 55, "tiva": 35}
 

@@ -4,9 +4,9 @@ VF often recurs within the first two minutes after a successful shock (Koster
 2008; van Alem 2003), and shocks after prolonged arrest often leave transient
 post-shock asystole before pacemaker escape or refibrillation (Pierce 2015).
 Amiodarone converts sustained VT with a pulse more often than lidocaine
-(Somberg 2002; Scheinman 1995), and neither drug prevents rearrest (Salcido
-2018). Spontaneous onset, VT degeneration, and post-shock bradycardia recovery
-are calibrations.
+(Somberg 2002; dose-ranging IV amiodarone in Scheinman 1995), and neither drug
+prevents rearrest (Salcido 2018). Spontaneous onset, VT degeneration, and
+post-shock bradycardia recovery are calibrations.
 """
 
 import math
@@ -78,8 +78,8 @@ class ArrhythmiaModel:
         """Return the rhythm after a terminating shock. The myocardial substrate persists."""
         if before not in VENTRICULAR_RHYTHMS or after in VENTRICULAR_RHYTHMS:
             return after
-        # Brief VF before the energy reserve falls leaves little arrest substrate
-        # for post-shock bradycardia or early refibrillation (Park 1994; Tokano 1998).
+        # Brief VF before the energy reserve falls returns cleanly to sinus rhythm
+        # (Park 1994), leaving little substrate for post-shock bradycardia or early refibrillation.
         depletion = clamp01((0.80 - energy_reserve) / 0.50)
         stress = clamp01(max(ischemia * depletion, hypoxia))
         new_stress = clamp01((stress - 0.25) / 0.75)
@@ -139,9 +139,13 @@ class ArrhythmiaModel:
         hypotherm = clamp01(hypothermia)
         lido, amio = antiarrhythmic_effects(lidocaine, amiodarone)
         events: tuple[tuple[str, float, RhythmType], ...]
+        recurrence = (
+            REFIBRILLATION_RATE * self._post_shock_stress * math.sqrt(stress) * viable
+            * math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S)
+            if self._post_shock_stress > 0.0 and stress > 0.0 and viable > 0.0
+            else 0.0
+        )
         if rhythm == RhythmType.ASYSTOLE:
-            recurrence = (REFIBRILLATION_RATE * self._post_shock_stress * math.sqrt(stress) * viable
-                          * math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S))
             pacemaker = clamp01(1.0 - 1.15 * energy_failure) * (1.0 - 0.90 * hypotherm) * (1.0 - 0.90 * hyperk)
             if energy_reserve <= 0.0 and not compressions:
                 pacemaker *= clamp01((0.35 - energy_failure) / 0.35)
@@ -152,7 +156,7 @@ class ArrhythmiaModel:
                       ("escape", pacemaker / POST_SHOCK_ASYSTOLE_TAU_S, escape_target))
         elif rhythm == RhythmType.VTACH:
             degeneration = VT_DEGENERATION_RATE * max(substrate, hyperk, hypotherm)
-            # Drugs convert only perfusing VT. The stronger drug effect applies.
+            # Drugs convert perfusing VT when potassium is not severely elevated; the stronger drug effect applies.
             conversion = (
                 max(lido * LIDOCAINE_VT_CONVERSION_RATE, amio * AMIODARONE_VT_CONVERSION_RATE)
                 if perfusing and hyperk < 0.2 else 0.0
@@ -160,8 +164,6 @@ class ArrhythmiaModel:
             events = (("degeneration", degeneration, RhythmType.VFIB),
                       ("conversion", conversion, RhythmType.SINUS))
         else:
-            recurrence = (REFIBRILLATION_RATE * self._post_shock_stress * math.sqrt(stress) * viable
-                          * math.exp(-self._post_shock_s / REFIBRILLATION_TAU_S))
             # Without the heart's own output, as in PEA, ischemia leads to asystole;
             # severe ATP-replete local anesthetic toxicity can still trigger VT/VF.
             toxic_substrate = clamp01((toxic_stress - 0.75) / 0.25) * viable

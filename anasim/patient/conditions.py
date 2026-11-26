@@ -28,8 +28,8 @@ COPD_RESISTANCE = 12.0  # cmH2O/(L/s) added at severity 1; calibrated
 # Share of anesthetized airway closure that persists after emergence. After
 # upper abdominal surgery, supine FRC is 66-78% of its preoperative value
 # (Putensen-Himmer 1992 at 6 h; Wahba 1975), at or below its value under
-# anesthesia. The lower abdominal share matches the A-a gradient 2 h after
-# colon surgery at age 68 (Lindberg 1992).
+# anesthesia. The lower abdominal share (0.3) is calibrated to postoperative
+# hypoxemia and ~1/3 spirometric loss 2 h after lower abdominal surgery at mean age 68 (Lindberg 1992).
 SURGICAL_SITE_CLOSURE = {"other": 0.0, "lower_abdominal": 0.3, "upper_abdominal": 1.0}
 
 
@@ -90,6 +90,6 @@ def pregnancy_factors(gestational_age_weeks: float) -> PregnancyFactors:
         ph=7.4 + 0.04 * early,
         # Humphries 2019: supine CO is 16.4% below left lateral at 35 to 38 weeks.
         supine_output_loss=0.164 * compression,
-        # Gin and Chan 1994: isoflurane MAC falls 28% in early pregnancy (8-12 wk).
+        # Gin and Chan 1994: 28% lower isoflurane MAC at 8-12 wk; scaled to full effect by 14 wk.
         mac_factor=1.0 - 0.28 * early,
     )

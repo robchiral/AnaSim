@@ -184,7 +184,7 @@ class CardiacCycle:
             self._display_hr = 60.0 * len(recent) / total
 
     def clear_rate_history(self) -> None:
-        """Discard prior R-R intervals when an unsynchronized shock changes the rhythm."""
+        """Discard prior R-R intervals when an unsynchronized shock or rhythm override changes the rhythm."""
         self._recent_rr.clear()
         self._recent_rr_total = 0.0
 
@@ -208,7 +208,7 @@ class CardiacCycle:
         organized = (rhythm_type is RhythmType.SINUS or rhythm_type in ORGANIZED_RHYTHMS) and hr > 0.0
         seeded_beat = False
         if not self._initialized or rhythm_type is not self._rhythm_type or organized != self._organized:
-            # A rhythm change keeps the monitor's rate history.
+            # An organized rhythm change keeps the monitor's rate history.
             sample = self._restart(hr, rhythm_type)
             if not sample.organized:
                 return sample
@@ -256,7 +256,7 @@ class CardiacCycle:
 
 
 class CompressionClock:
-    """Chest compression timing, which replaces the beat clock for the arterial and pleth renderers."""
+    """Chest compression timing for arterial pressure pulses and ECG compression artifact."""
 
     def __init__(self, rate: float = COMPRESSION_RATE):
         self.rate = rate

@@ -71,6 +71,7 @@ def test_headless_prints_arterial_map_during_arrest_and_blanks_failed_nibp(tmp_p
     nibp_lines = [line for line in run_case(False).splitlines() if line.startswith("Time: 20.")]
     assert art_lines and "MAP: --" not in art_lines[-1]
     assert nibp_lines and "MAP: -- |" in nibp_lines[-1]
+    assert "HR: -- |" in art_lines[-1]
 
 
 def test_headless_zero_record_interval_records_every_step(tmp_path):

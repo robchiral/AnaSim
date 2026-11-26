@@ -66,7 +66,7 @@ anasim --mode headless --duration 60 --config patient_config.json \
 | `heart_failure` | `"none"` | `"none"`, `"hfref"` (reduced EF), or `"hfpef"` (preserved EF) |
 | `copd_severity` | 0.0 | Severity of a mixed obstructive and emphysematous profile, 0 to 1; this is not a GOLD stage |
 | `surgical_site` | `"other"` | `"other"`, `"lower_abdominal"`, or `"upper_abdominal"`; abdominal surgery keeps part of the anesthetic airway closure after emergence and slows postoperative clearance of atelectasis |
-| `gestational_age_weeks` | 0.0 | `0` for no pregnancy, or 4 to 40 weeks for a female patient |
+| `gestational_age_weeks` | 0.0 | `0` for no pregnancy, or 4 to 40 weeks for a female patient aged 55 or under |
 | `position` | `"supine"` | `"supine"` or `"left_lateral"`; affects venous return from 20 weeks of pregnancy |
 
 Patient ranges are inclusive, and patient inputs and `dt` must be finite. If you
@@ -147,17 +147,17 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 |--------|-------|
 | `set_vent_settings(rr, vt, peep, ie, mode, ...)` | Takes tidal volume `vt` in liters, whereas `Patient.baseline_vt` takes mL |
 | `set_vent_power(True)` | Starts the ventilator after you apply its settings |
-| `set_bag_mask_ventilation(True, rr, vt, p_max)` | Starts bag ventilation. Optional settings are rate (1 to 40 breaths/min), tidal volume (0.05 to 1.2 L), and APL pressure limit (0 to 70 cmH₂O). Omitted settings keep their values. |
-| `deliver_manual_breath()` | Queues a single manual squeeze at the current bag tidal volume and APL setting while the ventilator and continuous bagging are off. |
-| `set_apl_valve(cmh2o)` | Sets the APL valve for bag ventilation and spontaneous breathing. The default is 0 cmH₂O (fully open). |
-| `trigger_o2_flush(duration_s=1.5)` | Delivers 45 L/min pure O₂ bypassing the vaporizer for `duration_s` seconds (0.1 to 10 s), requiring an active O₂ supply. |
+| `set_bag_mask_ventilation(True, rr, vt, p_max)` | Starts bag ventilation. Optional settings are rate (1 to 40 breaths/min), tidal volume (0.05 to 1.2 L), and APL pressure limit (0 to 70 cmH₂O); omitted settings keep their current values |
+| `deliver_manual_breath()` | Queues one manual squeeze at the current bag tidal volume and APL setting; requires a connected airway, APL above 0 cmH₂O, and both the ventilator and continuous bagging off |
+| `set_apl_valve(cmh2o)` | Sets the APL valve for bag ventilation and spontaneous breathing (0 to 70 cmH₂O; default 0, fully open) |
+| `trigger_o2_flush(duration_s=1.5)` | Delivers 45 L/min pure O₂ bypassing the vaporizer for 0.1 to 10 s; requires an active O₂ supply |
 | `set_mask_seal(seal)` | Takes a fraction from 0 (open) to 1 (tight seal), whereas the browser shows percent |
 | `set_vaporizer(percent)` | Sets the sevoflurane dial as a percentage |
-| `give_drug_bolus(drug, amount)` | Gives a bolus in the [registry's units](../anasim/core/drug_registry.py), or `"sugammadex"` in mg |
-| `set_drug_rate(key, rate)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates (propofol, remifentanil, rocuronium, dobutamine, milrinone, esmolol, ketamine, and lidocaine) use total body weight; other infusion rates are not weight-scaled |
+| `give_drug_bolus(drug_name, amount)` | Gives a bolus in the [registry's units](../anasim/core/drug_registry.py), or `"sugammadex"` in mg |
+| `set_drug_rate(key, rate_user_unit)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates (propofol, remifentanil, rocuronium, dobutamine, milrinone, esmolol, ketamine, and lidocaine) use total body weight; other infusion rates are not weight-scaled |
 | `enable_tci(drug, target, mode="effect_site")` | Requires `tci_enabled=True`; a non-positive target stops TCI |
 | `set_drug_target(key, target)` | Preserves the active plasma or effect-site mode; `None` or a non-positive target stops TCI |
-| `give_blood(volume_ml, hematocrit=0.55)` | Queues packed red cells at 75 mL/min on the blood channel; donor hematocrit must be between 0.01 and 0.70. Repeated fluid, blood, or lipid boluses drain sequentially on their own channel rather than multiplying delivery rate |
+| `give_blood(volume_ml=300.0, hematocrit=0.55)` | Queues packed red cells at 75 mL/min on the blood channel; donor hematocrit must be between 0.01 and 0.70. Repeated fluid, blood, or lipid boluses drain sequentially on their own channel rather than multiplying delivery rate |
 | `give_lipid_emulsion(volume_ml)` | Gives up to 3,000 mL of 20% lipid emulsion over 2.5 simulated minutes |
 | `set_lipid_infusion(ml_min)` | Sets a 20% lipid emulsion infusion from 0 to 200 mL/min |
 | `give_calcium_chloride(mg)` | Gives calcium chloride dihydrate up to 10,000 mg; 1 g contains 6.8 mmol calcium |

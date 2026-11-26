@@ -123,7 +123,7 @@ class Patient:
             )
 
     def _validate_organ_function(self):
-        """Enforce the organ-function factors represented by the UI model."""
+        """Validate organ-function inputs, reconcile creatinine clearance, and set status labels."""
         self.renal_function = bounded_number(
             "renal_function", self.renal_function, *RENAL_FUNCTION_RANGE
         )

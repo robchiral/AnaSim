@@ -64,7 +64,6 @@ from anasim.physiology.resuscitation import (
     SHOCK_ENERGY_J,
     Defibrillator,
     ShockResult,
-    compression_pressures,
     shock_outcome,
 )
 from anasim.physiology.thermal import ThermalModel
@@ -291,7 +290,7 @@ class SimulationEngine(DrugControllerMixin):
         self.vent = AnesthesiaVentilator()
 
         self.vaporizer = Vaporizer()
-        # MAC40 from Mapleson 1996 / Nickalls and Mapleson 2003.
+        # Sevoflurane MAC40 from Nickalls and Mapleson 2003 (age formula: Mapleson 1996).
         self.pk_sevo = VolatilePK(
             self.patient,
             "Sevoflurane",
@@ -316,7 +315,12 @@ class SimulationEngine(DrugControllerMixin):
         self.resp.attach_fluid_balance(self.hemo.fluids, self.hemo.config.donor_mchc_g_dl)
         self.pk_sevo.frc = self.resp.gas_volume_l
         self.pk_n2o.frc = self.resp.gas_volume_l
-        self.lactate = LactateModel(self.patient.weight, self.patient.hepatic_function)
+        self.lactate = LactateModel(
+            self.patient.weight,
+            self.patient.hepatic_function,
+            lean_mass_kg=self.hemo.fluids.lean_mass_kg,
+            volume_l=self.hemo.fluids.lactate_volume_l,
+        )
         self.cerebral = CerebralModel(
             self.patient.baseline_hb, self.resp.paco2_setpoint, self.patient.baseline_map,
         )
@@ -522,7 +526,7 @@ class SimulationEngine(DrugControllerMixin):
         raise ValueError(f"Unknown clinical event: {name!r}")
 
     def _log_event(self, name: str, active: bool, amount: float = 0.0):
-        """Log a learner-triggered event transition before it is applied."""
+        """Log a clinical event transition before it is applied."""
         if self.event_active(name) != active:
             action = ACTION_EVENT_START if active else ACTION_EVENT_STOP
             self.actions.record(self.state.time, action, label=name, amount=amount)
@@ -703,33 +707,7 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo.post_shock_asystole = self.arrhythmias.post_shock_asystole
         hemo_state = self.hemo.state
         projection_core.project_hemodynamics(self, hemo_state)
-        if hemo_state.compressions:
-            cpr_sbp, cpr_dbp = compression_pressures(
-                hemo_state.cpr_perfusion_map,
-                hemo_state.venous_pressure,
-                filling_factor=self.hemo.cpr_filling_factor,
-            )
-            if hemo_state.intrinsic_co > 0.0 and hemo_state.rhythm_type not in PULSELESS_RHYTHMS:
-                i_sbp, i_dbp = self.arterial_waveform.reference_pressures(
-                    hemo_state.intrinsic_map,
-                    hemo_state.sv,
-                    hemo_state.hr,
-                    pulse_pressure_factor=hemo_state.pulse_pressure_factor,
-                    static_pressure=hemo_state.venous_pressure,
-                )
-                sbp, dbp = max(i_sbp, cpr_sbp), max(i_dbp, cpr_dbp)
-            else:
-                sbp, dbp = cpr_sbp, cpr_dbp
-        elif hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.co <= 0.0 or hemo_state.hr <= 0.0:
-            sbp = dbp = float(hemo_state.venous_pressure)
-        else:
-            sbp, dbp = self.arterial_waveform.reference_pressures(
-                hemo_state.map,
-                hemo_state.sv,
-                hemo_state.hr,
-                pulse_pressure_factor=hemo_state.pulse_pressure_factor,
-                static_pressure=hemo_state.venous_pressure,
-            )
+        sbp, dbp = projection_core.reference_arterial_pressures(self, hemo_state)
         self.state.sbp = float(max(sbp, self.state.map))
         self.state.dbp = float(min(dbp, self.state.map))
         if hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.hr <= 0.0:
@@ -854,10 +832,14 @@ class SimulationEngine(DrugControllerMixin):
                 self.bag_mask_vt if vt is None else vt,
                 p_max=p_max,
             )
-        self.bag_mask_active = bool(active)
-        self.actions.record(
-            self.state.time, ACTION_BAG_MASK, label="on" if active else "off"
-        )
+        active = bool(active)
+        if active and self.vent.is_on:
+            self.set_vent_power(False)
+        if self.bag_mask_active != active:
+            self.actions.record(
+                self.state.time, ACTION_BAG_MASK, label="on" if active else "off"
+            )
+        self.bag_mask_active = active
 
     def set_bag_mask_settings(self, rr: float, vt: float, p_max: float | None = None):
         """Set bag rate and volume, optionally setting the APL valve."""
@@ -873,10 +855,20 @@ class SimulationEngine(DrugControllerMixin):
 
     def deliver_manual_breath(self):
         """Queue a single manual bag squeeze at the current bag tidal volume and APL setting."""
-        if self.state.airway_mode == AirwayType.NONE or self.vent.is_on or self.bag_mask_active:
+        if (
+            self.state.airway_mode == AirwayType.NONE
+            or self.vent.is_on
+            or self.bag_mask_active
+            or self.apl_cmh2o <= 0.0
+        ):
             return
         self._manual_breath_requested = True
         self.actions.record(self.state.time, ACTION_BAG_MASK, label="breath")
+
+    def refill_vaporizer(self, level_ml: float = 250.0):
+        """Refill the sevoflurane vaporizer liquid reservoir (mL)."""
+        level = bounded_number("vaporizer level", level_ml, 0.0, self.vaporizer.CAPACITY_ML, unit="mL")
+        self.vaporizer.refill(level)
 
     def trigger_o2_flush(self, duration_s: float = O2_FLUSH_DURATION_S):
         """Deliver a pure oxygen flush bypassing the vaporizer for duration_s seconds."""
@@ -910,11 +902,13 @@ class SimulationEngine(DrugControllerMixin):
             drawn_at=state.time, ph=abg_ph, pa_co2=abg_paco2, pao2=self.resp.arterial_po2_at_37(),
             hco3=abg_hco3, base_excess=state.base_excess,
             lactate=float(self.lactate.arterial_concentration),
-            sodium=float(fluids.concentration("sodium")),
+            sodium=float(fluids.arterial_sodium),
             potassium=float(fluids.arterial_potassium),
-            chloride=float(fluids.concentration("chloride")),
-            ionized_calcium=float(fluids.ionized_calcium(abg_ph)),
-            sao2=state.sao2, hb=float(self.hemo.hb_conc), fio2=state.fio2,
+            chloride=float(fluids.arterial_chloride),
+            ionized_calcium=float(fluids.arterial_ionized_calcium(abg_ph)),
+            sao2=state.sao2,
+            hb=float(self.hemo.hb_conc if fluids._circulation >= 0.99 else self.resp._arterial_hb),
+            fio2=state.fio2,
         )
         self.blood_gases.append(result)
         self.actions.record(state.time, ACTION_BLOOD_GAS)
@@ -969,7 +963,7 @@ class SimulationEngine(DrugControllerMixin):
         return copy.deepcopy(self.state)
 
     def get_predicted_csht(self, drug: str, max_seconds: int = 7200) -> float:
-        """Minutes for a drug's effect site to halve if stopped now, up to max_seconds."""
+        """Minutes for a drug's effect site to halve (or fall halfway to endogenous baseline) if stopped now, up to max_seconds."""
         key = get_drug_spec(drug).key
         if key == "roc":
             return self.tof_pd.simulate_decay(
@@ -1001,6 +995,8 @@ class SimulationEngine(DrugControllerMixin):
     def set_vent_power(self, on: bool):
         """Start or stop the ventilator; its settings persist while it is off."""
         on = bool(on)
+        if on and self.bag_mask_active:
+            self.set_bag_mask_ventilation(False)
         if self.vent.is_on != on:
             self.actions.record(self.state.time, ACTION_VENTILATION, label="on" if on else "off")
         self.vent.is_on = on

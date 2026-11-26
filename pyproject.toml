@@ -72,9 +72,13 @@ version = { attr = "anasim.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "clinical: published clinical trial and literature benchmark replays",
+    "invariant: cross-module physics, domain-corner, step-size, and pairwise stress invariants",
+]
 
 [tool.mypy]
-files = ["anasim", "tests"]
+files = ["anasim", "tests", "validation"]
 check_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true

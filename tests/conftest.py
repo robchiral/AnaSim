@@ -1,6 +1,6 @@
 import copy
 import sys
-from dataclasses import astuple
+from dataclasses import astuple, replace
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import numpy as np
 import pytest
 
+import anasim.web as anasim_web
 from anasim.core.engine import SimulationEngine
 from anasim.core.state import SimulationConfig
 from anasim.patient.patient import Patient
@@ -28,17 +29,24 @@ def _build_engine(patient: Patient, config: SimulationConfig) -> SimulationEngin
         or (patient.baseline_temp < 29.5 and config.rng_seed is None)
     ):
         return SimulationEngine(patient, config)
+    normalized = replace(
+        config,
+        dt=config.dt if config.tci_enabled else 0.05,
+        maintenance_fluid_ml_hr=None,
+    )
     key = (
         astuple(patient),
-        repr(astuple(config)),
+        repr(astuple(normalized)),
         repr(PROFILE_SPECS.get(config.disturbance_profile)) if config.disturbance_profile else None,
         repr(PROFILE_SPECS["stim_intubation_pulse"]),
     )
     template = _STEADY_STATE_CACHE.get(key)
     if template is None:
-        template = SimulationEngine(copy.deepcopy(patient), copy.deepcopy(config))
+        template = SimulationEngine(copy.deepcopy(patient), copy.deepcopy(normalized))
         _STEADY_STATE_CACHE[key] = template
     clone = copy.deepcopy(template)
+    clone.config = copy.deepcopy(config)
+    clone.set_continuous_fluid_rate(config.maintenance_fluid_ml_hr)
     if config.rng_seed is None:
         clone.rng = np.random.default_rng(None)
         clone._ecg_rng = clone.ecg.rng = np.random.default_rng(clone.rng.integers(0, 2**32 - 1))
@@ -48,6 +56,14 @@ def _build_engine(patient: Patient, config: SimulationConfig) -> SimulationEngin
         clone.arrhythmias.rng = np.random.default_rng(None)
         clone.arrhythmias._remaining.clear()
     return clone
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cache_web_steady_state_engines():
+    """Reuse cached steady-state engines across WebSession tests."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(anasim_web, "SimulationEngine", _build_engine)
+        yield
 
 
 @pytest.fixture

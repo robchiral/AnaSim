@@ -232,10 +232,8 @@ def test_airway_removal_and_stopping_ventilation_use_unassisted_breathing():
 
 def test_intubation_uses_unscaled_cardiovascular_hypnotic_ce():
     """check_intubation evaluates cardiovascular_hypnotic_ce without BIS age_factor or EEG ceiling artifacts."""
-    from anasim.core.clinical_actions import check_intubation
     from anasim.core.engine import SimulationEngine
     from anasim.core.projection import cardiovascular_hypnotic_ce
-    from anasim.core.state import SimulationConfig
     from anasim.patient.patient import Patient
 
     young = SimulationEngine(Patient(age=20, weight=65, height=165, sex="female"), SimulationConfig(mode="awake"))
@@ -304,3 +302,23 @@ def test_drug_administration_arrest_exemption_and_succinylcholine_contraindicati
     hyperk.state.potassium = 6.2
     fb_k = check_drug_administration(hyperk, "succinylcholine")
     assert fb_k is not None and fb_k.code == "succinylcholine_in_hyperkalemia"
+
+
+def test_sub_mac_volatile_blocks_unparalyzed_intubation_and_light_sedation_warns_awareness(
+    engine_factory,
+):
+    """0.45 MAC sevoflurane blocks unparalyzed intubation (Kimura 1994); light sedation warns awareness."""
+    sub_mac = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    sub_mac.pk_sevo.state.p_alv = 0.0045 * sub_mac.pk_sevo.mac_age
+    sub_mac.pk_sevo.state.mac = 0.45
+    sub_mac.state.mac_sevo = sub_mac.state.mac = 0.45
+    fb = check_intubation(sub_mac)
+    assert fb is not None and fb.blocked and fb.code == "awake_intubation"
+
+    light_par = engine_factory(config=SimulationConfig(mode="awake", rng_seed=1), start=True)
+    light_par.pk["propofol"].state.ce = light_par.pk["propofol"].state.ce_response = 1.9
+    light_par.pk["succinylcholine"].state.ce = 5.0
+    light_par.step(0.01)
+    assert 0.1 < loss_of_response(light_par) < 0.5
+    fb_par = check_intubation(light_par)
+    assert fb_par is not None and not fb_par.blocked and fb_par.code == "intubation_awareness"

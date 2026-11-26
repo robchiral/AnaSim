@@ -17,7 +17,7 @@ class DisturbanceEffects:
 class DisturbanceProfileSpec:
     """One time-varying stimulus and its lifecycle.
 
-    `sympathetic_intensity` is the Bouillon 2004 pre-opioid intensity that sets
+    `sympathetic_intensity` is the Bouillon 2004a pre-opioid intensity that sets
     how much drug blocks the HR and MAP response. At propofol 3.4 mcg/mL (BIS
     40-50), remifentanil blocked a 15% rise in half of patients at 5.0 ng/mL
     for intubation and 2.1 ng/mL for skin incision (Albertin 2005), giving 1.64
@@ -102,6 +102,8 @@ class Disturbances:
     def __init__(self, dist_profile: str | None = None):
         self.spec = None
         self._plateau = DisturbanceEffects()
+        self._times: tuple[float, ...] = ()
+        self._rows: tuple[tuple[float, float, float, float], ...] = ()
 
         if dist_profile is None:
             return
@@ -110,13 +112,34 @@ class Disturbances:
         except KeyError as exc:
             choices = ", ".join(PROFILE_SPECS)
             raise ValueError(f"dist_profile must be one of {choices} or None") from exc
-        self._times, *self._columns = np.ascontiguousarray(self.spec.points.T)
-        self._plateau = self._effects(column[-1] for column in self._columns)
+        pts = self.spec.points
+        self._times = tuple(float(row[0]) for row in pts)
+        self._rows = tuple((float(row[1]), float(row[2]), float(row[3]), float(row[4])) for row in pts)
+        self._plateau = self._effects(self._rows[-1])
 
     @staticmethod
     def _effects(values) -> DisturbanceEffects:
         bis, hr, svr, sv = values
         return DisturbanceEffects(bis=float(bis), hr=float(hr), svr=float(svr), sv=float(sv))
+
+    def _interp_row(self, time: float) -> tuple[float, float, float, float]:
+        times = self._times
+        rows = self._rows
+        if time <= times[0]:
+            return rows[0]
+        if time >= times[-1]:
+            return rows[-1]
+        idx = bisect_right(times, time)
+        t0 = times[idx - 1]
+        frac = (time - t0) / (times[idx] - t0)
+        r0 = rows[idx - 1]
+        r1 = rows[idx]
+        return (
+            r0[0] + frac * (r1[0] - r0[0]),
+            r0[1] + frac * (r1[1] - r0[1]),
+            r0[2] + frac * (r1[2] - r0[2]),
+            r0[3] + frac * (r1[3] - r0[3]),
+        )
 
     def stimulates_airway(self, elapsed_s: float) -> bool:
         """Return whether airway instrumentation is still under way."""
@@ -131,7 +154,7 @@ class Disturbances:
         """Return the BIS, HR, SVR, and SV deltas `time` seconds into the profile."""
         if self.spec is None or time >= self._times[-1]:
             return self._plateau
-        return self._effects(np.interp(time, self._times, column) for column in self._columns)
+        return self._effects(self._interp_row(time))
 
     def compute_average(self, start_s: float, end_s: float) -> DisturbanceEffects:
         """Return the time-weighted average effect over one simulation step."""
@@ -140,10 +163,30 @@ class Disturbances:
         if end_s <= start_s:
             return self.compute_dist(start_s)
 
-        first = bisect_right(self._times, start_s)
-        last = bisect_left(self._times, end_s)
-        times = np.array([start_s, *self._times[first:last], end_s])
-        values = np.array([np.interp(times, self._times, column) for column in self._columns])
-        widths = np.diff(times)
-        area = np.sum((values[:, :-1] + values[:, 1:]) * widths * 0.5, axis=1)
-        return self._effects(area / (end_s - start_s))
+        times = self._times
+        first = bisect_right(times, start_s)
+        last = bisect_left(times, end_s)
+        if first >= last:
+            return self._effects(self._interp_row(0.5 * (start_s + end_s)))
+        rows = self._rows
+        inv_span = 0.5 / (end_s - start_s)
+        prev_t = start_s
+        prev_r = self._interp_row(start_s)
+        a0 = a1 = a2 = a3 = 0.0
+        for k in range(first, last):
+            t = times[k]
+            r = rows[k]
+            w = t - prev_t
+            a0 += (prev_r[0] + r[0]) * w
+            a1 += (prev_r[1] + r[1]) * w
+            a2 += (prev_r[2] + r[2]) * w
+            a3 += (prev_r[3] + r[3]) * w
+            prev_t = t
+            prev_r = r
+        end_r = self._interp_row(end_s)
+        w = end_s - prev_t
+        a0 += (prev_r[0] + end_r[0]) * w
+        a1 += (prev_r[1] + end_r[1]) * w
+        a2 += (prev_r[2] + end_r[2]) * w
+        a3 += (prev_r[3] + end_r[3]) * w
+        return DisturbanceEffects(bis=a0 * inv_span, hr=a1 * inv_span, svr=a2 * inv_span, sv=a3 * inv_span)

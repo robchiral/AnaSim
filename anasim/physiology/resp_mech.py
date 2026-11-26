@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class RespiratoryMechanics:
-    """Equation of motion: Paw + Pmus = R x flow + V/C + P2, pressures above PEEP.
+    """Equation of motion: Paw + Pmus = R x flow + V/C + P2 (+ Pcpr during CPR), above PEEP.
 
     P2 is tissue stress adaptation, a spring in series with a dashpot that lies
     parallel to the static elastance: dP2/dt = E2 x flow - P2/tau2. Volume is
@@ -54,22 +54,23 @@ class RespiratoryMechanics:
             return peep
         return peep * max(0.0, min(1.0, self.aeration.pressure_transmission))
 
-    def absorb_gas(self, volume_l: float) -> None:
-        """Remove unreplaced alveolar gas absorbed into blood (BTPS L).
+    def absorb_gas(self, volume_l: float) -> float:
+        """Remove unreplaced alveolar gas absorbed into blood (BTPS L) and return applied volume.
 
         Clamps sub-atmospheric circuit/lung recoil at a -8 cmH2O negative-pressure
         relief threshold (ISO 80601-2-13) so empty-bellows zero-FGF absorption
         cannot build unphysical deep vacuum.
         """
         if volume_l <= 0.0:
-            return
+            return 0.0
         min_vol = -(self.peep + 8.0) * self.compliance
         applied = min(volume_l, max(0.0, self.volume - min_vol))
         if applied <= 0.0:
-            return
+            return 0.0
         self.volume -= applied
         self._unrefilled_absorption_l += applied
         self.effort.shift_volume_reference(-applied)
+        return applied
 
     def _clamp_absorption(self) -> float:
         self._unrefilled_absorption_l = min(self._unrefilled_absorption_l, max(0.0, -self.volume))
@@ -198,14 +199,12 @@ class RespiratoryMechanics:
         airway_resistance: float | None = None,
         recoil_offset: float = 0.0,
         cpr_pressure: tuple[float, float] = (0.0, 0.0),
-        cpr_valve_resistance: float = 0.0,
     ) -> "PressureSegment":
         """Pressure p0 + p1 t applied through series_resistance, such as a circuit limb."""
         return PressureSegment(
             self, pressure, pmus, series_resistance,
             elastance=elastance, airway_resistance=airway_resistance,
             recoil_offset=recoil_offset, cpr_pressure=cpr_pressure,
-            cpr_valve_resistance=cpr_valve_resistance,
         )
 
     def expiration_parameters(
@@ -335,10 +334,6 @@ class FlowSegment:
         return (self.resistance * dv + self.elastance * self._volume_area(t) + p2_area
                 - self.m0 * t - 0.5 * self.m1 * t * t)
 
-    def ventilator_area(self, t: float) -> float:
-        """Integral of Paw excluding external chest-compression pressure over [0, t]."""
-        return self.area(t) - (self.cpr0 * t + 0.5 * self.cpr1 * t * t)
-
     def distending_area(self, t: float) -> float:
         """Integral of static recoil plus tissue pressure, above PEEP."""
         dv = self.volume(t) - self.v0
@@ -434,7 +429,6 @@ class PressureSegment:
         "pv",
         "recoil_offset",
         "rs",
-        "rs_cpr",
         "rt",
         "s",
         "slope",
@@ -457,7 +451,6 @@ class PressureSegment:
         airway_resistance: float | None = None,
         recoil_offset: float = 0.0,
         cpr_pressure: tuple[float, float] = (0.0, 0.0),
-        cpr_valve_resistance: float = 0.0,
     ):
         self.lung = lung
         self.v0, self.p20 = lung.volume, lung.p2
@@ -466,7 +459,6 @@ class PressureSegment:
         self.d0 = self.p0 + pmus[0] - recoil_offset - cpr_pressure[0]
         self.d1 = self.p1 + pmus[1] - cpr_pressure[1]
         self.rs = series_resistance
-        self.rs_cpr = cpr_valve_resistance
         base_elastance = 1.0 / lung.compliance
         e = self.elastance = base_elastance if elastance is None else elastance
         tau = lung.viscoelastic_tau
@@ -542,11 +534,6 @@ class PressureSegment:
     def area(self, t: float) -> float:
         return self.p0 * t + 0.5 * self.p1 * t * t - self.rs * (self.volume(t) - self.v0)
 
-    def ventilator_area(self, t: float) -> float:
-        """Integral of ventilator-driven Paw excluding CPR compression valve surges."""
-        rs_non_cpr = self.rs - self.rs_cpr
-        return self.p0 * t + 0.5 * self.p1 * t * t - rs_non_cpr * (self.volume(t) - self.v0)
-
     def distending_area(self, t: float) -> float:
         return (self.d0 + self.recoil_offset) * t + 0.5 * self.d1 * t * t - self.rt * (self.volume(t) - self.v0)
 
@@ -575,7 +562,6 @@ class ExpiratorySegment(PressureSegment):
         elastance: float | None = None,
         recoil_offset: float = 0.0,
         cpr_pressure: tuple[float, float] = (0.0, 0.0),
-        cpr_valve_resistance: float = 0.0,
     ):
         resistance, ceiling_resistance, limited = parameters
         if limited:
@@ -588,11 +574,9 @@ class ExpiratorySegment(PressureSegment):
                 lung, pressure, pmus, series_resistance,
                 elastance=elastance, airway_resistance=resistance,
                 recoil_offset=recoil_offset, cpr_pressure=cpr_pressure,
-                cpr_valve_resistance=cpr_valve_resistance,
             )
         self.p0, self.p1 = pressure
         self.rs = series_resistance
-        self.rs_cpr = cpr_valve_resistance
 
 
 class PatientEffort:
@@ -606,7 +590,7 @@ class PatientEffort:
     the previous contraction relative to the unassisted elastic pressure.
 
     Inflation feedback strengthens with unconsciousness. Its awake threshold
-    is twice resting VT (Clark 1972); under anesthesia, reaching resting VT
+    is twice resting VT (Clark and von Euler 1972); under anesthesia, reaching resting VT
     ends contraction (Polacheck 1980). A breath due while a mechanical breath
     keeps the lungs inflated can wait up to one period for deflation, allowing
     synchronization under anesthesia (Graves 1986).
@@ -682,12 +666,18 @@ class PatientEffort:
             pmus_area = pressure * dt + 0.5 * slope * dt * dt
         self.muscle.step(dt, pmus_area, load_scale=self._load_scale)
         self.clock += dt
+        if self.rr > 0.0:
+            desired_period = 60.0 / self.rr
+            if self.period > desired_period and math.isfinite(self.period):
+                self.period = max(self.ti, desired_period)
+            if self._waiting:
+                self._wait_end = min(self._wait_end, self.clock + desired_period)
         if self._waiting:
             if self.clock >= self._wait_end - 1e-12:
                 self.resume(lung, series_resistance)
         elif self.clock >= self.period - 1e-12:
             if self.rr > 0.0 and lung.volume > self._onset_threshold():
-                self._waiting, self._wait_end = True, self.clock + self.period
+                self._waiting, self._wait_end = True, self.clock + (60.0 / self.rr)
             else:
                 self._begin(lung, series_resistance)
 
@@ -705,6 +695,10 @@ class PatientEffort:
     def shift_volume_reference(self, shift: float) -> None:
         self._trough += shift
         self._reference_shift += shift
+
+    def shift_peep_reference(self, shift: float) -> None:
+        """Shift tracked trough into a new PEEP equilibrium coordinate frame."""
+        self._trough += shift
 
     def end_contraction(self) -> None:
         """Relax from the present pressure."""

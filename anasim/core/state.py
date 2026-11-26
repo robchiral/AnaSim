@@ -100,8 +100,8 @@ class SimulationState:
     chest_compressions: bool = False
 
     # Effect-site (ce) and plasma (cp) concentrations: propofol, etomidate,
-    # ketamine, lidocaine, amiodarone, succinylcholine, and esmolol mcg/mL, vasopressin
-    # mU/L, others ng/mL.
+    # ketamine, lidocaine, amiodarone, dantrolene, succinylcholine, and esmolol
+    # mcg/mL, vasopressin mU/L, others ng/mL.
     propofol_ce: float = 0.0
     propofol_cp: float = 0.0
     remi_ce: float = 0.0
@@ -137,7 +137,7 @@ class SimulationState:
     labetalol_ce: float = 0.0
     glyco_ce: float = 0.0
 
-    # Inhaled agents: fractions in %, MAC as age-adjusted multiples.
+    # Inhaled agents: concentrations in %; brain MAC is age-, pregnancy-, and temperature-adjusted, et_mac is age-adjusted only.
     fi_sevo: float = 0.0
     et_sevo: float = 0.0
     mac_sevo: float = 0.0
@@ -177,7 +177,7 @@ class SimulationState:
     display_etco2: float = 38.0
     etco2_signal_valid: bool = False
     pa_co2: float = 40.0
-    ph: float = 7.4  # In-vivo blood gas values at patient temperature.
+    ph: float = 7.4  # In-vivo arterial pH at patient temperature (pa_co2 and pao2 are also in-vivo).
     hco3: float = 24.5  # Plasma bicarbonate, mmol/L.
     base_excess: float = 0.0  # Standard base excess, mmol/L.
     lactate: float = 0.9  # Plasma lactate, mmol/L.
@@ -222,7 +222,7 @@ class SimulationState:
     nibp_measurement_failed: bool = False
     nibp_cuff_pressure: float = 0.0
 
-    # MAP, HR, SV, SVR, and CO come from Su; sbp and dbp are the ideal pulse
+    # MAP, HR, SV, SVR, and CO come from HemodynamicModel (built on Su 2023); sbp and dbp are the ideal pulse
     # landmarks. SV mL, SVR Wood units, CO L/min, pressures mmHg.
     sv: float = 70.0
     svr: float = 16.0

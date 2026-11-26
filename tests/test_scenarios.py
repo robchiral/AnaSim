@@ -759,6 +759,13 @@ def test_sepsis_and_anaphylaxis_early_actions_do_not_soft_lock_step1():
     sepsis.command("case_action", json.dumps({"action": "source_control"}))
     scen_s = sepsis.snapshot()["scenario"]
     assert scen_s["id"] == "OBSERVE" and scen_s["met"] is True
+    # Early source control advances Observe without aborting septic shock progression or pre-crediting pressors.
+    fresh = WebSession({"scenario_id": "sepsis_response"})
+    debrief0 = json.loads(fresh.command("case_finish"))["debrief"]
+    vaso_t0 = next(o for o in debrief0["outcomes"] if o["id"] == "vasopressor")
+    assert vaso_t0["achieved"] is False
+    _web_advance(sepsis, 60.0)
+    assert sepsis.engine.sepsis.severity > 0.60 and sepsis.engine.state.map < 65.0
 
     anaph = WebSession({"scenario_id": "anaphylaxis_response"})
     anaph.engine.config.dt = 0.5

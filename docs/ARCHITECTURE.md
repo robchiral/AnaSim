@@ -39,10 +39,10 @@ Each call to `SimulationEngine.step()` runs these stages in order:
    renal perfusion, core temperature, and drug interactions, then step
    target-controlled infusion (TCI) controllers.
 4. Update airway complications, the vaporizer, and the breathing circuit.
-5. Advance lipid emulsion, intravenous drug concentrations, inhaled anesthetic
-   uptake, neuromuscular block, lidocaine toxicity, and malignant hyperthermia,
-   then apply toxicity, malignant hyperthermia, and sepsis effects on
-   metabolism, heat production, and chest-wall stiffness.
+5. Advance lipid emulsion, inhaled anesthetic uptake, intravenous drug
+   concentrations, neuromuscular block, lidocaine toxicity, and malignant
+   hyperthermia, then apply toxicity, malignant hyperthermia, and sepsis
+   effects on metabolism, heat production, and chest-wall stiffness.
 6. Advance respiratory mechanics, gas exchange, hemodynamics, and cardiac
    rhythm.
 7. Copy physiology outputs into `SimulationState`, then update cerebral
@@ -139,14 +139,12 @@ stopping a recording triggers a CSV download.
 ## Validation
 
 Automated tests check published equations, gas and drug conservation, monitor
-behavior, and end-to-end clinical cases in native Python and in Pyodide.
-Acceptance tests verify standard teaching scenarios (balanced and TIVA
-induction, intubation, incision, and vasopressor boluses) against ranges from
-VitalDB recordings and published trials.
+behavior, cross-module invariants (`tests/test_invariants.py`), published
+clinical trial benchmarks (`tests/test_clinical_benchmarks.py`), and teaching
+cases in native Python and in Pyodide. The intubation hemodynamic benchmark can
+also be run directly with `python -m tests.intubation_replays` (pass
+`--sensitivity` for loading-history checks).
 
-Offline validation scripts compare model runs against clinical cohorts:
-[recorded-case comparisons](../validation/vitaldb/README.md) replay VitalDB
-cases across anesthetic, respiratory, and hemodynamic endpoints, and the
-[intubation replay](../validation/intubation.py) (`python -m validation.intubation`,
-with `--sensitivity` for loading-history checks) reports induction and
-intubation errors against published studies.
+External-dataset scripts live under `validation/`:
+[VitalDB comparisons](../validation/vitaldb/README.md) replay recorded cases
+across anesthetic, respiratory, and hemodynamic endpoints.

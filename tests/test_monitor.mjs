@@ -171,6 +171,13 @@ test("monitor coalesces updates and redraws resized loops while paused without a
   drawFrame();
   assert.equal(frames.size, 0, "a paused resize must draw once");
 
+  monitor.update({ ...snap, loop: [{ reset: true }] });
+  assert.equal(monitor.loops.previous, null);
+  assert.equal(monitor.loops.current, null);
+  assert.equal(monitor.loops.ranges, null);
+  assert.equal(monitor.loops.dirty, true);
+  drawFrame();
+
   monitor.update({ ...snap, waves: { ecg: [0.2] } });
   monitor.destroy();
   assert.equal(frames.size, 0, "replaced sessions must cancel their pending redraw");

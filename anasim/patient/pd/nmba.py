@@ -42,7 +42,7 @@ def succinylcholine_twitch_fraction(ce: float, *, central: bool = False) -> floa
 def succinylcholine_laryngeal_spasm_factor(ce_central: float) -> float:
     """Residual laryngeal adductor spasm strength (0-1) under succinylcholine.
 
-    Sub-intubating IV doses (0.1-0.3 mg/kg; Chung 1993) relax glottic spasm
+    Sub-intubating IV doses (0.1-0.3 mg/kg; Chung and Rowbottom 1993) relax glottic spasm
     without paralyzing the diaphragm.
     """
     return 1.0 / (1.0 + (max(0.0, ce_central) / 0.55) ** 2.2)
@@ -103,8 +103,8 @@ class TOFModel:
         # Calibrated nitrous oxide EC50 multiplier at 1 MAC (70% N2O = 0.67 MAC
         # lowered vecuronium ED50 13% in Fiset 1991).
         self.f_n2o = 0.81
-        # The central site (diaphragm and laryngeal adductors) equilibrates
-        # faster than the adductor pollicis (t1/2 ke0 2.7 vs 4.4 min; Plaud 1995).
+        # Central muscle equilibration (applied to diaphragm and larynx) uses
+        # Plaud 1995 laryngeal adductor vs adductor pollicis t1/2 ke0 (2.7 vs 4.4 min).
         self.central_ke0_ratio = 4.4 / 2.7
         self.patient = patient
         self.reset()
@@ -140,7 +140,9 @@ class TOFModel:
         return self.complex.state.c1 * volume_scale * MW_ROCURONIUM / 1000.0
 
     def _effective_ke0(self, mac_sevo: float) -> float:
-        temp_ke0 = 1.5 ** ((clamp(self._temp_c, 25.0, 37.0) - 37.0) / 10.0) if self._temp_c < 37.0 else 1.0
+        # Extrapolated from vecuronium in Caldwell 2000 (34.0-38.0 °C): ke0 slows
+        # ~10%/°C with core cooling (Q10 2.6) while neuromuscular C50 is unchanged.
+        temp_ke0 = 2.6 ** ((clamp(self._temp_c, 25.0, 37.0) - 37.0) / 10.0) if self._temp_c < 37.0 else 1.0
         return self.ke0 * (1.0 - self.sevo_ke0_reduction * clamp01(mac_sevo)) * temp_ke0
 
     def simulate_decay(
@@ -250,27 +252,25 @@ class TOFModel:
         """Advance binding and the effect sites after the rocuronium PK step; return TOF %."""
         sugammadex, complex_ = self.sugammadex, self.complex
         cp = roc.state.c1
-        if (
-            cp == 0.0
-            and self.ce == 0.0
-            and self.ce_central == 0.0
-            and sugammadex.state.c1 == 0.0
-            and sugammadex.state.c2 == 0.0
-            and complex_.state.c1 == 0.0
-            and complex_.state.c2 == 0.0
-        ):
+        sug_active = sugammadex.state.c1 > 0.0 or sugammadex.state.c2 > 0.0
+        cplx_active = complex_.state.c1 > 0.0 or complex_.state.c2 > 0.0
+        if cp == 0.0 and self.ce == 0.0 and self.ce_central == 0.0 and not sug_active and not cplx_active:
             return 100.0
         dt_min = dt_sec / 60.0
         if sugammadex.state.c1 > 0.0 or complex_.state.c1 > 0.0:
             self._bind_in_plasma(dt_min, roc)
             cp = roc.state.c1
-        sugammadex.step(dt_sec, 0.0)
-        complex_.step(dt_sec, 0.0)
+            sug_active = sug_active or sugammadex.state.c1 > 0.0
+            cplx_active = cplx_active or complex_.state.c1 > 0.0
+        if sug_active:
+            sugammadex.step(dt_sec, 0.0)
+        if cplx_active:
+            complex_.step(dt_sec, 0.0)
 
         ke0_out = self._effective_ke0(mac_sevo)
-        # Lowry 1998: sevoflurane deepens block and prolongs washout/recovery (Kleijn 2011)
-        # without delaying initial bolus onset (0.96 vs 1.02 min).
-        ke0_in = self._effective_ke0(0.0)
+        # Lowry 1998: sevoflurane lowers EC50 and prolongs recovery (Kleijn 2011)
+        # while leaving 0.6 mg/kg bolus onset time essentially unchanged (0.96 vs 1.02 min).
+        ke0_in = ke0_out if mac_sevo <= 0.0 else self._effective_ke0(0.15 * mac_sevo)
         s_c1 = sugammadex.state.c1
         # Rapid saturable junctional encapsulation plus linear Kleijn efflux
         # reproduces rapid partial reversal and redistribution rebound after
@@ -340,11 +340,12 @@ class TOFModel:
         )
 
     def potentiation_factor(self, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
-        """Relative NMBA EC50 multiplier under volatile, nitrous oxide, and hypothermia (Smeulers 1995)."""
+        """Relative NMBA EC50 multiplier under volatile, nitrous oxide, and deep hypothermia."""
         t = self._temp_c
-        # Smeulers 1995 Table 2: plasma concentration at Tw = 5% roughly halved
-        # from 35.6 °C (1489 ng/mL) to 27.7 °C (751 ng/mL).
-        temp_ec50 = 1.0 - 0.50 * clamp01((36.0 - t) / 9.0) if t < 36.0 else 1.0
+        # Extrapolated from vecuronium (Caldwell 2000, 34.0-38.0 °C): C50 is unchanged
+        # in mild hypothermia (prolongation comes from slower clearance and ke0).
+        # Below 32.5 °C, calibrated from 25-28 °C hypothermic CPB data (Smeulers 1995).
+        temp_ec50 = 1.0 - 0.35 * clamp01((32.5 - t) / 5.5) if t < 32.5 else 1.0
         sevo_mac = max(0.0, mac_sevo)
         sevo_eff = sevo_mac if sevo_mac <= 1.0 else 1.0 + 0.55 * (sevo_mac - 1.0) / (1.0 + 0.35 * (sevo_mac - 1.0))
         factor = (

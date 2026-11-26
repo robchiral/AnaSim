@@ -14,6 +14,7 @@ export class MonitorAudio {
     this.silence = $("alarm-silence");
     this.countdown = $("alarm-countdown");
     this.status = $("sound-status");
+    this.banner = $("alarm-banner");
     this.sliders = { pulse: $("pulse-volume"), alarm: $("alarm-volume") };
     this.outputs = { pulse: $("pulse-volume-value"), alarm: $("alarm-volume-value") };
     this.enabled = false;
@@ -119,10 +120,11 @@ export class MonitorAudio {
 
   update(snap) {
     const previousTime = this.snapshot?.time;
+    const wallNow = performance.now();
     this.snapshot = snap;
-    this.receivedAt = performance.now();
-    this.refresh();
-    if (!this.playing() || snap.vitals.spo2 === null) {
+    this.receivedAt = wallNow;
+    this.refresh(wallNow);
+    if (!this.playing(wallNow) || snap.vitals.spo2 === null) {
       this.previous = null;
       this.peak = 0;
       this.rising = false;
@@ -158,13 +160,13 @@ export class MonitorAudio {
     }
   }
 
-  playing() {
+  playing(now = performance.now()) {
     return this.enabled && this.context?.state === "running" && !document.hidden &&
-      this.snapshot?.running && !this.snapshot.ended && performance.now() - this.receivedAt < STALE_MS;
+      this.snapshot?.running && !this.snapshot.ended && now - this.receivedAt < STALE_MS;
   }
 
-  refresh() {
-    if (this.snapshot && performance.now() < this.silencedUntil) {
+  refresh(wallNow = performance.now()) {
+    if (this.snapshot && wallNow < this.silencedUntil) {
       for (const name of HIGH_PRIORITY_ALARMS) {
         if (!(name in this.snapshot.alarms)) this.silencedAlarms.delete(name);
       }
@@ -172,11 +174,11 @@ export class MonitorAudio {
         this.silencedUntil = 0;
         this.silencedAlarms.clear();
       }
-    } else if (performance.now() >= this.silencedUntil && this.silencedAlarms.size > 0) {
+    } else if (wallNow >= this.silencedUntil && this.silencedAlarms.size > 0) {
       this.silencedAlarms.clear();
     }
-    this.syncControls();
-    if (!this.playing()) {
+    this.syncControls(wallNow);
+    if (!this.playing(wallNow)) {
       this.stopNotes();
       this.nextAlarm = 0;
       this.lastAlarmHighPriority = false;
@@ -184,7 +186,7 @@ export class MonitorAudio {
     }
     const alarmKeys = Object.keys(this.snapshot.alarms);
     const alarm = alarmKeys.length > 0 &&
-      Number(this.sliders.alarm.value) > 0 && performance.now() >= this.silencedUntil;
+      Number(this.sliders.alarm.value) > 0 && wallNow >= this.silencedUntil;
     if (!alarm) {
       this.stopNotes("alarm");
       this.nextAlarm = 0;
@@ -193,7 +195,7 @@ export class MonitorAudio {
     }
     const highPriority = alarmKeys.some((name) => HIGH_PRIORITY_ALARMS.has(name));
     if (highPriority && !this.lastAlarmHighPriority) {
-      // Interrupt lower-priority cadence immediately when a lethal rhythm or arrest alarm starts.
+      // Interrupt lower-priority cadence immediately when a high-priority alarm starts.
       this.stopNotes("alarm");
       this.nextAlarm = 0;
     } else if (!highPriority) {
@@ -212,13 +214,13 @@ export class MonitorAudio {
     }
   }
 
-  syncControls() {
+  syncControls(now = performance.now()) {
     this.toggle.setAttribute("aria-pressed", String(this.enabled));
     const soundLabel = this.enabled ? "Mute sound" : "Enable sound";
     this.toggle.setAttribute("aria-label", soundLabel);
     this.toggle.title = this.toggle.disabled ? "Sound is unavailable in this browser." : soundLabel;
-    const remaining = Math.max(0, Math.ceil((this.silencedUntil - performance.now()) / 1000));
-    this.silence.hidden = !this.playing() || Number(this.sliders.alarm.value) === 0 ||
+    const remaining = Math.max(0, Math.ceil((this.silencedUntil - now) / 1000));
+    this.silence.hidden = !this.playing(now) || Number(this.sliders.alarm.value) === 0 ||
       !Object.keys(this.snapshot.alarms).length;
     this.silence.setAttribute("aria-pressed", String(remaining > 0));
     const countdown = minutesSeconds(remaining);
@@ -227,8 +229,7 @@ export class MonitorAudio {
     const alarmLabel = remaining ? `Resume alarms (${countdown} remaining)` : "Silence alarms for 2 minutes";
     this.silence.setAttribute("aria-label", alarmLabel);
     this.silence.title = alarmLabel;
-    const banner = $("alarm-banner");
-    if (banner) banner.dataset.silenced = remaining > 0 ? "true" : "false";
+    if (this.banner) this.banner.dataset.silenced = remaining > 0 ? "true" : "false";
   }
 
   tone(channel, frequency, time, duration) {

@@ -464,8 +464,9 @@ def test_etomidate_induction_is_brief_and_hemodynamically_stable(engine_factory)
 
 
 def test_ketamine_raises_ga_bis_and_depresses_catecholamine_depleted_shock(engine_factory):
-    """Ketamine increases BIS during general anesthesia (Hans 2005) and unmasks direct
-    myocardial depression when sympathetic reserve is exhausted in hemorrhagic shock.
+    """Ketamine increases BIS during general anesthesia (calibrated from sevoflurane
+    data in Hans 2005 and extended to TIVA) and unmasks direct myocardial depression
+    when sympathetic reserve is exhausted in hemorrhagic shock (Waxman 1980).
     """
     ga = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     shock_ctrl = copy.deepcopy(ga)
@@ -485,7 +486,7 @@ def test_ketamine_raises_ga_bis_and_depresses_catecholamine_depleted_shock(engin
 
 def test_midazolam_induction_preserves_breathing_bis_and_thermoregulation_until_opioid(engine_factory):
     """0.3 mg/kg midazolam preserves spontaneous breathing with moderate PaCO2 rise
-    (Marty 1986, with nasal O2) and causes little core cooling (Kurz 1995), while
+    (Marty 1986, with nasal O2) and causes little core cooling (Kurz 1995b), while
     AnaSim caps midazolam-only BIS above 65 and lowers MAP further when combined
     with an opioid (consistent with midazolam-fentanyl hypotension in Heikkilä 1984).
     """

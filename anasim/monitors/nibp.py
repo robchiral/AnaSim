@@ -38,6 +38,13 @@ class NIBPMonitor:
         self._disrupted_dt = 0.0
         self._saw_afib = False
 
+    def reset(self) -> None:
+        """Cancel any active cuff cycle and clear sweep accumulators."""
+        self.is_cycling = False
+        self.is_inflating = False
+        self.cuff_pressure = 0.0
+        self._reset_sweep()
+
     def trigger(self) -> None:
         """Start a measurement manually."""
         if self.is_cycling:

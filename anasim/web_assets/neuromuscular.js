@@ -7,6 +7,7 @@ export class NeuromuscularDisplay {
     this.history = [...history];
     this.trendMode = null;
     this.trendTime = null;
+    this.lastBarKey = null;
   }
 
   update(nmb, rows, time, ended) {
@@ -62,19 +63,25 @@ export class NeuromuscularDisplay {
     $("nmb-measure").disabled = ended || nmb.measuring || nmb.wait > 0;
 
     const reference = nmb.baseline ?? 1;
-    const bars = $("nmb-bars");
-    bars.hidden = !reading || ptc;
-    for (let i = 0; i < 4; i++) {
-      const bar = $(`nmb-t${i + 1}`);
-      bar.hidden = single && i > 0;
-      const amplitude = reading?.responses[i] ?? 0;
-      bar.style.setProperty("--height", `${Math.min(100, 100 * amplitude / reference)}%`);
-    }
-    if (reading) {
-      const scale = nmb.baseline === null ? "% of model maximum" : "% of baseline";
-      bars.setAttribute("aria-label", reading.responses.map(
-        (response, index) => `T${index + 1} ${Math.round(100 * response / reference)}${scale}`,
-      ).join(", "));
+    const barKey = !reading || ptc
+      ? "hidden"
+      : `${nmb.mode}|${reference}|${nmb.baseline === null}|${reading.responses.join(",")}`;
+    if (barKey !== this.lastBarKey) {
+      this.lastBarKey = barKey;
+      const bars = $("nmb-bars");
+      bars.hidden = !reading || ptc;
+      for (let i = 0; i < 4; i++) {
+        const bar = $(`nmb-t${i + 1}`);
+        bar.hidden = single && i > 0;
+        const amplitude = reading?.responses[i] ?? 0;
+        bar.style.setProperty("--height", `${Math.min(100, 100 * amplitude / reference)}%`);
+      }
+      if (reading) {
+        const scale = nmb.baseline === null ? "% of model maximum" : "% of baseline";
+        bars.setAttribute("aria-label", reading.responses.map(
+          (response, index) => `T${index + 1} ${Math.round(100 * response / reference)}${scale}`,
+        ).join(", "));
+      }
     }
 
     const cutoff = time - TREND_S;

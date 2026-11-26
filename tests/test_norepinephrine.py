@@ -138,7 +138,7 @@ def test_zero_flow_arrest_halts_endogenous_norepinephrine_spillover(patient):
     assert pk.circulation == 1.0 and pk.cl1_scale == 1.0
 
     # Equilibrating endogenous norepinephrine at zero circulation neither divides by zero
-    # nor inflates basal concentration, and TCI mirrors effective_basal_input_rate.
+    # nor inflates basal concentration, and drops effective_basal_input_rate to zero.
     pk.circulation = 0.0
     pk.equilibrate_endogenous()
     assert math.isfinite(pk.state.c1) and pk.state.c1 == pytest.approx(c1_0, rel=1e-6)

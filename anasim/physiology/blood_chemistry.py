@@ -5,7 +5,7 @@ and electrolyte exchange with other body fluids belong to the coupled model.
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import NamedTuple
 
 from anasim.patient.domain import bounded_number, finite_number
@@ -31,6 +31,10 @@ _RBC_PH_GRADIENT = 0.77 * _LN_10  # d(rbc pH)/d(plasma pH) times ln 10 (Rees Eq.
 
 def plasma_bicarbonate(ph: float, pco2: float) -> float:
     return _PLASMA_CO2_SOLUBILITY * pco2 * 10.0**(ph - 6.1)
+
+
+def plasma_ph(bicarbonate: float, pco2: float) -> float:
+    return 6.1 + math.log10(bicarbonate / (_PLASMA_CO2_SOLUBILITY * pco2))
 
 
 def standard_base_excess(ph: float, bicarbonate: float) -> float:
@@ -147,6 +151,8 @@ class BloodChemistry:
     plasma_buffer_mmol_l: float = 23.5
     plasma_buffers: PlasmaBuffers | None = None
     extracellular_buffers: PlasmaBuffers | None = None
+    _hb_rbc: float = field(init=False, repr=False, compare=False)
+    _plasma: float = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         hb = finite_number("hemoglobin_mmol_l", self.hemoglobin_mmol_l)
@@ -159,6 +165,8 @@ class BloodChemistry:
         object.__setattr__(self, "hemoglobin_mmol_l", hb)
         object.__setattr__(self, "hematocrit", hct)
         object.__setattr__(self, "plasma_buffer_mmol_l", buffer)
+        object.__setattr__(self, "_hb_rbc", hb / hct)
+        object.__setattr__(self, "_plasma", 1.0 - hct)
 
     def equilibrate(
         self, *, ph: float, pco2_mmhg: float, oxygen_saturation: float,
@@ -231,44 +239,22 @@ class BloodChemistry:
             base_residual = blood.buffer_base - base
             if max(abs(carbon_residual), abs(base_residual)) < _CONTENT_TOLERANCE:
                 return ContentIterate(blood, True, ph, pco2)
-            determinant = blood.base_ph * blood.content_co2 - blood.base_co2 * blood.content_ph
-            ph_change = (base_residual * blood.content_co2 - carbon_residual * blood.base_co2) / determinant
-            pressure_change = (carbon_residual * blood.base_ph - base_residual * blood.content_ph) / determinant
-            fraction = step_fraction(ph, ph_change, pco2, pressure_change)
-            new_ph = ph - fraction * ph_change
-            new_pco2 = pco2 - fraction * pressure_change
-            if fraction == 1.0 and abs(ph_change) < 2e-6 and abs(pressure_change) < 2e-4:
-                # Quadratic Newton error and Bohr-Haldane shift are below _CONTENT_TOLERANCE.
-                updated = Equilibrium(
-                    new_ph,
-                    blood.rbc_ph - 0.77 * ph_change,
-                    blood.plasma_bicarbonate * (1.0 - _LN_10 * ph_change - pressure_change / pco2),
-                    blood.rbc_bicarbonate,
-                    blood.plasma_base,
-                    blood.rbc_base,
-                    blood.buffer_base - blood.base_ph * ph_change - blood.base_co2 * pressure_change,
-                    blood.total_co2 - blood.content_ph * ph_change - blood.content_co2 * pressure_change,
-                    blood.base_ph,
-                    blood.base_co2,
-                    blood.content_ph,
-                    blood.content_co2,
-                )
-                return ContentIterate(updated, True, new_ph, new_pco2)
-            return ContentIterate(blood, False, new_ph, new_pco2)
-        fluid_co2, fluid_base, fluid_ph, fluid_pco2 = extracellular_contents(
-            ph, pco2, self.extracellular_buffers,
-        )
-        # Residuals per liter of blood plus fluid keep the tolerance independent of aliquot size.
-        blood_weight = 1.0 / (1.0 + extracellular_ratio)
-        fluid_weight = extracellular_ratio * blood_weight
-        carbon_residual = blood_weight * (blood.total_co2 - co2) + fluid_weight * fluid_co2
-        base_residual = blood_weight * (blood.buffer_base - base) + fluid_weight * fluid_base
-        if max(abs(carbon_residual), abs(base_residual)) < _CONTENT_TOLERANCE:
-            return ContentIterate(blood, True, ph, pco2)
-        b_ph = blood_weight * blood.base_ph + fluid_weight * fluid_ph
-        b_p = blood_weight * blood.base_co2 + fluid_weight * fluid_pco2
-        c_ph = blood_weight * blood.content_ph + fluid_weight * _LN_10 * fluid_pco2 * pco2
-        c_p = blood_weight * blood.content_co2 + fluid_weight * fluid_co2 / pco2
+            b_ph, b_p, c_ph, c_p = blood.base_ph, blood.base_co2, blood.content_ph, blood.content_co2
+        else:
+            fluid_co2, fluid_base, fluid_ph, fluid_pco2 = extracellular_contents(
+                ph, pco2, self.extracellular_buffers,
+            )
+            # Residuals per liter of blood plus fluid keep the tolerance independent of aliquot size.
+            blood_weight = 1.0 / (1.0 + extracellular_ratio)
+            fluid_weight = extracellular_ratio * blood_weight
+            carbon_residual = blood_weight * (blood.total_co2 - co2) + fluid_weight * fluid_co2
+            base_residual = blood_weight * (blood.buffer_base - base) + fluid_weight * fluid_base
+            if max(abs(carbon_residual), abs(base_residual)) < _CONTENT_TOLERANCE:
+                return ContentIterate(blood, True, ph, pco2)
+            b_ph = blood_weight * blood.base_ph + fluid_weight * fluid_ph
+            b_p = blood_weight * blood.base_co2 + fluid_weight * fluid_pco2
+            c_ph = blood_weight * blood.content_ph + fluid_weight * _LN_10 * fluid_pco2 * pco2
+            c_p = blood_weight * blood.content_co2 + fluid_weight * fluid_co2 / pco2
         determinant = b_ph * c_p - b_p * c_ph
         ph_change = (base_residual * c_p - carbon_residual * b_p) / determinant
         pressure_change = (carbon_residual * b_ph - base_residual * c_ph) / determinant
@@ -276,6 +262,7 @@ class BloodChemistry:
         new_ph = ph - fraction * ph_change
         new_pco2 = pco2 - fraction * pressure_change
         if fraction == 1.0 and abs(ph_change) < 2e-6 and abs(pressure_change) < 2e-4:
+            # Quadratic Newton error and Bohr-Haldane shift are below _CONTENT_TOLERANCE.
             updated = Equilibrium(
                 new_ph,
                 blood.rbc_ph - 0.77 * ph_change,
@@ -315,60 +302,71 @@ class BloodChemistry:
             weak_base, weak_ph = self.plasma_buffers.contents(ph)
         else:
             weak_ratio = _PLASMA_BUFFER_RATIO / plasma_ratio
-            weak_base = self.plasma_buffer_mmol_l / (1.0 + weak_ratio)
-            weak_ph = _LN_10 * weak_base * weak_ratio / (1.0 + weak_ratio)
+            inv_weak = 1.0 / (1.0 + weak_ratio)
+            weak_base = self.plasma_buffer_mmol_l * inv_weak
+            weak_ph = _LN_10 * weak_base * weak_ratio * inv_weak
 
-        hb_rbc = self.hemoglobin_mmol_l / self.hematocrit
-        gradient = _RBC_PH_GRADIENT
+        hb_rbc = self._hb_rbc
         # Oxygenated and deoxygenated Hb have different H+ and CO2 affinities.
         # The carbamino equilibrium uses dissolved CO2 in mol/L.
-        dissolved_rbc = co2_rbc / 1000.0 * rbc_ratio
+        dissolved_rbc = co2_rbc * 0.001 * rbc_ratio
         oxy_hb = hb_rbc * saturation
         oxy_proton = _OXY_AMINO_RATIO / rbc_ratio
         oxy_carbamino = dissolved_rbc * _OXY_CARBAMINO_RATIO
-        oxy_denominator = 1.0 + oxy_proton + oxy_carbamino
-        oxy_amino = oxy_hb / oxy_denominator
+        inv_oxy_den = 1.0 / (1.0 + oxy_proton + oxy_carbamino)
+        oxy_amino = oxy_hb * inv_oxy_den
         oxy_carb = oxy_amino * oxy_carbamino
-        oxy_side = oxy_hb / (1.0 + oxy_proton)
+        inv_oxy_p = 1.0 / (1.0 + oxy_proton)
+        oxy_side = oxy_hb * inv_oxy_p
         deoxy_hb = hb_rbc * (1.0 - saturation)
         deoxy_proton = _DEOXY_AMINO_RATIO / rbc_ratio
         deoxy_carbamino = dissolved_rbc * _DEOXY_CARBAMINO_RATIO
-        deoxy_denominator = 1.0 + deoxy_proton + deoxy_carbamino
-        deoxy_amino = deoxy_hb / deoxy_denominator
+        inv_deoxy_den = 1.0 / (1.0 + deoxy_proton + deoxy_carbamino)
+        deoxy_amino = deoxy_hb * inv_deoxy_den
         deoxy_carb = deoxy_amino * deoxy_carbamino
-        deoxy_side = deoxy_hb / (1.0 + deoxy_proton)
+        inv_deoxy_p = 1.0 / (1.0 + deoxy_proton)
+        deoxy_side = deoxy_hb * inv_deoxy_p
 
         amino_base = oxy_amino + deoxy_amino
         carbamino = oxy_carb + deoxy_carb
         side_chain_base = oxy_side + deoxy_side
-        amino_ph = (gradient * oxy_amino * (oxy_proton - oxy_carbamino) / oxy_denominator
-                    + gradient * deoxy_amino * (deoxy_proton - deoxy_carbamino) / deoxy_denominator)
-        carbamino_ph = (gradient * oxy_carb * (1.0 + 2.0 * oxy_proton) / oxy_denominator
-                        + gradient * deoxy_carb * (1.0 + 2.0 * deoxy_proton) / deoxy_denominator)
-        side_chain_ph = (gradient * oxy_side * oxy_proton / (1.0 + oxy_proton)
-                         + gradient * deoxy_side * deoxy_proton / (1.0 + deoxy_proton))
-        amino_co2 = -(oxy_carb / oxy_denominator / pco2 + deoxy_carb / deoxy_denominator / pco2)
-        carbamino_co2 = (oxy_carb * (1.0 + oxy_proton) / oxy_denominator / pco2
-                         + deoxy_carb * (1.0 + deoxy_proton) / deoxy_denominator / pco2)
+        oxy_carb_den = oxy_carb * inv_oxy_den
+        deoxy_carb_den = deoxy_carb * inv_deoxy_den
+        amino_ph = _RBC_PH_GRADIENT * (
+            oxy_amino * (oxy_proton - oxy_carbamino) * inv_oxy_den
+            + deoxy_amino * (deoxy_proton - deoxy_carbamino) * inv_deoxy_den
+        )
+        carbamino_ph = _RBC_PH_GRADIENT * (
+            oxy_carb_den * (1.0 + 2.0 * oxy_proton)
+            + deoxy_carb_den * (1.0 + 2.0 * deoxy_proton)
+        )
+        side_chain_ph = _RBC_PH_GRADIENT * (
+            oxy_side * oxy_proton * inv_oxy_p + deoxy_side * deoxy_proton * inv_deoxy_p
+        )
+        inv_pco2 = 1.0 / pco2
+        amino_co2 = -(oxy_carb_den + deoxy_carb_den) * inv_pco2
+        carbamino_co2 = (
+            oxy_carb_den * (1.0 + oxy_proton) + deoxy_carb_den * (1.0 + deoxy_proton)
+        ) * inv_pco2
 
         plasma_base = bicarbonate_plasma + weak_base
         # Eq. 4br: each carbamino group contributes two buffer-base equivalents.
         rbc_base = bicarbonate_rbc + 4.27 * side_chain_base + amino_base + 2.0 * carbamino
         hct = self.hematocrit
-        plasma = 1.0 - hct
+        plasma = self._plasma
         buffer_base = plasma * plasma_base + hct * rbc_base
         total_co2 = (
             plasma * (co2_plasma + bicarbonate_plasma)
             + hct * (co2_rbc + bicarbonate_rbc + carbamino)
         )
         base_ph = (plasma * (_LN_10 * bicarbonate_plasma + weak_ph)
-                   + hct * (gradient * bicarbonate_rbc + 4.27 * side_chain_ph + amino_ph + 2.0 * carbamino_ph))
-        base_co2 = (plasma * bicarbonate_plasma / pco2
-                    + hct * (bicarbonate_rbc / pco2 + amino_co2 + 2.0 * carbamino_co2))
+                   + hct * (_RBC_PH_GRADIENT * bicarbonate_rbc + 4.27 * side_chain_ph + amino_ph + 2.0 * carbamino_ph))
+        base_co2 = (plasma * bicarbonate_plasma * inv_pco2
+                    + hct * (bicarbonate_rbc * inv_pco2 + amino_co2 + 2.0 * carbamino_co2))
         content_ph = (plasma * _LN_10 * bicarbonate_plasma
-                      + hct * (gradient * bicarbonate_rbc + carbamino_ph))
-        content_co2 = (plasma * (co2_plasma + bicarbonate_plasma) / pco2
-                       + hct * ((co2_rbc + bicarbonate_rbc) / pco2 + carbamino_co2))
+                      + hct * (_RBC_PH_GRADIENT * bicarbonate_rbc + carbamino_ph))
+        content_co2 = (plasma * (co2_plasma + bicarbonate_plasma) * inv_pco2
+                       + hct * ((co2_rbc + bicarbonate_rbc) * inv_pco2 + carbamino_co2))
         return Equilibrium(
             ph, rbc_ph, bicarbonate_plasma, bicarbonate_rbc, plasma_base, rbc_base,
             buffer_base, total_co2, base_ph, base_co2, content_ph, content_co2,

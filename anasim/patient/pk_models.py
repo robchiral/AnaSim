@@ -4,9 +4,9 @@ Sources are cited on each model and in docs/REFERENCES.md.
 
 Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
 second. Concentrations are µg/mL for propofol, etomidate, ketamine,
-lidocaine, amiodarone, rocuronium, succinylcholine, and esmolol, ng/mL for opioids,
-midazolam, catecholamines, ephedrine, atropine, labetalol, and glycopyrrolate,
-and mU/L for vasopressin.
+lidocaine, amiodarone, dantrolene, rocuronium, succinylcholine, and esmolol,
+ng/mL for opioids, midazolam, vasoactive drugs other than vasopressin,
+atropine, labetalol, and glycopyrrolate, and mU/L for vasopressin.
 """
 
 import math
@@ -105,6 +105,12 @@ class MammillaryPK:
         transit = (("ce_transit", effect_site_transit_rate),) if effect_site_transit_rate is not None else ()
         # The primary site is last so TCI and decay predictions target it.
         self.effect_sites = (*transit, *additional_effect_sites, ("ce", ke0))
+        self._single_site = len(self.effect_sites) == 1
+        self._primary_ke0 = self.effect_sites[0][1]
+        self._site_names = tuple(name for name, _ in self.effect_sites)
+        self._site_rates = tuple(rate for _, rate in self.effect_sites)
+        self._inv_v2 = 1.0 / v2 if v2 > 0 else 0.0
+        self._inv_v3 = 1.0 / v3 if v3 > 0 else 0.0
         self._extra_site_names = tuple(name for name, _ in self.effect_sites[:-1])
         self._extra_site_0 = (
             attrgetter(self._extra_site_names[0]) if len(self._extra_site_names) == 1 else None
@@ -180,7 +186,8 @@ class MammillaryPK:
         Only the part of V1 up to the baseline blood volume changes with blood
         volume; the rest is tissue. Without blood_volume_l, all of V1 does.
         Core temperature scales non-renal metabolic and intercompartmental
-        clearances (Leslie 1995; Smeulers 1995).
+        clearances (Leslie 1995; rocuronium override extrapolated from Caldwell 2000
+        and Smeulers 1995).
         """
         vascular = self.v1_base if blood_volume_l is None else min(self.v1_base, blood_volume_l)
         new_v1 = (self.v1_base + vascular * (v_ratio - 1.0)) * self.v1_scale
@@ -197,11 +204,14 @@ class MammillaryPK:
         self.cl1 = self.cl1_base * (nonrenal + self.renal_fraction * renal_perfusion)
         if deficit < 1.0 and self.cl1_deficit_exponent:
             self.cl1 *= _pow(deficit, self.cl1_deficit_exponent)
-        distribution_scale = _pow(co_ratio, self.distribution_co_exponent) * temp_dist
-        if deficit < 1.0 and self.distribution_deficit_exponent:
-            distribution_scale *= _pow(deficit, self.distribution_deficit_exponent)
-        self.cl2 = self.cl2_base * distribution_scale * self.cl2_scale
-        self.cl3 = self.cl3_base * distribution_scale * self.cl3_scale
+        if self.cl2_base or self.cl3_base:
+            distribution_scale = _pow(co_ratio, self.distribution_co_exponent) * temp_dist
+            if deficit < 1.0 and self.distribution_deficit_exponent:
+                distribution_scale *= _pow(deficit, self.distribution_deficit_exponent)
+            self.cl2 = self.cl2_base * distribution_scale * self.cl2_scale
+            self.cl3 = self.cl3_base * distribution_scale * self.cl3_scale
+        else:
+            self.cl2 = self.cl3 = 0.0
 
     def _set_interaction_scales(
         self, *, v1: float = 1.0, cl1: float = 1.0, cl2: float = 1.0, cl3: float = 1.0,
@@ -223,17 +233,17 @@ class MammillaryPK:
         if self.basal_input_rate > 0.0:
             input_rate_per_sec += self.effective_basal_input_rate
         s = self.state
-        if not (input_rate_per_sec or s.c1 or s.ce or s.c2 or s.c3):
-            if not self._extra_site_names or all(getattr(s, name) == 0.0 for name in self._extra_site_names):
-                return s  # Skip drugs with no input or residual concentration.
+        if not (input_rate_per_sec or self.has_mass()):
+            return s  # Skip drugs with no input or residual concentration.
         v1, v2, v3 = self.v1, self.v2, self.v3
+        inv_v1, inv_v2, inv_v3 = 1.0 / v1, self._inv_v2, self._inv_v3
         circulation = self.circulation
         effect_transport = circulation * self.temp_dist_scale
         cl2 = self.cl2 * circulation if v2 > 0 else 0.0
         cl3 = self.cl3 * circulation if v3 > 0 else 0.0
         elimination_cl = self.elimination_clearance
-        fastest_rate = max((elimination_cl + cl2 + cl3) / v1,
-                           cl2 / v2 if v2 > 0 else 0.0, cl3 / v3 if v3 > 0 else 0.0,
+        fastest_rate = max((elimination_cl + cl2 + cl3) * inv_v1,
+                           cl2 * inv_v2, cl3 * inv_v3,
                            self._max_effect_rate * effect_transport)
         # At most 0.25 s and 2% turnover per midpoint step, including after
         # blood-volume scaling. Equal flux terms preserve compartment mass.
@@ -242,48 +252,77 @@ class MammillaryPK:
         half_dt_min = 0.5 * dt_min
         input_per_min = input_rate_per_sec * 60.0
         effect_frac = self.effect_input_fraction
-        single_site = len(self.effect_sites) == 1
-        primary_rc = self.effect_sites[0][1] * effect_transport if single_site else 0.0
-        scaled_sites = () if single_site else tuple((name, rate * effect_transport) for name, rate in self.effect_sites)
-        has_transit = self._has_transit and self.ce_input == "ce_transit"
-        for _ in range(substeps):
-            c1, c2, c3 = s.c1, s.c2, s.c3
-            flux2_0 = cl2 * (c1 - c2)
-            flux3_0 = cl3 * (c1 - c3)
-            elim_0 = elimination_cl * c1
-            c1_mid = c1 + (input_per_min - elim_0 - flux2_0 - flux3_0) / v1 * half_dt_min
-            c2_mid = c2 + flux2_0 / v2 * half_dt_min if v2 > 0 else 0.0
-            c3_mid = c3 + flux3_0 / v3 * half_dt_min if v3 > 0 else 0.0
-            if single_site:
-                ce = s.ce
-                ce_mid = ce + primary_rc * (c1 * effect_frac - ce) * half_dt_min
-                s.ce = ce + primary_rc * (c1_mid * effect_frac - ce_mid) * dt_min
-            elif not has_transit:
+        c1, c2, c3 = s.c1, s.c2, s.c3
+        if self._single_site:
+            ce = s.ce
+            rc_half = self._primary_ke0 * effect_transport * half_dt_min
+            rc_full = self._primary_ke0 * effect_transport * dt_min
+            for _ in range(substeps):
+                flux2_0 = cl2 * (c1 - c2)
+                flux3_0 = cl3 * (c1 - c3)
+                elim_0 = elimination_cl * c1
+                c1_mid = c1 + (input_per_min - elim_0 - flux2_0 - flux3_0) * inv_v1 * half_dt_min
+                c2_mid = c2 + flux2_0 * inv_v2 * half_dt_min if v2 > 0 else 0.0
+                c3_mid = c3 + flux3_0 * inv_v3 * half_dt_min if v3 > 0 else 0.0
+                ce_mid = ce + rc_half * (c1 * effect_frac - ce)
+                ce = ce + rc_full * (c1_mid * effect_frac - ce_mid)
+                flux2_mid = cl2 * (c1_mid - c2_mid)
+                flux3_mid = cl3 * (c1_mid - c3_mid)
+                elim_mid = elimination_cl * c1_mid
+                c1 = c1 + (input_per_min - elim_mid - flux2_mid - flux3_mid) * inv_v1 * dt_min
+                if v2 > 0:
+                    c2 = c2 + flux2_mid * inv_v2 * dt_min
+                if v3 > 0:
+                    c3 = c3 + flux3_mid * inv_v3 * dt_min
+            s.ce = ce
+        else:
+            site_names = self._site_names
+            site_vals = [getattr(s, name) for name in site_names]
+            site_rc_half = [rate * effect_transport * half_dt_min for rate in self._site_rates]
+            site_rc_full = [rate * effect_transport * dt_min for rate in self._site_rates]
+            n_sites = len(site_names)
+            last_idx = n_sites - 1
+            has_transit = self._has_transit
+            for _ in range(substeps):
+                flux2_0 = cl2 * (c1 - c2)
+                flux3_0 = cl3 * (c1 - c3)
+                elim_0 = elimination_cl * c1
+                c1_mid = c1 + (input_per_min - elim_0 - flux2_0 - flux3_0) * inv_v1 * half_dt_min
+                c2_mid = c2 + flux2_0 * inv_v2 * half_dt_min if v2 > 0 else 0.0
+                c3_mid = c3 + flux3_0 * inv_v3 * half_dt_min if v3 > 0 else 0.0
                 c1_eff_0 = c1 * effect_frac
                 c1_eff_mid = c1_mid * effect_frac
-                for name, rc in scaled_sites:
-                    ce = getattr(s, name)
-                    ce_mid = ce + rc * (c1_eff_0 - ce) * half_dt_min
-                    setattr(s, name, ce + rc * (c1_eff_mid - ce_mid) * dt_min)
-            else:
-                c1_eff_0 = c1 * effect_frac
-                c1_eff_mid = c1_mid * effect_frac
-                transit_0 = transit_mid = 0.0
-                for name, rc in scaled_sites:
-                    ce = getattr(s, name)
-                    src_0, src_mid = (transit_0, transit_mid) if name == "ce" else (c1_eff_0, c1_eff_mid)
-                    ce_mid = ce + rc * (src_0 - ce) * half_dt_min
-                    if name == "ce_transit":
-                        transit_0, transit_mid = ce, ce_mid
-                    setattr(s, name, ce + rc * (src_mid - ce_mid) * dt_min)
-            flux2_mid = cl2 * (c1_mid - c2_mid)
-            flux3_mid = cl3 * (c1_mid - c3_mid)
-            elim_mid = elimination_cl * c1_mid
-            s.c1 = c1 + (input_per_min - elim_mid - flux2_mid - flux3_mid) / v1 * dt_min
-            if v2 > 0:
-                s.c2 = c2 + flux2_mid / v2 * dt_min
-            if v3 > 0:
-                s.c3 = c3 + flux3_mid / v3 * dt_min
+                if not has_transit:
+                    for i in range(n_sites):
+                        ce_i = site_vals[i]
+                        ce_mid = ce_i + site_rc_half[i] * (c1_eff_0 - ce_i)
+                        site_vals[i] = ce_i + site_rc_full[i] * (c1_eff_mid - ce_mid)
+                else:
+                    transit_0 = site_vals[0]
+                    transit_mid = transit_0 + site_rc_half[0] * (c1_eff_0 - transit_0)
+                    site_vals[0] = transit_0 + site_rc_full[0] * (c1_eff_mid - transit_mid)
+                    for i in range(1, last_idx):
+                        ce_i = site_vals[i]
+                        ce_mid = ce_i + site_rc_half[i] * (c1_eff_0 - ce_i)
+                        site_vals[i] = ce_i + site_rc_full[i] * (c1_eff_mid - ce_mid)
+                    ce_last = site_vals[last_idx]
+                    ce_mid = ce_last + site_rc_half[last_idx] * (transit_0 - ce_last)
+                    site_vals[last_idx] = ce_last + site_rc_full[last_idx] * (transit_mid - ce_mid)
+                flux2_mid = cl2 * (c1_mid - c2_mid)
+                flux3_mid = cl3 * (c1_mid - c3_mid)
+                elim_mid = elimination_cl * c1_mid
+                c1 = c1 + (input_per_min - elim_mid - flux2_mid - flux3_mid) * inv_v1 * dt_min
+                if v2 > 0:
+                    c2 = c2 + flux2_mid * inv_v2 * dt_min
+                if v3 > 0:
+                    c3 = c3 + flux3_mid * inv_v3 * dt_min
+            for name, val in zip(site_names, site_vals, strict=True):
+                setattr(s, name, val)
+        s.c1 = c1
+        if v2 > 0:
+            s.c2 = c2
+        if v3 > 0:
+            s.c3 = c3
         return s
 
     def get_ss_matrices(self) -> tuple[np.ndarray, np.ndarray]:
@@ -444,7 +483,7 @@ def _eleveld_ffm(age: float, weight: float, height: float, male: bool) -> float:
 
 
 def _lean_weight_kg(patient: Patient) -> float:
-    """Lean-scaled equivalent body weight (kg) from Janmahasatian FFM (Ingrande 2010).
+    """Lean-scaled equivalent body weight (kg) from Janmahasatian FFM (obesity LBW principle: Ingrande and Lemmens 2010).
 
     Equals actual weight in non-obese adults (BMI <= 27 kg/m^2) so published
     normal-weight PK parameters match their source cohorts; above BMI 27 it adds
@@ -506,7 +545,7 @@ class PropofolPKEleveld(MammillaryPK):
         }
         params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.6))
         # The clinical response rate is a timing assumption (Kuizenga 2019 study
-        # design); respiratory equilibration half-time is 2.6 min (Bouillon 2004).
+        # design); respiratory equilibration half-time is 2.6 min (Bouillon 2004b).
         # Eleveld's anesthetized cohort already reflects propofol's fall in cardiac
         # output (around 0.75-0.82 of awake baseline), so update_hemodynamics
         # scales downward only below 0.75 while keeping Johnson 2003/2004
@@ -566,7 +605,9 @@ class RemifentanilPKEleveld(MammillaryPK):
         if patient.sex == "female":
             sex_factor += 0.470 * _sigmoid(age, 12.0, 6.0) * (1.0 - _sigmoid(age, 45.0, 6.0))
         v2 = 8.82 * size * aging_slow * sex_factor * eta.v2
-        v3 = 5.03 * size * math.exp(-0.0315 * (age - 35.0) - 0.0260 * (weight - 70.0)) * eta.v3
+        # Cap weight in Eleveld's V3 negative exponential at its adult training ceiling
+        # (106 kg) so extreme obesity retains lean/FFM-scaled peripheral volume (Egan 1998).
+        v3 = 5.03 * size * math.exp(-0.0315 * (age - 35.0) - 0.0260 * (min(weight, 106.0) - 70.0)) * eta.v3
         super().__init__(
             v1=_pregnancy_v1(patient, 5.81 * size * aging_fast * eta.v1),
             v2=v2,
@@ -737,6 +778,28 @@ class MorphinePK(MammillaryPK):
         alpha_ce = -math.expm1(-ke0_m6g * dt_min)
         return k_form, k_elim_ref, k_elim_act, decay_norm, decay_act, alpha_ce
 
+    @classmethod
+    def _advance_m6g(
+        cls,
+        c1: float,
+        m6g_n: float,
+        m6g_a: float,
+        m6g_ce_n: float,
+        m6g_ce_a: float,
+        factors: tuple[float, float, float, float, float, float],
+    ) -> tuple[float, float, float, float]:
+        k_form, k_elim_norm, k_elim_act, decay_norm, decay_act, alpha_ce = factors
+        inflow = cls._M6G_POTENCY_WEIGHT * k_form * c1
+        if k_elim_norm > 0.0:
+            target_n = inflow / k_elim_norm
+            m6g_n = target_n + (m6g_n - target_n) * decay_norm
+        if k_elim_act > 0.0:
+            target_a = inflow / k_elim_act
+            m6g_a = target_a + (m6g_a - target_a) * decay_act
+        m6g_ce_n += (m6g_n - m6g_ce_n) * alpha_ce
+        m6g_ce_a += (m6g_a - m6g_ce_a) * alpha_ce
+        return m6g_n, m6g_a, m6g_ce_n, m6g_ce_a
+
     def step(self, dt_sec: float, input_rate_per_sec: float) -> PKState:
         state = super().step(dt_sec, input_rate_per_sec)
         if dt_sec > 0.0 and (state.c1 > 0.0 or self._m6g_actual > 0.0 or self._m6g_normal > 0.0
@@ -744,16 +807,10 @@ class MorphinePK(MammillaryPK):
             # Hepatic glucuronidation produces M6G proportional to hepatic clearance;
             # M6G clears almost entirely by GFR (Osborne 1993: normal t1/2 2.6 +/- 0.7 h SD;
             # modeled with a calibrated 2 h reference half-life and ~3.5 h BBB t1/2).
-            k_form, k_elim_norm, k_elim_act, decay_norm, decay_act, alpha_ce = self._m6g_step_factors(dt_sec / 60.0)
-            inflow = self._M6G_POTENCY_WEIGHT * k_form * state.c1
-            if k_elim_norm > 0.0:
-                target_n = inflow / k_elim_norm
-                self._m6g_normal = target_n + (self._m6g_normal - target_n) * decay_norm
-            if k_elim_act > 0.0:
-                target_a = inflow / k_elim_act
-                self._m6g_actual = target_a + (self._m6g_actual - target_a) * decay_act
-            self._m6g_ce_normal += (self._m6g_normal - self._m6g_ce_normal) * alpha_ce
-            self._m6g_ce_actual += (self._m6g_actual - self._m6g_ce_actual) * alpha_ce
+            factors = self._m6g_step_factors(dt_sec / 60.0)
+            self._m6g_normal, self._m6g_actual, self._m6g_ce_normal, self._m6g_ce_actual = self._advance_m6g(
+                state.c1, self._m6g_normal, self._m6g_actual, self._m6g_ce_normal, self._m6g_ce_actual, factors,
+            )
         return state
 
     def simulate_decay(self, target_fraction: float = 0.5, max_seconds: int = 3600) -> float:
@@ -775,7 +832,7 @@ class MorphinePK(MammillaryPK):
         A, _ = self.get_ss_matrices()
         transition = expm(A / 60.0)
         x = self.state_vector()
-        k_form, k_elim_norm, k_elim_act, decay_norm, decay_act, alpha_ce = self._m6g_step_factors(1.0 / 60.0)
+        factors = self._m6g_step_factors(1.0 / 60.0)
         m6g_n = self._m6g_normal
         m6g_a = self._m6g_actual
         m6g_ce_n = self._m6g_ce_normal
@@ -783,16 +840,9 @@ class MorphinePK(MammillaryPK):
         ce_idx = self.state_fields.index("ce")
         for sec in range(1, max_seconds + 1):
             x = transition @ x
-            c1 = max(0.0, float(x[0]))
-            inflow = self._M6G_POTENCY_WEIGHT * k_form * c1
-            if k_elim_norm > 0.0:
-                target_n = inflow / k_elim_norm
-                m6g_n = target_n + (m6g_n - target_n) * decay_norm
-            if k_elim_act > 0.0:
-                target_a = inflow / k_elim_act
-                m6g_a = target_a + (m6g_a - target_a) * decay_act
-            m6g_ce_n += (m6g_n - m6g_ce_n) * alpha_ce
-            m6g_ce_a += (m6g_a - m6g_ce_a) * alpha_ce
+            m6g_n, m6g_a, m6g_ce_n, m6g_ce_a = self._advance_m6g(
+                max(0.0, float(x[0])), m6g_n, m6g_a, m6g_ce_n, m6g_ce_a, factors,
+            )
             if float(x[ce_idx]) + max(0.0, m6g_ce_a - m6g_ce_n) <= ce_target:
                 return sec / 60.0
         return max_seconds / 60.0
@@ -825,7 +875,7 @@ class AtropinePK(MammillaryPK):
     k21 0.0557 /min), in ng/mL.
 
     ke0 = k21 links HR to the peripheral compartment (part II). Lean-weight
-    scaling from the cohort's 72.3 kg mean (Ingrande 2010) and proportional
+    scaling from the cohort's 72.3 kg mean and proportional
     renal-capacity scaling of the 56.8% renal fraction are simulator assumptions.
     """
 
@@ -839,13 +889,13 @@ class AtropinePK(MammillaryPK):
 
 
 class EphedrinePK(MammillaryPK):
-    """Two-compartment IV ephedrine model combining rapid IV distribution
-    (Michelsen 1998; Radstrom 1995) with Persky 2004 terminal Vss and CL (ng/mL).
+    """Calibrated two-compartment IV ephedrine model (ng/mL) preserving Persky 2004
+    oral Vss (4.0 L/kg) and CL while matching IV bolus onset and 60-min duration
+    (Rådström 1995; Michelsen 1998).
 
-    V1 1.15 L/kg and V2 2.85 L/kg preserve the 4.0 L/kg total distribution volume
-    and ~5.9 h terminal elimination half-life while giving a ~10 min alpha
-    distribution phase so a single 5-10 mg IV bolus fades over 15-30 min without
-    requiring near-total tachyphylaxis.
+    V1 1.15 L/kg and V2 2.85 L/kg preserve Vss 4.0 L/kg (terminal t1/2 ~6.3 h)
+    with a ~9 min alpha distribution phase so a single 5-10 mg IV bolus peaks early
+    and declines over 15-30 min while retaining pressor effect at 60 min.
     """
 
     def __init__(self, patient: Patient):
@@ -868,7 +918,7 @@ class SuccinylcholinePK(MammillaryPK):
 
     Transit and effect-site rates (1/min) fit Table 2 twitch time courses at
     0.4-1 mg/kg. Concentrations are mcg/mL; hydrolysis has no organ/flow covariate.
-    A faster central/laryngeal site (`ce_central`, Dhonneur 1999; Chung 1993)
+    A faster central/laryngeal site (`ce_central`, Dhonneur 1999; Chung and Rowbottom 1993)
     mediates rapid glottic/diaphragmatic onset, and cumulative effect-site
     exposure tracks Phase II desensitization (Lee 1975).
     """
@@ -901,8 +951,8 @@ class MidazolamPK(MammillaryPK):
 
     Young volunteers (24-28 y, 66-89 kg) gave Vc 7.9 L and CL 399 mL/min;
     k12 fell from 0.19 to 0.10 min^-1 by 71 years, and ke0 from 0.11 to 0.08
-    min^-1. Central volume and clearances scale with lean weight from 78 kg
-    (Ingrande 2010), while the lipophilic slow depot V3 scales with total weight.
+    min^-1. Central volume and clearances scale with lean weight from 78 kg,
+    while the lipophilic slow depot V3 scales with total weight.
     """
 
     def __init__(self, patient: Patient):
@@ -954,7 +1004,7 @@ class EtomidatePK(MammillaryPK):
     Peripheral volumes 0.259 and 4.36 L/kg reproduce the reported Vss (4.7
     L/kg) and half-lives (0.93, 12.1, and 324 min). t1/2 ke0 1.6 min.
     Clearance is mostly hepatic (Van Hamme 1978); central volume and clearances
-    scale with lean weight (Ingrande 2010), while deep lipophilic V3 scales
+    scale with lean weight, while deep lipophilic V3 scales
     with total weight. Arden gave etomidate before surgery, so its clearances
     apply at awake cardiac output.
     """
@@ -979,12 +1029,13 @@ class KetaminePK(MammillaryPK):
     """Kamp et al. 2020 meta-analytical three-compartment model (mcg/mL).
 
     CL 84, Q2 161, and Q3 79 L/h and V1 25, V2 56, and V3 157 L at 70 kg;
-    clearance is hepatic. Central volume and clearances scale with lean weight
-    (Ingrande 2010), while lipophilic V3 scales with total weight. AnaSim sets
+    clearance is hepatic. Central volume and clearances scale with lean weight,
+    while lipophilic V3 scales with total weight. AnaSim sets
     ke0 for loss of consciousness within about a minute. The cardiac-output site
-    uses Kamp 2021's equilibration half-time of 2.28 min; its transfer to total
-    racemic ketamine concentrations is an assumption. The separate HR half-time
-    of 0.7 min is calibrated to Bovill 1972's peak within the first 3 min. Most
+    uses Kamp 2021's S-ketamine equilibration half-time of 2.28 min; its transfer
+    to total racemic ketamine concentrations is an assumption. The separate HR
+    half-time of 0.7 min is calibrated to peak HR within the first 3 min
+    (Bovill and Dundee 1972). Most
     source studies were in awake volunteers, so its clearances apply at awake
     cardiac output.
     """
@@ -1006,7 +1057,7 @@ class KetaminePK(MammillaryPK):
 
 
 class DantrolenePK(MammillaryPK):
-    """Two-compartment model from the Ryanodex label (mcg/mL).
+    """Two-compartment model from the Ryanodex label (DailyMed 2024; mcg/mL).
 
     At 70 kg, CL is 2.5 L/h and total volume is 36.4 L; V1 gives the label's
     9 mcg/mL peak after 2.5 mg/kg. Q and the 45 s effect-site half-time are
@@ -1026,11 +1077,11 @@ class DantrolenePK(MammillaryPK):
 class AmiodaronePK(MammillaryPK):
     """Korth-Bradley 1996 two-compartment IV model (245 VT/VF patients), mcg/mL.
 
-    CL 0.22 and Q 0.71 L/h/kg and V1 0.30 L/kg scale with lean weight (Ingrande
-    2010), while lipophilic V2 (10 L/kg) scales with total weight. Effect
-    half-times are 15 s for bolus vasodilation and 18 min for sinus slowing,
-    matching Munoz 1988, and 2.5 min for contractility and antiarrhythmic
-    action.
+    CL 0.22 and Q 0.71 L/h/kg and V1 0.30 L/kg scale with lean weight,
+    while lipophilic V2 (10 L/kg) scales with total weight. Calibrated effect
+    half-times are 15 s for solvent-mediated bolus vasodilation and 18 min for
+    sinus slowing (reproducing the time courses in Munoz 1988), plus 2.5 min
+    for contractility and antiarrhythmic action.
     """
 
     def __init__(self, patient: Patient):
@@ -1100,7 +1151,7 @@ class RocuroniumPK(MammillaryPK):
     (Sasakawa 2016); clearance at 65-88 years was 25% lower (Varrique 2016).
     Clearance is mainly hepatic uptake and biliary excretion: 12-22% of 0.6
     mg/kg appears unchanged in urine, renal failure changes clearance little,
-    and cirrhosis enlarges the volumes 30-40% (Khuenl-Brady 1996). Obesity
+    and cirrhosis enlarges the volumes 30-40% (Khuenl-Brady and Sparr 1996). Obesity
     scaling follows ideal/adjusted body weight (Meyhoff 2009). The effect site
     is Kleijn's, without sevoflurane.
     """
@@ -1117,9 +1168,11 @@ class RocuroniumPK(MammillaryPK):
             "v2": 6.76 * size * math.exp(0.00613 * (age - 43.0)),
             "cl2": 0.279 * size**0.75,
         }
-        params = _scale_volumes(params, hepatic_vd_multiplier(patient, severe_multiplier=1.4))
-        # Rocuronium clearance in cirrhosis was unchanged in Khuenl-Brady 1996
-        # and Magorian 1995; scaling hepatic capacity here is a model assumption.
+        # Cirrhosis enlarges distribution volumes (Khuenl-Brady and Sparr 1996;
+        # Magorian 1995) and prolongs elimination and recovery with lower clearance
+        # (~28% in van Miert 1997); V1/V2 multipliers and hepatic scaling are calibrated.
+        params["v1"] *= hepatic_vd_multiplier(patient, severe_multiplier=1.18)
+        params["v2"] *= hepatic_vd_multiplier(patient, severe_multiplier=1.35)
         clearance_scale, renal_fraction = renal_capacity_scaling(
             patient, self.RENAL_FRACTION, hepatic_fraction=0.7
         )
@@ -1128,6 +1181,21 @@ class RocuroniumPK(MammillaryPK):
         # anesthetic cardiac output.
         super().__init__(
             ke0=0.134 * size**-0.25, renal_fraction=renal_fraction, **_NO_CO_COVARIATE, **params,
+        )
+
+    def update_hemodynamics(
+        self, v_ratio: float, co_ratio: float, renal_perfusion: float = 1.0,
+        blood_volume_l: float | None = None, temp_c: float = 37.0,
+        *, temp_met: float | None = None, temp_dist: float | None = None,
+    ) -> None:
+        # Extrapolated from vecuronium in Caldwell 2000: clearance falls 11.3%/°C
+        # during hypothermia (Q10 ~3.0), steeper than general hepatic Q10 = 2.0.
+        clamped_t = clamp(temp_c, 25.0, 38.5)
+        nmba_temp_met = 3.0 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
+        super().update_hemodynamics(
+            v_ratio, co_ratio, renal_perfusion,
+            blood_volume_l=blood_volume_l, temp_c=temp_c,
+            temp_met=nmba_temp_met, temp_dist=temp_dist,
         )
 
 
@@ -1182,7 +1250,7 @@ class EpinephrinePK(MammillaryPK):
     """Exogenous epinephrine, in ng/mL above the patient's endogenous baseline.
 
     Young-adult arterial clearance is calibrated between Esler 1995 and
-    Ensinger 1992, and its decline with age is from Esler 1995. Mixing volume
+    Ensinger 1992a, and its decline with age is from Esler 1995. Mixing volume
     and effect-site timing are calibrated against adult infusion and bolus data.
     """
 
@@ -1190,7 +1258,7 @@ class EpinephrinePK(MammillaryPK):
 
     def __init__(self, patient: Patient):
         lean_w = _lean_weight_kg(patient)
-        # Esler: 2.80 L/min (~40 mL/kg/min at 70 kg); Ensinger Table 2: 51 mL/kg/min.
+        # Esler: 2.80 L/min (~40 mL/kg/min at 70 kg); Ensinger 1992a Table 2: 51 mL/kg/min.
         # Keep linear per-kg scaling up to 70 kg (matching Takahashi 2002) and
         # allometric lean scaling above 70 kg to prevent supraphysiologic obesity CL.
         cl_mass = lean_w if lean_w <= 70.0 else 70.0 * (lean_w / 70.0) ** 0.75
@@ -1218,7 +1286,7 @@ class PhenylephrinePK(MammillaryPK):
 
 
 class VasopressinPK(MammillaryPK):
-    """DailyMed label: Vd 0.14 L/kg, CL 9-25 mL/min/kg (midpoint 17)."""
+    """DailyMed 2025 vasopressin label: Vd 0.14 L/kg, CL 9-25 mL/min/kg (midpoint 17)."""
 
     def __init__(self, patient: Patient):
         lean_w = _lean_weight_kg(patient)
@@ -1241,9 +1309,9 @@ class DobutaminePK(MammillaryPK):
 
 
 class MilrinonePK(MammillaryPK):
-    """Two-compartment IV milrinone PK: V1 0.155 L/kg, Vdss 0.45 L/kg, CL 0.13 L/kg/h
-    (Baim 1983, mean +/- SEM: peak 392 +/- 23 ng/mL at 5 min, 180 +/- 19 ng/mL at 30 min,
-    terminal t1/2 136 min; DailyMed label).
+    """Calibrated two-compartment IV milrinone PK (ng/mL) matching DailyMed 2026b
+    Vdss (0.45 L/kg) and CL (0.13 L/kg/h) and Baim 1983 bolus levels (mean +/- SEM:
+    392 +/- 23 ng/mL at 5 min, 180 +/- 19 ng/mL at 30 min; reported t1/2 136 min).
     """
 
     def __init__(self, patient: Patient):
@@ -1268,7 +1336,7 @@ class EsmololPK(MammillaryPK):
     Vc 0.867 L/kg, distribution and elimination t1/2 2.03 and 9.19 min, and
     k21/k12 2.66 give CL 258 mL/min/kg and Varea 3.42 L/kg. Blood esterases
     clear esmolol, so clearance is independent of cardiac output and organ
-    function, scaling with lean body mass in obesity (Ingrande 2010).
+    function, scaling with lean body mass in obesity.
     """
 
     def __init__(self, patient: Patient):
@@ -1281,10 +1349,11 @@ class EsmololPK(MammillaryPK):
 class LabetalolPK(MammillaryPK):
     """Two-compartment labetalol PK (concentrations in ng/mL).
 
-    Clearance falls from 19.4 mL/min/kg at age 32 to 13.9 at 67 (Abernethy
-    1987) and is mostly hepatic glucuronidation (Hafsa 2022). Distribution
-    t1/2 is about 2 min, so 0.5 mg/kg gives about 130 ng/mL at 10 min (Hafsa
-    2022), with terminal t1/2 about 3 h at age 32.
+    Clearance declines with age (19.4 mL/min/kg at age 32 to 13.9 at 67;
+    Abernethy 1987) and is mainly hepatic glucuronidation (organ-impairment
+    kinetics informed by Hafsa 2022). Calibrated two-compartment distribution
+    (t1/2 ~2 min, terminal t1/2 ~3 h at age 32) yields ~130 ng/mL 10 min after
+    0.5 mg/kg IV, matching the clinical profiles modeled in Hafsa 2022.
     """
 
     def __init__(self, patient: Patient):

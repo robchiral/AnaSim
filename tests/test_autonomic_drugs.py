@@ -242,7 +242,7 @@ def test_atropine_exceeds_glycopyrrolate_under_propofol_and_ephedrine_repeats_at
 
 
 def test_awake_hfref_milrinone_unloads_svr_and_raises_co(engine_factory, advance_time):
-    """Baim 1983: 50 mcg/kg load over 10 min + 0.5 mcg/kg/min in awake HFrEF raises CO and lowers SVR."""
+    """Label milrinone dosing (50 mcg/kg over 10 min + 0.5 mcg/kg/min; DailyMed 2026b) in awake HFrEF raises CO and lowers SVR (Baim 1983)."""
     engine = engine_factory(
         config=SimulationConfig(mode="awake", rng_seed=1), start=True,
         age=65, weight=75, height=172, sex="male", heart_failure="hfref",

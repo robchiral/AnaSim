@@ -395,3 +395,42 @@ test("blood gas H/L flags match displayed rounded values and strict upper bounds
   assert.equal(rowByName.get("Lactate").className, "abg-high");
   assert.equal(rowByName.get("Lactate").children[0].textContent, "H");
 });
+
+test("defibrillator sync mode auto-resets to unsynchronized after shock delivery", () => {
+  const pressed = new Map();
+  const modes = [false, true].map(value => ({
+    dataset: { value: String(value) },
+    disabled: false,
+    getAttribute(k) { return k === "aria-pressed" ? pressed.get(value) : null; },
+    setAttribute(k, v) { if (k === "aria-pressed") pressed.set(value, v); },
+  }));
+  const badge = { hidden: true };
+  const elements = new Map([
+    ["c-compressions", {}],
+    ["c-charge", { textContent: "" }],
+    ["c-shock", { disabled: false }],
+    ["c-shock-feedback", { hidden: true, textContent: "" }],
+    ["c-defibrillator-status", { textContent: "" }],
+    ["defib-sync-badge", badge],
+    ["c-sync", { querySelectorAll: () => modes }],
+  ]);
+  globalThis.document = { getElementById: id => elements.get(id) ?? null };
+  const controls = Object.create(Controls.prototype);
+  controls.bindResuscitation();
+  modes[1].onclick();
+  assert.equal(controls.synchronized, true);
+  assert.equal(badge.hidden, false);
+
+  controls.syncDefibrillator({ status: "waiting_for_r", synchronized: true, charge_remaining: 0, last_shock: null });
+  assert.equal(controls.synchronized, true);
+  controls.syncDefibrillator({
+    status: "idle",
+    synchronized: false,
+    charge_remaining: 0,
+    last_shock: { time: 12.5, text: "Synchronized shock 200 J delivered" },
+  });
+  assert.equal(controls.synchronized, false);
+  assert.equal(pressed.get(false), "true");
+  assert.equal(pressed.get(true), "false");
+  assert.equal(badge.hidden, true);
+});

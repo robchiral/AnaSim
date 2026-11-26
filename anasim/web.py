@@ -229,6 +229,7 @@ class WebSession:
         self._loop_previous: tuple[int | None, list[LoopPoint]] | None = None
         self._loop_new: list[tuple[int | None, LoopPoint]] = []
         self._loop_replay = False
+        self._loop_reset = False
         self._recordings_dir = recordings_dir or os.path.join(tempfile.gettempdir(), "anasim-recordings")
         self.retain_recordings = retain_recordings
         self._medication_history: deque[dict] = deque(maxlen=50)
@@ -458,18 +459,23 @@ class WebSession:
         }
 
     def _sample_trends(self) -> None:
-        state = self.engine.state
-        vitals = self._vitals()
-        arterial = self.engine.config.arterial_line_enabled
-        pressure = vitals["art"][2] if arterial else (
-            None if vitals["nibp"] is None else vitals["nibp"][2]
-        )
-        pressure_time = state.time if arterial else (None if vitals["nibp"] is None else state.nibp_timestamp)
+        engine = self.engine
+        s = engine.state
+        arterial = engine.config.arterial_line_enabled
+        if arterial:
+            pressure = _num(s.art_map, 1)
+            pressure_time: float | None = s.time
+        elif s.nibp_timestamp is None or s.nibp_measurement_failed:
+            pressure = None
+            pressure_time = None
+        else:
+            pressure = _num(s.nibp_map, 1)
+            pressure_time = s.nibp_timestamp
         sample = {
-            "time": _num(state.time, 3),
-            "hr": vitals["hr"],
-            "etco2": vitals["etco2"],
-            "bis": vitals["bis"],
+            "time": _num(s.time, 3),
+            "hr": None if engine.hemo.state.rhythm_type == RhythmType.VFIB else _num(s.display_hr, 1),
+            "etco2": _num(s.display_etco2, 1) if s.etco2_signal_valid else None,
+            "bis": _num(s.display_bis, 1),
             "map": pressure,
             "map_time": None if pressure_time is None else _num(pressure_time, 3),
         }
@@ -562,8 +568,32 @@ class WebSession:
             "flow": [_num(s.flow, 1) for s in samples],
         }
 
+    def _reset_loop(self) -> None:
+        """Clear retained spirometry loops on airway disconnect."""
+        had_loop = bool(
+            self._loop_previous is not None
+            or self._loop_current
+            or self._loop_breath is not None
+            or self._loop_pending
+            or self._loop_new
+        )
+        self._loop_previous = None
+        self._loop_current = []
+        self._loop_breath = None
+        self._loop_vent_breath = None
+        self._loop_has_exhaled = False
+        self._loop_pending = []
+        self._loop_new = []
+        if had_loop:
+            self._loop_reset = True
+
     def _collect_loop(self, samples) -> None:
         """Add points of the breath in progress; a new breath makes it the previous loop."""
+        if self.engine.state.airway_mode == AirwayType.NONE:
+            self._reset_loop()
+            if samples:
+                self._loop_sample = samples[-1]
+            return
         stride = max(1, round(LOOP_INTERVAL_S / self.engine.waveform_interval))
         for sample in samples:
             previous = self._loop_sample
@@ -641,6 +671,8 @@ class WebSession:
 
     def _take_loop(self) -> list:
         """Return new loop points as runs of (breath, paw, flow, volume); a replay resends both loops."""
+        reset = self._loop_reset
+        self._loop_reset = False
         if self._loop_replay:
             self._loop_replay = False
             runs = [self._loop_previous] if self._loop_previous else []
@@ -650,9 +682,9 @@ class WebSession:
         else:
             points = self._loop_new
         self._loop_new = []
-        out: list[dict] = []
+        out: list[dict] = [{"reset": True}] if reset else []
         for breath, (paw, flow, volume) in points:
-            if not out or out[-1]["breath"] != breath:
+            if not out or out[-1].get("breath") != breath:
                 out.append({"breath": breath, "paw": [], "flow": [], "volume": []})
             run = out[-1]
             run["paw"].append(paw)
@@ -701,6 +733,7 @@ class WebSession:
             "o2_flush": engine._o2_flush_remaining_s > 0.0,
             "circuit_fio2": _num(circuit.composition.fio2, 4),
             "vaporizer": engine.vaporizer.state.setting,
+            "vaporizer_level": round(engine.vaporizer.state.level, 1),
             "bag_mask": engine.bag_mask_active,
             "compressions": {"active": engine.hemo.compressions, "since": engine.compressions_started_at},
             "defibrillator": {
@@ -843,6 +876,8 @@ class WebSession:
         if self.case_run is not None and self.engine.state.airway_mode == AirwayType.ETT:
             self.case_run.record_transition("extubation")
         self.engine.set_airway_mode(mode)
+        if target == AirwayType.NONE:
+            self._reset_loop()
         if feedback is None and target == AirwayType.NONE and was_assisted:
             feedback = check_ventilation_withdrawal(self.engine)
         return self._clinical_result(feedback)
@@ -885,6 +920,9 @@ class WebSession:
 
     def _cmd_vaporizer(self, percent: float):
         self.engine.set_vaporizer(percent)
+
+    def _cmd_refill_vaporizer(self, level_ml: float = 250.0):
+        self.engine.refill_vaporizer(level_ml)
 
     # Bag-mask and the ventilator are mutually exclusive.
     def _cmd_bag_mask(self, active: bool):

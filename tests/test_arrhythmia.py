@@ -421,7 +421,7 @@ def test_antiarrhythmic_bolus_in_vf_needs_circulation_before_it_can_help_a_shock
 
 def test_sinus_bradycardia_chronotropy_extreme_tachycardia_and_afib_rvr_control(engine_factory, advance_time):
     """SINUS_BRADY responds to epinephrine; extreme tachycardia reduces diastolic filling
-    and CO; esmolol rate-controls AFib with RVR while raising SV and CO (Clark 1997, Hardman 1998).
+    and CO; esmolol slows AFib with RVR, improving filling, SV, and CO (AFib filling mechanics from Clark 1997 and Hardman 1998).
     """
     brady = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     assert brady.hemo._compute_state(hr_base=210.0).co < brady.hemo._compute_state(hr_base=120.0).co

@@ -12,13 +12,13 @@ class LungAeration:
 
     Pressure and timing follow Rothen 1993/1999 and Bates and Irvin 2002.
     BMI shifts, perfusion, and timing away from 40 cmH2O are approximations.
-    Most FRC loss reflects diaphragm displacement (Hedenstierna 2015).
+    Most FRC loss reflects diaphragm displacement (Hedenstierna and Edmark 2015).
     After a preoxygenated induction without PEEP, shunt averages about 5%
     (Gunnarsson 1991 4.8%, Tokics 1996 5.0%, Rothen 1995 6.5%). Atelectasis
     persists early after emergence (Benoît 2002) and clears over hours to days
     of awake unintubated breathing (Strandberg 1986; Eichenberger 2002). Lung
-    water above 3 mL/kg floods alveoli. PEEP 13 vs 3 cmH2O reduced flooding by
-    about 70% (Malo 1984).
+    water above 3 mL/kg floods alveoli. PEEP 13 vs 3 cmH2O reduced shunt and
+    alveolar flooding by about 70% in canine pulmonary edema (Malo 1984).
     """
 
     INTERVAL = 0.1  # s; independent of the engine's outer step
@@ -69,7 +69,7 @@ class LungAeration:
         self.frc = self.reference_volume * recruited
         self.reference_compliance = patient.respiratory_compliance()
         self.opening_midpoint = 31.0 + 0.35 * (patient.bmi - 24.0)
-        # Closing pressure rises with BMI alongside airway opening pressure (Pelosi 1998; Hedenstierna 2015).
+        # Closing pressure rises with BMI alongside airway opening pressure (Hedenstierna and Edmark 2015).
         self.closing_pressure = 5.0 + 0.30 * max(0.0, patient.bmi - 25.0)
         bmi_factor = clamp01((patient.bmi - 30.0) / 20.0)
         self.min_recruited = self.MIN_RECRUITED - 0.22 * bmi_factor
@@ -95,9 +95,11 @@ class LungAeration:
         # Atelectatic and flooded units retain perfusion; closed-airway O2 absorption
         # collapse adds shunt once gas volume falls past closing capacity (~55% of FRC).
         base_shunt = self.atelectasis_shunt * self.atelectatic + (1.0 - self.atelectatic) * self.flooded
-        eff_collapse = clamp01((clamp01(self.collapse_deficit) - 0.36) / 0.54)
-        collapse_shunt = 0.55 * (eff_collapse ** 1.5)
-        return min(0.70, base_shunt + (1.0 - base_shunt) * collapse_shunt)
+        if self.collapse_deficit > 0.36:
+            eff_collapse = clamp01((clamp01(self.collapse_deficit) - 0.36) / 0.54)
+            collapse_shunt = 0.55 * (eff_collapse ** 1.5)
+            return min(0.70, base_shunt + (1.0 - base_shunt) * collapse_shunt)
+        return min(0.70, base_shunt)
 
     def advance(self, dt: float, pressure_area: float) -> bool:
         """Accumulate distending pressure; change aeration at fixed physical times."""
@@ -111,8 +113,7 @@ class LungAeration:
         opening = self.OPENING_RATE if target > self.recruited else 0.0
         awake_active = self.spontaneous_breathing and self.glottic_intact
         # Postoperative FRC recovery tracks site- and BMI-dependent atelectasis
-        # clearance (Wahba 1975; Putensen-Himmer 1992; Eichenberger 2002) rather
-        # than rebounding in <1 min across upper-abdominal or morbidly obese lungs.
+        # clearance (Wahba 1975; Putensen-Himmer 1992; Eichenberger 2002).
         spontaneous_cap = max(self.recruited, 1.0 - self.atelectatic)
         if awake_active and self.recruited < spontaneous_cap - 1e-12:
             spont_base_rate = (
@@ -139,20 +140,28 @@ class LungAeration:
         awake_reopening = self.awake_clearance_rate * (1.0 - self.unconscious) if awake_active else 0.0
         persistent_rate = self.persistent_clearance_rate * (1.0 - self.unconscious) if awake_active else 0.0
         closed_max = (1.0 - self.min_recruited) * self.unconscious
-        raw_absorption = self.ABSORPTION_RATE * math.exp(-self.INERT_GAS_PROTECTION * self.inert_fraction)
-        raw_absorption *= max(0.0, self.closing_pressure - pressure) / self.closing_pressure
-        absorption = raw_absorption if self.atelectatic < closed_max else 0.0
-        absorption_p = raw_absorption if self.persistent_atelectatic < s * closed_max else 0.0
+        if pressure < self.closing_pressure and closed_max > 0.0:
+            raw_absorption = (
+                self.ABSORPTION_RATE
+                * math.exp(-self.INERT_GAS_PROTECTION * self.inert_fraction)
+                * (self.closing_pressure - pressure) / self.closing_pressure
+            )
+            absorption = raw_absorption if self.atelectatic < closed_max else 0.0
+            absorption_p = raw_absorption if self.persistent_atelectatic < s * closed_max else 0.0
+        else:
+            absorption = absorption_p = 0.0
 
         p0 = min(self.persistent_atelectatic, self.atelectatic)
         p_rate = reopening_p + persistent_rate + absorption_p
         if p_rate > 0.0:
             p_eq = (reopening_p * s * closed_target + absorption_p * s * closed_max) / p_rate
             dp0 = p0 - p_eq
-            p_new = p_eq + dp0 * math.exp(-p_rate * self.elapsed)
+            exp_pers = math.exp(-p_rate * self.elapsed)
+            p_new = p_eq + dp0 * exp_pers
         else:
             p_eq = p0
             dp0 = 0.0
+            exp_pers = 1.0
             p_new = p0
 
         total = reopening + awake_reopening + absorption
@@ -160,7 +169,6 @@ class LungAeration:
             exp_total = math.exp(-total * self.elapsed)
             eq_const = (reopening * closed_target + absorption * closed_max + awake_reopening * p_eq) / total
             if awake_reopening > 0.0 and dp0 != 0.0:
-                exp_pers = math.exp(-p_rate * self.elapsed)
                 if abs(total - p_rate) > 1e-12:
                     pers_term = dp0 * (awake_reopening / (total - p_rate)) * (exp_pers - exp_total)
                 else:
@@ -169,11 +177,15 @@ class LungAeration:
                 pers_term = 0.0
             self.atelectatic = eq_const + (self.atelectatic - eq_const) * exp_total + pers_term
         self.persistent_atelectatic = max(0.0, min(p_new, self.atelectatic))
-        flood = min(self.FLOOD_MAX, self.FLOOD_SLOPE * max(0.0, self.lung_water - self.FLOOD_ONSET))
-        low, high = self.FLOOD_RELIEF_PRESSURES
-        relief = self.FLOOD_RELIEF_MAX * clamp01((pressure - low) / (high - low))
-        flood *= 1.0 - relief
-        self.flooded = flood + (self.flooded - flood) * math.exp(-self.FLOOD_RATE * self.elapsed)
+        if self.lung_water > self.FLOOD_ONSET:
+            flood = min(self.FLOOD_MAX, self.FLOOD_SLOPE * (self.lung_water - self.FLOOD_ONSET))
+            low, high = self.FLOOD_RELIEF_PRESSURES
+            relief = self.FLOOD_RELIEF_MAX * clamp01((pressure - low) / (high - low))
+            flood *= 1.0 - relief
+        else:
+            flood = 0.0
+        if flood != self.flooded:
+            self.flooded = flood + (self.flooded - flood) * math.exp(-self.FLOOD_RATE * self.elapsed)
         self.elapsed = self.pressure_area = 0.0
         return True
 

@@ -68,7 +68,7 @@ def test_limited_coronary_reserve_causes_reversible_ischemia_during_normoxic_tac
     assert anemic.state.myocardial_ischemia > 0.15
 
 
-def test_heart_failure_profiles_change_output_afterload_response_and_fluid_tolerance():
+def test_heart_failure_profiles_change_output_afterload_response_and_fluid_tolerance(engine_factory):
     output, pressure, water, pressor_output = {}, {}, {}, {}
     for failure in ("none", "hfref", "hfpef"):
         engine = _engine(heart_failure=failure)
@@ -91,10 +91,11 @@ def test_heart_failure_profiles_change_output_afterload_response_and_fluid_toler
     assert water["none"] == 0
     assert water["hfref"] > water["hfpef"] > 0.1
 
-    overload = SimulationEngine(
-        Patient(heart_failure="hfref"), SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1)
+    overload = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1),
+        heart_failure="hfref",
+        start=True,
     )
-    overload.start()
     overload.set_fgf(0.2, 1.8)
     for _ in range(60):
         overload.step(1.0)
@@ -254,10 +255,13 @@ def test_abdominal_surgery_keeps_airway_closure_after_emergence(engine_factory):
     assert gradients["other"] < gradients["lower_abdominal"] < gradients["upper_abdominal"]
 
 
-def test_copd_startup_calculates_tidal_volume_at_the_limited_rate():
-    engine = SimulationEngine(Patient(copd_severity=1, baseline_rr=30),
-                              SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1))
-    engine.start()
+def test_copd_startup_calculates_tidal_volume_at_the_limited_rate(engine_factory):
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1),
+        copd_severity=1,
+        baseline_rr=30,
+        start=True,
+    )
     _advance(engine, 120)
     assert engine.vent.settings.rr == 18
     assert 38 < engine.state.pa_co2 < 42
@@ -300,11 +304,14 @@ def test_severe_obesity_reduces_respiratory_reserve_at_the_same_height():
 
 
 @pytest.mark.parametrize("technique", ["tiva", "balanced"])
-def test_combined_conditions_start_and_run_with_finite_drug_and_physiology_outputs(technique):
-    patient = Patient(sex="female", weight=140, gestational_age_weeks=36,
-                      heart_failure="hfpef", copd_severity=0.65, coronary_flow_reserve=2)
-    engine = SimulationEngine(patient, SimulationConfig(mode="steady_state", maint_type=technique, dt=0.5, rng_seed=1))
-    engine.start()
+def test_combined_conditions_start_and_run_with_finite_drug_and_physiology_outputs(technique, engine_factory):
+    engine = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type=technique, dt=0.5, rng_seed=1),
+        sex="female", weight=140, gestational_age_weeks=36,
+        heart_failure="hfpef", copd_severity=0.65, coronary_flow_reserve=2,
+        start=True,
+    )
+    patient = engine.patient
     _advance(engine, 30)
     state = engine.state
     assert engine.vent.settings.tv <= 8.0 * patient.predicted_body_weight()
@@ -373,8 +380,8 @@ def test_hypertensive_vs_normotensive_propofol_fentanyl_intubation_matches_sawan
 def test_ketamine_induction_in_atherosclerotic_disease_and_labetalol_blunting():
     """Bålfors 1983 (control arm, n = 8 atherosclerotic disease without
     droperidol): ketamine 2 mg/kg over 1 min on FiO2 0.25 raises MAP (103 ->
-    146 +/- 25.5 SD) and HR (73 -> 84 +/- 11.3 SD) at 2-3 min without ischemia,
-    and combined alpha/beta blockade with labetalol blunts both surges.
+    146 +/- 25.5 SD) and HR (73 -> 84 +/- 11.3 SD) at 2-3 min without ischemia.
+    Combined alpha/beta blockade with labetalol blunts both surges in AnaSim.
     """
     control = SimulationEngine(
         Patient(age=57, weight=75, height=175, sex="male", baseline_map=103.0,
@@ -583,7 +590,7 @@ def test_hfref_anaphylaxis_unloading_cap_inodilator_lap_and_propofol_low_co(engi
 
 
 def test_pregnancy_mac_v1_expansion_and_esrd_clearance_propagation():
-    """Term pregnancy lowers MAC ~28% and expands central V1 (Gin & Chan 1994; Dallmann 2017);
+    """Term pregnancy lowers MAC ~28% (early-pregnancy isoflurane reduction in Gin & Chan 1994, applied through term) and expands central V1 (Dallmann 2017);
     ESRD creatinine_clearance_ml_min propagates to renal_function and renally cleared drugs."""
     nonpreg = Patient(age=30, weight=65, height=165, sex="female", gestational_age_weeks=0.0)
     preg = Patient(age=30, weight=65, height=165, sex="female", gestational_age_weeks=38.0)

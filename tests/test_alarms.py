@@ -77,7 +77,7 @@ def test_pregnancy_adapts_low_etco2_alarm_limit(engine_factory, advance_time):
 
 
 def test_ppeak_temperature_lethal_rhythm_alarms_and_st_blanking(engine_factory, advance_time):
-    """Default VCV Ppeak alarms at 40 cmH2O limit and clears on mode switch; low bag Pmax does not false-alarm;
+    """Default VCV Ppeak alarms at 40 cmH2O limit and clears on mode switch; low bag APL does not false-alarm;
     O2Supply, Temp, PEA Arrest, and lethal rhythms alarm; ST blanks in VF/asystole."""
     engine = engine_factory(config=SimulationConfig(mode="steady_state", rng_seed=1), start=True)
     engine.set_oxygen_supply_connected(False)

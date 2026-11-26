@@ -5,8 +5,8 @@ from dataclasses import replace
 
 from anasim.core.action_log import ACTION_DRUG_BOLUS, ACTION_EVENT_START
 from anasim.core.monitors import display_int
-from anasim.core.utils import clamp, hill_function
 from anasim.machine.ventilator import VentSettings
+from anasim.physiology.malignant_hyperthermia import dantrolene_inhibition
 
 from .base import (
     CaseEvent,
@@ -56,9 +56,7 @@ def _require_controlled(engine) -> tuple[bool, str]:
     if met:
         return True, ""
     sux_cp = engine.pk["succinylcholine"].state.c1
-    active_sevo = max(0.0, engine.pk_sevo.state.mac - 0.25)
-    trigger_drive = clamp(active_sevo / 0.55, 0.0, 2.5) + clamp(sux_cp / 0.4, 0.0, 2.0)
-    inhibition = hill_function(engine.state.dantrolene_ce, 1.5 * (1.0 + 4.5 * trigger_drive), 3.0)
+    inhibition = dantrolene_inhibition(engine.pk_sevo.state.mac, sux_cp, engine.state.dantrolene_ce)
     doses = engine.actions.since_event("malignant_hyperthermia", ACTION_DRUG_BOLUS, labels=("dantrolene",))
     given = sum(dose.amount for dose in doses)
     recent_full_dose = (
