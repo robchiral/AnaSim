@@ -780,17 +780,79 @@
           </div>
           <p id="c-shock-feedback" class="action-feedback" role="status" hidden></p>
         </fieldset>
+
+        <details class="event-section ecmo-section" id="ecmo-module">
+          <summary><span>Extracorporeal support</span><output id="ecmo-summary" hidden></output></summary>
+          <div class="ecmo-controls">
+            <div id="ecmo-start-panel" class="fluid-grid">
+              <button type="button" class="btn fluid-key" data-ecmo-start="vv_ecmo"><span>VV ECMO</span><small>Fem-jug</small></button>
+              <button type="button" class="btn fluid-key" data-ecmo-start="va_ecmo" data-cannulation="peripheral_fem"><span>VA ECMO</span><small>Femoral</small></button>
+              <button type="button" class="btn fluid-key" data-ecmo-start="va_ecmo" data-cannulation="central"><span>VA ECMO</span><small>Central</small></button>
+              <button type="button" class="btn fluid-key" data-ecmo-start="cpb"><span>CPB</span><small>Open reservoir</small></button>
+            </div>
+            <div id="ecmo-active-panel" hidden>
+              <p id="ecmo-readout" class="ecmo-readout"></p>
+              <div class="vent-settings" id="c-ecmo-settings">
+                <div class="control-setting"><div class="control-setting-head"><label for="c-ecmo-flow">Blood flow</label><span>L/min</span></div><input id="c-ecmo-flow" type="number" min="0" max="8" step="0.25"></div>
+                <div class="control-setting"><div class="control-setting-head"><label for="c-ecmo-sweep">Sweep gas</label><span>L/min</span></div><input id="c-ecmo-sweep" type="number" min="0" max="16" step="0.5"></div>
+                <div class="control-setting"><div class="control-setting-head"><label for="c-ecmo-fio2">Sweep FiO₂</label><span>%</span></div><input id="c-ecmo-fio2" type="number" min="21" max="100" step="5"></div>
+                <div class="control-setting"><div class="control-setting-head"><label for="c-ecmo-water">Water target</label><span>°C</span></div><input id="c-ecmo-water" type="number" min="18" max="38.5" step="0.5"></div>
+                <div class="control-setting" id="ecmo-lv-vent-row" hidden><div class="control-setting-head"><label for="c-ecmo-lv-vent">LV vent</label><span>L/min</span></div><input id="c-ecmo-lv-vent" type="number" min="0" max="3" step="0.25"></div>
+                <div class="control-setting" id="ecmo-sevo-row" hidden><div class="control-setting-head"><label for="c-ecmo-sevo">Oxy sevo</label><span>%</span></div><input id="c-ecmo-sevo" type="number" min="0" max="8" step="0.2"></div>
+                <div class="control-setting" id="ecmo-venous-row" hidden><div class="control-setting-head"><label for="c-ecmo-venous-clamp">Venous line</label><span>% open</span></div><input id="c-ecmo-venous-clamp" type="number" min="0" max="100" step="10"></div>
+                <div class="control-setting" id="ecmo-bg-row" hidden><div class="control-setting-head"><label for="c-ecmo-bg-strategy">Blood gas</label></div><select id="c-ecmo-bg-strategy"><option value="alpha_stat">Alpha-stat</option><option value="ph_stat">pH-stat</option></select></div>
+              </div>
+              <div class="ecmo-actions">
+                <button type="button" class="btn toggle full" id="c-ecmo-hc" aria-pressed="true">Heater-cooler: On</button>
+                <div id="ecmo-cpb-controls" class="ecmo-cpb-controls" hidden>
+                  <button type="button" class="btn toggle full" id="c-cpb-cross-clamp" aria-pressed="false">Apply aortic cross-clamp</button>
+                  <button type="button" class="btn toggle full" id="c-cpb-cardioplegia" aria-pressed="false">Start cardioplegia</button>
+                  <button type="button" class="btn toggle full" id="c-cpb-alarm-mode" aria-pressed="true">Bypass alarm mode: On</button>
+                  <div class="fluid-grid">
+                    <button type="button" class="btn fluid-key" data-reservoir-fluid="crystalloid" data-volume="500"><span>Reservoir LR</span><small>+500 mL</small></button>
+                    <button type="button" class="btn fluid-key" data-reservoir-fluid="blood" data-volume="300"><span>Reservoir PRBC</span><small>+300 mL</small></button>
+                  </div>
+                  <p id="ecmo-fluid-feedback" class="action-feedback" role="status" hidden></p>
+                </div>
+                <button type="button" class="btn toggle t-danger full" id="c-ecmo-stop">Stop support</button>
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="tab-panel" id="panel-labs" data-panel="Labs" role="tabpanel" aria-labelledby="tab-labs" hidden>
         <section class="action-section" aria-labelledby="abg-title">
           <h2 id="abg-title">Arterial blood gas</h2>
+          <div class="control-setting" id="c-abg-site-row" hidden>
+            <div class="control-setting-head"><label for="c-abg-site">Sample site</label></div>
+            <select id="c-abg-site">
+              <option value="arterial">Arterial (default)</option>
+              <option value="right_radial">Right radial (pre-ductal)</option>
+              <option value="femoral">Femoral (lower body)</option>
+              <option value="pre_oxy">Pre-oxygenator (venous)</option>
+              <option value="post_oxy">Post-oxygenator</option>
+            </select>
+          </div>
           <button type="button" class="btn outlined" id="c-abg">Draw sample</button>
           <p id="abg-pending" class="action-feedback" hidden></p>
           <div id="abg-results" class="abg-results" hidden>
             <table>
               <caption>37 °C · H/L outside adult reference range.</caption>
               <thead><tr><th scope="col">Analyte</th><th scope="col">Ref</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="action-section" aria-labelledby="act-title">
+          <h2 id="act-title">Activated clotting time</h2>
+          <button type="button" class="btn outlined" id="c-act">Measure ACT</button>
+          <p id="act-pending" class="action-feedback" hidden></p>
+          <div id="act-results" class="abg-results" hidden>
+            <table>
+              <caption>Baseline 110–130 s · ECMO 180–220 s · CPB ≥480 s.</caption>
+              <thead><tr><th scope="col">Drawn</th><th scope="col">ACT (s)</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -814,6 +876,7 @@
             <label class="inline">Cardiac rhythm <select id="c-rhythm"></select></label>
             <button type="button" class="btn toggle t-warning full" id="c-anaphylaxis" aria-pressed="false">Start anaphylaxis</button>
             <button type="button" class="btn toggle t-danger full" id="c-sepsis" aria-pressed="false">Start sepsis</button>
+            <button type="button" class="btn toggle t-danger full" id="c-protamine-reaction" aria-pressed="false">Start protamine reaction</button>
           </div>
         </details>
 
@@ -831,6 +894,7 @@
             <div class="vent-settings">
               <div class="control-setting"><div class="control-setting-head"><label for="c-obstruction">Obstruction</label><span>%</span></div><input id="c-obstruction" type="number" min="0" max="100" step="5"></div>
               <div class="control-setting"><div class="control-setting-head"><label for="c-bronchospasm">Bronchospasm</label><span>%</span></div><input id="c-bronchospasm" type="number" min="0" max="100" step="5"></div>
+              <div class="control-setting"><div class="control-setting-head"><label for="c-ards-shunt">ARDS shunt</label><span>%</span></div><input id="c-ards-shunt" type="number" min="0" max="90" step="5"></div>
             </div>
             <label class="choice"><input type="checkbox" id="c-auto-laryngo" checked> Automatic laryngospasm</label>
             <p class="dim small" id="c-laryngo">Laryngospasm: none</p>

@@ -40,3 +40,9 @@ class HemoState:
     cpr_perfusion_map: float = 0.0
     # Right atrial pressure, or mean systemic filling pressure without flow.
     venous_pressure: float = 0.0
+    # Separated flows for parallel extracorporeal support (VA ECMO, CPB):
+    # pulmonary_flow crosses the native lungs; pump_flow is extracorporeal
+    # arterial return; co (= systemic_flow) is total systemic perfusion.
+    pulmonary_flow: float = 5.25
+    pump_flow: float = 0.0
+    nonpulsatile_map: float = 0.0

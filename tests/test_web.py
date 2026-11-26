@@ -659,3 +659,117 @@ def test_disconnect_emits_loop_reset_and_vaporizer_refill_round_trips():
     assert session.snapshot()["controls"]["vaporizer_level"] == pytest.approx(12.5)
     cmd(session, "refill_vaporizer")
     assert session.snapshot()["controls"]["vaporizer_level"] == pytest.approx(250.0)
+
+
+def test_extracorporeal_commands_and_multisite_blood_gas_round_trip():
+    """VV ECMO, VA ECMO, CPB controls, ARDS shunt, and multi-site blood gases work via JSON commands."""
+    session = WebSession({**PATIENT, "mode": "steady_state", "arterial_line_enabled": True})
+    cmd(session, "run", running=True)
+    snap0 = parse(session.advance(0.0))
+    assert snap0["controls"]["extracorporeal"]["active"] is False
+    assert snap0["controls"]["extracorporeal"]["mode"] == "none"
+
+    cmd(session, "ards_shunt", percent=55)
+    assert parse(session.advance(0.0))["controls"]["ards_shunt"] == pytest.approx(55.0)
+
+    # Start peripheral femoral VA ECMO and verify site-specific ABGs
+    cmd(
+        session,
+        "extracorporeal_start",
+        mode="va_ecmo",
+        blood_flow=3.5,
+        sweep_gas=4.0,
+        cannulation="peripheral_fem",
+    )
+    run_seconds(session, 15)
+    ec_va = parse(session.advance(0.0))["controls"]["extracorporeal"]
+    assert ec_va["active"] is True
+    assert ec_va["mode"] == "va_ecmo"
+    assert ec_va["cannulation"] == "peripheral_fem"
+    assert ec_va["flow"] == pytest.approx(3.5, abs=0.05)
+    assert 10.0 <= ec_va["pre_so2"] <= 100.0
+
+    abg_rad = cmd(session, "blood_gas", site="right_radial")["blood_gas"]
+    abg_fem = cmd(session, "blood_gas", site="femoral")["blood_gas"]
+    abg_pre = cmd(session, "blood_gas", site="pre_oxy")["blood_gas"]
+    assert abg_rad["site"] == "right_radial"
+    assert abg_fem["site"] == "femoral"
+    assert abg_pre["site"] == "pre_oxy"
+    assert abg_fem["pao2"] > abg_rad["pao2"]
+    assert 15.0 <= abg_pre["hco3"] <= 32.0
+
+    # Switch to CPB, test cross-clamp, reservoir fluid, and clean stop
+    cmd(session, "extracorporeal_start", mode="cpb", blood_flow=4.5, sweep_gas=3.0)
+    cmd(session, "extracorporeal_settings", cross_clamp=True, cardioplegia=True, sweep_sevo=1.5, blood_gas_strategy="ph_stat")
+    run_seconds(session, 10)
+    snap_cpb = parse(session.advance(0.0))
+    ec_cpb = snap_cpb["controls"]["extracorporeal"]
+    assert ec_cpb["mode"] == "cpb"
+    assert ec_cpb["cross_clamp"] is True
+    assert ec_cpb["cardioplegia"] is True
+    assert ec_cpb["sevo"] == pytest.approx(1.5)
+    assert ec_cpb["blood_gas_strategy"] == "ph_stat"
+    assert snap_cpb["vitals"]["art"][0] is None and snap_cpb["vitals"]["art"][2] > 40.0
+
+    res_before = ec_cpb["reservoir_ml"]
+    assert "upper_sao2" not in ec_cpb and "lower_sao2" not in ec_cpb
+    receipt = cmd(session, "cpb_reservoir_fluid", volume_ml=500, kind="crystalloid")
+    assert "CPB reservoir" in receipt["fluid"]["text"]
+    assert parse(session.advance(0.0))["controls"]["extracorporeal"]["reservoir_ml"] > res_before + 350.0
+
+    # Reservoir cap reports actual added mL and full message when reservoir is already at max
+    session.engine.extracorporeal.state.reservoir_volume_ml = session.engine.extracorporeal.config.cpb_reservoir_max_ml - 100.0
+    partial = cmd(session, "cpb_reservoir_fluid", volume_ml=500, kind="crystalloid")
+    assert "100 mL" in partial["fluid"]["text"]
+    full = cmd(session, "cpb_reservoir_fluid", volume_ml=500, kind="crystalloid")
+    assert "full" in full["fluid"]["text"].lower()
+
+    with pytest.raises(ValueError, match="Unknown extracorporeal"):
+        cmd(session, "extracorporeal_settings", unknown_field=1)
+    with pytest.raises(ValueError, match="Unknown extracorporeal mode"):
+        cmd(session, "extracorporeal_start", mode="impella")
+
+    cmd(session, "extracorporeal_stop", reinfuse=True)
+    assert parse(session.advance(0.0))["controls"]["extracorporeal"]["active"] is False
+
+
+def test_heparin_protamine_act_and_bypass_warnings_round_trip():
+    """Heparin, protamine, ACT measurement, protamine reaction event, and CPB safety warnings work via JSON."""
+    # Starting CPB without heparin emits non-blocking low-ACT warning, cleared by starting VV ECMO
+    unheparinized = WebSession({**PATIENT, "mode": "steady_state", "arterial_line_enabled": True})
+    cmd(unheparinized, "run", running=True)
+    act0 = cmd(unheparinized, "act")["act"]
+    assert act0["act_s"] == pytest.approx(120.0, abs=1.0)
+    assert act0["ready_at"] == pytest.approx(act0["drawn_at"] + 60.0)
+    cpb_res = cmd(unheparinized, "extracorporeal_start", mode="cpb", blood_flow=4.5, sweep_gas=3.0)
+    assert cpb_res["feedback"]["code"] == "cpb_low_act"
+    vv_res = cmd(unheparinized, "extracorporeal_start", mode="vv_ecmo", blood_flow=4.0, sweep_gas=4.0)
+    assert vv_res == {"feedback": None}
+    assert parse(unheparinized.advance(0.0)).get("feedback") is None
+
+    # Full heparinization -> ACT >= 480 s -> CPB start clears warning
+    session = WebSession({**PATIENT, "mode": "steady_state", "arterial_line_enabled": True})
+    cmd(session, "run", running=True)
+    cmd(session, "drug_bolus", key="heparin", amount=21000)
+    run_seconds(session, 20)
+    assert cmd(session, "act")["act"]["act_s"] >= 480.0
+    cpb_ok = cmd(session, "extracorporeal_start", mode="cpb", blood_flow=4.5, sweep_gas=3.0)
+    assert cpb_ok is None
+
+    # Giving protamine during active CPB emits protamine_on_bypass warning
+    prot_warn = cmd(session, "drug_bolus", key="protamine", amount=50)
+    assert prot_warn["feedback"]["code"] == "protamine_on_bypass"
+    cmd(session, "extracorporeal_stop", reinfuse=True)
+
+    # Slow protamine reversal normalizes ACT <= 150 s
+    cmd(session, "drug_rate", key="protamine", rate=25)
+    run_seconds(session, 420, tick_s=5.0)
+    cmd(session, "drug_rate", key="protamine", rate=0)
+    run_seconds(session, 60, tick_s=5.0)
+    assert cmd(session, "act")["act"]["act_s"] <= 150.0
+
+    # Protamine reaction event toggle
+    cmd(session, "protamine_reaction", active=True)
+    assert parse(session.advance(0.0))["controls"]["protamine_reaction"] is True
+    cmd(session, "protamine_reaction", active=False)
+    assert parse(session.advance(0.0))["controls"]["protamine_reaction"] is False

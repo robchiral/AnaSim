@@ -55,6 +55,7 @@ class CerebralModel:
         self.co2_narcosis = 0.0
         self.co2_respiratory_depression = 0.0
         self.hypercapnic_coma_s = 0.0
+        self.last_cbf_ratio = 1.0
 
     def step(
         self,
@@ -71,6 +72,7 @@ class CerebralModel:
         anesthetic_depth: float = 0.0,
         metabolic_stress: float = 0.0,
         volatile_luxury: float = 0.0,
+        ph_stat: bool = False,
     ) -> None:
         if dt <= 0.0:
             return
@@ -108,14 +110,28 @@ class CerebralModel:
         if effective_paco2 >= 40.0:
             cbf = min(2.0, base_cbf + 0.5 * resting_cbf * clamp01((effective_paco2 - 40.0) / 30.0))
             supply = pressure * min(resting_cbf, cbf * oxygen)
+            cbf_actual = pressure * cbf
         else:
             hypocapnia = clamp01((40.0 - effective_paco2) / 20.0)
             cbf = base_cbf * (1.0 - 0.38 * hypocapnia)
             supply = min(pressure * min(resting_cbf, base_cbf * oxygen), cbf * oxygen)
+            cbf_actual = min(pressure * base_cbf, cbf)
+        if ph_stat and temp_c < 36.0:
+            # Murkin 1987: hypothermic pH-stat CO2 addition (~26-27 °C) uncouples CBF
+            # from CMRO2 (~1.5-2.2x higher CBF) and makes CBF pressure-passive.
+            hypo_blend = clamp01((36.0 - temp_c) / 6.0)
+            pco2_excess = clamp01((max(10.0, pa_co2) - 40.0) / 20.0)
+            dilated_cbf = cbf * (1.0 + 1.15 * hypo_blend * (0.4 + 0.6 * pco2_excess))
+            passive_pressure = clamp((cpp - 5.0) / 70.0, 0.0, 1.5)
+            eff_pressure = pressure + hypo_blend * (passive_pressure - pressure)
+            cbf_actual = eff_pressure * dilated_cbf
+            supply = min(cbf_actual * oxygen, 2.5)
+        self.last_cbf_ratio = cbf_actual
         if cpr_cap is not None:
             # Passive CPR flow ceiling is referenced to normothermic awake resting CBF
             # (1.0), so hypothermic CMRO2 reduction still protects oxygen balance.
             supply = min(supply, cpr_cap * oxygen)
+            self.last_cbf_ratio = min(self.last_cbf_ratio, cpr_cap)
 
         supply_ratio = min(1.0, supply / cmro2) if supply > 0.0 else 0.0
         if supply_ratio != self.tissue_oxygen:

@@ -23,6 +23,7 @@ class BloodGasResult:
     sao2: float  # %
     hb: float  # g/dL
     fio2: float  # Inspired O2 fraction at the draw.
+    site: str = "arterial"  # Sample site: arterial/right_radial, femoral, pre_oxy, post_oxy.
 
     @property
     def ready_at(self) -> float:

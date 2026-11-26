@@ -318,12 +318,17 @@ def step_cardiac_monitors(
                 )
         else:
             pulse_sample = cardiac_sample
+            arterial_static = (
+                hemo_state.nonpulsatile_map
+                if hemo_state.pump_flow > 0.0 and (hemo_state.sv <= 0.0 or not cardiac_sample.organized)
+                else hemo_state.venous_pressure
+            )
             arterial_sample = art_waveform.step(
                 cardiac_sample,
                 hemo_state.map,
                 hemo_state.sv,
                 dt=substep_dt,
-                static_pressure=hemo_state.venous_pressure,
+                static_pressure=arterial_static,
                 pulse_pressure_factor=hemo_state.pulse_pressure_factor,
             )
         art_line.advance(
@@ -393,7 +398,14 @@ def step_monitors(
     substep_dt = dt / substeps
     loc_val = loss_of_response(engine)
     engine._tol_current = stimulus_tolerance(engine)
-    cardiac_sample, cardiac_waves = step_cardiac_monitors(engine, dt, hemo_state, state.sao2)
+    # On peripheral VA ECMO, standard pre-ductal (right-hand/forehead) pulse oximetry
+    # monitors upper-body oxygenation so Harlequin desaturation is detected immediately.
+    spo2_sao2 = (
+        engine.extracorporeal.state.upper_body_sao2
+        if engine.extracorporeal.is_arterial_support
+        else state.sao2
+    )
+    cardiac_sample, cardiac_waves = step_cardiac_monitors(engine, dt, hemo_state, spo2_sao2)
     connected = state.airway_mode != AirwayType.NONE
     sealed = circuit_connected(engine)
     seal_scale = mask_seal_factor(engine)
@@ -468,6 +480,7 @@ def step_monitors(
         maintaining = engine._bis_anesthetized and (
             engine.disturbance_active
             or engine.vaporizer.state.is_on
+            or (engine.extracorporeal.is_active and engine.extracorporeal.state.sweep_sevo_percent > 0.0)
             or engine.circuit.fgf_n2o > 0.0
             or any(
                 engine.infusion_rates.get(k, 0.0) > 0.0 or (k in engine.tci and engine.tci[k].target > 0.0)
@@ -522,34 +535,38 @@ def step_monitors(
         and ppeak_val >= ppeak_limit
     )
     ppeak_alarm = ppeak_limit + 1.0 if (vent_pressure_alarm or bag_pressure_alarm) else ppeak_val
+    bypass_silence = engine.extracorporeal.is_arterial_support and engine.extracorporeal.state.bypass_alarm_mode
     state.alarms = engine.alarms.update(
         {
             "BIS": bis_alarm,
             "MAP": map_alarm,
-            "HR": display_int(state.display_hr),
-            "EtCO2": etco2_alarm,
-            "RR": display_int(state.rr) if not vent.is_on else None,
+            "HR": None if bypass_silence else display_int(state.display_hr),
+            "EtCO2": None if bypass_silence else etco2_alarm,
+            "RR": None if bypass_silence else (display_int(state.rr) if not vent.is_on else None),
             "Temp": round(state.temp_c, 1),
-            "SpO2": display_int(state.display_spo2) if state.spo2_signal_valid else 0.0,
-            "Ppeak": ppeak_alarm,
+            "SpO2": None if bypass_silence else (display_int(state.display_spo2) if state.spo2_signal_valid else 0.0),
+            "Ppeak": None if bypass_silence else ppeak_alarm,
             # The ventilator measures only gas returning through the circuit.
-            "MV": (round(state.mv, 1) if connected else 0.0) if vent.is_on else None,
-            "VTe": vte_percent,
-            "FiO2": display_int(state.fio2 * 100.0) if sealed else None,
+            "MV": None if bypass_silence else ((round(state.mv, 1) if connected else 0.0) if vent.is_on else None),
+            "VTe": None if bypass_silence else vte_percent,
+            "FiO2": None if bypass_silence else (display_int(state.fio2 * 100.0) if sealed else None),
         },
         dt=dt,
     )
+    if engine.extracorporeal.is_cpb and engine.extracorporeal.state.reservoir_low_alarm:
+        state.alarms["ReservoirLow"] = {"low": True, "high": False}
     if not engine.circuit.oxygen_supply_connected:
         state.alarms["O2Supply"] = {"low": True, "high": False}
     rhythm = engine.hemo.state.rhythm_type
-    if rhythm == RhythmType.ASYSTOLE:
-        state.alarms["Asystole"] = {"low": False, "high": True}
-    elif rhythm == RhythmType.VFIB:
-        state.alarms["VFIB"] = {"low": False, "high": True}
-    elif rhythm == RhythmType.VTACH:
-        state.alarms["VTACH"] = {"low": False, "high": True}
-    elif state.cardiac_arrest:
-        state.alarms["Arrest"] = {"low": False, "high": True}
+    if not bypass_silence:
+        if rhythm == RhythmType.ASYSTOLE:
+            state.alarms["Asystole"] = {"low": False, "high": True}
+        elif rhythm == RhythmType.VFIB:
+            state.alarms["VFIB"] = {"low": False, "high": True}
+        elif rhythm == RhythmType.VTACH:
+            state.alarms["VTACH"] = {"low": False, "high": True}
+        elif state.cardiac_arrest:
+            state.alarms["Arrest"] = {"low": False, "high": True}
     start, breath = state.time, vent.breath_count
     if substeps == 1:
         ecg, pleth, art = cardiac_waves[0]

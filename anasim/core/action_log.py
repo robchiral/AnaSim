@@ -8,6 +8,7 @@ actions share a timestamp.
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+ACTION_ACT = "act"
 ACTION_AIRWAY = "airway"
 ACTION_BAG_MASK = "bag_mask"
 ACTION_BLOOD_GAS = "blood_gas"
@@ -18,6 +19,7 @@ ACTION_COOLING = "cooling"
 ACTION_DRUG_BOLUS = "drug_bolus"
 ACTION_EVENT_START = "event_start"
 ACTION_EVENT_STOP = "event_stop"
+ACTION_EXTRACORPOREAL = "extracorporeal"
 ACTION_FGF = "fgf"
 ACTION_FLUID = "fluid"
 ACTION_LIPID_INFUSION = "lipid_infusion"

@@ -29,6 +29,7 @@ const ALARM_LABELS = {
   FiO2: "FiO₂",
   BIS: "BIS",
   Temp: "Temp",
+  ReservoirLow: "CPB reservoir",
 };
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -578,7 +579,7 @@ export class Monitor {
         }
         const label = ALARM_LABELS[key] ?? key;
         const text = `${label} ${side.toUpperCase()}`;
-        if ((key === "SpO2" && side === "low") || (key === "FiO2" && side === "low")) {
+        if ((key === "SpO2" && side === "low") || (key === "FiO2" && side === "low") || key === "ReservoirLow") {
           highPriority.push(text);
         } else {
           mediumPriority.push(text);

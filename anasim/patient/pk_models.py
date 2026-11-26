@@ -4,9 +4,10 @@ Sources are cited on each model and in docs/REFERENCES.md.
 
 Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
 second. Concentrations are µg/mL for propofol, etomidate, ketamine,
-lidocaine, amiodarone, dantrolene, rocuronium, succinylcholine, and esmolol,
-ng/mL for opioids, midazolam, vasoactive drugs other than vasopressin,
-atropine, labetalol, and glycopyrrolate, and mU/L for vasopressin.
+lidocaine, amiodarone, dantrolene, rocuronium, succinylcholine, esmolol, and
+protamine, ng/mL for opioids, midazolam, vasoactive drugs other than
+vasopressin, atropine, labetalol, and glycopyrrolate, mU/L for vasopressin,
+and U/L for heparin.
 """
 
 import math
@@ -1387,4 +1388,70 @@ class GlycopyrrolatePK(MammillaryPK):
             v3=11.0 * lean_size,
             cl3=31.62 / 60.0 * lean_size**0.75,
             ke0=0.14,
+        )
+
+
+# Anticoagulation and reversal -------------------------------------------------
+
+class HeparinPK(MammillaryPK):
+    """Two-compartment unfractionated heparin PK (concentrations in U/L; 1000 U/L = 1 U/mL).
+
+    Two-compartment structure follows Delavenne 2017 (linear CPB model, Vc = 3.1 L),
+    with central volume calibrated to ~62 mL/kg lean mass and expanding dynamically
+    with blood-volume hemodilution via update_hemodynamics(). A reversible peripheral
+    compartment (V2) stores endothelial/protein-bound heparin and drives post-reversal
+    heparin rebound (Teoh 2004). Saturable endothelial/reticuloendothelial clearance
+    (demonstrated across 25-75 U/kg in healthy adults in Bjornsson 1982) combined with
+    linear renal elimination is calibrated so apparent half-life lengthens from ~30 min
+    at 25 U/kg to ~60 min at 100 U/kg and ~105-150 min at 300 U/kg.
+    """
+
+    KM_SAT_U_L = 160.0  # 0.16 U/mL Michaelis-Menten constant for saturable clearance
+
+    def __init__(self, patient: Patient):
+        lean_w = _lean_weight_kg(patient)
+        lean_flow = (lean_w / 70.0) ** 0.75
+        self._cl_linear_base = 0.006 * lean_flow * organ_clearance_scaler(patient, renal_fraction=0.7)
+        self._vmax_sat_u_min = 30.0 * lean_flow
+        self._cl_zero_base = self._cl_linear_base + self._vmax_sat_u_min / self.KM_SAT_U_L
+        _, renal_fraction = renal_capacity_scaling(patient, 0.25)
+        super().__init__(
+            v1=_pregnancy_v1(patient, 0.062 * lean_w),
+            cl1=self._cl_zero_base,
+            v2=0.032 * lean_w,
+            cl2=0.036 * lean_flow,
+            ke0=1.2,
+            renal_fraction=renal_fraction,
+            cl1_co_exponent=0.4,
+            distribution_co_exponent=0.5,
+        )
+
+    def update_nonlinear_clearance(self) -> None:
+        """Scale clearance with concentration for saturable heparin elimination (Bjornsson 1982)."""
+        c1 = max(0.0, self.state.c1)
+        eff_cl = self._cl_linear_base + self._vmax_sat_u_min / (self.KM_SAT_U_L + c1)
+        self.cl1_scale = eff_cl / self._cl_zero_base if self._cl_zero_base > 0.0 else 1.0
+
+
+class ProtaminePK(MammillaryPK):
+    """One-compartment protamine sulfate PK (concentrations in mg/L = mcg/mL).
+
+    One-compartment approximation calibrated to Butterworth 2002 post-CPB
+    median Vd (5.4 L, ~77 mL/kg lean mass) and rapid elimination (median t1/2
+    4.5 min post-CPB), clearing >95% within 20 minutes and exposing late
+    peripheral heparin rebound.
+    """
+
+    def __init__(self, patient: Patient):
+        lean_w = _lean_weight_kg(patient)
+        lean_flow = (lean_w / 70.0) ** 0.75
+        v1 = _pregnancy_v1(patient, 0.077 * lean_w)
+        # 0.693 * 5.4 / 0.83 ~= 4.5 min elimination half-life at 70 kg.
+        cl1 = 0.83 * lean_flow
+        super().__init__(
+            v1=v1,
+            cl1=cl1,
+            ke0=1.4,
+            cl1_co_exponent=0.0,
+            distribution_co_exponent=0.0,
         )

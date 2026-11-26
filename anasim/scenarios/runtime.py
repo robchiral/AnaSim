@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from anasim.core.action_log import (
+    ACTION_ACT,
     ACTION_AIRWAY,
     ACTION_BAG_MASK,
     ACTION_BLOOD_GAS,
@@ -12,6 +13,7 @@ from anasim.core.action_log import (
     ACTION_COMPRESSIONS,
     ACTION_COOLING,
     ACTION_DRUG_BOLUS,
+    ACTION_EXTRACORPOREAL,
     ACTION_FGF,
     ACTION_FLUID,
     ACTION_INFUSION_RATE,
@@ -46,6 +48,8 @@ SAFETY_REVIEW = {
     "shock_while_responsive": "Give sedation or anesthesia before cardioversion in a responsive patient.",
     "succinylcholine_in_mh": "Avoid succinylcholine in malignant hyperthermia.",
     "succinylcholine_in_hyperkalemia": "Avoid succinylcholine when serum potassium is elevated.",
+    "protamine_on_bypass": "Avoid administering protamine while cardiopulmonary bypass or ECMO is actively running.",
+    "cpb_low_act": "Verify therapeutic heparin anticoagulation (ACT ≥ 400–480 s) before initiating cardiopulmonary bypass.",
 }
 
 
@@ -62,7 +66,8 @@ class CaseRun:
         self.hints: list[dict] = []
         self.hint: str | None = None
         self.lowest_map = float(engine.state.map)
-        self.lowest_spo2 = float(engine.state.sao2)
+        init_sao2 = engine.state.upper_sao2 if engine.extracorporeal.is_arterial_support else engine.state.sao2
+        self.lowest_spo2 = float(init_sao2)
         self.hypotension_s = self.hypoxemia_s = 0.0
         self._next_check = self.started_at
         self.report: dict | None = None
@@ -91,14 +96,16 @@ class CaseRun:
         if self.report is not None:
             return
         state = self.engine.state
+        ec = self.engine.extracorporeal
+        eff_sao2 = state.upper_sao2 if ec.is_arterial_support else state.sao2
         self.lowest_map = min(self.lowest_map, float(state.map))
-        self.lowest_spo2 = min(self.lowest_spo2, float(state.sao2))
+        self.lowest_spo2 = min(self.lowest_spo2, float(eff_sao2))
         unperfused = (
             state.map < 65.0
-            or not self.engine.spontaneous_circulation
+            or not (self.engine.spontaneous_circulation or ((ec.is_va or ec.is_cpb) and ec.state.blood_flow_l_min >= 1.0))
         )
         self.hypotension_s += dt if unperfused else 0.0
-        self.hypoxemia_s += dt if state.sao2 < 90.0 else 0.0
+        self.hypoxemia_s += dt if eff_sao2 < 90.0 else 0.0
         if not force and state.time < self._next_check:
             return
         self._next_check = state.time + 0.5
@@ -236,7 +243,43 @@ def _describe(record: ActionRecord) -> str | None:
     if action == ACTION_LIPID_INFUSION:
         return f"20% lipid emulsion infusion {amount:g} mL/min" if amount > 0 else "Lipid emulsion infusion stopped"
     if action == ACTION_BLOOD_GAS:
-        return "Arterial blood gas drawn"
+        site_labels = {
+            "right_radial": "right radial",
+            "femoral": "femoral",
+            "pre_oxy": "pre-oxygenator",
+            "post_oxy": "post-oxygenator",
+        }
+        site = site_labels.get(label)
+        return f"Blood gas drawn ({site})" if site else "Arterial blood gas drawn"
+    if action == ACTION_ACT:
+        return f"ACT drawn ({amount:.0f} s)"
+    if action == ACTION_EXTRACORPOREAL:
+        labels = {
+            "start_vv_ecmo": f"VV ECMO started ({amount:g} L/min)",
+            "start_va_ecmo": f"VA ECMO started ({amount:g} L/min)",
+            "start_cpb": f"Cardiopulmonary bypass started ({amount:g} L/min)",
+            "stop": "Extracorporeal support stopped",
+            "flow": f"Pump blood flow {amount:g} L/min",
+            "sweep": f"Sweep gas {amount:g} L/min",
+            "fio2": f"Sweep FiO₂ {amount * 100.0:.0f}%",
+            "fco2": f"Sweep CO₂ {amount * 100.0:g}%",
+            "sevo": f"Oxygenator sevoflurane {amount:g}%",
+            "heater_cooler": f"Heater-cooler {amount:g} °C" if amount > 0 else "Heater-cooler off",
+            "venous_clamp": f"CPB venous line {amount * 100.0:.0f}% open",
+            "cross_clamp_on": "Aortic cross-clamp applied",
+            "cross_clamp_off": "Aortic cross-clamp released",
+            "cardioplegia_on": "Cardioplegia arrest started",
+            "cardioplegia_off": "Cardioplegia arrest stopped",
+            "lv_vent": f"LV vent {amount:g} L/min",
+            "bg_alpha_stat": "Blood-gas strategy: alpha-stat",
+            "bg_ph_stat": "Blood-gas strategy: pH-stat",
+        }
+        if label in labels:
+            return labels[label]
+        if label.startswith("reservoir_"):
+            kind = label.removeprefix("reservoir_")
+            return f"Added {amount:g} mL {kind} to CPB reservoir"
+        return f"Extracorporeal: {label}"
     if action == ACTION_VAPORIZER:
         return f"{label} {amount:g}%" if amount > 0 else f"{label} off"
     if action == ACTION_INTUBATION_ATTEMPT:

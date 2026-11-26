@@ -13,6 +13,12 @@ from anasim.core.constants import (
 from anasim.core.enums import PULSELESS_RHYTHMS, RhythmType
 from anasim.core.recorder import DataRecorder
 from anasim.core.utils import clamp, clamp01
+from anasim.extracorporeal import (
+    BloodGasManagement,
+    CannulationType,
+    ExtracorporealSystem,
+    MembraneType,
+)
 from anasim.machine.circuit import CircleSystem
 from anasim.machine.ventilator import AnesthesiaVentilator
 from anasim.machine.volatile import Vaporizer
@@ -41,13 +47,16 @@ from anasim.patient.pd import (
 )
 from anasim.patient.pk_models import (
     ANESTHETIZED_OUTPUT,
+    HeparinPK,
     NorepinephrinePK,
+    ProtaminePK,
     janmahasatian_ffm,
 )
 from anasim.patient.variability import sample_variability
 from anasim.patient.volatile_pk import VolatilePK
 from anasim.physiology.arrhythmia import ArrhythmiaModel, antiarrhythmic_effects
 from anasim.physiology.cerebral import CerebralModel
+from anasim.physiology.coagulation import ACTResult, CoagulationModel
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
 from anasim.physiology.hemodynamics import MAX_HEMATOCRIT, HemodynamicModel
@@ -73,6 +82,7 @@ from . import monitors as monitor_core
 from . import projection as projection_core
 from . import runtime as runtime_core
 from .action_log import (
+    ACTION_ACT,
     ACTION_AIRWAY,
     ACTION_BAG_MASK,
     ACTION_BLOOD_GAS,
@@ -81,6 +91,7 @@ from .action_log import (
     ACTION_DRUG_BOLUS,
     ACTION_EVENT_START,
     ACTION_EVENT_STOP,
+    ACTION_EXTRACORPOREAL,
     ACTION_FGF,
     ACTION_FLUID,
     ACTION_INTUBATION_ATTEMPT,
@@ -311,6 +322,7 @@ class SimulationEngine(DrugControllerMixin):
         )
 
         self.hemo = HemodynamicModel(self.patient)
+        self.extracorporeal = ExtracorporealSystem()
         self.resp = RespiratoryModel(self.patient)
         self.resp.attach_fluid_balance(self.hemo.fluids, self.hemo.config.donor_mchc_g_dl)
         self.pk_sevo.frc = self.resp.gas_volume_l
@@ -347,6 +359,7 @@ class SimulationEngine(DrugControllerMixin):
         self.airway_sensor = AirwaySensor()
         self.response = ClinicalResponseModel(self.patient.age, self.patient.variability.sevoflurane_mac)
         self.tof_pd = TOFModel(self.patient)
+        self.coagulation = CoagulationModel()
 
         self.cardiac_cycle = CardiacCycle(rng=self._cardiac_rng)
         self.compression_clock = CompressionClock()
@@ -361,6 +374,7 @@ class SimulationEngine(DrugControllerMixin):
         self.nibp = NIBPMonitor(interval_min=5.0, rng=self._nibp_rng)
         self.nmb = NeuromuscularMonitor()
         self.blood_gases: list[BloodGasResult] = []
+        self.acts: list[ACTResult] = []
         self.state.nibp_interval_sec = self.nibp.interval
 
     @property
@@ -508,6 +522,23 @@ class SimulationEngine(DrugControllerMixin):
         model.state.c1 += dose / model.v1
         if spec.key == "succinylcholine":
             self._last_succinylcholine_time = self.state.time
+        if spec.key in ("heparin", "protamine"):
+            circ = self.hemo.circulation_fraction()
+            if spec.key == "protamine":
+                self.coagulation.record_protamine_bolus(dose, model.v1, circulation=circ)
+            hep_pk = self.pk["heparin"]
+            prot_pk = self.pk["protamine"]
+            assert isinstance(hep_pk, HeparinPK) and isinstance(prot_pk, ProtaminePK)
+            self.coagulation.step(
+                0.0,
+                hep_pk,
+                prot_pk,
+                temp_c=self.state.temp_c,
+                hematocrit=self.hemo.get_hematocrit(),
+                baseline_hct=self.hemo.baseline_hct,
+                circulation=circ,
+            )
+            projection_core.sync_pk_state(self)
         self.sync_active_tci_from_pk(spec.key)
         self.actions.record(
             self.state.time, ACTION_DRUG_BOLUS, label=spec.key, amount=amount
@@ -523,6 +554,8 @@ class SimulationEngine(DrugControllerMixin):
             return self.sepsis.active
         if name == "malignant_hyperthermia":
             return self.malignant_hyperthermia.active
+        if name == "protamine_reaction":
+            return self.coagulation.reaction_active
         raise ValueError(f"Unknown clinical event: {name!r}")
 
     def _log_event(self, name: str, active: bool, amount: float = 0.0):
@@ -564,8 +597,28 @@ class SimulationEngine(DrugControllerMixin):
         self.stop_anaphylaxis()
         self.stop_sepsis()
         self.stop_malignant_hyperthermia()
+        self.stop_protamine_reaction()
         self.stop_disturbance()
         self.intubation_start_time = None
+
+    def _set_protamine_reaction(self, active: bool) -> None:
+        self._log_event("protamine_reaction", active)
+        self.coagulation.reaction_armed = False
+        self.coagulation.reaction_active = active
+        self.coagulation.state.protamine_reaction_active = active
+        self.state.protamine_reaction = active
+
+    def start_protamine_reaction(self):
+        """Start a catastrophic Type III protamine pulmonary vasoconstriction reaction (Lowenstein 1983)."""
+        self._set_protamine_reaction(True)
+
+    def stop_protamine_reaction(self):
+        """Stop an active Type III protamine pulmonary vasoconstriction reaction."""
+        self._set_protamine_reaction(False)
+
+    def arm_protamine_reaction(self, armed: bool = True):
+        """Arm a Type III protamine reaction to fire automatically on the next protamine dose."""
+        self.coagulation.reaction_armed = bool(armed)
 
     def start_malignant_hyperthermia(self):
         """Start the crisis now; onset after a trigger varies, so the instructor or case sets it."""
@@ -690,6 +743,285 @@ class SimulationEngine(DrugControllerMixin):
     def set_auto_laryngospasm(self, enabled: bool):
         self.auto_laryngospasm_enabled = bool(enabled)
 
+    def set_ards_shunt(self, fraction: float):
+        """Set additional pulmonary right-to-left shunt (0-0.90) for ARDS/ECMO scenarios."""
+        self.aeration.extra_shunt = bounded_number("ARDS shunt", fraction, 0.0, 0.90)
+
+    def _sync_extracorporeal_state(self) -> None:
+        self.hemo.extracorporeal_volume_ml = self.extracorporeal.total_circuit_mixing_volume_ml
+        if not self.extracorporeal.is_arterial_support:
+            self.hemo._ecmo_arterial_flow_l_min = 0.0
+            self.hemo._ecmo_venous_drain_l_min = 0.0
+            self.hemo._ecmo_lv_vent_l_min = 0.0
+            self.hemo._aortic_cross_clamp = False
+            self.hemo._cardioplegia_arrest = False
+            self.hemo._cpb_open_drainage = False
+        self.hemo.invalidate_state_cache()
+        self._sync_cardiac_state()
+        projection_core.project_extracorporeal(self)
+
+    @staticmethod
+    def _normalize_prime_label(label: str) -> str:
+        norm = str(label).strip().lower()
+        if norm == "albumin":
+            return "colloid"
+        if norm not in ("crystalloid", "saline", "colloid", "blood"):
+            raise ValueError(f"Unknown circuit prime fluid: {label!r}")
+        return norm
+
+    def _seed_extracorporeal_gases(self) -> None:
+        """Seed pre/post/regional extracorporeal gases from current patient gases before stepping."""
+        st = self.extracorporeal.state
+        r = self.resp.state
+        st.upper_body_sao2 = st.lower_body_sao2 = st.coronary_sao2 = float(r.sao2)
+        st.upper_body_pao2 = st.lower_body_pao2 = float(r.p_arterial_o2)
+        st.upper_body_paco2_37 = st.lower_body_paco2_37 = float(r.pa_co2_37)
+        st.upper_body_ph_37 = st.lower_body_ph_37 = float(r.ph_37)
+        st.pre_oxy_po2 = float(self.resp._blood_po2[2])
+        st.pre_oxy_so2 = float(self.resp._blood_saturations[2] * 100.0)
+        st.post_oxy_po2 = float(r.p_arterial_o2)
+        st.post_oxy_so2 = float(r.sao2)
+
+    def _finish_extracorporeal_start(
+        self,
+        action_label: str,
+        blood_flow_l_min: float,
+        prime_ml: float,
+        prime_label: str,
+        prime_hematocrit: float,
+    ) -> None:
+        if prime_ml > 0.0:
+            self.hemo.add_volume(
+                prime_ml,
+                hematocrit=prime_hematocrit,
+                retention_fraction=1.0,
+                label=self._normalize_prime_label(prime_label),
+                suppress_tde=True,
+            )
+        if self.extracorporeal._last_pass is None:
+            self._seed_extracorporeal_gases()
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label=action_label, amount=blood_flow_l_min)
+
+    def start_vv_ecmo(
+        self,
+        *,
+        blood_flow_l_min: float = 4.0,
+        sweep_gas_l_min: float = 4.0,
+        sweep_fio2: float = 1.0,
+        cannulation: CannulationType | str = CannulationType.FEM_JUG,
+        membrane_type: MembraneType | str = MembraneType.PMP,
+        membrane_area_m2: float | None = None,
+        prime_volume_ml: float | None = None,
+        prime_label: str = "crystalloid",
+        prime_hematocrit: float = 0.0,
+        heater_cooler_on: bool = True,
+        water_target_c: float = 37.0,
+    ) -> None:
+        """Initiate venovenous ECMO with optional circuit prime hemodilution."""
+        self._normalize_prime_label(prime_label)
+        if self.extracorporeal.is_active and not self.extracorporeal.is_vv:
+            self.stop_extracorporeal(reinfuse=False)
+        prime_ml = self.extracorporeal.start_vv_ecmo(
+            blood_flow_l_min=blood_flow_l_min,
+            sweep_gas_l_min=sweep_gas_l_min,
+            sweep_fio2=sweep_fio2,
+            cannulation=cannulation,
+            membrane_type=membrane_type,
+            membrane_area_m2=membrane_area_m2,
+            prime_volume_ml=prime_volume_ml,
+            heater_cooler_on=heater_cooler_on,
+            water_target_c=water_target_c,
+        )
+        self._finish_extracorporeal_start("start_vv_ecmo", blood_flow_l_min, prime_ml, prime_label, prime_hematocrit)
+
+    def start_va_ecmo(
+        self,
+        *,
+        blood_flow_l_min: float = 4.0,
+        sweep_gas_l_min: float = 4.0,
+        sweep_fio2: float = 1.0,
+        cannulation: CannulationType | str = CannulationType.PERIPHERAL_FEM,
+        membrane_type: MembraneType | str = MembraneType.PMP,
+        membrane_area_m2: float | None = None,
+        prime_volume_ml: float | None = None,
+        prime_label: str = "crystalloid",
+        prime_hematocrit: float = 0.0,
+        heater_cooler_on: bool = True,
+        water_target_c: float = 37.0,
+        lv_vent_l_min: float = 0.0,
+    ) -> None:
+        """Initiate venoarterial ECMO (peripheral femoral or central)."""
+        self._normalize_prime_label(prime_label)
+        if self.extracorporeal.is_active and not self.extracorporeal.is_va:
+            self.stop_extracorporeal(reinfuse=False)
+        prime_ml = self.extracorporeal.start_va_ecmo(
+            blood_flow_l_min=blood_flow_l_min,
+            sweep_gas_l_min=sweep_gas_l_min,
+            sweep_fio2=sweep_fio2,
+            cannulation=cannulation,
+            membrane_type=membrane_type,
+            membrane_area_m2=membrane_area_m2,
+            prime_volume_ml=prime_volume_ml,
+            heater_cooler_on=heater_cooler_on,
+            water_target_c=water_target_c,
+            lv_vent_l_min=lv_vent_l_min,
+        )
+        self._finish_extracorporeal_start("start_va_ecmo", blood_flow_l_min, prime_ml, prime_label, prime_hematocrit)
+
+    def start_cpb(
+        self,
+        *,
+        blood_flow_l_min: float = 4.5,
+        sweep_gas_l_min: float = 3.0,
+        sweep_fio2: float = 0.80,
+        sweep_fco2: float = 0.0,
+        sweep_sevo_percent: float = 0.0,
+        membrane_type: MembraneType | str = MembraneType.MICROPOROUS,
+        membrane_area_m2: float | None = None,
+        prime_volume_ml: float | None = None,
+        initial_reservoir_ml: float = 800.0,
+        prime_label: str = "crystalloid",
+        prime_hematocrit: float = 0.0,
+        blood_gas_strategy: BloodGasManagement | str = BloodGasManagement.ALPHA_STAT,
+        heater_cooler_on: bool = True,
+        water_target_c: float = 37.0,
+        venous_clamp_open: float = 1.0,
+        bypass_alarm_mode: bool = True,
+    ) -> None:
+        """Initiate cardiopulmonary bypass with an open venous reservoir."""
+        self._normalize_prime_label(prime_label)
+        if self.extracorporeal.is_active and not self.extracorporeal.is_cpb:
+            self.stop_extracorporeal(reinfuse=False)
+        prime_ml = self.extracorporeal.start_cpb(
+            blood_flow_l_min=blood_flow_l_min,
+            sweep_gas_l_min=sweep_gas_l_min,
+            sweep_fio2=sweep_fio2,
+            sweep_fco2=sweep_fco2,
+            sweep_sevo_percent=sweep_sevo_percent,
+            membrane_type=membrane_type,
+            membrane_area_m2=membrane_area_m2,
+            prime_volume_ml=prime_volume_ml,
+            initial_reservoir_ml=initial_reservoir_ml,
+            blood_gas_strategy=blood_gas_strategy,
+            heater_cooler_on=heater_cooler_on,
+            water_target_c=water_target_c,
+            venous_clamp_open=venous_clamp_open,
+            bypass_alarm_mode=bypass_alarm_mode,
+        )
+        self._finish_extracorporeal_start("start_cpb", blood_flow_l_min, prime_ml, prime_label, prime_hematocrit)
+
+    def stop_extracorporeal(self, *, reinfuse: bool = False) -> None:
+        """Stop active ECMO or CPB support."""
+        if not self.extracorporeal.is_active:
+            return
+        discard_ml = self.hemo.extracorporeal_volume_ml
+        self.extracorporeal.stop()
+        self.hemo.extracorporeal_volume_ml = 0.0
+        if not reinfuse and discard_ml > 0.0:
+            self.hemo.add_volume(-discard_ml, suppress_tde=True)
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="stop")
+
+    def set_ecmo_flow(self, l_min: float) -> None:
+        self.extracorporeal.set_blood_flow(l_min)
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="flow", amount=l_min)
+
+    def set_ecmo_sweep(self, l_min: float) -> None:
+        self.extracorporeal.set_sweep_gas(l_min)
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="sweep", amount=l_min)
+
+    def set_ecmo_fio2(self, fio2: float) -> None:
+        self.extracorporeal.set_sweep_fio2(fio2)
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="fio2", amount=fio2)
+
+    def set_ecmo_fco2(self, fco2: float) -> None:
+        self.extracorporeal.set_sweep_fco2(fco2)
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="fco2", amount=fco2)
+
+    def set_ecmo_sevo(self, percent: float) -> None:
+        self.extracorporeal.set_sweep_sevo(percent)
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="sevo", amount=percent)
+
+    def set_ecmo_membrane_area(self, area_m2: float) -> None:
+        self.extracorporeal.set_membrane_area(area_m2)
+        self._sync_extracorporeal_state()
+
+    def set_ecmo_heater_cooler(self, on: bool, target_c: float | None = None) -> None:
+        self.extracorporeal.set_heater_cooler(on, target_c)
+        self._sync_extracorporeal_state()
+        self.actions.record(
+            self.state.time,
+            ACTION_EXTRACORPOREAL,
+            label="heater_cooler",
+            amount=self.extracorporeal.state.water_target_c if on else 0.0,
+        )
+
+    def set_cpb_venous_clamp(self, open_fraction: float) -> None:
+        self.extracorporeal.set_venous_clamp(open_fraction)
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="venous_clamp", amount=open_fraction)
+
+    def set_cpb_cross_clamp(self, clamped: bool) -> None:
+        self.extracorporeal.set_aortic_cross_clamp(clamped)
+        self._sync_extracorporeal_state()
+        self.actions.record(
+            self.state.time, ACTION_EXTRACORPOREAL, label="cross_clamp_on" if clamped else "cross_clamp_off",
+        )
+
+    def set_cpb_cardioplegia(self, arrested: bool) -> None:
+        self.extracorporeal.set_cardioplegia_arrest(arrested)
+        self._sync_extracorporeal_state()
+        self.actions.record(
+            self.state.time, ACTION_EXTRACORPOREAL, label="cardioplegia_on" if arrested else "cardioplegia_off",
+        )
+
+    def set_ecmo_lv_vent(self, l_min: float) -> None:
+        self.extracorporeal.set_lv_vent(l_min)
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label="lv_vent", amount=l_min)
+
+    def set_cpb_blood_gas_strategy(self, strategy: BloodGasManagement | str) -> None:
+        self.extracorporeal.set_blood_gas_strategy(strategy)
+        self._sync_extracorporeal_state()
+        self.actions.record(
+            self.state.time, ACTION_EXTRACORPOREAL, label=f"bg_{self.extracorporeal.state.blood_gas_strategy.value}",
+        )
+
+    def set_bypass_alarm_mode(self, enabled: bool) -> None:
+        self.extracorporeal.set_bypass_alarm_mode(enabled)
+        self._sync_extracorporeal_state()
+
+    def add_cpb_reservoir_fluid(
+        self, volume_ml: float, kind: str = "crystalloid", hematocrit: float = 0.55,
+    ) -> float:
+        """Add fluid or packed RBCs directly to the CPB venous reservoir; return volume added (mL)."""
+        if not self.extracorporeal.is_cpb:
+            raise ValueError("Reservoir fluid can only be added during active CPB")
+        vol = bounded_number("reservoir fluid volume", volume_ml, 1.0, 2000.0, unit="mL")
+        st = self.extracorporeal.state
+        cfg = self.extracorporeal.config
+        room = max(0.0, cfg.cpb_reservoir_max_ml - st.reservoir_volume_ml)
+        actual_vol = min(vol, room)
+        if actual_vol <= 0.0:
+            return 0.0
+        before_bv = self.hemo.blood_volume
+        norm_kind = self._normalize_prime_label(kind)
+        hct = bounded_number("blood hematocrit", hematocrit, 0.01, MAX_HEMATOCRIT) if norm_kind == "blood" else 0.0
+        # Fluid poured into the hard-shell reservoir stays 100% in the reservoir+circuit pool.
+        self.hemo.add_volume(actual_vol, hematocrit=hct, retention_fraction=1.0, label=norm_kind, suppress_tde=True)
+        added_bv = max(0.0, self.hemo.blood_volume - before_bv)
+        st.reservoir_volume_ml = min(cfg.cpb_reservoir_max_ml, st.reservoir_volume_ml + added_bv)
+        st.reservoir_low_alarm = st.reservoir_volume_ml < cfg.cpb_reservoir_low_ml
+        self._sync_extracorporeal_state()
+        self.actions.record(self.state.time, ACTION_EXTRACORPOREAL, label=f"reservoir_{kind}", amount=added_bv)
+        return added_bv
+
     @property
     def laryngospasm_level(self) -> str:
         """Laryngospasm severity as shown to the learner."""
@@ -791,7 +1123,7 @@ class SimulationEngine(DrugControllerMixin):
             )),
             rng=self._shock_rng,
             hypoxia=hypoxia,
-            perfusing=runtime_core.is_perfusing(self),
+            perfusing=runtime_core.is_systemic_perfusing(self),
             energy_reserve=self.hemo.coronary.energy_reserve,
             temp_c=self.state.temp_c,
             hyperkalemia_block=self.hemo.hyperkalemia_block,
@@ -807,7 +1139,7 @@ class SimulationEngine(DrugControllerMixin):
                 prev_rhythm, rhythm, ischemia=self.hemo.coronary.ischemia,
                 hypoxia=hypoxia, energy_failure=energy_failure,
                 energy_reserve=self.hemo.coronary.energy_reserve,
-                perfusing=runtime_core.is_perfusing(self),
+                perfusing=runtime_core.is_systemic_perfusing(self),
             )
         self.hemo.invalidate_state_cache()
         if not synchronized and self.hemo.rhythm_type != prev_rhythm:
@@ -891,27 +1223,112 @@ class SimulationEngine(DrugControllerMixin):
         self.state.nibp_cuff_pressure = 0.0
         self._next_nibp_time = self.state.time + self.nibp.interval
 
-    def draw_blood_gas(self) -> BloodGasResult:
-        """Draw an arterial sample; its result is ready after the analysis time."""
+    def draw_blood_gas(self, site: str = "arterial") -> BloodGasResult:
+        """Draw a blood gas sample; its result is ready after the analysis time.
+
+        Supported sites: 'arterial' (right radial / upper body on peripheral VA ECMO),
+        'right_radial', 'femoral' (lower body), 'pre_oxy' (venous inlet), 'post_oxy' (outlet).
+        """
+        from anasim.physiology.blood_chemistry import (
+            plasma_bicarbonate,
+            standard_base_excess,
+        )
+        from anasim.physiology.blood_gas_math import (
+            O2_SOLUBILITY,
+            acid_base_p50,
+            oxygen_content,
+            po2_and_sat_from_content,
+            temperature_o2_solubility,
+        )
+
+        site_norm = str(site).strip().lower()
+        if site_norm not in ("arterial", "right_radial", "femoral", "pre_oxy", "post_oxy"):
+            raise ValueError(f"Unknown blood gas site: {site!r}")
         state = self.state
         fluids = self.hemo.fluids
+        ecmo = self.extracorporeal
+        if site_norm in ("pre_oxy", "post_oxy") and not ecmo.is_active:
+            raise ValueError("Pre- and post-oxygenator blood gases require active extracorporeal support")
+        st = ecmo.state
         abg_ph = float(self.resp.state.ph_37)
         abg_paco2 = float(self.resp.state.pa_co2_37)
+        abg_pao2 = self.resp.arterial_po2_at_37()
         abg_hco3 = float(state.hco3)
+        abg_be = float(state.base_excess)
+        abg_sao2 = float(state.sao2)
+        abg_fio2 = float(st.sweep_fio2) if (ecmo.is_cpb and not self.vent.is_on) else float(state.fio2)
+        hb_sample = float(self.hemo.hb_conc if fluids._circulation >= 0.99 else self.resp._arterial_hb)
+        temp_c = float(state.temp_c)
+
+        def _warm_po2_and_sat_to_37(
+            po2_invivo: float, ph_37: float, pco2_37: float, sat_invivo_pct: float,
+        ) -> tuple[float, float]:
+            if abs(temp_c - 37.0) <= 1e-6:
+                return float(po2_invivo), float(sat_invivo_pct)
+            p50_invivo = acid_base_p50(ph_37, pco2_37, temp_c)
+            sol_invivo = temperature_o2_solubility(temp_c)
+            o2_c, _ = oxygen_content(max(0.0, po2_invivo), hb_sample, p50_invivo, sol_invivo)
+            p50_37 = acid_base_p50(ph_37, pco2_37, 37.0, at_37=True)
+            po2_37, sat_37 = po2_and_sat_from_content(
+                o2_c, hb_sample, p50_37, max(1.0, po2_invivo), solubility=O2_SOLUBILITY,
+            )
+            return float(po2_37), float(sat_37 * 100.0)
+
+        if ecmo.is_active:
+            peripheral_va = ecmo.is_arterial_support and st.cannulation is CannulationType.PERIPHERAL_FEM
+            last_pass = ecmo._last_pass
+            site_values: tuple[float, float, float, float, float] | None = None
+            if site_norm in ("arterial", "right_radial") and peripheral_va:
+                site_values = (
+                    st.upper_body_ph_37, st.upper_body_paco2_37,
+                    st.upper_body_pao2, st.upper_body_sao2, abg_fio2,
+                )
+            elif site_norm == "femoral" and peripheral_va:
+                site_values = (
+                    st.lower_body_ph_37, st.lower_body_paco2_37,
+                    st.lower_body_pao2, st.lower_body_sao2, float(st.sweep_fio2),
+                )
+            elif site_norm == "pre_oxy":
+                site_values = (
+                    last_pass.pre_ph_37 if last_pass is not None else self.resp._blood_ph[2],
+                    last_pass.pre_pco2_37 if last_pass is not None else self.resp._blood_pressures[2],
+                    st.pre_oxy_po2, st.pre_oxy_so2, float(st.sweep_fio2),
+                )
+            elif site_norm == "post_oxy":
+                site_values = (
+                    last_pass.ph_out_37 if last_pass is not None else self.resp.state.ph_37,
+                    last_pass.pco2_out_37 if last_pass is not None else self.resp.state.pa_co2_37,
+                    st.post_oxy_po2, st.post_oxy_so2, float(st.sweep_fio2),
+                )
+            if site_values is not None:
+                ph_37, pco2_37, po2_invivo, sat_invivo, abg_fio2 = site_values
+                abg_ph, abg_paco2 = float(ph_37), float(pco2_37)
+                abg_pao2, abg_sao2 = _warm_po2_and_sat_to_37(po2_invivo, abg_ph, abg_paco2, sat_invivo)
+                abg_hco3 = float(plasma_bicarbonate(abg_ph, abg_paco2))
+                abg_be = float(standard_base_excess(abg_ph, abg_hco3))
+
         result = BloodGasResult(
-            drawn_at=state.time, ph=abg_ph, pa_co2=abg_paco2, pao2=self.resp.arterial_po2_at_37(),
-            hco3=abg_hco3, base_excess=state.base_excess,
+            drawn_at=state.time, ph=abg_ph, pa_co2=abg_paco2, pao2=abg_pao2,
+            hco3=abg_hco3, base_excess=abg_be,
             lactate=float(self.lactate.arterial_concentration),
             sodium=float(fluids.arterial_sodium),
             potassium=float(fluids.arterial_potassium),
             chloride=float(fluids.arterial_chloride),
             ionized_calcium=float(fluids.arterial_ionized_calcium(abg_ph)),
-            sao2=state.sao2,
-            hb=float(self.hemo.hb_conc if fluids._circulation >= 0.99 else self.resp._arterial_hb),
-            fio2=state.fio2,
+            sao2=abg_sao2,
+            hb=hb_sample,
+            fio2=abg_fio2,
+            site=site_norm,
         )
         self.blood_gases.append(result)
-        self.actions.record(state.time, ACTION_BLOOD_GAS)
+        self.actions.record(state.time, ACTION_BLOOD_GAS, label=site_norm)
+        return result
+
+    def measure_act(self) -> ACTResult:
+        """Draw a whole-blood sample for point-of-care activated clotting time (ACT)."""
+        result = ACTResult(drawn_at=self.state.time, act_s=float(self.coagulation.state.act_s))
+        self.acts.append(result)
+        self.actions.record(self.state.time, ACTION_ACT, amount=result.act_s)
         return result
 
     def start_recording(self, output_dir: str = ".", sample_interval_sec: float = 1.0):

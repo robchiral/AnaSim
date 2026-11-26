@@ -294,4 +294,12 @@ test("lethal rhythm alarms break active bradycardia silence and play high-priori
   audio.update(snap(3.2, { alarms: { VFIB: "high" } }));
   assert.equal(audio.countdown.hidden, true, "recurrent VFIB after resolution must break active silence");
   assert.equal(notes("alarm").length, afterSilence + 5, "recurrent VFIB plays 5-tone high-priority cadence");
+
+  // CPB ReservoirLow uses the 5-tone high-priority cadence and breaks silence.
+  audio.silence.onclick();
+  const beforeRes = notes("alarm").length;
+  advance(500);
+  audio.update(snap(3.7, { alarms: { VFIB: "high", ReservoirLow: "low" } }));
+  assert.equal(audio.countdown.hidden, true, "ReservoirLow breaks active silence");
+  assert.equal(notes("alarm").length, beforeRes + 5, "ReservoirLow plays 5-tone high-priority cadence");
 });

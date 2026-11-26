@@ -1,6 +1,7 @@
 import copy
 import math
 from dataclasses import replace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -29,7 +30,7 @@ def _model(sepsis_severity: float = 0.0) -> HemodynamicModel:
     return model
 
 
-def _steady_exposure(**ce: float):
+def _steady_exposure(**ce: Any):
     model = _model()
     base = model.step(1.0, 0, 0, 0, -2, 40, 95)
     for _ in range(60):

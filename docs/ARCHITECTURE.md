@@ -19,7 +19,8 @@ configuration, units, and scripted runs.
 | [`projection.py`](../anasim/core/projection.py) and [`state.py`](../anasim/core/state.py) | Copy model outputs into `SimulationState` and define its fields |
 | [`initialization.py`](../anasim/core/initialization.py) | Initializes awake and steady-state maintenance sessions |
 | [`patient/`](../anasim/patient/) and [`drug_registry.py`](../anasim/core/drug_registry.py) | Define patient parameters, drug models, units, pump limits, and UI metadata |
-| [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, fluids, respiration, gas exchange, and temperature |
+| [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, fluids, anticoagulation, respiration, gas exchange, and temperature |
+| [`extracorporeal/`](../anasim/extracorporeal/) | Models VV ECMO, VA ECMO, and cardiopulmonary bypass circuits |
 | [`machine/`](../anasim/machine/) | Models the breathing circuit, vaporizer, and ventilator |
 | [`monitors/`](../anasim/monitors/) and [`core/monitors.py`](../anasim/core/monitors.py) | Produce measurements, waveforms, and alarms |
 | [`scenarios/`](../anasim/scenarios/) | Defines cases, events, pre-case setup, guided steps, and debrief outcomes |
@@ -40,15 +41,17 @@ Each call to `SimulationEngine.step()` runs these stages in order:
    target-controlled infusion (TCI) controllers.
 4. Update airway complications, the vaporizer, and the breathing circuit.
 5. Advance lipid emulsion, inhaled anesthetic uptake, intravenous drug
-   concentrations, neuromuscular block, lidocaine toxicity, and malignant
-   hyperthermia, then apply toxicity, malignant hyperthermia, and sepsis
-   effects on metabolism, heat production, and chest-wall stiffness.
-6. Advance respiratory mechanics, gas exchange, hemodynamics, and cardiac
-   rhythm.
+   concentrations, anticoagulation, circuit drug sequestration, neuromuscular
+   block, lidocaine toxicity, and malignant hyperthermia, then apply toxicity,
+   malignant hyperthermia, and sepsis effects on metabolism, heat production,
+   and chest-wall stiffness.
+6. Advance respiratory mechanics, lung and oxygenator gas exchange, CPB
+   reservoir drainage, hemodynamics, cardiac rhythm, and regional VA ECMO
+   mixing.
 7. Copy physiology outputs into `SimulationState`, then update cerebral
    oxygenation and function, monitor measurements, and alarms.
-8. Update core temperature, check for cardiac arrest, and clear any completed
-   finite stimuli.
+8. Update core temperature (including extracorporeal heat exchange), check for
+   cardiac arrest, and clear any completed finite stimuli.
 
 PK and circuit updates use the cardiac output and ventilation from the start of
 the step, and the physiology models compute updated values for the next step.
@@ -65,7 +68,8 @@ monitor measurements.
 
 | Group | Selected fields | Meaning |
 |-------|-----------------|---------|
-| Physiology | `map`, `hr`, `co`, `intrinsic_co`, `rhythm_type`, `sao2`, `pa_co2`, `pao2` | Values used by the models and cardiac arrest checks; `intrinsic_co` excludes chest compressions |
+| Physiology | `map`, `hr`, `co`, `intrinsic_co`, `pulmonary_flow`, `pump_flow`, `rhythm_type`, `sao2`, `pa_co2`, `pao2` | Values used by the models and arrest checks; `intrinsic_co` excludes compressions and pump flow, `pulmonary_flow` crosses the native lung, and `pump_flow` is arterial extracorporeal flow |
+| Extracorporeal and anticoagulation | `ecmo_mode`, `ecmo_flow`, `cpb_reservoir_ml`, `upper_sao2`, `lower_sao2`, `heparin_u_ml`, `protamine_ug_ml`, `act_s` | Active circuit mode and flow, CPB reservoir level, regional arterial saturations, free heparin and protamine, and ACT |
 | Blood chemistry | `ph`, `hco3`, `base_excess`, `lactate`, `sodium`, `potassium`, `chloride`, `ionized_calcium`, `albumin_g_l` | Arterial pH at patient temperature, 37 °C plasma bicarbonate and standard base excess, and plasma lactate, electrolytes, and albumin |
 | Measurements | `art_map`, `nibp_map`, `display_spo2`, `display_bis` | Values after sensor dynamics, sampling, and smoothing |
 | Ventilation | `paw_peak`, `paw_plat`, `peep`, `et_o2` | Airway pressures and exhaled gas readings |
@@ -110,7 +114,7 @@ and locks treatment controls and the debrief. Open simulations also stop
 recording and disable treatment controls at irreversible arrest.
 
 [`clinical_actions.py`](../anasim/core/clinical_actions.py) checks intubation
-conditions and clinical safety warnings before actions take effect. The
+conditions and clinical safety warnings when learner actions are applied. The
 [model guide](MODELS.md#cases-and-clinical-actions) describes case behavior,
 objective checks, and action rules.
 

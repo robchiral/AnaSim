@@ -165,3 +165,10 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 | `charge_defibrillator()` | Charges to 200 J in 5 simulated seconds and holds the charge for 60 seconds |
 | `disarm_defibrillator()` | Cancels a charge or a pending synchronized shock |
 | `defibrillate(synchronized=False)` | Returns a `ShockResult`: `NOT_READY` without a charge, `NOT_DELIVERED` in synchronized mode without R waves, `PENDING` until the next R wave, or `DELIVERED`. `rng_seed` fixes outcomes |
+| `refill_vaporizer(level_ml=250.0)` | Refills the sevoflurane vaporizer liquid reservoir (0 to 250 mL) |
+| `set_ards_shunt(fraction)` | Sets additional right-to-left pulmonary shunt (0 to 0.90) |
+| `start_vv_ecmo(...)`, `start_va_ecmo(...)`, `start_cpb(...)` | Starts VV ECMO, VA ECMO, or CPB with optional flow, sweep, cannulation, prime, and thermal settings (see [`engine.py`](../anasim/core/engine.py)); `stop_extracorporeal(reinfuse=False)` stops support |
+| `set_ecmo_flow(l_min)`, `set_ecmo_sweep(l_min)`, `set_ecmo_fio2(fio2)`, `set_ecmo_sevo(percent)` | Adjusts active circuit flow (0 to 8 L/min), sweep gas (0 to 16 L/min), sweep FiO₂ (0.21 to 1.0), or oxygenator sevoflurane (0 to 8%); additional setters control FCO₂, membrane area, heater-cooler, LV vent, CPB venous clamp, cross-clamp, cardioplegia, blood-gas strategy, and bypass alarm mode |
+| `add_cpb_reservoir_fluid(volume_ml, kind="crystalloid", hematocrit=0.55)` | Adds 1 to 2,000 mL of crystalloid, saline, colloid (`"albumin"`), or blood directly to the CPB reservoir |
+| `draw_blood_gas(site="arterial")`, `measure_act()` | Draws a blood gas sample (ready after 120 s; sites `"arterial"`, `"right_radial"`, `"femoral"`, `"pre_oxy"`, `"post_oxy"`) or whole-blood ACT (ready after 60 s) |
+| `start_protamine_reaction()`, `stop_protamine_reaction()`, `arm_protamine_reaction(armed=True)` | Controls a Type III protamine pulmonary vasoconstriction reaction |

@@ -74,6 +74,8 @@ class GasTransport:
         self.extracellular_co2 = 0.0  # mmol.
         self.extracellular_base = 0.0  # mEq.
         self.produced_l = self.exhaled_l = self.consumed_o2_l = self.oxygen_from_air_l = 0.0
+        self.oxygen_from_ecmo_l = 0.0
+        self.co2_removed_ecmo_l = 0.0
 
     def resize_blood(self, volume: float) -> None:
         if volume == self._blood_volume:
@@ -123,14 +125,27 @@ class GasTransport:
             self.tissue_co2[index] = capacity * fluid.pco2
             self._tissue_ph[index] = fluid.blood.ph
 
-    def _plan(self, values: list[float], flow: float, shunt: float, source: float,
-              relations: tuple[tuple[float, float], ...] = ()) -> TransportPlan:
+    def _plan(
+        self,
+        values: list[float],
+        flow: float,
+        shunt: float,
+        source: float,
+        relations: tuple[tuple[float, float], ...] = (),
+        *,
+        pulmonary_flow: float | None = None,
+        arterial_source: float = 0.0,
+    ) -> TransportPlan:
         _, va, vv = self.volumes
         cp, ca, cv = values
-        pulmonary, bypass = flow * (1.0 - shunt), flow * shunt
-        rhs_a = va * ca + pulmonary * (cp - ca) + bypass * (cv - ca)
+        pulm_total = flow if pulmonary_flow is None else min(flow, max(0.0, pulmonary_flow))
+        pulmonary = pulm_total * (1.0 - shunt)
+        # Parallel arterial pump flow bypasses the native lung alongside native shunt,
+        # so pulmonary + bypass == flow identically and blood advection conserves mass.
+        bypass = flow - pulmonary
+        rhs_a = va * ca + pulmonary * (cp - ca) + bypass * (cv - ca) + arterial_source
         if not relations:
-            if flow == 0.0 and source == 0.0:
+            if flow == 0.0 and source == 0.0 and arterial_source == 0.0:
                 return TransportPlan(ca, 0.0, cv, 0.0)
             denom_v = vv + flow
             av = (vv * cv + flow * (ca - cv) + source) / denom_v
@@ -166,12 +181,24 @@ class GasTransport:
         ba = pulmonary / denominator
         return TransportPlan(aa, ba, av + bv * aa, bv * ba, tuple(bases), tuple(gains), tuple(partitions), tuple(offsets))
 
-    def prepare(self, seconds: float, cardiac_output: float, shunt: float,
-                production_l_min: float, consumption_l_min: float, chemistry: BloodChemistry,
-                saturation: float) -> tuple[TransportPlan, TransportPlan, float]:
+    def prepare(
+        self,
+        seconds: float,
+        cardiac_output: float,
+        shunt: float,
+        production_l_min: float,
+        consumption_l_min: float,
+        chemistry: BloodChemistry,
+        saturation: float,
+        *,
+        pulmonary_co: float | None = None,
+        art_co2_delta: float = 0.0,
+        art_o2_delta: float = 0.0,
+    ) -> tuple[TransportPlan, TransportPlan, float]:
         """Crank-Nicolson advection, coupled to the pulmonary gas equilibrium."""
         minutes = seconds / 60.0
         flow = max(0.0, cardiac_output) * minutes / 2.0
+        pulm_half = None if pulmonary_co is None else min(flow, max(0.0, pulmonary_co) * minutes / 2.0)
         relations = []
         for index, (amount, capacity) in enumerate(zip(self.tissue_co2, self.capacities, strict=True)):
             pco2 = amount / capacity
@@ -184,49 +211,101 @@ class GasTransport:
                 ph_change = 0.0
             self._tissue_ph[index] = blood.ph + ph_change
             relations.append((blood.total_co2 + blood.content_ph * ph_change, blood.co2_capacity))
-        carbon = self._plan(self.co2, flow, shunt, production_l_min * minutes / CO2_L_PER_MMOL, tuple(relations))
-        oxygen = self._plan(self.oxygen, flow, shunt, -consumption_l_min * minutes)
-        base = self._plan(self.base, flow, shunt, 0.0)
+        carbon = self._plan(
+            self.co2, flow, shunt, production_l_min * minutes / CO2_L_PER_MMOL, tuple(relations),
+            pulmonary_flow=pulm_half, arterial_source=art_co2_delta,
+        )
+        oxygen = self._plan(
+            self.oxygen, flow, shunt, -consumption_l_min * minutes,
+            pulmonary_flow=pulm_half, arterial_source=art_o2_delta,
+        )
+        base = self._plan(self.base, flow, shunt, 0.0, pulmonary_flow=pulm_half)
         vp = self.volumes[0]
-        pulmonary = flow * (1.0 - shunt)
+        pulm_total = flow if pulm_half is None else pulm_half
+        pulmonary = pulm_total * (1.0 - shunt)
         old_p, _, old_v = self.base
         cp = (vp * old_p + pulmonary * (old_v - old_p + base.venous_base)) / (
             vp + pulmonary * (1.0 - base.venous_gain))
         self.base = [cp, *base.blood(cp)]
         return carbon, oxygen, pulmonary
 
-    def oxygen_blood(self, pulmonary_content: float, plan: TransportPlan,
-                     flow: float, shunt: float) -> tuple[float, float, float]:
+    def oxygen_blood(
+        self,
+        pulmonary_content: float,
+        plan: TransportPlan,
+        flow: float,
+        shunt: float,
+        *,
+        pulmonary_flow: float | None = None,
+        art_o2_delta: float = 0.0,
+    ) -> tuple[float, float, float]:
         """Arterial/venous O2 and venous derivative, limited by available O2."""
         arterial, venous = plan.blood(pulmonary_content)
         if venous >= 0.0:
             return arterial, venous, plan.venous_gain
         _, va, _ = self.volumes
         cp, ca, cv = self.oxygen
-        pulmonary, bypass = flow * (1.0 - shunt), flow * shunt
-        rhs_a = va * ca + pulmonary * (cp - ca) + bypass * (cv - ca)
-        return (rhs_a + pulmonary * pulmonary_content) / (va + flow), 0.0, 0.0
+        pulm_total = flow if pulmonary_flow is None else min(flow, max(0.0, pulmonary_flow))
+        pulmonary = pulm_total * (1.0 - shunt)
+        bypass = flow - pulmonary
+        rhs_a = va * ca + pulmonary * (cp - ca) + bypass * (cv - ca) + art_o2_delta
+        return max(0.0, (rhs_a + pulmonary * pulmonary_content) / (va + flow)), 0.0, 0.0
 
-    def finish(self, pulmonary_co2: float, pulmonary_o2: float, carbon: TransportPlan,
-               oxygen: TransportPlan, seconds: float, cardiac_output: float, shunt: float,
-               production_l_min: float) -> tuple[float, float]:
+    def finish(
+        self,
+        pulmonary_co2: float,
+        pulmonary_o2: float,
+        carbon: TransportPlan,
+        oxygen: TransportPlan,
+        seconds: float,
+        cardiac_output: float,
+        shunt: float,
+        production_l_min: float,
+        *,
+        pulmonary_co: float | None = None,
+        vv_pulm_co2_delta: float = 0.0,
+        vv_pulm_o2_delta: float = 0.0,
+        art_co2_delta: float = 0.0,
+        art_o2_delta: float = 0.0,
+    ) -> tuple[float, float]:
         """Commit amounts and return O2 uptake and CO2 delivery at the lung."""
         minutes = seconds / 60.0
         flow = max(0.0, cardiac_output) * minutes / 2.0
-        pulmonary = flow * (1.0 - shunt)
+        pulm_half = None if pulmonary_co is None else min(flow, max(0.0, pulmonary_co) * minutes / 2.0)
+        pulm_total = flow if pulm_half is None else pulm_half
+        pulmonary = pulm_total * (1.0 - shunt)
         vp, va, vv = self.volumes
         old_cp, _, old_cv = self.co2
         arterial_co2, venous_co2 = carbon.blood(pulmonary_co2)
-        delivered_co2 = (pulmonary * (old_cv + venous_co2 - old_cp - pulmonary_co2)
-                         - vp * (pulmonary_co2 - old_cp)) * CO2_L_PER_MMOL
+        delivered_co2 = (
+            pulmonary * (old_cv + venous_co2 - old_cp - pulmonary_co2)
+            + vv_pulm_co2_delta
+            - vp * (pulmonary_co2 - old_cp)
+        ) * CO2_L_PER_MMOL
         old_cp, old_ca, old_cv = self.oxygen
-        arterial_o2, venous_o2, _ = self.oxygen_blood(pulmonary_o2, oxygen, flow, shunt)
-        uptake_o2 = vp * (pulmonary_o2 - old_cp) - pulmonary * (old_cv + venous_o2 - old_cp - pulmonary_o2)
-        used_o2 = va * (old_ca - arterial_o2) + vv * (old_cv - venous_o2) + uptake_o2 - vp * (pulmonary_o2 - old_cp)
+        arterial_o2, venous_o2, _ = self.oxygen_blood(
+            pulmonary_o2, oxygen, flow, shunt, pulmonary_flow=pulm_half, art_o2_delta=art_o2_delta,
+        )
+        uptake_o2 = (
+            vp * (pulmonary_o2 - old_cp)
+            - pulmonary * (old_cv + venous_o2 - old_cp - pulmonary_o2)
+            - vv_pulm_o2_delta
+        )
+        ecmo_o2_total = vv_pulm_o2_delta + art_o2_delta
+        ecmo_co2_removed_l = -(vv_pulm_co2_delta + art_co2_delta) * CO2_L_PER_MMOL
+        used_o2 = (
+            va * (old_ca - arterial_o2)
+            + vv * (old_cv - venous_o2)
+            + uptake_o2
+            + ecmo_o2_total
+            - vp * (pulmonary_o2 - old_cp)
+        )
         self.co2 = [pulmonary_co2, arterial_co2, venous_co2]
         self.oxygen = [pulmonary_o2, arterial_o2, venous_o2]
         self.tissue_co2 = [v * (a + b * arterial_co2 - offset) for v, a, b, offset in zip(
             carbon.partition_volumes, carbon.tissue_bases, carbon.tissue_gains, carbon.tissue_offsets, strict=True)]
         self.produced_l += production_l_min * minutes
         self.consumed_o2_l += max(0.0, used_o2)
+        self.oxygen_from_ecmo_l += ecmo_o2_total
+        self.co2_removed_ecmo_l += ecmo_co2_removed_l
         return uptake_o2, delivered_co2

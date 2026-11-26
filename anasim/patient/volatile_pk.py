@@ -19,6 +19,7 @@ class _IntegrationResult(NamedTuple):
     v_frc: float
     net_btps_l: float
     blood_uptake_btps_l: float
+    exhaust_fraction: float = 0.0
 
 
 @dataclass(slots=True)
@@ -86,6 +87,7 @@ class VolatilePK:
         self.frc = patient.functional_residual_capacity()
         self._temp_c = float(patient.baseline_temp)
         self.last_blood_uptake_l_min = 0.0
+        self.last_exhaust_fraction = 0.0
 
     def flow_fractions(self, cardiac_output_l: float) -> tuple[float, float, float]:
         """Organ CO shares; low CO shifts flow from muscle and fat toward VRG."""
@@ -107,10 +109,16 @@ class VolatilePK:
         return self.lambda_b_g * math.exp(-self._lambda_temp_slope * (temp_c - 37.0))
 
     def alveolar_uptake_l_min(
-        self, cardiac_output_l: float, shunt_fraction: float = 0.0, temp_c: float = 37.0,
+        self,
+        cardiac_output_l: float,
+        shunt_fraction: float = 0.0,
+        temp_c: float = 37.0,
+        *,
+        pulmonary_flow_l: float | None = None,
     ) -> float:
         """Instantaneous pulmonary capillary uptake from alveoli (positive into blood, L/min)."""
-        lambda_q = max(0.0, cardiac_output_l) * (1.0 - shunt_fraction) * self.lambda_b_g_at_temp(temp_c)
+        q_pulm = cardiac_output_l if pulmonary_flow_l is None else pulmonary_flow_l
+        lambda_q = max(0.0, q_pulm) * (1.0 - shunt_fraction) * self.lambda_b_g_at_temp(temp_c)
         return lambda_q * (self.state.p_alv - self.state.p_ven)
 
     def _integrate(
@@ -127,9 +135,16 @@ class VolatilePK:
         circuit_share: float = 1.0,
         circuit_fi_agent: float | None = None,
         temp_c: float = 37.0,
+        pulmonary_flow_l: float | None = None,
+        ecmo_blood_flow_l: float = 0.0,
+        ecmo_sweep_l: float = 0.0,
+        ecmo_fi_agent: float = 0.0,
+        ecmo_permeability: float = 0.0,
+        ecmo_is_arterial: bool = False,
     ) -> _IntegrationResult:
         dt_min = dt / 60.0
         q_co = max(0.0, cardiac_output_l)
+        q_pulm = q_co if pulmonary_flow_l is None else min(q_co, max(0.0, pulmonary_flow_l))
         f_vrg, f_mus, f_fat = self.flow_fractions(q_co)
         q_vrg = q_co * f_vrg
         q_mus = q_co * f_mus
@@ -172,7 +187,25 @@ class VolatilePK:
             v_frc = lung_volume_l
             p_alv = clamp01(agent_vol / v_frc) if v_frc > 0.0 else 0.0
         one_minus_shunt = 1.0 - shunt_fraction
-        lambda_q = q_co * one_minus_shunt * lambda_bg_now
+        lambda_q = q_pulm * one_minus_shunt * lambda_bg_now
+        ecmo_active = (
+            ecmo_blood_flow_l > 1e-6
+            and ecmo_sweep_l > 1e-6
+            and ecmo_permeability > 1e-6
+            and lambda_bg_now > 0.0
+        )
+        q_ecmo = max(0.0, ecmo_blood_flow_l)
+        ecmo_equil = 0.0
+        exhaust_gain = 0.0
+        if ecmo_active:
+            # Series blood-membrane-sweep conductance (Prasser 2008; Nitzschke 2013):
+            # microporous PPL equilibrates rapidly; plasma-tight PMP blocks volatile gas.
+            c_b = q_ecmo * lambda_bg_now
+            g_mem = ecmo_permeability * 3.0 * c_b
+            eff_g = (g_mem * ecmo_sweep_l) / (g_mem + ecmo_sweep_l)
+            k_vol = (c_b * eff_g) / (c_b + eff_g)
+            ecmo_equil = clamp01(k_vol / c_b)
+            exhaust_gain = k_vol / ecmo_sweep_l
         # Tissue rate constant k = (flow / volume) / lambda (1/min). A high
         # partition coefficient slows equilibration: VRG in minutes, fat in hours.
         # Fat solubility scales with sqrt(lambda_b_g), so fat:blood partition scales
@@ -209,37 +242,92 @@ class VolatilePK:
         inv_frc_dt = interval / v_frc if v_frc > 0.0 else 0.0
         full_circuit = circuit_share >= 1.0 - 1e-9
         circuit_share_dt = circuit_share * interval
+        standard_path = not ecmo_active and pulmonary_flow_l is None
+        exhaust_frac = 0.0
         for _ in range(substeps):
             p_ven = f_vrg * p_vrg + f_mus * p_mus + f_fat * p_fat
-            if v_frc > 0.0:
-                p_art = one_minus_shunt * p_alv + shunt_fraction * p_ven
-                airway_flux = (
-                    alveolar_vent * (fi_agent - p_alv)
-                    + concentrating_inflow * fi_agent
-                    - washout_outflow * p_alv
-                )
-                step_blood = lambda_q_dt * (p_alv - p_ven)
-                blood_uptake_btps_l += step_blood
-                next_p_alv = clamp01(p_alv + (airway_flux + lambda_q * (p_ven - p_alv)) * inv_frc_dt)
-                if full_circuit:
-                    net_btps_l += (next_p_alv - p_alv) * v_frc + step_blood
-                else:
-                    net_btps_l += circuit_share_dt * (
-                        alveolar_vent * (branch_fi - p_alv)
-                        + concentrating_inflow * branch_fi
+            if standard_path:
+                if v_frc > 0.0:
+                    p_art = one_minus_shunt * p_alv + shunt_fraction * p_ven
+                    airway_flux = (
+                        alveolar_vent * (fi_agent - p_alv)
+                        + concentrating_inflow * fi_agent
                         - washout_outflow * p_alv
                     )
-                p_alv = next_p_alv
+                    step_blood = lambda_q_dt * (p_alv - p_ven)
+                    blood_uptake_btps_l += step_blood
+                    next_p_alv = clamp01(p_alv + (airway_flux + lambda_q * (p_ven - p_alv)) * inv_frc_dt)
+                    if full_circuit:
+                        net_btps_l += (next_p_alv - p_alv) * v_frc + step_blood
+                    else:
+                        net_btps_l += circuit_share_dt * (
+                            alveolar_vent * (branch_fi - p_alv)
+                            + concentrating_inflow * branch_fi
+                            - washout_outflow * p_alv
+                        )
+                    p_alv = next_p_alv
+                else:
+                    p_art = p_ven
             else:
-                p_art = p_ven
+                p_post_oxy = (p_ven + ecmo_equil * (ecmo_fi_agent - p_ven)) if ecmo_active else p_ven
+                if ecmo_is_arterial:
+                    p_pa = p_ven
+                else:
+                    f_ecmo = clamp01(q_ecmo / q_co) if (ecmo_active and q_co > 1e-6) else 0.0
+                    p_pa = (1.0 - f_ecmo) * p_ven + f_ecmo * p_post_oxy
+                if v_frc > 0.0:
+                    p_lv = one_minus_shunt * p_alv + shunt_fraction * p_pa
+                    airway_flux = (
+                        alveolar_vent * (fi_agent - p_alv)
+                        + concentrating_inflow * fi_agent
+                        - washout_outflow * p_alv
+                    )
+                    step_blood = lambda_q_dt * (p_alv - p_pa)
+                    blood_uptake_btps_l += step_blood
+                    next_p_alv = clamp01(p_alv + (airway_flux + lambda_q * (p_pa - p_alv)) * inv_frc_dt)
+                    if full_circuit:
+                        net_btps_l += (next_p_alv - p_alv) * v_frc + step_blood
+                    else:
+                        net_btps_l += circuit_share_dt * (
+                            alveolar_vent * (branch_fi - p_alv)
+                            + concentrating_inflow * branch_fi
+                            - washout_outflow * p_alv
+                        )
+                    p_alv = next_p_alv
+                else:
+                    p_lv = p_pa
+                if ecmo_is_arterial:
+                    p_art = (
+                        (q_pulm * p_lv + max(0.0, q_co - q_pulm) * p_post_oxy) / q_co
+                        if q_co > 1e-6
+                        else p_ven
+                    )
+                else:
+                    p_art = p_lv
             p_vrg += k_vrg_dt * (p_art - p_vrg)
             p_brain += k_brain_dt * (p_art - p_brain)
             p_mus += k_mus_dt * (p_art - p_mus)
             p_fat += k_fat_dt * (p_art - p_fat)
         p_ven = f_vrg * p_vrg + f_mus * p_mus + f_fat * p_fat
-        p_art = (one_minus_shunt * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
+        if standard_path:
+            p_art = (one_minus_shunt * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
+        else:
+            p_post_oxy = (p_ven + ecmo_equil * (ecmo_fi_agent - p_ven)) if ecmo_active else p_ven
+            exhaust_frac = clamp01(ecmo_fi_agent + exhaust_gain * (p_ven - ecmo_fi_agent)) if ecmo_active else 0.0
+            if ecmo_is_arterial:
+                p_lv = (one_minus_shunt * p_alv + shunt_fraction * p_ven) if v_frc > 0.0 else p_ven
+                p_art = (
+                    (q_pulm * p_lv + max(0.0, q_co - q_pulm) * p_post_oxy) / q_co
+                    if q_co > 1e-6
+                    else p_ven
+                )
+            else:
+                f_ecmo = clamp01(q_ecmo / q_co) if (ecmo_active and q_co > 1e-6) else 0.0
+                p_pa = (1.0 - f_ecmo) * p_ven + f_ecmo * p_post_oxy
+                p_art = (one_minus_shunt * p_alv + shunt_fraction * p_pa) if v_frc > 0.0 else p_pa
         return _IntegrationResult(
             p_alv, p_vrg, p_brain, p_mus, p_fat, p_ven, p_art, v_frc, net_btps_l, blood_uptake_btps_l,
+            exhaust_frac,
         )
 
     def _is_empty(self) -> bool:
@@ -266,11 +354,23 @@ class VolatilePK:
         circuit_fi_agent: float | None = None,
         exhaled_volume_change_l: float | None = None,
         temp_c: float = 37.0,
+        *,
+        pulmonary_flow_l: float | None = None,
+        ecmo_blood_flow_l: float = 0.0,
+        ecmo_sweep_l: float = 0.0,
+        ecmo_fi_agent: float = 0.0,
+        ecmo_permeability: float = 0.0,
+        ecmo_is_arterial: bool = False,
     ) -> tuple[float, _IntegrationResult | None]:
         """Return (circuit uptake BTPS L/min, integration result) without mutating state."""
         if dt <= 0.0 or circuit_share <= 0.0:
             return 0.0, None
-        if fi_agent <= 0.0 and (circuit_fi_agent is None or circuit_fi_agent <= 0.0) and self._is_empty():
+        if (
+            fi_agent <= 0.0
+            and ecmo_fi_agent <= 0.0
+            and (circuit_fi_agent is None or circuit_fi_agent <= 0.0)
+            and self._is_empty()
+        ):
             return 0.0, None
         result = self._integrate(
             dt,
@@ -285,6 +385,12 @@ class VolatilePK:
             circuit_share,
             circuit_fi_agent,
             temp_c=temp_c,
+            pulmonary_flow_l=pulmonary_flow_l,
+            ecmo_blood_flow_l=ecmo_blood_flow_l,
+            ecmo_sweep_l=ecmo_sweep_l,
+            ecmo_fi_agent=ecmo_fi_agent,
+            ecmo_permeability=ecmo_permeability,
+            ecmo_is_arterial=ecmo_is_arterial,
         )
         return result.net_btps_l / (dt / 60.0), result
 
@@ -301,12 +407,20 @@ class VolatilePK:
         self.frc = result.v_frc
         self._temp_c = float(temp_c)
         self.last_blood_uptake_l_min = result.blood_uptake_btps_l / (dt / 60.0) if dt > 0.0 else 0.0
+        self.last_exhaust_fraction = result.exhaust_fraction
         state.mac = (state.p_brain * 100.0) / self.mac_at_temp(temp_c)
 
     def step(self, dt: float, fi_agent: float, alveolar_vent_l: float, cardiac_output_l: float,
              temp_c: float = 37.0, lung_volume_l: float | None = None, shunt_fraction: float = 0.0,
              companion_uptake_l_min: float = 0.0, passive_inflow_l_min: float = 0.0,
-             exhaled_volume_change_l: float | None = None):
+             exhaled_volume_change_l: float | None = None,
+             *,
+             pulmonary_flow_l: float | None = None,
+             ecmo_blood_flow_l: float = 0.0,
+             ecmo_sweep_l: float = 0.0,
+             ecmo_fi_agent: float = 0.0,
+             ecmo_permeability: float = 0.0,
+             ecmo_is_arterial: bool = False):
         """Advance with inspired fraction, ventilation/output in L/min, and temperature in °C.
 
         lung_volume_l is end-expiratory gas volume; shunt_fraction is the
@@ -315,11 +429,12 @@ class VolatilePK:
         draw additional inspired gas into FRC.
         """
         state = self.state
-        if fi_agent <= 0.0 and self._is_empty():
+        if fi_agent <= 0.0 and ecmo_fi_agent <= 0.0 and self._is_empty():
             if lung_volume_l is not None:
                 self.frc = lung_volume_l
             state.p_ven = state.p_art = state.mac = 0.0
             self.last_blood_uptake_l_min = 0.0
+            self.last_exhaust_fraction = 0.0
             return
         result = self._integrate(
             dt,
@@ -332,5 +447,11 @@ class VolatilePK:
             passive_inflow_l_min,
             exhaled_volume_change_l,
             temp_c=temp_c,
+            pulmonary_flow_l=pulmonary_flow_l,
+            ecmo_blood_flow_l=ecmo_blood_flow_l,
+            ecmo_sweep_l=ecmo_sweep_l,
+            ecmo_fi_agent=ecmo_fi_agent,
+            ecmo_permeability=ecmo_permeability,
+            ecmo_is_arterial=ecmo_is_arterial,
         )
         self.commit_integration(result, dt, temp_c=temp_c)

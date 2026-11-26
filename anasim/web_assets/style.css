@@ -1416,6 +1416,22 @@ label.inline { grid-template-columns: auto minmax(0, 1fr); }
 .defib-shock-btn:not(:disabled) { background: var(--danger); border-color: var(--danger); color: #FFFFFF; font-weight: 600; }
 .defib-shock-btn:not(:disabled):hover { background: #E73B3B; }
 
+.ecmo-section { border-top: 1px solid var(--border-subtle); padding-top: var(--sp-2); }
+.ecmo-controls,
+.ecmo-actions,
+.ecmo-cpb-controls { display: grid; gap: var(--control-gap); }
+.ecmo-controls { padding-top: var(--heading-gap); }
+.ecmo-readout {
+  margin: 0;
+  padding: var(--sp-2);
+  background: var(--well);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+.ecmo-readout.bad { border-color: var(--danger); color: var(--danger-soft); font-weight: 600; }
+
 /* --- Labs: blood gas analyzer table ------------------------------- */
 
 .abg-results { overflow-x: auto; scrollbar-width: thin; }

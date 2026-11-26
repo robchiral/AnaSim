@@ -9,7 +9,9 @@ heart rate; BIS, bispectral index; MAC, minimum alveolar concentration; TCI,
 target-controlled infusion; CPR, cardiopulmonary resuscitation; VF, ventricular
 fibrillation; VT, ventricular tachycardia; EEG, electroencephalogram; FRC,
 functional residual capacity; PEEP, positive end-expiratory pressure; V/Q,
-ventilation-perfusion; SIMV, synchronized intermittent mandatory ventilation.
+ventilation-perfusion; SIMV, synchronized intermittent mandatory ventilation;
+ECMO, extracorporeal membrane oxygenation; CPB, cardiopulmonary bypass; ACT,
+activated clotting time; ARDS, acute respiratory distress syndrome.
 
 ## Patient conditions
 
@@ -553,6 +555,41 @@ ventilation-perfusion; SIMV, synchronized intermittent mandatory ventilation.
 - Poorzargar et al. (2022). *J Clin Monit Comput*. [Pulse oximetry in poor perfusion](https://pubmed.ncbi.nlm.nih.gov/35119597/).
 - Broome et al. (1992). *Anaesthesia*. [Finger pulse-oximeter response delay during anesthesia](https://pubmed.ncbi.nlm.nih.gov/1536395/).
 - MacLeod et al. (2005). *Anaesthesia*. [Finger pulse-oximeter desaturation delay during mild hypothermia](https://pubmed.ncbi.nlm.nih.gov/15601275/).
+
+## Extracorporeal support
+
+### ECMO and cardiopulmonary bypass
+
+- Joyce et al. (2018). *Intensive Care Med Exp*. [Mathematical model of CO₂, O₂, and N₂ exchange during venovenous ECMO](https://pubmed.ncbi.nlm.nih.gov/30094654/).
+- Schmidt et al. (2013). *Intensive Care Med*. [Blood oxygenation and decarboxylation determinants during adult venovenous ECMO](https://pubmed.ncbi.nlm.nih.gov/23291732/).
+- Karagiannidis et al. (2017). *Intensive Care Med Exp*. [Membrane surface area and blood flow in extracorporeal CO₂ removal](https://pubmed.ncbi.nlm.nih.gov/28766276/).
+- Palmér et al. (2016). *ASAIO J*. [Cannula design and recirculation during venovenous ECMO](https://pubmed.ncbi.nlm.nih.gov/27660904/).
+- Mauri et al. (2016). *Anesthesiology*. [Control of respiratory drive and effort during ECMO in severe ARDS](https://pubmed.ncbi.nlm.nih.gov/26999639/).
+- Donker et al. (2019). *ASAIO J*. [Left ventricular unloading during venoarterial ECMO](https://pubmed.ncbi.nlm.nih.gov/29517515/).
+- Ostadal et al. (2015). *J Transl Med*. [Increasing VA ECMO flow and left ventricular performance in cardiogenic shock](https://pubmed.ncbi.nlm.nih.gov/26275717/).
+- Aissaoui et al. (2012). *J Am Soc Echocardiogr*. [Left ventricular loading changes across VA ECMO flow weaning](https://pubmed.ncbi.nlm.nih.gov/22421027/).
+- Stevens et al. (2017). *J Biomech*. [Aortic flow mixing during peripheral venoarterial ECMO](https://pubmed.ncbi.nlm.nih.gov/28262284/).
+- Magder and De Varennes (1998). *Crit Care Med*. [Human stressed vascular volume from passive CPB venous drainage](https://pubmed.ncbi.nlm.nih.gov/9635656/).
+- Gordon et al. (1975). *J Thorac Cardiovasc Surg*. [Arterial pressure, viscosity, and vascular resistance during CPB](https://pubmed.ncbi.nlm.nih.gov/1117744/).
+- Eckmann et al. (2000). *Anesth Analg*. [Hematocrit, diluent, temperature, and shear effects on blood viscosity](https://pubmed.ncbi.nlm.nih.gov/10960372/).
+- Rajek et al. (2000). *Anesthesiology*. [Methods for reducing postbypass core temperature afterdrop](https://pubmed.ncbi.nlm.nih.gov/10691232/).
+- Murkin et al. (1987). *Anesth Analg*. [Cerebral autoregulation and flow-metabolism coupling during CPB](https://pubmed.ncbi.nlm.nih.gov/3113288/).
+- Hiraoka et al. (2004). *Clin Pharmacol Ther*. [Unbound propofol concentrations during CPB hemodilution](https://pubmed.ncbi.nlm.nih.gov/15060510/).
+- Michelsen et al. (2001). *Anesth Analg*. [Remifentanil pharmacokinetics during hypothermic CPB](https://pubmed.ncbi.nlm.nih.gov/11682375/).
+- Mathew et al. (2001). *J Clin Anesth*. [Hypothermia and Bispectral Index during CPB](https://pubmed.ncbi.nlm.nih.gov/11435056/).
+- Prasser et al. (2008). *Eur J Anaesthesiol*. [Sevoflurane elimination across plasma-tight versus conventional oxygenators](https://pubmed.ncbi.nlm.nih.gov/17655810/).
+- Shekar et al. (2012). *Crit Care*. [Drug sequestration in whole-blood ECMO circuits](https://pubmed.ncbi.nlm.nih.gov/23068416/).
+- Morales Castro et al. (2025). *Ann Am Thorac Soc*. [Propofol and fentanyl PK/PD during venovenous ECMO](https://pubmed.ncbi.nlm.nih.gov/39383576/).
+
+### Heparin and protamine
+
+- Bull et al. (1975). *J Thorac Cardiovasc Surg*. [Individualized heparin and protamine dose-response curve using ACT](https://pubmed.ncbi.nlm.nih.gov/1127967/).
+- Bjornsson et al. (1982). *Clin Pharmacol Ther*. [Dose-dependent heparin pharmacokinetics by three assay methods](https://pubmed.ncbi.nlm.nih.gov/7053298/).
+- Butterworth et al. (2002). *Ann Thorac Surg*. [Rapid disappearance of protamine in adults after CPB](https://pubmed.ncbi.nlm.nih.gov/12440613/).
+- Teoh et al. (2004). *J Thorac Cardiovasc Surg*. [Postoperative protamine infusion and heparin rebound after CPB](https://pubmed.ncbi.nlm.nih.gov/15282457/).
+- Mochizuki et al. (1998). *Anesth Analg*. [Excess protamine effects on platelet aggregation and ACT](https://pubmed.ncbi.nlm.nih.gov/9768770/).
+- Horrow (1985). *Anesth Analg*. [Review of protamine toxicity and hemodynamic reactions](https://pubmed.ncbi.nlm.nih.gov/3883848/).
+- Lowenstein et al. (1983). *Anesthesiology*. [Catastrophic pulmonary vasoconstriction during protamine reversal](https://pubmed.ncbi.nlm.nih.gov/6638558/).
 
 ## Scenario guidance
 

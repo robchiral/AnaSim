@@ -549,6 +549,11 @@ def sync_pk_state(engine: SimulationEngine) -> None:
                 setattr(state, cp_field, float(val))
     state.roc_ce = float(engine.tof_pd.ce)
     state.roc_cp = float(engine.pk["roc"].state.c1 + engine.tof_pd.bound_rocuronium(engine.pk["roc"].v1))
+    coag_state = engine.coagulation.state
+    state.heparin_u_ml = float(coag_state.heparin_u_ml)
+    state.protamine_ug_ml = float(coag_state.protamine_ug_ml)
+    state.act_s = float(coag_state.act_s)
+    state.protamine_reaction = bool(coag_state.protamine_reaction_active)
     morphine_pk = engine.pk["morphine"]
     m6g_excess = morphine_pk.m6g_excess_ce if isinstance(morphine_pk, MorphinePK) else 0.0
     if m6g_excess > 0.0:
@@ -623,11 +628,11 @@ def project_arterial(
     """Copy the ideal pulse landmarks and the catheter reading into the public snapshot."""
     state.sbp = float(arterial_sample.systolic)
     state.dbp = float(arterial_sample.diastolic)
-    if state.co > 0.0 and state.rhythm_type not in PULSELESS_RHYTHMS:
+    if state.co > 0.0 and state.rhythm_type not in PULSELESS_RHYTHMS and not (state.pump_flow > 0.0 and state.sbp == state.dbp):
         if state.map < state.dbp or state.map > state.sbp:
             state.map = float(arterial_sample.mean)
-    elif not state.chest_compressions and state.co <= 0.0 and state.sbp == state.dbp:
-        # Non-pulsatile Windkessel runoff: keep SBP == DBP == MAP without phantom pulse pressure.
+    elif not state.chest_compressions and state.sbp == state.dbp and (state.co <= 0.0 or state.pump_flow > 0.0):
+        # Non-pulsatile Windkessel runoff or nonpulsatile pump flow: keep SBP == DBP == MAP.
         state.map = float(arterial_sample.mean)
         state.sbp = state.dbp = state.map
     else:
@@ -649,6 +654,27 @@ def _projected_st_depression(hemo, hemo_state: HemoState) -> float:
     return float(hemo.coronary.st_depression_mv * st_scale)
 
 
+def project_extracorporeal(engine: SimulationEngine) -> None:
+    """Copy extracorporeal circuit summary telemetry into public SimulationState."""
+    state = engine.state
+    ecmo = engine.extracorporeal
+    st = ecmo.state
+    state.ecmo_mode = st.mode.value if ecmo.is_active else "none"
+    state.ecmo_flow = float(st.blood_flow_l_min) if ecmo.is_active else 0.0
+    state.ecmo_sweep = float(st.sweep_gas_l_min) if ecmo.is_active else 0.0
+    state.ecmo_recirculation = float(st.recirculation_fraction) if ecmo.is_active else 0.0
+    state.ecmo_o2_transfer = float(st.o2_transfer_ml_min) if ecmo.is_active else 0.0
+    state.ecmo_co2_removal = float(st.co2_removal_ml_min) if ecmo.is_active else 0.0
+    state.cpb_reservoir_ml = float(st.reservoir_volume_ml) if ecmo.is_cpb else 0.0
+    state.cpb_cross_clamp = bool(st.aortic_cross_clamp) if ecmo.is_active else False
+    if ecmo.is_active:
+        state.upper_sao2 = float(st.upper_body_sao2)
+        state.lower_sao2 = float(st.lower_body_sao2)
+    else:
+        state.upper_sao2 = float(state.sao2)
+        state.lower_sao2 = float(state.sao2)
+
+
 def project_hemodynamics(engine: SimulationEngine, hemo_state: HemoState) -> None:
     """Copy hemodynamic model state into the public snapshot."""
     state = engine.state
@@ -663,6 +689,8 @@ def project_hemodynamics(engine: SimulationEngine, hemo_state: HemoState) -> Non
     state.svr = float(hemo_state.svr)
     state.co = float(hemo_state.co)
     state.intrinsic_co = float(hemo_state.intrinsic_co)
+    state.pulmonary_flow = float(hemo_state.pulmonary_flow)
+    state.pump_flow = float(hemo_state.pump_flow)
     state.rhythm_type = hemo_state.rhythm_type
     state.chest_compressions = hemo_state.compressions
     state.blood_volume = float(engine.hemo.blood_volume)
@@ -870,9 +898,14 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         )
     else:
         shunt_now = engine.aeration.shunt_fraction
+        pulm_q = engine.hemo.state.pulmonary_flow if engine.extracorporeal.is_active else None
         agent_uptake = (
-            engine.pk_n2o.alveolar_uptake_l_min(cardiac_output, shunt_now, temp_c=state.temp_c)
-            + engine.pk_sevo.alveolar_uptake_l_min(cardiac_output, shunt_now, temp_c=state.temp_c)
+            engine.pk_n2o.alveolar_uptake_l_min(
+                cardiac_output, shunt_now, temp_c=state.temp_c, pulmonary_flow_l=pulm_q,
+            )
+            + engine.pk_sevo.alveolar_uptake_l_min(
+                cardiac_output, shunt_now, temp_c=state.temp_c, pulmonary_flow_l=pulm_q,
+            )
         )
     lung_volume_l = cache.lung_volume_l if cache is not None else engine.aeration.frc
     spirometry = engine.vent.monitors
@@ -959,6 +992,8 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         mech_supported_fraction=supported_share,
         mech_va_l_min=mech_va_l_min,
         exchange=cached_exchange,
+        pulmonary_flow=engine.hemo.state.pulmonary_flow if engine.extracorporeal.is_active else None,
+        extracorporeal=engine.extracorporeal if engine.extracorporeal.is_active else None,
     )
     if dt > 0.0:
         gas_vol = engine.resp.gas_volume_l
@@ -1016,6 +1051,7 @@ def project_runtime_physiology(engine: SimulationEngine, snapshot: PhysiologySte
     state = engine.state
     project_hemodynamics(engine, snapshot.hemo_state)
     _project_respiratory_observables(engine, snapshot)
+    project_extracorporeal(engine)
     state.oxygen_delivery_ratio = float(engine.hemo.compute_do2_ratio(
         max(0.0, state.sao2) / 100.0, max(0.0, state.pao2), state.co
     ))
@@ -1077,6 +1113,11 @@ def reference_arterial_pressures(engine: SimulationEngine, hemo_state: HemoState
             )
             return max(i_sbp, cpr_sbp), max(i_dbp, cpr_dbp)
         return cpr_sbp, cpr_dbp
+    if hemo_state.pump_flow > 0.0 and (
+        hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.sv <= 0.0 or hemo_state.hr <= 0.0
+    ):
+        p_stat = float(hemo_state.nonpulsatile_map)
+        return p_stat, p_stat
     if hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.co <= 0.0 or hemo_state.hr <= 0.0:
         p_stat = float(hemo_state.venous_pressure)
         return p_stat, p_stat
@@ -1101,11 +1142,16 @@ def seed_arterial_monitors(
     cardiac_sample = engine.cardiac_cycle.seed(
         hemo_state.hr if hr is None else hr, hemo_state.rhythm_type,
     )
+    static_p = (
+        hemo_state.nonpulsatile_map
+        if hemo_state.pump_flow > 0.0 and (hemo_state.sv <= 0.0 or not cardiac_sample.organized)
+        else hemo_state.venous_pressure
+    )
     arterial_sample = engine.arterial_waveform.seed(
         cardiac_sample,
         hemo_state.map if map_mmhg is None else map_mmhg,
         hemo_state.sv if sv_ml is None else sv_ml,
-        static_pressure=hemo_state.venous_pressure,
+        static_pressure=static_p,
         pulse_pressure_factor=hemo_state.pulse_pressure_factor,
     )
     project_arterial(engine.state, arterial_sample, engine.art_line.seed(arterial_sample))
@@ -1118,8 +1164,21 @@ def step_coronary_from_state(
     """Advance or sync coronary balance from arterial, CPR, and atrial pressures."""
     state = engine.state
     hemo = engine.hemo
+    ecmo = engine.extracorporeal
     coronary_sbp = state.sbp
     coronary_dbp = state.dbp
+    nonpulsatile_perfusion = False
+    aortic_cross_clamp = False
+    cardioplegia_arrest = False
+    coronary_sao2 = sao2
+    if ecmo.is_arterial_support and (hemo_state.pump_flow > 0.0 or ecmo.state.aortic_cross_clamp):
+        coronary_sao2 = ecmo.state.coronary_sao2
+        aortic_cross_clamp = ecmo.state.aortic_cross_clamp
+        cardioplegia_arrest = ecmo.state.cardioplegia_arrest
+        if not aortic_cross_clamp and hemo_state.pump_flow > 0.0:
+            nonpulsatile_perfusion = True
+            coronary_sbp = max(coronary_sbp, hemo_state.map)
+            coronary_dbp = max(coronary_dbp, hemo_state.nonpulsatile_map if hemo_state.sv <= 0.0 else coronary_dbp)
     if hemo.compressions:
         if hemo_state.cpr_perfusion_map <= 0.0:
             hemo_state = hemo.evaluate_state(include_stim=False)
@@ -1129,7 +1188,7 @@ def step_coronary_from_state(
         )
         coronary_sbp = max(coronary_sbp, cpr_sbp) if hemo_state.intrinsic_co > 0.0 else cpr_sbp
         coronary_dbp = max(coronary_dbp, cpr_dbp) if hemo_state.intrinsic_co > 0.0 else cpr_dbp
-    elif hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.co <= 0.0:
+    elif not nonpulsatile_perfusion and (hemo_state.rhythm_type in PULSELESS_RHYTHMS or hemo_state.co <= 0.0):
         coronary_sbp = coronary_dbp = hemo_state.venous_pressure
     intrinsic_sbp = (
         0.0
@@ -1140,10 +1199,14 @@ def step_coronary_from_state(
     before = (coronary.ischemia, coronary.shock_stunning, coronary.injury, coronary.energy_failure)
     coronary.step(
         dt, state.hr, coronary_sbp, coronary_dbp, max(state.lap, hemo_state.venous_pressure), hemo.hb_conc,
-        sao2, hemo.myocardial_hypoxia,
+        coronary_sao2, hemo.myocardial_hypoxia,
         fibrillating=hemo_state.rhythm_type == RhythmType.VFIB, compressions=hemo.compressions,
         venous_pressure=hemo_state.venous_pressure,
         intrinsic_sbp=intrinsic_sbp,
+        nonpulsatile_perfusion=nonpulsatile_perfusion,
+        aortic_cross_clamp=aortic_cross_clamp,
+        cardioplegia_arrest=cardioplegia_arrest,
+        temp_c=state.temp_c,
     )
     after = (coronary.ischemia, coronary.shock_stunning, coronary.injury, coronary.energy_failure)
     if after != before:

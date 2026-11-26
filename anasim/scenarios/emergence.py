@@ -152,9 +152,6 @@ def _nmb_valid_since(engine) -> float:
 
 def _check_block_recovery(engine, *, require_recent: bool) -> tuple[bool, str]:
     """Require quantitative recovery and a valid TOF measurement."""
-    label, response = neuromuscular_response(engine)
-    if response < 90.0:
-        return False, f"{label}: {format_unmet_int(response, low=90.0)}%/90%+; assess reversal"
     reading = engine.nmb.reading
     if (
         reading is None
@@ -163,8 +160,15 @@ def _check_block_recovery(engine, *, require_recent: bool) -> tuple[bool, str]:
         or (require_recent and engine.state.time - reading.time > 60.0)
     ):
         return False, "Measure TOF and confirm a ratio of at least 90%"
-    if reading.ratio is None or reading.low_signal or reading.ratio < 90.0:
+    if reading.low_signal:
         return False, "Confirm a reliable measured TOF ratio of at least 90%"
+    if reading.ratio is None:
+        return False, f"Measured TOF count: {reading.count}/4; assess reversal"
+    if reading.ratio < 90.0:
+        return False, f"Measured TOF ratio: {format_unmet_int(reading.ratio, low=90.0)}%/90%+; assess reversal"
+    label, response = neuromuscular_response(engine)
+    if response < 90.0:
+        return False, f"{label}: {format_unmet_int(response, low=90.0)}%/90%+; assess reversal"
     return True, ""
 
 

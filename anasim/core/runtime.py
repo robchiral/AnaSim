@@ -10,12 +10,14 @@ from anasim.core.constants import (
     ARREST_HR_BPM,
     ARREST_MAP_MMHG,
     ARREST_PULSE_PRESSURE_MMHG,
+    BLOOD_VOLUME_MIN,
     O2_FLUSH_FLOW_L_MIN,
     PULSELESS_VT_MAP_MMHG,
     VT_MIN,
 )
 from anasim.core.enums import PULSELESS_RHYTHMS, RhythmType
 from anasim.core.utils import clamp, clamp01, hill_function
+from anasim.extracorporeal.types import BloodGasManagement
 from anasim.machine.ventilator import BAG_TI_MAX_S, VOLUME_TARGETED
 from anasim.monitors.arterial import MIN_PULSE_PRESSURE_MMHG
 from anasim.patient.pd.anesthesia import opioid_equivalent
@@ -24,7 +26,12 @@ from anasim.patient.pd.nmba import (
     succinylcholine_phase2_tof_fraction,
     succinylcholine_twitch_fraction,
 )
-from anasim.patient.pk_models import MidazolamPK, PropofolPKEleveld
+from anasim.patient.pk_models import (
+    HeparinPK,
+    MidazolamPK,
+    PropofolPKEleveld,
+    ProtaminePK,
+)
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.toxicity import SILENT_BLOCK
 
@@ -115,8 +122,13 @@ def _step_monitors_light(
     connected = state.airway_mode != AirwayType.NONE
     state.display_etco2 = float(resp_state.etco2) if connected else 0.0
     state.etco2_signal_valid = connected
-    state.spo2_signal_valid = hemo_state.co > ARREST_CO_L_MIN and not hemo_state.compressions
-    state.spo2 = state.display_spo2 = float(state.sao2) if state.spo2_signal_valid else 0.0
+    state.spo2_signal_valid = hemo_state.intrinsic_co > ARREST_CO_L_MIN and not hemo_state.compressions
+    spo2_src = (
+        engine.extracorporeal.state.upper_body_sao2
+        if engine.extracorporeal.is_arterial_support
+        else state.sao2
+    )
+    state.spo2 = state.display_spo2 = float(spo2_src) if state.spo2_signal_valid else 0.0
 
 
 def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: bool = True) -> None:
@@ -189,19 +201,25 @@ def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: boo
     else:
         cerebral_map = hemo_state.perfusion_map
         flow_ceiling = None
+    ecmo = engine.extracorporeal
+    cerebral_sao2 = ecmo.state.upper_body_sao2 if ecmo.is_arterial_support else state.sao2
+    cerebral_paco2 = ecmo.state.upper_body_paco2_37 if ecmo.is_arterial_support else physiology.resp_state.pa_co2_37
+    cerebral_ph = ecmo.state.upper_body_ph_37 if ecmo.is_arterial_support else physiology.resp_state.ph_37
+    ph_stat_active = ecmo.is_cpb and ecmo.state.blood_gas_strategy is BloodGasManagement.PH_STAT
     engine.cerebral.step(
         dt,
         cerebral_map,
         state.hb_g_dl,
-        state.sao2,
-        physiology.resp_state.pa_co2_37,
-        physiology.resp_state.ph_37,
+        cerebral_sao2,
+        cerebral_paco2,
+        cerebral_ph,
         venous_pressure=hemo_state.venous_pressure,
         flow_ceiling=flow_ceiling,
         temp_c=state.temp_c,
         anesthetic_depth=clamp01(engine.thermal.depth_index),
         metabolic_stress=clamp01(state.seizure_activity),
         volatile_luxury=clamp01(state.mac_sevo + 0.5 * state.mac_n2o),
+        ph_stat=ph_stat_active,
     )
     if update_monitors:
         step_monitors(engine, dt, physiology.hemo_state, physiology.resp_state, disturbances)
@@ -428,7 +446,7 @@ def update_shivering(engine: SimulationEngine, dt: float) -> None:
     remi_effect = hill_function(state.opioid_ce, engine.resp.c50_remi, engine.resp.gamma_remi)
     # Shivering muscle is as sensitive to block as the adductor pollicis.
     muscle_factor = state.twitch / 100.0
-    perfusing = is_perfusing(engine) and not state.cardiac_arrest
+    perfusing = is_systemic_perfusing(engine) and not state.cardiac_arrest
     state.shivering = float(
         engine.thermal.step_shivering(
             dt, state.temp_c, state.bis, remi_effect, muscle_factor,
@@ -441,6 +459,8 @@ def step_temperature(engine: SimulationEngine, dt: float) -> None:
     """Update core temperature from metabolic heat, environmental loss, fluids, and redistribution."""
     state = engine.state
     remi_effect = hill_function(state.opioid_ce, engine.resp.c50_remi, engine.resp.gamma_remi)
+    ecmo = engine.extracorporeal
+    hx_watts = ecmo.compute_heat_exchanger_watts(state.temp_c) if ecmo.is_active else 0.0
     state.temp_c = float(engine.thermal.step_temperature(
         dt,
         state.temp_c,
@@ -448,8 +468,10 @@ def step_temperature(engine: SimulationEngine, dt: float) -> None:
         state.surface_cooling,
         oxygen_supply_fraction=engine.resp.oxygen_supply_fraction,
         sepsis_severity=engine.sepsis.severity,
-        perfusing=is_perfusing(engine),
+        perfusing=is_systemic_perfusing(engine),
         opioid_effect=remi_effect,
+        extracorporeal_heat_w=hx_watts,
+        extracorporeal_active=ecmo.is_active,
     ))
 
 
@@ -483,7 +505,7 @@ def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects
     effects = stimulus_effects(engine, dt)
     hemo = engine.hemo
     if engine.active_hemorrhage:
-        rate_sec = engine.hemorrhage_rate_ml_min / 60.0
+        rate_sec = engine.hemorrhage_rate_ml_min * engine.coagulation.state.bleeding_multiplier / 60.0
         hemo.add_volume(-rate_sec * dt)
 
     warmed = engine.state.fluid_warmer
@@ -580,6 +602,25 @@ def step_tci(engine: SimulationEngine, dt: float) -> None:
             engine._tci_accumulators[key] = acc
 
 
+def _extracorporeal_volatile_kwargs(engine: SimulationEngine, *, is_sevo: bool) -> dict:
+    """Optional oxygenator volatile-transfer kwargs; empty when extracorporeal support is off."""
+    ecmo = engine.extracorporeal
+    if not ecmo.is_active:
+        return {}
+    st = ecmo.state
+    q_eff = st.effective_blood_flow_l_min if ecmo.is_vv else st.blood_flow_l_min
+    if ecmo.is_vv and q_eff <= 0.0 and st.blood_flow_l_min > 0.0:
+        q_eff = st.blood_flow_l_min * (1.0 - st.recirculation_fraction)
+    return {
+        "pulmonary_flow_l": engine.hemo.state.pulmonary_flow,
+        "ecmo_blood_flow_l": q_eff,
+        "ecmo_sweep_l": st.sweep_gas_l_min,
+        "ecmo_fi_agent": (st.sweep_sevo_percent / 100.0) if (is_sevo and engine.config.sevoflurane_enabled) else 0.0,
+        "ecmo_permeability": ecmo.volatile_permeability,
+        "ecmo_is_arterial": ecmo.is_arterial_support,
+    }
+
+
 def step_machine(
     engine: SimulationEngine, dt: float, co_now: float | None = None,
 ) -> tuple[float, float]:
@@ -606,8 +647,9 @@ def step_machine(
         co_now = engine.hemo.state.co
     shunt_now = engine.aeration.shunt_fraction
     temp_now = engine.state.temp_c
-    n2o_uptake = engine.pk_n2o.alveolar_uptake_l_min(co_now, shunt_now, temp_c=temp_now)
-    sevo_uptake = engine.pk_sevo.alveolar_uptake_l_min(co_now, shunt_now, temp_c=temp_now)
+    pulm_q = engine.hemo.state.pulmonary_flow if engine.extracorporeal.is_active else None
+    n2o_uptake = engine.pk_n2o.alveolar_uptake_l_min(co_now, shunt_now, temp_c=temp_now, pulmonary_flow_l=pulm_q)
+    sevo_uptake = engine.pk_sevo.alveolar_uptake_l_min(co_now, shunt_now, temp_c=temp_now, pulmonary_flow_l=pulm_q)
     agent_uptake = n2o_uptake + sevo_uptake
     target_lung_vol = engine.aeration.frc
     circuit_share = mask_circuit_share(engine)
@@ -704,12 +746,15 @@ def step_machine(
             )
             fi_sevo = circuit_share * circuit_fi_sevo
             fi_n2o = circuit_share * circuit_fin2o
+        sevo_ecmo_kw = _extracorporeal_volatile_kwargs(engine, is_sevo=True)
+        n2o_ecmo_kw = _extracorporeal_volatile_kwargs(engine, is_sevo=False)
         sevo_btps, sevo_result = engine.pk_sevo.preview_exchange(
             dt, fi_sevo, va, co_now, temp_c=temp_now, lung_volume_l=terms.gas_vol_l,
             exhaled_volume_change_l=terms.exhaled_vc_btps_l,
             shunt_fraction=shunt_now, companion_uptake_l_min=terms.companion_btps_l_min,
             passive_inflow_l_min=terms.passive_o2_btps_l_min,
             circuit_share=circuit_share, circuit_fi_agent=circuit_fi_sevo,
+            **sevo_ecmo_kw,
         )
         uptake_sevo = sevo_btps * btps_to_stpd
         n2o_btps, n2o_result = engine.pk_n2o.preview_exchange(
@@ -718,6 +763,7 @@ def step_machine(
             shunt_fraction=shunt_now, companion_uptake_l_min=terms.companion_btps_l_min,
             passive_inflow_l_min=terms.passive_o2_btps_l_min,
             circuit_share=circuit_share, circuit_fi_agent=circuit_fin2o,
+            **n2o_ecmo_kw,
         )
         uptake_n2o = n2o_btps * btps_to_stpd
         if circuit_share >= 0.999:
@@ -799,9 +845,14 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
         if cache is not None:
             agent_uptake = cache.n2o_uptake_l_min + cache.sevo_uptake_l_min
         else:
+            pulm_q = engine.hemo.state.pulmonary_flow if engine.extracorporeal.is_active else None
             agent_uptake = (
-                engine.pk_n2o.alveolar_uptake_l_min(co_curr, aeration.shunt_fraction, temp_c=state.temp_c)
-                + engine.pk_sevo.alveolar_uptake_l_min(co_curr, aeration.shunt_fraction, temp_c=state.temp_c)
+                engine.pk_n2o.alveolar_uptake_l_min(
+                    co_curr, aeration.shunt_fraction, temp_c=state.temp_c, pulmonary_flow_l=pulm_q,
+                )
+                + engine.pk_sevo.alveolar_uptake_l_min(
+                    co_curr, aeration.shunt_fraction, temp_c=state.temp_c, pulmonary_flow_l=pulm_q,
+                )
             )
         target_lung_vol = cache.lung_volume_l if cache is not None else aeration.frc
         fallback_flow_cap = max(0.0, engine.circuit.deliverable_flow_l_min) if sealed_circuit else None
@@ -830,6 +881,7 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
             companion_uptake_l_min=terms.companion_btps_l_min,
             passive_inflow_l_min=terms.passive_o2_btps_l_min,
             exhaled_volume_change_l=terms.exhaled_vc_btps_l,
+            **_extracorporeal_volatile_kwargs(engine, is_sevo=True),
         )
     if (
         cache is not None
@@ -845,7 +897,10 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
             companion_uptake_l_min=terms.companion_btps_l_min,
             passive_inflow_l_min=terms.passive_o2_btps_l_min,
             exhaled_volume_change_l=terms.exhaled_vc_btps_l,
+            **_extracorporeal_volatile_kwargs(engine, is_sevo=False),
         )
+    if engine.extracorporeal.is_active:
+        engine.extracorporeal.state.exhaust_sevo_percent = float(engine.pk_sevo.last_exhaust_fraction * 100.0)
     sync_inhaled_agents(engine)
 
     rates = engine.infusion_rates
@@ -866,11 +921,26 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
     for key, model in engine.pk.items():
         if segmented_keys and key in segmented_keys:
             continue
+        if key in ("heparin", "protamine"):
+            continue
         rate = rates.get(key, 0.0)
         if key == "roc":
             _step_roc_drug(engine, dt, rate, mac_sevo, mac_n2o)
         elif rate or model.basal_input_rate or model.has_mass():
             model.step(dt, rate)
+    heparin_pk = cast(HeparinPK, engine.pk["heparin"])
+    protamine_pk = cast(ProtaminePK, engine.pk["protamine"])
+    engine.coagulation.step(
+        dt,
+        heparin_pk,
+        protamine_pk,
+        heparin_rate_u_s=rates.get("heparin", 0.0),
+        protamine_rate_mg_s=rates.get("protamine", 0.0),
+        temp_c=engine.state.temp_c,
+        hematocrit=engine.hemo.get_hematocrit(),
+        baseline_hct=engine.hemo.baseline_hct,
+        circulation=engine.hemo.circulation_fraction(co_curr),
+    )
     if engine.config.tci_enabled:
         for key, model in engine.pump_pk.items():
             if segmented_keys and key in segmented_keys:
@@ -904,6 +974,14 @@ def step_pk(engine: SimulationEngine, dt: float, fi_sevo: float, fi_n2o: float, 
                         engine.pump_pk[key].step(rem_dt, rate)
                     engine._tci_accumulators[key] = engine._tci_accumulators.get(key, 0.0) + rem_dt
                     break
+    if engine.extracorporeal.is_active:
+        engine.extracorporeal.sequestration.step(
+            dt,
+            engine.extracorporeal.state.blood_flow_l_min,
+            engine.pk,
+            membrane_area_m2=engine.extracorporeal.state.membrane_area_m2,
+            active=True,
+        )
     sync_pk_state(engine)
 
 
@@ -976,10 +1054,20 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> None:
     if circulation != propofol.circulation:
         for model in (*engine.pk.values(), engine.tof_pd.sugammadex, engine.tof_pd.complex):
             model.circulation = circulation
-    v_ratio = clamp(engine.hemo.blood_volume / base_bv, 0.1, 2.0)
+    v_max = 2.5 if engine.extracorporeal.is_active else 2.0
+    v_ratio = clamp(engine.hemo.blood_volume / base_bv, 0.1, v_max)
     co_ratio = clamp(co_curr / base_co, 0.1, 2.0)
     renal_perf = engine.hemo.renal_perfusion
     temp_c = engine.state.temp_c
+
+    # Hiraoka 2004 (CPB PK): unbound propofol fraction doubles during CPB alongside
+    # albumin dilution and elevated free fatty acids. Extended across active
+    # extracorporeal support as a smooth albumin-driven effect-site scaling.
+    if engine.extracorporeal.is_active:
+        alb_g_l = max(12.0, engine.hemo.fluids.plasma_albumin_g_l)
+        propofol.effect_input_fraction = clamp(40.0 / alb_g_l, 1.0, 2.0)
+    else:
+        propofol.effect_input_fraction = 1.0
 
     last_scale = engine._pk_hemo_scale_cache
     # Changes below 0.1% leave concentrations unchanged at display precision.
@@ -994,7 +1082,8 @@ def update_pk_covariates(engine: SimulationEngine, co_curr: float) -> None:
             return
 
     bv_l = base_bv / 1000.0
-    clamped_t = clamp(temp_c, 25.0, 38.5)
+    temp_floor = 18.0 if engine.extracorporeal.is_cpb else 25.0
+    clamped_t = clamp(temp_c, temp_floor, 38.5)
     temp_met = 2.0 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
     temp_dist = 1.6 ** ((clamped_t - 37.0) / 10.0) if clamped_t != 37.0 else 1.0
     tof = engine.tof_pd
@@ -1262,6 +1351,26 @@ def step_physiology(
 
     # Plasma remifentanil and propofol reach hemodynamic effect sites inside the model;
     # slower opioids enter at their own effect sites.
+    ecmo = engine.extracorporeal
+    if ecmo.is_cpb:
+        stressed_ml = hemo._calc_stressed_volume()
+        mcfp_now = stressed_ml / hemo.cv if hemo.cv > 0.0 else hemo.mcfp_0
+        min_pat_bv = max(BLOOD_VOLUME_MIN, hemo.unstressed_volume * 0.80)
+        ecmo.compute_cpb_reservoir_step(
+            dt,
+            stressed_ml,
+            mcfp_now,
+            hemo.patient_blood_volume,
+            min_pat_bv,
+            venous_compliance_ml_mmhg=hemo.cv,
+        )
+        hemo.extracorporeal_volume_ml = ecmo.total_circuit_mixing_volume_ml
+    ecmo_art_flow = ecmo.state.blood_flow_l_min if ecmo.is_arterial_support else 0.0
+    ecmo_ven_drain = (
+        ecmo.state.venous_drainage_l_min
+        if ecmo.is_cpb
+        else (ecmo_art_flow if ecmo.is_va else None)
+    )
     hemo.post_shock_asystole = engine.arrhythmias.post_shock_asystole
     hemo_state = engine.hemo.step(
         dt,
@@ -1307,6 +1416,15 @@ def step_physiology(
         ce_etomidate=state.etomidate_ce,
         mac_n2o=mac_n2o,
         shivering=state.shivering,
+        ecmo_arterial_flow_l_min=ecmo_art_flow,
+        ecmo_venous_drain_l_min=ecmo_ven_drain,
+        lv_vent_l_min=ecmo.state.lv_vent_l_min if ecmo.is_arterial_support else 0.0,
+        aortic_cross_clamp=ecmo.state.aortic_cross_clamp if ecmo.is_arterial_support else False,
+        cardioplegia_arrest=ecmo.state.cardioplegia_arrest if ecmo.is_arterial_support else False,
+        cpb_open_drainage=ecmo.is_cpb,
+        protamine_svr_factor=engine.coagulation.state.protamine_svr_factor,
+        protamine_venous_pool_frac=engine.coagulation.state.protamine_venous_pool_frac,
+        protamine_pvr_factor=engine.coagulation.state.protamine_pvr_factor,
     )
     fluid_circulation = hemo.circulation_fraction(hemo_state.co)
     beta2_dr = _beta2_dose_ratio(engine)
@@ -1322,10 +1440,11 @@ def step_physiology(
         temp_c=state.temp_c,
     )
     hypoxia, energy_failure, silent = myocardial_substrate(engine)
-    perfusing = is_perfusing(engine, hemo_state)
+    cardioplegia_silent = ecmo.is_arterial_support and ecmo.state.cardioplegia_arrest
+    perfusing = is_systemic_perfusing(engine, hemo_state)
     rhythm = engine.arrhythmias.step(
         dt, hemo.rhythm_type, ischemia=hemo.coronary.ischemia, hypoxia=hypoxia,
-        energy_failure=energy_failure, electrically_silent=silent,
+        energy_failure=energy_failure, electrically_silent=silent or cardioplegia_silent,
         perfusing=perfusing,
         lidocaine=engine.pk["lidocaine"].state.ce_cv, amiodarone=state.amiodarone_ce,
         hyperkalemia=hemo.hyperkalemia_arrhythmia,
@@ -1339,6 +1458,11 @@ def step_physiology(
     if rhythm != hemo.rhythm_type:
         hemo.rhythm_type = rhythm
         hemo_state = hemo.state
+
+    if ecmo.is_arterial_support and ecmo._last_pass is not None:
+        engine.resp._update_extracorporeal_regional_gases(
+            ecmo, ecmo._last_pass, hemo_state.pulmonary_flow, hemo.hb_conc, state.temp_c,
+        )
 
     return build_snapshot_from_models(
         engine, hemo_state, resp_state, pit_estimate=pit_estimate,
@@ -1399,6 +1523,14 @@ def is_perfusing(engine: SimulationEngine, hemo_state=None) -> bool:
     return not _is_pulseless(engine, state)
 
 
+def is_systemic_perfusing(engine: SimulationEngine, hemo_state=None) -> bool:
+    """Whether native beats OR arterial mechanical support (VA ECMO / CPB) perfuse the body."""
+    state = engine.hemo.state if hemo_state is None else hemo_state
+    if engine.extracorporeal.is_arterial_support and state.pump_flow > ARREST_CO_L_MIN:
+        return True
+    return not _is_pulseless(engine, state)
+
+
 def step_lactate(engine: SimulationEngine, dt: float) -> None:
     """Advance lactate from this step's O2 balance and update extracellular buffer base."""
     if dt <= 0.0:
@@ -1439,9 +1571,15 @@ def step_lactate(engine: SimulationEngine, dt: float) -> None:
 
 
 def check_cardiac_arrest(engine: SimulationEngine, dt: float) -> None:
-    """Flag arrest after 15 s without effective pulses from the heart itself."""
+    """Flag arrest after 15 s without effective pulses (suppressed when VA ECMO/CPB maintains perfusion)."""
     state = engine.state
     hemo_state = engine.hemo.state
+    if engine.extracorporeal.is_arterial_support and hemo_state.pump_flow > ARREST_CO_L_MIN:
+        engine._pulseless_s = 0.0
+        state.cardiac_arrest = False
+        state.arrest_reason = ""
+        state.alarms.pop("Arrest", None)
+        return
     rhythm = hemo_state.rhythm_type
     # Compressions mask the heart's own pulse pressure.
     pulse_pressure = (

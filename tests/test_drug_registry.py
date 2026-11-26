@@ -37,6 +37,8 @@ def test_infusion_rates_convert_the_prescribed_units(engine):
         ("milri", 60.0 / engine.patient.weight),
         ("esmolol", 60000.0 / engine.patient.weight),
         ("roc", 60000.0 / engine.patient.weight),
+        ("heparin", 3600.0),
+        ("protamine", 60.0),
     )
     # Each user rate is one model unit per second.
     assert {drug for drug, _ in rate_cases} == set(engine.infusion_rates)

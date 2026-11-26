@@ -8,6 +8,12 @@ from .anaphylaxis import create_anaphylaxis_scenario
 from .base import Scenario, ScenarioStep
 from .cardiac_arrest import create_cardiac_arrest
 from .emergence import create_emergence
+from .extracorporeal import (
+    create_cpb_weaning,
+    create_protamine_reversal,
+    create_va_ecmo_harlequin,
+    create_vv_ecmo_ards,
+)
 from .hemorrhage import create_hemorrhage_response
 from .induction import create_induction_balanced, create_induction_tiva
 from .malignant_hyperthermia import create_malignant_hyperthermia
@@ -123,6 +129,38 @@ SCENARIO_REGISTRY = (
         create_cardiac_arrest,
         surgery=True,
     ),
+    ScenarioSpec(
+        "vv_ecmo_ards",
+        "VV ECMO for severe ARDS",
+        "Initiate and titrate venovenous ECMO for refractory ARDS hypoxemia.",
+        "steady_state",
+        "tiva",
+        create_vv_ecmo_ards,
+    ),
+    ScenarioSpec(
+        "va_ecmo_harlequin",
+        "VA ECMO differential hypoxia",
+        "Recognize and treat upper-body (Harlequin) hypoxemia on peripheral femoral VA ECMO.",
+        "steady_state",
+        "tiva",
+        create_va_ecmo_harlequin,
+    ),
+    ScenarioSpec(
+        "cpb_weaning",
+        "CPB rewarming and weaning",
+        "Rewarm on bypass, release the aortic cross-clamp, resume ventilation, refill the heart, and separate from CPB.",
+        "steady_state",
+        "tiva",
+        create_cpb_weaning,
+    ),
+    ScenarioSpec(
+        "protamine_reversal",
+        "Post-CPB protamine reversal",
+        "Measure post-bypass ACT, reverse residual heparin slowly with protamine, and confirm ACT normalization.",
+        "steady_state",
+        "tiva",
+        create_protamine_reversal,
+    ),
 )
 
 __all__ = [
@@ -132,11 +170,15 @@ __all__ = [
     "ScenarioStep",
     "create_anaphylaxis_scenario",
     "create_cardiac_arrest",
+    "create_cpb_weaning",
     "create_emergence",
     "create_hemorrhage_response",
     "create_induction_balanced",
     "create_induction_tiva",
     "create_malignant_hyperthermia",
     "create_oxygen_supply_failure",
+    "create_protamine_reversal",
     "create_sepsis_response",
+    "create_va_ecmo_harlequin",
+    "create_vv_ecmo_ards",
 ]

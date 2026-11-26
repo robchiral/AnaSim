@@ -32,7 +32,7 @@ from anasim.monitors.neuromuscular import NeuromuscularMonitor
 if TYPE_CHECKING:
     from anasim.core.engine import SimulationEngine
 
-ControlTab = Literal["Machine", "Medications", "Circulation"]
+ControlTab = Literal["Machine", "Medications", "Circulation", "Labs"]
 Requirement = Callable[["SimulationEngine"], tuple[bool, str]]
 Condition = Callable[["SimulationEngine"], bool]
 Instruction = str | Callable[["SimulationEngine"], str]
@@ -713,6 +713,8 @@ def preroll_scenario(
     engine._pulseless_s = 0.0
     engine.vent.breath_count = 0
     engine.blood_gases.clear()
+    engine.acts.clear()
+    engine.coagulation.cumulative_protamine_mg = 0.0
     if reset_fluid_totals:
         hemo = engine.hemo
         hemo.total_crystalloid_in_ml = 0.0

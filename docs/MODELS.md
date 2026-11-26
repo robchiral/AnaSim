@@ -1407,7 +1407,86 @@ clinical blood gas analyzer, pH, PaCO₂, and PaO₂ are warmed anaerobically to
 37 °C, so a hypothermic sample reads higher PaCO₂ and PaO₂ and lower pH than in
 vivo. Reports include bicarbonate, standard base excess, lactate, sodium,
 potassium, chloride, ionized calcium, SaO₂, hemoglobin, and FiO₂. Glucose is
-not modeled.
+not modeled. During extracorporeal support, samples can also be drawn from the right radial
+artery (upper body), femoral artery (lower body), pre-oxygenator venous line, or
+post-oxygenator outlet.
+
+## Extracorporeal support and anticoagulation
+
+### ECMO and cardiopulmonary bypass
+
+Venovenous ECMO (VV ECMO), venoarterial ECMO (VA ECMO), and cardiopulmonary
+bypass (CPB) live in [`anasim/extracorporeal/`](../anasim/extracorporeal/) and
+couple into the shared blood-gas, hemodynamic, thermal, and pharmacokinetic
+models.
+
+A two-stage crossflow membrane oxygenator shares AnaSim's blood-gas chemistry
+(simulation of Joyce 2018), conserving O₂, CO₂, and buffer base across the
+native and membrane lungs. Oxygen uptake rises mainly with blood flow,
+hemoglobin, and sweep FiO₂, whereas CO₂ removal scales with sweep gas flow up
+to blood-flow and membrane-area limits (Schmidt 2013; porcine data of
+Karagiannidis 2017).
+
+- **VV ECMO** operates in series within the venous circulation with
+  flow-ratio-dependent venous recirculation calibrated across dual-lumen,
+  femoro-jugular, and femoro-femoral cannulation (clinical cohort of Palmér
+  2016). Extracorporeal CO₂ clearance reduces spontaneous respiratory drive
+  (Mauri 2016), and an optional pulmonary shunt control supports severe ARDS
+  cases.
+- **VA ECMO** diverts venous blood in parallel into the arterial tree,
+  separating native LV output, pulmonary flow, and pump flow (simulation of
+  Donker 2019). Higher retrograde flow raises aortic afterload, reduces native
+  stroke volume (porcine data of Ostadal 2015), and elevates left atrial
+  pressure unless relieved by lower pump flow (Aissaoui 2012), LV venting,
+  inotropes, or volume unloading (Donker 2019). In peripheral femoral VA ECMO,
+  antegrade LV output and retrograde pump flow meet at a flow-dependent aortic
+  watershed (CFD simulation of Stevens 2017): failing native lungs desaturate
+  right-radial, cerebral, and coronary blood while femoral blood stays
+  hyperoxic (Harlequin syndrome), whereas central cannulation mixes both
+  streams uniformly. Nonpulsatile arterial support keeps systemic and coronary
+  perfusion at pump MAP, flattens the arterial waveform with blanked systolic
+  and diastolic numerics, loses NIBP and pulse oximetry signals, and suppresses
+  cardiac arrest.
+- **CPB** adds central arterial return, passive venous drainage from stressed
+  volume into an open hard-shell reservoir with a low-level ramp and alarm
+  (Magder and De Varennes 1998), crystalloid prime hemodilution lowering blood
+  viscosity and SVR (Gordon 1975), cold-induced viscosity rise (in vitro data
+  of Eckmann 2000), active heat exchange into the core-periphery thermal model
+  producing post-bypass afterdrop blunted by forced-air warming (Rajek 2000),
+  alpha-stat versus pH-stat cerebral blood flow management (Murkin 1987),
+  aortic cross-clamping with cardioplegic arrest, and optional bypass alarm
+  suppression.
+
+Circuit priming expands central volume and dilutes albumin, raising propofol's
+unbound fraction (CPB study of Hiraoka 2004, extended to ECMO). Hypothermia
+slows remifentanil and propofol clearance (Michelsen 2001; Leslie 1995) and
+independently lowers BIS (CPB study of Mathew 2001, extended below 34 °C).
+Sevoflurane transfers rapidly across microporous polypropylene CPB oxygenators
+and minimally across plasma-tight polymethylpentene ECMO membranes (Prasser
+2008), while lipophilic drugs undergo saturable, passivating circuit
+sequestration that spares morphine (ex vivo data of Shekar 2012; clinical VV
+ECMO study of Morales Castro 2025).
+
+### Heparin, protamine, and ACT
+
+[`coagulation.py`](../anasim/physiology/coagulation.py) models two-compartment
+unfractionated heparin kinetics (`HeparinPK`) with saturable cellular uptake
+plus linear renal elimination so half-life lengthens from roughly 30 minutes at
+25 U/kg to 120 to 150 minutes at 300 U/kg (extrapolated from 25 to 75 U/kg
+volunteer data in Bjornsson 1982). Activated clotting time (ACT) rises from a
+120-second baseline to roughly 250 to 300 seconds at 100 U/kg and above 480
+seconds at 300 U/kg, with mild calibrated hemodilution and hypothermia shifts
+(Bull 1975) and a 60-second Labs analysis delay.
+
+Protamine (`ProtaminePK`) neutralizes plasma heparin at 1 mg per 100 U and
+clears rapidly (about 4.5-minute half-life after CPB in Butterworth 2002), so
+peripheral heparin redistribution causes post-reversal rebound unless offset by
+a low-dose protamine infusion (Teoh 2004); excess free protamine above roughly
+1.3:1 paradoxically prolongs ACT (in vitro data of Mochizuki 1998). Rapid
+protamine boluses trigger rate-dependent Type I vasodilation and venous pooling
+that slow infusions avoid, while a separate Type III catastrophic pulmonary
+vasoconstriction reaction spikes PVR and causes acute RV failure (Horrow 1985;
+Lowenstein 1983). Therapeutic anticoagulation amplifies active hemorrhage.
 
 ## Cases and clinical actions
 
@@ -1417,16 +1496,16 @@ Cases run in guided mode, which shows step instructions and live requirement
 checks, or independent mode, which hides instructions and defers non-blocking
 safety warnings to the debrief.
 
-Slow-onset crises (malignant hyperthermia, sepsis, and hemorrhage) and
-emergence run a hidden pre-case simulation phase before case time starts at
-0:00. Sampled vitals from that phase populate negative-time trend history, so
-those cases open with developing physiological signs, accumulated occult blood
-loss, or lighter anesthesia typical of surgical closure alongside residual
-neuromuscular block. Acute intraoperative crises (anaphylaxis, oxygen supply
-failure, and cardiac arrest) begin shortly into ongoing surgery. Cues tied to
-monitor changes wait until deterioration is visible, and initial ventricular
-fibrillation shocks are refractory so learners practice multi-cycle
-resuscitation.
+Slow-onset crises (malignant hyperthermia, sepsis, and hemorrhage), emergence,
+and the extracorporeal and anticoagulation cases run a hidden pre-case
+simulation phase before case time starts at 0:00. Sampled vitals from that
+phase populate negative-time trend history, so those cases open with developing
+physiological signs, accumulated occult blood loss, lighter anesthesia
+alongside residual neuromuscular block, or active extracorporeal support. Acute
+intraoperative crises (anaphylaxis, oxygen supply failure, and cardiac arrest)
+begin shortly into ongoing surgery. Cues tied to monitor changes wait until
+deterioration is visible, and initial ventricular fibrillation shocks are
+refractory so learners practice multi-cycle resuscitation.
 
 Crisis cases stay coupled to the underlying physiology rather than using
 scripted shortcuts. Requesting surgical source control in sepsis logs the
@@ -1442,36 +1521,44 @@ the circuit low-FiO₂ alarm warns before arterial desaturation.
 Guided checks count learner actions from case start, or from crisis onset for
 crisis management, so prompt treatment does not require repeat dosing. Both
 balanced and TIVA induction (manual or TCI) accept transitional BIS depth during
-maintenance handover while induction doses equilibrate. Pressure objectives
-require spontaneous circulation without compressions and verify both displayed
-and true model MAP, requiring a current cuff reading within 60 seconds when no
-arterial line is placed (a failed cuff reading during true hypotension still
-satisfies checks at crisis onset). Debrief hypotension time sums periods with
-MAP below 65 mmHg or without spontaneous circulation. Milestone outcomes remain
-credited once achieved, extubation outcomes are evaluated when the tube is
-removed, and remaining outcomes must hold at case end.
+maintenance handover while induction doses equilibrate. Standard pressure
+objectives require spontaneous circulation without compressions and verify both
+displayed and true model MAP, requiring a current cuff reading within 60 seconds
+when no arterial line is placed (a failed cuff reading during true hypotension
+still satisfies checks at crisis onset); extracorporeal cases also accept
+arterial pump flow of at least 1.0 L/min as systemic perfusion. Debrief
+hypotension time sums periods with MAP below 65 mmHg or without spontaneous
+circulation or adequate arterial extracorporeal flow (at least 1.0 L/min), and
+debrief hypoxemia time uses upper-body arterial saturation during arterial
+extracorporeal support. Milestone outcomes remain credited once achieved,
+extubation outcomes are evaluated when the tube is removed, and remaining
+outcomes must hold at case end.
 
 ### Clinical action checks
 
 Attempting tracheal intubation triggers a brief laryngoscopy stimulus whether
 or not placement succeeds. When central muscle strength is more than half
-intact, placement fails during severe laryngospasm or, while circulation
+intact, placement fails during severe laryngospasm or, while systemic perfusion
 continues, when the patient is responsive or lacks adequate laryngoscopy
 tolerance or deep volatile anesthesia (Kimura 1994). During cardiac arrest or
-nonperfusing rhythms, placement succeeds unless severe laryngospasm closes the
-vocal cords.
+nonperfusing rhythms without arterial extracorporeal support, placement succeeds
+unless severe laryngospasm closes the vocal cords.
 
 [`clinical_actions.py`](../anasim/core/clinical_actions.py) raises a warning
 without blocking the action when:
 
-- a tracheal tube is placed in a responsive, paralyzed patient with spontaneous
-  circulation
-- a neuromuscular blocker is given to a responsive patient with spontaneous
-  circulation and without an induction dose in plasma
+- a tracheal tube is placed in a responsive, paralyzed patient with systemic
+  perfusion
+- a neuromuscular blocker is given to a responsive patient with systemic
+  perfusion and without an induction dose in plasma
 - succinylcholine is given during active or susceptible malignant hyperthermia,
   or during significant hyperkalemia
 - the tracheal tube is removed during apnea, reactive Stage II anesthesia, or
   incomplete neuromuscular recovery (excluding non-fading dantrolene weakness)
-- assisted ventilation is stopped during apnea
-- a defibrillator shock is delivered to a responsive patient with spontaneous
-  circulation
+- assisted ventilation is stopped during apnea without active extracorporeal
+  gas exchange (blood flow at least 1.5 L/min and positive sweep gas)
+- a defibrillator shock is delivered to a responsive patient with a perfusing
+  native rhythm
+- protamine is administered during active ECMO or cardiopulmonary bypass
+- cardiopulmonary bypass is started with an activated clotting time below 400
+  seconds

@@ -1,7 +1,8 @@
 """Infusion rate unit conversion.
 
 Model units: mg/sec for propofol, ketamine, lidocaine, rocuronium, amiodarone,
-and esmolol, mU/sec for vasopressin, and ug/sec for the other drugs.
+esmolol, and protamine, mU/sec for vasopressin, U/sec for heparin, and ug/sec
+for the other drugs.
 """
 
 import math
@@ -47,6 +48,8 @@ _RATE_CONVERSIONS: dict[tuple[str, str], float] = {
     ("u/hr", "mu/sec"): 1000.0 / 3600.0,
     ("u/min", "mu/sec"): 1000.0 / 60.0,
     ("u/sec", "mu/sec"): 1000.0,
+    ("u/hr", "u/sec"): 1.0 / 3600.0,
+    ("u/min", "u/sec"): 1.0 / 60.0,
     ("mu/hr", "mu/sec"): 1.0 / 3600.0,
     ("mu/min", "mu/sec"): 1.0 / 60.0,
 }

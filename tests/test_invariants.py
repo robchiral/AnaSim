@@ -84,6 +84,7 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     advance_time(eng, 6.0, dt=0.5)
     abg0 = eng.draw_blood_gas()
     prop0, roc0 = eng.state.propofol_ce, eng.state.roc_ce
+    act0 = eng.state.act_s
     eng.give_saline(1500.0)
     eng.give_fluid(1000.0)
     eng.give_blood(700.0)
@@ -91,6 +92,8 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     eng.give_drug_bolus("epi", 1000.0)
     eng.give_drug_bolus("roc", 70.0)
     eng.give_drug_bolus("propofol", 140.0)
+    eng.give_drug_bolus("heparin", 21000.0)
+    eng.give_drug_bolus("protamine", 50.0)
     advance_time(eng, 15.0, dt=0.5)
     abg1 = eng.draw_blood_gas()
     assert abs(abg1.ph - abg0.ph) < 0.005
@@ -105,8 +108,12 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     assert abg1.hb == pytest.approx(abg0.hb, abs=1e-9)
     assert abs(eng.state.propofol_ce - prop0) < 0.05
     assert abs(eng.state.roc_ce - roc0) < 0.05
+    assert eng.state.act_s == pytest.approx(act0, abs=0.5)
+    assert eng.state.heparin_u_ml == pytest.approx(0.0, abs=1e-6)
+    assert eng.state.protamine_ug_ml == pytest.approx(0.0, abs=1e-6)
+    assert eng.coagulation.state.protamine_svr_factor == pytest.approx(1.0, abs=1e-6)
 
-    # Starting chest compressions restores circulation and delivers queued drugs/calcium.
+    # Starting chest compressions restores circulation and delivers queued drugs/calcium/heparin.
     eng.set_chest_compressions(True)
     advance_time(eng, 45.0, dt=0.5)
     abg2 = eng.draw_blood_gas()
@@ -114,6 +121,8 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     assert eng.state.roc_ce > roc0 + 0.5
     assert abg2.ionized_calcium > abg1.ionized_calcium + 0.05
     assert abg2.lactate > abg1.lactate + 0.05
+    assert eng.state.act_s > act0 + 100.0
+    assert eng.state.heparin_u_ml > 1.0
 
 
 @pytest.mark.parametrize("mode", ["VCV", "PCV", "PCV-VG", "SIMV-VC", "SIMV-PC", "PSV", "CPAP"])
@@ -383,3 +392,143 @@ def test_pairwise_condition_crisis_clinical_invariants(
         advance_time(eng, 180.0, dt=1.0)
         _assert_finite_state(eng)
         assert eng.state.potassium > k0 + 0.25
+
+
+def test_extracorporeal_mode_switching_and_colloid_prime_conservation(engine_factory, advance_time):
+    """Cross-mode switching cleans up prior prime/flags without double-priming,
+    and colloid/albumin priming plus reservoir fluid conserve 100% circuit volume."""
+    eng = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=3, maintenance_fluid_ml_hr=0.0),
+        start=True,
+    )
+    advance_time(eng, 5.0, dt=0.5)
+    pat_bv0 = eng.hemo.patient_blood_volume
+
+    # Colloid/albumin prime stays 100% intravascular (no instant third-space loss).
+    eng.start_cpb(blood_flow_l_min=4.5, prime_volume_ml=1400.0, prime_label="albumin", initial_reservoir_ml=800.0)
+    assert eng.hemo.patient_blood_volume == pytest.approx(pat_bv0, abs=1.0)
+    assert eng.hemo.extracorporeal_volume_ml == pytest.approx(1400.0, abs=1e-6)
+    added = eng.add_cpb_reservoir_fluid(500.0, kind="albumin")
+    assert added == pytest.approx(500.0, abs=1e-6)
+    assert eng.hemo.extracorporeal_volume_ml == pytest.approx(1900.0, abs=1e-6)
+
+    # Apply CPB-specific controls, then switch directly to VV ECMO -> CPB flags clear and volume is not double-primed.
+    eng.set_cpb_cardioplegia(True)
+    eng.set_bypass_alarm_mode(True)
+    advance_time(eng, 10.0, dt=0.5)
+    pat_before_vv = eng.hemo.patient_blood_volume
+    eng.start_vv_ecmo(blood_flow_l_min=4.0, prime_volume_ml=600.0)
+    assert eng.state.ecmo_mode == "vv_ecmo"
+    assert eng.hemo.extracorporeal_volume_ml == pytest.approx(600.0, abs=1e-6)
+    assert eng.hemo.patient_blood_volume == pytest.approx(pat_before_vv, abs=1.0)
+    assert eng.hemo._aortic_cross_clamp is False
+    assert eng.hemo._cardioplegia_arrest is False
+    assert eng.hemo._cpb_open_drainage is False
+    assert eng.hemo._ecmo_arterial_flow_l_min == 0.0
+    assert eng.extracorporeal.state.bypass_alarm_mode is False
+
+    # Switch VV -> VA -> zero-prime CPB -> paused stop clears flags and telemetry immediately.
+    eng.start_va_ecmo(blood_flow_l_min=3.5, prime_volume_ml=650.0)
+    eng.set_ecmo_lv_vent(1.0)
+    assert eng.hemo.extracorporeal_volume_ml == pytest.approx(650.0, abs=1e-6)
+    bv_before_zero_cpb = eng.hemo.patient_blood_volume
+    eng.start_cpb(blood_flow_l_min=4.5, prime_volume_ml=0.0, initial_reservoir_ml=800.0)
+    assert eng.extracorporeal.state.lv_vent_l_min == 0.0
+    assert eng.extracorporeal.state.reservoir_volume_ml == 0.0
+    assert eng.hemo.extracorporeal_volume_ml == 0.0
+    assert eng.hemo.blood_volume == pytest.approx(bv_before_zero_cpb, abs=1.0)
+    eng.set_cpb_cardioplegia(True)
+    eng.stop()
+    eng.stop_extracorporeal(reinfuse=False)
+    assert eng.state.ecmo_mode == "none"
+    assert eng.state.pump_flow == 0.0
+    assert eng.hemo.extracorporeal_volume_ml == 0.0
+    assert eng.hemo._aortic_cross_clamp is False
+    assert eng.hemo._cardioplegia_arrest is False
+    assert eng.hemo._cpb_open_drainage is False
+    assert eng.state.blood_volume == pytest.approx(eng.hemo.blood_volume, abs=1e-6)
+
+
+def test_extracorporeal_mode_guards_and_vv_arrest_alarms(engine_factory, advance_time):
+    """Mode-specific extracorporeal setters reject invalid modes and VV ECMO never silences VFIB alarms."""
+    eng = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=5, arterial_line_enabled=True),
+        start=True,
+    )
+    eng.start_vv_ecmo(blood_flow_l_min=4.0, sweep_gas_l_min=4.0, prime_volume_ml=0.0)
+    with pytest.raises(ValueError, match="VA ECMO or CPB"):
+        eng.set_bypass_alarm_mode(True)
+    with pytest.raises(ValueError, match="VA ECMO or CPB"):
+        eng.set_ecmo_lv_vent(1.5)
+    with pytest.raises(ValueError, match="CPB"):
+        eng.set_cpb_cross_clamp(True)
+    with pytest.raises(ValueError, match="CPB"):
+        eng.set_cpb_cardioplegia(True)
+    with pytest.raises(ValueError, match="CPB"):
+        eng.set_cpb_venous_clamp(0.0)
+    with pytest.raises(ValueError, match="CPB"):
+        eng.set_cpb_blood_gas_strategy("ph_stat")
+    assert eng.extracorporeal.state.bypass_alarm_mode is False
+    assert eng.extracorporeal.state.lv_vent_l_min == 0.0
+    assert eng.extracorporeal.state.aortic_cross_clamp is False
+    assert eng.extracorporeal.state.cardioplegia_arrest is False
+    assert eng.extracorporeal.state.blood_gas_strategy.value == "alpha_stat"
+
+    # Even if bypass_alarm_mode were forced directly, VV ECMO must still alarm on VFIB.
+    eng.extracorporeal.state.bypass_alarm_mode = True
+    eng.set_rhythm("VFIB")
+    advance_time(eng, 20.0, dt=0.5)
+    assert eng.state.cardiac_arrest is True
+    assert "VFIB" in eng.state.alarms
+
+
+def test_extracorporeal_abg_sites_and_temperature_parity(engine_factory, advance_time):
+    """Pre/post-oxygenator ABGs require active support, fresh starts seed real patient gases,
+    hypothermic warming shifts both PaO2 and SaO2 consistently, and apneic CPB reports sweep FiO2."""
+    eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=7), start=True)
+    with pytest.raises(ValueError, match="active"):
+        eng.draw_blood_gas("pre_oxy")
+    with pytest.raises(ValueError, match="active"):
+        eng.draw_blood_gas("post_oxy")
+
+    # Freshly started circuit before stepping should seed real patient gases (not default placeholders).
+    eng.start_cpb(blood_flow_l_min=4.5, sweep_gas_l_min=3.0, sweep_fio2=0.80, prime_volume_ml=0.0)
+    eng.set_vent_power(False)
+    pre0 = eng.draw_blood_gas("pre_oxy")
+    post0 = eng.draw_blood_gas("post_oxy")
+    assert 20.0 <= pre0.pao2 <= 70.0
+    assert post0.pao2 > 200.0
+    assert eng.draw_blood_gas("arterial").fio2 == pytest.approx(0.80, abs=1e-6)
+
+    # At 28 °C, warming blood anaerobically to 37 °C shifts P50 upward so warmed SaO2 aligns with warmed PaO2.
+    eng.set_cpb_cardioplegia(True)
+    eng.set_ecmo_heater_cooler(True, 28.0)
+    eng.state.temp_c = 28.0
+    eng.thermal.peripheral_temp_c = 28.0
+    advance_time(eng, 20.0, dt=0.5)
+    pre_cold = eng.draw_blood_gas("pre_oxy")
+    assert pre_cold.pao2 > eng.extracorporeal.state.pre_oxy_po2 + 5.0
+    assert pre_cold.sao2 <= eng.extracorporeal.state.pre_oxy_so2 * 100.0 + 1.5
+
+
+def test_peripheral_va_ecmo_harlequin_step_size_invariance(engine_factory, advance_time):
+    """Peripheral VA ECMO differential oxygenation agrees closely between dt=0.1 s and dt=2.0 s."""
+    results = []
+    for dt in (0.1, 2.0):
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", dt=dt, rng_seed=19, arterial_line_enabled=True),
+            start=True,
+        )
+        eng.set_vent_settings(rr=10.0, vt=0.36, peep=5.0, ie="1:2", mode="VCV", fio2=0.25)
+        eng.set_ards_shunt(0.65)
+        eng.start_va_ecmo(
+            blood_flow_l_min=3.2, sweep_gas_l_min=4.0, sweep_fio2=1.0,
+            cannulation="peripheral_fem", prime_volume_ml=0.0,
+        )
+        advance_time(eng, 120.0, dt=dt)
+        results.append(eng)
+
+    fine, coarse = results
+    assert abs(coarse.extracorporeal.state.upper_body_pao2 - fine.extracorporeal.state.upper_body_pao2) < 2.5
+    assert abs(coarse.state.upper_sao2 - fine.state.upper_sao2) < 1.5
+    assert abs(coarse.state.map - fine.state.map) < 2.0

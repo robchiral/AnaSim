@@ -76,6 +76,8 @@ const ISO_DRUG_CLASS = {
   dantrolene: "rescue",
   lipid: "rescue",
   calcium_chloride: "rescue",
+  heparin: "local",
+  protamine: "reversal",
 };
 // Four significant figures keep small rates visible without long decimals.
 const rateText = (value) => String(Number(value.toPrecision(4)));
@@ -107,12 +109,15 @@ const medicationGroups = [
   { name: "Vasopressors and inotropes", keys: ["phenyl", "ephedrine", "nore", "epi", "vaso", "dobu", "milri"] },
   { name: "Heart rate and blood pressure", keys: ["atropine", "glyco", "esmolol", "labetalol"] },
   { name: "Neuromuscular blockade and reversal", keys: ["roc", "succinylcholine", "sugammadex"] },
+  { name: "Anticoagulation and reversal", keys: ["heparin", "protamine"] },
   { name: "Rescue and antidotes", keys: ["dantrolene", "lipid", "calcium_chloride"] },
 ];
 const medicationSearchTerms = {
   dantrolene: "malignant hyperthermia MH",
   lipid: "local anesthetic systemic toxicity LAST",
   calcium_chloride: "hypocalcemia",
+  heparin: "UFH anticoagulation ACT CPB ECMO",
+  protamine: "heparin reversal ACT CPB",
 };
 const halfTimeDrugs = ["propofol", "remi", "fentanyl"];
 
@@ -124,6 +129,8 @@ export class Controls {
     this.history = [...info.medication_history];
     this.bloodGases = [...info.blood_gases];
     this.shownBloodGases = null;
+    this.acts = [...(info.acts ?? [])];
+    this.shownActs = null;
     this.time = 0;
     this.weight = info.patient.weight;
     this.send = async (name, args) => {
@@ -144,6 +151,7 @@ export class Controls {
     this.buildDrugs(info.drugs);
     this.bindFluids(info.patient.weight);
     this.bindResuscitation();
+    this.bindExtracorporeal();
     this.bindLabs();
     this.bindEvents(info);
     // Cases start their own events.
@@ -161,6 +169,7 @@ export class Controls {
   destroy() {
     this.destroyed = true;
     clearTimeout(this.fluidFeedbackTimer);
+    clearTimeout(this.ecmoFluidFeedbackTimer);
     clearTimeout(this.shockFeedbackTimer);
     for (const timer of this.feedbackTimers.values()) clearTimeout(timer);
     for (const editor of this.settingEditors) {
@@ -719,17 +728,240 @@ export class Controls {
     this.shockFeedbackTimer = setTimeout(() => { feedback.hidden = true; }, 6000);
   }
 
+  // --- Extracorporeal support ---------------------------------------
+
+  bindExtracorporeal() {
+    const module = $("ecmo-module");
+    if (!module) return;
+    module.open = false;
+    module.ontoggle = () => this.onViewChanged?.();
+    this.ecmoWasActive = false;
+    const ecmoFluidFeedback = $("ecmo-fluid-feedback");
+    if (ecmoFluidFeedback) {
+      ecmoFluidFeedback.hidden = true;
+      setText(ecmoFluidFeedback, "");
+    }
+    for (const button of module.querySelectorAll("[data-ecmo-start]")) {
+      button.onclick = () => this.performAction(button, "extracorporeal_start", {
+        mode: button.dataset.ecmoStart,
+        ...(button.dataset.cannulation ? { cannulation: button.dataset.cannulation } : {}),
+      });
+    }
+    const settingsBox = $("c-ecmo-settings");
+    const fields = [
+      "c-ecmo-flow", "c-ecmo-sweep", "c-ecmo-fio2", "c-ecmo-water",
+      "c-ecmo-lv-vent", "c-ecmo-sevo", "c-ecmo-venous-clamp", "c-ecmo-bg-strategy",
+    ].map($).filter(Boolean);
+    if (settingsBox && fields.length) {
+      this.ecmoEditor = this.editSettings(fields, () => {
+        const ec = this.state?.extracorporeal;
+        const payload = {};
+        const addNum = (id, key, current, digits) => {
+          const el = $(id);
+          if (!el || el.disabled) return;
+          const val = readNumber(el);
+          if (!ec || val !== round(current, digits)) payload[key] = val;
+        };
+        addNum("c-ecmo-flow", "blood_flow", ec?.target_flow, 2);
+        addNum("c-ecmo-sweep", "sweep_gas", ec?.sweep, 2);
+        addNum("c-ecmo-fio2", "fio2_percent", ec?.fio2, 0);
+        addNum("c-ecmo-water", "water_target_c", ec?.water_target_c, 1);
+        if (ec?.mode === "va_ecmo") addNum("c-ecmo-lv-vent", "lv_vent", ec.lv_vent, 2);
+        if (ec?.mode === "cpb") {
+          addNum("c-ecmo-sevo", "sweep_sevo", ec.sevo, 1);
+          addNum("c-ecmo-venous-clamp", "venous_clamp", ec.venous_clamp, 0);
+          const bgEl = $("c-ecmo-bg-strategy");
+          if (bgEl && !bgEl.disabled && bgEl.value !== ec.blood_gas_strategy) {
+            payload.blood_gas_strategy = bgEl.value;
+          }
+        }
+        return Object.keys(payload).length ? this.send("extracorporeal_settings", payload) : true;
+      }, settingsBox);
+    }
+    const hc = $("c-ecmo-hc");
+    if (hc) {
+      hc.onclick = () => this.send("extracorporeal_settings", {
+        heater_cooler_on: !this.state?.extracorporeal?.heater_cooler_on,
+      });
+    }
+    const crossClamp = $("c-cpb-cross-clamp");
+    if (crossClamp) {
+      crossClamp.onclick = () => this.send("extracorporeal_settings", {
+        cross_clamp: !this.state?.extracorporeal?.cross_clamp,
+      });
+    }
+    const cardioplegia = $("c-cpb-cardioplegia");
+    if (cardioplegia) {
+      cardioplegia.onclick = () => this.send("extracorporeal_settings", {
+        cardioplegia: !this.state?.extracorporeal?.cardioplegia,
+      });
+    }
+    const alarmMode = $("c-cpb-alarm-mode");
+    if (alarmMode) {
+      alarmMode.onclick = () => this.send("extracorporeal_settings", {
+        bypass_alarm_mode: !this.state?.extracorporeal?.bypass_alarm_mode,
+      });
+    }
+    for (const button of module.querySelectorAll("[data-reservoir-fluid]")) {
+      button.onclick = async () => {
+        const result = await this.performAction(button, "cpb_reservoir_fluid", {
+          kind: button.dataset.reservoirFluid,
+          volume_ml: Number(button.dataset.volume),
+        });
+        if (this.destroyed || result === undefined) return;
+        const feedback = $("ecmo-fluid-feedback") ?? $("fluid-feedback");
+        if (feedback && result.fluid?.text) {
+          setText(feedback, result.fluid.text);
+          feedback.hidden = false;
+          clearTimeout(this.ecmoFluidFeedbackTimer);
+          this.ecmoFluidFeedbackTimer = setTimeout(() => { feedback.hidden = true; }, 6000);
+        }
+      };
+    }
+    const stop = $("c-ecmo-stop");
+    if (stop) {
+      stop.onclick = () => this.performAction(stop, "extracorporeal_stop", { reinfuse: false });
+    }
+  }
+
+  syncExtracorporeal(ec) {
+    const module = $("ecmo-module");
+    if (!module || !ec) return;
+    const active = Boolean(ec.active);
+    const modeLabels = { vv_ecmo: "VV ECMO", va_ecmo: "VA ECMO", cpb: "CPB" };
+    const summary = $("ecmo-summary");
+    if (summary) {
+      summary.hidden = !active;
+      if (active) setText(summary, `${modeLabels[ec.mode] ?? ec.mode} · ${ec.flow.toFixed(1)} L/min`);
+    }
+    if (active && !this.ecmoWasActive) module.open = true;
+    this.ecmoWasActive = active;
+    const startPanel = $("ecmo-start-panel");
+    const activePanel = $("ecmo-active-panel");
+    if (startPanel) startPanel.hidden = active;
+    if (activePanel) activePanel.hidden = !active;
+    const abgSiteRow = $("c-abg-site-row");
+    if (abgSiteRow) abgSiteRow.hidden = !active;
+    if (!active) {
+      const abgSite = $("c-abg-site");
+      if (abgSite) abgSite.value = "arterial";
+      this.ecmoEditor?.cancel();
+      return;
+    }
+    const isVV = ec.mode === "vv_ecmo";
+    const isVA = ec.mode === "va_ecmo";
+    const isCPB = ec.mode === "cpb";
+    const setRow = (rowId, inputId, visible) => {
+      const row = $(rowId);
+      if (row) row.hidden = !visible;
+      const input = $(inputId);
+      if (input && !this.ecmoEditor?.pending) input.disabled = !visible;
+    };
+    setRow("ecmo-lv-vent-row", "c-ecmo-lv-vent", isVA);
+    setRow("ecmo-sevo-row", "c-ecmo-sevo", isCPB);
+    setRow("ecmo-venous-row", "c-ecmo-venous-clamp", isCPB);
+    setRow("ecmo-bg-row", "c-ecmo-bg-strategy", isCPB);
+    if ($("ecmo-cpb-controls")) $("ecmo-cpb-controls").hidden = !isCPB;
+    setValue($("c-ecmo-flow"), round(ec.target_flow, 2));
+    setValue($("c-ecmo-sweep"), round(ec.sweep, 2));
+    setValue($("c-ecmo-fio2"), round(ec.fio2, 0));
+    setValue($("c-ecmo-water"), round(ec.water_target_c, 1));
+    if ($("c-ecmo-lv-vent") && ec.lv_vent !== undefined) setValue($("c-ecmo-lv-vent"), round(ec.lv_vent, 2));
+    if ($("c-ecmo-sevo") && ec.sevo !== undefined) setValue($("c-ecmo-sevo"), round(ec.sevo, 1));
+    if ($("c-ecmo-venous-clamp") && ec.venous_clamp !== undefined) setValue($("c-ecmo-venous-clamp"), round(ec.venous_clamp, 0));
+    if ($("c-ecmo-bg-strategy") && ec.blood_gas_strategy !== undefined) setValue($("c-ecmo-bg-strategy"), ec.blood_gas_strategy);
+    if ($("c-ecmo-hc")) {
+      setPressed($("c-ecmo-hc"), ec.heater_cooler_on,
+        ec.heater_cooler_on ? `Heater-cooler: On (${ec.water_target_c.toFixed(1)} °C)` : "Heater-cooler: Off");
+    }
+    if (isCPB) {
+      if ($("c-cpb-cross-clamp")) {
+        setPressed($("c-cpb-cross-clamp"), ec.cross_clamp,
+          ec.cross_clamp ? "Release aortic cross-clamp" : "Apply aortic cross-clamp");
+      }
+      if ($("c-cpb-cardioplegia")) {
+        setPressed($("c-cpb-cardioplegia"), ec.cardioplegia,
+          ec.cardioplegia ? "Stop cardioplegia" : "Start cardioplegia");
+      }
+      if ($("c-cpb-alarm-mode")) {
+        setPressed($("c-cpb-alarm-mode"), ec.bypass_alarm_mode,
+          ec.bypass_alarm_mode ? "Bypass alarm mode: On" : "Bypass alarm mode: Off");
+      }
+    }
+    const readout = $("ecmo-readout");
+    if (readout) {
+      const parts = [
+        `${modeLabels[ec.mode] ?? ec.mode} ${ec.flow.toFixed(2)} L/min`,
+        `Sweep ${ec.sweep.toFixed(1)} L/min`,
+        `FiO₂ ${Math.round(ec.fio2)}%`,
+      ];
+      if ((isVV || isVA) && ec.pre_so2 !== undefined) parts.push(`Pre-O₂ SvO₂ ${Math.round(ec.pre_so2)}%`);
+      if (isCPB) parts.push(`Reservoir ${Math.round(ec.reservoir_ml)} mL${ec.reservoir_low ? " (LOW)" : ""}`);
+      setText(readout, parts.join(" · "));
+      readout.className = "ecmo-readout" + (ec.reservoir_low ? " bad" : "");
+    }
+  }
+
   // --- Labs ---------------------------------------------------------
 
   bindLabs() {
+    const abgSite = $("c-abg-site");
+    if (abgSite) abgSite.value = "arterial";
+    const abgSiteRow = $("c-abg-site-row");
+    if (abgSiteRow) abgSiteRow.hidden = true;
     const button = $("c-abg");
     button.onclick = async () => {
-      const result = await this.performAction(button, "blood_gas");
+      const site = (!abgSiteRow?.hidden && abgSite?.value) ? abgSite.value : "arterial";
+      const args = site !== "arterial" ? { site } : undefined;
+      const result = await this.performAction(button, "blood_gas", args);
       if (this.destroyed || result === undefined) return;
       this.bloodGases.push(result.blood_gas);
       this.showBloodGases();
     };
+    const actBtn = $("c-act");
+    if (actBtn) {
+      actBtn.onclick = async () => {
+        const result = await this.performAction(actBtn, "act");
+        if (this.destroyed || result === undefined) return;
+        (this.acts ??= []).push(result.act);
+        this.showActs();
+      };
+    }
     this.showBloodGases();
+    this.showActs();
+  }
+
+  showActs() {
+    if (!this.acts) return;
+    const status = $("act-pending");
+    const container = $("act-results");
+    if (!status || !container) return;
+    const ready = this.acts.filter((result) => result.ready_at <= this.time);
+    const pending = this.acts.length - ready.length;
+    status.hidden = pending === 0;
+    if (pending > 0) {
+      const next = minutesSeconds(Math.ceil(this.acts[ready.length].ready_at - this.time));
+      setText(status, pending === 1 ? `Result in ${next}` : `${pending} samples running; next result in ${next}`);
+    }
+    if (ready.length === this.shownActs) return;
+    this.shownActs = ready.length;
+    container.hidden = ready.length === 0;
+    const table = container.querySelector?.("table");
+    if (!table) return;
+    const newest = [...ready].reverse();
+    table.tBodies[0].replaceChildren(...newest.map((result) => {
+      const row = document.createElement("tr");
+      const timeCell = document.createElement("th");
+      timeCell.scope = "row";
+      timeCell.textContent = minutesSeconds(result.drawn_at);
+      const valCell = document.createElement("td");
+      valCell.textContent = result.act_s === null ? "—" : String(Math.round(result.act_s));
+      if (result.act_s !== null && result.act_s > 150) {
+        valCell.className = "abg-high";
+      }
+      row.append(timeCell, valCell);
+      return row;
+    }));
   }
 
   // Results post at their ready time on the simulation clock.
@@ -753,11 +985,20 @@ export class Controls {
       return element;
     };
     const table = $("abg-results").querySelector("table");
+    const siteTags = {
+      right_radial: "R rad",
+      femoral: "Fem",
+      pre_oxy: "Pre",
+      post_oxy: "Post",
+    };
     const header = document.createElement("tr");
     header.append(
       cell("th", "Analyte", "col"),
       cell("th", "Ref", "col"),
-      ...newest.map((result) => cell("th", minutesSeconds(result.drawn_at), "col")),
+      ...newest.map((result) => {
+        const tag = result.site && siteTags[result.site] ? ` (${siteTags[result.site]})` : "";
+        return cell("th", `${minutesSeconds(result.drawn_at)}${tag}`, "col");
+      }),
     );
     table.tHead.replaceChildren(header);
     table.tBodies[0].replaceChildren(...bloodGasRows.map(([label, unit, key, format, refLabel, low, high]) => {
@@ -794,7 +1035,7 @@ export class Controls {
   // --- Events -------------------------------------------------------
 
   bindEvents(info) {
-    this.eventSections = new Map([...document.querySelectorAll(".event-section")].map((section) => {
+    this.eventSections = new Map([...document.querySelectorAll(".event-section[data-event]")].map((section) => {
       section.open = false;
       section.dataset.active = "false";
       section.ontoggle = () => this.onViewChanged?.();
@@ -814,14 +1055,18 @@ export class Controls {
     profiles.onchange = () => this.send("disturbance_profile", { profile: profiles.value || null });
     $("c-disturb").onclick = () => this.send("disturbance", { active: !this.state.disturbance.active });
 
-    const obstruction = $("c-obstruction"), bronchospasm = $("c-bronchospasm");
-    this.editSettings([obstruction, bronchospasm], async () => {
+    const obstruction = $("c-obstruction"), bronchospasm = $("c-bronchospasm"), ardsShunt = $("c-ards-shunt");
+    const airwayFields = ardsShunt ? [obstruction, bronchospasm, ardsShunt] : [obstruction, bronchospasm];
+    this.editSettings(airwayFields, async () => {
       const updates = [];
       if (readNumber(obstruction) !== round(this.state.obstruction, 0)) {
         updates.push(["obstruction", readNumber(obstruction)]);
       }
       if (readNumber(bronchospasm) !== round(this.state.bronchospasm, 0)) {
         updates.push(["bronchospasm", readNumber(bronchospasm)]);
+      }
+      if (ardsShunt && readNumber(ardsShunt) !== round(this.state.ards_shunt ?? 0, 0)) {
+        updates.push(["ards_shunt", readNumber(ardsShunt)]);
       }
       for (const [command, percent] of updates) {
         if (await this.send(command, { percent }) === undefined) return undefined;
@@ -843,6 +1088,10 @@ export class Controls {
     $("c-position").onchange = () => this.send("position", { position: $("c-position").value });
     $("c-anaphylaxis").onclick = () => this.send("anaphylaxis", { active: !this.state.anaphylaxis });
     $("c-sepsis").onclick = () => this.send("sepsis", { active: !this.state.sepsis });
+    const protReaction = $("c-protamine-reaction");
+    if (protReaction) {
+      protReaction.onclick = () => this.send("protamine_reaction", { active: !this.state.protamine_reaction });
+    }
     $("c-mh").onclick = () => this.send("malignant_hyperthermia", { active: !this.state.malignant_hyperthermia });
   }
 
@@ -927,6 +1176,7 @@ export class Controls {
         + (c.lipid.total_ml > this.lipidMaximum ? "; exceeds 12 mL/kg" : ""));
     this.time = time;
     this.showBloodGases();
+    this.showActs();
     this.showClinicalFeedback(c.clinical_feedback);
 
     for (const button of (this.airwayButtons ??= [...$("c-airway").querySelectorAll("button")])) {
@@ -975,6 +1225,7 @@ export class Controls {
     $("c-compressions-status").hidden = !compressions.active;
     if (compressions.active) setText($("c-compressions-status"), `Compressing for ${minutesSeconds(time - compressions.since)}`);
     this.syncDefibrillator(c.defibrillator);
+    if (c.extracorporeal) this.syncExtracorporeal(c.extracorporeal);
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
     const aplStandby = c.airway === "None" || c.vent.on;
@@ -1063,6 +1314,7 @@ export class Controls {
     setPressed($("c-disturb"), c.disturbance.active, c.disturbance.active ? "Stop stimulation" : "Start stimulation");
     setValue($("c-obstruction"), round(c.obstruction, 0));
     setValue($("c-bronchospasm"), round(c.bronchospasm, 0));
+    if ($("c-ards-shunt") && c.ards_shunt !== undefined) setValue($("c-ards-shunt"), round(c.ards_shunt, 0));
     setText($("c-laryngo"), `Laryngospasm: ${c.laryngospasm}`);
     $("c-auto-laryngo").checked = c.auto_laryngospasm;
 
@@ -1073,6 +1325,10 @@ export class Controls {
     setValue($("c-position"), c.position);
     setPressed($("c-anaphylaxis"), c.anaphylaxis, c.anaphylaxis ? "Stop anaphylaxis" : "Start anaphylaxis");
     setPressed($("c-sepsis"), c.sepsis, c.sepsis ? "Stop sepsis" : "Start sepsis");
+    if ($("c-protamine-reaction") && c.protamine_reaction !== undefined) {
+      setPressed($("c-protamine-reaction"), c.protamine_reaction,
+        c.protamine_reaction ? "Stop protamine reaction" : "Start protamine reaction");
+    }
     setPressed($("c-mh"), c.malignant_hyperthermia,
       c.malignant_hyperthermia ? "Stop malignant hyperthermia" : "Start malignant hyperthermia");
 
@@ -1080,12 +1336,14 @@ export class Controls {
     if (c.hemorrhage.active) circulation.push(`Bleeding ${c.hemorrhage.rate} mL/min`);
     if (c.anaphylaxis) circulation.push("Anaphylaxis");
     if (c.sepsis) circulation.push("Sepsis");
+    if (c.protamine_reaction) circulation.push("Protamine reaction");
     if (c.ecg_rhythm !== "Sinus rhythm") circulation.push(c.ecg_rhythm);
     this.syncEventSection("circulation", circulation);
     this.syncEventSection("metabolism", c.malignant_hyperthermia ? ["Malignant hyperthermia"] : []);
     const airway = [];
     if (c.obstruction > 0) airway.push(`Obstruction ${round(c.obstruction, 0)}%`);
     if (c.bronchospasm > 0) airway.push(`Bronchospasm ${round(c.bronchospasm, 0)}%`);
+    if ((c.ards_shunt ?? 0) > 0) airway.push(`ARDS shunt ${round(c.ards_shunt, 0)}%`);
     if (c.laryngospasm !== "none") airway.push(`Laryngospasm ${c.laryngospasm}`);
     this.syncEventSection("airway", airway);
     // The disabled profile select already names the active stimulation.

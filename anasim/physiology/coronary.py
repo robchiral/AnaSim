@@ -2,6 +2,7 @@
 
 import math
 
+from anasim.core.constants import TEMP_METABOLIC_COEFFICIENT
 from anasim.core.utils import clamp, clamp01
 
 from .resuscitation import COMPRESSION_DUTY
@@ -93,17 +94,29 @@ class CoronaryModel:
              hb: float, saturation: float, hypoxia: float = 0.0, *,
              fibrillating: bool = False, compressions: bool = False,
              venous_pressure: float = 13.0,
-             intrinsic_sbp: float | None = None) -> None:
+             intrinsic_sbp: float | None = None,
+             nonpulsatile_perfusion: bool = False,
+             aortic_cross_clamp: bool = False,
+             cardioplegia_arrest: bool = False,
+             temp_c: float = 37.0) -> None:
         """Advance ischemia toward the supply shortfall; saturation is in percent.
 
         hypoxia is the hemodynamic model's hypoxemic myocardial depression, 0-1.
         During compressions, dbp is the relaxation pressure between them, while
         active wall-stress demand follows intrinsic_sbp rather than passive chest recoil.
+        During unclamped VA ECMO (nonpulsatile_perfusion=True), retrograde aortic root
+        pressure perfuses the coronaries continuously even without native pulses.
+        During CPB aortic cross-clamp (aortic_cross_clamp=True), coronary inflow ceases
+        while cardioplegia_arrest + hypothermia markedly lower metabolic demand.
         """
         sbp_val = self._nonneg_pressure(sbp)
         dbp_val = self._nonneg_pressure(dbp)
         active_sbp = sbp_val if intrinsic_sbp is None else self._nonneg_pressure(intrinsic_sbp)
-        if fibrillating:
+        if cardioplegia_arrest:
+            # Cold diastolic cardioplegic arrest reduces basal myocardial VO2 >85-90%.
+            temp_q10 = max(0.20, TEMP_METABOLIC_COEFFICIENT ** (37.0 - clamp(temp_c, 18.0, 38.0)))
+            demand = 0.12 * temp_q10
+        elif fibrillating:
             # Fibrillating myocardium uses most of the beating heart's resting
             # oxygen, less as its energy fails.
             demand = 0.25 + 0.5 * (1.0 - self.energy_failure)
@@ -114,18 +127,29 @@ class CoronaryModel:
             if compressions and activation_hr > 1.5:
                 activation_hr += clamp01((35.0 - active_sbp) / 15.0) * (1.5 - activation_hr)
             demand = max(work, 0.35 + 0.30 * activation_hr)
-        if compressions:
+        if aortic_cross_clamp:
+            pressure = 0.0
+            diastolic_fraction = 1.0
+        elif compressions:
             # Coronary flow occurs between compressions, against right-atrial/LA
             # back-pressure plus myocardial wall closing margin (~12.8 mmHg above resting CVP).
             back_pressure = max(lap, venous_pressure + 12.8, 20.0)
             diastolic_fraction = 1.0 - COMPRESSION_DUTY
+            pressure = max(0.0, dbp_val - back_pressure)
+        elif nonpulsatile_perfusion:
+            # Continuous aortic-root pressure from VA ECMO perfuses coronaries even when
+            # pulse pressure vanishes (e.g., VF or closed aortic valve).
+            base_bp = self._zero_flow_pressure(sbp_val, lap)
+            back_pressure = max(lap, base_bp)
+            diastolic_fraction = 0.85 if (hr <= 0.0 or fibrillating) else self._diastolic_fraction(hr)
+            pressure = max(0.0, dbp_val - back_pressure)
         else:
             base_bp = self._zero_flow_pressure(sbp_val, lap)
             pulseless_blend = clamp01((4.95 - (sbp_val - dbp_val)) / 1.65)
             back_pressure = base_bp + pulseless_blend * max(0.0, dbp_val - base_bp)
             diastolic_fraction = self._diastolic_fraction(hr)
-        pressure = max(0.0, dbp_val - back_pressure)
-        if not compressions and self._reserve < 2.5:
+            pressure = max(0.0, dbp_val - back_pressure)
+        if not compressions and not aortic_cross_clamp and self._reserve < 2.5:
             # Fixed epicardial stenosis exhausts distal autoregulatory dilation, so
             # flow falls steeply as aortic diastolic pressure drops below ~58-60 mmHg.
             stenosis = clamp01((2.5 - self._reserve) / 1.5)
@@ -156,13 +180,15 @@ class CoronaryModel:
         # no flow, as in the electrical phase of arrest (Weisfeldt and Becker 2002).
         # Excitation then fails and injury accumulates. The timing is a teaching calibration.
         severity = clamp01((max(self.ischemia, hypoxia) - 0.5) / 0.5)
+        depletion_scale = clamp(demand / 0.45, 0.08, 1.0) if cardioplegia_arrest else 1.0
         if severity > 0.0 or self.energy_reserve < 1.0:
             self.energy_reserve = clamp01(
-                self.energy_reserve + dt * ((1.0 - severity) * (1.0 - self.energy_reserve) / 120.0 - severity / 240.0)
+                self.energy_reserve
+                + dt * ((1.0 - severity) * (1.0 - self.energy_reserve) / 120.0 - severity * depletion_scale / 240.0)
             )
         exhausted = self.energy_reserve <= 0.0
         if exhausted:
-            self.injury = min(1.0, self.injury + dt * severity / INJURY_TIME_S)
+            self.injury = min(1.0, self.injury + dt * severity * depletion_scale / INJURY_TIME_S)
         failure_target = severity if exhausted else 0.0
         if failure_target != self.energy_failure:
             failure_tau = 90.0 if failure_target > self.energy_failure else 60.0

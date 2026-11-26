@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added venovenous ECMO, venoarterial ECMO, and cardiopulmonary bypass support
+  with membrane gas exchange, regional differential oxygenation, passive bypass
+  reservoir drainage, active heat exchange, circuit drug sequestration, and
+  site-specific blood gas sampling.
+- Added unfractionated heparin and protamine kinetics, point-of-care activated
+  clotting time (ACT), protamine hemodynamic reactions, an ARDS shunt event,
+  and guided or independent extracorporeal and anticoagulation cases.
 - Added an optional 37 °C IV fluid and blood warmer so unwarmed fluids and
   refrigerated packed red cells cool core temperature.
 - Added vaporizer fill-level tracking and refill controls.

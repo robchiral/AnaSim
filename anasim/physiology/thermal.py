@@ -74,6 +74,10 @@ class ThermalModel:
         self.metabolic_factor = 1.0
         self.extra_heat_w = 0.0
         self._pending_fluid_heat_j = 0.0
+        # Two-compartment peripheral tissue temperature engaged during extracorporeal
+        # cooling/rewarming to model post-CPB afterdrop (Rajek 1998; Rajek 2000).
+        self.peripheral_temp_c = float(patient.baseline_temp)
+        self._extracorporeal_thermal_engaged = False
 
     def add_fluid_heat_j(
         self, volume_ml: float, infusate_temp_c: float, core_temp_c: float, *, is_blood: bool = False,
@@ -157,10 +161,15 @@ class ThermalModel:
                          oxygen_supply_fraction: float = 1.0,
                          sepsis_severity: float = 0.0,
                          perfusing: bool = True,
-                         opioid_effect: float = 0.0) -> float:
+                         opioid_effect: float = 0.0,
+                         extracorporeal_heat_w: float = 0.0,
+                         extracorporeal_active: bool = False) -> float:
         """Return core temperature after metabolic heat, environmental loss, and redistribution.
 
-        A forced-air warmer target of 0 °C is off.
+        A forced-air warmer target of 0 °C is off. When extracorporeal support
+        (ECMO or CPB) has been engaged, a coupled peripheral thermal compartment
+        tracks limb/subcutaneous heat storage so CPB cooling, rewarming, and
+        post-bypass core afterdrop (Rajek 1998; Rajek 2000) emerge naturally.
         """
         tuning = self.tuning
         depth_factor = clamp01(self.depth_index)
@@ -175,6 +184,7 @@ class ThermalModel:
         # Kurz 1995c; age shift in Ozaki 1997): below the vasoconstriction threshold
         # (~34.3 °C at 1 MAC in young adults without opioids), cutaneous constriction
         # limits further passive heat loss to establish a thermal plateau.
+        vasoconst = 0.0
         if perfusing:
             vasoconst_threshold = (
                 self._base_ref_temp
@@ -227,9 +237,60 @@ class ThermalModel:
         )
         fluid_heat_j = self._pending_fluid_heat_j
         self._pending_fluid_heat_j = 0.0
-        net_heat_w = production + warming - heat_loss - sweating_w - redistribution_w - cooling
-        return clamp(
-            temp_c + (net_heat_w * dt + fluid_heat_j) * self._inv_heat_capacity,
-            tuning.temp_min_c,
-            tuning.temp_max_c,
-        )
+
+        if extracorporeal_active and not self._extracorporeal_thermal_engaged:
+            # Initialize peripheral temperature slightly below core when anesthetized (~1 °C gradient).
+            self.peripheral_temp_c = float(temp_c - 0.8 * depth_factor)
+            self._extracorporeal_thermal_engaged = True
+
+        if not self._extracorporeal_thermal_engaged:
+            net_heat_w = production + warming - heat_loss - sweating_w - redistribution_w - cooling
+            new_temp = clamp(
+                temp_c + (net_heat_w * dt + fluid_heat_j) * self._inv_heat_capacity,
+                tuning.temp_min_c,
+                tuning.temp_max_c,
+            )
+            self.peripheral_temp_c = new_temp
+            return new_temp
+
+        # Two-compartment core (62%) and peripheral (38%) thermal balance during and after
+        # extracorporeal heat exchange (model split informed by Rajek 1998 and Rajek 2000).
+        c_core = 0.62 * self.heat_capacity
+        c_periph = 0.38 * self.heat_capacity
+        # Core-to-periphery conductance (W/°C): moderate during rewarming/vasoconstriction,
+        # higher under warm anesthetic vasodilation, low during arrest.
+        if perfusing:
+            k_cp = (28.0 + 22.0 * depth_factor * (1.0 - 0.55 * vasoconst)) * self._bsa_scale
+        else:
+            k_cp = 10.0 * self._bsa_scale
+        min_temp = 18.0
+        t_core = float(temp_c)
+        t_periph = float(self.peripheral_temp_c)
+        n_sub = max(1, math.ceil(dt / 2.0))
+        sub_dt = dt / n_sub
+        fluid_w = fluid_heat_j / dt if dt > 0.0 else 0.0
+        for _ in range(n_sub):
+            q_cp = k_cp * (t_core - t_periph)
+            core_env_loss = 0.20 * conductance * exposed_fraction * (t_core - tuning.ambient_temp_c)
+            periph_env_loss = 0.80 * conductance * exposed_fraction * (t_periph - tuning.ambient_temp_c)
+            # Forced-air warming heats peripheral tissues directly and strongly reduces
+            # post-CPB afterdrop (Rajek 2000: 0.5 °C vs 1.2 °C passive insulation).
+            periph_warming = (
+                1.45 * tuning.bair_hugger_gain_w_per_c * self._bsa_scale * (warmer_target_c - t_periph)
+                if warmer_active
+                else 0.0
+            )
+            core_w = (
+                production
+                + extracorporeal_heat_w
+                + fluid_w
+                - core_env_loss
+                - sweating_w
+                - q_cp
+                - 0.30 * cooling
+            )
+            periph_w = q_cp + periph_warming - periph_env_loss - 0.70 * cooling
+            t_core = clamp(t_core + (core_w * sub_dt) / c_core, min_temp, tuning.temp_max_c)
+            t_periph = clamp(t_periph + (periph_w * sub_dt) / c_periph, 15.0, tuning.temp_max_c)
+        self.peripheral_temp_c = t_periph
+        return t_core

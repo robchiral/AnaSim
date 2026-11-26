@@ -77,6 +77,7 @@ class LungAeration:
         self.collapse_deficit = 0.0
         self.lung_water = 0.0  # mL/kg predicted body weight above normal
         self.flooded = 0.0
+        self.extra_shunt = 0.0  # Optional parenchymal shunt (e.g. severe ARDS), 0-0.95
         self.chest_wall_stiffness = 1.0
         self.pressure_transmission = 1.0
         self.elapsed = 0.0
@@ -98,8 +99,13 @@ class LungAeration:
         if self.collapse_deficit > 0.36:
             eff_collapse = clamp01((clamp01(self.collapse_deficit) - 0.36) / 0.54)
             collapse_shunt = 0.55 * (eff_collapse ** 1.5)
-            return min(0.70, base_shunt + (1.0 - base_shunt) * collapse_shunt)
-        return min(0.70, base_shunt)
+            base_shunt = min(0.70, base_shunt + (1.0 - base_shunt) * collapse_shunt)
+        else:
+            base_shunt = min(0.70, base_shunt)
+        if self.extra_shunt > 0.0:
+            extra = min(0.95, max(0.0, self.extra_shunt))
+            return min(0.95, base_shunt + (1.0 - base_shunt) * extra)
+        return base_shunt
 
     def advance(self, dt: float, pressure_area: float) -> bool:
         """Accumulate distending pressure; change aeration at fixed physical times."""

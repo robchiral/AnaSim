@@ -4,7 +4,7 @@ import { $, minutesSeconds, setText } from "./display.js";
 const PULSE_GAP_S = 0.25;
 const ALARM_REPEAT_S = 5;
 const HIGH_PRIORITY_REPEAT_S = 3.5;
-const HIGH_PRIORITY_ALARMS = new Set(["Asystole", "VFIB", "VTACH", "Arrest", "O2Supply"]);
+const HIGH_PRIORITY_ALARMS = new Set(["Asystole", "VFIB", "VTACH", "Arrest", "O2Supply", "ReservoirLow"]);
 const SILENCE_MS = 120_000;
 const STALE_MS = 1000;
 

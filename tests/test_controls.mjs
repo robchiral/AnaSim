@@ -434,3 +434,138 @@ test("defibrillator sync mode auto-resets to unsynchronized after shock delivery
   assert.equal(pressed.get(true), "false");
   assert.equal(badge.hidden, true);
 });
+
+test("extracorporeal controls and site-tagged blood gas headers update cleanly", async () => {
+  const makeEl = (tag = "div") => ({
+    tag, value: "", disabled: false, hidden: false, open: false, checked: false, className: "", textContent: "",
+    dataset: {}, children: [], attrs: {},
+    append(...nodes) { this.children.push(...nodes); },
+    replaceChildren(...nodes) { this.children = [...nodes]; },
+    getAttribute(k) { return this.attrs[k] ?? null; },
+    setAttribute(k, v) { this.attrs[k] = v; },
+    closest: () => ({}),
+    querySelectorAll: () => [],
+  });
+  const tHead = makeEl("thead");
+  const tBody = makeEl("tbody");
+  const table = { tHead, tBodies: [tBody] };
+  const elements = new Map([
+    ["ecmo-module", makeEl("details")],
+    ["ecmo-summary", makeEl("output")],
+    ["ecmo-start-panel", makeEl("div")],
+    ["ecmo-active-panel", makeEl("div")],
+    ["ecmo-readout", makeEl("p")],
+    ["c-abg-site-row", makeEl("div")],
+    ["c-abg-site", { ...makeEl("select"), value: "right_radial" }],
+    ["c-abg", makeEl("button")],
+    ["abg-pending", makeEl("p")],
+    ["abg-results", { ...makeEl("div"), querySelector: () => table }],
+    ["c-ecmo-flow", makeEl("input")],
+    ["c-ecmo-sweep", makeEl("input")],
+    ["c-ecmo-fio2", makeEl("input")],
+    ["c-ecmo-water", makeEl("input")],
+    ["c-ecmo-lv-vent", makeEl("input")],
+    ["c-ecmo-sevo", makeEl("input")],
+    ["c-ecmo-venous-clamp", makeEl("input")],
+    ["c-ecmo-bg-strategy", makeEl("select")],
+    ["ecmo-lv-vent-row", makeEl("div")],
+    ["ecmo-sevo-row", makeEl("div")],
+    ["ecmo-venous-row", makeEl("div")],
+    ["ecmo-bg-row", makeEl("div")],
+    ["ecmo-cpb-controls", makeEl("div")],
+    ["c-ecmo-hc", makeEl("button")],
+  ]);
+  const eventSelectors = [];
+  globalThis.Option = class { constructor(text, value) { this.text = text; this.value = value; } };
+  globalThis.document = {
+    activeElement: null,
+    getElementById: (id) => {
+      if (!elements.has(id)) elements.set(id, makeEl("div"));
+      return elements.get(id);
+    },
+    createElement: makeEl,
+    querySelectorAll: (sel) => {
+      eventSelectors.push(sel);
+      return sel === ".event-section[data-event]" ? [] : [elements.get("ecmo-module")];
+    },
+  };
+  const sent = [];
+  const controls = Object.create(Controls.prototype);
+  controls.time = 120;
+  controls.shownBloodGases = null;
+  controls.bloodGases = [];
+  controls.destroyed = false;
+  controls.editSettings = () => ({ cancel() {} });
+  controls.bindEvents({ disturbances: [], rhythms: [], patient: { gestational_age_weeks: 0 } });
+  assert.deepEqual(eventSelectors, [".event-section[data-event]"]);
+  assert.equal(controls.eventSections.size, 0);
+  controls.performAction = async (_btn, name, args) => {
+    sent.push([name, args]);
+    return {
+      blood_gas: {
+        drawn_at: 60, ready_at: 120, site: args?.site ?? "arterial",
+        ph: 7.38, pa_co2: 40, pao2: 65, hco3: 24, base_excess: 0,
+        lactate: 1.5, sodium: 140, potassium: 4.0, chloride: 104,
+        ionized_calcium: 1.2, sao2: 91.0, hb: 12.0, fio2: 0.5,
+      },
+    };
+  };
+  controls.bindLabs();
+  elements.get("c-abg-site-row").hidden = false;
+  elements.get("c-abg-site").value = "right_radial";
+  await elements.get("c-abg").onclick();
+  assert.deepEqual(sent[0], ["blood_gas", { site: "right_radial" }]);
+  assert.equal(tHead.children[0].children[2].textContent, "1:00 (R rad)");
+
+  controls.syncExtracorporeal({
+    active: true, mode: "va_ecmo", target_flow: 4.0, flow: 4.0, sweep: 4.0, fio2: 100,
+    water_target_c: 37.0, heater_cooler_on: true, lv_vent: 0.5,
+    pre_so2: 72.0, reservoir_low: false,
+  });
+  assert.equal(elements.get("ecmo-module").open, true);
+  assert.equal(elements.get("ecmo-start-panel").hidden, true);
+  assert.equal(elements.get("ecmo-active-panel").hidden, false);
+  assert.equal(elements.get("ecmo-lv-vent-row").hidden, false);
+  assert.equal(elements.get("c-ecmo-lv-vent").disabled, false);
+  assert.equal(elements.get("c-ecmo-sevo").disabled, true);
+  assert.equal(elements.get("c-ecmo-venous-clamp").disabled, true);
+  assert.equal(elements.get("c-ecmo-bg-strategy").disabled, true);
+  assert.equal(elements.get("ecmo-cpb-controls").hidden, true);
+  assert.equal(elements.get("c-abg-site-row").hidden, false);
+  assert.match(elements.get("ecmo-readout").textContent, /VA ECMO 4\.00 L\/min · Sweep 4\.0 L\/min · FiO₂ 100% · Pre-O₂ SvO₂ 72%/);
+  assert.doesNotMatch(elements.get("ecmo-readout").textContent, /R rad|Fem/);
+
+  // CPB enables CPB-only controls and disables VA-only LV vent input
+  controls.syncExtracorporeal({
+    active: true, mode: "cpb", target_flow: 4.5, flow: 4.5, sweep: 3.0, fio2: 80,
+    water_target_c: 37.0, heater_cooler_on: true, sevo: 1.5, venous_clamp: 100,
+    blood_gas_strategy: "alpha_stat", reservoir_ml: 900, reservoir_low: false,
+  });
+  assert.equal(elements.get("c-ecmo-lv-vent").disabled, true);
+  assert.equal(elements.get("c-ecmo-sevo").disabled, false);
+  assert.equal(elements.get("c-ecmo-venous-clamp").disabled, false);
+  assert.equal(elements.get("c-ecmo-bg-strategy").disabled, false);
+
+  // Stopping support hides and resets ABG site selector back to arterial
+  controls.syncExtracorporeal({ active: false, mode: "none" });
+  assert.equal(elements.get("c-abg-site-row").hidden, true);
+  assert.equal(elements.get("c-abg-site").value, "arterial");
+
+  // ACT measurement display in Labs tab
+  const actBody = makeEl("tbody");
+  elements.set("c-act", makeEl("button"));
+  elements.set("act-pending", makeEl("p"));
+  elements.set("act-results", { ...makeEl("div"), querySelector: () => ({ tBodies: [actBody] }) });
+  controls.acts = [];
+  controls.shownActs = null;
+  controls.performAction = async (_btn, name, args) => {
+    sent.push([name, args]);
+    return { act: { drawn_at: 60, ready_at: 120, act_s: 512 } };
+  };
+  controls.bindLabs();
+  await elements.get("c-act").onclick();
+  assert.equal(sent.at(-1)[0], "act");
+  assert.equal(actBody.children.length, 1);
+  assert.equal(actBody.children[0].children[1].textContent, "512");
+  assert.equal(actBody.children[0].children[1].className, "abg-high");
+});

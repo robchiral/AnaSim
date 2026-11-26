@@ -153,6 +153,57 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
             ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
         ],
     },
+    "vv_ecmo_ards": {
+        "INITIATE_VV_ECMO": [
+            ("extracorporeal_start", {"mode": "vv_ecmo", "blood_flow": 4.5, "sweep_gas": 4.0, "sweep_fio2": 1.0}),
+        ],
+        "STABILIZE_VV_ECMO": [
+            ("extracorporeal_settings", {"blood_flow": 4.5, "sweep_gas": 5.0}),
+            ("drug_rate", {"key": "nore", "rate": 6}),
+        ],
+        "CONFIRM_VV_ABG": [
+            ("blood_gas", {}),
+        ],
+    },
+    "va_ecmo_harlequin": {
+        "CONFIRM_HARLEQUIN": [
+            ("blood_gas", {"site": "right_radial"}),
+            ("blood_gas", {"site": "femoral"}),
+        ],
+        "CORRECT_HARLEQUIN": [
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+            ("vent", {"rr": 14, "tv": 460, "peep": 12}),
+            ("extracorporeal_settings", {"blood_flow": 5.0}),
+        ],
+    },
+    "cpb_weaning": {
+        "REWARM_AND_UNCLAMP": [
+            ("extracorporeal_settings", {"heater_cooler_on": True, "water_target_c": 37.5, "cross_clamp": False}),
+        ],
+        "VENTILATE_AND_FILL": [
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+            ("vent_power", {"on": True}),
+            ("extracorporeal_settings", {"venous_clamp": 0, "blood_flow": 2.0}),
+            ("drug_rate", {"key": "nore", "rate": 6}),
+        ],
+        "SEPARATE_FROM_CPB": [
+            ("extracorporeal_settings", {"bypass_alarm_mode": False}),
+            ("extracorporeal_stop", {"reinfuse": False}),
+        ],
+    },
+    "protamine_reversal": {
+        "MEASURE_PRE_ACT": [
+            ("act", {}),
+        ],
+        "REVERSE_HEPARIN": [
+            ("drug_rate", {"key": "protamine", "rate": 22}),
+            ("drug_rate", {"key": "nore", "rate": 5}),
+        ],
+        "CONFIRM_REVERSAL_ACT": [
+            ("drug_rate", {"key": "protamine", "rate": 0}),
+            ("act", {}),
+        ],
+    },
 }
 
 
@@ -773,3 +824,96 @@ def test_sepsis_and_anaphylaxis_early_actions_do_not_soft_lock_step1():
     anaph.command("case_action", json.dumps({"action": "stop_trigger"}))
     scen_a = anaph.snapshot()["scenario"]
     assert scen_a["id"] == "OBSERVE" and scen_a["met"] is True
+
+
+def test_scenarios_use_drugs_tab_label_and_avoid_unmeasured_leaks():
+    """No scenario prose refers to the old 'Medications' tab label, and guided steps
+    never leak unmeasured plasma heparin, live ACT, live PaCO2, unmonitored CO, or unmeasured TOF.
+    """
+    for spec in SCENARIO_REGISTRY:
+        session = WebSession({"scenario_id": spec.id})
+        scen = session.scenario
+        assert scen is not None
+        assert "Medications" not in scen.briefing
+        for step in scen.steps:
+            text = step.instruction_for(session.engine)
+            assert "Medications" not in text, f"{spec.id}/{step.id} still mentions Medications"
+            _, status = step.check_requirements(session.engine)
+            assert "Medications" not in status
+
+    # Protamine reversal waits for 60 s Lab ACT and never leaks plasma heparin or live ACT
+    prot = WebSession({"scenario_id": "protamine_reversal"})
+    assert prot.scenario is not None
+    step1 = _step(prot.scenario, "MEASURE_PRE_ACT")
+    step2 = _step(prot.scenario, "REVERSE_HEPARIN")
+    step3 = _step(prot.scenario, "CONFIRM_REVERSAL_ACT")
+    prot.command("act")
+    met1, msg1 = step1.check_requirements(prot.engine)
+    assert not met1 and "wait" in msg1.lower()
+    _, msg2 = step2.check_requirements(prot.engine)
+    assert "heparin" not in msg2.lower() and "act" not in msg2.lower()
+    prot.engine.give_drug_bolus("protamine", 50.0)
+    _, msg2_mid = step2.check_requirements(prot.engine)
+    assert "protamine delivered" in msg2_mid.lower()
+    assert "heparin" not in msg2_mid.lower() and "act" not in msg2_mid.lower()
+    # Confirmatory ACT requires waiting for the 60 s Lab result
+    prot.engine.give_drug_bolus("protamine", 100.0)
+    prot.command("act")
+    met3, msg3 = step3.check_requirements(prot.engine)
+    assert not met3 and "wait" in msg3.lower()
+
+    # VV ECMO requires a resulted Lab ABG rather than leaking live PaCO2
+    vv = WebSession({"scenario_id": "vv_ecmo_ards"})
+    assert vv.scenario is not None
+    vv.command("extracorporeal_start", json.dumps({"mode": "vv_ecmo", "blood_flow": 4.5, "sweep_gas": 4.0}))
+    _, stab_msg = _step(vv.scenario, "STABILIZE_VV_ECMO").check_requirements(vv.engine)
+    assert "paco" not in stab_msg.lower()
+    vv.command("blood_gas", "{}")
+    met_abg, msg_abg = _step(vv.scenario, "CONFIRM_VV_ABG").check_requirements(vv.engine)
+    assert not met_abg and "wait" in msg_abg.lower()
+
+    # CPB weaning checks monitored ART pulse pressure instead of unmonitored cardiac output
+    cpb = WebSession({"scenario_id": "cpb_weaning"})
+    assert cpb.scenario is not None
+    _, fill_msg = _step(cpb.scenario, "VENTILATE_AND_FILL").check_requirements(cpb.engine)
+    assert "cardiac output" not in fill_msg.lower()
+    assert "pulse pressure" in fill_msg.lower()
+
+    # Emergence block check prompts to measure TOF rather than leaking unmeasured TOF ratio
+    em = WebSession({"scenario_id": "emergence_balanced"})
+    assert em.scenario is not None
+    em.engine.nmb.reading = None
+    met_tof, msg_tof = _step(em.scenario, "ASSESS_BLOCK").check_requirements(em.engine)
+    assert not met_tof and msg_tof == "Measure TOF and confirm a ratio of at least 90%"
+
+
+def test_va_ecmo_harlequin_completes_on_hfref_nonpulsatile_flow():
+    """On HFrEF, raising peripheral VA ECMO flow to 5 L/min can close the aortic valve
+    and flatten the pleth; a resulted right-radial ABG >= 92% satisfies upper-body oxygenation."""
+    session = WebSession({
+        "scenario_id": "va_ecmo_harlequin",
+        "age": 68, "weight": 78, "height": 172, "sex": "male",
+        "heart_failure": "hfref",
+    })
+    assert session.scenario is not None
+    session.engine.config.dt = 0.5
+    session.command("blood_gas", json.dumps({"site": "right_radial"}))
+    session.command("blood_gas", json.dumps({"site": "femoral"}))
+    _web_advance(session, 125.0)
+    assert session.snapshot()["scenario"]["met"] is True
+    session.command("scenario_next")
+    assert session.snapshot()["scenario"]["id"] == "CORRECT_HARLEQUIN"
+
+    # Optimize native lung ventilation and raise VA flow to 5.0 L/min.
+    session.command("fgf", json.dumps({"o2": 10.0, "air": 0.0, "n2o": 0.0}))
+    session.command("vent", json.dumps({"rr": 14, "tv": 460, "peep": 12}))
+    session.command("extracorporeal_settings", json.dumps({"blood_flow": 5.0}))
+    _web_advance(session, 90.0)
+    # Draw confirmatory right-radial ABG and wait 120 s for analyzer result.
+    session.command("blood_gas", json.dumps({"site": "right_radial"}))
+    _web_advance(session, 125.0)
+    assert session.snapshot()["scenario"]["met"] is True
+    session.command("scenario_next")
+    assert session.snapshot()["scenario"]["complete"] is True
+    debrief = json.loads(session.command("case_finish"))["debrief"]
+    assert all(o["achieved"] for o in debrief["outcomes"])

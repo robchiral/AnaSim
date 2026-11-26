@@ -15,6 +15,7 @@ from anasim.core.clinical_actions import (
     ActionFeedback,
     check_airway_removal,
     check_drug_administration,
+    check_extracorporeal_start,
     check_ventilation_withdrawal,
 )
 from anasim.core.drug_registry import get_drug_spec
@@ -28,6 +29,7 @@ from anasim.monitors.blood_gas import BloodGasResult
 from anasim.monitors.ecg import displayed_rhythm, st_analyzable_scale
 from anasim.patient import domain
 from anasim.patient.patient import Patient
+from anasim.physiology.coagulation import ACTResult
 from anasim.physiology.disturbances import list_disturbance_profiles
 from anasim.physiology.resuscitation import SHOCK_ENERGY_J, ShockResult
 from anasim.scenarios import SCENARIO_REGISTRY
@@ -82,8 +84,9 @@ FLUIDS = {
 SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
 # Instructor event controls; cases start their own events and offer case actions instead.
 EVENT_COMMANDS = frozenset({
-    "hemorrhage", "anaphylaxis", "sepsis", "malignant_hyperthermia", "stop_events", "rhythm", "obstruction",
-    "bronchospasm", "auto_laryngospasm", "disturbance", "disturbance_profile", "oxygen_supply",
+    "hemorrhage", "anaphylaxis", "sepsis", "malignant_hyperthermia", "protamine_reaction",
+    "stop_events", "rhythm", "obstruction",
+    "bronchospasm", "auto_laryngospasm", "ards_shunt", "disturbance", "disturbance_profile", "oxygen_supply",
 })
 # Commands still accepted after a case ends.
 ENDED_CASE_COMMANDS = frozenset({"csht", "dismiss_feedback", "case_finish"})
@@ -133,7 +136,15 @@ def _blood_gas(result: BloodGasResult) -> dict:
         "lactate": _num(result.lactate, 2), "sao2": _num(result.sao2, 2), "hb": _num(result.hb, 2),
         "sodium": _num(result.sodium, 1), "potassium": _num(result.potassium, 2),
         "chloride": _num(result.chloride, 1), "ionized_calcium": _num(result.ionized_calcium, 2),
-        "fio2": _num(result.fio2, 3),
+        "fio2": _num(result.fio2, 3), "site": result.site,
+    }
+
+
+def _act(result: ACTResult) -> dict:
+    return {
+        "drawn_at": _num(result.drawn_at, 3),
+        "ready_at": _num(result.ready_at, 3),
+        "act_s": _num(result.act_s, 0),
     }
 
 
@@ -152,10 +163,14 @@ _DRUG_RATE_LIMITS: dict[str, float] = {
     "milri": 5.0,
     "esmolol": 1000.0,
     "vaso": 1.0,
+    "heparin": 10000.0,
+    "protamine": 100.0,
 }
 _UNIT_RATE_LIMITS: dict[str, float] = {
     "U/min": 1.0,
     "u/min": 1.0,
+    "U/hr": 10000.0,
+    "u/hr": 10000.0,
     "mcg/kg/min": 500.0,
     "mcg/min": 1000.0,
     "mcg/kg/hr": 25.0,
@@ -297,6 +312,7 @@ class WebSession:
             ],
             "medication_history": list(self._medication_history),
             "blood_gases": [_blood_gas(result) for result in engine.blood_gases],
+            "acts": [_act(result) for result in engine.acts],
             "trends": list(self._trend_history),
             "nmb_history": engine.nmb.trend_history(),
             "disturbances": [{"key": key, "label": label} for label, key in list_disturbance_profiles()],
@@ -770,12 +786,14 @@ class WebSession:
             )},
             "obstruction": engine.airway_obstruction_manual * 100.0,
             "bronchospasm": engine.bronchospasm_manual * 100.0,
+            "ards_shunt": round(engine.aeration.extra_shunt * 100.0, 1),
             "laryngospasm": engine.laryngospasm_level,
             "auto_laryngospasm": engine.auto_laryngospasm_enabled,
             "hemorrhage": {"active": engine.active_hemorrhage, "rate": engine.hemorrhage_rate_ml_min},
             "anaphylaxis": engine.anaphylaxis.active,
             "sepsis": engine.sepsis.active,
             "malignant_hyperthermia": engine.malignant_hyperthermia.active,
+            "protamine_reaction": engine.coagulation.reaction_active,
             "ecg_rhythm": displayed_rhythm(
                 engine.hemo.state.rhythm_type,
                 engine.hemo.coronary.energy_failure,
@@ -784,6 +802,32 @@ class WebSession:
             ),
             "bair_hugger": engine.state.bair_hugger_target,
             "fluid_warmer": engine.state.fluid_warmer,
+            "extracorporeal": self._extracorporeal_controls(),
+        }
+
+    def _extracorporeal_controls(self) -> dict:
+        ec = self.engine.extracorporeal
+        st = ec.state
+        return {
+            "mode": st.mode.value,
+            "active": ec.is_active,
+            "cannulation": st.cannulation.value,
+            "blood_gas_strategy": st.blood_gas_strategy.value,
+            "target_flow": _num(st.target_blood_flow_l_min, 2),
+            "flow": _num(st.blood_flow_l_min, 2),
+            "sweep": _num(st.sweep_gas_l_min, 2),
+            "fio2": _num(st.sweep_fio2 * 100.0, 0),
+            "sevo": _num(st.sweep_sevo_percent, 1),
+            "heater_cooler_on": bool(st.heater_cooler_on),
+            "water_target_c": _num(st.water_target_c, 1),
+            "venous_clamp": _num(st.venous_clamp_open * 100.0, 0),
+            "cross_clamp": bool(st.aortic_cross_clamp),
+            "cardioplegia": bool(st.cardioplegia_arrest),
+            "lv_vent": _num(st.lv_vent_l_min, 2),
+            "bypass_alarm_mode": bool(st.bypass_alarm_mode),
+            "reservoir_ml": _num(st.reservoir_volume_ml, 0),
+            "reservoir_low": bool(st.reservoir_low_alarm),
+            "pre_so2": _num(st.pre_oxy_so2, 1),
         }
 
     # --- Scenario -------------------------------------------------------
@@ -1103,6 +1147,109 @@ class WebSession:
     def _cmd_bronchospasm(self, percent: float):
         self.engine.set_bronchospasm(domain.bounded_number("bronchospasm", percent, 0.0, 100.0, unit="%") / 100.0)
 
+    def _cmd_ards_shunt(self, percent: float):
+        self.engine.set_ards_shunt(domain.bounded_number("ARDS shunt", percent, 0.0, 90.0, unit="%") / 100.0)
+
+    def _cmd_extracorporeal_start(self, mode: str, **kwargs):
+        common = {"blood_flow", "sweep_gas", "sweep_fio2", "membrane_type", "prime_volume_ml", "heater_cooler_on", "water_target_c"}
+        mode_specs = {
+            "vv_ecmo": ("VV ECMO", common | {"cannulation"}),
+            "va_ecmo": ("VA ECMO", common | {"cannulation", "lv_vent"}),
+            "cpb": (
+                "CPB",
+                common | {"sweep_fco2", "sweep_sevo", "initial_reservoir_ml", "blood_gas_strategy", "venous_clamp", "bypass_alarm_mode"},
+            ),
+        }
+        if mode not in mode_specs:
+            raise ValueError(f"Unknown extracorporeal mode: {mode!r}")
+        label, allowed = mode_specs[mode]
+        unknown = set(kwargs) - allowed
+        if unknown:
+            raise ValueError(f"Unknown {label} setting(s): {', '.join(sorted(unknown))}")
+        rename = {
+            "blood_flow": "blood_flow_l_min",
+            "sweep_gas": "sweep_gas_l_min",
+            "lv_vent": "lv_vent_l_min",
+            "sweep_sevo": "sweep_sevo_percent",
+        }
+        opts: dict = {}
+        for key, value in kwargs.items():
+            if key == "venous_clamp":
+                opts["venous_clamp_open"] = domain.bounded_number("venous clamp", value, 0.0, 100.0, unit="%") / 100.0
+            else:
+                opts[rename.get(key, key)] = value
+        feedback = check_extracorporeal_start(self.engine, mode) if mode == "cpb" else None
+        if mode == "vv_ecmo":
+            self.engine.start_vv_ecmo(**opts)
+        elif mode == "va_ecmo":
+            self.engine.start_va_ecmo(**opts)
+        else:
+            self.engine.start_cpb(**opts)
+        return self._clinical_result(feedback)
+
+    def _cmd_extracorporeal_stop(self, reinfuse: bool = False):
+        self.engine.stop_extracorporeal(reinfuse=bool(reinfuse))
+
+    def _cmd_extracorporeal_settings(self, **fields):
+        allowed = {
+            "blood_flow", "sweep_gas", "sweep_fio2", "fio2_percent", "sweep_fco2", "sweep_sevo",
+            "heater_cooler_on", "water_target_c", "venous_clamp", "cross_clamp", "cardioplegia",
+            "lv_vent", "blood_gas_strategy", "bypass_alarm_mode",
+        }
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(f"Unknown extracorporeal setting(s): {', '.join(sorted(unknown))}")
+        if "blood_flow" in fields:
+            self.engine.set_ecmo_flow(fields["blood_flow"])
+        if "sweep_gas" in fields:
+            self.engine.set_ecmo_sweep(fields["sweep_gas"])
+        if "sweep_fio2" in fields:
+            self.engine.set_ecmo_fio2(fields["sweep_fio2"])
+        if "fio2_percent" in fields:
+            self.engine.set_ecmo_fio2(
+                domain.bounded_number("sweep FiO2", fields["fio2_percent"], 21.0, 100.0, unit="%") / 100.0
+            )
+        if "sweep_fco2" in fields:
+            self.engine.set_ecmo_fco2(fields["sweep_fco2"])
+        if "sweep_sevo" in fields:
+            self.engine.set_ecmo_sevo(fields["sweep_sevo"])
+        if "heater_cooler_on" in fields or "water_target_c" in fields:
+            on = bool(fields.get("heater_cooler_on", self.engine.extracorporeal.state.heater_cooler_on))
+            target = fields.get("water_target_c")
+            self.engine.set_ecmo_heater_cooler(on, target)
+        if "venous_clamp" in fields:
+            self.engine.set_cpb_venous_clamp(
+                domain.bounded_number("venous clamp", fields["venous_clamp"], 0.0, 100.0, unit="%") / 100.0
+            )
+        if "cross_clamp" in fields:
+            self.engine.set_cpb_cross_clamp(bool(fields["cross_clamp"]))
+        if "cardioplegia" in fields:
+            self.engine.set_cpb_cardioplegia(bool(fields["cardioplegia"]))
+        if "lv_vent" in fields:
+            self.engine.set_ecmo_lv_vent(fields["lv_vent"])
+        if "blood_gas_strategy" in fields:
+            self.engine.set_cpb_blood_gas_strategy(fields["blood_gas_strategy"])
+        if "bypass_alarm_mode" in fields:
+            self.engine.set_bypass_alarm_mode(bool(fields["bypass_alarm_mode"]))
+
+    def _cmd_cpb_reservoir_fluid(self, volume_ml: float, kind: str = "crystalloid"):
+        if kind not in {"crystalloid", "saline", "albumin", "colloid", "blood"}:
+            raise ValueError(f"Unknown reservoir fluid: {kind!r}")
+        added = self.engine.add_cpb_reservoir_fluid(volume_ml, kind=kind)
+        labels = {
+            "crystalloid": "lactated Ringer's",
+            "saline": "0.9% saline",
+            "albumin": "5% albumin",
+            "colloid": "5% albumin",
+            "blood": "PRBC",
+        }
+        text = (
+            f"{added:g} mL {labels[kind]} added to CPB reservoir"
+            if added > 0.0
+            else "CPB reservoir is full"
+        )
+        return {"fluid": {"time": self.engine.state.time, "text": text}}
+
     def _cmd_position(self, position: str):
         self.engine.set_position(position)
 
@@ -1125,6 +1272,9 @@ class WebSession:
 
     def _cmd_malignant_hyperthermia(self, active: bool):
         (self.engine.start_malignant_hyperthermia if active else self.engine.stop_malignant_hyperthermia)()
+
+    def _cmd_protamine_reaction(self, active: bool):
+        (self.engine.start_protamine_reaction if active else self.engine.stop_protamine_reaction)()
 
     def _cmd_surface_cooling(self, on: bool):
         self.engine.set_surface_cooling(on)
@@ -1186,8 +1336,11 @@ class WebSession:
     def _cmd_nibp(self):
         self.engine.measure_nibp()
 
-    def _cmd_blood_gas(self):
-        return {"blood_gas": _blood_gas(self.engine.draw_blood_gas())}
+    def _cmd_blood_gas(self, site: str = "arterial"):
+        return {"blood_gas": _blood_gas(self.engine.draw_blood_gas(site=site))}
+
+    def _cmd_act(self):
+        return {"act": _act(self.engine.measure_act())}
 
     def _cmd_nmb_mode(self, mode: str):
         self.engine.nmb.set_mode(mode, self.engine.state.time)

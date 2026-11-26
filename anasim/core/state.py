@@ -227,7 +227,9 @@ class SimulationState:
     sv: float = 70.0
     svr: float = 16.0
     co: float = 5.0
-    intrinsic_co: float = 5.0  # From the heart's own beats; co adds chest compressions.
+    intrinsic_co: float = 5.0  # From the heart's own beats; co adds chest compressions or arterial pump flow.
+    pulmonary_flow: float = 5.0  # Blood flow crossing the native pulmonary vascular bed, L/min.
+    pump_flow: float = 0.0  # Extracorporeal arterial pump flow (VA ECMO / CPB), L/min.
     sbp: float = 120.0
     dbp: float = 80.0
     # Arterial catheter output and beat numerics; art_sbp and art_dbp clear to
@@ -273,6 +275,24 @@ class SimulationState:
     airway_obstruction: float = 0.0
     bronchospasm: float = 0.0
     laryngospasm: float = 0.0
+
+    # Extracorporeal support summary (VV ECMO, VA ECMO, CPB).
+    ecmo_mode: str = "none"
+    ecmo_flow: float = 0.0  # Circuit blood flow, L/min
+    ecmo_sweep: float = 0.0  # Sweep gas flow, L/min
+    ecmo_recirculation: float = 0.0  # VV ECMO recirculation fraction, 0-1
+    ecmo_o2_transfer: float = 0.0  # STPD mL/min
+    ecmo_co2_removal: float = 0.0  # STPD mL/min
+    cpb_reservoir_ml: float = 0.0  # Open venous reservoir level, mL
+    cpb_cross_clamp: bool = False
+    upper_sao2: float = 98.0  # Upper-body / right-radial arterial saturation, %
+    lower_sao2: float = 98.0  # Lower-body / femoral arterial saturation, %
+
+    # Anticoagulation and reversal (heparin / protamine / ACT).
+    heparin_u_ml: float = 0.0  # Free circulating unfractionated heparin, U/mL
+    protamine_ug_ml: float = 0.0  # Free circulating protamine, mcg/mL
+    act_s: float = 120.0  # Activated clotting time, s
+    protamine_reaction: bool = False  # Catastrophic Type III pulmonary vasoconstriction active
 
     def monitored_blood_pressure(
         self,

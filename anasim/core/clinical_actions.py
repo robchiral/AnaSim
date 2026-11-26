@@ -43,6 +43,9 @@ def _responsiveness(engine: SimulationEngine) -> tuple[float, float]:
 
 
 def _in_arrest(engine: SimulationEngine) -> bool:
+    ec = engine.extracorporeal
+    if (ec.is_va or ec.is_cpb) and ec.state.blood_flow_l_min >= 1.0:
+        return False
     hemo = engine.hemo.state
     return (
         engine.state.cardiac_arrest
@@ -111,6 +114,10 @@ def check_airway_removal(engine: SimulationEngine) -> ActionFeedback | None:
 
 
 def check_ventilation_withdrawal(engine: SimulationEngine) -> ActionFeedback | None:
+    # Extracorporeal gas exchange supports apnea intentionally during CPB or ECMO lung rest.
+    ec = engine.extracorporeal
+    if ec.is_active and ec.state.blood_flow_l_min >= 1.5 and ec.state.sweep_gas_l_min > 0.0:
+        return None
     # The ventilator can display normal RR/VT during complete apnea.
     if engine.resp.state.apnea:
         return ActionFeedback(
@@ -134,6 +141,11 @@ def check_shock(engine: SimulationEngine) -> ActionFeedback | None:
 
 
 def check_drug_administration(engine: SimulationEngine, key: str) -> ActionFeedback | None:
+    if key == "protamine" and engine.extracorporeal.is_active:
+        return ActionFeedback(
+            "protamine_on_bypass",
+            "Protamine given during active extracorporeal circulation risks catastrophic circuit thrombosis.",
+        )
     if key == "succinylcholine":
         if engine.malignant_hyperthermia.active or engine.malignant_hyperthermia.susceptible:
             return ActionFeedback(
@@ -154,6 +166,16 @@ def check_drug_administration(engine: SimulationEngine, key: str) -> ActionFeedb
                 "awake_neuromuscular_block",
                 "Neuromuscular blocker given without adequate hypnosis.",
             )
+    return None
+
+
+def check_extracorporeal_start(engine: SimulationEngine, mode: str) -> ActionFeedback | None:
+    """Warn if CPB is started without therapeutic heparin anticoagulation (ACT < 400 s)."""
+    if mode == "cpb" and engine.coagulation.state.act_s < 400.0:
+        return ActionFeedback(
+            "cpb_low_act",
+            "Cardiopulmonary bypass initiated without therapeutic heparinization (ACT < 400 s); verify heparin dosing and ACT.",
+        )
     return None
 
 
