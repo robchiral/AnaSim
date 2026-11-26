@@ -861,3 +861,155 @@ def test_glucose_insulin_dextrose_and_poc_meter_round_trip():
     rescue = cmd(hypo, "fluid", kind="d50w", volume_ml=50)
     assert rescue["feedback"] is None
     assert rescue["medication"]["key"] == "d50w"
+
+
+def test_airway_crisis_thoracic_embolism_and_neuraxial_commands_round_trip():
+    """New crisis catalog entries, open-sim airway/thoracic/embolism/neuraxial controls, and case locks."""
+    cat = parse(web.catalog())
+    scenarios_by_id = {entry["id"]: entry for entry in cat["scenarios"]}
+    for sid in (
+        "failed_laryngoscopy",
+        "esophageal_intubation",
+        "tension_pneumothorax",
+        "venous_air_embolism",
+        "pulmonary_embolism",
+        "high_spinal",
+    ):
+        assert scenarios_by_id[sid]["category"] == "crisis"
+
+    # Open simulation: difficult airway tools, SGA, eFONA, and esophageal intubation triggers.
+    session = WebSession({**PATIENT, "mode": "steady_state"})
+    cmd(session, "run", running=True)
+    cmd(session, "difficult_airway", profile="anterior_dl")
+    cmd(session, "airway", mode="Mask")
+    cmd(session, "airway_technique", technique="dl")
+    fail_res = cmd(session, "airway", mode="ETT")
+    assert fail_res["feedback"]["code"] == "failed_laryngoscopy"
+    assert fail_res["feedback"]["level"] == "blocked"
+    cmd(session, "call_airway_help")
+    cmd(session, "oral_airway", placed=True)
+    cmd(session, "two_hand_mask", active=True)
+    ac = parse(session.advance(0.0))["controls"]["airway_crisis"]
+    assert ac["difficult_profile"] == "anterior_dl"
+    assert ac["help_called"] is True and ac["oral_airway"] is True and ac["two_hand_mask"] is True
+    assert ac["attempts"] == 1 and ac["last_view"] == "Grade III"
+
+    cmd(session, "airway", mode="SGA")
+    assert parse(session.advance(0.0))["controls"]["airway"] == "SGA"
+    cmd(session, "perform_fona")
+    assert parse(session.advance(0.0))["controls"]["airway"] == "FONA"
+
+    cmd(session, "difficult_airway", profile="none")
+    cmd(session, "airway", mode="Mask")
+    cmd(session, "esophageal_intubation", armed=True)
+    assert parse(session.advance(0.0))["controls"]["airway_crisis"]["esophageal_armed"] is True
+    cmd(session, "airway", mode="ETT", technique="dl")
+    assert parse(session.advance(0.0))["controls"]["airway_crisis"]["esophageal_active"] is True
+    cmd(session, "esophageal_intubation", active=False)
+    assert parse(session.advance(0.0))["controls"]["airway_crisis"]["esophageal_active"] is False
+
+    # Open simulation: pneumothorax, PE, and VAE events + crisis procedures.
+    cmd(session, "pneumothorax", active=True)
+    assert parse(session.advance(0.0))["controls"]["pneumothorax"]["active"] is True
+    ptx_res = cmd(session, "chest_decompress")
+    assert "Chest decompression" in ptx_res["procedure"]["text"]
+    assert parse(session.advance(0.0))["controls"]["pneumothorax"]["decompressed"] is True
+
+    cmd(session, "pulmonary_embolism", active=True)
+    assert parse(session.advance(0.0))["controls"]["embolism"]["pe_active"] is True
+    pe_res = cmd(session, "pe_thrombolysis")
+    assert "thrombolysis" in pe_res["procedure"]["text"].lower()
+    assert parse(session.advance(0.0))["controls"]["embolism"]["thrombolysis"] is True
+    cmd(session, "pulmonary_embolism", active=False)
+
+    cmd(session, "venous_air_embolism", active=True)
+    assert parse(session.advance(0.0))["controls"]["embolism"]["vae_active"] is True
+    vae_res = cmd(session, "vae_aspirate")
+    assert "CVC" in vae_res["procedure"]["text"]
+    cmd(session, "venous_air_embolism", active=False)
+
+    # Open simulation: general neuraxial anesthesia controls (spinal, epidural bolus/infusion, level check).
+    awake = WebSession({**PATIENT, "mode": "awake"})
+    cmd(awake, "run", running=True)
+    sp = cmd(awake, "neuraxial_spinal", drug="bupivacaine", dose_mg=12.5, baricity="hyperbaric")
+    assert "Spinal hyperbaric bupivacaine 12.5 mg" in sp["medication"]["text"]
+    run_seconds(awake, 180, tick_s=5.0)
+    chk = cmd(awake, "neuraxial_check_level")["neuraxial_check"]
+    assert chk["sensory_label"] != "None"
+    assert parse(awake.advance(0.0))["controls"]["neuraxial"]["last_check"]["sensory_label"] == chk["sensory_label"]
+    cmd(awake, "neuraxial_clear")
+    assert parse(awake.advance(0.0))["controls"]["neuraxial"]["active"] is False
+
+    cmd(awake, "neuraxial_epidural_catheter", placed=True)
+    eb = cmd(awake, "neuraxial_epidural_bolus", drug="bupivacaine", volume_ml=12, concentration_pct=0.5, with_epinephrine=True)
+    assert "1:200k epi" in eb["medication"]["text"]
+    er = cmd(awake, "neuraxial_epidural_rate", ml_hr=8, drug="bupivacaine", concentration_pct=0.125)
+    assert "8 mL/hr" in er["medication"]["text"]
+    assert parse(awake.advance(0.0))["controls"]["neuraxial"]["epidural_rate"] == pytest.approx(8.0)
+    cmd(awake, "high_spinal", active=True)
+    assert parse(awake.advance(0.0))["controls"]["neuraxial"]["mode"] == "high_spinal"
+
+    with pytest.raises(ValueError, match="technique"):
+        cmd(session, "airway_technique", technique="blind_wand")
+    # Invalid inline airway technique does not mutate stored technique.
+    cmd(session, "airway_technique", technique="vl")
+    with pytest.raises(ValueError, match="technique"):
+        cmd(session, "airway", mode="ETT", technique="blind_wand")
+    assert parse(session.advance(0.0))["controls"]["airway_crisis"]["technique"] == "vl"
+
+    cmd(awake, "neuraxial_clear")
+    with pytest.raises(ValueError, match="neuraxial drug"):
+        cmd(awake, "neuraxial_spinal", drug="tetracaine", dose_mg=10)
+    # Numeric string arguments validate before engine mutation.
+    sp_str = cmd(awake, "neuraxial_spinal", drug="bupivacaine", dose_mg="10", baricity="isobaric")
+    assert "10 mg" in sp_str["medication"]["text"]
+    with pytest.raises(ValueError):
+        cmd(awake, "neuraxial_epidural_rate", ml_hr="100", drug="bupivacaine")
+    assert parse(awake.advance(0.0))["controls"]["neuraxial"]["epidural_rate"] == 0.0
+
+    # Instructor event commands (including neuraxial_clear) are blocked during active cases.
+    case = WebSession({"scenario_id": "failed_laryngoscopy"})
+    for ev_name, ev_args in (
+        ("difficult_airway", {"profile": "none"}),
+        ("esophageal_intubation", {"active": True}),
+        ("pneumothorax", {"active": True}),
+        ("pulmonary_embolism", {"active": True}),
+        ("venous_air_embolism", {"active": True}),
+        ("high_spinal", {"active": True}),
+        ("neuraxial_clear", {}),
+    ):
+        with pytest.raises(ValueError, match="Case events are controlled by the case"):
+            cmd(case, ev_name, **ev_args)
+
+    # NIBP-only stabilization steps require a fresh blood pressure reading instead of leaking hidden true MAP.
+    for sid, step_id in (
+        ("tension_pneumothorax", "STABILIZE_PTX"),
+        ("venous_air_embolism", "STABILIZE_VAE"),
+        ("pulmonary_embolism", "STABILIZE_PE"),
+        ("high_spinal", "STABILIZE_SPINAL"),
+    ):
+        nibp_case = WebSession({"scenario_id": sid, "arterial_line_enabled": False})
+        eng = nibp_case.engine
+        assert nibp_case.scenario is not None
+        step = next(s for s in nibp_case.scenario.steps if s.id == step_id)
+        eng.state.time = 200.0
+        eng.state.nibp_timestamp = 100.0  # > 60 s stale
+        eng.state.map = eng.state.nibp_map = 80.0
+        eng.state.sao2 = eng.state.display_spo2 = 99.0
+        eng.state.spo2_signal_valid = True
+        eng.state.etco2 = eng.state.display_etco2 = 35.0
+        eng.state.etco2_signal_valid = True
+        eng.state.hr = eng.state.display_hr = 75.0
+        eng.set_airway_mode("ETT")
+        eng.set_vent_power(True)
+        if sid == "tension_pneumothorax":
+            eng.start_pneumothorax()
+            eng.decompress_pneumothorax()
+        elif sid == "venous_air_embolism":
+            eng.start_venous_air_embolism()
+            eng.stop_venous_air_embolism()
+        elif sid == "pulmonary_embolism":
+            eng.start_pulmonary_embolism()
+            eng.give_thrombolysis()
+        met, msg = step.check_requirements(eng)
+        assert not met and "Measure blood pressure again" in msg

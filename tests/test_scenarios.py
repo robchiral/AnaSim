@@ -204,6 +204,97 @@ SCENARIO_WALKTHROUGHS: dict[str, dict[str, list[tuple[str, dict[str, Any]]]]] = 
             ("act", {}),
         ],
     },
+    "failed_laryngoscopy": {
+        "ATTEMPT_DL": [
+            ("airway", {"mode": "ETT", "technique": "dl"}),
+        ],
+        "CALL_HELP_OXYGENATE": [
+            ("call_airway_help", {}),
+            ("oral_airway", {"placed": True}),
+            ("two_hand_mask", {"active": True}),
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+        ],
+        "ALTERNATE_AIRWAY": [
+            ("airway", {"mode": "ETT", "technique": "vl_bougie"}),
+        ],
+        "CONFIRM_VENTILATION": [
+            ("vent_power", {"on": True}),
+        ],
+    },
+    "esophageal_intubation": {
+        "REMOVE_TUBE": [
+            ("airway", {"mode": "Mask"}),
+        ],
+        "REOXYGENATE": [
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+            ("apl", {"cmh2o": 20}),
+            ("bag_mask", {"active": True}),
+        ],
+        "REINTUBATE": [
+            ("airway", {"mode": "ETT", "technique": "vl"}),
+            ("vent_power", {"on": True}),
+        ],
+        "CONFIRM_CAPNO": [],
+    },
+    "tension_pneumothorax": {
+        "STOP_N2O_100_O2": [
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+        ],
+        "DECOMPRESS_PTX": [
+            ("chest_decompress", {}),
+        ],
+        "STABILIZE_PTX": [
+            ("fluid", {"kind": "crystalloid", "volume_ml": 500}),
+        ],
+    },
+    "venous_air_embolism": {
+        "STOP_N2O_VAE": [
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+        ],
+        "STOP_ENTRAINMENT": [
+            ("case_action", {"action": "flood_field_lower_head"}),
+        ],
+        "ASPIRATE_POSITION": [
+            ("vae_aspirate", {}),
+            ("position", {"position": "left_lateral"}),
+        ],
+        "STABILIZE_VAE": [
+            ("drug_rate", {"key": "nore", "rate": 6}),
+        ],
+    },
+    "pulmonary_embolism": {
+        "FIO2_100_PE": [
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+        ],
+        "SUPPORT_RV": [
+            ("drug_rate", {"key": "nore", "rate": 10}),
+        ],
+        "ANTICOAG_LYSIS": [
+            ("drug_bolus", {"key": "heparin", "amount": 5000}),
+            ("pe_thrombolysis", {}),
+        ],
+        "STABILIZE_PE": [],
+    },
+    "high_spinal": {
+        "FLUID_O2": [
+            ("airway", {"mode": "Mask"}),
+            ("fgf", {"o2": 10, "air": 0, "n2o": 0}),
+            ("fluid", {"kind": "crystalloid", "volume_ml": 1000}),
+        ],
+        "VASOACTIVE": [
+            ("drug_bolus", {"key": "atropine", "amount": 1.0}),
+            ("drug_bolus", {"key": "ephedrine", "amount": 25.0}),
+            ("drug_rate", {"key": "nore", "rate": 10}),
+        ],
+        "ASSIST_VENTILATION": [
+            ("bag_mask", {"active": True}),
+        ],
+        "SECURE_AIRWAY": [
+            ("airway", {"mode": "ETT"}),
+            ("vent_power", {"on": True}),
+        ],
+        "STABILIZE_SPINAL": [],
+    },
 }
 
 

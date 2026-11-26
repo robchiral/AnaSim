@@ -51,7 +51,7 @@ class HemodynamicConfig:
     hr_feedback_anesthetic_depression: float = 1.0
 
     # Myocardial hypoxia: 83% of emergency-intubation arrests were associated
-    # with SpO2 < 70% (Mort 2004). Depression grows from SaO2 70% to full at 30%.
+    # with SpO2 < 70% (Mort 2004a). Depression grows from SaO2 70% to full at 30%.
     hypoxia_sao2_onset: float = 70.0
     hypoxia_sao2_full: float = 30.0
     hypoxia_tau_on_s: float = 45.0

@@ -78,6 +78,8 @@ class LungAeration:
         self.lung_water = 0.0  # mL/kg predicted body weight above normal
         self.flooded = 0.0
         self.extra_shunt = 0.0  # Optional parenchymal shunt (e.g. severe ARDS), 0-0.95
+        self.crisis_shunt = 0.0  # Acute crisis shunt (pneumothorax / embolism), 0-0.80
+        self.pleural_collapse = 0.0  # Unilateral lung collapse from pneumothorax, 0-0.50
         self.chest_wall_stiffness = 1.0
         self.pressure_transmission = 1.0
         self.elapsed = 0.0
@@ -85,7 +87,7 @@ class LungAeration:
 
     @property
     def aerated(self) -> float:
-        return self.recruited * (1.0 - self.flooded)
+        return self.recruited * (1.0 - self.flooded) * (1.0 - clamp01(self.pleural_collapse))
 
     @property
     def relaxed_volume(self) -> float:
@@ -102,6 +104,9 @@ class LungAeration:
             base_shunt = min(0.70, base_shunt + (1.0 - base_shunt) * collapse_shunt)
         else:
             base_shunt = min(0.70, base_shunt)
+        if self.crisis_shunt > 0.0:
+            crisis = min(0.80, max(0.0, self.crisis_shunt))
+            base_shunt = min(0.90, base_shunt + (1.0 - base_shunt) * crisis)
         if self.extra_shunt > 0.0:
             extra = min(0.95, max(0.0, self.extra_shunt))
             return min(0.95, base_shunt + (1.0 - base_shunt) * extra)

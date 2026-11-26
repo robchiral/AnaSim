@@ -19,7 +19,7 @@ configuration, units, and scripted runs.
 | [`projection.py`](../anasim/core/projection.py) and [`state.py`](../anasim/core/state.py) | Copy model outputs into `SimulationState` and define its fields |
 | [`initialization.py`](../anasim/core/initialization.py) | Initializes awake and steady-state maintenance sessions |
 | [`patient/`](../anasim/patient/) and [`drug_registry.py`](../anasim/core/drug_registry.py) | Define patient parameters, drug models, units, pump limits, and UI metadata |
-| [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, fluids, glucose and insulin, anticoagulation, respiration, gas exchange, and temperature |
+| [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, fluids, glucose and insulin, anticoagulation, neuraxial anesthesia, respiration, gas exchange, airway and thoracic/embolic crises, and temperature |
 | [`extracorporeal/`](../anasim/extracorporeal/) | Models VV ECMO, VA ECMO, and cardiopulmonary bypass circuits |
 | [`machine/`](../anasim/machine/) | Models the breathing circuit, vaporizer, and ventilator |
 | [`monitors/`](../anasim/monitors/) and [`core/monitors.py`](../anasim/core/monitors.py) | Produce measurements, waveforms, and alarms |
@@ -33,8 +33,8 @@ configuration, units, and scripted runs.
 
 Each call to `SimulationEngine.step()` runs these stages in order:
 
-1. Update shivering, then compute thermal anesthetic depth, metabolic rate, and
-   stimulation tolerance.
+1. Update shivering and neuraxial block, then compute thermal anesthetic depth,
+   metabolic rate, and stimulation tolerance.
 2. Advance stimulation, hemorrhage, fluid infusions, anaphylaxis, and sepsis.
 3. Update pharmacokinetic (PK) covariates for blood volume, cardiac output,
    renal perfusion, core temperature, and drug interactions, then step
@@ -42,9 +42,10 @@ Each call to `SimulationEngine.step()` runs these stages in order:
 4. Update airway complications, the vaporizer, and the breathing circuit.
 5. Advance lipid emulsion, inhaled anesthetic uptake, intravenous drug
    concentrations, anticoagulation, circuit drug sequestration, neuromuscular
-   block, lidocaine toxicity, and malignant hyperthermia, then apply toxicity,
-   malignant hyperthermia, and sepsis effects on metabolism, heat production,
-   and chest-wall stiffness.
+   block, lidocaine toxicity, malignant hyperthermia, pneumothorax, and
+   pulmonary/air embolism, then apply toxicity, malignant hyperthermia, sepsis,
+   pneumothorax, and embolic effects on metabolism, heat production, chest-wall
+   stiffness, lung collapse, and shunt.
 6. Advance respiratory mechanics, lung and oxygenator gas exchange, glucose
    homeostasis, CPB reservoir drainage, hemodynamics, cardiac rhythm, and
    regional VA ECMO mixing.

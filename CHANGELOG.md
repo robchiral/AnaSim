@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Added difficult-airway escalation tools (direct laryngoscopy,
+  videolaryngoscopy, videolaryngoscopy with bougie, flexible bronchoscopy, oral
+  airway, two-hand jaw thrust, supraglottic airway rescue, and emergency
+  front-of-neck access), accidental esophageal intubation with decaying gastric
+  capnography and low returned tidal volume, and guided or independent failed
+  laryngoscopy and esophageal intubation cases.
+- Added tension pneumothorax (positive-pressure versus spontaneous progression,
+  nitrous oxide expansion, obstructive shock, and chest decompression), massive
+  pulmonary embolism (dead-space capnography, pulmonary vascular resistance
+  shock, heparin, and thrombolysis), venous air embolism (nitrous oxide bubble
+  expansion, oxygen washout, left-lateral positioning, and central venous air
+  aspiration), and guided or independent cases for each crisis.
+- Added spinal and epidural neuraxial anesthesia (bupivacaine and lidocaine
+  boluses, epinephrine-containing solutions, continuous epidural infusions,
+  bedside dermatome and Bromage level checks, and Bezold-Jarisch reflex
+  bradycardia) for open simulation, along with a guided or independent high or
+  total spinal case.
 - Added venovenous ECMO, venoarterial ECMO, and cardiopulmonary bypass support
   with membrane gas exchange, regional differential oxygenation, passive bypass
   reservoir drainage, active heat exchange, circuit drug sequestration, and

@@ -360,7 +360,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Kerr et al. (1998). *Am J Cardiol*. [Stroke-volume variability in atrial fibrillation](https://pubmed.ncbi.nlm.nih.gov/9874054/).
 - Corino et al. (2015). *J Cardiovasc Electrophysiol*. [R-R variability in atrial fibrillation](https://pubmed.ncbi.nlm.nih.gov/25367150/).
 - Hogue et al. (1996). *Anesthesiology*. [Post-induction bradycardia and atrial pacing](https://pubmed.ncbi.nlm.nih.gov/8694384/).
-- Mort (2004). *J Clin Anesth*. [Hypoxemia and intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/15590254/).
+- Mort (2004a). *J Clin Anesth*. [Hypoxemia and intubation-related cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/15590254/).
 - Weisfeldt and Becker (2002). *JAMA*. [Three-phase time-sensitive model of resuscitation after cardiac arrest](https://pubmed.ncbi.nlm.nih.gov/12479769/).
 - Paradis et al. (1990). *JAMA*. [Coronary perfusion pressure and return of spontaneous circulation in human CPR](https://pubmed.ncbi.nlm.nih.gov/2386557/).
 - Meaney et al. (2013). *Circulation*. [CPR quality](https://pubmed.ncbi.nlm.nih.gov/23801105/).
@@ -617,6 +617,31 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Mochizuki et al. (1998). *Anesth Analg*. [Excess protamine effects on platelet aggregation and ACT](https://pubmed.ncbi.nlm.nih.gov/9768770/).
 - Horrow (1985). *Anesth Analg*. [Review of protamine toxicity and hemodynamic reactions](https://pubmed.ncbi.nlm.nih.gov/3883848/).
 - Lowenstein et al. (1983). *Anesthesiology*. [Catastrophic pulmonary vasoconstriction during protamine reversal](https://pubmed.ncbi.nlm.nih.gov/6638558/).
+
+## Airway, thoracic, and embolic crises
+
+- Apfelbaum et al. (2022). *Anesthesiology*. [ASA practice guidelines for management of the difficult airway](https://pubmed.ncbi.nlm.nih.gov/34762729/).
+- Ahmad et al. (2026). *Br J Anaesth*. [Difficult Airway Society 2025 guidelines for unanticipated difficult tracheal intubation](https://pubmed.ncbi.nlm.nih.gov/41203471/).
+- Mort (2004b). *Anesth Analg*. [Emergency tracheal intubation complications with repeated laryngoscopic attempts](https://pubmed.ncbi.nlm.nih.gov/15271750/).
+- Chrimes et al. (2022). *Anaesthesia*. [PUMA consensus guideline for preventing unrecognized esophageal intubation](https://pubmed.ncbi.nlm.nih.gov/35977431/).
+- Linko et al. (1983). *Acta Anaesthesiol Scand*. [Capnography for detection of accidental esophageal intubation](https://pubmed.ncbi.nlm.nih.gov/6410667/).
+- Sum-Ping et al. (1989). *Anesth Analg*. [Expired volume, CO₂, and temperature for detecting esophageal intubation](https://pubmed.ncbi.nlm.nih.gov/2508509/).
+- Roberts et al. (2015). *Ann Surg*. [Clinical presentation of tension pneumothorax during spontaneous versus assisted ventilation](https://pubmed.ncbi.nlm.nih.gov/25563887/).
+- Nelson et al. (2013). *J Surg Res*. [Hemodynamic collapse and decompression of tension pneumothorax in ventilated swine](https://pubmed.ncbi.nlm.nih.gov/23764307/).
+- Eger and Saidman (1965). *Anesthesiology*. [Nitrous oxide expansion of closed canine pneumothorax](https://pubmed.ncbi.nlm.nih.gov/14257336/).
+- McIntyre and Sasahara (1971). *Am J Cardiol*. [Hemodynamic response to acute pulmonary embolism without prior cardiopulmonary disease](https://pubmed.ncbi.nlm.nih.gov/5155756/).
+- Eriksson et al. (1989). *Chest*. [Alveolar dead space and arterial-to-end-tidal CO₂ gradient in pulmonary embolism](https://pubmed.ncbi.nlm.nih.gov/2752819/).
+- Mirski et al. (2007). *Anesthesiology*. [Diagnosis and treatment of vascular air embolism](https://pubmed.ncbi.nlm.nih.gov/17197859/).
+- Munson and Merrick (1966). *Anesthesiology*. [Nitrous oxide effect on lethal venous air embolism in rabbits](https://pubmed.ncbi.nlm.nih.gov/5924551/).
+
+## Neuraxial anesthesia
+
+- Veering et al. (1988). *Br J Anaesth*. [Age and spinal spread of hyperbaric bupivacaine](https://pubmed.ncbi.nlm.nih.gov/3345280/).
+- Freund et al. (1967). *Anesthesiology*. [Ventilatory reserve and sensory-motor dissociation during high spinal and epidural anesthesia](https://pubmed.ncbi.nlm.nih.gov/6035013/).
+- Ward et al. (1965). *JAMA*. [Hemodynamics of spinal, plain epidural, and epinephrine-containing epidural anesthesia](https://pubmed.ncbi.nlm.nih.gov/5899742/).
+- Rooke et al. (1997). *Anesth Analg*. [Spinal anesthesia hemodynamics and organ blood volume shifts in elderly men](https://pubmed.ncbi.nlm.nih.gov/9212130/).
+- Caplan et al. (1988). *Anesthesiology*. [Unexpected cardiac arrest during spinal anesthesia](https://pubmed.ncbi.nlm.nih.gov/3337390/).
+- Pollard (2001). *Anesth Analg*. [Cardiac arrest during spinal anesthesia and Bezold-Jarisch reflex mechanisms](https://pubmed.ncbi.nlm.nih.gov/11133639/).
 
 ## Scenario guidance
 

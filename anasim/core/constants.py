@@ -78,8 +78,14 @@ class AirwayTuning:
     # Airway pressure that fully relieves this collapse (calibrated).
     collapse_relief_pressure: float = 5.0  # cmH2O
     # Bouvet 2014: gastric insufflation rises near 15-20 cmH2O during facemask
-    # ventilation; external leak above 20 cmH2O is a calibration.
+    # ventilation; external leak above 20 cmH2O (and 24 cmH2O with two-handed hold)
+    # is a simulator calibration.
     mask_seal_pressure: float = 20.0  # cmH2O at full seal
+    two_hand_seal_pressure: float = 24.0  # cmH2O with two-handed jaw thrust
+    # Calibrated second-generation supraglottic airway oropharyngeal leak pressure.
+    sga_seal_pressure: float = 28.0  # cmH2O
+    # Added airway resistance of a 6.0 mm cuffed eFONA cricothyrotomy tube (Ahmad 2026).
+    fona_resistance_add: float = 3.0  # cmH2O/(L/s)
     mask_overpressure_leak: float = 0.5
 
 

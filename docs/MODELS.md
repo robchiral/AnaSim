@@ -1584,6 +1584,106 @@ that slow infusions avoid, while a separate Type III catastrophic pulmonary
 vasoconstriction reaction spikes PVR and causes acute RV failure (Horrow 1985;
 Lowenstein 1983). Therapeutic anticoagulation amplifies active hemorrhage.
 
+## Airway, thoracic, and embolic crises
+
+### Difficult airway and esophageal intubation
+
+[`airway_crisis.py`](../anasim/physiology/airway_crisis.py) models unanticipated
+difficult laryngoscopy and accidental esophageal intubation along the ASA 2022
+and DAS 2025 adult pathways (Apfelbaum 2022; Ahmad 2026). Two difficult-airway
+profiles (`anterior_dl`, Cormack-Lehane Grade III, and `severe_cico`, Grade IV
+obstruction) govern technique success across direct laryngoscopy,
+videolaryngoscopy (VL), VL with bougie, flexible bronchoscopy, second-generation
+supraglottic airway (SGA), and emergency front-of-neck access (eFONA). Repeated
+failed laryngoscopy attempts add cumulative airway edema and trauma as a model
+calibration aligned with ASA and DAS attempt limits (informed by rising
+hypoxemia and complication rates beyond two outside-OR emergency attempts in
+Mort 2004b), progressively impairing mask ventilation and plain VL. An oral
+airway and two-handed jaw thrust relieve soft-tissue obstruction and improve
+mask ventilation (Joffe 2010, with calibrated seal ceilings of 24 cmH₂O for
+two-hand mask and 28 cmH₂O for second-generation SGA), while eFONA bypasses
+glottic obstruction with calibrated small-lumen tube resistance.
+
+During esophageal intubation, circuit breaths inflate the esophagus and stomach
+rather than the lungs, leaving alveolar ventilation at zero and returning only a
+small passive expired volume to spirometry (calibrated to the low passive return
+of 35 to 46 mL, up to 13% of delivered tidal volume, measured in surgical
+patients in Sum-Ping 1989). If prior mask ventilation insufflated expired gas
+into the stomach, initial breaths show attenuated, rapidly decaying capnography
+that washes out below 7.5 mmHg within a few breaths (Linko 1983; PUMA consensus
+in Chrimes 2022); without prior mask ventilation, exhaled CO₂ is zero from the
+first breath. Because a preoxygenated lung holds oxygen for minutes before pulse
+oximetry falls, capnography and returned tidal volume are the primary detection
+cues, and immediate removal of an esophageal tube incurs no extubation safety
+penalty.
+
+### Tension pneumothorax
+
+[`pneumothorax.py`](../anasim/physiology/pneumothorax.py) models a unilateral
+one-way pleural air leak that expands far faster during positive-pressure
+ventilation than during spontaneous breathing (Roberts 2015). Rising pleural
+volume collapses the ipsilateral lung, increases calibrated right-to-left shunt,
+stiffens the effective chest wall so peak and plateau pressures climb together
+in VCV and tidal volume collapses in PCV, and transmits mediastinal pressure to
+the venae cavae to drive obstructive shock and pulseless electrical activity
+(calibrated to ventilated porcine data in Nelson 2013). Nitrous oxide diffuses
+into closed pleural air spaces toward Dalton equilibrium while circulation
+persists, roughly doubling pleural volume by 10 minutes and tripling it by 45
+minutes under ~73% N₂O (canine pleural cavity kinetics in Eger and Saidman
+1965). Needle or tube chest decompression vents trapped pleural gas rapidly and
+reverses mediastinal compression (Nelson 2013).
+
+### Pulmonary thromboembolism and venous air embolism
+
+[`embolism.py`](../anasim/physiology/embolism.py) models both acute pulmonary
+thromboembolism (PE) and venous air embolism (VAE). Both raise pulmonary
+vascular resistance nonlinearly to produce acute right ventricular afterload
+shock (calibrated to the obstruction thresholds for rising pulmonary and right
+atrial pressures in patients without prior cardiopulmonary disease in McIntyre
+and Sasahara 1971) and add parallel alveolar dead space with modest shunt,
+dropping EtCO₂ and widening the PaCO₂-to-EtCO₂ gradient without a bronchospastic
+Phase III capnogram upslope (Eriksson 1989). Systemic thrombolysis dissolves
+thromboemboli over minutes while therapeutic heparin halts propagation and
+allows slow endogenous lysis, both gated on pulmonary circulation. For VAE,
+nitrous oxide expands intravascular gas bubbles in proportion to alveolar N₂O
+(rabbit lethal air-dose reductions in Munson and Merrick 1966), 100% oxygen
+accelerates calibrated nitrogen washout compared with room air, right-atrial
+central venous catheter aspiration removes a calibrated 45% of entrained air
+(within the 30 to 60% multiorifice catheter range reviewed in Mirski 2007), and
+left-lateral Durant positioning provides calibrated partial right-ventricular
+outflow relief (noting that experimental canine hemodynamic data reviewed in
+Mirski 2007 are mixed).
+
+## Neuraxial anesthesia
+
+[`neuraxial.py`](../anasim/physiology/neuraxial.py) models subarachnoid
+(spinal) boluses, epidural catheter boluses and continuous infusions, and
+accidental intrathecal high or total spinal block. Hyperbaric and isobaric
+bupivacaine or lidocaine advance on a continuous dermatome scale (S5 through C2
+and brainstem), with higher cephalad spread in older adults (hyperbaric
+bupivacaine data in Veering 1988) plus calibrated slower regression with age,
+higher pregnancy spread, and bedside cold/pinprick plus modified Bromage checks.
+Motor block lags sensory height by 2.8 segments for spinal and 4.6 segments for
+epidural block (lidocaine data in Freund 1967, extended to bupivacaine), while
+sympathetic block is calibrated to extend roughly two dermatomes above the
+sensory level.
+
+Thoracolumbar sympathectomy pools blood into unstressed venous capacitance,
+blunts endogenous reflex vasoconstriction while preserving exogenous pressors,
+and reduces arteriolar resistance more steeply in older adults than in young
+healthy adults (lidocaine spinal and epidural data in Ward 1965 and elderly
+hyperbaric lidocaine spinal data in Rooke 1997, extended to bupivacaine).
+Epidural solutions containing 1:200,000 epinephrine add circulation-dependent
+systemic beta-adrenergic absorption that raises heart rate and cardiac output
+while lowering systemic vascular resistance (Ward 1965). Blocks above T4
+attenuate cardioaccelerator drive and, when coupled with low venous preload,
+trigger atropine- and volume-responsive Bezold-Jarisch vagal bradycardia
+(Pollard 2001), while early oxygenation and epinephrine prevent progression to
+spinal cardiac arrest (closed-claims review in Caplan 1988). High thoracic motor
+blocks up to T1 spare the diaphragm (Freund 1967), whereas calibrated ascent
+across C6 to C4 causes phrenic apnea and C4 to C2/brainstem spread produces
+loss of consciousness permitting intubation without additional hypnotic drugs.
+
 ## Cases and clinical actions
 
 ### Cases
@@ -1593,15 +1693,18 @@ checks, or independent mode, which hides instructions and defers non-blocking
 safety warnings to the debrief.
 
 Slow-onset crises (malignant hyperthermia, sepsis, and hemorrhage), emergence,
-and the extracorporeal and anticoagulation cases run a hidden pre-case
+difficult-airway induction cases (failed laryngoscopy and esophageal
+intubation), and the extracorporeal and anticoagulation cases run a hidden pre-case
 simulation phase before case time starts at 0:00. Sampled vitals from that
 phase populate negative-time trend history, so those cases open with developing
 physiological signs, accumulated occult blood loss, lighter anesthesia
-alongside residual neuromuscular block, or active extracorporeal support. Acute
-intraoperative crises (anaphylaxis, oxygen supply failure, and cardiac arrest)
-begin shortly into ongoing surgery. Cues tied to monitor changes wait until
-deterioration is visible, and initial ventricular fibrillation shocks are
-refractory so learners practice multi-cycle resuscitation.
+alongside residual neuromuscular block, post-induction airway crises, or active
+extracorporeal support. Acute intraoperative crises (anaphylaxis, oxygen supply
+failure, cardiac arrest, tension pneumothorax, venous air embolism, massive
+pulmonary embolism, and high spinal) begin shortly into the case. Cues tied to
+monitor changes wait until deterioration is visible, and initial ventricular
+fibrillation shocks are refractory so learners practice multi-cycle
+resuscitation.
 
 Crisis cases stay coupled to the underlying physiology rather than using
 scripted shortcuts. Requesting surgical source control in sepsis logs the
@@ -1640,8 +1743,11 @@ tolerance or deep volatile anesthesia (Kimura 1994). During cardiac arrest or
 nonperfusing rhythms without arterial extracorporeal support, placement succeeds
 unless severe laryngospasm closes the vocal cords.
 
-[`clinical_actions.py`](../anasim/core/clinical_actions.py) raises a warning
-without blocking the action when:
+[`clinical_actions.py`](../anasim/core/clinical_actions.py) also checks
+supraglottic airway and oral airway placement against patient responsiveness,
+warns if emergency cricothyrotomy is performed without a difficult or failing
+airway, and skips extubation warnings when removing an esophageal tube. It
+raises a warning without blocking the action when:
 
 - a tracheal tube is placed in a responsive, paralyzed patient with systemic
   perfusion

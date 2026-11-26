@@ -7,19 +7,24 @@ from typing import TYPE_CHECKING, Literal
 from anasim.core.action_log import (
     ACTION_ACT,
     ACTION_AIRWAY,
+    ACTION_AIRWAY_TOOL,
     ACTION_BAG_MASK,
     ACTION_BLOOD_GAS,
     ACTION_CASE_ACTION,
+    ACTION_CHEST_DECOMPRESS,
     ACTION_COMPRESSIONS,
     ACTION_COOLING,
     ACTION_DRUG_BOLUS,
+    ACTION_EMBOLISM_TREAT,
     ACTION_EXTRACORPOREAL,
     ACTION_FGF,
     ACTION_FLUID,
+    ACTION_FONA,
     ACTION_GLUCOSE,
     ACTION_INFUSION_RATE,
     ACTION_INTUBATION_ATTEMPT,
     ACTION_LIPID_INFUSION,
+    ACTION_NEURAXIAL,
     ACTION_O2_FLUSH,
     ACTION_POSITION,
     ACTION_SHOCK,
@@ -55,6 +60,10 @@ SAFETY_REVIEW = {
     "insulin_in_hypokalemia": "Check and replete low serum potassium before administering insulin.",
     "bicarbonate_in_alkalemia": "Avoid sodium bicarbonate when arterial pH is already alkalemic.",
     "bicarbonate_in_hypernatremia": "Check serum sodium before giving hypertonic sodium bicarbonate in hypernatremia.",
+    "awake_sga": "Establish adequate anesthesia before inserting a supraglottic airway.",
+    "awake_opa": "Insert an oropharyngeal airway only once the patient is unconscious.",
+    "repeated_laryngoscopy": "Limit laryngoscopic attempts (<= 3) to avoid airway edema, bleeding, and CICO.",
+    "unnecessary_fona": "Reserve emergency surgical airway (eFONA) for CICO or failing oxygenation.",
 }
 
 
@@ -302,8 +311,60 @@ def _describe(record: ActionRecord) -> str | None:
     if action == ACTION_VAPORIZER:
         return f"{label} {amount:g}%" if amount > 0 else f"{label} off"
     if action == ACTION_INTUBATION_ATTEMPT:
-        return "Intubation unsuccessful" if label == "failed" else "Tracheal tube placed"
-    if action == ACTION_AIRWAY and label != "ETT":  # Placement appears as the intubation attempt.
+        tech_names = {
+            "vl": "video laryngoscopy",
+            "vl_bougie": "VL + bougie",
+            "fiberoptic": "flexible bronchoscopy",
+        }
+        if label.startswith("failed"):
+            tech = label.split(":", 1)[1] if ":" in label else ""
+            return f"Intubation unsuccessful ({tech_names[tech]})" if tech in tech_names else "Intubation unsuccessful"
+        tech = label.split(":", 1)[1] if ":" in label else ""
+        return f"Tracheal tube placed ({tech_names[tech]})" if tech in tech_names else "Tracheal tube placed"
+    if action == ACTION_AIRWAY_TOOL:
+        tool_labels = {
+            "call_help": "Called for airway help and difficult airway cart",
+            "opa_on": "Oral airway (OPA) inserted",
+            "opa_off": "Oral airway (OPA) removed",
+            "two_hand_on": "Two-handed jaw-thrust mask technique started",
+            "two_hand_off": "Two-handed jaw-thrust mask technique stopped",
+            "sga_failed": "SGA placement unsuccessful",
+        }
+        return tool_labels.get(label, f"Airway tool: {label}")
+    if action == ACTION_FONA:
+        return "Emergency cricothyrotomy (eFONA) performed"
+    if action == ACTION_CHEST_DECOMPRESS:
+        return "Chest decompression (needle/tube thoracostomy) performed"
+    if action == ACTION_EMBOLISM_TREAT:
+        if label == "thrombolysis":
+            return "Systemic thrombolysis administered for massive PE"
+        if label == "vae_aspirate":
+            return (
+                f"CVC air aspiration performed ({amount:.0f} mL removed)"
+                if amount >= 1.0
+                else "CVC air aspiration attempted (no significant air returned)"
+            )
+        return f"Embolism treatment: {label}"
+    if action == ACTION_NEURAXIAL:
+        if label.startswith("spinal:"):
+            parts = label.split(":")
+            drug = parts[1] if len(parts) > 1 else "bupivacaine"
+            bar = parts[2] if len(parts) > 2 else "hyperbaric"
+            return f"Spinal {bar} {drug} {amount:g} mg administered"
+        if label.startswith("epidural_bolus:"):
+            drug = label.split(":", 1)[1].replace("_epi", " + epinephrine")
+            return f"Epidural bolus {amount:g} mL {drug}"
+        if label.startswith("epidural_rate:"):
+            return f"Epidural infusion {amount:g} mL/hr" if amount > 0 else "Epidural infusion stopped"
+        if label == "epidural_catheter_on":
+            return "Epidural catheter placed"
+        if label == "epidural_catheter_off":
+            return "Epidural catheter removed"
+        if label.startswith("check_level:"):
+            lvl = label.split(":", 1)[1]
+            return f"Neuraxial block level checked ({lvl})"
+        return f"Neuraxial: {label}"
+    if action == ACTION_AIRWAY and label not in {"ETT", "FONA"}:  # Placement appears as the intubation or eFONA action.
         return f"Airway connection: {label}"
     if action == ACTION_BAG_MASK and label == "breath":
         return "Manual breath delivered"

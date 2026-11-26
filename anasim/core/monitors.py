@@ -9,6 +9,7 @@ from anasim.machine.ventilator import VOLUME_TARGETED
 from anasim.monitors.arterial import MIN_PULSE_PRESSURE_MMHG, ArterialPressureSample
 from anasim.monitors.cardiac_cycle import CardiacCycleSample
 from anasim.monitors.nibp import NIBPReading
+from anasim.physiology.airway_crisis import ESOPHAGEAL_RETURN_FRACTION
 from anasim.physiology.disturbances import DisturbanceEffects
 from anasim.physiology.resuscitation import (
     compression_mean_pressure,
@@ -21,6 +22,8 @@ from .projection import (
     central_muscle_strength,
     circuit_connected,
     delivered_fraction,
+    effective_mask_seal,
+    is_esophageal_intubation,
     loss_of_response,
     mask_leak,
     mask_seal_factor,
@@ -115,10 +118,12 @@ def update_nibp(engine: SimulationEngine, dt: float, hemo_state) -> None:
 
 
 def _capno_sampling_possible(engine: SimulationEngine) -> bool:
+    if is_esophageal_intubation(engine):
+        return True
     state = engine.state
     return (
         state.airway_mode != AirwayType.NONE
-        and (state.airway_mode != AirwayType.MASK or engine.mask_seal >= 0.05)
+        and (state.airway_mode != AirwayType.MASK or effective_mask_seal(engine) >= 0.05)
         and engine.airway_status.patency >= 0.05
     )
 
@@ -135,7 +140,8 @@ def compute_capno_value(
     """Advance the capnograph with the gas that crossed the Y-piece; return CO2 at each waveform sample."""
     state = engine.state
     readout = engine.etco2_readout
-    et_gases = (state.et_o2, state.et_sevo, state.et_n2o, state.et_mac)
+    esophageal = is_esophageal_intubation(engine)
+    et_gases = (0.0, 0.0, 0.0, 0.0) if esophageal else (state.et_o2, state.et_sevo, state.et_n2o, state.et_mac)
     if not _capno_sampling_possible(engine):
         engine.capno.reset()
         readout.interrupt(
@@ -147,10 +153,13 @@ def compute_capno_value(
     else:
         capno = engine.capno
         airway = engine.airway_status
-        end_tidal = resp_state.etco2
+        end_tidal = engine.airway_crisis.esophageal_co2_mmhg if esophageal else resp_state.etco2
+        obstruction = 0.55 if esophageal else airway.capno_obstruction
         # Gas lost around a facemask never passes the sampling port, so a
         # large leak leaves dead-space gas at the port.
-        if port_share is None:
+        if esophageal:
+            port_share = 1.0
+        elif port_share is None:
             port_share = delivered_fraction(engine)
         waves = []
         elapsed = 0.0
@@ -167,7 +176,7 @@ def compute_capno_value(
                 duration,
                 change * port_share,
                 end_tidal,
-                obstruction=airway.capno_obstruction,
+                obstruction=obstruction,
                 cpr_oscillating=cpr_oscillating,
             )
             readout.update(
@@ -180,6 +189,7 @@ def compute_capno_value(
                 et_gases=et_gases,
                 expected_period_s=expected_period_s,
                 cpr_oscillating=cpr_oscillating,
+                accept_decaying=esophageal,
             )
             elapsed += duration
             _hold(waves, value, elapsed, substeps, substep_dt)
@@ -387,7 +397,7 @@ def step_monitors(
         dt,
         prop_bis,
         mac_sevo=mac_sevo,
-        cortical_function=engine.cerebral.cortical_function,
+        cortical_function=engine.cerebral.cortical_function * (1.0 - 0.55 * engine.neuraxial.unconsciousness),
         ce_ketamine=state.ketamine_ce,
         ce_opioid=state.opioid_ce,
         temp_c=state.temp_c,
@@ -467,7 +477,8 @@ def step_monitors(
         if not sealed:
             vte_percent = 0.0
         else:
-            delivered = vent.monitors.tv_exp_mandatory * (1.0 - mask_leak(engine))
+            scale = ESOPHAGEAL_RETURN_FRACTION if is_esophageal_intubation(engine) else (1.0 - mask_leak(engine))
+            delivered = vent.monitors.tv_exp_mandatory * scale
             vte_percent = None if math.isnan(delivered) else 100.0 * delivered / vent.settings.tv
     if state.display_bis < 65.0:
         engine._bis_anesthetized = True

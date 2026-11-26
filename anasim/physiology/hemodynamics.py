@@ -333,6 +333,13 @@ class HemodynamicModel:
         self._protamine_svr_factor = 1.0
         self._protamine_venous_pool_frac = 0.0
         self._protamine_pvr_factor = 1.0
+        self._embolic_pvr_factor = 1.0
+        self._neuraxial_svr_factor = 1.0
+        self._neuraxial_venous_pool_frac = 0.0
+        self._neuraxial_symp_vasc_block = 0.0
+        self._neuraxial_cardioaccel_block = 0.0
+        self._neuraxial_vasomotor_frac = 0.0
+        self._neuraxial_hr_effect = 0.0
         self._hypothermia_hr_factor, self._hypothermia_sv_factor = self._hypothermia_factors(
             patient.baseline_temp
         )
@@ -474,7 +481,11 @@ class HemodynamicModel:
         """
         cfg = self.config
         sev = clamp01(self.sepsis_severity) if sepsis_sev is None else sepsis_sev
-        pooling = (cfg.sepsis_pooling_fraction * sev + self._protamine_venous_pool_frac) * self.blood_volume_0
+        pooling = (
+            cfg.sepsis_pooling_fraction * sev
+            + self._protamine_venous_pool_frac
+            + self._neuraxial_venous_pool_frac
+        ) * self.blood_volume_0
         recruited = self._endogenous_venous_recruitment()
         shiver_recruit = 0.05 * self.blood_volume_0 * self._shiver_level * self._venous_tone
         min_unstressed = cfg.min_unstressed_volume_fraction * self.blood_volume_0
@@ -544,7 +555,11 @@ class HemodynamicModel:
             max_recruit = (
                 max(0.0, self.unstressed_volume - endog_recruited - min_unstressed)
                 + self._baseline_stressed_volume * (1.0 - stressed_fraction)
-                + (cfg.sepsis_pooling_fraction * clamp01(self.sepsis_severity) + self._protamine_venous_pool_frac)
+                + (
+                    cfg.sepsis_pooling_fraction * clamp01(self.sepsis_severity)
+                    + self._protamine_venous_pool_frac
+                    + self._neuraxial_venous_pool_frac
+                )
                 * self.blood_volume_0
             )
             self._pressor_recruitment_ml = min(recruitment, max_recruit)
@@ -733,7 +748,13 @@ class HemodynamicModel:
 
         if self._protamine_pvr_factor != 1.0:
             pvr_factor *= self._protamine_pvr_factor
-        max_pvr = max(cfg.pvr_max_factor, 6.0) if self._protamine_pvr_factor > 1.5 else cfg.pvr_max_factor
+        if self._embolic_pvr_factor != 1.0:
+            pvr_factor *= self._embolic_pvr_factor
+        max_pvr = cfg.pvr_max_factor
+        if self._protamine_pvr_factor > 1.5:
+            max_pvr = max(max_pvr, 6.0)
+        if self._embolic_pvr_factor > 1.5:
+            max_pvr = max(max_pvr, 15.0)
         return clamp(pvr_factor, 0.2, max_pvr)
 
     @property
@@ -1214,6 +1235,7 @@ class HemodynamicModel:
             * self._alkalosis_vasodilation
             * self._hyperosmolar_svr_factor
             * self._protamine_svr_factor
+            * self._neuraxial_svr_factor
             * self._hct_viscosity_tpr
         )
         eff_tpr = max(
@@ -1549,6 +1571,7 @@ class HemodynamicModel:
             + self.smoothed_epi_hr
             + self._hemorrhage_fast_hr
             + self._anemia_hr_boost
+            + self._neuraxial_hr_effect
         )
 
     def _hr_sv_factor(self, hr: float) -> float:
@@ -1586,6 +1609,12 @@ class HemodynamicModel:
              protamine_svr_factor: float = 1.0,
              protamine_venous_pool_frac: float = 0.0,
              protamine_pvr_factor: float = 1.0,
+             embolic_pvr_factor: float = 1.0,
+             neuraxial_svr_factor: float = 1.0,
+             neuraxial_venous_pool_frac: float = 0.0,
+             neuraxial_symp_vasc_block: float = 0.0,
+             neuraxial_cardioaccel_block: float = 0.0,
+             neuraxial_vasomotor_frac: float = 0.0,
              osmotic_diuresis_ml_min: float = 0.0) -> HemoState:
         """Advance the model by dt seconds and return the new state.
 
@@ -1630,6 +1659,12 @@ class HemodynamicModel:
         self._protamine_svr_factor = clamp(float(protamine_svr_factor), 0.35, 1.0)
         self._protamine_venous_pool_frac = clamp(float(protamine_venous_pool_frac), 0.0, 0.20)
         self._protamine_pvr_factor = clamp(float(protamine_pvr_factor), 1.0, 6.0)
+        self._embolic_pvr_factor = clamp(float(embolic_pvr_factor), 1.0, 15.0)
+        self._neuraxial_svr_factor = clamp(float(neuraxial_svr_factor), 0.40, 1.0)
+        self._neuraxial_venous_pool_frac = clamp(float(neuraxial_venous_pool_frac), 0.0, 0.20)
+        self._neuraxial_symp_vasc_block = clamp01(float(neuraxial_symp_vasc_block))
+        self._neuraxial_cardioaccel_block = clamp01(float(neuraxial_cardioaccel_block))
+        self._neuraxial_vasomotor_frac = clamp01(float(neuraxial_vasomotor_frac))
         shiver = clamp01(shivering)
         self._shiver_level = shiver
         dt_min = sub_dt / 60.0
@@ -1683,16 +1718,16 @@ class HemodynamicModel:
         amiodarone = blockade.amiodarone
         self._amiodarone_hr_effect = amiodarone_hr = blockade.amiodarone_hr
         beta_response = blockade.beta_response
-        sympathetic_hr_response = blockade.sympathetic_hr_response
+        sympathetic_hr_response = blockade.sympathetic_hr_response * (1.0 - 0.85 * self._neuraxial_cardioaccel_block)
         alpha_response = blockade.alpha_response
         step_dist_hr = dist_hr * sympathetic_hr_response
         step_dist_sv = dist_sv * beta_response
         # Septic shock removes stimulation-driven vasoconstriction, which depends
         # partly on the vasopressin that septic shock depletes.
-        step_dist_svr = dist_svr * alpha_response * (1.0 - sepsis_sev)
+        step_dist_svr = dist_svr * alpha_response * (1.0 - sepsis_sev) * (1.0 - self._neuraxial_symp_vasc_block)
         step_crisis_hr = crisis_hr * sympathetic_hr_response
         step_crisis_svr = crisis_svr * alpha_response * (1.0 - sepsis_sev)
-        self._venous_tone = alpha_response
+        self._venous_tone = alpha_response * (1.0 - self._neuraxial_symp_vasc_block)
         pressor_gain = (
             (1.0 - clamp01(cfg.sepsis_pressor_resistance * sepsis_sev))
             * (1.0 - clamp01(cfg.anaphylaxis_pressor_resistance * anaph_sev))
@@ -2241,7 +2276,13 @@ class HemodynamicModel:
             # vasoplegia blunt compensatory vasoconstriction and slow inotropic rebound.
             anoxic_intact = (1.0 - self.myocardial_hypoxia) * (1.0 - self.coronary.energy_failure)
             distributive_intact = (1.0 - sepsis_sev) * (1.0 - clamp01((anaph_sev - 0.65) / 0.35))
-            symp_vasc_gate = anoxic_intact * alpha_response * self.acidosis_factor * distributive_intact
+            symp_vasc_gate = (
+                anoxic_intact
+                * alpha_response
+                * self.acidosis_factor
+                * distributive_intact
+                * (1.0 - self._neuraxial_symp_vasc_block)
+            )
             tpr_fb = 1.0 + (rmap_fb - 1.0) * symp_vasc_gate if rmap_fb > 1.0 else rmap_fb
             sv_fb = (
                 1.0 + (rmap_fb - 1.0) * anoxic_intact * beta_response * pressor_gain
@@ -2284,6 +2325,19 @@ class HemodynamicModel:
             self.smoothed_epi_hr += (combined_delta_hr - self.smoothed_epi_hr) * alpha_fast
             self._hemorrhage_fast_hr += (fast_hem_hr_target - self._hemorrhage_fast_hr) * alpha_hem
             self._anemia_hr_boost += (anemia_hr_target - self._anemia_hr_boost) * alpha_hem
+            if self._neuraxial_cardioaccel_block > 0.0 or self._neuraxial_vasomotor_frac > 0.0:
+                # High-spinal cardioaccelerator loss + preload-sensitive Bezold-Jarisch
+                # vagal bradycardia (Pollard 2001); reversible by atropine and preload.
+                preload_drop = clamp01((0.72 - self._last_venous_preload) / 0.35)
+                cardio_drop = -10.0 * self._neuraxial_cardioaccel_block * resting_tone
+                vagal_brady = -(
+                    34.0 * self._neuraxial_cardioaccel_block * (0.15 + 0.85 * preload_drop)
+                    + 24.0 * self._neuraxial_vasomotor_frac * (preload_drop ** 1.5)
+                ) * (1.0 - vagal)
+                neuraxial_hr_target = cardio_drop + vagal_brady
+            else:
+                neuraxial_hr_target = 0.0
+            self._neuraxial_hr_effect += (neuraxial_hr_target - self._neuraxial_hr_effect) * alpha_fast
 
             # Cap maximal sympathetic tones to physiological shock limits and halt
             # slow tone windup during sustained unresuscitated zero-flow arrest.

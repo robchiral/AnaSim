@@ -86,7 +86,9 @@ class WaveformSample(NamedTuple):
 class AirwayType(Enum):
     NONE = "None"
     MASK = "Mask"
+    SGA = "SGA"
     ETT = "ETT"
+    FONA = "FONA"
 
 
 @dataclass(slots=True)
@@ -277,6 +279,13 @@ class SimulationState:
     airway_obstruction: float = 0.0
     bronchospasm: float = 0.0
     laryngospasm: float = 0.0
+    esophageal_intubation: bool = False
+    laryngoscopy_attempts: int = 0
+    laryngoscopy_view: str = ""
+    difficult_airway: str = "none"
+    airway_help_called: bool = False
+    oral_airway: bool = False
+    two_hand_mask: bool = False
 
     # Extracorporeal support summary (VV ECMO, VA ECMO, CPB).
     ecmo_mode: str = "none"
@@ -295,6 +304,21 @@ class SimulationState:
     protamine_ug_ml: float = 0.0  # Free circulating protamine, mcg/mL
     act_s: float = 120.0  # Activated clotting time, s
     protamine_reaction: bool = False  # Catastrophic Type III pulmonary vasoconstriction active
+
+    # Thoracic and embolic crisis telemetry.
+    pneumothorax_pressure: float = 0.0  # Intrapleural tension above baseline, mmHg
+    pneumothorax_decompressed: bool = False
+    pe_obstruction: float = 0.0  # Pulmonary vascular obstruction from PE, 0-1
+    vae_air_ml: float = 0.0  # Entrained intravascular air volume, mL
+
+    # Neuraxial anesthesia telemetry.
+    neuraxial_mode: str = "none"
+    neuraxial_sensory_level: float = 0.0  # 0=None .. 11=T12 .. 22=T1 .. 27=C4 .. 30=Brainstem
+    neuraxial_sensory_label: str = "None"
+    neuraxial_motor_label: str = "None"
+    neuraxial_bromage: int = 0
+    epidural_catheter: bool = False
+    epidural_infusion_ml_hr: float = 0.0
 
     def monitored_blood_pressure(
         self,

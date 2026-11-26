@@ -163,7 +163,8 @@ class ThermalModel:
                          perfusing: bool = True,
                          opioid_effect: float = 0.0,
                          extracorporeal_heat_w: float = 0.0,
-                         extracorporeal_active: bool = False) -> float:
+                         extracorporeal_active: bool = False,
+                         neuraxial_redistribution_depth: float = 0.0) -> float:
         """Return core temperature after metabolic heat, environmental loss, and redistribution.
 
         A forced-air warmer target of 0 °C is off. When extracorporeal support
@@ -172,7 +173,7 @@ class ThermalModel:
         post-bypass core afterdrop (Rajek 1998; Rajek 2000) emerge naturally.
         """
         tuning = self.tuning
-        depth_factor = clamp01(self.depth_index)
+        depth_factor = clamp01(max(self.depth_index, neuraxial_redistribution_depth))
 
         aerobic_gate = clamp(oxygen_supply_fraction, 0.12, 1.0)
         production = (
@@ -219,7 +220,7 @@ class ThermalModel:
         # hour (Matsukawa 1995). Vasoconstriction on lightening traps it peripherally,
         # and zero-flow arrest halts convective redistribution.
         if perfusing:
-            deficit_gap = self.redistribution_target_j(self.depth_index) - self.redistributed_heat_j
+            deficit_gap = self.redistribution_target_j(depth_factor) - self.redistributed_heat_j
             redistribution_w = max(0.0, deficit_gap) / tuning.redistribution_tau_s
             self.redistributed_heat_j += redistribution_w * dt
         else:

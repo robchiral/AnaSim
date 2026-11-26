@@ -558,6 +558,7 @@
           <div class="segmented" id="c-airway">
             <button type="button" data-value="None">Disconnected</button>
             <button type="button" data-value="Mask">Facemask</button>
+            <button type="button" data-value="SGA">SGA</button>
             <button type="button" data-value="ETT">Tracheal tube</button>
           </div>
           <div class="airway-extras">
@@ -566,10 +567,33 @@
               <input id="c-mask-seal" type="number" min="0" max="100" step="5">
             </div>
             <div class="control-setting" id="c-position-row" hidden>
-              <div class="control-setting-head"><label for="c-position">Maternal position</label></div>
+              <div class="control-setting-head"><label for="c-position" id="c-position-label">Patient position</label></div>
               <select id="c-position"><option value="supine">Supine</option><option value="left_lateral">Left lateral</option></select>
             </div>
           </div>
+          <details class="event-section airway-tools-section" id="airway-tools-module">
+            <summary><span>Airway tools</span><output id="airway-tools-summary" hidden></output></summary>
+            <div class="airway-tools-controls">
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-airway-technique">Intubation technique</label></div>
+                <select id="c-airway-technique">
+                  <option value="dl">Direct laryngoscopy (DL)</option>
+                  <option value="vl">Video laryngoscopy (VL)</option>
+                  <option value="vl_bougie">VL + bougie</option>
+                  <option value="fiberoptic">Flexible bronchoscopy</option>
+                </select>
+              </div>
+              <div class="fluid-grid">
+                <button type="button" class="btn toggle" id="c-opa" aria-pressed="false">Oral airway (OPA)</button>
+                <button type="button" class="btn toggle" id="c-two-hand" aria-pressed="false">Two-hand jaw thrust</button>
+              </div>
+              <div class="fluid-grid">
+                <button type="button" class="btn toggle t-warning" id="c-airway-help" aria-pressed="false">Call for airway help</button>
+                <button type="button" class="btn toggle t-danger" id="c-fona" aria-pressed="false">Cricothyrotomy (eFONA)</button>
+              </div>
+              <p id="c-airway-view" class="dim small" hidden></p>
+            </div>
+          </details>
         </fieldset>
 
         <fieldset class="group">
@@ -738,6 +762,54 @@
             <p id="c-lipid-feedback" class="medication-feedback" role="status" hidden></p>
           </div>
         </details>
+        <details class="event-section neuraxial-section" id="neuraxial-module">
+          <summary><span>Neuraxial anesthesia</span><output id="neuraxial-summary" hidden></output></summary>
+          <div class="ecmo-controls">
+            <div class="vent-settings">
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-spinal-drug">Spinal drug</label></div>
+                <select id="c-spinal-drug"><option value="bupivacaine">Bupivacaine 0.5%</option><option value="lidocaine">Lidocaine 2%</option></select>
+              </div>
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-spinal-dose">Dose</label><span>mg</span></div>
+                <input id="c-spinal-dose" type="number" min="1" max="120" step="0.5" value="12.5">
+              </div>
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-spinal-baricity">Baricity</label></div>
+                <select id="c-spinal-baricity"><option value="hyperbaric">Hyperbaric</option><option value="isobaric">Isobaric</option></select>
+              </div>
+            </div>
+            <button type="button" class="btn full" id="c-spinal-give">Give spinal bolus</button>
+            <div class="vent-settings">
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-epidural-drug">Epidural drug</label></div>
+                <select id="c-epidural-drug"><option value="bupivacaine">Bupivacaine</option><option value="lidocaine">Lidocaine</option></select>
+              </div>
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-epidural-vol">Bolus vol</label><span>mL</span></div>
+                <input id="c-epidural-vol" type="number" min="1" max="25" step="1" value="10">
+              </div>
+              <div class="control-setting">
+                <div class="control-setting-head"><label for="c-epidural-conc">Conc</label><span>%</span></div>
+                <select id="c-epidural-conc"><option value="0.5">0.5%</option><option value="0.25">0.25%</option><option value="0.125">0.125%</option><option value="2">2%</option></select>
+              </div>
+            </div>
+            <label class="choice"><input type="checkbox" id="c-epidural-epi"> With 1:200,000 epinephrine</label>
+            <button type="button" class="btn full" id="c-epidural-bolus">Give epidural bolus</button>
+            <div class="bolus">
+              <div class="bolus-field">
+                <div class="control-setting-head"><label for="c-epidural-rate">Epidural infusion (0.125%)</label><span>mL/hr</span></div>
+                <input id="c-epidural-rate" type="number" min="0" max="25" step="1" value="0">
+              </div>
+              <button type="button" class="btn outlined" id="c-epidural-rate-apply">Set</button>
+            </div>
+            <div class="fluid-grid">
+              <button type="button" class="btn outlined" id="c-neuraxial-check">Check block level</button>
+              <button type="button" class="btn outlined" id="c-epidural-stop" hidden>Stop infusion</button>
+            </div>
+            <p id="c-neuraxial-readout" class="action-feedback" role="status" hidden></p>
+          </div>
+        </details>
         <div id="drug-cards"></div>
         <p id="drug-search-empty" role="status" hidden>No medications found.</p>
       </div>
@@ -824,6 +896,16 @@
             </div>
           </div>
         </details>
+
+        <details class="event-section ecmo-section" id="crisis-procedures-module">
+          <summary><span>Crisis procedures</span><output id="crisis-proc-summary" hidden></output></summary>
+          <div class="ecmo-controls">
+            <button type="button" class="btn outlined full" id="c-chest-decompress">Chest decompression (PTX)</button>
+            <button type="button" class="btn outlined full" id="c-vae-aspirate">CVC air aspiration (VAE)</button>
+            <button type="button" class="btn outlined full" id="c-pe-thrombolysis">Thrombolysis (PE)</button>
+            <p id="crisis-proc-feedback" class="action-feedback" role="status" hidden></p>
+          </div>
+        </details>
       </div>
 
       <div class="tab-panel" id="panel-labs" data-panel="Labs" role="tabpanel" aria-labelledby="tab-labs" hidden>
@@ -895,6 +977,9 @@
             <button type="button" class="btn toggle t-warning full" id="c-anaphylaxis" aria-pressed="false">Start anaphylaxis</button>
             <button type="button" class="btn toggle t-danger full" id="c-sepsis" aria-pressed="false">Start sepsis</button>
             <button type="button" class="btn toggle t-danger full" id="c-protamine-reaction" aria-pressed="false">Start protamine reaction</button>
+            <button type="button" class="btn toggle t-danger full" id="c-pe" aria-pressed="false">Start massive PE</button>
+            <button type="button" class="btn toggle t-danger full" id="c-vae" aria-pressed="false">Start venous air embolism</button>
+            <button type="button" class="btn toggle t-danger full" id="c-high-spinal" aria-pressed="false">Trigger high / total spinal</button>
           </div>
         </details>
 
@@ -916,6 +1001,16 @@
             </div>
             <label class="choice"><input type="checkbox" id="c-auto-laryngo" checked> Automatic laryngospasm</label>
             <p class="dim small" id="c-laryngo">Laryngospasm: none</p>
+            <label class="inline">Difficult airway
+              <select id="c-difficult-airway">
+                <option value="none">Normal airway</option>
+                <option value="anterior_dl">Anterior airway (difficult DL)</option>
+                <option value="severe_cico">Severe obstruction (CICO)</option>
+              </select>
+            </label>
+            <button type="button" class="btn toggle t-warning full" id="c-arm-esophageal" aria-pressed="false">Arm esophageal intubation</button>
+            <button type="button" class="btn toggle t-danger full" id="c-esophageal-now" aria-pressed="false">Place tube in esophagus</button>
+            <button type="button" class="btn toggle t-danger full" id="c-pneumothorax" aria-pressed="false">Start tension pneumothorax</button>
           </div>
         </details>
 

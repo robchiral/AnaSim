@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
+from .airway import create_esophageal_intubation, create_failed_laryngoscopy
 from .anaphylaxis import create_anaphylaxis_scenario
 from .base import Scenario, ScenarioStep
 from .cardiac_arrest import create_cardiac_arrest
@@ -17,8 +18,14 @@ from .extracorporeal import (
 from .hemorrhage import create_hemorrhage_response
 from .induction import create_induction_balanced, create_induction_tiva
 from .malignant_hyperthermia import create_malignant_hyperthermia
+from .neuraxial import create_high_spinal
 from .oxygen_supply import create_oxygen_supply_failure
 from .sepsis import create_sepsis_response
+from .thoracic_embolism import (
+    create_pulmonary_embolism,
+    create_tension_pneumothorax,
+    create_venous_air_embolism,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +39,7 @@ class ScenarioSpec:
     maint_type: Literal["tiva", "balanced"]
     builder: Callable[[], Scenario]
     surgery: bool = False  # Starts with sustained surgical stimulation in progress
+    category: Literal["routine", "crisis"] | None = None  # Defaults to crisis when surgery=True
 
 
 def _create_emergence_tiva() -> Scenario:
@@ -130,6 +138,60 @@ SCENARIO_REGISTRY = (
         surgery=True,
     ),
     ScenarioSpec(
+        "failed_laryngoscopy",
+        "Failed laryngoscopy",
+        "Unexpected Grade III anterior airway after induction: call for help, optimize mask oxygenation, and secure via alternate technique.",
+        "awake",
+        "tiva",
+        create_failed_laryngoscopy,
+        category="crisis",
+    ),
+    ScenarioSpec(
+        "esophageal_intubation",
+        "Esophageal intubation",
+        "Decaying capnography and low VTe after blind intubation: default to immediate tube removal, reoxygenate, and re-intubate.",
+        "awake",
+        "tiva",
+        create_esophageal_intubation,
+        category="crisis",
+    ),
+    ScenarioSpec(
+        "tension_pneumothorax",
+        "Tension pneumothorax",
+        "Rising peak and plateau airway pressures with obstructive shock under N2O: stop N2O, decompress, and stabilize.",
+        "steady_state",
+        "balanced",
+        create_tension_pneumothorax,
+        surgery=True,
+    ),
+    ScenarioSpec(
+        "venous_air_embolism",
+        "Venous air embolism (VAE)",
+        "Abrupt EtCO2 drop and shock during sitting craniotomy: stop N2O, flood field, aspirate CVC air, and position.",
+        "steady_state",
+        "balanced",
+        create_venous_air_embolism,
+        surgery=True,
+    ),
+    ScenarioSpec(
+        "pulmonary_embolism",
+        "Massive pulmonary embolism",
+        "Sudden dead-space EtCO2 plunge and RV obstructive shock: deliver 100% O2, support MAP, anticoagulate, and lyse.",
+        "steady_state",
+        "tiva",
+        create_pulmonary_embolism,
+        surgery=True,
+    ),
+    ScenarioSpec(
+        "high_spinal",
+        "High / total spinal",
+        "Accidental intrathecal epidural top-up ascending past T4 and C4: treat hypotension/bradycardia and secure the airway.",
+        "awake",
+        "tiva",
+        create_high_spinal,
+        category="crisis",
+    ),
+    ScenarioSpec(
         "vv_ecmo_ards",
         "VV ECMO for severe ARDS",
         "Initiate and titrate venovenous ECMO for refractory ARDS hypoxemia.",
@@ -172,13 +234,19 @@ __all__ = [
     "create_cardiac_arrest",
     "create_cpb_weaning",
     "create_emergence",
+    "create_esophageal_intubation",
+    "create_failed_laryngoscopy",
     "create_hemorrhage_response",
+    "create_high_spinal",
     "create_induction_balanced",
     "create_induction_tiva",
     "create_malignant_hyperthermia",
     "create_oxygen_supply_failure",
     "create_protamine_reversal",
+    "create_pulmonary_embolism",
     "create_sepsis_response",
+    "create_tension_pneumothorax",
     "create_va_ecmo_harlequin",
+    "create_venous_air_embolism",
     "create_vv_ecmo_ards",
 ]

@@ -134,7 +134,9 @@ def require_airway_selected(airway_type: str) -> Requirement:
     target, label = {
         "None": (AirwayType.NONE, "Disconnected"),
         "Mask": (AirwayType.MASK, "Facemask"),
+        "SGA": (AirwayType.SGA, "SGA"),
         "ETT": (AirwayType.ETT, "Tracheal tube"),
+        "FONA": (AirwayType.FONA, "Emergency surgical airway (eFONA)"),
     }[airway_type]
 
     def check(engine) -> tuple[bool, str]:
@@ -807,7 +809,8 @@ def patient_stable(engine) -> bool:
 
 def tracheal_ventilation_confirmed(engine) -> bool:
     return (
-        engine.state.airway_mode == AirwayType.ETT
+        engine.state.airway_mode in (AirwayType.ETT, AirwayType.FONA)
+        and not engine.airway_crisis.esophageal_intubation
         and (engine.vent.is_on or engine.bag_mask_active)
         and engine.state.etco2_signal_valid
         and monitor_value(engine, "etco2") > 20

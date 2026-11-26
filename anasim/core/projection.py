@@ -23,6 +23,7 @@ from anasim.patient.pd.nmba import (
     succinylcholine_twitch_fraction,
 )
 from anasim.patient.pk_models import MorphinePK, SuccinylcholinePK
+from anasim.physiology.airway_crisis import ESOPHAGEAL_RETURN_FRACTION
 from anasim.physiology.malignant_hyperthermia import dantrolene_twitch_fraction
 from anasim.physiology.resuscitation import compression_pressures
 
@@ -77,10 +78,33 @@ class PhysiologyStepState:
     compliance_dyn: float
 
 
+def is_esophageal_intubation(engine: SimulationEngine) -> bool:
+    """Whether the ETT currently sits in the esophagus rather than the trachea."""
+    return engine.state.airway_mode == AirwayType.ETT and engine.airway_crisis.esophageal_intubation
+
+
+def is_infraglottic_airway(engine: SimulationEngine) -> bool:
+    """Whether a cuffed tube bypasses the glottis and upper pharynx (tracheal ETT or eFONA)."""
+    mode = engine.state.airway_mode
+    return mode == AirwayType.FONA or (mode == AirwayType.ETT and not engine.airway_crisis.esophageal_intubation)
+
+
+def effective_mask_seal(engine: SimulationEngine) -> float:
+    """Effective facemask seal fraction, including calibrated two-handed hold improvement."""
+    if engine.state.airway_mode != AirwayType.MASK:
+        return 1.0
+    seal = engine.mask_seal
+    if seal <= 0.0:
+        return 0.0
+    if engine.airway_crisis.two_hand_mask:
+        return clamp01(seal + 0.25 * (1.0 - seal))
+    return seal
+
+
 def circuit_connected(engine: SimulationEngine) -> bool:
     """Whether gas can cross the Y-piece between the patient and circuit."""
     mode = engine.state.airway_mode
-    return mode != AirwayType.NONE and (mode != AirwayType.MASK or engine.mask_seal > 0.0)
+    return mode != AirwayType.NONE and (mode != AirwayType.MASK or effective_mask_seal(engine) > 0.0)
 
 
 def assisted_positive_pressure(engine: SimulationEngine) -> bool:
@@ -93,17 +117,17 @@ def assisted_positive_pressure(engine: SimulationEngine) -> bool:
 
 def mask_seal_factor(engine: SimulationEngine) -> float:
     """Mask pressure and volume transmission factor; 1.0 when not using a facemask."""
-    return engine.mask_seal if engine.state.airway_mode == AirwayType.MASK else 1.0
+    return effective_mask_seal(engine) if engine.state.airway_mode == AirwayType.MASK else 1.0
 
 
 def mask_circuit_share(engine: SimulationEngine) -> float:
     """Fraction of inspired or exchanged gas carried by the breathing circuit."""
     mode = engine.state.airway_mode
-    if mode == AirwayType.NONE:
+    if mode == AirwayType.NONE or is_esophageal_intubation(engine):
         return 0.0
     if mode != AirwayType.MASK:
         return 1.0
-    seal = engine.mask_seal
+    seal = effective_mask_seal(engine)
     if seal <= 0.0:
         return 0.0
     # Room air enters around a loose mask during unsupported inspiration or
@@ -153,32 +177,58 @@ def mask_circuit_share(engine: SimulationEngine) -> float:
 
 
 def mask_leak(engine: SimulationEngine) -> float:
-    """Fraction of an assisted breath lost around a mask or into the stomach.
+    """Fraction of an assisted breath lost around a mask/SGA or into the stomach.
 
-    Leakage applies only to positive-pressure breaths on a facemask, from an
-    imperfect mask seal or peak pressure above the seal threshold.
+    Leakage applies only to positive-pressure breaths on a facemask or SGA,
+    from an imperfect seal or peak pressure above the seal threshold.
     """
-    if not assisted_positive_pressure(engine) or engine.state.airway_mode != AirwayType.MASK:
+    if not assisted_positive_pressure(engine):
         return 0.0
-    seal = engine.mask_seal
-    if seal <= 0.0:
-        return 1.0
-    delivered_peak = engine.vent.monitors.paw_peak * seal
-    threshold = engine.airway_tuning.mask_seal_pressure * seal
-    overpressure = (
-        engine.airway_tuning.mask_overpressure_leak
-        * max(0.0, delivered_peak - threshold)
-        / max(delivered_peak, 1.0)
-    )
-    kept = seal * (1.0 - overpressure)
-    return 1.0 - clamp01(kept)
+    mode = engine.state.airway_mode
+    if mode == AirwayType.MASK:
+        seal = effective_mask_seal(engine)
+        if seal <= 0.0:
+            return 1.0
+        delivered_peak = engine.vent.monitors.paw_peak * seal
+        seal_pressure = (
+            engine.airway_tuning.two_hand_seal_pressure
+            if engine.airway_crisis.two_hand_mask
+            else engine.airway_tuning.mask_seal_pressure
+        )
+        threshold = seal_pressure * seal
+        overpressure = (
+            engine.airway_tuning.mask_overpressure_leak
+            * max(0.0, delivered_peak - threshold)
+            / max(delivered_peak, 1.0)
+        )
+        kept = seal * (1.0 - overpressure)
+        return 1.0 - clamp01(kept)
+    if mode == AirwayType.SGA:
+        delivered_peak = engine.vent.monitors.paw_peak
+        threshold = engine.airway_tuning.sga_seal_pressure
+        overpressure = (
+            engine.airway_tuning.mask_overpressure_leak
+            * max(0.0, delivered_peak - threshold)
+            / max(delivered_peak, 1.0)
+        )
+        return clamp01(overpressure)
+    return 0.0
 
 
 def delivered_fraction(engine: SimulationEngine) -> float:
-    """Fraction of measured circuit volume and pressure that reaches the patient."""
-    if engine.state.airway_mode != AirwayType.MASK:
+    """Fraction of measured circuit volume and pressure that returns from or reaches the patient."""
+    if is_esophageal_intubation(engine):
+        return ESOPHAGEAL_RETURN_FRACTION
+    mode = engine.state.airway_mode
+    if mode == AirwayType.SGA:
+        spirometry = engine.vent.monitors
+        if spirometry.mv_exp <= 0.0:
+            return 1.0 - mask_leak(engine) if assisted_positive_pressure(engine) else 1.0
+        supported = min(1.0, spirometry.mv_supported / spirometry.mv_exp)
+        return supported * (1.0 - mask_leak(engine)) + (1.0 - supported)
+    if mode != AirwayType.MASK:
         return 1.0
-    seal = engine.mask_seal
+    seal = effective_mask_seal(engine)
     spirometry = engine.vent.monitors
     if spirometry.mv_exp <= 0.0:
         return 1.0 - mask_leak(engine) if assisted_positive_pressure(engine) else seal
@@ -202,7 +252,7 @@ def _circuit_delivery_limits(engine: SimulationEngine, rr: float) -> tuple[float
         )
         / engine.resp._btps_to_stpd
     )
-    sealed_airway = engine.state.airway_mode != AirwayType.MASK or engine.mask_seal >= 0.999
+    sealed_airway = engine.state.airway_mode != AirwayType.MASK or effective_mask_seal(engine) >= 0.999
     return mask_leak(engine), max_deliverable_mv, sealed_airway
 
 
@@ -222,7 +272,7 @@ def _circuit_ventilation_state(
         return None
     rr = vent.monitors.rr_total
     assisted = assisted_positive_pressure(engine)
-    leak_gap = 1.0 - engine.mask_seal if engine.state.airway_mode == AirwayType.MASK else 0.0
+    leak_gap = 1.0 - effective_mask_seal(engine) if engine.state.airway_mode == AirwayType.MASK else 0.0
     if rr <= 0.0:
         return assisted, rr, leak_gap, 0.0, 0.0, False
     leak, max_deliverable_mv, sealed_airway = _circuit_delivery_limits(engine, rr)
@@ -319,8 +369,9 @@ def measured_ventilation(
         spirometry = engine.vent.monitors
         frac = delivered_fraction(engine) if kept is None else kept
         # Before the first completed breath, the respiratory model supplies
-        # the baseline rate; no tidal volume has yet been measured.
-        rr = spirometry.rr_total if engine.vent.has_measured_breath else spontaneous_rr
+        # the baseline rate; an esophageal tube never senses spontaneous lung efforts.
+        fallback_rr = 0.0 if is_esophageal_intubation(engine) else spontaneous_rr
+        rr = spirometry.rr_total if engine.vent.has_measured_breath else fallback_rr
         return rr, spirometry.tv_exp * frac, spirometry.mv_exp * frac
     # Impedance counts muscle effort even when obstruction prevents airflow.
     return engine.resp.state.effort_rr, spontaneous_vt_l * 1000.0, spontaneous_rr * spontaneous_vt_l
@@ -358,6 +409,7 @@ def _combine_coma_tolerance(engine: SimulationEngine, drug_tolerance: float) -> 
         - (1.0 - clamp01(drug_tolerance))
         * (1.0 - engine.cerebral.unresponsiveness)
         * (1.0 - engine.toxicity.unresponsiveness)
+        * (1.0 - engine.neuraxial.unconsciousness)
         * (1.0 - cold_narcosis)
     )
 
@@ -596,12 +648,20 @@ def sync_neuromuscular_state(engine: SimulationEngine) -> None:
 
 
 def sync_inspired_gas(engine: SimulationEngine) -> tuple[float, float]:
-    """Project inspired gas at the airway and return (Fi sevo, Fi N2O) as fractions."""
+    """Project inspired gas at the circuit analyzer and return tracheal (Fi sevo, Fi N2O) as fractions."""
     state = engine.state
     fio2, fi_sevo, fi_n2o, _ = inspired_gas_mixture(engine)
-    state.fio2 = float(fio2)
-    state.fi_sevo = float(fi_sevo * 100.0)
-    state.fi_n2o = float(fi_n2o * 100.0)
+    if is_esophageal_intubation(engine):
+        # The machine's inspiratory-limb gas analyzer samples circuit gas even when
+        # the ETT is in the esophagus, while the lungs still receive room air (0.21).
+        comp = engine.circuit.composition
+        state.fio2 = float(comp.fio2)
+        state.fi_sevo = float(comp.fi_agent * 100.0)
+        state.fi_n2o = float(comp.fin2o * 100.0)
+    else:
+        state.fio2 = float(fio2)
+        state.fi_sevo = float(fi_sevo * 100.0)
+        state.fi_n2o = float(fi_n2o * 100.0)
     return fi_sevo, fi_n2o
 
 
@@ -612,7 +672,7 @@ def sync_inhaled_agents(engine: SimulationEngine) -> None:
     state.mac_sevo = float(sevo.mac)
     state.mac_n2o = float(n2o.mac)
     state.mac = float(sevo.mac + n2o.mac)
-    if circuit_connected(engine):
+    if circuit_connected(engine) and not is_esophageal_intubation(engine):
         state.et_sevo = float(sevo.p_alv * 100.0)
         state.et_n2o = float(n2o.p_alv * 100.0)
         state.et_mac = float(
@@ -714,7 +774,8 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     """Copy respiratory fields shared by startup sync and runtime projection."""
     state = engine.state
     resp_state = snapshot.resp_state
-    sealed = circuit_connected(engine)
+    esophageal = is_esophageal_intubation(engine)
+    sealed = circuit_connected(engine) and not esophageal
     state.rr = float(snapshot.rr_display)
     state.vt = float(snapshot.vt_display_ml)
     state.mv = float(snapshot.mv_display_l_min)
@@ -737,8 +798,32 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     state.pao2 = float(resp_state.p_arterial_o2)
     state.sao2 = float(resp_state.sao2)
     state.spo2 = float(resp_state.sao2)
-    state.etco2 = float(resp_state.etco2 if sealed else 0.0)
-    state.et_o2 = float(resp_state.eto2 if sealed else 0.0)
+    if is_esophageal_intubation(engine):
+        state.etco2 = float(engine.airway_crisis.esophageal_co2_mmhg)
+        state.et_o2 = 0.0
+    else:
+        state.etco2 = float(resp_state.etco2 if sealed else 0.0)
+        state.et_o2 = float(resp_state.eto2 if sealed else 0.0)
+    crisis = engine.airway_crisis
+    state.esophageal_intubation = bool(crisis.esophageal_intubation)
+    state.laryngoscopy_attempts = int(crisis.laryngoscopy_attempts)
+    state.laryngoscopy_view = str(crisis.last_view)
+    state.difficult_airway = str(crisis.difficult_profile)
+    state.airway_help_called = bool(crisis.help_called)
+    state.oral_airway = bool(crisis.oral_airway)
+    state.two_hand_mask = bool(crisis.two_hand_mask)
+    state.pneumothorax_pressure = float(engine.pneumothorax.pleural_pressure_mmhg)
+    state.pneumothorax_decompressed = bool(engine.pneumothorax.decompressed)
+    state.pe_obstruction = float(engine.embolism.pe_obstruction)
+    state.vae_air_ml = float(engine.embolism.vae_air_ml)
+    nx = engine.neuraxial
+    state.neuraxial_mode = str(nx.last_mode)
+    state.neuraxial_sensory_level = float(nx.sensory_level)
+    state.neuraxial_sensory_label = str(nx.sensory_label)
+    state.neuraxial_motor_label = str(nx.motor_label)
+    state.neuraxial_bromage = int(nx.bromage_score)
+    state.epidural_catheter = bool(nx.epidural_catheter)
+    state.epidural_infusion_ml_hr = float(nx.epidural_infusion_ml_hr)
     state.pit = float(snapshot.pit_estimate)
     state.paw = float(snapshot.paw_display)
     state.flow = float(snapshot.flow_display)
@@ -790,7 +875,8 @@ def advance_tracheal_gas(
     if va > 1e-4:
         engine._tracheal_gas = target
         return target
-    sealed = circuit_connected(engine)
+    esophageal = is_esophageal_intubation(engine)
+    sealed = circuit_connected(engine) and not esophageal
     if sealed and (engine.vent.is_on or assisted_positive_pressure(engine)):
         assisted_rr, assisted_vt_l = circuit_ventilation(engine)
         if assisted_rr * assisted_vt_l > 0.05:
@@ -862,7 +948,8 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         circulation=engine.hemo.circulation_fraction(cardiac_output),
         pulmonary_flow=pulm_flow,
     )
-    sealed = circuit_connected(engine)
+    esophageal = is_esophageal_intubation(engine)
+    sealed = circuit_connected(engine) and not esophageal
     airway = engine.airway_status
     airway_tuning = engine.airway_tuning
     upper_eff = max(
@@ -964,7 +1051,12 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         mech_vent_mv=assisted_rr * assisted_vt_l,
         fio2=tracheal_fio2,
         ce_roc=ce_roc_eff,
-        neuromuscular_strength=sux_strength * phase2_central * engine.malignant_hyperthermia.respiratory_excursion_fraction,
+        neuromuscular_strength=(
+            sux_strength
+            * phase2_central
+            * engine.malignant_hyperthermia.respiratory_excursion_fraction
+            * engine.neuraxial.respiratory_muscle_strength
+        ),
         muscle_fatigue=engine.resp_mech.effort.muscle.fatigue,
         mac_sevo=state.mac_sevo,
         mech_rr=assisted_rr,
@@ -999,6 +1091,7 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         exchange=cached_exchange,
         pulmonary_flow=engine.hemo.state.pulmonary_flow if engine.extracorporeal.is_active else None,
         extracorporeal=engine.extracorporeal if engine.extracorporeal.is_active else None,
+        embolic_alveolar_deadspace=engine.embolism.alveolar_deadspace,
     )
     if dt > 0.0:
         gas_vol = engine.resp.gas_volume_l
@@ -1075,7 +1168,11 @@ def _pit_paw_baseline(engine: SimulationEngine) -> float:
     )
     el_ecw_ratio = clamp(cw_stiff * lung_comp_ratio, 0.15, 2.5)
     trans_scale = clamp(el_ecw_ratio / (0.63 + 0.37 * el_ecw_ratio), 0.30, 1.35)
-    return hemo_cfg.pit_0 + CMH2O_TO_MMHG * hemo_cfg.paw_transmission * trans_scale * engine.current_mean_paw
+    return (
+        hemo_cfg.pit_0
+        + CMH2O_TO_MMHG * hemo_cfg.paw_transmission * trans_scale * engine.current_mean_paw
+        + engine.pneumothorax.mediastinal_pit_mmhg
+    )
 
 
 def compute_pit_estimate(engine: SimulationEngine, dt: float, *, smoothed: bool = False) -> float:
@@ -1230,9 +1327,10 @@ def sync_monitor_baselines(engine: SimulationEngine) -> None:
     drug_bis = engine.bis.compute_bis(
         state.hypnotic_ce, state.mac_sevo, state.ketamine_ce, state.opioid_ce, temp_c=state.temp_c,
     )
-    raw_bis = drug_bis * cortical
+    nx_scale = 1.0 - 0.55 * engine.neuraxial.unconsciousness
+    raw_bis = drug_bis * cortical * nx_scale
     bis_val = clamp(
-        raw_bis + runtime_core.stimulus_effects(engine, 0.0).bis * cortical,
+        raw_bis + runtime_core.stimulus_effects(engine, 0.0).bis * cortical * nx_scale,
         0.0,
         100.0,
     )
@@ -1282,9 +1380,7 @@ def sync_state_from_models(engine: SimulationEngine) -> None:
     state = engine.state
     state.temp_c = float(state.temp_c)
     mix = inspired_gas_mixture(engine)
-    state.fio2 = float(mix[0])
-    state.fi_sevo = float(mix[1] * 100.0)
-    state.fi_n2o = float(mix[2] * 100.0)
+    sync_inspired_gas(engine)
     engine._tracheal_gas = mix
     sync_inhaled_agents(engine)
     sync_pk_state(engine)

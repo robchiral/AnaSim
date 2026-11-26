@@ -630,3 +630,46 @@ def test_sodium_bicarbonate_step_size_invariance(engine_factory, advance_time):
     assert abs(coarse.state.sodium - fine.state.sodium) < 0.2
     assert abs(coarse.state.ionized_calcium - fine.state.ionized_calcium) < 0.02
     assert abs(coarse.state.map - fine.state.map) < 1.5
+
+
+def test_airway_thoracic_embolism_and_neuraxial_arrest_isolation_and_stop_events(engine_factory, advance_time):
+    """Zero-flow arrest halts blood-borne gas/drug exchange in PTX, PE, VAE, and epidural epinephrine,
+    and stop_events resets all new crisis states cleanly."""
+    from anasim.physiology.embolism import PulmonaryEmbolismModel
+    from anasim.physiology.neuraxial import NeuraxialModel
+    from anasim.physiology.pneumothorax import PneumothoraxModel
+
+    # 1. Zero-flow isolation: PTX N2O diffusion, PE lysis, VAE washout/N2O, and epidural epi absorption halt at circ=0.
+    ptx = PneumothoraxModel()
+    ptx.set_closed_volume(0.30)
+    ptx.step(120.0, ppv_active=False, mean_paw_cmh2o=0.0, peep_cmh2o=0.0, p_alv_n2o=0.70, circulation=0.0)
+    assert ptx.n2o_volume_l == 0.0
+
+    emb = PulmonaryEmbolismModel(reference_weight_kg=70.0)
+    emb.start_pe(0.60)
+    emb.pe_obstruction = 0.60
+    emb.give_thrombolysis()
+    emb.start_vae(rate_ml_min=0.0, initial_bolus_ml=60.0)
+    emb.stop_vae()
+    emb.step(120.0, p_alv_n2o=0.70, alveolar_o2_fraction=1.0, heparin_u_ml=0.5, circulation=0.0)
+    assert emb.pe_obstruction == pytest.approx(0.60)
+    assert emb.vae_air_ml == pytest.approx(60.0)
+    assert emb.vae_n2o_factor == pytest.approx(1.0)
+
+    nx = NeuraxialModel()
+    nx.give_epidural_bolus("bupivacaine", 15.0, 0.5, with_epinephrine=True)
+    nx.step(120.0, circulation=0.0)
+    assert nx.absorbed_epi_ng_ml == 0.0
+
+    # 2. stop_events clears pneumothorax, PE, VAE, and neuraxial catheter/block completely.
+    eng = engine_factory(config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=1), start=True)
+    eng.start_pneumothorax(severity=0.9, initial_volume_l=0.4)
+    eng.start_pulmonary_embolism(0.5)
+    eng.start_venous_air_embolism(rate_ml_min=50.0, initial_bolus_ml=40.0)
+    eng.place_epidural(True)
+    eng.trigger_high_spinal()
+    advance_time(eng, 10.0, dt=0.5)
+    eng.stop_events()
+    assert not eng.pneumothorax.active and eng.pneumothorax.total_volume_l == 0.0
+    assert not eng.embolism.pe_active and eng.embolism.vae_air_ml == 0.0
+    assert not eng.neuraxial.active and not eng.neuraxial.epidural_catheter

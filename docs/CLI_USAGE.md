@@ -69,7 +69,7 @@ anasim --mode headless --duration 60 --config patient_config.json \
 | `type2_diabetes` | `false` | Type 2 diabetes with insulin resistance, blunted beta-cell secretion, higher renal glycosuria threshold, and 150 mg/dL default baseline glucose |
 | `surgical_site` | `"other"` | `"other"`, `"lower_abdominal"`, or `"upper_abdominal"`; abdominal surgery keeps part of the anesthetic airway closure after emergence and slows postoperative clearance of atelectasis |
 | `gestational_age_weeks` | 0.0 | `0` for no pregnancy, or 4 to 40 weeks for a female patient aged 55 or under |
-| `position` | `"supine"` | `"supine"` or `"left_lateral"`; affects venous return from 20 weeks of pregnancy |
+| `position` | `"supine"` | `"supine"` or `"left_lateral"`; relieves aortocaval compression from 20 weeks of pregnancy and provides Durant left-lateral positioning during venous air embolism |
 
 Patient ranges are inclusive, and patient inputs and `dt` must be finite. If you
 set `baseline_hct`, it must be within 0.12 of `0.03 * baseline_hb`, and setting
@@ -176,3 +176,6 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 | `add_cpb_reservoir_fluid(volume_ml, kind="crystalloid", hematocrit=0.55)` | Adds 1 to 2,000 mL of crystalloid, saline, colloid (`"albumin"`), or blood directly to the CPB reservoir |
 | `draw_blood_gas(site="arterial")`, `measure_act()`, `measure_glucose()` | Draws a blood gas sample (ready after 120 s; sites `"arterial"`, `"right_radial"`, `"femoral"`, `"pre_oxy"`, `"post_oxy"`), whole-blood ACT (ready after 60 s), or point-of-care blood glucose (ready after 10 s, mg/dL) |
 | `start_protamine_reaction()`, `stop_protamine_reaction()`, `arm_protamine_reaction(armed=True)` | Controls a Type III protamine pulmonary vasoconstriction reaction |
+| `attempt_intubation(technique="dl")`, `attempt_sga()`, `perform_fona()`, `set_oral_airway(placed)`, `set_two_hand_mask(active)`, `call_airway_help()` | Airway escalation (`"dl"`, `"vl"`, `"vl_bougie"`, `"fiberoptic"`), SGA rescue, eFONA, and mask adjuncts; instructor triggers `set_difficult_airway(profile)`, `arm_esophageal_intubation(armed=True)`, and `set_esophageal_intubation(active, ...)` (see [`engine.py`](../anasim/core/engine.py)) |
+| `start_pneumothorax(...)`, `decompress_pneumothorax()`, `start_pulmonary_embolism(...)`, `give_thrombolysis()`, `start_venous_air_embolism(...)`, `aspirate_vae_air()` | Thoracic and embolic crisis controls, rescue procedures, and matching `stop_*` helpers (see [`engine.py`](../anasim/core/engine.py)) |
+| `give_spinal(...)`, `place_epidural(placed=True)`, `give_epidural_bolus(...)`, `set_epidural_infusion(...)`, `check_neuraxial_level()`, `trigger_high_spinal()`, `stop_neuraxial()` | Spinal and epidural neuraxial anesthesia, bedside dermatome and Bromage level checks, and high-spinal controls (see [`engine.py`](../anasim/core/engine.py)) |

@@ -1496,7 +1496,8 @@ class RespiratoryModel:
              muscle_fatigue: float = 0.0,
              exchange: PassiveExchangeTerms | None = None,
              pulmonary_flow: float | None = None,
-             extracorporeal=None) -> RespState:
+             extracorporeal=None,
+             embolic_alveolar_deadspace: float = 0.0) -> RespState:
         """Advance ventilatory control and blood-lung gas exchange by dt seconds."""
         transport = self.gas_transport
         blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else blood_volume_ml
@@ -1775,11 +1776,13 @@ class RespiratoryModel:
                 )
             if airway_patency <= 0.0:
                 total_va_l_min = 0.0
-            # Acute COPD bronchospasm compounds dynamic hyperinflation and parallel alveolar dead space.
+            # Acute COPD bronchospasm and pulmonary vascular embolism add parallel alveolar dead space.
             copd_alv_ds = clamp01(
                 self.copd_alveolar_deadspace + 0.22 * self.patient.copd_severity * (1.0 - bronch_eff)
             )
-            state.va = total_va_l_min * (1.0 - copd_alv_ds)
+            emb_alv_ds = clamp(embolic_alveolar_deadspace, 0.0, 0.85)
+            total_alv_ds = 1.0 - (1.0 - copd_alv_ds) * (1.0 - emb_alv_ds)
+            state.va = total_va_l_min * (1.0 - total_alv_ds)
 
             zone1_frac = clamp01(
                 0.015 * max(0.0, airway_pressure - 12.0) * (1.0 + 1.5 * clamp01(1.0 - perfusion_ratio))
@@ -2036,7 +2039,7 @@ class RespiratoryModel:
             # Publish temperature-corrected in-vivo alveolar CO2 and EtCO2 so EtCO2 stays below in-vivo PaCO2.
             alveolar_co2_in_vivo = state.p_alveolar_co2 * pco2_scale
             state.p_alveolar_co2 = alveolar_co2_in_vivo
-            state.etco2 = max(0.0, alveolar_co2_in_vivo - etco2_gradient)
+            state.etco2 = max(0.0, (alveolar_co2_in_vivo - etco2_gradient) * (1.0 - emb_alv_ds))
             dilution = clamp01(1.0 - state.etco2 / alveolar_co2_in_vivo) if alveolar_co2_in_vivo > 0.0 else 0.0
             state.eto2 = 100.0 * (state.p_alveolar_o2
                                  + dilution * (fio2 * self._atm_dry - state.p_alveolar_o2)) / self._atm_dry

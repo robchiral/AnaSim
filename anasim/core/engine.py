@@ -54,10 +54,16 @@ from anasim.patient.pk_models import (
 )
 from anasim.patient.variability import sample_variability
 from anasim.patient.volatile_pk import VolatilePK
+from anasim.physiology.airway_crisis import (
+    ESOPHAGEAL_DEFAULT_CO2_MMHG,
+    INTUBATION_TECHNIQUES,
+    AirwayCrisisModel,
+)
 from anasim.physiology.arrhythmia import ArrhythmiaModel, antiarrhythmic_effects
 from anasim.physiology.cerebral import CerebralModel
 from anasim.physiology.coagulation import ACTResult, CoagulationModel
 from anasim.physiology.disturbances import Disturbances
+from anasim.physiology.embolism import PulmonaryEmbolismModel
 from anasim.physiology.events import SeverityRamp
 from anasim.physiology.glucose import GlucoseModel, GlucoseResult
 from anasim.physiology.hemodynamics import MAX_HEMATOCRIT, HemodynamicModel
@@ -68,6 +74,8 @@ from anasim.physiology.malignant_hyperthermia import (
     MalignantHyperthermia,
     triggering_exposure,
 )
+from anasim.physiology.neuraxial import NeuraxialLevelCheck, NeuraxialModel
+from anasim.physiology.pneumothorax import PneumothoraxModel
 from anasim.physiology.resp_mech import RespiratoryMechanics
 from anasim.physiology.respiration import RespiratoryModel
 from anasim.physiology.resuscitation import (
@@ -85,19 +93,24 @@ from . import runtime as runtime_core
 from .action_log import (
     ACTION_ACT,
     ACTION_AIRWAY,
+    ACTION_AIRWAY_TOOL,
     ACTION_BAG_MASK,
     ACTION_BLOOD_GAS,
+    ACTION_CHEST_DECOMPRESS,
     ACTION_COMPRESSIONS,
     ACTION_COOLING,
     ACTION_DRUG_BOLUS,
+    ACTION_EMBOLISM_TREAT,
     ACTION_EVENT_START,
     ACTION_EVENT_STOP,
     ACTION_EXTRACORPOREAL,
     ACTION_FGF,
     ACTION_FLUID,
+    ACTION_FONA,
     ACTION_GLUCOSE,
     ACTION_INTUBATION_ATTEMPT,
     ACTION_LIPID_INFUSION,
+    ACTION_NEURAXIAL,
     ACTION_O2_FLUSH,
     ACTION_OXYGEN_SUPPLY,
     ACTION_POSITION,
@@ -106,7 +119,14 @@ from .action_log import (
     ACTION_VENTILATION,
     ActionLog,
 )
-from .clinical_actions import ActionFeedback, check_intubation, check_shock
+from .clinical_actions import (
+    ActionFeedback,
+    check_fona,
+    check_intubation,
+    check_oral_airway,
+    check_sga_placement,
+    check_shock,
+)
 from .drug_api import POPULATION_TCI_DRUGS, DrugControllerMixin
 from .drug_registry import DRUG_REGISTRY, get_drug_spec, resolve_bolus_drug
 from .initialization import initialize_engine_state
@@ -200,6 +220,7 @@ class SimulationEngine(DrugControllerMixin):
         self.bronchospasm_manual = 0.0
         self.laryngospasm_severity = 0.0
         self.airway_status = AirwayStatus()
+        self._had_mask_ventilation = False
 
         self.smooth_bis = 98.0
         self._bis_noise = 0.0
@@ -285,6 +306,17 @@ class SimulationEngine(DrugControllerMixin):
         self.anaphylaxis = SeverityRamp(onset_rate=0.5 / 60.0, decay_rate=0.1 / 60.0)
         self.sepsis = SeverityRamp(onset_rate=0.1 / 60.0, decay_rate=0.03 / 60.0)
         self.malignant_hyperthermia = MalignantHyperthermia()
+        self.airway_crisis = AirwayCrisisModel()
+        self.pneumothorax = PneumothoraxModel(self.patient.functional_residual_capacity())
+        ref_ffm = janmahasatian_ffm(70.0, 170.0, True)
+        patient_ffm = janmahasatian_ffm(
+            self.patient.weight, self.patient.height, self.patient.sex == "male",
+        )
+        self.embolism = PulmonaryEmbolismModel(70.0 * patient_ffm / ref_ffm)
+        self.neuraxial = NeuraxialModel(
+            self.patient.age,
+            pregnant=self.patient.gestational_age_weeks > 0.0,
+        )
 
         # Intravenous drug PK, keyed like the drug registry.
         self.pk = {spec.key: spec.pk_model(self.patient, self.config) for spec in DRUG_REGISTRY}
@@ -602,6 +634,18 @@ class SimulationEngine(DrugControllerMixin):
             return self.malignant_hyperthermia.active
         if name == "protamine_reaction":
             return self.coagulation.reaction_active
+        if name == "difficult_airway":
+            return self.airway_crisis.difficult_profile != "none"
+        if name == "esophageal_intubation":
+            return self.airway_crisis.esophageal_intubation
+        if name == "pneumothorax":
+            return self.pneumothorax.active
+        if name == "pulmonary_embolism":
+            return self.embolism.pe_active
+        if name == "venous_air_embolism":
+            return self.embolism.vae_active
+        if name == "high_spinal":
+            return self.neuraxial.last_mode == "high_spinal" and self.neuraxial.active
         raise ValueError(f"Unknown clinical event: {name!r}")
 
     def _log_event(self, name: str, active: bool, amount: float = 0.0):
@@ -644,8 +688,200 @@ class SimulationEngine(DrugControllerMixin):
         self.stop_sepsis()
         self.stop_malignant_hyperthermia()
         self.stop_protamine_reaction()
+        self.stop_pneumothorax()
+        self.pneumothorax.reset()
+        self.state.pneumothorax_pressure = 0.0
+        self.state.pneumothorax_decompressed = False
+        self.stop_pulmonary_embolism()
+        self.stop_venous_air_embolism()
+        self.embolism.clear_vae()
+        self.state.vae_air_ml = 0.0
+        self.set_difficult_airway("none")
+        self.set_esophageal_intubation(False)
+        self.stop_neuraxial()
+        self.neuraxial.place_epidural(False)
+        self._sync_neuraxial_state()
         self.stop_disturbance()
         self.intubation_start_time = None
+
+    def start_pneumothorax(self, severity: float = 1.0, *, initial_volume_l: float = 0.25):
+        """Start an active unilateral one-way pleural air leak (tension pneumothorax)."""
+        sev = bounded_number("pneumothorax severity", severity, 0.2, 3.0)
+        self._log_event("pneumothorax", True, amount=sev)
+        self.pneumothorax.start(severity=sev, initial_volume_l=initial_volume_l)
+        self.state.pneumothorax_pressure = float(self.pneumothorax.pleural_pressure_mmhg)
+        self.state.pneumothorax_decompressed = False
+
+    def stop_pneumothorax(self):
+        """Seal an active pleural leak without decompressing trapped gas."""
+        self._log_event("pneumothorax", False)
+        self.pneumothorax.stop()
+
+    def decompress_pneumothorax(self):
+        """Perform needle thoracostomy / chest tube decompression."""
+        self._log_event("pneumothorax", False)
+        self.pneumothorax.decompress()
+        self.state.pneumothorax_decompressed = True
+        self.actions.record(self.state.time, ACTION_CHEST_DECOMPRESS, label="decompressed")
+
+    def start_pulmonary_embolism(self, obstruction: float = 0.60):
+        """Start acute massive pulmonary thromboembolism (obstruction fraction 0.15-0.85)."""
+        obs = bounded_number("PE obstruction", obstruction, 0.15, 0.85)
+        self._log_event("pulmonary_embolism", True, amount=obs)
+        self.embolism.start_pe(obstruction=obs)
+
+    def stop_pulmonary_embolism(self):
+        """Clear an active pulmonary thromboembolism."""
+        self._log_event("pulmonary_embolism", False)
+        self.embolism.stop_pe()
+        self.state.pe_obstruction = 0.0
+
+    def give_thrombolysis(self):
+        """Administer systemic thrombolysis (e.g. alteplase) for massive PE."""
+        self.embolism.give_thrombolysis()
+        self.actions.record(self.state.time, ACTION_EMBOLISM_TREAT, label="thrombolysis")
+
+    def start_venous_air_embolism(
+        self, rate_ml_min: float = 55.0, *, initial_bolus_ml: float = 45.0,
+    ):
+        """Start surgical venous air entrainment (VAE)."""
+        rate = bounded_number("VAE entrainment rate", rate_ml_min, 0.0, 300.0, unit="mL/min")
+        self._log_event("venous_air_embolism", True, amount=rate)
+        self.embolism.start_vae(rate_ml_min=rate, initial_bolus_ml=initial_bolus_ml)
+        self.state.vae_air_ml = float(self.embolism.vae_air_ml)
+
+    def stop_venous_air_embolism(self):
+        """Stop surgical venous air entrainment (flood field / lower surgical site)."""
+        self._log_event("venous_air_embolism", False)
+        self.embolism.stop_vae()
+
+    def aspirate_vae_air(self) -> float:
+        """Aspirate intravascular air from a right-atrial CVC; returns mL removed."""
+        removed = self.embolism.aspirate_vae()
+        self.state.vae_air_ml = float(self.embolism.vae_air_ml)
+        self.actions.record(self.state.time, ACTION_EMBOLISM_TREAT, label="vae_aspirate", amount=removed)
+        return removed
+
+    def _sync_neuraxial_state(self) -> None:
+        nx = self.neuraxial
+        self.state.neuraxial_mode = str(nx.last_mode)
+        self.state.neuraxial_sensory_level = float(nx.sensory_level)
+        self.state.neuraxial_sensory_label = str(nx.sensory_label)
+        self.state.neuraxial_motor_label = str(nx.motor_label)
+        self.state.neuraxial_bromage = int(nx.bromage_score)
+        self.state.epidural_catheter = bool(nx.epidural_catheter)
+        self.state.epidural_infusion_ml_hr = float(nx.epidural_infusion_ml_hr)
+
+    def give_spinal(
+        self,
+        drug: str = "bupivacaine",
+        dose_mg: float = 12.5,
+        baricity: str = "hyperbaric",
+        *,
+        high_spinal: bool = False,
+    ) -> None:
+        """Administer a subarachnoid (spinal) local anesthetic bolus."""
+        dose = bounded_number("spinal dose", dose_mg, 1.0, 150.0, unit="mg")
+        self.neuraxial.give_spinal(drug=drug, dose_mg=dose, baricity=baricity, high_spinal=high_spinal)
+        if self.neuraxial.last_mode == "high_spinal":
+            self._log_event("high_spinal", True)
+        self._sync_neuraxial_state()
+        self.actions.record(
+            self.state.time,
+            ACTION_NEURAXIAL,
+            label=f"spinal:{drug.strip().lower()}:{baricity.strip().lower()}",
+            amount=dose,
+        )
+
+    def place_epidural(self, placed: bool = True) -> None:
+        """Place or remove an epidural catheter."""
+        placed = bool(placed)
+        if self.neuraxial.epidural_catheter != placed:
+            self.neuraxial.place_epidural(placed)
+            self._sync_neuraxial_state()
+            self.actions.record(
+                self.state.time,
+                ACTION_NEURAXIAL,
+                label="epidural_catheter_on" if placed else "epidural_catheter_off",
+            )
+
+    def give_epidural_bolus(
+        self,
+        drug: str = "bupivacaine",
+        volume_ml: float = 10.0,
+        concentration_pct: float = 0.5,
+        *,
+        with_epinephrine: bool = False,
+        accidental_intrathecal: bool = False,
+    ) -> None:
+        """Administer an epidural bolus (optionally with 1:200,000 epinephrine or intrathecal)."""
+        vol = bounded_number("epidural volume", volume_ml, 1.0, 30.0, unit="mL")
+        conc = bounded_number("epidural concentration", concentration_pct, 0.05, 2.0, unit="%")
+        if accidental_intrathecal:
+            self._log_event("high_spinal", True, amount=vol)
+        self.neuraxial.give_epidural_bolus(
+            drug=drug,
+            volume_ml=vol,
+            concentration_pct=conc,
+            with_epinephrine=with_epinephrine,
+            accidental_intrathecal=accidental_intrathecal,
+        )
+        self._sync_neuraxial_state()
+        if not accidental_intrathecal:
+            suffix = "_epi" if with_epinephrine else ""
+            self.actions.record(
+                self.state.time,
+                ACTION_NEURAXIAL,
+                label=f"epidural_bolus:{drug.strip().lower()}{suffix}",
+                amount=vol,
+            )
+
+    def set_epidural_infusion(
+        self,
+        ml_hr: float,
+        *,
+        drug: str = "bupivacaine",
+        concentration_pct: float = 0.125,
+    ) -> None:
+        """Set continuous epidural infusion rate (mL/hr)."""
+        rate = bounded_number("epidural infusion rate", ml_hr, 0.0, 25.0, unit="mL/hr")
+        conc = bounded_number("epidural concentration", concentration_pct, 0.05, 0.5, unit="%")
+        self.neuraxial.set_epidural_infusion(rate, drug=drug, concentration_pct=conc)
+        self._sync_neuraxial_state()
+        self.actions.record(
+            self.state.time,
+            ACTION_NEURAXIAL,
+            label=f"epidural_rate:{drug.strip().lower()}",
+            amount=rate,
+        )
+
+    def check_neuraxial_level(self) -> NeuraxialLevelCheck:
+        """Assess current sensory dermatome height and modified Bromage motor score."""
+        check = self.neuraxial.check_level(self.state.time)
+        self._sync_neuraxial_state()
+        self.actions.record(
+            self.state.time,
+            ACTION_NEURAXIAL,
+            label=f"check_level:{check.sensory_label}",
+            amount=check.sensory_level,
+        )
+        return check
+
+    def trigger_high_spinal(self) -> None:
+        """Trigger an accidental intrathecal high/total spinal crisis."""
+        self.give_epidural_bolus(
+            drug="bupivacaine",
+            volume_ml=15.0,
+            concentration_pct=0.5,
+            accidental_intrathecal=True,
+        )
+
+    def stop_neuraxial(self) -> None:
+        """Clear any active neuraxial block and epidural infusion."""
+        if self.event_active("high_spinal"):
+            self._log_event("high_spinal", False)
+        self.neuraxial.clear()
+        self._sync_neuraxial_state()
 
     def _set_protamine_reaction(self, active: bool) -> None:
         self._log_event("protamine_reaction", active)
@@ -730,25 +966,189 @@ class SimulationEngine(DrugControllerMixin):
             self.actions.record(self.state.time, ACTION_COOLING, label="on" if on else "off")
         self.state.surface_cooling = bool(on)
 
-    def attempt_intubation(self) -> ActionFeedback | None:
-        """Attempt learner intubation, including stimulation even if placement fails."""
-        if self.state.airway_mode == AirwayType.ETT:
+    def attempt_intubation(self, technique: str = "dl") -> ActionFeedback | None:
+        """Attempt learner intubation with the selected technique, including stimulation on failure."""
+        if not isinstance(technique, str):
+            choices = ", ".join(INTUBATION_TECHNIQUES)
+            raise ValueError(f"Unsupported intubation technique {technique!r}; choose one of: {choices}")
+        tech = technique.strip().lower()
+        if tech not in INTUBATION_TECHNIQUES:
+            choices = ", ".join(INTUBATION_TECHNIQUES)
+            raise ValueError(f"Unsupported intubation technique {technique!r}; choose one of: {choices}")
+        was_esophageal = self.airway_crisis.esophageal_intubation
+        if self.state.airway_mode == AirwayType.ETT and not was_esophageal:
             return None
         feedback = check_intubation(self)
         failed = feedback is not None and feedback.blocked
         self.intubation_start_time = self.state.time
-        self.actions.record(
-            self.state.time, ACTION_INTUBATION_ATTEMPT, label="failed" if failed else "placed",
+        if failed:
+            self.actions.record(
+                self.state.time,
+                ACTION_INTUBATION_ATTEMPT,
+                label="failed" if tech == "dl" else f"failed:{tech}",
+            )
+            return feedback
+        result = self.airway_crisis.evaluate_intubation(
+            tech,
+            prior_mask_ventilation=self._had_mask_ventilation,
+            vent_breath_count=self.vent.breath_count,
         )
-        if not failed:
-            self.set_airway_mode("ETT")
-            if self.bag_mask_active:
-                self.set_bag_mask_ventilation(False)
+        self.state.laryngoscopy_attempts = self.airway_crisis.laryngoscopy_attempts
+        self.state.laryngoscopy_view = self.airway_crisis.last_view
+        self.state.esophageal_intubation = self.airway_crisis.esophageal_intubation
+        if not result.placed:
+            self.actions.record(
+                self.state.time,
+                ACTION_INTUBATION_ATTEMPT,
+                label="failed" if tech == "dl" else f"failed:{tech}",
+            )
+            if self.airway_crisis.laryngoscopy_attempts > 3:
+                return ActionFeedback(
+                    "repeated_laryngoscopy",
+                    f"{result.message} More than 3 attempts increases edema and hypoxemia risk.",
+                    blocked=True,
+                )
+            return ActionFeedback(
+                result.code or "failed_laryngoscopy",
+                result.message,
+                blocked=True,
+            )
+        self.actions.record(
+            self.state.time,
+            ACTION_INTUBATION_ATTEMPT,
+            label="placed" if tech == "dl" else f"placed:{tech}",
+        )
+        if result.esophageal:
+            self._log_event("esophageal_intubation", True)
+            self._reset_esophageal_monitors()
+        elif was_esophageal:
+            self._log_event("esophageal_intubation", False)
+            self._reset_esophageal_monitors()
+        self.set_airway_mode("ETT")
+        if self.bag_mask_active:
+            self.set_bag_mask_ventilation(False)
+        if feedback is not None:
+            return feedback
+        if result.message:
+            return ActionFeedback("intubation_note", result.message, blocked=False)
+        return None
+
+    def _reset_esophageal_monitors(self) -> None:
+        """Clear latched capnography and ventilator breath phase on esophageal transitions."""
+        self.capno.reset()
+        self.etco2_readout.reset()
+        self.vent._switch(None, self.resp_mech)
+        self.state.display_etco2 = 0.0
+        self.state.etco2_signal_valid = False
+        self.state.vt = 0.0
+        self.state.et_o2 = self.state.et_sevo = self.state.et_n2o = self.state.et_mac = 0.0
+
+    def attempt_sga(self) -> ActionFeedback | None:
+        """Attempt learner placement of a 2nd-generation supraglottic airway."""
+        if self.state.airway_mode == AirwayType.SGA:
+            return None
+        feedback = check_sga_placement(self)
+        if feedback is not None and feedback.blocked:
+            self.actions.record(self.state.time, ACTION_AIRWAY_TOOL, label="sga_failed")
+            return feedback
+        ok, msg = self.airway_crisis.evaluate_sga()
+        if not ok:
+            self.actions.record(self.state.time, ACTION_AIRWAY_TOOL, label="sga_failed")
+            return ActionFeedback("sga_failed", msg, blocked=True)
+        self.set_airway_mode("SGA")
+        if self.bag_mask_active:
+            self.set_bag_mask_ventilation(False)
         return feedback
+
+    def perform_fona(self) -> ActionFeedback | None:
+        """Perform emergency scalpel-bougie-tube cricothyrotomy (eFONA)."""
+        if self.state.airway_mode == AirwayType.FONA:
+            return None
+        feedback = check_fona(self)
+        self.airway_crisis.fona_performed = True
+        self.airway_crisis.clear_esophageal()
+        self.state.esophageal_intubation = False
+        self.actions.record(self.state.time, ACTION_FONA, label="performed")
+        self.set_airway_mode("FONA")
+        if self.bag_mask_active:
+            self.set_bag_mask_ventilation(False)
+        return feedback
+
+    def set_oral_airway(self, placed: bool) -> ActionFeedback | None:
+        """Insert or remove an oropharyngeal airway (OPA) for mask ventilation."""
+        placed = bool(placed)
+        if placed and not self.airway_crisis.oral_airway:
+            feedback = check_oral_airway(self)
+            if feedback is not None and feedback.blocked:
+                return feedback
+        if self.airway_crisis.oral_airway != placed:
+            self.airway_crisis.oral_airway = placed
+            self.state.oral_airway = placed
+            self.actions.record(
+                self.state.time, ACTION_AIRWAY_TOOL, label="opa_on" if placed else "opa_off",
+            )
+        return None
+
+    def set_two_hand_mask(self, active: bool) -> None:
+        """Enable or disable two-handed jaw-thrust mask ventilation (Joffe 2010)."""
+        active = bool(active)
+        if self.airway_crisis.two_hand_mask != active:
+            self.airway_crisis.two_hand_mask = active
+            self.state.two_hand_mask = active
+            self.actions.record(
+                self.state.time, ACTION_AIRWAY_TOOL, label="two_hand_on" if active else "two_hand_off",
+            )
+
+    def call_airway_help(self) -> None:
+        """Call for senior help and the difficult airway cart (ASA 2022)."""
+        if not self.airway_crisis.help_called:
+            self.airway_crisis.help_called = True
+            self.state.airway_help_called = True
+            self.actions.record(self.state.time, ACTION_AIRWAY_TOOL, label="call_help")
+
+    def set_difficult_airway(self, profile: str) -> None:
+        """Configure difficult airway anatomy ('none', 'anterior_dl', or 'severe_cico')."""
+        was_active = self.airway_crisis.difficult_profile != "none"
+        self.airway_crisis.set_difficult_profile(profile)
+        will_be_active = self.airway_crisis.difficult_profile != "none"
+        if was_active != will_be_active:
+            self._log_event("difficult_airway", will_be_active)
+        self.state.difficult_airway = self.airway_crisis.difficult_profile
+        self.state.laryngoscopy_attempts = self.airway_crisis.laryngoscopy_attempts
+        self.state.laryngoscopy_view = self.airway_crisis.last_view
+
+    def arm_esophageal_intubation(self, armed: bool = True) -> None:
+        """Arm unrecognized esophageal placement for the next blind direct laryngoscopy."""
+        self.airway_crisis.esophageal_armed = bool(armed)
+
+    def set_esophageal_intubation(
+        self, active: bool, *, gastric_co2_mmhg: float = ESOPHAGEAL_DEFAULT_CO2_MMHG,
+    ) -> None:
+        """Directly activate or clear esophageal intubation."""
+        active = bool(active)
+        if active:
+            self._log_event("esophageal_intubation", True)
+            self.airway_crisis.activate_esophageal(
+                gastric_co2_mmhg=gastric_co2_mmhg,
+                vent_breath_count=self.vent.breath_count,
+            )
+            self.state.esophageal_intubation = True
+            if self.state.airway_mode != AirwayType.ETT:
+                self.set_airway_mode("ETT")
+            self._reset_esophageal_monitors()
+        else:
+            was = self.airway_crisis.esophageal_intubation
+            if was:
+                self._log_event("esophageal_intubation", False)
+            self.airway_crisis.clear_esophageal()
+            self.state.esophageal_intubation = False
+            if was:
+                self._reset_esophageal_monitors()
 
     def set_airway_mode(self, mode_str: str):
         """Set the connection directly; learner tube placement uses attempt_intubation."""
         previous_mode = self.state.airway_mode
+        was_esophageal = previous_mode == AirwayType.ETT and self.airway_crisis.esophageal_intubation
         try:
             self.state.airway_mode = AirwayType(mode_str)
         except ValueError as exc:
@@ -757,17 +1157,23 @@ class SimulationEngine(DrugControllerMixin):
                 f"Unsupported airway mode {mode_str!r}; choose one of: {choices}"
             ) from exc
         if previous_mode == AirwayType.ETT and self.state.airway_mode != AirwayType.ETT:
-            projection_core.sync_inhaled_agents(self)
-            projection_core.sync_pk_state(self)
-            if (
-                projection_core.loss_of_response(self) >= 0.20
-                and projection_core.extubation_tolerance(self) < 0.65
-            ):
-                self._extubation_stimulus_until = self.state.time + 25.0
+            if was_esophageal:
+                self._log_event("esophageal_intubation", False)
+                self.airway_crisis.clear_esophageal()
+                self.state.esophageal_intubation = False
+                self._reset_esophageal_monitors()
+            else:
+                projection_core.sync_inhaled_agents(self)
+                projection_core.sync_pk_state(self)
+                if (
+                    projection_core.loss_of_response(self) >= 0.20
+                    and projection_core.extubation_tolerance(self) < 0.65
+                ):
+                    self._extubation_stimulus_until = self.state.time + 25.0
         self.actions.record(
             self.state.time, ACTION_AIRWAY, label=self.state.airway_mode.value
         )
-        if self.state.airway_mode == AirwayType.ETT:
+        if projection_core.is_infraglottic_airway(self):
             self.laryngospasm_severity = 0.0
             self.state.laryngospasm = 0.0
         if self.state.airway_mode == AirwayType.NONE and self.bag_mask_active:

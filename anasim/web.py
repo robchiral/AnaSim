@@ -91,6 +91,8 @@ SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
 # Instructor event controls; cases start their own events and offer case actions instead.
 EVENT_COMMANDS = frozenset({
     "hemorrhage", "anaphylaxis", "sepsis", "malignant_hyperthermia", "protamine_reaction",
+    "difficult_airway", "esophageal_intubation", "pneumothorax", "pulmonary_embolism",
+    "venous_air_embolism", "high_spinal", "neuraxial_clear",
     "stop_events", "rhythm", "obstruction",
     "bronchospasm", "auto_laryngospasm", "ards_shunt", "disturbance", "disturbance_profile", "oxygen_supply",
 })
@@ -109,7 +111,7 @@ def catalog() -> str:
                 "id": spec.id,
                 "label": spec.label,
                 "summary": spec.summary,
-                "category": "crisis" if spec.surgery else "routine",
+                "category": spec.category if spec.category is not None else ("crisis" if spec.surgery else "routine"),
                 "start_mode": spec.start_mode,
                 "maint_type": spec.maint_type,
             }
@@ -266,6 +268,7 @@ class WebSession:
         self.retain_recordings = retain_recordings
         self._medication_history: deque[dict] = deque(maxlen=50)
         self._medication_sequence = 0
+        self._intubation_technique = "dl"
 
         self.scenario: Scenario | None = None
         self.case_run: CaseRun | None = None
@@ -823,6 +826,46 @@ class WebSession:
             "bair_hugger": engine.state.bair_hugger_target,
             "fluid_warmer": engine.state.fluid_warmer,
             "extracorporeal": self._extracorporeal_controls(),
+            "airway_crisis": {
+                "difficult_profile": engine.airway_crisis.difficult_profile,
+                "attempts": engine.airway_crisis.laryngoscopy_attempts,
+                "last_view": engine.airway_crisis.last_view,
+                "technique": self._intubation_technique,
+                "help_called": engine.airway_crisis.help_called,
+                "oral_airway": engine.airway_crisis.oral_airway,
+                "two_hand_mask": engine.airway_crisis.two_hand_mask,
+                "esophageal_armed": engine.airway_crisis.esophageal_armed,
+                "esophageal_active": engine.airway_crisis.esophageal_intubation,
+                "fona_performed": engine.airway_crisis.fona_performed,
+            },
+            "pneumothorax": {
+                "active": engine.pneumothorax.active,
+                "decompressed": engine.pneumothorax.decompressed,
+                "pressure": _num(engine.pneumothorax.pleural_pressure_mmhg, 1),
+            },
+            "embolism": {
+                "pe_active": engine.embolism.pe_active,
+                "pe_obstruction": _num(engine.embolism.pe_obstruction, 2),
+                "thrombolysis": engine.embolism.thrombolysis_active,
+                "vae_active": engine.embolism.vae_active,
+                "vae_air_ml": _num(engine.embolism.vae_air_ml, 1),
+            },
+            "neuraxial": {
+                "active": engine.neuraxial.active,
+                "mode": engine.neuraxial.last_mode,
+                "sensory_label": engine.neuraxial.sensory_label,
+                "motor_label": engine.neuraxial.motor_label,
+                "bromage": engine.neuraxial.bromage_score,
+                "epidural_catheter": engine.neuraxial.epidural_catheter,
+                "epidural_rate": _num(engine.neuraxial.epidural_infusion_ml_hr, 1),
+                "last_check": None if engine.neuraxial.last_check is None else {
+                    "time": _num(engine.neuraxial.last_check.time, 1),
+                    "sensory_label": engine.neuraxial.last_check.sensory_label,
+                    "motor_label": engine.neuraxial.last_check.motor_label,
+                    "bromage": engine.neuraxial.last_check.bromage,
+                    "note": engine.neuraxial.last_check.note,
+                },
+            },
         }
 
     def _extracorporeal_controls(self) -> dict:
@@ -929,15 +972,32 @@ class WebSession:
         self.speed = min(max(domain.finite_number("speed", value), SPEED_RANGE[0]), SPEED_RANGE[1])
         self._reset_speed_average()
 
-    def _cmd_airway(self, mode: str):
+    def _cmd_airway(self, mode: str, technique: str | None = None):
         target = AirwayType(mode)
         if target == AirwayType.ETT:
-            return self._clinical_result(self.engine.attempt_intubation())
-        was_assisted = (self.engine.state.airway_mode != AirwayType.NONE) and (
+            tech = self._intubation_technique if technique is None else technique
+            if not isinstance(tech, str) or tech.strip().lower() not in {"dl", "vl", "vl_bougie", "fiberoptic"}:
+                raise ValueError(f"Unsupported intubation technique: {tech!r}")
+            tech = tech.strip().lower()
+            self._intubation_technique = tech
+            return self._clinical_result(self.engine.attempt_intubation(tech))
+        if target == AirwayType.FONA:
+            return self._clinical_result(self.engine.perform_fona())
+        prev = self.engine.state.airway_mode
+        was_esophageal = prev == AirwayType.ETT and self.engine.airway_crisis.esophageal_intubation
+        was_assisted = (prev != AirwayType.NONE) and not was_esophageal and (
             self.engine.vent.is_on or self.engine.bag_mask_active
         )
-        feedback = check_airway_removal(self.engine) if self.engine.state.airway_mode == AirwayType.ETT else None
-        if self.case_run is not None and self.engine.state.airway_mode == AirwayType.ETT:
+        leaving_infraglottic = prev in (AirwayType.ETT, AirwayType.FONA)
+        feedback = check_airway_removal(self.engine) if leaving_infraglottic else None
+        if target == AirwayType.SGA:
+            sga_fb = self.engine.attempt_sga()
+            if sga_fb is not None and sga_fb.blocked:
+                return self._clinical_result(sga_fb)
+            if self.case_run is not None and prev == AirwayType.ETT and not was_esophageal:
+                self.case_run.record_transition("extubation")
+            return self._clinical_result(sga_fb or feedback)
+        if self.case_run is not None and prev == AirwayType.ETT and not was_esophageal:
             self.case_run.record_transition("extubation")
         self.engine.set_airway_mode(mode)
         if target == AirwayType.NONE:
@@ -946,12 +1006,108 @@ class WebSession:
             feedback = check_ventilation_withdrawal(self.engine)
         return self._clinical_result(feedback)
 
+    def _cmd_airway_technique(self, technique: str):
+        if not isinstance(technique, str):
+            raise ValueError(f"Unsupported intubation technique: {technique!r}")
+        tech = technique.strip().lower()
+        if tech not in {"dl", "vl", "vl_bougie", "fiberoptic"}:
+            raise ValueError(f"Unsupported intubation technique: {technique!r}")
+        self._intubation_technique = tech
+
+    def _cmd_oral_airway(self, placed: bool):
+        return self._clinical_result(self.engine.set_oral_airway(bool(placed)))
+
+    def _cmd_two_hand_mask(self, active: bool):
+        self.engine.set_two_hand_mask(bool(active))
+
+    def _cmd_call_airway_help(self):
+        self.engine.call_airway_help()
+
+    def _cmd_perform_fona(self):
+        return self._clinical_result(self.engine.perform_fona())
+
+    def _cmd_chest_decompress(self):
+        self.engine.decompress_pneumothorax()
+        return {"procedure": {"time": self.engine.state.time, "text": "Chest decompression performed"}}
+
+    def _cmd_vae_aspirate(self):
+        removed = self.engine.aspirate_vae_air()
+        text = (
+            f"Aspirated {removed:.0f} mL air from CVC"
+            if removed >= 1.0
+            else "CVC aspirated (no significant air returned)"
+        )
+        return {"procedure": {"time": self.engine.state.time, "text": text}}
+
+    def _cmd_pe_thrombolysis(self):
+        self.engine.give_thrombolysis()
+        return {"procedure": {"time": self.engine.state.time, "text": "Systemic thrombolysis started"}}
+
+    def _cmd_neuraxial_spinal(
+        self, drug: str = "bupivacaine", dose_mg: float = 12.5, baricity: str = "hyperbaric",
+    ):
+        dose = domain.bounded_number("spinal dose", dose_mg, 1.0, 150.0, unit="mg")
+        self.engine.give_spinal(drug=drug, dose_mg=dose, baricity=baricity)
+        text = f"Spinal {baricity} {drug} {dose:g} mg given"
+        return self._medication_receipt("neuraxial", text)
+
+    def _cmd_neuraxial_epidural_catheter(self, placed: bool = True):
+        self.engine.place_epidural(bool(placed))
+
+    def _cmd_neuraxial_epidural_bolus(
+        self,
+        drug: str = "bupivacaine",
+        volume_ml: float = 10.0,
+        concentration_pct: float = 0.5,
+        with_epinephrine: bool = False,
+    ):
+        vol = domain.bounded_number("epidural bolus volume", volume_ml, 1.0, 30.0, unit="mL")
+        conc = domain.bounded_number("epidural concentration", concentration_pct, 0.05, 2.0, unit="%")
+        self.engine.give_epidural_bolus(
+            drug=drug,
+            volume_ml=vol,
+            concentration_pct=conc,
+            with_epinephrine=bool(with_epinephrine),
+        )
+        epi_str = " + 1:200k epi" if with_epinephrine else ""
+        text = f"Epidural {vol:g} mL {conc:g}% {drug}{epi_str}"
+        return self._medication_receipt("neuraxial", text)
+
+    def _cmd_neuraxial_epidural_rate(
+        self, ml_hr: float, drug: str = "bupivacaine", concentration_pct: float = 0.125,
+    ):
+        rate = domain.bounded_number("epidural infusion rate", ml_hr, 0.0, 25.0, unit="mL/hr")
+        conc = domain.bounded_number("epidural concentration", concentration_pct, 0.05, 0.5, unit="%")
+        self.engine.set_epidural_infusion(rate, drug=drug, concentration_pct=conc)
+        text = (
+            f"Epidural infusion {rate:g} mL/hr ({conc:g}% {drug})"
+            if rate > 0
+            else "Epidural infusion stopped"
+        )
+        return self._medication_receipt("neuraxial", text)
+
+    def _cmd_neuraxial_check_level(self):
+        check = self.engine.check_neuraxial_level()
+        return {
+            "neuraxial_check": {
+                "time": _num(check.time, 1),
+                "sensory_label": check.sensory_label,
+                "motor_label": check.motor_label,
+                "bromage": check.bromage,
+                "note": check.note,
+            },
+        }
+
+    def _cmd_neuraxial_clear(self):
+        self.engine.stop_neuraxial()
+
     def _cmd_mask_seal(self, percent: float):
         self.engine.set_mask_seal(domain.bounded_number("mask seal", percent, 0.0, 100.0, unit="%") / 100.0)
 
     def _clinical_result(self, feedback: ActionFeedback | None, receipt: dict | None = None):
         """Record feedback for the debrief and return what the browser shows now."""
-        if feedback is not None and self.case_run is not None:
+        informational = feedback is not None and feedback.code in {"intubation_note", "failed_laryngoscopy", "sga_failed"}
+        if feedback is not None and self.case_run is not None and not informational:
             self.case_run.record_safety(feedback)
             if self.case_run.mode == "independent" and not feedback.blocked:
                 feedback = None
@@ -1017,6 +1173,8 @@ class WebSession:
 
     def _assistance_result(self, was_assisted: bool):
         """Check apnea when the last source of assisted ventilation stops."""
+        if self.engine.airway_crisis.esophageal_intubation:
+            return self._clinical_result(None)
         stopped = was_assisted and not (self.engine.vent.is_on or self.engine.bag_mask_active)
         return self._clinical_result(check_ventilation_withdrawal(self.engine) if stopped else None)
 
@@ -1318,6 +1476,39 @@ class WebSession:
 
     def _cmd_protamine_reaction(self, active: bool):
         (self.engine.start_protamine_reaction if active else self.engine.stop_protamine_reaction)()
+
+    def _cmd_difficult_airway(self, profile: str = "none"):
+        self.engine.set_difficult_airway(profile)
+
+    def _cmd_esophageal_intubation(self, active: bool = True, armed: bool | None = None):
+        if armed is not None:
+            self.engine.arm_esophageal_intubation(bool(armed))
+        else:
+            self.engine.set_esophageal_intubation(bool(active))
+
+    def _cmd_pneumothorax(self, active: bool, severity: float = 1.0):
+        if active:
+            self.engine.start_pneumothorax(severity=severity)
+        else:
+            self.engine.stop_pneumothorax()
+
+    def _cmd_pulmonary_embolism(self, active: bool, obstruction: float = 0.60):
+        if active:
+            self.engine.start_pulmonary_embolism(obstruction=obstruction)
+        else:
+            self.engine.stop_pulmonary_embolism()
+
+    def _cmd_venous_air_embolism(self, active: bool, rate_ml_min: float = 55.0):
+        if active:
+            self.engine.start_venous_air_embolism(rate_ml_min=rate_ml_min)
+        else:
+            self.engine.stop_venous_air_embolism()
+
+    def _cmd_high_spinal(self, active: bool = True):
+        if active:
+            self.engine.trigger_high_spinal()
+        else:
+            self.engine.stop_neuraxial()
 
     def _cmd_surface_cooling(self, on: bool):
         self.engine.set_surface_cooling(on)

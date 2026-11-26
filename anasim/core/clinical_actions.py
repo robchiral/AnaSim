@@ -54,18 +54,9 @@ def _in_arrest(engine: SimulationEngine) -> bool:
     )
 
 
-def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
-    unconscious, tolerance = _responsiveness(engine)
-    strength = central_muscle_strength(engine)
+def _has_sustained_hypnosis(engine: SimulationEngine, unconscious: float, tolerance: float) -> bool:
     s = engine.state
-    in_arrest = _in_arrest(engine)
-    if engine.laryngospasm_severity >= 0.5 and strength > 0.5:
-        return ActionFeedback(
-            "laryngospasm_blocked",
-            "Severe laryngospasm closes the vocal cords; tube not placed.",
-            blocked=True,
-        )
-    sustained_hypnosis = in_arrest or (
+    return _in_arrest(engine) or (
         unconscious >= 0.1
         and (
             cardiovascular_hypnotic_ce(engine) >= 1.65
@@ -74,9 +65,23 @@ def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
             or s.ketamine_ce >= 0.8
             or engine.cerebral.unresponsiveness >= 0.8
             or engine.toxicity.unresponsiveness >= 0.8
+            or engine.neuraxial.unconsciousness >= 0.8
             or hypothermia_narcosis_fraction(s.temp_c) >= 0.8
         )
     )
+
+
+def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
+    unconscious, tolerance = _responsiveness(engine)
+    strength = central_muscle_strength(engine)
+    in_arrest = _in_arrest(engine)
+    if engine.laryngospasm_severity >= 0.5 and strength > 0.5:
+        return ActionFeedback(
+            "laryngospasm_blocked",
+            "Severe laryngospasm closes the vocal cords; tube not placed.",
+            blocked=True,
+        )
+    sustained_hypnosis = _has_sustained_hypnosis(engine, unconscious, tolerance)
     if not sustained_hypnosis and (unconscious < 0.1 or tolerance < 0.1) and strength > 0.5:
         return ActionFeedback(
             "awake_intubation",
@@ -91,7 +96,60 @@ def check_intubation(engine: SimulationEngine) -> ActionFeedback | None:
     return None
 
 
+def check_sga_placement(engine: SimulationEngine) -> ActionFeedback | None:
+    """Check responsiveness before placing a supraglottic airway."""
+    unconscious, tolerance = _responsiveness(engine)
+    strength = central_muscle_strength(engine)
+    in_arrest = _in_arrest(engine)
+    sustained_hypnosis = _has_sustained_hypnosis(engine, unconscious, tolerance)
+    if not sustained_hypnosis and (unconscious < 0.1 or tolerance < 0.1) and strength > 0.5:
+        return ActionFeedback(
+            "awake_sga",
+            "Patient gags and resists; SGA not placed.",
+            blocked=True,
+        )
+    if not in_arrest and unconscious < 0.5 and strength <= 0.5:
+        return ActionFeedback(
+            "intubation_awareness",
+            "SGA placed without adequate hypnosis.",
+        )
+    return None
+
+
+def check_oral_airway(engine: SimulationEngine) -> ActionFeedback | None:
+    """Block oropharyngeal airway placement in an awake reactive patient."""
+    unconscious, _ = _responsiveness(engine)
+    strength = central_muscle_strength(engine)
+    if not _in_arrest(engine) and unconscious < 0.15 and strength > 0.5:
+        return ActionFeedback(
+            "awake_opa",
+            "Patient gags; oral airway requires unconsciousness.",
+            blocked=True,
+        )
+    return None
+
+
+def check_fona(engine: SimulationEngine) -> ActionFeedback | None:
+    """Warn if emergency cricothyrotomy is performed without a difficult or failing airway."""
+    crisis = engine.airway_crisis
+    if (
+        crisis.difficult_profile == "none"
+        and crisis.laryngoscopy_attempts == 0
+        and not crisis.esophageal_intubation
+        and engine.state.airway_obstruction < 0.40
+        and engine.state.sao2 >= 90.0
+    ):
+        return ActionFeedback(
+            "unnecessary_fona",
+            "Emergency surgical airway performed without a difficult, obstructed, or failing airway.",
+        )
+    return None
+
+
 def check_airway_removal(engine: SimulationEngine) -> ActionFeedback | None:
+    # Removing an esophageal tube is always appropriate and never penalized.
+    if engine.airway_crisis.esophageal_intubation:
+        return None
     # Recompute TOF and T1 from the PD model; a paused command can follow a dose.
     sync_inhaled_agents(engine)
     sync_pk_state(engine)

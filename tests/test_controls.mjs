@@ -717,3 +717,148 @@ test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation
   controls.filterMedications();
   assert.equal(controls.medicationRows.get("d50w").card.hidden, false);
 });
+
+test("airway tools, neuraxial block, crisis procedures, and dynamic position row bind and sync cleanly", async () => {
+  const { readFileSync } = await import("node:fs");
+  const html = readFileSync(new URL("../anasim/web_assets/index.html", import.meta.url), "utf8");
+  assert.match(html, /data-value="SGA"/);
+  for (const id of [
+    "airway-tools-module", "neuraxial-module", "crisis-procedures-module",
+    "c-difficult-airway", "c-pneumothorax", "c-pe", "c-vae", "c-high-spinal",
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`), `index.html contains #${id}`);
+  }
+
+  const makeEl = (extra = {}) => ({
+    value: "", disabled: false, hidden: false, open: false, checked: false,
+    className: "", textContent: "", dataset: {}, attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; },
+    getAttribute(k) { return this.attrs[k] ?? null; },
+    querySelectorAll: () => [],
+    ...extra,
+  });
+  const elements = new Map([
+    ["airway-tools-module", makeEl({ open: false })],
+    ["airway-tools-summary", makeEl({ hidden: true })],
+    ["c-airway-technique", makeEl({ value: "vl_bougie" })],
+    ["c-opa", makeEl()],
+    ["c-two-hand", makeEl()],
+    ["c-airway-help", makeEl()],
+    ["c-fona", makeEl()],
+    ["c-airway-view", makeEl({ hidden: true })],
+    ["neuraxial-module", makeEl({ open: false })],
+    ["neuraxial-summary", makeEl({ hidden: true })],
+    ["c-spinal-drug", makeEl({ value: "bupivacaine" })],
+    ["c-spinal-dose", makeEl({ value: "12.5" })],
+    ["c-spinal-baricity", makeEl({ value: "hyperbaric" })],
+    ["c-spinal-give", makeEl()],
+    ["c-epidural-drug", makeEl({ value: "bupivacaine" })],
+    ["c-epidural-vol", makeEl({ value: "10" })],
+    ["c-epidural-conc", makeEl({ value: "0.5" })],
+    ["c-epidural-epi", makeEl({ checked: true })],
+    ["c-epidural-bolus", makeEl()],
+    ["c-epidural-rate", makeEl({ value: "8" })],
+    ["c-epidural-rate-apply", makeEl()],
+    ["c-epidural-stop", makeEl({ hidden: true })],
+    ["c-neuraxial-check", makeEl()],
+    ["c-neuraxial-readout", makeEl({ hidden: true })],
+    ["crisis-procedures-module", makeEl({ open: false })],
+    ["crisis-proc-summary", makeEl({ hidden: true })],
+    ["crisis-proc-feedback", makeEl({ hidden: true })],
+    ["c-chest-decompress", makeEl()],
+    ["c-vae-aspirate", makeEl()],
+    ["c-pe-thrombolysis", makeEl()],
+  ]);
+  globalThis.document = {
+    activeElement: null,
+    getElementById: (id) => elements.get(id) ?? null,
+  };
+  const sent = [];
+  const controls = Object.create(Controls.prototype);
+  controls.destroyed = false;
+  controls.feedbackTimers = new Map();
+  controls.state = { airway_crisis: { oral_airway: false, two_hand_mask: false } };
+  controls.send = async (name, args) => { sent.push([name, args]); return {}; };
+  controls.performAction = async (_btn, name, args) => {
+    sent.push([name, args]);
+    if (name === "neuraxial_check_level") {
+      return { neuraxial_check: { time: 90, note: "Sensory block to T6 (motor T9, Bromage 3)." } };
+    }
+    if (name === "chest_decompress") {
+      return { procedure: { time: 45, text: "Chest decompression performed" } };
+    }
+    return {};
+  };
+
+  // Prior-session disabled state and feedback clear on re-bind.
+  elements.get("c-airway-help").disabled = true;
+  elements.get("c-neuraxial-readout").hidden = false;
+  elements.get("c-neuraxial-readout").textContent = "Stale previous session";
+  elements.get("c-epidural-epi").checked = true;
+  elements.get("c-epidural-rate").value = "12";
+  elements.get("crisis-proc-feedback").hidden = false;
+
+  controls.bindAirwayTools();
+  assert.equal(elements.get("c-airway-help").disabled, false);
+  await elements.get("c-airway-technique").onchange();
+  await elements.get("c-opa").onclick();
+  await elements.get("c-two-hand").onclick();
+  await elements.get("c-airway-help").onclick();
+  await elements.get("c-fona").onclick();
+  assert.deepEqual(sent.slice(0, 5), [
+    ["airway_technique", { technique: "vl_bougie" }],
+    ["oral_airway", { placed: true }],
+    ["two_hand_mask", { active: true }],
+    ["call_airway_help", undefined],
+    ["perform_fona", undefined],
+  ]);
+  controls.syncAirwayTools({
+    attempts: 1, last_view: "Grade III", technique: "vl_bougie",
+    oral_airway: true, two_hand_mask: true, help_called: true,
+  }, "Mask");
+  assert.equal(elements.get("airway-tools-module").open, true, "drawer auto-opens after failed laryngoscopy");
+  assert.match(elements.get("c-airway-view").textContent, /Attempts: 1 · Last view: Grade III/);
+  assert.match(elements.get("airway-tools-summary").textContent, /VL\+BOUGIE · OPA · 2-hand · Help/);
+
+  controls.bindNeuraxial();
+  assert.equal(elements.get("c-neuraxial-readout").hidden, true);
+  assert.equal(elements.get("c-epidural-epi").checked, false);
+  assert.equal(elements.get("c-epidural-rate").value, "0");
+  elements.get("c-spinal-drug").value = "lidocaine";
+  elements.get("c-spinal-drug").onchange();
+  assert.equal(elements.get("c-spinal-dose").value, "50");
+  elements.get("c-epidural-epi").checked = true;
+  elements.get("c-epidural-rate").value = "8";
+  elements.get("c-epidural-rate").oninput();
+  // Draft epidural rate survives snapshot sync until explicitly applied.
+  controls.syncNeuraxial({ active: true, sensory_label: "T6", epidural_catheter: true, epidural_rate: 0 });
+  assert.equal(elements.get("c-epidural-rate").value, "8");
+  await elements.get("c-spinal-give").onclick();
+  await elements.get("c-epidural-bolus").onclick();
+  await elements.get("c-epidural-rate-apply").onclick();
+  await elements.get("c-neuraxial-check").onclick();
+  assert.deepEqual(sent.slice(5, 9), [
+    ["neuraxial_spinal", { drug: "lidocaine", dose_mg: 50, baricity: "hyperbaric" }],
+    ["neuraxial_epidural_bolus", { drug: "bupivacaine", volume_ml: 10, concentration_pct: 0.5, with_epinephrine: true }],
+    ["neuraxial_epidural_rate", { ml_hr: 8, drug: "bupivacaine", concentration_pct: 0.125 }],
+    ["neuraxial_check_level", undefined],
+  ]);
+  assert.equal(elements.get("c-neuraxial-readout").hidden, false);
+  assert.match(elements.get("c-neuraxial-readout").textContent, /1:30 Sensory block to T6/);
+  controls.syncNeuraxial({
+    active: true, sensory_label: "T6", epidural_catheter: true, epidural_rate: 8,
+    last_check: { time: 120, note: "Sensory block to T5 (motor T8, Bromage 3)." },
+  });
+  assert.equal(elements.get("neuraxial-summary").textContent, "Sensory T6 · 8 mL/hr");
+  assert.equal(elements.get("c-epidural-stop").hidden, false);
+  assert.match(elements.get("c-neuraxial-readout").textContent, /2:00 Sensory block to T5/);
+
+  controls.bindCrisisProcedures();
+  assert.equal(elements.get("crisis-proc-feedback").hidden, true);
+  await elements.get("c-chest-decompress").onclick();
+  assert.equal(elements.get("crisis-proc-feedback").hidden, false);
+  assert.match(elements.get("crisis-proc-feedback").textContent, /0:45 Chest decompression performed/);
+  controls.syncCrisisProcedures({ pneumothorax: { decompressed: true }, embolism: { thrombolysis: true } });
+  assert.equal(elements.get("crisis-proc-summary").textContent, "Chest vented · Lysis running");
+  clearTimeout(controls.crisisProcFeedbackTimer);
+});

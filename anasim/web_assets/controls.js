@@ -164,8 +164,12 @@ export class Controls {
     this.bindFluids(info.patient.weight);
     this.bindResuscitation();
     this.bindExtracorporeal();
+    this.bindAirwayTools();
+    this.bindNeuraxial();
+    this.bindCrisisProcedures();
     this.bindLabs();
     this.bindEvents(info);
+    this.pregnant = info.patient.gestational_age_weeks > 0;
     // Cases start their own events.
     this.tabs.find((tab) => tab.dataset.tab === "Events").hidden = Boolean(info.scenario);
     this.showMedicationHistory();
@@ -183,6 +187,7 @@ export class Controls {
     clearTimeout(this.fluidFeedbackTimer);
     clearTimeout(this.ecmoFluidFeedbackTimer);
     clearTimeout(this.shockFeedbackTimer);
+    clearTimeout(this.crisisProcFeedbackTimer);
     for (const timer of this.feedbackTimers.values()) clearTimeout(timer);
     for (const editor of this.settingEditors) {
       for (const field of editor.fields) editors.delete(field);
@@ -223,7 +228,8 @@ export class Controls {
   }
 
   showMedicationFeedback(entry) {
-    const feedback = this.medicationRows.get(entry.key).feedback;
+    const feedback = this.medicationRows.get(entry.key)?.feedback ?? (entry.key === "neuraxial" ? $("c-neuraxial-readout") : null);
+    if (!feedback) return;
     setText(feedback, entry.text);
     feedback.hidden = false;
     clearTimeout(this.feedbackTimers.get(entry.key));
@@ -279,7 +285,13 @@ export class Controls {
     $("c-cooling").onclick = () => this.send("surface_cooling", { on: !this.state.surface_cooling });
     this.airwayButtons = [...$("c-airway").querySelectorAll("button")];
     for (const button of this.airwayButtons) {
-      button.onclick = () => this.send("airway", { mode: button.dataset.value });
+      button.onclick = () => {
+        const mode = button.dataset.value;
+        if (mode === "ETT" && $("c-airway-technique")) {
+          return this.send("airway", { mode, technique: $("c-airway-technique").value });
+        }
+        return this.send("airway", { mode });
+      };
     }
     this.maskSealEditor = this.editSettings(
       [$("c-mask-seal")],
@@ -900,6 +912,268 @@ export class Controls {
     }
   }
 
+  // --- Difficult airway tools, neuraxial block, crisis procedures ---
+
+  bindAirwayTools() {
+    const module = $("airway-tools-module");
+    if (!module) return;
+    module.open = false;
+    module.ontoggle = () => this.onViewChanged?.();
+    this.lastAirwayAttempts = 0;
+    for (const id of ["c-airway-technique", "c-opa", "c-two-hand", "c-airway-help", "c-fona"]) {
+      const el = $(id);
+      if (el) el.disabled = false;
+    }
+    const view = $("c-airway-view");
+    if (view) {
+      view.hidden = true;
+      setText(view, "");
+    }
+    const summary = $("airway-tools-summary");
+    if (summary) {
+      summary.hidden = true;
+      setText(summary, "");
+    }
+    const tech = $("c-airway-technique");
+    if (tech) tech.onchange = () => this.send("airway_technique", { technique: tech.value });
+    const opa = $("c-opa");
+    if (opa) opa.onclick = () => this.send("oral_airway", { placed: !this.state?.airway_crisis?.oral_airway });
+    const twoHand = $("c-two-hand");
+    if (twoHand) twoHand.onclick = () => this.send("two_hand_mask", { active: !this.state?.airway_crisis?.two_hand_mask });
+    const help = $("c-airway-help");
+    if (help) help.onclick = () => this.performAction(help, "call_airway_help");
+    const fona = $("c-fona");
+    if (fona) fona.onclick = () => this.performAction(fona, "perform_fona");
+  }
+
+  syncAirwayTools(ac, airwayMode) {
+    const module = $("airway-tools-module");
+    if (!module || !ac) return;
+    if (ac.attempts > (this.lastAirwayAttempts ?? 0) && airwayMode !== "ETT" && airwayMode !== "FONA") {
+      module.open = true;
+    }
+    this.lastAirwayAttempts = ac.attempts ?? 0;
+    const tech = $("c-airway-technique");
+    if (tech && ac.technique) setValue(tech, ac.technique);
+    if ($("c-opa")) setPressed($("c-opa"), Boolean(ac.oral_airway));
+    if ($("c-two-hand")) setPressed($("c-two-hand"), Boolean(ac.two_hand_mask));
+    if ($("c-airway-help")) {
+      setPressed($("c-airway-help"), Boolean(ac.help_called), ac.help_called ? "Airway help called" : "Call for airway help");
+    }
+    if ($("c-fona")) {
+      const fonaActive = airwayMode === "FONA";
+      setPressed($("c-fona"), fonaActive, fonaActive ? "eFONA airway active" : "Cricothyrotomy (eFONA)");
+    }
+    const view = $("c-airway-view");
+    if (view) {
+      const parts = [];
+      if (ac.attempts > 0) parts.push(`Attempts: ${ac.attempts}`);
+      if (ac.last_view) parts.push(`Last view: ${ac.last_view}`);
+      view.hidden = parts.length === 0;
+      setText(view, parts.join(" · "));
+    }
+    const summary = $("airway-tools-summary");
+    if (summary) {
+      const tags = [];
+      if (airwayMode === "FONA") tags.push("eFONA");
+      if (ac.technique && ac.technique !== "dl") tags.push(ac.technique.toUpperCase().replace("_", "+"));
+      if (ac.oral_airway) tags.push("OPA");
+      if (ac.two_hand_mask) tags.push("2-hand");
+      if (ac.help_called) tags.push("Help");
+      summary.hidden = tags.length === 0;
+      setText(summary, tags.join(" · "));
+    }
+  }
+
+  bindNeuraxial() {
+    const module = $("neuraxial-module");
+    if (!module) return;
+    module.open = false;
+    module.ontoggle = () => this.onViewChanged?.();
+    this.lastNeuraxialCheckTime = null;
+    this.epiduralRateDraft = false;
+    clearTimeout(this.feedbackTimers?.get("neuraxial"));
+    this.feedbackTimers?.delete("neuraxial");
+    for (const id of [
+      "c-spinal-drug", "c-spinal-dose", "c-spinal-baricity", "c-spinal-give",
+      "c-epidural-drug", "c-epidural-vol", "c-epidural-conc", "c-epidural-epi",
+      "c-epidural-bolus", "c-epidural-rate", "c-epidural-rate-apply",
+      "c-epidural-stop", "c-neuraxial-check",
+    ]) {
+      const el = $(id);
+      if (el) el.disabled = false;
+    }
+    const spinalDrug = $("c-spinal-drug");
+    const spinalDose = $("c-spinal-dose");
+    const spinalBaricity = $("c-spinal-baricity");
+    const epiDrug = $("c-epidural-drug");
+    const epiVol = $("c-epidural-vol");
+    const epiConc = $("c-epidural-conc");
+    const epiCheck = $("c-epidural-epi");
+    const epiRate = $("c-epidural-rate");
+    const readout = $("c-neuraxial-readout");
+    const summary = $("neuraxial-summary");
+    if (spinalDrug) spinalDrug.value = "bupivacaine";
+    if (spinalDose) spinalDose.value = "12.5";
+    if (spinalBaricity) spinalBaricity.value = "hyperbaric";
+    if (epiDrug) epiDrug.value = "bupivacaine";
+    if (epiVol) epiVol.value = "10";
+    if (epiConc) epiConc.value = "0.5";
+    if (epiCheck) epiCheck.checked = false;
+    if (epiRate) {
+      epiRate.value = "0";
+      epiRate.oninput = () => { this.epiduralRateDraft = true; };
+    }
+    if (readout) {
+      readout.hidden = true;
+      setText(readout, "");
+    }
+    if (summary) {
+      summary.hidden = true;
+      setText(summary, "");
+    }
+    if (spinalDrug && spinalDose) {
+      spinalDrug.onchange = () => {
+        spinalDose.value = spinalDrug.value === "lidocaine" ? "50" : "12.5";
+      };
+    }
+    if (epiDrug && epiConc) {
+      epiDrug.onchange = () => {
+        epiConc.value = epiDrug.value === "lidocaine" ? "2" : "0.5";
+      };
+    }
+    const spinalGive = $("c-spinal-give");
+    if (spinalGive) {
+      spinalGive.onclick = () => {
+        if (spinalDose?.reportValidity && !spinalDose.reportValidity()) return;
+        return this.performAction(spinalGive, "neuraxial_spinal", {
+          drug: spinalDrug?.value ?? "bupivacaine",
+          dose_mg: readNumber(spinalDose),
+          baricity: spinalBaricity?.value ?? "hyperbaric",
+        });
+      };
+    }
+    const epiBolus = $("c-epidural-bolus");
+    if (epiBolus) {
+      epiBolus.onclick = () => {
+        if (epiVol?.reportValidity && !epiVol.reportValidity()) return;
+        return this.performAction(epiBolus, "neuraxial_epidural_bolus", {
+          drug: epiDrug?.value ?? "bupivacaine",
+          volume_ml: readNumber(epiVol),
+          concentration_pct: Number(epiConc?.value ?? 0.5),
+          with_epinephrine: Boolean(epiCheck?.checked),
+        });
+      };
+    }
+    const epiRateApply = $("c-epidural-rate-apply");
+    if (epiRateApply) {
+      epiRateApply.onclick = async () => {
+        if (epiRate?.reportValidity && !epiRate.reportValidity()) return;
+        const result = await this.performAction(epiRateApply, "neuraxial_epidural_rate", {
+          ml_hr: readNumber(epiRate),
+          drug: epiDrug?.value ?? "bupivacaine",
+          concentration_pct: 0.125,
+        });
+        if (!this.destroyed && result !== undefined) this.epiduralRateDraft = false;
+      };
+    }
+    const epiStop = $("c-epidural-stop");
+    if (epiStop) {
+      epiStop.onclick = async () => {
+        const result = await this.performAction(epiStop, "neuraxial_epidural_rate", { ml_hr: 0 });
+        if (!this.destroyed && result !== undefined) this.epiduralRateDraft = false;
+      };
+    }
+    const checkBtn = $("c-neuraxial-check");
+    if (checkBtn) {
+      checkBtn.onclick = async () => {
+        const result = await this.performAction(checkBtn, "neuraxial_check_level");
+        if (this.destroyed || !result?.neuraxial_check) return;
+        this.lastNeuraxialCheckTime = result.neuraxial_check.time;
+        clearTimeout(this.feedbackTimers?.get("neuraxial"));
+        this.feedbackTimers?.delete("neuraxial");
+        if (readout) {
+          setText(readout, `${minutesSeconds(result.neuraxial_check.time)} ${result.neuraxial_check.note}`);
+          readout.hidden = false;
+        }
+      };
+    }
+  }
+
+  syncNeuraxial(nx) {
+    const module = $("neuraxial-module");
+    if (!module || !nx) return;
+    const summary = $("neuraxial-summary");
+    if (summary) {
+      const parts = [];
+      if (nx.active) parts.push(`Sensory ${nx.sensory_label}`);
+      if (nx.epidural_rate > 0) parts.push(`${nx.epidural_rate} mL/hr`);
+      else if (!nx.active && nx.epidural_catheter) parts.push("Catheter in place");
+      summary.hidden = parts.length === 0;
+      setText(summary, parts.join(" · "));
+    }
+    const epiRate = $("c-epidural-rate");
+    if (epiRate && !this.epiduralRateDraft) setValue(epiRate, round(nx.epidural_rate ?? 0, 1));
+    if ($("c-epidural-stop")) $("c-epidural-stop").hidden = !(nx.epidural_rate > 0);
+    if (nx.last_check && nx.last_check.time !== this.lastNeuraxialCheckTime) {
+      this.lastNeuraxialCheckTime = nx.last_check.time;
+      const readout = $("c-neuraxial-readout");
+      if (readout) {
+        clearTimeout(this.feedbackTimers?.get("neuraxial"));
+        this.feedbackTimers?.delete("neuraxial");
+        setText(readout, `${minutesSeconds(nx.last_check.time)} ${nx.last_check.note}`);
+        readout.hidden = false;
+      }
+    }
+  }
+
+  bindCrisisProcedures() {
+    const module = $("crisis-procedures-module");
+    if (!module) return;
+    module.open = false;
+    module.ontoggle = () => this.onViewChanged?.();
+    clearTimeout(this.crisisProcFeedbackTimer);
+    for (const id of ["c-chest-decompress", "c-vae-aspirate", "c-pe-thrombolysis"]) {
+      const el = $(id);
+      if (el) el.disabled = false;
+    }
+    const feedback = $("crisis-proc-feedback");
+    if (feedback) {
+      feedback.hidden = true;
+      setText(feedback, "");
+    }
+    const summary = $("crisis-proc-summary");
+    if (summary) {
+      summary.hidden = true;
+      setText(summary, "");
+    }
+    const showResult = (result) => {
+      if (this.destroyed || !result?.procedure?.text) return;
+      const el = $("crisis-proc-feedback");
+      if (!el) return;
+      setText(el, `${minutesSeconds(result.procedure.time)} ${result.procedure.text}`);
+      el.hidden = false;
+      clearTimeout(this.crisisProcFeedbackTimer);
+      this.crisisProcFeedbackTimer = setTimeout(() => { el.hidden = true; }, 8000);
+    };
+    const ptxBtn = $("c-chest-decompress");
+    if (ptxBtn) ptxBtn.onclick = async () => showResult(await this.performAction(ptxBtn, "chest_decompress"));
+    const vaeBtn = $("c-vae-aspirate");
+    if (vaeBtn) vaeBtn.onclick = async () => showResult(await this.performAction(vaeBtn, "vae_aspirate"));
+    const peBtn = $("c-pe-thrombolysis");
+    if (peBtn) peBtn.onclick = async () => showResult(await this.performAction(peBtn, "pe_thrombolysis"));
+  }
+
+  syncCrisisProcedures(c) {
+    const summary = $("crisis-proc-summary");
+    if (!summary) return;
+    const tags = [];
+    if (c.pneumothorax?.decompressed) tags.push("Chest vented");
+    if (c.embolism?.thrombolysis) tags.push("Lysis running");
+    summary.hidden = tags.length === 0;
+    setText(summary, tags.join(" · "));
+  }
+
   syncExtracorporeal(ec) {
     const module = $("ecmo-module");
     if (!module || !ec) return;
@@ -1221,6 +1495,40 @@ export class Controls {
     if (protReaction) {
       protReaction.onclick = () => this.send("protamine_reaction", { active: !this.state.protamine_reaction });
     }
+    const diffAirway = $("c-difficult-airway");
+    if (diffAirway) {
+      diffAirway.onchange = () => this.send("difficult_airway", { profile: diffAirway.value });
+    }
+    const armEsoph = $("c-arm-esophageal");
+    if (armEsoph) {
+      armEsoph.onclick = () => this.send("esophageal_intubation", {
+        armed: !this.state?.airway_crisis?.esophageal_armed,
+      });
+    }
+    const esophNow = $("c-esophageal-now");
+    if (esophNow) {
+      esophNow.onclick = () => this.send("esophageal_intubation", {
+        active: !this.state?.airway_crisis?.esophageal_active,
+      });
+    }
+    const ptx = $("c-pneumothorax");
+    if (ptx) {
+      ptx.onclick = () => this.send("pneumothorax", { active: !this.state?.pneumothorax?.active });
+    }
+    const pe = $("c-pe");
+    if (pe) {
+      pe.onclick = () => this.send("pulmonary_embolism", { active: !this.state?.embolism?.pe_active });
+    }
+    const vae = $("c-vae");
+    if (vae) {
+      vae.onclick = () => this.send("venous_air_embolism", { active: !this.state?.embolism?.vae_active });
+    }
+    const highSpinal = $("c-high-spinal");
+    if (highSpinal) {
+      highSpinal.onclick = () => this.send("high_spinal", {
+        active: !(this.state?.neuraxial?.active && this.state?.neuraxial?.mode === "high_spinal"),
+      });
+    }
     $("c-mh").onclick = () => this.send("malignant_hyperthermia", { active: !this.state.malignant_hyperthermia });
   }
 
@@ -1356,6 +1664,22 @@ export class Controls {
     if (compressions.active) setText($("c-compressions-status"), `Compressing for ${minutesSeconds(time - compressions.since)}`);
     this.syncDefibrillator(c.defibrillator);
     if (c.extracorporeal) this.syncExtracorporeal(c.extracorporeal);
+    if (c.airway_crisis) this.syncAirwayTools(c.airway_crisis, c.airway);
+    if (c.neuraxial) this.syncNeuraxial(c.neuraxial);
+    this.syncCrisisProcedures(c);
+    if ($("c-position-row")) {
+      const showPosition = Boolean(
+        this.pregnant
+        || c.position === "left_lateral"
+        || c.neuraxial?.active
+        || c.neuraxial?.epidural_catheter
+        || c.embolism?.vae_active
+        || (c.embolism?.vae_air_ml ?? 0) > 1
+      );
+      $("c-position-row").hidden = !showPosition;
+      const posLabel = $("c-position-label");
+      if (posLabel) setText(posLabel, this.pregnant ? "Maternal position" : "Patient position");
+    }
 
     setPressed($("c-bag"), c.bag_mask, c.bag_mask ? "Stop bag ventilation" : "Start bag ventilation");
     const aplStandby = c.airway === "None" || c.vent.on;
@@ -1459,6 +1783,33 @@ export class Controls {
       setPressed($("c-protamine-reaction"), c.protamine_reaction,
         c.protamine_reaction ? "Stop protamine reaction" : "Start protamine reaction");
     }
+    if ($("c-difficult-airway") && c.airway_crisis) {
+      setValue($("c-difficult-airway"), c.airway_crisis.difficult_profile);
+    }
+    if ($("c-arm-esophageal") && c.airway_crisis) {
+      setPressed($("c-arm-esophageal"), Boolean(c.airway_crisis.esophageal_armed),
+        c.airway_crisis.esophageal_armed ? "Disarm esophageal intubation" : "Arm esophageal intubation");
+    }
+    if ($("c-esophageal-now") && c.airway_crisis) {
+      setPressed($("c-esophageal-now"), Boolean(c.airway_crisis.esophageal_active),
+        c.airway_crisis.esophageal_active ? "Clear esophageal intubation" : "Place tube in esophagus");
+    }
+    if ($("c-pneumothorax") && c.pneumothorax) {
+      setPressed($("c-pneumothorax"), Boolean(c.pneumothorax.active),
+        c.pneumothorax.active ? "Stop pleural leak" : "Start tension pneumothorax");
+    }
+    if ($("c-pe") && c.embolism) {
+      setPressed($("c-pe"), Boolean(c.embolism.pe_active),
+        c.embolism.pe_active ? "Clear massive PE" : "Start massive PE");
+    }
+    if ($("c-vae") && c.embolism) {
+      setPressed($("c-vae"), Boolean(c.embolism.vae_active),
+        c.embolism.vae_active ? "Stop air entrainment" : "Start venous air embolism");
+    }
+    if ($("c-high-spinal") && c.neuraxial) {
+      const hsActive = Boolean(c.neuraxial.active && c.neuraxial.mode === "high_spinal");
+      setPressed($("c-high-spinal"), hsActive, hsActive ? "Clear high spinal" : "Trigger high / total spinal");
+    }
     setPressed($("c-mh"), c.malignant_hyperthermia,
       c.malignant_hyperthermia ? "Stop malignant hyperthermia" : "Start malignant hyperthermia");
 
@@ -1467,6 +1818,9 @@ export class Controls {
     if (c.anaphylaxis) circulation.push("Anaphylaxis");
     if (c.sepsis) circulation.push("Sepsis");
     if (c.protamine_reaction) circulation.push("Protamine reaction");
+    if (c.embolism?.pe_active) circulation.push("Massive PE");
+    if (c.embolism?.vae_active) circulation.push("Venous air embolism");
+    if (c.neuraxial?.active && c.neuraxial?.mode === "high_spinal") circulation.push("High spinal");
     if (c.ecg_rhythm !== "Sinus rhythm") circulation.push(c.ecg_rhythm);
     this.syncEventSection("circulation", circulation);
     this.syncEventSection("metabolism", c.malignant_hyperthermia ? ["Malignant hyperthermia"] : []);
@@ -1475,6 +1829,11 @@ export class Controls {
     if (c.bronchospasm > 0) airway.push(`Bronchospasm ${round(c.bronchospasm, 0)}%`);
     if ((c.ards_shunt ?? 0) > 0) airway.push(`ARDS shunt ${round(c.ards_shunt, 0)}%`);
     if (c.laryngospasm !== "none") airway.push(`Laryngospasm ${c.laryngospasm}`);
+    if (c.airway_crisis?.difficult_profile && c.airway_crisis.difficult_profile !== "none") {
+      airway.push(c.airway_crisis.difficult_profile === "severe_cico" ? "CICO airway" : "Difficult DL");
+    }
+    if (c.airway_crisis?.esophageal_active) airway.push("Esophageal ETT");
+    if (c.pneumothorax?.active) airway.push("Tension PTX");
     this.syncEventSection("airway", airway);
     // The disabled profile select already names the active stimulation.
     this.syncEventSection("stimulation", c.disturbance.active ? [$("c-disturbance").selectedOptions[0].text] : [], false);
