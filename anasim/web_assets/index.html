@@ -148,6 +148,10 @@
                   <option value="upper_abdominal">Upper abdominal</option>
                 </select>
               </label>
+              <label class="choice"><input type="checkbox" name="type2_diabetes"> Type 2 diabetes</label>
+              <label class="row" title="Starting blood glucose; defaults to 90 mg/dL, or 150 mg/dL with Type 2 diabetes.">Baseline glucose
+                <span class="unit-input"><input name="baseline_glucose" type="number" step="1" placeholder="90"><span>mg/dL</span></span>
+              </label>
               <label class="choice" id="pregnancy-choice"><input type="checkbox" name="pregnant"> Pregnant</label>
               <label class="row" id="gestation-row" hidden>Gestational age
                 <span class="unit-input"><input name="gestational_age_weeks" type="number" value="28" step="1"><span>weeks</span></span>
@@ -719,7 +723,7 @@
             <div class="bolus">
               <div class="bolus-field">
                 <div class="control-setting-head"><label for="c-lipid-bolus">Bolus (2.5 min)</label><span>mL</span></div>
-                <input id="c-lipid-bolus" type="number" min="1" max="3000" step="1" required>
+                <input id="c-lipid-bolus" type="number" min="1" max="3000" step="any" required>
               </div>
               <button type="button" class="btn" id="c-lipid-give">Give bolus</button>
             </div>
@@ -746,7 +750,8 @@
             <button type="button" class="btn fluid-key" data-fluid="crystalloid" data-volume="500"><span>Lactated Ringer's</span><small>500 mL</small></button>
             <button type="button" class="btn fluid-key" data-fluid="saline" data-volume="500"><span>Saline 0.9%</span><small>500 mL</small></button>
             <button type="button" class="btn fluid-key" data-fluid="albumin" data-volume="250"><span>Albumin 5%</span><small>250 mL</small></button>
-            <button type="button" class="btn fluid-key fluid-blood" data-fluid="blood" data-volume="300"><span>PRBC</span><small>300 mL</small></button>
+            <button type="button" class="btn fluid-key" data-fluid="d5w" data-volume="250"><span>D5W</span><small>250 mL</small></button>
+            <button type="button" class="btn fluid-key" data-fluid="blood" data-volume="300"><span>PRBC</span><small>300 mL</small></button>
           </div>
           <p id="fluid-feedback" class="action-feedback" role="status" hidden></p>
           <div class="control-setting">
@@ -853,6 +858,19 @@
             <table>
               <caption>Baseline 110–130 s · ECMO 180–220 s · CPB ≥480 s.</caption>
               <thead><tr><th scope="col">Drawn</th><th scope="col">ACT (s)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="action-section" aria-labelledby="glucose-title">
+          <h2 id="glucose-title">Point-of-care glucose</h2>
+          <button type="button" class="btn outlined" id="c-glucose">Check glucose</button>
+          <p id="glucose-pending" class="action-feedback" hidden></p>
+          <div id="glucose-results" class="abg-results" hidden>
+            <table>
+              <caption>Normal fasting 70–100 · OR target 140–180 · Low &lt;70 mg/dL.</caption>
+              <thead><tr><th scope="col">Drawn</th><th scope="col">Glucose (mg/dL)</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>

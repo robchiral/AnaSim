@@ -31,6 +31,7 @@ from anasim.patient import domain
 from anasim.patient.patient import Patient
 from anasim.physiology.coagulation import ACTResult
 from anasim.physiology.disturbances import list_disturbance_profiles
+from anasim.physiology.glucose import GlucoseResult
 from anasim.physiology.resuscitation import SHOCK_ENERGY_J, ShockResult
 from anasim.scenarios import SCENARIO_REGISTRY
 from anasim.scenarios.base import Scenario
@@ -42,12 +43,14 @@ PATIENT_FIELDS = (
     "height",
     "sex",
     "baseline_hb",
+    "baseline_glucose",
     "renal_function",
     "creatinine_clearance_ml_min",
     "hepatic_function",
     "coronary_flow_reserve",
     "heart_failure",
     "copd_severity",
+    "type2_diabetes",
     "surgical_site",
     "gestational_age_weeks",
     "position",
@@ -77,6 +80,9 @@ FLUIDS = {
     "crystalloid": ("give_fluid", "lactated Ringer's"),
     "saline": ("give_saline", "0.9% saline"),
     "albumin": ("give_albumin", "5% albumin"),
+    "d5w": ("give_d5w", "5% dextrose (D5W)"),
+    "d10w": ("give_d10w", "10% dextrose (D10W)"),
+    "d50w": ("give_d50w", "50% dextrose (D50W)"),
     "blood": ("give_blood", "PRBC"),
     "lipid": ("give_lipid_emulsion", "20% lipid emulsion over 2.5 min"),
 }
@@ -114,6 +120,7 @@ def catalog() -> str:
             "weight": domain.WEIGHT_RANGE_KG,
             "height": domain.HEIGHT_RANGE_CM,
             "baseline_hb": domain.HEMOGLOBIN_RANGE_G_DL,
+            "baseline_glucose": domain.BASELINE_GLUCOSE_RANGE_MG_DL,
             "creatinine_clearance_ml_min": domain.CREATININE_CLEARANCE_RANGE_ML_MIN,
             "gestational_age_weeks": domain.GESTATIONAL_AGE_RANGE_WEEKS,
         },
@@ -136,6 +143,7 @@ def _blood_gas(result: BloodGasResult) -> dict:
         "lactate": _num(result.lactate, 2), "sao2": _num(result.sao2, 2), "hb": _num(result.hb, 2),
         "sodium": _num(result.sodium, 1), "potassium": _num(result.potassium, 2),
         "chloride": _num(result.chloride, 1), "ionized_calcium": _num(result.ionized_calcium, 2),
+        "glucose": _num(result.glucose, 0),
         "fio2": _num(result.fio2, 3), "site": result.site,
     }
 
@@ -145,6 +153,14 @@ def _act(result: ACTResult) -> dict:
         "drawn_at": _num(result.drawn_at, 3),
         "ready_at": _num(result.ready_at, 3),
         "act_s": _num(result.act_s, 0),
+    }
+
+
+def _glucose(result: GlucoseResult) -> dict:
+    return {
+        "drawn_at": _num(result.drawn_at, 3),
+        "ready_at": _num(result.ready_at, 3),
+        "glucose": _num(result.glucose, 0),
     }
 
 
@@ -165,6 +181,7 @@ _DRUG_RATE_LIMITS: dict[str, float] = {
     "vaso": 1.0,
     "heparin": 10000.0,
     "protamine": 100.0,
+    "insulin": 50.0,
 }
 _UNIT_RATE_LIMITS: dict[str, float] = {
     "U/min": 1.0,
@@ -286,6 +303,8 @@ class WebSession:
                 "coronary_flow_reserve": patient.coronary_flow_reserve,
                 "heart_failure": patient.heart_failure,
                 "copd_severity": patient.copd_severity,
+                "type2_diabetes": patient.type2_diabetes,
+                "baseline_glucose": patient.baseline_glucose,
                 "surgical_site": patient.surgical_site,
                 "gestational_age_weeks": patient.gestational_age_weeks,
             },
@@ -313,6 +332,7 @@ class WebSession:
             "medication_history": list(self._medication_history),
             "blood_gases": [_blood_gas(result) for result in engine.blood_gases],
             "acts": [_act(result) for result in engine.acts],
+            "glucoses": [_glucose(result) for result in engine.glucoses],
             "trends": list(self._trend_history),
             "nmb_history": engine.nmb.trend_history(),
             "disturbances": [{"key": key, "label": label} for label, key in list_disturbance_profiles()],
@@ -1052,12 +1072,29 @@ class WebSession:
             raise ValueError("Sugammadex dose must be positive and finite")
         amount = mg_per_kg * self.engine.patient.weight
         self.engine.give_drug_bolus("sugammadex", amount)
-        return self._medication_receipt("sugammadex", f"Sugammadex {amount:.0f} mg given ({mg_per_kg:g} mg/kg)")
+        return self._clinical_result(
+            None, self._medication_receipt("sugammadex", f"Sugammadex {amount:.0f} mg given ({mg_per_kg:g} mg/kg)"),
+        )
 
     def _cmd_calcium_chloride(self, mg: float):
         dose = domain.bounded_number("calcium chloride dose", mg, 0.0, 10000.0, unit="mg")
+        if dose <= 0:
+            raise ValueError("Calcium chloride dose must be positive and finite")
         self.engine.give_calcium_chloride(dose)
-        return self._medication_receipt("calcium_chloride", f"Calcium chloride {dose:g} mg given")
+        return self._clinical_result(
+            None, self._medication_receipt("calcium_chloride", f"Calcium chloride {dose:g} mg given"),
+        )
+
+    def _cmd_sodium_bicarbonate(self, meq: float):
+        dose = domain.bounded_number("sodium bicarbonate dose", meq, 0.0, 500.0, unit="mEq")
+        if dose <= 0:
+            raise ValueError("Sodium bicarbonate dose must be positive and finite")
+        feedback = check_drug_administration(self.engine, "sodium_bicarbonate")
+        self.engine.give_sodium_bicarbonate(dose)
+        return self._clinical_result(
+            feedback,
+            self._medication_receipt("sodium_bicarbonate", f"Sodium bicarbonate {dose:g} mEq given"),
+        )
 
     def _medication_receipt(self, key: str, text: str) -> dict:
         """Acknowledge a completed action and retain it across local page reloads."""
@@ -1069,16 +1106,22 @@ class WebSession:
     def _cmd_fluid(self, kind: str, volume_ml: float):
         if kind not in FLUIDS:
             raise ValueError(f"Unknown fluid: {kind!r}")
-        max_volume = 3000.0 if kind == "lipid" else 5000.0
+        max_volumes = {"d50w": 500.0, "d10w": 2000.0, "lipid": 3000.0}
+        max_volume = max_volumes.get(kind, 5000.0)
         volume = domain.bounded_number("fluid volume", volume_ml, 0.0, max_volume, unit="mL")
         if volume <= 0:
             raise ValueError("Fluid volume must be positive and finite")
         method, label = FLUIDS[kind]
         getattr(self.engine, method)(volume)
-        text = f"{volume:g} mL {label} started"
+        if kind == "d50w":
+            text = f"{volume:g} mL 50% dextrose (D50W, {volume * 0.5:g} g) started"
+        elif kind == "d10w":
+            text = f"{volume:g} mL 10% dextrose (D10W, {volume * 0.1:g} g) started"
+        else:
+            text = f"{volume:g} mL {label} started"
         receipt = {"time": self.engine.state.time, "text": text}
-        if kind == "lipid":
-            return {"fluid": receipt, **self._medication_receipt("lipid", text)}
+        if kind in ("lipid", "d50w", "d10w"):
+            return self._clinical_result(None, {"fluid": receipt, **self._medication_receipt(kind, text)})
         return {"fluid": receipt}
 
     def _cmd_lipid_rate(self, ml_min: float):
@@ -1341,6 +1384,9 @@ class WebSession:
 
     def _cmd_act(self):
         return {"act": _act(self.engine.measure_act())}
+
+    def _cmd_glucose(self):
+        return {"glucose": _glucose(self.engine.measure_glucose())}
 
     def _cmd_nmb_mode(self, mode: str):
         self.engine.nmb.set_mode(mode, self.engine.state.time)

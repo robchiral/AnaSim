@@ -16,6 +16,7 @@ from anasim.core.action_log import (
     ACTION_EXTRACORPOREAL,
     ACTION_FGF,
     ACTION_FLUID,
+    ACTION_GLUCOSE,
     ACTION_INFUSION_RATE,
     ACTION_INTUBATION_ATTEMPT,
     ACTION_LIPID_INFUSION,
@@ -50,6 +51,10 @@ SAFETY_REVIEW = {
     "succinylcholine_in_hyperkalemia": "Avoid succinylcholine when serum potassium is elevated.",
     "protamine_on_bypass": "Avoid administering protamine while cardiopulmonary bypass or ECMO is actively running.",
     "cpb_low_act": "Verify therapeutic heparin anticoagulation (ACT ≥ 400–480 s) before initiating cardiopulmonary bypass.",
+    "insulin_in_hypoglycemia": "Check blood glucose and treat hypoglycemia before giving insulin.",
+    "insulin_in_hypokalemia": "Check and replete low serum potassium before administering insulin.",
+    "bicarbonate_in_alkalemia": "Avoid sodium bicarbonate when arterial pH is already alkalemic.",
+    "bicarbonate_in_hypernatremia": "Check serum sodium before giving hypertonic sodium bicarbonate in hypernatremia.",
 }
 
 
@@ -228,6 +233,8 @@ def _describe(record: ActionRecord) -> str | None:
             return f"Sugammadex {amount:.0f} mg given"
         if label == "calcium_chloride":
             return f"Calcium chloride {amount:g} mg given"
+        if label == "sodium_bicarbonate":
+            return f"Sodium bicarbonate {amount:g} mEq given"
         spec = get_drug_spec(label)
         if action == ACTION_DRUG_BOLUS:
             return f"{spec.generic_name} {amount:g} {spec.bolus_unit} given"
@@ -237,8 +244,18 @@ def _describe(record: ActionRecord) -> str | None:
         unit = spec.rate_unit if action == ACTION_INFUSION_RATE else spec.tci_unit
         return f"{spec.generic_name} {delivery} {amount:g} {unit}"
     if action == ACTION_FLUID:
-        fluid = {"crystalloid": "lactated Ringer's", "saline": "0.9% saline", "colloid": "5% albumin",
-                 "blood": "PRBC", "lipid": "20% lipid emulsion"}[label]
+        if label == "d50w":
+            return f"{amount:g} mL D50W ({amount * 0.5:g} g) started"
+        if label == "d10w":
+            return f"{amount:g} mL D10W ({amount * 0.1:g} g) started"
+        fluid = {
+            "crystalloid": "lactated Ringer's",
+            "saline": "0.9% saline",
+            "colloid": "5% albumin",
+            "blood": "PRBC",
+            "lipid": "20% lipid emulsion",
+            "d5w": "D5W",
+        }[label]
         return f"{amount:g} mL {fluid} started"
     if action == ACTION_LIPID_INFUSION:
         return f"20% lipid emulsion infusion {amount:g} mL/min" if amount > 0 else "Lipid emulsion infusion stopped"
@@ -253,6 +270,8 @@ def _describe(record: ActionRecord) -> str | None:
         return f"Blood gas drawn ({site})" if site else "Arterial blood gas drawn"
     if action == ACTION_ACT:
         return f"ACT drawn ({amount:.0f} s)"
+    if action == ACTION_GLUCOSE:
+        return f"Point-of-care glucose checked ({amount:.0f} mg/dL)"
     if action == ACTION_EXTRACORPOREAL:
         labels = {
             "start_vv_ecmo": f"VV ECMO started ({amount:g} L/min)",

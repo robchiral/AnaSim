@@ -1,4 +1,4 @@
-"""Lidocaine systemic toxicity and lipid rescue.
+"""Lidocaine systemic toxicity, lipid rescue, and sodium bicarbonate conduction relief.
 
 Concentrations are mcg/mL. Volunteer infusions and overdose reports set the
 concentration ranges for sympathetic stimulation, seizures, coma, and cardiac
@@ -7,8 +7,11 @@ Lipid emulsion lowers unentrapped venous plasma exposure in volunteers
 (Heinonen 2015, without CNS symptom reduction), used here as a heuristic
 reduction in effect-site delivery without altering central PK, and lessens
 contractile depression based on rat bupivacaine resuscitation (Fettiplace 2014).
-The response curves, conduction and arrhythmia relief, acidemia effect,
-anticonvulsant suppression, and arrest thresholds are calibrations.
+Sodium bicarbonate alkalinization and extracellular sodium loading attenuate
+sodium-channel conduction block, calibrated conservatively from porcine
+bupivacaine QRS recovery (Zaballos 2019). The response curves, arrhythmia
+relief, acidemia effect, anticonvulsant suppression, and arrest thresholds are
+calibrations.
 """
 
 import math
@@ -66,7 +69,8 @@ class LocalAnestheticToxicity:
     def step(self, dt: float, *, neural_ce: float, cardiac_ce: float, ph: float,
              propofol_ce: float, midazolam_ce: float, mac_sevo: float,
              motor_strength: float, cortical_function: float,
-             mac_n2o: float = 0.0, etomidate_ce: float = 0.0) -> None:
+             mac_n2o: float = 0.0, etomidate_ce: float = 0.0,
+             sodium: float = 140.0) -> None:
         if (
             neural_ce <= 0.0
             and cardiac_ce <= 0.0
@@ -79,6 +83,12 @@ class LocalAnestheticToxicity:
         ):
             return
         acidemia = 1.0 + 0.5 * clamp01((7.35 - ph) / 0.35)
+        # Alkalinization and extracellular Na+ loading accelerate Na+-channel
+        # recovery and QRS narrowing (porcine bupivacaine in Zaballos 2019,
+        # extrapolated conservatively to lidocaine).
+        alkalemia_relief = 0.22 * clamp01((ph - 7.40) / 0.25)
+        sodium_relief = 0.18 * clamp01((sodium - 140.0) / 10.0)
+        bicarb_conduction_factor = 1.0 - clamp01(alkalemia_relief + sodium_relief)
         neural = max(0.0, neural_ce) * acidemia
         cardiac = max(0.0, cardiac_ce) * acidemia
         self.neural_depression = _response(neural, 10.5, 20.0)
@@ -102,10 +112,14 @@ class LocalAnestheticToxicity:
         self.sympathetic_drive += (sympathetic_target - self.sympathetic_drive) * -math.expm1(-dt / 5.0)
         self.heart_rate_increase = 16.0 * self.sympathetic_drive
         self.svr_increase = 2.4 * self.sympathetic_drive
-        eff_cardiac = cardiac * (1.0 - 0.22 * self.lipid_effect)
+        eff_cardiac = cardiac * (1.0 - 0.22 * self.lipid_effect) * bicarb_conduction_factor
         self.conduction_block = _response(eff_cardiac, 18.0, 48.0)
         self.contractility_loss = _response(cardiac, 13.0, 42.0) * (1.0 - 0.35 * self.lipid_effect)
-        self.cardiac_stress = _response(cardiac, 22.0, 44.0) * (1.0 - 0.35 * self.lipid_effect)
+        self.cardiac_stress = (
+            _response(cardiac, 22.0, 44.0)
+            * (1.0 - 0.35 * self.lipid_effect)
+            * (1.0 - 0.50 * (1.0 - bicarb_conduction_factor))
+        )
 
     @property
     def electrically_silent(self) -> bool:

@@ -6,8 +6,8 @@ Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
 second. Concentrations are µg/mL for propofol, etomidate, ketamine,
 lidocaine, amiodarone, dantrolene, rocuronium, succinylcholine, esmolol, and
 protamine, ng/mL for opioids, midazolam, vasoactive drugs other than
-vasopressin, atropine, labetalol, and glycopyrrolate, mU/L for vasopressin,
-and U/L for heparin.
+vasopressin, atropine, labetalol, and glycopyrrolate, mU/L for vasopressin
+and insulin, and U/L for heparin.
 """
 
 import math
@@ -1454,4 +1454,43 @@ class ProtaminePK(MammillaryPK):
             ke0=1.4,
             cl1_co_exponent=0.0,
             distribution_co_exponent=0.0,
+        )
+
+
+# Endocrine and metabolic ------------------------------------------------------
+
+class InsulinPK(MammillaryPK):
+    """Three-compartment regular IV insulin PK (concentrations in mU/L = µU/mL).
+
+    Adapts Sherwin 1974 Fig. 1 Model A (porcine insulin in healthy adults,
+    total-body-weight volumes V1 = 45, V2 = 17, V3 = 95 mL/kg; L01 = 0.251,
+    L21 = 0.142, L31 = 0.042, L13 = 0.020 min^-1; MCR ~11.3 mL/kg/min) to lean
+    body mass. Total clearance uses a calibrated 55% hepatic, 27% renal, and 18%
+    peripheral split informed by Rabkin 1970 and Letiexhe 1993. Tracks exogenous
+    regular insulin only; endogenous pancreatic secretion is integrated in
+    GlucoseModel.
+    """
+
+    def __init__(self, patient: Patient):
+        lean_w = _lean_weight_kg(patient)
+        v1_base = 0.045 * lean_w
+        v2 = 0.017 * lean_w
+        v3 = 0.095 * lean_w
+        cl2 = 0.142 * v1_base
+        cl3 = 0.042 * v1_base
+        clearance_scale, renal_fraction = renal_capacity_scaling(
+            patient, 0.27, hepatic_fraction=0.55,
+        )
+        cl1 = 0.251 * v1_base * clearance_scale
+        super().__init__(
+            v1=_pregnancy_v1(patient, v1_base),
+            cl1=cl1,
+            v2=v2,
+            cl2=cl2,
+            v3=v3,
+            cl3=cl3,
+            ke0=0.020,
+            renal_fraction=renal_fraction,
+            cl1_co_exponent=0.5,
+            distribution_co_exponent=0.5,
         )

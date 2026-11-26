@@ -21,6 +21,7 @@ from anasim.patient.pk_models import (
     GlycopyrrolatePK,
     HeparinPK,
     HydromorphonePK,
+    InsulinPK,
     KetaminePK,
     LabetalolPK,
     LidocainePK,
@@ -478,6 +479,18 @@ DRUG_REGISTRY = (
         default_bolus=50.0,
         bolus_model_scale=1.0,
         max_bolus=500.0,
+    ),
+    DrugSpec(
+        key="insulin",
+        name="Insulin (regular) 1 U/mL",
+        generic_name="Insulin",
+        pk_model=_from_patient(InsulinPK),
+        rate_unit="U/hr",
+        internal_rate_unit="mU/sec",
+        bolus_unit="U",
+        default_bolus=5.0,
+        bolus_model_scale=1000.0,
+        max_bolus=100.0,
     ),
 )
 

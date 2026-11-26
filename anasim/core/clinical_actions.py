@@ -146,6 +146,28 @@ def check_drug_administration(engine: SimulationEngine, key: str) -> ActionFeedb
             "protamine_on_bypass",
             "Protamine given during active extracorporeal circulation risks catastrophic circuit thrombosis.",
         )
+    if key == "insulin":
+        if engine.glucose.arterial_glucose_mg_dl < 70.0:
+            return ActionFeedback(
+                "insulin_in_hypoglycemia",
+                "Insulin given during hypoglycemia (glucose < 70 mg/dL) risks severe neuroglycopenia.",
+            )
+        if engine.state.potassium < 3.5:
+            return ActionFeedback(
+                "insulin_in_hypokalemia",
+                "Insulin shifts potassium intracellularly and can worsen hypokalemia (K⁺ < 3.5 mmol/L).",
+            )
+    if key == "sodium_bicarbonate":
+        if engine.state.ph > 7.50:
+            return ActionFeedback(
+                "bicarbonate_in_alkalemia",
+                "Sodium bicarbonate given during alkalemia (pH > 7.50) worsens metabolic alkalosis and hypocalcemia.",
+            )
+        if engine.state.sodium > 155.0:
+            return ActionFeedback(
+                "bicarbonate_in_hypernatremia",
+                "Hypertonic 8.4% sodium bicarbonate (1000 mEq/L Na⁺) can worsen severe hypernatremia (Na⁺ > 155 mmol/L).",
+            )
     if key == "succinylcholine":
         if engine.malignant_hyperthermia.active or engine.malignant_hyperthermia.susceptible:
             return ActionFeedback(

@@ -28,6 +28,11 @@ function patientReportLine(info) {
   if (p.coronary_flow_reserve < 5) parts.push("Coronary disease");
   if (p.heart_failure !== "none") parts.push(p.heart_failure === "hfref" ? "HFrEF" : "HFpEF");
   if (p.copd_severity > 0) parts.push("COPD");
+  if (p.type2_diabetes) parts.push("Type 2 diabetes");
+  const defaultBg = p.type2_diabetes ? 150 : 90;
+  if (p.baseline_glucose != null && Math.abs(p.baseline_glucose - defaultBg) > 0.5) {
+    parts.push(`BG ${Math.round(p.baseline_glucose)} mg/dL`);
+  }
   if (p.gestational_age_weeks > 0) parts.push(`${p.gestational_age_weeks} wk pregnant`);
   if (info.version) parts.push(`AnaSim ${info.version}`);
   return parts.join(" · ");

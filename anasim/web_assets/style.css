@@ -1393,7 +1393,6 @@ label.inline { grid-template-columns: auto minmax(0, 1fr); }
 }
 .fluid-key span { font-size: var(--text-base); color: var(--text); }
 .fluid-key small { font-size: var(--text-sm); color: var(--text-dim); font-weight: 400; white-space: nowrap; }
-.fluid-key.fluid-blood { grid-column: 1 / -1; }
 
 .cpr-timer { color: var(--danger-soft); }
 

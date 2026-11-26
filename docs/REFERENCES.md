@@ -109,6 +109,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Fettiplace et al. (2014). *Anesthesiology*. [Cardiotonic effect of lipid emulsion in cardiac toxicity](https://pubmed.ncbi.nlm.nih.gov/24496123/).
 - Neal et al. (2021). *Reg Anesth Pain Med*. [ASRA 2020 LAST checklist](https://pubmed.ncbi.nlm.nih.gov/33148630/).
 - Hiller et al. (2009). *Anesthesiology*. [Epinephrine threshold effect during lipid resuscitation from bupivacaine overdose](https://pubmed.ncbi.nlm.nih.gov/19704251/).
+- Zaballos et al. (2019). *Anesth Analg*. [Sodium bicarbonate versus lipid emulsion for bupivacaine cardiotoxicity in swine](https://pubmed.ncbi.nlm.nih.gov/31210652/).
 - Himes et al. (1977). *Anesthesiology*. [Lidocaine and anesthetic requirement](https://pubmed.ncbi.nlm.nih.gov/911052/).
 - Hans et al. (2010). *Br J Anaesth*. [Lidocaine reduces propofol requirements during stimulation](https://pubmed.ncbi.nlm.nih.gov/20650919/).
 - Altermatt et al. (2012). *Br J Anaesth*. [Lidocaine during propofol maintenance and recovery](https://pubmed.ncbi.nlm.nih.gov/22490315/).
@@ -407,6 +408,32 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Waki et al. (1991). *Am J Physiol*. [Extracellular and intracellular fluid distribution in obesity](https://pubmed.ncbi.nlm.nih.gov/1872382/).
 - Adrogué and Madias (1981). *Am J Med*. [Plasma potassium changes during acute acid-base disturbances](https://pubmed.ncbi.nlm.nih.gov/7025622/).
 - Orringer et al. (1977). *N Engl J Med*. [Lactic acidosis and plasma potassium after generalized seizures](https://pubmed.ncbi.nlm.nih.gov/19702/).
+- Sjöstrand et al. (2001). *Br J Anaesth*. [Volume kinetics of intravenous glucose solutions](https://pubmed.ncbi.nlm.nih.gov/11878683/).
+- Hillier et al. (1999). *Am J Med*. [Experimental hyperglycemia correction factor for serum sodium](https://pubmed.ncbi.nlm.nih.gov/10225241/).
+- Singer et al. (1955). *Medicine (Baltimore)*. [Acid-base balance and distribution after intravenous sodium bicarbonate](https://pubmed.ncbi.nlm.nih.gov/14355369/).
+- Cooper et al. (1990). *Ann Intern Med*. [Bicarbonate does not improve hemodynamics in critically ill patients with lactic acidosis](https://pubmed.ncbi.nlm.nih.gov/2156475/).
+- Mark et al. (1993). *Crit Care Med*. [Intraoperative acid-base and hemodynamic effects of intravenous sodium bicarbonate](https://pubmed.ncbi.nlm.nih.gov/8386997/).
+- Kaplan et al. (1975). *Anesthesiology*. [Cardiovascular effects of sodium bicarbonate during halothane anesthesia](https://pubmed.ncbi.nlm.nih.gov/236705/).
+- Huseby and Gumprecht (1981). *Chest*. [Hemodynamic effects of rapid bolus hypertonic sodium bicarbonate in dogs](https://pubmed.ncbi.nlm.nih.gov/7226933/).
+- Blumberg et al. (1988). *Am J Med*. [Effects of antihyperkalemic therapies including sodium bicarbonate in renal failure](https://pubmed.ncbi.nlm.nih.gov/3052050/).
+
+## Glucose and insulin
+
+- Sherwin et al. (1974). *J Clin Invest*. [Three-compartment model of insulin kinetics in humans](https://pubmed.ncbi.nlm.nih.gov/4856884/).
+- Rizza et al. (1979). *J Clin Invest*. [Glucagon and catecholamines in human glucose counterregulation](https://pubmed.ncbi.nlm.nih.gov/36413/).
+- Rizza et al. (1981). *Am J Physiol*. [Insulin dose-response curves for glucose production and utilization](https://pubmed.ncbi.nlm.nih.gov/7018254/).
+- Kolterman et al. (1981). *J Clin Invest*. [Hepatic and peripheral insulin resistance in type 2 diabetes](https://pubmed.ncbi.nlm.nih.gov/7287908/).
+- Rabkin et al. (1970). *N Engl J Med*. [Renal uptake and excretion of insulin in renal disease](https://pubmed.ncbi.nlm.nih.gov/5409813/).
+- Letiexhe et al. (1993). *J Clin Endocrinol Metab*. [Insulin secretion, clearance, and action in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/8077319/).
+- Alvestrand et al. (1984). *Am J Physiol*. [Preserved insulin-mediated potassium uptake in chronic uremia](https://pubmed.ncbi.nlm.nih.gov/6364842/).
+- Allon and Copkney (1990). *Kidney Int*. [Albuterol and insulin with dextrose for hyperkalemia in hemodialysis patients](https://pubmed.ncbi.nlm.nih.gov/2266671/).
+- Moore and Woollard (2005). *Emerg Med J*. [Randomized trial of 10% versus 50% dextrose for prehospital hypoglycemia](https://pubmed.ncbi.nlm.nih.gov/15983093/).
+- DeFronzo et al. (2013). *Diabetes Care*. [Renal glucose reabsorption and TmG in healthy and type 2 diabetic adults](https://pubmed.ncbi.nlm.nih.gov/23735727/).
+- Mitrakou et al. (1991). *Am J Physiol*. [Hierarchy of glycemic thresholds for counterregulation, symptoms, and cerebral dysfunction](https://pubmed.ncbi.nlm.nih.gov/1987794/).
+- Pramming et al. (1988). *Br Med J (Clin Res Ed)*. [Glycemic threshold for EEG slowing during hypoglycemia in type 1 diabetes](https://pubmed.ncbi.nlm.nih.gov/3128361/).
+- Tanaka et al. (2005). *J Anesth*. [Impaired insulin secretion and glucose utilization under sevoflurane and isoflurane](https://pubmed.ncbi.nlm.nih.gov/16261463/).
+- Schricker et al. (2004). *JPEN J Parenter Enteral Nutr*. [Glucose metabolism during intravenous dextrose infusion and surgery](https://pubmed.ncbi.nlm.nih.gov/15141406/).
+- Lehot et al. (1992). *Chest*. [Glucose and insulin homeostasis during hypothermic and normothermic CPB](https://pubmed.ncbi.nlm.nih.gov/1623737/).
 
 ## Respiratory control
 

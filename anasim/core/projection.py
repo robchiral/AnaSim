@@ -554,6 +554,7 @@ def sync_pk_state(engine: SimulationEngine) -> None:
     state.protamine_ug_ml = float(coag_state.protamine_ug_ml)
     state.act_s = float(coag_state.act_s)
     state.protamine_reaction = bool(coag_state.protamine_reaction_active)
+    state.insulin_mu_l = float(engine.glucose.state.insulin_mu_l)
     morphine_pk = engine.pk["morphine"]
     m6g_excess = morphine_pk.m6g_excess_ce if isinstance(morphine_pk, MorphinePK) else 0.0
     if m6g_excess > 0.0:
@@ -730,6 +731,8 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     state.ionized_calcium = fluids.ionized_calcium(resp_state.ph_37)
     state.albumin_g_l = fluids.plasma_albumin_g_l
     state.phosphate = fluids.concentration("phosphate")
+    state.glucose = float(engine.glucose.state.glucose_mg_dl)
+    state.insulin_mu_l = float(engine.glucose.state.insulin_mu_l)
     state.alveolar_co2 = float(resp_state.p_alveolar_co2)
     state.pao2 = float(resp_state.p_arterial_o2)
     state.sao2 = float(resp_state.sao2)
@@ -851,11 +854,13 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
     """Advance the respiratory model; dt 0 evaluates the current state without advancing it."""
     state = engine.state
     hct = engine.hemo.get_hematocrit()
+    pulm_flow = engine.hemo.state.pulmonary_flow if engine.extracorporeal.is_active else None
     engine.resp.update_fluid_balance(
         engine.hemo.hb_conc,
         hct,
         engine.hemo.blood_volume,
         circulation=engine.hemo.circulation_fraction(cardiac_output),
+        pulmonary_flow=pulm_flow,
     )
     sealed = circuit_connected(engine)
     airway = engine.airway_status

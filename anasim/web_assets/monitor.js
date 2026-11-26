@@ -414,6 +414,10 @@ export class Monitor {
     if (p.coronary_flow_reserve < 5) parts.push("CAD");
     if (p.heart_failure !== "none") parts.push(p.heart_failure === "hfref" ? "HFrEF" : "HFpEF");
     if (p.copd_severity > 0) parts.push("COPD");
+    if (p.type2_diabetes) parts.push("T2D");
+    if (p.baseline_glucose != null && Math.round(p.baseline_glucose) !== (p.type2_diabetes ? 150 : 90)) {
+      parts.push(`BG ${Math.round(p.baseline_glucose)}`);
+    }
     if (p.surgical_site !== "other") parts.push(`${p.surgical_site === "upper_abdominal" ? "upper" : "lower"} abd`);
     if (p.gestational_age_weeks > 0) parts.push(`G ${p.gestational_age_weeks} wk`);
     document.getElementById("session-patient-summary").textContent = `${Math.round(p.age)}y ${sexTag} · ${Number(p.weight.toFixed(1))} kg`;

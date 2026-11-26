@@ -35,12 +35,14 @@ DOMAIN_CORNERS: list[tuple[str, dict[str, Any]]] = [
     ("esrd", dict(age=60.0, weight=70.0, height=170.0, sex="male", renal_function=0.05)),
     ("hfref_cad", dict(age=68.0, weight=78.0, height=172.0, sex="male", heart_failure="hfref", coronary_flow_reserve=1.6)),
     ("hfpef_copd", dict(age=72.0, weight=85.0, height=168.0, sex="female", heart_failure="hfpef", copd_severity=1.0)),
+    ("t2d_hyperglycemic", dict(age=62.0, weight=92.0, height=172.0, sex="male", type2_diabetes=True, baseline_glucose=210.0)),
     ("term_pregnancy", dict(age=30.0, weight=65.0, height=165.0, sex="female", gestational_age_weeks=39.0, position="left_lateral")),
 ]
 
 CORE_FINITE_FIELDS = (
     "map", "sbp", "dbp", "hr", "co", "svr", "spo2", "pao2", "pa_co2",
     "ph", "hco3", "base_excess", "lactate", "potassium", "ionized_calcium",
+    "glucose", "insulin_mu_l",
     "temp_c", "bis", "tof", "mv", "vt", "rr",
 )
 
@@ -83,10 +85,14 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     eng.set_rhythm("VFIB")
     advance_time(eng, 6.0, dt=0.5)
     abg0 = eng.draw_blood_gas()
+    poc0 = eng.measure_glucose()
+    ins0 = eng.state.insulin_mu_l
     prop0, roc0 = eng.state.propofol_ce, eng.state.roc_ce
     act0 = eng.state.act_s
     eng.give_saline(1500.0)
     eng.give_fluid(1000.0)
+    eng.give_d50w(50.0)
+    eng.give_sodium_bicarbonate(50.0)
     eng.give_blood(700.0)
     eng.give_calcium_chloride(1000.0)
     eng.give_drug_bolus("epi", 1000.0)
@@ -94,8 +100,10 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     eng.give_drug_bolus("propofol", 140.0)
     eng.give_drug_bolus("heparin", 21000.0)
     eng.give_drug_bolus("protamine", 50.0)
+    eng.give_drug_bolus("insulin", 10.0)
     advance_time(eng, 15.0, dt=0.5)
     abg1 = eng.draw_blood_gas()
+    poc1 = eng.measure_glucose()
     assert abs(abg1.ph - abg0.ph) < 0.005
     assert abs(abg1.pa_co2 - abg0.pa_co2) < 0.25
     assert abg1.hco3 == pytest.approx(abg0.hco3, abs=1e-5)
@@ -105,6 +113,9 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     assert abg1.chloride == pytest.approx(abg0.chloride, abs=1e-6)
     assert abg1.ionized_calcium == pytest.approx(abg0.ionized_calcium, abs=1e-6)
     assert abg1.lactate == pytest.approx(abg0.lactate, abs=1e-6)
+    assert abg1.glucose == pytest.approx(abg0.glucose, abs=1e-6)
+    assert poc1.glucose == pytest.approx(poc0.glucose, abs=1e-6)
+    assert eng.state.insulin_mu_l == pytest.approx(ins0, abs=1e-6)
     assert abg1.hb == pytest.approx(abg0.hb, abs=1e-9)
     assert abs(eng.state.propofol_ce - prop0) < 0.05
     assert abs(eng.state.roc_ce - roc0) < 0.05
@@ -112,8 +123,9 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     assert eng.state.heparin_u_ml == pytest.approx(0.0, abs=1e-6)
     assert eng.state.protamine_ug_ml == pytest.approx(0.0, abs=1e-6)
     assert eng.coagulation.state.protamine_svr_factor == pytest.approx(1.0, abs=1e-6)
+    assert eng.hemo._hyperosmolar_svr_factor == pytest.approx(1.0, abs=1e-6)
 
-    # Starting chest compressions restores circulation and delivers queued drugs/calcium/heparin.
+    # Starting chest compressions restores circulation and delivers queued drugs/calcium/heparin/dextrose.
     eng.set_chest_compressions(True)
     advance_time(eng, 45.0, dt=0.5)
     abg2 = eng.draw_blood_gas()
@@ -121,6 +133,8 @@ def test_zero_flow_arterial_isolation_across_all_iv_inputs(engine_factory, advan
     assert eng.state.roc_ce > roc0 + 0.5
     assert abg2.ionized_calcium > abg1.ionized_calcium + 0.05
     assert abg2.lactate > abg1.lactate + 0.05
+    assert abg2.glucose > abg1.glucose + 10.0
+    assert eng.state.insulin_mu_l > ins0 + 10.0
     assert eng.state.act_s > act0 + 100.0
     assert eng.state.heparin_u_ml > 1.0
 
@@ -532,3 +546,87 @@ def test_peripheral_va_ecmo_harlequin_step_size_invariance(engine_factory, advan
     assert abs(coarse.extracorporeal.state.upper_body_pao2 - fine.extracorporeal.state.upper_body_pao2) < 2.5
     assert abs(coarse.state.upper_sao2 - fine.state.upper_sao2) < 1.5
     assert abs(coarse.state.map - fine.state.map) < 2.0
+
+
+def test_glucose_insulin_dextrose_step_size_invariance(engine_factory, advance_time):
+    """Coupled glucose, insulin, K+, and osmotic Na+ dynamics agree closely across dt=0.2 s and dt=2.0 s."""
+    results = []
+    for dt in (0.2, 2.0):
+        eng = engine_factory(
+            config=SimulationConfig(mode="awake", dt=dt, rng_seed=11, maintenance_fluid_ml_hr=0.0),
+            start=True,
+            type2_diabetes=True,
+            baseline_glucose=210.0,
+        )
+        eng.give_drug_bolus("insulin", 5.0)
+        eng.set_drug_rate("insulin", 3.0)
+        eng.give_d50w(25.0)
+        advance_time(eng, 600.0, dt=dt)
+        results.append(eng)
+
+    fine, coarse = results
+    assert abs(coarse.state.glucose - fine.state.glucose) < 1.5
+    assert abs(coarse.state.insulin_mu_l - fine.state.insulin_mu_l) < 1.5
+    assert abs(coarse.state.potassium - fine.state.potassium) < 0.05
+    assert abs(coarse.state.sodium - fine.state.sodium) < 0.2
+
+
+def test_glucose_low_flow_glycosuria_cpb_prime_and_hypo_settle_invariants(engine_factory):
+    """Low-flow glycosuria conserves mass, CPB prime updates glucose immediately, and steady_state starts clean."""
+    from anasim.physiology.glucose import MG_DL_PER_MMOL_L, MG_PER_MMOL, GlucoseModel
+
+    # 1. Low-flow (circ=0.5) glycosuria mass removed matches reported glycosuria_mg_min (no double attenuation).
+    g_perf = GlucoseModel(lean_mass_kg=70.0, ecf_l=14.0, baseline_glucose_mg_dl=350.0)
+    g_anuric = GlucoseModel(lean_mass_kg=70.0, ecf_l=14.0, baseline_glucose_mg_dl=350.0)
+    g_perf.step(60.0, renal_perfusion=1.0, circulation=0.5)
+    g_anuric.step(60.0, renal_perfusion=0.0, circulation=0.5)
+    removed_mg = (g_anuric._standalone_glucose_mmol - g_perf._standalone_glucose_mmol) * MG_PER_MMOL
+    assert removed_mg == pytest.approx(g_perf.state.glycosuria_mg_min, rel=0.03)
+
+    # 2. Immediate CPB prime and reservoir additions update arterial/POC/ABG glucose before the next step.
+    cpb = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=3, maintenance_fluid_ml_hr=0.0),
+        start=True,
+        baseline_glucose=200.0,
+    )
+    cpb.start_cpb(blood_flow_l_min=4.5, prime_volume_ml=1400.0)
+    expected_prime = (cpb.hemo.fluids.glucose_mmol / cpb.hemo.fluids.ecf_l) * MG_DL_PER_MMOL_L
+    assert cpb.state.glucose == pytest.approx(expected_prime, abs=0.05)
+    assert cpb.measure_glucose().glucose == pytest.approx(expected_prime, abs=0.05)
+    assert cpb.draw_blood_gas().glucose == pytest.approx(expected_prime, abs=0.05)
+
+    cpb.add_cpb_reservoir_fluid(500.0, kind="crystalloid")
+    expected_res = (cpb.hemo.fluids.glucose_mmol / cpb.hemo.fluids.ecf_l) * MG_DL_PER_MMOL_L
+    assert cpb.state.glucose == pytest.approx(expected_res, abs=0.05)
+    assert cpb.measure_glucose().glucose == pytest.approx(expected_res, abs=0.05)
+
+    # 3. Hidden steady_state settle at baseline_glucose=40 leaves t=0 cerebral hypoglycemic_dysfunction at 0.
+    hypo_ss = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=0.5, rng_seed=3, maintenance_fluid_ml_hr=0.0),
+        start=False,
+        baseline_glucose=40.0,
+    )
+    assert hypo_ss.cerebral.hypoglycemic_dysfunction == 0.0
+
+
+def test_sodium_bicarbonate_step_size_invariance(engine_factory, advance_time):
+    """Coupled NaHCO3 acid-base, CO2, electrolyte, and SVR dynamics agree across dt=0.2 s and dt=2.0 s."""
+    results = []
+    for dt in (0.2, 2.0):
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", dt=dt, rng_seed=17, maintenance_fluid_ml_hr=0.0),
+            start=True,
+        )
+        eng.resp.remove_buffer_base(120.0)
+        advance_time(eng, 60.0, dt=dt)
+        eng.give_sodium_bicarbonate(100.0)
+        advance_time(eng, 300.0, dt=dt)
+        results.append(eng)
+
+    fine, coarse = results
+    assert abs(coarse.state.ph - fine.state.ph) < 0.008
+    assert abs(coarse.state.pa_co2 - fine.state.pa_co2) < 0.6
+    assert abs(coarse.state.hco3 - fine.state.hco3) < 0.4
+    assert abs(coarse.state.sodium - fine.state.sodium) < 0.2
+    assert abs(coarse.state.ionized_calcium - fine.state.ionized_calcium) < 0.02
+    assert abs(coarse.state.map - fine.state.map) < 1.5

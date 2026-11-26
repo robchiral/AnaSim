@@ -187,6 +187,8 @@ class SimulationState:
     ionized_calcium: float = 1.2  # mmol/L, at 37 °C alpha-stat pH
     albumin_g_l: float = 42.0
     phosphate: float = 1.0  # mmol/L
+    glucose: float = 90.0  # mg/dL
+    insulin_mu_l: float = 10.0  # Total plasma insulin, mU/L (µU/mL)
     alveolar_co2: float = 40.0
     pao2: float = 95.0
     capno_co2: float = 0.0

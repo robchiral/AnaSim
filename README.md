@@ -39,13 +39,13 @@ Use Apply to confirm changes to settings.
 
 | Feature | Supported controls and measurements |
 |---------|-------------------------------------|
-| Patient variation | Age, body size, renal and hepatic function, coronary disease, heart failure, COPD, obesity, pregnancy with maternal positioning, and optional individual variation in drug kinetics and response |
+| Patient variation | Age, body size, renal and hepatic function, coronary disease, heart failure, COPD, obesity, type 2 diabetes, baseline glucose, pregnancy with maternal positioning, and optional individual variation in drug kinetics and response |
 | Anesthesia | Propofol, remifentanil, fentanyl, hydromorphone, morphine, midazolam, etomidate, ketamine, lidocaine, sevoflurane, nitrous oxide, rocuronium, succinylcholine, and sugammadex |
 | Cardiovascular drugs | Norepinephrine, epinephrine, phenylephrine, ephedrine, vasopressin, dobutamine, milrinone, esmolol, labetalol, atropine, glycopyrrolate, and amiodarone |
 | Anesthesia machine | Facemask with adjustable seal or tracheal tube, fresh gas flow, vaporizer, and an adjustable pressure-limiting (APL) valve for bag ventilation and spontaneous breathing |
 | Ventilation | Volume control (VCV), pressure control (PCV), pressure control with volume guarantee (PCV-VG), synchronized intermittent mandatory ventilation (SIMV), pressure support (PSV), and continuous positive airway pressure (CPAP) |
-| Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF), post-tetanic count (PTC), and single-twitch monitoring, temperature, arterial and extracorporeal blood gases, activated clotting time (ACT), fluid balance, trends, and alarms |
-| Treatments | Fluids and blood, heparin and protamine, ECMO and cardiopulmonary bypass, chest compressions, defibrillation and synchronized cardioversion, lipid emulsion, dantrolene, calcium chloride, fluid warming, forced-air warming, and surface cooling |
+| Monitoring | ECG, pulse oximetry, arterial and noninvasive blood pressure, capnography, ventilation waveforms and loops, gas concentrations, bispectral index (BIS), train-of-four (TOF), post-tetanic count (PTC), and single-twitch monitoring, temperature, arterial and extracorporeal blood gases, activated clotting time (ACT), point-of-care blood glucose, fluid balance, trends, and alarms |
+| Treatments | Fluids and blood, dextrose and regular insulin, heparin and protamine, ECMO and cardiopulmonary bypass, chest compressions, defibrillation and synchronized cardioversion, lipid emulsion, dantrolene, calcium chloride, sodium bicarbonate, fluid warming, forced-air warming, and surface cooling |
 | Events | Surgical stimulation, airway obstruction, bronchospasm, laryngospasm, ARDS pulmonary shunt, arrhythmias, hemorrhage, anaphylaxis, sepsis, malignant hyperthermia, lidocaine toxicity, protamine reaction, and oxygen supply failure |
 | Cases | Total intravenous anesthesia (TIVA) and balanced induction, TIVA and inhalational emergence, crisis cases (oxygen supply failure, hemorrhage, anaphylaxis, septic shock, malignant hyperthermia, and cardiac arrest), and extracorporeal cases (VV ECMO, VA ECMO, CPB weaning, and protamine reversal), each in guided or independent mode with a debrief |
 

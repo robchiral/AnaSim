@@ -55,6 +55,11 @@ volume, and respiratory compliance, raises airway resistance and atelectatic
 shunt, and increases the airway pressures required to keep alveoli open (Pelosi
 1998; Hedenstierna and Edmark 2015).
 
+Type 2 diabetes adds hepatic and peripheral insulin resistance (Kolterman 1981),
+higher maximal renal glucose reabsorption and splay (DeFronzo 2013), blunted
+glucose-stimulated insulin secretion, and a default fasting blood glucose of
+150 mg/dL.
+
 Pregnancy alters maternal blood volume, extracellular water, cardiac output, and
 renal filtration (Dallmann 2017), FRC and ventilatory drive (Contreras 1991),
 and term static respiratory compliance (Marx 1970), along with heart rate,
@@ -103,8 +108,8 @@ its clinical actions.
 | Amiodarone | Korth-Bradley 1996, with hepatic clearance scaling and separate effect sites for bolus vasodilation, contractility and rhythm conversion, and sinus slowing |
 | Rocuronium | Kleijn 2011, scaled toward ideal body weight in obesity (Meyhoff 2009); cirrhosis enlarges early distribution volumes (Khuenl-Brady and Sparr 1996; Magorian 1995; van Miert 1997), and hepatic clearance scales with liver function as a model assumption |
 
-Models for succinylcholine, dantrolene, and cardiovascular drugs are covered in
-their own sections below. In obesity, central volumes and clearances for most
+Models for succinylcholine, dantrolene, cardiovascular drugs, insulin, heparin,
+and protamine are covered in their own sections below. In obesity, central volumes and clearances for most
 intravenous drugs scale with lean body mass, while deep lipophilic peripheral
 compartments and succinylcholine (Ingrande and Lemmens 2010), as well as
 dantrolene, keep total-body-weight scaling.
@@ -811,7 +816,11 @@ plasma exposure in volunteers (Heinonen 2015, which itself saw no reduction in
 brain-toxicity symptoms and attributed the lower venous exposure to larger
 tissue distribution). It also lessens contractile depression, based on rat
 bupivacaine resuscitation (Fettiplace 2014), with calibrated reductions in
-conduction block and arrhythmogenic stress.
+conduction block and arrhythmogenic stress. Intravenous sodium bicarbonate attenuates sodium-channel conduction block
+(calibrated conservatively from porcine bupivacaine QRS recovery in Zaballos
+2019) and arrhythmogenic stress through alkalinization and extracellular sodium
+loading, without substituting for lipid emulsion in reversing myocardial
+depression.
 
 ## Fluids
 
@@ -831,10 +840,14 @@ acetated Ringer's bolus is excreted over 150 minutes (median 11% under
 isoflurane and 7% under propofol, with similar dilution and retention across
 agents; Ewaldsson and Hahn 2005); AnaSim calibrates lactated Ringer's excretion
 near 8% over 150 minutes. Normal saline is excreted more slowly than lactated
-Ringer's (Reid 2003). A larger fraction of 5% albumin stays intravascular
+Ringer's (Reid 2003). Dextrose solutions (D5W, D10W, and D50W) shift free water into cells as glucose
+is metabolized, expanding plasma volume less durably than balanced crystalloid
+and promoting faster renal water clearance (calibrated from 2.5% and 5% glucose
+versus acetated Ringer's in awake volunteers in Sjöstrand 2001 and extended to
+D10W). A larger fraction of 5% albumin stays intravascular
 initially, and a quarter of infused lipid emulsion volume remains in plasma.
-Queued fluid, blood, and lipid boluses drain sequentially on separate
-intravenous channels.
+Queued fluid, blood, lipid, bolus dextrose, and sodium bicarbonate infusions
+drain sequentially on separate intravenous channels.
 
 Fluid also leaves the circulation through capillary leak into a third-space
 compartment that slowly returns fluid when blood volume falls. Anaphylaxis
@@ -858,15 +871,20 @@ interstitium. Excess adipose tissue in obesity adds less extracellular and
 intracellular water per kilogram than lean mass (Waki 1991, applied above a BMI
 of 25), and baseline metabolic acid and buffer loads scale with lean mass
 rather than total body weight. Water shifts between extracellular fluid and
-cells to equalize tonicity, so free water from lactated Ringer's and lipid
-emulsion distributes across total body water.
+cells to equalize tonicity (including extracellular glucose), so hyperglycemia
+draws water out of cells and lowers plasma sodium by roughly 1.6 to 1.8 mmol/L
+per 100 mg/dL rise in glucose (matching the sub-400 mg/dL slope in
+somatostatin-clamped volunteers in Hillier 1999, without reproducing its steeper
+decline above 400 mg/dL), while free water from lactated Ringer's, dextrose
+solutions, and lipid emulsion distributes across total body water.
 
 Each fluid contributes its own ions, albumin, and buffer base according to its
 strong ion difference. Large volumes of 0.9% saline therefore produce
 hyperchloremic metabolic acidosis, whereas lactated Ringer's does not
 (Scheingraber 1999). Stored packed red cells represent 3-week-old blood with
-acidic, hyperkalemic, high-lactate supernatant and storage acid (Rabcuka 2025),
-so rapid transfusion adds acid, CO₂, and potassium. Hepatic metabolism of
+acidic, hyperkalemic, high-lactate, glucose-containing supernatant and storage
+acid (Rabcuka 2025), so rapid transfusion adds acid, CO₂, potassium, and
+glucose. Hepatic metabolism of
 citrate (Kramer 2003; Kahn 1979) and exogenous lactate returns base over time,
 which can lead to post-transfusion metabolic alkalosis. Cirrhosis and
 hypothermia impair citrate clearance (Kramer 2003; Ludbrook and Wynn 1958);
@@ -876,11 +894,33 @@ clearance when oxygen delivery fails are model assumptions.
 Potassium exchanges with a large intracellular pool over minutes. Mineral
 metabolic acidemia shifts potassium into plasma much more strongly than acute
 respiratory acidemia, whereas lactic acidemia causes negligible direct potassium
-shift (Adrogué and Madias 1981; Orringer 1977). Alkalemia and circulating
-epinephrine shift potassium into cells (blunted by labetalol's beta-2 blockade),
+shift (Adrogué and Madias 1981; Orringer 1977). Alkalemia, circulating
+epinephrine (blunted by labetalol's beta-2 blockade), and insulin (Alvestrand
+1984; Allon and Copkney 1990) shift potassium into cells,
 and succinylcholine releases potassium into plasma (Martyn and Richtsfeld 2006).
 Malignant hyperthermia and severe hypoxia release cumulative cellular potassium
 that clears slowly over hours after the insult resolves.
+
+Intravenous 8.4% sodium bicarbonate (1 mEq/mL Na⁺ and HCO₃⁻, 2,000 mOsm/L)
+enters the shared blood and extracellular buffer pool with exact strong-ion and
+total-carbon stoichiometry (matching acid-base distribution in 7.2% to 7.5%
+human studies: Singer 1955; Cooper 1990; Mark 1993). Under fixed ventilation,
+buffering of infused bicarbonate raises PaCO₂ (Mark 1993; Cooper 1990) and
+produces a rapid end-tidal CO₂ rise (Cooper 1990), whereas inadequate
+ventilation or apnea traps the generated CO₂. Increasing pH lowers ionized
+calcium via albumin binding (Thode 1983, matching the ionized calcium drop in
+Cooper 1990), and the hyperosmolar sodium load draws intracellular water into
+extracellular fluid. When hyperkalemia accompanies mineral metabolic acidemia,
+restoring pH toward normal lowers plasma potassium; in non-acidemic end-stage
+renal disease, sodium bicarbonate produces minimal short-term potassium
+lowering compared with insulin (matching hypertonic and isotonic dialysis data
+in Blumberg 1988). Rapid hypertonic pushes cause brief rate-dependent
+hyperosmolar vasodilation that fades within two minutes and disappears on slow
+infusions (canine bolus-versus-slow-infusion data in Huseby and Gumprecht 1981;
+transient 1-minute systolic dip in porcine data of Zaballos 2019), and as a
+conservative calibration anchored to halothane-volunteer alkalosis data (7.5%
+sodium bicarbonate in Kaplan 1975), severe alkalemia above pH 7.50 directly
+lowers systemic vascular resistance.
 
 Ionized calcium depends on albumin, citrate, and 37 °C pH (Thode 1983; Bolan
 2001), so dilution and rapid citrated transfusion lower it without shifting
@@ -894,7 +934,7 @@ gone roughly 30 minutes after infusion start (Ansari 2025). Shed blood removes
 calcium, and calcium lost to dilution or bound by citrate is not replaced by
 endogenous stores within a session (consistent with progressive ionized calcium
 falls during citrate apheresis in Bolan 2001). During zero-flow cardiac arrest,
-arterial blood gases, hemoglobin, electrolytes, and lactate remain isolated
+arterial blood gases, glucose, hemoglobin, electrolytes, and lactate remain isolated
 from peripheral venous and fluid changes until circulation resumes.
 
 ### Renal acid-base handling
@@ -907,6 +947,60 @@ moves opposite to bicarbonate, while urinary sodium follows extracellular
 strong-ion balance and volume load (Reid 2003; Chowdhury 2012); surgical
 antidiuretic hormone surges (Philbin and Coggins 1978) are not explicitly
 modeled.
+
+## Glucose, insulin, and dextrose
+
+[Glucose homeostasis](../anasim/physiology/glucose.py) shares one conserved
+extracellular glucose pool in [`FluidBalance`](../anasim/physiology/fluid_balance.py)
+across dextrose infusions, packed red cell transfusions (Rabcuka 2025),
+hemorrhage, osmotic water shifts, and metabolic fluxes. Exogenous intravenous
+regular insulin (`InsulinPK` in [`pk_models.py`](../anasim/patient/pk_models.py))
+adapts the three-compartment porcine-insulin model of Sherwin 1974 to lean body
+mass, using a calibrated 55% hepatic, 27% renal, and 18% peripheral clearance
+split informed by renal extraction in kidney disease (Rabkin 1970) and reduced
+clearance in compensated cirrhosis (Letiexhe 1993); low cardiac output and
+hypothermia also slow modeled clearance.
+
+Endogenous and exogenous insulin act through a fast hepatic pool that suppresses
+endogenous glucose production and a slower remote interstitial pool that drives
+peripheral disposal (healthy volunteer clamps in Sherwin 1974 and Rizza 1981).
+Type 2 diabetes, obesity, chronic uremia, and cirrhosis reduce peripheral
+insulin-stimulated glucose disposal (Kolterman 1981; Alvestrand 1984; Letiexhe
+1993), while insulin-mediated potassium uptake remains intact in chronic uremia
+(Alvestrand 1984). In hemodialysis patients, 10 U insulin with 25 g D50W lowers
+plasma potassium by 0.65 mmol/L alone and 1.21 mmol/L with nebulized albuterol
+(Allon and Copkney 1990), and sustained euglycemic clamps lower potassium by
+roughly 1 mmol/L (Alvestrand 1984); AnaSim's potassium shift sits near the
+middle of that range. Hyperglycemia above the renal reabsorption threshold
+produces glycosuria and a calibrated osmotic diuresis, with higher maximal
+reabsorption and a calibrated higher onset threshold in type 2 diabetes
+(DeFronzo 2013).
+
+Below 68 mg/dL, counterregulatory glucagon and endogenous epinephrine rise to
+restore hepatic glucose production and limit peripheral uptake (healthy
+volunteer studies in Rizza 1979 and Mitrakou 1991), while supraphysiological
+insulin overdoses override this defense as a model calibration. Exogenous
+epinephrine raises glucose through transient glycogenolysis, lower peripheral
+clearance, and insulin suppression, with blunted glycemic sensitivity in older
+adults (awake volunteers in Clutter 1980 and Marker 1998). General anesthesia
+attenuates the cardiovascular response to hypoglycemic epinephrine surges as a
+model calibration; sevoflurane suppresses glucose-stimulated insulin secretion
+across 0.5 to 1.5 MAC (measured with nitrous oxide before incision in Tanaka
+2005); surgical stimulation blunts hepatic suppression during dextrose infusion
+(Schricker 2004, with added peripheral resistance in the model); sepsis doubles
+basal glucose production with insulin resistance (Revelly 2005); and hypothermic
+cardiopulmonary bypass suppresses insulin during cooling with further
+hyperglycemia and rebound hyperinsulinemia during rewarming (Lehot 1992).
+
+Below a calibrated 42 mg/dL threshold, severe hypoglycemia causes reversible
+neuroglycopenic cortical slowing and unresponsiveness in
+[`CerebralModel`](../anasim/physiology/cerebral.py), lowering BIS and
+consciousness (awake EEG slowing near 36 mg/dL in type 1 diabetes in Pramming
+1988 and cognitive dysfunction near 43 to 49 mg/dL in Mitrakou 1991, extended to
+BIS). Intravenous D10W (10 g) and D50W (25 g) both reverse neuroglycopenia over
+minutes, with D10W producing smaller glycemic overshoot (matching median
+titrated doses and 8-minute recovery in prehospital hypoglycemic adults in Moore
+and Woollard 2005).
 
 ## Respiratory control
 
@@ -1405,11 +1499,13 @@ An [arterial blood gas](../anasim/monitors/blood_gas.py) records arterial
 values at the time of the draw and reports the result 2 minutes later. As in a
 clinical blood gas analyzer, pH, PaCO₂, and PaO₂ are warmed anaerobically to
 37 °C, so a hypothermic sample reads higher PaCO₂ and PaO₂ and lower pH than in
-vivo. Reports include bicarbonate, standard base excess, lactate, sodium,
-potassium, chloride, ionized calcium, SaO₂, hemoglobin, and FiO₂. Glucose is
-not modeled. During extracorporeal support, samples can also be drawn from the right radial
-artery (upper body), femoral artery (lower body), pre-oxygenator venous line, or
-post-oxygenator outlet.
+vivo. Reports include bicarbonate, standard base excess, lactate, glucose (mg/dL),
+sodium, potassium, chloride, ionized calcium, SaO₂, hemoglobin, and FiO₂. During
+extracorporeal support, samples can also be drawn from the right radial artery
+(upper body), femoral artery (lower body), pre-oxygenator venous line, or
+post-oxygenator outlet. A point-of-care blood glucose meter in the Labs tab
+reports arterial glucose in mg/dL after a 10-second analysis delay and flags
+readings below 70 or above 180 mg/dL.
 
 ## Extracorporeal support and anticoagulation
 
@@ -1562,3 +1658,8 @@ without blocking the action when:
 - protamine is administered during active ECMO or cardiopulmonary bypass
 - cardiopulmonary bypass is started with an activated clotting time below 400
   seconds
+- insulin is given during hypoglycemia (blood glucose below 70 mg/dL)
+- insulin is given during hypokalemia (plasma potassium below 3.5 mmol/L)
+- sodium bicarbonate is given during alkalemia (arterial pH above 7.50)
+- sodium bicarbonate is given during severe hypernatremia (plasma sodium above
+  155 mmol/L)

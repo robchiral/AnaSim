@@ -39,6 +39,7 @@ def test_infusion_rates_convert_the_prescribed_units(engine):
         ("roc", 60000.0 / engine.patient.weight),
         ("heparin", 3600.0),
         ("protamine", 60.0),
+        ("insulin", 3.6),
     )
     # Each user rate is one model unit per second.
     assert {drug for drug, _ in rate_cases} == set(engine.infusion_rates)
@@ -51,7 +52,7 @@ def test_infusion_rates_convert_the_prescribed_units(engine):
 def test_boluses_deliver_the_prescribed_mass_to_each_pk_model(engine):
     # Prescribed mg or units become mcg or milliunits in these models.
     model_scales = dict.fromkeys(
-        ("midazolam", "vaso", "labetalol", "glyco", "morphine", "hydromorphone", "atropine", "ephedrine"),
+        ("midazolam", "vaso", "labetalol", "glyco", "morphine", "hydromorphone", "atropine", "ephedrine", "insulin"),
         1000.0,
     )
     for spec in DRUG_REGISTRY:

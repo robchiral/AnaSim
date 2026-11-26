@@ -29,6 +29,7 @@ class FluidComposition:
     citrate: float = 0.0
     l_lactate_fraction: float = 1.0
     carbon: float = 0.0  # Bicarbonate plus dissolved CO2
+    glucose: float = 0.0  # mmol/L
 
     @property
     def sid(self) -> float:
@@ -85,14 +86,15 @@ class PendingBloodSync:
 
 
 # A 3-week-old SAGM unit (Rabcuka 2025, Table 3): pH 6.5 and CO2 13.0 kPa, with
-# supernatant potassium 38 and lactate 22.5 mmol/L. Sodium is the additive's
-# 150 mmol/L less the potassium gained, and chloride balances the bicarbonate.
+# supernatant potassium 38, lactate 22.5, and glucose 21.8 mmol/L. Sodium is the
+# additive's 150 mmol/L less the potassium gained, and chloride balances bicarbonate.
 # Citrate is 1.32 mmol per 300 mL unit.
 STORED_BLOOD_PH = 6.5
 STORED_BLOOD_PCO2 = 13.0 * _MMHG_PER_KPA
 STORED_BLOOD_SO2 = 0.60
 _STORED_BICARBONATE = plasma_bicarbonate(STORED_BLOOD_PH, STORED_BLOOD_PCO2)
 _STORED_CITRATE = 1.32 / 0.135
+_GLUCOSE_MMOL_PER_G = 1000.0 / 180.16
 
 FLUID_COMPOSITIONS = {
     "crystalloid": FluidComposition(130.0, 4.0, 109.0, calcium=1.5, lactate=28.0, l_lactate_fraction=0.5),
@@ -102,7 +104,14 @@ FLUID_COMPOSITIONS = {
         116.0, 38.0, 116.0 + 38.0 + 1.0 - 22.5 - 3.0 * _STORED_CITRATE - _STORED_BICARBONATE,
         magnesium=0.5, phosphate=1.0, lactate=22.5, citrate=_STORED_CITRATE,
         carbon=_STORED_BICARBONATE * (1.0 + 10.0**(6.1 - STORED_BLOOD_PH)),
+        glucose=21.8,
     ),
+    "d5w": FluidComposition(0.0, 0.0, 0.0, glucose=50.0 * _GLUCOSE_MMOL_PER_G),
+    "d10w": FluidComposition(0.0, 0.0, 0.0, glucose=100.0 * _GLUCOSE_MMOL_PER_G),
+    "d50w": FluidComposition(0.0, 0.0, 0.0, glucose=500.0 * _GLUCOSE_MMOL_PER_G),
+    # 8.4% NaHCO3 (1.0 M = 1 mEq/mL Na+ and HCO3-, 2000 mOsm/L); extracellular
+    # buffer-base distribution grounded in 7.5% human data (Singer 1955).
+    "bicarbonate": FluidComposition(1000.0, 0.0, 0.0, carbon=1000.0),
     "lipid": FluidComposition(0.0, 0.0, 0.0),
 }
 _IONS = ("sodium", "potassium", "chloride", "calcium", "magnesium", "phosphate")
@@ -134,7 +143,7 @@ class FluidBalance:
 
     def __init__(self, weight: float, blood_volume_ml: float, red_cell_volume_ml: float,
                  resting_ph: float = 7.4, extracellular_water: float = 1.0,
-                 excess_fat_kg: float = 0.0):
+                 excess_fat_kg: float = 0.0, baseline_glucose_mg_dl: float = 90.0):
         self.weight = weight
         self.plasma_l = (blood_volume_ml - red_cell_volume_ml) / 1000.0
         self.red_cells_l = red_cell_volume_ml / 1000.0
@@ -150,6 +159,7 @@ class FluidBalance:
         self.amounts = {"sodium": 140.0 * self.ecf_l, "potassium": 4.0 * self.ecf_l,
                         "chloride": 104.0 * self.ecf_l, "calcium": 0.0,
                         "magnesium": 0.8 * self.ecf_l, "phosphate": self.ecf_l}
+        self.glucose_mmol = (baseline_glucose_mg_dl / 18.016) * self.ecf_l
         self.plasma_albumin_g = 42.0 * self.plasma_l
         self.interstitial_albumin_g = 14.0 * self.interstitial_l
         # Plasma-equivalent buffer (23.5 mmol/L, Rees 2010) across twice the blood
@@ -238,7 +248,7 @@ class FluidBalance:
         return self._arterial_ica
 
     def _extracellular_solute(self) -> float:
-        return self.amounts["sodium"] + self.amounts["potassium"]
+        return 2.0 * (self.amounts["sodium"] + self.amounts["potassium"]) + self.glucose_mmol
 
     def _equilibrate_cell_water(self) -> None:
         # Water crosses cell membranes until tonicity matches. It moves through
@@ -312,6 +322,7 @@ class FluidBalance:
         water = volume - cells
         for ion in _IONS:
             self.amounts[ion] += water * getattr(fluid, ion)
+        self.glucose_mmol += water * fluid.glucose
         self.ecf_l += water
         self.red_cells_l += cells
         sync.transfused_cells_l += cells
@@ -379,6 +390,7 @@ class FluidBalance:
         )
         self.citrate_mmol *= 1.0 - water / self.citrate_volume_l
         self.d_lactate_mmol *= 1.0 - water / self.lactate_volume_l
+        self.glucose_mmol *= 1.0 - fraction
         self.stored_rbc_acid_mmol *= keep
         self._lysed_k_mmol *= 1.0 - fraction
         self._sux_k_efflux_mmol *= 1.0 - fraction
@@ -425,22 +437,24 @@ class FluidBalance:
         self.urine_pending_l += volume
         self._blood_sync.blood_urine_l += volume
 
+    def sync_circulation(self, circulation: float, ph: float | None = None) -> None:
+        """Snapshot arterial electrolytes when perfusion drops below normal before peripheral infusions drain."""
+        new_circ = clamp01(circulation)
+        if self._circulation >= 0.99 and new_circ < 0.99:
+            self._arterial_na = self.concentration("sodium")
+            self._arterial_k = self.concentration("potassium")
+            self._arterial_cl = self.concentration("chloride")
+            self._arterial_ica = self.ionized_calcium(self.ph if ph is None else ph)
+        self._circulation = new_circ
+
     def step(self, dt: float, *, ph: float, paco2: float, resting_paco2: float,
              renal_function: float, renal_perfusion: float, hepatic_function: float,
              oxygen_supply: float, epinephrine: float,
              succinylcholine_ce: float = 0.0, mh_severity: float = 0.0,
              circulation: float = 1.0, lactate_acid_meq_l: float = 0.0,
-             temp_c: float = 37.0) -> None:
+             temp_c: float = 37.0, insulin_k_uptake: float = 0.0) -> None:
         self.ph = ph
-        new_circ = clamp01(circulation)
-        # Preserve pre-arrest arterial electrolytes equilibrated under normal perfusion
-        # before switching into low/zero-flow arrest where peripheral inputs lag central blood.
-        if self._circulation >= 0.99 and new_circ < 0.99:
-            self._arterial_na = self.concentration("sodium")
-            self._arterial_k = self.concentration("potassium")
-            self._arterial_cl = self.concentration("chloride")
-            self._arterial_ica = self.ionized_calcium(ph)
-        self._circulation = new_circ
+        self.sync_circulation(circulation, ph=ph)
         self._equilibrate_cell_water()
         if dt <= 0.0:
             return
@@ -456,6 +470,7 @@ class FluidBalance:
             minutes, epinephrine, ph=ph, paco2=paco2, resting_paco2=resting_paco2,
             succinylcholine_ce=succinylcholine_ce, mh_severity=mh_severity,
             oxygen_supply=oxygen_supply, lactate_acid_meq_l=lactate_acid_meq_l,
+            insulin_k_uptake=insulin_k_uptake,
         )
         if 0.0 < self._circulation < 0.99:
             alpha = -math.expm1(-dt * self._circulation / 20.0)
@@ -580,6 +595,7 @@ class FluidBalance:
         paco2: float = 40.0, resting_paco2: float = 40.0,
         succinylcholine_ce: float = 0.0, mh_severity: float = 0.0,
         oxygen_supply: float = 1.0, lactate_acid_meq_l: float = 0.0,
+        insulin_k_uptake: float = 0.0,
     ) -> None:
         # Reversible transcellular K+ shifts (beta-2, succinylcholine, bidirectional pH)
         # plus cumulative rhabdomyolytic (MH) and severe hypoxic cellular K+ leak that
@@ -642,9 +658,11 @@ class FluidBalance:
             ph_efflux = 0.0
             ph_uptake = 0.50 * delta_ph
         efflux = 1.0 + ph_efflux
-        partition = 35.0 * (1.0 + beta + ph_uptake) / efflux
+        ins_k = max(0.0, insulin_k_uptake)
+        uptake_drive = 1.0 + beta + ph_uptake + ins_k
+        partition = 35.0 * uptake_drive / efflux
         intact_total = max(0.0, total - self._lysed_k_mmol - self._sux_k_efflux_mmol)
-        lysed_ecf_share = self._lysed_k_mmol / (1.0 + beta + ph_uptake)
+        lysed_ecf_share = self._lysed_k_mmol / uptake_drive
         target_k = intact_total * self.ecf_l / (self.ecf_l + self.icf_l * partition) + lysed_ecf_share + self._sux_k_efflux_mmol
         moved = (self.amounts["potassium"] - target_k) * -math.expm1(-minutes / 5.0)
         if moved > 0.0:

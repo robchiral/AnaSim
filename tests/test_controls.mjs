@@ -383,7 +383,7 @@ test("blood gas H/L flags match displayed rounded values and strict upper bounds
     drawn_at: 0, ready_at: 120,
     ph: 7.348, pa_co2: 45.4, pao2: 100, hco3: 24.0, base_excess: 0.0,
     lactate: 1.98, sodium: 140, potassium: 4.0, chloride: 104,
-    ionized_calcium: 1.20, sao2: 99.0, hb: 13.5, fio2: 0.5,
+    ionized_calcium: 1.20, glucose: 68.4, sao2: 99.0, hb: 13.5, fio2: 0.5,
   }];
   controls.showBloodGases();
   const rowByName = new Map(tBody.children.map((tr) => [tr.children[0].textContent, tr.children[2]]));
@@ -394,6 +394,9 @@ test("blood gas H/L flags match displayed rounded values and strict upper bounds
   assert.equal(rowByName.get("Lactate").textContent, "2.0");
   assert.equal(rowByName.get("Lactate").className, "abg-high");
   assert.equal(rowByName.get("Lactate").children[0].textContent, "H");
+  assert.equal(rowByName.get("Glucose").textContent, "68");
+  assert.equal(rowByName.get("Glucose").className, "abg-low");
+  assert.equal(rowByName.get("Glucose").children[0].textContent, "L");
 });
 
 test("defibrillator sync mode auto-resets to unsynchronized after shock delivery", () => {
@@ -568,4 +571,149 @@ test("extracorporeal controls and site-tagged blood gas headers update cleanly",
   assert.equal(actBody.children.length, 1);
   assert.equal(actBody.children[0].children[1].textContent, "512");
   assert.equal(actBody.children[0].children[1].className, "abg-high");
+
+  // Point-of-care glucose meter display and H/L flags in Labs tab
+  const glucoseBody = makeEl("tbody");
+  elements.set("c-glucose", makeEl("button"));
+  elements.set("glucose-pending", makeEl("p"));
+  elements.set("glucose-results", { ...makeEl("div"), querySelector: () => ({ tBodies: [glucoseBody] }) });
+  controls.glucoses = [{ drawn_at: 10, ready_at: 20, glucose: 54 }];
+  controls.shownGlucoses = null;
+  controls.performAction = async (_btn, name, args) => {
+    sent.push([name, args]);
+    return { glucose: { drawn_at: 110, ready_at: 120, glucose: 215 } };
+  };
+  controls.bindLabs();
+  await elements.get("c-glucose").onclick();
+  assert.equal(sent.at(-1)[0], "glucose");
+  assert.equal(glucoseBody.children.length, 2);
+  assert.equal(glucoseBody.children[0].children[1].textContent, "215");
+  assert.equal(glucoseBody.children[0].children[1].className, "abg-high");
+  assert.equal(glucoseBody.children[0].children[1].children[0].textContent, "H");
+  assert.equal(glucoseBody.children[1].children[1].textContent, "54");
+  assert.equal(glucoseBody.children[1].children[1].className, "abg-low");
+  assert.equal(glucoseBody.children[1].children[1].children[0].textContent, "L");
+});
+
+test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation has a 6-button fluid grid", async () => {
+  const { readFileSync } = await import("node:fs");
+  const html = readFileSync(new URL("../anasim/web_assets/index.html", import.meta.url), "utf8");
+  const fluidButtons = [...html.matchAll(/data-fluid="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(fluidButtons, ["crystalloid", "crystalloid", "saline", "albumin", "d5w", "blood"]);
+  // Verify #c-lipid-bolus accepts fractional odd-weight defaults (e.g. 55 kg -> 82.5 mL).
+  const lipidInputTag = html.match(/<input[^>]*id="c-lipid-bolus"[^>]*>/)?.[0] ?? "";
+  assert.match(lipidInputTag, /step="any"/);
+
+  const checkHtml5NumberValidity = (input) => {
+    const val = Number(input.value);
+    if (!Number.isFinite(val)) return false;
+    if (input.min !== undefined && val < Number(input.min)) return false;
+    if (input.max !== undefined && val > Number(input.max)) return false;
+    if (input.step && input.step !== "any") {
+      const base = input.min !== undefined ? Number(input.min) : 0;
+      const step = Number(input.step);
+      const steps = (val - base) / step;
+      if (Math.abs(steps - Math.round(steps)) > 1e-9) return false;
+    }
+    return true;
+  };
+  const makeCard = (tag = "div") => {
+    const bolusInput = {
+      value: "", min: undefined, max: undefined, step: undefined,
+      setAttribute() {},
+      reportValidity() { return checkHtml5NumberValidity(this); },
+    };
+    const slots = new Map([
+      [".drug-name", { textContent: "" }],
+      [".drug-strength", { textContent: "" }],
+      [".bolus-unit", { textContent: "" }],
+      [".bolus-amount", bolusInput],
+      [".bolus .btn", { onclick: null, disabled: false }],
+      [".medication-feedback", { hidden: true, textContent: "" }],
+    ]);
+    return {
+      tag, className: "", open: false, hidden: false, textContent: "", dataset: {}, children: [],
+      set innerHTML(markup) {
+        const tagMatch = markup.match(/<input[^>]*class="bolus-amount"[^>]*>/);
+        if (tagMatch) {
+          bolusInput.min = tagMatch[0].match(/min="([^"]+)"/)?.[1];
+          bolusInput.max = tagMatch[0].match(/max="([^"]+)"/)?.[1];
+          bolusInput.step = tagMatch[0].match(/step="([^"]+)"/)?.[1];
+        }
+      },
+      append(...nodes) { this.children.push(...nodes); },
+      replaceChildren(...nodes) { this.children = [...nodes]; },
+      querySelector: (sel) => slots.get(sel) ?? { textContent: "", append() {} },
+    };
+  };
+  const lipidCard = makeCard("details");
+  lipidCard.open = true;
+  const elements = new Map([
+    ["drug-cards", makeCard("div")],
+    ["lipid-controls", lipidCard],
+    ["c-lipid-feedback", { hidden: true, textContent: "" }],
+    ["running-infusion-list", makeCard("div")],
+    ["running-infusions", { hidden: false }],
+    ["drug-search", { value: "", oninput: null, focus() {} }],
+    ["drug-search-clear", { hidden: false, onclick: null }],
+    ["drug-search-empty", { hidden: false }],
+  ]);
+  globalThis.document = {
+    getElementById: (id) => elements.get(id),
+    createElement: makeCard,
+    querySelectorAll: () => [],
+  };
+  const sent = [];
+  const controls = Object.create(Controls.prototype);
+  controls.performAction = async (_btn, name, args) => {
+    sent.push([name, args]);
+    return {};
+  };
+  const stubDrugs = [
+    "propofol", "midazolam", "ketamine", "etomidate", "lidocaine", "amiodarone",
+    "fentanyl", "remi", "hydromorphone", "morphine", "phenyl", "ephedrine", "nore",
+    "epi", "vaso", "dobu", "milri", "atropine", "glyco", "esmolol", "labetalol",
+    "roc", "succinylcholine", "heparin", "protamine", "insulin", "dantrolene",
+  ].map((key) => ({
+    key, generic_name: key, name: key, bolus_unit: "mg", default_bolus: 1,
+    rate_unit: null, tci_unit: null,
+  }));
+  controls.buildDrugs(stubDrugs);
+  assert.equal(lipidCard.open, false, "static lipid card resets closed on new session");
+
+  const endo = controls.medicationGroups.find((g) => g.name === "Endocrine and metabolic");
+  const rescue = controls.medicationGroups.find((g) => g.name === "Rescue and antidotes");
+  assert.deepEqual(endo.keys, ["insulin", "d50w", "d10w"]);
+  assert.deepEqual(rescue.keys, ["dantrolene", "lipid", "calcium_chloride", "sodium_bicarbonate"]);
+
+  for (const [key, expectedCmd, expectedArgs, fractional] of [
+    ["d50w", "fluid", { kind: "d50w", volume_ml: 50 }, 12.5],
+    ["d10w", "fluid", { kind: "d10w", volume_ml: 100 }, 25.5],
+    ["sodium_bicarbonate", "sodium_bicarbonate", { meq: 50 }, 25.5],
+  ]) {
+    const row = controls.medicationRows.get(key);
+    assert.ok(row, `${key} card present`);
+    const input = row.card.querySelector(".bolus-amount");
+    const btn = row.card.querySelector(".bolus .btn");
+    assert.equal(input.reportValidity(), true, `${key} default value passes HTML5 validation`);
+    await btn.onclick();
+    assert.deepEqual(sent.at(-1), [expectedCmd, expectedArgs]);
+    input.value = String(fractional);
+    assert.equal(input.reportValidity(), true, `${key} accepts fractional doses`);
+    input.value = "0";
+    assert.equal(input.reportValidity(), false, `${key} rejects zero`);
+  }
+
+  elements.get("drug-search").value = "hyperkalemia";
+  controls.filterMedications();
+  for (const k of ["calcium_chloride", "insulin", "d50w", "sodium_bicarbonate"]) {
+    assert.equal(controls.medicationRows.get(k).card.hidden, false, `hyperkalemia search includes ${k}`);
+  }
+  elements.get("drug-search").value = "bicarb";
+  controls.filterMedications();
+  assert.equal(controls.medicationRows.get("sodium_bicarbonate").card.hidden, false);
+  assert.equal(controls.medicationRows.get("d50w").card.hidden, true);
+  elements.get("drug-search").value = "";
+  controls.filterMedications();
+  assert.equal(controls.medicationRows.get("d50w").card.hidden, false);
 });

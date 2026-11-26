@@ -714,9 +714,13 @@ def preroll_scenario(
     engine.vent.breath_count = 0
     engine.blood_gases.clear()
     engine.acts.clear()
+    engine.glucoses.clear()
     engine.coagulation.cumulative_protamine_mg = 0.0
     if reset_fluid_totals:
+        engine.pending_infusions.clear()
         hemo = engine.hemo
+        hemo._hyperosmolar_load = 0.0
+        hemo._hyperosmolar_svr_factor = 1.0
         hemo.total_crystalloid_in_ml = 0.0
         hemo.total_colloid_in_ml = 0.0
         hemo.total_blood_in_ml = 0.0

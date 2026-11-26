@@ -1,8 +1,8 @@
 """Infusion rate unit conversion.
 
 Model units: mg/sec for propofol, ketamine, lidocaine, rocuronium, amiodarone,
-esmolol, and protamine, mU/sec for vasopressin, U/sec for heparin, and ug/sec
-for the other drugs.
+esmolol, and protamine, mU/sec for vasopressin and insulin, U/sec for heparin,
+and ug/sec for the other drugs.
 """
 
 import math

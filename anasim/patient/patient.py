@@ -11,6 +11,7 @@ from .conditions import (
 )
 from .domain import (
     AGE_RANGE_YEARS,
+    BASELINE_GLUCOSE_RANGE_MG_DL,
     BMI_RANGE_KG_M2,
     COPD_SEVERITY_RANGE,
     CORONARY_FLOW_RESERVE_RANGE,
@@ -40,12 +41,14 @@ class Patient:
     baseline_temp: float = 37.0
     baseline_hb: float = 13.5
     baseline_hct: float | None = None
+    baseline_glucose: float | None = None  # mg/dL; None resolves to 150 in T2D, else 90
     renal_function: float = 1.0
     creatinine_clearance_ml_min: float | None = None
     hepatic_function: float = 1.0
     coronary_flow_reserve: float = 5.0
     heart_failure: str = "none"
     copd_severity: float = 0.0
+    type2_diabetes: bool = False
     surgical_site: str = "other"
     gestational_age_weeks: float = 0.0
     position: str = "supine"  # Starting maternal position
@@ -172,6 +175,14 @@ class Patient:
         self.copd_severity = bounded_number("copd_severity", self.copd_severity, *COPD_SEVERITY_RANGE)
         if not isinstance(self.heart_failure, str) or self.heart_failure not in HEART_FAILURE_PROFILES:
             raise ValueError("heart_failure must be 'none', 'hfref', or 'hfpef'")
+        if not isinstance(self.type2_diabetes, bool):
+            raise ValueError("type2_diabetes must be a boolean")
+        if self.baseline_glucose is None:
+            self.baseline_glucose = 150.0 if self.type2_diabetes else 90.0
+        else:
+            self.baseline_glucose = bounded_number(
+                "baseline_glucose", self.baseline_glucose, *BASELINE_GLUCOSE_RANGE_MG_DL, unit="mg/dL"
+            )
         if not isinstance(self.surgical_site, str) or self.surgical_site not in SURGICAL_SITE_CLOSURE:
             raise ValueError("surgical_site must be 'other', 'lower_abdominal', or 'upper_abdominal'")
         if not isinstance(self.position, str) or self.position not in POSITIONS:

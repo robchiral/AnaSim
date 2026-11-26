@@ -9,6 +9,14 @@
 - Added unfractionated heparin and protamine kinetics, point-of-care activated
   clotting time (ACT), protamine hemodynamic reactions, an ARDS shunt event,
   and guided or independent extracorporeal and anticoagulation cases.
+- Added glucose homeostasis, intravenous regular insulin, dextrose boluses and
+  fluids (D50W and D10W in Medications, D5W in Circulation), type 2 diabetes
+  and baseline glucose settings, insulin-mediated potassium shifts, blood gas
+  and point-of-care glucose monitoring, and insulin safety warnings.
+- Added 8.4% intravenous sodium bicarbonate (1 mEq/mL) with acid-base,
+  CO₂/EtCO₂, ionized calcium, osmotic sodium, potassium, rate-dependent
+  hyperosmolar vasodilation, and local anesthetic conduction-block effects,
+  along with alkalemia and hypernatremia safety warnings.
 - Added an optional 37 °C IV fluid and blood warmer so unwarmed fluids and
   refrigerated packed red cells cool core temperature.
 - Added vaporizer fill-level tracking and refill controls.

@@ -144,6 +144,9 @@ def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: boo
     # hemo.state includes a rhythm change made since the last step.
     hemo_pre = engine.hemo.state
     cardiac_output = hemo_pre.co
+    pre_circ = engine.hemo.circulation_fraction(cardiac_output)
+    engine.hemo.fluids.sync_circulation(pre_circ, ph=engine.resp.state.ph_37)
+    engine.glucose.sync_circulation(pre_circ, engine.hemo.fluids)
     disturbances = step_disturbances(engine, dt)
     update_pk_covariates(engine, cardiac_output)
 
@@ -165,6 +168,7 @@ def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: boo
         cortical_function=engine.cerebral.cortical_function,
         mac_n2o=state.mac_n2o,
         etomidate_ce=state.etomidate_ce,
+        sodium=engine.hemo.fluids.arterial_sodium,
     )
     engine.thermal.metabolic_factor *= toxicity.metabolic_factor
     mh = engine.malignant_hyperthermia
@@ -220,6 +224,7 @@ def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: boo
         metabolic_stress=clamp01(state.seizure_activity),
         volatile_luxury=clamp01(state.mac_sevo + 0.5 * state.mac_n2o),
         ph_stat=ph_stat_active,
+        glucose_mg_dl=engine.glucose.arterial_glucose_mg_dl,
     )
     if update_monitors:
         step_monitors(engine, dt, physiology.hemo_state, physiology.resp_state, disturbances)
@@ -513,13 +518,23 @@ def step_disturbances(engine: SimulationEngine, dt: float) -> DisturbanceEffects
     fluid_temp = 37.0 if warmed else 21.0
 
     if engine.pending_infusions:
-        # Drain infusions sequentially per IV channel (blood, lipid, fluid) so
-        # repeated bolus clicks queue on the same line rather than multiplying flow.
+        # Drain infusions sequentially per IV channel (blood, lipid, bolus dextrose,
+        # bicarbonate, fluid) so repeated clicks on the same line queue while rescue
+        # pushes do not wait behind large crystalloid bags.
         channel_dt: dict[str, float] = {}
         remaining = []
         for infusion in engine.pending_infusions:
             is_blood = infusion.hematocrit > 0.0 or infusion.label == "blood"
-            channel = "blood" if is_blood else ("lipid" if infusion.label == "lipid" else "fluid")
+            if is_blood:
+                channel = "blood"
+            elif infusion.label == "lipid":
+                channel = "lipid"
+            elif infusion.label in ("d10w", "d50w"):
+                channel = "dextrose"
+            elif infusion.label == "bicarbonate":
+                channel = "bicarbonate"
+            else:
+                channel = "fluid"
             rem_dt = channel_dt.get(channel, dt)
             if rem_dt > 0.0 and infusion.rate_ml_min > 0.0:
                 rate_sec = infusion.rate_ml_min / 60.0
@@ -1342,16 +1357,41 @@ def step_physiology(
     mac_n2o = engine.pk_n2o.state.p_alv * 100.0 / engine.pk_n2o.mac_age
     if not dual_coupled:
         resp_state = step_respiration(engine, dt, co_now)
-    step_lactate(engine, dt)
-
     hemo = engine.hemo
     hemo_pre = hemo.state
+    ecmo = engine.extracorporeal
+    beta2_dr = _beta2_dose_ratio(engine)
+    dist_spec = engine.disturbances.spec if engine.disturbance_active else None
+    surg_stim = (
+        1.0
+        if dist_spec is not None and not dist_spec.finite
+        else (0.5 if dist_spec is not None else 0.0)
+    )
+    glucose_state = engine.glucose.step(
+        dt,
+        fluids=hemo.fluids,
+        exo_insulin_cp=engine.pk["insulin"].state.c1,
+        exo_epinephrine_ng_ml=state.epi_ce,
+        beta2_dose_ratio=beta2_dr,
+        mac_sevo=mac_sevo,
+        surgical_stimulation=surg_stim,
+        sepsis_severity=hemo.sepsis_severity,
+        cpb_active=ecmo.is_cpb,
+        temp_c=state.temp_c,
+        co_ratio=clamp(co_now / max(0.1, hemo.normal_base_co_l_min), 0.1, 2.0),
+        renal_perfusion=hemo.renal_perfusion,
+        oxygen_supply=engine.resp.oxygen_supply_fraction,
+        circulation=hemo.circulation_fraction(co_now),
+    )
+    hypo_epi = glucose_state.hypoglycemic_epi_ng_ml
+    hypo_epi_cv = hypo_epi * (1.0 - 0.65 * clamp01(engine.thermal.depth_index))
+    step_lactate(engine, dt)
+
     # Without flow, arterial pressure equals venous pressure, so coronary flow stops.
     step_coronary_from_state(engine, dt, hemo_pre, resp_state.sao2)
 
     # Plasma remifentanil and propofol reach hemodynamic effect sites inside the model;
     # slower opioids enter at their own effect sites.
-    ecmo = engine.extracorporeal
     if ecmo.is_cpb:
         stressed_ml = hemo._calc_stressed_volume()
         mcfp_now = stressed_ml / hemo.cv if hemo.cv > 0.0 else hemo.mcfp_0
@@ -1389,7 +1429,7 @@ def step_physiology(
         ),
         crisis_svr=engine.toxicity.svr_increase,
         mac_sevo=mac_sevo,
-        ce_epi=state.epi_ce,
+        ce_epi=state.epi_ce + hypo_epi_cv,
         ce_phenyl=state.phenyl_ce,
         ce_vaso=state.vaso_ce,
         ce_dobu=state.dobu_ce,
@@ -1425,19 +1465,20 @@ def step_physiology(
         protamine_svr_factor=engine.coagulation.state.protamine_svr_factor,
         protamine_venous_pool_frac=engine.coagulation.state.protamine_venous_pool_frac,
         protamine_pvr_factor=engine.coagulation.state.protamine_pvr_factor,
+        osmotic_diuresis_ml_min=glucose_state.osmotic_diuresis_ml_min,
     )
     fluid_circulation = hemo.circulation_fraction(hemo_state.co)
-    beta2_dr = _beta2_dose_ratio(engine)
     hemo.fluids.step(
         dt, ph=resp_state.ph_37, paco2=resp_state.pa_co2_37, resting_paco2=engine.resp.paco2_setpoint,
         renal_function=engine.patient.renal_function, renal_perfusion=hemo.renal_perfusion,
         hepatic_function=engine.patient.hepatic_function, oxygen_supply=engine.resp.oxygen_supply_fraction,
-        epinephrine=state.epi_ce / beta2_dr,
+        epinephrine=(state.epi_ce + hypo_epi) / beta2_dr,
         succinylcholine_ce=state.succinylcholine_ce,
         mh_severity=engine.malignant_hyperthermia.severity,
         circulation=fluid_circulation,
         lactate_acid_meq_l=engine.lactate.excess_endogenous_mmol_l,
         temp_c=state.temp_c,
+        insulin_k_uptake=glucose_state.insulin_k_uptake,
     )
     hypoxia, energy_failure, silent = myocardial_substrate(engine)
     cardioplegia_silent = ecmo.is_arterial_support and ecmo.state.cardioplegia_arrest
@@ -1552,7 +1593,7 @@ def step_lactate(engine: SimulationEngine, dt: float) -> None:
     circulation = hemo.circulation_fraction(hemo_state.co)
     base_removed = engine.lactate.step(
         dt, effective_deficit_l, effective_supply,
-        epinephrine_ng_ml=engine.state.epi_ce / beta2_dr,
+        epinephrine_ng_ml=(engine.state.epi_ce + engine.glucose.state.hypoglycemic_epi_ng_ml) / beta2_dr,
         sepsis_severity=hemo.sepsis_severity,
         infused_lactate_mmol=fluids.infused_l_lactate_mmol,
         convulsion_intensity=engine.toxicity.convulsion_intensity,

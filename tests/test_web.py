@@ -558,6 +558,7 @@ def test_page_reads_only_snapshot_fields_and_commands_the_session_provides():
     assert read("monitor.js", "v") <= set(snap["vitals"])
     assert read("controls.js", "c") <= set(snap["controls"])
     commands = set(re.findall(r'\b(?:command|send)\(\s*"([a-z_]+)"', "".join(script.values())))
+    commands |= set(re.findall(r'\bperformAction\([^,]+,\s*"([a-z_]+)"', "".join(script.values())))
     assert len(commands) > 20
     assert {name for name in commands if not hasattr(session, f"_cmd_{name}")} == set()
     page = (assets / "index.html").read_text()
@@ -773,3 +774,90 @@ def test_heparin_protamine_act_and_bypass_warnings_round_trip():
     assert parse(session.advance(0.0))["controls"]["protamine_reaction"] is True
     cmd(session, "protamine_reaction", active=False)
     assert parse(session.advance(0.0))["controls"]["protamine_reaction"] is False
+
+
+def test_glucose_insulin_dextrose_and_poc_meter_round_trip():
+    """Type 2 diabetes, baseline glucose, dextrose fluids, regular insulin, POC glucose, and warnings round-trip via JSON."""
+    cat = parse(web.catalog())
+    assert cat["ranges"]["baseline_glucose"] == [40.0, 400.0]
+
+    session = WebSession({**PATIENT, "mode": "awake", "type2_diabetes": True, "baseline_glucose": 210.0})
+    info = parse(session.info())
+    assert info["patient"]["type2_diabetes"] is True
+    assert info["patient"]["baseline_glucose"] == pytest.approx(210.0)
+    assert info["glucoses"] == []
+    assert any(
+        drug["key"] == "insulin"
+        and drug["rate_unit"] == "U/hr"
+        and drug["name"].startswith(drug["generic_name"])
+        for drug in info["drugs"]
+    )
+
+    cmd(session, "run", running=True)
+    poc0 = cmd(session, "glucose")["glucose"]
+    assert poc0["glucose"] == pytest.approx(210.0, abs=1.0)
+    assert poc0["ready_at"] == pytest.approx(poc0["drawn_at"] + 10.0)
+    abg0 = cmd(session, "blood_gas")["blood_gas"]
+    assert abg0["glucose"] == pytest.approx(210.0, abs=1.0)
+
+    # Regular insulin bolus and infusion lower glucose without warning when hyperglycemic.
+    bolus_res = cmd(session, "drug_bolus", key="insulin", amount=5.0)
+    assert bolus_res.get("feedback") is None
+    assert "Insulin 5 U given" in bolus_res["medication"]["text"]
+    rate_res = cmd(session, "drug_rate", key="insulin", rate=4.0)
+    assert rate_res.get("feedback") is None
+    assert "4 U/hr" in rate_res["medication"]["text"]
+
+    # D50W and D10W route through Medications (returning both fluid and medication receipts with gram doses),
+    # while D5W is a Circulation fluid; bolus caps are enforced.
+    for kind, vol, label, grams in (("d50w", 50, "D50W", "25 g"), ("d10w", 100, "D10W", "10 g"), ("d5w", 250, "D5W", None)):
+        res = cmd(session, "fluid", kind=kind, volume_ml=vol)
+        assert label in res["fluid"]["text"]
+        if kind in ("d50w", "d10w"):
+            assert res["medication"]["key"] == kind
+            assert label in res["medication"]["text"] and grams in res["medication"]["text"]
+        else:
+            assert "medication" not in res
+    for kind, bad_vol in (("d50w", 600), ("d50w", 0), ("d10w", 2500), ("d10w", -10)):
+        with pytest.raises(ValueError, match=r"fluid volume|positive"):
+            cmd(session, "fluid", kind=kind, volume_ml=bad_vol)
+    run_seconds(session, 15)
+    assert cmd(session, "glucose")["glucose"]["glucose"] > 220.0
+
+    # Sodium bicarbonate command logs a medication receipt, enforces bounds, and warns in alkalemia/hypernatremia.
+    bicarb_res = cmd(session, "sodium_bicarbonate", meq=50)
+    assert bicarb_res.get("feedback") is None
+    assert bicarb_res["medication"]["key"] == "sodium_bicarbonate"
+    assert "Sodium bicarbonate 50 mEq given" in bicarb_res["medication"]["text"]
+    for bad_meq in (0, -50, 501, True, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            cmd(session, "sodium_bicarbonate", meq=bad_meq)
+    session.engine.state.ph = 7.56
+    alk_warn = cmd(session, "sodium_bicarbonate", meq=50)
+    assert alk_warn["feedback"]["code"] == "bicarbonate_in_alkalemia"
+    assert alk_warn["feedback"]["level"] == "warning"
+    assert alk_warn["medication"]["key"] == "sodium_bicarbonate"
+    # Subsequent rescue calcium chloride clears the prior warning banner cleanly.
+    ca_res = cmd(session, "calcium_chloride", mg=1000)
+    assert ca_res["feedback"] is None
+    assert ca_res["medication"]["key"] == "calcium_chloride"
+    with pytest.raises(ValueError, match="positive"):
+        cmd(session, "calcium_chloride", mg=0)
+    session.engine.state.ph = 7.38
+    session.engine.state.sodium = 158.0
+    na_warn = cmd(session, "sodium_bicarbonate", meq=50)
+    assert na_warn["feedback"]["code"] == "bicarbonate_in_hypernatremia"
+    assert na_warn["feedback"]["level"] == "warning"
+    # Reload info retains D50W, D10W, and sodium bicarbonate in medication history and excludes D5W.
+    hist_keys = [entry["key"] for entry in parse(session.info())["medication_history"]]
+    assert {"d50w", "d10w", "sodium_bicarbonate", "calcium_chloride"} <= set(hist_keys)
+    assert "d5w" not in hist_keys
+
+    # Giving insulin during hypoglycemia triggers a non-blocking safety warning cleared by D50W rescue.
+    hypo = WebSession({**PATIENT, "mode": "awake", "baseline_glucose": 55.0})
+    warn = cmd(hypo, "drug_bolus", key="insulin", amount=2.0)
+    assert warn["feedback"]["code"] == "insulin_in_hypoglycemia"
+    assert warn["feedback"]["level"] == "warning"
+    rescue = cmd(hypo, "fluid", kind="d50w", volume_ml=50)
+    assert rescue["feedback"] is None
+    assert rescue["medication"]["key"] == "d50w"

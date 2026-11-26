@@ -55,6 +55,7 @@ class CerebralModel:
         self.co2_narcosis = 0.0
         self.co2_respiratory_depression = 0.0
         self.hypercapnic_coma_s = 0.0
+        self.hypoglycemic_dysfunction = 0.0
         self.last_cbf_ratio = 1.0
 
     def step(
@@ -73,6 +74,7 @@ class CerebralModel:
         metabolic_stress: float = 0.0,
         volatile_luxury: float = 0.0,
         ph_stat: bool = False,
+        glucose_mg_dl: float = 90.0,
     ) -> None:
         if dt <= 0.0:
             return
@@ -201,20 +203,46 @@ class CerebralModel:
             self.co2_respiratory_depression += (
                 (target_resp_dep - self.co2_respiratory_depression) * -math.expm1(-dt / resp_tau)
             )
+        # Reversible neuroglycopenic cortical slowing and coma below a calibrated 42 mg/dL
+        # threshold (awake T1DM EEG slowing at median 36 mg/dL, nadir 25 mg/dL in Pramming 1988;
+        # cognitive dysfunction near 43-49 mg/dL in Mitrakou 1991; 120 s / 300 s onset/recovery
+        # time constants calibrated to 8 min prehospital recovery in Moore and Woollard 2005).
+        target_hypo = clamp01((42.0 - glucose_mg_dl) / 22.0) if glucose_mg_dl < 42.0 else 0.0
+        if target_hypo != self.hypoglycemic_dysfunction:
+            hypo_tau = 120.0 if target_hypo > self.hypoglycemic_dysfunction else 300.0
+            self.hypoglycemic_dysfunction += (
+                (target_hypo - self.hypoglycemic_dysfunction) * -math.expm1(-dt / hypo_tau)
+            )
+            if self.hypoglycemic_dysfunction < 1e-6 and target_hypo == 0.0:
+                self.hypoglycemic_dysfunction = 0.0
 
     @property
     def cortical_function(self) -> float:
         """Cortical electrical function for BIS; CO2 narcosis leaves it unchanged (Turnbull 2008)."""
-        return (1.0 - self.dysfunction) * (1.0 - self.cortical_injury)
+        return (
+            (1.0 - self.dysfunction)
+            * (1.0 - self.cortical_injury)
+            * (1.0 - 0.85 * self.hypoglycemic_dysfunction)
+        )
 
     @property
     def respiratory_drive(self) -> float:
         """Medullary drive remaining after severe hypoxia/ischemia, brainstem injury, or extreme CO2 narcosis."""
-        return (1.0 - self.dysfunction ** 8) * (1.0 - self.brainstem_injury) * (1.0 - self.co2_respiratory_depression)
+        return (
+            (1.0 - self.dysfunction ** 8)
+            * (1.0 - self.brainstem_injury)
+            * (1.0 - self.co2_respiratory_depression)
+            * (1.0 - 0.35 * (self.hypoglycemic_dysfunction ** 4))
+        )
 
     @property
     def unresponsiveness(self) -> float:
-        """Loss of response from oxygen failure, postanoxic injury, or CO2 narcosis."""
+        """Loss of response from oxygen failure, postanoxic injury, CO2 narcosis, or severe hypoglycemia."""
         if self.anoxic_s >= self.COMA_EXPOSURE_S:
             return 1.0
-        return 1.0 - (1.0 - self.dysfunction) * (1.0 - self.cortical_injury) * (1.0 - self.co2_narcosis)
+        return 1.0 - (
+            (1.0 - self.dysfunction)
+            * (1.0 - self.cortical_injury)
+            * (1.0 - self.co2_narcosis)
+            * (1.0 - self.hypoglycemic_dysfunction)
+        )

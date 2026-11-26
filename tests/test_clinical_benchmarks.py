@@ -300,3 +300,249 @@ def test_yaron_1996_and_blanch_1999_obstructive_capnogram_slope():
     assert 2.0 < normal < 10.0
     assert 1.8 <= moderate / normal <= 3.5
     assert 3.0 <= severe / normal <= 5.5
+
+
+def test_rizza_1979_insulin_hypoglycemia_counterregulation(engine_factory):
+    """Rizza 1979 (n=13 healthy adults, 0.04 U/kg IV insulin bolus): reported saline control nadir
+    47 +/- 2 mg/dL (SEM) at 30 min, peak Ra 3.70 +/- 0.24 mg/kg/min at 40 min, recovery to 92 +/- 3 mg/dL
+    by 85-90 min; checks model nadir, EGP surge, and spontaneous recovery bands."""
+    from anasim.core.runtime import step_simulation
+
+    eng = engine_factory(
+        config=SimulationConfig(mode="awake", dt=2.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        start=True,
+    )
+    eng.give_drug_bolus("insulin", 0.04 * 70.0)
+    min_g = eng.state.glucose
+    peak_egp = 0.0
+    for _ in range(90 * 30):
+        step_simulation(eng, 2.0, update_monitors=False)
+        eng.state.time += 2.0
+        min_g = min(min_g, eng.state.glucose)
+        peak_egp = max(peak_egp, eng.glucose.state.egp_mg_kg_min)
+    assert 42.0 <= min_g <= 62.0
+    assert 2.8 <= peak_egp <= 4.6
+    assert eng.state.glucose > min_g + 12.0
+
+
+def test_allon_1990_esrd_insulin_d50w_hyperkalemia_and_rebound_hypoglycemia(engine_factory):
+    """Allon and Copkney 1990 (n=12 hemodialysis patients, 10 U regular insulin + 25 g D50W):
+    reported K+ fall 0.65 +/- 0.09 mmol/L (SE) alone (1.21 +/- 0.19 with 20 mg nebulized albuterol),
+    and glucose 10.3 +/- 0.6 mmol/L (~186 mg/dL) at 15 min falling to 2.8 +/- 0.3 mmol/L (~50 mg/dL) at 60 min."""
+    from anasim.core.runtime import step_simulation
+
+    eng = engine_factory(
+        config=SimulationConfig(mode="awake", dt=2.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        start=True,
+        renal_function=0.05,
+    )
+    k0 = eng.state.potassium
+    eng.give_drug_bolus("insulin", 10.0)
+    eng.give_d50w(50.0)
+    g_15 = None
+    min_k = k0
+    for minute in range(1, 61):
+        for _ in range(30):
+            step_simulation(eng, 2.0, update_monitors=False)
+            eng.state.time += 2.0
+        min_k = min(min_k, eng.state.potassium)
+        if minute == 15:
+            g_15 = eng.state.glucose
+    assert g_15 is not None and 155.0 <= g_15 <= 230.0
+    assert 0.55 <= k0 - min_k <= 1.25
+    assert eng.state.glucose < 70.0
+
+
+def test_hillier_1999_hyperglycemic_osmotic_hyponatremia(engine_factory):
+    """Hillier 1999 (n=6 somatostatin-clamped healthy adults): acute hyperglycemia draws water out of cells,
+    lowering Na+ by ~1.6 mEq/L per 100 mg/dL below 400 mg/dL (2.4 overall across >600 mg/dL)."""
+    eng = engine_factory(config=SimulationConfig(mode="awake", dt=1.0, maintenance_fluid_ml_hr=0.0))
+    na0 = eng.state.sodium
+    eng.hemo.fluids.glucose_mmol += (200.0 / 18.016) * eng.hemo.fluids.ecf_l
+    eng.hemo.fluids._equilibrate_cell_water()
+    g1 = (eng.hemo.fluids.glucose_mmol / eng.hemo.fluids.ecf_l) * 18.016
+    slope_per_100 = (eng.hemo.fluids.concentration("sodium") - na0) / ((g1 - 90.0) / 100.0)
+    assert -2.1 <= slope_per_100 <= -1.4
+
+
+def test_tanaka_2005_sevoflurane_blunts_glucose_stimulated_insulin(engine_factory):
+    """Tanaka 2005 (n=15 sevoflurane + n=15 isoflurane across 0.5-1.5 MAC with 66% N2O vs n=5 awake controls,
+    20 g D50W IVGTT): volatile anesthesia suppresses acute insulin secretion by ~77% and slows glucose clearance."""
+    from anasim.core.runtime import step_simulation
+
+    awake = engine_factory(config=SimulationConfig(mode="awake", dt=2.0, maintenance_fluid_ml_hr=0.0))
+    sevo = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=2.0, maintenance_fluid_ml_hr=0.0),
+    )
+    awake.give_d50w(40.0)  # 20 g IVGTT
+    sevo.give_d50w(40.0)
+    peak_awake_delta = 0.0
+    peak_sevo_delta = 0.0
+    for _ in range(30 * 30):
+        step_simulation(awake, 2.0, update_monitors=False)
+        step_simulation(sevo, 2.0, update_monitors=False)
+        awake.state.time += 2.0
+        sevo.state.time += 2.0
+        peak_awake_delta = max(peak_awake_delta, awake.state.insulin_mu_l - 10.0)
+        peak_sevo_delta = max(peak_sevo_delta, sevo.state.insulin_mu_l - 10.0)
+    suppression = 1.0 - peak_sevo_delta / max(1e-6, peak_awake_delta)
+    assert 0.55 <= suppression <= 0.88
+    assert sevo.state.glucose > awake.state.glucose + 10.0
+
+
+def test_cooper_1990_acidosis_bicarbonate_acid_base_etco2_and_ica(engine_factory):
+    """Cooper 1990 (n=14 ICU lactic acidosis, 0.9 M NaHCO3 2 mmol/kg over 15 min on fixed MV,
+    replayed equimolarly with AnaSim's 8.4% NaHCO3 in fixed mineral acidosis): raised arterial
+    pH (+0.14), HCO3- (+6 mmol/L), PaCO2 (+6 mmHg in Results/Fig 1), and EtCO2 (+6 mmHg, SD, Table 2)
+    while lowering ionized calcium by ~8.5% (-0.08 mmol/L, n=10, SE, Fig 3)."""
+    import copy
+
+    from anasim.core.runtime import step_simulation
+
+    base = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=2.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        age=60.0, weight=70.0, height=170.0, sex="male", start=True,
+    )
+    base.set_vent_settings(rr=14.0, vt=0.48, peep=5.0, ie="1:2", mode="VCV")
+    base.resp.remove_buffer_base(220.0)
+    for _ in range(1800):
+        step_simulation(base, 2.0, update_monitors=False)
+        base.state.time += 2.0
+    ctrl = copy.deepcopy(base)
+    for _ in range(450):
+        base.hemo.add_volume(140.0 / 450.0, label="bicarbonate")
+        step_simulation(base, 2.0, update_monitors=False)
+        step_simulation(ctrl, 2.0, update_monitors=False)
+        base.state.time += 2.0
+        ctrl.state.time += 2.0
+    dph = base.state.ph - ctrl.state.ph
+    dhco3 = base.state.hco3 - ctrl.state.hco3
+    dpaco2 = base.state.pa_co2 - ctrl.state.pa_co2
+    detco2 = base.state.etco2 - ctrl.state.etco2
+    dica = base.state.ionized_calcium - ctrl.state.ionized_calcium
+    assert 0.08 <= dph <= 0.19
+    assert 4.5 <= dhco3 <= 10.0
+    assert 3.5 <= dpaco2 <= 9.5
+    assert 3.5 <= detco2 <= 9.0
+    assert -0.14 <= dica <= -0.05
+
+
+def test_mark_1993_intraoperative_bicarbonate_bolus_kinetics(engine_factory):
+    """Mark 1993 (n=40 OR RCT, n=20 NaHCO3 vs n=20 NaCl on fixed MV, 72 +/- 16 mmol SD of
+    7.2% / 0.86 M NaHCO3 over 30 s, replayed equimolarly with AnaSim's 8.4% solution against
+    an untreated control): raised arterial pH (+0.03), HCO3- (+4 at 5 min, +2 at 20 min), Na+
+    (+2 mEq/L), and PaCO2 transiently with negligible net K+ change vs equimolar NaCl."""
+    import copy
+
+    from anasim.core.runtime import step_simulation
+
+    base = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        age=60.0, weight=72.0, height=172.0, sex="male", start=True,
+    )
+    base.set_vent_settings(rr=12.0, vt=0.52, peep=5.0, ie="1:2", mode="VCV")
+    base.resp.remove_buffer_base(75.0)
+    for _ in range(1800):
+        step_simulation(base, 2.0, update_monitors=False)
+        base.state.time += 2.0
+    ctrl = copy.deepcopy(base)
+    peak_dpaco2 = 0.0
+    for sec in range(1, 1201):
+        if sec <= 30:
+            base.hemo.add_volume(72.0 / 30.0, label="bicarbonate")
+        step_simulation(base, 1.0, update_monitors=False)
+        step_simulation(ctrl, 1.0, update_monitors=False)
+        base.state.time += 1.0
+        ctrl.state.time += 1.0
+        peak_dpaco2 = max(peak_dpaco2, base.state.pa_co2 - ctrl.state.pa_co2)
+        if sec == 300:
+            dph_5 = base.state.ph - ctrl.state.ph
+            dhco3_5 = base.state.hco3 - ctrl.state.hco3
+            dna_5 = base.state.sodium - ctrl.state.sodium
+            dk_5 = base.state.potassium - ctrl.state.potassium
+    assert peak_dpaco2 >= 6.0
+    assert 0.02 <= dph_5 <= 0.08
+    assert 2.0 <= dhco3_5 <= 5.5
+    assert 1.0 <= dna_5 <= 3.0
+    assert abs(dk_5) <= 0.25
+    assert 1.5 <= base.state.hco3 - ctrl.state.hco3 <= 4.5
+
+
+def test_blumberg_1988_esrd_hyperkalemia_bicarbonate_minimal_vs_acidemia(engine_factory):
+    """Blumberg 1988 (n=10 ESRD, 240 mmol 8.4% NaHCO3 over 60 min): hypertonic NaHCO3 in
+    non-acidemic ESRD raises pH, HCO3-, and Na+ without lowering K+ substantially (peak 5.83
+    +/- 0.23 vs baseline 5.66 +/- 0.19 mmol/L SEM, NS), unlike reversing mineral metabolic acidemia."""
+    import copy
+
+    from anasim.core.runtime import step_simulation
+
+    esrd = engine_factory(
+        config=SimulationConfig(mode="awake", dt=2.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        age=55.0, weight=70.0, height=170.0, sex="male", renal_function=0.05, start=True,
+    )
+    scale = 5.66 / 4.0
+    esrd.hemo.fluids.amounts["potassium"] *= scale
+    esrd.hemo.fluids.cell_k_mmol *= scale
+    for _ in range(150):
+        step_simulation(esrd, 2.0, update_monitors=False)
+        esrd.state.time += 2.0
+    ctrl = copy.deepcopy(esrd)
+    for _ in range(1800):
+        esrd.hemo.add_volume(240.0 / 1800.0, label="bicarbonate")
+        step_simulation(esrd, 2.0, update_monitors=False)
+        step_simulation(ctrl, 2.0, update_monitors=False)
+        esrd.state.time += 2.0
+        ctrl.state.time += 2.0
+    assert esrd.state.ph > ctrl.state.ph + 0.07
+    assert esrd.state.hco3 > ctrl.state.hco3 + 9.0
+    assert esrd.state.sodium > ctrl.state.sodium + 3.5
+    assert abs(esrd.state.potassium - ctrl.state.potassium) < 0.25
+
+    # In mineral metabolic acidemia, restoring pH toward 7.40 lowers K+ substantially.
+    acid = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=2.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        start=True,
+    )
+    acid.resp.remove_buffer_base(220.0)
+    for _ in range(300):
+        step_simulation(acid, 2.0, update_monitors=False)
+        acid.state.time += 2.0
+    acid_ctrl = copy.deepcopy(acid)
+    acid.give_sodium_bicarbonate(150.0)
+    for _ in range(600):
+        step_simulation(acid, 2.0, update_monitors=False)
+        step_simulation(acid_ctrl, 2.0, update_monitors=False)
+        acid.state.time += 2.0
+        acid_ctrl.state.time += 2.0
+    assert acid_ctrl.state.potassium - acid.state.potassium > 0.45
+
+
+def test_zaballos_2019_bicarbonate_rapidly_reduces_last_conduction_block(engine_factory):
+    """Zaballos 2019 (porcine bupivacaine cardiotoxicity, 2 mEq/kg NaHCO3 over 1-2 min;
+    extrapolated conservatively to lidocaine): NaHCO3 rapidly reduces Na+-channel conduction block."""
+    import copy
+
+    from anasim.core.runtime import step_simulation
+
+    base = engine_factory(
+        config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+        start=True,
+    )
+    base.set_vent_settings(rr=14.0, vt=0.55, peep=5.0, ie="1:2", mode="VCV")
+    # Load lidocaine directly to a severe cardiotoxic steady concentration with substantial conduction block.
+    lido = base.pk["lidocaine"]
+    lido.state.c1 = lido.state.c2 = lido.state.c3 = lido.state.ce_cv = 32.0
+    for _ in range(20):
+        step_simulation(base, 1.0, update_monitors=False)
+        base.state.time += 1.0
+    ctrl = copy.deepcopy(base)
+    base.give_sodium_bicarbonate(140.0)
+    for _ in range(180):
+        step_simulation(base, 1.0, update_monitors=False)
+        step_simulation(ctrl, 1.0, update_monitors=False)
+        base.state.time += 1.0
+        ctrl.state.time += 1.0
+    assert ctrl.toxicity.conduction_block > 0.25
+    assert base.toxicity.conduction_block < ctrl.toxicity.conduction_block * 0.70
+    assert base.state.sodium > ctrl.state.sodium + 2.0
+    assert base.state.ph > ctrl.state.ph + 0.06

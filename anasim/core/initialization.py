@@ -71,6 +71,7 @@ BALANCED_PROFILE = StartupProfile(
 
 def initialize_engine_state(engine: SimulationEngine) -> None:
     """Initialize the configured awake or maintenance state."""
+    engine.pending_infusions.clear()
     if engine.config.mode == "steady_state":
         _initialize_steady_state(engine)
     else:
@@ -510,6 +511,7 @@ def _run_hidden_settle(
             temp_c=engine.state.temp_c,
             anesthetic_depth=clamp01(engine.thermal.depth_index),
             volatile_luxury=clamp01(engine.state.mac_sevo + 0.5 * engine.state.mac_n2o),
+            glucose_mg_dl=engine.glucose.arterial_glucose_mg_dl,
         )
         projection_core.seed_arterial_monitors(
             engine, hemo_state, hr=engine.state.hr, map_mmhg=engine.state.map, sv_ml=engine.state.sv,
@@ -531,6 +533,8 @@ def _run_hidden_settle(
     engine.state.temp_c = engine.patient.baseline_temp
     # Redistribution belongs to the maintenance history, not the visible start.
     engine.thermal.settle_at_depth()
+    engine.glucose.reset_to_baseline(engine.hemo.fluids)
+    engine.cerebral.hypoglycemic_dysfunction = 0.0
     engine._pulseless_s = 0.0
     engine.vent.breath_count = 0
     engine.state.time = saved_time

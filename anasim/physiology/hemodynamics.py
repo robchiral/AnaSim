@@ -206,6 +206,9 @@ class HemodynamicModel:
         self.myocardial_hypoxia = 0.0  # 0-1 depression of rate and contractility
         self.acidosis_factor = 1.0
         self._acidosis_vasodilation = 1.0
+        self._alkalosis_vasodilation = 1.0
+        self._hyperosmolar_load = 0.0
+        self._hyperosmolar_svr_factor = 1.0
         self._hct_viscosity_tpr = 1.0
         self._anemia_sv_factor = 1.0
         self._anemia_hr_boost = 0.0
@@ -314,6 +317,9 @@ class HemodynamicModel:
             patient.weight, self.blood_volume, self.red_cell_volume_ml,
             patient.pregnancy.ph, patient.pregnancy.extracellular_water,
             excess_fat_kg=excess_fat_kg,
+            baseline_glucose_mg_dl=(
+                90.0 if patient.baseline_glucose is None else patient.baseline_glucose
+            ),
         )
 
         self._rhythm_type = RhythmType.SINUS
@@ -1205,6 +1211,8 @@ class HemodynamicModel:
             * (1.0 - self.smoothed_baro_vasc)
             * reflex_tpr_factor
             * self._acidosis_vasodilation
+            * self._alkalosis_vasodilation
+            * self._hyperosmolar_svr_factor
             * self._protamine_svr_factor
             * self._hct_viscosity_tpr
         )
@@ -1577,7 +1585,8 @@ class HemodynamicModel:
              cpb_open_drainage: bool = False,
              protamine_svr_factor: float = 1.0,
              protamine_venous_pool_frac: float = 0.0,
-             protamine_pvr_factor: float = 1.0) -> HemoState:
+             protamine_pvr_factor: float = 1.0,
+             osmotic_diuresis_ml_min: float = 0.0) -> HemoState:
         """Advance the model by dt seconds and return the new state.
 
         Args:
@@ -1639,6 +1648,9 @@ class HemodynamicModel:
         ph_eff = ph if ph_37 is None else ph_37
         self.acidosis_factor = 1.0 - 0.7 * clamp01((7.2 - ph_eff) / 0.4)
         self._acidosis_vasodilation = 1.0 - 0.25 * clamp01((7.10 - ph_eff) / 0.30)
+        # Conservative calibration for alkalemic vasodilation above pH 7.50
+        # (anchored to 7.5% NaHCO3 in halothane volunteers, Kaplan 1975).
+        self._alkalosis_vasodilation = 1.0 - 0.25 * clamp01((ph_eff - 7.50) / 0.20)
         self._hypothermia_hr_factor, self._hypothermia_sv_factor = self._hypothermia_factors(temp_c)
         ce_ephedrine_raw = max(0.0, ce_ephedrine)
         ce_nore_raw = max(0.0, ce_nore)
@@ -1752,6 +1764,13 @@ class HemodynamicModel:
             circulation = clamp01(co_prev / (CIRCULATION_LIMIT_FRACTION * base_co))
             self._cached_state = None
             delivery_time = dt_min * circulation
+            if self._hyperosmolar_load > 0.0:
+                self._hyperosmolar_load *= math.exp(-sub_dt / 20.0)
+                if self._hyperosmolar_load < 1e-9:
+                    self._hyperosmolar_load = 0.0
+                self._hyperosmolar_svr_factor = 1.0 - 0.25 * clamp01(self._hyperosmolar_load / 0.020) * circulation
+            else:
+                self._hyperosmolar_svr_factor = 1.0
 
             # Hemodynamic effect sites: propofol's arterial, cardiac, and de Wit venous
             # effects follow age-dependent SBP equilibration (Kazama 1999; Jeleazcov 2015),
@@ -1874,6 +1893,7 @@ class HemodynamicModel:
                 leak_rate_per_s,
                 base_co,
                 pulmonary_flow_prev=pulm_flow_prev,
+                osmotic_diuresis_ml_min=osmotic_diuresis_ml_min,
             )
 
             self._update_anesthetic_factors(
@@ -2319,6 +2339,9 @@ class HemodynamicModel:
         self._amiodarone_hr_effect = 0.0
         self._amiodarone_vasc_adapted = 0.0
         self._acidosis_vasodilation = 1.0
+        self._alkalosis_vasodilation = 1.0
+        self._hyperosmolar_load = 0.0
+        self._hyperosmolar_svr_factor = 1.0
         self._hct_viscosity_tpr = 1.0
         self._anemia_sv_factor = 1.0
         self._anemia_hr_boost = 0.0

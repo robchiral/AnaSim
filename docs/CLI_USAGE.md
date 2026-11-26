@@ -55,6 +55,7 @@ anasim --mode headless --duration 60 --config patient_config.json \
 | `baseline_temp` | 37 | Core temperature, 25 to 42 °C |
 | `baseline_hb` | 13.5 | Hemoglobin, 6 to 20 g/dL |
 | `baseline_hct` | `null` | Hematocrit as a fraction, 0.18 to 0.60; `null` derives it from hemoglobin |
+| `baseline_glucose` | `null` | Blood glucose, 40 to 400 mg/dL; `null` uses 90 mg/dL (150 mg/dL when `type2_diabetes` is `true`) |
 | `baseline_hr` | 70 | Heart rate before any rise from pregnancy, at least 10 bpm |
 | `baseline_map` | 90 | Mean arterial pressure, at least 20 mmHg |
 | `baseline_rr` | 12 | Respiratory rate, at least 0 breaths/min |
@@ -65,6 +66,7 @@ anasim --mode headless --duration 60 --config patient_config.json \
 | `coronary_flow_reserve` | 5.0 | Ratio of maximal to resting coronary flow, 1 to 5; `5` is normal |
 | `heart_failure` | `"none"` | `"none"`, `"hfref"` (reduced EF), or `"hfpef"` (preserved EF) |
 | `copd_severity` | 0.0 | Severity of a mixed obstructive and emphysematous profile, 0 to 1; this is not a GOLD stage |
+| `type2_diabetes` | `false` | Type 2 diabetes with insulin resistance, blunted beta-cell secretion, higher renal glycosuria threshold, and 150 mg/dL default baseline glucose |
 | `surgical_site` | `"other"` | `"other"`, `"lower_abdominal"`, or `"upper_abdominal"`; abdominal surgery keeps part of the anesthetic airway closure after emergence and slows postoperative clearance of atelectasis |
 | `gestational_age_weeks` | 0.0 | `0` for no pregnancy, or 4 to 40 weeks for a female patient aged 55 or under |
 | `position` | `"supine"` | `"supine"` or `"left_lateral"`; affects venous return from 20 weeks of pregnancy |
@@ -89,7 +91,7 @@ how the models represent these patient conditions.
 | `rng_seed` | `null` | Integer for repeatable runs; `null` for a new random sequence |
 | `patient_variability` | `false` | Sample individual drug kinetics and responses; `rng_seed` fixes the sampled patient |
 | `arterial_line_enabled` | `true` | Display continuous arterial pressure |
-| `fluid_warmer_enabled` | `false` | Warm infused fluids (crystalloids, albumin, lipid emulsion) and packed red cells to 37 °C |
+| `fluid_warmer_enabled` | `false` | Warm infused intravenous fluids and packed red cells to 37 °C |
 | `maintenance_fluid_ml_hr` | `null` | Maintenance fluid rate in mL/hr; `null` uses 1 mL/kg/hr |
 | `sevoflurane_enabled` | `true` | Enable the sevoflurane vaporizer; `"balanced"` requires `true` |
 | `disturbance_profile` | `null` | `"stim_intubation_pulse"`, `"stim_sustained_surgery"`, or `null` |
@@ -157,10 +159,12 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 | `set_drug_rate(key, rate_user_unit)` | Uses the [registry's units](../anasim/core/drug_registry.py). Weight-based rates (propofol, remifentanil, rocuronium, dobutamine, milrinone, esmolol, ketamine, and lidocaine) use total body weight; other infusion rates are not weight-scaled |
 | `enable_tci(drug, target, mode="effect_site")` | Requires `tci_enabled=True`; a non-positive target stops TCI |
 | `set_drug_target(key, target)` | Preserves the active plasma or effect-site mode; `None` or a non-positive target stops TCI |
-| `give_blood(volume_ml=300.0, hematocrit=0.55)` | Queues packed red cells at 75 mL/min on the blood channel; donor hematocrit must be between 0.01 and 0.70. Repeated fluid, blood, or lipid boluses drain sequentially on their own channel rather than multiplying delivery rate |
+| `give_blood(volume_ml=300.0, hematocrit=0.55)` | Queues packed red cells at 75 mL/min on the blood channel; donor hematocrit must be between 0.01 and 0.70. Repeated fluid, blood, lipid, bolus dextrose, or bicarbonate orders drain sequentially on their own channel rather than multiplying delivery rate |
+| `give_d5w(volume_ml=250.0)`, `give_d10w(volume_ml=100.0)`, `give_d50w(volume_ml=50.0)` | Queues 5%, 10%, or 50% intravenous dextrose (D5W on the fluid channel; D10W at 50 mL/min and D50W at 25 mL/min on a separate bolus dextrose channel) |
 | `give_lipid_emulsion(volume_ml)` | Gives up to 3,000 mL of 20% lipid emulsion over 2.5 simulated minutes |
 | `set_lipid_infusion(ml_min)` | Sets a 20% lipid emulsion infusion from 0 to 200 mL/min |
 | `give_calcium_chloride(mg)` | Gives calcium chloride dihydrate up to 10,000 mg; 1 g contains 6.8 mmol calcium |
+| `give_sodium_bicarbonate(meq=50.0)` | Queues 8.4% sodium bicarbonate (1 mEq/mL, up to 500 mEq) at 100 mL/min on its own intravenous channel |
 | `set_fluid_warmer(enabled)` | Turns the 37 °C intravenous fluid and blood warmer on or off |
 | `charge_defibrillator()` | Charges to 200 J in 5 simulated seconds and holds the charge for 60 seconds |
 | `disarm_defibrillator()` | Cancels a charge or a pending synchronized shock |
@@ -170,5 +174,5 @@ waveform samples, spaced 10 ms apart or less at any `dt`.
 | `start_vv_ecmo(...)`, `start_va_ecmo(...)`, `start_cpb(...)` | Starts VV ECMO, VA ECMO, or CPB with optional flow, sweep, cannulation, prime, and thermal settings (see [`engine.py`](../anasim/core/engine.py)); `stop_extracorporeal(reinfuse=False)` stops support |
 | `set_ecmo_flow(l_min)`, `set_ecmo_sweep(l_min)`, `set_ecmo_fio2(fio2)`, `set_ecmo_sevo(percent)` | Adjusts active circuit flow (0 to 8 L/min), sweep gas (0 to 16 L/min), sweep FiO₂ (0.21 to 1.0), or oxygenator sevoflurane (0 to 8%); additional setters control FCO₂, membrane area, heater-cooler, LV vent, CPB venous clamp, cross-clamp, cardioplegia, blood-gas strategy, and bypass alarm mode |
 | `add_cpb_reservoir_fluid(volume_ml, kind="crystalloid", hematocrit=0.55)` | Adds 1 to 2,000 mL of crystalloid, saline, colloid (`"albumin"`), or blood directly to the CPB reservoir |
-| `draw_blood_gas(site="arterial")`, `measure_act()` | Draws a blood gas sample (ready after 120 s; sites `"arterial"`, `"right_radial"`, `"femoral"`, `"pre_oxy"`, `"post_oxy"`) or whole-blood ACT (ready after 60 s) |
+| `draw_blood_gas(site="arterial")`, `measure_act()`, `measure_glucose()` | Draws a blood gas sample (ready after 120 s; sites `"arterial"`, `"right_radial"`, `"femoral"`, `"pre_oxy"`, `"post_oxy"`), whole-blood ACT (ready after 60 s), or point-of-care blood glucose (ready after 10 s, mg/dL) |
 | `start_protamine_reaction()`, `stop_protamine_reaction()`, `arm_protamine_reaction(armed=True)` | Controls a Type III protamine pulmonary vasoconstriction reaction |

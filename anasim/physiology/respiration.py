@@ -400,16 +400,23 @@ class RespiratoryModel:
         return clamp01(transport.blood_volume / total_vol) if total_vol > 0.0 else 0.0
 
     def update_fluid_balance(
-        self, hb: float, hct: float, blood_volume_ml: float, *, circulation: float = 1.0,
+        self,
+        hb: float,
+        hct: float,
+        blood_volume_ml: float,
+        *,
+        circulation: float = 1.0,
+        pulmonary_flow: float | None = None,
     ) -> None:
         """Apply fluid charge and carbon transfers before gas exchange."""
         fluids = self.fluids
         if fluids is None:
             return
         venous_only = circulation <= 0.0
+        no_pulm_flow = not venous_only and pulmonary_flow is not None and pulmonary_flow <= 0.0
         transport = self.gas_transport
         old_volumes = transport.volumes
-        if venous_only:
+        if venous_only or no_pulm_flow:
             old_o2_concs = tuple(transport.oxygen)
             old_co2_concs = tuple(transport.co2)
             old_base_concs = tuple(transport.base)
@@ -502,6 +509,19 @@ class RespiratoryModel:
             total_target_o2 = sum(old_o2_amounts)
             venous_o2 = max(0.0, (total_target_o2 - v0 * old_o2_concs[0] - v1 * old_o2_concs[1]) / v2)
             transport.oxygen = [old_o2_concs[0], old_o2_concs[1], venous_o2]
+        elif no_pulm_flow and v1 + v2 > 0.0:
+            total_target_o2 = sum(old_o2_amounts)
+            sys_target_o2 = max(0.0, total_target_o2 - v0 * old_o2_concs[0])
+            raw_sys_o2 = old_o2_amounts[1] + old_o2_amounts[2]
+            if raw_sys_o2 > 0.0:
+                o2_scale = sys_target_o2 / raw_sys_o2
+                transport.oxygen = [
+                    old_o2_concs[0],
+                    old_o2_amounts[1] * o2_scale / v1 if v1 > 0.0 else old_o2_concs[1],
+                    old_o2_amounts[2] * o2_scale / v2 if v2 > 0.0 else old_o2_concs[2],
+                ]
+            else:
+                transport.oxygen = [old_o2_concs[0], sys_target_o2 / (v1 + v2), sys_target_o2 / (v1 + v2)]
         else:
             transport.oxygen = [amt / v for amt, v in zip(old_o2_amounts, transport.volumes, strict=True)]
         self._oxygen_hb = hb
@@ -518,6 +538,14 @@ class RespiratoryModel:
         if venous_only and v2 > 0.0:
             venous_co2 = max(0.5, (target_blood_co2 - v0 * old_co2_concs[0] - v1 * old_co2_concs[1]) / v2)
             transport.co2 = [old_co2_concs[0], old_co2_concs[1], venous_co2]
+        elif no_pulm_flow and v1 + v2 > 0.0:
+            sys_target_co2 = max(0.5 * (v1 + v2), target_blood_co2 - v0 * old_co2_concs[0])
+            raw_sys_co2 = v1 * old_co2_concs[1] + v2 * old_co2_concs[2]
+            if raw_sys_co2 > 0.0:
+                co2_scale = sys_target_co2 / raw_sys_co2
+                transport.co2 = [old_co2_concs[0], old_co2_concs[1] * co2_scale, old_co2_concs[2] * co2_scale]
+            else:
+                transport.co2 = [old_co2_concs[0], sys_target_co2 / (v1 + v2), sys_target_co2 / (v1 + v2)]
         else:
             raw_blood_co2 = transport.blood_amount(transport.co2)
             if raw_blood_co2 > 0.0:
@@ -528,11 +556,12 @@ class RespiratoryModel:
         net_global_base_delta = fluids.base_meq - old_total_base
         ecf_metabolic_delta = net_global_base_delta - (sync.infuse_base_meq - bleed_base)
         infuse_base_for_blood = blood_infuse_base
-        if self._unbuffered_acid_meq > 0.0 and sync.infuse_base_meq > 0.0:
-            repaid = min(self._unbuffered_acid_meq, sync.infuse_base_meq)
+        retained_infuse_base = max(0.0, sync.infuse_base_meq - bled_infuse_base)
+        if self._unbuffered_acid_meq > 0.0 and retained_infuse_base > 0.0:
+            repaid = min(self._unbuffered_acid_meq, retained_infuse_base)
             self._unbuffered_acid_meq -= repaid
             fluids.base_meq -= repaid
-            blood_share = blood_infuse_base / sync.infuse_base_meq
+            blood_share = clamp01(blood_infuse_base / retained_infuse_base)
             infuse_base_for_blood -= repaid * blood_share
             fluids.adjust_running_blood_base(-repaid * blood_share)
         target_blood_base = (
@@ -545,6 +574,10 @@ class RespiratoryModel:
         if venous_only and v2 > 0.0:
             venous_base = (target_blood_base - v0 * old_base_concs[0] - v1 * old_base_concs[1]) / v2
             transport.base = [old_base_concs[0], old_base_concs[1], venous_base]
+        elif no_pulm_flow and v1 + v2 > 0.0:
+            sys_base_now = v1 * old_base_concs[1] + v2 * old_base_concs[2]
+            base_shift = (target_blood_base - v0 * old_base_concs[0] - sys_base_now) / (v1 + v2)
+            transport.base = [old_base_concs[0], old_base_concs[1] + base_shift, old_base_concs[2] + base_shift]
         else:
             base_shift = (target_blood_base - transport.blood_amount(transport.base)) / new_vol
             transport.base = [b + base_shift for b in transport.base]
@@ -563,7 +596,7 @@ class RespiratoryModel:
                 self._extracellular_buffers = PlasmaBuffers(i_alb, pi_conc, i_cell)
                 self._set_blood_composition(hb, hct)
                 break
-        self._rebalance_base_above_floor(venous_only=venous_only)
+        self._rebalance_base_above_floor(venous_only=venous_only, exclude_pulmonary=no_pulm_flow)
         fluids.blood_base_meq_l = transport.blood_amount(transport.base) / transport.blood_volume
 
     @staticmethod
@@ -1112,11 +1145,32 @@ class RespiratoryModel:
             self.gas_transport.oxygen[1], self._arterial_hb, p50, self._blood_po2[1], solubility=_O2_SOLUBILITY
         )
 
-    def _rebalance_base_above_floor(self, *, venous_only: bool = False) -> None:
+    def _rebalance_base_above_floor(
+        self, *, venous_only: bool = False, exclude_pulmonary: bool = False,
+    ) -> None:
         """Keep blood and interstitial buffer base above the pH 5.05 solver floor, tracking excess acid."""
         transport = self.gas_transport
+        indices = (2,) if venous_only else ((1, 2) if exclude_pulmonary else (0, 1, 2))
         pco2_blood = max(200.0, *self._blood_pressures)
         pco2_ext = max(200.0, self._extracellular_pco2)
+        near_floor = (
+            self._unbuffered_acid_meq > 0.0
+            or min(self._blood_ph) < 6.0
+            or self._extracellular_ph < 6.0
+            or (transport.blood_volume > 0.0 and min(transport.base[i] for i in indices) < 10.0)
+            or (
+                transport.extracellular_volume > 0.0
+                and transport.extracellular_base / transport.extracellular_volume < 10.0
+            )
+        )
+        if near_floor:
+            if transport.blood_volume > 0.0:
+                pco2_blood = max(pco2_blood, max(transport.co2[i] for i in indices) / _PLASMA_CO2_SOLUBILITY)
+            if transport.extracellular_volume > 0.0:
+                pco2_ext = max(
+                    pco2_ext,
+                    (transport.extracellular_co2 / transport.extracellular_volume) / _PLASMA_CO2_SOLUBILITY,
+                )
         if pco2_blood == 200.0:
             if self._min_blood_base_200 is None:
                 self._min_blood_base_200 = self.chemistry.evaluate(5.05, 200.0, 1.0).buffer_base
@@ -1133,33 +1187,26 @@ class RespiratoryModel:
         if transport.extracellular_base < ext_floor:
             ext_deficit = ext_floor - transport.extracellular_base
             transport.extracellular_base = ext_floor
-            if venous_only:
-                venous_vol = transport.volumes[2]
-                blood_avail = max(0.0, (transport.base[2] - min_blood) * venous_vol) if venous_vol > 0.0 else 0.0
+            active_vol = sum(transport.volumes[idx] for idx in indices)
+            if active_vol > 0.0:
+                blood_avail = max(0.0, (min(transport.base[idx] for idx in indices) - min_blood) * active_vol)
                 from_blood = min(ext_deficit, blood_avail)
                 if from_blood > 0.0:
-                    transport.base[2] -= from_blood / venous_vol
+                    shift = from_blood / active_vol
+                    updated = list(transport.base)
+                    for idx in indices:
+                        updated[idx] -= shift
+                    transport.base = updated
                     if self.fluids is not None:
                         self.fluids.adjust_running_blood_base(-from_blood)
             else:
-                blood_avail = (
-                    max(0.0, (min(transport.base) - min_blood) * transport.blood_volume)
-                    if transport.blood_volume > 0.0
-                    else 0.0
-                )
-                from_blood = min(ext_deficit, blood_avail)
-                if from_blood > 0.0:
-                    shift = from_blood / transport.blood_volume
-                    transport.base = [b - shift for b in transport.base]
-                    if self.fluids is not None:
-                        self.fluids.adjust_running_blood_base(-from_blood)
+                from_blood = 0.0
             unbuffered = ext_deficit - from_blood
             if unbuffered > 0.0:
                 self._unbuffered_acid_meq += unbuffered
                 if self.fluids is not None:
                     self.fluids.base_meq += unbuffered
         if transport.blood_volume > 0.0:
-            indices = (2,) if venous_only else (0, 1, 2)
             if any(transport.base[idx] < min_blood for idx in indices):
                 blood_deficit = 0.0
                 updated_base = list(transport.base)

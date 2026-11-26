@@ -24,6 +24,7 @@ class BloodGasResult:
     hb: float  # g/dL
     fio2: float  # Inspired O2 fraction at the draw.
     site: str = "arterial"  # Sample site: arterial/right_radial, femoral, pre_oxy, post_oxy.
+    glucose: float = 90.0  # Blood glucose, mg/dL.
 
     @property
     def ready_at(self) -> float:

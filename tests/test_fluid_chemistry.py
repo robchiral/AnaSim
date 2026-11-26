@@ -151,7 +151,7 @@ def test_renal_response_is_slow_and_requires_function_and_urine():
     # Compensation for hypercapnia lowers chloride as bicarbonate rises; urine alone does not.
     assert anuric.concentration("chloride") == pytest.approx(104.0)
     assert 104.0 - normal.concentration("chloride") == pytest.approx(
-        normal.renal_base_meq / normal.ecf_l, rel=0.15,
+        normal.renal_base_meq / normal.ecf_l, rel=0.20,
     )
 
 

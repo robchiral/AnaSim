@@ -42,6 +42,7 @@ const bloodGasRows = [
   ["K⁺", "mmol/L", "potassium", (value) => value.toFixed(1), "3.5–5.0", 3.5, 5.0],
   ["Cl⁻", "mmol/L", "chloride", (value) => value.toFixed(0), "98–107", 98, 107],
   ["Ionized Ca²⁺", "mmol/L", "ionized_calcium", (value) => value.toFixed(2), "1.15–1.30", 1.15, 1.30],
+  ["Glucose", "mg/dL", "glucose", (value) => value.toFixed(0), "70–140", 70, 140],
   ["SaO₂", "%", "sao2", (value) => value.toFixed(1), "≥95", 95, null],
   ["Hb", "g/dL", "hb", (value) => value.toFixed(1), "12.0–17.5", 12.0, 17.5],
   ["FiO₂", "%", "fio2", (value) => (value * 100).toFixed(0), "—", null, null],
@@ -76,8 +77,12 @@ const ISO_DRUG_CLASS = {
   dantrolene: "rescue",
   lipid: "rescue",
   calcium_chloride: "rescue",
+  sodium_bicarbonate: "rescue",
   heparin: "local",
   protamine: "reversal",
+  insulin: "rescue",
+  d50w: "rescue",
+  d10w: "rescue",
 };
 // Four significant figures keep small rates visible without long decimals.
 const rateText = (value) => String(Number(value.toPrecision(4)));
@@ -110,14 +115,19 @@ const medicationGroups = [
   { name: "Heart rate and blood pressure", keys: ["atropine", "glyco", "esmolol", "labetalol"] },
   { name: "Neuromuscular blockade and reversal", keys: ["roc", "succinylcholine", "sugammadex"] },
   { name: "Anticoagulation and reversal", keys: ["heparin", "protamine"] },
-  { name: "Rescue and antidotes", keys: ["dantrolene", "lipid", "calcium_chloride"] },
+  { name: "Endocrine and metabolic", keys: ["insulin", "d50w", "d10w"] },
+  { name: "Rescue and antidotes", keys: ["dantrolene", "lipid", "calcium_chloride", "sodium_bicarbonate"] },
 ];
 const medicationSearchTerms = {
   dantrolene: "malignant hyperthermia MH",
   lipid: "local anesthetic systemic toxicity LAST",
-  calcium_chloride: "hypocalcemia",
+  calcium_chloride: "hypocalcemia hyperkalemia CaCl2",
+  sodium_bicarbonate: "NaHCO3 bicarb 8.4% acidosis hyperkalemia LAST toxicity alkalinization",
   heparin: "UFH anticoagulation ACT CPB ECMO",
   protamine: "heparin reversal ACT CPB",
+  insulin: "regular hyperglycemia hyperkalemia glucose diabetes",
+  d50w: "dextrose 50% D50 D50W glucose hypoglycemia hyperkalemia 25 g",
+  d10w: "dextrose 10% D10 D10W glucose hypoglycemia 10 g",
 };
 const halfTimeDrugs = ["propofol", "remi", "fentanyl"];
 
@@ -131,6 +141,8 @@ export class Controls {
     this.shownBloodGases = null;
     this.acts = [...(info.acts ?? [])];
     this.shownActs = null;
+    this.glucoses = [...(info.glucoses ?? [])];
+    this.shownGlucoses = null;
     this.time = 0;
     this.weight = info.patient.weight;
     this.send = async (name, args) => {
@@ -333,6 +345,7 @@ export class Controls {
   buildDrugs(drugs) {
     const container = $("drug-cards");
     const lipid = $("lipid-controls");
+    lipid.open = false;
     container.replaceChildren();
     $("running-infusion-list").replaceChildren();
     $("running-infusions").hidden = true;
@@ -386,7 +399,9 @@ export class Controls {
         <p class="csht" hidden></p>
         </div>`;
       card.querySelector(".drug-name").textContent = spec.generic_name;
-      card.querySelector(".drug-strength").textContent = spec.name.slice(spec.generic_name.length).trim();
+      card.querySelector(".drug-strength").textContent = spec.name.startsWith(spec.generic_name)
+        ? spec.name.slice(spec.generic_name.length).trim()
+        : spec.name;
       card.querySelector(".bolus-unit").textContent = spec.bolus_unit;
 
       const w = {
@@ -468,13 +483,74 @@ export class Controls {
     calcium.className = "drug-card";
     calcium.dataset.iso = ISO_DRUG_CLASS.calcium_chloride;
     calcium.innerHTML = `
-      <summary><span class="drug-name">Calcium chloride</span></summary>
+      <summary><span class="drug-name">Calcium chloride</span><span class="drug-strength">10%, 100 mg/mL</span></summary>
       <div class="drug-controls">
         <button type="button" class="btn outlined full" data-calcium="1000">Give 1 g</button>
         <p class="medication-feedback" role="status" hidden></p>
       </div>`;
     this.medicationRows.set("calcium_chloride", {
       card: calcium, name: `Calcium chloride ${medicationSearchTerms.calcium_chloride}`, feedback: calcium.querySelector(".medication-feedback"),
+    });
+    const addBolusCard = ({ key, label, strength, unit, defaultValue, max, onGive }) => {
+      const card = document.createElement("details");
+      card.className = "drug-card";
+      card.dataset.iso = ISO_DRUG_CLASS[key] ?? "rescue";
+      const inputId = `drug-${key}-bolus`;
+      card.innerHTML = `
+        <summary><span class="drug-name"></span><span class="drug-strength"></span></summary>
+        <div class="drug-controls">
+          <div class="bolus">
+            <div class="bolus-field">
+              <div class="control-setting-head"><label for="${inputId}">Bolus</label><span class="bolus-unit"></span></div>
+              <input id="${inputId}" class="bolus-amount" type="number" min="0.001" max="${max}" step="any" required>
+            </div>
+            <button type="button" class="btn">Give bolus</button>
+          </div>
+          <p class="medication-feedback" role="status" hidden></p>
+        </div>`;
+      card.querySelector(".drug-name").textContent = label;
+      card.querySelector(".drug-strength").textContent = strength;
+      card.querySelector(".bolus-unit").textContent = unit;
+      const input = card.querySelector(".bolus-amount");
+      const give = card.querySelector(".bolus .btn");
+      input.value = String(defaultValue);
+      input.setAttribute("aria-label", `${label} bolus (${unit})`);
+      give.onclick = () => {
+        if (input.reportValidity && !input.reportValidity()) return;
+        return onGive(give, readNumber(input));
+      };
+      this.medicationRows.set(key, {
+        card,
+        name: `${label} ${strength} ${medicationSearchTerms[key] ?? ""}`,
+        feedback: card.querySelector(".medication-feedback"),
+      });
+    };
+    addBolusCard({
+      key: "d50w",
+      label: "Dextrose 50%",
+      strength: "D50W · 0.5 g/mL",
+      unit: "mL",
+      defaultValue: 50,
+      max: 500,
+      onGive: (button, volume_ml) => this.performAction(button, "fluid", { kind: "d50w", volume_ml }),
+    });
+    addBolusCard({
+      key: "d10w",
+      label: "Dextrose 10%",
+      strength: "D10W · 0.1 g/mL",
+      unit: "mL",
+      defaultValue: 100,
+      max: 2000,
+      onGive: (button, volume_ml) => this.performAction(button, "fluid", { kind: "d10w", volume_ml }),
+    });
+    addBolusCard({
+      key: "sodium_bicarbonate",
+      label: "Sodium bicarbonate",
+      strength: "8.4%, 1 mEq/mL",
+      unit: "mEq",
+      defaultValue: 50,
+      max: 500,
+      onGive: (button, meq) => this.performAction(button, "sodium_bicarbonate", { meq }),
     });
     this.medicationRows.set("lipid", {
       card: lipid, name: `Lipid emulsion 20% ${medicationSearchTerms.lipid}`, feedback: $("c-lipid-feedback"),
@@ -927,8 +1003,61 @@ export class Controls {
         this.showActs();
       };
     }
+    const glucoseBtn = $("c-glucose");
+    if (glucoseBtn) {
+      glucoseBtn.onclick = async () => {
+        const result = await this.performAction(glucoseBtn, "glucose");
+        if (this.destroyed || result === undefined) return;
+        (this.glucoses ??= []).push(result.glucose);
+        this.showGlucoses();
+      };
+    }
     this.showBloodGases();
     this.showActs();
+    this.showGlucoses();
+  }
+
+  showGlucoses() {
+    if (!this.glucoses) return;
+    const status = $("glucose-pending");
+    const container = $("glucose-results");
+    if (!status || !container) return;
+    const ready = this.glucoses.filter((result) => result.ready_at <= this.time);
+    const pending = this.glucoses.length - ready.length;
+    status.hidden = pending === 0;
+    if (pending > 0) {
+      const next = minutesSeconds(Math.ceil(this.glucoses[ready.length].ready_at - this.time));
+      setText(status, pending === 1 ? `Result in ${next}` : `${pending} samples running; next result in ${next}`);
+    }
+    if (ready.length === this.shownGlucoses) return;
+    this.shownGlucoses = ready.length;
+    container.hidden = ready.length === 0;
+    const table = container.querySelector?.("table");
+    if (!table) return;
+    const newest = [...ready].reverse();
+    table.tBodies[0].replaceChildren(...newest.map((result) => {
+      const row = document.createElement("tr");
+      const timeCell = document.createElement("th");
+      timeCell.scope = "row";
+      timeCell.textContent = minutesSeconds(result.drawn_at);
+      const valCell = document.createElement("td");
+      if (result.glucose === null || result.glucose === undefined) {
+        valCell.textContent = "—";
+      } else {
+        const rounded = Math.round(result.glucose);
+        valCell.textContent = String(rounded);
+        const flag = rounded < 70 ? "L" : rounded > 180 ? "H" : "";
+        if (flag) {
+          valCell.className = flag === "H" ? "abg-high" : "abg-low";
+          const badge = document.createElement("span");
+          badge.className = "abg-flag";
+          badge.textContent = flag;
+          valCell.append(badge);
+        }
+      }
+      row.append(timeCell, valCell);
+      return row;
+    }));
   }
 
   showActs() {
@@ -1014,7 +1143,7 @@ export class Controls {
       const strictHigh = refLabel.startsWith("<");
       row.append(name, refCell, ...newest.map((result) => {
         const raw = result[key];
-        if (raw === null) return cell("td", "—");
+        if (raw === null || raw === undefined) return cell("td", "—");
         const shown = format(raw);
         const value = Number(shown);
         const td = cell("td", shown);
@@ -1177,6 +1306,7 @@ export class Controls {
     this.time = time;
     this.showBloodGases();
     this.showActs();
+    this.showGlucoses();
     this.showClinicalFeedback(c.clinical_feedback);
 
     for (const button of (this.airwayButtons ??= [...$("c-airway").querySelectorAll("button")])) {

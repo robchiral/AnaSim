@@ -129,24 +129,28 @@ const PATIENT_PRESETS = {
     age: 40, sex: "male", weight: 70, height: 170, baseline_hb: 13.5,
     renal_function: "1.0", creatinine_clearance_ml_min: "", hepatic_function: "1.0",
     coronary_flow_reserve: "5", heart_failure: "none", copd_severity: "0",
+    type2_diabetes: false, baseline_glucose: "",
     surgical_site: "other", pregnant: false, gestational_age_weeks: 28, position: "supine",
   },
   elderly_cad: {
     age: 76, sex: "male", weight: 74, height: 172, baseline_hb: 11.8,
     renal_function: "0.8", creatinine_clearance_ml_min: "", hepatic_function: "1.0",
     coronary_flow_reserve: "2", heart_failure: "hfpef", copd_severity: "0",
+    type2_diabetes: false, baseline_glucose: "",
     surgical_site: "upper_abdominal", pregnant: false, gestational_age_weeks: 28, position: "supine",
   },
   obese_copd: {
     age: 64, sex: "male", weight: 128, height: 174, baseline_hb: 14.8,
     renal_function: "1.0", creatinine_clearance_ml_min: "", hepatic_function: "1.0",
     coronary_flow_reserve: "5", heart_failure: "none", copd_severity: "0.65",
+    type2_diabetes: false, baseline_glucose: "",
     surgical_site: "lower_abdominal", pregnant: false, gestational_age_weeks: 28, position: "supine",
   },
   obstetric: {
     age: 31, sex: "female", weight: 64, height: 165, baseline_hb: 11.2,
     renal_function: "1.0", creatinine_clearance_ml_min: "", hepatic_function: "1.0",
     coronary_flow_reserve: "5", heart_failure: "none", copd_severity: "0",
+    type2_diabetes: false, baseline_glucose: "",
     surgical_site: "lower_abdominal", pregnant: true, gestational_age_weeks: 38, position: "supine",
   },
 };
@@ -287,6 +291,9 @@ function buildSetup() {
     if (Number(f.coronary_flow_reserve.value) < 5) conditions.push(`${severity(f.coronary_flow_reserve)} coronary disease`);
     if (f.heart_failure.value !== "none") conditions.push(f.heart_failure.value === "hfref" ? "HFrEF" : "HFpEF");
     if (Number(f.copd_severity.value) > 0) conditions.push(`${severity(f.copd_severity)} COPD`);
+    if (f.type2_diabetes.checked) conditions.push("Type 2 diabetes");
+    f.baseline_glucose.placeholder = f.type2_diabetes.checked ? "150" : "90";
+    if (f.baseline_glucose.value !== "") conditions.push(`BG ${f.baseline_glucose.value} mg/dL`);
     if (f.surgical_site.value !== "other") conditions.push(`${severity(f.surgical_site)} surgery`);
     if (f.pregnant.checked) conditions.push(`${f.gestational_age_weeks.value} weeks pregnant`);
     setText($("clinical-conditions-summary"), list(conditions, "None"));
@@ -317,6 +324,7 @@ function readSetup(form) {
   const params = { gestational_age_weeks: 0, position: "supine" };
   const numeric = ["age", "weight", "height", "baseline_hb"];
   if (f.creatinine_clearance_ml_min.value !== "") numeric.push("creatinine_clearance_ml_min");
+  if (f.baseline_glucose.value !== "") numeric.push("baseline_glucose");
   if (f.pregnant.checked) numeric.push("gestational_age_weeks");
   for (const name of numeric) {
     const input = f[name];
@@ -339,6 +347,7 @@ function readSetup(form) {
   params.coronary_flow_reserve = Number(f.coronary_flow_reserve.value);
   params.heart_failure = f.heart_failure.value;
   params.copd_severity = Number(f.copd_severity.value);
+  params.type2_diabetes = f.type2_diabetes.checked;
   params.surgical_site = f.surgical_site.value;
   if (f.pregnant.checked) params.position = f.position.value;
   params.arterial_line_enabled = f.arterial_line_enabled.checked;

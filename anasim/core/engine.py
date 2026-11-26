@@ -59,6 +59,7 @@ from anasim.physiology.cerebral import CerebralModel
 from anasim.physiology.coagulation import ACTResult, CoagulationModel
 from anasim.physiology.disturbances import Disturbances
 from anasim.physiology.events import SeverityRamp
+from anasim.physiology.glucose import GlucoseModel, GlucoseResult
 from anasim.physiology.hemodynamics import MAX_HEMATOCRIT, HemodynamicModel
 from anasim.physiology.lactate import LactateModel
 from anasim.physiology.lung import LungAeration
@@ -94,6 +95,7 @@ from .action_log import (
     ACTION_EXTRACORPOREAL,
     ACTION_FGF,
     ACTION_FLUID,
+    ACTION_GLUCOSE,
     ACTION_INTUBATION_ATTEMPT,
     ACTION_LIPID_INFUSION,
     ACTION_O2_FLUSH,
@@ -333,6 +335,20 @@ class SimulationEngine(DrugControllerMixin):
             lean_mass_kg=self.hemo.fluids.lean_mass_kg,
             volume_l=self.hemo.fluids.lactate_volume_l,
         )
+        self.glucose = GlucoseModel(
+            lean_mass_kg=self.hemo.fluids.lean_mass_kg,
+            ecf_l=self.hemo.fluids.ecf_l,
+            fluids=self.hemo.fluids,
+            baseline_glucose_mg_dl=(
+                90.0 if self.patient.baseline_glucose is None else self.patient.baseline_glucose
+            ),
+            type2_diabetes=self.patient.type2_diabetes,
+            age=self.patient.age,
+            bmi=self.patient.bmi,
+            renal_function=self.patient.renal_function,
+            renal_clearance_factor=self.patient.renal_clearance_factor,
+            hepatic_function=self.patient.hepatic_function,
+        )
         self.cerebral = CerebralModel(
             self.patient.baseline_hb, self.resp.paco2_setpoint, self.patient.baseline_map,
         )
@@ -375,6 +391,7 @@ class SimulationEngine(DrugControllerMixin):
         self.nmb = NeuromuscularMonitor()
         self.blood_gases: list[BloodGasResult] = []
         self.acts: list[ACTResult] = []
+        self.glucoses: list[GlucoseResult] = []
         self.state.nibp_interval_sec = self.nibp.interval
 
     @property
@@ -436,6 +453,18 @@ class SimulationEngine(DrugControllerMixin):
         """Queue 0.9% saline at the crystalloid infusion rate."""
         self._queue_infusion(volume_ml, self.fluid_infusion_rate_ml_min, hematocrit=0.0, label="saline")
 
+    def give_d5w(self, volume_ml: float = 250.0):
+        """Queue 5% dextrose in water (50 g/L) at the crystalloid infusion rate."""
+        self._queue_infusion(volume_ml, self.fluid_infusion_rate_ml_min, hematocrit=0.0, label="d5w")
+
+    def give_d10w(self, volume_ml: float = 100.0):
+        """Queue 10% dextrose in water (100 g/L) at 50 mL/min."""
+        self._queue_infusion(volume_ml, 50.0, hematocrit=0.0, label="d10w")
+
+    def give_d50w(self, volume_ml: float = 50.0):
+        """Queue 50% dextrose in water (500 g/L; 50 mL = 25 g) as a 25 mL/min IV push."""
+        self._queue_infusion(volume_ml, 25.0, hematocrit=0.0, label="d50w")
+
     def give_calcium_chloride(self, mg: float):
         """Give calcium chloride dihydrate; 1 g contains 6.8 mmol calcium."""
         dose = bounded_number("calcium chloride dose", mg, 0.0, 10000.0, unit="mg")
@@ -445,6 +474,14 @@ class SimulationEngine(DrugControllerMixin):
         self.hemo.fluids.give_calcium_chloride(dose * 0.0068, circulation=circulation, bolus_push_s=90.0)
         self.state.ionized_calcium = float(self.hemo.fluids.ionized_calcium(self.resp.state.ph_37))
         self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="calcium_chloride", amount=dose)
+
+    def give_sodium_bicarbonate(self, meq: float = 50.0):
+        """Queue 8.4% sodium bicarbonate (1 mEq/mL; 50 mEq = 50 mL) as a 100 mL/min IV push."""
+        dose = bounded_number("sodium bicarbonate dose", meq, 0.0, 500.0, unit="mEq")
+        if dose <= 0.0:
+            raise ValueError("sodium bicarbonate dose must be greater than zero")
+        self._queue_infusion(dose, 100.0, hematocrit=0.0, label="bicarbonate", record_action=False)
+        self.actions.record(self.state.time, ACTION_DRUG_BOLUS, label="sodium_bicarbonate", amount=dose)
 
     def give_blood(self, volume_ml: float = 300.0, hematocrit: float = 0.55):
         """Queue packed red cells at 75 mL/min."""
@@ -485,6 +522,8 @@ class SimulationEngine(DrugControllerMixin):
         hematocrit: float,
         retention_fraction: float | None = None,
         label: str = "crystalloid",
+        *,
+        record_action: bool = True,
     ):
         volume_ml = finite_number(f"{label} volume", volume_ml)
         if volume_ml <= 0 or rate_ml_min <= 0:
@@ -498,7 +537,8 @@ class SimulationEngine(DrugControllerMixin):
                 label=label,
             )
         )
-        self.actions.record(self.state.time, ACTION_FLUID, label=label, amount=volume_ml)
+        if record_action:
+            self.actions.record(self.state.time, ACTION_FLUID, label=label, amount=volume_ml)
 
     def give_drug_bolus(self, drug_name: str, amount: float):
         """Give a hand bolus in the drug's registry unit; it adds dose / V1 to C1.
@@ -537,6 +577,12 @@ class SimulationEngine(DrugControllerMixin):
                 hematocrit=self.hemo.get_hematocrit(),
                 baseline_hct=self.hemo.baseline_hct,
                 circulation=circ,
+            )
+            projection_core.sync_pk_state(self)
+        elif spec.key == "insulin":
+            self.glucose.sync_exogenous_insulin(
+                model.state.c1,
+                circulation=self.hemo.circulation_fraction(),
             )
             projection_core.sync_pk_state(self)
         self.sync_active_tci_from_pk(spec.key)
@@ -758,6 +804,7 @@ class SimulationEngine(DrugControllerMixin):
             self.hemo._cpb_open_drainage = False
         self.hemo.invalidate_state_cache()
         self._sync_cardiac_state()
+        self.state.glucose = self.glucose.arterial_glucose_mg_dl
         projection_core.project_extracorporeal(self)
 
     @staticmethod
@@ -1319,6 +1366,7 @@ class SimulationEngine(DrugControllerMixin):
             hb=hb_sample,
             fio2=abg_fio2,
             site=site_norm,
+            glucose=float(self.glucose.arterial_glucose_mg_dl),
         )
         self.blood_gases.append(result)
         self.actions.record(state.time, ACTION_BLOOD_GAS, label=site_norm)
@@ -1329,6 +1377,16 @@ class SimulationEngine(DrugControllerMixin):
         result = ACTResult(drawn_at=self.state.time, act_s=float(self.coagulation.state.act_s))
         self.acts.append(result)
         self.actions.record(self.state.time, ACTION_ACT, amount=result.act_s)
+        return result
+
+    def measure_glucose(self) -> GlucoseResult:
+        """Measure point-of-care blood glucose (mg/dL); result posts after 10 s."""
+        result = GlucoseResult(
+            drawn_at=self.state.time,
+            glucose=float(self.glucose.arterial_glucose_mg_dl),
+        )
+        self.glucoses.append(result)
+        self.actions.record(self.state.time, ACTION_GLUCOSE, amount=result.glucose)
         return result
 
     def start_recording(self, output_dir: str = ".", sample_interval_sec: float = 1.0):

@@ -90,10 +90,19 @@ def add_volume(
             if label == "colloid":
                 model._protein_third_space_ml += third_space_gain_ml
             if not is_colloid:
-                model.crystalloid.infuse(retained_ml, saline=label == "saline")
+                model.crystalloid.infuse(
+                    retained_ml,
+                    saline=label in ("saline", "bicarbonate"),
+                    dextrose=label in ("d5w", "d10w"),
+                )
 
         model.blood_volume += retained_ml
         model.fluids.infuse(amount_ml, retained_ml, hematocrit, label)
+        if label == "bicarbonate" and amount_ml > 0.0:
+            # 8.4% NaHCO3 (2000 mOsm/L) causes brief rate-dependent hyperosmolar
+            # arteriolar vasodilation when pushed rapidly (canine Huseby and Gumprecht 1981;
+            # transient 1-min dip in porcine Zaballos 2019).
+            model._hyperosmolar_load += amount_ml / max(1000.0, model.blood_volume_0)
 
         if retained_ml > 0 and not suppress_tde and model.patient.heart_failure != "hfref":
             reserve = 0.35 if model.patient.heart_failure == "hfpef" else 1.0
@@ -116,6 +125,7 @@ def step_intravascular_volume(
     base_co: float,
     *,
     pulmonary_flow_prev: float | None = None,
+    osmotic_diuresis_ml_min: float = 0.0,
 ) -> None:
     """Advance crystalloid kinetics, urine, capillary leak, refill, and lung water."""
     cfg = model.config
@@ -150,8 +160,9 @@ def step_intravascular_volume(
         vol_excess_r = max(0.0, (model.blood_volume - ext_vol - model.blood_volume_0) / max(1.0, model.blood_volume_0))
         hypervol_diuresis = 1.0 + 1.8 * clamp01((vol_excess_r - 0.12) / 0.25)
         urine_ml_min = cfg.uop_ml_kg_hr * model.fluids.lean_mass_kg / 60.0 * hypervol_diuresis
+    osmotic_ml_min = max(0.0, osmotic_diuresis_ml_min) if cfg.vol_clearance is None else 0.0
     urine_out_ml = min(
-        urine_ml_min * renal_factor * dt_min,
+        (urine_ml_min * renal_factor + osmotic_ml_min) * dt_min,
         max(0.0, model.blood_volume - minimum_blood_volume),
     )
     blood_volume = model.blood_volume - urine_out_ml
