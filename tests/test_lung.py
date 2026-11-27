@@ -461,3 +461,79 @@ def test_obese_peep5_develops_atelectasis_on_high_fio2(engine_factory, advance_t
     advance_time(obese, 300.0, dt=1.0)
     assert obese.aeration.atelectatic > 0.08
     assert obese.aeration.shunt_fraction > 0.015
+
+
+def test_obese_compliance_avoids_double_counting_at_peep5_and_zeep(engine_factory, advance_time):
+    """Behazin 2010 (BMI 48.5, ZEEP Crs 32 +/- 8 mL/cmH2O) and Pelosi 1998:
+    morbid obesity preserves its PEEP 5 reference compliance without double-applying
+    closing-pressure collapse while staying within Behazin's ZEEP range.
+    """
+    peep5 = engine_factory(
+        config=SimulationConfig(mode="steady_state", rng_seed=1),
+        start=True, age=40, weight=140.0, height=170.0, sex="male",
+    )
+    zeep = copy.deepcopy(peep5)
+    for eng, peep in ((peep5, 5.0), (zeep, 0.0)):
+        eng.set_fgf(3.0, 7.0)
+        eng.set_vent_settings(mode="VCV", rr=12.0, vt=0.5, peep=peep, ie="1:2", p_max=50.0)
+        advance_time(eng, 300.0, dt=1.0)
+    assert peep5.aeration.recruited >= 0.88
+    assert 0.032 <= peep5.resp_mech.compliance <= 0.042
+    assert 0.024 <= zeep.resp_mech.compliance <= 0.040
+    assert zeep.resp_mech.compliance < peep5.resp_mech.compliance
+
+
+def test_bronchospasm_hyperoxia_expands_low_vq_and_absorption_shunt(engine_factory, advance_time):
+    """Ballester 1989 (moderate awake asthma: low-V/Q perfusion rises ~2x and shunt rises ~1%
+    on 100% O2) and Rodríguez-Roisin 1989 (mechanically ventilated status asthmaticus:
+    100% O2 raises inert-gas shunt from ~1.5% to ~8.3% and PaCO2 by ~+4.9 mmHg).
+    """
+    from anasim.core.state import AirwayType
+
+    # Ballester 1989: moderate awake bronchospasm on room air -> 100% O2 for 20 min.
+    ballester = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+        start=True, age=40, weight=62.0, height=157.0, sex="female",
+    )
+    ballester.set_bronchospasm(0.55)
+    ballester.set_airway_mode(AirwayType.MASK)
+    ballester.set_fgf(0.0, 15.0)
+    advance_time(ballester, 600.0, dt=1.0)
+    air_low_vq = ballester.resp.low_vq_fraction
+    air_shunt = ballester.aeration.shunt_fraction
+    air_paco2 = ballester.state.pa_co2
+
+    ballester.set_fgf(15.0, 0.0)
+    advance_time(ballester, 1200.0, dt=1.0)
+    assert 0.09 <= air_low_vq <= 0.16
+    assert ballester.resp.low_vq_fraction > 1.45 * air_low_vq
+    assert 0.005 < ballester.aeration.shunt_fraction - air_shunt < 0.035
+    assert 407.0 <= ballester.state.pao2 <= 567.0  # 487 +/- 2 SEM (40 mmHg)
+    assert 1.5 <= ballester.state.pa_co2 - air_paco2 <= 5.5
+
+    # Rodríguez-Roisin 1989: controlled MV severe bronchospasm on FiO2 0.37 vs 100% O2 for 30 min.
+    rr89 = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+        start=True, age=45, weight=70.0, height=170.0, sex="male", baseline_rr=0.0,
+    )
+    rr89.set_airway_mode(AirwayType.ETT)
+    rr89.set_bronchospasm(1.0)
+    rr89.set_vent_settings(mode="VCV", rr=12.0, vt=0.55, peep=5.0, ie="1:3", p_max=60.0)
+    rr89.set_vent_power(True)
+    rr89.set_fgf(2.025, 7.975)
+    advance_time(rr89, 2400.0, dt=1.0)
+    base_low_vq = rr89.resp.low_vq_fraction
+    base_shunt = rr89.aeration.bronch_absorption_shunt
+    ctrl = copy.deepcopy(rr89)
+
+    rr89.set_fgf(10.0, 0.0)
+    advance_time(rr89, 1800.0, dt=1.0)
+    advance_time(ctrl, 1800.0, dt=1.0)
+    assert rr89.resp.low_vq_fraction > base_low_vq + 0.04
+    assert 0.045 <= rr89.aeration.bronch_absorption_shunt - base_shunt <= 0.085
+    assert 2.0 <= rr89.state.pa_co2 - ctrl.state.pa_co2 <= 7.0
+
+    # Relieving bronchospasm clears absorption shunt cleanly.
+    rr89.set_bronchospasm(0.0)
+    advance_time(rr89, 1200.0, dt=1.0)
+    assert rr89.aeration.bronch_absorption_shunt < 0.005

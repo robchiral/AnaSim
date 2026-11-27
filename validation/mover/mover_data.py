@@ -175,10 +175,12 @@ def classify_medication(
     """Normalize an IV MOVER medication row into `(drug, kind, value, unit)`.
 
     `kind` is `'bolus'` or `'infusion'`.
-    Canonical bolus units match AnaSim's `give_drug_bolus`:
+    Canonical bolus units match AnaSim's `give_drug_bolus` for modeled drugs
+    (except dobutamine and milrinone normalize to `mg` here; hydralazine is tracked
+    for exclusion only):
       - propofol, midazolam, etomidate, ketamine, lidocaine, hydromorphone, morphine,
         rocuronium, succinylcholine, sugammadex, neostigmine, glycopyrrolate, atropine,
-        ephedrine, esmolol, labetalol, hydralazine: `mg`
+        ephedrine, esmolol, labetalol, hydralazine, dobutamine, milrinone: `mg`
       - fentanyl, remifentanil, phenylephrine, norepinephrine, epinephrine: `mcg`
       - vasopressin: `units`
     Canonical infusion units:

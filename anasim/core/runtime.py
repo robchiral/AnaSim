@@ -374,6 +374,7 @@ def step_mechanics(engine: SimulationEngine, dt: float, connected: bool, vent_ac
     seal_scale = mask_seal_factor(engine)
     aeration.pressure_transmission = seal_scale if connected else 0.0
     aeration.unconscious = engine.state.loc
+    aeration.bronchospasm = lung.bronchospasm
     aeration.lung_water = engine.hemo.lung_water_ml_kg
     # Closed-airway O2 absorption collapse shrinks alveolar gas volume and drives absorption shunt.
     aeration.collapse_deficit = clamp01(
@@ -1598,8 +1599,6 @@ def step_physiology(
     # Without flow, arterial pressure equals venous pressure, so coronary flow stops.
     step_coronary_from_state(engine, dt, hemo_pre, resp_state.sao2)
 
-    # Plasma remifentanil and propofol reach hemodynamic effect sites inside the model;
-    # slower opioids enter at their own effect sites.
     if ecmo.is_cpb:
         stressed_ml = hemo._calc_stressed_volume()
         mcfp_now = stressed_ml / hemo.cv if hemo.cv > 0.0 else hemo.mcfp_0
@@ -1623,6 +1622,8 @@ def step_physiology(
     hemo_pao2 = ecmo.state.upper_body_pao2 if ecmo.is_arterial_support else resp_state.p_arterial_o2
     hemo_sao2 = ecmo.state.coronary_sao2 if ecmo.is_arterial_support else resp_state.sao2
     hemo.post_shock_asystole = engine.arrhythmias.post_shock_asystole
+    # Plasma remifentanil and propofol reach hemodynamic effect sites inside the model;
+    # slower opioids enter at their own effect sites.
     hemo_state = engine.hemo.step(
         dt,
         state.propofol_cp,

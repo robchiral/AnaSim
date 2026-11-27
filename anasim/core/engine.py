@@ -36,7 +36,7 @@ from anasim.monitors.ecg import ECGMonitor
 from anasim.monitors.neuromuscular import NeuromuscularMonitor
 from anasim.monitors.nibp import NIBPMonitor
 from anasim.monitors.spo2 import SpO2Monitor
-from anasim.patient.conditions import COPD_RESISTANCE, POSITIONS
+from anasim.patient.conditions import COPD_EXPIRATORY_RESISTANCE, POSITIONS
 from anasim.patient.domain import bounded_number, finite_number
 from anasim.patient.patient import Patient
 from anasim.patient.pd import (
@@ -404,7 +404,7 @@ class SimulationEngine(DrugControllerMixin):
             self.aeration = LungAeration(self.patient)
         self.resp_mech = RespiratoryMechanics(resistance=self.patient.airway_resistance(), aeration=self.aeration)
         self.resp_mech.chronic_obstruction = self.patient.copd_severity
-        self.resp_mech.chronic_resistance = COPD_RESISTANCE * self.patient.copd_severity
+        self.resp_mech.chronic_resistance = COPD_EXPIRATORY_RESISTANCE * self.patient.copd_severity
         self._base_airway_resistance = self.resp_mech.resistance
         self.set_vent_settings(rr=12.0, vt=0.5, peep=5.0, ie="1:2", mode="VCV", p_insp=15.0)
         self.resp.baseline_co_l_min = self.hemo.base_co_l_min
@@ -454,7 +454,7 @@ class SimulationEngine(DrugControllerMixin):
             setattr(self.circuit, attr, flow)
 
     def set_position(self, position: str):
-        """Change maternal position; venous return responds over seconds."""
+        """Change patient position; venous return and VAE relief respond over seconds."""
         if position not in POSITIONS:
             raise ValueError("position must be 'supine' or 'left_lateral'")
         self.hemo.position = position
@@ -1723,7 +1723,8 @@ class SimulationEngine(DrugControllerMixin):
         """Start or stop manual bag ventilation at rr breaths/min and vt liters.
 
         Pass p_max to set the APL valve in cmH2O. Omitted settings keep their
-        values. Bag ventilation requires a mask or ETT and yields to the ventilator.
+        values. Bag ventilation works with any connected airway (mask, SGA, ETT,
+        or FONA) and turns the ventilator off when started.
         """
         if rr is not None or vt is not None or p_max is not None:
             self.set_bag_mask_settings(

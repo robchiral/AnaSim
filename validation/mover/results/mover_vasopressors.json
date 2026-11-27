@@ -65,76 +65,76 @@
       "n": 180,
       "median_dose": 5.0,
       "rec_peak_dmap_med": 12.0,
-      "mod_peak_dmap_med": 18.832299195307037,
+      "mod_peak_dmap_med": 12.311599032591836,
       "dmap_err_ci": [
-        8.197374463388757,
-        5.554077623299121,
-        10.826727734982725
+        -0.06927285098306678,
+        -2.4078578019837007,
+        2.18763551368815
       ],
       "rec_peak_dhr_med": 5.0,
-      "mod_peak_dhr_med": 7.107573878041769,
+      "mod_peak_dhr_med": 5.028623809300154,
       "rec_late_dhr_med": 3.0,
-      "mod_late_dhr_med": 7.052198557129363
+      "mod_late_dhr_med": 4.990459786510206
     },
     "ephedrine_5_first": {
       "n": 55,
       "median_dose": 5.0,
       "rec_peak_dmap_med": 10.0,
-      "mod_peak_dmap_med": 16.45845769246644,
+      "mod_peak_dmap_med": 11.24068574943746,
       "dmap_err_ci": [
-        4.40630808693153,
-        0.8535305550299606,
-        7.713428885729779
+        -1.1103059063716754,
+        -4.573991164002656,
+        2.0954632082728044
       ],
       "rec_peak_dhr_med": 5.0,
-      "mod_peak_dhr_med": 5.926909588769476,
+      "mod_peak_dhr_med": 4.287079223633334,
       "rec_late_dhr_med": 5.8,
-      "mod_late_dhr_med": 5.85836298844237
+      "mod_late_dhr_med": 4.266237520097997
     },
     "ephedrine_5_repeat": {
       "n": 67,
       "median_dose": 5.0,
       "rec_peak_dmap_med": 12.0,
-      "mod_peak_dmap_med": 16.406320887517893,
+      "mod_peak_dmap_med": 10.909763844671247,
       "dmap_err_ci": [
-        1.7274377388875284,
-        -2.895049644733259,
-        5.683589349321058
+        -3.8590709496326845,
+        -8.537262257210333,
+        0.09369276239046262
       ],
       "rec_peak_dhr_med": 4.0,
-      "mod_peak_dhr_med": 6.219033458738707,
+      "mod_peak_dhr_med": 4.468534122605661,
       "rec_late_dhr_med": 2.0,
-      "mod_late_dhr_med": 6.169387423075148
+      "mod_late_dhr_med": 4.495938326296093
     },
     "ephedrine_10_first": {
       "n": 39,
       "median_dose": 10.0,
       "rec_peak_dmap_med": 19.0,
-      "mod_peak_dmap_med": 33.99999821766944,
+      "mod_peak_dmap_med": 19.667752673617073,
       "dmap_err_ci": [
-        17.3219626717109,
-        10.968001795970942,
-        24.006010723516273
+        3.127262806535024,
+        -2.6590084633780475,
+        9.256822562441922
       ],
       "rec_peak_dhr_med": 6.0,
-      "mod_peak_dhr_med": 10.61559840104497,
+      "mod_peak_dhr_med": 7.230390987960739,
       "rec_late_dhr_med": 4.8,
-      "mod_late_dhr_med": 10.016787042297377
+      "mod_late_dhr_med": 7.086847157992574
     },
     "ephedrine_10_repeat": {
       "n": 19,
       "median_dose": 10.0,
       "rec_peak_dmap_med": 10.0,
-      "mod_peak_dmap_med": 33.548948991167435,
+      "mod_peak_dmap_med": 19.82135257793957,
       "dmap_err_ci": [
-        23.257136101397506,
-        17.634765108915126,
-        28.31777761761835
+        9.746958728632322,
+        4.838900219842247,
+        14.09840668960718
       ],
       "rec_peak_dhr_med": 4.0,
-      "mod_peak_dhr_med": 10.369526726823096,
+      "mod_peak_dhr_med": 7.226426344496005,
       "rec_late_dhr_med": 1.6,
-      "mod_late_dhr_med": 10.015965458879275
+      "mod_late_dhr_med": 7.214321813445295
     },
     "norepi_inf": {
       "n": 22,
@@ -185,31 +185,31 @@
       "n": 180,
       "median_dose": 3.35,
       "rec_peak_dmap_med": 3.0,
-      "mod_peak_dmap_med": -4.507973584224326,
+      "mod_peak_dmap_med": -3.198092728121763,
       "dmap_err_ci": [
-        -7.709856247423817,
-        -9.0525801612556,
-        -6.47380375919692
+        -6.639708609828057,
+        -7.881995744406797,
+        -5.511013908692573
       ],
       "rec_peak_dhr_med": 5.0,
-      "mod_peak_dhr_med": -5.758203305975173,
+      "mod_peak_dhr_med": -5.492931549558065,
       "rec_late_dhr_med": 5.1,
-      "mod_late_dhr_med": -10.53062046788538
+      "mod_late_dhr_med": -4.5305519338470805
     },
     "glyco_alone": {
       "n": 180,
       "median_dose": 0.2,
-      "rec_peak_dmap_med": 2.05,
-      "mod_peak_dmap_med": 8.548359753126245,
+      "rec_peak_dmap_med": 1.2,
+      "mod_peak_dmap_med": 1.2278009420708025,
       "dmap_err_ci": [
-        5.486112477478268,
-        3.816563265201572,
-        7.110613025852366
+        -2.1600099838241467,
+        -3.6112274360978818,
+        -0.6375903131509095
       ],
       "rec_peak_dhr_med": 1.6666666666666667,
-      "mod_peak_dhr_med": 12.6411473396778,
+      "mod_peak_dhr_med": 2.6793370500827054,
       "rec_late_dhr_med": 8.8,
-      "mod_late_dhr_med": 23.557860119529565
+      "mod_late_dhr_med": 5.347799652486469
     }
   },
   "exclusions": {

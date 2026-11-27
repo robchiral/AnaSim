@@ -19,7 +19,7 @@ configuration, units, and scripted runs.
 | [`projection.py`](../anasim/core/projection.py) and [`state.py`](../anasim/core/state.py) | Copy model outputs into `SimulationState` and define its fields |
 | [`initialization.py`](../anasim/core/initialization.py) | Initializes awake and steady-state maintenance sessions |
 | [`patient/`](../anasim/patient/) and [`drug_registry.py`](../anasim/core/drug_registry.py) | Define patient parameters, drug models, units, pump limits, and UI metadata |
-| [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, fluids, glucose and insulin, anticoagulation, neuraxial anesthesia, respiration, gas exchange, airway and thoracic/embolic crises, and temperature |
+| [`physiology/`](../anasim/physiology/) | Models circulation, resuscitation, fluids, glucose and insulin, anticoagulation, neuraxial anesthesia, respiration, gas exchange, clinical crises, and temperature |
 | [`extracorporeal/`](../anasim/extracorporeal/) | Models VV ECMO, VA ECMO, and cardiopulmonary bypass circuits |
 | [`machine/`](../anasim/machine/) | Models the breathing circuit, vaporizer, and ventilator |
 | [`monitors/`](../anasim/monitors/) and [`core/monitors.py`](../anasim/core/monitors.py) | Produce measurements, waveforms, and alarms |
@@ -40,19 +40,18 @@ Each call to `SimulationEngine.step()` runs these stages in order:
    renal perfusion, core temperature, and drug interactions, then step
    target-controlled infusion (TCI) controllers.
 4. Update airway complications, the vaporizer, and the breathing circuit.
-5. Advance lipid emulsion, inhaled anesthetic uptake, intravenous drug
-   concentrations, anticoagulation, circuit drug sequestration, neuromuscular
-   block, lidocaine toxicity, malignant hyperthermia, pneumothorax, and
-   pulmonary/air embolism, then apply toxicity, malignant hyperthermia, sepsis,
-   pneumothorax, and embolic effects on metabolism, heat production, chest-wall
+5. Advance lipid emulsion, inhaled anesthetic uptake, intravenous drugs and
+   neuromuscular block, anticoagulation, circuit drug sequestration, and
+   toxicity, malignant hyperthermia, pneumothorax, embolism, and
+   pneumoperitoneum, then apply their effects on metabolism, heat, chest-wall
    stiffness, lung collapse, and shunt.
 6. Advance respiratory mechanics, lung and oxygenator gas exchange, glucose
    homeostasis, CPB reservoir drainage, hemodynamics, cardiac rhythm, and
    regional VA ECMO mixing.
 7. Copy physiology outputs into `SimulationState`, then update cerebral
    oxygenation and function, monitor measurements, and alarms.
-8. Update core temperature (including extracorporeal heat exchange), check for
-   cardiac arrest, and clear any completed finite stimuli.
+8. Update core temperature, check for cardiac arrest, and clear any completed
+   finite stimuli.
 
 PK and circuit updates use the cardiac output and ventilation from the start of
 the step, and the physiology models compute updated values for the next step.
@@ -86,8 +85,9 @@ and monitor measurements. Every field and its units are defined in `state.py`.
 
 `awake` starts directly from the patient's resting baseline. `steady_state`
 builds a maintenance anesthetic from a 30-minute drug history, starts
-controlled ventilation, and settles the coupled models before resetting the
-clock, recordings, and fluid totals. Sustained surgical stimulation settles
+controlled ventilation, and settles the coupled models with fluid infusion and
+clearance paused before resetting the clock, vaporizer level, breath count,
+glucose baseline, and gas-transport totals. Sustained surgical stimulation settles
 with the maintenance state, whereas finite pulses such as intubation start at
 time zero. Startup TCI targets and manual infusion rates use population
 kinetics and potency, so sampled variability and organ impairment change the
@@ -151,5 +151,7 @@ also be run directly with `python -m tests.intubation_replays` (pass
 `--sensitivity` for loading-history checks).
 
 External-dataset scripts live under `validation/`:
-[VitalDB comparisons](../validation/vitaldb/README.md) replay recorded cases
-across anesthetic, respiratory, and hemodynamic endpoints.
+[VitalDB comparisons](../validation/vitaldb/README.md) evaluate the development
+cohorts across anesthetic, respiratory, hemodynamic, laboratory, and thermal
+endpoints, and [MOVER external validation](../validation/mover/README.md)
+evaluates frozen parameters out of sample.

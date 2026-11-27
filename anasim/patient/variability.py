@@ -133,7 +133,7 @@ def sample_variability(seed: int | None) -> PatientVariability:
     propofol_tpr_c50 = math.exp(rng.normal(0.0, math.sqrt(SU_PROPOFOL_TPR_C50_OMEGA)))
     opioid_tpr_emax = max(0.0, 1.0 + rng.normal(0.0, math.sqrt(SU_REMIFENTANIL_TPR_EMAX_OMEGA)))
     opioid_rate = OpioidRateVariability(**_log_normal(rng, OLOFSEN_OPIOID_RATE_OMEGA))
-    # New parameters are drawn last so that existing seeds give the same values.
+    # Keep draw order fixed so seeds reproduce the same patient.
     remifentanil = KineticVariability(**_log_normal(rng, ELEVELD_REMIFENTANIL_OMEGA))
     fentanyl = KineticVariability(**_log_normal(rng, BAE_FENTANYL_OMEGA))
     sevoflurane_mac = math.exp(rng.normal(0.0, math.sqrt(HEYSE_SEVOFLURANE_MAC_OMEGA)))

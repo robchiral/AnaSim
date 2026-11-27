@@ -86,3 +86,38 @@ def test_longer_expiration_and_bronchospasm_relief_reduce_intrinsic_peep_across_
     assert relieved[0] < 0.5 * short[0]
     assert relieved[1] < short[1] - 0.3
     assert all(endpoint[2] == pytest.approx(500.0, abs=2.0) for endpoint in eng_trace)
+
+
+def test_copd_mechanics_match_lourens_2000_time_constants_and_passive_flow_limitation(engine_factory):
+    """Lourens 2000 & Jubran 1995: COPD keeps inspiratory RC moderate while dynamic
+    expiratory collapse extends RCexp to ~1.1-1.6 s in moderate and >2.4 s in severe COPD,
+    producing passive ZEEP expiratory flow limitation in severe disease.
+    """
+    results = {}
+    for sev in (0.0, 0.5, 1.0):
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", dt=1.0, rng_seed=1),
+            start=True, age=65, weight=70.0, height=170.0, sex="male", copd_severity=sev,
+        )
+        eng.give_drug_bolus("roc", 70.0)
+        eng.set_vent_settings(mode="VCV", rr=12.0, vt=0.5, peep=0.0, ie="1:2", p_max=60.0)
+        for _ in range(120):
+            eng.step(1.0)
+        lung = eng.resp_mech
+        lung.volume = 0.5
+        _, _, limited_high = lung.expiration_parameters((0.0, 0.0), (0.0, 0.0), 1.0)
+        lung.volume = 0.1
+        r_exp_low, r_ceil_low, _ = lung.expiration_parameters((0.0, 0.0), (0.0, 0.0), 1.0)
+        results[sev] = (
+            lung.compliance,
+            lung.resistance * lung.compliance,
+            r_exp_low * lung.compliance,
+            r_ceil_low * lung.compliance,
+            limited_high,
+        )
+    # Compliance rises modestly (+15% nominal) rather than inflating by 60%.
+    assert 1.10 < results[1.0][0] / results[0.0][0] < 1.45
+    assert results[0.5][1] < 0.90 and results[1.0][1] < 1.25
+    assert 1.05 <= results[0.5][2] <= 1.75
+    assert results[1.0][2] >= 2.40 and results[1.0][3] >= 3.0
+    assert not results[0.0][4] and results[1.0][4]

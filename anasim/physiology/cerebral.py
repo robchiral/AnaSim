@@ -236,7 +236,7 @@ class CerebralModel:
 
     @property
     def respiratory_drive(self) -> float:
-        """Medullary drive remaining after severe hypoxia/ischemia, brainstem injury, or extreme CO2 narcosis."""
+        """Medullary drive remaining after severe hypoxia/ischemia, brainstem injury, CO2 narcosis, or severe hypoglycemia."""
         return (
             (1.0 - self.dysfunction ** 8)
             * (1.0 - self.brainstem_injury)

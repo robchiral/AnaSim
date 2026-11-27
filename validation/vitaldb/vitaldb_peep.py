@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from collections import Counter
 from pathlib import Path
@@ -26,6 +27,9 @@ REPO_ROOT = ROOT.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from anasim.machine.ventilator import AnesthesiaVentilator  # noqa: E402
+from anasim.physiology.lung import LungAeration  # noqa: E402
+from anasim.physiology.resp_mech import RespiratoryMechanics  # noqa: E402
 from validation.vitaldb import vitaldb_data  # noqa: E402
 from validation.vitaldb.vitaldb_data import (  # noqa: E402
     CACHE,
@@ -33,6 +37,7 @@ from validation.vitaldb.vitaldb_data import (  # noqa: E402
     WAVE_DT,
     domain_cases,
     load_track,
+    patient_from_case,
     pft_group,
     prefetch_tracks,
 )
@@ -98,6 +103,42 @@ def waveform_window(series: tuple[np.ndarray, np.ndarray], start: float, end: fl
     if abs(out["peep"] - settings["SET_INTER_PEEP"]) > 1.25:
         return out, "pressure waveform: baseline disagrees with set PEEP"
     return out, None
+
+
+def replay_peep_step(case: dict[str, str], before: dict[str, float], after: dict[str, float]) -> dict[str, float]:
+    """Replay a paired pre-incision PEEP step through LungAeration and RespiratoryMechanics."""
+    patient = patient_from_case(case)
+    aeration = LungAeration(patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
+    aeration.unconscious = 1.0
+    aeration.inert_fraction = 0.5
+    lung = RespiratoryMechanics(resistance=patient.airway_resistance(), aeration=aeration)
+    vent = AnesthesiaVentilator()
+
+    def _apply(settings: dict[str, float]) -> None:
+        ti_fraction = settings["SET_INSP_TM"] * settings["SET_RR_IPPV"] / 60.0
+        vent.update_settings(
+            rr=settings["SET_RR_IPPV"],
+            tv=settings["TV"],
+            peep=settings["SET_INTER_PEEP"],
+            ie=ti_fraction / (1.0 - ti_fraction),
+            mode="VCV",
+            pause=settings["SET_INSP_PAUSE"],
+        )
+
+    _apply(before)
+    for _ in range(300):
+        vent.step(2.0, lung, "vent")
+    c_before = vent.monitors.tv_exp / max(0.1, vent.monitors.paw_plat - vent.monitors.peep)
+    _apply(after)
+    for _ in range(45):
+        vent.step(2.0, lung, "vent")
+    c_after = vent.monitors.tv_exp / max(0.1, vent.monitors.paw_plat - vent.monitors.peep)
+    delta_peep = after["SET_INTER_PEEP"] - before["SET_INTER_PEEP"]
+    return {
+        "before_compliance": float(c_before),
+        "after_compliance": float(c_after),
+        "log_gain_per_cmh2o": float(math.log(c_after / c_before) / delta_peep),
+    }
 
 
 def audit(cache: Path = CACHE, *, fetch_missing: bool = False, workers: int = 16, seed: int = 20261024) -> dict[str, Any]:
@@ -190,12 +231,14 @@ def audit(cache: Path = CACHE, *, fetch_missing: bool = False, workers: int = 16
                     waveforms=dict(before=before_wave, after=after_wave),
                 ))
                 continue
+            anasim = replay_peep_step(case, before, after)
             rows.append(dict(
                 case=int(case["caseid"]),
                 subjectid=case.get("subjectid", case["caseid"]),
                 bmi=round(float(case["weight"]) / (float(case["height"]) / 100.0) ** 2, 2),
                 pft=pft_group(case),
                 time=float(stamp),
+                direction="up" if after["SET_INTER_PEEP"] > before["SET_INTER_PEEP"] else "down",
                 before=before,
                 after=after,
                 waveforms=dict(before=before_wave, after=after_wave),
@@ -203,17 +246,29 @@ def audit(cache: Path = CACHE, *, fetch_missing: bool = False, workers: int = 16
                     np.log(after["compliance"] / before["compliance"])
                     / (after["SET_INTER_PEEP"] - before["SET_INTER_PEEP"])
                 ),
+                anasim=anasim,
             ))
     counts["retained_steps"] = len(rows)
     counts["retained_patients"] = len({r["subjectid"] for r in rows})
     summary: dict[str, Any] = {}
     if rows:
         by_patient: dict[str, list[float]] = {}
+        sim_by_patient: dict[str, list[float]] = {}
         for r in rows:
             by_patient.setdefault(r["subjectid"], []).append(r["log_gain_per_cmh2o"])
+            sim_by_patient.setdefault(r["subjectid"], []).append(r["anasim"]["log_gain_per_cmh2o"])
         patient_means = np.array([np.mean(v) for v in by_patient.values()], dtype=float)
+        sim_means = np.array([np.mean(v) for v in sim_by_patient.values()], dtype=float)
         summary["mean_log_gain_per_cmh2o"] = float(np.mean(patient_means))
         summary["median_log_gain_per_cmh2o"] = float(np.median(patient_means))
+        summary["anasim_mean_log_gain_per_cmh2o"] = float(np.mean(sim_means))
+        summary["anasim_median_log_gain_per_cmh2o"] = float(np.median(sim_means))
+        for direction in ("up", "down"):
+            sub = [r for r in rows if r["direction"] == direction]
+            if sub:
+                summary[f"{direction}_n"] = len(sub)
+                summary[f"{direction}_recorded_median"] = float(np.median([r["log_gain_per_cmh2o"] for r in sub]))
+                summary[f"{direction}_anasim_median"] = float(np.median([r["anasim"]["log_gain_per_cmh2o"] for r in sub]))
         if len(patient_means) >= 3:
             rng = np.random.default_rng(seed)
             boot = np.mean(rng.choice(patient_means, size=(2000, len(patient_means)), replace=True), axis=1)

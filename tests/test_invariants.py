@@ -637,7 +637,7 @@ def test_sodium_bicarbonate_step_size_invariance(engine_factory, advance_time):
 
 def test_airway_thoracic_embolism_and_neuraxial_arrest_isolation_and_stop_events(engine_factory, advance_time):
     """Zero-flow arrest halts blood-borne gas/drug exchange in PTX, PE, VAE, and epidural epinephrine,
-    and stop_events resets all new crisis states cleanly."""
+    and stop_events resets pneumothorax, PE, VAE, and neuraxial crisis states cleanly."""
     from anasim.physiology.embolism import PulmonaryEmbolismModel
     from anasim.physiology.neuraxial import NeuraxialModel
     from anasim.physiology.pneumothorax import PneumothoraxModel
@@ -713,13 +713,13 @@ def test_cardiovascular_response_fractions_monotonic_across_all_seven_drugs():
 
 
 def test_zero_flow_pea_isolation_and_dt_invariant_rosc_flush(engine_factory, advance_time):
-    """Zero-flow PEA isolates arterial gases, volatile p_art, fluid thermal heat,
+    """Zero-flow arrest isolates arterial gases, volatile p_art, fluid thermal heat,
     PE/VAE kinetics, and protamine vasodilation exposure until circulation resumes."""
     from anasim.physiology.coagulation import CoagulationModel
     from anasim.physiology.embolism import PulmonaryEmbolismModel
     from anasim.physiology.thermal import ThermalModel
 
-    # 1. Zero-flow PEA freezes arterial pH/PaCO2/p_art and isolates oxygenator / fluid heat.
+    # 1. Zero-flow asystole freezes arterial PaCO2 and volatile p_art.
     eng = engine_factory(
         config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=0.5, rng_seed=3),
         start=True,

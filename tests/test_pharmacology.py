@@ -633,7 +633,7 @@ def test_rocuronium_hypothermia_cirrhosis_remifentanil_obesity_phase2_and_etomid
     engine_factory, advance_time
 ):
     """Hypothermia slows rocuronium onset (extrapolated from vecuronium in Caldwell 2000), cirrhosis expands V1/V2 (Khuenl-Brady and Sparr 1996; Magorian 1995),
-    Eleveld remifentanil V3 caps in extreme obesity (Egan 1998) with Table 5 ke0 omega,
+    Eleveld remifentanil V3 stays bounded in extreme obesity (Egan 1998) with Table 5 ke0 omega,
     succinylcholine Phase II fades central strength, and etomidate suppresses LAST seizures."""
     from anasim.patient.variability import ELEVELD_REMIFENTANIL_OMEGA
     from anasim.physiology.toxicity import LocalAnestheticToxicity

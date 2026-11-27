@@ -731,7 +731,6 @@ def test_cardiac_arrest_acls_objectives_and_debrief(engine_factory):
     no_art.step(0.5)
     assert _step(scen, "START_COMPRESSIONS").check_requirements(no_art)[0]
 
-    # Split epinephrine doses sum to 1000 mcg for persistent VF.
     ca = WebSession({"scenario_id": "cardiac_arrest", "practice_mode": "independent"})
     ce = ca.engine
     ce._shock_rng = np.random.default_rng(0)

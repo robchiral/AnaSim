@@ -37,6 +37,11 @@ class LungAeration:
     FLOOD_RELIEF_MAX = 0.7
     FLOOD_RELIEF_PRESSURES = (6.0, 16.0)  # Mean distending pressure (PEEP + ~3), cmH2O
     FLOOD_RATE = 1.0 / 60.0  # /s
+    # High-FiO2 absorption shunt behind severely obstructed bronchospastic airways
+    # (Ballester 1989: 0.8 -> 2.1% in moderate asthma; Rodríguez-Roisin 1989: 1.5 -> 8.3% in status asthmaticus).
+    BRONCH_SHUNT_MAX = 0.075
+    BRONCH_SHUNT_TAU_ON = 900.0  # s
+    BRONCH_SHUNT_TAU_OFF = 300.0  # s
     # Postoperative awake clearance and persistent basal share by surgical site,
     # calibrated to Strandberg 1986, Lindberg 1992, Putensen-Himmer 1992, and
     # Eichenberger 2002.
@@ -69,12 +74,19 @@ class LungAeration:
         self.frc = self.reference_volume * recruited
         self.reference_compliance = patient.respiratory_compliance()
         self.opening_midpoint = 31.0 + 0.35 * (patient.bmi - 24.0)
-        # Closing pressure rises with BMI alongside airway opening pressure (Hedenstierna and Edmark 2015).
+        # Dependent airway closing pressure for gas absorption rises steeply with BMI
+        # (Hedenstierna and Edmark 2015), while bulk compliance recruitment uses a
+        # gentler threshold because patient.respiratory_compliance() already embeds
+        # Pelosi 1998's supine BMI curve (Behazin 2010).
         self.closing_pressure = 5.0 + 0.30 * max(0.0, patient.bmi - 25.0)
+        self.bulk_closing_pressure = 5.0
         bmi_factor = clamp01((patient.bmi - 30.0) / 20.0)
-        self.min_recruited = self.MIN_RECRUITED - 0.22 * bmi_factor
+        self.min_recruited = self.MIN_RECRUITED
+        self.max_atelectatic = (1.0 - self.MIN_RECRUITED) + 0.22 * bmi_factor
         self.atelectasis_shunt = self.ATELECTASIS_SHUNT + 0.10 * bmi_factor
         self.collapse_deficit = 0.0
+        self.bronchospasm = 0.0
+        self.bronch_absorption_shunt = 0.0
         self.lung_water = 0.0  # mL/kg predicted body weight above normal
         self.flooded = 0.0
         self.extra_shunt = 0.0  # Optional parenchymal shunt (e.g. severe ARDS), 0-0.95
@@ -104,6 +116,9 @@ class LungAeration:
             base_shunt = min(0.70, base_shunt + (1.0 - base_shunt) * collapse_shunt)
         else:
             base_shunt = min(0.70, base_shunt)
+        if self.bronch_absorption_shunt > 0.0:
+            bronch_shunt = clamp01(self.bronch_absorption_shunt)
+            base_shunt = min(0.75, base_shunt + (1.0 - base_shunt) * bronch_shunt)
         if self.crisis_shunt > 0.0:
             crisis = min(0.80, max(0.0, self.crisis_shunt))
             base_shunt = min(0.90, base_shunt + (1.0 - base_shunt) * crisis)
@@ -135,7 +150,7 @@ class LungAeration:
             spontaneous = spont_base_rate * (1.0 - self.unconscious)
         else:
             spontaneous = 0.0
-        closing = max(0.0, self.closing_pressure - pressure) / 300.0
+        closing = max(0.0, self.bulk_closing_pressure - pressure) / 300.0
         minimum = 1.0 - (1.0 - self.min_recruited) * self.unconscious
         if self.recruited <= minimum:
             closing = 0.0
@@ -144,13 +159,13 @@ class LungAeration:
             equilibrium = (opening * target + spontaneous * spontaneous_cap + closing * minimum) / rate
             self.recruited = equilibrium + (self.recruited - equilibrium) * math.exp(-rate * self.elapsed)
         # Gas composition changes shunt separately from bulk compliance (Rothen 1995).
-        closed_target = 1.0 - target
+        closed_target = self.max_atelectatic * (1.0 - fraction)
         s = self.persistent_share
         reopening = self.OPENING_RATE if self.atelectatic > closed_target else 0.0
         reopening_p = self.OPENING_RATE if self.persistent_atelectatic > s * closed_target else 0.0
         awake_reopening = self.awake_clearance_rate * (1.0 - self.unconscious) if awake_active else 0.0
         persistent_rate = self.persistent_clearance_rate * (1.0 - self.unconscious) if awake_active else 0.0
-        closed_max = (1.0 - self.min_recruited) * self.unconscious
+        closed_max = self.max_atelectatic * self.unconscious
         if pressure < self.closing_pressure and closed_max > 0.0:
             raw_absorption = (
                 self.ABSORPTION_RATE
@@ -197,6 +212,17 @@ class LungAeration:
             flood = 0.0
         if flood != self.flooded:
             self.flooded = flood + (self.flooded - flood) * math.exp(-self.FLOOD_RATE * self.elapsed)
+        if self.bronchospasm > 0.25:
+            sev = clamp01((self.bronchospasm - 0.25) / 0.75)
+            bronch_shunt_target = self.BRONCH_SHUNT_MAX * (sev ** 1.8) * math.exp(-5.0 * self.inert_fraction)
+        else:
+            bronch_shunt_target = 0.0
+        if bronch_shunt_target != self.bronch_absorption_shunt:
+            tau = self.BRONCH_SHUNT_TAU_ON if bronch_shunt_target > self.bronch_absorption_shunt else self.BRONCH_SHUNT_TAU_OFF
+            self.bronch_absorption_shunt = (
+                bronch_shunt_target
+                + (self.bronch_absorption_shunt - bronch_shunt_target) * math.exp(-self.elapsed / tau)
+            )
         self.elapsed = self.pressure_area = 0.0
         return True
 

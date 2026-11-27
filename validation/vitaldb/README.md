@@ -36,14 +36,17 @@ used under CC BY-NC-SA 4.0 and the VitalDB data use agreement.
 ## Ventilation and PEEP
 
 `vitaldb_ventilation.py` writes `results/vitaldb_ventilation.md`. It evaluates
-circuit resistance, airway sensor lag, capnography, and pre-incision supine
-compliance with 5-fold patient-grouped cross-validation and full-cohort fits.
+circuit resistance, airway sensor lag, capnography, VCV waveform airway
+resistance by BMI and PFT subgroup, pre-incision supine compliance with 5-fold
+patient-grouped cross-validation and full-cohort fits, and settled
+`LungAeration` compliance and driving pressure across PEEP 0-2 and PEEP 4-6.
 Compliance includes all eligible supine cases by default; pass `--cases 0` or
 `--pcv-cases 0` to remove waveform caps, `--folds` to change fold count, or
 `--figure validation/vitaldb/results/overlay.png` (requires Matplotlib) for
 breath overlays.
 
-`vitaldb_peep.py` audits pre-incision PEEP steps and writes
+`vitaldb_peep.py` audits pre-incision PEEP steps, replays each retained step
+through `LungAeration` and `RespiratoryMechanics`, and writes
 `results/vitaldb_peep.json`. By default it reads only cached tracks; pass
 `--fetch` to screen `Primus/SET_INTER_PEEP` first and download remaining tracks
 only for cases with a candidate step. Use `--cache PATH` to read another cache
@@ -69,6 +72,10 @@ filtering, so those numbers are not directly comparable.
 | `--cache`, `--output` | Change data and report directories |
 | `--dt 0.5` | Runs with a smaller time step |
 | `--figures` | Writes representative overlays (requires Matplotlib) |
+
+`vitaldb_sevo_bis.py` replays recorded end-tidal sevoflurane (and optional
+remifentanil) through cerebral equilibration into `BISModel` across surgical
+maintenance and post-surgery emergence without fitting parameters.
 
 ## Hemodynamics
 
@@ -101,12 +108,16 @@ induction windows) for cross-validated sweeps.
 `vitaldb_co.py` compares paired pre-incision to surgery relative changes in
 cardiac output, stroke volume, and derived/direct SVR (plus steady-state
 medians) against uncalibrated EV1000 and Vigileo pulse-contour recordings.
-`vitaldb_sevo_bis.py` replays recorded end-tidal sevoflurane (and optional
-remifentanil) through cerebral equilibration into `BISModel` across surgical
-maintenance and post-surgery emergence without fitting parameters.
 `vitaldb_pulse_pressure.py` compares awake pre-induction cuff SBP, DBP, and
 pulse pressure, intraoperative invasive arterial pulse pressure (at matched
 MAP), and CVP against `HemodynamicModel`.
+`vitaldb_vasopressors.py` replays continuous Orchestra norepinephrine
+(20 mcg/mL) and phenylephrine (100 mcg/mL) infusions with invasive arterial MAP
+against zero-pressor counterfactuals and acute rate step-ups (noting
+confounding by indication during steady-state pressor administration).
+
+## Additional endpoints
+
 `vitaldb_laparoscopy.py` compares paired pre-incision to mid-surgery changes
 in compliance, EtCO₂, minute ventilation, CO₂ elimination proxy, and untreated
 MAP between supine open and supine laparoscopic or robotic surgeries.
@@ -114,15 +125,11 @@ MAP between supine open and supine laparoscopic or robotic surgeries.
 chemistry panels (`PaO2`, `PaCO2 - EtCO2`, `pH`, `HCO3-`, hemodilution `dHb`,
 `dGlucose`, `iCa2+`, and lactate) using recorded ventilator settings, fluids,
 and blood loss.
-`vitaldb_vasopressors.py` replays continuous Orchestra norepinephrine
-(20 mcg/mL) and phenylephrine (100 mcg/mL) infusions with invasive arterial MAP
-against zero-pressor counterfactuals and acute rate step-ups (noting
-confounding by indication during steady-state pressor administration).
 `vitaldb_temperature.py` compares 30- and 60-minute post-equilibration
 `Solar8000/BT` core temperature trajectories across BMI, age, and surgical
 approach against `ThermalModel` both without and with forced-air warming.
 
-### Current results
+## Current results
 
 MAP error, in mmHg with 95% CI:
 
@@ -154,28 +161,14 @@ to surgery MAP rise was `+9.8` mmHg in the model versus `+10.1` mmHg recorded,
 while laparoscopic/robotic supine cases (`n=28`) rose `+16.9` mmHg due to
 unmodeled pneumoperitoneum.
 
-In `vitaldb_co.py` (`n=66` retained, `22` paired untreated pre-incision to
-surgery), paired relative SVR (`MAP/CO`) rose `+15.1%` in both recordings and
-model (`+18.0%` vs `+17.9%` in TIVA; `+10.0%` vs `+10.3%` in sevoflurane). In
-`vitaldb_sevo_bis.py` (`n=1,081` maintenance, `542` emergence), maintenance BIS
-bias was `-0.2` (`-0.7` to `0.3`) with MAE `7.6` (`40.7` recorded vs `39.8`
-model), and emergence MAE was `10.5` versus `24.5` for a constant `BIS=40`
-comparator. In `vitaldb_pulse_pressure.py` (`n=512` awake NIBP), pre-induction
-pulse pressure matched in patients aged 70 and over (`75.0` vs `75.1` mmHg,
-error `+0.1`), while younger cuffs and intraoperative radial arterial lines
-(`n=45`, `56.0` vs `44.1` mmHg) reflected peripheral pulse amplification; CVP
-(`n=7`) was `5.0` vs `3.7` mmHg. In `vitaldb_laparoscopy.py` (`n=399` supine:
-`277` open, `122` laparoscopic/robotic), net laparoscopic minus open effects
-were `-18.7%` compliance (`-25.2%` total), `+32.6%` VCO₂ proxy, `+4.3` mmHg
-EtCO₂, and `+8.2` mmHg untreated MAP. In `vitaldb_labs.py` (`n=94` ABGs),
-`PaO2` error was `-17.2` mmHg (`-34.6` to `1.3`; `+7.5` mmHg at PEEP `>= 4`
-cmH₂O vs `-45.1` mmHg at PEEP `<= 2` cmH₂O), and the `PaCO2 - EtCO2` gradient
-matched open cases (`-0.1` mmHg error) while widening by `2.3` mmHg in
-unmodeled laparoscopic/robotic cases (`7.0` vs `5.1` mmHg). In
-`vitaldb_vasopressors.py` (`n=11`), modeled MAP gains over zero-pressor
-counterfactuals were `+9.8` mmHg for norepinephrine (`n=2`, HR delta `-0.3`
-bpm) and `+11.7` mmHg for phenylephrine (`n=9`, HR delta `-0.7` bpm). In
-`vitaldb_temperature.py` (`n=360`), 60-minute post-equilibration core
-temperature fell `-0.24 °C` (`-0.27` to `-0.21`) versus `-0.31 °C` with active
-forced-air warming and `-1.25 °C` unwarmed, reproducing the BMI gradient
-(`-0.27`, `-0.24`, and `-0.19 °C` across `<22`, `22-26.9`, and `>=27 kg/m²`).
+Summary of additional scripts (model minus recorded, or recorded vs model):
+
+| Validation | Cohort | Key outcome |
+|---|---|---|
+| Sevoflurane BIS (`vitaldb_sevo_bis`) | `n=1,081` maint, `542` emerg | Maintenance bias `-0.2` (`-0.7` to `0.3`), MAE `7.6` (`40.7` vs `39.8`); emergence MAE `10.5` vs `24.5` constant `BIS=40` |
+| Cardiac output and SVR (`vitaldb_co`) | `n=66` (`22` paired untreated) | Pre-incision to surgery SVR (`MAP/CO`) `+15.1%` vs `+15.1%` (TIVA `+18.0%` vs `+17.9%`; sevo `+10.0%` vs `+10.3%`) |
+| Pulse pressure and CVP (`vitaldb_pulse_pressure`) | `n=512` NIBP, `45` A-line, `7` CVP | Awake NIBP aged `>=70` yr `75.0` vs `75.1` mmHg (`+0.1`); intraop radial A-line `56.0` vs `44.1` mmHg (peripheral amplification); CVP `5.0` vs `3.7` mmHg |
+| Vasopressor infusions (`vitaldb_vasopressors`) | `n=11` (`2` NE, `9` PE) | Modeled MAP gain over zero-pressor counterfactual: NE `+9.8` mmHg (HR `-0.3` bpm); PE `+11.7` mmHg (HR `-0.7` bpm) |
+| Laparoscopy vs open (`vitaldb_laparoscopy`) | `n=399` (`277` open, `122` lap) | Net lap minus open: compliance `-18.7%` (`-25.2%` total), VCO₂ proxy `+32.6%`, EtCO₂ `+4.3` mmHg, untreated MAP `+8.2` mmHg |
+| Intraoperative ABGs (`vitaldb_labs`) | `n=94` ABGs | `PaO2` err `-17.2` (`-34.6` to `1.3`; `+7.5` at PEEP `>=4` vs `-45.1` at PEEP `<=2`); `PaCO2 - EtCO2` err `-0.1` open, widened `+2.3` mmHg in unmodeled lap (`7.0` vs `5.1`) |
+| Core temperature (`vitaldb_temperature`) | `n=360` | 60-min `dT` `-0.24 °C` (`-0.27` to `-0.21`) vs `-0.31 °C` warmed and `-1.25 °C` unwarmed; BMI `<22` / `22-26.9` / `>=27`: recorded `-0.27`, `-0.24`, `-0.19 °C` vs warmed model `-0.40`, `-0.30`, `-0.14 °C` |

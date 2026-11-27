@@ -1491,7 +1491,7 @@ class AnesthesiaVentilator:
                 pmus = segment.lung.effort.pmus()
                 # Chest-recoil inflow can auto-trigger sensitive flow triggers during CPR
                 # (bench manikin study in Neumamm 2021, extended here to PSV/SIMV) when
-                # recoil exceeds settings.trigger, without creating spurious SPONT breaths in apnea/CPAP.
+                # recoil exceeds settings.trigger in supported or synchronized modes (excluding apnea and CPAP).
                 cpr_auto_trigger = (
                     self._cpr_active
                     and self._source == "vent"

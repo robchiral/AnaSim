@@ -32,7 +32,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Gin and Chan (1994). *Anesthesiology*. [Decreased isoflurane MAC in pregnant humans](https://pubmed.ncbi.nlm.nih.gov/7943833/).
 - Keir et al. (2020). *Hypertension*. [Age, sex, and resting muscle sympathetic nerve activity variability in healthy adults](https://pubmed.ncbi.nlm.nih.gov/32783757/).
 - Charkoudian et al. (2005). *J Physiol*. [Balance of sympathetic nerve activity, vascular resistance, and cardiac output in normotensive humans](https://pubmed.ncbi.nlm.nih.gov/16037092/).
-- Charkoudian et al. (2006). *J Physiol*. [Sympathetic activity, cardiac output, and arterial pressure regulation in young women and men](https://pubmed.ncbi.nlm.nih.gov/16513672/).
+- Charkoudian et al. (2006). *J Physiol*. [Vascular adrenergic responsiveness and tonic sympathetic nerve activity in humans](https://pubmed.ncbi.nlm.nih.gov/16513672/).
 - Jacob et al. (2008). *Acta Anaesthesiol Scand*. [Preoperative blood volume after overnight fasting before elective surgery](https://pubmed.ncbi.nlm.nih.gov/18339157/).
 - Bundgaard-Nielsen et al. (2010). *Acta Anaesthesiol Scand*. [Preoperative functional intravascular volume deficit before elective surgery](https://pubmed.ncbi.nlm.nih.gov/20002360/).
 
@@ -101,7 +101,6 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 
 ### Lidocaine
 
-- DailyMed (2026a). [Lidocaine injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=ad1ef0a8-88db-4648-c098-d009eaeb4e5b).
 - Foong et al. (2025). *Pharm Res*. [Lidocaine population PK in surgical patients](https://pubmed.ncbi.nlm.nih.gov/40021547/).
 - Tucker and Boas (1971). *Anesthesiology*. [Lidocaine kinetics and intravenous regional anesthesia](https://pubmed.ncbi.nlm.nih.gov/5556244/).
 - Rowland et al. (1971). *Ann N Y Acad Sci*. [Lidocaine kinetics in healthy subjects](https://pubmed.ncbi.nlm.nih.gov/5285383/).
@@ -173,7 +172,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 
 ## Stimulation responses
 
-- Albertin et al. (2004). *Anesthesiology*. [Remifentanil effect-site concentration and sevoflurane MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/14739797/).
+- Albertin et al. (2004). *Anesthesiology*. [Target-controlled remifentanil plasma concentration and sevoflurane MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/14739797/).
 - Albertin et al. (2005). *Anesth Analg*. [Remifentanil blunting the hemodynamic response to intubation and incision](https://pubmed.ncbi.nlm.nih.gov/15976218/).
 - Kazama et al. (1997). *Anesthesiology*. [Propofol-fentanyl interaction and cardiovascular responses to noxious stimuli](https://pubmed.ncbi.nlm.nih.gov/9286884/).
 - Katoh et al. (1999). *Anesthesiology*. [Fentanyl reduction of sevoflurane MAC and MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/9952144/).
@@ -186,7 +185,6 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Billard et al. (1994). *Anesthesiology*. [Hemodynamic response to induction and intubation with propofol and fentanyl](https://pubmed.ncbi.nlm.nih.gov/7992907/).
 - Hayakawa-Fujii et al. (2001). *J Anesth*. [Induction and intubation hemodynamics with propofol, fentanyl, and ketamine](https://pubmed.ncbi.nlm.nih.gov/14569434/).
 - Sawano et al. (2013). *J Anesth*. [Fentanyl dose, hemodynamics, and cardiac output during induction and intubation](https://pubmed.ncbi.nlm.nih.gov/23314694/).
-- Joris et al. (1993). *Anesth Analg*. [Hemodynamic changes during laparoscopic cholecystectomy](https://pubmed.ncbi.nlm.nih.gov/8484509/).
 
 ## Neuromuscular block
 
@@ -314,6 +312,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Kalmar et al. (2018). *J Clin Monit Comput*. [Preload recruitment and cardiac output after phenylephrine bolus in preload-dependent patients](https://pubmed.ncbi.nlm.nih.gov/29569112/).
 - Poterman et al. (2015). *Eur J Anaesthesiol*. [Phenylephrine versus norepinephrine infusion for propofol-remifentanil hypotension](https://pubmed.ncbi.nlm.nih.gov/25760679/).
 - Meng et al. (2011). *Br J Anaesth*. [Phenylephrine and ephedrine boluses under propofol-remifentanil anesthesia](https://pubmed.ncbi.nlm.nih.gov/21642644/).
+- Kanaya et al. (2002). *Anesth Analg*. [Propofol anesthesia enhances the pressor response to intravenous ephedrine](https://pubmed.ncbi.nlm.nih.gov/11973191/).
 - Persky et al. (2004). *Br J Clin Pharmacol*. [Oral ephedrine PK and cardiovascular tolerance](https://pubmed.ncbi.nlm.nih.gov/15089807/).
 - Michelsen et al. (1998). *Anesth Analg*. [Prophylactic ephedrine during propofol induction](https://pubmed.ncbi.nlm.nih.gov/9495396/).
 - Rådström et al. (1995). *Acta Anaesthesiol Scand*. [Ephedrine effects on oxygen consumption and cardiac output](https://pubmed.ncbi.nlm.nih.gov/8607315/).
@@ -328,7 +327,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Hernández et al. (2013). *Intensive Care Med*. [Dobutamine hemodynamics and perfusion in septic shock](https://pubmed.ncbi.nlm.nih.gov/23740284/).
 - Baim et al. (1983). *N Engl J Med*. [Milrinone hemodynamics](https://pubmed.ncbi.nlm.nih.gov/6888453/).
 - Feneck (1992). *J Cardiothorac Vasc Anesth*. [Intravenous milrinone hemodynamics and pulmonary vascular resistance after cardiac surgery](https://pubmed.ncbi.nlm.nih.gov/1421066/).
-- DailyMed (2026b). [Milrinone injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=88f78780-399f-4780-be19-205739db1682).
+- DailyMed (2026). [Milrinone injection prescribing information](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=88f78780-399f-4780-be19-205739db1682).
 - Sum et al. (1983). *Clin Pharmacol Ther*. [Esmolol PK and beta blockade](https://pubmed.ncbi.nlm.nih.gov/6617063/).
 - Wiest and Haney (2012). *Clin Pharmacokinet*. [Esmolol pharmacology review](https://pubmed.ncbi.nlm.nih.gov/22515557/).
 - Abernethy et al. (1987). *Am J Cardiol*. [Labetalol PK/PD and age](https://pubmed.ncbi.nlm.nih.gov/3661438/).
@@ -348,6 +347,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Dauchot and Gravenstein (1971). *Clin Pharmacol Ther*. [Age dependence of ECG and HR responses to atropine](https://pubmed.ncbi.nlm.nih.gov/5554942/).
 - Du et al. (2025). *J Drug Deliv Sci Technol*. [Glycopyrrolate population PK](https://doi.org/10.1016/j.jddst.2025.106692).
 - Mirakhur et al. (1977). *Br J Anaesth*. [Heart-rate effects of glycopyrrolate and atropine with neostigmine](https://pubmed.ncbi.nlm.nih.gov/329848/).
+- Mirakhur et al. (1981). *Anaesthesia*. [Dose-response heart-rate effects of intravenous glycopyrrolate and atropine](https://pubmed.ncbi.nlm.nih.gov/7224118/).
 
 ## Heart and brain oxygen supply
 
@@ -416,7 +416,6 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Hahn (2017). *Anesth Analg*. [Arterial pressure, age, and crystalloid elimination](https://pubmed.ncbi.nlm.nih.gov/28452823/).
 - Hahn and Nemme (2020). *BMC Anesthesiol*. [Fluid retention after anesthesia induction](https://pubmed.ncbi.nlm.nih.gov/32334513/).
 - Hahn (2021). *Perioper Med (Lond)*. [Crystalloid distribution during anesthesia-induced hypotension](https://pubmed.ncbi.nlm.nih.gov/34629113/).
-- Hahn (2024). *Front Physiol*. [Fluid-space recruitment with increasing crystalloid volumes](https://pubmed.ncbi.nlm.nih.gov/39263627/).
 - Drobin and Hahn (1999). *Anesthesiology*. [Volume kinetics of Ringer's solution in hypovolemic volunteers](https://pubmed.ncbi.nlm.nih.gov/9915316/).
 - Vane et al. (2004). *Anesthesiology*. [Crystalloid volume kinetics during adrenergic stimulation](https://pubmed.ncbi.nlm.nih.gov/15505449/).
 - Li et al. (2012). *Crit Care*. [Diuretic effects of esmolol and phenylephrine during intravenous anesthesia](https://pubmed.ncbi.nlm.nih.gov/22289281/).
@@ -448,11 +447,13 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 ## Glucose and insulin
 
 - Sherwin et al. (1974). *J Clin Invest*. [Three-compartment model of insulin kinetics in humans](https://pubmed.ncbi.nlm.nih.gov/4856884/).
+- Insel et al. (1975). *J Clin Invest*. [Kinetic analysis of insulin control of glucose metabolism](https://pubmed.ncbi.nlm.nih.gov/15959962/).
 - Rizza et al. (1979). *J Clin Invest*. [Glucagon and catecholamines in human glucose counterregulation](https://pubmed.ncbi.nlm.nih.gov/36413/).
 - Rizza et al. (1981). *Am J Physiol*. [Insulin dose-response curves for glucose production and utilization](https://pubmed.ncbi.nlm.nih.gov/7018254/).
 - Kolterman et al. (1981). *J Clin Invest*. [Hepatic and peripheral insulin resistance in type 2 diabetes](https://pubmed.ncbi.nlm.nih.gov/7287908/).
 - Rabkin et al. (1970). *N Engl J Med*. [Renal uptake and excretion of insulin in renal disease](https://pubmed.ncbi.nlm.nih.gov/5409813/).
 - Letiexhe et al. (1993). *J Clin Endocrinol Metab*. [Insulin secretion, clearance, and action in cirrhosis](https://pubmed.ncbi.nlm.nih.gov/8077319/).
+- DeFronzo et al. (1980). *Am J Physiol*. [Graded insulin doses and splanchnic and peripheral potassium uptake](https://pubmed.ncbi.nlm.nih.gov/6990783/).
 - Alvestrand et al. (1984). *Am J Physiol*. [Preserved insulin-mediated potassium uptake in chronic uremia](https://pubmed.ncbi.nlm.nih.gov/6364842/).
 - Allon and Copkney (1990). *Kidney Int*. [Albuterol and insulin with dextrose for hyperkalemia in hemodialysis patients](https://pubmed.ncbi.nlm.nih.gov/2266671/).
 - Chothia et al. (2014). *Nephron Physiol*. [Bolus glucose with or without insulin for hyperkalemia](https://pubmed.ncbi.nlm.nih.gov/24576893/).
@@ -478,6 +479,10 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Bouillon et al. (2004b). *Anesthesiology*. [Dynamic propofol ventilatory depression](https://pubmed.ncbi.nlm.nih.gov/14739795/).
 - Olofsen et al. (2010). *Anesthesiology*. [Dynamic remifentanil respiratory effects in awake and propofol-sedated volunteers](https://pubmed.ncbi.nlm.nih.gov/20461001/).
 - Babenco et al. (2000). *Anesthesiology*. [Remifentanil bolus ventilatory control](https://pubmed.ncbi.nlm.nih.gov/10691225/).
+- Gelberg et al. (2012). *Br J Anaesth*. [Equidepressant intravenous fentanyl and remifentanil boluses in awake volunteers](https://pubmed.ncbi.nlm.nih.gov/22440314/).
+- Yassen et al. (2007). *Clin Pharmacol Ther*. [Fentanyl respiratory pharmacodynamics in healthy volunteers](https://pubmed.ncbi.nlm.nih.gov/17185999/).
+- Ferguson and Drummond (2006). *Br J Anaesth*. [Fentanyl effects on breathing timing and tidal volume under sevoflurane](https://pubmed.ncbi.nlm.nih.gov/16449234/).
+- Egan et al. (2004). *Br J Anaesth*. [Remifentanil bolus pharmacokinetics, respiratory safety, and age sensitivity](https://pubmed.ncbi.nlm.nih.gov/14970134/).
 - Blouin et al. (1993). *Anesthesiology*. [Propofol depresses hypoxic ventilatory response](https://pubmed.ncbi.nlm.nih.gov/8267192/).
 - Nieuwenhuijs et al. (2000). *Anesthesiology*. [Acute and sustained hypoxic responses during propofol sedation](https://pubmed.ncbi.nlm.nih.gov/10638898/).
 - Weil et al. (1975). *N Engl J Med*. [Diminished hypoxic and hypercapnic ventilatory responses after morphine](https://pubmed.ncbi.nlm.nih.gov/1128555/).
@@ -495,6 +500,8 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Polacheck et al. (1980). *J Appl Physiol*. [Vagal inflation feedback under anesthesia](https://pubmed.ncbi.nlm.nih.gov/7440275/).
 - Tobin et al. (1983). *Chest*. [Breathing pattern of normal subjects](https://pubmed.ncbi.nlm.nih.gov/6872603/).
 - Leung et al. (1997). *Am J Respir Crit Care Med*. [SIMV and pressure-support effort unloading](https://pubmed.ncbi.nlm.nih.gov/9196100/).
+- Brochard et al. (1989). *Am Rev Respir Dis*. [Inspiratory pressure support and diaphragmatic unloading during weaning](https://pubmed.ncbi.nlm.nih.gov/2643905/).
+- Jubran et al. (1995). *Am J Respir Crit Care Med*. [Patient-ventilator interaction and intrinsic PEEP during pressure support in COPD](https://pubmed.ncbi.nlm.nih.gov/7599811/).
 - Graves et al. (1986). *Am J Physiol*. [Patient-ventilator synchronization under anesthesia](https://pubmed.ncbi.nlm.nih.gov/3706575/).
 - Javaheri et al. (1982). *Chest*. [Compensatory hypoventilation in metabolic alkalosis](https://pubmed.ncbi.nlm.nih.gov/6799256/).
 
@@ -539,6 +546,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Hedenstierna and Edmark (2015). *Best Pract Res Clin Anaesthesiol*. [FRC, airway closure, atelectasis, and gas exchange under anesthesia](https://pubmed.ncbi.nlm.nih.gov/26643094/).
 - Tokics et al. (1996). *J Appl Physiol*. [Atelectasis and shunt during anesthesia](https://pubmed.ncbi.nlm.nih.gov/8904605/).
 - Ballester et al. (1989). *Thorax*. [V/Q distributions and oxygen response in acute severe asthma](https://pubmed.ncbi.nlm.nih.gov/2763227/).
+- Rodríguez-Roisin et al. (1989). *Am Rev Respir Dis*. [Gas exchange and hyperoxic absorption shunt in mechanically ventilated status asthmaticus](https://pubmed.ncbi.nlm.nih.gov/2923373/).
 - Edmark et al. (2003). *Anesthesiology*. [Inspired O₂ during induction, atelectasis, and apnea time](https://pubmed.ncbi.nlm.nih.gov/12502975/).
 - Rothen et al. (1993). *Br J Anaesth*. [Inflation pressure and CT atelectasis](https://pubmed.ncbi.nlm.nih.gov/8280539/).
 - Rothen et al. (1995). *Anesthesiology*. [Oxygen concentration and recurrent atelectasis](https://pubmed.ncbi.nlm.nih.gov/7717553/).
@@ -591,7 +599,10 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Giosa et al. (2024). *J Clin Med*. [Plateau pressure, residual flow, and patient effort](https://pubmed.ncbi.nlm.nih.gov/39685913/).
 - Lee et al. (2022). *Sci Data*. [VitalDB waveforms and numerics](https://pubmed.ncbi.nlm.nih.gov/35676300/).
 - Jonson et al. (1993). *J Appl Physiol*. [Human tissue viscoelasticity](https://pubmed.ncbi.nlm.nih.gov/8376259/).
+- D'Angelo et al. (1991). *J Appl Physiol*. [Pulmonary and chest-wall mechanics in anesthetized paralyzed humans](https://pubmed.ncbi.nlm.nih.gov/1885455/).
 - Pelosi et al. (1998). *Anesth Analg*. [Body mass index, FRC, and compliance under anesthesia](https://pubmed.ncbi.nlm.nih.gov/9728848/).
+- Behazin et al. (2010). *J Appl Physiol*. [Respiratory restriction and pleural pressures in morbid obesity](https://pubmed.ncbi.nlm.nih.gov/19910329/).
+- Lourens et al. (2000). *Intensive Care Med*. [Expiratory time constants in mechanically ventilated COPD patients](https://pubmed.ncbi.nlm.nih.gov/11193266/).
 - Jardin et al. (1985). *Chest*. [Airway-to-pleural pressure transmission and lung and chest-wall compliance](https://pubmed.ncbi.nlm.nih.gov/3902386/).
 - Dräger. [Evita 4 SW 4.n instructions for use](https://www.draeger.com/Content/Documents/Content/IfU_Evita_4_SW_4.n_EN_9039485.pdf).
 - Feigenwinter and Zbinden (1991). *Anaesthesist*. [Circle-system resistance](https://pubmed.ncbi.nlm.nih.gov/1952036/).
@@ -604,7 +615,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Piccioli et al. (2023). *Front Cardiovasc Med*. [Contractility and pulse pressure during dobutamine](https://pubmed.ncbi.nlm.nih.gov/37424904/).
 - Saugel et al. (2020). *Crit Care*. [Arterial catheter frequency response and damping](https://pubmed.ncbi.nlm.nih.gov/32331527/).
 - Russell et al. (1990). *Can J Anaesth*. [Arterial to end-tidal CO₂ gradient during postoperative support](https://pubmed.ncbi.nlm.nih.gov/2115404/).
-- Lujan et al. (2008). *Med Sci Monit*. [Arterial to end-tidal CO₂ gradient in airway obstruction](https://pubmed.ncbi.nlm.nih.gov/18758420/).
+- Luján et al. (2008). *Med Sci Monit*. [Arterial to end-tidal CO₂ gradient in airway obstruction](https://pubmed.ncbi.nlm.nih.gov/18758420/).
 - Yaron et al. (1996). *Ann Emerg Med*. [Capnographic slope and airway obstruction in asthma](https://pubmed.ncbi.nlm.nih.gov/8839525/).
 - Blanch et al. (1999). *Eur Respir J*. [Volumetric capnography and Phase III slope in acute lung injury](https://pubmed.ncbi.nlm.nih.gov/10414403/).
 - Idris et al. (1994). *Ann Emerg Med*. [End-tidal CO₂ during extremely low cardiac output](https://pubmed.ncbi.nlm.nih.gov/8135436/).
@@ -620,16 +631,18 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 
 - Joyce et al. (2018). *Intensive Care Med Exp*. [Mathematical model of CO₂, O₂, and N₂ exchange during venovenous ECMO](https://pubmed.ncbi.nlm.nih.gov/30094654/).
 - Schmidt et al. (2013). *Intensive Care Med*. [Blood oxygenation and decarboxylation determinants during adult venovenous ECMO](https://pubmed.ncbi.nlm.nih.gov/23291732/).
-- Karagiannidis et al. (2017). *Intensive Care Med Exp*. [Membrane surface area and blood flow in extracorporeal CO₂ removal](https://pubmed.ncbi.nlm.nih.gov/28766276/).
+- Karagiannidis et al. (2017). *Intensive Care Med Exp*. [Membrane surface area and blood flow in extracorporeal CO₂ removal in swine](https://pubmed.ncbi.nlm.nih.gov/28766276/).
 - Palmér et al. (2016). *ASAIO J*. [Cannula design and recirculation during venovenous ECMO](https://pubmed.ncbi.nlm.nih.gov/27660904/).
 - Mauri et al. (2016). *Anesthesiology*. [Control of respiratory drive and effort during ECMO in severe ARDS](https://pubmed.ncbi.nlm.nih.gov/26999639/).
+- Burkhoff et al. (2015). *J Am Coll Cardiol*. [Hemodynamics of mechanical circulatory support](https://pubmed.ncbi.nlm.nih.gov/26670067/).
 - Donker et al. (2019). *ASAIO J*. [Left ventricular unloading during venoarterial ECMO](https://pubmed.ncbi.nlm.nih.gov/29517515/).
-- Ostadal et al. (2015). *J Transl Med*. [Increasing VA ECMO flow and left ventricular performance in cardiogenic shock](https://pubmed.ncbi.nlm.nih.gov/26275717/).
-- Aissaoui et al. (2012). *J Am Soc Echocardiogr*. [Left ventricular loading changes across VA ECMO flow weaning](https://pubmed.ncbi.nlm.nih.gov/22421027/).
+- Ostadal et al. (2015). *J Transl Med*. [Increasing venoarterial ECMO flow and left ventricular performance in porcine cardiogenic shock](https://pubmed.ncbi.nlm.nih.gov/26275717/).
+- Aissaoui et al. (2012). *J Am Soc Echocardiogr*. [Left ventricular loading changes across venoarterial ECMO flow weaning](https://pubmed.ncbi.nlm.nih.gov/22421027/).
 - Stevens et al. (2017). *J Biomech*. [Aortic flow mixing during peripheral venoarterial ECMO](https://pubmed.ncbi.nlm.nih.gov/28262284/).
 - Magder and De Varennes (1998). *Crit Care Med*. [Human stressed vascular volume from passive CPB venous drainage](https://pubmed.ncbi.nlm.nih.gov/9635656/).
 - Gordon et al. (1975). *J Thorac Cardiovasc Surg*. [Arterial pressure, viscosity, and vascular resistance during CPB](https://pubmed.ncbi.nlm.nih.gov/1117744/).
 - Eckmann et al. (2000). *Anesth Analg*. [Hematocrit, diluent, temperature, and shear effects on blood viscosity](https://pubmed.ncbi.nlm.nih.gov/10960372/).
+- Rajek et al. (1998). *Anesthesiology*. [Tissue heat content and distribution during and after hypothermic CPB](https://pubmed.ncbi.nlm.nih.gov/9637645/).
 - Rajek et al. (2000). *Anesthesiology*. [Methods for reducing postbypass core temperature afterdrop](https://pubmed.ncbi.nlm.nih.gov/10691232/).
 - Nissinen et al. (2009). *Perfusion*. [Safe aortic cross-clamp and cardiopulmonary bypass time limits in adult cardiac surgery](https://pubmed.ncbi.nlm.nih.gov/20007817/).
 - Al-Sarraf et al. (2011). *Int J Surg*. [Aortic cross-clamp duration and postoperative low cardiac output in cardiac surgery](https://pubmed.ncbi.nlm.nih.gov/20965288/).
@@ -638,12 +651,14 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Michelsen et al. (2001). *Anesth Analg*. [Remifentanil pharmacokinetics during hypothermic CPB](https://pubmed.ncbi.nlm.nih.gov/11682375/).
 - Mathew et al. (2001). *J Clin Anesth*. [Hypothermia and Bispectral Index during CPB](https://pubmed.ncbi.nlm.nih.gov/11435056/).
 - Prasser et al. (2008). *Eur J Anaesthesiol*. [Sevoflurane elimination across plasma-tight versus conventional oxygenators](https://pubmed.ncbi.nlm.nih.gov/17655810/).
+- Nitzschke et al. (2013). *Br J Anaesth*. [Sevoflurane plasma concentration during oxygenator delivery on CPB](https://pubmed.ncbi.nlm.nih.gov/23462192/).
 - Shekar et al. (2012). *Crit Care*. [Drug sequestration in whole-blood ECMO circuits](https://pubmed.ncbi.nlm.nih.gov/23068416/).
 - Morales Castro et al. (2025). *Ann Am Thorac Soc*. [Propofol and fentanyl PK/PD during venovenous ECMO](https://pubmed.ncbi.nlm.nih.gov/39383576/).
 
 ### Heparin and protamine
 
 - Bull et al. (1975). *J Thorac Cardiovasc Surg*. [Individualized heparin and protamine dose-response curve using ACT](https://pubmed.ncbi.nlm.nih.gov/1127967/).
+- Delavenne et al. (2017). *Br J Anaesth*. [Unfractionated heparin PK/PD model during cardiopulmonary bypass](https://pubmed.ncbi.nlm.nih.gov/28510738/).
 - Bjornsson et al. (1982). *Clin Pharmacol Ther*. [Dose-dependent heparin pharmacokinetics by three assay methods](https://pubmed.ncbi.nlm.nih.gov/7053298/).
 - Cohen et al. (1977). *Anesth Analg*. [Plasma heparin activity during hypothermic cardiopulmonary bypass](https://pubmed.ncbi.nlm.nih.gov/560145/).
 - Butterworth et al. (2002). *Ann Thorac Surg*. [Rapid disappearance of protamine in adults after CPB](https://pubmed.ncbi.nlm.nih.gov/12440613/).
@@ -671,8 +686,9 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 
 ## Laparoscopic pneumoperitoneum
 
+- Joris et al. (1993). *Anesth Analg*. [Hemodynamic changes during laparoscopic cholecystectomy](https://pubmed.ncbi.nlm.nih.gov/8484509/).
 - Fahy et al. (1995). *Anesth Analg*. [Respiratory mechanics during laparoscopic CO₂ pneumoperitoneum](https://pubmed.ncbi.nlm.nih.gov/7574004/).
-- Tan et al. (1992). *Can J Anaesth*. [CO₂ absorption during laparoscopic cholecystectomy](https://pubmed.ncbi.nlm.nih.gov/1394755/).
+- Tan et al. (1992). *Can J Anaesth*. [CO₂ absorption and gas exchange during pelvic laparoscopy](https://pubmed.ncbi.nlm.nih.gov/1394755/).
 - Mullett et al. (1993). *Anesth Analg*. [Pulmonary CO₂ elimination during intraperitoneal and extraperitoneal insufflation](https://pubmed.ncbi.nlm.nih.gov/8452278/).
 
 ## Neuraxial anesthesia

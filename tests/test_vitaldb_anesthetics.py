@@ -323,7 +323,7 @@ def test_phase2_vitaldb_validators_screen_and_evaluate_cleanly():
     assert surg["vco2"] > pre["vco2"] * 1.25
     assert surg["etco2"] > pre["etco2"] + 3.0
 
-    # Intraop labs parser groups ABG panels within 120 s and verifies module helpers exist.
+    # Verify pulse pressure and intraop labs validator entry points exist.
     assert hasattr(vitaldb_pulse_pressure, "evaluate")
     assert hasattr(vitaldb_labs, "evaluate")
 

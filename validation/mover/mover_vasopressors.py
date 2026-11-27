@@ -3,7 +3,7 @@
 Uses 1-minute invasive arterial MAP (`MAP-ART A-line`) and 1-minute ECG HR during settled
 maintenance anesthesia to evaluate isolated boluses of phenylephrine, ephedrine,
 norepinephrine, esmolol, labetalol, glycopyrrolate alone, and neostigmine + glycopyrrolate,
-plus isolated norepinephrine infusion starts/step-ups.
+plus isolated norepinephrine infusion starts.
 """
 
 from __future__ import annotations
@@ -296,8 +296,6 @@ def run(
 
         # 1. Arterial-line vasopressor / beta-blocker boluses
         if has_aline:
-            no_inf = not _has_active_pressor_infusion(meds, t_ind)  # quick check refined per event below
-            del no_inf
             for m in meds:
                 if m["kind"] != "bolus":
                     continue
@@ -393,7 +391,7 @@ def run(
                     rate = float(m0["val"])
                     if m0["unit"] == "mcg/kg/min":
                         rate *= float(row["weight_kg"])
-                    # Allow prior infusions/boluses outside [-3, +4] min so real ICU/high-risk starts are captured.
+                    # Allow competing boluses outside [-3, +3] min (and prior infusions) so real ICU/high-risk starts are captured.
                     no_near_bolus = all(
                         abs(_sec_from(cm["ts"], t0)) > 180.0
                         for cm in meds

@@ -299,7 +299,7 @@ class TOFModel:
         # while leaving 0.6 mg/kg bolus onset time essentially unchanged (0.96 vs 1.02 min).
         ke0_in = ke0_out if mac_sevo <= 0.0 else self._effective_ke0(0.15 * mac_sevo)
         s_c1 = sugammadex.state.c1
-        # Rapid saturable junctional encapsulation plus linear Kleijn efflux
+        # Rapid saturable junctional encapsulation plus sigmoidally gated Kleijn efflux
         # reproduces rapid partial reversal and redistribution rebound after
         # sub-therapeutic sugammadex doses (Eleveld 2007) while preserving
         # Kleijn 2011 2/4/16 mg/kg reversal times.

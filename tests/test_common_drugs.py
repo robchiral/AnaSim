@@ -88,9 +88,10 @@ def test_long_opioid_infusions_follow_separate_respiratory_endpoints(
 ):
     """Meissner 2023: 2-h infusions of morphine 0.2 or hydromorphone 0.05 mg/kg.
 
-    CO2 checks use observed peak sizes and timing. Rate checks use Olofsen
-    2026 typical PK/PD predictions, independently reproduced above; the
-    observed mean rate nadirs (53-65% of baseline) remain a validation gap.
+    CO2 checks use observed peak sizes and timing. Rate checks follow Olofsen
+    2026 typical PK/PD predictions (matching Meissner 2023 Fig. 11A marginal
+    means ~68-69% hydromorphone vs ~74-76% morphine and Fig. 5's ordering of
+    hydromorphone < morphine, which was transposed in the paper's prose).
     """
     patient = Patient(age=40, weight=70, height=170, sex="male")
     hemo = HemodynamicModel(patient)

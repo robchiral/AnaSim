@@ -208,6 +208,34 @@ def test_ventilator_modes_unload_effort_in_leung_order(engine_factory):
     assert ptp_per_min["vcv"] < 0.25 * ptp_per_min["cpap"]
 
 
+def test_intrinsic_peep_limits_psv_unloading_like_jubran_1995(engine_factory):
+    """Jubran 1995 (COPD PS 5 -> 20 cmH2O: PTP/min falls ~59%) and Brochard 1989:
+    non-unloadable intrinsic PEEP threshold load prevents complete PTP abolition at high PSV.
+    """
+    ptps = {}
+    for ps in (5.0, 20.0):
+        eng = engine_factory(
+            config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+            start=True, age=68, weight=70.0, height=170.0, sex="male", copd_severity=0.8,
+        )
+        eng.set_airway_mode("ETT")
+        eng.set_fgf(4.0, 6.0)
+        eng.resp_mech.reference_compliance = 0.0433
+        eng.set_bronchospasm(0.35)
+        eng.set_vent_settings(mode="PSV", rr=0, vt=0.0, peep=0.0, p_support=ps, ie="1:2")
+        eng.set_vent_power(True)
+        for _ in range(240):
+            eng.step(1.0)
+        assert eng.vent.monitors.auto_peep > 2.0
+        ptp = 0.0
+        for _ in range(60):
+            eng.step(1.0)
+            ptp += eng.vent.muscle_pressure_area
+        ptps[ps] = ptp
+    reduction = 1.0 - ptps[20.0] / ptps[5.0]
+    assert 0.42 <= reduction <= 0.68
+
+
 def test_obstructed_breathing_fatigues_and_pressure_support_restores_acute_capacity(awake_engine):
     engine = awake_engine
     engine.set_airway_mode("ETT")

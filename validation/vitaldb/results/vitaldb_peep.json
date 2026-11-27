@@ -1,7 +1,7 @@
 {
   "counts": {
-    "fetched_peep_tracks": 3001,
     "eligible_cases": 3640,
+    "cached_complete_cases": 498,
     "cases_with_candidate_step": 349,
     "candidate_steps": 396,
     "numeric_eligible_steps": 20,
@@ -18,6 +18,14 @@
   "summary": {
     "mean_log_gain_per_cmh2o": 0.028880335195469294,
     "median_log_gain_per_cmh2o": 0.03190892218578194,
+    "anasim_mean_log_gain_per_cmh2o": 0.0059132553250303525,
+    "anasim_median_log_gain_per_cmh2o": 0.0032195341090256345,
+    "up_n": 12,
+    "up_recorded_median": 0.03206889017328101,
+    "up_anasim_median": 0.0021532122081903953,
+    "down_n": 3,
+    "down_recorded_median": 0.027169264993049013,
+    "down_anasim_median": 0.02473128422777659,
     "ci_95": [
       0.02083550534762228,
       0.03761549536178963
@@ -2208,6 +2216,7 @@
       "bmi": 38.62,
       "pft": "Restrictive",
       "time": 622.002,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 5.0,
         "SET_RR_IPPV": 14.0,
@@ -2246,7 +2255,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.010185388215292978
+      "log_gain_per_cmh2o": 0.010185388215292978,
+      "anasim": {
+        "before_compliance": 27.09772856202551,
+        "after_compliance": 26.777365107477458,
+        "log_gain_per_cmh2o": -0.003964320787262371
+      }
     },
     {
       "case": 1402,
@@ -2254,6 +2268,7 @@
       "bmi": 21.04,
       "pft": "Normal",
       "time": 1020.5,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 0.0,
         "SET_RR_IPPV": 13.0,
@@ -2292,7 +2307,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.04880140178982383
+      "log_gain_per_cmh2o": 0.04880140178982383,
+      "anasim": {
+        "before_compliance": 34.44366085399303,
+        "after_compliance": 35.00261038122927,
+        "log_gain_per_cmh2o": 0.0032195341090256345
+      }
     },
     {
       "case": 1462,
@@ -2300,6 +2320,7 @@
       "bmi": 29.57,
       "pft": "Normal",
       "time": 2144.28,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 5.0,
         "SET_RR_IPPV": 15.0,
@@ -2338,7 +2359,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.001459855051667423
+      "log_gain_per_cmh2o": 0.001459855051667423,
+      "anasim": {
+        "before_compliance": 34.20984706774461,
+        "after_compliance": 34.20957717982133,
+        "log_gain_per_cmh2o": -3.944609681412337e-06
+      }
     },
     {
       "case": 1679,
@@ -2346,6 +2372,7 @@
       "bmi": 22.12,
       "pft": "Obstructive",
       "time": 963.152,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 0.0,
         "SET_RR_IPPV": 10.0,
@@ -2384,7 +2411,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.03353885695695683
+      "log_gain_per_cmh2o": 0.03353885695695683,
+      "anasim": {
+        "before_compliance": 35.31058969307555,
+        "after_compliance": 36.06931049087402,
+        "log_gain_per_cmh2o": 0.004251893723015548
+      }
     },
     {
       "case": 2907,
@@ -2392,6 +2424,7 @@
       "bmi": 23.36,
       "pft": "Normal",
       "time": 568.603,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 0.0,
         "SET_RR_IPPV": 16.0,
@@ -2430,7 +2463,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.03421203530428309
+      "log_gain_per_cmh2o": 0.03421203530428309,
+      "anasim": {
+        "before_compliance": 36.88282508593801,
+        "after_compliance": 37.164976149327785,
+        "log_gain_per_cmh2o": 0.0015241637116525752
+      }
     },
     {
       "case": 3016,
@@ -2438,6 +2476,7 @@
       "bmi": 28.38,
       "pft": "Restrictive",
       "time": 602.182,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 0.0,
         "SET_RR_IPPV": 12.0,
@@ -2476,7 +2515,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.03190892218578194
+      "log_gain_per_cmh2o": 0.03190892218578194,
+      "anasim": {
+        "before_compliance": 29.77706404070121,
+        "after_compliance": 30.412004540016135,
+        "log_gain_per_cmh2o": 0.004219796508985573
+      }
     },
     {
       "case": 3225,
@@ -2484,6 +2528,7 @@
       "bmi": 27.22,
       "pft": "Normal",
       "time": 1495.1,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 0.0,
         "SET_RR_IPPV": 13.0,
@@ -2522,7 +2567,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.03378209177953933
+      "log_gain_per_cmh2o": 0.03378209177953933,
+      "anasim": {
+        "before_compliance": 30.796185643028476,
+        "after_compliance": 30.967784150490797,
+        "log_gain_per_cmh2o": 0.0013891509042932783
+      }
     },
     {
       "case": 3725,
@@ -2530,6 +2580,7 @@
       "bmi": 29.19,
       "pft": "Normal",
       "time": 1972.88,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 5.0,
         "SET_RR_IPPV": 14.0,
@@ -2568,7 +2619,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.03222885816078008
+      "log_gain_per_cmh2o": 0.03222885816078008,
+      "anasim": {
+        "before_compliance": 41.97373238700216,
+        "after_compliance": 41.907118263717926,
+        "log_gain_per_cmh2o": -0.0007941519044151751
+      }
     },
     {
       "case": 4054,
@@ -2576,6 +2632,7 @@
       "bmi": 22.66,
       "pft": "Normal",
       "time": 2869.36,
+      "direction": "down",
       "before": {
         "SET_INTER_PEEP": 5.0,
         "SET_RR_IPPV": 15.0,
@@ -2614,7 +2671,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.027169264993049013
+      "log_gain_per_cmh2o": 0.027169264993049013,
+      "anasim": {
+        "before_compliance": 44.225888387033244,
+        "after_compliance": 39.08168358010819,
+        "log_gain_per_cmh2o": 0.02473128422777659
+      }
     },
     {
       "case": 4694,
@@ -2622,6 +2684,7 @@
       "bmi": 23.84,
       "pft": "Normal",
       "time": 1756.22,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 0.0,
         "SET_RR_IPPV": 12.0,
@@ -2660,7 +2723,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.029323537503942627
+      "log_gain_per_cmh2o": 0.029323537503942627,
+      "anasim": {
+        "before_compliance": 33.39112118950588,
+        "after_compliance": 34.17585451388223,
+        "log_gain_per_cmh2o": 0.004645870873580597
+      }
     },
     {
       "case": 4887,
@@ -2668,6 +2736,7 @@
       "bmi": 20.11,
       "pft": "Normal",
       "time": 1495.15,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 0.0,
         "SET_RR_IPPV": 10.0,
@@ -2706,7 +2775,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.01675020626499425
+      "log_gain_per_cmh2o": 0.01675020626499425,
+      "anasim": {
+        "before_compliance": 33.5572621010179,
+        "after_compliance": 34.119280085774044,
+        "log_gain_per_cmh2o": 0.003321865372248976
+      }
     },
     {
       "case": 5351,
@@ -2714,6 +2788,7 @@
       "bmi": 29.21,
       "pft": "Normal",
       "time": 2457.83,
+      "direction": "down",
       "before": {
         "SET_INTER_PEEP": 5.0,
         "SET_RR_IPPV": 13.0,
@@ -2752,7 +2827,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.07275021820409328
+      "log_gain_per_cmh2o": 0.07275021820409328,
+      "anasim": {
+        "before_compliance": 36.89172248451765,
+        "after_compliance": 32.16618010126696,
+        "log_gain_per_cmh2o": 0.027414321958518055
+      }
     },
     {
       "case": 5400,
@@ -2760,6 +2840,7 @@
       "bmi": 24.13,
       "pft": "Normal",
       "time": 1070.28,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 0.0,
         "SET_RR_IPPV": 12.0,
@@ -2798,7 +2879,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.01659582269233827
+      "log_gain_per_cmh2o": 0.01659582269233827,
+      "anasim": {
+        "before_compliance": 38.12118745837959,
+        "after_compliance": 38.58909417353441,
+        "log_gain_per_cmh2o": 0.0024398946701177323
+      }
     },
     {
       "case": 5540,
@@ -2806,6 +2892,7 @@
       "bmi": 26.18,
       "pft": "Normal",
       "time": 1371.59,
+      "direction": "up",
       "before": {
         "SET_INTER_PEEP": 0.0,
         "SET_RR_IPPV": 14.0,
@@ -2844,7 +2931,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.03327992075667384
+      "log_gain_per_cmh2o": 0.03327992075667384,
+      "anasim": {
+        "before_compliance": 32.51531663189953,
+        "after_compliance": 32.820191090693214,
+        "log_gain_per_cmh2o": 0.001866529746263058
+      }
     },
     {
       "case": 6186,
@@ -2852,6 +2944,7 @@
       "bmi": 25.55,
       "pft": "Normal",
       "time": 1133.39,
+      "direction": "down",
       "before": {
         "SET_INTER_PEEP": 10.0,
         "SET_RR_IPPV": 17.0,
@@ -2890,7 +2983,12 @@
           "volume_control": true
         }
       },
-      "log_gain_per_cmh2o": 0.01121864807282261
+      "log_gain_per_cmh2o": 0.01121864807282261,
+      "anasim": {
+        "before_compliance": 34.598392902010666,
+        "after_compliance": 29.9472595443858,
+        "log_gain_per_cmh2o": 0.01443694137133662
+      }
     }
   ]
 }

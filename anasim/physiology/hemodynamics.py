@@ -141,7 +141,7 @@ class HemodynamicModel:
         self._basal_nore_ce = NorepinephrinePK.resting_concentration(patient.age)
 
         # Baseline SV from cardiac index and BSA.
-        # Charkoudian 2005/2006 & Keir 2020: resting sympathetic tone varies between
+        # Charkoudian 2005, 2006; Keir 2020: resting sympathetic tone varies between
         # healthy individuals while resting MAP stays invariant via reciprocal TPR-CO
         # balancing (higher MSNA -> higher resting TPR, lower resting CO).
         symp_tone = clamp(eta.resting_sympathetic_tone, 0.5, 2.0)
@@ -622,7 +622,7 @@ class HemodynamicModel:
     def _crystalloid_elimination_factor(self, co_l_min: float, sepsis_sev: float) -> float:
         """Non-MAP crystalloid elimination suppression from hypovolemia, low CO, and sepsis.
 
-        Drobin & Hahn 1999: 450 and 900 mL hemorrhage reduced Ringer's elimination
+        Drobin and Hahn 1999: 450 and 900 mL hemorrhage reduced Ringer's elimination
         by 59% and 68% despite modest MAP drops, whereas normovolemic phenylephrine
         preserves or raises k10 via pressure diuresis (ovine data in Vane 2004; human data in Li 2012).
         """
@@ -780,7 +780,7 @@ class HemodynamicModel:
         return _drug_calc_hr_sv_svr_effects(ce, c50, gamma, emax_hr, emax_sv, emax_svr)
 
     def _calc_pvr_factor(self, pao2: float, peep_cmH2O: float | None = None) -> float:
-        """PVR multiplier from chronic COPD vascular remodeling, hypoxic vasoconstriction, and PEEP."""
+        """PVR multiplier from COPD remodeling, HPV, PEEP, protamine, embolism, pneumoperitoneum, and milrinone."""
         cfg = self.config
         pvr_factor = 1.0 + 0.45 * self.patient.copd_severity
         if pao2 < cfg.pvr_o2_threshold:
@@ -1966,7 +1966,7 @@ class HemodynamicModel:
                 else self.fluids.arterial_ionized_calcium(self.fluids.resting_ph)
             )
             potassium = self.fluids.arterial_potassium
-            # Lang 1988 & Denlinger 1975: blood ionized calcium drives myocardial
+            # Lang 1988; Denlinger 1975: blood ionized calcium drives myocardial
             # contractility directly without hypercalcemic vasoconstriction.
             hypocalcemia = clamp01((base_ica - ica) / 0.70)
             hypercalcemia = clamp01((ica - base_ica) / 0.42)
@@ -2282,6 +2282,8 @@ class HemodynamicModel:
                 amiodarone_hr,
                 hf_beta_hr=self._hf_beta_hr,
                 hf_beta_sv=self._hf_beta_sv,
+                ce_prop=ce_prop,
+                ce_sevo=self.ce_sevo,
             )
             catechol_chrono = self._epi_chrono_effect + nore_delta_hr + dobu_delta_hr + ephedrine_hr
             catechol_sv = epi_sv_factor * nore_sv_factor * dobu_sv_factor * ephedrine_sv

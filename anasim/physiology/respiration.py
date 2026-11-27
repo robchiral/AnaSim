@@ -138,6 +138,17 @@ class RespiratoryModel:
     AWAKE_HYPOCAPNIC_GAIN = 0.2  # Fraction of HCVR; nonlinear depth response, a teaching estimate
     RATE_CO2_GAP = 5.0  # mmHg above the set point before hypercapnia raises frequency
     CO2_CONTROLLER_TAU_S = 150.0  # Olofsen 2010, 2.5 min
+    # Fast-opioid hypercapnic slope depression and separate fentanyl respiratory transfer:
+    # Babenco 2000 (0.5 mcg/kg remi cuts CO2 slope 73%, VE50 53% mostly via VT with brief 1-min RR dip),
+    # Gelberg 2012 (fentanyl 1 mcg/kg ~ remifentanil 0.47 mcg/kg at 5.0 vs 2.9 min),
+    # Yassen 2007 (fentanyl respiratory EC50 1.14 ng/mL), and Ferguson and Drummond 2006
+    # (0.5 mcg/kg fentanyl under sevoflurane slows RR -42% while raising VT +12%).
+    REMI_SLOPE_TAU_S = 115.0
+    FENTANYL_RESP_TAU_S = 35.0
+    FENTANYL_RESP_POTENCY = 1.45
+    OPIOID_SLOPE_C50 = 0.62  # ng/mL remifentanil-equivalent
+    OPIOID_SLOPE_GAMMA = 1.45
+    OPIOID_SLOPE_FLOOR = 0.14
     # O2 extraction at which consumption starts to depend on delivery, in septic
     # and nonseptic patients alike (Ronco 1993).
     CRITICAL_EXTRACTION = 0.6
@@ -169,6 +180,8 @@ class RespiratoryModel:
         self.c50_remi = 1.6
         self.gamma_remi = 1.0  # Used by the separate shivering response.
         self._opioid_drive_fraction = 1.0
+        self._remi_eff = 0.0
+        self._fent_eff = 0.0
         self._ventilatory_drive = 1.0
         self._metabolic_compensation = 1.0
         self._central_drive_fraction = 1.0
@@ -609,14 +622,30 @@ class RespiratoryModel:
         """Resting alveolar ventilation derived from baseline breath rate and volume."""
         return max(0.1, (self.vt_0 / 1000.0 - self.vd_deadspace) * self.rr_0)
 
-    def _set_low_vq(self, unconscious: float, airway_pressure: float, vq_mismatch: float = 0.0) -> None:
+    def _set_low_vq(
+        self,
+        unconscious: float,
+        airway_pressure: float,
+        vq_mismatch: float = 0.0,
+        pao2_alv: float | None = None,
+    ) -> None:
         unconscious = clamp01(unconscious)
         self._anesthetized = max(self._anesthetized, unconscious)
         closed = max(unconscious, self.postoperative_closure * self._anesthetized)
         closure = closed * clamp01(1.0 - airway_pressure / self.airway_opening_pressure)
-        airway = self.low_vq_awake + closure * self.low_vq_closure + self.LOW_VQ_AIRWAY * clamp01(vq_mismatch)
-        self.low_vq_fraction = airway + self.low_vq_copd
-        self._low_vq_share = min(1.0, self.low_vq_fraction / (1.0 - self.shunt_fraction))
+        vq_clamped = clamp01(vq_mismatch)
+        hyperoxia = (
+            clamp01((pao2_alv - 140.0) / 480.0)
+            if pao2_alv is not None and vq_clamped > 0.0
+            else 0.0
+        )
+        # Bronchospastic low-V/Q perfusion rises superlinearly with severity and
+        # expands under hyperoxia as HPV releases (Ballester 1989; Rodríguez-Roisin 1989).
+        bronch_vq = (self.LOW_VQ_AIRWAY + 0.10 * vq_clamped) * vq_clamped
+        bronch_vq *= 1.0 + hyperoxia * (1.05 - 0.85 * vq_clamped)
+        airway = min(0.35, self.low_vq_awake + closure * self.low_vq_closure + bronch_vq)
+        self.low_vq_fraction = min(0.85, airway + self.low_vq_copd)
+        self._low_vq_share = min(1.0, self.low_vq_fraction / max(1e-6, 1.0 - self.shunt_fraction))
         scale = self._low_vq_share / self.low_vq_fraction if self.low_vq_fraction else 0.0
         self._low_vq_units[0].share = airway * scale
         self._low_vq_units[1].share = self.low_vq_copd * scale
@@ -1518,7 +1547,8 @@ class RespiratoryModel:
              pulmonary_flow: float | None = None,
              extracorporeal=None,
              embolic_alveolar_deadspace: float = 0.0,
-             exogenous_co2_ml_min: float = 0.0) -> RespState:
+             exogenous_co2_ml_min: float = 0.0,
+             ce_fentanyl: float = 0.0) -> RespState:
         """Advance ventilatory control and blood-lung gas exchange by dt seconds."""
         transport = self.gas_transport
         blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else blood_volume_ml
@@ -1531,14 +1561,13 @@ class RespiratoryModel:
         start_frc = self.frc
         state = self.state
 
+        ce_remi_pos = max(0.0, ce_remi)
+        ce_fent_pos = max(0.0, ce_fentanyl)
+        raw_opioid = ce_remi_pos + self.FENTANYL_RESP_POTENCY * ce_fent_pos
         prop_keep = 1.0 - hill_function(ce_prop, self.c50_prop, self.gamma_prop)
         sevo_apnea = clamp01((2.0 - mac_sevo) / 0.6)
         sevo_keep = (1.0 - hill_function(mac_sevo, self.c50_sevo_mac, self.gamma_sevo)) * sevo_apnea
-        sevo_rate = (
-            (1.0 + 0.50 * hill_function(mac_sevo, 0.7, 2.0)) * clamp01((2.0 - mac_sevo) / 0.4)
-            if mac_sevo > 0.0
-            else 1.0
-        ) * (1.0 + 0.25 * clamp01(mac_n2o))
+        sevo_rate_eq = self._sevo_rate_factor(mac_sevo, mac_n2o, raw_opioid)
         nmba_factor = (
             (1.0 - self.central_nmba_block(ce_roc, mac_sevo, mac_n2o))
             * clamp01(neuromuscular_strength)
@@ -1569,7 +1598,9 @@ class RespiratoryModel:
             if long_opioid_keep < self.OPIOID_OVERDOSE_THRESHOLD
             else 0.0
         )
-        opioid_shift = 0.5 * max(0.0, ce_remi) / remi_c50 + long_opioid_shift
+        remi_shift = 0.5 * ce_remi_pos / remi_c50 + long_opioid_shift
+        opioid_shift_eq = remi_shift + 0.5 * self.FENTANYL_RESP_POTENCY * ce_fent_pos / remi_c50
+        remi_c50_ratio = remi_c50 / self.c50_remi
         resistive_keep = 1.0 / (1.0 + 1.25 * (1.0 - ventilation_efficiency))
         vd = self.vd_deadspace + 0.0025 * max(0.0, airway_pressure - 12.0)
         # Assisted volumes arrive net of any mask leak; upper-airway stenosis
@@ -1637,7 +1668,7 @@ class RespiratoryModel:
         self._temperature_p50_now = self._temperature_p50(temp_c)
         self._o2_solubility_now = new_solubility
         self.shunt_fraction = clamp(shunt_fraction, 0.0, 0.95)
-        self._set_low_vq(unconscious, airway_pressure, vq_mismatch)
+        self._set_low_vq(unconscious, airway_pressure, vq_mismatch, pao2_alv=state.p_alveolar_o2)
         # Above the critical delivery, extraction rises to hold consumption at
         # demand. Below it, consumption and aerobic CO2 production fall together.
         base_production = self.vco2 * metabolic_factor / 1000.0
@@ -1647,6 +1678,8 @@ class RespiratoryModel:
         target_fn2 = clamp01(1.0 - fio2) if fin2 is None else clamp01(fin2)
         n2o_stpd_l_min = n2o_uptake_l_min * self._btps_to_stpd
         alpha_drive = -math.expm1(-sub_dt / self.CO2_CONTROLLER_TAU_S)
+        alpha_remi_slope = -math.expm1(-sub_dt / self.REMI_SLOPE_TAU_S)
+        alpha_fent = -math.expm1(-sub_dt / self.FENTANYL_RESP_TAU_S)
         alpha_comp = -math.expm1(-sub_dt / 120.0)
         ext_exchange_vol = transport.volumes[2] * -math.expm1(
             -max(0.0, cardiac_output) * sub_dt / (60.0 * transport.volumes[2])
@@ -1688,13 +1721,20 @@ class RespiratoryModel:
             eff_sensed_paco2 = max(10.0, sensed_paco2 - ket_co2_shift)
             co2_excess = max(0.0, eff_sensed_paco2 * self._metabolic_compensation - self.paco2_setpoint)
             opioid_reference = 1.0 + gain * co2_excess
-            target_fraction = long_opioid_keep - opioid_shift / opioid_reference
+            target_fraction = long_opioid_keep - remi_shift / opioid_reference
             # Lag the fractional opioid controller rather than total CO2 drive so
             # drug-free CO2 swings do not produce a 150 s rebound overshoot while
-            # clamped-CO2 opioid kinetics match Olofsen 2010 identically.
+            # clamped-CO2 remifentanil kinetics follow Olofsen 2010; fentanyl
+            # already equilibrates through its slower ke0 (0.147/min) and uses
+            # a shorter respiratory lag.
             if sub_dt > 0.0:
                 self._opioid_drive_fraction += alpha_drive * (target_fraction - self._opioid_drive_fraction)
+                self._remi_eff += alpha_remi_slope * (ce_remi_pos - self._remi_eff)
+                self._fent_eff += alpha_fent * (ce_fent_pos - self._fent_eff)
                 self._ventilatory_drive = opioid_reference * self._opioid_drive_fraction
+            eff_opioid = self._remi_eff + self.FENTANYL_RESP_POTENCY * self._fent_eff
+            fent_shift = 0.5 * self.FENTANYL_RESP_POTENCY * self._fent_eff / remi_c50
+            sevo_rate = self._sevo_rate_factor(mac_sevo, mac_n2o, eff_opioid)
             self._resting_age_s += sub_dt
             if self._resting_pco2 is None or self._resting_age_s >= self.RESTING_PCO2_INTERVAL_S:
                 # The RR curve includes the infusion's CO2 rise. Extra rate feedback
@@ -1723,22 +1763,24 @@ class RespiratoryModel:
                 resting_key = (
                     *common_state, round(self._rate_pco2_reference, 3),
                     round(prop_keep, 4), round(sevo_keep, 4), round(unconscious, 4),
-                    round(gain, 4), round(opioid_shift, 4), round(met_for_resting, 4),
-                    round(long_opioid_keep, 4), round(long_opioid_rate, 4), round(sevo_rate, 4),
+                    round(gain, 4), round(opioid_shift_eq, 4), round(met_for_resting, 4),
+                    round(long_opioid_keep, 4), round(long_opioid_rate, 4), round(sevo_rate_eq, 4),
+                    round(raw_opioid, 4), round(remi_c50_ratio, 4),
                 )
                 if self._resting_pco2_cache is not None and self._resting_pco2_cache[0] == resting_key:
                     self._resting_pco2 = self._resting_pco2_cache[1]
                 else:
                     self._resting_pco2 = self._solve_resting_pco2(
                         prop_keep, sevo_keep, unconscious, gain,
-                        opioid_shift, met_for_resting,
-                        long_opioid_keep, long_opioid_rate, sevo_rate=sevo_rate,
+                        opioid_shift_eq, met_for_resting,
+                        long_opioid_keep, long_opioid_rate, sevo_rate=sevo_rate_eq,
+                        eff_opioid=raw_opioid, raw_opioid=raw_opioid, remi_c50_ratio=remi_c50_ratio,
                     )
                     self._resting_pco2_cache = (resting_key, self._resting_pco2)
                 self._resting_age_s = 0.0
             hypoxic_drive = opioid_reference * self._step_hypoxic_control(
                 sub_dt, ce_prop, mac_sevo, mac_n2o,
-                ce_remi=ce_remi, long_opioid_keep=long_opioid_keep,
+                ce_remi=raw_opioid, long_opioid_keep=long_opioid_keep,
                 pao2_override=extracorporeal.state.upper_body_pao2 if peripheral_va else None,
             )
             # Preserve higher neural recruitment during shallow/moderate partial
@@ -1748,10 +1790,13 @@ class RespiratoryModel:
             nmba_transmission = (nmba_factor ** nmba_exp) * clamp01((nmba_factor - 0.125) / 0.035)
             neural_rr, neural_vt, drive_central = self._unassisted(
                 eff_sensed_paco2, prop_keep, sevo_keep, nmba_transmission,
-                unconscious, opioid_reference, resting_pco2=self._resting_pco2,
+                unconscious, opioid_reference,
+                controller=self._ventilatory_drive - fent_shift,
+                resting_pco2=self._resting_pco2,
                 hypoxic_drive=hypoxic_drive,
                 opioid_controller_fraction=long_opioid_keep, opioid_rate_fraction=long_opioid_rate,
                 sevo_rate=sevo_rate,
+                eff_opioid=eff_opioid, raw_opioid=raw_opioid, remi_c50_ratio=remi_c50_ratio,
             )
             effort_rr = neural_rr
             effort_vt = (
@@ -1797,12 +1842,17 @@ class RespiratoryModel:
                 )
             if airway_patency <= 0.0:
                 total_va_l_min = 0.0
-            # Acute COPD bronchospasm and pulmonary vascular embolism add parallel alveolar dead space.
+            # Acute COPD bronchospasm, pulmonary embolism, and hyperoxic HPV release
+            # during bronchospasm (Ballester 1989; Rodríguez-Roisin 1989) add alveolar dead space.
             copd_alv_ds = clamp01(
                 self.copd_alveolar_deadspace + 0.22 * self.patient.copd_severity * (1.0 - bronch_eff)
             )
             emb_alv_ds = clamp(embolic_alveolar_deadspace, 0.0, 0.85)
-            total_alv_ds = 1.0 - (1.0 - copd_alv_ds) * (1.0 - emb_alv_ds)
+            hyperoxia_vq = clamp01((state.p_alveolar_o2 - 140.0) / 480.0) if vq_mismatch > 0.0 else 0.0
+            bronch_hyperoxic_ds = 0.065 * vq_mismatch * hyperoxia_vq
+            total_alv_ds = (
+                1.0 - (1.0 - copd_alv_ds) * (1.0 - emb_alv_ds) * (1.0 - bronch_hyperoxic_ds)
+            )
             state.va = total_va_l_min * (1.0 - total_alv_ds)
 
             zone1_frac = clamp01(
@@ -1814,7 +1864,7 @@ class RespiratoryModel:
             effective_va = state.va * self._last_va_ratio
             # EtCO2 samples diluted alveolar CO2. The PaCO2-EtCO2 gap widens
             # with dead space, V/Q mismatch, obstruction, and low cardiac output
-            # (Russell 1990; Lujan 2008; Kim 2019).
+            # (Russell 1990; Luján 2008; Kim 2019).
             if measured_breaths:
                 vt_for_gradient_l = mech_vt_l
             elif mech_rr > 0:
@@ -2178,10 +2228,29 @@ class RespiratoryModel:
         self._hypoxic_drive += (target - self._hypoxic_drive) * -math.expm1(-dt / self.HYPOXIC_TAU_S)
         return self._hypoxic_drive
 
-    def initialize_drug_effects(self, ce_prop: float, ce_remi: float) -> None:
+    @staticmethod
+    def _sevo_rate_factor(mac_sevo: float, mac_n2o: float, eff_opioid: float) -> float:
+        """Volatile tachypnea and opioid timing antagonism (Doi and Ikeda 1987; Ferguson and Drummond 2006)."""
+        n2o_rate = 1.0 + 0.25 * clamp01(mac_n2o)
+        if mac_sevo <= 0.0:
+            return n2o_rate
+        sevo_tach = 0.50 * hill_function(mac_sevo, 0.7, 2.0)
+        if eff_opioid > 0.0:
+            sevo_tach *= 1.0 - 0.70 * hill_function(eff_opioid, 0.65, 1.4)
+            sevo_op_keep = 1.0 - 0.25 * hill_function(eff_opioid, 0.90, 1.3)
+            sevo_op_mult = 1.0 - clamp01(mac_sevo / 0.8) * (1.0 - sevo_op_keep)
+        else:
+            sevo_op_mult = 1.0
+        return (1.0 + sevo_tach) * clamp01((2.0 - mac_sevo) / 0.4) * sevo_op_mult * n2o_rate
+
+    def initialize_drug_effects(self, ce_prop: float, ce_remi: float, ce_fentanyl: float = 0.0) -> None:
         """Seed the signed ventilatory controller for a maintenance history."""
-        remi_c50 = self.c50_remi * (1.0 - 0.32 * ce_prop / (1.0 + ce_prop))
-        self._opioid_drive_fraction = 1.0 - 0.5 * ce_remi / remi_c50
+        ce_remi_pos = max(0.0, ce_remi)
+        ce_fent_pos = max(0.0, ce_fentanyl)
+        remi_c50 = self.c50_remi * (1.0 - 0.32 * max(0.0, ce_prop) / (1.0 + max(0.0, ce_prop)))
+        self._opioid_drive_fraction = 1.0 - 0.5 * ce_remi_pos / remi_c50
+        self._remi_eff = ce_remi_pos
+        self._fent_eff = ce_fent_pos
         self._ventilatory_drive = self._opioid_drive_fraction
 
     def _solve_resting_pco2(
@@ -2189,6 +2258,10 @@ class RespiratoryModel:
         unconscious: float, gain: float, opioid_shift: float, metabolic_factor: float,
         opioid_controller_fraction: float = 1.0, opioid_rate_fraction: float = 1.0,
         sevo_rate: float = 1.0,
+        *,
+        eff_opioid: float = 0.0,
+        raw_opioid: float = 0.0,
+        remi_c50_ratio: float = 1.0,
     ) -> float:
         """Sensed alveolar PCO2 at which unassisted breathing removes the CO2 produced.
 
@@ -2210,6 +2283,9 @@ class RespiratoryModel:
                 opioid_controller_fraction=opioid_controller_fraction,
                 opioid_rate_fraction=opioid_rate_fraction,
                 sevo_rate=sevo_rate,
+                eff_opioid=eff_opioid,
+                raw_opioid=raw_opioid,
+                remi_c50_ratio=remi_c50_ratio,
             )
             return rr * max(0.0, vt * 0.001 - dead_space) * alv_keep * pco2
 
@@ -2237,12 +2313,17 @@ class RespiratoryModel:
         resting_pco2: float | None = None, hypoxic_drive: float = 0.0,
         opioid_controller_fraction: float = 1.0, opioid_rate_fraction: float = 1.0,
         sevo_rate: float = 1.0,
+        *,
+        eff_opioid: float = 0.0,
+        raw_opioid: float = 0.0,
+        remi_c50_ratio: float = 1.0,
     ) -> tuple[float, float, float]:
         """Convert normalized alveolar demand to a rate and tidal volume.
 
-        Morphine and hydromorphone have separate rate and controller curves.
-        Their combination with CO2 feedback and other drugs is a simulator
-        assumption, as is the awake hypocapnic response.
+        Fast opioids flatten the hypercapnic slope and act predominantly on VT
+        when awake (Babenco 2000; Gelberg 2012) while slowing volatile tachypnea
+        to raise VT under sevoflurane (Ferguson and Drummond 2006). Morphine and
+        hydromorphone use separate Olofsen 2026 controller and rate curves.
         """
         pco2 *= self._metabolic_compensation
         controller = self._ventilatory_drive if controller is None else controller
@@ -2254,7 +2335,15 @@ class RespiratoryModel:
         )
         controller = max(0.0, controller + hypoxic_drive)
         # Transfer the opioid controller as a fraction of its drug-free response
-        # at the same CO2, then apply Bouillon's nonlinear alveolar response.
+        # at the same CO2, then apply Bouillon's nonlinear alveolar response
+        # flattened by fast-opioid hypercapnic slope depression (Babenco 2000).
+        if eff_opioid > 0.0:
+            raw_slope = self.OPIOID_SLOPE_FLOOR + (1.0 - self.OPIOID_SLOPE_FLOOR) / (
+                1.0 + (eff_opioid / (self.OPIOID_SLOPE_C50 * remi_c50_ratio)) ** self.OPIOID_SLOPE_GAMMA
+            )
+            opioid_slope_keep = 1.0 - sevo_keep * (1.0 - raw_slope)
+        else:
+            opioid_slope_keep = 1.0
         co2_exponent = self.CO2_RESPONSE_EXPONENT * self.hcvr_slope_baseline / 2.2
         if sevo_keep < 1.0:
             co2_exponent *= 0.25 + 0.75 * sevo_keep
@@ -2262,17 +2351,27 @@ class RespiratoryModel:
             co2_exponent *= 1.0 - 0.65 * (
                 self.OPIOID_OVERDOSE_THRESHOLD - opioid_controller_fraction
             ) / self.OPIOID_OVERDOSE_THRESHOLD
-        co2_response = 1.0 if pco2 <= self.paco2_setpoint else (pco2 / self.paco2_setpoint) ** co2_exponent
+        base_co2_response = 1.0 if pco2 <= self.paco2_setpoint else (pco2 / self.paco2_setpoint) ** co2_exponent
+        co2_response = 1.0 + (base_co2_response - 1.0) * opioid_slope_keep
         response_fraction = controller / opioid_reference * co2_response
         drive = min(self.MAX_ALVEOLAR_DRIVE,
                     response_fraction * prop_keep * sevo_keep * self._metabolic_compensation)
-        rate_fraction = min(1.0, rate_controller)
+        hypercapnic_share = clamp01((pco2 - self.paco2_setpoint - 0.5) / 4.5)
+        if hypercapnic_share > 0.0 and (eff_opioid > 0.0 or raw_opioid > 0.0):
+            rc = min(1.0, rate_controller)
+            rate_exp = 1.0 - 0.65 * hypercapnic_share * (1.0 - clamp01((0.40 - rc) / 0.20))
+            rate_base = (rc ** rate_exp) if rc > 0.0 else 0.0
+            fast_rr_dip = 1.0 - 0.14 * hypercapnic_share * hill_function(raw_opioid, 2.2, 1.8)
+            rate_fraction = rate_base * fast_rr_dip
+        else:
+            rate_fraction = min(1.0, rate_controller)
         if rate_controller > 1.0:
             rate_fraction += min(
-                0.6 * (rate_controller / opioid_reference * co2_response - 1.0),
+                0.6 * max(0.0, rate_controller / opioid_reference * co2_response - 1.0),
                 (0.06 + 0.04 * unconscious)
                 * (0.20 + 0.80 * sevo_keep)
                 * max(0.0, pco2 - self._rate_pco2_reference - self.RATE_CO2_GAP)
+                * (0.50 + 0.50 * opioid_slope_keep)
                 + 0.3 * hypoxic_drive,
             )
         rate_fraction *= opioid_rate_fraction * (0.6 + 0.4 * prop_keep) * sevo_rate

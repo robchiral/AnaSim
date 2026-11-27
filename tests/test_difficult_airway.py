@@ -135,7 +135,7 @@ def test_esophageal_intubation_decaying_co2_low_vte_desaturation_and_puma_remova
     paco2_start = engine.state.pa_co2
 
     # First ~2 breaths show attenuated, per-breath decaying gastric CO2 (no stale mask EtCO2 hold)
-    # and no spurious low-FiO2 alarm on 100% O2; by 65 s CO2 is flatline 0, VTe is ~70 mL, alveolar
+    # and no low-FiO2 alarm on 100% O2; by 65 s CO2 is flatline 0, VTe is ~70 mL, alveolar
     # ventilation is 0, and preoxygenated SpO2 stays >98% while PaCO2 rises (Linko 1983; Sum-Ping 1989; Chrimes 2022).
     _advance(engine, 6.0)
     et_b1 = engine.state.display_etco2

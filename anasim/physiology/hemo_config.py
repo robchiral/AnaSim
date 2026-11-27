@@ -369,23 +369,29 @@ class HemodynamicConfig:
     beta_block_af_rate: float = 0.3
     amiodarone_af_rate: float = 0.32
 
-    # Glycopyrrolate (ng/mL): 11.8 ng/mL prevented the oculocardiac reflex in
-    # 19 of 20 patients, and 3.1 ng/mL was insufficient (Ali-Melkkilä 1993).
-    # Vagal block reduces resting vagal tone and baroreflex and opioid
+    # Glycopyrrolate (ng/mL): 4 mcg/kg (~11.8 ng/mL plasma, ~8.6 ng/mL Ce at 5 min)
+    # prevented the oculocardiac reflex in 19 of 20 patients while 1 mcg/kg
+    # (3.1 ng/mL) was insufficient (Ali-Melkkilä 1993). Direct cardioacceleration
+    # requires higher concentrations (Mirakhur 1977; Ali-Melkkilä 1993) and rises
+    # across 5, 10, and 15 mcg/kg (+8, +17, +24 bpm; Mirakhur 1981). Vagal block
+    # reduces resting vagal tone and baroreflex, opioid, and neostigmine
     # bradycardia, and raises the sinus bradycardia rate.
-    glyco_c50: float = 4.0
+    glyco_c50: float = 2.5
     glyco_gamma: float = 2.0
-    glyco_emax_hr: float = 44.0
+    glyco_hr_c50: float = 16.5
+    glyco_hr_gamma: float = 1.45
+    glyco_emax_hr: float = 29.0
     glyco_brady_relief: float = 30.0  # bpm added to the 50 bpm sinus bradycardia rate
 
     # Neostigmine cardiac muscarinic bradycardia (ng/mL; Mirakhur 1977; Blobner 2010):
     # unopposed neostigmine slows HR strongly; co-administered glycopyrrolate
     # (0.2 mg per 1 mg neostigmine) or atropine competitively blocks M2 slowing
-    # while accumulated ACh competes with antimuscarinic blockade at M2 receptors.
+    # while saturable AChE inhibition shifts antimuscarinic C50 via accumulated ACh.
     neostigmine_hr_c50: float = 28.0
     neostigmine_hr_gamma: float = 1.5
     neostigmine_emax_hr: float = 34.0
-    neostigmine_m2_shift_c50: float = 10.0  # ng/mL ACh competition shifting antimuscarinic C50
+    neostigmine_m2_shift_max: float = 6.4  # Maximal saturable ACh competitive shift at cardiac M2
+    neostigmine_vagal_block_fraction: float = 0.95  # Max M2 antagonism of neostigmine slowing
 
     # Hinderling 1985 II tissue-linked response and Hill slope. Potency and
     # maximum fit awake patients (Horiguchi and Nishikawa 2002) and Hinderling's
@@ -404,17 +410,22 @@ class HemodynamicConfig:
     unstim_sv_unload: float = 0.18
     unstim_sv_tau_s: float = 150.0
 
-    # Meng 2011 IV peak calibration, checked against Sjøen 2026 induction.
-    # Tolerance timing and Hill slope use Persky 2004 oral data. IV tolerance
-    # potency and maximum are calibrated.
+    # Kanaya 2002 (propofol enhances ephedrine's pressor response over awake and
+    # sevoflurane 2%), Meng 2011 (5-20 mg TIVA), Michelsen 1998 (0.1 vs 0.2 mg/kg
+    # modest incremental gain and 60-min persistence), Rådström 1995 (awake),
+    # and Sjøen 2026 (0.1 mg/kg TCI induction). Tolerance timing and Hill slope
+    # use Persky 2004 oral data; IV tolerance potency and maximum are calibrated.
     # HR combines Persky's sustained slope (fraction of baseline per ng/mL)
     # with a peak response that shares the vascular tolerance.
-    ephedrine_c50: float = 72.0
-    ephedrine_gamma: float = 1.9
-    ephedrine_emax_svr: float = 0.4
-    ephedrine_emax_sv: float = 0.2
+    ephedrine_c50: float = 85.0
+    ephedrine_gamma: float = 1.45
+    ephedrine_emax_svr: float = 0.21
+    ephedrine_propofol_svr_gain: float = 0.90  # Kanaya 2002 propofol pressor potentiation
+    ephedrine_sevo_svr_depression: float = 0.10  # Direct volatile vascular blunting
+    ephedrine_sevo_hr_depression: float = 0.15  # Volatile chronotropic attenuation
+    ephedrine_emax_sv: float = 0.23
     ephedrine_hr_slope: float = 0.00050
-    ephedrine_emax_hr: float = 0.4
+    ephedrine_emax_hr: float = 0.30
     ephedrine_tolerance_half_min: float = 15.0
     ephedrine_tolerance_c50: float = 64.0
     ephedrine_tolerance_gamma: float = 3.7

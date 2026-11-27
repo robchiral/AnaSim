@@ -49,6 +49,7 @@ from anasim.machine.ventilator import AnesthesiaVentilator  # noqa: E402
 from anasim.monitors.airway import AirwaySensor  # noqa: E402
 from anasim.monitors.capno import Capnograph  # noqa: E402
 from anasim.patient.patient import Patient  # noqa: E402
+from anasim.physiology.lung import LungAeration  # noqa: E402
 from anasim.physiology.resp_mech import RespiratoryMechanics  # noqa: E402
 from validation.vitaldb import vitaldb_data  # noqa: E402
 from validation.vitaldb.vitaldb_data import (  # noqa: E402
@@ -405,6 +406,11 @@ def _compliance_sim_task(args: tuple[Patient, float]) -> float:
     return anasim_plateau_compliance(patient, tv_ml)
 
 
+def _aeration_mechanics_task(args: tuple[Patient, float, float]) -> tuple[float, float]:
+    patient, tv_ml, peep = args
+    return anasim_aeration_mechanics(patient, tv_ml, peep)
+
+
 _PAW_KEYS = (*SEGMENTS, "whole", "transitions", "knee", "tau_e_ratio", "r_exp")
 
 
@@ -565,6 +571,20 @@ def anasim_plateau_compliance(patient: Patient, tv_ml: float) -> float:
     return vent.monitors.tv_exp / (vent.monitors.paw_plat - vent.monitors.peep)
 
 
+def anasim_aeration_mechanics(patient: Patient, tv_ml: float, peep: float) -> tuple[float, float]:
+    """Settled (plateau compliance mL/cmH2O, driving pressure cmH2O) with LungAeration at recorded PEEP."""
+    aeration = LungAeration(patient, recruited=0.9, atelectatic=LungAeration.INDUCTION_ATELECTASIS)
+    aeration.unconscious = 1.0
+    aeration.inert_fraction = 0.5
+    lung = RespiratoryMechanics(resistance=patient.airway_resistance(), aeration=aeration)
+    vent = AnesthesiaVentilator()
+    vent.update_settings(rr=12, tv=tv_ml, peep=max(0.0, peep), ie="1:2", mode="VCV", pause=10)
+    for _ in range(60):
+        vent.step(5.0, lung, "vent")
+    driving = max(0.1, vent.monitors.paw_plat - vent.monitors.peep)
+    return vent.monitors.tv_exp / driving, driving
+
+
 def compliance_by_patient(
     max_cases: int,
     *,
@@ -600,6 +620,7 @@ def compliance_by_patient(
             "caseid": int(case["caseid"]),
             "subjectid": case.get("subjectid", case["caseid"]),
             "c": values["TV"] / driving,
+            "driving": driving,
             "peep": values["PEEP_MBAR"] * CM_PER_MBAR,
             "tv": values["TV"],
             "pbw": patient.predicted_body_weight(),
@@ -651,6 +672,35 @@ def compliance_by_patient(
     sim_tasks = [(r["patient"], r["tv"]) for r in oof_rows]
     oof_anasim = _pool_map(executor, _compliance_sim_task, sim_tasks, chunksize=16)
 
+    aer_tasks = [(r["patient"], r["tv"], r["peep"]) for r in rows]
+    aer_results = _pool_map(executor, _aeration_mechanics_task, aer_tasks, chunksize=16)
+    aer_c = np.array([c for c, _ in aer_results], dtype=float)
+    aer_dp = np.array([dp for _, dp in aer_results], dtype=float)
+    all_c = np.array([r["c"] for r in rows], dtype=float)
+    all_dp = np.array([r["driving"] for r in rows], dtype=float)
+
+    peep_aeration = {}
+    for label, pred in (
+        ("PEEP 0-2 cmH₂O (all)", lambda r: 0 <= r["peep"] < 2),
+        ("PEEP 4-6 cmH₂O (all)", lambda r: 4 <= r["peep"] < 6),
+        ("PEEP 0-2, BMI >= 30", lambda r: 0 <= r["peep"] < 2 and r["bmi"] >= 30.0),
+        ("PEEP 4-6, BMI >= 30", lambda r: 4 <= r["peep"] < 6 and r["bmi"] >= 30.0),
+        ("PEEP 4-6, PFT Normal", lambda r: 4 <= r["peep"] < 6 and r["pft"] == "Normal"),
+        ("PEEP 4-6, PFT Obstructive", lambda r: 4 <= r["peep"] < 6 and r["pft"] == "Obstructive"),
+    ):
+        idx = [i for i, r in enumerate(rows) if pred(r)]
+        if len(idx) >= 5:
+            peep_aeration[label] = {
+                "n": len(idx),
+                "rec_c": [float(all_c[i]) for i in idx],
+                "sim_c": [float(aer_c[i]) for i in idx],
+                "c_mae": float(np.mean(np.abs(aer_c[idx] - all_c[idx]))),
+                "c_bias": float(np.median(aer_c[idx] - all_c[idx])),
+                "rec_dp": [float(all_dp[i]) for i in idx],
+                "sim_dp": [float(aer_dp[i]) for i in idx],
+                "dp_bias": float(np.median(aer_dp[idx] - all_dp[idx])),
+            }
+
     measured = np.array(oof_measured)
     constant = np.array(oof_constant)
     scaled = np.array(oof_scaled)
@@ -700,6 +750,7 @@ def compliance_by_patient(
         },
         "anasim_bias": float(np.median(anasim - measured)),
         "subgroups": subgroups,
+        "peep_aeration": peep_aeration,
     }
 
 
@@ -1000,6 +1051,57 @@ def main() -> None:
             *(
                 f"| {label} | {sg['n']} | {quartiles(sg['recorded'])} | {sg['anasim_mae']:.2f} | {sg['anasim_bias']:+.2f} |"
                 for label, sg in compliance["subgroups"].items()
+            ),
+            "",
+        ]
+    if compliance.get("peep_aeration"):
+        lines += [
+            "### Settled `LungAeration` compliance and driving pressure across PEEP",
+            "",
+            "Each supine case is settled for 5 min at its recorded pre-incision PEEP and tidal volume through",
+            "`LungAeration` and `RespiratoryMechanics` (unfitted against PEEP 0-2).",
+            "",
+            "| Subgroup | n | Recorded C (mL/cmH₂O) | AnaSim C (mL/cmH₂O) | C MAE | C bias | Recorded ΔP (cmH₂O) | AnaSim ΔP (cmH₂O) | ΔP bias |",
+            "|---|---:|---|---|---:|---:|---|---|---:|",
+            *(
+                f"| {label} | {sg['n']} | {quartiles(sg['rec_c'])} | {quartiles(sg['sim_c'])} | "
+                f"{sg['c_mae']:.2f} | {sg['c_bias']:+.2f} | {quartiles(sg['rec_dp'])} | "
+                f"{quartiles(sg['sim_dp'])} | {sg['dp_bias']:+.2f} |"
+                for label, sg in compliance["peep_aeration"].items()
+            ),
+            "",
+        ]
+    r_rec = np.array([w["features"]["r"] for w in cases], dtype=float)
+    r_sim = np.array([w["patient"].airway_resistance() for w in cases], dtype=float)
+    r_subgroups = []
+    for label, pred in (
+        ("All VCV windows", lambda w: True),
+        ("BMI under 30", lambda w: w["patient"].bmi < 30.0),
+        ("BMI 30 and over", lambda w: w["patient"].bmi >= 30.0),
+        ("PFT Normal", lambda w: pft_group(w["case"]) == "Normal"),
+        ("PFT Obstructive", lambda w: pft_group(w["case"]) == "Obstructive"),
+    ):
+        idx = [i for i, w in enumerate(cases) if pred(w)]
+        if len(idx) >= 3:
+            r_subgroups.append((
+                label,
+                len(idx),
+                quartiles(r_rec[idx]),
+                quartiles(r_sim[idx]),
+                float(np.mean(np.abs(r_sim[idx] - r_rec[idx]))),
+                float(np.median(r_sim[idx] - r_rec[idx])),
+            ))
+    if r_subgroups:
+        lines += [
+            "## Airway resistance by patient (VCV waveform cohort)",
+            "",
+            "Recorded inspiratory resistance from the waveform end-of-flow drop versus `Patient.airway_resistance()`.",
+            "",
+            "| Resistance subgroup | n | Recorded R (cmH₂O/(L/s)) | AnaSim R (cmH₂O/(L/s)) | MAE | Median bias |",
+            "|---|---:|---|---|---:|---:|",
+            *(
+                f"| {label} | {n} | {rec_q} | {sim_q} | {mae:.2f} | {bias:+.2f} |"
+                for label, n, rec_q, sim_q, mae, bias in r_subgroups
             ),
             "",
         ]

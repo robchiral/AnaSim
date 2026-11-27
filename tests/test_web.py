@@ -864,7 +864,7 @@ def test_glucose_insulin_dextrose_and_poc_meter_round_trip():
 
 
 def test_airway_crisis_thoracic_embolism_and_neuraxial_commands_round_trip():
-    """New crisis catalog entries, open-sim airway/thoracic/embolism/neuraxial controls, and case locks."""
+    """Airway, thoracic, embolism, and neuraxial crisis catalog entries, open-sim controls, and case locks."""
     cat = parse(web.catalog())
     scenarios_by_id = {entry["id"]: entry for entry in cat["scenarios"]}
     for sid in (

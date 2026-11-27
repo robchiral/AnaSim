@@ -415,7 +415,7 @@ def test_fentanyl_blunts_the_intubation_response_more_than_lidocaine(engine_fact
     assert 0.0 < map_fentanyl < map_alone
     assert 1.09 < map_alone - map_lidocaine < 6.61
     assert hr_lidocaine > 0.8 * hr_alone
-    # Lidocaine reaches its effect site over minutes, so 30 s gives clearly less blunting.
+    # Lidocaine reaches its effect site over minutes, so 30 s gives less blunting.
     assert map_alone - map_rushed < 0.8 * (map_alone - map_lidocaine)
 
 

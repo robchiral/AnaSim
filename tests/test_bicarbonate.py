@@ -143,7 +143,7 @@ def test_bicarbonate_rate_dependent_hyperosmolar_and_alkalemic_vasodilation(engi
 
 
 def test_bicarbonate_va_ecmo_zero_pulm_flow_floor_acidosis_zero_flow_rosc_and_reset(engine_factory):
-    """Edge-case safety regressions: zero pulmonary flow on VA-ECMO/CPB isolates pool 0,
+    """Edge-case safety checks: zero pulmonary flow on VA-ECMO/CPB isolates pool 0,
     direct NaHCO3 bolus during floor-clamped acidosis stays inside pH bounds, immediate VFIB
     isolates arterial Na/glucose on step 1 without post-ROSC shock, and reset clears pending queues."""
     from anasim.core.enums import RhythmType

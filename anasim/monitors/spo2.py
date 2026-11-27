@@ -124,7 +124,7 @@ class SpO2Monitor:
             pleth_voltage = 0.0
 
         # Advance lung-to-finger arterial O2 transit while forward perfusion exists;
-        # delay lengthens with vasoconstriction, hypothermia, or low CO (MacLeod 2005).
+        # delay lengthens with hypothermia and vasoconstriction (MacLeod 2005) as well as low CO.
         if cycle.organized and perf > 0.0 and not cpr_artifact:
             eff_delay = clamp(self.transport_delay_s * max(0.5, delay_scale), 0.0, 120.0)
             if eff_delay <= 0.0:

@@ -15,10 +15,10 @@
   rises, IVC compression, and an Event control.
 - Added venovenous ECMO, venoarterial ECMO, and cardiopulmonary bypass with
   membrane gas exchange, differential oxygenation, drainage limits, rewarming
-  afterdrop, hypothermic cardioplegia, drug sequestration, and site-specific
-  blood gases.
+  afterdrop, hypothermic cardioplegia, drug sequestration, site-specific blood
+  gases, an ARDS shunt event, and extracorporeal cases.
 - Added unfractionated heparin, protamine, point-of-care ACT, protamine
-  reactions, an ARDS shunt event, and extracorporeal and anticoagulation cases.
+  reactions, and a protamine reversal case.
 - Added neostigmine reversal with renal kinetics, saturable rocuronium
   antagonism, cardiac M2 bradycardia and antimuscarinic competition, and
   post-recovery pharyngeal weakness.
@@ -42,32 +42,38 @@
   demand, and CPR flow limits.
 - Updated norepinephrine and phenylephrine with separate alpha-1 and beta-1
   potency, preload-reserve stroke-volume scaling, and saturating afterload.
-- Recalibrated cardiovascular drugs and shock hemodynamics across IV ephedrine,
-  labetalol alpha-blockade, milrinone PVR reduction, age-scaled antimuscarinics,
-  acidemic epinephrine, acute RV overdistension, and HFrEF responses.
+- Recalibrated cardiovascular drugs across ephedrine, glycopyrrolate,
+  labetalol alpha-blockade, milrinone pulmonary vasodilation, age-scaled
+  antimuscarinics, and acidemic epinephrine responses.
+- Updated shock and heart-failure hemodynamics for acute right-ventricular
+  overdistension and catecholamine blunting in HFrEF.
 - Recalibrated anesthetic and surgical hemodynamics across opioid equilibration,
   propofol-opioid HR interaction, elderly propofol potency, sevoflurane HR and
   resistance, and tonic surgical vasoconstriction.
 - Improved cardiac arrest and resuscitation physiology, including
   filling-dependent CPR pulses and zero-flow isolation across organs and drugs.
-- Updated respiratory and neuromuscular physiology, including slower rocuronium
-  washout under sevoflurane, immediate high-dose sugammadex reversal, COPD dead
-  space, BMI airway closure, and step-size mechanics coupling.
+- Updated respiratory physiology across opioid bolus hypercapnic depression,
+  fentanyl respiratory transfer, volatile timing antagonism, bronchospasm
+  hyperoxic V/Q shift and absorption shunt, obese and COPD respiratory
+  mechanics, intrinsic-PEEP pressure-support unloading, COPD dead space, BMI
+  airway closure, and step-size mechanics coupling.
+- Updated neuromuscular recovery with slower rocuronium washout under
+  sevoflurane and faster high-dose sugammadex reversal.
 - Updated fluid and transfusion physiology, including natriuresis, hypovolemic
   fluid retention, osmotic free-water shifts, and organic-anion oxidation CO₂.
 - Added dedicated arrest and lethal-rhythm alarms (`Asystole`, `VFIB`, `VTACH`,
-  `Arrest`) and upgraded monitors with core temperature alarms, perfusion-scaled
-  SpO₂ lag, deflation-averaged NIBP, Phase III capnography, a 60-second PTC
-  lockout, and whole-percent TOF rounding.
-- Refined clinical cases, action checks, and browser controls, including
-  unparalyzed intubation, MH and hyperkalemia succinylcholine warnings, sepsis
-  checks, post-lock Trends viewing, and defibrillator sync reset.
+  `Arrest`) and core temperature alarms.
+- Upgraded monitors with perfusion-scaled SpO₂ lag, deflation-averaged NIBP,
+  Phase III capnography, and updated TOF and PTC behavior.
+- Refined clinical cases and action warnings, including unparalyzed intubation,
+  MH and hyperkalemia succinylcholine warnings, and sepsis checks.
+- Fixed browser controls, including post-lock Trends viewing and defibrillator
+  sync reset.
 - Added frozen-parameter external validation against MOVER (`validation/mover/`),
   including flowsheet subsetting from raw EPIC files (`prepare_flowsheets.py`).
 - Expanded VitalDB comparisons (`validation/vitaldb/`) across the full adult
   domain (sevoflurane-to-BIS, pulse pressure and CVP, cardiac output,
-  vasopressors, laparoscopy, ABGs, and core temperature) and consolidated
-  literature benchmarks and invariants under `tests/`.
+  vasopressors, laparoscopy, ABGs, and core temperature).
 - Sped up high-speed web playback (about four times faster at 50x), maintenance
   startup, and per-step execution across the engine, monitors, and browser.
 

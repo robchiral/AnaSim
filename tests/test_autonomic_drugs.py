@@ -160,12 +160,13 @@ def test_glycopyrrolate_raises_rate_and_blocks_vagal_bradycardia(engine_factory)
     base_hr = engine.state.hr
     engine.give_drug_bolus("glyco", 0.004 * engine.patient.weight)
     _advance(engine, 60)
-    assert engine.state.hr - base_hr > 8.0
+    assert engine.state.hr - base_hr > 3.0
     _advance(engine, 240)
     assert engine.pk["glyco"].state.c1 == pytest.approx(11.8, rel=0.25)
-    # Poterman 2017: under remifentanil-propofol, methylatropine HR rose from
-    # mean 80 +/- 14 bpm to a peak median 102 bpm (IQR 86-116).
-    assert engine.state.hr - base_hr < 36.0
+    # Mirakhur 1981: glycopyrrolate peaks around 3.7 min; Poterman 2017: under
+    # remifentanil-propofol, methylatropine HR rose from mean 80 +/- 14 bpm to a
+    # peak median 102 bpm (IQR 86-116).
+    assert 8.0 < engine.state.hr - base_hr < 36.0
 
     base_hr = engine.state.hr
     engine.give_drug_bolus("phenyl", 100.0)
@@ -242,7 +243,7 @@ def test_atropine_exceeds_glycopyrrolate_under_propofol_and_ephedrine_repeats_at
 
 
 def test_awake_hfref_milrinone_unloads_svr_and_raises_co(engine_factory, advance_time):
-    """Label milrinone dosing (50 mcg/kg over 10 min + 0.5 mcg/kg/min; DailyMed 2026b) in awake HFrEF raises CO and lowers SVR (Baim 1983)."""
+    """Label milrinone dosing (50 mcg/kg over 10 min + 0.5 mcg/kg/min; DailyMed 2026) in awake HFrEF raises CO and lowers SVR (Baim 1983)."""
     engine = engine_factory(
         config=SimulationConfig(mode="awake", rng_seed=1), start=True,
         age=65, weight=75, height=172, sex="male", heart_failure="hfref",

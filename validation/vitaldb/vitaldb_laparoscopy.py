@@ -1,9 +1,9 @@
 """Quantify laparoscopic CO2 pneumoperitoneum effects in VitalDB (Open vs Videoscopic/Robotic).
 
 Compares paired pre-incision to surgical maintenance changes in respiratory compliance
-(Primus/COMPLIANCE and TV/(Pplat - PEEP)), end-tidal CO2, minute ventilation, CO2
-elimination proxy (VA * EtCO2), MAP, and HR between supine open and supine
-laparoscopic/robotic surgeries in the retained TIVA + Sevoflurane domain cohort.
+(Primus/COMPLIANCE), end-tidal CO2, minute ventilation, CO2 elimination proxy
+(VA * EtCO2), and untreated MAP between supine open and supine laparoscopic/robotic
+surgeries in the retained TIVA + Sevoflurane domain cohort.
 Provides empirical VitalDB targets alongside Joris 1993 and Putensen-Himmer 1992.
 """
 
@@ -140,8 +140,8 @@ def report(data: dict[str, Any], settings: dict[str, Any]) -> str:
     lines = report_header("VitalDB supine open versus laparoscopic pneumoperitoneum", settings) + [
         "## Methods", "",
         "Compares paired pre-incision (10 min before opstart) to mid-surgery (20-60 min after opstart)",
-        "changes in Primus dynamic/static compliance, EtCO2, minute ventilation, alveolar CO2 elimination",
-        "proxy (VA * EtCO2 / 0.863), MAP, and HR between supine Open and supine Videoscopic/Robotic cases.", "",
+        "changes in Primus compliance, EtCO2, minute ventilation, alveolar CO2 elimination",
+        "proxy (VA * EtCO2 / 0.863), and untreated MAP between supine Open and supine Videoscopic/Robotic cases.", "",
         f"Supine retained candidates: {data['eligible']}. Paired complete: {len(rows)} "
         f"(Open: {len(open_r)}, Laparoscopic/Robotic: {len(lap_r)}).", "",
         "## Paired pre-incision to surgery changes", "",

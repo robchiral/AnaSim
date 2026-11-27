@@ -247,23 +247,29 @@ def compute_receptor_blockade(
         if ce_neostigmine > 0.0
         else 0.0
     )
-    # Accumulated synaptic ACh competes with antimuscarinics at cardiac M2 receptors
-    # (Baraka 1968b; Mirakhur 1977), preventing sustained tachycardia when glycopyrrolate
-    # and neostigmine peak together while preserving atropine's brief 1-2 min rise.
-    m2_ach_dr = 1.0 + (ce_neostigmine / cfg.neostigmine_m2_shift_c50) ** 1.35 if ce_neostigmine > 0.0 else 1.0
+    # Saturable synaptic ACh accumulation from cardiac AChE inhibition competes with
+    # antimuscarinics at M2 receptors (Mirakhur 1977), preserving 5:1
+    # neostigmine:glycopyrrolate balance across clinical reversal doses (2.5-5 mg)
+    # while keeping atropine's brief 1-2 min tachycardia followed by mild slowing.
+    m2_ach_dr = 1.0 + cfg.neostigmine_m2_shift_max * neo_m2 if neo_m2 > 0.0 else 1.0
     if ce_glyco > 0.0 or ce_atropine > 0.0:
         glyco = hill_function(ce_glyco, cfg.glyco_c50 * m2_ach_dr, cfg.glyco_gamma) if ce_glyco > 0.0 else 0.0
+        glyco_chrono = (
+            hill_function(ce_glyco, cfg.glyco_hr_c50 * m2_ach_dr, cfg.glyco_hr_gamma)
+            if ce_glyco > 0.0
+            else 0.0
+        )
         atropine = hill_function(ce_atropine, cfg.atropine_c50 * m2_ach_dr, cfg.atropine_gamma) if ce_atropine > 0.0 else 0.0
         vagal = 1.0 - (1.0 - glyco) * (1.0 - atropine)
         prop_vagal_scale = 1.0 / (1.0 + max(0.0, ce_prop_cv) / cfg.atropine_propofol_cp50)
         atropine_hr = cfg.atropine_emax_hr * atropine * prop_vagal_scale * age_antimuscarinic
-        glyco_hr = cfg.glyco_emax_hr * glyco * prop_vagal_scale * age_antimuscarinic
+        glyco_hr = cfg.glyco_emax_hr * glyco_chrono * prop_vagal_scale * age_antimuscarinic
         vagal_hr = max(glyco_hr, glyco_hr * (1.0 - atropine) + atropine_hr)
     else:
         vagal = vagal_hr = 0.0
 
     if neo_m2 > 0.0:
-        vagal_hr -= cfg.neostigmine_emax_hr * neo_m2 * (1.0 - 0.80 * vagal)
+        vagal_hr -= cfg.neostigmine_emax_hr * neo_m2 * (1.0 - cfg.neostigmine_vagal_block_fraction * vagal)
 
     amiodarone = hill_function(ce_amiodarone, cfg.amiodarone_c50, 1.0) if ce_amiodarone > 0.0 else 0.0
     amiodarone_hr = hill_function(ce_amiodarone_hr, cfg.amiodarone_c50, 1.0) if ce_amiodarone_hr > 0.0 else 0.0
@@ -305,6 +311,8 @@ def compute_step_ephedrine(
     *,
     hf_beta_hr: float = 1.0,
     hf_beta_sv: float = 1.0,
+    ce_prop: float = 0.0,
+    ce_sevo: float = 0.0,
 ) -> tuple[float, float, float, float]:
     """Update ephedrine tolerance state and return (new_tol_ce, svr, sv, delta_hr)."""
     if ce_ephedrine_raw <= 0.0 and tolerance_ce == 0.0:
@@ -323,9 +331,19 @@ def compute_step_ephedrine(
     ephedrine_beta_effect = acidosis_factor * max(
         0.0, hill_function(ephedrine_raw / beta1_dr, cfg.ephedrine_c50, cfg.ephedrine_gamma) - tol,
     )
-    ephedrine_svr = 1.0 + cfg.ephedrine_emax_svr * ephedrine_alpha_effect
+    prop_svr_gain = (
+        1.0 + cfg.ephedrine_propofol_svr_gain * hill_function(ce_prop, 2.0, 1.5)
+        if ce_prop > 0.0
+        else 1.0
+    )
+    sevo_depth = clamp01(ce_sevo)
+    sevo_svr_keep = 1.0 - cfg.ephedrine_sevo_svr_depression * sevo_depth
+    sevo_hr_keep = 1.0 - cfg.ephedrine_sevo_hr_depression * sevo_depth
+    ephedrine_svr = 1.0 + cfg.ephedrine_emax_svr * prop_svr_gain * sevo_svr_keep * ephedrine_alpha_effect
     ephedrine_sv = 1.0 + cfg.ephedrine_emax_sv * hf_beta_sv * ephedrine_beta_effect
-    ephedrine_chrono_gate = age_chronotropy * hf_beta_hr * (1.0 - cfg.amiodarone_beta_reflex_block * amiodarone_hr)
+    ephedrine_chrono_gate = (
+        age_chronotropy * hf_beta_hr * (1.0 - cfg.amiodarone_beta_reflex_block * amiodarone_hr) * sevo_hr_keep
+    )
     ephedrine_beta_conc = ephedrine / beta1_dr
     sustained_hr_max = 0.40
     sustained_hr_term = (

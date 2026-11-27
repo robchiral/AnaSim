@@ -60,7 +60,7 @@ class VolatilePK:
         self.lambda_t_b_mus = 2.5 if lambda_t_b_mus is None else lambda_t_b_mus
         self.lambda_t_b_fat = 50.0 if lambda_t_b_fat is None else lambda_t_b_fat
 
-        # Age- and pregnancy-adjusted MAC (Mapleson 1996; Gin and Chan 1994).
+        # Age- and pregnancy-adjusted MAC (Mapleson 1996; Gin and Chan 1994, extended across volatiles through term).
         # Monitor gas analyzers display age-adjusted EtMAC without pregnancy scaling.
         self.mac_40 = mac_40
         self.mac_age_monitor = self.mac_40 * (10 ** (-0.00269 * (self.patient.age - 40)))

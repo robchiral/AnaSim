@@ -404,7 +404,7 @@ def loss_of_response(
 
 
 def _combine_coma_tolerance(engine: SimulationEngine, drug_tolerance: float) -> float:
-    """Combine drug stimulus tolerance with non-drug coma (hypothermia, cerebral, toxicity)."""
+    """Combine drug responsiveness or stimulus tolerance with non-drug coma (hypothermia, cerebral, toxicity, neuraxial)."""
     cold_narcosis = hypothermia_narcosis_fraction(engine.state.temp_c)
     return clamp01(
         1.0
@@ -1054,7 +1054,8 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
     resp_state = engine.resp.step(
         dt,
         ce_prop=ce_prop_resp,
-        ce_remi=opioid_equivalent(engine.pk["remi"].state.ce_resp, state.fentanyl_ce),
+        ce_remi=engine.pk["remi"].state.ce_resp,
+        ce_fentanyl=state.fentanyl_ce,
         opioid_controller_fraction=opioid_controller_fraction(
             morphine_pk.state.ce_resp + m6g_excess, engine.pk["hydromorphone"].state.ce_resp,
         ),

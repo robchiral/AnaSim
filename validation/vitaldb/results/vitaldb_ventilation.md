@@ -1,6 +1,6 @@
 # VitalDB ventilation comparisons
 
-Generated 2026-11-25.
+Generated 2026-11-27.
 
 These comparisons use 60 volume-control windows recorded on the Dräger Primus, from 1637 eligible
 unique-subject cases inside AnaSim's patient domain (general anesthesia, oral single-lumen tube, open surgery,
@@ -95,6 +95,32 @@ AnaSim's default patient: static 54.8, plateau 48.8 mL/cmH₂O.
 | BMI 30 and over | 57 | 36.2 (32.1–42.6) | 4.98 | -1.21 |
 | PFT Normal | 838 | 47.8 (40.8–55.4) | 7.37 | -2.48 |
 | PFT Obstructive | 126 | 48.7 (42.1–57.7) | 8.76 | -0.99 |
+
+### Settled `LungAeration` compliance and driving pressure across PEEP
+
+Each supine case is settled for 5 min at its recorded pre-incision PEEP and tidal volume through
+`LungAeration` and `RespiratoryMechanics` (unfitted against PEEP 0-2).
+
+| Subgroup | n | Recorded C (mL/cmH₂O) | AnaSim C (mL/cmH₂O) | C MAE | C bias | Recorded ΔP (cmH₂O) | AnaSim ΔP (cmH₂O) | ΔP bias |
+|---|---:|---|---|---:|---:|---|---|---:|
+| PEEP 0-2 cmH₂O (all) | 1533 | 32.8 (28–37.8) | 34.1 (30.6–37.2) | 4.28 | +1.15 | 11.2 (10.2–13.3) | 10.9 (10–12.1) | -0.35 |
+| PEEP 4-6 cmH₂O (all) | 1013 | 47.7 (40.6–55.3) | 45.8 (41.2–49.6) | 7.52 | -2.23 | 10.2 (8.16–11.2) | 10.2 (9.3–11.4) | +0.50 |
+| PEEP 0-2, BMI >= 30 | 66 | 25.2 (22–29.1) | 26.9 (24.5–30.3) | 3.78 | +2.49 | 15.3 (13.3–16.3) | 13.5 (12.1–15.3) | -1.28 |
+| PEEP 4-6, BMI >= 30 | 57 | 36.2 (32.1–42.6) | 34.7 (33.3–38.4) | 4.92 | -2.02 | 13.3 (11.2–15.3) | 14.1 (12.3–15.5) | +0.66 |
+| PEEP 4-6, PFT Normal | 838 | 47.8 (40.8–55.4) | 45 (40.5–49.2) | 7.32 | -2.65 | 10.2 (8.16–11.2) | 10.3 (9.42–11.5) | +0.58 |
+| PEEP 4-6, PFT Obstructive | 126 | 48.7 (42.1–57.7) | 48.6 (45.3–51.9) | 8.56 | -1.35 | 9.18 (8.16–11.2) | 9.74 (8.84–10.7) | +0.23 |
+
+## Airway resistance by patient (VCV waveform cohort)
+
+Recorded inspiratory resistance from the waveform end-of-flow drop versus `Patient.airway_resistance()`.
+
+| Resistance subgroup | n | Recorded R (cmH₂O/(L/s)) | AnaSim R (cmH₂O/(L/s)) | MAE | Median bias |
+|---|---:|---|---|---:|---:|
+| All VCV windows | 60 | 9.58 (8.59–11.7) | 10 (10–10) | 1.95 | +0.42 |
+| BMI under 30 | 56 | 9.45 (8.56–11.4) | 10 (10–10) | 1.95 | +0.55 |
+| BMI 30 and over | 4 | 11.8 (11.2–12.9) | 10.7 (10.4–10.9) | 1.98 | -0.97 |
+| PFT Normal | 52 | 9.74 (8.56–11.7) | 10 (10–10) | 2.03 | +0.26 |
+| PFT Obstructive | 6 | 9.21 (8.99–9.57) | 10 (10–10) | 1.14 | +0.79 |
 
 ## End-tidal O₂
 

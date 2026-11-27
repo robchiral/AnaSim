@@ -59,7 +59,7 @@ def test_spinal_age_spread_and_hemodynamics_veering_1988_rooke_1997():
 def test_epidural_plain_vs_epinephrine_matches_ward_1965_and_blocks_surgical_stimulus():
     """Plain epidural produces gentler MAP drop than spinal and wider sensory-motor gap (Freund 1967);
     adding 1:200,000 epinephrine raises CO and HR while lowering SVR (Ward 1965); bolus and continuous
-    infusion block surgical nociception and obey drug-potency regression."""
+    infusion block surgical nociception and reflect bupivacaine vs lidocaine infusion potency."""
     spinal = SimulationEngine(Patient(age=33), SimulationConfig(mode="awake", rng_seed=1))
     plain = SimulationEngine(Patient(age=33), SimulationConfig(mode="awake", rng_seed=1))
     epi = SimulationEngine(Patient(age=33), SimulationConfig(mode="awake", rng_seed=1))
@@ -94,7 +94,7 @@ def test_epidural_plain_vs_epinephrine_matches_ward_1965_and_blocks_surgical_sti
     _advance(blocked, 90.0, dt=1.0)
     assert (blocked.state.map - m_b0) < (unblocked.state.map - m_u0) - 5.0
 
-    # Prior surgical bolus regresses down toward a low maintenance infusion; lidocaine infusion is less potent than bupivacaine.
+    # Lidocaine epidural infusion is less potent than bupivacaine at matched concentration.
     bupi_inf = SimulationEngine(Patient(age=40), SimulationConfig(mode="awake", rng_seed=1))
     lido_inf = SimulationEngine(Patient(age=40), SimulationConfig(mode="awake", rng_seed=1))
     bupi_inf.set_epidural_infusion(10.0, drug="bupivacaine", concentration_pct=0.125)

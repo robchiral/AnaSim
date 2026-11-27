@@ -51,7 +51,7 @@ class Patient:
     type2_diabetes: bool = False
     surgical_site: str = "other"
     gestational_age_weeks: float = 0.0
-    position: str = "supine"  # Starting maternal position
+    position: str = "supine"  # Starting patient position
     pregnancy: PregnancyFactors = field(init=False)
     renal_status: str = field(init=False)
     hepatic_status: str = field(init=False)
@@ -213,7 +213,7 @@ class Patient:
         apparent = 0.0484 * (self.predicted_body_weight() / 60.0) ** 0.69 * math.exp(-0.0230 * (bmi - 23.0))
         if self.bmi > 32.0:
             apparent *= (233.3 * math.exp(-0.086 * self.bmi) + 40.0) / (233.3 * math.exp(-0.086 * 32.0) + 40.0)
-        return 1.09 * apparent * (1.0 + 0.6 * self.copd_severity) * self.pregnancy.compliance
+        return 1.09 * apparent * (1.0 + 0.15 * self.copd_severity) * self.pregnancy.compliance
 
     def functional_residual_capacity(self) -> float:
         """Supine FRC (L), scaled by lung size, BMI, COPD, and pregnancy.
@@ -245,7 +245,8 @@ class Patient:
         """Absolute creatinine clearance (mL/min) for Kleijn's covariates.
 
         A supplied measurement already includes renal and pregnancy effects.
-        Otherwise use Kleijn 2011's adult imputation, scaled by renal function.
+        Otherwise use Kleijn 2011's adult imputation, scaled by renal function
+        and pregnancy filtration.
         """
         if self.creatinine_clearance_ml_min is not None:
             return self.creatinine_clearance_ml_min

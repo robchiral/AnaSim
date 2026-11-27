@@ -828,7 +828,7 @@ def test_hematocrit_bounds_lipid_retention_vasopressin_alpha_invariance_and_afib
 ):
     """Blood/volume hematocrit inputs reject invalid values; 20% lipid uses 0.25 vascular
     retention; labetalol alpha-1 block does not attenuate vasopressin SVR rise; hypertensive
-    AFib above the 110 bpm RVR floor slows rate without engaging ectopic baro_vasc.
+    AFib above the 110 bpm RVR floor does not engage ectopic baro_vasc.
     """
     hemo = _model()
     for bad_hct in (-0.1, 1.2, float("nan")):

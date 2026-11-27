@@ -24,7 +24,8 @@ HEART_FAILURE_PROFILES = {
                                  stiffness_factor=0.028 / 0.0098, coupling_ratio=0.58, tachycardia_gain=0.55),
 }
 POSITIONS = ("supine", "left_lateral")
-COPD_RESISTANCE = 12.0  # cmH2O/(L/s) added at severity 1; calibrated
+COPD_RESISTANCE = 7.5  # cmH2O/(L/s) inspiratory added at severity 1 (Lourens 2000; Jubran 1995)
+COPD_EXPIRATORY_RESISTANCE = 18.0  # cmH2O/(L/s) dynamic expiratory collapse scaling at severity 1
 # Share of anesthetized airway closure that persists after emergence. After
 # upper abdominal surgery, supine FRC is 66-78% of its preoperative value
 # (Putensen-Himmer 1992 at 6 h; Wahba 1975), at or below its value under
@@ -90,6 +91,6 @@ def pregnancy_factors(gestational_age_weeks: float) -> PregnancyFactors:
         ph=7.4 + 0.04 * early,
         # Humphries 2019: supine CO is 16.4% below left lateral at 35 to 38 weeks.
         supine_output_loss=0.164 * compression,
-        # Gin and Chan 1994: 28% lower isoflurane MAC at 8-12 wk; scaled to full effect by 14 wk.
+        # Gin and Chan 1994: 28% lower isoflurane MAC at 8-12 wk; scaled to full effect by 14 wk and extended across volatiles through term.
         mac_factor=1.0 - 0.28 * early,
     )

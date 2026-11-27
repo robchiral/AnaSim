@@ -29,7 +29,7 @@ _MIN_GLUCOSE_MG_DL = 5.0
 _COUNTERREG_THRESHOLD_MG_DL = 68.0
 # Fast hepatic insulin equilibration (Rizza 1981; Sherwin 1974).
 _HEPATIC_INSULIN_TAU_MIN = 6.0
-# Remote interstitial peripheral insulin action (Sherwin 1974 Model A: L13 = 0.020 min^-1).
+# Calibrated remote interstitial peripheral insulin action (Sherwin 1974 Model A: L13 = 0.020 min^-1, tau = 50 min).
 _REMOTE_INSULIN_TAU_MIN = 40.0
 # Calibrated transcellular potassium insulin equilibration (Alvestrand 1984; Allon and Copkney 1990).
 _K_INSULIN_TAU_MIN = 22.0

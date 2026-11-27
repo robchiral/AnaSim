@@ -6,7 +6,8 @@ Evaluates:
    AnaSim's HemodynamicModel resting Windkessel/arterial-compliance curve
    (Franklin 1997; Langewouters 1984).
 2. Intraoperative arterial-line SBP, DBP, pulse pressure, and CVP during untreated
-   surgical maintenance replayed through the full engine.
+   surgical maintenance compared with steady-state MAP/HR-matched Windkessel pulse
+   pressure and resting right atrial pressure.
 """
 
 from __future__ import annotations

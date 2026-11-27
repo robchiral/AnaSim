@@ -207,6 +207,10 @@ class RespiratoryMechanics:
             recoil_offset=recoil_offset, cpr_pressure=cpr_pressure,
         )
 
+    def _expiratory_collapse_offset(self) -> float:
+        """Transpulmonary pressure margin (cmH2O) before equal-pressure-point flow limitation."""
+        return 5.0 * (1.0 - 0.8 * self.expiratory_obstruction)
+
     def expiration_parameters(
         self,
         pressure,
@@ -221,8 +225,9 @@ class RespiratoryMechanics:
 
         Narrowed airways lose radial traction as the lung empties. A simplified
         equal-pressure-point model limits flow independently of downstream
-        pressure (Mead 1967). The resistance curve, severity scaling, and 5 cmH2O
-        resting transpulmonary offset are teaching estimates.
+        pressure (Mead 1967; Lourens 2000). Severe chronic or acute obstruction
+        reduces the transpulmonary pressure margin so passive ZEEP tidal
+        expiration becomes flow-limited.
         """
         inflation = self.volume + self.compliance * self.peep
         if self.aeration is not None:
@@ -237,7 +242,7 @@ class RespiratoryMechanics:
         if free_flow >= 0.0:
             # Effort or chest recoil can draw gas through the open circuit before a trigger.
             return self.resistance + extra_resistance, ceiling_resistance, False
-        ceiling = (self.peep + recoil + 5.0) / ceiling_resistance
+        ceiling = (self.peep + recoil + self._expiratory_collapse_offset()) / ceiling_resistance
         limited = ceiling > 0.0 and free_flow < -ceiling
         return resistance, ceiling_resistance, limited
 
@@ -545,8 +550,10 @@ class ExpiratorySegment(PressureSegment):
     """Exact segment with frozen expiratory resistance or an active flow ceiling.
 
     When limited, recoil rather than downstream pressure drives flow through
-    an upstream resistance. The virtual boundary is 5 cmH2O below the relaxed
-    pressure. Physical Paw still includes the circuit's actual pressure drop.
+    an upstream resistance. The virtual boundary offset comes from
+    `lung._expiratory_collapse_offset()` (5 cmH2O unobstructed down to 1 cmH2O
+    at full obstruction). Physical Paw still includes the circuit's actual
+    pressure drop.
     """
 
     __slots__ = ()
@@ -566,7 +573,8 @@ class ExpiratorySegment(PressureSegment):
         resistance, ceiling_resistance, limited = parameters
         if limited:
             super().__init__(
-                lung, (-lung.peep - 5.0, 0.0), (0.0, 0.0), ceiling_resistance - lung.resistance,
+                lung, (-lung.peep - lung._expiratory_collapse_offset(), 0.0), (0.0, 0.0),
+                ceiling_resistance - lung.resistance,
                 elastance=elastance, recoil_offset=recoil_offset,
             )
         else:
@@ -756,7 +764,12 @@ class PatientEffort:
         self._trough = lung.volume
         self._reference_shift = 0.0
         recoil = self.target_vt / lung.compliance
-        unloading = recoil / (recoil + self.support_pressure)
+        # On patient-triggered breaths, intrinsic PEEP imposes an inspiratory
+        # threshold load that pressure support cannot unload (Brochard 1989; Jubran 1995).
+        # Time-triggered mandatory breaths bypass patient triggering.
+        trigger_load = 0.0 if lung._mandatory_ventilating else 0.45 * max(0.0, lung.elastic_pressure)
+        elastic_unloading = recoil / (recoil + self.support_pressure)
+        unloading = (trigger_load + recoil * elastic_unloading) / max(1e-6, trigger_load + recoil)
         self.ti = min(self.TI_FRACTION * self.period, self.TI_MAX) * math.sqrt(unloading)
         self.release = self.RELEASE_FRACTION * self.ti
         n = self.PROFILE_POINTS

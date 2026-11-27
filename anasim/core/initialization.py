@@ -262,7 +262,11 @@ def _seed_steady_state_subsystems(
             )
             nom_model.set_state_vector(_infusion_history(nom_model, profile.history_minutes) * rate_per_min)
             engine.infusion_rates[key] = _maintenance_rate(nom_model, target_ce)
-    engine.resp.initialize_drug_effects(engine.pk["propofol"].state.ce_resp, engine.pk["remi"].state.ce_resp)
+    engine.resp.initialize_drug_effects(
+        engine.pk["propofol"].state.ce_resp,
+        engine.pk["remi"].state.ce_resp,
+        engine.pk["fentanyl"].state.ce,
+    )
     prop_cp = engine.pk["propofol"].state.c1
     remi_cp = engine.pk["remi"].state.c1
     engine.pk_nore.update_propofol(prop_cp)

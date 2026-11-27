@@ -798,7 +798,7 @@ def test_matsukawa_1995b_ozaki_1994_and_comet_2001_neuraxial_thermal_and_motor(e
 
 def test_marti_2015_thrombolysis_bleeding_and_mirski_2007_vae_aspiration_cap(engine_factory):
     """Marti 2015 (15 RCTs, n=2,057, major bleeding OR 2.91): PE thrombolysis increases active
-    surgical hemorrhage rate and clears thrombolysis_active on clot resolution;
+    surgical hemorrhage rate;
     Mirski 2007: CVC air aspiration removes ~45% of right-atrial air and cannot clear distal
     pulmonary microvascular air via rapid repeat clicks."""
     from anasim.core.runtime import step_simulation
@@ -1309,6 +1309,53 @@ def test_cronnelly_1979_kirkegaard_2002_kaufhold_2016_and_mirakhur_1977_neostigm
     assert hr_traces["atropine"][0] > 3.0 and hr_traces["atropine"][-1] < 0.0
     assert max(abs(x) for x in hr_traces["glyco"]) < max(abs(x) for x in hr_traces["atropine"])
 
+    # Standard 5:1 neostigmine:glycopyrrolate balance holds across higher clinical reversal doses (3.5/0.7 and 5/1 mg).
+    for neo_mg, glyco_mg in ((3.5, 0.7), (5.0, 1.0)):
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=1.0, rng_seed=1),
+            start=True, age=53.0, weight=75.0, height=170.0, sex="male", baseline_hr=80.0,
+        )
+        eng.infusion_rates["remi"] = 0.0
+        eng.pk["remi"].state.c1 = eng.pk["remi"].state.c2 = eng.pk["remi"].state.c3 = eng.pk["remi"].state.ce = 0.0
+        for _ in range(120):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+        hr0 = eng.state.hr
+        eng.give_drug_bolus("neostigmine", neo_mg)
+        eng.give_drug_bolus("glyco", glyco_mg)
+        late = []
+        for minute in range(1, 8):
+            for _ in range(60):
+                step_simulation(eng, 1.0, update_monitors=False)
+                eng.state.time += 1.0
+            if minute >= 4:
+                late.append(eng.state.hr - hr0)
+        assert -6.0 < min(late) and max(late) < 6.0
+
+    # Mirakhur 1981 (n=120): IV glycopyrrolate 5, 10, and 15 mcg/kg produce a graded
+    # HR rise (+8, +17, +24 bpm at 6 min) rather than saturating at low doses.
+    glyco_rises = []
+    for dose_ug_kg, wt, hr0_base in ((5.0, 60.0, 86.0), (10.0, 63.0, 82.0), (15.0, 73.0, 78.0)):
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=1.0, rng_seed=1),
+            start=True, age=35.0, weight=wt, height=168.0, sex="female", baseline_hr=hr0_base,
+        )
+        eng.infusion_rates["remi"] = 0.0
+        eng.pk["remi"].state.c1 = eng.pk["remi"].state.c2 = eng.pk["remi"].state.c3 = eng.pk["remi"].state.ce = 0.0
+        eng.set_vaporizer(1.2)
+        for _ in range(120):
+            step_simulation(eng, 2.0, update_monitors=False)
+            eng.state.time += 2.0
+        h0 = eng.state.hr
+        eng.give_drug_bolus("glyco", dose_ug_kg * wt / 1000.0)
+        for _ in range(360):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+        glyco_rises.append(eng.state.hr - h0)
+    assert 5.0 < glyco_rises[0] < 16.0
+    assert glyco_rises[0] + 4.0 < glyco_rises[1] < 24.0
+    assert glyco_rises[1] + 2.0 < glyco_rises[2] < 30.0
+
     # Herbstreit 2010: unopposed neostigmine after full recovery reduces pharyngeal dilator tone.
     awake = engine_factory(
         config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
@@ -1353,3 +1400,41 @@ def test_poterman_2015_and_de_keijzer_2026_vasopressor_preload_reserve(engine_fa
     assert u_dco > p_dco + 0.10
     assert p_dhr <= 1.0
     assert p_svr > 1.12
+
+
+def test_kanaya_2002_propofol_enhances_ephedrine_over_sevoflurane(engine_factory):
+    """Kanaya 2002 (n=30, 0.1 mg/kg IV ephedrine): propofol anesthesia enhances the
+    pressor response compared with awake and 2% sevoflurane states."""
+    from anasim.core.runtime import step_simulation
+
+    rises = {}
+    for arm in ("awake", "sevo", "propofol"):
+        mode = "awake" if arm == "awake" else "steady_state"
+        maint = "balanced" if arm == "sevo" else "tiva"
+        eng = engine_factory(
+            config=SimulationConfig(mode=mode, maint_type=maint, dt=1.0, rng_seed=1),
+            start=True, age=42.0, weight=58.0, height=162.0, sex="female",
+            baseline_map=85.0, baseline_hr=68.0,
+        )
+        if arm != "awake":
+            eng.infusion_rates["remi"] = 0.0
+            r = eng.pk["remi"]
+            r.state.c1 = r.state.c2 = r.state.c3 = r.state.ce = 0.0
+            if arm == "sevo":
+                eng.set_vaporizer(2.3)
+            else:
+                eng.infusion_rates["propofol"] = 0.100 * 58.0 / 60.0
+            for _ in range(180):
+                step_simulation(eng, 2.0, update_monitors=False)
+                eng.state.time += 2.0
+        m0 = eng.state.map
+        eng.give_drug_bolus("ephedrine", 0.1 * 58.0)
+        peak = m0
+        for _ in range(300):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+            peak = max(peak, eng.state.map)
+        rises[arm] = peak - m0
+
+    assert rises["propofol"] > rises["sevo"] + 3.0
+    assert rises["propofol"] > rises["awake"] + 3.0

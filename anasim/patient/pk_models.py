@@ -1327,7 +1327,7 @@ class DobutaminePK(MammillaryPK):
 
 
 class MilrinonePK(MammillaryPK):
-    """Calibrated two-compartment IV milrinone PK (ng/mL) matching DailyMed 2026b
+    """Calibrated two-compartment IV milrinone PK (ng/mL) matching DailyMed 2026
     Vdss (0.45 L/kg) and CL (0.13 L/kg/h) and Baim 1983 bolus levels (mean +/- SEM:
     392 +/- 23 ng/mL at 5 min, 180 +/- 19 ng/mL at 30 min; reported t1/2 136 min).
     """
@@ -1414,8 +1414,9 @@ class NeostigminePK(MammillaryPK):
     Normal-renal Table 1 means: V1 0.37 L/kg, Vdss 1.40 L/kg (V2 1.03 L/kg),
     CL 16.7 mL/kg/min, t1/2_alpha 3.5 min, t1/2_beta 79.8 min. Anephric CL
     fell to 7.8 mL/kg/min (53% renal elimination; t1/2_beta 181 min).
-    Effect-site ke0 0.16 min^-1 aligns peak neuromuscular reversal and
-    muscarinic onset (~7 min) with glycopyrrolate (Mirakhur 1977; Kirkegaard 2002).
+    Cardiac muscarinic ke0 0.16 min^-1 aligns onset (~7 min) with glycopyrrolate
+    (Mirakhur 1977), while slower ce_nmj 0.085 min^-1 governs neuromuscular reversal
+    (Kirkegaard 2002).
     """
 
     def __init__(self, patient: Patient):

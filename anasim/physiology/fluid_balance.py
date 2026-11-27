@@ -503,7 +503,7 @@ class FluidBalance:
             return
         # Kramer 2003: control Vdss 21 L and clearance 710 mL/min, with cirrhotic
         # clearance ~48% of control (matched at hepatic_function = 0.5).
-        # Ludbrook & Wynn 1958: 28-29 °C hypothermia lowers citrate clearance to ~65%
+        # Ludbrook and Wynn 1958: 28-29 °C hypothermia lowers citrate clearance to ~65%
         # of normothermic (Q10 ~2.0 on the ~80% hepatic fraction, 20% renal).
         oxy = clamp01(oxygen_supply)
         temp_q10 = 2.0 ** ((clamp(temp_c, 22.0, 42.0) - 37.0) / 10.0) if temp_c != 37.0 else 1.0
@@ -614,9 +614,9 @@ class FluidBalance:
         oxygen_supply: float = 1.0, lactate_acid_meq_l: float = 0.0,
         insulin_k_uptake: float = 0.0,
     ) -> None:
-        # Reversible transcellular K+ shifts (beta-2, succinylcholine, bidirectional pH)
+        # Reversible transcellular K+ shifts (beta-2, insulin, succinylcholine, bidirectional pH)
         # plus cumulative rhabdomyolytic (MH) and severe hypoxic cellular K+ leak that
-        # persists after crisis arrest until cleared renally or shifted by beta-2 agonists.
+        # persists after crisis arrest until cleared renally or shifted intracellularly.
         if mh_severity > 0.0:
             rhabdo_ceiling = max(1.0, 9.5 * self.initial_ecf_l)
             rhabdo_headroom = clamp01(1.0 - self._lysed_k_mmol / rhabdo_ceiling)

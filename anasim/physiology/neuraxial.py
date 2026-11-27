@@ -191,7 +191,7 @@ class NeuraxialModel:
 
     @property
     def symp_vasc_block(self) -> float:
-        """Attenuation of endogenous reflex vasoconstriction (0-0.85); exogenous pressors preserved."""
+        """Attenuation of endogenous reflex vasoconstriction (0-0.80); exogenous pressors preserved."""
         return clamp(0.80 * self.vasomotor_symp_fraction * self.density, 0.0, 0.85)
 
     @property

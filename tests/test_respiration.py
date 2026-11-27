@@ -42,7 +42,7 @@ def test_opioid_slows_rate_and_propofol_reduces_depth(patient):
 
 def test_remifentanil_step_matches_olofsen_2010_equations_at_fixed_co2(patient):
     """Eqs. 2 and 6: at baseline CO2, Ce 1.6 ng/mL gives a first-order decline toward 50%,
-    and without opioids a PaCO2 drop produces no spurious opioid-lag rebound."""
+    and without opioids a PaCO2 drop produces no opioid-lag rebound."""
     model = RespiratoryModel(patient)
     baseline = model.state.mv
     for second in range(1, 301):
@@ -1029,3 +1029,111 @@ def test_zero_flow_iv_isolation_hypothermic_p50_step_invariance_copd_and_capno_s
     vals = [obs_cap.step(0.01, -0.003, 40.0, obstruction=0.5) for _ in range(180)]
     slope = (vals[160] - vals[90]) / 0.7
     assert slope > 8.0
+
+
+def test_fast_opioid_boluses_match_babenco_gelberg_ferguson_and_egan_age_shift(engine_factory):
+    """Opioid bolus ventilatory depression:
+    - Babenco 2000: 0.5 mcg/kg remifentanil cuts hypercapnic CO2 slope >50% and acts mainly on VT.
+    - Gelberg 2012: 1 mcg/kg fentanyl ~ 0.5 mcg/kg remifentanil (~0.50 nadir at ~5 vs ~3 min).
+    - Ferguson & Drummond 2006: 0.5 mcg/kg fentanyl under 1.35 MAC sevoflurane slows RR ~42% and raises VT ~12%.
+    - Egan 2004: room-air rapid remifentanil boluses desaturate in 2-4 min with greater depth in older adults.
+    """
+    from anasim.patient.pk_models import FentanylPK, RemifentanilPKEleveld
+
+    # Babenco 2000: 0.5 mcg/kg remifentanil at fixed hypercapnia (46 vs 56 mmHg)
+    babenco_patient = Patient(age=27, weight=70, height=180, sex="male", baseline_rr=14.1)
+
+    def _run_remi_clamped(pco2: float, dose_mcg_kg: float) -> tuple[tuple[float, float, float], tuple[float, float, float], float]:
+        resp = RespiratoryModel(babenco_patient)
+        pk = RemifentanilPKEleveld(babenco_patient)
+        for _ in range(240):
+            resp.state.pa_co2 = resp.state.p_alveolar_co2 = pco2
+            resp.state.p_arterial_o2 = 200.0
+            st0 = resp.step(0.5, ce_prop=0.0, ce_remi=0.0, fio2=0.4)
+        base = (st0.mv, st0.rr, st0.vt)
+        best = base
+        t_nadir_s = 0.0
+        for idx in range(900):
+            rate = (dose_mcg_kg * babenco_patient.weight / 5.0) if idx * 0.5 < 5.0 else 0.0
+            pk.step(0.5, rate)
+            resp.state.pa_co2 = resp.state.p_alveolar_co2 = pco2
+            resp.state.p_arterial_o2 = 200.0
+            st = resp.step(0.5, ce_prop=0.0, ce_remi=pk.state.ce_resp, fio2=0.4)
+            if st.mv < best[0]:
+                best = (st.mv, st.rr, st.vt)
+                t_nadir_s = (idx + 1) * 0.5
+        return base, best, t_nadir_s
+
+    b46, n46, t46 = _run_remi_clamped(46.0, 0.5)
+    b56, n56, _ = _run_remi_clamped(56.0, 0.5)
+    slope0 = (b56[0] - b46[0]) / 10.0
+    slope1 = (n56[0] - n46[0]) / 10.0
+    ve50_frac = (0.6 * n46[0] + 0.4 * n56[0]) / (0.6 * b46[0] + 0.4 * b56[0])
+    assert 0.37 <= ve50_frac <= 0.57
+    assert slope1 / slope0 < 0.45
+    assert n46[2] / b46[2] < n46[1] / b46[1] - 0.15  # VT falls more than RR in awake hypercapnia
+    assert 120.0 <= t46 <= 210.0
+
+    # Gelberg 2012: fentanyl 1.0 mcg/kg matches ~0.50 nadir later (~4.5-6 min) than remi 0.5 mcg/kg
+    gelberg_patient = Patient(age=32, weight=70, height=180, sex="male", baseline_rr=13.0, baseline_vt=8000.0 / 13.0)
+    resp_f = RespiratoryModel(gelberg_patient)
+    resp_f.vd_deadspace += 0.095
+    pk_f = FentanylPK(gelberg_patient)
+    for _ in range(240):
+        resp_f.state.pa_co2 = resp_f.state.p_alveolar_co2 = 6.1 * 7.50062
+        resp_f.state.p_arterial_o2 = 120.0
+        st0_f = resp_f.step(0.5, ce_prop=0.0, ce_remi=0.0, fio2=0.4)
+    base_mv_f = float(st0_f.mv)
+    min_mv_f, t_nadir_f = base_mv_f, 0.0
+    for idx in range(1200):
+        rate = (1.0 * gelberg_patient.weight / 10.0) if idx * 0.5 < 10.0 else 0.0
+        pk_f.step(0.5, rate)
+        resp_f.state.pa_co2 = resp_f.state.p_alveolar_co2 = 6.1 * 7.50062
+        resp_f.state.p_arterial_o2 = 120.0
+        st_f = resp_f.step(0.5, ce_prop=0.0, ce_remi=0.0, ce_fentanyl=pk_f.state.ce, fio2=0.4)
+        if st_f.mv < min_mv_f:
+            min_mv_f = st_f.mv
+            t_nadir_f = (idx + 1) * 0.5
+    assert 0.38 <= min_mv_f / base_mv_f <= 0.64
+    assert 240.0 <= t_nadir_f <= 420.0
+
+    # Ferguson & Drummond 2006: 1.35 MAC sevoflurane + 0.5 mcg/kg fentanyl at PaCO2 52.1 mmHg
+    ferg_patient = Patient(age=40, weight=70, height=170, sex="male")
+    resp_s = RespiratoryModel(ferg_patient)
+    pk_s = FentanylPK(ferg_patient)
+    for _ in range(240):
+        resp_s.state.pa_co2 = resp_s.state.p_alveolar_co2 = 52.1
+        resp_s.state.p_arterial_o2 = 250.0
+        st0_s = resp_s.step(1.0, ce_prop=0.0, ce_remi=0.0, mac_sevo=1.35, fio2=0.5, unconscious=1.0)
+    base_rr_s, base_vt_s, base_mv_s = float(st0_s.rr), float(st0_s.vt), float(st0_s.mv)
+    min_rr_s, max_vt_s, min_mv_s = base_rr_s, base_vt_s, base_mv_s
+    for sec in range(1, 241):
+        pk_s.step(1.0, (0.5 * 70.0 / 5.0) if sec <= 5 else 0.0)
+        resp_s.state.pa_co2 = resp_s.state.p_alveolar_co2 = 52.1
+        resp_s.state.p_arterial_o2 = 250.0
+        st_s = resp_s.step(1.0, ce_prop=0.0, ce_remi=0.0, ce_fentanyl=pk_s.state.ce,
+                           mac_sevo=1.35, fio2=0.5, unconscious=1.0)
+        min_rr_s = min(min_rr_s, st_s.rr)
+        max_vt_s = max(max_vt_s, st_s.vt)
+        min_mv_s = min(min_mv_s, st_s.mv)
+    assert -0.52 <= (min_rr_s / base_rr_s - 1.0) <= -0.32
+    assert 0.05 <= (max_vt_s / base_vt_s - 1.0) <= 0.25
+    assert -0.45 <= (min_mv_s / base_mv_s - 1.0) <= -0.25
+
+    # Egan 2004: room-air rapid 75 mcg remifentanil bolus desaturates in 2-4 min, more deeply in older adults
+    nadirs = {}
+    times = {}
+    for age in (28, 67):
+        eng = engine_factory(
+            config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+            start=True, age=age, weight=74.0, height=175.0, sex="male",
+        )
+        eng.give_drug_bolus("remi", 75.0)
+        min_sao2, t_min = 100.0, 0.0
+        for sec in range(1, 301):
+            eng.step(1.0)
+            if eng.state.sao2 < min_sao2:
+                min_sao2, t_min = eng.state.sao2, float(sec)
+        nadirs[age], times[age] = min_sao2, t_min
+    assert 120.0 <= times[28] <= 240.0 and 120.0 <= times[67] <= 240.0
+    assert nadirs[67] < nadirs[28] - 10.0
