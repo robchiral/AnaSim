@@ -675,7 +675,7 @@ test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation
     "propofol", "midazolam", "ketamine", "etomidate", "lidocaine", "amiodarone",
     "fentanyl", "remi", "hydromorphone", "morphine", "phenyl", "ephedrine", "nore",
     "epi", "vaso", "dobu", "milri", "atropine", "glyco", "esmolol", "labetalol",
-    "roc", "succinylcholine", "heparin", "protamine", "insulin", "dantrolene",
+    "roc", "succinylcholine", "neostigmine", "heparin", "protamine", "insulin", "dantrolene",
   ].map((key) => ({
     key, generic_name: key, name: key, bolus_unit: "mg", default_bolus: 1,
     rate_unit: null, tci_unit: null,
@@ -944,4 +944,50 @@ test("epidural lidocaine infusion updates concentration, VA ECMO exposes bypass 
   const row = tbody.children[0];
   assert.equal(row.children[1].textContent, "150");
   assert.equal(row.children[1].className, "");
+});
+
+test("pneumoperitoneum controls bind IAP selector and toggle, and sync stimulation badge", async () => {
+  const { readFileSync } = await import("node:fs");
+  const html = readFileSync(new URL("../anasim/web_assets/index.html", import.meta.url), "utf8");
+  assert.match(html, /id="c-pneumo-iap"/);
+  assert.match(html, /id="c-pneumoperitoneum"/);
+
+  const elements = new Map();
+  for (const id of [
+    "c-o2-supply", "c-disturbance", "c-disturb", "c-obstruction", "c-bronchospasm",
+    "c-ards-shunt", "c-auto-laryngo", "c-hem-rate", "c-hemorrhage", "c-rhythm",
+    "c-position-row", "c-position", "c-anaphylaxis", "c-sepsis", "c-protamine-reaction",
+    "c-difficult-airway", "c-arm-esophageal", "c-esophageal-now", "c-pneumothorax",
+    "c-pneumoperitoneum", "c-pneumo-iap", "c-pe", "c-vae", "c-high-spinal", "c-mh",
+  ]) {
+    elements.set(id, {
+      value: id === "c-pneumo-iap" ? "14" : "",
+      disabled: false, hidden: false, checked: false, textContent: "",
+      attrs: {}, children: [],
+      setAttribute(k, v) { this.attrs[k] = v; },
+      getAttribute(k) { return this.attrs[k]; },
+      replaceChildren(...kids) { this.children = kids; },
+      append(...kids) { this.children.push(...kids); },
+      closest: () => null,
+      querySelectorAll: () => [],
+    });
+  }
+  globalThis.Option = function Option(text, value) { this.text = text; this.value = value; };
+  globalThis.document = {
+    getElementById: (id) => elements.get(id),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  const sent = [];
+  const controls = Object.create(Controls.prototype);
+  controls.editSettings = () => ({ cancel() {} });
+  controls.send = async (name, args) => { sent.push([name, args]); };
+  controls.state = { pneumoperitoneum: { active: false, iap: 0 }, disturbance: { active: false } };
+  controls.bindEvents({ disturbances: [], rhythms: ["SINUS"], patient: { gestational_age_weeks: 0 } });
+  await elements.get("c-pneumoperitoneum").onclick();
+  assert.deepEqual(sent[0], ["pneumoperitoneum", { active: true, iap_mmhg: 14 }]);
+  controls.state.pneumoperitoneum = { active: true, iap: 14 };
+  elements.get("c-pneumo-iap").value = "12";
+  await elements.get("c-pneumo-iap").onchange();
+  assert.deepEqual(sent[1], ["pneumoperitoneum", { active: true, iap_mmhg: 12 }]);
 });

@@ -72,9 +72,14 @@ ECG HR error 3-10 minutes after propofol, untreated: per-patient median 0.4 (-0.
 
 ## Surgery
 
-Untreated patients, from 15 minutes after incision to the end of surgery: MAP error -1.2 (-2.9 to 0.5), n=182 mmHg; HR error -0.4 (-2.0 to 1.6), n=182 bpm. Arterial MAP is used when recorded.
+Untreated patients, from 15 minutes after incision to the end of surgery (arterial MAP used when recorded; rise is from the last 10 minutes before incision to surgery):
 
-MAP rise from the last 10 minutes before incision to surgery: recorded 11.0 (9.4 to 12.8), n=182, model 11.7 (11.2 to 12.2), n=182 mmHg.
+| Procedure | n | MAP error, mmHg (95% CI) | HR error, bpm (95% CI) | Recorded rise, mmHg | Model rise, mmHg |
+|---|---:|---|---|---|---|
+| All untreated | 182 | -3.2 (-4.9 to -1.5) | -0.4 (-2.0 to 1.6) | 11.0 (9.4 to 12.8) | 9.7 (9.2 to 10.2) |
+| Open, supine | 91 | -1.0 (-3.3 to 1.3) | 2.5 (0.3 to 4.5) | 10.1 (8.0 to 12.3) | 9.8 (9.3 to 10.4) |
+| Laparoscopic or robotic, supine | 28 | -9.2 (-12.5 to -6.1) | -5.7 (-9.6 to -2.3) | 16.9 (13.5 to 20.6) | 9.9 (8.7 to 11.2) |
+| Other positions | 63 | -3.8 (-7.2 to -0.2) | -2.2 (-5.3 to 0.7) | 9.8 (6.8 to 12.6) | 9.5 (8.6 to 10.4) |
 
 Exclusions:
 

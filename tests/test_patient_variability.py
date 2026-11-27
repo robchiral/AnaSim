@@ -161,3 +161,34 @@ def test_sevoflurane_bis_preserves_interindividual_sensitivity_spread():
         Patient(**ADULT), SimulationConfig(mode="awake", patient_variability=True, rng_seed=7)
     )
     assert var_eng.response.sevoflurane_mac == var_eng.patient.variability.sevoflurane_mac
+
+
+def test_resting_sympathetic_tone_and_preop_volume_bsv_bounds():
+    """Keir 2020 / Charkoudian 2005-2006 / Jacob 2008 / Bundgaard-Nielsen 2010:
+    resting sympathetic tone creates a reciprocal resting TPR-CO trade-off while
+    leaving baseline MAP invariant, and preoperative functional volume variability
+    shifts resting stressed volume without triggering acute hemorrhage deficits."""
+    base = sample_variability(1)
+    low_symp, high_symp = Patient(**ADULT), Patient(**ADULT)
+    low_symp.variability = replace(
+        base, hemodynamics=replace(base.hemodynamics, resting_sympathetic_tone=0.75, preop_volume_fraction=1.0),
+    )
+    high_symp.variability = replace(
+        base, hemodynamics=replace(base.hemodynamics, resting_sympathetic_tone=1.35, preop_volume_fraction=1.0),
+    )
+    h_low, h_high = HemodynamicModel(low_symp), HemodynamicModel(high_symp)
+    assert h_low.state.map == pytest.approx(h_high.state.map, abs=0.5)
+    assert h_high.base_tpr > h_low.base_tpr * 1.25
+    assert h_high.base_co_l_min < h_low.base_co_l_min * 0.80
+
+    dry, full = Patient(**ADULT), Patient(**ADULT)
+    dry.variability = replace(
+        base, hemodynamics=replace(base.hemodynamics, resting_sympathetic_tone=1.0, preop_volume_fraction=0.94),
+    )
+    full.variability = replace(
+        base, hemodynamics=replace(base.hemodynamics, resting_sympathetic_tone=1.0, preop_volume_fraction=1.06),
+    )
+    h_dry, h_full = HemodynamicModel(dry), HemodynamicModel(full)
+    assert h_dry.blood_volume == pytest.approx(h_dry.blood_volume_0)
+    assert h_dry._calc_stressed_volume() < h_full._calc_stressed_volume() - 400.0
+    assert h_dry._volume_deficit_fraction == 0.0

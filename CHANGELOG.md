@@ -93,9 +93,29 @@
   unparalyzed intubation, succinylcholine warnings in malignant hyperthermia or
   hyperkalemia, sepsis vasopressor crediting and source-control timing, debrief
   targets, post-lock Trends viewing, and defibrillator sync reset.
+- Added laparoscopic CO₂ pneumoperitoneum (adjustable intra-abdominal pressure
+  from 4 to 25 mmHg with chest-wall stiffening, alveolar dead-space widening,
+  peritoneal CO₂ absorption and post-desufflation washout, neurohumoral SVR and
+  PVR elevation, and pressure-dependent IVC compression) along with an Event
+  control in the browser interface.
+- Added neostigmine neuromuscular block reversal (two-compartment kinetics with
+  53% renal elimination, saturable competitive rocuronium EC₅₀ shift with a
+  deep-block ceiling, cardiac M2 muscarinic bradycardia with competitive
+  atropine and glycopyrrolate antagonism, and unopposed post-recovery
+  pharyngeal dilator weakness).
+- Added resting sympathetic-tone and preoperative functional blood-volume
+  variability to `patient_variability`, balancing resting cardiac output and
+  vascular resistance while keeping baseline MAP steady.
+- Updated norepinephrine and phenylephrine hemodynamics with separate alpha-1
+  and beta-1 potency, preload-reserve scaling of anesthetized norepinephrine
+  stroke-volume restoration, and saturating phenylephrine afterload.
 - Expanded VitalDB comparisons across the full adult domain with preoperative
-  labs, multiprocessing, and 5-fold patient-grouped cross-validation, and
-  consolidated clinical benchmarks and invariants under `tests/`.
+  labs, 5-fold patient-grouped cross-validation, procedure-stratified surgical
+  maintenance, sevoflurane-to-BIS, pulse pressure and CVP, pulse-contour
+  cardiac output, continuous vasopressor infusions, supine laparoscopy versus
+  open pneumoperitoneum, intraoperative ABGs and chemistry, and intraoperative
+  core temperature, and consolidated primary-literature clinical benchmarks and
+  invariants under `tests/`.
 - Sped up high-speed web playback (about four times faster at 50x), maintenance
   startup, and per-step execution across the engine, monitors, and browser
   rendering.

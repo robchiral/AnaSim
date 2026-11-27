@@ -62,10 +62,14 @@ def calc_nore_effects(
     nore_scale: float = 1.0,
     hf_beta_hr: float = 1.0,
     hf_beta_sv: float = 1.0,
+    preload_reserve: float = 1.0,
 ) -> tuple[float, float, float]:
     """Return direct chronotropy, stroke-volume factor, and vascular-resistance factor.
 
-    Reflex bradycardia comes from the baroreflex.
+    Reflex bradycardia comes from the baroreflex. Anesthetic SV restoration scales
+    with pre-pressor preload reserve (strong in unpreloaded venodilated states as
+    in de Keijzer 2026 / Maas 2013, attenuated on the flat Starling plateau as in
+    volume-preloaded Poterman 2015).
     """
     eff_ce = max(0.0, ce_nore - basal_nore_ce * (1.0 - anesthetic_depth)) * nore_scale
     if eff_ce <= 0:
@@ -83,8 +87,12 @@ def calc_nore_effects(
         if beta_hill <= 0.42
         else 0.42 + 0.18 * math.tanh((beta_hill - 0.42) / 0.18)
     )
-    sv_factor = 1.0 + cfg.nore_emax_sv * eff_hf_sv * beta_hill + cfg.nore_anesthetic_sv_gain * anesthetic_depth * anest_hill
-    alpha_hill = hill_function(eff_ce / alpha_dr, cfg.nore_c50, 1.0)
+    sv_factor = (
+        1.0
+        + cfg.nore_emax_sv * eff_hf_sv * beta_hill
+        + cfg.nore_anesthetic_sv_gain * preload_reserve * anesthetic_depth * anest_hill
+    )
+    alpha_hill = hill_function(eff_ce / alpha_dr, cfg.nore_c50_alpha, 1.0)
     alpha_gain = 1.0 + cfg.nore_anesthetic_alpha_gain * anesthetic_depth
     svr_factor = 1.0 + cfg.nore_emax_svr * alpha_gain * alpha_hill
     return delta_hr, sv_factor, svr_factor
@@ -220,6 +228,7 @@ def compute_receptor_blockade(
     ce_prop_cv: float,
     age_chronotropy: float,
     age_antimuscarinic: float,
+    ce_neostigmine: float = 0.0,
 ) -> ReceptorBlockade:
     """Compute competitive antagonist dose ratios, vagal block, and reflex shares."""
     if ce_esmolol > 0.0 or ce_labetalol > 0.0:
@@ -233,9 +242,18 @@ def compute_receptor_blockade(
         beta1_dr = beta2_dr = alpha_dr = 1.0
         beta_occ = alpha_occ = 0.0
 
+    neo_m2 = (
+        hill_function(ce_neostigmine, cfg.neostigmine_hr_c50, cfg.neostigmine_hr_gamma)
+        if ce_neostigmine > 0.0
+        else 0.0
+    )
+    # Accumulated synaptic ACh competes with antimuscarinics at cardiac M2 receptors
+    # (Baraka 1968b; Mirakhur 1977), preventing sustained tachycardia when glycopyrrolate
+    # and neostigmine peak together while preserving atropine's brief 1-2 min rise.
+    m2_ach_dr = 1.0 + (ce_neostigmine / cfg.neostigmine_m2_shift_c50) ** 1.35 if ce_neostigmine > 0.0 else 1.0
     if ce_glyco > 0.0 or ce_atropine > 0.0:
-        glyco = hill_function(ce_glyco, cfg.glyco_c50, cfg.glyco_gamma) if ce_glyco > 0.0 else 0.0
-        atropine = hill_function(ce_atropine, cfg.atropine_c50, cfg.atropine_gamma) if ce_atropine > 0.0 else 0.0
+        glyco = hill_function(ce_glyco, cfg.glyco_c50 * m2_ach_dr, cfg.glyco_gamma) if ce_glyco > 0.0 else 0.0
+        atropine = hill_function(ce_atropine, cfg.atropine_c50 * m2_ach_dr, cfg.atropine_gamma) if ce_atropine > 0.0 else 0.0
         vagal = 1.0 - (1.0 - glyco) * (1.0 - atropine)
         prop_vagal_scale = 1.0 / (1.0 + max(0.0, ce_prop_cv) / cfg.atropine_propofol_cp50)
         atropine_hr = cfg.atropine_emax_hr * atropine * prop_vagal_scale * age_antimuscarinic
@@ -243,6 +261,9 @@ def compute_receptor_blockade(
         vagal_hr = max(glyco_hr, glyco_hr * (1.0 - atropine) + atropine_hr)
     else:
         vagal = vagal_hr = 0.0
+
+    if neo_m2 > 0.0:
+        vagal_hr -= cfg.neostigmine_emax_hr * neo_m2 * (1.0 - 0.80 * vagal)
 
     amiodarone = hill_function(ce_amiodarone, cfg.amiodarone_c50, 1.0) if ce_amiodarone > 0.0 else 0.0
     amiodarone_hr = hill_function(ce_amiodarone_hr, cfg.amiodarone_c50, 1.0) if ce_amiodarone_hr > 0.0 else 0.0

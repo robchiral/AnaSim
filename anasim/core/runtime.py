@@ -227,7 +227,12 @@ def step_simulation(engine: SimulationEngine, dt: float, *, update_monitors: boo
         pulmonary_circulation=pulm_circ,
         pulmonary_ventilation=engine.state.va > 0.1,
     )
-    engine.aeration.chest_wall_stiffness = mh.chest_wall_stiffness + engine.pneumothorax.chest_wall_stiffness_add
+    engine.pneumoperitoneum.step(dt, circulation=circ)
+    engine.aeration.chest_wall_stiffness = (
+        mh.chest_wall_stiffness
+        + engine.pneumothorax.chest_wall_stiffness_add
+        + engine.pneumoperitoneum.chest_wall_stiffness_add
+    )
     engine.aeration.pleural_collapse = engine.pneumothorax.lung_collapse_fraction
     engine.aeration.crisis_shunt = 1.0 - (
         (1.0 - engine.pneumothorax.shunt_fraction) * (1.0 - engine.embolism.extra_shunt)
@@ -1181,15 +1186,16 @@ def _step_roc_drug(
         or tof.complex.state.c2
     ):
         return
+    neo_ce = engine.pk["neostigmine"].state.ce_nmj
     if seg_dt > 0.05 and has_sug:
         substeps = max(1, math.ceil(seg_dt / 0.05))
         h = seg_dt / substeps
         for _ in range(substeps):
             roc.step(h, rate)
-            tof.step_recovery(h, roc, mac_sevo=mac_sevo, mac_n2o=mac_n2o)
+            tof.step_recovery(h, roc, mac_sevo=mac_sevo, mac_n2o=mac_n2o, neostigmine_ce=neo_ce)
         return
     roc.step(seg_dt, rate)
-    tof.step_recovery(seg_dt, roc, mac_sevo=mac_sevo, mac_n2o=mac_n2o)
+    tof.step_recovery(seg_dt, roc, mac_sevo=mac_sevo, mac_n2o=mac_n2o, neostigmine_ce=neo_ce)
 
 
 def _step_patient_drug(
@@ -1644,6 +1650,7 @@ def step_physiology(
         ce_glyco=state.glyco_ce,
         ce_atropine=state.atropine_ce,
         ce_ephedrine=state.ephedrine_ce,
+        ce_neostigmine=state.neostigmine_ce,
         ce_amiodarone=state.amiodarone_ce,
         ce_amiodarone_vasc=engine.pk["amiodarone"].state.ce_cv,
         ce_amiodarone_hr=engine.pk["amiodarone"].state.ce_hr,
@@ -1672,6 +1679,11 @@ def step_physiology(
         protamine_venous_pool_frac=engine.coagulation.state.protamine_venous_pool_frac,
         protamine_pvr_factor=engine.coagulation.state.protamine_pvr_factor,
         embolic_pvr_factor=engine.embolism.pvr_factor,
+        pneumo_svr_factor=engine.pneumoperitoneum.svr_factor,
+        pneumo_pvr_factor=engine.pneumoperitoneum.pvr_factor,
+        pneumo_rvr_factor=engine.pneumoperitoneum.rvr_factor,
+        pneumo_mcfp_add=engine.pneumoperitoneum.mcfp_add_mmhg,
+        pneumo_icp_add=engine.pneumoperitoneum.intracavitary_pressure_add_mmhg,
         neuraxial_svr_factor=engine.neuraxial.svr_factor,
         neuraxial_venous_pool_frac=engine.neuraxial.venous_pool_fraction,
         neuraxial_symp_vasc_block=engine.neuraxial.symp_vasc_block,

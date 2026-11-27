@@ -57,7 +57,25 @@ End-tidal sevoflurane surgery, median: recorded 1.90%, model 2.04% (n=124).
 
 ECG HR error (model minus recorded, per-patient medians, untreated): 0-5 min 1.0 (-1.1 to 3.0), n=57; 5-10 min -4.2 (-7.6 to -0.4), n=57; 10 min to incision 3.9 (1.2 to 6.7), n=56 bpm.
 
-Surgery from 15 min after incision, untreated: MAP 0.3 (-4.7 to 5.0), n=48 mmHg; HR -0.3 (-3.3 to 2.9), n=48 bpm.
+## Surgery
+
+Primary cohort (untreated patients with BIS-timed induction, from 15 min after incision to end of surgery; arterial MAP used when recorded):
+
+| Procedure | n | MAP error, mmHg (95% CI) | HR error, bpm (95% CI) |
+|---|---:|---|---|
+| All untreated | 48 | -1.8 (-6.7 to 2.8) | -0.3 (-3.3 to 2.9) |
+| Open, supine | 16 | 3.5 (-3.7 to 9.4) | 4.4 (-1.9 to 10.1) |
+| Laparoscopic or robotic, supine | 7 | -0.8 (-9.4 to 10.2) | -5.2 (-12.8 to 0.9) |
+| Other positions | 25 | -5.4 (-11.7 to 1.3) | -2.0 (-5.9 to 1.6) |
+
+Extended untreated surgery cohort (including cases without pre-induction BIS fall, replayed from pre-sevoflurane baseline; n=171, +123 added):
+
+| Procedure | n | MAP error, mmHg (95% CI) | HR error, bpm (95% CI) |
+|---|---:|---|---|
+| All untreated | 171 | -1.6 (-4.2 to 0.8) | 0.2 (-1.8 to 2.0) |
+| Open, supine | 54 | 0.1 (-3.7 to 3.8) | 1.1 (-2.4 to 4.7) |
+| Laparoscopic or robotic, supine | 51 | -2.5 (-7.1 to 2.2) | -3.4 (-6.3 to 0.2) |
+| Other positions | 66 | -2.4 (-5.7 to 1.5) | 2.2 (-0.9 to 5.1) |
 
 Exclusions:
 

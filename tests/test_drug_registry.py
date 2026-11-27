@@ -52,7 +52,18 @@ def test_infusion_rates_convert_the_prescribed_units(engine):
 def test_boluses_deliver_the_prescribed_mass_to_each_pk_model(engine):
     # Prescribed mg or units become mcg or milliunits in these models.
     model_scales = dict.fromkeys(
-        ("midazolam", "vaso", "labetalol", "glyco", "morphine", "hydromorphone", "atropine", "ephedrine", "insulin"),
+        (
+            "midazolam",
+            "vaso",
+            "labetalol",
+            "glyco",
+            "morphine",
+            "hydromorphone",
+            "atropine",
+            "ephedrine",
+            "insulin",
+            "neostigmine",
+        ),
         1000.0,
     )
     for spec in DRUG_REGISTRY:

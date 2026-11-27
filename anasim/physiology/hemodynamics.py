@@ -141,7 +141,11 @@ class HemodynamicModel:
         self._basal_nore_ce = NorepinephrinePK.resting_concentration(patient.age)
 
         # Baseline SV from cardiac index and BSA.
-        co_0 = cfg.cardiac_index * patient.bsa * patient.cardiac_output_factor
+        # Charkoudian 2005/2006 & Keir 2020: resting sympathetic tone varies between
+        # healthy individuals while resting MAP stays invariant via reciprocal TPR-CO
+        # balancing (higher MSNA -> higher resting TPR, lower resting CO).
+        symp_tone = clamp(eta.resting_sympathetic_tone, 0.5, 2.0)
+        co_0 = cfg.cardiac_index * patient.bsa * patient.cardiac_output_factor / (symp_tone ** 0.55)
         self.base_sv = (co_0 * 1000.0) / self.base_hr
 
         flow_ml_min = self.base_hr * self.base_sv
@@ -151,7 +155,8 @@ class HemodynamicModel:
         self._emax_prop_sv_age = cfg.emax_prop_sv_typ * math.exp(cfg.age_emax_sv * (patient.age - 35.0))
         # Share of propofol's sympathetic withdrawal relative to a patient at the reference pressure.
         self._sympathetic_gain = clamp(
-            1.0 + cfg.propofol_baseline_sensitivity * (patient.baseline_map - cfg.propofol_baseline_map_ref),
+            (1.0 + cfg.propofol_baseline_sensitivity * (patient.baseline_map - cfg.propofol_baseline_map_ref))
+            * symp_tone,
             *cfg.propofol_baseline_gain_range,
         )
         self._inv_base_rmap_denom = 1.0 / (self.base_hr * self.base_sv * self.base_tpr)
@@ -257,11 +262,19 @@ class HemodynamicModel:
         self.red_cell_volume_ml = self.baseline_hct * self.blood_volume
         self.hb_conc = self.baseline_hb
         # Hemorrhage depletes stressed volume first, lowering MCFP and preload.
-        self.unstressed_volume = self.blood_volume * cfg.unstressed_volume_fraction
+        # Preoperative functional preload variability (Jacob 2008; Bundgaard-Nielsen 2010)
+        # shifts resting venous capacitance around the euvolemic stressed-volume reference
+        # without triggering acute hemorrhage reflexes.
+        unstressed_frac = clamp(
+            cfg.unstressed_volume_fraction - (clamp(eta.preop_volume_fraction, 0.90, 1.10) - 1.0),
+            0.60,
+            0.80,
+        )
+        self.unstressed_volume = self.blood_volume * unstressed_frac
         self._venous_tone = 1.0  # Share of reflex venoconstriction left after alpha block
         self.cv = cfg.venous_compliance * (self.blood_volume_0 / _REFERENCE_BLOOD_VOLUME_ML)  # mL/mmHg
         # Guyton MCFP = stressed volume / venous compliance, about 10-15 mmHg.
-        stressed_vol_0 = max(0.0, self.blood_volume - self.unstressed_volume)
+        stressed_vol_0 = max(0.0, self.blood_volume_0 * (1.0 - cfg.unstressed_volume_fraction))
         self._baseline_stressed_volume = stressed_vol_0
         self._venous_stressed_fraction = 1.0
         self._pressor_recruitment_ml = 0.0
@@ -337,6 +350,11 @@ class HemodynamicModel:
         self._protamine_venous_pool_frac = 0.0
         self._protamine_pvr_factor = 1.0
         self._embolic_pvr_factor = 1.0
+        self._pneumo_svr_factor = 1.0
+        self._pneumo_pvr_factor = 1.0
+        self._pneumo_rvr_factor = 1.0
+        self._pneumo_mcfp_add = 0.0
+        self._pneumo_icp_add = 0.0
         self._mil_pvr_factor = 1.0
         self._neuraxial_svr_factor = 1.0
         self._neuraxial_venous_pool_frac = 0.0
@@ -777,6 +795,8 @@ class HemodynamicModel:
             pvr_factor *= self._protamine_pvr_factor
         if self._embolic_pvr_factor != 1.0:
             pvr_factor *= self._embolic_pvr_factor
+        if self._pneumo_pvr_factor != 1.0:
+            pvr_factor *= self._pneumo_pvr_factor
         if self._mil_pvr_factor != 1.0:
             pvr_factor *= self._mil_pvr_factor
         max_pvr = cfg.pvr_max_factor
@@ -924,8 +944,9 @@ class HemodynamicModel:
             else 1.0
         )
         starling_keep = 1.0 - pit_starling_gate * (1.0 - raw_starling_keep)
-        delta_p = max(0.0, mcfp - vr_rap) * starling_keep
-        vr_flow_l_min = delta_p / max(0.1, self.venous_return_resistance)
+        delta_p = max(0.0, mcfp + self._pneumo_mcfp_add - vr_rap) * starling_keep
+        eff_rvr = self.venous_return_resistance * self._pneumo_rvr_factor
+        vr_flow_l_min = delta_p / max(0.1, eff_rvr)
         if ecmo_art:
             if self._cpb_open_drainage or self._aortic_cross_clamp:
                 rv_unload = clamp01(1.0 - self._ecmo_venous_drain_l_min / max(0.5, vr_flow_l_min))
@@ -945,6 +966,7 @@ class HemodynamicModel:
             + 2.0 * max(0.0, pvr_factor - 1.15)
             + 0.35 * max(0.0, congestion_lap - 2.0)
             + max(0.0, (1.0 - f_preload_pit) * 10.0)
+            + self._pneumo_icp_add
             - rap_drain,
         )
         # Normal low-resistance pulmonary beds do not augment venous return below baseline PVR;
@@ -1004,7 +1026,7 @@ class HemodynamicModel:
         if self._ecmo_lv_vent_l_min > 0.0:
             lap_preload /= 1.0 + 0.45 * self._ecmo_lv_vent_l_min
         base_lap = self._lap(lap_preload)
-        raw_lap = base_lap + congestion_lap
+        raw_lap = base_lap + congestion_lap + self._pneumo_icp_add
         self._last_lap = 34.0 + 8.0 * math.tanh((raw_lap - 34.0) / 8.0) if raw_lap > 34.0 else raw_lap
         self._last_mcfp = mcfp
         self._last_rap = rap
@@ -1028,6 +1050,12 @@ class HemodynamicModel:
         anesthetic_depth: float = 0.0, *, nore_scale: float = 1.0,
     ) -> tuple:
         """Return direct chronotropy, stroke-volume factor, and vascular-resistance factor."""
+        unrecruited_mcfp = max(0.0, self._last_mcfp - max(0.0, self._pressor_recruitment_ml) / self.cv)
+        unrecruited_ratio = unrecruited_mcfp / max(1e-3, self.mcfp_0)
+        preload_reserve = max(
+            0.15 + 0.85 * clamp01((1.05 - unrecruited_ratio) / 0.30),
+            clamp01(self.sepsis_severity / 0.4),
+        )
         return _drug_calc_nore_effects(
             self.config,
             ce_nore,
@@ -1039,6 +1067,7 @@ class HemodynamicModel:
             nore_scale=nore_scale,
             hf_beta_hr=self._hf_beta_hr,
             hf_beta_sv=self._hf_beta_sv,
+            preload_reserve=preload_reserve,
         )
 
     def _rhythm_sv_factor(self, current_hr: float) -> float:
@@ -1292,6 +1321,7 @@ class HemodynamicModel:
             * self._hyperosmolar_svr_factor
             * self._protamine_svr_factor
             * self._neuraxial_svr_factor
+            * self._pneumo_svr_factor
             * self._hct_viscosity_tpr
         )
         eff_tpr = max(
@@ -1660,6 +1690,7 @@ class HemodynamicModel:
              ce_esmolol: float = 0.0, ce_labetalol: float = 0.0, ce_glyco: float = 0.0,
              ce_ketamine: float = 0.0, ce_ketamine_hr: float | None = None,
              ce_atropine: float = 0.0, ce_ephedrine: float = 0.0,
+             ce_neostigmine: float = 0.0,
              ce_amiodarone: float = 0.0, ce_amiodarone_vasc: float = 0.0, ce_amiodarone_hr: float = 0.0,
              sodium_block: float = 0.0, toxic_contractility_loss: float = 0.0,
              temp_c: float = 37.0, peep_cmH2O: float | None = None, sao2: float = 98.0,
@@ -1681,6 +1712,11 @@ class HemodynamicModel:
              protamine_venous_pool_frac: float = 0.0,
              protamine_pvr_factor: float = 1.0,
              embolic_pvr_factor: float = 1.0,
+             pneumo_svr_factor: float = 1.0,
+             pneumo_pvr_factor: float = 1.0,
+             pneumo_rvr_factor: float = 1.0,
+             pneumo_mcfp_add: float = 0.0,
+             pneumo_icp_add: float = 0.0,
              neuraxial_svr_factor: float = 1.0,
              neuraxial_venous_pool_frac: float = 0.0,
              neuraxial_symp_vasc_block: float = 0.0,
@@ -1732,6 +1768,11 @@ class HemodynamicModel:
         self._protamine_venous_pool_frac = clamp(float(protamine_venous_pool_frac), 0.0, 0.20)
         self._protamine_pvr_factor = clamp(float(protamine_pvr_factor), 1.0, 6.0)
         self._embolic_pvr_factor = clamp(float(embolic_pvr_factor), 1.0, 15.0)
+        self._pneumo_svr_factor = clamp(float(pneumo_svr_factor), 1.0, 2.5)
+        self._pneumo_pvr_factor = clamp(float(pneumo_pvr_factor), 1.0, 3.0)
+        self._pneumo_rvr_factor = clamp(float(pneumo_rvr_factor), 1.0, 2.5)
+        self._pneumo_mcfp_add = clamp(float(pneumo_mcfp_add), 0.0, 6.0)
+        self._pneumo_icp_add = clamp(float(pneumo_icp_add), 0.0, 12.0)
         self._neuraxial_svr_factor = clamp(float(neuraxial_svr_factor), 0.40, 1.0)
         self._neuraxial_venous_pool_frac = clamp(float(neuraxial_venous_pool_frac), 0.0, 0.20)
         self._neuraxial_symp_vasc_block = clamp01(float(neuraxial_symp_vasc_block))
@@ -1781,6 +1822,7 @@ class HemodynamicModel:
             self.ce_prop_cv,
             self._age_chronotropy,
             self._age_antimuscarinic,
+            ce_neostigmine=ce_neostigmine,
         )
         beta1_dr, beta2_dr, alpha_dr = blockade.beta1_dr, blockade.beta2_dr, blockade.alpha_dr
         self._beta_occupancy = beta_occ = blockade.beta_occ
@@ -2267,12 +2309,13 @@ class HemodynamicModel:
             agonist_sv = catechol_sv * mil_sv_factor * shiver_sv_factor
             ket_sv = 1.0 + cfg.ketamine_emax_sv * ketamine * beta_response
             ket_loss = 1.0 - 0.28 * ket_raw * ket_exhaustion
+            phenyl_afterload = 0.90 * math.tanh(max(0.0, phenyl_svr_factor - 1.0) * catechol_gain / 0.90)
             combined_sv_factor = (
                 agonist_sv
                 * (1.0 - cfg.beta_block_sv * beta_occ * resting_tone)
                 * ket_sv
                 * ket_loss
-                / (1.0 + self._phenyl_afterload_gain * (phenyl_svr_factor - 1.0) * catechol_gain)
+                / (1.0 + self._phenyl_afterload_gain * phenyl_afterload)
             )
             combined_delta_hr = (
                 catechol_chrono + vaso_delta_hr + mil_delta_hr
@@ -2490,10 +2533,11 @@ class HemodynamicModel:
         anesthetic_depth = clamp01(mac_sevo + cp_prop / 4.0)
         self._nore_anesthetic_depth = anesthetic_depth
         tachycardia_depth = clamp01(anesthetic_depth + max(0.0, cp_remi) / self.config.opioid_reflex_ce)
-        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(cn, anesthetic_depth=anesthetic_depth)
         # Venous return at the drug's stressed volume, relative to the reference
-        # that keeps Su's response, sets the steady-state preload.
+        # that keeps Su's response, sets the steady-state preload before evaluating NE.
         self._update_venous_drug_effects(ce_prop, 0.0, 1.0, cn)
+        self._last_mcfp = self._calc_stressed_volume() / self.cv
+        nore_delta_hr, nore_sv_factor, nore_svr_factor = self._calc_nore_effects(cn, anesthetic_depth=anesthetic_depth)
 
         self.f_preload_pit = self._pit_preload_factor(pit)
         self._rv_pit_preload = self.f_preload_pit
@@ -2505,7 +2549,6 @@ class HemodynamicModel:
             return (mcfp - rap) / self.venous_return_resistance * self._inv_base_co_l_min
 
         self._position_preload = self._supine_preload if self.position == "supine" else 1.0
-        self._last_mcfp = self._calc_stressed_volume() / self.cv
         self._pulm_reference_factor = flow_factor(self._venous_reference_mcfp)
         self._pulm_flow_factor = flow_factor(self._last_mcfp) * (
             pvr_factor ** (-self.config.pvr_flow_exponent)

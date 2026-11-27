@@ -68,15 +68,16 @@ PROFILE_SPECS = {
             [300.0, 0.0, 0.0, 0.0, 0.0],
         ]),
     ),
-    # Surgery also adds vasoconstriction that anesthetics do not block. In VitalDB
-    # TIVA cases, MAP rose 11 mmHg from before incision to surgery while
-    # remifentanil was increased (validation/vitaldb/vitaldb_tiva.py).
+    # Surgery also adds vasoconstriction that anesthetics do not block. In open
+    # supine VitalDB TIVA cases, MAP rose 10.1 mmHg from before incision to
+    # surgery while remifentanil was increased (validation/vitaldb/vitaldb_tiva.py);
+    # laparoscopic/robotic cases rose further (+16.9 mmHg) due to pneumoperitoneum.
     # It develops over minutes, so MAP rises about 15% within 5 minutes of
     # incision at the sevoflurane-fentanyl MAC-BAR concentrations (Katoh 1999).
     "stim_sustained_surgery": DisturbanceProfileSpec(
         label="Sustained surgical stimulation",
         sympathetic_intensity=1.25,
-        tonic_svr_fraction=0.19,
+        tonic_svr_fraction=0.16,
         tonic_onset_s=300.0,
         points=np.array(
             [

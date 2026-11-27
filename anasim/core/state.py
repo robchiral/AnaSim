@@ -138,6 +138,7 @@ class SimulationState:
     esmolol_ce: float = 0.0
     labetalol_ce: float = 0.0
     glyco_ce: float = 0.0
+    neostigmine_ce: float = 0.0
 
     # Inhaled agents: concentrations in %; brain MAC is age-, pregnancy-, and temperature-adjusted, et_mac is age-adjusted only.
     fi_sevo: float = 0.0
@@ -308,6 +309,7 @@ class SimulationState:
     # Thoracic and embolic crisis telemetry.
     pneumothorax_pressure: float = 0.0  # Intrapleural tension above baseline, mmHg
     pneumothorax_decompressed: bool = False
+    pneumoperitoneum_iap: float = 0.0  # Intra-abdominal CO2 insufflation pressure, mmHg
     pe_obstruction: float = 0.0  # Pulmonary vascular obstruction from PE, 0-1
     vae_air_ml: float = 0.0  # Entrained intravascular air volume, mL
 

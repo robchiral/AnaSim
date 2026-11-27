@@ -131,13 +131,14 @@ class HemodynamicConfig:
     # interaction grow with propofol dose, as the higher-dose trials fall further.
     ec50_int_sv: float = 4.0
 
-    # Calibrated with Li PK in the Su circulation to de Keijzer 2026 infusion and
-    # Joachim 2024 bolus responses, with venous recruitment from Persichini 2012,
-    # Hamzaoui 2010, and Carelli 2026; these differ from either paper's MAP model.
-    nore_c50: float = 25.0
-    nore_emax_svr: float = 1.75
-    nore_emax_hr: float = 60.0
-    nore_emax_sv: float = 0.7
+    # Calibrated with Li PK in the Su circulation to de Keijzer 2026 infusion,
+    # Joachim 2024 bolus, and Poterman 2015 / Sjøen 2026 comparisons, with venous
+    # recruitment from Persichini 2012, Hamzaoui 2010, and Carelli 2026.
+    nore_c50: float = 25.0  # Beta-1 C50 (ng/mL)
+    nore_c50_alpha: float = 15.5  # Higher alpha-1 arterial affinity than beta-1
+    nore_emax_svr: float = 1.40
+    nore_emax_hr: float = 22.0
+    nore_emax_sv: float = 0.95
     nore_anesthetic_alpha_gain: float = 0.45
     nore_anesthetic_sv_gain: float = 2.0
     nore_venous_recruitment_fraction: float = 0.65
@@ -312,10 +313,10 @@ class HemodynamicConfig:
     phenyl_c50: float = 4.0
     phenyl_gamma: float = 1.5
     phenyl_emax_svr: float = 1.2
-    # Recruitment and afterload calibrated to Rebet 2016 under propofol-
-    # remifentanil: CI -19% at normal preload, -3% when preload-dependent.
+    # Recruitment and saturating afterload calibrated to Rebet 2016, Meng 2011,
+    # Kalmar 2018, and Poterman 2015 under propofol-remifentanil.
     phenyl_venous_recruitment_fraction: float = 0.6  # Share of baseline stressed volume
-    phenyl_afterload_gain: float = 0.5  # Acute SV loss per relative arterial resistance gain
+    phenyl_afterload_gain: float = 0.48  # Saturating acute SV loss per relative arterial resistance gain
 
     # Vasopressin (mU/L), from 0.01-0.07 U/min dosing and label PK.
     vaso_c50: float = 18.0
@@ -376,6 +377,15 @@ class HemodynamicConfig:
     glyco_gamma: float = 2.0
     glyco_emax_hr: float = 44.0
     glyco_brady_relief: float = 30.0  # bpm added to the 50 bpm sinus bradycardia rate
+
+    # Neostigmine cardiac muscarinic bradycardia (ng/mL; Mirakhur 1977; Blobner 2010):
+    # unopposed neostigmine slows HR strongly; co-administered glycopyrrolate
+    # (0.2 mg per 1 mg neostigmine) or atropine competitively blocks M2 slowing
+    # while accumulated ACh competes with antimuscarinic blockade at M2 receptors.
+    neostigmine_hr_c50: float = 28.0
+    neostigmine_hr_gamma: float = 1.5
+    neostigmine_emax_hr: float = 34.0
+    neostigmine_m2_shift_c50: float = 10.0  # ng/mL ACh competition shifting antimuscarinic C50
 
     # Hinderling 1985 II tissue-linked response and Hill slope. Potency and
     # maximum fit awake patients (Horiguchi and Nishikawa 2002) and Hinderling's

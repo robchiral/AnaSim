@@ -519,7 +519,11 @@ def _succinylcholine_phase2_exposure(engine: SimulationEngine) -> float:
 def nmba_twitch_fraction(engine: SimulationEngine) -> float:
     """Remaining peripheral T1 twitch fraction from neuromuscular blockers alone."""
     s = engine.state
-    roc_t1 = 1.0 - engine.tof_pd.twitch_block(s.roc_ce, s.mac_sevo, s.mac_n2o) if s.roc_ce > 1e-9 else 1.0
+    roc_t1 = (
+        1.0 - engine.tof_pd.twitch_block(s.roc_ce, s.mac_sevo, s.mac_n2o)
+        if (s.roc_ce > 1e-9 or s.neostigmine_ce > 1e-9)
+        else 1.0
+    )
     sux_t1 = succinylcholine_twitch_fraction(s.succinylcholine_ce) if s.succinylcholine_ce > 0.0 else 1.0
     exposure = _succinylcholine_phase2_exposure(engine)
     phase2_t1 = (
@@ -603,6 +607,7 @@ def sync_pk_state(engine: SimulationEngine) -> None:
             val = pk_state.c1
             if val or getattr(state, cp_field):
                 setattr(state, cp_field, float(val))
+    engine.tof_pd.neostigmine_ce = float(engine.pk["neostigmine"].state.ce_nmj)
     state.roc_ce = float(engine.tof_pd.ce)
     state.roc_cp = float(engine.pk["roc"].state.c1 + engine.tof_pd.bound_rocuronium(engine.pk["roc"].v1))
     coag_state = engine.coagulation.state
@@ -642,7 +647,11 @@ def sync_neuromuscular_state(engine: SimulationEngine) -> None:
     s = engine.state
     exposure = _succinylcholine_phase2_exposure(engine)
     phase2_fade = succinylcholine_phase2_tof_fraction(exposure) if exposure > 32.0 else 1.0
-    roc_tof = engine.tof_pd.compute_tof_from_ce(s.roc_ce, s.mac_sevo, s.mac_n2o) if s.roc_ce > 1e-9 else 100.0
+    roc_tof = (
+        engine.tof_pd.compute_tof_from_ce(s.roc_ce, s.mac_sevo, s.mac_n2o)
+        if (s.roc_ce > 1e-9 or s.neostigmine_ce > 1e-9)
+        else 100.0
+    )
     s.tof = float(roc_tof * phase2_fade)
     roc_t1 = 1.0 if roc_tof >= 100.0 else (roc_tof / 100.0) ** (1.0 / TOF_FADE_EXPONENT)
     sux_t1 = succinylcholine_twitch_fraction(s.succinylcholine_ce) if s.succinylcholine_ce > 0.0 else 1.0
@@ -818,6 +827,7 @@ def _project_respiratory_observables(engine: SimulationEngine, snapshot: Physiol
     state.two_hand_mask = bool(crisis.two_hand_mask)
     state.pneumothorax_pressure = float(engine.pneumothorax.pleural_pressure_mmhg)
     state.pneumothorax_decompressed = bool(engine.pneumothorax.decompressed)
+    state.pneumoperitoneum_iap = float(engine.pneumoperitoneum.iap_mmhg)
     state.pe_obstruction = float(engine.embolism.pe_obstruction)
     state.vae_air_ml = float(engine.embolism.vae_air_ml)
     nx = engine.neuraxial
@@ -1095,7 +1105,11 @@ def step_respiration(engine: SimulationEngine, dt: float, cardiac_output: float)
         exchange=cached_exchange,
         pulmonary_flow=engine.hemo.state.pulmonary_flow if engine.extracorporeal.is_active else None,
         extracorporeal=engine.extracorporeal if engine.extracorporeal.is_active else None,
-        embolic_alveolar_deadspace=engine.embolism.alveolar_deadspace,
+        embolic_alveolar_deadspace=1.0 - (
+            (1.0 - engine.embolism.alveolar_deadspace)
+            * (1.0 - engine.pneumoperitoneum.alveolar_deadspace)
+        ),
+        exogenous_co2_ml_min=engine.pneumoperitoneum.co2_absorption_ml_min(engine.resp.vco2),
     )
     if dt > 0.0:
         gas_vol = engine.resp.gas_volume_l
@@ -1175,6 +1189,7 @@ def _pit_paw_baseline(engine: SimulationEngine) -> float:
         hemo_cfg.pit_0
         + CMH2O_TO_MMHG * hemo_cfg.paw_transmission * trans_scale * engine.current_mean_paw
         + engine.pneumothorax.mediastinal_pit_mmhg
+        + engine.pneumoperitoneum.pit_add_mmhg
     )
 
 

@@ -1517,7 +1517,8 @@ class RespiratoryModel:
              exchange: PassiveExchangeTerms | None = None,
              pulmonary_flow: float | None = None,
              extracorporeal=None,
-             embolic_alveolar_deadspace: float = 0.0) -> RespState:
+             embolic_alveolar_deadspace: float = 0.0,
+             exogenous_co2_ml_min: float = 0.0) -> RespState:
         """Advance ventilatory control and blood-lung gas exchange by dt seconds."""
         transport = self.gas_transport
         blood_volume = self.baseline_blood_volume_ml if blood_volume_ml is None else blood_volume_ml
@@ -1835,8 +1836,9 @@ class RespiratoryModel:
             self.oxygen_supply_fraction = supply
             self.oxygen_deficit_l += (demand * (1.0 - supply)
                                       + lung_demand / self.rq * (1.0 - lung_supply)) * sub_dt / 60.0
-            production = systemic_production * supply
-            consumption = production / self.rq
+            metabolic_production = systemic_production * supply
+            production = metabolic_production + max(0.0, exogenous_co2_ml_min) / 1000.0
+            consumption = metabolic_production / self.rq
             pulm_co_arg = None if pulmonary_flow is None else pulm_co
             vv_pulm_co2 = 0.0
             vv_pulm_o2 = 0.0

@@ -56,6 +56,7 @@ from validation.vitaldb.vitaldb_replay import (  # noqa: E402
     run_hemo_cli,
     run_hemodynamic_replay,
     score_cuff_summary,
+    surgery_subgroup_table_lines,
     treated,
     window_medians,
 )
@@ -212,17 +213,10 @@ def report(data: dict[str, Any], settings: dict[str, Any]) -> str:
             "",
             "## Surgery",
             "",
-            f"Untreated patients, from 15 minutes after incision to the end of surgery: MAP error "
-            f"{mean_ci([r['maintenance']['map']['predicted'] - r['maintenance']['map']['observed'] for r in paired], rng)}"
-            f" mmHg; HR error "
-            f"{mean_ci([r['maintenance']['hr']['predicted'] - r['maintenance']['hr']['observed'] for r in paired], rng)}"
-            " bpm. Arterial MAP is used when recorded.",
+            "Untreated patients, from 15 minutes after incision to the end of surgery (arterial MAP used when recorded; "
+            "rise is from the last 10 minutes before incision to surgery):",
             "",
-            "MAP rise from the last 10 minutes before incision to surgery: recorded "
-            f"{mean_ci([r['maintenance']['map']['observed'] - r['before_incision']['map']['observed'] for r in paired], rng)}"
-            ", model "
-            f"{mean_ci([r['maintenance']['map']['predicted'] - r['before_incision']['map']['predicted'] for r in paired], rng)}"
-            " mmHg.",
+            *surgery_subgroup_table_lines(paired, rng, with_rise=True),
         ]
     lines += cv_grid_lines(data.get("cv_grid"))
     lines += report_footer(data["exclusions"])

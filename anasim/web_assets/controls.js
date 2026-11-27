@@ -60,6 +60,7 @@ const ISO_DRUG_CLASS = {
   morphine: "opioid",
   roc: "nmba",
   succinylcholine: "nmba",
+  neostigmine: "reversal",
   sugammadex: "reversal",
   phenyl: "vasopressor",
   ephedrine: "vasopressor",
@@ -111,7 +112,7 @@ const ventInputs = {
 const medicationGroups = [
   { name: "Anesthesia and sedation", keys: ["propofol", "midazolam", "ketamine", "etomidate"], open: true },
   { name: "Opioids", keys: ["fentanyl", "remi", "hydromorphone", "morphine"], open: true },
-  { name: "Neuromuscular blockade and reversal", keys: ["roc", "succinylcholine", "sugammadex"], open: true },
+  { name: "Neuromuscular blockade and reversal", keys: ["roc", "succinylcholine", "neostigmine", "sugammadex"], open: true },
   { name: "Vasopressors and inotropes", keys: ["phenyl", "ephedrine", "nore", "epi", "vaso", "dobu", "milri"], open: true },
   { name: "Heart rate and blood pressure", keys: ["atropine", "glyco", "esmolol", "labetalol"], open: true },
   { name: "Antiarrhythmics", keys: ["lidocaine", "amiodarone"], open: false },
@@ -121,6 +122,7 @@ const medicationGroups = [
 ];
 const neuraxialSearchText = "neuraxial anesthesia spinal epidural bupivacaine lidocaine block level";
 const medicationSearchTerms = {
+  neostigmine: "reversal anticholinesterase prostigmin",
   dantrolene: "malignant hyperthermia MH",
   lipid: "local anesthetic systemic toxicity LAST",
   calcium_chloride: "hypocalcemia hyperkalemia CaCl2",
@@ -1558,6 +1560,21 @@ export class Controls {
     if (ptx) {
       ptx.onclick = () => this.send("pneumothorax", { active: !this.state?.pneumothorax?.active });
     }
+    const pneumo = $("c-pneumoperitoneum");
+    const pneumoIap = $("c-pneumo-iap");
+    if (pneumo) {
+      pneumo.onclick = () => this.send("pneumoperitoneum", {
+        active: !this.state?.pneumoperitoneum?.active,
+        iap_mmhg: Number(pneumoIap?.value || 14),
+      });
+    }
+    if (pneumoIap) {
+      pneumoIap.onchange = () => {
+        if (this.state?.pneumoperitoneum?.active) {
+          this.send("pneumoperitoneum", { active: true, iap_mmhg: Number(pneumoIap.value) });
+        }
+      };
+    }
     const pe = $("c-pe");
     if (pe) {
       pe.onclick = () => this.send("pulmonary_embolism", { active: !this.state?.embolism?.pe_active });
@@ -1841,6 +1858,10 @@ export class Controls {
       setPressed($("c-pneumothorax"), Boolean(c.pneumothorax.active),
         c.pneumothorax.active ? "Stop pleural leak" : "Start tension pneumothorax");
     }
+    if ($("c-pneumoperitoneum") && c.pneumoperitoneum) {
+      const pActive = Boolean(c.pneumoperitoneum.active);
+      setPressed($("c-pneumoperitoneum"), pActive, pActive ? "Desufflate abdomen" : "Start CO₂ insufflation");
+    }
     if ($("c-pe") && c.embolism) {
       setPressed($("c-pe"), Boolean(c.embolism.pe_active),
         c.embolism.pe_active ? "Clear massive PE" : "Start massive PE");
@@ -1879,7 +1900,10 @@ export class Controls {
     if (c.pneumothorax?.active) airway.push("Tension PTX");
     this.syncEventSection("airway", airway);
     // The disabled profile select already names the active stimulation.
-    this.syncEventSection("stimulation", c.disturbance.active ? [$("c-disturbance").selectedOptions[0].text] : [], false);
+    const stim = [];
+    if (c.disturbance.active) stim.push($("c-disturbance").selectedOptions[0].text);
+    if (c.pneumoperitoneum?.active) stim.push(`IAP ${round(c.pneumoperitoneum.iap, 0)} mmHg`);
+    this.syncEventSection("stimulation", stim, false);
     this.syncEventSection("equipment", c.o2_connected ? [] : ["O₂ supply disconnected"]);
   }
 }

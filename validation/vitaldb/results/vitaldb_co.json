@@ -1,0 +1,5971 @@
+{
+  "settings": {
+    "generated": "2026-11-27",
+    "dt": 1.0,
+    "seed": 20261024,
+    "override": {}
+  },
+  "eligible": 286,
+  "rows": [
+    {
+      "caseid": 217,
+      "subjectid": 3523,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 52.0,
+      "bmi": 21.16,
+      "bsa": 1.646,
+      "before_incision": {
+        "map": {
+          "observed": 73.0,
+          "predicted": 63.55901466510147
+        },
+        "hr": {
+          "observed": 63.0,
+          "predicted": 62.52853403630363
+        },
+        "co": {
+          "observed": 4.1,
+          "predicted": 3.4880519897869453
+        },
+        "sv": {
+          "observed": 63.0,
+          "predicted": 55.768156323407055
+        },
+        "svr_wood": {
+          "observed": 17.804878048780488,
+          "predicted": 18.262274940016354
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 81.0,
+          "predicted": 71.88288624141985
+        },
+        "hr": {
+          "observed": 85.0,
+          "predicted": 56.37125017501176
+        },
+        "co": {
+          "observed": 5.8,
+          "predicted": 3.517698650597156
+        },
+        "sv": {
+          "observed": 68.0,
+          "predicted": 63.88549737895583
+        },
+        "svr_wood": {
+          "observed": 14.074074074074073,
+          "predicted": 20.34538118459606
+        }
+      }
+    },
+    {
+      "caseid": 263,
+      "subjectid": 5802,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 74.0,
+      "bmi": 23.05,
+      "bsa": 1.461,
+      "before_incision": {
+        "map": {
+          "observed": 68.0,
+          "predicted": 75.48882425512568
+        },
+        "hr": {
+          "observed": 65.0,
+          "predicted": 62.884966345488
+        },
+        "co": {
+          "observed": 3.0,
+          "predicted": 3.058820774131246
+        },
+        "sv": {
+          "observed": 47.0,
+          "predicted": 48.569553726790005
+        },
+        "svr_wood": {
+          "observed": 21.93548387096774,
+          "predicted": 24.67952497425992
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 118.0,
+          "predicted": 86.11650679671067
+        },
+        "hr": {
+          "observed": 74.0,
+          "predicted": 58.23115448264407
+        },
+        "co": {
+          "observed": 3.7,
+          "predicted": 2.914352989564651
+        },
+        "sv": {
+          "observed": 50.0,
+          "predicted": 50.04799150131221
+        },
+        "svr_wood": {
+          "observed": 32.16216216216216,
+          "predicted": 29.518680334342136
+        }
+      }
+    },
+    {
+      "caseid": 269,
+      "subjectid": 3421,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 52.0,
+      "bmi": 24.09,
+      "bsa": 1.695,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 85.0,
+          "predicted": 83.30397420387929
+        },
+        "hr": {
+          "observed": 79.0,
+          "predicted": 87.84798371353189
+        },
+        "co": {
+          "observed": 6.9,
+          "predicted": 3.8548617276905404
+        },
+        "sv": {
+          "observed": 86.0,
+          "predicted": 43.882595273148674
+        },
+        "svr_wood": {
+          "observed": 12.686567164179104,
+          "predicted": 21.610106947671756
+        }
+      }
+    },
+    {
+      "caseid": 321,
+      "subjectid": 5040,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 65.0,
+      "bmi": 22.86,
+      "bsa": 1.624,
+      "before_incision": {
+        "map": {
+          "observed": 64.0,
+          "predicted": 74.70674108483546
+        },
+        "hr": {
+          "observed": 78.0,
+          "predicted": 70.28225129665347
+        },
+        "co": {
+          "observed": 5.0,
+          "predicted": 3.4860860028936393
+        },
+        "sv": {
+          "observed": 62.0,
+          "predicted": 49.61350361069956
+        },
+        "svr_wood": {
+          "observed": 12.97872340425532,
+          "predicted": 21.42785783598097
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 76.0,
+          "predicted": 83.87326848123902
+        },
+        "hr": {
+          "observed": 79.0,
+          "predicted": 63.10751685132037
+        },
+        "co": {
+          "observed": 5.4,
+          "predicted": 3.3508887454974947
+        },
+        "sv": {
+          "observed": 68.0,
+          "predicted": 53.4054039654715
+        },
+        "svr_wood": {
+          "observed": 13.852901484480432,
+          "predicted": 24.82523675633243
+        }
+      }
+    },
+    {
+      "caseid": 343,
+      "subjectid": 966,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 61.0,
+      "bmi": 22.78,
+      "bsa": 1.622,
+      "before_incision": {
+        "map": {
+          "observed": 60.0,
+          "predicted": 82.89673387786966
+        },
+        "hr": {
+          "observed": 58.0,
+          "predicted": 61.383229314322286
+        },
+        "co": {
+          "observed": 3.4,
+          "predicted": 3.479454072538064
+        },
+        "sv": {
+          "observed": 57.0,
+          "predicted": 56.40574608987638
+        },
+        "svr_wood": {
+          "observed": 17.87878787878788,
+          "predicted": 23.8434475231382
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 89.0,
+          "predicted": 88.75171941413043
+        },
+        "hr": {
+          "observed": 60.0,
+          "predicted": 54.542666772096595
+        },
+        "co": {
+          "observed": 3.0,
+          "predicted": 3.178715634166486
+        },
+        "sv": {
+          "observed": 51.0,
+          "predicted": 58.279355066332585
+        },
+        "svr_wood": {
+          "observed": 30.511508951406654,
+          "predicted": 27.57481580739188
+        }
+      }
+    },
+    {
+      "caseid": 505,
+      "subjectid": 5324,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 78.0,
+      "bmi": 25.27,
+      "bsa": 1.72,
+      "before_incision": {
+        "map": {
+          "observed": 63.5,
+          "predicted": 71.80432144796688
+        },
+        "hr": {
+          "observed": 77.0,
+          "predicted": 64.21270363643961
+        },
+        "co": {
+          "observed": 3.8,
+          "predicted": 3.642418394228626
+        },
+        "sv": {
+          "observed": 50.0,
+          "predicted": 56.70846022766148
+        },
+        "svr_wood": {
+          "observed": 16.666666666666668,
+          "predicted": 19.720691544914267
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 70.0,
+          "predicted": 81.52384490867428
+        },
+        "hr": {
+          "observed": 83.0,
+          "predicted": 60.93164779411624
+        },
+        "co": {
+          "observed": 4.0,
+          "predicted": 3.5783769274889776
+        },
+        "sv": {
+          "observed": 48.0,
+          "predicted": 58.7277144094779
+        },
+        "svr_wood": {
+          "observed": 17.25,
+          "predicted": 22.782352605408327
+        }
+      }
+    },
+    {
+      "caseid": 610,
+      "subjectid": 5590,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 64.0,
+      "bmi": 23.02,
+      "bsa": 1.618,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 93.0,
+          "predicted": 84.57283621493396
+        },
+        "hr": {
+          "observed": 77.0,
+          "predicted": 80.14491296476677
+        },
+        "co": {
+          "observed": 4.5,
+          "predicted": 3.2506936907879296
+        },
+        "sv": {
+          "observed": 58.0,
+          "predicted": 40.62740397016513
+        },
+        "svr_wood": {
+          "observed": 20.217391304347828,
+          "predicted": 26.018402739179148
+        }
+      }
+    },
+    {
+      "caseid": 1034,
+      "subjectid": 2804,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 56.0,
+      "bmi": 19.5,
+      "bsa": 1.504,
+      "before_incision": {
+        "map": {
+          "observed": 74.0,
+          "predicted": 83.87883842985524
+        },
+        "hr": {
+          "observed": 69.0,
+          "predicted": 92.94094779736255
+        },
+        "co": {
+          "observed": 3.8,
+          "predicted": 3.2351554630623953
+        },
+        "sv": {
+          "observed": 55.0,
+          "predicted": 34.81434219783238
+        },
+        "svr_wood": {
+          "observed": 20.555555555555554,
+          "predicted": 25.927297586637646
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 99.0,
+          "predicted": 94.82699227016026
+        },
+        "hr": {
+          "observed": 62.0,
+          "predicted": 86.24921370807205
+        },
+        "co": {
+          "observed": 3.9,
+          "predicted": 3.162155794604048
+        },
+        "sv": {
+          "observed": 63.0,
+          "predicted": 36.68958878012511
+        },
+        "svr_wood": {
+          "observed": 24.75,
+          "predicted": 29.995842616047067
+        }
+      }
+    },
+    {
+      "caseid": 1051,
+      "subjectid": 3701,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 68.0,
+      "bmi": 25.0,
+      "bsa": 1.667,
+      "before_incision": {
+        "map": {
+          "observed": 74.0,
+          "predicted": 77.83385961847233
+        },
+        "hr": {
+          "observed": 53.0,
+          "predicted": 67.43659035217533
+        },
+        "co": {
+          "observed": 3.3,
+          "predicted": 3.5653188832350837
+        },
+        "sv": {
+          "observed": 61.0,
+          "predicted": 52.86917642868663
+        },
+        "svr_wood": {
+          "observed": 22.35294117647059,
+          "predicted": 21.83082699799074
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 91.5,
+          "predicted": 88.30522254549149
+        },
+        "hr": {
+          "observed": 75.0,
+          "predicted": 61.404825745091784
+        },
+        "co": {
+          "observed": 3.3,
+          "predicted": 3.3158622094022046
+        },
+        "sv": {
+          "observed": 44.0,
+          "predicted": 53.99999642504797
+        },
+        "svr_wood": {
+          "observed": 27.575757575757578,
+          "predicted": 26.63781992959437
+        }
+      }
+    },
+    {
+      "caseid": 1219,
+      "subjectid": 5003,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 62.0,
+      "bmi": 25.52,
+      "bsa": 1.6,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 81.0,
+          "predicted": 86.00808141819095
+        },
+        "hr": {
+          "observed": 60.0,
+          "predicted": 47.978743541104244
+        },
+        "co": {
+          "observed": 3.4,
+          "predicted": 3.358318873125743
+        },
+        "sv": {
+          "observed": 55.0,
+          "predicted": 69.51888536263547
+        },
+        "svr_wood": {
+          "observed": 24.242424242424242,
+          "predicted": 25.84138886701424
+        }
+      }
+    },
+    {
+      "caseid": 1290,
+      "subjectid": 5084,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 61.0,
+      "bmi": 21.2,
+      "bsa": 1.744,
+      "before_incision": {
+        "map": {
+          "observed": 81.0,
+          "predicted": 85.07730902210469
+        },
+        "hr": {
+          "observed": 52.0,
+          "predicted": 59.740474142269605
+        },
+        "co": {
+          "observed": 3.8,
+          "predicted": 3.5650245748604488
+        },
+        "sv": {
+          "observed": 68.0,
+          "predicted": 59.65345560475207
+        },
+        "svr_wood": {
+          "observed": 21.08108108108108,
+          "predicted": 23.798287988590225
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 92.0,
+          "predicted": 94.83001271280932
+        },
+        "hr": {
+          "observed": 65.0,
+          "predicted": 52.63752048031484
+        },
+        "co": {
+          "observed": 5.3,
+          "predicted": 3.749893715842439
+        },
+        "sv": {
+          "observed": 81.0,
+          "predicted": 71.89439683286618
+        },
+        "svr_wood": {
+          "observed": 17.758620689655174,
+          "predicted": 25.35293384004679
+        }
+      }
+    },
+    {
+      "caseid": 1454,
+      "subjectid": 184,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 45.0,
+      "bmi": 24.45,
+      "bsa": 1.9,
+      "before_incision": {
+        "map": {
+          "observed": 88.0,
+          "predicted": 80.91725055856621
+        },
+        "hr": {
+          "observed": 74.0,
+          "predicted": 89.31988682838076
+        },
+        "co": {
+          "observed": 6.5,
+          "predicted": 4.34821928561786
+        },
+        "sv": {
+          "observed": 87.0,
+          "predicted": 48.691784974450464
+        },
+        "svr_wood": {
+          "observed": 13.636363636363637,
+          "predicted": 18.606377599097563
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 84.0,
+          "predicted": 84.83485469047892
+        },
+        "hr": {
+          "observed": 94.0,
+          "predicted": 75.68093744616414
+        },
+        "co": {
+          "observed": 5.8,
+          "predicted": 4.170389357200335
+        },
+        "sv": {
+          "observed": 62.0,
+          "predicted": 55.17542750012219
+        },
+        "svr_wood": {
+          "observed": 14.0,
+          "predicted": 20.554477581486623
+        }
+      }
+    },
+    {
+      "caseid": 1478,
+      "subjectid": 2110,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 62.0,
+      "bmi": 24.95,
+      "bsa": 1.879,
+      "before_incision": {
+        "map": {
+          "observed": 65.0,
+          "predicted": 65.63457844942421
+        },
+        "hr": {
+          "observed": 75.0,
+          "predicted": 69.96393506342324
+        },
+        "co": {
+          "observed": 4.6,
+          "predicted": 3.903558052273741
+        },
+        "sv": {
+          "observed": 60.0,
+          "predicted": 55.99058677412755
+        },
+        "svr_wood": {
+          "observed": 14.130434782608697,
+          "predicted": 16.760659061055144
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 86.0,
+          "predicted": 73.23799910783985
+        },
+        "hr": {
+          "observed": 72.0,
+          "predicted": 65.5345428665399
+        },
+        "co": {
+          "observed": 4.2,
+          "predicted": 4.114557113973999
+        },
+        "sv": {
+          "observed": 57.0,
+          "predicted": 63.11794868647374
+        },
+        "svr_wood": {
+          "observed": 20.952380952380953,
+          "predicted": 17.741838715967834
+        }
+      }
+    },
+    {
+      "caseid": 1826,
+      "subjectid": 5461,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 64.0,
+      "bmi": 20.67,
+      "bsa": 1.657,
+      "before_incision": {
+        "map": {
+          "observed": 66.0,
+          "predicted": 62.77202121486151
+        },
+        "hr": {
+          "observed": 56.0,
+          "predicted": 65.96667886015501
+        },
+        "co": {
+          "observed": 3.6,
+          "predicted": 3.394951451391177
+        },
+        "sv": {
+          "observed": 65.0,
+          "predicted": 51.44154457277705
+        },
+        "svr_wood": {
+          "observed": 17.22222222222222,
+          "predicted": 18.49810886023976
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 71.0,
+          "predicted": 69.32267526529452
+        },
+        "hr": {
+          "observed": 59.0,
+          "predicted": 62.58353564418345
+        },
+        "co": {
+          "observed": 7.3,
+          "predicted": 3.31219204423746
+        },
+        "sv": {
+          "observed": 124.0,
+          "predicted": 52.921223581483865
+        },
+        "svr_wood": {
+          "observed": 9.857142857142858,
+          "predicted": 20.955512559204948
+        }
+      }
+    },
+    {
+      "caseid": 1865,
+      "subjectid": 3066,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "age": 78.0,
+      "bmi": 21.14,
+      "bsa": 1.617,
+      "before_incision": {
+        "map": {
+          "observed": 67.0,
+          "predicted": 54.37747922902201
+        },
+        "hr": {
+          "observed": 59.0,
+          "predicted": 55.445868952175175
+        },
+        "co": {
+          "observed": 6.6,
+          "predicted": 3.2342353734835263
+        },
+        "sv": {
+          "observed": 110.5,
+          "predicted": 58.33138336540718
+        },
+        "svr_wood": {
+          "observed": 10.151515151515152,
+          "predicted": 16.813086625694595
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 72.0,
+          "predicted": 63.03792548563021
+        },
+        "hr": {
+          "observed": 91.0,
+          "predicted": 54.970284509006405
+        },
+        "co": {
+          "observed": 5.6,
+          "predicted": 3.213841868379064
+        },
+        "sv": {
+          "observed": 60.0,
+          "predicted": 58.45490717895153
+        },
+        "svr_wood": {
+          "observed": 13.225806451612902,
+          "predicted": 19.631722935801108
+        }
+      }
+    },
+    {
+      "caseid": 1935,
+      "subjectid": 3897,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 78.0,
+      "bmi": 23.76,
+      "bsa": 1.582,
+      "before_incision": {
+        "map": {
+          "observed": 63.0,
+          "predicted": 62.19421958091753
+        },
+        "hr": {
+          "observed": 62.0,
+          "predicted": 81.19247398598405
+        },
+        "co": {
+          "observed": 3.4,
+          "predicted": 3.2517659084832866
+        },
+        "sv": {
+          "observed": 55.0,
+          "predicted": 40.04835067785018
+        },
+        "svr_wood": {
+          "observed": 18.529411764705884,
+          "predicted": 19.05551928179686
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 84.0,
+          "predicted": 71.08192172203344
+        },
+        "hr": {
+          "observed": 72.0,
+          "predicted": 68.59635549862053
+        },
+        "co": {
+          "observed": 3.5,
+          "predicted": 3.4326643976127955
+        },
+        "sv": {
+          "observed": 48.0,
+          "predicted": 49.79818028064786
+        },
+        "svr_wood": {
+          "observed": 24.411764705882355,
+          "predicted": 21.01576485837649
+        }
+      }
+    },
+    {
+      "caseid": 1949,
+      "subjectid": 3052,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 59.0,
+      "bmi": 19.09,
+      "bsa": 1.58,
+      "before_incision": {
+        "map": {
+          "observed": 70.0,
+          "predicted": 64.6994391008439
+        },
+        "hr": {
+          "observed": 72.0,
+          "predicted": 53.480779204448716
+        },
+        "co": {
+          "observed": 4.3,
+          "predicted": 3.2433383609421362
+        },
+        "sv": {
+          "observed": 60.0,
+          "predicted": 60.64492019517875
+        },
+        "svr_wood": {
+          "observed": 16.046511627906977,
+          "predicted": 19.904491480973547
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 83.0,
+          "predicted": 74.35883868321238
+        },
+        "hr": {
+          "observed": 76.0,
+          "predicted": 49.21065753097163
+        },
+        "co": {
+          "observed": 5.5,
+          "predicted": 3.3569196772106915
+        },
+        "sv": {
+          "observed": 71.0,
+          "predicted": 68.6528510075558
+        },
+        "svr_wood": {
+          "observed": 14.999999999999998,
+          "predicted": 22.058988194436324
+        }
+      }
+    },
+    {
+      "caseid": 2040,
+      "subjectid": 3968,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 82.0,
+      "bmi": 25.8,
+      "bsa": 1.73,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 84.0,
+          "predicted": 55.335515970490604
+        },
+        "hr": {
+          "observed": 104.0,
+          "predicted": 55.01180691764241
+        },
+        "co": {
+          "observed": 5.6,
+          "predicted": 3.426672371271484
+        },
+        "sv": {
+          "observed": 53.0,
+          "predicted": 62.52739901970235
+        },
+        "svr_wood": {
+          "observed": 15.245901639344263,
+          "predicted": 16.431289149285067
+        }
+      }
+    },
+    {
+      "caseid": 2139,
+      "subjectid": 4806,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "3",
+      "hypertensive": false,
+      "age": 40.0,
+      "bmi": 21.97,
+      "bsa": 1.612,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 79.0,
+          "predicted": 84.71682488404198
+        },
+        "hr": {
+          "observed": 76.0,
+          "predicted": 58.60572792072976
+        },
+        "co": {
+          "observed": 4.2,
+          "predicted": 3.4107125707705412
+        },
+        "sv": {
+          "observed": 56.0,
+          "predicted": 58.17914479671957
+        },
+        "svr_wood": {
+          "observed": 19.428571428571427,
+          "predicted": 24.81338059822739
+        }
+      }
+    },
+    {
+      "caseid": 2157,
+      "subjectid": 5654,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 42.0,
+      "bmi": 19.58,
+      "bsa": 1.778,
+      "before_incision": {
+        "map": {
+          "observed": 85.5,
+          "predicted": 76.44737572882858
+        },
+        "hr": {
+          "observed": 59.0,
+          "predicted": 66.16915103790487
+        },
+        "co": {
+          "observed": 7.1,
+          "predicted": 3.869952048209583
+        },
+        "sv": {
+          "observed": 118.0,
+          "predicted": 58.357536113276275
+        },
+        "svr_wood": {
+          "observed": 12.0,
+          "predicted": 19.761558299241933
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 96.0,
+          "predicted": 84.65111120333047
+        },
+        "hr": {
+          "observed": 58.0,
+          "predicted": 62.96404482172971
+        },
+        "co": {
+          "observed": 6.5,
+          "predicted": 3.7276555184744935
+        },
+        "sv": {
+          "observed": 112.0,
+          "predicted": 59.07666768589907
+        },
+        "svr_wood": {
+          "observed": 14.776119402985074,
+          "predicted": 22.688327146567033
+        }
+      }
+    },
+    {
+      "caseid": 2224,
+      "subjectid": 4889,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 83.0,
+      "bmi": 20.84,
+      "bsa": 1.569,
+      "before_incision": {
+        "map": {
+          "observed": 72.0,
+          "predicted": 65.40681270768113
+        },
+        "hr": {
+          "observed": 51.0,
+          "predicted": 48.64164652347169
+        },
+        "co": {
+          "observed": 4.5,
+          "predicted": 3.2756181220587552
+        },
+        "sv": {
+          "observed": 87.0,
+          "predicted": 67.30334660277624
+        },
+        "svr_wood": {
+          "observed": 16.0,
+          "predicted": 19.918481971201867
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 77.0,
+          "predicted": 71.3497324129795
+        },
+        "hr": {
+          "observed": 59.0,
+          "predicted": 45.87993410198303
+        },
+        "co": {
+          "observed": 3.6,
+          "predicted": 3.049843110918327
+        },
+        "sv": {
+          "observed": 60.0,
+          "predicted": 66.46739402640108
+        },
+        "svr_wood": {
+          "observed": 21.38888888888889,
+          "predicted": 23.378240337698493
+        }
+      }
+    },
+    {
+      "caseid": 2282,
+      "subjectid": 4788,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "3",
+      "hypertensive": false,
+      "age": 56.0,
+      "bmi": 22.14,
+      "bsa": 1.673,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 92.0,
+          "predicted": 73.18336024431575
+        },
+        "hr": {
+          "observed": 82.0,
+          "predicted": 76.23208761667952
+        },
+        "co": {
+          "observed": 6.4,
+          "predicted": 3.4588093835495193
+        },
+        "sv": {
+          "observed": 78.0,
+          "predicted": 45.34567386407854
+        },
+        "svr_wood": {
+          "observed": 13.880597014925373,
+          "predicted": 21.049588328878777
+        }
+      }
+    },
+    {
+      "caseid": 2372,
+      "subjectid": 3339,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "3",
+      "hypertensive": true,
+      "age": 67.0,
+      "bmi": 20.39,
+      "bsa": 1.684,
+      "before_incision": {
+        "map": {
+          "observed": 65.0,
+          "predicted": 83.70826798207388
+        },
+        "hr": {
+          "observed": 69.0,
+          "predicted": 78.95816940119789
+        },
+        "co": {
+          "observed": 5.7,
+          "predicted": 3.591671795032357
+        },
+        "sv": {
+          "observed": 83.0,
+          "predicted": 45.48828480358594
+        },
+        "svr_wood": {
+          "observed": 11.454545454545455,
+          "predicted": 23.30210970390447
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 77.0,
+          "predicted": 99.17463965121198
+        },
+        "hr": {
+          "observed": 68.0,
+          "predicted": 74.94117034633268
+        },
+        "co": {
+          "observed": 5.6,
+          "predicted": 3.8459227900596558
+        },
+        "sv": {
+          "observed": 85.0,
+          "predicted": 51.30893017001425
+        },
+        "svr_wood": {
+          "observed": 13.666666666666666,
+          "predicted": 25.678891616884677
+        }
+      }
+    },
+    {
+      "caseid": 2425,
+      "subjectid": 5528,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 74.0,
+      "bmi": 28.31,
+      "bsa": 1.6,
+      "before_incision": {
+        "map": {
+          "observed": 73.0,
+          "predicted": 80.71700063300068
+        },
+        "hr": {
+          "observed": 67.0,
+          "predicted": 74.7747543063544
+        },
+        "co": {
+          "observed": 4.1,
+          "predicted": 3.277700098832306
+        },
+        "sv": {
+          "observed": 61.0,
+          "predicted": 43.83427785981125
+        },
+        "svr_wood": {
+          "observed": 17.902439024390244,
+          "predicted": 24.62610929864006
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 86.0,
+          "predicted": 89.14218986406883
+        },
+        "hr": {
+          "observed": 69.0,
+          "predicted": 69.77198492097747
+        },
+        "co": {
+          "observed": 4.6,
+          "predicted": 3.1497394804187087
+        },
+        "sv": {
+          "observed": 65.0,
+          "predicted": 45.218849866617475
+        },
+        "svr_wood": {
+          "observed": 18.91304347826087,
+          "predicted": 28.288273325067337
+        }
+      }
+    },
+    {
+      "caseid": 2511,
+      "subjectid": 3251,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 47.0,
+      "bmi": 21.5,
+      "bsa": 1.836,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 101.0,
+          "predicted": 84.07848074598446
+        },
+        "hr": {
+          "observed": 62.0,
+          "predicted": 68.93800046837286
+        },
+        "co": {
+          "observed": 5.8,
+          "predicted": 3.9703938084071115
+        },
+        "sv": {
+          "observed": 94.0,
+          "predicted": 57.593625702942255
+        },
+        "svr_wood": {
+          "observed": 17.413793103448278,
+          "predicted": 21.177692360796378
+        }
+      }
+    },
+    {
+      "caseid": 2566,
+      "subjectid": 3540,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 47.0,
+      "bmi": 24.97,
+      "bsa": 1.84,
+      "before_incision": {
+        "map": {
+          "observed": 70.0,
+          "predicted": 68.82799764496215
+        },
+        "hr": {
+          "observed": 53.0,
+          "predicted": 63.39628170784277
+        },
+        "co": {
+          "observed": 7.2,
+          "predicted": 4.154215823452238
+        },
+        "sv": {
+          "observed": 135.0,
+          "predicted": 65.71387967402897
+        },
+        "svr_wood": {
+          "observed": 9.714285714285714,
+          "predicted": 16.544671027296154
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 81.0,
+          "predicted": 70.78837179315826
+        },
+        "hr": {
+          "observed": 68.0,
+          "predicted": 57.04284406918503
+        },
+        "co": {
+          "observed": 7.8,
+          "predicted": 3.973007253278403
+        },
+        "sv": {
+          "observed": 113.0,
+          "predicted": 69.91987049752714
+        },
+        "svr_wood": {
+          "observed": 10.491803278688526,
+          "predicted": 17.777969018072383
+        }
+      }
+    },
+    {
+      "caseid": 2609,
+      "subjectid": 4463,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 63.0,
+      "bmi": 25.59,
+      "bsa": 1.641,
+      "before_incision": {
+        "map": {
+          "observed": 75.0,
+          "predicted": 76.49535077158346
+        },
+        "hr": {
+          "observed": 53.0,
+          "predicted": 67.6168010350024
+        },
+        "co": {
+          "observed": 4.4,
+          "predicted": 3.3904760524171147
+        },
+        "sv": {
+          "observed": 83.0,
+          "predicted": 50.142472695634986
+        },
+        "svr_wood": {
+          "observed": 17.27272727272727,
+          "predicted": 22.561831904711116
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 79.0,
+          "predicted": 83.94119519628943
+        },
+        "hr": {
+          "observed": 60.0,
+          "predicted": 58.56771785245508
+        },
+        "co": {
+          "observed": 4.2,
+          "predicted": 3.333459087752497
+        },
+        "sv": {
+          "observed": 69.0,
+          "predicted": 57.12325537936008
+        },
+        "svr_wood": {
+          "observed": 18.409090909090907,
+          "predicted": 25.26891949855358
+        }
+      }
+    },
+    {
+      "caseid": 2635,
+      "subjectid": 521,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 40.0,
+      "bmi": 26.18,
+      "bsa": 1.897,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 67.0,
+          "predicted": 81.83696119716647
+        },
+        "hr": {
+          "observed": 62.0,
+          "predicted": 73.74694301956937
+        },
+        "co": {
+          "observed": 5.0,
+          "predicted": 4.0434040814231516
+        },
+        "sv": {
+          "observed": 69.0,
+          "predicted": 54.789726428378046
+        },
+        "svr_wood": {
+          "observed": 13.2,
+          "predicted": 20.319827434210936
+        }
+      }
+    },
+    {
+      "caseid": 2637,
+      "subjectid": 4520,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 27.0,
+      "bmi": 24.22,
+      "bsa": 1.765,
+      "before_incision": {
+        "map": {
+          "observed": 86.0,
+          "predicted": 105.31002507543482
+        },
+        "hr": {
+          "observed": 81.0,
+          "predicted": 112.20343484709154
+        },
+        "co": {
+          "observed": 3.7,
+          "predicted": 3.963437960738069
+        },
+        "sv": {
+          "observed": 45.0,
+          "predicted": 35.323682633937935
+        },
+        "svr_wood": {
+          "observed": 23.333333333333332,
+          "predicted": 26.570373039138037
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 101.0,
+          "predicted": 119.3027349767691
+        },
+        "hr": {
+          "observed": 83.0,
+          "predicted": 102.76633664113905
+        },
+        "co": {
+          "observed": 4.3,
+          "predicted": 3.998838843127072
+        },
+        "sv": {
+          "observed": 52.0,
+          "predicted": 38.755871642649396
+        },
+        "svr_wood": {
+          "observed": 22.727272727272727,
+          "predicted": 29.81166372594666
+        }
+      }
+    },
+    {
+      "caseid": 2699,
+      "subjectid": 5251,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "age": 51.0,
+      "bmi": 20.67,
+      "bsa": 1.715,
+      "before_incision": {
+        "map": {
+          "observed": 73.0,
+          "predicted": 63.57745382831301
+        },
+        "hr": {
+          "observed": 70.0,
+          "predicted": 71.59881546598372
+        },
+        "co": {
+          "observed": 3.6,
+          "predicted": 3.6374846666331555
+        },
+        "sv": {
+          "observed": 51.0,
+          "predicted": 50.83333491864798
+        },
+        "svr_wood": {
+          "observed": 20.555555555555554,
+          "predicted": 17.478411499988564
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 97.0,
+          "predicted": 65.97348389681622
+        },
+        "hr": {
+          "observed": 66.0,
+          "predicted": 60.13248913014702
+        },
+        "co": {
+          "observed": 3.4,
+          "predicted": 3.6050584616055956
+        },
+        "sv": {
+          "observed": 51.0,
+          "predicted": 60.326215345279955
+        },
+        "svr_wood": {
+          "observed": 29.375,
+          "predicted": 18.34116234693088
+        }
+      }
+    },
+    {
+      "caseid": 2735,
+      "subjectid": 4649,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 79.0,
+      "bmi": 23.06,
+      "bsa": 1.644,
+      "before_incision": {
+        "map": {
+          "observed": 67.0,
+          "predicted": 69.45816701865405
+        },
+        "hr": {
+          "observed": 43.0,
+          "predicted": 66.42754172826567
+        },
+        "co": {
+          "observed": 3.4,
+          "predicted": 3.4321836175728695
+        },
+        "sv": {
+          "observed": 76.0,
+          "predicted": 51.630330591503665
+        },
+        "svr_wood": {
+          "observed": 20.0,
+          "predicted": 20.28945796998945
+        },
+        "ev1000_svr_dyn": {
+          "observed": 1411.0,
+          "predicted": 1623.1564818203838
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 91.5,
+          "predicted": 94.02256017438995
+        },
+        "hr": {
+          "observed": 62.0,
+          "predicted": 70.24307290032988
+        },
+        "co": {
+          "observed": 3.9,
+          "predicted": 3.6805152483769827
+        },
+        "sv": {
+          "observed": 61.0,
+          "predicted": 52.316222643082554
+        },
+        "svr_wood": {
+          "observed": 23.25,
+          "predicted": 25.371203257992292
+        },
+        "ev1000_svr_dyn": {
+          "observed": 1541.0,
+          "predicted": 2028.6898128328376
+        }
+      }
+    },
+    {
+      "caseid": 2746,
+      "subjectid": 2990,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "age": 83.0,
+      "bmi": 29.14,
+      "bsa": 1.675,
+      "before_incision": {
+        "map": {
+          "observed": 61.0,
+          "predicted": 64.26185035881393
+        },
+        "hr": {
+          "observed": 81.0,
+          "predicted": 71.5668617171986
+        },
+        "co": {
+          "observed": 3.8,
+          "predicted": 3.3200848115042083
+        },
+        "sv": {
+          "observed": 47.0,
+          "predicted": 46.38250415715349
+        },
+        "svr_wood": {
+          "observed": 15.789473684210527,
+          "predicted": 19.347453491578804
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 72.0,
+          "predicted": 91.11576436228258
+        },
+        "hr": {
+          "observed": 82.0,
+          "predicted": 76.02320290955299
+        },
+        "co": {
+          "observed": 3.0,
+          "predicted": 3.76327049447327
+        },
+        "sv": {
+          "observed": 36.0,
+          "predicted": 49.5015914864387
+        },
+        "svr_wood": {
+          "observed": 24.0,
+          "predicted": 24.2118562819481
+        }
+      }
+    },
+    {
+      "caseid": 2895,
+      "subjectid": 203,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 67.0,
+      "bmi": 26.68,
+      "bsa": 1.615,
+      "before_incision": {
+        "map": {
+          "observed": 84.0,
+          "predicted": 90.82919689323187
+        },
+        "hr": {
+          "observed": 68.0,
+          "predicted": 78.4914093622205
+        },
+        "co": {
+          "observed": 3.3,
+          "predicted": 3.3765720859515396
+        },
+        "sv": {
+          "observed": 49.0,
+          "predicted": 43.018352456136796
+        },
+        "svr_wood": {
+          "observed": 25.142857142857142,
+          "predicted": 26.89982458506465
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 95.0,
+          "predicted": 101.0029514951027
+        },
+        "hr": {
+          "observed": 68.0,
+          "predicted": 75.76915364495898
+        },
+        "co": {
+          "observed": 3.3,
+          "predicted": 3.2120298116053476
+        },
+        "sv": {
+          "observed": 49.0,
+          "predicted": 42.49377021159586
+        },
+        "svr_wood": {
+          "observed": 28.640552995391705,
+          "predicted": 31.304456046243473
+        }
+      }
+    },
+    {
+      "caseid": 2906,
+      "subjectid": 5027,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 56.0,
+      "bmi": 23.96,
+      "bsa": 1.62,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 72.0,
+          "predicted": 81.25994934319348
+        },
+        "hr": {
+          "observed": 76.0,
+          "predicted": 49.1314878699917
+        },
+        "co": {
+          "observed": 4.0,
+          "predicted": 3.418980819370981
+        },
+        "sv": {
+          "observed": 51.0,
+          "predicted": 69.43615398396479
+        },
+        "svr_wood": {
+          "observed": 18.0,
+          "predicted": 23.76906311055685
+        }
+      }
+    },
+    {
+      "caseid": 2914,
+      "subjectid": 369,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 55.0,
+      "bmi": 22.39,
+      "bsa": 1.741,
+      "before_incision": {
+        "map": {
+          "observed": 71.0,
+          "predicted": 71.47712335376374
+        },
+        "hr": {
+          "observed": 63.0,
+          "predicted": 63.388129525977654
+        },
+        "co": {
+          "observed": 4.6,
+          "predicted": 3.9319527731322235
+        },
+        "sv": {
+          "observed": 72.0,
+          "predicted": 62.04510222385156
+        },
+        "svr_wood": {
+          "observed": 14.782608695652176,
+          "predicted": 18.180874756593443
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 88.0,
+          "predicted": 79.85150785083994
+        },
+        "hr": {
+          "observed": 66.0,
+          "predicted": 56.70680743079608
+        },
+        "co": {
+          "observed": 6.3,
+          "predicted": 3.765855056899305
+        },
+        "sv": {
+          "observed": 94.0,
+          "predicted": 66.31560664255994
+        },
+        "svr_wood": {
+          "observed": 14.193548387096774,
+          "predicted": 21.2066058934424
+        }
+      }
+    },
+    {
+      "caseid": 2935,
+      "subjectid": 6009,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 80.0,
+      "bmi": 24.4,
+      "bsa": 1.717,
+      "before_incision": {
+        "map": {
+          "observed": 60.0,
+          "predicted": 71.67486203915759
+        },
+        "hr": {
+          "observed": 52.0,
+          "predicted": 49.23653356630918
+        },
+        "co": {
+          "observed": 3.1,
+          "predicted": 3.1898850541787347
+        },
+        "sv": {
+          "observed": 61.0,
+          "predicted": 64.7937350154058
+        },
+        "svr_wood": {
+          "observed": 19.285714285714285,
+          "predicted": 22.464232539044275
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 76.0,
+          "predicted": 84.68818700468974
+        },
+        "hr": {
+          "observed": 56.0,
+          "predicted": 42.982084837037654
+        },
+        "co": {
+          "observed": 3.8,
+          "predicted": 3.511391284099614
+        },
+        "sv": {
+          "observed": 66.0,
+          "predicted": 82.38820846070438
+        },
+        "svr_wood": {
+          "observed": 20.285714285714285,
+          "predicted": 24.08383251594118
+        }
+      }
+    },
+    {
+      "caseid": 2998,
+      "subjectid": 2893,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 32.0,
+      "bmi": 22.17,
+      "bsa": 1.609,
+      "before_incision": {
+        "map": {
+          "observed": 79.0,
+          "predicted": 64.38722199852394
+        },
+        "hr": {
+          "observed": 57.0,
+          "predicted": 78.60092385427042
+        },
+        "co": {
+          "observed": 3.45,
+          "predicted": 3.680539111484178
+        },
+        "sv": {
+          "observed": 60.0,
+          "predicted": 46.82363930809901
+        },
+        "svr_wood": {
+          "observed": 22.899159663865547,
+          "predicted": 17.49470598337801
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 87.0,
+          "predicted": 75.04588247190178
+        },
+        "hr": {
+          "observed": 51.0,
+          "predicted": 77.7344845464871
+        },
+        "co": {
+          "observed": 3.2,
+          "predicted": 3.6880010937695724
+        },
+        "sv": {
+          "observed": 63.0,
+          "predicted": 47.44622713811124
+        },
+        "svr_wood": {
+          "observed": 27.272727272727273,
+          "predicted": 20.348660572010324
+        }
+      }
+    },
+    {
+      "caseid": 3015,
+      "subjectid": 1218,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "age": 56.0,
+      "bmi": 21.19,
+      "bsa": 1.667,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 79.0,
+          "predicted": 84.71469094661293
+        },
+        "hr": {
+          "observed": 60.0,
+          "predicted": 61.518484425336744
+        },
+        "co": {
+          "observed": 3.9,
+          "predicted": 3.534743012389193
+        },
+        "sv": {
+          "observed": 63.0,
+          "predicted": 57.4417555463761
+        },
+        "svr_wood": {
+          "observed": 20.263157894736842,
+          "predicted": 23.972402859649137
+        }
+      }
+    },
+    {
+      "caseid": 3050,
+      "subjectid": 5613,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 67.0,
+      "bmi": 25.78,
+      "bsa": 1.896,
+      "before_incision": {
+        "map": {
+          "observed": 85.0,
+          "predicted": 85.85180686229751
+        },
+        "hr": {
+          "observed": 51.0,
+          "predicted": 56.40439781905544
+        },
+        "co": {
+          "observed": 6.6,
+          "predicted": 4.04813391865804
+        },
+        "sv": {
+          "observed": 130.0,
+          "predicted": 71.75185238926016
+        },
+        "svr_wood": {
+          "observed": 12.878787878787879,
+          "predicted": 21.20629046517121
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 73.0,
+          "predicted": 94.28668604609632
+        },
+        "hr": {
+          "observed": 76.0,
+          "predicted": 52.491333996757554
+        },
+        "co": {
+          "observed": 5.8,
+          "predicted": 3.81693438002172
+        },
+        "sv": {
+          "observed": 77.0,
+          "predicted": 72.72004589638026
+        },
+        "svr_wood": {
+          "observed": 13.333333333333332,
+          "predicted": 24.70220251613542
+        }
+      }
+    },
+    {
+      "caseid": 3126,
+      "subjectid": 192,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 56.0,
+      "bmi": 26.3,
+      "bsa": 1.995,
+      "before_incision": {
+        "map": {
+          "observed": 80.0,
+          "predicted": 72.39316755905529
+        },
+        "hr": {
+          "observed": 65.0,
+          "predicted": 56.24318057272089
+        },
+        "co": {
+          "observed": 5.9,
+          "predicted": 4.301367082808367
+        },
+        "sv": {
+          "observed": 89.0,
+          "predicted": 76.5616216944976
+        },
+        "svr_wood": {
+          "observed": 13.161893629456458,
+          "predicted": 16.829390394150497
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 74.0,
+          "predicted": 91.2449343516051
+        },
+        "hr": {
+          "observed": 68.0,
+          "predicted": 58.810313939418506
+        },
+        "co": {
+          "observed": 5.5,
+          "predicted": 4.593525718471035
+        },
+        "sv": {
+          "observed": 78.0,
+          "predicted": 78.1086630719269
+        },
+        "svr_wood": {
+          "observed": 13.606557377049182,
+          "predicted": 19.85709023783056
+        }
+      }
+    },
+    {
+      "caseid": 3325,
+      "subjectid": 3440,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 44.0,
+      "bmi": 21.77,
+      "bsa": 1.473,
+      "before_incision": {
+        "map": {
+          "observed": 60.0,
+          "predicted": 70.5502078859127
+        },
+        "hr": {
+          "observed": 58.0,
+          "predicted": 56.97743148674732
+        },
+        "co": {
+          "observed": 4.2,
+          "predicted": 3.433816406473565
+        },
+        "sv": {
+          "observed": 73.0,
+          "predicted": 60.266240375277455
+        },
+        "svr_wood": {
+          "observed": 14.047619047619047,
+          "predicted": 20.545713437942894
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 73.0,
+          "predicted": 90.84040612831689
+        },
+        "hr": {
+          "observed": 70.0,
+          "predicted": 55.689235279552
+        },
+        "co": {
+          "observed": 5.2,
+          "predicted": 3.5339035721927594
+        },
+        "sv": {
+          "observed": 75.0,
+          "predicted": 63.58302152488981
+        },
+        "svr_wood": {
+          "observed": 13.541666666666668,
+          "predicted": 25.729227348234676
+        }
+      }
+    },
+    {
+      "caseid": 3407,
+      "subjectid": 388,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 60.0,
+      "bmi": 21.45,
+      "bsa": 1.46,
+      "before_incision": {
+        "map": {
+          "observed": 72.0,
+          "predicted": 67.50784947028613
+        },
+        "hr": {
+          "observed": 84.0,
+          "predicted": 71.95938900050524
+        },
+        "co": {
+          "observed": 3.2,
+          "predicted": 3.1214472110708056
+        },
+        "sv": {
+          "observed": 37.0,
+          "predicted": 43.417346608198436
+        },
+        "svr_wood": {
+          "observed": 22.8125,
+          "predicted": 21.63081494326731
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 98.0,
+          "predicted": 81.5802731517161
+        },
+        "hr": {
+          "observed": 81.0,
+          "predicted": 69.2156074022652
+        },
+        "co": {
+          "observed": 3.7,
+          "predicted": 3.15373992486858
+        },
+        "sv": {
+          "observed": 44.0,
+          "predicted": 45.552744940582855
+        },
+        "svr_wood": {
+          "observed": 27.5,
+          "predicted": 25.89119472809348
+        }
+      }
+    },
+    {
+      "caseid": 3458,
+      "subjectid": 3831,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 65.0,
+      "bmi": 24.08,
+      "bsa": 1.654,
+      "before_incision": {
+        "map": {
+          "observed": 70.0,
+          "predicted": 65.86837406597297
+        },
+        "hr": {
+          "observed": 48.0,
+          "predicted": 44.26564699044019
+        },
+        "co": {
+          "observed": 3.2,
+          "predicted": 3.537412518444997
+        },
+        "sv": {
+          "observed": 68.0,
+          "predicted": 79.9039422580367
+        },
+        "svr_wood": {
+          "observed": 21.38888888888889,
+          "predicted": 18.622646237624764
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 88.0,
+          "predicted": 72.75636896639796
+        },
+        "hr": {
+          "observed": 51.0,
+          "predicted": 41.06331886261968
+        },
+        "co": {
+          "observed": 3.8,
+          "predicted": 3.2227192923853316
+        },
+        "sv": {
+          "observed": 75.0,
+          "predicted": 78.70788489194842
+        },
+        "svr_wood": {
+          "observed": 23.4375,
+          "predicted": 22.540310604626796
+        },
+        "ev1000_svr_dyn": {
+          "observed": 1698.0,
+          "predicted": 1803.224783082499
+        }
+      }
+    },
+    {
+      "caseid": 3529,
+      "subjectid": 1731,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 69.0,
+      "bmi": 20.1,
+      "bsa": 1.598,
+      "before_incision": {
+        "map": {
+          "observed": 56.0,
+          "predicted": 64.02062331200626
+        },
+        "hr": {
+          "observed": 62.0,
+          "predicted": 69.66600605493693
+        },
+        "co": {
+          "observed": 4.35,
+          "predicted": 3.283177116787618
+        },
+        "sv": {
+          "observed": 70.0,
+          "predicted": 47.12737768424125
+        },
+        "svr_wood": {
+          "observed": 12.758985200845666,
+          "predicted": 19.499594744771958
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 103.0,
+          "predicted": 71.38823102037954
+        },
+        "hr": {
+          "observed": 79.0,
+          "predicted": 67.88171041172984
+        },
+        "co": {
+          "observed": 6.1,
+          "predicted": 3.0709041434497184
+        },
+        "sv": {
+          "observed": 78.0,
+          "predicted": 45.19652351058692
+        },
+        "svr_wood": {
+          "observed": 16.885245901639344,
+          "predicted": 23.196799324184155
+        }
+      }
+    },
+    {
+      "caseid": 3761,
+      "subjectid": 6046,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "3",
+      "hypertensive": true,
+      "age": 77.0,
+      "bmi": 19.54,
+      "bsa": 1.543,
+      "before_incision": {
+        "map": {
+          "observed": 60.0,
+          "predicted": 92.04202354074033
+        },
+        "hr": {
+          "observed": 48.0,
+          "predicted": 69.93807536340904
+        },
+        "co": {
+          "observed": 4.5,
+          "predicted": 2.9144965199805766
+        },
+        "sv": {
+          "observed": 93.0,
+          "predicted": 41.6681676998072
+        },
+        "svr_wood": {
+          "observed": 13.333333333333334,
+          "predicted": 31.580877729739377
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 80.0,
+          "predicted": 104.61682750318398
+        },
+        "hr": {
+          "observed": 49.0,
+          "predicted": 65.96047839534404
+        },
+        "co": {
+          "observed": 5.8,
+          "predicted": 3.0333645181225846
+        },
+        "sv": {
+          "observed": 117.0,
+          "predicted": 46.51165956889214
+        },
+        "svr_wood": {
+          "observed": 13.931498829039814,
+          "predicted": 34.67226396981539
+        }
+      }
+    },
+    {
+      "caseid": 4172,
+      "subjectid": 688,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 59.0,
+      "bmi": 26.09,
+      "bsa": 1.621,
+      "before_incision": {
+        "map": {
+          "observed": 79.5,
+          "predicted": 75.07039701025417
+        },
+        "hr": {
+          "observed": 56.0,
+          "predicted": 59.62192878924158
+        },
+        "co": {
+          "observed": 3.2,
+          "predicted": 3.5116770317442616
+        },
+        "sv": {
+          "observed": 59.0,
+          "predicted": 58.855695922278485
+        },
+        "svr_wood": {
+          "observed": 24.558441558441558,
+          "predicted": 21.377896295875452
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 98.0,
+          "predicted": 83.80122704489966
+        },
+        "hr": {
+          "observed": 55.0,
+          "predicted": 54.55344402584963
+        },
+        "co": {
+          "observed": 3.7,
+          "predicted": 3.244304184186304
+        },
+        "sv": {
+          "observed": 68.0,
+          "predicted": 59.56147717464255
+        },
+        "svr_wood": {
+          "observed": 25.348837209302328,
+          "predicted": 25.717573623081023
+        }
+      }
+    },
+    {
+      "caseid": 4187,
+      "subjectid": 1030,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 73.0,
+      "bmi": 20.96,
+      "bsa": 1.707,
+      "before_incision": {
+        "map": {
+          "observed": 84.0,
+          "predicted": 60.36540893453441
+        },
+        "hr": {
+          "observed": 76.0,
+          "predicted": 60.99479699264671
+        },
+        "co": {
+          "observed": 3.2,
+          "predicted": 3.162638749000755
+        },
+        "sv": {
+          "observed": 42.5,
+          "predicted": 52.02397204254662
+        },
+        "svr_wood": {
+          "observed": 25.26388888888889,
+          "predicted": 19.018899923832073
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 87.0,
+          "predicted": 68.24700539289199
+        },
+        "hr": {
+          "observed": 68.0,
+          "predicted": 56.27659134491761
+        },
+        "co": {
+          "observed": 3.6,
+          "predicted": 3.3619971461344598
+        },
+        "sv": {
+          "observed": 53.0,
+          "predicted": 61.2318784952769
+        },
+        "svr_wood": {
+          "observed": 23.529411764705884,
+          "predicted": 20.402646171892787
+        }
+      }
+    },
+    {
+      "caseid": 4265,
+      "subjectid": 910,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 63.0,
+      "bmi": 24.9,
+      "bsa": 1.791,
+      "before_incision": {
+        "map": {
+          "observed": 63.0,
+          "predicted": 76.55655715679796
+        },
+        "hr": {
+          "observed": 43.0,
+          "predicted": 59.60420958724831
+        },
+        "co": {
+          "observed": 3.5,
+          "predicted": 3.6856160621950487
+        },
+        "sv": {
+          "observed": 80.0,
+          "predicted": 61.83478096596632
+        },
+        "svr_wood": {
+          "observed": 17.941176470588236,
+          "predicted": 20.74599054967439
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 72.0,
+          "predicted": 88.93876451356948
+        },
+        "hr": {
+          "observed": 49.0,
+          "predicted": 56.20588272336756
+        },
+        "co": {
+          "observed": 6.5,
+          "predicted": 3.9193212522914163
+        },
+        "sv": {
+          "observed": 126.0,
+          "predicted": 70.66513888970529
+        },
+        "svr_wood": {
+          "observed": 11.029411764705882,
+          "predicted": 22.784002022553626
+        }
+      }
+    },
+    {
+      "caseid": 4279,
+      "subjectid": 1053,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "age": 64.0,
+      "bmi": 29.06,
+      "bsa": 1.644,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 85.0,
+          "predicted": 109.9869562634457
+        },
+        "hr": {
+          "observed": 100.0,
+          "predicted": 105.82867345713959
+        },
+        "co": {
+          "observed": 4.3,
+          "predicted": 3.503609998948305
+        },
+        "sv": {
+          "observed": 42.0,
+          "predicted": 33.0264169896164
+        },
+        "svr_wood": {
+          "observed": 19.743589743589745,
+          "predicted": 31.40852584989632
+        }
+      }
+    },
+    {
+      "caseid": 4569,
+      "subjectid": 2547,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "age": 75.0,
+      "bmi": 23.68,
+      "bsa": 1.658,
+      "before_incision": {
+        "map": {
+          "observed": 62.0,
+          "predicted": 70.61143942280135
+        },
+        "hr": {
+          "observed": 56.0,
+          "predicted": 65.53990536355356
+        },
+        "co": {
+          "observed": 4.0,
+          "predicted": 3.3634743330839325
+        },
+        "sv": {
+          "observed": 70.0,
+          "predicted": 51.31946129270892
+        },
+        "svr_wood": {
+          "observed": 15.897435897435898,
+          "predicted": 21.000263854658133
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 75.0,
+          "predicted": 76.1239958133408
+        },
+        "hr": {
+          "observed": 52.0,
+          "predicted": 62.85928653216816
+        },
+        "co": {
+          "observed": 3.6500000000000004,
+          "predicted": 3.184955278558274
+        },
+        "sv": {
+          "observed": 69.0,
+          "predicted": 50.798645618591266
+        },
+        "svr_wood": {
+          "observed": 20.27027027027027,
+          "predicted": 23.922517089260502
+        }
+      }
+    },
+    {
+      "caseid": 4857,
+      "subjectid": 3874,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 53.0,
+      "bmi": 23.7,
+      "bsa": 1.727,
+      "before_incision": {
+        "map": {
+          "observed": 83.0,
+          "predicted": 67.88091613620088
+        },
+        "hr": {
+          "observed": 52.0,
+          "predicted": 59.47337670654564
+        },
+        "co": {
+          "observed": 5.25,
+          "predicted": 3.8913072335547394
+        },
+        "sv": {
+          "observed": 100.5,
+          "predicted": 65.42940801306288
+        },
+        "svr_wood": {
+          "observed": 15.754985754985753,
+          "predicted": 17.444244841389548
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 94.0,
+          "predicted": 77.33405289757088
+        },
+        "hr": {
+          "observed": 56.0,
+          "predicted": 58.526937942026606
+        },
+        "co": {
+          "observed": 3.2,
+          "predicted": 3.8502163769382243
+        },
+        "sv": {
+          "observed": 55.0,
+          "predicted": 66.4605166316839
+        },
+        "svr_wood": {
+          "observed": 26.969696969696972,
+          "predicted": 20.16939714348037
+        }
+      }
+    },
+    {
+      "caseid": 4929,
+      "subjectid": 5357,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 67.0,
+      "bmi": 23.87,
+      "bsa": 1.82,
+      "before_incision": {
+        "map": {
+          "observed": 63.0,
+          "predicted": 80.92336452283821
+        },
+        "hr": {
+          "observed": 66.0,
+          "predicted": 70.77435814333529
+        },
+        "co": {
+          "observed": 5.6,
+          "predicted": 3.9107918926055962
+        },
+        "sv": {
+          "observed": 85.0,
+          "predicted": 55.26305742938556
+        },
+        "svr_wood": {
+          "observed": 11.50997150997151,
+          "predicted": 20.698192560723186
+        },
+        "ev1000_svr_dyn": {
+          "observed": 1012.0,
+          "predicted": 1654.272182259933
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 68.0,
+          "predicted": 89.80874861357157
+        },
+        "hr": {
+          "observed": 72.0,
+          "predicted": 69.05731429061623
+        },
+        "co": {
+          "observed": 6.1,
+          "predicted": 3.8013866314759834
+        },
+        "sv": {
+          "observed": 82.0,
+          "predicted": 55.10962762485396
+        },
+        "svr_wood": {
+          "observed": 11.416040100250626,
+          "predicted": 23.82496920631338
+        },
+        "ev1000_svr_dyn": {
+          "observed": 906.0,
+          "predicted": 1905.997689868554
+        }
+      }
+    },
+    {
+      "caseid": 4933,
+      "subjectid": 5381,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 25.0,
+      "bmi": 20.06,
+      "bsa": 1.55,
+      "before_incision": {
+        "map": {
+          "observed": 65.0,
+          "predicted": 64.63741198452742
+        },
+        "hr": {
+          "observed": 91.0,
+          "predicted": 101.53430859898646
+        },
+        "co": {
+          "observed": 5.4,
+          "predicted": 3.6231839237509598
+        },
+        "sv": {
+          "observed": 59.0,
+          "predicted": 35.721172260730775
+        },
+        "svr_wood": {
+          "observed": 12.018518518518519,
+          "predicted": 17.835516457535938
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 75.0,
+          "predicted": 69.31182242648836
+        },
+        "hr": {
+          "observed": 77.0,
+          "predicted": 83.89699121507968
+        },
+        "co": {
+          "observed": 4.7,
+          "predicted": 3.4186888686125636
+        },
+        "sv": {
+          "observed": 62.0,
+          "predicted": 41.29219689440097
+        },
+        "svr_wood": {
+          "observed": 15.74468085106383,
+          "predicted": 20.302290734761634
+        }
+      }
+    },
+    {
+      "caseid": 4941,
+      "subjectid": 2065,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 49.0,
+      "bmi": 21.65,
+      "bsa": 1.613,
+      "before_incision": {
+        "map": {
+          "observed": 88.0,
+          "predicted": 75.25706798060723
+        },
+        "hr": {
+          "observed": 74.0,
+          "predicted": 72.03273517047882
+        },
+        "co": {
+          "observed": 5.05,
+          "predicted": 3.5596899835288873
+        },
+        "sv": {
+          "observed": 68.0,
+          "predicted": 49.417651790018624
+        },
+        "svr_wood": {
+          "observed": 17.42549019607843,
+          "predicted": 21.14146693577937
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 102.0,
+          "predicted": 84.93543760373828
+        },
+        "hr": {
+          "observed": 79.0,
+          "predicted": 67.08994158281767
+        },
+        "co": {
+          "observed": 5.3,
+          "predicted": 3.4123087698376455
+        },
+        "sv": {
+          "observed": 65.0,
+          "predicted": 50.86168457549142
+        },
+        "svr_wood": {
+          "observed": 18.96551724137931,
+          "predicted": 24.854954687809112
+        }
+      }
+    },
+    {
+      "caseid": 4982,
+      "subjectid": 5687,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 76.0,
+      "bmi": 25.89,
+      "bsa": 1.626,
+      "before_incision": {
+        "map": {
+          "observed": 77.0,
+          "predicted": 82.77265135554053
+        },
+        "hr": {
+          "observed": 57.0,
+          "predicted": 63.05897880971988
+        },
+        "co": {
+          "observed": 3.5,
+          "predicted": 3.271412262642529
+        },
+        "sv": {
+          "observed": 61.0,
+          "predicted": 51.861224565485266
+        },
+        "svr_wood": {
+          "observed": 21.97222222222222,
+          "predicted": 25.283755048275303
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 76.0,
+          "predicted": 95.3534689290943
+        },
+        "hr": {
+          "observed": 77.0,
+          "predicted": 61.526588978470826
+        },
+        "co": {
+          "observed": 5.8,
+          "predicted": 3.2013205381275287
+        },
+        "sv": {
+          "observed": 76.0,
+          "predicted": 52.09533122093479
+        },
+        "svr_wood": {
+          "observed": 12.615384615384615,
+          "predicted": 30.27388176145203
+        }
+      }
+    },
+    {
+      "caseid": 5278,
+      "subjectid": 1385,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 68.0,
+      "bmi": 21.19,
+      "bsa": 1.631,
+      "before_incision": {
+        "map": {
+          "observed": 69.0,
+          "predicted": 74.17142871247147
+        },
+        "hr": {
+          "observed": 65.0,
+          "predicted": 59.40942690653436
+        },
+        "co": {
+          "observed": 3.8,
+          "predicted": 3.6271280206621324
+        },
+        "sv": {
+          "observed": 58.0,
+          "predicted": 61.05303208763015
+        },
+        "svr_wood": {
+          "observed": 18.157894736842106,
+          "predicted": 20.439031356033254
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 95.5,
+          "predicted": 85.1735812427375
+        },
+        "hr": {
+          "observed": 76.0,
+          "predicted": 52.03350326984087
+        },
+        "co": {
+          "observed": 3.5,
+          "predicted": 3.325234094346011
+        },
+        "sv": {
+          "observed": 44.0,
+          "predicted": 63.671340349861964
+        },
+        "svr_wood": {
+          "observed": 27.17948717948718,
+          "predicted": 25.646577984753133
+        }
+      }
+    },
+    {
+      "caseid": 5295,
+      "subjectid": 255,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 58.0,
+      "bmi": 24.72,
+      "bsa": 1.561,
+      "before_incision": {
+        "map": {
+          "observed": 80.0,
+          "predicted": 57.622027765264896
+        },
+        "hr": {
+          "observed": 82.0,
+          "predicted": 74.0909734929451
+        },
+        "co": {
+          "observed": 3.8,
+          "predicted": 3.167287108823971
+        },
+        "sv": {
+          "observed": 46.5,
+          "predicted": 43.12401758818518
+        },
+        "svr_wood": {
+          "observed": 21.38888888888889,
+          "predicted": 18.19349386185064
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 86.0,
+          "predicted": 65.80079379521949
+        },
+        "hr": {
+          "observed": 89.0,
+          "predicted": 66.47488690587485
+        },
+        "co": {
+          "observed": 4.5,
+          "predicted": 3.3563413725747275
+        },
+        "sv": {
+          "observed": 50.0,
+          "predicted": 50.68735472838435
+        },
+        "svr_wood": {
+          "observed": 19.183673469387752,
+          "predicted": 19.655652407487818
+        }
+      }
+    },
+    {
+      "caseid": 5463,
+      "subjectid": 2713,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 74.0,
+      "bmi": 24.58,
+      "bsa": 1.565,
+      "before_incision": {
+        "map": {
+          "observed": 66.0,
+          "predicted": 82.31489355321685
+        },
+        "hr": {
+          "observed": 55.0,
+          "predicted": 53.63033099800168
+        },
+        "co": {
+          "observed": 3.2,
+          "predicted": 3.3366990387924154
+        },
+        "sv": {
+          "observed": 58.0,
+          "predicted": 62.21311590299541
+        },
+        "svr_wood": {
+          "observed": 20.9375,
+          "predicted": 24.66955859626048
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 88.0,
+          "predicted": 84.55713608493797
+        },
+        "hr": {
+          "observed": 69.0,
+          "predicted": 48.77084460979152
+        },
+        "co": {
+          "observed": 3.2,
+          "predicted": 3.1756761158261555
+        },
+        "sv": {
+          "observed": 47.0,
+          "predicted": 65.11423177062176
+        },
+        "svr_wood": {
+          "observed": 25.365853658536587,
+          "predicted": 26.890485158440256
+        }
+      }
+    },
+    {
+      "caseid": 5888,
+      "subjectid": 1680,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 72.0,
+      "bmi": 23.26,
+      "bsa": 1.705,
+      "before_incision": {
+        "map": {
+          "observed": 76.0,
+          "predicted": 71.75301790290709
+        },
+        "hr": {
+          "observed": 90.0,
+          "predicted": 76.12659606726731
+        },
+        "co": {
+          "observed": 3.0,
+          "predicted": 3.6184210300812842
+        },
+        "sv": {
+          "observed": 33.0,
+          "predicted": 47.48815565874628
+        },
+        "svr_wood": {
+          "observed": 25.0,
+          "predicted": 19.831998207299854
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 90.0,
+          "predicted": 84.94715774200606
+        },
+        "hr": {
+          "observed": 75.0,
+          "predicted": 72.71903739987091
+        },
+        "co": {
+          "observed": 2.95,
+          "predicted": 3.5593649360527877
+        },
+        "sv": {
+          "observed": 39.0,
+          "predicted": 48.85233983486272
+        },
+        "svr_wood": {
+          "observed": 30.151515151515156,
+          "predicted": 23.901275639536998
+        }
+      }
+    },
+    {
+      "caseid": 5977,
+      "subjectid": 5915,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 63.0,
+      "bmi": 22.3,
+      "bsa": 1.54,
+      "before_incision": {
+        "map": {
+          "observed": 69.0,
+          "predicted": 58.55418161254983
+        },
+        "hr": {
+          "observed": 66.0,
+          "predicted": 70.42430901284914
+        },
+        "co": {
+          "observed": 3.5,
+          "predicted": 3.327070698830302
+        },
+        "sv": {
+          "observed": 53.0,
+          "predicted": 47.24321327450153
+        },
+        "svr_wood": {
+          "observed": 19.6969696969697,
+          "predicted": 17.58786584191636
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 79.0,
+          "predicted": 60.972114644950665
+        },
+        "hr": {
+          "observed": 59.0,
+          "predicted": 59.20722972425641
+        },
+        "co": {
+          "observed": 3.2,
+          "predicted": 3.287746181170883
+        },
+        "sv": {
+          "observed": 53.0,
+          "predicted": 55.963279336171254
+        },
+        "svr_wood": {
+          "observed": 25.517241379310345,
+          "predicted": 18.581570281271837
+        }
+      }
+    },
+    {
+      "caseid": 6029,
+      "subjectid": 1599,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 63.0,
+      "bmi": 25.0,
+      "bsa": 1.522,
+      "before_incision": {
+        "map": {
+          "observed": 79.0,
+          "predicted": 78.22697054298806
+        },
+        "hr": {
+          "observed": 46.0,
+          "predicted": 47.6535276294438
+        },
+        "co": {
+          "observed": 3.0,
+          "predicted": 3.285613039665701
+        },
+        "sv": {
+          "observed": 65.0,
+          "predicted": 68.84637320228573
+        },
+        "svr_wood": {
+          "observed": 26.064516129032256,
+          "predicted": 23.807570123067578
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 88.0,
+          "predicted": 83.38700460848807
+        },
+        "hr": {
+          "observed": 51.0,
+          "predicted": 46.23895008190624
+        },
+        "co": {
+          "observed": 2.4,
+          "predicted": 3.0661488254330376
+        },
+        "sv": {
+          "observed": 47.0,
+          "predicted": 66.23862907323452
+        },
+        "svr_wood": {
+          "observed": 37.083333333333336,
+          "predicted": 27.414773766746606
+        }
+      }
+    },
+    {
+      "caseid": 6133,
+      "subjectid": 2618,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "age": 73.0,
+      "bmi": 23.84,
+      "bsa": 1.65,
+      "before_incision": {
+        "map": {
+          "observed": 72.0,
+          "predicted": 73.62073556014619
+        },
+        "hr": {
+          "observed": 61.0,
+          "predicted": 65.85534545250084
+        },
+        "co": {
+          "observed": 3.6,
+          "predicted": 3.159436300167614
+        },
+        "sv": {
+          "observed": 58.0,
+          "predicted": 47.97302627175802
+        },
+        "svr_wood": {
+          "observed": 20.40915915915916,
+          "predicted": 23.301857801318345
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 88.0,
+          "predicted": 89.24327151822322
+        },
+        "hr": {
+          "observed": 67.0,
+          "predicted": 63.387563518224795
+        },
+        "co": {
+          "observed": 4.0,
+          "predicted": 3.365250200945759
+        },
+        "sv": {
+          "observed": 60.0,
+          "predicted": 53.34973516212351
+        },
+        "svr_wood": {
+          "observed": 21.578947368421055,
+          "predicted": 26.503948660652547
+        }
+      }
+    },
+    {
+      "caseid": 6186,
+      "subjectid": 4136,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "age": 55.0,
+      "bmi": 25.55,
+      "bsa": 1.533,
+      "before_incision": {
+        "map": {
+          "observed": 87.0,
+          "predicted": 79.88073573585865
+        },
+        "hr": {
+          "observed": 51.0,
+          "predicted": 60.21629393005813
+        },
+        "co": {
+          "observed": 3.0,
+          "predicted": 3.3763977973708057
+        },
+        "sv": {
+          "observed": 56.0,
+          "predicted": 56.111109232651174
+        },
+        "svr_wood": {
+          "observed": 30.0,
+          "predicted": 23.663849968688293
+        },
+        "ev1000_svr_dyn": {
+          "observed": 1939.0,
+          "predicted": 1893.10829671483
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 106.0,
+          "predicted": 89.04325289548851
+        },
+        "hr": {
+          "observed": 66.0,
+          "predicted": 55.22782481364714
+        },
+        "co": {
+          "observed": 3.1,
+          "predicted": 3.0724096630544393
+        },
+        "sv": {
+          "observed": 48.0,
+          "predicted": 55.386881086936675
+        },
+        "svr_wood": {
+          "observed": 34.0,
+          "predicted": 29.107093003986854
+        },
+        "ev1000_svr_dyn": {
+          "observed": 2413.0,
+          "predicted": 2325.4628225654747
+        }
+      }
+    },
+    {
+      "caseid": 6228,
+      "subjectid": 3510,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "age": 61.0,
+      "bmi": 25.34,
+      "bsa": 1.848,
+      "before_incision": {
+        "map": {
+          "observed": 72.5,
+          "predicted": 71.32707438305675
+        },
+        "hr": {
+          "observed": 67.5,
+          "predicted": 49.44578154949245
+        },
+        "co": {
+          "observed": 4.6,
+          "predicted": 3.6977571882466673
+        },
+        "sv": {
+          "observed": 67.0,
+          "predicted": 74.64223540539847
+        },
+        "svr_wood": {
+          "observed": 15.625,
+          "predicted": 19.3259371105813
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 80.0,
+          "predicted": 86.0728885190894
+        },
+        "hr": {
+          "observed": 63.0,
+          "predicted": 45.447436467661895
+        },
+        "co": {
+          "observed": 4.4,
+          "predicted": 3.8311123410568
+        },
+        "sv": {
+          "observed": 68.0,
+          "predicted": 84.23533502059199
+        },
+        "svr_wood": {
+          "observed": 18.444444444444443,
+          "predicted": 22.611321371578022
+        }
+      }
+    },
+    {
+      "caseid": 6330,
+      "subjectid": 1719,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "age": 59.0,
+      "bmi": 22.83,
+      "bsa": 1.577,
+      "before_incision": {
+        "map": {
+          "observed": 103.0,
+          "predicted": 70.69588395480754
+        },
+        "hr": {
+          "observed": 58.0,
+          "predicted": 50.5593326178667
+        },
+        "co": {
+          "observed": 6.0,
+          "predicted": 3.4824575083448908
+        },
+        "sv": {
+          "observed": 102.0,
+          "predicted": 68.80016727988509
+        },
+        "svr_wood": {
+          "observed": 17.833333333333332,
+          "predicted": 20.31102182012489
+        }
+      },
+      "surgery": {
+        "map": {
+          "observed": 70.0,
+          "predicted": 80.74146569829728
+        },
+        "hr": {
+          "observed": 75.0,
+          "predicted": 47.15949519948015
+        },
+        "co": {
+          "observed": 5.8,
+          "predicted": 3.4790315891196797
+        },
+        "sv": {
+          "observed": 73.0,
+          "predicted": 73.64939373324057
+        },
+        "svr_wood": {
+          "observed": 12.181818181818182,
+          "predicted": 23.153993680895375
+        }
+      }
+    },
+    {
+      "caseid": 6378,
+      "subjectid": 3181,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "age": 68.0,
+      "bmi": 33.53,
+      "bsa": 1.902,
+      "before_incision": null,
+      "surgery": {
+        "map": {
+          "observed": 82.0,
+          "predicted": 120.16037370054379
+        },
+        "hr": {
+          "observed": 94.0,
+          "predicted": 71.15100758999523
+        },
+        "co": {
+          "observed": 3.9,
+          "predicted": 5.982630448669077
+        },
+        "sv": {
+          "observed": 44.0,
+          "predicted": 83.07431075532807
+        },
+        "svr_wood": {
+          "observed": 21.315789473684212,
+          "predicted": 20.23376490097711
+        }
+      }
+    }
+  ],
+  "exclusions": [
+    {
+      "caseid": 25,
+      "subjectid": 1669,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 29,
+      "subjectid": 3720,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 34,
+      "subjectid": 5571,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 52,
+      "subjectid": 1724,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 70,
+      "subjectid": 3747,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 97,
+      "subjectid": 5443,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 111,
+      "subjectid": 1784,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 137,
+      "subjectid": 4851,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 156,
+      "subjectid": 823,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 175,
+      "subjectid": 3923,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "insufficient induction or surgery duration"
+    },
+    {
+      "caseid": 180,
+      "subjectid": 2839,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 189,
+      "subjectid": 829,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 195,
+      "subjectid": 3424,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 210,
+      "subjectid": 4060,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 284,
+      "subjectid": 1193,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 286,
+      "subjectid": 3385,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 306,
+      "subjectid": 51,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 308,
+      "subjectid": 169,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 364,
+      "subjectid": 5991,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 369,
+      "subjectid": 548,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 388,
+      "subjectid": 263,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "insufficient induction or surgery duration"
+    },
+    {
+      "caseid": 390,
+      "subjectid": 5240,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 441,
+      "subjectid": 1400,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 448,
+      "subjectid": 303,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 455,
+      "subjectid": 3888,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 472,
+      "subjectid": 2229,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 474,
+      "subjectid": 2149,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 485,
+      "subjectid": 4283,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 512,
+      "subjectid": 973,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 526,
+      "subjectid": 4863,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 545,
+      "subjectid": 3254,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 566,
+      "subjectid": 3843,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 582,
+      "subjectid": 1933,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 691,
+      "subjectid": 451,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "less than thirty seconds of zero delivery before induction"
+    },
+    {
+      "caseid": 706,
+      "subjectid": 5821,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 711,
+      "subjectid": 3336,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 722,
+      "subjectid": 189,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 734,
+      "subjectid": 5,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 740,
+      "subjectid": 1570,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 787,
+      "subjectid": 260,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 822,
+      "subjectid": 12,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 831,
+      "subjectid": 4148,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 844,
+      "subjectid": 1335,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 866,
+      "subjectid": 5231,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 872,
+      "subjectid": 3448,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 885,
+      "subjectid": 2583,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 937,
+      "subjectid": 4835,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "less than thirty seconds of zero delivery before induction"
+    },
+    {
+      "caseid": 969,
+      "subjectid": 811,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 976,
+      "subjectid": 683,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 1013,
+      "subjectid": 1513,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 1027,
+      "subjectid": 4229,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "less than thirty seconds of zero delivery before induction"
+    },
+    {
+      "caseid": 1044,
+      "subjectid": 2943,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 1078,
+      "subjectid": 2869,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "less than thirty seconds of zero delivery before induction"
+    },
+    {
+      "caseid": 1239,
+      "subjectid": 4434,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1267,
+      "subjectid": 3526,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1302,
+      "subjectid": 5331,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1307,
+      "subjectid": 2424,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1323,
+      "subjectid": 5309,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 1325,
+      "subjectid": 2925,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1335,
+      "subjectid": 3080,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 1339,
+      "subjectid": 610,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 1350,
+      "subjectid": 142,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1376,
+      "subjectid": 4802,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "less than thirty seconds of zero delivery before induction"
+    },
+    {
+      "caseid": 1396,
+      "subjectid": 5011,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1468,
+      "subjectid": 5643,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "insufficient induction or surgery duration"
+    },
+    {
+      "caseid": 1475,
+      "subjectid": 2074,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 1482,
+      "subjectid": 2648,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 1512,
+      "subjectid": 3503,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 1597,
+      "subjectid": 3162,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1656,
+      "subjectid": 3522,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 1688,
+      "subjectid": 3366,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1708,
+      "subjectid": 4040,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 1726,
+      "subjectid": 2548,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 1802,
+      "subjectid": 3395,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1804,
+      "subjectid": 1125,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1852,
+      "subjectid": 1490,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 1891,
+      "subjectid": 119,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 2044,
+      "subjectid": 3354,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 2072,
+      "subjectid": 1162,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 2106,
+      "subjectid": 4031,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 2128,
+      "subjectid": 547,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 2161,
+      "subjectid": 462,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 2202,
+      "subjectid": 3661,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 2229,
+      "subjectid": 5774,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 2304,
+      "subjectid": 1708,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "less than thirty seconds of zero delivery before induction"
+    },
+    {
+      "caseid": 2325,
+      "subjectid": 4377,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 2352,
+      "subjectid": 3378,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 2359,
+      "subjectid": 13,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 2458,
+      "subjectid": 4252,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 2472,
+      "subjectid": 2368,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 2495,
+      "subjectid": 5546,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 2583,
+      "subjectid": 3571,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 2597,
+      "subjectid": 3713,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 2628,
+      "subjectid": 2884,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 2662,
+      "subjectid": 4979,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 2751,
+      "subjectid": 710,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 2779,
+      "subjectid": 4230,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 2788,
+      "subjectid": 3311,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 2838,
+      "subjectid": 2321,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 2850,
+      "subjectid": 1503,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 2860,
+      "subjectid": 5431,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 2916,
+      "subjectid": 277,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "insufficient valid surgery CO/SV readings"
+    },
+    {
+      "caseid": 2952,
+      "subjectid": 2094,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 2971,
+      "subjectid": 5616,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 2972,
+      "subjectid": 1200,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 2974,
+      "subjectid": 5255,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 3028,
+      "subjectid": 2883,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3093,
+      "subjectid": 1783,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3094,
+      "subjectid": 4687,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 3103,
+      "subjectid": 4614,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3149,
+      "subjectid": 5086,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3176,
+      "subjectid": 2832,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "insufficient induction or surgery duration"
+    },
+    {
+      "caseid": 3193,
+      "subjectid": 1428,
+      "modality": "Sevoflurane",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 3196,
+      "subjectid": 3090,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3207,
+      "subjectid": 3823,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "short surgery window"
+    },
+    {
+      "caseid": 3223,
+      "subjectid": 2283,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 3235,
+      "subjectid": 2258,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "insufficient induction or surgery duration"
+    },
+    {
+      "caseid": 3296,
+      "subjectid": 964,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 3300,
+      "subjectid": 4488,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 3385,
+      "subjectid": 4414,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 3475,
+      "subjectid": 4424,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 3521,
+      "subjectid": 656,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3531,
+      "subjectid": 1950,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "less than thirty seconds of zero delivery before induction"
+    },
+    {
+      "caseid": 3537,
+      "subjectid": 2784,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3550,
+      "subjectid": 4249,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 3565,
+      "subjectid": 2556,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 3572,
+      "subjectid": 3867,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3573,
+      "subjectid": 3038,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3618,
+      "subjectid": 5968,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 3658,
+      "subjectid": 5241,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 3663,
+      "subjectid": 4624,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3700,
+      "subjectid": 3478,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3710,
+      "subjectid": 4515,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3763,
+      "subjectid": 2638,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3785,
+      "subjectid": 4541,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 3791,
+      "subjectid": 5731,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3799,
+      "subjectid": 999,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 3879,
+      "subjectid": 5280,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 3902,
+      "subjectid": 931,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 3904,
+      "subjectid": 187,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 3950,
+      "subjectid": 961,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 4021,
+      "subjectid": 4235,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 4027,
+      "subjectid": 690,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 4036,
+      "subjectid": 1598,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4040,
+      "subjectid": 2475,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 4060,
+      "subjectid": 870,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4098,
+      "subjectid": 2680,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4120,
+      "subjectid": 4184,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 4201,
+      "subjectid": 5352,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4207,
+      "subjectid": 3724,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 4214,
+      "subjectid": 5006,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4242,
+      "subjectid": 1286,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 4252,
+      "subjectid": 1191,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4302,
+      "subjectid": 4791,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4305,
+      "subjectid": 5265,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4310,
+      "subjectid": 3019,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 4356,
+      "subjectid": 5445,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4480,
+      "subjectid": 1916,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 4498,
+      "subjectid": 2732,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 4540,
+      "subjectid": 195,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 4547,
+      "subjectid": 5761,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 4549,
+      "subjectid": 3775,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4559,
+      "subjectid": 1926,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 4604,
+      "subjectid": 645,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 4609,
+      "subjectid": 1508,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 4644,
+      "subjectid": 4472,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 4650,
+      "subjectid": 5049,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4673,
+      "subjectid": 1112,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "insufficient HR before induction"
+    },
+    {
+      "caseid": 4793,
+      "subjectid": 864,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 4798,
+      "subjectid": 5297,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 4820,
+      "subjectid": 812,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 4837,
+      "subjectid": 1266,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 4903,
+      "subjectid": 5944,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "no cuff MAP within 15 minutes before induction"
+    },
+    {
+      "caseid": 4914,
+      "subjectid": 1576,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 5004,
+      "subjectid": 6016,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5019,
+      "subjectid": 996,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 5035,
+      "subjectid": 3342,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5109,
+      "subjectid": 3224,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5135,
+      "subjectid": 5722,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5153,
+      "subjectid": 2541,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5162,
+      "subjectid": 3551,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5317,
+      "subjectid": 2384,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5328,
+      "subjectid": 651,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 5403,
+      "subjectid": 5406,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 5422,
+      "subjectid": 1521,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "insufficient induction or surgery duration"
+    },
+    {
+      "caseid": 5425,
+      "subjectid": 5167,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5439,
+      "subjectid": 4963,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 5453,
+      "subjectid": 2341,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 5508,
+      "subjectid": 2038,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5552,
+      "subjectid": 5879,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 5578,
+      "subjectid": 4480,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5585,
+      "subjectid": 2198,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 5613,
+      "subjectid": 5337,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "propofol delivery began before recording"
+    },
+    {
+      "caseid": 5614,
+      "subjectid": 1194,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 5671,
+      "subjectid": 5371,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 5675,
+      "subjectid": 1991,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5777,
+      "subjectid": 4850,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5809,
+      "subjectid": 1658,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5859,
+      "subjectid": 4089,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5912,
+      "subjectid": 3444,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5914,
+      "subjectid": 2277,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 5928,
+      "subjectid": 3055,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 5946,
+      "subjectid": 4378,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 5971,
+      "subjectid": 1910,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6015,
+      "subjectid": 4321,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "less than thirty seconds of zero delivery before induction"
+    },
+    {
+      "caseid": 6027,
+      "subjectid": 5150,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 6031,
+      "subjectid": 654,
+      "modality": "Sevoflurane",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "incomplete input history"
+    },
+    {
+      "caseid": 6059,
+      "subjectid": 555,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6074,
+      "subjectid": 1179,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Other positions",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6089,
+      "subjectid": 5740,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 6104,
+      "subjectid": 2712,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": true,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6147,
+      "subjectid": 2891,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6185,
+      "subjectid": 360,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 6196,
+      "subjectid": 3027,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "infusion rate and volume disagree"
+    },
+    {
+      "caseid": 6264,
+      "subjectid": 5268,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6280,
+      "subjectid": 2921,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6305,
+      "subjectid": 3593,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Other positions",
+      "asa": "2",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6345,
+      "subjectid": 3553,
+      "modality": "TIVA",
+      "device": "Vigileo",
+      "treated": false,
+      "procedure": "Laparoscopic or robotic, supine",
+      "asa": "1",
+      "hypertensive": false,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6346,
+      "subjectid": 5525,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "recorded volatile or nitrous oxide exposure"
+    },
+    {
+      "caseid": 6355,
+      "subjectid": 3191,
+      "modality": "TIVA",
+      "device": "EV1000",
+      "treated": false,
+      "procedure": "Open, supine",
+      "asa": "3",
+      "hypertensive": true,
+      "exclusion": "infusion rate and volume disagree"
+    }
+  ]
+}

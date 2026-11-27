@@ -1038,6 +1038,15 @@
             <select id="c-disturbance" aria-label="Stimulation profile"><option value="">Off</option></select>
             <button type="button" class="btn toggle t-warning" id="c-disturb" aria-pressed="false" disabled>Start stimulation</button>
           </div>
+          <div class="event-controls inline">
+            <select id="c-pneumo-iap" aria-label="CO₂ insufflation pressure">
+              <option value="10">10 mmHg</option>
+              <option value="12">12 mmHg</option>
+              <option value="14" selected>14 mmHg</option>
+              <option value="18">18 mmHg</option>
+            </select>
+            <button type="button" class="btn toggle t-warning" id="c-pneumoperitoneum" aria-pressed="false">Start CO₂ insufflation</button>
+          </div>
         </details>
 
         <details class="event-section" data-event="equipment">

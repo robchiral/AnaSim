@@ -91,7 +91,7 @@ SCENARIOS = {spec.id: spec for spec in SCENARIO_REGISTRY}
 # Instructor event controls; cases start their own events and offer case actions instead.
 EVENT_COMMANDS = frozenset({
     "hemorrhage", "anaphylaxis", "sepsis", "malignant_hyperthermia", "protamine_reaction",
-    "difficult_airway", "esophageal_intubation", "pneumothorax", "pulmonary_embolism",
+    "difficult_airway", "esophageal_intubation", "pneumothorax", "pneumoperitoneum", "pulmonary_embolism",
     "venous_air_embolism", "high_spinal", "neuraxial_clear",
     "stop_events", "rhythm", "obstruction",
     "bronchospasm", "auto_laryngospasm", "ards_shunt", "disturbance", "disturbance_profile", "oxygen_supply",
@@ -844,6 +844,11 @@ class WebSession:
                 "decompressed": engine.pneumothorax.decompressed,
                 "pressure": _num(engine.pneumothorax.pleural_pressure_mmhg, 1),
             },
+            "pneumoperitoneum": {
+                "active": engine.pneumoperitoneum.active,
+                "target_iap": _num(engine.pneumoperitoneum.target_iap_mmhg, 1),
+                "iap": _num(engine.pneumoperitoneum.iap_mmhg, 1),
+            },
             "embolism": {
                 "pe_active": engine.embolism.pe_active,
                 "pe_obstruction": _num(engine.embolism.pe_obstruction, 2),
@@ -1494,6 +1499,12 @@ class WebSession:
             self.engine.start_pneumothorax(severity=severity)
         else:
             self.engine.stop_pneumothorax()
+
+    def _cmd_pneumoperitoneum(self, active: bool, iap_mmhg: float = 14.0):
+        if active:
+            self.engine.start_pneumoperitoneum(iap_mmhg=iap_mmhg)
+        else:
+            self.engine.stop_pneumoperitoneum()
 
     def _cmd_pulmonary_embolism(self, active: bool, obstruction: float = 0.60):
         if active:

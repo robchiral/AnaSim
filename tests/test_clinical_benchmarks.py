@@ -828,3 +828,528 @@ def test_marti_2015_thrombolysis_bleeding_and_mirski_2007_vae_aspiration_cap(eng
     assert 40.0 <= first <= 50.0
     assert second == 0.0
     assert vae.state.vae_air_ml >= 50.0
+
+
+def test_thwaites_1997_and_kirkbride_2001_propofol_vs_sevoflurane_induction(engine_factory):
+    """Thwaites 1997 (n=102, age ~59, 66.7% N2O): 8% sevoflurane induction dropped MAP less than
+    propofol 167 mg over 57 s (-8.5% vs -20.3% at 2 min; -7.7% vs -21.8% at 3 min).
+    Kirkbride 2001 (n=45 elderly >75 yr, 50% N2O): 6-min MAP drop was 34 +/- 7% (SD) with propofol
+    versus 21 +/- 6% with 8% sevoflurane."""
+    from anasim.core.runtime import step_simulation
+
+    def _run_induction(*, age: float, weight: float, n2o_l: float, o2_l: float, arm: str, duration_s: int) -> float:
+        eng = engine_factory(
+            config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+            start=True, age=age, weight=weight, height=170.0, sex="female",
+            baseline_map=105.0, baseline_hr=76.0,
+        )
+        map0 = eng.state.map
+        eng.set_airway_mode("ETT")
+        eng.set_vent_settings(rr=12, vt=0.5, peep=0.0, ie="1:2", mode="VCV")
+        eng.set_vent_power(True)
+        eng.set_fgf(o2_l, 0.0, n2o_l)
+        if arm == "propofol":
+            bolus = 167.0 if age < 70 else 180.0
+            for sec in range(duration_s):
+                if sec < 60:
+                    eng.give_drug_bolus("propofol", bolus / 60.0)
+                elif sec == 60:
+                    eng.set_vaporizer(2.0 if age < 70 else 1.5)
+                step_simulation(eng, 1.0, update_monitors=False)
+                eng.state.time += 1.0
+        else:
+            eng.set_vaporizer(8.0)
+            for sec in range(duration_s):
+                if sec == 120:
+                    eng.set_vaporizer(2.0 if age < 70 else 1.5)
+                step_simulation(eng, 1.0, update_monitors=False)
+                eng.state.time += 1.0
+        return (map0 - eng.state.map) / map0
+
+    thw_prop = _run_induction(age=59.0, weight=73.0, n2o_l=4.0, o2_l=2.0, arm="propofol", duration_s=180)
+    thw_sevo = _run_induction(age=59.0, weight=73.0, n2o_l=4.0, o2_l=2.0, arm="sevo", duration_s=180)
+    assert 0.16 <= thw_prop <= 0.36
+    assert 0.04 <= thw_sevo <= 0.22
+    assert thw_prop - thw_sevo >= 0.08
+
+    kirk_prop = _run_induction(age=77.0, weight=70.0, n2o_l=3.0, o2_l=3.0, arm="propofol", duration_s=360)
+    kirk_sevo = _run_induction(age=77.0, weight=70.0, n2o_l=3.0, o2_l=3.0, arm="sevo", duration_s=360)
+    assert 0.24 <= kirk_prop <= 0.45
+    assert 0.10 <= kirk_sevo <= 0.30
+    assert kirk_prop - kirk_sevo >= 0.08
+
+
+def test_albertin_2004_and_manyam_2006_sevoflurane_remifentanil_synergy():
+    """Manyam 2006 (n=16 volunteers, no N2O): remifentanil 0 -> 1.25 -> 5.0 -> 7.5 ng/mL lowers
+    sevoflurane EC95 for OAA/S <= 1 (1.30 -> 0.78 -> 0.33 -> 0.23%) and tetany (6.48 -> 2.63 -> 0.90 -> 0.61%).
+    Albertin 2004 (n=74 ASA I, 60% N2O): remifentanil 0 -> 1 -> 3 ng/mL lowers sevoflurane MAC-BAR
+    from 2.8% [2.5-3.0] to 1.1% [0.9-1.3] and 0.2% [0.1-0.3]."""
+    from anasim.patient.pd.anesthesia import ClinicalResponseModel
+    from anasim.patient.volatile_pk import VolatilePK
+    from anasim.physiology.disturbances import PROFILE_SPECS
+
+    young = Patient(age=24.0, weight=70.0, height=175.0, sex="male")
+    mac_young = VolatilePK(young, "Sevoflurane", 0.65, 1.7, 2.05).mac_age
+    pd_young = ClinicalResponseModel(young.age)
+
+    def _find_sevo_ec_pct(fn, target: float, remi: float) -> float:
+        lo, hi = 0.0, 12.0
+        for _ in range(40):
+            mid = 0.5 * (lo + hi)
+            if fn(0.0, remi, mid / mac_young, 0.0) >= target:
+                hi = mid
+            else:
+                lo = mid
+        return 0.5 * (lo + hi)
+
+    loc95 = [_find_sevo_ec_pct(pd_young.loss_of_response, 0.95, r) for r in (0.0, 1.25, 5.0, 7.5)]
+    tol95 = [_find_sevo_ec_pct(pd_young.tolerance, 0.95, r) for r in (0.0, 1.25, 5.0, 7.5)]
+    assert loc95[0] > loc95[1] > loc95[2] > loc95[3]
+    assert tol95[0] > tol95[1] > tol95[2] > tol95[3]
+    assert 1.0 <= loc95[0] <= 2.2
+    assert 0.10 <= loc95[3] <= 0.45
+    assert tol95[0] > 2.5 and tol95[3] < 1.2
+
+    # Albertin 2004: remifentanil progressively blunts incision cardiovascular surge at fixed sevo + 60% N2O.
+    adult = Patient(age=37.0, weight=61.0, height=167.0, sex="female")
+    mac_adult = VolatilePK(adult, "Sevoflurane", 0.65, 1.7, 2.05).mac_age
+    pd_adult = ClinicalResponseModel(adult.age)
+    inc_intensity = PROFILE_SPECS["stim_sustained_surgery"].sympathetic_intensity
+    mac_n2o = 60.0 / 104.0
+    fracs_fixed = [
+        pd_adult.cardiovascular_response_fractions(
+            0.0, remi_ce, 1.1 / mac_adult, mac_n2o, intensity=inc_intensity,
+        )[0]
+        for remi_ce in (0.0, 1.0, 3.0)
+    ]
+    assert fracs_fixed[0] > fracs_fixed[1] > fracs_fixed[2]
+    assert fracs_fixed[2] < 0.20
+    # At Albertin's no-remi and 1 ng/mL MAC-BAR points, acute cardiovascular surge is attenuated.
+    for sevo_pct, remi_ce in ((2.8, 0.0), (1.1, 1.0)):
+        map_frac, hr_frac = pd_adult.cardiovascular_response_fractions(
+            0.0, remi_ce, sevo_pct / mac_adult, mac_n2o, intensity=inc_intensity,
+        )
+        assert map_frac < 0.70 and hr_frac < 0.70
+
+
+def test_mertens_2003_propofol_remifentanil_synergy():
+    """Mertens 2003 (n=29 ASA I-II women, age 37): remifentanil 0 -> 7 -> 10 ng/mL lowers awakening
+    C50,prop from 3.49 +/- 0.64 (SE) to 0.6 and 0.4 mcg/mL; propofol 2 -> 7.3 mcg/mL lowers
+    laryngoscopy C50,rem from 3.8 to 0 ng/mL."""
+    from anasim.patient.pd.anesthesia import ClinicalResponseModel
+
+    pd = ClinicalResponseModel(37.0)
+
+    def _c50_prop(remi: float) -> float:
+        lo, hi = 0.0, 12.0
+        for _ in range(40):
+            mid = 0.5 * (lo + hi)
+            if pd.loss_of_response(mid, remi, 0.0, 0.0) >= 0.5:
+                hi = mid
+            else:
+                lo = mid
+        return 0.5 * (lo + hi)
+
+    def _c50_remi(prop: float) -> float:
+        if pd.tolerance(prop, 0.0, 0.0, 0.0) >= 0.5:
+            return 0.0
+        lo, hi = 0.0, 20.0
+        for _ in range(40):
+            mid = 0.5 * (lo + hi)
+            if pd.tolerance(prop, mid, 0.0, 0.0) >= 0.5:
+                hi = mid
+            else:
+                lo = mid
+        return 0.5 * (lo + hi)
+
+    c50p = [_c50_prop(r) for r in (0.0, 7.0, 10.0)]
+    assert 2.2 <= c50p[0] <= 4.2
+    assert c50p[0] > c50p[1] > c50p[2]
+    assert c50p[1] < 1.0 and c50p[2] < 0.6
+
+    c50r_2 = _c50_remi(2.0)
+    c50r_4 = _c50_remi(4.0)
+    c50r_73 = _c50_remi(7.3)
+    assert 1.2 <= c50r_2 <= 6.5
+    assert c50r_2 > c50r_4 > c50r_73
+    assert c50r_73 < 0.5
+
+
+def test_kalmar_2018_and_poterman_2015_vasopressor_preload_and_afterload(engine_factory):
+    """Kalmar 2018 (n=18, preload-dependent atropinized TIVA + epidural, 2 mcg/kg phenylephrine):
+    raised MAP +34 mmHg, CO +26%, SV +28%, SVR +37% with flat HR.
+    Poterman 2015 (n=57, propofol Ce 2.5 + remi Ce 8): phenylephrine 100 mcg + 0.49 mcg/kg/min and
+    norepinephrine 10 mcg + 0.05 mcg/kg/min both restored MAP (+13 mmHg) via increased SVR."""
+    from anasim.core.runtime import step_simulation
+
+    # Kalmar 2018: pre-incision preload-dependent, vagolytically blocked patient given 2 mcg/kg phenylephrine.
+    kal = engine_factory(
+        config=SimulationConfig(
+            mode="awake", dt=1.0, rng_seed=1, tci_enabled=True, maintenance_fluid_ml_hr=0.0,
+        ),
+        start=True, age=62.0, weight=74.0, height=172.0, sex="male",
+    )
+    kal.set_airway_mode("ETT")
+    kal.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+    kal.set_vent_power(True)
+    kal.set_fgf(2.0, 2.0, 0.0)
+    kal.set_drug_target("propofol", 3.0)
+    kal.set_drug_target("remi", 4.0)
+    kal.give_epidural_bolus("bupivacaine", 10.0, 0.5)
+    kal.hemo.add_volume(-650.0)  # Fasted/bowel-prep preload dependence before surgical incision
+    kal.give_drug_bolus("atropine", 0.5)  # Prophylactic vagolytic (methylatropine 0.5 mg)
+    for _ in range(900):
+        step_simulation(kal, 1.0, update_monitors=False)
+        kal.state.time += 1.0
+    m0, hr0, co0, sv0, svr0 = kal.state.map, kal.state.hr, kal.state.co, kal.state.sv, kal.state.svr
+    kal.give_drug_bolus("phenyl", 2.0 * 74.0)
+    peak_map, peak_co, peak_sv, peak_svr, min_hr = m0, co0, sv0, svr0, hr0
+    for _ in range(300):
+        step_simulation(kal, 1.0, update_monitors=False)
+        kal.state.time += 1.0
+        peak_map = max(peak_map, kal.state.map)
+        peak_co = max(peak_co, kal.state.co)
+        peak_sv = max(peak_sv, kal.state.sv)
+        peak_svr = max(peak_svr, kal.state.svr)
+        min_hr = min(min_hr, kal.state.hr)
+    assert 20.0 <= peak_map - m0 <= 65.0
+    assert (peak_co - co0) / co0 >= 0.12
+    assert (peak_sv - sv0) / sv0 >= 0.12
+    assert (peak_svr - svr0) / svr0 >= 0.20
+    assert hr0 - min_hr <= 8.0
+
+    # Poterman 2015: phenylephrine vs norepinephrine infusion under propofol/remifentanil.
+    pot_results = {}
+    for arm in ("phenyl", "nore"):
+        eng = engine_factory(
+            config=SimulationConfig(
+                mode="steady_state", maint_type="tiva", dt=1.0, rng_seed=1,
+                tci_enabled=True, maintenance_fluid_ml_hr=0.0,
+            ),
+            start=True, age=58.0, weight=81.0, height=175.0, sex="male",
+        )
+        eng.set_drug_target("propofol", 2.5)
+        eng.set_drug_target("remi", 8.0)
+        for _ in range(300):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+        pm0, phr0, psvr0 = eng.state.map, eng.state.hr, eng.state.svr
+        if arm == "phenyl":
+            eng.give_drug_bolus("phenyl", 100.0)
+            eng.set_drug_rate("phenyl", 0.49 * 81.0)
+        else:
+            eng.give_drug_bolus("nore", 10.0)
+            eng.set_drug_rate("nore", 0.05 * 81.0)
+        for _ in range(240):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+        pot_results[arm] = (eng.state.map - pm0, eng.state.hr - phr0, eng.state.svr / psvr0)
+
+    assert pot_results["phenyl"][0] >= 8.0 and pot_results["phenyl"][2] > 1.15
+    assert pot_results["nore"][0] >= 8.0 and pot_results["nore"][2] > 1.04
+    assert pot_results["phenyl"][1] < pot_results["nore"][1]
+
+
+def test_su_2023_and_sjoen_2026_propofol_remifentanil_and_vasopressor_boluses(engine_factory):
+    """Su 2023 (n=36 volunteers): stepped propofol 0 -> 1.5 -> 3.5 -> 6.0 mcg/mL monotonically
+    lowers MAP, remifentanil deepens the drop at 1.5-3.5 mcg/mL, and age 60 drops more than 22 yr.
+    Sjøen 2026 (n=122 women, propofol 6 / remi 8 TCI + simultaneous bolus): ephedrine 0.1 mg/kg
+    attenuated SBP (-20% vs -32%) and CO (-22% vs -34%) falls, whereas phenylephrine 1 mcg/kg
+    raised SVR (+46% vs +5.6%) with deeper HR slowing."""
+    from anasim.core.runtime import step_simulation
+
+    # Su 2023 steady-concentration MAP across propofol steps and remifentanil levels.
+    def _steady_map(age: float, prop: float, remi: float) -> float:
+        hemo = HemodynamicModel(
+            Patient(age=age, weight=72.0, height=174.0, sex="male", baseline_map=82.0, baseline_hr=65.0),
+        )
+        for _ in range(360):
+            hemo.step(5.0, prop, remi, 0.0, -2.0, 40.0, 98.0)
+        return hemo.state.map
+
+    m_alone = [_steady_map(35.0, c, 0.0) for c in (0.0, 1.5, 3.5, 6.0)]
+    assert m_alone[0] > m_alone[1] > m_alone[2] > m_alone[3]
+    assert _steady_map(35.0, 1.5, 4.0) < m_alone[1] - 3.0
+    assert _steady_map(35.0, 3.5, 4.0) < m_alone[2] - 2.0
+    assert _steady_map(60.0, 3.5, 2.0) < _steady_map(22.0, 3.5, 2.0)
+
+    # Sjøen 2026: simultaneous prophylactic bolus during propofol 6 / remi 8 TCI induction.
+    arms = {}
+    for arm in ("placebo", "ephedrine", "phenyl"):
+        eng = engine_factory(
+            config=SimulationConfig(
+                mode="awake", dt=1.0, rng_seed=1, tci_enabled=True, maintenance_fluid_ml_hr=0.0,
+            ),
+            start=True, age=40.0, weight=71.0, height=166.0, sex="female",
+            baseline_map=88.0, baseline_hr=72.0,
+        )
+        eng.set_airway_mode("ETT")
+        eng.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        eng.set_vent_power(True)
+        eng.set_fgf(2.0, 2.0, 0.0)
+        sbp0, co0, hr0, svr0 = eng.state.sbp, eng.state.co, eng.state.hr, eng.state.svr
+        eng.set_drug_target("propofol", 6.0)
+        eng.set_drug_target("remi", 8.0)
+        if arm == "ephedrine":
+            eng.give_drug_bolus("ephedrine", 0.1 * 71.0)
+        elif arm == "phenyl":
+            eng.give_drug_bolus("phenyl", 1.0 * 71.0)
+        min_sbp, min_co, min_hr, max_svr = sbp0, co0, hr0, svr0
+        for _ in range(300):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+            min_sbp = min(min_sbp, eng.state.sbp)
+            min_co = min(min_co, eng.state.co)
+            min_hr = min(min_hr, eng.state.hr)
+            max_svr = max(max_svr, eng.state.svr)
+        arms[arm] = (
+            (min_sbp - sbp0) / sbp0,
+            (min_co - co0) / co0,
+            (min_hr - hr0) / hr0,
+            (max_svr - svr0) / svr0,
+        )
+
+    assert arms["ephedrine"][0] > arms["placebo"][0] + 0.06
+    assert arms["ephedrine"][1] > arms["placebo"][1] + 0.05
+    assert arms["phenyl"][3] > arms["placebo"][3] + 0.20
+    assert arms["phenyl"][2] < arms["ephedrine"][2]
+
+
+def test_reich_2005_and_schonberger_2022_elderly_propofol_vs_etomidate(engine_factory):
+    """Reich 2005 (n=4,096): severe post-induction hypotension rises with age >= 50 (OR 2.25)
+    and propofol vs etomidate (OR 3.94).
+    Schonberger 2022 (N=319,948 >= 65 yr, mean age 73): MAP fell 31.0 +/- 17.9 mmHg (NIBP) and
+    37.0 +/- 20.8 mmHg (IBP), deepened per +1 mg/kg propofol, and was attenuated by etomidate."""
+    from anasim.core.runtime import step_simulation
+
+    def _run_case(*, age: float, agent: str, dose_mg_kg: float) -> tuple[float, float]:
+        eng = engine_factory(
+            config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1, maintenance_fluid_ml_hr=0.0),
+            start=True, age=age, weight=75.0, height=170.0, sex="male",
+            baseline_map=95.0, baseline_hr=72.0,
+        )
+        eng.set_airway_mode("ETT")
+        eng.set_vent_settings(rr=12, vt=0.5, peep=5.0, ie="1:2", mode="VCV")
+        eng.set_vent_power(True)
+        eng.set_fgf(2.0, 2.0, 0.0)
+        m0 = eng.state.map
+        eng.give_drug_bolus("fentanyl", 1.5 * 75.0)
+        eng.give_drug_bolus(agent, dose_mg_kg * 75.0)
+        min_0_5 = m0
+        min_5_10 = m0
+        for sec in range(1, 601):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+            if sec <= 300:
+                min_0_5 = min(min_0_5, eng.state.map)
+            else:
+                min_5_10 = min(min_5_10, eng.state.map)
+        return m0 - min_0_5, m0 - min_5_10
+
+    eld_17_early, eld_17_late = _run_case(age=73.0, agent="propofol", dose_mg_kg=1.7)
+    _, eld_25_late = _run_case(age=73.0, agent="propofol", dose_mg_kg=2.5)
+    _, yng_17_late = _run_case(age=35.0, agent="propofol", dose_mg_kg=1.7)
+    _, eld_eto_late = _run_case(age=73.0, agent="etomidate", dose_mg_kg=0.25)
+
+    assert 20.0 <= eld_17_late <= 45.0
+    assert eld_17_late >= eld_17_early
+    assert eld_25_late > eld_17_late + 2.0
+    assert eld_17_late > yng_17_late + 4.0
+    assert eld_eto_late < 15.0 and eld_eto_late < 0.45 * eld_17_late
+
+
+def test_joris_1993_and_tan_1992_pneumoperitoneum_hemodynamics_and_gas_exchange(engine_factory):
+    """Joris 1993 (n=15, 14 mmHg CO2 pneumoperitoneum): MAP rises, CI falls ~15-25%, SVR and PVR
+    climb, RAP and PCWP/LAP rise with intrathoracic pressure, and airway pressures increase;
+    Fahy 1995: respiratory compliance falls ~25-35%; Tan 1992 / Mullett 1993: peritoneal CO2
+    absorption raises venous CO2 load ~30% without raising O2 consumption; VitalDB labs:
+    PaCO2-EtCO2 widens ~2 mmHg; over-insufflation (22 mmHg) compresses the IVC and lowers CO."""
+    from anasim.core.runtime import step_simulation
+
+    eng = engine_factory(
+        config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=1.0, rng_seed=1),
+        start=True,
+        age=49.0, weight=67.0, height=165.0, sex="female",
+    )
+    eng.set_vent_settings(mode="VCV", vt=0.50, rr=12.0, peep=5.0, ie="1:2")
+    for _ in range(300):
+        step_simulation(eng, 1.0, update_monitors=False)
+        eng.state.time += 1.0
+
+    base_map = eng.state.map
+    base_ci = eng.state.co / eng.patient.bsa
+    base_svr = eng.state.svr
+    base_pvr = eng.hemo.state.pvr
+    base_rap = eng.hemo.state.rap
+    base_lap = eng.hemo.state.lap
+    base_comp = eng.aeration.static_compliance
+    base_pplat = eng.state.paw_plat
+    base_grad = eng.state.pa_co2 - eng.state.etco2
+    base_vo2 = eng.resp._pulmonary_o2_uptake
+
+    eng.start_pneumoperitoneum(14.0)
+    for _ in range(300):
+        step_simulation(eng, 1.0, update_monitors=False)
+        eng.state.time += 1.0
+    m5_map, m5_ci = eng.state.map, eng.state.co / eng.patient.bsa
+    m5_svr, m5_pvr = eng.state.svr, eng.hemo.state.pvr
+    m5_rap, m5_lap = eng.hemo.state.rap, eng.hemo.state.lap
+    assert m5_map > base_map + 8.0
+    assert 0.70 * base_ci <= m5_ci <= 0.90 * base_ci
+    assert m5_svr > base_svr * 1.30
+    assert m5_pvr > base_pvr * 1.45
+    assert m5_rap > base_rap + 3.5
+    assert m5_lap > base_lap + 1.0
+    assert 0.62 * base_comp <= eng.aeration.static_compliance <= 0.80 * base_comp
+    assert eng.state.paw_plat > base_pplat + 3.0
+    assert (eng.state.pa_co2 - eng.state.etco2) > base_grad + 1.5
+
+    # Sustained CO2 absorption over 25 more min raises PaCO2 without raising metabolic O2 demand.
+    paco2_5 = eng.state.pa_co2
+    for _ in range(1500):
+        step_simulation(eng, 1.0, update_monitors=False)
+        eng.state.time += 1.0
+    assert eng.state.pa_co2 > paco2_5 + 3.0
+    assert eng.pneumoperitoneum.co2_absorption_ml_min(eng.resp.vco2) > 40.0
+    assert eng.resp._pulmonary_o2_uptake <= base_vo2 * 1.05
+
+    # Over-insufflation (22 mmHg) causes IVC compression and marked cardiac output fall.
+    eng.start_pneumoperitoneum(22.0)
+    for _ in range(240):
+        step_simulation(eng, 1.0, update_monitors=False)
+        eng.state.time += 1.0
+    assert eng.state.co / eng.patient.bsa < m5_ci * 0.82
+
+    # Desufflation restores compliance, pressures, and CI while tissue CO2 washes out gradually.
+    eng.stop_pneumoperitoneum()
+    for _ in range(900):
+        step_simulation(eng, 1.0, update_monitors=False)
+        eng.state.time += 1.0
+    assert eng.state.pneumoperitoneum_iap == pytest.approx(0.0, abs=0.1)
+    assert eng.aeration.static_compliance == pytest.approx(base_comp, rel=0.05)
+    assert eng.state.co / eng.patient.bsa > m5_ci * 1.15
+
+
+def test_cronnelly_1979_kirkegaard_2002_kaufhold_2016_and_mirakhur_1977_neostigmine(engine_factory):
+    """Cronnelly 1979 (n=18): ~53% renal clearance doubles neostigmine half-life in anephric patients.
+    Jones 2008 / Kirkegaard 2002 / Kaufhold 2016 / Schaller 2010: competitive reversal shows a deep-block
+    ceiling, saturates near 0.04-0.07 mg/kg, and reverses shallow/minimal block within minutes.
+    Mirakhur 1977 (n=40): unopposed neostigmine causes severe muscarinic bradycardia; glycopyrrolate
+    (0.2 mg/mg) stabilizes HR better than atropine's brief 1-min tachycardia and later dip.
+    Herbstreit 2010 (n=10): unopposed neostigmine after full recovery impairs pharyngeal dilator tone."""
+    from anasim.core.runtime import step_simulation
+    from anasim.patient.pk_models import NeostigminePK
+
+    # Cronnelly 1979: renal failure roughly halves clearance and prolongs elimination.
+    normal_pk = NeostigminePK(Patient(age=40.0, weight=70.0, height=170.0, sex="male", renal_function=1.0))
+    anephric_pk = NeostigminePK(Patient(age=40.0, weight=70.0, height=170.0, sex="male", renal_function=0.05))
+    assert anephric_pk.cl1 < 0.55 * normal_pk.cl1
+    for pk in (normal_pk, anephric_pk):
+        pk.state.c1 += 4900.0 / pk.v1
+        for _ in range(7200):
+            pk.step(1.0, 0.0)
+    assert anephric_pk.state.c1 > normal_pk.state.c1 * 1.5
+
+    def _time_to_tof90(maint: str, wait_min: int, dose_mg_kg: float) -> float | None:
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type=maint, dt=1.0, rng_seed=1),
+            start=True, age=40.0, weight=70.0, height=170.0, sex="male",
+        )
+        eng.give_drug_bolus("roc", 0.6 * 70.0)
+        for _ in range(wait_min * 60):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+        if dose_mg_kg > 0.0:
+            eng.give_drug_bolus("neostigmine", dose_mg_kg * 70.0)
+            eng.give_drug_bolus("glyco", 0.2 * dose_mg_kg * 70.0)
+        for sec in range(1, 35 * 60 + 1):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+            if eng.state.tof >= 90.0:
+                return sec / 60.0
+        return None
+
+    # Deep block ceiling (Jones 2008) vs shallow/minimal block reversal (Kaufhold 2016; Schaller 2010).
+    deep_t = _time_to_tof90("balanced", 20, 0.07)
+    shallow_placebo = _time_to_tof90("tiva", 39, 0.0)
+    shallow_40 = _time_to_tof90("tiva", 39, 0.04)
+    shallow_70 = _time_to_tof90("tiva", 39, 0.07)
+    minimal_40 = _time_to_tof90("tiva", 47, 0.04)
+    assert deep_t is None or deep_t > 25.0
+    assert shallow_placebo is not None and shallow_40 is not None and shallow_70 is not None
+    assert minimal_40 is not None
+    assert shallow_40 < shallow_placebo * 0.50
+    assert shallow_70 <= shallow_40
+    assert minimal_40 < 5.0
+
+    # Mirakhur 1977: unopposed bradycardia vs glycopyrrolate stability vs atropine early spike.
+    hr_traces: dict[str, list[float]] = {}
+    for label, adj, adj_mg in (("alone", None, 0.0), ("glyco", "glyco", 0.5), ("atropine", "atropine", 1.2)):
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="balanced", dt=1.0, rng_seed=1),
+            start=True, age=53.0, weight=65.0, height=168.0, sex="female", baseline_hr=87.0,
+        )
+        for _ in range(120):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+        hr0 = eng.state.hr
+        eng.give_drug_bolus("neostigmine", 2.5)
+        if adj is not None:
+            eng.give_drug_bolus(adj, adj_mg)
+        deltas = []
+        for _ in range(7):
+            for _ in range(60):
+                step_simulation(eng, 1.0, update_monitors=False)
+                eng.state.time += 1.0
+            deltas.append(eng.state.hr - hr0)
+        hr_traces[label] = deltas
+
+    assert min(hr_traces["alone"]) < -15.0
+    assert abs(hr_traces["glyco"][0]) < abs(hr_traces["atropine"][0])
+    assert hr_traces["atropine"][0] > 3.0 and hr_traces["atropine"][-1] < 0.0
+    assert max(abs(x) for x in hr_traces["glyco"]) < max(abs(x) for x in hr_traces["atropine"])
+
+    # Herbstreit 2010: unopposed neostigmine after full recovery reduces pharyngeal dilator tone.
+    awake = engine_factory(
+        config=SimulationConfig(mode="awake", dt=1.0, rng_seed=1),
+        start=True, age=35.0, weight=75.0, height=178.0, sex="male",
+    )
+    tone0 = awake.tof_pd.pharyngeal_tone_fraction()
+    awake.give_drug_bolus("neostigmine", 0.04 * 75.0)
+    awake.give_drug_bolus("glyco", 0.008 * 75.0)
+    for _ in range(480):
+        step_simulation(awake, 1.0, update_monitors=False)
+        awake.state.time += 1.0
+    assert awake.state.tof >= 90.0
+    assert awake.tof_pd.pharyngeal_tone_fraction() < tone0 - 0.15
+
+
+def test_poterman_2015_and_de_keijzer_2026_vasopressor_preload_reserve(engine_factory):
+    """Preload-dependent norepinephrine response: unpreloaded hypotensive TIVA (de Keijzer 2026)
+    shows stronger CO restoration than colloid-preloaded TIVA (Poterman 2015), where SVR rises
+    more prominently and HR slows slightly."""
+    from anasim.core.runtime import step_simulation
+
+    def _run_ne(*, preload_ml: float) -> tuple[float, float, float, float]:
+        eng = engine_factory(
+            config=SimulationConfig(mode="steady_state", maint_type="tiva", dt=1.0, rng_seed=1),
+            start=True, age=44.0, weight=79.0, height=176.0, sex="male",
+        )
+        if preload_ml > 0.0:
+            eng.give_albumin(preload_ml)
+        for _ in range(900):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+        b_map, b_hr, b_co, b_svr = eng.state.map, eng.state.hr, eng.state.co, eng.state.svr
+        eng.set_drug_rate("nore", 0.05 * 79.0)
+        for _ in range(600):
+            step_simulation(eng, 1.0, update_monitors=False)
+            eng.state.time += 1.0
+        return eng.state.map - b_map, eng.state.hr - b_hr, eng.state.co - b_co, eng.state.svr / b_svr
+
+    u_dmap, _u_dhr, u_dco, _u_svr = _run_ne(preload_ml=0.0)
+    p_dmap, p_dhr, p_dco, p_svr = _run_ne(preload_ml=500.0)
+    assert u_dmap > 8.0 and p_dmap > 8.0
+    assert u_dco > p_dco + 0.10
+    assert p_dhr <= 1.0
+    assert p_svr > 1.12

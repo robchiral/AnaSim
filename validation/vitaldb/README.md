@@ -10,8 +10,15 @@ into `validation/vitaldb/.vitaldb_cache/`.
 python -m validation.vitaldb.vitaldb_ventilation
 python -m validation.vitaldb.vitaldb_peep
 python -m validation.vitaldb.vitaldb_anesthetics --figures
+python -m validation.vitaldb.vitaldb_sevo_bis
 python -m validation.vitaldb.vitaldb_tiva
 python -m validation.vitaldb.vitaldb_sevo
+python -m validation.vitaldb.vitaldb_pulse_pressure
+python -m validation.vitaldb.vitaldb_co
+python -m validation.vitaldb.vitaldb_vasopressors
+python -m validation.vitaldb.vitaldb_laparoscopy
+python -m validation.vitaldb.vitaldb_labs
+python -m validation.vitaldb.vitaldb_temperature
 ```
 
 Each script writes its report to `results/` and screens unique subjects inside
@@ -80,12 +87,40 @@ could prompt treatment (MAP below 65 mmHg, SBP below 90, or HR below 45).
 remifentanil infusions (when present), and inspired sevoflurane maintenance.
 Propofol onset is inferred from recorded BIS and shifted 30 seconds later than
 model BIS latency implies, matching the TIVA BIS lag; intubation is placed 2.5
-minutes after propofol.
+minutes after propofol. Both `vitaldb_tiva.py` and `vitaldb_sevo.py` stratify
+untreated surgical maintenance by procedure and position (`Open, supine`,
+`Laparoscopic or robotic, supine`, and `Other positions`), and `vitaldb_sevo.py`
+also reports an extended untreated surgery cohort that retains cases without a
+pre-induction BIS fall.
 
 Both scripts fit a patient-offset likelihood model with patient bootstrap 95%
 intervals, report 5-fold cross-validation stability, and accept `--override '{...}'`
 or `--cv-grid '{"field": [v1, v2]}'` (`--folds 5`, evaluating pre-incision
 induction windows) for cross-validated sweeps.
+
+`vitaldb_co.py` compares paired pre-incision to surgery relative changes in
+cardiac output, stroke volume, and derived/direct SVR (plus steady-state
+medians) against uncalibrated EV1000 and Vigileo pulse-contour recordings.
+`vitaldb_sevo_bis.py` replays recorded end-tidal sevoflurane (and optional
+remifentanil) through cerebral equilibration into `BISModel` across surgical
+maintenance and post-surgery emergence without fitting parameters.
+`vitaldb_pulse_pressure.py` compares awake pre-induction cuff SBP, DBP, and
+pulse pressure, intraoperative invasive arterial pulse pressure (at matched
+MAP), and CVP against `HemodynamicModel`.
+`vitaldb_laparoscopy.py` compares paired pre-incision to mid-surgery changes
+in compliance, EtCO₂, minute ventilation, CO₂ elimination proxy, and untreated
+MAP between supine open and supine laparoscopic or robotic surgeries.
+`vitaldb_labs.py` evaluates settled intraoperative arterial blood gases and
+chemistry panels (`PaO2`, `PaCO2 - EtCO2`, `pH`, `HCO3-`, hemodilution `dHb`,
+`dGlucose`, `iCa2+`, and lactate) using recorded ventilator settings, fluids,
+and blood loss.
+`vitaldb_vasopressors.py` replays continuous Orchestra norepinephrine
+(20 mcg/mL) and phenylephrine (100 mcg/mL) infusions with invasive arterial MAP
+against zero-pressor counterfactuals and acute rate step-ups (noting
+confounding by indication during steady-state pressor administration).
+`vitaldb_temperature.py` compares 30- and 60-minute post-equilibration
+`Solar8000/BT` core temperature trajectories across BMI, age, and surgical
+approach against `ThermalModel` both without and with forced-air warming.
 
 ### Current results
 
@@ -95,10 +130,12 @@ MAP error, in mmHg with 95% CI:
 |---|---:|---|---|
 | TIVA (all) | 511 | Propofol to incision | -2.7 (-3.7 to -1.9) |
 | TIVA (legacy core) | 330 | Propofol to incision | -2.4 (-3.4 to -1.6) |
-| TIVA, untreated | 182 | Surgery | -1.2 (-2.9 to 0.5) |
+| TIVA, untreated (open supine) | 91 | Surgery | -1.0 (-3.3 to 1.3) |
+| TIVA, untreated (all) | 182 | Surgery | -3.2 (-4.9 to -1.5) |
 | Sevoflurane (all) | 136 | Propofol to incision | -6.1 (-8.2 to -4.1) |
 | Sevoflurane (legacy core) | 29 | Propofol to incision | -5.5 (-9.5 to -1.5) |
-| Sevoflurane, untreated | 48 | Surgery | 0.3 (-4.7 to 5.0) |
+| Sevoflurane, extended untreated (open supine) | 54 | Surgery | 0.1 (-3.7 to 3.8) |
+| Sevoflurane, extended untreated (all) | 171 | Surgery | -1.6 (-4.2 to 0.8) |
 
 Median fall in MAP from the pre-induction value:
 
@@ -110,5 +147,35 @@ Median fall in MAP from the pre-induction value:
 | Sevoflurane, model | 14% | 31% | 28% |
 
 Untreated HR error was `+0.4` bpm (induction) and `-0.4` bpm (surgery) in TIVA,
-and `-4.2` bpm at 5 to 10 minutes and `-0.3` bpm during surgery in sevoflurane,
-where 2 to 5 minute MAP fell `18%` in the model versus `15%` recorded.
+and `-4.2` bpm at 5 to 10 minutes and `+0.2` bpm during extended surgery
+(`+1.1` bpm open supine) in sevoflurane, where 2 to 5 minute MAP fell `18%` in
+the model versus `15%` recorded. In open supine TIVA (`n=91`), the pre-incision
+to surgery MAP rise was `+9.8` mmHg in the model versus `+10.1` mmHg recorded,
+while laparoscopic/robotic supine cases (`n=28`) rose `+16.9` mmHg due to
+unmodeled pneumoperitoneum.
+
+In `vitaldb_co.py` (`n=66` retained, `22` paired untreated pre-incision to
+surgery), paired relative SVR (`MAP/CO`) rose `+15.1%` in both recordings and
+model (`+18.0%` vs `+17.9%` in TIVA; `+10.0%` vs `+10.3%` in sevoflurane). In
+`vitaldb_sevo_bis.py` (`n=1,081` maintenance, `542` emergence), maintenance BIS
+bias was `-0.2` (`-0.7` to `0.3`) with MAE `7.6` (`40.7` recorded vs `39.8`
+model), and emergence MAE was `10.5` versus `24.5` for a constant `BIS=40`
+comparator. In `vitaldb_pulse_pressure.py` (`n=512` awake NIBP), pre-induction
+pulse pressure matched in patients aged 70 and over (`75.0` vs `75.1` mmHg,
+error `+0.1`), while younger cuffs and intraoperative radial arterial lines
+(`n=45`, `56.0` vs `44.1` mmHg) reflected peripheral pulse amplification; CVP
+(`n=7`) was `5.0` vs `3.7` mmHg. In `vitaldb_laparoscopy.py` (`n=399` supine:
+`277` open, `122` laparoscopic/robotic), net laparoscopic minus open effects
+were `-18.7%` compliance (`-25.2%` total), `+32.6%` VCO₂ proxy, `+4.3` mmHg
+EtCO₂, and `+8.2` mmHg untreated MAP. In `vitaldb_labs.py` (`n=94` ABGs),
+`PaO2` error was `-17.2` mmHg (`-34.6` to `1.3`; `+7.5` mmHg at PEEP `>= 4`
+cmH₂O vs `-45.1` mmHg at PEEP `<= 2` cmH₂O), and the `PaCO2 - EtCO2` gradient
+matched open cases (`-0.1` mmHg error) while widening by `2.3` mmHg in
+unmodeled laparoscopic/robotic cases (`7.0` vs `5.1` mmHg). In
+`vitaldb_vasopressors.py` (`n=11`), modeled MAP gains over zero-pressor
+counterfactuals were `+9.8` mmHg for norepinephrine (`n=2`, HR delta `-0.3`
+bpm) and `+11.7` mmHg for phenylephrine (`n=9`, HR delta `-0.7` bpm). In
+`vitaldb_temperature.py` (`n=360`), 60-minute post-equilibration core
+temperature fell `-0.24 °C` (`-0.27` to `-0.21`) versus `-0.31 °C` with active
+forced-air warming and `-1.25 °C` unwarmed, reproducing the BMI gradient
+(`-0.27`, `-0.24`, and `-0.19 °C` across `<22`, `22-26.9`, and `>=27 kg/m²`).

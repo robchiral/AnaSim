@@ -61,6 +61,7 @@ from validation.vitaldb.vitaldb_replay import (  # noqa: E402
     run_hemodynamic_replay,
     score_cuff_summary,
     step_headless,
+    surgery_subgroup_table_lines,
     treated,
     window_medians,
 )
@@ -128,6 +129,84 @@ def bis_latency(case: dict[str, str], patient) -> float:
         if engine.state.bis < 60.0:
             return second + 1.0
     raise Excluded("model BIS does not fall below 60")
+
+
+def _evaluate_maintenance_no_bis(
+    case: dict[str, str],
+    tracks: dict[str, str],
+    row: dict[str, Any],
+    dt: float,
+    load: Callable[[str], tuple[np.ndarray, np.ndarray]],
+) -> dict[str, Any] | None:
+    """Replay untreated sevoflurane surgery without pre-induction BIS onset detection.
+
+    By 15 minutes after incision (typically 30-50 minutes after induction), the
+    initial propofol bolus has largely redistributed, so steady-state surgery MAP
+    and HR depend on recorded inspired sevoflurane, remifentanil, fluids, and EBL
+    rather than exact bolus timing.
+    """
+    if induction_only_mode() or row["treated"]:
+        return None
+    try:
+        incision, opend = float(case["opstart"]), float(case["opend"])
+        if opend - (incision + 900.0) < 600.0:
+            return None
+        gases = {name: load(tracks[name]) for name in ("Primus/INSP_SEVO", "Primus/FIN2O")}
+        if np.max(gases["Primus/FIN2O"][1]) > 1:
+            return None
+        sevo_t, sevo_v = gases["Primus/INSP_SEVO"]
+        pos_sevo = sevo_t[sevo_v > 0.5]
+        if not len(pos_sevo) or np.any((sevo_v < 0) | (sevo_v > 8)):
+            return None
+        first_sevo = float(pos_sevo[0])
+        onset = min(first_sevo - 60.0, incision - 300.0)
+        end = min(opend, float(sevo_t[-1]))
+        if end - (incision + 900.0) < 600.0 or incision - onset < 300.0:
+            return None
+        covered(gases["Primus/INSP_SEVO"], first_sevo, end, 30.0)
+        baseline_map, baseline_hr = pre_induction(tracks, onset, track_loader=load)
+        patient = patient_from_case(case, baseline_map=baseline_map, baseline_hr=baseline_hr)
+        start = onset - 180.0
+        grid = time_grid(start, end, dt)
+        step_dt = np.diff(grid)
+        remi_name = next((name for name in REMI_RATES if name in tracks), None)
+        if remi_name:
+            remi = load(tracks[remi_name])
+            if np.any((remi[1] < 0) | (remi[1] > 1500)):
+                return None
+            remi_ml_h = np.nan_to_num(held(remi, grid[:-1], 60.0), nan=0.0)
+            remi_ug_s = remi_ml_h * REMI_UG_PER_ML[remi_name] / 3600.0
+        else:
+            remi_ug_s = np.zeros(len(step_dt), dtype=float)
+        inspired = np.nan_to_num(held(gases["Primus/INSP_SEVO"], grid, 30.0))
+        propofol_rate = amount(case, "intraop_ppf") / 20.0
+        propofol_mg_s = np.where((grid[:-1] >= onset) & (grid[:-1] < onset + 20.0), propofol_rate, 0.0)
+        ebl = amount(case, "intraop_ebl")
+        bleed = ebl / max(1.0, (opend - incision) / 60.0)
+        events = [
+            (onset + INTUBATION_S, lambda e: e.start_disturbance("stim_intubation_pulse")),
+            (incision, lambda e: e.start_disturbance("stim_sustained_surgery")),
+            (opend, lambda e: e.stop_disturbance()),
+        ]
+        if amount(case, "intraop_ftn"):
+            events.append((onset - 120.0, lambda e: e.give_drug_bolus("fentanyl", amount(case, "intraop_ftn"))))
+        if ebl:
+            events += [(incision, lambda e: e.start_hemorrhage(bleed)), (opend, lambda e: e.stop_hemorrhage())]
+        predicted = run_hemodynamic_replay(
+            case, patient, grid, onset=onset, events=events,
+            propofol_mg_s=propofol_mg_s, remi_ug_s=remi_ug_s, inspired_sevo=inspired,
+        )
+        maint = window_medians(tracks, grid, predicted, incision + 900.0, end, track_loader=load)
+        if not maint:
+            return None
+        return {
+            **row,
+            "age": float(patient.age),
+            "bmi": round(float(patient.bmi), 2),
+            "maintenance": {k: maint[k]["predicted"] - maint[k]["observed"] for k in ("map", "hr")},
+        }
+    except Excluded:
+        return None
 
 
 def evaluate(candidate, dt: float) -> dict[str, Any]:
@@ -199,7 +278,12 @@ def evaluate(candidate, dt: float) -> dict[str, Any]:
             propofol_mg_s=propofol_mg_s, remi_ug_s=remi_ug_s, inspired_sevo=inspired,
         )
     except Excluded as error:
-        return {**row, "exclusion": str(error)}
+        out: dict[str, Any] = {**row, "exclusion": str(error)}
+        if str(error) in ("no BIS fall from awake values", "no valid BIS"):
+            extra_maint = _evaluate_maintenance_no_bis(case, tracks, row, dt, load)
+            if extra_maint is not None:
+                out["maintenance_no_bis"] = extra_maint
+        return out
 
     summary = score_cuff_summary(
         row, patient, case, times=times, cuff_map=cuff_map, cuff_sbp=cuff_sbp, cuff_hr=cuff_hr,
@@ -289,12 +373,30 @@ def report(data: dict[str, Any], settings: dict[str, Any]) -> str:
             hr_lines.append(f"{name} {mean_ci(values, rng)}")
     if hr_lines:
         lines += ["", "ECG HR error (model minus recorded, per-patient medians, untreated): " + "; ".join(hr_lines) + " bpm."]
-    maintenance = [r["maintenance"] for r in untreated if r["maintenance"]]
-    if maintenance:
+    maint_rows = [r for r in untreated if r.get("maintenance")]
+    extra_maint_rows = [
+        r["maintenance_no_bis"]
+        for r in data.get("exclusions", [])
+        if r.get("maintenance_no_bis")
+    ]
+    if maint_rows:
         lines += [
             "",
-            "Surgery from 15 min after incision, untreated: MAP "
-            f"{mean_ci([m['map'] for m in maintenance], rng)} mmHg; HR {mean_ci([m['hr'] for m in maintenance], rng)} bpm.",
+            "## Surgery",
+            "",
+            "Primary cohort (untreated patients with BIS-timed induction, from 15 min after incision to end of surgery; "
+            "arterial MAP used when recorded):",
+            "",
+            *surgery_subgroup_table_lines(maint_rows, rng, with_rise=False),
+        ]
+    if extra_maint_rows:
+        combined = maint_rows + extra_maint_rows
+        lines += [
+            "",
+            "Extended untreated surgery cohort (including cases without pre-induction BIS fall, replayed from pre-sevoflurane "
+            f"baseline; n={len(combined)}, +{len(extra_maint_rows)} added):",
+            "",
+            *surgery_subgroup_table_lines(combined, rng, with_rise=False),
         ]
     lines += cv_grid_lines(data.get("cv_grid"))
     lines += report_footer(data["exclusions"])

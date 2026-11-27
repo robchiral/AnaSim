@@ -188,6 +188,146 @@ def test_hemodynamic_replay_injects_inspired_sevoflurane():
     assert eng_fast.state.bis == pytest.approx(eng_full.state.bis, abs=1e-9)
 
 
+def test_hemodynamic_replay_vasopressors_extra_outputs_and_subgroups():
+    from validation.vitaldb import vitaldb_co, vitaldb_temperature, vitaldb_vasopressors
+    from validation.vitaldb.vitaldb_data import patient_from_case
+    from validation.vitaldb.vitaldb_replay import (
+        run_hemodynamic_replay,
+        surgery_subgroup_table_lines,
+    )
+
+    case = dict(
+        age="50", weight="70", height="170", sex="M",
+        anestart="0", aneend="3600", intraop_crystalloid="0", intraop_colloid="0",
+    )
+    patient = patient_from_case(case)
+    grid = np.arange(0.0, 241.0, 1.0)
+    propofol_mg_s = np.where(grid[:-1] < 20.0, 7.0, 0.08)
+    remi_ug_s = np.full(len(grid) - 1, 0.1)
+    base = run_hemodynamic_replay(
+        case, patient, grid, onset=0.0, events=[],
+        propofol_mg_s=propofol_mg_s, remi_ug_s=remi_ug_s, extra_outputs=True,
+    )
+    with_pe = run_hemodynamic_replay(
+        case, patient, grid, onset=0.0, events=[],
+        propofol_mg_s=propofol_mg_s, remi_ug_s=remi_ug_s,
+        vasopressor_ug_s={"phenyl": np.where(grid[:-1] >= 120.0, 0.8, 0.0)},
+        extra_outputs=True,
+    )
+    assert base.shape == (len(grid), 7)
+    assert with_pe[-1, 0] > base[-1, 0] + 5.0  # phenylephrine raises MAP
+    assert with_pe[-1, 5] > base[-1, 5]        # and raises SVR (column 5)
+    assert base[-1, 3] > 1.5 and base[-1, 4] > 20.0  # CO and SV populated
+
+    # Stratified surgery table splits open supine, laparoscopic supine, and other positions.
+    rows = [
+        {"procedure": "Open, supine", "maintenance": {"map": 1.0, "hr": 0.5}},
+        {"procedure": "Open, supine", "maintenance": {"map": 0.5, "hr": 0.0}},
+        {"procedure": "Open, supine", "maintenance": {"map": -0.5, "hr": -0.5}},
+        {"procedure": "Laparoscopic or robotic, supine", "maintenance": {"map": -6.0, "hr": -4.0}},
+        {"procedure": "Laparoscopic or robotic, supine", "maintenance": {"map": -7.0, "hr": -3.0}},
+        {"procedure": "Laparoscopic or robotic, supine", "maintenance": {"map": -5.0, "hr": -5.0}},
+        {"procedure": "Other positions", "maintenance": {"map": 2.0, "hr": 1.0}},
+        {"procedure": "Other positions", "maintenance": {"map": 1.5, "hr": 0.5}},
+        {"procedure": "Other positions", "maintenance": {"map": 2.5, "hr": 1.5}},
+    ]
+    md = "\n".join(surgery_subgroup_table_lines(rows, np.random.default_rng(1)))
+    assert "All untreated" in md
+    assert "Open, supine" in md
+    assert "Laparoscopic or robotic, supine" in md
+    assert "Other positions" in md
+
+    # Eligibility screens for CO/SV and single-pressor cohorts.
+    sevo_case = dict(
+        weight="70", intraop_ppf="120", intraop_ftn="100", intraop_mdz="0",
+        intraop_epi="0", intraop_rbc="0", intraop_ffp="0", intraop_ebl="200",
+        asa="2", preop_htn="0",
+    )
+    co_tracks = {
+        "EV1000/CO": "1", "EV1000/SV": "2", "Solar8000/HR": "3", "Solar8000/NIBP_MBP": "4",
+        "Primus/INSP_SEVO": "5", "Primus/EXP_SEVO": "6", "Primus/FIN2O": "7",
+    }
+    assert vitaldb_co.eligible(sevo_case, co_tracks)
+    assert not vitaldb_co.eligible(sevo_case, {**co_tracks, "Orchestra/NEPI_RATE": "8"})
+
+    vaso_tracks = {
+        "Orchestra/PHEN_RATE": "1", "Solar8000/ART_MBP": "2", "Solar8000/HR": "3",
+        "Solar8000/NIBP_MBP": "4", "Primus/INSP_SEVO": "5", "Primus/FIN2O": "6",
+    }
+    assert vitaldb_vasopressors.eligible(sevo_case, vaso_tracks)
+    assert not vitaldb_vasopressors.eligible(sevo_case, {**vaso_tracks, "Orchestra/NEPI_RATE": "7"})
+
+    # Thermal curve helper cools less under active forced-air warming than unwarmed.
+    unw_d30, unw_d60 = vitaldb_temperature._simulate_thermal_curve(
+        patient, t0=36.6, elapsed_since_ind_s=900.0, fluid_ml_hr=500.0, active_warming=False,
+    )
+    _wrm_d30, wrm_d60 = vitaldb_temperature._simulate_thermal_curve(
+        patient, t0=36.6, elapsed_since_ind_s=900.0, fluid_ml_hr=500.0, active_warming=True,
+    )
+    assert unw_d60 < unw_d30 < 0.0
+    assert wrm_d60 > unw_d60 + 0.3
+
+
+def test_phase2_vitaldb_validators_screen_and_evaluate_cleanly():
+    from validation.vitaldb import (
+        vitaldb_labs,
+        vitaldb_laparoscopy,
+        vitaldb_pulse_pressure,
+        vitaldb_sevo_bis,
+    )
+
+    sevo_case = dict(
+        caseid="1", subjectid="1", age="55", weight="70", height="170", sex="M",
+        asa="2", preop_htn="0", approach="Open", position="Supine",
+        opstart="600", opend="3600",
+        intraop_ppf="120", intraop_ftn="100", intraop_mdz="0", intraop_epi="0",
+        intraop_rbc="0", intraop_ffp="0", intraop_ebl="200",
+    )
+    # Sevoflurane -> BIS screening requires Primus/EXP_SEVO, BIS/BIS, BIS/SQI, no TIVA pump.
+    bis_tracks = {
+        "Primus/EXP_SEVO": "1", "Primus/FIN2O": "2", "BIS/BIS": "3", "BIS/SQI": "4",
+    }
+    assert vitaldb_sevo_bis.eligible(sevo_case, bis_tracks)
+    assert not vitaldb_sevo_bis.eligible(sevo_case, {**bis_tracks, "Orchestra/PPF20_RATE": "5"})
+
+    # Pulse pressure / CVP helper derives realistic central reference PP and widens with age.
+    young = vitaldb_anesthetics.patient_for({**sevo_case, "age": "30"})
+    old = vitaldb_anesthetics.patient_for({**sevo_case, "age": "75"})
+    from anasim.core.engine import SimulationConfig, SimulationEngine
+
+    y_eng = SimulationEngine(young, SimulationConfig(mode="awake", rng_seed=1))
+    o_eng = SimulationEngine(old, SimulationConfig(mode="awake", rng_seed=1))
+    y_sbp, y_dbp = y_eng.arterial_waveform.reference_pressures(90.0, y_eng.hemo.base_sv, y_eng.hemo.base_hr)
+    o_sbp, o_dbp = o_eng.arterial_waveform.reference_pressures(90.0, o_eng.hemo.base_sv, o_eng.hemo.base_hr)
+    assert (o_sbp - o_dbp) > (y_sbp - y_dbp) + 10.0
+
+    # Laparoscopy window helper computes paired compliance and VCO2 proxy from synthetic tracks.
+    t = np.arange(0.0, 4000.0, 5.0)
+    lap_tracks = {
+        "Primus/COMPLIANCE": (t, np.where(t < 600.0, 50.0, 38.0)),
+        "Primus/ETCO2": (t, np.where(t < 600.0, 33.0, 37.0)),
+        "Primus/TV": (t, np.full_like(t, 500.0)),
+        "Primus/RR_CO2": (t, np.where(t < 600.0, 12.0, 14.0)),
+        "Primus/PEEP_MBAR": (t, np.full_like(t, 5.0)),
+        "Solar8000/NIBP_MBP": (t, np.where(t < 600.0, 72.0, 84.0)),
+        "Solar8000/HR": (t, np.full_like(t, 68.0)),
+    }
+    pre = vitaldb_laparoscopy._window_stats(
+        {k: k for k in lap_tracks}, 0.0, 600.0, 145.0, lap_tracks.__getitem__,
+    )
+    surg = vitaldb_laparoscopy._window_stats(
+        {k: k for k in lap_tracks}, 1800.0, 3300.0, 145.0, lap_tracks.__getitem__,
+    )
+    assert pre is not None and surg is not None
+    assert surg["comp"] < pre["comp"] * 0.80
+    assert surg["vco2"] > pre["vco2"] * 1.25
+    assert surg["etco2"] > pre["etco2"] + 3.0
+
+    # Intraop labs parser groups ABG panels within 120 s and verifies module helpers exist.
+    assert hasattr(vitaldb_pulse_pressure, "evaluate")
+    assert hasattr(vitaldb_labs, "evaluate")
+
+
 def tiva_recording(comparison):
     time = np.arange(2201, dtype=float)
     rate = np.where((time >= 60) & (time < 180), 500.0,

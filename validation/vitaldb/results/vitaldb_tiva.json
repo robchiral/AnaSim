@@ -95,11 +95,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 87.20124841307884
+          "predicted": 85.12523872510694
         },
         "hr": {
           "observed": 67.5,
-          "predicted": 75.28044734656108
+          "predicted": 75.27709221214187
         }
       }
     },
@@ -281,11 +281,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 78.6058395600366
+          "predicted": 76.78113731639183
         },
         "hr": {
           "observed": 81.0,
-          "predicted": 49.52810740278174
+          "predicted": 49.52677352913289
         }
       }
     },
@@ -376,11 +376,11 @@
       "maintenance": {
         "map": {
           "observed": 56.0,
-          "predicted": 82.48980371652328
+          "predicted": 80.54853533082681
         },
         "hr": {
           "observed": 52.0,
-          "predicted": 56.63968887499716
+          "predicted": 56.6376762066743
         }
       }
     },
@@ -463,11 +463,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 77.88135642562804
+          "predicted": 76.02209385005287
         },
         "hr": {
           "observed": 48.0,
-          "predicted": 58.22207589770673
+          "predicted": 58.21895664398654
         }
       }
     },
@@ -567,11 +567,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 83.92350035437272
+          "predicted": 81.94360268861647
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 49.715020464763946
+          "predicted": 49.71605631032848
         }
       }
     },
@@ -667,11 +667,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 68.79171961793168
+          "predicted": 67.17413100606962
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 57.109331005346235
+          "predicted": 57.107895881769636
         }
       }
     },
@@ -851,11 +851,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 81.56548509419065
+          "predicted": 79.68737718372338
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 51.45248966069062
+          "predicted": 51.448506711327845
         }
       }
     },
@@ -951,11 +951,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 75.15791876720635
+          "predicted": 73.29147532030538
         },
         "hr": {
           "observed": 86.0,
-          "predicted": 77.68896038078489
+          "predicted": 77.69131804081835
         }
       }
     },
@@ -1055,11 +1055,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 81.19739551389543
+          "predicted": 79.2899713369765
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 52.766414738879455
+          "predicted": 52.76220719510952
         }
       }
     },
@@ -1239,11 +1239,11 @@
       "maintenance": {
         "map": {
           "observed": 91.0,
-          "predicted": 81.06986275850096
+          "predicted": 79.19367826585886
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 70.71501575442672
+          "predicted": 70.7147039524576
         }
       }
     },
@@ -1330,11 +1330,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 86.02104986958989
+          "predicted": 84.06391969019951
         },
         "hr": {
           "observed": 72.0,
-          "predicted": 61.445043298413886
+          "predicted": 61.43927849234969
         }
       }
     },
@@ -1421,11 +1421,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 88.87309142884972
+          "predicted": 86.7855697742086
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 48.629849736857025
+          "predicted": 48.625885018135264
         }
       }
     },
@@ -1516,11 +1516,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 96.20869435613866
+          "predicted": 93.89667808961728
         },
         "hr": {
           "observed": 57.0,
-          "predicted": 62.84714516842619
+          "predicted": 62.84522212033878
         }
       }
     },
@@ -1611,11 +1611,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 91.2920575279422
+          "predicted": 89.16211590087288
         },
         "hr": {
           "observed": 78.5,
-          "predicted": 86.24257013889428
+          "predicted": 86.23757710512822
         }
       }
     },
@@ -1702,11 +1702,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 80.24187149927317
+          "predicted": 78.30001874594731
         },
         "hr": {
           "observed": 57.0,
-          "predicted": 59.95841525870029
+          "predicted": 59.95741553146415
         }
       }
     },
@@ -1806,11 +1806,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 84.5821105664774
+          "predicted": 82.52333126756866
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 51.024345580331556
+          "predicted": 51.02438850712366
         }
       }
     },
@@ -1910,11 +1910,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 86.05587742972475
+          "predicted": 84.02629348112829
         },
         "hr": {
           "observed": 49.0,
-          "predicted": 53.82982118041589
+          "predicted": 53.829510132805225
         }
       }
     },
@@ -2014,11 +2014,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 81.43848289889658
+          "predicted": 79.44443482255073
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 80.15387512910151
+          "predicted": 80.13355143575032
         }
       }
     },
@@ -2118,11 +2118,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 85.89268258928857
+          "predicted": 83.82671329435233
         },
         "hr": {
           "observed": 53.0,
-          "predicted": 51.11665228009396
+          "predicted": 51.11024985286571
         }
       }
     },
@@ -2214,11 +2214,11 @@
       "maintenance": {
         "map": {
           "observed": 118.0,
-          "predicted": 88.17875388661216
+          "predicted": 86.11650679671067
         },
         "hr": {
           "observed": 74.0,
-          "predicted": 58.213516089410234
+          "predicted": 58.21590818362493
         }
       }
     },
@@ -2309,11 +2309,11 @@
       "maintenance": {
         "map": {
           "observed": 62.0,
-          "predicted": 76.47122769551609
+          "predicted": 74.6418700081554
         },
         "hr": {
           "observed": 72.0,
-          "predicted": 63.42097054527517
+          "predicted": 63.419540786495375
         }
       }
     },
@@ -2400,11 +2400,11 @@
       "maintenance": {
         "map": {
           "observed": 83.5,
-          "predicted": 86.52619712037168
+          "predicted": 84.53542049724632
         },
         "hr": {
           "observed": 84.0,
-          "predicted": 75.44811313189126
+          "predicted": 75.44443954774334
         }
       }
     },
@@ -2500,11 +2500,11 @@
       "maintenance": {
         "map": {
           "observed": 103.0,
-          "predicted": 89.8250460894105
+          "predicted": 87.64029095947731
         },
         "hr": {
           "observed": 50.0,
-          "predicted": 38.42634066368376
+          "predicted": 38.41791932899041
         }
       }
     },
@@ -2600,11 +2600,11 @@
       "maintenance": {
         "map": {
           "observed": 94.0,
-          "predicted": 95.56912074685002
+          "predicted": 93.37152596240406
         },
         "hr": {
           "observed": 48.0,
-          "predicted": 47.68957133240437
+          "predicted": 47.69181828216898
         }
       }
     },
@@ -2691,11 +2691,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 72.89416609351517
+          "predicted": 71.09498337683979
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 52.168446634825116
+          "predicted": 52.16486057075553
         }
       }
     },
@@ -2791,11 +2791,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 85.78779355272717
+          "predicted": 83.87326848123902
         },
         "hr": {
           "observed": 79.0,
-          "predicted": 63.08476967366775
+          "predicted": 63.086276925558394
         }
       }
     },
@@ -2891,11 +2891,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 90.92684416220614
+          "predicted": 88.7430851175177
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 54.5220912189987
+          "predicted": 54.47327551280826
         }
       }
     },
@@ -2991,11 +2991,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 75.58188071923728
+          "predicted": 73.79502108935566
         },
         "hr": {
           "observed": 52.0,
-          "predicted": 52.483153996707145
+          "predicted": 52.48209991591795
         }
       }
     },
@@ -3171,11 +3171,11 @@
       "maintenance": {
         "map": {
           "observed": 80.0,
-          "predicted": 86.01792058529753
+          "predicted": 83.99418426676333
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 57.97227499850327
+          "predicted": 57.96993879364569
         }
       }
     },
@@ -3275,11 +3275,11 @@
       "maintenance": {
         "map": {
           "observed": 95.0,
-          "predicted": 82.52208922086116
+          "predicted": 80.51707473340821
         },
         "hr": {
           "observed": 71.0,
-          "predicted": 70.97897912945326
+          "predicted": 70.97783934317
         }
       }
     },
@@ -3379,11 +3379,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 85.5886771126622
+          "predicted": 83.53636206225367
         },
         "hr": {
           "observed": 74.0,
-          "predicted": 61.83719624529081
+          "predicted": 61.837197212881044
         }
       }
     },
@@ -3483,11 +3483,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 80.90775293478765
+          "predicted": 78.98720199949398
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 46.32911559332926
+          "predicted": 46.325225548672854
         }
       }
     },
@@ -3583,11 +3583,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 78.06919781534086
+          "predicted": 76.18412326886838
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 57.17019370950926
+          "predicted": 57.16900850841739
         }
       }
     },
@@ -3683,11 +3683,11 @@
       "maintenance": {
         "map": {
           "observed": 90.0,
-          "predicted": 85.2438309706493
+          "predicted": 83.2662024684054
         },
         "hr": {
           "observed": 83.0,
-          "predicted": 72.11400951083857
+          "predicted": 72.11537547943061
         }
       }
     },
@@ -3873,11 +3873,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 88.56923427933778
+          "predicted": 86.46958134806226
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 92.3155342580178
+          "predicted": 92.311407923404
         }
       }
     },
@@ -3968,11 +3968,11 @@
       "maintenance": {
         "map": {
           "observed": 81.0,
-          "predicted": 73.12547071142572
+          "predicted": 71.34904787471575
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 61.17972691341086
+          "predicted": 61.14248673285624
         }
       }
     },
@@ -4063,11 +4063,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 84.96049807813223
+          "predicted": 82.96251995129343
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 66.80443609679101
+          "predicted": 66.80230604021727
         }
       }
     },
@@ -4163,11 +4163,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 83.38446514012253
+          "predicted": 81.51982055929821
         },
         "hr": {
           "observed": 83.0,
-          "predicted": 60.916127954165354
+          "predicted": 60.91304109710221
         }
       }
     },
@@ -4267,11 +4267,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 75.76534044250786
+          "predicted": 73.86241128924992
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 60.34136256668542
+          "predicted": 60.339686324647786
         }
       }
     },
@@ -4371,11 +4371,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 86.8253645420831
+          "predicted": 84.7729457449066
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 64.0828669073934
+          "predicted": 64.08287750201825
         }
       }
     },
@@ -4471,11 +4471,11 @@
       "maintenance": {
         "map": {
           "observed": 93.0,
-          "predicted": 86.67717024099376
+          "predicted": 84.57283621493396
         },
         "hr": {
           "observed": 79.0,
-          "predicted": 79.61011340305699
+          "predicted": 79.5933937077613
         }
       }
     },
@@ -4571,11 +4571,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 83.57276341937767
+          "predicted": 81.52800634242226
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 73.4214965534687
+          "predicted": 73.40470150137094
         }
       }
     },
@@ -4671,11 +4671,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 100.11534539547029
+          "predicted": 97.70987682301457
         },
         "hr": {
           "observed": 99.0,
-          "predicted": 76.9639203543031
+          "predicted": 76.96398489557679
         }
       }
     },
@@ -4771,11 +4771,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 84.22168603800704
+          "predicted": 82.23124824060821
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 73.43393989558665
+          "predicted": 73.44073027750152
         }
       }
     },
@@ -4866,11 +4866,11 @@
       "maintenance": {
         "map": {
           "observed": 91.0,
-          "predicted": 81.05553541881743
+          "predicted": 79.11246410272145
         },
         "hr": {
           "observed": 80.0,
-          "predicted": 73.56943607179872
+          "predicted": 73.56943637278846
         }
       }
     },
@@ -4961,11 +4961,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 93.48404177648035
+          "predicted": 91.29782851630796
         },
         "hr": {
           "observed": 78.0,
-          "predicted": 69.00777771263228
+          "predicted": 69.00739320000554
         }
       }
     },
@@ -5145,11 +5145,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 80.81419020772724
+          "predicted": 78.91652875470169
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 57.82761771777143
+          "predicted": 57.823464548912
         }
       }
     },
@@ -5249,11 +5249,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 83.79789599801182
+          "predicted": 81.82432353636233
         },
         "hr": {
           "observed": 92.0,
-          "predicted": 72.37234435349858
+          "predicted": 72.37163123649323
         }
       }
     },
@@ -5345,11 +5345,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 88.78110660945688
+          "predicted": 86.83668089028463
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 68.4405503003265
+          "predicted": 68.44889208927194
         }
       }
     },
@@ -5449,11 +5449,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 87.51843859458569
+          "predicted": 85.41704766335837
         },
         "hr": {
           "observed": 57.0,
-          "predicted": 54.85253055470987
+          "predicted": 54.85016130110634
         }
       }
     },
@@ -5544,11 +5544,11 @@
       "maintenance": {
         "map": {
           "observed": 73.0,
-          "predicted": 77.01888106852078
+          "predicted": 75.12933792199313
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 54.16048238997006
+          "predicted": 54.14917230556442
         }
       }
     },
@@ -5726,11 +5726,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 86.08466578569187
+          "predicted": 84.02795926288734
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 71.35215458499908
+          "predicted": 71.35015697943241
         }
       }
     },
@@ -5830,11 +5830,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 84.10594859442287
+          "predicted": 82.07611910416722
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 61.08213115189176
+          "predicted": 61.0813577427856
         }
       }
     },
@@ -5921,11 +5921,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 73.48666895151095
+          "predicted": 71.7479396491704
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 52.25404701854394
+          "predicted": 52.252513052483415
         }
       }
     },
@@ -6025,11 +6025,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 83.11811128267948
+          "predicted": 81.12373146824501
         },
         "hr": {
           "observed": 50.0,
-          "predicted": 40.623395486400995
+          "predicted": 40.62146528228739
         }
       }
     },
@@ -6125,11 +6125,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 77.70841567594162
+          "predicted": 75.86824098680202
         },
         "hr": {
           "observed": 47.0,
-          "predicted": 50.68385142283169
+          "predicted": 50.68399775181885
         }
       }
     },
@@ -6225,11 +6225,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 76.48471416530566
+          "predicted": 74.65130675229841
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 53.74802812327494
+          "predicted": 53.74688880511442
         }
       }
     },
@@ -6325,11 +6325,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 79.2452801223312
+          "predicted": 77.35334397854794
         },
         "hr": {
           "observed": 86.0,
-          "predicted": 79.85121797523902
+          "predicted": 79.8488092331113
         }
       }
     },
@@ -6425,11 +6425,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 71.43619412745585
+          "predicted": 69.73555943636731
         },
         "hr": {
           "observed": 96.0,
-          "predicted": 68.01519687163415
+          "predicted": 68.01364175393365
         }
       }
     },
@@ -6521,11 +6521,11 @@
       "maintenance": {
         "map": {
           "observed": 99.0,
-          "predicted": 97.01622979917082
+          "predicted": 94.82699227016026
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 86.23815474652005
+          "predicted": 86.23162153978623
         }
       }
     },
@@ -6703,11 +6703,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 92.3807308583633
+          "predicted": 90.10177269681512
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 75.75240697648522
+          "predicted": 75.74182598494014
         }
       }
     },
@@ -6803,11 +6803,11 @@
       "maintenance": {
         "map": {
           "observed": 91.5,
-          "predicted": 90.25689142122151
+          "predicted": 88.30522254549149
         },
         "hr": {
           "observed": 75.0,
-          "predicted": 61.39914146972872
+          "predicted": 61.39659884307788
         }
       }
     },
@@ -6907,11 +6907,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 87.53996758539688
+          "predicted": 85.44864057607953
         },
         "hr": {
           "observed": 53.0,
-          "predicted": 65.7037537241483
+          "predicted": 65.70142852611201
         }
       }
     },
@@ -7011,11 +7011,11 @@
       "maintenance": {
         "map": {
           "observed": 60.0,
-          "predicted": 87.50467895900327
+          "predicted": 85.41531499523411
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 84.26071378924894
+          "predicted": 84.25889343277775
         }
       }
     },
@@ -7182,11 +7182,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 92.85928794777465
+          "predicted": 90.67311743052804
         },
         "hr": {
           "observed": 77.0,
-          "predicted": 82.33581284283821
+          "predicted": 82.32973277002408
         }
       }
     },
@@ -7277,11 +7277,11 @@
       "maintenance": {
         "map": {
           "observed": 61.0,
-          "predicted": 79.88291447627553
+          "predicted": 77.95959109032596
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 74.99151805815221
+          "predicted": 74.99010171439225
         }
       }
     },
@@ -7381,11 +7381,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 81.77583046265305
+          "predicted": 79.71981322947047
         },
         "hr": {
           "observed": 47.0,
-          "predicted": 65.88903723924346
+          "predicted": 65.87713014089222
         }
       }
     },
@@ -7472,11 +7472,11 @@
       "maintenance": {
         "map": {
           "observed": 96.0,
-          "predicted": 89.67012018185262
+          "predicted": 87.54897708591372
         },
         "hr": {
           "observed": 118.0,
-          "predicted": 84.16828762283689
+          "predicted": 84.16467164303715
         }
       }
     },
@@ -7576,11 +7576,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 85.34404785725746
+          "predicted": 83.29925242004884
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 55.51305153794205
+          "predicted": 55.51085852152589
         }
       }
     },
@@ -7676,11 +7676,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 85.2404003175997
+          "predicted": 83.24378708213283
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 68.07550573263279
+          "predicted": 68.07688094923813
         }
       }
     },
@@ -7768,11 +7768,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 75.90415408184148
+          "predicted": 74.060312633367
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 72.1777781901641
+          "predicted": 72.17886794657028
         }
       }
     },
@@ -7868,11 +7868,11 @@
       "maintenance": {
         "map": {
           "observed": 104.0,
-          "predicted": 79.43961996862073
+          "predicted": 77.5535396885254
         },
         "hr": {
           "observed": 88.0,
-          "predicted": 52.74139768414885
+          "predicted": 52.73989277257651
         }
       }
     },
@@ -7972,11 +7972,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 85.2641962903834
+          "predicted": 83.19247815835267
         },
         "hr": {
           "observed": 54.0,
-          "predicted": 64.89046991147204
+          "predicted": 64.8740340996777
         }
       }
     },
@@ -8068,11 +8068,11 @@
       "maintenance": {
         "map": {
           "observed": 81.0,
-          "predicted": 87.85479038060382
+          "predicted": 86.02633796550435
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 48.17360791454675
+          "predicted": 48.17892633622998
         }
       }
     },
@@ -8172,11 +8172,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 95.80447964415896
+          "predicted": 93.53680892569517
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 53.95879465738114
+          "predicted": 53.95724745210751
         }
       }
     },
@@ -8272,11 +8272,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 74.86751867078344
+          "predicted": 73.07117274100742
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 58.03588169658018
+          "predicted": 58.03483787709283
         }
       }
     },
@@ -8376,11 +8376,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 83.30585014251469
+          "predicted": 81.29885162240626
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 63.376426654228084
+          "predicted": 63.37558977250268
         }
       }
     },
@@ -8480,11 +8480,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 77.41090896194187
+          "predicted": 75.45512263980201
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 70.1875338909109
+          "predicted": 70.18627988873658
         }
       }
     },
@@ -8668,11 +8668,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 92.2710757377005
+          "predicted": 90.12947011304654
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 57.923934870639116
+          "predicted": 57.92312424240355
         }
       }
     },
@@ -8772,11 +8772,11 @@
       "maintenance": {
         "map": {
           "observed": 91.0,
-          "predicted": 96.10765973028205
+          "predicted": 93.80547775402762
         },
         "hr": {
           "observed": 54.0,
-          "predicted": 64.03390985901498
+          "predicted": 64.03350146544167
         }
       }
     },
@@ -8876,11 +8876,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 100.78152366360187
+          "predicted": 98.34086850779401
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 89.83556732212571
+          "predicted": 89.81324375150514
         }
       }
     },
@@ -8980,11 +8980,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 81.06531202710981
+          "predicted": 79.11506771102093
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 67.93727321789612
+          "predicted": 67.93441198777474
         }
       }
     },
@@ -9159,11 +9159,11 @@
       "maintenance": {
         "map": {
           "observed": 63.0,
-          "predicted": 83.07391365953893
+          "predicted": 81.09222000974336
         },
         "hr": {
           "observed": 81.0,
-          "predicted": 76.98226184016931
+          "predicted": 76.98251615830154
         }
       }
     },
@@ -9250,11 +9250,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 80.71468518207303
+          "predicted": 78.82473131471602
         },
         "hr": {
           "observed": 84.0,
-          "predicted": 69.16708238792629
+          "predicted": 69.16368439220261
         }
       }
     },
@@ -9354,11 +9354,11 @@
       "maintenance": {
         "map": {
           "observed": 94.0,
-          "predicted": 90.97591400009433
+          "predicted": 88.86337360750025
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 63.42926614064844
+          "predicted": 63.425369648525574
         }
       }
     },
@@ -9454,11 +9454,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 82.65251845967082
+          "predicted": 80.78244906728867
         },
         "hr": {
           "observed": 77.0,
-          "predicted": 68.55974146049354
+          "predicted": 68.56562037332688
         }
       }
     },
@@ -9558,11 +9558,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 84.73708223152221
+          "predicted": 82.72258064360966
         },
         "hr": {
           "observed": 95.0,
-          "predicted": 56.071153002980296
+          "predicted": 56.06734708262762
         }
       }
     },
@@ -9830,11 +9830,11 @@
       "maintenance": {
         "map": {
           "observed": 103.0,
-          "predicted": 87.84006452843528
+          "predicted": 85.77293706462628
         },
         "hr": {
           "observed": 91.0,
-          "predicted": 92.23007327687877
+          "predicted": 92.22562320197062
         }
       }
     },
@@ -9934,11 +9934,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 81.11623205499487
+          "predicted": 79.21154227724773
         },
         "hr": {
           "observed": 96.0,
-          "predicted": 86.75640641703818
+          "predicted": 86.75305574355266
         }
       }
     },
@@ -10118,11 +10118,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 91.10605314015775
+          "predicted": 89.0214880365712
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 52.55849235817726
+          "predicted": 52.55580175777794
         }
       }
     },
@@ -10209,11 +10209,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 83.9933907805974
+          "predicted": 82.05602234851779
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 63.49082298988576
+          "predicted": 63.49307172075147
         }
       }
     },
@@ -10313,11 +10313,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 85.50491071800809
+          "predicted": 83.4880969665476
         },
         "hr": {
           "observed": 49.0,
-          "predicted": 49.822517301844805
+          "predicted": 49.82399049748331
         }
       }
     },
@@ -10413,11 +10413,11 @@
       "maintenance": {
         "map": {
           "observed": 100.0,
-          "predicted": 106.21238595136714
+          "predicted": 103.82029207113374
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 76.31650900800358
+          "predicted": 76.30619728750895
         }
       }
     },
@@ -10509,11 +10509,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 73.80913334114302
+          "predicted": 71.97382279276604
         },
         "hr": {
           "observed": 83.0,
-          "predicted": 43.67803732515405
+          "predicted": 43.674199343066036
         }
       }
     },
@@ -10693,11 +10693,11 @@
       "maintenance": {
         "map": {
           "observed": 64.0,
-          "predicted": 77.38354357530791
+          "predicted": 75.56949088365492
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 62.691536940524365
+          "predicted": 62.690349878958685
         }
       }
     },
@@ -10797,11 +10797,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 92.05021863896654
+          "predicted": 89.9292694096052
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 57.133086080459194
+          "predicted": 57.12785937419948
         }
       }
     },
@@ -10901,11 +10901,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 81.50393696669319
+          "predicted": 79.54623769618154
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 71.14938423630312
+          "predicted": 71.14825475400437
         }
       }
     },
@@ -11005,11 +11005,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 81.45821819704315
+          "predicted": 79.51538915268678
         },
         "hr": {
           "observed": 72.0,
-          "predicted": 61.336645915984384
+          "predicted": 61.3199682121697
         }
       }
     },
@@ -11096,11 +11096,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 86.14513953689958
+          "predicted": 84.05065162757893
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 55.94686301128674
+          "predicted": 55.94691876713906
         }
       }
     },
@@ -11282,11 +11282,11 @@
       "maintenance": {
         "map": {
           "observed": 93.0,
-          "predicted": 78.93995349885962
+          "predicted": 77.01084851526545
         },
         "hr": {
           "observed": 48.0,
-          "predicted": 45.88256044172141
+          "predicted": 45.88260387088706
         }
       }
     },
@@ -11386,11 +11386,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 90.84219989459548
+          "predicted": 88.67291489388478
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 59.01867236567109
+          "predicted": 59.00799127240008
         }
       }
     },
@@ -11490,11 +11490,11 @@
       "maintenance": {
         "map": {
           "observed": 81.0,
-          "predicted": 83.07508140045091
+          "predicted": 81.07261670232641
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 59.13038820862399
+          "predicted": 59.1288357346061
         }
       }
     },
@@ -11669,11 +11669,11 @@
       "maintenance": {
         "map": {
           "observed": 94.0,
-          "predicted": 89.917994652923
+          "predicted": 87.74250712899348
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 60.80851201394055
+          "predicted": 60.79456652527475
         }
       }
     },
@@ -11769,11 +11769,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 77.69048457274837
+          "predicted": 75.82322469397147
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 60.951422976195346
+          "predicted": 60.949519015194426
         }
       }
     },
@@ -11869,11 +11869,11 @@
       "maintenance": {
         "map": {
           "observed": 98.0,
-          "predicted": 82.06670246022973
+          "predicted": 80.08194553639143
         },
         "hr": {
           "observed": 50.0,
-          "predicted": 57.37457199932794
+          "predicted": 57.372977768792374
         }
       }
     },
@@ -12053,11 +12053,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 78.21216579276
+          "predicted": 76.36237361407461
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 42.90719584253926
+          "predicted": 42.90464655493547
         }
       }
     },
@@ -12157,11 +12157,11 @@
       "maintenance": {
         "map": {
           "observed": 104.0,
-          "predicted": 94.39440681991093
+          "predicted": 92.15078873987107
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 55.56970469808412
+          "predicted": 55.56684677384143
         }
       }
     },
@@ -12252,11 +12252,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 86.06331761527315
+          "predicted": 84.03403502821698
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 67.6110830439153
+          "predicted": 67.60953599285389
         }
       }
     },
@@ -12352,11 +12352,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 77.92837324310084
+          "predicted": 76.07297671813295
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 55.762222827507294
+          "predicted": 55.760417758442294
         }
       }
     },
@@ -12456,11 +12456,11 @@
       "maintenance": {
         "map": {
           "observed": 80.0,
-          "predicted": 82.62963113398735
+          "predicted": 80.6567166830556
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 57.18174701126291
+          "predicted": 57.17939862260595
         }
       }
     },
@@ -12556,11 +12556,11 @@
       "maintenance": {
         "map": {
           "observed": 95.0,
-          "predicted": 85.54882483814914
+          "predicted": 83.60196025911617
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 67.67810825057474
+          "predicted": 67.68798462824299
         }
       }
     },
@@ -12652,11 +12652,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 71.09720343115225
+          "predicted": 69.32267526529452
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 62.58426152312307
+          "predicted": 62.58353564418345
         }
       }
     },
@@ -12752,11 +12752,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 76.66557036370538
+          "predicted": 74.87345936033365
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 56.48780700108669
+          "predicted": 56.4901946545288
         }
       }
     },
@@ -12856,11 +12856,11 @@
       "maintenance": {
         "map": {
           "observed": 109.0,
-          "predicted": 99.91046182497139
+          "predicted": 97.55213119359018
         },
         "hr": {
           "observed": 55.0,
-          "predicted": 57.47680084095195
+          "predicted": 57.47259997484558
         }
       }
     },
@@ -12956,11 +12956,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 85.20867105211667
+          "predicted": 83.18091915014492
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 70.09796797908443
+          "predicted": 70.09618777344403
         }
       }
     },
@@ -13056,11 +13056,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 64.61775569622401
+          "predicted": 63.03792548563021
         },
         "hr": {
           "observed": 91.0,
-          "predicted": 54.969722423672145
+          "predicted": 54.970284509006405
         }
       }
     },
@@ -13328,11 +13328,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 85.80418963605356
+          "predicted": 83.86104805853813
         },
         "hr": {
           "observed": 74.0,
-          "predicted": 73.155501264973
+          "predicted": 73.15331276664637
         }
       }
     },
@@ -13423,11 +13423,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 89.48201130441939
+          "predicted": 87.3196144801988
         },
         "hr": {
           "observed": 72.0,
-          "predicted": 69.12427639271107
+          "predicted": 69.1243236413723
         }
       }
     },
@@ -13523,11 +13523,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 86.62865911221769
+          "predicted": 84.57002018355479
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 69.14154205751957
+          "predicted": 69.12990980761771
         }
       }
     },
@@ -13623,11 +13623,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 88.86386175058956
+          "predicted": 86.80374815863922
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 70.9725633488369
+          "predicted": 70.97098343509799
         }
       }
     },
@@ -13813,11 +13813,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 89.67782779850724
+          "predicted": 87.57865332818338
         },
         "hr": {
           "observed": 94.0,
-          "predicted": 79.0876975499641
+          "predicted": 79.08172533344707
         }
       }
     },
@@ -13917,11 +13917,11 @@
       "maintenance": {
         "map": {
           "observed": 81.0,
-          "predicted": 97.31503482135588
+          "predicted": 95.00691778243373
         },
         "hr": {
           "observed": 74.0,
-          "predicted": 67.96726014217262
+          "predicted": 67.9767738043528
         }
       }
     },
@@ -14017,11 +14017,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 84.17961189569712
+          "predicted": 82.18087127152815
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 58.04188843635387
+          "predicted": 58.03985585179967
         }
       }
     },
@@ -14121,11 +14121,11 @@
       "maintenance": {
         "map": {
           "observed": 100.0,
-          "predicted": 79.70038210842867
+          "predicted": 77.78835263981445
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 56.746789681130785
+          "predicted": 56.746837905511775
         }
       }
     },
@@ -14212,11 +14212,11 @@
       "maintenance": {
         "map": {
           "observed": 103.0,
-          "predicted": 80.76780825196946
+          "predicted": 78.8297502639175
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 59.610780080137076
+          "predicted": 59.6049704615879
         }
       }
     },
@@ -14387,11 +14387,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 82.73338024336807
+          "predicted": 80.75489654900892
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 65.97969103579146
+          "predicted": 65.97693922866887
         }
       }
     },
@@ -14571,11 +14571,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 83.40891139773944
+          "predicted": 81.38853867842357
         },
         "hr": {
           "observed": 75.0,
-          "predicted": 66.93697968194918
+          "predicted": 66.93704101175422
         }
       }
     },
@@ -14671,11 +14671,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 74.96218088623108
+          "predicted": 73.16241527364377
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 50.798852600932946
+          "predicted": 50.80031017305929
         }
       }
     },
@@ -14767,11 +14767,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 73.07705052056492
+          "predicted": 71.40220778505747
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 71.88399744300298
+          "predicted": 71.88620944203852
         }
       }
     },
@@ -14858,11 +14858,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 88.74929682727716
+          "predicted": 86.59489241331289
         },
         "hr": {
           "observed": 81.0,
-          "predicted": 64.31913382773237
+          "predicted": 64.31923131594527
         }
       }
     },
@@ -14949,11 +14949,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 90.27379110908112
+          "predicted": 88.13766526124374
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 71.22382087163804
+          "predicted": 71.22012742981312
         }
       }
     },
@@ -15053,11 +15053,11 @@
       "maintenance": {
         "map": {
           "observed": 98.0,
-          "predicted": 82.71626185775428
+          "predicted": 80.73238132122148
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 58.731353440372715
+          "predicted": 58.72972539003918
         }
       }
     },
@@ -15153,11 +15153,11 @@
       "maintenance": {
         "map": {
           "observed": 94.0,
-          "predicted": 82.5100156497604
+          "predicted": 80.56737464235785
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 56.8211495617996
+          "predicted": 56.81816742165737
         }
       }
     },
@@ -15253,11 +15253,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 85.02394395335347
+          "predicted": 83.01357049361347
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 61.4322495184886
+          "predicted": 61.42915313504189
         }
       }
     },
@@ -15353,11 +15353,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 86.7569315556062
+          "predicted": 84.71682488404198
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 58.629790668987724
+          "predicted": 58.57544061965745
         }
       }
     },
@@ -15457,11 +15457,11 @@
       "maintenance": {
         "map": {
           "observed": 59.0,
-          "predicted": 79.88714599932968
+          "predicted": 77.98840027069971
         },
         "hr": {
           "observed": 112.0,
-          "predicted": 87.6976029734485
+          "predicted": 87.69702959593235
         }
       }
     },
@@ -15557,11 +15557,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 85.01741186020884
+          "predicted": 83.05716129178684
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 67.20315658096798
+          "predicted": 67.19846692240586
         }
       }
     },
@@ -15661,11 +15661,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 85.18518831686096
+          "predicted": 83.17397935122021
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 83.60766301263656
+          "predicted": 83.60430712248271
         }
       }
     },
@@ -15765,11 +15765,11 @@
       "maintenance": {
         "map": {
           "observed": 96.0,
-          "predicted": 86.88276971941198
+          "predicted": 84.66492042389395
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 63.06661562829845
+          "predicted": 63.04436856760287
         }
       }
     },
@@ -15869,11 +15869,11 @@
       "maintenance": {
         "map": {
           "observed": 104.0,
-          "predicted": 97.58802492339267
+          "predicted": 95.26227555663476
         },
         "hr": {
           "observed": 52.0,
-          "predicted": 52.77668414038922
+          "predicted": 52.77476123774984
         }
       }
     },
@@ -16049,11 +16049,11 @@
       "maintenance": {
         "map": {
           "observed": 63.0,
-          "predicted": 87.52555353712302
+          "predicted": 85.48450211737968
         },
         "hr": {
           "observed": 49.0,
-          "predicted": 52.72211408741215
+          "predicted": 52.7202949848849
         }
       }
     },
@@ -16136,11 +16136,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 73.07779230758236
+          "predicted": 71.3497324129795
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 45.88151640060414
+          "predicted": 45.87993410198303
         }
       }
     },
@@ -16400,11 +16400,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 74.9793578918698
+          "predicted": 73.18336024431575
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 76.23422906917777
+          "predicted": 76.23208761667952
         }
       }
     },
@@ -16491,11 +16491,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 82.29420579195855
+          "predicted": 80.3106120077534
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 60.30473061808081
+          "predicted": 60.303080738397114
         }
       }
     },
@@ -16582,11 +16582,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 91.94197355872055
+          "predicted": 89.73047977519707
         },
         "hr": {
           "observed": 78.0,
-          "predicted": 78.45549526448086
+          "predicted": 78.45555768968424
         }
       }
     },
@@ -16686,11 +16686,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 91.65061603867953
+          "predicted": 89.43808529195233
         },
         "hr": {
           "observed": 48.0,
-          "predicted": 68.93485428150179
+          "predicted": 68.93491901636115
         }
       }
     },
@@ -16786,11 +16786,11 @@
       "maintenance": {
         "map": {
           "observed": 73.0,
-          "predicted": 72.71631766568281
+          "predicted": 70.91237157241038
         },
         "hr": {
           "observed": 63.5,
-          "predicted": 64.94403903590036
+          "predicted": 64.9373678151693
         }
       }
     },
@@ -16886,11 +16886,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 88.11845039559958
+          "predicted": 85.98147027255487
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 81.49425305885366
+          "predicted": 81.4949053569855
         }
       }
     },
@@ -16981,11 +16981,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 82.90187419183826
+          "predicted": 80.8830720382224
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 66.9860642119653
+          "predicted": 66.98608916186382
         }
       }
     },
@@ -17081,11 +17081,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 81.15950011972494
+          "predicted": 79.308280578216
         },
         "hr": {
           "observed": 98.0,
-          "predicted": 57.28778724110876
+          "predicted": 57.286530459739154
         }
       }
     },
@@ -17181,11 +17181,11 @@
       "maintenance": {
         "map": {
           "observed": 100.0,
-          "predicted": 88.96753848827161
+          "predicted": 86.871864596628
         },
         "hr": {
           "observed": 79.0,
-          "predicted": 58.9316609268614
+          "predicted": 58.92856624084676
         }
       }
     },
@@ -17285,11 +17285,11 @@
       "maintenance": {
         "map": {
           "observed": 108.0,
-          "predicted": 63.88087046764293
+          "predicted": 62.371058654170106
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 51.40886109706723
+          "predicted": 51.40827305025582
         }
       }
     },
@@ -17389,11 +17389,11 @@
       "maintenance": {
         "map": {
           "observed": 62.0,
-          "predicted": 91.01372258339283
+          "predicted": 88.7890145463268
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 73.06881993328832
+          "predicted": 73.04513718717088
         }
       }
     },
@@ -17493,11 +17493,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 84.27965336844238
+          "predicted": 82.31134673594997
         },
         "hr": {
           "observed": 49.0,
-          "predicted": 54.98772353197704
+          "predicted": 54.98875130656832
         }
       }
     },
@@ -17588,11 +17588,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 97.02349991628778
+          "predicted": 94.66258731305692
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 63.49256771830175
+          "predicted": 63.49262201888351
         }
       }
     },
@@ -17688,11 +17688,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 72.77372394299792
+          "predicted": 71.07354141973343
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 47.991775299304734
+          "predicted": 47.98932778934545
         }
       }
     },
@@ -17779,11 +17779,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 76.89816194445079
+          "predicted": 75.00707220658032
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 64.92609643844621
+          "predicted": 64.9087397653713
         }
       }
     },
@@ -17883,11 +17883,11 @@
       "maintenance": {
         "map": {
           "observed": 61.0,
-          "predicted": 78.16316307360158
+          "predicted": 76.27973588136945
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 61.53924145197661
+          "predicted": 61.538198079265804
         }
       }
     },
@@ -17983,11 +17983,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 74.24862799245594
+          "predicted": 72.50427457486738
         },
         "hr": {
           "observed": 47.0,
-          "predicted": 40.76436549260541
+          "predicted": 40.76555391640218
         }
       }
     },
@@ -18083,11 +18083,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 91.2339784119599
+          "predicted": 89.14218986406883
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 69.77758401272393
+          "predicted": 69.783081924364
         }
       }
     },
@@ -18187,11 +18187,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 82.2460447839803
+          "predicted": 80.26577509685579
         },
         "hr": {
           "observed": 79.0,
-          "predicted": 68.77879364269924
+          "predicted": 68.77847670641385
         }
       }
     },
@@ -18291,11 +18291,11 @@
       "maintenance": {
         "map": {
           "observed": 73.0,
-          "predicted": 80.92800437088184
+          "predicted": 78.99740007084282
         },
         "hr": {
           "observed": 78.0,
-          "predicted": 73.75163737133562
+          "predicted": 73.75022400766127
         }
       }
     },
@@ -18479,11 +18479,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 63.4740693351531
+          "predicted": 61.95504747165844
         },
         "hr": {
           "observed": 74.0,
-          "predicted": 53.44178252726177
+          "predicted": 53.44831848082642
         }
       }
     },
@@ -18579,11 +18579,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 88.09911306337932
+          "predicted": 86.03482448498352
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 51.32412794416889
+          "predicted": 51.32235246827229
         }
       }
     },
@@ -18763,11 +18763,11 @@
       "maintenance": {
         "map": {
           "observed": 101.0,
-          "predicted": 86.21031808239371
+          "predicted": 84.07848074598446
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 68.93794929928207
+          "predicted": 68.93800046837286
         }
       }
     },
@@ -18858,11 +18858,11 @@
       "maintenance": {
         "map": {
           "observed": 75.5,
-          "predicted": 81.38561007469269
+          "predicted": 79.36807389147108
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 60.64155550203654
+          "predicted": 60.6394946836642
         }
       }
     },
@@ -18958,11 +18958,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 81.56139800710812
+          "predicted": 79.57385960193142
         },
         "hr": {
           "observed": 84.0,
-          "predicted": 67.05023925424231
+          "predicted": 67.03565845671864
         }
       }
     },
@@ -19045,11 +19045,11 @@
       "maintenance": {
         "map": {
           "observed": 95.0,
-          "predicted": 91.80600907982802
+          "predicted": 89.638342415321
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 74.11017536480117
+          "predicted": 74.10662937072016
         }
       }
     },
@@ -19231,11 +19231,11 @@
       "maintenance": {
         "map": {
           "observed": 106.0,
-          "predicted": 92.74352363415784
+          "predicted": 90.66394219194927
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 45.11798696853869
+          "predicted": 45.11578052955528
         }
       }
     },
@@ -19335,11 +19335,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 77.48328992382068
+          "predicted": 75.61718025294755
         },
         "hr": {
           "observed": 104.0,
-          "predicted": 78.355774907317
+          "predicted": 78.34934387794519
         }
       }
     },
@@ -19430,11 +19430,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 97.68447248957007
+          "predicted": 95.34538845479888
         },
         "hr": {
           "observed": 54.0,
-          "predicted": 50.76020512025675
+          "predicted": 50.759535457855065
         }
       }
     },
@@ -19530,11 +19530,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 83.8686398747474
+          "predicted": 81.81669115103037
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 73.76093101684742
+          "predicted": 73.75058072429646
         }
       }
     },
@@ -19625,11 +19625,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 92.76892890439038
+          "predicted": 90.58769135227442
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 76.48414585256293
+          "predicted": 76.48218294499057
         }
       }
     },
@@ -19729,11 +19729,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 100.76070660169052
+          "predicted": 98.33281004593582
         },
         "hr": {
           "observed": 52.0,
-          "predicted": 82.36007827834082
+          "predicted": 82.34216438075474
         }
       }
     },
@@ -19833,11 +19833,11 @@
       "maintenance": {
         "map": {
           "observed": 93.0,
-          "predicted": 78.20676160699998
+          "predicted": 76.39941116415987
         },
         "hr": {
           "observed": 57.0,
-          "predicted": 62.72528103017446
+          "predicted": 62.7219119478023
         }
       }
     },
@@ -19937,11 +19937,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 83.73070942083217
+          "predicted": 81.66238229365399
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 85.16595028627992
+          "predicted": 85.1485272543709
         }
       }
     },
@@ -20028,11 +20028,11 @@
       "maintenance": {
         "map": {
           "observed": 80.0,
-          "predicted": 87.87770588190395
+          "predicted": 85.79975905831216
         },
         "hr": {
           "observed": 74.0,
-          "predicted": 98.50520070515734
+          "predicted": 98.5023148572714
         }
       }
     },
@@ -20123,11 +20123,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 82.48270074573907
+          "predicted": 80.51351990739451
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 60.44417239727019
+          "predicted": 60.4416785259674
         }
       }
     },
@@ -20227,11 +20227,11 @@
       "maintenance": {
         "map": {
           "observed": 111.0,
-          "predicted": 80.31200316845862
+          "predicted": 78.41088352664227
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 50.86592283430244
+          "predicted": 50.864060867748464
         }
       }
     },
@@ -20327,11 +20327,11 @@
       "maintenance": {
         "map": {
           "observed": 91.5,
-          "predicted": 96.15003766512282
+          "predicted": 94.02256017438995
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 70.24403456154653
+          "predicted": 70.24307290032988
         }
       }
     },
@@ -20431,11 +20431,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 81.91399526904215
+          "predicted": 79.98750446032396
         },
         "hr": {
           "observed": 55.0,
-          "predicted": 60.345160810804934
+          "predicted": 60.34254056863261
         }
       }
     },
@@ -20531,11 +20531,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 93.24887924754692
+          "predicted": 91.11576436228258
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 76.02419759381318
+          "predicted": 76.02320290955299
         }
       }
     },
@@ -20626,11 +20626,11 @@
       "maintenance": {
         "map": {
           "observed": 98.0,
-          "predicted": 92.9509765743375
+          "predicted": 90.72598491310326
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 83.81739081157828
+          "predicted": 83.81737107886917
         }
       }
     },
@@ -20726,11 +20726,11 @@
       "maintenance": {
         "map": {
           "observed": 80.0,
-          "predicted": 88.6149571706369
+          "predicted": 86.46671007343363
         },
         "hr": {
           "observed": 53.0,
-          "predicted": 61.14435167016507
+          "predicted": 61.13218210295468
         }
       }
     },
@@ -20826,11 +20826,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 78.86857756561689
+          "predicted": 77.01961527144124
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 62.57488068842119
+          "predicted": 62.57490833690545
         }
       }
     },
@@ -20930,11 +20930,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 76.21845690045448
+          "predicted": 74.41431208759849
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 60.2772217002858
+          "predicted": 60.27739724441454
         }
       }
     },
@@ -21030,11 +21030,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 78.04252472396541
+          "predicted": 76.14262419354073
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 56.802875092270604
+          "predicted": 56.79323963831441
         }
       }
     },
@@ -21134,11 +21134,11 @@
       "maintenance": {
         "map": {
           "observed": 97.0,
-          "predicted": 80.43125857467713
+          "predicted": 78.46112773667963
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 58.51849795716118
+          "predicted": 58.51158834262605
         }
       }
     },
@@ -21324,11 +21324,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 96.34292322416539
+          "predicted": 94.06887468450279
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 60.76983985066595
+          "predicted": 60.76696022612805
         }
       }
     },
@@ -21428,11 +21428,11 @@
       "maintenance": {
         "map": {
           "observed": 60.0,
-          "predicted": 91.79504607051402
+          "predicted": 89.74677513093623
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 57.892851421987686
+          "predicted": 57.88768025081495
         }
       }
     },
@@ -21528,11 +21528,11 @@
       "maintenance": {
         "map": {
           "observed": 95.0,
-          "predicted": 103.35456953937602
+          "predicted": 100.87276143522857
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 75.80353305131311
+          "predicted": 75.76915364495898
         }
       }
     },
@@ -21632,11 +21632,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 77.3694588621142
+          "predicted": 75.56184317025185
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 56.05491340991359
+          "predicted": 56.051824567983864
         }
       }
     },
@@ -21736,11 +21736,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 87.74443080360211
+          "predicted": 85.60796919047424
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 61.33615716326753
+          "predicted": 61.32085945518908
         }
       }
     },
@@ -21832,11 +21832,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 83.78343176905878
+          "predicted": 81.78239714781452
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 50.256518473017564
+          "predicted": 50.255031350122124
         }
       }
     },
@@ -21932,11 +21932,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 81.74018433522843
+          "predicted": 79.85150785083994
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 56.70118137203747
+          "predicted": 56.70051800699327
         }
       }
     },
@@ -22118,11 +22118,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 80.54217810213427
+          "predicted": 78.56810378014977
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 72.6333209877061
+          "predicted": 72.6167473977839
         }
       }
     },
@@ -22222,11 +22222,11 @@
       "maintenance": {
         "map": {
           "observed": 102.0,
-          "predicted": 87.62630993071198
+          "predicted": 85.48030666582738
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 67.66153564720362
+          "predicted": 67.65970433305088
         }
       }
     },
@@ -22326,11 +22326,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 72.11363135605501
+          "predicted": 70.38286793577042
         },
         "hr": {
           "observed": 94.0,
-          "predicted": 59.052611112721436
+          "predicted": 59.02032041659598
         }
       }
     },
@@ -22421,11 +22421,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 91.96787963152552
+          "predicted": 89.71134241617042
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 74.8419715161323
+          "predicted": 74.82938883227895
         }
       }
     },
@@ -22521,11 +22521,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 76.86752608898527
+          "predicted": 75.04588247190178
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 77.73902947691194
+          "predicted": 77.7344845464871
         }
       }
     },
@@ -22696,11 +22696,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 85.66851373260293
+          "predicted": 83.64504545725038
         },
         "hr": {
           "observed": 47.0,
-          "predicted": 55.70464533188395
+          "predicted": 55.69980968569128
         }
       }
     },
@@ -22796,11 +22796,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 86.76947114419625
+          "predicted": 84.71469094661293
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 61.52243599099712
+          "predicted": 61.518484425336744
         }
       }
     },
@@ -22896,11 +22896,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 91.05326808647648
+          "predicted": 88.91275544072406
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 59.622201387183104
+          "predicted": 59.621006200352646
         }
       }
     },
@@ -22996,11 +22996,11 @@
       "maintenance": {
         "map": {
           "observed": 73.0,
-          "predicted": 96.64558977698664
+          "predicted": 94.28668604609632
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 52.497904020419945
+          "predicted": 52.49467205967794
         }
       }
     },
@@ -23100,11 +23100,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 72.4655871529844
+          "predicted": 70.68615502536403
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 54.84195879714036
+          "predicted": 54.82628791646899
         }
       }
     },
@@ -23204,11 +23204,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 81.05289616035691
+          "predicted": 79.15081516758801
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 90.80533108506744
+          "predicted": 90.80375898808033
         }
       }
     },
@@ -23308,11 +23308,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 73.78959245321508
+          "predicted": 72.02328277159425
         },
         "hr": {
           "observed": 92.0,
-          "predicted": 73.29575387463585
+          "predicted": 73.29721673917705
         }
       }
     },
@@ -23399,11 +23399,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 89.2017344726384
+          "predicted": 87.08331038665993
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 55.39858971825771
+          "predicted": 55.39630519045636
         }
       }
     },
@@ -23503,11 +23503,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 93.40354584659505
+          "predicted": 91.2449343516051
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 58.80647980392875
+          "predicted": 58.80979382814145
         }
       }
     },
@@ -23598,11 +23598,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 84.63213718865863
+          "predicted": 82.61555416815627
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 70.7345733288014
+          "predicted": 70.72039170711128
         }
       }
     },
@@ -23942,11 +23942,11 @@
       "maintenance": {
         "map": {
           "observed": 62.0,
-          "predicted": 67.89356331083901
+          "predicted": 66.21046451648228
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 51.82354602910369
+          "predicted": 51.82311586593652
         }
       }
     },
@@ -24042,11 +24042,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 78.75577219351452
+          "predicted": 76.87502404922958
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 75.30994101670348
+          "predicted": 75.30868474700338
         }
       }
     },
@@ -24146,11 +24146,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 95.42538194684334
+          "predicted": 93.22100577968263
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 52.97478310741674
+          "predicted": 52.974440616719
         }
       }
     },
@@ -24246,11 +24246,11 @@
       "maintenance": {
         "map": {
           "observed": 73.0,
-          "predicted": 82.91676828743915
+          "predicted": 80.9396765427425
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 54.68030273896786
+          "predicted": 54.67950700285293
         }
       }
     },
@@ -24350,11 +24350,11 @@
       "maintenance": {
         "map": {
           "observed": 93.0,
-          "predicted": 93.45615677299581
+          "predicted": 91.28449764416608
         },
         "hr": {
           "observed": 88.0,
-          "predicted": 67.25645552021216
+          "predicted": 67.2516350742558
         }
       }
     },
@@ -24454,11 +24454,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 74.19399646126764
+          "predicted": 72.4319296196484
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 67.62768232423718
+          "predicted": 67.6256300372016
         }
       }
     },
@@ -24549,11 +24549,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 82.82454824549747
+          "predicted": 80.83024331423839
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 66.43767594537528
+          "predicted": 66.43559904388003
         }
       }
     },
@@ -24649,11 +24649,11 @@
       "maintenance": {
         "map": {
           "observed": 95.0,
-          "predicted": 80.67641515056155
+          "predicted": 78.90803864342509
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 59.5104866046719
+          "predicted": 59.5076209354684
         }
       }
     },
@@ -24753,11 +24753,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 86.35830149797145
+          "predicted": 84.31538459386304
         },
         "hr": {
           "observed": 72.0,
-          "predicted": 59.03123498144294
+          "predicted": 59.02965296506592
         }
       }
     },
@@ -24849,11 +24849,11 @@
       "maintenance": {
         "map": {
           "observed": 73.0,
-          "predicted": 92.89561589556621
+          "predicted": 90.84040612831689
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 55.694235125696
+          "predicted": 55.691064624683555
         }
       }
     },
@@ -24949,11 +24949,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 86.30345574617374
+          "predicted": 84.28482246776238
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 57.430573828275776
+          "predicted": 57.42727428234341
         }
       }
     },
@@ -25053,11 +25053,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 81.1012877037097
+          "predicted": 79.15511226502838
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 58.21748385929702
+          "predicted": 58.19610885426332
         }
       }
     },
@@ -25144,11 +25144,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 91.81150611611127
+          "predicted": 89.59295543162214
         },
         "hr": {
           "observed": 55.0,
-          "predicted": 54.09728179126129
+          "predicted": 54.0947433428139
         }
       }
     },
@@ -25248,11 +25248,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 88.94935460601296
+          "predicted": 86.84480910271634
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 71.01377217861743
+          "predicted": 71.02531698225968
         }
       }
     },
@@ -25343,11 +25343,11 @@
       "maintenance": {
         "map": {
           "observed": 61.0,
-          "predicted": 90.51577972423625
+          "predicted": 88.45732044231002
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 79.73055787325573
+          "predicted": 79.73904437350527
         }
       }
     },
@@ -25447,11 +25447,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 88.4798644875894
+          "predicted": 86.46798366400373
         },
         "hr": {
           "observed": 75.0,
-          "predicted": 62.2342719029346
+          "predicted": 62.23511969248068
         }
       }
     },
@@ -25547,11 +25547,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 84.71898079914683
+          "predicted": 82.75582594065192
         },
         "hr": {
           "observed": 75.0,
-          "predicted": 84.17853743609216
+          "predicted": 84.17500644956989
         }
       }
     },
@@ -25639,11 +25639,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 78.28287171892079
+          "predicted": 76.35357092098083
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 64.55651120095992
+          "predicted": 64.55719389354769
         }
       }
     },
@@ -25739,11 +25739,11 @@
       "maintenance": {
         "map": {
           "observed": 111.0,
-          "predicted": 90.97230667582937
+          "predicted": 88.84653397986965
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 70.86837346093306
+          "predicted": 70.87293374812177
         }
       }
     },
@@ -25843,11 +25843,11 @@
       "maintenance": {
         "map": {
           "observed": 98.0,
-          "predicted": 83.56027652618616
+          "predicted": 81.5802731517161
         },
         "hr": {
           "observed": 81.0,
-          "predicted": 69.21490887628046
+          "predicted": 69.2156074022652
         }
       }
     },
@@ -26027,11 +26027,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 74.45588798713487
+          "predicted": 72.61234424770231
         },
         "hr": {
           "observed": 71.0,
-          "predicted": 73.44236653768971
+          "predicted": 73.44036650049065
         }
       }
     },
@@ -26123,11 +26123,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 74.56048466080881
+          "predicted": 72.75669441411206
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 41.07061165950593
+          "predicted": 41.061528410545485
         }
       }
     },
@@ -26227,11 +26227,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 75.04879575888272
+          "predicted": 73.22879814428299
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 60.69301609853632
+          "predicted": 60.69392255271618
         }
       }
     },
@@ -26322,11 +26322,11 @@
       "maintenance": {
         "map": {
           "observed": 86.5,
-          "predicted": 91.16581841702603
+          "predicted": 89.00853409454496
         },
         "hr": {
           "observed": 79.0,
-          "predicted": 68.58911387282919
+          "predicted": 68.58653797282281
         }
       }
     },
@@ -26422,11 +26422,11 @@
       "maintenance": {
         "map": {
           "observed": 106.0,
-          "predicted": 88.10608156104388
+          "predicted": 86.14670078933199
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 60.609046914962775
+          "predicted": 60.60759374413581
         }
       }
     },
@@ -26612,11 +26612,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 78.56428761256205
+          "predicted": 76.72535587489087
         },
         "hr": {
           "observed": 84.0,
-          "predicted": 75.8207551200812
+          "predicted": 75.83302419398686
         }
       }
     },
@@ -26712,11 +26712,11 @@
       "maintenance": {
         "map": {
           "observed": 73.0,
-          "predicted": 78.56385120856913
+          "predicted": 76.66939028978436
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 61.29388571189678
+          "predicted": 61.29803183424937
         }
       }
     },
@@ -26808,11 +26808,11 @@
       "maintenance": {
         "map": {
           "observed": 103.0,
-          "predicted": 73.19799847607895
+          "predicted": 71.38823102037954
         },
         "hr": {
           "observed": 79.0,
-          "predicted": 67.89854979372933
+          "predicted": 67.88171041172984
         }
       }
     },
@@ -26903,11 +26903,11 @@
       "maintenance": {
         "map": {
           "observed": 61.0,
-          "predicted": 92.11097211768069
+          "predicted": 89.93830643442385
         },
         "hr": {
           "observed": 46.0,
-          "predicted": 49.97757949654438
+          "predicted": 49.97663669546636
         }
       }
     },
@@ -27087,11 +27087,11 @@
       "maintenance": {
         "map": {
           "observed": 90.0,
-          "predicted": 78.46039548134874
+          "predicted": 76.54682674413613
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 83.21762147040322
+          "predicted": 83.21401991282958
         }
       }
     },
@@ -27191,11 +27191,11 @@
       "maintenance": {
         "map": {
           "observed": 64.0,
-          "predicted": 74.38354196464235
+          "predicted": 72.60080340351138
         },
         "hr": {
           "observed": 84.0,
-          "predicted": 75.48719973402547
+          "predicted": 75.48560438602729
         }
       }
     },
@@ -27362,11 +27362,11 @@
       "maintenance": {
         "map": {
           "observed": 91.0,
-          "predicted": 94.66863508242751
+          "predicted": 92.3422733891731
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 58.56518476592469
+          "predicted": 58.5652422559085
         }
       }
     },
@@ -27466,11 +27466,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 85.58113351982945
+          "predicted": 83.56896709180538
         },
         "hr": {
           "observed": 83.0,
-          "predicted": 60.75975157778953
+          "predicted": 60.75805952005504
         }
       }
     },
@@ -27566,11 +27566,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 98.73690561041127
+          "predicted": 96.4063288037159
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 63.9728415101615
+          "predicted": 63.97005024708557
         }
       }
     },
@@ -27830,11 +27830,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 79.56003412138233
+          "predicted": 77.64015430277719
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 58.52427099948611
+          "predicted": 58.52213262965721
         }
       }
     },
@@ -27934,11 +27934,11 @@
       "maintenance": {
         "map": {
           "observed": 94.0,
-          "predicted": 73.57964785103874
+          "predicted": 71.79988782345126
         },
         "hr": {
           "observed": 75.0,
-          "predicted": 62.718489720861115
+          "predicted": 62.71812210005957
         }
       }
     },
@@ -28097,11 +28097,11 @@
       "maintenance": {
         "map": {
           "observed": 103.0,
-          "predicted": 88.05588448602415
+          "predicted": 86.00134124485794
         },
         "hr": {
           "observed": 74.0,
-          "predicted": 75.31314107468577
+          "predicted": 75.30788986930658
         }
       }
     },
@@ -28201,11 +28201,11 @@
       "maintenance": {
         "map": {
           "observed": 80.0,
-          "predicted": 82.23443222417774
+          "predicted": 80.33432819948126
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 67.40686338797289
+          "predicted": 67.40563792962465
         }
       }
     },
@@ -28305,11 +28305,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 77.90271208300696
+          "predicted": 76.03771769232522
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 62.105067355244664
+          "predicted": 62.103079881074684
         }
       }
     },
@@ -28401,11 +28401,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 86.8241947834141
+          "predicted": 84.73779993565395
         },
         "hr": {
           "observed": 46.0,
-          "predicted": 48.79978357249434
+          "predicted": 48.797292444259156
         }
       }
     },
@@ -28505,11 +28505,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 88.26514315733178
+          "predicted": 86.20375772109296
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 66.03626107092767
+          "predicted": 66.03381017263933
         }
       }
     },
@@ -28609,11 +28609,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 82.14309616457089
+          "predicted": 80.14340095391175
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 75.49549583936871
+          "predicted": 75.49555541014453
         }
       }
     },
@@ -28704,11 +28704,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 91.83339282938582
+          "predicted": 89.65041058806776
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 60.89936223346946
+          "predicted": 60.89592358603814
         }
       }
     },
@@ -28804,11 +28804,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 80.86195577013481
+          "predicted": 78.9368287544296
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 65.54912382145224
+          "predicted": 65.54466571238245
         }
       }
     },
@@ -28908,11 +28908,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 79.46183780598516
+          "predicted": 77.56532107596225
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 67.52911997162664
+          "predicted": 67.527609028814
         }
       }
     },
@@ -29008,11 +29008,11 @@
       "maintenance": {
         "map": {
           "observed": 100.0,
-          "predicted": 77.43789152785101
+          "predicted": 75.6255809997658
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 57.16078199783961
+          "predicted": 57.178295418620145
         }
       }
     },
@@ -29108,11 +29108,11 @@
       "maintenance": {
         "map": {
           "observed": 99.0,
-          "predicted": 76.85740686274323
+          "predicted": 74.92488587702509
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 77.12954317585675
+          "predicted": 77.12340862353703
         }
       }
     },
@@ -29212,11 +29212,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 87.61894104257513
+          "predicted": 85.44203592889014
         },
         "hr": {
           "observed": 54.0,
-          "predicted": 64.48525540329024
+          "predicted": 64.48334257909227
         }
       }
     },
@@ -29312,11 +29312,11 @@
       "maintenance": {
         "map": {
           "observed": 105.0,
-          "predicted": 90.2483725759359
+          "predicted": 88.04027996248925
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 61.33484285582188
+          "predicted": 61.321122778457905
         }
       }
     },
@@ -29489,11 +29489,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 96.79587603442764
+          "predicted": 94.50544983034041
         },
         "hr": {
           "observed": 54.0,
-          "predicted": 59.63150368739703
+          "predicted": 59.63084463398003
         }
       }
     },
@@ -29589,11 +29589,11 @@
       "maintenance": {
         "map": {
           "observed": 65.0,
-          "predicted": 76.74072585615839
+          "predicted": 74.87552610950475
         },
         "hr": {
           "observed": 57.0,
-          "predicted": 63.28853600751831
+          "predicted": 63.26664161086253
         }
       }
     },
@@ -29693,11 +29693,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 77.61115814633243
+          "predicted": 75.73318295547209
         },
         "hr": {
           "observed": 75.0,
-          "predicted": 64.88645309992378
+          "predicted": 64.886002392893
         }
       }
     },
@@ -29883,11 +29883,11 @@
       "maintenance": {
         "map": {
           "observed": 80.0,
-          "predicted": 78.17802799256256
+          "predicted": 76.33804206843476
         },
         "hr": {
           "observed": 48.0,
-          "predicted": 44.242875203990465
+          "predicted": 44.24257612674211
         }
       }
     },
@@ -29987,11 +29987,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 88.47065156458976
+          "predicted": 86.3447210381307
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 64.25171350243234
+          "predicted": 64.23693013801281
         }
       }
     },
@@ -30091,11 +30091,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 90.65354368016406
+          "predicted": 88.44301350413686
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 74.21438777046447
+          "predicted": 74.20606432466707
         }
       }
     },
@@ -30186,11 +30186,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 67.61095837392796
+          "predicted": 65.97657419310265
         },
         "hr": {
           "observed": 88.0,
-          "predicted": 62.70016721166994
+          "predicted": 62.69918877744957
         }
       }
     },
@@ -30286,11 +30286,11 @@
       "maintenance": {
         "map": {
           "observed": 73.0,
-          "predicted": 88.26107190684048
+          "predicted": 86.27587643684954
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 81.01526615383241
+          "predicted": 81.012800316418
         }
       }
     },
@@ -30390,11 +30390,11 @@
       "maintenance": {
         "map": {
           "observed": 114.0,
-          "predicted": 91.2179049084167
+          "predicted": 88.97067110111264
         },
         "hr": {
           "observed": 84.0,
-          "predicted": 79.79888811785233
+          "predicted": 79.79895998265499
         }
       }
     },
@@ -30494,11 +30494,11 @@
       "maintenance": {
         "map": {
           "observed": 80.0,
-          "predicted": 82.94477090568967
+          "predicted": 80.98095480718119
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 76.10890327158522
+          "predicted": 76.10661067213292
         }
       }
     },
@@ -30594,11 +30594,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 75.93698839613228
+          "predicted": 74.11815778252068
         },
         "hr": {
           "observed": 118.0,
-          "predicted": 75.9371735432704
+          "predicted": 75.93720342033194
         }
       }
     },
@@ -30698,11 +30698,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 96.71811419862989
+          "predicted": 94.37321358157871
         },
         "hr": {
           "observed": 46.0,
-          "predicted": 46.704036967817636
+          "predicted": 46.70068261402047
         }
       }
     },
@@ -30802,11 +30802,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 84.73847710365635
+          "predicted": 82.73887028311267
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 66.32473522406826
+          "predicted": 66.32275831397243
         }
       }
     },
@@ -30902,11 +30902,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 67.34628786046503
+          "predicted": 65.7327750340231
         },
         "hr": {
           "observed": 89.0,
-          "predicted": 62.86504025701931
+          "predicted": 62.86307600042856
         }
       }
     },
@@ -31074,11 +31074,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 81.08105462290274
+          "predicted": 79.14630523588072
         },
         "hr": {
           "observed": 90.0,
-          "predicted": 90.69192056551545
+          "predicted": 90.6847038534866
         }
       }
     },
@@ -31178,11 +31178,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 103.12532454943543
+          "predicted": 100.64701367687512
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 74.64634148922451
+          "predicted": 74.64150467842425
         }
       }
     },
@@ -31362,11 +31362,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 79.51925549700093
+          "predicted": 77.5801934694343
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 57.73699790308073
+          "predicted": 57.73569277799531
         }
       }
     },
@@ -31462,11 +31462,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 80.28108679163863
+          "predicted": 78.34626752560519
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 76.84954647720578
+          "predicted": 76.84707191030513
         }
       }
     },
@@ -31652,11 +31652,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 96.37431142824565
+          "predicted": 94.30567163669951
         },
         "hr": {
           "observed": 77.0,
-          "predicted": 88.84107148096538
+          "predicted": 88.84010249830393
         }
       }
     },
@@ -31752,11 +31752,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 78.34775179515734
+          "predicted": 76.46137770125478
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 43.1429163281192
+          "predicted": 43.13263398685729
         }
       }
     },
@@ -31843,11 +31843,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 78.81743858818645
+          "predicted": 76.92754856269511
         },
         "hr": {
           "observed": 74.0,
-          "predicted": 68.0693184912344
+          "predicted": 68.06875646996937
         }
       }
     },
@@ -31935,11 +31935,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 93.00208824474606
+          "predicted": 90.7992728700926
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 61.71037068042861
+          "predicted": 61.7042575120587
         }
       }
     },
@@ -32026,11 +32026,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 77.82414261033341
+          "predicted": 75.94220375180637
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 66.77261831769333
+          "predicted": 66.7582531047206
         }
       }
     },
@@ -32126,11 +32126,11 @@
       "maintenance": {
         "map": {
           "observed": 62.0,
-          "predicted": 77.81423580361873
+          "predicted": 75.93181531110082
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 56.05213126940991
+          "predicted": 56.04009702678922
         }
       }
     },
@@ -32306,11 +32306,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 79.85707146164879
+          "predicted": 77.92768168749048
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 59.46362510922064
+          "predicted": 59.44031534951466
         }
       }
     },
@@ -32406,11 +32406,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 91.50323012014226
+          "predicted": 89.39593656867527
         },
         "hr": {
           "observed": 87.0,
-          "predicted": 74.70376391354905
+          "predicted": 74.6993629714924
         }
       }
     },
@@ -32506,11 +32506,11 @@
       "maintenance": {
         "map": {
           "observed": 64.0,
-          "predicted": 85.29803163961382
+          "predicted": 83.31383485815955
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 63.508377769998475
+          "predicted": 63.503134738680565
         }
       }
     },
@@ -32610,11 +32610,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 93.58145636985
+          "predicted": 91.37268922142687
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 67.10277923036402
+          "predicted": 67.09876355300125
         }
       }
     },
@@ -32714,11 +32714,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 85.56789168673768
+          "predicted": 83.56983594399838
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 54.098448127679276
+          "predicted": 54.09558245178175
         }
       }
     },
@@ -32818,11 +32818,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 83.95846475076026
+          "predicted": 82.00553087777219
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 69.22182147342053
+          "predicted": 69.22481290410533
         }
       }
     },
@@ -32914,11 +32914,11 @@
       "maintenance": {
         "map": {
           "observed": 90.0,
-          "predicted": 75.83551373702
+          "predicted": 73.9471486815852
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 54.60060674901277
+          "predicted": 54.57608974588872
         }
       }
     },
@@ -33018,11 +33018,11 @@
       "maintenance": {
         "map": {
           "observed": 91.0,
-          "predicted": 78.05135240231989
+          "predicted": 76.1836685946786
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 54.71203930758573
+          "predicted": 54.71036762794933
         }
       }
     },
@@ -33122,11 +33122,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 80.66404510985218
+          "predicted": 78.72741111388191
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 71.31249366440058
+          "predicted": 71.28976931851032
         }
       }
     },
@@ -33222,11 +33222,11 @@
       "maintenance": {
         "map": {
           "observed": 64.0,
-          "predicted": 76.49804362848265
+          "predicted": 74.63496975266384
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 65.67195942714541
+          "predicted": 65.65884179711009
         }
       }
     },
@@ -33317,11 +33317,11 @@
       "maintenance": {
         "map": {
           "observed": 64.0,
-          "predicted": 78.10752045959049
+          "predicted": 76.29459742770982
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 66.17816337026167
+          "predicted": 66.17509277333147
         }
       }
     },
@@ -33497,11 +33497,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 92.67060144531763
+          "predicted": 90.32513849629518
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 70.49150253804542
+          "predicted": 70.4915807323177
         }
       }
     },
@@ -33597,11 +33597,11 @@
       "maintenance": {
         "map": {
           "observed": 117.0,
-          "predicted": 80.81149577604435
+          "predicted": 78.99621998837321
         },
         "hr": {
           "observed": 75.0,
-          "predicted": 54.78252210390433
+          "predicted": 54.781232216786265
         }
       }
     },
@@ -33773,11 +33773,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 112.27206180965811
+          "predicted": 109.52880968804493
         },
         "hr": {
           "observed": 99.0,
-          "predicted": 105.96977750876891
+          "predicted": 105.97320525434661
         }
       }
     },
@@ -33957,11 +33957,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 87.67598146270797
+          "predicted": 85.65658688867163
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 58.74749160351892
+          "predicted": 58.74461530463418
         }
       }
     },
@@ -34061,11 +34061,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 82.06059999805687
+          "predicted": 80.1692800482925
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 71.0557383025346
+          "predicted": 71.05016639160245
         }
       }
     },
@@ -34161,11 +34161,11 @@
       "maintenance": {
         "map": {
           "observed": 106.0,
-          "predicted": 102.38132356008913
+          "predicted": 99.88819726292058
         },
         "hr": {
           "observed": 86.0,
-          "predicted": 77.89320523424847
+          "predicted": 77.88992474005472
         }
       }
     },
@@ -34265,11 +34265,11 @@
       "maintenance": {
         "map": {
           "observed": 94.0,
-          "predicted": 85.42237092343697
+          "predicted": 83.38312964182532
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 53.820207841229404
+          "predicted": 53.81970722005653
         }
       }
     },
@@ -34365,11 +34365,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 76.25449931624809
+          "predicted": 74.36675581103925
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 59.536929331317495
+          "predicted": 59.51566088068915
         }
       }
     },
@@ -34460,11 +34460,11 @@
       "maintenance": {
         "map": {
           "observed": 109.0,
-          "predicted": 80.0402430828966
+          "predicted": 78.09986558124501
         },
         "hr": {
           "observed": 77.0,
-          "predicted": 78.88973111525834
+          "predicted": 78.88875053385811
         }
       }
     },
@@ -34556,11 +34556,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 87.05074948612777
+          "predicted": 85.15132833882298
         },
         "hr": {
           "observed": 85.0,
-          "predicted": 75.8778048333034
+          "predicted": 75.88920838096683
         }
       }
     },
@@ -34651,11 +34651,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 84.82701328850382
+          "predicted": 82.77786894963367
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 61.318967591945224
+          "predicted": 61.31195119008916
         }
       }
     },
@@ -34835,11 +34835,11 @@
       "maintenance": {
         "map": {
           "observed": 63.0,
-          "predicted": 72.22844780764615
+          "predicted": 70.4744408497925
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 71.04093213830662
+          "predicted": 71.0328266468363
         }
       }
     },
@@ -34939,11 +34939,11 @@
       "maintenance": {
         "map": {
           "observed": 98.0,
-          "predicted": 84.85447569728177
+          "predicted": 82.85403413127463
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 60.2588452969471
+          "predicted": 60.25538106908576
         }
       }
     },
@@ -35043,11 +35043,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 88.94765752251548
+          "predicted": 86.81102192507444
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 74.58536740609509
+          "predicted": 74.58097356677986
         }
       }
     },
@@ -35147,11 +35147,11 @@
       "maintenance": {
         "map": {
           "observed": 93.0,
-          "predicted": 82.80090030669169
+          "predicted": 80.79836449112761
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 65.4466903993735
+          "predicted": 65.44673794259626
         }
       }
     },
@@ -35247,11 +35247,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 81.07688453597355
+          "predicted": 79.17110113143285
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 76.74819188356437
+          "predicted": 76.74627449988681
         }
       }
     },
@@ -35342,11 +35342,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 79.56863328158971
+          "predicted": 77.65638575151867
         },
         "hr": {
           "observed": 44.0,
-          "predicted": 46.19442650192608
+          "predicted": 46.193550577264304
         }
       }
     },
@@ -35438,11 +35438,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 80.84444628729261
+          "predicted": 78.94464607521157
         },
         "hr": {
           "observed": 84.0,
-          "predicted": 72.50842925571303
+          "predicted": 72.50677909829926
         }
       }
     },
@@ -35538,11 +35538,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 82.03625381959823
+          "predicted": 80.14477228071888
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 56.738517525692195
+          "predicted": 56.73710671209594
         }
       }
     },
@@ -35642,11 +35642,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 83.8447430888715
+          "predicted": 81.80820678201391
         },
         "hr": {
           "observed": 99.0,
-          "predicted": 84.39933531614248
+          "predicted": 84.39412165964409
         }
       }
     },
@@ -35746,11 +35746,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 76.87119131501265
+          "predicted": 74.99963124147708
         },
         "hr": {
           "observed": 81.0,
-          "predicted": 74.8954312175587
+          "predicted": 74.89423626875521
         }
       }
     },
@@ -35841,11 +35841,11 @@
       "maintenance": {
         "map": {
           "observed": 101.0,
-          "predicted": 87.68702207697224
+          "predicted": 85.53081750025096
         },
         "hr": {
           "observed": 82.0,
-          "predicted": 47.64162318877406
+          "predicted": 47.64168276613912
         }
       }
     },
@@ -35941,11 +35941,11 @@
       "maintenance": {
         "map": {
           "observed": 76.5,
-          "predicted": 79.16246875017451
+          "predicted": 77.22158159108454
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 67.82577754856175
+          "predicted": 67.82581450214494
         }
       }
     },
@@ -36041,11 +36041,11 @@
       "maintenance": {
         "map": {
           "observed": 96.0,
-          "predicted": 86.17201252373356
+          "predicted": 84.08127535052174
         },
         "hr": {
           "observed": 59.5,
-          "predicted": 62.33848552258455
+          "predicted": 62.32164934580628
         }
       }
     },
@@ -36132,11 +36132,11 @@
       "maintenance": {
         "map": {
           "observed": 93.0,
-          "predicted": 82.55494674046201
+          "predicted": 80.56407760575004
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 60.36503524965181
+          "predicted": 60.36322352760059
         }
       }
     },
@@ -36232,11 +36232,11 @@
       "maintenance": {
         "map": {
           "observed": 109.0,
-          "predicted": 92.27249452556946
+          "predicted": 90.09070355787244
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 79.51249924362632
+          "predicted": 79.50725036271173
         }
       }
     },
@@ -36336,11 +36336,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 80.65401909005399
+          "predicted": 78.70528872377515
         },
         "hr": {
           "observed": 86.0,
-          "predicted": 89.32344013391571
+          "predicted": 89.32201049274644
         }
       }
     },
@@ -36440,11 +36440,11 @@
       "maintenance": {
         "map": {
           "observed": 93.0,
-          "predicted": 72.50988551424653
+          "predicted": 70.64518847435706
         },
         "hr": {
           "observed": 79.0,
-          "predicted": 77.02878284052244
+          "predicted": 77.0276096475386
         }
       }
     },
@@ -36540,11 +36540,11 @@
       "maintenance": {
         "map": {
           "observed": 94.0,
-          "predicted": 86.97291910354878
+          "predicted": 84.87209028321335
         },
         "hr": {
           "observed": 53.0,
-          "predicted": 54.98090354599064
+          "predicted": 54.96701802954286
         }
       }
     },
@@ -36644,11 +36644,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 85.65564477847457
+          "predicted": 83.64109683296559
         },
         "hr": {
           "observed": 80.0,
-          "predicted": 67.1820508339465
+          "predicted": 67.17877228018278
         }
       }
     },
@@ -36748,11 +36748,11 @@
       "maintenance": {
         "map": {
           "observed": 65.0,
-          "predicted": 88.49571592788467
+          "predicted": 86.40043132405584
         },
         "hr": {
           "observed": 77.0,
-          "predicted": 68.92899263539272
+          "predicted": 68.9277661594601
         }
       }
     },
@@ -36852,11 +36852,11 @@
       "maintenance": {
         "map": {
           "observed": 90.0,
-          "predicted": 83.48812134904284
+          "predicted": 81.4553844608078
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 56.83348783389167
+          "predicted": 56.81623792538343
         }
       }
     },
@@ -36952,11 +36952,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 91.78628326637991
+          "predicted": 89.60014840617924
         },
         "hr": {
           "observed": 60.0,
-          "predicted": 44.62997792996457
+          "predicted": 44.627821817490485
         }
       }
     },
@@ -37056,11 +37056,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 74.72186323249744
+          "predicted": 72.93869121817464
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 66.62132764326824
+          "predicted": 66.61552785572637
         }
       }
     },
@@ -37238,11 +37238,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 89.27055678143347
+          "predicted": 87.14845498109236
         },
         "hr": {
           "observed": 81.0,
-          "predicted": 52.985026526474684
+          "predicted": 52.984763415613855
         }
       }
     },
@@ -37342,11 +37342,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 74.84471639785806
+          "predicted": 73.05248888614841
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 60.76242977227898
+          "predicted": 60.76193271921311
         }
       }
     },
@@ -37437,11 +37437,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 76.16349020030668
+          "predicted": 74.3339535806706
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 62.14089767406898
+          "predicted": 62.138197371153424
         }
       }
     },
@@ -37621,11 +37621,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 74.74536832792936
+          "predicted": 72.97403119726044
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 50.22892566469372
+          "predicted": 50.226704386396165
         }
       }
     },
@@ -37725,11 +37725,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 78.45001682886331
+          "predicted": 76.54429788385549
         },
         "hr": {
           "observed": 53.0,
-          "predicted": 55.10407511728894
+          "predicted": 55.08581161395569
         }
       }
     },
@@ -37909,11 +37909,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 87.20794415616649
+          "predicted": 85.15355754358528
         },
         "hr": {
           "observed": 86.0,
-          "predicted": 99.7215028671941
+          "predicted": 99.71407939441735
         }
       }
     },
@@ -38013,11 +38013,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 83.31478742418179
+          "predicted": 81.27538717900124
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 59.279673463514754
+          "predicted": 59.27971492734958
         }
       }
     },
@@ -38113,11 +38113,11 @@
       "maintenance": {
         "map": {
           "observed": 94.0,
-          "predicted": 79.20757018267295
+          "predicted": 77.33530386614422
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 58.54500040462665
+          "predicted": 58.54232572782098
         }
       }
     },
@@ -38208,11 +38208,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 82.52203280594966
+          "predicted": 80.57029327016366
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 69.94818470599233
+          "predicted": 69.94573550174647
         }
       }
     },
@@ -38312,11 +38312,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 79.98520006121262
+          "predicted": 78.12452196043954
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 61.54666062452735
+          "predicted": 61.5450518119169
         }
       }
     },
@@ -38412,11 +38412,11 @@
       "maintenance": {
         "map": {
           "observed": 93.0,
-          "predicted": 81.4019880364163
+          "predicted": 79.40551377845533
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 52.306668313619355
+          "predicted": 52.30671980276951
         }
       }
     },
@@ -38516,11 +38516,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 83.20907870840662
+          "predicted": 81.19857268247914
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 72.89192907372451
+          "predicted": 72.88287682596952
         }
       }
     },
@@ -38616,11 +38616,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 85.73660672801407
+          "predicted": 83.69738136299259
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 59.68911678098216
+          "predicted": 59.68709075912959
         }
       }
     },
@@ -38804,11 +38804,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 87.0181744141844
+          "predicted": 84.95237419147534
         },
         "hr": {
           "observed": 54.0,
-          "predicted": 57.50776338148913
+          "predicted": 57.511487825924114
         }
       }
     },
@@ -38904,11 +38904,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 83.73398102764949
+          "predicted": 81.76354443695983
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 66.22341789220987
+          "predicted": 66.21862696174433
         }
       }
     },
@@ -39000,11 +39000,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 91.83279515122018
+          "predicted": 89.80874861357157
         },
         "hr": {
           "observed": 72.0,
-          "predicted": 69.07040879351152
+          "predicted": 69.05731429061623
         }
       }
     },
@@ -39096,11 +39096,11 @@
       "maintenance": {
         "map": {
           "observed": 102.0,
-          "predicted": 86.90879958427534
+          "predicted": 84.93543760373828
         },
         "hr": {
           "observed": 79.0,
-          "predicted": 67.09623658820914
+          "predicted": 67.08994158281767
         }
       }
     },
@@ -39200,11 +39200,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 68.47668873053011
+          "predicted": 66.89196675165708
         },
         "hr": {
           "observed": 79.0,
-          "predicted": 57.78121255505003
+          "predicted": 57.78122085904015
         }
       }
     },
@@ -39300,11 +39300,11 @@
       "maintenance": {
         "map": {
           "observed": 76.0,
-          "predicted": 97.67032499619074
+          "predicted": 95.32197479832452
         },
         "hr": {
           "observed": 77.0,
-          "predicted": 61.52539326033571
+          "predicted": 61.520706956370326
         }
       }
     },
@@ -39404,11 +39404,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 72.35438891296877
+          "predicted": 70.61276823090819
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 74.46206236013712
+          "predicted": 74.46069927907453
         }
       }
     },
@@ -39504,11 +39504,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 76.95500484051894
+          "predicted": 75.0945031652423
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 60.331970840611746
+          "predicted": 60.331417056352194
         }
       }
     },
@@ -39604,11 +39604,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 77.98731868835381
+          "predicted": 76.08741396508657
         },
         "hr": {
           "observed": 77.0,
-          "predicted": 73.84161174582525
+          "predicted": 73.8158266161611
         }
       }
     },
@@ -39704,11 +39704,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 71.79475641356586
+          "predicted": 70.0014831869201
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 76.57001457866194
+          "predicted": 76.56421654649805
         }
       }
     },
@@ -39808,11 +39808,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 76.73209943653838
+          "predicted": 74.81287493578999
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 64.03738385449462
+          "predicted": 64.03644291184592
         }
       }
     },
@@ -39903,11 +39903,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 89.17671909967714
+          "predicted": 87.04910760296136
         },
         "hr": {
           "observed": 77.0,
-          "predicted": 75.72663435925904
+          "predicted": 75.72442075945204
         }
       }
     },
@@ -40007,11 +40007,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 85.03895623970348
+          "predicted": 82.96359087753135
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 56.1380539588623
+          "predicted": 56.132153304051066
         }
       }
     },
@@ -40102,11 +40102,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 81.34513950657886
+          "predicted": 79.44127770107008
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 69.3422379176796
+          "predicted": 69.3407227142963
         }
       }
     },
@@ -40197,11 +40197,11 @@
       "maintenance": {
         "map": {
           "observed": 80.0,
-          "predicted": 84.10358989423706
+          "predicted": 82.07913452006436
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 74.26644812368761
+          "predicted": 74.26387674701785
         }
       }
     },
@@ -40301,11 +40301,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 76.86256266632093
+          "predicted": 75.04093347633697
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 67.9623704648118
+          "predicted": 67.9608809006305
         }
       }
     },
@@ -40480,11 +40480,11 @@
       "maintenance": {
         "map": {
           "observed": 73.0,
-          "predicted": 75.2894016878662
+          "predicted": 73.44987595703334
         },
         "hr": {
           "observed": 81.0,
-          "predicted": 64.23679392540764
+          "predicted": 64.23526642934523
         }
       }
     },
@@ -40575,11 +40575,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 71.66257124335051
+          "predicted": 69.87982949829863
         },
         "hr": {
           "observed": 71.0,
-          "predicted": 56.50661252855505
+          "predicted": 56.47756977139139
         }
       }
     },
@@ -40759,11 +40759,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 65.06145025496919
+          "predicted": 63.42270675215393
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 65.10408215607292
+          "predicted": 65.1022062226256
         }
       }
     },
@@ -40859,11 +40859,11 @@
       "maintenance": {
         "map": {
           "observed": 89.5,
-          "predicted": 72.76350446991694
+          "predicted": 71.02636010875413
         },
         "hr": {
           "observed": 57.0,
-          "predicted": 48.550083467839855
+          "predicted": 48.547934619990784
         }
       }
     },
@@ -40959,11 +40959,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 88.5735294384052
+          "predicted": 86.42408618385281
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 57.43599740840665
+          "predicted": 57.42674122193668
         }
       }
     },
@@ -41063,11 +41063,11 @@
       "maintenance": {
         "map": {
           "observed": 100.0,
-          "predicted": 82.71299358778052
+          "predicted": 80.77114967918291
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 59.06022409934809
+          "predicted": 59.05816289391838
         }
       }
     },
@@ -41163,11 +41163,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 84.5441549682277
+          "predicted": 82.48337304782854
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 59.64575150515951
+          "predicted": 59.61192747231721
         }
       }
     },
@@ -41258,11 +41258,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 78.97482946700863
+          "predicted": 77.0358897230602
         },
         "hr": {
           "observed": 95.0,
-          "predicted": 66.89301890877175
+          "predicted": 66.89189181636343
         }
       }
     },
@@ -41358,11 +41358,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 73.75397670187868
+          "predicted": 71.88957918738792
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 56.9685821690348
+          "predicted": 56.968615447470626
         }
       }
     },
@@ -41462,11 +41462,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 83.148741830276
+          "predicted": 81.15016180101006
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 54.93201230751271
+          "predicted": 54.930782739299666
         }
       }
     },
@@ -41562,11 +41562,11 @@
       "maintenance": {
         "map": {
           "observed": 95.0,
-          "predicted": 86.95386457941386
+          "predicted": 85.17212887245125
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 52.00007965110515
+          "predicted": 52.01123166361315
         }
       }
     },
@@ -41662,11 +41662,11 @@
       "maintenance": {
         "map": {
           "observed": 97.0,
-          "predicted": 75.84656558028804
+          "predicted": 74.00741497848519
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 64.09156972026119
+          "predicted": 64.07645710667947
         }
       }
     },
@@ -41766,11 +41766,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 82.53403328937007
+          "predicted": 80.52075537023156
         },
         "hr": {
           "observed": 47.0,
-          "predicted": 47.37107476468647
+          "predicted": 47.36561889535678
         }
       }
     },
@@ -41866,11 +41866,11 @@
       "maintenance": {
         "map": {
           "observed": 79.0,
-          "predicted": 85.75341893698265
+          "predicted": 83.726889854077
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 70.76348664912577
+          "predicted": 70.76394604599051
         }
       }
     },
@@ -41961,11 +41961,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 86.33742059063333
+          "predicted": 84.30365200857038
         },
         "hr": {
           "observed": 80.0,
-          "predicted": 72.75792270064497
+          "predicted": 72.75651219629515
         }
       }
     },
@@ -42138,11 +42138,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 85.63842932677524
+          "predicted": 83.59490354356282
         },
         "hr": {
           "observed": 46.0,
-          "predicted": 48.414837563972235
+          "predicted": 48.412297745785295
         }
       }
     },
@@ -42320,11 +42320,11 @@
       "maintenance": {
         "map": {
           "observed": 86.0,
-          "predicted": 91.27581462416178
+          "predicted": 89.10229487289615
         },
         "hr": {
           "observed": 57.0,
-          "predicted": 71.17092942290498
+          "predicted": 71.16872445868061
         }
       }
     },
@@ -42504,11 +42504,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 84.05058735578052
+          "predicted": 82.0121969086868
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 58.27896278640361
+          "predicted": 58.279015593375945
         }
       }
     },
@@ -42599,11 +42599,11 @@
       "maintenance": {
         "map": {
           "observed": 62.0,
-          "predicted": 68.733341831393
+          "predicted": 67.03381994179983
         },
         "hr": {
           "observed": 103.0,
-          "predicted": 72.31832117314391
+          "predicted": 72.30398217478748
         }
       }
     },
@@ -42690,11 +42690,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 83.98894105844012
+          "predicted": 81.93832425252619
         },
         "hr": {
           "observed": 48.0,
-          "predicted": 46.26378647319605
+          "predicted": 46.2638392915475
         }
       }
     },
@@ -42781,11 +42781,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 73.1527998836628
+          "predicted": 71.40277264010248
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 57.41212190240168
+          "predicted": 57.40933329214001
         }
       }
     },
@@ -42881,11 +42881,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 86.40592920645467
+          "predicted": 84.55713608493797
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 48.74856999051248
+          "predicted": 48.74580278422349
         }
       }
     },
@@ -42977,11 +42977,11 @@
       "maintenance": {
         "map": {
           "observed": 81.0,
-          "predicted": 77.74588410635894
+          "predicted": 75.90605982846166
         },
         "hr": {
           "observed": 48.0,
-          "predicted": 42.738014801141325
+          "predicted": 42.73865681584442
         }
       }
     },
@@ -43072,11 +43072,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 91.90935862767623
+          "predicted": 89.68118349773299
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 59.115286052968614
+          "predicted": 59.11289752172307
         }
       }
     },
@@ -43176,11 +43176,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 93.46790723841822
+          "predicted": 91.23765230946361
         },
         "hr": {
           "observed": 86.0,
-          "predicted": 68.52684146637992
+          "predicted": 68.52409094309878
         }
       }
     },
@@ -43356,11 +43356,11 @@
       "maintenance": {
         "map": {
           "observed": 81.0,
-          "predicted": 82.03095570839983
+          "predicted": 80.08577172197147
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 69.0430022590119
+          "predicted": 69.02651362241896
         }
       }
     },
@@ -43529,11 +43529,11 @@
       "maintenance": {
         "map": {
           "observed": 81.0,
-          "predicted": 89.47099896957968
+          "predicted": 87.357798441379
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 61.822839166226885
+          "predicted": 61.81936842748361
         }
       }
     },
@@ -43629,11 +43629,11 @@
       "maintenance": {
         "map": {
           "observed": 96.0,
-          "predicted": 66.16771140577289
+          "predicted": 64.61112226979162
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 48.57797675771894
+          "predicted": 48.57685264552123
         }
       }
     },
@@ -43733,11 +43733,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 87.71574956603382
+          "predicted": 85.66150293376302
         },
         "hr": {
           "observed": 50.0,
-          "predicted": 65.43979368774134
+          "predicted": 65.43985545248722
         }
       }
     },
@@ -43837,11 +43837,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 90.64132093089276
+          "predicted": 88.6425114852717
         },
         "hr": {
           "observed": 80.0,
-          "predicted": 79.41017904178581
+          "predicted": 79.40245485792286
         }
       }
     },
@@ -43941,11 +43941,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 79.44455166870114
+          "predicted": 77.4838327586564
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 66.92006473328931
+          "predicted": 66.91979684358463
         }
       }
     },
@@ -44045,11 +44045,11 @@
       "maintenance": {
         "map": {
           "observed": 59.0,
-          "predicted": 75.60279432237687
+          "predicted": 73.81766995023598
         },
         "hr": {
           "observed": 50.0,
-          "predicted": 45.937708570317625
+          "predicted": 45.93702648275617
         }
       }
     },
@@ -44140,11 +44140,11 @@
       "maintenance": {
         "map": {
           "observed": 68.0,
-          "predicted": 81.96544884867319
+          "predicted": 80.0200335234579
         },
         "hr": {
           "observed": 75.0,
-          "predicted": 67.18222489067745
+          "predicted": 67.18019823620234
         }
       }
     },
@@ -44244,11 +44244,11 @@
       "maintenance": {
         "map": {
           "observed": 66.0,
-          "predicted": 92.00841937272672
+          "predicted": 89.76808261139325
         },
         "hr": {
           "observed": 55.0,
-          "predicted": 62.65780875838425
+          "predicted": 62.6548374284321
         }
       }
     },
@@ -44344,11 +44344,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 67.71867672722327
+          "predicted": 66.0693098103337
         },
         "hr": {
           "observed": 95.0,
-          "predicted": 80.99681449361634
+          "predicted": 80.9958934461679
         }
       }
     },
@@ -44448,11 +44448,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 76.64674469104091
+          "predicted": 74.77403629417422
         },
         "hr": {
           "observed": 59.0,
-          "predicted": 54.692064377745844
+          "predicted": 54.68246113701747
         }
       }
     },
@@ -44718,11 +44718,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 76.97111898268977
+          "predicted": 75.0320990273249
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 48.31624168925828
+          "predicted": 48.30529107205767
         }
       }
     },
@@ -44818,11 +44818,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 97.18697598745699
+          "predicted": 94.90986459792273
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 50.887121273608216
+          "predicted": 50.88369098572291
         }
       }
     },
@@ -44994,11 +44994,11 @@
       "maintenance": {
         "map": {
           "observed": 90.0,
-          "predicted": 98.44447720466788
+          "predicted": 96.22160593817866
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 72.77353369366894
+          "predicted": 72.77447884231339
         }
       }
     },
@@ -45098,11 +45098,11 @@
       "maintenance": {
         "map": {
           "observed": 62.0,
-          "predicted": 93.71959625587198
+          "predicted": 91.54133387268745
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 68.93051997598721
+          "predicted": 68.92713932707466
         }
       }
     },
@@ -45194,11 +45194,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 90.78160132008769
+          "predicted": 88.65529409930735
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 56.2929194891038
+          "predicted": 56.2929717312869
         }
       }
     },
@@ -45294,11 +45294,11 @@
       "maintenance": {
         "map": {
           "observed": 100.0,
-          "predicted": 79.70125125554527
+          "predicted": 77.83559761083163
         },
         "hr": {
           "observed": 49.0,
-          "predicted": 60.58212191315135
+          "predicted": 60.57976716444398
         }
       }
     },
@@ -45473,11 +45473,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 86.83536726513621
+          "predicted": 84.78769900697768
         },
         "hr": {
           "observed": 90.0,
-          "predicted": 90.7826902169102
+          "predicted": 90.78480412490426
         }
       }
     },
@@ -45573,11 +45573,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 83.4702573553077
+          "predicted": 81.54101780084679
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 60.39308419681423
+          "predicted": 60.39264742925548
         }
       }
     },
@@ -45677,11 +45677,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 66.85282555412799
+          "predicted": 65.26274993111926
         },
         "hr": {
           "observed": 72.0,
-          "predicted": 57.803208546170936
+          "predicted": 57.8017066483434
         }
       }
     },
@@ -45777,11 +45777,11 @@
       "maintenance": {
         "map": {
           "observed": 90.0,
-          "predicted": 86.98506913812432
+          "predicted": 84.94715774200606
         },
         "hr": {
           "observed": 75.0,
-          "predicted": 72.71907769276852
+          "predicted": 72.71903739987091
         }
       }
     },
@@ -45881,11 +45881,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 76.2403180604805
+          "predicted": 74.4209969709508
         },
         "hr": {
           "observed": 71.0,
-          "predicted": 71.51520804682471
+          "predicted": 71.51854218794
         }
       }
     },
@@ -45981,11 +45981,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 95.49403952513352
+          "predicted": 93.27781788523933
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 61.25246296413739
+          "predicted": 61.249417986975786
         }
       }
     },
@@ -46081,11 +46081,11 @@
       "maintenance": {
         "map": {
           "observed": 107.0,
-          "predicted": 103.32899430765217
+          "predicted": 100.93206212030914
         },
         "hr": {
           "observed": 48.0,
-          "predicted": 44.635360224692356
+          "predicted": 44.63049831420703
         }
       }
     },
@@ -46269,11 +46269,11 @@
       "maintenance": {
         "map": {
           "observed": 100.0,
-          "predicted": 87.6856357606541
+          "predicted": 85.55228620168658
         },
         "hr": {
           "observed": 76.0,
-          "predicted": 62.64578964273758
+          "predicted": 62.63105902377185
         }
       }
     },
@@ -46373,11 +46373,11 @@
       "maintenance": {
         "map": {
           "observed": 77.0,
-          "predicted": 85.87525633311932
+          "predicted": 83.84384585571625
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 63.45544939149518
+          "predicted": 63.456559652324785
         }
       }
     },
@@ -46477,11 +46477,11 @@
       "maintenance": {
         "map": {
           "observed": 58.0,
-          "predicted": 79.23779525672126
+          "predicted": 77.35366734753163
         },
         "hr": {
           "observed": 74.0,
-          "predicted": 107.78836415984433
+          "predicted": 107.78640519564418
         }
       }
     },
@@ -46581,11 +46581,11 @@
       "maintenance": {
         "map": {
           "observed": 71.0,
-          "predicted": 81.308143728606
+          "predicted": 79.3742386471725
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 55.11006304871903
+          "predicted": 55.10798425132744
         }
       }
     },
@@ -46685,11 +46685,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 82.67872301057628
+          "predicted": 80.64375033576863
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 55.965063399827855
+          "predicted": 55.95240092781063
         }
       }
     },
@@ -46780,11 +46780,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 79.82838387654746
+          "predicted": 77.91056506056547
         },
         "hr": {
           "observed": 65.0,
-          "predicted": 69.45904875815758
+          "predicted": 69.45404239407357
         }
       }
     },
@@ -46875,11 +46875,11 @@
       "maintenance": {
         "map": {
           "observed": 70.0,
-          "predicted": 96.77576401346644
+          "predicted": 94.54463728448445
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 87.91163844046886
+          "predicted": 87.90447067650604
         }
       }
     },
@@ -46975,11 +46975,11 @@
       "maintenance": {
         "map": {
           "observed": 88.0,
-          "predicted": 85.43149284674304
+          "predicted": 83.38700460848807
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 46.25316289338232
+          "predicted": 46.23895008190624
         }
       }
     },
@@ -47070,11 +47070,11 @@
       "maintenance": {
         "map": {
           "observed": 72.0,
-          "predicted": 98.63777050268604
+          "predicted": 96.2518908426542
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 72.95672558888919
+          "predicted": 72.9585621541037
         }
       }
     },
@@ -47247,11 +47247,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 78.42766602659393
+          "predicted": 76.51400233117562
         },
         "hr": {
           "observed": 54.0,
-          "predicted": 54.21889297278912
+          "predicted": 54.218923256634596
         }
       }
     },
@@ -47351,11 +47351,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 79.70732749309558
+          "predicted": 77.80987364028861
         },
         "hr": {
           "observed": 70.0,
-          "predicted": 65.92750512268154
+          "predicted": 65.92601489631829
         }
       }
     },
@@ -47455,11 +47455,11 @@
       "maintenance": {
         "map": {
           "observed": 95.0,
-          "predicted": 76.87456772063503
+          "predicted": 75.00535144339531
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 61.854966581242934
+          "predicted": 61.834472794928494
         }
       }
     },
@@ -47555,11 +47555,11 @@
       "maintenance": {
         "map": {
           "observed": 67.0,
-          "predicted": 87.93399293687656
+          "predicted": 85.88694504606202
         },
         "hr": {
           "observed": 49.0,
-          "predicted": 52.93483029660369
+          "predicted": 52.93291463805513
         }
       }
     },
@@ -47659,11 +47659,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 83.60891112108504
+          "predicted": 81.55130520843808
         },
         "hr": {
           "observed": 58.0,
-          "predicted": 56.043218603883005
+          "predicted": 56.04213665865829
         }
       }
     },
@@ -47763,11 +47763,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 83.32604099470505
+          "predicted": 81.43996529252354
         },
         "hr": {
           "observed": 117.0,
-          "predicted": 101.11848422368013
+          "predicted": 101.11184986121226
         }
       }
     },
@@ -47863,11 +47863,11 @@
       "maintenance": {
         "map": {
           "observed": 75.0,
-          "predicted": 75.56157987208955
+          "predicted": 73.69428663293473
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 58.65596356609445
+          "predicted": 58.65416593887497
         }
       }
     },
@@ -47967,11 +47967,11 @@
       "maintenance": {
         "map": {
           "observed": 85.0,
-          "predicted": 83.53744757546745
+          "predicted": 81.59975927337763
         },
         "hr": {
           "observed": 61.0,
-          "predicted": 56.367142298945154
+          "predicted": 56.3669055929994
         }
       }
     },
@@ -48062,11 +48062,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 98.20221182219225
+          "predicted": 95.85109921479997
         },
         "hr": {
           "observed": 62.0,
-          "predicted": 84.47603768318855
+          "predicted": 84.47433861810705
         }
       }
     },
@@ -48162,11 +48162,11 @@
       "maintenance": {
         "map": {
           "observed": 106.0,
-          "predicted": 91.1809250927914
+          "predicted": 89.04325289548851
         },
         "hr": {
           "observed": 66.0,
-          "predicted": 55.23019007355757
+          "predicted": 55.231609039207385
         }
       }
     },
@@ -48266,11 +48266,11 @@
       "maintenance": {
         "map": {
           "observed": 90.0,
-          "predicted": 79.04474464180198
+          "predicted": 77.10576718617386
         },
         "hr": {
           "observed": 67.0,
-          "predicted": 59.51501314991372
+          "predicted": 59.510694082387936
         }
       }
     },
@@ -48366,11 +48366,11 @@
       "maintenance": {
         "map": {
           "observed": 78.0,
-          "predicted": 83.59089266302207
+          "predicted": 81.60877986180259
         },
         "hr": {
           "observed": 64.0,
-          "predicted": 77.23119363304181
+          "predicted": 77.22310592415879
         }
       }
     },
@@ -48554,11 +48554,11 @@
       "maintenance": {
         "map": {
           "observed": 69.0,
-          "predicted": 75.99987868581063
+          "predicted": 74.17165881105852
         },
         "hr": {
           "observed": 77.0,
-          "predicted": 68.55194020639105
+          "predicted": 68.5508410001469
         }
       }
     },
@@ -48742,11 +48742,11 @@
       "maintenance": {
         "map": {
           "observed": 82.0,
-          "predicted": 89.85640741921799
+          "predicted": 87.66616217937394
         },
         "hr": {
           "observed": 47.0,
-          "predicted": 54.58253055841331
+          "predicted": 54.57550191584879
         }
       }
     },
@@ -48846,11 +48846,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 78.45177505288244
+          "predicted": 76.57165486037088
         },
         "hr": {
           "observed": 88.0,
-          "predicted": 95.32895146413242
+          "predicted": 95.32785162489179
         }
       }
     },
@@ -48950,11 +48950,11 @@
       "maintenance": {
         "map": {
           "observed": 92.0,
-          "predicted": 75.67305236913191
+          "predicted": 73.86245366640354
         },
         "hr": {
           "observed": 81.0,
-          "predicted": 67.74705328762732
+          "predicted": 67.74513286850834
         }
       }
     },
@@ -49050,11 +49050,11 @@
       "maintenance": {
         "map": {
           "observed": 83.0,
-          "predicted": 86.77037569314093
+          "predicted": 84.72545308617966
         },
         "hr": {
           "observed": 51.0,
-          "predicted": 64.83750492113569
+          "predicted": 64.83074321155146
         }
       }
     },
@@ -49154,11 +49154,11 @@
       "maintenance": {
         "map": {
           "observed": 94.0,
-          "predicted": 88.84850114839867
+          "predicted": 86.70670337682962
         },
         "hr": {
           "observed": 68.0,
-          "predicted": 76.97310515892954
+          "predicted": 76.97297010667135
         }
       }
     },
@@ -49258,11 +49258,11 @@
       "maintenance": {
         "map": {
           "observed": 74.0,
-          "predicted": 73.301475367132
+          "predicted": 71.51510328046828
         },
         "hr": {
           "observed": 73.0,
-          "predicted": 61.28478760958341
+          "predicted": 61.28495526599586
         }
       }
     },
@@ -49362,11 +49362,11 @@
       "maintenance": {
         "map": {
           "observed": 87.0,
-          "predicted": 84.77623404478614
+          "predicted": 82.73816598475842
         },
         "hr": {
           "observed": 56.0,
-          "predicted": 58.4160824656487
+          "predicted": 58.390224504518514
         }
       }
     },
@@ -49457,11 +49457,11 @@
       "maintenance": {
         "map": {
           "observed": 91.0,
-          "predicted": 81.90326747954431
+          "predicted": 79.95647710588196
         },
         "hr": {
           "observed": 69.0,
-          "predicted": 70.54898217709143
+          "predicted": 70.54496812630197
         }
       }
     },
@@ -49557,11 +49557,11 @@
       "maintenance": {
         "map": {
           "observed": 84.0,
-          "predicted": 90.93767718260904
+          "predicted": 88.76489043827327
         },
         "hr": {
           "observed": 63.0,
-          "predicted": 69.32939430110866
+          "predicted": 69.32725450503504
         }
       }
     },
@@ -49657,11 +49657,11 @@
       "maintenance": {
         "map": {
           "observed": 89.0,
-          "predicted": 77.50770284350159
+          "predicted": 75.6358992992445
         },
         "hr": {
           "observed": 46.0,
-          "predicted": 51.34711332932414
+          "predicted": 51.318125984991184
         }
       }
     },
@@ -49837,11 +49837,11 @@
       "maintenance": {
         "map": {
           "observed": 80.0,
-          "predicted": 86.06102895046035
+          "predicted": 84.00767765055801
         },
         "hr": {
           "observed": 83.0,
-          "predicted": 59.43402489085994
+          "predicted": 59.43109869592881
         }
       }
     }

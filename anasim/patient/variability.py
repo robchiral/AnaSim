@@ -51,6 +51,15 @@ SU_REMIFENTANIL_TPR_EMAX_OMEGA = 0.449
 # Olofsen 2026 supplement Table 3, log-scale variances. One draw applies to both
 # morphine and hydromorphone; correlations were not reported, so draws are independent.
 OLOFSEN_OPIOID_RATE_OMEGA = {"half_time": 0.594, "c25": 0.552, "gamma": 0.264}
+# Resting sympathetic-tone and preoperative volume-status BSV:
+# Keir 2020 (n=658) reports ~30-45% within-age-sex MSNA CV, roughly halved in net
+# vascular tone by inverse alpha-adrenergic responsiveness (Charkoudian 2006) while
+# resting MAP stays invariant via reciprocal TPR-CO balancing (Charkoudian 2005).
+# Jacob 2008 (n=53) bounds 10-h fasted total BV near 106 +/- 10% normal (0% severe
+# hypovolemia), and Bundgaard-Nielsen 2010 (n=60) measures post-induction functional
+# preload deficits of 0-600 mL (median 200 mL, SD ~160 mL, ~3.2% of blood volume).
+RESTING_SYMPATHETIC_TONE_OMEGA = 0.16**2
+PREOP_VOLUME_FRACTION_SD = 0.032
 
 
 @dataclass(frozen=True)
@@ -76,13 +85,17 @@ class PropofolVariability(KineticVariability):
 
 @dataclass(frozen=True)
 class HemodynamicVariability:
-    """Random effects on vascular resistance: Su 2023 for propofol and opioids, and
-    the sevoflurane C50. The propofol C50 also sets sympathetic venous pooling,
-    and the opioid Emax multiplier stops at zero."""
+    """Random effects on vascular resistance (Su 2023, sevoflurane C50),
+    resting sympathetic tone (Keir 2020; Charkoudian 2005, 2006), and
+    preoperative functional blood volume (Jacob 2008; Bundgaard-Nielsen 2010).
+    The propofol C50 also sets sympathetic venous pooling, and the opioid Emax
+    multiplier stops at zero."""
 
     propofol_tpr_c50: float = 1.0
     opioid_tpr_emax: float = 1.0
     sevoflurane_tpr_c50: float = 1.0
+    resting_sympathetic_tone: float = 1.0
+    preop_volume_fraction: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -124,10 +137,19 @@ def sample_variability(seed: int | None) -> PatientVariability:
     remifentanil = KineticVariability(**_log_normal(rng, ELEVELD_REMIFENTANIL_OMEGA))
     fentanyl = KineticVariability(**_log_normal(rng, BAE_FENTANYL_OMEGA))
     sevoflurane_mac = math.exp(rng.normal(0.0, math.sqrt(HEYSE_SEVOFLURANE_MAC_OMEGA)))
+    sevoflurane_tpr_c50 = math.exp(rng.normal(0.0, math.sqrt(SU_PROPOFOL_TPR_C50_OMEGA)))
+    resting_sympathetic_tone = min(
+        1.55, max(0.65, math.exp(rng.normal(0.0, math.sqrt(RESTING_SYMPATHETIC_TONE_OMEGA)))),
+    )
+    preop_volume_fraction = min(
+        1.10, max(0.90, 1.0 + rng.normal(0.0, PREOP_VOLUME_FRACTION_SD)),
+    )
     hemodynamics = HemodynamicVariability(
         propofol_tpr_c50=propofol_tpr_c50,
         opioid_tpr_emax=opioid_tpr_emax,
-        sevoflurane_tpr_c50=math.exp(rng.normal(0.0, math.sqrt(SU_PROPOFOL_TPR_C50_OMEGA))),
+        sevoflurane_tpr_c50=sevoflurane_tpr_c50,
+        resting_sympathetic_tone=resting_sympathetic_tone,
+        preop_volume_fraction=preop_volume_fraction,
     )
     return PatientVariability(
         propofol=propofol, hemodynamics=hemodynamics, opioid_rate=opioid_rate,

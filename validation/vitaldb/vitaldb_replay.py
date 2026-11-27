@@ -287,10 +287,15 @@ def run_hemodynamic_replay(
     propofol_mg_s: np.ndarray,
     remi_ug_s: np.ndarray,
     inspired_sevo: np.ndarray | None = None,
+    vasopressor_ug_s: dict[str, np.ndarray] | None = None,
+    extra_outputs: bool = False,
+    forced_air_warming: bool = False,
 ) -> np.ndarray:
     """Drive the full AnaSim engine with recorded anesthetic delivery, fluids, blood loss, and surgery.
 
-    Returns an array of shape ``(len(grid), 3)`` with columns ``[map, hr, et_sevo]``.
+    Returns an array of shape ``(len(grid), 3)`` with columns ``[map, hr, et_sevo]``,
+    or ``(len(grid), 7)`` with ``[map, hr, et_sevo, co, sv, svr, temp_c]`` when
+    ``extra_outputs=True``.
     """
     duration_h = max(1.0, (float(case["aneend"]) - float(case["anestart"])) / 3600.0)
     engine = SimulationEngine(
@@ -305,6 +310,8 @@ def run_hemodynamic_replay(
     engine.start()
     engine.set_airway_mode("Mask")
     engine.set_fgf(6.0, 0.0)
+    if forced_air_warming:
+        engine.set_bair_hugger(38.0)
 
     fi_state = {"now": 0.0}
     if inspired_sevo is not None:
@@ -326,8 +333,15 @@ def run_hemodynamic_replay(
     vt = min(0.6, 0.008 * patient.predicted_body_weight())
     pending = sorted(events, key=lambda event: event[0])
     ventilated, next_colloid = False, onset
-    out = np.empty((len(grid), 3), dtype=float)
-    out[0] = engine.state.map, engine.state.hr, engine.state.et_sevo
+    ncols = 7 if extra_outputs else 3
+    out = np.empty((len(grid), ncols), dtype=float)
+    if extra_outputs:
+        out[0] = (
+            engine.state.map, engine.state.hr, engine.state.et_sevo,
+            engine.state.co, engine.state.sv, engine.state.svr, engine.state.temp_c,
+        )
+    else:
+        out[0] = engine.state.map, engine.state.hr, engine.state.et_sevo
     for i, dt in enumerate(np.diff(grid), start=1):
         now = grid[i - 1]
         while pending and pending[0][0] <= now:
@@ -345,8 +359,17 @@ def run_hemodynamic_replay(
             fi_state["now"] = float(inspired_sevo[i - 1]) / 100.0
         engine.infusion_rates["propofol"] = float(propofol_mg_s[i - 1])
         engine.infusion_rates["remi"] = float(remi_ug_s[i - 1])
+        if vasopressor_ug_s:
+            for drug_key, rate_arr in vasopressor_ug_s.items():
+                engine.infusion_rates[drug_key] = float(rate_arr[i - 1])
         step_headless(engine, float(dt))
-        out[i] = engine.state.map, engine.state.hr, engine.state.et_sevo
+        if extra_outputs:
+            out[i] = (
+                engine.state.map, engine.state.hr, engine.state.et_sevo,
+                engine.state.co, engine.state.sv, engine.state.svr, engine.state.temp_c,
+            )
+        else:
+            out[i] = engine.state.map, engine.state.hr, engine.state.et_sevo
     return out
 
 
@@ -625,6 +648,65 @@ def score_cuff_summary(
     )
     summary["course"] = course(seconds, cuff_map, model_map, baseline_map, incision - onset)
     return summary
+
+
+def surgery_subgroup_table_lines(
+    rows: Sequence[dict[str, Any]],
+    rng: np.random.Generator,
+    *,
+    with_rise: bool = False,
+) -> list[str]:
+    """Render untreated surgery MAP/HR errors (and optional pre-incision-to-surgery MAP rise) by procedure."""
+    groups = [
+        ("All untreated", list(rows)),
+        ("Open, supine", [r for r in rows if r.get("procedure") == "Open, supine"]),
+        (
+            "Laparoscopic or robotic, supine",
+            [r for r in rows if r.get("procedure") == "Laparoscopic or robotic, supine"],
+        ),
+        ("Other positions", [r for r in rows if r.get("procedure") == "Other positions"]),
+    ]
+    if with_rise:
+        lines = [
+            "| Procedure | n | MAP error, mmHg (95% CI) | HR error, bpm (95% CI) | Recorded rise, mmHg | Model rise, mmHg |",
+            "|---|---:|---|---|---|---|",
+        ]
+    else:
+        lines = [
+            "| Procedure | n | MAP error, mmHg (95% CI) | HR error, bpm (95% CI) |",
+            "|---|---:|---|---|",
+        ]
+    for label, group in groups:
+        if len(group) < 3:
+            continue
+        if with_rise:
+            map_err = [r["maintenance"]["map"]["predicted"] - r["maintenance"]["map"]["observed"] for r in group]
+            hr_err = [r["maintenance"]["hr"]["predicted"] - r["maintenance"]["hr"]["observed"] for r in group]
+            rec_rise = [r["maintenance"]["map"]["observed"] - r["before_incision"]["map"]["observed"] for r in group]
+            mod_rise = [r["maintenance"]["map"]["predicted"] - r["before_incision"]["map"]["predicted"] for r in group]
+            lines.append(
+                f"| {label} | {len(group)} | {mean_ci(map_err, rng, include_n=False)} | "
+                f"{mean_ci(hr_err, rng, include_n=False)} | {mean_ci(rec_rise, rng, include_n=False)} | "
+                f"{mean_ci(mod_rise, rng, include_n=False)} |"
+            )
+        else:
+            map_err = [
+                (r["maintenance"]["map"]["predicted"] - r["maintenance"]["map"]["observed"])
+                if isinstance(r["maintenance"]["map"], dict)
+                else r["maintenance"]["map"]
+                for r in group
+            ]
+            hr_err = [
+                (r["maintenance"]["hr"]["predicted"] - r["maintenance"]["hr"]["observed"])
+                if isinstance(r["maintenance"]["hr"], dict)
+                else r["maintenance"]["hr"]
+                for r in group
+            ]
+            lines.append(
+                f"| {label} | {len(group)} | {mean_ci(map_err, rng, include_n=False)} | "
+                f"{mean_ci(hr_err, rng, include_n=False)} |"
+            )
+    return lines
 
 
 def hemo_summary_table_lines(

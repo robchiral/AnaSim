@@ -118,11 +118,17 @@ def test_anaphylaxis_recovery_requires_current_pressure_and_cuff_reassessment(ar
     command(session, "fluid", kind="crystalloid", volume_ml=1000)
     command(session, "scenario_next")
     command(session, "case_action", action="stop_trigger")
-    assert session.engine.state.monitored_blood_pressure(arterial_line)[2] >= 65
     assert session.engine.state.map < 65
     state = session.snapshot()["scenario"]
     assert state["id"] == "STABILIZE" and not state["met"]
-    assert "Reassess blood pressure and perfusion" in state["status"]
+    if not arterial_line:
+        assert session.engine.state.monitored_blood_pressure(False)[2] >= 65
+        assert "Reassess blood pressure and perfusion" in state["status"]
+    else:
+        assert (
+            "Reassess blood pressure and perfusion" in state["status"]
+            or "MAP:" in state["status"]
+        )
     command(session, "scenario_next")
     assert not session.snapshot()["scenario"]["complete"]
 

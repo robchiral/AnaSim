@@ -1,0 +1,5409 @@
+{
+  "settings": {
+    "generated": "2026-11-27",
+    "seed": 20261127
+  },
+  "eligible": 555,
+  "rows": [
+    {
+      "caseid": 16,
+      "subjectid": 362,
+      "approach": "Open",
+      "age": 57.0,
+      "bmi": 26.16,
+      "fio2": 34.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 90.0,
+      "mod_po2": 88.49457237046096,
+      "obs_grad_co2": 14.0,
+      "mod_grad_co2": 6.269955811991103,
+      "obs_ph": 7.27,
+      "mod_ph": 7.452570200758926,
+      "obs_hco3": 26.6,
+      "mod_hco3": 23.772795722186192,
+      "preop_hb": 13.8,
+      "obs_hb_est": 13.333333333333334,
+      "mod_hb": 13.178987195276878,
+      "preop_glu": 104.0,
+      "obs_glu": 184.0,
+      "mod_glu": 97.24802538572932,
+      "obs_ica": 0.95,
+      "mod_ica": 1.1954261863163929,
+      "obs_lac": 2.8,
+      "mod_lac": 1.0258620789664463
+    },
+    {
+      "caseid": 112,
+      "subjectid": 777,
+      "approach": "Videoscopic",
+      "age": 41.0,
+      "bmi": 21.33,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 205.0,
+      "mod_po2": 136.7485548787264,
+      "obs_grad_co2": 5.0,
+      "mod_grad_co2": 4.49998460050357,
+      "obs_ph": 7.41,
+      "mod_ph": 7.628612692330658,
+      "obs_hco3": 25.4,
+      "mod_hco3": 21.28851968244653,
+      "preop_hb": 12.4,
+      "obs_hb_est": 10.666666666666666,
+      "mod_hb": 11.934491557707812,
+      "preop_glu": null,
+      "obs_glu": 121.0,
+      "mod_glu": 84.17874330036722,
+      "obs_ica": 1.11,
+      "mod_ica": 1.1244600442188462,
+      "obs_lac": 0.7,
+      "mod_lac": 0.9753133775126426
+    },
+    {
+      "caseid": 263,
+      "subjectid": 5802,
+      "approach": "Videoscopic",
+      "age": 74.0,
+      "bmi": 23.05,
+      "fio2": 35.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 143.0,
+      "mod_po2": 70.44076952810823,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 5.547205486212324,
+      "obs_ph": 7.4,
+      "mod_ph": 7.501819661271995,
+      "obs_hco3": 29.1,
+      "mod_hco3": 23.021209746826884,
+      "preop_hb": 13.6,
+      "obs_hb_est": 11.666666666666666,
+      "mod_hb": 13.179950700931968,
+      "preop_glu": 118.0,
+      "obs_glu": 109.0,
+      "mod_glu": 110.37137469389423,
+      "obs_ica": 1.11,
+      "mod_ica": 1.1733330900804513,
+      "obs_lac": 0.8,
+      "mod_lac": 0.9767208535139345
+    },
+    {
+      "caseid": 312,
+      "subjectid": 3042,
+      "approach": "Videoscopic",
+      "age": 33.0,
+      "bmi": 24.94,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 100.0,
+      "obs_po2": 155.0,
+      "mod_po2": 134.52682558343113,
+      "obs_grad_co2": 2.0,
+      "mod_grad_co2": 4.449656232806188,
+      "obs_ph": 7.4,
+      "mod_ph": 7.487171983560551,
+      "obs_hco3": 23.5,
+      "mod_hco3": 23.55424876907701,
+      "preop_hb": 11.3,
+      "obs_hb_est": 12.0,
+      "mod_hb": 11.442615251195335,
+      "preop_glu": 291.0,
+      "obs_glu": 91.0,
+      "mod_glu": 284.3815560833554,
+      "obs_ica": 1.13,
+      "mod_ica": 1.180409976219836,
+      "obs_lac": 0.8,
+      "mod_lac": 0.9733123540248617
+    },
+    {
+      "caseid": 321,
+      "subjectid": 5040,
+      "approach": "Open",
+      "age": 65.0,
+      "bmi": 22.86,
+      "fio2": 36.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 135.0,
+      "mod_po2": 87.14353597334372,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 6.062634958321475,
+      "obs_ph": 7.41,
+      "mod_ph": 7.423996731196942,
+      "obs_hco3": 24.1,
+      "mod_hco3": 24.19549335343645,
+      "preop_hb": 14.1,
+      "obs_hb_est": 12.666666666666666,
+      "mod_hb": 13.230315502470583,
+      "preop_glu": 131.0,
+      "obs_glu": 145.0,
+      "mod_glu": 120.16192634963073,
+      "obs_ica": 1.07,
+      "mod_ica": 1.210383492104061,
+      "obs_lac": 1.6,
+      "mod_lac": 1.0636254938299536
+    },
+    {
+      "caseid": 343,
+      "subjectid": 966,
+      "approach": "Open",
+      "age": 61.0,
+      "bmi": 22.78,
+      "fio2": 37.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 143.0,
+      "mod_po2": 90.52102688531977,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 7.062206920298557,
+      "obs_ph": 7.48,
+      "mod_ph": 7.369922439837602,
+      "obs_hco3": 28.3,
+      "mod_hco3": 25.232003437453887,
+      "preop_hb": 12.2,
+      "obs_hb_est": 10.333333333333334,
+      "mod_hb": 11.45790634831656,
+      "preop_glu": 144.0,
+      "obs_glu": 140.0,
+      "mod_glu": 134.46326993625138,
+      "obs_ica": 1.09,
+      "mod_ica": 1.2288640918757403,
+      "obs_lac": 1.0,
+      "mod_lac": 1.0543637846389864
+    },
+    {
+      "caseid": 505,
+      "subjectid": 5324,
+      "approach": "Videoscopic",
+      "age": 78.0,
+      "bmi": 25.27,
+      "fio2": 35.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 113.0,
+      "mod_po2": 73.15355504387618,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 5.907268654638706,
+      "obs_ph": 7.34,
+      "mod_ph": 7.435063816667545,
+      "obs_hco3": 22.7,
+      "mod_hco3": 24.03880699560269,
+      "preop_hb": 15.0,
+      "obs_hb_est": 11.333333333333334,
+      "mod_hb": 13.913707255567255,
+      "preop_glu": 125.0,
+      "obs_glu": 171.0,
+      "mod_glu": 113.97379404105318,
+      "obs_ica": 1.1,
+      "mod_ica": 1.2067060512548513,
+      "obs_lac": 1.7,
+      "mod_lac": 1.0805235726099238
+    },
+    {
+      "caseid": 573,
+      "subjectid": 1578,
+      "approach": "Open",
+      "age": 32.0,
+      "bmi": 24.79,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 117.7,
+      "obs_po2": 200.0,
+      "mod_po2": 132.66266220321415,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 5.370867143768898,
+      "obs_ph": 7.43,
+      "mod_ph": 7.476595952520575,
+      "obs_hco3": 23.9,
+      "mod_hco3": 23.38022078060118,
+      "preop_hb": 9.5,
+      "obs_hb_est": 9.0,
+      "mod_hb": 9.406198005408413,
+      "preop_glu": null,
+      "obs_glu": 138.0,
+      "mod_glu": 85.29500158553276,
+      "obs_ica": 1.13,
+      "mod_ica": 1.1792848957175954,
+      "obs_lac": 1.1,
+      "mod_lac": 0.9393232655431729
+    },
+    {
+      "caseid": 610,
+      "subjectid": 5590,
+      "approach": "Open",
+      "age": 64.0,
+      "bmi": 23.02,
+      "fio2": 35.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 135.0,
+      "mod_po2": 86.796890288079,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 6.97348953147678,
+      "obs_ph": 7.43,
+      "mod_ph": 7.37855474080403,
+      "obs_hco3": 29.2,
+      "mod_hco3": 25.103960682123947,
+      "preop_hb": 14.4,
+      "obs_hb_est": 10.666666666666666,
+      "mod_hb": 13.640392714670659,
+      "preop_glu": 109.0,
+      "obs_glu": 116.0,
+      "mod_glu": 102.00009399515477,
+      "obs_ica": 1.09,
+      "mod_ica": 1.2227067888595433,
+      "obs_lac": 0.6,
+      "mod_lac": 1.010177158145319
+    },
+    {
+      "caseid": 621,
+      "subjectid": 4111,
+      "approach": "Videoscopic",
+      "age": 61.0,
+      "bmi": 19.95,
+      "fio2": 75.0,
+      "peep": 5.0,
+      "elapsed_min": 70.0,
+      "obs_po2": 112.0,
+      "mod_po2": 382.45178080290015,
+      "obs_grad_co2": 10.0,
+      "mod_grad_co2": 6.798385918714466,
+      "obs_ph": 7.35,
+      "mod_ph": 7.481879973753141,
+      "obs_hco3": 28.7,
+      "mod_hco3": 23.218028579941947,
+      "preop_hb": 13.3,
+      "obs_hb_est": null,
+      "mod_hb": 13.416943608148907,
+      "preop_glu": 132.0,
+      "obs_glu": 131.0,
+      "mod_glu": 129.88334384840175,
+      "obs_ica": 1.17,
+      "mod_ica": 1.1719927840828421,
+      "obs_lac": 1.5,
+      "mod_lac": 0.9006939186637912
+    },
+    {
+      "caseid": 666,
+      "subjectid": 2899,
+      "approach": "Videoscopic",
+      "age": 42.0,
+      "bmi": 24.93,
+      "fio2": 43.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 158.0,
+      "mod_po2": 187.9323627862596,
+      "obs_grad_co2": 7.0,
+      "mod_grad_co2": 4.622958859488293,
+      "obs_ph": 7.41,
+      "mod_ph": 7.573675481794185,
+      "obs_hco3": 25.4,
+      "mod_hco3": 21.769180523616463,
+      "preop_hb": 15.3,
+      "obs_hb_est": 13.0,
+      "mod_hb": 14.621414417595801,
+      "preop_glu": null,
+      "obs_glu": 123.0,
+      "mod_glu": 84.79625004040967,
+      "obs_ica": 1.18,
+      "mod_ica": 1.1498858857324292,
+      "obs_lac": 1.2,
+      "mod_lac": 1.0223844183993005
+    },
+    {
+      "caseid": 676,
+      "subjectid": 3974,
+      "approach": "Videoscopic",
+      "age": 63.0,
+      "bmi": 21.55,
+      "fio2": 33.0,
+      "peep": 0.0,
+      "elapsed_min": 88.0,
+      "obs_po2": 119.0,
+      "mod_po2": 83.8097699166461,
+      "obs_grad_co2": 8.0,
+      "mod_grad_co2": 4.551764880803944,
+      "obs_ph": 7.38,
+      "mod_ph": 7.61533667840683,
+      "obs_hco3": 26.0,
+      "mod_hco3": 21.04939845187336,
+      "preop_hb": 15.7,
+      "obs_hb_est": 14.333333333333334,
+      "mod_hb": 15.1175834745875,
+      "preop_glu": null,
+      "obs_glu": 140.0,
+      "mod_glu": 85.53359594360323,
+      "obs_ica": 1.18,
+      "mod_ica": 1.1299022528983413,
+      "obs_lac": 1.2,
+      "mod_lac": 1.0166641815035413
+    },
+    {
+      "caseid": 800,
+      "subjectid": 4062,
+      "approach": "Open",
+      "age": 67.0,
+      "bmi": 29.71,
+      "fio2": 45.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 81.0,
+      "mod_po2": 93.42491761079567,
+      "obs_grad_co2": 5.0,
+      "mod_grad_co2": 6.283540882094325,
+      "obs_ph": 7.34,
+      "mod_ph": 7.43095384081284,
+      "obs_hco3": 24.8,
+      "mod_hco3": 24.055591723458704,
+      "preop_hb": 14.5,
+      "obs_hb_est": 13.0,
+      "mod_hb": 13.551689938463673,
+      "preop_glu": 104.0,
+      "obs_glu": 117.0,
+      "mod_glu": 95.87532577638103,
+      "obs_ica": 1.15,
+      "mod_ica": 1.2058889969689113,
+      "obs_lac": 1.3,
+      "mod_lac": 1.0755592065123862
+    },
+    {
+      "caseid": 808,
+      "subjectid": 582,
+      "approach": "Videoscopic",
+      "age": 75.0,
+      "bmi": 23.42,
+      "fio2": 35.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 155.0,
+      "mod_po2": 111.31449633424425,
+      "obs_grad_co2": 8.0,
+      "mod_grad_co2": 5.130993164346723,
+      "obs_ph": 7.42,
+      "mod_ph": 7.426336734502785,
+      "obs_hco3": 26.6,
+      "mod_hco3": 24.298764763464032,
+      "preop_hb": 13.3,
+      "obs_hb_est": null,
+      "mod_hb": 12.777693637714487,
+      "preop_glu": null,
+      "obs_glu": 184.0,
+      "mod_glu": 84.7241891998711,
+      "obs_ica": 1.15,
+      "mod_ica": 1.2060702518170594,
+      "obs_lac": 1.0,
+      "mod_lac": 1.018684448860001
+    },
+    {
+      "caseid": 898,
+      "subjectid": 1412,
+      "approach": "Videoscopic",
+      "age": 69.0,
+      "bmi": 25.66,
+      "fio2": 47.0,
+      "peep": 0.0,
+      "elapsed_min": 72.6,
+      "obs_po2": 179.0,
+      "mod_po2": 110.40808082303168,
+      "obs_grad_co2": 5.0,
+      "mod_grad_co2": 5.106441005256727,
+      "obs_ph": 7.43,
+      "mod_ph": 7.3897858066857145,
+      "obs_hco3": 27.2,
+      "mod_hco3": 24.643276258426752,
+      "preop_hb": 14.8,
+      "obs_hb_est": 12.666666666666666,
+      "mod_hb": 14.613940832571155,
+      "preop_glu": 131.0,
+      "obs_glu": 110.0,
+      "mod_glu": 127.106280057658,
+      "obs_ica": 1.09,
+      "mod_ica": 1.210775877211799,
+      "obs_lac": 0.9,
+      "mod_lac": 0.9514681969843268
+    },
+    {
+      "caseid": 1034,
+      "subjectid": 2804,
+      "approach": "Open",
+      "age": 56.0,
+      "bmi": 19.5,
+      "fio2": 46.0,
+      "peep": 0.0,
+      "elapsed_min": 115.8,
+      "obs_po2": 153.0,
+      "mod_po2": 131.67055834030535,
+      "obs_grad_co2": 2.0,
+      "mod_grad_co2": 5.445753528989258,
+      "obs_ph": 7.47,
+      "mod_ph": 7.456598127599545,
+      "obs_hco3": 24.7,
+      "mod_hco3": 23.370081972035383,
+      "preop_hb": 12.3,
+      "obs_hb_est": 9.0,
+      "mod_hb": 11.012085382667838,
+      "preop_glu": 96.0,
+      "obs_glu": 91.0,
+      "mod_glu": 87.28882804697201,
+      "obs_ica": 1.07,
+      "mod_ica": 1.1757228058616997,
+      "obs_lac": 0.6,
+      "mod_lac": 1.0792980494408952
+    },
+    {
+      "caseid": 1043,
+      "subjectid": 2715,
+      "approach": "Open",
+      "age": 38.0,
+      "bmi": 20.24,
+      "fio2": 34.0,
+      "peep": 0.0,
+      "elapsed_min": 90.8,
+      "obs_po2": 86.0,
+      "mod_po2": 120.60955184496385,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 6.130772537300917,
+      "obs_ph": 7.54,
+      "mod_ph": 7.475153393463482,
+      "obs_hco3": 32.5,
+      "mod_hco3": 23.219396890208174,
+      "preop_hb": null,
+      "obs_hb_est": 8.333333333333334,
+      "mod_hb": 13.19010098763018,
+      "preop_glu": 84.0,
+      "obs_glu": 78.0,
+      "mod_glu": 79.63462273834375,
+      "obs_ica": 1.13,
+      "mod_ica": 1.1783945663764561,
+      "obs_lac": 0.6,
+      "mod_lac": 0.9319954681432502
+    },
+    {
+      "caseid": 1051,
+      "subjectid": 3701,
+      "approach": "Videoscopic",
+      "age": 68.0,
+      "bmi": 25.0,
+      "fio2": 92.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 294.0,
+      "mod_po2": 420.13864380058106,
+      "obs_grad_co2": 16.0,
+      "mod_grad_co2": 7.105824951359985,
+      "obs_ph": 7.31,
+      "mod_ph": 7.435064946213754,
+      "obs_hco3": 28.2,
+      "mod_hco3": 24.021854355018043,
+      "preop_hb": 13.0,
+      "obs_hb_est": 11.666666666666666,
+      "mod_hb": 12.24292782769335,
+      "preop_glu": 77.0,
+      "obs_glu": 104.0,
+      "mod_glu": 76.8886497248823,
+      "obs_ica": 1.11,
+      "mod_ica": 1.2031060101063975,
+      "obs_lac": 0.8,
+      "mod_lac": 1.043447472214103
+    },
+    {
+      "caseid": 1125,
+      "subjectid": 3499,
+      "approach": "Videoscopic",
+      "age": 57.0,
+      "bmi": 25.09,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 103.0,
+      "mod_po2": 118.30975841439837,
+      "obs_grad_co2": 7.0,
+      "mod_grad_co2": 4.45717376161905,
+      "obs_ph": 7.39,
+      "mod_ph": 7.531416012556052,
+      "obs_hco3": 26.0,
+      "mod_hco3": 22.4971623949224,
+      "preop_hb": 13.9,
+      "obs_hb_est": 12.0,
+      "mod_hb": 13.451610934615694,
+      "preop_glu": null,
+      "obs_glu": 167.0,
+      "mod_glu": 84.6634815507548,
+      "obs_ica": null,
+      "mod_ica": 1.1634008639707638,
+      "obs_lac": 2.3,
+      "mod_lac": 0.9909243452326217
+    },
+    {
+      "caseid": 1201,
+      "subjectid": 4576,
+      "approach": "Videoscopic",
+      "age": 39.0,
+      "bmi": 18.57,
+      "fio2": 36.0,
+      "peep": 0.0,
+      "elapsed_min": 69.0,
+      "obs_po2": 180.0,
+      "mod_po2": 126.76112677482938,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 7.0163128766504315,
+      "obs_ph": 7.39,
+      "mod_ph": 7.353210260232187,
+      "obs_hco3": 22.4,
+      "mod_hco3": 25.254775752703665,
+      "preop_hb": 11.7,
+      "obs_hb_est": 11.666666666666666,
+      "mod_hb": 11.503392529276303,
+      "preop_glu": 76.0,
+      "obs_glu": 64.0,
+      "mod_glu": 77.42710069924327,
+      "obs_ica": 1.14,
+      "mod_ica": 1.2265395365009546,
+      "obs_lac": 0.7,
+      "mod_lac": 0.9758458365190854
+    },
+    {
+      "caseid": 1219,
+      "subjectid": 5003,
+      "approach": "Open",
+      "age": 62.0,
+      "bmi": 25.52,
+      "fio2": 47.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 111.0,
+      "mod_po2": 110.74672497293642,
+      "obs_grad_co2": 2.0,
+      "mod_grad_co2": 4.8849326768626185,
+      "obs_ph": 7.42,
+      "mod_ph": 7.356517987063904,
+      "obs_hco3": 24.0,
+      "mod_hco3": 25.46095709009002,
+      "preop_hb": null,
+      "obs_hb_est": 11.333333333333334,
+      "mod_hb": 12.50667495450176,
+      "preop_glu": 142.0,
+      "obs_glu": 152.0,
+      "mod_glu": 131.98376427140263,
+      "obs_ica": 1.18,
+      "mod_ica": 1.2342900025604586,
+      "obs_lac": 0.8,
+      "mod_lac": 1.0783896496558476
+    },
+    {
+      "caseid": 1283,
+      "subjectid": 4081,
+      "approach": "Videoscopic",
+      "age": 56.0,
+      "bmi": 31.68,
+      "fio2": 46.0,
+      "peep": 3.0,
+      "elapsed_min": 57.9,
+      "obs_po2": 77.0,
+      "mod_po2": 125.78300783168613,
+      "obs_grad_co2": 17.0,
+      "mod_grad_co2": 6.612263946480667,
+      "obs_ph": 7.32,
+      "mod_ph": 7.369569378804784,
+      "obs_hco3": 28.3,
+      "mod_hco3": 24.978958433842475,
+      "preop_hb": 14.4,
+      "obs_hb_est": 14.666666666666666,
+      "mod_hb": 14.370378604537994,
+      "preop_glu": 105.0,
+      "obs_glu": 113.0,
+      "mod_glu": 103.24642279900017,
+      "obs_ica": 1.22,
+      "mod_ica": 1.2148725053813385,
+      "obs_lac": 1.3,
+      "mod_lac": 0.9268815860966477
+    },
+    {
+      "caseid": 1365,
+      "subjectid": 5609,
+      "approach": "Open",
+      "age": 77.0,
+      "bmi": 22.43,
+      "fio2": 40.0,
+      "peep": 0.0,
+      "elapsed_min": 39.9,
+      "obs_po2": 221.0,
+      "mod_po2": 84.76205186431899,
+      "obs_grad_co2": 12.0,
+      "mod_grad_co2": 6.529887155948188,
+      "obs_ph": 7.4,
+      "mod_ph": 7.365239780817938,
+      "obs_hco3": 29.7,
+      "mod_hco3": 24.92043917573139,
+      "preop_hb": 14.4,
+      "obs_hb_est": 13.333333333333334,
+      "mod_hb": 14.01211631741312,
+      "preop_glu": null,
+      "obs_glu": 102.0,
+      "mod_glu": 87.41717709571587,
+      "obs_ica": 1.16,
+      "mod_ica": 1.2201832310068579,
+      "obs_lac": 2.6,
+      "mod_lac": 1.020599005960763
+    },
+    {
+      "caseid": 1415,
+      "subjectid": 3942,
+      "approach": "Videoscopic",
+      "age": 61.0,
+      "bmi": 28.57,
+      "fio2": 33.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 82.0,
+      "mod_po2": 99.08354015507382,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 4.299830422132686,
+      "obs_ph": 7.4,
+      "mod_ph": 7.568027527437021,
+      "obs_hco3": 24.8,
+      "mod_hco3": 22.053858748724846,
+      "preop_hb": 13.1,
+      "obs_hb_est": 11.0,
+      "mod_hb": 12.512410832730392,
+      "preop_glu": null,
+      "obs_glu": 146.0,
+      "mod_glu": 85.04934003925847,
+      "obs_ica": 1.13,
+      "mod_ica": 1.1506181004898777,
+      "obs_lac": 0.8,
+      "mod_lac": 1.016017251717124
+    },
+    {
+      "caseid": 1546,
+      "subjectid": 3332,
+      "approach": "Open",
+      "age": 71.0,
+      "bmi": 20.33,
+      "fio2": 66.0,
+      "peep": 4.0,
+      "elapsed_min": 109.5,
+      "obs_po2": 160.0,
+      "mod_po2": 271.412604191318,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 6.714101518528366,
+      "obs_ph": 7.42,
+      "mod_ph": 7.456537889884736,
+      "obs_hco3": 25.9,
+      "mod_hco3": 23.614498812801557,
+      "preop_hb": 13.8,
+      "obs_hb_est": 13.0,
+      "mod_hb": 13.512644030860518,
+      "preop_glu": 147.0,
+      "obs_glu": 105.0,
+      "mod_glu": 139.40882698828702,
+      "obs_ica": 1.17,
+      "mod_ica": 1.1875193370994372,
+      "obs_lac": 1.8,
+      "mod_lac": 0.9435644683722385
+    },
+    {
+      "caseid": 1581,
+      "subjectid": 643,
+      "approach": "Videoscopic",
+      "age": 28.0,
+      "bmi": 40.79,
+      "fio2": 43.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 172.0,
+      "mod_po2": 138.11370687662432,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 4.639935407355864,
+      "obs_ph": 7.39,
+      "mod_ph": 7.481584966281962,
+      "obs_hco3": 24.8,
+      "mod_hco3": 23.16598855400774,
+      "preop_hb": 15.4,
+      "obs_hb_est": 14.0,
+      "mod_hb": 14.989828492060912,
+      "preop_glu": 92.0,
+      "obs_glu": 104.0,
+      "mod_glu": 88.122867676208,
+      "obs_ica": 1.11,
+      "mod_ica": 1.1803880430659284,
+      "obs_lac": 1.0,
+      "mod_lac": 1.0052413640886124
+    },
+    {
+      "caseid": 1809,
+      "subjectid": 759,
+      "approach": "Open",
+      "age": 42.0,
+      "bmi": 20.41,
+      "fio2": 35.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 185.0,
+      "mod_po2": 119.28045156236513,
+      "obs_grad_co2": 2.0,
+      "mod_grad_co2": 6.425611230659783,
+      "obs_ph": 7.42,
+      "mod_ph": 7.398198130881312,
+      "obs_hco3": 24.0,
+      "mod_hco3": 24.796285768620052,
+      "preop_hb": 13.3,
+      "obs_hb_est": 12.333333333333334,
+      "mod_hb": 12.677125751054263,
+      "preop_glu": 152.0,
+      "obs_glu": 139.0,
+      "mod_glu": 142.98404960157404,
+      "obs_ica": 1.16,
+      "mod_ica": 1.2185623628817581,
+      "obs_lac": 0.7,
+      "mod_lac": 1.03327232023927
+    },
+    {
+      "caseid": 1873,
+      "subjectid": 2665,
+      "approach": "Videoscopic",
+      "age": 57.0,
+      "bmi": 22.66,
+      "fio2": 37.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 147.0,
+      "mod_po2": 136.1150708108777,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 5.030434306712674,
+      "obs_ph": 7.45,
+      "mod_ph": 7.5793157677077145,
+      "obs_hco3": 27.8,
+      "mod_hco3": 21.83759582036502,
+      "preop_hb": 11.6,
+      "obs_hb_est": 9.666666666666666,
+      "mod_hb": 10.967414434511136,
+      "preop_glu": 108.0,
+      "obs_glu": 157.0,
+      "mod_glu": 100.72641944330988,
+      "obs_ica": 1.12,
+      "mod_ica": 1.1479664107190302,
+      "obs_lac": 0.9,
+      "mod_lac": 1.0462429119857668
+    },
+    {
+      "caseid": 1928,
+      "subjectid": 2004,
+      "approach": "Videoscopic",
+      "age": 68.0,
+      "bmi": 25.15,
+      "fio2": 37.0,
+      "peep": 5.0,
+      "elapsed_min": 65.0,
+      "obs_po2": 138.0,
+      "mod_po2": 119.13432317550581,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 4.948859160994889,
+      "obs_ph": 7.44,
+      "mod_ph": 7.473879847700414,
+      "obs_hco3": 29.2,
+      "mod_hco3": 23.261750138543437,
+      "preop_hb": 13.0,
+      "obs_hb_est": 12.666666666666666,
+      "mod_hb": 12.604086423576499,
+      "preop_glu": null,
+      "obs_glu": 136.0,
+      "mod_glu": 86.77812468455798,
+      "obs_ica": 0.92,
+      "mod_ica": 1.1815898497687065,
+      "obs_lac": 0.7,
+      "mod_lac": 1.0193846368895552
+    },
+    {
+      "caseid": 1993,
+      "subjectid": 473,
+      "approach": "Videoscopic",
+      "age": 48.0,
+      "bmi": 34.42,
+      "fio2": 33.0,
+      "peep": 7.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 117.0,
+      "mod_po2": 104.9523953782696,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 5.318035144168654,
+      "obs_ph": 7.36,
+      "mod_ph": 7.404747099797332,
+      "obs_hco3": 27.1,
+      "mod_hco3": 24.56836179372071,
+      "preop_hb": 12.9,
+      "obs_hb_est": 13.0,
+      "mod_hb": 12.55426207573725,
+      "preop_glu": null,
+      "obs_glu": 153.0,
+      "mod_glu": 85.66921580461661,
+      "obs_ica": 1.19,
+      "mod_ica": 1.2094484640961378,
+      "obs_lac": 0.6,
+      "mod_lac": 0.9855698341970082
+    },
+    {
+      "caseid": 2063,
+      "subjectid": 2460,
+      "approach": "Open",
+      "age": 68.0,
+      "bmi": 24.54,
+      "fio2": 36.0,
+      "peep": 0.0,
+      "elapsed_min": 62.4,
+      "obs_po2": 109.0,
+      "mod_po2": 81.76906252518633,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 6.031093686484574,
+      "obs_ph": 7.43,
+      "mod_ph": 7.311303563381658,
+      "obs_hco3": 23.9,
+      "mod_hco3": 25.625652743910898,
+      "preop_hb": 11.2,
+      "obs_hb_est": 9.666666666666666,
+      "mod_hb": 10.630738201079419,
+      "preop_glu": 151.0,
+      "obs_glu": 146.0,
+      "mod_glu": 144.72881726058534,
+      "obs_ica": 1.12,
+      "mod_ica": 1.243124645169656,
+      "obs_lac": 0.9,
+      "mod_lac": 1.033038198554294
+    },
+    {
+      "caseid": 2139,
+      "subjectid": 4806,
+      "approach": "Open",
+      "age": 40.0,
+      "bmi": 21.97,
+      "fio2": 37.0,
+      "peep": 0.0,
+      "elapsed_min": 41.8,
+      "obs_po2": 133.0,
+      "mod_po2": 124.42386176777565,
+      "obs_grad_co2": 5.0,
+      "mod_grad_co2": 6.308921517679877,
+      "obs_ph": 7.42,
+      "mod_ph": 7.367928821232801,
+      "obs_hco3": 24.0,
+      "mod_hco3": 24.687588244526005,
+      "preop_hb": 11.6,
+      "obs_hb_est": 12.0,
+      "mod_hb": 11.124474904294848,
+      "preop_glu": 78.0,
+      "obs_glu": 81.0,
+      "mod_glu": 77.30455804399132,
+      "obs_ica": 1.12,
+      "mod_ica": 1.221498780182809,
+      "obs_lac": 0.6,
+      "mod_lac": 1.063730548311193
+    },
+    {
+      "caseid": 2157,
+      "subjectid": 5654,
+      "approach": "Open",
+      "age": 42.0,
+      "bmi": 19.58,
+      "fio2": 36.0,
+      "peep": 0.0,
+      "elapsed_min": 49.4,
+      "obs_po2": 180.0,
+      "mod_po2": 121.79160922796643,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 7.238803923859976,
+      "obs_ph": 7.47,
+      "mod_ph": 7.38820619090775,
+      "obs_hco3": 26.2,
+      "mod_hco3": 24.596546555101792,
+      "preop_hb": 13.9,
+      "obs_hb_est": 11.666666666666666,
+      "mod_hb": 13.554239882514029,
+      "preop_glu": 98.0,
+      "obs_glu": 90.0,
+      "mod_glu": 95.35848386447199,
+      "obs_ica": 1.07,
+      "mod_ica": 1.2122924224215814,
+      "obs_lac": 0.8,
+      "mod_lac": 0.9991359613410667
+    },
+    {
+      "caseid": 2218,
+      "subjectid": 5234,
+      "approach": "Open",
+      "age": 61.0,
+      "bmi": 24.76,
+      "fio2": 37.0,
+      "peep": 0.0,
+      "elapsed_min": 38.6,
+      "obs_po2": 80.0,
+      "mod_po2": 91.11876582644163,
+      "obs_grad_co2": 9.0,
+      "mod_grad_co2": 6.930286303982626,
+      "obs_ph": 7.39,
+      "mod_ph": 7.412154237856497,
+      "obs_hco3": 25.4,
+      "mod_hco3": 24.104770698065597,
+      "preop_hb": 13.1,
+      "obs_hb_est": 13.333333333333334,
+      "mod_hb": 12.799842145027482,
+      "preop_glu": 138.0,
+      "obs_glu": 99.0,
+      "mod_glu": 134.70572108224397,
+      "obs_ica": 1.15,
+      "mod_ica": 1.201330654893441,
+      "obs_lac": 0.8,
+      "mod_lac": 0.9986515453577137
+    },
+    {
+      "caseid": 2255,
+      "subjectid": 5584,
+      "approach": "Open",
+      "age": 59.0,
+      "bmi": 24.88,
+      "fio2": 43.0,
+      "peep": 5.0,
+      "elapsed_min": 96.2,
+      "obs_po2": 179.0,
+      "mod_po2": 161.2724204661703,
+      "obs_grad_co2": 2.0,
+      "mod_grad_co2": 5.088931321171298,
+      "obs_ph": 7.43,
+      "mod_ph": 7.495349173734146,
+      "obs_hco3": 23.2,
+      "mod_hco3": 23.048021188892445,
+      "preop_hb": 11.7,
+      "obs_hb_est": 11.333333333333334,
+      "mod_hb": 11.049847818069926,
+      "preop_glu": 109.0,
+      "obs_glu": 129.0,
+      "mod_glu": 102.51699621566686,
+      "obs_ica": 0.99,
+      "mod_ica": 1.180198960863771,
+      "obs_lac": 0.7,
+      "mod_lac": 1.0733701030728873
+    },
+    {
+      "caseid": 2282,
+      "subjectid": 4788,
+      "approach": "Videoscopic",
+      "age": 56.0,
+      "bmi": 22.14,
+      "fio2": 35.0,
+      "peep": 0.0,
+      "elapsed_min": 93.4,
+      "obs_po2": 160.0,
+      "mod_po2": 87.63086607674934,
+      "obs_grad_co2": 13.0,
+      "mod_grad_co2": 6.676746364565886,
+      "obs_ph": 7.32,
+      "mod_ph": 7.398309481842444,
+      "obs_hco3": 25.8,
+      "mod_hco3": 24.651267055757184,
+      "preop_hb": 10.0,
+      "obs_hb_est": 9.333333333333334,
+      "mod_hb": 9.648767572525774,
+      "preop_glu": 217.0,
+      "obs_glu": 126.0,
+      "mod_glu": 208.85262304172386,
+      "obs_ica": 1.16,
+      "mod_ica": 1.2132035593731827,
+      "obs_lac": 0.6,
+      "mod_lac": 1.0003817953180876
+    },
+    {
+      "caseid": 2334,
+      "subjectid": 4210,
+      "approach": "Open",
+      "age": 43.0,
+      "bmi": 24.68,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 119.0,
+      "mod_po2": 123.30181793882798,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 4.428345440978255,
+      "obs_ph": 7.39,
+      "mod_ph": 7.45746792278594,
+      "obs_hco3": 23.0,
+      "mod_hco3": 23.85801528447543,
+      "preop_hb": 7.9,
+      "obs_hb_est": 8.0,
+      "mod_hb": 7.45076416180741,
+      "preop_glu": 127.0,
+      "obs_glu": 163.0,
+      "mod_glu": 119.50368316771319,
+      "obs_ica": 1.04,
+      "mod_ica": 1.1954341802134332,
+      "obs_lac": 0.8,
+      "mod_lac": 1.0386551798456685
+    },
+    {
+      "caseid": 2425,
+      "subjectid": 5528,
+      "approach": "Videoscopic",
+      "age": 74.0,
+      "bmi": 28.31,
+      "fio2": 71.0,
+      "peep": 5.0,
+      "elapsed_min": 73.9,
+      "obs_po2": 178.0,
+      "mod_po2": 258.9580907641585,
+      "obs_grad_co2": 13.0,
+      "mod_grad_co2": 6.615022327568148,
+      "obs_ph": 7.36,
+      "mod_ph": 7.339093148873879,
+      "obs_hco3": 27.7,
+      "mod_hco3": 25.408002074442997,
+      "preop_hb": 11.9,
+      "obs_hb_est": 11.333333333333334,
+      "mod_hb": 11.672098340380106,
+      "preop_glu": 112.0,
+      "obs_glu": 119.0,
+      "mod_glu": 108.13527667035873,
+      "obs_ica": 1.14,
+      "mod_ica": 1.2298292690761723,
+      "obs_lac": 1.2,
+      "mod_lac": 0.9728998425637537
+    },
+    {
+      "caseid": 2496,
+      "subjectid": 11,
+      "approach": "Videoscopic",
+      "age": 65.0,
+      "bmi": 29.55,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 104.0,
+      "mod_po2": 95.13958774428144,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 4.323543279555558,
+      "obs_ph": 7.41,
+      "mod_ph": 7.563428334770422,
+      "obs_hco3": 25.4,
+      "mod_hco3": 22.108839825814588,
+      "preop_hb": 13.8,
+      "obs_hb_est": 12.333333333333334,
+      "mod_hb": 13.52531246372048,
+      "preop_glu": null,
+      "obs_glu": 119.0,
+      "mod_glu": 85.44308984103988,
+      "obs_ica": 1.1,
+      "mod_ica": 1.1476294546677415,
+      "obs_lac": 1.3,
+      "mod_lac": 0.9515461734856803
+    },
+    {
+      "caseid": 2559,
+      "subjectid": 168,
+      "approach": "Open",
+      "age": 58.0,
+      "bmi": 23.05,
+      "fio2": 36.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 95.0,
+      "mod_po2": 122.63159422455946,
+      "obs_grad_co2": 10.0,
+      "mod_grad_co2": 4.785853793993915,
+      "obs_ph": 7.45,
+      "mod_ph": 7.45326350193812,
+      "obs_hco3": 29.2,
+      "mod_hco3": 24.079269071553522,
+      "preop_hb": 10.7,
+      "obs_hb_est": 11.0,
+      "mod_hb": 10.432195174282077,
+      "preop_glu": 269.0,
+      "obs_glu": 125.0,
+      "mod_glu": 257.1022954016375,
+      "obs_ica": 1.14,
+      "mod_ica": 1.1998895584884899,
+      "obs_lac": 0.6,
+      "mod_lac": 1.0371864223679959
+    },
+    {
+      "caseid": 2746,
+      "subjectid": 2990,
+      "approach": "Videoscopic",
+      "age": 83.0,
+      "bmi": 29.14,
+      "fio2": 38.0,
+      "peep": 0.0,
+      "elapsed_min": 91.1,
+      "obs_po2": 99.0,
+      "mod_po2": 73.23250890340685,
+      "obs_grad_co2": 7.0,
+      "mod_grad_co2": 6.462468531208835,
+      "obs_ph": 7.43,
+      "mod_ph": 7.3016441445881926,
+      "obs_hco3": 25.2,
+      "mod_hco3": 26.127773642076235,
+      "preop_hb": 12.0,
+      "obs_hb_est": 10.0,
+      "mod_hb": 11.795047484003913,
+      "preop_glu": 98.0,
+      "obs_glu": 82.0,
+      "mod_glu": 93.80072173926553,
+      "obs_ica": 1.16,
+      "mod_ica": 1.243813133550462,
+      "obs_lac": 1.2,
+      "mod_lac": 0.9646769432109359
+    },
+    {
+      "caseid": 2847,
+      "subjectid": 1871,
+      "approach": "Robotic",
+      "age": 69.0,
+      "bmi": 19.56,
+      "fio2": 45.0,
+      "peep": 5.0,
+      "elapsed_min": 55.7,
+      "obs_po2": 216.0,
+      "mod_po2": 177.44936442612732,
+      "obs_grad_co2": 2.0,
+      "mod_grad_co2": 4.290558040192668,
+      "obs_ph": 7.47,
+      "mod_ph": 7.579103974646018,
+      "obs_hco3": 27.7,
+      "mod_hco3": 21.34206370755587,
+      "preop_hb": 14.2,
+      "obs_hb_est": 12.333333333333334,
+      "mod_hb": 13.440727610337836,
+      "preop_glu": null,
+      "obs_glu": 149.0,
+      "mod_glu": 85.65503525721591,
+      "obs_ica": 1.16,
+      "mod_ica": 1.1356510922094907,
+      "obs_lac": 0.6,
+      "mod_lac": 1.0770322359795035
+    },
+    {
+      "caseid": 2906,
+      "subjectid": 5027,
+      "approach": "Videoscopic",
+      "age": 56.0,
+      "bmi": 23.96,
+      "fio2": 77.0,
+      "peep": 5.0,
+      "elapsed_min": 64.8,
+      "obs_po2": 99.0,
+      "mod_po2": 377.32926009952155,
+      "obs_grad_co2": 7.0,
+      "mod_grad_co2": 6.990433809984644,
+      "obs_ph": 7.36,
+      "mod_ph": 7.2872843574145865,
+      "obs_hco3": 26.0,
+      "mod_hco3": 26.237048621092818,
+      "preop_hb": 13.0,
+      "obs_hb_est": 12.666666666666666,
+      "mod_hb": 12.89291888090219,
+      "preop_glu": 128.0,
+      "obs_glu": 105.0,
+      "mod_glu": 124.62525626146919,
+      "obs_ica": 1.19,
+      "mod_ica": 1.246996117210381,
+      "obs_lac": 0.9,
+      "mod_lac": 0.9411110548978417
+    },
+    {
+      "caseid": 2914,
+      "subjectid": 369,
+      "approach": "Open",
+      "age": 55.0,
+      "bmi": 22.39,
+      "fio2": 35.0,
+      "peep": 0.0,
+      "elapsed_min": 67.0,
+      "obs_po2": 204.0,
+      "mod_po2": 101.6545156256813,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 6.520965451575101,
+      "obs_ph": 7.46,
+      "mod_ph": 7.332231318863236,
+      "obs_hco3": 26.3,
+      "mod_hco3": 25.527124335415664,
+      "preop_hb": 14.4,
+      "obs_hb_est": 12.0,
+      "mod_hb": 13.743561687677419,
+      "preop_glu": 108.0,
+      "obs_glu": 82.0,
+      "mod_glu": 102.5891398423873,
+      "obs_ica": 1.08,
+      "mod_ica": 1.2388004252062705,
+      "obs_lac": 1.3,
+      "mod_lac": 1.082023846045811
+    },
+    {
+      "caseid": 2916,
+      "subjectid": 277,
+      "approach": "Open",
+      "age": 52.0,
+      "bmi": 19.87,
+      "fio2": 45.0,
+      "peep": 0.0,
+      "elapsed_min": 80.6,
+      "obs_po2": 317.0,
+      "mod_po2": 134.7301455947972,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 7.516322272578044,
+      "obs_ph": 7.39,
+      "mod_ph": 7.382538122591024,
+      "obs_hco3": 24.8,
+      "mod_hco3": 24.940128393728035,
+      "preop_hb": 14.5,
+      "obs_hb_est": 13.333333333333334,
+      "mod_hb": 14.602838620472104,
+      "preop_glu": 80.0,
+      "obs_glu": 85.0,
+      "mod_glu": 79.8813580050266,
+      "obs_ica": 1.05,
+      "mod_ica": 1.2112559581820137,
+      "obs_lac": 1.0,
+      "mod_lac": 0.9005273092704272
+    },
+    {
+      "caseid": 3126,
+      "subjectid": 192,
+      "approach": "Videoscopic",
+      "age": 56.0,
+      "bmi": 26.3,
+      "fio2": 77.0,
+      "peep": 0.0,
+      "elapsed_min": 52.1,
+      "obs_po2": 319.0,
+      "mod_po2": 290.79511192362065,
+      "obs_grad_co2": 9.0,
+      "mod_grad_co2": 6.50756235268161,
+      "obs_ph": 7.32,
+      "mod_ph": 7.266948054580334,
+      "obs_hco3": 24.2,
+      "mod_hco3": 26.576401227766887,
+      "preop_hb": 12.6,
+      "obs_hb_est": 11.0,
+      "mod_hb": 12.437880469260914,
+      "preop_glu": 113.0,
+      "obs_glu": 85.0,
+      "mod_glu": 110.40810362720003,
+      "obs_ica": 1.18,
+      "mod_ica": 1.2553765742681813,
+      "obs_lac": 0.5,
+      "mod_lac": 0.9646962162757996
+    },
+    {
+      "caseid": 3133,
+      "subjectid": 3388,
+      "approach": "Videoscopic",
+      "age": 66.0,
+      "bmi": 25.64,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 109.0,
+      "mod_po2": 108.56416737476468,
+      "obs_grad_co2": 9.0,
+      "mod_grad_co2": 4.293107388875729,
+      "obs_ph": 7.4,
+      "mod_ph": 7.586360865168554,
+      "obs_hco3": 25.4,
+      "mod_hco3": 21.625268652698903,
+      "preop_hb": 13.6,
+      "obs_hb_est": 13.333333333333334,
+      "mod_hb": 13.138990183739455,
+      "preop_glu": 131.0,
+      "obs_glu": 132.0,
+      "mod_glu": 124.79343193228954,
+      "obs_ica": 1.12,
+      "mod_ica": 1.1420941901068287,
+      "obs_lac": 1.7,
+      "mod_lac": 0.9996117886251882
+    },
+    {
+      "caseid": 3176,
+      "subjectid": 2832,
+      "approach": "Open",
+      "age": 63.0,
+      "bmi": 23.34,
+      "fio2": 37.0,
+      "peep": 0.0,
+      "elapsed_min": 46.9,
+      "obs_po2": 138.0,
+      "mod_po2": 86.62966514575238,
+      "obs_grad_co2": 13.0,
+      "mod_grad_co2": 6.902859711938518,
+      "obs_ph": 7.32,
+      "mod_ph": 7.313525716535986,
+      "obs_hco3": 23.2,
+      "mod_hco3": 25.561547067148844,
+      "preop_hb": 9.3,
+      "obs_hb_est": 9.666666666666666,
+      "mod_hb": 9.068817597666332,
+      "preop_glu": 117.0,
+      "obs_glu": 98.0,
+      "mod_glu": 113.41957219398073,
+      "obs_ica": 1.3,
+      "mod_ica": 1.2411563688834155,
+      "obs_lac": 1.9,
+      "mod_lac": 1.006919935895382
+    },
+    {
+      "caseid": 3233,
+      "subjectid": 4339,
+      "approach": "Open",
+      "age": 57.0,
+      "bmi": 21.89,
+      "fio2": 35.0,
+      "peep": 6.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 199.0,
+      "mod_po2": 131.0321711666011,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 4.323153283626528,
+      "obs_ph": 7.41,
+      "mod_ph": 7.489997351471103,
+      "obs_hco3": 23.5,
+      "mod_hco3": 22.971136980308092,
+      "preop_hb": 12.8,
+      "obs_hb_est": 11.0,
+      "mod_hb": 11.693969774516432,
+      "preop_glu": null,
+      "obs_glu": 150.0,
+      "mod_glu": 83.5170442159908,
+      "obs_ica": 1.06,
+      "mod_ica": 1.1606634690824444,
+      "obs_lac": 0.7,
+      "mod_lac": 1.0255226423646255
+    },
+    {
+      "caseid": 3271,
+      "subjectid": 4147,
+      "approach": "Open",
+      "age": 62.0,
+      "bmi": 24.47,
+      "fio2": 46.0,
+      "peep": 5.0,
+      "elapsed_min": 53.4,
+      "obs_po2": 241.0,
+      "mod_po2": 172.74820477493608,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 4.989905395551304,
+      "obs_ph": 7.46,
+      "mod_ph": 7.449562595575555,
+      "obs_hco3": 26.3,
+      "mod_hco3": 23.660334377551354,
+      "preop_hb": 14.8,
+      "obs_hb_est": 12.0,
+      "mod_hb": 14.377011243760048,
+      "preop_glu": null,
+      "obs_glu": 123.0,
+      "mod_glu": 87.32118939677221,
+      "obs_ica": 1.11,
+      "mod_ica": 1.1900934257511677,
+      "obs_lac": 0.9,
+      "mod_lac": 1.0064270148214292
+    },
+    {
+      "caseid": 3312,
+      "subjectid": 2107,
+      "approach": "Videoscopic",
+      "age": 59.0,
+      "bmi": 22.62,
+      "fio2": 36.0,
+      "peep": 0.0,
+      "elapsed_min": 89.6,
+      "obs_po2": 104.0,
+      "mod_po2": 93.66537840357333,
+      "obs_grad_co2": 8.0,
+      "mod_grad_co2": 5.528323197596755,
+      "obs_ph": 7.45,
+      "mod_ph": 7.418166850062703,
+      "obs_hco3": 29.9,
+      "mod_hco3": 24.224213123025827,
+      "preop_hb": 14.7,
+      "obs_hb_est": 13.0,
+      "mod_hb": 13.724861271761727,
+      "preop_glu": null,
+      "obs_glu": 92.0,
+      "mod_glu": 84.04846235967382,
+      "obs_ica": 1.09,
+      "mod_ica": 1.2099154269936854,
+      "obs_lac": 1.2,
+      "mod_lac": 1.0850671875828795
+    },
+    {
+      "caseid": 3318,
+      "subjectid": 5259,
+      "approach": "Videoscopic",
+      "age": 60.0,
+      "bmi": 18.03,
+      "fio2": 44.0,
+      "peep": 4.0,
+      "elapsed_min": 107.8,
+      "obs_po2": 212.0,
+      "mod_po2": 188.01978796829496,
+      "obs_grad_co2": 16.0,
+      "mod_grad_co2": 4.182673335246605,
+      "obs_ph": 7.36,
+      "mod_ph": 7.720364961068366,
+      "obs_hco3": 30.5,
+      "mod_hco3": 19.450123229970266,
+      "preop_hb": 13.9,
+      "obs_hb_est": 12.0,
+      "mod_hb": 13.312000391336364,
+      "preop_glu": null,
+      "obs_glu": 127.0,
+      "mod_glu": 84.25925136009108,
+      "obs_ica": 1.13,
+      "mod_ica": 1.0868393587986276,
+      "obs_lac": 0.6,
+      "mod_lac": 1.0251055267442335
+    },
+    {
+      "caseid": 3325,
+      "subjectid": 3440,
+      "approach": "Videoscopic",
+      "age": 44.0,
+      "bmi": 21.77,
+      "fio2": 60.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 78.0,
+      "mod_po2": 270.3507978137748,
+      "obs_grad_co2": 12.0,
+      "mod_grad_co2": 5.267369153337256,
+      "obs_ph": 7.29,
+      "mod_ph": 7.541963873217474,
+      "obs_hco3": 25.0,
+      "mod_hco3": 22.571031147776168,
+      "preop_hb": 12.0,
+      "obs_hb_est": 10.333333333333334,
+      "mod_hb": 11.015595774281408,
+      "preop_glu": 89.0,
+      "obs_glu": 126.0,
+      "mod_glu": 81.4602213222443,
+      "obs_ica": 1.13,
+      "mod_ica": 1.16909320541121,
+      "obs_lac": 0.7,
+      "mod_lac": 1.107790283027104
+    },
+    {
+      "caseid": 3379,
+      "subjectid": 1921,
+      "approach": "Videoscopic",
+      "age": 65.0,
+      "bmi": 23.12,
+      "fio2": 74.0,
+      "peep": 4.0,
+      "elapsed_min": 113.6,
+      "obs_po2": 131.0,
+      "mod_po2": 325.48509040088686,
+      "obs_grad_co2": 11.0,
+      "mod_grad_co2": 7.778963829113607,
+      "obs_ph": 7.42,
+      "mod_ph": 7.2917115989499965,
+      "obs_hco3": 28.5,
+      "mod_hco3": 26.429979985672805,
+      "preop_hb": 12.4,
+      "obs_hb_est": 12.333333333333334,
+      "mod_hb": 11.884656417639041,
+      "preop_glu": 126.0,
+      "obs_glu": 132.0,
+      "mod_glu": 117.39050331591599,
+      "obs_ica": 1.11,
+      "mod_ica": 1.2562569483971116,
+      "obs_lac": 0.6,
+      "mod_lac": 1.0299419452987033
+    },
+    {
+      "caseid": 3396,
+      "subjectid": 4962,
+      "approach": "Videoscopic",
+      "age": 73.0,
+      "bmi": 21.79,
+      "fio2": 47.0,
+      "peep": 5.0,
+      "elapsed_min": 46.7,
+      "obs_po2": 329.0,
+      "mod_po2": 177.00730932134104,
+      "obs_grad_co2": 11.0,
+      "mod_grad_co2": 4.314481142262434,
+      "obs_ph": 7.41,
+      "mod_ph": 7.592145751860261,
+      "obs_hco3": 27.9,
+      "mod_hco3": 21.602177326235925,
+      "preop_hb": 14.1,
+      "obs_hb_est": 12.666666666666666,
+      "mod_hb": 13.690442656773335,
+      "preop_glu": 155.0,
+      "obs_glu": 124.0,
+      "mod_glu": 151.2203256531062,
+      "obs_ica": 1.29,
+      "mod_ica": 1.134199372410362,
+      "obs_lac": 1.7,
+      "mod_lac": 1.0059241470691123
+    },
+    {
+      "caseid": 3398,
+      "subjectid": 4087,
+      "approach": "Open",
+      "age": 62.0,
+      "bmi": 19.17,
+      "fio2": 35.0,
+      "peep": 0.0,
+      "elapsed_min": 60.2,
+      "obs_po2": 149.0,
+      "mod_po2": 86.9966467055113,
+      "obs_grad_co2": 10.0,
+      "mod_grad_co2": 7.474445307486235,
+      "obs_ph": 7.45,
+      "mod_ph": 7.39310587912178,
+      "obs_hco3": 30.6,
+      "mod_hco3": 24.511543041124735,
+      "preop_hb": 11.4,
+      "obs_hb_est": 12.333333333333334,
+      "mod_hb": 11.073540091745345,
+      "preop_glu": 137.0,
+      "obs_glu": 88.0,
+      "mod_glu": 132.0950678377797,
+      "obs_ica": 1.22,
+      "mod_ica": 1.2129305607541354,
+      "obs_lac": 0.5,
+      "mod_lac": 1.0298090168542653
+    },
+    {
+      "caseid": 3400,
+      "subjectid": 2000,
+      "approach": "Open",
+      "age": 58.0,
+      "bmi": 23.82,
+      "fio2": 44.0,
+      "peep": 5.0,
+      "elapsed_min": 59.8,
+      "obs_po2": 173.0,
+      "mod_po2": 156.79293319994446,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 5.442809211768729,
+      "obs_ph": 7.45,
+      "mod_ph": 7.431899158089214,
+      "obs_hco3": 29.2,
+      "mod_hco3": 23.898281377978087,
+      "preop_hb": null,
+      "obs_hb_est": 13.666666666666666,
+      "mod_hb": 13.195567507561806,
+      "preop_glu": 100.0,
+      "obs_glu": 105.0,
+      "mod_glu": 96.88285818015862,
+      "obs_ica": 1.15,
+      "mod_ica": 1.195700912727095,
+      "obs_lac": 0.9,
+      "mod_lac": 0.9979371504459328
+    },
+    {
+      "caseid": 3517,
+      "subjectid": 4529,
+      "approach": "Videoscopic",
+      "age": 69.0,
+      "bmi": 19.56,
+      "fio2": 67.0,
+      "peep": 4.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 160.0,
+      "mod_po2": 300.45225896136776,
+      "obs_grad_co2": 14.0,
+      "mod_grad_co2": 7.320183287171005,
+      "obs_ph": 7.37,
+      "mod_ph": 7.498339742569288,
+      "obs_hco3": 29.5,
+      "mod_hco3": 22.90640146526702,
+      "preop_hb": null,
+      "obs_hb_est": 12.666666666666666,
+      "mod_hb": 13.094554455489412,
+      "preop_glu": 99.0,
+      "obs_glu": 92.0,
+      "mod_glu": 93.1385068912126,
+      "obs_ica": 1.18,
+      "mod_ica": 1.175577225622037,
+      "obs_lac": 1.1,
+      "mod_lac": 0.9980236518701093
+    },
+    {
+      "caseid": 3579,
+      "subjectid": 2900,
+      "approach": "Open",
+      "age": 77.0,
+      "bmi": 22.63,
+      "fio2": 37.0,
+      "peep": 0.0,
+      "elapsed_min": 101.6,
+      "obs_po2": 108.0,
+      "mod_po2": 66.47546722165775,
+      "obs_grad_co2": 10.0,
+      "mod_grad_co2": 7.52202463614762,
+      "obs_ph": 7.38,
+      "mod_ph": 7.3536783512957955,
+      "obs_hco3": 26.0,
+      "mod_hco3": 25.342181052116096,
+      "preop_hb": 7.7,
+      "obs_hb_est": 8.0,
+      "mod_hb": 7.604973897914057,
+      "preop_glu": 100.0,
+      "obs_glu": 92.0,
+      "mod_glu": 95.91883552894102,
+      "obs_ica": 1.14,
+      "mod_ica": 1.225971870570742,
+      "obs_lac": 0.4,
+      "mod_lac": 0.9315689758258665
+    },
+    {
+      "caseid": 3704,
+      "subjectid": 24,
+      "approach": "Open",
+      "age": 70.0,
+      "bmi": 25.09,
+      "fio2": 45.0,
+      "peep": 0.0,
+      "elapsed_min": 115.0,
+      "obs_po2": 176.0,
+      "mod_po2": 99.18640993510563,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 4.646166230080979,
+      "obs_ph": 7.48,
+      "mod_ph": 7.579396520440752,
+      "obs_hco3": 23.8,
+      "mod_hco3": 21.818800279901822,
+      "preop_hb": 13.9,
+      "obs_hb_est": 11.333333333333334,
+      "mod_hb": 13.055195465603395,
+      "preop_glu": 84.0,
+      "obs_glu": 71.0,
+      "mod_glu": 79.07579753886122,
+      "obs_ica": 1.11,
+      "mod_ica": 1.1491395989671083,
+      "obs_lac": 1.0,
+      "mod_lac": 1.047226058317369
+    },
+    {
+      "caseid": 3764,
+      "subjectid": 1019,
+      "approach": "Open",
+      "age": 39.0,
+      "bmi": 20.86,
+      "fio2": 36.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 164.0,
+      "mod_po2": 123.74659581147358,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 6.2633132529915585,
+      "obs_ph": 7.37,
+      "mod_ph": 7.416035902169405,
+      "obs_hco3": 22.0,
+      "mod_hco3": 24.419070699201626,
+      "preop_hb": 8.1,
+      "obs_hb_est": 10.666666666666666,
+      "mod_hb": 7.816678722294141,
+      "preop_glu": null,
+      "obs_glu": 86.0,
+      "mod_glu": 84.898403420049,
+      "obs_ica": 1.08,
+      "mod_ica": 1.2092565599677958,
+      "obs_lac": 0.8,
+      "mod_lac": 1.0013273817355701
+    },
+    {
+      "caseid": 4012,
+      "subjectid": 4866,
+      "approach": "Open",
+      "age": 71.0,
+      "bmi": 29.7,
+      "fio2": 36.0,
+      "peep": 4.0,
+      "elapsed_min": 113.7,
+      "obs_po2": 81.0,
+      "mod_po2": 88.7913949463582,
+      "obs_grad_co2": 13.0,
+      "mod_grad_co2": 7.281542977261175,
+      "obs_ph": 7.38,
+      "mod_ph": 7.325090206949616,
+      "obs_hco3": 28.4,
+      "mod_hco3": 25.952069612776597,
+      "preop_hb": 11.2,
+      "obs_hb_est": 10.333333333333334,
+      "mod_hb": 10.677333622796091,
+      "preop_glu": 153.0,
+      "obs_glu": 141.0,
+      "mod_glu": 145.57619419542317,
+      "obs_ica": 1.13,
+      "mod_ica": 1.2391618363723567,
+      "obs_lac": 1.4,
+      "mod_lac": 0.9882372293593409
+    },
+    {
+      "caseid": 4026,
+      "subjectid": 1353,
+      "approach": "Videoscopic",
+      "age": 57.0,
+      "bmi": 22.23,
+      "fio2": 45.0,
+      "peep": 5.0,
+      "elapsed_min": 104.0,
+      "obs_po2": 144.0,
+      "mod_po2": 180.1304971880354,
+      "obs_grad_co2": 13.0,
+      "mod_grad_co2": 5.235900090334734,
+      "obs_ph": 7.37,
+      "mod_ph": 7.473940969760433,
+      "obs_hco3": 28.9,
+      "mod_hco3": 23.391254717253062,
+      "preop_hb": 12.8,
+      "obs_hb_est": 11.666666666666666,
+      "mod_hb": 12.219620908986176,
+      "preop_glu": null,
+      "obs_glu": 151.0,
+      "mod_glu": 84.5018494925452,
+      "obs_ica": 1.19,
+      "mod_ica": 1.1881472075932622,
+      "obs_lac": 0.6,
+      "mod_lac": 1.0422458836269617
+    },
+    {
+      "caseid": 4047,
+      "subjectid": 5462,
+      "approach": "Videoscopic",
+      "age": 73.0,
+      "bmi": 21.74,
+      "fio2": 36.0,
+      "peep": 5.0,
+      "elapsed_min": 43.2,
+      "obs_po2": 152.0,
+      "mod_po2": 111.9211143957834,
+      "obs_grad_co2": 5.0,
+      "mod_grad_co2": 4.707464158553869,
+      "obs_ph": 7.44,
+      "mod_ph": 7.49568700289226,
+      "obs_hco3": 27.8,
+      "mod_hco3": 22.847649801707927,
+      "preop_hb": 12.8,
+      "obs_hb_est": 13.666666666666666,
+      "mod_hb": 12.639210240050291,
+      "preop_glu": 107.0,
+      "obs_glu": 107.0,
+      "mod_glu": 104.71221543483153,
+      "obs_ica": 1.14,
+      "mod_ica": 1.1676352357515798,
+      "obs_lac": 1.2,
+      "mod_lac": 0.9559407931116155
+    },
+    {
+      "caseid": 4191,
+      "subjectid": 5626,
+      "approach": "Videoscopic",
+      "age": 55.0,
+      "bmi": 21.2,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 192.0,
+      "mod_po2": 126.2709090012456,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 4.717781026500724,
+      "obs_ph": 7.41,
+      "mod_ph": 7.581774189641595,
+      "obs_hco3": 24.7,
+      "mod_hco3": 21.696240170717676,
+      "preop_hb": 14.0,
+      "obs_hb_est": 11.666666666666666,
+      "mod_hb": 13.075715670537324,
+      "preop_glu": null,
+      "obs_glu": 163.0,
+      "mod_glu": 82.85229204966821,
+      "obs_ica": 1.1,
+      "mod_ica": 1.151080971956614,
+      "obs_lac": 1.2,
+      "mod_lac": 1.074255881044755
+    },
+    {
+      "caseid": 4195,
+      "subjectid": 3513,
+      "approach": "Videoscopic",
+      "age": 56.0,
+      "bmi": 20.27,
+      "fio2": 35.0,
+      "peep": 0.0,
+      "elapsed_min": 105.8,
+      "obs_po2": 165.0,
+      "mod_po2": 85.70272463215713,
+      "obs_grad_co2": 13.0,
+      "mod_grad_co2": 6.491236642526115,
+      "obs_ph": 7.34,
+      "mod_ph": 7.521283576234634,
+      "obs_hco3": 28.1,
+      "mod_hco3": 22.591519732306622,
+      "preop_hb": 10.9,
+      "obs_hb_est": 9.666666666666666,
+      "mod_hb": 10.041270000181154,
+      "preop_glu": 150.0,
+      "obs_glu": 107.0,
+      "mod_glu": 138.34578009663414,
+      "obs_ica": 1.02,
+      "mod_ica": 1.1717513600621121,
+      "obs_lac": 0.5,
+      "mod_lac": 1.0823691906330832
+    },
+    {
+      "caseid": 4253,
+      "subjectid": 6058,
+      "approach": "Videoscopic",
+      "age": 32.0,
+      "bmi": 18.99,
+      "fio2": 75.0,
+      "peep": 4.0,
+      "elapsed_min": 66.4,
+      "obs_po2": 203.0,
+      "mod_po2": 411.5413174428855,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 6.832763247366209,
+      "obs_ph": 7.41,
+      "mod_ph": 7.4543119580613615,
+      "obs_hco3": 25.4,
+      "mod_hco3": 23.62659087312496,
+      "preop_hb": 14.9,
+      "obs_hb_est": 13.666666666666666,
+      "mod_hb": 15.005698770242942,
+      "preop_glu": 88.0,
+      "obs_glu": 84.0,
+      "mod_glu": 86.7439708231702,
+      "obs_ica": 1.16,
+      "mod_ica": 1.1830978382283062,
+      "obs_lac": 1.2,
+      "mod_lac": 0.9006551378909271
+    },
+    {
+      "caseid": 4279,
+      "subjectid": 1053,
+      "approach": "Open",
+      "age": 64.0,
+      "bmi": 29.06,
+      "fio2": 37.0,
+      "peep": 0.0,
+      "elapsed_min": 57.4,
+      "obs_po2": 71.0,
+      "mod_po2": 90.57636432367062,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 5.009777223623992,
+      "obs_ph": 7.44,
+      "mod_ph": 7.307774815098796,
+      "obs_hco3": 26.5,
+      "mod_hco3": 25.75719650064849,
+      "preop_hb": 13.2,
+      "obs_hb_est": 13.0,
+      "mod_hb": 12.777093934109848,
+      "preop_glu": 118.0,
+      "obs_glu": 93.0,
+      "mod_glu": 113.95365348357865,
+      "obs_ica": 1.2,
+      "mod_ica": 1.2420979693536705,
+      "obs_lac": 0.8,
+      "mod_lac": 1.023910693940804
+    },
+    {
+      "caseid": 4362,
+      "subjectid": 2643,
+      "approach": "Open",
+      "age": 74.0,
+      "bmi": 23.62,
+      "fio2": 38.0,
+      "peep": 0.0,
+      "elapsed_min": 79.9,
+      "obs_po2": 84.0,
+      "mod_po2": 85.04440268053082,
+      "obs_grad_co2": 13.0,
+      "mod_grad_co2": 7.180044882621637,
+      "obs_ph": 7.37,
+      "mod_ph": 7.296808025646742,
+      "obs_hco3": 27.2,
+      "mod_hco3": 26.23349536795034,
+      "preop_hb": 12.6,
+      "obs_hb_est": 11.333333333333334,
+      "mod_hb": 12.21925057506754,
+      "preop_glu": 144.0,
+      "obs_glu": 110.0,
+      "mod_glu": 137.5628471796242,
+      "obs_ica": 1.22,
+      "mod_ica": 1.2496029349428932,
+      "obs_lac": 0.7,
+      "mod_lac": 1.0140985721393967
+    },
+    {
+      "caseid": 4379,
+      "subjectid": 5656,
+      "approach": "Videoscopic",
+      "age": 54.0,
+      "bmi": 21.85,
+      "fio2": 91.0,
+      "peep": 5.0,
+      "elapsed_min": 75.5,
+      "obs_po2": 451.0,
+      "mod_po2": 528.301025817622,
+      "obs_grad_co2": 9.0,
+      "mod_grad_co2": 4.426351192220146,
+      "obs_ph": 7.44,
+      "mod_ph": 7.583451877948693,
+      "obs_hco3": 27.8,
+      "mod_hco3": 21.607484430425497,
+      "preop_hb": 13.6,
+      "obs_hb_est": 12.333333333333334,
+      "mod_hb": 13.096926426445394,
+      "preop_glu": 94.0,
+      "obs_glu": 92.0,
+      "mod_glu": 89.8496804965907,
+      "obs_ica": 1.12,
+      "mod_ica": 1.140388501655791,
+      "obs_lac": 1.0,
+      "mod_lac": 1.0297544394422926
+    },
+    {
+      "caseid": 4443,
+      "subjectid": 5594,
+      "approach": "Videoscopic",
+      "age": 46.0,
+      "bmi": 21.0,
+      "fio2": 33.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 205.0,
+      "mod_po2": 129.47818515834282,
+      "obs_grad_co2": 7.0,
+      "mod_grad_co2": 4.876222673155098,
+      "obs_ph": 7.39,
+      "mod_ph": 7.579228420565312,
+      "obs_hco3": 25.4,
+      "mod_hco3": 21.670887139202964,
+      "preop_hb": 14.7,
+      "obs_hb_est": 15.666666666666666,
+      "mod_hb": 13.911690989759713,
+      "preop_glu": 92.0,
+      "obs_glu": 158.0,
+      "mod_glu": 85.42591955661297,
+      "obs_ica": 1.14,
+      "mod_ica": 1.149885604172697,
+      "obs_lac": 3.0,
+      "mod_lac": 1.044504143043046
+    },
+    {
+      "caseid": 4462,
+      "subjectid": 6052,
+      "approach": "Open",
+      "age": 63.0,
+      "bmi": 23.03,
+      "fio2": 36.0,
+      "peep": 5.0,
+      "elapsed_min": 39.8,
+      "obs_po2": 209.0,
+      "mod_po2": 117.32451905152828,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 5.153782936850682,
+      "obs_ph": 7.46,
+      "mod_ph": 7.4122775120879,
+      "obs_hco3": 26.3,
+      "mod_hco3": 24.09741122760389,
+      "preop_hb": 13.5,
+      "obs_hb_est": 12.0,
+      "mod_hb": 13.103441309799585,
+      "preop_glu": null,
+      "obs_glu": 104.0,
+      "mod_glu": 87.44313404787896,
+      "obs_ica": 1.35,
+      "mod_ica": 1.202323401877969,
+      "obs_lac": 0.8,
+      "mod_lac": 1.0170206358466236
+    },
+    {
+      "caseid": 4596,
+      "subjectid": 1042,
+      "approach": "Videoscopic",
+      "age": 50.0,
+      "bmi": 24.29,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 57.6,
+      "obs_po2": 140.0,
+      "mod_po2": 123.60943626925844,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 4.302188513392736,
+      "obs_ph": 7.45,
+      "mod_ph": 7.5763769688171525,
+      "obs_hco3": 25.0,
+      "mod_hco3": 21.962004985371014,
+      "preop_hb": 13.5,
+      "obs_hb_est": 11.0,
+      "mod_hb": 13.247303887831407,
+      "preop_glu": null,
+      "obs_glu": 93.0,
+      "mod_glu": 87.34208321990283,
+      "obs_ica": 1.1,
+      "mod_ica": 1.1389051519216349,
+      "obs_lac": 0.8,
+      "mod_lac": 0.9642433536307626
+    },
+    {
+      "caseid": 4635,
+      "subjectid": 2307,
+      "approach": "Open",
+      "age": 48.0,
+      "bmi": 41.42,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 51.5,
+      "obs_po2": 97.0,
+      "mod_po2": 87.82590697660925,
+      "obs_grad_co2": 2.0,
+      "mod_grad_co2": 4.692135364074929,
+      "obs_ph": 7.46,
+      "mod_ph": 7.463261777543551,
+      "obs_hco3": 24.2,
+      "mod_hco3": 23.356786729984677,
+      "preop_hb": 13.2,
+      "obs_hb_est": 10.666666666666666,
+      "mod_hb": 12.759106364272675,
+      "preop_glu": 125.0,
+      "obs_glu": 118.0,
+      "mod_glu": 121.57367591678639,
+      "obs_ica": 1.11,
+      "mod_ica": 1.1841210567164842,
+      "obs_lac": 1.0,
+      "mod_lac": 1.0398121414438155
+    },
+    {
+      "caseid": 4813,
+      "subjectid": 4793,
+      "approach": "Videoscopic",
+      "age": 49.0,
+      "bmi": 20.87,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 107.6,
+      "obs_po2": 199.0,
+      "mod_po2": 134.0567751668964,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 4.204135212639564,
+      "obs_ph": 7.36,
+      "mod_ph": 7.681718210685004,
+      "obs_hco3": 23.2,
+      "mod_hco3": 20.66722395431858,
+      "preop_hb": 12.9,
+      "obs_hb_est": 11.0,
+      "mod_hb": 12.254802566453746,
+      "preop_glu": null,
+      "obs_glu": 101.0,
+      "mod_glu": 84.0359099713608,
+      "obs_ica": 1.14,
+      "mod_ica": 1.1054829908185249,
+      "obs_lac": 0.6,
+      "mod_lac": 1.016940091035543
+    },
+    {
+      "caseid": 4843,
+      "subjectid": 2232,
+      "approach": "Videoscopic",
+      "age": 53.0,
+      "bmi": 24.1,
+      "fio2": 33.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 105.0,
+      "mod_po2": 121.60965234843867,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 4.221090143643263,
+      "obs_ph": 7.44,
+      "mod_ph": 7.6263862019083355,
+      "obs_hco3": 25.1,
+      "mod_hco3": 21.074313123669523,
+      "preop_hb": 14.8,
+      "obs_hb_est": 12.333333333333334,
+      "mod_hb": 13.86501264177367,
+      "preop_glu": null,
+      "obs_glu": 181.0,
+      "mod_glu": 83.72615931000063,
+      "obs_ica": 1.11,
+      "mod_ica": 1.1322953857678386,
+      "obs_lac": 1.2,
+      "mod_lac": 1.0571712328950256
+    },
+    {
+      "caseid": 4844,
+      "subjectid": 2629,
+      "approach": "Open",
+      "age": 52.0,
+      "bmi": 19.26,
+      "fio2": 36.0,
+      "peep": 0.0,
+      "elapsed_min": 26.2,
+      "obs_po2": 217.0,
+      "mod_po2": 105.72172582128833,
+      "obs_grad_co2": 4.0,
+      "mod_grad_co2": 6.02797482114012,
+      "obs_ph": 7.55,
+      "mod_ph": 7.435639115449308,
+      "obs_hco3": 34.1,
+      "mod_hco3": 23.578830380746624,
+      "preop_hb": 14.0,
+      "obs_hb_est": 11.666666666666666,
+      "mod_hb": 13.642319736496873,
+      "preop_glu": 159.0,
+      "obs_glu": 131.0,
+      "mod_glu": 155.78854202068712,
+      "obs_ica": 1.15,
+      "mod_ica": 1.192385479003764,
+      "obs_lac": 1.0,
+      "mod_lac": 1.0293046355214046
+    },
+    {
+      "caseid": 4941,
+      "subjectid": 2065,
+      "approach": "Open",
+      "age": 49.0,
+      "bmi": 21.65,
+      "fio2": 37.0,
+      "peep": 0.0,
+      "elapsed_min": 77.0,
+      "obs_po2": 168.0,
+      "mod_po2": 114.23964543340587,
+      "obs_grad_co2": 0.0,
+      "mod_grad_co2": 6.402561308221621,
+      "obs_ph": 7.45,
+      "mod_ph": 7.436449917960833,
+      "obs_hco3": 24.3,
+      "mod_hco3": 23.781885351281858,
+      "preop_hb": 15.5,
+      "obs_hb_est": 12.0,
+      "mod_hb": 14.671545296158957,
+      "preop_glu": null,
+      "obs_glu": 74.0,
+      "mod_glu": 84.30886319418255,
+      "obs_ica": 1.08,
+      "mod_ica": 1.2019339716913746,
+      "obs_lac": 0.7,
+      "mod_lac": 1.0843824047094472
+    },
+    {
+      "caseid": 4982,
+      "subjectid": 5687,
+      "approach": "Videoscopic",
+      "age": 76.0,
+      "bmi": 25.89,
+      "fio2": 78.0,
+      "peep": 5.0,
+      "elapsed_min": 93.1,
+      "obs_po2": 195.0,
+      "mod_po2": 331.21697885240144,
+      "obs_grad_co2": 7.0,
+      "mod_grad_co2": 7.585649913578322,
+      "obs_ph": 7.4,
+      "mod_ph": 7.2696403120884945,
+      "obs_hco3": 27.3,
+      "mod_hco3": 26.61853419004051,
+      "preop_hb": 11.1,
+      "obs_hb_est": 9.333333333333334,
+      "mod_hb": 10.9361782146409,
+      "preop_glu": 219.0,
+      "obs_glu": 99.0,
+      "mod_glu": 211.14255654007934,
+      "obs_ica": 1.14,
+      "mod_ica": 1.256908031937639,
+      "obs_lac": 0.7,
+      "mod_lac": 0.955721237077406
+    },
+    {
+      "caseid": 5247,
+      "subjectid": 2279,
+      "approach": "Open",
+      "age": 76.0,
+      "bmi": 19.8,
+      "fio2": 34.0,
+      "peep": 0.0,
+      "elapsed_min": 59.5,
+      "obs_po2": 121.0,
+      "mod_po2": 69.57249369724052,
+      "obs_grad_co2": 6.0,
+      "mod_grad_co2": 5.464699057616116,
+      "obs_ph": 7.37,
+      "mod_ph": 7.536095738039754,
+      "obs_hco3": 23.1,
+      "mod_hco3": 22.36801499260129,
+      "preop_hb": 10.3,
+      "obs_hb_est": 10.0,
+      "mod_hb": 10.070636515257881,
+      "preop_glu": 266.0,
+      "obs_glu": 280.0,
+      "mod_glu": 257.6726688596267,
+      "obs_ica": 1.21,
+      "mod_ica": 1.1542452456577539,
+      "obs_lac": 2.1,
+      "mod_lac": 0.9940541716516268
+    },
+    {
+      "caseid": 5254,
+      "subjectid": 2148,
+      "approach": "Open",
+      "age": 52.0,
+      "bmi": 30.56,
+      "fio2": 32.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 95.0,
+      "mod_po2": 95.89407202031002,
+      "obs_grad_co2": 1.0,
+      "mod_grad_co2": 4.656792629565093,
+      "obs_ph": 7.43,
+      "mod_ph": 7.5051804924542305,
+      "obs_hco3": 22.6,
+      "mod_hco3": 22.990754288462693,
+      "preop_hb": 10.7,
+      "obs_hb_est": 9.666666666666666,
+      "mod_hb": 10.188548387792137,
+      "preop_glu": 95.0,
+      "obs_glu": 150.0,
+      "mod_glu": 89.75540521559093,
+      "obs_ica": 1.07,
+      "mod_ica": 1.1744191409907416,
+      "obs_lac": 0.6,
+      "mod_lac": 1.0315695471941433
+    },
+    {
+      "caseid": 5278,
+      "subjectid": 1385,
+      "approach": "Videoscopic",
+      "age": 68.0,
+      "bmi": 21.19,
+      "fio2": 35.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 167.0,
+      "mod_po2": 75.64754704791453,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 6.066947715048148,
+      "obs_ph": 7.37,
+      "mod_ph": 7.506566886370611,
+      "obs_hco3": 25.4,
+      "mod_hco3": 22.960260196925177,
+      "preop_hb": 12.1,
+      "obs_hb_est": 10.333333333333334,
+      "mod_hb": 10.686529112629314,
+      "preop_glu": 108.0,
+      "obs_glu": 176.0,
+      "mod_glu": 96.24755205428113,
+      "obs_ica": 1.1,
+      "mod_ica": 1.1883224991413484,
+      "obs_lac": 1.0,
+      "mod_lac": 1.1900041403838304
+    },
+    {
+      "caseid": 5422,
+      "subjectid": 1521,
+      "approach": "Videoscopic",
+      "age": 69.0,
+      "bmi": 27.37,
+      "fio2": 46.0,
+      "peep": 0.0,
+      "elapsed_min": 81.7,
+      "obs_po2": 60.0,
+      "mod_po2": 89.56959908346775,
+      "obs_grad_co2": 10.0,
+      "mod_grad_co2": 7.21222416726787,
+      "obs_ph": 7.46,
+      "mod_ph": 7.363741383218466,
+      "obs_hco3": 32.7,
+      "mod_hco3": 24.8367978118891,
+      "preop_hb": 10.0,
+      "obs_hb_est": 10.666666666666666,
+      "mod_hb": 9.850395047038619,
+      "preop_glu": 114.0,
+      "obs_glu": 66.0,
+      "mod_glu": 108.42335998789196,
+      "obs_ica": 1.17,
+      "mod_ica": 1.2203957036769115,
+      "obs_lac": 0.6,
+      "mod_lac": 0.9467399496583563
+    },
+    {
+      "caseid": 5463,
+      "subjectid": 2713,
+      "approach": "Open",
+      "age": 74.0,
+      "bmi": 24.58,
+      "fio2": 37.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 141.0,
+      "mod_po2": 71.85662306360297,
+      "obs_grad_co2": 12.0,
+      "mod_grad_co2": 5.52443376504193,
+      "obs_ph": 7.4,
+      "mod_ph": 7.4960739780361,
+      "obs_hco3": 29.1,
+      "mod_hco3": 23.147603158452913,
+      "preop_hb": 13.1,
+      "obs_hb_est": 11.333333333333334,
+      "mod_hb": 12.411200155487254,
+      "preop_glu": 126.0,
+      "obs_glu": 215.0,
+      "mod_glu": 117.74362213110768,
+      "obs_ica": 1.16,
+      "mod_ica": 1.1791052740466852,
+      "obs_lac": 1.0,
+      "mod_lac": 1.027281566530025
+    },
+    {
+      "caseid": 5486,
+      "subjectid": 3703,
+      "approach": "Open",
+      "age": 72.0,
+      "bmi": 23.08,
+      "fio2": 38.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 348.0,
+      "mod_po2": 79.22275601629222,
+      "obs_grad_co2": 14.0,
+      "mod_grad_co2": 7.028385485681262,
+      "obs_ph": 7.36,
+      "mod_ph": 7.33217575773618,
+      "obs_hco3": 25.4,
+      "mod_hco3": 25.49943908894591,
+      "preop_hb": 9.9,
+      "obs_hb_est": 9.666666666666666,
+      "mod_hb": 9.6577864236095,
+      "preop_glu": null,
+      "obs_glu": 76.0,
+      "mod_glu": 83.17515981656139,
+      "obs_ica": 1.27,
+      "mod_ica": 1.237775751104112,
+      "obs_lac": 0.4,
+      "mod_lac": 0.9675051836970239
+    },
+    {
+      "caseid": 5531,
+      "subjectid": 3837,
+      "approach": "Videoscopic",
+      "age": 47.0,
+      "bmi": 21.96,
+      "fio2": 32.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 155.0,
+      "mod_po2": 122.83328694489921,
+      "obs_grad_co2": 3.0,
+      "mod_grad_co2": 4.358403795095409,
+      "obs_ph": 7.46,
+      "mod_ph": 7.570370922712331,
+      "obs_hco3": 25.6,
+      "mod_hco3": 21.46063739600064,
+      "preop_hb": 15.5,
+      "obs_hb_est": 14.0,
+      "mod_hb": 14.588971294905148,
+      "preop_glu": null,
+      "obs_glu": 155.0,
+      "mod_glu": 84.18646501870988,
+      "obs_ica": 1.14,
+      "mod_ica": 1.125954992207028,
+      "obs_lac": 1.9,
+      "mod_lac": 0.9827038471767953
+    },
+    {
+      "caseid": 5598,
+      "subjectid": 1662,
+      "approach": "Open",
+      "age": 76.0,
+      "bmi": 24.18,
+      "fio2": 36.0,
+      "peep": 5.0,
+      "elapsed_min": 47.1,
+      "obs_po2": 160.0,
+      "mod_po2": 106.09150545143986,
+      "obs_grad_co2": 7.0,
+      "mod_grad_co2": 5.071751693594557,
+      "obs_ph": 7.44,
+      "mod_ph": 7.390716072438704,
+      "obs_hco3": 26.5,
+      "mod_hco3": 24.445804348484433,
+      "preop_hb": 9.1,
+      "obs_hb_est": 9.0,
+      "mod_hb": 8.871997550172216,
+      "preop_glu": null,
+      "obs_glu": 143.0,
+      "mod_glu": 87.47770758541111,
+      "obs_ica": 1.19,
+      "mod_ica": 1.2113969546821022,
+      "obs_lac": 1.5,
+      "mod_lac": 1.0085020578510042
+    },
+    {
+      "caseid": 5638,
+      "subjectid": 4504,
+      "approach": "Videoscopic",
+      "age": 75.0,
+      "bmi": 22.8,
+      "fio2": 34.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 144.0,
+      "mod_po2": 109.00732745463806,
+      "obs_grad_co2": 12.0,
+      "mod_grad_co2": 4.740110052086763,
+      "obs_ph": 7.38,
+      "mod_ph": 7.611811301984098,
+      "obs_hco3": 27.8,
+      "mod_hco3": 21.23084371820294,
+      "preop_hb": 14.9,
+      "obs_hb_est": 13.0,
+      "mod_hb": 14.260393455222125,
+      "preop_glu": null,
+      "obs_glu": 113.0,
+      "mod_glu": 84.19869360705314,
+      "obs_ica": 1.15,
+      "mod_ica": 1.1341920222506743,
+      "obs_lac": 0.8,
+      "mod_lac": 1.011805408024782
+    },
+    {
+      "caseid": 5782,
+      "subjectid": 2378,
+      "approach": "Open",
+      "age": 68.0,
+      "bmi": 23.15,
+      "fio2": 45.0,
+      "peep": 4.0,
+      "elapsed_min": 47.0,
+      "obs_po2": 143.0,
+      "mod_po2": 126.2005613904289,
+      "obs_grad_co2": 8.0,
+      "mod_grad_co2": 6.737004279717233,
+      "obs_ph": 7.38,
+      "mod_ph": 7.4159583372302835,
+      "obs_hco3": 25.4,
+      "mod_hco3": 23.998394613949404,
+      "preop_hb": 6.1,
+      "obs_hb_est": 8.333333333333334,
+      "mod_hb": 5.931858599523686,
+      "preop_glu": 249.0,
+      "obs_glu": 182.0,
+      "mod_glu": 241.45589096626267,
+      "obs_ica": 1.22,
+      "mod_ica": 1.2030378747202783,
+      "obs_lac": 1.1,
+      "mod_lac": 1.0731221405509233
+    },
+    {
+      "caseid": 5834,
+      "subjectid": 4010,
+      "approach": "Videoscopic",
+      "age": 62.0,
+      "bmi": 21.09,
+      "fio2": 36.0,
+      "peep": 0.0,
+      "elapsed_min": 99.8,
+      "obs_po2": 213.0,
+      "mod_po2": 79.54638366120875,
+      "obs_grad_co2": 10.0,
+      "mod_grad_co2": 6.139789181264572,
+      "obs_ph": 7.36,
+      "mod_ph": 7.518465343263727,
+      "obs_hco3": 24.9,
+      "mod_hco3": 22.619289107602718,
+      "preop_hb": 10.3,
+      "obs_hb_est": 9.0,
+      "mod_hb": 9.853099267591324,
+      "preop_glu": null,
+      "obs_glu": 72.0,
+      "mod_glu": 83.92641176774637,
+      "obs_ica": 1.14,
+      "mod_ica": 1.1672369657838757,
+      "obs_lac": 0.6,
+      "mod_lac": 1.0335553751194777
+    },
+    {
+      "caseid": 5873,
+      "subjectid": 4331,
+      "approach": "Open",
+      "age": 74.0,
+      "bmi": 24.92,
+      "fio2": 37.0,
+      "peep": 0.0,
+      "elapsed_min": 60.4,
+      "obs_po2": 210.0,
+      "mod_po2": 78.87351215298713,
+      "obs_grad_co2": 7.0,
+      "mod_grad_co2": 6.542355685167536,
+      "obs_ph": 7.39,
+      "mod_ph": 7.330155750115638,
+      "obs_hco3": 23.6,
+      "mod_hco3": 25.48994908972866,
+      "preop_hb": 11.3,
+      "obs_hb_est": 12.666666666666666,
+      "mod_hb": 11.094006438761895,
+      "preop_glu": null,
+      "obs_glu": 118.0,
+      "mod_glu": 86.81392933856505,
+      "obs_ica": 1.17,
+      "mod_ica": 1.2333848188167233,
+      "obs_lac": 2.3,
+      "mod_lac": 0.9749520706573638
+    },
+    {
+      "caseid": 6076,
+      "subjectid": 4253,
+      "approach": "Open",
+      "age": 72.0,
+      "bmi": 22.87,
+      "fio2": 35.0,
+      "peep": 5.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 171.0,
+      "mod_po2": 112.79643378099993,
+      "obs_grad_co2": 5.0,
+      "mod_grad_co2": 4.704417305549608,
+      "obs_ph": 7.44,
+      "mod_ph": 7.472194277493146,
+      "obs_hco3": 26.5,
+      "mod_hco3": 23.4645972320734,
+      "preop_hb": 12.9,
+      "obs_hb_est": 12.333333333333334,
+      "mod_hb": 12.154169988420001,
+      "preop_glu": null,
+      "obs_glu": 216.0,
+      "mod_glu": 83.31856359546826,
+      "obs_ica": 1.11,
+      "mod_ica": 1.1920939661599472,
+      "obs_lac": 1.8,
+      "mod_lac": 1.0607872459186616
+    },
+    {
+      "caseid": 6186,
+      "subjectid": 4136,
+      "approach": "Open",
+      "age": 55.0,
+      "bmi": 25.55,
+      "fio2": 38.0,
+      "peep": 0.0,
+      "elapsed_min": 120.0,
+      "obs_po2": 139.0,
+      "mod_po2": 103.64967177776342,
+      "obs_grad_co2": 9.0,
+      "mod_grad_co2": 6.213347557439555,
+      "obs_ph": 7.41,
+      "mod_ph": 7.343357561853236,
+      "obs_hco3": 27.3,
+      "mod_hco3": 25.53383697780248,
+      "preop_hb": 14.9,
+      "obs_hb_est": 13.333333333333334,
+      "mod_hb": 13.754059030761479,
+      "preop_glu": 104.0,
+      "obs_glu": 92.0,
+      "mod_glu": 96.63950406366145,
+      "obs_ica": 1.15,
+      "mod_ica": 1.2356539791986891,
+      "obs_lac": 0.8,
+      "mod_lac": 1.0220845456255063
+    },
+    {
+      "caseid": 6373,
+      "subjectid": 3314,
+      "approach": "Videoscopic",
+      "age": 61.0,
+      "bmi": 23.9,
+      "fio2": 77.0,
+      "peep": 4.0,
+      "elapsed_min": 89.1,
+      "obs_po2": 414.0,
+      "mod_po2": 351.3705246230248,
+      "obs_grad_co2": 9.0,
+      "mod_grad_co2": 7.8830953633913765,
+      "obs_ph": 7.45,
+      "mod_ph": 7.315960921515454,
+      "obs_hco3": 32.7,
+      "mod_hco3": 26.009872544799126,
+      "preop_hb": 13.3,
+      "obs_hb_est": 11.666666666666666,
+      "mod_hb": 13.071753550494767,
+      "preop_glu": 86.0,
+      "obs_glu": 103.0,
+      "mod_glu": 82.64898853412508,
+      "obs_ica": 0.83,
+      "mod_ica": 1.2398891924380553,
+      "obs_lac": 1.1,
+      "mod_lac": 0.9722188576490932
+    }
+  ],
+  "exclusions": [
+    {
+      "caseid": 9,
+      "subjectid": 2008,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 14,
+      "subjectid": 2037,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 35,
+      "subjectid": 3970,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 72,
+      "subjectid": 2036,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 78,
+      "subjectid": 4100,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 80,
+      "subjectid": 972,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 110,
+      "subjectid": 3984,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 121,
+      "subjectid": 2,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 129,
+      "subjectid": 1589,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 141,
+      "subjectid": 2299,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 165,
+      "subjectid": 5763,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 171,
+      "subjectid": 5709,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 203,
+      "subjectid": 4546,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 219,
+      "subjectid": 924,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 225,
+      "subjectid": 2473,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 226,
+      "subjectid": 1633,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 227,
+      "subjectid": 2510,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 231,
+      "subjectid": 1205,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 235,
+      "subjectid": 1344,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 260,
+      "subjectid": 363,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 269,
+      "subjectid": 3421,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 276,
+      "subjectid": 3972,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 291,
+      "subjectid": 2967,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 298,
+      "subjectid": 2080,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 304,
+      "subjectid": 4584,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 310,
+      "subjectid": 3736,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 311,
+      "subjectid": 1435,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 344,
+      "subjectid": 3952,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 352,
+      "subjectid": 1055,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 356,
+      "subjectid": 6036,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 373,
+      "subjectid": 1824,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 379,
+      "subjectid": 4841,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 400,
+      "subjectid": 4566,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 401,
+      "subjectid": 1355,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 410,
+      "subjectid": 2313,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 423,
+      "subjectid": 1488,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 424,
+      "subjectid": 2024,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 482,
+      "subjectid": 1283,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 483,
+      "subjectid": 151,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 502,
+      "subjectid": 1766,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 522,
+      "subjectid": 1158,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 549,
+      "subjectid": 919,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 604,
+      "subjectid": 1252,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 630,
+      "subjectid": 5752,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 643,
+      "subjectid": 768,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 718,
+      "subjectid": 938,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 735,
+      "subjectid": 3045,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 736,
+      "subjectid": 5087,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 760,
+      "subjectid": 2157,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 786,
+      "subjectid": 4421,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 799,
+      "subjectid": 4334,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 804,
+      "subjectid": 4840,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 817,
+      "subjectid": 2176,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 840,
+      "subjectid": 1156,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 862,
+      "subjectid": 861,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 889,
+      "subjectid": 4698,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 895,
+      "subjectid": 2325,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 902,
+      "subjectid": 5926,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 909,
+      "subjectid": 5479,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 927,
+      "subjectid": 2180,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 961,
+      "subjectid": 5315,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 977,
+      "subjectid": 3579,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1003,
+      "subjectid": 6019,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1036,
+      "subjectid": 3793,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1058,
+      "subjectid": 3218,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1062,
+      "subjectid": 3505,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1064,
+      "subjectid": 1793,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1079,
+      "subjectid": 585,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1107,
+      "subjectid": 15,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1126,
+      "subjectid": 2210,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1128,
+      "subjectid": 3089,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1142,
+      "subjectid": 5472,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1153,
+      "subjectid": 3958,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1161,
+      "subjectid": 4811,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1210,
+      "subjectid": 1002,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1214,
+      "subjectid": 2561,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1226,
+      "subjectid": 3236,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1232,
+      "subjectid": 5478,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1241,
+      "subjectid": 5535,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1270,
+      "subjectid": 2619,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1278,
+      "subjectid": 325,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1289,
+      "subjectid": 1447,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1318,
+      "subjectid": 2984,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1326,
+      "subjectid": 4664,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1354,
+      "subjectid": 5489,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1357,
+      "subjectid": 1637,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1377,
+      "subjectid": 5666,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1378,
+      "subjectid": 3542,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1382,
+      "subjectid": 2228,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1384,
+      "subjectid": 2610,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1385,
+      "subjectid": 674,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1390,
+      "subjectid": 1342,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1394,
+      "subjectid": 5282,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1395,
+      "subjectid": 1583,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1412,
+      "subjectid": 4023,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1431,
+      "subjectid": 1331,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1443,
+      "subjectid": 5618,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1457,
+      "subjectid": 25,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1461,
+      "subjectid": 2057,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1476,
+      "subjectid": 612,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1491,
+      "subjectid": 1712,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1494,
+      "subjectid": 590,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1565,
+      "subjectid": 2617,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1587,
+      "subjectid": 5662,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1619,
+      "subjectid": 2673,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1643,
+      "subjectid": 5200,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1650,
+      "subjectid": 2662,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1653,
+      "subjectid": 2152,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1659,
+      "subjectid": 2880,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1662,
+      "subjectid": 2584,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1670,
+      "subjectid": 4581,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1680,
+      "subjectid": 3010,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1686,
+      "subjectid": 1277,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1689,
+      "subjectid": 286,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1713,
+      "subjectid": 4497,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1781,
+      "subjectid": 2467,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1788,
+      "subjectid": 2060,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1791,
+      "subjectid": 349,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1800,
+      "subjectid": 2834,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1826,
+      "subjectid": 5461,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1828,
+      "subjectid": 726,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1856,
+      "subjectid": 1550,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1860,
+      "subjectid": 3744,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1865,
+      "subjectid": 3066,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1874,
+      "subjectid": 1675,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1881,
+      "subjectid": 5890,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1946,
+      "subjectid": 2499,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1949,
+      "subjectid": 3052,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1960,
+      "subjectid": 1281,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1967,
+      "subjectid": 3406,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1970,
+      "subjectid": 2045,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1979,
+      "subjectid": 3476,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1989,
+      "subjectid": 5071,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1997,
+      "subjectid": 3109,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 1998,
+      "subjectid": 4228,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2012,
+      "subjectid": 2028,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2022,
+      "subjectid": 1968,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2023,
+      "subjectid": 3642,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2054,
+      "subjectid": 4750,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2077,
+      "subjectid": 594,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2079,
+      "subjectid": 132,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2087,
+      "subjectid": 201,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2102,
+      "subjectid": 75,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2127,
+      "subjectid": 4477,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2140,
+      "subjectid": 4808,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2141,
+      "subjectid": 1825,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2148,
+      "subjectid": 2103,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2152,
+      "subjectid": 5212,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2167,
+      "subjectid": 148,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2193,
+      "subjectid": 1672,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2211,
+      "subjectid": 1138,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2224,
+      "subjectid": 4889,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2256,
+      "subjectid": 4554,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2259,
+      "subjectid": 5348,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2278,
+      "subjectid": 2226,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2291,
+      "subjectid": 1726,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2292,
+      "subjectid": 3994,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2295,
+      "subjectid": 4363,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2301,
+      "subjectid": 4505,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2308,
+      "subjectid": 5503,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2329,
+      "subjectid": 4474,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2360,
+      "subjectid": 4174,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2361,
+      "subjectid": 2972,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2363,
+      "subjectid": 4547,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2369,
+      "subjectid": 4319,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2374,
+      "subjectid": 1507,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2387,
+      "subjectid": 5639,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2404,
+      "subjectid": 199,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2410,
+      "subjectid": 1399,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2428,
+      "subjectid": 3124,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2437,
+      "subjectid": 2278,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2465,
+      "subjectid": 715,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2473,
+      "subjectid": 4919,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2475,
+      "subjectid": 4433,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2488,
+      "subjectid": 5329,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2511,
+      "subjectid": 3251,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2515,
+      "subjectid": 175,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2529,
+      "subjectid": 4107,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2540,
+      "subjectid": 4024,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2546,
+      "subjectid": 2863,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2548,
+      "subjectid": 2973,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2560,
+      "subjectid": 5400,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2603,
+      "subjectid": 2698,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2620,
+      "subjectid": 4842,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2630,
+      "subjectid": 236,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2635,
+      "subjectid": 521,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2649,
+      "subjectid": 2025,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2665,
+      "subjectid": 4273,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2684,
+      "subjectid": 5490,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2691,
+      "subjectid": 4685,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2718,
+      "subjectid": 4196,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2735,
+      "subjectid": 4649,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2745,
+      "subjectid": 190,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2748,
+      "subjectid": 5022,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2756,
+      "subjectid": 3000,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2770,
+      "subjectid": 2098,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2773,
+      "subjectid": 3256,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2800,
+      "subjectid": 4013,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2842,
+      "subjectid": 1367,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2854,
+      "subjectid": 381,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2856,
+      "subjectid": 1716,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2857,
+      "subjectid": 2445,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2865,
+      "subjectid": 4470,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2875,
+      "subjectid": 4617,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2895,
+      "subjectid": 203,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2896,
+      "subjectid": 5447,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2897,
+      "subjectid": 2126,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2921,
+      "subjectid": 4299,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2941,
+      "subjectid": 4984,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2967,
+      "subjectid": 903,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2979,
+      "subjectid": 5103,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2989,
+      "subjectid": 1347,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 2998,
+      "subjectid": 2893,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3012,
+      "subjectid": 3145,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3015,
+      "subjectid": 1218,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3049,
+      "subjectid": 5207,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3050,
+      "subjectid": 5613,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3056,
+      "subjectid": 4525,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3068,
+      "subjectid": 2350,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3102,
+      "subjectid": 563,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3105,
+      "subjectid": 3259,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3160,
+      "subjectid": 4683,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3183,
+      "subjectid": 98,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3207,
+      "subjectid": 3823,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3241,
+      "subjectid": 2749,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3253,
+      "subjectid": 841,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3254,
+      "subjectid": 5463,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3262,
+      "subjectid": 2679,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3268,
+      "subjectid": 1961,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3276,
+      "subjectid": 3558,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3278,
+      "subjectid": 83,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3301,
+      "subjectid": 5712,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3343,
+      "subjectid": 926,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3365,
+      "subjectid": 2494,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3368,
+      "subjectid": 4280,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3378,
+      "subjectid": 3131,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3384,
+      "subjectid": 1215,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3407,
+      "subjectid": 388,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3411,
+      "subjectid": 162,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3433,
+      "subjectid": 5910,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3437,
+      "subjectid": 3892,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3440,
+      "subjectid": 490,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3458,
+      "subjectid": 3831,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3467,
+      "subjectid": 3840,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3477,
+      "subjectid": 3135,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3484,
+      "subjectid": 435,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3510,
+      "subjectid": 844,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3511,
+      "subjectid": 4012,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3529,
+      "subjectid": 1731,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3543,
+      "subjectid": 5007,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3583,
+      "subjectid": 3992,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3613,
+      "subjectid": 5456,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3626,
+      "subjectid": 2168,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3627,
+      "subjectid": 3851,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3630,
+      "subjectid": 2106,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3641,
+      "subjectid": 1817,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3645,
+      "subjectid": 3924,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3648,
+      "subjectid": 2251,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3653,
+      "subjectid": 4316,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3678,
+      "subjectid": 246,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3718,
+      "subjectid": 4794,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3734,
+      "subjectid": 4022,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3741,
+      "subjectid": 3760,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3755,
+      "subjectid": 4350,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3765,
+      "subjectid": 857,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3770,
+      "subjectid": 1404,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3778,
+      "subjectid": 3104,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3796,
+      "subjectid": 3806,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3808,
+      "subjectid": 2132,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3830,
+      "subjectid": 1327,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3838,
+      "subjectid": 5271,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3864,
+      "subjectid": 2002,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3872,
+      "subjectid": 5291,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3923,
+      "subjectid": 4302,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3929,
+      "subjectid": 4942,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3932,
+      "subjectid": 4782,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3933,
+      "subjectid": 1375,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3943,
+      "subjectid": 1835,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3957,
+      "subjectid": 2885,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3965,
+      "subjectid": 4211,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3982,
+      "subjectid": 4878,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3983,
+      "subjectid": 553,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3984,
+      "subjectid": 3586,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 3985,
+      "subjectid": 1631,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4018,
+      "subjectid": 4445,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4023,
+      "subjectid": 314,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4025,
+      "subjectid": 1730,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4029,
+      "subjectid": 4349,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4039,
+      "subjectid": 2041,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4078,
+      "subjectid": 5787,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4082,
+      "subjectid": 2876,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4084,
+      "subjectid": 2684,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4085,
+      "subjectid": 3193,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4089,
+      "subjectid": 1255,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4095,
+      "subjectid": 3728,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4110,
+      "subjectid": 756,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4113,
+      "subjectid": 3069,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4138,
+      "subjectid": 872,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4151,
+      "subjectid": 1417,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4156,
+      "subjectid": 1954,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4158,
+      "subjectid": 4481,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4188,
+      "subjectid": 4388,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4190,
+      "subjectid": 5541,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4200,
+      "subjectid": 2344,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4218,
+      "subjectid": 2586,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4223,
+      "subjectid": 2646,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4224,
+      "subjectid": 1103,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4239,
+      "subjectid": 5515,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4257,
+      "subjectid": 878,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4260,
+      "subjectid": 5838,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4301,
+      "subjectid": 100,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4311,
+      "subjectid": 2926,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4321,
+      "subjectid": 3787,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4342,
+      "subjectid": 4868,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4355,
+      "subjectid": 513,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4357,
+      "subjectid": 4860,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4361,
+      "subjectid": 983,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4365,
+      "subjectid": 1753,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4372,
+      "subjectid": 5174,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4374,
+      "subjectid": 5426,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4394,
+      "subjectid": 1882,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4403,
+      "subjectid": 2415,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4413,
+      "subjectid": 3322,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4419,
+      "subjectid": 3543,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4441,
+      "subjectid": 5734,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4442,
+      "subjectid": 1499,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4447,
+      "subjectid": 5625,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4473,
+      "subjectid": 2683,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4486,
+      "subjectid": 4382,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4516,
+      "subjectid": 4921,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4575,
+      "subjectid": 3235,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4586,
+      "subjectid": 3979,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4588,
+      "subjectid": 5697,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4593,
+      "subjectid": 3688,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4611,
+      "subjectid": 2070,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4613,
+      "subjectid": 1394,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4615,
+      "subjectid": 5152,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4629,
+      "subjectid": 2211,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4633,
+      "subjectid": 5960,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4642,
+      "subjectid": 2910,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4661,
+      "subjectid": 778,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4682,
+      "subjectid": 2305,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4690,
+      "subjectid": 5967,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4698,
+      "subjectid": 3580,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4728,
+      "subjectid": 2603,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4734,
+      "subjectid": 850,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4751,
+      "subjectid": 77,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4796,
+      "subjectid": 771,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4812,
+      "subjectid": 6049,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4850,
+      "subjectid": 1189,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4857,
+      "subjectid": 3874,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4866,
+      "subjectid": 2535,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4870,
+      "subjectid": 4932,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4877,
+      "subjectid": 751,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4884,
+      "subjectid": 1324,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4905,
+      "subjectid": 5159,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4917,
+      "subjectid": 956,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4919,
+      "subjectid": 4236,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4924,
+      "subjectid": 801,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4929,
+      "subjectid": 5357,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4931,
+      "subjectid": 268,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 4950,
+      "subjectid": 1085,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5013,
+      "subjectid": 2201,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5017,
+      "subjectid": 2246,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5020,
+      "subjectid": 962,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5021,
+      "subjectid": 6086,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5028,
+      "subjectid": 761,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5032,
+      "subjectid": 5947,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5042,
+      "subjectid": 5073,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5048,
+      "subjectid": 2280,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5054,
+      "subjectid": 2652,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5071,
+      "subjectid": 3398,
+      "approach": "Robotic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5083,
+      "subjectid": 4706,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5086,
+      "subjectid": 251,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5098,
+      "subjectid": 4490,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5115,
+      "subjectid": 1451,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5128,
+      "subjectid": 1262,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5132,
+      "subjectid": 3711,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5161,
+      "subjectid": 2676,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5176,
+      "subjectid": 3673,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5179,
+      "subjectid": 2567,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5203,
+      "subjectid": 3849,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5215,
+      "subjectid": 5501,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5220,
+      "subjectid": 2140,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5230,
+      "subjectid": 5966,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5270,
+      "subjectid": 6069,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5273,
+      "subjectid": 2892,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5279,
+      "subjectid": 4432,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5280,
+      "subjectid": 1500,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5309,
+      "subjectid": 5641,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5329,
+      "subjectid": 5373,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5334,
+      "subjectid": 2800,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5373,
+      "subjectid": 1291,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5382,
+      "subjectid": 4792,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5401,
+      "subjectid": 5256,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5424,
+      "subjectid": 2742,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5433,
+      "subjectid": 5435,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5437,
+      "subjectid": 5223,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5444,
+      "subjectid": 2105,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5450,
+      "subjectid": 2844,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5471,
+      "subjectid": 1037,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5488,
+      "subjectid": 3644,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5501,
+      "subjectid": 4365,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5510,
+      "subjectid": 5097,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5528,
+      "subjectid": 4716,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5529,
+      "subjectid": 1847,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5535,
+      "subjectid": 3393,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5543,
+      "subjectid": 5847,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5586,
+      "subjectid": 4594,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5601,
+      "subjectid": 5566,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5631,
+      "subjectid": 2084,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5668,
+      "subjectid": 2332,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5672,
+      "subjectid": 497,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5683,
+      "subjectid": 2734,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5686,
+      "subjectid": 1834,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5697,
+      "subjectid": 4892,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5720,
+      "subjectid": 3685,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5726,
+      "subjectid": 235,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5737,
+      "subjectid": 1534,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5791,
+      "subjectid": 5182,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5812,
+      "subjectid": 3415,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5814,
+      "subjectid": 701,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5821,
+      "subjectid": 5917,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5852,
+      "subjectid": 2615,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5874,
+      "subjectid": 6032,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5888,
+      "subjectid": 1680,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5893,
+      "subjectid": 3790,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5901,
+      "subjectid": 5444,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5903,
+      "subjectid": 4095,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5906,
+      "subjectid": 4723,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5925,
+      "subjectid": 3804,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5927,
+      "subjectid": 3610,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5949,
+      "subjectid": 1970,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5952,
+      "subjectid": 3292,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5968,
+      "subjectid": 1058,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 5980,
+      "subjectid": 1838,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6001,
+      "subjectid": 4888,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6004,
+      "subjectid": 4958,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6014,
+      "subjectid": 3905,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6016,
+      "subjectid": 1760,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6029,
+      "subjectid": 1599,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6050,
+      "subjectid": 2477,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6062,
+      "subjectid": 3708,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6073,
+      "subjectid": 3932,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6095,
+      "subjectid": 3105,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6125,
+      "subjectid": 657,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6130,
+      "subjectid": 6070,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6150,
+      "subjectid": 341,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6162,
+      "subjectid": 698,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6183,
+      "subjectid": 3137,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6203,
+      "subjectid": 1870,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6212,
+      "subjectid": 1020,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6223,
+      "subjectid": 929,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6263,
+      "subjectid": 4000,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6278,
+      "subjectid": 888,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6294,
+      "subjectid": 2269,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6327,
+      "subjectid": 2781,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6329,
+      "subjectid": 6005,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6341,
+      "subjectid": 3439,
+      "approach": "Open",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6344,
+      "subjectid": 2628,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    },
+    {
+      "caseid": 6371,
+      "subjectid": 4637,
+      "approach": "Videoscopic",
+      "exclusion": "no intraoperative ABG panel"
+    }
+  ]
+}

@@ -30,6 +30,11 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Marx et al. (1970). *Br J Anaesth*. [Static compliance before and after vaginal delivery](https://pubmed.ncbi.nlm.nih.gov/5504452/).
 - Humphries et al. (2019). *J Matern Fetal Neonatal Med*. [Supine positioning and maternal hemodynamics in late pregnancy](https://pubmed.ncbi.nlm.nih.gov/29772936/).
 - Gin and Chan (1994). *Anesthesiology*. [Decreased isoflurane MAC in pregnant humans](https://pubmed.ncbi.nlm.nih.gov/7943833/).
+- Keir et al. (2020). *Hypertension*. [Age, sex, and resting muscle sympathetic nerve activity variability in healthy adults](https://pubmed.ncbi.nlm.nih.gov/32783757/).
+- Charkoudian et al. (2005). *J Physiol*. [Balance of sympathetic nerve activity, vascular resistance, and cardiac output in normotensive humans](https://pubmed.ncbi.nlm.nih.gov/16037092/).
+- Charkoudian et al. (2006). *J Physiol*. [Sympathetic activity, cardiac output, and arterial pressure regulation in young women and men](https://pubmed.ncbi.nlm.nih.gov/16513672/).
+- Jacob et al. (2008). *Acta Anaesthesiol Scand*. [Preoperative blood volume after overnight fasting before elective surgery](https://pubmed.ncbi.nlm.nih.gov/18339157/).
+- Bundgaard-Nielsen et al. (2010). *Acta Anaesthesiol Scand*. [Preoperative functional intravascular volume deficit before elective surgery](https://pubmed.ncbi.nlm.nih.gov/20002360/).
 
 ## Intravenous drug models
 
@@ -147,6 +152,8 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 ## Anesthetic depth and responsiveness
 
 - Bouillon et al. (2004a). *Anesthesiology*. [Propofol-remifentanil interaction for hypnosis, BIS, and tolerance of laryngoscopy](https://pubmed.ncbi.nlm.nih.gov/15166553/).
+- Mertens et al. (2003). *Anesthesiology*. [Propofol-remifentanil interaction for laryngoscopy, surgery, and awakening](https://pubmed.ncbi.nlm.nih.gov/12883407/).
+- Manyam et al. (2006). *Anesthesiology*. [Sevoflurane-remifentanil response surface for sedation and analgesia](https://pubmed.ncbi.nlm.nih.gov/16871060/).
 - Hannivoort et al. (2016). *Br J Anaesth*. [Propofol-sevoflurane-remifentanil interaction for laryngoscopy](https://pubmed.ncbi.nlm.nih.gov/27106965/).
 - Heyse et al. (2012). *Anesthesiology*. [Sevoflurane-remifentanil interaction for clinical responses](https://pubmed.ncbi.nlm.nih.gov/22222473/).
 - Kuizenga et al. (2019). *Anesthesiology*. [Propofol and sevoflurane with remifentanil for clinical responses](https://pubmed.ncbi.nlm.nih.gov/31567365/).
@@ -166,6 +173,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 
 ## Stimulation responses
 
+- Albertin et al. (2004). *Anesthesiology*. [Remifentanil effect-site concentration and sevoflurane MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/14739797/).
 - Albertin et al. (2005). *Anesth Analg*. [Remifentanil blunting the hemodynamic response to intubation and incision](https://pubmed.ncbi.nlm.nih.gov/15976218/).
 - Kazama et al. (1997). *Anesthesiology*. [Propofol-fentanyl interaction and cardiovascular responses to noxious stimuli](https://pubmed.ncbi.nlm.nih.gov/9286884/).
 - Katoh et al. (1999). *Anesthesiology*. [Fentanyl reduction of sevoflurane MAC and MAC-BAR](https://pubmed.ncbi.nlm.nih.gov/9952144/).
@@ -178,6 +186,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Billard et al. (1994). *Anesthesiology*. [Hemodynamic response to induction and intubation with propofol and fentanyl](https://pubmed.ncbi.nlm.nih.gov/7992907/).
 - Hayakawa-Fujii et al. (2001). *J Anesth*. [Induction and intubation hemodynamics with propofol, fentanyl, and ketamine](https://pubmed.ncbi.nlm.nih.gov/14569434/).
 - Sawano et al. (2013). *J Anesth*. [Fentanyl dose, hemodynamics, and cardiac output during induction and intubation](https://pubmed.ncbi.nlm.nih.gov/23314694/).
+- Joris et al. (1993). *Anesth Analg*. [Hemodynamic changes during laparoscopic cholecystectomy](https://pubmed.ncbi.nlm.nih.gov/8484509/).
 
 ## Neuromuscular block
 
@@ -201,6 +210,13 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Plaud et al. (1995). *Clin Pharmacol Ther*. [Rocuronium laryngeal effect-site kinetics](https://pubmed.ncbi.nlm.nih.gov/7648768/).
 - Eikermann et al. (2003). *Anesthesiology*. [Respiratory recovery after neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/12766640/).
 - Herbstreit et al. (2009). *Anesthesiology*. [Residual block and pharyngeal closing pressure](https://pubmed.ncbi.nlm.nih.gov/19417617/).
+- Herbstreit et al. (2010). *Anesthesiology*. [Neostigmine impairment of upper-airway dilator function after recovery from neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/20980910/).
+- Cronnelly et al. (1979). *Anesthesiology*. [Neostigmine pharmacokinetics in normal and anephric patients](https://pubmed.ncbi.nlm.nih.gov/382915/).
+- Kirkegaard et al. (2002). *Anesthesiology*. [Neostigmine reversal time from tactile train-of-four counts](https://pubmed.ncbi.nlm.nih.gov/11753000/).
+- Jones et al. (2008). *Anesthesiology*. [Sugammadex versus neostigmine for reversal of profound rocuronium block](https://pubmed.ncbi.nlm.nih.gov/18946293/).
+- Blobner et al. (2010). *Eur J Anaesthesiol*. [Sugammadex versus neostigmine for reversal of moderate rocuronium block](https://pubmed.ncbi.nlm.nih.gov/20683334/).
+- Schaller et al. (2010). *Anesthesiology*. [Sugammadex and neostigmine dose-finding from a train-of-four ratio of 0.5](https://pubmed.ncbi.nlm.nih.gov/20885293/).
+- Kaufhold et al. (2016). *Br J Anaesth*. [Neostigmine and sugammadex dose-response from shallow rocuronium block](https://pubmed.ncbi.nlm.nih.gov/26787792/).
 - Fiset et al. (1991). *Can J Anaesth*. [Nitrous oxide and neuromuscular block](https://pubmed.ncbi.nlm.nih.gov/1683819/).
 - Smeulers et al. (1995). *J Cardiothorac Vasc Anesth*. [Hypothermic cardiopulmonary bypass and rocuronium PK/PD](https://pubmed.ncbi.nlm.nih.gov/8664462/).
 - Caldwell et al. (2000). *Anesthesiology*. [Temperature-dependent PK/PD of vecuronium](https://pubmed.ncbi.nlm.nih.gov/10638903/).
@@ -220,6 +236,9 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Claeys et al. (1988). *Br J Anaesth*. [Hemodynamic changes during anesthesia induced and maintained with propofol](https://pubmed.ncbi.nlm.nih.gov/3257393/).
 - Hino et al. (2019). *J Anesth*. [Age-stratified propofol and thiopental induction with remifentanil](https://pubmed.ncbi.nlm.nih.gov/31228006/).
 - Oh et al. (2025). *Drug Des Devel Ther*. [Blood pressure during propofol TCI induction in patients aged 65 and over](https://pubmed.ncbi.nlm.nih.gov/41180601/).
+- Reich et al. (2005). *Anesth Analg*. [Predictors of hypotension after induction of general anesthesia](https://pubmed.ncbi.nlm.nih.gov/16115962/).
+- Schonberger et al. (2022). *J Clin Anesth*. [Propofol dosing, etomidate, and post-induction hypotension in older adults](https://pubmed.ncbi.nlm.nih.gov/35489305/).
+- Kouz et al. (2023). *Br J Anaesth*. [Intraoperative hypotension endotypes](https://pubmed.ncbi.nlm.nih.gov/36526483/).
 - van den Berg et al. (2021). *J Clin Monit Comput*. [Hemodynamics at equipotent propofol-remifentanil pairs](https://pubmed.ncbi.nlm.nih.gov/32488680/).
 - Sjøen et al. (2024). *Acta Anaesthesiol Scand*. [Remifentanil dose and hemodynamics during propofol induction](https://pubmed.ncbi.nlm.nih.gov/38400761/).
 - Sjøen et al. (2023). *Acta Anaesthesiol Scand*. [Propofol dose and hemodynamics during remifentanil-propofol induction](https://pubmed.ncbi.nlm.nih.gov/37291731/).
@@ -229,6 +248,8 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Fairfield et al. (1991). *Br J Anaesth*. [Echocardiographic hemodynamics after propofol 2.5 mg/kg](https://pubmed.ncbi.nlm.nih.gov/1751277/).
 - Morley et al. (2010). *Anesth Analg*. [Fasting, baseline pressure, and hypotension during propofol induction](https://pubmed.ncbi.nlm.nih.gov/20861421/).
 - Malan et al. (1995). *Anesthesiology*. [Sevoflurane cardiac output and vascular resistance in volunteers](https://pubmed.ncbi.nlm.nih.gov/7486177/).
+- Thwaites et al. (1997). *Br J Anaesth*. [Inhalation induction with sevoflurane versus intravenous propofol](https://pubmed.ncbi.nlm.nih.gov/9135350/).
+- Kirkbride et al. (2001). *Anesth Analg*. [Induction of anesthesia in the elderly with sevoflurane versus propofol](https://pubmed.ncbi.nlm.nih.gov/11682393/).
 
 ### Reflexes and age
 
@@ -290,6 +311,8 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 
 - US Food and Drug Administration (2012). [Clinical pharmacology review of phenylephrine, NDA 203826](https://www.accessdata.fda.gov/drugsatfda_docs/nda/203826_phenylephrine_toc.cfm).
 - Rebet et al. (2016). *Eur J Anaesthesiol*. [Preload-dependent phenylephrine cardiac-output responses](https://pubmed.ncbi.nlm.nih.gov/27164015/).
+- Kalmar et al. (2018). *J Clin Monit Comput*. [Preload recruitment and cardiac output after phenylephrine bolus in preload-dependent patients](https://pubmed.ncbi.nlm.nih.gov/29569112/).
+- Poterman et al. (2015). *Eur J Anaesthesiol*. [Phenylephrine versus norepinephrine infusion for propofol-remifentanil hypotension](https://pubmed.ncbi.nlm.nih.gov/25760679/).
 - Meng et al. (2011). *Br J Anaesth*. [Phenylephrine and ephedrine boluses under propofol-remifentanil anesthesia](https://pubmed.ncbi.nlm.nih.gov/21642644/).
 - Persky et al. (2004). *Br J Clin Pharmacol*. [Oral ephedrine PK and cardiovascular tolerance](https://pubmed.ncbi.nlm.nih.gov/15089807/).
 - Michelsen et al. (1998). *Anesth Analg*. [Prophylactic ephedrine during propofol induction](https://pubmed.ncbi.nlm.nih.gov/9495396/).
@@ -324,6 +347,7 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Jose and Collison (1970). *Cardiovasc Res*. [Normal range and age dependence of intrinsic HR](https://pubmed.ncbi.nlm.nih.gov/4192616/).
 - Dauchot and Gravenstein (1971). *Clin Pharmacol Ther*. [Age dependence of ECG and HR responses to atropine](https://pubmed.ncbi.nlm.nih.gov/5554942/).
 - Du et al. (2025). *J Drug Deliv Sci Technol*. [Glycopyrrolate population PK](https://doi.org/10.1016/j.jddst.2025.106692).
+- Mirakhur et al. (1977). *Br J Anaesth*. [Heart-rate effects of glycopyrrolate and atropine with neostigmine](https://pubmed.ncbi.nlm.nih.gov/329848/).
 
 ## Heart and brain oxygen supply
 
@@ -644,6 +668,12 @@ activated clotting time; ARDS, acute respiratory distress syndrome.
 - Marti et al. (2015). *Eur Heart J*. [Systemic thrombolytic therapy and major bleeding in acute pulmonary embolism](https://pubmed.ncbi.nlm.nih.gov/24917641/).
 - Mirski et al. (2007). *Anesthesiology*. [Diagnosis and treatment of vascular air embolism](https://pubmed.ncbi.nlm.nih.gov/17197859/).
 - Munson and Merrick (1966). *Anesthesiology*. [Nitrous oxide effect on lethal venous air embolism in rabbits](https://pubmed.ncbi.nlm.nih.gov/5924551/).
+
+## Laparoscopic pneumoperitoneum
+
+- Fahy et al. (1995). *Anesth Analg*. [Respiratory mechanics during laparoscopic CO₂ pneumoperitoneum](https://pubmed.ncbi.nlm.nih.gov/7574004/).
+- Tan et al. (1992). *Can J Anaesth*. [CO₂ absorption during laparoscopic cholecystectomy](https://pubmed.ncbi.nlm.nih.gov/1394755/).
+- Mullett et al. (1993). *Anesth Analg*. [Pulmonary CO₂ elimination during intraperitoneal and extraperitoneal insufflation](https://pubmed.ncbi.nlm.nih.gov/8452278/).
 
 ## Neuraxial anesthesia
 

@@ -86,6 +86,11 @@ patient profile from the session seed across these sources of variability:
 - sevoflurane potency for awakening and noxious stimuli (Heyse 2012)
 - the effects of propofol and opioids on vascular resistance (Su 2023), using
   the same spread for sevoflurane as for propofol
+- resting sympathetic tone, which shifts baseline cardiac output and vascular
+  resistance reciprocally while keeping resting MAP steady (Keir 2020;
+  Charkoudian 2005, 2006), and preoperative functional volume status modeled as
+  venous capacitance variability around the euvolemic baseline (Jacob 2008;
+  Bundgaard-Nielsen 2010)
 - the timing, sensitivity, and shape of the respiratory-rate response to
   morphine and hydromorphone (Olofsen 2026)
 
@@ -108,8 +113,8 @@ its clinical actions.
 | Amiodarone | Korth-Bradley 1996, with hepatic clearance scaling and separate effect sites for bolus vasodilation, contractility and rhythm conversion, and sinus slowing |
 | Rocuronium | Kleijn 2011, scaled toward ideal body weight in obesity (Meyhoff 2009); cirrhosis enlarges early distribution volumes (Khuenl-Brady and Sparr 1996; Magorian 1995; van Miert 1997), and hepatic clearance scales with liver function as a model assumption |
 
-Models for succinylcholine, dantrolene, cardiovascular drugs, insulin, heparin,
-and protamine are covered in their own sections below. In obesity, central volumes and clearances for most
+Models for succinylcholine, neostigmine, dantrolene, cardiovascular drugs,
+insulin, heparin, and protamine are covered in their own sections below. In obesity, central volumes and clearances for most
 intravenous drugs scale with lean body mass, while deep lipophilic peripheral
 compartments and succinylcholine (Ingrande and Lemmens 2010), as well as
 dantrolene, keep total-body-weight scaling.
@@ -206,7 +211,9 @@ drive.
 
 Two probabilities track clinical depth: `loc` is the probability of no response
 to shaking or shouting, and `tol` is the probability of no response to
-laryngoscopy. Sevoflurane thresholds follow Kuizenga 2019 and Hannivoort 2016.
+laryngoscopy. Sevoflurane thresholds follow Kuizenga 2019 and Hannivoort 2016,
+with propofol-remifentanil and sevoflurane-remifentanil synergy checked against
+Mertens 2003 and Manyam 2006.
 Propofol potency for loss of response is scaled so patients become unresponsive
 at the BIS values reported in stepped inductions, which are higher in older
 adults (Lysakowski 2009), and propofol tolerance of laryngoscopy also rises
@@ -254,7 +261,8 @@ Kazama 1997, and fentanyl blunts the pressor response alongside both propofol
 and ketamine. With inhaled agents, fentanyl lowers the sevoflurane concentration
 required to block movement and cardiovascular surges while nitrous oxide adds to
 that effect (Katoh 1999; Daniel 1998), and remifentanil converts to fentanyl
-equivalents using its isoflurane MAC reduction (Lang 1996). Smooth tracheal
+equivalents using its isoflurane MAC reduction (Lang 1996) and sevoflurane
+MAC-BAR reduction (Albertin 2004). Smooth tracheal
 extubation uses a lower airway-reflex intensity than laryngoscopy (Inomata 1999;
 Lee 2009), and non-drug coma (cerebral ischemia or CO₂ narcosis) suppresses
 airway-reflex reactivity alongside anesthetic drugs. Other opioids convert to
@@ -266,9 +274,12 @@ split between stroke volume and vascular resistance taken from Sawano 2013),
 checked against Hayakawa-Fujii 2001.
 
 Ongoing surgery adds a persistent rise in vascular resistance that anesthetics
-do not abolish, sized to the pre-incision to intraoperative MAP rise in VitalDB
-TIVA cases and developing over roughly 5 minutes (matching MAP rises near
-Katoh's MAC-BAR concentrations). Septic shock removes this surgical increase.
+do not abolish, sized to the pre-incision to intraoperative MAP rise in supine
+open VitalDB TIVA cases and developing over roughly 5 minutes (matching MAP
+rises near Katoh's MAC-BAR concentrations). Laparoscopic CO₂ pneumoperitoneum,
+which further increases MAP and vascular resistance while lowering cardiac
+output (Joris 1993), is not modeled separately. Septic shock removes this
+surgical increase.
 Nociception resets slow MAP feedback just as it resets the baroreflex, so
 pressor responses persist while surgical stimulation continues.
 
@@ -294,6 +305,17 @@ before peripheral stores empty (Eleveld 2007). Both drugs use measured
 creatinine clearance when provided, or estimate it from age and renal function;
 when creatinine clearance is supplied with default renal function, it also
 scales renal function for other renally cleared drugs.
+
+Neostigmine uses two-compartment pharmacokinetics with 53% renal clearance
+(Cronnelly 1979) and separate cardiac and neuromuscular junction equilibration
+sites. At the neuromuscular junction, acetylcholinesterase inhibition raises
+the effective rocuronium EC₅₀ through a saturable competitive ceiling, so
+moderate and shallow blocks recover to a TOF ratio of 0.90 over several minutes
+in a dose-dependent manner (Kirkegaard 2002; Blobner 2010; Schaller 2010;
+Kaufhold 2016; Thilen 2023) while deep block cannot be rapidly reversed (Jones
+2008). Giving neostigmine after neuromuscular transmission has largely recovered
+produces unopposed cholinergic desensitization that modestly reduces upper-airway
+dilator tone even when peripheral TOF remains near normal (Herbstreit 2010).
 
 Train-of-four (TOF) reflects the adductor pollicis. The diaphragm and larynx are
 more resistant to rocuronium and recover earlier than the adductor pollicis
@@ -332,7 +354,10 @@ falls within minutes of induction, while compensatory recovery is slow.
 Propofol's arterial pressure effect equilibrates with a half-time around 6 to 10
 minutes in adults up to age 69 (Kazama 1999; Jeleazcov 2015). Above age 65,
 equilibration slows further and the pressure drop grows larger, matching
-Kazama's data in patients aged 70 to 85.
+Kazama's data in patients aged 70 to 85 and large-cohort risk patterns for
+older adults (Reich 2005; Schonberger 2022). Intraoperative hypotension in the
+model reflects coupled drops in preload, stroke volume, HR, and vascular tone
+(Kouz 2023).
 
 Two adjustments distinguish this calibration from Su 2023:
 
@@ -389,14 +414,18 @@ pressures.
 
 The sevoflurane hemodynamic effect equilibrates with a 14-minute half-time,
 matching the gradual fall in MAP during mask sevoflurane after propofol in
-Ebert 1995. Propofol and sevoflurane combine as independent fractions on
-resistance and stroke volume.
+Ebert 1995 and the gentler early pressure drop of inhalation sevoflurane versus
+propofol induction in adults and older patients (Thwaites 1997; Kirkbride
+2001). Propofol and sevoflurane combine as independent fractions on resistance
+and stroke volume.
 
 Midazolam lowers blood pressure and sympathetic tone mildly (Marty 1986),
 modeled as mild vasodilation and venous pooling, and combining it with opioids
 lowers stroke volume and pressure further (Heikkilä 1984). Etomidate changes
-vascular resistance and stroke volume very little. Nitrous oxide causes mild
-sympathetic vasoconstriction and slight myocardial depression.
+vascular resistance and stroke volume very little, preserving post-induction
+blood pressure compared with propofol (Reich 2005; Schonberger 2022). Nitrous
+oxide causes mild sympathetic vasoconstriction and slight myocardial
+depression.
 
 ### Reflexes
 
@@ -502,12 +531,18 @@ directly rather than shifting epinephrine into beta-2 dominance.
 The norepinephrine model includes endogenous secretion and a clearance that
 falls as plasma propofol rises (Li 2024). Only concentrations above the resting
 endogenous level change HR, vascular resistance, venous capacitance, and stroke
-volume. Its vascular and stroke-volume effects grow stronger under anesthesia,
-with the anesthetized stroke-volume gain saturating at high doses.
-Norepinephrine recruits unstressed venous volume to raise filling pressure and
-preload (Persichini 2012; Hamzaoui 2010), and it supports stroke volume in
-septic shock with reduced ejection fraction (Hamzaoui 2010; Carelli 2026).
-Septic shock roughly halves both vascular and cardiac responses to catecholamines
+volume, with higher alpha-1 arterial sensitivity than beta-1 cardiac
+sensitivity so low-dose infusions and induction boluses constrict arterioles
+before strong direct chronotropy appears (Joachim 2024; Poterman 2015; Sjøen
+2026). Its vascular and stroke-volume effects grow stronger under anesthesia,
+with the anesthetized stroke-volume restoration scaled by pre-pressor preload
+reserve so preload-depleted hypotensive patients gain cardiac output (de
+Keijzer 2026) while volume-replete patients show predominantly pressor
+responses with baroreflex slowing (Poterman 2015; Sjøen 2026). Norepinephrine
+recruits unstressed venous volume to raise filling pressure and preload
+(Persichini 2012; Hamzaoui 2010), and it supports stroke volume in septic shock
+with reduced ejection fraction (Hamzaoui 2010; Carelli 2026). Septic shock
+roughly halves both vascular and cardiac responses to catecholamines
 (Bellissant and Annane 2000; Hernández 2013).
 
 ### Epinephrine
@@ -537,8 +572,10 @@ mcg/kg/min).
 
 Phenylephrine uses two-compartment PK from the FDA label (US Food and Drug
 Administration 2012) with bolus effects calibrated to Meng 2011. Because it both
-recruits venous volume and raises afterload, its net effect on cardiac output
-depends on the patient's preload reserve (Rebet 2016).
+recruits venous volume and raises afterload through a saturating arterial-load
+term, its net effect on cardiac output depends on the patient's preload reserve
+(Rebet 2016; Kalmar 2018), with infusion and bolus comparisons against
+norepinephrine checked alongside Poterman 2015 and Sjøen 2026.
 
 Ephedrine uses a calibrated two-compartment intravenous distribution model that
 preserves the distribution volume, terminal half-life, renal elimination, and
@@ -599,11 +636,15 @@ blockade. Glycopyrrolate uses three-compartment population PK with predominantly
 renal clearance (Du 2025) and vagolytic potency from Ali-Melkkilä 1993, giving a
 slower onset and smaller peak HR rise than atropine.
 
-Both drugs block resting vagal tone, baroreflex slowing, and remifentanil
-bradycardia, and both treat sinus bradycardia alongside beta-agonists and
-milrinone. During unstimulated vagolytic tachycardia, venous unloading lowers
-stroke volume over several minutes, sooner when preload is low (Weissler 1957;
-Berry 1959); adrenergic drive restores stroke volume during pacing (Ross 1965).
+Both drugs block resting vagal tone, baroreflex slowing, remifentanil
+bradycardia, and neostigmine's cardiac M2 muscarinic bradycardia through
+competitive antagonism at the sinoatrial node, so glycopyrrolate matches
+neostigmine's slower onset more closely while atropine produces an early heart-rate
+spike followed by mild late slowing (Mirakhur 1977). Both also treat sinus
+bradycardia alongside beta-agonists and milrinone. During unstimulated vagolytic
+tachycardia, venous unloading lowers stroke volume over several minutes, sooner
+when preload is low (Weissler 1957; Berry 1959); adrenergic drive restores
+stroke volume during pacing (Ross 1965).
 
 ### Ketamine
 
@@ -1689,6 +1730,27 @@ brief cooldown while leaving distal pulmonary-bed air unrecoverable (within the
 left-lateral Durant positioning provides calibrated partial right-ventricular
 outflow relief (noting that experimental canine hemodynamic data reviewed in
 Mirski 2007 are mixed).
+
+## Laparoscopic pneumoperitoneum
+
+[`pneumoperitoneum.py`](../anasim/physiology/pneumoperitoneum.py) models
+carbon dioxide insufflation across intra-abdominal pressures from 4 to 25 mmHg
+(default 14 mmHg). Insufflation stiffens the chest wall via cephalad
+diaphragmatic elevation so static compliance falls and peak and plateau airway
+pressures rise (Fahy 1995; Joris 1993), while mild alveolar dead-space
+expansion widens the PaCO₂-to-EtCO₂ gradient. Peritoneal CO₂ absorption adds a
+pure venous CO₂ load without extra oxygen consumption, rising over several
+minutes toward a plateau near 30% of resting production and washing out slowly
+after desufflation (Tan 1992; Mullett 1993).
+
+Hemodynamically, pneumoperitoneum triggers a neurohumoral surge in systemic and
+pulmonary vascular resistance alongside transdiaphragmatic intrathoracic
+pressure transmission, intracavitary atrial filling-pressure elevation,
+splanchnic venous compression at moderate pressures, and progressive inferior
+vena cava compression above roughly 12 to 15 mmHg (Joris 1993). At 14 mmHg,
+MAP, SVR, PVR, and central filling pressures rise while cardiac index falls by
+about 20%; higher insufflation pressures progressively cut venous return and
+cardiac output, and desufflation restores airway mechanics and hemodynamics.
 
 ## Neuraxial anesthesia
 

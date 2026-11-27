@@ -75,6 +75,12 @@ from anasim.physiology.malignant_hyperthermia import (
     triggering_exposure,
 )
 from anasim.physiology.neuraxial import NeuraxialLevelCheck, NeuraxialModel
+from anasim.physiology.pneumoperitoneum import (
+    DEFAULT_IAP_MMHG,
+    MAX_IAP_MMHG,
+    MIN_IAP_MMHG,
+    PneumoperitoneumModel,
+)
 from anasim.physiology.pneumothorax import PneumothoraxModel
 from anasim.physiology.resp_mech import RespiratoryMechanics
 from anasim.physiology.respiration import RespiratoryModel
@@ -308,6 +314,7 @@ class SimulationEngine(DrugControllerMixin):
         self.malignant_hyperthermia = MalignantHyperthermia()
         self.airway_crisis = AirwayCrisisModel()
         self.pneumothorax = PneumothoraxModel(self.patient.functional_residual_capacity())
+        self.pneumoperitoneum = PneumoperitoneumModel()
         ref_ffm = janmahasatian_ffm(70.0, 170.0, True)
         patient_ffm = janmahasatian_ffm(
             self.patient.weight, self.patient.height, self.patient.sex == "male",
@@ -643,6 +650,8 @@ class SimulationEngine(DrugControllerMixin):
             return self.airway_crisis.esophageal_intubation
         if name == "pneumothorax":
             return self.pneumothorax.active
+        if name == "pneumoperitoneum":
+            return self.pneumoperitoneum.active
         if name == "pulmonary_embolism":
             return self.embolism.pe_active
         if name == "venous_air_embolism":
@@ -704,6 +713,14 @@ class SimulationEngine(DrugControllerMixin):
         self.pneumothorax.reset()
         self.state.pneumothorax_pressure = 0.0
         self.state.pneumothorax_decompressed = False
+        self.stop_pneumoperitoneum()
+        self.pneumoperitoneum.reset()
+        self.hemo._pneumo_svr_factor = 1.0
+        self.hemo._pneumo_pvr_factor = 1.0
+        self.hemo._pneumo_rvr_factor = 1.0
+        self.hemo._pneumo_mcfp_add = 0.0
+        self.hemo._pneumo_icp_add = 0.0
+        self.state.pneumoperitoneum_iap = 0.0
         self.stop_pulmonary_embolism()
         self.stop_venous_air_embolism()
         self.embolism.clear_vae()
@@ -738,6 +755,17 @@ class SimulationEngine(DrugControllerMixin):
         self.pneumothorax.decompress()
         self.state.pneumothorax_decompressed = True
         self.actions.record(self.state.time, ACTION_CHEST_DECOMPRESS, label="decompressed")
+
+    def start_pneumoperitoneum(self, iap_mmhg: float = DEFAULT_IAP_MMHG):
+        """Start laparoscopic CO2 pneumoperitoneum at the requested intra-abdominal pressure (4-25 mmHg)."""
+        iap = bounded_number("pneumoperitoneum IAP", iap_mmhg, MIN_IAP_MMHG, MAX_IAP_MMHG)
+        self._log_event("pneumoperitoneum", True, amount=iap)
+        self.pneumoperitoneum.start(iap_mmhg=iap)
+
+    def stop_pneumoperitoneum(self):
+        """Desufflate CO2 pneumoperitoneum (IAP vents rapidly; humoral tone and tissue CO2 wash out)."""
+        self._log_event("pneumoperitoneum", False)
+        self.pneumoperitoneum.stop()
 
     def start_pulmonary_embolism(self, obstruction: float = 0.60):
         """Start acute massive pulmonary thromboembolism (obstruction fraction 0.15-0.85)."""

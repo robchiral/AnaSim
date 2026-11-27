@@ -6,7 +6,7 @@ Units: volumes L, clearances L/min, ke0 1/min, inputs in model units per
 second. Concentrations are µg/mL for propofol, etomidate, ketamine,
 lidocaine, amiodarone, dantrolene, rocuronium, succinylcholine, esmolol, and
 protamine, ng/mL for opioids, midazolam, vasoactive drugs other than
-vasopressin, atropine, labetalol, and glycopyrrolate, mU/L for vasopressin
+vasopressin, atropine, labetalol, glycopyrrolate, and neostigmine, mU/L for vasopressin
 and insulin, and U/L for heparin.
 """
 
@@ -39,6 +39,7 @@ class PKState:
     ce_transit: float = 0.0  # Transit before the primary effect site
     ce_neuro: float = 0.0  # Local anesthetic CNS exposure
     ce_central: float = 0.0  # Faster central/laryngeal effect site (succinylcholine)
+    ce_nmj: float = 0.0  # Neuromuscular junction effect site (neostigmine)
 
 
 def _pow(base: float, exp: float) -> float:
@@ -1221,7 +1222,7 @@ class NorepinephrinePK(MammillaryPK):
             cl1=2.1 * math.exp(-0.344 / 100 * (age - 35)) * lean_size**0.75,
             v2=3.6 * lean_size,
             cl2=0.6 * lean_size**0.75,
-            ke0=0.4,
+            ke0=0.55,
             basal_input_rate=self.endogenous_ug_min / 60.0,
             **_NO_CO_COVARIATE,
         )
@@ -1404,6 +1405,32 @@ class GlycopyrrolatePK(MammillaryPK):
             v3=11.0 * lean_size,
             cl3=31.62 / 60.0 * lean_size**0.75,
             ke0=0.14,
+        )
+
+
+class NeostigminePK(MammillaryPK):
+    """Cronnelly 1979 two-compartment model (concentrations in ng/mL).
+
+    Normal-renal Table 1 means: V1 0.37 L/kg, Vdss 1.40 L/kg (V2 1.03 L/kg),
+    CL 16.7 mL/kg/min, t1/2_alpha 3.5 min, t1/2_beta 79.8 min. Anephric CL
+    fell to 7.8 mL/kg/min (53% renal elimination; t1/2_beta 181 min).
+    Effect-site ke0 0.16 min^-1 aligns peak neuromuscular reversal and
+    muscarinic onset (~7 min) with glycopyrrolate (Mirakhur 1977; Kirkegaard 2002).
+    """
+
+    def __init__(self, patient: Patient):
+        lean_w = _lean_weight_kg(patient)
+        lean_flow = (lean_w / 70.0) ** 0.75
+        clearance_scale, renal_fraction = renal_capacity_scaling(patient, 0.53)
+        super().__init__(
+            v1=_pregnancy_v1(patient, 0.37 * lean_w),
+            cl1=0.0167 * 70.0 * lean_flow * clearance_scale,
+            renal_fraction=renal_fraction,
+            v2=1.03 * lean_w,
+            cl2=0.03924 * 70.0 * lean_flow,
+            ke0=0.16,
+            additional_effect_sites=(("ce_nmj", 0.085),),
+            **_NO_CO_COVARIATE,
         )
 
 

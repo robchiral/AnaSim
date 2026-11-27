@@ -5,7 +5,7 @@ import math
 import numpy as np
 from scipy.linalg import expm
 
-from anasim.core.utils import clamp, clamp01, fill_response_rows
+from anasim.core.utils import clamp, clamp01, fill_response_rows, hill_function
 from anasim.patient.patient import Patient
 from anasim.patient.pk_models import (
     MammillaryPK,
@@ -27,6 +27,14 @@ ROCURONIUM_TOF_HILL = 7.52
 # T1 twitch height follows TOF = T1^1.5; its EC50 sets the central muscle potency.
 TOF_FADE_EXPONENT = 1.5
 ROCURONIUM_T1_EC50 = ROCURONIUM_TOF_EC50 * (0.5**-TOF_FADE_EXPONENT - 1.0) ** (1.0 / ROCURONIUM_TOF_HILL)
+
+# Competitive anticholinesterase reversal (neostigmine, ng/mL; Kirkegaard 2002;
+# Cronnelly 1979; Herbstreit 2010): saturable rightward shift of rocuronium EC50
+# creates a pharmacological ceiling at deep block, while unopposed neostigmine
+# after full recovery mildly impairs genioglossus/pharyngeal dilator tone.
+NEOSTIGMINE_REVERSAL_C50 = 26.0  # ng/mL at NMJ effect site
+NEOSTIGMINE_REVERSAL_GAMMA = 1.6
+NEOSTIGMINE_EC50_MAX_SHIFT = 0.68  # Up to 1.68x rightward shift of rocuronium EC50
 
 
 def succinylcholine_twitch_fraction(ce: float, *, central: bool = False) -> float:
@@ -116,6 +124,7 @@ class TOFModel:
         # plus perijunctional buffer for sub-therapeutic sugammadex rebound (Eleveld 2007).
         self.ce = self.ce_central = 0.0
         self._ce_peri = 0.0
+        self.neostigmine_ce = 0.0
         self._sugammadex_given = False
         self._temp_c = self.patient.baseline_temp
 
@@ -256,14 +265,24 @@ class TOFModel:
             back_flux = 0.14 * rebound_gate
         return ce_peri, back_flux
 
-    def step_recovery(self, dt_sec: float, roc: MammillaryPK, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
+    def step_recovery(
+        self,
+        dt_sec: float,
+        roc: MammillaryPK,
+        mac_sevo: float = 0.0,
+        mac_n2o: float = 0.0,
+        *,
+        neostigmine_ce: float | None = None,
+    ) -> float:
         """Advance binding and the effect sites after the rocuronium PK step; return TOF %."""
+        if neostigmine_ce is not None:
+            self.neostigmine_ce = max(0.0, float(neostigmine_ce))
         sugammadex, complex_ = self.sugammadex, self.complex
         cp = roc.state.c1
         sug_active = sugammadex.state.c1 > 0.0 or sugammadex.state.c2 > 0.0
         cplx_active = complex_.state.c1 > 0.0 or complex_.state.c2 > 0.0
         if cp == 0.0 and self.ce == 0.0 and self.ce_central == 0.0 and not sug_active and not cplx_active:
-            return 100.0
+            return self.compute_tof_from_ce(0.0, mac_sevo, mac_n2o)
         dt_min = dt_sec / 60.0
         if sugammadex.state.c1 > 0.0 or complex_.state.c1 > 0.0:
             self._bind_in_plasma(dt_min, roc)
@@ -347,8 +366,16 @@ class TOFModel:
             roc.state.c1, sugammadex.state.c1, complex_.state.c1, roc.v1, sugammadex.v1, dt_min,
         )
 
-    def potentiation_factor(self, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
-        """Relative NMBA EC50 multiplier under volatile, nitrous oxide, and deep hypothermia."""
+    def _neostigmine_occupancy(self, neostigmine_ce: float | None = None) -> float:
+        ce = self.neostigmine_ce if neostigmine_ce is None else max(0.0, float(neostigmine_ce))
+        if ce <= 1e-9:
+            return 0.0
+        return hill_function(ce, NEOSTIGMINE_REVERSAL_C50, NEOSTIGMINE_REVERSAL_GAMMA)
+
+    def potentiation_factor(
+        self, mac_sevo: float = 0.0, mac_n2o: float = 0.0, *, neostigmine_ce: float | None = None,
+    ) -> float:
+        """Relative NMBA EC50 multiplier under volatile, N2O, hypothermia, and neostigmine."""
         t = self._temp_c
         # Extrapolated from vecuronium (Caldwell 2000, 34.0-38.0 °C): C50 is unchanged
         # in mild hypothermia (prolongation comes from slower clearance and ke0).
@@ -361,20 +388,46 @@ class TOFModel:
             * (1.0 - (1.0 - self.f_n2o) * clamp01(mac_n2o))
             * temp_ec50
         )
-        return clamp(factor, 0.15, 1.0)
+        base_pot = clamp(factor, 0.15, 1.0)
+        neo_occ = self._neostigmine_occupancy(neostigmine_ce)
+        if neo_occ > 0.0:
+            return base_pot * (1.0 + NEOSTIGMINE_EC50_MAX_SHIFT * neo_occ)
+        return base_pot
 
-    def _ec50(self, mac_sevo: float, mac_n2o: float) -> float:
-        return ROCURONIUM_TOF_EC50 * self.potentiation_factor(mac_sevo, mac_n2o)
+    def _ec50(self, mac_sevo: float, mac_n2o: float, *, neostigmine_ce: float | None = None) -> float:
+        return ROCURONIUM_TOF_EC50 * self.potentiation_factor(mac_sevo, mac_n2o, neostigmine_ce=neostigmine_ce)
 
-    def compute_tof_from_ce(self, ce: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
-        """TOF ratio (%) at the adductor pollicis."""
+    def _base_ec50(self, mac_sevo: float, mac_n2o: float) -> float:
+        return ROCURONIUM_TOF_EC50 * self.potentiation_factor(mac_sevo, mac_n2o, neostigmine_ce=0.0)
+
+    def _unopposed_fraction(self, ce: float, mac_sevo: float, mac_n2o: float) -> float:
+        """Fraction of postsynaptic nAChRs free of rocuronium (vulnerable to excess ACh)."""
         if ce <= 1e-9:
-            return 100.0
-        return 100.0 / (1.0 + (ce / self._ec50(mac_sevo, mac_n2o)) ** ROCURONIUM_TOF_HILL)
+            return 1.0
+        ratio = ce / max(1e-9, self._base_ec50(mac_sevo, mac_n2o))
+        return 1.0 / (1.0 + (ratio / 0.35) ** 4.0)
 
-    def twitch_block(self, ce: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
+    def compute_tof_from_ce(
+        self, ce: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0, *, neostigmine_ce: float | None = None,
+    ) -> float:
+        """TOF ratio (%) at the adductor pollicis."""
+        neo_occ = self._neostigmine_occupancy(neostigmine_ce)
+        if ce <= 1e-9:
+            roc_tof = 1.0
+        else:
+            roc_tof = 1.0 / (1.0 + (ce / self._ec50(mac_sevo, mac_n2o, neostigmine_ce=neostigmine_ce)) ** ROCURONIUM_TOF_HILL)
+        if neo_occ > 0.0:
+            # Excess ACh without residual competitive NMBA occupancy produces mild
+            # desensitizing weakness (Herbstreit 2010; Eikermann 2003).
+            unopposed = self._unopposed_fraction(ce, mac_sevo, mac_n2o)
+            roc_tof *= 1.0 - 0.06 * neo_occ * unopposed
+        return 100.0 * roc_tof
+
+    def twitch_block(
+        self, ce: float, mac_sevo: float = 0.0, mac_n2o: float = 0.0, *, neostigmine_ce: float | None = None,
+    ) -> float:
         """Fractional T1 depression at the adductor pollicis."""
-        tof = self.compute_tof_from_ce(ce, mac_sevo, mac_n2o) / 100.0
+        tof = self.compute_tof_from_ce(ce, mac_sevo, mac_n2o, neostigmine_ce=neostigmine_ce) / 100.0
         return 1.0 - tof ** (1.0 / TOF_FADE_EXPONENT)
 
     def pharyngeal_tone_fraction(self, mac_sevo: float = 0.0, mac_n2o: float = 0.0) -> float:
@@ -383,6 +436,8 @@ class TOFModel:
         Reserve loss was 54%, 37%, and 16% at normalized TOF 0.48, 0.79,
         and 0.98. Interpolation to baseline at TOF 1 and coupling to hypnotic
         collapse are calibrations. Separate recovery kinetics are unmodeled.
+        Unopposed neostigmine after full recovery further reduces upper-airway
+        dilator reserve (Herbstreit 2010).
         """
         tof = self.compute_tof_from_ce(self.ce, mac_sevo, mac_n2o) / 100.0
         if tof >= 0.98:
@@ -391,7 +446,12 @@ class TOFModel:
             reduction = 0.16 + 0.21 * (0.98 - tof) / 0.19
         else:
             reduction = 0.37 + 0.17 * clamp01((0.79 - tof) / 0.31)
-        return 1.0 - reduction
+        tone = 1.0 - reduction
+        neo_occ = self._neostigmine_occupancy()
+        if neo_occ > 0.0:
+            unopposed = self._unopposed_fraction(self.ce, mac_sevo, mac_n2o)
+            tone *= 1.0 - 0.20 * neo_occ * unopposed
+        return tone
 
 
 __all__ = [
