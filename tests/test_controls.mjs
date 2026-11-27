@@ -648,9 +648,11 @@ test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation
   };
   const lipidCard = makeCard("details");
   lipidCard.open = true;
+  const neuraxialDrawer = makeCard("details");
   const elements = new Map([
     ["drug-cards", makeCard("div")],
     ["lipid-controls", lipidCard],
+    ["neuraxial-module", neuraxialDrawer],
     ["c-lipid-feedback", { hidden: true, textContent: "" }],
     ["running-infusion-list", makeCard("div")],
     ["running-infusions", { hidden: false }],
@@ -681,8 +683,12 @@ test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation
   controls.buildDrugs(stubDrugs);
   assert.equal(lipidCard.open, false, "static lipid card resets closed on new session");
 
+  const anesthesia = controls.medicationGroups.find((g) => g.name === "Anesthesia and sedation");
   const endo = controls.medicationGroups.find((g) => g.name === "Endocrine and metabolic");
   const rescue = controls.medicationGroups.find((g) => g.name === "Rescue and antidotes");
+  assert.equal(anesthesia.section.open, true, "core anesthesia group opens by default");
+  assert.equal(endo.section.open, false, "specialty endocrine group starts collapsed");
+  assert.equal(rescue.section.open, false, "rescue group starts collapsed");
   assert.deepEqual(endo.keys, ["insulin", "d50w", "d10w"]);
   assert.deepEqual(rescue.keys, ["dantrolene", "lipid", "calcium_chloride", "sodium_bicarbonate"]);
 
@@ -713,9 +719,18 @@ test("medications tab hosts D50W, D10W, and sodium bicarbonate while circulation
   controls.filterMedications();
   assert.equal(controls.medicationRows.get("sodium_bicarbonate").card.hidden, false);
   assert.equal(controls.medicationRows.get("d50w").card.hidden, true);
+  assert.equal(neuraxialDrawer.hidden, true, "unrelated drug search hides neuraxial drawer");
+  elements.get("drug-search").value = "spinal";
+  controls.filterMedications();
+  assert.equal(neuraxialDrawer.hidden, false, "neuraxial search keeps neuraxial drawer visible");
+  assert.equal(neuraxialDrawer.open, true, "neuraxial-only match auto-opens the drawer");
+  assert.equal(elements.get("drug-search-empty").hidden, true);
   elements.get("drug-search").value = "";
   controls.filterMedications();
   assert.equal(controls.medicationRows.get("d50w").card.hidden, false);
+  assert.equal(neuraxialDrawer.hidden, false);
+  assert.equal(neuraxialDrawer.open, false, "clearing search restores neuraxial collapsed state");
+  assert.equal(rescue.section.open, false, "clearing search restores specialty group collapsed state");
 });
 
 test("airway tools, neuraxial block, crisis procedures, and dynamic position row bind and sync cleanly", async () => {

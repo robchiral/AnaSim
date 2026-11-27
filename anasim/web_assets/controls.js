@@ -107,17 +107,19 @@ const ventInputs = {
 };
 
 // Presentation order stays fixed while medications are administered.
+// Routine anesthesia groups open by default; specialty and rescue groups start collapsed.
 const medicationGroups = [
-  { name: "Anesthesia and sedation", keys: ["propofol", "midazolam", "ketamine", "etomidate"] },
-  { name: "Antiarrhythmics", keys: ["lidocaine", "amiodarone"] },
-  { name: "Opioids", keys: ["fentanyl", "remi", "hydromorphone", "morphine"] },
-  { name: "Vasopressors and inotropes", keys: ["phenyl", "ephedrine", "nore", "epi", "vaso", "dobu", "milri"] },
-  { name: "Heart rate and blood pressure", keys: ["atropine", "glyco", "esmolol", "labetalol"] },
-  { name: "Neuromuscular blockade and reversal", keys: ["roc", "succinylcholine", "sugammadex"] },
-  { name: "Anticoagulation and reversal", keys: ["heparin", "protamine"] },
-  { name: "Endocrine and metabolic", keys: ["insulin", "d50w", "d10w"] },
-  { name: "Rescue and antidotes", keys: ["dantrolene", "lipid", "calcium_chloride", "sodium_bicarbonate"] },
+  { name: "Anesthesia and sedation", keys: ["propofol", "midazolam", "ketamine", "etomidate"], open: true },
+  { name: "Opioids", keys: ["fentanyl", "remi", "hydromorphone", "morphine"], open: true },
+  { name: "Neuromuscular blockade and reversal", keys: ["roc", "succinylcholine", "sugammadex"], open: true },
+  { name: "Vasopressors and inotropes", keys: ["phenyl", "ephedrine", "nore", "epi", "vaso", "dobu", "milri"], open: true },
+  { name: "Heart rate and blood pressure", keys: ["atropine", "glyco", "esmolol", "labetalol"], open: true },
+  { name: "Antiarrhythmics", keys: ["lidocaine", "amiodarone"], open: false },
+  { name: "Anticoagulation and reversal", keys: ["heparin", "protamine"], open: false },
+  { name: "Endocrine and metabolic", keys: ["insulin", "d50w", "d10w"], open: false },
+  { name: "Rescue and antidotes", keys: ["dantrolene", "lipid", "calcium_chloride", "sodium_bicarbonate"], open: false },
 ];
+const neuraxialSearchText = "neuraxial anesthesia spinal epidural bupivacaine lidocaine block level";
 const medicationSearchTerms = {
   dantrolene: "malignant hyperthermia MH",
   lipid: "local anesthetic systemic toxicity LAST",
@@ -364,12 +366,17 @@ export class Controls {
     $("drug-search").value = "";
     this.searchGroupState = null;
     this.medicationRows = new Map();
-    this.medicationGroups = medicationGroups.map(({ name, keys }) => {
+    this.medicationGroups = medicationGroups.map(({ name, keys, open }) => {
       const section = document.createElement("details");
       section.className = "medication-group";
-      section.open = true;
+      section.open = open;
       const heading = document.createElement("summary");
-      heading.textContent = name;
+      const label = document.createElement("span");
+      label.textContent = name;
+      const count = document.createElement("span");
+      count.className = "group-count";
+      count.textContent = String(keys.length);
+      heading.append(label, count);
       section.append(heading);
       container.append(section);
       return { section, name, keys };
@@ -432,7 +439,7 @@ export class Controls {
       if (spec.key === "dantrolene") {
         const total = document.createElement("span");
         total.id = "c-dantrolene-total";
-        total.className = "drug-strength";
+        total.className = "drug-strength drug-total";
         card.querySelector("summary").append(total);
       }
       w.bolus.setAttribute("aria-label", `${spec.name} bolus (${spec.bolus_unit})`);
@@ -592,10 +599,12 @@ export class Controls {
 
   filterMedications() {
     const query = $("drug-search").value.trim().toLowerCase();
+    const neuraxial = $("neuraxial-module");
     if (query && this.searchGroupState === null) {
       this.searchGroupState = this.medicationGroups.map(({ section }) => section.open);
+      this.searchNeuraxialOpen = neuraxial?.open ?? false;
     }
-    let found = false;
+    let foundDrugs = false;
     this.medicationGroups.forEach((group, index) => {
       let groupMatches = false;
       for (const key of group.keys) {
@@ -607,8 +616,16 @@ export class Controls {
       group.section.hidden = !groupMatches;
       if (query && groupMatches) group.section.open = true;
       if (!query && this.searchGroupState !== null) group.section.open = this.searchGroupState[index];
-      found ||= groupMatches;
+      foundDrugs ||= groupMatches;
     });
+    let found = foundDrugs;
+    if (neuraxial) {
+      const neuraxialMatches = !query || neuraxialSearchText.includes(query);
+      neuraxial.hidden = !neuraxialMatches;
+      if (query && neuraxialMatches && !foundDrugs) neuraxial.open = true;
+      if (!query && this.searchGroupState !== null) neuraxial.open = Boolean(this.searchNeuraxialOpen);
+      found ||= neuraxialMatches;
+    }
     if (!query) this.searchGroupState = null;
     $("drug-search-clear").hidden = !$("drug-search").value;
     $("drug-search-empty").hidden = found;

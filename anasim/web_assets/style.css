@@ -212,6 +212,7 @@ select:disabled {
 
 .btn.toggle { --accent: var(--primary); background: transparent; border-color: var(--border-light); }
 #record[aria-pressed="true"] { --accent: var(--danger-soft); }
+.btn.toggle.t-ok { --accent: var(--ok); }
 .btn.toggle.t-danger { --accent: var(--danger-soft); }
 .btn.toggle.t-warning { --accent: var(--warning); }
 .btn.toggle[aria-pressed="true"] {
@@ -253,21 +254,21 @@ select:disabled {
 }
 
 /* Unified disclosure chevron across all collapsible sections */
-:is(.setup-details, .medication-history, .medication-group, .drug-card, .event-section, .case-timeline, .nmb-history, .respiratory-loops) > summary {
+:is(.setup-details, .medication-history, .medication-group, .drug-card, .control-drawer, .event-section, .case-timeline, .nmb-history, .respiratory-loops) > summary {
   list-style: none;
   cursor: pointer;
 }
-:is(.setup-details, .medication-history, .medication-group, .drug-card, .event-section, .case-timeline, .nmb-history, .respiratory-loops) > summary::-webkit-details-marker {
+:is(.setup-details, .medication-history, .medication-group, .drug-card, .control-drawer, .event-section, .case-timeline, .nmb-history, .respiratory-loops) > summary::-webkit-details-marker {
   display: none;
 }
-:is(.setup-details, .medication-history, .medication-group, .drug-card, .event-section, .case-timeline, .nmb-history, .respiratory-loops) > summary::before {
+:is(.setup-details, .medication-history, .medication-group, .drug-card, .control-drawer, .event-section, .case-timeline, .nmb-history, .respiratory-loops) > summary::before {
   content: "";
   width: 12px;
   height: 12px;
   flex: 0 0 12px;
   background: center / 12px 12px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M4.5 3 7.5 6 4.5 9' fill='none' stroke='%2389909A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
-:is(.setup-details, .medication-history, .medication-group, .drug-card, .event-section, .case-timeline, .nmb-history, .respiratory-loops)[open] > summary::before {
+:is(.setup-details, .medication-history, .medication-group, .drug-card, .control-drawer, .event-section, .case-timeline, .nmb-history, .respiratory-loops)[open] > summary::before {
   transform: rotate(90deg);
 }
 
@@ -297,6 +298,7 @@ fieldset:disabled { opacity: 0.48; }
   color: var(--text-dim);
   font-size: var(--text-xs);
   font-weight: 400;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -534,9 +536,20 @@ select.setting-edited { color: #FCE181; }
 .mode-option:has(input:checked) { background: var(--selection); color: var(--text); font-weight: 600; }
 .mode-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
 
-.case-browser { display: grid; gap: var(--sp-2); }
+.case-browser {
+  display: grid;
+  gap: var(--sp-2);
+  max-height: min(360px, 46dvh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: var(--sp-2);
+  background: var(--well);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
 .case-group { display: grid; gap: 2px; }
 .case-group-title {
+  padding: 2px var(--sp-2);
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-dim);
@@ -566,12 +579,13 @@ select.setting-edited { color: #FCE181; }
   gap: var(--sp-1);
 }
 .btn.preset-btn {
-  padding: 0 var(--sp-1);
+  padding: 6px var(--sp-1);
   height: auto;
   min-height: var(--h-ctrl);
   background: var(--well);
   border-color: transparent;
   color: var(--text-secondary);
+  font-size: var(--text-sm);
   line-height: 1.2;
   text-align: center;
   white-space: normal;
@@ -1122,7 +1136,7 @@ select.setting-edited { color: #FCE181; }
   display: grid;
   grid-column: 3;
   grid-row: 1;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
   align-content: center;
   gap: var(--sp-1);
   padding: 6px var(--sp-3);
@@ -1209,13 +1223,36 @@ select.setting-edited { color: #FCE181; }
 .vent-mode-row select { font-weight: 500; }
 .vent-power-btn[aria-pressed="true"] { --accent: var(--ok); }
 
-.vent-settings, .airway-extras, .manual-ventilation, .machine-actions {
+#c-airway button {
+  flex: 1 1 auto;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.vent-settings, .manual-ventilation, .machine-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--control-gap);
 }
+.vent-settings > .span-full,
+#c-vent-settings:not(:has(> [data-vent]:not([hidden]))) > .control-setting:not([hidden]) {
+  grid-column: 1 / -1;
+}
+.airway-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--control-gap);
+}
+.airway-extras > .control-setting { flex: 1 1 140px; }
+.airway-extras > .setting-actions { flex: 1 0 100%; }
 .airway-extras:not(:has(> :not([hidden]))) { display: none; }
-.machine-actions > .btn { padding-inline: var(--sp-2); }
+.machine-actions > .btn {
+  height: auto;
+  min-height: var(--h-ctrl);
+  padding: var(--sp-1) var(--sp-2);
+  white-space: normal;
+  line-height: 1.2;
+}
 .apl-reading { display: flex; align-items: baseline; gap: var(--sp-1); }
 #c-apl-state { color: var(--text-dim); font-size: var(--text-sm); }
 #c-apl-state.warn { color: var(--warning); font-weight: 600; }
@@ -1238,7 +1275,7 @@ select.setting-edited { color: #FCE181; }
 .bag-well > i[data-state="tense"] { background: var(--warning); }
 .bag-well > i[data-state="empty"],
 .bag-well > i[data-state="high"] { background: var(--danger-soft); }
-#c-o2-flush { min-inline-size: 108px; }
+#c-o2-flush { min-inline-size: 96px; }
 #c-o2-flush[aria-pressed="true"] { --accent: var(--gas-o2); }
 
 .gas-delivery-deck {
@@ -1248,6 +1285,14 @@ select.setting-edited { color: #FCE181; }
   align-items: start;
 }
 .gas-delivery-deck > fieldset:first-child { grid-column: span 3; }
+.gas-delivery-deck > fieldset > legend {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-1);
+  min-height: 16px;
+}
+.gas-delivery-deck > fieldset > legend .legend-unit { margin-left: 0; }
 .fresh-gas-settings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--control-gap); align-items: end; }
 .flowmeter-col { display: grid; gap: 2px; min-width: 0; }
 .flow-tube { order: 1; height: 3px; }
@@ -1283,21 +1328,101 @@ select.setting-edited { color: #FCE181; }
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px var(--heading-gap);
+  gap: 4px var(--sp-3);
   color: var(--text-dim);
   font-size: var(--text-sm);
 }
 .circuit-oxygen > span { white-space: nowrap; }
 .circuit-oxygen output { margin-left: var(--sp-1); font-size: var(--text-base); font-weight: 600; color: var(--text); }
-.fio2.warn { color: var(--warning) !important; }
-.fio2.bad { color: var(--danger-soft) !important; }
+.vap-status { display: inline-flex; align-items: baseline; }
+.vap-refill-btn {
+  align-self: center;
+  height: 22px;
+  padding: 0 var(--sp-2);
+  margin-left: var(--sp-2);
+  font-size: var(--text-xs);
+}
+.fio2.warn,
+#c-vap-level.warn { color: var(--warning) !important; }
+.fio2.bad,
+#c-vap-level.bad { color: var(--danger-soft) !important; }
 
 .thermal-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--control-gap); }
-.thermal-toggles .btn { padding-inline: var(--sp-2); }
+.thermal-toggles .btn {
+  height: auto;
+  min-height: var(--h-ctrl);
+  padding: var(--sp-1) var(--sp-2);
+  white-space: normal;
+  line-height: 1.2;
+}
 
 .inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--sp-2); font-size: var(--text-base); color: var(--text-secondary); }
 label.inline { grid-template-columns: auto minmax(0, 1fr); }
+.choice-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+}
 .action-feedback { color: var(--text-secondary); font-size: var(--text-base); }
+
+/* --- Unified collapsible drawers & button grids ------------------- */
+
+.control-drawer {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-2);
+}
+.airway-tools-drawer { margin-top: var(--sp-1); }
+.neuraxial-drawer {
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--sp-2);
+}
+.control-drawer > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--h-ctrl);
+  padding-block: var(--control-gap);
+  color: var(--text);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+.control-drawer > summary:hover { color: var(--primary-hover); }
+.control-drawer > summary > output {
+  margin-left: auto;
+  text-align: right;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drawer-body { display: grid; gap: var(--sp-2); padding-top: var(--heading-gap); }
+.drawer-subsection { display: grid; gap: var(--control-gap); }
+.drawer-subsection + .drawer-subsection { border-top: 1px solid var(--border-subtle); padding-top: var(--sp-2); }
+.subsection-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-dim); }
+.drawer-stack { display: grid; gap: var(--control-gap); }
+.toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--control-gap); }
+.toggle-grid > .btn {
+  height: auto;
+  min-height: var(--h-ctrl);
+  padding: 6px var(--sp-2);
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+}
+.action-row { display: flex; gap: var(--control-gap); }
+.action-row > .btn { flex: 1 1 0; padding-inline: var(--sp-2); }
+.inline-action-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--control-gap);
+  align-items: stretch;
+}
+.inline-action-field > .btn { height: auto; min-height: var(--h-ctrl); }
+.inline-action-field:not(:has(> .btn:not([hidden]))) { grid-template-columns: minmax(0, 1fr); }
 
 /* --- Medications -------------------------------------------------- */
 
@@ -1330,9 +1455,13 @@ label.inline { grid-template-columns: auto minmax(0, 1fr); }
 .infusion-editor { grid-column: 1 / -1; }
 .infusion-editor .drug-controls { padding: var(--sp-1) 0 0; background: transparent; }
 
-#drug-cards { display: grid; gap: var(--section-gap); }
+#drug-cards { display: grid; gap: var(--sp-1); }
 #drug-cards:not(:has(> :not([hidden]))) { display: none; }
-:is(.medication-history, .medication-group, .drug-card, .event-section) > summary {
+.medication-group + .medication-group {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-1);
+}
+:is(.medication-history, .medication-group, .event-section) > summary {
   min-height: var(--h-ctrl);
   padding-block: var(--control-gap);
   align-items: center;
@@ -1345,22 +1474,33 @@ label.inline { grid-template-columns: auto minmax(0, 1fr); }
   gap: var(--sp-2);
   font-weight: 600;
 }
+.group-count {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+.medication-group[open] > summary > .group-count { display: none; }
 .medication-history ol { list-style: none; padding: 0; margin: var(--sp-2) 0 0; max-height: 180px; overflow-y: auto; }
 .medication-history li { padding: var(--sp-1) 0; font-size: var(--text-base); border-top: 1px solid var(--border-subtle); }
 .medication-history time { color: var(--text-dim); font-size: var(--text-sm); margin-right: var(--sp-2); }
 
 .drug-card > summary {
   display: flex;
+  align-items: center;
   gap: var(--sp-2);
-  padding-inline: var(--control-gap);
+  min-height: var(--h-bar);
+  padding: 3px var(--control-gap);
   border-radius: var(--radius);
+  color: var(--text);
   font-size: var(--text-base);
   font-weight: 500;
 }
 .drug-card > summary:hover { background: var(--control); }
 .drug-card[open] > summary { color: var(--text); background: var(--panel-alt); }
 .drug-strength { color: var(--text-dim); font-size: var(--text-sm); font-weight: 400; }
-.drug-controls { display: grid; gap: var(--control-gap); padding-top: var(--heading-gap); }
+.drug-total { margin-left: auto; text-align: right; }
+.drug-controls { display: grid; gap: var(--control-gap); padding: var(--heading-gap) 0 var(--sp-2); }
 .drug-controls .inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
 .drug-controls .inputs.manual-rate { grid-template-columns: minmax(0, 1fr); }
 .drug-controls .bolus { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); align-items: end; }
@@ -1381,10 +1521,17 @@ label.inline { grid-template-columns: auto minmax(0, 1fr); }
 
 /* --- Circulation: fluids, CPR, defibrillator ---------------------- */
 
-.fluid-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+#panel-circulation > :is(fieldset, section) + :is(fieldset, section) {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-3);
+}
+.fluid-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--control-gap); }
 .fluid-key {
   justify-content: space-between;
-  padding: 0 var(--sp-2);
+  gap: var(--sp-1);
+  height: auto;
+  min-height: 36px;
+  padding: 6px var(--sp-2);
   background: var(--control);
   border-color: var(--border-light);
   text-align: left;
@@ -1411,18 +1558,14 @@ label.inline { grid-template-columns: auto minmax(0, 1fr); }
 .defib-charge-track > i { display: block; height: 100%; width: var(--fill, 0%); background: var(--warning); transition: width 140ms linear; }
 .defib-section[data-status="ready"] .defib-charge-track > i,
 .defib-section[data-status="waiting_for_r"] .defib-charge-track > i { background: var(--danger); }
-.defib-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.defib-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--control-gap); }
 .defib-shock-btn:not(:disabled) { background: var(--danger); border-color: var(--danger); color: #FFFFFF; font-weight: 600; }
 .defib-shock-btn:not(:disabled):hover { background: #E73B3B; }
 
-.ecmo-section { border-top: 1px solid var(--border-subtle); padding-top: var(--sp-2); }
-.airway-tools-section { border-top: 1px solid var(--border-subtle); margin-top: var(--sp-2); padding-top: var(--sp-2); }
-.airway-tools-controls { display: grid; gap: var(--control-gap); padding-top: var(--heading-gap); }
-.neuraxial-section { margin-bottom: var(--sp-2); }
-.ecmo-controls,
+.ecmo-active-panel { display: grid; gap: var(--sp-2); }
 .ecmo-actions,
 .ecmo-cpb-controls { display: grid; gap: var(--control-gap); }
-.ecmo-controls { padding-top: var(--heading-gap); }
+.ecmo-stop-btn { margin-top: var(--sp-1); }
 .ecmo-readout {
   margin: 0;
   padding: var(--sp-2);
@@ -1436,6 +1579,10 @@ label.inline { grid-template-columns: auto minmax(0, 1fr); }
 
 /* --- Labs: blood gas analyzer table ------------------------------- */
 
+#panel-labs > .action-section + .action-section {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-3);
+}
 .abg-results { overflow-x: auto; scrollbar-width: thin; }
 .abg-results table { min-width: 100%; border-collapse: collapse; font-size: var(--text-base); }
 .abg-results caption { caption-side: bottom; padding-top: var(--sp-2); color: var(--text-dim); font-size: var(--text-sm); text-align: left; }
@@ -1452,6 +1599,11 @@ label.inline { grid-template-columns: auto minmax(0, 1fr); }
 
 /* --- Events ------------------------------------------------------- */
 
+#panel-events { gap: var(--sp-2); }
+.event-section + .event-section {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-2);
+}
 .event-section > summary {
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr);
@@ -1464,10 +1616,18 @@ label.inline { grid-template-columns: auto minmax(0, 1fr); }
 .medication-history > summary:hover,
 .case-timeline > summary:hover { color: var(--primary-hover); }
 .event-section > summary > output { grid-column: 2; color: var(--text-dim); font-size: var(--text-sm); }
-.event-section[data-active="true"] > summary { grid-template-columns: minmax(0, 1fr); cursor: default; }
-.event-section[data-active="true"] > summary::before { display: none; }
-.event-section[data-active="true"] > summary > output { grid-column: 1; color: var(--warning); }
-.event-controls { display: grid; gap: var(--control-gap); padding-top: var(--heading-gap); }
+.event-section[data-active="true"] > summary { cursor: default; }
+.event-section[data-active="true"] > summary::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  justify-self: center;
+  align-self: center;
+  transform: none;
+}
+.event-section[data-active="true"] > summary > output { grid-column: 2; color: var(--warning); }
+.event-controls { display: grid; gap: var(--sp-2); padding-top: var(--heading-gap); }
 .event-controls.inline { grid-template-columns: minmax(0, 1fr) auto; }
 
 /* --- Scenario panel ----------------------------------------------- */
@@ -1762,6 +1922,7 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
   .setup-error { padding-inline: var(--sp-3); }
   .preset-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .setup-demographics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .case-browser { max-height: 280px; }
   .setup-footer { flex-direction: row; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
   .setup-actions { margin-left: auto; }
   .case-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1846,7 +2007,7 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
     grid-column: 1;
     grid-row: auto;
     border-left: 0;
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) auto;
     padding: 0 var(--sp-2) 6px;
   }
   .nmb-controls .btn { grid-column: auto; }
@@ -1890,5 +2051,7 @@ dialog p { color: var(--text-secondary); white-space: pre-line; }
   .tabs button { font-size: var(--text-sm); }
   .case-item { flex-direction: column; gap: 2px; }
   .case-review-footer { flex-wrap: wrap; }
-  .fluid-grid { grid-template-columns: minmax(0, 1fr); }
+  #c-airway { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); height: auto; }
+  #c-airway button { height: var(--h-bar); }
+  .fluid-grid, .toggle-grid { grid-template-columns: minmax(0, 1fr); }
 }
