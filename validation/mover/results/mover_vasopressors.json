@@ -1,0 +1,222 @@
+{
+  "generated": "2026-11-27",
+  "arms": {
+    "phenylephrine": {
+      "n": 180,
+      "median_dose": 100.0,
+      "rec_peak_dmap_med": 13.0,
+      "mod_peak_dmap_med": 16.203502633109952,
+      "dmap_err_ci": [
+        2.017685199944983,
+        -0.03342481514415563,
+        3.923755017527466
+      ],
+      "rec_peak_dhr_med": -4.5,
+      "mod_peak_dhr_med": -2.89463108126429,
+      "rec_late_dhr_med": -1.2999999999999998,
+      "mod_late_dhr_med": -0.2252856385995649
+    },
+    "phenylephrine_50": {
+      "n": 24,
+      "median_dose": 50.0,
+      "rec_peak_dmap_med": 12.0,
+      "mod_peak_dmap_med": 9.443490861451206,
+      "dmap_err_ci": [
+        -2.334007121388641,
+        -6.5868551350403255,
+        1.3736959308810004
+      ],
+      "rec_peak_dhr_med": -5.0,
+      "mod_peak_dhr_med": -1.4049837684348887,
+      "rec_late_dhr_med": -2.3,
+      "mod_late_dhr_med": 0.49556597325193796
+    },
+    "phenylephrine_100": {
+      "n": 133,
+      "median_dose": 100.0,
+      "rec_peak_dmap_med": 12.0,
+      "mod_peak_dmap_med": 16.16016466788861,
+      "dmap_err_ci": [
+        2.781117279605274,
+        0.5231529631752639,
+        4.966314257451449
+      ],
+      "rec_peak_dhr_med": -4.0,
+      "mod_peak_dhr_med": -2.957195562436482,
+      "rec_late_dhr_med": -1.2,
+      "mod_late_dhr_med": -0.2267465604255264
+    },
+    "phenylephrine_200": {
+      "n": 23,
+      "median_dose": 200.0,
+      "rec_peak_dmap_med": 15.0,
+      "mod_peak_dmap_med": 21.777309061975032,
+      "dmap_err_ci": [
+        2.143952552866214,
+        -5.907015202829797,
+        9.086956638634511
+      ],
+      "rec_peak_dhr_med": -5.0,
+      "mod_peak_dhr_med": -4.17643218342176,
+      "rec_late_dhr_med": -2.4,
+      "mod_late_dhr_med": -1.6307000920490111
+    },
+    "ephedrine": {
+      "n": 180,
+      "median_dose": 5.0,
+      "rec_peak_dmap_med": 12.0,
+      "mod_peak_dmap_med": 18.832299195307037,
+      "dmap_err_ci": [
+        8.197374463388757,
+        5.554077623299121,
+        10.826727734982725
+      ],
+      "rec_peak_dhr_med": 5.0,
+      "mod_peak_dhr_med": 7.107573878041769,
+      "rec_late_dhr_med": 3.0,
+      "mod_late_dhr_med": 7.052198557129363
+    },
+    "ephedrine_5_first": {
+      "n": 55,
+      "median_dose": 5.0,
+      "rec_peak_dmap_med": 10.0,
+      "mod_peak_dmap_med": 16.45845769246644,
+      "dmap_err_ci": [
+        4.40630808693153,
+        0.8535305550299606,
+        7.713428885729779
+      ],
+      "rec_peak_dhr_med": 5.0,
+      "mod_peak_dhr_med": 5.926909588769476,
+      "rec_late_dhr_med": 5.8,
+      "mod_late_dhr_med": 5.85836298844237
+    },
+    "ephedrine_5_repeat": {
+      "n": 67,
+      "median_dose": 5.0,
+      "rec_peak_dmap_med": 12.0,
+      "mod_peak_dmap_med": 16.406320887517893,
+      "dmap_err_ci": [
+        1.7274377388875284,
+        -2.895049644733259,
+        5.683589349321058
+      ],
+      "rec_peak_dhr_med": 4.0,
+      "mod_peak_dhr_med": 6.219033458738707,
+      "rec_late_dhr_med": 2.0,
+      "mod_late_dhr_med": 6.169387423075148
+    },
+    "ephedrine_10_first": {
+      "n": 39,
+      "median_dose": 10.0,
+      "rec_peak_dmap_med": 19.0,
+      "mod_peak_dmap_med": 33.99999821766944,
+      "dmap_err_ci": [
+        17.3219626717109,
+        10.968001795970942,
+        24.006010723516273
+      ],
+      "rec_peak_dhr_med": 6.0,
+      "mod_peak_dhr_med": 10.61559840104497,
+      "rec_late_dhr_med": 4.8,
+      "mod_late_dhr_med": 10.016787042297377
+    },
+    "ephedrine_10_repeat": {
+      "n": 19,
+      "median_dose": 10.0,
+      "rec_peak_dmap_med": 10.0,
+      "mod_peak_dmap_med": 33.548948991167435,
+      "dmap_err_ci": [
+        23.257136101397506,
+        17.634765108915126,
+        28.31777761761835
+      ],
+      "rec_peak_dhr_med": 4.0,
+      "mod_peak_dhr_med": 10.369526726823096,
+      "rec_late_dhr_med": 1.6,
+      "mod_late_dhr_med": 10.015965458879275
+    },
+    "norepi_inf": {
+      "n": 22,
+      "median_dose": 3.0,
+      "rec_peak_dmap_med": 5.5,
+      "mod_peak_dmap_med": 10.48351979536018,
+      "dmap_err_ci": [
+        5.166357453360532,
+        1.5253814758722044,
+        8.993641013620834
+      ],
+      "rec_peak_dhr_med": 0.0,
+      "mod_peak_dhr_med": -0.17528219520047728,
+      "rec_late_dhr_med": 0.4,
+      "mod_late_dhr_med": -0.03415839776926717
+    },
+    "esmolol": {
+      "n": 32,
+      "median_dose": 17.5,
+      "rec_peak_dmap_med": -5.0,
+      "mod_peak_dmap_med": -3.5725843596153197,
+      "dmap_err_ci": [
+        3.829137999679842,
+        -0.8854358013848477,
+        7.8043996683278944
+      ],
+      "rec_peak_dhr_med": -15.0,
+      "mod_peak_dhr_med": -3.1981035793870163,
+      "rec_late_dhr_med": -11.8,
+      "mod_late_dhr_med": -1.8086607984546177
+    },
+    "labetalol": {
+      "n": 22,
+      "median_dose": 5.0,
+      "rec_peak_dmap_med": -6.0,
+      "mod_peak_dmap_med": -13.278253799801973,
+      "dmap_err_ci": [
+        -3.4131484970669757,
+        -7.905973826834197,
+        1.6466762641226944
+      ],
+      "rec_peak_dhr_med": -4.5,
+      "mod_peak_dhr_med": -6.967128423829422,
+      "rec_late_dhr_med": -1.7000000000000002,
+      "mod_late_dhr_med": -6.651578127075295
+    },
+    "neo_glyco": {
+      "n": 180,
+      "median_dose": 3.35,
+      "rec_peak_dmap_med": 3.0,
+      "mod_peak_dmap_med": -4.507973584224326,
+      "dmap_err_ci": [
+        -7.709856247423817,
+        -9.0525801612556,
+        -6.47380375919692
+      ],
+      "rec_peak_dhr_med": 5.0,
+      "mod_peak_dhr_med": -5.758203305975173,
+      "rec_late_dhr_med": 5.1,
+      "mod_late_dhr_med": -10.53062046788538
+    },
+    "glyco_alone": {
+      "n": 180,
+      "median_dose": 0.2,
+      "rec_peak_dmap_med": 2.05,
+      "mod_peak_dmap_med": 8.548359753126245,
+      "dmap_err_ci": [
+        5.486112477478268,
+        3.816563265201572,
+        7.110613025852366
+      ],
+      "rec_peak_dhr_med": 1.6666666666666667,
+      "mod_peak_dhr_med": 12.6411473396778,
+      "rec_late_dhr_med": 8.8,
+      "mod_late_dhr_med": 23.557860119529565
+    }
+  },
+  "exclusions": {
+    "unstable or missing pre-event arterial MAP": 234,
+    "unstable or missing pre-event HR": 347,
+    "incomplete post-event HR": 40,
+    "incomplete post-event arterial MAP": 6,
+    "active volatile washout during neostigmine reversal": 133
+  }
+}

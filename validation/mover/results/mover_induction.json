@@ -1,0 +1,93 @@
+{
+  "generated": "2026-11-27",
+  "counts": {
+    "sevo_free": 332,
+    "sevo_treated": 102,
+    "tiva": 37,
+    "etomidate": 35
+  },
+  "arms": {
+    "sevo_free": {
+      "n": 332,
+      "map_err_all": [
+        -11.273051866116882,
+        -12.753408592625354,
+        -9.807970771165447
+      ],
+      "map_err_stopped": [
+        -10.449025281524337,
+        -12.018109123780611,
+        -8.923223268037729
+      ],
+      "hr_err": [
+        -5.993577865736931,
+        -7.178850899410932,
+        -4.720005788295638
+      ]
+    },
+    "sevo_combined": {
+      "n": 434,
+      "map_err_all": [
+        -9.386744122022604,
+        -10.882024085339184,
+        -8.117219587859356
+      ],
+      "map_err_stopped": [
+        -8.660118557472163,
+        -10.280727984880107,
+        -7.207067145889526
+      ],
+      "hr_err": [
+        -4.853845370079697,
+        -5.948038218790436,
+        -3.745914470447165
+      ]
+    },
+    "tiva": {
+      "n": 37,
+      "map_err_all": [
+        -14.015265681796773,
+        -19.49642309346896,
+        -7.637300996590883
+      ],
+      "map_err_stopped": [
+        -13.526072669795452,
+        -19.06288042557468,
+        -6.715760704339439
+      ],
+      "hr_err": [
+        -3.9481915820336417,
+        -7.296799588451389,
+        -0.1810115243219526
+      ]
+    },
+    "etomidate": {
+      "n": 35,
+      "map_err_all": [
+        -3.4642801076551595,
+        -7.881647624823712,
+        1.1194248551816757
+      ],
+      "map_err_stopped": [
+        -2.2981100852506757,
+        -6.732227498662168,
+        2.3506133414260733
+      ],
+      "hr_err": [
+        -4.69659584615677,
+        -8.21811331178839,
+        -1.0072939710223725
+      ]
+    }
+  },
+  "exclusions": {
+    "intubation outside 0-10 min of induction": 350,
+    "vasoactive drug before +1 min": 940,
+    "ketamine or dexmedetomidine during induction": 499,
+    "isoflurane, desflurane, or nitrous oxide exposure": 26,
+    "no pre-induction MAP within 15 min": 127,
+    "no inspired sevoflurane recorded": 41,
+    "no pre-induction HR within 5 min": 29,
+    "volatile exposure in TIVA candidate": 64
+  }
+}

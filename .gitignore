@@ -55,6 +55,8 @@ dmypy.json
 node_modules/
 validation/vitaldb/.vitaldb_cache/
 validation/vitaldb/results/*.png
+validation/mover/.mover_cache/
+validation/mover/results/*.png
 recordings/
 .claude/
 /private/
