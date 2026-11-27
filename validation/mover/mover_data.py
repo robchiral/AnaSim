@@ -7,7 +7,7 @@ import math
 import os
 import re
 from collections.abc import Iterable, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -784,7 +784,7 @@ def write_results(
 
 
 def utc_date() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 if __name__ == "__main__":

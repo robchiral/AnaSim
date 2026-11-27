@@ -17,7 +17,7 @@ import functools
 import json
 import sys
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -277,7 +277,7 @@ def main() -> None:
     rows = [r for r in results if "exclusion" not in r]
     exclusions = [r for r in results if "exclusion" in r]
     data = dict(eligible=len(candidates), rows=rows, exclusions=exclusions)
-    settings = dict(generated=datetime.now(timezone.utc).date().isoformat(), seed=args.seed)
+    settings = dict(generated=datetime.now(UTC).date().isoformat(), seed=args.seed)
     args.output.mkdir(parents=True, exist_ok=True)
     md_path = args.output / "vitaldb_pulse_pressure.md"
     json_path = args.output / "vitaldb_pulse_pressure.json"

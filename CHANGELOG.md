@@ -76,6 +76,7 @@
   vasopressors, laparoscopy, ABGs, and core temperature).
 - Sped up high-speed web playback (about four times faster at 50x), maintenance
   startup, and per-step execution across the engine, monitors, and browser.
+- Raised the minimum Python version to 3.12.
 
 ## 1.9 - 2026-11-19
 

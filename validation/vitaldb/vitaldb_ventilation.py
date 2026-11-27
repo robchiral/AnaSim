@@ -30,7 +30,7 @@ import sys
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -932,7 +932,7 @@ def main() -> None:
     lines = [
         "# VitalDB ventilation comparisons",
         "",
-        f"Generated {datetime.now(timezone.utc).date().isoformat()}.",
+        f"Generated {datetime.now(UTC).date().isoformat()}.",
         "",
         f"These comparisons use {len(cases)} volume-control windows recorded on the Dräger Primus, from {len(candidates)} eligible",
         "unique-subject cases inside AnaSim's patient domain (general anesthesia, oral single-lumen tube, open surgery,",

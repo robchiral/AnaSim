@@ -22,7 +22,7 @@ jobs:
           ref: ${{ inputs.tag }}
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           cache: pip
       - name: Verify release tag matches package version
         env:

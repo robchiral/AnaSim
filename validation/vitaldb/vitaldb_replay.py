@@ -9,7 +9,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -838,7 +838,7 @@ def run_hemo_cli(
         data["cv_grid"] = cv_hemodynamic_grid(candidate_results, n_folds=args.folds, seed=args.seed)
 
     settings = dict(
-        generated=datetime.now(timezone.utc).date().isoformat(),
+        generated=datetime.now(UTC).date().isoformat(),
         dt=args.dt,
         seed=args.seed,
         folds=args.folds,

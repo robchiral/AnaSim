@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - name: Build web app
         run: python scripts/build_web.py
       - uses: actions/configure-pages@v6

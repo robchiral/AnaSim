@@ -20,6 +20,7 @@ env/
 venv/
 ENV/
 *.bak/
+uv.lock
 
 # === Testing & Quality ===
 .pytest_cache/

@@ -2,7 +2,7 @@
 
 ## Setup
 
-Use Python 3.10 or later. Browser tests and Pyodide checks also require Node.js
+Use Python 3.12 or later. Browser tests and Pyodide checks also require Node.js
 22.
 
 ```bash

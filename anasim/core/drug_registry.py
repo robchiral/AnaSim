@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, fields
-from enum import Enum
+from enum import Enum, StrEnum
 from types import MappingProxyType
 
 from anasim.patient.patient import Patient
@@ -53,7 +53,7 @@ def _propofol(patient: Patient, config: SimulationConfig) -> MammillaryPK:
     return PropofolPKEleveld(patient, concomitant_opioids=config.concomitant_opioids)
 
 
-class TCIMode(str, Enum):
+class TCIMode(StrEnum):
     """Supported TCI target compartments."""
 
     PLASMA = "plasma"

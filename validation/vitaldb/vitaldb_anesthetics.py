@@ -17,7 +17,7 @@ import sys
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import nullcontext
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -540,7 +540,7 @@ def main() -> None:
         kind: cohort(kind, count, args.seed + offset, args.workers, args.dt)
         for offset, (kind, count) in enumerate(selected_kinds)
     }
-    settings = dict(generated=datetime.now(timezone.utc).date().isoformat(), dt=args.dt, seed=args.seed)
+    settings = dict(generated=datetime.now(UTC).date().isoformat(), dt=args.dt, seed=args.seed)
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / "vitaldb_anesthetics.md").write_text(report(data, settings, args.seed))
     if args.figures:

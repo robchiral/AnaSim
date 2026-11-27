@@ -6,7 +6,7 @@ patient monitor and anesthesia machine.
 
 [![CI](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml/badge.svg)](https://github.com/robchiral/AnaSim/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/anasim-simulator.svg)](https://pypi.org/project/anasim-simulator/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: Noncommercial](https://img.shields.io/badge/license-noncommercial-blue.svg)](https://github.com/robchiral/AnaSim/blob/main/LICENSE)
 
 [![Run AnaSim in your browser](https://raw.githubusercontent.com/robchiral/AnaSim/main/docs/images/run_anasim.svg)](https://robche.com/AnaSim/)
@@ -17,7 +17,7 @@ patient monitor and anesthesia machine.
 
 Open [robche.com/AnaSim](https://robche.com/AnaSim/) in your browser.
 
-To run it locally, install it with Python 3.10 or later.
+To run it locally, install it with Python 3.12 or later.
 
 ```bash
 python3 -m venv .venv
